@@ -15,9 +15,9 @@ export interface PanelTab {
 }
 
 /**
- * The work panel's state (`web-application.md` § Work panel): a selection
- * and the user's tabs, in their order. The host saves it as the backend's
- * work panel document (`web-api.md` § Work panel state).
+ * What the work panel shows (`web-application.md` § Work panel): the page's
+ * selection and the tabs in their order, which the backend keeps
+ * (`web-api.md` § Work panel state).
  */
 export interface PanelState {
   /** A tab's id or a pinned kind's id; null names nothing. */
@@ -56,29 +56,30 @@ export function shownSelection(state: PanelState, kinds: readonly PanelTabKind[]
 }
 
 /**
- * The panel after `intent` opened (`plugin-pages.md` § Intents): the first
- * kind of a page the user has on that opens it shows the data it returns, in
- * its pinned tab or in a new tab, which takes the selection; null when no
- * such kind opens the intent.
+ * What opening `intent` does (`plugin-pages.md` § Intents): the first kind of
+ * a page the user has on that opens it shows the data it returns, in its
+ * pinned tab, whose data `pinned` then holds, or in a tab it creates; either
+ * takes the selection. Null when no such kind opens the intent.
  */
 export function openIntent(
-  panel: { state: PanelState; pinned: PinnedTabs },
+  pinned: PinnedTabs,
   pages: readonly AnyPluginPage[],
   enabled: (plugin: string) => boolean,
   request: IntentRequest,
-): { state: PanelState; pinned: PinnedTabs } | null {
+): { selection: string; pinned: PinnedTabs; created: PanelTab | null } | null {
   const kind = intentKind(pages, enabled, request.intent)
   if (!kind) {
     return null
   }
   if (!kind.pinned) {
-    const added = addTab(panel.state, { kind: kind.kind, data: opened(kind, request, null) }, { select: true })
-    return { state: added.state, pinned: panel.pinned }
+    const created = { id: crypto.randomUUID(), kind: kind.kind, data: opened(kind, request, null) }
+    return { selection: created.id, pinned, created }
   }
-  const current = Object.hasOwn(panel.pinned, kind.kind) ? kind.schema.safeParse(panel.pinned[kind.kind]) : null
+  const current = Object.hasOwn(pinned, kind.kind) ? kind.schema.safeParse(pinned[kind.kind]) : null
   return {
-    state: { ...panel.state, selection: kind.kind },
-    pinned: { ...panel.pinned, [kind.kind]: opened(kind, request, current?.success ? current.data : null) },
+    selection: kind.kind,
+    pinned: { ...pinned, [kind.kind]: opened(kind, request, current?.success ? current.data : null) },
+    created: null,
   }
 }
 

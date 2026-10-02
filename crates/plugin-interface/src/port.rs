@@ -12,6 +12,7 @@ use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::exposes::ExposeAddress;
 use demi_web_api_protocol::ids::{DeviceId, ExposeId};
+use demi_web_api_protocol::panel::{CreatePanelTab, WorkPanel};
 
 use crate::{PluginId, Scope};
 use futures_util::future::LocalBoxFuture;
@@ -31,9 +32,13 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 pub enum PortMessage {
     /// An operation of a command request's rpc port: its IO and the
     /// invoking node's command storage.
-    Rpc { request: PortRequest },
+    Rpc {
+        request: PortRequest,
+    },
     /// The plugin's value `key` for the user.
-    ReadValue { key: String },
+    ReadValue {
+        key: String,
+    },
     /// Every value of the plugin's for the user.
     ListValues,
     /// Writes `key` if its revision is still `revision`; none for a value
@@ -48,19 +53,32 @@ pub enum PortMessage {
         blobs: Vec<BlobRef>,
     },
     /// Removes `key` if its revision is still `revision`.
-    RemoveValue { key: String, revision: u64 },
+    RemoveValue {
+        key: String,
+        revision: u64,
+    },
     /// Stores `bytes` in the user's blob namespace.
-    PutBlob { bytes: B64Bytes },
+    PutBlob {
+        bytes: B64Bytes,
+    },
     /// The bytes of the user's blob `blob`.
-    GetBlob { blob: BlobRef },
+    GetBlob {
+        blob: BlobRef,
+    },
     /// Replaces the plugin's set of Host directories for the user.
-    SetDirectories { directories: Vec<HostDirectory> },
+    SetDirectories {
+        directories: Vec<HostDirectory>,
+    },
     /// Reads paths on the request's conversation's main Host, if it is
     /// running, without waking it.
-    ReadHostFiles { reads: Vec<HostRead> },
+    ReadHostFiles {
+        reads: Vec<HostRead>,
+    },
     /// The plugin's page state of `scope` changed: the user's, or the
     /// request's conversation's.
-    Changed { scope: Scope },
+    Changed {
+        scope: Scope,
+    },
     /// Runs one operation of a package the plugin's commands bind, on the
     /// request's conversation's main Host.
     PackageCall {
@@ -80,9 +98,29 @@ pub enum PortMessage {
         lifetime: u64,
     },
     /// Moves the expose's expiry to `lifetime` seconds from now.
-    RenewExpose { expose: ExposeId, lifetime: u64 },
+    RenewExpose {
+        expose: ExposeId,
+        lifetime: u64,
+    },
     /// Destroys the expose at once.
-    RemoveExpose { expose: ExposeId },
+    RemoveExpose {
+        expose: ExposeId,
+    },
+    /// The request's conversation's work panel, with only the tabs of the
+    /// plugin's own panel kinds.
+    PanelTabs,
+    /// Creates a tab of one of the plugin's panel kinds.
+    CreatePanelTab {
+        tab: CreatePanelTab,
+    },
+    /// Sets the fields of `data` in the tab's data, removing the null ones.
+    UpdatePanelTab {
+        id: String,
+        data: Map<String, Value>,
+    },
+    RemovePanelTab {
+        id: String,
+    },
 }
 
 /// The answer to one [`PortMessage`].
@@ -140,6 +178,13 @@ pub enum PortAnswer {
     Expose {
         expose: ExposeRecord,
     },
+    Panel {
+        panel: WorkPanel,
+    },
+    /// The panel's revision once a change is in it.
+    PanelRevision {
+        revision: u64,
+    },
     Refused {
         refusal: PortRefusal,
     },
@@ -161,6 +206,8 @@ impl PortAnswer {
             Self::Hosts { .. } => "hosts",
             Self::Exposes { .. } => "exposes",
             Self::Expose { .. } => "expose",
+            Self::Panel { .. } => "panel",
+            Self::PanelRevision { .. } => "panel_revision",
             Self::Refused { .. } => "refused",
         }
     }
@@ -420,6 +467,10 @@ pub enum PortRefusal {
     /// device whose runner is not connected. A read never wakes it.
     #[error("the conversation's Host is not running")]
     NotRunning,
+    /// A change of the work panel was refused, as its routes would refuse
+    /// it, such as `panel_full` (`web-api.md` § Work panel state).
+    #[error("{message}")]
+    Panel { code: ErrorCode, message: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -664,6 +715,53 @@ impl PluginPort {
     pub async fn remove_expose(&self, expose: ExposeId) -> Result<(), PortFailure> {
         self.done("remove_expose", PortMessage::RemoveExpose { expose })
             .await
+    }
+
+    /// The request's conversation's work panel, with the tabs of the
+    /// plugin's own panel kinds.
+    pub async fn panel_tabs(&self) -> Result<WorkPanel, PortFailure> {
+        match self.ask(PortMessage::PanelTabs).await? {
+            PortAnswer::Panel { panel } => Ok(panel),
+            answer => Err(unexpected("panel_tabs", &answer)),
+        }
+    }
+
+    /// Creates a tab of one of the plugin's panel kinds, and answers the
+    /// panel's revision; nothing changes for an id the panel has or had.
+    pub async fn create_panel_tab(&self, tab: CreatePanelTab) -> Result<u64, PortFailure> {
+        self.panel_change("create_panel_tab", PortMessage::CreatePanelTab { tab })
+            .await
+    }
+
+    /// Sets the fields of `data` in the tab's data, removing the null ones,
+    /// and answers the panel's revision; nothing changes for a tab the panel
+    /// no longer has.
+    pub async fn update_panel_tab(
+        &self,
+        id: impl Into<String>,
+        data: Map<String, Value>,
+    ) -> Result<u64, PortFailure> {
+        let message = PortMessage::UpdatePanelTab {
+            id: id.into(),
+            data,
+        };
+        self.panel_change("update_panel_tab", message).await
+    }
+
+    pub async fn remove_panel_tab(&self, id: impl Into<String>) -> Result<u64, PortFailure> {
+        let message = PortMessage::RemovePanelTab { id: id.into() };
+        self.panel_change("remove_panel_tab", message).await
+    }
+
+    async fn panel_change(
+        &self,
+        asked: &'static str,
+        message: PortMessage,
+    ) -> Result<u64, PortFailure> {
+        match self.ask(message).await? {
+            PortAnswer::PanelRevision { revision } => Ok(revision),
+            answer => Err(unexpected(asked, &answer)),
+        }
     }
 
     async fn expose(

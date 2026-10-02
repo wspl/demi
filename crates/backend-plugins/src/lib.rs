@@ -10,5 +10,6 @@ mod user;
 
 pub use registry::{Registry, RegistryError};
 pub use user::{
-    ContextAsk, PageCall, PageCallError, PluginToolset, ProductPort, SwitchError, UserPlugins,
+    ContextAsk, PageCall, PageCallError, PanelError, PluginToolset, ProductPort, SwitchError,
+    UserPlugins,
 };

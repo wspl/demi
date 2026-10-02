@@ -1,4 +1,4 @@
-import { BrowserTabsError, NEW_TAB_URL, type BrowserTabsApi } from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError } from '@demicodes/plugin-browser/live/tabs'
 import type { OpenUserStream } from '@demicodes/web-ui/plugins/streams'
 import type { HostInstall } from '@demicodes/web-ui/devices/installs'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -9,7 +9,7 @@ import {
   type PageHost,
   type StateFeed,
 } from '@demicodes/web-ui/plugins/page'
-import { closeTabSchema, navigateTabSchema, openTabSchema, tabHistorySchema } from '@demicodes/plugin-browser'
+import { bindTabSchema, navigateTabSchema, syncTabsSchema, tabHistorySchema } from '@demicodes/plugin-browser'
 import { exposeCallSchema, type ExposeState } from '@demicodes/plugin-expose'
 import {
   addSourceSchema,
@@ -20,6 +20,8 @@ import {
   type SourceState,
 } from '@demicodes/plugin-skills'
 import { productWould } from '../product-would'
+import type { GalleryBrowser } from './live-browser'
+import type { GalleryBrowserPlugin } from './panel'
 
 /**
  * The plugins as the gallery's specimens answer them (`plugins.md` § The
@@ -110,23 +112,28 @@ function beat(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/** The conversation browser's plugin over the gallery's browser `api`. */
-export function browserPlugin(api: BrowserTabsApi): GalleryPlugin {
+/**
+ * The conversation browser's plugin over the gallery's `browser`: its tab
+ * list, its tab methods, and `panel`, its part in the panel's tabs.
+ */
+export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlugin): GalleryPlugin {
   async function call(method: string, params: object): Promise<unknown> {
     switch (method) {
-      case 'open':
-        return { tab: await api.open(openTabSchema.parse(params).url ?? NEW_TAB_URL) }
-      case 'close':
-        await api.close(closeTabSchema.parse(params).tab)
+      case 'bind':
+        await panel.bind(bindTabSchema.parse(params).panelTab)
+        return null
+      case 'sync':
+        syncTabsSchema.parse(params)
+        await panel.sync()
         return null
       case 'navigate': {
         const { tab, url } = navigateTabSchema.parse(params)
-        await api.navigate(tab, url)
+        await browser.navigate(tab, url)
         return null
       }
       case 'history': {
         const { tab, action } = tabHistorySchema.parse(params)
-        await api.history(tab, action)
+        await browser.history(tab, action)
         return null
       }
     }
@@ -134,9 +141,9 @@ export function browserPlugin(api: BrowserTabsApi): GalleryPlugin {
   }
   return {
     followState: () => ({
-      value: () => api.tabs.value.value,
+      value: () => browser.listed.value,
       error: () => null,
-      read: api.tabs.read,
+      read: () => {},
       stop: () => {},
     }),
     call: async (method, params) => {
@@ -149,8 +156,8 @@ export function browserPlugin(api: BrowserTabsApi): GalleryPlugin {
         throw error
       }
     },
-    streams: { browser: api.stream },
-    installs: () => api.installs(),
+    streams: { browser: browser.stream },
+    installs: () => browser.installs(),
   }
 }
 

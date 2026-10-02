@@ -45,7 +45,7 @@ watch(
     if (!open || !isRecorded) {
       return
     }
-    void work.load(conversationId)
+    work.load(conversationId)
     const pages = PLUGIN_PAGES.filter((page) => pluginEnabled(product.snapshot, page.plugin))
     bound.value = bindPages(pages, host, conversationId)
   },
@@ -57,18 +57,6 @@ onBeforeUnmount(() => {
 
 const kinds = computed<PanelTabKind[]>(() => bound.value?.kinds ?? [])
 
-/** Closing a tab removes it at once; its kind then does what a closed tab of it needs. */
-function closeTabs(ids: string[]): void {
-  const closing = state.value.panel.tabs.filter((tab) => ids.includes(tab.id))
-  work.closeTabs(props.conversationId, ids)
-  for (const tab of closing) {
-    const kind = kinds.value.find((candidate) => candidate.kind === tab.kind)
-    const parsed = kind?.schema.safeParse(tab.data)
-    if (kind?.removed && parsed?.success) {
-      kind.removed(parsed.data)
-    }
-  }
-}
 </script>
 
 <template>
@@ -81,7 +69,7 @@ function closeTabs(ids: string[]): void {
     @add-tab="(kind, data) => work.add(conversationId, kind, data)"
     @update-tab="(id, data) => work.update(conversationId, id, data)"
     @update-pinned="(kind, data) => work.updatePinned(conversationId, kind, data)"
-    @close-tabs="closeTabs"
+    @close-tabs="work.closeTabs(conversationId, $event)"
     @close="emit('close')"
   />
 </template>

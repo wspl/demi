@@ -104,20 +104,19 @@ test('an intent opens the first enabled page that declares it, in its pinned tab
     definePage({ plugin: 'files', kinds: [fileKind('file', true, opened)] }),
   ]
   const enabled = (plugin: string) => plugin !== 'off'
-  const first = openIntent({ state: emptyPanelState(), pinned: {} }, pages, enabled, { intent: 'file', payload: { path: '/a' } })
-  expect(first).toEqual({ state: { selection: 'file', tabs: [] }, pinned: { file: 'null > /a' } })
-  const second = openIntent(first!, pages, enabled, { intent: 'file', payload: { path: '/b' } })
+  const first = openIntent({}, pages, enabled, { intent: 'file', payload: { path: '/a' } })
+  expect(first).toEqual({ selection: 'file', pinned: { file: 'null > /a' }, created: null })
+  const second = openIntent(first!.pinned, pages, enabled, { intent: 'file', payload: { path: '/b' } })
   expect(second?.pinned).toEqual({ file: 'null > /a > /b' })
   expect(opened).toEqual([null, 'null > /a'])
   // No enabled page opens `edit`: the shell shows no control for it.
   const edit: CallEditSelection = { commandId: 'c', file: { path: 'x', kind: 'added', added: 1, removed: 0, edits: [] } }
-  expect(openIntent(first!, pages, enabled, { intent: 'edit', payload: edit })).toBeNull()
+  expect(openIntent(first!.pinned, pages, enabled, { intent: 'edit', payload: edit })).toBeNull()
 })
 
 test('an intent a kind that is not pinned opens gets a new tab of its own, selected', () => {
   const pages = [definePage({ plugin: 'pages', kinds: [fileKind('page', false)] })]
-  const opened = openIntent({ state: emptyPanelState(), pinned: {} }, pages, () => true, { intent: 'file', payload: { path: '/a' } })
-  const tab = opened!.state.tabs[0]!
-  expect(opened!.state).toEqual({ selection: tab.id, tabs: [{ id: tab.id, kind: 'page', data: 'null > /a' }] })
-  expect(opened!.pinned).toEqual({})
+  const opened = openIntent({}, pages, () => true, { intent: 'file', payload: { path: '/a' } })
+  const tab = opened!.created!
+  expect(opened).toEqual({ selection: tab.id, pinned: {}, created: { id: tab.id, kind: 'page', data: 'null > /a' } })
 })

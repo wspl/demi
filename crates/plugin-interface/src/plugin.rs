@@ -144,9 +144,10 @@ impl Plugin for CommandPlugin {
         Box::pin(async move {
             match request {
                 Request::Command { invocation, .. } => self.command(*invocation, &port).await,
-                Request::PageState { .. } | Request::PageCall { .. } => {
-                    Err(PluginError::undeclared("page"))
-                }
+                Request::PageState { .. }
+                | Request::PageCall { .. }
+                | Request::PanelTab { .. }
+                | Request::Topic { .. } => Err(PluginError::undeclared("page")),
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
             }
         })
@@ -166,7 +167,10 @@ impl Plugin for NoRequests {
     ) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
         let what = match request {
             Request::Command { .. } => "command",
-            Request::PageState { .. } | Request::PageCall { .. } => "page",
+            Request::PageState { .. }
+            | Request::PageCall { .. }
+            | Request::PanelTab { .. }
+            | Request::Topic { .. } => "page",
             Request::Context { .. } => "context source",
         };
         Box::pin(async move { Err(PluginError::undeclared(what)) })

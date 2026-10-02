@@ -1,25 +1,29 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch, type Component } from 'vue'
 import { Monitor, Ruler, Smartphone } from '@lucide/vue'
 import { AddressBar } from '@demicodes/plugin-sdk'
 import { Button } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
-import { IndeterminateSpinner } from '@demicodes/plugin-sdk'
 import { Menu } from '@demicodes/plugin-sdk'
 import { MenuItem } from '@demicodes/plugin-sdk'
 import { Popover } from '@demicodes/plugin-sdk'
+import { ProgressLine } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
 import { usePage } from '@demicodes/plugin-sdk'
-import LiveView from './LiveView.vue'
 import { HostInstalls } from '@demicodes/plugin-sdk'
+import type { LiveTab } from '../generated/plugin'
+import LiveView from './LiveView.vue'
 import { NEW_TAB_URL, asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
 import { viewportChoices, type ViewportChoice } from './view'
 
 /**
- * A `browser` tab's content (`live-view.md` § A browser tab in the
- * panel). The tab is only `{ url, tab? }`; opening its browser tab, showing it
- * live, and saying why it cannot be shown all happen here and are never
- * written to the tab.
+ * A `browser` tab's content (`live-view.md` § A browser tab in the panel).
+ * It shows at once what the tab's data says, and what the Host sends
+ * replaces it when it arrives: a new tab is its address bar on `about:blank`
+ * and a blank page until its browser tab's first picture; an address the
+ * user submits shows at once, with the page loading over the picture the tab
+ * still shows. The plugin opens, binds and closes the browser tab on the
+ * backend; only a failure interrupts, where it happened, with a way on.
  */
 const props = defineProps<{
   conversation: string
@@ -31,67 +35,59 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ update: [data: BrowserTabData]; close: [] }>()
 
-/** Why the last request of this content failed, until the next one. */
-const failure = ref<BrowserTabsError | null>(null)
-const opening = ref(false)
+/** What a request of this content could not do, until its next one. */
+const refused = ref<BrowserTabsError | null>(null)
+/** A navigation the user asked for that the browser has not taken up yet. */
+const navigating = ref(false)
 const address = ref(props.data.url)
+const editing = ref(false)
 /** A tab the user just made has nowhere to be yet: its address takes the focus. */
 const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
-const editing = ref(false)
 const menu = ref(false)
 const anchor = ref<HTMLElement | null>(null)
 
 const { overlays } = usePage()
-const session = computed(() => props.session.session.value)
-/** The bound tab as the view reports it now; null while the view has not listed it. */
-const live = computed(() => session.value?.state.tabs.find((tab) => tab.id === props.data.tab) ?? null)
-/** The conversation browser answered and does not have the bound tab. */
-const gone = computed(() => {
-  const list = props.session.list.value
-  return props.data.tab !== undefined && list !== null && !list.tabs.some((tab) => tab.id === props.data.tab)
+const view = computed(() => props.session.session.value)
+/** The browser tab the panel tab shows, while the browser has it. */
+const bound = computed(() => (props.data.closed ? undefined : props.data.tab))
+/** The bound tab as the view reports it now. */
+const reported = computed(() => view.value?.state.tabs.find((tab) => tab.id === bound.value) ?? null)
+/** The bound tab as the view last reported it, kept while the view reconnects, so its picture stays. */
+const seen = shallowRef<LiveTab | null>(null)
+watch(reported, (tab) => {
+  if (tab) {
+    seen.value = tab
+  }
 })
+watch(bound, () => {
+  seen.value = null
+})
+const live = computed(() => reported.value ?? (seen.value?.id === bound.value ? seen.value : null))
 const viewport = computed(() => live.value?.viewport ?? null)
-/** What the Host installs while this content waits for the browser. */
+/** What the Host installs before the browser can start: a wait the page cannot know the end of. */
 const installs = computed(() => props.session.api.installs())
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
+/**
+ * The page loads: a request of the user's the browser has not taken up, a
+ * page the browser says it loads, or an address the tab asks for before the
+ * browser reported its tab, as for one whose browser tab is still opening.
+ */
+const loading = computed(() =>
+  navigating.value
+  || (live.value ? live.value.loading : props.data.url !== NEW_TAB_URL),
+)
 
-async function open(): Promise<void> {
-  failure.value = null
-  opening.value = true
-  try {
-    await props.session.open(props.tabId, props.data.url, (tab) => {
-      emit('update', { url: tab.url, tab: tab.id })
-    })
-  } catch (error) {
-    failure.value = asTabsError(error)
-  } finally {
-    opening.value = false
-  }
-}
-
-/** A page the device closed loads again: a new browser tab on the saved address. */
-function reopen(): void {
-  emit('update', { url: props.data.url })
-}
-
-// A shown panel tab not yet bound to a tab of the conversation browser asks for
-// one; a bound one is watched on the page's view. Each source is compared on
-// its own, so a new tab list that leaves all three as they were asks nothing.
+// A shown tab with its browser tab is watched on the page's view.
 watch(
-  [() => props.shown, () => props.data.tab, gone],
-  ([shown, tab, lost], previous) => {
+  [() => props.shown, bound],
+  ([shown, tab], previous) => {
     const before = previous?.[1]
-    if (before !== undefined && (before !== tab || !shown || lost)) {
+    if (before !== undefined && (before !== tab || !shown)) {
       props.session.hide(before)
     }
-    if (!shown) {
-      return
-    }
-    if (tab === undefined) {
-      void open()
-    } else if (!lost) {
+    if (shown && tab !== undefined) {
       props.session.show(tab)
     }
   },
@@ -99,52 +95,83 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (props.data.tab !== undefined) {
-    props.session.hide(props.data.tab)
+  if (bound.value !== undefined) {
+    props.session.hide(bound.value)
   }
 })
 
-// The address follows the page until the viewer edits it, and the tab saves where the page went.
+// The address follows the tab's data until the viewer edits it.
 watch(
-  () => live.value?.url,
+  () => props.data.url,
   (url) => {
-    if (url === undefined) {
-      return
-    }
     if (!editing.value) {
       address.value = url
-    }
-    if (url !== props.data.url) {
-      emit('update', { ...props.data, url })
     }
   },
 )
 
+// The tab saves where the page went. A blank page the browser first reports while the tab asks for an
+// address is a browser tab that has not started on it yet, as one opened before its user typed.
+watch(
+  () => live.value?.url,
+  (url, before) => {
+    if (url === undefined || url === props.data.url) {
+      return
+    }
+    if (before === undefined && url === NEW_TAB_URL) {
+      return
+    }
+    emit('update', { ...props.data, url })
+  },
+)
+
+/** Runs a request of the user's on the bound tab; what it could not do shows above the picture. */
 async function request(run: (tab: string) => Promise<unknown>): Promise<void> {
-  const tab = props.data.tab
+  const tab = bound.value
   if (tab === undefined) {
     return
   }
-  failure.value = null
+  refused.value = null
+  navigating.value = true
   try {
     await run(tab)
   } catch (error) {
-    failure.value = asTabsError(error)
+    refused.value = asTabsError(error)
+  } finally {
+    navigating.value = false
   }
 }
 
+/**
+ * The address shows at once and the tab keeps it. A tab with its browser tab
+ * loads it now; one without loads it once the plugin opened its browser tab,
+ * on the address the user asked for last.
+ */
 function submit(): void {
   const draft = address.value.trim()
   const candidate = draft.includes('://') ? draft : `https://${draft}`
   if (!draft || !URL.canParse(candidate)) {
     return
   }
+  const url = new URL(candidate).href
   editing.value = false
-  void request((tab) => props.session.api.navigate(tab, new URL(candidate).href))
+  address.value = url
+  emit('update', { ...props.data, url })
+  void request((tab) => props.session.api.navigate(tab, url))
 }
 
 function history(action: 'back' | 'forward' | 'reload'): void {
   void request((tab) => props.session.api.history(tab, action))
+}
+
+/** Retry and Reload: the plugin opens a browser tab for this panel tab again. */
+async function rebind(): Promise<void> {
+  refused.value = null
+  try {
+    await props.session.api.bind(props.tabId)
+  } catch (error) {
+    refused.value = asTabsError(error)
+  }
 }
 </script>
 
@@ -152,7 +179,7 @@ function history(action: 'back' | 'forward' | 'reload'): void {
   <div class="flex min-h-0 flex-1 flex-col">
     <AddressBar
       :address="address"
-      :can-reload="live !== null"
+      :can-reload="bound !== undefined"
       :focused="fresh"
       @update:address="address = $event; editing = true"
       @submit="submit"
@@ -177,55 +204,54 @@ function history(action: 'back' | 'forward' | 'reload'): void {
         </Tooltip>
       </template>
     </AddressBar>
-    <!-- What a request of this content, or the view itself, could not do, above a picture that still shows. -->
+    <!-- What a request of this content, or the view itself, could not do, above a page that still shows. -->
     <p
-      v-if="live && (failure || session?.state.notice)"
+      v-if="refused || view?.state.notice"
       class="border-t border-line px-3 py-1.5 text-[12px] text-on-danger"
       role="alert"
     >
-      {{ failure?.message ?? session?.state.notice?.message }}
+      {{ refused?.message ?? view?.state.notice?.message }}
     </p>
-    <LiveView
-      v-if="live && session"
-      :session="session"
-      :tab="live"
-      class="border-t border-line"
-    />
-    <div
-      v-else
-      class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 border-t border-line px-6 text-center text-[13px] text-fg-faint"
-    >
-      <!-- A first use waits for the Host to install the browser: what it installs shows instead of a bare wait. -->
-      <div v-if="installs.length > 0 && !failure" class="w-full max-w-80">
-        <HostInstalls :installs="installs" />
+    <div class="relative flex min-h-0 flex-1 flex-col border-t border-line">
+      <ProgressLine :active="loading && !data.failure && !data.closed" />
+      <div
+        v-if="data.failure"
+        class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-[13px]"
+      >
+        <span class="text-on-danger" role="alert">{{ data.failure.message }}</span>
+        <Button variant="default" size="sm" @click="rebind">Retry</Button>
       </div>
-      <template v-else-if="opening">
-        <IndeterminateSpinner :size="16" class="text-fg-subtle" />
-        <span>Starting the conversation's browser…</span>
-      </template>
-      <template v-else-if="failure">
-        <span class="text-on-danger" role="alert">{{ failure.message }}</span>
-        <Button variant="default" size="sm" @click="open">Retry</Button>
-      </template>
-      <template v-else-if="gone">
+      <div
+        v-else-if="data.closed"
+        class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-[13px] text-fg-faint"
+      >
         <span>This page was closed on the device.</span>
         <span class="flex items-center gap-2">
           <Button variant="default" size="sm" @click="emit('close')">Close tab</Button>
-          <Button variant="default" size="sm" @click="reopen">Reload</Button>
+          <Button variant="default" size="sm" @click="rebind">Reload</Button>
         </span>
-      </template>
-      <template v-else-if="props.session.listError.value && !session">
-        <span class="text-on-danger" role="alert">{{ props.session.listError.value.message }}</span>
-        <Button variant="default" size="sm" @click="props.session.refresh()">Retry</Button>
-      </template>
-      <template v-else-if="props.session.pictures.value === 'unsupported'">
-        <span>This browser cannot show the live view: it cannot decode H.264 video.</span>
-      </template>
-      <!-- Waiting says only that it waits: why the last view ended is no news while the next one opens. -->
-      <template v-else>
-        <IndeterminateSpinner :size="16" class="text-fg-subtle" />
-        <span>Connecting to the conversation's browser…</span>
-      </template>
+      </div>
+      <div
+        v-else-if="bound !== undefined && props.session.pictures.value === 'unsupported'"
+        class="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-fg-faint"
+      >
+        This browser cannot show the live view: it cannot decode H.264 video.
+      </div>
+      <LiveView
+        v-else-if="live && view"
+        :session="view"
+        :tab="live"
+      />
+      <!-- What a tab shows before its picture: a blank page, as the browser's new tab is. A first use waits for
+           the Host to install the browser, which shows on it. -->
+      <div
+        v-else
+        class="flex min-h-0 flex-1 flex-col items-center justify-center bg-white px-6"
+      >
+        <div v-if="installs.length > 0" class="w-full max-w-80">
+          <HostInstalls :installs="installs" />
+        </div>
+      </div>
     </div>
     <Popover
       :overlay-store="overlays"
@@ -244,8 +270,8 @@ function history(action: 'back' | 'forward' | 'reload'): void {
           :disabled="!choice.selectable && choice.mode !== viewport?.mode"
           @select="() => {
             menu = false
-            if (live && session && choice.selectable) {
-              session.mode(live.id, choice.mode as 'web' | 'mobile')
+            if (live && view && choice.selectable) {
+              view.mode(live.id, choice.mode as 'web' | 'mobile')
             }
           }"
         />

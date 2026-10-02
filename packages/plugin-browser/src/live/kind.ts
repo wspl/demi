@@ -13,14 +13,16 @@ const BrowserTabMark = defineComponent({
   setup: () => () => h(MonitorDot, { size: ICON_PX.markIn28 }),
 })
 
-/** A tab is named by its page once the conversation browser has one, and by its address until then. */
+/**
+ * A tab is named by its page once the browser shows the address the tab
+ * asks for, and by that address until then: a new tab is `about:blank` from
+ * the start, and a tab its user sent elsewhere is named after where it goes
+ * at once, never after the page it leaves.
+ */
 function browserTabTitle(controller: BrowserTabsController, data: BrowserTabData): string {
-  const known = controller.list.value?.tabs.find((tab) => tab.id === data.tab)
-  if (known?.title) {
+  const known = controller.listed(data.tab)
+  if (known?.title && known.url === data.url) {
     return known.title
-  }
-  if (data.url === NEW_TAB_URL) {
-    return 'New tab'
   }
   const url = URL.parse(data.url)
   return url ? url.host || url.href : data.url
@@ -37,13 +39,6 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   title: (data, tab) => browserTabTitle(tab.session, data),
   mark: BrowserTabMark,
   content: BrowserTabContent,
-  removed(data, tab) {
-    if (data.tab === undefined) {
-      return
-    }
-    // The panel tab is gone either way; the controller says what a refused close leaves.
-    tab.session.close(data.tab).catch(() => {})
-  },
   create: {
     label: "New tab in the conversation's browser",
     icon: GlobePlus,

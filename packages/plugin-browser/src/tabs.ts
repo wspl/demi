@@ -4,10 +4,9 @@ import { BrowserTabsError, type BrowserTabsApi } from './live/tabs'
 import { PluginCallError, type ConversationPlugin } from '@demicodes/plugin-sdk'
 import {
   browserTabsSchema,
-  openedTabSchema,
-  type CloseTab,
+  type BindTab,
   type NavigateTab,
-  type OpenTab,
+  type SyncTabs,
   type TabHistory,
 } from './generated/plugin'
 
@@ -17,7 +16,7 @@ import {
  * call waits a little longer than that, so the operation's own answer is what
  * ends the wait.
  */
-const OPEN_TIMEOUT_MS = 310_000
+const BIND_TIMEOUT_MS = 310_000
 
 /** A refusal as the tab's content shows it, with the plugin's reason. */
 function tabsError(error: PluginCallError): BrowserTabsError {
@@ -31,9 +30,9 @@ function tabsError(error: PluginCallError): BrowserTabsError {
  */
 export function browserTabsApi(plugin: ConversationPlugin): BrowserTabsApi {
   const tabs = plugin.state(browserTabsSchema)
-  async function call<T>(method: string, params: object, result: z.ZodType<T>, timeoutMs?: number): Promise<T> {
+  async function call(method: string, params: object, timeoutMs?: number): Promise<void> {
     try {
-      return await plugin.call(method, params, result, { timeoutMs })
+      await plugin.call(method, params, z.null(), { timeoutMs })
     } catch (error) {
       throw error instanceof PluginCallError ? tabsError(error) : error
     }
@@ -45,18 +44,11 @@ export function browserTabsApi(plugin: ConversationPlugin): BrowserTabsApi {
         const error = tabs.error.value
         return error ? tabsError(error) : null
       }),
-      read: tabs.read,
     },
-    open: async (url) => (await call('open', { url } satisfies OpenTab, openedTabSchema, OPEN_TIMEOUT_MS)).tab,
-    close: async (tab) => {
-      await call('close', { tab } satisfies CloseTab, z.null())
-    },
-    navigate: async (tab, url) => {
-      await call('navigate', { tab, url } satisfies NavigateTab, z.null())
-    },
-    history: async (tab, action) => {
-      await call('history', { tab, action } satisfies TabHistory, z.null())
-    },
+    bind: (panelTab) => call('bind', { panelTab } satisfies BindTab, BIND_TIMEOUT_MS),
+    sync: () => call('sync', {} satisfies SyncTabs),
+    navigate: (tab, url) => call('navigate', { tab, url } satisfies NavigateTab),
+    history: (tab, action) => call('history', { tab, action } satisfies TabHistory),
     stream: plugin.stream('browser'),
     installs: () => plugin.installs.value,
   }

@@ -226,6 +226,7 @@ const TAB: LiveTab = {
   url: 'https://example.test/',
   createdBy: { kind: 'agent', number: 0 },
   viewport: { ...WEB },
+  loading: false,
 }
 
 test('a view says hello, learns the tabs and acknowledges what it shows', () => {

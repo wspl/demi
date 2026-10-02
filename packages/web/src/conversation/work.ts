@@ -1,18 +1,15 @@
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
-  addTab,
-  emptyPanelState,
   openIntent,
   removeTabs,
-  selectInPanel,
-  updateTab,
   type PanelState,
   type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
+import { PanelTabs, dataChanges } from '@demicodes/web-ui/agent/panel-changes'
 import { intentKind } from '@demicodes/web-ui/plugins/page'
 import type { IntentName, IntentRequest } from '@demicodes/web-ui/plugins/intents'
-import { loadPanel, savePanel } from '../api/panel'
+import { panelBackend } from '../api/panel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
@@ -21,31 +18,34 @@ import { pluginEnabled } from '../plugins/enabled'
 import { createWorkingTreeSource, type WorkingTreeSource } from './changes'
 import { useConversations } from './store'
 
-/** One conversation's work panel: whether it is open, its pinned tabs, its saved selection and tabs, and its working tree. */
+/**
+ * One conversation's work panel: whether it is open and what it selects,
+ * both this page's own, its pinned tabs' data, the backend's tabs with this
+ * page's changes over them, and its working tree.
+ */
 export interface WorkState {
   open: boolean
+  /** A tab's id or a pinned kind's id; null names nothing. */
+  selection: string | null
   /** The pinned tabs' data, by kind, for the page's lifetime. */
   pinned: PinnedTabs
-  /** The selection and the user's tabs, saved with the conversation. */
-  panel: PanelState
-  /** The one read of the saved panel has started; it is not asked for again once it answered. */
-  loading: boolean
-  /** The saved panel has been read; nothing is saved over it before. */
-  loaded: boolean
-  /** Counts the page's own changes, so the read knows whether the user acted before it arrived. */
-  revision: number
-  /** A save is on its way; `unsaved` says the panel changed again since it left. */
-  saving: boolean
-  unsaved: boolean
+  /** The selection and the tabs, as the panel shows them. */
+  readonly panel: PanelState
   changes: WorkingTreeSource
 }
 
+/** Whether `data` is an object a kind's tab keeps as its `data`. */
+function isData(data: unknown): data is Record<string, unknown> {
+  return data !== null && typeof data === 'object' && !Array.isArray(data)
+}
+
 /**
- * The work panel's state per conversation, for the page's lifetime: whether
- * the reader has it open beside that conversation, its tabs and their
- * pinned tabs' data, and the working-tree source behind its files service.
- * The open flag reads and writes account-local preferences; pinned tabs'
- * data remains in memory.
+ * The work panel's state per conversation, for the page's lifetime
+ * (`web-application.md` § Work panel): whether the reader has it open beside
+ * that conversation and what it selects, kept in the account's local
+ * preferences; its pinned tabs' data, in memory; the backend's tabs, read
+ * when their revision rises, with this page's changes shown at once over
+ * them; and the working-tree source behind its files service.
  */
 export const useWorkPanel = defineStore('work-panel', () => {
   const resources = useResources()
@@ -53,9 +53,24 @@ export const useWorkPanel = defineStore('work-panel', () => {
   const conversations = useConversations()
   const enabled = (plugin: string) => pluginEnabled(product.snapshot, plugin)
   const states = reactive(new Map<string, WorkState>())
+  /** Each conversation's tabs; reactive on their own, so they stand beside the states, not in them. */
+  const panels = new Map<string, PanelTabs>()
+
+  /** The conversation's tabs, made the first time they are asked for. */
+  function tabsOf(conversationId: string): PanelTabs {
+    let tabs = panels.get(conversationId)
+    if (!tabs) {
+      tabs = new PanelTabs(panelBackend(conversationId), (error) => {
+        reportError('Could not change the work panel', error, { userVisible: true })
+      })
+      panels.set(conversationId, tabs)
+    }
+    return tabs
+  }
 
   function stateFor(conversationId: string): WorkState {
     if (!states.has(conversationId)) {
+      const tabs = tabsOf(conversationId)
       states.set(conversationId, {
         get open(): boolean {
           return resources.local.workPanelOpen?.[conversationId] ?? false
@@ -64,13 +79,21 @@ export const useWorkPanel = defineStore('work-panel', () => {
           resources.local.workPanelOpen ??= {}
           resources.local.workPanelOpen[conversationId] = open
         },
+        get selection(): string | null {
+          return resources.local.workPanelSelection?.[conversationId] ?? null
+        },
+        set selection(selection: string | null) {
+          resources.local.workPanelSelection ??= {}
+          if (selection === null) {
+            delete resources.local.workPanelSelection[conversationId]
+          } else {
+            resources.local.workPanelSelection[conversationId] = selection
+          }
+        },
         pinned: {},
-        panel: emptyPanelState(),
-        loading: false,
-        loaded: false,
-        revision: 0,
-        saving: false,
-        unsaved: false,
+        get panel(): PanelState {
+          return { selection: this.selection, tabs: tabs.tabs.value }
+        },
         changes: createWorkingTreeSource(conversationId),
       })
     }
@@ -78,77 +101,32 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return states.get(conversationId)!
   }
 
+  // A panel a page has read is read again when the summary says it changed.
+  watch(
+    () => product.snapshot?.conversations,
+    (summaries) => {
+      for (const summary of summaries ?? []) {
+        const tabs = panels.get(summary.id)
+        if (tabs?.read && summary.panelRevision > tabs.revision) {
+          void tabs.refresh()
+        }
+      }
+    },
+  )
+
   /**
    * Whether the conversation has its backend record, which its first send
-   * creates. Before it, the panel binds no page and reads or saves nothing
+   * creates. Before it, the panel binds no page and reads or sends nothing
    * (`web-application.md` § Work panel).
    */
   function recorded(conversationId: string): boolean {
     return conversations.items.find((item) => item.id === conversationId)?.persistence === 'synced'
   }
 
-  /**
-   * Reads the saved panel, once per conversation in a page's life. From then
-   * on the page's own state is the newest there is: everything it changes it
-   * saves, so reading again could only bring back something older. What the
-   * user did before the read arrived stays, beside the saved tabs.
-   */
-  async function load(conversationId: string): Promise<void> {
-    const state = stateFor(conversationId)
-    if (state.loading || !recorded(conversationId)) {
-      return
-    }
-    state.loading = true
-    let saved: PanelState
-    try {
-      saved = await loadPanel(conversationId)
-    } catch (error) {
-      // Not read: the next opening of the panel tries again.
-      state.loading = false
-      reportError('Could not read the work panel', error, { userVisible: true })
-      return
-    }
-    state.loaded = true
-    if (state.revision === 0) {
-      state.panel = saved
-      return
-    }
-    const known = new Set(saved.tabs.map((tab) => tab.id))
-    const added = state.panel.tabs.filter((tab) => !known.has(tab.id))
-    change(conversationId, { selection: state.panel.selection, tabs: [...saved.tabs, ...added] })
-  }
-
-  /** Every change applies to the page first and is then saved whole. */
-  function change(conversationId: string, next: PanelState): void {
-    const state = stateFor(conversationId)
-    state.panel = next
-    state.revision += 1
-    if (state.loaded) {
-      void save(conversationId)
-    }
-  }
-
-  /**
-   * One save at a time, always of the latest panel: saves that overlap could
-   * arrive out of order and leave an older panel as the saved one.
-   */
-  async function save(conversationId: string): Promise<void> {
-    const state = stateFor(conversationId)
-    state.unsaved = true
-    if (state.saving) {
-      return
-    }
-    state.saving = true
-    try {
-      while (state.unsaved) {
-        state.unsaved = false
-        await savePanel(conversationId, state.panel)
-      }
-    } catch (error) {
-      // The panel stays as the page has it; the next change saves it whole again.
-      reportError('Could not save the work panel', error, { userVisible: true })
-    } finally {
-      state.saving = false
+  /** Reads the panel and sends the page's changes, once the conversation has its record. */
+  function load(conversationId: string): void {
+    if (recorded(conversationId)) {
+      tabsOf(conversationId).start()
     }
   }
 
@@ -157,26 +135,41 @@ export const useWorkPanel = defineStore('work-panel', () => {
   }
 
   function select(conversationId: string, selection: string | null): void {
-    change(conversationId, selectInPanel(stateFor(conversationId).panel, selection))
+    stateFor(conversationId).selection = selection
   }
 
-  /** A new tab, selected, with the panel opened for it; returns its id. */
+  /** A new tab, selected unless `options` says not, with the panel opened for it; returns its id. */
   function add(conversationId: string, kind: string, data: unknown, options = { select: true }): string {
     const state = stateFor(conversationId)
-    const added = addTab(state.panel, { kind, data }, options)
-    change(conversationId, added.state)
+    const id = crypto.randomUUID()
+    tabsOf(conversationId).change({ type: 'create', tab: { id, kind, data } })
     if (options.select) {
+      state.selection = id
       state.open = true
     }
-    return added.id
+    return id
   }
 
+  /** The tab's next `data`, from its kind: only what changed is sent. */
   function update(conversationId: string, id: string, data: unknown): void {
-    change(conversationId, updateTab(stateFor(conversationId).panel, id, data))
+    const tabs = tabsOf(conversationId)
+    const current = tabs.tabs.value.find((tab) => tab.id === id)
+    if (!current || !isData(data)) {
+      return
+    }
+    const fields = dataChanges(current.data, data)
+    if (Object.keys(fields).length > 0) {
+      tabs.change({ type: 'update', id, data: fields })
+    }
   }
 
+  /** Closes the tabs `ids`; a closed selection passes to its nearest neighbour. */
   function closeTabs(conversationId: string, ids: string[]): void {
-    change(conversationId, removeTabs(stateFor(conversationId).panel, ids))
+    const state = stateFor(conversationId)
+    state.selection = removeTabs(state.panel, ids).selection
+    for (const id of ids) {
+      tabsOf(conversationId).change({ type: 'remove', id })
+    }
   }
 
   /** A pinned tab's data, as its kind replaces it. */
@@ -192,12 +185,15 @@ export const useWorkPanel = defineStore('work-panel', () => {
    */
   function openIn(conversationId: string, request: IntentRequest): void {
     const state = stateFor(conversationId)
-    const opened = openIntent({ state: state.panel, pinned: state.pinned }, PLUGIN_PAGES, enabled, request)
+    const opened = openIntent(state.pinned, PLUGIN_PAGES, enabled, request)
     if (!opened) {
       return
     }
     state.pinned = opened.pinned
-    change(conversationId, opened.state)
+    if (opened.created) {
+      tabsOf(conversationId).change({ type: 'create', tab: opened.created })
+    }
+    state.selection = opened.selection
     state.open = true
   }
 

@@ -5,22 +5,18 @@
  */
 import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/generated/plugin'
 import type {
+  BrowserTab,
   BrowserViewport,
   LiveControl,
   LiveModuleMessage,
   LiveTab,
   LiveViewerMessage,
 } from '@demicodes/plugin-browser/generated/plugin'
-import { shallowRef } from 'vue'
+import { shallowRef, type ShallowRef } from 'vue'
 import { encodeVideo } from '@demicodes/plugin-browser/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { CONTROL, META } from '@demicodes/plugin-browser/live/input'
-import {
-  BrowserTabsError,
-  type BrowserTabInfo,
-  type BrowserTabList,
-  type BrowserTabsApi,
-} from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError, type BrowserTabList } from '@demicodes/plugin-browser/live/tabs'
 import type { HostInstall } from '@demicodes/web-ui/devices/installs'
 import { BROWSER_ARTIFACTS, playInstalls } from './installs'
 
@@ -78,6 +74,8 @@ const SELECT: LiveControl = {
 
 /** How long the gallery's conversation browser takes over a request, as a Host takes a moment. */
 const REQUEST_DELAY_MS = 900
+/** How long a page the gallery's browser loads takes, so the page's loading shows. */
+const LOAD_MS = 1200
 /** Tab ids as the protocol spells them: `t` and the tab's number in the conversation. */
 function galleryTabs(): LiveTab[] {
   return [
@@ -87,6 +85,7 @@ function galleryTabs(): LiveTab[] {
       url: 'https://example.test/orders',
       createdBy: { kind: 'agent', number: 0 },
       viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
+      loading: false,
     },
     {
       id: 't2',
@@ -94,12 +93,13 @@ function galleryTabs(): LiveTab[] {
       url: 'https://example.test/docs',
       createdBy: { kind: 'user' },
       viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
+      loading: false,
     },
   ]
 }
 
 /** One view of the gallery's conversation browser: a page it draws, and its controls. */
-class GalleryBrowser {
+class GalleryBrowserView {
   private watched: string | null = null
   private generation = 0
   private sequence = 0
@@ -354,28 +354,42 @@ class GalleryBrowser {
 }
 
 /**
- * The gallery's conversation browser: the tab list the plugin's state would
- * bring, which every change publishes as the plugin marks its state changed,
- * the tab requests a `browser` tab kind makes and the view it opens, over one
- * tab list, without a Host. Requests take a moment, as a Host does, so the
- * content's waiting shows. It starts
- * with the agent's and the user's tab unless a specimen supplies its own list,
- * such as an empty one for a panel whose strip starts empty. With `install`,
- * its first request waits for a simulated install of the browser's program
- * and Chrome, as on a Host that never ran the browser.
+ * The gallery's conversation browser, as the Host runs it (`live-view.md`):
+ * its tabs and the operations the plugin runs on them, and the live view's
+ * stream over the same tabs, without a Host. Operations take a moment, as a
+ * Host does, and a page it loads takes a while longer, so the page's loading
+ * shows. It starts with the agent's and the user's tab unless a specimen
+ * supplies its own list, such as an empty one for a panel whose strip starts
+ * empty. With `install`, its first operation waits for a simulated install
+ * of the browser's program and Chrome, as on a Host that never ran the
+ * browser.
  */
-export function galleryBrowserTabs(
+export interface GalleryBrowser {
+  /** The tab list, as the plugin's conversation state last brought it. */
+  listed: ShallowRef<BrowserTabList>
+  open(url: string): Promise<BrowserTab>
+  /** Closes the tab; a tab the browser does not have is closed already. */
+  close(tab: string): Promise<void>
+  navigate(tab: string, url: string): Promise<void>
+  history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void>
+  /** The tab closes on the device, as the agent's close or a browser that ended would close it. */
+  closeOnDevice(tab: string): void
+  stream: OpenUserStream
+  installs(): readonly HostInstall[]
+}
+
+export function galleryBrowser(
   tabs: LiveTab[] = galleryTabs(),
   { install = false }: { install?: boolean } = {},
-): BrowserTabsApi {
-  const views = new Set<GalleryBrowser>()
+): GalleryBrowser {
+  const views = new Set<GalleryBrowserView>()
   const installs = shallowRef<readonly HostInstall[]>([])
-  // The simulated install every request waits for once; none without `install`.
+  // The simulated install every operation waits for once; none without `install`.
   let installed: Promise<void> | null = install ? null : Promise.resolve()
   // The next tab's number, as the conversation gives them: never one given before.
   let next = Math.max(0, ...tabs.map((tab) => Number(tab.id.slice(1)))) + 1
 
-  /** The browser's first install, which every request waits for once. */
+  /** The browser's first install, which every operation waits for once. */
   function installOnce(): Promise<void> {
     installed ??= playInstalls(BROWSER_ARTIFACTS, (list) => {
       installs.value = list
@@ -396,12 +410,11 @@ export function galleryBrowserTabs(
     }))
   }
 
-  function info(tab: LiveTab): BrowserTabInfo {
-    return { id: tab.id, title: tab.title, url: tab.url, createdBy: tab.createdBy }
+  function info(tab: LiveTab): BrowserTab {
+    return { id: tab.id, title: tab.title, url: tab.url, createdBy: tab.createdBy, loading: tab.loading }
   }
 
-  /** The tab list as the plugin's state last brought it. */
-  const listed = shallowRef<BrowserTabList | null>({ tabs: tabs.map(info) })
+  const listed = shallowRef<BrowserTabList>({ tabs: tabs.map(info) })
 
   function changed(): void {
     listed.value = { tabs: tabs.map(info) }
@@ -418,8 +431,22 @@ export function galleryBrowserTabs(
     return tab
   }
 
+  /** `tab` loads `url`: it says so until the page is there. The timer ends by itself. */
+  function load(tab: LiveTab, url: string): void {
+    tab.url = url
+    tab.title = URL.parse(url)?.host ?? url
+    tab.loading = url !== 'about:blank'
+    changed()
+    if (tab.loading) {
+      setTimeout(() => {
+        tab.loading = false
+        changed()
+      }, LOAD_MS)
+    }
+  }
+
   const stream: OpenUserStream = (handlers) => {
-    const browser = new GalleryBrowser(handlers, tabs)
+    const browser = new GalleryBrowserView(handlers, tabs)
     views.add(browser)
     return {
       send: (bytes) => browser.receive(bytes),
@@ -430,39 +457,39 @@ export function galleryBrowserTabs(
     }
   }
 
+  function remove(id: string): void {
+    const index = tabs.findIndex((item) => item.id === id)
+    if (index >= 0) {
+      tabs.splice(index, 1)
+      changed()
+    }
+  }
+
   return {
-    tabs: {
-      value: listed,
-      error: shallowRef(null),
-      read: () => void later(changed),
-    },
+    listed,
     open: (url) => later(() => {
       const tab: LiveTab = {
         id: `t${next++}`,
-        title: url === 'about:blank' ? '' : URL.parse(url)?.host ?? url,
+        title: url === 'about:blank' ? 'about:blank' : URL.parse(url)?.host ?? url,
         url,
         createdBy: { kind: 'user' },
         viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
+        loading: false,
       }
       tabs.push(tab)
-      changed()
+      load(tab, url)
       return info(tab)
     }),
-    close: (id) => later(() => {
-      const index = tabs.findIndex((item) => item.id === id)
-      if (index >= 0) {
-        tabs.splice(index, 1)
-        changed()
+    close: (id) => later(() => remove(id)),
+    navigate: (id, url) => later(() => load(found(id), url)),
+    history: (id, action) => later(() => {
+      const tab = found(id)
+      // The gallery's pages have no history of their own; a reload loads the page again.
+      if (action === 'reload') {
+        load(tab, tab.url)
       }
     }),
-    navigate: (id, url) => later(() => {
-      const tab = found(id)
-      tab.url = url
-      tab.title = URL.parse(url)?.host ?? url
-      changed()
-    }),
-    // The gallery's pages have no history of their own; every action answers as done.
-    history: (id) => later(() => void found(id)),
+    closeOnDevice: remove,
     stream,
     installs: () => installs.value,
   }

@@ -113,6 +113,10 @@ pub struct ConversationSummary {
     /// this is higher than the revision it holds.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub draft_revision: u64,
+    /// The revision of the conversation's work panel, 0 before its first
+    /// change (`web-api.md` § Work panel state), read the same way.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub panel_revision: u64,
     /// The revision of each plugin's conversation state, in registration
     /// order (`web-api.md` § Conversation state of plugins): a page reads a
     /// state only when its revision is higher than the one it holds.

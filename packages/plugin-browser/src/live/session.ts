@@ -149,6 +149,21 @@ export class LiveSession {
     }
   }
 
+  /**
+   * A view waiting to reconnect connects at once, its waits started over:
+   * what it waited for, such as a browser that did not run yet, may be there
+   * now (`live-view.md` § A browser tab in the panel).
+   */
+  reconnect(): void {
+    if (this.reopening === null) {
+      return
+    }
+    this.reopening.cancel()
+    this.reopening = null
+    this.failures = 0
+    this.start()
+  }
+
   /** The page is done with the view: nothing reopens it, and it has nothing to tell. */
   close(): void {
     this.reopening?.cancel()

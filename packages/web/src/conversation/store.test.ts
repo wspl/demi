@@ -134,6 +134,7 @@ function record(id: string, title = id): ConversationSummary {
     titleGenerating: false,
     pluginsChanged: false,
     draftRevision: 0,
+    panelRevision: 0,
     pluginRevisions: [],
     workingTreeRevision: 0,
     cwd: `/home/demi/sessions/${id}`,

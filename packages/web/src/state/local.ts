@@ -7,11 +7,12 @@ const localStateSchema = z.object({
   foldedProjects: z.array(z.string()),
   /** The sidebar's width in px; absent until the reader resizes it. */
   sidebarWidth: z.number().int().optional(),
-  /** The work panel's width in px; absent until the reader resizes it. */
   /** The work panel's share of the width it splits with the conversation. */
   asideShare: z.number().min(0).max(1).optional(),
   /** Whether the work panel is open, keyed by conversation id. */
   workPanelOpen: z.record(z.string(), z.boolean()).optional(),
+  /** What this page's work panel selects, a tab's id or a pinned kind's, keyed by conversation id. */
+  workPanelSelection: z.record(z.string(), z.string()).optional(),
 })
 export type LocalState = z.infer<typeof localStateSchema>
 

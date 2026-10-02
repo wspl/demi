@@ -1,13 +1,10 @@
 import { expect, test } from 'bun:test'
-import { LIVE_VIDEO_CODEC, type LiveViewerMessage } from '../../generated/plugin'
+import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveViewerMessage } from '../../generated/plugin'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
-import { deferred } from '@demicodes/utils'
 import { until } from '@vueuse/core'
 import { effectScope, ref, shallowRef } from 'vue'
 import {
   BrowserTabsController,
-  type BrowserTabData,
-  type BrowserTabInfo,
   type BrowserTabList,
   type BrowserTabsApi,
   type BrowserTabsError,
@@ -15,40 +12,27 @@ import {
   type PictureSupport,
 } from '../tabs'
 
-const AGENT_TAB: BrowserTabInfo = {
-  id: 't1',
-  title: 'Login',
-  url: 'http://localhost:3000/login',
-  createdBy: { kind: 'agent', number: 0 },
-}
-const USER_TAB: BrowserTabInfo = { id: 't2', title: '', url: 'about:blank', createdBy: { kind: 'user' } }
-
-/**
- * A controller in a panel session's effect scope, over a tab list the test
- * sets as the plugin's conversation state would bring it.
- */
+/** A controller in a panel session's effect scope, over a tab list the test sets. */
 function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {}) {
-  const panel: BrowserTabData[] = []
   const list = shallowRef<BrowserTabList | null>(null)
   const error = shallowRef<BrowserTabsError | null>(null)
-  let reads = 0
+  let syncs = 0
   const scope = effectScope()
   const controller = scope.run(() => new BrowserTabsController(
     {
-      tabs: { value: list, error, read: () => void (reads += 1) },
-      open: async () => USER_TAB,
-      close: async () => {},
+      tabs: { value: list, error },
+      bind: async () => {},
+      sync: async () => void (syncs += 1),
       navigate: async () => {},
       history: async () => {},
       stream: () => ({ send: () => {}, close: () => {} }),
       installs: () => [],
       ...api,
     },
-    { bound: () => panel, add: (data) => void panel.push(data) },
     () => {},
     { visibility: ref<DocumentVisibilityState>('visible'), ...options },
   ))!
-  return { controller, panel, list, reads: () => reads, end: () => { controller.dispose(); scope.stop() } }
+  return { controller, list, syncs: () => syncs, end: () => { controller.dispose(); scope.stop() } }
 }
 
 /**
@@ -67,77 +51,17 @@ function stubDecoder(decodes: (codec: string) => boolean): () => void {
   return () => void Reflect.deleteProperty(globalThis, 'VideoDecoder')
 }
 
-test('a browser tab no panel tab is bound to is added once, and nothing is ever removed', () => {
-  const { controller, panel, list } = harness({})
-  list.value = { tabs: [AGENT_TAB] }
-  list.value = { tabs: [AGENT_TAB] }
-  expect(panel).toEqual([{ url: AGENT_TAB.url, tab: AGENT_TAB.id }])
-  // The agent closed it: the panel tab stays, and the list says the browser lost it.
-  list.value = { tabs: [] }
-  expect(panel).toHaveLength(1)
-  expect(controller.list.value).toEqual({ tabs: [] })
-})
+/** A message of the module, framed as the stream carries it. */
+function framed(message: LiveModuleMessage): Uint8Array {
+  const json = new TextEncoder().encode(JSON.stringify(message))
+  const bytes = new Uint8Array(5 + json.length)
+  new DataView(bytes.buffer).setUint32(0, 1 + json.length)
+  bytes[4] = LIVE_CONTROL_FRAME
+  bytes.set(json, 5)
+  return bytes
+}
 
-test('a tab being opened is not taken for the agent\'s, and asking twice opens once', async () => {
-  const answer = deferred<BrowserTabInfo>()
-  let opens = 0
-  const { controller, panel } = harness({
-    open: () => {
-      opens += 1
-      return answer.promise
-    },
-  })
-  const pending: BrowserTabData = { url: 'about:blank' }
-  panel.push(pending)
-  const bind = (tab: BrowserTabInfo) => {
-    panel[0] = { url: tab.url, tab: tab.id }
-  }
-  const first = controller.open('panel-1', 'about:blank', bind)
-  const second = controller.open('panel-1', 'about:blank', bind)
-  expect(second).toBe(first)
-  // The view already lists the new tab while the request is in flight.
-  controller.adopt({ tabs: [USER_TAB] })
-  expect(panel).toHaveLength(1)
-  answer.resolve(USER_TAB)
-  await first
-  expect(opens).toBe(1)
-  expect(panel).toEqual([{ url: 'about:blank', tab: USER_TAB.id }])
-})
-
-test('a tab the user closed is not taken for the agent\'s while the browser still lists it', async () => {
-  const closing = deferred<void>()
-  const { controller, panel } = harness({ close: () => closing.promise })
-  panel.push({ url: USER_TAB.url, tab: USER_TAB.id })
-  // The panel removed its tab and asks the browser to close its own.
-  panel.pop()
-  const closed = controller.close(USER_TAB.id)
-  controller.adopt({ tabs: [USER_TAB] })
-  expect(panel).toHaveLength(0)
-  closing.resolve()
-  await closed
-  controller.adopt({ tabs: [] })
-  expect(panel).toHaveLength(0)
-})
-
-test('a panel tab that lost its binding gets the tab this page opened for it, not a second one', async () => {
-  let opens = 0
-  const { controller } = harness({
-    open: async () => {
-      opens += 1
-      return USER_TAB
-    },
-  })
-  const bound: string[] = []
-  await controller.open('panel-1', 'about:blank', (tab) => void bound.push(tab.id))
-  // A stale read of the saved panel took the binding away: the content asks again.
-  await controller.open('panel-1', 'about:blank', (tab) => void bound.push(tab.id))
-  expect(opens).toBe(1)
-  expect(bound).toEqual([USER_TAB.id, USER_TAB.id])
-  // The browser lost the tab: asking again opens a new one.
-  controller.adopt({ tabs: [] })
-  await controller.open('panel-1', 'about:blank', (tab) => void bound.push(tab.id))
-  expect(opens).toBe(2)
-})
+const VIEWPORT = { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' } as const
 
 test('a hidden page closes its view, and shown again watches the shown tab on a new view', async () => {
   const visibility = ref<DocumentVisibilityState>('visible')
@@ -159,27 +83,27 @@ test('a hidden page closes its view, and shown again watches the shown tab on a 
     { visibility, pictures: async () => true },
   )
   await until(controller.pictures).toBe('supported')
-  controller.show(AGENT_TAB.id)
+  controller.show('t1')
   expect(views).toHaveLength(1)
   // Nobody can watch a hidden page, and an open view would keep its Cloud awake.
   visibility.value = 'hidden'
   expect(views[0]!.closed).toBe(true)
   expect(controller.session.value).toBeNull()
   // Another tab shown meanwhile opens nothing either.
-  controller.hide(AGENT_TAB.id)
-  controller.show(USER_TAB.id)
+  controller.hide('t1')
+  controller.show('t2')
   expect(views).toHaveLength(1)
   visibility.value = 'visible'
   expect(views).toHaveLength(2)
   expect(views[1]!.sent.map((message) => message.type)).toEqual(['hello', 'watch'])
-  expect(views[1]!.sent.at(-1)).toEqual({ type: 'watch', tab: USER_TAB.id })
+  expect(views[1]!.sent.at(-1)).toEqual({ type: 'watch', tab: 't2' })
   controller.dispose()
   expect(views[1]!.closed).toBe(true)
 })
 
-test('a view that ends reads the tab list again, since the browser may have ended with it', async () => {
+test('a view waiting to reconnect connects at once when a tab that just got its browser tab shows', async () => {
   const opened: UserStreamHandlers[] = []
-  const { controller, reads } = harness(
+  const { controller } = harness(
     {
       stream: (handlers) => {
         opened.push(handlers)
@@ -189,10 +113,40 @@ test('a view that ends reads the tab list again, since the browser may have ende
     { pictures: async () => true },
   )
   await until(controller.pictures).toBe('supported')
-  controller.show(AGENT_TAB.id)
-  expect(reads()).toBe(0)
-  opened[0]!.closed('browser_ended')
-  expect(reads()).toBe(1)
+  controller.show('t1')
+  // The Cloud ran no browser yet, so the view ended; its next try is a wait away.
+  opened[0]!.closed('host_stopped')
+  expect(opened).toHaveLength(1)
+  // The user's new tab got its browser tab: the view does not wait.
+  controller.show('t2')
+  expect(opened).toHaveLength(2)
+  controller.dispose()
+})
+
+test('a view that finds its watched tab gone asks the plugin to look, once for that tab', async () => {
+  const opened: UserStreamHandlers[] = []
+  const { controller, syncs } = harness(
+    {
+      stream: (handlers) => {
+        opened.push(handlers)
+        return { send: () => {}, close: () => {} }
+      },
+    },
+    { pictures: async () => true },
+  )
+  await until(controller.pictures).toBe('supported')
+  controller.show('t1')
+  const state = (tabs: string[]): LiveModuleMessage => ({
+    type: 'state',
+    running: true,
+    tabs: tabs.map((id) => ({ id, title: id, url: 'about:blank', createdBy: { kind: 'user' }, viewport: VIEWPORT, loading: false })),
+    watched: null,
+  })
+  opened[0]!.data(framed(state(['t1'])))
+  expect(syncs()).toBe(0)
+  opened[0]!.data(framed(state([])))
+  opened[0]!.data(framed(state([])))
+  expect(syncs()).toBe(1)
   controller.dispose()
 })
 
@@ -214,7 +168,7 @@ test('a web browser that cannot decode the pictures opens no view, and one that 
           return { send: () => {}, close: () => {} }
         },
       })
-      controller.show(AGENT_TAB.id)
+      controller.show('t1')
       await until(controller.pictures).not.toBe('checking')
       expect({ webBrowser, support: controller.pictures.value, views }).toEqual({ webBrowser, support, views: viewCount })
       controller.dispose()

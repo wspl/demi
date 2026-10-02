@@ -215,6 +215,8 @@ impl Plugin for Instance {
                     result: self.0.call(&method, params, port).await?,
                 }),
                 Request::Command { .. } => Err(PluginError::undeclared("command")),
+                Request::PanelTab { .. } => Err(PluginError::undeclared("panel kind")),
+                Request::Topic { .. } => Err(PluginError::undeclared("topic")),
             }
         })
     }
