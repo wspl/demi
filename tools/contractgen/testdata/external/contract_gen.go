@@ -59,3 +59,6 @@ func (v Expose) MarshalJSON() ([]byte, error) {
 func ExposeJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"address\":{\"type\":\"string\",\"description\":\"Where an expose's traffic goes on its device: `host:port` exactly as\\ngiven, or a bare port, which means `127.0.0.1:<port>`. The host is any\\nname or address the device can resolve, an IPv6 address in brackets; the\\nport is 1 to 65535.\"}},\"required\":[\"address\"],\"title\":\"Expose\",\"type\":\"object\"}")
 }
+func ExposePluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"ExposeAddress\":{\"type\":\"string\",\"description\":\"Where an expose's traffic goes on its device: `host:port` exactly as\\ngiven, or a bare port, which means `127.0.0.1:<port>`. The host is any\\nname or address the device can resolve, an IPv6 address in brackets; the\\nport is 1 to 65535.\"}},\"additionalProperties\":false,\"properties\":{\"address\":{\"$ref\":\"#/$defs/ExposeAddress\"}},\"required\":[\"address\"],\"title\":\"Expose\",\"type\":\"object\"}")
+}
