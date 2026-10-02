@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	protocol "github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/cdproto/target"
 	"github.com/go-json-experiment/json/jsontext"
@@ -80,8 +82,13 @@ func TestRendererChildrenRouteAndDetachBeforeTheirParent(t *testing.T) {
 	server := cdptest.NewServer(t,
 		cdptest.Exchange{Method: "Target.attachToTarget", Params: target.AttachToTarget("tab").WithFlatten(true), Result: jsontext.Value(`{"sessionId":"parent"}`)},
 		cdptest.Exchange{Method: "Target.setAutoAttach", SessionID: "parent", Params: auto, Result: struct{}{}},
+		cdptest.Exchange{Method: "Page.enable", SessionID: "child", Params: page.Enable(), Result: struct{}{}},
+		cdptest.Exchange{Method: "Runtime.enable", SessionID: "child", Params: runtime.Enable(), Result: struct{}{}},
+		cdptest.Exchange{Method: "Network.enable", SessionID: "child", Params: network.Enable(), Result: struct{}{}},
+		cdptest.Exchange{Method: "Page.setLifecycleEventsEnabled", SessionID: "child", Params: page.SetLifecycleEventsEnabled(true), Result: struct{}{}},
 		cdptest.Exchange{Method: "Target.setAutoAttach", SessionID: "child", Params: auto, Result: struct{}{}},
 		cdptest.Exchange{Method: "Runtime.evaluate", SessionID: "child", Params: runtime.Evaluate("42").WithReturnByValue(true), Result: jsontext.Value(`{"result":{"type":"number","value":42}}`)},
+		cdptest.Exchange{Method: "Page.getResourceContent", SessionID: "child", Params: page.GetResourceContent("frame", "https://example.test/image.svg"), Result: page.GetResourceContentReturns{Content: "<svg/>"}},
 		cdptest.Exchange{Method: "Target.detachFromTarget", SessionID: "parent", Params: target.DetachFromTarget().WithSessionID("child"), Result: struct{}{}},
 		cdptest.Exchange{Method: "Target.detachFromTarget", Params: target.DetachFromTarget().WithSessionID("parent"), Result: struct{}{}},
 	)
@@ -109,6 +116,10 @@ func TestRendererChildrenRouteAndDetachBeforeTheirParent(t *testing.T) {
 	result, _, err := runtime.Evaluate("42").WithReturnByValue(true).Do(protocol.WithExecutor(t.Context(), child))
 	if err != nil || string(result.Value) != "42" {
 		t.Fatal(result, err)
+	}
+	content, err := page.GetResourceContent("frame", "https://example.test/image.svg").Do(protocol.WithExecutor(t.Context(), child))
+	if err != nil || string(content) != "<svg/>" {
+		t.Fatalf("child resource=%q error=%v", content, err)
 	}
 	if err := server.Emit(t.Context(), cdp.Event{Method: "Runtime.consoleAPICalled", SessionID: "child", Params: json.RawMessage(`{"type":"log","args":[],"executionContextId":1,"timestamp":0}`)}); err != nil {
 		t.Fatal(err)

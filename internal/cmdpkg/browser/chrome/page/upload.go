@@ -33,7 +33,7 @@ func Upload(ctx context.Context, invocation *cmdsdk.InvocationContext[commandwir
 		return result, operation.Failure(&cdp.BrowserError{Kind: cdp.KindBusy}, string(tab.ID()), nil)
 	}
 	defer checkout.Release()
-	err := operation.Run(ctx, func(work context.Context) error {
+	err := operation.Run(ctx, func(context.Context) error {
 		for _, file := range input.File {
 			path, err := cdp.Resolve(invocation.Request.Cwd, string(file))
 			if err != nil {
@@ -62,20 +62,25 @@ func Upload(ctx context.Context, invocation *cmdsdk.InvocationContext[commandwir
 			}
 			result.Files = append(result.Files, path)
 		}
-		var last error
-		ready, err := ready(work, tab, input.BrowserTarget, &checkout.Session().References, []string{"enabled"}, operation, &last)
-		if err != nil {
-			return err
-		}
-		isInput, err := decodeElement[bool](work, ready.element, "function() { return this.localName === 'input' && this.type === 'file'; }", false)
-		if err != nil {
-			return err
-		}
-		if isInput {
-			return attachFiles(work, ready.element, result.Files, operation)
-		}
-		return chooserUpload(work, tab, ready.element, result.Files, operation)
+		return nil
 	})
+	if err == nil {
+		var last error
+		var control readyElement
+		control, err = ready(ctx, tab, input.BrowserTarget, &checkout.Session().References, []string{"enabled"}, operation, &last)
+		if err == nil {
+			err = operation.Run(ctx, func(work context.Context) error {
+				isInput, err := decodeElement[bool](work, control.element, "function() { return this.localName === 'input' && this.type === 'file'; }", false)
+				if err != nil {
+					return err
+				}
+				if isInput {
+					return attachFiles(work, control.element, result.Files, operation)
+				}
+				return chooserUpload(work, tab, control.element, result.Files, operation)
+			})
+		}
+	}
 	err = cdp.AfterCleanup(err, releaseObjects(ctx, tab))
 	if err != nil {
 		return result, operation.Failure(err, string(tab.ID()), nil)

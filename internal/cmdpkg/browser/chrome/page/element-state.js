@@ -45,6 +45,7 @@ async function(conditions, scroll, probe, cancel, point) {
     // Chromiumoxide cannot cancel an awaited page function. The caller owns
     // this temporary cancellation callback and invokes it on every failed wait.
     let previousFrame = null;
+    let unchangedFrames = 0;
     // A tab that is not the front tab of its window has a hidden document,
     // which paints nothing and runs no animation frames. Its geometry is
     // sampled on timers instead, which the browser does not throttle there.
@@ -66,7 +67,11 @@ async function(conditions, scroll, probe, cancel, point) {
         });
         if (!observed) break;
         const next = element.getBoundingClientRect();
-        stable = previousFrame !== null && ['x', 'y', 'width', 'height'].every(key => previousFrame[key] === next[key]);
+        const unchanged = previousFrame !== null && ['x', 'y', 'width', 'height'].every(key => previousFrame[key] === next[key]);
+        // Opposite sides of an animation reversal can round to the same box.
+        // Confirm another unchanged frame before treating the element as stopped.
+        unchangedFrames = unchanged ? unchangedFrames + 1 : 0;
+        stable = unchangedFrames >= 2;
         previousFrame = next;
         box = next;
         if (stable) break;
