@@ -1,0 +1,196 @@
+// Command archcheck enforces the Go package graph in the architecture contract.
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"os/signal"
+	"path"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"golang.org/x/tools/go/packages"
+)
+
+var errMissingGraph = errors.New("missing ### Go packages text block")
+
+type graph map[string]map[string]bool
+
+func main() {
+	document := flag.String("graph", "docs/architecture/crates-and-packages.md", "architecture document")
+	flag.Parse()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	if err := run(ctx, ".", *document); err != nil {
+		fmt.Fprintln(os.Stderr, "archcheck:", err)
+		stop()
+		os.Exit(1)
+	}
+	fmt.Println("archcheck: PASS")
+}
+
+// readGraph reads Demi's authoritative package-edge block without a second table.
+func readGraph(document []byte) (graph, error) {
+	result := graph{}
+	phase := "before"
+	scanner := bufio.NewScanner(strings.NewReader(string(document)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if phase == "before" {
+			if line == "### Go packages" {
+				phase = "section"
+			}
+			continue
+		}
+		if phase == "section" {
+			if strings.HasPrefix(line, "#") {
+				break
+			}
+			if line == "```text" {
+				phase = "block"
+			}
+			continue
+		}
+		if line == "```" {
+			phase = "closed"
+			break
+		}
+		if line == "" {
+			continue
+		}
+		source, targets, ok := strings.Cut(line, "->")
+		source = strings.TrimSpace(source)
+		targets = strings.TrimSpace(targets)
+		if !ok || !validPath(source) || targets == "" {
+			return nil, fmt.Errorf("invalid graph line %q", line)
+		}
+		if _, exists := result[source]; exists {
+			return nil, fmt.Errorf("duplicate graph package %s", source)
+		}
+		result[source] = map[string]bool{}
+		if targets == "none" {
+			continue
+		}
+		for _, target := range strings.Split(targets, ",") {
+			target = strings.TrimSpace(target)
+			if !validPath(target) || result[source][target] {
+				return nil, fmt.Errorf("invalid dependency in %q", line)
+			}
+			result[source][target] = true
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read graph: %w", err)
+	}
+	if phase == "before" || phase == "section" {
+		return nil, errMissingGraph
+	}
+	if phase != "closed" || len(result) == 0 {
+		return nil, errors.New("empty or unclosed Go package graph")
+	}
+	for source, targets := range result {
+		for target := range targets {
+			if _, ok := result[target]; !ok {
+				return nil, fmt.Errorf("%s names unlisted dependency %s", source, target)
+			}
+		}
+	}
+	return result, nil
+}
+
+// validPath checks the relative package names in Demi's graph.
+func validPath(name string) bool {
+	return name != "" && name != "." && name != "none" && !strings.HasPrefix(name, "/") &&
+		!strings.HasPrefix(name, "../") && path.Clean(name) == name && !strings.ContainsAny(name, " \t\\,:>")
+}
+
+// run checks every shipping target so platform-only Demi packages cannot escape.
+func run(ctx context.Context, dir, document string) error {
+	data, err := os.ReadFile(document)
+	if err != nil {
+		return fmt.Errorf("read architecture document: %w", err)
+	}
+	rules, err := readGraph(data)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, goos := range []string{"darwin", "linux", "windows"} {
+		for _, goarch := range []string{"amd64", "arm64"} {
+			if err := checkTarget(ctx, dir, rules, seen, goos, goarch); err != nil {
+				return fmt.Errorf("%s/%s: %w", goos, goarch, err)
+			}
+		}
+	}
+	for name := range rules {
+		if !seen[name] {
+			return fmt.Errorf("graph package does not exist: %s", name)
+		}
+	}
+	return nil
+}
+
+// checkTarget checks Demi imports, including both forms of test package.
+func checkTarget(ctx context.Context, dir string, rules graph, seen map[string]bool, goos, goarch string) error {
+	loaded, err := packages.Load(&packages.Config{
+		Context: ctx, Dir: dir, Tests: true,
+		Env:  append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0", "GOFLAGS=-mod=readonly", "GOWORK=off"),
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps | packages.NeedModule | packages.NeedForTest,
+	}, "./...")
+	if err != nil {
+		return fmt.Errorf("load packages: %w", err)
+	}
+	var problems []string
+	packages.Visit(loaded, func(pkg *packages.Package) bool {
+		for _, loadErr := range pkg.Errors {
+			problems = append(problems, loadErr.Error())
+		}
+		if pkg.Module == nil || !pkg.Module.Main {
+			return true
+		}
+		// The generated test executable lives in the build cache, not a source package.
+		if pkg.Name == "main" && strings.HasSuffix(pkg.PkgPath, ".test") {
+			return true
+		}
+		relative, err := filepath.Rel(pkg.Module.Dir, pkg.Dir)
+		if err != nil {
+			problems = append(problems, err.Error())
+			return true
+		}
+		name := filepath.ToSlash(relative)
+		seen[name] = true
+		allowed, exists := rules[name]
+		if !exists {
+			problems = append(problems, "unlisted package: "+name)
+			return true
+		}
+		for _, imported := range pkg.Imports {
+			prefix := pkg.Module.Path + "/"
+			if imported.PkgPath != pkg.Module.Path && !strings.HasPrefix(imported.PkgPath, prefix) {
+				continue
+			}
+			target := strings.TrimPrefix(imported.PkgPath, prefix)
+			if imported.PkgPath == pkg.Module.Path {
+				target = "."
+			}
+			// External tests may import their own package without an architectural edge.
+			if target == name && pkg.ForTest == imported.PkgPath {
+				continue
+			}
+			if !allowed[target] {
+				problems = append(problems, "forbidden import: "+name+" -> "+target)
+			}
+		}
+		return true
+	}, nil)
+	if len(problems) != 0 {
+		slices.Sort(problems)
+		return errors.New(strings.Join(slices.Compact(problems), "\n"))
+	}
+	return nil
+}
