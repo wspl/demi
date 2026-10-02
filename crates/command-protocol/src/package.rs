@@ -83,7 +83,7 @@ impl PackageDescriptor {
 /// development store with a URL on the backend itself. The scheme cannot
 /// change what runs, because the runner checks the download against the size
 /// and SHA-256 its pinned descriptor declares (`native-runtime.md` § Install
-/// the selected executable).
+/// the selected package).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactUrl {

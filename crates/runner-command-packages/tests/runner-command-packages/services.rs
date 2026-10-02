@@ -3,7 +3,7 @@
 //! say what it holds; a failed release retires it; a service that fails
 //! reports its exit status and the end of its standard error. A service
 //! starts from the Host image's copy of its executable when that copy
-//! matches (§ Preinstalled executables).
+//! matches (§ Preinstalled artifacts).
 
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Invocation, PackageArtifact, PackageDescriptor,
