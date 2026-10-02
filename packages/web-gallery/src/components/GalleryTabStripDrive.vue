@@ -100,14 +100,14 @@ function closeAt(index: number): void {
 }
 
 function closeActive(): void {
-  const selection = panel.value.selection
+  const selection = work.selected.value
   if (selection !== null) {
     closeTabs([selection])
   }
 }
 
 function closeOthers(): void {
-  closeTabs(ids().filter((id) => id !== panel.value.selection))
+  closeTabs(ids().filter((id) => id !== work.selected.value))
 }
 
 const STEPS: [string, () => void][] = [
