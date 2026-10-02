@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"iter"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	sse "github.com/tmaxmax/go-sse"
+	"github.com/wspl/demi/internal/contract"
 )
 
 // SSEErrorKind distinguishes a broken body from invalid text or framing.
@@ -121,7 +121,7 @@ func (r *utf8Body) Read(p []byte) (int, error) {
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				if len(r.pending) != 0 {
-					r.end = &SSEError{Kind: SSEUTF8, Err: invalidSSEUTF8(r.pending)}
+					r.end = &SSEError{Kind: SSEUTF8, Err: contract.CheckUTF8(r.pending)}
 				} else {
 					r.end = io.EOF
 				}
@@ -138,42 +138,12 @@ func (r *utf8Body) Read(p []byte) (int, error) {
 	return 0, r.end
 }
 
-// invalidSSEUTF8 reports the retained suffix in Rust's Utf8Error format.
-func invalidSSEUTF8(data []byte) error {
-	if !utf8.FullRune(data) {
-		return errors.New("incomplete utf-8 byte sequence from index 0")
-	}
-	return fmt.Errorf("invalid utf-8 sequence of %d bytes from index 0", vendorInvalidUTF8Width(data))
-}
-
-// vendorInvalidUTF8Width counts one malformed sequence as Rust's UTF-8 reader does.
+// vendorInvalidUTF8Width adapts the shared diagnostic for Rust's lossy decoding.
+// Its caller passes a suffix beginning with a malformed sequence.
 func vendorInvalidUTF8Width(data []byte) int {
-	if !utf8.FullRune(data) {
-		return len(data)
+	var invalid *contract.UTF8Error
+	if errors.As(contract.CheckUTF8(data), &invalid) && invalid.ErrorLen != 0 {
+		return invalid.ErrorLen
 	}
-	size := 1
-	lead := data[0]
-	if lead >= 0xc2 && lead <= 0xf4 && len(data) > 1 {
-		second := data[1]
-		valid := second >= 0x80 && second <= 0xbf
-		if lead == 0xe0 {
-			valid = second >= 0xa0 && second <= 0xbf
-		}
-		if lead == 0xed {
-			valid = second >= 0x80 && second <= 0x9f
-		}
-		if lead == 0xf0 {
-			valid = second >= 0x90 && second <= 0xbf
-		}
-		if lead == 0xf4 {
-			valid = second >= 0x80 && second <= 0x8f
-		}
-		if valid {
-			size = 2
-			if lead >= 0xf0 && len(data) > 2 && data[2] >= 0x80 && data[2] <= 0xbf {
-				size = 3
-			}
-		}
-	}
-	return size
+	return len(data)
 }

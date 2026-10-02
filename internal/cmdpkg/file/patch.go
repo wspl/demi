@@ -12,9 +12,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/contract"
 )
 
 type filePatch struct {
@@ -67,7 +67,7 @@ func applyPatch(ctx context.Context, cwd, diff string, recording *cmdsdk.Recordi
 				return "", err
 			}
 		}
-		if err := patchText(before); err != nil {
+		if err := contract.CheckUTF8(before); err != nil {
 			return "", err
 		}
 		updated, err := applyHunks(ctx, string(before), patch.hunks)
@@ -338,44 +338,6 @@ func parsePath(value string) *string {
 		value = value[2:]
 	}
 	return &value
-}
-
-// patchText validates a patch source and preserves Rust's UTF-8 diagnostic.
-func patchText(data []byte) error {
-	for index := 0; index < len(data); {
-		r, size := utf8.DecodeRune(data[index:])
-		if r != utf8.RuneError || size != 1 {
-			index += size
-			continue
-		}
-		if !utf8.FullRune(data[index:]) {
-			return fmt.Errorf("incomplete utf-8 byte sequence from index %d", index)
-		}
-		invalid := 1
-		first := data[index]
-		if first >= 0xc2 && first <= 0xf4 && index+1 < len(data) {
-			second := data[index+1]
-			validSecond := second >= 0x80 && second <= 0xbf
-			switch first {
-			case 0xe0:
-				validSecond = second >= 0xa0 && second <= 0xbf
-			case 0xed:
-				validSecond = second >= 0x80 && second <= 0x9f
-			case 0xf0:
-				validSecond = second >= 0x90 && second <= 0xbf
-			case 0xf4:
-				validSecond = second >= 0x80 && second <= 0x8f
-			}
-			if validSecond {
-				invalid = 2
-				if first >= 0xf0 && index+2 < len(data) && data[index+2] >= 0x80 && data[index+2] <= 0xbf {
-					invalid = 3
-				}
-			}
-		}
-		return fmt.Errorf("invalid utf-8 sequence of %d bytes from index %d", invalid, index)
-	}
-	return nil
 }
 
 // patchPathKey compares patch destinations by components, retaining symlink-sensitive '..'.
