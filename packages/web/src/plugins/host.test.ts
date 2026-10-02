@@ -1,0 +1,101 @@
+import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { createPinia, disposePinia, setActivePinia } from 'pinia'
+import { z } from 'zod'
+import { browserTabsSchema } from '@demicodes/plugin-browser'
+import { exposeStateSchema, type ExposeState } from '@demicodes/plugin-expose'
+import { PluginCallError, pluginClient } from '@demicodes/web-ui/plugins/client'
+import { productState } from '../__tests__/product-state'
+import { playChannels } from '../__tests__/sync-channel'
+import { useProduct } from '../state/product'
+import { productPluginHost } from './host'
+
+const realFetch = globalThis.fetch
+const CONVERSATION = '0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b'
+let pinia: ReturnType<typeof createPinia>
+let channels: ReturnType<typeof playChannels>
+/** The `expose` plugin's state the channel brings. */
+let expose: ExposeState
+/** Each call the backend received: its path and body. */
+let calls: [string, unknown][]
+
+beforeEach(() => {
+  pinia = createPinia()
+  setActivePinia(pinia)
+  expose = {
+    available: true,
+    exposes: [
+      {
+        id: 'k7x2maqw4p3s6tavaw2y4z6aab',
+        number: 1,
+        deviceId: 'laptop',
+        address: '127.0.0.1:5173',
+        url: 'https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/',
+        expiresAt: '2026-09-17T00:59:00.000Z',
+      },
+    ],
+  }
+  calls = []
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) {
+      return Response.json({ providers: [] })
+    }
+    calls.push([path, JSON.parse(String(init?.body))])
+    if (path === '/api/plugins/expose/calls/renew') {
+      return Response.json(null)
+    }
+    if (path === `/api/conversations/${CONVERSATION}/plugins/browser/calls/tabs`) {
+      return Response.json({ tabs: [] })
+    }
+    if (path === '/api/plugins/expose/calls/remove') {
+      return Response.json(
+        { code: 'plugin_refused', reason: 'expose_not_found', message: 'No expose k7x2' },
+        { status: 409 },
+      )
+    }
+    throw new Error(`Unexpected request: ${path}`)
+  }) as typeof fetch
+  channels = playChannels()
+  const product = useProduct()
+  product.start()
+  channels.last().connect(productState({ pluginStates: { expose } }))
+})
+
+afterEach(() => {
+  globalThis.fetch = realFetch
+  useProduct().stop()
+  disposePinia(pinia)
+  channels.restore()
+})
+
+function client() {
+  const product = useProduct()
+  return pluginClient(productPluginHost(() => product.snapshot), 'expose', exposeStateSchema)
+}
+
+test("a plugin's state is the product state's: its snapshot, each later message, and none once it is off", () => {
+  const plugin = client()
+  expect(plugin.state.value?.exposes.map((entry) => entry.id)).toEqual(['k7x2maqw4p3s6tavaw2y4z6aab'])
+  channels.last().send({ type: 'plugin', plugin: 'expose', state: { available: true, exposes: [] } })
+  expect(plugin.state.value?.exposes).toEqual([])
+  const entry = productState().plugins[0]!
+  channels.last().send({ type: 'plugins', plugins: [{ ...entry, enabled: false }] })
+  expect(plugin.state.value).toBeNull()
+})
+
+test('a call goes to its plugin route, for the user or for a conversation, and answers its checked result', async () => {
+  const plugin = client()
+  expect(await plugin.call('renew', { expose: 'k7x2maqw4p3s6tavaw2y4z6aab' }, z.null())).toBeNull()
+  const browser = pluginClient(productPluginHost(() => useProduct().snapshot), 'browser', z.unknown())
+  expect(await browser.conversation(CONVERSATION).call('tabs', {}, browserTabsSchema)).toEqual({ tabs: [] })
+  expect(calls).toEqual([
+    ['/api/plugins/expose/calls/renew', { expose: 'k7x2maqw4p3s6tavaw2y4z6aab' }],
+    [`/api/conversations/${CONVERSATION}/plugins/browser/calls/tabs`, {}],
+  ])
+})
+
+test("a refusal rejects with the plugin's own reason", async () => {
+  const refused = client().call('remove', { expose: 'k7x2maqw4p3s6tavaw2y4z6aab' }, z.null())
+  await expect(refused).rejects.toBeInstanceOf(PluginCallError)
+  await expect(refused).rejects.toMatchObject({ reason: 'expose_not_found', message: 'No expose k7x2' })
+})

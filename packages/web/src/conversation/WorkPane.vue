@@ -3,9 +3,11 @@ import { computed, onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
-import { browserTabKind } from '@demicodes/web-ui/browser/kind'
-import { BrowserTabsController, browserTabDataSchema, type BrowserTabData } from '@demicodes/web-ui/browser/tabs'
-import { browserTabsApi } from '../api/browser-tabs'
+import { usePluginHost } from '@demicodes/web-ui/plugins/client'
+import { pluginPanelKinds, type PanelKinds } from '@demicodes/web-ui/plugins/slots'
+import { PLUGIN_PAGES } from '../plugins/pages'
+import { pluginEnabled } from '../plugins/host'
+import { useProduct } from '../state/product'
 import { conversationFileRoutes, fileSource } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
@@ -26,6 +28,8 @@ const emit = defineEmits<{ close: [] }>()
 
 const conversations = useConversations()
 const resources = useResources()
+const product = useProduct()
+const host = usePluginHost()
 const work = useWorkPanel()
 
 const state = computed(() => work.stateFor(props.conversationId))
@@ -51,42 +55,43 @@ const workspace = computed(() => {
 })
 
 /**
- * The conversation's `browser` tab kind (`live-view.md` § A browser tab
- * in the panel), for as long as the panel is open beside this conversation. A
- * closed panel reads no tab list and holds no view.
+ * The plugins' tab kinds for this conversation (`plugins.md` § The page),
+ * for as long as the panel is open beside it and the user has each plugin
+ * on. A closed panel reads no tab list and holds no view.
  */
-const browser = shallowRef<BrowserTabsController | null>(null)
+const plugins = shallowRef<Required<PanelKinds> | null>(null)
 watch(
-  () => [props.conversationId, state.value.open] as const,
+  () =>
+    [
+      props.conversationId,
+      state.value.open,
+      PLUGIN_PAGES.map((page) => pluginEnabled(product.snapshot, page.plugin)).join(),
+    ] as const,
   ([conversationId, open]) => {
-    browser.value?.dispose()
-    browser.value = null
+    plugins.value?.dispose()
+    plugins.value = null
     if (!open) {
       return
     }
     void work.load(conversationId)
-    browser.value = new BrowserTabsController(browserTabsApi(conversationId), {
-      bound: () => boundBrowserTabs(conversationId),
-      add: (data) => void work.add(conversationId, 'browser', data, { select: false }),
-    })
-    void browser.value.refresh()
+    plugins.value = pluginPanelKinds(
+      PLUGIN_PAGES,
+      host,
+      (plugin) => pluginEnabled(product.snapshot, plugin),
+      {
+        conversation: conversationId,
+        tabs: {
+          bound: (kind) =>
+            work.stateFor(conversationId).panel.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
+          add: (kind, data) => void work.add(conversationId, kind, data, { select: false }),
+        },
+      },
+    )
   },
   { immediate: true },
 )
 
-/** The `data` of the panel's `browser` tabs that fits the kind; anything else binds nothing. */
-function boundBrowserTabs(conversationId: string): BrowserTabData[] {
-  const bound: BrowserTabData[] = []
-  for (const tab of work.stateFor(conversationId).panel.tabs) {
-    const parsed = tab.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
-    if (parsed?.success) {
-      bound.push(parsed.data)
-    }
-  }
-  return bound
-}
-
-const kinds = computed<PanelTabKind[]>(() => (browser.value ? [browserTabKind(browser.value), pageTabKind] : [pageTabKind]))
+const kinds = computed<PanelTabKind[]>(() => [...(plugins.value?.kinds ?? []), pageTabKind])
 
 /** Closing a tab removes it at once; its kind then does what a closed tab of it needs. */
 function closeTabs(ids: string[]): void {
@@ -113,11 +118,12 @@ const finishedToolCalls = computed(
 )
 watch(finishedToolCalls, () => {
   state.value.changes.refresh()
-  // The agent may have opened or closed a tab of the conversation browser.
-  void browser.value?.refresh()
+  // The agent may have changed what a plugin's tabs show, as the
+  // conversation browser's tabs.
+  plugins.value?.refresh()
 })
 
-// The `browser` kind reads its tab list itself when the page is shown again.
+// A plugin's kinds read what they show themselves when the page is shown again.
 function refreshVisible(): void {
   if (document.visibilityState === 'visible') {
     state.value.changes.refresh()
@@ -128,7 +134,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', refreshVisible)
-  browser.value?.dispose()
+  plugins.value?.dispose()
 })
 </script>
 

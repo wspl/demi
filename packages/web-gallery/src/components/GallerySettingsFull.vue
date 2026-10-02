@@ -19,8 +19,9 @@ import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
 import SettingsMcp from '@demicodes/web-ui/settings/SettingsMcp.vue'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
-import SettingsSkills from '@demicodes/web-ui/settings/SettingsSkills.vue'
-import type { SettingsMcpDraft, SettingsSkillDraft, SettingsSkillSource } from '@demicodes/web-ui/settings/types'
+import { pluginSettingsPage } from '@demicodes/web-ui/plugins/slots'
+import { GALLERY_PLUGIN_PAGES } from '../plugin-pages'
+import type { SettingsMcpDraft } from '@demicodes/web-ui/settings/types'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import type { SettingsState } from '../fixtures/settings'
@@ -67,6 +68,8 @@ async function resetCloud(operationId: string) {
 }
 
 const s = computed(() => props.state)
+/** The page of the plugin section `tab` names, which reaches the section's plugin host. */
+const pluginPage = computed(() => pluginSettingsPage(GALLERY_PLUGIN_PAGES, props.tab))
 
 // Text size resizes the transcript here as it does in the product.
 watch(() => s.value.general.fontSize, applyTranscriptTextSize, { immediate: true })
@@ -215,46 +218,6 @@ function signInServer(server: SettingsState['servers'][number]) {
   server.detail = undefined
 }
 
-function sourceName(origin: string) {
-  return origin.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '')
-}
-
-function addSkillSource(draft: SettingsSkillDraft) {
-  const id = `src-${Date.now()}`
-  const name = sourceName(draft.origin)
-  s.value.skillSources.push({
-    id,
-    name,
-    origin: draft.origin,
-    state: 'ready',
-    skills: [
-      {
-        id: `${id}-one`,
-        name: 'example-one',
-        description: 'A skill discovered in this repository.',
-        enabled: true
-      },
-      {
-        id: `${id}-two`,
-        name: 'example-two',
-        description: 'Another skill from the same pack.',
-        enabled: true
-      },
-    ],
-  })
-}
-
-function removeSkillSource(source: SettingsSkillSource) {
-  s.value.skillSources = s.value.skillSources.filter((entry) => entry.id !== source.id)
-}
-
-function updateSkillSource(source: SettingsSkillSource) {
-  source.state = 'updating'
-  window.setTimeout(() => {
-    source.state = 'ready'
-  }, 600)
-}
-
 function restoreArchived(id: string) {
   s.value.archived = s.value.archived.filter((entry) => entry.id !== id)
 }
@@ -368,13 +331,10 @@ function resetShortcuts() {
     @restart="restartServer"
   />
 
-  <SettingsSkills
-    v-else-if="tab === 'skills'"
-    :sources="s.skillSources"
+  <component
+    :is="pluginPage"
+    v-else-if="pluginPage"
     :overlay-store="appOverlayStore"
-    @add="addSkillSource"
-    @remove="removeSkillSource"
-    @update="updateSkillSource"
   />
 
   <SettingsArchived

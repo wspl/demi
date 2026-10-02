@@ -9343,6 +9343,7 @@ dependencies = [
  "demi-machine-manager-protocol",
  "demi-plugin-browser",
  "demi-plugin-expose",
+ "demi-plugin-skills",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-types",

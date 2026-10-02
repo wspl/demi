@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
-import SessionToolsMenu from '@demicodes/web-ui/hosts/SessionToolsMenu.vue'
+import PluginHeaderTools from '@demicodes/web-ui/plugins/PluginHeaderTools.vue'
+import { providePluginHost } from '@demicodes/web-ui/plugins/client'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
-import type { ExposeMenuEntry, HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { gallerySubagents } from '../fixtures/subagents'
@@ -15,7 +16,9 @@ import { createGalleryFileHosts } from '../fixtures/files'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import GalleryComposer from './GalleryComposer.vue'
 import { productWould } from '../product-would'
-import { demoExposes } from '../fixtures/settings'
+import { demoExposeState } from '../fixtures/settings'
+import { exposePlugin, galleryPluginHost } from '../fixtures/plugins'
+import { GALLERY_PLUGIN_PAGES } from '../plugin-pages'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow } from '../turn-flow'
 
@@ -75,31 +78,15 @@ const mainHost = computed<HostMenuHost>(() => {
     : { id: 'cloud', name: 'Cloud', kind: 'cloud', online: true }
 })
 const attachedHosts = ref<HostMenuHost[]>([])
-// The session tools menu: renew waits a beat so the pending state shows, then moves the expiry.
-const exposes = ref<ExposeMenuEntry[]>(demoExposes())
-const exposePending = ref<string[]>([])
-function exposeWrite(id: string, apply: () => void): void {
-  if (exposePending.value.includes(id)) {
-    return
+// The conversation header's tools come from the plugin packages, over the
+// gallery's expose plugin; its renew waits a beat so the pending state shows.
+providePluginHost(galleryPluginHost({ expose: exposePlugin(reactive(demoExposeState())) }))
+/** A host by its name, the Cloud by the product's, as the product names them. */
+function hostName(id: string): string {
+  if (id === 'managed-device') {
+    return 'Cloud'
   }
-  exposePending.value.push(id)
-  window.setTimeout(() => {
-    apply()
-    exposePending.value = exposePending.value.filter((entry) => entry !== id)
-  }, 600)
-}
-function renewExpose(id: string): void {
-  exposeWrite(id, () => {
-    const expose = exposes.value.find((entry) => entry.id === id)
-    if (expose) {
-      expose.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
-    }
-  })
-}
-function removeExpose(id: string): void {
-  exposeWrite(id, () => {
-    exposes.value = exposes.value.filter((expose) => expose.id !== id)
-  })
+  return hosts.find((host) => host.id === id)?.label ?? id
 }
 const locked = computed(() => session.phase !== 'idle' || session.archived)
 async function selectFolder(deviceId: string, path: string): Promise<boolean> {
@@ -186,12 +173,12 @@ function detach(id: string): void {
           </WorkspaceDirectoryMenu>
         </template>
         <template #tools>
-          <SessionToolsMenu
-            :exposes="exposes"
-            :pending-ids="exposePending"
-            @open="productWould(`Open ${$event.address} in a work panel browser tab`)"
-            @renew="renewExpose"
-            @remove="removeExpose"
+          <PluginHeaderTools
+            :pages="GALLERY_PLUGIN_PAGES"
+            :enabled="() => true"
+            conversation-id="shared-product-session"
+            :host-name="hostName"
+            @open-tab="productWould('Open the expose in a work panel page tab')"
             @manage-devices="productWould('Open devices settings')"
           />
         </template>
