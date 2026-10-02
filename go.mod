@@ -5,8 +5,11 @@ go 1.27
 toolchain go1.27.1
 
 require (
+	github.com/klauspost/compress v1.20.1
 	github.com/nlnwa/whatwg-url v0.6.2
 	github.com/vmihailenco/msgpack/v5 v5.4.1
+	go.uber.org/goleak v1.3.0
+	golang.org/x/sys v0.48.0
 	golang.org/x/tools v0.50.0
 )
 
