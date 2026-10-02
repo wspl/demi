@@ -103,6 +103,11 @@ func readGraph(document []byte) (graph, error) {
 	return result, nil
 }
 
+// isTestdata reports whether a package lies in a testdata directory.
+func isTestdata(name string) bool {
+	return name == "testdata" || strings.HasPrefix(name, "testdata/") || strings.Contains(name, "/testdata/") || strings.HasSuffix(name, "/testdata")
+}
+
 // supportOwner returns the package a test-support package supports: the
 // support package of a/b is a/b/btest.
 func supportOwner(name string) (string, bool) {
@@ -173,6 +178,11 @@ func checkTarget(ctx context.Context, dir string, rules graph, seen map[string]b
 			return true
 		}
 		name := filepath.ToSlash(relative)
+		// Fixture packages under testdata belong to the tests that load them,
+		// not to the architecture.
+		if isTestdata(name) {
+			return true
+		}
 		seen[name] = true
 		allowed, exists := rules[name]
 		if !exists {
@@ -187,6 +197,9 @@ func checkTarget(ctx context.Context, dir string, rules graph, seen map[string]b
 			target := strings.TrimPrefix(imported.PkgPath, prefix)
 			if imported.PkgPath == pkg.Module.Path {
 				target = "."
+			}
+			if isTestdata(target) && pkg.ForTest != "" {
+				continue
 			}
 			// External tests may import their own package without an architectural edge.
 			if target == name && pkg.ForTest == imported.PkgPath {
