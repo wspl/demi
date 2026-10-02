@@ -13,6 +13,7 @@ import (
 
 	"github.com/wspl/demi/internal/cli"
 	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/version"
 )
 
 // RuntimeDirectory is where the manager keeps runtime bundles, locks and its namespace handle.
@@ -107,7 +108,7 @@ func ParseConfig(args, environ []string) (c Config, err error) {
 	}
 	for _, arg := range args {
 		if arg == "--version" || arg == "-V" {
-			return c, &ConfigDisplay{Text: "demi-machine-manager 0.1.3\n"}
+			return c, &ConfigDisplay{Text: "demi-machine-manager " + version.Release + "\n"}
 		}
 		if arg == "--help" || arg == "-h" {
 			var help strings.Builder

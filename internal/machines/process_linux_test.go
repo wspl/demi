@@ -26,7 +26,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var processTests = flag.Bool("machines-process", false, "run manager process scenarios after m-sandbox implementation lands; requires root, namespace and filesystem tools")
+var processTests = flag.Bool("machines-process", false, "run manager process scenarios; requires root, namespace and filesystem tools")
 
 type testHost struct {
 	command *exec.Cmd
@@ -36,7 +36,7 @@ type testHost struct {
 func startHost(t *testing.T, controllers bool) *testHost {
 	t.Helper()
 	if !*processTests {
-		t.Skip("waiting for m-sandbox bodies; opt in with -machines-process on privileged Linux after merge")
+		t.Skip("opt in with -machines-process on privileged Linux with namespace and filesystem tools")
 	}
 	var allowed unix.CPUSet
 	if err := unix.SchedGetaffinity(0, &allowed); err != nil {
@@ -243,7 +243,7 @@ func TestNextStartRecoversKilledManagerNamespace(t *testing.T) {
 	}
 }
 
-// Cost: startup rejection before storage import, normally <1 s once dependencies land.
+// Cost: startup rejection before storage import, normally <1 s.
 func TestLimitsOnNamesMissingControllers(t *testing.T) {
 	host := startHost(t, false)
 	s := settings(t)

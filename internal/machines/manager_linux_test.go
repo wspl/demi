@@ -20,7 +20,7 @@ import (
 
 var rootTests = flag.Bool("machines-root", false, "run Cloud storage and installer scenarios as root with filesystem tools")
 
-// managerFixture uses actual storage and worker code without constructing the pending sandbox implementation.
+// managerFixture exercises actual storage and workers independently of runtime processes.
 func managerFixture(t *testing.T) *Manager {
 	t.Helper()
 	config, err := ParseConfig(nil, []string{"DEMI_MANAGED_RUNSC=/nonexistent/runsc", "DEMI_MANAGED_IMAGE=/image", "DEMI_MANAGED_BACKEND_URL=http://203.0.113.10:3271", "DEMI_MANAGED_DNS=1.1.1.1", "DEMI_MACHINE_MANAGER_SOCKET=/socket", "DEMI_MACHINE_MANAGER_DATA=" + t.TempDir(), "DEMI_MANAGED_SYSTEM_MIB=32", "DEMI_MANAGED_HOME_MIB=32", "DEMI_MANAGED_SLOTS=8"})
