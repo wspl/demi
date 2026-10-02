@@ -504,6 +504,10 @@ runner's shutdown deadline, cannot retire them, and three rules cover that case:
   its runtime directory's link, so after a restart that also emptied `/tmp`
   it stays.
 
+  A service told to stop while its sweep runs finishes the sweep before it
+  ends, so a service started and stopped at once still retires the orphans it
+  found.
+
 ### One command path
 
 Browser commands are ordinary declared `demi` commands:
