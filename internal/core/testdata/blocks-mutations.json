@@ -1,0 +1,359 @@
+{
+  "refused": [
+    {
+      "why": "an unknown field",
+      "fixture": "u1",
+      "set": {
+        "/unknown": 1
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "a hidden flag",
+      "fixture": "u1",
+      "set": {
+        "/hidden": true
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "a resolved content field",
+      "fixture": "u1",
+      "set": {
+        "/resolvedContent": []
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "a nullable field that is absent",
+      "fixture": "u1",
+      "remove": [
+        "/preamble"
+      ],
+      "webAppRefuses": true
+    },
+    {
+      "why": "an optional field that is null",
+      "fixture": "u1",
+      "set": {
+        "/content/6/snippet": null
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a block kind the transcript does not have",
+      "fixture": "r1",
+      "set": {
+        "/type": "extension_state_snapshot"
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an empty id",
+      "fixture": "u1",
+      "set": {
+        "/id": ""
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a time that is not RFC 3339",
+      "fixture": "u1",
+      "set": {
+        "/createdAt": "yesterday"
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a time finer than a millisecond",
+      "fixture": "u1",
+      "set": {
+        "/createdAt": "2026-09-21T14:13:20.000123Z"
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "client content in a stored block",
+      "fixture": "u1",
+      "set": {
+        "/content/0": {
+          "type": "upload",
+          "ref": "a1",
+          "fileName": "a.txt"
+        }
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an untagged media source",
+      "fixture": "u1",
+      "set": {
+        "/content/1/source": {
+          "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "mediaType": "image/png"
+        }
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a medium that holds its bytes",
+      "fixture": "u1",
+      "set": {
+        "/content/1/source": {
+          "type": "binary",
+          "data": "iVBORw0KGgo=",
+          "mediaType": "image/png"
+        }
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a blob reference that is not a SHA-256",
+      "fixture": "u1",
+      "set": {
+        "/content/1/source/ref": "sha-1-2-3"
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a blob reference that is not a string",
+      "fixture": "u1",
+      "set": {
+        "/content/1/source/ref": 42
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a document source without its tag",
+      "fixture": "u1",
+      "set": {
+        "/content/4/source": {
+          "ref": "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752",
+          "mediaType": "application/pdf",
+          "fileName": "spec.pdf"
+        }
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an attachment without a name",
+      "fixture": "u1",
+      "set": {
+        "/content/6/name": ""
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an attachment hash that is not a SHA-256",
+      "fixture": "u1",
+      "set": {
+        "/content/6/sha256": "abc"
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a size beyond JavaScript's safe integers",
+      "fixture": "u1",
+      "set": {
+        "/content/6/sizeBytes": 9007199254740992
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an output limit of zero",
+      "fixture": "u1",
+      "set": {
+        "/model/model/outputLimit": 0
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an output limit that is not whole",
+      "fixture": "u1",
+      "set": {
+        "/model/model/outputLimit": 1.5
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an extension outside the native set",
+      "fixture": "u1",
+      "set": {
+        "/model/model/acceptedExtensions/0": "txt"
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a selection without its service tier",
+      "fixture": "u1",
+      "remove": [
+        "/model/serviceTierId"
+      ],
+      "webAppRefuses": true
+    },
+    {
+      "why": "a field on a capability that has none",
+      "fixture": "u1",
+      "set": {
+        "/model/model/thinking/3/extra": 1
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "an effort setting without its summary",
+      "fixture": "u1",
+      "set": {
+        "/model/thinking": {
+          "type": "effort",
+          "effort": "high"
+        }
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a receipt whose block is not its message's",
+      "fixture": "m1",
+      "set": {
+        "/id": "m2"
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "an explicit agent message that is blank",
+      "fixture": "m1",
+      "set": {
+        "/message/content": " ﻿\n"
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "a round that is negative",
+      "fixture": "m1",
+      "set": {
+        "/message/sender/round": -1
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a round that is zero",
+      "fixture": "m1",
+      "set": {
+        "/message/sender/round": 0
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a sender's number that is negative",
+      "fixture": "m1",
+      "set": {
+        "/message/sender/number": -1
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a completion whose id names another round",
+      "fixture": "subagent:child-1:1",
+      "set": {
+        "/id": "subagent:child-1:2",
+        "/message/id": "subagent:child-1:2"
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "a forkable flag that is null",
+      "fixture": "t1",
+      "set": {
+        "/forkable": null
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a streaming output field",
+      "fixture": "tc1",
+      "set": {
+        "/streamingOutput": []
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "a tool call status the transcript does not have",
+      "fixture": "tc1",
+      "set": {
+        "/status": "running"
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a view kind no tool has",
+      "fixture": "tc2",
+      "set": {
+        "/view/kind": "tool_error"
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an exit code that is null",
+      "fixture": "tc2",
+      "set": {
+        "/view/exitCode": null
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an edited file without segments",
+      "fixture": "tc2",
+      "set": {
+        "/view/files/0/edits": []
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an unknown view field",
+      "fixture": "tc2",
+      "set": {
+        "/view/unknown": 1
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "a negative repeat count",
+      "fixture": "tc3",
+      "set": {
+        "/view/count": -1
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "diagnostics that are null",
+      "fixture": "e1",
+      "set": {
+        "/diagnostics": null
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "a failure source outside the set",
+      "fixture": "e1",
+      "set": {
+        "/diagnostics/source": "vendor"
+      },
+      "webAppRefuses": true
+    },
+    {
+      "why": "an error without its code",
+      "fixture": "e2",
+      "remove": [
+        "/code"
+      ],
+      "webAppRefuses": true
+    },
+    {
+      "why": "a marker without its boundary",
+      "fixture": "cm1",
+      "set": {
+        "/boundaryId": ""
+      },
+      "webAppRefuses": true
+    }
+  ]
+}

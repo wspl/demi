@@ -1,0 +1,41 @@
+{
+  "models": [
+    {
+      "id": "claude-opus-4-8",
+      "displayName": "Claude Opus 4.8",
+      "description": null,
+      "contextWindow": 1000000,
+      "outputLimit": 128000,
+      "supportsTools": true,
+      "supportsAttachments": true,
+      "supportsVideo": null,
+      "acceptedExtensions": null,
+      "supportsReasoning": true,
+      "supportedThinkingEfforts": [
+        "low",
+        "high"
+      ],
+      "defaultThinkingEffort": null,
+      "canDisableThinking": false,
+      "serviceTiers": [
+        {
+          "id": "priority",
+          "label": "Fast",
+          "description": null,
+          "fast": true
+        }
+      ],
+      "defaultServiceTierId": null,
+      "cost": {
+        "input": 5.0,
+        "output": 25.0,
+        "cacheRead": null,
+        "cacheWrite": null
+      }
+    }
+  ],
+  "defaultModelId": "claude-opus-4-8",
+  "warnings": [],
+  "sourceFetchedAt": "1970-01-01T00:00:00.000Z",
+  "stale": false
+}
