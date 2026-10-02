@@ -29,6 +29,11 @@ require (
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/nftables v0.3.0 // indirect
+	github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42 // indirect
+	github.com/mdlayher/socket v0.5.0 // indirect
+	github.com/vishvananda/netlink v1.3.1 // indirect
+	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 )

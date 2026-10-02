@@ -322,6 +322,12 @@ whose client reconnects to the running session
 stops reading until it has room ([Runner](../execution/runner.md)). Bound
 producer concurrency too; queue capacity alone does not bound blocked senders.
 
+One queue is unbounded on purpose: the backend's per-job and per-process
+output queue on a runner link (`internal/backend/remotehost`). Output is
+lossless, so a full queue could only stop the link, and one unread job would
+then stall every other job and request on that runner. Its consumer drains
+it as it routes; the runner's own output limits bound what one job sends.
+
 ## Blocking work
 
 A login acquires the backend's CPU-sized hash semaphore and runs argon2id in

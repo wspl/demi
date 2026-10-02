@@ -19,6 +19,12 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 	if m["msgpack"] == "tuple" && !has(m, "union") {
 		return fmt.Errorf("msgpack tuple requires a union")
 	}
+	if has(m, "default") {
+		_, basic := t.Underlying().(*types.Basic)
+		if !field || isPointer(t) || !basic && !emptyCollection(t) {
+			return fmt.Errorf("default requires a non-pointer scalar, slice or map field")
+		}
+	}
 	original := t
 	for {
 		p, ok := t.(*types.Pointer)

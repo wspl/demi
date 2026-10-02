@@ -8,6 +8,131 @@ import (
 	runnerwire "github.com/wspl/demi/internal/runnerwire"
 )
 
+func DecodeDefaults(data []byte) (Defaults, error) { return contract.Decode[Defaults](data) }
+func (v Defaults) Validate() error                 { return contractValidateDefaults(v, 0) }
+func contractValidateDefaults(v Defaults, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	for i, item := range v.Items {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "items", i), err)
+		}
+	}
+	if len(v.Items) > 2 {
+		return contract.At("items", fmt.Errorf("too many items"))
+	}
+	{
+		collection := v.Labels
+		if collection == nil {
+			collection = make(Labels, 0)
+		}
+		if err := contractValidateLabels(collection, depth+1); err != nil {
+			return contract.At("labels", err)
+		}
+	}
+	if v.Count > 10 {
+		return contract.At("count", fmt.Errorf("outside numeric bounds"))
+	}
+	if err := contract.Text(string(v.Text), 0, 4, ""); err != nil {
+		return contract.At("text", err)
+	}
+	return nil
+}
+func (v *Defaults) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next Defaults
+	for key := range obj {
+		switch key {
+		case "items", "labels", "enabled", "count", "text":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	next.Items = make([]string, 0)
+	{
+		raw, ok := obj["items"]
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("items", err)
+			}
+			next.Items = value
+		}
+	}
+	next.Labels = make(Labels, 0)
+	{
+		raw, ok := obj["labels"]
+		if ok {
+			value, err := contract.Decode[Labels](raw)
+			if err != nil {
+				return contract.At("labels", err)
+			}
+			next.Labels = value
+		}
+	}
+	{
+		raw, ok := obj["enabled"]
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("enabled", err)
+			}
+			next.Enabled = value
+		}
+	}
+	{
+		raw, ok := obj["count"]
+		if ok {
+			value, err := contract.Decode[uint32](raw)
+			if err != nil {
+				return contract.At("count", err)
+			}
+			next.Count = value
+		}
+	}
+	{
+		raw, ok := obj["text"]
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Defaults) MarshalJSON() ([]byte, error) {
+	if v.Items == nil {
+		v.Items = make([]string, 0)
+	}
+	if v.Labels == nil {
+		v.Labels = make(Labels, 0)
+	}
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "items", Value: v.Items})
+	fields = append(fields, contract.Field{Name: "labels", Value: v.Labels})
+	fields = append(fields, contract.Field{Name: "enabled", Value: v.Enabled})
+	fields = append(fields, contract.Field{Name: "count", Value: v.Count})
+	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	return contract.EncodeObject(fields)
+}
+func DefaultsJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"count\":{\"default\":0,\"format\":\"uint32\",\"maximum\":10,\"minimum\":0,\"type\":\"integer\"},\"enabled\":{\"default\":false,\"type\":\"boolean\"},\"items\":{\"default\":[],\"items\":{\"type\":\"string\"},\"maxItems\":2,\"type\":\"array\"},\"labels\":{\"additionalProperties\":{\"type\":\"string\"},\"default\":{},\"type\":\"object\"},\"text\":{\"default\":\"\",\"maxLength\":4,\"type\":\"string\"}},\"title\":\"Defaults\",\"type\":\"object\"}")
+}
 func DecodeInstallEnvelope(data []byte) (InstallEnvelope, error) {
 	return contract.Decode[InstallEnvelope](data)
 }
@@ -63,6 +188,44 @@ func (v InstallEnvelope) MarshalJSON() ([]byte, error) {
 }
 func InstallEnvelopeJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"install\":{\"additionalProperties\":false,\"description\":\"One artifact being installed for a command package: its line's name and\\nits version, such as `Chrome for Testing` and `153.0.8010.36`, and how\\nfar it is, in bytes of its size.\",\"properties\":{\"done\":{\"format\":\"uint64\",\"maximum\":9007199254740991,\"minimum\":0,\"type\":\"integer\"},\"name\":{\"maxLength\":100,\"minLength\":1,\"type\":\"string\"},\"package\":{\"description\":\"The package, such as `demi.browser`.\",\"maxLength\":200,\"minLength\":1,\"type\":\"string\"},\"phase\":{\"description\":\"Where an install is: downloading the artifact, or unpacking a\\nresource's archive.\",\"enum\":[\"download\",\"unpack\"],\"type\":\"string\"},\"total\":{\"format\":\"uint64\",\"maximum\":9007199254740991,\"minimum\":1,\"type\":\"integer\"},\"version\":{\"maxLength\":100,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"package\",\"name\",\"version\",\"phase\",\"done\",\"total\"],\"type\":\"object\"}},\"required\":[\"install\"],\"title\":\"InstallEnvelope\",\"type\":\"object\"}")
+}
+func DecodeLabels(data []byte) (Labels, error) { return contract.Decode[Labels](data) }
+func (v Labels) Validate() error               { return contractValidateLabels(v, 0) }
+func contractValidateLabels(v Labels, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v == nil {
+		return contract.At("", fmt.Errorf("required record is nil"))
+	}
+	for key, item := range v {
+		_ = item
+		if err := contract.Text(key, 0, -1, ""); err != nil {
+			return contract.At("", err)
+		}
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%q]", "", key), err)
+		}
+	}
+	return nil
+}
+func (v *Labels) UnmarshalJSON(data []byte) error {
+	value, err := func(b []byte) (map[string]string, error) { return contract.Record(b, contract.Decode[string], false) }(data)
+	if err != nil {
+		return err
+	}
+	next := Labels(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Labels) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(map[string]string(v))
 }
 func DecodePatch(data []byte) (Patch, error) { return contract.Decode[Patch](data) }
 func (v Patch) Validate() error              { return contractValidatePatch(v, 0) }
@@ -246,6 +409,120 @@ func (v TimestampPatch) MarshalJSON() ([]byte, error) {
 		fields = append(fields, contract.Field{Name: "at", Value: v.At})
 	}
 	return contract.EncodeObject(fields)
+}
+func DecodeDefaultsMsgpack(data []byte) (Defaults, error) {
+	return contract.DecodeMsgpack[Defaults](data)
+}
+func (v *Defaults) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next Defaults
+	next.Items = make([]string, 0)
+	{
+		raw, present := obj["items"]
+		delete(obj, "items")
+		if present {
+			value, err := func(b []byte) ([]string, error) { return contract.MsgpackList(b, contract.DecodeMsgpack[string]) }(raw)
+			if err != nil {
+				return contract.At("items", err)
+			}
+			next.Items = value
+		}
+	}
+	next.Labels = make(Labels, 0)
+	{
+		raw, present := obj["labels"]
+		delete(obj, "labels")
+		if present {
+			value, err := contract.DecodeMsgpack[Labels](raw)
+			if err != nil {
+				return contract.At("labels", err)
+			}
+			next.Labels = value
+		}
+	}
+	{
+		raw, present := obj["enabled"]
+		delete(obj, "enabled")
+		if present {
+			value, err := contract.DecodeMsgpack[bool](raw)
+			if err != nil {
+				return contract.At("enabled", err)
+			}
+			next.Enabled = value
+		}
+	}
+	{
+		raw, present := obj["count"]
+		delete(obj, "count")
+		if present {
+			value, err := contract.DecodeMsgpack[uint32](raw)
+			if err != nil {
+				return contract.At("count", err)
+			}
+			next.Count = value
+		}
+	}
+	{
+		raw, present := obj["text"]
+		delete(obj, "text")
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("text", err)
+			}
+			next.Text = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Defaults) MarshalMsgpack() ([]byte, error) {
+	if v.Items == nil {
+		v.Items = make([]string, 0)
+	}
+	if v.Labels == nil {
+		v.Labels = make(Labels, 0)
+	}
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "items", Value: v.Items})
+	fields = append(fields, contract.Field{Name: "labels", Value: v.Labels})
+	fields = append(fields, contract.Field{Name: "enabled", Value: v.Enabled})
+	fields = append(fields, contract.Field{Name: "count", Value: v.Count})
+	fields = append(fields, contract.Field{Name: "text", Value: v.Text})
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeLabelsMsgpack(data []byte) (Labels, error) { return contract.DecodeMsgpack[Labels](data) }
+func (v *Labels) UnmarshalMsgpack(data []byte) error {
+	value, err := func(b []byte) (map[string]string, error) {
+		return contract.MsgpackRecord(b, contract.DecodeMsgpack[string], false)
+	}(data)
+	if err != nil {
+		return err
+	}
+	next := Labels(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Labels) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeMsgpack(map[string]string(v))
 }
 func DecodePatchMsgpack(data []byte) (Patch, error) { return contract.DecodeMsgpack[Patch](data) }
 func (v *Patch) UnmarshalMsgpack(data []byte) error {
