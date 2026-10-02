@@ -1988,19 +1988,19 @@ internal/plugins/filebrowser -> internal/plugin
 internal/plugins/skills -> internal/plugin, internal/core
 internal/plugins/todo -> internal/plugin, internal/host
 internal/provider -> internal/core, internal/gates, internal/contract
-internal/providers/anthropicapi -> internal/core, internal/provider
-internal/providers/openaiapi -> internal/core, internal/provider
-internal/providers/google -> internal/core, internal/provider
-internal/providers/codex -> internal/core, internal/provider
-internal/providers/grokbuild -> internal/core, internal/provider
-internal/providers/claudecode -> internal/core, internal/provider, internal/host
+internal/providers/anthropicapi -> internal/core, internal/provider, internal/contract
+internal/providers/openaiapi -> internal/core, internal/provider, internal/contract
+internal/providers/google -> internal/core, internal/provider, internal/contract
+internal/providers/codex -> internal/core, internal/provider, internal/contract
+internal/providers/grokbuild -> internal/core, internal/provider, internal/contract
+internal/providers/claudecode -> internal/core, internal/provider, internal/host, internal/contract
 internal/agent/store -> internal/framewire, internal/core, internal/provider, internal/host
 internal/agent/transcript -> internal/framewire, internal/agent/store, internal/core, internal/provider
 internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host
 internal/agent/tools -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/core, internal/provider, internal/host
 internal/agent/server -> internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/core, internal/gates, internal/provider, internal/host
 internal/runner -> internal/commandwire, internal/cmdsdk, internal/runner/host, internal/runner/jobs, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs, internal/runner/shell
-internal/runner/process -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runnerwire
+internal/runner/process -> internal/artifacts, internal/commandwire, internal/cmdsdk, internal/runnerwire, internal/contract
 internal/runner/host -> internal/artifacts, internal/cmdsdk, internal/runner/process, internal/runnerwire
 internal/runner/jobs -> internal/commandwire, internal/cmdsdk, internal/declare, internal/runner/process, internal/runnerwire, internal/runner/cmdpkgs
 internal/runner/shell -> internal/commandwire, internal/cmdsdk, internal/runner/process, internal/runnerwire
@@ -2060,7 +2060,7 @@ internal/backend/backendtest -> internal/backend, internal/backend/accounts, int
 internal/backend/blobs/blobstest -> internal/backend/blobs, internal/agent/store, internal/core, internal/webapi
 internal/backend/database/databasetest -> internal/backend/database, internal/agent/store, internal/agent/transcript, internal/core, internal/gates, internal/backend/remotehost, internal/machinewire, internal/runnerwire, internal/host, internal/webapi, internal/plugin
 internal/backend/edge/edgetest -> internal/backend/edge, internal/framewire, internal/agent/store, internal/artifacts, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/blobs, internal/backend/providers, internal/backend/runners, internal/backend/usershard, internal/backend/database, internal/backend/pagesync, internal/commandwire, internal/core, internal/backend/remotehost, internal/provider, internal/runnerwire, internal/host, internal/webapi, internal/backend/plugins, internal/plugin, internal/backend/usershard/usershardtest
-internal/backend/remotehost/remotehosttest -> internal/backend/remotehost, internal/commandwire, internal/declare, internal/core, internal/gates, internal/runnerwire, internal/host, internal/commandwire/commandwiretest, internal/host/hosttest
+internal/backend/remotehost/remotehosttest -> internal/backend/remotehost, internal/commandwire, internal/declare, internal/core, internal/gates, internal/runnerwire, internal/host, internal/commandwire/commandwiretest, internal/host/hosttest, internal/programtest
 internal/backend/runners/runnerstest -> internal/backend/runners, internal/artifacts, internal/backend/blobs, internal/backend/database, internal/backend/pagesync, internal/commandwire, internal/gates, internal/backend/remotehost, internal/runnerwire, internal/host, internal/webapi
 internal/backend/usershard/usershardtest -> internal/backend/usershard, internal/agent/server, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/idlewatch, internal/backend/blobs, internal/backend/plugins, internal/backend/providers, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/declare, internal/core, internal/gates, internal/plugin, internal/backend/remotehost, internal/machinewire, internal/provider, internal/providers/claudecode, internal/runnerwire, internal/host, internal/webapi
 internal/cmdpkg/browser/chrome/cdp/cdptest -> internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/browserop, internal/commandwire, internal/cmdsdk, internal/artifacts, internal/core
