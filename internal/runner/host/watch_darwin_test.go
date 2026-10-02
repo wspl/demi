@@ -33,6 +33,15 @@ func TestFSEventsIgnoresReadsAndReleasesNativeStream(t *testing.T) {
 			break
 		}
 	}
+	// The first notification can precede the initial write's remaining
+	// notifications. A later file event separates that write from the read.
+	writeFixture(t, root, "write-boundary", "event\n")
+	for {
+		event := <-events
+		if event.Path == filepath.Join(root, "write-boundary") {
+			break
+		}
+	}
 	if _, err := os.ReadFile(filepath.Join(root, "read-only")); err != nil {
 		t.Fatal(err)
 	}

@@ -35,6 +35,12 @@ func (t *Table) run(spec TaskSpec, entry *taskEntry) (frame []byte, err error) {
 	case *ProcessCommand:
 		started, err := process.Spawn(ctx, process.SpawnOptions{Command: command.Command, Args: command.Args, ProcessGroup: command.ProcessGroup, Cwd: spec.Cwd, Env: spec.Env})
 		if err != nil {
+			// Only a cancelled setup caused by an explicit kill has a signal
+			// result; executable and cwd failures retain their classification.
+			if errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errTaskKilled) {
+				signal := "SIGKILL"
+				return runnerwire.Encode(&runnerwire.SpawnExit{SpawnID: spec.ID, Signal: &signal})
+			}
 			return rawSpawnFailure(spec.ID, err)
 		}
 		child = taskExecution{input: started.Input, output: started.Output, cancel: started.Cancel, signal: started.Signal, wait: func(ctx context.Context) (process.Exit, *string) { return started.Wait(ctx), nil }}

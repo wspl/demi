@@ -718,8 +718,10 @@ Service                        Runner                          Backend
   service may therefore reserve a few ahead: a number it never uses is a gap,
   never a repeat. At most 32 requests are answered at a time on a connection;
   one beyond that, or one that repeats an id still in flight, is refused.
-- The stream ends with the service. Service shutdown ends it, and a request
-  still waiting fails. A lost backend connection stops the runner's services
+- The stream ends with the service. Service shutdown ends it once the
+  service's invocations have drained and its handler has closed, so work that
+  finishes during the drain can still be answered; a request still waiting then
+  fails. A lost backend connection stops the runner's services
   in any case ([Command lifetime](runner.md#command-lifetime)).
 
 ### User streams
@@ -983,7 +985,8 @@ none.
 `"provider": "s3"`, the backend publishes every release to that bucket before
 it accepts requests, and each release must carry all six targets. `prefix`, the
 key prefix of the published objects, defaults to `native` and is one or more
-`/`-separated segments of letters, digits, `_` and `-`.
+`/`-separated segments of letters, digits, `_` and `-`, starting with a letter
+or digit.
 
 ```json
 {

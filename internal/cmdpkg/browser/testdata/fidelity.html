@@ -1,0 +1,25 @@
+<!doctype html>
+<style>body { margin: 0; height: 3000px }</style>
+<p id="top">Fidelity</p>
+<script>
+const source = 'postMessage({ userAgent: navigator.userAgent, webdriver: navigator.webdriver ?? null, language: navigator.language, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })';
+const worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
+worker.onmessage = event => {
+  window.report = {
+    webdriver: navigator.webdriver,
+    userAgent: navigator.userAgent,
+    brands: navigator.userAgentData.brands.map(entry => entry.brand),
+    language: navigator.language,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    defaultLocale: new Intl.DateTimeFormat().resolvedOptions().locale,
+    scrollbar: innerWidth - document.documentElement.clientWidth,
+    inner: [innerWidth, innerHeight],
+    outer: [outerWidth, outerHeight],
+    devicePixelRatio,
+    hover: matchMedia('(hover: hover)').matches,
+    finePointer: matchMedia('(pointer: fine)').matches,
+    worker: event.data,
+  };
+  worker.terminate();
+};
+</script>

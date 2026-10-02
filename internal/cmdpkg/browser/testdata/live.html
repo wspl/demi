@@ -1,0 +1,30 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { margin: 0; font: 16px sans-serif; height: 3000px }
+#spin { position: absolute; left: 0; top: 400px; width: 40px; height: 40px; background: red }
+</style>
+<input id="text" style="position: absolute; left: 10px; top: 10px; width: 300px; height: 30px">
+<textarea id="area" style="position: absolute; left: 10px; top: 60px; width: 300px; height: 60px"></textarea>
+<select id="choice" style="position: absolute; left: 10px; top: 140px; width: 200px; height: 30px">
+  <option value="a">A</option><option value="b">B</option>
+</select>
+<input id="file" type="file" style="position: absolute; left: 10px; top: 190px">
+<button id="alert" style="position: absolute; left: 10px; top: 240px; width: 100px; height: 30px"
+  onclick="alert('hello')">Alert</button>
+<p id="copy" style="position: absolute; left: 10px; top: 290px">copy me</p>
+<div id="stripes" style="position: absolute; left: 150px; top: 380px; width: 200px; height: 60px;
+  background: repeating-linear-gradient(90deg, #000 0, #000 .5px, #fff .5px, #fff 1px)"></div>
+<button id="write" style="position: absolute; left: 10px; top: 340px; width: 100px; height: 30px"
+  onclick="navigator.clipboard.writeText('written').then(() => window.wrote = 'ok', error => window.wrote = String(error))">Write</button>
+<div id="spin"></div>
+<script>
+window.events = [];
+for (const type of ['keydown', 'keypress', 'keyup', 'input', 'change', 'paste', 'touchstart', 'touchend', 'mousedown', 'mouseup'])
+  addEventListener(type, event => events.push(`${type}:${event.key ?? event.target.id ?? ''}`), true);
+addEventListener('paste', event => {
+  window.pasted = { text: event.clipboardData.getData('text/plain'), html: event.clipboardData.getData('text/html') };
+});
+let x = 0;
+setInterval(() => { spin.style.left = `${(x = (x + 5) % 500)}px`; }, 16);
+</script>

@@ -235,7 +235,7 @@ func TestReentrantEvents(t *testing.T) {
 				seen = append(seen, fmt.Sprintf("queue %d", len(e.Queue)))
 			case *session.PhaseChanged:
 				seen = append(seen, "phase "+string(e.Phase))
-			case *session.ActionFailed, *session.ErrorEvent, *session.PendingSteersChanged, *session.RetryScheduled, *session.TranscriptChanged:
+			case *session.ActionFailed, *session.ErrorEvent, *session.PendingSteersChanged, *session.RetryScheduled, *session.TranscriptChanged, *session.EditCommitted:
 			}
 		})
 		defer second.Release()
