@@ -1,9 +1,10 @@
 # serde_json reference bytes
 
 `escaping.jsonl` was captured from serde_json 1.0.151, the Cargo.lock version,
-with `cargo run --quiet --offline --manifest-path oracle/Cargo.toml` (stdout).
-The small oracle is retained for reproducibility; Go tests only read the
-captured fixture and never build Rust. It covers HTML characters, JavaScript
+by a small Rust oracle run once during the migration (stdout); the oracle is
+kept outside the repository, in the migration's reference directory
+(`gomig-ref/oracles/contract/oracle`), since the repository holds no Rust. Go
+tests only read the captured fixture. It covers HTML characters, JavaScript
 line separators, quotes/backslashes, every ASCII control, non-ASCII text,
 and literal backslash escapes.
 
