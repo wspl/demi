@@ -26,9 +26,7 @@ second contract shape by hand, even while the two would still agree.
 A contract package holds the types of one wire or data family, their tags
 and markers, and generated code. It has no IO and no goroutines. Both Go
 ends import the same package; TypeScript ends use its generated schemas.
-[Packages](crates-and-packages.md) owns package responsibilities; the
-[migration package map](../delivery/go-migration.md#package-map) names the Go
-packages.
+[Packages](crates-and-packages.md) owns package names and responsibilities.
 
 | Wire or stored data | Contract owner | Ends |
 |---|---|---|
@@ -258,7 +256,7 @@ These are the points where values enter, and what a failure does:
 | A capture extension event | `browserop.Decode<Type>` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
 | A row or JSON column read from a database | `internal/backend/database`, through the owning contract's generated decoder | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
 | A sealed credential document | The vault, through its generated document decoder | The error names the field path and the kind of failure, never the value ([Providers](../providers/providers.md)) |
-| Configuration from arguments and the environment | Each program's generated configuration decoder, at startup | The program does not start, and the error names the variable |
+| Configuration from arguments and the environment | Each program's configuration, parsed with the `flag` package and its environment variables at startup | The program does not start, and the error names the variable |
 | A tool call's input from the model | The tool | The model receives the tool's error ([Tools](../agent/runtime.md#tools)) |
 | A vendor API response | The provider package's two-step decode | An unknown `type` is skipped; a known one with a malformed payload is a protocol failure that is never retried automatically ([Providers](../providers/providers.md)) |
 
@@ -276,9 +274,7 @@ Go types + JSON tags + markers
 
 - **Generation.** `bun run contracts` runs `go generate ./...` and then
   `go run ./tools/contractgen -ts`. Each contract package has a generation
-  directive invoking the repository's generator for that package. During
-  migration every Go invocation uses `CGO_ENABLED=0` and
-  `GOFLAGS=-mod=readonly`. Scripts that need TypeScript (`typecheck`,
+  directive invoking the repository's generator for that package. Scripts that need TypeScript (`typecheck`,
   `typecheck:web`, `test`, `web:dev`, `web:gallery` and `web:build`) run
   generation first. Ordinary Go builds use committed generated Go and need
   no JavaScript tooling; neither builds nor generation require JSON v2.
