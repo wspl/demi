@@ -11,7 +11,7 @@ import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDia
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { pluginSettingsPage, withPluginSections } from '@demicodes/web-ui/plugins/slots'
-import { PLUGIN_PAGES } from '../plugins/pages'
+import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/host'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { reportError } from '@demicodes/web-ui/infra/errors'
