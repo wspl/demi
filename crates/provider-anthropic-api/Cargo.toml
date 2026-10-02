@@ -17,7 +17,7 @@ demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
 async-stream = "0.3"
 futures-util.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { workspace = true, features = ["rustls", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

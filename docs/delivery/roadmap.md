@@ -78,7 +78,7 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
    their user has them on; `plugin-skills` with its sources, its values and
    blobs, the Host directories with their installation before a job, the Host
    file reads that never wake a Host, project skills, the catalog, and the
-   page call route with the `plugin` sync message.
+   page call route with the `plugin` sync message. Done.
 5. **The plugins' pages.** `PluginClient`, `usePlugin()` and the slots in
    `web-ui`; `@demicodes/plugin-browser` (the `browser` work panel kind),
    `@demicodes/plugin-expose` (the conversation header tool) and

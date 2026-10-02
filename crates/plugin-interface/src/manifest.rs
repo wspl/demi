@@ -92,6 +92,11 @@ pub struct Manifest {
     /// Its subagent profiles (`plugins.md` § Profiles).
     #[serde(default)]
     pub profiles: Vec<Profile>,
+    /// Whether it is a context source, asked before each provider request
+    /// of a node while its user has it on (`plugins.md` § Prompt text and
+    /// context).
+    #[serde(default)]
+    pub context: bool,
     /// Its user streams (`plugins.md` § Calling its command package).
     #[serde(default)]
     pub streams: Vec<Stream>,
@@ -109,6 +114,7 @@ impl Manifest {
             description: description.into(),
             commands: Vec::new(),
             profiles: Vec::new(),
+            context: false,
             streams: Vec::new(),
             page: None,
         }

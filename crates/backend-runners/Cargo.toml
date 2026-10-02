@@ -35,7 +35,7 @@ data-encoding = "2"
 futures-util.workspace = true
 hex = "0.4"
 jiff.workspace = true
-object_store = { version = "0.13", default-features = false, features = ["aws", "fs"] }
+object_store = { workspace = true, features = ["aws", "fs"] }
 percent-encoding = "2"
 rand = "0.9"
 serde.workspace = true

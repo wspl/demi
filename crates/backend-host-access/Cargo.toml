@@ -27,6 +27,7 @@ demi-shared-gates = { path = "../shared-gates" }
 demi-backend-remote-host = { path = "../backend-remote-host" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
+demi-plugin-interface = { path = "../plugin-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 bytes.workspace = true
 futures-util.workspace = true
