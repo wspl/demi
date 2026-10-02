@@ -1,10 +1,11 @@
 package declare
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/wspl/demi/internal/contract"
 )
 
 // HelpDefaults is the opening paragraph of the model's command documentation.
@@ -136,7 +137,7 @@ func fieldSyntax(field string, schema any, source inputSource) string {
 				labels[i] = text
 			} else {
 				// A compiled JSON schema's enum values are valid JSON and always marshal.
-				encoded, _ := json.Marshal(value)
+				encoded, _ := contract.EncodeJSON(value)
 				labels[i] = string(encoded)
 			}
 		}

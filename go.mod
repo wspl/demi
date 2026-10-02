@@ -21,6 +21,10 @@ require (
 
 require (
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
+	github.com/chromedp/cdproto v0.0.0-20260922220944-a19bff23514f // indirect
+	github.com/chromedp/sysutil v1.1.0 // indirect
+	github.com/coder/websocket v1.8.15 // indirect
+	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
