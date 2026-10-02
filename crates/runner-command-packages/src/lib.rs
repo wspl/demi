@@ -17,8 +17,10 @@ use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "testing")]
-pub use installs::{Installs, InstallsReceiver};
+pub use installs::Installs;
+pub use installs::InstallsReceiver;
 pub use invocations::Invoking;
+#[cfg(feature = "testing")]
 pub use registry::Decision;
 pub use registry::{Resident, ServiceHandle, ServiceLease, ServiceRegistry};
 
