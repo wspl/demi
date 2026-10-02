@@ -76,7 +76,10 @@ func (v CreateArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func CreateArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.create`: creates a new file; an existing file is left as it is.\",\"properties\":{\"content\":{\"description\":\"File content\",\"type\":\"string\"},\"path\":{\"description\":\"Target file path\",\"type\":\"string\"}},\"required\":[\"path\",\"content\"],\"title\":\"CreateArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.create`: creates a new file; an existing file is left as it is.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Target file path\"},\"content\":{\"type\":\"string\",\"description\":\"File content\"}},\"required\":[\"path\",\"content\"],\"title\":\"CreateArgs\",\"type\":\"object\"}")
+}
+func CreateArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.create`: creates a new file; an existing file is left as it is.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Target file path\"},\"content\":{\"type\":\"string\",\"description\":\"File content\"}},\"required\":[\"path\",\"content\"],\"title\":\"CreateArgs\",\"type\":\"object\"}")
 }
 func DecodeEditArgs(data []byte) (EditArgs, error) { return contract.Decode[EditArgs](data) }
 func (v EditArgs) Validate() error                 { return contractValidateEditArgs(v, 0) }
@@ -200,7 +203,10 @@ func (v EditArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func EditArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.edit`: replaces one occurrence of exact text in an existing file.\",\"properties\":{\"context\":{\"description\":\"Line number used to choose the nearest occurrence\",\"format\":\"uint\",\"minimum\":1,\"type\":\"integer\"},\"new\":{\"description\":\"Replacement text\",\"type\":\"string\"},\"occurrence\":{\"description\":\"1-based occurrence to replace\",\"format\":\"uint\",\"minimum\":1,\"type\":\"integer\"},\"old\":{\"description\":\"Exact text to replace\",\"minLength\":1,\"type\":\"string\"},\"path\":{\"description\":\"Target file path\",\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\"],\"title\":\"EditArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.edit`: replaces one occurrence of exact text in an existing file.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Target file path\"},\"old\":{\"type\":\"string\",\"description\":\"Exact text to replace\",\"minLength\":1},\"new\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"occurrence\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"description\":\"1-based occurrence to replace\"},\"context\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"description\":\"Line number used to choose the nearest occurrence\"}},\"required\":[\"path\",\"old\",\"new\"],\"title\":\"EditArgs\",\"type\":\"object\"}")
+}
+func EditArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.edit`: replaces one occurrence of exact text in an existing file.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Target file path\"},\"old\":{\"type\":\"string\",\"description\":\"Exact text to replace\",\"minLength\":1},\"new\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"occurrence\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"description\":\"1-based occurrence to replace\"},\"context\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"description\":\"Line number used to choose the nearest occurrence\"}},\"required\":[\"path\",\"old\",\"new\"],\"title\":\"EditArgs\",\"type\":\"object\"}")
 }
 func DecodePatchArgs(data []byte) (PatchArgs, error) { return contract.Decode[PatchArgs](data) }
 func (v PatchArgs) Validate() error                  { return contractValidatePatchArgs(v, 0) }
@@ -254,7 +260,10 @@ func (v PatchArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func PatchArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.patch`: applies a unified diff to one or more files.\",\"properties\":{\"patch\":{\"description\":\"Unified diff content\",\"type\":\"string\"}},\"required\":[\"patch\"],\"title\":\"PatchArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.patch`: applies a unified diff to one or more files.\",\"properties\":{\"patch\":{\"type\":\"string\",\"description\":\"Unified diff content\"}},\"required\":[\"patch\"],\"title\":\"PatchArgs\",\"type\":\"object\"}")
+}
+func PatchArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.patch`: applies a unified diff to one or more files.\",\"properties\":{\"patch\":{\"type\":\"string\",\"description\":\"Unified diff content\"}},\"required\":[\"patch\"],\"title\":\"PatchArgs\",\"type\":\"object\"}")
 }
 func DecodeReadArgs(data []byte) (ReadArgs, error) { return contract.Decode[ReadArgs](data) }
 func (v ReadArgs) Validate() error                 { return contractValidateReadArgs(v, 0) }
@@ -308,5 +317,8 @@ func (v ReadArgs) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func ReadArgsJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.read`: writes the file's bytes to stdout.\",\"properties\":{\"path\":{\"description\":\"File path to read\",\"type\":\"string\"}},\"required\":[\"path\"],\"title\":\"ReadArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.read`: writes the file's bytes to stdout.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"File path to read\"}},\"required\":[\"path\"],\"title\":\"ReadArgs\",\"type\":\"object\"}")
+}
+func ReadArgsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`file.read`: writes the file's bytes to stdout.\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"File path to read\"}},\"required\":[\"path\"],\"title\":\"ReadArgs\",\"type\":\"object\"}")
 }

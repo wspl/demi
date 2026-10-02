@@ -74,9 +74,12 @@
 // showsInPlace(mediaType), with ASCII extension case folding and either path
 // separator. It must have mediaType, extensions and inPlace fields.
 //
-// +demi:schema emits <Type>JSONSchema() json.RawMessage in contract_gen.go.
-// Each call returns fresh bytes: draft 2020-12, no $schema, inline subschemas,
-// and optional properties that allow null only with +demi:nullable. Objects, tagged unions,
+// +demi:schema emits <Type>JSONSchema() for command declarations and
+// <Type>PluginJSONSchema() for plugin page/stream declarations in contract_gen.go.
+// Both return json.RawMessage; callers select the form for that use. Plugin
+// schemas retain named $defs/$ref, including anyOf for nullable references.
+// Each call returns fresh draft 2020-12 bytes without $schema. The command
+// form inlines subschemas; optional properties allow null only with +demi:nullable. Objects, tagged unions,
 // records, arrays, enums, patterns, lengths and numeric bounds use the same
 // checked model as codecs and Zod. Root titles use type names; type and field
 // doc comments supply descriptions, with field comments overriding type text.
@@ -86,7 +89,8 @@
 // shapes use # for the root or $defs references for recursive subschemas.
 // Custom checks are Go-only and omitted from JSON Schema and Zod. Normalized
 // string formats, base64 rules and bytes remain unsupported for schema roots
-// (none occurs in the built-in command schemas).
+// (none occurs in the built-in command schemas). Explicit codec string types
+// emit their string markers in Schema and Zod; their codecs own Go validation.
 // Decoders additionally check JSON tokens, Unicode, Go widths and canonical
 // timestamps; a schema's format annotation does not carry those checks.
 //

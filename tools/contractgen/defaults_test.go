@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"reflect"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -107,15 +109,8 @@ func TestDefaultFields(t *testing.T) {
 		})
 	}
 	// Schemars emits Default::default() as metadata, without making null legal.
-	want := `{"properties":{"count":{"default":0,"format":"uint32","maximum":10,"minimum":0,"type":"integer"},"enabled":{"default":false,"type":"boolean"},"items":{"default":[],"items":{"type":"string"},"maxItems":2,"type":"array"},"labels":{"additionalProperties":{"type":"string"},"default":{},"type":"object"},"text":{"default":"","maxLength":4,"type":"string"}},"title":"Defaults","type":"object","additionalProperties":false}`
-	var gotValue, wantValue any
-	if err := json.Unmarshal(raw, &gotValue); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(want), &wantValue); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(gotValue, wantValue) {
+	want := `{"additionalProperties":false,"properties":{"items":{"type":"array","items":{"type":"string"},"maxItems":2,"default":[]},"labels":{"type":"object","additionalProperties":{"type":"string"},"default":{}},"enabled":{"type":"boolean","default":false},"count":{"type":"integer","format":"uint32","minimum":0,"maximum":10,"default":0},"text":{"type":"string","maxLength":4,"default":""}},"title":"Defaults","type":"object"}`
+	if string(raw) != want {
 		t.Fatalf("schema = %s; want %s", raw, want)
 	}
 }
@@ -126,6 +121,38 @@ func TestImportedExposeCodec(t *testing.T) {
 	if err := generate(t.Context(), []string{"./testdata/external"}, false, "", true); err != nil {
 		t.Fatal(err)
 	}
+	dest := t.TempDir()
+	if err := generate(t.Context(), []string{"./testdata/external"}, true, dest, false); err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(filepath.Join(dest, "plugin-external", "plugin.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rust plugin-expose exports this exact plain string form. Validation and
+	// bare-port normalization belong to the Go codec, not the page schema.
+	if !strings.Contains(string(source), "const exposeAddressSchema = z.string()\n") {
+		t.Fatalf("expose address mapping: %s", source)
+	}
+	// Captured from the Rust expose page's $defs.ExposeAddress.
+	expected, err := os.ReadFile("testdata/external/expose-address.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(external.ExposeJSONSchema(), &schema); err != nil {
+		t.Fatal(err)
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, expected); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(schema.Properties["address"], compact.Bytes()) {
+		t.Fatalf("expose address schema: %s; Rust: %s", schema.Properties["address"], compact.Bytes())
+	}
+
 	value, err := external.DecodeExpose([]byte(`{"address":"08080"}`))
 	if err != nil {
 		t.Fatal(err)

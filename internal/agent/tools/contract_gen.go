@@ -76,7 +76,10 @@ func (v commandInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func commandInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"commandId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"description\":{\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\",\"type\":\"string\"}},\"required\":[\"commandId\"],\"title\":\"commandInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"commandId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"description\":{\"type\":\"string\",\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\"}},\"required\":[\"commandId\"],\"title\":\"commandInput\",\"type\":\"object\"}")
+}
+func commandInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"commandId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"description\":{\"type\":\"string\",\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\"}},\"required\":[\"commandId\"],\"title\":\"commandInput\",\"type\":\"object\"}")
 }
 func decodeDelayMS(data []byte) (delayMS, error) { return contract.Decode[delayMS](data) }
 func (v delayMS) Validate() error                { return contractValidateDelayMS(v, 0) }
@@ -213,7 +216,10 @@ func (v shellExecInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func shellExecInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"description\":{\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\",\"type\":\"string\"},\"script\":{\"type\":\"string\"},\"shellId\":{\"default\":null,\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"timeoutMs\":{\"format\":\"uint32\",\"maximum\":600000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"script\",\"timeoutMs\"],\"title\":\"shellExecInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"script\":{\"type\":\"string\"},\"description\":{\"type\":\"string\",\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\"},\"shellId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"default\":null},\"timeoutMs\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"maximum\":600000}},\"required\":[\"script\",\"timeoutMs\"],\"title\":\"shellExecInput\",\"type\":\"object\"}")
+}
+func shellExecInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"DelayMs\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"maximum\":600000}},\"additionalProperties\":false,\"properties\":{\"script\":{\"type\":\"string\"},\"description\":{\"type\":\"string\",\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\"},\"shellId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"default\":null},\"timeoutMs\":{\"$ref\":\"#/$defs/DelayMs\"}},\"required\":[\"script\",\"timeoutMs\"],\"title\":\"shellExecInput\",\"type\":\"object\"}")
 }
 func decodeShellWriteInput(data []byte) (shellWriteInput, error) {
 	return contract.Decode[shellWriteInput](data)
@@ -304,7 +310,10 @@ func (v shellWriteInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func shellWriteInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"commandId\":{\"format\":\"uint64\",\"minimum\":0,\"type\":\"integer\"},\"description\":{\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\",\"type\":\"string\"},\"stdin\":{\"minLength\":1,\"type\":\"string\"}},\"required\":[\"commandId\",\"stdin\"],\"title\":\"shellWriteInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"commandId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"description\":{\"type\":\"string\",\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\"},\"stdin\":{\"type\":\"string\",\"minLength\":1}},\"required\":[\"commandId\",\"stdin\"],\"title\":\"shellWriteInput\",\"type\":\"object\"}")
+}
+func shellWriteInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Stdin\":{\"type\":\"string\"}},\"additionalProperties\":false,\"properties\":{\"commandId\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"description\":{\"type\":\"string\",\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\"},\"stdin\":{\"$ref\":\"#/$defs/Stdin\",\"minLength\":1}},\"required\":[\"commandId\",\"stdin\"],\"title\":\"shellWriteInput\",\"type\":\"object\"}")
 }
 func decodeStdin(data []byte) (stdin, error) { return contract.Decode[stdin](data) }
 func (v stdin) Validate() error              { return contractValidateStdin(v, 0) }
@@ -408,5 +417,8 @@ func (v yieldInput) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(fields)
 }
 func yieldInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"description\":{\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\",\"type\":\"string\"},\"durationMs\":{\"format\":\"uint32\",\"maximum\":600000,\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"durationMs\"],\"title\":\"yieldInput\",\"type\":\"object\"}")
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"description\":{\"type\":\"string\",\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\"},\"durationMs\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"maximum\":600000}},\"required\":[\"durationMs\"],\"title\":\"yieldInput\",\"type\":\"object\"}")
+}
+func yieldInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"DelayMs\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1,\"maximum\":600000}},\"additionalProperties\":false,\"properties\":{\"description\":{\"type\":\"string\",\"description\":\"Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.\"},\"durationMs\":{\"$ref\":\"#/$defs/DelayMs\"}},\"required\":[\"durationMs\"],\"title\":\"yieldInput\",\"type\":\"object\"}")
 }

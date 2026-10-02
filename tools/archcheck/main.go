@@ -22,6 +22,9 @@ var errMissingGraph = errors.New("missing ### Go packages text block")
 // programTest builds or finds the repository's programs for any test.
 const programTest = "internal/programtest"
 
+// contractRuntime is the runtime of generated contract code.
+const contractRuntime = "internal/contract"
+
 type graph map[string]map[string]bool
 
 func main() {
@@ -216,6 +219,11 @@ func checkTarget(ctx context.Context, dir string, rules graph, seen map[string]b
 			// Any test may get the repository's programs from programtest
 			// (testing.md); production code may not.
 			if target == programTest && pkg.ForTest != "" {
+				continue
+			}
+			// Generated contract code imports its runtime from any package
+			// (crates-and-packages.md § Go packages).
+			if target == contractRuntime {
 				continue
 			}
 			if !allowed[target] {
