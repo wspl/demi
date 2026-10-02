@@ -12,7 +12,7 @@ The runner keeps control work apart from the work it controls. Its control
 thread reads the backend connection, routes each message to the work it
 belongs to, and drives the byte paths of pipes and streams, which only wait on
 the network; it never blocks. File and git requests, hashing, and other
-blocking work run on blocking threads a few at a time ([Load](#load)), and
+work that blocks run in goroutines of their own, a few at a time ([Load](#load)), and
 shell jobs run on a shell runtime of their own ([Shell jobs](#shell-jobs)). A
 burst of requests, a slow disk, or a busy job therefore never stops the runner
 from reading its connection. [Concurrency](../architecture/concurrency.md#runner)
@@ -148,7 +148,7 @@ when its temporary file goes fails instead of replacing the file.
 
 A `git_changes` request lists the uncommitted changes under a directory, and
 `git_show` sends a file as the last commit has it. The runner answers both in
-process with gitoxide; the device needs no git executable. Both name the
+process with go-git; the device needs no git executable. Both name the
 directory as `root`; a `git_show` also names the file's path relative to it
 and an output pipe, and streams the whole file into the pipe like any
 [file contents](#file-contents). Git stores the file compressed, often as the
@@ -219,7 +219,7 @@ whole tree. `watched` reports whether a watch is running.
 The runner keeps at most eight watched directories per connection and drops one
 after fifteen minutes without a request; closing the connection drops them all.
 
-Working-tree work runs on blocking threads off the connection's control thread.
+Working-tree work runs in its own goroutines, off the connection's reader.
 At most two computations run at a time; a request beyond that waits for one to
 finish ([Load](#load)), and requests for the same directory share one
 computation. A computation stops at its next check when the connection closes
@@ -337,8 +337,8 @@ slow reader holds back only itself and memory grows only with what runs. An
 agent's `demi browser wait` or a user's open live view holds nothing another
 command needs.
 
-Host work that finishes on its own runs on blocking threads, off the control
-thread, a few at a time, and a request beyond that waits for a slot:
+Host work that finishes on its own runs in its own goroutines, off the
+connection's reader, a few at a time, and a request beyond that waits for a slot:
 
 | Work | At a time |
 | --- | --- |
