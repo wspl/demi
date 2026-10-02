@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -112,10 +111,8 @@ func TestMalformedHashesReturnErrors(t *testing.T) {
 }
 
 func TestHashAdmissionCancellationReleasesCapacity(t *testing.T) {
-	previous := runtime.GOMAXPROCS(1)
-	defer runtime.GOMAXPROCS(previous)
 	synctest.Test(t, func(t *testing.T) {
-		h, err := NewPasswordHasher(t.Context())
+		h, err := newPasswordHasher(t.Context(), 1)
 		if err != nil {
 			t.Fatal(err)
 		}

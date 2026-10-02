@@ -34,7 +34,12 @@ type PasswordHasher struct {
 
 // NewPasswordHasher makes the fixed dummy hash used for unknown accounts.
 func NewPasswordHasher(ctx context.Context) (*PasswordHasher, error) {
-	h := &PasswordHasher{permits: semaphore.NewWeighted(int64(runtime.GOMAXPROCS(0)))}
+	return newPasswordHasher(ctx, runtime.GOMAXPROCS(0))
+}
+
+// newPasswordHasher initializes password hashing with the supplied admission limit.
+func newPasswordHasher(ctx context.Context, permits int) (*PasswordHasher, error) {
+	h := &PasswordHasher{permits: semaphore.NewWeighted(int64(permits))}
 	secret, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("generate dummy password: %w", err)
