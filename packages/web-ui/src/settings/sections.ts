@@ -8,8 +8,7 @@ import {
   Monitor,
   Plug,
   Settings2,
-  Sparkles,
-  WandSparkles
+  Sparkles
 } from '@lucide/vue'
 import { IN_DEVELOPMENT } from '../ui/disabled'
 import type { SettingsNavGroup, SettingsTab } from './types'
@@ -87,13 +86,6 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'stdio',
           'server'
         ],
-        ...deferred
-      },
-      {
-        id: 'skills',
-        label: 'Skills',
-        icon: WandSparkles,
-        keywords: ['skill', 'workflow', 'git', 'SKILL.md'],
         ...deferred
       },
     ],

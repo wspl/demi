@@ -1514,7 +1514,7 @@ runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-proces
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
 command-package-claude-code -> shared-artifacts, command-package-claude-code-protocol, command-protocol, command-sdk
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, plugin-browser, plugin-expose
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, plugin-browser, plugin-expose, plugin-skills
 ```
 
 ### TypeScript packages
@@ -1526,10 +1526,11 @@ protocol -> none
 utils -> none
 conversation-client -> protocol, utils
 web-ui -> conversation-client, protocol, utils
-plugin-browser -> protocol
-plugin-expose -> none
-web -> plugin-browser, plugin-expose, protocol, utils, web-ui
-web-gallery -> protocol, utils, web-ui
+plugin-browser -> protocol, web-ui
+plugin-expose -> web-ui
+plugin-skills -> web-ui
+web -> plugin-browser, plugin-expose, plugin-skills, protocol, utils, web-ui
+web-gallery -> plugin-browser, plugin-expose, plugin-skills, protocol, utils, web-ui
 ```
 
 ## Module layout

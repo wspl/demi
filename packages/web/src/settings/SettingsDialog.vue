@@ -10,6 +10,9 @@ import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import { pluginSettingsPage, withPluginSections } from '@demicodes/web-ui/plugins/slots'
+import { PLUGIN_PAGES } from '../plugins/pages'
+import { pluginEnabled } from '../plugins/host'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
@@ -39,7 +42,9 @@ const conversations = useConversations()
 const router = useRouter()
 const lifetime = new AbortController()
 const sections = computed(() =>
-  SETTINGS_SECTIONS.map((group) => ({
+  withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
+    pluginEnabled(product.snapshot, plugin),
+  ).map((group) => ({
     ...group,
     items: group.items.filter(
       (item) => item.id !== 'models' || resources.canConfigure,
@@ -52,6 +57,8 @@ const tab = computed({
     resources.settingsTab = value
   },
 })
+/** The page of the plugin section `tab` names, if one does. */
+const pluginPage = computed(() => pluginSettingsPage(PLUGIN_PAGES, tab.value))
 watch(
   [tab, sections],
   () => {
@@ -440,6 +447,11 @@ function resetShortcuts(): void {
       :plugins="plugins"
       :pending="[...wantedPlugins.keys()]"
       @switch="switchPlugin"
+    />
+    <component
+      :is="pluginPage"
+      v-else-if="pluginPage"
+      :overlay-store="appOverlayStore"
     />
     <SettingsArchived
       v-else-if="tab === 'archived'"

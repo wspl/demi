@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { sessionToolsExposes } from './session-tools'
+import { hostName } from './session-tools'
 
 const devices = [
   {
@@ -24,32 +24,10 @@ const devices = [
   },
 ]
 
-function expose(id: string, deviceId: string) {
-  return {
-    id,
-    number: 1,
-    deviceId,
-    address: '127.0.0.1:5173',
-    url: `https://${id}.expose.demi.example/`,
-    expiresAt: '2026-09-17T00:59:00.000Z',
-  }
-}
-
-test('rows keep the snapshot order and name the host: a device by name, the Cloud by product name, an unknown device by id', () => {
-  const rows = sessionToolsExposes(
-    [expose('a', 'managed'), expose('b', 'laptop'), expose('c', 'gone')],
-    devices,
-  )
-  expect(rows.map((row) => [row.id, row.hostName])).toEqual([
-    ['a', 'Cloud'],
-    ['b', 'laptop'],
-    ['c', 'gone'],
+test('a device is named by its name, the Cloud by the product name, an unknown device by its id', () => {
+  expect(['managed', 'laptop', 'gone'].map((id) => hostName(devices, id))).toEqual([
+    'Cloud',
+    'laptop',
+    'gone',
   ])
-  expect(rows[0]).toEqual({
-    id: 'a',
-    address: '127.0.0.1:5173',
-    hostName: 'Cloud',
-    url: 'https://a.expose.demi.example/',
-    expiresAt: '2026-09-17T00:59:00.000Z',
-  })
 })

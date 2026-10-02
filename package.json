@@ -9,6 +9,7 @@
     "packages/web-ui",
     "packages/plugin-browser",
     "packages/plugin-expose",
+    "packages/plugin-skills",
     "packages/web-gallery",
     "packages/web"
   ],
@@ -16,12 +17,12 @@
     "check:registry": "bun run scripts/check-public-registry.ts",
     "contracts": "cargo build --workspace --all-targets --features demi-runner/test-fixtures && target/debug/xtask contracts",
     "typecheck": "bun run contracts && tsgo --noEmit",
-    "typecheck:web": "bun run contracts && bun run --cwd packages/protocol typecheck && bun run --cwd packages/conversation-client typecheck && bun run --cwd packages/web-ui typecheck && bun run --cwd packages/web-gallery typecheck && bun run --cwd packages/web typecheck",
+    "typecheck:web": "bun run contracts && bun run --cwd packages/protocol typecheck && bun run --cwd packages/conversation-client typecheck && bun run --cwd packages/web-ui typecheck && bun run --cwd packages/plugin-browser typecheck && bun run --cwd packages/plugin-expose typecheck && bun run --cwd packages/plugin-skills typecheck && bun run --cwd packages/web-gallery typecheck && bun run --cwd packages/web typecheck",
     "build": "bun --filter '!@demicodes/web' build && bun run web:build",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
-    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/web/src ./packages/web-gallery/src ./scripts/__tests__ ./crates/command-package-browser-chrome/src/driver/capture",
+    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-expose/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./scripts/__tests__ ./crates/command-package-browser-chrome/src/driver/capture",
     "web:gallery": "bun run contracts && bun --filter @demicodes/web-gallery dev",
     "web:dev": "bun run contracts && bun scripts/web-dev.ts",
     "web:build": "bun run contracts && bun --filter @demicodes/web build"

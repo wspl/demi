@@ -1,27 +1,14 @@
-import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
-import type { ExposeEntry } from '@demicodes/plugin-expose'
 import type { DeviceDto } from '../api/generated/web-api'
 
 /**
- * The snapshot's exposes as the session tools menu lists them: the host name
- * comes from the device list, the Cloud by its product name, and a device
- * the snapshot no longer knows keeps its id so the row stays removable.
+ * The name the session tools show for the user's device `id`: the Cloud by
+ * its product name, a device by its own, and a device the snapshot no longer
+ * knows by its id, so its row stays removable.
  */
-export function sessionToolsExposes(
-  exposes: readonly ExposeEntry[],
-  devices: readonly DeviceDto[],
-): ExposeMenuEntry[] {
-  return exposes.map((expose) => {
-    const device = devices.find((candidate) => candidate.id === expose.deviceId)
-    const hostName = device
-      ? device.kind === 'managed' ? 'Cloud' : device.name
-      : expose.deviceId
-    return {
-      id: expose.id,
-      address: expose.address,
-      hostName,
-      url: expose.url,
-      expiresAt: expose.expiresAt,
-    }
-  })
+export function hostName(devices: readonly DeviceDto[], id: string): string {
+  const device = devices.find((candidate) => candidate.id === id)
+  if (!device) {
+    return id
+  }
+  return device.kind === 'managed' ? 'Cloud' : device.name
 }

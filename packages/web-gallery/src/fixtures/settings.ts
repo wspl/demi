@@ -6,9 +6,10 @@ import type {
   SettingsPlugin,
   SettingsProviderEntry,
   SettingsProviderModel,
-  SettingsSkillSource,
   SettingsVendor
 } from '@demicodes/web-ui/settings/types'
+import type { ExposeState } from '@demicodes/plugin-expose'
+import type { SkillsState } from '@demicodes/plugin-skills'
 import { ahead } from './time'
 
 /**
@@ -42,6 +43,25 @@ export function demoExposes(): ExposeMenuEntry[] {
     },
   ]
 }
+/**
+ * `demoExposes` as the expose plugin's state gives them: on the gallery's
+ * `mac` host, named `zan-mbp`, and on its Cloud.
+ */
+export function demoExposeState(): ExposeState {
+  const devices: Record<string, string> = { 'zan-mbp': 'mac', Cloud: 'managed-device' }
+  return {
+    available: true,
+    exposes: demoExposes().map((expose, index) => ({
+      id: expose.id,
+      number: index + 1,
+      deviceId: devices[expose.hostName]!,
+      address: expose.address,
+      url: expose.url,
+      expiresAt: expose.expiresAt,
+    })),
+  }
+}
+
 /** The shared model plus what the mock knows but the page does not show. */
 export interface MockModel extends SettingsProviderModel {
   tools: boolean | null
@@ -570,6 +590,7 @@ export function createSettingsState() {
       { id: 'todo', name: 'Todo', description: 'A todo list the agent keeps for the conversation.', enabled: true },
       { id: 'browser', name: 'Browser', description: 'A browser on a Host the agent and you can drive.', enabled: true },
       { id: 'expose', name: 'Expose', description: 'Shares a port on a Host at a public address.', enabled: false },
+      { id: 'skills', name: 'Skills', description: 'Workflows the agent follows, from git repositories and your repository.', enabled: true },
     ] as SettingsPlugin[],
     servers: [
       {
@@ -620,124 +641,63 @@ export function createSettingsState() {
         tools: []
       },
     ] as MockServer[],
-    skillSources: [
-      {
-        id: 'vercel',
-        name: 'vercel-labs/agent-skills',
-        origin: 'https://github.com/vercel-labs/agent-skills',
-        state: 'ready',
-        skills: [
-          {
-            id: 'web-design',
-            name: 'web-design-guidelines',
-            description: 'Review UI against Vercel’s web interface guidelines.',
-            enabled: true
-          },
-          {
-            id: 'react-best',
-            name: 'vercel-react-best-practices',
-            description: 'React composition and data-fetching patterns.',
-            enabled: true
-          },
-          {
-            id: 'react-native',
-            name: 'vercel-react-native-skills',
-            description: 'React Native layout and navigation conventions.',
-            enabled: false
-          },
-          {
-            id: 'composition',
-            name: 'vercel-composition-patterns',
-            description: 'When to split a component and when to leave it.',
-            enabled: true
-          },
-          {
-            id: 'frontend',
-            name: 'frontend-design',
-            description: 'Taste-led interface work: type, color, motion.',
-            enabled: false
-          },
-          {
-            id: 'tdd',
-            name: 'tdd',
-            description: 'Write the failing test before the change.',
-            enabled: false
-          },
-          {
-            id: 'agent-browser',
-            name: 'agent-browser',
-            description: 'Browse and act on a page the agent can see.',
-            enabled: false
-          },
-          {
-            id: 'find-skills',
-            name: 'find-skills',
-            description: 'Search installed skills when the next step is unclear.',
-            enabled: true
-          },
-        ],
-      },
-      {
-        id: 'anthropic',
-        name: 'anthropics/skills',
-        origin: 'https://github.com/anthropics/skills',
-        state: 'ready',
-        skills: [
-          {
-            id: 'pptx',
-            name: 'pptx',
-            description: 'Create and edit PowerPoint decks.',
-            enabled: true
-          },
-          {
-            id: 'pdf',
-            name: 'pdf',
-            description: 'Read and fill PDF forms.',
-            enabled: true
-          },
-          {
-            id: 'xlsx',
-            name: 'xlsx',
-            description: 'Build spreadsheets from tables.',
-            enabled: true
-          },
-          {
-            id: 'docx',
-            name: 'docx',
-            description: 'Draft Word documents.',
-            enabled: false
-          },
-          {
-            id: 'skill-creator',
-            name: 'skill-creator',
-            description: 'Author a new SKILL.md that other agents can load.',
-            enabled: true
-          },
-        ],
-      },
-      {
-        id: 'commit',
-        name: 'zan/commit',
-        origin: 'https://github.com/zan/commit',
-        state: 'ready',
-        skills: [
-          {
-            id: 'commit',
-            name: 'commit',
-            description: 'Conventional commit from the staged diff.',
-            enabled: true
-          },
-        ],
-      },
-      {
-        id: 'broken',
-        name: 'example/broken-skills',
-        origin: 'https://github.com/example/broken-skills',
-        state: 'error',
-        detail: 'Repository not found',
-        skills: [],
-      },
-    ] as SettingsSkillSource[],
+    skills: {
+      sources: [
+        {
+          id: 'vercel',
+          origin: 'https://github.com/vercel-labs/agent-skills',
+          commit: '9f2c1a7b9f2c1a7b9f2c1a7b9f2c1a7b9f2c1a7b',
+          fetchedAt: ahead(-2 * 24 * 60 * 60_000),
+          fetching: false,
+          skills: [
+            { name: 'web-design-guidelines', description: 'Review UI against Vercel’s web interface guidelines.', warnings: [], enabled: true, disableModelInvocation: false },
+            { name: 'vercel-react-best-practices', description: 'React composition and data-fetching patterns.', warnings: [], enabled: true, disableModelInvocation: false },
+            { name: 'vercel-react-native-skills', description: 'React Native layout and navigation conventions.', warnings: [], enabled: false, disableModelInvocation: false },
+            { name: 'vercel-composition-patterns', description: 'When to split a component and when to leave it.', warnings: ['the description is longer than 1,024 characters'], enabled: true, disableModelInvocation: false },
+            { name: 'frontend-design', description: 'Taste-led interface work: type, color, motion.', warnings: [], enabled: false, disableModelInvocation: false },
+            { name: 'tdd', description: 'Write the failing test before the change.', warnings: [], enabled: false, disableModelInvocation: false },
+            { name: 'agent-browser', description: 'Browse and act on a page the agent can see.', warnings: [], enabled: false, disableModelInvocation: false },
+            { name: 'find-skills', description: 'Search installed skills when the next step is unclear.', warnings: [], enabled: true, disableModelInvocation: true },
+          ],
+          skipped: [{ path: 'skills/draft/SKILL.md', reason: 'the front matter has no description' }],
+        },
+        {
+          id: 'anthropic',
+          origin: 'https://github.com/anthropics/skills',
+          commit: '9f2c1a7c9f2c1a7c9f2c1a7c9f2c1a7c9f2c1a7c',
+          fetchedAt: ahead(-2 * 24 * 60 * 60_000),
+          fetching: false,
+          skills: [
+            { name: 'pptx', description: 'Create and edit PowerPoint decks.', warnings: [], enabled: true, disableModelInvocation: false },
+            { name: 'pdf', description: 'Read and fill PDF forms.', warnings: [], enabled: true, disableModelInvocation: false },
+            { name: 'xlsx', description: 'Build spreadsheets from tables.', warnings: [], enabled: true, disableModelInvocation: false },
+            { name: 'docx', description: 'Draft Word documents.', warnings: [], enabled: false, disableModelInvocation: false },
+            { name: 'skill-creator', description: 'Author a new SKILL.md that other agents can load.', warnings: [], enabled: true, disableModelInvocation: false },
+          ],
+          skipped: [],
+        },
+        {
+          id: 'commit',
+          origin: 'https://github.com/zan/commit',
+          commit: '9f2c1a7d9f2c1a7d9f2c1a7d9f2c1a7d9f2c1a7d',
+          fetchedAt: ahead(-2 * 24 * 60 * 60_000),
+          fetching: false,
+          skills: [
+            { name: 'commit', description: 'Conventional commit from the staged diff.', warnings: [], enabled: true, disableModelInvocation: false },
+          ],
+          skipped: [],
+        },
+        {
+          id: 'broken',
+          origin: 'https://github.com/example/broken-skills',
+          fetching: false,
+          failure: { at: ahead(-60 * 60_000), message: 'Repository not found' },
+          skills: [
+          ],
+          skipped: [],
+        },
+      ],
+    } as SkillsState,
     archived: [
       {
         id: 'oauth',

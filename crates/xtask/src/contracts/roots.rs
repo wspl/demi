@@ -162,6 +162,7 @@ pub fn web() -> Vec<Root> {
 pub fn plugins() -> Vec<(&'static str, Vec<Root>)> {
     use demi_plugin_browser::page as browser;
     use demi_plugin_expose::page as expose;
+    use demi_plugin_skills as skills;
     vec![
         (
             "packages/plugin-browser/src/generated",
@@ -179,6 +180,17 @@ pub fn plugins() -> Vec<(&'static str, Vec<Root>)> {
             vec![
                 receives::<expose::ExposeState>(),
                 sends::<expose::ExposeCall>(),
+            ],
+        ),
+        (
+            "packages/plugin-skills/src/generated",
+            vec![
+                receives::<skills::SkillsState>(),
+                sends::<skills::AddSource>(),
+                receives::<skills::AddedSource>(),
+                sends::<skills::SourceCall>(),
+                sends::<skills::SetEnabled>(),
+                sends::<skills::SetSourceEnabled>(),
             ],
         ),
     ]

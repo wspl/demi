@@ -83,7 +83,7 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
    `web-ui`; `@demicodes/plugin-browser` (the `browser` work panel kind),
    `@demicodes/plugin-expose` (the conversation header tool) and
    `@demicodes/plugin-skills` (the settings section); their registration in
-   `web` and their specimens in `web-gallery`.
+   `web` and their specimens in `web-gallery`. Done.
 
 ## Evidence required at a checkpoint
 

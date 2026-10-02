@@ -18,7 +18,8 @@
     "zod": "^4.0.0",
     "@demicodes/utils": "workspace:^",
     "@demicodes/plugin-browser": "workspace:^",
-    "@demicodes/plugin-expose": "workspace:^"
+    "@demicodes/plugin-expose": "workspace:^",
+    "@demicodes/plugin-skills": "workspace:^"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",

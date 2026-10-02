@@ -1,6 +1,6 @@
 {
-  "name": "@demicodes/plugin-browser",
-  "description": "The conversation browser plugin's page: its work panel kind.",
+  "name": "@demicodes/plugin-skills",
+  "description": "The skills plugin's page: its settings section.",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@demicodes/protocol": "workspace:^",
     "@demicodes/web-ui": "workspace:^",
     "@lucide/vue": "^1.40.0",
     "vue": "^3.5.38",

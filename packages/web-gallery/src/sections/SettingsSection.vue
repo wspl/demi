@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -9,6 +9,10 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { createSettingsState } from '../fixtures/settings'
+import { galleryPluginHost, skillsPlugin } from '../fixtures/plugins'
+import { GALLERY_PLUGIN_PAGES } from '../plugin-pages'
+import { providePluginHost } from '@demicodes/web-ui/plugins/client'
+import { withPluginSections } from '@demicodes/web-ui/plugins/slots'
 import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
@@ -66,6 +70,14 @@ const anatomy: [string, string][] = [
 
 const account = { name: 'Zan' }
 const full = createSettingsState()
+// The plugins' sections reach the fixture's skills plugin, and show while the
+// fixture's Plugins page has their plugin on, as the product's do.
+providePluginHost(galleryPluginHost({ skills: skillsPlugin(full.skills) }))
+const sections = computed(() =>
+  withPluginSections(SETTINGS_SECTIONS, GALLERY_PLUGIN_PAGES, (plugin) =>
+    full.plugins.some((entry) => entry.id === plugin && entry.enabled),
+  ),
+)
 const fullTab = ref<SettingsTab>('models')
 const fullNarrowTab = ref<SettingsTab>('skills')
 // Each pinned dialog closes from its own Close and opens again in place from Open,
@@ -103,7 +115,7 @@ const fullNarrowOpen = ref(true)
             :is-open="fullOpen"
             :overlay-store="appOverlayStore"
             :account="account"
-            :sections="SETTINGS_SECTIONS"
+            :sections="sections"
             @close="fullOpen = false"
           >
             <GallerySettingsFull :tab="fullTab" :state="full" />
@@ -122,7 +134,7 @@ const fullNarrowOpen = ref(true)
             :is-open="fullNarrowOpen"
             :overlay-store="appOverlayStore"
             :account="account"
-            :sections="SETTINGS_SECTIONS"
+            :sections="sections"
             @close="fullNarrowOpen = false"
           >
             <GallerySettingsFull :tab="fullNarrowTab" :state="full" />

@@ -13,42 +13,50 @@ import AddSkillSourceDialog from './AddSkillSourceDialog.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type {
-  SettingsSkillDraft,
-  SettingsSkillSource,
-  SettingsSkillSourceState
-} from './types'
+import type { SettingsSkillDraft, SettingsSkillSource } from './types'
 
 /**
- * Skill sources: one git repository is a pack. Packs start folded. Opening a
- * pack of more than six skills scrolls inside the pack. Each SKILL.md is a
- * row you can turn on. The pack's switch is on when any skill is on;
- * flipping it sets every skill in the pack.
+ * Skill sources (`skills.md` § The page): one git repository is a pack,
+ * pinned to a commit. Packs start folded. Opening a pack of more than six
+ * skills scrolls inside the pack. Each skill is a row you can turn on; the
+ * SKILL.md files that are not skills follow, with why. The pack's switch is
+ * on when any skill is on; flipping it sets every skill in the pack.
  */
 const SKILL_LIST_CAP = 6
 
 const props = defineProps<{
   sources: SettingsSkillSource[]
   overlayStore: OverlayStore
+  /** The sources with a change being saved. */
+  pending?: readonly string[]
 }>()
 
 const emit = defineEmits<{
   add: [draft: SettingsSkillDraft]
-  remove: [source: SettingsSkillSource]
-  update: [source: SettingsSkillSource]
+  remove: [source: string]
+  update: [source: string]
+  switch: [source: string, skill: string, enabled: boolean]
+  switchSource: [source: string, enabled: boolean]
 }>()
 
 const addOpen = ref(false)
 const openIds = ref<string[]>([])
 
-const statusWord: Partial<Record<SettingsSkillSourceState, string>> = {
-  updating: 'Updating',
-  error: 'Error',
+/** The pack's name: its repository, the origin's last part. */
+function name(source: SettingsSkillSource): string {
+  const path = source.origin.replace(/\/+$/, '').replace(/\.git$/, '')
+  return path.slice(path.lastIndexOf('/') + 1) || source.origin
 }
 
-const statusDot: Partial<Record<SettingsSkillSourceState, string>> = {
-  updating: 'bg-on-warning',
-  error: 'bg-on-danger',
+/** The fetch that runs, or the last one's failure, beside the name. */
+function status(source: SettingsSkillSource): { word: string; dot: string; detail?: string } | null {
+  if (source.fetching) {
+    return { word: 'Updating', dot: 'bg-on-warning' }
+  }
+  if (source.failure) {
+    return { word: 'Error', dot: 'bg-on-danger', detail: source.failure.message }
+  }
+  return null
 }
 
 function pack(source: SettingsSkillSource) {
@@ -63,6 +71,10 @@ function pack(source: SettingsSkillSource) {
   }
 }
 
+function busy(source: SettingsSkillSource): boolean {
+  return props.pending?.includes(source.id) ?? false
+}
+
 function isOpen(id: string) {
   return openIds.value.includes(id)
 }
@@ -73,12 +85,8 @@ function toggle(id: string) {
     : [...openIds.value, id]
 }
 
-function setAll(source: SettingsSkillSource, on: boolean) {
-  for (const skill of source.skills) skill.enabled = on
-}
-
-function add(draft: SettingsSkillDraft) {
-  emit('add', draft)
+function foldable(source: SettingsSkillSource): boolean {
+  return source.skills.length + source.skipped.length > 0
 }
 
 const empty = computed(() => props.sources.length === 0)
@@ -100,10 +108,10 @@ const empty = computed(() => props.sources.length === 0)
       </template>
       <div v-for="source in sources" :key="source.id">
         <SettingsRow
-          :label="source.name"
-          :interactive="pack(source).total > 0"
-          :muted="source.state === 'error'"
-          :aria-expanded="pack(source).total > 0 ? isOpen(source.id) : undefined"
+          :label="name(source)"
+          :interactive="foldable(source)"
+          :muted="!!source.failure && !source.fetching"
+          :aria-expanded="foldable(source) ? isOpen(source.id) : undefined"
           @click="toggle(source.id)"
         >
           <template #leading>
@@ -121,21 +129,21 @@ const empty = computed(() => props.sources.length === 0)
                 Updating
               </span>
               <span
-                v-if="source.state !== 'ready'"
+                v-if="status(source)"
                 class="col-start-1 row-start-1 inline-flex items-center gap-1.5"
               >
                 <span
                   class="size-1.5 shrink-0 rounded-full"
-                  :class="statusDot[source.state]"
+                  :class="status(source)!.dot"
                 />
-                <Tooltip :content="source.detail" :disabled="!source.detail">
-                  <span>{{ statusWord[source.state] }}</span>
+                <Tooltip :content="status(source)!.detail" :disabled="!status(source)!.detail">
+                  <span>{{ status(source)!.word }}</span>
                 </Tooltip>
               </span>
             </span>
           </template>
           <template #description>
-            <span class="block truncate font-mono">{{ source.origin }}</span>
+            <span class="block truncate font-mono">{{ source.origin }}<template v-if="source.commit"> · {{ source.commit.slice(0, 7) }}</template></span>
           </template>
           <div class="flex items-center gap-2" @click.stop>
             <template v-if="pack(source).total">
@@ -154,8 +162,9 @@ const empty = computed(() => props.sources.length === 0)
               <Switch
                 :model-value="pack(source).checked"
                 size="sm"
-                :aria-label="`Enable every skill in ${source.name}`"
-                @update:model-value="(on) => setAll(source, on)"
+                :disabled="busy(source)"
+                :aria-label="`Enable every skill in ${name(source)}`"
+                @update:model-value="(on) => emit('switchSource', source.id, on)"
               />
             </template>
             <Tooltip content="Update">
@@ -163,10 +172,10 @@ const empty = computed(() => props.sources.length === 0)
                 size="sm"
                 :icon="RefreshCw"
                 spin-on-click
-                :spinning="source.state === 'updating'"
-                :disabled="source.state === 'updating'"
+                :spinning="source.fetching"
+                :disabled="source.fetching"
                 aria-label="Update"
-                @click="emit('update', source)"
+                @click="emit('update', source.id)"
               />
             </Tooltip>
             <Tooltip content="Remove">
@@ -175,33 +184,57 @@ const empty = computed(() => props.sources.length === 0)
                 :icon="Trash2"
                 variant="danger"
                 aria-label="Remove"
-                @click="emit('remove', source)"
+                :disabled="busy(source)"
+                @click="emit('remove', source.id)"
               />
             </Tooltip>
           </div>
           <FoldChevron
             :open="isOpen(source.id)"
-            :visible="pack(source).total > 0"
+            :visible="foldable(source)"
             class="text-fg-subtle"
           />
         </SettingsRow>
-        <Fold :open="isOpen(source.id) && source.skills.length > 0">
+        <Fold :open="isOpen(source.id) && foldable(source)">
           <div
-            v-if="source.skills.length"
+            v-if="foldable(source)"
             class="skill-list"
-            :class="source.skills.length > SKILL_LIST_CAP ? 'skill-list-scroll' : ''"
+            :class="source.skills.length + source.skipped.length > SKILL_LIST_CAP ? 'skill-list-scroll' : ''"
           >
             <SettingsRow
               v-for="skill in source.skills"
-              :key="skill.id"
+              :key="skill.name"
               inset
               :label="skill.name"
-              :class="skill.enabled ? '' : 'opacity-60'"
+              :muted="!skill.enabled"
             >
+              <template v-if="skill.warnings.length || skill.disableModelInvocation" #tags>
+                <Tooltip v-if="skill.warnings.length" :content="skill.warnings.join('\n')">
+                  <span class="text-[11px] text-on-warning">Warning</span>
+                </Tooltip>
+                <span v-if="skill.disableModelInvocation" class="text-[11px] text-fg-subtle">Never offered to the agent</span>
+              </template>
               <template #description>
                 <span class="block truncate">{{ skill.description }}</span>
               </template>
-              <Switch v-model="skill.enabled" size="sm" />
+              <Switch
+                :model-value="skill.enabled"
+                size="sm"
+                :disabled="busy(source)"
+                :aria-label="`${skill.name} ${skill.enabled ? 'on' : 'off'}`"
+                @update:model-value="(on) => emit('switch', source.id, skill.name, on)"
+              />
+            </SettingsRow>
+            <SettingsRow
+              v-for="skipped in source.skipped"
+              :key="skipped.path"
+              inset
+              muted
+              :label="skipped.path"
+            >
+              <template #description>
+                <span class="block truncate">Not a skill: {{ skipped.reason }}</span>
+              </template>
             </SettingsRow>
           </div>
         </Fold>
@@ -217,7 +250,7 @@ const empty = computed(() => props.sources.length === 0)
       :is-open="addOpen"
       :overlay-store="overlayStore"
       @close="addOpen = false"
-      @add="add"
+      @add="emit('add', $event)"
     />
   </SettingsPage>
 </template>
