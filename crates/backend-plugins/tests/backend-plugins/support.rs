@@ -13,7 +13,9 @@ use demi_agent_server::{
     testing::{ScriptedProviders, TestClient, client_text},
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
-use demi_agent_tools::{EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory};
+use demi_agent_tools::{
+    EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory, Toolset,
+};
 use demi_agent_transcript::testing::SequentialIds;
 use demi_backend_database::control::ControlService;
 use demi_backend_page_sync::SyncRegistry;
@@ -129,9 +131,12 @@ impl Fixture {
         let catalog = CommandCatalog::new(vec![file.descriptor.clone()], file.resolver()).unwrap();
         let store = MemoryTreeStore::new();
         let server = AgentServer::new(ServerDeps {
-            commands: Rc::new(commands),
+            toolsets: Rc::new(Toolset {
+                commands: Rc::new(commands),
+                profiles: Rc::new([]),
+                revision: Rc::from("file,todo"),
+            }),
             instructions: Rc::from("You are a coding agent."),
-            profiles: Rc::new([]),
             hosts: Rc::new(DeviceHost(host.clone())),
             context: Rc::new([]),
             providers,
@@ -233,7 +238,8 @@ impl Fixture {
 async fn demi_commands() -> (CommandSet, TempDir) {
     let plugins: Vec<Box<dyn PluginFactory>> = vec![Box::new(File::new()), Box::new(Todo::new())];
     let (plugins, data) = user_plugins(Registry::new(plugins, |_| true).unwrap()).await;
-    (plugins.commands(Vec::new()).unwrap(), data)
+    let toolset = plugins.toolset(Vec::new()).await.unwrap();
+    (toolset.commands, data)
 }
 
 /// The plugins of `registry` for the user `u1`, over a control database of

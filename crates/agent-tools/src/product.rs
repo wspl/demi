@@ -1,12 +1,38 @@
 //! What a product supplies for its agents (`runtime.md` § Sessions and
-//! turns) besides the data the agent server is given: the Host a node's shell
-//! tools reach, and the context sources asked before each request.
+//! turns) besides the data the agent server is given: the commands and
+//! profiles a tree opens with, the Host a node's shell tools reach, and the
+//! context sources asked before each request.
 
 use std::rc::Rc;
 
-use demi_host_interface::{Host, HostError, HostErrorKind};
-use demi_shared_types::{NodeId, TurnId};
+use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
+use demi_shared_types::{NodeId, Profile, TurnId};
 use futures_util::future::LocalBoxFuture;
+
+/// The commands every node of a tree starts from and the profiles its
+/// children may take, which a tree takes when it opens and keeps until it
+/// closes; `revision` tells two toolsets with other commands or profiles
+/// apart.
+#[derive(Clone)]
+pub struct Toolset {
+    pub commands: Rc<CommandSet>,
+    pub profiles: Rc<[Profile]>,
+    pub revision: Rc<str>,
+}
+
+/// Where a tree that opens takes its toolset from: the product's current
+/// one, which may change while the server runs.
+pub trait ToolsetSource {
+    fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>>;
+}
+
+/// A toolset that never changes.
+impl ToolsetSource for Toolset {
+    fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>> {
+        let toolset = self.clone();
+        Box::pin(async move { Ok(toolset) })
+    }
+}
 
 /// The node a question is about.
 #[derive(Debug, Clone, Copy)]

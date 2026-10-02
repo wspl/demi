@@ -1,7 +1,9 @@
-//! Plugin values (`storage.md` § Control records; `plugins.md` § The
-//! contract): each plugin's JSON documents for a user, by key, each with
-//! the revision a conditional write names. The control database decodes a
-//! document only as JSON; its plugin decodes it into its own type.
+//! The users' plugin choices and plugin values (`storage.md` § Control
+//! records; `plugins.md` § A user's plugins, § The contract): whether a user
+//! has each plugin on, a plugin with no row being on; and each plugin's JSON
+//! documents for a user, by key, each with the revision a conditional write
+//! names. The control database decodes a document only as JSON; its plugin
+//! decodes it into its own type.
 
 use std::collections::BTreeMap;
 
@@ -23,6 +25,40 @@ pub struct PluginValue {
 }
 
 impl ControlService {
+    /// Each plugin `user` turned on or off, by id; one the user never
+    /// switched is on.
+    pub async fn user_plugins(&self, user: UserId) -> Result<BTreeMap<String, bool>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection
+                .prepare_cached("SELECT plugin, enabled FROM user_plugins WHERE user_id = ?1")?;
+            let mut rows = statement.query([user.as_str()])?;
+            let mut choices = BTreeMap::new();
+            while let Some(row) = rows.next()? {
+                choices.insert(row.get::<_, String>(0)?, row.get::<_, bool>(1)?);
+            }
+            Ok(choices)
+        })
+        .await
+    }
+
+    /// Records that `user` has `plugin` on or off.
+    pub async fn set_user_plugin(
+        &self,
+        user: UserId,
+        plugin: String,
+        enabled: bool,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "INSERT INTO user_plugins (user_id, plugin, enabled) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (user_id, plugin) DO UPDATE SET enabled = excluded.enabled",
+                params![user.as_str(), plugin, enabled],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// `plugin`'s value `key` for `user`.
     pub async fn plugin_value(
         &self,

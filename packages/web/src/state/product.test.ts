@@ -21,7 +21,7 @@ let sessionReads: number
 function summary(id: string, title: string, parts: Partial<ConversationSummary> = {}): ConversationSummary {
   return {
     id, title, pinned: false, archived: false, readRevision: 0, revision: 0, unread: false,
-    titleCurrent: true, titleGenerating: false, draftRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
+    titleCurrent: true, titleGenerating: false, pluginsChanged: false, draftRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
     contextVersion: 0, model: null, createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
     status: 'idle', ...parts,
   }
@@ -95,6 +95,20 @@ test('the channel\'s snapshot is the page\'s copy, and each later message replac
   // A later snapshot, as after a reconnect, replaces the whole copy.
   channel.send({ type: 'snapshot', state: productState({ conversations: [summary(SECOND, 'Only')] }) })
   expect(titles()).toEqual(['Only'])
+})
+
+test('a plugin turned off leaves the page with its state, and one turned on again brings its state afresh', () => {
+  const product = started()
+  const channel = channels.last()
+  const expose = productState().plugins[0]!
+
+  channel.send({ type: 'plugins', plugins: [{ ...expose, enabled: false }] })
+  expect(product.snapshot?.plugins).toEqual([{ ...expose, enabled: false }])
+  expect(product.snapshot?.pluginStates).toEqual({})
+
+  channel.send({ type: 'plugins', plugins: [expose] })
+  channel.send({ type: 'plugin', plugin: 'expose', state: { available: true, exposes: [] } })
+  expect(product.snapshot?.pluginStates).toEqual({ expose: { available: true, exposes: [] } })
 })
 
 test('a write\'s answer shows at once, unless the channel brought its part since the write was sent', () => {

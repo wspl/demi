@@ -1,6 +1,7 @@
 import {
   Archive,
   Bell,
+  Blocks,
   CircleUser,
   Database,
   Keyboard,
@@ -69,6 +70,12 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'base url',
           'catalog'
         ]
+      },
+      {
+        id: 'plugins',
+        label: 'Plugins',
+        icon: Blocks,
+        keywords: ['plugin', 'extension', 'browser', 'expose', 'todo', 'file']
       },
       {
         id: 'mcp',

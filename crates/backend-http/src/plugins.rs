@@ -7,17 +7,72 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_plugins::{PageCall, PageCallError};
+use demi_backend_plugins::{PageCall, PageCallError, SwitchError};
+use demi_backend_user_shard::shard::ReloadRefusal;
 use demi_plugin_interface::{PluginError, PortRefusal};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserId;
+use demi_web_api_protocol::plugins::PluginSwitch;
 use serde_json::Value;
 
 use super::AppState;
-use super::body::JsonValueBody;
+use super::body::{JsonBody, JsonValueBody};
 use super::conversations::owned;
 use super::error::{ApiError, status_of};
 use super::gate::AuthUser;
+
+/// `PUT /plugins/:plugin { enabled }`: turns the plugin on or off for the
+/// caller (`web-api.md` § A user's plugins).
+pub(super) async fn switch(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(plugin): Path<String>,
+    JsonBody(PluginSwitch { enabled }): JsonBody<PluginSwitch>,
+) -> Result<StatusCode, ApiError> {
+    let switched = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.switch_plugin(&plugin, enabled).await })
+        .await?;
+    match switched {
+        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Err(error @ SwitchError::UnknownPlugin(_)) => Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::UnknownPlugin,
+            error.to_string(),
+        )),
+        Err(SwitchError::Storage(error)) => Err(error.into()),
+    }
+}
+
+/// `POST /conversations/:id/reload`: closes the conversation's tree so
+/// that it opens again with the caller's current plugins.
+pub(super) async fn reload(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let record = owned(&state.services, &user.id, &id).await?;
+    let reloaded = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.reload_conversation(&record.id).await })
+        .await?;
+    match reloaded {
+        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Err(ReloadRefusal::Access(error)) => Err(error.into()),
+        Err(error @ ReloadRefusal::Archived) => Err(ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::ConversationArchived,
+            error.to_string(),
+        )),
+        Err(error @ ReloadRefusal::Working) => Err(ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::TurnInFlight,
+            error.to_string(),
+        )),
+    }
+}
 
 /// `POST /plugins/:plugin/calls/:method`.
 pub(super) async fn user_call(
@@ -73,6 +128,9 @@ fn refused(error: PageCallError) -> ApiError {
     match error {
         PageCallError::UnknownPlugin(_) => {
             ApiError::new(StatusCode::NOT_FOUND, ErrorCode::UnknownPlugin, message)
+        }
+        PageCallError::Disabled(_) => {
+            ApiError::new(StatusCode::CONFLICT, ErrorCode::PluginDisabled, message)
         }
         PageCallError::UnknownMethod { .. } => ApiError::new(
             StatusCode::NOT_FOUND,

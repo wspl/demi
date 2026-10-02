@@ -20,6 +20,7 @@ pub mod files;
 pub mod hosts;
 pub mod ids;
 pub mod panel;
+pub mod plugins;
 pub mod providers;
 pub mod query;
 pub mod settings;

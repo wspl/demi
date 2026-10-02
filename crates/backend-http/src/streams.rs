@@ -10,6 +10,7 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use demi_web_api_protocol::error::ErrorCode;
 use futures_util::{SinkExt as _, StreamExt as _};
+use tokio_util::sync::CancellationToken;
 
 use super::AppState;
 use super::body::page_socket;
@@ -26,12 +27,15 @@ pub(super) async fn open(
     Path((id, name)): Path<(String, String)>,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
-    let Some(binding) = state.services.user_streams.get(&name).cloned() else {
-        return Err(ApiError::new(
+    let unknown = || {
+        ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::UnknownStream,
             "No stream has that name",
-        ));
+        )
+    };
+    let Some(binding) = state.services.user_streams.get(&name).cloned() else {
+        return Err(unknown());
     };
     let record = owned(&state.services, &user.id, &id).await?;
     let upgrade = upgrade.map_err(|_| {
@@ -41,18 +45,25 @@ pub(super) async fn open(
             "A user stream is a WebSocket",
         )
     })?;
-    let stream = state
+    // A stream of a plugin the user has off does not exist; one whose
+    // plugin is turned off while it is open ends.
+    let opened = state
         .shards
         .of(&user.id)
         .call(move |shard, cancel| async move {
-            shard
+            let Some(plugin_off) = shard.plugins().stream_end(&name).await? else {
+                return Ok(None);
+            };
+            let stream = shard
                 .host_shard()
                 .open_user_stream(&record.id, &binding, &cancel)
-                .await
+                .await?;
+            Ok::<_, ApiError>(Some((stream, plugin_off)))
         })
         .await??;
+    let (stream, plugin_off) = opened.ok_or_else(unknown)?;
     // An upgrade that never completes drops the stream, which ends it.
-    Ok(page_socket(upgrade).on_upgrade(move |socket| relay(socket, stream)))
+    Ok(page_socket(upgrade).on_upgrade(move |socket| relay(socket, stream, plugin_off)))
 }
 
 /// How a stream ended, which the page's socket closes with.
@@ -66,6 +77,8 @@ enum End {
     HostUnreachable,
     /// A transition ended the stream.
     Changed,
+    /// The user turned off the stream's plugin.
+    PluginDisabled,
     /// The page closed its socket, or it failed.
     PageClosed,
 }
@@ -79,6 +92,7 @@ impl End {
             Self::BinaryOnly => Some((1003, "binary_only")),
             Self::HostUnreachable => Some((1011, "host_unreachable")),
             Self::Changed => Some((4000, "conversation_changed")),
+            Self::PluginDisabled => Some((4001, "plugin_disabled")),
             Self::PageClosed => None,
         }
     }
@@ -87,9 +101,10 @@ impl End {
 /// Relays an open stream: the page's binary messages go to the Host in
 /// order, each after the Host took the one before, and the Host's bytes go
 /// to the page, each after the page's socket took the one before. Message
-/// boundaries mean nothing. Whichever side ends first ends the stream;
-/// dropping the lease then ends it in the shard.
-async fn relay(socket: WebSocket, stream: UserStream) {
+/// boundaries mean nothing. Whichever side ends first ends the stream, and
+/// so does `plugin_off`, once the user turns its plugin off; dropping the
+/// lease then ends it in the shard.
+async fn relay(socket: WebSocket, stream: UserStream, plugin_off: CancellationToken) {
     let UserStream {
         mut to_host,
         mut from_host,
@@ -129,6 +144,7 @@ async fn relay(socket: WebSocket, stream: UserStream) {
         tokio::select! {
             biased;
             () = lease.ended() => End::Changed,
+            () = plugin_off.cancelled() => End::PluginDisabled,
             end = deliver => end,
             end = forward => end,
         }

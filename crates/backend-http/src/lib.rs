@@ -274,6 +274,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             post(plugins::conversation_call),
         )
         .route("/plugins/{plugin}/calls/{method}", post(plugins::user_call))
+        .route("/plugins/{plugin}", put(plugins::switch))
+        .route("/conversations/{id}/reload", post(plugins::reload))
         .route("/sidebar/reorder", post(sidebar::reorder))
         .route(
             "/workspaces",

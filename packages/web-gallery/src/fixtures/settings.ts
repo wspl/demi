@@ -3,6 +3,7 @@ import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refres
 import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
 import type {
   SettingsMcpServer,
+  SettingsPlugin,
   SettingsProviderEntry,
   SettingsProviderModel,
   SettingsSkillSource,
@@ -564,6 +565,12 @@ export function createSettingsState() {
     providers: mockProviders(),
     selectedProviderId: null as string | null,
     providerDetailOpen: false,
+    plugins: [
+      { id: 'file', name: 'File', description: 'Reads and edits files on a Host.', enabled: true },
+      { id: 'todo', name: 'Todo', description: 'A todo list the agent keeps for the conversation.', enabled: true },
+      { id: 'browser', name: 'Browser', description: 'A browser on a Host the agent and you can drive.', enabled: true },
+      { id: 'expose', name: 'Expose', description: 'Shares a port on a Host at a public address.', enabled: false },
+    ] as SettingsPlugin[],
     servers: [
       {
         id: 'github', name: 'GitHub', transport: 'stdio', target: 'npx @modelcontextprotocol/server-github', state: 'connected', enabled: true,

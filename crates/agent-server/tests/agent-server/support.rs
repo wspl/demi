@@ -10,7 +10,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{
-    ContextSource, HostResolver, NodeContext,
+    ContextSource, HostResolver, NodeContext, Toolset,
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::testing::SequentialIds;
@@ -482,9 +482,12 @@ impl Fixture {
             Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>)
         };
         let server = AgentServer::new(ServerDeps {
-            commands: Rc::new(greet()),
+            toolsets: Rc::new(Toolset {
+                commands: Rc::new(greet()),
+                profiles: product.profiles.clone().into(),
+                revision: Rc::from("test"),
+            }),
             instructions: Rc::from("system prompt"),
-            profiles: product.profiles.clone().into(),
             hosts: product.clone(),
             context: Rc::new([product.clone() as Rc<dyn ContextSource>]),
             providers: resolver.clone(),

@@ -25,5 +25,5 @@ pub use node::Node;
 pub use server::{
     AgentServer, Connection, ContentError, ContentResolver, FileReference, FrameRx, Outgoing,
     ProviderResolver, ResolveError, ResolvedFiles, RestoreError, ServerConfig, ServerDeps, Tree,
-    TreeStores,
+    TreeStores, Working,
 };

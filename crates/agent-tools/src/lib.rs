@@ -36,7 +36,7 @@ pub use environments::Environments;
 use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
 use input::{CommandInput, ShellExecInput, ShellWriteInput, YieldInput, parse};
-pub use product::{ContextSource, HostResolver, NodeContext};
+pub use product::{ContextSource, HostResolver, NodeContext, Toolset, ToolsetSource};
 pub use prompt::system_prompt;
 
 /// The most characters a page of `demi shell output` takes, so that a tool

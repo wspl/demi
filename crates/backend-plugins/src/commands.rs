@@ -18,13 +18,14 @@ use crate::{Registry, RegistryError};
 /// The `demi` groups the agent runtime and the product own.
 pub(crate) const TAKEN_GROUPS: &[&str] = &["agent", "shell", "host"];
 
-/// The command set of `registry`'s plugins, whose `rpc` leaves `user`'s
-/// instances serve; without them, as the startup check composes it, a call
-/// is refused.
+/// The command set of the plugins of `registry` that `include` takes, by
+/// their index, whose `rpc` leaves `user`'s instances serve; without them,
+/// as the startup check composes it, a call is refused.
 pub(crate) fn compose(
     registry: &Registry,
     user: Option<&Rc<Shared>>,
     product: Vec<GroupBuilder>,
+    include: impl Fn(usize) -> bool,
 ) -> Result<CommandSet, RegistryError> {
     let mut set = CommandSet::new();
     let mut demi = !product.is_empty();
@@ -37,6 +38,9 @@ pub(crate) fn compose(
             .expect("the product's groups are a valid `demi` root");
     }
     for (index, registered) in registry.plugins.iter().enumerate() {
+        if !include(index) {
+            continue;
+        }
         for commands in &registered.commands {
             let strip = match commands.placement {
                 Placement::Demi => 1,

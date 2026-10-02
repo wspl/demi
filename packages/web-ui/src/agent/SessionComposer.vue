@@ -24,6 +24,7 @@ import ModelSelector from './ModelSelector.vue'
 import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import SessionNoticeBar from './SessionNoticeBar.vue'
 import ReplacedDraftNotice from './ReplacedDraftNotice.vue'
+import PluginsChangedNotice from './PluginsChangedNotice.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
@@ -65,6 +66,10 @@ const props = withDefaults(
      * offers to restore: its Markdown and the names of its files.
      */
     replaced?: { markdown: string; fileNames: readonly string[] } | null
+    /** The conversation runs with commands of plugins since turned on or off: offers a reload. */
+    pluginsChanged?: boolean
+    /** The reload the composer offered is under way. */
+    reloading?: boolean
     /**
      * Counts the drafts shown from outside, another page's or a restored
      * one: when it changes, the editor shows the draft and its files anew,
@@ -100,6 +105,8 @@ const emit = defineEmits<{
   /** Bring back the replaced version, in exchange for the draft. */
   restoreReplaced: []
   dismissReplaced: []
+  /** Open the conversation again with the plugins the user has on. */
+  reloadPlugins: []
 }>()
 const edit = useMessageEditComposer({
   state: () => props.messageEdit,
@@ -314,6 +321,12 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         class="hidden"
         multiple
         @change="fileChange"
+      />
+      <PluginsChangedNotice
+        v-if="pluginsChanged"
+        class="mb-2"
+        :reloading="reloading"
+        @reload="emit('reloadPlugins')"
       />
       <ReplacedDraftNotice
         v-if="replacedPreview !== null"

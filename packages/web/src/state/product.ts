@@ -56,6 +56,18 @@ function inOrder(conversations: ConversationSummary[], ids: string[]): Conversat
   return [...unplaced, ...placed]
 }
 
+/**
+ * The plugin states without those of the plugins the user turned off, which
+ * leave the pages at once; a plugin turned on sends its state afresh.
+ */
+function withoutOff(
+  states: ProductState['pluginStates'],
+  plugins: ProductState['plugins'],
+): ProductState['pluginStates'] {
+  const off = new Set(plugins.filter((plugin) => !plugin.enabled).map((plugin) => plugin.id))
+  return Object.fromEntries(Object.entries(states).filter(([id]) => !off.has(id)))
+}
+
 /** `state` with the part `event` carries replaced. */
 function withPart(state: ProductState, event: PartEvent): ProductState {
   switch (event.type) {
@@ -71,6 +83,8 @@ function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, workspaces: event.workspaces }
     case 'devices':
       return { ...state, devices: event.devices }
+    case 'plugins':
+      return { ...state, plugins: event.plugins, pluginStates: withoutOff(state.pluginStates, event.plugins) }
     case 'plugin':
       return { ...state, pluginStates: { ...state.pluginStates, [event.plugin]: event.state } }
     case 'providers':

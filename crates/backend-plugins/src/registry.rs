@@ -127,12 +127,19 @@ impl Registry {
                 }
             }
         }
-        compose(self, None, Vec::new()).map(|_| ())
+        compose(self, None, Vec::new(), |_| true).map(|_| ())
     }
 
     /// The plugins' profiles, in registration order.
     pub fn profiles(&self) -> &[Profile] {
         &self.profiles
+    }
+
+    /// The plugin that declares the user stream `name`, by its index.
+    pub(crate) fn stream_owner(&self, name: &str) -> Option<usize> {
+        self.plugins
+            .iter()
+            .position(|registered| registered.streams.iter().any(|stream| stream.name == name))
     }
 
     /// Every user stream the catalog serves, of every plugin.

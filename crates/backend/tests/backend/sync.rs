@@ -158,6 +158,8 @@ async fn the_snapshot_is_the_users_product_state() {
                     home_bytes: 32 << 30,
                 },
             },
+            // Checked below by what the page needs of them.
+            plugins: state.plugins.clone(),
             // Without an expose domain the expose plugin has none to show.
             plugin_states: [(
                 "expose".to_owned(),
@@ -165,6 +167,21 @@ async fn the_snapshot_is_the_users_product_state() {
             )]
             .into(),
         }
+    );
+    // Every plugin of the backend is listed in its order, each on.
+    let plugins: Vec<_> = state
+        .plugins
+        .iter()
+        .map(|plugin| (plugin.id.as_str(), plugin.enabled))
+        .collect();
+    assert_eq!(
+        plugins,
+        [
+            ("file", true),
+            ("todo", true),
+            ("browser", true),
+            ("expose", true)
+        ]
     );
     // The page's install command fetches the installer at that URL's origin,
     // which is this backend's; it has no runner releases to install.

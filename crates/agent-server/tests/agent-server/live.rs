@@ -14,7 +14,9 @@ use demi_agent_server::{
     testing::{ScriptedProviders, TestClient},
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
-use demi_agent_tools::{EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory};
+use demi_agent_tools::{
+    EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory, Toolset,
+};
 use demi_agent_transcript::testing::SequentialIds;
 use demi_conversation_socket_protocol::{ServerFrame, ShellStatus};
 use demi_host_interface::{
@@ -245,9 +247,12 @@ async fn serving() -> (
     let shells = Rc::new(ScriptedShells::default());
     let store = MemoryTreeStore::new();
     let server = AgentServer::new(ServerDeps {
-        commands: Rc::new(CommandSet::new()),
+        toolsets: Rc::new(Toolset {
+            commands: Rc::new(CommandSet::new()),
+            profiles: Rc::new([]),
+            revision: Rc::from("none"),
+        }),
         instructions: Rc::from("system prompt"),
-        profiles: Rc::new([]),
         hosts: Rc::new(LiveHosts),
         context: Rc::new([]),
         providers,

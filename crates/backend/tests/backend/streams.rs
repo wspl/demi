@@ -271,6 +271,25 @@ async fn an_archive_ends_the_conversations_open_streams() {
     backend.close().await;
 }
 
+#[tokio::test]
+async fn a_plugin_turned_off_ends_its_open_streams_and_has_none_to_open() {
+    let harness = Harness::new().with_native_fixture();
+    let (backend, master, _laptop) = conversation(&harness).await;
+    let mut echo = socket(&backend, &master, CONVERSATION, "echo").await;
+    answered(&mut echo).await;
+    let switched = backend
+        .put("/api/plugins/fixture", &master, json!({ "enabled": false }))
+        .await;
+    assert_eq!(switched.status, StatusCode::NO_CONTENT);
+    let (_, code, reason) = received(&mut echo).await;
+    assert_eq!((code, reason.as_str()), (4001, "plugin_disabled"));
+    assert_eq!(
+        refusal(&backend, &master, "echo", &backend.url).await,
+        (StatusCode::NOT_FOUND, ErrorCode::UnknownStream)
+    );
+    backend.close().await;
+}
+
 /// Waits until the echo answers, which tells that the stream is open.
 pub(crate) async fn answered(echo: &mut Socket) {
     echo.send(Message::Binary(b"ping".to_vec().into()))
