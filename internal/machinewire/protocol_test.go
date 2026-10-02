@@ -211,6 +211,23 @@ func TestBootCredentialRedaction(t *testing.T) {
 	}
 }
 
+// The wake boundary delegates URL normalization to the runner's boot codec.
+func TestBootURLNormalization(t *testing.T) {
+	input := []byte(`{"id":"1","op":"wake","params":{"deviceId":"dev-1","boot":{"backendUrl":"HTTP://BACKEND.EXAMPLE.COM:80","deviceToken":"opaque"}}}`)
+	request, err := machinewire.DecodeRequest(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := machinewire.EncodeLine(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(string(input), "HTTP://BACKEND.EXAMPLE.COM:80", "http://backend.example.com/", 1) + "\n"
+	if string(encoded) != want {
+		t.Fatalf("got %s\nwant %s", encoded, want)
+	}
+}
+
 // manifest models the release artifact emitted by packaging, with one command release.
 func manifest() machinewire.CloudImageManifest {
 	runner := commandwire.PackageArtifact{SHA256: strings.Repeat("a", 64), Size: 38710848}

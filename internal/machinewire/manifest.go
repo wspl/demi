@@ -16,6 +16,7 @@ const RunnerPath = "/usr/bin/demi-runner"
 // The image's init, which runs the runner and reaps orphaned processes.
 const InitPath = "/usr/bin/tini"
 
+// Supported image architectures, operating system and archive file.
 const (
 	ArchitectureAMD64 Architecture = "amd64"
 	ArchitectureARM64 Architecture = "arm64"
@@ -24,6 +25,8 @@ const (
 )
 
 // ErrManifestRunner means the runner release does not identify the embedded executable.
+//
+//nolint:staticcheck // Preserve the Rust manifest diagnostic verbatim.
 var ErrManifestRunner = errors.New("Runner release must identify the embedded executable")
 
 // A manifest the manager or the packaging command refuses.

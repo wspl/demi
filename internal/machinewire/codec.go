@@ -13,6 +13,7 @@ const MaxLineBytes = 1 << 20
 // A message of this wire.
 type Message interface{ WireMessage() }
 
+// WireMessage identifies a message of the machine-manager socket.
 func (MachineRequest) WireMessage() {}
 
 // A line that is not a message of this wire.

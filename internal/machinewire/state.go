@@ -44,6 +44,7 @@ type MachineImageState struct {
 // +demi:enum running stopped
 type RuntimeState string
 
+// Runtime states of a device's sandbox.
 const (
 	RuntimeStateRunning RuntimeState = "running"
 	RuntimeStateStopped RuntimeState = "stopped"
@@ -54,6 +55,8 @@ const (
 // +demi:enum system home
 type Volume string
 
+// The system layer: the OverlayFS upper and work directories.
+// Home is `/home`.
 const (
 	VolumeSystem Volume = "system"
 	VolumeHome   Volume = "home"

@@ -487,7 +487,7 @@ func contractValidateCurrentBaseVersionParams(v CurrentBaseVersionParams, depth 
 	return nil
 }
 func (v *CurrentBaseVersionParams) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	_, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
@@ -1712,7 +1712,7 @@ func contractValidateReconcileParams(v ReconcileParams, depth int) error {
 	return nil
 }
 func (v *ReconcileParams) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	_, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
@@ -2290,12 +2290,6 @@ func contractValidateWakeParams(v WakeParams, depth int) error {
 	if err := contract.Text(string(v.DeviceID), 1, -1, ""); err != nil {
 		return contract.At("deviceId", err)
 	}
-	if err := contract.CheckJSON(v.Boot); err != nil {
-		return contract.At("boot", err)
-	}
-	if err := validateWakeParams(v); err != nil {
-		return err
-	}
 	return nil
 }
 func (v *WakeParams) UnmarshalJSON(data []byte) error {
@@ -2323,7 +2317,7 @@ func (v *WakeParams) UnmarshalJSON(data []byte) error {
 			return contract.At("boot", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.JSON(raw)
+			value, err := contract.Decode[runnerwire.ManagedBoot](raw)
 			if err != nil {
 				return contract.At("boot", err)
 			}
