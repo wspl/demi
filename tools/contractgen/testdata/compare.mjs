@@ -5,7 +5,8 @@ import {stripTypeScriptTypes} from 'node:module';
 import {isDeepStrictEqual} from 'node:util';
 import {z} from 'zod';
 
-const referencePath = '/Users/zan/Projects/demi-worktrees/gomig-ref/generated/protocol/contracts.ts';
+const referencePath = process.env.CONTRACTGEN_REFERENCE;
+if (!referencePath) throw new Error('Set CONTRACTGEN_REFERENCE to the Rust contracts.ts');
 function schemas(path, imports = {}) {
   const source = readFileSync(path, 'utf8');
   const names = [...source.matchAll(/export const (\w+Schema) = /g)].map(match => match[1]);
@@ -71,7 +72,7 @@ for (const [label, schema] of [['go', go.blockSchema], ['rust', rust.blockSchema
 console.log(`Shared named schemas compared=${names.length}; differences=${JSON.stringify(differences)}`);
 console.log(`Additional Go exports=${JSON.stringify(Object.keys(go).filter(name => !(name in rust)).sort())}`);
 writeFileSync('schema-comparison.json', JSON.stringify({shared: names, differences, additional: Object.keys(go).filter(name => !(name in rust)).sort()}, null, 2)+'\n');
-if (differences.length) process.exitCode = 1;
+if (differences.length || Object.keys(go).some(name => !(name in rust))) process.exitCode = 1;
 // Keep a literal source diff alongside the normalized semantic comparison.
 for (const [path, output] of [[referencePath, 'rust-corresponding.ts'], ['generated/protocol/contracts.ts', 'go-corresponding.ts']]) {
   const source = readFileSync(path, 'utf8');

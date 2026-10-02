@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "next": {
+      "$ref": "#",
+      "description": "The next child, when present."
+    }
+  },
+  "additionalProperties": false,
+  "description": "A recursive result with a documented child.\n\nParagraphs and line breaks remain product text.",
+  "title": "Recursive"
+}

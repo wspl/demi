@@ -17,6 +17,7 @@ type table struct {
 	name     string
 	position string
 	fields   *types.Struct
+	scalar   string
 	value    any
 }
 
@@ -41,11 +42,19 @@ func readTable(p *packages.Package, spec *ast.ValueSpec, marks map[string]string
 		return fail(fmt.Errorf("table requires a slice of structs"))
 	}
 	fields, ok := slice.Elem().Underlying().(*types.Struct)
+	scalar := ""
 	if !ok {
-		return fail(fmt.Errorf("table requires a slice of structs"))
+		if _, ok := slice.Elem().Underlying().(*types.Basic); !ok {
+			return fail(fmt.Errorf("table requires structs or scalars"))
+		}
+		var err error
+		scalar, err = tableTSType(slice.Elem())
+		if err != nil {
+			return fail(err)
+		}
 	}
 	seen := map[string]bool{}
-	for i := 0; i < fields.NumFields(); i++ {
+	for i := 0; fields != nil && i < fields.NumFields(); i++ {
 		field := fields.Field(i)
 		key := reflect.StructTag(fields.Tag(i)).Get("json")
 		if !field.Exported() || key == "" || key == "-" || strings.Contains(key, ",") || seen[key] {
@@ -60,7 +69,7 @@ func readTable(p *packages.Package, spec *ast.ValueSpec, marks map[string]string
 	if err != nil {
 		return fail(err)
 	}
-	return &table{name: spec.Names[0].Name, position: p.Fset.Position(spec.Pos()).String(), fields: fields, value: value}, nil
+	return &table{name: strings.ToUpper(strings.Join(words(spec.Names[0].Name), "_")), scalar: scalar, position: p.Fset.Position(spec.Pos()).String(), fields: fields, value: value}, nil
 }
 
 // tableValue admits only literal contract data and compile-time scalar constants.
@@ -160,6 +169,10 @@ func (g *generator) tableSources() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %s: %w", table.position, table.name, err)
 		}
+		if table.fields == nil {
+			fmt.Fprintf(&out, "export const %s: readonly %s[] = %s\n", table.name, table.scalar, value)
+			continue
+		}
 		var fields []string
 		for i := 0; i < table.fields.NumFields(); i++ {
 			typ, err := tableTSType(table.fields.Field(i).Type())
@@ -192,7 +205,7 @@ func (g *generator) tableSources() ([]byte, error) {
 				return nil, fmt.Errorf("%s: duplicate table export %s", table.position, name)
 			}
 			seen[name] = true
-			fmt.Fprintf(&out, "export function %s(value: %s): (typeof %s)[number] | undefined { return %s.find((entry) => %s) }\n", name, tsType, table.name, table.name, comparison)
+			fmt.Fprintf(&out, "function %s(value: %s): (typeof %s)[number] | undefined { return %s.find((entry) => %s) }\n", name, tsType, table.name, table.name, comparison)
 		}
 		if table.name == "PREVIEW_TYPES" {
 			if len(fields) != 3 || !previewTable(table.fields) {

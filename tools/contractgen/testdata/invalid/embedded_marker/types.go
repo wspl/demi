@@ -5,6 +5,7 @@ type Base struct {
 }
 
 // +demi:strict
+// +demi:root direction=receive
 type Broken struct {
 	// +demi:unknown
 	Base
