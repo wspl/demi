@@ -192,6 +192,10 @@ Generation hides only the current packages’ own generated files, loading
 selected dependencies first into an in-memory overlay and other dependencies
 from their committed generated files.
 
+Generated standalone functions and holder types have the contract type's visibility: an unexported `rawBinding` uses `decodeRawBinding`,
+`validateRawBinding`, and `rawBindingJSON`; exported types keep their exported
+entry points.
+
 Each contract package commits one generated file, `contract_gen.go`, beside
 its declarations. It contains `Decode<Type>([]byte) (<Type>, error)` for
 JSON, `Validate() error` methods, `MarshalJSON` and `UnmarshalJSON` methods on
