@@ -44,7 +44,7 @@ fi
 step='vet'
 go vet "$@"
 step='golangci-lint'
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run "$@"
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --allow-parallel-runners "$@"
 step='sumtype'
 go run github.com/alecthomas/go-check-sumtype/cmd/go-check-sumtype@v0.5.0 -default-signifies-exhaustive=false "$@"
 step='architecture'
