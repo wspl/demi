@@ -77,6 +77,7 @@ never relax them.
 | `enum value1 value2` | Named string type; closed set of wire strings, including singleton literals. |
 | `nullable` | Field; its value may be null. Without `omitempty` the key is required; with `omitempty` it may also be absent (below). |
 | `default` | Non-pointer scalar, slice or map field; it may be absent, which decodes to its zero value (an empty slice or map, `false`, `0`, `""`), as Rust's `#[serde(default)]` without `skip_serializing_if`; its key is always written. JSON Schema marks it optional and includes the zero value as `default`; Zod uses `.optional()` without inserting a value, as the Rust generators do. It cannot be combined with an omission tag. |
+| `integer string` | Integer type or field; also accepts a JSON string that Rust's `FromStr` for the same integer type accepts, as Rust's tool inputs do for numbers the model writes as strings. It encodes as an integer, and its schema and Zod stay those of the integer; null is refused. |
 | `tolerant` | Struct; ignore unknown keys in Go. Every other object is strict. |
 | `length chars min=1 max=64` | String type or field; Unicode scalar count. Arrays omit `chars` and count elements. Either bound may be omitted. |
 | `pattern ^[0-9a-f]{64}$` | String type or field; shared regex subset below. The remainder of the line is the pattern. |
