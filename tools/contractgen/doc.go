@@ -16,7 +16,10 @@
 // Absent collections decode empty; encoding omits empty collections. A nullable pointer or union instead has +demi:nullable
 // and must be present. Nil required arrays and records are invalid; construct
 // empty values explicitly. Untagged embedded value structs flatten their
-// properties, including validation. A concrete declaration such as
+// properties, including validation. Embedded object pointers represent serde's
+// flattened Option: failed child decoding leaves nil; non-nil encoding validates
+// the child. Schema and Zod merge its properties as optional.
+// A concrete declaration such as
 // "type Names Page[Identifier]" instantiates a generic shape and its field rules.
 //
 // A union interface has +demi:union tag=type and exactly one unexported method,
@@ -27,8 +30,9 @@
 // +demi:variant <Union> <tag>. The generator supplies absent sealing methods.
 // Variant JSON includes the tag even when encoded outside its union. Boolean
 // variants true and false use boolean tags. A variant can implement multiple
-// unions sharing its wire representation. Go-only +demi:union untagged tries
-// strict variants in declaration order; their +demi:variant has no tag.
+// unions sharing its wire representation. +demi:union untagged tries
+// strict object or named scalar variants in declaration order in JSON,
+// MessagePack and Zod; their +demi:variant has no tag.
 //
 // Scalar and field rules are +demi:length chars min=1 max=64 (array lengths omit
 // chars), +demi:pattern <regexp>, +demi:range min=1 max=9007199254740991,

@@ -127,7 +127,7 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 			seen[v] = true
 		}
 	}
-	for _, key := range []string{"strict", "tolerant", "variant"} {
+	for _, key := range []string{"strict", "tolerant"} {
 		if has(m, key) {
 			if _, ok := t.Underlying().(*types.Struct); !ok {
 				return fmt.Errorf("%s requires an object", key)

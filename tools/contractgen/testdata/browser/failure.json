@@ -1,0 +1,1 @@
+{"code":"partial_failure","message":"some browser items failed","details":{"action":"not_started","tab":"t1","debuggingCallers":[1],"directory":"/out","manifest":"/out/manifest.json","files":[{"id":"a","path":"/out/a.png","bytes":3,"mimeType":"image/png"}]}}

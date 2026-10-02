@@ -81,22 +81,31 @@ func (g *generator) emitTS(name string) {
 			g.err = fmt.Errorf("adjacent union is not supported in TypeScript")
 			return
 		}
-		if d.marks["union"] == "untagged" {
-			g.err = fmt.Errorf("untagged union is not supported in TypeScript")
-			return
-		}
 		tag := bounds(d.marks["union"])["tag"]
 		var variants []string
 		for _, v := range g.variants(name) {
 			g.emitTS(v.key)
 			_, value, _ := strings.Cut(v.marks["variant"], " ")
-			variants = append(variants, schema(v.name)+".extend({"+q(tag)+": z.literal("+tagLiteral(value)+")})")
+			if d.marks["union"] == "untagged" {
+				variants = append(variants, schema(v.name))
+			} else {
+				variants = append(variants, schema(v.name)+".extend({"+q(tag)+": z.literal("+tagLiteral(value)+")})")
+			}
 		}
-		code = "z.discriminatedUnion(" + q(tag) + ", [" + strings.Join(variants, ", ") + "])"
+		if d.marks["union"] == "untagged" {
+			code = "z.union([" + strings.Join(variants, ", ") + "])"
+		} else {
+			code = "z.discriminatedUnion(" + q(tag) + ", [" + strings.Join(variants, ", ") + "])"
+		}
 	} else if st, ok := g.object(d); ok {
 		var fields []string
 		for i := 0; i < st.NumFields(); i++ {
 			f := st.Field(i)
+			if child := g.optionalObject(f); child != nil {
+				g.emitTS(child.key)
+				fields = append(fields, "..."+schema(child.name)+".partial().shape")
+				continue
+			}
 			opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 			value, forward := g.tsType(f.Type(), d.fields[f.Name()])
 			if has(d.fields[f.Name()], "nullable") {
