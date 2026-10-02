@@ -1986,7 +1986,8 @@ External libraries and the third-party fork are outside these graphs.
 
 Paths are relative to `github.com/wspl/demi`. The table maps the crate graph,
 adds the contract runtime used by generated code, and distributes split
-packages' edges within their boundary. Test support has its own lines.
+packages' edges within their boundary. Every package may import `internal/contract`, the runtime of generated
+contract code, whether or not its line names it. Test support has its own lines.
 Production imports follow the listed edges. For `TestImports` and
 `XTestImports`, an owner may also import its own support and a consumer may
 import support of a listed dependency. The check resolves such test-only
