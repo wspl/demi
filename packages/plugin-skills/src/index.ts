@@ -1,8 +1,8 @@
-// The `skills` plugin's page (`plugins.md` § The page, `skills.md` § The
+// The `skills` plugin's page (`plugin-pages.md`, `skills.md` § The
 // page): its settings section, and the types of its state, parameters and
 // results, generated from the plugin's Rust types.
 import { WandSparkles } from '@lucide/vue'
-import type { PluginPage } from '@demicodes/web-ui/plugins/slots'
+import type { PluginPage } from '@demicodes/plugin-sdk'
 import SkillsSettings from './SkillsSettings.vue'
 
 export * from './generated/plugin'

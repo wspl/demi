@@ -4,6 +4,7 @@
 @import "./paradigms.css";
 
 @source "../../web-ui/src";
+@source "../../plugin-*/src";
 @source ".";
 
 html,

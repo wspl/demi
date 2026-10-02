@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
-import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
 import { usePluginHost } from '@demicodes/web-ui/plugins/client'
 import { pluginPanelKinds, type PanelKinds } from '@demicodes/web-ui/plugins/slots'
 import { PLUGIN_PAGES } from '../plugins/pages'
@@ -91,7 +90,7 @@ watch(
   { immediate: true },
 )
 
-const kinds = computed<PanelTabKind[]>(() => [...(plugins.value?.kinds ?? []), pageTabKind])
+const kinds = computed<PanelTabKind[]>(() => plugins.value?.kinds ?? [])
 
 /** Closing a tab removes it at once; its kind then does what a closed tab of it needs. */
 function closeTabs(ids: string[]): void {

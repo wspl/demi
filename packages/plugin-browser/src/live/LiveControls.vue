@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { LiveControl, BrowserViewport } from '@demicodes/protocol'
+import type { LiveControl, BrowserViewport } from '../generated/plugin'
 import type { LiveSession } from './session'
 import { panelRect, type Placement } from './view'
 

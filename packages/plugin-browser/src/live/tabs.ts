@@ -8,12 +8,13 @@
 import { useDocumentVisibility } from '@vueuse/core'
 import { nextTick, shallowRef, watch, type Ref, type ShallowRef, type WatchHandle } from 'vue'
 import { z } from 'zod'
-import type { BrowserCreatedBy } from '@demicodes/protocol'
+import type { BrowserCreatedBy } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { viewerPlatform } from './input'
 import { picturesSupported } from './pictures'
-import type { HostInstall } from '../devices/installs'
-import { LiveSession, type OpenLiveStream } from './session'
+import type { HostInstall } from '@demicodes/plugin-sdk'
+import type { OpenUserStream } from '@demicodes/plugin-sdk'
+import { LiveSession } from './session'
 
 /** What a new tab shows before the user goes anywhere. */
 export const NEW_TAB_URL = 'about:blank'
@@ -60,7 +61,7 @@ export interface BrowserTabsApi {
   close(tab: string): Promise<void>
   navigate(tab: string, url: string): Promise<void>
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void>
-  stream: OpenLiveStream
+  stream: OpenUserStream
   /** What the Host installs before the browser can start, read reactively. */
   installs(): readonly HostInstall[]
 }

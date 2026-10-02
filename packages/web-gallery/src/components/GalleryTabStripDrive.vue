@@ -4,8 +4,8 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import { workPanelTabs } from '@demicodes/web-ui/agent/work-panel'
 import { addTab, emptyPanelState, removeTabs, selectInPanel, type PanelState } from '@demicodes/web-ui/agent/panel-tabs'
-import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
-import { exposePageTab } from '@demicodes/web-ui/agent/panel-kinds/page-data'
+import { pageTabKind } from '@demicodes/plugin-expose/page/page'
+import { exposePageTab } from '@demicodes/plugin-expose/page/page-data'
 
 /**
  * The work panel's tab strip in a frame of the given width, with every motion

@@ -108,7 +108,13 @@ fn generate() -> Result<Generated, Error> {
     contracts.push_str(&protocol);
     let plugins = roots::plugins()
         .into_iter()
-        .map(|(directory, roots)| Ok((directory, vec![("plugin.ts", plugin_module(roots)?)])))
+        .map(|output| {
+            let mut files = vec![("plugin.ts", plugin_module(output.roots)?)];
+            for (name, table) in output.tables {
+                files.push((name, table(HEADER)));
+            }
+            Ok((output.directory, files))
+        })
         .collect::<Result<_, Error>>()?;
     Ok(Generated {
         protocol: vec![
