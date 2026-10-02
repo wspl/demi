@@ -208,6 +208,7 @@ func (s *Session) runEdit(ctx context.Context) error {
 		c.change = c.waitingChange
 		c.waitingChange = nil
 		c.edit.accepted = true
+		s.eventLocked(&EditCommitted{Receipt: candidate.receipt})
 		acceptance := c.edit.acceptance
 		c.effects = append(c.effects, func() { acceptance.finish(candidate.receipt, nil) })
 	})

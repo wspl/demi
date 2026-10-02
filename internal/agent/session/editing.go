@@ -59,6 +59,9 @@ func (*EditProceed) editCheck()  {}
 
 // Acceptance is an in-flight edit's durable acceptance, shared by every caller
 // of the same request. Cancelling a wait does not cancel the admitted edit.
+// Successful waits resolve after EditCommitted delivery. To order a reply
+// before replacement events, publish it in that event's callback: waking a
+// waiter does not serialize the waiter's work with later callbacks.
 type Acceptance struct{ result *editResult }
 
 // Wait waits for acceptance, returning the receipt or *EditError. A cancelled
