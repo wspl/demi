@@ -15,7 +15,10 @@ import (
 	"testing"
 	"time"
 
+	protocol "github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
+	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/cdp"
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/page"
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/tabs"
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/tabs/tabstest"
@@ -140,5 +143,118 @@ func TestChromePage(t *testing.T) {
 	}
 	if len(inventory.InlineSvgs) != 1 {
 		t.Fatalf("SVG inventory=%+v", inventory)
+	}
+}
+
+// These dependency regressions cost one Chrome launch and local HTTP fixture
+// (budget 30 s). k-browser's full scenarios additionally exercise command wiring.
+func TestChromeRendererUploadsAssetsConsoleAndFailedNavigation(t *testing.T) {
+	executable := os.Getenv("DEMI_TEST_CHROME")
+	if executable == "" {
+		t.Skip("DEMI_TEST_CHROME supplies real Chrome")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/drop" {
+			connection, _, err := http.NewResponseController(w).Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if err := connection.Close(); err != nil {
+				t.Error(err)
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		if r.URL.Path == "/child" {
+			_, _ = w.Write([]byte(`<button id="log" onclick="console.info('child-console')">Log</button><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20'/%3E%3C/svg%3E">`))
+			return
+		}
+		_, _ = w.Write([]byte(`<!doctype html><input id="files" type="file" multiple hidden><button id="choose" onclick="document.querySelector('#files').click()">Choose</button><button id="disabled" disabled>Disabled</button><iframe id="child"></iframe><script>document.querySelector('iframe').src=location.href.replace('127.0.0.1','localhost')+'child';</script>`))
+	}))
+	defer server.Close()
+	environment := tabstest.Launch(ctx, t, tabs.LaunchOptions{Executable: executable, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}})
+	tab, err := environment.Open(ctx, server.URL+"/", 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tab.WaitCurrentLoad(ctx, browserop.LoadLoad); err != nil {
+		t.Fatal(err)
+	}
+	deadline := func() time.Time { return time.Now().Add(5 * time.Second) }
+	cwd := t.TempDir()
+	invocation := &cmdsdk.InvocationContext[commandwire.Invocation]{Request: commandwire.Invocation{Cwd: cwd}}
+	file := filepath.Join(cwd, "chooser.txt")
+	if err := os.WriteFile(file, []byte("chooser contents"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	selector := "#choose"
+	upload := browserop.UploadInput{Tab: tab.ID(), BrowserTarget: browserop.BrowserTarget{BrowserQueryMatch: browserop.BrowserQueryMatch{CSS: &selector}}, File: []browserop.LocatorText{browserop.LocatorText(file)}}
+	result, err := page.Upload(ctx, invocation, tab, upload, deadline())
+	if err != nil || result.Attached != 1 {
+		t.Fatalf("chooser result=%+v error=%v", result, err)
+	}
+	value, err := page.Evaluate(ctx, tab, `document.querySelector('#files').files[0].name`, time.Second)
+	if err != nil || string(value) != `"chooser.txt"` {
+		t.Fatalf("files=%s err=%v", value, err)
+	}
+	selector = "#disabled"
+	_, err = page.Upload(ctx, invocation, tab, upload, time.Now().Add(200*time.Millisecond))
+	if cdp.ErrorCode(err) != "not_actionable" {
+		t.Fatalf("disabled upload: %v", err)
+	}
+	inventory, err := page.AssetsList(ctx, invocation, tab, browserop.AssetsListInput{Tab: tab.ID()}, deadline())
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(cwd, "assets")
+	exported, err := page.AssetsExport(ctx, invocation, tab, browserop.AssetsExportInput{Tab: tab.ID(), Inventory: inventory.Inventory, Kind: &[]browserop.AssetKind{browserop.AssetKindImage}, OutputDir: output}, deadline())
+	if err != nil || len(exported.Files) != 1 {
+		t.Fatalf("child asset export=%+v error=%v", exported, err)
+	}
+	snapshot, err := cdp.CaptureFrames(ctx, tab.Page())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var child cdp.FrameTarget
+	for _, frame := range snapshot.Frames {
+		if frame.Target.TargetID() != tab.TargetID() {
+			child = frame.Target
+		}
+	}
+	if child == nil {
+		t.Fatal("fixture did not create a cross-process renderer")
+	}
+	_, exception, err := runtime.Evaluate(`document.querySelector('#log').click()`).Do(protocol.WithExecutor(ctx, child))
+	if err != nil || exception != nil {
+		t.Fatalf("child console: %v %v", err, exception)
+	}
+	filter := "child-console"
+	for {
+		logs, err := tab.Console().Read(ctx, browserop.LogsInput{Tab: tab.ID(), Filter: &filter})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(logs.Entries) == 1 {
+			break
+		}
+		// A renderer round trip yields to the collector without a clock sleep.
+		if _, _, err := runtime.Evaluate("0").Do(protocol.WithExecutor(ctx, child)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	operation := tab.Operation(ctx, deadline())
+	defer operation.Close()
+	checkout := tab.Gate().TryCheckout()
+	if checkout == nil {
+		t.Fatal("tab busy")
+	}
+	defer checkout.Release()
+	_, err = tab.Navigate(ctx, &tabs.Visit{URL: server.URL + "/drop"}, browserop.LoadLoad, operation, &checkout.Session().References)
+	details := cdp.ErrorDetails(err)
+	if cdp.ErrorCode(err) != "navigation_failed" || details.Action == nil || *details.Action != "completed" {
+		t.Fatalf("navigation error=%v details=%+v", err, details)
 	}
 }

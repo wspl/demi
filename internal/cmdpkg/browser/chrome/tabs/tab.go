@@ -292,3 +292,7 @@ func (p tabExecutor) TargetID() target.ID { return p.tab.TargetID() }
 func (p tabExecutor) Related(ctx context.Context, id target.ID) (cdp.FrameTarget, error) {
 	return p.tab.session.Related(ctx, id)
 }
+
+func (p tabExecutor) Subscribe(methods ...string) (*cdp.Subscription, error) {
+	return p.tab.Subscribe(methods...)
+}

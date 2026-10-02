@@ -66,10 +66,10 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		if len(listed.Tabs) != 2 || listed.Tabs[0].Tab != first || listed.Tabs[1].Tab != second {
 			t.Fatalf("listing %+v", listed.Tabs)
 		}
-		if got := evaluateString(t, ctx, first, `JSON.stringify([navigator.webdriver,Intl.DateTimeFormat().resolvedOptions().timeZone,navigator.languages])`); got != `[false,"Asia/Singapore",["en-US","zh-CN"]]` {
+		if got := evaluateString(ctx, t, first, `JSON.stringify([navigator.webdriver,Intl.DateTimeFormat().resolvedOptions().timeZone,navigator.languages])`); got != `[false,"Asia/Singapore",["en-US","zh-CN"]]` {
 			t.Fatal(got)
 		}
-		if strings.Contains(evaluateString(t, ctx, first, `navigator.userAgent`), "Headless") {
+		if strings.Contains(evaluateString(ctx, t, first, `navigator.userAgent`), "Headless") {
 			t.Fatal("headless user agent")
 		}
 	})
@@ -106,13 +106,13 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		if _, err := first.Navigate(ctx, &tabs.History{EntryID: history.ID}, browserop.LoadDomContentLoaded, operation, references); err != nil {
 			t.Fatal(err)
 		}
-		if evaluateString(t, ctx, first, `location.pathname`) != "/" {
+		if evaluateString(ctx, t, first, `location.pathname`) != "/" {
 			t.Fatal("history did not navigate")
 		}
 	})
 	t.Run("popup registration", func(t *testing.T) {
 		changed := environment.Latest().Changed
-		evaluateString(t, ctx, first, `document.querySelector('#popup').click(); 'opened'`)
+		evaluateString(ctx, t, first, `document.querySelector('#popup').click(); 'opened'`)
 		for {
 			ids, err := first.Popups(ctx)
 			if err != nil {
@@ -148,7 +148,7 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer events.Close()
-		evaluateString(t, ctx, first, `console.log('tabs-console-marker'); 'logged'`)
+		evaluateString(ctx, t, first, `console.log('tabs-console-marker'); 'logged'`)
 		if _, err := events.Next(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +165,7 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 				break
 			}
 			// A CDP round trip yields to the collector and bounds this event-based poll.
-			evaluateString(t, ctx, second, `'collector barrier'`)
+			evaluateString(ctx, t, second, `'collector barrier'`)
 		}
 		changedDialog := first.Dialog()
 		finished := make(chan error, 1)
@@ -205,7 +205,7 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		if err := first.UpdateScreen(ctx, tabs.Screen{Width: 1280, Height: 720, Ratio: 1}); err != nil {
 			t.Fatal(err)
 		}
-		if got := evaluateString(t, ctx, first, `JSON.stringify([innerWidth,innerHeight])`); got != "[700,500]" {
+		if got := evaluateString(ctx, t, first, `JSON.stringify([innerWidth,innerHeight])`); got != "[700,500]" {
 			t.Fatal(got)
 		}
 		capture, err := environment.Captures().Start(ctx, first.TargetID(), 700, 500, 30, 2_000_000)
@@ -278,7 +278,7 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 	t.Log("last-tab closure reaped Chrome and removed its profile")
 }
 
-func evaluateString(t *testing.T, ctx context.Context, tab *tabs.Tab, expression string) string {
+func evaluateString(ctx context.Context, t *testing.T, tab *tabs.Tab, expression string) string {
 	t.Helper()
 	value, exception, err := runtime.Evaluate(expression).WithReturnByValue(true).Do(protocol.WithExecutor(ctx, tab.Page()))
 	if err != nil {

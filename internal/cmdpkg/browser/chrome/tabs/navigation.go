@@ -199,6 +199,10 @@ func (t *Tab) Navigate(ctx context.Context, navigation Navigation, load browsero
 	err = operation.Run(ctx, func(ctx context.Context) error {
 		operation.BeginInput()
 		if err := dispatchNavigation(ctx, t.Page(), navigation); err != nil {
+			var failure *cdp.BrowserError
+			if errors.As(err, &failure) && failure.Kind == cdp.KindNavigationFailed {
+				operation.CompleteInput()
+			}
 			return err
 		}
 		operation.CompleteInput()
