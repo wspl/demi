@@ -12,6 +12,7 @@ import (
 
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/version"
 )
 
 var userAgent = codexUserAgent()
@@ -29,7 +30,7 @@ func codexUserAgent() string {
 	case "arm64":
 		architecture = "aarch64"
 	}
-	return "demi-codex-provider/0.1.3 (" + osName + "; " + architecture + ")"
+	return "demi-codex-provider/" + version.Release + " (" + osName + "; " + architecture + ")"
 }
 
 // Provider is a codex entry's provider for one account, shared by its requests.

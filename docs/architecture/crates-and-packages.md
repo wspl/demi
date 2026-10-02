@@ -532,6 +532,13 @@ not a tab registry, so the split introduces no dependency cycle.
 
 <a id="host-interface"></a>
 
+#### `internal/version`
+
+- **Owns:** the release version (`Release`), the one statement of Demi's
+  version ([Package versioning](../delivery/package-versioning.md)).
+- **Public boundary:** `Release`.
+- **Must not:** import anything or compute the version at run time.
+
 #### `internal/host`
 
 - **Owns:** three contracts and nothing that implements them:
@@ -1992,6 +1999,7 @@ internal/cmdpkg/claudecode -> internal/cmdpkg/claudecode/claudecodeop, internal/
 internal/gates -> none
 internal/artifacts -> internal/contract
 internal/cli -> none
+internal/version -> none
 internal/host -> internal/commandwire, internal/declare, internal/core, internal/contract
 internal/plugin -> internal/declare, internal/core, internal/host, internal/webapi
 internal/plugins/browser -> internal/plugin, internal/declare, internal/cmdpkg/browser/browserop, internal/host, internal/webapi
@@ -2005,9 +2013,9 @@ internal/provider -> internal/core, internal/gates, internal/contract
 internal/providers/anthropicapi -> internal/core, internal/provider, internal/contract
 internal/providers/openaiapi -> internal/core, internal/provider, internal/contract
 internal/providers/google -> internal/core, internal/provider, internal/contract
-internal/providers/codex -> internal/core, internal/provider, internal/contract
+internal/providers/codex -> internal/core, internal/provider, internal/contract, internal/version
 internal/providers/grokbuild -> internal/core, internal/provider, internal/contract
-internal/providers/claudecode -> internal/core, internal/provider, internal/host, internal/contract
+internal/providers/claudecode -> internal/core, internal/provider, internal/host, internal/contract, internal/version
 internal/agent/store -> internal/framewire, internal/core, internal/provider, internal/host, internal/contract
 internal/agent/transcript -> internal/framewire, internal/agent/store, internal/core, internal/provider
 internal/agent/session -> internal/framewire, internal/agent/store, internal/agent/transcript, internal/commandwire, internal/core, internal/gates, internal/provider, internal/host
