@@ -49,3 +49,17 @@ const (
 	// Stopped means the container exited.
 	Stopped Status = "stopped"
 )
+
+// +demi:root
+type runtimeListing []runtimeContainer
+
+// +demi:tolerant
+type runtimeContainer struct {
+	ID     string `json:"id"`
+	Status Status `json:"status"`
+}
+
+// +demi:root
+type namespaceOwner struct {
+	DataDir string `json:"dataDir"`
+}
