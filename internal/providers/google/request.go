@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 )
@@ -62,9 +63,9 @@ type generationConfig struct {
 	ThinkingConfig  thinkingConfig `json:"thinkingConfig"`
 }
 type declaration struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Parameters  any    `json:"parameters"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Parameters  json.RawMessage `json:"parameters"`
 }
 type tools struct {
 	FunctionDeclarations []declaration `json:"functionDeclarations"`
@@ -94,11 +95,11 @@ func encode(request provider.InferenceRequest) ([]byte, error) {
 	if len(request.Tools) != 0 {
 		declarations := make([]declaration, 0, len(request.Tools))
 		for _, tool := range request.Tools {
-			schema, err := provider.DecodeUntagged[any](string(tool.InputSchema))
+			schema, err := geminiSchema(tool.InputSchema)
 			if err != nil {
 				return nil, err
 			}
-			declarations = append(declarations, declaration{Name: tool.Name, Description: tool.Description, Parameters: geminiSchema(schema)})
+			declarations = append(declarations, declaration{Name: tool.Name, Description: tool.Description, Parameters: schema})
 		}
 		b.Tools = []tools{{FunctionDeclarations: declarations}}
 	}
@@ -246,38 +247,69 @@ func resultParts(result *provider.ToolResult, name string, asText bool) []any {
 	return append([]any{resultPart{FunctionResponse: functionResponse{Name: name, ID: result.ToolUseID, Response: toolOutput{Output: text}}}}, media...)
 }
 
-// geminiSchema retains only Gemini's supported schema keywords, including nested schemas.
-func geminiSchema(schema any) any {
-	kept := make(map[string]any)
-	object, ok := schema.(map[string]any)
-	if !ok {
-		return kept
+// geminiSchema retains Gemini's supported keywords in their read order.
+// Values outside schema containers stay raw so their nested object order survives.
+func geminiSchema(schema json.RawMessage) (json.RawMessage, error) {
+	if !bytes.HasPrefix(bytes.TrimSpace(schema), []byte("{")) {
+		if err := contract.CheckJSON(schema); err != nil {
+			return nil, err
+		}
+		return contract.EncodeObject(nil)
 	}
-	for key, value := range object {
-		switch key {
+	fields, err := contract.ObjectFields(schema)
+	if err != nil {
+		return nil, err
+	}
+	kept := make([]contract.Field, 0, len(fields))
+	for _, field := range fields {
+		// ObjectFields returns each value as a RawMessage, preserving its bytes.
+		value := field.Value.(json.RawMessage)
+		switch field.Name {
 		case "type", "format", "title", "description", "nullable", "enum", "required", "minimum", "maximum", "minItems", "maxItems", "default":
 		case "properties":
-			if properties, ok := value.(map[string]any); ok {
-				children := make(map[string]any, len(properties))
-				for name, child := range properties {
-					children[name] = geminiSchema(child)
+			if bytes.HasPrefix(bytes.TrimSpace(value), []byte("{")) {
+				properties, err := contract.ObjectFields(value)
+				if err != nil {
+					return nil, err
 				}
-				value = children
+				for i := range properties {
+					child, err := geminiSchema(properties[i].Value.(json.RawMessage))
+					if err != nil {
+						return nil, err
+					}
+					properties[i].Value = child
+				}
+				value, err = contract.EncodeObject(properties)
+				if err != nil {
+					return nil, err
+				}
 			}
 		case "items":
-			value = geminiSchema(value)
+			value, err = geminiSchema(value)
+			if err != nil {
+				return nil, err
+			}
 		case "anyOf":
-			if options, ok := value.([]any); ok {
-				children := make([]any, len(options))
-				for i, child := range options {
-					children[i] = geminiSchema(child)
+			if bytes.HasPrefix(bytes.TrimSpace(value), []byte("[")) {
+				options, err := contract.Decode[[]json.RawMessage](value)
+				if err != nil {
+					return nil, err
 				}
-				value = children
+				for i := range options {
+					options[i], err = geminiSchema(options[i])
+					if err != nil {
+						return nil, err
+					}
+				}
+				value, err = contract.EncodeJSON(options)
+				if err != nil {
+					return nil, err
+				}
 			}
 		default:
 			continue
 		}
-		kept[key] = value
+		kept = append(kept, contract.Field{Name: field.Name, Value: value})
 	}
-	return kept
+	return contract.EncodeObject(kept)
 }

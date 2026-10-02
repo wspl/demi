@@ -1,6 +1,7 @@
 package google_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/wspl/demi/internal/core"
@@ -143,4 +144,40 @@ func TestReplayRoleAndSignatureBoundaries(t *testing.T) {
  {"role":"user","parts":[{"text":"one"},{"text":"two"}]},
  {"role":"model","parts":[{"functionCall":{"name":"look","args":{},"id":"a"},"thoughtSignature":"kept"},{"text":"[called look with bad arguments]"},{"text":"answer"},{"text":"[called look with {}]"}]},
  {"role":"user","parts":[{"functionResponse":{"name":"tool","id":"orphan","response":{"output":"orphan result"}}}]}]`)
+}
+
+// TestGeminiSchemaWireOrder pins Rust's insertion order after schema reduction,
+// including objects in keywords whose values are retained without reduction.
+func TestGeminiSchemaWireOrder(t *testing.T) {
+	request := providertest.InferenceRequest()
+	request.Tools = []provider.ToolDefinition{{Name: "ordered", Description: "order", InputSchema: []byte(`{
+ "type":"object","additionalProperties":false,"required":["zeta"],
+ "properties":{
+  "zeta":{"description":"first","type":"array","items":{"title":"item","type":"object","properties":{"z":{"type":"string","minLength":1},"a":{"description":"second","type":"number"}}}},
+  "alpha":{"anyOf":[{"description":"choice","type":"string","const":"drop"},{"type":"null"}],"default":{"z":1,"a":{"y":2,"b":3}},"enum":[{"z":4,"a":5}]}
+ },"default":{"zeta":{"z":6,"a":7},"alpha":null}
+ }`)}}
+	v := providertest.StartVendor(t)
+	v.Respond(providertest.EventStream(""))
+	events := providertest.Run(t.Context(), t, runtimeAt(t, v, "/v1beta"), request)
+	if len(events) != 1 {
+		t.Fatalf("unexpected events: %#v", events)
+	}
+	sent, err := provider.DecodeUntagged[struct {
+		Tools []struct {
+			Declarations []struct {
+				Parameters json.RawMessage `json:"parameters"`
+			} `json:"functionDeclarations"`
+		} `json:"tools"`
+	}](string(v.Requests()[0].Body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rust iterates serde_json::Map in read order and inserts each retained key
+	// in that same order, recursively for properties, items and anyOf.
+	want := `{"type":"object","required":["zeta"],"properties":{"zeta":{"description":"first","type":"array","items":{"title":"item","type":"object","properties":{"z":{"type":"string"},"a":{"description":"second","type":"number"}}}},"alpha":{"anyOf":[{"description":"choice","type":"string"},{"type":"null"}],"default":{"z":1,"a":{"y":2,"b":3}},"enum":[{"z":4,"a":5}]}},"default":{"zeta":{"z":6,"a":7},"alpha":null}}`
+	got := string(sent.Tools[0].Declarations[0].Parameters)
+	if got != want {
+		t.Fatalf("schema wire bytes:\n got %s\nwant %s", got, want)
+	}
 }
