@@ -1,0 +1,7 @@
+# Reproducible TypeScript comparison products; Go output is committed.
+/generated/
+/go-block-schema.json
+/rust-block-schema.json
+/schema-comparison.json
+/go-corresponding.ts
+/rust-corresponding.ts
