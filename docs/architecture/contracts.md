@@ -93,6 +93,13 @@ itself. Unreached types are left alone, even in a package that also holds
 runtime types. `schema` and `msgpack` select generated capabilities; they do
 not make an unreached type a boundary. Roots are markers on types, never a
 second registry in the generator.
+
+Maps may use `string` or a defined string type such as `core.BlockID` as keys.
+Generated JSON and MessagePack validation runs the key type's own rules on
+every key, on decode and encode, without rewriting keys. A named map declaration
+(`type Failures map[core.BlockID]core.ProviderFailureFacts`) can own generated methods;
+a Go type alias is not needed for this contract.
+
 Named generic instantiations can be roots. Constant tables and lookups come
 from their owning Go declarations, without parallel TypeScript tables.
 
@@ -283,6 +290,10 @@ Every value from outside a process follows the same rule:
 - Each boundary uses a generated decoder per message family. Closed sets
   use enums or unions, identifiers use validated named types, and integers
   use integer types.
+- JSON syntax errors wrap `contract.ErrSyntax`: malformed JSON, invalid UTF-8
+  or escaped Unicode, trailing data, and the recursion limit. Callers use
+  `errors.Is(err, contract.ErrSyntax)` even through field-path errors. Shape
+  and validation failures, including duplicate keys, do not wrap this sentinel.
 - JSON decoders build on stable `encoding/json` through `internal/contract`.
   They check UTF-8 before parsing and reject unpaired escaped surrogates
   instead of letting the library replace them. They reject duplicate keys
@@ -411,7 +422,8 @@ Go types + JSON tags + markers
   this web-facing rule.
 - **Tolerant values where the web app receives.** Receive-only schemas may
   accept more than Go can hold, because the backend never sends the
-  difference: failure-map keys may be empty even when a block ID cannot,
+  difference: failure-map keys may be empty even when a block ID cannot
+  (`z.record(z.string(), ...)`, matching the Rust emitter),
   and email text may carry capitals that `EmailAddress` lowercases. Where
   the web sends a value, its schema refuses whatever Go refuses: trimmed
   names are trimmed before length checks, blank names fail, endpoints must

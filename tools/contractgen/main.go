@@ -251,7 +251,7 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 	g.received = map[string]bool{}
 	for _, key := range g.order {
 		if has(g.defs[key].marks, "msgpack") {
-			g.markReceived(key)
+			g.markReceived(key, false)
 		}
 	}
 	for key := range g.received {
@@ -397,6 +397,9 @@ func (g *generator) decoder(t types.Type) string {
 	case *types.Pointer:
 		return "func(b []byte)(" + g.typeName(t) + ",error){ return contract.Pointer(b," + g.decoder(t.Elem()) + ") }"
 	case *types.Map:
+		if !types.Identical(t.Key(), types.Typ[types.String]) {
+			return "func(b []byte)(" + g.typeName(t) + ",error){return contract.KeyedRecord[" + g.typeName(t.Key()) + "](b," + g.decoder(t.Elem()) + "," + strconv.FormatBool(isPointer(t.Elem())) + ")}"
+		}
 		return "func(b []byte)(" + g.typeName(t) + ",error){ return contract.Record(b," + g.decoder(t.Elem()) + "," + strconv.FormatBool(isPointer(t.Elem())) + ") }"
 	case *types.Slice:
 		if types.Identical(t.Elem(), types.Typ[types.Uint8]) {
@@ -417,6 +420,7 @@ func (g *generator) emitGo(d *definition) {
 		tag := bounds(d.marks["union"])["tag"]
 		g.line("func Decode%s(data []byte)(%s,error) {", name, name)
 		if d.marks["union"] == "untagged" {
+			g.line("if err:=contract.CheckJSON(data);err!=nil{return nil,err}")
 			for _, v := range g.variants(d.key) {
 				g.line("if value,err:=contract.Decode[%s](data);err==nil{return &value,nil}", v.name)
 			}
@@ -596,7 +600,12 @@ func (g *generator) validation(t types.Type, expr, path string, m map[string]str
 		if !has(m, "optional") {
 			g.line("if %s==nil{return contract.At(%s,fmt.Errorf(\"required record is nil\"))}", expr, path)
 		}
-		g.line("for key,item:=range %s{_=item;if err:=contract.Text(key,0,-1,\"\");err!=nil{return contract.At(%s,err)}", expr, path)
+		if types.Identical(record.Key(), types.Typ[types.String]) {
+			g.line("for key,item:=range %s{_=item;if err:=contract.Text(key,0,-1,\"\");err!=nil{return contract.At(%s,err)}", expr, path)
+		} else {
+			g.line("for key,item:=range %s{_=item", expr)
+			g.validation(record.Key(), "key", "fmt.Sprintf(\"%s[%q]\","+path+",key)", map[string]string{})
+		}
 		g.validation(record.Elem(), "item", "fmt.Sprintf(\"%s[%q]\","+path+",key)", map[string]string{"nullable": ""})
 		g.line("}")
 	}

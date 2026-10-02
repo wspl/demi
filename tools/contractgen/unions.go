@@ -133,7 +133,7 @@ func (g *generator) retainContracts() error {
 	g.received = map[string]bool{}
 	for _, key := range g.order {
 		if has(g.defs[key].marks, "root") {
-			g.markReceived(key)
+			g.markReceived(key, true)
 		}
 	}
 	if g.err != nil {

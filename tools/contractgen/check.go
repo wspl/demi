@@ -258,8 +258,11 @@ func (g *generator) checkType(t types.Type) error {
 	case *types.Slice:
 		return g.checkType(t.Elem())
 	case *types.Map:
-		if !types.Identical(t.Key(), types.Typ[types.String]) {
+		if b, ok := t.Key().Underlying().(*types.Basic); !ok || b.Kind() != types.String {
 			return fmt.Errorf("record keys must be strings")
+		}
+		if err := g.checkType(t.Key()); err != nil {
+			return err
 		}
 		return g.checkType(t.Elem())
 	case *types.Basic:
@@ -287,7 +290,7 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 	for _, roots := range outputs {
 		for _, key := range roots {
 			if bounds(g.defs[key].marks["root"])["direction"] == "receive" {
-				g.markReceived(key)
+				g.markReceived(key, true)
 			}
 		}
 	}
@@ -295,7 +298,7 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 	// Protocol ownership is reachability, independent of strictness.
 	g.received = map[string]bool{}
 	for _, key := range outputs["protocol"] {
-		g.markReceived(key)
+		g.markReceived(key, true)
 	}
 	protocol := g.received
 	g.received = received
