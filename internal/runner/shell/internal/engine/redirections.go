@@ -79,3 +79,13 @@ func (f *recordedFile) Write(b []byte) (int, error) {
 	}
 	return f.file.Write(b)
 }
+
+// pipe allocates shell pipes through the runner's shared descriptor retry.
+func (e *execution) pipe(ctx context.Context) (io.ReadCloser, io.WriteCloser, error) {
+	type ends struct{ reader, writer *os.File }
+	pair, err := cmdsdk.Retry(ctx, func() (ends, error) {
+		reader, writer, err := os.Pipe()
+		return ends{reader, writer}, err
+	})
+	return pair.reader, pair.writer, err
+}

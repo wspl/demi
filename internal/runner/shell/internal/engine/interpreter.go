@@ -128,7 +128,7 @@ func Execute(ctx context.Context, script string, options Options) (result Result
 	for name, value := range options.Env {
 		env = append(env, name+"="+value)
 	}
-	r, err := interp.New(interp.Dir(options.Cwd), interp.Env(expand.ListEnviron(env...)), interp.StdIO(options.Stdin, options.Stdout, options.Stderr), interp.ExecHandlers(func(interp.ExecHandlerFunc) interp.ExecHandlerFunc { return e.external }), interp.OpenHandler(e.open), interp.Builtins(e.builtins()), interp.WithScopeState(state))
+	r, err := interp.New(interp.Dir(options.Cwd), interp.Env(expand.ListEnviron(env...)), interp.StdIO(options.Stdin, options.Stdout, options.Stderr), interp.ExecHandlers(func(interp.ExecHandlerFunc) interp.ExecHandlerFunc { return e.external }), interp.OpenHandler(e.open), interp.Builtins(e.builtins()), interp.WithScopeState(state), interp.PipeHandler(e.pipe))
 	if err != nil {
 		return result, err
 	}
@@ -154,7 +154,8 @@ func Execute(ctx context.Context, script string, options Options) (result Result
 	}
 	node, err := syntax.NewParser().Parse(strings.NewReader(script), "script")
 	if err != nil {
-		return result, err
+		_, _ = fmt.Fprintln(options.Stderr, err)
+		return Result{Code: 2, Cwd: r.Dir}, nil
 	}
 	err = r.Run(ctx, node)
 	if ctx.Err() != nil {
