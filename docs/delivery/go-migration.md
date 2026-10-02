@@ -382,13 +382,28 @@ without its Go port.
 
 | Work package | Output |
 |---|---|
-| `z-remove-rust` | `crates/`, `vendor/`, `Cargo.*` and `rust-toolchain.toml` removed; `package.json` scripts call Go |
+| `z-remove-rust` | `crates/`, `vendor/`, `Cargo.toml`, `Cargo.lock`, `.cargo/`, `rust-toolchain.toml` and `scripts/native/Dockerfile` (the Rust cross-build container) removed; `package.json` scripts and `tsconfig.json` call and include Go-era paths only; `cloud-guest-image` builds from the Go programs; the transitional harness, the Rust reference build and `GOFLAGS=-mod=readonly` removed |
 | `z-docs-*` | The behavior documents freed of Rust specifics, one work package per document group |
 | `z-release` | The six-target release and the Cloud image built from Go |
 
-The tech lead rewrites `AGENTS.md` for Go only. **Gate G4:** a release
-builds for all targets and the real-machine acceptance passes; `gomig/main`
-is then ready to merge.
+Not everything under `crates/` is Rust. These move with the work package
+that owns their Go successor, before `z-remove-rust` deletes the directory:
+the golden corpora and fixtures (`crates/*/tests/**/fixtures`, into the
+owner's `testdata/`), the browser page scripts and the capture extension
+(JavaScript in `crates/command-package-browser-chrome/src/page` and
+`src/driver/capture`), the Chrome for Testing release record
+(`crates/command-package-browser-protocol/src/release`), and the machine
+manager's scripts, runtime files and Lima configuration
+(`crates/machine-manager/{scripts,runtime,lima}`). The TypeScript tests that
+read fixtures from `crates/`, such as
+`packages/conversation-client/src/__tests__/patches.test.ts`, are pointed at
+the new location by the same work package.
+
+The tech lead rewrites `AGENTS.md` for Go only. **Gate G4:** no Rust
+remains: `git ls-files` lists no `*.rs` file, no Cargo or rustup file, and no
+script, document or test that runs or names `cargo`, `rustc` or `crates/`
+except as history; a release builds for all targets; the real-machine
+acceptance passes. `gomig/main` is then ready to merge.
 
 ### Concurrency and pace
 
