@@ -70,10 +70,11 @@ gives each crate's boundary and their layering.
 
 ## Runtime model
 
-The edge is a multi-threaded Tokio runtime that serves HTTP with axum. A shard
-thread is a single-threaded Tokio runtime that hosts the shards of every user
-pinned to it. Each open SQLite connection has a thread of its own, and other
-blocking work runs on Tokio's blocking pool.
+The edge serves HTTP with `net/http`, a goroutine per request. A user's shard
+is one value behind one mutex: every operation on that user's state takes the
+mutex for a short critical section and does its IO, waits and joins outside
+it. Each open SQLite connection is used by one goroutine at a time, and other
+blocking work runs in the goroutine of the operation that needs it.
 [Programs and threads](../architecture/concurrency.md#programs-and-threads)
 draws the whole program.
 
@@ -93,17 +94,16 @@ Each module's state lives in one of these places:
 | Edge | No per-user state | Request parsing and authentication, ownership checks, and the byte copies of file transfers (with their 60-second stall rule), pipes, user streams and the expose relay |
 | Shared services | State that spans users, or that is needed before the user is known | The control service, the conversation stores, the object store, the vault, provider assembly with model catalogs and one credential refresh at a time per account, the machine manager's client, [Cloud capacity](../cloud/managed-hosts.md#lifecycle-and-capacity) across users, runners waiting to be paired, login lockout, the registry of each user's open synchronization channels |
 | A user's shard | Everything the backend decides for that user | Each conversation's file gate, open transfers and user streams, and idle watch; agent trees; device links and one task per runner connection; pipe records; the Cloud machine; live expose connections; title requests; Fork requests, one at a time per destination; each session's command router for the rpc relay; the request rate limit; the pages' synchronization channels |
-| Database threads | One per open SQLite connection | The control database; up to 64 conversation writer connections ([Storage](storage.md#conversation-state-and-transactions)) |
-| Blocking pool | Work that would stall an async thread | Disk IO; password and blob hashing; serializing request bodies with media and large transcript frames; read-only conversation reads |
+| Database connections | One `database/sql` connection per writable database | The control database; up to 64 conversation writer connections ([Storage](storage.md#conversation-state-and-transactions)) |
+| The requesting goroutine, outside every lock | Work that blocks | Disk IO; password and blob hashing (password hashing bounded by a semaphore); serializing request bodies with media and large transcript frames; read-only conversation reads |
 
 [The user shard](../architecture/concurrency.md#the-user-shard) gives the
-rules this placement follows: why all of a user's work shares one thread, what
+rules this placement follows: why all of a user's work shares one shard, what
 crosses between the edge and a shard, and how a call ends when its requester
 goes away. A call that panics answers 500 `internal_error`, and the shard goes
 on serving.
 
-A stable hash of the user id pins each user to one shard thread, and the
-backend starts with one shard thread. A user's shard is created by the first
+A user's shard is created by the first
 request for that user and loads nothing ahead of need: the Cloud's device
 record and its latest reset load when the Cloud is first needed, and
 conversations, agent trees and devices when they are first used, and
