@@ -1,27 +1,280 @@
 package cloud
 
-//revive:disable:unused-parameter
-// API checkpoint: bodies follow after the public boundary is merged.
-
 import (
 	"context"
+	"errors"
+	"log/slog"
+	"time"
 
 	"github.com/wspl/demi/internal/backend/database"
+	"github.com/wspl/demi/internal/machinewire"
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// Reset admits id or returns the operation of that id: the same operation while
-// running or ready, and a failed one resumed on its selected base. A new reset
-// selects the current base. Another running reset is refused, as is a stopped
-// Cloud with no capacity permit. Admitted work is owned and joined by the Cloud.
-func Reset(ctx context.Context, shard CloudShard, id webapi.OperationID) (database.ManagedOperation, error) {
-	panic("not written: b-cloud")
+// Reset returns a running or ready id, resumes a failed id on its original base,
+// or admits a new reset. Accepted work belongs to Cloud, not the caller.
+func Reset(ctx context.Context, s CloudShard, id webapi.OperationID) (database.ManagedOperation, error) {
+	c := s.Cloud()
+	c.mu.Lock()
+	stopped := c.stopped || c.ctx.Err() != nil
+	c.mu.Unlock()
+	if stopped {
+		return database.ManagedOperation{}, &Error{Kind: Closed}
+	}
+	device, err := Device(ctx, s)
+	if err != nil {
+		return database.ManagedOperation{}, storageFailed(err)
+	}
+	m, err := loadMachine(ctx, s, device)
+	if err != nil {
+		return database.ManagedOperation{}, storageFailed(err)
+	}
+	c.mu.Lock()
+	running, err := runningReset(m, id)
+	c.mu.Unlock()
+	if running != nil {
+		return *running, err
+	}
+	if err != nil {
+		return database.ManagedOperation{}, err
+	}
+	stored, err := cloudRecords(s).ManagedOperation(ctx, device.ID, id)
+	if err != nil {
+		return database.ManagedOperation{}, storageFailed(err)
+	}
+	if stored != nil && stored.Phase == webapi.ResetPhaseReady {
+		return *stored, nil
+	}
+	var base machinewire.BaseVersion
+	if stored != nil {
+		base = stored.BaseVersion
+	} else {
+		base, err = Call(ctx, s.CloudServices().Machines, machinewire.CurrentBaseVersionParams{})
+		if err != nil {
+			return database.ManagedOperation{}, failed(err)
+		}
+	}
+	operation := database.ManagedOperation{ID: id, BaseVersion: base, Phase: webapi.ResetPhaseStopping}
+	capacity := s.CloudServices().Capacity
+	c.mu.Lock()
+	if c.stopped || c.ctx.Err() != nil {
+		c.mu.Unlock()
+		return database.ManagedOperation{}, &Error{Kind: Closed}
+	}
+	running, err = runningReset(m, id)
+	if running != nil || err != nil {
+		c.mu.Unlock()
+		if running != nil {
+			return *running, err
+		}
+		return database.ManagedOperation{}, err
+	}
+	if m.permit == nil {
+		// Lock order is shard then capacity. Capacity never calls into a shard.
+		m.permit = capacity.TryTake()
+		if m.permit == nil {
+			c.mu.Unlock()
+			return database.ManagedOperation{}, &Error{Kind: AtCapacity}
+		}
+	}
+	previous := m.transition
+	retirement := m.retirement
+	cancel := m.schedules
+	m.schedules = nil
+	m.phase = webapi.CloudStateResetting
+	m.operation = &operation
+	t := &transition{done: make(chan struct{})}
+	m.reset = t
+	c.workers.Add(1)
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	m.mark()
+	go func() {
+		defer c.workers.Done()
+		result := runTransition(context.WithoutCancel(c.ctx), func(ctx context.Context) error { return resetSteps(ctx, s, m, operation, previous, retirement) })
+		finishReset(context.WithoutCancel(c.ctx), s, m, operation, t, result)
+	}()
+	return operation, nil
 }
 
-// RecoverResets runs before serving: reconcile stops and saves every machine
-// and recovers incomplete operations; stale Cloud exposes are removed; each
-// unfinished reset completes its idempotent disk step, is announced and is
-// recorded as failed so a retry boots the Cloud. Nothing boots here.
+// runningReset reads the admitted reset under the shard mutex.
+func runningReset(m *machine, id webapi.OperationID) (*database.ManagedOperation, error) {
+	if m.reset == nil {
+		return nil, nil
+	}
+	if m.operation.ID != id {
+		return nil, &Error{Kind: Resetting}
+	}
+	operation := *m.operation
+	return &operation, nil
+}
+
+// resetSteps writes intent before each disk step and holds affected conversations.
+func resetSteps(ctx context.Context, s CloudShard, m *machine, op database.ManagedOperation, previous, retirement *transition) error {
+	if err := s.CloudStopped(ctx, m.device.ID); err != nil {
+		return failed(err)
+	}
+	if err := recordPhase(ctx, s, m, op, webapi.ResetPhaseStopping, nil); err != nil {
+		return err
+	}
+	if previous != nil {
+		// A failed boot/save still must finish before resetting disks.
+		_ = previous.wait(ctx)
+	}
+	if retirement != nil {
+		// Its phase recheck yields to this reset.
+		_ = retirement.wait(ctx)
+	}
+	uses, err := cloudUses(ctx, s)
+	if err != nil {
+		return storageFailed(err)
+	}
+	held, err := holdReset(ctx, s, uses, s.CloudServices().Tuning.ResetHold)
+	if err != nil {
+		return err
+	}
+	defer releaseHolds(held)
+	flush(ctx, s, m.device.ID)
+	s.Devices().Disconnect(m.device.ID, "Cloud is resetting")
+	wait, cancel := context.WithTimeout(ctx, s.CloudServices().Tuning.ResetHold)
+	reserved, err := m.gate.Reserve(wait)
+	cancel()
+	if err != nil {
+		return failed(errors.New("The Cloud's operations did not end for the reset")) //nolint:staticcheck // Preserve Rust user-facing text verbatim.
+	}
+	defer reserved.Release()
+	if err := recordPhase(ctx, s, m, op, webapi.ResetPhaseSaving, nil); err != nil {
+		return err
+	}
+	if err := save(ctx, s, m); err != nil {
+		return err
+	}
+	if err := recordPhase(ctx, s, m, op, webapi.ResetPhaseRebuilding, nil); err != nil {
+		return err
+	}
+	_, err = Call(ctx, s.CloudServices().Machines, machinewire.ResetParams{DeviceID: string(m.device.ID), OperationID: string(op.ID), BaseVersion: string(op.BaseVersion)})
+	if err != nil {
+		return failed(err)
+	}
+	if err := cloudRecords(s).AnnounceCloudReset(ctx, s.User(), op.ID); err != nil {
+		return storageFailed(err)
+	}
+	c := s.Cloud()
+	c.mu.Lock()
+	m.deaths = nil
+	c.mu.Unlock()
+	if err := recordPhase(ctx, s, m, op, webapi.ResetPhaseBooting, nil); err != nil {
+		return err
+	}
+	return boot(ctx, s, m)
+}
+
+// finishReset records the result then atomically publishes the final reset and lifecycle state.
+func finishReset(ctx context.Context, s CloudShard, m *machine, op database.ManagedOperation, t *transition, result error) {
+	op.Phase = webapi.ResetPhaseReady
+	if result != nil {
+		if err := save(ctx, s, m); err != nil {
+			slog.Warn("a Cloud whose reset failed was not saved", "error", err)
+		}
+		text := result.Error()
+		op.Phase = webapi.ResetPhaseFailed
+		op.Error = &text
+	}
+	recorded := cloudRecords(s).PutManagedOperation(ctx, m.device.ID, op)
+	c := s.Cloud()
+	c.mu.Lock()
+	m.operation = &op
+	m.reset = nil
+	var permit *Permit
+	if result == nil {
+		m.phase = webapi.CloudStateRunning
+		m.failure = nil
+		m.started = time.Now()
+		m.checkpoint = m.started
+	} else {
+		m.phase = webapi.CloudStateOff
+		m.failure = op.Error
+		permit = m.permit
+		m.permit = nil
+	}
+	c.mu.Unlock()
+	if permit != nil {
+		permit.Release()
+	}
+	m.mark()
+	if result == nil {
+		startSchedules(s, m)
+	}
+	if result == nil {
+		result = storageFailed(recorded)
+	}
+	t.err = result
+	close(t.done)
+}
+
+// recordPhase commits a reset phase before publishing it, including a failed write.
+func recordPhase(ctx context.Context, s CloudShard, m *machine, op database.ManagedOperation, phase webapi.ResetPhase, failure *string) error {
+	op.Phase = phase
+	op.Error = failure
+	err := cloudRecords(s).PutManagedOperation(ctx, m.device.ID, op)
+	c := s.Cloud()
+	c.mu.Lock()
+	m.operation = &op
+	c.mu.Unlock()
+	m.mark()
+	return storageFailed(err)
+}
+
+// RecoverResets reconciles before serving, removes stale exposes and recovers
+// each unfinished reset's disks. It records failure for a retry without booting.
 func RecoverResets(ctx context.Context, control *database.ControlService, services *Services) error {
-	panic("not written: b-cloud")
+	return recoverResets(ctx, control, services)
+}
+
+// resetRecords is startup recovery's durable control boundary.
+type resetRecords interface {
+	DeleteCloudExposes(context.Context) error
+	UnfinishedManagedOperations(context.Context) ([]database.DeviceOperation, error)
+	Device(context.Context, webapi.DeviceID) (*database.DeviceRecord, error)
+	AnnounceCloudReset(context.Context, webapi.UserID, webapi.OperationID) error
+	PutManagedOperation(context.Context, webapi.DeviceID, database.ManagedOperation) error
+}
+
+// recoverResets orders manager reconciliation and durable reset recovery before serving.
+func recoverResets(ctx context.Context, control resetRecords, services *Services) error {
+	if _, err := Call(ctx, services.Machines, machinewire.ReconcileParams{}); err != nil {
+		return &RecoveryError{Kind: RecoveryMachines, Err: err}
+	}
+	if err := control.DeleteCloudExposes(ctx); err != nil {
+		return &RecoveryError{Kind: RecoveryStorage, Err: err}
+	}
+	operations, err := control.UnfinishedManagedOperations(ctx)
+	if err != nil {
+		return &RecoveryError{Kind: RecoveryStorage, Err: err}
+	}
+	for _, pair := range operations {
+		device, err := control.Device(ctx, pair.Device)
+		if err != nil {
+			return &RecoveryError{Kind: RecoveryStorage, Err: err}
+		}
+		if device == nil {
+			return &RecoveryError{Kind: RecoveryMissingDevice, Device: pair.Device}
+		}
+		op := pair.Operation
+		if _, err := Call(ctx, services.Machines, machinewire.ResetParams{DeviceID: string(pair.Device), OperationID: string(op.ID), BaseVersion: string(op.BaseVersion)}); err != nil {
+			return &RecoveryError{Kind: RecoveryMachines, Err: err}
+		}
+		if err := control.AnnounceCloudReset(ctx, device.User, op.ID); err != nil {
+			return &RecoveryError{Kind: RecoveryStorage, Err: err}
+		}
+		text := "Reset disks recovered; retry to start Cloud"
+		op.Phase = webapi.ResetPhaseFailed
+		op.Error = &text
+		if err := control.PutManagedOperation(ctx, pair.Device, op); err != nil {
+			return &RecoveryError{Kind: RecoveryStorage, Err: err}
+		}
+	}
+	return nil
 }
