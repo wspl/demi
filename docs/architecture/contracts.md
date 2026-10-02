@@ -1,261 +1,355 @@
 # Contracts
 
-Every message and stored document that crosses a process boundary is defined
-once, as a Rust type. For example, adding a `durationMs` field to a transcript
-block works like this:
+Adding `durationMs` to a transcript block changes one definition: the Go
+struct for that variant in `internal/core`. The field is:
 
-1. A developer adds the field to the `Block` type in the `shared-types` crate, with its
-   serde and garde attributes.
-2. `bun run contracts` builds the workspace and runs `xtask contracts`, which
-   rewrites the generated TypeScript in `packages/protocol/src/generated/`.
-3. `bun run typecheck:web` reports every place in the frontend that the new
-   field breaks.
-4. The backend validates the field when it decodes a block, and the web app's
-   generated Zod schema validates it when a block arrives.
+```go
+// +demi:range max=9007199254740991
+DurationMs uint64 `json:"durationMs"`
+```
 
-There is no second declaration to forget. The Rust type is the only
-definition; its JSON Schema, its TypeScript type and the web app's
-validator are derived from it.
+1. A developer adds the field, its JSON tag and its bound to the Go type.
+2. `go generate ./...` rewrites the package's generated Go codecs and
+   validators. `bun run contracts` runs that generation and
+   `go run ./tools/contractgen -ts`, rewriting the generated TypeScript.
+3. `bun run typecheck:web` reports every frontend use the new field breaks;
+   the Go type checker checks the backend's uses.
+4. The backend's generated decoder checks the field when it reads a block,
+   and the web app's generated Zod schema checks it when a block arrives.
 
-## Contract crates
+The Go type is the only definition. Its encoders, decoders, validation,
+TypeScript type and Zod schema are derived from it. Nothing declares a
+second contract shape by hand, even while the two would still agree.
 
-A contract crate holds the types of one wire or data family, their serde,
-schemars and garde attributes, and the decode function of each boundary that
-receives them. Both ends of a wire link it, or the TypeScript generator reads
-it. A contract crate has no async runtime and no IO.
-[Crates and packages](crates-and-packages.md#contract-crates)
-names each crate's items.
+## Contract packages
 
-| Wire or stored data | Contract crate | Ends |
+A contract package holds the types of one wire or data family, their tags
+and markers, and generated code. It has no IO and no goroutines. Both Go
+ends import the same package; TypeScript ends use its generated schemas.
+[Packages](crates-and-packages.md) owns package names and responsibilities.
+
+| Wire or stored data | Contract owner | Ends |
 |---|---|---|
-| Web app HTTP requests and responses | `web-api-protocol` | Backend; `web`, through generated TypeScript |
-| Conversation WebSocket frames, transcript blocks and patches, tool views | `conversation-socket-protocol`, `shared-types` | Backend; `conversation-client` and `web-ui`, through `@demicodes/protocol` |
-| Runner wire (MessagePack over a WebSocket) and command manifests | `runner-protocol`, with manifest nodes from `command-declarations` | Backend; runner |
-| Managed boot record | `runner-protocol` | Backend and machine manager; the runner in a Cloud sandbox reads it |
-| Command invocations between a runner and a command program | `command-protocol` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
-| `demi.file` operations | `command-package-file-protocol` | `plugin-file` declarations; `demi-file` |
-| `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `plugin-browser` declarations, the backend and the conversation browser's crates; the page reads live view messages through `@demicodes/plugin-browser` |
-| `demi.claude-code` operations and the Claude Code release record | `command-package-claude-code-protocol` | Backend; `demi-claude-code` |
-| Plugin manifests, requests, replies and port messages | `plugin-interface` | The plugin host; every plugin, in process today and over a process's stdio with the TypeScript SDK ([Plugins](plugins.md#the-contract)) |
-| A plugin's page state, page call parameters and results | The plugin's crate, such as `plugin-skills` | The plugin; its page package, through generated TypeScript |
-| Machine-manager socket (one JSON document per line over a Unix socket) and the Cloud image manifest | `machine-manager-protocol` | Backend; machine manager; `xtask` writes the image manifest |
-| JSON stored in the control and conversation databases | The crate that owns the data, such as `shared-types` for blocks | Backend |
+| Web app HTTP requests and responses | `internal/webapi` | Backend; `web`, through generated TypeScript |
+| Conversation WebSocket frames, transcript blocks and patches, tool views | `internal/framewire`, `internal/core` | Backend; `conversation-client` and `web-ui`, through `@demicodes/protocol` |
+| Runner wire (MessagePack over a WebSocket) and command manifests | `internal/runnerwire`, with manifest nodes from `internal/declare` | Backend; runner |
+| Managed boot record | `internal/runnerwire` | Backend and machine manager; the runner in a Cloud sandbox reads it |
+| Command invocations between a runner and a command program | `internal/commandwire` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
+| `demi.file` operations | `internal/cmdpkg/file/fileop` | File plugin declarations; `demi-file` |
+| `demi.browser` operations, live view messages, capture extension events | `internal/cmdpkg/browser/browserop` | Browser plugin declarations, backend and conversation browser packages; the page through `@demicodes/plugin-browser` |
+| `demi.claude-code` operations and the Claude Code release record | `internal/cmdpkg/claudecode/claudecodeop` | Backend; `demi-claude-code` |
+| Plugin manifests, requests, replies and port messages | `internal/plugin` | Plugin host; every plugin, in process and over stdio with the TypeScript SDK ([Plugins](plugins.md#the-contract)) |
+| A plugin's page state, page call parameters and results | Page contract types of `internal/plugins/<name>` | Plugin; its page package, through generated TypeScript |
+| Machine-manager socket and Cloud image manifest | `internal/machinewire` | Backend; machine manager; `tools/release` writes the image manifest |
+| JSON stored in control and conversation databases | The package owning the data, such as `internal/core` for blocks | Backend |
 
-A wire whose two ends are both Rust needs no generation: both ends link the
-same crate. The runner wire and the machine-manager socket have fixed
-encodings, and a golden corpus with one message of every kind pins their bytes
-at both ends. Integer fields travel as integers. Vendor APIs are not Demi
-contracts: each provider crate declares only the parts it reads
-([Providers](../providers/providers.md)).
+Packages that also own behavior keep their contract declarations separate
+from that behavior. Vendor APIs are not Demi contracts: each provider
+package declares only the parts it reads ([Providers](../providers/providers.md)).
 
-A shape is declared once. Nothing restates a contract type by hand, in Rust or
-in TypeScript: a second declaration of the same shape is a defect, even while
-the two still agree.
+### Types and markers
+
+Objects are plain structs with explicit `json` tags. JSON field names are
+camelCase. A union is a sealed interface with an unexported marker method;
+each variant implements it on a pointer receiver. The union carries
+`//sumtype:decl`, and `go-check-sumtype -default-signifies-exhaustive=false`
+checks every type switch over it: a default case does not hide a missing
+variant. Generated validation accepts only declared pointer variants;
+an unknown implementation or a typed-nil pointer is invalid.
+
+Markers are line comments on the type or field they constrain. This table
+defines the production vocabulary, extending the prototype's smaller set.
+Unknown markers, conflicting markers, unsupported types and invalid arguments
+fail generation with the type and field location. Bounds are inclusive.
+Type constraints apply at every use; field constraints may narrow them,
+never relax them.
+
+| Marker after `// +demi:` | Placement and meaning |
+|---|---|
+| `root boundary=json` or `root boundary=msgpack` | Type; emit a boundary decoder and encoder. Repeat for both encodings. |
+| `root ts=protocol direction=receive` | Type; publish to the protocol destination. `ts=web` or `ts=plugin-<name>` chooses the other destinations; direction is `send`, `receive` or `both`, from the web app's perspective. Repeat for multiple destinations. |
+| `union tag=type` | Interface; internally tagged union. The tag may instead be `op`, `status` or `kind`, as the wire requires. |
+| `variant Block text` | Struct; pointer variant of the named union with the given wire tag value. The encoder adds the tag; no duplicate tag field is declared. |
+| `enum value1 value2` | Named string type; closed set of wire strings, including singleton literals. |
+| `nullable` | Field; required key whose value may be null. |
+| `strict` / `tolerant` | Struct; refuse / ignore unknown keys in Go. Each contract object declares exactly one; nested objects have their own choice. |
+| `length min=1 max=64` | String type or field; Unicode scalar count. Either bound may be omitted. |
+| `pattern ^[0-9a-f]{64}$` | String type or field; shared regex subset below. The remainder of the line is the pattern. |
+| `range min=0 max=9007199254740991` | Numeric type or field; either bound may be omitted. Integer kind comes from the Go type; web integers must fit the safe range. |
+| `custom validateName` | Type or field; call the named Go function after structural checks. It takes the corresponding Go value and returns an error, without IO or mutation. Repeat for rules in declaration order. |
+| `identifier` | Named string type; emit `Parse<ID>(string) (<ID>, error)` using its declared length, pattern and custom constraints. |
+| `timestamp` | Named string type for canonical JSON time, or named `int64` for runner milliseconds since the Unix epoch encoded as a MessagePack timestamp. |
+| `bytes` | Named byte-slice type or byte-slice field; base64 in JSON, bin in MessagePack. |
+| `msgpack name=wireName` | Field; override its JSON name for MessagePack. Declaration order is wire order; a union's tag comes first. |
+| `msgpack representation=external-tuple` | Union; kept-output form: a one-entry map from variant name to its fields as a declaration-order tuple (a single field is the value directly). |
+| `msgpack sorted` | String-keyed map type or field; encode keys in ascending string order. Required for runner-wire maps. |
+| `format email` / `format http-url` / `format trimmed` | Named string type; email, HTTP(S) URL or trimmed-text behavior in the supported subset below. |
+
+A TypeScript root also requires the JSON codec. Roots are markers on types,
+never a second registry in the generator.
+Named generic instantiations can be roots. Constant tables and lookups come
+from their owning Go declarations, without parallel TypeScript tables.
 
 ### Encoding conventions
 
-Types the web app sees and JSON stored by the backend follow one serde
-convention:
+- Optional fields are pointers with `omitempty`: absent is nil, a present
+  empty value is kept, and explicit null is refused. For example:
+  `Snippet *string` with tag `json:"snippet,omitempty"`. Required fields
+  never acquire a default from Go's zero value.
+- Nullable fields are pointers without `omitempty`, with the nullable
+  marker: their key is always written, nil writes null, and absence is
+  refused. A nullable union uses a nil interface, never a pointer to an
+  interface. A nullable array is `*[]T`: nil means null and a pointer to an
+  empty non-nil slice means `[]`. Ordinary arrays and maps require non-nil
+  empty values to encode `[]` and `{}` rather than null.
+- Unions are tagged, never untagged. Transcript patches use `op`, nested
+  outcomes use `status`, and views use `kind` where their contract says so.
+  A variant's standalone JSON encoding includes its tag. If a payload is
+  also a separate root, declare it once and compose it into the tagged
+  envelope rather than changing its encoding by call site.
+- Bytes are base64 strings in JSON. Empty bytes use a non-nil empty slice,
+  never null.
+- Timestamps are UTC RFC 3339 strings with exactly three fractional digits,
+  such as `2026-09-21T14:13:20.000Z`. No offset, omitted fraction, extra
+  precision or other spelling is accepted, even for the same instant.
+  Calendar validity and exact spelling are checked. Their text orders as
+  their times do. This deliberately narrows the previous parser's accepted
+  input; every stored timestamp already uses this spelling.
+- Integers travel as integers, never through floating point. Go widths and
+  signedness are checked before conversion. Web-visible integers must fit
+  `[-9007199254740991, 9007199254740991]`; unsigned types also have their
+  inherent minimum of zero. Generation fails if the type's range is wider
+  and lacks a sufficient bound. Generated Go validation enforces it even
+  for types only the backend sends. MessagePack-only integers retain their
+  full Go integer range.
 
-- Fields are camelCase.
-- Enums are internally tagged: by `type`, or by `op` for transcript patches,
-  `status` for nested outcomes and `kind` for views. No untagged enum exists
-  anywhere; the TypeScript generator rejects them.
-- An optional field is omitted when absent, and a `null` in its place is
-  refused (`Option<T>` with `default`, `skip_serializing_if` and serde_with's
-  `unwrap_or_skip`). A nullable field is always written, as `null` when empty,
-  and its absence is refused (`Option<T>` decoded with `Option::deserialize`).
-  The generated Zod schemas refuse the same values, so both ends agree.
-- Bytes are base64 strings (`B64Bytes`). Times are RFC 3339 strings in UTC
-  with three fractional digits, such as `2026-09-21T14:13:20.000Z`, so that
-  the text of two times orders as the times do (`shared-types`'s `Timestamp`, whole
-  milliseconds of a `jiff::Timestamp`); a finer time is refused.
-- Integers are integer types. An integer the web app reads is bounded to
-  JavaScript's safe integer range in the Rust type as well: a 64-bit field
-  carries garde's `range(max = MAX_SAFE_INTEGER)`, core's constant, so an end
-  that decodes it refuses what the web app cannot hold, and generation fails
-  for a field without the bound. On a type only the backend sends, nothing in
-  Rust checks the attribute: it states the bound the web app's schema checks.
+Identifiers are named Go strings with validating constructors. Go cannot
+prevent `core.BlockID("")`: validity is a boundary guarantee, not a guarantee
+of every value constructible in Go. Decoders validate identifiers; internal
+code creating one calls `core.ParseBlockID`. Parent validation checks them
+too. This is a known difference from the previous private identifier
+representation.
 
-The runner wire has its own field names and MessagePack encoding, fixed by
-`runner-protocol` and its corpus; its optional and nullable fields follow the
-rule above. [Storage](../backend/storage.md) owns the
-storage encodings: column types, times in the database, digests, sealed
-credentials and password hashes.
+[Storage](../backend/storage.md) owns column types, database times, digests,
+sealed credentials and password hashes.
+
+### Generated code and wire encodings
+
+`tools/contractgen` reads Go syntax and types with
+`golang.org/x/tools/go/packages` and `go/types`. Reading types instead of a
+schema file keeps imported types, integer widths, pointer presence and
+custom rules in the one definition the Go compiler checks. Declaration
+loading must work without existing generated files: source types and rule
+signatures cannot depend on generated method bodies.
+
+Each contract package commits one generated file, `contracts_gen.go`, beside
+its declarations. It contains `Decode<Type>([]byte) (<Type>, error)` for
+boundary roots, `Encode<Type>(<Type>) ([]byte, error)` functions,
+`Validate() error` methods, object and variant `MarshalJSON` and
+`UnmarshalJSON` methods, and a `<Union>JSON` holder with a `Value <Union>`
+field and both JSON methods. Interfaces cannot own JSON methods; nested
+unions use generated field dispatch. Union validation is exposed as
+`Validate<Union>(<Union>) error`. JSON methods and holders use the same
+checks as direct decoding, including tags. Encoders validate constructed
+values before writing them. Errors include wire field paths and array
+indices, with wrapped causes.
+
+MessagePack roots get generated encoders and decoders in that file too.
+Roots with both formats use `Decode<Type>JSON` and `Decode<Type>Msgpack`;
+roots with one format use `Decode<Type>`. Encoders follow the same suffix
+rule. Zod source is emitted separately to the TypeScript destinations below
+and is not committed.
+
+The runner uses `github.com/vmihailenco/msgpack/v5` with
+`UseCompactInts(true)`, declaration-order struct maps, tag first, and sorted
+string-map keys. `SetSortMapKeys(true)` does not cover every map type;
+generated map encoders sort all supported string maps, including nullable
+environment values. Empty bytes encode as empty bin. Strings and arrays
+in place of bin are refused. Timestamps use extension -1 and the shortest
+32/64/96-bit payload. The decoder checks extension kind and length,
+nanoseconds below one billion, and overflow converting seconds to signed
+64-bit milliseconds before the library can normalize invalid values. The
+runner timestamp retains its wire rule of discarding sub-millisecond
+nanoseconds; the exact JSON spelling rule applies to JSON timestamps.
+Kept-output records use their external tag and tuple representation. Decoders distinguish absent keys from nil, reject duplicate
+keys, unknown tags, invalid scalar kinds, overflow and trailing data, and
+enforce the same presence and bounds rules as JSON.
+
+The machine-manager Unix socket carries one JSON document followed by a newline.
+Typed encoders preserve declared member order and disable HTML escaping.
+Successful responses are decoded using the outstanding request's operation,
+not by guessing from the result shape. Request envelopes and parameters
+tolerate unknown keys; nested boot and image types retain their own
+strictness. Invalid device identities remain operation errors as specified
+by that protocol.
+
+RFC 8785 digests use `github.com/gowebpki/jcs` and `crypto/sha256`. JCS owns
+number formatting, UTF-16 property ordering and escaping; ordinary sorted
+JSON is insufficient. Its number model is binary64, unlike the runner's
+lossless integers. Manifest hashing covers `roots` and `packages`, excluding
+`hash`; package keys hash canonical descriptors. Golden corpora with every
+message kind pin runner and machine-manager bytes at both ends, kept
+records, and manifest/package digests.
 
 ## Validation at entry
 
-When a runner sends `job_exit`, the backend hands the MessagePack bytes to
-`runner-protocol`'s decode function. Serde decodes them into the `Outbound`
-enum, so an unknown message type, a missing field or an exit code that does
-not fit its integer type fails there; garde then checks bounds. The connection
-code receives either a typed message or an error that names the field, and a
-malformed message closes the connection. Nothing after the decode function
-checks the message again, and nothing before it looks inside.
+When a runner sends `job_exit`, the backend passes its MessagePack bytes to
+`runnerwire.DecodeOutbound`. An unknown type, a missing field or an exit
+code outside its integer type fails there. Generated validation checks
+bounds and custom rules. Connection code receives a typed message or a
+field-path error; malformed input closes the connection. Nothing before
+the decoder looks inside, and nothing after it repeats the checks.
 
 Every value from outside a process follows the same rule:
 
-- Each boundary has one decode function per message family. Serde decodes the
-  value into its type: closed sets as enums, identities as newtypes that
-  cannot hold an invalid value, integers as integer types. Then garde checks
-  bounds, lengths and patterns and reports the field path.
-- A rule across fields is the type's shape, or a conversion from a raw form
-  (`try_from`) inside the decode.
-- A field the contract declares opaque, such as a tool call's input, stays a
-  JSON value until its owner validates it.
-- Each end validates what it receives. A value is valid because a decode
-  function checked it, not because it has a type: no code converts unchecked
-  input into a contract type, and corrupt data is refused, never repaired or
-  defaulted.
-- Fixed contracts are validated by their types and garde, never by
-  round-tripping a value through JSON or a JSON Schema. JSON Schema validation
-  belongs to the values whose schema is data: command arguments, whose schema
-  travels in the manifest, where both ends check it with `jsonschema` and word
-  a failure the same way
+- Each boundary uses a generated decoder per message family. Closed sets
+  use enums or unions, identifiers use validated named types, and integers
+  use integer types.
+- JSON decoders build on stable `encoding/json` through `internal/contract`.
+  They check UTF-8 before parsing and reject unpaired escaped surrogates
+  instead of letting the library replace them. They reject duplicate keys
+  at every depth (including opaque JSON and ignored fields), trailing data,
+  unknown fields on strict objects, missing required keys and illegal nulls.
+  Field names match exactly, without the library's case-insensitive fallback. Tags, scalar kinds, bounds, lengths and
+  patterns are checked before custom rules. Presence is checked separately
+  from value decoding; `DisallowUnknownFields` alone is insufficient.
+  `encoding/json/v2` is experimental in Go 1.27; adopting it once stable is
+  a regeneration, with unchanged contract behavior.
+- Cross-field rules use the type's shape or named custom Go functions.
+  Custom errors are wrapped at the containing field's path.
+- Opaque fields, such as tool input, remain JSON values until their owner
+  validates them; text explicitly declared as raw input may contain invalid
+  JSON. Neither is asserted onto an unchecked contract type.
+- Each end validates what it receives. Corrupt data is refused, never
+  repaired or defaulted. Only explicitly declared input transformations
+  (trimmed text and email canonicalization below) change valid input.
+- Fixed contracts use generated checks, never a JSON round trip or JSON
+  Schema validation. `github.com/santhosh-tekuri/jsonschema/v6` is used only
+  where the schema is data: command arguments checked at both ends against
+  the manifest schema with the same failure wording
   ([Parse input and render help](../execution/commands.md#parse-input-and-render-help)),
-  and a plugin's page call parameters, which the plugin host checks against
-  the schema the plugin's manifest declares before the plugin sees them.
+  and page call parameters checked against the plugin's declared schema by
+  the host before the plugin sees them.
 
-A string length counts Unicode scalar values, garde's `chars` mode, wherever
-a bound is checked: in the web app's schemas and in command inputs alike.
-Zod 4 counts code points and JSON Schema counts characters, which are the
-same for every string serde accepts, while garde's default counts bytes and
-JavaScript's `length` counts UTF-16 code units. So the one attribute gives
-both ends the same limit. For example, `😀` is one scalar value and two UTF-16
-code units, so a file name of 255 of them fits a limit of 255
+String length counts Unicode scalar values everywhere, including command
+inputs. Go uses `utf8.RuneCountInString` after Unicode validation, Zod 4
+counts code points, and JSON Schema counts characters. JavaScript's
+`length` counts UTF-16 code units instead: `😀` is one scalar value and two
+code units, so 255 of them fit a 255-character file-name limit
 ([Commands](../execution/commands.md)). Truncation and token estimates have
-their own units, defined with the rules that use them
-([Token estimates](../agent/compaction.md#token-estimates)).
+their own units ([Token estimates](../agent/compaction.md#token-estimates)).
 
 These are the points where values enter, and what a failure does:
 
 | Where a value enters | Decoded by | When it fails |
 |---|---|---|
-| A web app request body or query | The edge's body and query extractors, into `web-api-protocol` types | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
-| A frame on the conversation WebSocket | The conversation socket, into `ClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/runtime.md#frame-protocol)) |
+| A web app request body or query | The edge's body and query extractors, through `webapi.Decode<Type>` | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
+| A frame on the conversation WebSocket | `framewire.DecodeClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/runtime.md#frame-protocol)) |
 | A frame or REST response the web app receives | The generated schemas, in `conversation-client` and `web` | `conversation-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
-| A runner message, at either end | `runner-protocol`'s codec | The connection closes ([Runner](../execution/runner.md)) |
-| Invocation metadata and records between a runner and a command program | `command-protocol` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
+| A runner message, at either end | `runnerwire.DecodeInbound` or `runnerwire.DecodeOutbound` | The connection closes ([Runner](../execution/runner.md)) |
+| Invocation metadata and records between a runner and a command program | `commandwire.Decode<Type>` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
-| A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin decodes them into its type | 400 `invalid_body`, naming the field ([Plugin calls](../product/web-api.md#plugin-calls)) |
+| A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin uses its generated `Decode<Type>` | 400 `invalid_body`, naming the field ([Plugin calls](../product/web-api.md#plugin-calls)) |
 | A plugin's page state or call result, at the page | The plugin package's generated schemas | The plugin's client reports the field path and keeps the state it held |
-| A machine-manager request or response | `machine-manager-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
-| The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
-| A capture extension event | `command-package-browser-protocol` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
-| A row or JSON column read from a database | `backend-database` | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
-| A sealed credential document | The vault | The error names the field path and the kind of failure, never the value ([Providers](../providers/providers.md)) |
-| Configuration from arguments and the environment | Each program's configuration, at startup | The program does not start, and the error names the variable |
+| A machine-manager request or response | `machinewire.DecodeRequest` or the response decoder for the outstanding operation | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
+| The managed boot file | `runnerwire.DecodeManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
+| A capture extension event | `browserop.Decode<Type>` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
+| A row or JSON column read from a database | `internal/backend/database`, through the owning contract's generated decoder | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
+| A sealed credential document | The vault, through its generated document decoder | The error names the field path and the kind of failure, never the value ([Providers](../providers/providers.md)) |
+| Configuration from arguments and the environment | Each program's configuration, parsed with the `flag` package and its environment variables at startup | The program does not start, and the error names the variable |
 | A tool call's input from the model | The tool | The model receives the tool's error ([Tools](../agent/runtime.md#tools)) |
-| A vendor API response | The provider crate's two-step decode | An unknown `type` is skipped; a known one with a malformed payload is a protocol failure that is never retried automatically ([Providers](../providers/providers.md)) |
+| A vendor API response | The provider package's two-step decode | An unknown `type` is skipped; a known one with a malformed payload is a protocol failure that is never retried automatically ([Providers](../providers/providers.md)) |
 
 ## Generated TypeScript
 
-The web app's contract types and validators are generated from the Rust types:
-
 ```text
-Rust type (serde + schemars + garde)
-   |  schemars: the JSON Schema of serde's actual representation, in memory
-   v
-xtask contracts: the emitter, which fails on anything outside its subset
-   |
-   v
-Zod source and z.infer types
-   -> packages/protocol/src/generated/   @demicodes/protocol: core, conversation-socket-protocol,
-                                          command-package-browser-protocol types the page reads
-   -> packages/web/src/api/generated/    web: the web-api-protocol REST types
-   -> packages/plugin-<name>/src/generated/
-                                         a plugin package: its plugin's page state,
-                                         parameters and results
+Go types + JSON tags + markers
+   | tools/contractgen: one checked type model
+   +-> contracts_gen.go in each owning package (committed)
+   +-> Zod source + z.infer types (uncommitted)
+       -> packages/protocol/src/generated/
+       -> packages/web/src/api/generated/
+       -> packages/plugin-<name>/src/generated/
 ```
 
-- **Generation.** `bun run contracts` builds the workspace with its one Cargo
-  selection and runs `target/debug/xtask contracts`. Generated files are not
-  committed; the scripts that need them (`typecheck`, `typecheck:web`,
-  `test`, `web:dev`, `web:gallery` and `web:build`) run generation first. Cargo builds never run the emitter and need
-  no JavaScript tooling.
-- **What is emitted.** The emitter starts from a list of root types in
-  `xtask`, each with what the web app does with it: receives it or sends it.
-  Every type a root refers to is emitted with it. The roots of
-  `@demicodes/protocol` are core's types, the socket's frames and the live
-  view's messages; its schemas and types are in `generated/contracts.ts` and
-  its tables in `generated/tables.ts`, which the package's entry re-exports.
-  The roots of `web` are the web-api request and response bodies; its
-  `src/api/generated/web-api.ts` imports the schemas it shares with
-  `@demicodes/protocol` from there. The roots of a plugin package are its
-  plugin's page state, which the page receives, and each method's parameters,
-  which it sends, and result, which it receives; its `src/generated/` imports
-  shared schemas from `@demicodes/protocol` the same way. A new body type is
-  added to the roots with its direction.
-- **One constraint definition.** A garde attribute drives both the Rust check
-  and the emitted schema: schemars reads garde's attributes, including
-  `length(chars, ...)`, and emits `minLength` and `maxLength`. Internally
-  tagged enums become `oneOf` with `const` tags, which the emitter turns into
-  discriminated unions.
-- **Supported subset.** Objects; internally tagged enums, as discriminated
-  unions, including a newtype variant of a struct, which becomes the struct
-  extended with the tag; string enums and literals; arrays and records;
-  optional fields (`.optional()`, which refuses `null`) and nullable ones
-  (`.nullable()`, which must be present); string lengths and patterns;
-  integer and number bounds, an integer's within JavaScript's safe range;
-  times as core's `Timestamp` writes them (`z.iso.datetime({ precision: 3 })`:
-  UTC with three fractional digits, the contract's one spelling); email
-  addresses; `http` and `https` URLs (`z.url` with those protocols,
-  `web-api-protocol`'s `EndpointUrl`); text the backend trims on arrival, whose bounds
-  count what the trim leaves (`z.string().trim()`, `web-api-protocol`'s `Trimmed`);
-  JSON values (`z.json()`); flattened plain structs (merged properties); one
-  named instantiation of a generic root type; recursion through `$ref`, as a
-  getter of the object property that refers back, which Zod types
-  recursively; strict and tolerant objects; and constant tables with
-  generated lookups: the file-type table, the file types a model reads and
-  the live view's frame constants. A pattern must not use what Rust's `regex`
-  and the user's browser read differently: `\d`, `\w`, `\s`, `\b`, `.`,
-  groups other than `(?:`, Unicode properties or Rust's class syntax; the
-  web app matches patterns by code point (the `u` flag), as Rust does.
-  Anything else fails generation and names the type and the place.
-- **Rules only Rust checks.** garde `custom` rules are not in the schema and
-  are not emitted. Such a rule is checked by the backend alone.
-- **Strict and tolerant objects.** Each end judges what it receives. In Rust,
-  a type the backend receives refuses unknown fields (`deny_unknown_fields`).
-  That includes the types both ends receive, because the backend's check
-  guards its state: model settings arrive in a preferences patch and leave in
-  every conversation list, and a model selection travels in every block and
-  is read back from the conversation database. In the
-  web app, the schema of every type the web app receives is a tolerant
-  object, including the blocks and selections inside server frames: a page
-  left open across a deploy that adds a field keeps working and ignores the
-  field. The emitter writes a strict object only for a type the web app never
-  receives, such as a client frame, and refuses to generate one whose Rust
-  type accepts unknown fields: the backend receives it.
-- **Tolerant values where the web app receives.** The same rule decides how
-  closely a value's schema follows its Rust type. Where the web app only
-  receives a value, its schema may accept more than the type holds, since the
-  backend never sends the difference: a failure map's keys may be empty
-  where a block id cannot, and an email address may carry capitals, which
-  `EmailAddress` lowercases. Where the web app sends a value, its schema
-  refuses whatever the backend refuses: a name the backend trims is trimmed
-  before its length is checked, so blank text is refused, and an endpoint must
-  be an `http` or `https` URL. An email address the web app sends passes its
-  schema only when it has no surrounding white space and has the form the
-  backend checks, so the backend accepts every address the schema does.
-- **Checked on arrival.** `conversation-client` validates every frame it receives, and
-  `web` validates every REST response before applying it to state.
+- **Generation.** `bun run contracts` runs `go generate ./...` and then
+  `go run ./tools/contractgen -ts`. Each contract package has a generation
+  directive invoking the repository's generator for that package. Scripts that need TypeScript (`typecheck`,
+  `typecheck:web`, `test`, `web:dev`, `web:gallery` and `web:build`) run
+  generation first. Ordinary Go builds use committed generated Go and need
+  no JavaScript tooling; neither builds nor generation require JSON v2.
+- **Roots and destinations.** Root markers declare direction from the web
+  app's perspective. Every referenced type is emitted transitively; receive
+  and send reachability propagate through nested and cross-package types.
+  `@demicodes/protocol` exports core types, socket frames and page-visible
+  browser live view types through `generated/contracts.ts`, and tables
+  through `generated/tables.ts`. The REST roots produce
+  `packages/web/src/api/generated/web-api.ts`. Plugin roots are page state
+  (received), method parameters (sent) and results (received). REST and
+  plugin outputs import shared schemas from `@demicodes/protocol` rather
+  than declaring them again. A new body type gets a root marker and direction.
+- **One constraint definition.** The same marker drives the Go check and
+  emitted schema. Tagged interfaces become discriminated unions; optional
+  and nullable fields keep their distinct presence rules at both ends.
+- **Supported subset.** Objects; tagged unions including a struct payload
+  extended with its tag; string enums and literals; arrays and records;
+  optional fields (`.optional()`, refusing null); nullable fields
+  (`.nullable()`, requiring presence); string lengths and patterns; integer
+  and number bounds, with web integers in the safe range; timestamps with
+  the one UTC spelling (`z.iso.datetime({ precision: 3 })`); email addresses;
+  HTTP and HTTPS URLs (`z.url` restricted to those protocols, `webapi.EndpointURL`);
+  text explicitly trimmed on arrival before bounds are checked
+  (`z.string().trim()`, `webapi.Trimmed`); JSON values (`z.json()`);
+  flattened plain embedded structs (merged properties, rejecting name
+  collisions); one named instantiation of a generic root; recursion through
+  named references, emitted as getters on referring object properties so
+  Zod can type them recursively; strict and tolerant objects; and constant
+  tables with generated lookups (file types, model-readable file types and
+  live view frame constants). Anything else fails generation with the type
+  and location. Trim and email rules must match at both ends; a custom
+  Go-only rule cannot substitute for a supported shared constraint.
+- **Regex subset.** Patterns must not use constructs Go's `regexp` and a
+  browser could interpret differently: `\d`, `\w`, `\s`, `\b`, `.`, groups
+  other than `(?:`, Unicode properties or language-specific character-class
+  syntax. Browser patterns use the `u` flag to match by code point, as Go
+  does. The generator rejects patterns outside this common subset rather
+  than silently translating them.
+- **Rules only Go checks.** Custom Go functions are not emitted into Zod.
+  The receiving Go end checks them, including completion identity and
+  cross-field relationships.
+- **Strict and tolerant objects.** Each end judges what it receives. Go
+  objects received from the web are strict, including types both ends
+  receive: settings arrive in preference patches and leave in conversation
+  lists; model selections travel in blocks and are restored from storage.
+  The web's schemas for everything it receives are tolerant, including
+  nested blocks and selections, so a page left open across a deploy ignores
+  newly added fields. Only schemas the web never receives are strict, such
+  as client frames; generation refuses these if their Go object is tolerant.
+  The machine-manager protocol's explicit tolerance remains independent of
+  this web-facing rule.
+- **Tolerant values where the web app receives.** Receive-only schemas may
+  accept more than Go can hold, because the backend never sends the
+  difference: failure-map keys may be empty even when a block ID cannot,
+  and email text may carry capitals that `EmailAddress` lowercases. Where
+  the web sends a value, its schema refuses whatever Go refuses: trimmed
+  names are trimmed before length checks, blank names fail, endpoints must
+  use HTTP or HTTPS, and email addresses must have no surrounding whitespace
+  and the form Go checks. Every address accepted by the sending schema is
+  accepted by Go. Types used in both directions preserve these sending
+  value constraints while tolerating unknown object fields on receipt.
+- **Checked on arrival.** `conversation-client` validates every received
+  frame; `web` validates every REST response before applying it to state.
 - **One patch applier.** Transcript patches have one applier,
-  `applyTranscriptPatches` in `conversation-client`. The agent's Rust tests write
-  patch sequences together with the snapshot each must produce, and
-  `conversation-client`'s tests apply them, so no second applier exists in Rust.
-
-The emitter lives in the repository because no available generator covers
-this job: `json-schema-to-zod` is unmaintained; `zod_gen` and `schemars-zod`
-are small single-maintainer crates; Zod's own JSON Schema import is
-experimental and builds validators only at runtime; `ts-rs` and `specta` emit
-types without validators.
+  `applyTranscriptPatches` in `conversation-client`. The agent's Go tests
+  write patch sequences and the snapshots each must produce; client tests
+  apply them. There is no second applier in Go.
 
 ## The TypeScript boundary
 
 Demi will have a TypeScript SDK for [plugins](plugins.md), and none is built
-yet. The design keeps it possible without embedding the Rust runtime: a
+yet. The design keeps it possible without embedding the Go runtime: a
 TypeScript program is a client or a peer of serializable protocols, never a
-host of the Rust code. Two such protocols exist:
+host of the Go code. Two such protocols exist:
 
 - **The agent frame protocol.** `ConversationClient` drives a session through
   it, as the web app does.
@@ -269,8 +363,8 @@ The constraint that keeps this possible: everything a plugin, or an `rpc`
 handler, receives is expressible as messages. That covers its arguments,
 byte IO, working directory, environment, cancellation, command storage, its
 values and blobs, and the Host directories it keeps. The command system
-dispatches through `RpcHandler` with a serializable `RpcInvocation` and an
-`RpcPort` whose every operation is a message, and the plugin port extends the
+dispatches through `RPCHandler` with a serializable `RPCInvocation` and an
+`RPCPort` whose every operation is a message, and the plugin port extends the
 same rule to the plugin's other requests. A plugin never receives a live
 object, such as a Host handle or a callback into the backend. This is why
 command storage and a plugin's values change by versioned compare-and-set
@@ -285,9 +379,9 @@ by case:
 
 | Logic | Owner | How |
 |---|---|---|
-| The file-type table: which files the product previews, by extension, and which the page shows in place | `shared-types` | The page must choose a viewer before any byte arrives ([Choosing a view](../product/file-previews.md#choosing-a-view)), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
+| The file-type table: which files the product previews, by extension, and which the page shows in place | `internal/core` | The page must choose a viewer before any byte arrives ([Choosing a view](../product/file-previews.md#choosing-a-view)), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
 | Whether an upload is text, and its short opening snippet | Backend | The upload response carries the snippet the composer's tile shows |
 | The media type a model receives for an upload | Backend | The upload response carries the sniffed media type; the message editor uploads files the way the main composer does |
 | Whether a message can be edited | The data model | `User` is the only editable block type; hidden inputs are `Context`, `Wakeup` and `AgentMessage` blocks |
 | The summary text of a queued message | Web app | The queue carries each message's content, and `web-ui` derives the summary |
-| Completion message ids | Backend | The rule that ties an id to its sender and round is a garde `custom` check, which is not emitted; the web app receives ids as data |
+| Completion message ids | Backend | The rule that ties an id to its sender and round is a custom Go check, which is not emitted; the web app receives ids as data |
