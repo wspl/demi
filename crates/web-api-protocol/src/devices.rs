@@ -1,7 +1,7 @@
 //! Devices: the list, pairing, and a Host's log (`web-api.md` § Workspaces,
 //! devices, and attached hosts, § Device log).
 
-use demi_runner_protocol::wire::RunnerPlatform;
+use demi_runner_protocol::wire::{Install, RunnerPlatform};
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
@@ -25,7 +25,9 @@ serde_plain::derive_fromstr_from_deserialize!(DeviceKind);
 /// A device as the web app sees it. `platform` is the one its runner
 /// reported; `online` says whether its runner is connected now; `home` is
 /// the home directory it reported when it last connected, null until then
-/// (the backend keeps it in memory only).
+/// (the backend keeps it in memory only); `installs` are the command
+/// packages its runner is installing now, as it last reported them
+/// (`native-runtime.md` § Installation progress).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
@@ -41,6 +43,7 @@ pub struct DeviceDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub home: Option<String>,
+    pub installs: Vec<Install>,
 }
 
 /// `GET /devices`: the caller's paired devices, oldest first.

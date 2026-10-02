@@ -1,7 +1,8 @@
 //! `cargo xtask native package` (`builds-and-releases.md` § Packaging): the
 //! built executables of the named targets become a release directory,
 //! published through `artifact`'s verified release publication. A command
-//! package's descriptor lists the operations its contract crate declares; a
+//! package's descriptor lists the operations its contract crate declares and
+//! the resources its record names, whose archives the release carries; a
 //! runner release is named by the SHA-256 of its versions and targets, and
 //! the top-level manifest names the release packaged last; the backend's and
 //! the machine manager's record names the executable, its version and its
@@ -10,9 +11,14 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use demi_command_protocol::{PackageArtifact, PackageDescriptor, canonical_digest};
+use demi_command_package_browser_protocol::release::{BrowserRelease, RESOURCE};
+use demi_command_protocol::{
+    PackageArtifact, PackageDescriptor, PackageResource, ResourceArtifact, canonical_digest,
+};
 use demi_runner_protocol::release::RunnerRelease;
-use demi_shared_artifacts::{Mode, Permissions, Publication, ReleaseFile, ReleaseRecord};
+use demi_shared_artifacts::{
+    Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged,
+};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
@@ -23,6 +29,9 @@ use super::{DESCRIPTOR, Error, Executable, MANIFEST};
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// A backend or machine manager release's record.
 const RELEASE: &str = "release.json";
+/// Where packaging keeps the resource archives it downloaded, in the
+/// repository, so packaging again downloads nothing.
+const RESOURCES: &str = ".cache/resources";
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -40,6 +49,10 @@ pub struct Options {
     /// The release directory; for the runner, the directory of its releases.
     #[arg(long, value_name = "DIRECTORY")]
     output: PathBuf,
+    /// Where the resource archives are kept, each named by its SHA-256
+    /// [default: .cache/resources in the repository].
+    #[arg(long, value_name = "DIRECTORY")]
+    resources: Option<PathBuf>,
 }
 
 pub fn run(options: Options) -> Result<(), Error> {
@@ -51,25 +64,45 @@ pub fn run(options: Options) -> Result<(), Error> {
 /// The kind of release an executable has.
 enum Release {
     Runner,
-    /// A command package: its id and the operations its program serves, as
-    /// its contract crate declares them.
+    /// A command package: its id, the operations its program serves, as
+    /// its contract crate declares them, and the resources it needs.
     Package {
         id: &'static str,
         operations: Vec<String>,
+        resources: Vec<Resource>,
     },
     /// The backend or the machine manager: the executable of one version.
     Executable,
 }
 
-/// What a release carries of its executable: the built file of each target.
+/// A resource as the record of its package's contract crate names it: its
+/// name and title, and each target's archive.
+struct Resource {
+    name: &'static str,
+    title: String,
+    archives: Vec<ResourceArchive>,
+}
+
+/// One target's archive of a resource: where it is downloaded from, its
+/// size and SHA-256, and its entry.
+struct ResourceArchive {
+    target: String,
+    url: String,
+    digest: Digest,
+    entry: String,
+}
+
+/// What a release carries: the built executable of each target, and for a
+/// command package the archives of its resources.
 struct Built {
     files: Vec<ReleaseFile>,
     targets: BTreeMap<String, PackageArtifact>,
+    resources: BTreeMap<String, PackageResource>,
 }
 
 impl Release {
-    fn of(executable: Executable) -> Self {
-        match executable {
+    fn of(executable: Executable) -> Result<Self, Error> {
+        Ok(match executable {
             Executable::Runner => Self::Runner,
             Executable::File => Self::Package {
                 id: demi_command_package_file_protocol::PACKAGE,
@@ -77,21 +110,44 @@ impl Release {
                     .iter()
                     .map(|&name| name.to_owned())
                     .collect(),
+                resources: Vec::new(),
             },
-            Executable::Browser => Self::Package {
-                id: demi_command_package_browser_protocol::PACKAGE,
-                operations: demi_command_package_browser_protocol::Operation::names()
-                    .map(String::from)
-                    .collect(),
-            },
+            Executable::Browser => {
+                let chrome =
+                    BrowserRelease::pinned().map_err(|error| Error::Record(error.to_string()))?;
+                Self::Package {
+                    id: demi_command_package_browser_protocol::PACKAGE,
+                    operations: demi_command_package_browser_protocol::Operation::names()
+                        .map(String::from)
+                        .collect(),
+                    resources: vec![Resource {
+                        name: RESOURCE,
+                        title: chrome.title(),
+                        archives: chrome
+                            .platforms
+                            .into_iter()
+                            .map(|platform| ResourceArchive {
+                                target: platform.target,
+                                url: platform.url,
+                                digest: Digest {
+                                    size: platform.size,
+                                    sha256: platform.sha256,
+                                },
+                                entry: platform.executable,
+                            })
+                            .collect(),
+                    }],
+                }
+            }
             Executable::Claude => Self::Package {
                 id: demi_command_package_claude_code_protocol::PACKAGE,
                 operations: demi_command_package_claude_code_protocol::Operation::ALL
                     .map(|operation| operation.name().to_owned())
                     .to_vec(),
+                resources: Vec::new(),
             },
             Executable::Backend | Executable::Machines => Self::Executable,
-        }
+        })
     }
 }
 
@@ -100,6 +156,7 @@ impl Built {
         Self {
             files: Vec::new(),
             targets: BTreeMap::new(),
+            resources: BTreeMap::new(),
         }
     }
 
@@ -139,6 +196,84 @@ impl Built {
         });
         Ok(())
     }
+
+    /// Adds the archive of each of `resources` for each target the release
+    /// carries, taken from `cache`, where an archive missing is downloaded
+    /// first and checked against its record. A resource with no archive for
+    /// those targets is left out.
+    async fn add_resources(
+        &mut self,
+        resources: Vec<Resource>,
+        cache: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        for resource in resources {
+            let mut targets = BTreeMap::new();
+            for archive in resource.archives {
+                if !self.targets.contains_key(&archive.target) {
+                    continue;
+                }
+                let source = cache.join(&archive.digest.sha256);
+                if !tokio::fs::try_exists(&source).await? {
+                    download(&archive, &source, cancel).await?;
+                }
+                targets.insert(
+                    archive.target,
+                    ResourceArtifact {
+                        sha256: archive.digest.sha256.clone(),
+                        size: archive.digest.size,
+                        entry: archive.entry,
+                    },
+                );
+                self.files.push(ReleaseFile {
+                    source,
+                    path: Path::new("resources").join(&archive.digest.sha256),
+                    digest: archive.digest,
+                    executable: false,
+                });
+            }
+            if !targets.is_empty() {
+                self.resources.insert(
+                    resource.name.to_owned(),
+                    PackageResource {
+                        title: resource.title,
+                        targets,
+                    },
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Downloads `archive` to `destination`, which holds it only once its size
+/// and SHA-256 are the record's.
+async fn download(
+    archive: &ResourceArchive,
+    destination: &Path,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
+    if let Some(parent) = destination.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    eprintln!("Downloading {}", archive.url);
+    let publication = Publication {
+        mode: Mode::Replace,
+        permissions: Permissions::Default,
+        durable: true,
+    };
+    let mut staged = Staged::new(destination, publication).await?;
+    let client = demi_shared_artifacts::client()?;
+    demi_shared_artifacts::download(
+        &client,
+        &archive.url,
+        &archive.digest,
+        staged.file(),
+        cancel,
+    )
+    .await?;
+    staged.publish().await?;
+    Ok(())
 }
 
 /// Publishes the release `options` name and says what it published.
@@ -154,9 +289,18 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
             .join(executable.file_name(target));
         built.add(executable, target, source, cancel).await?;
     }
-    match Release::of(executable) {
+    match Release::of(executable)? {
         Release::Runner => runner(&output, built, cancel).await,
-        Release::Package { id, operations } => {
+        Release::Package {
+            id,
+            operations,
+            resources,
+        } => {
+            let cache = match &options.resources {
+                Some(cache) => std::path::absolute(cache)?,
+                None => crate::repository().join(RESOURCES),
+            };
+            built.add_resources(resources, &cache, cancel).await?;
             command_package(&output, id, operations, built, cancel).await
         }
         Release::Executable => executable_release(&output, executable, built, cancel).await,
@@ -172,7 +316,12 @@ pub async fn development_package(
     output: &Path,
     cancel: &CancellationToken,
 ) -> Result<(), Error> {
-    let Release::Package { id, operations } = Release::of(command) else {
+    let Release::Package {
+        id,
+        operations,
+        resources,
+    } = Release::of(command)?
+    else {
         panic!("{} is not a command program", command.name());
     };
     let mut built = Built::new();
@@ -183,6 +332,9 @@ pub async fn development_package(
             program,
             cancel,
         )
+        .await?;
+    built
+        .add_resources(resources, &crate::repository().join(RESOURCES), cancel)
         .await?;
     command_package(output, id, operations, built, cancel).await?;
     Ok(())
@@ -203,6 +355,7 @@ async fn command_package(
         protocol_version: demi_command_protocol::VERSION,
         operations,
         targets: built.targets,
+        resources: built.resources,
     };
     let digest = descriptor
         .digest()
@@ -334,6 +487,7 @@ mod tests {
             targets: targets.to_vec(),
             artifacts: Some(artifacts.to_owned()),
             output: output.to_owned(),
+            resources: Some(artifacts.join("resources")),
         }
     }
 
@@ -479,12 +633,12 @@ mod tests {
         let artifacts = root.path().join("artifacts");
         let carried = ["aarch64-apple-darwin", "x86_64-unknown-linux-musl"];
         let cancel = CancellationToken::new();
-        build(&artifacts, Executable::Browser, &carried, "browser");
+        build(&artifacts, Executable::File, &carried, "file");
         build(&artifacts, Executable::Runner, &carried, "runner");
         // Without named targets, a release needs every target's build.
-        let output = root.path().join("demi-browser");
+        let output = root.path().join("demi-file");
         let incomplete = package(
-            &options(Executable::Browser, &artifacts, &output, &[]),
+            &options(Executable::File, &artifacts, &output, &[]),
             &cancel,
         )
         .await;
@@ -494,7 +648,7 @@ mod tests {
         );
         assert!(!output.exists());
         package(
-            &options(Executable::Browser, &artifacts, &output, &carried),
+            &options(Executable::File, &artifacts, &output, &carried),
             &cancel,
         )
         .await
@@ -502,14 +656,13 @@ mod tests {
         let descriptor =
             serde_json::from_slice(&std::fs::read(output.join(DESCRIPTOR)).unwrap()).unwrap();
         let descriptor = PackageDescriptor::parse(descriptor).unwrap();
-        assert_eq!(
-            descriptor.id,
-            demi_command_package_browser_protocol::PACKAGE
-        );
+        assert_eq!(descriptor.id, demi_command_package_file_protocol::PACKAGE);
         assert_eq!(descriptor.version, VERSION);
-        let declared: Vec<&str> =
-            demi_command_package_browser_protocol::Operation::names().collect();
-        assert_eq!(descriptor.operations, declared);
+        assert_eq!(
+            descriptor.operations,
+            demi_command_package_file_protocol::OPERATIONS
+        );
+        assert!(descriptor.resources.is_empty());
         assert_eq!(descriptor.targets.keys().collect::<Vec<_>>(), carried);
         assert_eq!(names(&output), [carried[0], DESCRIPTOR, carried[1]]);
         let runners = root.path().join("runners");
@@ -524,6 +677,84 @@ mod tests {
         assert_eq!(
             names(&runners.join(&release.release)),
             [carried[0], MANIFEST, carried[1]]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_command_package_carries_the_archives_of_its_resources_for_its_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let carried = "x86_64-unknown-linux-musl";
+        let program = root.path().join("demi-browser");
+        std::fs::write(&program, b"browser").unwrap();
+        let mut built = Built::new();
+        built
+            .add(Executable::Browser, carried, program, &cancel)
+            .await
+            .unwrap();
+        // The archive is in the cache already, so nothing is downloaded.
+        let cache = root.path().join("resources");
+        std::fs::create_dir_all(&cache).unwrap();
+        let bytes = b"chrome archive";
+        let written = cache.join("written");
+        std::fs::write(&written, bytes).unwrap();
+        let digest = demi_shared_artifacts::digest(&written, u64::MAX, &cancel)
+            .await
+            .unwrap();
+        std::fs::rename(&written, cache.join(&digest.sha256)).unwrap();
+        let archive = |target: &str| ResourceArchive {
+            target: target.to_owned(),
+            url: "https://example.test/chrome.zip".to_owned(),
+            digest: digest.clone(),
+            entry: "chrome-linux64/chrome".to_owned(),
+        };
+        let chrome = Resource {
+            name: "chrome",
+            title: "Chrome for Testing 153.0.8010.36".to_owned(),
+            // An archive for a target the release does not carry is left out.
+            archives: vec![archive(carried), archive("aarch64-apple-darwin")],
+        };
+        let lacking = Resource {
+            name: "other",
+            title: "Other".to_owned(),
+            archives: vec![archive("aarch64-apple-darwin")],
+        };
+        built
+            .add_resources(vec![chrome, lacking], &cache, &cancel)
+            .await
+            .unwrap();
+        let output = root.path().join("release");
+        command_package(
+            &output,
+            "demi.browser",
+            vec!["browser.open".to_owned()],
+            built,
+            &cancel,
+        )
+        .await
+        .unwrap();
+        let descriptor =
+            serde_json::from_slice(&std::fs::read(output.join(DESCRIPTOR)).unwrap()).unwrap();
+        let descriptor = PackageDescriptor::parse(descriptor).unwrap();
+        let resource = PackageResource {
+            title: "Chrome for Testing 153.0.8010.36".to_owned(),
+            targets: BTreeMap::from([(
+                carried.to_owned(),
+                ResourceArtifact {
+                    sha256: digest.sha256.clone(),
+                    size: digest.size,
+                    entry: "chrome-linux64/chrome".to_owned(),
+                },
+            )]),
+        };
+        assert_eq!(
+            descriptor.resources,
+            BTreeMap::from([("chrome".to_owned(), resource)])
+        );
+        assert_eq!(names(&output), [DESCRIPTOR, "resources", carried]);
+        assert_eq!(
+            std::fs::read(output.join("resources").join(&digest.sha256)).unwrap(),
+            bytes
         );
     }
 }

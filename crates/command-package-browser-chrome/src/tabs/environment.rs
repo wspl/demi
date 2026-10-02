@@ -516,13 +516,8 @@ where
 /// alone. Then the profiles whose runtime directory is gone, which happens
 /// when a restart emptied a `/tmp` held in memory: no running environment
 /// has one.
-pub async fn sweep_orphans(directories: &crate::driver::installation::BrowserDirectories) {
-    sweep_orphans_in(
-        &DirectoryBases::host(),
-        directories.roots(),
-        Owner::current(),
-    )
-    .await;
+pub async fn sweep_orphans(chrome: &crate::driver::installation::Chrome) {
+    sweep_orphans_in(&DirectoryBases::host(), chrome.roots(), Owner::current()).await;
 }
 
 async fn sweep_orphans_in(bases: &DirectoryBases, installations: Vec<PathBuf>, owner: Owner) {

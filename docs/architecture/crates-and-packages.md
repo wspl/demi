@@ -323,9 +323,12 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - the invocation edit recorder: bounded file snapshots and a journal
     coordinated across processes by an OS file lock;
   - path resolution against an invocation's working directory, and waiting out
-    a lack of open file descriptors.
+    a lack of open file descriptors;
+  - a command program's launch arguments, `--command-service` and the entry
+    of each of its package's resources, which the runner writes
+    (`launch_arguments`) and the program reads (`Launch`).
 - **Public boundary:** the client, the service entry point, the handler and IO
-  traits, and the edit recorder; `command_sdk::testing` starts a service
+  traits, the launch arguments, and the edit recorder; `command_sdk::testing` starts a service
   binary and drives it with a client (`ServiceProcess`), gives a handler
   numbers from counters that start at 1 (`counting_numbers`) or answers a
   service's numbers stream from them (`answer_numbers`), and counts the
@@ -367,10 +370,11 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   them, published once and immutable); the install lock between processes;
   install receipts; and archive installation (a verified zip archive unpacked
   into a directory named by its SHA-256, with the receipt that checks it
-  before each use), which installs Chrome for Testing on a paired device and
-  into the Cloud image. Every download-and-verify path and every atomic
-  publication of a file, durable or not, goes through it: the runner's
-  artifact cache, the Chrome and Claude Code installers, the machine
+  before each use, or that its installer's own cache trusts), which installs
+  a command package's resources, such as Chrome for Testing, into a runner's
+  artifact cache and into the Cloud image. Every download-and-verify path and
+  every atomic publication of a file, durable or not, goes through it: the
+  runner's artifact cache, the Claude Code installer, the machine
   manager's image store, the edit recorder's snapshots and journal in
   `command-sdk`, and `xtask` release packaging.
 - **Public boundary:** the functions and types above. Its `testing` feature
@@ -785,14 +789,16 @@ demi-runner (executable: connection, registration, Host log, composition)
 
 #### `runner-command-packages`
 
-- **Owns:** the artifact cache, the preinstalled executables of a Cloud
-  image, and the resident service registry: installing a pinned executable,
-  starting, checking and reusing a service, its leases, conversation status
-  and release, its numbers stream through a source the composition supplies
+- **Owns:** the artifact cache, the preinstalled artifacts of a Cloud
+  image, the installs in progress, and the resident service registry:
+  installing a pinned executable and its package's resources, starting,
+  checking and reusing a service, its leases, conversation status and
+  release, its numbers stream through a source the composition supplies
   (`NumberSource`), and its retirement
   ([Native command execution](../execution/native-runtime.md)).
 - **Public boundary:** the registry and its handles (`ServiceHandle`), the
-  cache, and `NumberSource`. Its `testing` feature builds
+  cache, the installs a connection reports (`InstallsReceiver`), and
+  `NumberSource`. Its `testing` feature builds
   `demi-native-fixture`, a command program with fixture operations that the
   runner's and the backend's tests install and start, and adds a number
   source that refuses (`NoNumbers`).
@@ -1084,8 +1090,8 @@ demi-backend (executable: configuration, composition)
            `-- cdp ------------+--> tabs --> driver
   ```
 
-  - `driver`: Chrome and the operations run on it: the installation of the
-    pinned Chrome for Testing release, launch with the capture extension and
+  - `driver`: Chrome and the operations run on it: the executable the
+    runner installed as the `chrome` resource, launch with the capture extension and
     the capture channel, the extension's connection, which the live view
     starts captures over, the Chrome process and its profile, the operation
     type every command runs as with its cancellation and failure

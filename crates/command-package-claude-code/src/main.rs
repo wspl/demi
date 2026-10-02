@@ -4,10 +4,7 @@ use std::sync::Arc;
 // (`concurrency.md` § demi-claude-code and the command-sdk).
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    if std::env::args().nth(1).as_deref() != Some("--command-service") {
-        eprintln!("Usage: demi-claude-code --command-service");
-        std::process::exit(2);
-    }
+    demi_command_sdk::Launch::from_process();
     let result =
         demi_command_sdk::serve_stdio(Arc::new(demi_claude_code::DemiClaude::default())).await;
     if let Err(error) = result {

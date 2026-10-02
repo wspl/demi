@@ -16,6 +16,7 @@ use axum::http::header::{CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTEN
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_backend_runners::install::{backend_url, powershell_script, shell_script};
+use demi_backend_runners::local_store::LocalArtifact;
 use demi_command_protocol::{is_digest, is_target};
 use demi_runner_protocol::release::RunnerRelease;
 use demi_web_api_protocol::error::ErrorCode;
@@ -164,36 +165,47 @@ pub(super) async fn artifact(
     immutable_download(opened).await
 }
 
-/// A development store's command executable, by its SHA-256, in the content
-/// coding object storage serves it in: only one that a release the backend
-/// loaded carries; any other digest answers 404.
+/// A development store's command artifact, by its SHA-256, as object
+/// storage serves it: an executable in the content coding, a resource's
+/// archive as it is. Only one that a release the backend loaded carries; any
+/// other digest answers 404.
 pub(super) async fn native_artifact(
     State(state): State<AppState>,
     Path(sha256): Path<String>,
 ) -> Result<Response, ApiError> {
-    let Some(encoded) = state.services.native.local_encoded(&sha256).await else {
+    let Some(artifact) = state.services.native.local_artifact(&sha256).await else {
         return Err(ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::NotFound,
             "No such native artifact",
         ));
     };
-    let encoded = encoded.map_err(|error| ApiError::internal_message(error.to_string()))?;
-    let headers = [
-        (
-            CONTENT_TYPE,
-            HeaderValue::from_static("application/octet-stream"),
-        ),
-        (
-            CONTENT_ENCODING,
-            HeaderValue::from_static(demi_shared_artifacts::CONTENT_CODING),
-        ),
-        (CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE)),
-    ];
-    Ok((headers, encoded).into_response())
+    let artifact = artifact.map_err(|error| ApiError::internal_message(error.to_string()))?;
+    match artifact {
+        LocalArtifact::Encoded(encoded) => {
+            let headers = [
+                (
+                    CONTENT_TYPE,
+                    HeaderValue::from_static("application/octet-stream"),
+                ),
+                (
+                    CONTENT_ENCODING,
+                    HeaderValue::from_static(demi_shared_artifacts::CONTENT_CODING),
+                ),
+                (CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE)),
+            ];
+            Ok((headers, encoded).into_response())
+        }
+        LocalArtifact::Plain(path) => {
+            let opened = tokio::fs::File::open(&path).await.map_err(|error| {
+                ApiError::internal_message(format!("{}: {error}", path.display()))
+            })?;
+            immutable_download(opened).await
+        }
+    }
 }
 
-/// `file`, an immutable executable, as a download: its whole length in large
+/// `file`, an immutable executable or archive, as a download: its whole length in large
 /// reads, cacheable for a year.
 async fn immutable_download(file: tokio::fs::File) -> Result<Response, ApiError> {
     let size = file

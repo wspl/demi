@@ -4,7 +4,7 @@ use futures_util::FutureExt;
 use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 use demi_browser::DemiBrowser;
-use demi_command_package_browser_chrome::driver::installation::BrowserDirectories;
+use demi_command_package_browser_chrome::driver::installation::Chrome;
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
 };
@@ -22,7 +22,6 @@ pub type Invoked = (
 pub struct BrowserFixture {
     service: Arc<DemiBrowser>,
     /// The browser directory the service finds Chrome in, until it ends.
-    _chrome: Arc<tempfile::TempDir>,
     pub root: Arc<tempfile::TempDir>,
     pub conversation: String,
     pub env: BTreeMap<String, String>,
@@ -215,28 +214,12 @@ impl BrowserFixture {
     }
 }
 
-/// Installs the pinned Chrome for Testing that `DEMI_TEST_CHROME` names
-/// into `root`, as the service installs a release, so that a service whose
-/// browser directory `root` is finds it: no test downloads Chrome or writes
-/// into the home.
-pub async fn install_chrome(root: &std::path::Path) {
-    let executable =
-        std::path::PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
-    demi_command_package_browser_chrome::driver::testing::install_pinned(root, &executable)
-        .await
-        .expect("DEMI_TEST_CHROME names a readable installation of the pinned release");
-}
-
-/// A browser directory holding the pinned Chrome for Testing
-/// ([`install_chrome`]).
-pub async fn installed_chrome() -> (tempfile::TempDir, BrowserDirectories) {
-    let directory = tempfile::tempdir().unwrap();
-    install_chrome(directory.path()).await;
-    let directories = BrowserDirectories {
-        image: None,
-        install: Some(directory.path().to_owned()),
-    };
-    (directory, directories)
+/// The pinned Chrome for Testing that `DEMI_TEST_CHROME` names, as the
+/// runner names the `chrome` resource's entry: no test downloads Chrome.
+pub fn test_chrome() -> Chrome {
+    Chrome::new(Some(std::path::PathBuf::from(
+        std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"),
+    )))
 }
 
 pub async fn with_browser_fixture<F, W>(exercise: F)
@@ -254,12 +237,10 @@ where
     F: FnOnce(BrowserFixture) -> W,
     W: Future<Output = BrowserFixture>,
 {
-    let (chrome, directories) = installed_chrome().await;
-    let service = DemiBrowser::new(directories);
+    let service = DemiBrowser::new(test_chrome());
     service.numbers(numbers);
     let fixture = BrowserFixture {
         service: Arc::new(service),
-        _chrome: Arc::new(chrome),
         root: Arc::new(tempfile::tempdir().unwrap()),
         caller: 1,
         conversation: uuid::Uuid::new_v4().to_string(),
