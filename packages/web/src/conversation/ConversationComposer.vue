@@ -22,6 +22,7 @@ import { placesFor } from '../devices/files'
 import { fileSource } from '../api/files'
 import { uploadAttachment } from '../api/uploads'
 import type { Conversation } from '../state/types'
+import { cliPackageOf } from '../state/installs'
 
 const props = defineProps<{ conversation: Conversation }>()
 const store = useConversations()
@@ -79,8 +80,7 @@ const execution = computed(() => executionFor(props.conversation))
 // the page polls says when it ends, and the input returns by itself.
 const usesCloud = computed(() =>
   execution.value.kind === 'cloud' ||
-  product.catalog.find((provider) => provider.providerId === props.conversation.model.providerId)
-    ?.requiresProcessCapableHost === true,
+  cliPackageOf(product.catalog, props.conversation.model.providerId) !== null,
 )
 const hold = computed(() =>
   usesCloud.value && product.snapshot?.cloud.state === 'resetting'

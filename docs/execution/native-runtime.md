@@ -364,8 +364,7 @@ tab: `Installing demi.browser: program 0.1.3, 40 of 120 MB`, then `Installing
 demi.browser: Chrome for Testing 153.0.8010.36, 120 of 196 MB`, then
 `unpacking`, and the tab opens once Chrome starts. A new Claude Code CLI
 installing on the Cloud shows the same way, as `demi.claude-code: Claude Code
-2.1.278`, wherever a page shows the Cloud's installs
-([The page](../architecture/plugins.md#the-page)).
+2.1.278`, under the **Requesting** of the conversation that waits for it.
 
 The runner reports what it installs as **installs**: one entry for each
 artifact it is obtaining now, with the package, the artifact's name and
@@ -380,11 +379,31 @@ list; the job or call that needed the artifact reports why. An artifact the
 cache or the image already holds sends nothing.
 
 The backend shows each device's installs in the product state
-([Page synchronization](../product/web-api.md#page-synchronization)). Since
-installing is a step of an artifact's first use, the progress needs no
+([Page synchronization](../product/web-api.md#page-synchronization)). The
+page shows them with one `web-ui` component, the same line for every
+artifact, wherever someone may be waiting on that Host:
+
+| Where | Which installs |
+| --- | --- |
+| A conversation, while a turn runs, below the transcript's last row | Those of the conversation's Host, and, when its provider starts a CLI on the Cloud, those of that CLI's package on the Cloud |
+| A plugin component that waits for a call, such as the browser tab | Those of the plugin's packages on the conversation's Host ([The page](../architecture/plugins.md#the-page)) |
+| A CLI provider's entry in the settings | Those of its CLI's package on the Cloud |
+| Each device in the devices settings | All of that device's |
+
+For example, the first `demi file patch` on a new laptop shows its running
+command and, below it, `Installing demi.file: program 0.1.3, 2 of 9 MB`; the
+first Claude Code request after a reset shows **Requesting** and, below it,
+the CLI's download. The conversation shows what its Hosts install while a
+turn runs, not what this turn asked for: the installs carry no requester, and
+on a Host an install is shared by everyone who needs the artifact. A provider
+entry names its CLI's package (`cliPackage`,
+[Model configuration and provider inspection](../product/web-api.md#model-configuration-and-provider-inspection)),
+so no page knows a package by name.
+
+Since installing is a step of an artifact's first use, the progress needs no
 separate start: a conversation that never uses the browser downloads no
-Chrome, and a shell job that waits for an install shows its command's
-running hint meanwhile, as it does for any wait.
+Chrome. An install leaves nothing in the transcript; its line goes when the
+list no longer has it.
 
 ### Preinstalled artifacts
 

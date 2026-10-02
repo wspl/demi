@@ -51,7 +51,7 @@ onMounted(loadVendors)
 watch(
   () => {
     const shown = providers.value.find((provider) => provider.id === resources.selectedProviderId)
-    return shown?.runsOnHost ? `${shown.id}:${shown.accounts.length}` : null
+    return shown?.cli === undefined ? null : `${shown.id}:${shown.accounts.length}`
   },
   () => {
     const shown = providers.value.find((provider) => provider.id === resources.selectedProviderId)

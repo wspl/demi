@@ -28,6 +28,8 @@ import MessageEditRegion from './MessageEditRegion.vue'
 import { lastEditableUserMessageId, messageEditSuffixIds } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
 import { useFollowSentMessages } from './useFollowSentMessages'
+import HostInstalls from '../devices/HostInstalls.vue'
+import type { HostInstall } from '../devices/installs'
 
 const props = defineProps<{
   conversationId: string
@@ -51,6 +53,11 @@ const props = defineProps<{
   /** A session-level failure told at the tail of the transcript, in flow. */
   failure?: SessionFailureNotice | null
   pendingSubmission?: PendingSubmissionState | null
+  /**
+   * What the conversation's Hosts install now; shown below the tail while a
+   * turn runs (`native-runtime.md` § Installation progress).
+   */
+  installs?: readonly HostInstall[]
 }>()
 
 const emit = defineEmits<{
@@ -272,6 +279,16 @@ defineExpose({
           :incoming="slot.incoming"
           :style="{ marginTop: renderBlocks.length ? `${BLOCK_GAP}px` : '0' }"
         />
+        <!-- A turn may wait for its Hosts to install an artifact: what they install shows below the tail, not in it. -->
+        <div
+          v-if="phase === 'running' && installs?.length"
+          class="px-[var(--agent-pad-x,2rem)]"
+          :style="{ marginTop: `${BLOCK_GAP}px` }"
+        >
+          <div class="max-w-80">
+            <HostInstalls :installs="installs" />
+          </div>
+        </div>
         <div v-if="failure" class="px-[var(--agent-pad-x,2rem)] py-1.5">
           <ErrorNotice
             :label="failure.label"
