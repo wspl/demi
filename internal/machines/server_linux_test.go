@@ -1,0 +1,299 @@
+//go:build linux
+
+package machines_test
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/wspl/demi/internal/machines"
+	"github.com/wspl/demi/internal/machines/machinestest"
+	"github.com/wspl/demi/internal/machinewire"
+)
+
+type serverFixture struct {
+	path    string
+	service *machinestest.Service
+	deaths  chan machinewire.DeviceID
+	stop    func()
+}
+
+func server(t *testing.T, script func(context.Context, machinewire.MachineCall) (json.RawMessage, error)) *serverFixture {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	path := filepath.Join(t.TempDir(), "sock")
+	socket, err := machines.BindSocket(ctx, path)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	service := &machinestest.Service{Script: script}
+	deaths := make(chan machinewire.DeviceID, 4)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		flight := machines.Serve(ctx, socket, service, deaths)
+		flight.Wait(context.Background())
+	}()
+	var once sync.Once
+	stop := func() { once.Do(func() { cancel(); <-done }) }
+	t.Cleanup(stop)
+	return &serverFixture{path, service, deaths, stop}
+}
+
+type socketClient struct {
+	conn   net.Conn
+	reader *bufio.Reader
+}
+
+func (f *serverFixture) connect(t *testing.T) *socketClient {
+	t.Helper()
+	conn, err := net.Dial("unix", f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err = conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	return &socketClient{conn, bufio.NewReader(conn)}
+}
+func (c *socketClient) send(t *testing.T, line string) {
+	t.Helper()
+	if _, err := c.conn.Write([]byte(line)); err != nil {
+		t.Fatal(err)
+	}
+}
+func (c *socketClient) receive(t *testing.T) machinewire.MachineResponse {
+	t.Helper()
+	line, err := c.reader.ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := machinewire.DecodeResponse(line[:len(line)-1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+func TestEveryCallReachesService(t *testing.T) {
+	f := server(t, func(_ context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
+		switch call.(type) {
+		case *machinewire.CurrentBaseVersion:
+			return machinewire.BaseVersion("base").MarshalJSON()
+		case *machinewire.RuntimeStateCall:
+			return machinewire.RuntimeStateStopped.MarshalJSON()
+		case *machinewire.Reconcile, *machinewire.ImageState, *machinewire.Wake, *machinewire.Hibernate, *machinewire.Checkpoint, *machinewire.GrowVolume, *machinewire.Reset:
+			return json.RawMessage("null"), nil
+		}
+		return nil, errors.New("unknown call")
+	})
+	c := f.connect(t)
+	lines := []string{
+		`{"id":"1","op":"reconcile","params":{}}`,
+		`{"id":"2","op":"current_base_version","params":{}}`,
+		`{"id":"3","op":"image_state","params":{"deviceId":"dev-1"}}`,
+		`{"id":"4","op":"runtime_state","params":{"deviceId":"dev-1"}}`,
+		`{"id":"5","op":"wake","params":{"deviceId":"dev-1","boot":{"backendUrl":"http://backend","deviceToken":"tok"}}}`,
+		`{"id":"6","op":"checkpoint","params":{"deviceId":"dev-1"}}`,
+		`{"id":"7","op":"grow_volume","params":{"deviceId":"dev-1","volume":"home","bytes":4096}}`,
+		`{"id":"8","op":"reset","params":{"deviceId":"dev-1","operationId":"op-1","baseVersion":"base-2"}}`,
+		`{"id":"9","op":"hibernate","params":{"deviceId":"dev-1"}}`,
+	}
+	for _, line := range lines {
+		request, err := machinewire.DecodeRequest([]byte(line))
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.send(t, line+"\n")
+		response, ok := c.receive(t).(*machinewire.OK)
+		if !ok || response.ID != request.ID {
+			t.Fatalf("reply: %+v", response)
+		}
+		want := "null"
+		if request.ID == "2" {
+			want = `"base"`
+		}
+		if request.ID == "4" {
+			want = `"stopped"`
+		}
+		if string(response.Result) != want {
+			t.Fatalf("result %s", response.Result)
+		}
+	}
+	f.stop()
+	calls := f.service.Calls()
+	if len(calls) != len(lines) {
+		t.Fatal(len(calls))
+	}
+	for i, line := range lines {
+		request, _ := machinewire.DecodeRequest([]byte(line))
+		if request.Call.Name() != calls[i].Name() {
+			t.Fatal(calls)
+		}
+	}
+}
+func TestFailureLeavesConnectionUsable(t *testing.T) {
+	f := server(t, func(_ context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
+		if call.Name() == "hibernate" {
+			return nil, errors.New("no such machine")
+		}
+		return json.RawMessage("null"), nil
+	})
+	c := f.connect(t)
+	c.send(t, "{\"id\":\"1\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"dev-9\"}}\n")
+	response, ok := c.receive(t).(*machinewire.ErrorResponse)
+	if !ok || response.Message != "no such machine" {
+		t.Fatalf("%+v", response)
+	}
+	c.send(t, "\n{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n")
+	if reply, ok := c.receive(t).(*machinewire.OK); !ok || reply.ID != "2" {
+		t.Fatalf("%+v", reply)
+	}
+}
+func TestConcurrentRepliesCompleteInOrder(t *testing.T) {
+	release := make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	f := server(t, func(_ context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
+		if call.Name() == "current_base_version" {
+			<-release
+		}
+		return json.RawMessage("null"), nil
+	})
+	t.Cleanup(unblock)
+	c := f.connect(t)
+	c.send(t, "{\"id\":\"slow\",\"op\":\"current_base_version\",\"params\":{}}\n{\"id\":\"fast\",\"op\":\"reconcile\",\"params\":{}}\n")
+	if reply, ok := c.receive(t).(*machinewire.OK); !ok || reply.ID != "fast" {
+		t.Fatalf("%+v", reply)
+	}
+	unblock()
+	if reply, ok := c.receive(t).(*machinewire.OK); !ok || reply.ID != "slow" {
+		t.Fatalf("%+v", reply)
+	}
+}
+func TestDeathReachesEveryConnection(t *testing.T) {
+	f := server(t, nil)
+	clients := []*socketClient{f.connect(t), f.connect(t)}
+	for _, c := range clients {
+		c.send(t, "{\"id\":\"1\",\"op\":\"reconcile\",\"params\":{}}\n")
+		c.receive(t)
+	}
+	f.deaths <- machinewire.DeviceID("dev-1")
+	for _, c := range clients {
+		death, ok := c.receive(t).(*machinewire.Death)
+		if !ok || death.DeviceID != "dev-1" {
+			t.Fatalf("%+v", death)
+		}
+	}
+}
+func TestBadLineDropsConnectionAndLaterLines(t *testing.T) {
+	f := server(t, nil)
+	for _, bad := range []string{"{\"id\":\"1\",\"op\":\"wake\",\"params\":{}}\n", "not json\n", string([]byte{255, '\n'}), strings.Repeat("x", machinewire.MaxLineBytes+1) + "\n"} {
+		c := f.connect(t)
+		_, _ = c.conn.Write([]byte(bad + "{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n"))
+		line, err := c.reader.ReadBytes('\n')
+		if err == nil {
+			t.Fatalf("bad frame answered: %s", line)
+		}
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			t.Fatal("bad frame did not close the connection")
+		}
+	}
+	f.stop()
+	if len(f.service.Calls()) != 0 {
+		t.Fatal("served behind bad frame")
+	}
+}
+func TestDisconnectedRequestCompletes(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	f := server(t, func(_ context.Context, _ machinewire.MachineCall) (json.RawMessage, error) {
+		close(entered)
+		<-release
+		close(finished)
+		return json.RawMessage("null"), nil
+	})
+	t.Cleanup(unblock)
+	c := f.connect(t)
+	c.send(t, "{\"id\":\"1\",\"op\":\"current_base_version\",\"params\":{}}\n")
+	<-entered
+	if err := c.conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	unblock()
+	f.stop()
+	<-finished
+}
+func TestSocketOwnership(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "socket")
+	old, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.SetUnlinkOnClose(false)
+	if err = old.Close(); err != nil {
+		t.Fatal(err)
+	}
+	socket, err := machines.BindSocket(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0660 {
+		t.Fatal(info.Mode())
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	machines.Serve(ctx, socket, &machinestest.Service{}, nil).Wait(context.Background())
+	if _, err = os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("socket retained: %v", err)
+	}
+	if err = os.WriteFile(path, []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = machines.BindSocket(t.Context(), path); err == nil {
+		t.Fatal("ordinary file replaced")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "data" {
+		t.Fatalf("file: %s %v", data, err)
+	}
+}
+func TestSecondManagerRefusedWithPath(t *testing.T) {
+	data, runtime := t.TempDir(), t.TempDir()
+	first, err := machines.AcquireLock(data, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = machines.AcquireLock(data, runtime)
+	if err == nil || err.Error() != "Another Cloud manager owns "+filepath.Join(data, "manager.lock") {
+		t.Fatal(err)
+	}
+	if err = first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	next, err := machines.AcquireLock(data, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = next.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

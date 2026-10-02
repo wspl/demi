@@ -1,0 +1,35 @@
+{
+  "formatVersion": 1,
+  "os": "linux",
+  "architecture": "arm64",
+  "rootfs": {
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "size": 1,
+    "file": "rootfs.tar.zst"
+  },
+  "ubuntu": "26.04",
+  "packages": [],
+  "executables": {
+    "/usr/bin/demi-runner": {
+      "sha256": "527aa9f431539da8e151d5434d1d5e611d973f601d8e970790882624554146b0",
+      "size": 6
+    },
+    "/usr/bin/tini": {
+      "sha256": "209fecf03369b4fdb35f1ad8e5e55a57364e6947c51d4b6c134a62e7bcff7406",
+      "size": 4
+    }
+  },
+  "releases": [],
+  "runner": {
+    "release": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "wire": 24,
+    "commandProtocol": 1,
+    "targets": {
+      "aarch64-unknown-linux-musl": {
+        "sha256": "527aa9f431539da8e151d5434d1d5e611d973f601d8e970790882624554146b0",
+        "size": 6
+      }
+    }
+  },
+  "tools": []
+}
