@@ -17,13 +17,19 @@ use demi_plugin_interface::{
 use demi_shared_types::Profile;
 use futures_util::future::LocalBoxFuture;
 
+use crate::support::user_plugins;
+
 /// A plugin whose every command prints the user and the path it was
 /// handed.
 struct Probe(Manifest);
 
 impl Probe {
     fn new(id: &str) -> Self {
-        Self(Manifest::new(PluginId::try_from(id).unwrap()))
+        Self(Manifest::new(
+            PluginId::try_from(id).unwrap(),
+            id,
+            "A probe.",
+        ))
     }
 
     /// Adds `group` with one rpc leaf `run`, placed at `placement`.
@@ -83,7 +89,9 @@ impl Plugin for Printer {
         port: PluginPort,
     ) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
         Box::pin(async move {
-            let Request::Command { user, invocation } = request;
+            let Request::Command { user, invocation } = request else {
+                unreachable!("the probe declares no page")
+            };
             let line = format!("{user}: {}", invocation.path.join(" "));
             port.rpc()
                 .stdout(line)
@@ -148,10 +156,8 @@ async fn groups_join_the_products_under_demi_roots_stand_alone_and_each_call_get
     ])
     .unwrap();
 
-    let commands = registry
-        .instances("u1")
-        .commands(vec![rpc_group("agent")])
-        .unwrap();
+    let (plugins, _data) = user_plugins(registry).await;
+    let commands = plugins.commands(vec![rpc_group("agent")]).unwrap();
 
     let roots: Vec<_> = commands.declarations().map(|root| root.name()).collect();
     assert_eq!(roots, ["demi", "lint"]);
@@ -211,8 +217,8 @@ fn a_manifest_that_breaks_a_rule_stops_the_start_and_names_the_plugin() {
     }
 }
 
-#[test]
-fn a_tree_bound_to_a_package_the_catalog_does_not_serve_is_left_out_whole() {
+#[tokio::test(flavor = "local")]
+async fn a_tree_bound_to_a_package_the_catalog_does_not_serve_is_left_out_whole() {
     let registry = Registry::new(
         vec![
             Probe::new("tools")
@@ -225,15 +231,16 @@ fn a_tree_bound_to_a_package_the_catalog_does_not_serve_is_left_out_whole() {
     )
     .unwrap();
 
-    let commands = registry.instances("u1").commands(Vec::new()).unwrap();
-
-    let help = commands.render_help();
-    assert!(help.contains("served: A native group."), "{help}");
-    assert!(!help.contains("unserved"), "{help}");
     let profiles: Vec<_> = registry
         .profiles()
         .iter()
         .map(|p| p.name.as_str())
         .collect();
     assert_eq!(profiles, ["explorer"]);
+    let (plugins, _data) = user_plugins(registry).await;
+    let commands = plugins.commands(Vec::new()).unwrap();
+
+    let help = commands.render_help();
+    assert!(help.contains("served: A native group."), "{help}");
+    assert!(!help.contains("unserved"), "{help}");
 }

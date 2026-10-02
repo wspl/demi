@@ -509,6 +509,17 @@ impl dyn HostShard + '_ {
     /// the main Host starts in the conversation's directory there; one on an
     /// attached Host where the last shell there ended, or in its home before
     /// one ran.
+    /// The Hosts the user's conversation `id` reaches: its main Host, then
+    /// its attached ones.
+    pub async fn conversation_hosts(
+        &self,
+        id: &ConversationId,
+    ) -> Result<Vec<ReachableHost>, HostAccessError> {
+        let record = self.owned_conversation(id).await?;
+        let target = self.resolve_target(&record).await?;
+        Ok(self.reachable_hosts(&record, &target).await?)
+    }
+
     pub(crate) async fn reachable_hosts(
         &self,
         record: &ConversationRecord,

@@ -26,9 +26,10 @@ pub enum Part {
     User,
     Workspaces,
     Devices,
-    Exposes,
     Providers,
     Cloud,
+    /// A plugin's state, by the plugin's id.
+    Plugin(String),
 }
 
 /// Every user's open channels. Cloning it shares it.

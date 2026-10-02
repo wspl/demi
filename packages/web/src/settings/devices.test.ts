@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
+import type { ExposeState } from '@demicodes/plugin-expose'
 import type { ProductState } from '../api/generated/web-api'
 import { useDeviceInstallation } from '../devices/pairing'
 import { useProduct } from '../state/product'
@@ -11,6 +12,8 @@ const realFetch = globalThis.fetch
 let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
 let state: ProductState
+/** The `expose` plugin's state the channel brings. */
+let expose: ExposeState
 let renewals: string[]
 let removals: string[]
 
@@ -38,6 +41,10 @@ beforeEach(async () => {
       volumes: null,
       limits: { systemBytes: 0, homeBytes: 0 },
     },
+    publicUrl: 'http://192.168.5.2:3271/',
+  })
+  expose = {
+    available: true,
     exposes: [
       {
         id: 'k7x2maqw4p3s6tavaw2y4z6aab',
@@ -45,7 +52,6 @@ beforeEach(async () => {
         deviceId: 'laptop',
         address: '127.0.0.1:5173',
         url: 'https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/',
-        createdAt: '2026-09-17T00:00:00.000Z',
         expiresAt: '2026-09-17T00:59:00.000Z',
       },
       {
@@ -54,13 +60,11 @@ beforeEach(async () => {
         deviceId: 'cloud',
         address: '127.0.0.1:8080',
         url: 'https://m3n5p7rgtxv3w5x7yez4a3c5ek.expose.demi.example/',
-        createdAt: '2026-09-17T00:00:00.000Z',
         expiresAt: '2026-09-17T00:30:00.000Z',
       },
     ],
-    exposeDomain: 'expose.demi.example',
-    publicUrl: 'http://192.168.5.2:3271/',
-  })
+  }
+  state.pluginStates = { expose }
   renewals = []
   removals = []
   globalThis.fetch = (async (input, init) => {
@@ -68,22 +72,22 @@ beforeEach(async () => {
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })
     }
-    if (path.startsWith('/api/exposes/') && path.endsWith('/renew') && init?.method === 'POST') {
-      const id = path.split('/')[3]!
+    if (path === '/api/plugins/expose/calls/renew' && init?.method === 'POST') {
+      const id = JSON.parse(String(init.body)).expose
       renewals.push(id)
-      const expose = state.exposes.find((entry) => entry.id === id)
-      if (expose) {
-        expose.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
+      const renewed = expose.exposes.find((entry) => entry.id === id)
+      if (renewed) {
+        renewed.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
       }
-      channels.last().send({ type: 'exposes', exposes: state.exposes })
-      return Response.json({ expose })
+      channels.last().send({ type: 'plugin', plugin: 'expose', state: expose })
+      return Response.json(null)
     }
-    if (path.startsWith('/api/exposes/') && init?.method === 'DELETE') {
-      const id = path.split('/')[3]!
+    if (path === '/api/plugins/expose/calls/remove' && init?.method === 'POST') {
+      const id = JSON.parse(String(init.body)).expose
       removals.push(id)
-      state.exposes = state.exposes.filter((entry) => entry.id !== id)
-      channels.last().send({ type: 'exposes', exposes: state.exposes })
-      return new Response(null, { status: 204 })
+      expose.exposes = expose.exposes.filter((entry) => entry.id !== id)
+      channels.last().send({ type: 'plugin', plugin: 'expose', state: expose })
+      return Response.json(null)
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
@@ -99,7 +103,7 @@ afterEach(() => {
   channels.restore()
 })
 
-test('the product state feeds the expose list', () => {
+test("the expose plugin's state feeds the expose list", () => {
   const settings = useDeviceSettings()
   expect(settings.exposes.map((expose) => expose.id)).toEqual([
     'k7x2maqw4p3s6tavaw2y4z6aab',
@@ -129,16 +133,15 @@ test('remove drops the row once the channel brings the list without it', async (
 
 test('an expose that expires disappears when the channel brings the list without it, without any request', () => {
   const settings = useDeviceSettings()
-  state.exposes = state.exposes.filter((entry) => entry.deviceId !== 'laptop')
-  channels.last().send({ type: 'exposes', exposes: state.exposes })
+  expose.exposes = expose.exposes.filter((entry) => entry.deviceId !== 'laptop')
+  channels.last().send({ type: 'plugin', plugin: 'expose', state: expose })
   expect(settings.exposes.map((expose) => expose.deviceId)).toEqual(['cloud'])
   expect(renewals).toEqual([])
   expect(removals).toEqual([])
 })
 
 test('an instance without an expose domain lists nothing', () => {
-  state.exposeDomain = null
-  state.exposes = []
+  state.pluginStates = { expose: { available: false, exposes: [] } }
   channels.last().send({ type: 'snapshot', state })
   expect(useDeviceSettings().exposes).toEqual([])
 })

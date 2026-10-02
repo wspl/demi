@@ -142,8 +142,6 @@ async fn the_snapshot_is_the_users_product_state() {
             providers: Vec::new(),
             workspaces: Vec::new(),
             devices: Vec::new(),
-            exposes: Vec::new(),
-            expose_domain: None,
             // The URL runners connect to: without a configured one, the
             // backend's own address.
             public_url: format!("{}/", backend.url),
@@ -160,6 +158,12 @@ async fn the_snapshot_is_the_users_product_state() {
                     home_bytes: 32 << 30,
                 },
             },
+            // Without an expose domain the expose plugin has none to show.
+            plugin_states: [(
+                "expose".to_owned(),
+                json!({ "available": false, "exposes": [] }),
+            )]
+            .into(),
         }
     );
     // The page's install command fetches the installer at that URL's origin,

@@ -15,26 +15,36 @@ use demi_agent_server::{
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory};
 use demi_agent_transcript::testing::SequentialIds;
-use demi_backend_plugins::Registry;
+use demi_backend_database::control::ControlService;
+use demi_backend_page_sync::SyncRegistry;
+use demi_backend_plugins::{ProductPort, Registry, UserPlugins};
 use demi_backend_remote_host::{
     CommandCatalog, ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironmentFactory,
     testing::{FixtureOptions, NativeFixture, RunnerFixture},
 };
+use demi_command_declarations::NativeOperation;
 use demi_command_protocol::testing::built_program;
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_host_interface::{
-    CommandSet, HostError, HostErrorKind, ShellEnvironment, testing::test_command_context,
+    CommandSet, HostError, HostErrorKind, PortError, ShellEnvironment,
+    testing::test_command_context,
 };
 use demi_plugin_file::File;
 use demi_plugin_interface::PluginFactory;
+use demi_plugin_interface::{CallKind, ConversationHost, ExposeList, ExposeRecord, PortFailure};
 use demi_plugin_todo::Todo;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart,
     testing::{ScriptedRuntime, TokioClock, Turn, event},
 };
+use demi_shared_types::SystemClock;
 use demi_shared_types::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, ExposeId, UserId};
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
+use serde_json::{Map, Value};
+use tempfile::TempDir;
+use tokio_util::sync::CancellationToken;
 
 /// The conversation's Host: the fixture's device, working in the directory
 /// the test chose last.
@@ -86,6 +96,8 @@ pub struct Fixture {
     pub workspace: String,
     /// The Host the conversation's nodes reach now.
     host: Rc<RefCell<Rc<RemoteHost>>>,
+    /// Holds the plugins' control database.
+    _data: TempDir,
 }
 
 impl Fixture {
@@ -96,7 +108,7 @@ impl Fixture {
 
     /// A fixture whose model plays `script`, with the server's `config`.
     pub async fn start_with(script: &ScriptedRuntime, config: ServerConfig) -> Self {
-        let commands = demi_commands();
+        let (commands, data) = demi_commands().await;
         let runner = RunnerFixture::start(FixtureOptions {
             commands: commands.clone(),
             ..FixtureOptions::default()
@@ -136,6 +148,7 @@ impl Fixture {
             server,
             workspace,
             host,
+            _data: data,
         }
     }
 
@@ -217,13 +230,80 @@ impl Fixture {
 
 /// The `demi` commands the plugin host composes from the `file` and `todo`
 /// plugins, which the device's jobs call back into.
-fn demi_commands() -> CommandSet {
+async fn demi_commands() -> (CommandSet, TempDir) {
     let plugins: Vec<Box<dyn PluginFactory>> = vec![Box::new(File::new()), Box::new(Todo::new())];
-    Registry::new(plugins, |_| true)
-        .unwrap()
-        .instances("u1")
-        .commands(Vec::new())
-        .unwrap()
+    let (plugins, data) = user_plugins(Registry::new(plugins, |_| true).unwrap()).await;
+    (plugins.commands(Vec::new()).unwrap(), data)
+}
+
+/// The plugins of `registry` for the user `u1`, over a control database of
+/// their own, which the returned directory holds, and a product that
+/// reaches no Host and has no exposes.
+pub async fn user_plugins(registry: Registry) -> (UserPlugins, TempDir) {
+    let data = tempfile::tempdir().unwrap();
+    let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(SystemClock))
+        .await
+        .unwrap();
+    let user = UserId::try_from("u1").unwrap();
+    let marks = SyncRegistry::default().of(&user);
+    let plugins = UserPlugins::new(Arc::new(registry), user, Rc::new(NoProduct), control, marks);
+    (plugins, data)
+}
+
+/// A product with no conversation Host and no exposes.
+struct NoProduct;
+
+fn none<T>() -> LocalBoxFuture<'static, Result<T, PortFailure>> {
+    Box::pin(async {
+        Err(PortFailure::Port(PortError::Failed(
+            "the scenarios' product reaches no Host".into(),
+        )))
+    })
+}
+
+impl ProductPort for NoProduct {
+    fn package_call<'a>(
+        &'a self,
+        _: &'a ConversationId,
+        _: &'a NativeOperation,
+        _: Map<String, Value>,
+        _: CallKind,
+        _: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<Value, PortFailure>> {
+        none()
+    }
+
+    fn conversation_hosts<'a>(
+        &'a self,
+        _: &'a ConversationId,
+    ) -> LocalBoxFuture<'a, Result<Vec<ConversationHost>, PortFailure>> {
+        none()
+    }
+
+    fn exposes(&self) -> LocalBoxFuture<'_, Result<ExposeList, PortFailure>> {
+        none()
+    }
+
+    fn create_expose(
+        &self,
+        _: DeviceId,
+        _: String,
+        _: u64,
+    ) -> LocalBoxFuture<'_, Result<ExposeRecord, PortFailure>> {
+        none()
+    }
+
+    fn renew_expose(
+        &self,
+        _: ExposeId,
+        _: u64,
+    ) -> LocalBoxFuture<'_, Result<ExposeRecord, PortFailure>> {
+        none()
+    }
+
+    fn remove_expose(&self, _: ExposeId) -> LocalBoxFuture<'_, Result<(), PortFailure>> {
+        none()
+    }
 }
 
 /// Runs a scenario, failing it when it does not end within a minute.

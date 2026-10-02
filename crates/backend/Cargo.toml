@@ -45,6 +45,7 @@ demi-backend-runners = { path = "../backend-runners" }
 demi-backend-user-shard = { path = "../backend-user-shard" }
 demi-backend-database = { path = "../backend-database" }
 demi-plugin-browser = { path = "../plugin-browser" }
+demi-plugin-expose = { path = "../plugin-expose" }
 demi-plugin-file = { path = "../plugin-file" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-plugin-todo = { path = "../plugin-todo" }
@@ -63,6 +64,8 @@ demi-web-api-protocol = { path = "../web-api-protocol" }
 clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4"
 hkdf = "0.12"
+# The scenarios' expose hook names an expose's lifetime.
+jiff.workspace = true
 rand = "0.9"
 sha2 = "0.10"
 thiserror.workspace = true
@@ -93,7 +96,6 @@ bytes.workspace = true
 # provider was sent.
 data-encoding = "2"
 futures-util.workspace = true
-jiff.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 serde.workspace = true
 serde_json.workspace = true

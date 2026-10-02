@@ -12,12 +12,17 @@ doctest = false
 bench = false
 
 [dependencies]
+demi-backend-database = { path = "../backend-database" }
+demi-backend-page-sync = { path = "../backend-page-sync" }
 demi-command-declarations = { path = "../command-declarations" }
 demi-host-interface = { path = "../host-interface" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-shared-types = { path = "../shared-types" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
 futures-util.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
@@ -36,12 +41,14 @@ demi-host-interface = { path = "../host-interface", features = ["testing"] }
 demi-plugin-file = { path = "../plugin-file" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-plugin-todo = { path = "../plugin-todo" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
 demi-shared-types = { path = "../shared-types" }
 futures-util.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tokio-util.workspace = true
+tempfile = "3"
 
 # Whether a command's process still runs, which a scenario waits on.
 [target.'cfg(unix)'.dev-dependencies]

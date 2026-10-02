@@ -9,6 +9,7 @@ target/
 # TypeScript generated from the Rust contracts by `bun run contracts`
 packages/protocol/src/generated/
 packages/web/src/api/generated/
+packages/plugin-*/src/generated/
 
 # Internal-only docs (design history, research, QA acceptance, the readiness plan).
 # Kept locally for the team, excluded from the published/open-source repo.

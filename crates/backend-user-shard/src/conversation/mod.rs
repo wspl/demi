@@ -49,6 +49,7 @@ use self::wakeups::IndexedWakeup;
 pub use self::wakeups::rearm_wakeups;
 use crate::services::Services;
 use crate::shard::Shard;
+use demi_backend_plugins::UserPlugins;
 
 /// What a shard's conversations run on: the agent server and the title
 /// requests, which infer with the same providers.
@@ -68,9 +69,10 @@ pub(crate) fn conversation_parts(
     services: Arc<Services>,
     http: reqwest::Client,
     rate_limit: Rc<RefCell<RequestRateLimit>>,
+    plugins: &UserPlugins,
 ) -> ConversationParts {
     let marks = services.sync.of(&user);
-    let commands = conversation_commands(&services, user.as_str(), shard.clone());
+    let commands = conversation_commands(plugins, shard.clone());
     let stores: TreeStores = {
         let services = services.clone();
         let marks = marks.clone();

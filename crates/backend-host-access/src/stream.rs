@@ -9,7 +9,7 @@
 //! so is a call that operates the Host; a call that only looks is not
 //! (`resource-lifecycle.md` § Activity).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -32,10 +32,6 @@ use crate::access::{Attention, ConversationHost, HostAccessError, Waits};
 use crate::lease::Lease;
 use crate::transfer::OpenTransfer;
 
-/// The name of the live browser view's user stream, whose package serves the
-/// conversation browser's tab routes too.
-pub const BROWSER_STREAM: &str = "browser";
-
 /// The native operation a user stream or a one-shot user call runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceBinding {
@@ -44,16 +40,20 @@ pub struct ServiceBinding {
 }
 
 /// The user streams a page may open, by name. Each binds an operation of a
-/// published package; they are fixed with the command tree for the
-/// backend's lifetime.
+/// published package; the plugins declare them, fixed for the backend's
+/// lifetime.
 #[derive(Debug, Clone, Default)]
 pub struct UserStreams(Arc<HashMap<String, ServiceBinding>>);
 
 impl UserStreams {
-    /// The `declared` streams that the published packages serve; a binding
-    /// no package provides declares nothing.
-    pub fn new(declared: &BTreeMap<String, NativeOperation>, native: &NativeCatalog) -> Self {
-        let bound = declared.iter().filter_map(|(name, binding)| {
+    /// The `declared` streams, each a name and its operation, that the
+    /// published packages serve; a binding no package provides declares
+    /// nothing.
+    pub fn new<'a>(
+        declared: impl IntoIterator<Item = (&'a str, &'a NativeOperation)>,
+        native: &NativeCatalog,
+    ) -> Self {
+        let bound = declared.into_iter().filter_map(|(name, binding)| {
             if !native.serves(&binding.package, &[binding.operation.as_str()]) {
                 return None;
             }
@@ -61,7 +61,7 @@ impl UserStreams {
                 package: native.package(&binding.package)?.clone(),
                 operation: binding.operation.clone(),
             };
-            Some((name.clone(), binding))
+            Some((name.to_owned(), binding))
         });
         Self(Arc::new(bound.collect()))
     }

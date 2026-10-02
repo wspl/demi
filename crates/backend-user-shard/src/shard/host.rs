@@ -10,7 +10,6 @@ use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::ConversationDb;
-use demi_backend_expose::ExposeShard;
 use demi_backend_host_access::HostShard;
 use demi_backend_host_access::access::Conversations;
 use demi_backend_remote_host::Pipes;
@@ -75,10 +74,6 @@ impl HostShard for Shard {
 
     fn cloud_shard(&self) -> &(dyn CloudShard + 'static) {
         Shard::cloud_shard(self)
-    }
-
-    fn expose_shard(&self) -> &(dyn ExposeShard + 'static) {
-        Shard::expose_shard(self)
     }
 
     fn this(&self) -> Rc<dyn HostShard> {

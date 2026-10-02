@@ -7,6 +7,8 @@
     "packages/utils",
     "packages/protocol",
     "packages/web-ui",
+    "packages/plugin-browser",
+    "packages/plugin-expose",
     "packages/web-gallery",
     "packages/web"
   ],

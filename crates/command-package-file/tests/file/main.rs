@@ -131,31 +131,98 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
 #[cfg(unix)]
 #[tokio::test]
 async fn a_patch_that_fails_at_a_later_file_restores_the_earlier_ones() {
-    use std::os::unix::fs::PermissionsExt as _;
-
     tokio::time::timeout(Duration::from_secs(15), async {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().to_str().unwrap();
         std::fs::write(root.path().join("first.txt"), "first\n").unwrap();
-        let locked = root.path().join("locked");
-        std::fs::create_dir(&locked).unwrap();
-        std::fs::write(locked.join("second.txt"), "second\n").unwrap();
-        // The second file's directory refuses the file published beside it.
-        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
-        let service = ServiceProcess::start(env!("CARGO_BIN_EXE_demi-file"), &["--command-service"], &[])
-            .await
-            .unwrap();
-        let patch = "--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n\
-                     --- a/locked/second.txt\n+++ b/locked/second.txt\n@@ -1 +1 @@\n-second\n+changed\n";
-        let (result, _, error) = call(service.client(), cwd, "file.patch", serde_json::json!({"patch": patch})).await;
-        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let locked = Locked::new(root.path());
+        let service =
+            ServiceProcess::start(env!("CARGO_BIN_EXE_demi-file"), &["--command-service"], &[])
+                .await
+                .unwrap();
+        let second = format!("locked/{}", locked.name);
+        let text = locked.text.trim_end();
+        let patch = format!(
+            "--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n\
+             --- a/{second}\n+++ b/{second}\n@@ -1 +1 @@\n-{text}\n+changed\n"
+        );
+        let (result, _, error) = call(
+            service.client(),
+            cwd,
+            "file.patch",
+            serde_json::json!({"patch": patch}),
+        )
+        .await;
+        let left = locked.read();
         assert_eq!(result.exit_code, 1, "{}", String::from_utf8_lossy(&error));
-        assert_eq!(std::fs::read_to_string(root.path().join("first.txt")).unwrap(), "first\n");
-        assert_eq!(std::fs::read_to_string(locked.join("second.txt")).unwrap(), "second\n");
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("first.txt")).unwrap(),
+            "first\n"
+        );
+        assert_eq!(left, locked.text);
         let recorder = demi_command_sdk::edits::Recorder::new(edits(cwd)).unwrap();
         assert!(recorder.report().unwrap().files.is_empty());
         assert!(service.shutdown().await.unwrap().success());
     })
     .await
     .unwrap();
+}
+
+/// `locked` under a test's directory: a directory in which no file can be
+/// published, and the one-line file it holds. On Linux it links to
+/// `/proc/sys/kernel`, where nobody makes a file, root included, so the
+/// test does not depend on who runs it; elsewhere it is a directory without
+/// write permission, which binds everyone but root.
+#[cfg(unix)]
+struct Locked {
+    directory: std::path::PathBuf,
+    name: &'static str,
+    text: String,
+}
+
+#[cfg(unix)]
+impl Locked {
+    #[cfg(target_os = "linux")]
+    fn new(root: &std::path::Path) -> Self {
+        let directory = root.join("locked");
+        std::os::unix::fs::symlink("/proc/sys/kernel", &directory).unwrap();
+        let name = "ostype";
+        let text = std::fs::read_to_string(directory.join(name)).unwrap();
+        Self {
+            directory,
+            name,
+            text,
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn new(root: &std::path::Path) -> Self {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = root.join("locked");
+        std::fs::create_dir(&directory).unwrap();
+        let (name, text) = ("second.txt", "second\n".to_owned());
+        std::fs::write(directory.join(name), &text).unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o555)).unwrap();
+        Self {
+            directory,
+            name,
+            text,
+        }
+    }
+
+    fn read(&self) -> String {
+        std::fs::read_to_string(self.directory.join(self.name)).unwrap()
+    }
+}
+
+/// The directory takes its permissions back, so the test's directory can
+/// be removed; a failure only leaves that temporary directory behind.
+#[cfg(all(unix, not(target_os = "linux")))]
+impl Drop for Locked {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let _ = std::fs::set_permissions(&self.directory, std::fs::Permissions::from_mode(0o755));
+    }
 }

@@ -15,9 +15,12 @@ mod request;
 pub mod testing;
 
 pub use manifest::{
-    Commands, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Manifest, Placement, PluginId,
-    PluginIdError,
+    Commands, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Follows, Manifest, Method, Page,
+    Placement, PluginId, PluginIdError, Scope, Stream,
 };
-pub use plugin::{CommandPlugin, Plugin, PluginFactory};
-pub use port::{PluginPort, PluginTransport, PortAnswer, PortMessage};
+pub use plugin::{CommandPlugin, Plugin, PluginFactory, PortHandled};
+pub use port::{
+    CallKind, ConversationHost, ExposeList, ExposeRecord, ExposeRefusal, HostRole, PluginPort,
+    PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, StoredValue,
+};
 pub use request::{PluginError, Reply, Request};

@@ -3,14 +3,11 @@
 
 pub(crate) mod secret;
 
-use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use demi_command_declarations::NativeOperation;
-use demi_command_package_browser_protocol::{PACKAGE as BROWSER_PACKAGE, live};
 use demi_shared_types::{Clock, SystemClock};
 use demi_web_api_protocol::settings::InstanceMode;
 use tracing_subscriber::filter::Targets;
@@ -26,7 +23,6 @@ use demi_backend_runners::native::NativeCatalog;
 use demi_plugin_interface::PluginFactory;
 use demi_provider_common::models_dev::ModelsDevClient;
 
-use demi_backend_host_access::stream::BROWSER_STREAM;
 use demi_backend_user_shard::shard::ShardPlacement;
 use demi_backend_user_shard::tuning::{
     ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning,
@@ -225,10 +221,6 @@ pub struct BackendConfig {
     pub pages: PageTuning,
     /// The command packages the conversations' commands bind to.
     pub native: NativeCatalog,
-    /// The user streams a page may open, by name, each bound to an operation
-    /// of a package in `native` (`native-runtime.md` § User streams); a
-    /// binding no package provides declares nothing.
-    pub user_streams: BTreeMap<String, NativeOperation>,
     /// When a conversation's Host resources are reclaimed.
     pub lifecycle: LifecycleTuning,
     /// How the Cloud is run.
@@ -281,13 +273,6 @@ impl BackendConfig {
             // The product's start publishes the releases `DEMI_NATIVE_CONFIG`
             // names and sets the catalog of them.
             native: NativeCatalog::unpublished(),
-            user_streams: BTreeMap::from([(
-                BROWSER_STREAM.to_owned(),
-                NativeOperation {
-                    package: BROWSER_PACKAGE.to_owned(),
-                    operation: live::OPERATION.to_owned(),
-                },
-            )]),
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
             exposes: ExposeTuning::default(),

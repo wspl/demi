@@ -183,6 +183,14 @@ impl CommandSet {
     /// JSON and are validated as they are: no text is converted, so `"7"`
     /// for a number is a usage error.
     pub async fn dispatch(&self, invocation: RpcInvocation, port: RpcPort) -> Result<u8, RpcError> {
+        let handler = self.check(&invocation)?;
+        handler.call(invocation, port).await
+    }
+
+    /// The handler of the `rpc` leaf `invocation.path` names, once the
+    /// arguments are valid against its input, as [`CommandSet::dispatch`]
+    /// checks them.
+    pub fn check(&self, invocation: &RpcInvocation) -> Result<&Rc<dyn RpcHandler>, RpcError> {
         let named = invocation.path.join(" ");
         let (leaf, handler) = self
             .leaf(&invocation.path)
@@ -190,7 +198,7 @@ impl CommandSet {
             .ok_or_else(|| RpcError::Usage(format!("\"{named}\" is not an rpc command")))?;
         leaf.check_arguments(&invocation.args)
             .map_err(|error| RpcError::Usage(error.to_string()))?;
-        handler.call(invocation, port).await
+        Ok(handler)
     }
 
     fn leaf(&self, path: &[String]) -> Option<&Leaf<NativeOperation>> {

@@ -196,7 +196,7 @@ impl<B: ViewedBrowser> Viewer<B> {
 
     /// The conversation's browser; without one, the page hears that none runs,
     /// and the view waits for one: the page starts it by opening a tab with a
-    /// request (`web-api.md` § Conversation browser tabs).
+    /// request (`live-view.md` § The tab methods).
     async fn environment(&mut self) -> Result<Option<(BrowserEnvironment, Arc<Hub>)>, Failure> {
         loop {
             let changed = self.browser.changed();

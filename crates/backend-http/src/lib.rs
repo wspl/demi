@@ -9,7 +9,6 @@ mod attachments;
 mod auth;
 mod blobs;
 mod body;
-mod browser;
 mod cloud;
 mod content;
 mod conversations;
@@ -18,7 +17,6 @@ mod devices;
 mod drafts;
 mod error;
 mod expose;
-mod exposes;
 mod files;
 mod gate;
 mod hosts;
@@ -26,6 +24,7 @@ mod install;
 mod listener;
 mod models;
 mod panel;
+mod plugins;
 mod provider_cli;
 mod providers;
 mod query;
@@ -271,21 +270,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/conversations/{id}/draft/replaced", post(drafts::replaced))
         .route(
-            "/conversations/{id}/browser/tabs",
-            get(browser::list).post(browser::open),
+            "/conversations/{id}/plugins/{plugin}/calls/{method}",
+            post(plugins::conversation_call),
         )
-        .route(
-            "/conversations/{id}/browser/tabs/{tab}",
-            delete(browser::close),
-        )
-        .route(
-            "/conversations/{id}/browser/tabs/{tab}/navigate",
-            post(browser::navigate),
-        )
-        .route(
-            "/conversations/{id}/browser/tabs/{tab}/history",
-            post(browser::history),
-        )
+        .route("/plugins/{plugin}/calls/{method}", post(plugins::user_call))
         .route("/sidebar/reorder", post(sidebar::reorder))
         .route(
             "/workspaces",
@@ -297,9 +285,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/cloud", get(cloud::status))
         .route("/cloud/reset", post(cloud::reset))
-        .route("/exposes", get(exposes::list).post(exposes::create))
-        .route("/exposes/{id}", delete(exposes::remove))
-        .route("/exposes/{id}/renew", post(exposes::renew))
         .route("/devices", get(devices::list))
         .route("/devices/claim", post(devices::claim))
         .route("/devices/{id}", delete(devices::revoke))

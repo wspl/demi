@@ -11,7 +11,6 @@ use demi_backend_database::devices::DeviceRecord;
 use demi_backend_expose::ExposeShard;
 use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_expose::relay::{Exposes, RelayRefusal};
-use demi_backend_page_sync::UserMarks;
 use demi_backend_remote_host::{PipeReader, PipeWriter};
 use demi_host_interface::HostErrorKind;
 use demi_shared_types::Clock;
@@ -37,8 +36,8 @@ impl ExposeShard for Shard {
         &*self.services.clock
     }
 
-    fn marks(&self) -> UserMarks {
-        self.services.sync.of(&self.user)
+    fn exposes_changed(&self) {
+        self.mark_expose_followers();
     }
 
     fn exposes(&self) -> &Exposes {

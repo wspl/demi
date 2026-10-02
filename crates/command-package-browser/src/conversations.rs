@@ -915,7 +915,7 @@ impl Conversations {
         if let BrowserOperation::Open(input) = command
             && context.request.context.caller.agent_number().is_none()
         {
-            // The user's new tab (`web-api.md` § Conversation browser tabs): the
+            // The user's new tab (`live-view.md` § The tab methods): the
             // work panel shows its loading, so opening does not wait for the page.
             let url = (input.url != "about:blank").then_some(input.url.as_str());
             let tab = environment.open_user(url, cancellation, deadline).await?;

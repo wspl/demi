@@ -1,8 +1,7 @@
 //! The product's `demi host` group (`sessions-and-targets.md` § Attached
 //! hosts, `commands.md` § Demi command inputs): `list` names the Hosts the
-//! calling conversation reaches, `current` its main Host, `shell --host`
-//! runs a script on one of them as one job there, and `expose` gives a
-//! service on one of them a public URL (`expose.md` § Commands). A `shell`
+//! calling conversation reaches, `current` its main Host, and `shell
+//! --host` runs a script on one of them as one job there. A `shell`
 //! job carries its invoking job's command context, command storage and
 //! commands, and its standard input and output are the calling command's:
 //! the relayed pipes' far ends become the job's device, so the bytes flow
@@ -29,13 +28,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
 use crate::access::{HostRole, ReachableHost};
-use crate::expose_commands::expose_group;
 
 /// How long a stopped `shell` waits for the far job's end after asking it
 /// to terminate, before it kills it.
 const ABORT_GRACE: Duration = Duration::from_secs(5);
 
-const SUMMARY: &str = "The hosts this conversation reaches: list them, show the main one, run a command on another, expose a service.";
+const SUMMARY: &str =
+    "The hosts this conversation reaches: list them, show the main one, run a command on another.";
 
 const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory shells start in; the main one marked.";
 
@@ -72,7 +71,6 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
                 .input::<NoArgs>()
                 .bind(TypedRpc::new(verb(shard.clone(), current))),
         )
-        .group(expose_group(&shard))
         .leaf(
             LeafBuilder::rpc("shell", SHELL_SUMMARY)
                 .input::<ShellArgs>()
@@ -114,16 +112,8 @@ pub async fn reachable(
     shard: &dyn HostShard,
     conversation: &ConversationId,
 ) -> Result<Vec<ReachableHost>, RpcError> {
-    let record = shard
-        .owned_conversation(conversation)
-        .await
-        .map_err(|error| RpcError::Failed(error.to_string()))?;
-    let target = shard
-        .resolve_target(&record)
-        .await
-        .map_err(|error| RpcError::Failed(error.to_string()))?;
     shard
-        .reachable_hosts(&record, &target)
+        .conversation_hosts(conversation)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))
 }

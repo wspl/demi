@@ -25,7 +25,7 @@ export const browserTabDataSchema = z.object({
 })
 export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 
-/** A tab of the conversation's browser, as its tab routes list it. */
+/** A tab of the conversation's browser, as its tab methods list it. */
 export interface BrowserTabInfo {
   id: string
   title: string
@@ -49,9 +49,9 @@ export class BrowserTabsError extends Error {
 }
 
 /**
- * The conversation browser's tab routes (`web-api.md` § Conversation browser
- * tabs) and its user stream, as the product or the gallery supplies them.
- * Every request rejects with a `BrowserTabsError`.
+ * The conversation browser's tab methods (`live-view.md` § The tab methods)
+ * and its user stream, as the product or the gallery supplies them. Every
+ * request rejects with a `BrowserTabsError`.
  */
 export interface BrowserTabsApi {
   list(): Promise<BrowserTabList>

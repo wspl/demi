@@ -15,7 +15,11 @@ pub struct Todo {
 
 impl Todo {
     pub fn new() -> Self {
-        let mut manifest = Manifest::new(PluginId::try_from("todo").expect("a valid plugin id"));
+        let mut manifest = Manifest::new(
+            PluginId::try_from("todo").expect("a valid plugin id"),
+            "Todo list",
+            "A task list the agent keeps for each conversation, with `demi todo`.",
+        );
         manifest.commands = commands().manifest_commands();
         Self { manifest }
     }

@@ -1395,6 +1395,7 @@ dependencies = [
  "demi-host-interface",
  "demi-machine-manager-protocol",
  "demi-plugin-browser",
+ "demi-plugin-expose",
  "demi-plugin-file",
  "demi-plugin-interface",
  "demi-plugin-todo",
@@ -1544,7 +1545,6 @@ version = "0.1.3"
 dependencies = [
  "data-encoding",
  "demi-backend-database",
- "demi-backend-page-sync",
  "demi-shared-types",
  "demi-web-api-protocol",
  "jiff",
@@ -1566,7 +1566,6 @@ dependencies = [
  "demi-backend-blobs",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-expose",
  "demi-backend-remote-host",
  "demi-backend-runners",
  "demi-command-declarations",
@@ -1605,14 +1604,15 @@ dependencies = [
  "demi-backend-expose",
  "demi-backend-host-access",
  "demi-backend-page-sync",
+ "demi-backend-plugins",
  "demi-backend-providers",
  "demi-backend-remote-host",
  "demi-backend-runners",
  "demi-backend-user-shard",
- "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-conversation-socket-protocol",
  "demi-host-interface",
+ "demi-plugin-interface",
  "demi-provider-common",
  "demi-runner-protocol",
  "demi-shared-artifacts",
@@ -1666,6 +1666,8 @@ dependencies = [
  "demi-agent-store",
  "demi-agent-tools",
  "demi-agent-transcript",
+ "demi-backend-database",
+ "demi-backend-page-sync",
  "demi-backend-remote-host",
  "demi-command-declarations",
  "demi-command-package-file-protocol",
@@ -1677,9 +1679,11 @@ dependencies = [
  "demi-plugin-todo",
  "demi-provider-common",
  "demi-shared-types",
+ "demi-web-api-protocol",
  "futures-util",
  "rustix",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -2125,8 +2129,28 @@ dependencies = [
  "demi-command-package-browser-protocol",
  "demi-host-interface",
  "demi-plugin-interface",
+ "demi-web-api-protocol",
+ "futures-util",
  "schemars",
+ "serde",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "demi-plugin-expose"
+version = "0.1.3"
+dependencies = [
+ "demi-command-declarations",
+ "demi-host-interface",
+ "demi-plugin-interface",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -2147,6 +2171,7 @@ dependencies = [
  "demi-host-interface",
  "demi-plugin-interface",
  "demi-shared-types",
+ "demi-web-api-protocol",
  "futures-util",
  "schemars",
  "serde",
@@ -2163,6 +2188,7 @@ dependencies = [
  "demi-command-declarations",
  "demi-host-interface",
  "demi-plugin-interface",
+ "demi-web-api-protocol",
  "schemars",
  "serde",
  "serde_json",
@@ -2582,7 +2608,6 @@ dependencies = [
 name = "demi-web-api-protocol"
 version = "0.1.3"
 dependencies = [
- "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-conversation-socket-protocol",
  "demi-runner-protocol",
@@ -8977,6 +9002,8 @@ dependencies = [
  "demi-command-protocol",
  "demi-conversation-socket-protocol",
  "demi-machine-manager-protocol",
+ "demi-plugin-browser",
+ "demi-plugin-expose",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-types",

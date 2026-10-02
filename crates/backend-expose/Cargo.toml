@@ -13,7 +13,6 @@ bench = false
 
 [dependencies]
 demi-backend-database = { path = "../backend-database" }
-demi-backend-page-sync = { path = "../backend-page-sync" }
 demi-shared-types = { path = "../shared-types" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 data-encoding = "2"

@@ -101,6 +101,10 @@ pub enum PortError {
     /// Command storage refused the operation.
     #[error("{0}")]
     Storage(String),
+    /// The operation failed in a way its caller could not cause, such as
+    /// a database that does not answer.
+    #[error("{0}")]
+    Failed(String),
     /// The transport answered something other than what was asked.
     #[error("the rpc port answered {answered} to a {asked} request")]
     Unexpected {

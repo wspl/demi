@@ -730,7 +730,7 @@ pub enum BrowserCreatedBy {
     User {},
 }
 
-/// A tab as `tabs` lists it and the conversation browser tab routes return it.
+/// A tab as `tabs` lists it and the conversation browser's tab methods return it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserTab {

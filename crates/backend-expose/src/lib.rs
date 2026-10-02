@@ -1,7 +1,7 @@
 //! Exposes (`expose.md`): a service on one of the user's devices under a
-//! public URL for an hour. The records live in storage, and the operations
-//! here create, list, renew and remove them for the page and for the agent's
-//! `demi host expose` (`records`). The owner's shard admits each relayed
+//! public URL for a lifetime. The records live in storage, and the
+//! operations here create, list, renew and remove them for the `expose`
+//! plugin, which owns the commands, the numbers and the page (`records`). The owner's shard admits each relayed
 //! connection, which is where the record and the connection limit are
 //! checked, and counts it until the edge is done with it or the expose ends
 //! (`relay`); the shard opens the network stream to the device, and the edge
@@ -20,7 +20,6 @@ use std::rc::Rc;
 
 use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::DeviceRecord;
-use demi_backend_page_sync::UserMarks;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::ids::UserId;
 use tokio_util::task::TaskTracker;
@@ -36,8 +35,9 @@ pub trait ExposeShard {
     fn control(&self) -> &ControlService;
     /// The wall clock expiries are read by.
     fn clock(&self) -> &dyn Clock;
-    /// The user's pages, which show the exposes.
-    fn marks(&self) -> UserMarks;
+    /// An expose of the user's was created, renewed or destroyed: the page
+    /// states that follow the user's exposes changed.
+    fn exposes_changed(&self);
     /// The user's exposes with relayed connections open.
     fn exposes(&self) -> &Exposes;
     /// The domain of expose hostnames; without one, the instance has no

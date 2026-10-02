@@ -1,0 +1,17 @@
+{
+  "name": "@demicodes/plugin-expose",
+  "description": "The Host expose plugin's page: the types of its state and its methods.",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  }
+}

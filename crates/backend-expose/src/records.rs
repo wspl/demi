@@ -1,17 +1,15 @@
 //! The expose records in the user's shard (`expose.md` § The expose record,
-//! § Lifetime; `web-api.md` § Exposes): creation on a connected device, the
-//! owner's list, renewal and removal, which the routes and the commands
-//! share, and the destruction that ends an expose's connections. Every
-//! surface shows an expose with its URL, whose scheme and port are the
-//! backend's public URL's. Without an expose domain the instance has no
-//! exposes: creation is refused as unavailable, and there is none to list,
-//! renew or remove.
+//! § Lifetime): creation on a connected device, the owner's list, renewal
+//! and removal, which the `expose` plugin makes through its port, and the
+//! destruction that ends an expose's connections. Every expose is shown
+//! with its URL, whose scheme and port are the backend's public URL's.
+//! Without an expose domain the instance has no exposes: creation is
+//! refused as unavailable, and there is none to list, renew or remove. Each
+//! change is reported to the shard, whose plugins' page states follow it.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::exposes::ExposeRecord;
-use demi_backend_page_sync::Part;
-use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::exposes::{ExposeAddress, ExposeDto};
+use demi_web_api_protocol::exposes::ExposeAddress;
 use demi_web_api_protocol::ids::{DeviceId, ExposeId};
 use jiff::SignedDuration;
 use url::Url;
@@ -19,8 +17,12 @@ use url::Url;
 use crate::ExposeShard;
 use crate::domain::ExposeDomain;
 
-/// How long an expose lives from its creation or its last renewal.
-pub const LIFETIME: SignedDuration = SignedDuration::from_hours(1);
+/// A live expose and its public URL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Expose {
+    pub record: ExposeRecord,
+    pub url: String,
+}
 
 /// Why an expose operation was refused.
 #[derive(Debug, thiserror::Error)]
@@ -39,20 +41,6 @@ pub enum ExposeError {
     NotFound(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
-}
-
-impl ExposeError {
-    /// The code and HTTP status a refusal answers with (`web-api.md`
-    /// § Exposes); none for a failure the caller could not cause.
-    pub fn code(&self) -> Option<(ErrorCode, u16)> {
-        match self {
-            Self::Unavailable => Some((ErrorCode::ExposeUnavailable, 409)),
-            Self::DeviceNotFound => Some((ErrorCode::DeviceNotFound, 404)),
-            Self::DeviceOffline(_) => Some((ErrorCode::DeviceOffline, 409)),
-            Self::NotFound(_) => Some((ErrorCode::ExposeNotFound, 404)),
-            Self::Storage(_) => None,
-        }
-    }
 }
 
 /// A new expose's id: 128 random bits as 26 lowercase base32 characters.
@@ -75,13 +63,14 @@ pub fn expose_url(id: &ExposeId, domain: &ExposeDomain, backend: &Url) -> String
 }
 
 impl dyn ExposeShard {
-    /// A new expose of `address` on the user's device `device`, for an
-    /// hour: the device is connected, and a Cloud is running.
+    /// A new expose of `address` on the user's device `device`, for
+    /// `lifetime`: the device is connected, and a Cloud is running.
     pub async fn add_expose(
         &self,
         device: &DeviceId,
         address: ExposeAddress,
-    ) -> Result<ExposeDto, ExposeError> {
+        lifetime: SignedDuration,
+    ) -> Result<Expose, ExposeError> {
         let record = self
             .control()
             .device(device.clone())
@@ -102,16 +91,16 @@ impl dyn ExposeShard {
                 self.user().clone(),
                 device.clone(),
                 address,
-                LIFETIME,
+                lifetime,
             )
             .await?;
-        self.marks().mark(Part::Exposes);
-        Ok(self.expose_dto(created, domain))
+        self.exposes_changed();
+        Ok(self.expose(created, domain))
     }
 
     /// The user's live exposes, soonest expiry first; the expired ones are
     /// destroyed.
-    pub async fn list_exposes(&self) -> Result<Vec<ExposeDto>, StorageError> {
+    pub async fn list_exposes(&self) -> Result<Vec<Expose>, StorageError> {
         let Some(domain) = self.domain() else {
             return Ok(Vec::new());
         };
@@ -120,12 +109,16 @@ impl dyn ExposeShard {
         Ok(listed
             .live
             .into_iter()
-            .map(|record| self.expose_dto(record, domain))
+            .map(|record| self.expose(record, domain))
             .collect())
     }
 
-    /// Moves the expiry of the user's expose `id` to an hour from now.
-    pub async fn renew_expose(&self, id: &ExposeId) -> Result<ExposeDto, ExposeError> {
+    /// Moves the expiry of the user's expose `id` to `lifetime` from now.
+    pub async fn renew_expose(
+        &self,
+        id: &ExposeId,
+        lifetime: SignedDuration,
+    ) -> Result<Expose, ExposeError> {
         let not_found = || ExposeError::NotFound(id.to_string());
         let domain = self.domain().ok_or_else(not_found)?;
         let record = self.owned_expose(id).await?.ok_or_else(not_found)?;
@@ -134,11 +127,11 @@ impl dyn ExposeShard {
         }
         let renewed = self
             .control()
-            .renew_expose(id.clone(), self.user().clone(), LIFETIME)
+            .renew_expose(id.clone(), self.user().clone(), lifetime)
             .await?
             .ok_or_else(not_found)?;
-        self.marks().mark(Part::Exposes);
-        Ok(self.expose_dto(renewed, domain))
+        self.exposes_changed();
+        Ok(self.expose(renewed, domain))
     }
 
     /// Destroys the user's expose `id` at once. One that had expired is
@@ -152,16 +145,6 @@ impl dyn ExposeShard {
         }
         self.destroy_expose(id).await?;
         Ok(())
-    }
-
-    /// The id of the user's expose the model knows by `number`, expired or
-    /// not; none when the user has none of that number.
-    pub async fn numbered_expose(&self, number: u64) -> Result<Option<ExposeId>, StorageError> {
-        let record = self
-            .control()
-            .numbered_expose(self.user().clone(), number)
-            .await?;
-        Ok(record.map(|record| record.id))
     }
 
     /// The user's expose `id`, expired or not.
@@ -190,7 +173,7 @@ impl dyn ExposeShard {
     /// connections end.
     async fn destroy_expose(&self, id: &ExposeId) -> Result<(), StorageError> {
         self.control().delete_expose(id.clone()).await?;
-        self.marks().mark(Part::Exposes);
+        self.exposes_changed();
         self.exposes().end([id]);
         Ok(())
     }
@@ -203,7 +186,7 @@ impl dyn ExposeShard {
         match self.control().delete_device_exposes(device.clone()).await {
             Ok(ids) => {
                 if !ids.is_empty() {
-                    self.marks().mark(Part::Exposes);
+                    self.exposes_changed();
                 }
                 self.exposes().end(&ids);
             }
@@ -213,16 +196,11 @@ impl dyn ExposeShard {
         }
     }
 
-    /// The expose as every surface shows it.
-    fn expose_dto(&self, record: ExposeRecord, domain: &ExposeDomain) -> ExposeDto {
-        ExposeDto {
+    /// The expose with its URL.
+    fn expose(&self, record: ExposeRecord, domain: &ExposeDomain) -> Expose {
+        Expose {
             url: expose_url(&record.id, domain, self.public_url()),
-            id: record.id,
-            number: record.number,
-            device_id: record.device,
-            address: record.address,
-            created_at: record.created_at,
-            expires_at: record.expires_at,
+            record,
         }
     }
 }

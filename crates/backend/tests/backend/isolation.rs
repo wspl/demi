@@ -193,9 +193,9 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
             ),
         ),
         (
-            Method::GET,
-            format!("/api/conversations/{c}/browser/tabs"),
-            None,
+            Method::POST,
+            format!("/api/conversations/{c}/plugins/browser/calls/tabs"),
+            Some(json!({})),
         ),
         (
             Method::POST,

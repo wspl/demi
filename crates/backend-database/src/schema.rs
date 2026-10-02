@@ -70,10 +70,7 @@ CREATE TABLE users (
   nickname      TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL CHECK (role IN ('master', 'admin', 'user')),
-  created_at    INTEGER NOT NULL,
-  -- The number the user's next expose takes: an add takes it and advances
-  -- it in one transaction, so no number is given twice.
-  next_expose   INTEGER NOT NULL DEFAULT 1 CHECK (next_expose >= 1)
+  created_at    INTEGER NOT NULL
 ) STRICT;
 CREATE UNIQUE INDEX users_one_master ON users (role) WHERE role = 'master';
 
@@ -128,16 +125,25 @@ CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
 
 CREATE TABLE exposes (
   id         TEXT PRIMARY KEY,
-  number     INTEGER NOT NULL CHECK (number >= 1),
   user_id    TEXT NOT NULL REFERENCES users (id),
   device_id  TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
   address    TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL,
-  UNIQUE (user_id, number)
+  expires_at INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX exposes_expiry ON exposes (expires_at);
 CREATE INDEX exposes_owner ON exposes (user_id, expires_at);
+
+-- Each plugin's values for a user (`plugins.md` § The contract): a JSON
+-- document its plugin decodes, and the revision a conditional write names.
+CREATE TABLE plugin_values (
+  user_id  TEXT NOT NULL REFERENCES users (id),
+  plugin   TEXT NOT NULL,
+  key      TEXT NOT NULL,
+  document TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  PRIMARY KEY (user_id, plugin, key)
+) STRICT, WITHOUT ROWID;
 
 -- The conversation index. The web app chooses a conversation's id and its
 -- case is kept, but no two ids differ only in case: each names a database

@@ -6,26 +6,24 @@
 use std::rc::Rc;
 
 use demi_host_interface::{
-    CommandSet, Declared, GroupBuilder, PortError, RpcError, RpcHandler, RpcInvocation, RpcPort,
+    CommandSet, Declared, GroupBuilder, RpcError, RpcHandler, RpcInvocation, RpcPort,
 };
-use demi_plugin_interface::{
-    DEMI_ROOT, DEMI_SUMMARY, Placement, Plugin, PluginPort, PluginTransport, PortAnswer,
-    PortMessage, Reply, Request,
-};
+use demi_plugin_interface::{DEMI_ROOT, DEMI_SUMMARY, Placement, Reply, Request};
+use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
 
+use crate::user::Shared;
 use crate::{Registry, RegistryError};
 
 /// The `demi` groups the agent runtime and the product own.
 pub(crate) const TAKEN_GROUPS: &[&str] = &["agent", "shell", "host"];
 
-/// The command set of `registry`'s plugins for `user`, whose instances
-/// serve their `rpc` leaves; with no instance, as the startup check
-/// composes it, a call is refused.
+/// The command set of `registry`'s plugins, whose `rpc` leaves `user`'s
+/// instances serve; without them, as the startup check composes it, a call
+/// is refused.
 pub(crate) fn compose(
     registry: &Registry,
-    instances: &[Option<Rc<dyn Plugin>>],
-    user: &str,
+    user: Option<&Rc<Shared>>,
     product: Vec<GroupBuilder>,
 ) -> Result<CommandSet, RegistryError> {
     let mut set = CommandSet::new();
@@ -38,19 +36,19 @@ pub(crate) fn compose(
         set.register(root)
             .expect("the product's groups are a valid `demi` root");
     }
-    for ((plugin, trees), instance) in registry.plugins().zip(instances) {
-        for commands in trees {
+    for (index, registered) in registry.plugins.iter().enumerate() {
+        for commands in &registered.commands {
             let strip = match commands.placement {
                 Placement::Demi => 1,
                 Placement::Root => 0,
             };
             let handler = Rc::new(Forward {
-                plugin: instance.clone(),
-                user: user.to_owned(),
+                user: user.cloned(),
+                plugin: index,
                 strip,
             });
             let served = Declared::served(commands.tree.clone(), handler);
-            let registered = match commands.placement {
+            let registered_tree = match commands.placement {
                 Placement::Root => set.register(served),
                 Placement::Demi if demi => set.graft(&[DEMI_ROOT], served),
                 Placement::Demi => {
@@ -58,8 +56,8 @@ pub(crate) fn compose(
                     set.register(GroupBuilder::new(DEMI_ROOT, DEMI_SUMMARY).child(served))
                 }
             };
-            registered.map_err(|error| RegistryError::Commands {
-                plugin: plugin.clone(),
+            registered_tree.map_err(|error| RegistryError::Commands {
+                plugin: registered.id().clone(),
                 error,
             })?;
         }
@@ -68,10 +66,11 @@ pub(crate) fn compose(
 }
 
 /// Forwards an `rpc` call to its plugin, its path from the plugin's own
-/// tree, and the plugin's port operations to the call's port.
+/// tree, and the plugin's port operations to the call's port and the
+/// user's plugin host.
 struct Forward {
-    plugin: Option<Rc<dyn Plugin>>,
-    user: String,
+    user: Option<Rc<Shared>>,
+    plugin: usize,
     /// How many names of the path come before the plugin's tree.
     strip: usize,
 }
@@ -83,35 +82,28 @@ impl RpcHandler for Forward {
         port: RpcPort,
     ) -> LocalBoxFuture<'_, Result<u8, RpcError>> {
         Box::pin(async move {
-            let Some(plugin) = &self.plugin else {
+            let Some(user) = &self.user else {
                 return Err(RpcError::Failed(
                     "no plugin instance serves the startup check".into(),
                 ));
             };
             invocation.path.drain(..self.strip);
+            let conversation =
+                ConversationId::try_from(invocation.context.conversation.as_str()).ok();
             let cancel = port.cancellation();
-            let port = PluginPort::new(Rc::new(CallPort(port)), cancel);
             let request = Request::Command {
-                user: self.user.clone(),
-                invocation,
+                user: user.user.clone(),
+                invocation: Box::new(invocation),
             };
-            match plugin.call(request, port).await {
-                Ok(Reply::Exit { code }) => Ok(code),
-                Err(error) => Err(error.into()),
+            let reply = user
+                .request(self.plugin, request, conversation, Some(port), cancel)
+                .await?;
+            match reply {
+                Reply::Exit { code } => Ok(code),
+                reply => Err(RpcError::Failed(format!(
+                    "the plugin answered a command with {reply:?}"
+                ))),
             }
-        })
-    }
-}
-
-/// A plugin's port over the rpc call it serves.
-struct CallPort(RpcPort);
-
-impl PluginTransport for CallPort {
-    fn request(&self, message: PortMessage) -> LocalBoxFuture<'_, Result<PortAnswer, PortError>> {
-        Box::pin(async move {
-            let PortMessage::Rpc { request } = message;
-            let response = self.0.forward(request).await?;
-            Ok(PortAnswer::Rpc { response })
         })
     }
 }

@@ -1,12 +1,8 @@
-//! Exposes (`web-api.md` § Exposes, `expose.md` § The expose record): a
-//! service on one of the user's devices under a public URL for an hour.
+//! An expose's address (`expose.md` § The expose record): where a service
+//! on one of the user's devices listens.
 
-use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp};
-use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::ids::{DeviceId, ExposeId};
 
 /// Where an expose's traffic goes on its device: `host:port` exactly as
 /// given, or a bare port, which means `127.0.0.1:<port>`. The host is any
@@ -78,45 +74,6 @@ fn port(text: &str) -> Option<u16> {
         return None;
     }
     text.parse::<u16>().ok().filter(|port| *port > 0)
-}
-
-/// An expose as every surface shows it: its public `url` and when it ends.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ExposeDto {
-    pub id: ExposeId,
-    /// Its number among the user's exposes, which the commands take and
-    /// print (`expose.md` § The expose record).
-    #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
-    pub number: u64,
-    pub device_id: DeviceId,
-    pub address: ExposeAddress,
-    pub url: String,
-    pub created_at: Timestamp,
-    pub expires_at: Timestamp,
-}
-
-/// `GET /exposes`: the caller's live exposes, soonest expiry first.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct Exposes {
-    pub exposes: Vec<ExposeDto>,
-}
-
-/// `{ expose }`: the answer of a creation and a renewal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct ExposeAnswer {
-    pub expose: ExposeDto,
-}
-
-/// `POST /exposes`: a service on one of the caller's connected devices.
-#[derive(Debug, Deserialize, JsonSchema, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CreateExpose {
-    #[garde(skip)]
-    pub device_id: DeviceId,
-    /// An `ExposeAddress` is valid once it is decoded.
-    #[garde(skip)]
-    pub address: ExposeAddress,
 }
 
 #[cfg(test)]

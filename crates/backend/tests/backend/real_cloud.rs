@@ -23,12 +23,12 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use demi_backend_cloud::client::MachinesClient;
-use demi_command_package_browser_protocol::browser::{BrowserTab, TabId};
+use demi_command_package_browser_protocol::browser::TabId;
 use demi_machine_manager_protocol::{CheckpointParams, ImageStateParams, MachineImageState};
+use demi_plugin_browser::page::{BrowserTabs, OpenedTab};
 use demi_provider_common::testing::MockVendor;
 use demi_shared_gates::Purpose;
 use demi_web_api_protocol::auth::Role;
-use demi_web_api_protocol::browser::BrowserTabs;
 use demi_web_api_protocol::cloud::{CloudState, CloudStatus, ResetPhase};
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::{Method, StatusCode};
@@ -249,19 +249,35 @@ async fn list(
         .await
 }
 
-/// Opens a tab at `url` from the conversation's panel, whose tabs route is
-/// `tabs`, and answers its id. The panel's open answers before the page
-/// loads (`web-api.md` § Conversation browser tabs).
-async fn open_tab(backend: &TestBackend, session: &Session, tabs: &str, url: &str) -> TabId {
+/// Opens a tab at `url` from the conversation's panel, whose browser
+/// plugin's calls are under `calls`, and answers its id. The panel's open
+/// answers before the page loads (`live-view.md` § The tab methods).
+async fn open_tab(backend: &TestBackend, session: &Session, calls: &str, url: &str) -> TabId {
     let opened = backend
-        .post(tabs, Some(session), json!({ "url": url }))
+        .post(
+            &format!("{calls}/open"),
+            Some(session),
+            json!({ "url": url }),
+        )
         .await;
     assert!(
         opened.status.is_success(),
         "{}",
         String::from_utf8_lossy(&opened.body)
     );
-    opened.json::<BrowserTab>().id
+    opened.json::<OpenedTab>().tab.id
+}
+
+/// The conversation browser's tabs, as the panel lists them through the
+/// plugin's calls under `calls`.
+async fn list_tabs(
+    backend: &TestBackend,
+    session: &Session,
+    calls: &str,
+) -> crate::support::Answer {
+    backend
+        .post(&format!("{calls}/tabs"), Some(session), json!({}))
+        .await
 }
 
 /// Waits until the tab `id` shows the page titled `title`, which Chrome
@@ -270,13 +286,13 @@ async fn open_tab(backend: &TestBackend, session: &Session, tabs: &str, url: &st
 async fn until_titled(
     backend: &TestBackend,
     session: &Session,
-    tabs: &str,
+    calls: &str,
     id: &TabId,
     title: &str,
 ) {
     let deadline = Instant::now() + PATIENCE;
     loop {
-        let listed = backend.get(tabs, Some(session)).await;
+        let listed = list_tabs(backend, session, calls).await;
         assert_eq!(
             listed.status,
             StatusCode::OK,
@@ -819,7 +835,7 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
     .await;
     assert!(mapped.contains("mapped"), "{mapped}");
 
-    let tabs = format!("/api/conversations/{FIRST}/browser/tabs");
+    let tabs = format!("/api/conversations/{FIRST}/plugins/browser/calls");
     let page = format!("file://{session}/page.html");
     let started = Instant::now();
     let opened = open_tab(&backend, &master, &tabs, &page).await;
@@ -903,7 +919,7 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
     }
 
     // The processes live on: Chrome's tabs, and the mapper.
-    let listed = backend.get(&tabs, Some(&master)).await;
+    let listed = list_tabs(&backend, &master, &tabs).await;
     assert_eq!(
         listed.status,
         StatusCode::OK,
@@ -934,7 +950,7 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
     drop(working);
     let deadline = Instant::now() + PATIENCE;
     loop {
-        let listed = backend.get(&tabs, Some(&master)).await;
+        let listed = list_tabs(&backend, &master, &tabs).await;
         assert_eq!(
             listed.status,
             StatusCode::OK,

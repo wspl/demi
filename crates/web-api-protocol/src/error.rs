@@ -3,13 +3,18 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// A JSON error answer: `{ code, message }`.
+/// A JSON error answer: `{ code, message }`, and a plugin's own `reason`
+/// when a plugin refused the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ErrorBody {
     pub code: ErrorCode,
     /// Says what happened in words; for a refused body it names the field and
     /// the reason.
     pub message: String,
+    /// With `plugin_refused`, the plugin's snake_case word for the refusal,
+    /// such as `tab_not_found`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// Every error code the web app can see. A situation has one code on every
@@ -202,15 +207,15 @@ pub enum ErrorCode {
     InvalidOrder,
     /// No account has that id.
     UserNotFound,
-    /// The conversation browser has no tab of that id.
-    TabNotFound,
-    /// The conversation browser refused the operation or could not start;
-    /// the message carries the browser's own code and reason.
-    BrowserFailed,
-    /// The caller has no expose of that id, or it expired.
-    ExposeNotFound,
-    /// The instance has no expose domain, so exposes are off.
-    ExposeUnavailable,
+    /// The backend has no plugin of that id.
+    UnknownPlugin,
+    /// The plugin has no page method of that name for the route's scope.
+    UnknownPluginMethod,
+    /// The plugin refused the call; `reason` is its own word for why.
+    PluginRefused,
+    /// The plugin failed, such as a value that does not read or a package
+    /// call whose operation failed.
+    PluginFailed,
     /// The device is the conversation's main Host, which is never attached
     /// as well.
     HostIsMain,

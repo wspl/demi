@@ -19,6 +19,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+demi-web-api-protocol = { path = "../web-api-protocol" }
 # The plugin runs through the JSON loopback over an in-memory rpc port.
 demi-command-declarations = { path = "../command-declarations" }
 demi-host-interface = { path = "../host-interface", features = ["testing"] }

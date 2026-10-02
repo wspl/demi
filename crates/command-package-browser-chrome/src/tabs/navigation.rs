@@ -446,9 +446,9 @@ where
     });
 }
 
-/// The user's `goto`, `reload`, `back` or `forward` (`web-api.md` §
-/// Conversation browser tabs): the work panel shows the page loading, so the
-/// navigation starts and the answer does not wait for it.
+/// The user's `goto`, `reload`, `back` or `forward` (`live-view.md` § The
+/// tab methods): the work panel shows the page loading, so the navigation
+/// starts and the answer does not wait for it.
 pub async fn steer(
     tab: &BrowserTab,
     command: &BrowserOperation,
