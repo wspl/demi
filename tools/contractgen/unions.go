@@ -7,6 +7,33 @@ import (
 	"strings"
 )
 
+// unionSeal identifies the sole unexported contract-union method and checks its signature.
+func unionSeal(t types.Type) (*types.Func, error) {
+	iface, ok := t.Underlying().(*types.Interface)
+	if !ok {
+		return nil, fmt.Errorf("union must be an interface with one unexported sealing method")
+	}
+	var seal *types.Func
+	for i := 0; i < iface.NumMethods(); i++ {
+		method := iface.Method(i)
+		if method.Exported() {
+			continue
+		}
+		if seal != nil {
+			return nil, fmt.Errorf("union must have exactly one unexported sealing method")
+		}
+		seal = method
+	}
+	if seal == nil {
+		return nil, fmt.Errorf("union must have exactly one unexported sealing method")
+	}
+	signature := seal.Type().(*types.Signature)
+	if signature.Params().Len() != 0 || signature.Results().Len() != 0 {
+		return nil, fmt.Errorf("union sealing method must have no parameters or results")
+	}
+	return seal, nil
+}
+
 // normalizeVariants resolves contract variants to every sealing interface they implement.
 func (g *generator) normalizeVariants() {
 	for _, key := range g.order {

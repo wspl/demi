@@ -19,8 +19,10 @@
 // properties, including validation. A concrete declaration such as
 // "type Names Page[Identifier]" instantiates a generic shape and its field rules.
 //
-// A union interface has +demi:union tag=type and one unexported, parameterless
-// sealing method. Its pointer variants have +demi:variant <tag>; when a package
+// A union interface has +demi:union tag=type and exactly one unexported method,
+// a parameterless, resultless seal selected independently of method order.
+// Exported methods are allowed; every variant implements them.
+// Its pointer variants have +demi:variant <tag>; when a package
 // has multiple unions, supply the sealing method or use
 // +demi:variant <Union> <tag>. The generator supplies absent sealing methods.
 // Variant JSON includes the tag even when encoded outside its union. Boolean
