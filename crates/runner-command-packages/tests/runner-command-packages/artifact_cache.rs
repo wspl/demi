@@ -1,5 +1,5 @@
-//! The verified artifact cache (`native-runtime.md` § Install the selected
-//! package): a miss downloads and verifies, a hit asks nobody, nothing
+//! The verified artifact cache (`native-runtime.md` § Install
+//! artifacts): a miss downloads and verifies, a hit asks nobody, nothing
 //! partial or mismatched is ever published, and a download is an install
 //! the runner reports until it ends (§ Installation progress).
 
