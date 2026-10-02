@@ -21,6 +21,19 @@ export class PluginCallError extends Error {
   }
 }
 
+/**
+ * A command package install under way on a Host (`native-runtime.md`
+ * § Installation progress): the package, the artifact it obtains, the phase,
+ * and the bytes downloaded of the artifact's size.
+ */
+export interface PackageInstall {
+  package: string
+  artifact: { kind: 'program' } | { kind: 'resource'; title: string }
+  phase: 'download' | 'unpack'
+  done: number
+  total: number
+}
+
 export interface PluginCallOptions {
   /** How long the call may take; the host's default otherwise. */
   timeoutMs?: number
@@ -44,12 +57,16 @@ export interface PluginHost {
   ): Promise<unknown>
   /** The user stream `name` of `conversation`'s main Host. */
   stream(name: string, conversation: string): OpenLiveStream
+  /** The installs of `plugin`'s packages on `conversation`'s main Host, read reactively. */
+  installs(plugin: string, conversation: string): readonly PackageInstall[]
 }
 
 /** A plugin's calls for one conversation. */
 export interface ConversationPluginClient {
   call<T>(method: string, params: object, result: z.ZodType<T>, options?: PluginCallOptions): Promise<T>
   stream(name: string): OpenLiveStream
+  /** The installs of the plugin's packages on the conversation's main Host, which a first call may wait for. */
+  readonly installs: ComputedRef<readonly PackageInstall[]>
 }
 
 /** One plugin, as its page's components reach it. */
@@ -101,6 +118,7 @@ export function conversationClient(
     call: (method, params, result, options) =>
       validatedCall(host, plugin, method, params, result, conversation, options),
     stream: (name) => host.stream(name, conversation),
+    installs: computed(() => host.installs(plugin, conversation)),
   }
 }
 

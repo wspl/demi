@@ -12,10 +12,12 @@ import {
   type LiveViewerMessage,
   type BrowserViewport,
 } from '@demicodes/protocol'
+import { shallowRef } from 'vue'
 import { encodeVideo } from '@demicodes/web-ui/browser/frames'
 import type { OpenLiveStream, LiveStreamHandlers } from '@demicodes/web-ui/browser/session'
 import { CONTROL, META } from '@demicodes/web-ui/browser/input'
 import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
+import type { PackageInstall } from '@demicodes/web-ui/plugins/client'
 
 const FPS = 10
 const encoder = new TextEncoder()
@@ -71,6 +73,23 @@ const SELECT: LiveControl = {
 
 /** How long the gallery's conversation browser takes over a request, as a Host takes a moment. */
 const REQUEST_DELAY_MS = 900
+/** How often a simulated install moves on, a tenth of an artifact at a time. */
+const INSTALL_STEP_MS = 250
+
+/**
+ * What the Host installs before its first browser starts, as a paired
+ * device downloads it (`native-runtime.md` § Installation progress).
+ */
+const FIRST_INSTALLS: readonly PackageInstall[] = [
+  { package: 'demi.browser', artifact: { kind: 'program' }, phase: 'download', done: 0, total: 41_943_040 },
+  {
+    package: 'demi.browser',
+    artifact: { kind: 'resource', title: 'Chrome for Testing 153.0.8010.36' },
+    phase: 'download',
+    done: 0,
+    total: 195_711_476,
+  },
+]
 
 /** Tab ids as the protocol spells them: `t` and the tab's number in the conversation. */
 function galleryTabs(): LiveTab[] {
@@ -352,17 +371,60 @@ class GalleryBrowser {
  * makes and the view it opens, over one tab list, without a Host. Requests
  * take a moment, as a Host does, so the content's waiting shows. It starts
  * with the agent's and the user's tab unless a specimen supplies its own list,
- * such as an empty one for a panel whose strip starts empty.
+ * such as an empty one for a panel whose strip starts empty. With `install`,
+ * its first request waits for a simulated install of the browser's program
+ * and Chrome, as on a Host that never ran the browser.
  */
-export function galleryBrowserTabs(tabs: LiveTab[] = galleryTabs()): BrowserTabsApi {
+export function galleryBrowserTabs(
+  tabs: LiveTab[] = galleryTabs(),
+  { install = false }: { install?: boolean } = {},
+): BrowserTabsApi {
   const views = new Set<GalleryBrowser>()
+  const installs = shallowRef<readonly PackageInstall[]>([])
+  // The simulated install every request waits for once; none without `install`.
+  let installed: Promise<void> | null = install ? null : Promise.resolve()
   // The next tab's number, as the conversation gives them: never one given before.
   let next = Math.max(0, ...tabs.map((tab) => Number(tab.id.slice(1)))) + 1
   // Each request's timer removes itself when it answers; none outlives its 900 ms.
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
+  /** Steps through each artifact's download, then unpacks the last, as the runner reports it. */
+  function installOnce(): Promise<void> {
+    installed ??= new Promise((resolve) => {
+      let index = 0
+      let tenth = 0
+      const step = () => {
+        const artifact = FIRST_INSTALLS[index]
+        if (!artifact) {
+          installs.value = []
+          resolve()
+          return
+        }
+        const unpacking = artifact.artifact.kind === 'resource' && tenth > 10
+        installs.value = [{
+          ...artifact,
+          phase: unpacking ? 'unpack' : 'download',
+          done: Math.min(artifact.total, Math.round((artifact.total * tenth) / 10)),
+        }]
+        if (tenth >= (artifact.artifact.kind === 'resource' ? 14 : 10)) {
+          index += 1
+          tenth = 0
+        } else {
+          tenth += 1
+        }
+        const timer = setTimeout(() => {
+          timers.delete(timer)
+          step()
+        }, INSTALL_STEP_MS)
+        timers.add(timer)
+      }
+      step()
+    })
+    return installed
+  }
+
   function later<T>(answer: () => T): Promise<T> {
-    return new Promise((resolve, reject) => {
+    return installOnce().then(() => new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         timers.delete(timer)
         try {
@@ -372,7 +434,7 @@ export function galleryBrowserTabs(tabs: LiveTab[] = galleryTabs()): BrowserTabs
         }
       }, REQUEST_DELAY_MS)
       timers.add(timer)
-    })
+    }))
   }
 
   function changed(): void {
@@ -435,5 +497,6 @@ export function galleryBrowserTabs(tabs: LiveTab[] = galleryTabs()): BrowserTabs
     // The gallery's pages have no history of their own; every action answers as done.
     history: (id) => later(() => void found(id)),
     stream,
+    installs: () => installs.value,
   }
 }

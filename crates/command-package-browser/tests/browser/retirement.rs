@@ -383,8 +383,8 @@ async fn chrome_process_tree_and_profile_retire_together() {
 /// the service's home but the user's certificate database: its crash
 /// reports go with the profile. About 5 s: the service's `TMPDIR` and home
 /// differ from this test process's only when the service runs as a program
-/// of its own, which finds Chrome only where it installs it (1.5 s);
-/// starting Chrome and opening a tab take 2 s, and retiring it 1.5 s.
+/// of its own; starting Chrome and opening a tab take 2 s, and retiring it
+/// 1.5 s.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; starts the service program with its own home and a long TMPDIR"]
 async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_temporary_directory() {
@@ -415,16 +415,13 @@ async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_tempo
     .await
     .unwrap();
     assert_eq!(walk(&temporary), Vec::<PathBuf>::new());
-    // Besides the installation, only what Chrome keeps for the user, and the
-    // directories above it, are in the home (`browser.md` § Native driver):
-    // on Linux the certificate database, on macOS the crash reports.
+    // Only what Chrome keeps for the user, and the directories above it, are
+    // in the home (`browser.md` § Native driver): on Linux the certificate
+    // database, on macOS the crash reports.
     let kept = if cfg!(target_os = "macos") {
-        [
-            ".demi",
-            "Library/Application Support/Google/Chrome for Testing",
-        ]
+        ["Library/Application Support/Google/Chrome for Testing"]
     } else {
-        [".demi", ".local/share/pki"]
+        [".local/share/pki"]
     };
     let written: Vec<_> = walk(home.path())
         .into_iter()
@@ -545,17 +542,19 @@ async fn the_next_service_sweeps_a_killed_services_browser_and_downloads() {
     .unwrap();
 }
 
-/// The service program as the runner starts it, with `home`, where it
-/// installs and finds the pinned Chrome, and `temporary` as its `TMPDIR`;
-/// its numbers stream is answered as a runner answers it.
+/// The service program as the runner starts it, given the pinned Chrome
+/// that `DEMI_TEST_CHROME` names as its `chrome` resource, with `home` as
+/// its home and `temporary` as its `TMPDIR`; its numbers stream is answered
+/// as a runner answers it.
 async fn service_program(
     home: &std::path::Path,
     temporary: &str,
 ) -> demi_command_sdk::testing::ServiceProcess {
-    crate::families::install_chrome(&home.join(".demi/browsers")).await;
+    let chrome = std::env::var("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME");
+    let resource = format!("chrome={chrome}");
     let service = demi_command_sdk::testing::ServiceProcess::start(
         env!("CARGO_BIN_EXE_demi-browser"),
-        &["--command-service"],
+        &["--command-service", "--resource", &resource],
         &[("HOME", home.to_str().unwrap()), ("TMPDIR", temporary)],
     )
     .await

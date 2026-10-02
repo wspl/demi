@@ -11,6 +11,7 @@ const devices = [
     lastSeenAt: null,
     online: true,
     home: null,
+    installs: [],
   },
   {
     id: 'managed',
@@ -21,6 +22,7 @@ const devices = [
     lastSeenAt: null,
     online: true,
     home: null,
+    installs: [],
   },
 ]
 

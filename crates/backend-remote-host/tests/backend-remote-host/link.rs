@@ -16,7 +16,7 @@ use demi_backend_remote_host::{
 use demi_command_declarations::NativeOperation;
 use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, EditCopies, EditKind as FileEditKind, PackageArtifact,
-    PackageDescriptor, ServiceSequence, host_target,
+    PackageDescriptor, PackageResource, ResourceArtifact, ServiceSequence, host_target,
 };
 use demi_host_interface::{
     Call, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
@@ -26,9 +26,9 @@ use demi_host_interface::{
     testing::{CountingNumbers, TestPages, test_command_context},
 };
 use demi_runner_protocol::wire::{
-    ArtifactOwner, FsOk, FsResult, Inbound, JOB_VIEW_BYTES, JobArtifactOwner, JobFileChange,
-    KeptRecord, Outbound, OutputLengths, OutputStream, STDIN_CHUNK_BYTES, Signal, VolumeName,
-    WireBytes, encode_record,
+    ArtifactOwner, FsOk, FsResult, Inbound, Install, InstallArtifact, InstallPhase, JOB_VIEW_BYTES,
+    JobArtifactOwner, JobFileChange, KeptRecord, Outbound, OutputLengths, OutputStream,
+    STDIN_CHUNK_BYTES, Signal, VolumeName, WireBytes, encode_record,
 };
 use demi_shared_gates::{ActivityGate, Purpose};
 use demi_shared_types::{
@@ -549,6 +549,20 @@ fn native_catalog(resolver: Rc<Scripted>) -> (CommandCatalog, PackageDescriptor)
                 size: 1,
             },
         )]),
+        resources: BTreeMap::from([(
+            "chrome".to_owned(),
+            PackageResource {
+                title: "Chrome for Testing 153.0.8010.36".into(),
+                targets: BTreeMap::from([(
+                    host_target().to_owned(),
+                    ResourceArtifact {
+                        sha256: "b".repeat(64),
+                        size: 2,
+                        entry: "chrome-linux64/chrome".into(),
+                    },
+                )]),
+            },
+        )]),
     };
     (
         CommandCatalog::new(vec![descriptor.clone()], resolver).unwrap(),
@@ -628,13 +642,50 @@ async fn an_artifact_request_needs_the_live_job_and_an_artifact_of_its_manifest(
         Some((Some("https://artifacts.example.test/exact".into()), None))
     );
     assert_eq!(resolver.calls.get(), 1);
+    // A resource's archive belongs to the package as its executable does.
+    link.send(request("b".repeat(64))).await;
+    assert_eq!(
+        artifact_answer(&link.next().await),
+        Some((Some("https://artifacts.example.test/exact".into()), None))
+    );
+    assert_eq!(resolver.calls.get(), 2);
     link.send(job_exit(job.id(), Some(0), None)).await;
     link.send(request(sha256)).await;
     assert_eq!(
         artifact_answer(&link.next().await),
         Some((None, Some("No matching live job or stream".into())))
     );
-    assert_eq!(resolver.calls.get(), 1);
+    assert_eq!(resolver.calls.get(), 2);
+}
+
+/// The installs a runner reports are the connection's until the next list
+/// (`native-runtime.md` § Installation progress); its owner's pages watch
+/// them, and a new connection starts with none.
+#[tokio::test(flavor = "local")]
+async fn a_runner_s_installs_are_its_connection_s_last_list() {
+    let device = device();
+    let link = device.connect(None);
+    let mut watched = link.link().watch_installs();
+    let install = Install {
+        package: "demi.browser".into(),
+        artifact: InstallArtifact::Resource {
+            title: "Chrome for Testing 153.0.8010.36".into(),
+        },
+        phase: InstallPhase::Download,
+        done: 40,
+        total: 196,
+    };
+    link.send(Outbound::Installs {
+        installs: vec![install.clone()],
+    })
+    .await;
+    watched.changed().await.unwrap();
+    assert_eq!(link.link().installs(), [install]);
+    link.send(Outbound::Installs { installs: vec![] }).await;
+    watched.changed().await.unwrap();
+    assert_eq!(link.link().installs(), []);
+    drop(link);
+    assert_eq!(device.connect(None).link().installs(), []);
 }
 
 #[tokio::test(flavor = "local")]

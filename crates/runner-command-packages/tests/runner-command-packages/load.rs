@@ -80,6 +80,7 @@ async fn resident(root: &Path) -> (ServiceRegistry, ServiceLease, Resident) {
                 size: bytes.len() as u64,
             },
         )]),
+        resources: Default::default(),
     };
     let lease = services
         .handle()

@@ -309,6 +309,7 @@ impl NativeFixture {
                     size: bytes.len() as u64,
                 },
             )]),
+            resources: Default::default(),
         };
         Self { descriptor, path }
     }

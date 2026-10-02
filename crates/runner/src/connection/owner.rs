@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-use demi_runner_command_packages::ServiceHandle;
+use demi_runner_command_packages::{InstallsReceiver, ServiceHandle};
 use demi_runner_host::{
     host::HostServer,
     volumes::{ManagedVolume, Volumes},
@@ -63,6 +63,9 @@ pub struct Registered {
     pub token: watch::Sender<Option<DeviceToken>>,
     pub management: Arc<Management>,
     pub services: ServiceHandle,
+    /// The installs the services' starts make, which each connection
+    /// reports (`native-runtime.md` § Installation progress).
+    pub installs: InstallsReceiver,
     pub dispatcher: Arc<Dispatcher>,
     /// Where the current connection publishes its live contexts.
     pub index: watch::Sender<Arc<ContextIndex>>,
@@ -113,6 +116,9 @@ struct Owner<'r> {
     host: HostServer,
     streams: ServiceStreams,
     volumes: Volumes,
+    package_installs: InstallsReceiver,
+    /// Whether this connection reported package installs yet.
+    installs_reported: bool,
 }
 
 /// Serves one connection until it ends, then ends everything it owns.
@@ -164,6 +170,8 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
             transport.cancellation(),
         ),
         handle,
+        package_installs: registered.installs.clone(),
+        installs_reported: false,
     };
     let result = owner.run(&mut transport, &mut requests).await;
     // Requests still queued get no answer; their askers see the end.
@@ -218,6 +226,9 @@ impl Owner<'_> {
                     self.worked(work.expect("connection work does not panic"))?;
                 }
                 Some(()) = self.volumes.checked() => {}
+                true = self.package_installs.changed(), if management.phase() == Phase::Online => {
+                    self.report_installs().await?;
+                }
                 message = transport.input.recv() => match message {
                     Some(message) => {
                         if let Some(end) = self.route(message).await? {
@@ -228,6 +239,19 @@ impl Owner<'_> {
                 },
             }
         }
+    }
+
+    /// Reports the installs in progress, unless there are none to report on
+    /// a connection that has reported nothing yet.
+    async fn report_installs(&mut self) -> io::Result<()> {
+        let installs = self.package_installs.current();
+        if installs.is_empty() && !self.installs_reported {
+            return Ok(());
+        }
+        self.installs_reported = true;
+        let frame =
+            wire::encode(&wire::Outbound::Installs { installs }).map_err(io::Error::other)?;
+        self.send(frame).await
     }
 
     /// Queues a frame for the backend, waiting for room.
@@ -320,6 +344,8 @@ impl Owner<'_> {
                     .spawn(async move { Work::Stored(state.write_config(&config).await) });
                 management.set_phase(Phase::Online);
                 tracing::warn!("online");
+                // What a previous connection reported ended with it.
+                self.report_installs().await?;
             }
             Inbound::ClaimPending { claim_token } if management.phase() != Phase::Online => {
                 management.set_phase(Phase::ClaimPending);

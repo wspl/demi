@@ -4,8 +4,9 @@
 //! the image's architecture, with an `xtask` built for that architecture.
 //! Into the Ubuntu tree the script made, it installs the runner and its
 //! `demi` alias from the verified runner release, each command package from
-//! its verified release under its content-addressed path, the pinned Chrome
-//! for Testing through `artifact`'s archive installation and the pinned uv.
+//! its verified release under its content-addressed paths, its resources,
+//! such as Chrome for Testing, unpacked through `artifact`'s archive
+//! installation, and the pinned uv.
 //! It reads the package inventory from the tree's dpkg database without
 //! running a program of the image, writes the root archive with GNU tar,
 //! checks the manifest the way the machine manager decodes it, publishes the
@@ -17,7 +18,6 @@ use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use demi_command_package_browser_protocol::release::{BrowserRelease, IMAGE_BROWSERS};
 use demi_command_protocol::{PackageArtifact, PackageDescriptor};
 use demi_machine_manager_protocol::image::{
     Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError,
@@ -25,7 +25,8 @@ use demi_machine_manager_protocol::image::{
 };
 use demi_runner_protocol::{image::ARTIFACTS_PATH, release::RunnerRelease};
 use demi_shared_artifacts::{
-    Archive, Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged,
+    Archive, ArchiveInstall, Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord,
+    Staged,
 };
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
@@ -123,18 +124,13 @@ pub fn run(command: Command) -> Result<(), Error> {
 
 /// What an image downloads, as the repository pins it.
 struct Pins {
-    chrome: BrowserRelease,
     uv: UvRelease,
 }
 
 impl Pins {
     fn pinned() -> Result<Self, Error> {
-        let chrome = BrowserRelease::pinned().map_err(|error| Error::Pin {
-            name: "Chrome for Testing",
-            reason: error.to_string(),
-        })?;
         let uv = UvRelease::parse(UV).map_err(|reason| Error::Pin { name: "uv", reason })?;
-        Ok(Self { chrome, uv })
+        Ok(Self { uv })
     }
 }
 
@@ -226,10 +222,8 @@ async fn package(
     for (directory, (descriptor, artifact)) in options.packages.iter().zip(&releases) {
         let path = install_package(&root, directory, descriptor, artifact, target, cancel).await?;
         executables.insert(path, artifact.clone());
+        executables.extend(install_resources(&root, directory, descriptor, target, cancel).await?);
     }
-    let (chrome_path, chrome, chrome_tool) =
-        install_chrome(&root, &pins.chrome, target, client, cancel).await?;
-    executables.insert(chrome_path, chrome);
     let (uv, uv_tool) = install_uv(&root, &pins.uv, architecture, client, cancel).await?;
     executables.extend(uv);
     executables.insert(
@@ -274,7 +268,7 @@ async fn package(
             .map(|(descriptor, _)| descriptor)
             .collect(),
         runner,
-        tools: vec![uv_tool, chrome_tool],
+        tools: vec![uv_tool],
     };
     let bytes = crate::record(&manifest).map_err(ManifestError::from)?;
     // The manifest is checked the way the manager decodes it.
@@ -455,51 +449,63 @@ async fn symlink(_: &std::ffi::OsStr, _: &Path) -> Result<(), Error> {
     Err(Error::NotLinux)
 }
 
-/// Installs the pinned Chrome for Testing archive of `target` where
-/// `demi-browser` looks for it first; returns its executable's path in the
-/// image with its size and SHA-256, and the tool's entry.
-async fn install_chrome(
+/// Installs each resource of `descriptor`'s release at `directory` that has
+/// an archive for `target`, unpacked with its receipt in the directory its
+/// archive's SHA-256 names, where the runner looks before it downloads one
+/// (`native-runtime.md` § Preinstalled artifacts); returns each entry's
+/// path in the image with its size and SHA-256.
+async fn install_resources(
     root: &Path,
-    release: &BrowserRelease,
-    target: &'static str,
-    client: &demi_shared_artifacts::Client,
+    directory: &Path,
+    descriptor: &PackageDescriptor,
+    target: &str,
     cancel: &CancellationToken,
-) -> Result<(String, PackageArtifact, StandaloneTool), Error> {
-    let platform = release
-        .platforms
-        .iter()
-        .find(|platform| platform.target == target)
-        .ok_or_else(|| Error::NotCarried {
-            release: format!("Chrome for Testing {}", release.version),
-            target,
-        })?;
-    let archive = Archive {
-        url: platform.url.clone(),
-        digest: Digest {
-            size: platform.size,
-            sha256: platform.sha256.clone(),
-        },
-        executable: platform.executable.clone(),
-    };
-    let browsers = in_tree(root, IMAGE_BROWSERS);
-    let executable =
-        demi_shared_artifacts::install_archive(client, &browsers, &archive, cancel).await?;
-    // The installation's lock serves installers running at once on one
-    // machine; an image starts with none running.
-    let lock = browsers.join(format!("{}.lock", platform.sha256));
-    tokio::fs::remove_file(&lock).await.map_err(at(&lock))?;
-    let path = format!(
-        "{IMAGE_BROWSERS}/{}/{}",
-        platform.sha256, platform.executable
-    );
-    let measured = measure(&executable, cancel).await?;
-    let tool = StandaloneTool {
-        name: "chrome".to_owned(),
-        version: release.version.clone(),
-        sha256: platform.sha256.clone(),
-    };
-    eprintln!("Cloud image: Chrome for Testing {}", release.version);
-    Ok((path, measured, tool))
+) -> Result<Vec<(String, PackageArtifact)>, Error> {
+    let artifacts = in_tree(root, ARTIFACTS_PATH);
+    let mut entries = Vec::new();
+    for resource in descriptor.resources.values() {
+        let Some(archive) = resource.targets.get(target) else {
+            continue;
+        };
+        let source = directory.join("resources").join(&archive.sha256);
+        let unpacking = match demi_shared_artifacts::install_archive(
+            &artifacts,
+            &Archive {
+                digest: Digest {
+                    size: archive.size,
+                    sha256: archive.sha256.clone(),
+                },
+                entry: archive.entry.clone(),
+            },
+            cancel,
+        )
+        .await?
+        {
+            ArchiveInstall::Installed(_) => {
+                return Err(invalid(&source, "is in the image twice"));
+            }
+            ArchiveInstall::Unpack(unpacking) => unpacking,
+        };
+        let expected = Digest {
+            size: archive.size,
+            sha256: archive.sha256.clone(),
+        };
+        let mut input = tokio::fs::File::open(&source).await.map_err(at(&source))?;
+        let mut output = tokio::fs::File::create(unpacking.archive()).await?;
+        demi_shared_artifacts::copy(&mut input, &expected, &mut output, cancel)
+            .await
+            .map_err(at(&source))?;
+        drop(output);
+        let entry = unpacking.finish(cancel).await?;
+        // The installation's lock serves installers running at once on one
+        // machine; an image starts with none running.
+        let lock = artifacts.join(format!("{}.lock", archive.sha256));
+        tokio::fs::remove_file(&lock).await.map_err(at(&lock))?;
+        let path = format!("{ARTIFACTS_PATH}/{}/{}", archive.sha256, archive.entry);
+        entries.push((path, measure(&entry, cancel).await?));
+        eprintln!("Cloud image: {} for {}", resource.title, descriptor.id);
+    }
+    Ok(entries)
 }
 
 /// Downloads the pinned uv archive of `architecture` and installs its
@@ -789,7 +795,7 @@ fn invalid(path: &Path, reason: impl ToString) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use demi_command_package_browser_protocol::release::ReleasePlatform;
+    use demi_command_protocol::{PackageResource, ResourceArtifact};
     use demi_shared_artifacts::testing::{Answer, Server, zip};
 
     use super::*;
@@ -875,6 +881,7 @@ Version: 0.19.0-3
             protocol_version: demi_command_protocol::VERSION,
             operations: vec!["file.read".to_owned()],
             targets: BTreeMap::from([(TARGET.to_owned(), measured(recorded).await)]),
+            resources: Default::default(),
         };
         write(&directory.join(TARGET).join(name), bytes);
         write(
@@ -928,15 +935,43 @@ Version: 0.19.0-3
             write(&runners.join(MANIFEST), &record);
             let browser = path.join("demi-browser");
             let claude = path.join("demi-claude-code");
+            let chrome = zip(&[
+                (CHROME, b"chrome"),
+                ("chrome-linux-arm64/LICENSE", b"license"),
+            ]);
+            let chrome_artifact = measured(&chrome).await;
+            write(
+                &browser.join("resources").join(&chrome_artifact.sha256),
+                &chrome,
+            );
+            let mut browser_release = command_package(
+                &browser,
+                demi_command_package_browser_protocol::PACKAGE,
+                "demi-browser",
+                b"browser",
+                browser_program,
+            )
+            .await;
+            browser_release.resources.insert(
+                "chrome".to_owned(),
+                PackageResource {
+                    title: "Chrome for Testing 153.0.8010.36".to_owned(),
+                    targets: BTreeMap::from([(
+                        TARGET.to_owned(),
+                        ResourceArtifact {
+                            sha256: chrome_artifact.sha256.clone(),
+                            size: chrome_artifact.size,
+                            entry: CHROME.to_owned(),
+                        },
+                    )]),
+                },
+            );
+            write(
+                &browser.join(DESCRIPTOR),
+                &crate::record(&browser_release).unwrap(),
+            );
             let releases = vec![
-                command_package(
-                    &browser,
-                    demi_command_package_browser_protocol::PACKAGE,
-                    "demi-browser",
-                    b"browser",
-                    browser_program,
-                )
-                .await,
+                browser_release,
                 command_package(
                     &claude,
                     demi_command_package_claude_code_protocol::PACKAGE,
@@ -946,18 +981,9 @@ Version: 0.19.0-3
                 )
                 .await,
             ];
-            let chrome = zip(&[
-                (CHROME, b"chrome"),
-                ("chrome-linux-arm64/LICENSE", b"license"),
-            ]);
             let uv = gzip_tar(&[(UV_EXECUTABLES[0], b"uv"), (UV_EXECUTABLES[1], b"uvx")]);
-            let chrome_artifact = measured(&chrome).await;
             let uv_artifact = measured(&uv).await;
-            let server = Server::start([
-                ("/chrome.zip".to_owned(), Answer::ok(chrome)),
-                ("/uv.tar.gz".to_owned(), Answer::ok(uv)),
-            ])
-            .await;
+            let server = Server::start([("/uv.tar.gz".to_owned(), Answer::ok(uv))]).await;
             let uv_archive = || UvArchive {
                 url: server.url("/uv.tar.gz"),
                 size: uv_artifact.size,
@@ -965,16 +991,6 @@ Version: 0.19.0-3
                 executables: UV_EXECUTABLES.map(String::from).to_vec(),
             };
             let pins = Pins {
-                chrome: BrowserRelease {
-                    version: "153.0.8010.36".to_owned(),
-                    platforms: vec![ReleasePlatform {
-                        target: TARGET.to_owned(),
-                        url: server.url("/chrome.zip"),
-                        size: chrome_artifact.size,
-                        sha256: chrome_artifact.sha256,
-                        executable: CHROME.to_owned(),
-                    }],
-                },
                 uv: UvRelease {
                     version: "0.12.13".to_owned(),
                     amd64: uv_archive(),
@@ -1060,12 +1076,9 @@ Version: 0.19.0-3
         );
         assert_eq!(manifest.runner, fixture.runner);
         assert_eq!(manifest.releases, fixture.releases);
-        let chrome = &fixture.pins.chrome.platforms[0];
+        let chrome = &fixture.releases[0].resources["chrome"].targets[TARGET];
         let uv = &fixture.pins.uv.arm64;
-        let tools = [
-            ("uv", "0.12.13", uv.sha256.as_str()),
-            ("chrome", "153.0.8010.36", chrome.sha256.as_str()),
-        ];
+        let tools = [("uv", "0.12.13", uv.sha256.as_str())];
         let recorded: Vec<(&str, &str, &str)> = manifest
             .tools
             .iter()
@@ -1090,7 +1103,7 @@ Version: 0.19.0-3
                 browser.clone(),
             ),
             (
-                format!("{IMAGE_BROWSERS}/{}/{CHROME}", chrome.sha256),
+                format!("{ARTIFACTS_PATH}/{}/{CHROME}", chrome.sha256),
                 measured(b"chrome").await,
             ),
             (RUNNER_PATH.to_owned(), measured(b"runner").await),
@@ -1119,8 +1132,8 @@ Version: 0.19.0-3
             (*kind, link.as_deref()),
             (tar::EntryType::Symlink, Some(Path::new("demi-runner")))
         );
-        let browsers = IMAGE_BROWSERS.trim_start_matches('/');
-        assert!(entries.contains_key(&format!("{browsers}/{}/receipt.json", chrome.sha256)));
+        let artifacts = ARTIFACTS_PATH.trim_start_matches('/');
+        assert!(entries.contains_key(&format!("{artifacts}/{}/receipt.json", chrome.sha256)));
         let paths: Vec<&String> = entries.keys().collect();
         assert!(
             !paths.iter().any(|path| path.ends_with(".lock")),

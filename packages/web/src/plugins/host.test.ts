@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { browserTabsSchema } from '@demicodes/plugin-browser'
 import { exposeStateSchema, type ExposeState } from '@demicodes/plugin-expose'
 import { PluginCallError, pluginClient } from '@demicodes/web-ui/plugins/client'
-import { productState } from '../__tests__/product-state'
+import { conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { useProduct } from '../state/product'
 import { productPluginHost } from './host'
@@ -98,4 +98,40 @@ test("a refusal rejects with the plugin's own reason", async () => {
   const refused = client().call('remove', { expose: 'k7x2maqw4p3s6tavaw2y4z6aab' }, z.null())
   await expect(refused).rejects.toBeInstanceOf(PluginCallError)
   await expect(refused).rejects.toMatchObject({ reason: 'expose_not_found', message: 'No expose k7x2' })
+})
+
+test("a conversation's installs are its main Host's installs of the plugin's packages", () => {
+  const laptop = 'b5c6d7e8-0000-4000-8000-000000000001'
+  const chrome = {
+    package: 'demi.browser',
+    artifact: { kind: 'resource' as const, title: 'Chrome for Testing 153.0.8010.36' },
+    phase: 'download' as const,
+    done: 120,
+    total: 196,
+  }
+  const file = { package: 'demi.file', artifact: { kind: 'program' as const }, phase: 'download' as const, done: 1, total: 2 }
+  const base = productState()
+  channels.last().connect(productState({
+    devices: [{
+      id: laptop,
+      kind: 'user',
+      name: 'laptop',
+      platform: 'linux',
+      claimedAt: '2026-09-10T00:00:00.000Z',
+      lastSeenAt: null,
+      online: true,
+      home: '/home/ada',
+      installs: [chrome, file],
+    }],
+    conversations: [
+      conversationSummary(CONVERSATION, 'Work', { target: { kind: 'device', deviceId: laptop, path: '/home/ada/work' } }),
+    ],
+    plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: ['demi.browser'] }],
+    pluginStates: base.pluginStates,
+  }))
+  const host = productPluginHost(() => useProduct().snapshot)
+  const browser = pluginClient(host, 'browser', z.unknown()).conversation(CONVERSATION)
+  expect(browser.installs.value).toEqual([chrome])
+  // A conversation the page does not know has no Host to install on.
+  expect(pluginClient(host, 'browser', z.unknown()).conversation('unknown').installs.value).toEqual([])
 })

@@ -13,9 +13,10 @@ pub use kept::{
 };
 pub use messages::{
     ArtifactOwner, ChangeKind, DirEntry, FileStat, GitChange, GitChanges, HelloErrorCode,
-    HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine, NetErrorCode, Outbound,
-    OutputLengths, OutputStream, PipeRef, RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal,
-    SpawnError, SpawnErrorKind, StreamArtifactOwner, VolumeName,
+    HostIdentity, Inbound, Install, InstallArtifact, InstallPhase, JobArtifactOwner, JobFileChange,
+    LogLine, MAX_INSTALLS, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef,
+    RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
+    StreamArtifactOwner, VolumeName,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 
