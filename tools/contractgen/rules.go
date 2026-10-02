@@ -10,6 +10,9 @@ import (
 
 // checkRuleType rejects markers that would be silently ignored on this shape.
 func checkRuleType(t types.Type, m map[string]string, field bool) error {
+	if has(m, "flatten") && !field {
+		return fmt.Errorf("flatten is a field marker")
+	}
 	if has(m, "table") {
 		return fmt.Errorf("table requires a package-level slice variable")
 	}
@@ -40,6 +43,9 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 	stringType := isBasic && basic.Info()&types.IsString != 0
 	numeric := isBasic && basic.Info()&(types.IsInteger|types.IsFloat) != 0
 	for _, key := range []string{"pattern", "enum", "timestamp", "base64", "id", "format"} {
+		if key == "timestamp" && !field && integerTimestamp(t) {
+			continue
+		}
 		if key == "base64" {
 			if slice, ok := t.Underlying().(*types.Slice); ok && types.Identical(slice.Elem(), types.Typ[types.Uint8]) {
 				continue
@@ -204,4 +210,9 @@ func checkPattern(pattern string) error {
 		}
 	}
 	return nil
+}
+
+func integerTimestamp(t types.Type) bool {
+	b, ok := t.Underlying().(*types.Basic)
+	return ok && b.Kind() == types.Int64
 }
