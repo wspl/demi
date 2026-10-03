@@ -44,6 +44,7 @@ type Error struct {
 	Code    string
 }
 
+// Error returns the failure message.
 func (e *Error) Error() string { return e.Message }
 
 // ByteStream delivers a file's bytes. EOF ends the stream; Close stops and releases it.

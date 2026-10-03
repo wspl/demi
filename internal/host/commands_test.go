@@ -26,31 +26,48 @@ func schema(t *testing.T, data []byte) *declare.Schema {
 	}
 	return s
 }
+
 func rpcLeaf(name string) declare.Leaf[declare.NativeOperation] {
-	return declare.Leaf[declare.NativeOperation]{Name: name, Summary: "Add.", Kind: &declare.RPC[declare.NativeOperation]{}}
+	return declare.Leaf[declare.NativeOperation]{
+		Name:    name,
+		Summary: "Add.",
+		Kind:    &declare.RPC[declare.NativeOperation]{},
+	}
 }
+
 func addHandler() host.RPCHandler {
-	return host.TypedRPC(hosttest.DecodeAddArgs, func(ctx context.Context, call host.Call[hosttest.AddArgs], port host.RPCPort) (uint8, error) {
-		count := uint32(1)
-		if call.Args.Count != nil {
-			count = *call.Args.Count
-		}
-		added, err := host.Update(ctx, port, "todos", hosttest.DecodeItems, func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() }, func(current *hosttest.Items) (hosttest.Items, error) {
-			items := hosttest.Items{}
-			if current != nil {
-				items = append(items, (*current)...)
+	return host.TypedRPC(
+		hosttest.DecodeAddArgs,
+		func(ctx context.Context, call host.Call[hosttest.AddArgs], port host.RPCPort) (uint8, error) {
+			count := uint32(1)
+			if call.Args.Count != nil {
+				count = *call.Args.Count
 			}
-			for range count {
-				items = append(items, call.Args.Text)
+			added, err := host.Update(
+				ctx,
+				port,
+				"todos",
+				hosttest.DecodeItems,
+				func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() },
+				func(current *hosttest.Items) (hosttest.Items, error) {
+					items := hosttest.Items{}
+					if current != nil {
+						items = append(items, (*current)...)
+					}
+					for range count {
+						items = append(items, call.Args.Text)
+					}
+					return items, nil
+				},
+			)
+			if err != nil {
+				return 0, err
 			}
-			return items, nil
-		})
-		if err != nil {
-			return 0, err
-		}
-		return 0, port.Stdout(ctx, []byte(fmt.Sprintf("%d\n", len(added))))
-	})
+			return 0, port.Stdout(ctx, []byte(fmt.Sprintf("%d\n", len(added))))
+		},
+	)
 }
+
 func todo(t *testing.T) host.Declared {
 	t.Helper()
 	add := rpcLeaf("add")
@@ -59,18 +76,35 @@ func todo(t *testing.T) host.Declared {
 	positionals := []string{"text"}
 	add.Positionals = &positionals
 	add.Output = &declare.LeafOutput{JSON: schema(t, hosttest.ReplyJSONSchema())}
-	read := declare.Leaf[declare.NativeOperation]{Name: "read", Summary: "Read a file.", Input: add.Input, Kind: &declare.Native[declare.NativeOperation]{Binding: declare.NativeOperation{Package: "demi.file", Operation: "file.read"}}}
-	return host.Group("demi", "Demi commands.", host.Group("todo", "Manage the todo list.", host.Leaf(add, addHandler()), host.Leaf(read, nil)))
+	read := declare.Leaf[declare.NativeOperation]{
+		Name:    "read",
+		Summary: "Read a file.",
+		Input:   add.Input,
+		Kind: &declare.Native[declare.NativeOperation]{
+			Binding: declare.NativeOperation{Package: "demi.file", Operation: "file.read"},
+		},
+	}
+	return host.Group(
+		"demi",
+		"Demi commands.",
+		host.Group("todo", "Manage the todo list.", host.Leaf(add, addHandler()), host.Leaf(read, nil)),
+	)
 }
+
 func invocation(path []string, args string) host.RPCInvocation {
 	// Test arguments are decoded through the same generated boundary as outside invocations.
-	raw := `{"path":` + quotePath(path) + `,"argv":[],"args":` + args + `,"json":false,"cwd":"/","env":{},"context":{"conversation":"test-conversation","caller":{"kind":"agent","number":1},"locale":{"timeZone":"Asia/Shanghai","languages":["zh-CN","en"]}},"stdin":false}`
+	raw := `{"path":` + quotePath(
+		path,
+	) + `,"argv":[],"args":` + args + `,"json":false,"cwd":"/","env":{},"context":{"conversation":"test-conversation",` +
+		`"caller":{"kind":"agent","number":1},"locale":{"timeZone":"Asia/Shanghai",` +
+		`"languages":["zh-CN","en"]}},"stdin":false}`
 	v, err := host.DecodeRPCInvocation([]byte(raw))
 	if err != nil {
 		panic(err)
 	} // Only fixed test fixture construction; never production input.
 	return v
 }
+
 func quotePath(path []string) string {
 	data, err := contract.EncodeJSON(path)
 	if err != nil {
@@ -78,6 +112,7 @@ func quotePath(path []string) string {
 	}
 	return string(data)
 }
+
 func TestRegistrationRefusesReservedTakenMalformedAndUnbound(t *testing.T) {
 	var set host.CommandSet
 	if err := set.Register(todo(t)); err != nil {
@@ -91,7 +126,10 @@ func TestRegistrationRefusesReservedTakenMalformedAndUnbound(t *testing.T) {
 			t.Fatalf("not reserved: %s", name)
 		}
 		var empty host.CommandSet
-		if err := empty.Register(host.Leaf(rpcLeaf(name), nil)); err == nil || !strings.Contains(err.Error(), "reserved") {
+		if err := empty.Register(
+			host.Leaf(rpcLeaf(name), nil),
+		); err == nil ||
+			!strings.Contains(err.Error(), "reserved") {
 			t.Fatalf("reserved %s: %v", name, err)
 		}
 	}
@@ -113,11 +151,25 @@ func TestRegistrationRefusesReservedTakenMalformedAndUnbound(t *testing.T) {
 		{host.Group("empty", "Empty."), "no subcommands"},
 		{host.Leaf(rpcLeaf("bad name"), addHandler()), "invalid command name"},
 		{with(func(l *declare.Leaf[declare.NativeOperation]) { l.Positionals = &missing }), "missing"},
-		{with(func(l *declare.Leaf[declare.NativeOperation]) { l.StdinField = &fieldCount }), "stdin input must be a string"},
-		{with(func(l *declare.Leaf[declare.NativeOperation]) { l.Positionals = &text; l.StdinField = &fieldText }), "multiple input sources for text"},
-		{with(func(l *declare.Leaf[declare.NativeOperation]) { l.Positionals = &count }), "required positional follows optional positional"},
+		{
+			with(func(l *declare.Leaf[declare.NativeOperation]) { l.StdinField = &fieldCount }),
+			"stdin input must be a string",
+		},
+		{
+			with(func(l *declare.Leaf[declare.NativeOperation]) {
+				l.Positionals = &text
+				l.StdinField = &fieldText
+			}),
+			"multiple input sources for text",
+		},
+		{
+			with(func(l *declare.Leaf[declare.NativeOperation]) { l.Positionals = &count }),
+			"required positional follows optional positional",
+		},
 		{with(func(l *declare.Leaf[declare.NativeOperation]) {
-			l.Kind = &declare.Native[declare.NativeOperation]{Binding: declare.NativeOperation{Package: "demi.file", Operation: "file.read"}}
+			l.Kind = &declare.Native[declare.NativeOperation]{
+				Binding: declare.NativeOperation{Package: "demi.file", Operation: "file.read"},
+			}
 		}), "takes no handler"},
 		{host.Leaf(base, addHandler()).Describe("absent", "x"), "absent"},
 		{host.Leaf(rpcLeaf("add"), addHandler()).Describe("text", "x"), "before its input"},
@@ -136,11 +188,26 @@ func TestRegistrationRefusesReservedTakenMalformedAndUnbound(t *testing.T) {
 		})
 	}
 }
+
 func TestRegistrationRefusesInputSubsetNamingField(t *testing.T) {
-	for _, tc := range []struct{ field, property, reason string }{{"count", `{"type":"integer","default":2}`, "default"}, {"inner", `{"type":"object","properties":{"text":{"type":"string"}}}`, "nested object"}} {
+	for _, tc := range []struct{ field, property, reason string }{
+		{
+			"count",
+			`{"type":"integer","default":2}`,
+			"default",
+		},
+		{
+			"inner",
+			`{"type":"object","properties":{"text":{"type":"string"}}}`,
+			"nested object",
+		},
+	} {
 		t.Run(tc.field, func(t *testing.T) {
 			leaf := rpcLeaf("add")
-			leaf.Input = schema(t, []byte(`{"type":"object","properties":{"`+tc.field+`":`+tc.property+`},"additionalProperties":false}`))
+			leaf.Input = schema(
+				t,
+				[]byte(`{"type":"object","properties":{"`+tc.field+`":`+tc.property+`},"additionalProperties":false}`),
+			)
 			var s host.CommandSet
 			err := s.Register(host.Group("demi", "Demi.", host.Leaf(leaf, addHandler())))
 			if err == nil {
@@ -154,6 +221,7 @@ func TestRegistrationRefusesInputSubsetNamingField(t *testing.T) {
 		})
 	}
 }
+
 func TestHelpDefaultsAndEveryRoot(t *testing.T) {
 	var s host.CommandSet
 	if s.RenderHelp() != "" {
@@ -163,10 +231,13 @@ func TestHelpDefaultsAndEveryRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := s.Declarations()[0].Help("demi")
-	if s.RenderHelp() != declare.HelpDefaults+"\n\n"+root || !strings.Contains(root, "demi todo add <text> [--count <count>] [--json]") || !strings.Contains(root, "How many copies") {
+	if s.RenderHelp() != declare.HelpDefaults+"\n\n"+root ||
+		!strings.Contains(root, "demi todo add <text> [--count <count>] [--json]") ||
+		!strings.Contains(root, "How many copies") {
 		t.Fatal(s.RenderHelp())
 	}
 }
+
 func TestDispatchValidatesWireArgumentsAndRunsHandler(t *testing.T) {
 	var s host.CommandSet
 	if err := s.Register(todo(t)); err != nil {
@@ -198,6 +269,7 @@ func TestDispatchValidatesWireArgumentsAndRunsHandler(t *testing.T) {
 		t.Fatalf("native dispatch: %v", err)
 	}
 }
+
 func TestConcurrentUpdatesKeepBothWrites(t *testing.T) {
 	storage := &hosttest.MemoryStorage{}
 	// Force both handlers to read revision zero before either writes: this proves the conflict retry.
@@ -213,18 +285,25 @@ func TestConcurrentUpdatesKeepBothWrites(t *testing.T) {
 					ready.Done()
 				}
 			}()
-			_, err := host.Update(t.Context(), hosttest.NewMemoryPort(storage).Port(), "todos", hosttest.DecodeItems, func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() }, func(current *hosttest.Items) (hosttest.Items, error) {
-				if first {
-					first = false
-					ready.Done()
-					ready.Wait()
-				}
-				items := hosttest.Items{}
-				if current != nil {
-					items = append(items, (*current)...)
-				}
-				return append(items, item), nil
-			})
+			_, err := host.Update(
+				t.Context(),
+				hosttest.NewMemoryPort(storage).Port(),
+				"todos",
+				hosttest.DecodeItems,
+				func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() },
+				func(current *hosttest.Items) (hosttest.Items, error) {
+					if first {
+						first = false
+						ready.Done()
+						ready.Wait()
+					}
+					items := hosttest.Items{}
+					if current != nil {
+						items = append(items, (*current)...)
+					}
+					return append(items, item), nil
+				},
+			)
 			errs <- err
 		})
 	}
@@ -244,13 +323,21 @@ func TestConcurrentUpdatesKeepBothWrites(t *testing.T) {
 		t.Fatalf("stored %v", items)
 	}
 }
+
 func TestUnreadableStoredValueIsNotReplaced(t *testing.T) {
 	storage := &hosttest.MemoryStorage{}
 	storage.Apply(&host.StorageWriteIf{Key: "todos", Value: json.RawMessage(`{"not":"a list"}`)})
-	_, err := host.Update(t.Context(), hosttest.NewMemoryPort(storage).Port(), "todos", hosttest.DecodeItems, func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() }, func(_ *hosttest.Items) (hosttest.Items, error) {
-		t.Fatal("change called for unreadable data")
-		return nil, nil
-	})
+	_, err := host.Update(
+		t.Context(),
+		hosttest.NewMemoryPort(storage).Port(),
+		"todos",
+		hosttest.DecodeItems,
+		func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() },
+		func(_ *hosttest.Items) (hosttest.Items, error) {
+			t.Fatal("change called for unreadable data")
+			return nil, nil
+		},
+	)
 	var rpc *host.RPCError
 	if !errors.As(err, &rpc) || rpc.Kind != host.HandlerFailed || !strings.Contains(err.Error(), "unreadable") {
 		t.Fatalf("unreadable: %v", err)
@@ -259,13 +346,19 @@ func TestUnreadableStoredValueIsNotReplaced(t *testing.T) {
 		t.Fatal("stored value changed")
 	}
 }
+
 func TestGraftAndFilterKeepBindingsAtomic(t *testing.T) {
 	var s host.CommandSet
 	if err := s.Register(todo(t)); err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
-	handler := host.RPCHandlerFunc(func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { calls++; return 0, nil })
+	handler := host.RPCHandlerFunc(
+		func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
+			calls++
+			return 0, nil
+		},
+	)
 	agent := host.Group("agent", "Agents.", host.Leaf(rpcLeaf("list"), handler))
 	if err := s.Graft([]string{"demi"}, agent); err != nil {
 		t.Fatal(err)
@@ -282,7 +375,11 @@ func TestGraftAndFilterKeepBindingsAtomic(t *testing.T) {
 	}
 	invoke := func() {
 		t.Helper()
-		if _, err := s.Dispatch(t.Context(), invocation([]string{"demi", "agent", "list"}, `{}`), hosttest.NewMemoryPort(nil).Port()); err != nil {
+		if _, err := s.Dispatch(
+			t.Context(),
+			invocation([]string{"demi", "agent", "list"}, `{}`),
+			hosttest.NewMemoryPort(nil).Port(),
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -305,13 +402,17 @@ func TestGraftAndFilterKeepBindingsAtomic(t *testing.T) {
 		t.Fatal("empty groups remain")
 	}
 	// Successful replacement must remove old handlers as well as replace the declaration.
-	if err := s.Graft([]string{"demi"}, host.Group("agent", "Agents.", host.Leaf(rpcLeaf("new"), handler))); err != nil {
+	if err := s.Graft(
+		[]string{"demi"},
+		host.Group("agent", "Agents.", host.Leaf(rpcLeaf("new"), handler)),
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Check(invocation([]string{"demi", "agent", "list"}, `{}`)); err == nil {
 		t.Fatal("old handler retained")
 	}
 }
+
 func TestDescriptionReplacementAndServedDeclarations(t *testing.T) {
 	leaf := rpcLeaf("add")
 	leaf.Input = schema(t, hosttest.AddArgsJSONSchema())
@@ -321,7 +422,8 @@ func TestDescriptionReplacementAndServedDeclarations(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated := declare.AsLeaf(s.Declarations()[0])
-	if !strings.Contains(string(updated.Input.Document()), "How many copies; default 2.") || strings.Contains(string(leaf.Input.Document()), "default 2") {
+	if !strings.Contains(string(updated.Input.Document()), "How many copies; default 2.") ||
+		strings.Contains(string(leaf.Input.Document()), "default 2") {
 		t.Fatal("description failed or mutated source")
 	}
 	var served host.CommandSet
@@ -339,7 +441,12 @@ func TestDescriptionReplacementAndServedDeclarations(t *testing.T) {
 
 func TestDescriptionKeepsPropertyOrderAndFirstRefusal(t *testing.T) {
 	leaf := rpcLeaf("input")
-	leaf.Input = schema(t, []byte(`{"type":"object","properties":{"z":{"type":"string"},"a":{"type":"string"}},"additionalProperties":false}`))
+	leaf.Input = schema(
+		t,
+		[]byte(
+			`{"type":"object","properties":{"z":{"type":"string"},"a":{"type":"string"}},"additionalProperties":false}`,
+		),
+	)
 	var set host.CommandSet
 	if err := set.Register(host.Leaf(leaf, addHandler()).Describe("z", "Dynamic")); err != nil {
 		t.Fatal(err)

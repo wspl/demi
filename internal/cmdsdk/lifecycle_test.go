@@ -20,14 +20,27 @@ import (
 
 func TestConversationEndpointHasNoGrantsAndValidatesReleaseIdentity(t *testing.T) {
 	c, done := connected(t, fixture{})
-	for _, q := range []commandwire.ConversationRequest{&commandwire.ConversationQuery{}, &commandwire.ConversationRelease{Conversation: "unknown"}, &commandwire.ConversationRelease{Conversation: "unknown"}} {
+	for _, q := range []commandwire.ConversationRequest{
+		&commandwire.ConversationQuery{},
+		&commandwire.ConversationRelease{
+			Conversation: "unknown",
+		},
+		&commandwire.ConversationRelease{
+			Conversation: "unknown",
+		},
+	} {
 		_, o, err := c.Conversation(t.Context(), q)
 		must(t, err)
 		want := "{}"
 		if _, ok := q.(*commandwire.ConversationQuery); ok {
 			want = `{"conversations":[]}`
 		}
-		for _, expected := range []commandwire.Record{commandwire.Stdout(want), commandwire.Completed{Completion: commandwire.Completion{}}} {
+		for _, expected := range []commandwire.Record{
+			commandwire.Stdout(want),
+			commandwire.Completed{
+				Completion: commandwire.Completion{},
+			},
+		} {
 			got, err := o.Next(t.Context())
 			must(t, err)
 			if !reflect.DeepEqual(got, expected) {
@@ -75,10 +88,12 @@ func (h *lifecycle) Conversation(ctx context.Context, c ConversationContext) (co
 	}
 	return commandwire.Completion{}, errors.New("profile cleanup failed")
 }
+
 func (h *lifecycle) Close(context.Context) error {
 	close(h.closed)
 	return nil
 }
+
 func TestConversationCancellationJoinsHookAndCleanupFailureRetiresService(t *testing.T) {
 	h := &lifecycle{started: make(chan struct{}), cancelled: make(chan struct{}), closed: make(chan struct{})}
 	c, done := connected(t, h)
@@ -113,7 +128,11 @@ type drawing struct {
 
 func (h *drawing) SetNumbers(n *Numbers) { h.numbers = n }
 func (h *drawing) Operations() []string  { return []string{"draw"} }
-func (h *drawing) Invoke(ctx context.Context, c InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+
+func (h *drawing) Invoke(
+	ctx context.Context,
+	c InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	select {
 	case h.drawing <- struct{}{}:
 	default:
@@ -128,6 +147,7 @@ func (h *drawing) Invoke(ctx context.Context, c InvocationContext[commandwire.In
 	}
 	return commandwire.Completion{}, c.Output.Stdout(ctx, []byte(fmt.Sprint(first)))
 }
+
 func TestDrawsWaitForNumbersStreamContinuePerConversationAndShutdownEndsIt(t *testing.T) {
 	h := &drawing{drawing: make(chan struct{}, 1)}
 	c, done := connected(t, h)
@@ -139,7 +159,7 @@ func TestDrawsWaitForNumbersStreamContinuePerConversationAndShutdownEndsIt(t *te
 	answering := make(chan error, 1)
 	next := map[string]uint64{}
 	// The callback serializes its shared sequence state, independently of the stream's workers.
-	var lock = make(chan struct{}, 1)
+	lock := make(chan struct{}, 1)
 	go func() {
 		answering <- stream.AnswerNumbers(t.Context(), func(_ context.Context, q commandwire.NumbersRequest) (uint64, error) {
 			lock <- struct{}{}
@@ -179,11 +199,25 @@ type artifactHandler struct{ artifacts *Artifacts }
 
 func (h *artifactHandler) SetArtifacts(a *Artifacts) { h.artifacts = a }
 func (h *artifactHandler) Operations() []string      { return []string{"install", "installed"} }
-func (h *artifactHandler) Invoke(ctx context.Context, c InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+
+func (h *artifactHandler) Invoke(
+	ctx context.Context,
+	c InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	var value string
 	var err error
 	if c.Request.Operation == "install" {
-		value, err = h.artifacts.Install(ctx, commandwire.ArtifactInstall{Invocation: c.Request.InvocationID, Name: "tool", Version: "1", SHA256: strings.Repeat("a", 64), Size: 1, Form: &commandwire.ArtifactFile{}})
+		value, err = h.artifacts.Install(
+			ctx,
+			commandwire.ArtifactInstall{
+				Invocation: c.Request.InvocationID,
+				Name:       "tool",
+				Version:    "1",
+				SHA256:     strings.Repeat("a", 64),
+				Size:       1,
+				Form:       &commandwire.ArtifactFile{},
+			},
+		)
 	} else {
 		var installed []commandwire.InstalledArtifact
 		installed, err = h.artifacts.Installed(ctx, "tool")
@@ -196,6 +230,7 @@ func (h *artifactHandler) Invoke(ctx context.Context, c InvocationContext[comman
 	}
 	return commandwire.Completion{}, c.Output.Stdout(ctx, []byte(value))
 }
+
 func TestArtifactsUseRunnerAnswersAndEndAtShutdown(t *testing.T) {
 	h := &artifactHandler{}
 	c, done := connected(t, h)
@@ -205,7 +240,10 @@ func TestArtifactsUseRunnerAnswersAndEndAtShutdown(t *testing.T) {
 	must(t, err)
 	answered := make(chan error, 1)
 	go func() {
-		answered <- stream.AnswerArtifacts(t.Context(), func(_ context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
+		answered <- stream.AnswerArtifacts(t.Context(), func(
+			_ context.Context,
+			q commandwire.ArtifactRequest,
+		) (commandwire.ArtifactAnswer, error) {
 			path := "/runner/installed/tool"
 			if q.Install != nil {
 				if q.Install.Invocation != "install" {
@@ -237,6 +275,7 @@ func TestArtifactsUseRunnerAnswersAndEndAtShutdown(t *testing.T) {
 		t.Fatal("source survived shutdown")
 	}
 }
+
 func TestSideStreamRefusesBeyond32InFlight(t *testing.T) {
 	h := &drawing{drawing: make(chan struct{}, 1)}
 	c, done := connected(t, h)
@@ -248,7 +287,10 @@ func TestSideStreamRefusesBeyond32InFlight(t *testing.T) {
 	release := make(chan struct{})
 	answered := make(chan error, 1)
 	go func() {
-		answered <- stream.AnswerNumbers(t.Context(), func(ctx context.Context, _ commandwire.NumbersRequest) (uint64, error) {
+		answered <- stream.AnswerNumbers(t.Context(), func(
+			ctx context.Context,
+			_ commandwire.NumbersRequest,
+		) (uint64, error) {
 			started <- struct{}{}
 			select {
 			case <-release:
@@ -292,6 +334,7 @@ func (h *stubborn) Invoke(context.Context, InvocationContext[commandwire.Invocat
 	close(h.finished)
 	return commandwire.Completion{}, nil
 }
+
 func TestCancellationDeadlineRequiresServiceRetirement(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := &stubborn{started: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{})}
@@ -314,6 +357,7 @@ func TestCancellationDeadlineRequiresServiceRetirement(t *testing.T) {
 		}
 	})
 }
+
 func TestConnectUsesCallerDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		left, right := net.Pipe()
@@ -340,16 +384,20 @@ func TestInfoUsesCallerDeadline(t *testing.T) {
 				left, right := net.Pipe()
 				listener := &oneListener{conn: right, closed: make(chan struct{})}
 				handled := make(chan struct{})
-				server := &http.Server{Protocols: protocols(), HTTP2: h2Config(false), Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					defer close(handled)
-					if headers {
-						w.WriteHeader(http.StatusOK)
-						if err := http.NewResponseController(w).Flush(); err != nil {
-							return
+				server := &http.Server{
+					Protocols: protocols(),
+					HTTP2:     h2Config(false),
+					Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						defer close(handled)
+						if headers {
+							w.WriteHeader(http.StatusOK)
+							if err := http.NewResponseController(w).Flush(); err != nil {
+								return
+							}
 						}
-					}
-					<-r.Context().Done()
-				})}
+						<-r.Context().Done()
+					}),
+				}
 				served := make(chan error, 1)
 				go func() { served <- server.Serve(listener) }()
 				defer func() {
@@ -386,7 +434,11 @@ type numberPeer struct {
 }
 
 func (*numberPeer) Operations() []string { return []string{"numbers-peer"} }
-func (p *numberPeer) Invoke(ctx context.Context, c InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+
+func (p *numberPeer) Invoke(
+	ctx context.Context,
+	c InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	request := []byte(`{"id":7,"conversation":"one","sequence":"tab","count":1}`)
 	if err := c.Output.Stdout(ctx, request); err != nil {
 		return commandwire.Completion{}, err

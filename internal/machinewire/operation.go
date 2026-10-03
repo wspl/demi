@@ -35,7 +35,9 @@ type operationResult interface{ operationResult() }
 
 // decodeResultFor selects the result schema from the outstanding operation.
 func decodeResultFor[T any](op string, data []byte, decode func([]byte) (T, error)) (T, error) {
-	envelope, err := contract.EncodeObject([]contract.Field{{Name: "op", Value: op}, {Name: "result", Value: json.RawMessage(data)}})
+	envelope, err := contract.EncodeObject(
+		[]contract.Field{{Name: "op", Value: op}, {Name: "result", Value: json.RawMessage(data)}},
+	)
 	if err != nil {
 		var zero T
 		return zero, err
@@ -44,8 +46,7 @@ func decodeResultFor[T any](op string, data []byte, decode func([]byte) (T, erro
 }
 
 // +demi:variant operationResult reconcile
-type reconcileResult struct {
-}
+type reconcileResult struct{}
 
 // Call identifies the operation and carries its parameters.
 func (p ReconcileParams) Call() MachineCall { return &Reconcile{Params: p} }
@@ -112,8 +113,7 @@ func (RuntimeStateParams) DecodeOutput(data []byte) (RuntimeState, error) {
 }
 
 // +demi:variant operationResult wake
-type wakeResult struct {
-}
+type wakeResult struct{}
 
 // Call identifies the operation and carries its parameters.
 func (p WakeParams) Call() MachineCall { return &Wake{Params: p} }
@@ -125,8 +125,7 @@ func (WakeParams) DecodeOutput(data []byte) (Unit, error) {
 }
 
 // +demi:variant operationResult hibernate
-type hibernateResult struct {
-}
+type hibernateResult struct{}
 
 // Call identifies the operation and carries its parameters.
 func (p HibernateParams) Call() MachineCall { return &Hibernate{Params: p} }
@@ -138,8 +137,7 @@ func (HibernateParams) DecodeOutput(data []byte) (Unit, error) {
 }
 
 // +demi:variant operationResult checkpoint
-type checkpointResult struct {
-}
+type checkpointResult struct{}
 
 // Call identifies the operation and carries its parameters.
 func (p CheckpointParams) Call() MachineCall { return &Checkpoint{Params: p} }
@@ -151,8 +149,7 @@ func (CheckpointParams) DecodeOutput(data []byte) (Unit, error) {
 }
 
 // +demi:variant operationResult grow_volume
-type growVolumeResult struct {
-}
+type growVolumeResult struct{}
 
 // Call identifies the operation and carries its parameters.
 func (p GrowVolumeParams) Call() MachineCall { return &GrowVolume{Params: p} }
@@ -164,8 +161,7 @@ func (GrowVolumeParams) DecodeOutput(data []byte) (Unit, error) {
 }
 
 // +demi:variant operationResult reset
-type resetResult struct {
-}
+type resetResult struct{}
 
 // Call identifies the operation and carries its parameters.
 func (p ResetParams) Call() MachineCall { return &Reset{Params: p} }

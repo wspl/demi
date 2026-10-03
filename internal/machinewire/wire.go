@@ -35,8 +35,7 @@ type MachineCall interface {
 // the network policy again.
 // +demi:root
 // +demi:tolerant
-type ReconcileParams struct {
-}
+type ReconcileParams struct{}
 
 // +demi:variant MachineCall reconcile
 // +demi:tolerant
@@ -46,14 +45,13 @@ type Reconcile struct {
 
 func (*Reconcile) machineCall() {}
 
-// The operation's name on the wire, such as `grow_volume`.
+// Name returns the operation's name on the wire, such as grow_volume.
 func (*Reconcile) Name() string { return "reconcile" }
 
 // Read the configured base.
 // +demi:root
 // +demi:tolerant
-type CurrentBaseVersionParams struct {
-}
+type CurrentBaseVersionParams struct{}
 
 // +demi:variant MachineCall current_base_version
 // +demi:tolerant
@@ -63,7 +61,7 @@ type CurrentBaseVersion struct {
 
 func (*CurrentBaseVersion) machineCall() {}
 
-// The operation's name on the wire, such as `grow_volume`.
+// Name returns the operation's name on the wire, such as grow_volume.
 func (*CurrentBaseVersion) Name() string { return "current_base_version" }
 
 // Read a device's committed generation.
@@ -82,7 +80,7 @@ type ImageState struct {
 
 func (*ImageState) machineCall() {}
 
-// The operation's name on the wire, such as `grow_volume`.
+// Name returns the operation's name on the wire, such as grow_volume.
 func (*ImageState) Name() string { return "image_state" }
 
 // Read whether the manager runs a sandbox for a device, after the device's
@@ -102,7 +100,7 @@ type RuntimeStateCall struct {
 
 func (*RuntimeStateCall) machineCall() {}
 
-// The operation's name on the wire, such as `grow_volume`.
+// Name returns the operation's name on the wire, such as grow_volume.
 func (*RuntimeStateCall) Name() string { return "runtime_state" }
 
 // Create first-use storage or recover existing storage, then start one
@@ -124,7 +122,7 @@ type Wake struct {
 
 func (*Wake) machineCall() {}
 
-// The operation's name on the wire, such as `grow_volume`.
+// Name returns the operation's name on the wire, such as grow_volume.
 func (*Wake) Name() string { return "wake" }
 
 // Stop execution, save storage and release runtime resources.
@@ -143,7 +141,7 @@ type Hibernate struct {
 
 func (*Hibernate) machineCall() {}
 
-// The operation's name on the wire, such as `grow_volume`.
+// Name returns the operation's name on the wire, such as grow_volume.
 func (*Hibernate) Name() string { return "hibernate" }
 
 // Publish the running device's storage while preserving its processes.
@@ -162,7 +160,7 @@ type Checkpoint struct {
 
 func (*Checkpoint) machineCall() {}
 
-// The operation's name on the wire, such as `grow_volume`.
+// Name returns the operation's name on the wire, such as grow_volume.
 func (*Checkpoint) Name() string { return "checkpoint" }
 
 // Grow one of the running device's filesystems to at least `bytes`.
@@ -184,7 +182,7 @@ type GrowVolume struct {
 
 func (*GrowVolume) machineCall() {}
 
-// The operation's name on the wire, such as `grow_volume`.
+// Name returns the operation's name on the wire, such as grow_volume.
 func (*GrowVolume) Name() string { return "grow_volume" }
 
 // Publish a clean system on `base_version` with the retained home, once
@@ -208,7 +206,7 @@ type Reset struct {
 
 func (*Reset) machineCall() {}
 
-// The operation's name on the wire, such as `grow_volume`.
+// Name returns the operation's name on the wire, such as grow_volume.
 func (*Reset) Name() string { return "reset" }
 
 // A message from the manager: the reply to a request, or the death of a

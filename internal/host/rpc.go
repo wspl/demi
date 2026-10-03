@@ -78,7 +78,10 @@ type RPCError struct {
 	Err     error
 }
 
+// Error returns the failure message.
 func (e *RPCError) Error() string { return e.Message }
+
+// Unwrap returns the underlying failure.
 func (e *RPCError) Unwrap() error { return e.Err }
 
 // PortErrorKind classifies a failed port operation.
@@ -99,12 +102,15 @@ type PortError struct {
 	Err             error
 }
 
+// Error returns the failure message.
 func (e *PortError) Error() string {
 	if e.Kind == UnexpectedReply {
 		return fmt.Sprintf("the rpc port answered %s to a %s request", e.Answered, e.Asked)
 	}
 	return e.Message
 }
+
+// Unwrap returns the underlying failure.
 func (e *PortError) Unwrap() error { return e.Err }
 
 // One request of a handler through its port.
@@ -328,7 +334,14 @@ func (p RPCPort) Storage(ctx context.Context, op StorageOp) (StorageReply, error
 
 // Update reads, computes and conditionally writes, retrying on revision conflicts.
 // Decode and encode are generated contract codecs. Change performs no other IO.
-func Update[T any](ctx context.Context, p RPCPort, key string, decode func([]byte) (T, error), encode func(T) ([]byte, error), change func(*T) (T, error)) (T, error) {
+func Update[T any](
+	ctx context.Context,
+	p RPCPort,
+	key string,
+	decode func([]byte) (T, error),
+	encode func(T) ([]byte, error),
+	change func(*T) (T, error),
+) (T, error) {
 	var zero T
 	for {
 		stored, err := p.Storage(ctx, &StorageRead{Key: key})
@@ -343,7 +356,11 @@ func Update[T any](ctx context.Context, p RPCPort, key string, decode func([]byt
 		if len(value.Value) != 0 && !contract.IsNull(value.Value) {
 			decoded, err := decode(value.Value)
 			if err != nil {
-				return zero, &RPCError{Kind: HandlerFailed, Message: fmt.Sprintf("stored %s is unreadable: %v", key, err), Err: err}
+				return zero, &RPCError{
+					Kind:    HandlerFailed,
+					Message: fmt.Sprintf("stored %s is unreadable: %v", key, err),
+					Err:     err,
+				}
 			}
 			current = &decoded
 		}
@@ -353,7 +370,11 @@ func Update[T any](ctx context.Context, p RPCPort, key string, decode func([]byt
 		}
 		data, err := encode(next)
 		if err != nil {
-			return zero, &RPCError{Kind: HandlerFailed, Message: fmt.Sprintf("%s cannot be stored: %v", key, err), Err: err}
+			return zero, &RPCError{
+				Kind:    HandlerFailed,
+				Message: fmt.Sprintf("%s cannot be stored: %v", key, err),
+				Err:     err,
+			}
 		}
 		raw := json.RawMessage(data)
 		reply, err := p.Storage(ctx, &StorageWriteIf{Key: key, Value: raw, Expected: &value.Revision})
@@ -408,11 +429,22 @@ type Call[A any] struct {
 }
 
 // TypedRPC adapts a handler using its generated argument decoder.
-func TypedRPC[A any](decode func([]byte) (A, error), run func(context.Context, Call[A], RPCPort) (uint8, error)) RPCHandlerFunc {
+func TypedRPC[A any](
+	decode func([]byte) (A, error),
+	run func(context.Context, Call[A], RPCPort) (uint8, error),
+) RPCHandlerFunc {
 	return RPCHandlerFunc(func(ctx context.Context, invocation RPCInvocation, port RPCPort) (uint8, error) {
 		args, err := decode(invocation.Args)
 		if err != nil {
-			return 0, &RPCError{Kind: HandlerFailed, Message: fmt.Sprintf("the arguments of %q do not decode as declared: %v", strings.Join(invocation.Path, " "), err), Err: err}
+			return 0, &RPCError{
+				Kind: HandlerFailed,
+				Message: fmt.Sprintf(
+					"the arguments of %q do not decode as declared: %v",
+					strings.Join(invocation.Path, " "),
+					err,
+				),
+				Err: err,
+			}
 		}
 		return run(ctx, Call[A]{Args: args, Invocation: invocation}, port)
 	})

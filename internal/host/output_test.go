@@ -22,14 +22,29 @@ func pieceLines(pieces iter.Seq[host.Piece]) []string {
 	}
 	return lines
 }
+
 func TestGapKeepsRawLineNumbering(t *testing.T) {
 	gap := uint64(9)
-	whole := host.WholeOutput{Records: []host.OutputRecord{{Stream: "stdout", Bytes: []byte("one\ntw")}, {LeftOut: &gap}, {Stream: "stderr", Bytes: []byte("o\nthree\n")}}, Missing: &host.Missing{Bytes: 4, Reason: "lost with the Host's connection"}}
+	whole := host.WholeOutput{
+		Records: []host.OutputRecord{
+			{Stream: "stdout", Bytes: []byte("one\ntw")},
+			{LeftOut: &gap},
+			{Stream: "stderr", Bytes: []byte("o\nthree\n")},
+		},
+		Missing: &host.Missing{Bytes: 4, Reason: "lost with the Host's connection"},
+	}
 	text := whole.Text(host.Both, nil, host.Seen{})
 	if string(text.Bytes()) != "one\ntwo\nthree\n" || text.LineCount() != 3 {
 		t.Fatalf("raw: %q, count %d", text.Bytes(), text.LineCount())
 	}
-	forward := []string{"1:one", "2:tw", "[... 9 bytes left out ...]", "2:o", "3:three", "[... 4 bytes lost with the Host's connection ...]"}
+	forward := []string{
+		"1:one",
+		"2:tw",
+		"[... 9 bytes left out ...]",
+		"2:o",
+		"3:three",
+		"[... 4 bytes lost with the Host's connection ...]",
+	}
 	if got := pieceLines(text.Forward(1)); !reflect.DeepEqual(got, forward) {
 		t.Fatalf("forward: %q", got)
 	}
@@ -41,9 +56,16 @@ func TestGapKeepsRawLineNumbering(t *testing.T) {
 		t.Fatalf("backward: %q", got)
 	}
 }
+
 func TestGapCutTextIsNotBinary(t *testing.T) {
 	gap := uint64(3)
-	cut := host.WholeOutput{Records: []host.OutputRecord{{Stream: "stdout", Bytes: []byte("ok \xc3")}, {LeftOut: &gap}, {Stream: "stdout", Bytes: []byte("\xbc!")}}}
+	cut := host.WholeOutput{
+		Records: []host.OutputRecord{
+			{Stream: "stdout", Bytes: []byte("ok \xc3")},
+			{LeftOut: &gap},
+			{Stream: "stdout", Bytes: []byte("\xbc!")},
+		},
+	}
 	if got := cut.BinaryStdout(9, 100); got != nil {
 		t.Fatalf("cut text classified binary: %+v", got)
 	}
@@ -61,9 +83,18 @@ func TestGapCutTextIsNotBinary(t *testing.T) {
 		}
 	}
 }
+
 func TestOutputReadersPreserveStreamsSeenAndNotes(t *testing.T) {
 	gap := uint64(7)
-	whole := host.WholeOutput{Records: []host.OutputRecord{{Stream: "stdout", Bytes: []byte("aé\n")}, {Stream: "stderr", Bytes: []byte("err")}, {LeftOut: &gap}, {Stream: "stdout", Bytes: []byte("end\n")}}, Missing: &host.Missing{Bytes: 2, Reason: "missing"}}
+	whole := host.WholeOutput{
+		Records: []host.OutputRecord{
+			{Stream: "stdout", Bytes: []byte("aé\n")},
+			{Stream: "stderr", Bytes: []byte("err")},
+			{LeftOut: &gap},
+			{Stream: "stdout", Bytes: []byte("end\n")},
+		},
+		Missing: &host.Missing{Bytes: 2, Reason: "missing"},
+	}
 	text := whole.Text(host.Both, nil, host.Seen{Stdout: 4, Stderr: 1})
 	if at, ok := text.Unseen(); !ok || at != 5 {
 		t.Fatalf("unseen %d %v", at, ok)
@@ -75,7 +106,10 @@ func TestOutputReadersPreserveStreamsSeenAndNotes(t *testing.T) {
 		t.Fatal("line locations do not match raw bytes")
 	}
 	chunks := text.Chunks(4)
-	if len(chunks) != 4 || chunks[0].Stream != "stderr" || chunks[0].Text != "err" || chunks[1].Text != "\n[... 7 bytes left out ...]\n" || chunks[2].Stream != "stdout" || chunks[3].Text != "[... 2 bytes missing ...]\n" {
+	if len(chunks) != 4 || chunks[0].Stream != "stderr" || chunks[0].Text != "err" ||
+		chunks[1].Text != "\n[... 7 bytes left out ...]\n" ||
+		chunks[2].Stream != "stdout" ||
+		chunks[3].Text != "[... 2 bytes missing ...]\n" {
 		t.Fatalf("chunks %+v", chunks)
 	}
 	stdout := whole.Text(host.OnlyStdout, nil, host.Seen{})
@@ -94,7 +128,28 @@ func TestOutputReadersPreserveStreamsSeenAndNotes(t *testing.T) {
 }
 
 func TestOutputLossyUTF8MatchesSequenceBoundaries(t *testing.T) {
-	for _, tc := range []struct{ raw, want string }{{"\xe1\x80x", "�x"}, {"\xf0\x90\x80x", "�x"}, {"\xc3", "�"}, {"\xe0\x80x", "��x"}, {"\xff\xff", "��"}} {
+	for _, tc := range []struct{ raw, want string }{
+		{
+			"\xe1\x80x",
+			"�x",
+		},
+		{
+			"\xf0\x90\x80x",
+			"�x",
+		},
+		{
+			"\xc3",
+			"�",
+		},
+		{
+			"\xe0\x80x",
+			"��x",
+		},
+		{
+			"\xff\xff",
+			"��",
+		},
+	} {
 		output := host.WholeOutput{Records: []host.OutputRecord{{Stream: "stderr", Bytes: []byte(tc.raw)}}}
 		text := output.Text(host.Both, nil, host.Seen{})
 		got := text.Display()

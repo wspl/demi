@@ -44,8 +44,7 @@ type HelloError struct {
 }
 
 // +demi:variant Inbound ping
-type Ping struct {
-}
+type Ping struct{}
 
 // Flush writable filesystems before the guest is stopped; `sync_done`
 // answers.

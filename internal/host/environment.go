@@ -174,6 +174,7 @@ type ShellError struct {
 	Command core.CommandID
 }
 
+// Error returns the failure message.
 func (e *ShellError) Error() string {
 	switch e.Kind {
 	case UnknownShell:

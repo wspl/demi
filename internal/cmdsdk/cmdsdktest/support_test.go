@@ -31,13 +31,16 @@ func TestLocalSourcesOwnCleanupAndPreserveAnswers(t *testing.T) {
 				t.Fatalf("draw %d: %v", first, err)
 			}
 		}
-		artifacts = cmdsdktest.ArtifactsFrom(t, func(_ context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
-			if q.Installed.Name == "failed" {
-				return commandwire.ArtifactAnswer{}, errors.New("unavailable")
-			}
-			values := []commandwire.InstalledArtifact{}
-			return commandwire.ArtifactAnswer{Installed: &values}, nil
-		})
+		artifacts = cmdsdktest.ArtifactsFrom(
+			t,
+			func(_ context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
+				if q.Installed.Name == "failed" {
+					return commandwire.ArtifactAnswer{}, errors.New("unavailable")
+				}
+				values := []commandwire.InstalledArtifact{}
+				return commandwire.ArtifactAnswer{Installed: &values}, nil
+			},
+		)
 		values, err := artifacts.Installed(t.Context(), "empty")
 		if err != nil || len(values) != 0 {
 			t.Fatalf("installed: %v %v", values, err)

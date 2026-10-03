@@ -39,7 +39,9 @@ func TestBuildersPreserveRustPluginDeclarations(t *testing.T) {
 			if err = commands.Register(host.Group("demi", "Demi.", declared)); err != nil {
 				t.Fatal(err)
 			}
-			actual, err := contract.EncodeJSON(commands.Declarations()[0].(*declare.Group[declare.NativeOperation]).Subcommands[0])
+			actual, err := contract.EncodeJSON(
+				commands.Declarations()[0].(*declare.Group[declare.NativeOperation]).Subcommands[0],
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -70,14 +72,17 @@ func rebuildDeclaration(t *testing.T, node declare.Node[declare.NativeOperation]
 	case *declare.Leaf[declare.NativeOperation]:
 		var handler host.RPCHandler
 		if _, rpc := node.Kind.(*declare.RPC[declare.NativeOperation]); rpc {
-			handler = host.RPCHandlerFunc(func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 0, nil })
+			handler = host.RPCHandlerFunc(
+				func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 0, nil },
+			)
 		}
 		declared := host.Leaf(*node, handler)
 		if node.Input != nil {
 			// The Rust browser adds a leaf-specific default to this field's type documentation.
 			properties := node.Properties()
 			if timeout, ok := properties["timeout"].(map[string]any); ok {
-				if description, ok := timeout["description"].(string); ok && strings.HasPrefix(description, "Whole operation deadline in milliseconds; default ") {
+				if description, ok := timeout["description"].(string); ok &&
+					strings.HasPrefix(description, "Whole operation deadline in milliseconds; default ") {
 					declared = declared.Describe("timeout", "Whole operation deadline in milliseconds")
 					declared = declared.Describe("timeout", description)
 				}

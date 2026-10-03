@@ -2,7 +2,7 @@ package machinewire
 
 import "fmt"
 
-// Whether `value` may name a device, a generation or a base: one or more
+// IsImageName reports whether value may name a device, a generation or a base: one or more
 // ASCII letters, digits, `_` or `-`. Such a name is always one path
 // component, so it names a directory under the manager's state directory.
 func IsImageName(value string) bool {
@@ -10,7 +10,7 @@ func IsImageName(value string) bool {
 	return err == nil
 }
 
-// The recorded capacity of `volume`.
+// Bytes returns the recorded capacity of volume.
 func (s MachineImageState) Bytes(volume Volume) (uint64, error) {
 	switch volume {
 	case VolumeSystem:
@@ -22,7 +22,7 @@ func (s MachineImageState) Bytes(volume Volume) (uint64, error) {
 	}
 }
 
-// The record with `volume`'s capacity replaced.
+// WithBytes returns the record with volume's capacity replaced.
 func (s MachineImageState) WithBytes(volume Volume, size uint64) (MachineImageState, error) {
 	if size == 0 {
 		return MachineImageState{}, fmt.Errorf("volume capacity must be nonzero")
@@ -38,5 +38,5 @@ func (s MachineImageState) WithBytes(volume Volume, size uint64) (MachineImageSt
 	return s, nil
 }
 
-// Both volumes, system first.
+// Volumes returns both volumes, system first.
 func Volumes() [2]Volume { return [2]Volume{VolumeSystem, VolumeHome} }

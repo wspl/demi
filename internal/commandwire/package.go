@@ -195,9 +195,13 @@ func (p PackageDescriptor) TargetArtifact(target TargetTriple) (PackageArtifact,
 // HostTarget returns the native release triple for this build.
 func HostTarget() (TargetTriple, error) {
 	arch := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[runtime.GOARCH]
-	os := map[string]string{"darwin": "apple-darwin", "linux": "unknown-linux-musl", "windows": "pc-windows-msvc"}[runtime.GOOS]
-	if arch == "" || os == "" {
+	system := map[string]string{
+		"darwin":  "apple-darwin",
+		"linux":   "unknown-linux-musl",
+		"windows": "pc-windows-msvc",
+	}[runtime.GOOS]
+	if arch == "" || system == "" {
 		return "", fmt.Errorf("unsupported platform %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	return TargetTriple(arch + "-" + os), nil
+	return TargetTriple(arch + "-" + system), nil
 }

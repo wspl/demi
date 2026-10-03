@@ -30,7 +30,10 @@ func ParseBackendURL(value string) (BackendURL, error) {
 // checkBackendURL checks the installation identity after WHATWG parsing.
 func checkBackendURL(parsed *url.Url) error {
 	scheme := parsed.Scheme()
-	if (scheme != "http" && scheme != "https" && scheme != "ws" && scheme != "wss") || parsed.Hostname() == "" || parsed.Username() != "" || parsed.Password() != "" || strings.Contains(parsed.Href(false), "#") {
+	if (scheme != "http" && scheme != "https" && scheme != "ws" && scheme != "wss") || parsed.Hostname() == "" ||
+		parsed.Username() != "" ||
+		parsed.Password() != "" ||
+		strings.Contains(parsed.Href(false), "#") {
 		return fmt.Errorf("invalid backend URL")
 	}
 	return nil
@@ -59,7 +62,7 @@ func (u BackendURL) String() string { return u.value }
 type DeviceToken string
 
 // Expose returns the credential itself, for the header or file that carries it.
-func (token DeviceToken) Expose() string { return string(token) }
+func (t DeviceToken) Expose() string { return string(t) }
 
 // Format keeps credentials out of formatted diagnostics, including %+v and %#v.
 func (DeviceToken) Format(state fmt.State, _ rune) {
@@ -110,20 +113,20 @@ func DecodeManagedBoot(data []byte) (ManagedBoot, error) {
 }
 
 // MarshalJSON writes the boot record through its generated contract encoder.
-func (boot ManagedBoot) MarshalJSON() ([]byte, error) {
-	if _, err := ParseBackendURL(boot.BackendURL.value); err != nil {
+func (b ManagedBoot) MarshalJSON() ([]byte, error) {
+	if _, err := ParseBackendURL(b.BackendURL.value); err != nil {
 		return nil, err
 	}
-	return contract.EncodeJSON(rawManagedBoot{BackendURL: boot.BackendURL.value, DeviceToken: boot.DeviceToken})
+	return contract.EncodeJSON(rawManagedBoot{BackendURL: b.BackendURL.value, DeviceToken: b.DeviceToken})
 }
 
 // UnmarshalJSON uses the same generated boundary as DecodeManagedBoot.
-func (boot *ManagedBoot) UnmarshalJSON(data []byte) error {
+func (b *ManagedBoot) UnmarshalJSON(data []byte) error {
 	value, err := DecodeManagedBoot(data)
 	if err != nil {
 		return err
 	}
-	*boot = value
+	*b = value
 	return nil
 }
 
