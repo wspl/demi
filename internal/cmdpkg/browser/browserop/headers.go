@@ -10,25 +10,36 @@ import (
 
 // Header sizes and the video tab identity field size, in bytes.
 const (
+	// VideoHeaderBytes is the length of the video frame header.
 	VideoHeaderBytes = 40
-	VideoTabBytes    = 16
-	FileHeaderBytes  = 8
+	// VideoTabBytes is the length of the padded video tab identity.
+	VideoTabBytes = 16
+	// FileHeaderBytes is the length of the file frame header.
+	FileHeaderBytes = 8
+	// FrameHeaderBytes is the length of the encoded capture frame header.
 	FrameHeaderBytes = 32
 )
 
-// A video frame's header, big-endian: the tab ID (ASCII, padded with zero
+// VideoHeader is a video frame's header, big-endian: the tab ID (ASCII, padded with zero
 // bytes to 16), the stream generation (u32), the sequence number (u32),
 // flags (u8, 1 = key frame), three reserved bytes, the timestamp in
 // microseconds (f64), and the picture's width and height in pixels (u16
 // each).
 type VideoHeader struct {
-	Tab        TabID
+	// Tab is the public tab identity.
+	Tab TabID
+	// Generation is the video stream generation.
 	Generation uint32
-	Sequence   uint32
-	Key        bool
-	Timestamp  float64
-	Width      uint16
-	Height     uint16
+	// Sequence is the frame sequence number.
+	Sequence uint32
+	// Key is whether the frame is a key frame.
+	Key bool
+	// Timestamp is the frame timestamp in microseconds.
+	Timestamp float64
+	// Width is the picture width in pixels.
+	Width uint16
+	// Height is the picture height in pixels.
+	Height uint16
 }
 
 // Append appends the header to dst, refusing an invalid public tab identity.
@@ -73,11 +84,13 @@ func SplitVideoFrame(payload []byte) (VideoHeader, []byte, error) {
 	}, payload[VideoHeaderBytes:], nil
 }
 
-// A file frame's header, big-endian: the upload (u32) and the file's index
+// FileHeader is a file frame's header, big-endian: the upload (u32) and the file's index
 // in it (u32).
 type FileHeader struct {
+	// Upload is the upload identity.
 	Upload uint32
-	File   uint32
+	// File is the file index in the upload.
+	File uint32
 }
 
 // SplitFileFrame splits a file frame's payload into its header and data.
@@ -91,17 +104,23 @@ func SplitFileFrame(payload []byte) (FileHeader, []byte, error) {
 	}, payload[FileHeaderBytes:], nil
 }
 
-// An encoded frame's header, big-endian: the capture (u32), the sequence
+// FrameHeader is an encoded frame's header, big-endian: the capture (u32), the sequence
 // number (u32), flags (u8, 1 = key frame), three reserved bytes, the
 // timestamp in microseconds (f64), the picture's width and height in pixels
 // (u16 each), and eight reserved bytes.
 type FrameHeader struct {
-	Capture   uint32
-	Sequence  uint32
-	Key       bool
+	// Capture is the capture identity.
+	Capture uint32
+	// Sequence is the frame sequence number.
+	Sequence uint32
+	// Key is whether the frame is a key frame.
+	Key bool
+	// Timestamp is the frame timestamp in microseconds.
 	Timestamp float64
-	Width     uint16
-	Height    uint16
+	// Width is the picture width in pixels.
+	Width uint16
+	// Height is the picture height in pixels.
+	Height uint16
 }
 
 // SplitCaptureFrame splits a binary message into its header and H.264 data.

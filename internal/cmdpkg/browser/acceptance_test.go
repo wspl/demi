@@ -40,9 +40,14 @@ func chromeFixture(t *testing.T) *browserFixture {
 	}
 	f := &browserFixture{s: newService(), root: t.TempDir(), conversation: "acceptance"}
 	f.s.SetNumbers(cmdsdktest.CountingNumbers(t))
-	f.s.SetArtifacts(cmdsdktest.ArtifactsFrom(t, func(_ context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
-		return commandwire.ArtifactAnswer{ID: q.ID, Path: &executable}, nil
-	}))
+	f.s.SetArtifacts(
+		cmdsdktest.ArtifactsFrom(
+			t,
+			func(_ context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
+				return commandwire.ArtifactAnswer{ID: q.ID, Path: &executable}, nil
+			},
+		),
+	)
 	headers := make(chan http.Header, 16)
 	f.headers = headers
 	site := browserSite(t)
@@ -94,6 +99,7 @@ func (f *browserFixture) result(t *testing.T, operation, args string) (commandwi
 	}
 	return call(t, f.s, request)
 }
+
 func (f *browserFixture) call(t *testing.T, operation, args string) []byte {
 	t.Helper()
 	completion, stdout, stderr := f.result(t, operation, args)
@@ -102,6 +108,7 @@ func (f *browserFixture) call(t *testing.T, operation, args string) []byte {
 	}
 	return stdout
 }
+
 func (f *browserFixture) failure(t *testing.T, operation, args, code string) browserop.FailureDocument {
 	t.Helper()
 	completion, _, stderr := f.result(t, operation, args)
@@ -111,6 +118,7 @@ func (f *browserFixture) failure(t *testing.T, operation, args, code string) bro
 	}
 	return failure
 }
+
 func (f *browserFixture) open(t *testing.T, name string) browserop.TabID {
 	t.Helper()
 	result, err := browserop.DecodeOpenResult(f.call(t, "open", browserArgs(t, `{"url":$0}`, f.url+"/"+name)))
@@ -119,6 +127,7 @@ func (f *browserFixture) open(t *testing.T, name string) browserop.TabID {
 	}
 	return result.Tab
 }
+
 func (f *browserFixture) tabs(t *testing.T) []browserop.BrowserTab {
 	t.Helper()
 	result, err := browserop.DecodeTabsResult(f.call(t, "tabs", `{}`))
@@ -127,9 +136,12 @@ func (f *browserFixture) tabs(t *testing.T) []browserop.BrowserTab {
 	}
 	return result.Tabs
 }
+
 func (f *browserFixture) read(t *testing.T, tab browserop.TabID, css, property string) json.RawMessage {
 	t.Helper()
-	result, err := browserop.DecodeReadResult(f.call(t, "read", browserArgs(t, `{"tab":$0,"css":$1,"property":$2}`, tab, css, property)))
+	result, err := browserop.DecodeReadResult(
+		f.call(t, "read", browserArgs(t, `{"tab":$0,"css":$1,"property":$2}`, tab, css, property)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +168,9 @@ func TestConversationBrowserCommandsShareStateAndRetire(t *testing.T) {
 	}
 	f.failure(t, "eval", browserArgs(t, `{"tab":$0,"expression":"window.sideEffects++"}`, tab), "side_effect_rejected")
 	f.call(t, "click", browserArgs(t, `{"tab":$0,"css":"#normal"}`, tab))
-	value, err := browserop.DecodeEvalResult(f.call(t, "eval", browserArgs(t, `{"tab":$0,"expression":"normalClicks"}`, tab)))
+	value, err := browserop.DecodeEvalResult(
+		f.call(t, "eval", browserArgs(t, `{"tab":$0,"expression":"normalClicks"}`, tab)),
+	)
 	if err != nil || string(value.Value) != "1" {
 		t.Fatalf("%+v %v", value, err)
 	}
@@ -217,22 +231,33 @@ func TestFetchReturnsInputOrderAndReleasesBatchTabs(t *testing.T) {
 	f := chromeFixture(t)
 	retained := f.open(t, "upload.html")
 	urls := []string{f.url + "/assets.html", f.url + "/download.html"}
-	result, err := browserop.DecodeContentFetchResult(f.call(t, "content.fetch", browserArgs(t, `{"url":$0,"format":"html"}`, urls)))
+	result, err := browserop.DecodeContentFetchResult(
+		f.call(t, "content.fetch", browserArgs(t, `{"url":$0,"format":"html"}`, urls)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Pages) != 2 || result.Pages[0].RequestedURL != urls[0] || result.Pages[1].RequestedURL != urls[1] || result.Pages[0].Title != "Assets fixture" || !strings.Contains(result.Pages[1].Content, "Delayed save") {
+	if len(result.Pages) != 2 || result.Pages[0].RequestedURL != urls[0] || result.Pages[1].RequestedURL != urls[1] ||
+		result.Pages[0].Title != "Assets fixture" ||
+		!strings.Contains(result.Pages[1].Content, "Delayed save") {
 		t.Fatalf("%+v", result)
 	}
 	rows := f.tabs(t)
 	if len(rows) != 1 || rows[0].ID != retained {
 		t.Fatal(rows)
 	}
-	dom, err := browserop.DecodeContentFetchResult(f.call(t, "content.fetch", browserArgs(t, `{"url":$0,"format":"dom"}`, urls[:1])))
+	dom, err := browserop.DecodeContentFetchResult(
+		f.call(t, "content.fetch", browserArgs(t, `{"url":$0,"format":"dom"}`, urls[:1])),
+	)
 	if err != nil || len(dom.Pages) != 1 || dom.Pages[0].Content == "" {
 		t.Fatalf("%+v %v", dom, err)
 	}
-	f.failure(t, "content.fetch", browserArgs(t, `{"url":$0}`, []string{urls[0], "javascript:alert(1)"}), "invalid_input")
+	f.failure(
+		t,
+		"content.fetch",
+		browserArgs(t, `{"url":$0}`, []string{urls[0], "javascript:alert(1)"}),
+		"invalid_input",
+	)
 	if len(f.tabs(t)) != 1 {
 		t.Fatal("batch tabs leaked")
 	}
@@ -248,7 +273,18 @@ func TestAssetsExportObservedContentAndKeepPartialSuccess(t *testing.T) {
 	if len(inventory.Assets) == 0 || len(inventory.InlineSvgs) != 1 {
 		t.Fatalf("%+v", inventory)
 	}
-	result, err := browserop.DecodeAssetsExportResult(f.call(t, "assets.export", browserArgs(t, `{"tab":$0,"inventory":$1,"kind":["image"],"output-dir":"assets"}`, tab, inventory.Inventory)))
+	result, err := browserop.DecodeAssetsExportResult(
+		f.call(
+			t,
+			"assets.export",
+			browserArgs(
+				t,
+				`{"tab":$0,"inventory":$1,"kind":["image"],"output-dir":"assets"}`,
+				tab,
+				inventory.Inventory,
+			),
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,16 +302,31 @@ func TestAssetsExportObservedContentAndKeepPartialSuccess(t *testing.T) {
 			t.Fatalf("asset=%s err=%v", data, err)
 		}
 	}
-	if err := os.Mkdir(filepath.Join(f.root, "partial"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(f.root, "partial"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(f.root, "partial", string(inventory.Assets[0].ID)+".svg"), []byte("existing"), 0600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(f.root, "partial", string(inventory.Assets[0].ID)+".svg"),
+		[]byte("existing"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
-	failure := f.failure(t, "assets.export", browserArgs(t, `{"tab":$0,"inventory":$1,"kind":["image"],"output-dir":"partial"}`, tab, inventory.Inventory), "partial_failure")
-	if failure.Error.Details == nil || failure.Error.Details.AssetsExportResult == nil || len(failure.Error.Details.Files) != 1 {
+	failure := f.failure(
+		t,
+		"assets.export",
+		browserArgs(t, `{"tab":$0,"inventory":$1,"kind":["image"],"output-dir":"partial"}`, tab, inventory.Inventory),
+		"partial_failure",
+	)
+	if failure.Error.Details == nil || failure.Error.Details.AssetsExportResult == nil ||
+		len(failure.Error.Details.Files) != 1 {
 		t.Fatal(failure)
 	}
 	f.call(t, "reload", browserArgs(t, `{"tab":$0}`, tab))
-	f.failure(t, "assets.export", browserArgs(t, `{"tab":$0,"inventory":$1,"kind":["image"],"output-dir":"stale"}`, tab, inventory.Inventory), "stale_inventory")
+	f.failure(
+		t,
+		"assets.export",
+		browserArgs(t, `{"tab":$0,"inventory":$1,"kind":["image"],"output-dir":"stale"}`, tab, inventory.Inventory),
+		"stale_inventory",
+	)
 }

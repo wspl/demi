@@ -125,7 +125,13 @@ func TestInputsRefuseUnknownFieldsNullsAndOutOfBounds(t *testing.T) {
 }
 
 func TestInputsAnswerTabTargetWaitAndDeadline(t *testing.T) {
-	click, err := browserop.ParseInput("click", []byte(`{"tab":"t1","role":"button","name-pattern":"^Save","frame":["e2"],"nth":2,"button":"right","wait-url":"**/done","timeout":5000}`))
+	click, err := browserop.ParseInput(
+		"click",
+		[]byte(
+			`{"tab":"t1","role":"button","name-pattern":"^Save","frame":["e2"],"nth":2,`+
+				`"button":"right","wait-url":"**/done","timeout":5000}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +139,8 @@ func TestInputsAnswerTabTargetWaitAndDeadline(t *testing.T) {
 		t.Fatalf("wrong scheduling values: %#v", click)
 	}
 	target := click.ElementTarget()
-	if target == nil || *target.Role != "button" || *target.NamePattern != "^Save" || *target.Nth != 2 || !reflect.DeepEqual(*target.Frame, []browserop.NodeRef{"e2"}) {
+	if target == nil || *target.Role != "button" || *target.NamePattern != "^Save" || *target.Nth != 2 ||
+		!reflect.DeepEqual(*target.Frame, []browserop.NodeRef{"e2"}) {
 		t.Fatalf("target = %#v", target)
 	}
 	input, ok := click.(*browserop.ClickInput)
@@ -160,7 +167,12 @@ func TestInputsAnswerTabTargetWaitAndDeadline(t *testing.T) {
 }
 
 func TestQueryTreeHasOneBaseInEveryBranch(t *testing.T) {
-	q, err := browserop.ParseQuery([]byte(`{"and":[{"match":{"role":"row"}},{"match":{"text-match":"Order A"}}],"has":{"match":{"role":"button","name":"Delete"}},"nth":0}`))
+	q, err := browserop.ParseQuery(
+		[]byte(
+			`{"and":[{"match":{"role":"row"}},{"match":{"text-match":"Order A"}}],` +
+				`"has":{"match":{"role":"button","name":"Delete"}},"nth":0}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,12 +245,19 @@ func TestInvocationDecodesToNamedOperation(t *testing.T) {
 func TestResultsAndFailuresPrintDocumentedNames(t *testing.T) {
 	url := "https://example.test/"
 	tabs := []browserop.TabID{"t1"}
-	action := browserop.ActionResult{Operation: "click", Target: &browserop.ResolvedElement{Ref: "e2", Role: "button", Name: "Sign in"}, Result: json.RawMessage(`"completed"`), URL: &url, OpenedTabs: &tabs}
+	action := browserop.ActionResult{
+		Operation:  "click",
+		Target:     &browserop.ResolvedElement{Ref: "e2", Role: "button", Name: "Sign in"},
+		Result:     json.RawMessage(`"completed"`),
+		URL:        &url,
+		OpenedTabs: &tabs,
+	}
 	encoded, err := contract.EncodeJSON(action)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"operation":"click","target":{"ref":"e2","role":"button","name":"Sign in"},"result":"completed","url":"https://example.test/","openedTabs":["t1"]}`
+	want := `{"operation":"click","target":{"ref":"e2","role":"button","name":"Sign in"},` +
+		`"result":"completed","url":"https://example.test/","openedTabs":["t1"]}`
 	if !reflect.DeepEqual(jsonValue(t, []byte(want)), jsonValue(t, encoded)) {
 		t.Fatal("decoded value differs from expected fixture")
 	}
@@ -269,7 +288,10 @@ func TestResultsAndFailuresPrintDocumentedNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := `{"code":"partial_failure","message":"some browser items failed","details":{"action":"not_started","tab":"t1","debuggingCallers":[1],"directory":"/out","manifest":"/out/manifest.json","files":[{"id":"a","path":"/out/a.png","bytes":3,"mimeType":"image/png"}]}}`
+	expected := `{"code":"partial_failure","message":"some browser items failed",` +
+		`"details":{"action":"not_started","tab":"t1","debuggingCallers":[1],"directory":"/out",` +
+		`"manifest":"/out/manifest.json","files":[{"id":"a","path":"/out/a.png","bytes":3,` +
+		`"mimeType":"image/png"}]}}`
 	if !reflect.DeepEqual(jsonValue(t, []byte(expected)), jsonValue(t, printed)) {
 		t.Fatalf("failure JSON = %s, want %s", printed, expected)
 	}
@@ -280,19 +302,29 @@ func TestResultsAndFailuresPrintDocumentedNames(t *testing.T) {
 	if !reflect.DeepEqual(decoded, failure) {
 		t.Fatalf("failure = %#v, want %#v", decoded, failure)
 	}
-
 }
 
 func TestFrameHeadersHaveDocumentedLayout(t *testing.T) {
 	if _, err := (browserop.VideoHeader{Tab: "invalid"}).Append(nil); err == nil {
 		t.Fatal("accepted invalid Go tab identity")
 	}
-	header := browserop.VideoHeader{Tab: "t1", Generation: 2, Sequence: 9, Key: true, Timestamp: 1.5, Width: 1280, Height: 720}
+	header := browserop.VideoHeader{
+		Tab:        "t1",
+		Generation: 2,
+		Sequence:   9,
+		Key:        true,
+		Timestamp:  1.5,
+		Width:      1280,
+		Height:     720,
+	}
 	data, err := header.Append(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(data) != browserop.VideoHeaderBytes || !bytes.Equal(data[:16], []byte("t1\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")) || !bytes.Equal(data[16:25], []byte{0, 0, 0, 2, 0, 0, 0, 9, 1}) || !bytes.Equal(data[36:], []byte{5, 0, 2, 208}) {
+	if len(data) != browserop.VideoHeaderBytes ||
+		!bytes.Equal(data[:16], []byte("t1\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")) ||
+		!bytes.Equal(data[16:25], []byte{0, 0, 0, 2, 0, 0, 0, 9, 1}) ||
+		!bytes.Equal(data[36:], []byte{5, 0, 2, 208}) {
 		t.Fatalf("header = %x", data)
 	}
 	data = append(data, []byte("data")...)
@@ -353,7 +385,12 @@ func TestCaptureEventsDecodeAndRefuseUnknownEvents(t *testing.T) {
 			t.Fatal("decoded value differs from expected fixture")
 		}
 	}
-	for _, bad := range []string{`{"type":"paused","capture":1}`, `{"type":"started"}`, `{"type":"started","capture":1,"extra":true}`, `not json`} {
+	for _, bad := range []string{
+		`{"type":"paused","capture":1}`,
+		`{"type":"started"}`,
+		`{"type":"started","capture":1,"extra":true}`,
+		`not json`,
+	} {
 		if _, err := browserop.DecodeCaptureEvent([]byte(bad)); err == nil {
 			t.Errorf("accepted %s", bad)
 		}
@@ -500,7 +537,10 @@ func TestOptionalVectorItemLimitsRemainGoOnly(t *testing.T) {
 }
 
 func TestBrowserAccessorsReturnDetachedCopies(t *testing.T) {
-	input, err := browserop.ParseInput("click", []byte(`{"tab":"t1","role":"button","frame":["e2"],"nth":2,"within":"e3","wait-url":"**/done"}`))
+	input, err := browserop.ParseInput(
+		"click",
+		[]byte(`{"tab":"t1","role":"button","frame":["e2"],"nth":2,"within":"e3","wait-url":"**/done"}`),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,15 +552,24 @@ func TestBrowserAccessorsReturnDetachedCopies(t *testing.T) {
 	*input.TabID() = "t9"
 	*input.WaitURLPattern() = "changed"
 	again := input.ElementTarget()
-	if *again.Role != "button" || (*again.Frame)[0] != "e2" || *again.Nth != 2 || *again.Within != "e3" || *input.TabID() != "t1" || *input.WaitURLPattern() != "**/done" {
+	if *again.Role != "button" || (*again.Frame)[0] != "e2" || *again.Nth != 2 || *again.Within != "e3" ||
+		*input.TabID() != "t1" ||
+		*input.WaitURLPattern() != "**/done" {
 		t.Fatalf("mutating accessor copies changed input: %#v", input)
 	}
-	query, err := browserop.ParseQuery([]byte(`{"and":[{"match":{"role":"row"}},{"match":{"text-match":"Order A"}}],"has":{"match":{"role":"button"}},"visible":true,"nth":0}`))
+	query, err := browserop.ParseQuery(
+		[]byte(
+			`{"and":[{"match":{"role":"row"}},{"match":{"text-match":"Order A"}}],` +
+				`"has":{"match":{"role":"button"}},"visible":true,"nth":0}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	branches := query.Branches()
-	if len(branches) != 4 || branches[1].Match.TextMatch == nil || *branches[1].Match.TextMatch != "Order A" || *branches[2].Match.Role != "row" || *branches[3].Match.Role != "button" {
+	if len(branches) != 4 || branches[1].Match.TextMatch == nil || *branches[1].Match.TextMatch != "Order A" ||
+		*branches[2].Match.Role != "row" ||
+		*branches[3].Match.Role != "button" {
 		t.Fatalf("wrong branch traversal: %#v", branches)
 	}
 	*branches[0].Visible = false
@@ -530,14 +579,19 @@ func TestBrowserAccessorsReturnDetachedCopies(t *testing.T) {
 	*branches[3].Match.Role = "changed"
 	target = new((*query.And)[0].Match.Target())
 	*target.Role = "changed too"
-	if !*query.Visible || *query.Nth != 0 || *(*query.And)[0].Match.Role != "row" || *(*query.And)[1].Match.TextMatch != "Order A" || *query.Has.Match.Role != "button" {
+	if !*query.Visible || *query.Nth != 0 || *(*query.And)[0].Match.Role != "row" ||
+		*(*query.And)[1].Match.TextMatch != "Order A" ||
+		*query.Has.Match.Role != "button" {
 		t.Fatalf("mutating query copies changed source: %#v", query)
 	}
 }
 
 func TestObservationValuesKeepTheirScalarWireForm(t *testing.T) {
 	for _, value := range []string{`"hello"`, `3.5`} {
-		fixture := []byte(`{"matches":[{"ref":"e2","role":"textbox","name":"Value","value":` + value + `,"depth":1,"states":[]}],"count":1,"truncated":false}`)
+		fixture := []byte(
+			`{"matches":[{"ref":"e2","role":"textbox","name":"Value","value":` + value +
+				`,"depth":1,"states":[]}],"count":1,"truncated":false}`,
+		)
 		decoded, err := browserop.DecodeFindResult(fixture)
 		if err != nil {
 			t.Fatal(err)

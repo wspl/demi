@@ -202,8 +202,16 @@ func TestConversationReleaseCancelsOnlyItsCommandsAndRetiresProfile(t *testing.T
 	}{[]string{"acceptance", "second-conversation"}})
 	waiting := first.start(t, "wait", browserArgs(t, `{"tab":$0,"url":"**/never","timeout":30000}`, firstTab))
 	first.waitBusy(t, firstTab)
-	expectValue(t, callLifecycle(t, first.s, &commandwire.ConversationRelease{Conversation: first.conversation}), json.RawMessage("{}"))
-	expectValue(t, callLifecycle(t, first.s, &commandwire.ConversationQuery{}), json.RawMessage(`{"conversations":["second-conversation"]}`))
+	expectValue(
+		t,
+		callLifecycle(t, first.s, &commandwire.ConversationRelease{Conversation: first.conversation}),
+		json.RawMessage("{}"),
+	)
+	expectValue(
+		t,
+		callLifecycle(t, first.s, &commandwire.ConversationQuery{}),
+		json.RawMessage(`{"conversations":["second-conversation"]}`),
+	)
 	requireCancelled(t, waiting.join(t))
 	if _, err := os.Stat(profile); !os.IsNotExist(err) {
 		t.Fatalf("profile survived: %v", err)
@@ -234,7 +242,11 @@ func TestConversationReleaseCancelsOnlyItsCommandsAndRetiresProfile(t *testing.T
 	}
 	freshProfile := filepath.Dir(first.environment(t).DownloadDirectory())
 	for _, id := range []string{first.conversation, second.conversation} {
-		expectValue(t, callLifecycle(t, first.s, &commandwire.ConversationRelease{Conversation: id}), json.RawMessage("{}"))
+		expectValue(
+			t,
+			callLifecycle(t, first.s, &commandwire.ConversationRelease{Conversation: id}),
+			json.RawMessage("{}"),
+		)
 	}
 	expectValue(t, callLifecycle(t, first.s, &commandwire.ConversationQuery{}), struct {
 		Conversations []string `json:"conversations"`
@@ -292,7 +304,8 @@ func TestLastTabCloseFailsRunningCommandAsBrowserLost(t *testing.T) {
 	if err != nil || result.completion.ExitCode != 1 || failure.Error.Code != "browser_lost" {
 		t.Fatalf("%+v %s %v", result, result.stderr, err)
 	}
-	if failure.Error.Details == nil || failure.Error.Details.Action == nil || *failure.Error.Details.Action != "not_started" {
+	if failure.Error.Details == nil || failure.Error.Details.Action == nil ||
+		*failure.Error.Details.Action != "not_started" {
 		t.Fatal(failure)
 	}
 	expectValue(t, callLifecycle(t, f.s, &commandwire.ConversationQuery{}), struct {
@@ -345,7 +358,17 @@ func TestChromeProcessTreeAndProfileRetireTogether(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			env := tabstest.Launch(ctx, t, tabs.LaunchOptions{Executable: executable, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}})
+			env := tabstest.Launch(
+				ctx,
+				t,
+				tabs.LaunchOptions{
+					Executable: executable,
+					Locale: commandwire.CommandLocale{
+						TimeZone:  "UTC",
+						Languages: []commandwire.LanguageTag{"en-US"},
+					},
+				},
+			)
 			if _, err := env.Open(ctx, "about:blank", 5*time.Second); err != nil {
 				t.Fatal(err)
 			}
@@ -357,7 +380,7 @@ func TestChromeProcessTreeAndProfileRetireTogether(t *testing.T) {
 			}
 			for _, path := range []string{profile, runtimeDirectory} {
 				info, err := os.Stat(path)
-				if err != nil || info.Mode().Perm() != 0700 {
+				if err != nil || info.Mode().Perm() != 0o700 {
 					t.Fatalf("%s %v %v", path, info, err)
 				}
 			}
@@ -405,7 +428,8 @@ func TestChromeProcessTreeAndProfileRetireTogether(t *testing.T) {
 				}
 			case "killed":
 				var failure *cdp.BrowserError
-				if !errors.As(result, &failure) || failure.Kind != cdp.KindClosed && failure.Kind != cdp.KindConnection {
+				if !errors.As(result, &failure) ||
+					failure.Kind != cdp.KindClosed && failure.Kind != cdp.KindConnection {
 					t.Fatalf("crash error: %v", result)
 				}
 			}
@@ -459,7 +483,17 @@ func TestFixtureAssertionsRetireChromeAndProfilesBeforeFailureReturns(t *testing
 					f.open(t, "repairs.html")
 					profile = filepath.Dir(f.environment(t).DownloadDirectory())
 				} else {
-					env := tabstest.Launch(t.Context(), t, tabs.LaunchOptions{Executable: os.Getenv("DEMI_TEST_CHROME"), Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}})
+					env := tabstest.Launch(
+						t.Context(),
+						t,
+						tabs.LaunchOptions{
+							Executable: os.Getenv("DEMI_TEST_CHROME"),
+							Locale: commandwire.CommandLocale{
+								TimeZone:  "UTC",
+								Languages: []commandwire.LanguageTag{"en-US"},
+							},
+						},
+					)
 					if _, err := env.Open(t.Context(), "about:blank", 5*time.Second); err != nil {
 						t.Fatal(err)
 					}
@@ -484,7 +518,13 @@ func TestFixtureAssertionsRetireChromeAndProfilesBeforeFailureReturns(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	child := exec.CommandContext(t.Context(), executable, "-test.run=^TestFixtureAssertionsRetireChromeAndProfilesBeforeFailureReturns$", "-test.count=1", "-test.v")
+	child := exec.CommandContext(
+		t.Context(),
+		executable,
+		"-test.run=^TestFixtureAssertionsRetireChromeAndProfilesBeforeFailureReturns$",
+		"-test.count=1",
+		"-test.v",
+	)
 	child.Env = append(os.Environ(), "DEMI_BROWSER_TEST_ASSERTION=1")
 	output, err := child.CombinedOutput()
 	var exit *exec.ExitError

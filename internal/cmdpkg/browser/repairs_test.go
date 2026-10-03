@@ -47,7 +47,14 @@ func TestNativeFillAndTextReplacement(t *testing.T) {
 		t.Fatal("non-editable target waited for the action deadline")
 	}
 	for _, css := range []string{"#file", "#readonly"} {
-		f.rejects(t, tab, "fill", browserArgs(t, `{"css":$0,"text":"x","timeout":500}`, css), "not_actionable", "not_started")
+		f.rejects(
+			t,
+			tab,
+			"fill",
+			browserArgs(t, `{"css":$0,"text":"x","timeout":500}`, css),
+			"not_actionable",
+			"not_started",
+		)
 	}
 	f.command(t, tab, "fill", `{"css":"#covered-input","text":"under overlay"}`)
 	expectValue(t, f.read(t, tab, "#covered-input", "value"), "under overlay")
@@ -83,7 +90,15 @@ func TestTargetedKeyboardPreservesSelectionAndStopsOnFocusLoss(t *testing.T) {
 	}
 	expectValue(t, f.read(t, tab, "#text", "value"), "AB+A!")
 	f.rejects(t, tab, "key", `{"css":"#text","key":"Control+NotAKey"}`, "invalid_input", "not_started")
-	expectValue(t, f.eval(t, tab, `keys.length===28 && keys.filter(e=>e.type==='keydown').length===keys.filter(e=>e.type==='keyup').length && keys.some((e,i)=>e.key==='X'&&e.type==='keydown'&&keys[i+1]?.key==='X'&&keys[i+1]?.type==='keyup')`), true)
+	expectValue(
+		t,
+		f.eval(
+			t,
+			tab,
+			`keys.length===28 && keys.filter(e=>e.type==='keydown').length===keys.filter(e=>e.type==='keyup').length && keys.some((e,i)=>e.key==='X'&&e.type==='keydown'&&keys[i+1]?.key==='X'&&keys[i+1]?.type==='keyup')`,
+		),
+		true,
+	)
 	for _, trigger := range []string{"#lose-focus", "#replace-target"} {
 		f.click(t, tab, trigger)
 		details := f.rejects(t, tab, "type", `{"css":"#text","text":"XYZ"}`, "not_actionable", "completed")
@@ -104,7 +119,14 @@ func TestCheckVerifiesStateAndSelectWaitsForOrderedOptions(t *testing.T) {
 		css, code, action string
 		value             bool
 	}{{"#prevented", "not_actionable", "completed", true}, {"#radio", "invalid_input", "not_started", false}, {"#plain", "not_actionable", "not_started", true}} {
-		f.rejects(t, tab, "check", browserArgs(t, `{"css":$0,"value":$1}`, test.css, test.value), test.code, test.action)
+		f.rejects(
+			t,
+			tab,
+			"check",
+			browserArgs(t, `{"css":$0,"value":$1}`, test.css, test.value),
+			test.code,
+			test.action,
+		)
 	}
 	for _, css := range []string{"#aria-check", "#aria-switch"} {
 		f.command(t, tab, "check", browserArgs(t, `{"css":$0,"value":true}`, css))
@@ -125,9 +147,23 @@ func TestCheckVerifiesStateAndSelectWaitsForOrderedOptions(t *testing.T) {
 		}
 	}
 	for _, value := range []string{"bad", "group"} {
-		f.rejects(t, tab, "select", browserArgs(t, `{"css":"#disabled-option","value":[$0],"timeout":500}`, value), "not_actionable", "not_started")
+		f.rejects(
+			t,
+			tab,
+			"select",
+			browserArgs(t, `{"css":"#disabled-option","value":[$0],"timeout":500}`, value),
+			"not_actionable",
+			"not_started",
+		)
 	}
-	f.rejects(t, tab, "select", `{"css":"#single","value":["missing"],"timeout":500}`, "target_not_found", "not_started")
+	f.rejects(
+		t,
+		tab,
+		"select",
+		`{"css":"#single","value":["missing"],"timeout":500}`,
+		"target_not_found",
+		"not_started",
+	)
 	f.rejects(t, tab, "select", `{"css":"#single","value":["one"],"option-index":[0]}`, "invalid_input", "not_started")
 }
 
@@ -135,7 +171,12 @@ func TestLabelTextAndAccessibleNameAreDistinctAndAmbiguityIsExplicit(t *testing.
 	f := chromeFixture(t)
 	tab := f.open(t, "repairs.html")
 	for _, role := range []string{"Date", "date", "DATE"} {
-		f.command(t, tab, "fill", browserArgs(t, `{"role":$0,"name":"Appointment date","exact":true,"text":"2026-09-28"}`, role))
+		f.command(
+			t,
+			tab,
+			"fill",
+			browserArgs(t, `{"role":$0,"name":"Appointment date","exact":true,"text":"2026-09-28"}`, role),
+		)
 		expectValue(t, f.read(t, tab, "#date", "value"), "2026-09-28")
 	}
 	for _, test := range []struct{ label, css string }{{"Appointment date", "#date"}, {"Wrapped date", "#wrapped"}, {"Related date", "#related"}} {
@@ -146,16 +187,29 @@ func TestLabelTextAndAccessibleNameAreDistinctAndAmbiguityIsExplicit(t *testing.
 		args  string
 		count int
 	}{
-		{`{"label":"File label","exact":true}`, 1}, {`{"label":"Text field","exact":true}`, 0},
-		{`{"text-match":"Accessible label","exact":true}`, 0}, {`{"text-match":"Visible words","exact":true}`, 1},
-		{`{"role":"button","name":"Accessible label","exact":true}`, 1}, {`{"role":"button","name":"Visible words","exact":true}`, 0},
-		{`{"role":"button","name":"AX fallback","exact":true}`, 2}, {`{"role":"button","name":"Fallback","exact":true}`, 1},
-		{`{"role":"button","name":"Fallback","exact":true,"nth":1}`, 0}, {`{"role":"button","name":"Hidden duplicate","exact":true}`, 0},
+		{`{"label":"File label","exact":true}`, 1},
+		{`{"label":"Text field","exact":true}`, 0},
+		{`{"text-match":"Accessible label","exact":true}`, 0},
+		{`{"text-match":"Visible words","exact":true}`, 1},
+		{`{"role":"button","name":"Accessible label","exact":true}`, 1},
+		{`{"role":"button","name":"Visible words","exact":true}`, 0},
+		{`{"role":"button","name":"AX fallback","exact":true}`, 2},
+		{`{"role":"button","name":"Fallback","exact":true}`, 1},
+		{`{"role":"button","name":"Fallback","exact":true,"nth":1}`, 0},
+		{`{"role":"button","name":"Hidden duplicate","exact":true}`, 0},
 	} {
 		expectValue(t, observedField(t, f.command(t, tab, "find", test.args), "count"), test.count)
 	}
 	for _, css := range []string{".ax-fallback", ".fallback"} {
-		expectValue(t, observedField(t, f.command(t, tab, "read", browserArgs(t, `{"css":$0,"property":"visible","all":true}`, css)), "values"), []bool{false, true})
+		expectValue(
+			t,
+			observedField(
+				t,
+				f.command(t, tab, "read", browserArgs(t, `{"css":$0,"property":"visible","all":true}`, css)),
+				"values",
+			),
+			[]bool{false, true},
+		)
 	}
 	f.command(t, tab, "click", `{"role":"button","name":"AX fallback","exact":true}`)
 	expectValue(t, f.eval(t, tab, "fallbackClicks"), 1)
@@ -168,7 +222,15 @@ func TestLabelTextAndAccessibleNameAreDistinctAndAmbiguityIsExplicit(t *testing.
 	f.rejects(t, tab, "read", `{"css":"#missing","property":"text"}`, "target_not_found", "not_started")
 	f.rejects(t, tab, "click", `{"css":"#missing","timeout":500}`, "target_not_found", "not_started")
 	scope := observedField(t, f.command(t, tab, "find", `{"css":"#scope"}`), "matches", "0", "ref")
-	expectValue(t, observedField(t, f.command(t, tab, "find", browserArgs(t, `{"role":"button","name":"Scoped","within":$0}`, scope)), "count"), 1)
+	expectValue(
+		t,
+		observedField(
+			t,
+			f.command(t, tab, "find", browserArgs(t, `{"role":"button","name":"Scoped","within":$0}`, scope)),
+			"count",
+		),
+		1,
+	)
 }
 
 func TestInspectKeepsFalseValuesAndProtectsPasswordsAndHandlesExpire(t *testing.T) {
@@ -202,7 +264,9 @@ func TestInspectKeepsFalseValuesAndProtectsPasswordsAndHandlesExpire(t *testing.
 		t.Fatalf("missing nodes: %s", tree)
 	}
 	expectValue(t, observedField(t, textNode, "value"), "hello")
-	if len(observedField(t, password, "value")) != 0 || !strings.Contains(string(observedField(t, password, "states")), `"protected"`) || strings.Contains(string(tree), "never-print-this-password") {
+	if len(observedField(t, password, "value")) != 0 ||
+		!strings.Contains(string(observedField(t, password, "states")), `"protected"`) ||
+		strings.Contains(string(tree), "never-print-this-password") {
 		t.Fatalf("password: %s", tree)
 	}
 	if !regexp.MustCompile(`^t[1-9][0-9]*$`).MatchString(string(tab)) {
@@ -250,7 +314,14 @@ func TestActionConditionsShadowHitsAndSharedWaitStates(t *testing.T) {
 		t.Fatal(details)
 	}
 	for _, test := range []struct{ css, condition string }{{"#fieldset-button", "enabled"}, {"#pointer-none", "pointer-events"}, {"#moving", "stable"}} {
-		d := f.rejects(t, tab, "click", browserArgs(t, `{"css":$0,"timeout":5000}`, test.css), "not_actionable", "not_started")
+		d := f.rejects(
+			t,
+			tab,
+			"click",
+			browserArgs(t, `{"css":$0,"timeout":5000}`, test.css),
+			"not_actionable",
+			"not_started",
+		)
 		if d.Condition == nil || *d.Condition != test.condition {
 			t.Fatal(d)
 		}
@@ -263,10 +334,20 @@ func TestActionConditionsShadowHitsAndSharedWaitStates(t *testing.T) {
 	}
 	for _, test := range []struct{ before, after string }{{"Shadow button", "Shadow clicked"}, {"Frame button", "Clicked frame"}} {
 		f.command(t, tab, "click", browserArgs(t, `{"role":"button","name":$0,"exact":true}`, test.before))
-		expectValue(t, observedField(t, f.command(t, tab, "find", browserArgs(t, `{"role":"button","name":$0,"exact":true}`, test.after)), "count"), 1)
+		expectValue(
+			t,
+			observedField(
+				t,
+				f.command(t, tab, "find", browserArgs(t, `{"role":"button","name":$0,"exact":true}`, test.after)),
+				"count",
+			),
+			1,
+		)
 	}
 	date := observedField(t, f.command(t, tab, "find", `{"css":"#date"}`), "matches", "0", "ref")
-	nodes, err := browserop.DecodeFindResult(f.command(t, tab, "find", browserArgs(t, `{"role":"spinbutton","within":$0}`, date)))
+	nodes, err := browserop.DecodeFindResult(
+		f.command(t, tab, "find", browserArgs(t, `{"role":"spinbutton","within":$0}`, date)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,8 +371,22 @@ func TestActionConditionsShadowHitsAndSharedWaitStates(t *testing.T) {
 		f.command(t, tab, "wait", browserArgs(t, `{"css":"#hidden","state":$0}`, state))
 	}
 	for _, css := range []string{"#fieldset-input", "#aria-disabled"} {
-		f.rejects(t, tab, "wait", browserArgs(t, `{"css":$0,"state":"enabled","timeout":500}`, css), "timeout", "not_started")
-		f.rejects(t, tab, "fill", browserArgs(t, `{"css":$0,"text":"x","timeout":5000}`, css), "not_actionable", "not_started")
+		f.rejects(
+			t,
+			tab,
+			"wait",
+			browserArgs(t, `{"css":$0,"state":"enabled","timeout":500}`, css),
+			"timeout",
+			"not_started",
+		)
+		f.rejects(
+			t,
+			tab,
+			"fill",
+			browserArgs(t, `{"css":$0,"text":"x","timeout":5000}`, css),
+			"not_actionable",
+			"not_started",
+		)
 	}
 	f.click(t, tab, "#show-later")
 	f.command(t, tab, "wait", `{"css":"#hidden","state":"visible"}`)
@@ -319,7 +414,15 @@ func TestTextLocatorsScanLargeDocumentsShadowRootsAndFrames(t *testing.T) {
 		expectValue(t, observedField(t, found, "count"), 1)
 	}
 	scope := observedField(t, f.command(t, tab, "find", `{"css":"#open-shadow"}`), "matches", "0", "ref")
-	expectValue(t, observedField(t, f.command(t, tab, "find", browserArgs(t, `{"label":"Open shadow label","within":$0}`, scope)), "count"), 1)
+	expectValue(
+		t,
+		observedField(
+			t,
+			f.command(t, tab, "find", browserArgs(t, `{"label":"Open shadow label","within":$0}`, scope)),
+			"count",
+		),
+		1,
+	)
 }
 
 func TestExplicitNavigationTracksDocumentsFailuresAndHistoryBoundaries(t *testing.T) {
@@ -347,7 +450,9 @@ func TestExplicitNavigationTracksDocumentsFailuresAndHistoryBoundaries(t *testin
 		t.Fatal(err)
 	}
 	failure := f.failure(t, "goto", browserArgs(t, `{"tab":$0,"url":$1}`, tab, refused), "navigation_failed")
-	if failure.Error.Details == nil || failure.Error.Details.Action == nil || *failure.Error.Details.Action != "completed" || !strings.Contains(failure.Error.Message, "ERR_CONNECTION_REFUSED") {
+	if failure.Error.Details == nil || failure.Error.Details.Action == nil ||
+		*failure.Error.Details.Action != "completed" ||
+		!strings.Contains(failure.Error.Message, "ERR_CONNECTION_REFUSED") {
 		t.Fatal(failure)
 	}
 	f.rejects(t, tab, "goto", browserArgs(t, `{"url":$0}`, f.url+"/drop"), "navigation_failed", "completed")
@@ -360,7 +465,10 @@ func TestExplicitNavigationTracksDocumentsFailuresAndHistoryBoundaries(t *testin
 	for _, name := range []string{"back", "forward"} {
 		f.rejects(t, opened.Tab, name, `{}`, "history_boundary", "not_started")
 	}
-	entries, err := contract.List(observedField(t, f.command(t, opened.Tab, "history", `{}`), "entries"), contract.Decode[json.RawMessage])
+	entries, err := contract.List(
+		observedField(t, f.command(t, opened.Tab, "history", `{}`), "entries"),
+		contract.Decode[json.RawMessage],
+	)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("%s %v", entries, err)
 	}
@@ -384,14 +492,47 @@ func TestCatalogQueriesPatternsPaginationAndReadOnlyElements(t *testing.T) {
 	found := f.command(t, tab, "find", browserArgs(t, `{"query":true,"body":$0}`, query))
 	expectValue(t, observedField(t, found, "count"), 1)
 	ref := observedField(t, found, "matches", "0", "ref")
-	result := f.command(t, tab, "eval", browserArgs(t, `{"ref":$0,"expression":"element.parentElement.innerText"}`, ref))
+	result := f.command(
+		t,
+		tab,
+		"eval",
+		browserArgs(t, `{"ref":$0,"expression":"element.parentElement.innerText"}`, ref),
+	)
 	if !strings.Contains(string(observedField(t, result, "value")), "Order A") {
 		t.Fatal(string(result))
 	}
 	root := observedField(t, f.command(t, tab, "inspect", `{}`), "tree", "0", "ref")
-	expectValue(t, observedField(t, f.command(t, tab, "eval", browserArgs(t, `{"ref":$0,"expression":"document === element"}`, root)), "value"), true)
-	expectValue(t, observedField(t, f.command(t, tab, "eval", `{"css":".catalog-delete","all":true,"expression":"elements.map(element => element.textContent)"}`), "value"), []string{"Delete", "Delete"})
-	f.rejects(t, tab, "eval", browserArgs(t, `{"ref":$0,"expression":"element.textContent='mutated'"}`, ref), "side_effect_rejected", "not_started")
+	expectValue(
+		t,
+		observedField(
+			t,
+			f.command(t, tab, "eval", browserArgs(t, `{"ref":$0,"expression":"document === element"}`, root)),
+			"value",
+		),
+		true,
+	)
+	expectValue(
+		t,
+		observedField(
+			t,
+			f.command(
+				t,
+				tab,
+				"eval",
+				`{"css":".catalog-delete","all":true,"expression":"elements.map(element => element.textContent)"}`,
+			),
+			"value",
+		),
+		[]string{"Delete", "Delete"},
+	)
+	f.rejects(
+		t,
+		tab,
+		"eval",
+		browserArgs(t, `{"ref":$0,"expression":"element.textContent='mutated'"}`, ref),
+		"side_effect_rejected",
+		"not_started",
+	)
 	for _, invalid := range []string{`{"match":{"css":"button"},"or":[{"match":{"css":"button"}}]}`, `{"match":{"css":"button"},"bogus":true}`, `{"or":[]}`, `{"match":{"css":"button","role":"button"}}`} {
 		f.rejects(t, tab, "find", browserArgs(t, `{"query":true,"body":$0}`, invalid), "invalid_input", "not_started")
 	}
@@ -436,7 +577,10 @@ func TestCatalogUntargetedKeysSelectionDragAndConsoleCursors(t *testing.T) {
 	tab := f.open(t, "")
 	f.click(t, tab, "#select-middle")
 	typed := f.command(t, tab, "type", `{"text":"XY"}`)
-	if ref, err := contract.Decode[string](observedField(t, typed, "target", "ref")); err != nil || !strings.HasPrefix(ref, "e") {
+	if ref, err := contract.Decode[string](
+		observedField(t, typed, "target", "ref"),
+	); err != nil ||
+		!strings.HasPrefix(ref, "e") {
 		t.Fatal(string(typed))
 	}
 	expectValue(t, f.read(t, tab, "#text", "value"), "heXYo")
@@ -458,16 +602,38 @@ func TestCatalogUntargetedKeysSelectionDragAndConsoleCursors(t *testing.T) {
 	f.command(t, tab, "key", `{"css":"#key-navigate","key":"Shift"}`)
 	navigation := f.command(t, tab, "key", `{"key":"Enter","wait-url":"**/#key-focus"}`)
 	expectValue(t, observedField(t, navigation, "url"), f.url+"/#key-focus")
-	if ref, err := contract.Decode[string](observedField(t, navigation, "target", "ref")); err != nil || !strings.HasPrefix(ref, "e") {
+	if ref, err := contract.Decode[string](
+		observedField(t, navigation, "target", "ref"),
+	); err != nil ||
+		!strings.HasPrefix(ref, "e") {
 		t.Fatal(string(navigation))
 	}
 	f.command(t, tab, "move", `{"css":"#drag-area"}`)
-	points, err := contract.Decode[[]string](observedField(t, f.command(t, tab, "eval", `{"css":"#drag-area","expression":"(()=>{const r=element.getBoundingClientRect();return [(r.x+10)+','+(r.y+10),(r.x+40)+','+(r.y+30)]})()"}`), "value"))
+	points, err := contract.Decode[[]string](
+		observedField(
+			t,
+			f.command(
+				t,
+				tab,
+				"eval",
+				`{"css":"#drag-area","expression":"(()=>{const r=element.getBoundingClientRect();return [(r.x+10)+','+(r.y+10),(r.x+40)+','+(r.y+30)]})()"}`,
+			),
+			"value",
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.command(t, tab, "drag", browserArgs(t, `{"point":$0,"modifier":["Shift"]}`, points))
-	expectValue(t, f.eval(t, tab, `dragEvents[0].type==='mousedown'&&dragEvents[0].shift&&dragEvents.at(-1).buttons===0&&dragEvents.at(-1).shift`), true)
+	expectValue(
+		t,
+		f.eval(
+			t,
+			tab,
+			`dragEvents[0].type==='mousedown'&&dragEvents[0].shift&&dragEvents.at(-1).buttons===0&&dragEvents.at(-1).shift`,
+		),
+		true,
+	)
 	f.click(t, tab, "#console-burst")
 	logs := f.command(t, tab, "logs", `{"limit":2,"filter":"catalog"}`)
 	entries, err := contract.List(observedField(t, logs, "entries"), contract.Decode[json.RawMessage])
@@ -479,7 +645,15 @@ func TestCatalogUntargetedKeysSelectionDragAndConsoleCursors(t *testing.T) {
 	if again := f.command(t, tab, "logs", `{"limit":2,"filter":"catalog"}`); string(again) != string(logs) {
 		t.Fatalf("%s != %s", again, logs)
 	}
-	expectValue(t, observedField(t, f.command(t, tab, "logs", browserArgs(t, `{"after":$0}`, observedField(t, logs, "cursor"))), "entries"), []string{})
+	expectValue(
+		t,
+		observedField(
+			t,
+			f.command(t, tab, "logs", browserArgs(t, `{"after":$0}`, observedField(t, logs, "cursor"))),
+			"entries",
+		),
+		[]string{},
+	)
 	f.rejects(t, tab, "logs", `{"after":"foreign:0"}`, "stale_cursor", "not_started")
 }
 
@@ -499,8 +673,16 @@ func TestURLObservationDeliversInputAndObservesTransientMatches(t *testing.T) {
 	f.command(t, tab, "click", `{"css":"#transient","wait-url":"**/transient"}`)
 	expectValue(t, f.eval(t, tab, "location.pathname"), "/returned")
 	f.command(t, tab, "goto", browserArgs(t, `{"url":$0}`, f.url))
-	details := f.rejects(t, tab, "click", `{"css":"#no-nav","wait-url":"**/never","timeout":700}`, "timeout", "completed")
-	if details.Tab == nil || *details.Tab != string(tab) || details.URL == nil || !strings.HasPrefix(*details.URL, f.url) {
+	details := f.rejects(
+		t,
+		tab,
+		"click",
+		`{"css":"#no-nav","wait-url":"**/never","timeout":700}`,
+		"timeout",
+		"completed",
+	)
+	if details.Tab == nil || *details.Tab != string(tab) || details.URL == nil ||
+		!strings.HasPrefix(*details.URL, f.url) {
 		t.Fatal(details)
 	}
 	f.command(t, tab, "key", `{"css":"#hash","key":"Enter","wait-url":"**/#changed"}`)
@@ -520,21 +702,50 @@ func TestCatalogCrossOriginFramesScopeFocusAndReferences(t *testing.T) {
 	tab := f.open(t, "catalog-frame")
 	f.command(t, tab, "wait", `{"load":"load"}`)
 	outer := observedField(t, f.command(t, tab, "find", `{"css":"#cross-frame"}`), "matches", "0", "ref")
-	input := observedField(t, f.command(t, tab, "find", browserArgs(t, `{"frame":[$0],"label":"Cross frame input"}`, outer)), "matches", "0", "ref")
+	input := observedField(
+		t,
+		f.command(t, tab, "find", browserArgs(t, `{"frame":[$0],"label":"Cross frame input"}`, outer)),
+		"matches",
+		"0",
+		"ref",
+	)
 	f.command(t, tab, "fill", browserArgs(t, `{"ref":$0,"text":"cross"}`, input))
-	expectValue(t, observedField(t, f.command(t, tab, "read", browserArgs(t, `{"ref":$0,"property":"value"}`, input)), "value"), "cross")
+	expectValue(
+		t,
+		observedField(t, f.command(t, tab, "read", browserArgs(t, `{"ref":$0,"property":"value"}`, input)), "value"),
+		"cross",
+	)
 	typed := f.command(t, tab, "type", `{"text":"-focus"}`)
 	expectValue(t, observedField(t, typed, "target", "ref"), input)
 	for _, args := range []string{browserArgs(t, `{"ref":$0,"property":"value"}`, input)} {
 		expectValue(t, observedField(t, f.command(t, tab, "read", args), "value"), "cross-focus")
 	}
-	expectValue(t, observedField(t, f.command(t, tab, "eval", browserArgs(t, `{"ref":$0,"expression":"element.value"}`, input)), "value"), "cross-focus")
+	expectValue(
+		t,
+		observedField(
+			t,
+			f.command(t, tab, "eval", browserArgs(t, `{"ref":$0,"expression":"element.value"}`, input)),
+			"value",
+		),
+		"cross-focus",
+	)
 	f.command(t, tab, "click", browserArgs(t, `{"frame":[$0],"css":"#cross-button"}`, outer))
-	expectValue(t, observedField(t, f.command(t, tab, "read", browserArgs(t, `{"frame":[$0],"css":"#cross-button","property":"text"}`, outer)), "value"), "Cross clicked")
+	expectValue(
+		t,
+		observedField(
+			t,
+			f.command(t, tab, "read", browserArgs(t, `{"frame":[$0],"css":"#cross-button","property":"text"}`, outer)),
+			"value",
+		),
+		"Cross clicked",
+	)
 	logging, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	for {
-		logs, err := contract.List(observedField(t, f.command(t, tab, "logs", `{"filter":"cross-frame console","level":["info"]}`), "entries"), contract.Decode[json.RawMessage])
+		logs, err := contract.List(
+			observedField(t, f.command(t, tab, "logs", `{"filter":"cross-frame console","level":["info"]}`), "entries"),
+			contract.Decode[json.RawMessage],
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -546,13 +757,27 @@ func TestCatalogCrossOriginFramesScopeFocusAndReferences(t *testing.T) {
 		}
 	}
 	f.click(t, tab, "#toggle-frame")
-	expectValue(t, observedField(t, f.command(t, tab, "read", browserArgs(t, `{"ref":$0,"property":"visible"}`, input)), "value"), false)
+	expectValue(
+		t,
+		observedField(t, f.command(t, tab, "read", browserArgs(t, `{"ref":$0,"property":"visible"}`, input)), "value"),
+		false,
+	)
 	f.command(t, tab, "wait", browserArgs(t, `{"ref":$0,"state":"hidden"}`, input))
 	f.click(t, tab, "#toggle-frame")
-	nested := observedField(t, f.command(t, tab, "find", browserArgs(t, `{"frame":[$0],"css":"#nested"}`, outer)), "matches", "0", "ref")
+	nested := observedField(
+		t,
+		f.command(t, tab, "find", browserArgs(t, `{"frame":[$0],"css":"#nested"}`, outer)),
+		"matches",
+		"0",
+		"ref",
+	)
 	f.command(t, tab, "fill", browserArgs(t, `{"frame":[$0,$1],"label":"Nested input","text":"nested"}`, outer, nested))
 	query := `{"frame":{"frame":{"match":{"css":"#cross-frame"}},"match":{"css":"#nested"}},"match":{"label":"Nested input"}}`
-	expectValue(t, observedField(t, f.command(t, tab, "find", browserArgs(t, `{"query":true,"body":$0}`, query)), "count"), 1)
+	expectValue(
+		t,
+		observedField(t, f.command(t, tab, "find", browserArgs(t, `{"query":true,"body":$0}`, query)), "count"),
+		1,
+	)
 	tree := f.command(t, tab, "inspect", browserArgs(t, `{"frame":[$0],"view":"dom"}`, outer))
 	if !strings.Contains(string(tree), "cross-focus") || strings.Contains(string(tree), "Appointment date") {
 		t.Fatal(string(tree))
@@ -563,7 +788,13 @@ func TestCatalogCrossOriginFramesScopeFocusAndReferences(t *testing.T) {
 	f.click(t, tab, "#replace-frame")
 	f.command(t, tab, "wait", `{"text-match":"Frame ready","exact":true}`)
 	f.rejects(t, tab, "read", browserArgs(t, `{"ref":$0,"property":"value"}`, input), "stale_ref", "not_started")
-	input = observedField(t, f.command(t, tab, "find", browserArgs(t, `{"frame":[$0],"label":"Cross frame input"}`, outer)), "matches", "0", "ref")
+	input = observedField(
+		t,
+		f.command(t, tab, "find", browserArgs(t, `{"frame":[$0],"label":"Cross frame input"}`, outer)),
+		"matches",
+		"0",
+		"ref",
+	)
 	f.command(t, tab, "reload", `{}`)
 	f.rejects(t, tab, "read", browserArgs(t, `{"ref":$0,"property":"value"}`, input), "stale_ref", "not_started")
 }
@@ -575,9 +806,27 @@ func TestFramePointerActionsWaitForCompositedScroll(t *testing.T) {
 	outer := observedField(t, f.command(t, tab, "find", `{"css":"#cross-frame"}`), "matches", "0", "ref")
 	before := f.eval(t, tab, "[innerWidth,innerHeight,devicePixelRatio]")
 	for count := 1; count <= 20; count++ {
-		f.command(t, tab, "fill", browserArgs(t, `{"frame":[$0],"css":"#cross-input","text":$1}`, outer, strconv.Itoa(count)))
+		f.command(
+			t,
+			tab,
+			"fill",
+			browserArgs(t, `{"frame":[$0],"css":"#cross-input","text":$1}`, outer, strconv.Itoa(count)),
+		)
 		f.command(t, tab, "click", browserArgs(t, `{"frame":[$0],"css":"#cross-button"}`, outer))
-		expectValue(t, observedField(t, f.command(t, tab, "read", browserArgs(t, `{"frame":[$0],"css":"#cross-button","attribute":"data-clicks"}`, outer)), "value"), strconv.Itoa(count))
+		expectValue(
+			t,
+			observedField(
+				t,
+				f.command(
+					t,
+					tab,
+					"read",
+					browserArgs(t, `{"frame":[$0],"css":"#cross-button","attribute":"data-clicks"}`, outer),
+				),
+				"value",
+			),
+			strconv.Itoa(count),
+		)
 	}
 	expectValue(t, f.eval(t, tab, "[innerWidth,innerHeight,devicePixelRatio]"), before)
 }
@@ -586,7 +835,18 @@ func TestCatalogProbeAndServerRecordedNativeFormState(t *testing.T) {
 	f := chromeFixture(t)
 	tab := f.open(t, "")
 	f.command(t, tab, "move", `{"css":"#named"}`)
-	xy, err := contract.Decode[string](observedField(t, f.command(t, tab, "eval", `{"css":"#named","expression":"(()=>{const r=element.getBoundingClientRect();return (r.x+5)+','+(r.y+5)})()"}`), "value"))
+	xy, err := contract.Decode[string](
+		observedField(
+			t,
+			f.command(
+				t,
+				tab,
+				"eval",
+				`{"css":"#named","expression":"(()=>{const r=element.getBoundingClientRect();return (r.x+5)+','+(r.y+5)})()"}`,
+			),
+			"value",
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -616,7 +876,11 @@ func TestCatalogProbeAndServerRecordedNativeFormState(t *testing.T) {
 		f.command(t, tab, "check", `{"css":"[name=confirm]","value":true}`)
 		f.click(t, tab, "#submit-final")
 	}
-	expectValue(t, f.get(t, "/submitted-state"), []string{"/submit?date=2026-10-01&confirm=on", "/submit?date=2026-10-02&confirm=on"})
+	expectValue(
+		t,
+		f.get(t, "/submitted-state"),
+		[]string{"/submit?date=2026-10-01&confirm=on", "/submit?date=2026-10-02&confirm=on"},
+	)
 }
 
 func TestViewportOverridesArePerTabAndSurviveScreenshots(t *testing.T) {
@@ -624,9 +888,17 @@ func TestViewportOverridesArePerTabAndSurviveScreenshots(t *testing.T) {
 	first, second := f.open(t, ""), f.open(t, "")
 	for _, tab := range []browserop.TabID{first, second} {
 		expectValue(t, f.eval(t, tab, "[innerWidth,innerHeight,devicePixelRatio]"), []int{1280, 720, 1})
-		expectValue(t, observedField(t, f.command(t, tab, "info", "{}"), "viewport"), json.RawMessage(`{"width":1280,"height":720,"devicePixelRatio":1,"mode":"web"}`))
+		expectValue(
+			t,
+			observedField(t, f.command(t, tab, "info", "{}"), "viewport"),
+			json.RawMessage(`{"width":1280,"height":720,"devicePixelRatio":1,"mode":"web"}`),
+		)
 	}
-	expectValue(t, observedField(t, f.command(t, first, "viewport.set", `{"width":390,"height":844}`), "viewport"), json.RawMessage(`{"width":390,"height":844,"devicePixelRatio":1,"mode":"custom"}`))
+	expectValue(
+		t,
+		observedField(t, f.command(t, first, "viewport.set", `{"width":390,"height":844}`), "viewport"),
+		json.RawMessage(`{"width":390,"height":844,"devicePixelRatio":1,"mode":"custom"}`),
+	)
 	for _, test := range []struct {
 		tab           browserop.TabID
 		width, height int
@@ -634,7 +906,11 @@ func TestViewportOverridesArePerTabAndSurviveScreenshots(t *testing.T) {
 		info := observedField(t, f.command(t, test.tab, "info", `{}`), "viewport")
 		expectValue(t, observedField(t, info, "width"), test.width)
 		expectValue(t, observedField(t, info, "height"), test.height)
-		expectValue(t, f.eval(t, test.tab, "[innerWidth,innerHeight,devicePixelRatio]"), []int{test.width, test.height, 1})
+		expectValue(
+			t,
+			f.eval(t, test.tab, "[innerWidth,innerHeight,devicePixelRatio]"),
+			[]int{test.width, test.height, 1},
+		)
 		shot := f.command(t, test.tab, "screenshot", browserArgs(t, `{"output":$0}`, string(test.tab)+".png"))
 		expectValue(t, observedField(t, shot, "width"), test.width)
 		expectValue(t, observedField(t, shot, "height"), test.height)
@@ -653,7 +929,11 @@ func TestViewportOverridesArePerTabAndSurviveScreenshots(t *testing.T) {
 		expectValue(t, observedField(t, f.command(t, test.tab, "info", `{}`), "viewport"), info)
 	}
 	f.command(t, second, "viewport.set", `{"width":640,"height":480}`)
-	expectValue(t, observedField(t, f.command(t, first, "viewport.reset", `{}`), "viewport"), json.RawMessage(`{"width":1280,"height":720,"devicePixelRatio":1,"mode":"web"}`))
+	expectValue(
+		t,
+		observedField(t, f.command(t, first, "viewport.reset", `{}`), "viewport"),
+		json.RawMessage(`{"width":1280,"height":720,"devicePixelRatio":1,"mode":"web"}`),
+	)
 	expectValue(t, f.eval(t, first, "[innerWidth,innerHeight,devicePixelRatio]"), []int{1280, 720, 1})
 	expectValue(t, f.eval(t, second, "[innerWidth,innerHeight,devicePixelRatio]"), []int{640, 480, 1})
 }
@@ -665,12 +945,36 @@ func TestInputAndAnimationProbesCleanUpOnCancellationAndDialogs(t *testing.T) {
 	f.get(t, "/wait-typing")
 	job.cancel()
 	requireCancelled(t, job.join(t))
-	expectValue(t, f.eval(t, tab, `keys.length>0&&keys.filter(e=>e.type==='keydown').length===keys.filter(e=>e.type==='keyup').length`), true)
+	expectValue(
+		t,
+		f.eval(
+			t,
+			tab,
+			`keys.length>0&&keys.filter(e=>e.type==='keydown').length===keys.filter(e=>e.type==='keyup').length`,
+		),
+		true,
+	)
 	f.rejects(t, tab, "key", `{"css":"#key-dialog","key":"Control+x"}`, "dialog_blocked", "")
 	f.command(t, tab, "dialog.dismiss", `{}`)
-	expectValue(t, f.eval(t, tab, `keys.filter(e=>e.key==='Control'&&e.type==='keydown').length===keys.filter(e=>e.key==='Control'&&e.type==='keyup').length`), true)
+	expectValue(
+		t,
+		f.eval(
+			t,
+			tab,
+			`keys.filter(e=>e.key==='Control'&&e.type==='keydown').length===keys.filter(e=>e.key==='Control'&&e.type==='keyup').length`,
+		),
+		true,
+	)
 	f.rejects(t, tab, "click", `{"css":"#moving","timeout":5000}`, "not_actionable", "not_started")
-	expectValue(t, f.eval(t, tab, `Object.getOwnPropertyNames(document.querySelector('#moving')).filter(key=>key.startsWith('probe_')).length`), 0)
+	expectValue(
+		t,
+		f.eval(
+			t,
+			tab,
+			`Object.getOwnPropertyNames(document.querySelector('#moving')).filter(key=>key.startsWith('probe_')).length`,
+		),
+		0,
+	)
 }
 
 func TestUnregisteredPopupSurvivesItsOpenerClosing(t *testing.T) {
@@ -710,13 +1014,19 @@ func TestCatalogLoadWaitTracksOnlyCurrentDocument(t *testing.T) {
 	for _, load := range []string{"commit", "domcontentloaded"} {
 		f.command(t, tab, "wait", browserArgs(t, `{"load":$0}`, load))
 	}
-	f.mutate(t, tab, `(()=>{const ready=Object.getOwnPropertyDescriptor(Document.prototype,"readyState").get;Object.defineProperty(document,"readyState",{get(){fetch("/typing-started");return ready.call(this)}})})()`)
+	f.mutate(
+		t,
+		tab,
+		`(()=>{const ready=Object.getOwnPropertyDescriptor(Document.prototype,"readyState").get;Object.defineProperty(document,"readyState",{get(){fetch("/typing-started");return ready.call(this)}})})()`,
+	)
 	job := f.start(t, "wait", browserArgs(t, `{"tab":$0,"load":"load"}`, tab))
 	f.get(t, "/wait-typing")
 	f.get(t, "/release-load")
 	result := job.join(t)
 	failure, err := browserop.DecodeFailureDocument(result.stderr)
-	if err != nil || failure.Error.Code != "navigation_failed" || failure.Error.Details == nil || failure.Error.Details.Action == nil || *failure.Error.Details.Action != "not_started" {
+	if err != nil || failure.Error.Code != "navigation_failed" || failure.Error.Details == nil ||
+		failure.Error.Details.Action == nil ||
+		*failure.Error.Details.Action != "not_started" {
 		t.Fatalf("%s %v", result.stderr, err)
 	}
 	f.command(t, tab, "wait", `{"load":"load"}`)

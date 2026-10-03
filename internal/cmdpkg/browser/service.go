@@ -51,7 +51,11 @@ type service struct {
 
 func newService() *service {
 	s := &service{browsers: make(map[string]*conversation), closeDone: make(chan struct{})}
-	s.launch = func(ctx context.Context, start *starting, numbers tabs.NumberSource) (*tabs.Environment, *live.Hub, error) {
+	s.launch = func(
+		ctx context.Context,
+		start *starting,
+		numbers tabs.NumberSource,
+	) (*tabs.Environment, *live.Hub, error) {
 		executable, err := s.chrome.Executable(ctx, start.invocation)
 		if err != nil {
 			return nil, nil, err
@@ -66,8 +70,13 @@ func newService() *service {
 	return s
 }
 
-func (*service) Operations() []string                    { return browserop.OperationNames() }
+// Operations returns the served browser operation names.
+func (*service) Operations() []string { return browserop.OperationNames() }
+
+// SetArtifacts attaches the runner artifact source for Chrome installation.
 func (s *service) SetArtifacts(source *cmdsdk.Artifacts) { s.chrome.Attach(source) }
+
+// SetNumbers attaches the runner number source for tab identities.
 func (s *service) SetNumbers(source *cmdsdk.Numbers) {
 	s.mu.Lock()
 	s.numbers = source
@@ -80,25 +89,29 @@ func (s *service) admit(id string) (*conversation, error) {
 	if s.closed {
 		return nil, context.Canceled
 	}
-	b := s.browsers[id]
-	if b == nil {
-		b = newConversation(cdp.NewTabNumbers(s.numbers, id), s.launch)
-		s.browsers[id] = b
+	browser := s.browsers[id]
+	if browser == nil {
+		browser = newConversation(cdp.NewTabNumbers(s.numbers, id), s.launch)
+		s.browsers[id] = browser
 	}
-	if !b.admit() {
+	if !browser.admit() {
 		return nil, context.Canceled
 	}
-	return b, nil
+	return browser, nil
 }
 
-func (s *service) Conversation(ctx context.Context, invocation cmdsdk.ConversationContext) (commandwire.Completion, error) {
+// Conversation lists or releases conversation browsers.
+func (s *service) Conversation(
+	ctx context.Context,
+	invocation cmdsdk.ConversationContext,
+) (commandwire.Completion, error) {
 	var body []byte
 	switch request := invocation.Request.(type) {
 	case *commandwire.ConversationQuery:
 		ids := []string{}
 		s.mu.Lock()
-		for id, b := range s.browsers {
-			if lifecycle(b.state.Load()) != absent {
+		for id, browser := range s.browsers {
+			if lifecycle(browser.state.Load()) != absent {
 				ids = append(ids, id)
 			}
 		}
@@ -111,12 +124,12 @@ func (s *service) Conversation(ctx context.Context, invocation cmdsdk.Conversati
 		}
 	case *commandwire.ConversationRelease:
 		s.mu.Lock()
-		b := s.browsers[request.Conversation]
+		browser := s.browsers[request.Conversation]
 		s.mu.Unlock()
-		if b != nil {
-			err := b.release(ctx)
+		if browser != nil {
+			err := browser.release(ctx)
 			s.mu.Lock()
-			if s.browsers[request.Conversation] == b {
+			if s.browsers[request.Conversation] == browser {
 				delete(s.browsers, request.Conversation)
 			}
 			s.mu.Unlock()
@@ -129,6 +142,7 @@ func (s *service) Conversation(ctx context.Context, invocation cmdsdk.Conversati
 	return commandwire.Completion{}, invocation.Output.Stdout(ctx, body)
 }
 
+// Close releases all conversation browsers and joins the startup sweep.
 func (s *service) Close(ctx context.Context) error {
 	s.mu.Lock()
 	if s.closed {
@@ -142,8 +156,8 @@ func (s *service) Close(ctx context.Context) error {
 	s.mu.Unlock()
 	failures := make(chan error, len(browsers))
 	var tasks sync.WaitGroup
-	for _, b := range browsers {
-		tasks.Go(func() { failures <- b.release(ctx) })
+	for _, browser := range browsers {
+		tasks.Go(func() { failures <- browser.release(ctx) })
 	}
 	tasks.Wait()
 	close(failures)
