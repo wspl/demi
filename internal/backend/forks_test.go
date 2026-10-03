@@ -172,7 +172,6 @@ func conversationCommands(blocks []core.Block) []string {
 
 // Real runner and native file package; blocked before the first tool by finding 1.
 func TestForkSharesEditBlobsWithoutWritingObjects(t *testing.T) {
-	t.Skip("finding 1: device claim returns 500 because device.installs is nil")
 	ctx, h := conversationHarness(t)
 	counts := &blobstest.ObjectCounts{}
 	h.Objects = counts
@@ -222,7 +221,6 @@ func TestForkSharesEditBlobsWithoutWritingObjects(t *testing.T) {
 
 // A real runner executes the source and both destinations' todo commands.
 func TestForkRestoresTodosAtSelectedHistory(t *testing.T) {
-	t.Skip("finding 1: device claim returns 500 because device.installs is nil")
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -266,7 +264,6 @@ func TestForkRestoresTodosAtSelectedHistory(t *testing.T) {
 
 // A real runner reads retained command output and allocates the next identity.
 func TestForkReadsOnlyCommandsItsHistoryNames(t *testing.T) {
-	t.Skip("finding 1: device claim returns 500 because device.installs is nil")
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)

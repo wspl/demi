@@ -14,7 +14,6 @@ import (
 
 // Six real shell turns exercise retained output; no real model is called.
 func TestLongOutputNamesOmittedLinesAndShellOutputReadsThem(t *testing.T) {
-	t.Skip("finding 1: device claim returns 500 because device.installs is nil")
 	ctx, h := conversationHarness(t)
 	built, err := backendtest.BuildPackage(ctx, t, "demi-file")
 	wireMust(t, err)

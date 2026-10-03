@@ -148,7 +148,6 @@ func TestTurnEndWaitsForCommitAndImmediatelyAdmitsEdit(t *testing.T) {
 
 // A real runner executes tool effects and reconnects after the backend restart.
 func TestEditRestoresTodosKeepsFilesAndDurableReceipt(t *testing.T) {
-	t.Skip("finding 1: device claim returns 500 because device.installs is nil")
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)

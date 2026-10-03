@@ -77,7 +77,6 @@ func conversationStreamDevice(t *testing.T) (context.Context, *backendtest.TestB
 
 // The real native fixture reports context, then echoes three MiB bidirectionally.
 func TestUserStreamCarriesContextDirectoryAndBytes(t *testing.T) {
-	t.Skip("finding 1: device claim returns 500 because device.installs is nil")
 	ctx, b, s, paired := conversationStreamDevice(t)
 	bytes, code, reason := conversationStreamEnd(ctx, t, conversationStream(ctx, t, b, &s, conversationFirst, "where"))
 	conversationEqual(t, code, 1000)
@@ -128,7 +127,6 @@ func TestUserStreamCarriesContextDirectoryAndBytes(t *testing.T) {
 }
 
 func TestUserStreamRefusesForeignUnknownArchivedAndOffline(t *testing.T) {
-	t.Skip("finding 1: device claim returns 500 because device.installs is nil")
 	ctx, b, s, paired := conversationStreamDevice(t)
 	path := "/api/conversations/" + conversationFirst + "/streams/"
 	conversationUpgradeRefusal(ctx, t, b, &s, path+"echo", "https://elsewhere.example", 403, webapi.ErrorCodeForbiddenOrigin)
@@ -144,7 +142,6 @@ func TestUserStreamRefusesForeignUnknownArchivedAndOffline(t *testing.T) {
 }
 
 func TestArchiveEndsOpenUserStreams(t *testing.T) {
-	t.Skip("finding 1: device claim returns 500 because device.installs is nil")
 	ctx, b, s, _ := conversationStreamDevice(t)
 	echo := conversationStream(ctx, t, b, &s, conversationFirst, "echo")
 	conversationStreamReady(ctx, t, echo)
@@ -155,7 +152,6 @@ func TestArchiveEndsOpenUserStreams(t *testing.T) {
 }
 
 func TestDisablingPluginEndsStreamsAndRefusesNewOnes(t *testing.T) {
-	t.Skip("finding 1: device claim returns 500 because device.installs is nil")
 	ctx, b, s, _ := conversationStreamDevice(t)
 	echo := conversationStream(ctx, t, b, &s, conversationFirst, "echo")
 	conversationStreamReady(ctx, t, echo)
