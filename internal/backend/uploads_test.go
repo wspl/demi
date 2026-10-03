@@ -23,7 +23,8 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// Two local uploads; no model or runner. Object counts pin deduplication.
+// TestRepeatedUploadSendsNoObjectBytes uses two local uploads and no model or runner. Object counts pin
+// deduplication.
 func TestRepeatedUploadSendsNoObjectBytes(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -53,18 +54,36 @@ func TestRepeatedUploadSendsNoObjectBytes(t *testing.T) {
 // filesAttachment retains the filename supplied by the composer beside the server DTO.
 type filesAttachment struct {
 	webapi.AttachmentDTO
+	// Name retains the composer's filename because the server DTO does not carry it.
 	Name string
 }
 
 // filesUpload sends one attachment using the page's raw upload route.
-func filesUpload(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session, name, media string, data []byte) filesAttachment {
+func filesUpload(
+	ctx context.Context,
+	t *testing.T,
+	b *backendtest.TestBackend,
+	s *backendtest.Session,
+	name, media string,
+	data []byte,
+) filesAttachment {
 	t.Helper()
-	response, err := b.Response(ctx, "POST", "/api/attachments?name="+url.QueryEscape(name), s, http.Header{"Content-Type": {media}}, bytes.NewReader(data))
+	response, err := b.Response(
+		ctx,
+		"POST",
+		"/api/attachments?name="+url.QueryEscape(name),
+		s,
+		http.Header{"Content-Type": {media}},
+		bytes.NewReader(data),
+	)
 	wireMust(t, err)
 	a, err := backendtest.ReadAnswer(ctx, response)
 	wireMust(t, err)
 	filesStatus(t, a, 201)
-	return filesAttachment{AttachmentDTO: conversationDecode(t, a, webapi.DecodeAttachmentAnswer).Attachment, Name: name}
+	return filesAttachment{
+		AttachmentDTO: conversationDecode(t, a, webapi.DecodeAttachmentAnswer).Attachment,
+		Name:          name,
+	}
 }
 
 // filesUploadMessage names attachments in the same order as the page's composer.
@@ -87,12 +106,16 @@ func filesCloseTree(ctx context.Context, t *testing.T, s *backendtest.Conversati
 	wireMust(t, err)
 }
 
-// A local vendor and runner restore two image references without writing objects.
+// TestUploadReopeningTwoPagesAndSyncWritesNoBlob uses a local vendor and runner to restore two image references
+// without writing objects.
 func TestUploadReopeningTwoPagesAndSyncWritesNoBlob(t *testing.T) {
 	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Objects = counts })
-	shots := []filesAttachment{filesUpload(w.ctx, t, w.b, &w.s, "a.png", "image/png", storetest.PNG(4, 3, 1)), filesUpload(w.ctx, t, w.b, &w.s, "b.png", "image/png", storetest.PNG(4, 3, 2))}
+	shots := []filesAttachment{
+		filesUpload(w.ctx, t, w.backend, &w.session, "a.png", "image/png", storetest.PNG(4, 3, 1)),
+		filesUpload(w.ctx, t, w.backend, &w.session, "b.png", "image/png", storetest.PNG(4, 3, 2)),
+	}
 	w.vendor.Respond(conversationAnswer(t, []string{"Two shots."}, 1, 1))
 	wireMust(t, w.socket.Send(w.ctx, filesUploadMessage("m1", "Look", shots...)))
 	_, err := w.socket.UntilIdle(w.ctx)
@@ -101,7 +124,7 @@ func TestUploadReopeningTwoPagesAndSyncWritesNoBlob(t *testing.T) {
 	before := counts.Tally()
 	_, err = w.socket.Open(w.ctx)
 	wireMust(t, err)
-	second := conversationOpen(w.ctx, t, w.b, &w.s, filesConversation)
+	second := conversationOpen(w.ctx, t, w.backend, &w.session, filesConversation)
 	synced, err := second.Live(w.ctx)
 	wireMust(t, err)
 	after := counts.Tally().Since(before)
@@ -121,24 +144,33 @@ func TestUploadReopeningTwoPagesAndSyncWritesNoBlob(t *testing.T) {
 	conversationEqual(t, images, 2)
 	wireMust(t, second.Close(w.ctx))
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
-// Nine replayed images are read once with bounded concurrency after a compaction.
+// TestUploadRestoreReadsReplayBlobsOnceAfterCompaction reads nine replayed images once with bounded concurrency
+// after a compaction.
 func TestUploadRestoreReadsReplayBlobsOnceAfterCompaction(t *testing.T) {
 	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Objects = counts })
-	old := filesUpload(w.ctx, t, w.b, &w.s, "old.png", "image/png", storetest.PNG(4, 3, 0))
+	old := filesUpload(w.ctx, t, w.backend, &w.session, "old.png", "image/png", storetest.PNG(4, 3, 0))
 	var shots []filesAttachment
 	for i := 1; i <= 9; i++ {
-		shots = append(shots, filesUpload(w.ctx, t, w.b, &w.s, "shot.png", "image/png", storetest.PNG(4, 3, byte(i))))
+		shots = append(
+			shots,
+			filesUpload(w.ctx, t, w.backend, &w.session, "shot.png", "image/png", storetest.PNG(4, 3, byte(i))),
+		)
 	}
 	w.vendor.Respond(conversationAnswer(t, []string{"An old shot."}, 1, 1))
 	wireMust(t, w.socket.Send(w.ctx, filesUploadMessage("m1", "Look", old)))
 	_, err := w.socket.UntilIdle(w.ctx)
 	wireMust(t, err)
-	w.vendor.Respond(providertest.MockResponse{Status: 400, Chunks: [][]byte{[]byte(`{"type":"error","error":{"type":"invalid_request_error","message":"try later"}}`)}})
+	w.vendor.Respond(
+		providertest.MockResponse{
+			Status: 400,
+			Chunks: [][]byte{[]byte(`{"type":"error","error":{"type":"invalid_request_error","message":"try later"}}`)},
+		},
+	)
 	wireMust(t, w.socket.Send(w.ctx, filesUploadMessage("m2", "Look at these", shots...)))
 	_, err = w.socket.UntilIdle(w.ctx)
 	wireMust(t, err)
@@ -174,22 +206,27 @@ func TestUploadRestoreReadsReplayBlobsOnceAfterCompaction(t *testing.T) {
 		}
 	}
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
-// A 2400px upload and command output are fitted identically; Host bytes stay whole.
+// TestUploadAndToolFitWideImageButKeepHostOriginal fits a 2400px upload and command output identically; Host
+// bytes stay whole.
 func TestUploadAndToolFitWideImageButKeepHostOriginal(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "")
 	wide := storetest.PNG(2400, 10, 1)
-	wireMust(t, os.WriteFile(filepath.Join(w.root, "wide.png"), wide, 0644))
-	upload := filesUpload(w.ctx, t, w.b, &w.s, "wide.png", "image/png", wide)
+	wireMust(t, os.WriteFile(filepath.Join(w.root, "wide.png"), wide, 0o644))
+	upload := filesUpload(w.ctx, t, w.backend, &w.session, "wide.png", "image/png", wide)
 	w.vendor.Respond(conversationShell(t, "toolu_1", "cat wide.png", 60000))
 	w.vendor.Respond(conversationAnswer(t, []string{"Both are wide."}, 1, 1))
 	wireMust(t, w.socket.Send(w.ctx, filesUploadMessage("m1", "Look", upload)))
 	_, err := w.socket.UntilIdle(w.ctx)
 	wireMust(t, err)
-	conversationEqual(t, []byte(filesRead(t, filepath.Join(w.paired.Runner.Home(), ".demi/attachments", filesConversation, "wide.png"))), wide)
+	conversationEqual(
+		t,
+		[]byte(filesRead(t, filepath.Join(w.paired.Runner.Home(), ".demi/attachments", filesConversation, "wide.png"))),
+		wide,
+	)
 	requests := w.vendor.Requests()
 	firstImage := func(body []byte) string {
 		t.Helper()
@@ -212,27 +249,32 @@ func TestUploadAndToolFitWideImageButKeepHostOriginal(t *testing.T) {
 	}
 	conversationEqual(t, firstImage(requests[1].Body), fitted)
 	conversationEqual(t, strings.Count(filesModelField(t, requests[1].Body, "messages"), fitted), 2)
-	filesContains(t, filesModelField(t, requests[1].Body, "messages"), "fitted to what every model accepts; to keep the original, save it: demi shell output ")
-	user := conversationTranscript(w.ctx, t, w.b, &w.s, filesConversation).Blocks[0].(*core.UserBlock)
+	filesContains(
+		t,
+		filesModelField(t, requests[1].Body, "messages"),
+		"fitted to what every model accepts; to keep the original, save it: demi shell output ",
+	)
+	user := conversationTranscript(w.ctx, t, w.backend, &w.session, filesConversation).Blocks[0].(*core.UserBlock)
 	image := user.Content[1].(*core.UserImage).Source.(*core.MediaSourceRef)
 	if image.Ref == upload.Sha256 {
 		t.Fatal("original hash in fitted image")
 	}
-	served := conversationRequest(w.ctx, t, w.b, &w.s, "GET", "/api/blobs/"+string(image.Ref), "", 200)
+	served := conversationRequest(w.ctx, t, w.backend, &w.session, "GET", "/api/blobs/"+string(image.Ref), "", 200)
 	conversationEqual(t, served.Body, data)
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
-// A failed local object write replaces tool media with a reason and preserves the turn.
+// TestUploadUnstorableToolMediaBecomesGoneAndTurnContinues fails a local object write to replace tool media with
+// a reason and preserve the turn.
 func TestUploadUnstorableToolMediaBecomesGoneAndTurnContinues(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "")
 	png := storetest.PNG(4, 3, 0)
-	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png, 0644))
-	blobs := filepath.Join(w.h.DataDir(), "blobs")
-	wireMust(t, os.MkdirAll(blobs, 0755))
-	wireMust(t, os.WriteFile(filepath.Join(blobs, string(w.s.User.ID)), nil, 0644))
+	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png, 0o644))
+	blobs := filepath.Join(w.harness.DataDir(), "blobs")
+	wireMust(t, os.MkdirAll(blobs, 0o755))
+	wireMust(t, os.WriteFile(filepath.Join(blobs, string(w.session.User.ID)), nil, 0o644))
 	w.vendor.Respond(conversationShell(t, "toolu_1", "cat shot.png", 60000))
 	w.vendor.Respond(conversationAnswer(t, []string{"No picture."}, 1, 1))
 	frames, err := w.socket.Chat(w.ctx, "m1", "Show me the picture")
@@ -279,40 +321,92 @@ func TestUploadUnstorableToolMediaBecomesGoneAndTurnContinues(t *testing.T) {
 		t.Fatal("request carries picture bytes")
 	}
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
-// A real runner and local vendor carry uploads, a steer and an image-preserving edit.
+// TestUploadReachesModelHostAndPageByReference uses a real runner and local vendor to carry uploads, a steer and
+// an image-preserving edit.
 func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "")
-	wireMust(t, w.h.AddUser(w.ctx, "ana@example.test", "ana-pass-1", webapi.RoleUser))
+	wireMust(t, w.harness.AddUser(w.ctx, "ana@example.test", "ana-pass-1", webapi.RoleUser))
 	png := storetest.PNG(4, 3, 0)
-	image := filesUpload(w.ctx, t, w.b, &w.s, "shot.png", "application/octet-stream", png)
+	image := filesUpload(w.ctx, t, w.backend, &w.session, "shot.png", "application/octet-stream", png)
 	ref := fmt.Sprintf("%x", sha256.Sum256(png))
 	conversationEqual(t, image.MediaType, "image/png")
 	conversationEqual(t, image.SizeBytes, uint64(len(png)))
 	conversationEqual(t, string(image.Sha256), ref)
 	conversationEqual(t, image.Snippet, (*string)(nil))
-	notes := filesUpload(w.ctx, t, w.b, &w.s, "notes.log", "application/octet-stream", []byte("\r\n  first\r\nsecond"))
+	notes := filesUpload(
+		w.ctx,
+		t,
+		w.backend,
+		&w.session,
+		"notes.log",
+		"application/octet-stream",
+		[]byte("\r\n  first\r\nsecond"),
+	)
 	conversationEqual(t, notes.MediaType, "application/octet-stream")
 	if notes.Snippet == nil || *notes.Snippet != "first\nsecond" {
 		t.Fatalf("snippet: %+v", notes.Snippet)
 	}
-	ana, err := w.b.Login(w.ctx, "ana@example.test", "ana-pass-1")
+	ana, err := w.backend.Login(w.ctx, "ana@example.test", "ana-pass-1")
 	wireMust(t, err)
-	hers := filesUpload(w.ctx, t, w.b, &ana, "hers.txt", "text/plain", []byte("not yours"))
+	hers := filesUpload(w.ctx, t, w.backend, &ana, "hers.txt", "text/plain", []byte("not yours"))
 	for _, r := range []struct {
 		query, media string
 		data         []byte
 		status       int
 		code         webapi.ErrorCode
-	}{{"", "image/png", png, 400, webapi.ErrorCodeInvalidQuery}, {"?name=a.png", "", png, 400, webapi.ErrorCodeInvalidBody}, {"?name=a.png", "multipart/form-data; boundary=x", png, 400, webapi.ErrorCodeInvalidBody}, {"?name=a.png", "image/png", nil, 400, webapi.ErrorCodeInvalidBody}, {"?name=a.bin", "application/octet-stream", make([]byte, 25*1024*1024+1), 413, webapi.ErrorCodeTooLarge}} {
+	}{
+		{
+			"",
+			"image/png",
+			png,
+			400,
+			webapi.ErrorCodeInvalidQuery,
+		},
+		{
+			"?name=a.png",
+			"",
+			png,
+			400,
+			webapi.ErrorCodeInvalidBody,
+		},
+		{
+			"?name=a.png",
+			"multipart/form-data; boundary=x",
+			png,
+			400,
+			webapi.ErrorCodeInvalidBody,
+		},
+		{
+			"?name=a.png",
+			"image/png",
+			nil,
+			400,
+			webapi.ErrorCodeInvalidBody,
+		},
+		{
+			"?name=a.bin",
+			"application/octet-stream",
+			make([]byte, 25*1024*1024+1),
+			413,
+			webapi.ErrorCodeTooLarge,
+		},
+	} {
 		headers := http.Header{}
 		if r.media != "" {
 			headers.Set("Content-Type", r.media)
 		}
-		response, err := w.b.Response(w.ctx, "POST", "/api/attachments"+r.query, &w.s, headers, bytes.NewReader(r.data))
+		response, err := w.backend.Response(
+			w.ctx,
+			"POST",
+			"/api/attachments"+r.query,
+			&w.session,
+			headers,
+			bytes.NewReader(r.data),
+		)
 		wireMust(t, err)
 		answer, err := backendtest.ReadAnswer(w.ctx, response)
 		wireMust(t, err)
@@ -330,18 +424,29 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 	}
 	b64 := base64.StdEncoding.EncodeToString(png)
 	sent := filesModelField(t, w.vendor.Requests()[0].Body, "messages")
-	filesContains(t, sent, b64, directory+"/shot.png", directory+"/notes.log", "[attachment "+string(hers.ID)+" is not available]")
+	filesContains(
+		t,
+		sent,
+		b64,
+		directory+"/shot.png",
+		directory+"/notes.log",
+		"[attachment "+string(hers.ID)+" is not available]",
+	)
 	encoded := conversationJSON(t, frames)
 	filesContains(t, encoded, ref)
 	if strings.Contains(encoded, b64) {
 		t.Fatal("page contains inline image")
 	}
-	blocks := conversationTranscript(w.ctx, t, w.b, &w.s, filesConversation).Blocks
+	blocks := conversationTranscript(w.ctx, t, w.backend, &w.session, filesConversation).Blocks
 	user, ok := blocks[0].(*core.UserBlock)
 	if !ok {
 		t.Fatalf("first block: %T", blocks[0])
 	}
-	conversationEqual(t, conversationKinds(t, user.Content), []string{"text", "image", "attachment", "attachment", "text"})
+	conversationEqual(
+		t,
+		conversationKinds(t, user.Content),
+		[]string{"text", "image", "attachment", "attachment", "text"},
+	)
 	picture, ok := user.Content[1].(*core.UserImage)
 	if !ok {
 		t.Fatal("no image")
@@ -351,7 +456,7 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 		t.Fatalf("source: %T", picture.Source)
 	}
 	conversationEqual(t, string(source.Ref), ref)
-	served := conversationRequest(w.ctx, t, w.b, &w.s, "GET", "/api/blobs/"+ref, "", 200)
+	served := conversationRequest(w.ctx, t, w.backend, &w.session, "GET", "/api/blobs/"+ref, "", 200)
 	conversationEqual(t, served.Body, png)
 	w.vendor.Respond(conversationAnswer(t, []string{"Again."}, 1, 1))
 	wireMust(t, w.socket.Send(w.ctx, filesUploadMessage("m2", "Once more", image)))
@@ -368,7 +473,13 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 	})
 	wireMust(t, err)
 	command := waiting[len(waiting)-1].(*framewire.ShellOutputFrame).Status.Command().CommandID
-	wireMust(t, w.socket.Send(w.ctx, &framewire.SteerFrame{SteerID: "s1", Content: filesUploadMessage("unused", "And this one", image).Content}))
+	wireMust(
+		t,
+		w.socket.Send(
+			w.ctx,
+			&framewire.SteerFrame{SteerID: "s1", Content: filesUploadMessage("unused", "And this one", image).Content},
+		),
+	)
 	steered, err := w.socket.Until(w.ctx, func(f framewire.ServerFrame) bool {
 		_, ok := f.(*framewire.SteerResultFrame)
 		return ok
@@ -381,7 +492,13 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 	_, err = w.socket.Until(w.ctx, conversationIdle)
 	wireMust(t, err)
 	conversationEqual(t, []byte(filesRead(t, filepath.Join(directory, "shot-3.png"))), png)
-	filesContains(t, filesModelField(t, w.vendor.Requests()[3].Body, "messages"), "And this one", b64, directory+"/shot-3.png")
+	filesContains(
+		t,
+		filesModelField(t, w.vendor.Requests()[3].Body, "messages"),
+		"And this one",
+		b64,
+		directory+"/shot-3.png",
+	)
 	wireMust(t, w.socket.Send(w.ctx, &framewire.SyncTranscriptFrame{}))
 	synced, err := w.socket.Until(w.ctx, func(f framewire.ServerFrame) bool {
 		_, ok := f.(*framewire.TranscriptResetFrame)
@@ -389,7 +506,15 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 	})
 	wireMust(t, err)
 	version := synced[len(synced)-1].(*framewire.TranscriptResetFrame).Version
-	request := framewire.EditRequest{OperationID: "keep-1", TargetBlockID: user.ID(), Version: version, Content: []framewire.ClientContent{&framewire.TextContent{Text: "Look again"}, &framewire.MediaContent{Media: &framewire.MediaImageRef{Ref: source.Ref, MediaType: source.MediaType}}}}
+	request := framewire.EditRequest{
+		OperationID:   "keep-1",
+		TargetBlockID: user.ID(),
+		Version:       version,
+		Content: []framewire.ClientContent{
+			&framewire.TextContent{Text: "Look again"},
+			&framewire.MediaContent{Media: &framewire.MediaImageRef{Ref: source.Ref, MediaType: source.MediaType}},
+		},
+	}
 	w.vendor.Respond(conversationAnswer(t, []string{"The same shot."}, 1, 1))
 	wireMust(t, w.socket.Send(w.ctx, &framewire.EditAndSendFrame{Request: request}))
 	edited, err := w.socket.UntilIdle(w.ctx)
@@ -407,5 +532,5 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 	conversationEqual(t, len(requests), 5)
 	filesContains(t, filesModelField(t, requests[4].Body, "messages"), "Look again", b64)
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }

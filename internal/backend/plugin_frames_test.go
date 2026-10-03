@@ -15,7 +15,13 @@ import (
 )
 
 // filesView waits for a page's unsolicited view of one shell command.
-func filesView(ctx context.Context, t *testing.T, page *backendtest.ConversationSocket, id core.CommandID, wanted func(framewire.ShellStatus) bool) framewire.ShellStatus {
+func filesView(
+	ctx context.Context,
+	t *testing.T,
+	page *backendtest.ConversationSocket,
+	id core.CommandID,
+	wanted func(framewire.ShellStatus) bool,
+) framewire.ShellStatus {
 	t.Helper()
 	frames, err := page.Until(ctx, func(f framewire.ServerFrame) bool {
 		v, ok := f.(*framewire.ShellOutputFrame)
@@ -31,7 +37,8 @@ func filesEnded(s framewire.ShellStatus) bool {
 	return !running
 }
 
-// A real reader job waits for page input; the model then reads its independent cursor.
+// TestPluginFramesPageOutputRemainsForModel uses a real reader job waiting for page input; the model then reads
+// its independent cursor.
 func TestPluginFramesPageOutputRemainsForModel(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "")
@@ -51,15 +58,23 @@ func TestPluginFramesPageOutputRemainsForModel(t *testing.T) {
 	wireMust(t, w.socket.Send(w.ctx, &framewire.ShellAbortFrame{CommandID: id}))
 	filesView(w.ctx, t, w.socket, id, filesEnded)
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
-// A real shell writes 140 KB while one page reads nothing; both retain its end.
+// TestPluginFramesChattyCommandKeepsIdlePageConnected writes 140 KB with a real shell while one page reads
+// nothing; both retain its end.
 func TestPluginFramesChattyCommandKeepsIdlePageConnected(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Config.Conversations.OutboxFrames = 64 })
-	idle := conversationOpen(w.ctx, t, w.b, &w.s, filesConversation)
-	w.vendor.Respond(conversationShell(t, "chatty", "i=0; while [ $i -lt 1000 ]; do echo $i; i=$((i+1)); done; seq 100000 120000; echo beyond; read done", 200))
+	idle := conversationOpen(w.ctx, t, w.backend, &w.session, filesConversation)
+	w.vendor.Respond(
+		conversationShell(
+			t,
+			"chatty",
+			"i=0; while [ $i -lt 1000 ]; do echo $i; i=$((i+1)); done; seq 100000 120000; echo beyond; read done",
+			200,
+		),
+	)
 	w.vendor.Respond(conversationAnswer(t, []string{"chatting"}, 1, 1))
 	started := time.Now()
 	frames, err := w.socket.Chat(w.ctx, "message-1", "Chat.")
@@ -100,10 +115,11 @@ func TestPluginFramesChattyCommandKeepsIdlePageConnected(t *testing.T) {
 	}
 	wireMust(t, idle.Close(w.ctx))
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
-// Four jobs exercise unsolicited output, two pages, input, abort and close cleanup.
+// TestPluginFramesEveryPageSeesOutputAndCommandEnd uses four jobs to exercise unsolicited output, two pages,
+// input, abort and close cleanup.
 func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "")
@@ -123,7 +139,8 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 		if p, ok := f.(*framewire.TranscriptPatchFrame); ok {
 			for _, patch := range p.Patches {
 				if replace, ok := patch.(*framewire.ReplaceBlockPatch); ok {
-					if call, ok := replace.Value.(*core.ToolCallBlock); ok && call.ToolUseID == "greeter" && string(call.Status) != "executing" {
+					if call, ok := replace.Value.(*core.ToolCallBlock); ok && call.ToolUseID == "greeter" &&
+						string(call.Status) != "executing" {
 						returned = i
 					}
 				}
@@ -138,7 +155,9 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 	_, err = w.socket.Chat(w.ctx, "message-2", "Ask for a name.")
 	wireMust(t, err)
 	requests := w.vendor.Requests()
-	reader := core.CommandID(toolstest.Field(conversationToolResult(t, requests[len(requests)-1], "reader"), "commandId"))
+	reader := core.CommandID(
+		toolstest.Field(conversationToolResult(t, requests[len(requests)-1], "reader"), "commandId"),
+	)
 	wireMust(t, w.socket.Send(w.ctx, &framewire.ShellWriteFrame{CommandID: reader, Stdin: "Alice\n"}))
 	answers, err := w.socket.Until(w.ctx, func(f framewire.ServerFrame) bool {
 		_, ok := f.(*framewire.ShellWriteResultFrame)
@@ -150,7 +169,8 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 		if _, ok := f.(*framewire.ErrorFrame); ok {
 			t.Fatalf("write: %+v", f)
 		}
-		if v, ok := f.(*framewire.ShellOutputFrame); ok && v.Status.Command().CommandID == reader && filesEnded(v.Status) {
+		if v, ok := f.(*framewire.ShellOutputFrame); ok && v.Status.Command().CommandID == reader &&
+			filesEnded(v.Status) {
 			end = v.Status
 		}
 	}
@@ -169,14 +189,21 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 	long := core.CommandID(toolstest.Field(conversationToolResult(t, requests[len(requests)-1], "long"), "commandId"))
 	ready := false
 	for _, f := range frames {
-		if v, ok := f.(*framewire.ShellOutputFrame); ok && v.Status.Command().CommandID == long && v.Status.Command().Tail == "long-ready\n" {
+		if v, ok := f.(*framewire.ShellOutputFrame); ok && v.Status.Command().CommandID == long &&
+			v.Status.Command().Tail == "long-ready\n" {
 			ready = true
 		}
 	}
 	if !ready {
-		filesView(w.ctx, t, w.socket, long, func(s framewire.ShellStatus) bool { return s.Command().Tail == "long-ready\n" })
+		filesView(
+			w.ctx,
+			t,
+			w.socket,
+			long,
+			func(s framewire.ShellStatus) bool { return s.Command().Tail == "long-ready\n" },
+		)
 	}
-	second, err := w.b.Conversation(w.ctx, t, &w.s, filesConversation)
+	second, err := w.backend.Conversation(w.ctx, t, &w.session, filesConversation)
 	wireMust(t, err)
 	_, err = second.Open(w.ctx)
 	wireMust(t, err)
@@ -198,7 +225,13 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 	conversationEqual(t, live, []string{string(reader) + ":hello Alice\n", string(long) + ":long-ready\n"})
 	wireMust(t, w.socket.Send(w.ctx, &framewire.ShellWriteFrame{CommandID: long, Stdin: "go\n"}))
 	for _, page := range []*backendtest.ConversationSocket{w.socket, second} {
-		filesView(w.ctx, t, page, long, func(s framewire.ShellStatus) bool { return strings.HasSuffix(s.Command().Tail, "went\n") })
+		filesView(
+			w.ctx,
+			t,
+			page,
+			long,
+			func(s framewire.ShellStatus) bool { return strings.HasSuffix(s.Command().Tail, "went\n") },
+		)
 	}
 	wireMust(t, second.Send(w.ctx, &framewire.ShellAbortFrame{CommandID: long}))
 	for _, page := range []*backendtest.ConversationSocket{w.socket, second} {
@@ -225,7 +258,8 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 	})
 	wireMust(t, err)
 	for _, f := range append(frames, closing...) {
-		if v, ok := f.(*framewire.ShellOutputFrame); ok && (v.Status.Command().CommandID == reader || v.Status.Command().CommandID == long) {
+		if v, ok := f.(*framewire.ShellOutputFrame); ok &&
+			(v.Status.Command().CommandID == reader || v.Status.Command().CommandID == long) {
 			t.Fatalf("output after end: %+v", v)
 		}
 	}
@@ -242,5 +276,5 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 	}
 	wireMust(t, second.Close(w.ctx))
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }

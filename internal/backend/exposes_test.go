@@ -28,7 +28,8 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// One paired runner; no service or model is needed to observe configuration refusal.
+// TestExposeUnavailableWithoutDomain uses one paired runner; no service or model is needed to observe
+// configuration refusal.
 func TestExposeUnavailableWithoutDomain(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -107,7 +108,12 @@ func filesExposePort(t *testing.T, s *httptest.Server) string {
 }
 
 // filesExposeState reads the plugin-owned list from the shared product channel.
-func filesExposeState(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session) exposeplugin.ExposeState {
+func filesExposeState(
+	ctx context.Context,
+	t *testing.T,
+	b *backendtest.TestBackend,
+	s *backendtest.Session,
+) exposeplugin.ExposeState {
 	t.Helper()
 	page, snapshot := conversationPage(ctx, t, b, s)
 	wireMust(t, page.Close(ctx))
@@ -117,7 +123,14 @@ func filesExposeState(ctx context.Context, t *testing.T, b *backendtest.TestBack
 }
 
 // filesExpose creates a record, then observes the entry as its owner sees it.
-func filesExpose(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session, device webapi.DeviceID, port string) exposeplugin.ExposeEntry {
+func filesExpose(
+	ctx context.Context,
+	t *testing.T,
+	b *backendtest.TestBackend,
+	s *backendtest.Session,
+	device webapi.DeviceID,
+	port string,
+) exposeplugin.ExposeEntry {
 	t.Helper()
 	created, err := backendtest.CreateExpose(ctx, b.Backend, s.User.ID, device, port)
 	wireMust(t, err)
@@ -131,7 +144,13 @@ func filesExpose(ctx context.Context, t *testing.T, b *backendtest.TestBackend, 
 }
 
 // filesExposeFetch connects locally while preserving the public URL's Host header.
-func filesExposeFetch(ctx context.Context, t *testing.T, b *backendtest.TestBackend, entry exposeplugin.ExposeEntry, path string) *http.Response {
+func filesExposeFetch(
+	ctx context.Context,
+	t *testing.T,
+	b *backendtest.TestBackend,
+	entry exposeplugin.ExposeEntry,
+	path string,
+) *http.Response {
 	t.Helper()
 	public, err := url.Parse(entry.URL)
 	wireMust(t, err)
@@ -144,7 +163,12 @@ func filesExposeFetch(ctx context.Context, t *testing.T, b *backendtest.TestBack
 }
 
 // filesExposeHeld waits for the first streamed bytes and owns the visitor connection.
-func filesExposeHeld(ctx context.Context, t *testing.T, b *backendtest.TestBackend, entry exposeplugin.ExposeEntry) io.ReadCloser {
+func filesExposeHeld(
+	ctx context.Context,
+	t *testing.T,
+	b *backendtest.TestBackend,
+	entry exposeplugin.ExposeEntry,
+) io.ReadCloser {
 	t.Helper()
 	response := filesExposeFetch(ctx, t, b, entry, "/hold")
 	conversationEqual(t, response.StatusCode, 200)
@@ -172,9 +196,26 @@ func filesExposeEnded(ctx context.Context, t *testing.T, body io.ReadCloser, rel
 }
 
 // filesExposeCall invokes an owner action and checks its plugin-specific refusal.
-func filesExposeCall(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session, method string, id webapi.ExposeID, status int) {
+func filesExposeCall(
+	ctx context.Context,
+	t *testing.T,
+	b *backendtest.TestBackend,
+	s *backendtest.Session,
+	method string,
+	id webapi.ExposeID,
+	status int,
+) {
 	t.Helper()
-	answer := conversationRequest(ctx, t, b, s, "POST", "/api/plugins/expose/calls/"+method, conversationJSON(t, exposeplugin.ExposeCall{Expose: string(id)}), status)
+	answer := conversationRequest(
+		ctx,
+		t,
+		b,
+		s,
+		"POST",
+		"/api/plugins/expose/calls/"+method,
+		conversationJSON(t, exposeplugin.ExposeCall{Expose: string(id)}),
+		status,
+	)
 	if status != 200 {
 		refusal, err := answer.ErrorBody()
 		wireMust(t, err)
@@ -185,7 +226,8 @@ func filesExposeCall(ctx context.Context, t *testing.T, b *backendtest.TestBacke
 	}
 }
 
-// A real relay verifies owner isolation, renewals, expiry and monotonically assigned numbers.
+// TestExposeOwnerControlsLifetimeAndVisitorsNeedNoSession uses a real relay to verify owner isolation, renewals,
+// expiry and monotonically assigned numbers.
 func TestExposeOwnerControlsLifetimeAndVisitorsNeedNoSession(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -259,7 +301,8 @@ func TestExposeOwnerControlsLifetimeAndVisitorsNeedNoSession(t *testing.T) {
 	wireMust(t, b.Close(ctx))
 }
 
-// Held real connections end on removal, expiry and revocation; offline records survive.
+// TestExposeConnectionsEndWithRecordAndOfflineDeviceKeepsRecords holds real connections until removal, expiry
+// and revocation; offline records survive.
 func TestExposeConnectionsEndWithRecordAndOfflineDeviceKeepsRecords(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -313,7 +356,8 @@ func TestExposeConnectionsEndWithRecordAndOfflineDeviceKeepsRecords(t *testing.T
 	wireMust(t, b.Close(ctx))
 }
 
-// Sixty-four held real relays fill admission; the service's close event frees a place.
+// TestExposeShedsSixtyFifthConnectionAndReusesClosedPlace fills admission with sixty-four held real relays; the
+// service's close event frees a place.
 func TestExposeShedsSixtyFifthConnectionAndReusesClosedPlace(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -348,7 +392,8 @@ func TestExposeShedsSixtyFifthConnectionAndReusesClosedPlace(t *testing.T) {
 	wireMust(t, b.Close(ctx))
 }
 
-// The real relay's one-second idle timeout is observed through connection closure.
+// TestExposeQuietConnectionEndsAtIdleLimit observes the real relay's one-second idle timeout through connection
+// closure.
 func TestExposeQuietConnectionEndsAtIdleLimit(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -369,7 +414,8 @@ func TestExposeQuietConnectionEndsAtIdleLimit(t *testing.T) {
 	wireMust(t, b.Close(ctx))
 }
 
-// Three real shell turns exercise the expose CLI against the plugin's page state.
+// TestExposeAgentAddsListsRenewsAndRemoves uses three real shell turns to exercise the expose CLI against the
+// plugin's page state.
 func TestExposeAgentAddsListsRenewsAndRemoves(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "demi-file", func(h *backendtest.Harness) { filesExposeConfig(t, h) })
@@ -380,7 +426,7 @@ func TestExposeAgentAddsListsRenewsAndRemoves(t *testing.T) {
 	w.vendor.Respond(conversationAnswer(t, []string{"exposed"}, 1, 1))
 	_, err := w.socket.Chat(w.ctx, "m1", "go")
 	wireMust(t, err)
-	entries := filesExposeState(w.ctx, t, w.b, &w.s).Exposes
+	entries := filesExposeState(w.ctx, t, w.backend, &w.session).Exposes
 	conversationEqual(t, len(entries), 2)
 	var first, second exposeplugin.ExposeEntry
 	for _, entry := range entries {
@@ -394,9 +440,18 @@ func TestExposeAgentAddsListsRenewsAndRemoves(t *testing.T) {
 	conversationEqual(t, []uint64{first.Number, second.Number}, []uint64{1, 2})
 	result := conversationToolResult(t, w.vendor.Requests()[1], "t1")
 	for _, entry := range entries {
-		filesContains(t, toolstest.ShownOutput(result), fmt.Sprintf("Exposed 127.0.0.1:%s on laptop as %s\nExpires in 60 minutes (expose %d).\n", port, entry.URL, entry.Number))
+		filesContains(
+			t,
+			toolstest.ShownOutput(result),
+			fmt.Sprintf(
+				"Exposed 127.0.0.1:%s on laptop as %s\nExpires in 60 minutes (expose %d).\n",
+				port,
+				entry.URL,
+				entry.Number,
+			),
+		)
 	}
-	answer, err := backendtest.ReadAnswer(w.ctx, filesExposeFetch(w.ctx, t, w.b, first, "/hello"))
+	answer, err := backendtest.ReadAnswer(w.ctx, filesExposeFetch(w.ctx, t, w.backend, first, "/hello"))
 	wireMust(t, err)
 	filesStatus(t, answer, 200)
 	conversationEqual(t, string(answer.Body), "hello")
@@ -410,36 +465,57 @@ func TestExposeAgentAddsListsRenewsAndRemoves(t *testing.T) {
 	var lines []exposeplugin.ExposeLine
 	for _, entry := range entries {
 		filesContains(t, result, fmt.Sprintf("%-6d  laptop  %s  60 min   %s\n", entry.Number, entry.Address, entry.URL))
-		lines = append(lines, exposeplugin.ExposeLine{Number: entry.Number, Device: "laptop", Address: string(entry.Address), URL: entry.URL, ExpiresAt: entry.ExpiresAt})
+		lines = append(
+			lines,
+			exposeplugin.ExposeLine{
+				Number:    entry.Number,
+				Device:    "laptop",
+				Address:   string(entry.Address),
+				URL:       entry.URL,
+				ExpiresAt: entry.ExpiresAt,
+			},
+		)
 	}
 	// The command's generated JSON shape is compared as an ordered value, not reconstructed.
 	filesContains(t, result, conversationJSON(t, exposeplugin.ExposeLines{Exposes: lines}))
-	wireMust(t, w.h.AddUser(w.ctx, "other@example.test", "other-pass-1", webapi.RoleUser))
-	other, err := w.b.Login(w.ctx, "other@example.test", "other-pass-1")
+	wireMust(t, w.harness.AddUser(w.ctx, "other@example.test", "other-pass-1", webapi.RoleUser))
+	other, err := w.backend.Login(w.ctx, "other@example.test", "other-pass-1")
 	wireMust(t, err)
-	desk, err := w.b.Pair(w.ctx, t, &other, "desk")
+	desk, err := w.backend.Pair(w.ctx, t, &other, "desk")
 	wireMust(t, err)
-	theirs := filesExpose(w.ctx, t, w.b, &other, desk.ID(), port)
+	theirs := filesExpose(w.ctx, t, w.backend, &other, desk.ID(), port)
 	conversationEqual(t, theirs.Number, uint64(1))
-	changes := "demi expose renew 1 && demi expose remove 1 && demi expose renew 1; echo exit=$?; " + add + "; demi expose add 8080 --host nope; echo exit=$?"
+	changes := "demi expose renew 1 && demi expose remove 1 && demi expose renew 1; echo exit=$?; " +
+		add + "; demi expose add 8080 --host nope; echo exit=$?"
 	w.vendor.Respond(conversationShell(t, "t3", changes, 20000))
 	w.vendor.Respond(conversationAnswer(t, []string{"changed"}, 1, 1))
 	_, err = w.socket.Chat(w.ctx, "m3", "go")
 	wireMust(t, err)
 	requests = w.vendor.Requests()
 	result = conversationToolResult(t, requests[len(requests)-1], "t3")
-	filesContains(t, result, "Expose 1 expires in 60 minutes.\n", "Removed expose 1; its URL no longer works.\n", "expose renew: no expose 1\n", "Expires in 60 minutes (expose 3).\n", "host nope is not reachable from this conversation")
+	filesContains(
+		t,
+		result,
+		"Expose 1 expires in 60 minutes.\n",
+		"Removed expose 1; its URL no longer works.\n",
+		"expose renew: no expose 1\n",
+		"Expires in 60 minutes (expose 3).\n",
+		"host nope is not reachable from this conversation",
+	)
 	conversationEqual(t, strings.Count(result, "exit=1"), 2)
-	answer, err = backendtest.ReadAnswer(w.ctx, filesExposeFetch(w.ctx, t, w.b, first, "/hello"))
+	answer, err = backendtest.ReadAnswer(w.ctx, filesExposeFetch(w.ctx, t, w.backend, first, "/hello"))
 	wireMust(t, err)
 	filesStatus(t, answer, 404)
-	conversationEqual(t, filesExposeState(w.ctx, t, w.b, &other).Exposes, []exposeplugin.ExposeEntry{theirs})
+	conversationEqual(t, filesExposeState(w.ctx, t, w.backend, &other).Exposes, []exposeplugin.ExposeEntry{theirs})
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
 // filesExposeCloud assembles the shared conversation driver with the cloud group's manager fixture.
-func filesExposeCloud(t *testing.T, configure func(*backendtest.Harness)) (*hostScenario, *providertest.MockVendor, *backendtest.ConversationSocket) {
+func filesExposeCloud(
+	t *testing.T,
+	configure func(*backendtest.Harness),
+) (*hostScenario, *providertest.MockVendor, *backendtest.ConversationSocket) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -461,7 +537,8 @@ func filesExposeCloud(t *testing.T, configure func(*backendtest.Harness)) (*host
 	return &hostScenario{t, ctx, h, b, user, manager}, vendor, conversationOpen(ctx, t, b, &user, filesConversation)
 }
 
-// A real cloud checkpoint preserves its public relay; idle shutdown ends it before saving.
+// TestExposeCloudCheckpointKeepsConnectionAndIdleStopEndsIt uses a real cloud checkpoint to preserve its public
+// relay; idle shutdown ends it before saving.
 func TestExposeCloudCheckpointKeepsConnectionAndIdleStopEndsIt(t *testing.T) {
 	t.Parallel()
 	window := 600 * time.Millisecond
@@ -514,7 +591,8 @@ func TestExposeCloudCheckpointKeepsConnectionAndIdleStopEndsIt(t *testing.T) {
 	wireMust(t, s.b.Close(s.ctx))
 }
 
-// Three cloud boots exercise death, reset, silent loss, and startup cleanup of old exposes.
+// TestExposeCloudDeathResetRediscoveryAndBackendStartupEndRecords uses three cloud boots to exercise death,
+// reset, silent loss, and startup cleanup of old exposes.
 func TestExposeCloudDeathResetRediscoveryAndBackendStartupEndRecords(t *testing.T) {
 	t.Parallel()
 	s, vendor, socket := filesExposeCloud(t, nil)
@@ -564,7 +642,15 @@ func TestExposeCloudDeathResetRediscoveryAndBackendStartupEndRecords(t *testing.
 	wireMust(t, err)
 	db, err := s.h.ControlDatabase(s.ctx, t)
 	wireMust(t, err)
-	_, err = db.ExecContext(s.ctx, "INSERT INTO exposes (id,user_id,device_id,address,created_at,expires_at) VALUES ('k7x2maqw4p3s6tavaw2y4z6aab',?,?,'127.0.0.1:1',?,?)", string(s.user.User.ID), string(device), now, now+3600000)
+	_, err = db.ExecContext(
+		s.ctx,
+		"INSERT INTO exposes (id,user_id,device_id,address,created_at,expires_at) "+
+			"VALUES ('k7x2maqw4p3s6tavaw2y4z6aab',?,?,'127.0.0.1:1',?,?)",
+		string(s.user.User.ID),
+		string(device),
+		now,
+		now+3600000,
+	)
 	wireMust(t, err)
 	b, err := s.h.Start(s.ctx, t)
 	wireMust(t, err)
@@ -574,7 +660,8 @@ func TestExposeCloudDeathResetRediscoveryAndBackendStartupEndRecords(t *testing.
 	wireMust(t, b.Close(s.ctx))
 }
 
-// A local WebSocket service echoes messages and records the visitor's close.
+// TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays uses a local WebSocket service to echo messages and
+// record the visitor's close.
 func TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -630,7 +717,15 @@ func TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays(t *testing.T) {
 	public, err := url.Parse(entry.URL)
 	wireMust(t, err)
 	pongs := make(chan string, 1)
-	socket, switched, err := websocket.Dial(ctx, b.WSURL("/socket"), &websocket.DialOptions{Host: public.Host, HTTPClient: b.HTTP, OnPongReceived: func(_ context.Context, payload []byte) { pongs <- string(payload) }})
+	socket, switched, err := websocket.Dial(
+		ctx,
+		b.WSURL("/socket"),
+		&websocket.DialOptions{
+			Host:           public.Host,
+			HTTPClient:     b.HTTP,
+			OnPongReceived: func(_ context.Context, payload []byte) { pongs <- string(payload) },
+		},
+	)
 	wireMust(t, err)
 	t.Cleanup(func() { _ = socket.CloseNow() })
 	conversationEqual(t, switched.StatusCode, 101)
@@ -685,7 +780,11 @@ func TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays(t *testing.T) {
 	}
 	conversationEqual(t, int(visitorEnd.Code), 4001)
 	conversationEqual(t, visitorEnd.Reason, "visitor done")
-	second, _, err := websocket.Dial(ctx, b.WSURL("/socket"), &websocket.DialOptions{Host: public.Host, HTTPClient: b.HTTP})
+	second, _, err := websocket.Dial(
+		ctx,
+		b.WSURL("/socket"),
+		&websocket.DialOptions{Host: public.Host, HTTPClient: b.HTTP},
+	)
 	wireMust(t, err)
 	t.Cleanup(func() { _ = second.CloseNow() })
 	select {
@@ -743,7 +842,8 @@ func filesExposeLines(t *testing.T, head, name string, want ...string) {
 	conversationEqual(t, got, want)
 }
 
-// Four raw HTTP exchanges preserve headers, eight-MiB bodies, event streaming and refusals.
+// TestExposeRelayPreservesRequestsAnswersAndStreaming uses four raw HTTP exchanges to preserve headers,
+// eight-MiB bodies, event streaming and refusals.
 func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -803,7 +903,12 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 				switch {
 				case strings.HasPrefix(head, "GET /headers"):
 					seen <- observation{head: head}
-					_, err = io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Service-Header: Yes\r\nSet-Cookie: first=1; Path=/\r\nset-cookie: second=2; HttpOnly\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello")
+					_, err = io.WriteString(
+						conn,
+						"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Service-Header: Yes\r\n"+
+							"Set-Cookie: first=1; Path=/\r\nset-cookie: second=2; HttpOnly\r\nContent-Length: 5\r\n"+
+							"Connection: close\r\n\r\nhello",
+					)
 					return err
 				case strings.HasPrefix(head, "POST /upload"):
 					// Read the trailers too: closing with an unread final CRLF can
@@ -817,7 +922,10 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 						return err
 					}
 					seen <- observation{head: head, body: body}
-					if _, err = io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nTransfer-Encoding: chunked\r\n\r\n"); err != nil {
+					if _, err = io.WriteString(
+						conn,
+						"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
+					); err != nil {
 						return err
 					}
 					chunks := httputil.NewChunkedWriter(conn)
@@ -839,7 +947,11 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 						_ = conn.Close()
 						<-inputEnd
 					}()
-					if _, err = io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nTransfer-Encoding: chunked\r\n\r\n"); err != nil {
+					if _, err = io.WriteString(
+						conn,
+						"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\n"+
+							"Transfer-Encoding: chunked\r\n\r\n",
+					); err != nil {
 						return err
 					}
 					chunks := httputil.NewChunkedWriter(conn)
@@ -875,7 +987,11 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 					}
 				case strings.HasPrefix(head, "GET /refuse"):
 					seen <- observation{head: head}
-					_, err = io.WriteString(conn, "HTTP/1.1 426 Upgrade Required\r\nContent-Type: text/plain\r\nContent-Length: 17\r\nConnection: close\r\n\r\nno upgrades here\n")
+					_, err = io.WriteString(
+						conn,
+						"HTTP/1.1 426 Upgrade Required\r\nContent-Type: text/plain\r\nContent-Length: 17\r\n"+
+							"Connection: close\r\n\r\nno upgrades here\n",
+					)
 					return err
 				default:
 					return fmt.Errorf("unexpected service request: %s", head)
@@ -912,17 +1028,31 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 			return observation{}
 		}
 	}
-	_, read, answer := visit("GET /headers?q=1 HTTP/1.1\r\nHost: " + public.Host + "\r\nX-Custom-Header: One\r\nx-lower-case: two\r\nX-UPPER-CASE: THREE\r\nCookie: a=1; b=2\r\nConnection: keep-alive, X-Hop\r\nKeep-Alive: timeout=5\r\nX-Hop: gone\r\nX-Custom-Header: Four\r\n\r\n")
+	_, read, answer := visit(
+		"GET /headers?q=1 HTTP/1.1\r\nHost: " + public.Host + "\r\n" +
+			"X-Custom-Header: One\r\nx-lower-case: two\r\nX-UPPER-CASE: THREE\r\nCookie: a=1; b=2\r\n" +
+			"Connection: keep-alive, X-Hop\r\nKeep-Alive: timeout=5\r\nX-Hop: gone\r\nX-Custom-Header: Four\r\n\r\n",
+	)
 	observed := observe()
 	if !strings.HasPrefix(observed.head, "GET /headers?q=1 HTTP/1.1\r\n") {
 		t.Fatal(observed.head)
 	}
-	for _, line := range []string{"Host: 127.0.0.1:" + port, "x-lower-case: two", "X-UPPER-CASE: THREE", "Cookie: a=1; b=2"} {
+	for _, line := range []string{
+		"Host: 127.0.0.1:" + port,
+		"x-lower-case: two",
+		"X-UPPER-CASE: THREE",
+		"Cookie: a=1; b=2",
+	} {
 		name, _, _ := strings.Cut(line, ":")
 		filesExposeLines(t, observed.head, name, line)
 	}
 	filesExposeLines(t, observed.head, "x-custom-header", "X-Custom-Header: One", "X-Custom-Header: Four")
-	for _, line := range []string{"connection: close", "x-forwarded-for: 127.0.0.1", "x-forwarded-host: " + public.Host, "x-forwarded-proto: http"} {
+	for _, line := range []string{
+		"connection: close",
+		"x-forwarded-for: 127.0.0.1",
+		"x-forwarded-host: " + public.Host,
+		"x-forwarded-proto: http",
+	} {
 		name, _, _ := strings.Cut(line, ":")
 		filesExposeLines(t, strings.ToLower(observed.head), name, line)
 	}
@@ -943,7 +1073,11 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	wireMust(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 	wireMust(t, conn.SetDeadline(deadline))
-	_, err = io.WriteString(conn, "POST /upload HTTP/1.1\r\nHost: "+public.Host+"\r\nContent-Type: application/octet-stream\r\nTransfer-Encoding: chunked\r\n\r\n")
+	_, err = io.WriteString(
+		conn,
+		"POST /upload HTTP/1.1\r\nHost: "+public.Host+"\r\n"+
+			"Content-Type: application/octet-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
+	)
 	wireMust(t, err)
 	chunks := httputil.NewChunkedWriter(conn)
 	_, err = chunks.Write(backendtest.Pattern(8<<20, 3))
@@ -987,7 +1121,11 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	observed = observe()
 	conversationEqual(t, observed.open, true)
 	conversationEqual(t, observed.ended, true)
-	_, read, answer = visit("GET /refuse HTTP/1.1\r\nHost: " + public.Host + "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
+	_, read, answer = visit(
+		"GET /refuse HTTP/1.1\r\nHost: " + public.Host + "\r\n" +
+			"Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+			"Sec-WebSocket-Version: 13\r\n\r\n",
+	)
 	conversationEqual(t, strings.SplitN(answer, "\r\n", 2)[0], "HTTP/1.1 426 Upgrade Required")
 	filesExposeLines(t, answer, "Content-Length", "Content-Length: 17")
 	body = make([]byte, 17)
@@ -995,7 +1133,12 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	wireMust(t, err)
 	conversationEqual(t, string(body), "no upgrades here\n")
 	observed = observe()
-	for _, line := range []string{"Upgrade: websocket", "Connection: Upgrade", "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==", "Sec-WebSocket-Version: 13"} {
+	for _, line := range []string{
+		"Upgrade: websocket",
+		"Connection: Upgrade",
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+		"Sec-WebSocket-Version: 13",
+	} {
 		name, _, _ := strings.Cut(line, ":")
 		filesExposeLines(t, observed.head, name, line)
 	}

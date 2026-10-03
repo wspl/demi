@@ -19,8 +19,8 @@ func filesBlob(t *testing.T, harness *backendtest.Harness, user string, data []b
 	t.Helper()
 	name := fmt.Sprintf("%x", sha256.Sum256(data))
 	directory := filepath.Join(harness.DataDir(), "blobs", user)
-	wireMust(t, os.MkdirAll(directory, 0755))
-	wireMust(t, os.WriteFile(filepath.Join(directory, name), data, 0644))
+	wireMust(t, os.MkdirAll(directory, 0o755))
+	wireMust(t, os.WriteFile(filepath.Join(directory, name), data, 0o644))
 	return name
 }
 
@@ -30,6 +30,7 @@ func filesStatus(t *testing.T, answer backendtest.Answer, want int) {
 		t.Fatalf("HTTP %d, want %d: %s", answer.Status, want, answer.Body)
 	}
 }
+
 func filesHeader(t *testing.T, answer backendtest.Answer, name, want string) {
 	t.Helper()
 	if want == "" && answer.Headers.Values(name) != nil {
@@ -40,7 +41,8 @@ func filesHeader(t *testing.T, answer backendtest.Answer, name, want string) {
 	}
 }
 
-// Local HTTP and disk only; no vendor calls or runner, normally under one second.
+// TestBlobNamespaceInertAndImmutable uses local HTTP and disk only, with no vendor calls or runner, normally
+// under one second.
 func TestBlobNamespaceInertAndImmutable(t *testing.T) {
 	t.Parallel()
 	ctx, harness := conversationHarness(t)
@@ -60,7 +62,13 @@ func TestBlobNamespaceInertAndImmutable(t *testing.T) {
 	if !bytes.Equal(download.Body, data) {
 		t.Fatal("blob bytes changed")
 	}
-	for name, value := range map[string]string{"cache-control": "private, max-age=31536000, immutable", "vary": "Cookie", "x-content-type-options": "nosniff", "content-type": "application/octet-stream", "content-disposition": "attachment"} {
+	for name, value := range map[string]string{
+		"cache-control":          "private, max-age=31536000, immutable",
+		"vary":                   "Cookie",
+		"x-content-type-options": "nosniff",
+		"content-type":           "application/octet-stream",
+		"content-disposition":    "attachment",
+	} {
 		filesHeader(t, download, name, value)
 	}
 	image := read(path+"?type=image%2Fpng", &master)
@@ -82,7 +90,7 @@ func TestBlobNamespaceInertAndImmutable(t *testing.T) {
 	wireMust(t, backend.Close(ctx))
 }
 
-// Local HTTP and disk only; checks the byte positions used by video players.
+// TestBlobByteRangesForVideo uses local HTTP and disk only to check the byte positions used by video players.
 func TestBlobByteRangesForVideo(t *testing.T) {
 	t.Parallel()
 	ctx, harness := conversationHarness(t)

@@ -24,7 +24,8 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// Restart over local files, then wait on the deletion event, never elapsed time.
+// TestRetentionRunsFirstPassAfterServing restarts over local files, then waits on the deletion event, never
+// elapsed time.
 func TestRetentionRunsFirstPassAfterServing(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -72,7 +73,7 @@ func TestRetentionRunsFirstPassAfterServing(t *testing.T) {
 func filesResultMedia(t *testing.T, w filesWork, id string) []string {
 	t.Helper()
 	var media []string
-	for _, block := range conversationTranscript(w.ctx, t, w.b, &w.s, filesConversation).Blocks {
+	for _, block := range conversationTranscript(w.ctx, t, w.backend, &w.session, filesConversation).Blocks {
 		if call, ok := block.(*core.ToolCallBlock); ok && call.ToolUseID == id {
 			for _, part := range call.Output {
 				switch p := part.(type) {
@@ -95,22 +96,23 @@ func filesResultMedia(t *testing.T, w filesWork, id string) []string {
 	return nil
 }
 
-// A real image-producing job is restored after the manual retention clock advances.
+// TestRetentionIdleConversationRetiresToolImagesAndReplaysText restores a real image-producing job after the
+// manual retention clock advances.
 func TestRetentionIdleConversationRetiresToolImagesAndReplaysText(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Clock.FollowSystem() })
 	png := storetest.PNG(2, 2, 1)
-	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png, 0644))
+	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png, 0o644))
 	w.vendor.Respond(conversationShell(t, "toolu_1", "cat shot.png", 60000))
 	w.vendor.Respond(conversationAnswer(t, []string{"Seen."}, 1, 1))
 	_, err := w.socket.Chat(w.ctx, "m1", "Show me the shot")
 	wireMust(t, err)
 	filesCloseTree(w.ctx, t, w.socket)
-	wireMust(t, w.h.Clock.Advance(31*24*time.Hour))
-	w.s, err = w.b.Login(w.ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	wireMust(t, w.harness.Clock.Advance(31*24*time.Hour))
+	w.session, err = w.backend.Login(w.ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	wireMust(t, backendtest.RunRetention(w.ctx, w.b.Backend, w.s.User.ID))
-	day := string(w.h.Clock.Now())[:10]
+	wireMust(t, backendtest.RunRetention(w.ctx, w.backend.Backend, w.session.User.ID))
+	day := string(w.harness.Clock.Now())[:10]
 	conversationEqual(t, filesResultMedia(t, w, "toolu_1"), []string{"image/png retired on " + day})
 	_, err = w.socket.Open(w.ctx)
 	wireMust(t, err)
@@ -119,15 +121,20 @@ func TestRetentionIdleConversationRetiresToolImagesAndReplaysText(t *testing.T) 
 	wireMust(t, err)
 	requests := w.vendor.Requests()
 	sent := filesModelField(t, requests[len(requests)-1].Body, "messages")
-	filesContains(t, sent, "[image:image/png, removed on "+day+": a tool result's images and videos are kept for 30 days]")
+	filesContains(
+		t,
+		sent,
+		"[image:image/png, removed on "+day+": a tool result's images and videos are kept for 30 days]",
+	)
 	if strings.Contains(sent, base64.StdEncoding.EncodeToString(png)) {
 		t.Fatal("retired image replayed")
 	}
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
-// Three jobs read saved stdout before and after a manual 31-day retention advance.
+// TestRetentionRemovesCommandOutputThirtyDaysAfterEnd uses three jobs to read saved stdout before and after a
+// manual 31-day retention advance.
 func TestRetentionRemovesCommandOutputThirtyDaysAfterEnd(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Clock.FollowSystem() })
@@ -143,21 +150,27 @@ func TestRetentionRemovesCommandOutputThirtyDaysAfterEnd(t *testing.T) {
 	wireMust(t, err)
 	requests := w.vendor.Requests()
 	filesContains(t, conversationToolResult(t, requests[len(requests)-1], "toolu_2"), "kept")
-	wireMust(t, w.h.Clock.Advance(31*24*time.Hour))
-	w.s, err = w.b.Login(w.ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	wireMust(t, w.harness.Clock.Advance(31*24*time.Hour))
+	w.session, err = w.backend.Login(w.ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	wireMust(t, backendtest.RunRetention(w.ctx, w.b.Backend, w.s.User.ID))
+	wireMust(t, backendtest.RunRetention(w.ctx, w.backend.Backend, w.session.User.ID))
 	w.vendor.Respond(conversationShell(t, "toolu_3", read, 60000))
 	w.vendor.Respond(conversationAnswer(t, []string{"Gone."}, 1, 1))
 	_, err = w.socket.Chat(w.ctx, "m3", "Read it again")
 	wireMust(t, err)
 	requests = w.vendor.Requests()
-	filesContains(t, conversationToolResult(t, requests[len(requests)-1], "toolu_3"), "demi shell output: the output of "+command+" was removed on "+string(w.h.Clock.Now())[:10]+", 30 days after the command ended")
+	filesContains(
+		t,
+		conversationToolResult(t, requests[len(requests)-1], "toolu_3"),
+		"demi shell output: the output of "+command+" was removed on "+string(w.harness.Clock.Now())[:10]+
+			", 30 days after the command ended",
+	)
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
-// Compaction plus a manual 31-day advance tests page leases and the blob grace period.
+// TestRetentionSummarizedImagesWaitForPageAndBlobGrace uses compaction plus a manual 31-day advance to test page
+// leases and the blob grace period.
 func TestRetentionSummarizedImagesWaitForPageAndBlobGrace(t *testing.T) {
 	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
@@ -166,9 +179,9 @@ func TestRetentionSummarizedImagesWaitForPageAndBlobGrace(t *testing.T) {
 		h.Objects = counts
 	})
 	shot, later, pastedPNG := storetest.PNG(2, 2, 1), storetest.PNG(2, 2, 2), storetest.PNG(2, 2, 3)
-	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), shot, 0644))
-	wireMust(t, os.WriteFile(filepath.Join(w.root, "later.png"), later, 0644))
-	pasted := filesUpload(w.ctx, t, w.b, &w.s, "pasted.png", "image/png", pastedPNG)
+	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), shot, 0o644))
+	wireMust(t, os.WriteFile(filepath.Join(w.root, "later.png"), later, 0o644))
+	pasted := filesUpload(w.ctx, t, w.backend, &w.session, "pasted.png", "image/png", pastedPNG)
 	w.vendor.Respond(conversationShell(t, "toolu_1", "cat shot.png", 60000))
 	w.vendor.Respond(conversationAnswer(t, []string{"Seen."}, 1, 1))
 	wireMust(t, w.socket.Send(w.ctx, filesUploadMessage("m1", "Look", pasted)))
@@ -186,19 +199,30 @@ func TestRetentionSummarizedImagesWaitForPageAndBlobGrace(t *testing.T) {
 	_, err = w.socket.Chat(w.ctx, "m3", "And the later one")
 	wireMust(t, err)
 	shotRef, laterRef := fmt.Sprintf("%x", sha256.Sum256(shot)), fmt.Sprintf("%x", sha256.Sum256(later))
-	wireMust(t, w.h.Clock.Advance(31*24*time.Hour))
-	w.s, err = w.b.Login(w.ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	wireMust(t, w.harness.Clock.Advance(31*24*time.Hour))
+	w.session, err = w.backend.Login(w.ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	wireMust(t, backendtest.RunRetention(w.ctx, w.b.Backend, w.s.User.ID))
+	wireMust(t, backendtest.RunRetention(w.ctx, w.backend.Backend, w.session.User.ID))
 	conversationEqual(t, filesResultMedia(t, w, "toolu_1"), []string{shotRef})
 	filesCloseTree(w.ctx, t, w.socket)
-	wireMust(t, backendtest.WaitFile(w.ctx, filepath.Join(w.h.DataDir(), "conversations", filesConversation+".sqlite"), func([]byte) bool {
-		media := filesResultMedia(t, w, "toolu_1")
-		return len(media) == 1 && media[0] == "image/png retired on "+string(w.h.Clock.Now())[:10]
-	}))
-	conversationEqual(t, filesResultMedia(t, w, "toolu_1"), []string{"image/png retired on " + string(w.h.Clock.Now())[:10]})
+	wireMust(
+		t,
+		backendtest.WaitFile(
+			w.ctx,
+			filepath.Join(w.harness.DataDir(), "conversations", filesConversation+".sqlite"),
+			func([]byte) bool {
+				media := filesResultMedia(t, w, "toolu_1")
+				return len(media) == 1 && media[0] == "image/png retired on "+string(w.harness.Clock.Now())[:10]
+			},
+		),
+	)
+	conversationEqual(
+		t,
+		filesResultMedia(t, w, "toolu_1"),
+		[]string{"image/png retired on " + string(w.harness.Clock.Now())[:10]},
+	)
 	conversationEqual(t, filesResultMedia(t, w, "toolu_2"), []string{laterRef})
-	blocks := conversationTranscript(w.ctx, t, w.b, &w.s, filesConversation).Blocks
+	blocks := conversationTranscript(w.ctx, t, w.backend, &w.session, filesConversation).Blocks
 	user, ok := blocks[0].(*core.UserBlock)
 	if !ok {
 		t.Fatalf("first block: %T", blocks[0])
@@ -212,11 +236,11 @@ func TestRetentionSummarizedImagesWaitForPageAndBlobGrace(t *testing.T) {
 	if !image {
 		t.Fatal("user image retired")
 	}
-	wireMust(t, w.h.Clock.Advance(25*time.Hour))
+	wireMust(t, w.harness.Clock.Advance(25*time.Hour))
 	before := counts.Tally()
-	wireMust(t, backendtest.RunRetention(w.ctx, w.b.Backend, w.s.User.ID))
+	wireMust(t, backendtest.RunRetention(w.ctx, w.backend.Backend, w.session.User.ID))
 	conversationEqual(t, counts.Tally().Since(before).Deletes, uint64(3))
-	root := filepath.Join(w.h.DataDir(), "blobs", string(w.s.User.ID))
+	root := filepath.Join(w.harness.DataDir(), "blobs", string(w.session.User.ID))
 	if _, err := os.Stat(filepath.Join(root, shotRef)); !os.IsNotExist(err) {
 		t.Fatalf("retired blob still exists: %v", err)
 	}
@@ -225,16 +249,21 @@ func TestRetentionSummarizedImagesWaitForPageAndBlobGrace(t *testing.T) {
 		wireMust(t, err)
 	}
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
 
-// A native fixture holds release until its real runner dies; archive still commits.
+// TestRetentionArchiveSucceedsWhenDeviceDiesDuringRelease uses a native fixture to hold release until its real
+// runner dies; archive still commits.
 func TestRetentionArchiveSucceedsWhenDeviceDiesDuringRelease(t *testing.T) {
 	t.Parallel()
 	ctx, b, s, paired := conversationStreamDevice(t)
 	conversationCreate(ctx, t, b, &s, conversationSecond)
 	filesMove(ctx, t, b, &s, conversationSecond, paired, paired.Runner.Home())
-	_, code, reason := conversationStreamEnd(ctx, t, conversationStream(ctx, t, b, &s, conversationFirst, "stall_release"))
+	_, code, reason := conversationStreamEnd(
+		ctx,
+		t,
+		conversationStream(ctx, t, b, &s, conversationFirst, "stall_release"),
+	)
 	conversationEqual(t, code, 1000)
 	conversationEqual(t, reason, "completed")
 	type result struct {
@@ -267,13 +296,18 @@ func TestRetentionArchiveSucceedsWhenDeviceDiesDuringRelease(t *testing.T) {
 	wireMust(t, b.Close(ctx))
 }
 
-// A real job, skill source, uploads and draft protect referenced blobs during collection.
+// TestRetentionCollectsOnlyOldOrphansWhenEveryDatabaseReadable uses a real job, skill source, uploads and draft
+// to protect referenced blobs during collection.
 func TestRetentionCollectsOnlyOldOrphansWhenEveryDatabaseReadable(t *testing.T) {
 	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
 	repos := skillstest.New(t)
 	skill := skillstest.SkillMD("name: review\ndescription: Review a change.")
-	_, err := repos.Commit(t.Context(), "acme/tools", []skillstest.File{{Path: "review/SKILL.md", Bytes: []byte(skill)}})
+	_, err := repos.Commit(
+		t.Context(),
+		"acme/tools",
+		[]skillstest.File{{Path: "review/SKILL.md", Bytes: []byte(skill)}},
+	)
 	wireMust(t, err)
 	factory, err := repos.Factory()
 	wireMust(t, err)
@@ -286,8 +320,17 @@ func TestRetentionCollectsOnlyOldOrphansWhenEveryDatabaseReadable(t *testing.T) 
 			}
 		}
 	})
-	page, _ := conversationPage(w.ctx, t, w.b, &w.s)
-	conversationRequest(w.ctx, t, w.b, &w.s, "POST", "/api/plugins/skills/calls/add_source", conversationJSON(t, skills.AddSource{Origin: "acme/tools"}), 200)
+	page, _ := conversationPage(w.ctx, t, w.backend, &w.session)
+	conversationRequest(
+		w.ctx,
+		t,
+		w.backend,
+		&w.session,
+		"POST",
+		"/api/plugins/skills/calls/add_source",
+		conversationJSON(t, skills.AddSource{Origin: "acme/tools"}),
+		200,
+	)
 	_, err = page.Until(w.ctx, func(e webapi.SyncEvent) bool {
 		p, ok := e.(*webapi.SyncEventPlugin)
 		if !ok || p.Plugin != "skills" {
@@ -299,23 +342,34 @@ func TestRetentionCollectsOnlyOldOrphansWhenEveryDatabaseReadable(t *testing.T) 
 	})
 	wireMust(t, err)
 	png := func(seed byte) []byte { return storetest.PNG(2, 2, seed) }
-	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png(1), 0644))
+	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png(1), 0o644))
 	w.vendor.Respond(conversationShell(t, "toolu_0", "printf 'noted\\n' > note.txt", 60000))
 	w.vendor.Respond(conversationShell(t, "toolu_1", "cat shot.png", 60000))
 	w.vendor.Respond(conversationAnswer(t, []string{"Seen."}, 1, 1))
 	_, err = w.socket.Chat(w.ctx, "m1", "Show me the shot")
 	wireMust(t, err)
-	filesUpload(w.ctx, t, w.b, &w.s, "kept.png", "image/png", png(2))
-	staged := filesUpload(w.ctx, t, w.b, &w.s, "staged.png", "image/png", png(3))
-	conversationCreate(w.ctx, t, w.b, &w.s, conversationSecond)
-	body := `{"base":0,"text":"\ufffc","files":[{"type":"upload","ref":"` + string(staged.ID) + `","fileName":"staged.png"}]}`
-	conversationRequest(w.ctx, t, w.b, &w.s, "PUT", "/api/conversations/"+conversationSecond+"/draft", body, 200)
-	wireMust(t, w.h.Clock.Advance(25*time.Hour))
-	now, err := w.h.Clock.Now().Time()
+	filesUpload(w.ctx, t, w.backend, &w.session, "kept.png", "image/png", png(2))
+	staged := filesUpload(w.ctx, t, w.backend, &w.session, "staged.png", "image/png", png(3))
+	conversationCreate(w.ctx, t, w.backend, &w.session, conversationSecond)
+	body := `{"base":0,"text":"\ufffc","files":[{"type":"upload","ref":"` + string(
+		staged.ID,
+	) + `","fileName":"staged.png"}]}`
+	conversationRequest(
+		w.ctx,
+		t,
+		w.backend,
+		&w.session,
+		"PUT",
+		"/api/conversations/"+conversationSecond+"/draft",
+		body,
+		200,
+	)
+	wireMust(t, w.harness.Clock.Advance(25*time.Hour))
+	now, err := w.harness.Clock.Now().Time()
 	wireMust(t, err)
-	root := filepath.Join(w.h.DataDir(), "blobs", string(w.s.User.ID))
+	root := filepath.Join(w.harness.DataDir(), "blobs", string(w.session.User.ID))
 	orphan := func(data []byte, age time.Duration) string {
-		name := filesBlob(t, w.h, string(w.s.User.ID), data)
+		name := filesBlob(t, w.harness, string(w.session.User.ID), data)
 		path := filepath.Join(root, name)
 		written := now.Add(-age)
 		wireMust(t, os.Chtimes(path, written, written))
@@ -327,17 +381,17 @@ func TestRetentionCollectsOnlyOldOrphansWhenEveryDatabaseReadable(t *testing.T) 
 	for _, data := range [][]byte{png(1), png(2), png(3), {}, []byte("noted\n"), []byte(skill)} {
 		kept = append(kept, filepath.Join(root, fmt.Sprintf("%x", sha256.Sum256(data))))
 	}
-	database := filepath.Join(w.h.DataDir(), "conversations", conversationSecond+".sqlite")
-	wireMust(t, os.WriteFile(database, []byte("not a database"), 0644))
+	database := filepath.Join(w.harness.DataDir(), "conversations", conversationSecond+".sqlite")
+	wireMust(t, os.WriteFile(database, []byte("not a database"), 0o644))
 	before := counts.Tally()
 	// The intentionally corrupt source reports errors; collection must still delete nothing.
-	_ = backendtest.RunRetention(w.ctx, w.b.Backend, w.s.User.ID)
+	_ = backendtest.RunRetention(w.ctx, w.backend.Backend, w.session.User.ID)
 	conversationEqual(t, counts.Tally().Since(before).Deletes, uint64(0))
 	_, err = os.Stat(left)
 	wireMust(t, err)
 	wireMust(t, os.Remove(database))
 	before = counts.Tally()
-	wireMust(t, backendtest.RunRetention(w.ctx, w.b.Backend, w.s.User.ID))
+	wireMust(t, backendtest.RunRetention(w.ctx, w.backend.Backend, w.session.User.ID))
 	collected := counts.Tally().Since(before)
 	conversationEqual(t, collected.Lists, uint64(1))
 	conversationEqual(t, collected.Deletes, uint64(1))
@@ -350,5 +404,5 @@ func TestRetentionCollectsOnlyOldOrphansWhenEveryDatabaseReadable(t *testing.T) 
 	}
 	wireMust(t, page.Close(w.ctx))
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }

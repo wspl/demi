@@ -18,21 +18,37 @@ import (
 
 // registryProbe gives the registry scenario its Rust probe's declaration.
 func registryProbe(id string, commands ...plugin.Commands) *backendtest.CommandProbe {
-	return &backendtest.CommandProbe{Declaration: plugin.Manifest{ID: plugin.ID(id), Name: id, Description: "A probe.", Commands: commands}}
+	return &backendtest.CommandProbe{
+		Declaration: plugin.Manifest{ID: plugin.ID(id), Name: id, Description: "A probe.", Commands: commands},
+	}
 }
 
-// Local backend and command RPCs; no vendor or runner.
+// TestPluginGroupsComposeAndCallsReceiveOwnPath uses a local backend and command RPCs, with no vendor or runner.
 func TestPluginGroupsComposeAndCallsReceiveOwnPath(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
-	h.Config.Plugins = []plugin.Factory{registryProbe("notes", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)), registryProbe("lint", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil))}
+	h.Config.Plugins = []plugin.Factory{
+		registryProbe("notes", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)),
+		registryProbe("lint", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil)),
+	}
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
 	shard, err := b.Backend.Shards().Of(ctx, s.User.ID)
 	wireMust(t, err)
-	product := host.Group("agent", "A group.", host.Leaf(declare.Leaf[declare.NativeOperation]{Name: "run", Summary: "Run.", Kind: &declare.RPC[declare.NativeOperation]{}}, host.RPCHandlerFunc(func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
-		return 0, errors.New("manifest data must not be invoked")
-	})))
+	product := host.Group(
+		"agent",
+		"A group.",
+		host.Leaf(
+			declare.Leaf[declare.NativeOperation]{
+				Name:    "run",
+				Summary: "Run.",
+				Kind:    &declare.RPC[declare.NativeOperation]{},
+			},
+			host.RPCHandlerFunc(func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
+				return 0, errors.New("manifest data must not be invoked")
+			}),
+		),
+	)
 	set, err := shard.Plugins().Toolset(ctx, []host.Declared{product})
 	wireMust(t, err)
 	var roots []string
@@ -50,7 +66,11 @@ func TestPluginGroupsComposeAndCallsReceiveOwnPath(t *testing.T) {
 	}
 	for _, path := range [][]string{{"demi", "notes", "run"}, {"lint", "run"}} {
 		memory := hosttest.NewMemoryPort(nil)
-		_, err := set.Commands.Dispatch(ctx, host.RPCInvocation{Path: path, Args: []byte(`{}`), CWD: "/workspace", Context: hosttest.CommandContext()}, memory.Port())
+		_, err := set.Commands.Dispatch(
+			ctx,
+			host.RPCInvocation{Path: path, Args: []byte(`{}`), CWD: "/workspace", Context: hosttest.CommandContext()},
+			memory.Port(),
+		)
 		wireMust(t, err)
 		own := path
 		if path[0] == "demi" {
@@ -64,7 +84,8 @@ func TestPluginGroupsComposeAndCallsReceiveOwnPath(t *testing.T) {
 	wireMust(t, b.Close(ctx))
 }
 
-// Six invalid manifests fail assembled startup before serving or starting a runner.
+// TestPluginInvalidManifestStopsStartupAndNamesPlugin uses six invalid manifests to refuse assembled startup
+// before serving or starting a runner.
 func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 	t.Parallel()
 	profile := func(id, name string) *backendtest.CommandProbe {
@@ -78,42 +99,90 @@ func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 		id        plugin.ID
 		prefix    string
 	}{
-		{[]plugin.Factory{registryProbe("todo"), registryProbe("todo")}, plugins.DuplicateID, "todo", `two plugins have the id "todo"`},
-		{[]plugin.Factory{registryProbe("todo", backendtest.ProbeCommand("agent", plugin.PlacementDemi, nil))}, plugins.TakenCommand, "todo", `plugin "todo" declares "demi agent", which is taken`},
-		{[]plugin.Factory{registryProbe("one", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)), registryProbe("two", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil))}, plugins.TakenCommand, "two", `plugin "two" declares "demi notes", which is taken`},
-		{[]plugin.Factory{registryProbe("one", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil)), registryProbe("two", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil))}, plugins.RefusedCommands, "two", `plugin "two"'s commands are refused`},
-		{[]plugin.Factory{profile("todo", "default")}, plugins.InvalidProfile, "todo", `plugin "todo" declares the profile "default", which is reserved for inheriting the parent`},
-		{[]plugin.Factory{profile("one", "explorer"), profile("two", "explorer")}, plugins.InvalidProfile, "two", `plugin "two" declares the profile "explorer", which another plugin declares`},
+		{
+			[]plugin.Factory{registryProbe("todo"), registryProbe("todo")},
+			plugins.DuplicateID,
+			"todo",
+			`two plugins have the id "todo"`,
+		},
+		{
+			[]plugin.Factory{registryProbe("todo", backendtest.ProbeCommand("agent", plugin.PlacementDemi, nil))},
+			plugins.TakenCommand,
+			"todo",
+			`plugin "todo" declares "demi agent", which is taken`,
+		},
+		{
+			[]plugin.Factory{
+				registryProbe("one", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)),
+				registryProbe("two", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)),
+			},
+			plugins.TakenCommand,
+			"two",
+			`plugin "two" declares "demi notes", which is taken`,
+		},
+		{
+			[]plugin.Factory{
+				registryProbe("one", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil)),
+				registryProbe("two", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil)),
+			},
+			plugins.RefusedCommands,
+			"two",
+			`plugin "two"'s commands are refused`,
+		},
+		{
+			[]plugin.Factory{profile("todo", "default")},
+			plugins.InvalidProfile,
+			"todo",
+			`plugin "todo" declares the profile "default", which is reserved for inheriting the parent`,
+		},
+		{
+			[]plugin.Factory{profile("one", "explorer"), profile("two", "explorer")},
+			plugins.InvalidProfile,
+			"two",
+			`plugin "two" declares the profile "explorer", which another plugin declares`,
+		},
 	}
-	for _, tc := range cases {
-		t.Run(tc.prefix, func(t *testing.T) {
+	for _, scenario := range cases {
+		t.Run(scenario.prefix, func(t *testing.T) {
 			t.Parallel()
 			ctx, h := conversationHarness(t)
-			h.Config.Plugins = tc.factories
+			h.Config.Plugins = scenario.factories
 			b, err := h.Start(ctx, t)
 			if err == nil {
 				wireMust(t, b.Close(ctx))
 				t.Fatal("invalid manifest started")
 			}
 			var refused *plugins.RegistryError
-			if !errors.As(err, &refused) || refused.Kind != tc.kind || refused.Plugin != tc.id {
+			if !errors.As(err, &refused) || refused.Kind != scenario.kind || refused.Plugin != scenario.id {
 				t.Fatalf("startup: %v", err)
 			}
-			if !strings.HasPrefix(refused.Error(), tc.prefix) {
+			if !strings.HasPrefix(refused.Error(), scenario.prefix) {
 				t.Fatalf("diagnostic: %v", refused)
 			}
 		})
 	}
 }
 
-// Publishes the file package, but executes no command or model.
+// TestPluginUnservedNativeTreeIsOmittedWhole publishes the file package, but executes no command or model.
 func TestPluginUnservedNativeTreeIsOmittedWhole(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
 	built, err := backendtest.BuildPackage(ctx, t, "demi-file")
 	wireMust(t, err)
 	wireMust(t, h.UsePackage(ctx, built))
-	p := registryProbe("tools", backendtest.ProbeCommand("served", plugin.PlacementDemi, &declare.NativeOperation{Package: "demi.file", Operation: "file.read"}), backendtest.ProbeCommand("unserved", plugin.PlacementDemi, &declare.NativeOperation{Package: "demi.missing", Operation: "run"}))
+	p := registryProbe(
+		"tools",
+		backendtest.ProbeCommand(
+			"served",
+			plugin.PlacementDemi,
+			&declare.NativeOperation{Package: "demi.file", Operation: "file.read"},
+		),
+		backendtest.ProbeCommand(
+			"unserved",
+			plugin.PlacementDemi,
+			&declare.NativeOperation{Package: "demi.missing", Operation: "run"},
+		),
+	)
 	p.Declaration.Profiles = []core.Profile{{Name: "explorer", Description: "A profile.", CanSpawnSubagents: true}}
 	h.Config.Plugins = []plugin.Factory{p}
 	b, s, err := h.StartSetUp(ctx, t)

@@ -12,7 +12,8 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// Local HTTP and page synchronization only; no runner or vendor is needed.
+// TestDisabledPluginLeavesPageAndRefusesCallsUntilEnabled uses local HTTP and page synchronization only; no
+// runner or vendor is needed.
 func TestDisabledPluginLeavesPageAndRefusesCallsUntilEnabled(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -28,7 +29,12 @@ func TestDisabledPluginLeavesPageAndRefusesCallsUntilEnabled(t *testing.T) {
 	}
 	renew := func() (int, webapi.ErrorBody) {
 		t.Helper()
-		a, err := b.Post(ctx, "/api/plugins/expose/calls/renew", &master, []byte(`{"expose":"k7x2maqw4p3s6tavaw2y4z6aab"}`))
+		a, err := b.Post(
+			ctx,
+			"/api/plugins/expose/calls/renew",
+			&master,
+			[]byte(`{"expose":"k7x2maqw4p3s6tavaw2y4z6aab"}`),
+		)
 		wireMust(t, err)
 		body, err := a.ErrorBody()
 		wireMust(t, err)
@@ -78,7 +84,8 @@ func TestDisabledPluginLeavesPageAndRefusesCallsUntilEnabled(t *testing.T) {
 	wireMust(t, b.Close(ctx))
 }
 
-// Three local scripted turns show that command changes take effect only on reload.
+// TestOpenConversationKeepsPluginCommandsUntilReload uses three local scripted turns to show that command
+// changes take effect only on reload.
 func TestOpenConversationKeepsPluginCommandsUntilReload(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -159,7 +166,11 @@ func TestOpenConversationKeepsPluginCommandsUntilReload(t *testing.T) {
 		return ok && p.Phase != core.SessionPhaseIdle
 	})
 	wireMust(t, err)
-	conversationRefusal(t, conversationRequest(ctx, t, b, &s, "POST", "/api/conversations/"+filesConversation+"/reload", `{}`, 409), webapi.ErrorCodeTurnInFlight)
+	conversationRefusal(
+		t,
+		conversationRequest(ctx, t, b, &s, "POST", "/api/conversations/"+filesConversation+"/reload", `{}`, 409),
+		webapi.ErrorCodeTurnInFlight,
+	)
 	wireMust(t, socket.Stop(ctx))
 	wireMust(t, page.Close(ctx))
 	wireMust(t, socket.Close(ctx))

@@ -40,7 +40,10 @@ func (v *realView) send(ctx context.Context, t *testing.T, message browserop.Liv
 	wireMust(t, v.socket.Write(ctx, websocket.MessageBinary, append(frame, data...)))
 }
 
-func (v *realView) next(ctx context.Context, t *testing.T) (browserop.LiveModuleMessage, *browserop.VideoHeader, []byte) {
+func (v *realView) next(
+	ctx context.Context,
+	t *testing.T,
+) (browserop.LiveModuleMessage, *browserop.VideoHeader, []byte) {
 	t.Helper()
 	for {
 		if len(v.pending) >= 4 {
@@ -75,8 +78,9 @@ func (v *realView) next(ctx context.Context, t *testing.T) (browserop.LiveModule
 	}
 }
 
-// About 13 seconds: a real runner installs demi.browser, launches Chrome and
-// encodes the first live picture. No model request leaves the fixture vendor.
+// TestAnAgentDrivesChromeOnAPairedDeviceWhichTheUserWatchesUntilRelease takes about 13 seconds: a real runner
+// installs demi.browser, launches Chrome and encodes the first live picture. No model request leaves the fixture
+// vendor.
 func TestAnAgentDrivesChromeOnAPairedDeviceWhichTheUserWatchesUntilRelease(t *testing.T) {
 	t.Parallel()
 	chrome := os.Getenv("DEMI_TEST_CHROME")
@@ -90,7 +94,11 @@ func TestAnAgentDrivesChromeOnAPairedDeviceWhichTheUserWatchesUntilRelease(t *te
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		// A browser that went away needs no answer.
-		_, _ = fmt.Fprintf(w, `<!doctype html><title>Fixture</title><h1>%s</h1><div style="width: 40px; height: 40px; background: red"></div>`, greeting)
+		_, _ = fmt.Fprintf(
+			w,
+			`<!doctype html><title>Fixture</title><h1>%s</h1><div style="width: 40px; height: 40px; background: red"></div>`,
+			greeting,
+		)
 	}))
 	defer page.Close()
 	h, manager, err := backendtest.HostsHarness(ctx, t)
@@ -112,15 +120,37 @@ func TestAnAgentDrivesChromeOnAPairedDeviceWhichTheUserWatchesUntilRelease(t *te
 	}
 	cache := filepath.Join(laptop.Runner.StateDir(), "artifacts")
 	browsers := filepath.Join(cache, platform.SHA256)
-	_, err = artifactstest.InstallUnpacked(ctx, cache, artifacts.Archive{Digest: artifacts.Digest{Size: platform.Size, SHA256: platform.SHA256}, Entry: platform.Executable}, chrome)
+	_, err = artifactstest.InstallUnpacked(
+		ctx,
+		cache,
+		artifacts.Archive{
+			Digest: artifacts.Digest{Size: platform.Size, SHA256: platform.SHA256},
+			Entry:  platform.Executable,
+		},
+		chrome,
+	)
 	wireMust(t, err)
 	vendor := providertest.StartVendor(t)
 	provider := conversationAnthropic(ctx, t, b, &master, vendor)
 	conversationCreate(ctx, t, b, &master, id)
-	conversationRequest(ctx, t, b, &master, "PATCH", "/api/conversations/"+id, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, laptop.ID(), laptop.Runner.Home()), 200)
+	conversationRequest(
+		ctx,
+		t,
+		b,
+		&master,
+		"PATCH",
+		"/api/conversations/"+id,
+		fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, laptop.ID(), laptop.Runner.Home()),
+		200,
+	)
 	work := &cloudWork{s: s, vendor: vendor, provider: provider, id: id}
 	work.open()
-	output := work.turn("browse", "demi browser open "+page.URL+" && demi browser content read t1 --format text", "read", 120000)
+	output := work.turn(
+		"browse",
+		"demi browser open "+page.URL+" && demi browser content read t1 --format text",
+		"read",
+		120000,
+	)
 	for _, want := range []string{"exitCode: 0", "Tab: t1", greeting} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("missing %q: %s", want, output)
@@ -133,7 +163,17 @@ func TestAnAgentDrivesChromeOnAPairedDeviceWhichTheUserWatchesUntilRelease(t *te
 	}
 	view := &realView{socket: conversationStream(ctx, t, b, &master, id, "browser")}
 	view.send(ctx, t, &browserop.LiveViewerMessageHello{Platform: "linux"})
-	view.send(ctx, t, &browserop.LiveViewerMessagePanel{Width: 800, Height: 600, DevicePixelRatio: 1, ScreenWidth: 1440, ScreenHeight: 900})
+	view.send(
+		ctx,
+		t,
+		&browserop.LiveViewerMessagePanel{
+			Width:            800,
+			Height:           600,
+			DevicePixelRatio: 1,
+			ScreenWidth:      1440,
+			ScreenHeight:     900,
+		},
+	)
 	for {
 		message, _, _ := view.next(ctx, t)
 		if state, ok := message.(*browserop.LiveModuleMessageState); ok {
