@@ -127,7 +127,6 @@ func TestTheWebAppBuildIsServedWithDeepNavigationWhileAPIMissesStayJSON(t *testi
 }
 
 func TestAPageSocketMessageOverTheLimitFailsTheSocket(t *testing.T) {
-	t.Skip("finding 2: oversized page message sends close code 1009 instead of closing without a code")
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
