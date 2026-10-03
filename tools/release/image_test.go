@@ -327,9 +327,6 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 	for _, scenario := range []string{"runner", "command", "resource", "uv", "dpkg", "duplicate package", "missing target", "tini symlink", "archive failure"} {
 		t.Run(scenario, func(t *testing.T) {
-			if scenario == "command" {
-				t.Skip("fidelity 3: image digest failure omits the corrupt executable path")
-			}
 			f := newImageFixture(t)
 			target := commandwire.Targets[2]
 			writer := fixtureImageArchive
