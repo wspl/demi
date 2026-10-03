@@ -29,32 +29,33 @@ func (a *Admission) Enter(ctx context.Context) (func(), error) { return a.acquir
 
 // Exclusive waits for all earlier operations and holds back later entrants.
 func (a *Admission) Exclusive(ctx context.Context) (func(), error) { return a.acquire(ctx, true) }
+
 func (a *Admission) acquire(ctx context.Context, exclusive bool) (func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	e := &entrant{exclusive: exclusive, ready: make(chan struct{})}
+	entrant := &entrant{exclusive: exclusive, ready: make(chan struct{})}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
 		return nil, ErrClosed
 	}
-	a.queue = append(a.queue, e)
-	a.advance()
+	a.queue = append(a.queue, entrant)
+	a.advanceLocked()
 	a.mu.Unlock()
 	select {
-	case <-e.ready:
+	case <-entrant.ready:
 	case <-ctx.Done():
 	}
 	a.mu.Lock()
-	if !e.admitted {
+	if !entrant.admitted {
 		for i, v := range a.queue {
-			if v == e {
+			if v == entrant {
 				a.queue = append(a.queue[:i], a.queue[i+1:]...)
 				break
 			}
 		}
-		a.advance()
+		a.advanceLocked()
 		closed := a.closed
 		a.mu.Unlock()
 		if closed {
@@ -71,24 +72,24 @@ func (a *Admission) acquire(ctx context.Context, exclusive bool) (func(), error)
 			if exclusive {
 				a.exclusive = false
 			}
-			a.advance()
+			a.advanceLocked()
 			a.mu.Unlock()
 		})
 	}, nil
 }
 
-// advance grants queued Cloud operations without passing an exclusive waiter.
-func (a *Admission) advance() {
+// advanceLocked grants queued Cloud operations without passing an exclusive waiter.
+func (a *Admission) advanceLocked() {
 	for !a.closed && !a.exclusive && len(a.queue) > 0 {
-		e := a.queue[0]
-		if e.exclusive && a.active != 0 {
+		entrant := a.queue[0]
+		if entrant.exclusive && a.active != 0 {
 			return
 		}
 		a.queue = a.queue[1:]
 		a.active++
-		a.exclusive = e.exclusive
-		e.admitted = true
-		close(e.ready)
+		a.exclusive = entrant.exclusive
+		entrant.admitted = true
+		close(entrant.ready)
 	}
 }
 
@@ -97,8 +98,8 @@ func (a *Admission) Close() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.closed = true
-	for _, e := range a.queue {
-		close(e.ready)
+	for _, entrant := range a.queue {
+		close(entrant.ready)
 	}
 	a.queue = nil
 }

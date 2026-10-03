@@ -21,11 +21,11 @@ func FenceAndSave(ctx context.Context, core *Core) error {
 	if err := storage.CreatePrivate(ctx, core.Runsc.Root()); err != nil {
 		return err
 	}
-	return recoverWorking(ctx, core)
+	return fenceAndSave(ctx, core)
 }
 
-// recoverWorking fences and publishes the recorded Cloud working pairs.
-func recoverWorking(ctx context.Context, core *Core) error {
+// fenceAndSave fences and publishes the recorded Cloud working pairs.
+func fenceAndSave(ctx context.Context, core *Core) error {
 	if err := storage.CreatePrivate(ctx, core.Config.Working()); err != nil {
 		return err
 	}
@@ -63,7 +63,12 @@ func recoverWorking(ctx context.Context, core *Core) error {
 				//nolint:staticcheck // User-visible text is copied verbatim from Rust.
 				return errors.New("Existing Cloud slot exceeds configured pool")
 			}
-			runtime := sandbox.Recorded(core.sandboxConfig(), core.dependencies(), record, core.Slots.Slot(record.Slot).Namespace())
+			runtime := sandbox.Recorded(
+				core.sandboxConfig(),
+				core.dependencies(),
+				record,
+				core.Slots.Slot(record.Slot).Namespace(),
+			)
 			if err = runtime.Close(ctx, pair); err != nil {
 				return err
 			}

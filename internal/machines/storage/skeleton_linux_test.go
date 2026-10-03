@@ -20,8 +20,8 @@ import (
 func TestSkeletonLinksAndOwnership(t *testing.T) {
 	directory := t.TempDir()
 	skeleton := filepath.Join(directory, "skel")
-	requireStorage(t, os.MkdirAll(filepath.Join(skeleton, ".config"), 0755))
-	requireStorage(t, os.WriteFile(filepath.Join(skeleton, ".profile"), []byte("PATH=$HOME/.local/bin:$PATH\n"), 0644))
+	requireStorage(t, os.MkdirAll(filepath.Join(skeleton, ".config"), 0o755))
+	requireStorage(t, os.WriteFile(filepath.Join(skeleton, ".profile"), []byte("PATH=$HOME/.local/bin:$PATH\n"), 0o644))
 	requireStorage(t, os.Symlink(".profile", filepath.Join(skeleton, ".bash_profile")))
 	requireStorage(t, os.Symlink("/etc/bash.bashrc", filepath.Join(skeleton, ".bashrc")))
 	home := filepath.Join(directory, "demi")
@@ -73,17 +73,17 @@ func TestHomeImageUserDirectoryAndReadableRoot(t *testing.T) {
 	tools := storageTools(t)
 	isolatedStorage(t, func(ctx context.Context) error {
 		skeleton := filepath.Join(directory, "skel")
-		if err := os.Mkdir(skeleton, 0755); err != nil {
+		if err := os.Mkdir(skeleton, 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(skeleton, ".profile"), []byte("export EDITOR=vi\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(skeleton, ".profile"), []byte("export EDITOR=vi\n"), 0o644); err != nil {
 			return err
 		}
 		root := filepath.Join(directory, "mkhome")
-		if err := os.Mkdir(root, 0755); err != nil {
+		if err := os.Mkdir(root, 0o755); err != nil {
 			return err
 		}
-		if err := os.Chmod(root, 0755); err != nil {
+		if err := os.Chmod(root, 0o755); err != nil {
 			return err
 		}
 		if err := storage.CopySkeleton(ctx, skeleton, filepath.Join(root, "demi")); err != nil {

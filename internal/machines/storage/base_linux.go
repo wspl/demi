@@ -42,14 +42,8 @@ func ImportBase(ctx context.Context, tools *system.Tools, image, bases string) (
 	if err != nil {
 		return "", err
 	}
-	architecture, supported := machinewire.HostArchitecture()
-	if !supported || architecture != manifest.Architecture {
-		return "", ErrArchitecture
-	}
-	for _, required := range []string{machinewire.RunnerPath, machinewire.InitPath} {
-		if _, ok := manifest.Executables[required]; !ok {
-			return "", &MissingExecutableError{Path: required}
-		}
+	if err := checkBaseManifest(manifest); err != nil {
+		return "", err
 	}
 	if err := CreatePrivate(ctx, bases); err != nil {
 		return "", err
@@ -87,22 +81,7 @@ func ImportBase(ctx context.Context, tools *system.Tools, image, bases string) (
 			slog.Warn("machines: " + err.Error())
 		}
 	}()
-	if err := os.MkdirAll(filepath.Join(stage, "rootfs"), 0777); err != nil {
-		return "", err
-	}
-	archive := filepath.Join(stage, manifest.Rootfs.File.Name())
-	if err := copyBaseArchive(ctx, filepath.Join(image, manifest.Rootfs.File.Name()), archive, artifacts.Digest{Size: manifest.Rootfs.Size, SHA256: manifest.Rootfs.SHA256}); err != nil {
-		return "", err
-	}
-	system.FaultPoint("base-staged")
-	if err := VetArchive(ctx, archive); err != nil {
-		return "", err
-	}
-	deadline := 300 * time.Second
-	if _, err := tools.Run(ctx, system.Bsdtar, []string{"-xpf", archive, "--xattrs", "-C", filepath.Join(stage, "rootfs")}, &deadline); err != nil {
-		return "", err
-	}
-	if err := publishBase(ctx, stage, target, data, manifest); err != nil {
+	if err := importBaseArchive(ctx, tools, image, stage, target, data, manifest); err != nil {
 		return "", err
 	}
 	return version, nil
@@ -115,7 +94,7 @@ func copyBaseArchive(ctx context.Context, source, destination string, expected a
 		return err
 	}
 	defer func() { _ = from.Close() }() // Read-only release archive.
-	to, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
+	to, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
 	if err != nil {
 		return err
 	}
@@ -132,7 +111,12 @@ func copyBaseArchive(ctx context.Context, source, destination string, expected a
 }
 
 // publishBase checks every embedded executable and durably names the immutable base.
-func publishBase(ctx context.Context, stage, target string, data []byte, manifest machinewire.CloudImageManifest) error {
+func publishBase(
+	ctx context.Context,
+	stage, target string,
+	data []byte,
+	manifest machinewire.CloudImageManifest,
+) error {
 	root, err := os.Open(filepath.Join(stage, "rootfs"))
 	if err != nil {
 		return err
@@ -141,7 +125,12 @@ func publishBase(ctx context.Context, stage, target string, data []byte, manifes
 	// Rust's executable map is a BTreeMap; preserve its check order.
 	for _, path := range slices.Sorted(maps.Keys(manifest.Executables)) {
 		artifact := manifest.Executables[path]
-		if err := verifyExecutable(ctx, root, path, artifacts.Digest{Size: artifact.Size, SHA256: artifact.SHA256}); err != nil {
+		if err := verifyExecutable(
+			ctx,
+			root,
+			path,
+			artifacts.Digest{Size: artifact.Size, SHA256: artifact.SHA256},
+		); err != nil {
 			return err
 		}
 	}
@@ -152,7 +141,7 @@ func publishBase(ctx context.Context, stage, target string, data []byte, manifes
 	if err := os.Remove(filepath.Join(stage, manifest.Rootfs.File.Name())); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(stage, "manifest.json"), data, 0666); err != nil {
+	if err := os.WriteFile(filepath.Join(stage, "manifest.json"), data, 0o666); err != nil {
 		return err
 	}
 	if err := unix.Syncfs(int(root.Fd())); err != nil {
@@ -169,7 +158,14 @@ func publishBase(ctx context.Context, stage, target string, data []byte, manifes
 
 // verifyExecutable opens an image executable beneath the base and verifies its bytes.
 func verifyExecutable(ctx context.Context, root *os.File, path string, expected artifacts.Digest) error {
-	fd, err := unix.Openat2(int(root.Fd()), strings.TrimLeft(path, "/"), &unix.OpenHow{Flags: unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOCTTY, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_MAGICLINKS})
+	fd, err := unix.Openat2(
+		int(root.Fd()),
+		strings.TrimLeft(path, "/"),
+		&unix.OpenHow{
+			Flags:   unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOCTTY,
+			Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_MAGICLINKS,
+		},
+	)
 	if errors.Is(err, unix.EXDEV) || errors.Is(err, unix.ELOOP) {
 		return &ExecutablePathError{Path: path}
 	}
@@ -192,6 +188,57 @@ func verifyExecutable(ctx context.Context, root *os.File, path string, expected 
 			return &ExecutableIntegrityError{Path: path}
 		}
 		return err
+	}
+	return nil
+}
+
+func importBaseArchive(
+	ctx context.Context,
+	tools *system.Tools,
+	image, stage, target string,
+	data []byte,
+	manifest machinewire.CloudImageManifest,
+) error {
+	if err := os.MkdirAll(filepath.Join(stage, "rootfs"), 0o777); err != nil {
+		return err
+	}
+	archive := filepath.Join(stage, manifest.Rootfs.File.Name())
+	if err := copyBaseArchive(
+		ctx,
+		filepath.Join(image, manifest.Rootfs.File.Name()),
+		archive,
+		artifacts.Digest{Size: manifest.Rootfs.Size, SHA256: manifest.Rootfs.SHA256},
+	); err != nil {
+		return err
+	}
+	system.FaultPoint("base-staged")
+	if err := VetArchive(ctx, archive); err != nil {
+		return err
+	}
+	deadline := 300 * time.Second
+	if _, err := tools.Run(
+		ctx,
+		system.Bsdtar,
+		[]string{"-xpf", archive, "--xattrs", "-C", filepath.Join(stage, "rootfs")},
+		&deadline,
+	); err != nil {
+		return err
+	}
+	if err := publishBase(ctx, stage, target, data, manifest); err != nil {
+		return err
+	}
+	return nil
+}
+
+func checkBaseManifest(manifest machinewire.CloudImageManifest) error {
+	architecture, supported := machinewire.HostArchitecture()
+	if !supported || architecture != manifest.Architecture {
+		return ErrArchitecture
+	}
+	for _, required := range []string{machinewire.RunnerPath, machinewire.InitPath} {
+		if _, ok := manifest.Executables[required]; !ok {
+			return &MissingExecutableError{Path: required}
+		}
 	}
 	return nil
 }

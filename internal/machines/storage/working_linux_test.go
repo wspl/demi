@@ -25,7 +25,7 @@ func TestWorkingSaveRetainsFailureAndPublishesRecoveredPair(t *testing.T) {
 	requireStorage(t, storage.CreatePrivate(ctx, pair.Directory()))
 	images := pair.Images()
 	requireStorage(t, storage.MakeSystem(ctx, tools, images.System, 32<<20))
-	requireStorage(t, os.WriteFile(images.Home, []byte("broken ext4"), 0600))
+	requireStorage(t, os.WriteFile(images.Home, []byte("broken ext4"), 0o600))
 	state := generationState(t, "working")
 	reset := "reset<&>\u2028\u2029"
 	state.ResetID = &reset
@@ -52,13 +52,17 @@ func TestWorkingSaveRetainsFailureAndPublishesRecoveredPair(t *testing.T) {
 	}
 	requireStorage(t, os.Remove(images.Home))
 	home := t.TempDir()
-	requireStorage(t, os.WriteFile(filepath.Join(home, "kept.txt"), []byte("home survives\n"), 0644))
+	requireStorage(t, os.WriteFile(filepath.Join(home, "kept.txt"), []byte("home survives\n"), 0o644))
 	requireStorage(t, storage.MakeHome(ctx, tools, home, images.Home, 32<<20))
 	requireStorage(t, os.Truncate(images.System, 64<<20))
 	requireStorage(t, pair.Save(ctx, tools, store, "device"))
 	committed, err = store.Read(ctx, "device")
 	requireStorage(t, err)
-	if committed == nil || committed.Generation == state.Generation || committed.SystemBytes != 64<<20 || committed.HomeBytes != 32<<20 || committed.BaseVersion != state.BaseVersion || committed.ResetID == nil || *committed.ResetID != reset {
+	if committed == nil || committed.Generation == state.Generation || committed.SystemBytes != 64<<20 ||
+		committed.HomeBytes != 32<<20 ||
+		committed.BaseVersion != state.BaseVersion ||
+		committed.ResetID == nil ||
+		*committed.ResetID != reset {
 		t.Fatalf("saved state: %+v", committed)
 	}
 	if _, err := machinewire.ParseGenerationID(string(committed.Generation)); err != nil {

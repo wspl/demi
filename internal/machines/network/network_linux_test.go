@@ -93,7 +93,15 @@ func TestSlotAttachesAndDetachesUnderInstalledPolicy(t *testing.T) {
 			if strings.TrimSpace(string(disabled)) != "1" {
 				return fmt.Errorf("host IPv6 enabled: %q", disabled)
 			}
-			disabledInside, err := commandOutput(ctx, "ip", "netns", "exec", "demi-3", "cat", "/proc/sys/net/ipv6/conf/all/disable_ipv6")
+			disabledInside, err := commandOutput(
+				ctx,
+				"ip",
+				"netns",
+				"exec",
+				"demi-3",
+				"cat",
+				"/proc/sys/net/ipv6/conf/all/disable_ipv6",
+			)
 			if err != nil {
 				return err
 			}
@@ -161,7 +169,8 @@ func TestOverlappingRouteAndLoopbackBackendRefused(t *testing.T) {
 		n := network.New(netip.MustParsePrefix("172.30.0.0/16"), dns, *backend)
 		err = n.Prepare(ctx)
 		var overlap *network.OverlapError
-		if !errors.As(err, &overlap) || overlap.Route != netip.MustParsePrefix("172.30.5.0/24") || err.Error() != "DEMI_MANAGED_SUBNET overlaps host route 172.30.5.0/24" {
+		if !errors.As(err, &overlap) || overlap.Route != netip.MustParsePrefix("172.30.5.0/24") ||
+			err.Error() != "DEMI_MANAGED_SUBNET overlaps host route 172.30.5.0/24" {
 			return fmt.Errorf("overlap refusal: %v", err)
 		}
 		for _, text := range []string{"http://127.0.0.1:3271", "http://0.1.2.3:3271"} {
@@ -170,7 +179,10 @@ func TestOverlappingRouteAndLoopbackBackendRefused(t *testing.T) {
 				return err
 			}
 			n := network.New(netip.MustParsePrefix("10.99.0.0/16"), dns, *backend)
-			if err := n.Prepare(ctx); !errors.Is(err, network.ErrLoopbackBackend) || err.Error() != "Backend URL must be reachable from Cloud, not host loopback" {
+			if err := n.Prepare(
+				ctx,
+			); !errors.Is(err, network.ErrLoopbackBackend) ||
+				err.Error() != "Backend URL must be reachable from Cloud, not host loopback" {
 				return fmt.Errorf("%s refusal: %v", text, err)
 			}
 		}

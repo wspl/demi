@@ -31,7 +31,7 @@ func BindSocket(ctx context.Context, path string) (*Socket, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0777); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o777); err != nil {
 		return nil, err
 	}
 	info, err := os.Lstat(path)
@@ -49,7 +49,7 @@ func BindSocket(ctx context.Context, path string) (*Socket, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = os.Chmod(path, 0660); err != nil {
+	if err = os.Chmod(path, 0o660); err != nil {
 		_ = listener.Close()
 		return nil, err
 	}
@@ -85,34 +85,7 @@ func Serve(ctx context.Context, socket *Socket, service Service, deaths <-chan m
 		// Closing stops accept and removes the socket; no buffered data is held.
 		_ = socket.listener.Close()
 	})
-	owned.Go(func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-done:
-				return
-			case device, ok := <-deaths:
-				if !ok {
-					return
-				}
-				line, err := machinewire.EncodeLine(&machinewire.Death{DeviceID: string(device)})
-				if err != nil {
-					slog.Error(err.Error())
-					continue
-				}
-				mu.Lock()
-				snapshot := make([]*connection, 0, len(clients))
-				for c := range clients {
-					snapshot = append(snapshot, c)
-				}
-				mu.Unlock()
-				for _, c := range snapshot {
-					flight.requests.Go(func() { c.send(c.ctx, line) })
-				}
-			}
-		}
-	})
+	owned.Go(func() { broadcastDeaths(ctx, done, deaths, &mu, clients, flight) })
 	var connections sync.WaitGroup
 	for ctx.Err() == nil {
 		conn, err := socket.listener.AcceptUnix()
@@ -146,12 +119,14 @@ func Serve(ctx context.Context, socket *Socket, service Service, deaths <-chan m
 	connections.Wait()
 	return flight
 }
+
 func (c *connection) send(ctx context.Context, line []byte) {
 	select {
 	case c.out <- line:
 	case <-ctx.Done():
 	}
 }
+
 func (c *connection) run(ctx context.Context, service Service, flight *InFlight) {
 	defer c.cancel()
 	var owned sync.WaitGroup
@@ -201,4 +176,41 @@ func (c *connection) run(ctx context.Context, service Service, flight *InFlight)
 	}
 	c.cancel()
 	owned.Wait()
+}
+
+// broadcastDeaths snapshots connections under the mutex and sends after releasing it.
+func broadcastDeaths(
+	ctx context.Context,
+	done <-chan struct{},
+	deaths <-chan machinewire.DeviceID,
+	mu *sync.Mutex,
+	clients map[*connection]struct{},
+	flight *InFlight,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+			return
+		case device, ok := <-deaths:
+			if !ok {
+				return
+			}
+			line, err := machinewire.EncodeLine(&machinewire.Death{DeviceID: string(device)})
+			if err != nil {
+				slog.Error(err.Error())
+				continue
+			}
+			mu.Lock()
+			snapshot := make([]*connection, 0, len(clients))
+			for c := range clients {
+				snapshot = append(snapshot, c)
+			}
+			mu.Unlock()
+			for _, c := range snapshot {
+				flight.requests.Go(func() { c.send(c.ctx, line) })
+			}
+		}
+	}
 }

@@ -26,7 +26,7 @@ func MountRoot(ctx context.Context, path string) (mounted, exists bool, err erro
 		return false, false, Failed("inspecting", path, err)
 	}
 	if status.Attributes_mask&unix.STATX_ATTR_MOUNT_ROOT == 0 {
-		return false, true, mountRootUnsupported{}
+		return false, true, mountRootUnsupportedError{}
 	}
 	return status.Attributes&unix.STATX_ATTR_MOUNT_ROOT != 0, true, nil
 }
@@ -73,8 +73,8 @@ func Overlay(ctx context.Context, base, volume, target string) error {
 	for _, directory := range []struct {
 		path string
 		mode os.FileMode
-	}{{upper, 0755}, {work, 0700}} {
-		err := os.Mkdir(directory.path, 0777)
+	}{{upper, 0o755}, {work, 0o700}} {
+		err := os.Mkdir(directory.path, 0o777)
 		if errors.Is(err, os.ErrExist) {
 			continue
 		}
@@ -85,7 +85,12 @@ func Overlay(ctx context.Context, base, volume, target string) error {
 			return err
 		}
 	}
-	options := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s,index=off,metacopy=off,redirect_dir=off", base, upper, work)
+	options := fmt.Sprintf(
+		"lowerdir=%s,upperdir=%s,workdir=%s,index=off,metacopy=off,redirect_dir=off",
+		base,
+		upper,
+		work,
+	)
 	return Failed("mounting", target, unix.Mount("overlay", target, "overlay", 0, options))
 }
 
@@ -113,11 +118,11 @@ func MakePrivate(ctx context.Context, target string) error {
 	return Failed("changing the propagation of", target, unix.Mount("", target, "", unix.MS_PRIVATE, ""))
 }
 
-// mountRootUnsupported keeps the Rust diagnostic while exposing its error kind.
-type mountRootUnsupported struct{}
+// mountRootUnsupportedError keeps the Rust diagnostic while exposing its error kind.
+type mountRootUnsupportedError struct{}
 
-func (mountRootUnsupported) Error() string {
+func (mountRootUnsupportedError) Error() string {
 	return "the kernel does not report mount roots (Linux 5.8 or later is required)"
 }
 
-func (mountRootUnsupported) Unwrap() error { return errors.ErrUnsupported }
+func (mountRootUnsupportedError) Unwrap() error { return errors.ErrUnsupported }

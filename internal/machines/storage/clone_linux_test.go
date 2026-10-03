@@ -87,11 +87,15 @@ func TestCopyMatchesCPOnXFSBtrfsExt4(t *testing.T) {
 	directory := t.TempDir()
 	isolatedStorage(t, func(ctx context.Context) error {
 		content := filepath.Join(directory, "content")
-		if err := os.Mkdir(content, 0700); err != nil {
+		if err := os.Mkdir(content, 0o700); err != nil {
 			return err
 		}
 		for i := 0; i < 8; i++ {
-			if err := os.WriteFile(filepath.Join(content, fmt.Sprintf("file-%d", i)), bytes.Repeat([]byte{byte(i + 1)}, 300000+i*4096), 0600); err != nil {
+			if err := os.WriteFile(
+				filepath.Join(content, fmt.Sprintf("file-%d", i)),
+				bytes.Repeat([]byte{byte(i + 1)}, 300000+i*4096),
+				0o600,
+			); err != nil {
 				return err
 			}
 		}
@@ -147,7 +151,7 @@ func compareImageCopies(ctx context.Context, t *testing.T, directory, source, fi
 		return err
 	}
 	target := filepath.Join(directory, filesystem)
-	if err := os.Mkdir(target, 0700); err != nil {
+	if err := os.Mkdir(target, 0o700); err != nil {
 		return err
 	}
 	// system exposes ext4 only; this test's host-filesystem matrix needs the
@@ -156,7 +160,11 @@ func compareImageCopies(ctx context.Context, t *testing.T, directory, source, fi
 		return err
 	}
 	defer func() {
-		err = errors.Join(err, system.Unmount(context.WithoutCancel(ctx), target), systemtest.WaitLoopDetach(context.WithoutCancel(ctx), image))
+		err = errors.Join(
+			err,
+			system.Unmount(context.WithoutCancel(ctx), target),
+			systemtest.WaitLoopDetach(context.WithoutCancel(ctx), image),
+		)
 	}()
 	if err := device.Close(); err != nil {
 		return err

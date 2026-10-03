@@ -34,7 +34,10 @@ func ImageFile(volume machinewire.Volume) string { return string(volume) + ".ext
 
 // ImagesInDirectory names the system.ext4 and home.ext4 images in directory.
 func ImagesInDirectory(directory string) ImagePair[string] {
-	return ImagePair[string]{System: filepath.Join(directory, ImageFile(machinewire.VolumeSystem)), Home: filepath.Join(directory, ImageFile(machinewire.VolumeHome))}
+	return ImagePair[string]{
+		System: filepath.Join(directory, ImageFile(machinewire.VolumeSystem)),
+		Home:   filepath.Join(directory, ImageFile(machinewire.VolumeHome)),
+	}
 }
 
 // Store holds the committed generations under <data>/images.
@@ -82,7 +85,12 @@ func (s *Store) Images(device machinewire.DeviceID, generation machinewire.Gener
 // filesystem, and never written again: publication hard-links them.
 // Failure before replacing current.json preserves the committed generation.
 // Once publication begins its commit and cleanup complete despite cancellation.
-func (s *Store) Publish(ctx context.Context, device machinewire.DeviceID, state machinewire.MachineImageState, sources ImagePair[string]) error {
+func (s *Store) Publish(
+	ctx context.Context,
+	device machinewire.DeviceID,
+	state machinewire.MachineImageState,
+	sources ImagePair[string],
+) error {
 	previous, err := s.Read(ctx, device)
 	if err != nil {
 		return err
@@ -90,7 +98,7 @@ func (s *Store) Publish(ctx context.Context, device machinewire.DeviceID, state 
 	ctx = context.WithoutCancel(ctx)
 	directory := filepath.Join(s.root, string(device))
 	generations := filepath.Join(directory, "generations")
-	if err := os.MkdirAll(generations, 0777); err != nil {
+	if err := os.MkdirAll(generations, 0o777); err != nil {
 		return err
 	}
 	if err := Sync(ctx, s.root); err != nil {
@@ -104,7 +112,7 @@ func (s *Store) Publish(ctx context.Context, device machinewire.DeviceID, state 
 		return err
 	}
 	stage := filepath.Join(generations, ".publish-"+string(id))
-	if err := os.Mkdir(stage, 0777); err != nil {
+	if err := os.Mkdir(stage, 0o777); err != nil {
 		return err
 	}
 	// The unpublished stage is removed even when staging or rename fails.
@@ -130,23 +138,16 @@ func (s *Store) Publish(ctx context.Context, device machinewire.DeviceID, state 
 	if err := Sync(ctx, directory); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(generations)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		keep := entry.Name() == string(state.Generation) || previous != nil && entry.Name() == string(previous.Generation)
-		if !keep && entry.IsDir() {
-			if err := RemoveTree(ctx, filepath.Join(generations, entry.Name())); err != nil {
-				return err
-			}
-		}
-	}
-	return Sync(ctx, generations)
+	return pruneGenerations(ctx, generations, state, previous)
 }
 
 // stageGeneration links immutable images and records their paired generation.
-func stageGeneration(ctx context.Context, stage string, state machinewire.MachineImageState, sources ImagePair[string]) error {
+func stageGeneration(
+	ctx context.Context,
+	stage string,
+	state machinewire.MachineImageState,
+	sources ImagePair[string],
+) error {
 	for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
 		if err := os.Link(sources.ForVolume(volume), filepath.Join(stage, ImageFile(volume))); err != nil {
 			return err
@@ -156,4 +157,26 @@ func stageGeneration(ctx context.Context, stage string, state machinewire.Machin
 		return err
 	}
 	return Sync(ctx, stage)
+}
+
+func pruneGenerations(
+	ctx context.Context,
+	generations string,
+	state machinewire.MachineImageState,
+	previous *machinewire.MachineImageState,
+) error {
+	entries, err := os.ReadDir(generations)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		keep := entry.Name() == string(state.Generation) ||
+			previous != nil && entry.Name() == string(previous.Generation)
+		if !keep && entry.IsDir() {
+			if err := RemoveTree(ctx, filepath.Join(generations, entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return Sync(ctx, generations)
 }
