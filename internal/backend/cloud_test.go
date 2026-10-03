@@ -3,10 +3,7 @@ package backend_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,9 +16,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/provider/providertest"
 	"github.com/wspl/demi/internal/webapi"
@@ -33,7 +27,7 @@ const cloudReset = "6e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a09"
 
 func (s *hostScenario) cloudStatus() webapi.CloudStatus {
 	s.t.Helper()
-	a := s.request("GET", "/api/cloud", "", 200)
+	a := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/cloud", "", 200)
 	state, err := webapi.DecodeCloudStatus(a.Body)
 	if err != nil {
 		s.t.Fatal(err)
@@ -67,7 +61,7 @@ func (s *hostScenario) theCloud() webapi.DeviceID {
 }
 func (s *hostScenario) resetCloud(id string) webapi.CloudResetAnswer {
 	s.t.Helper()
-	a := s.request("POST", "/api/cloud/reset", fmt.Sprintf(`{"operationId":%q}`, id), 202)
+	a := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/cloud/reset", fmt.Sprintf(`{"operationId":%q}`, id), 202)
 	answer, err := webapi.DecodeCloudResetAnswer(a.Body)
 	if err != nil {
 		s.t.Fatal(err)
@@ -78,16 +72,16 @@ func (s *hostScenario) resetCloud(id string) webapi.CloudResetAnswer {
 // Three real runner boots and a reset exercise crash-loop admission across the API and manager wire.
 func TestCloudCrashLoopRequiresReset(t *testing.T) {
 	s := newHostScenario(t, "")
-	s.create(cloudFirst)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
 	listing := "/api/conversations/" + cloudFirst + "/fs"
 	for death := 0; death < 3; death++ {
-		s.request("GET", listing, "", 200)
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 200)
 		if err := s.manager.Kill(s.ctx, s.theCloud()); err != nil {
 			t.Fatal(err)
 		}
 		s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
 	}
-	s.refusal("GET", listing, "", 503, webapi.ErrorCodeCloudCrashLoop)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 503), webapi.ErrorCodeCloudCrashLoop)
 	device := s.theCloud()
 	if s.manager.Count("wake:"+string(device)) != 3 {
 		t.Fatal(s.manager.Calls())
@@ -96,7 +90,7 @@ func TestCloudCrashLoopRequiresReset(t *testing.T) {
 	s.cloudUntil(func(status webapi.CloudStatus) bool {
 		return status.Operation != nil && status.Operation.Phase == webapi.ResetPhaseReady
 	})
-	s.request("GET", listing, "", 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 200)
 }
 
 // Capacity is released by the real idle watch; the scenario waits on its page event.
@@ -123,13 +117,13 @@ func TestCloudCapacityIsSharedAcrossUsers(t *testing.T) {
 	}
 	other := *s
 	other.user = ana
-	s.create(cloudFirst)
-	other.create(cloudSecond)
-	s.request("GET", "/api/conversations/"+cloudFirst+"/fs", "", 200)
-	other.refusal("GET", "/api/conversations/"+cloudSecond+"/fs", "", 503, webapi.ErrorCodeCloudCapacity)
-	other.refusal("POST", "/api/cloud/reset", fmt.Sprintf(`{"operationId":%q}`, cloudReset), 409, webapi.ErrorCodeCloudCapacity)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
+	conversationCreate(other.ctx, other.t, other.b, &other.user, cloudSecond)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs", "", 200)
+	conversationRefusal(other.t, conversationRequest(other.ctx, other.t, other.b, &other.user, "GET", "/api/conversations/"+cloudSecond+"/fs", "", 503), webapi.ErrorCodeCloudCapacity)
+	conversationRefusal(other.t, conversationRequest(other.ctx, other.t, other.b, &other.user, "POST", "/api/cloud/reset", fmt.Sprintf(`{"operationId":%q}`, cloudReset), 409), webapi.ErrorCodeCloudCapacity)
 	s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
-	other.request("GET", "/api/conversations/"+cloudSecond+"/fs", "", 200)
+	conversationRequest(other.ctx, other.t, other.b, &other.user, "GET", "/api/conversations/"+cloudSecond+"/fs", "", 200)
 	if len(manager.Devices()) != 2 {
 		t.Fatal(manager.Devices())
 	}
@@ -147,10 +141,10 @@ func TestCloudBootTimeoutSavesAndReportsFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
-	s.create(cloudFirst)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
 	manager.SetScript(backendtest.MachineScript{SilentWake: true})
 	listing := "/api/conversations/" + cloudFirst + "/fs"
-	answer := s.request("GET", listing, "", 503)
+	answer := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 503)
 	failure, err := answer.ErrorBody()
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +161,7 @@ func TestCloudBootTimeoutSavesAndReportsFailure(t *testing.T) {
 		t.Fatal(failed)
 	}
 	manager.SetScript(backendtest.MachineScript{})
-	s.request("GET", listing, "", 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 200)
 	if s.cloudStatus().Error != nil {
 		t.Fatal("boot error remains")
 	}
@@ -175,8 +169,8 @@ func TestCloudBootTimeoutSavesAndReportsFailure(t *testing.T) {
 
 func TestStartupRecoversResetDisksWithoutBooting(t *testing.T) {
 	s := newHostScenario(t, "")
-	s.create(cloudFirst)
-	s.request("GET", "/api/conversations/"+cloudFirst+"/fs", "", 200)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs", "", 200)
 	device := s.theCloud()
 	if err := s.b.Close(s.ctx); err != nil {
 		t.Fatal(err)
@@ -251,9 +245,9 @@ func TestStartupRecoversResetDisksWithoutBooting(t *testing.T) {
 type cloudWork struct {
 	s            *hostScenario
 	vendor       *providertest.MockVendor
-	socket       *websocket.Conn
+	socket       *backendtest.ConversationSocket
 	sent         int
-	provider     webapi.ProviderID
+	provider     string
 	id           string
 	firstRequest string
 }
@@ -261,127 +255,37 @@ type cloudWork struct {
 func (s *hostScenario) work(id string) *cloudWork {
 	s.t.Helper()
 	vendor := providertest.StartVendor(s.t)
-	created := s.request("POST", "/api/providers", fmt.Sprintf(`{"source":"custom","providerType":"anthropic","label":"Work","apiKey":"sk-ant-test","baseUrl":%q}`, vendor.URL("/a/v1")), 201)
-	entry, err := webapi.DecodeProviderAnswer(created.Body)
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	s.create(id)
-	w := &cloudWork{s: s, vendor: vendor, provider: entry.Provider.ID, id: id}
+	provider := conversationAnthropic(s.ctx, s.t, s.b, &s.user, vendor)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, id)
+	w := &cloudWork{s: s, vendor: vendor, provider: provider, id: id}
 	w.open()
 	return w
 }
+
+// open reconnects this Cloud workload with its persisted provider selection.
 func (w *cloudWork) open() {
 	w.s.t.Helper()
 	if w.socket != nil {
-		_ = w.socket.CloseNow() // Reconnection also releases an already closed page socket.
+		wireMust(w.s.t, w.socket.Close(w.s.ctx))
 	}
-	w.s.request("PATCH", "/api/conversations/"+w.id, fmt.Sprintf(`{"model":{"providerId":%q,"modelId":"claude-opus-4-8"}}`, w.provider), 200)
-	socket, err := backendtest.HostsSocket(w.s.ctx, w.s.t, w.s.b, &w.s.user, w.id)
-	if err != nil {
-		w.s.t.Fatal(err)
-	}
-	w.socket = socket
-	w.send(&framewire.OpenFrame{})
-	first := w.next()
-	if _, ok := first.(*framewire.OpenedFrame); !ok {
-		w.s.t.Fatalf("first frame: %#v", first)
-	}
-	for {
-		if _, ok := w.next().(*framewire.PendingSteersFrame); ok {
-			return
-		}
-	}
-}
-func (w *cloudWork) send(frame framewire.ClientFrame) {
-	w.s.t.Helper()
-	data, err := contract.EncodeJSON(frame)
-	if err != nil {
-		w.s.t.Fatal(err)
-	}
-	if err := w.socket.Write(w.s.ctx, websocket.MessageText, data); err != nil {
-		w.s.t.Fatal(err)
-	}
-}
-func (w *cloudWork) next() framewire.ServerFrame {
-	w.s.t.Helper()
-	ctx, cancel := context.WithTimeout(w.s.ctx, 20*time.Second)
-	defer cancel()
-	_, data, err := w.socket.Read(ctx)
-	if err != nil {
-		w.s.t.Fatal(err)
-	}
-	frame, err := framewire.DecodeServerFrame(data)
-	if err != nil {
-		w.s.t.Fatal(err)
-	}
-	return frame
+	conversationChoose(w.s.ctx, w.s.t, w.s.b, &w.s.user, w.id, w.provider, "claude-opus-4-8")
+	w.socket = conversationOpen(w.s.ctx, w.s.t, w.s.b, &w.s.user, w.id)
 }
 
-// cloudAnswer is the scripted vendor's message stream, with one block and one token each way.
-func cloudAnswer(t *testing.T, id, script, text string, timeout ...int) providertest.MockResponse {
-	t.Helper()
-	frames := []string{`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-4-8","content":[],"usage":{"input_tokens":1,"output_tokens":0}}}`}
-	reason := "end_turn"
+func (w *cloudWork) turn(id, script, text string, timeout ...int) string {
+	w.s.t.Helper()
+	before := len(w.vendor.Requests())
 	if script != "" {
 		milliseconds := 20000
 		if len(timeout) > 0 {
 			milliseconds = timeout[0]
 		}
-		input := fmt.Sprintf(`{"description":%q,"script":%q,"timeoutMs":%d}`, id, script, milliseconds)
-		frames = append(frames, fmt.Sprintf(`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":%q,"name":"shell_exec","input":{}}}`, id), fmt.Sprintf(`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":%q}}`, input))
-		reason = "tool_use"
-	} else {
-		frames = append(frames, `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`, fmt.Sprintf(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":%q}}`, text))
+		w.vendor.Respond(conversationShell(w.s.t, id, script, milliseconds))
 	}
-	frames = append(frames, `{"type":"content_block_stop","index":0}`, fmt.Sprintf(`{"type":"message_delta","delta":{"stop_reason":%q},"usage":{"output_tokens":1}}`, reason), `{"type":"message_stop"}`)
-	var stream strings.Builder
-	for _, frame := range frames {
-		data, err := contract.EncodeJSON(json.RawMessage(frame))
-		if err != nil {
-			t.Fatal(err)
-		}
-		fields, err := contract.ObjectFields(data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var kind string
-		for _, field := range fields {
-			if field.Name == "type" {
-				raw, ok := field.Value.(json.RawMessage)
-				if !ok {
-					t.Fatal("event type is not JSON")
-				}
-				if err := json.Unmarshal(raw, &kind); err != nil {
-					t.Fatal(err)
-				}
-			}
-		}
-		fmt.Fprintf(&stream, "event: %s\ndata: %s\n\n", kind, data)
-	}
-	return providertest.EventStream(stream.String())
-}
-func (w *cloudWork) turn(id, script, text string, timeout ...int) string {
-	w.s.t.Helper()
-	before := len(w.vendor.Requests())
-	if script != "" {
-		w.vendor.RespondAt("/a/v1/messages", cloudAnswer(w.s.t, id, script, "", timeout...))
-	}
-	w.vendor.RespondAt("/a/v1/messages", cloudAnswer(w.s.t, "", "", text))
+	w.vendor.Respond(conversationAnswer(w.s.t, []string{text}, 1, 1))
 	w.sent++
-	w.send(&framewire.SendFrame{MessageID: core.TurnID(fmt.Sprintf("m%d", w.sent)), Content: []framewire.ClientContent{&framewire.TextContent{Text: "go"}}})
-	ran := false
-	for {
-		frame := w.next()
-		if phase, ok := frame.(*framewire.PhaseFrame); ok {
-			if phase.Phase == core.SessionPhaseRunning {
-				ran = true
-			}
-			if ran && phase.Phase == core.SessionPhaseIdle {
-				break
-			}
-		}
-	}
+	_, err := w.socket.Chat(w.s.ctx, fmt.Sprintf("m%d", w.sent), "go")
+	wireMust(w.s.t, err)
 	requests := w.vendor.Requests()[before:]
 	if len(requests) == 0 {
 		w.s.t.Fatal("no vendor request")
@@ -390,50 +294,7 @@ func (w *cloudWork) turn(id, script, text string, timeout ...int) string {
 	if script == "" {
 		return ""
 	}
-	document, ok := requests[len(requests)-1].JSON(w.s.t).(map[string]any)
-	if !ok {
-		w.s.t.Fatal("request is not an object")
-	}
-	messages, ok := document["messages"].([]any)
-	if !ok {
-		w.s.t.Fatal("request has no messages")
-	}
-	for _, item := range messages {
-		message, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		blocks, ok := message["content"].([]any)
-		if !ok {
-			continue
-		}
-		for _, item := range blocks {
-			block, ok := item.(map[string]any)
-			if !ok || block["type"] != "tool_result" || block["tool_use_id"] != id {
-				continue
-			}
-			content, ok := block["content"].([]any)
-			if !ok {
-				w.s.t.Fatal("tool result has no content")
-			}
-			var text strings.Builder
-			for _, item := range content {
-				part, ok := item.(map[string]any)
-				if !ok {
-					w.s.t.Fatal("tool result part is not an object")
-				}
-				value, ok := part["text"].(string)
-				if !ok {
-					w.s.t.Fatal("tool result is not text")
-				}
-				text.WriteString(value)
-			}
-			return text.String()
-		}
-	}
-	w.s.t.Fatalf("no result of %s", id)
-	return ""
-
+	return conversationToolResult(w.s.t, requests[len(requests)-1], id)
 }
 
 func TestArchivingStoppedCloudDoesNotWakeIt(t *testing.T) {
@@ -452,7 +313,7 @@ func TestArchivingStoppedCloudDoesNotWakeIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.request("PATCH", "/api/conversations/"+cloudFirst, `{"archived":true}`, 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudFirst, `{"archived":true}`, 200)
 	if s.manager.Count("wake:"+string(device)) != 1 {
 		t.Fatal(s.manager.Calls())
 	}
@@ -508,7 +369,7 @@ func TestCloudResetKeepsHomeIdentityAndAnnouncesOnce(t *testing.T) {
 	if err := held.UntilArrived(s.ctx, 1); err != nil {
 		t.Fatal(err)
 	}
-	s.refusal("POST", "/api/cloud/reset", `{"operationId":"8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a0b"}`, 409, webapi.ErrorCodeCloudResetting)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/cloud/reset", `{"operationId":"8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a0b"}`, 409), webapi.ErrorCodeCloudResetting)
 	held.Release()
 	s.cloudUntil(func(status webapi.CloudStatus) bool {
 		return status.Operation != nil && string(status.Operation.ID) == second && status.Operation.Phase == webapi.ResetPhaseReady
@@ -536,7 +397,7 @@ func TestFailedCloudResetResumesOnSameBaseAndKeepsHome(t *testing.T) {
 		return status.Operation != nil && status.Operation.Phase == webapi.ResetPhaseReady
 	})
 	path := s.manager.Home(device) + "/sessions/" + cloudFirst + "/note"
-	read := s.request("GET", "/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(path), "", 200)
+	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(path), "", 200)
 	file, err := webapi.DecodeFileText(read.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -576,7 +437,7 @@ func TestQuietlyStoppedCloudRecoversOnceForConcurrentReads(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 2 {
 		workers.Go(func() {
-			read := s.request("GET", "/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(path), "", 200)
+			read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(path), "", 200)
 			file, err := webapi.DecodeFileText(read.Body)
 			if err != nil {
 				t.Error(err)
@@ -611,7 +472,7 @@ func TestShutdownCancelsCloudBootAndSavesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
-	s.request("POST", "/api/providers/setup-token", `{"token":"sk-ant-oat01-shutdown-account","label":"Claude"}`, 201)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/providers/setup-token", `{"token":"sk-ant-oat01-shutdown-account","label":"Claude"}`, 201)
 	booting := s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateBooting })
 	if booting.Device == nil {
 		t.Fatal("booting Cloud has no identity")
@@ -644,8 +505,8 @@ func TestShutdownCutsCloudDownloadAndReportsFailedSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
-	s.create(cloudFirst)
-	s.request("GET", "/api/conversations/"+cloudFirst+"/fs", "", 200)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs", "", 200)
 	device := s.theCloud()
 	big := s.manager.Home(device) + "/sessions/" + cloudFirst + "/big.bin"
 	if err := os.WriteFile(big, bytes.Repeat([]byte{7}, 8<<20), 0644); err != nil {
@@ -695,7 +556,7 @@ func TestCloudFilesTodosAndUsageSurviveBackendRestart(t *testing.T) {
 		t.Fatal(result)
 	}
 	requests := func() uint64 {
-		read := s.request("GET", "/api/usage", "", 200)
+		read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/usage", "", 200)
 		usage, err := webapi.DecodeUsageTotals(read.Body)
 		if err != nil {
 			t.Fatal(err)
@@ -735,7 +596,7 @@ func TestCloudProjectsShareMachineAndDeletionKeepsFiles(t *testing.T) {
 	var workers sync.WaitGroup
 	for i, name := range []string{"first", "second"} {
 		workers.Go(func() {
-			answer := s.request("POST", "/api/workspaces", fmt.Sprintf(`{"kind":"cloud","name":%q}`, name), 201)
+			answer := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/workspaces", fmt.Sprintf(`{"kind":"cloud","name":%q}`, name), 201)
 			created, err := webapi.DecodeWorkspaceAnswer(answer.Body)
 			if err != nil {
 				t.Error(err)
@@ -762,7 +623,7 @@ func TestCloudProjectsShareMachineAndDeletionKeepsFiles(t *testing.T) {
 	}
 	a, b := s.work(cloudFirst), s.work(cloudSecond)
 	for i, id := range []string{cloudFirst, cloudSecond} {
-		s.request("PATCH", "/api/conversations/"+id, fmt.Sprintf(`{"target":{"kind":"workspace","workspaceId":%q}}`, projects[i].ID), 200)
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+id, fmt.Sprintf(`{"target":{"kind":"workspace","workspaceId":%q}}`, projects[i].ID), 200)
 	}
 	if result := a.turn("a1", "printf shared > note", "written"); !strings.Contains(result, "exitCode: 0") {
 		t.Fatal(result)
@@ -772,9 +633,9 @@ func TestCloudProjectsShareMachineAndDeletionKeepsFiles(t *testing.T) {
 		t.Fatal(result)
 	}
 	route := "/api/workspaces/" + string(first.ID)
-	s.refusal("DELETE", route, "", 409, webapi.ErrorCodeWorkspaceInUse)
-	s.request("PATCH", "/api/conversations/"+cloudFirst, `{"target":{"kind":"cloud"}}`, 200)
-	s.request("DELETE", route, "", 204)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route, "", 409), webapi.ErrorCodeWorkspaceInUse)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudFirst, `{"target":{"kind":"cloud"}}`, 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route, "", 204)
 	if result := b.turn("b2", read, "still there"); !strings.Contains(result, "shared") {
 		t.Fatal(result)
 	}
@@ -841,7 +702,7 @@ func TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand(t *testing.T) {
 			t.Fatal(string(data))
 		}
 	}
-	if err := backendtest.HostsWaitNoJobs(s.ctx, manager.State(device)); err != nil {
+	if err := backendtest.WaitRunnerJobsRemoved(s.ctx, manager.State(device)); err != nil {
 		t.Fatal(err)
 	}
 	running := s.cloudStatus()
@@ -866,7 +727,7 @@ func TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand(t *testing.T) {
 	if manager.Count("hibernate:"+string(device)) != 1 || manager.Running(device) {
 		t.Fatal(manager.Calls())
 	}
-	read := s.request("GET", "/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(home+"/sessions/"+cloudFirst+"/note"), "", 200)
+	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(home+"/sessions/"+cloudFirst+"/note"), "", 200)
 	file, err := webapi.DecodeFileText(read.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -927,7 +788,7 @@ func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
-	s.create(cloudFirst)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
 	gate, err := backendtest.FileGate(s.ctx, b.Backend, user.User.ID, webapi.ConversationID(cloudFirst))
 	if err != nil {
 		t.Fatal(err)
@@ -938,7 +799,7 @@ func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 	}
 	defer working.Release()
 	listing := "/api/conversations/" + cloudFirst + "/fs"
-	s.request("GET", listing, "", 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 200)
 	device := s.theCloud()
 	path := "/api/devices/" + string(device) + "/log"
 	onlineCount := func() int {
@@ -955,11 +816,11 @@ func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 	}
 	working.Release()
 	s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
-	s.refusal("GET", path, "", 409, webapi.ErrorCodeDeviceOffline)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 409), webapi.ErrorCodeDeviceOffline)
 	if manager.Count("wake:"+string(device)) != 1 {
 		t.Fatal(manager.Calls())
 	}
-	s.request("GET", listing, "", 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 200)
 	if count := onlineCount(); count != 2 {
 		t.Fatalf("online lines %d", count)
 	}
@@ -992,15 +853,15 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 	}
 	w := s.work(cloudFirst)
 	route := "/api/conversations/" + cloudFirst
-	s.request("POST", route+"/hosts", fmt.Sprintf(`{"deviceId":%q}`, alpha.ID()), 201)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", route+"/hosts", fmt.Sprintf(`{"deviceId":%q}`, alpha.ID()), 201)
 	result := w.turn("t1", "echo report > report.txt && demi host shell --host alpha 'cat notes.txt'", "reached alpha", 30000)
 	if !strings.Contains(result, "on alpha") {
 		t.Fatal(result)
 	}
 	device := s.theCloud()
 	session := manager.Home(device) + "/sessions/" + cloudFirst
-	s.request("PATCH", route, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()), 200)
-	read := s.request("GET", route+"/hosts", "", 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()), 200)
+	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", route+"/hosts", "", 200)
 	hosts, err := webapi.DecodeAttachedHosts(read.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -1051,8 +912,8 @@ func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {
 	}
 	device := s.theCloud()
 	local := s.work(cloudSecond)
-	s.request("PATCH", "/api/conversations/"+cloudSecond, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()), 200)
-	read := s.request("GET", "/api/conversations/"+cloudSecond+"/hosts", "", 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudSecond, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()), 200)
+	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudSecond+"/hosts", "", 200)
 	hosts, err := webapi.DecodeAttachedHosts(read.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -1074,8 +935,14 @@ func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened := make(chan struct{})
-	go func() { defer close(opened); work.open() }()
-	defer func() { held.Release(); <-opened }()
+	go func() {
+		defer close(opened)
+		work.open()
+	}()
+	defer func() {
+		held.Release()
+		<-opened
+	}()
 	for {
 		count, changed := gate.TestingWaiting()
 		if count > 0 {
@@ -1096,32 +963,6 @@ func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {
 	}
 }
 
-// cloudStream observes the native fixture stream through the user's WebSocket.
-func (s *hostScenario) cloudStream(id, name string) ([]byte, websocket.StatusCode, string) {
-	s.t.Helper()
-	socket, response, err := websocket.Dial(s.ctx, s.b.WSURL("/api/conversations/"+id+"/streams/"+name), &websocket.DialOptions{HTTPHeader: http.Header{"Cookie": {s.user.Cookie}, "Origin": {s.b.URL}}})
-	if response != nil && response.Body != nil {
-		_ = response.Body.Close()
-	}
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	defer func() { _ = socket.CloseNow() }() // Socket reads own disconnection errors.
-	var bytes []byte
-	for {
-		kind, data, err := socket.Read(s.ctx)
-		if err != nil {
-			var closed websocket.CloseError
-			if !errors.As(err, &closed) {
-				s.t.Fatal(err)
-			}
-			return bytes, closed.Code, closed.Reason
-		}
-		if kind == websocket.MessageBinary {
-			bytes = append(bytes, data...)
-		}
-	}
-}
 func TestIdleConversationReleasesNativeResourcesOnRunningCloud(t *testing.T) {
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
@@ -1163,8 +1004,8 @@ func TestIdleConversationReleasesNativeResourcesOnRunningCloud(t *testing.T) {
 		}
 	}
 	for _, id := range []string{cloudFirst, cloudSecond} {
-		_, code, reason := s.cloudStream(id, "retain")
-		if code != websocket.StatusNormalClosure || reason != "completed" {
+		_, code, reason := conversationStreamEnd(s.ctx, t, conversationStream(s.ctx, t, s.b, &s.user, id, "retain"))
+		if code != int(websocket.StatusNormalClosure) || reason != "completed" {
 			t.Fatalf("stream close: %d %s", code, reason)
 		}
 	}
@@ -1174,7 +1015,7 @@ func TestIdleConversationReleasesNativeResourcesOnRunningCloud(t *testing.T) {
 	}
 	for {
 		changed := firstGate.State().Changed()
-		held, _, _ := s.cloudStream(cloudSecond, "held")
+		held, _, _ := conversationStreamEnd(s.ctx, t, conversationStream(s.ctx, t, s.b, &s.user, cloudSecond, "held"))
 		if string(held) == fmt.Sprintf(`{"conversations":[%q]}`, cloudSecond) {
 			break
 		}
@@ -1211,16 +1052,16 @@ func TestPairedTargetActivityKeepsAttachedCloudAwake(t *testing.T) {
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
 	paired := s.pair("paired")
-	s.create(cloudFirst)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
 	listing := "/api/conversations/" + cloudFirst + "/fs"
-	s.request("GET", listing, "", 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 200)
 	device := s.theCloud()
-	s.request("PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, paired.ID(), paired.Runner.Home()), 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, paired.ID(), paired.Runner.Home()), 200)
 	working := time.Now()
 	rested := working
 	for rested.Sub(working) < 2*window {
 		rested = time.Now()
-		s.request("GET", listing, "", 200)
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 200)
 	}
 	stopped, err := manager.Arrival(s.ctx, "hibernate:"+string(device))
 	if err != nil {
@@ -1243,28 +1084,19 @@ func TestResetHoldsPairedConversationWhoseProviderUsesCloud(t *testing.T) {
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
 	alpha := s.pair("alpha")
-	answer := s.request("POST", "/api/providers", `{"source":"custom","providerType":"process","label":"Process","apiKey":"k","models":[{"id":"m","displayName":"M","contextWindow":100000,"outputLimit":null,"thinkingEfforts":[],"acceptedExtensions":null,"fastTier":null}]}`, 201)
+	answer := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/providers", `{"source":"custom","providerType":"process","label":"Process","apiKey":"k","models":[{"id":"m","displayName":"M","contextWindow":100000,"outputLimit":null,"thinkingEfforts":[],"acceptedExtensions":null,"fastTier":null}]}`, 201)
 	entry, err := webapi.DecodeProviderAnswer(answer.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.create(cloudFirst)
-	s.request("PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()), 200)
-	s.request("PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"model":{"providerId":%q,"modelId":"m"}}`, entry.Provider.ID), 200)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()), 200)
+	conversationChoose(s.ctx, t, s.b, &s.user, cloudFirst, string(entry.Provider.ID), "m")
 	open := func() {
-		socket, err := backendtest.HostsSocket(s.ctx, t, b, &user, cloudFirst)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = socket.CloseNow() }() // Socket reads own disconnection errors.
-		work := &cloudWork{s: s, socket: socket}
-		work.send(&framewire.OpenFrame{})
-		for {
-			if _, ok := work.next().(*framewire.PendingSteersFrame); ok {
-				return
-			}
-		}
+		socket := conversationOpen(s.ctx, t, b, &user, cloudFirst)
+		wireMust(t, socket.Close(s.ctx))
 	}
+
 	open()
 	hold := manager.HoldReset(t)
 	s.resetCloud(cloudReset)
@@ -1276,8 +1108,14 @@ func TestResetHoldsPairedConversationWhoseProviderUsesCloud(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened := make(chan struct{})
-	go func() { defer close(opened); open() }()
-	defer func() { hold.Release(); <-opened }()
+	go func() {
+		defer close(opened)
+		open()
+	}()
+	defer func() {
+		hold.Release()
+		<-opened
+	}()
 	for {
 		count, changed := gate.TestingWaiting()
 		if count > 0 {
