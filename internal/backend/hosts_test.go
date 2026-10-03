@@ -184,8 +184,12 @@ func TestAttachedHostsAreUniqueRenamableAndDetachable(t *testing.T) {
 	}
 	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", route, fmt.Sprintf(`{"deviceId":%q}`, laptop.ID()), 409), webapi.ErrorCodeHostIsMain)
 	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", route, `{"deviceId":"nothing"}`, 404), webapi.ErrorCodeDeviceNotFound)
-	attach(spare.ID(), 201)
-	both := s.hosts()
+	secondAnswer := attach(spare.ID(), 201)
+	second, err := webapi.DecodeAttachedHosts(secondAnswer.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	both := second.Hosts
 	if len(both) != 2 || both[0].Name != "ci" || both[1].Name != "ci-2" {
 		t.Fatalf("names: %+v", both)
 	}
