@@ -20,7 +20,7 @@ import (
 func linkDevice(t *testing.T) (*remotehosttest.TestDevice, *remotehosttest.TestLink, *remotehost.Host) {
 	t.Helper()
 	d := remotehosttest.NewTestDevice(t, remotehosttest.NewCommandPolicy(nil))
-	l := d.Connect(nil)
+	l := d.Connect(0)
 	return d, l, d.Host("/work", nil)
 }
 
@@ -247,7 +247,7 @@ func TestLostConnectionFailsItsWorkAndNextServesSameHost(t *testing.T) {
 	if h.Identity().Hostname != "" {
 		t.Fatal("invented identity")
 	}
-	l := d.Connect(nil)
+	l := d.Connect(0)
 	identity := h.Identity()
 	if identity.UID != 501 || identity.Hostname != "test" {
 		t.Fatal(identity)
@@ -297,7 +297,7 @@ func TestLostConnectionFailsItsWorkAndNextServesSameHost(t *testing.T) {
 	if !errors.As(err, &failure) || failure.Kind != host.Offline {
 		t.Fatal(err)
 	}
-	l = d.Connect(nil)
+	l = d.Connect(0)
 	go func() {
 		exists, err := h.FS().Exists(t.Context(), "/work")
 		if err == nil && !exists {
@@ -323,7 +323,7 @@ func TestMalformedFrameEndsConnection(t *testing.T) {
 func TestUnansweredPingEndsUnlessLivenessPaused(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		d := remotehosttest.NewTestDevice(t, remotehosttest.NewCommandPolicy(nil))
-		l := d.Connect(new(time.Second))
+		l := d.Connect(time.Second)
 		time.Sleep(time.Second)
 		if _, ok := nextFrame(t, l).(*runnerwire.Ping); !ok {
 			t.Fatal("missing initial ping")

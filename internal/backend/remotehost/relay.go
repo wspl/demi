@@ -45,7 +45,7 @@ func (c *relayCall) stop(reason string, cancelled bool) {
 		return
 	}
 	for _, pipe := range c.pipes {
-		if failure := pipe.Failure(); failure != nil {
+		if failure := pipe.Err(); failure != nil {
 			reason = failure.Error()
 			cancelled = false
 			break
@@ -380,9 +380,9 @@ func (c *relayCall) dispatch(
 		watches.Add(1)
 		go func() {
 			defer watches.Done()
-			failure, err := pipe.Failed(watching)
-			if err == nil {
-				c.stop(failure.Error(), false)
+			err := pipe.Failed(watching)
+			if errors.Is(err, ErrPipeFailed) {
+				c.stop(err.Error(), false)
 			} else if !errors.Is(err, context.Canceled) {
 				slog.Debug("rpc pipe watch ended: "+err.Error(), "call", c.id)
 			}

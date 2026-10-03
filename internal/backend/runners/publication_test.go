@@ -393,10 +393,17 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	}()
 	var address PublicURL
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		artifact, err := catalog.LocalArtifact(r.Context(), strings.TrimPrefix(r.URL.Path, NativeArtifactsRoute+"/"))
+		artifact, ok, err := catalog.LocalArtifact(
+			r.Context(),
+			strings.TrimPrefix(r.URL.Path, NativeArtifactsRoute+"/"),
+		)
 		if err != nil {
 			t.Error(err)
 			http.Error(w, err.Error(), 500)
+			return
+		}
+		if !ok {
+			http.NotFound(w, r)
 			return
 		}
 		switch artifact := artifact.(type) {
@@ -407,8 +414,6 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 			}
 		case *PlainArtifact:
 			http.ServeFile(w, r, artifact.Path)
-		case nil:
-			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -462,7 +467,7 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 8 {
 		workers.Go(func() {
-			if _, err := fresh.Artifact(t.Context(), descriptor.Targets[commandwire.Targets[0]].SHA256); err != nil {
+			if _, _, err := fresh.Artifact(t.Context(), descriptor.Targets[commandwire.Targets[0]].SHA256); err != nil {
 				t.Error(err)
 			}
 		})

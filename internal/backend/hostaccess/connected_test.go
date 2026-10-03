@@ -190,7 +190,7 @@ func TestConnectedUploadRevocationFailsPipeAndDrains(t *testing.T) {
 	if err := upload.Written(t.Context()); err == nil {
 		t.Fatal("revoked upload reported success")
 	}
-	if pipe.Failure() == nil || upload.Lease.Context().Err() == nil {
+	if pipe.Err() == nil || upload.Lease.Context().Err() == nil {
 		t.Fatal("revocation did not fail pipe and edge lease")
 	}
 	if err := upload.Writer.Write(t.Context(), []byte("late")); err == nil {

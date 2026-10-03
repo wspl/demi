@@ -135,7 +135,7 @@ func TestJobsShareSelectedManifestOnlyWithinOneConnection(t *testing.T) {
 	barrier(t, l)
 	_, err = l.Close(t.Context())
 	requirePipe(t, err)
-	l = d.Connect(nil)
+	l = d.Connect(0)
 	request := startRequest("true")
 	request.Commands = first
 	_, err = h.StartJob(t.Context(), request)
@@ -270,7 +270,7 @@ func TestRunnerInstallsAreConnectionsLastList(t *testing.T) {
 	}
 	_, err := l.Close(t.Context())
 	requirePipe(t, err)
-	if len(d.Connect(nil).Link().Installs()) != 0 {
+	if len(d.Connect(0).Link().Installs()) != 0 {
 		t.Fatal("installs crossed connections")
 	}
 }

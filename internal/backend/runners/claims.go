@@ -2,6 +2,7 @@ package runners
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -139,10 +140,18 @@ type PendingRunner struct {
 	Runner runnerwire.RunnerInfo
 }
 
-// Grant hands the runner its device and token without waiting for socket binding.
-// The caller owns the returned answer and must defer its Release.
-func (p *PendingRunner) Grant(device database.DeviceRecord, token runnerwire.DeviceToken) *ClaimAnswer {
-	answer := &ClaimAnswer{done: make(chan struct{})}
+// ErrRunnerLeft means the runner went away before it bound its socket.
+var ErrRunnerLeft = errors.New("the runner left before it bound its socket")
+
+// Grant hands the runner its device and token and waits until the runner
+// binds its socket. It returns ErrRunnerLeft if the runner leaves first and
+// ctx.Err() if ctx ends first; either way the claim is abandoned.
+func (p *PendingRunner) Grant(
+	ctx context.Context,
+	device database.DeviceRecord,
+	token runnerwire.DeviceToken,
+) (webapi.DeviceDTO, error) {
+	answer := &claimAnswer{done: make(chan struct{})}
 	delivered := false
 	p.once.Do(func() {
 		delivered = true
@@ -151,7 +160,16 @@ func (p *PendingRunner) Grant(device database.DeviceRecord, token runnerwire.Dev
 	if !delivered {
 		answer.Release()
 	}
-	return answer
+	defer answer.Release()
+	select {
+	case <-ctx.Done():
+		return webapi.DeviceDTO{}, ctx.Err()
+	case <-answer.done:
+	}
+	if answer.device == nil {
+		return webapi.DeviceDTO{}, ErrRunnerLeft
+	}
+	return *answer.device, nil
 }
 
 // Release idempotently abandons an ungranted claim; it does nothing after Grant.
@@ -160,7 +178,7 @@ func (p *PendingRunner) Release() { p.once.Do(func() { p.wait.complete(nil) }) }
 // ClaimGrant hands a runner its device and private token, and owns the reply
 // to the claimant. The runner defers Release and calls Bound after socket binding.
 type ClaimGrant struct {
-	answer *ClaimAnswer
+	answer *claimAnswer
 	// Device is the device created by the claim.
 	Device database.DeviceRecord
 	// Token is the credential only the runner receives.
@@ -178,26 +196,15 @@ func (g *ClaimGrant) Bound(device webapi.DeviceDTO) {
 // Release idempotently abandons an unanswered grant, waking its claimant.
 func (g *ClaimGrant) Release() { g.answer.Release() }
 
-// ClaimAnswer owns the claimant's wait for the runner to bind its socket.
-type ClaimAnswer struct {
+// claimAnswer owns the claimant's wait for the runner to bind its socket.
+type claimAnswer struct {
 	once   sync.Once
 	done   chan struct{}
 	device *webapi.DeviceDTO
 }
 
-// Wait returns the bound device, or nil when the runner left before binding.
-// Context cancellation returns an error.
-func (a *ClaimAnswer) Wait(ctx context.Context) (*webapi.DeviceDTO, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-a.done:
-		return a.device, nil
-	}
-}
-
 // Release idempotently abandons the claimant's answer without blocking the runner.
-func (a *ClaimAnswer) Release() { a.once.Do(func() { close(a.done) }) }
+func (a *claimAnswer) Release() { a.once.Do(func() { close(a.done) }) }
 
 // complete transfers a claim grant to the waiting runner, or abandons it if the
 // runner already left. Notification and grant release happen outside the mutex.

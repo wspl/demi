@@ -146,8 +146,8 @@ func (d *TestDevice) Host(cwd string, admission remotehost.Admission) *remotehos
 	}, admission)
 }
 
-// Connect connects a fake runner. Nil ping disables liveness.
-func (d *TestDevice) Connect(ping *time.Duration) *TestLink {
+// Connect connects a fake runner. Zero ping disables liveness.
+func (d *TestDevice) Connect(ping time.Duration) *TestLink {
 	link, driver := remotehost.NewLink(
 		remotehost.LinkOptions{
 			Device:   TestDeviceID,

@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/wspl/demi/internal/backend/database"
@@ -11,6 +12,9 @@ import (
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/webapi"
 )
+
+// ErrNotLetGo means a conversation did not let go of its tree or file gate within the hold time.
+var ErrNotLetGo = errors.New("the conversation did not let go in time")
 
 // CloudShard supplies what the Cloud needs of its user's shard: the handles
 // its operations use, and the user's conversations, which keep the Cloud awake
@@ -54,8 +58,8 @@ type CloudShard interface {
 	HoldForIdle(conversation webapi.ConversationID) ConversationHold
 	// HoldForReset interrupts the turn and holds its tree. If filesOnCloud,
 	// it ends file transfers and user streams, then reserves the file gate
-	// once its operations end. Each wait has hold; nil, nil means the
-	// conversation did not let go in time. Cancellation returns ctx.Err().
+	// once its operations end. Each wait has hold; if one runs out, it returns
+	// ErrNotLetGo. Cancellation returns ctx.Err().
 	// Failure releases partial holds; success transfers Release to the caller.
 	HoldForReset(
 		ctx context.Context,

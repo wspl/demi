@@ -48,7 +48,7 @@ type JobOrigin struct {
 	Caller *host.JobCaller
 }
 
-// LinkOptions describes a runner connection. Nil Ping disables liveness checks.
+// LinkOptions describes a runner connection. Zero Ping disables liveness checks.
 type LinkOptions struct {
 	// Device identifies the connected device.
 	Device string
@@ -58,8 +58,8 @@ type LinkOptions struct {
 	Pipes *Pipes
 	// Policy supplies callback admission and execution.
 	Policy LinkPolicy
-	// Ping is the liveness interval; nil disables probes.
-	Ping *time.Duration
+	// Ping is the liveness interval; zero disables probes.
+	Ping time.Duration
 }
 
 // LinkEndKind identifies why a connection ended.
@@ -281,7 +281,7 @@ type FrameSink interface {
 // LinkDriver routes frames and owns connection workers for one Serve call.
 type LinkDriver struct {
 	link *Link
-	ping *time.Duration
+	ping time.Duration
 	tap  chan<- runnerwire.Outbound
 }
 
@@ -311,8 +311,8 @@ func (d *LinkDriver) Serve(ctx context.Context, incoming FrameSource, outgoing F
 		cancel()
 	}()
 	var ticks <-chan time.Time
-	if d.ping != nil {
-		ticker := time.NewTicker(*d.ping)
+	if d.ping > 0 {
+		ticker := time.NewTicker(d.ping)
 		defer ticker.Stop()
 		ticks = ticker.C
 	}

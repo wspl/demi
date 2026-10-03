@@ -100,8 +100,8 @@ func (s *Shard) HoldForIdle(conversation webapi.ConversationID) cloud.Conversati
 
 // HoldForReset interrupts the turn and holds its tree. If filesOnCloud,
 // it ends file transfers and user streams, then reserves the file gate
-// once its operations end. Each wait has hold; nil, nil means the
-// conversation did not let go in time. Cancellation returns ctx.Err().
+// once its operations end. Each wait has hold; if one runs out, it returns
+// ErrNotLetGo. Cancellation returns ctx.Err().
 // Failure releases partial holds; success transfers Release to the caller.
 func (s *Shard) HoldForReset(
 	ctx context.Context,

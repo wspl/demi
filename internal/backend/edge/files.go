@@ -179,7 +179,7 @@ func (e *Edge) committedFile(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	part := hostaccess.RangeOf(headerValue(r.Header, "Range"), uint64(len(bytes)))
+	part := hostaccess.RangeOf(r.Header.Get("Range"), uint64(len(bytes)))
 	addHeaders(w.Header(), rawFileHeaders())
 	addHeaders(
 		w.Header(),

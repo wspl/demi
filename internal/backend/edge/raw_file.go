@@ -10,14 +10,6 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func headerValue(header http.Header, key string) *string {
-	value := header.Get(key)
-	if value == "" {
-		return nil
-	}
-	return &value
-}
-
 func fileHeaders(path string, download bool, stat host.FileStat, part hostaccess.RangeAnswer) (http.Header, error) {
 	result := rawFileHeaders()
 	addHeaders(result, contentHeaders(core.PreviewMediaType(path), download, fileName(path)))
@@ -57,8 +49,8 @@ func (e *Edge) rawFile(w http.ResponseWriter, r *http.Request) error {
 			Path:        string(query.Path),
 			Version:     version,
 			Head:        r.Method == "HEAD",
-			Range:       headerValue(r.Header, "Range"),
-			IfNoneMatch: headerValue(r.Header, "If-None-Match"),
+			Range:       r.Header.Get("Range"),
+			IfNoneMatch: r.Header.Get("If-None-Match"),
 		},
 	)
 	switch {

@@ -192,11 +192,10 @@ func TestExposeRelayEndsBothPipesAndReleasesAdmission(t *testing.T) {
 				}
 				<-lease.Context().Done()
 				for _, pipe := range pipes {
-					var failure *remotehost.PipeFailure
 					if err := pipe.Done(
 						t.Context(),
-					); !errors.As(err, &failure) ||
-						failure.Message != "pipe failed: the relayed connection ended" {
+					); err == nil ||
+						err.Error() != "pipe failed: the relayed connection ended" {
 						t.Fatalf("relay pipe end = %v", err)
 					}
 				}
@@ -262,13 +261,13 @@ func TestExposeOpenRefusalsReleaseAdmissionAndFailPipes(t *testing.T) {
 					}
 				}
 				for _, pipe := range pipes {
-					var failure *remotehost.PipeFailure
-					if err := pipe.Done(t.Context()); !errors.As(err, &failure) {
+					err := pipe.Done(t.Context())
+					if !errors.Is(err, remotehost.ErrPipeFailed) {
 						t.Fatalf("failed-open pipe = %v", err)
 					}
 					// Disconnect already fails every device pipe before OpenNet returns.
-					if refusal != "offline" && failure.Message != "pipe failed: the relayed connection never opened" {
-						t.Fatalf("failed-open pipe reason = %s", failure.Message)
+					if refusal != "offline" && err.Error() != "pipe failed: the relayed connection never opened" {
+						t.Fatalf("failed-open pipe reason = %s", err)
 					}
 				}
 				if got := f.shard.ExposeShard().Exposes().Active(); got != 0 {

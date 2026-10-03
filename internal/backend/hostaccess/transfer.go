@@ -148,8 +148,8 @@ type DownloadRequest struct {
 	Version *string
 	// Head asks for only the answer's head, as HEAD asks.
 	Head        bool
-	Range       *string
-	IfNoneMatch *string
+	Range       string
+	IfNoneMatch string
 }
 
 // Download is the answer decided from a file's metadata.
@@ -345,12 +345,9 @@ type RangeAnswer struct {
 
 // RangeOf interprets a single byte range, including suffix and overflowing
 // bounds. Invalid, multiple or reversed ranges request the whole file.
-func RangeOf(header *string, size uint64) RangeAnswer {
+func RangeOf(header string, size uint64) RangeAnswer {
 	whole := RangeAnswer{status: 200, size: size, length: size}
-	if header == nil {
-		return whole
-	}
-	text, ok := strings.CutPrefix(strings.TrimSpace(*header), "bytes=")
+	text, ok := strings.CutPrefix(strings.TrimSpace(header), "bytes=")
 	if !ok {
 		return whole
 	}
@@ -470,14 +467,11 @@ func transferError(open *OpenTransfer, err error) error {
 }
 
 // notModified compares file validators weakly, as If-None-Match requires.
-func notModified(condition *string, version string) bool {
-	if condition == nil {
-		return false
-	}
-	if strings.TrimSpace(*condition) == "*" {
+func notModified(condition, version string) bool {
+	if strings.TrimSpace(condition) == "*" {
 		return true
 	}
-	for _, tag := range strings.Split(*condition, ",") {
+	for _, tag := range strings.Split(condition, ",") {
 		tag = strings.TrimSpace(tag)
 		for strings.HasPrefix(tag, "W/") {
 			tag = strings.TrimPrefix(tag, "W/")

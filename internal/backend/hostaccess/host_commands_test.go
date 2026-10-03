@@ -84,13 +84,13 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := s.pipes.Mint(nil, nil)
+	input := s.pipes.Mint("", "")
 	writer, err := input.Writer()
 	if err != nil {
 		t.Fatal(err)
 	}
 	writer.End()
-	output := s.pipes.Mint(nil, nil)
+	output := s.pipes.Mint("", "")
 	reader, err := output.Reader()
 	if err != nil {
 		t.Fatal(err)

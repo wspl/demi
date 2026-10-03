@@ -24,7 +24,7 @@ func testPipe(t *testing.T) (*remotehost.PipeWriter, *remotehost.PipeReader) {
 			t.Error(err)
 		}
 	})
-	pipe := broker.Mint(nil, nil)
+	pipe := broker.Mint("", "")
 	writer, err := pipe.Writer()
 	if err != nil {
 		t.Fatal(err)

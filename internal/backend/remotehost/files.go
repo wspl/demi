@@ -158,11 +158,8 @@ func (f remoteFS) WriteFile(
 	if written == nil {
 		return nil
 	}
-	if sourceErr != nil && !errors.Is(sourceErr, context.Canceled) {
-		var failure *PipeFailure
-		if !errors.As(sourceErr, &failure) {
-			return sourceErr
-		}
+	if sourceErr != nil && !errors.Is(sourceErr, context.Canceled) && !errors.Is(sourceErr, ErrPipeFailed) {
+		return sourceErr
 	}
 	return written
 }
