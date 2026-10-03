@@ -13,7 +13,19 @@ type Operation[T any] interface {
 }
 
 // Unit represents the absence of an operation result.
+//
+// +demi:root
+// +demi:codec
 type Unit struct{}
+
+// MarshalJSON encodes Rust's unit result as null.
+func (Unit) MarshalJSON() ([]byte, error) { return []byte("null"), nil }
+
+// UnmarshalJSON checks the same unit result contract as a reconcile reply.
+func (*Unit) UnmarshalJSON(data []byte) error {
+	_, err := (ReconcileParams{}).DecodeOutput(data)
+	return err
+}
 
 // +demi:root
 // +demi:union tag=op content=result
