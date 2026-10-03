@@ -107,13 +107,13 @@ func PublishNative(ctx context.Context, path string) (*NativeCatalog, error) {
 // SignedArtifacts resolves published artifacts with a URL signed for each request.
 // PublishNative constructs it only after all artifacts and mappings are published.
 type SignedArtifacts struct {
-	signer    signedURLer
+	signer    urlSigner
 	prefix    string
 	published map[string]uint64
 }
 
-// signedURLer signs only the download operation native publication needs.
-type signedURLer interface {
+// urlSigner signs only the download operation native publication needs.
+type urlSigner interface {
 	SignedURL(context.Context, string, *blob.SignedURLOptions) (string, error)
 }
 

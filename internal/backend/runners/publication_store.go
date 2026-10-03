@@ -18,7 +18,7 @@ import (
 
 // artifactStore is native publication's conditional creation and signing boundary.
 type artifactStore interface {
-	signedURLer
+	urlSigner
 	Attributes(context.Context, string) (*blob.Attributes, error)
 	WriteAll(context.Context, string, []byte, *blob.WriterOptions) error
 }
