@@ -73,7 +73,7 @@ func main() {
 		root, err = repository()
 	}
 	if err == nil {
-		err = (&application{Root: root, Out: os.Stdout, Err: os.Stderr}).run(ctx, args)
+		err = (&application{Root: root, Out: os.Stdout, Err: os.Stderr, chromeRelease: browserop.PinnedRelease}).run(ctx, args)
 	}
 	if errors.Is(err, flag.ErrHelp) {
 		err = nil
