@@ -2,7 +2,6 @@ package backend_test
 
 import (
 	"bytes"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -32,35 +31,11 @@ func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
-	s.create(hostsConversation)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
 	laptop := s.pair("laptop")
 	s.move(laptop, laptop.Runner.Home())
-	socket, response, err := websocket.Dial(s.ctx, b.WSURL("/api/conversations/"+hostsConversation+"/streams/echo"), &websocket.DialOptions{HTTPHeader: http.Header{"Cookie": {user.Cookie}, "Origin": {b.URL}}})
-	if response != nil && response.Body != nil {
-		_ = response.Body.Close()
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = socket.CloseNow() }() // Socket reads own disconnection errors.
-	payload := []byte("ping")
-	if err := socket.Write(s.ctx, websocket.MessageBinary, payload); err != nil {
-		t.Fatal(err)
-	}
-	var received []byte
-	for len(received) < len(payload) {
-		kind, data, err := socket.Read(s.ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if kind != websocket.MessageBinary {
-			t.Fatal(kind)
-		}
-		received = append(received, data...)
-	}
-	if !bytes.Equal(received, payload) {
-		t.Fatal("echo changed bytes")
-	}
+	socket := conversationStream(s.ctx, t, b, &user, hostsConversation, "echo")
+	conversationStreamReady(s.ctx, t, socket)
 	if err := socket.Close(websocket.StatusNormalClosure, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +44,7 @@ func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifact := built.Descriptor.Targets[string(target)]
-	served := s.request("GET", "/native-artifacts/"+artifact.SHA256, "", 200)
+	served := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/native-artifacts/"+artifact.SHA256, "", 200)
 	if served.Headers.Get("Cache-Control") != "public, max-age=31536000, immutable" {
 		t.Fatal(served.Headers)
 	}
@@ -93,6 +68,6 @@ func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
 		t.Fatal("served executable differs")
 	}
 	for _, unknown := range []string{strings.Repeat("0", 64), "demi-native-fixture"} {
-		s.refusal("GET", "/native-artifacts/"+unknown, "", 404, webapi.ErrorCodeNotFound)
+		conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/native-artifacts/"+unknown, "", 404), webapi.ErrorCodeNotFound)
 	}
 }
