@@ -967,7 +967,6 @@ func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 
 // Several seconds: two real runners install packages and Cloud wakes three times.
 func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
-	t.Skip("finding 2: cross-host shell from Cloud stalls before returning alpha output")
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
