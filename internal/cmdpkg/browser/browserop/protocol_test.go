@@ -79,8 +79,7 @@ func TestEveryOperationDecodesItsSmallestInput(t *testing.T) {
 		})
 	}
 	_, err := browserop.ParseInput("unknown", []byte(`{}`))
-	var unserved *browserop.UnservedOperation
-	if !errors.As(err, &unserved) {
+	if !errors.Is(err, browserop.ErrUnknownOperation) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -214,19 +213,16 @@ func TestInvocationDecodesToNamedOperation(t *testing.T) {
 		}
 	}
 	_, err := browserop.ParseOperation("browser.live", []byte(`{"tab":"t"}`))
-	var invalid *browserop.InvalidInput
-	if !errors.As(err, &invalid) {
+	if err == nil || errors.Is(err, browserop.ErrUnknownOperation) {
 		t.Fatalf("error = %v", err)
 	}
 	_, err = browserop.ParseOperation("browser.nothing", []byte(`{}`))
-	var unserved *browserop.UnservedOperation
-	if !errors.As(err, &unserved) || unserved.Name != "browser.nothing" {
+	if !errors.Is(err, browserop.ErrUnknownOperation) || err.Error() != "unknown operation browser.nothing" {
 		t.Fatalf("error = %v", err)
 	}
 	for _, name := range []string{"file.read", "claude-code.ensure"} {
 		_, err := browserop.ParseOperation(name, []byte(`{}`))
-		var unknown *browserop.UnknownOperation
-		if !errors.As(err, &unknown) || unknown.Name != name {
+		if !errors.Is(err, browserop.ErrUnknownOperation) || err.Error() != "unknown operation "+name {
 			t.Fatalf("error = %v", err)
 		}
 	}
@@ -236,7 +232,7 @@ func TestInvocationDecodesToNamedOperation(t *testing.T) {
 	}
 	for _, name := range names {
 		_, err := browserop.ParseOperation(name, []byte(`{}`))
-		if err != nil && !errors.As(err, &invalid) {
+		if errors.Is(err, browserop.ErrUnknownOperation) {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
@@ -402,7 +398,7 @@ func TestReleaseRecordsAreChecked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if release.Platform("aarch64-apple-darwin") == nil {
+	if _, ok := release.Platform("aarch64-apple-darwin"); !ok {
 		t.Fatal("missing darwin release")
 	}
 	if release.Title() != "Chrome for Testing "+release.Version {

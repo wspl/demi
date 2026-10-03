@@ -15,7 +15,7 @@ import (
 )
 
 // Execute decodes and validates a tab command, then uses the same admission as the service.
-// The returned JSON is encoded through the result contract, preserving Rust wire bytes.
+// The returned JSON is encoded through the result contract, which fixes its wire bytes.
 func Execute(ctx context.Context, tab *tabs.Tab, name string, args json.RawMessage) (json.RawMessage, error) {
 	command, err := browserop.ParseOperation(name, args)
 	if err != nil {

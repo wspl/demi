@@ -30,47 +30,20 @@ type Input interface {
 	WaitURLPattern() *string
 }
 
-// UnknownOperation is a name outside this package.
-type UnknownOperation struct {
-	// Name is the refused operation name.
-	Name string
-}
-
-// Error returns the refused operation name.
-func (e *UnknownOperation) Error() string { return fmt.Sprintf("unknown operation %s", e.Name) }
-
-// UnservedOperation is a browser operation this package does not serve.
-type UnservedOperation struct {
-	// Name is the unserved operation name.
-	Name string
-}
-
-// Error returns the unserved operation name.
-func (e *UnservedOperation) Error() string { return fmt.Sprintf("unknown operation %s", e.Name) }
-
-// InvalidInput wraps the reason an operation's arguments were refused.
-type InvalidInput struct {
-	// Err is the argument validation failure.
-	Err error
-}
-
-// Error returns the argument validation failure.
-func (e *InvalidInput) Error() string { return e.Err.Error() }
-
-// Unwrap returns the argument validation failure.
-func (e *InvalidInput) Unwrap() error { return e.Err }
+// ErrUnknownOperation is returned for an operation name this package does not serve.
+var ErrUnknownOperation = errors.New("unknown operation")
 
 // ParseOperation decodes the named invocation through its generated input decoder.
 func ParseOperation(name string, args []byte) (Operation, error) {
 	if name == LiveOperation {
 		v, err := DecodeLiveInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	}
 	if !strings.HasPrefix(name, Prefix) {
-		return nil, &UnknownOperation{Name: name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, name)
 	}
 	return ParseInput(strings.TrimPrefix(name, Prefix), args)
 }
@@ -97,7 +70,7 @@ func ParseInput(name string, args []byte) (Input, error) {
 	case "content.read", "content.fetch", "assets.list", "assets.export", "capabilities", "webmcp.list", "webmcp.call":
 		return parseContentInput(name, args)
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -106,29 +79,29 @@ func parseTabInput(name string, args []byte) (Input, error) {
 	case "open":
 		v, err := DecodeOpenInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "tabs":
 		v, err := DecodeTabsInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "info":
 		v, err := DecodeInfoInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "close":
 		v, err := DecodeCloseInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -137,35 +110,35 @@ func parseNavigationInput(name string, args []byte) (Input, error) {
 	case "goto":
 		v, err := DecodeGotoInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "back":
 		v, err := DecodeBackInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "forward":
 		v, err := DecodeForwardInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "reload":
 		v, err := DecodeReloadInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "history":
 		v, err := DecodeHistoryInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -174,41 +147,41 @@ func parseObservationInput(name string, args []byte) (Input, error) {
 	case "inspect":
 		v, err := DecodeInspectInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "find":
 		v, err := DecodeFindInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "read":
 		v, err := DecodeReadInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "screenshot":
 		v, err := DecodeScreenshotInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "probe":
 		v, err := DecodeProbeInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "wait":
 		v, err := DecodeWaitInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -217,29 +190,29 @@ func parsePointerInput(name string, args []byte) (Input, error) {
 	case "click":
 		v, err := DecodeClickInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "move":
 		v, err := DecodeMoveInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "drag":
 		v, err := DecodeDragInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "scroll":
 		v, err := DecodeScrollInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -248,41 +221,41 @@ func parseEditingInput(name string, args []byte) (Input, error) {
 	case "fill":
 		v, err := DecodeFillInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "type":
 		v, err := DecodeTypeInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "key":
 		v, err := DecodeKeyInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "check":
 		v, err := DecodeCheckInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "select":
 		v, err := DecodeSelectInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "select-text":
 		v, err := DecodeSelectTextInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -291,29 +264,29 @@ func parseTransferInput(name string, args []byte) (Input, error) {
 	case "upload":
 		v, err := DecodeUploadInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "download":
 		v, err := DecodeDownloadInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "clipboard.write":
 		v, err := DecodeClipboardWriteInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "clipboard.read":
 		v, err := DecodeClipboardReadInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -322,47 +295,47 @@ func parsePageInput(name string, args []byte) (Input, error) {
 	case "eval":
 		v, err := DecodeEvalInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "logs":
 		v, err := DecodeLogsInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "viewport.set":
 		v, err := DecodeViewportSetInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "viewport.reset":
 		v, err := DecodeViewportResetInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "dialog.inspect":
 		v, err := DecodeDialogInspectInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "dialog.accept":
 		v, err := DecodeDialogAcceptInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "dialog.dismiss":
 		v, err := DecodeDialogDismissInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -371,29 +344,29 @@ func parseDebuggingInput(name string, args []byte) (Input, error) {
 	case "cdp.targets":
 		v, err := DecodeCdpTargetsInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "cdp.detach":
 		v, err := DecodeCdpDetachInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "cdp.send":
 		v, err := DecodeCdpSendInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "cdp.events":
 		v, err := DecodeCdpEventsInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -402,47 +375,47 @@ func parseContentInput(name string, args []byte) (Input, error) {
 	case "content.read":
 		v, err := DecodeContentReadInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "content.fetch":
 		v, err := DecodeContentFetchInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "assets.list":
 		v, err := DecodeAssetsListInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "assets.export":
 		v, err := DecodeAssetsExportInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "capabilities":
 		v, err := DecodeCapabilitiesInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "webmcp.list":
 		v, err := DecodeWebmcpListInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	case "webmcp.call":
 		v, err := DecodeWebmcpCallInput(args)
 		if err != nil {
-			return nil, &InvalidInput{Err: err}
+			return nil, err
 		}
 		return &v, nil
 	default:
-		return nil, &UnservedOperation{Name: Prefix + name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, Prefix+name)
 	}
 }
 
@@ -1813,8 +1786,8 @@ func ParseQuery(body []byte) (BrowserQuery, error) {
 	return q, nil
 }
 
-// Branches returns detached copies of this query and its nested queries in
-// Rust's traversal order.
+// Branches returns detached copies of this query and its nested queries, depth
+// first: a query, then its or items (last first), and items (last first), hasNot, has, frame and within.
 func (q BrowserQuery) Branches() []BrowserQuery {
 	root := q.clone()
 	var branches []BrowserQuery

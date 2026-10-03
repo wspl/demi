@@ -276,11 +276,11 @@ func closeTab(
 	tab *tabs.Tab,
 	timeout time.Duration,
 ) (commandOutput, error) {
-	closed, err := tab.CloseRequest(ctx, timeout)
+	emptied, err := tab.CloseRequest(ctx, timeout)
 	if err != nil {
 		return commandOutput{}, err
 	}
-	if closed == tabs.ClosedEnvironment {
+	if emptied {
 		err = browser.retire(context.WithoutCancel(ctx), environment)
 	} else {
 		select {

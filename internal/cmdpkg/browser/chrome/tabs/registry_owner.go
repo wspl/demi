@@ -30,10 +30,10 @@ const (
 )
 
 type registryReply struct {
-	tab    *Tab
-	ids    []browserop.TabID
-	closed Closed
-	err    error
+	tab     *Tab
+	ids     []browserop.TabID
+	emptied bool
+	err     error
 }
 type registryRequest struct {
 	kind      registryKind
@@ -270,7 +270,7 @@ func (r *registryOwner) gone(id target.ID) {
 			defer cancel()
 			err := tab.shutdown(bounded)
 			if reply != nil {
-				reply <- registryReply{closed: ClosedTab, err: err}
+				reply <- registryReply{err: err}
 			} else if err != nil {
 				slog.Warn("closed tab cleanup failed", "error", err)
 			}
@@ -280,7 +280,7 @@ func (r *registryOwner) gone(id target.ID) {
 			cleanup(r.environment.ctx)
 		}
 	} else if reply != nil {
-		reply <- registryReply{closed: ClosedTab}
+		reply <- registryReply{}
 	}
 	if changed {
 		r.publish()
@@ -364,7 +364,7 @@ func (r *registryOwner) createRequest(q registryRequest) {
 	if err := e.StartTask(func(ctx context.Context) {
 		// cdproto's CreateTargetParams always writes optional booleans as false.
 		// Chrome distinguishes omitted newWindow from false when no window exists;
-		// chromiumoxide sends only url. Use that vendor payload and its typed reply.
+		// send only url, and decode the typed reply.
 		params := struct {
 			URL string `json:"url"`
 		}{URL: "about:blank"}
@@ -442,7 +442,7 @@ func (r *registryOwner) closeRequest(ctx context.Context, q registryRequest) {
 		if r.book.closable(q.target) && r.book.only(q.target, r.holds) {
 			r.book.sealed = true
 			close(e.emptied)
-			q.reply <- registryReply{closed: ClosedEnvironment}
+			q.reply <- registryReply{emptied: true}
 			return
 		}
 	}
@@ -491,8 +491,7 @@ func (r *registryOwner) titledRequest(q registryRequest) {
 func (r *registryOwner) eventRequest(ctx context.Context, q registryRequest) {
 	e := r.environment
 	if q.err != nil {
-		var lost *cdp.EventLoss
-		if errors.As(q.err, &lost) {
+		if errors.Is(q.err, cdp.ErrEventsLost) {
 			r.reconcile(ctx)
 		}
 		return
@@ -541,8 +540,7 @@ func (e *Environment) pumpRegistry(eventCtx context.Context, events *cdp.Subscri
 			return
 		}
 		if err != nil {
-			var lost *cdp.EventLoss
-			if !errors.As(err, &lost) {
+			if !errors.Is(err, cdp.ErrEventsLost) {
 				return
 			}
 		}

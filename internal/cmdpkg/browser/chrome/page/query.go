@@ -89,17 +89,17 @@ func (o *observation) queryScope(
 		if err != nil {
 			return nil, err
 		}
-		element, err := single(ctx, elements)
+		element, found, err := single(ctx, elements)
 		if err != nil {
 			return nil, err
 		}
-		if element == nil {
+		if !found {
 			return nil, &cdp.BrowserError{Kind: cdp.KindTargetNotFound}
 		}
 		if i == 0 {
 			frame, err := decodeElement[bool](
 				ctx,
-				*element,
+				element,
 				"function() { return this.localName === 'iframe' || this.localName === 'frame'; }",
 				false,
 			)

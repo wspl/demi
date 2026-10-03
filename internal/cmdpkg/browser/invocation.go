@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
@@ -20,9 +21,7 @@ func (s *service) Invoke(
 	invocation cmdsdk.InvocationContext[commandwire.Invocation],
 ) (commandwire.Completion, error) {
 	operation, parseErr := browserop.ParseOperation(invocation.Request.Operation, invocation.Request.Args)
-	var unknown *browserop.UnknownOperation
-	var unserved *browserop.UnservedOperation
-	if errors.As(parseErr, &unknown) || errors.As(parseErr, &unserved) {
+	if errors.Is(parseErr, browserop.ErrUnknownOperation) {
 		return commandwire.Completion{}, parseErr
 	}
 	browser, err := s.admit(invocation.Request.Context.Conversation)
@@ -51,7 +50,11 @@ func (s *service) Invoke(
 	} else {
 		command, ok := operation.(browserop.Input)
 		if !ok {
-			return commandwire.Completion{}, &browserop.UnknownOperation{Name: invocation.Request.Operation}
+			return commandwire.Completion{}, fmt.Errorf(
+				"%w %s",
+				browserop.ErrUnknownOperation,
+				invocation.Request.Operation,
+			)
 		}
 		bytes, err = s.invoke(ctx, browser, &invocation, command)
 	}

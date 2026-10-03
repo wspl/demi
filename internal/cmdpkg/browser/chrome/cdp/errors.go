@@ -11,80 +11,76 @@ import (
 type ErrorKind uint8
 
 const (
-	// KindUnsupportedCapability identifies the Rust BrowserError::UnsupportedCapability failure.
+	// KindUnsupportedCapability is a capability the browser or document does not offer (unsupported_capability).
 	KindUnsupportedCapability ErrorKind = iota + 1
-	// KindStaleInventory identifies the Rust BrowserError::StaleInventory failure.
+	// KindStaleInventory is an asset inventory handle that is no longer current (stale_inventory).
 	KindStaleInventory
-	// KindStaleTools identifies the Rust BrowserError::StaleTools failure.
+	// KindStaleTools is a WebMCP tool set handle that is no longer current (stale_tools).
 	KindStaleTools
-	// KindStaleCursor identifies the Rust BrowserError::StaleCursor failure.
+	// KindStaleCursor is a cursor that is stale or belongs to another stream (stale_cursor).
 	KindStaleCursor
-	// KindCDPMethodDenied identifies the Rust BrowserError::CDPMethodDenied failure.
+	// KindCDPMethodDenied is a raw CDP method the debugging policy denies; Message names it (cdp_method_denied).
 	KindCDPMethodDenied
-	// KindPartialFailure identifies the Rust BrowserError::PartialFailure failure.
+	// KindPartialFailure is a batch in which some items failed; Details holds what succeeded (partial_failure).
 	KindPartialFailure
-	// KindSideEffectRejected identifies the Rust BrowserError::SideEffectRejected failure.
+	// KindSideEffectRejected is a read-only evaluation that would have had a side effect (side_effect_rejected).
 	KindSideEffectRejected
-	// KindClosed identifies the Rust BrowserError::Closed failure.
+	// KindClosed is a browser environment, tab or stream that has closed (browser_lost).
 	KindClosed
-	// KindConnection identifies the Rust BrowserError::Connection failure.
+	// KindConnection is a lost CDP connection; Cause holds the transport failure (browser_lost).
 	KindConnection
 	// KindOutcomeUnknown identifies the Rust BrowserError::OutcomeUnknown failure.
 	KindOutcomeUnknown
-	// KindTabNotFound identifies the Rust BrowserError::TabNotFound failure.
+	// KindTabNotFound is a tab or CDP session that does not exist (tab_not_found).
 	KindTabNotFound
-	// KindTargetNotFound identifies the Rust BrowserError::TargetNotFound failure.
+	// KindTargetNotFound is an element or debugging target that matched nothing (target_not_found).
 	KindTargetNotFound
 	// KindNotActionable identifies the Rust BrowserError::NotActionable failure.
 	KindNotActionable
-	// KindHistoryBoundary identifies the Rust BrowserError::HistoryBoundary failure.
+	// KindHistoryBoundary is a back or forward step past the end of the tab's history (history_boundary).
 	KindHistoryBoundary
-	// KindNavigationFailed identifies the Rust BrowserError::NavigationFailed failure.
+	// KindNavigationFailed is a failed main-document navigation; Message holds Chrome's reason (navigation_failed).
 	KindNavigationFailed
-	// KindOutputExists identifies the Rust BrowserError::OutputExists failure.
+	// KindOutputExists is an output path that already exists; Message holds the path (output_exists).
 	KindOutputExists
-	// KindResultTooLarge identifies the Rust BrowserError::ResultTooLarge failure.
+	// KindResultTooLarge is a result over the browser output limit (result_too_large).
 	KindResultTooLarge
-	// KindProtectedValue identifies the Rust BrowserError::ProtectedValue failure.
+	// KindProtectedValue is a read of a password field's value (protected_value).
 	KindProtectedValue
 	// KindUnavailable identifies the Rust BrowserError::Unavailable failure.
 	KindUnavailable
-	// KindRoot identifies the Rust BrowserError::Root failure.
+	// KindRoot is Chrome refusing to run as root with its sandbox on Linux (browser_unavailable).
 	KindRoot
-	// KindInstallation identifies the Rust BrowserError::Installation failure.
+	// KindInstallation is a missing or unusable Chrome for Testing installation (browser_unavailable).
 	KindInstallation
 	// KindAction identifies the Rust BrowserError::Action failure.
 	KindAction
-	// KindCancelled identifies the Rust BrowserError::Cancelled failure.
+	// KindCancelled is a cancelled operation (cancelled).
 	KindCancelled
-	// KindTimeout identifies the Rust BrowserError::Timeout failure.
+	// KindTimeout is an operation that exceeded its deadline (timeout).
 	KindTimeout
-	// KindBusy identifies the Rust BrowserError::Busy failure.
+	// KindBusy is a tab that another command holds (tab_busy).
 	KindBusy
-	// KindDialogBlocked identifies the Rust BrowserError::DialogBlocked failure.
+	// KindDialogBlocked is input blocked by an open JavaScript dialog (dialog_blocked).
 	KindDialogBlocked
-	// KindDialogNotFound identifies the Rust BrowserError::DialogNotFound failure.
+	// KindDialogNotFound is a dialog command on a tab without a JavaScript dialog (dialog_not_found).
 	KindDialogNotFound
-	// KindInvalidDialogAction identifies the Rust BrowserError::InvalidDialogAction failure.
+	// KindInvalidDialogAction is an action the open JavaScript dialog does not accept (invalid_dialog_action).
 	KindInvalidDialogAction
-	// KindAmbiguous identifies the Rust BrowserError::Ambiguous failure.
+	// KindAmbiguous is a target that matched more than one element; Count holds the matches (ambiguous_target).
 	KindAmbiguous
-	// KindStaleReference identifies the Rust BrowserError::StaleReference failure.
+	// KindStaleReference is a node reference from an earlier document or another tab (stale_ref).
 	KindStaleReference
-	// KindInvalidResult identifies the Rust BrowserError::InvalidResult failure.
+	// KindInvalidResult is a browser result that is not JSON of the expected shape (unsupported_result).
 	KindInvalidResult
-	// KindConfiguration identifies the Rust BrowserError::Configuration failure.
+	// KindConfiguration is invalid input or configuration; Message says what (invalid_input).
 	KindConfiguration
-	// KindCDP identifies the Rust BrowserError::Cdp failure.
+	// KindCDP is a malformed or invalid CDP message (driver_error).
 	KindCDP
-	// KindEvents identifies the Rust BrowserError::Events failure.
-	KindEvents
-	// KindIO identifies the Rust BrowserError::IO failure.
+	// KindIO is a local file system failure; Cause holds it (io_error).
 	KindIO
 	// KindProfileRetained identifies the Rust BrowserError::ProfileRetained failure.
 	KindProfileRetained
-	// KindTask identifies the Rust BrowserError::Task failure.
-	KindTask
 	// KindCleanup identifies the Rust BrowserError::Cleanup failure.
 	KindCleanup
 )
@@ -110,7 +106,7 @@ type BrowserError struct {
 	Cleanup error
 }
 
-// Error returns the Rust browser failure's user-facing message.
+// Error returns the browser failure's user-facing message.
 func (e *BrowserError) Error() string {
 	switch e.Kind {
 	case KindUnsupportedCapability:
@@ -180,7 +176,7 @@ func (e *BrowserError) Code() browserop.BrowserErrorCode {
 		return "browser_lost"
 	case KindUnavailable, KindInstallation, KindRoot:
 		return "browser_unavailable"
-	case KindCDP, KindEvents, KindTask:
+	case KindCDP:
 		return "driver_error"
 	default:
 		return errorCodes[e.Kind]
@@ -235,11 +231,10 @@ func (e *BrowserError) conditionError() string {
 	if e.Details.Condition != nil {
 		condition = *e.Details.Condition
 	}
-	interceptor := "None"
-	if e.Details.Interceptor != nil {
-		interceptor = "Some(" + quoted(*e.Details.Interceptor) + ")"
+	if e.Details.Interceptor == nil {
+		return fmt.Sprintf("element condition failed: %s", condition)
 	}
-	return fmt.Sprintf("element condition failed: %s; interceptor: %s", condition, interceptor)
+	return fmt.Sprintf("element condition failed: %s; interceptor: %s", condition, quoted(*e.Details.Interceptor))
 }
 
 func (e *BrowserError) driverError() string {
@@ -273,8 +268,6 @@ func (e *BrowserError) driverError() string {
 		return "invalid browser configuration: " + e.Message
 	case KindProfileRetained:
 		return fmt.Sprintf("browser profile retained at %s: %v", e.Path, e.Cause)
-	case KindTask:
-		return fmt.Sprintf("browser event task failed: %v", e.Cause)
 	case KindCleanup:
 		return fmt.Sprintf("browser cleanup failed: %v; preceding operation: %v", e.Cleanup, e.Cause)
 	default:

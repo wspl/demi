@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -13,39 +14,25 @@ import (
 )
 
 // plain escapes page-controlled terminal and line controls inside browser output.
-func plain(value string) string { return escaped(value, false, false) }
+func plain(value string) string { return escaped(value, false) }
 
-// quoted encloses page data using Rust's debug-string spelling.
-func quoted(value string) string { return `"` + escaped(value, false, true) + `"` }
+// quoted encloses page data in Go's quoted-string syntax (strconv.Quote).
+func quoted(value string) string { return strconv.Quote(value) }
 
 // body preserves page content's own lines and tabs without terminal controls.
-func body(value string) string { return escaped(value, true, false) }
+func body(value string) string { return escaped(value, true) }
 
-// escaped confines page-controlled strings to their documented browser text scope.
-func escaped(value string, keepLines, quote bool) string {
+// escaped confines page-controlled strings to their documented
+// browser text scope, escaping control characters as Go's quoted strings do.
+func escaped(value string, keepLines bool) string {
 	var out strings.Builder
 	for _, r := range value {
-		if quote && (r == '"' || r == '\\') {
-			out.WriteRune('\\')
-			out.WriteRune(r)
-			continue
-		}
 		if !unicode.IsControl(r) || (keepLines && (r == '\n' || r == '\t')) {
 			out.WriteRune(r)
 			continue
 		}
-		switch r {
-		case 0:
-			out.WriteString(`\0`)
-		case '\n':
-			out.WriteString(`\n`)
-		case '\r':
-			out.WriteString(`\r`)
-		case '\t':
-			out.WriteString(`\t`)
-		default:
-			fmt.Fprintf(&out, `\u{%x}`, r)
-		}
+		quotedRune := strconv.Quote(string(r))
+		out.WriteString(quotedRune[1 : len(quotedRune)-1])
 	}
 	return out.String()
 }
@@ -98,7 +85,7 @@ func resultObject[T any](raw []byte, decode func([]byte) (T, error)) (textObject
 	return object, nil
 }
 
-// textTable aligns browser result columns by Unicode scalar count, as Rust does.
+// textTable aligns browser result columns by Unicode scalar count, not bytes or display width.
 func textTable(rows [][]string) string {
 	if len(rows) == 0 {
 		return ""

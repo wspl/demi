@@ -11,7 +11,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// Port of ax_values_omit_unsupported_types_without_losing_nodes; under 1 s.
+// Accessibility values of unsupported types are omitted without losing their nodes; under 1 s.
 func TestAXValuesOmitUnsupportedTypesWithoutLosingNodes(t *testing.T) {
 	for _, tc := range []struct {
 		kind        string
