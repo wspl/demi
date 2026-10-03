@@ -34,11 +34,13 @@ func (s *treeScript) root(id string, answers ...[]provider.Event) {
 	defer s.mu.Unlock()
 	s.roots[id] = append(s.roots[id], answers...)
 }
+
 func (s *treeScript) child(answers ...[]provider.Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.unclaimed = append(s.unclaimed, answers)
 }
+
 func (s *treeScript) requests(id string, root bool) []provider.InferenceRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -50,6 +52,8 @@ func (s *treeScript) requests(id string, root bool) []provider.InferenceRequest 
 	}
 	return out
 }
+
+// Run consumes the next scripted response for a root or child.
 func (s *treeScript) Run(ctx context.Context, r provider.InferenceRequest) provider.Run {
 	s.mu.Lock()
 	s.asked = append(s.asked, r)
@@ -72,55 +76,98 @@ func (s *treeScript) Run(ctx context.Context, r provider.InferenceRequest) provi
 	s.mu.Unlock()
 	return providertest.Events(answer...)(ctx, r)
 }
-func (s *treeScript) Fresh() provider.Runtime                       { return s }
-func (*treeScript) Close(context.Context) error                     { return nil }
+
+// Fresh shares scripts across the session tree.
+func (s *treeScript) Fresh() provider.Runtime { return s }
+
+// Close requires no resource cleanup.
+func (*treeScript) Close(context.Context) error { return nil }
+
+// RequestLimits returns the fixture request limits.
 func (*treeScript) RequestLimits(core.Model) provider.RequestLimits { return provider.RequestLimits{} }
 
 // treeShell scripts a tool request separately for one node's model.
 func treeShell(t *testing.T, id, script string) []provider.Event {
 	t.Helper()
-	input := fmt.Sprintf(`{"description":%s,"script":%s,"timeoutMs":60000}`, conversationJSON(t, id), conversationJSON(t, script))
-	return []provider.Event{providertest.ToolCall(id, "shell_exec", json.RawMessage(input)), providertest.Response(1, 1)}
+	input := fmt.Sprintf(
+		`{"description":%s,"script":%s,"timeoutMs":60000}`,
+		conversationJSON(t, id),
+		conversationJSON(t, script),
+	)
+	return []provider.Event{
+		providertest.ToolCall(id, "shell_exec", json.RawMessage(input)),
+		providertest.Response(1, 1),
+	}
 }
+
 func treeSay(text string) []provider.Event {
 	return []provider.Event{providertest.Text(text), providertest.Response(1, 1)}
 }
 
 // conversationTree starts a node-scripted family on a real paired target.
-func conversationTree(t *testing.T) (context.Context, *backendtest.TestBackend, backendtest.Session, *treeScript, string) {
+func conversationTree(
+	t *testing.T,
+) (context.Context, *backendtest.TestBackend, backendtest.Session, *treeScript, string) {
 	t.Helper()
-	ctx, h := conversationHarness(t)
-	script := &treeScript{t: t, roots: make(map[string][][]provider.Event), children: make(map[string][][]provider.Event)}
-	h.Config.Families.Register("tree", conversationFamily{build: func(providers.FamilyArgs) provider.Runtime { return script }})
-	b, s, err := h.StartSetUp(ctx, t)
+	ctx, harness := conversationHarness(t)
+	script := &treeScript{
+		t:        t,
+		roots:    make(map[string][][]provider.Event),
+		children: make(map[string][][]provider.Event),
+	}
+	harness.Config.Families.Register(
+		"tree",
+		conversationFamily{build: func(providers.FamilyArgs) provider.Runtime { return script }},
+	)
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	body := `{"source":"custom","providerType":"tree","label":"Tree","apiKey":"k","models":[{"id":"m","displayName":"M","contextWindow":100000,"outputLimit":null,"thinkingEfforts":[],"acceptedExtensions":null,"fastTier":null}]}`
-	entry := conversationDecode(t, conversationRequest(ctx, t, b, &s, "POST", "/api/providers", body, 201), webapi.DecodeProviderAnswer)
-	conversationCreate(ctx, t, b, &s, conversationFirst)
-	conversationChoose(ctx, t, b, &s, conversationFirst, string(entry.Provider.ID), "m")
-	_, root := conversationOnDevice(ctx, t, h, b, &s, conversationFirst)
-	return ctx, b, s, script, root
+	body := `{"source":"custom","providerType":"tree","label":"Tree","apiKey":"k",` +
+		`"models":[{"id":"m","displayName":"M","contextWindow":100000,"outputLimit":null,` +
+		`"thinkingEfforts":[],"acceptedExtensions":null,"fastTier":null}]}`
+	entry := conversationDecode(
+		t,
+		conversationRequest(ctx, t, backend, &session, "POST", "/api/providers", body, 201),
+		webapi.DecodeProviderAnswer,
+	)
+	conversationCreate(ctx, t, backend, &session, conversationFirst)
+	conversationChoose(ctx, t, backend, &session, conversationFirst, string(entry.Provider.ID), "m")
+	_, root := conversationOnDevice(ctx, t, harness, backend, &session, conversationFirst)
+	return ctx, backend, session, script, root
 }
 
+// TestChildSharesFilesButKeepsOwnTodosAfterSpawn checks that children share files while maintaining
+// their own todos.
 // A real child works past its spawn job; the test releases its file wait.
 func TestChildSharesFilesButKeepsOwnTodosAfterSpawn(t *testing.T) {
 	t.Parallel()
-	ctx, b, s, scripts, root := conversationTree(t)
-	socket := conversationOpen(ctx, t, b, &s, conversationFirst)
-	scripts.root(conversationFirst, treeShell(t, "t1", `printf 'the answer is 42\n' > notes.md && demi todo add root-only`), treeSay("written"))
+	ctx, backend, session, scripts, root := conversationTree(t)
+	socket := conversationOpen(ctx, t, backend, &session, conversationFirst)
+	scripts.root(
+		conversationFirst,
+		treeShell(t, "t1", `printf 'the answer is 42\n' > notes.md && demi todo add root-only`),
+		treeSay("written"),
+	)
 	_, err := socket.Chat(ctx, "m1", "Write the notes")
 	wireMust(t, err)
-	child := `until [ -f go ]; do sleep 0.05; done; cat notes.md && printf 'from the child\n' > reply.md && demi host shell --host laptop "demi todo add child-only" && demi todo list`
+	child := `until [ -f go ]; do sleep 0.05; done; ` +
+		`cat notes.md && printf 'from the child\n' > reply.md && ` +
+		`demi host shell --host laptop "demi todo add child-only" && demi todo list`
 	scripts.child(treeShell(t, "c1", child), treeSay("the file says 42"))
-	scripts.root(conversationFirst, treeShell(t, "t2", `demi agent spawn --description reader <<< 'Read notes.md and answer'`), treeSay("dispatched"), treeSay("received"))
+	scripts.root(
+		conversationFirst,
+		treeShell(t, "t2", `demi agent spawn --description reader <<< 'Read notes.md and answer'`),
+		treeSay("dispatched"),
+		treeSay("received"),
+	)
 	_, err = socket.Chat(ctx, "m2", "Delegate the reading")
 	wireMust(t, err)
-	wireMust(t, os.WriteFile(filepath.Join(root, "go"), nil, 0644))
+	wireMust(t, os.WriteFile(filepath.Join(root, "go"), nil, 0o644))
 	_, err = socket.UntilIdle(ctx)
 	wireMust(t, err)
 	children := scripts.requests(conversationFirst, false)
 	read := conversationJSON(t, children[len(children)-1].Items)
-	if !strings.Contains(read, "the answer is 42") || !strings.Contains(read, "child-only") || strings.Contains(read, "root-only") {
+	if !strings.Contains(read, "the answer is 42") || !strings.Contains(read, "child-only") ||
+		strings.Contains(read, "root-only") {
 		t.Fatalf("child files/todos: %s", read)
 	}
 	bytes, err := os.ReadFile(filepath.Join(root, "reply.md"))
@@ -131,28 +178,36 @@ func TestChildSharesFilesButKeepsOwnTodosAfterSpawn(t *testing.T) {
 	wireMust(t, err)
 	roots := scripts.requests(conversationFirst, true)
 	checked := conversationJSON(t, roots[len(roots)-1].Items)
-	if !strings.Contains(checked, "from the child") || !strings.Contains(checked, "root-only") || strings.Contains(checked, "child-only") {
+	if !strings.Contains(checked, "from the child") || !strings.Contains(checked, "root-only") ||
+		strings.Contains(checked, "child-only") {
 		t.Fatalf("parent files/todos: %s", checked)
 	}
-	history := conversationTranscript(ctx, t, b, &s, conversationFirst)
+	history := conversationTranscript(ctx, t, backend, &session, conversationFirst)
 	conversationEqual(t, len(history.Subagents), 1)
 	conversationEqual(t, history.Subagents[0].Subagent.Description, "reader")
 	conversationEqual(t, history.Subagents[0].Subagent.Phase, framewire.JobPhaseCompleted)
 }
 
+// TestForkLeavesRunningChildWithSource checks that running children remain with the source
+// conversation after a fork.
 func TestForkLeavesRunningChildWithSource(t *testing.T) {
 	t.Parallel()
-	ctx, b, s, scripts, root := conversationTree(t)
-	socket := conversationOpen(ctx, t, b, &s, conversationFirst)
+	ctx, backend, session, scripts, root := conversationTree(t)
+	socket := conversationOpen(ctx, t, backend, &session, conversationFirst)
 	scripts.child(treeShell(t, "c1", `until [ -f go ]; do sleep 0.05; done`), treeSay("the child's result"))
-	scripts.root(conversationFirst, treeShell(t, "t1", `demi agent spawn --description worker <<< 'Wait for the file'`), treeSay("the child is still working"), treeSay("received"))
+	scripts.root(
+		conversationFirst,
+		treeShell(t, "t1", `demi agent spawn --description worker <<< 'Wait for the file'`),
+		treeSay("the child is still working"),
+		treeSay("received"),
+	)
 	_, err := socket.Chat(ctx, "m1", "Start a worker")
 	wireMust(t, err)
 	live, err := socket.Live(ctx)
 	wireMust(t, err)
 	texts := conversationTexts(live)
-	conversationFork(ctx, t, b, &s, conversationSecond, texts[len(texts)-1], 201)
-	before := conversationTranscript(ctx, t, b, &s, conversationSecond)
+	conversationFork(ctx, t, backend, &session, conversationSecond, texts[len(texts)-1], 201)
+	before := conversationTranscript(ctx, t, backend, &session, conversationSecond)
 	found := false
 	for _, block := range before.Blocks {
 		if _, ok := block.(*core.ToolCallBlock); ok {
@@ -163,12 +218,12 @@ func TestForkLeavesRunningChildWithSource(t *testing.T) {
 		t.Fatal("fork lost spawn call")
 	}
 	conversationEqual(t, len(before.Subagents), 0)
-	wireMust(t, os.WriteFile(filepath.Join(root, "go"), nil, 0644))
+	wireMust(t, os.WriteFile(filepath.Join(root, "go"), nil, 0o644))
 	_, err = socket.UntilIdle(ctx)
 	wireMust(t, err)
-	conversationEqual(t, len(conversationTranscript(ctx, t, b, &s, conversationFirst).Subagents), 1)
-	conversationEqual(t, conversationTranscript(ctx, t, b, &s, conversationSecond), before)
-	fork := conversationOpen(ctx, t, b, &s, conversationSecond)
+	conversationEqual(t, len(conversationTranscript(ctx, t, backend, &session, conversationFirst).Subagents), 1)
+	conversationEqual(t, conversationTranscript(ctx, t, backend, &session, conversationSecond), before)
+	fork := conversationOpen(ctx, t, backend, &session, conversationSecond)
 	scripts.root(conversationSecond, treeShell(t, "f1", "demi agent list"), treeSay("an empty tree"))
 	_, err = fork.Chat(ctx, "m2", "Who works for you?")
 	wireMust(t, err)

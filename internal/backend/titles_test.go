@@ -20,13 +20,21 @@ type conversationFamily struct {
 	build func(providers.FamilyArgs) provider.Runtime
 }
 
+// Credential requires API key credentials for the scripted family.
 func (conversationFamily) Credential() webapi.CredentialKind { return webapi.CredentialKindAPIKey }
-func (conversationFamily) Wires() []core.WireAPI             { return nil }
+
+// Wires declares no external wire APIs.
+func (conversationFamily) Wires() []core.WireAPI { return nil }
+
+// Provider builds the scripted provider from API key credentials.
 func (f conversationFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
 	if _, ok := args.Credential.(*providers.APIKeyArgs); !ok {
 		return nil, &providers.FamilyError{Kind: providers.FamilyWrongCredential}
 	}
-	return &conversationProvider{Provider: openaiapi.New(openaiapi.Config{APIKey: "fixture"}, args.Clock), runtime: f.build(args)}, nil
+	return &conversationProvider{
+		Provider: openaiapi.New(openaiapi.Config{APIKey: "fixture"}, args.Clock),
+		runtime:  f.build(args),
+	}, nil
 }
 
 type conversationProvider struct {
@@ -34,6 +42,7 @@ type conversationProvider struct {
 	runtime provider.Runtime
 }
 
+// Runtime returns a fresh scripted runtime.
 func (p *conversationProvider) Runtime(provider.RuntimeEnv) (provider.Runtime, error) {
 	return p.runtime.Fresh(), nil
 }
@@ -45,6 +54,7 @@ type titleRuntime struct {
 	answer  string
 }
 
+// Run gates title answers separately from ordinary turns.
 func (r *titleRuntime) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
 	return func(yield func(provider.Event) bool) {
 		text := "Answer."
@@ -68,29 +78,55 @@ func (r *titleRuntime) Run(ctx context.Context, request provider.InferenceReques
 		}
 	}
 }
-func (r *titleRuntime) Fresh() provider.Runtime   { return r }
+
+// Fresh shares the title gates across runtime requests.
+func (r *titleRuntime) Fresh() provider.Runtime { return r }
+
+// Close requires no resource cleanup.
 func (*titleRuntime) Close(context.Context) error { return nil }
+
+// RequestLimits returns the fixture request limits.
 func (*titleRuntime) RequestLimits(core.Model) provider.RequestLimits {
 	return provider.RequestLimits{}
 }
 
 // conversationConfigured describes the fixture's explicit model settings.
 func conversationConfigured(output int) string {
-	return fmt.Sprintf(`{"id":"m","displayName":"M","contextWindow":100000,"outputLimit":%d,"thinkingEfforts":[],"acceptedExtensions":null,"fastTier":null}`, output)
+	return fmt.Sprintf(
+		`{"id":"m","displayName":"M","contextWindow":100000,"outputLimit":%d,`+
+			`"thinkingEfforts":[],"acceptedExtensions":null,"fastTier":null}`,
+		output,
+	)
 }
 
 // conversationTitling starts titles enabled with a controllable scripted family.
-func conversationTitling(t *testing.T, answer string) (context.Context, *backendtest.TestBackend, backendtest.Session, string, *titleRuntime) {
+func conversationTitling(
+	t *testing.T,
+	answer string,
+) (context.Context, *backendtest.TestBackend, backendtest.Session, string, *titleRuntime) {
 	t.Helper()
-	ctx, h := conversationHarness(t)
-	script := &titleRuntime{asked: make(chan provider.InferenceRequest, 4), answers: make(chan struct{}, 4), answer: answer}
-	h.Config.Families.Register("titling", conversationFamily{build: func(providers.FamilyArgs) provider.Runtime { return script }})
-	h.Config.Conversations.Titles = true
-	b, s, err := h.StartSetUp(ctx, t)
+	ctx, harness := conversationHarness(t)
+	script := &titleRuntime{
+		asked:   make(chan provider.InferenceRequest, 4),
+		answers: make(chan struct{}, 4),
+		answer:  answer,
+	}
+	harness.Config.Families.Register(
+		"titling",
+		conversationFamily{build: func(providers.FamilyArgs) provider.Runtime { return script }},
+	)
+	harness.Config.Conversations.Titles = true
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	body := `{"source":"custom","providerType":"titling","label":"T","apiKey":"k","models":[` + conversationConfigured(8000) + `]}`
-	entry := conversationDecode(t, conversationRequest(ctx, t, b, &s, "POST", "/api/providers", body, 201), webapi.DecodeProviderAnswer)
-	return ctx, b, s, string(entry.Provider.ID), script
+	body := `{"source":"custom","providerType":"titling","label":"T","apiKey":"k","models":[` + conversationConfigured(
+		8000,
+	) + `]}`
+	entry := conversationDecode(
+		t,
+		conversationRequest(ctx, t, backend, &session, "POST", "/api/providers", body, 201),
+		webapi.DecodeProviderAnswer,
+	)
+	return ctx, backend, session, string(entry.Provider.ID), script
 }
 
 // titleAsked waits for the title request itself, rather than polling its count.
@@ -124,7 +160,12 @@ func titleInput(t *testing.T, r provider.InferenceRequest) string {
 }
 
 // titleUntil follows persisted title changes on the user's page channel.
-func titleUntil(ctx context.Context, t *testing.T, page *backendtest.SyncChannel, want func(webapi.ConversationSummary) bool) webapi.ConversationSummary {
+func titleUntil(
+	ctx context.Context,
+	t *testing.T,
+	page *backendtest.SyncChannel,
+	want func(webapi.ConversationSummary) bool,
+) webapi.ConversationSummary {
 	t.Helper()
 	events, err := page.Until(ctx, func(e webapi.SyncEvent) bool {
 		c, ok := e.(*webapi.SyncEventConversation)
@@ -134,26 +175,28 @@ func titleUntil(ctx context.Context, t *testing.T, page *backendtest.SyncChannel
 	return events[len(events)-1].(*webapi.SyncEventConversation).Conversation
 }
 
+// TestGeneratedTitleLosesToRenameAndArchive checks that manual renames and archive take precedence
+// over generated titles.
 func TestGeneratedTitleLosesToRenameAndArchive(t *testing.T) {
 	t.Parallel()
 	const generated = "TS2307 after package split"
-	ctx, b, s, entry, script := conversationTitling(t, "\""+generated+"\"\n")
-	conversationCreate(ctx, t, b, &s, conversationFirst)
-	conversationChoose(ctx, t, b, &s, conversationFirst, entry, "m")
+	ctx, backend, session, entry, script := conversationTitling(t, "\""+generated+"\"\n")
+	conversationCreate(ctx, t, backend, &session, conversationFirst)
+	conversationChoose(ctx, t, backend, &session, conversationFirst, entry, "m")
 	path := "/api/conversations/" + conversationFirst
-	conversationRequest(ctx, t, b, &s, "PATCH", path, `{"title":"New conversation"}`, 200)
-	page, _ := conversationPage(ctx, t, b, &s)
-	socket := conversationOpen(ctx, t, b, &s, conversationFirst)
+	conversationRequest(ctx, t, backend, &session, "PATCH", path, `{"title":"New conversation"}`, 200)
+	page, _ := conversationPage(ctx, t, backend, &session)
+	socket := conversationOpen(ctx, t, backend, &session, conversationFirst)
 	message := "why does pnpm build fail with TS2307 after I moved auth into its own package"
 	_, err := socket.Chat(ctx, "m1", message)
 	wireMust(t, err)
 	asked := titleAsked(ctx, t, script)
-	summary := conversationSummary(ctx, t, b, &s, conversationFirst)
+	summary := conversationSummary(ctx, t, backend, &session, conversationFirst)
 	conversationEqual(t, summary.Title, message)
 	conversationEqual(t, summary.TitleGenerating, true)
 	script.answers <- struct{}{}
 	titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return c.Title == generated })
-	titled := conversationSummary(ctx, t, b, &s, conversationFirst)
+	titled := conversationSummary(ctx, t, backend, &session, conversationFirst)
 	conversationEqual(t, titled.Title, generated)
 	conversationEqual(t, titled.TitleGenerating, false)
 	conversationEqual(t, titled.TitleCurrent, true)
@@ -162,54 +205,80 @@ func TestGeneratedTitleLosesToRenameAndArchive(t *testing.T) {
 	if len(asked.Tools) != 0 || asked.Thinking != nil {
 		t.Fatal("title request has tools or thinking")
 	}
-	totals := conversationDecode(t, conversationRequest(ctx, t, b, &s, "GET", "/api/usage", "", 200), webapi.DecodeUsageTotals)
+	totals := conversationDecode(
+		t,
+		conversationRequest(ctx, t, backend, &session, "GET", "/api/usage", "", 200),
+		webapi.DecodeUsageTotals,
+	)
 	conversationEqual(t, totals.Totals[0].Requests, uint64(2))
 	_, err = socket.Chat(ctx, "m2", "and the login test")
 	wireMust(t, err)
-	conversationEqual(t, conversationSummary(ctx, t, b, &s, conversationFirst).TitleCurrent, false)
-	conversationRequest(ctx, t, b, &s, "POST", path+"/title", `{}`, 202)
+	conversationEqual(t, conversationSummary(ctx, t, backend, &session, conversationFirst).TitleCurrent, false)
+	conversationRequest(ctx, t, backend, &session, "POST", path+"/title", `{}`, 202)
 	asked = titleAsked(ctx, t, script)
 	conversationEqual(t, titleInput(t, asked), "1. "+message+"\n2. and the login test")
-	conversationRequest(ctx, t, b, &s, "PATCH", path, `{"title":"Kept"}`, 200)
+	conversationRequest(ctx, t, backend, &session, "PATCH", path, `{"title":"Kept"}`, 200)
 	script.answers <- struct{}{}
 	titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return c.Title == "Kept" && !c.TitleGenerating })
-	kept := conversationSummary(ctx, t, b, &s, conversationFirst)
+	kept := conversationSummary(ctx, t, backend, &session, conversationFirst)
 	conversationEqual(t, kept.Title, "Kept")
 	conversationEqual(t, kept.TitleGenerating, false)
 	conversationEqual(t, kept.TitleCurrent, true)
-	conversationRequest(ctx, t, b, &s, "POST", path+"/title", `{}`, 202)
+	conversationRequest(ctx, t, backend, &session, "POST", path+"/title", `{}`, 202)
 	titleAsked(ctx, t, script)
-	conversationRequest(ctx, t, b, &s, "PATCH", path, `{"archived":true}`, 200)
+	conversationRequest(ctx, t, backend, &session, "PATCH", path, `{"archived":true}`, 200)
 	titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return c.Archived && !c.TitleGenerating })
-	archived := conversationDecode(t, conversationRequest(ctx, t, b, &s, "GET", "/api/conversations?archived=true", "", 200), webapi.DecodeConversations)
+	archived := conversationDecode(
+		t,
+		conversationRequest(ctx, t, backend, &session, "GET", "/api/conversations?archived=true", "", 200),
+		webapi.DecodeConversations,
+	)
 	if len(archived.Conversations) == 0 || archived.Conversations[0].TitleGenerating {
 		t.Fatal("archived title request still generating")
 	}
 	conversationEqual(t, len(script.answers), 0)
-	conversationRefusal(t, conversationRequest(ctx, t, b, &s, "POST", path+"/title", `{}`, 409), webapi.ErrorCodeConversationArchived)
-	conversationCreate(ctx, t, b, &s, conversationSecond)
+	conversationRefusal(
+		t,
+		conversationRequest(ctx, t, backend, &session, "POST", path+"/title", `{}`, 409),
+		webapi.ErrorCodeConversationArchived,
+	)
+	conversationCreate(ctx, t, backend, &session, conversationSecond)
 	second := "/api/conversations/" + conversationSecond + "/title"
-	conversationRefusal(t, conversationRequest(ctx, t, b, &s, "POST", second, `{}`, 409), webapi.ErrorCodeModelNotSelected)
-	conversationChoose(ctx, t, b, &s, conversationSecond, entry, "m")
-	conversationRefusal(t, conversationRequest(ctx, t, b, &s, "POST", second, `{}`, 409), webapi.ErrorCodeNoMessages)
-	conversationRequest(ctx, t, b, &s, "DELETE", "/api/providers/"+entry, "", 204)
-	conversationRefusal(t, conversationRequest(ctx, t, b, &s, "POST", second, `{}`, 404), webapi.ErrorCodeProviderNotFound)
+	conversationRefusal(
+		t,
+		conversationRequest(ctx, t, backend, &session, "POST", second, `{}`, 409),
+		webapi.ErrorCodeModelNotSelected,
+	)
+	conversationChoose(ctx, t, backend, &session, conversationSecond, entry, "m")
+	conversationRefusal(
+		t,
+		conversationRequest(ctx, t, backend, &session, "POST", second, `{}`, 409),
+		webapi.ErrorCodeNoMessages,
+	)
+	conversationRequest(ctx, t, backend, &session, "DELETE", "/api/providers/"+entry, "", 204)
+	conversationRefusal(
+		t,
+		conversationRequest(ctx, t, backend, &session, "POST", second, `{}`, 404),
+		webapi.ErrorCodeProviderNotFound,
+	)
 }
 
+// TestEmptyGeneratedTitleKeepsMessageTitleAndAllowsRetry checks that empty title answers retain the
+// message title and permit retry.
 func TestEmptyGeneratedTitleKeepsMessageTitleAndAllowsRetry(t *testing.T) {
 	t.Parallel()
-	ctx, b, s, entry, script := conversationTitling(t, " \n\n")
-	conversationCreate(ctx, t, b, &s, conversationFirst)
-	conversationChoose(ctx, t, b, &s, conversationFirst, entry, "m")
-	page, _ := conversationPage(ctx, t, b, &s)
-	socket := conversationOpen(ctx, t, b, &s, conversationFirst)
+	ctx, backend, session, entry, script := conversationTitling(t, " \n\n")
+	conversationCreate(ctx, t, backend, &session, conversationFirst)
+	conversationChoose(ctx, t, backend, &session, conversationFirst, entry, "m")
+	page, _ := conversationPage(ctx, t, backend, &session)
+	socket := conversationOpen(ctx, t, backend, &session, conversationFirst)
 	_, err := socket.Chat(ctx, "m1", "hello   there")
 	wireMust(t, err)
 	titleAsked(ctx, t, script)
 	titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return c.TitleGenerating })
 	script.answers <- struct{}{}
 	titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return !c.TitleGenerating })
-	left := conversationSummary(ctx, t, b, &s, conversationFirst)
+	left := conversationSummary(ctx, t, backend, &session, conversationFirst)
 	conversationEqual(t, left.TitleGenerating, false)
 	conversationEqual(t, left.Title, "hello there")
 	conversationEqual(t, left.TitleCurrent, false)
