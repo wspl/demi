@@ -207,7 +207,6 @@ func realAccountReplayed(t *testing.T, r providertest.RecordedRequest, parts ...
 
 // Several seconds: each Cloud installs and verifies the supplied CLI, whose processes start for real.
 func TestTheCloudsVerifiedCLIStreamsReasoningAndTextAndRunsAToolBatchThroughDemiInOneProcess(t *testing.T) {
-	t.Skip("finding 5: supplied CLI prepends a date reminder to the exact user message expected by Rust")
 	ctx := t.Context()
 	w := realAccountStart(ctx, t)
 	devices := w.manager.Devices()
@@ -281,7 +280,20 @@ func TestTheCloudsVerifiedCLIStreamsReasoningAndTextAndRunsAToolBatchThroughDemi
 		}
 	}
 	conversationEqual(t, hasShell, true)
-	conversationEqual(t, conversationMessages(t, first), [][2]any{{"user", []string{"Say hello."}}})
+	sentMessages := conversationMessages(t, first)
+	conversationEqual(t, len(sentMessages), 1)
+	texts, ok := sentMessages[0][1].([]string)
+	if !ok {
+		t.Fatal(sentMessages)
+	}
+	// Unlike the Rust assertion, exclude the CLI's own leading context blocks:
+	// this CLI adds a date reminder, while the scenario protects Demi's message.
+	// Stop at the first other block and require the entire remainder exactly.
+	for len(texts) > 0 && strings.HasPrefix(texts[0], "<system-reminder>") && strings.HasSuffix(strings.TrimSpace(texts[0]), "</system-reminder>") {
+		texts = texts[1:]
+	}
+	sentMessages[0][1] = texts
+	conversationEqual(t, sentMessages, [][2]any{{"user", []string{"Say hello."}}})
 	w.vendor.RespondAt("/v1/messages", conversationMessage(realAccountTool(t, 0, "toolu_suite_1", "the first ran on the Cloud")+realAccountTool(t, 1, "toolu_suite_2", "the second ran on the Cloud"), "tool_use", `{"input_tokens":20,"output_tokens":1}`, 9))
 	w.vendor.RespondAt("/v1/messages", conversationMessage(conversationTextBlock(t, 0, "Both ran."), "end_turn", `{"input_tokens":30,"output_tokens":1}`, 4))
 	if _, err := socket.Chat(ctx, "5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a12", "Run the tools."); err != nil {
