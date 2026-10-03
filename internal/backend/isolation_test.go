@@ -52,7 +52,6 @@ func isolationLists(s *hostScenario) [3]int {
 
 // Real runners make revocation and a new owner's pairing observable at the API.
 func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
-	t.Skip("finding 3: cross-user requests intermittently receive EOF instead of HTTP 404")
 	s := newHostScenario(t, "")
 	master := s.user
 	users := make([]backendtest.Session, 0, 2)
