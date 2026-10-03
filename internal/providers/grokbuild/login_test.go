@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -113,15 +114,25 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		equal(t, "interactive", requests[3].Header("x-grok-client-mode"))
 	})
 	requests := v.Requests()
-	t.Run("form bytes", func(t *testing.T) {
-		t.Skip("fidelity 1: Grok OAuth forms sort fields instead of preserving Rust insertion order")
+	// Rust wrote the fields in insertion order; Go's url.Values.Encode sorts
+	// them. Field order means nothing to an OAuth server (RFC 6749 § 4.1.3,
+	// RFC 8628 § 3.4), so the tech lead accepted the order as a normalization:
+	// the bodies must hold exactly Rust's fields, each once, with its values.
+	t.Run("form fields", func(t *testing.T) {
 		const id = "b1a00492-073a-47ea-816f-4c329264a828"
-		const scopes = "openid+profile+email+offline_access+grok-cli%3Aaccess+api%3Aaccess+conversations%3Aread+conversations%3Awrite+workspaces%3Aread+workspaces%3Awrite"
-		if want := "client_id=" + id + "&scope=" + scopes + "&referrer=grok-build"; string(requests[0].Body) != want {
-			t.Errorf("device form: got %s; want %s", requests[0].Body, want)
+		const scopes = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write workspaces:read workspaces:write"
+		forms := []url.Values{
+			{"client_id": {id}, "scope": {scopes}, "referrer": {"grok-build"}},
+			{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "device_code": {"dev_code_1"}, "client_id": {id}},
 		}
-		if want := "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&device_code=dev_code_1&client_id=" + id; string(requests[1].Body) != want {
-			t.Errorf("token form: got %s; want %s", requests[1].Body, want)
+		for i, want := range forms {
+			got, err := url.ParseQuery(string(requests[i].Body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("form %d: got %v; want %v", i, got, want)
+			}
 		}
 	})
 }
