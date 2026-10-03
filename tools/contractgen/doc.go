@@ -8,7 +8,7 @@
 // generated files without writing them. The -ts flag discovers root markers
 // under ./... by default and writes the frontend's established destinations.
 // -ts-dir redirects those destinations for fixture comparisons. Generation
-// requires GOFLAGS=-mod=readonly while the Rust vendor directory remains.
+// requires GOFLAGS=-mod=readonly: the repository's vendor directory is not a Go vendor tree.
 //
 // Entry points for private types are private camel-case names (decodeSecret,
 // parseIssuer, validateRawBinding); exported types retain exported entry points.
@@ -22,8 +22,8 @@
 // omitempty, *T collapses absent/null to nil, while **T retains explicit null
 // as a non-nil pointer to nil. Nil required arrays and records are invalid; construct
 // empty values explicitly. Untagged embedded value structs flatten their
-// properties, including validation. Embedded object pointers represent serde's
-// flattened Option: failed child decoding leaves nil; non-nil encoding validates
+// properties, including validation. An embedded object pointer is an optional
+// flattened object: a child that does not decode leaves nil; non-nil encoding validates
 // the child. Schema and Zod merge its properties as optional.
 // A concrete declaration such as
 // "type Names Page[Identifier]" instantiates a generic shape and its field rules.
@@ -58,8 +58,8 @@
 // +demi:format http-url parses HTTP(S) endpoints using WHATWG rules and stores
 // their canonical serialization, including host punycode, default-port removal
 // and a slash for an empty path. Validation and encoding require that canonical
-// spelling. Zod uses z.url({ protocol: z.regexes.httpProtocol }), as the Rust
-// emitter does; its accepted input is canonicalized when decoded by Go.
+// spelling. Zod uses z.url({ protocol: z.regexes.httpProtocol }); its accepted
+// input is canonicalized when decoded by Go.
 //
 // +demi:table on a package-level slice variable emits its literal struct rows
 // or scalar values into protocol/tables.ts, using a SCREAMING_SNAKE variable
@@ -84,12 +84,13 @@
 // records, arrays, enums, patterns, lengths and numeric bounds use the same
 // checked model as codecs and Zod. Root titles use type names; type and field
 // doc comments supply descriptions, with field comments overriding type text.
-// Contract comments are copied verbatim from Rust; directives are excluded.
-// Numeric format and representation keywords match schemars, without extra
-// limits on wide integers or floats. Timestamps emit date-time. Recursive
+// Contract doc comments are product text, emitted verbatim; directives are excluded.
+// An integer's format is its Go type name (int, int64, uint8, ...), a float's
+// double, or float for float32; unsigned integers add minimum 0, and 8- and 16-bit
+// integers both bounds, with no other limits. Timestamps emit date-time. Recursive
 // shapes use # for the root or $defs references for recursive subschemas.
-// +demi:schema-primitive marks a named scalar whose Rust custom JsonSchema
-// returns an inline primitive without derived type metadata. Its constraints
+// +demi:schema-primitive marks a named scalar whose schema is always inline,
+// never a $defs reference, and has no type metadata. Its constraints
 // remain, and field comments still apply, but its type description is omitted.
 // String timestamp schemas have this behavior intrinsically. Ordinary derived scalar
 // descriptions survive both command inlining and plugin definitions.

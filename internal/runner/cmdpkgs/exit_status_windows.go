@@ -8,8 +8,8 @@ import (
 	"github.com/wspl/demi/internal/runner/process"
 )
 
-// platformExitStatus uses Rust's Windows ExitStatus spelling, including hex
-// for high-bit exception codes. Windows process records do not carry signals.
+// platformExitStatus spells a Windows status `exit code: N`, in hex (`exit code: 0xc0000005`)
+// when the high bit marks an exception code. Windows process records do not carry signals.
 func platformExitStatus(exit process.Exit) string {
 	if exit.Code == nil {
 		return fmt.Sprintf("invalid signal record: %q", *exit.Signal)

@@ -16,7 +16,7 @@ import (
 )
 
 // Frame callers must distinguish malformed text from a well-formed invalid value.
-// Includes the Rust a_message_that_is_not_json_is_told_from_an_invalid_frame cases.
+// Includes the cases where a message that is not JSON is told from an invalid frame.
 // In-memory boundary tests cost under one second and own no resources.
 func TestSyntaxCategory(t *testing.T) {
 	for name, decode := range map[string]func([]byte) error{
@@ -131,7 +131,7 @@ func TestNamedMapKeys(t *testing.T) {
 	}
 }
 
-// Rust's Shape::Record emitter and the reference Failures use z.string() keys.
+// A record with named keys emits z.string() keys, as the reference Failures schema does.
 // A package load costs about a second; no JS installation or network is needed.
 func TestNamedMapKeyZodFidelity(t *testing.T) {
 	dir := t.TempDir()
@@ -144,6 +144,6 @@ func TestNamedMapKeyZodFidelity(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"values": z.record(z.string(), z.string().nullable())`) ||
 		!strings.Contains(string(data), `"ids": z.record(z.string(), z.boolean())`) {
-		t.Fatalf("record differs from Rust emitter: %s", data)
+		t.Fatalf("record keys are not z.string(): %s", data)
 	}
 }

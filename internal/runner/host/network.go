@@ -16,7 +16,7 @@ import (
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
-// NetOpen resolves the host on the device and connects with the Rust ten-second
+// NetOpen resolves the host on the device and connects with a ten-second
 // connection timeout. It answers net_opened before moving bytes, then joins both
 // pipe directions. Input EOF half-closes the socket; socket EOF ends output;
 // either pipe failing cancels both directions. It reports both pipe ends even

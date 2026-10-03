@@ -53,7 +53,7 @@ func Snippet(data []byte) string {
 
 // UploadMediaType returns the sniffed native media or PDF type, else sent.
 func UploadMediaType(sent string, data []byte) string {
-	if media := core.SniffModelMediaType(data); media != nil {
+	if media, ok := core.SniffModelMediaType(data); ok {
 		return media.MediaType
 	}
 	if bytes.HasPrefix(data, []byte("%PDF-")) {
@@ -94,9 +94,9 @@ func UploadBlocks(ctx context.Context, upload Upload, blobs BlobStore) ([]core.U
 	}
 	held := HeldMedia{}
 	blocks := []core.UserContentBlock{}
-	media := core.SniffModelMediaType(upload.Bytes)
+	media, ok := core.SniffModelMediaType(upload.Bytes)
 	switch {
-	case media != nil && media.Kind == "image":
+	case ok && media.Kind == "image":
 		fitted, err := Fit(ctx, upload.Bytes, media.MediaType)
 		if err == nil {
 			blob := upload.SHA256
@@ -112,7 +112,7 @@ func UploadBlocks(ctx context.Context, upload Upload, blobs BlobStore) ([]core.U
 				&core.UserImage{Source: &core.MediaSourceRef{Ref: blob, MediaType: fitted.MediaType}},
 			)
 		}
-	case media != nil:
+	case ok:
 		held.Hold(upload.SHA256, upload.Bytes)
 		blocks = append(
 			blocks,

@@ -12,20 +12,6 @@ import (
 // MaxDepth is the deepest a command tree nests.
 const MaxDepth = 32
 
-// DeclarationError describes a broken command declaration.
-type DeclarationError struct{ err error }
-
-// Error describes the broken declaration.
-func (e *DeclarationError) Error() string { return e.err.Error() }
-
-// Unwrap returns the cause of the declaration refusal.
-func (e *DeclarationError) Unwrap() error { return e.err }
-
-// declarationError constructs a refusal of a command's declaration rules.
-func declarationError(message string) *DeclarationError {
-	return &DeclarationError{err: errors.New(message)}
-}
-
 // Node is a group or leaf. B identifies a native operation before or after pinning.
 // Runtime nodes convert through the generated raw wire representation.
 //
@@ -103,7 +89,7 @@ type Native[B any] struct {
 func (*Native[B]) leafKind() {}
 
 // The command package operation a declaration names. The manifest pins it to
-// the descriptor the backend selected for the package ([`Node::pin`]).
+// the descriptor the backend selected for the package ([Pin]).
 //
 // +demi:variant rawBinding
 type NativeOperation struct {
@@ -146,17 +132,6 @@ func Summary[B any](node Node[B]) string {
 	return ""
 }
 
-// AsLeaf returns the leaf or nil for a group.
-func AsLeaf[B any](node Node[B]) *Leaf[B] {
-	switch node := node.(type) {
-	case *Group[B]:
-		return nil
-	case *Leaf[B]:
-		return node
-	}
-	return nil
-}
-
 // Leaves lists the leaves in depth-first order.
 func (g *Group[B]) Leaves() []*Leaf[B] {
 	var leaves []*Leaf[B]
@@ -178,20 +153,20 @@ func (l *Leaf[B]) Validate() error { return validateNode[B](l, 0) }
 // validateNode checks declaration rules with the root at depth zero.
 func validateNode[B any](node Node[B], depth int) error {
 	if depth > MaxDepth {
-		return declarationError(fmt.Sprintf("command tree exceeds %d levels", MaxDepth))
+		return fmt.Errorf("command tree exceeds %d levels", MaxDepth)
 	}
 	if !IsCommandName(Name(node)) {
-		return declarationError("invalid command name: " + Name(node))
+		return errors.New("invalid command name: " + Name(node))
 	}
 	switch node := node.(type) {
 	case *Group[B]:
 		if len(node.Subcommands) == 0 {
-			return declarationError("command group " + node.Name + " has no subcommands")
+			return errors.New("command group " + node.Name + " has no subcommands")
 		}
 		names := make(map[string]bool)
 		for _, child := range node.Subcommands {
 			if names[Name(child)] {
-				return declarationError("duplicate command name: " + Name(child))
+				return errors.New("duplicate command name: " + Name(child))
 			}
 			names[Name(child)] = true
 			if err := validateNode(child, depth+1); err != nil {
@@ -204,15 +179,13 @@ func validateNode[B any](node Node[B], depth int) error {
 	return nil
 }
 
-// Binding returns the native binding, or nil for RPC.
-func (l *Leaf[B]) Binding() *B {
-	switch kind := l.Kind.(type) {
-	case *RPC[B]:
-		return nil
-	case *Native[B]:
-		return &kind.Binding
+// Binding returns the native binding; ok is false for an RPC command.
+func (l *Leaf[B]) Binding() (B, bool) {
+	if native, ok := l.Kind.(*Native[B]); ok {
+		return native.Binding, true
 	}
-	return nil
+	var none B
+	return none, false
 }
 
 // Properties returns a copy of the input properties as schema documents.
@@ -252,7 +225,7 @@ func (l *Leaf[B]) JSONOutput() *Schema {
 // validateInput checks that each declared source maps to an appropriate field.
 func (l *Leaf[B]) validateInput() error {
 	if l.Input != nil && l.Input.object["type"] != "object" {
-		return declarationError("command input must describe an object")
+		return errors.New("command input must describe an object")
 	}
 	properties := l.properties()
 	fields := map[string]bool{}
@@ -265,34 +238,34 @@ func (l *Leaf[B]) validateInput() error {
 	}
 	for _, field := range sources {
 		if fields[field] {
-			return declarationError("multiple input sources for " + field)
+			return errors.New("multiple input sources for " + field)
 		}
 		fields[field] = true
 		if _, exists := properties[field]; !exists {
-			return declarationError("input source has no schema: " + field)
+			return errors.New("input source has no schema: " + field)
 		}
 	}
 	for _, field := range l.propertyNames() {
 		if !IsCommandName(field) {
-			return declarationError("invalid input name: " + field)
+			return errors.New("invalid input name: " + field)
 		}
 		if !fields[field] && (field == "help" || field == "json") {
-			return declarationError("reserved command option: " + field)
+			return errors.New("reserved command option: " + field)
 		}
 	}
 	if l.StdinField != nil && schemaType(properties[*l.StdinField]) != "string" {
-		return declarationError("stdin input must be a string")
+		return errors.New("stdin input must be a string")
 	}
 	if l.RestField != nil {
 		schema, _ := properties[*l.RestField].(map[string]any)
 		if schemaType(schema) != "array" || schemaType(schema["items"]) != "string" {
-			return declarationError("rest input must be a string array")
+			return errors.New("rest input must be a string array")
 		}
 	}
 	optional := false
 	for _, field := range l.positionals() {
 		if l.Required(field) && optional {
-			return declarationError("required positional follows optional positional")
+			return errors.New("required positional follows optional positional")
 		}
 		optional = optional || !l.Required(field)
 	}

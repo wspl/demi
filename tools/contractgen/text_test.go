@@ -116,7 +116,7 @@ func TestFormatTrimmed(t *testing.T) {
 	}
 }
 
-// Ports Rust EndpointUrl's accepted/refused inputs and checks WHATWG storage
+// Pins EndpointURL's accepted and refused inputs and checks WHATWG storage
 // spelling through both generated codecs and the constructor. CPU budget <1 s.
 func TestFormatHTTPURL(t *testing.T) {
 	if _, err := text.ParseEndpointURL("https://example.test/\xff"); err == nil {

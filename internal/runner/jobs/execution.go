@@ -21,7 +21,15 @@ type taskExecution struct {
 	output <-chan process.OutputChunk
 	cancel func()
 	signal func(context.Context, runnerwire.Signal) error
-	wait   func(context.Context) (process.Exit, *string)
+	wait   func(context.Context) (process.Exit, *string, error)
+}
+
+// stop cancels the child and joins it. Its result is not needed: the
+// caller took the child's result from its own wait, or is returning an
+// earlier failure.
+func (c taskExecution) stop(ctx context.Context) {
+	c.cancel()
+	_, _, _ = c.wait(ctx)
 }
 
 // run owns a task's shell/process, retained data and pipe workers through completion.
@@ -54,7 +62,10 @@ func (t *Table) run(spec TaskSpec, entry *taskEntry) (frame []byte, err error) {
 			output: started.Output,
 			cancel: started.Cancel,
 			signal: started.Signal,
-			wait:   func(ctx context.Context) (process.Exit, *string) { return started.Wait(ctx), nil },
+			wait: func(ctx context.Context) (process.Exit, *string, error) {
+				exit, err := started.Wait(ctx)
+				return exit, nil, err
+			},
 		}
 	case *ShellCommand:
 		return t.runShell(spec, entry, command)
@@ -259,10 +270,7 @@ func (t *Table) executeTask(
 	stdin, stdout *runnerwire.PipeRef,
 ) (frame []byte, err error) {
 	ctx := entry.lifetime
-	defer func() {
-		child.cancel()
-		child.wait(context.WithoutCancel(ctx))
-	}()
+	defer child.stop(context.WithoutCancel(ctx))
 	pipeCtx, stopPipes := context.WithCancel(ctx)
 	inputCtx, stopInput := context.WithCancel(pipeCtx)
 	var pipes sync.WaitGroup
@@ -291,7 +299,10 @@ func (t *Table) executeTask(
 			return nil, err
 		}
 	}
-	exit, cwd := child.wait(context.WithoutCancel(ctx))
+	exit, cwd, waitErr := child.wait(context.WithoutCancel(ctx))
+	if failure == nil {
+		failure = waitErr
+	}
 	if uploads != nil {
 		close(uploads)
 	}
@@ -429,7 +440,7 @@ func (t *Table) taskOutput(
 	return followed, failure
 }
 
-// joinTaskPipes gives uploads the Rust owner’s grace period and still joins on cancellation.
+// joinTaskPipes gives uploads a 30-second grace period and still joins on cancellation.
 func joinTaskPipes(ctx context.Context, pipes *sync.WaitGroup, stopPipes context.CancelFunc) {
 	joined := make(chan struct{})
 	go func() {
@@ -460,9 +471,6 @@ type taskExitOptions struct {
 
 // taskExit preserves the child status when a runner failure can only be logged.
 func (t *Table) taskExit(ctx context.Context, id string, options taskExitOptions) ([]byte, error) {
-	if options.failure == nil && options.exit.Error != nil {
-		options.failure = errors.New(*options.exit.Error)
-	}
 	var spawnError *runnerwire.SpawnError
 	if options.failure != nil {
 		if options.exit.Code == nil && options.exit.Signal == nil {

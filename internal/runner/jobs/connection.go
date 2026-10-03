@@ -11,9 +11,9 @@ import (
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
-// ConnectionHandle lets work reach the backend and the connection's owner.
+// Connection lets work reach the backend and the connection's owner.
 // It does not own the backend socket. It is safe for concurrent use.
-type ConnectionHandle struct {
+type Connection struct {
 	// Control is the owner's bounded queue of encoded replies and requests.
 	// Only the connection owner closes it, after joining all senders.
 	Control  chan<- []byte
@@ -22,25 +22,25 @@ type ConnectionHandle struct {
 	requests chan Request
 }
 
-// NewConnectionHandle creates a handle and its bounded owner request channel.
+// NewConnection creates a connection and its bounded owner request channel.
 // ctx lasts until the connection ends. The receiver is owned by the composition;
 // it stops receiving on Done, rather than waiting for channel closure. A failed
 // cleanup send also closes Done; the owner must then close the backend connection.
-func NewConnectionHandle(ctx context.Context, control chan<- []byte) (*ConnectionHandle, <-chan Request) {
+func NewConnection(ctx context.Context, control chan<- []byte) (*Connection, <-chan Request) {
 	ctx, cancel := context.WithCancel(ctx)
 	requests := make(chan Request, 64)
-	return &ConnectionHandle{Control: control, lifetime: ctx, cancel: cancel, requests: requests}, requests
+	return &Connection{Control: control, lifetime: ctx, cancel: cancel, requests: requests}, requests
 }
 
 // Done closes when the connection ends or cannot reliably send RPC cleanup.
-func (h *ConnectionHandle) Done() <-chan struct{} {
+func (h *Connection) Done() <-chan struct{} {
 	return h.lifetime.Done()
 }
 
 // RegisterCall registers events until ended closes. cancel ends the call when
 // it cannot keep up. The caller owns and joins call work and never closes events
 // while the relay exists; channel closure is unnecessary for caller cleanup.
-func (h *ConnectionHandle) RegisterCall(
+func (h *Connection) RegisterCall(
 	ctx context.Context,
 	id string,
 	events chan<- CallEvent,
@@ -52,7 +52,7 @@ func (h *ConnectionHandle) RegisterCall(
 
 // Locate asks where sha256 is on behalf of live work, within the backend's
 // 15-second answer window and the connection's lifetime.
-func (h *ConnectionHandle) Locate(
+func (h *Connection) Locate(
 	ctx context.Context,
 	owner runnerwire.ArtifactOwner,
 	sha256 string,
@@ -75,7 +75,7 @@ func (h *ConnectionHandle) Locate(
 // RegisterContext makes execution live and transfers leases to the connection
 // owner on success. On failure the caller releases leases. An abandoned request
 // must not retain a registration or its leases.
-func (h *ConnectionHandle) RegisterContext(
+func (h *Connection) RegisterContext(
 	ctx context.Context,
 	execution *ExecutionContext,
 	leases []*cmdpkgs.ServiceLease,
@@ -104,7 +104,7 @@ func (h *ConnectionHandle) RegisterContext(
 }
 
 // Reserve requests conversation numbers with the same answer window as Locate.
-func (h *ConnectionHandle) Reserve(
+func (h *Connection) Reserve(
 	ctx context.Context,
 	conversation string,
 	sequence commandwire.ServiceSequence,
@@ -123,7 +123,7 @@ func (h *ConnectionHandle) Reserve(
 }
 
 // waitAnswer starts the backend's answer deadline only after the owner request is queued.
-func (h *ConnectionHandle) waitAnswer(ctx context.Context, ready <-chan struct{}, what string) error {
+func (h *Connection) waitAnswer(ctx context.Context, ready <-chan struct{}, what string) error {
 	timer := time.NewTimer(15 * time.Second)
 	defer timer.Stop()
 	select {
@@ -138,7 +138,7 @@ func (h *ConnectionHandle) waitAnswer(ctx context.Context, ready <-chan struct{}
 	}
 }
 
-var _ cmdpkgs.NumberSource = (*ConnectionHandle)(nil)
+var _ cmdpkgs.NumberSource = (*Connection)(nil)
 
 // Request is work waiting for the composition's connection owner.
 // The owner handles queued registrations before routing backend replies.
@@ -216,7 +216,7 @@ func (r *ContextRequest) Register(table *ContextTable) {
 type Question interface{ backendQuestion() }
 
 // LocateQuestion asks where an artifact is on behalf of Owner.
-// Only ConnectionHandle creates questions; consumers read their public fields.
+// Only Connection creates questions; consumers read their public fields.
 type LocateQuestion struct {
 	// Owner identifies the authority requesting the artifact.
 	Owner runnerwire.ArtifactOwner
@@ -483,7 +483,7 @@ func (r *Relay) Close(ctx context.Context) error {
 }
 
 // request queues work while both its caller and connection remain alive.
-func (h *ConnectionHandle) request(ctx context.Context, request Request) error {
+func (h *Connection) request(ctx context.Context, request Request) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

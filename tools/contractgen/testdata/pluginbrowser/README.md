@@ -1,6 +1,6 @@
 # Browser plugin schema modes
 
-`manifest.json` is an unchanged copy of g-browser's `TestRustManifest` fixture
+`manifest.json` is an unchanged copy of g-browser's `TestManifestMatchesFixture` fixture
 (`internal/plugins/browser/testdata/manifest.json`), originally captured from
 the Rust plugin. No Go-produced expected schema is stored here.
 

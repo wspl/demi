@@ -67,8 +67,8 @@ func (r *RequestView) medium(kind string, source core.MediaSource) (provider.Med
 // document resolves a document using the model's native PDF support.
 func (r *RequestView) document(source *core.DocumentRef) (*provider.MediaBytes, string) {
 	mediaType, _, _ := strings.Cut(source.MediaType, ";")
-	support := core.FileExtensionSupport(r.model.AcceptedExtensions, core.FileExtensionPDF)
-	accepted := strings.TrimSpace(mediaType) == "application/pdf" && support != nil && *support
+	accepted := strings.TrimSpace(mediaType) == "application/pdf" &&
+		core.AcceptsFileExtension(r.model.AcceptedExtensions, core.FileExtensionPDF)
 	return r.mediaBytes("document", source.Ref, source.MediaType, source.FileName, accepted)
 }
 

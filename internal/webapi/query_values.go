@@ -10,7 +10,7 @@ import (
 )
 
 // DecodeDeviceLogValues reads the device log query, including its default limit.
-// Unknown keys are ignored, as serde's query object does.
+// Unknown keys are ignored.
 func DecodeDeviceLogValues(values url.Values) (DeviceLogQuery, error) {
 	fields := []contract.Field{{Name: "limit", Value: DefaultLogLimit}}
 	for _, key := range []string{"since", "limit", "source"} {

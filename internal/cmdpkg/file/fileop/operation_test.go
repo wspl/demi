@@ -34,8 +34,7 @@ func TestFileArgumentsRefuseEmptyOldTextAndZeroPositions(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			op, err := fileop.Parse(tc.operation, []byte(tc.args))
-			var failure *fileop.OperationError
-			if op != nil || !errors.As(err, &failure) || failure.Err == nil {
+			if op != nil || err == nil || errors.Is(err, fileop.ErrUnknownOperation) {
 				t.Fatalf("Parse = %#v, %v; want invalid arguments", op, err)
 			}
 			var field *contract.Error
@@ -69,21 +68,19 @@ func TestListedOperationsAreTheOnesThePackageDecodes(t *testing.T) {
 	}
 	for _, name := range fileop.Operations() {
 		_, err := fileop.Parse(name, []byte(`{}`))
-		var failure *fileop.OperationError
-		if !errors.As(err, &failure) || failure.Err == nil {
+		if err == nil || errors.Is(err, fileop.ErrUnknownOperation) {
 			t.Fatalf("listed %s was not decoded: %v", name, err)
 		}
 	}
 	for _, name := range []string{"file.remove", "browser.tabs"} {
 		_, err := fileop.Parse(name, []byte(`{}`))
-		var failure *fileop.OperationError
-		if !errors.As(err, &failure) || failure.Err != nil || failure.Name != name {
+		if !errors.Is(err, fileop.ErrUnknownOperation) || err.Error() != "unknown operation "+name {
 			t.Fatalf("unknown %s: %v", name, err)
 		}
 	}
 }
 
-func TestSchemasMatchRustManifest(t *testing.T) {
+func TestSchemasMatchManifestFixtures(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		schema func() json.RawMessage
@@ -103,7 +100,7 @@ func TestSchemasMatchRustManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !bytes.Equal(tc.schema(), want.Bytes()) {
-				t.Fatalf("schema differs from Rust manifest\ngot: %s\nwant: %s", tc.schema(), data)
+				t.Fatalf("schema differs from the manifest fixture\ngot: %s\nwant: %s", tc.schema(), data)
 			}
 		})
 	}

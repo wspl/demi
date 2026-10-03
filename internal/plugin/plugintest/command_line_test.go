@@ -38,8 +38,8 @@ func TestCommandLine(t *testing.T) {
 	if strings.Join(parsed.Path, " ") != "demi file read" {
 		t.Fatalf("path = %v", parsed.Path)
 	}
-	binding := roots[0].Leaves()[0].Binding()
-	if binding == nil || binding.DescriptorHash != strings.Repeat("0", 64) {
+	binding, native := roots[0].Leaves()[0].Binding()
+	if !native || binding.DescriptorHash != strings.Repeat("0", 64) {
 		t.Fatalf("binding = %#v", binding)
 	}
 	help, err := Help(roots[0], []string{"file", "read"})

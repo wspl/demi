@@ -6,6 +6,7 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +51,7 @@ func (r RuntimeRelease) Version() string {
 // ReportsVersion checks whether the first output line reports exactly version.
 func ReportsVersion(output, version string) bool {
 	line, _, terminated := strings.Cut(output, "\n")
-	// Rust str::lines strips CR only as part of a CRLF line ending.
+	// Strip a CR only as part of a CRLF line ending.
 	if terminated {
 		line = strings.TrimSuffix(line, "\r")
 	}
@@ -107,7 +108,7 @@ func (r *Runsc) Args(command []string) []string {
 // Version returns the installed runsc's version output.
 func (r *Runsc) Version(ctx context.Context) (string, error) {
 	deadline := runscDeadline
-	output, err := r.tools.Run(ctx, system.Runsc, []string{"--version"}, &deadline)
+	output, err := r.tools.Run(ctx, system.Runsc, []string{"--version"}, deadline)
 	return output.Stdout, err
 }
 
@@ -119,7 +120,8 @@ func (r *Runsc) Status(ctx context.Context, id ID) (status Status, found bool, e
 	}
 	status, found, err = StatusIn([]byte(output.Stdout), id)
 	if err != nil {
-		return "", false, &ListError{Source: err}
+		//nolint:staticcheck // User-visible text, kept byte for byte.
+		return "", false, fmt.Errorf("Cannot inspect Cloud runtimes: %w", err)
 	}
 	return status, found, nil
 }
@@ -136,9 +138,9 @@ func (r *Runsc) Start(ctx context.Context, id ID, bundle string, log *os.File, l
 	command.Stdout = log
 	command.Stderr = log
 	if err := command.Start(); err != nil {
-		return &system.SpawnError{Tool: system.Runsc, Source: err}
+		return system.SpawnFailed(system.Runsc, err)
 	}
-	// The deadline starts after spawning, as it does for the Rust command.
+	// The deadline starts after spawning.
 	fired := make(chan struct{})
 	timer := time.AfterFunc(runscDeadline, func() {
 		defer close(fired)
@@ -147,29 +149,30 @@ func (r *Runsc) Start(ctx context.Context, id ID, bundle string, log *os.File, l
 	err := command.Wait()
 	if !timer.Stop() {
 		<-fired
-		return &system.DeadlineError{Tool: system.Runsc, Deadline: runscDeadline}
+		return system.DeadlinePassed(system.Runsc, runscDeadline)
 	}
 	if ctx.Err() != nil {
-		return &system.SpawnError{Tool: system.Runsc, Source: ctx.Err()}
+		return system.SpawnFailed(system.Runsc, ctx.Err())
 	}
 	if err == nil {
 		return nil
 	}
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) {
-		return &system.SpawnError{Tool: system.Runsc, Source: err}
+		return system.SpawnFailed(system.Runsc, err)
 	}
 	written, err := os.ReadFile(logPath)
 	if err != nil {
 		return err
 	}
-	return &StartError{Message: system.Tail(contract.LossyUTF8(written), 8*1024)}
+	//nolint:staticcheck // User-visible text, kept byte for byte.
+	return fmt.Errorf("Cloud start failed: %s", system.Tail(contract.LossyUTF8(written), 8*1024))
 }
 
 // Wait waits for a container to exit without a deadline. Cancellation kills
 // and reaps the wait command, leaving the sandbox for its owner to close.
 func (r *Runsc) Wait(ctx context.Context, id ID) error {
-	output, err := r.tools.Output(ctx, system.Runsc, r.Args([]string{"wait", string(id)}), nil)
+	output, err := r.tools.Output(ctx, system.Runsc, r.Args([]string{"wait", string(id)}), 0)
 	if err != nil {
 		return err
 	}
@@ -192,7 +195,7 @@ func (r *Runsc) Resume(ctx context.Context, id ID) error {
 // Terminate asks every sandbox process to terminate and returns even a nonzero status.
 func (r *Runsc) Terminate(ctx context.Context, id ID) (system.Output, error) {
 	deadline := runscDeadline
-	return r.tools.Output(ctx, system.Runsc, r.Args([]string{"kill", "--all", string(id), "TERM"}), &deadline)
+	return r.tools.Output(ctx, system.Runsc, r.Args([]string{"kill", "--all", string(id), "TERM"}), deadline)
 }
 
 // Delete deletes the container and kills whatever still runs.
@@ -209,5 +212,5 @@ var releaseManifest []byte
 // run executes a bounded runsc command with the one shipped runtime profile.
 func (r *Runsc) run(ctx context.Context, command []string) (system.Output, error) {
 	deadline := runscDeadline
-	return r.tools.Run(ctx, system.Runsc, r.Args(command), &deadline)
+	return r.tools.Run(ctx, system.Runsc, r.Args(command), deadline)
 }

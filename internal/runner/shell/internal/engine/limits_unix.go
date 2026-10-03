@@ -237,9 +237,8 @@ func checkChildLimit(ctx context.Context, r resource, attributes process.ChildAt
 	if err := command.Start(ctx); err != nil {
 		return diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: %v\n", r.description, err)
 	}
-	status := command.Wait(ctx)
-	if status.Error != nil {
-		return diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: %s\n", r.description, *status.Error)
+	if _, err := command.Wait(ctx); err != nil {
+		return diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: %v\n", r.description, err)
 	}
 	return nil
 }

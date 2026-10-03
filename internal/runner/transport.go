@@ -113,7 +113,7 @@ func (t *transport) run(ctx context.Context) {
 	if !writerJoined {
 		<-sent
 	}
-	// Like Rust, an unsuccessful orderly close cannot change the work result.
+	// An unsuccessful orderly close cannot change the work result.
 	_ = t.flush(ctx)
 	_ = t.socket.Close(websocket.StatusGoingAway, "runner stopping")
 	t.cancel()

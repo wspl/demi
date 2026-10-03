@@ -7,8 +7,8 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// Serde accepts signed/unsigned integers for floats without routing u64 through
-// i64. Local boundary calls only; budget below one second, no IO or waits.
+// Float targets accept signed and unsigned integers, a uint64 never through
+// int64. Local boundary calls only; budget below one second, no IO or waits.
 func TestMsgpackFloatNumbers(t *testing.T) {
 	for _, test := range []struct {
 		data []byte

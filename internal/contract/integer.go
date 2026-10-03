@@ -13,7 +13,7 @@ type integer interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
 }
 
-// Integer decodes a contract integer accepting Rust FromStr decimal strings.
+// Integer decodes a contract integer from a JSON number or a decimal string.
 func Integer[T integer](data []byte) (T, error) {
 	data = bytes.TrimLeft(data, " \t\r\n")
 	if len(data) == 0 || data[0] != '"' {
@@ -38,7 +38,7 @@ func MsgpackInteger[T integer](data []byte) (T, error) {
 	return parseInteger[T](text)
 }
 
-// parseInteger uses the contract's integer width and Rust's decimal sign rules.
+// parseInteger reads decimal digits with an optional + sign, or - for a signed type, within the type's width.
 func parseInteger[T integer](text string) (T, error) {
 	var value T
 	target := reflect.ValueOf(&value).Elem()

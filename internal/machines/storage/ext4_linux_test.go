@@ -49,8 +49,7 @@ func TestCapacityIsBlocksTimesBlockSize(t *testing.T) {
 			requireStorage(t, os.WriteFile(path, data[:], 0o600))
 			got, err := storage.Capacity(t.Context(), path)
 			if test.want == 0 {
-				var invalid *storage.NotExt4Error
-				if !errors.As(err, &invalid) {
+				if err == nil || err.Error() != path+" is not an ext4 image" {
 					t.Fatalf("invalid image accepted: %d, %v", got, err)
 				}
 			} else if err != nil || got != test.want {

@@ -49,16 +49,17 @@ func spawnChild(t *testing.T, options SpawnOptions) *Child {
 	}
 	t.Cleanup(func() {
 		child.Cancel()
-		child.Wait(context.Background())
+		_, _ = child.Wait(context.Background())
 	})
 	return child
 }
 
-func requireSuccess(t *testing.T, exit Exit) {
-	t.Helper()
-	if exit.Code == nil || *exit.Code != 0 || exit.Error != nil {
-		t.Fatalf("exit = %+v", exit)
+// unsuccessfulExit describes an exit that is not a clean zero status.
+func unsuccessfulExit(exit Exit, err error) error {
+	if exit.Code == nil || *exit.Code != 0 || err != nil {
+		return fmt.Errorf("exit = %+v, err = %v", exit, err)
 	}
+	return nil
 }
 
 func TestChildStreamsBinaryAndReaps(t *testing.T) {
@@ -77,9 +78,12 @@ func TestChildStreamsBinaryAndReaps(t *testing.T) {
 	for chunk := range child.Output {
 		t.Fatalf("unexpected output after EOF: %+v", chunk)
 	}
-	exit := child.Wait(childContext(t))
-	requireSuccess(t, exit)
-	requireSuccess(t, child.Wait(childContext(t)))
+	if err := unsuccessfulExit(child.Wait(childContext(t))); err != nil {
+		t.Fatal(err)
+	}
+	if err := unsuccessfulExit(child.Wait(childContext(t))); err != nil {
+		t.Fatal(err)
+	}
 	if err := unix.Kill(int(child.PID), 0); !errors.Is(err, unix.ESRCH) {
 		t.Fatalf("child was not reaped: %v", err)
 	}
@@ -101,8 +105,8 @@ func TestChildCancellationInterruptsBackpressure(t *testing.T) {
 		runtime.Gosched()
 	}
 	child.Cancel()
-	exit := child.Wait(childContext(t))
-	if exit.Signal == nil || *exit.Signal != "SIGKILL" || exit.Error != nil {
+	exit, err := child.Wait(childContext(t))
+	if exit.Signal == nil || *exit.Signal != "SIGKILL" || err != nil {
 		t.Fatalf("exit = %+v", exit)
 	}
 	if !child.IsCancelled() {
@@ -123,7 +127,7 @@ func TestChildCancellationKillsDescendants(t *testing.T) {
 		t.Fatal(err)
 	}
 	child.Cancel()
-	child.Wait(childContext(t))
+	_, _ = child.Wait(childContext(t))
 	ctx := childContext(t)
 	// A reparented zombie can remain until init reaps it. Poll only the observed
 	// process state, with a hang deadline, never a fixed settling interval.
@@ -211,9 +215,11 @@ func TestBootstrapAttributesAndIdentity(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = wrapped.Kill()
-		wrapped.Wait(context.Background())
+		_, _ = wrapped.Wait(context.Background())
 	})
-	requireSuccess(t, wrapped.Wait(childContext(t)))
+	if err := unsuccessfulExit(wrapped.Wait(childContext(t))); err != nil {
+		t.Fatal(err)
+	}
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
 	if len(lines) != 4 || lines[0] != strconv.Itoa(int(wrapped.PID())) || strings.TrimLeft(lines[1], "0") != "77" ||
 		lines[2] != "128" ||
@@ -271,7 +277,9 @@ func TestGroupLeaderExitClosesDescendantOutput(t *testing.T) {
 	for part := range child.Output {
 		data = append(data, part.Bytes...)
 	}
-	requireSuccess(t, child.Wait(childContext(t)))
+	if err := unsuccessfulExit(child.Wait(childContext(t))); err != nil {
+		t.Fatal(err)
+	}
 	if string(data) != "done" {
 		t.Fatalf("output %q", data)
 	}
@@ -289,7 +297,7 @@ func TestCommandWaitCancellationInterruptsIO(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	exit := command.Wait(ctx)
+	exit, _ := command.Wait(ctx)
 	if exit.Signal == nil || *exit.Signal != "SIGKILL" {
 		t.Fatalf("exit %+v", exit)
 	}
@@ -303,8 +311,8 @@ func TestCommandOutputFailureKillsChild(t *testing.T) {
 	if err := command.Start(childContext(t)); err != nil {
 		t.Fatal(err)
 	}
-	exit := command.Wait(childContext(t))
-	if exit.Error == nil || !strings.Contains(*exit.Error, sentinel.Error()) {
+	exit, err := command.Wait(childContext(t))
+	if err == nil || !strings.Contains(err.Error(), sentinel.Error()) {
 		t.Fatalf("exit %+v", exit)
 	}
 }
@@ -328,7 +336,9 @@ func TestSpawnUsesJobPATHAndEnvironment(t *testing.T) {
 	for part := range child.Output {
 		output = append(output, part.Bytes...)
 	}
-	requireSuccess(t, child.Wait(childContext(t)))
+	if err := unsuccessfulExit(child.Wait(childContext(t))); err != nil {
+		t.Fatal(err)
+	}
 	if string(output) != "job environment" {
 		t.Fatalf("output %q", output)
 	}
@@ -399,7 +409,9 @@ func TestCommandCombinedOutputKeepsWriteOrder(t *testing.T) {
 	if err := command.Start(childContext(t)); err != nil {
 		t.Fatal(err)
 	}
-	requireSuccess(t, command.Wait(childContext(t)))
+	if err := unsuccessfulExit(command.Wait(childContext(t))); err != nil {
+		t.Fatal(err)
+	}
 	if output.String() != "firstsecondthird" {
 		t.Fatalf("combined output %q", output.String())
 	}

@@ -40,7 +40,7 @@ func makeImage(ctx context.Context, t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tools.Run(ctx, system.Mke2fs, []string{"-q", "-t", "ext4", "-F", path, "32m"}, nil); err != nil {
+	if _, err := tools.Run(ctx, system.Mke2fs, []string{"-q", "-t", "ext4", "-F", path, "32m"}, 0); err != nil {
 		t.Fatal(err)
 	}
 }

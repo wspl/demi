@@ -133,7 +133,7 @@ func (b *ManagedBoot) UnmarshalJSON(data []byte) error {
 // +demi:root
 type rawBackendURL string
 
-// MarshalJSON writes the normalized address as Rust's URL string.
+// MarshalJSON writes the address in its normal form as a JSON string.
 func (u BackendURL) MarshalJSON() ([]byte, error) {
 	if _, err := ParseBackendURL(u.value); err != nil {
 		return nil, err

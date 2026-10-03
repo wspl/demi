@@ -32,16 +32,16 @@ type DecisionEvent struct {
 }
 
 // Decisions observes future decisions in order until ctx or the registry ends.
-// This test observation stream has the Rust broadcast's 64-event capacity.
-func (r *ServiceRegistry) Decisions(ctx context.Context) *DecisionReceiver {
+// It keeps the last 64 decisions; a subscriber more than 64 behind gets a lag error and resumes at the oldest kept one.
+func (r *ServiceRegistry) Decisions(ctx context.Context) *DecisionSubscription {
 	d := &r.decisions
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return &DecisionReceiver{log: d, ctx: ctx, next: d.next}
+	return &DecisionSubscription{log: d, ctx: ctx, next: d.next}
 }
 
-// DecisionReceiver observes registry decisions without holding services alive.
-type DecisionReceiver struct {
+// DecisionSubscription observes registry decisions without holding services alive.
+type DecisionSubscription struct {
 	log  *decisionLog
 	ctx  context.Context
 	next uint64
@@ -78,7 +78,7 @@ func (d *decisionLog) close() {
 }
 
 // Next waits for a decision, reporting lag or closure as an error.
-func (r *DecisionReceiver) Next(ctx context.Context) (DecisionEvent, error) {
+func (r *DecisionSubscription) Next(ctx context.Context) (DecisionEvent, error) {
 	d := r.log
 	for {
 		d.mu.Lock()

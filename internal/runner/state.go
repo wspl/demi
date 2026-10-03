@@ -15,16 +15,19 @@ import (
 // runnerState keeps validated registration records within the locked installation.
 type runnerState struct{ root string }
 
-func (s runnerState) config() (*runnerConfig, error) {
+func (s runnerState) config() (runnerConfig, bool, error) {
 	data, err := os.ReadFile(filepath.Join(s.root, "runner.json"))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return runnerConfig{}, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return runnerConfig{}, false, err
 	}
 	value, err := decodeRunnerConfig(data)
-	return &value, err
+	if err != nil {
+		return runnerConfig{}, false, err
+	}
+	return value, true, nil
 }
 
 func (s runnerState) writeConfig(ctx context.Context, config runnerConfig) error {

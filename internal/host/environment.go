@@ -1,7 +1,7 @@
 package host
 
 //revive:disable:exported
-// Contract descriptions below are verbatim Rust product text.
+// Contract doc comments below are product text, which does not start with the declared name.
 
 import (
 	"context"

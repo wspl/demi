@@ -341,7 +341,7 @@ func TestKeyedSerialRetainsWaitersAndForgetsUnusedKeys(t *testing.T) {
 			t.Fatal("last release retained key")
 		}
 		// Cover both orders: the cancellation and the holder release each can
-		// be the last reference. The Rust implementation leaked the latter case.
+		// be the last reference, and either one must remove the key.
 		for _, cancelFirst := range []bool{true, false} {
 			held := keyed(t, &s, "c")
 			ctx, cancel := context.WithCancel(t.Context())

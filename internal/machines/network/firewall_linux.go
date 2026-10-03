@@ -5,6 +5,7 @@ package network
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"net/netip"
 
@@ -37,7 +38,7 @@ func applyFirewall(ctx context.Context, build func(*firewallBatch) error) error 
 	defer func() { _ = namespace.Close() }()
 	conn, err := nftables.New(nftables.WithNetNSFd(int(namespace)))
 	if err != nil {
-		return &FirewallError{Source: err}
+		return firewallFailed(err)
 	}
 	batch := &firewallBatch{
 		conn:   conn,
@@ -45,12 +46,12 @@ func applyFirewall(ctx context.Context, build func(*firewallBatch) error) error 
 		nextID: slotSetID,
 	}
 	if err := build(batch); err != nil {
-		return &FirewallError{Source: err}
+		return firewallFailed(err)
 	}
 	// Flush owns and closes its transient socket. Once sent, the batch drains
 	// even if the caller cancels, so no kernel transaction outlives this call.
 	if err := conn.Flush(); err != nil {
-		return &FirewallError{Source: err}
+		return firewallFailed(err)
 	}
 	return nil
 }
@@ -204,7 +205,7 @@ func (b *firewallBatch) constantSet(
 	return &expr.Lookup{SourceRegister: 1, SetID: set.ID, SetName: set.Name}, nil
 }
 
-// deniedDestinations encodes the Rust policy's denied ranges as half-open intervals.
+// deniedDestinations encodes the Cloud policy's denied ranges as half-open intervals.
 func deniedDestinations() []nftables.SetElement {
 	// The adjacent multicast and reserved /4 ranges are one /3, as nft's
 	// interval normalization prints them. The zero end marks 2^32.
@@ -355,4 +356,10 @@ func (b *firewallBatch) allowBackend(ingress *nftables.Chain, backend []netip.Ad
 		&expr.Verdict{Kind: expr.VerdictAccept})
 	b.ipv4Rule(ingress, backendMatch...)
 	return nil
+}
+
+// firewallFailed reports a refused Cloud firewall transaction.
+func firewallFailed(err error) error {
+	//nolint:staticcheck // User-visible text, kept byte for byte.
+	return fmt.Errorf("Cannot apply the Cloud firewall: %w", err)
 }

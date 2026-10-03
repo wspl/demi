@@ -7,7 +7,7 @@ import (
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
-//revive:disable:exported // Contract descriptions copy the Rust product text verbatim.
+//revive:disable:exported // Contract doc comments are product text, which does not start with the declared name.
 
 // A command line a client forwards to the runner (`commands.md` § External
 // command clients): the execution context it runs in, its root command and

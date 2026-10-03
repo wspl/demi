@@ -20,9 +20,9 @@ import (
 // ServiceStreams owns user calls on resident services, their pipe IO and the
 // connection's last package bindings. Its owner must Close it before services stop.
 type ServiceStreams struct {
-	connection *ConnectionHandle
+	connection *Connection
 	pipes      *process.PipeClient
-	services   *cmdpkgs.ServiceHandle
+	services   *cmdpkgs.ServiceRegistry
 	lifetime   context.Context
 	cancel     context.CancelFunc
 	draining   <-chan struct{}
@@ -40,12 +40,12 @@ type streamBinding struct {
 }
 
 // NewServiceStreams creates an owner that cancels streams with ctx. Closing
-// draining refuses new calls while retaining the service binding, as Rust does.
+// draining refuses new calls while retaining the service binding.
 func NewServiceStreams(
 	ctx context.Context,
-	connection *ConnectionHandle,
+	connection *Connection,
 	pipes *process.PipeClient,
-	services *cmdpkgs.ServiceHandle,
+	services *cmdpkgs.ServiceRegistry,
 	draining <-chan struct{},
 ) *ServiceStreams {
 	lifetime, cancel := context.WithCancel(ctx)
@@ -315,8 +315,8 @@ func (s *ServiceStreams) invokeStream(
 	}
 	close(uploads)
 	upload := <-uploaded
-	if line := sink.lines.Finish(); line != nil {
-		sink.log(*line)
+	if line, ok := sink.lines.Finish(); ok {
+		sink.log(line)
 	}
 	s.finishStream(request, completion, result, upload, sink, cancel, log)
 }

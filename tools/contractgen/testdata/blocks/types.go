@@ -290,7 +290,7 @@ type UserReference struct {
 
 // The record of a file that came with a message: on the conversation's Host
 // at `path`, never inlined. The model reads it as a tag that names the file
-// ([`attachment_tag`]); the page draws the file's tile from it.
+// (an attachment tag); the page draws the file's tile from it.
 // +demi:variant UserContentBlock attachment
 type Attachment struct {
 	// +demi:length min=1
@@ -331,8 +331,8 @@ type MediaSourceRef struct {
 }
 
 // Where a document's bytes are, with the name the file came with: in the
-// conversation owner's blob namespace. A tagged enum of one variant, so a
-// stored document keeps `{ "type": "ref", ... }`.
+// conversation owner's blob namespace. A union of one variant, tagged by
+// "type", so a stored document keeps `{ "type": "ref", ... }`.
 // +demi:union tag=type
 //
 //sumtype:decl
@@ -398,8 +398,8 @@ type Retired struct {
 }
 
 // Where the bytes of a tool result's image or video are: in the
-// conversation owner's blob namespace. A tagged enum of one variant, so a
-// stored result keeps `{ "type": "ref", ... }`.
+// conversation owner's blob namespace. A union of one variant, tagged by
+// "type", so a stored result keeps `{ "type": "ref", ... }`.
 // +demi:union tag=type
 //
 //sumtype:decl

@@ -191,8 +191,8 @@ func (h *logHandler) Handle(_ context.Context, record slog.Record) error {
 	record.Attrs(visit)
 	var splitter process.LineSplitter
 	lines := splitter.Push([]byte(text))
-	if last := splitter.Finish(); last != nil {
-		lines = append(lines, *last)
+	if last, ok := splitter.Finish(); ok {
+		lines = append(lines, last)
 	}
 	for _, text := range lines {
 		h.log.enqueue(

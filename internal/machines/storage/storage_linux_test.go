@@ -52,7 +52,7 @@ func requireStorage(t *testing.T, err error) {
 	}
 }
 
-// diskCommand runs the independent filesystem oracle used by the Rust scenarios.
+// diskCommand runs an independent filesystem tool that the scenarios use as their oracle.
 func diskCommand(ctx context.Context, program string, args ...string) ([]byte, error) {
 	command := exec.CommandContext(ctx, program, args...)
 	command.Env = append(os.Environ(), "LC_ALL=C.UTF-8")

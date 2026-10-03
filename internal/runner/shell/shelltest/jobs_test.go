@@ -52,7 +52,7 @@ func shellJob(t *testing.T, script string) (context.Context, *shelltest.Scope, p
 	}
 	t.Cleanup(func() {
 		job.Cancel()
-		job.Wait(context.Background())
+		_, _, _ = job.Wait(context.Background())
 	})
 	return ctx, scope, job, root
 }
@@ -67,7 +67,7 @@ func marker(ctx context.Context, t *testing.T, job process.ShellJob, want string
 			t.Fatal(ctx.Err())
 		case chunk, ok := <-job.Output():
 			if !ok {
-				exit, _ := job.Wait(ctx)
+				exit, _, _ := job.Wait(ctx)
 				t.Fatalf("job ended before %q: %+v", want, exit)
 			}
 			if chunk.Stream != runnerwire.Stdout {
@@ -113,12 +113,12 @@ func TestShellCancellationReportsTheRequestingSignal(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			exit, _ := job.Wait(ctx)
+			exit, _, err := job.Wait(ctx)
 			want := string(signal)
 			if want == "" {
 				want = "SIGKILL"
 			}
-			if exit.Signal == nil || *exit.Signal != want || exit.Code != nil || exit.Error != nil {
+			if exit.Signal == nil || *exit.Signal != want || exit.Code != nil || err != nil {
 				t.Fatalf("exit %+v want %s", exit, want)
 			}
 			scope.Finish(ctx)
@@ -162,7 +162,7 @@ func TestJobsShareTheRunnerProcessAndCancellationIsIsolated(t *testing.T) {
 					t.Fatal(err)
 				}
 				job.Cancel()
-				exit, _ := job.Wait(ctx)
+				exit, _, _ := job.Wait(ctx)
 				if exit.Signal == nil || *exit.Signal != "SIGKILL" {
 					t.Fatalf("exit %+v", exit)
 				}
@@ -179,7 +179,7 @@ func TestJobsShareTheRunnerProcessAndCancellationIsIsolated(t *testing.T) {
 		}
 		output = append(output, chunk.Bytes...)
 	}
-	exit, _ := sibling.Wait(ctx)
+	exit, _, _ := sibling.Wait(ctx)
 	if exit.Code == nil || *exit.Code != 0 || string(output) != "done" {
 		t.Fatalf("sibling exit %+v output %q", exit, output)
 	}
@@ -204,7 +204,7 @@ func TestJobCompletionPreservesProcessSubstitutionOutput(t *testing.T) {
 			t.Fatalf("unexpected output %s", chunk.Bytes)
 		}
 	}
-	exit, _ := job.Wait(ctx)
+	exit, _, _ := job.Wait(ctx)
 	scope.Finish(ctx)
 	data, err := os.ReadFile(filepath.Join(root, "copied"))
 	if err != nil || exit.Code == nil || *exit.Code != 0 || !bytes.Equal(data, content) {
@@ -214,7 +214,7 @@ func TestJobCompletionPreservesProcessSubstitutionOutput(t *testing.T) {
 
 func TestPublicShellStartsFreshJobs(t *testing.T) {
 	root := t.TempDir()
-	job, err := shell.New().
+	job, err := (&shell.Shell{}).
 		Start(t.Context(), process.JobStart{
 			Script: "printf public",
 			Cwd:    root,
@@ -225,13 +225,13 @@ func TestPublicShellStartsFreshJobs(t *testing.T) {
 	}
 	defer func() {
 		job.Cancel()
-		job.Wait(context.Background())
+		_, _, _ = job.Wait(context.Background())
 	}()
 	var output []byte
 	for chunk := range job.Output() {
 		output = append(output, chunk.Bytes...)
 	}
-	exit, cwd := job.Wait(t.Context())
+	exit, cwd, _ := job.Wait(t.Context())
 	if exit.Code == nil || *exit.Code != 0 || cwd == nil || *cwd != root || string(output) != "public" ||
 		job.IsCancelled() {
 		t.Fatalf("exit %+v cwd %v output %q", exit, cwd, output)
@@ -248,7 +248,7 @@ func TestJobJoinsBackgroundTasksAndPreservesForegroundExitStatus(t *testing.T) {
 	}
 	for range job.Output() {
 	}
-	exit, _ := job.Wait(ctx)
+	exit, _, _ := job.Wait(ctx)
 	scope.Finish(ctx)
 	data, err := os.ReadFile(filepath.Join(root, "done"))
 	if err != nil || exit.Code == nil || *exit.Code != 7 || string(data) != "completed\n" {
