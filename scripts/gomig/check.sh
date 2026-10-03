@@ -49,28 +49,37 @@ if [[ -n "${rust}" ]]; then
   echo "rust in the Go tree: ${rust}" >&2
   false
 fi
-step='vet'
-go vet "$@"
-step='golangci-lint'
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --allow-parallel-runners "$@"
+# Vet and lint every operating system's files, not only the host's: a
+# Linux-only test file is never compiled on a Mac otherwise.
+for goos in darwin linux windows; do
+  step="vet ${goos}"
+  GOOS="${goos}" go vet "$@"
+  step="golangci-lint ${goos}"
+  GOOS="${goos}" go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --allow-parallel-runners "$@"
+done
 step='sumtype'
 go run github.com/alecthomas/go-check-sumtype/cmd/go-check-sumtype@v0.5.0 -default-signifies-exhaustive=false "$@"
 step='architecture'
 go run ./tools/archcheck
 step='cgo'
 go run ./tools/cgocheck
+# The race detector needs cgo on Linux; the tags keep the standard library's
+# pure-Go resolver and user lookup, as in the shipped build (testing.md).
+race_test() {
+  if [[ "$(go env GOHOSTOS)" == linux ]]; then
+    CGO_ENABLED=1 go test -race -tags netgo,osusergo "$@"
+  else
+    go test -race "$@"
+  fi
+}
 step='race tests'
-if [[ "$(go env GOHOSTOS)" == linux ]]; then
-  CGO_ENABLED=1 go test -race -tags netgo,osusergo "$@"
-else
-  go test -race "$@"
-fi
+race_test "$@"
 step='shell fork'
 # The patched interpreter is its own module, so ./... does not reach its
 # tests; a whole-tree check runs them too.
 for pattern in "$@"; do
   if [[ "${pattern}" == ./... ]]; then
-    (cd third_party/mvdan-sh && go test -race ./...)
+    (cd third_party/mvdan-sh && race_test ./...)
     break
   fi
 done
