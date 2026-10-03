@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -134,7 +135,8 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 			if prefix, ok := prefixes[scenario.name]; ok && !strings.HasPrefix(err.Error(), prefix) {
 				t.Fatalf("diagnostic %q lacks %q", err, prefix)
 			}
-			if !strings.Contains(err.Error(), `"a"`) && !strings.Contains(err.Error(), `"b"`) {
+			if !strings.Contains(err.Error(), strconv.Quote(string(a.ID))) &&
+				!strings.Contains(err.Error(), strconv.Quote(string(b.ID))) {
 				t.Fatalf("diagnostic does not name plugin: %v", err)
 			}
 		})
