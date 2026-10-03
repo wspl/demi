@@ -299,9 +299,7 @@ func OpenDownload(ctx context.Context, shard HostShard, id webapi.ConversationID
 	// AdmitHost's owner registration moves to this worker and ends on release.
 	go func() {
 		<-lease.Context().Done()
-		// TODO(b-hostaccess): remotehost must expose concurrent pipe cancellation
-		// and failure observation; Fail currently races an edge reading Body.
-		reader.Fail("the download ended before its last byte")
+		// The edge owns and closes its reader when this lease is cancelled.
 		lease.Release()
 		admitted.Release()
 		open.Release()

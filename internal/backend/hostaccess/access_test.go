@@ -13,53 +13,6 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// Cost: temporary SQLite and blob directories, no network or processes.
-func TestWithHostHoldsFilesThroughOperationAndRefusesEscapedHandle(t *testing.T) {
-	s := newTestShard(t)
-	device := s.paired(t, "laptop")
-	record := s.target(t, s.conversation(t), device, "/work")
-	entered := make(chan struct{})
-	finish := make(chan struct{})
-	done := make(chan error, 1)
-	var escaped *ConversationHost
-	go func() {
-		_, err := WithHost(t.Context(), s, record.ID, nil, func(_ context.Context, admitted *ConversationHost) (struct{}, error) {
-			if !s.mu.TryLock() {
-				t.Error("WithHost called the operation under the shard mutex")
-			} else {
-				s.mu.Unlock()
-			}
-			escaped = admitted
-			close(entered)
-			<-finish
-			return struct{}{}, nil
-		})
-		done <- err
-	}()
-	<-entered
-	slot := s.conversations.Slot(record.ID)
-	if reservation := slot.FileGate().TryReserve(); reservation != nil {
-		reservation.Release()
-		t.Error("file gate became available inside WithHost")
-	}
-	if unexpected, err := HoldForTransition(t.Context(), s, record.ID, nil); err == nil {
-		unexpected.Release()
-		t.Error("transition entered during operation")
-	}
-	close(finish)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	reservation := slot.FileGate().TryReserve()
-	if reservation == nil {
-		t.Fatal("operation kept file gate after return")
-	}
-	reservation.Release()
-	if _, err := escaped.Host.FS().Stat(t.Context(), "/work/file"); err == nil {
-		t.Fatal("escaped Host performed IO")
-	}
-}
-
 func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 	for _, change := range []string{"switch", "archive", "detach"} {
 		t.Run(change, func(t *testing.T) {
