@@ -34,12 +34,21 @@ func TestPageModulesAndRegistries(t *testing.T) {
 	for _, name := range []string{"Shared", "Nested", "State", "Params", "Other"} {
 		typ := types.NewNamed(types.NewTypeName(token.NoPos, pkg, name, nil), nil, nil)
 		named[name] = typ
-		d := &definition{name: name, key: typeKey(typ), typ: typ, marks: map[string]string{}, fields: map[string]map[string]string{}}
+		d := &definition{
+			name:   name,
+			key:    typeKey(typ),
+			typ:    typ,
+			marks:  map[string]string{},
+			fields: map[string]map[string]string{},
+		}
 		g.defs[d.key] = d
 		g.order = append(g.order, d.key)
 	}
 	named["Shared"].SetUnderlying(types.Typ[types.String])
-	g.defs[typeKey(named["Shared"])].marks = map[string]string{"root": "direction=receive output=protocol", "enum": "one two"}
+	g.defs[typeKey(named["Shared"])].marks = map[string]string{
+		"root": "direction=receive output=protocol",
+		"enum": "one two",
+	}
 	named["Nested"].SetUnderlying(types.NewStruct(nil, nil))
 	named["State"].SetUnderlying(types.NewStruct([]*types.Var{
 		types.NewVar(token.NoPos, pkg, "Nested", named["Nested"]),
@@ -77,10 +86,19 @@ func TestPageModulesAndRegistries(t *testing.T) {
 	root := t.TempDir()
 	for _, app := range []string{"web", "web-gallery"} {
 		dir := filepath.Join(root, "packages", app)
-		if err := os.MkdirAll(dir, 0700); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"unrelated":true,"dependencies":{"@demicodes/plugin-skills":"workspace:^","@demicodes/utils":"workspace:^","@demicodes/plugin-browser":"workspace:^","@demicodes/plugin-file-browser":"workspace:^"}}`), 0600); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(dir, "package.json"),
+			[]byte(
+				`{"unrelated":true,"dependencies":{`+
+					`"@demicodes/plugin-skills":"workspace:^","@demicodes/utils":"workspace:^",`+
+					`"@demicodes/plugin-browser":"workspace:^",`+
+					`"@demicodes/plugin-file-browser":"workspace:^"}}`,
+			),
+			0o600,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -94,7 +112,11 @@ func TestPageModulesAndRegistries(t *testing.T) {
 		for _, page := range selected {
 			pairs = append(pairs, [2]string{page.ID, page.Package})
 		}
-		want := [][2]string{{"browser", "@demicodes/plugin-browser"}, {"skills", "@demicodes/plugin-skills"}, {"file-browser", "@demicodes/plugin-file-browser"}}
+		want := [][2]string{
+			{"browser", "@demicodes/plugin-browser"},
+			{"skills", "@demicodes/plugin-skills"},
+			{"file-browser", "@demicodes/plugin-file-browser"},
+		}
 		if !reflect.DeepEqual(pairs, want) {
 			t.Fatalf("%s pages: %v, want %v", app, pairs, want)
 		}
@@ -102,7 +124,10 @@ func TestPageModulesAndRegistries(t *testing.T) {
 	if err := writeRegistries(root, pages, false); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"packages/web/src/plugins/generated/pages.ts", "packages/web-gallery/src/generated/pages.ts"} {
+	for _, path := range []string{
+		"packages/web/src/plugins/generated/pages.ts",
+		"packages/web-gallery/src/generated/pages.ts",
+	} {
 		data, err := os.ReadFile(filepath.Join(root, path))
 		if err != nil {
 			t.Fatal(err)
@@ -154,7 +179,18 @@ func TestPageOutputOwnership(t *testing.T) {
 		want    string
 	}{
 		{"unowned", nil, map[string][]byte{"plugin-orphan": nil}, "plugin-orphan"},
-		{"external", []pagemeta.Page{{ID: "external", Package: "@outside/page"}}, nil, "the page package @outside/page is not a workspace package of @demicodes/"},
+		{
+			"external",
+			[]pagemeta.Page{
+				{
+					ID:      "external",
+					Package: "@outside/page",
+				},
+			},
+			nil,
+			"the page package @outside/page is not a workspace package of " +
+				"@demicodes/",
+		},
 		{"missing output", fixturePages(t)[:1], map[string][]byte{}, "missing"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -168,10 +204,17 @@ func TestPageOutputOwnership(t *testing.T) {
 }
 
 func TestPackageDependenciesRejectInvalidValues(t *testing.T) {
-	for _, data := range []string{`null`, `{"dependencies":null}`, `{"dependencies":[]}`, `{"dependencies":{"pkg":null}}`, `{"dependencies":{"pkg":2}}`, `{} {}`} {
+	for _, data := range []string{
+		`null`,
+		`{"dependencies":null}`,
+		`{"dependencies":[]}`,
+		`{"dependencies":{"pkg":null}}`,
+		`{"dependencies":{"pkg":2}}`,
+		`{} {}`,
+	} {
 		t.Run(data, func(t *testing.T) {
 			root := t.TempDir()
-			if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(data), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(data), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := pagesOf(root, ".", nil); err == nil {
@@ -189,8 +232,26 @@ func TestPageSchemaRefusals(t *testing.T) {
 		want    string
 	}{
 		{"unnamed", []pagemeta.Schema{{Direction: "send", Value: []byte(`{"type":"object"}`)}}, "not a named type"},
-		{"bad definitions", []pagemeta.Schema{{Direction: "send", Value: []byte(`{"title":"Value","$defs":[]}`)}}, "$defs is not an object"},
-		{"null definitions", []pagemeta.Schema{{Direction: "send", Value: []byte(`{"title":"Value","$defs":null}`)}}, "$defs is not an object"},
+		{
+			"bad definitions",
+			[]pagemeta.Schema{
+				{
+					Direction: "send",
+					Value:     []byte(`{"title":"Value","$defs":[]}`),
+				},
+			},
+			"$defs is not an object",
+		},
+		{
+			"null definitions",
+			[]pagemeta.Schema{
+				{
+					Direction: "send",
+					Value:     []byte(`{"title":"Value","$defs":null}`),
+				},
+			},
+			"$defs is not an object",
+		},
 		{"conflicting name", []pagemeta.Schema{
 			{Direction: "send", Value: []byte(`{"title":"Value","type":"string"}`)},
 			{Direction: "receive", Value: []byte(`{"title":"Value","type":"number"}`)},
@@ -220,11 +281,25 @@ func TestManifestNamedScalarExport(t *testing.T) {
 	address := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Address", nil), types.Typ[types.String], nil)
 	hidden := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Hidden", nil), types.Typ[types.String], nil)
 	state := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "State", nil), types.NewStruct(
-		[]*types.Var{types.NewVar(token.NoPos, pkg, "Address", address), types.NewVar(token.NoPos, pkg, "Hidden", hidden)}, []string{`json:"address"`, `json:"hidden"`}), nil)
-	failures := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Failures", nil), types.NewMap(types.Typ[types.String], types.Typ[types.String]), nil)
+		[]*types.Var{
+			types.NewVar(token.NoPos, pkg, "Address", address),
+			types.NewVar(token.NoPos, pkg, "Hidden", hidden),
+		},
+		[]string{`json:"address"`, `json:"hidden"`},
+	), nil)
+	failures := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Failures", nil),
+		types.NewMap(types.Typ[types.String], types.Typ[types.String]),
+		nil,
+	)
 	web := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Web", nil), types.NewStruct(
-		[]*types.Var{types.NewVar(token.NoPos, pkg, "Address", address), types.NewVar(token.NoPos, pkg, "Hidden", hidden), types.NewVar(token.NoPos, pkg, "Failures", failures)},
-		[]string{`json:"address"`, `json:"hidden"`, `json:"failures"`}), nil)
+		[]*types.Var{
+			types.NewVar(token.NoPos, pkg, "Address", address),
+			types.NewVar(token.NoPos, pkg, "Hidden", hidden),
+			types.NewVar(token.NoPos, pkg, "Failures", failures),
+		},
+		[]string{`json:"address"`, `json:"hidden"`, `json:"failures"`},
+	), nil)
 	g := generator{defs: map[string]*definition{}}
 	for _, d := range []*definition{
 		{name: "Address", typ: address, marks: map[string]string{"codec": "string"}},

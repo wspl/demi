@@ -30,7 +30,17 @@ func TestSyntaxCategory(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			for _, input := range []string{"not json", `{"type":`, "", `{"x":[}`, `"\uD800"`, "\"\xff\"", `{} {}`, `{} trailing`, strings.Repeat("[", 128) + "0" + strings.Repeat("]", 128)} {
+			for _, input := range []string{
+				"not json",
+				`{"type":`,
+				"",
+				`{"x":[}`,
+				`"\uD800"`,
+				"\"\xff\"",
+				`{} {}`,
+				`{} trailing`,
+				strings.Repeat("[", 128) + "0" + strings.Repeat("]", 128),
+			} {
 				err := decode([]byte(input))
 				if !errors.Is(err, contract.ErrSyntax) {
 					t.Fatalf("%q: expected syntax category: %v", input, err)
@@ -39,7 +49,13 @@ func TestSyntaxCategory(t *testing.T) {
 					t.Fatal("field wrapping lost syntax category")
 				}
 			}
-			for _, input := range []string{`[1,2]`, `{"type":"nope"}`, `null`, `{"type":"ping","extra":true}`, `{"type":"ping","type":"ping"}`} {
+			for _, input := range []string{
+				`[1,2]`,
+				`{"type":"nope"}`,
+				`null`,
+				`{"type":"ping","extra":true}`,
+				`{"type":"ping","type":"ping"}`,
+			} {
 				err := decode([]byte(input))
 				if err == nil || errors.Is(err, contract.ErrSyntax) {
 					t.Fatalf("%s: expected invalid value: %v", input, err)
@@ -126,7 +142,8 @@ func TestNamedMapKeyZodFidelity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), `"values": z.record(z.string(), z.string().nullable())`) || !strings.Contains(string(data), `"ids": z.record(z.string(), z.boolean())`) {
+	if !strings.Contains(string(data), `"values": z.record(z.string(), z.string().nullable())`) ||
+		!strings.Contains(string(data), `"ids": z.record(z.string(), z.boolean())`) {
 		t.Fatalf("record differs from Rust emitter: %s", data)
 	}
 }

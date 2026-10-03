@@ -76,7 +76,16 @@ func TestDefaultFields(t *testing.T) {
 					t.Fatalf("schema rejects %s: %v", input, err)
 				}
 			}
-			for _, input := range []string{`{"items":null}`, `{"labels":null}`, `{"enabled":null}`, `{"count":null}`, `{"text":null}`, `{"count":11}`, `{"text":"longer"}`, `{"items":["a","b","c"]}`} {
+			for _, input := range []string{
+				`{"items":null}`,
+				`{"labels":null}`,
+				`{"enabled":null}`,
+				`{"count":null}`,
+				`{"text":null}`,
+				`{"count":11}`,
+				`{"text":"longer"}`,
+				`{"items":["a","b","c"]}`,
+			} {
 				if _, err := decode(wire(input)); err == nil {
 					t.Errorf("accepted %s", input)
 				}
@@ -109,7 +118,13 @@ func TestDefaultFields(t *testing.T) {
 		})
 	}
 	// Schemars emits Default::default() as metadata, without making null legal.
-	want := `{"additionalProperties":false,"properties":{"items":{"type":"array","items":{"type":"string"},"maxItems":2,"default":[]},"labels":{"type":"object","additionalProperties":{"type":"string"},"default":{}},"enabled":{"type":"boolean","default":false},"count":{"type":"integer","format":"uint32","minimum":0,"maximum":10,"default":0},"text":{"type":"string","maxLength":4,"default":""}},"title":"Defaults","type":"object"}`
+	want := `{"additionalProperties":false,"properties":{"items":{"type":"array",` +
+		`"items":{"type":"string"},"maxItems":2,"default":[]},` +
+		`"labels":{"type":"object","additionalProperties":{"type":"string"},` +
+		`"default":{}},"enabled":{"type":"boolean","default":false},` +
+		`"count":{"type":"integer","format":"uint32","minimum":0,"maximum":10,` +
+		`"default":0},"text":{"type":"string","maxLength":4,"default":""}},` +
+		`"title":"Defaults","type":"object"}`
 	if string(raw) != want {
 		t.Fatalf("schema = %s; want %s", raw, want)
 	}

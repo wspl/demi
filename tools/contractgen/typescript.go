@@ -105,81 +105,11 @@ func (g *generator) emitTS(name string) {
 		g.err = fmt.Errorf("codec has no explicit TypeScript mapping")
 		return
 	}
-	var code string
-	if has(d.marks, "union") {
-		if bounds(d.marks["union"])["content"] != "" {
-			g.err = fmt.Errorf("adjacent union is not supported in TypeScript")
-			return
-		}
-		tag := bounds(d.marks["union"])["tag"]
-		var variants []string
-		declarations := g.variants(name)
-		// Zod numbers recursive JSON definitions in traversal order. Rust's
-		// variants follow declaration order, including discriminated unions.
-		sort.SliceStable(declarations, func(i, j int) bool {
-			return declarations[i].typ.Obj().Pos() < declarations[j].typ.Obj().Pos()
-		})
-		for _, v := range declarations {
-			g.emitTS(v.key)
-			_, value, _ := strings.Cut(v.marks["variant"], " ")
-			if d.marks["union"] == "untagged" {
-				variants = append(variants, schema(v.name))
-			} else {
-				variants = append(variants, schema(v.name)+".extend({"+q(tag)+": z.literal("+tagLiteral(value)+")})")
-			}
-		}
-		if d.marks["union"] == "untagged" {
-			code = "z.union([" + strings.Join(variants, ", ") + "])"
-		} else {
-			code = "z.discriminatedUnion(" + q(tag) + ", [" + strings.Join(variants, ", ") + "])"
-		}
-	} else if st, ok := g.object(d); ok {
-		var fields []string
-		for i := 0; i < st.NumFields(); i++ {
-			f := st.Field(i)
-			if child := g.optionalObject(f); child != nil {
-				g.emitTS(child.key)
-				fields = append(fields, "..."+schema(child.name)+".partial().shape")
-				continue
-			}
-			opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
-			value, forward := g.tsType(f.Type(), d.fields[f.Name()])
-			if g.err != nil {
-				diagnosticName += "." + f.Name()
-				return
-			}
-			if has(d.fields[f.Name()], "nullable") {
-				value += ".nullable()"
-			}
-			if len(opts) > 1 || has(d.fields[f.Name()], "default") {
-				value += ".optional()"
-			}
-			if forward {
-				fields = append(fields, "get "+q(opts[0])+"() { return "+value+" }")
-			} else {
-				fields = append(fields, q(opts[0])+": "+value)
-			}
-		}
-		constructor := "z.object"
-		if !g.received[name] {
-			constructor = "z.strictObject"
-			if has(d.marks, "tolerant") {
-				g.err = fmt.Errorf("%s: send-only object must refuse unknown fields", name)
-			}
-		}
-		code = constructor + "({" + strings.Join(fields, ", ") + "})"
-	} else {
-		var forward bool
-		code, forward = g.tsType(d.typ.Underlying(), d.marks)
-		if forward {
-			g.err = fmt.Errorf("%s: recursion outside an object property", name)
-		}
+	code, ok := g.tsDefinition(d, name, &diagnosticName)
+	if !ok {
+		return
 	}
-	export := "export "
-	if !g.exportsTS(d) {
-		export = ""
-	}
-	fmt.Fprintf(&g.ts, "%sconst %s = %s\n%stype %s = z.infer<typeof %s>\n", export, schema(d.name), code, export, tsName(d.name), schema(d.name))
+	g.writeTSDeclaration(d, code)
 	g.active[name] = false
 	g.emitted[name] = true
 }
@@ -216,46 +146,149 @@ func (g *generator) tsType(t types.Type, m map[string]string) (string, bool) {
 		code = "z.record(z.string(), " + item + ")"
 		forward = f
 	case *types.Basic:
-		switch t.Kind() {
-		case types.String:
-			code = "z.string()"
-		case types.Bool:
-			code = "z.boolean()"
-		case types.Float32, types.Float64:
-			code = "z.number()"
-		case types.Int8:
-			code = "z.int().min(-128).max(127)"
-		case types.Uint8:
-			code = "z.int().min(0).max(255)"
-		case types.Int16:
-			code = "z.int().min(-32768).max(32767)"
-		case types.Uint16:
-			code = "z.int().min(0).max(65535)"
-		case types.Int32:
-			code = "z.int().min(-2147483648).max(2147483647)"
-		case types.Uint32:
-			code = "z.int().min(0).max(4294967295)"
-		case types.Int, types.Int64, types.Uint, types.Uint64:
-			b := bounds(m["range"])
-			maximum, err := strconv.ParseFloat(b["max"], 64)
-			if err != nil || maximum > 9007199254740991 {
-				g.err = fmt.Errorf("%s: integer read by JavaScript requires a safe maximum", t)
-			}
-			code = "z.int()"
-			if t.Info()&types.IsUnsigned != 0 {
-				code += ".min(0)"
-			} else {
-				minimum, err := strconv.ParseFloat(b["min"], 64)
-				if err != nil || minimum < -9007199254740991 {
-					g.err = fmt.Errorf("%s: integer read by JavaScript requires a safe minimum", t)
-				}
-			}
-		default:
-			g.err = fmt.Errorf("unsupported TypeScript scalar %s", t)
-		}
+		code = g.tsScalar(t, m)
 	default:
 		g.err = fmt.Errorf("unsupported TypeScript shape %s", t)
 	}
+	code = tsRules(t, m, code)
+	return code, forward
+}
+
+// Zod checks alphabet and padding length, but not unused padding bits. The
+// additional pattern matches the canonical bytes accepted by Go's Strict codec.
+const base64Schema = `z.base64().regex(/^(?:[A-Za-z0-9+/]{4}` +
+	`)*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/)`
+
+func (g *generator) tsUnion(d *definition, name string) string {
+	var code string
+	if bounds(d.marks["union"])["content"] != "" {
+		g.err = fmt.Errorf("adjacent union is not supported in TypeScript")
+		return ""
+	}
+	tag := bounds(d.marks["union"])["tag"]
+	var variants []string
+	declarations := g.variants(name)
+	// Zod numbers recursive JSON definitions in traversal order. Rust's
+	// variants follow declaration order, including discriminated unions.
+	sort.SliceStable(declarations, func(i, j int) bool {
+		return declarations[i].typ.Obj().Pos() < declarations[j].typ.Obj().Pos()
+	})
+	for _, v := range declarations {
+		g.emitTS(v.key)
+		_, value, _ := strings.Cut(v.marks["variant"], " ")
+		if d.marks["union"] == "untagged" {
+			variants = append(variants, schema(v.name))
+		} else {
+			variants = append(variants, schema(v.name)+".extend({"+quote(tag)+": z.literal("+tagLiteral(value)+")})")
+		}
+	}
+	if d.marks["union"] == "untagged" {
+		code = "z.union([" + strings.Join(variants, ", ") + "])"
+	} else {
+		code = "z.discriminatedUnion(" + quote(tag) + ", [" + strings.Join(variants, ", ") + "])"
+	}
+	return code
+}
+
+func (g *generator) tsObject(d *definition, st *types.Struct, name string, diagnosticName *string) string {
+	var code string
+	var fields []string
+	for i := 0; i < st.NumFields(); i++ {
+		f := st.Field(i)
+		if child := g.optionalObject(f); child != nil {
+			g.emitTS(child.key)
+			fields = append(fields, "..."+schema(child.name)+".partial().shape")
+			continue
+		}
+		opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
+		value, forward := g.tsType(f.Type(), d.fields[f.Name()])
+		if g.err != nil {
+			*diagnosticName += "." + f.Name()
+			return ""
+		}
+		if has(d.fields[f.Name()], "nullable") {
+			value += ".nullable()"
+		}
+		if len(opts) > 1 || has(d.fields[f.Name()], "default") {
+			value += ".optional()"
+		}
+		if forward {
+			fields = append(fields, "get "+quote(opts[0])+"() { return "+value+" }")
+		} else {
+			fields = append(fields, quote(opts[0])+": "+value)
+		}
+	}
+	constructor := "z.object"
+	if !g.received[name] {
+		constructor = "z.strictObject"
+		if has(d.marks, "tolerant") {
+			g.err = fmt.Errorf("%s: send-only object must refuse unknown fields", name)
+		}
+	}
+	code = constructor + "({" + strings.Join(fields, ", ") + "})"
+	return code
+}
+
+func (g *generator) tsScalar(t *types.Basic, m map[string]string) string {
+	var code string
+	switch t.Kind() {
+	case types.String:
+		code = "z.string()"
+	case types.Bool:
+		code = "z.boolean()"
+	case types.Float32, types.Float64:
+		code = "z.number()"
+	case types.Int8:
+		code = "z.int().min(-128).max(127)"
+	case types.Uint8:
+		code = "z.int().min(0).max(255)"
+	case types.Int16:
+		code = "z.int().min(-32768).max(32767)"
+	case types.Uint16:
+		code = "z.int().min(0).max(65535)"
+	case types.Int32:
+		code = "z.int().min(-2147483648).max(2147483647)"
+	case types.Uint32:
+		code = "z.int().min(0).max(4294967295)"
+	case types.Int, types.Int64, types.Uint, types.Uint64:
+		b := bounds(m["range"])
+		maximum, err := strconv.ParseFloat(b["max"], 64)
+		if err != nil || maximum > 9007199254740991 {
+			g.err = fmt.Errorf("%s: integer read by JavaScript requires a safe maximum", t)
+		}
+		code = "z.int()"
+		if t.Info()&types.IsUnsigned != 0 {
+			code += ".min(0)"
+		} else {
+			minimum, err := strconv.ParseFloat(b["min"], 64)
+			if err != nil || minimum < -9007199254740991 {
+				g.err = fmt.Errorf("%s: integer read by JavaScript requires a safe minimum", t)
+			}
+		}
+	default:
+		g.err = fmt.Errorf("unsupported TypeScript scalar %s", t)
+	}
+	return code
+}
+
+func (g *generator) writeTSDeclaration(d *definition, code string) {
+	export := "export "
+	if !g.exportsTS(d) {
+		export = ""
+	}
+	fmt.Fprintf(
+		&g.ts,
+		"%sconst %s = %s\n%stype %s = z.infer<typeof %s>\n",
+		export,
+		schema(d.name),
+		code,
+		export,
+		tsName(d.name),
+		schema(d.name),
+	)
+}
+
+func tsRules(t types.Type, m map[string]string, code string) string {
 	switch m["format"] {
 	case "trimmed":
 		code += ".trim()"
@@ -273,7 +306,7 @@ func (g *generator) tsType(t types.Type, m map[string]string) (string, bool) {
 	if values := m["enum"]; values != "" {
 		var vals []string
 		for _, v := range strings.Fields(values) {
-			vals = append(vals, q(v))
+			vals = append(vals, quote(v))
 		}
 		code = "z.enum([" + strings.Join(vals, ", ") + "])"
 	}
@@ -286,11 +319,33 @@ func (g *generator) tsType(t types.Type, m map[string]string) (string, bool) {
 		}
 	}
 	if pattern := m["pattern"]; pattern != "" {
-		code += ".regex(new RegExp(" + q(pattern) + ", \"u\"))"
+		code += ".regex(new RegExp(" + quote(pattern) + ", \"u\"))"
 	}
-	return code, forward
+
+	return code
 }
 
-// Zod checks alphabet and padding length, but not unused padding bits. The
-// additional pattern matches the canonical bytes accepted by Go's Strict codec.
-const base64Schema = `z.base64().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/)`
+// tsDefinition reports whether emission should continue; diagnostics retain the failing field name.
+func (g *generator) tsDefinition(d *definition, name string, diagnosticName *string) (string, bool) {
+	var code string
+	if has(d.marks, "union") {
+		code = g.tsUnion(d, name)
+		if code == "" {
+			return "", false
+		}
+		return code, true
+	}
+	if st, ok := g.object(d); ok {
+		code = g.tsObject(d, st, name, diagnosticName)
+		if code == "" {
+			return "", false
+		}
+		return code, true
+	}
+	var forward bool
+	code, forward = g.tsType(d.typ.Underlying(), d.marks)
+	if forward {
+		g.err = fmt.Errorf("%s: recursion outside an object property", name)
+	}
+	return code, true
+}

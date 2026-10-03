@@ -13,7 +13,14 @@ import (
 // below one second; both codecs must canonicalize before parent validation.
 func TestFormatEmail(t *testing.T) {
 	longest := strings.Repeat("a", 254-13) + "@example.test"
-	for _, input := range []string{"  Ana@Example.TEST \n", "a@b.co", "first.last+tag@sub.example.org", "o'neil_x-y@a-b.example", "K@example.test", "  " + strings.ToUpper(longest) + "  "} {
+	for _, input := range []string{
+		"  Ana@Example.TEST \n",
+		"a@b.co",
+		"first.last+tag@sub.example.org",
+		"o'neil_x-y@a-b.example",
+		"K@example.test",
+		"  " + strings.ToUpper(longest) + "  ",
+	} {
 		wire, err := json.Marshal(input)
 		if err != nil {
 			t.Fatal(err)
@@ -39,7 +46,21 @@ func TestFormatEmail(t *testing.T) {
 			t.Fatalf("constructor %q: %q, %v", input, parsed, err)
 		}
 	}
-	for _, input := range []string{"a" + longest, "invalid", ".ana@example.test", "ana..b@example.test", "ana.@example.test", "ana@example", "ana@-example.test", "ana@example.t", "ana@exa_mple.test", "an a@example.test", "anä@example.test", "İ@example.test", ""} {
+	for _, input := range []string{
+		"a" + longest,
+		"invalid",
+		".ana@example.test",
+		"ana..b@example.test",
+		"ana.@example.test",
+		"ana@example",
+		"ana@-example.test",
+		"ana@example.t",
+		"ana@exa_mple.test",
+		"an a@example.test",
+		"anä@example.test",
+		"İ@example.test",
+		"",
+	} {
 		wire, err := json.Marshal(input)
 		if err != nil {
 			t.Fatal(err)
@@ -151,7 +172,14 @@ func TestFormatHTTPURL(t *testing.T) {
 			}
 		})
 	}
-	for _, input := range []string{"", "api.openai.com/v1", "ftp://example.test/", "file:///etc", "https://", "https://example.com:65536/"} {
+	for _, input := range []string{
+		"",
+		"api.openai.com/v1",
+		"ftp://example.test/",
+		"file:///etc",
+		"https://",
+		"https://example.com:65536/",
+	} {
 		t.Run("refuse "+input, func(t *testing.T) {
 			wire, err := json.Marshal(input)
 			if err != nil {

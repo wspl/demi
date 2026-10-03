@@ -60,7 +60,7 @@ func (g *generator) emitJSONFields(d *definition, st *types.Struct, tag, variant
 	g.emitDefaultCollections(d, st)
 	g.line("if err:=v.Validate();err!=nil{return nil,err};fields:=[]contract.Field{}")
 	if tag != "" {
-		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", q(tag), tagLiteral(variant))
+		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", quote(tag), tagLiteral(variant))
 	}
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
@@ -84,7 +84,7 @@ func (g *generator) emitJSONFields(d *definition, st *types.Struct, tag, variant
 				g.line("if v.%s{", f.Name())
 			}
 		}
-		g.line("fields=append(fields,contract.Field{Name:%s,Value:v.%s})", q(opts[0]), f.Name())
+		g.line("fields=append(fields,contract.Field{Name:%s,Value:v.%s})", quote(opts[0]), f.Name())
 		if len(opts) > 1 {
 			g.line("}")
 		}

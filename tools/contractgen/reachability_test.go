@@ -32,7 +32,16 @@ func TestIndependentWireReachability(t *testing.T) {
 		_, encMsg := tc.value.(interface{ MarshalMsgpack() ([]byte, error) })
 		_, decMsg := tc.value.(interface{ UnmarshalMsgpack([]byte) error })
 		if encJSON != tc.json || decJSON != tc.json || encMsg != tc.msg || decMsg != tc.msg {
-			t.Errorf("%T: JSON=(%v,%v), MessagePack=(%v,%v); want (%v,%v)", tc.value, encJSON, decJSON, encMsg, decMsg, tc.json, tc.msg)
+			t.Errorf(
+				"%T: JSON=(%v,%v), MessagePack=(%v,%v); want (%v,%v)",
+				tc.value,
+				encJSON,
+				decJSON,
+				encMsg,
+				decMsg,
+				tc.json,
+				tc.msg,
+			)
 		}
 		if _, ok := tc.value.(interface{ Validate() error }); !ok {
 			t.Errorf("%T lost validation", tc.value)
@@ -79,12 +88,27 @@ func TestIndependentWireReachability(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"DecodeJSONOnly", "DecodeShared", "DecodeSharedMsgpack", "DecodePackedMsgpack", "DecodeChoiceMsgpack", "DecodeStandaloneMsgpack"} {
+	for _, name := range []string{
+		"DecodeJSONOnly",
+		"DecodeShared",
+		"DecodeSharedMsgpack",
+		"DecodePackedMsgpack",
+		"DecodeChoiceMsgpack",
+		"DecodeStandaloneMsgpack",
+	} {
 		if !names[name] {
 			t.Errorf("missing %s", name)
 		}
 	}
-	for _, name := range []string{"DecodeJSONOnlyMsgpack", "DecodePacked", "DecodeChoice", "ChoiceJSON", "StandaloneJSON", "DecodeUnreached", "DecodeUnreachedMsgpack"} {
+	for _, name := range []string{
+		"DecodeJSONOnlyMsgpack",
+		"DecodePacked",
+		"DecodeChoice",
+		"ChoiceJSON",
+		"StandaloneJSON",
+		"DecodeUnreached",
+		"DecodeUnreachedMsgpack",
+	} {
 		if names[name] {
 			t.Errorf("unexpected %s", name)
 		}

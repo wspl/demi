@@ -30,13 +30,18 @@ func startEcho(ctx context.Context) (*echoServer, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/messages", echoMessages)
-	echo := &echoServer{url: "http://" + listener.Addr().String() + "/v1", server: &http.Server{Handler: mux}, done: make(chan struct{})}
+	echo := &echoServer{
+		url:    "http://" + listener.Addr().String() + "/v1",
+		server: &http.Server{Handler: mux},
+		done:   make(chan struct{}),
+	}
 	go func() {
 		echo.err = echo.server.Serve(listener)
 		close(echo.done)
 	}()
 	return echo, nil
 }
+
 func (e *echoServer) close(_ context.Context) error {
 	err := e.server.Close()
 	<-e.done
@@ -71,40 +76,9 @@ func echoText(data []byte) (string, error) {
 		if message.Role == nil || (*message.Role != "user" && *message.Role != "assistant") {
 			return "", errors.New("invalid message role")
 		}
-		var text string
-		if err := json.Unmarshal(message.Content, &text); err != nil || string(message.Content) == "null" {
-			var blocks *[]json.RawMessage
-			if err := json.Unmarshal(message.Content, &blocks); err != nil {
-				return "", err
-			}
-			if blocks == nil {
-				return "", errors.New("message content is required")
-			}
-			var texts []string
-			for _, raw := range *blocks {
-				var tag struct {
-					Type *string `json:"type"`
-				}
-				if err := json.Unmarshal(raw, &tag); err != nil {
-					return "", err
-				}
-				if tag.Type == nil {
-					return "", errors.New("block type is required")
-				}
-				if *tag.Type == "text" {
-					var block struct {
-						Text *string `json:"text"`
-					}
-					if err := json.Unmarshal(raw, &block); err != nil {
-						return "", err
-					}
-					if block.Text == nil {
-						return "", errors.New("text block requires text")
-					}
-					texts = append(texts, *block.Text)
-				}
-			}
-			text = strings.Join(texts, "\n")
+		text, err := echoContent(message.Content)
+		if err != nil {
+			return "", err
 		}
 		if *message.Role == "user" {
 			last = text
@@ -147,19 +121,7 @@ func echoMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	send := func(name string, value any) bool {
-		data, err := contract.EncodeJSON(value)
-		if err != nil {
-			return false
-		}
-		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, data); err != nil {
-			return false
-		}
-		if f, ok := w.(http.Flusher); ok {
-			f.Flush()
-		}
-		return true
-	}
+	send := func(name string, value any) bool { return sendEchoEvent(w, name, value) }
 	if !send("message_start", struct {
 		Type    string      `json:"type"`
 		Message echoMessage `json:"message"`
@@ -202,4 +164,77 @@ func echoMessages(w http.ResponseWriter, r *http.Request) {
 	send("message_stop", struct {
 		Type string `json:"type"`
 	}{"message_stop"})
+}
+
+func echoContent(content json.RawMessage) (string, error) {
+	var text string
+	if err := json.Unmarshal(content, &text); err != nil || string(content) == "null" {
+		var err error
+		text, err = echoBlocks(content)
+		if err != nil {
+			return "", err
+		}
+	}
+	return text, nil
+}
+
+func echoBlocks(content json.RawMessage) (string, error) {
+	var blocks *[]json.RawMessage
+	if err := json.Unmarshal(content, &blocks); err != nil {
+		return "", err
+	}
+	if blocks == nil {
+		return "", errors.New("message content is required")
+	}
+	var texts []string
+	for _, raw := range *blocks {
+		text, err := echoBlock(raw)
+		if err != nil {
+			return "", err
+		}
+		if text != nil {
+			texts = append(texts, *text)
+		}
+	}
+	return strings.Join(texts, "\n"), nil
+}
+
+// echoBlock returns nil for non-text blocks so they contribute no text to the echo.
+func echoBlock(raw json.RawMessage) (*string, error) {
+	var tag struct {
+		Type *string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &tag); err != nil {
+		return nil, err
+	}
+	if tag.Type == nil {
+		return nil, errors.New("block type is required")
+	}
+	if *tag.Type == "text" {
+		var block struct {
+			Text *string `json:"text"`
+		}
+		if err := json.Unmarshal(raw, &block); err != nil {
+			return nil, err
+		}
+		if block.Text == nil {
+			return nil, errors.New("text block requires text")
+		}
+		return block.Text, nil
+	}
+	return nil, nil
+}
+
+func sendEchoEvent(w http.ResponseWriter, name string, value any) bool {
+	data, err := contract.EncodeJSON(value)
+	if err != nil {
+		return false
+	}
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, data); err != nil {
+		return false
+	}
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	return true
 }

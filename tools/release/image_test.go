@@ -29,7 +29,11 @@ import (
 func TestEmbeddedUVPinMatchesSource(t *testing.T) {
 	source := readFixture(t, filepath.Join("..", "..", "cloud-guest-image", "rootfs", "uv.json"))
 	if !bytes.Equal(uvPin, source) {
-		t.Fatal("tools/release/uv.json is stale; run CGO_ENABLED=0 GOFLAGS=-mod=readonly go generate ./tools/release from the repository root")
+		t.Fatal(
+			"tools/release/uv.json is stale; run CGO_ENABLED=0 " +
+				"GOFLAGS=-mod=readonly go generate ./tools/release from the repository " +
+				"root",
+		)
 	}
 }
 
@@ -47,14 +51,26 @@ func newImageFixture(t *testing.T) *imageFixture {
 	target := commandwire.Targets[2]
 	runners := filepath.Join(a.Root, "runners")
 	nativeFixture(t, a.Root, "demi-runner", []string{target}, "runner")
-	if err := a.packageNative(t.Context(), packageOptions{Package: "demi-runner", Output: runners, Targets: []string{target}}); err != nil {
+	if err := a.packageNative(
+		t.Context(),
+		packageOptions{Package: "demi-runner", Output: runners, Targets: []string{target}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	root := filepath.Join(a.Root, "rootfs")
-	writeFixture(t, inTree(root, "/var/lib/dpkg/status"), []byte("Package: base-files\nStatus: install ok installed\nVersion: 14ubuntu1\nDescription: ignored\n continued\n\nPackage: tini\nStatus: install ok installed\nVersion: 0.19.0-3\n\nPackage: removed\nStatus: deinstall ok config-files\nVersion: 1\n"))
+	writeFixture(
+		t,
+		inTree(root, "/var/lib/dpkg/status"),
+		[]byte(
+			"Package: base-files\nStatus: install ok installed\nVersion: 14ubuntu1\n"+
+				"Description: ignored\n continued\n\nPackage: tini\nStatus: install ok "+
+				"installed\nVersion: 0.19.0-3\n\nPackage: removed\nStatus: deinstall ok "+
+				"config-files\nVersion: 1\n",
+		),
+	)
 	writeFixture(t, inTree(root, "/usr/lib/os-release"), []byte("ID=ubuntu\nVERSION_ID=\"26.04\"\n"))
 	writeFixture(t, inTree(root, machinewire.InitPath), []byte("tini"))
-	if err := os.MkdirAll(inTree(root, "/usr/local/bin"), 0755); err != nil {
+	if err := os.MkdirAll(inTree(root, "/usr/local/bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	chrome := artifactstest.Zip(t, map[string][]byte{"chrome/chrome": []byte("Chrome")})
@@ -68,21 +84,40 @@ func newImageFixture(t *testing.T) *imageFixture {
 	program := filepath.Join(a.Root, "browser")
 	writeFixture(t, program, []byte("browser"))
 	release := filepath.Join(a.Root, "browser-release")
-	pin := browserop.BrowserRelease{Version: "153.0.8010.36", Platforms: []browserop.ReleasePlatform{{Target: target, URL: "https://example.test/chrome.zip", Size: digest.Size, SHA256: digest.SHA256, Executable: "chrome/chrome"}}}
-	if err := a.publishNative(t.Context(), packageOptions{Package: "demi-browser", Output: release}, map[string]string{target: program}, pin); err != nil {
+	pin := browserop.BrowserRelease{
+		Version: "153.0.8010.36",
+		Platforms: []browserop.ReleasePlatform{
+			{
+				Target:     target,
+				URL:        "https://example.test/chrome.zip",
+				Size:       digest.Size,
+				SHA256:     digest.SHA256,
+				Executable: "chrome/chrome",
+			},
+		},
+	}
+	if err := a.publishNative(
+		t.Context(),
+		packageOptions{Package: "demi-browser", Output: release},
+		map[string]string{target: program},
+		pin,
+	); err != nil {
 		t.Fatal(err)
 	}
 
 	claude := filepath.Join(a.Root, "claude-release")
 	nativeFixture(t, a.Root, "demi-claude-code", []string{target}, "claude")
-	if err := a.packageNative(t.Context(), packageOptions{Package: "demi-claude-code", Output: claude, Targets: []string{target}}); err != nil {
+	if err := a.packageNative(
+		t.Context(),
+		packageOptions{Package: "demi-claude-code", Output: claude, Targets: []string{target}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	var compressed bytes.Buffer
 	gzipWriter := gzip.NewWriter(&compressed)
 	writer := tar.NewWriter(gzipWriter)
 	for _, name := range []string{"uv/uv", "uv/uvx"} {
-		if err := writer.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(name))}); err != nil {
+		if err := writer.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(name))}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := io.WriteString(writer, name); err != nil {
@@ -95,7 +130,10 @@ func newImageFixture(t *testing.T) *imageFixture {
 	if err := gzipWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
-	server := artifactstest.Start(t, map[string]artifactstest.Answer{"/uv.tar.gz": artifactstest.OK(compressed.Bytes())})
+	server := artifactstest.Start(
+		t,
+		map[string]artifactstest.Answer{"/uv.tar.gz": artifactstest.OK(compressed.Bytes())},
+	)
 	path := filepath.Join(a.Root, "uv.tar.gz")
 	writeFixture(t, path, compressed.Bytes())
 	uv, err := measureExecutable(t.Context(), path)
@@ -104,8 +142,27 @@ func newImageFixture(t *testing.T) *imageFixture {
 	}
 	client := artifacts.NewClientAllowingHTTP()
 	t.Cleanup(client.Close)
-	uvPin := uvRelease{Version: "0.12.13", ARM64: uvArchive{URL: server.URL("/uv.tar.gz"), Size: uv.Size, SHA256: uv.SHA256, Executables: []string{"uv/uv", "uv/uvx"}}}
-	return &imageFixture{a, imageOptions{Root: root, Runners: runners, Packages: []string{release, claude}, Output: filepath.Join(a.Root, "image")}, uvPin, client, server}
+	uvPin := uvRelease{
+		Version: "0.12.13",
+		ARM64: uvArchive{
+			URL:         server.URL("/uv.tar.gz"),
+			Size:        uv.Size,
+			SHA256:      uv.SHA256,
+			Executables: []string{"uv/uv", "uv/uvx"},
+		},
+	}
+	return &imageFixture{
+		a,
+		imageOptions{
+			Root:     root,
+			Runners:  runners,
+			Packages: []string{release, claude},
+			Output:   filepath.Join(a.Root, "image"),
+		},
+		uvPin,
+		client,
+		server,
+	}
 }
 
 // fixtureImageArchive substitutes only the Linux host's GNU tar process. The
@@ -164,6 +221,7 @@ func fixtureImageArchive(ctx context.Context, root, path string) (err error) {
 		return err
 	})
 }
+
 func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 	f := newImageFixture(t)
 	var output bytes.Buffer
@@ -172,7 +230,14 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 	if runtime.GOOS == "linux" {
 		writer = f.app.writeArchive
 	}
-	if err := f.app.packageImage(t.Context(), f.options, machinewire.ArchitectureARM64, f.pin, f.client, writer); err != nil {
+	if err := f.app.packageImage(
+		t.Context(),
+		f.options,
+		machinewire.ArchitectureARM64,
+		f.pin,
+		f.client,
+		writer,
+	); err != nil {
 		t.Fatal(err)
 	}
 	manifestPath := filepath.Join(f.options.Output, "manifest.json")
@@ -181,10 +246,15 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if manifest.FormatVersion != 1 || manifest.OS != machinewire.OSLinux || manifest.Architecture != machinewire.ArchitectureARM64 || manifest.Ubuntu != "26.04" {
+	if manifest.FormatVersion != 1 || manifest.OS != machinewire.OSLinux ||
+		manifest.Architecture != machinewire.ArchitectureARM64 ||
+		manifest.Ubuntu != "26.04" {
 		t.Fatal(manifest)
 	}
-	if !reflect.DeepEqual(manifest.Packages, []machinewire.InstalledPackage{{Name: "base-files", Version: "14ubuntu1"}, {Name: "tini", Version: "0.19.0-3"}}) {
+	if !reflect.DeepEqual(
+		manifest.Packages,
+		[]machinewire.InstalledPackage{{Name: "base-files", Version: "14ubuntu1"}, {Name: "tini", Version: "0.19.0-3"}},
+	) {
 		t.Fatal(manifest.Packages)
 	}
 	if !reflect.DeepEqual(manifest.Runner, readRunner(t, f.options.Runners)) {
@@ -207,7 +277,9 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 		expectedExecutables[path] = digest
 	}
 	for i, directory := range f.options.Packages {
-		descriptor, err := commandwire.DecodePackageDescriptor(readFixture(t, filepath.Join(directory, "descriptor.json")))
+		descriptor, err := commandwire.DecodePackageDescriptor(
+			readFixture(t, filepath.Join(directory, "descriptor.json")),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -235,7 +307,10 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 	if !reflect.DeepEqual(manifest.Releases, releases) {
 		t.Fatal("package releases differ")
 	}
-	if !reflect.DeepEqual(manifest.Tools, []machinewire.StandaloneTool{{Name: "uv", Version: f.pin.Version, SHA256: f.pin.ARM64.SHA256}}) {
+	if !reflect.DeepEqual(
+		manifest.Tools,
+		[]machinewire.StandaloneTool{{Name: "uv", Version: f.pin.Version, SHA256: f.pin.ARM64.SHA256}},
+	) {
 		t.Fatal(manifest.Tools)
 	}
 	requireReleaseEntries(t, f.options.Output, "manifest.json", "rootfs.tar.zst")
@@ -316,7 +391,14 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 	if _, ok := found[runnerwire.ArtifactsPath+"/"+resource.SHA256+"/"+artifacts.ReceiptFile]; !ok {
 		t.Fatal("resource receipt missing from archive")
 	}
-	entry, err := artifacts.Installed(t.Context(), filepath.Join(inTree(f.options.Root, runnerwire.ArtifactsPath), resource.SHA256), artifacts.Archive{Digest: artifacts.Digest{Size: resource.Size, SHA256: resource.SHA256}, Entry: resource.Entry})
+	entry, err := artifacts.Installed(
+		t.Context(),
+		filepath.Join(inTree(f.options.Root, runnerwire.ArtifactsPath), resource.SHA256),
+		artifacts.Archive{
+			Digest: artifacts.Digest{Size: resource.Size, SHA256: resource.SHA256},
+			Entry:  resource.Entry,
+		},
+	)
 	if err != nil || entry == "" {
 		t.Fatalf("runner cannot reuse embedded resource: %s, %v", entry, err)
 	}
@@ -324,8 +406,19 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 		t.Fatal("uv downloaded more than once")
 	}
 }
+
 func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
-	for _, scenario := range []string{"runner", "command", "resource", "uv", "dpkg", "duplicate package", "missing target", "tini symlink", "archive failure"} {
+	for _, scenario := range []string{
+		"runner",
+		"command",
+		"resource",
+		"uv",
+		"dpkg",
+		"duplicate package",
+		"missing target",
+		"tini symlink",
+		"archive failure",
+	} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newImageFixture(t)
 			target := commandwire.Targets[2]
@@ -333,11 +426,17 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 			switch scenario {
 			case "runner":
 				release := readRunner(t, f.options.Runners)
-				writeFixture(t, filepath.Join(f.options.Runners, release.Release, target, "demi-runner"), []byte("wrong"))
+				writeFixture(
+					t,
+					filepath.Join(f.options.Runners, release.Release, target, "demi-runner"),
+					[]byte("wrong"),
+				)
 			case "command":
 				writeFixture(t, filepath.Join(f.options.Packages[0], target, "demi-browser"), []byte("BROWSER"))
 			case "resource":
-				descriptor, err := commandwire.DecodePackageDescriptor(readFixture(t, filepath.Join(f.options.Packages[0], "descriptor.json")))
+				descriptor, err := commandwire.DecodePackageDescriptor(
+					readFixture(t, filepath.Join(f.options.Packages[0], "descriptor.json")),
+				)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -346,7 +445,11 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 			case "uv":
 				f.pin.ARM64.SHA256 = strings.Repeat("0", 64)
 			case "dpkg":
-				writeFixture(t, inTree(f.options.Root, "/var/lib/dpkg/status"), []byte("Package: tini\nStatus: install ok half-configured\nVersion: 1\n"))
+				writeFixture(
+					t,
+					inTree(f.options.Root, "/var/lib/dpkg/status"),
+					[]byte("Package: tini\nStatus: install ok half-configured\nVersion: 1\n"),
+				)
 			case "duplicate package":
 				f.options.Packages = append(f.options.Packages, f.options.Packages[0])
 			case "missing target":
@@ -378,10 +481,12 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 			if err == nil {
 				t.Fatal("bad image accepted")
 			}
-			if scenario == "command" && (!errors.Is(err, artifacts.ErrDigest) || !strings.Contains(err.Error(), "demi-browser")) {
+			if scenario == "command" &&
+				(!errors.Is(err, artifacts.ErrDigest) || !strings.Contains(err.Error(), "demi-browser")) {
 				t.Fatalf("command corruption: %v", err)
 			}
-			if scenario == "dpkg" && err.Error() != `dpkg lists tini as "install ok half-configured": its installation did not finish` {
+			if scenario == "dpkg" &&
+				err.Error() != `dpkg lists tini as "install ok half-configured": its installation did not finish` {
 				t.Fatalf("unfinished package unnamed: %v", err)
 			}
 
@@ -392,7 +497,8 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 			if err != nil || len(stages) != 0 {
 				t.Fatalf("stage leaked: %v %v", stages, err)
 			}
-			if (scenario == "dpkg" || scenario == "duplicate package" || scenario == "missing target") && f.server.Requests() != 0 {
+			if (scenario == "dpkg" || scenario == "duplicate package" || scenario == "missing target") &&
+				f.server.Requests() != 0 {
 				t.Fatal("invalid input downloaded uv")
 			}
 		})

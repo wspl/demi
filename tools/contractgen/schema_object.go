@@ -57,8 +57,13 @@ func serializedSchema(value any, properties bool) any {
 		out := &schemaObject{}
 		for _, field := range value.fields {
 			child := field.Value
-			if properties || field.Name != "default" && field.Name != "examples" && !strings.HasPrefix(field.Name, "x-") {
-				noReorder := !properties && slices.Contains([]string{"properties", "patternProperties", "dependentSchemas", "$defs", "definitions"}, field.Name)
+			if properties ||
+				field.Name != "default" && field.Name != "examples" && !strings.HasPrefix(field.Name, "x-") {
+				noReorder := !properties &&
+					slices.Contains(
+						[]string{"properties", "patternProperties", "dependentSchemas", "$defs", "definitions"},
+						field.Name,
+					)
 				child = serializedSchema(child, noReorder)
 			}
 			out.set(field.Name, child)
@@ -75,7 +80,10 @@ func serializedSchema(value any, properties bool) any {
 				}
 				return len(start)
 			}
-			slices.SortStableFunc(out.fields, func(a, b contract.Field) int { return cmp.Compare(rank(a.Name), rank(b.Name)) })
+			slices.SortStableFunc(
+				out.fields,
+				func(a, b contract.Field) int { return cmp.Compare(rank(a.Name), rank(b.Name)) },
+			)
 		}
 		return out
 	case []any:

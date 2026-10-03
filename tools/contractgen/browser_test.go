@@ -88,7 +88,11 @@ func TestBrowserScalarVariants(t *testing.T) {
 			t.Fatalf("MessagePack %s: got %T %v; want %T", test.text, got, err, test.want)
 		}
 	}
-	for _, value := range []browser.NodeValue{nil, (*browser.NodeValueText)(nil), new(browser.NodeValueNumber(math.Inf(1)))} {
+	for _, value := range []browser.NodeValue{
+		nil,
+		(*browser.NodeValueText)(nil),
+		new(browser.NodeValueNumber(math.Inf(1))),
+	} {
 		if _, err := contract.EncodeJSON(browser.NodeValueJSON{Value: value}); err == nil {
 			t.Fatal("encoded invalid variant")
 		}
@@ -247,7 +251,8 @@ func TestBrowserFailureExportDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if value.Details == nil || value.Details.AssetsExportResult == nil || len(value.Details.Files) != 1 || value.Details.Files[0].MIMEType != "image/png" {
+	if value.Details == nil || value.Details.AssetsExportResult == nil || len(value.Details.Files) != 1 ||
+		value.Details.Files[0].MIMEType != "image/png" {
 		t.Fatalf("lost exported asset details: %+v", value)
 	}
 	got, err := contract.EncodeJSON(value)

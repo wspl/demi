@@ -11,7 +11,13 @@ func (g *generator) integerDecoder(t types.Type, marks map[string]string, msg bo
 		return g.decoder(t)
 	}
 	if p, ok := t.(*types.Pointer); ok {
-		return "func(b []byte)(" + g.typeName(t) + ",error){return contract.Pointer(b," + g.integerDecoder(p.Elem(), marks, msg) + ")}"
+		return "func(b []byte)(" + g.typeName(
+			t,
+		) + ",error){return contract.Pointer(b," + g.integerDecoder(
+			p.Elem(),
+			marks,
+			msg,
+		) + ")}"
 	}
 	helper := "Integer"
 	if msg {
@@ -19,5 +25,11 @@ func (g *generator) integerDecoder(t types.Type, marks map[string]string, msg bo
 	}
 	// Parse the underlying type so a named type's codec cannot recurse or refuse
 	// the alternate input spelling. Enclosing validation checks its named rules.
-	return "func(b []byte)(" + g.typeName(t) + ",error){v,err:=contract." + helper + "[" + g.typeName(t.Underlying()) + "](b);return " + g.typeName(t) + "(v),err}"
+	return "func(b []byte)(" + g.typeName(
+		t,
+	) + ",error){v,err:=contract." + helper + "[" + g.typeName(
+		t.Underlying(),
+	) + "](b);return " + g.typeName(
+		t,
+	) + "(v),err}"
 }

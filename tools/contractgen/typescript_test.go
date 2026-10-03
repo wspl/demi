@@ -16,7 +16,18 @@ func TestRecursiveTypeScriptUsesGetter(t *testing.T) {
 		types.NewVar(token.NoPos, pkg, "Children", types.NewSlice(tree)),
 	}, []string{`json:"name"`, `json:"children"`}))
 	key := typeKey(tree)
-	g := generator{defs: map[string]*definition{key: {name: "Tree", key: key, typ: tree, marks: map[string]string{"root": "direction=receive output=protocol"}, fields: map[string]map[string]string{}}}, order: []string{key}}
+	g := generator{
+		defs: map[string]*definition{
+			key: {
+				name:   "Tree",
+				key:    key,
+				typ:    tree,
+				marks:  map[string]string{"root": "direction=receive output=protocol"},
+				fields: map[string]map[string]string{},
+			},
+		},
+		order: []string{key},
+	}
 	sources, err := g.tsSources()
 	if err != nil {
 		t.Fatal(err)

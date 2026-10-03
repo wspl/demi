@@ -34,6 +34,7 @@ func TestDevChildProcess(t *testing.T) {
 		}
 	}
 }
+
 func TestDevProcessesStopAndAreReaped(t *testing.T) {
 	for _, mode := range []string{"backend", "manager"} {
 		t.Run(mode, func(t *testing.T) {

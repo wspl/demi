@@ -24,8 +24,10 @@ import (
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
-var commandPrograms = []string{"demi-file", "demi-browser", "demi-claude-code"}
-var defaultPrograms = append([]string{"demi-runner"}, commandPrograms...)
+var (
+	commandPrograms = []string{"demi-file", "demi-browser", "demi-claude-code"}
+	defaultPrograms = append([]string{"demi-runner"}, commandPrograms...)
+)
 
 func repository() (string, error) {
 	dir, err := os.Getwd()
@@ -56,6 +58,7 @@ func supported(program, target string) bool {
 		return false
 	}
 }
+
 func selectTargets(programs, named []string) ([]string, error) {
 	for _, p := range programs {
 		if !slices.Contains(append(slices.Clone(defaultPrograms), "demi-backend", "demi-machine-manager"), p) {
@@ -86,6 +89,7 @@ func selectTargets(programs, named []string) ([]string, error) {
 	}
 	return result, nil
 }
+
 func goTarget(target string) (string, string) {
 	arch := "amd64"
 	if strings.HasPrefix(target, "aarch64-") {
@@ -100,18 +104,21 @@ func goTarget(target string) (string, string) {
 	}
 	return platform, arch
 }
+
 func executableName(program, target string) string {
 	if strings.Contains(target, "windows") {
 		return program + ".exe"
 	}
 	return program
 }
+
 func (a *application) directory(named, fallback string) (string, error) {
 	if named == "" {
 		return filepath.Join(a.Root, fallback), nil
 	}
 	return filepath.Abs(named)
 }
+
 func (a *application) build(ctx context.Context, o buildOptions) error {
 	programs := o.Packages
 	if len(programs) == 0 {
@@ -130,7 +137,7 @@ func (a *application) build(ctx context.Context, o buildOptions) error {
 			return err
 		}
 		destination := filepath.Join(dir, target, "release")
-		if err := os.MkdirAll(destination, 0755); err != nil {
+		if err := os.MkdirAll(destination, 0o755); err != nil {
 			return err
 		}
 		seen := map[string]bool{}
@@ -139,7 +146,13 @@ func (a *application) build(ctx context.Context, o buildOptions) error {
 				continue
 			}
 			seen[p] = true
-			if err := a.buildGo(ctx, target, "./cmd/"+p, filepath.Join(destination, executableName(p, target)), true); err != nil {
+			if err := a.buildGo(
+				ctx,
+				target,
+				"./cmd/"+p,
+				filepath.Join(destination, executableName(p, target)),
+				true,
+			); err != nil {
 				return fmt.Errorf("the build for %s failed: %w", target, err)
 			}
 		}
@@ -177,6 +190,7 @@ func record(value any) ([]byte, error) {
 	output.WriteByte('\n')
 	return output.Bytes(), nil
 }
+
 func packageCatalog(program string) (string, []string) {
 	switch program {
 	case "demi-file":
@@ -193,6 +207,7 @@ func packageCatalog(program string) (string, []string) {
 		return "", nil
 	}
 }
+
 func (a *application) packageNative(ctx context.Context, o packageOptions) error {
 	targets, err := selectTargets([]string{o.Package}, o.Targets)
 	if err != nil {
@@ -215,27 +230,20 @@ func (a *application) packageNative(ctx context.Context, o packageOptions) error
 	}
 	return a.publishNative(ctx, o, sources, chrome)
 }
-func (a *application) publishNative(ctx context.Context, o packageOptions, sources map[string]string, chrome browserop.BrowserRelease) error {
+
+func (a *application) publishNative(
+	ctx context.Context,
+	o packageOptions,
+	sources map[string]string,
+	chrome browserop.BrowserRelease,
+) error {
 	output, err := filepath.Abs(o.Output)
 	if err != nil {
 		return err
 	}
-	targets := make(map[string]commandwire.PackageArtifact)
-	var files []artifacts.ReleaseFile
-	for _, target := range commandwire.Targets {
-		source, ok := sources[target]
-		if !ok {
-			continue
-		}
-		digest, err := artifacts.DigestFile(ctx, source, math.MaxUint64)
-		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("no build of %s for %s at %s: run go run ./tools/release native build first: %w", o.Package, target, source, err)
-		}
-		if err != nil {
-			return fmt.Errorf("%s: %w", source, err)
-		}
-		targets[target] = commandwire.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}
-		files = append(files, artifacts.ReleaseFile{Source: source, Path: filepath.Join(target, executableName(o.Package, target)), Digest: digest, Executable: true})
+	targets, files, err := nativeReleaseFiles(ctx, o, sources)
+	if err != nil {
+		return err
 	}
 	var value any
 	name := "release.json"
@@ -243,67 +251,52 @@ func (a *application) publishNative(ctx context.Context, o packageOptions, sourc
 	message := ""
 	switch o.Package {
 	case "demi-runner":
-		contents := runnerContents{runnerwire.Version, commandwire.Version, targets}
-		hash, err := commandwire.CanonicalDigest(contents)
+		value, directory, message, err = runnerReleaseRecord(output, targets)
 		if err != nil {
 			return err
 		}
-		release := runnerwire.RunnerRelease{Release: hash, Wire: contents.Wire, CommandProtocol: contents.CommandProtocol, Targets: targets}
-		if err := release.Validate(); err != nil {
-			return err
-		}
-		value = release
 		name = "manifest.json"
-		directory = filepath.Join(output, hash)
-		message = "Runner release: " + directory
 	case "demi-backend", "demi-machine-manager":
 		value = executableRelease{o.Package, version.Release, targets}
 		message = fmt.Sprintf("Release %s@%s\n%s", o.Package, version.Release, filepath.Join(output, name))
 	default:
-		id, operations := packageCatalog(o.Package)
-		if id == "" {
-			return fmt.Errorf("%s is not a command program", o.Package)
-		}
-		descriptor := commandwire.PackageDescriptor{ID: id, Version: version.Release, ProtocolVersion: commandwire.Version, Operations: operations, Targets: targets}
-		if o.Package == "demi-browser" {
-			cache, err := a.directory(o.Resources, ".cache/resources")
-			if err != nil {
-				return err
-			}
-			resources, resourceFiles, err := a.browserResources(ctx, chrome, targets, cache)
-			if err != nil {
-				return err
-			}
-			descriptor.Resources = resources
-			files = append(files, resourceFiles...)
-		}
-		if err := descriptor.Validate(); err != nil {
-			return err
-		}
-		value = descriptor
-		name = "descriptor.json"
-		digest, err := descriptor.Digest()
+		value, name, message, files, err = a.commandRelease(ctx, o, output, chrome, targets, files)
 		if err != nil {
 			return err
 		}
-		message = fmt.Sprintf("Command package %s@%s: %s\n%s", id, version.Release, digest, filepath.Join(output, name))
 	}
 	data, err := record(value)
 	if err != nil {
 		return err
 	}
-	if err := artifacts.PublishRelease(ctx, directory, artifacts.ReleaseRecord{Name: name, Bytes: data}, files); err != nil {
+	if err := artifacts.PublishRelease(
+		ctx,
+		directory,
+		artifacts.ReleaseRecord{Name: name, Bytes: data},
+		files,
+	); err != nil {
 		return err
 	}
 	if o.Package == "demi-runner" {
-		if err := artifacts.PublishBytes(ctx, filepath.Join(output, name), data, artifacts.Publication{Mode: artifacts.Replace, Durable: true}); err != nil {
+		if err := artifacts.PublishBytes(
+			ctx,
+			filepath.Join(output, name),
+			data,
+			artifacts.Publication{Mode: artifacts.Replace, Durable: true},
+		); err != nil {
 			return err
 		}
 	}
 	_, err = fmt.Fprintln(a.Out, message)
 	return err
 }
-func (a *application) browserResources(ctx context.Context, release browserop.BrowserRelease, selected map[string]commandwire.PackageArtifact, cache string) (map[string]commandwire.PackageResource, []artifacts.ReleaseFile, error) {
+
+func (a *application) browserResources(
+	ctx context.Context,
+	release browserop.BrowserRelease,
+	selected map[string]commandwire.PackageArtifact,
+	cache string,
+) (map[string]commandwire.PackageResource, []artifacts.ReleaseFile, error) {
 	targets := make(map[string]commandwire.ResourceArtifact)
 	var files []artifacts.ReleaseFile
 	client := artifacts.NewClient()
@@ -315,7 +308,7 @@ func (a *application) browserResources(ctx context.Context, release browserop.Br
 		source := filepath.Join(cache, p.SHA256)
 		digest := artifacts.Digest{Size: p.Size, SHA256: p.SHA256}
 		if _, err := os.Stat(source); errors.Is(err, os.ErrNotExist) {
-			if err := os.MkdirAll(cache, 0755); err != nil {
+			if err := os.MkdirAll(cache, 0o755); err != nil {
 				return nil, nil, err
 			}
 			if _, err := fmt.Fprintln(a.Err, "Downloading", p.URL); err != nil {
@@ -328,14 +321,25 @@ func (a *application) browserResources(ctx context.Context, release browserop.Br
 			return nil, nil, err
 		}
 		targets[p.Target] = commandwire.ResourceArtifact{SHA256: p.SHA256, Size: p.Size, Entry: p.Executable}
-		files = append(files, artifacts.ReleaseFile{Source: source, Path: filepath.Join("resources", p.SHA256), Digest: digest})
+		files = append(
+			files,
+			artifacts.ReleaseFile{Source: source, Path: filepath.Join("resources", p.SHA256), Digest: digest},
+		)
 	}
 	if len(targets) == 0 {
 		return nil, files, nil
 	}
-	return map[string]commandwire.PackageResource{browserop.Resource: {Title: release.Title(), Targets: targets}}, files, nil
+	return map[string]commandwire.PackageResource{
+		browserop.Resource: {Title: release.Title(), Targets: targets},
+	}, files, nil
 }
-func downloadArchive(ctx context.Context, client *artifacts.Client, url, destination string, digest artifacts.Digest) (err error) {
+
+func downloadArchive(
+	ctx context.Context,
+	client *artifacts.Client,
+	url, destination string,
+	digest artifacts.Digest,
+) (err error) {
 	stage, err := artifacts.NewStaged(ctx, destination, artifacts.Publication{Mode: artifacts.Replace, Durable: true})
 	if err != nil {
 		return err
@@ -345,4 +349,113 @@ func downloadArchive(ctx context.Context, client *artifacts.Client, url, destina
 		return err
 	}
 	return stage.Publish(ctx)
+}
+
+func nativeReleaseFiles(
+	ctx context.Context,
+	o packageOptions,
+	sources map[string]string,
+) (map[string]commandwire.PackageArtifact, []artifacts.ReleaseFile, error) {
+	targets := make(map[string]commandwire.PackageArtifact)
+	var files []artifacts.ReleaseFile
+	for _, target := range commandwire.Targets {
+		source, ok := sources[target]
+		if !ok {
+			continue
+		}
+		digest, err := artifacts.DigestFile(ctx, source, math.MaxUint64)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, fmt.Errorf(
+				"no build of %s for %s at %s: run go run ./tools/release native build first: %w",
+				o.Package,
+				target,
+				source,
+				err,
+			)
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", source, err)
+		}
+		targets[target] = commandwire.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}
+		files = append(
+			files,
+			artifacts.ReleaseFile{
+				Source:     source,
+				Path:       filepath.Join(target, executableName(o.Package, target)),
+				Digest:     digest,
+				Executable: true,
+			},
+		)
+	}
+
+	return targets, files, nil
+}
+
+func (a *application) commandRelease(
+	ctx context.Context,
+	o packageOptions,
+	output string,
+	chrome browserop.BrowserRelease,
+	targets map[string]commandwire.PackageArtifact,
+	files []artifacts.ReleaseFile,
+) (any, string, string, []artifacts.ReleaseFile, error) {
+	var value any
+	var name, message string
+	id, operations := packageCatalog(o.Package)
+	if id == "" {
+		return nil, "", "", nil, fmt.Errorf("%s is not a command program", o.Package)
+	}
+	descriptor := commandwire.PackageDescriptor{
+		ID:              id,
+		Version:         version.Release,
+		ProtocolVersion: commandwire.Version,
+		Operations:      operations,
+		Targets:         targets,
+	}
+	if o.Package == "demi-browser" {
+		cache, err := a.directory(o.Resources, ".cache/resources")
+		if err != nil {
+			return nil, "", "", nil, err
+		}
+		resources, resourceFiles, err := a.browserResources(ctx, chrome, targets, cache)
+		if err != nil {
+			return nil, "", "", nil, err
+		}
+		descriptor.Resources = resources
+		files = append(files, resourceFiles...)
+	}
+	if err := descriptor.Validate(); err != nil {
+		return nil, "", "", nil, err
+	}
+	value = descriptor
+	name = "descriptor.json"
+	digest, err := descriptor.Digest()
+	if err != nil {
+		return nil, "", "", nil, err
+	}
+	message = fmt.Sprintf("Command package %s@%s: %s\n%s", id, version.Release, digest, filepath.Join(output, name))
+	return value, name, message, files, nil
+}
+
+func runnerReleaseRecord(output string, targets map[string]commandwire.PackageArtifact) (any, string, string, error) {
+	var value any
+	var directory, message string
+	contents := runnerContents{runnerwire.Version, commandwire.Version, targets}
+	hash, err := commandwire.CanonicalDigest(contents)
+	if err != nil {
+		return nil, "", "", err
+	}
+	release := runnerwire.RunnerRelease{
+		Release:         hash,
+		Wire:            contents.Wire,
+		CommandProtocol: contents.CommandProtocol,
+		Targets:         targets,
+	}
+	if err := release.Validate(); err != nil {
+		return nil, "", "", err
+	}
+	value = release
+	directory = filepath.Join(output, hash)
+	message = "Runner release: " + directory
+	return value, directory, message, nil
 }

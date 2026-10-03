@@ -21,12 +21,27 @@ func TestIntegerStrings(t *testing.T) {
 		valid bool
 		value uint64
 	}{
-		{"0", true, 0}, {"17", true, 17}, {"+17", true, 17}, {"00017", true, 17}, {"+000", true, 0},
+		{"0", true, 0},
+		{"17", true, 17},
+		{"+17", true, 17},
+		{"00017", true, 17},
+		{"+000", true, 0},
 		{"18446744073709551615", true, ^uint64(0)},
-		{"18446744073709551616", false, 0}, {"-0", false, 0}, {"-1", false, 0},
-		{"", false, 0}, {"+", false, 0}, {"++1", false, 0}, {" 1", false, 0}, {"1 ", false, 0},
-		{"\t1", false, 0}, {"1\n", false, 0}, {"1_0", false, 0}, {"0x10", false, 0},
-		{"1.0", false, 0}, {"1e2", false, 0}, {"１２", false, 0},
+		{"18446744073709551616", false, 0},
+		{"-0", false, 0},
+		{"-1", false, 0},
+		{"", false, 0},
+		{"+", false, 0},
+		{"++1", false, 0},
+		{" 1", false, 0},
+		{"1 ", false, 0},
+		{"\t1", false, 0},
+		{"1\n", false, 0},
+		{"1_0", false, 0},
+		{"0x10", false, 0},
+		{"1.0", false, 0},
+		{"1e2", false, 0},
+		{"１２", false, 0},
 	} {
 		t.Run(tc.text, func(t *testing.T) {
 			for _, packed := range []bool{false, true} {
@@ -70,7 +85,13 @@ func TestIntegerStrings(t *testing.T) {
 			}
 		})
 	}
-	for _, raw := range []string{`{"commandId":null}`, `{"commandId":1,"shellId":null}`, `{"commandId":1.0}`, `{"commandId":-1}`, `{"commandId":18446744073709551616}`} {
+	for _, raw := range []string{
+		`{"commandId":null}`,
+		`{"commandId":1,"shellId":null}`,
+		`{"commandId":1.0}`,
+		`{"commandId":-1}`,
+		`{"commandId":18446744073709551616}`,
+	} {
 		if _, err := integers.DecodeInput([]byte(raw)); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}

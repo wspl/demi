@@ -22,7 +22,8 @@ func TestMain(m *testing.M) {
 		directory := filepath.Dir(filepath.Dir(executable))
 		_, lockErr := os.Stat(filepath.Join(directory, ".cargo-lock"))
 		program, linkErr := os.Readlink(filepath.Join(directory, "demi-runner"))
-		if lockErr != nil || linkErr != nil || program != os.Getenv("ACCEPT_EXPECT_PROGRAM") || strings.Join(os.Args[1:], " ") != "a_filter --include-ignored" {
+		if lockErr != nil || linkErr != nil || program != os.Getenv("ACCEPT_EXPECT_PROGRAM") ||
+			strings.Join(os.Args[1:], " ") != "a_filter --include-ignored" {
 			fmt.Println("test fixture::relocation ... FAILED\ntest result: FAILED. 0 passed; 1 failed; 0 ignored;")
 			os.Exit(1)
 		}
@@ -40,7 +41,7 @@ func TestAcceptanceRelocatesAndSubstitutes(t *testing.T) {
 	old := filepath.Join(ref, "build", "crate", "old", "out")
 	newest := filepath.Join(ref, "build", "crate", "new", "out")
 	for _, dir := range []string{ref, replacements, old, newest} {
-		if err := os.MkdirAll(dir, 0700); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -48,14 +49,18 @@ func TestAcceptanceRelocatesAndSubstitutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{filepath.Join(ref, "demi-runner"), filepath.Join(replacements, "demi-runner"), filepath.Join(newest, "sample-abc")} {
+	for _, path := range []string{
+		filepath.Join(ref, "demi-runner"),
+		filepath.Join(replacements, "demi-runner"),
+		filepath.Join(newest, "sample-abc"),
+	} {
 		if err := os.Symlink(executable, path); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// The older executable fails immediately if newest selection is broken.
 	older := filepath.Join(old, "sample-def")
-	if err := os.WriteFile(older, []byte("#!/bin/sh\nexit 99\n"), 0700); err != nil {
+	if err := os.WriteFile(older, []byte("#!/bin/sh\nexit 99\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(older, time.Unix(1, 0), time.Unix(1, 0)); err != nil {
@@ -63,7 +68,11 @@ func TestAcceptanceRelocatesAndSubstitutes(t *testing.T) {
 	}
 	t.Setenv("ACCEPT_EXPECT_PROGRAM", filepath.Join(replacements, "demi-runner"))
 	var output bytes.Buffer
-	err = run(t.Context(), []string{"-ref", ref, "-programs", replacements, "-suite", "sample", "--", "a_filter", "--include-ignored"}, &output)
+	err = run(
+		t.Context(),
+		[]string{"-ref", ref, "-programs", replacements, "-suite", "sample", "--", "a_filter", "--include-ignored"},
+		&output,
+	)
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, output.String())
 	}
@@ -81,7 +90,11 @@ func TestRejectsScriptReplacement(t *testing.T) {
 	if err := os.Symlink(executable, filepath.Join(ref, "demi-runner")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(replacements, "demi-runner"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(replacements, "demi-runner"),
+		[]byte("#!/bin/sh\nexit 0\n"),
+		0o700,
+	); err != nil {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
@@ -97,9 +110,28 @@ func TestSummaries(t *testing.T) {
 		name, suite, input, want string
 		fails                    bool
 	}{
-		{"rust", "runner", "test result: ok. 14 passed; 0 failed; 2 ignored;", "runner: 14 passed, 0 failed, 2 ignored", false},
-		{"rust failure", "runner", "test jobs::cancel ... FAILED\ntest result: FAILED. 13 passed; 1 failed; 0 ignored;", "FAIL jobs::cancel", true},
-		{"bun", "web", " 248 pass\n 29 fail\n 2 skip\n(fail) client > reconnect\n", "web: 248 passed, 29 failed, 2 ignored\n  FAIL client > reconnect", true},
+		{
+			"rust",
+			"runner",
+			"test result: ok. 14 passed; 0 failed; 2 ignored;",
+			"runner: 14 passed, 0 failed, 2 ignored",
+			false,
+		},
+		{
+			"rust failure",
+			"runner",
+			"test jobs::cancel ... FAILED\ntest result: FAILED. 13 passed; 1 failed;" +
+				" 0 ignored;",
+			"FAIL jobs::cancel",
+			true,
+		},
+		{
+			"bun",
+			"web",
+			" 248 pass\n 29 fail\n 2 skip\n(fail) client > reconnect\n",
+			"web: 248 passed, 29 failed, 2 ignored\n  FAIL client > reconnect",
+			true,
+		},
 		{"crash", "runner", "aborted", "counts unavailable", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -113,8 +145,10 @@ func TestSummaries(t *testing.T) {
 
 func TestWebUsesPackageTestArguments(t *testing.T) {
 	t.Chdir(t.TempDir())
-	const manifest = `{"scripts":{"test":"bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel ./packages/web/src"}}`
-	if err := os.WriteFile("package.json", []byte(manifest), 0600); err != nil {
+	const manifest = `{"scripts":{"test":"bun run contracts && ` +
+		`DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions ` +
+		`development --parallel ./packages/web/src"}}`
+	if err := os.WriteFile("package.json", []byte(manifest), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	args, err := webArgs()
@@ -124,7 +158,11 @@ func TestWebUsesPackageTestArguments(t *testing.T) {
 	if got := strings.Join(args, " "); got != "scripts/test.ts --conditions development --parallel ./packages/web/src" {
 		t.Fatal(got)
 	}
-	if err := os.WriteFile("package.json", []byte(`{"scripts":{"test":"bun scripts/different.ts"}}`), 0600); err != nil {
+	if err := os.WriteFile(
+		"package.json",
+		[]byte(`{"scripts":{"test":"bun scripts/different.ts"}}`),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := webArgs(); err == nil {

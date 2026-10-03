@@ -22,12 +22,14 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-const devEmail = "developer@example.test"
-const devPassword = "development"
+const (
+	devEmail    = "developer@example.test"
+	devPassword = "development"
+)
 
 func (a *application) dev(ctx context.Context, o devOptions) (err error) {
 	programs := filepath.Join(a.Root, ".cache/dev-programs")
-	if err := os.MkdirAll(programs, 0755); err != nil {
+	if err := os.MkdirAll(programs, 0o755); err != nil {
 		return err
 	}
 	target, err := commandwire.HostTarget()
@@ -39,7 +41,13 @@ func (a *application) dev(ctx context.Context, o devOptions) (err error) {
 		if name == "scripted-machines" {
 			source = "./internal/backend/backendtest/testdata/scripted-machines"
 		}
-		if err := a.buildGo(ctx, string(target), source, filepath.Join(programs, executableName(name, string(target))), false); err != nil {
+		if err := a.buildGo(
+			ctx,
+			string(target),
+			source,
+			filepath.Join(programs, executableName(name, string(target))),
+			false,
+		); err != nil {
 			return fmt.Errorf("the workspace build failed: %w", err)
 		}
 	}
@@ -91,15 +99,28 @@ func writeDevConfig(ctx context.Context, root string) (string, error) {
 }
 
 func seedDev(ctx context.Context, client *http.Client, origin, echo string) (string, error) {
-	if _, err := postDev(ctx, client, origin+"/api/setup", webapi.SetupRequest{Email: devEmail, Password: devPassword}); err != nil {
+	if _, err := postDev(
+		ctx,
+		client,
+		origin+"/api/setup",
+		webapi.SetupRequest{Email: devEmail, Password: devPassword},
+	); err != nil {
 		return "", err
 	}
 	endpoint, err := webapi.ParseEndpointURL(echo)
 	if err != nil {
 		return "", err
 	}
-	models := webapi.ConfiguredModels{{ID: "echo", DisplayName: "Echo", ContextWindow: 200000, ThinkingEfforts: []webapi.ThinkingEffort{}}}
-	entry := &webapi.CreateProviderCustom{ProviderType: "anthropic", Label: "Echo", APIKey: "sk-ant-echo", BaseURL: &endpoint, Models: &models}
+	models := webapi.ConfiguredModels{
+		{ID: "echo", DisplayName: "Echo", ContextWindow: 200000, ThinkingEfforts: []webapi.ThinkingEffort{}},
+	}
+	entry := &webapi.CreateProviderCustom{
+		ProviderType: "anthropic",
+		Label:        "Echo",
+		APIKey:       "sk-ant-echo",
+		BaseURL:      &endpoint,
+		Models:       &models,
+	}
 	data, err := postDev(ctx, client, origin+"/api/providers", entry)
 	if err != nil {
 		return "", err
@@ -110,6 +131,7 @@ func seedDev(ctx context.Context, client *http.Client, origin, echo string) (str
 	}
 	return string(answer.Provider.ID), nil
 }
+
 func postDev(ctx context.Context, client *http.Client, url string, value any) ([]byte, error) {
 	data, err := contract.EncodeJSON(value)
 	if err != nil {
@@ -134,6 +156,7 @@ func postDev(ctx context.Context, client *http.Client, url string, value any) ([
 	}
 	return body, nil
 }
+
 func devClient() (*http.Client, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -143,6 +166,7 @@ func devClient() (*http.Client, error) {
 	transport.Proxy = nil
 	return &http.Client{Jar: jar, Transport: transport}, nil
 }
+
 func answeringDev(ctx context.Context, client *http.Client, origin string, backend *devProcess) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

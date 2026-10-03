@@ -23,8 +23,23 @@ func TestSchemaGoOnlyChecks(t *testing.T) {
 		decode         func([]byte) error
 		good, rejected string
 	}{
-		{"scalar", schemacheck.CheckedTextJSONSchema(), `{"minLength":1,"title":"CheckedText","type":"string"}`, decodeSchemaValue(schemacheck.DecodeCheckedText), `"allowed"`, `"reserved"`},
-		{"embedded", schemacheck.EnvelopeJSONSchema(), `{"additionalProperties":false,"properties":{"value":{"type":"string"}},"required":["value"],"title":"Envelope","type":"object"}`, decodeSchemaValue(schemacheck.DecodeEnvelope), `{"value":"allowed"}`, `{"value":"reserved"}`},
+		{
+			"scalar",
+			schemacheck.CheckedTextJSONSchema(),
+			`{"minLength":1,"title":"CheckedText","type":"string"}`,
+			decodeSchemaValue(schemacheck.DecodeCheckedText),
+			`"allowed"`,
+			`"reserved"`,
+		},
+		{
+			"embedded",
+			schemacheck.EnvelopeJSONSchema(),
+			`{"additionalProperties":false,"properties":{"value":{"type":"string"}}` +
+				`,"required":["value"],"title":"Envelope","type":"object"}`,
+			decodeSchemaValue(schemacheck.DecodeEnvelope),
+			`{"value":"allowed"}`,
+			`{"value":"reserved"}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if string(tc.schema) != tc.want {
@@ -46,7 +61,11 @@ func TestSchemaGoOnlyChecks(t *testing.T) {
 // Schemars omits a skipped None default, makes Option fields optional, and adds
 // null to their type. Exact schema comparison; local CPU budget <1 second.
 func TestNullableOptionalSchema(t *testing.T) {
-	want := `{"additionalProperties":false,"properties":{"option":{"type":["string","null"],"maxLength":4},"double":{"type":["string","null"],"maxLength":4},"items":{"type":["array","null"],"items":{"type":"string"}}},"title":"Patch","type":"object"}`
+	want := `{"additionalProperties":false,` +
+		`"properties":{"option":{"type":["string","null"],"maxLength":4},` +
+		`"double":{"type":["string","null"],"maxLength":4},` +
+		`"items":{"type":["array","null"],"items":{"type":"string"}}},` +
+		`"title":"Patch","type":"object"}`
 	if string(presence.PatchJSONSchema()) != want {
 		t.Fatalf("optional-null schema: %s; want %s", presence.PatchJSONSchema(), want)
 	}
@@ -144,7 +163,12 @@ func TestStringCodecSchema(t *testing.T) {
 	if err != nil || string(data) != `{"value":"x"}` {
 		t.Fatalf("codec encoding: %s, %v", data, err)
 	}
-	if _, err := schemacheck.DecodeCodecEnvelope([]byte(`{"value":"reserved"}`)); !errors.Is(err, schemacheck.ErrReserved) {
+	if _, err := schemacheck.DecodeCodecEnvelope(
+		[]byte(`{"value":"reserved"}`),
+	); !errors.Is(
+		err,
+		schemacheck.ErrReserved,
+	) {
 		t.Fatalf("lost codec error: %v", err)
 	}
 }

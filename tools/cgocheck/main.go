@@ -74,7 +74,14 @@ func run(ctx context.Context, dir string) error {
 func checkProgram(ctx context.Context, dir, program, goos, goarch string) error {
 	cmd := exec.CommandContext(ctx, "go", "list", "-e", "-deps", "-json", program)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0", "GOFLAGS=-mod=readonly", "GOWORK=off")
+	cmd.Env = append(
+		os.Environ(),
+		"GOOS="+goos,
+		"GOARCH="+goarch,
+		"CGO_ENABLED=0",
+		"GOFLAGS=-mod=readonly",
+		"GOWORK=off",
+	)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()

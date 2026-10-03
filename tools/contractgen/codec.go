@@ -43,9 +43,15 @@ func checkCodec(d *definition, msgpack bool) error {
 			{"Unmarshal" + format, types.NewPointer(d.typ), types.NewTuple(bytes), types.NewTuple(err)},
 		} {
 			signature := types.NewSignatureType(nil, nil, nil, method.params, method.results, false)
-			iface := types.NewInterfaceType([]*types.Func{types.NewFunc(token.NoPos, nil, method.name, signature)}, nil).Complete()
+			iface := types.NewInterfaceType([]*types.Func{types.NewFunc(token.NoPos, nil, method.name, signature)}, nil).
+				Complete()
 			if !types.Implements(method.receiver, iface) {
-				return fmt.Errorf("codec requires %s to implement %s%s", method.receiver, method.name, types.TypeString(signature, nil)[4:])
+				return fmt.Errorf(
+					"codec requires %s to implement %s%s",
+					method.receiver,
+					method.name,
+					types.TypeString(signature, nil)[4:],
+				)
 			}
 		}
 	}

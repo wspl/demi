@@ -36,39 +36,9 @@ func pageTypes(page pagemeta.Page, protocol map[string]bool) (map[string]bool, e
 	names := map[string]bool{}
 	definitions := map[string]any{}
 	for _, schema := range page.Schemas {
-		var root map[string]json.RawMessage
-		if err := json.Unmarshal(schema.Value, &root); err != nil {
-			return nil, fmt.Errorf("plugin %s: schema: %w", page.ID, err)
-		}
-		var defs map[string]json.RawMessage
-		if raw, ok := root["$defs"]; ok {
-			if err := json.Unmarshal(raw, &defs); err != nil || defs == nil {
-				return nil, fmt.Errorf("plugin %s: a schema's $defs is not an object: %s", page.ID, raw)
-			}
-			delete(root, "$defs")
-		}
-		collected := make([]string, 0, len(defs)+1)
-		for name, definition := range defs {
-			if err := insertPageDefinition(page.ID, definitions, name, definition); err != nil {
-				return nil, err
-			}
-			collected = append(collected, name)
-		}
-		if string(root["type"]) != `"null"` {
-			var title string
-			if err := json.Unmarshal(root["title"], &title); err != nil || title == "" {
-				return nil, fmt.Errorf("plugin %s: a manifest schema is not a named type: %s", page.ID, schema.Value)
-			}
-			delete(root, "title")
-			// Tool metadata is not a wire value: member order is irrelevant here.
-			definition, err := json.Marshal(root)
-			if err != nil {
-				return nil, err
-			}
-			if err := insertPageDefinition(page.ID, definitions, title, definition); err != nil {
-				return nil, err
-			}
-			collected = append(collected, title)
+		collected, err := pageSchemaTypes(page, schema, definitions)
+		if err != nil {
+			return nil, err
 		}
 		for _, name := range collected {
 			if !protocol[name] {
@@ -118,7 +88,13 @@ func checkPage(page pagemeta.Page, actual, protocol map[string]bool) error {
 		case !emitted:
 			return fmt.Errorf("plugin %s: type %s is missing from generated output", page.ID, name)
 		case want != got:
-			return fmt.Errorf("plugin %s: type %s has wrong direction (receive=%t, manifest receive=%t)", page.ID, name, got, want)
+			return fmt.Errorf(
+				"plugin %s: type %s has wrong direction (receive=%t, manifest receive=%t)",
+				page.ID,
+				name,
+				got,
+				want,
+			)
 		}
 	}
 	return nil
@@ -147,38 +123,11 @@ func (g *generator) pageSources(pages []pagemeta.Page, sources map[string][]byte
 			}
 			source = []byte(tsHeader)
 		}
-		var suffix strings.Builder
-		suffix.WriteString("\n/** The plugin this package is the page of. */\n")
-		fmt.Fprintf(&suffix, "export const PLUGIN = %s\n", q(page.ID))
-		for _, constant := range page.Constants {
-			text := strings.ReplaceAll(constant.Description, "*/", "*\\/")
-			lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
-			if text == "" {
-				lines = nil
-			}
-			if len(lines) == 1 {
-				fmt.Fprintf(&suffix, "/** %s */\n", strings.TrimSuffix(lines[0], "\r"))
-			} else {
-				suffix.WriteString("/**\n")
-				for _, line := range lines {
-					line = strings.TrimSuffix(line, "\r")
-					if line == "" {
-						suffix.WriteString(" *\n")
-					} else {
-						fmt.Fprintf(&suffix, " * %s\n", line)
-					}
-				}
-				suffix.WriteString(" */\n")
-			}
-			// Metadata uses encoding/json, which re-escapes U+2028/U+2029.
-			// Restore serde_json spelling without decoding objects into maps.
-			value, err := contract.EncodeJSON(constant.Value)
-			if err != nil {
-				return fmt.Errorf("plugin %s constant %s: %w", page.ID, constant.Name, err)
-			}
-			fmt.Fprintf(&suffix, "export const %s = %s\n", constant.Name, value)
+		suffix, err := pageSuffix(page)
+		if err != nil {
+			return err
 		}
-		sources[output] = append(source, suffix.String()...)
+		sources[output] = append(source, suffix...)
 	}
 	for output := range sources {
 		if strings.HasPrefix(output, "plugin-") && !owned[output] {
@@ -245,9 +194,12 @@ func registryModule(pages []pagemeta.Page) []byte {
 	source.WriteString(tsHeader)
 	source.WriteString("import type { AnyPluginPage } from \"@demicodes/plugin-sdk\"\n")
 	for _, page := range pages {
-		fmt.Fprintf(&source, "import %s from %s\n", pageBinding(page.ID), q(page.Package))
+		fmt.Fprintf(&source, "import %s from %s\n", pageBinding(page.ID), quote(page.Package))
 	}
-	source.WriteString("\n/** The plugin pages this app shows, in the order the backend registers their plugins (`plugin-pages.md` § Registration). */\n")
+	source.WriteString(
+		"\n/** The plugin pages this app shows, in the order the backend " +
+			"registers their plugins (`plugin-pages.md` § Registration). */\n",
+	)
 	source.WriteString("export const PLUGIN_PAGES: readonly AnyPluginPage[] = [\n")
 	for _, page := range pages {
 		fmt.Fprintf(&source, "  %s,\n", pageBinding(page.ID))
@@ -267,7 +219,7 @@ func writeRegistries(repository string, registered []pagemeta.Page, verify bool)
 		}
 		path := filepath.Join(repository, app.directory, app.output)
 		if !verify {
-			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return err
 			}
 		}
@@ -276,4 +228,77 @@ func writeRegistries(repository string, registered []pagemeta.Page, verify bool)
 		}
 	}
 	return nil
+}
+
+func pageSchemaTypes(page pagemeta.Page, schema pagemeta.Schema, definitions map[string]any) ([]string, error) {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(schema.Value, &root); err != nil {
+		return nil, fmt.Errorf("plugin %s: schema: %w", page.ID, err)
+	}
+	var defs map[string]json.RawMessage
+	if raw, ok := root["$defs"]; ok {
+		if err := json.Unmarshal(raw, &defs); err != nil || defs == nil {
+			return nil, fmt.Errorf("plugin %s: a schema's $defs is not an object: %s", page.ID, raw)
+		}
+		delete(root, "$defs")
+	}
+	collected := make([]string, 0, len(defs)+1)
+	for name, definition := range defs {
+		if err := insertPageDefinition(page.ID, definitions, name, definition); err != nil {
+			return nil, err
+		}
+		collected = append(collected, name)
+	}
+	if string(root["type"]) != `"null"` {
+		var title string
+		if err := json.Unmarshal(root["title"], &title); err != nil || title == "" {
+			return nil, fmt.Errorf("plugin %s: a manifest schema is not a named type: %s", page.ID, schema.Value)
+		}
+		delete(root, "title")
+		// Tool metadata is not a wire value: member order is irrelevant here.
+		definition, err := json.Marshal(root)
+		if err != nil {
+			return nil, err
+		}
+		if err := insertPageDefinition(page.ID, definitions, title, definition); err != nil {
+			return nil, err
+		}
+		collected = append(collected, title)
+	}
+	return collected, nil
+}
+
+func pageSuffix(page pagemeta.Page) (string, error) {
+	var suffix strings.Builder
+	suffix.WriteString("\n/** The plugin this package is the page of. */\n")
+	fmt.Fprintf(&suffix, "export const PLUGIN = %s\n", quote(page.ID))
+	for _, constant := range page.Constants {
+		text := strings.ReplaceAll(constant.Description, "*/", "*\\/")
+		lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+		if text == "" {
+			lines = nil
+		}
+		if len(lines) == 1 {
+			fmt.Fprintf(&suffix, "/** %s */\n", strings.TrimSuffix(lines[0], "\r"))
+		} else {
+			suffix.WriteString("/**\n")
+			for _, line := range lines {
+				line = strings.TrimSuffix(line, "\r")
+				if line == "" {
+					suffix.WriteString(" *\n")
+				} else {
+					fmt.Fprintf(&suffix, " * %s\n", line)
+				}
+			}
+			suffix.WriteString(" */\n")
+		}
+		// Metadata uses encoding/json, which re-escapes U+2028/U+2029.
+		// Restore serde_json spelling without decoding objects into maps.
+		value, err := contract.EncodeJSON(constant.Value)
+		if err != nil {
+			return "", fmt.Errorf("plugin %s constant %s: %w", page.ID, constant.Name, err)
+		}
+		fmt.Fprintf(&suffix, "export const %s = %s\n", constant.Name, value)
+	}
+	return suffix.String(), nil
 }

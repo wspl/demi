@@ -122,7 +122,13 @@ func TestUntaggedRunnerCorpus(t *testing.T) {
 			}
 		})
 	}
-	for _, doc := range []string{`{}`, `{"path":""}`, `{"path":"/x","url":"https://x.test"}`, `{"url":null}`, `{"path":"/x","unknown":true}`} {
+	for _, doc := range []string{
+		`{}`,
+		`{"path":""}`,
+		`{"path":"/x","url":"https://x.test"}`,
+		`{"url":null}`,
+		`{"path":"/x","unknown":true}`,
+	} {
 		if _, err := unions.DecodeArtifactLocation([]byte(doc)); err == nil {
 			t.Fatalf("accepted %s", doc)
 		}
@@ -200,7 +206,11 @@ func TestUntaggedManifestTrees(t *testing.T) {
 			}
 		})
 	}
-	for _, doc := range []string{`{"name":"x","summary":"x"}`, `{"name":"x","summary":"x","subcommands":[],"kind":"rpc"}`, `{"name":"x","summary":"x","subcommands":null}`} {
+	for _, doc := range []string{
+		`{"name":"x","summary":"x"}`,
+		`{"name":"x","summary":"x","subcommands":[],"kind":"rpc"}`,
+		`{"name":"x","summary":"x","subcommands":null}`,
+	} {
 		if _, err := unions.DecodeNode([]byte(doc)); err == nil {
 			t.Fatalf("accepted %s", doc)
 		}
@@ -268,7 +278,13 @@ func TestAbsentCollections(t *testing.T) {
 			t.Fatalf("accepted %s", doc)
 		}
 	}
-	data, err := contract.EncodeMsgpackObject([]contract.Field{{Name: "resources", Value: map[string]string{}}, {Name: "items", Value: []string{}}, {Name: "bytes", Value: []byte{}}})
+	data, err := contract.EncodeMsgpackObject(
+		[]contract.Field{
+			{Name: "resources", Value: map[string]string{}},
+			{Name: "items", Value: []string{}},
+			{Name: "bytes", Value: []byte{}},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +313,6 @@ func TestAbsentCollections(t *testing.T) {
 	if _, err := json.Marshal(leaf); err == nil {
 		t.Fatal("pointer to nil collection must not encode null")
 	}
-
 }
 
 // One loader invocation protects discovery, TypeScript tags and public exports;
@@ -314,12 +329,28 @@ func TestUnionGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"z.literal(true)", "z.literal(false)", "const failureSchema", "const bytesSchema", "export const wireApiSchema", "export type WireApi", "export const blockIdSchema", "export type BlockId", "export const httpFailureRecordSchema", "export type HttpFailureRecord"} {
+	for _, want := range []string{
+		"z.literal(true)",
+		"z.literal(false)",
+		"const failureSchema",
+		"const bytesSchema",
+		"export const wireApiSchema",
+		"export type WireApi",
+		"export const blockIdSchema",
+		"export type BlockId",
+		"export const httpFailureRecordSchema",
+		"export type HttpFailureRecord",
+	} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("missing %s", want)
 		}
 	}
-	for _, bad := range []string{"export const failureSchema", "export const bytesSchema", "compiledSchema", "z.literal(\"true\")"} {
+	for _, bad := range []string{
+		"export const failureSchema",
+		"export const bytesSchema",
+		"compiledSchema",
+		"z.literal(\"true\")",
+	} {
 		if strings.Contains(string(data), bad) {
 			t.Errorf("unexpected %s", bad)
 		}
@@ -328,7 +359,11 @@ func TestUnionGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"export const PREVIEW_TYPES", "export const ATTACHMENT_FILE_EXTENSIONS: readonly string[]", "export const VIDEO_FILE_EXTENSIONS: readonly string[]"} {
+	for _, want := range []string{
+		"export const PREVIEW_TYPES",
+		"export const ATTACHMENT_FILE_EXTENSIONS: readonly string[]",
+		"export const VIDEO_FILE_EXTENSIONS: readonly string[]",
+	} {
 		if !strings.Contains(string(tables), want) {
 			t.Errorf("missing %s", want)
 		}
@@ -351,7 +386,9 @@ func TestUnionExportedMethods(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if value.ID() != "document_id" || value.CreatedAt() != "2026-10-03T00:00:00.000Z" || value.Model() != "test" || value.IsEditable() != tc.editable {
+			if value.ID() != "document_id" || value.CreatedAt() != "2026-10-03T00:00:00.000Z" ||
+				value.Model() != "test" ||
+				value.IsEditable() != tc.editable {
 				t.Fatalf("decoded union lost its accessors: %#v", value)
 			}
 			encoded, err := (unions.DocumentJSON{Value: value}).MarshalJSON()

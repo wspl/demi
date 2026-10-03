@@ -114,7 +114,10 @@ func TestAdjacentReplyRefusals(t *testing.T) {
 			t.Fatalf("standalone union: %s %v", got, err)
 		}
 	}
-	for _, text := range []string{`{"op":"exists","op":"exists","result":true}`, `{"op":"exists","result":true,"result":false}`} {
+	for _, text := range []string{
+		`{"op":"exists","op":"exists","result":true}`,
+		`{"op":"exists","result":true,"result":false}`,
+	} {
 		if _, err := wire.DecodeFsResult([]byte(text)); err == nil {
 			t.Fatal("accepted duplicate adjacent key")
 		}
@@ -126,7 +129,34 @@ func TestRunnerTimestampForms(t *testing.T) {
 		value int64
 		size  int
 	}{
-		{0, 6}, {4294967295000, 6}, {1, 10}, {4294967296000, 10}, {17179869183999, 10}, {17179869184000, 15}, {-1, 15}, {math.MaxInt64, 15}, {-9223372036854775000, 15},
+		{
+			0,
+			6,
+		}, {
+			4294967295000,
+			6,
+		}, {
+			1,
+			10,
+		}, {
+			4294967296000,
+			10,
+		}, {
+			17179869183999,
+			10,
+		}, {
+			17179869184000,
+			15,
+		}, {
+			-1,
+			15,
+		}, {
+			math.MaxInt64,
+			15,
+		}, {
+			-9223372036854775000,
+			15,
+		},
 	} {
 		t.Run(strconv.FormatInt(tc.value, 10), func(t *testing.T) {
 			data, err := wire.Timestamp(tc.value).MarshalMsgpack()
@@ -160,8 +190,17 @@ func TestRunnerTimestampForms(t *testing.T) {
 		}
 	}
 	for _, data := range [][]byte{
-		{0xd6, 0, 0, 0, 0, 0}, {0xd4, 0xff, 0}, {0xd6, 0xff, 0, 0, 0}, {0xd6, 0xff, 0, 0, 0, 0, 0}, {0}, {0xc0},
-		ext(0, 1000000000), ext(math.MaxInt64, 0), ext(math.MinInt64, 0), ext(math.MaxInt64/1000, 808000000), ext(math.MinInt64/1000-1, 999000000),
+		{0xd6, 0, 0, 0, 0, 0},
+		{0xd4, 0xff, 0},
+		{0xd6, 0xff, 0, 0, 0},
+		{0xd6, 0xff, 0, 0, 0, 0, 0},
+		{0},
+		{0xc0},
+		ext(0, 1000000000),
+		ext(math.MaxInt64, 0),
+		ext(math.MinInt64, 0),
+		ext(math.MaxInt64/1000, 808000000),
+		ext(math.MinInt64/1000-1, 999000000),
 	} {
 		if _, err := wire.DecodeTimestampMsgpack(data); err == nil {
 			t.Fatalf("accepted invalid timestamp %x", data)
@@ -184,7 +223,38 @@ func TestOpaqueRunnerJSON(t *testing.T) {
 	if got := string(decoded.(*wire.Manifest).Manifest); got != want {
 		t.Fatalf("opaque value changed\ngot  %s\nwant %s", got, want)
 	}
-	for _, raw := range [][]byte{{0xc4, 0}, {0xd6, 0xff, 0, 0, 0, 0}, {0x81, 1, 2}, {0x82, 0xa1, 'a', 1, 0xa1, 'a', 2}, {0xc0, 0xc0}} {
+	for _, raw := range [][]byte{
+		{
+			0xc4,
+			0,
+		},
+		{
+			0xd6,
+			0xff,
+			0,
+			0,
+			0,
+			0,
+		},
+		{
+			0x81,
+			1,
+			2,
+		},
+		{
+			0x82,
+			0xa1,
+			'a',
+			1,
+			0xa1,
+			'a',
+			2,
+		},
+		{
+			0xc0,
+			0xc0,
+		},
+	} {
 		if _, err := contract.MsgpackJSON(raw); err == nil {
 			t.Fatalf("accepted non-JSON MessagePack %x", raw)
 		}
@@ -208,7 +278,8 @@ func TestAdjacentSchema(t *testing.T) {
 		t.Fatalf("flattened schema: %s", wire.FsOKJSONSchema())
 	}
 	for _, branch := range schema.AllOf[0].OneOf {
-		if len(branch.Properties) != 2 || branch.Properties["op"] == nil || branch.Properties["result"] == nil || branch.AdditionalProperties != nil {
+		if len(branch.Properties) != 2 || branch.Properties["op"] == nil || branch.Properties["result"] == nil ||
+			branch.AdditionalProperties != nil {
 			t.Fatalf("invalid adjacent branch: %+v", branch)
 		}
 	}
