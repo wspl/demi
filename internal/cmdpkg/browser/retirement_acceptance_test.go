@@ -4,12 +4,15 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -17,6 +20,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
+	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/cdp"
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/tabs"
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/tabs/tabstest"
 	"github.com/wspl/demi/internal/commandwire"
@@ -39,6 +43,16 @@ func profileOwner(t *testing.T, profile string) int {
 		t.Fatalf("profile owner %q: %v", link, err)
 	}
 	return number
+}
+
+// profileRuntime reads Chrome's socket location to identify its private runtime directory.
+func profileRuntime(t *testing.T, profile string) string {
+	t.Helper()
+	socket, err := os.Readlink(filepath.Join(profile, "SingletonSocket"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Dir(filepath.Dir(socket))
 }
 
 // markedBrowserProcesses identifies only this fixture's Chrome and detached helpers.
@@ -101,6 +115,67 @@ func processGroup(t *testing.T, group int) []int {
 	return found
 }
 
+// chromeProfiles observes live Chrome profiles belonging to this test process.
+func chromeProfiles(t *testing.T) map[int]string {
+	t.Helper()
+	data, err := exec.CommandContext(t.Context(), "ps", "-axo", "pid=,ppid=").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	children := make(map[int]bool)
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if len(fields) != 2 {
+			t.Fatalf("invalid process row %q", line)
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		parent, err := strconv.Atoi(fields[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if parent == os.Getpid() {
+			children[pid] = true
+		}
+	}
+	base := tabs.HostDirectories().Profiles
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles := make(map[int]string)
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), "demi-profile-") {
+			continue
+		}
+		path := filepath.Join(base, entry.Name())
+		lock, err := os.Readlink(filepath.Join(path, "SingletonLock"))
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := strings.LastIndexByte(lock, '-')
+		if at < 0 {
+			t.Fatalf("invalid profile owner %q", lock)
+		}
+		owner, err := strconv.Atoi(lock[at+1:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if children[owner] {
+			profiles[owner] = path
+		}
+	}
+	return profiles
+}
+
 func TestConversationReleaseCancelsOnlyItsCommandsAndRetiresProfile(t *testing.T) {
 	first := chromeFixture(t)
 	second := *first
@@ -108,23 +183,41 @@ func TestConversationReleaseCancelsOnlyItsCommandsAndRetiresProfile(t *testing.T
 	firstTab := first.open(t, "fixture.html")
 	profile := filepath.Dir(first.environment(t).DownloadDirectory())
 	leader := profileOwner(t, profile)
-	if len(processGroup(t, leader)) < 2 {
+	if profiles := chromeProfiles(t); len(profiles) != 1 || profiles[leader] != profile {
+		t.Fatal(profiles)
+	}
+	descendants := processGroup(t, leader)
+	if len(descendants) < 2 {
 		t.Fatal("Chrome has no helpers")
 	}
 	secondTab := second.open(t, "fixture.html")
 	otherProfile := filepath.Dir(second.environment(t).DownloadDirectory())
+	profiles := chromeProfiles(t)
+	if len(profiles) != 2 {
+		t.Fatal(profiles)
+	}
+	delete(profiles, leader)
 	expectValue(t, callLifecycle(t, first.s, &commandwire.ConversationQuery{}), struct {
 		Conversations []string `json:"conversations"`
 	}{[]string{"acceptance", "second-conversation"}})
 	waiting := first.start(t, "wait", browserArgs(t, `{"tab":$0,"url":"**/never","timeout":30000}`, firstTab))
 	first.waitBusy(t, firstTab)
-	callLifecycle(t, first.s, &commandwire.ConversationRelease{Conversation: first.conversation})
+	expectValue(t, callLifecycle(t, first.s, &commandwire.ConversationRelease{Conversation: first.conversation}), json.RawMessage("{}"))
+	expectValue(t, callLifecycle(t, first.s, &commandwire.ConversationQuery{}), json.RawMessage(`{"conversations":["second-conversation"]}`))
 	requireCancelled(t, waiting.join(t))
 	if _, err := os.Stat(profile); !os.IsNotExist(err) {
 		t.Fatalf("profile survived: %v", err)
 	}
 	if group := processGroup(t, leader); len(group) != 0 {
 		t.Fatal(group)
+	}
+	for _, pid := range descendants {
+		if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+			t.Fatalf("Chrome helper %d survived: %v", pid, err)
+		}
+	}
+	if after := chromeProfiles(t); !maps.Equal(after, profiles) {
+		t.Fatal(after)
 	}
 	if _, err := os.Stat(otherProfile); err != nil {
 		t.Fatal(err)
@@ -139,14 +232,20 @@ func TestConversationReleaseCancelsOnlyItsCommandsAndRetiresProfile(t *testing.T
 	if fresh := first.open(t, "fixture.html"); fresh == firstTab {
 		t.Fatal("reused tab")
 	}
+	freshProfile := filepath.Dir(first.environment(t).DownloadDirectory())
 	for _, id := range []string{first.conversation, second.conversation} {
-		callLifecycle(t, first.s, &commandwire.ConversationRelease{Conversation: id})
+		expectValue(t, callLifecycle(t, first.s, &commandwire.ConversationRelease{Conversation: id}), json.RawMessage("{}"))
 	}
 	expectValue(t, callLifecycle(t, first.s, &commandwire.ConversationQuery{}), struct {
 		Conversations []string `json:"conversations"`
 	}{[]string{}})
-	if _, err := os.Stat(otherProfile); !os.IsNotExist(err) {
-		t.Fatal(err)
+	if profiles := chromeProfiles(t); len(profiles) != 0 {
+		t.Fatal(profiles)
+	}
+	for _, profile := range []string{otherProfile, freshProfile} {
+		if _, err := os.Stat(profile); !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -252,11 +351,7 @@ func TestChromeProcessTreeAndProfileRetireTogether(t *testing.T) {
 			}
 			profile := filepath.Dir(env.DownloadDirectory())
 			leader := profileOwner(t, profile)
-			socket, err := os.Readlink(filepath.Join(profile, "SingletonSocket"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			runtimeDirectory := filepath.Dir(filepath.Dir(socket))
+			runtimeDirectory := profileRuntime(t, profile)
 			if filepath.Dir(runtimeDirectory) != tabs.HostDirectories().Runtime {
 				t.Fatal(runtimeDirectory)
 			}
@@ -266,10 +361,16 @@ func TestChromeProcessTreeAndProfileRetireTogether(t *testing.T) {
 					t.Fatalf("%s %v %v", path, info, err)
 				}
 			}
-			if group := processGroup(t, leader); len(group) < 2 {
-				t.Fatal(group)
+			owned := append(processGroup(t, leader), markedBrowserProcesses(t, runtimeDirectory)...)
+			slices.Sort(owned)
+			owned = slices.Compact(owned)
+			if len(owned) < 2 {
+				t.Fatal("Chrome has no helpers")
 			}
-			injected := errors.New("injected work failure")
+			if pgid, err := syscall.Getpgid(leader); err != nil || pgid != leader {
+				t.Fatalf("Chrome process group %d: %v", pgid, err)
+			}
+			injected := &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "injected work failure"}
 			result := func() (err error) {
 				defer func() { err = errors.Join(err, env.Close(context.Background())) }()
 				switch mode {
@@ -303,12 +404,18 @@ func TestChromeProcessTreeAndProfileRetireTogether(t *testing.T) {
 					t.Fatal(result)
 				}
 			case "killed":
-				if result == nil {
-					t.Fatal("crash succeeded")
+				var failure *cdp.BrowserError
+				if !errors.As(result, &failure) || failure.Kind != cdp.KindClosed && failure.Kind != cdp.KindConnection {
+					t.Fatalf("crash error: %v", result)
 				}
 			}
 			if group := processGroup(t, leader); len(group) != 0 {
 				t.Fatal(group)
+			}
+			for _, pid := range owned {
+				if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+					t.Fatalf("Chrome helper %d survived: %v", pid, err)
+				}
 			}
 			for _, path := range []string{profile, runtimeDirectory} {
 				if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -326,6 +433,7 @@ func TestFixtureAssertionsRetireChromeAndProfilesBeforeFailureReturns(t *testing
 			t.Run(harness, func(t *testing.T) {
 				var profile string
 				var leader int
+				var owned []int
 				t.Cleanup(func() {
 					if profile == "" {
 						return
@@ -337,6 +445,12 @@ func TestFixtureAssertionsRetireChromeAndProfilesBeforeFailureReturns(t *testing
 					if len(processGroup(t, leader)) != 0 {
 						t.Error("processes survived")
 						return
+					}
+					for _, pid := range owned {
+						if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+							t.Errorf("helper %d survived: %v", pid, err)
+							return
+						}
 					}
 					fmt.Println("retired after deliberate assertion: " + harness)
 				})
@@ -352,6 +466,12 @@ func TestFixtureAssertionsRetireChromeAndProfilesBeforeFailureReturns(t *testing
 					profile = filepath.Dir(env.DownloadDirectory())
 				}
 				leader = profileOwner(t, profile)
+				owned = append(processGroup(t, leader), markedBrowserProcesses(t, profileRuntime(t, profile))...)
+				slices.Sort(owned)
+				owned = slices.Compact(owned)
+				if len(owned) < 2 {
+					t.Fatal("Chrome has no helpers")
+				}
 				t.Fatal("deliberate fixture assertion")
 			})
 		}
@@ -370,6 +490,9 @@ func TestFixtureAssertionsRetireChromeAndProfilesBeforeFailureReturns(t *testing
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
 		t.Fatalf("child %s: %v", output, err)
+	}
+	if strings.Count(string(output), "deliberate fixture assertion") != 2 {
+		t.Fatalf("did not observe both intended assertions: %s", output)
 	}
 	for _, harness := range []string{"direct", "service"} {
 		if !strings.Contains(string(output), "retired after deliberate assertion: "+harness) {
