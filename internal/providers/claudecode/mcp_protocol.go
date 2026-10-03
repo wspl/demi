@@ -38,8 +38,8 @@ type initializeParams struct {
 }
 
 type requestMetadata struct {
-	Version      provider.ReportedString                       `json:"io.modelcontextprotocol/protocolVersion"    wire:"optional"`
-	Capabilities provider.Reported[map[string]json.RawMessage] `json:"io.modelcontextprotocol/clientCapabilities" wire:"optional"`
+	Version      provider.ReportedString                       `json:"io.modelcontextprotocol/protocolVersion"    wire:"optional"` //nolint:lll // a struct tag cannot wrap
+	Capabilities provider.Reported[map[string]json.RawMessage] `json:"io.modelcontextprotocol/clientCapabilities" wire:"optional"` //nolint:lll // a struct tag cannot wrap
 }
 
 // admit applies the reference SDK's handshake and inline metadata rules.

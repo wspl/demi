@@ -284,11 +284,10 @@ func TestSSECancellationAndEarlyExitCloseBody(t *testing.T) {
 				}
 				requireEqual(t, data, "first")
 				count++
-				if cancelRun {
-					cancel()
-				} else {
+				if !cancelRun {
 					break
 				}
+				cancel()
 			}
 			requireEqual(t, count, 1)
 			vendor.Disconnected(t.Context())

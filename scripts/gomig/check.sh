@@ -56,7 +56,7 @@ for goos in darwin linux windows; do
   GOOS="${goos}" go vet "$@"
   step="golangci-lint ${goos}"
   # The linter is built for this machine and analyzes for goos.
-  go run -exec "env GOOS=${goos}" github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --allow-parallel-runners "$@"
+  go run -exec "env GOOS=${goos}" github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --allow-parallel-runners --max-issues-per-linter=0 --max-same-issues=0 "$@"
 done
 step='sumtype'
 go run github.com/alecthomas/go-check-sumtype/cmd/go-check-sumtype@v0.5.0 -default-signifies-exhaustive=false "$@"
