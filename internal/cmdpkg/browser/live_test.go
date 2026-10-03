@@ -551,7 +551,6 @@ func TestUsersRequestsAnswerWithoutWaitingForPage(t *testing.T) {
 		t.Fatal("goto waited for its page")
 	}
 	t.Run("missing tab", func(t *testing.T) {
-		t.Skip("fidelity 1: user close of missing tab succeeds instead of tab_not_found")
 		request := invocation("close", `{"tab":"t999"}`, "acceptance")
 		request.Request.Context.Caller = &commandwire.UserCaller{}
 		completion, _, stderr := call(t, f.s, request)

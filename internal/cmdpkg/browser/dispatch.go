@@ -39,9 +39,6 @@ func (s *service) execute(ctx, cancellation context.Context, b *conversation, in
 		return commandOutput{}, err
 	}
 	if environment == nil {
-		if input, ok := command.(*browserop.CloseInput); ok && user {
-			return resultOutput(browserop.CloseResult{Closed: input.Tab}, nil)
-		}
 		if _, ok := command.(*browserop.TabsInput); ok {
 			return resultOutput(browserop.TabsResult{Tabs: []browserop.BrowserTab{}}, nil)
 		}
@@ -84,9 +81,6 @@ func (s *service) execute(ctx, cancellation context.Context, b *conversation, in
 	}
 	tab, err := environment.Tab(ctx, *id, command.Timeout())
 	if err != nil {
-		if input, ok := command.(*browserop.CloseInput); ok && user && cdp.ErrorCode(err) == browserop.BrowserErrorCodeTabNotFound {
-			return resultOutput(browserop.CloseResult{Closed: input.Tab}, nil)
-		}
 		return commandOutput{}, err
 	}
 	if user {
