@@ -372,7 +372,6 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 
 // One runner and a streamed 13 MiB upload, followed by a canceled partial copy.
 func TestFileUploadIsWholeAndRequiresOverwriteConsent(t *testing.T) {
-	t.Skip("finding 2: raw upload returns conversation_busy before writing")
 	d := filesOnDevice(t)
 	put := func(path, replace string, body io.Reader) backendtest.Answer {
 		route := "/fs/raw?path=" + url.QueryEscape(filepath.Join(d.root, path))

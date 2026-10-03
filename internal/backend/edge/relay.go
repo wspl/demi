@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wspl/demi/internal/backend/expose"
@@ -98,9 +99,7 @@ func (e *Edge) relay(ctx context.Context, conn net.Conn, input *bufio.Reader, he
 	defer admitted.Lease.Release()
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()
-	stream := &relayPipe{ctx: lifetime, cancel: cancel, reader: admitted.FromService, writer: admitted.ToService}
-	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = stream.Close() }()
+	stream := &relayPipe{ctx: lifetime, reader: admitted.FromService, writer: admitted.ToService}
 	watched := make(chan struct{})
 	go func() {
 		defer close(watched)
@@ -115,27 +114,41 @@ func (e *Edge) relay(ctx context.Context, conn net.Conn, input *bufio.Reader, he
 		cancel()
 		<-watched
 	}()
-	return forwardRelay(lifetime, conn, input, head, stream, string(record.Address), e.state.Services.ExposeTuning.Idle)
+	return forwardRelay(lifetime, conn, input, head, stream, cancel, string(record.Address), e.state.Services.ExposeTuning.Idle)
 }
 
 type relayPipe struct {
 	ctx    context.Context
-	cancel context.CancelFunc
 	reader *remotehost.PipeReader
 	writer *remotehost.PipeWriter
 }
 
-func (p *relayPipe) Read(b []byte) (int, error) { return p.reader.Read(p.ctx, b) }
+func (p *relayPipe) Read(b []byte) (int, error) {
+	if err := p.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return p.reader.Read(p.ctx, b)
+}
 func (p *relayPipe) Write(b []byte) (int, error) {
+	if err := p.ctx.Err(); err != nil {
+		return 0, err
+	}
 	if err := p.writer.Write(p.ctx, b); err != nil {
 		return 0, err
 	}
 	return len(b), nil
 }
+
+// Close belongs to the relay owner, after cancellation and joining all copies.
 func (p *relayPipe) Close() error {
-	p.cancel()
-	p.writer.Fail("relay ended")
+	p.writer.End()
 	return p.reader.Close(context.WithoutCancel(p.ctx))
+}
+
+// CloseWrite ends the request direction without discarding queued close bytes.
+func (p *relayPipe) CloseWrite() error {
+	p.writer.End()
+	return nil
 }
 
 // relayHeaders preserves the spelling and separate values from the incoming
@@ -179,7 +192,29 @@ func wantsUpgrade(header http.Header) bool {
 	}
 	return false
 }
-func forwardRelay(ctx context.Context, visitor net.Conn, input *bufio.Reader, head []byte, service io.ReadWriteCloser, address string, idle time.Duration) (next *bufio.Reader, reusable bool) {
+
+type relayDuplex interface {
+	io.ReadWriteCloser
+	CloseWrite() error
+}
+
+func forwardRelay(ctx context.Context, visitor net.Conn, input *bufio.Reader, head []byte, service relayDuplex, interrupt context.CancelFunc, address string, idle time.Duration) (next *bufio.Reader, reusable bool) {
+	var workers sync.WaitGroup
+	var bodies []io.ReadCloser
+	defer func() {
+		// Interrupt waits without closing owned pipe ends underneath their users.
+		interrupt()
+		if !reusable {
+			_ = visitor.SetReadDeadline(time.Now())
+		}
+		workers.Wait()
+		for _, body := range bodies {
+			// Cancellation makes an unfinished response's drain stop as well.
+			_ = body.Close()
+		}
+		// Only this owner closes service, after every read and write has stopped.
+		_ = service.Close()
+	}()
 	next = bufio.NewReader(io.MultiReader(bytes.NewReader(head), input))
 	request, err := http.ReadRequest(next)
 	if err != nil {
@@ -224,16 +259,11 @@ func forwardRelay(ctx context.Context, visitor net.Conn, input *bufio.Reader, he
 	// Every relay owns and joins its request writer, including early answers.
 	writing := make(chan struct{})
 	var writeErr error
+	workers.Add(1)
 	go func() {
+		defer workers.Done()
 		defer close(writing)
 		writeErr = writeRelayRequest(service, request)
-	}()
-	defer func() {
-		_ = service.Close()
-		if !reusable {
-			_ = visitor.SetReadDeadline(time.Now())
-		}
-		<-writing
 	}()
 	from := bufio.NewReader(service)
 	for {
@@ -248,13 +278,7 @@ func forwardRelay(ctx context.Context, visitor net.Conn, input *bufio.Reader, he
 			relayPage(visitor, 502, "The exposed service is unreachable (no_response).\n")
 			return
 		}
-		// The operation reports IO failures; cleanup has no further recipient.
-		defer func() {
-			// A visitor may have left midway through the response. End the
-			// service pipe before Body.Close can try to drain its remaining bytes.
-			_ = service.Close()
-			_ = answer.Body.Close()
-		}()
+		bodies = append(bodies, answer.Body)
 		if answer.StatusCode < 200 && answer.StatusCode != 101 {
 			answer.Header = relayHeaders(answerHead, false)
 			if err := writeRelayResponse(moved, answer); err != nil {
@@ -266,22 +290,20 @@ func forwardRelay(ctx context.Context, visitor net.Conn, input *bufio.Reader, he
 		switched := upgrade && answer.StatusCode == 101
 		answer.Header = relayHeaders(answerHead, switched)
 		if switched {
+			moved.allowHalfClose()
 			answer.Body = http.NoBody
 			answer.ContentLength = 0
 			answer.TransferEncoding = nil
 			if err := writeRelayResponse(moved, answer); err != nil {
 				return
 			}
-			copyDone := make(chan struct{})
-			go func() {
-				defer close(copyDone)
-				_, _ = io.Copy(service, next)
-				_ = service.Close()
-			}()
-			_, _ = io.Copy(moved, answerReader)
-			_ = visitor.Close()
-			_ = service.Close()
-			<-copyDone
+			// The request writer and upgraded copy share the same pipe writer
+			// and visitor reader; finish the HTTP head/body before handing them on.
+			<-writing
+			if writeErr != nil {
+				return
+			}
+			copyRelayUpgrade(ctx, moved, next, service, answerReader, interrupt)
 			return
 		}
 		if err := writeRelayResponse(moved, answer); err != nil {
@@ -372,4 +394,45 @@ func writeRelayResponse(to io.Writer, answer *http.Response) error {
 	}
 	_, err := io.WriteString(to, "\r\n")
 	return err
+}
+
+// copyRelayUpgrade preserves clean half-closes in both directions. Only this
+// owner closes write halves, after joining the copy that used each half.
+func copyRelayUpgrade(ctx context.Context, visitor *activity, input io.Reader, service relayDuplex, output io.Reader, interrupt context.CancelFunc) {
+	toService := make(chan struct{})
+	toVisitor := make(chan struct{})
+	var writeErr, readErr error
+	go func() {
+		defer close(toService)
+		_, writeErr = io.Copy(service, input)
+	}()
+	go func() {
+		defer close(toVisitor)
+		_, readErr = io.Copy(visitor, output)
+	}()
+	canceled := ctx.Done()
+	for toService != nil || toVisitor != nil {
+		var err error
+		select {
+		case <-canceled:
+			canceled = nil
+			err = ctx.Err()
+		case <-toService:
+			toService = nil
+			err = writeErr
+			if err == nil {
+				err = service.CloseWrite()
+			}
+		case <-toVisitor:
+			toVisitor = nil
+			err = readErr
+			if err == nil {
+				err = visitor.CloseWrite()
+			}
+		}
+		if err != nil {
+			interrupt()
+			_ = visitor.Close()
+		}
+	}
 }
