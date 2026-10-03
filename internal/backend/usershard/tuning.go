@@ -16,19 +16,17 @@ type LifecycleTuning struct {
 	// How often a conversation's idle watch reads its activity.
 	IdlePoll time.Duration
 	// How long after one retention pass of every user the next starts; the
-	// first starts once the backend serves. None runs no pass by itself,
-	// for tests that run a user's pass when they choose
-	// (`Backend::run_retention`).
-	RetentionInterval *time.Duration
+	// first starts once the backend serves. Zero runs no pass by itself,
+	// for tests that run a user's pass when they choose.
+	RetentionInterval time.Duration
 }
 
 // DefaultLifecycleTuning returns the production timing and bounds.
 func DefaultLifecycleTuning() LifecycleTuning {
-	interval := 24 * time.Hour
 	return LifecycleTuning{
 		IdleWindow:        time.Hour,
 		IdlePoll:          30 * time.Second,
-		RetentionInterval: &interval,
+		RetentionInterval: 24 * time.Hour,
 	}
 }
 

@@ -66,7 +66,7 @@ func NewHarness(ctx context.Context, t testing.TB, machinesSocket string) (*Harn
 	config.Clock = clock
 	config.Runners.Ping = nil
 	config.Conversations.Titles = false
-	config.Lifecycle.RetentionInterval = nil
+	config.Lifecycle.RetentionInterval = 0
 	config.ModelsDevURL, err = url.Parse("http://127.0.0.1:9/api.json")
 	if err != nil {
 		return nil, err

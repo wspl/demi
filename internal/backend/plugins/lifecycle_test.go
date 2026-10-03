@@ -178,8 +178,7 @@ func TestConcurrentSwitchAndStorageFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	changed, err := u.Switch(t.Context(), "switch", true)
-	var refused *plugins.SwitchError
-	if changed || !errors.As(err, &refused) || !errors.Is(err, database.ErrClosed) {
+	if changed || !errors.Is(err, database.ErrClosed) {
 		t.Fatalf("%v %v", changed, err)
 	}
 	entries, err := u.Entries(t.Context())

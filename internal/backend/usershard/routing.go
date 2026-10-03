@@ -3,7 +3,6 @@ package usershard
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -189,7 +188,7 @@ func RouteDeaths(
 // passes at the configured interval. Its caller owns and joins the call.
 func ScheduleRetention(ctx context.Context, services *Services, shards *Shards) error {
 	interval := services.Lifecycle.RetentionInterval
-	if interval == nil {
+	if interval == 0 {
 		return nil
 	}
 	for {
@@ -206,7 +205,7 @@ func ScheduleRetention(ctx context.Context, services *Services, shards *Shards) 
 				slog.WarnContext(ctx, "the retention pass failed", "user", user.ID, "error", err)
 			}
 		}
-		timer := time.NewTimer(*interval)
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -278,13 +277,13 @@ func (s *Shards) of(ctx context.Context, user webapi.UserID, draining bool) (*Sh
 	defer s.mu.Unlock()
 	drainingRefused := s.phase == routingDraining && !draining
 	if s.phase == routingClosed || drainingRefused {
-		return nil, &ShardUnavailable{Kind: ShardClosing}
+		return nil, ErrClosing
 	}
 	if shard := s.users[user]; shard != nil {
 		return shard, nil
 	}
 	if s.phase == routingDraining {
-		return nil, &ShardUnavailable{Kind: ShardClosing}
+		return nil, ErrClosing
 	}
 	shard := newShard(s.ctx, user, s.services)
 	s.users[user] = shard
@@ -322,14 +321,14 @@ func shardCall[T any](
 	s.mu.Lock()
 	if s.closing {
 		s.mu.Unlock()
-		return result, &ShardUnavailable{Kind: ShardClosing}
+		return result, ErrClosing
 	}
 	s.calls.Add(1)
 	s.mu.Unlock()
 	defer s.calls.Done()
 	defer func() {
 		if failure := recover(); failure != nil {
-			err = &ShardUnavailable{Kind: ShardFailed, Err: fmt.Errorf("%v", failure)}
+			err = errShardFailed
 		}
 	}()
 	return operation(ctx)

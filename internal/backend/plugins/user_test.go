@@ -206,13 +206,7 @@ func TestUserChoicesCommandsAndInstances(t *testing.T) {
 	if revision, err := restored.Revision(t.Context()); err != nil || revision != "notes" {
 		t.Fatalf("%q %v", revision, err)
 	}
-	var switchError *plugins.SwitchError
-	if _, err := restored.Switch(
-		t.Context(),
-		"missing",
-		true,
-	); !errors.As(err, &switchError) ||
-		switchError.Err != nil {
+	if _, err := restored.Switch(t.Context(), "missing", true); !errors.Is(err, plugins.ErrUnknownPlugin) {
 		t.Fatalf("%v", err)
 	}
 }
@@ -319,10 +313,6 @@ func TestPageContextTopicsAndStreamLifecycle(t *testing.T) {
 		kind plugins.PageCallErrorKind
 	}{
 		{
-			plugins.PageCall{Plugin: "missing", Method: "user", Params: []byte(`{}`)},
-			plugins.UnknownPlugin,
-		},
-		{
 			plugins.PageCall{
 				Plugin: "page",
 				Method: "conversation",
@@ -354,6 +344,15 @@ func TestPageContextTopicsAndStreamLifecycle(t *testing.T) {
 			plugins.PageCall{Plugin: "page", Method: "user", Params: []byte(`{broken`)},
 			plugins.InvalidParams,
 		},
+	}
+	if _, err := u.PageCall(
+		ctx,
+		plugins.PageCall{Plugin: "missing", Method: "user", Params: []byte(`{}`)},
+	); !errors.Is(
+		err,
+		plugins.ErrUnknownPlugin,
+	) {
+		t.Fatalf("%v", err)
 	}
 	before := len(requests)
 	for _, scenario := range cases {

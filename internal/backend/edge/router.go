@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// routeNode gives literal segments precedence over path parameters, as the
-// reference router does, without redirecting or cleaning a request's path.
+// routeNode gives literal segments precedence over path parameters, without
+// redirecting or cleaning a request's path.
 type routeNode struct {
 	literal   map[string]*routeNode
 	parameter *routeNode

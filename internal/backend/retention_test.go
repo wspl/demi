@@ -32,8 +32,7 @@ func TestRetentionRunsFirstPassAfterServing(t *testing.T) {
 	counts := &blobstest.ObjectCounts{}
 	h.Objects = counts
 	h.Clock.FollowSystem()
-	interval := 24 * time.Hour
-	h.Config.Lifecycle.RetentionInterval = &interval
+	h.Config.Lifecycle.RetentionInterval = 24 * time.Hour
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
 	wireMust(t, b.Close(ctx))

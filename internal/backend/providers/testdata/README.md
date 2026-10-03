@@ -1,19 +1,16 @@
-# Rust vault fixtures
+# Vault fixtures
 
-`rust-sealed.txt` contains two records written by the unchanged
-`crates/backend-providers/src/vault/seal.rs`, called from a small standalone Rust program
-run once during the migration and kept outside the repository, in the
-migration's reference directory (`gomig-ref/oracles/b-providers/rust-seal`),
-since the repository holds no Rust. Its ID aliases only replace identifier construction; the
-reference encryption, row naming, nonce generation and layout are used directly.
-The program also opens each record with Rust before writing it.
+`sealed.txt` holds two records in the stored credential format that existing
+databases contain: AES-256-GCM under the vault key, a 12-byte nonce prefix,
+and the row name (`demi provider config` or `demi account secret`, then
+each id as a 4-byte big-endian length and its bytes) as additional data.
 
 Both records use a 32-byte key filled with `07`, provider `entry-1`, and (for
 `secret`) account `cred-1`. The configuration plaintext is
 `{"apiKey":"sk-test-123"}`; the account plaintext is
 `{"refresh":"rust-token"}`. These are synthetic test credentials.
 
-Random nonces make regeneration change the ciphertext. Ordinary Go tests read
-only the committed fixture and never invoke Rust. `TestSealedValueOpensOnlyForItsRowUnderItsKey`
-opens both Rust-written records and checks wrong keys, copied rows, tampering,
-truncation and ambiguous identifier concatenations.
+Random nonces make regeneration change the ciphertext, so the records are
+never regenerated. `TestSealedValueOpensOnlyForItsRowUnderItsKey` opens both
+records and checks wrong keys, copied rows, tampering, truncation and
+ambiguous identifier concatenations.

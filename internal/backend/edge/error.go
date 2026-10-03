@@ -65,8 +65,7 @@ func mappedError(err error) *apiError {
 	if failure := conversationError(err); failure != nil {
 		return failure
 	}
-	var unavailable *usershard.ShardUnavailable
-	if errors.As(err, &unavailable) && unavailable.Kind == usershard.ShardClosing {
+	if errors.Is(err, usershard.ErrClosing) {
 		return closingError()
 	}
 	var coded interface {
@@ -157,32 +156,33 @@ func workingTreeError(err error) error {
 
 // providerError returns nil for unmatched provider failures so later mappings retain their precedence.
 func providerError(err error) *apiError {
-	var account *providers.AccountRefusal
-	if errors.As(err, &account) {
-		switch account.Kind {
-		case providers.AccountExists:
-			return apiFailure(409, "provider_exists", account.Error())
-		case providers.AccountUnsupported:
-			return apiFailure(400, "accounts_unsupported", account.Error())
-		case providers.AccountNotFound:
-			return apiFailure(404, "account_not_found", "No such account")
-		case providers.AccountActive:
-			return apiFailure(409, "active_account", account.Error())
-		case providers.AccountTokenImportFailed:
-			return apiFailure(400, "token_import_failed", account.Error())
-		case providers.AccountStore, providers.AccountAssembly:
-			return internalError(err)
+	for _, entry := range []struct {
+		err    error
+		status int
+		code   webapi.ErrorCode
+	}{
+		{providers.ErrSetupTokenProviderExists, 409, "provider_exists"},
+		{providers.ErrSetupTokenUnavailable, 400, "accounts_unsupported"},
+		{providers.ErrUseDeviceLogin, 400, "accounts_unsupported"},
+		{providers.ErrNotSubscription, 400, "accounts_unsupported"},
+		{providers.ErrAccountNotFound, 404, "account_not_found"},
+		{providers.ErrActiveAccount, 409, "active_account"},
+		{providers.ErrTokenImportFailed, 400, "token_import_failed"},
+	} {
+		if errors.Is(err, entry.err) {
+			return apiFailure(entry.status, entry.code, entry.err.Error())
 		}
 	}
-	var login *providers.LoginRefusal
+	if errors.Is(err, providers.ErrLoginBusy) {
+		return apiFailure(409, "provider_busy", "Another change of this provider is still running")
+	}
+	var login *providers.LoginError
 	if errors.As(err, &login) {
 		switch login.Kind {
 		case providers.LoginNoLoginFlow:
 			return apiFailure(400, "no_login_flow", login.Error())
 		case providers.LoginExists:
 			return apiFailure(409, "provider_exists", login.Error())
-		case providers.LoginBusy:
-			return apiFailure(409, "provider_busy", "Another change of this provider is still running")
 		case providers.LoginAssembly:
 			var assembly *providers.AssemblyError
 			if errors.As(login.Err, &assembly) && assembly.Kind == providers.AssemblyUnknownFamily {
@@ -228,49 +228,29 @@ func contentError(err error) *apiError {
 	return pluginError(err)
 }
 
-// conversationError preserves recursive mapping of a reload admission failure.
+// conversationError maps conversation refusals; it returns nil when none matches.
 func conversationError(err error) *apiError {
-	var fork *usershard.ForkRefusal
-	if errors.As(err, &fork) {
-		switch fork.Kind {
-		case usershard.ForkSourceNotFound:
-			return apiFailure(404, "conversation_not_found", "No such conversation")
-		case usershard.ForkConflict:
-			return apiFailure(409, "fork_conflict", err.Error())
-		case usershard.ForkUnavailable:
-			return apiFailure(409, "id_unavailable", err.Error())
-		case usershard.ForkTarget:
-			return apiFailure(400, "invalid_fork_target", err.Error())
-		case usershard.ForkStorage, usershard.ForkFailed:
-			return internalError(err)
-		}
+	var target *usershard.ForkTargetError
+	if errors.As(err, &target) {
+		return apiFailure(400, "invalid_fork_target", err.Error())
 	}
-	var title *usershard.TitleRefusal
-	if errors.As(err, &title) {
-		switch title.Kind {
-		case usershard.TitleNotFound:
-			return apiFailure(404, "conversation_not_found", "No such conversation")
-		case usershard.TitleArchived:
-			return apiFailure(409, "conversation_archived", err.Error())
-		case usershard.TitleProviderNotFound:
-			return apiFailure(404, "provider_not_found", err.Error())
-		case usershard.TitleModelNotSelected:
-			return apiFailure(409, "model_not_selected", err.Error())
-		case usershard.TitleNoMessages:
-			return apiFailure(409, "no_messages", err.Error())
-		case usershard.TitleStorage:
-			return internalError(err)
-		}
-	}
-	var reload *usershard.ReloadRefusal
-	if errors.As(err, &reload) {
-		switch reload.Kind {
-		case usershard.ReloadArchived:
-			return apiFailure(409, "conversation_archived", err.Error())
-		case usershard.ReloadWorking:
-			return apiFailure(409, "turn_in_flight", err.Error())
-		case usershard.ReloadAccess:
-			return mappedError(reload.Err)
+	for _, entry := range []struct {
+		err    error
+		status int
+		code   webapi.ErrorCode
+	}{
+		{usershard.ErrConversationNotFound, 404, "conversation_not_found"},
+		{usershard.ErrForkConflict, 409, "fork_conflict"},
+		{usershard.ErrIDUnavailable, 409, "id_unavailable"},
+		{usershard.ErrArchivedChange, 409, "conversation_archived"},
+		{usershard.ErrArchived, 409, "conversation_archived"},
+		{usershard.ErrProviderNotFound, 404, "provider_not_found"},
+		{usershard.ErrModelNotSelected, 409, "model_not_selected"},
+		{usershard.ErrNoMessages, 409, "no_messages"},
+		{usershard.ErrAgentsWorking, 409, "turn_in_flight"},
+	} {
+		if errors.Is(err, entry.err) {
+			return apiFailure(entry.status, entry.code, entry.err.Error())
 		}
 	}
 	return nil
@@ -278,15 +258,12 @@ func conversationError(err error) *apiError {
 
 // pluginError returns nil when no plugin failure variant matches.
 func pluginError(err error) *apiError {
-	var switched *plugins.SwitchError
-	if errors.As(err, &switched) && switched.Err == nil {
+	if errors.Is(err, plugins.ErrUnknownPlugin) {
 		return apiFailure(404, "unknown_plugin", err.Error())
 	}
 	var page *plugins.PageCallError
 	if errors.As(err, &page) {
 		switch page.Kind {
-		case plugins.UnknownPlugin:
-			return apiFailure(404, "unknown_plugin", err.Error())
 		case plugins.Disabled:
 			return apiFailure(409, "plugin_disabled", err.Error())
 		case plugins.UnknownMethod:

@@ -96,7 +96,7 @@ func registerLogin(a *Assembly, name string, kit *loginKit) {
 		) (provider.Provider, error) {
 			c, ok := args.Credential.(*SubscriptionArgs)
 			if !ok {
-				return nil, &FamilyError{Kind: FamilyWrongCredential}
+				return nil, ErrWrongCredential
 			}
 			return &accountProvider{
 				Provider: openaiapi.New(openaiapi.Config{APIKey: "test"}, args.Clock),
@@ -292,8 +292,8 @@ func TestLoginPublishesAtomicallyAndCancelReleasesEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-kit.started
-	if guard := operations.Reserve(entry.ID); guard != nil {
-		guard.Release()
+	if reservation := operations.Reserve(entry.ID); reservation != nil {
+		reservation.Release()
 		t.Fatal("running login did not reserve entry")
 	}
 	if !flows.Cancel(t.Context(), id, owner.ID) {
@@ -303,12 +303,12 @@ func TestLoginPublishesAtomicallyAndCancelReleasesEntry(t *testing.T) {
 	if !ok || failed.Message != "The login was cancelled" {
 		t.Fatal(flows.State(id, owner.ID))
 	}
-	guard := operations.Reserve(entry.ID)
-	if guard == nil {
+	reservation := operations.Reserve(entry.ID)
+	if reservation == nil {
 		t.Fatal("reservation leaked")
 	}
-	guard.Release()
-	guard.Release()
+	reservation.Release()
+	reservation.Release()
 }
 
 func TestLoginExpiresAndResultRetentionEnds(t *testing.T) {

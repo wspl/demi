@@ -84,7 +84,7 @@ func Start(ctx context.Context, config Config) (_ *Backend, err error) {
 	if err != nil {
 		return nil, &StartError{Kind: StartListen, Address: config.Address, Err: err}
 	}
-	if config.Lifecycle.RetentionInterval != nil {
+	if config.Lifecycle.RetentionInterval != 0 {
 		retentionCtx, stop := context.WithCancel(life)
 		b.stopRetention = stop
 		b.retention.Go(func() {

@@ -64,7 +64,7 @@ func (*APIKeyConfig) entryCredential()           {}
 // than ignored.
 // +demi:root
 //
-//nolint:revive // Contract documentation is copied verbatim from Rust.
+//nolint:revive // The doc comment is the schema's product text, not a Go doc sentence.
 type APIKeyConfig struct {
 	APIKey  provider.Secret     `json:"apiKey"`
 	BaseURL *webapi.EndpointURL `json:"baseUrl,omitempty"`

@@ -22,38 +22,35 @@ func ImportSetupToken(
 	label, token string,
 ) (ProviderEntry, error) {
 	if assembly.families.Family(SetupTokenFamily) == nil {
-		return ProviderEntry{}, &AccountRefusal{
-			Kind:    AccountUnsupported,
-			Message: "Setup-token import is unavailable",
-		}
+		return ProviderEntry{}, ErrSetupTokenUnavailable
 	}
 	entries, err := assembly.vault.Entries(ctx, owner)
 	if err != nil {
-		return ProviderEntry{}, accountAssembly(err)
+		return ProviderEntry{}, err
 	}
 	for _, entry := range entries {
 		if entry.Family == SetupTokenFamily {
-			return ProviderEntry{}, &AccountRefusal{Kind: AccountExists}
+			return ProviderEntry{}, ErrSetupTokenProviderExists
 		}
 	}
 	staged := provider.NewMemoryCredentialPool()
 	id, err := uuid.NewRandom()
 	if err != nil {
-		return ProviderEntry{}, accountAssembly(fmt.Errorf("create provider identity: %w", err))
+		return ProviderEntry{}, fmt.Errorf("create provider identity: %w", err)
 	}
 	p, err := assembly.Detached(SetupTokenFamily, id.String(), label, staged)
 	if err != nil {
-		return ProviderEntry{}, accountAssembly(err)
+		return ProviderEntry{}, err
 	}
 	if _, err := addSetupToken(ctx, p, token); err != nil {
 		return ProviderEntry{}, err
 	}
 	e, err := assembly.vault.CreateSubscription(ctx, owner, SetupTokenFamily, label, staged)
 	if err != nil {
-		return ProviderEntry{}, accountAssembly(err)
+		return ProviderEntry{}, err
 	}
 	if e == nil {
-		return ProviderEntry{}, &AccountRefusal{Kind: AccountExists}
+		return ProviderEntry{}, ErrSetupTokenProviderExists
 	}
 	return *e, nil
 }
@@ -70,14 +67,14 @@ func AddToken(
 	}
 	p, err := assembly.ProviderFor(ctx, entry)
 	if err != nil {
-		return core.AccountInfo{}, accountAssembly(err)
+		return core.AccountInfo{}, err
 	}
 	a, err := addSetupToken(ctx, p, token)
 	if err != nil {
 		return core.AccountInfo{}, err
 	}
 	if err := assembly.Invalidate(context.WithoutCancel(ctx), entry.ID); err != nil {
-		return core.AccountInfo{}, accountAssembly(err)
+		return core.AccountInfo{}, err
 	}
 	return a, nil
 }
@@ -98,7 +95,7 @@ func ListAccounts(
 	}
 	rows, err := assembly.vault.Accounts(ctx, entry.ID)
 	if err != nil {
-		return result, accountAssembly(err)
+		return result, err
 	}
 	for _, row := range rows {
 		meta := AccountMeta(row)
@@ -121,14 +118,14 @@ func ActivateAccount(
 	ctx = context.WithoutCancel(ctx)
 	ok, err := assembly.vault.control.SetActiveCredential(ctx, entry.ID, account)
 	if err != nil {
-		return "", accountAssembly(err)
+		return "", err
 	}
 	if !ok {
-		return "", &AccountRefusal{Kind: AccountNotFound}
+		return "", ErrAccountNotFound
 	}
 	assembly.vault.MarkChanged(entry.Owner)
 	if err := assembly.Invalidate(ctx, entry.ID); err != nil {
-		return "", accountAssembly(err)
+		return "", err
 	}
 	return account, nil
 }
@@ -144,23 +141,23 @@ func RemoveAccount(
 		return err
 	}
 	if active := entry.Active(); active != nil && *active == account {
-		return &AccountRefusal{Kind: AccountActive}
+		return ErrActiveAccount
 	}
 	row, err := assembly.vault.Account(ctx, entry.ID, account)
 	if err != nil {
-		return accountAssembly(err)
+		return err
 	}
 	if row == nil {
-		return &AccountRefusal{Kind: AccountNotFound}
+		return ErrAccountNotFound
 	}
 	ctx = context.WithoutCancel(ctx)
 	if err := assembly.vault.control.RemoveCredential(ctx, entry.ID, account); err != nil {
-		return accountAssembly(err)
+		return err
 	}
 	assembly.quotas.ForgetAccount(entry.ID, account)
 	assembly.vault.MarkChanged(entry.Owner)
 	if err := assembly.Invalidate(ctx, entry.ID); err != nil {
-		return accountAssembly(err)
+		return err
 	}
 	return nil
 }
@@ -169,46 +166,29 @@ func RemoveAccount(
 func addSetupToken(ctx context.Context, p provider.Provider, token string) (core.AccountInfo, error) {
 	accounts := p.Accounts()
 	if accounts == nil || !accounts.Capability().Add {
-		return core.AccountInfo{}, &AccountRefusal{
-			Kind:    AccountUnsupported,
-			Message: "Use device login for this provider",
-		}
+		return core.AccountInfo{}, ErrUseDeviceLogin
 	}
 	secret, err := provider.NewSecret(token)
 	if err != nil {
-		return core.AccountInfo{}, &AccountRefusal{Kind: AccountTokenImportFailed}
+		return core.AccountInfo{}, ErrTokenImportFailed
 	}
 	account, err := accounts.Add(ctx, provider.AddAccount{SetupToken: secret})
 	if err == nil {
 		return account, nil
 	}
 	if errors.Is(err, provider.ErrAccountsUnsupported) {
-		return core.AccountInfo{}, &AccountRefusal{
-			Kind:    AccountUnsupported,
-			Message: "Use device login for this provider",
-		}
+		return core.AccountInfo{}, ErrUseDeviceLogin
 	}
 	var pool *provider.PoolError
 	if errors.As(err, &pool) && pool.Err != nil {
-		return core.AccountInfo{}, &AccountRefusal{Kind: AccountStore, Message: pool.Error()}
+		return core.AccountInfo{}, errors.New(pool.Error())
 	}
-	return core.AccountInfo{}, &AccountRefusal{Kind: AccountTokenImportFailed}
-}
-
-func accountAssembly(err error) error {
-	var assembly *AssemblyError
-	if !errors.As(err, &assembly) {
-		err = &AssemblyError{Kind: AssemblyStorage, Err: err}
-	}
-	return &AccountRefusal{Kind: AccountAssembly, Err: err}
+	return core.AccountInfo{}, ErrTokenImportFailed
 }
 
 func subscription(entry ProviderEntry) error {
 	if _, ok := entry.Credential.(*SubscriptionCredential); !ok {
-		return &AccountRefusal{
-			Kind:    AccountUnsupported,
-			Message: "This provider does not use subscription accounts",
-		}
+		return ErrNotSubscription
 	}
 	return nil
 }

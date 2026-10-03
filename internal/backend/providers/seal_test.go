@@ -15,15 +15,15 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
-// This test pins ciphertext written by the unchanged Rust implementation, as
-// well as row/key binding and fresh nonces. It needs no external resources.
+// This test pins stored ciphertext (testdata/sealed.txt) that existing
+// databases hold, as well as row/key binding and fresh nonces. It needs no external resources.
 func TestSealedValueOpensOnlyForItsRowUnderItsKey(t *testing.T) {
 	var keyBytes [32]byte
 	for i := range keyBytes {
 		keyBytes[i] = 7
 	}
 	key := NewVaultKey(keyBytes)
-	fixture, err := os.ReadFile("testdata/rust-sealed.txt")
+	fixture, err := os.ReadFile("testdata/sealed.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestSealedValueOpensOnlyForItsRowUnderItsKey(t *testing.T) {
 		}
 		plain, err := key.Open(row, sealed)
 		if err != nil || string(plain) != want {
-			t.Fatalf("Rust %s record: %q, %v", kind, plain, err)
+			t.Fatalf("stored %s record: %q, %v", kind, plain, err)
 		}
 	}
 	row := ConfigRow{Provider: "entry-1"}
@@ -111,8 +111,7 @@ func TestSealedValueOpensOnlyForItsRowUnderItsKey(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := c.key.Open(c.row, c.bytes)
-			var bad *Unsealable
-			if !errors.As(err, &bad) {
+			if !errors.Is(err, errUnsealable) {
 				t.Fatalf("wanted authentication failure, got %v", err)
 			}
 		})
@@ -121,8 +120,7 @@ func TestSealedValueOpensOnlyForItsRowUnderItsKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var bad *Unsealable
-	if _, err = key.Open(SecretRow{Provider: "a", Account: "bc"}, sealed); !errors.As(err, &bad) {
+	if _, err = key.Open(SecretRow{Provider: "a", Account: "bc"}, sealed); !errors.Is(err, errUnsealable) {
 		t.Fatal("ambiguous row identity")
 	}
 }

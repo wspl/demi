@@ -282,13 +282,13 @@ func (s *Shard) ReloadConversation(ctx context.Context, id webapi.ConversationID
 func (s *Shard) reloadConversation(ctx context.Context, id webapi.ConversationID) error {
 	record, err := hostaccess.OwnedConversation(ctx, s, id)
 	if err != nil {
-		return &ReloadRefusal{Kind: ReloadAccess, Err: err}
+		return err
 	}
 	if record.Archived {
-		return &ReloadRefusal{Kind: ReloadArchived}
+		return ErrArchived
 	}
 	if err := s.agent.Reload(ctx, hostaccess.RootOf(id)); err != nil {
-		return &ReloadRefusal{Kind: ReloadWorking, Err: err}
+		return ErrAgentsWorking
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package usershard
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -177,10 +178,10 @@ func OpenStorage(
 func (s *Storage) Close(ctx context.Context) error {
 	var failures []error
 	if err := s.Conversations.Close(ctx); err != nil {
-		failures = append(failures, &CloseError{Kind: CloseConversation, Err: err})
+		failures = append(failures, fmt.Errorf("a conversation database did not close: %w", err))
 	}
 	if err := s.Control.Close(ctx); err != nil {
-		failures = append(failures, &CloseError{Kind: CloseControl, Err: err})
+		failures = append(failures, fmt.Errorf("the control database did not close: %w", err))
 	}
 	return errors.Join(failures...)
 }
@@ -200,11 +201,11 @@ func StartServices(
 	}
 	hasher, err := accounts.NewPasswordHasher(ctx)
 	if err != nil {
-		return nil, &ServicesError{Kind: ServicesHashing, Err: err}
+		return nil, fmt.Errorf("password hashing cannot start: %w", err)
 	}
 	releases, err := providers.NewClaudeReleases(setup.ClaudeReleases)
 	if err != nil {
-		return nil, &ServicesError{Kind: ServicesHTTP, Err: err}
+		return nil, fmt.Errorf("the HTTP client cannot start: %w", err)
 	}
 	syncs := &pagesync.SyncRegistry{}
 	vault := providers.NewVault(storage.Control, &keys.Vault, settings.Mode, syncs)
@@ -329,7 +330,7 @@ func serviceRegistry(settings ServiceSettings) (*plugins.Registry, error) {
 		return settings.Native.Serves(operation.Package, []string{operation.Operation})
 	})
 	if err != nil {
-		return nil, &ServicesError{Kind: ServicesPlugins, Err: err}
+		return nil, fmt.Errorf("the plugins cannot start: %w", err)
 	}
 	return registry, nil
 }

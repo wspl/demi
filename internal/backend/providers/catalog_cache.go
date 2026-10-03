@@ -72,7 +72,7 @@ func (c *ModelCatalogCache) Read(
 	c.mu.Lock()
 	if c.ctx.Err() != nil {
 		c.mu.Unlock()
-		//nolint:staticcheck // Product error text is copied verbatim from Rust.
+		//nolint:staticcheck // Product error text, shown to the user as it is.
 		return core.ProviderModelList{}, errors.New("The model catalog cache is closed")
 	}
 	entry := c.entryLocked(id, key)
@@ -86,7 +86,7 @@ func (c *ModelCatalogCache) Read(
 	c.mu.Lock()
 	if entry.ctx.Err() != nil {
 		c.mu.Unlock()
-		//nolint:staticcheck // Product error text is copied verbatim from Rust.
+		//nolint:staticcheck // Product error text, shown to the user as it is.
 		return core.ProviderModelList{}, errors.New("The catalog refresh was cancelled")
 	}
 	record := entry.record
@@ -203,10 +203,10 @@ func (c *ModelCatalogCache) refresh(
 		list, err = fetch(ctx)
 	}
 	if entry.ctx.Err() != nil {
-		//nolint:staticcheck // Product error text is copied verbatim from Rust.
+		//nolint:staticcheck // Product error text, shown to the user as it is.
 		err = errors.New("The catalog refresh was cancelled")
 	} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		//nolint:staticcheck // Product error text is copied verbatim from Rust.
+		//nolint:staticcheck // Product error text, shown to the user as it is.
 		err = errors.New("Model catalog request timed out")
 	}
 	if err == nil {
@@ -220,7 +220,7 @@ func (c *ModelCatalogCache) refresh(
 		if err == nil {
 			err = c.control.PutCatalogRecord(entry.ctx, id, *record)
 			if err != nil {
-				//nolint:staticcheck // Product error text is copied verbatim from Rust.
+				//nolint:staticcheck // Product error text, shown to the user as it is.
 				err = fmt.Errorf("The catalog could not be stored: %w", err)
 			}
 		}
@@ -266,7 +266,7 @@ func checkFetchedCatalog(list core.ProviderModelList) error {
 	var err error
 
 	if validation := list.Validate(); validation != nil {
-		//nolint:staticcheck // Product error text is copied verbatim from Rust.
+		//nolint:staticcheck // Product error text, shown to the user as it is.
 		err = fmt.Errorf("The catalog cannot be read: %w", validation)
 	} else if list.Stale {
 		message := strings.Join(list.Warnings, "; ")

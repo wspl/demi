@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -146,7 +147,7 @@ func (r *ClaudeReleases) read(pending *releaseRead) {
 	}
 	pending.release = release
 	if err != nil {
-		pending.err = &ReleaseError{Message: err.Error()}
+		pending.err = errors.New(err.Error())
 	}
 	r.pending = nil
 	close(pending.done)

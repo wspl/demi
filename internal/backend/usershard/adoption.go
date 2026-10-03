@@ -138,7 +138,7 @@ func (s *Shard) adopt(
 	if s.closing {
 		s.mu.Unlock()
 		socket.Release()
-		return &ShardUnavailable{Kind: ShardClosing}
+		return ErrClosing
 	}
 	s.runners.Add(1)
 	s.mu.Unlock()
@@ -225,7 +225,7 @@ func (s *Shard) bindRunner(
 	s.mu.Unlock()
 	if closing {
 		order.Release()
-		return nil, nil, &ShardUnavailable{Kind: ShardClosing}
+		return nil, nil, ErrClosing
 	}
 	link, driver := remotehost.NewLink(
 		remotehost.LinkOptions{

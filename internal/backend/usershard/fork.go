@@ -68,19 +68,18 @@ func (s *Shard) fork(
 	}
 	published, err := control.PublishFork(ctx, destination)
 	if err != nil {
-		return Forked{}, &ForkRefusal{Kind: ForkStorage, Err: err}
+		return Forked{}, err
 	}
 	s.published(published)
 	return Forked{Record: published, Created: true}, nil
 }
 
 func forkRefused(err error) error {
-	kind := ForkTarget
 	var failure *session.ForkError
 	if errors.As(err, &failure) && failure.Kind == session.ForkStore {
-		kind = ForkFailed
+		return err
 	}
-	return &ForkRefusal{Kind: kind, Message: err.Error(), Err: err}
+	return &ForkTargetError{Err: err}
 }
 
 func (s *Shard) published(record database.ConversationRecord) {
@@ -113,14 +112,14 @@ func (s *Shard) reserveConversationFork(
 	if cloud, ok := target.(*webapi.ConversationTargetCloud); ok && cloud.Path == nil {
 		resolved, err := hostaccess.ResolveTarget(ctx, s, record)
 		if err != nil {
-			return nil, &ForkRefusal{Kind: ForkStorage, Err: err}
+			return nil, err
 		}
 		path := database.ExecutionPath(resolved)
 		target = &webapi.ConversationTargetCloud{Path: &path}
 	}
 	attached, err := s.services.Control.AttachedHosts(ctx, record.ID)
 	if err != nil {
-		return nil, &ForkRefusal{Kind: ForkStorage, Err: err}
+		return nil, err
 	}
 	reserved, err := s.services.Control.ReserveFork(
 		ctx,
@@ -139,10 +138,10 @@ func (s *Shard) reserveConversationFork(
 		},
 	)
 	if err != nil {
-		return nil, &ForkRefusal{Kind: ForkStorage, Err: err}
+		return nil, err
 	}
 	if reserved == nil {
-		return nil, &ForkRefusal{Kind: ForkUnavailable}
+		return nil, ErrIDUnavailable
 	}
 	return reserved, nil
 }
@@ -166,7 +165,7 @@ func (s *Shard) copyForkCommands(
 		return err
 	})
 	if err != nil {
-		return &ForkRefusal{Kind: ForkStorage, Err: err}
+		return err
 	}
 	err = s.ConversationDB(destination).Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		if len(rows) != 0 {
@@ -177,7 +176,7 @@ func (s *Shard) copyForkCommands(
 		return database.ContinueSequences(ctx, tx, numbers)
 	})
 	if err != nil {
-		return &ForkRefusal{Kind: ForkStorage, Err: err}
+		return err
 	}
 	return nil
 }
@@ -189,12 +188,12 @@ func (s *Shard) resumeCommittedFork(
 ) (database.ConversationRecord, bool, error) {
 	committed, err := forkCommitted(ctx, s.services.Conversations, destination)
 	if err != nil {
-		return database.ConversationRecord{}, false, &ForkRefusal{Kind: ForkStorage, Err: err}
+		return database.ConversationRecord{}, false, err
 	}
 	if committed {
 		published, err := s.services.Control.PublishFork(ctx, destination)
 		if err != nil {
-			return database.ConversationRecord{}, false, &ForkRefusal{Kind: ForkStorage, Err: err}
+			return database.ConversationRecord{}, false, err
 		}
 		s.published(published)
 		return published, true, nil
@@ -209,10 +208,10 @@ func (s *Shard) forkSource(
 ) (*database.ConversationRecord, error) {
 	record, err := s.services.Control.Conversation(ctx, source)
 	if err != nil {
-		return nil, &ForkRefusal{Kind: ForkStorage, Err: err}
+		return nil, err
 	}
 	if record == nil || record.Owner != s.user {
-		return nil, &ForkRefusal{Kind: ForkSourceNotFound}
+		return nil, ErrConversationNotFound
 	}
 	return record, nil
 }
@@ -225,18 +224,18 @@ func (s *Shard) forkDestination(
 ) (*database.ForkOperation, *database.ConversationRecord, error) {
 	reserved, err := s.services.Control.ForkOperation(ctx, destination)
 	if err != nil {
-		return nil, nil, &ForkRefusal{Kind: ForkStorage, Err: err}
+		return nil, nil, err
 	}
 	if reserved != nil && !reserved.SameAttempt(s.user, source, block) {
-		return nil, nil, &ForkRefusal{Kind: ForkConflict}
+		return nil, nil, ErrForkConflict
 	}
 	existing, err := s.services.Control.Conversation(ctx, destination)
 	if err != nil {
-		return nil, nil, &ForkRefusal{Kind: ForkStorage, Err: err}
+		return nil, nil, err
 	}
 	if existing != nil {
 		if reserved == nil {
-			return nil, nil, &ForkRefusal{Kind: ForkUnavailable}
+			return nil, nil, ErrIDUnavailable
 		}
 		return reserved, existing, nil
 	}

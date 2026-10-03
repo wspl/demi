@@ -1,7 +1,7 @@
 # Account scenario fixtures
 
-The `claude_code/` distribution CA, certificate and key are copied byte for byte
-from `crates/backend/tests/backend/claude_code/`. They authenticate only the
+The `claude_code/` distribution CA, certificate and key are fixed test
+credentials. They authenticate only the
 loopback scripted distribution in the opt-in Claude Code scenarios.
 
 Run those scenarios with `-tags acceptance`, `DEMI_TEST_CLAUDE_CODE` naming the

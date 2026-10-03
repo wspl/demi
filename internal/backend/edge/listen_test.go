@@ -13,8 +13,8 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-// The backend listens on every IPv4 address and on no IPv6 one, as Rust's
-// `Ipv4Addr::UNSPECIFIED` listener did; Go's "tcp" would add IPv6.
+// The backend listens on every IPv4 address (0.0.0.0) and on no IPv6 one;
+// Go's "tcp" network would add IPv6.
 func TestUnspecifiedIPv4ListensOnIPv4Only(t *testing.T) {
 	control, err := database.OpenControl(t.Context(), filepath.Join(t.TempDir(), "control.sqlite"), core.SystemClock{})
 	if err != nil {

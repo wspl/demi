@@ -26,7 +26,7 @@ type User struct {
 	shard    PluginShard
 	control  *database.ControlService
 	marks    pagesync.UserMarks
-	// admission serializes choice reads/commits and instance admission/drop across
+	// admission serializes choice reads/commits and instance admission/close across
 	// IO. Callers release it before invoking plugins; port operations never take it.
 	admission chan struct{}
 	enabled   []bool
@@ -85,8 +85,8 @@ func (u *User) leave() {
 	<-u.admission
 }
 
-// drop ends admitted calls before asking a plugin to join its retained work.
-func (i *instance) drop(_ context.Context) {
+// close ends admitted calls before asking a plugin to join its retained work.
+func (i *instance) close() {
 	if i == nil {
 		return
 	}
@@ -115,7 +115,7 @@ func (u *User) Close(ctx context.Context) error {
 		}
 	}
 	for i, instance := range u.instances {
-		instance.drop(context.WithoutCancel(ctx))
+		instance.close()
 		u.instances[i] = nil
 	}
 	return nil
@@ -180,27 +180,27 @@ func (u *User) Entries(ctx context.Context) ([]webapi.PluginEntry, error) {
 func (u *User) Switch(ctx context.Context, id string, enabled bool) (bool, error) {
 	index, registeredPlugin := u.registry.lookup(id)
 	if registeredPlugin == nil {
-		return false, &SwitchError{Plugin: id}
+		return false, unknownPlugin(id)
 	}
 	if err := u.enter(ctx); err != nil {
-		return false, &SwitchError{Plugin: id, Err: err}
+		return false, err
 	}
 	defer u.leave()
 	if err := u.choices(ctx); err != nil {
-		return false, &SwitchError{Plugin: id, Err: err}
+		return false, err
 	}
 	if u.enabled[index] == enabled {
 		return false, nil
 	}
 	// Once the durable choice commits, publish and clean up even if its caller leaves.
 	if err := u.control.SetUserPlugin(context.WithoutCancel(ctx), u.id, id, enabled); err != nil {
-		return false, &SwitchError{Plugin: id, Err: err}
+		return false, err
 	}
 	u.enabled[index] = enabled
 	if !enabled {
 		close(u.streams[index])
 		u.streams[index] = make(chan struct{})
-		u.instances[index].drop(context.WithoutCancel(ctx))
+		u.instances[index].close()
 		u.instances[index] = nil
 	}
 	u.marks.Mark(pagesync.Part{Kind: pagesync.Plugins})
@@ -397,7 +397,7 @@ func (u *User) ConversationState(
 	index, registeredPlugin := u.registry.lookup(id)
 	if registeredPlugin == nil || registeredPlugin.manifest.Page == nil ||
 		registeredPlugin.manifest.Page.Conversation == nil {
-		return webapi.PluginStateAnswer{}, &PageCallError{Kind: UnknownPlugin, Plugin: id}
+		return webapi.PluginStateAnswer{}, unknownPlugin(id)
 	}
 	revision := u.conversationRevision(index, conversation)
 	state, err := u.stateOf(ctx, index, &conversation)
@@ -499,11 +499,11 @@ type PageCall struct {
 }
 
 // PageCall validates parameters against the declared method schema and calls
-// the enabled instance. It returns a PageCallError on refusal or plugin failure.
+// the enabled instance. It returns ErrUnknownPlugin or a PageCallError on refusal or plugin failure.
 func (u *User) PageCall(ctx context.Context, call PageCall) (json.RawMessage, error) {
 	index, registeredPlugin := u.registry.lookup(call.Plugin)
 	if registeredPlugin == nil {
-		return nil, &PageCallError{Kind: UnknownPlugin, Plugin: call.Plugin}
+		return nil, unknownPlugin(call.Plugin)
 	}
 	enabled, err := u.enabledSet(ctx)
 	if err != nil {

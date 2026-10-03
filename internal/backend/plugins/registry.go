@@ -33,21 +33,21 @@ func NewRegistry(factories []plugin.Factory, serves func(declare.NativeOperation
 		manifest := factory.Manifest()
 		id := string(manifest.ID)
 		if ids[id] {
-			return nil, &RegistryError{Kind: DuplicateID, Plugin: manifest.ID}
+			return nil, fmt.Errorf("two plugins have the id \"%s\"", manifest.ID)
 		}
 		ids[id] = true
 		if err := checkManifestContributions(manifest, profiles, streams, pages); err != nil {
 			return nil, err
 		}
-		// The generated codec detaches the manifest and checks values Rust's types
-		// make unrepresentable (notably the reserved execution id).
+		// The generated codec detaches the manifest and refuses values a manifest
+		// must not hold (notably the reserved execution id).
 		data, err := manifest.MarshalJSON()
 		if err != nil {
-			return nil, &RegistryError{Kind: RefusedCommands, Plugin: manifest.ID, Err: err}
+			return nil, fmt.Errorf("plugin \"%s\"'s commands are refused: %w", manifest.ID, err)
 		}
 		detached, err := plugin.DecodeManifest(data)
 		if err != nil {
-			return nil, &RegistryError{Kind: RefusedCommands, Plugin: manifest.ID, Err: err}
+			return nil, fmt.Errorf("plugin \"%s\"'s commands are refused: %w", manifest.ID, err)
 		}
 		r.plugins = append(r.plugins, registered{factory: factory, manifest: detached})
 	}
@@ -210,16 +210,12 @@ func (r *Registry) compose(user *User, product []host.Declared, enabled []bool) 
 			strip := 0
 			if c.Placement == plugin.PlacementDemi {
 				if names[name] {
-					return nil, &RegistryError{
-						Kind:   TakenCommand,
-						Plugin: p.manifest.ID,
-						Name:   "demi " + name,
-					}
+					return nil, fmt.Errorf("plugin \"%s\" declares \"%s\", which is taken", p.manifest.ID, "demi "+name)
 				}
 				names[name] = true
 				strip = 1
 			} else if name == plugin.DemiRoot {
-				return nil, &RegistryError{Kind: TakenCommand, Plugin: p.manifest.ID, Name: name}
+				return nil, fmt.Errorf("plugin \"%s\" declares \"%s\", which is taken", p.manifest.ID, name)
 			}
 			tree := host.Served(c.Tree.Node, forward{user: user, index: i, strip: strip})
 			var err error
@@ -232,7 +228,7 @@ func (r *Registry) compose(user *User, product []host.Declared, enabled []bool) 
 				demi = true
 			}
 			if err != nil {
-				return nil, &RegistryError{Kind: RefusedCommands, Plugin: p.manifest.ID, Err: err}
+				return nil, fmt.Errorf("plugin \"%s\"'s commands are refused: %w", p.manifest.ID, err)
 			}
 		}
 	}
@@ -304,28 +300,19 @@ func checkManifestContributions(manifest plugin.Manifest, profiles, streams, pag
 			reason = "another plugin declares"
 		}
 		if reason != "" {
-			return &RegistryError{
-				Kind:   InvalidProfile,
-				Plugin: manifest.ID,
-				Name:   profile.Name,
-				Reason: reason,
-			}
+			return fmt.Errorf("plugin \"%s\" declares the profile \"%s\", which %s", manifest.ID, profile.Name, reason)
 		}
 		profiles[profile.Name] = true
 	}
 	for _, stream := range manifest.Streams {
 		if streams[stream.Name] {
-			return &RegistryError{Kind: TakenStream, Plugin: manifest.ID, Name: stream.Name}
+			return fmt.Errorf("plugin \"%s\" declares the user stream \"%s\", which is taken", manifest.ID, stream.Name)
 		}
 		streams[stream.Name] = true
 	}
 	if page := manifest.Page; page != nil {
 		if pages[page.Package] {
-			return &RegistryError{
-				Kind:   TakenPagePackage,
-				Plugin: manifest.ID,
-				Name:   page.Package,
-			}
+			return fmt.Errorf("plugin \"%s\"'s page package \"%s\" is another plugin's", manifest.ID, page.Package)
 		}
 		pages[page.Package] = true
 		return checkPageTopics(manifest.ID, page)
@@ -383,12 +370,20 @@ func checkPageTopics(id plugin.ID, page *plugin.Page) error {
 		}
 		for _, topic := range state.Topics {
 			if topic.Scope() != scope {
-				return &RegistryError{
-					Kind:   ForeignTopic,
-					Plugin: id,
-					Scope:  scope,
-					Topic:  topic,
+				scopeName := "User"
+				if scope == plugin.ScopeConversation {
+					scopeName = "Conversation"
 				}
+				topicName := "Exposes"
+				if topic == plugin.TopicJobs {
+					topicName = "Jobs"
+				}
+				return fmt.Errorf(
+					"plugin \"%s\"'s %s state follows %s, a topic of another scope",
+					id,
+					scopeName,
+					topicName,
+				)
 			}
 		}
 	}

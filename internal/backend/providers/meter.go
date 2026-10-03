@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -59,7 +60,8 @@ func (r *RequestRateLimit) Take() error {
 	}
 	r.started = r.started[i:]
 	if len(r.started) >= r.limit {
-		return &RateLimited{Limit: r.limit}
+		//nolint:staticcheck // Product text, shown to the user as it is.
+		return fmt.Errorf("Provider request rate limit reached (%d per minute)", r.limit)
 	}
 	r.started = append(r.started, now)
 	return nil

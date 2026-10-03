@@ -20,7 +20,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// HostsHarness supplies the scripted machine manager Rust's scenario harness owns.
+// HostsHarness returns a harness on a scripted machine manager, and that manager.
 func HostsHarness(ctx context.Context, t testing.TB) (*Harness, *ScriptedManager, error) {
 	t.Helper()
 	manager, err := StartScriptedManager(context.WithoutCancel(ctx), t)
@@ -75,7 +75,7 @@ func (HostsProcessFamily) Wires() []core.WireAPI { return nil }
 // Provider accepts only the API-key credential.
 func (f HostsProcessFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
 	if _, ok := args.Credential.(*providers.APIKeyArgs); !ok {
-		return nil, &providers.FamilyError{Kind: providers.FamilyWrongCredential}
+		return nil, providers.ErrWrongCredential
 	}
 	return hostsProcessProvider{test: f.Test}, nil
 }

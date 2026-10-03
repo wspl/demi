@@ -273,7 +273,7 @@ func (m *ScriptedManager) Kill(ctx context.Context, device webapi.DeviceID) erro
 	m.putRunner(string(device), runner)
 	m.mu.Lock()
 	for connection := range m.connections {
-		// Like the reference broadcast queue, a slow subscriber loses old deaths.
+		// A slow subscriber loses its oldest death when a new one arrives.
 		select {
 		case connection.deaths <- string(device):
 		default:

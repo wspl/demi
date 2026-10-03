@@ -45,7 +45,7 @@ func (b *TestBackend) sync(ctx context.Context, session *Session) (*SyncChannel,
 		}
 		return nil, err
 	}
-	// Tungstenite's fixture default accepts messages up to 64 MiB.
+	// A test sync channel accepts messages up to 64 MiB.
 	socket.SetReadLimit(64 << 20)
 	return &SyncChannel{socket: socket}, nil
 }

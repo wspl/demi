@@ -1,35 +1,36 @@
 package providers
 
-import "fmt"
+import "errors"
 
-// FamilyErrorKind identifies why the operation failed.
-type FamilyErrorKind uint8
+// ErrWrongCredential means an entry's credential is not one its family takes.
+var ErrWrongCredential = errors.New("the entry's credential is not one its family takes")
 
-// FamilyError categories.
-const (
-	// FamilyWrongCredential means the entry’s credential does not match its family.
-	FamilyWrongCredential FamilyErrorKind = 0
-	// FamilyInvalid means the family refused its configuration.
-	FamilyInvalid FamilyErrorKind = 1
+// Account and login refusals the edge answers with their own codes.
+//
+//nolint:staticcheck // Product text, shown to the user as it is.
+var (
+	// ErrSetupTokenUnavailable means no registered family imports setup tokens.
+	ErrSetupTokenUnavailable = errors.New("Setup-token import is unavailable")
+	// ErrUseDeviceLogin means the provider adds accounts only through device login.
+	ErrUseDeviceLogin = errors.New("Use device login for this provider")
+	// ErrNotSubscription means the provider does not use subscription accounts.
+	ErrNotSubscription = errors.New("This provider does not use subscription accounts")
+	// ErrSetupTokenProviderExists means the user already has a Claude Code provider.
+	ErrSetupTokenProviderExists = errors.New("Add this token to the existing Claude Code provider")
+	// ErrAccountNotFound means the requested account does not exist.
+	ErrAccountNotFound = errors.New("No such account")
+	// ErrActiveAccount means the operation would remove the selected account.
+	ErrActiveAccount = errors.New("Select another account before removing the active one, or delete the provider")
+	// ErrTokenImportFailed means the setup token could not be imported.
+	ErrTokenImportFailed = errors.New("The setup token could not be imported")
+	// ErrLoginBusy means another operation on the provider is still running.
+	ErrLoginBusy = errors.New("Another provider operation is still running")
 )
 
-// FamilyError reports a typed provider operation failure.
-type FamilyError struct {
-	// Kind selects the failure category and applicable details.
-	Kind FamilyErrorKind
-	// Message holds the diagnostic for categories with custom text.
-	Message string
-}
+// errUnsealable means a sealed value was altered, moved, or sealed under another key.
+var errUnsealable = errors.New("the sealed value does not open")
 
-// Error returns the failure message.
-func (e *FamilyError) Error() string {
-	if e.Kind == FamilyWrongCredential {
-		return "the entry's credential is not one its family takes"
-	}
-	return e.Message
-}
-
-// AssemblyErrorKind identifies why the operation failed.
+// AssemblyErrorKind identifies why a provider could not be assembled.
 type AssemblyErrorKind uint8
 
 // AssemblyError categories.
@@ -38,161 +39,63 @@ const (
 	AssemblyStorage AssemblyErrorKind = 0
 	// AssemblyUnknownFamily means the entry names an unavailable family.
 	AssemblyUnknownFamily AssemblyErrorKind = 1
-	// AssemblyFamily means the family could not build the provider.
-	AssemblyFamily AssemblyErrorKind = 2
-	// AssemblyNoProcessRuntime means the family cannot run its process.
-	AssemblyNoProcessRuntime AssemblyErrorKind = 3
 )
 
-// AssemblyError reports a typed provider operation failure.
+// AssemblyError reports a provider that could not be assembled. The edge tells
+// a storage failure from others, and an unknown family in a login from others.
 type AssemblyError struct {
-	// Kind selects the failure category and applicable details.
+	// Kind selects the failure category.
 	Kind AssemblyErrorKind
-	// Family identifies the provider family involved in the failure.
+	// Family names the unknown family.
 	Family string
-	// Err retains the underlying failure for errors.Is and errors.As.
+	// Err is the storage failure.
 	Err error
 }
 
 // Error returns the failure message.
 func (e *AssemblyError) Error() string {
-	switch e.Kind {
-	case AssemblyUnknownFamily:
+	if e.Kind == AssemblyUnknownFamily {
 		return "the provider family " + e.Family + " is not available"
-	case AssemblyNoProcessRuntime:
-		return "the provider family " + e.Family + " cannot run its process"
 	}
 	return e.Err.Error()
 }
 
-// Unwrap returns the underlying failure.
+// Unwrap returns the storage failure.
 func (e *AssemblyError) Unwrap() error { return e.Err }
 
-// AccountRefusalKind identifies why the operation failed.
-type AccountRefusalKind uint8
+// LoginErrorKind identifies why a login did not start or complete.
+type LoginErrorKind uint8
 
-// AccountRefusal categories.
-const (
-	// AccountExists means this scope already has the token’s provider family.
-	AccountExists AccountRefusalKind = 0
-	// AccountUnsupported means the provider does not support the account operation.
-	AccountUnsupported AccountRefusalKind = 1
-	// AccountNotFound means the requested account does not exist.
-	AccountNotFound AccountRefusalKind = 2
-	// AccountActive means the operation would remove the selected account.
-	AccountActive AccountRefusalKind = 3
-	// AccountTokenImportFailed means the setup token could not be imported.
-	AccountTokenImportFailed AccountRefusalKind = 4
-	// AccountStore means account storage refused the operation.
-	AccountStore AccountRefusalKind = 5
-	// AccountAssembly means the account’s provider could not be assembled.
-	AccountAssembly AccountRefusalKind = 6
-)
-
-// AccountRefusal reports a typed provider operation failure.
-type AccountRefusal struct {
-	// Kind selects the failure category and applicable details.
-	Kind AccountRefusalKind
-	// Message holds the diagnostic for categories with custom text.
-	Message string
-	// Err retains the underlying failure for errors.Is and errors.As.
-	Err error
-}
-
-// Error returns the failure message.
-func (e *AccountRefusal) Error() string {
-	switch e.Kind {
-	case AccountExists:
-		return "Add this token to the existing Claude Code provider"
-	case AccountNotFound:
-		return "No such account"
-	case AccountActive:
-		return "Select another account before removing the active one, or delete the provider"
-	case AccountTokenImportFailed:
-		return "The setup token could not be imported"
-	case AccountAssembly:
-		return e.Err.Error()
-	}
-	return e.Message
-}
-
-// Unwrap returns the underlying failure.
-func (e *AccountRefusal) Unwrap() error { return e.Err }
-
-// LoginRefusalKind identifies why the operation failed.
-type LoginRefusalKind uint8
-
-// LoginRefusal categories.
+// LoginError categories.
 const (
 	// LoginNoLoginFlow means the family has no subscription login flow.
-	LoginNoLoginFlow LoginRefusalKind = 0
+	LoginNoLoginFlow LoginErrorKind = 0
 	// LoginExists means the scope already has this subscription family.
-	LoginExists LoginRefusalKind = 1
-	// LoginBusy means another provider operation holds admission.
-	LoginBusy LoginRefusalKind = 2
-	// LoginAssembly means the login’s provider could not be assembled.
-	LoginAssembly LoginRefusalKind = 3
+	LoginExists LoginErrorKind = 1
+	// LoginAssembly means the login's provider could not be assembled.
+	LoginAssembly LoginErrorKind = 2
 )
 
-// LoginRefusal reports a typed provider operation failure.
-type LoginRefusal struct {
-	// Kind selects the failure category and applicable details.
-	Kind LoginRefusalKind
-	// Family identifies the provider family involved in the failure.
+// LoginError reports why a login did not start or complete.
+type LoginError struct {
+	// Kind selects the failure category.
+	Kind LoginErrorKind
+	// Family names the provider family involved.
 	Family string
-	// Err retains the underlying failure for errors.Is and errors.As.
+	// Err is the assembly failure.
 	Err error
 }
 
 // Error returns the failure message.
-func (e *LoginRefusal) Error() string {
+func (e *LoginError) Error() string {
 	switch e.Kind {
 	case LoginNoLoginFlow:
 		return e.Family + " has no device login"
 	case LoginExists:
 		return "This scope already has a " + e.Family + " subscription"
-	case LoginBusy:
-		return "Another provider operation is still running"
 	}
 	return e.Err.Error()
 }
 
-// Unwrap returns the underlying failure.
-func (e *LoginRefusal) Unwrap() error { return e.Err }
-
-// RateLimited reports a request that exceeds the limit; it never reaches the vendor and does not count.
-type RateLimited struct {
-	// Limit is the maximum number of requests allowed per minute.
-	Limit int
-}
-
-// Error returns the failure message.
-func (e *RateLimited) Error() string {
-	return fmt.Sprintf("Provider request rate limit reached (%d per minute)", e.Limit)
-}
-
-// NotConfigured reports a model the configured list does not name; its request fails.
-type NotConfigured struct {
-	// Model identifies the model absent from the configured catalog.
-	Model string
-}
-
-// Error returns the failure message.
-func (e *NotConfigured) Error() string {
-	return "the model " + e.Model + " is not in the provider's configured list"
-}
-
-// Unsealable reports a sealed value that was altered, moved, or sealed under another key.
-type Unsealable struct{}
-
-// Error returns the failure message.
-func (e *Unsealable) Error() string { return "the sealed value does not open" }
-
-// ReleaseError reports why the newest release could not be read.
-type ReleaseError struct {
-	// Message holds the diagnostic for categories with custom text.
-	Message string
-}
-
-// Error returns the failure message.
-func (e *ReleaseError) Error() string { return e.Message }
+// Unwrap returns the assembly failure.
+func (e *LoginError) Unwrap() error { return e.Err }

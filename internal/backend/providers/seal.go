@@ -63,28 +63,29 @@ func (k *VaultKey) Seal(row Row, plaintext []byte) ([]byte, error) {
 // Open authenticates and decrypts a sealed row; corrupt values are never repaired.
 func (k *VaultKey) Open(row Row, sealed []byte) ([]byte, error) {
 	if len(sealed) < 12 {
-		return nil, &Unsealable{}
+		return nil, errUnsealable
 	}
 	block, err := aes.NewCipher(k.key[:])
 	if err != nil {
-		return nil, &Unsealable{}
+		return nil, errUnsealable
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, &Unsealable{}
+		return nil, errUnsealable
 	}
 	aad, err := rowName(row)
 	if err != nil {
-		return nil, &Unsealable{}
+		return nil, errUnsealable
 	}
 	plain, err := gcm.Open(nil, sealed[:12], sealed[12:], aad)
 	if err != nil {
-		return nil, &Unsealable{}
+		return nil, errUnsealable
 	}
 	return plain, nil
 }
 
-// rowName binds each credential ciphertext to its Rust storage identity.
+// rowName is the additional data that binds a ciphertext to its row: a fixed
+// name, then each id as a 4-byte big-endian length followed by its bytes.
 func rowName(row Row) ([]byte, error) {
 	var name []byte
 	var ids []string
@@ -96,7 +97,7 @@ func rowName(row Row) ([]byte, error) {
 		name = []byte("demi account secret")
 		ids = []string{string(row.Provider), string(row.Account)}
 	default:
-		return nil, &Unsealable{}
+		return nil, errUnsealable
 	}
 	for _, id := range ids {
 		length := uint32(len(id))

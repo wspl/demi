@@ -1,7 +1,6 @@
 package providers
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -58,8 +57,11 @@ func TestEveryRequestTakesConfiguredFactsAndKeepsUserChoices(t *testing.T) {
 	}
 	other := chosen
 	other.Model.ID = "gpt-4"
-	var missing *NotConfigured
-	if _, err := ConfiguredSelection(entry, other); !errors.As(err, &missing) || missing.Model != "gpt-4" {
+	if _, err := ConfiguredSelection(
+		entry,
+		other,
+	); err == nil ||
+		err.Error() != "the model gpt-4 is not in the provider's configured list" {
 		t.Fatal(err)
 	}
 	entry.Credential = &APIKeyConfig{}
