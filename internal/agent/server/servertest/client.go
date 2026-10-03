@@ -32,7 +32,13 @@ func Connect[H host.Host](t testing.TB, s *server.Server[H], root core.NodeID, c
 
 // ConnectWith creates a client whose frames' files resolver resolves.
 // It registers cleanup with t.
-func ConnectWith[H host.Host](t testing.TB, s *server.Server[H], root core.NodeID, cwd string, resolver server.ContentResolver) *TestClient[H] {
+func ConnectWith[H host.Host](
+	t testing.TB,
+	s *server.Server[H],
+	root core.NodeID,
+	cwd string,
+	resolver server.ContentResolver,
+) *TestClient[H] {
 	connection, frames := s.Connect(root, cwd, resolver)
 	t.Cleanup(connection.Detach)
 	return &TestClient[H]{connection: connection, frames: frames, hangGuard: HangGuard}
@@ -74,7 +80,10 @@ func (c *TestClient[H]) Split() (*server.Connection[H], *server.FrameReceiver) {
 // NextUntil returns frames through the first that until accepts. It returns
 // the frames seen and an error if the outbox closes, the context is canceled,
 // or the client's hang deadline ends the wait first.
-func (c *TestClient[H]) NextUntil(ctx context.Context, until func(framewire.ServerFrame) bool) ([]framewire.ServerFrame, error) {
+func (c *TestClient[H]) NextUntil(
+	ctx context.Context,
+	until func(framewire.ServerFrame) bool,
+) ([]framewire.ServerFrame, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.hangGuard)
 	defer cancel()
 	frames := []framewire.ServerFrame{}

@@ -72,23 +72,27 @@ func (s *Session) wakeupDriver() {
 		case <-timer.C:
 		}
 		timer.Stop()
-		s.mutate(func(c *coreState) {
-			if c.disposing {
-				return
-			}
-			now := s.deps.Clock.Now()
-			kept := []store.ScheduledWakeup{}
-			for _, w := range c.wakeups {
-				if w.DueAt != nil && *w.DueAt <= now {
-					c.inputs = append(c.inputs, pendingInput{wakeup: new(w)})
-					c.arrivals++
-					c.dirty = true
-				} else {
-					kept = append(kept, w)
-				}
-			}
-			c.wakeups = kept
-			s.startNextLocked()
-		})
+		s.acceptDueWakeups()
 	}
+}
+
+func (s *Session) acceptDueWakeups() {
+	s.mutate(func(c *coreState) {
+		if c.disposing {
+			return
+		}
+		now := s.deps.Clock.Now()
+		kept := []store.ScheduledWakeup{}
+		for _, w := range c.wakeups {
+			if w.DueAt != nil && *w.DueAt <= now {
+				c.inputs = append(c.inputs, pendingInput{wakeup: new(w)})
+				c.arrivals++
+				c.dirty = true
+			} else {
+				kept = append(kept, w)
+			}
+		}
+		c.wakeups = kept
+		s.startNextLocked()
+	})
 }

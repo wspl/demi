@@ -18,7 +18,20 @@ import (
 
 func TestTransientFailuresBeforeOutput(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		f := setup(t, providertest.Events(providertest.Error("overloaded", new(provider.Overloaded))), providertest.Events(&provider.Error{Failure: provider.Failure{Message: "limited", Code: new(provider.RateLimit), RetryAfter: new(1500 * time.Millisecond)}}), answer("done"))
+		f := setup(
+			t,
+			providertest.Events(providertest.Error("overloaded", new(provider.Overloaded))),
+			providertest.Events(
+				&provider.Error{
+					Failure: provider.Failure{
+						Message:    "limited",
+						Code:       new(provider.RateLimit),
+						RetryAfter: new(1500 * time.Millisecond),
+					},
+				},
+			),
+			answer("done"),
+		)
 		reports := []session.RetryScheduled{}
 		sub := f.s.Subscribe(func(e session.Event) {
 			if e, ok := e.(*session.RetryScheduled); ok {
@@ -44,22 +57,44 @@ func TestTransientFailuresBeforeOutput(t *testing.T) {
 		}
 	})
 }
+
 func TestThinkingUnwindsButTextMakesFailureTerminal(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		f := setup(t, providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("plan"), providertest.Error("busy", new(provider.Overloaded))), answer("done"), providertest.Events(providertest.Text("partial"), providertest.Error("busy", new(provider.Overloaded))))
+		f := setup(
+			t,
+			providertest.Events(
+				&provider.ThinkingStart{},
+				providertest.Thinking("plan"),
+				providertest.Error("busy", new(provider.Overloaded)),
+			),
+			answer("done"),
+			providertest.Events(providertest.Text("partial"), providertest.Error("busy", new(provider.Overloaded))),
+		)
 		f.done(f.send("one", "t1"))
 		assertActionCode(t, f.send("two", "t2"), "overloaded")
 		f.history("user", "text", "response", "user", "text", "error")
 		equal(t, len(f.p.Requests()), 3)
 	})
 }
+
 func TestTransientAttemptAndVendorWaitLimits(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		turns := []providertest.Turn{}
 		for range 4 {
 			turns = append(turns, providertest.Events(providertest.Error("busy", new(provider.Overloaded))))
 		}
-		turns = append(turns, providertest.Events(&provider.Error{Failure: provider.Failure{Message: "wait", Code: new(provider.RateLimit), RetryAfter: new(31 * time.Second)}}))
+		turns = append(
+			turns,
+			providertest.Events(
+				&provider.Error{
+					Failure: provider.Failure{
+						Message:    "wait",
+						Code:       new(provider.RateLimit),
+						RetryAfter: new(31 * time.Second),
+					},
+				},
+			),
+		)
 		f := setup(t, turns...)
 		reports := []session.RetryScheduled{}
 		sub := f.s.Subscribe(func(e session.Event) {
@@ -81,6 +116,7 @@ func TestTransientAttemptAndVendorWaitLimits(t *testing.T) {
 		equal(t, len(f.p.Requests()), 5)
 	})
 }
+
 func TestTransientFailureAfterToolDoesNotRepeatTool(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		calls := 0
@@ -88,7 +124,14 @@ func TestTransientFailureAfterToolDoesNotRepeatTool(t *testing.T) {
 			calls++
 			return textOutcome("seen"), nil
 		})
-		f := start(t, r, session.DefaultConfig(), tool("look"), providertest.Events(providertest.Error("limited", new(provider.RateLimit))), answer("done"))
+		f := start(
+			t,
+			r,
+			session.DefaultConfig(),
+			tool("look"),
+			providertest.Events(providertest.Error("limited", new(provider.RateLimit))),
+			answer("done"),
+		)
 		reports := 0
 		sub := f.s.Subscribe(func(e session.Event) {
 			if _, ok := e.(*session.RetryScheduled); ok {
@@ -105,6 +148,7 @@ func TestTransientFailureAfterToolDoesNotRepeatTool(t *testing.T) {
 		f.history("user", "tool_call:completed", "response", "text", "response")
 	})
 }
+
 func TestResumeAfterToolFailureKeepsResult(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		calls := 0
@@ -112,7 +156,18 @@ func TestResumeAfterToolFailureKeepsResult(t *testing.T) {
 			calls++
 			return textOutcome("seen"), nil
 		})
-		f := start(t, r, session.DefaultConfig(), tool("look"), providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("plan"), providertest.Error("failure", nil)), answer("done"))
+		f := start(
+			t,
+			r,
+			session.DefaultConfig(),
+			tool("look"),
+			providertest.Events(
+				&provider.ThinkingStart{},
+				providertest.Thinking("plan"),
+				providertest.Error("failure", nil),
+			),
+			answer("done"),
+		)
 		f.fail(f.send("look", "t1"))
 		f.history("user", "tool_call:completed", "response", "thinking", "error")
 		a, err := f.s.Resume()
@@ -131,9 +186,14 @@ func TestResumeAfterToolFailureKeepsResult(t *testing.T) {
 		if _, ok := last[2].(*provider.ToolResult); !ok {
 			t.Fatalf("third item: %T", last[2])
 		}
-		equal(t, last[len(last)-1], provider.InferenceItem(&provider.UserMessage{Content: storetest.SentText(transcripttest.ResumeText)}))
+		equal(
+			t,
+			last[len(last)-1],
+			provider.InferenceItem(&provider.UserMessage{Content: storetest.SentText(transcripttest.ResumeText)}),
+		)
 	})
 }
+
 func TestResumeEmptyTurnRerunsWithoutResumeBlock(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, providertest.Events(providertest.Error("failure", nil)), answer("done"))
@@ -147,6 +207,7 @@ func TestResumeEmptyTurnRerunsWithoutResumeBlock(t *testing.T) {
 		equal(t, requests[1].TurnID, "t1")
 	})
 }
+
 func TestRetryKeepsTurnSteers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		turn, entered, release := gated(providertest.Text("first"), providertest.Response(1, 1))
@@ -185,6 +246,7 @@ func TestRetryKeepsTurnSteers(t *testing.T) {
 		equal(t, kinds(f.checkpoint().Transcript), kinds(f.s.Transcript().Blocks))
 	})
 }
+
 func TestResumeMarksStopAndContinues(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, hanging(providertest.Text("partial")), answer("done"))
@@ -211,6 +273,7 @@ func TestResumeMarksStopAndContinues(t *testing.T) {
 		})
 	})
 }
+
 func TestStopDuringResumeSave(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, providertest.Events(providertest.Text("partial"), providertest.Error("failure", nil)))

@@ -161,12 +161,31 @@ func (e *TitleError) Unwrap() error { return e.Cause }
 // cancellation or no usable answer returns nil. Provider failures return
 // *TitleError. The caller owns runtime and closes it after the request.
 // This is no session turn and adds nothing to a transcript.
-func Title(ctx context.Context, runtime provider.Runtime, sessionID, requestID string, selection core.ModelSelection, messages []string) (*string, error) {
+func Title(
+	ctx context.Context,
+	runtime provider.Runtime,
+	sessionID, requestID string,
+	selection core.ModelSelection,
+	messages []string,
+) (*string, error) {
 	input := TitleInput(messages)
 	if input == "" {
 		return nil, nil
 	}
-	request := provider.InferenceRequest{SessionID: sessionID, TurnID: "title:" + requestID, RequestID: requestID, ModelID: selection.Model.ID, OutputLimit: selection.Model.OutputLimit, OutputCap: new(TitleOutputCap), SystemPrompt: TitleInstruction, Items: []provider.InferenceItem{&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: input}}}}, Tools: []provider.ToolDefinition{}, Thinking: LowestThinking(selection.Model)}
+	request := provider.InferenceRequest{
+		SessionID:    sessionID,
+		TurnID:       "title:" + requestID,
+		RequestID:    requestID,
+		ModelID:      selection.Model.ID,
+		OutputLimit:  selection.Model.OutputLimit,
+		OutputCap:    new(TitleOutputCap),
+		SystemPrompt: TitleInstruction,
+		Items: []provider.InferenceItem{
+			&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: input}}},
+		},
+		Tools:    []provider.ToolDefinition{},
+		Thinking: LowestThinking(selection.Model),
+	}
 	var answer strings.Builder
 	for event := range runtime.Run(ctx, request) {
 		switch e := event.(type) {
@@ -174,7 +193,12 @@ func Title(ctx context.Context, runtime provider.Runtime, sessionID, requestID s
 			answer.WriteString(e.Text)
 		case *provider.Error:
 			return nil, &TitleError{Message: e.Failure.Message}
-		case *provider.ThinkingStart, *provider.ThinkingDelta, *provider.ThinkingSignature, *provider.RedactedThinking, *provider.ToolCall, *provider.Response:
+		case *provider.ThinkingStart,
+			*provider.ThinkingDelta,
+			*provider.ThinkingSignature,
+			*provider.RedactedThinking,
+			*provider.ToolCall,
+			*provider.Response:
 		}
 	}
 	if ctx.Err() != nil {

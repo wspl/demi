@@ -21,9 +21,12 @@ import (
 
 type scriptedHost struct{ toolstest.NoHost }
 
-func (*scriptedHost) Key() host.Key                                                    { return host.Key("scripted") }
-func (*scriptedHost) DefaultCWD() string                                               { return "/workspace" }
-func (*scriptedHost) Identity() host.Identity                                          { return host.Identity{Hostname: "scripted"} }
+func (*scriptedHost) Key() host.Key { return host.Key("scripted") }
+
+func (*scriptedHost) DefaultCWD() string { return "/workspace" }
+
+func (*scriptedHost) Identity() host.Identity { return host.Identity{Hostname: "scripted"} }
+
 func (h *scriptedHost) Host(context.Context, tools.NodeContext) (*scriptedHost, error) { return h, nil }
 
 type scriptedShell struct {
@@ -40,16 +43,19 @@ func (s *scriptedShell) Exec(_ context.Context, r host.ExecRequest) (host.Comman
 	s.feed.Changed(record)
 	return record.Status(host.DefaultOutputLimitBytes, nil), nil
 }
+
 func (s *scriptedShell) record() *host.CommandRecord {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.command
 }
+
 func (s *scriptedShell) print(text string) {
 	r := s.record()
 	r.AppendOutput(core.StreamKindStdout, text)
 	s.feed.Changed(r)
 }
+
 func (s *scriptedShell) end() {
 	r := s.record()
 	if r != nil {
@@ -57,18 +63,23 @@ func (s *scriptedShell) end() {
 		s.feed.Changed(r)
 	}
 }
+
 func (s *scriptedShell) Status(core.CommandID) (host.CommandStatus, error) {
 	return s.record().Status(host.DefaultOutputLimitBytes, nil), nil
 }
+
 func (*scriptedShell) ReadOutput(context.Context, core.CommandID) (host.WholeOutput, error) {
 	return host.WholeOutput{}, &host.ShellError{Kind: host.UnknownCommand}
 }
+
 func (*scriptedShell) Write(context.Context, core.CommandID, []byte) error {
 	return &host.ShellError{Kind: host.NotRunning}
 }
+
 func (*scriptedShell) Abort(context.Context, core.CommandID) error {
 	return &host.ShellError{Kind: host.NotRunning}
 }
+
 func (s *scriptedShell) PageViews() []host.PageView {
 	r := s.record()
 	if r == nil {
@@ -82,7 +93,9 @@ func (s *scriptedShell) DisposeAll(context.Context) error {
 	s.end()
 	return nil
 }
-func (s *scriptedShell) OwnsShell(id core.ShellID) bool     { return s.record() != nil && id == "1" }
+
+func (s *scriptedShell) OwnsShell(id core.ShellID) bool { return s.record() != nil && id == "1" }
+
 func (s *scriptedShell) OwnsCommand(id core.CommandID) bool { return s.record() != nil && id == "1" }
 
 type scriptedShells struct {
@@ -90,21 +103,45 @@ type scriptedShells struct {
 	shell *scriptedShell
 }
 
-func (s *scriptedShells) Create(_ context.Context, scope tools.EnvironmentScope, _ *scriptedHost) (host.ShellEnvironment, error) {
+func (s *scriptedShells) Create(
+	_ context.Context,
+	scope tools.EnvironmentScope,
+	_ *scriptedHost,
+) (host.ShellEnvironment, error) {
 	shell := &scriptedShell{feed: scope.Feed}
 	s.mu.Lock()
 	s.shell = shell
 	s.mu.Unlock()
 	return shell, nil
 }
+
 func serving(t *testing.T) (*server.Server[*scriptedHost], *scriptedShell, *servertest.TestClient[*scriptedHost]) {
 	t.Helper()
-	script := providertest.NewScriptedRuntime(t, providertest.Events(providertest.ToolCall("call-1", "shell_exec", []byte(`{"script":"serve","timeoutMs":200}`))), said("serving"))
+	script := providertest.NewScriptedRuntime(
+		t,
+		providertest.Events(
+			providertest.ToolCall("call-1", "shell_exec", []byte(`{"script":"serve","timeoutMs":200}`)),
+		),
+		said("serving"),
+	)
 	providers := &servertest.ScriptedProviders{}
 	providers.Provide("stub", script)
 	memory := storetest.NewMemoryTreeStore()
 	shells := &scriptedShells{}
-	s := server.New(server.Deps[*scriptedHost]{Toolsets: tools.Toolset{Commands: &host.CommandSet{}, Revision: "none"}, Instructions: "system prompt", Hosts: &scriptedHost{}, Shells: shells, Providers: providers, Stores: func(core.NodeID) store.TreeStore { return memory }, Clock: core.SystemClock{}, IDs: &testIDs{}, Config: server.DefaultConfig(), StatusChanged: func(core.NodeID) {}})
+	s := server.New(
+		server.Deps[*scriptedHost]{
+			Toolsets:      tools.Toolset{Commands: &host.CommandSet{}, Revision: "none"},
+			Instructions:  "system prompt",
+			Hosts:         &scriptedHost{},
+			Shells:        shells,
+			Providers:     providers,
+			Stores:        func(core.NodeID) store.TreeStore { return memory },
+			Clock:         core.SystemClock{},
+			IDs:           &testIDs{},
+			Config:        server.DefaultConfig(),
+			StatusChanged: func(core.NodeID) {},
+		},
+	)
 	t.Cleanup(func() {
 		if err := s.Shutdown(context.Background()); err != nil {
 			t.Error(err)
@@ -128,6 +165,7 @@ func serving(t *testing.T) (*server.Server[*scriptedHost], *scriptedShell, *serv
 	}
 	return s, shell, c
 }
+
 func tails(t *testing.T, frames []framewire.ServerFrame) []string {
 	result := []string{}
 	for _, frame := range frames {
@@ -141,6 +179,7 @@ func tails(t *testing.T, frames []framewire.ServerFrame) []string {
 	}
 	return result
 }
+
 func TestDetachedOutputDoesNotReplayAsNewOutput(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s, shell, first := serving(t)
@@ -165,6 +204,7 @@ func TestDetachedOutputDoesNotReplayAsNewOutput(t *testing.T) {
 		equal(t, []string{"one\ntwo\nthree\nfour\n"}, tails(t, second.Received()))
 	})
 }
+
 func TestDetachedRunningCommandKeepsTreeLive(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s, shell, c := serving(t)

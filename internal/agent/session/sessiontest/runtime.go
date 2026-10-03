@@ -50,7 +50,11 @@ func (r *Runtime) Preamble(ctx context.Context) (*string, error) {
 }
 
 // Context delegates context collection or supplies no new context.
-func (r *Runtime) Context(ctx context.Context, seen []session.SeenContext, turn core.TurnID) ([]session.NewContext, error) {
+func (r *Runtime) Context(
+	ctx context.Context,
+	seen []session.SeenContext,
+	turn core.TurnID,
+) ([]session.NewContext, error) {
 	if r.News != nil {
 		return r.News(ctx, seen, turn)
 	}

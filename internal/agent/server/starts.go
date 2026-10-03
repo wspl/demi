@@ -12,7 +12,13 @@ import (
 )
 
 // start owns the whole start beyond its durable reservation, even if the job leaves.
-func (t *Tree[H]) start(ctx context.Context, caller core.NodeID, input startInput, request string, port host.RPCPort) (uint64, error) {
+func (t *Tree[H]) start(
+	ctx context.Context,
+	caller core.NodeID,
+	input startInput,
+	request string,
+	port host.RPCPort,
+) (uint64, error) {
 	t.server.mu.Lock()
 	if t.disposing {
 		t.server.mu.Unlock()
@@ -40,25 +46,15 @@ func (t *Tree[H]) start(ctx context.Context, caller core.NodeID, input startInpu
 
 	lease := owner.runtime.lifecycle.TryEnter(gates.Maintenance)
 	if lease == nil {
-		return 0, errors.New("Cannot change children while a transcript edit is being prepared") //nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+		//nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+		return 0, errors.New(
+			"Cannot change children while a transcript edit is being prepared",
+		)
 	}
 	defer lease.Release()
-	fresh := startReceipt{Input: input, Round: 1}
-	switch v := input.(type) {
-	case *spawnInput:
-		fresh.NodeID, err = core.ParseNodeID(t.server.deps.IDs.NextID())
-		if err != nil {
-			return 0, err
-		}
-	case *resumeInput:
-		fresh.NodeID = v.ID
-		previous, err := t.store.Node(ctx, v.ID)
-		if err != nil {
-			return 0, err
-		}
-		if previous != nil {
-			fresh.Round = previous.Round + 1
-		}
+	fresh, err := t.startReceipt(ctx, input)
+	if err != nil {
+		return 0, err
 	}
 	receipt, err := reserveStart(ctx, port, request, fresh)
 	if err != nil {
@@ -79,22 +75,12 @@ func (t *Tree[H]) finishStart(ctx context.Context, owner *Node[H], receipt start
 		return 0, err
 	}
 	if record != nil {
-		if record.Parent == nil || *record.Parent != owner.ID() {
-			return 0, errors.New("request-id references an agent owned by another session")
-		}
-		_, spawn := receipt.Input.(*spawnInput)
-		if spawn || record.Round == receipt.Round {
-			if record.Closed == nil && t.Node(record.ID) == nil {
-				if err := t.startChild(ctx, owner, *record, nil); err != nil {
-					return 0, err
-				}
-			}
-			return record.Number, nil
-		}
-		if record.Round > receipt.Round {
-			return 0, errors.New("resume request has been superseded by a later round")
+		done, number, err := t.restoreStart(ctx, owner, receipt, record)
+		if done || err != nil {
+			return number, err
 		}
 	}
+
 	switch v := receipt.Input.(type) {
 	case *spawnInput:
 		if !owner.record.CanSpawnSubagents {
@@ -112,7 +98,16 @@ func (t *Tree[H]) finishStart(ctx context.Context, owner *Node[H], receipt start
 			return 0, err
 		}
 		canSpawn := !v.IsSpawnForbidden && (profile == nil || profile.CanSpawnSubagents)
-		record := store.NodeRecord{ID: receipt.NodeID, Number: number, Parent: new(owner.ID()), Description: v.Description, Profile: v.ProfileName, Round: receipt.Round, StartedAt: t.server.deps.Clock.Now(), CanSpawnSubagents: canSpawn}
+		record := store.NodeRecord{
+			ID:                receipt.NodeID,
+			Number:            number,
+			Parent:            new(owner.ID()),
+			Description:       v.Description,
+			Profile:           v.ProfileName,
+			Round:             receipt.Round,
+			StartedAt:         t.server.deps.Clock.Now(),
+			CanSpawnSubagents: canSpawn,
+		}
 		brief, err := t.textMessage(v.Prompt)
 		if err != nil {
 			return 0, err
@@ -135,7 +130,13 @@ func (t *Tree[H]) textMessage(text string) (core.QueuedMessage, error) {
 	return core.QueuedMessage{ID: id, Content: []core.UserContentBlock{&core.UserText{Text: text}}}, nil
 }
 
-func (t *Tree[H]) reopen(ctx context.Context, owner *Node[H], id core.NodeID, message string, round uint64) (uint64, error) {
+func (t *Tree[H]) reopen(
+	ctx context.Context,
+	owner *Node[H],
+	id core.NodeID,
+	message string,
+	round uint64,
+) (uint64, error) {
 	record, err := t.store.Node(ctx, id)
 	if err != nil {
 		return 0, err
@@ -153,7 +154,10 @@ func (t *Tree[H]) reopen(ctx context.Context, owner *Node[H], id core.NodeID, me
 		return 0, err
 	}
 	if !record.Delivered {
-		return 0, errors.New("The previous completion is not saved by the parent yet; retry resume after receiving it") //nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+		//nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+		return 0, errors.New(
+			"The previous completion is not saved by the parent yet; retry resume after receiving it",
+		)
 	}
 	if _, err := t.profile(record.Profile); err != nil {
 		return 0, err
@@ -182,4 +186,51 @@ func (t *Tree[H]) endChange(owner core.NodeID) {
 	}
 	t.server.mu.Unlock()
 	t.bump()
+}
+
+func (t *Tree[H]) startReceipt(ctx context.Context, input startInput) (startReceipt, error) {
+	var err error
+	fresh := startReceipt{Input: input, Round: 1}
+	switch v := input.(type) {
+	case *spawnInput:
+		fresh.NodeID, err = core.ParseNodeID(t.server.deps.IDs.NextID())
+		if err != nil {
+			return startReceipt{}, err
+		}
+	case *resumeInput:
+		fresh.NodeID = v.ID
+		previous, err := t.store.Node(ctx, v.ID)
+		if err != nil {
+			return startReceipt{}, err
+		}
+		if previous != nil {
+			fresh.Round = previous.Round + 1
+		}
+	}
+	return fresh, nil
+}
+
+// restoreStart returns whether an existing reservation already determines the result.
+func (t *Tree[H]) restoreStart(
+	ctx context.Context,
+	owner *Node[H],
+	receipt startReceipt,
+	record *store.NodeRecord,
+) (bool, uint64, error) {
+	if record.Parent == nil || *record.Parent != owner.ID() {
+		return false, 0, errors.New("request-id references an agent owned by another session")
+	}
+	_, spawn := receipt.Input.(*spawnInput)
+	if spawn || record.Round == receipt.Round {
+		if record.Closed == nil && t.Node(record.ID) == nil {
+			if err := t.startChild(ctx, owner, *record, nil); err != nil {
+				return false, 0, err
+			}
+		}
+		return true, record.Number, nil
+	}
+	if record.Round > receipt.Round {
+		return false, 0, errors.New("resume request has been superseded by a later round")
+	}
+	return false, 0, nil
 }

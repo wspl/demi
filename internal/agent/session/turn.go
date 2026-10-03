@@ -21,12 +21,8 @@ func (s *Session) runTurn(ctx context.Context, switchFirst bool) error {
 			return err
 		}
 		if switchFirst {
-			compacted, err := s.applySwitch(ctx)
-			if err != nil {
+			if err := s.switchTurn(ctx); err != nil {
 				return err
-			}
-			if compacted {
-				s.pushResume()
 			}
 		}
 		switchFirst = true
@@ -36,34 +32,17 @@ func (s *Session) runTurn(ctx context.Context, switchFirst bool) error {
 		s.mu.Lock()
 		before := s.core.arrivals
 		s.mu.Unlock()
-		needsCompaction, err := s.stream(ctx, continues)
+		needsCompaction, executed, stop, err := s.turnRound(ctx, continues, before)
 		if err != nil {
 			return err
 		}
 		continues = true
-		if !needsCompaction {
-			if err = s.writeInputsSince(ctx, before); err != nil {
-				return err
-			}
-		}
-		executed, stop, err := s.runTools(ctx, needsCompaction)
-		if err != nil {
-			return err
-		}
 		if needsCompaction && compactions < 3 {
-			beforeSize, err := s.estimate(ctx)
+			compacted, err := s.compactTurn(ctx)
 			if err != nil {
 				return err
 			}
-			compacted, err := s.compactPass(ctx)
-			if err != nil {
-				return err
-			}
-			afterSize, err := s.estimate(ctx)
-			if err != nil {
-				return err
-			}
-			if compacted && afterSize < beforeSize {
+			if compacted {
 				compactions++
 				s.pushResume()
 				continue
@@ -95,32 +74,13 @@ func (s *Session) stream(ctx context.Context, continues bool) (bool, error) {
 		}
 		if !sizeChecked {
 			sizeChecked = true
-			s.mu.Lock()
-			runtime, model := s.core.provider, s.core.model
-			s.mu.Unlock()
-			if s.deps.Config.Compaction.sizeReached(runtime.RequestLimits(model.Model), transcript.MeasureRequest(request.SystemPrompt, request.Items)) {
-				did, err := s.compactPass(ctx)
-				if err != nil {
-					return false, err
-				}
-				if did {
-					if continues {
-						s.pushResume()
-					}
-					request, err = s.request(ctx)
-					if err != nil {
-						return false, err
-					}
-				}
+			request, err = s.compactRequest(ctx, request, continues)
+			if err != nil {
+				return false, err
 			}
 		}
 		start := len(s.Transcript().Blocks)
-		runtime, err := s.useProvider(ctx)
-		if err != nil {
-			return false, err
-		}
-		needsCompaction, failure, err := s.read(ctx, runtime.Run(ctx, request))
-		s.mutate(func(c *coreState) { c.providerBusy = false })
+		needsCompaction, failure, err := s.streamRequest(ctx, request)
 		if err != nil {
 			return false, err
 		}
@@ -128,27 +88,16 @@ func (s *Session) stream(ctx context.Context, continues bool) (bool, error) {
 			s.mutate(func(c *coreState) { c.stage = preparing })
 			return needsCompaction, nil
 		}
-		if failure.Diagnostics == nil {
-			failure.Diagnostics = &core.ProviderErrorDiagnostics{Source: "unknown"}
-		} else {
-			failure.Diagnostics = new(*failure.Diagnostics)
-		}
-		failure.Diagnostics.ClientRequestID = new(request.RequestID)
+		requestFailure(failure, request.RequestID)
 		unwindable := transcript.Cut(s.Transcript().Blocks).Cut <= start
 		tooLarge := failure.Code != nil && *failure.Code == provider.ContextLengthExceeded
 		if tooLarge && unwindable && !refusalCompacted && s.deps.Config.Compaction.ThresholdPercent != nil {
 			refusalCompacted = true
-			if err = s.restoreCommands(ctx, start); err != nil {
-				return false, err
-			}
-			did, err := s.compactPass(ctx)
+			did, err := s.compactRefusal(ctx, start, continues)
 			if err != nil {
 				return false, err
 			}
 			if did {
-				if continues {
-					s.pushResume()
-				}
 				continue
 			}
 		}
@@ -161,17 +110,9 @@ func (s *Session) stream(ctx context.Context, continues bool) (bool, error) {
 		if err = s.restoreCommands(ctx, start); err != nil {
 			return false, err
 		}
-		delay := policy.delay(attempt, failure.RetryAfter)
-		report := failureReport(*failure)
-		s.emit(&RetryScheduled{Attempt: attempt, DelayMS: uint64(delay.Milliseconds()), Code: report.Code, Diagnostics: report.Diagnostics})
-		timer := time.NewTimer(delay)
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			timer.Stop()
-			return false, ctx.Err()
+		if err := s.waitRetry(ctx, policy, attempt, failure); err != nil {
+			return false, err
 		}
-		timer.Stop()
 		attempt++
 	}
 }
@@ -183,9 +124,13 @@ func failureReport(f provider.Failure) *ErrorReport {
 	}
 	return report
 }
+
 func (p RetryPolicy) retries(attempt uint32, f provider.Failure) bool {
-	return f.Code != nil && (*f.Code == provider.RateLimit || *f.Code == provider.Overloaded) && attempt < p.MaxAttempts && (f.RetryAfter == nil || *f.RetryAfter <= p.MaxDelay)
+	return f.Code != nil && (*f.Code == provider.RateLimit || *f.Code == provider.Overloaded) &&
+		attempt < p.MaxAttempts &&
+		(f.RetryAfter == nil || *f.RetryAfter <= p.MaxDelay)
 }
+
 func (p RetryPolicy) delay(attempt uint32, vendor *time.Duration) time.Duration {
 	if vendor != nil {
 		return min(*vendor, p.MaxDelay)
@@ -248,7 +193,8 @@ func (s *Session) read(ctx context.Context, events provider.Run) (bool, *provide
 				c.log.PushToolCall(c.model, *e)
 			case *provider.Response:
 				c.log.PushResponse(c.model, e.Usage)
-				needsCompaction = needsCompaction || s.deps.Config.Compaction.reached(c.model.Model.ContextWindow, e.Usage)
+				needsCompaction = needsCompaction ||
+					s.deps.Config.Compaction.reached(c.model.Model.ContextWindow, e.Usage)
 			case *provider.Error:
 			}
 		})
@@ -262,6 +208,7 @@ func (s *Session) read(ctx context.Context, events provider.Run) (bool, *provide
 	}
 	return needsCompaction, nil, nil
 }
+
 func (s *Session) completeText(ctx context.Context) error {
 	s.mu.Lock()
 	open := s.core.log.EndsWithOpenText()
@@ -304,17 +251,10 @@ func (s *Session) runTools(ctx context.Context, deferInput bool) (bool, bool, er
 		s.mu.Unlock()
 		var outcome ToolOutcome
 		if slices.ContainsFunc(tools, func(t provider.ToolDefinition) bool { return t.Name == call.ToolName }) {
-			s.mu.Lock()
-			model, runtime, generation := s.core.model, s.core.provider, s.core.generation
-			s.mu.Unlock()
-			invocation := ToolInvocation{ToolUseID: call.ToolUseID, ToolName: call.ToolName, Input: transcript.ToolInput(call.Input), Model: model, RequestLimits: runtime.RequestLimits(model.Model), Generation: generation}
 			var err error
-			outcome, err = s.deps.Runtime.InvokeTool(ctx, invocation)
-			if ctx.Err() != nil {
-				return true, stop, ctx.Err()
-			}
+			outcome, err = s.invokeTool(ctx, call)
 			if err != nil {
-				outcome = ErrorOutcome("Tool failed: " + err.Error())
+				return true, stop, err
 			}
 		} else {
 			outcome = ErrorOutcome("Tool not found: " + call.ToolName)
@@ -328,7 +268,12 @@ func (s *Session) runTools(ctx context.Context, deferInput bool) (bool, bool, er
 				c.wakeups = append(c.wakeups, store.ScheduledWakeup{ID: id, DurationMS: effect.DurationMS})
 				c.dirty = true
 			})
-			outcome = ToolOutcome{Output: []provider.ResultPart{&provider.TextPart{Text: fmt.Sprintf("yield scheduled\ndurationMs: %d", effect.DurationMS)}}, View: &core.YieldWakeup{WakeupID: id, DurationMs: effect.DurationMS}}
+			outcome = ToolOutcome{
+				Output: []provider.ResultPart{
+					&provider.TextPart{Text: fmt.Sprintf("yield scheduled\ndurationMs: %d", effect.DurationMS)},
+				},
+				View: &core.YieldWakeup{WakeupID: id, DurationMs: effect.DurationMS},
+			}
 		}
 		output, held := store.PersistResult(context.WithoutCancel(ctx), outcome.Output, s.deps.Store.Blobs())
 		s.mutate(func(c *coreState) {
@@ -343,4 +288,168 @@ func (s *Session) runTools(ctx context.Context, deferInput bool) (bool, bool, er
 	}
 	s.mutate(func(c *coreState) { c.stage = preparing })
 	return true, stop, nil
+}
+
+// compactTurn reports whether compaction reduced the request estimate.
+func (s *Session) compactTurn(ctx context.Context) (bool, error) {
+	beforeSize, err := s.estimate(ctx)
+	if err != nil {
+		return false, err
+	}
+	compacted, err := s.compactPass(ctx)
+	if err != nil {
+		return false, err
+	}
+	afterSize, err := s.estimate(ctx)
+	if err != nil {
+		return false, err
+	}
+	if compacted && afterSize < beforeSize {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (s *Session) compactRequest(
+	ctx context.Context,
+	request provider.InferenceRequest,
+	continues bool,
+) (provider.InferenceRequest, error) {
+	s.mu.Lock()
+	runtime, model := s.core.provider, s.core.model
+	s.mu.Unlock()
+	if !s.deps.Config.Compaction.sizeReached(
+		runtime.RequestLimits(model.Model),
+		transcript.MeasureRequest(request.SystemPrompt, request.Items),
+	) {
+		return request, nil
+	}
+	did, err := s.compactPass(ctx)
+	if err != nil {
+		return provider.InferenceRequest{}, err
+	}
+	if did {
+		if continues {
+			s.pushResume()
+		}
+		request, err = s.request(ctx)
+		if err != nil {
+			return provider.InferenceRequest{}, err
+		}
+	}
+
+	return request, nil
+}
+
+func (s *Session) compactRefusal(ctx context.Context, start int, continues bool) (bool, error) {
+	if err := s.restoreCommands(ctx, start); err != nil {
+		return false, err
+	}
+	did, err := s.compactPass(ctx)
+	if err != nil {
+		return false, err
+	}
+	if did {
+		if continues {
+			s.pushResume()
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func (s *Session) invokeTool(ctx context.Context, call transcript.PendingCall) (ToolOutcome, error) {
+	s.mu.Lock()
+	model, runtime, generation := s.core.model, s.core.provider, s.core.generation
+	s.mu.Unlock()
+	invocation := ToolInvocation{
+		ToolUseID:     call.ToolUseID,
+		ToolName:      call.ToolName,
+		Input:         transcript.ToolInput(call.Input),
+		Model:         model,
+		RequestLimits: runtime.RequestLimits(model.Model),
+		Generation:    generation,
+	}
+	outcome, err := s.deps.Runtime.InvokeTool(ctx, invocation)
+	if ctx.Err() != nil {
+		return ToolOutcome{}, ctx.Err()
+	}
+	if err != nil {
+		outcome = ErrorOutcome("Tool failed: " + err.Error())
+	}
+	return outcome, nil
+}
+
+func (s *Session) switchTurn(ctx context.Context) error {
+	compacted, err := s.applySwitch(ctx)
+	if err != nil {
+		return err
+	}
+	if compacted {
+		s.pushResume()
+	}
+	return nil
+}
+
+func (s *Session) waitRetry(ctx context.Context, policy RetryPolicy, attempt uint32, failure *provider.Failure) error {
+	delay := policy.delay(attempt, failure.RetryAfter)
+	report := failureReport(*failure)
+	s.emit(
+		&RetryScheduled{
+			Attempt:     attempt,
+			DelayMS:     uint64(delay.Milliseconds()),
+			Code:        report.Code,
+			Diagnostics: report.Diagnostics,
+		},
+	)
+	timer := time.NewTimer(delay)
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		timer.Stop()
+		return ctx.Err()
+	}
+	timer.Stop()
+	return nil
+}
+
+// turnRound streams one response and executes its calls before admitting later input.
+func (s *Session) turnRound(ctx context.Context, continues bool, before uint64) (bool, bool, bool, error) {
+	needsCompaction, err := s.stream(ctx, continues)
+	if err != nil {
+		return false, false, false, err
+	}
+	if !needsCompaction {
+		if err = s.writeInputsSince(ctx, before); err != nil {
+			return false, false, false, err
+		}
+	}
+	executed, stop, err := s.runTools(ctx, needsCompaction)
+	if err != nil {
+		return false, false, false, err
+	}
+	return needsCompaction, executed, stop, nil
+}
+
+func (s *Session) streamRequest(
+	ctx context.Context,
+	request provider.InferenceRequest,
+) (bool, *provider.Failure, error) {
+	runtime, err := s.useProvider(ctx)
+	if err != nil {
+		return false, nil, err
+	}
+	needsCompaction, failure, err := s.read(ctx, runtime.Run(ctx, request))
+	s.mutate(func(c *coreState) { c.providerBusy = false })
+	return needsCompaction, failure, err
+}
+
+func requestFailure(failure *provider.Failure, requestID string) {
+	if failure.Diagnostics == nil {
+		failure.Diagnostics = &core.ProviderErrorDiagnostics{Source: "unknown"}
+	} else {
+		failure.Diagnostics = new(*failure.Diagnostics)
+	}
+	failure.Diagnostics.ClientRequestID = new(requestID)
 }

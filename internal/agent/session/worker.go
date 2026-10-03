@@ -45,66 +45,7 @@ func (s *Session) runAction(a *action) {
 		err = a.ctx.Err()
 	}
 	cleanup := context.WithoutCancel(a.ctx)
-	end := Completed
-	rejected := false
-	var report *ErrorReport
-	s.mutate(func(c *coreState) {
-		if a.shutdown && errors.Is(err, context.Canceled) {
-			began := a.startRevision != c.log.Version().Revision
-			s.rejectEditLocked(&EditError{Kind: EditClosed})
-			if began {
-				s.recordStopLocked(true)
-				end = Aborted
-			} else {
-				end = Detached
-				if a.kind == sendAction {
-					c.queue = append([]*action{a}, c.queue...)
-				}
-			}
-			s.armLocked()
-			c.interrupted = began
-			c.active = nil
-			c.stage = Idle
-			a.again = false
-			c.effects = append(c.effects, func() { close(a.ack) }, func() { a.answer.finish(end, nil) }, a.cancel)
-			rejected = true
-			return
-		}
-		if c.preparingEdit() {
-			editErr := &EditError{Kind: EditStopped}
-			if err != nil && !errors.Is(err, context.Canceled) {
-				var original *EditError
-				if errors.As(err, &original) {
-					editErr = original
-				} else {
-					editErr = &EditError{Kind: EditFailed, Detail: err.Error(), Cause: err}
-				}
-			}
-			s.rejectEditLocked(editErr)
-			end = Dropped
-			rejected = true
-		} else if err != nil {
-			if errors.Is(err, context.Canceled) {
-				s.recordStopLocked(false)
-				end = Aborted
-			} else {
-				if !errors.As(err, &report) {
-					report = &ErrorReport{Message: err.Error()}
-				}
-				s.writeInputsLocked(allInputs)
-				s.abortCallsLocked()
-				s.eventLocked(&ErrorEvent{Report: *report})
-			}
-		}
-		a.stopped = true
-		a.again = c.canAbort()
-		c.effects = append(c.effects, func() { close(a.ack) })
-		c.stage = Finalizing
-		c.edit = nil
-		c.inputs = slices.DeleteFunc(c.inputs, func(input pendingInput) bool { return input.steer != nil })
-		s.armLocked()
-		c.releaseMediaLocked()
-	})
+	end, rejected, report := s.finishAction(a, err)
 	s.mu.Lock()
 	shutdown := s.core.disposing && s.core.active == nil
 	s.mu.Unlock()
@@ -136,47 +77,14 @@ func (s *Session) execute(a *action) error {
 	ctx := a.ctx
 	switch a.kind {
 	case sendAction:
-		s.mu.Lock()
-		revision := s.core.commands.Revision()
-		s.mu.Unlock()
-		if _, err := s.applySwitch(ctx); err != nil {
+		if err := s.sendTurn(ctx, a); err != nil {
 			return err
 		}
-		preamble, err := s.deps.Runtime.Preamble(ctx)
-		if err != nil {
-			return err
-		}
-		if err = ctx.Err(); err != nil {
-			return err
-		}
-		s.mutate(func(c *coreState) {
-			id := c.log.PushUser(a.turn, c.model, a.content, preamble)
-			c.commands.Capture(id, store.BeforeUser, revision)
-			a.content = nil
-		})
 	case continueAction:
 		if _, err := s.applySwitch(ctx); err != nil {
 			return err
 		}
-		opened, agents := false, false
-		s.mutate(func(c *coreState) {
-			for i, input := range c.inputs {
-				if input.wakeup != nil {
-					c.log.PushWakeup(core.BlockID(input.wakeup.ID), a.turn, c.model, "new_turn")
-					c.inputs = slices.Delete(c.inputs, i, i+1)
-					c.dirty = true
-					opened = true
-					return
-				}
-			}
-			for _, input := range c.inputs {
-				agents = agents || input.agent != nil
-			}
-			if agents {
-				opened = true
-				s.writeInputsLocked(allInputs)
-			}
-		})
+		opened, agents := s.continueInputs(a)
 		if !opened {
 			return nil
 		}
@@ -190,23 +98,8 @@ func (s *Session) execute(a *action) error {
 			return err
 		}
 	case resumeAction:
-		point := transcript.Cut(s.Transcript().Blocks)
-		if point.FullRerun {
-			if err := s.retry(ctx); err != nil {
-				return err
-			}
-		} else {
-			if err := s.restoreCommands(ctx, point.Cut); err != nil {
-				return err
-			}
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			s.mutate(func(c *coreState) { c.log.MarkLatestAbortResumed() })
-			if _, err := s.applySwitch(ctx); err != nil {
-				return err
-			}
-			s.pushResume()
+		if err := s.resumeTurn(ctx); err != nil {
+			return err
 		}
 	case editAction:
 		return s.runEdit(ctx)
@@ -215,7 +108,7 @@ func (s *Session) execute(a *action) error {
 			return err
 		}
 		s.mu.Lock()
-		agents := len(s.core.agentInputs()) > 0
+		agents := len(s.core.agentInputsLocked()) > 0
 		s.mu.Unlock()
 		if err := s.writeInputs(ctx); err != nil {
 			return err
@@ -257,6 +150,7 @@ func (s *Session) retry(ctx context.Context) error {
 	_, err := s.applySwitch(ctx)
 	return err
 }
+
 func (s *Session) restoreCommands(ctx context.Context, cut int) error {
 	blocks := s.Transcript().Blocks[:cut]
 	revision := uint64(0)
@@ -272,12 +166,19 @@ func (s *Session) restoreCommands(ctx context.Context, cut int) error {
 	}
 	return s.rewrite(ctx, blocks, revision)
 }
+
 func (s *Session) abortCallsLocked() {
 	c := &s.core
 	for _, call := range c.log.PendingToolCalls() {
-		c.log.CompleteToolCall(call.ToolUseID, []core.ToolResultContentBlock{&core.ToolText{Text: "Tool call aborted: " + call.ToolName}}, true, nil)
+		c.log.CompleteToolCall(
+			call.ToolUseID,
+			[]core.ToolResultContentBlock{&core.ToolText{Text: "Tool call aborted: " + call.ToolName}},
+			true,
+			nil,
+		)
 	}
 }
+
 func (s *Session) recordStopLocked(shutdown bool) {
 	c := &s.core
 	take := exceptAgentMessages
@@ -294,6 +195,157 @@ func (s *Session) recordStopLocked(shutdown bool) {
 		c.log.PushAbort(c.model)
 	}
 }
+
 func (s *Session) pushResume() {
 	s.mutate(func(c *coreState) { c.log.PushResume(c.active.turn, c.model) })
+}
+
+// finishAction records an action outcome before the final checkpoint is saved.
+func (s *Session) finishAction(a *action, err error) (ActionEnd, bool, *ErrorReport) {
+	end := Completed
+	rejected := false
+	var report *ErrorReport
+	s.mutate(func(c *coreState) {
+		if a.shutdown && errors.Is(err, context.Canceled) {
+			end = s.detachActionLocked(a)
+			rejected = true
+			return
+		}
+		if c.preparingEditLocked() {
+			editErr := stoppedEditError(err)
+			s.rejectEditLocked(editErr)
+			end = Dropped
+			rejected = true
+		} else if err != nil {
+			end, report = s.actionErrorLocked(err)
+		}
+		a.stopped = true
+		a.again = c.canAbortLocked()
+		c.effects = append(c.effects, func() { close(a.ack) })
+		c.stage = Finalizing
+		c.edit = nil
+		c.inputs = slices.DeleteFunc(c.inputs, func(input pendingInput) bool { return input.steer != nil })
+		s.armLocked()
+		c.releaseMediaLocked()
+	})
+	return end, rejected, report
+}
+
+// detachActionLocked preserves interrupted work for restoration while the session mutex is held.
+func (s *Session) detachActionLocked(a *action) ActionEnd {
+	c := &s.core
+	end := Completed
+	began := a.startRevision != c.log.Version().Revision
+	s.rejectEditLocked(&EditError{Kind: EditClosed})
+	if began {
+		s.recordStopLocked(true)
+		end = Aborted
+	} else {
+		end = Detached
+		if a.kind == sendAction {
+			c.queue = append([]*action{a}, c.queue...)
+		}
+	}
+	s.armLocked()
+	c.interrupted = began
+	c.active = nil
+	c.stage = Idle
+	a.again = false
+	c.effects = append(c.effects, func() { close(a.ack) }, func() { a.answer.finish(end, nil) }, a.cancel)
+	return end
+}
+
+func stoppedEditError(err error) *EditError {
+	editErr := &EditError{Kind: EditStopped}
+	if err != nil && !errors.Is(err, context.Canceled) {
+		var original *EditError
+		if errors.As(err, &original) {
+			editErr = original
+		} else {
+			editErr = &EditError{Kind: EditFailed, Detail: err.Error(), Cause: err}
+		}
+	}
+	return editErr
+}
+
+func (s *Session) sendTurn(ctx context.Context, a *action) error {
+	s.mu.Lock()
+	revision := s.core.commands.Revision()
+	s.mu.Unlock()
+	if _, err := s.applySwitch(ctx); err != nil {
+		return err
+	}
+	preamble, err := s.deps.Runtime.Preamble(ctx)
+	if err != nil {
+		return err
+	}
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	s.mutate(func(c *coreState) {
+		id := c.log.PushUser(a.turn, c.model, a.content, preamble)
+		c.commands.Capture(id, store.BeforeUser, revision)
+		a.content = nil
+	})
+	return nil
+}
+
+func (s *Session) resumeTurn(ctx context.Context) error {
+	point := transcript.Cut(s.Transcript().Blocks)
+	if point.FullRerun {
+		return s.retry(ctx)
+	}
+	if err := s.restoreCommands(ctx, point.Cut); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mutate(func(c *coreState) { c.log.MarkLatestAbortResumed() })
+	if _, err := s.applySwitch(ctx); err != nil {
+		return err
+	}
+	s.pushResume()
+	return nil
+}
+
+func (s *Session) continueInputs(a *action) (bool, bool) {
+	opened, agents := false, false
+	s.mutate(func(c *coreState) {
+		for i, input := range c.inputs {
+			if input.wakeup != nil {
+				c.log.PushWakeup(core.BlockID(input.wakeup.ID), a.turn, c.model, "new_turn")
+				c.inputs = slices.Delete(c.inputs, i, i+1)
+				c.dirty = true
+				opened = true
+				return
+			}
+		}
+		for _, input := range c.inputs {
+			agents = agents || input.agent != nil
+		}
+		if agents {
+			opened = true
+			s.writeInputsLocked(allInputs)
+		}
+	})
+	return opened, agents
+}
+
+// actionErrorLocked records cancellation or failure while the session mutex is held.
+func (s *Session) actionErrorLocked(err error) (ActionEnd, *ErrorReport) {
+	end := Completed
+	var report *ErrorReport
+	if errors.Is(err, context.Canceled) {
+		s.recordStopLocked(false)
+		end = Aborted
+	} else {
+		if !errors.As(err, &report) {
+			report = &ErrorReport{Message: err.Error()}
+		}
+		s.writeInputsLocked(allInputs)
+		s.abortCallsLocked()
+		s.eventLocked(&ErrorEvent{Report: *report})
+	}
+	return end, report
 }

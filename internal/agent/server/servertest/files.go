@@ -50,12 +50,18 @@ func (f *TestFiles) Resolve(_ context.Context, files []server.FileReference) (se
 		case *server.Upload:
 			uploaded, ok := f.uploads[v.Ref]
 			if !ok {
-				return server.ResolvedFiles{}, &server.ContentError{Message: fmt.Sprintf("upload %s is not available", v.Ref), Code: new("frame_delivery_failed")}
+				return server.ResolvedFiles{}, &server.ContentError{
+					Message: fmt.Sprintf("upload %s is not available", v.Ref),
+					Code:    new("frame_delivery_failed"),
+				}
 			}
 			result.Blocks = append(result.Blocks, slices.Clone(uploaded.Blocks[0]))
 			result.Media.Absorb(uploaded.Media)
 		case *server.RemoteFile:
-			return server.ResolvedFiles{}, &server.ContentError{Message: fmt.Sprintf("device %s is not paired", v.DeviceID), Code: new("frame_delivery_failed")}
+			return server.ResolvedFiles{}, &server.ContentError{
+				Message: fmt.Sprintf("device %s is not paired", v.DeviceID),
+				Code:    new("frame_delivery_failed"),
+			}
 		}
 	}
 	return result, nil

@@ -32,15 +32,48 @@ func TestToolsRunAfterDurableCallAndReuseID(t *testing.T) {
 			calls++
 			return textOutcome(string(call.Input)), nil
 		})
-		f = start(t, r, session.DefaultConfig(), providertest.Events(providertest.ToolCall("call", "look", []byte(`{"value":"hello"}`)), providertest.Response(10, 5)), providertest.Events(providertest.ToolCall("call", "look", []byte(`{"value":"again"}`)), providertest.Response(15, 5)), answer("done"))
+		f = start(
+			t,
+			r,
+			session.DefaultConfig(),
+			providertest.Events(
+				providertest.ToolCall("call", "look", []byte(`{"value":"hello"}`)),
+				providertest.Response(10, 5),
+			),
+			providertest.Events(
+				providertest.ToolCall("call", "look", []byte(`{"value":"again"}`)),
+				providertest.Response(15, 5),
+			),
+			answer("done"),
+		)
 		f.done(f.send("look twice", "t1"))
 		equal(t, calls, 2)
 		f.history("user", "tool_call:completed", "response", "tool_call:completed", "response", "text", "response")
-		equal(t, stored, [][]string{{"user", "tool_call:executing", "response"}, {"user", "tool_call:completed", "response", "tool_call:executing", "response"}})
+		equal(
+			t,
+			stored,
+			[][]string{
+				{"user", "tool_call:executing", "response"},
+				{"user", "tool_call:completed", "response", "tool_call:executing", "response"},
+			},
+		)
 		req := f.p.Requests()
-		equal(t, itemKinds(req[2].Items), []string{"user_message", "tool_use", "tool_result", "tool_use", "tool_result"})
+		equal(
+			t,
+			itemKinds(req[2].Items),
+			[]string{"user_message", "tool_use", "tool_result", "tool_use", "tool_result"},
+		)
 		for i, value := range []string{`{"value":"hello"}`, `{"value":"again"}`} {
-			equal(t, req[2].Items[2+i*2], provider.InferenceItem(&provider.ToolResult{ToolUseID: "call", Output: []provider.ResultPart{&provider.TextPart{Text: value}}}))
+			equal(
+				t,
+				req[2].Items[2+i*2],
+				provider.InferenceItem(
+					&provider.ToolResult{
+						ToolUseID: "call",
+						Output:    []provider.ResultPart{&provider.TextPart{Text: value}},
+					},
+				),
+			)
 		}
 		equal(t, req[0].TurnID, "t1")
 		for i := 1; i < len(req); i++ {
@@ -51,6 +84,7 @@ func TestToolsRunAfterDurableCallAndReuseID(t *testing.T) {
 		}
 	})
 }
+
 func TestDispatchAndFinalSaveTouchOnlyChangedRows(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cfg := session.DefaultConfig()
@@ -63,7 +97,11 @@ func TestDispatchAndFinalSaveTouchOnlyChangedRows(t *testing.T) {
 		saves := f.tree.Saves()
 		equal(t, len(saves), 4)
 		want := [][]int{{0, 1, 2}, {1, 3, 4}, {3, 5, 6}}
-		wantKinds := [][]string{{"user", "tool_call:executing", "response"}, {"tool_call:completed", "tool_call:executing", "response"}, {"tool_call:completed", "text", "response"}}
+		wantKinds := [][]string{
+			{"user", "tool_call:executing", "response"},
+			{"tool_call:completed", "tool_call:executing", "response"},
+			{"tool_call:completed", "text", "response"},
+		}
 		for i, s := range saves[1:] {
 			blocks := []core.Block{}
 			indices := []int{}
@@ -80,6 +118,7 @@ func TestDispatchAndFinalSaveTouchOnlyChangedRows(t *testing.T) {
 		equal(t, saves[len(saves)-1].Update.State.Phase, core.SessionPhaseIdle)
 	})
 }
+
 func TestFailedScheduledSaveRetainsDirtyRows(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		release := make(chan struct{})
@@ -121,12 +160,22 @@ func TestFailedScheduledSaveRetainsDirtyRows(t *testing.T) {
 		equal(t, f.checkpoint().Transcript, f.s.Transcript().Blocks)
 	})
 }
+
 func TestFailingAndUnknownToolsAreResults(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := toolRuntime("broken", func(context.Context, session.ToolInvocation) (session.ToolOutcome, error) {
 			return session.ToolOutcome{}, &session.ToolFailure{Message: "it broke"}
 		})
-		f := start(t, r, session.DefaultConfig(), providertest.Events(providertest.ToolCall("one", "broken", []byte(`{}`)), providertest.ToolCall("two", "missing", []byte(`{}`))), answer("done"))
+		f := start(
+			t,
+			r,
+			session.DefaultConfig(),
+			providertest.Events(
+				providertest.ToolCall("one", "broken", []byte(`{}`)),
+				providertest.ToolCall("two", "missing", []byte(`{}`)),
+			),
+			answer("done"),
+		)
 		f.done(f.send("go", "t1"))
 		f.history("user", "tool_call:error", "tool_call:error", "text", "response")
 		for i, want := range []string{"Tool failed: it broke", "Tool not found: missing"} {
@@ -135,6 +184,7 @@ func TestFailingAndUnknownToolsAreResults(t *testing.T) {
 		}
 	})
 }
+
 func TestStopDuringToolAcknowledgesRecordedStop(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered := make(chan struct{})
@@ -150,17 +200,36 @@ func TestStopDuringToolAcknowledgesRecordedStop(t *testing.T) {
 		must(t, err)
 		equal(t, *result.Target, framewire.AbortTargetActiveTool)
 		equal(t, result.CanAbortAgain, false)
-		equal(t, f.s.Transcript().Blocks[1].(*core.ToolCallBlock).Output, []core.ToolResultContentBlock{&core.ToolText{Text: "Tool call aborted: slow"}})
+		equal(
+			t,
+			f.s.Transcript().Blocks[1].(*core.ToolCallBlock).Output,
+			[]core.ToolResultContentBlock{&core.ToolText{Text: "Tool call aborted: slow"}},
+		)
 		f.history("user", "tool_call:error", "response", "abort")
 		end, err := a.Wait(t.Context())
 		must(t, err)
 		equal(t, end, session.Aborted)
 		equal(t, f.s.Phase(), core.SessionPhaseIdle)
 		f.done(f.send("next", "t2"))
-		equal(t, itemKinds(f.p.Requests()[1].Items), []string{"user_message", "tool_use", "tool_result", "user_message"})
-		equal(t, f.p.Requests()[1].Items[2], provider.InferenceItem(&provider.ToolResult{ToolUseID: "call", IsError: true, Output: []provider.ResultPart{&provider.TextPart{Text: "Tool call aborted: slow"}}}))
+		equal(
+			t,
+			itemKinds(f.p.Requests()[1].Items),
+			[]string{"user_message", "tool_use", "tool_result", "user_message"},
+		)
+		equal(
+			t,
+			f.p.Requests()[1].Items[2],
+			provider.InferenceItem(
+				&provider.ToolResult{
+					ToolUseID: "call",
+					IsError:   true,
+					Output:    []provider.ResultPart{&provider.TextPart{Text: "Tool call aborted: slow"}},
+				},
+			),
+		)
 	})
 }
+
 func TestStopDuringHangingHook(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered := make(chan struct{})
@@ -182,6 +251,7 @@ func TestStopDuringHangingHook(t *testing.T) {
 		equal(t, len(f.p.Requests()), 0)
 	})
 }
+
 func TestDisposeDuringToolKeepsQueueAndInterruption(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered := make(chan struct{})
@@ -210,7 +280,11 @@ func TestDisposeDuringToolKeepsQueueAndInterruption(t *testing.T) {
 		equal(t, cp.State.Phase, core.SessionPhase("running"))
 		equal(t, len(cp.State.Queue), 1)
 		equal(t, cp.State.Queue[0].ID, core.TurnID("t2"))
-		equal(t, cp.Transcript[1].(*core.ToolCallBlock).Output, []core.ToolResultContentBlock{&core.ToolText{Text: "Tool call aborted: slow"}})
+		equal(
+			t,
+			cp.Transcript[1].(*core.ToolCallBlock).Output,
+			[]core.ToolResultContentBlock{&core.ToolText{Text: "Tool call aborted: slow"}},
+		)
 		record := cp.Transcript[3].(*core.ErrorBlock)
 		equal(t, record.Code, new("interrupted"))
 		equal(t, record.Message, "The agent session was shut down while this turn was running.")
@@ -221,6 +295,7 @@ func TestDisposeDuringToolKeepsQueueAndInterruption(t *testing.T) {
 		equal(t, err, error(session.AdmissionClosed))
 	})
 }
+
 func TestRestoreExecutingToolAsInterrupted(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered := make(chan struct{})
@@ -235,16 +310,25 @@ func TestRestoreExecutingToolAsInterrupted(t *testing.T) {
 		cp := f.checkpoint()
 		must(t, f.s.Dispose(t.Context()))
 		calls := 0
-		restoredRuntime := toolRuntime("slow", func(context.Context, session.ToolInvocation) (session.ToolOutcome, error) {
-			calls++
-			return textOutcome("rerun"), nil
-		})
+		restoredRuntime := toolRuntime(
+			"slow",
+			func(context.Context, session.ToolInvocation) (session.ToolOutcome, error) {
+				calls++
+				return textOutcome("rerun"), nil
+			},
+		)
 		s, c, p := f.restoreWith(cp, restoredRuntime, core.SystemClock{}, answer("next"))
 		equal(t, c.Interrupted, true)
 		equal(t, s.Phase(), core.SessionPhase("idle"))
 		equal(t, kinds(s.Transcript().Blocks), []string{"user", "tool_call:error", "response"})
 		equal(t, cp.State.Phase, core.SessionPhaseRunning)
-		equal(t, s.Transcript().Blocks[1].(*core.ToolCallBlock).Output, []core.ToolResultContentBlock{&core.ToolText{Text: "Tool call interrupted: slow (the process died before a result was recorded)"}})
+		equal(
+			t,
+			s.Transcript().Blocks[1].(*core.ToolCallBlock).Output,
+			[]core.ToolResultContentBlock{
+				&core.ToolText{Text: "Tool call interrupted: slow (the process died before a result was recorded)"},
+			},
+		)
 		a, err := s.Send(storetest.Text("next"), "t2")
 		must(t, err)
 		_, err = a.Wait(t.Context())
@@ -255,6 +339,7 @@ func TestRestoreExecutingToolAsInterrupted(t *testing.T) {
 		equal(t, calls, 0)
 	})
 }
+
 func TestScheduledSaveAndFlushAreSerialized(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		turn, entered, release := gated(providertest.Text("done"), providertest.Response(1, 1))
@@ -277,6 +362,7 @@ func TestScheduledSaveAndFlushAreSerialized(t *testing.T) {
 		equal(t, f.checkpoint().State.Phase, core.SessionPhase("idle"))
 	})
 }
+
 func TestQueuedMessageSavedWithoutTranscriptChange(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})
@@ -307,6 +393,7 @@ func TestQueuedMessageSavedWithoutTranscriptChange(t *testing.T) {
 		f.done(q)
 	})
 }
+
 func TestProviderSwitchContinuesRunningTurn(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})
@@ -334,9 +421,24 @@ func TestProviderSwitchContinuesRunningTurn(t *testing.T) {
 		equal(t, itemKinds(next.Requests()[0].Items), []string{"user_message", "tool_use", "tool_result"})
 	})
 }
+
 func TestStreamBlocksAndDeltaPatches(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		f := setup(t, providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("private "), providertest.Thinking("notes"), &provider.ThinkingSignature{Signature: "anthropic:sig"}, &provider.RedactedThinking{Data: "opaque"}, providertest.Text("Hello "), providertest.Text("world"), providertest.ToolCall("call", "echo", []byte(`"{\"broken\":"`)), providertest.Response(1, 1)), answer("done"))
+		f := setup(
+			t,
+			providertest.Events(
+				&provider.ThinkingStart{},
+				providertest.Thinking("private "),
+				providertest.Thinking("notes"),
+				&provider.ThinkingSignature{Signature: "anthropic:sig"},
+				&provider.RedactedThinking{Data: "opaque"},
+				providertest.Text("Hello "),
+				providertest.Text("world"),
+				providertest.ToolCall("call", "echo", []byte(`"{\"broken\":"`)),
+				providertest.Response(1, 1),
+			),
+			answer("done"),
+		)
 		deltas := []string{}
 		sub := f.s.Subscribe(func(e session.Event) {
 			if e, ok := e.(*session.TranscriptChanged); ok {
@@ -357,12 +459,28 @@ func TestStreamBlocksAndDeltaPatches(t *testing.T) {
 		equal(t, blocks[3].(*core.TextBlock).Forkable, true)
 		equal(t, blocks[3].(*core.TextBlock).Text, "Hello world")
 		equal(t, blocks[4].(*core.ToolCallBlock).Input, `{"broken":`)
-		equal(t, blocks[4].(*core.ToolCallBlock).Output, []core.ToolResultContentBlock{&core.ToolText{Text: "Tool not found: echo"}})
+		equal(
+			t,
+			blocks[4].(*core.ToolCallBlock).Output,
+			[]core.ToolResultContentBlock{&core.ToolText{Text: "Tool not found: echo"}},
+		)
 		replayed := f.p.Requests()[1].Items
-		equal(t, replayed[1:3], []provider.InferenceItem{&provider.AssistantThinking{ModelID: "test-model", Text: "private notes", Signature: new("anthropic:sig")}, &provider.AssistantRedactedThinking{ModelID: "test-model", Data: "opaque"}})
+		equal(
+			t,
+			replayed[1:3],
+			[]provider.InferenceItem{
+				&provider.AssistantThinking{
+					ModelID:   "test-model",
+					Text:      "private notes",
+					Signature: new("anthropic:sig"),
+				},
+				&provider.AssistantRedactedThinking{ModelID: "test-model", Data: "opaque"},
+			},
+		)
 		equal(t, replayed[4].(*provider.ToolUse).Input, json.RawMessage(`"{\"broken\":"`))
 	})
 }
+
 func TestLongHistoryDeltaAndSaveScope(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, answer("short"))
@@ -385,7 +503,18 @@ func TestLongHistoryDeltaAndSaveScope(t *testing.T) {
 					c := *b
 					c.BlockID = id
 					cp.Transcript = append(cp.Transcript, &c)
-				case *core.AbortBlock, *core.AgentMessageBlock, *core.CompactionBoundaryBlock, *core.CompactionMarkerBlock, *core.ContextBlock, *core.ErrorBlock, *core.RedactedThinkingBlock, *core.ResumeBlock, *core.SteerBlock, *core.ThinkingBlock, *core.ToolCallBlock, *core.WakeupBlock:
+				case *core.AbortBlock,
+					*core.AgentMessageBlock,
+					*core.CompactionBoundaryBlock,
+					*core.CompactionMarkerBlock,
+					*core.ContextBlock,
+					*core.ErrorBlock,
+					*core.RedactedThinkingBlock,
+					*core.ResumeBlock,
+					*core.SteerBlock,
+					*core.ThinkingBlock,
+					*core.ToolCallBlock,
+					*core.WakeupBlock:
 					t.Fatalf("unexpected seed block %T", b)
 				}
 			}
@@ -440,17 +569,44 @@ func TestLongHistoryDeltaAndSaveScope(t *testing.T) {
 		}
 	})
 }
+
 func TestPromptCacheAnsweredItems(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := toolRuntime("look", func(context.Context, session.ToolInvocation) (session.ToolOutcome, error) {
 			return textOutcome("seen"), nil
 		})
-		f := start(t, r, session.DefaultConfig(), providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("plan"), providertest.Text("looking twice"), providertest.ToolCall("one", "look", []byte(`{}`)), providertest.ToolCall("two", "look", []byte(`{}`)), providertest.Response(1, 1)), answer("done"), answer("again"))
+		f := start(
+			t,
+			r,
+			session.DefaultConfig(),
+			providertest.Events(
+				&provider.ThinkingStart{},
+				providertest.Thinking("plan"),
+				providertest.Text("looking twice"),
+				providertest.ToolCall("one", "look", []byte(`{}`)),
+				providertest.ToolCall("two", "look", []byte(`{}`)),
+				providertest.Response(1, 1),
+			),
+			answer("done"),
+			answer("again"),
+		)
 		f.done(f.send("look twice", "t1"))
 		f.done(f.send("again", "t2"))
 		req := f.p.Requests()
 		equal(t, len(req), 3)
-		equal(t, itemKinds(req[1].Items), []string{"user_message", "assistant_thinking", "assistant_text", "tool_use", "tool_result", "tool_use", "tool_result"})
+		equal(
+			t,
+			itemKinds(req[1].Items),
+			[]string{
+				"user_message",
+				"assistant_thinking",
+				"assistant_text",
+				"tool_use",
+				"tool_result",
+				"tool_use",
+				"tool_result",
+			},
+		)
 		for i, want := range []int{0, 1, 7} {
 			equal(t, *req[i].PromptCache.AnsweredItems, want)
 		}
@@ -458,6 +614,7 @@ func TestPromptCacheAnsweredItems(t *testing.T) {
 		equal(t, req[2].Items[:7], req[1].Items)
 	})
 }
+
 func TestStopRunningThenQueuedThenNothing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, providertest.Pending(), answer("third"))

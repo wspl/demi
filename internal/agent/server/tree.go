@@ -121,15 +121,17 @@ func (t *Tree[H]) IsQuiescent() bool {
 }
 
 // openTree assembles and publishes a single conversation under its opening gate.
-func (s *Server[H]) openTree(ctx context.Context, root core.NodeID, cwd string) (*Tree[H], *session.Continuation, error) {
+func (s *Server[H]) openTree(
+	ctx context.Context,
+	root core.NodeID,
+	cwd string,
+) (*Tree[H], *session.Continuation, error) {
 	toolset, err := s.deps.Toolsets.Current(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("the commands the conversation opens with cannot be read: %w", err)
 	}
-	for _, profile := range toolset.Profiles {
-		if profile.Name == "default" {
-			return nil, nil, errors.New(`subagent profile name "default" is reserved: omitting --profile already inherits the parent`)
-		}
+	if err := checkProfiles(toolset.Profiles); err != nil {
+		return nil, nil, err
 	}
 	model, err := s.deps.Providers.Selection(ctx, root)
 	if err != nil {
@@ -140,8 +142,31 @@ func (s *Server[H]) openTree(ctx context.Context, root core.NodeID, cwd string) 
 		return nil, nil, err
 	}
 	lifetime, cancel := context.WithCancel(context.Background())
-	t := &Tree[H]{server: s, id: root, store: s.deps.Stores(root), admission: gates.NewActivity(nil), profiles: toolset.Profiles, toolset: toolset.Revision, children: map[core.NodeID]*child[H]{}, changing: map[core.NodeID]int{}, attachments: map[*Connection[H]]struct{}{}, changed: make(chan struct{}), ctx: lifetime, cancel: cancel, running: map[core.CommandID]bool{}}
-	node, continuation, err := t.assemble(ctx, store.RootRecord(root, s.deps.Clock.Now()), cwd, model, runtime, s.deps.Instructions, nil, toolset.Commands, nil)
+	t := &Tree[H]{
+		server:      s,
+		id:          root,
+		store:       s.deps.Stores(root),
+		admission:   gates.NewActivity(nil),
+		profiles:    toolset.Profiles,
+		toolset:     toolset.Revision,
+		children:    map[core.NodeID]*child[H]{},
+		changing:    map[core.NodeID]int{},
+		attachments: map[*Connection[H]]struct{}{},
+		changed:     make(chan struct{}),
+		ctx:         lifetime,
+		cancel:      cancel,
+		running:     map[core.CommandID]bool{},
+	}
+	node, continuation, err := t.assemble(ctx, assembly{
+		record:       store.RootRecord(root, s.deps.Clock.Now()),
+		cwd:          cwd,
+		model:        model,
+		runtime:      runtime,
+		instructions: s.deps.Instructions,
+		preamble:     nil,
+		inherited:    toolset.Commands,
+		first:        nil,
+	})
 	if err != nil {
 		cancel()
 		return nil, nil, err
@@ -153,22 +178,9 @@ func (s *Server[H]) openTree(ctx context.Context, root core.NodeID, cwd string) 
 			return nil, nil, errors.Join(err, node.session.Dispose(context.WithoutCancel(ctx)))
 		}
 	}
-	_, t.subscription = node.session.Observe(func(event session.Event) {
-		if _, phase := event.(*session.PhaseChanged); phase {
-			s.deps.StatusChanged(root)
-		}
-	})
-	s.mu.Lock()
-	if s.closing {
-		s.mu.Unlock()
-		cancel()
-		t.subscription.Release()
-		return nil, nil, errors.Join(session.AdmissionClosed, node.session.Dispose(context.WithoutCancel(ctx)))
+	if err := s.publishTree(ctx, t, node, cancel); err != nil {
+		return nil, nil, err
 	}
-	s.trees[root] = t
-	s.mu.Unlock()
-	t.workers.Go(t.monitor)
-	t.workers.Go(t.sendChanges)
 	return t, continuation, nil
 }
 
@@ -241,7 +253,13 @@ func (t *Tree[H]) attach(c *Connection[H]) {
 	t.attachmentEpoch++
 	t.server.mu.Unlock()
 	snapshot := t.observeConnection(c, t.root)
-	frames := []framewire.ServerFrame{&framewire.OpenedFrame{}, &framewire.TranscriptResetFrame{Blocks: snapshot.Transcript.Blocks, Version: snapshot.Transcript.Version}, &framewire.PhaseFrame{Phase: snapshot.Phase}, &framewire.QueueFrame{Queue: snapshot.Queue}, &framewire.PendingSteersFrame{PendingSteers: snapshot.PendingSteers}}
+	frames := []framewire.ServerFrame{
+		&framewire.OpenedFrame{},
+		&framewire.TranscriptResetFrame{Blocks: snapshot.Transcript.Blocks, Version: snapshot.Transcript.Version},
+		&framewire.PhaseFrame{Phase: snapshot.Phase},
+		&framewire.QueueFrame{Queue: snapshot.Queue},
+		&framewire.PendingSteersFrame{PendingSteers: snapshot.PendingSteers},
+	}
 	frames = append(frames, t.replay(c)...)
 	frames = append(frames, t.liveCommands()...)
 	for _, frame := range frames {
@@ -255,7 +273,9 @@ func (t *Tree[H]) attach(c *Connection[H]) {
 
 func (t *Tree[H]) freshTranscripts(c *Connection[H]) []framewire.ServerFrame {
 	snapshot := t.observeConnection(c, t.root).Transcript
-	frames := []framewire.ServerFrame{&framewire.TranscriptResetFrame{Blocks: snapshot.Blocks, Version: snapshot.Version}}
+	frames := []framewire.ServerFrame{
+		&framewire.TranscriptResetFrame{Blocks: snapshot.Blocks, Version: snapshot.Version},
+	}
 	frames = append(frames, t.replay(c)...)
 	return append(frames, t.liveCommands()...)
 }
@@ -376,11 +396,47 @@ func frameOf(event session.Event) framewire.ServerFrame {
 	case *session.PendingSteersChanged:
 		return &framewire.PendingSteersFrame{PendingSteers: e.PendingSteers}
 	case *session.RetryScheduled:
-		return &framewire.RetryScheduledFrame{Attempt: e.Attempt, DelayMs: e.DelayMS, Code: e.Code, Diagnostics: e.Diagnostics}
+		return &framewire.RetryScheduledFrame{
+			Attempt:     e.Attempt,
+			DelayMs:     e.DelayMS,
+			Code:        e.Code,
+			Diagnostics: e.Diagnostics,
+		}
 	case *session.ErrorEvent:
 		return &framewire.ErrorFrame{Message: e.Report.Message, Code: e.Report.Code, Diagnostics: e.Report.Diagnostics}
 	case *session.ActionFailed, *session.EditCommitted:
 		return nil
+	}
+	return nil
+}
+
+func (s *Server[H]) publishTree(ctx context.Context, t *Tree[H], node *Node[H], cancel context.CancelFunc) error {
+	_, t.subscription = node.session.Observe(func(event session.Event) {
+		if _, phase := event.(*session.PhaseChanged); phase {
+			s.deps.StatusChanged(t.id)
+		}
+	})
+	s.mu.Lock()
+	if s.closing {
+		s.mu.Unlock()
+		cancel()
+		t.subscription.Release()
+		return errors.Join(session.AdmissionClosed, node.session.Dispose(context.WithoutCancel(ctx)))
+	}
+	s.trees[t.id] = t
+	s.mu.Unlock()
+	t.workers.Go(t.monitor)
+	t.workers.Go(t.sendChanges)
+	return nil
+}
+
+func checkProfiles(profiles []core.Profile) error {
+	for _, profile := range profiles {
+		if profile.Name == "default" {
+			return errors.New(
+				`subagent profile name "default" is reserved: omitting --profile already inherits the parent`,
+			)
+		}
 	}
 	return nil
 }

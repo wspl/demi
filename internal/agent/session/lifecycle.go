@@ -13,10 +13,33 @@ import (
 )
 
 // construct installs one session state owner before starting its three workers.
-func construct(init Init, deps Deps, log *transcript.Log, commands *store.CommandStateHistory, state *store.CheckpointState) *Session {
+func construct(
+	init Init,
+	deps Deps,
+	log *transcript.Log,
+	commands *store.CommandStateHistory,
+	state *store.CheckpointState,
+) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	generation, generationCancel := context.WithCancel(context.Background())
-	c := coreState{id: init.ID, cwd: init.CWD, model: init.Model, log: log, commands: commands, provider: init.Runtime, stage: Idle, changed: make(chan struct{}), generationCtx: generation, generationCancel: generationCancel, listeners: map[uint64]func(Event){}, edits: []store.EditReceipt{}, wakeups: []store.ScheduledWakeup{}, publishedPhase: "idle", publishedQueue: []core.QueuedMessage{}, publishedSteers: []core.PendingSteer{}}
+	c := coreState{
+		id:               init.ID,
+		cwd:              init.CWD,
+		model:            init.Model,
+		log:              log,
+		commands:         commands,
+		provider:         init.Runtime,
+		stage:            Idle,
+		changed:          make(chan struct{}),
+		generationCtx:    generation,
+		generationCancel: generationCancel,
+		listeners:        map[uint64]func(Event){},
+		edits:            []store.EditReceipt{},
+		wakeups:          []store.ScheduledWakeup{},
+		publishedPhase:   "idle",
+		publishedQueue:   []core.QueuedMessage{},
+		publishedSteers:  []core.PendingSteer{},
+	}
 	if state != nil {
 		c.edits = append(c.edits, state.Edits...)
 		c.wakeups = append(c.wakeups, state.Wakeups...)
@@ -26,9 +49,11 @@ func construct(init Init, deps Deps, log *transcript.Log, commands *store.Comman
 			c.arrivals++
 		}
 	}
-	c.publishedStatus = c.status()
+	c.publishedStatus = c.statusLocked()
 	c.publishedStatus.changed = make(chan struct{})
-	s := &Session{sessionOwner: &sessionOwner{core: c, deps: deps, ctx: ctx, cancel: cancel, closed: make(chan struct{})}}
+	s := &Session{
+		sessionOwner: &sessionOwner{core: c, deps: deps, ctx: ctx, cancel: cancel, closed: make(chan struct{})},
+	}
 	s.mutate(func(_ *coreState) {
 		s.armLocked()
 	})
@@ -38,34 +63,14 @@ func construct(init Init, deps Deps, log *transcript.Log, commands *store.Comman
 	return s
 }
 
-func restore(checkpoint store.Checkpoint, id core.NodeID, runtime provider.Runtime, deps Deps) (*Session, Continuation, error) {
-	ids := map[core.BlockID]bool{}
-	for _, block := range checkpoint.Transcript {
-		ids[block.ID()] = true
-	}
-	for _, input := range checkpoint.State.AgentInputs {
-		message := input.Message
-		if message.RecipientID != id {
-			return nil, Continuation{}, &RestoreError{Kind: RestoreInput, Detail: fmt.Sprintf("agent message %s is addressed to %s", message.ID, message.RecipientID)}
-		}
-		if ids[message.ID] {
-			return nil, Continuation{}, &RestoreError{Kind: RestoreInput, Detail: fmt.Sprintf("agent message %s is not unique", message.ID)}
-		}
-		ids[message.ID] = true
-	}
-	wakeups := map[core.WakeupID]bool{}
-	for _, w := range checkpoint.State.Wakeups {
-		if wakeups[w.ID] {
-			return nil, Continuation{}, &RestoreError{Kind: RestoreInput, Detail: fmt.Sprintf("wakeup %s is scheduled twice", w.ID)}
-		}
-		wakeups[w.ID] = true
-	}
-	edits := map[core.OperationID]bool{}
-	for _, receipt := range checkpoint.State.Edits {
-		if edits[receipt.OperationID] {
-			return nil, Continuation{}, &RestoreError{Kind: RestoreEdits, Detail: string(receipt.OperationID)}
-		}
-		edits[receipt.OperationID] = true
+func restore(
+	checkpoint store.Checkpoint,
+	id core.NodeID,
+	runtime provider.Runtime,
+	deps Deps,
+) (*Session, Continuation, error) {
+	if err := validateRestoredInputs(checkpoint, id); err != nil {
+		return nil, Continuation{}, err
 	}
 	commands, err := store.RestoreCommandStateHistory(checkpoint.CommandState)
 	if err != nil {
@@ -73,7 +78,19 @@ func restore(checkpoint store.Checkpoint, id core.NodeID, runtime provider.Runti
 	}
 	log := transcript.NewLog(checkpoint.Transcript, deps.IDs, deps.Clock)
 	for _, call := range log.PendingToolCalls() {
-		log.CompleteToolCall(call.ToolUseID, []core.ToolResultContentBlock{&core.ToolText{Text: fmt.Sprintf("Tool call interrupted: %s (the process died before a result was recorded)", call.ToolName)}}, true, nil)
+		log.CompleteToolCall(
+			call.ToolUseID,
+			[]core.ToolResultContentBlock{
+				&core.ToolText{
+					Text: fmt.Sprintf(
+						"Tool call interrupted: %s (the process died before a result was recorded)",
+						call.ToolName,
+					),
+				},
+			},
+			true,
+			nil,
+		)
 	}
 	init := Init{ID: id, CWD: checkpoint.State.CWD, Model: checkpoint.State.Model, Runtime: runtime}
 	s := construct(init, deps, log, commands, &checkpoint.State)
@@ -162,22 +179,9 @@ func (s *Session) stop(ctx context.Context, onlyRunning bool) (framewire.AbortRe
 			result.Target = &target
 			c.effects = append(c.effects, a.cancel)
 		} else if !onlyRunning {
-			if len(c.queue) > 0 {
-				dropped := c.queue[0]
-				c.queue = c.queue[1:]
-				target := framewire.AbortTargetQueuedAction
-				if dropped.kind == sendAction {
-					target = framewire.AbortTargetQueuedMessage
-				}
-				result.Target = &target
-				c.effects = append(c.effects, func() { dropped.answer.finish(Dropped, nil) })
-			} else if len(c.wakeups) > 0 {
-				c.wakeups = c.wakeups[1:]
-				c.dirty = true
-				result.Target = new(framewire.AbortTargetPendingYieldWakeup)
-			}
+			result.Target = c.dropPendingLocked()
 		}
-		result.CanAbortAgain = c.canAbort()
+		result.CanAbortAgain = c.canAbortLocked()
 	})
 	if a != nil {
 		select {
@@ -190,7 +194,7 @@ func (s *Session) stop(ctx context.Context, onlyRunning bool) (framewire.AbortRe
 	return result, nil
 }
 
-func (s *Session) waitSettled(ctx context.Context) error {
+func (s *Session) settled(ctx context.Context) error {
 	for {
 		status := s.Status()
 		if status.Settle != Busy {
@@ -202,4 +206,64 @@ func (s *Session) waitSettled(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+}
+
+func validateRestoredInputs(checkpoint store.Checkpoint, id core.NodeID) error {
+	ids := map[core.BlockID]bool{}
+	for _, block := range checkpoint.Transcript {
+		ids[block.ID()] = true
+	}
+	for _, input := range checkpoint.State.AgentInputs {
+		message := input.Message
+		if message.RecipientID != id {
+			return &RestoreError{
+				Kind:   RestoreInput,
+				Detail: fmt.Sprintf("agent message %s is addressed to %s", message.ID, message.RecipientID),
+			}
+		}
+		if ids[message.ID] {
+			return &RestoreError{
+				Kind:   RestoreInput,
+				Detail: fmt.Sprintf("agent message %s is not unique", message.ID),
+			}
+		}
+		ids[message.ID] = true
+	}
+	wakeups := map[core.WakeupID]bool{}
+	for _, w := range checkpoint.State.Wakeups {
+		if wakeups[w.ID] {
+			return &RestoreError{
+				Kind:   RestoreInput,
+				Detail: fmt.Sprintf("wakeup %s is scheduled twice", w.ID),
+			}
+		}
+		wakeups[w.ID] = true
+	}
+	edits := map[core.OperationID]bool{}
+	for _, receipt := range checkpoint.State.Edits {
+		if edits[receipt.OperationID] {
+			return &RestoreError{Kind: RestoreEdits, Detail: string(receipt.OperationID)}
+		}
+		edits[receipt.OperationID] = true
+	}
+	return nil
+}
+
+func (c *coreState) dropPendingLocked() *framewire.AbortTarget {
+	result := framewire.AbortResult{}
+	if len(c.queue) > 0 {
+		dropped := c.queue[0]
+		c.queue = c.queue[1:]
+		target := framewire.AbortTargetQueuedAction
+		if dropped.kind == sendAction {
+			target = framewire.AbortTargetQueuedMessage
+		}
+		result.Target = &target
+		c.effects = append(c.effects, func() { dropped.answer.finish(Dropped, nil) })
+	} else if len(c.wakeups) > 0 {
+		c.wakeups = c.wakeups[1:]
+		c.dirty = true
+		result.Target = new(framewire.AbortTargetPendingYieldWakeup)
+	}
+	return result.Target
 }

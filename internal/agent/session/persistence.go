@@ -9,12 +9,20 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-func (c *coreState) checkpointState() store.CheckpointState {
-	phase := c.phase()
+func (c *coreState) checkpointStateLocked() store.CheckpointState {
+	phase := c.phaseLocked()
 	if c.stage == Finalizing {
 		phase = "idle"
 	}
-	return store.CheckpointState{Phase: phase, Queue: c.queued(), AgentInputs: c.agentInputs(), Wakeups: c.savedWakeups(), CWD: c.cwd, Model: c.model, Edits: append([]store.EditReceipt{}, c.edits...)}
+	return store.CheckpointState{
+		Phase:       phase,
+		Queue:       c.queuedMessagesLocked(),
+		AgentInputs: c.agentInputsLocked(),
+		Wakeups:     c.savedWakeupsLocked(),
+		CWD:         c.cwd,
+		Model:       c.model,
+		Edits:       append([]store.EditReceipt{}, c.edits...),
+	}
 }
 
 // save commits the session's dirty rows while the caller holds its save gate.
@@ -33,7 +41,12 @@ func (s *Session) save(ctx context.Context, pending *store.CommandVersion, guard
 		for _, i := range rows.Indices(len(blocks)) {
 			changed = append(changed, store.ChangedBlock{Index: i, Block: blocks[i]})
 		}
-		update = &store.CheckpointUpdate{State: c.checkpointState(), CommandState: c.commands.TakeUpdate(pending), ChangedBlocks: changed, BlockCount: len(blocks)}
+		update = &store.CheckpointUpdate{
+			State:         c.checkpointStateLocked(),
+			CommandState:  c.commands.TakeUpdate(pending),
+			ChangedBlocks: changed,
+			BlockCount:    len(blocks),
+		}
 	})
 	if update == nil {
 		return nil
@@ -100,13 +113,18 @@ func (s *Session) rewrite(ctx context.Context, blocks []core.Block, revision uin
 	defer permit.Release()
 	s.mu.Lock()
 	snapshot := s.core.commands.Select(blocks, revision, false)
-	state := s.core.checkpointState()
+	state := s.core.checkpointStateLocked()
 	s.mu.Unlock()
 	commands, err := store.RestoreCommandStateHistory(snapshot)
 	if err != nil {
 		return err
 	}
-	update := store.CheckpointUpdate{State: state, CommandState: &snapshot, ChangedBlocks: []store.ChangedBlock{}, BlockCount: len(blocks)}
+	update := store.CheckpointUpdate{
+		State:         state,
+		CommandState:  &snapshot,
+		ChangedBlocks: []store.ChangedBlock{},
+		BlockCount:    len(blocks),
+	}
 	for i, b := range blocks {
 		update.ChangedBlocks = append(update.ChangedBlocks, store.ChangedBlock{Index: i, Block: b})
 	}

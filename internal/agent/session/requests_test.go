@@ -21,14 +21,27 @@ import (
 func TestRequestPrefixesWithThinkingAndSummary(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})
-		r := &sessiontest.Runtime{Prompt: "system", Definitions: []provider.ToolDefinition{{Name: "look", InputSchema: []byte(`{"type":"object"}`)}, {Name: "note", InputSchema: []byte(`{"type":"object"}`)}, {Name: "yield", InputSchema: []byte(`{"type":"object"}`)}}}
+		r := &sessiontest.Runtime{
+			Prompt: "system",
+			Definitions: []provider.ToolDefinition{
+				{Name: "look", InputSchema: []byte(`{"type":"object"}`)},
+				{Name: "note", InputSchema: []byte(`{"type":"object"}`)},
+				{Name: "yield", InputSchema: []byte(`{"type":"object"}`)},
+			},
+		}
 		r.Invoke = func(ctx context.Context, call session.ToolInvocation) (session.ToolOutcome, error) {
 			switch call.ToolName {
 			case "look":
 				close(entered)
 				select {
 				case <-release:
-					return session.ToolOutcome{Output: []provider.ResultPart{&provider.ResultImage{Bytes: provider.MediaBytes{Data: storetest.PNG(3, 2, 2), MediaType: "image/png"}}}}, nil
+					return session.ToolOutcome{
+						Output: []provider.ResultPart{
+							&provider.ResultImage{
+								Bytes: provider.MediaBytes{Data: storetest.PNG(3, 2, 2), MediaType: "image/png"},
+							},
+						},
+					}, nil
 				case <-ctx.Done():
 					return session.ToolOutcome{}, ctx.Err()
 				}
@@ -38,14 +51,44 @@ func TestRequestPrefixesWithThinkingAndSummary(t *testing.T) {
 				return textOutcome("noted"), nil
 			}
 		}
-		f := start(t, r, session.DefaultConfig(), providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("first"), &provider.ThinkingSignature{Signature: "anthropic:first"}, providertest.Text("Looking."), providertest.ToolCall("look", "look", []byte(`{}`)), providertest.ToolCall("note", "note", []byte(`{}`)), providertest.Response(1, 1)), answer("Both seen."), providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("second"), &provider.ThinkingSignature{Signature: "anthropic:second"}, providertest.ToolCall("yield", "yield", []byte(`{}`)), providertest.Response(1, 1)), answer("The user showed a screenshot and asked twice."), answer("After summary."), answer("Thought harder."))
+		f := start(
+			t,
+			r,
+			session.DefaultConfig(),
+			providertest.Events(
+				&provider.ThinkingStart{},
+				providertest.Thinking("first"),
+				&provider.ThinkingSignature{Signature: "anthropic:first"},
+				providertest.Text("Looking."),
+				providertest.ToolCall("look", "look", []byte(`{}`)),
+				providertest.ToolCall("note", "note", []byte(`{}`)),
+				providertest.Response(1, 1),
+			),
+			answer("Both seen."),
+			providertest.Events(
+				&provider.ThinkingStart{},
+				providertest.Thinking("second"),
+				&provider.ThinkingSignature{Signature: "anthropic:second"},
+				providertest.ToolCall("yield", "yield", []byte(`{}`)),
+				providertest.Response(1, 1),
+			),
+			answer("The user showed a screenshot and asked twice."),
+			answer("After summary."),
+			answer("Thought harder."),
+		)
 		model := storetest.ModelReading("stub", "model-a", []core.FileExtension{core.FileExtensionPNG})
 		must(t, f.s.UpdateModel(session.ModelSwitch{Model: model}))
 		png := storetest.PNG(4, 3, 1)
 		held := store.HeldMedia{}
 		held.Hold(core.BlobRefOf(png), png)
 		f.s.HoldMedia(&held)
-		a, err := f.s.Send([]core.UserContentBlock{&core.UserText{Text: "What is on screen?"}, &core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(png), MediaType: "image/png"}}}, "t1")
+		a, err := f.s.Send(
+			[]core.UserContentBlock{
+				&core.UserText{Text: "What is on screen?"},
+				&core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(png), MediaType: "image/png"}},
+			},
+			"t1",
+		)
 		must(t, err)
 		<-entered
 		must(t, f.s.Steer(storetest.Text("mind tests"), "s1"))

@@ -27,13 +27,27 @@ func userBlock(t *testing.T, f *fixture, turn string) core.BlockID {
 	t.Fatal("no user block", turn)
 	return ""
 }
-func edit(operation string, target core.BlockID, version framewire.TranscriptVersion, text string) *framewire.EditAndSendFrame {
+
+func edit(
+	operation string,
+	target core.BlockID,
+	version framewire.TranscriptVersion,
+	text string,
+) *framewire.EditAndSendFrame {
 	id, err := core.ParseOperationID(operation)
 	if err != nil {
 		panic(err)
 	}
-	return &framewire.EditAndSendFrame{Request: framewire.EditRequest{OperationID: id, TargetBlockID: target, Version: version, Content: servertest.ClientText(text)}}
+	return &framewire.EditAndSendFrame{
+		Request: framewire.EditRequest{
+			OperationID:   id,
+			TargetBlockID: target,
+			Version:       version,
+			Content:       servertest.ClientText(text),
+		},
+	}
 }
+
 func editOutcome(t *testing.T, frames []framewire.ServerFrame) framewire.EditOutcome {
 	t.Helper()
 	for _, frame := range frames {
@@ -44,6 +58,7 @@ func editOutcome(t *testing.T, frames []framewire.ServerFrame) framewire.EditOut
 	t.Fatal("no edit result", frames)
 	return nil
 }
+
 func rejectedEdit(t *testing.T, outcome framewire.EditOutcome, reason string) {
 	t.Helper()
 	r, ok := outcome.(*framewire.RejectedEdit)
@@ -52,6 +67,7 @@ func rejectedEdit(t *testing.T, outcome framewire.EditOutcome, reason string) {
 	}
 	equal(t, reason, r.Reason)
 }
+
 func TestEditReplacesOnceOnFreshRuntime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("answer A"), said("answer B"), said("answer C"), said("answer B2"))
@@ -98,12 +114,25 @@ func TestEditReplacesOnceOnFreshRuntime(t *testing.T) {
 		equal(t, 1, rewrites)
 		live := f.server.Tree(rootID()).Root().Session().Transcript()
 		assertBlockTypes(t, live.Blocks, "User", "Text", "Response", "User", "Text", "Response")
-		equal(t, []provider.InferenceItem{&provider.UserMessage{Content: storetest.SentText("A")}, &provider.AssistantText{ModelID: "test-model", Text: "answer A"}, &provider.UserMessage{Content: storetest.SentText("B2")}}, f.script.Requests()[3].Items)
+		equal(
+			t,
+			[]provider.InferenceItem{
+				&provider.UserMessage{Content: storetest.SentText("A")},
+				&provider.AssistantText{ModelID: "test-model", Text: "answer A"},
+				&provider.UserMessage{Content: storetest.SentText("B2")},
+			},
+			f.script.Requests()[3].Items,
+		)
 		equal(t, 1, f.script.Closes())
 		equal(t, live.Blocks, f.store.Checkpoint(rootID()).Transcript)
 		equal(t, 1, len(f.store.Checkpoint(rootID()).State.Edits))
 		equal(t, accepted.TurnID, f.store.Checkpoint(rootID()).State.Edits[0].TurnID)
-		reply, err := f.server.CommandStorage(t.Context(), rootID(), f.server.Node(rootID(), rootID()).JobCaller(), &host.StorageRead{Key: "todo"})
+		reply, err := f.server.CommandStorage(
+			t.Context(),
+			rootID(),
+			f.server.Node(rootID(), rootID()).JobCaller(),
+			&host.StorageRead{Key: "todo"},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -125,6 +154,7 @@ func TestEditReplacesOnceOnFreshRuntime(t *testing.T) {
 		equal(t, 0, f.script.Remaining())
 	})
 }
+
 func TestEditVisibleOnlyAfterCommit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("answer A"), said("answer A2"))
@@ -188,9 +218,18 @@ func TestEditVisibleOnlyAfterCommit(t *testing.T) {
 		}
 	})
 }
+
 func TestSwitchDuringPreparedEditLandsAfterFirstRequest(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		f := newFixture(t, said("answer A"), providertest.Events(providertest.ToolCall("call-1", "shell_exec", []byte(`{}`)), providertest.Response(1, 1)), said("answer A2"))
+		f := newFixture(
+			t,
+			said("answer A"),
+			providertest.Events(
+				providertest.ToolCall("call-1", "shell_exec", []byte(`{}`)),
+				providertest.Response(1, 1),
+			),
+			said("answer A2"),
+		)
 		c := f.opened()
 		c.Send(t.Context(), send("m1", "A"))
 		untilIdle(t, c)
@@ -218,6 +257,7 @@ func TestSwitchDuringPreparedEditLandsAfterFirstRequest(t *testing.T) {
 		equal(t, []string{"test-model", "test-model", "model-b"}, models)
 	})
 }
+
 func TestBusyEditAndFailedSaveChangeNothing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		gate := make(chan struct{})
@@ -239,7 +279,12 @@ func TestBusyEditAndFailedSaveChangeNothing(t *testing.T) {
 		c.Send(t.Context(), r)
 		rejectedEdit(t, editOutcome(t, c.Received()), "the database refused the save")
 		equal(t, before, f.server.Tree(rootID()).Root().Session().Transcript())
-		if _, err := f.server.CommandStorage(t.Context(), rootID(), caller, &host.StorageRead{Key: "todo"}); err != nil {
+		if _, err := f.server.CommandStorage(
+			t.Context(),
+			rootID(),
+			caller,
+			&host.StorageRead{Key: "todo"},
+		); err != nil {
 			t.Fatal(err)
 		}
 		equal(t, before.Blocks, f.store.Checkpoint(rootID()).Transcript)
@@ -255,6 +300,7 @@ func TestBusyEditAndFailedSaveChangeNothing(t *testing.T) {
 		assertBlockTypes(t, blocks, "User", "Text", "Response")
 	})
 }
+
 func TestCommandStorageGenerationAndCancellation(t *testing.T) {
 	t.Skip("fidelity 2: cancelled storage call returns context.Canceled instead of StorageRefused")
 	synctest.Test(t, func(t *testing.T) {
@@ -290,9 +336,17 @@ func TestCommandStorageGenerationAndCancellation(t *testing.T) {
 func TestEditAndChildLifecycleRefuseEachOther(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		reading := make(chan struct{})
-		reader := providertest.NewScriptedRuntime(t, held(reading, providertest.Text("notes say 42"), providertest.Response(1, 1)))
+		reader := providertest.NewScriptedRuntime(
+			t,
+			held(reading, providertest.Text("notes say 42"), providertest.Response(1, 1)),
+		)
 		counter := providertest.NewScriptedRuntime(t, said("7 files"))
-		f := modelFixture(t, []providertest.Turn{said("answer A"), said("noted"), said("answer A2"), said("noted again")}, childScriptEntry("Read notes.md", reader), childScriptEntry("Count the files", counter))
+		f := modelFixture(
+			t,
+			[]providertest.Turn{said("answer A"), said("noted"), said("answer A2"), said("noted again")},
+			childScriptEntry("Read notes.md", reader),
+			childScriptEntry("Count the files", counter),
+		)
 		c := f.opened()
 		c.Send(t.Context(), send("m1", "A"))
 		untilIdle(t, c)
@@ -301,7 +355,11 @@ func TestEditAndChildLifecycleRefuseEachOther(t *testing.T) {
 		live := f.store.Record(child)
 		c.Send(t.Context(), edit("op1", target, f.server.Tree(rootID()).Root().Session().Transcript().Version, "A2"))
 		synctest.Wait()
-		rejectedEdit(t, editOutcome(t, c.Received()), "Cannot edit while children or completion notifications are pending")
+		rejectedEdit(
+			t,
+			editOutcome(t, c.Received()),
+			"Cannot edit while children or completion notifications are pending",
+		)
 		equal(t, live, f.store.Record(child))
 		close(reading)
 		synctest.Wait()

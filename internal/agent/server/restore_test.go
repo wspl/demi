@@ -14,34 +14,97 @@ import (
 )
 
 func storedChild(id string, number uint64, parent core.NodeID, profile *string) store.NodeRecord {
-	return store.NodeRecord{ID: core.NodeID(id), Number: number, Parent: &parent, Description: id, Profile: profile, Round: 1, StartedAt: core.Timestamp("1970-01-01T00:00:00.000Z"), CanSpawnSubagents: true}
+	return store.NodeRecord{
+		ID:                core.NodeID(id),
+		Number:            number,
+		Parent:            &parent,
+		Description:       id,
+		Profile:           profile,
+		Round:             1,
+		StartedAt:         core.Timestamp("1970-01-01T00:00:00.000Z"),
+		CanSpawnSubagents: true,
+	}
 }
+
 func checkpoint(queue []core.QueuedMessage, blocks []core.Block) store.CheckpointUpdate {
 	rows := []store.ChangedBlock{}
 	for i, b := range blocks {
 		rows = append(rows, store.ChangedBlock{Index: i, Block: b})
 	}
-	return store.CheckpointUpdate{State: store.CheckpointState{Phase: core.SessionPhaseIdle, Queue: append([]core.QueuedMessage{}, queue...), AgentInputs: []store.PendingAgentInput{}, Wakeups: []store.ScheduledWakeup{}, CWD: "/workspace", Model: storetest.TestModel(), Edits: []store.EditReceipt{}}, CommandState: new(store.InitialCommandState()), BlockCount: len(blocks), ChangedBlocks: rows}
+	return store.CheckpointUpdate{
+		State: store.CheckpointState{
+			Phase:       core.SessionPhaseIdle,
+			Queue:       append([]core.QueuedMessage{}, queue...),
+			AgentInputs: []store.PendingAgentInput{},
+			Wakeups:     []store.ScheduledWakeup{},
+			CWD:         "/workspace",
+			Model:       storetest.TestModel(),
+			Edits:       []store.EditReceipt{},
+		},
+		CommandState:  new(store.InitialCommandState()),
+		BlockCount:    len(blocks),
+		ChangedBlocks: rows,
+	}
 }
-func createStored(t *testing.T, memory *storetest.MemoryTreeStore, record store.NodeRecord, queue []core.QueuedMessage, blocks []core.Block) {
+
+func createStored(
+	t *testing.T,
+	memory *storetest.MemoryTreeStore,
+	record store.NodeRecord,
+	queue []core.QueuedMessage,
+	blocks []core.Block,
+) {
 	t.Helper()
 	if err := memory.CreateNode(t.Context(), record, checkpoint(queue, blocks)); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func closeStored(t *testing.T, memory *storetest.MemoryTreeStore, id core.NodeID, phase store.ClosePhase) {
 	t.Helper()
-	if err := memory.CloseNode(t.Context(), id, store.NodeClose{Phase: phase, At: core.Timestamp("1970-01-01T00:00:00.000Z")}); err != nil {
+	if err := memory.CloseNode(
+		t.Context(),
+		id,
+		store.NodeClose{Phase: phase, At: core.Timestamp("1970-01-01T00:00:00.000Z")},
+	); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func TestRestoreLostBriefQuietChildAndMissedCompletion(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		memory := storetest.NewMemoryTreeStore()
 		at := core.Timestamp("1970-01-01T00:00:00.000Z")
 		createStored(t, memory, store.RootRecord(rootID(), at), nil, nil)
-		createStored(t, memory, storedChild("lost", 1, rootID(), nil), []core.QueuedMessage{{ID: turnID("brief"), Content: storetest.Text("task lost")}}, nil)
-		createStored(t, memory, storedChild("quiet", 2, rootID(), nil), nil, []core.Block{&core.UserBlock{BlockID: blockID("q1"), TurnID: turnID("q1"), Timestamp: at, Selection: storetest.TestModel(), Content: storetest.Text("task quiet")}, &core.TextBlock{BlockID: blockID("q2"), Timestamp: at, Selection: storetest.TestModel(), Text: "quiet result", Forkable: true}})
+		createStored(
+			t,
+			memory,
+			storedChild("lost", 1, rootID(), nil),
+			[]core.QueuedMessage{{ID: turnID("brief"), Content: storetest.Text("task lost")}},
+			nil,
+		)
+		createStored(
+			t,
+			memory,
+			storedChild("quiet", 2, rootID(), nil),
+			nil,
+			[]core.Block{
+				&core.UserBlock{
+					BlockID:   blockID("q1"),
+					TurnID:    turnID("q1"),
+					Timestamp: at,
+					Selection: storetest.TestModel(),
+					Content:   storetest.Text("task quiet"),
+				},
+				&core.TextBlock{
+					BlockID:   blockID("q2"),
+					Timestamp: at,
+					Selection: storetest.TestModel(),
+					Text:      "quiet result",
+					Forkable:  true,
+				},
+			},
+		)
 		createStored(t, memory, storedChild("closed", 3, rootID(), nil), nil, nil)
 		closeStored(t, memory, "closed", &store.Completed{Result: "closed result"})
 		createStored(t, memory, storedChild("orphan", 4, rootID(), new("retired")), nil, nil)
@@ -69,7 +132,11 @@ func TestRestoreLostBriefQuietChildAndMissedCompletion(t *testing.T) {
 			if record.Closed == nil || !record.Delivered {
 				t.Fatal("restore did not close and deliver", id, record)
 			}
-			equal(t, store.ClosePhase(&store.Completed{Result: []string{"lost result", "quiet result", "closed result"}[i]}), record.Closed.Phase)
+			equal(
+				t,
+				store.ClosePhase(&store.Completed{Result: []string{"lost result", "quiet result", "closed result"}[i]}),
+				record.Closed.Phase,
+			)
 		}
 		if memory.Record("orphan") != nil || memory.Record("orphan-child") != nil {
 			t.Fatal("missing profile left subtree")
@@ -85,10 +152,15 @@ func TestRestoreLostBriefQuietChildAndMissedCompletion(t *testing.T) {
 		}
 		run := agent(t, f, rootID(), "resume", `{"id":5,"message":"again"}`)
 		equal(t, uint8(1), run.code)
-		equal(t, "demi agent resume: unknown profile \"retired\" (available: none; omit --profile to inherit the parent)\n", run.stderr)
+		equal(
+			t,
+			"demi agent resume: unknown profile \"retired\" (available: none; omit --profile to inherit the parent)\n",
+			run.stderr,
+		)
 		equal(t, store.ClosePhase(&store.Aborted{}), memory.Record("archived").Closed.Phase)
 	})
 }
+
 func TestUndeliveredCompletionRefusesEditUntilLaterSave(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("answer A"), said("answer B"), said("answer A2"))
@@ -110,7 +182,11 @@ func TestUndeliveredCompletionRefusesEditUntilLaterSave(t *testing.T) {
 		target := userBlock(t, f, "m1")
 		c.Send(t.Context(), edit("op1", target, f.server.Tree(rootID()).Root().Session().Transcript().Version, "A2"))
 		synctest.Wait()
-		rejectedEdit(t, editOutcome(t, c.Received()), "Cannot edit while children or completion notifications are pending")
+		rejectedEdit(
+			t,
+			editOutcome(t, c.Received()),
+			"Cannot edit while children or completion notifications are pending",
+		)
 		equal(t, record, f.store.Record("child"))
 		c.Send(t.Context(), send("m2", "B"))
 		untilIdle(t, c)

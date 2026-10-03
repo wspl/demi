@@ -41,28 +41,46 @@ func start(t *testing.T, runtime *sessiontest.Runtime, config session.Config, tu
 	p := providertest.NewScriptedRuntime(t, turns...)
 	tree := storetest.NewMemoryTreeStore()
 	trace := &runtimeTrace{}
-	s := session.New(session.Init{ID: "root", CWD: "/workspace", Model: storetest.TestModel(), Runtime: &numberedRuntime{Runtime: p, trace: trace}}, session.Deps{Runtime: runtime, Store: tree.SessionStore("root"), IDs: transcripttest.NewSequentialIDs("id"), Clock: core.SystemClock{}, Config: config})
+	s := session.New(
+		session.Init{
+			ID:      "root",
+			CWD:     "/workspace",
+			Model:   storetest.TestModel(),
+			Runtime: &numberedRuntime{Runtime: p, trace: trace},
+		},
+		session.Deps{
+			Runtime: runtime,
+			Store:   tree.SessionStore("root"),
+			IDs:     transcripttest.NewSequentialIDs("id"),
+			Clock:   core.SystemClock{},
+			Config:  config,
+		},
+	)
 	must(t, tree.CreateNode(t.Context(), store.RootRecord("root", core.SystemClock{}.Now()), s.FirstCheckpoint()))
 	t.Cleanup(func() { must(t, s.Dispose(context.Background())) })
 	return &scenario{t: t, s: s, p: p, tree: tree, runtime: runtime, config: config, trace: trace}
 }
+
 func setup(t *testing.T, turns ...providertest.Turn) *scenario {
 	config := session.DefaultConfig()
 	config.PersistInterval = time.Minute
 	return start(t, &sessiontest.Runtime{}, config, turns...)
 }
+
 func (f *scenario) send(text, id string) *session.ActionHandle {
 	f.t.Helper()
 	a, err := f.s.Send(storetest.Text(text), core.TurnID(id))
 	must(f.t, err)
 	return a
 }
+
 func (f *scenario) done(a *session.ActionHandle) {
 	f.t.Helper()
 	end, err := a.Wait(f.t.Context())
 	must(f.t, err)
 	equal(f.t, end, session.Completed)
 }
+
 func (f *scenario) fail(a *session.ActionHandle) {
 	f.t.Helper()
 	_, err := a.Wait(f.t.Context())
@@ -70,6 +88,7 @@ func (f *scenario) fail(a *session.ActionHandle) {
 		f.t.Fatal("action succeeded, want failure")
 	}
 }
+
 func (f *scenario) checkpoint() store.Checkpoint {
 	f.t.Helper()
 	cp, err := f.tree.SessionStore("root").Load(f.t.Context())
@@ -79,37 +98,62 @@ func (f *scenario) checkpoint() store.Checkpoint {
 	}
 	return *cp
 }
-func (f *scenario) restore(cp store.Checkpoint, turns ...providertest.Turn) (*session.Session, session.Continuation, *providertest.ScriptedRuntime) {
+
+func (f *scenario) restore(
+	cp store.Checkpoint,
+	turns ...providertest.Turn,
+) (*session.Session, session.Continuation, *providertest.ScriptedRuntime) {
 	return f.restoreWith(cp, &sessiontest.Runtime{}, core.SystemClock{}, turns...)
 }
 
 // restoreWith restores a checkpoint with explicit node hooks and clock.
-func (f *scenario) restoreWith(cp store.Checkpoint, runtime *sessiontest.Runtime, clock core.Clock, turns ...providertest.Turn) (*session.Session, session.Continuation, *providertest.ScriptedRuntime) {
+func (f *scenario) restoreWith(
+	cp store.Checkpoint,
+	runtime *sessiontest.Runtime,
+	clock core.Clock,
+	turns ...providertest.Turn,
+) (*session.Session, session.Continuation, *providertest.ScriptedRuntime) {
 	f.t.Helper()
 	p := providertest.NewScriptedRuntime(f.t, turns...)
-	s, c, err := session.Restore(cp, "root", p, session.Deps{Runtime: runtime, Store: f.tree.SessionStore("root"), IDs: transcripttest.NewSequentialIDs("restored"), Clock: clock, Config: f.config})
+	s, c, err := session.Restore(
+		cp,
+		"root",
+		p,
+		session.Deps{
+			Runtime: runtime,
+			Store:   f.tree.SessionStore("root"),
+			IDs:     transcripttest.NewSequentialIDs("restored"),
+			Clock:   clock,
+			Config:  f.config,
+		},
+	)
 	must(f.t, err)
 	f.t.Cleanup(func() { must(f.t, s.Dispose(context.Background())) })
 	return s, c, p
 }
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
+
 func equal[T any](t *testing.T, got, want T) {
 	t.Helper()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v\nwant %#v", got, want)
 	}
 }
+
 func answer(text string) providertest.Turn {
 	return providertest.Events(providertest.Text(text), providertest.Response(1, 1))
 }
+
 func tool(name string) providertest.Turn {
 	return providertest.Events(providertest.ToolCall("call", name, json.RawMessage(`{}`)), providertest.Response(1, 1))
 }
+
 func gated(events ...provider.Event) (providertest.Turn, chan struct{}, chan struct{}) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	return func(ctx context.Context, r provider.InferenceRequest) provider.Run {
@@ -128,6 +172,7 @@ func gated(events ...provider.Event) (providertest.Turn, chan struct{}, chan str
 		}
 	}, entered, release
 }
+
 func hanging(events ...provider.Event) providertest.Turn {
 	return func(ctx context.Context, r provider.InferenceRequest) provider.Run {
 		return func(yield func(provider.Event) bool) {
@@ -140,15 +185,32 @@ func hanging(events ...provider.Event) providertest.Turn {
 		}
 	}
 }
-func toolRuntime(name string, invoke func(context.Context, session.ToolInvocation) (session.ToolOutcome, error)) *sessiontest.Runtime {
-	return &sessiontest.Runtime{Definitions: []provider.ToolDefinition{{Name: name, InputSchema: json.RawMessage(`{"type":"object"}`)}}, Invoke: invoke}
+
+func toolRuntime(
+	name string,
+	invoke func(context.Context, session.ToolInvocation) (session.ToolOutcome, error),
+) *sessiontest.Runtime {
+	return &sessiontest.Runtime{
+		Definitions: []provider.ToolDefinition{{Name: name, InputSchema: json.RawMessage(`{"type":"object"}`)}},
+		Invoke:      invoke,
+	}
 }
+
 func textOutcome(text string) session.ToolOutcome {
 	return session.ToolOutcome{Output: []provider.ResultPart{&provider.TextPart{Text: text}}}
 }
+
 func message(id string) core.AgentMessage {
-	return core.AgentMessage{ID: core.BlockID(id), Sender: core.Sender{ID: "child", Number: 1, Description: "worker", Round: 1}, RecipientID: "root", Timestamp: core.UnixEpoch, Content: id, Event: &core.MessageEvent{}}
+	return core.AgentMessage{
+		ID:          core.BlockID(id),
+		Sender:      core.Sender{ID: "child", Number: 1, Description: "worker", Round: 1},
+		RecipientID: "root",
+		Timestamp:   core.UnixEpoch,
+		Content:     id,
+		Event:       &core.MessageEvent{},
+	}
 }
+
 func kinds(blocks []core.Block) []string {
 	out := []string{}
 	for _, b := range blocks {
@@ -189,10 +251,12 @@ func kinds(blocks []core.Block) []string {
 	}
 	return out
 }
+
 func (f *scenario) history(want ...string) {
 	f.t.Helper()
 	equal(f.t, kinds(f.s.Transcript().Blocks), want)
 }
+
 func steers(t *testing.T, r provider.InferenceRequest) []string {
 	t.Helper()
 	out := []string{}
@@ -212,10 +276,24 @@ func steers(t *testing.T, r provider.InferenceRequest) []string {
 func edit(t *testing.T, s *session.Session, target int, id string) session.EditSubmission {
 	t.Helper()
 	snap := s.Transcript()
-	digest, err := session.EditDigest(framewire.EditRequest{OperationID: core.OperationID(id), TargetBlockID: snap.Blocks[target].ID(), Version: snap.Version, Content: []framewire.ClientContent{&framewire.TextContent{Text: "replacement"}}})
+	digest, err := session.EditDigest(
+		framewire.EditRequest{
+			OperationID:   core.OperationID(id),
+			TargetBlockID: snap.Blocks[target].ID(),
+			Version:       snap.Version,
+			Content:       []framewire.ClientContent{&framewire.TextContent{Text: "replacement"}},
+		},
+	)
 	must(t, err)
-	return session.EditSubmission{OperationID: core.OperationID(id), Target: snap.Blocks[target].ID(), Version: snap.Version, Digest: digest, Content: []session.EditContent{&session.Content{Block: &core.UserText{Text: "replacement"}}}}
+	return session.EditSubmission{
+		OperationID: core.OperationID(id),
+		Target:      snap.Blocks[target].ID(),
+		Version:     snap.Version,
+		Digest:      digest,
+		Content:     []session.EditContent{&session.Content{Block: &core.UserText{Text: "replacement"}}},
+	}
 }
+
 func TestRepeatedMessageID(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, answer("once"))
@@ -230,6 +308,7 @@ func TestRepeatedMessageID(t *testing.T) {
 		equal(t, len(f.p.Requests()), 1)
 	})
 }
+
 func TestReentrantEvents(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, providertest.Pending())
@@ -246,7 +325,12 @@ func TestReentrantEvents(t *testing.T) {
 				seen = append(seen, fmt.Sprintf("queue %d", len(e.Queue)))
 			case *session.PhaseChanged:
 				seen = append(seen, "phase "+string(e.Phase))
-			case *session.ActionFailed, *session.ErrorEvent, *session.PendingSteersChanged, *session.RetryScheduled, *session.TranscriptChanged, *session.EditCommitted:
+			case *session.ActionFailed,
+				*session.ErrorEvent,
+				*session.PendingSteersChanged,
+				*session.RetryScheduled,
+				*session.TranscriptChanged,
+				*session.EditCommitted:
 			}
 		})
 		defer second.Release()
@@ -302,6 +386,7 @@ func (r *numberedRuntime) Run(ctx context.Context, request provider.InferenceReq
 	r.trace.mu.Unlock()
 	return r.Runtime.Run(ctx, request)
 }
+
 func (r *numberedRuntime) Fresh() provider.Runtime {
 	r.trace.mu.Lock()
 	r.trace.next++
@@ -309,12 +394,14 @@ func (r *numberedRuntime) Fresh() provider.Runtime {
 	r.trace.mu.Unlock()
 	return &numberedRuntime{Runtime: r.Runtime.Fresh(), trace: r.trace, id: id}
 }
+
 func (r *numberedRuntime) Close(ctx context.Context) error {
 	r.trace.mu.Lock()
 	r.trace.closed = append(r.trace.closed, r.id)
 	r.trace.mu.Unlock()
 	return r.Runtime.Close(ctx)
 }
+
 func (r *runtimeTrace) assert(t *testing.T, served, closed []int) {
 	t.Helper()
 	r.mu.Lock()

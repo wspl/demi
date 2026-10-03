@@ -22,6 +22,7 @@ type nodeFeed[H host.Host] struct {
 	child *core.NodeID
 }
 
+// Watching reports whether shell output has an attached client to receive it.
 func (f *nodeFeed[H]) Watching() (bool, <-chan struct{}) {
 	t := f.tree
 	t.server.mu.Lock()
@@ -29,6 +30,7 @@ func (f *nodeFeed[H]) Watching() (bool, <-chan struct{}) {
 	return len(t.attachments) != 0, t.changed
 }
 
+// Changed records command liveness and schedules output for attached clients.
 func (f *nodeFeed[H]) Changed(record *host.CommandRecord) {
 	t := f.tree
 	t.frames.Lock()

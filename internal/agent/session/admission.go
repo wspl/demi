@@ -13,7 +13,7 @@ func (s *Session) admit(kind actionKind, content []core.UserContentBlock, id cor
 	var answer *ActionHandle
 	var err error
 	s.mutate(func(c *coreState) {
-		if err = c.admission(); err != nil {
+		if err = c.admissionLocked(); err != nil {
 			return
 		}
 		if kind == sendAction {
@@ -39,16 +39,19 @@ func (s *Session) admit(kind actionKind, content []core.UserContentBlock, id cor
 func (s *Session) steer(content []core.UserContentBlock, id core.BlockID) error {
 	var err error
 	s.mutate(func(c *coreState) {
-		if err = c.steerable(); err != nil {
+		if err = c.steerableLocked(); err != nil {
 			return
 		}
-		c.inputs = append(c.inputs, pendingInput{steer: &core.PendingSteer{ID: id, TurnID: c.active.turn, Model: c.model, Content: content}})
+		c.inputs = append(
+			c.inputs,
+			pendingInput{steer: &core.PendingSteer{ID: id, TurnID: c.active.turn, Model: c.model, Content: content}},
+		)
 		c.arrivals++
 	})
 	return err
 }
 
-func (s *Session) acceptAgent(ctx context.Context, message core.AgentMessage) error {
+func (s *Session) acceptAgentMessage(ctx context.Context, message core.AgentMessage) error {
 	if err := message.Validate(); err != nil {
 		return &AgentMessageError{Kind: AgentMessageInvalid, Detail: err.Error(), Cause: err}
 	}
@@ -63,30 +66,11 @@ func (s *Session) acceptAgent(ctx context.Context, message core.AgentMessage) er
 			refuse(AgentMessageClosed)
 			return
 		}
-		if c.preparingEdit() {
+		if c.preparingEditLocked() {
 			refuse(AgentMessageEditing)
 			return
 		}
-		var existing *core.AgentMessage
-		conflict := false
-		for _, input := range c.inputs {
-			if input.agent != nil && input.agent.Message.ID == message.ID {
-				existing = &input.agent.Message
-			}
-			if input.steer != nil && input.steer.ID == message.ID {
-				conflict = true
-			}
-			if input.wakeup != nil && core.BlockID(input.wakeup.ID) == message.ID {
-				conflict = true
-			}
-		}
-		if block := c.log.Find(message.ID); block != nil {
-			if b, ok := block.(*core.AgentMessageBlock); ok {
-				existing = &b.Message
-			} else {
-				conflict = true
-			}
-		}
+		existing, conflict := c.agentMessageLocked(message.ID)
 		if existing != nil {
 			if !reflect.DeepEqual(*existing, message) {
 				refuse(AgentMessageDifferentContent)
@@ -103,7 +87,10 @@ func (s *Session) acceptAgent(ctx context.Context, message core.AgentMessage) er
 		if c.active != nil {
 			turn = c.active.turn
 		}
-		c.inputs = append(c.inputs, pendingInput{agent: &store.PendingAgentInput{TurnID: turn, Model: c.model, Message: message}})
+		c.inputs = append(
+			c.inputs,
+			pendingInput{agent: &store.PendingAgentInput{TurnID: turn, Model: c.model, Message: message}},
+		)
 		c.arrivals++
 		c.dirty = true
 		s.startNextLocked()
@@ -153,6 +140,7 @@ func (s *Session) writeInputsLocked(take inputSelection) bool {
 	c.inputs = kept
 	return agents
 }
+
 func (s *Session) writeInputs(ctx context.Context) error {
 	agents := false
 	s.mutate(func(_ *coreState) { agents = s.writeInputsLocked(allInputs) })
@@ -161,7 +149,8 @@ func (s *Session) writeInputs(ctx context.Context) error {
 	}
 	return nil
 }
-func (s *Session) cancelSteer(id core.BlockID) bool {
+
+func (s *Session) cancelPendingSteer(id core.BlockID) bool {
 	removed := false
 	s.mutate(func(c *coreState) {
 		for i, input := range c.inputs {
@@ -185,4 +174,29 @@ func (s *Session) writeInputsSince(ctx context.Context, arrivals uint64) error {
 		return s.writeInputs(ctx)
 	}
 	return nil
+}
+
+// agentMessageLocked finds duplicate or conflicting input while the session mutex is held.
+func (c *coreState) agentMessageLocked(id core.BlockID) (*core.AgentMessage, bool) {
+	var existing *core.AgentMessage
+	conflict := false
+	for _, input := range c.inputs {
+		if input.agent != nil && input.agent.Message.ID == id {
+			existing = &input.agent.Message
+		}
+		if input.steer != nil && input.steer.ID == id {
+			conflict = true
+		}
+		if input.wakeup != nil && core.BlockID(input.wakeup.ID) == id {
+			conflict = true
+		}
+	}
+	if block := c.log.Find(id); block != nil {
+		if b, ok := block.(*core.AgentMessageBlock); ok {
+			existing = &b.Message
+		} else {
+			conflict = true
+		}
+	}
+	return existing, conflict
 }

@@ -49,13 +49,36 @@ type fixture struct {
 }
 
 func newFixture(t *testing.T, turns ...providertest.Turn) *fixture {
-	return fixtureWith(t, providertest.NewScriptedRuntime(t, turns...), storetest.NewMemoryTreeStore(), server.DefaultConfig())
+	return fixtureWith(
+		t,
+		providertest.NewScriptedRuntime(t, turns...),
+		storetest.NewMemoryTreeStore(),
+		server.DefaultConfig(),
+	)
 }
-func fixtureWith(t *testing.T, script *providertest.ScriptedRuntime, memory *storetest.MemoryTreeStore, config server.Config, options ...func(*server.Deps[*toolstest.NoHost])) *fixture {
+
+func fixtureWith(
+	t *testing.T,
+	script *providertest.ScriptedRuntime,
+	memory *storetest.MemoryTreeStore,
+	config server.Config,
+	options ...func(*server.Deps[*toolstest.NoHost]),
+) *fixture {
 	t.Helper()
 	resolver := &servertest.ScriptedProviders{}
 	resolver.Provide("stub", script)
-	deps := server.Deps[*toolstest.NoHost]{Toolsets: tools.Toolset{Commands: &host.CommandSet{}, Revision: "test"}, Instructions: "system prompt", Hosts: &toolstest.NoHost{}, Shells: toolstest.NoShells{}, Providers: resolver, Stores: func(core.NodeID) store.TreeStore { return memory }, Clock: core.SystemClock{}, IDs: &testIDs{}, Config: config, StatusChanged: func(core.NodeID) {}}
+	deps := server.Deps[*toolstest.NoHost]{
+		Toolsets:      tools.Toolset{Commands: &host.CommandSet{}, Revision: "test"},
+		Instructions:  "system prompt",
+		Hosts:         &toolstest.NoHost{},
+		Shells:        toolstest.NoShells{},
+		Providers:     resolver,
+		Stores:        func(core.NodeID) store.TreeStore { return memory },
+		Clock:         core.SystemClock{},
+		IDs:           &testIDs{},
+		Config:        config,
+		StatusChanged: func(core.NodeID) {},
+	}
 	for _, option := range options {
 		option(&deps)
 	}
@@ -67,6 +90,7 @@ func fixtureWith(t *testing.T, script *providertest.ScriptedRuntime, memory *sto
 	})
 	return &fixture{t: t, server: s, store: memory, resolver: resolver, script: script}
 }
+
 func rootID() core.NodeID {
 	id, err := core.ParseNodeID("conversation")
 	if err != nil {
@@ -74,6 +98,7 @@ func rootID() core.NodeID {
 	}
 	return id
 }
+
 func turnID(id string) core.TurnID {
 	v, err := core.ParseTurnID(id)
 	if err != nil {
@@ -81,6 +106,7 @@ func turnID(id string) core.TurnID {
 	}
 	return v
 }
+
 func blockID(id string) core.BlockID {
 	v, err := core.ParseBlockID(id)
 	if err != nil {
@@ -88,12 +114,15 @@ func blockID(id string) core.BlockID {
 	}
 	return v
 }
+
 func send(id, text string) *framewire.SendFrame {
 	return &framewire.SendFrame{MessageID: turnID(id), Content: servertest.ClientText(text)}
 }
+
 func said(text string) providertest.Turn {
 	return providertest.Events(providertest.Text(text), providertest.Response(1, 1))
 }
+
 func held(gate <-chan struct{}, events ...provider.Event) providertest.Turn {
 	return func(ctx context.Context, request provider.InferenceRequest) provider.Run {
 		return func(yield func(provider.Event) bool) {
@@ -106,9 +135,11 @@ func held(gate <-chan struct{}, events ...provider.Event) providertest.Turn {
 		}
 	}
 }
+
 func (f *fixture) client() *servertest.TestClient[*toolstest.NoHost] {
 	return servertest.Connect(f.t, f.server, rootID(), "/workspace")
 }
+
 func (f *fixture) opened() *servertest.TestClient[*toolstest.NoHost] {
 	c := f.client()
 	c.Send(f.t.Context(), &framewire.OpenFrame{})
@@ -121,6 +152,7 @@ func (f *fixture) opened() *servertest.TestClient[*toolstest.NoHost] {
 	}
 	return c
 }
+
 func untilIdle(t *testing.T, c *servertest.TestClient[*toolstest.NoHost]) []framewire.ServerFrame {
 	t.Helper()
 	frames, err := c.NextUntil(t.Context(), func(f framewire.ServerFrame) bool {
@@ -132,12 +164,14 @@ func untilIdle(t *testing.T, c *servertest.TestClient[*toolstest.NoHost]) []fram
 	}
 	return frames
 }
+
 func equal[T any](t *testing.T, want, got T) {
 	t.Helper()
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatalf("(-want +got):\n%s", diff)
 	}
 }
+
 func texts(f *fixture) string {
 	var text string
 	for _, b := range f.server.Tree(rootID()).Root().Session().Transcript().Blocks {
@@ -150,7 +184,10 @@ func texts(f *fixture) string {
 
 func TestOpenHandshakeAndPatchRevisions(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		f := newFixture(t, providertest.Events(providertest.Text("a"), providertest.Text("b"), providertest.Response(1, 1)))
+		f := newFixture(
+			t,
+			providertest.Events(providertest.Text("a"), providertest.Text("b"), providertest.Response(1, 1)),
+		)
 		c := f.client()
 		c.Send(t.Context(), &framewire.OpenFrame{})
 		h := c.Received()
@@ -182,6 +219,7 @@ func TestOpenHandshakeAndPatchRevisions(t *testing.T) {
 		}
 	})
 }
+
 func TestConcurrentOpensBuildOneTree(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t)
@@ -206,6 +244,7 @@ func TestConcurrentOpensBuildOneTree(t *testing.T) {
 		}
 	})
 }
+
 func TestConnectionsShareEventsAndOwnReplies(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("ab"))
@@ -230,7 +269,12 @@ func TestConnectionsShareEventsAndOwnReplies(t *testing.T) {
 		b.Send(t.Context(), &framewire.ShellWriteFrame{CommandID: command, Stdin: "y\n"})
 		replies := b.Received()
 		equal(t, 4, len(replies))
-		for i, kind := range []string{"*framewire.SteerResultFrame", "*framewire.AbortResultFrame", "*framewire.TranscriptResetFrame", "*framewire.ErrorFrame"} {
+		for i, kind := range []string{
+			"*framewire.SteerResultFrame",
+			"*framewire.AbortResultFrame",
+			"*framewire.TranscriptResetFrame",
+			"*framewire.ErrorFrame",
+		} {
 			equal(t, kind, fmt.Sprintf("%T", replies[i]))
 		}
 		if _, ok := replies[0].(*framewire.SteerResultFrame); !ok {
@@ -256,6 +300,7 @@ func TestConnectionsShareEventsAndOwnReplies(t *testing.T) {
 		}
 	})
 }
+
 func TestUnknownProviderLeavesConnectionUnattached(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t)
@@ -270,12 +315,17 @@ func TestUnknownProviderLeavesConnectionUnattached(t *testing.T) {
 			t.Fatal(frames)
 		}
 		equal(t, &framewire.ErrorFrame{Message: `Provider "missing" is not available`}, e)
-		equal(t, framewire.ServerFrame(&framewire.RejectedFrame{Command: "send", Reason: "No session is open"}), frames[1])
+		equal(
+			t,
+			framewire.ServerFrame(&framewire.RejectedFrame{Command: "send", Reason: "No session is open"}),
+			frames[1],
+		)
 		if f.server.Tree(rootID()) != nil || f.store.Record(rootID()) != nil {
 			t.Fatal("unknown provider created tree")
 		}
 	})
 }
+
 func TestDetachDrainsAndClosesOutbox(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t)
@@ -289,7 +339,13 @@ func TestDetachDrainsAndClosesOutbox(t *testing.T) {
 		if tree.IsAttached() {
 			t.Fatal("still attached")
 		}
-		for _, kind := range []string{"*framewire.OpenedFrame", "*framewire.TranscriptResetFrame", "*framewire.PhaseFrame", "*framewire.QueueFrame", "*framewire.PendingSteersFrame"} {
+		for _, kind := range []string{
+			"*framewire.OpenedFrame",
+			"*framewire.TranscriptResetFrame",
+			"*framewire.PhaseFrame",
+			"*framewire.QueueFrame",
+			"*framewire.PendingSteersFrame",
+		} {
 			v, err := out.Receive(t.Context())
 			if err != nil {
 				t.Fatal(err)
@@ -309,6 +365,7 @@ func TestDetachDrainsAndClosesOutbox(t *testing.T) {
 		}
 	})
 }
+
 func TestDetachedQuiescentTreeIdleEviction(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("done"))
@@ -336,6 +393,7 @@ func TestDetachedQuiescentTreeIdleEviction(t *testing.T) {
 		equal(t, 1, f.script.Closes())
 	})
 }
+
 func TestShutdownSavesEveryLiveTree(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, providertest.Pending())
@@ -364,7 +422,8 @@ func TestShutdownSavesEveryLiveTree(t *testing.T) {
 			if patch, ok := frame.(*framewire.TranscriptPatchFrame); ok {
 				for _, p := range patch.Patches {
 					if add, ok := p.(*framewire.AddPatch); ok {
-						if block, ok := add.Value.(*core.ErrorBlock); ok && block.Code != nil && *block.Code == "interrupted" {
+						if block, ok := add.Value.(*core.ErrorBlock); ok && block.Code != nil &&
+							*block.Code == "interrupted" {
 							found = true
 						}
 					}
@@ -380,20 +439,23 @@ func TestShutdownSavesEveryLiveTree(t *testing.T) {
 func TestLaggingConnectionClosesAlone(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		events := make(chan provider.Event)
-		script := providertest.NewScriptedRuntime(t, func(ctx context.Context, _ provider.InferenceRequest) provider.Run {
-			return func(yield func(provider.Event) bool) {
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case event, ok := <-events:
-						if !ok || !yield(event) {
+		script := providertest.NewScriptedRuntime(
+			t,
+			func(ctx context.Context, _ provider.InferenceRequest) provider.Run {
+				return func(yield func(provider.Event) bool) {
+					for {
+						select {
+						case <-ctx.Done():
 							return
+						case event, ok := <-events:
+							if !ok || !yield(event) {
+								return
+							}
 						}
 					}
 				}
-			}
-		})
+			},
+		)
 		config := server.DefaultConfig()
 		config.OutboxFrames = 16
 		f := fixtureWith(t, script, storetest.NewMemoryTreeStore(), config)
@@ -441,11 +503,30 @@ func TestLaggingConnectionClosesAlone(t *testing.T) {
 		}
 	})
 }
+
 func TestFramesRefusedWithoutSessionAndWhileBusy(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, providertest.Pending())
 		c := f.client()
-		for _, frame := range []framewire.ClientFrame{send("m1", "hi"), &framewire.AbortFrame{}, &framewire.SyncTranscriptFrame{}, &framewire.DequeueMessageFrame{MessageID: turnID("m1")}, &framewire.SteerFrame{SteerID: blockID("s1"), Content: servertest.ClientText("steer")}, &framewire.CancelPendingSteerFrame{SteerID: blockID("s1")}, &framewire.AbortSubagentsFrame{}, &framewire.AbortSubagentFrame{SubagentID: core.NodeID("child")}} {
+		for _, frame := range []framewire.ClientFrame{
+			send("m1", "hi"),
+			&framewire.AbortFrame{},
+			&framewire.SyncTranscriptFrame{},
+			&framewire.DequeueMessageFrame{
+				MessageID: turnID("m1"),
+			},
+			&framewire.SteerFrame{
+				SteerID: blockID("s1"),
+				Content: servertest.ClientText("steer"),
+			},
+			&framewire.CancelPendingSteerFrame{
+				SteerID: blockID("s1"),
+			},
+			&framewire.AbortSubagentsFrame{},
+			&framewire.AbortSubagentFrame{
+				SubagentID: core.NodeID("child"),
+			},
+		} {
 			c.Send(t.Context(), frame)
 		}
 		frames := c.Received()
@@ -458,17 +539,36 @@ func TestFramesRefusedWithoutSessionAndWhileBusy(t *testing.T) {
 			equal(t, []framewire.ClientFrameKind{"send", "abort", "sync_transcript", "dequeue_message"}[i], r.Command)
 			equal(t, "No session is open", r.Reason)
 		}
-		equal(t, framewire.ServerFrame(&framewire.SteerResultFrame{SteerID: blockID("s1"), Outcome: &framewire.RejectedSteer{Reason: "No session is open on this connection"}}), frames[4])
+		equal(
+			t,
+			framewire.ServerFrame(
+				&framewire.SteerResultFrame{
+					SteerID: blockID("s1"),
+					Outcome: &framewire.RejectedSteer{Reason: "No session is open on this connection"},
+				},
+			),
+			frames[4],
+		)
 		c.Send(t.Context(), &framewire.CloseFrame{})
 		equal(t, []framewire.ServerFrame{&framewire.ClosedFrame{}}, c.Received())
 		c.Send(t.Context(), &framewire.OpenFrame{})
 		c.Received()
 		c.Send(t.Context(), &framewire.OpenFrame{})
-		equal(t, []framewire.ServerFrame{&framewire.RejectedFrame{Command: "open", Reason: "A session is already open on this connection"}}, c.Received())
+		equal(
+			t,
+			[]framewire.ServerFrame{
+				&framewire.RejectedFrame{Command: "open", Reason: "A session is already open on this connection"},
+			},
+			c.Received(),
+		)
 		c.Send(t.Context(), send("m1", "hang"))
 		synctest.Wait()
 		c.Received()
-		for _, frame := range []framewire.ClientFrame{&framewire.RetryFrame{}, &framewire.ResumeFrame{}, &framewire.CompactFrame{}} {
+		for _, frame := range []framewire.ClientFrame{
+			&framewire.RetryFrame{},
+			&framewire.ResumeFrame{},
+			&framewire.CompactFrame{},
+		} {
 			c.Send(t.Context(), frame)
 			reply := c.Received()
 			equal(t, 1, len(reply))
@@ -478,11 +578,19 @@ func TestFramesRefusedWithoutSessionAndWhileBusy(t *testing.T) {
 		}
 	})
 }
+
 func TestConnectionsUseOneEditAndQueueAdmission(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		gate := make(chan struct{})
 		busy := make(chan struct{})
-		f := newFixture(t, held(gate, providertest.Text("one"), providertest.Response(1, 1)), said("two"), said("three"), said("one again"), held(busy, providertest.Text("busy"), providertest.Response(1, 1)))
+		f := newFixture(
+			t,
+			held(gate, providertest.Text("one"), providertest.Response(1, 1)),
+			said("two"),
+			said("three"),
+			said("one again"),
+			held(busy, providertest.Text("busy"), providertest.Response(1, 1)),
+		)
 		a, b := f.opened(), f.opened()
 		a.Send(t.Context(), send("m1", "one"))
 		synctest.Wait()
@@ -494,7 +602,8 @@ func TestConnectionsUseOneEditAndQueueAdmission(t *testing.T) {
 		equal(t, seen, b.Received())
 		queued := false
 		for _, frame := range seen {
-			if q, ok := frame.(*framewire.QueueFrame); ok && len(q.Queue) == 2 && q.Queue[0].ID == turnID("m2") && q.Queue[1].ID == turnID("m3") {
+			if q, ok := frame.(*framewire.QueueFrame); ok && len(q.Queue) == 2 && q.Queue[0].ID == turnID("m2") &&
+				q.Queue[1].ID == turnID("m3") {
 				queued = true
 			}
 		}
@@ -508,7 +617,12 @@ func TestConnectionsUseOneEditAndQueueAdmission(t *testing.T) {
 			}
 		}
 		equal(t, []core.TurnID{turnID("m1"), turnID("m2"), turnID("m3")}, users)
-		r := edit("op1", userBlock(t, f, "m1"), f.server.Tree(rootID()).Root().Session().Transcript().Version, "one again")
+		r := edit(
+			"op1",
+			userBlock(t, f, "m1"),
+			f.server.Tree(rootID()).Root().Session().Transcript().Version,
+			"one again",
+		)
 		saves := f.store.HoldSaves()
 		defer saves.Release()
 		done := make(chan struct{})
@@ -539,7 +653,10 @@ func TestConnectionsUseOneEditAndQueueAdmission(t *testing.T) {
 		b.Send(t.Context(), send("m5", "busy"))
 		synctest.Wait()
 		equal(t, 5, len(f.script.Requests()))
-		a.Send(t.Context(), edit("op2", target, f.server.Tree(rootID()).Root().Session().Transcript().Version, "not now"))
+		a.Send(
+			t.Context(),
+			edit("op2", target, f.server.Tree(rootID()).Root().Session().Transcript().Version, "not now"),
+		)
 		rejectedEdit(t, editOutcome(t, a.Received()), "Message editing requires a settled session with no pending work")
 		close(busy)
 		untilIdle(t, b)
@@ -558,7 +675,11 @@ func TestOpenSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
 				answer := make(chan struct{})
 				resume := sync.OnceFunc(func() { close(answer) })
 				defer resume()
-				f := newFixture(t, held(answer, providertest.Text("answer"), providertest.Response(1, 1)), said("second"))
+				f := newFixture(
+					t,
+					held(answer, providertest.Text("answer"), providertest.Response(1, 1)),
+					said("second"),
+				)
 				first := f.opened()
 				second := f.client()
 				if syncTranscript {
@@ -649,7 +770,10 @@ func TestChildSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
 		t.Run(fmt.Sprintf("sync=%t", syncTranscript), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				start := make(chan struct{})
-				script := providertest.NewScriptedRuntime(t, held(start, providertest.Text("answer"), providertest.Response(1, 1)))
+				script := providertest.NewScriptedRuntime(
+					t,
+					held(start, providertest.Text("answer"), providertest.Response(1, 1)),
+				)
 				f := modelFixture(t, []providertest.Turn{said("received")}, childScriptEntry("child", script))
 				f.opened()
 				id := spawn(t, f, rootID(), `{"prompt":"child"}`)

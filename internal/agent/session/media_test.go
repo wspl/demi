@@ -46,11 +46,16 @@ func mediaParts(r provider.InferenceRequest) []string {
 					parts = append(parts, "<video>")
 				}
 			}
-		case *provider.UserSteer, *provider.AssistantText, *provider.AssistantThinking, *provider.AssistantRedactedThinking, *provider.ToolUse:
+		case *provider.UserSteer,
+			*provider.AssistantText,
+			*provider.AssistantThinking,
+			*provider.AssistantRedactedThinking,
+			*provider.ToolUse:
 		}
 	}
 	return parts
 }
+
 func TestUnsupportedMediaUsesStableTextAcrossModels(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		png := storetest.PNG(3, 2, 1)
@@ -58,18 +63,45 @@ func TestUnsupportedMediaUsesStableTextAcrossModels(t *testing.T) {
 		mp4 := make([]byte, 3000)
 		copy(mp4, []byte("\x00\x00\x00\x18ftypisom"))
 		r := toolRuntime("record", func(context.Context, session.ToolInvocation) (session.ToolOutcome, error) {
-			return session.ToolOutcome{Output: []provider.ResultPart{&provider.ResultVideo{Bytes: provider.MediaBytes{Data: mp4, MediaType: "video/mp4"}}}}, nil
+			return session.ToolOutcome{
+				Output: []provider.ResultPart{
+					&provider.ResultVideo{Bytes: provider.MediaBytes{Data: mp4, MediaType: "video/mp4"}},
+				},
+			}, nil
 		})
-		f := start(t, r, session.DefaultConfig(), tool("record"), answer("recorded"), answer("seen"), answer("seen again"), answer("back"))
-		a := storetest.ModelReading("stub", "model-a", []core.FileExtension{core.FileExtensionPNG, core.FileExtensionPDF, core.FileExtensionMP4})
+		f := start(
+			t,
+			r,
+			session.DefaultConfig(),
+			tool("record"),
+			answer("recorded"),
+			answer("seen"),
+			answer("seen again"),
+			answer("back"),
+		)
+		a := storetest.ModelReading(
+			"stub",
+			"model-a",
+			[]core.FileExtension{core.FileExtensionPNG, core.FileExtensionPDF, core.FileExtensionMP4},
+		)
 		b := storetest.ModelReading("stub", "model-b", []core.FileExtension{core.FileExtensionPNG})
-		c := storetest.ModelReading("small", "model-c", []core.FileExtension{core.FileExtensionPNG, core.FileExtensionPDF, core.FileExtensionMP4})
+		c := storetest.ModelReading(
+			"small",
+			"model-c",
+			[]core.FileExtension{core.FileExtensionPNG, core.FileExtensionPDF, core.FileExtensionMP4},
+		)
 		held := store.HeldMedia{}
 		held.Hold(core.BlobRefOf(png), png)
 		held.Hold(core.BlobRefOf(pdf), pdf)
 		f.s.HoldMedia(&held)
 		must(t, f.s.UpdateModel(session.ModelSwitch{Model: a}))
-		content := []core.UserContentBlock{&core.UserText{Text: "record it"}, &core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(png), MediaType: "image/png"}}, &core.UserDocument{Source: &core.DocumentRef{Ref: core.BlobRefOf(pdf), MediaType: "application/pdf", FileName: "spec.pdf"}}}
+		content := []core.UserContentBlock{
+			&core.UserText{Text: "record it"},
+			&core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(png), MediaType: "image/png"}},
+			&core.UserDocument{
+				Source: &core.DocumentRef{Ref: core.BlobRefOf(pdf), MediaType: "application/pdf", FileName: "spec.pdf"},
+			},
+		}
 		handle, err := f.s.Send(content, "t1")
 		must(t, err)
 		f.done(handle)
@@ -85,11 +117,25 @@ func TestUnsupportedMediaUsesStableTextAcrossModels(t *testing.T) {
 		req := f.p.Requests()
 		sent := []string{"record it", "<image>", "<document>", "<video>"}
 		equal(t, mediaParts(req[1]), sent)
-		unread := []string{"record it", "<image>", "[document:spec.pdf, not sent: the model does not accept it]", "[video:video/mp4, not sent: the model does not accept it]"}
+		unread := []string{
+			"record it",
+			"<image>",
+			"[document:spec.pdf, not sent: the model does not accept it]",
+			"[video:video/mp4, not sent: the model does not accept it]",
+		}
 		equal(t, mediaParts(req[2]), unread)
 		equal(t, mediaParts(req[3]), unread)
 		equal(t, req[3].Items[:len(req[2].Items)], req[2].Items)
-		equal(t, mediaParts(small.Requests()[0]), []string{"record it", "<image>", "<document>", "[video:video/mp4, not sent: too large for the model's requests]"})
+		equal(
+			t,
+			mediaParts(small.Requests()[0]),
+			[]string{
+				"record it",
+				"<image>",
+				"<document>",
+				"[video:video/mp4, not sent: too large for the model's requests]",
+			},
+		)
 		equal(t, mediaParts(req[4]), sent)
 	})
 }

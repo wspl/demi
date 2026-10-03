@@ -23,7 +23,27 @@ func TestRetryPolicyBoundaries(t *testing.T) {
 		wait    *time.Duration
 		retry   bool
 	}{
-		{1, provider.Overloaded, nil, true}, {3, provider.RateLimit, new(30 * time.Second), true}, {4, provider.Overloaded, nil, false}, {1, provider.RateLimit, new(31 * time.Second), false}, {1, provider.AuthExpired, nil, false}, {1, provider.ContextLengthExceeded, nil, false},
+		{1, provider.Overloaded, nil, true}, {3, provider.RateLimit, new(30 * time.Second), true}, {
+			4,
+			provider.Overloaded,
+			nil,
+			false,
+		}, {
+			1,
+			provider.RateLimit,
+			new(31 * time.Second),
+			false,
+		}, {
+			1,
+			provider.AuthExpired,
+			nil,
+			false,
+		}, {
+			1,
+			provider.ContextLengthExceeded,
+			nil,
+			false,
+		},
 	} {
 		got := p.retries(tc.attempt, provider.Failure{Code: &tc.code, RetryAfter: tc.wait})
 		if got != tc.retry {
@@ -45,28 +65,39 @@ func TestRetryPolicyBoundaries(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
 func TestCompactionThresholdCountsCacheAndLimits(t *testing.T) {
 	c := DefaultCompactionConfig()
 	if c.reached(1000, core.TokenUsage{InputTokens: 399, CacheReadTokens: 400}) {
 		t.Fatal("compacted below threshold")
 	}
-	if !c.reached(1000, core.TokenUsage{InputTokens: 100, OutputTokens: 100, CacheReadTokens: 300, CacheWriteTokens: 300}) {
+	if !c.reached(
+		1000,
+		core.TokenUsage{InputTokens: 100, OutputTokens: 100, CacheReadTokens: 300, CacheWriteTokens: 300},
+	) {
 		t.Fatal("cache omitted")
 	}
 	limits := provider.RequestLimits{Images: new(uint32(5)), BodyBytes: new(uint64(1000))}
 	for _, tc := range []struct {
 		size transcript.RequestSize
 		want bool
-	}{{transcript.RequestSize{Images: 3, Bytes: 799}, false}, {transcript.RequestSize{Images: 4}, true}, {transcript.RequestSize{Bytes: 800}, true}} {
+	}{{transcript.RequestSize{Images: 3, Bytes: 799}, false}, {transcript.RequestSize{Images: 4}, true}, {
+		transcript.RequestSize{
+			Bytes: 800,
+		},
+		true,
+	}} {
 		if got := c.sizeReached(limits, tc.size); got != tc.want {
 			t.Fatalf("%+v: %v", tc.size, got)
 		}
 	}
 	c.ThresholdPercent = nil
-	if c.sizeReached(limits, transcript.RequestSize{Images: 5, Bytes: 1000}) || c.reached(1000, core.TokenUsage{InputTokens: 1000}) {
+	if c.sizeReached(limits, transcript.RequestSize{Images: 5, Bytes: 1000}) ||
+		c.reached(1000, core.TokenUsage{InputTokens: 1000}) {
 		t.Fatal("disabled compaction triggered")
 	}
 }
+
 func TestActionWaitCancellationDoesNotCancelResult(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		a := newAction()
@@ -95,6 +126,7 @@ func TestActionWaitCancellationDoesNotCancelResult(t *testing.T) {
 		}
 	})
 }
+
 func TestEditAcceptanceRemainsAfterWaitCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		a := newAcceptance()
@@ -112,6 +144,7 @@ func TestEditAcceptanceRemainsAfterWaitCancellation(t *testing.T) {
 		}
 	})
 }
+
 func TestKeptEditMediaMustBelongToTarget(t *testing.T) {
 	target := []core.UserContentBlock{&core.UserAttachment{Path: "/a"}}
 	got, err := resolveEdit([]EditContent{&KeptAttachment{Path: "/a"}}, target)
