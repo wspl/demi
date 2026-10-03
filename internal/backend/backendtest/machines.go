@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
@@ -72,27 +73,7 @@ type machineGuest struct {
 // StartScriptedManager starts a manager with temporary socket and device data.
 func StartScriptedManager(ctx context.Context, t testing.TB) (*ScriptedManager, error) {
 	t.Helper()
-	directory, err := os.MkdirTemp("", "machines-")
-	if err != nil {
-		return nil, err
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(directory); err != nil {
-			t.Error(err)
-		}
-	})
-	var manager *ScriptedManager
-	manager, err = startManager(ctx, directory, func(ctx context.Context, backend string, options remotehosttest.RunnerProcessOptions) (*remotehosttest.RunnerProcess, error) {
-		runner, err := remotehosttest.StartRunnerProcess(ctx, t, backend, options)
-		// Registered after the runner cleanup: join all manager operations before
-		// the runner fixture touches its process or removes its directories.
-		t.Cleanup(func() {
-			if err := manager.Close(context.Background()); err != nil {
-				t.Error(err)
-			}
-		})
-		return runner, err
-	})
+	manager, err := startManager(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -105,11 +86,26 @@ func StartScriptedManager(ctx context.Context, t testing.TB) (*ScriptedManager, 
 }
 
 // startManager composes the manager protocol with the existing runner fixture.
-func startManager(ctx context.Context, directory string, start func(context.Context, string, remotehosttest.RunnerProcessOptions) (*remotehosttest.RunnerProcess, error)) (*ScriptedManager, error) {
+func startManager(ctx context.Context) (*ScriptedManager, error) {
+	root := ""
+	if runtime.GOOS != "windows" {
+		root = "/tmp"
+	}
+	directory, err := os.MkdirTemp(root, "machines-")
+	if err != nil {
+		return nil, err
+	}
+	start := func(ctx context.Context, backend string, options remotehosttest.RunnerProcessOptions) (*remotehosttest.RunnerProcess, error) {
+		runnerDir, err := os.MkdirTemp(directory, "runner-")
+		if err != nil {
+			return nil, err
+		}
+		return remotehosttest.StartOwnedRunnerProcess(ctx, runnerDir, backend, options)
+	}
 	socket := filepath.Join(directory, "machines.sock")
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "unix", socket)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, os.RemoveAll(directory))
 	}
 	life, cancel := context.WithCancel(ctx)
 	m := &ScriptedManager{socket: socket, listener: listener, ctx: life, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{}), guests: make(map[string]*machineGuest), connections: make(map[*machineConnection]struct{}), startRunner: start}
@@ -131,6 +127,7 @@ func startManager(ctx context.Context, directory string, start func(context.Cont
 		for _, device := range m.Devices() {
 			m.err = errors.Join(m.err, m.StopQuietly(context.Background(), device))
 		}
+		m.err = errors.Join(m.err, os.RemoveAll(directory))
 		close(m.done)
 	}()
 	return m, nil

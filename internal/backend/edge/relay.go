@@ -105,7 +105,7 @@ func (e *Edge) relay(ctx context.Context, conn net.Conn, input *bufio.Reader, he
 	go func() {
 		defer close(watched)
 		select {
-		case <-admitted.Lease.Ending():
+		case <-admitted.Lease.Context().Done():
 			cancel()
 			_ = conn.Close()
 		case <-lifetime.Done():
