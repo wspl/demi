@@ -54,8 +54,18 @@ func (f *Factory) Manifest() plugin.Manifest {
 			Package: "@demicodes/plugin-expose",
 			User:    &plugin.State{Schema: plugin.Schema{Schema: f.state}, Topics: []plugin.Topic{plugin.TopicExposes}},
 			Methods: []plugin.Method{
-				{Name: "renew", Scope: plugin.ScopeUser, Params: plugin.Schema{Schema: f.params}, Result: plugin.Schema{Schema: f.result}},
-				{Name: "remove", Scope: plugin.ScopeUser, Params: plugin.Schema{Schema: f.params}, Result: plugin.Schema{Schema: f.result}},
+				{
+					Name:   "renew",
+					Scope:  plugin.ScopeUser,
+					Params: plugin.Schema{Schema: f.params},
+					Result: plugin.Schema{Schema: f.result},
+				},
+				{
+					Name:   "remove",
+					Scope:  plugin.ScopeUser,
+					Params: plugin.Schema{Schema: f.params},
+					Result: plugin.Schema{Schema: f.result},
+				},
 			},
 		},
 	}
@@ -66,10 +76,11 @@ func (f *Factory) Instance() plugin.Plugin { return &instance{commands: f.comman
 
 type instance struct{ commands *plugin.CommandPlugin }
 
-func (p *instance) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
+// Call dispatches expose commands and page requests.
+func (i *instance) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
 	switch r := request.(type) {
 	case *plugin.RequestCommand:
-		if err := p.commands.Check(r.Invocation); err != nil {
+		if err := i.commands.Check(r.Invocation); err != nil {
 			return nil, err
 		}
 		code, err := run(ctx, r.Invocation, port)
@@ -95,5 +106,7 @@ func (p *instance) Call(ctx context.Context, request plugin.Request, port plugin
 	return nil, plugin.Undeclared("request")
 }
 
-var _ plugin.Factory = (*Factory)(nil)
-var _ plugin.Plugin = (*instance)(nil)
+var (
+	_ plugin.Factory = (*Factory)(nil)
+	_ plugin.Plugin  = (*instance)(nil)
+)

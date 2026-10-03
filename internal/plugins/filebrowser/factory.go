@@ -10,7 +10,12 @@ func New() *Factory { return &Factory{} }
 
 // Manifest returns the plugin's declarations.
 func (*Factory) Manifest() plugin.Manifest {
-	return plugin.Manifest{ID: "file-browser", Name: "File browser", Description: "File browser", Page: &plugin.Page{Package: "@demicodes/plugin-file-browser"}}
+	return plugin.Manifest{
+		ID:          "file-browser",
+		Name:        "File browser",
+		Description: "File browser",
+		Page:        &plugin.Page{Package: "@demicodes/plugin-file-browser"},
+	}
 }
 
 // Instance creates an identity-only plugin.

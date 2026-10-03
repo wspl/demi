@@ -25,8 +25,10 @@ import (
 	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
-const fetchMaxBytes = 64 * 1024 * 1024
-const filesMaxBytes = 16 * 1024 * 1024
+const (
+	fetchMaxBytes = 64 * 1024 * 1024
+	filesMaxBytes = 16 * 1024 * 1024
+)
 
 var errRepositoryTooLarge = errors.New("the repository is larger than 64 MiB")
 
@@ -67,20 +69,12 @@ func fetch(ctx context.Context, url, repository string) (result fetched, err err
 		return result, err
 	}
 	defer func() { err = errors.Join(err, session.Close()) }()
-	advertised, err := session.AdvertisedReferencesContext(ctx)
-	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
-		return result, fmt.Errorf("the repository holds no commit")
-	}
+	head, err := advertisedHead(ctx, session)
 	if err != nil {
 		return result, err
 	}
-	if advertised.Head == nil || advertised.Head.IsZero() {
-		return result, fmt.Errorf("the repository holds no commit")
-	}
-	request := packp.NewUploadPackRequest()
-	request.Wants = []plumbing.Hash{*advertised.Head}
-	request.Depth = packp.DepthCommits(1)
-	if err := request.Capabilities.Set(capability.Shallow); err != nil {
+	request, err := shallowRequest(head)
+	if err != nil {
 		return result, err
 	}
 	response, err := session.UploadPack(ctx, request)
@@ -95,28 +89,10 @@ func fetch(ctx context.Context, url, repository string) (result fetched, err err
 	defer func() { err = errors.Join(err, os.RemoveAll(directory)) }()
 	store := filesystem.NewStorage(osfs.New(directory), cache.NewObjectLRUDefault())
 	defer func() { err = errors.Join(err, store.Close()) }()
-	bounded := &packReader{ctx: ctx, reader: response, remaining: fetchMaxBytes}
-	if err := packfile.UpdateObjectStorage(store, bounded); err != nil {
+	if err := decodeRepositoryPack(ctx, store, response); err != nil {
 		return result, err
 	}
-	if err := ctx.Err(); err != nil {
-		return result, err
-	}
-	commit, err := object.GetCommit(store, *advertised.Head)
-	if err != nil {
-		return result, fmt.Errorf("the repository holds no commit")
-	}
-	tree, err := commit.Tree()
-	if err != nil {
-		return result, err
-	}
-	files, err := repositoryFiles(ctx, tree)
-	if err != nil {
-		return result, err
-	}
-	result, err = skillsOf(ctx, store, files, repository)
-	result.commit = commit.Hash.String()
-	return result, err
+	return fetchedCommit(ctx, store, head, repository)
 }
 
 // publicGitTransport strips even credentials embedded in redirects: a skill
@@ -127,6 +103,7 @@ type publicGitTransport struct {
 	bodies    []io.ReadCloser
 }
 
+// RoundTrip sends a public Git request and retains its response body for cleanup.
 func (t *publicGitTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	request = request.Clone(request.Context())
 	request.URL.User = nil
@@ -165,6 +142,7 @@ type packReader struct {
 	remaining int64
 }
 
+// Read applies the compressed-pack budget and checks cancellation.
 func (r *packReader) Read(p []byte) (int, error) {
 	if err := r.ctx.Err(); err != nil {
 		return 0, err
@@ -214,7 +192,10 @@ func repositoryFiles(ctx context.Context, root *object.Tree) ([]repositoryFile, 
 				}
 				queue = append(queue, directory{prefix: path + "/", tree: tree})
 			case filemode.Regular, filemode.Deprecated, filemode.Executable:
-				files = append(files, repositoryFile{path: path, hash: entry.Hash, executable: entry.Mode == filemode.Executable})
+				files = append(
+					files,
+					repositoryFile{path: path, hash: entry.Hash, executable: entry.Mode == filemode.Executable},
+				)
 			case filemode.Symlink, filemode.Submodule, filemode.Empty:
 			}
 		}
@@ -224,7 +205,12 @@ func repositoryFiles(ctx context.Context, root *object.Tree) ([]repositoryFile, 
 
 // skillsOf assigns each regular file to its nearest SKILL.md directory, even
 // when a nested manifest is invalid and is reported as skipped.
-func skillsOf(ctx context.Context, store storer.EncodedObjectStorer, files []repositoryFile, rootName string) (fetched, error) {
+func skillsOf(
+	ctx context.Context,
+	store storer.EncodedObjectStorer,
+	files []repositoryFile,
+	rootName string,
+) (fetched, error) {
 	directories := map[string]repositoryFile{}
 	for _, file := range files {
 		if file.path == "SKILL.md" {
@@ -262,28 +248,8 @@ func skillsOf(ctx context.Context, store storer.EncodedObjectStorer, files []rep
 			return fetched{}, fmt.Errorf("the repository has more than 100 skills")
 		}
 		skill := fetchedSkill{parsed: parsed, directory: directory, files: []fetchedFile{}}
-		for _, file := range files {
-			relative, within := withinSkill(directory, file.path)
-			if !within {
-				continue
-			}
-			nested := slices.ContainsFunc(ordered, func(other string) bool {
-				_, below := withinSkill(directory, other)
-				_, contains := withinSkill(other, file.path)
-				return other != directory && below && contains
-			})
-			if nested {
-				continue
-			}
-			content, err := readRepositoryBlob(ctx, store, file.hash, filesMaxBytes-total+1)
-			if err != nil {
-				return fetched{}, err
-			}
-			total += len(content)
-			if total > filesMaxBytes {
-				return fetched{}, fmt.Errorf("the skills' files hold more than 16 MiB")
-			}
-			skill.files = append(skill.files, fetchedFile{path: relative, executable: file.executable, bytes: content})
+		if err := collectSkillFiles(ctx, store, files, ordered, &skill, &total); err != nil {
+			return fetched{}, err
 		}
 		result.skills = append(result.skills, skill)
 	}
@@ -301,7 +267,12 @@ func withinSkill(directory, path string) (string, bool) {
 	return strings.CutPrefix(path, directory+"/")
 }
 
-func readRepositoryBlob(ctx context.Context, store storer.EncodedObjectStorer, hash plumbing.Hash, limit int) (content []byte, err error) {
+func readRepositoryBlob(
+	ctx context.Context,
+	store storer.EncodedObjectStorer,
+	hash plumbing.Hash,
+	limit int,
+) (content []byte, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -315,4 +286,96 @@ func readRepositoryBlob(ctx context.Context, store storer.EncodedObjectStorer, h
 	}
 	defer func() { err = errors.Join(err, reader.Close()) }()
 	return io.ReadAll(io.LimitReader(reader, int64(limit)))
+}
+
+func fetchedCommit(
+	ctx context.Context,
+	store storer.EncodedObjectStorer,
+	head plumbing.Hash,
+	repository string,
+) (fetched, error) {
+	commit, err := object.GetCommit(store, head)
+	if err != nil {
+		return fetched{}, fmt.Errorf("the repository holds no commit")
+	}
+	tree, err := commit.Tree()
+	if err != nil {
+		return fetched{}, err
+	}
+	files, err := repositoryFiles(ctx, tree)
+	if err != nil {
+		return fetched{}, err
+	}
+	result, err := skillsOf(ctx, store, files, repository)
+	result.commit = commit.Hash.String()
+	return result, err
+}
+
+func collectSkillFiles(
+	ctx context.Context,
+	store storer.EncodedObjectStorer,
+	files []repositoryFile,
+	ordered []string,
+	skill *fetchedSkill,
+	total *int,
+) error {
+	for _, file := range files {
+		relative, within := withinSkill(skill.directory, file.path)
+		if !within {
+			continue
+		}
+		nested := slices.ContainsFunc(ordered, func(other string) bool {
+			_, below := withinSkill(skill.directory, other)
+			_, contains := withinSkill(other, file.path)
+			return other != skill.directory && below && contains
+		})
+		if nested {
+			continue
+		}
+		content, err := readRepositoryBlob(ctx, store, file.hash, filesMaxBytes-*total+1)
+		if err != nil {
+			return err
+		}
+		*total += len(content)
+		if *total > filesMaxBytes {
+			return fmt.Errorf("the skills' files hold more than 16 MiB")
+		}
+		skill.files = append(skill.files, fetchedFile{path: relative, executable: file.executable, bytes: content})
+	}
+	return nil
+}
+
+func shallowRequest(head plumbing.Hash) (*packp.UploadPackRequest, error) {
+	request := packp.NewUploadPackRequest()
+	request.Wants = []plumbing.Hash{head}
+	request.Depth = packp.DepthCommits(1)
+	if err := request.Capabilities.Set(capability.Shallow); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
+func advertisedHead(ctx context.Context, session transport.UploadPackSession) (plumbing.Hash, error) {
+	advertised, err := session.AdvertisedReferencesContext(ctx)
+	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+		return plumbing.ZeroHash, fmt.Errorf("the repository holds no commit")
+	}
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	if advertised.Head == nil || advertised.Head.IsZero() {
+		return plumbing.ZeroHash, fmt.Errorf("the repository holds no commit")
+	}
+	return *advertised.Head, nil
+}
+
+func decodeRepositoryPack(ctx context.Context, store storer.Storer, response io.Reader) error {
+	bounded := &packReader{ctx: ctx, reader: response, remaining: fetchMaxBytes}
+	if err := packfile.UpdateObjectStorage(store, bounded); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
 }

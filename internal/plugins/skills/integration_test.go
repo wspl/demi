@@ -43,12 +43,17 @@ func newPlugged(t *testing.T, repos *skillstest.Repos) *plugged {
 	demi.Plugin = "skills"
 	return &plugged{instance: instance, call: plugintest.Loopback(instance), demi: demi}
 }
+
 func (p *plugged) method(ctx context.Context, name string, args json.Marshaler) (json.RawMessage, error) {
 	params, err := args.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
-	reply, err := p.call.Call(ctx, &plugin.RequestPageCall{User: "aaaaaaaaaaaaaaaaaaaaaaaaaa", Method: name, Params: params}, p.demi.Port())
+	reply, err := p.call.Call(
+		ctx,
+		&plugin.RequestPageCall{User: "aaaaaaaaaaaaaaaaaaaaaaaaaa", Method: name, Params: params},
+		p.demi.Port(),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -58,6 +63,7 @@ func (p *plugged) method(ctx context.Context, name string, args json.Marshaler) 
 	}
 	return result.Result, nil
 }
+
 func (p *plugged) state(t *testing.T) skills.SkillsState {
 	t.Helper()
 	reply, err := p.call.Call(t.Context(), &plugin.RequestPageState{User: "aaaaaaaaaaaaaaaaaaaaaaaaaa"}, p.demi.Port())
@@ -74,6 +80,7 @@ func (p *plugged) state(t *testing.T) skills.SkillsState {
 	}
 	return state
 }
+
 func (p *plugged) add(t *testing.T, origin string) string {
 	t.Helper()
 	before := p.demi.Changes()
@@ -85,33 +92,57 @@ func (p *plugged) add(t *testing.T, origin string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.demi.Until(t.Context(), func(d *plugintest.TestDemi) bool { return d.Changes() >= before+3 }); err != nil {
+	if err := p.demi.Until(
+		t.Context(),
+		func(d *plugintest.TestDemi) bool { return d.Changes() >= before+3 },
+	); err != nil {
 		t.Fatal(err)
 	}
 	return added.Source
 }
+
 func (p *plugged) update(t *testing.T, source string) {
 	t.Helper()
 	before := p.demi.Changes()
 	if _, err := p.method(t.Context(), "update_source", skills.SourceCall{Source: source}); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.demi.Until(t.Context(), func(d *plugintest.TestDemi) bool { return d.Changes() >= before+2 }); err != nil {
+	if err := p.demi.Until(
+		t.Context(),
+		func(d *plugintest.TestDemi) bool { return d.Changes() >= before+2 },
+	); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func (p *plugged) enable(t *testing.T, source, skill string) {
 	t.Helper()
-	if _, err := p.method(t.Context(), "set_enabled", skills.SetEnabled{Source: source, Skill: skill, Enabled: true}); err != nil {
+	if _, err := p.method(
+		t.Context(),
+		"set_enabled",
+		skills.SetEnabled{Source: source, Skill: skill, Enabled: true},
+	); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func (p *plugged) context(t *testing.T, cwd, turn string, seen []string) *string {
 	t.Helper()
 	if seen == nil {
 		seen = []string{}
 	}
-	reply, err := p.call.Call(t.Context(), &plugin.RequestContext{User: "aaaaaaaaaaaaaaaaaaaaaaaaaa", Conversation: "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b", Node: "conversation", CWD: cwd, Turn: core.TurnID(turn), Seen: seen}, p.demi.Port())
+	reply, err := p.call.Call(
+		t.Context(),
+		&plugin.RequestContext{
+			User:         "aaaaaaaaaaaaaaaaaaaaaaaaaa",
+			Conversation: "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b",
+			Node:         "conversation",
+			CWD:          cwd,
+			Turn:         core.TurnID(turn),
+			Seen:         seen,
+		},
+		p.demi.Port(),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +152,7 @@ func (p *plugged) context(t *testing.T, cwd, turn string, seen []string) *string
 	}
 	return result.Text
 }
+
 func commit(t *testing.T, repos *skillstest.Repos, name string, files ...skillstest.File) string {
 	t.Helper()
 	hash, err := repos.Commit(t.Context(), name, files)
@@ -129,18 +161,32 @@ func commit(t *testing.T, repos *skillstest.Repos, name string, files ...skillst
 	}
 	return hash
 }
+
 func skillFile(path, front string) skillstest.File {
 	return skillstest.File{Path: path, Bytes: []byte(skillstest.SkillMD(front))}
 }
+
 func toolsRepository(t *testing.T, repos *skillstest.Repos) {
 	t.Helper()
-	commit(t, repos, "acme/tools",
+	commit(
+		t,
+		repos,
+		"acme/tools",
 		skillFile("skills/review/SKILL.md", "name: review\ndescription: Review a change."),
-		skillstest.File{Path: "skills/review/scripts/check.sh", Bytes: []byte("#!/bin/sh\necho ok\n"), Executable: true},
+		skillstest.File{
+			Path:       "skills/review/scripts/check.sh",
+			Bytes:      []byte("#!/bin/sh\necho ok\n"),
+			Executable: true,
+		},
 		skillFile("skills/Bad_Name/SKILL.md", "name: Bad_Name\ndescription: Breaks the rule."),
 		skillFile("skills/broken/SKILL.md", "name: broken"),
-		skillFile("skills/hidden/SKILL.md", "name: hidden\ndescription: The user's alone.\ndisable-model-invocation: true"))
+		skillFile(
+			"skills/hidden/SKILL.md",
+			"name: hidden\ndescription: The user's alone.\ndisable-model-invocation: true",
+		),
+	)
 }
+
 func requireRefusal(t *testing.T, err error, reason string) string {
 	t.Helper()
 	var refused *plugin.ErrorRefused
@@ -166,10 +212,14 @@ func TestAddingSourceListsWarningsSkippedAndBlobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if listed.ID != id || listed.Origin != "acme/tools" || listed.Commit == nil || listed.FetchedAt == nil || *listed.FetchedAt != at || listed.Fetching || listed.Failure != nil {
+	if listed.ID != id || listed.Origin != "acme/tools" || listed.Commit == nil || listed.FetchedAt == nil ||
+		*listed.FetchedAt != at ||
+		listed.Fetching ||
+		listed.Failure != nil {
 		t.Fatalf("source: %+v", listed)
 	}
-	if len(listed.Skills) != 3 || listed.Skills[0].Name != "Bad_Name" || listed.Skills[1].Name != "hidden" || listed.Skills[2].Name != "review" {
+	if len(listed.Skills) != 3 || listed.Skills[0].Name != "Bad_Name" || listed.Skills[1].Name != "hidden" ||
+		listed.Skills[2].Name != "review" {
 		t.Fatalf("skills: %+v", listed.Skills)
 	}
 	for _, skill := range listed.Skills {
@@ -177,10 +227,15 @@ func TestAddingSourceListsWarningsSkippedAndBlobs(t *testing.T) {
 			t.Fatal("new skill starts enabled")
 		}
 	}
-	if listed.Skills[0].DisableModelInvocation || listed.Skills[2].DisableModelInvocation || !listed.Skills[1].DisableModelInvocation || len(listed.Skills[0].Warnings) != 1 || !strings.Contains(listed.Skills[0].Warnings[0], "not 1 to 64 lowercase") || len(listed.Skills[2].Warnings) != 0 {
+	if listed.Skills[0].DisableModelInvocation || listed.Skills[2].DisableModelInvocation ||
+		!listed.Skills[1].DisableModelInvocation ||
+		len(listed.Skills[0].Warnings) != 1 ||
+		!strings.Contains(listed.Skills[0].Warnings[0], "not 1 to 64 lowercase") ||
+		len(listed.Skills[2].Warnings) != 0 {
 		t.Fatalf("flags/warnings: %+v", listed.Skills)
 	}
-	if len(listed.Skipped) != 1 || listed.Skipped[0].Path != "skills/broken/SKILL.md" || !strings.Contains(listed.Skipped[0].Reason, "no description") {
+	if len(listed.Skipped) != 1 || listed.Skipped[0].Path != "skills/broken/SKILL.md" ||
+		!strings.Contains(listed.Skipped[0].Reason, "no description") {
 		t.Fatalf("skipped: %+v", listed.Skipped)
 	}
 	script := core.BlobRef(fmt.Sprintf("%x", sha256.Sum256([]byte("#!/bin/sh\necho ok\n"))))
@@ -224,7 +279,10 @@ func TestEmptyAndOversizedSourcesRecordFailure(t *testing.T) {
 	}
 	for i, want := range []string{"the repository holds no skill", "the repository is larger than 64 MiB"} {
 		source := state.Sources[i]
-		if source.Origin != []string{"acme/empty", "acme/huge"}[i] || source.Commit != nil || len(source.Skills) != 0 || source.Failure == nil || source.Failure.Message != want || source.Failure.At != at {
+		if source.Origin != []string{"acme/empty", "acme/huge"}[i] || source.Commit != nil || len(source.Skills) != 0 ||
+			source.Failure == nil ||
+			source.Failure.Message != want ||
+			source.Failure.At != at {
 			t.Fatalf("failure: %+v, want %q", source, want)
 		}
 	}
@@ -243,11 +301,15 @@ func TestEnabledSkillDirectoryAndCatalog(t *testing.T) {
 		t.Fatal("missing review directory")
 	}
 	review := directories[index]
-	if len(review.Files) != 2 || review.Files[0].Path != "SKILL.md" || review.Files[0].Executable || review.Files[1].Path != "scripts/check.sh" || !review.Files[1].Executable {
+	if len(review.Files) != 2 || review.Files[0].Path != "SKILL.md" || review.Files[0].Executable ||
+		review.Files[1].Path != "scripts/check.sh" ||
+		!review.Files[1].Executable {
 		t.Fatalf("files: %+v", review.Files)
 	}
 	block := p.context(t, "/home/me/app", "t1", nil)
-	if block == nil || !strings.Contains(*block, "<location>"+review.Path("skills")+"/SKILL.md</location>") || !strings.Contains(*block, "<description>Review a change.</description>") || strings.Contains(*block, "hidden") {
+	if block == nil || !strings.Contains(*block, "<location>"+review.Path("skills")+"/SKILL.md</location>") ||
+		!strings.Contains(*block, "<description>Review a change.</description>") ||
+		strings.Contains(*block, "hidden") {
 		t.Fatalf("catalog: %v", block)
 	}
 	if p.context(t, "/home/me/app", "t2", []string{*block}) != nil {
@@ -257,14 +319,24 @@ func TestEnabledSkillDirectoryAndCatalog(t *testing.T) {
 		t.Fatal("compaction lost catalog")
 	}
 	for _, name := range []string{"review", "hidden"} {
-		if _, err := p.method(t.Context(), "set_enabled", skills.SetEnabled{Source: id, Skill: name, Enabled: false}); err != nil {
+		if _, err := p.method(
+			t.Context(),
+			"set_enabled",
+			skills.SetEnabled{Source: id, Skill: name, Enabled: false},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if len(p.demi.Directories()) != 0 {
 		t.Fatal("disabled directories remain")
 	}
-	if got := p.context(t, "/home/me/app", "t4", []string{*block}); got == nil || *got != "No skills are available now." {
+	if got := p.context(
+		t,
+		"/home/me/app",
+		"t4",
+		[]string{*block},
+	); got == nil ||
+		*got != "No skills are available now." {
 		t.Fatalf("empty catalog: %v", got)
 	}
 }
@@ -289,16 +361,32 @@ func TestSecondEnabledNameRefusedWithSource(t *testing.T) {
 
 func TestUpdateRetainsNamesAndFailedPin(t *testing.T) {
 	repos := skillstest.New(t)
-	commit(t, repos, "acme/tools", skillFile("review/SKILL.md", "name: review\ndescription: Review a change."), skillFile("lint/SKILL.md", "name: lint\ndescription: Lint it."))
+	commit(
+		t,
+		repos,
+		"acme/tools",
+		skillFile("review/SKILL.md", "name: review\ndescription: Review a change."),
+		skillFile("lint/SKILL.md", "name: lint\ndescription: Lint it."),
+	)
 	p := newPlugged(t, repos)
 	id := p.add(t, "acme/tools")
 	p.enable(t, id, "review")
 	p.enable(t, id, "lint")
 	first := *p.state(t).Sources[0].Commit
-	commit(t, repos, "acme/tools", skillFile("review/SKILL.md", "name: review\ndescription: Review a change, carefully."), skillFile("format/SKILL.md", "name: format\ndescription: Format it."))
+	commit(
+		t,
+		repos,
+		"acme/tools",
+		skillFile("review/SKILL.md", "name: review\ndescription: Review a change, carefully."),
+		skillFile("format/SKILL.md", "name: format\ndescription: Format it."),
+	)
 	p.update(t, id)
 	listed := p.state(t).Sources[0]
-	if listed.Commit == nil || *listed.Commit == first || len(listed.Skills) != 2 || listed.Skills[0].Name != "format" || listed.Skills[0].Enabled || listed.Skills[1].Name != "review" || !listed.Skills[1].Enabled {
+	if listed.Commit == nil || *listed.Commit == first || len(listed.Skills) != 2 ||
+		listed.Skills[0].Name != "format" ||
+		listed.Skills[0].Enabled ||
+		listed.Skills[1].Name != "review" ||
+		!listed.Skills[1].Enabled {
 		t.Fatalf("updated: %+v", listed)
 	}
 	directories := p.demi.Directories()
@@ -311,7 +399,8 @@ func TestUpdateRetainsNamesAndFailedPin(t *testing.T) {
 	if diff := cmp.Diff(listed.Skills, after.Skills); diff != "" {
 		t.Fatal(diff)
 	}
-	if after.Commit == nil || *after.Commit != *listed.Commit || after.Failure == nil || after.Failure.Message != "the repository holds no skill" {
+	if after.Commit == nil || *after.Commit != *listed.Commit || after.Failure == nil ||
+		after.Failure.Message != "the repository holds no skill" {
 		t.Fatalf("failed update: %+v", after)
 	}
 }
@@ -337,7 +426,11 @@ func TestProjectSkillsPrecedenceAndRepositoryRoot(t *testing.T) {
 	if block == nil {
 		t.Fatal("missing catalog")
 	}
-	for _, path := range []string{"/home/me/app/web/.claude/skills/release/SKILL.md", "/home/me/app/.agents/skills/group/review/SKILL.md", "/home/me/app/.claude/skills/tests/SKILL.md"} {
+	for _, path := range []string{
+		"/home/me/app/web/.claude/skills/release/SKILL.md",
+		"/home/me/app/.agents/skills/group/review/SKILL.md",
+		"/home/me/app/.claude/skills/tests/SKILL.md",
+	} {
 		if !strings.Contains(*block, "<location>"+path+"</location>") {
 			t.Fatal(*block)
 		}
@@ -359,7 +452,11 @@ func TestStoppedHostRetriesAndEachTurnSearchesOnce(t *testing.T) {
 	if p.context(t, "/home/me/app", "t1", nil) != nil {
 		t.Fatal("stopped host produced catalog")
 	}
-	p.demi.HostFiles = map[string][]byte{"/home/me/app/.agents/skills/release/SKILL.md": []byte(skillstest.SkillMD("name: release\ndescription: Cut a release."))}
+	p.demi.HostFiles = map[string][]byte{
+		"/home/me/app/.agents/skills/release/SKILL.md": []byte(
+			skillstest.SkillMD("name: release\ndescription: Cut a release."),
+		),
+	}
 	block := p.context(t, "/home/me/app", "t1", nil)
 	if block == nil || !strings.Contains(*block, "<name>release</name>") {
 		t.Fatalf("woken host: %v", block)
@@ -368,7 +465,13 @@ func TestStoppedHostRetriesAndEachTurnSearchesOnce(t *testing.T) {
 	if p.context(t, "/home/me/app", "t1", []string{*block}) != nil {
 		t.Fatal("searched twice in one turn")
 	}
-	if got := p.context(t, "/home/me/app", "t2", []string{*block}); got == nil || *got != "No skills are available now." {
+	if got := p.context(
+		t,
+		"/home/me/app",
+		"t2",
+		[]string{*block},
+	); got == nil ||
+		*got != "No skills are available now." {
 		t.Fatalf("next turn: %v", got)
 	}
 }
@@ -378,10 +481,13 @@ func TestCatalogBudgetThroughProjectSearch(t *testing.T) {
 	p.demi.HostFiles = map[string][]byte{}
 	for i := 0; i < 30; i++ {
 		name := fmt.Sprintf("skill-%02d", i)
-		p.demi.HostFiles["/repo/.agents/skills/"+name+"/SKILL.md"] = []byte(skillstest.SkillMD("name: " + name + "\ndescription: " + strings.Repeat("word ", 60)))
+		p.demi.HostFiles["/repo/.agents/skills/"+name+"/SKILL.md"] = []byte(
+			skillstest.SkillMD("name: " + name + "\ndescription: " + strings.Repeat("word ", 60)),
+		)
 	}
 	block := p.context(t, "/repo", "t1", nil)
-	if block == nil || utf8.RuneCountInString(*block) > 8000 || strings.Count(*block, "<skill>") != 30 || strings.Count(*block, "…</description>") != 30 {
+	if block == nil || utf8.RuneCountInString(*block) > 8000 || strings.Count(*block, "<skill>") != 30 ||
+		strings.Count(*block, "…</description>") != 30 {
 		t.Fatalf("shortened: %v", block)
 	}
 	lengths := map[int]bool{}
@@ -395,10 +501,16 @@ func TestCatalogBudgetThroughProjectSearch(t *testing.T) {
 	p.demi.HostFiles = map[string][]byte{}
 	for i := 0; i < 100; i++ {
 		name := fmt.Sprintf("%s%02d", strings.Repeat("a", 60), i)
-		p.demi.HostFiles["/repo/.agents/skills/"+name+"/SKILL.md"] = []byte(skillstest.SkillMD("name: " + name + "\ndescription: Short."))
+		p.demi.HostFiles["/repo/.agents/skills/"+name+"/SKILL.md"] = []byte(
+			skillstest.SkillMD("name: " + name + "\ndescription: Short."),
+		)
 	}
 	block = p.context(t, "/repo", "t2", nil)
-	if block == nil || utf8.RuneCountInString(*block) > 8000 || strings.Contains(*block, "<description>") || !strings.HasSuffix(*block, fmt.Sprintf("%d more skills are not listed.", 100-strings.Count(*block, "<skill>"))) {
+	if block == nil || utf8.RuneCountInString(*block) > 8000 || strings.Contains(*block, "<description>") ||
+		!strings.HasSuffix(
+			*block,
+			fmt.Sprintf("%d more skills are not listed.", 100-strings.Count(*block, "<skill>")),
+		) {
 		t.Fatalf("omitted: %v", block)
 	}
 }

@@ -8,15 +8,17 @@ import (
 	"unicode/utf8"
 )
 
-const catalogMaxChars = 8000
-const noneAvailable = "No skills are available now."
-const catalogHeader = `The following skills provide specialized instructions for specific tasks.
+const (
+	catalogMaxChars = 8000
+	noneAvailable   = "No skills are available now."
+	catalogHeader   = `The following skills provide specialized instructions for specific tasks.
 When a task matches a skill's description, read its SKILL.md at the listed
 location before you start, and resolve relative paths in it against the
 skill's directory.
 
 <available_skills>
 `
+)
 
 // catalogEntry names a skill at the path the model can read on its Host.
 type catalogEntry struct{ name, description, location string }

@@ -111,12 +111,16 @@ func TestHostFilesAndDirectories(t *testing.T) {
 		t.Fatalf("stopped Host = %v", err)
 	}
 	d.HostFiles = map[string][]byte{"/a/file": []byte("1234"), "/a/child/file": []byte("x")}
-	files, err := p.ReadHostFiles(t.Context(), []plugin.HostRead{{Path: "/a", Limit: 0}, {Path: "/a/file", Limit: 2}, {Path: "/missing", Limit: 9}})
+	files, err := p.ReadHostFiles(
+		t.Context(),
+		[]plugin.HostRead{{Path: "/a", Limit: 0}, {Path: "/a/file", Limit: 2}, {Path: "/missing", Limit: 9}},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir, ok := files[0].(*plugin.HostFileDirectory)
-	if !ok || len(dir.Entries) != 2 || dir.Entries[0].Name != "child" || dir.Entries[0].Kind != plugin.EntryKindDirectory {
+	if !ok || len(dir.Entries) != 2 || dir.Entries[0].Name != "child" ||
+		dir.Entries[0].Kind != plugin.EntryKindDirectory {
 		t.Fatalf("directory = %#v", files[0])
 	}
 	file, ok := files[1].(*plugin.HostFileFile)
@@ -201,7 +205,12 @@ func TestExposes(t *testing.T) {
 func TestUntilAndPackageCalls(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		d := New()
-		d.PackageCalls = func(_ context.Context, _ declare.NativeOperation, _ json.RawMessage, _ plugin.CallKind) (json.RawMessage, error) {
+		d.PackageCalls = func(
+			_ context.Context,
+			_ declare.NativeOperation,
+			_ json.RawMessage,
+			_ plugin.CallKind,
+		) (json.RawMessage, error) {
 			_ = d.Changes()
 			return json.RawMessage(`{"ok":true}`), nil
 		}
@@ -216,7 +225,11 @@ func TestUntilAndPackageCalls(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Fatal(err)
 		}
-		if _, err := d.Port().PackageCall(ctx, declare.NativeOperation{Package: "test", Operation: "read"}, json.RawMessage(`{}`), plugin.CallKindLooks); err != nil {
+		if _, err := d.Port().
+			PackageCall(ctx, declare.NativeOperation{
+				Package:   "test",
+				Operation: "read",
+			}, json.RawMessage(`{}`), plugin.CallKindLooks); err != nil {
 			t.Fatal(err)
 		}
 		if len(d.Called()) != 1 {

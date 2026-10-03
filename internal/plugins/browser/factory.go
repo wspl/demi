@@ -10,7 +10,7 @@ import (
 	"github.com/wspl/demi/internal/plugin"
 )
 
-// The plugin's factory.
+// Browser declares the browser commands, page and stream.
 type Browser struct {
 	commands *plugin.CommandPlugin
 	page     plugin.Page
@@ -50,7 +50,15 @@ func (b *Browser) Manifest() plugin.Manifest {
 	for i := range page.Methods {
 		page.Methods[i].Operations = append([]declare.NativeOperation{}, page.Methods[i].Operations...)
 	}
-	return plugin.Manifest{ID: "browser", Name: "Conversation browser", Description: "A browser on the conversation's Host that the agent drives with `demi browser` and the user watches in the work panel.", Commands: b.commands.ManifestCommands(), Streams: []plugin.Stream{stream}, Page: &page}
+	return plugin.Manifest{
+		ID:   "browser",
+		Name: "Conversation browser",
+		Description: "A browser on the conversation's Host that the agent drives with `demi browser` and " +
+			"the user watches in the work panel.",
+		Commands: b.commands.ManifestCommands(),
+		Streams:  []plugin.Stream{stream},
+		Page:     &page,
+	}
 }
 
 // Instance creates one user's browser plugin.
@@ -58,10 +66,11 @@ func (b *Browser) Instance() plugin.Plugin { return &instance{commands: b.comman
 
 type instance struct{ commands *plugin.CommandPlugin }
 
-func (p *instance) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
+// Call dispatches browser commands and page requests.
+func (i *instance) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
 	switch request := request.(type) {
 	case *plugin.RequestCommand:
-		return p.commands.Command(ctx, request.Invocation, port)
+		return i.commands.Command(ctx, request.Invocation, port)
 	case *plugin.RequestPageCall:
 		result, err := call(ctx, request.Method, request.Params, port)
 		if err != nil {
@@ -88,7 +97,14 @@ func page() (plugin.Page, error) {
 	if err != nil {
 		return plugin.Page{}, err
 	}
-	page := plugin.Page{Package: "@demicodes/plugin-browser", Conversation: &plugin.State{Schema: plugin.Schema{Schema: tabs}, Topics: []plugin.Topic{plugin.TopicJobs}, Operations: []declare.NativeOperation{operation("tabs")}}}
+	page := plugin.Page{
+		Package: "@demicodes/plugin-browser",
+		Conversation: &plugin.State{
+			Schema:     plugin.Schema{Schema: tabs},
+			Topics:     []plugin.Topic{plugin.TopicJobs},
+			Operations: []declare.NativeOperation{operation("tabs")},
+		},
+	}
 	nullResult := json.RawMessage(`{"title":"null","type":"null"}`)
 	for _, spec := range []struct {
 		name           string
@@ -108,7 +124,12 @@ func page() (plugin.Page, error) {
 		if err != nil {
 			return plugin.Page{}, err
 		}
-		method := plugin.Method{Name: spec.name, Scope: plugin.ScopeConversation, Params: plugin.Schema{Schema: params}, Result: plugin.Schema{Schema: result}}
+		method := plugin.Method{
+			Name:   spec.name,
+			Scope:  plugin.ScopeConversation,
+			Params: plugin.Schema{Schema: params},
+			Result: plugin.Schema{Schema: result},
+		}
 		for _, name := range spec.operations {
 			method.Operations = append(method.Operations, operation(name))
 		}

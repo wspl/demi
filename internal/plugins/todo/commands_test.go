@@ -26,7 +26,13 @@ type capturedPort interface {
 }
 
 // callTodo sends a shell command through the same JSON boundary as the plugin host.
-func callTodo(ctx context.Context, f *Factory, storage *hosttest.MemoryStorage, transport capturedPort, args ...string) (string, error) {
+func callTodo(
+	ctx context.Context,
+	f *Factory,
+	storage *hosttest.MemoryStorage,
+	transport capturedPort,
+	args ...string,
+) (string, error) {
 	roots, err := plugintest.Roots(f.Manifest())
 	if err != nil {
 		return "", err
@@ -42,8 +48,17 @@ func callTodo(ctx context.Context, f *Factory, storage *hosttest.MemoryStorage, 
 	if err != nil {
 		return "", err
 	}
-	invocation := host.RPCInvocation{Path: parsed.Path[1:], Argv: args, Args: values, JSON: parsed.JSON, CWD: "/workspace", Env: map[string]string{}, Context: hosttest.CommandContext()}
-	reply, err := plugintest.Loopback(f.Instance()).Call(ctx, &plugin.RequestCommand{User: "u1", Invocation: invocation}, plugintest.Port(transport))
+	invocation := host.RPCInvocation{
+		Path:    parsed.Path[1:],
+		Argv:    args,
+		Args:    values,
+		JSON:    parsed.JSON,
+		CWD:     "/workspace",
+		Env:     map[string]string{},
+		Context: hosttest.CommandContext(),
+	}
+	reply, err := plugintest.Loopback(f.Instance()).
+		Call(ctx, &plugin.RequestCommand{User: "u1", Invocation: invocation}, plugintest.Port(transport))
 	if err != nil {
 		return "", err
 	}
@@ -66,14 +81,23 @@ func TestTodosAreAddedListedChangedAndDoneAsLinesOrJSON(t *testing.T) {
 	}{
 		{[]string{"todo", "list"}, "No todos.\n"},
 		{[]string{"todo", "add", "Run tests"}, "[ ] T1 Run tests\n"},
-		{[]string{"todo", "add", "Write docs", "--json"}, `{"todo":{"id":"T2","text":"Write docs","status":"pending"}}`},
+		{
+			[]string{"todo", "add", "Write docs", "--json"},
+			`{"todo":{"id":"T2","text":"Write docs","status":"pending"}}`,
+		},
 		{[]string{"todo", "list"}, "[ ] T1 Run tests\n[ ] T2 Write docs\n"},
 		{[]string{"todo", "update", "T1", "--text", "Run full tests"}, "[ ] T1 Run full tests\n"},
-		{[]string{"todo", "update", "T1", "--status", "in_progress", "--json"}, `{"todo":{"id":"T1","text":"Run full tests","status":"in_progress"}}`},
+		{
+			[]string{"todo", "update", "T1", "--status", "in_progress", "--json"},
+			`{"todo":{"id":"T1","text":"Run full tests","status":"in_progress"}}`,
+		},
 		{[]string{"todo", "list"}, "[-] T1 Run full tests\n[ ] T2 Write docs\n"},
 		{[]string{"todo", "done", "T2"}, "[x] T2 Write docs\n"},
 		{[]string{"todo", "done", "T1", "--json"}, `{"todo":{"id":"T1","text":"Run full tests","status":"done"}}`},
-		{[]string{"todo", "list", "--json"}, `{"todos":[{"id":"T1","text":"Run full tests","status":"done"},{"id":"T2","text":"Write docs","status":"done"}]}`},
+		{
+			[]string{"todo", "list", "--json"},
+			`{"todos":[{"id":"T1","text":"Run full tests","status":"done"},{"id":"T2","text":"Write docs","status":"done"}]}`,
+		},
 	}
 	for _, step := range steps {
 		got, err := callTodo(t.Context(), f, storage, nil, step.args...)
@@ -225,7 +249,29 @@ func TestRejectsCorruptStorage(t *testing.T) {
 		t.Run(raw, func(t *testing.T) {
 			storage := &hosttest.MemoryStorage{}
 			storage.Apply(&host.StorageWriteIf{Key: storageKey, Value: []byte(raw)})
-			for _, args := range [][]string{{"todo", "list"}, {"todo", "add", "new"}, {"todo", "update", "T1", "--text", "new"}, {"todo", "done", "T1"}} {
+			for _, args := range [][]string{
+				{
+					"todo",
+					"list",
+				},
+				{
+					"todo",
+					"add",
+					"new",
+				},
+				{
+					"todo",
+					"update",
+					"T1",
+					"--text",
+					"new",
+				},
+				{
+					"todo",
+					"done",
+					"T1",
+				},
+			} {
 				_, err := callTodo(t.Context(), f, storage, nil, args...)
 				var failed *plugin.ErrorFailed
 				if !errors.As(err, &failed) || !strings.HasPrefix(failed.Message, "stored todos.json is unreadable:") {
@@ -246,7 +292,15 @@ func TestRestoredIDsAndJSONText(t *testing.T) {
 		t.Fatal(err)
 	}
 	storage := &hosttest.MemoryStorage{}
-	storage.Apply(&host.StorageWriteIf{Key: storageKey, Value: []byte(`[{"id":"T+7","text":"a","status":"done"},{"id":"Tbogus","text":"b","status":"pending"},{"id":"T2","text":"c","status":"pending"}]`)})
+	storage.Apply(
+		&host.StorageWriteIf{
+			Key: storageKey,
+			Value: []byte(
+				`[{"id":"T+7","text":"a","status":"done"},{"id":"Tbogus","text":"b",` +
+					`"status":"pending"},{"id":"T2","text":"c","status":"pending"}]`,
+			),
+		},
+	)
 	got, err := callTodo(t.Context(), f, storage, nil, "todo", "add", "<>&\u2028\u2029", "--json")
 	if err != nil {
 		t.Fatal(err)

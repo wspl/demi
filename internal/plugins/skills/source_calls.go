@@ -20,6 +20,7 @@ func findSource(ctx context.Context, port plugin.Port, id string) (*storedSource
 	}
 	return &storedSource{source: decoded, revision: value.Revision}, nil
 }
+
 func readSource(ctx context.Context, port plugin.Port, id string) (*storedSource, error) {
 	value, err := findSource(ctx, port, id)
 	if err != nil {
@@ -30,12 +31,13 @@ func readSource(ctx context.Context, port plugin.Port, id string) (*storedSource
 	}
 	return value, nil
 }
+
 func sourceConflict(err error) bool {
 	var conflict *plugin.PortRefusalConflict
 	return errors.As(err, &conflict)
 }
 
-func (p *instance) addSource(ctx context.Context, port plugin.Port, text string) (string, error) {
+func (i *instance) addSource(ctx context.Context, port plugin.Port, text string) (string, error) {
 	origin, err := parseOrigin(text)
 	if err != nil {
 		return "", &plugin.ErrorRefused{Reason: "invalid_origin", Message: err.Error()}
@@ -66,7 +68,7 @@ func (p *instance) addSource(ctx context.Context, port plugin.Port, text string)
 	return id, nil
 }
 
-func (p *instance) removeSource(ctx context.Context, port plugin.Port, id string) error {
+func (i *instance) removeSource(ctx context.Context, port plugin.Port, id string) error {
 	for {
 		stored, err := readSource(ctx, port, id)
 		if err != nil {
@@ -81,10 +83,16 @@ func (p *instance) removeSource(ctx context.Context, port plugin.Port, id string
 		}
 		break
 	}
-	return p.directoriesChanged(ctx, port)
+	return i.directoriesChanged(ctx, port)
 }
 
-func (p *instance) switchSource(ctx context.Context, port plugin.Port, id string, chosen func(source) map[string]bool, enabled bool) error {
+func (i *instance) switchSource(
+	ctx context.Context,
+	port plugin.Port,
+	id string,
+	chosen func(source) map[string]bool,
+	enabled bool,
+) error {
 	for {
 		all, err := readSources(ctx, port)
 		if err != nil {
@@ -107,10 +115,10 @@ func (p *instance) switchSource(ctx context.Context, port plugin.Port, id string
 		}
 		break
 	}
-	return p.directoriesChanged(ctx, port)
+	return i.directoriesChanged(ctx, port)
 }
 
-func (p *instance) directoriesChanged(ctx context.Context, port plugin.Port) error {
+func (i *instance) directoriesChanged(ctx context.Context, port plugin.Port) error {
 	all, err := readSources(ctx, port)
 	if err != nil {
 		return err

@@ -19,9 +19,12 @@ type parsedSkill struct {
 }
 
 type frontMatter struct {
-	Name                   *string `yaml:"name"`
-	Description            *string `yaml:"description"`
-	DisableModelInvocation *bool   `yaml:"disable-model-invocation"`
+	// Name optionally overrides the skill directory's name.
+	Name *string `yaml:"name"`
+	// Description explains when the model should use the skill.
+	Description *string `yaml:"description"`
+	// DisableModelInvocation reserves the skill for explicit user invocation.
+	DisableModelInvocation *bool `yaml:"disable-model-invocation"`
 }
 
 // parseSkill reads the three Agent Skills fields, retaining lenient warnings.
@@ -39,7 +42,14 @@ func parseSkill(directory string, text []byte) (parsedSkill, error) {
 	var fields frontMatter
 	// Strict decoding keeps duplicate/type checks. The format explicitly ignores
 	// other fields, as Rust's FrontMatter does without deny_unknown_fields.
-	if err := yaml.UnmarshalWithOptions([]byte(front), &fields, yaml.Strict(), yaml.AllowFieldPrefixes(""), yaml.CustomUnmarshaler[string](decodeSkillText), yaml.CustomUnmarshaler[bool](decodeSkillBool)); err != nil {
+	if err := yaml.UnmarshalWithOptions(
+		[]byte(front),
+		&fields,
+		yaml.Strict(),
+		yaml.AllowFieldPrefixes(""),
+		yaml.CustomUnmarshaler[string](decodeSkillText),
+		yaml.CustomUnmarshaler[bool](decodeSkillBool),
+	); err != nil {
 		return parsedSkill{}, fmt.Errorf("the front matter does not parse: %w", err)
 	}
 	if fields.Description == nil || strings.TrimSpace(*fields.Description) == "" {
@@ -49,10 +59,16 @@ func parseSkill(directory string, text []byte) (parsedSkill, error) {
 	if fields.Name != nil {
 		parsed.name = *fields.Name
 		if !validName(parsed.name) {
-			parsed.warnings = append(parsed.warnings, fmt.Sprintf("the name \"%s\" is not 1 to 64 lowercase letters, digits and single hyphens", parsed.name))
+			parsed.warnings = append(
+				parsed.warnings,
+				fmt.Sprintf("the name \"%s\" is not 1 to 64 lowercase letters, digits and single hyphens", parsed.name),
+			)
 		}
 		if parsed.name != directory {
-			parsed.warnings = append(parsed.warnings, fmt.Sprintf("the name \"%s\" differs from its directory \"%s\"", parsed.name, directory))
+			parsed.warnings = append(
+				parsed.warnings,
+				fmt.Sprintf("the name \"%s\" differs from its directory \"%s\"", parsed.name, directory),
+			)
 		}
 	}
 	if utf8.RuneCountInString(parsed.description) > 1024 {
