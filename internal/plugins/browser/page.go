@@ -109,25 +109,25 @@ func stopped(err error) bool {
 	return errors.As(err, &refusal) && refusal.Code == webapi.ErrorCodeHostStopped
 }
 
-func browserFailure(err error) *browserop.FailureDocument {
+func browserFailure(err error) (browserop.FailureDocument, bool) {
 	var refusal *plugin.PortRefusalOperation
 	if !errors.As(err, &refusal) {
-		return nil
+		return browserop.FailureDocument{}, false
 	}
 	document, decodeErr := browserop.DecodeFailureDocument([]byte(strings.TrimSpace(refusal.Stderr)))
 	if decodeErr != nil {
-		return nil
+		return browserop.FailureDocument{}, false
 	}
-	return &document
+	return document, true
 }
 
 func tabMissing(err error) bool {
-	document := browserFailure(err)
-	return document != nil && document.Error.Code == browserop.BrowserErrorCodeTabNotFound
+	document, ok := browserFailure(err)
+	return ok && document.Error.Code == browserop.BrowserErrorCodeTabNotFound
 }
 
 func refused(err error) error {
-	if document := browserFailure(err); document != nil {
+	if document, ok := browserFailure(err); ok {
 		return &plugin.ErrorRefused{Reason: string(document.Error.Code), Message: document.Error.Message}
 	}
 	return plugin.RequestError(err)

@@ -23,7 +23,7 @@ func NewTabNumbers(source *cmdsdk.Numbers, conversation string) *TabNumbers {
 	return &TabNumbers{source: source, conversation: conversation}
 }
 
-// Next returns the next number, drawing eight with Rust's 15-second deadline
+// Next returns the next number, drawing eight with a 15-second deadline
 // when no spare is at hand. A failed draw fails only this call.
 func (n *TabNumbers) Next(ctx context.Context) (uint64, error) {
 	n.mu.Lock()

@@ -176,7 +176,7 @@ func (t *Tab) UpdateScreen(ctx context.Context, screen Screen) error {
 		WithWidth(int64(math.Round(float64(screen.Width) * screen.Ratio))).
 		WithHeight(int64(math.Round(float64(screen.Height) * screen.Ratio))).
 		WithDevicePixelRatio(screen.Ratio)
-	// Rust discards this method's result; no vendor fields are read here.
+	// The method's result is not needed; no vendor fields are read here.
 	return t.Page().Execute(ctx, emulation.CommandUpdateScreen, params, nil)
 }
 

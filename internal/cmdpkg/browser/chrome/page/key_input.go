@@ -55,7 +55,7 @@ func pointerModifiers(values *[]browserop.Modifier) input.Modifier {
 	return mask
 }
 
-// namedKey looks up the same key and physical-code alternatives as Rust.
+// namedKey looks up a key by its DOM key value, then by its physical code.
 func namedKey(name string) (keyboardKey, error) {
 	if name == "ControlOrMeta" {
 		name = "Control"
@@ -212,7 +212,7 @@ func typingFocus(ctx context.Context, element targetElement) error {
 	condition := "typing target changed or lost focus"
 	if err != nil {
 		var protocolErr *cdp.ProtocolError
-		// Chrome has no typed stale-object/context code: preserve Rust's exact messages.
+		// Chrome has no typed stale-object/context code: match its exact messages.
 		if !errors.As(err, &protocolErr) ||
 			(protocolErr.Message != "Cannot find context with specified id" &&
 				protocolErr.Message != "Could not find object with given id") {

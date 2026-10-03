@@ -18,7 +18,7 @@ import (
 )
 
 // Value converts a typed result to the JSON value Render bounds, using the
-// shared contract encoder so serde's escaping behavior is retained.
+// shared contract encoder, which applies no HTML or JavaScript escaping.
 func Value(result any) (json.RawMessage, error) {
 	data, err := contract.EncodeJSON(result)
 	if err != nil {
@@ -172,7 +172,7 @@ func RenderError(code browserop.BrowserErrorCode, message string, details browse
 	raw, err := Value(details)
 	if err != nil {
 		return text
-	} // Rust also omits details when their serialization fails.
+	} // Details that cannot be serialized are omitted.
 	var fields map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()

@@ -6,8 +6,8 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// These garde checks were not present in Rust's JSON schemas for optional
-// vectors. Keep them Go-only, as required by the browser migration ruling.
+// These checks bound each item of an optional list. The JSON schemas do not
+// state these item limits, so they are checked in Go only.
 func validateSelectInput(input SelectInput) error {
 	for _, field := range []struct {
 		name   string

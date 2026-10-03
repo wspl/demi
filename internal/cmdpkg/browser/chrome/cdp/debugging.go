@@ -23,7 +23,7 @@ type DebugOwner struct {
 	address     string
 	target      target.ID
 	mu          sync.Mutex
-	connections map[uint64]*DebugHandle
+	connections map[uint64]*DebugConnection
 	buffer      *Buffer[browserop.CdpEvent]
 	recorded    chan struct{}
 	cleanup     error
@@ -40,7 +40,7 @@ func StartDebug(ctx context.Context, address string, id target.ID) *DebugOwner {
 		gate:        make(chan struct{}, 1),
 		address:     address,
 		target:      id,
-		connections: map[uint64]*DebugHandle{},
+		connections: map[uint64]*DebugConnection{},
 		recorded:    make(chan struct{}),
 	}
 	go d.run()
@@ -55,7 +55,7 @@ func (d *DebugOwner) run() {
 	defer func() { <-d.gate }()
 	d.mu.Lock()
 	connections := d.connections
-	d.connections = map[uint64]*DebugHandle{}
+	d.connections = map[uint64]*DebugConnection{}
 	d.buffer = nil
 	close(d.recorded)
 	d.recorded = make(chan struct{})
@@ -82,7 +82,7 @@ func (d *DebugOwner) acquire(ctx context.Context) error {
 }
 
 // Connect returns the caller's connection, making it if none exists.
-func (d *DebugOwner) Connect(ctx context.Context, caller uint64) (*DebugHandle, error) {
+func (d *DebugOwner) Connect(ctx context.Context, caller uint64) (*DebugConnection, error) {
 	if err := d.acquire(ctx); err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (d *DebugOwner) Connect(ctx context.Context, caller uint64) (*DebugHandle, 
 	if d.ctx.Err() != nil {
 		return nil, &BrowserError{Kind: KindClosed}
 	}
-	existing, err := d.existingHandle(caller)
+	existing, err := d.existingConnection(caller)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func (d *DebugOwner) Connect(ctx context.Context, caller uint64) (*DebugHandle, 
 		var session *Session
 		session, err = connection.Attach(setup, d.target)
 		if err == nil {
-			handle := &DebugHandle{connection: connection, main: session}
+			handle := &DebugConnection{connection: connection, main: session}
 			d.mu.Lock()
 			d.connections[caller] = handle
 			d.mu.Unlock()
@@ -277,14 +277,14 @@ type EventPage struct {
 	Wait bool
 }
 
-// DebugHandle addresses only the tab and descendants attached by its private pump.
-type DebugHandle struct {
+// DebugConnection is one agent's debugging connection to a tab and the descendants its private pump attached.
+type DebugConnection struct {
 	connection *Connection
 	main       *Session
 }
 
 // close detaches Chrome debugging state and always joins the private socket.
-func (d *DebugHandle) close(ctx context.Context) error {
+func (d *DebugConnection) close(ctx context.Context) error {
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), ControlTimeout)
 	defer cancel()
 	err := d.main.Close(cleanup)
@@ -293,7 +293,7 @@ func (d *DebugHandle) close(ctx context.Context) error {
 
 // Send sends a pinned command to a connection-owned target handle.
 // Driver setup may use denied public methods; ExecuteCommand enforces admission.
-func (d *DebugHandle) Send(
+func (d *DebugConnection) Send(
 	ctx context.Context,
 	method string,
 	params json.RawMessage,
@@ -316,7 +316,7 @@ func (d *DebugHandle) Send(
 }
 
 // Targets returns this connection's currently attached target handles.
-func (d *DebugHandle) Targets(ctx context.Context) ([]string, error) {
+func (d *DebugConnection) Targets(ctx context.Context) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -377,7 +377,7 @@ func ExecuteCommand(
 			return nil, &BrowserError{Kind: KindConfiguration, Message: err.Error(), Cause: err}
 		}
 	}
-	var connection *DebugHandle
+	var connection *DebugConnection
 	if err := operation.Run(ctx, func(work context.Context) error {
 		var err error
 		connection, err = debug.Connect(work, caller)
@@ -427,7 +427,7 @@ func Capabilities(ctx context.Context, executor Executor) ([]browserop.Capabilit
 func debugTargets(
 	ctx context.Context,
 	operation *Operation,
-	connection *DebugHandle,
+	connection *DebugConnection,
 	input *browserop.CdpTargetsInput,
 ) (json.RawMessage, error) {
 	var rows []browserop.CdpTarget
@@ -474,7 +474,7 @@ func debugTargets(
 func debugSend(
 	ctx context.Context,
 	operation *Operation,
-	connection *DebugHandle,
+	connection *DebugConnection,
 	debug *DebugOwner,
 	caller uint64,
 	input *browserop.CdpSendInput,
@@ -498,7 +498,7 @@ func debugSend(
 func debugEvents(
 	ctx context.Context,
 	operation *Operation,
-	connection *DebugHandle,
+	connection *DebugConnection,
 	debug *DebugOwner,
 	caller uint64,
 	input *browserop.CdpEventsInput,
@@ -554,7 +554,7 @@ func debugEvents(
 	}
 }
 
-func (d *DebugOwner) existingHandle(caller uint64) (*DebugHandle, error) {
+func (d *DebugOwner) existingConnection(caller uint64) (*DebugConnection, error) {
 	d.mu.Lock()
 	existing := d.connections[caller]
 	if existing == nil && d.buffer == nil {

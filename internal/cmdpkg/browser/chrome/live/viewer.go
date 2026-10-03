@@ -201,14 +201,16 @@ type viewSession struct {
 	answers       sync.WaitGroup
 }
 
-type viewEndedError struct{ reason browserop.EndReason }
-
-// Error returns the live view termination reason.
-func (e *viewEndedError) Error() string { return string(e.reason) }
-
 func (v *viewer) view(ctx context.Context, environment *tabs.Environment, hub *Hub) error {
-	result := make(chan error, 1)
-	err := environment.StartTask(func(_ context.Context) { result <- v.runView(ctx, environment, hub) })
+	type viewEnd struct {
+		reason browserop.EndReason
+		err    error
+	}
+	result := make(chan viewEnd, 1)
+	err := environment.StartTask(func(_ context.Context) {
+		reason, err := v.runView(ctx, environment, hub)
+		result <- viewEnd{reason: reason, err: err}
+	})
 	if err != nil {
 		v.end(ctx, "browser_ended")
 		return nil
@@ -216,19 +218,20 @@ func (v *viewer) view(ctx context.Context, environment *tabs.Environment, hub *H
 	// Retirement and invocation completion both join the session, including its
 	// input releases. The final protocol message belongs to the invocation, so a
 	// blocked output cannot hold the environment's retirement open.
-	err = <-result
-	var ended *viewEndedError
-	if errors.As(err, &ended) {
-		v.end(ctx, ended.reason)
+	end := <-result
+	if end.reason != "" {
+		v.end(ctx, end.reason)
 		return nil
 	}
-	return err
+	return end.err
 }
 
-func (v *viewer) runView(ctx context.Context, environment *tabs.Environment, hub *Hub) error {
+// runView serves the view until it ends. A non-empty reason is why the browser side ended it,
+// which the caller sends in an ended message; an empty reason with a nil error means the page ended it.
+func (v *viewer) runView(ctx context.Context, environment *tabs.Environment, hub *Hub) (browserop.EndReason, error) {
 	member, err := hub.join(ctx)
 	if err != nil {
-		return &viewEndedError{reason: "browser_ended"}
+		return "browser_ended", nil
 	}
 	defer member.close()
 	work, cancel := context.WithCancel(ctx)
@@ -239,7 +242,7 @@ func (v *viewer) runView(ctx context.Context, environment *tabs.Environment, hub
 	input, err := startInput(inputContext, environment, v.writer, v.mac)
 	if err != nil {
 		stopInput()
-		return &viewEndedError{reason: "browser_ended"}
+		return "browser_ended", nil
 	}
 	session := &viewSession{
 		environment: environment,
@@ -268,16 +271,16 @@ func (v *viewer) runView(ctx context.Context, environment *tabs.Environment, hub
 	if err := start(
 		func(work context.Context) { runCommands(work, environment, member, v.writer, commands) },
 	); err != nil {
-		return &viewEndedError{reason: "browser_ended"}
+		return "browser_ended", nil
 	}
 	if err := start(
 		func(work context.Context) { runUploads(work, environment, member, v.writer, v.uploads) },
 	); err != nil {
-		return &viewEndedError{reason: "browser_ended"}
+		return "browser_ended", nil
 	}
 	if v.panel != nil {
 		if err := member.setPanel(work, *v.panel); err != nil {
-			return nil
+			return "", nil
 		}
 	}
 	return v.exchangeView(ctx, work, environment, session, member, commands)
@@ -483,7 +486,7 @@ func (v *viewer) exchangeView(
 	session *viewSession,
 	member *membership,
 	commands chan<- *browserop.LiveViewerMessageMode,
-) error {
+) (browserop.EndReason, error) {
 	_, changed := environment.Changes()
 	session.state(work)
 	refresh := time.NewTimer(time.Hour)
@@ -497,20 +500,20 @@ func (v *viewer) exchangeView(
 
 		select {
 		case <-v.browser.Released():
-			return &viewEndedError{reason: "released"}
+			return "released", nil
 		case <-environment.Done():
-			return &viewEndedError{reason: "browser_ended"}
+			return "browser_ended", nil
 		case <-ctx.Done():
-			return ctx.Err()
+			return "", ctx.Err()
 		case item, ok := <-v.incoming:
 			if !ok {
-				return nil
+				return "", nil
 			}
 			if item.err != nil {
-				return item.err
+				return "", item.err
 			}
 			if !v.receiveView(work, member, session, item, commands) {
-				return nil
+				return "", nil
 			}
 		case p := <-pictures:
 			session.delivery.picture(work, session.watched.ID(), session.stream, p, v.writer)
@@ -549,8 +552,8 @@ func (s *viewSession) finishInput(
 	cancel()
 	workers.Wait()
 	s.answers.Wait()
-	// The Rust viewer queues its final release behind already accepted input.
-	// Preserve that ordering, then cancel and join if the five-second flush ends.
+	// The final release is queued behind already accepted input.
+	// Keep that order, then cancel and join if the five-second flush ends.
 	cleanup, stopCleanup := context.WithTimeout(context.WithoutCancel(ctx), cdp.ControlTimeout)
 	input.control(cleanup, inputItem{kind: inputFinish})
 	select {

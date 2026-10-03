@@ -120,7 +120,7 @@ func TestAbsentBrowserAndInputRefusals(t *testing.T) {
 	}
 }
 
-// This ports the Rust bounded-output regression without a browser or wall time.
+// A release cancels a command blocked on bounded output; no browser or wall time.
 func TestReleaseCancelsBrowserCommandBlockedOnOutput(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newService()

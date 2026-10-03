@@ -25,12 +25,11 @@ type ToolSet struct {
 }
 
 // WebMCPState belongs to the calling tab and is held under its operation gate.
-// A nil Document means no document has yet been observed.
 type WebMCPState struct {
-	// Document identifies the observed document loader.
-	Document *protocol.LoaderID
-	// Key names the document's WebMCP observer state.
-	Key *string
+	// Document identifies the observed document loader; empty until one is observed.
+	Document protocol.LoaderID
+	// Key names the document's WebMCP observer state; empty until it is installed.
+	Key string
 	// Tools retains the current discovered tool set.
 	Tools *ToolSet
 }
@@ -106,7 +105,7 @@ func ExecuteWebMCP(
 	if err != nil {
 		return nil, err
 	}
-	key, err := scriptString(*state.Key)
+	key, err := scriptString(state.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -133,19 +132,19 @@ func prepareWebMCP(work context.Context, executor Executor, state *WebMCPState) 
 		return err
 	}
 	document := tree.Frame.LoaderID
-	if state.Document == nil || *state.Document != document {
-		state.Document = &document
-		state.Key = nil
+	if state.Document != document {
+		state.Document = document
+		state.Key = ""
 		state.Tools = nil
 	}
-	if state.Key == nil {
+	if state.Key == "" {
 		key, err := Fresh("webmcp")
 		if err != nil {
 			return err
 		}
-		state.Key = &key
+		state.Key = key
 	}
-	keyLiteral, err := scriptString(*state.Key)
+	keyLiteral, err := scriptString(state.Key)
 	if err != nil {
 		return err
 	}
