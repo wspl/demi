@@ -1,13 +1,13 @@
 package claudecodeop_test
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeop"
+	"github.com/wspl/demi/internal/contract"
 )
 
 // These pure boundary checks use no IO or waits and cost well under one second.
@@ -88,7 +88,7 @@ func TestRepliesCarryOKBesideAnswer(t *testing.T) {
 		{"failed", failure, `{"ok":false,"code":"install_failed","message":"digest differs"}`},
 	} {
 		t.Run("status/"+tc.name, func(t *testing.T) {
-			printed, err := json.Marshal(claudecodeop.StatusReplyJSON{Value: tc.reply})
+			printed, err := contract.EncodeJSON(claudecodeop.StatusReplyJSON{Value: tc.reply})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -113,7 +113,7 @@ func TestRepliesCarryOKBesideAnswer(t *testing.T) {
 		{"failed", failure, `{"ok":false,"code":"install_failed","message":"digest differs"}`},
 	} {
 		t.Run("ensure/"+tc.name, func(t *testing.T) {
-			printed, err := json.Marshal(claudecodeop.EnsureReplyJSON{Value: tc.reply})
+			printed, err := contract.EncodeJSON(claudecodeop.EnsureReplyJSON{Value: tc.reply})
 			if err != nil {
 				t.Fatal(err)
 			}

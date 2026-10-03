@@ -13,10 +13,12 @@ func TestCancelledRequesterStillFinishesAdmittedCall(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	entered := make(chan struct{})
 	completed := make(chan error, 1)
+	observed := make(chan string, 1)
 	go func() {
 		_, err := shardCall(ctx, s, func(ctx context.Context) (struct{}, error) {
 			close(entered)
 			<-ctx.Done()
+			observed <- "cancelled, then finished"
 			return struct{}{}, ctx.Err()
 		})
 		completed <- err
@@ -27,6 +29,9 @@ func TestCancelledRequesterStillFinishesAdmittedCall(t *testing.T) {
 		t.Fatalf("call cancellation = %v", err)
 	}
 	s.calls.Wait()
+	if got := <-observed; got != "cancelled, then finished" {
+		t.Fatal(got)
+	}
 }
 func TestPanickingCallDoesNotPoisonShard(t *testing.T) {
 	s := &Shard{}
@@ -80,5 +85,12 @@ func TestClosingWaitsForCallsAndRefusesNewOnes(t *testing.T) {
 		close(release)
 		<-done
 		<-drained
+		_, err = shardCall(ctx, s, func(context.Context) (struct{}, error) {
+			t.Error("call ran after shutdown")
+			return struct{}{}, nil
+		})
+		if !errors.As(err, &unavailable) || unavailable.Kind != ShardClosing {
+			t.Fatalf("call after shutdown = %v", err)
+		}
 	})
 }

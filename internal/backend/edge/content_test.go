@@ -1,7 +1,9 @@
 package edge
 
 import (
+	"net/http"
 	"net/url"
+	"reflect"
 	"testing"
 
 	"github.com/wspl/demi/internal/core"
@@ -18,13 +20,22 @@ func TestMediaInPlaceImagesInertAndRestDownloads(t *testing.T) {
 		{"text/markdown", false, "README.md", "attachment; filename=\"README.md\"; filename*=UTF-8''README.md"},
 		{"image/png", true, "图 (1)'s.png", "attachment; filename=\"_ (1)'s.png\"; filename*=UTF-8''%E5%9B%BE%20%281%29%27s.png"},
 	} {
-		headers := contentHeaders(&test.media, test.download, test.name)
-		if headers.Get("Content-Type") != "application/octet-stream" || headers.Get("Content-Disposition") != test.disposition || headers.Get("X-Content-Type-Options") != "nosniff" {
+		var media *string
+		if test.media != "" {
+			media = &test.media
+		}
+		headers := contentHeaders(media, test.download, test.name)
+		want := http.Header{"Content-Type": {"application/octet-stream"}, "Content-Disposition": {test.disposition}, "X-Content-Type-Options": {"nosniff"}}
+		if !reflect.DeepEqual(headers, want) {
 			t.Fatal(headers)
 		}
 	}
 	for _, media := range []string{"image/svg+xml", "audio/mpeg", "application/pdf"} {
-		headers := contentHeaders(&media, false, "")
+		name := ""
+		if media == "image/svg+xml" {
+			name = "logo.svg"
+		}
+		headers := contentHeaders(&media, false, name)
 		if headers.Get("Content-Type") != media {
 			t.Fatal(headers)
 		}
@@ -32,7 +43,11 @@ func TestMediaInPlaceImagesInertAndRestDownloads(t *testing.T) {
 		if media == "image/svg+xml" {
 			policy = imagePolicy
 		}
-		if headers.Get("Content-Security-Policy") != policy {
+		want := http.Header{"Content-Type": {media}, "X-Content-Type-Options": {"nosniff"}}
+		if policy != "" {
+			want.Set("Content-Security-Policy", policy)
+		}
+		if !reflect.DeepEqual(headers, want) {
 			t.Fatal(headers)
 		}
 	}

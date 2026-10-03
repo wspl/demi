@@ -2,6 +2,7 @@ package skills_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -176,11 +177,15 @@ func TestAddingSourceListsWarningsSkippedAndBlobs(t *testing.T) {
 			t.Fatal("new skill starts enabled")
 		}
 	}
-	if !listed.Skills[1].DisableModelInvocation || len(listed.Skills[0].Warnings) != 1 || !strings.Contains(listed.Skills[0].Warnings[0], "not 1 to 64 lowercase") || len(listed.Skills[2].Warnings) != 0 {
+	if listed.Skills[0].DisableModelInvocation || listed.Skills[2].DisableModelInvocation || !listed.Skills[1].DisableModelInvocation || len(listed.Skills[0].Warnings) != 1 || !strings.Contains(listed.Skills[0].Warnings[0], "not 1 to 64 lowercase") || len(listed.Skills[2].Warnings) != 0 {
 		t.Fatalf("flags/warnings: %+v", listed.Skills)
 	}
 	if len(listed.Skipped) != 1 || listed.Skipped[0].Path != "skills/broken/SKILL.md" || !strings.Contains(listed.Skipped[0].Reason, "no description") {
 		t.Fatalf("skipped: %+v", listed.Skipped)
+	}
+	script := core.BlobRef(fmt.Sprintf("%x", sha256.Sum256([]byte("#!/bin/sh\necho ok\n"))))
+	if !slices.Contains(p.demi.ValueBlobs(id), script) {
+		t.Fatal("script digest missing from value blobs")
 	}
 	found := false
 	for _, blob := range p.demi.ValueBlobs(id) {
@@ -210,9 +215,16 @@ func TestEmptyAndOversizedSourcesRecordFailure(t *testing.T) {
 	p.add(t, "acme/empty")
 	p.add(t, "acme/huge")
 	state := p.state(t)
+	at, err := core.TimestampFromMillisecond(skillstest.FetchedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Sources) != 2 {
+		t.Fatal(state)
+	}
 	for i, want := range []string{"the repository holds no skill", "the repository is larger than 64 MiB"} {
 		source := state.Sources[i]
-		if source.Commit != nil || len(source.Skills) != 0 || source.Failure == nil || source.Failure.Message != want {
+		if source.Origin != []string{"acme/empty", "acme/huge"}[i] || source.Commit != nil || len(source.Skills) != 0 || source.Failure == nil || source.Failure.Message != want || source.Failure.At != at {
 			t.Fatalf("failure: %+v, want %q", source, want)
 		}
 	}
@@ -244,8 +256,10 @@ func TestEnabledSkillDirectoryAndCatalog(t *testing.T) {
 	if got := p.context(t, "/home/me/app", "t3", nil); got == nil || *got != *block {
 		t.Fatal("compaction lost catalog")
 	}
-	if _, err := p.method(t.Context(), "set_source_enabled", skills.SetSourceEnabled{Source: id, Enabled: false}); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"review", "hidden"} {
+		if _, err := p.method(t.Context(), "set_enabled", skills.SetEnabled{Source: id, Skill: name, Enabled: false}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if len(p.demi.Directories()) != 0 {
 		t.Fatal("disabled directories remain")
@@ -333,7 +347,9 @@ func TestProjectSkillsPrecedenceAndRepositoryRoot(t *testing.T) {
 			t.Fatal(*block)
 		}
 	}
-	if strings.Index(*block, "<name>release</name>") > strings.Index(*block, "<name>tests</name>") {
+	release := strings.Index(*block, "<name>release</name>")
+	tests := strings.Index(*block, "<name>tests</name>")
+	if release < 0 || tests < 0 || release >= tests {
 		t.Fatal("catalog not sorted")
 	}
 }
