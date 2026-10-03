@@ -2,13 +2,11 @@ package backend_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
@@ -466,7 +464,11 @@ func TestWorkHostShellStreamsErrorsAcceptsInputAndStopsFarJob(t *testing.T) {
 	wireMust(t, backendtest.WaitFile(w.ctx, pidPath, func(b []byte) bool { return strings.HasSuffix(string(b), "\n") }))
 	pid, err := strconv.Atoi(strings.TrimSpace(filesRead(t, pidPath)))
 	wireMust(t, err)
-	wireMust(t, syscall.Kill(pid, 0))
+	running, err := backendtest.ProcessRunning(pid)
+	wireMust(t, err)
+	if !running {
+		t.Fatal("far process is not running")
+	}
 	w.vendor.Respond(conversationToolUse(t, "abort", "shell_abort", `{"commandId":"`+string(command)+`"}`))
 	w.vendor.Respond(conversationAnswer(t, []string{"stopped"}, 1, 1))
 	_, err = w.socket.Chat(w.ctx, "m4", "stop")
@@ -477,7 +479,7 @@ func TestWorkHostShellStreamsErrorsAcceptsInputAndStopsFarJob(t *testing.T) {
 		t.Fatal(aborted)
 	}
 	wireMust(t, backendtest.WaitRunnerJobsRemoved(w.ctx, w.paired.Runner.StateDir()))
-	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+	if running, err := backendtest.ProcessRunning(pid); err != nil || running {
 		t.Fatalf("far process remains: %v", err)
 	}
 	wireMust(t, w.socket.Close(w.ctx))

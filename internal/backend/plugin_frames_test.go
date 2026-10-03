@@ -2,11 +2,9 @@ package backend_test
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -239,7 +237,7 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 	wireMust(t, backendtest.WaitRunnerJobsRemoved(w.ctx, w.paired.Runner.StateDir()))
 	pid, err := strconv.Atoi(strings.TrimSpace(filesRead(t, pidPath)))
 	wireMust(t, err)
-	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+	if running, err := backendtest.ProcessRunning(pid); err != nil || running {
 		t.Fatalf("sleeper remains: %v", err)
 	}
 	wireMust(t, second.Close(w.ctx))
