@@ -35,8 +35,11 @@ func TestDownloadsPublishCompleteFilesAndSupportMedia(t *testing.T) {
 			t.Fatal(err)
 		}
 		data, err := os.ReadFile(path)
-		if err != nil || !strings.Contains(string(data), content) {
+		if err != nil || (content == "<svg" && !strings.Contains(string(data), content)) || (content != "<svg" && string(data) != content) {
 			t.Fatalf("download %q: %s %v", path, data, err)
+		}
+		if content != "<svg" {
+			expectValue(t, observedField(t, result, "bytes"), 17)
 		}
 		return path
 	}
@@ -91,7 +94,15 @@ func TestUploadAttachesFilesAndCleansChooserObservation(t *testing.T) {
 		{"#disabled", []string{"one.txt"}, "not_actionable", 200},
 		{"#no-chooser", []string{"one.txt"}, "timeout", 300},
 	} {
-		f.rejects(t, tab, "upload", browserArgs(t, `{"css":$0,"file":$1,"timeout":$2}`, test.css, test.files, test.timeout), test.code, "")
+		completion, _, stderr := f.result(t, "upload", browserArgs(t, `{"tab":$0,"css":$1,"file":$2,"timeout":$3}`, tab, test.css, test.files, test.timeout))
+		failure, err := browserop.DecodeFailureDocument(stderr)
+		exit := uint8(1)
+		if test.code == "invalid_input" {
+			exit = 2
+		}
+		if err != nil || completion.ExitCode != exit || string(failure.Error.Code) != test.code {
+			t.Fatalf("upload: %+v %s %v", completion, stderr, err)
+		}
 	}
 	expectValue(t, f.eval(t, tab, "triggers"), 2)
 	job := f.start(t, "upload", browserArgs(t, `{"tab":$0,"css":"#no-chooser","file":["one.txt"]}`, tab))
@@ -132,8 +143,15 @@ func TestAnActionWorksInTheOlderOfTwoOpenTabs(t *testing.T) {
 
 func TestTheTabListShowsTheTitleAPageHasNow(t *testing.T) {
 	f := chromeFixture(t)
-	tab := f.open(t, "fixture.html")
-	f.mutate(t, tab, `document.title='Listed title'`)
+	path := filepath.Join(f.root, "titled.html")
+	if err := os.WriteFile(path, []byte(`<!doctype html><title>First title</title><script>document.title = 'Listed title'</script>`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := browserop.DecodeOpenResult(f.call(t, "open", browserArgs(t, `{"url":$0}`, (&url.URL{Scheme: "file", Path: path}).String())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab := opened.Tab
 	expectValue(t, observedField(t, f.command(t, tab, "info", `{}`), "title"), "Listed title")
 	rows := f.tabs(t)
 	if len(rows) != 1 || rows[0].Title != "Listed title" {
@@ -241,12 +259,23 @@ func TestClipboardPreservesTextAndSupportsHTMLAndPNG(t *testing.T) {
 	f := chromeFixture(t)
 	tab := f.open(t, "clipboard.html")
 	capabilities := f.command(t, tab, "capabilities", `{}`)
-	if !strings.Contains(string(capabilities), `"clipboard"`) {
+	caps, err := browserop.DecodeCapabilitiesResult(capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	available := false
+	for _, entry := range caps.Capabilities {
+		available = available || entry.ID == "clipboard" && entry.Available
+	}
+	if !available {
 		t.Fatal(string(capabilities))
 	}
 	write := func(mime string, data []byte, want uint8) []byte {
 		t.Helper()
 		request := invocation("clipboard.write", browserArgs(t, `{"tab":$0,"mime":$1}`, tab, mime), "acceptance")
+		if mime == "" {
+			request.Request.Args = []byte(browserArgs(t, `{"tab":$0}`, tab))
+		}
 		request.Request.Cwd = f.root
 		source := &fixtureInput{data: make(chan []byte, 1)}
 		source.data <- data
@@ -258,18 +287,27 @@ func TestClipboardPreservesTextAndSupportsHTMLAndPNG(t *testing.T) {
 		}
 		return stdout
 	}
-	expectValue(t, observedField(t, write("text/plain", []byte("hello\n\n"), 0), "bytes"), 7)
+	expectValue(t, observedField(t, write("", []byte("hello\n\n"), 0), "bytes"), 7)
 	read := func() []byte {
 		return observedField(t, f.command(t, tab, "clipboard.read", `{"format":"text"}`), "text")
 	}
 	expectValue(t, read(), "hello\n\n")
 	f.click(t, tab, "#read")
 	f.eventually(t, tab, `document.querySelector('#text').textContent==='hello\n\n'`)
-	write("text/plain", []byte{255}, 2)
+	expectValue(t, f.read(t, tab, "#text", "text-content"), "hello\n\n")
+	write("", []byte{255}, 2)
 	expectValue(t, read(), "hello\n\n")
 	write("text/html", []byte("<b>bold</b>"), 0)
 	html := f.command(t, tab, "clipboard.read", `{"output-dir":"html"}`)
-	if !strings.Contains(string(html), `"text/html"`) {
+	items, err := contract.List(observedField(t, html, "items"), contract.Decode[json.RawMessage])
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasHTML := false
+	for _, item := range items {
+		hasHTML = hasHTML || string(observedField(t, item, "mimeType")) == `"text/html"`
+	}
+	if !hasHTML {
 		t.Fatal(string(html))
 	}
 	shot := f.command(t, tab, "screenshot", `{"output":"image.png"}`)
@@ -304,13 +342,21 @@ func TestNativeWebMCPValidatesCallsAndInvalidatesChangedDeclarations(t *testing.
 	f := chromeFixture(t)
 	tab := f.open(t, "webmcp.html")
 	list := f.command(t, tab, "webmcp.list", `{}`)
-	if !strings.Contains(string(list), `"echo"`) {
+	entries, err := contract.List(observedField(t, list, "entries"), contract.Decode[json.RawMessage])
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasEcho := false
+	for _, entry := range entries {
+		hasEcho = hasEcho || string(observedField(t, entry, "name")) == `"echo"`
+	}
+	if !hasEcho {
 		t.Fatal(string(list))
 	}
 	tools := observedField(t, list, "tools")
 	expectValue(t, observedField(t, f.command(t, tab, "webmcp.list", `{}`), "tools"), tools)
 	result := f.command(t, tab, "webmcp.call", browserArgs(t, `{"tools":$0,"tool":"echo","arguments":$1}`, tools, `{"text":"hello"}`))
-	expectValue(t, observedField(t, result, "result", "echo"), "hello")
+	expectValue(t, observedField(t, result, "result"), json.RawMessage(`{"echo":"hello"}`))
 	completion, _, stderr := f.result(t, "webmcp.call", browserArgs(t, `{"tab":$0,"tools":$1,"tool":"echo","arguments":$2}`, tab, tools, `{"text":42}`))
 	if completion.ExitCode != 2 {
 		t.Fatalf("%+v %s", completion, stderr)
@@ -388,8 +434,14 @@ func TestFailedNumberDrawFailsOnlyStepNeedingNumber(t *testing.T) {
 		t.Fatal(string(clicked))
 	}
 	f.eventually(t, "t1", "window.opened.closed")
-	if rows := f.tabs(t); len(rows) != 8 {
+	rows := f.tabs(t)
+	if len(rows) != 8 {
 		t.Fatal(rows)
+	}
+	for i, row := range rows {
+		if string(row.ID) != "t"+strconv.Itoa(i+1) {
+			t.Fatal(rows)
+		}
 	}
 	if next := f.open(t, "popups.html"); next != "t101" {
 		t.Fatal(next)
@@ -423,7 +475,8 @@ func TestCommandsAnswerReadableTextUnlessJSONAsked(t *testing.T) {
 		t.Fatal(opened)
 	}
 	listed := text("tabs", `{}`)
-	if !strings.Contains(listed, tab) || !strings.Contains(listed, "Readable page") {
+	lines := strings.Split(listed, "\n")
+	if len(lines) < 2 || !strings.HasPrefix(lines[1], tab) || !strings.Contains(lines[1], "Readable page") {
 		t.Fatal(listed)
 	}
 	expectValue(t, observedField(t, f.command(t, browserop.TabID(tab), "info", `{}`), "title"), "Readable page")

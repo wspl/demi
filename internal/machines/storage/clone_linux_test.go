@@ -59,11 +59,7 @@ func TestSparseCopyKeepsHolesAndEndData(t *testing.T) {
 	}
 	blocks, err := allocatedBlocks(destination)
 	requireStorage(t, err)
-	// Reflinks may share the source's written-zero extents. The cp comparison
-	// below is the design's allocation oracle on reflink-capable filesystems.
-	var fs unix.Statfs_t
-	requireStorage(t, unix.Statfs(directory, &fs))
-	if fs.Type == unix.EXT4_SUPER_MAGIC && blocks*512 >= 1<<20 {
+	if blocks*512 >= 1<<20 {
 		t.Fatalf("allocated %d blocks", blocks)
 	}
 	copiedFile, err := os.Open(destination)

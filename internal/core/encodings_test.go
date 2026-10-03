@@ -34,6 +34,14 @@ func TestTimes(t *testing.T) {
 	if err != nil || value != "2026-09-21T14:13:20.000Z" {
 		t.Fatalf("%s: %v", value, err)
 	}
+	encoded, err := contract.EncodeJSON(value)
+	if err != nil || string(encoded) != `"2026-09-21T14:13:20.000Z"` {
+		t.Fatalf("timestamp wire: %s %v", encoded, err)
+	}
+	decoded, err := core.DecodeTimestamp(encoded)
+	if err != nil || decoded != value {
+		t.Fatalf("timestamp decode: %s %v", decoded, err)
+	}
 	later, err := core.TimestampFromMillisecond(1790000000500)
 	if err != nil || later != "2026-09-21T14:13:20.500Z" || later <= value {
 		t.Fatalf("%s: %v", later, err)
@@ -66,6 +74,10 @@ func TestIdentitiesAndBlobReferences(t *testing.T) {
 	if err != nil || id != "b-1" {
 		t.Fatalf("%s: %v", id, err)
 	}
+	encoded, err := contract.EncodeJSON(id)
+	if err != nil || string(encoded) != `"b-1"` {
+		t.Fatalf("identity wire: %s %v", encoded, err)
+	}
 	if _, err := core.DecodeBlockID([]byte(`""`)); err == nil {
 		t.Fatal("empty identity accepted")
 	}
@@ -76,8 +88,16 @@ func TestIdentitiesAndBlobReferences(t *testing.T) {
 	if got := core.BlobRefOf([]byte("test")); string(got) != digest {
 		t.Fatal(got)
 	}
+	blob, err := core.DecodeBlobRef([]byte(`"` + digest + `"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err = contract.EncodeJSON(blob)
+	if err != nil || string(encoded) != `"`+digest+`"` {
+		t.Fatalf("blob wire: %s %v", encoded, err)
+	}
 	for _, text := range []string{strings.ToUpper(digest), digest[1:], digest + "0", "sha-1"} {
-		if _, err := core.ParseBlobRef(text); err == nil {
+		if _, err := core.DecodeBlobRef([]byte(`"` + text + `"`)); err == nil {
 			t.Errorf("accepted %s", text)
 		}
 	}
@@ -98,5 +118,18 @@ func TestCompletionIDs(t *testing.T) {
 		if _, err := core.ParseCompletionID(text); err == nil {
 			t.Errorf("accepted %s", text)
 		}
+	}
+}
+
+// Rust accepted alternate RFC3339 spellings; this pins the accepted migration normalization.
+func TestRustTimestampSpellings(t *testing.T) {
+	t.Skip("fidelity 2: Go accepts only canonical UTC timestamps with three fractional digits")
+	for _, text := range []string{"2026-09-21T14:13:20Z", "2026-09-21T16:13:20+02:00"} {
+		t.Run(text, func(t *testing.T) {
+			value, err := core.DecodeTimestamp([]byte(`"` + text + `"`))
+			if err != nil || value != "2026-09-21T14:13:20.000Z" {
+				t.Fatalf("timestamp: %s %v", value, err)
+			}
+		})
 	}
 }

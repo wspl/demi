@@ -108,10 +108,13 @@ func TestPublicationLinksSources(t *testing.T) {
 
 // Cost: local filesystem IO only; corrupt input must remain untouched.
 func TestCorruptRecordIsError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "current.json")
+	root := t.TempDir()
+	store := storage.NewStore(root)
+	requireStorage(t, os.Mkdir(filepath.Join(root, "device"), 0700))
+	path := filepath.Join(root, "device", "current.json")
 	data := []byte(`{"generation":"g"}`)
 	requireStorage(t, os.WriteFile(path, data, 0600))
-	_, err := storage.ReadState(t.Context(), path)
+	_, err := store.Read(t.Context(), "device")
 	var corrupt *storage.CorruptRecordError
 	if !errors.As(err, &corrupt) || corrupt.Path != path {
 		t.Fatalf("corrupt record: %v", err)

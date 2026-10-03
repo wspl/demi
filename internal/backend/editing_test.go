@@ -92,7 +92,9 @@ func TestEditPublishedOnlyAfterCommit(t *testing.T) {
 	}
 	_, err = socket.Until(ctx, conversationIdle)
 	wireMust(t, err)
-	replayed := string(vendor.Requests()[asked].Body)
+	fields, err := contract.Object(vendor.Requests()[asked].Body)
+	wireMust(t, err)
+	replayed := string(fields["messages"])
 	if !strings.Contains(replayed, "B-edited") || strings.Contains(replayed, "B-removed") {
 		t.Fatalf("wrong replay: %s", replayed)
 	}

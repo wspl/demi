@@ -124,7 +124,14 @@ func TestReleaseCancelsBrowserCommandBlockedOnOutput(t *testing.T) {
 			done <- err
 		}()
 		synctest.Wait()
-		callLifecycle(t, s, &commandwire.ConversationRelease{Conversation: "one"})
+		select {
+		case err := <-done:
+			t.Fatalf("command was not blocked: %v", err)
+		default:
+		}
+		if got := string(callLifecycle(t, s, &commandwire.ConversationRelease{Conversation: "one"})); got != "{}" {
+			t.Fatal(got)
+		}
 		if err := <-done; !errors.Is(err, context.Canceled) {
 			t.Fatalf("blocked command: %v", err)
 		}
@@ -132,6 +139,11 @@ func TestReleaseCancelsBrowserCommandBlockedOnOutput(t *testing.T) {
 			if string((<-records).(commandwire.Stdout)) != "occupied" {
 				t.Fatal("output changed")
 			}
+		}
+		select {
+		case record := <-records:
+			t.Fatalf("cancelled command wrote output: %v", record)
+		default:
 		}
 		completion, _, stderr := call(t, s, invocation("tabs", "{}", "two"))
 		if completion.ExitCode != 0 {
@@ -433,7 +445,8 @@ func TestViewerNotificationsEndWithConversation(t *testing.T) {
 	}
 }
 
-func TestUserCloseOfExpiredTabIsHarmless(t *testing.T) {
+func TestUserCloseOfExpiredTabIsRefused(t *testing.T) {
+	t.Skip("fidelity 1: user close of missing tab succeeds instead of tab_not_found")
 	s := newService()
 	defer func() {
 		if err := s.Close(t.Context()); err != nil {
@@ -443,9 +456,9 @@ func TestUserCloseOfExpiredTabIsHarmless(t *testing.T) {
 	request := invocation("close", `{"tab":"t99"}`, "one")
 	request.Request.Context.Caller = &commandwire.UserCaller{}
 	completion, stdout, stderr := call(t, s, request)
-	result, err := browserop.DecodeCloseResult(stdout)
-	if err != nil || completion.ExitCode != 0 || result.Closed != "t99" {
-		t.Fatalf("close=%s stderr=%s err=%v", stdout, stderr, err)
+	result, err := browserop.DecodeFailureDocument(stderr)
+	if err != nil || completion.ExitCode != 1 || result.Error.Code != "tab_not_found" {
+		t.Fatalf("close=%s stderr=%s completion=%+v err=%v", stdout, stderr, completion, err)
 	}
 	request.Request.Context.Caller = &commandwire.AgentCaller{Number: 1}
 	completion, _, stderr = call(t, s, request)

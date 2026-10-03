@@ -1,6 +1,7 @@
 package backend_test
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -159,7 +160,7 @@ func (i *hostInstallations) state(b *backendtest.TestBackend) string {
 	i.states = append(i.states, state)
 	return state
 }
-func (i *hostInstallations) install(b *backendtest.TestBackend, mask, installation string) ([]byte, error) {
+func (i *hostInstallations) install(b *backendtest.TestBackend, mask, installation string) ([]byte, []byte, error) {
 	i.t.Helper()
 	script, err := b.Read(i.t.Context(), "/install.sh", nil)
 	if err != nil {
@@ -185,7 +186,11 @@ func (i *hostInstallations) install(b *backendtest.TestBackend, mask, installati
 	if installation != "" {
 		command.Env = append(command.Env, "DEMI_INSTALLATION_ID="+installation)
 	}
-	return command.CombinedOutput()
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	err = command.Run()
+	return stdout.Bytes(), stderr.Bytes(), err
 }
 
 // activeHostField reads the same dynamic JSON value Rust observes, preserving
@@ -249,30 +254,30 @@ func TestInstallerSeparatesBackendsReusesReleaseAndUpgradesOwnRunner(t *testing.
 		t.Fatalf("Windows installer: %d %s", windows.Status, windows.Body)
 	}
 	for _, backend := range []*backendtest.TestBackend{a, b} {
-		if output, err := installs.install(backend, "", ""); err != nil {
-			t.Fatalf("install: %v: %s", err, output)
+		if output, stderr, err := installs.install(backend, "", ""); err != nil {
+			t.Fatalf("install: %v: %s\n%s", err, output, stderr)
 		}
 	}
 	firstA, firstB := activeHostField(t, stateA, "endpoint"), activeHostField(t, stateB, "endpoint")
 	if firstA == firstB || activeHostField(t, stateA, "release") != initial {
 		t.Fatal("installations not independent")
 	}
-	again, err := installs.install(a, "", "")
+	again, stderr, err := installs.install(a, "", "")
 	if err != nil || !strings.Contains(string(again), "already running") {
-		t.Fatalf("repeat: %v: %s", err, again)
+		t.Fatalf("repeat: %v: %s\n%s", err, again, stderr)
 	}
 	if activeHostField(t, stateA, "endpoint") != firstA {
 		t.Fatal("repeat replaced runner")
 	}
 	registration := fmt.Sprintf("%x", sha256.Sum256([]byte(a.URL+"/")))
-	collision, err := installs.install(b, "", registration)
+	_, collision, err := installs.install(b, "", registration)
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(collision), "another backend") {
 		t.Fatalf("collision: %v: %s", err, collision)
 	}
 	upgraded := publishHostRelease(t, directory, program, "upgraded")
-	if output, err := installs.install(a, "", ""); err != nil {
-		t.Fatalf("upgrade: %v: %s", err, output)
+	if output, stderr, err := installs.install(a, "", ""); err != nil {
+		t.Fatalf("upgrade: %v: %s\n%s", err, output, stderr)
 	}
 	target, err := commandwire.HostTarget()
 	if err != nil {
@@ -310,8 +315,8 @@ func TestInstalledRunnerPreservesInvokingShellMask(t *testing.T) {
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
 	installs := newHostInstallations(t)
 	state := installs.state(b)
-	if output, err := installs.install(b, "002", ""); err != nil {
-		t.Fatalf("install: %v: %s", err, output)
+	if output, stderr, err := installs.install(b, "002", ""); err != nil {
+		t.Fatalf("install: %v: %s\n%s", err, output, stderr)
 	}
 	for path, want := range map[string]os.FileMode{state: 0700, filepath.Join(state, "runner.log"): 0600} {
 		info, err := os.Stat(path)

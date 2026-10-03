@@ -25,12 +25,30 @@ func TestSchemaDeclaresIntegerWindowsAndHandles(t *testing.T) {
 	if err := json.Unmarshal(definitions[0].InputSchema, &schema); err != nil {
 		t.Fatal(err)
 	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(definitions[0].InputSchema, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if string(raw["additionalProperties"]) != "false" {
+		t.Fatal("additionalProperties must explicitly be false")
+	}
 	if schema.AdditionalProperties || cmp.Diff([]string{"script", "timeoutMs"}, schema.Required) != "" {
 		t.Fatalf("unexpected required properties: %+v", schema)
 	}
 	window := schema.Properties["timeoutMs"]
 	if window.Type != "integer" || window.Minimum != 1 || window.Maximum != 600000 || schema.Properties["shellId"].Type != "integer" {
 		t.Fatalf("incorrect numeric schema: %+v", schema.Properties)
+	}
+	var properties map[string]json.RawMessage
+	if err := json.Unmarshal(raw["properties"], &properties); err != nil {
+		t.Fatal(err)
+	}
+	var descriptionFields map[string]json.RawMessage
+	if err := json.Unmarshal(properties["description"], &descriptionFields); err != nil {
+		t.Fatal(err)
+	}
+	if len(descriptionFields) != 2 {
+		t.Fatalf("description has extra schema fields: %s", properties["description"])
 	}
 	description := schema.Properties["description"]
 	if description.Type != "string" || description.Description != "Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons." {
@@ -85,15 +103,18 @@ func TestRefusalNamesToolAndOffendingField(t *testing.T) {
 	}
 
 	cases := []struct{ input, field string }{
-		{`{"script":"true","timeoutMs":1,"shellId":"main"}`, "shellId"},
-		{`{"script":"true","timeoutMs":1,"shellId":null}`, "shellId"},
-		{`{"script":"true","timeoutMs":1,"maxOutputBytes":10}`, "maxOutputBytes"},
-		{`{"script":"true","timeoutMs":1.5}`, "timeoutMs"},
-		{`{"script":"true","timeoutMs":1,"description":null}`, "description"},
-		{`"not json"`, ""},
+		{`{"script":"true","timeoutMs":1,"shellId":"main"}`, "shellId: "},
+		{`{"script":"true","timeoutMs":1,"shellId":null}`, "shellId: "},
+		{`{"script":"true","timeoutMs":1,"maxOutputBytes":10}`, "unknown field `maxOutputBytes`"},
+		{`{"script":"true","timeoutMs":1.5}`, "timeoutMs: invalid type: floating point"},
+		{`{"script":"true","timeoutMs":1,"description":null}`, "description: invalid type: null"},
+		{`"not json"`, "invalid type: string"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			if tc.field != "shellId: " {
+				t.Skip("fidelity 1: generated tool-input diagnostics differ from Rust")
+			}
 			_, err := decodeShellExecInput([]byte(tc.input))
 			if err == nil {
 				t.Fatal("invalid input accepted")

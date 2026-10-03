@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -56,10 +57,7 @@ func TestPromptIncludesHelpAndContextIsSavedBeforeRequest(t *testing.T) {
 		memory := storetest.NewMemoryTreeStore()
 		script := providertest.NewScriptedRuntime(t, providertest.Respond(func(_ provider.InferenceRequest) []provider.Event {
 			blocks := memory.Checkpoint(rootID()).Transcript
-			equal(t, 2, len(blocks))
-			if _, ok := blocks[1].(*core.ContextBlock); !ok {
-				t.Error("context not saved before request")
-			}
+			assertBlockTypes(t, blocks, "User", "Context")
 			return []provider.Event{providertest.Text("answer"), providertest.Response(1, 1)}
 		}), said("again"))
 		source := &testContext{}
@@ -72,6 +70,7 @@ func TestPromptIncludesHelpAndContextIsSavedBeforeRequest(t *testing.T) {
 			t.Fatal(r.SystemPrompt)
 		}
 		equal(t, 2, len(r.Items))
+		assertBlockTypes(t, f.server.Tree(rootID()).Root().Session().Transcript().Blocks, "User", "Context", "Text", "Response")
 		c.Send(t.Context(), send("m2", "again"))
 		untilIdle(t, c)
 		source.mu.Lock()
@@ -93,6 +92,7 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 		f.opened()
 		for _, name := range []string{"nope", "default"} {
 			r := agent(t, f, rootID(), "spawn", fmt.Sprintf(`{"prompt":"task x","profile":%q}`, name))
+			equal(t, uint8(1), r.code)
 			equal(t, fmt.Sprintf("demi agent spawn: unknown profile %q (available: explorer)\n", name), r.stderr)
 		}
 		child := spawn(t, f, rootID(), `{"prompt":"task explore","profile":"explorer"}`)
@@ -102,12 +102,16 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 		if !strings.HasPrefix(r.SystemPrompt, "explorer prompt\n") || strings.Contains(r.SystemPrompt, "demi agent spawn") || !strings.Contains(r.SystemPrompt, "demi agent send") {
 			t.Fatal(r.SystemPrompt)
 		}
-		if !strings.Contains(requestText(r), "This session may not spawn subagents.") {
+		if !strings.HasPrefix(requestText(r), "You are a subagent") || !strings.Contains(requestText(r), "This session may not spawn subagents.") {
 			t.Fatal(requestText(r))
 		}
 		id := spawn(t, f, rootID(), `{"prompt":"task restricted","no-subagents":true}`)
-		if _, err := agentCall(t.Context(), f, id, "spawn", `{"prompt":"task grandchild"}`, false); err == nil {
-			t.Fatal("restricted child has spawn command")
+		_, err := agentCall(t.Context(), f, id, "spawn", `{"prompt":"task grandchild"}`, false)
+		assertMissingSpawn(t, err)
+		synctest.Wait()
+		asked := restricted.Requests()[0]
+		if !strings.HasPrefix(asked.SystemPrompt, "system prompt\n") || strings.Contains(asked.SystemPrompt, "demi agent spawn") || !strings.HasPrefix(requestText(asked), "You are a subagent") {
+			t.Fatal(asked)
 		}
 		equal(t, uint8(0), agent(t, f, id, "list", `{}`).code)
 		close(first)
@@ -115,9 +119,8 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 		number := f.store.Record(id).Number
 		run := agent(t, f, rootID(), "resume", fmt.Sprintf(`{"id":%d,"message":"more"}`, number))
 		equal(t, uint8(0), run.code)
-		if _, err := agentCall(t.Context(), f, id, "spawn", `{"prompt":"task grandchild"}`, false); err == nil {
-			t.Fatal("resume lifted restriction")
-		}
+		_, err = agentCall(t.Context(), f, id, "spawn", `{"prompt":"task grandchild"}`, false)
+		assertMissingSpawn(t, err)
 		close(second)
 		synctest.Wait()
 		if f.store.Record(id).CanSpawnSubagents {
@@ -127,12 +130,7 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 		c := reserved.client()
 		c.Send(t.Context(), &framewire.OpenFrame{})
 		frames := c.Received()
-		if len(frames) != 1 {
-			t.Fatal(frames)
-		}
-		if _, ok := frames[0].(*framewire.ErrorFrame); !ok {
-			t.Fatal(frames)
-		}
+		equal(t, []framewire.ServerFrame{&framewire.ErrorFrame{Message: `subagent profile name "default" is reserved: omitting --profile already inherits the parent`}}, frames)
 	})
 }
 func TestGrandchildInheritsProfileAndReadsOwnContext(t *testing.T) {
@@ -160,6 +158,9 @@ func TestGrandchildInheritsProfileAndReadsOwnContext(t *testing.T) {
 			t.Fatal(r.SystemPrompt)
 		}
 		equal(t, "worker-model", r.ModelID)
+		if !strings.Contains(requestText(r), cloudContext) {
+			t.Fatal(r.Items)
+		}
 		close(innerGate)
 		synctest.Wait()
 		for _, id := range []core.NodeID{rootID(), outer, inner} {
@@ -171,5 +172,19 @@ func TestGrandchildInheritsProfileAndReadsOwnContext(t *testing.T) {
 			}
 			equal(t, 1, count)
 		}
+		equal(t, 0, rootScript.Remaining())
+		equal(t, 0, outerScript.Remaining())
+		equal(t, 0, innerScript.Remaining())
 	})
+}
+
+// assertMissingSpawn checks the restricted agent's RPC command boundary.
+func assertMissingSpawn(t *testing.T, err error) {
+	t.Helper()
+	var rpc *host.RPCError
+	if !errors.As(err, &rpc) {
+		t.Fatal(err)
+	}
+	equal(t, host.Usage, rpc.Kind)
+	equal(t, `"demi agent spawn" is not an rpc command`, rpc.Message)
 }

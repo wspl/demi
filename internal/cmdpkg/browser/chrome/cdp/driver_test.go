@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -109,6 +110,9 @@ func TestTransportEndRetainsItsCauseWhileExplicitCloseStaysClosed(t *testing.T) 
 		err = operation.Failure(err, "tab", nil)
 		if lost {
 			requireCode(t, err, "outcome_unknown")
+			if action := cdp.ErrorDetails(err).Action; action == nil || *action != "unknown" {
+				t.Fatalf("action = %v", action)
+			}
 			if !strings.Contains(err.Error(), "transport ended") {
 				t.Fatal(err)
 			}
@@ -137,7 +141,8 @@ func TestConnectionLossAfterDispatchHasAnUnknownOutcome(t *testing.T) {
 		err := operation.Failure(cdp.AfterCleanup(lost, &cdp.BrowserError{Kind: cdp.KindClosed}), "tab", &url)
 		requireCode(t, err, "outcome_unknown")
 		details := cdp.ErrorDetails(err)
-		if *details.Action != "unknown" || *details.Tab != "tab" || *details.URL != url || !strings.Contains(err.Error(), lost.Message) {
+		want := browserop.ErrorDetails{Action: new(browserop.ActionProgressUnknown), Tab: new("tab"), URL: &url}
+		if !reflect.DeepEqual(details, want) || !strings.Contains(err.Error(), lost.Message) {
 			t.Fatal(err, details)
 		}
 		requireCode(t, operation.Failure(&cdp.BrowserError{Kind: cdp.KindClosed}, "tab", nil), "browser_lost")
@@ -158,7 +163,11 @@ func TestBrowserErrorsKeepCausesAndInputProgress(t *testing.T) {
 		if progress == "completed" {
 			operation.CompleteInput()
 		}
-		err := operation.Failure(&cdp.BrowserError{Kind: cdp.KindTimeout}, "tab", nil)
+		kind := cdp.KindTimeout
+		if progress == "unknown" {
+			kind = cdp.KindClosed
+		}
+		err := operation.Failure(&cdp.BrowserError{Kind: kind}, "tab", nil)
 		if *cdp.ErrorDetails(err).Action != progress {
 			t.Fatal(err)
 		}
@@ -280,6 +289,9 @@ func TestEveryResultRendersAsReadableLines(t *testing.T) {
 			output, err := cdp.Render(operation, test.Result, false)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if strings.HasPrefix(string(output), "{") {
+				t.Fatalf("%s printed JSON: %s", test.Operation, output)
 			}
 			text := spaces.ReplaceAllString(string(output), " ")
 			for _, line := range test.Lines {

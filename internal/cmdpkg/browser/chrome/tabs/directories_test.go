@@ -191,7 +191,14 @@ func TestSweepTakesNoEnvironmentBeingMade(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		requireExists(t, true, filepath.Join(directories.runtime, profileLock), directories.profile)
+		profile, err := os.Stat(directories.profile)
+		if err != nil || !profile.IsDir() {
+			t.Fatalf("profile is not a directory: %v %v", profile, err)
+		}
+		info, err := os.Stat(filepath.Join(directories.runtime, profileLock))
+		if err != nil || !info.Mode().IsRegular() {
+			t.Fatalf("environment lock is not a file: %v %v", info, err)
+		}
 		if err := directories.remove(t.Context(), nil); err != nil {
 			t.Fatal(err)
 		}
@@ -209,5 +216,10 @@ func TestFailedProcessRetirementRetainsDirectoriesAndCause(t *testing.T) {
 	if !errors.As(err, &retained) || retained.Kind != cdp.KindProfileRetained || retained.Path != directories.profile || !errors.Is(err, failure) {
 		t.Fatalf("retention lost cause: %v", err)
 	}
-	requireExists(t, true, directories.runtime, directories.profile)
+	for _, path := range []string{directories.runtime, directories.profile} {
+		info, err := os.Stat(path)
+		if err != nil || !info.IsDir() {
+			t.Fatalf("retained path is not a directory: %s %v", path, err)
+		}
+	}
 }

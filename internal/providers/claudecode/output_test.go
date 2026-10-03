@@ -42,7 +42,9 @@ func TestUnreadableLineRecordsAndCloses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			events, c := answer(t, tc.lines...)
 			f := failure(t, events)
-			if !strings.Contains(f.Message, tc.message) {
+			if tc.name == "id" || tc.name == "unoffered" {
+				equal(t, f.Message, tc.message)
+			} else if !strings.Contains(f.Message, tc.message) {
 				t.Fatal(f.Message)
 			}
 			equal(t, f.Code, (*provider.ErrorCode)(nil))
@@ -73,6 +75,11 @@ func TestCLIFailuresUseVendorWords(t *testing.T) {
 				equal(t, *f.Code, tc.code)
 			}
 			equal(t, c.closed, tc.closed)
+			if tc.closed {
+				equal(t, c.signals, []host.Signal{host.Terminate})
+			} else {
+				equal(t, len(c.signals), 0)
+			}
 		})
 	}
 }

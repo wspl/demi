@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -82,8 +83,9 @@ func TestUploadNativeMediumThenRecord(t *testing.T) {
 	if blobs.Holds(upload.SHA256) {
 		t.Fatal("unchanged upload stored again")
 	}
-	view, missing := store.NewModelView(0, []core.Block{&core.UserBlock{Content: blocks}}, held)
-	if len(missing) != 0 || !bytes.Equal(view.Held(ref.Ref).(*store.HeldBytes).Bytes, png) {
+	var expected store.HeldMedia
+	expected.Hold(ref.Ref, png)
+	if !reflect.DeepEqual(held, expected) {
 		t.Fatal("image bytes not held")
 	}
 	pdf, _, err := store.UploadBlocks(t.Context(), testUpload(t, "paper.pdf", "application/pdf", []byte("%PDF-1.7")), blobs)
@@ -104,9 +106,7 @@ func TestUploadNativeMediumThenRecord(t *testing.T) {
 	if record.Name != "notes.txt" || record.SizeBytes != 7 || record.Snippet == nil || *record.Snippet != "hello" {
 		t.Fatalf("text record: %#v", record)
 	}
-	// An unrelated image still needs reading: text brought no held bytes.
-	_, missing = store.NewModelView(0, []core.Block{&core.UserBlock{Content: blocks}}, held)
-	if len(missing) != 1 {
+	if !reflect.DeepEqual(held, store.HeldMedia{}) {
 		t.Fatal("text held media")
 	}
 	if got := store.Unavailable("upload-9").(*core.UserText).Text; got != "[attachment upload-9 is not available]" {
@@ -129,8 +129,9 @@ func TestUploadedImageFitsOrStaysRecord(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("fitted blob: %v %v", found, err)
 	}
-	view, missing := store.NewModelView(0, []core.Block{&core.UserBlock{Content: blocks}}, held)
-	if len(missing) != 0 || !bytes.Equal(view.Held(source.Ref).(*store.HeldBytes).Bytes, data) {
+	var expected store.HeldMedia
+	expected.Hold(source.Ref, data)
+	if !reflect.DeepEqual(held, expected) {
 		t.Fatal("wrong held fitted image")
 	}
 	record := blocks[1].(*core.UserAttachment)
@@ -144,8 +145,7 @@ func TestUploadedImageFitsOrStaysRecord(t *testing.T) {
 	if _, ok := broken[0].(*core.UserAttachment); !ok {
 		t.Fatal("broken image has a native medium")
 	}
-	_, missing = store.NewModelView(0, []core.Block{&core.UserBlock{Content: blocks}}, held)
-	if len(missing) != 1 {
+	if !reflect.DeepEqual(held, store.HeldMedia{}) {
 		t.Fatal("broken image held bytes")
 	}
 }

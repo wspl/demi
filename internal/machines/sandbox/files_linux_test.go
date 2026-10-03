@@ -54,10 +54,12 @@ func TestRecordNamesBootAndSlot(t *testing.T) {
 }
 
 func TestCredentialModesIgnoreUmask(t *testing.T) {
-	isolatedSandbox(t, func(ctx context.Context) {
-		// CLONE_FS was unshared by systemtest, so this mask affects only this thread.
-		previous := syscall.Umask(077)
-		defer syscall.Umask(previous)
+	job := func(ctx context.Context) {
+		// Only the isolated root scenario changes the thread-local mask.
+		if os.Geteuid() == 0 {
+			previous := syscall.Umask(077)
+			defer syscall.Umask(previous)
+		}
 		directory := NewRuntimeDirectory(t.TempDir(), "demi-test")
 		if err := directory.Create(ctx); err != nil {
 			t.Fatal(err)
@@ -66,7 +68,7 @@ func TestCredentialModesIgnoreUmask(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := directory.WriteCredentials(ctx, boot, []netip.Addr{netip.MustParseAddr("1.1.1.1")}); err != nil {
+		if err := directory.WriteCredentials(ctx, boot, []netip.Addr{netip.MustParseAddr("1.1.1.1")}); err != nil && !(os.Geteuid() != 0 && errors.Is(err, os.ErrPermission)) {
 			t.Fatal(err)
 		}
 		for path, mode := range map[string]os.FileMode{directory.Boot(): 0400, directory.Resolver(): 0444, directory.Hosts(): 0444, directory.Root(): 0700} {
@@ -83,7 +85,7 @@ func TestCredentialModesIgnoreUmask(t *testing.T) {
 			t.Fatal(err)
 		}
 		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || stat.Uid != system.UserID || stat.Gid != system.UserID {
+		if os.Geteuid() == 0 && (!ok || stat.Uid != system.UserID || stat.Gid != system.UserID) {
 			t.Fatalf("credential ownership: %+v", info.Sys())
 		}
 		resolver, err := os.ReadFile(directory.Resolver())
@@ -98,7 +100,12 @@ func TestCredentialModesIgnoreUmask(t *testing.T) {
 		if err != nil || decoded != boot {
 			t.Fatalf("boot round trip failed: %v", err)
 		}
-	})
+	}
+	if os.Geteuid() == 0 {
+		isolatedSandbox(t, job)
+	} else {
+		job(t.Context())
+	}
 }
 
 func TestRemovalPreservesMountPointContents(t *testing.T) {

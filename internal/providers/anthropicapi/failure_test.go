@@ -52,7 +52,7 @@ func TestRefusalStatusCode(t *testing.T) {
 func TestNoAnswer(t *testing.T) {
 	v := providertest.StartVendor(t)
 	r := testRuntime(t, v, provider.VendorPolicy{})
-	endpoint := v.URL("/v1")
+	endpoint := v.URL("")
 	v.Close()
 	failure := onlyFailure(t, providertest.Run(t.Context(), t, r, providertest.InferenceRequest()))
 	if failure.Code == nil || *failure.Code != provider.Overloaded || !strings.HasPrefix(failure.Message, "Anthropic API request failed: ") || strings.Contains(failure.Message, strings.TrimPrefix(endpoint, "http://")) || failure.Diagnostics.Source != "transport" {

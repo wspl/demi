@@ -372,7 +372,6 @@ func TestStopEndsTheCLIsStreamAndEachNewProcessReplaysTheTranscriptForItsModelAn
 	w := realAccountStart(ctx, t)
 	socket := w.conversation(ctx, t)
 	stream := providertest.EventStream(conversationMessageStart(`{"input_tokens":12,"output_tokens":1}`) + conversationTextBlock(t, 0, "The long answer begins"))
-	stream.Chunks[0] = bytes.TrimSuffix(stream.Chunks[0], []byte(anthropicEvent("content_block_stop", `{"type":"content_block_stop","index":0}`)))
 	stream.Ending = providertest.Open
 	w.vendor.RespondAt("/v1/messages", stream)
 	if err := socket.Send(ctx, &framewire.SendFrame{MessageID: "5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a21", Content: []framewire.ClientContent{&framewire.TextContent{Text: "Write a long answer."}}}); err != nil {

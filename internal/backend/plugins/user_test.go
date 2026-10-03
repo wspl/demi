@@ -54,6 +54,18 @@ func TestUserChoicesCommandsAndInstances(t *testing.T) {
 	if err != nil || set.Revision != "notes" || len(set.Profiles) != 1 {
 		t.Fatalf("%+v %v", set, err)
 	}
+	var roots []string
+	for _, root := range set.Commands.Declarations() {
+		roots = append(roots, declare.Name(root))
+	}
+	if !reflect.DeepEqual(roots, []string{"demi", "lint"}) {
+		t.Fatal(roots)
+	}
+	for _, taught := range []string{"host: Product.", "notes: A group."} {
+		if !strings.Contains(set.Commands.RenderHelp(), taught) {
+			t.Fatal(set.Commands.RenderHelp())
+		}
+	}
 	for _, path := range [][]string{{"demi", "notes", "run"}, {"lint", "run"}} {
 		out, code, err := runCommand(t.Context(), set, path...)
 		wantPath := path

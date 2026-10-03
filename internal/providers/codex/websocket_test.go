@@ -42,8 +42,8 @@ func TestWebSocketRequest(t *testing.T) {
 	equal(t, connection.Headers.Get("Openai-Beta"), "responses_websockets=2026-02-06")
 	equal(t, connection.Headers.Get("Authorization"), "Bearer "+freshToken(t))
 	equal(t, connection.Headers.Get("Chatgpt-Account-Id"), "acct-1")
-	equal(t, connection.Headers.Get("Accept"), "")
-	equal(t, connection.Headers.Get("Content-Type"), "")
+	equal(t, connection.Headers.Values("Accept"), []string(nil))
+	equal(t, connection.Headers.Values("Content-Type"), []string(nil))
 	equal(t, len(connection.Received), 1)
 	body := jsonObject(t, []byte(connection.Received[0]))
 	equal(t, body["type"], "response.create")
@@ -80,6 +80,21 @@ func TestWebSocketUnreachableCooldown(t *testing.T) {
 	socket := codextest.Start(t, []codextest.Script{{Handshake: codextest.Disconnect}, {Steps: []codextest.Step{{Text: wsDone}}}}, v.URL(""))
 	clock := providertest.NewManualClock(now)
 	p := socketProvider(t, socket, v.URL(""), codex.Auto, nil, clock)
+	runtime, err := p.Runtime(provider.RuntimeEnv{HTTP: socket.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := runtime.Close(t.Context()); err != nil {
+			t.Error(err)
+		}
+	}()
+	other := runtime.Fresh()
+	defer func() {
+		if err := other.Close(t.Context()); err != nil {
+			t.Error(err)
+		}
+	}()
 	for i := range 3 {
 		if i == 1 {
 			if err := clock.Advance(599 * time.Second); err != nil {
@@ -91,12 +106,17 @@ func TestWebSocketUnreachableCooldown(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		equal(t, run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest()), []provider.Event{&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}})
+		selected := runtime
+		if i > 0 {
+			selected = other
+		}
+		equal(t, providertest.Run(t.Context(), t, selected, providertest.InferenceRequest()), []provider.Event{&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}})
 		expected := 1
 		if i == 2 {
 			expected = 2
 		}
 		equal(t, len(socket.Connections()), expected)
+		equal(t, len(v.Requests()), min(i+1, 2))
 	}
 	equal(t, len(v.Requests()), 2)
 }
@@ -132,6 +152,9 @@ func TestWebSocketIdleClose(t *testing.T) {
 		p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, &idle, providertest.FixedClock(now))
 		events := run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest())
 		equal(t, len(events), 2)
+		if _, ok := events[0].(*provider.TextDelta); !ok {
+			t.Fatalf("first event: %#v", events[0])
+		}
 		f := failure(t, events[1:])
 		equal(t, f.Message, "Codex WebSocket stream idled for 100ms")
 		equal(t, *f.Code, provider.Overloaded)

@@ -216,6 +216,24 @@ func TestStoppedDeviceOperationsAndShutdown(t *testing.T) {
 	if _, err = m.Handle(t.Context(), &machinewire.Hibernate{Params: machinewire.HibernateParams{DeviceID: "dev/1"}}); err == nil {
 		t.Fatal("invalid device accepted")
 	}
+
+	t.Run("reconcile", func(t *testing.T) {
+		if !*rootTests {
+			t.Skip("requires -machines-root and isolated Linux networking")
+		}
+		err := systemtest.Isolate(t.Context(), func(ctx context.Context) error {
+			core, err := NewCore(m.core.Config, m.core.Tools)
+			if err != nil {
+				return err
+			}
+			m.core = core
+			_, err = m.Handle(ctx, &machinewire.Reconcile{Params: machinewire.ReconcileParams{}})
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
 	if err = m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}

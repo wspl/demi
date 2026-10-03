@@ -75,3 +75,9 @@ func (a *activity) CloseWrite() error {
 	}
 	return nil
 }
+
+func (a *activity) allowHalfClose() {
+	if conn, ok := a.Conn.(interface{ allowHalfClose() }); ok {
+		conn.allowHalfClose()
+	}
+}

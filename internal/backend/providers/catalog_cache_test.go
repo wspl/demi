@@ -10,48 +10,27 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
 )
 
-// cacheMemory replaces SQLite only for virtual-time scenarios. A separate test
-// below verifies persistence and corrupt-record handling through the real store.
-type cacheMemory struct {
-	mu      sync.Mutex
-	records map[webapi.ProviderID]database.CatalogRecord
-	writes  int
+// catalogStoreFixture opens the same SQLite boundary used by the Rust scenarios.
+// Open it outside synctest so database workers and IO do not advance fake time.
+func catalogStoreFixture(t *testing.T) *database.ControlService {
+	t.Helper()
+	vault, owner := vaultFixture(t)
+	_, err := vault.control.InsertProvider(t.Context(), database.NewProvider{ID: "provider", Owner: owner.ID, Family: "scripted", Kind: "api_key", Label: "Scripted", Config: new([]byte("sealed"))}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return vault.control
 }
 
-func (s *cacheMemory) CatalogRecord(_ context.Context, id webapi.ProviderID) (*database.CatalogRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	record, ok := s.records[id]
-	if !ok {
-		return nil, nil
-	}
-	return &record, nil
-}
-func (s *cacheMemory) PutCatalogRecord(ctx context.Context, id webapi.ProviderID, r database.CatalogRecord) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	s.records[id] = r
-	s.writes++
-	return nil
-}
-func (s *cacheMemory) DeleteCatalogRecord(_ context.Context, id webapi.ProviderID) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.records, id)
-	return nil
-}
-func memoryCache(t *testing.T, store *cacheMemory) *ModelCatalogCache {
+// storedCache owns a catalog cache backed by the scenario's SQLite database.
+func storedCache(t *testing.T, store *database.ControlService) *ModelCatalogCache {
 	t.Helper()
-	cache := NewModelCatalogCache(nil, core.SystemClock{})
-	cache.control = store
+	cache := NewModelCatalogCache(store, core.SystemClock{})
 	t.Cleanup(func() {
 		if err := cache.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -60,7 +39,7 @@ func memoryCache(t *testing.T, store *cacheMemory) *ModelCatalogCache {
 	return cache
 }
 func catalog(name string) core.ProviderModelList {
-	return core.ProviderModelList{Models: []core.ProviderModel{{ID: "model", DisplayName: name, ServiceTiers: []core.ServiceTier{}}}, Warnings: []string{}, SourceFetchedAt: core.UnixEpoch}
+	return core.ProviderModelList{Models: []core.ProviderModel{{ID: "model", DisplayName: name, ContextWindow: new(uint32(1000)), SupportsTools: new(true), SupportsAttachments: new(false), SupportsReasoning: new(false), ServiceTiers: []core.ServiceTier{}}}, Warnings: []string{}, SourceFetchedAt: "2026-09-13T00:00:00.000Z"}
 }
 func answering(reads *atomic.Int32, list core.ProviderModelList, err error) CatalogFetch {
 	return func(context.Context) (core.ProviderModelList, error) { reads.Add(1); return list, err }
@@ -76,9 +55,9 @@ func readCatalog(t *testing.T, c *ModelCatalogCache, key string, fetch CatalogFe
 func catalogName(list core.ProviderModelList) string { return list.Models[0].DisplayName }
 
 func TestFreshCatalogServesMemoryAndStorageAndExpiredRefreshesOnce(t *testing.T) {
+	store := catalogStoreFixture(t)
 	synctest.Test(t, func(t *testing.T) {
-		store := &cacheMemory{records: make(map[webapi.ProviderID]database.CatalogRecord)}
-		cache := memoryCache(t, store)
+		cache := storedCache(t, store)
 		var reads atomic.Int32
 		var workers sync.WaitGroup
 		for range 8 {
@@ -97,7 +76,7 @@ func TestFreshCatalogServesMemoryAndStorageAndExpiredRefreshesOnce(t *testing.T)
 		if err := cache.Close(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		cache = memoryCache(t, store)
+		cache = storedCache(t, store)
 		if got := readCatalog(t, cache, "key", answering(&reads, catalog("Other"), nil), false); catalogName(got) != "First" || reads.Load() != 1 {
 			t.Fatal("restart refetched", got)
 		}
@@ -137,30 +116,38 @@ func TestFreshCatalogServesMemoryAndStorageAndExpiredRefreshesOnce(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if record.CheckedAt != cache.clock.Now() || catalogName(record.Catalog) != "Updated" {
+		if record == nil || record.CheckedAt != cache.clock.Now() || catalogName(record.Catalog) != "Updated" {
 			t.Fatal(record)
 		}
 	})
 }
 
 func TestFailedRefreshKeepsRecordAndHoldsOffUnlessForced(t *testing.T) {
+	store := catalogStoreFixture(t)
 	synctest.Test(t, func(t *testing.T) {
-		store := &cacheMemory{records: make(map[webapi.ProviderID]database.CatalogRecord)}
-		cache := memoryCache(t, store)
+		cache := storedCache(t, store)
 		var reads, failures atomic.Int32
 		readCatalog(t, cache, "key", answering(&reads, catalog("First"), nil), false)
-		kept, _ := store.CatalogRecord(t.Context(), "provider")
+		kept, err := store.CatalogRecord(t.Context(), "provider")
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(15 * time.Minute)
 		failed := answering(&failures, core.ProviderModelList{}, errors.New("offline"))
 		got := readCatalog(t, cache, "key", failed, true)
 		if !got.Stale || catalogName(got) != "First" || len(got.Warnings) != 1 || got.Warnings[0] != "offline" {
 			t.Fatal(got)
 		}
-		stored, _ := store.CatalogRecord(t.Context(), "provider")
-		if stored.CheckedAt != kept.CheckedAt {
-			t.Fatal("failure replaced checked time")
+		stored, err := store.CatalogRecord(t.Context(), "provider")
+		if err != nil {
+			t.Fatal(err)
 		}
-		readCatalog(t, cache, "key", failed, false)
+		if diff := cmp.Diff(kept, stored); diff != "" {
+			t.Fatal("failure replaced record", diff)
+		}
+		if held := readCatalog(t, cache, "key", failed, false); !held.Stale {
+			t.Fatal("held record is not stale")
+		}
 		time.Sleep(59 * time.Second)
 		readCatalog(t, cache, "key", failed, false)
 		if failures.Load() != 1 {
@@ -185,9 +172,9 @@ func TestFailedRefreshKeepsRecordAndHoldsOffUnlessForced(t *testing.T) {
 }
 
 func TestChangedKeyAndInvalidationCancelRefreshWithoutWriting(t *testing.T) {
+	store := catalogStoreFixture(t)
 	synctest.Test(t, func(t *testing.T) {
-		store := &cacheMemory{records: make(map[webapi.ProviderID]database.CatalogRecord)}
-		cache := memoryCache(t, store)
+		cache := storedCache(t, store)
 		var reads atomic.Int32
 		started := make(chan struct{})
 		stopped := make(chan struct{})
@@ -210,8 +197,8 @@ func TestChangedKeyAndInvalidationCancelRefreshWithoutWriting(t *testing.T) {
 		if err := <-result; err == nil {
 			t.Fatal("invalidated read succeeded")
 		}
-		if store.writes != 0 {
-			t.Fatal("canceled refresh wrote")
+		if record, err := store.CatalogRecord(t.Context(), "provider"); err != nil || record != nil {
+			t.Fatalf("canceled refresh stored: %v, %v", record, err)
 		}
 		got := readCatalog(t, cache, "new-account", answering(&reads, catalog("New"), nil), false)
 		if catalogName(got) != "New" {
@@ -221,8 +208,11 @@ func TestChangedKeyAndInvalidationCancelRefreshWithoutWriting(t *testing.T) {
 		if catalogName(got) != "Changed" || reads.Load() != 3 {
 			t.Fatal(got, reads.Load())
 		}
-		stored, _ := store.CatalogRecord(t.Context(), "provider")
-		if stored.Key != "changed-config" {
+		stored, err := store.CatalogRecord(t.Context(), "provider")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored == nil || stored.Key != "changed-config" || catalogName(stored.Catalog) != "Changed" {
 			t.Fatal(stored)
 		}
 		// A changed key also cancels an in-flight generation, not only a cached one.
@@ -249,17 +239,25 @@ func TestChangedKeyAndInvalidationCancelRefreshWithoutWriting(t *testing.T) {
 		if err := cache.Invalidate(t.Context(), "provider"); err != nil {
 			t.Fatal(err)
 		}
-		stored, _ = store.CatalogRecord(t.Context(), "provider")
-		if stored != nil {
-			t.Fatal("invalidation kept record")
+		stored, err = store.CatalogRecord(t.Context(), "provider")
+		if err != nil || stored != nil {
+			t.Fatalf("invalidation kept record: %v, %v", stored, err)
+		}
+		readCatalog(t, cache, "after-invalidation", answering(&reads, catalog("To delete"), nil), false)
+		if err := store.DeleteProvider(t.Context(), "provider"); err != nil {
+			t.Fatal(err)
+		}
+		stored, err = store.CatalogRecord(t.Context(), "provider")
+		if err != nil || stored != nil {
+			t.Fatalf("provider deletion kept catalog: %v, %v", stored, err)
 		}
 	})
 }
 
 func TestColdFailuresInvalidAnswersTimeoutAndClose(t *testing.T) {
+	store := catalogStoreFixture(t)
 	synctest.Test(t, func(t *testing.T) {
-		store := &cacheMemory{records: make(map[webapi.ProviderID]database.CatalogRecord)}
-		cache := memoryCache(t, store)
+		cache := storedCache(t, store)
 		var reads atomic.Int32
 		invalid := catalog("Invalid")
 		zero := uint32(0)
@@ -274,12 +272,12 @@ func TestColdFailuresInvalidAnswersTimeoutAndClose(t *testing.T) {
 		}{{core.ProviderModelList{}, errors.New("offline"), "offline"}, {invalid, nil, "cannot be read"}, {stale, nil, stale.Warnings[0]}}
 		for _, c := range cases {
 			_, err := cache.Read(t.Context(), "provider", "key", answering(&reads, c.list, c.err), true)
-			if err == nil || !strings.Contains(err.Error(), c.want) {
+			if err == nil || (c.want == "cannot be read" && !strings.Contains(err.Error(), c.want)) || (c.want != "cannot be read" && err.Error() != c.want) {
 				t.Fatalf("%v, want %s", err, c.want)
 			}
 		}
-		if store.writes != 0 {
-			t.Fatal("unusable answer stored")
+		if record, err := store.CatalogRecord(t.Context(), "provider"); err != nil || record != nil {
+			t.Fatalf("unusable answer stored: %v, %v", record, err)
 		}
 		stopped := make(chan struct{})
 		before := time.Now()
@@ -317,9 +315,9 @@ func TestColdFailuresInvalidAnswersTimeoutAndClose(t *testing.T) {
 }
 
 func TestCatalogRefreshOutlivesCanceledReader(t *testing.T) {
+	store := catalogStoreFixture(t)
 	synctest.Test(t, func(t *testing.T) {
-		store := &cacheMemory{records: make(map[webapi.ProviderID]database.CatalogRecord)}
-		cache := memoryCache(t, store)
+		cache := storedCache(t, store)
 		ctx, cancel := context.WithCancel(t.Context())
 		started := make(chan struct{})
 		answer := make(chan struct{})

@@ -37,8 +37,12 @@ func shardFixture(t *testing.T, names ...string) *fixture {
 	t.Helper()
 	services := usershardtest.StartServices(t)
 	owner := databasetest.Master(t.Context(), t, services.Control).ID
-	if _, err := services.Control.CreateConversation(t.Context(), owner, conversationID); err != nil {
+	created, err := services.Control.CreateConversation(t.Context(), owner, conversationID)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if _, ok := created.(*database.ConversationCreated); !ok {
+		t.Fatalf("conversation creation = %T", created)
 	}
 	shards := usershardtest.StartShards(t, services)
 	shard, err := shards.Of(t.Context(), owner)
@@ -198,6 +202,9 @@ func TestUserAlwaysReachesSameShard(t *testing.T) {
 				t.Error(err)
 				return
 			}
+			if shard.User() != f.owner {
+				t.Error("shard returned another user")
+			}
 			if shard != f.shard {
 				t.Error("user reached a second shard")
 			}
@@ -261,7 +268,13 @@ func TestSwitchDetachArchiveReleaseBeforeBindingChanges(t *testing.T) {
 		t.Fatal("unallocated Cloud released a device")
 	}
 	change(t, f, on(two))
+	if got := log.snapshot(); len(got) != 1 {
+		t.Fatalf("switch releases = %+v", got)
+	}
 	change(t, f, &database.ConversationRecordChange{Change: &database.RecordDetach{Device: one}})
+	if got := log.snapshot(); len(got) != 2 {
+		t.Fatalf("detach releases = %+v", got)
+	}
 	change(t, f, &database.ConversationRecordChange{Change: &database.RecordAttach{Host: database.AttachedHostRecord{Device: one, Name: "one"}}})
 	change(t, f, &database.ConversationRecordChange{Change: &database.RecordArchived{Archived: true}})
 	got := log.snapshot()
@@ -323,7 +336,11 @@ func TestSwitchRestartsIdleWindowAndArchiveEndsIt(t *testing.T) {
 		if err := log.until(t.Context(), 3); err != nil {
 			t.Fatal(err)
 		}
-		for _, release := range log.snapshot()[1:] {
+		later := log.snapshot()[1:]
+		if len(later) != 2 || later[0].Device != f.devices[1].ID || later[1].Device != f.devices[0].ID {
+			t.Fatalf("new binding releases = %+v", later)
+		}
+		for _, release := range later {
 			if release.At.Sub(switched) < time.Hour {
 				t.Fatal("old binding deadline released the new binding")
 			}

@@ -25,7 +25,9 @@ func TestRunCLIIdentity(t *testing.T) {
 	for name, want := range map[string]string{"authorization": "Bearer session-token", "x-xai-token-auth": "xai-grok-cli", "x-authenticateresponse": "authenticate-response", "x-grok-client-identifier": "grok-shell", "x-grok-client-mode": "interactive", "x-grok-client-version": "1.0.5", "x-userid": "user-1", "x-grok-user-id": "user-1", "x-email": "user@example.com", "x-grok-model-override": "grok-4.5", "x-grok-session-id": "session-1", "x-grok-conv-id": "session-1", "x-grok-req-id": "request-1", "x-grok-turn-idx": "turn-1", "accept": "text/event-stream"} {
 		equal(t, want, sent.Header(name))
 	}
-	equal(t, "", sent.Header("x-grok-client-surface"))
+	if _, present := sent.Headers[http.CanonicalHeaderKey("x-grok-client-surface")]; present {
+		t.Fatal("chat request included client surface header")
+	}
 }
 func TestChatReplayToolsEffort(t *testing.T) {
 	v := providertest.StartVendor(t)
@@ -93,7 +95,15 @@ func TestCancelStream(t *testing.T) {
 	response.Ending = providertest.Open
 	v.RespondAt(chatPath, response)
 	p, _ := fixture(t, v, nil)
-	r, _ := p.Runtime(provider.RuntimeEnv{HTTP: p.http})
+	r, err := p.Runtime(provider.RuntimeEnv{HTTP: p.http})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := r.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	reader := providertest.NewEventReader(ctx, t, func(ctx context.Context) provider.Run { return r.Run(ctx, providertest.InferenceRequest()) })

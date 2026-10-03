@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,6 +71,25 @@ func WaitFile(ctx context.Context, path string, ready func([]byte) bool) (err er
 		case err := <-watcher.Errors:
 			return err
 		case <-watcher.Events:
+		}
+	}
+}
+
+// WaitCount waits for a new manager call after a scenario's observation point.
+func (m *ScriptedManager) WaitCount(ctx context.Context, call string, count int) error {
+	for {
+		m.mu.Lock()
+		changed := m.changed
+		m.mu.Unlock()
+		if m.Count(call) >= count {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-m.done:
+			return net.ErrClosed
+		case <-changed:
 		}
 	}
 }

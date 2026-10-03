@@ -71,6 +71,10 @@ func TestMediaSniffing(t *testing.T) {
 			t.Errorf("%q: %v, want %s", tc.magic, got, tc.want)
 		}
 	}
+	png := core.SniffModelMediaType(append([]byte("\x89PNG"), make([]byte, 12)...))
+	if png == nil || png.Kind != core.ModelMediaKindImage || png.Extension != core.FileExtensionPNG {
+		t.Fatalf("PNG facts: %+v", png)
+	}
 	if core.SniffModelMediaType([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00")) != nil {
 		t.Fatal("short header recognized")
 	}
@@ -96,10 +100,10 @@ func TestModelMediaSupport(t *testing.T) {
 		native, video bool
 	}{
 		{new([]core.FileExtension{"png", "jpg", "jpeg", "gif", "webp"}), "image/png", true, false},
-		{new([]core.FileExtension{"png"}), "video/mp4", false, false},
-		{new([]core.FileExtension{"pdf"}), "application/pdf", false, false},
+		{new([]core.FileExtension{"png", "jpg", "jpeg", "gif", "webp"}), "video/mp4", false, false},
+		{new([]core.FileExtension{"png", "jpg", "jpeg", "gif", "webp"}), "application/pdf", false, false},
 		{new([]core.FileExtension{"png", "mp4", "mov", "webm", "m4v"}), "video/quicktime", true, true},
-		{new([]core.FileExtension{"mp4"}), "video/mp4", true, true},
+		{new([]core.FileExtension{"png", "mp4", "mov", "webm", "m4v"}), "video/mp4", true, true},
 		{new([]core.FileExtension{"jpg"}), "image/jpeg", true, false},
 		{new([]core.FileExtension{}), "image/png", false, false}, {nil, "image/png", false, false},
 	} {
@@ -111,7 +115,7 @@ func TestModelMediaSupport(t *testing.T) {
 }
 
 func TestAttachmentTag(t *testing.T) {
-	got := core.AttachmentTag(core.Attachment{Name: `notes "v2" <&>.md`, Path: `/home/demi/.demi/attachments/c1/notes "v2" <&>.md`, MediaType: "text/markdown", SizeBytes: 82, Snippet: new("never rendered")})
+	got := core.AttachmentTag(core.Attachment{Name: `notes "v2" <&>.md`, Path: `/home/demi/.demi/attachments/c1/notes "v2" <&>.md`, MediaType: "text/markdown", SizeBytes: 82, SHA256: core.BlobRefOf([]byte("test")), Snippet: new("never rendered")})
 	want := `<attachment name="notes &quot;v2&quot; &lt;&amp;&gt;.md" type="text/markdown" size="82" path="/home/demi/.demi/attachments/c1/notes &quot;v2&quot; &lt;&amp;&gt;.md"/>`
 	if got != want {
 		t.Fatalf("%s", got)
@@ -120,7 +124,7 @@ func TestAttachmentTag(t *testing.T) {
 
 func TestJavaScriptWhitespace(t *testing.T) {
 	for _, tc := range []struct{ input, trimmed string }{
-		{"", ""}, {" \t\r\n", ""}, {"\ufeff\u3000\u00a0", ""}, {"\u0085", "\u0085"}, {" a ", "a"},
+		{" \t ", ""}, {"", ""}, {" \t\r\n", ""}, {"\ufeff\u3000\u00a0", ""}, {"\u0085", "\u0085"}, {" a ", "a"},
 		{"\ufeff  New name \t\r\n\u3000", "New name"}, {"\u0085name\u0085", "\u0085name\u0085"},
 	} {
 		if core.Trim(tc.input) != tc.trimmed || core.IsBlank(tc.input) != (tc.trimmed == "") {

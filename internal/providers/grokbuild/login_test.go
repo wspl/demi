@@ -3,8 +3,10 @@ package grokbuild
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -77,14 +79,11 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 			t.Fatal(err)
 		}
 		equal(t, account.ID, *active)
-		s := loginStored(t, pool, account.ID)
-		equal(t, "at_1", s.AccessToken.Expose())
-		equal(t, "rt_1", s.RefreshToken.Expose())
-		equal(t, core.Timestamp("2026-09-18T15:00:00.000Z"), *s.ExpiresAt)
-		equal(t, v.URL("/"), string(s.Issuer))
-		equal(t, clientID, s.ClientID)
-		equal(t, "user_1", *s.UserID)
-		equal(t, "g@example.com", *s.Email)
+		entry, err := pool.Document(account.ID).Read(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		equal(t, jsonValue(t, fmt.Sprintf(`{"accessToken":"at_1","refreshToken":"rt_1","expiresAt":"2026-09-18T15:00:00.000Z","issuer":%q,"clientId":"b1a00492-073a-47ea-816f-4c329264a828","userId":"user_1","email":"g@example.com"}`, v.URL("/"))), jsonValue(t, entry.Text))
 		listed, err := pool.List(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -95,6 +94,7 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		for i, path := range []string{"/oauth2/device/code", "/oauth2/token", "/oauth2/token", "/v1/user"} {
 			equal(t, path, requests[i].URI)
 		}
+
 		form, err := url.ParseQuery(string(requests[0].Body))
 		if err != nil {
 			t.Fatal(err)
@@ -113,6 +113,28 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		equal(t, "xai-grok-cli", requests[3].Header("x-xai-token-auth"))
 		equal(t, "interactive", requests[3].Header("x-grok-client-mode"))
 	})
+	requests := v.Requests()
+	// Rust wrote the fields in insertion order; Go's url.Values.Encode sorts
+	// them. Field order means nothing to an OAuth server (RFC 6749 § 4.1.3,
+	// RFC 8628 § 3.4), so the tech lead accepted the order as a normalization:
+	// the bodies must hold exactly Rust's fields, each once, with its values.
+	t.Run("form fields", func(t *testing.T) {
+		const id = "b1a00492-073a-47ea-816f-4c329264a828"
+		const scopes = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write workspaces:read workspaces:write"
+		forms := []url.Values{
+			{"client_id": {id}, "scope": {scopes}, "referrer": {"grok-build"}},
+			{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "device_code": {"dev_code_1"}, "client_id": {id}},
+		}
+		for i, want := range forms {
+			got, err := url.ParseQuery(string(requests[i].Body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("form %d: got %v; want %v", i, got, want)
+			}
+		}
+	})
 }
 func TestTeamLoginIdentity(t *testing.T) {
 	v := providertest.StartVendor(t)
@@ -130,11 +152,15 @@ func TestTeamLoginIdentity(t *testing.T) {
 			t.Fatal(err)
 		}
 		equal(t, "team-123", account.Label)
-		s := loginStored(t, pool, account.ID)
-		equal(t, "team-123", *s.UserID)
-		equal(t, &principal{Kind: "Team", ID: "team-123"}, s.Principal)
-		if s.Email != nil {
-			t.Fatal("team keeps member email")
+		entry, err := pool.Document(account.ID).Read(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		document := jsonValue(t, entry.Text).(map[string]any)
+		equal(t, "team-123", document["userId"])
+		equal(t, jsonValue(t, `{"kind":"Team","id":"team-123"}`), document["principal"])
+		if _, present := document["email"]; present {
+			t.Fatal("team document includes email")
 		}
 	})
 }
@@ -167,14 +193,19 @@ func TestLoginTenMinuteDeadline(t *testing.T) {
 	p := testProvider(v, pool, nil, client)
 	synctest.Test(t, func(t *testing.T) {
 		started := time.Now()
-		var shown core.LoginPending
-		_, err := p.Accounts().Login(context.Background(), func(p core.LoginPending) { shown = p })
+		var shown []core.LoginPending
+		_, err := p.Accounts().Login(context.Background(), func(p core.LoginPending) { shown = append(shown, p) })
 		if err == nil {
 			t.Fatal("unconfirmed login succeeded")
 		}
-		equal(t, "Grok device login timed out before the user confirmed", err.Error())
+		var failure *provider.LoginError
+		if !errors.As(err, &failure) || failure.Unavailable {
+			t.Fatalf("expected failed login: %v", err)
+		}
+		equal(t, "Grok device login timed out before the user confirmed", failure.Error())
 		equal(t, 600*time.Second, time.Since(started))
-		equal(t, core.Timestamp("2026-09-18T14:10:00.000Z"), *shown.ExpiresAt)
+		equal(t, 1, len(shown))
+		equal(t, core.Timestamp("2026-09-18T14:10:00.000Z"), *shown[0].ExpiresAt)
 		equal(t, 10, len(v.Requests()))
 		equal(t, 0, len(pool.Entries()))
 	})
@@ -198,7 +229,11 @@ func TestRefusedAndUnsafeLogin(t *testing.T) {
 			if err == nil {
 				t.Fatal("login succeeded")
 			}
-			equal(t, want, err.Error())
+			var failure *provider.LoginError
+			if !errors.As(err, &failure) || failure.Unavailable {
+				t.Fatalf("expected failed login: %v", err)
+			}
+			equal(t, want, failure.Error())
 		}
 		equal(t, 0, len(pool.Entries()))
 	})
@@ -218,6 +253,7 @@ func TestCancelPendingLogin(t *testing.T) {
 		}
 		time.Sleep(time.Minute)
 		equal(t, 1, len(v.Requests()))
+		equal(t, "/oauth2/device/code", v.Requests()[0].URI)
 		equal(t, 0, len(pool.Entries()))
 	})
 }
@@ -257,9 +293,14 @@ func TestLoginLongPollIntervalDeadline(t *testing.T) {
 		if err == nil {
 			t.Fatal("unconfirmed login succeeded")
 		}
-		equal(t, "Grok device login timed out before the user confirmed", err.Error())
+		var failure *provider.LoginError
+		if !errors.As(err, &failure) || failure.Unavailable {
+			t.Fatalf("expected failed login: %v", err)
+		}
+		equal(t, "Grok device login timed out before the user confirmed", failure.Error())
 		equal(t, 600*time.Second, time.Since(started))
 		equal(t, 1, len(v.Requests()))
+		equal(t, "/oauth2/device/code", v.Requests()[0].URI)
 		equal(t, 0, len(pool.Entries()))
 	})
 }
