@@ -33,14 +33,14 @@ func PrepareCgroups(ctx context.Context) error {
 		return &MissingControllersError{Missing: missing}
 	}
 	enable := []byte("+cpu +memory +pids")
-	if err := os.WriteFile(filepath.Join(cgroupRoot, "cgroup.subtree_control"), enable, 0666); err != nil {
+	if err := os.WriteFile(filepath.Join(cgroupRoot, "cgroup.subtree_control"), enable, 0o666); err != nil {
 		return err
 	}
 	root := filepath.Join(cgroupRoot, "demi-cloud")
-	if err := os.MkdirAll(root, 0777); err != nil {
+	if err := os.MkdirAll(root, 0o777); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(root, "cgroup.subtree_control"), enable, 0666)
+	return os.WriteFile(filepath.Join(root, "cgroup.subtree_control"), enable, 0o666)
 }
 
 // Fence kills all writers in id's cgroup, waits for it to empty and removes
@@ -51,7 +51,7 @@ func Fence(ctx context.Context, id ID) error {
 		return err
 	}
 	group := filepath.Join(cgroupRoot, "demi-cloud", string(id))
-	if err := os.WriteFile(filepath.Join(group, "cgroup.kill"), []byte("1"), 0666); err != nil {
+	if err := os.WriteFile(filepath.Join(group, "cgroup.kill"), []byte("1"), 0o666); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}

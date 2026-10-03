@@ -38,7 +38,14 @@ func TestCancellationWritesNoDocument(t *testing.T) {
 			}
 			done := make(chan error, 1)
 			go func() {
-				_, err := handler.Invoke(ctx, cmdsdk.InvocationContext[commandwire.Invocation]{Request: commandwire.Invocation{Operation: operation, InvocationID: "invocation"}, Input: cmdsdk.NewInput(input), Output: output})
+				_, err := handler.Invoke(
+					ctx,
+					cmdsdk.InvocationContext[commandwire.Invocation]{
+						Request: commandwire.Invocation{Operation: operation, InvocationID: "invocation"},
+						Input:   cmdsdk.NewInput(input),
+						Output:  output,
+					},
+				)
 				done <- err
 			}()
 			if phase == "input" {

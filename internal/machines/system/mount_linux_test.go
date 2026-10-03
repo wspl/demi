@@ -72,11 +72,11 @@ func unmount(ctx context.Context, t *testing.T, target string) {
 
 func TestOverlayPreservesRootMode(t *testing.T) {
 	isolated(t, func(ctx context.Context) {
-		unix.Umask(0077)
+		unix.Umask(0o077)
 		dir := t.TempDir()
 		base, volume, root := filepath.Join(dir, "base"), filepath.Join(dir, "volume"), filepath.Join(dir, "root")
 		for _, path := range []string{base, volume, root} {
-			if err := os.Mkdir(path, 0700); err != nil {
+			if err := os.Mkdir(path, 0o700); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -84,7 +84,7 @@ func TestOverlayPreservesRootMode(t *testing.T) {
 		makeImage(ctx, t, image)
 		mountImage(ctx, t, image, volume)
 		defer unmount(ctx, t, volume)
-		for _, mode := range []os.FileMode{0755, 0500} {
+		for _, mode := range []os.FileMode{0o755, 0o500} {
 			func() {
 				if err := system.Overlay(ctx, base, volume, root); err != nil {
 					t.Fatal(err)
@@ -97,7 +97,7 @@ func TestOverlayPreservesRootMode(t *testing.T) {
 				if info.Mode().Perm() != mode {
 					t.Errorf("root mode = %o, want %o", info.Mode().Perm(), mode)
 				}
-				if err := os.Chmod(root, 0500); err != nil {
+				if err := os.Chmod(root, 0o500); err != nil {
 					t.Fatal(err)
 				}
 			}()
@@ -109,7 +109,7 @@ func TestLoopDetachesAfterUnmountAndFailedMount(t *testing.T) {
 	isolated(t, func(ctx context.Context) {
 		dir := t.TempDir()
 		image, target := filepath.Join(dir, "home.ext4"), filepath.Join(dir, "home")
-		if err := os.Mkdir(target, 0700); err != nil {
+		if err := os.Mkdir(target, 0o700); err != nil {
 			t.Fatal(err)
 		}
 		makeImage(ctx, t, image)
@@ -179,7 +179,7 @@ func TestBindReadOnlyAndDetach(t *testing.T) {
 		dir := t.TempDir()
 		source, target := filepath.Join(dir, "source"), filepath.Join(dir, "target")
 		for _, path := range []string{source, target} {
-			if err := os.Mkdir(path, 0700); err != nil {
+			if err := os.Mkdir(path, 0o700); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -187,7 +187,7 @@ func TestBindReadOnlyAndDetach(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer unmount(ctx, t, source)
-		if err := os.WriteFile(filepath.Join(source, "file"), []byte("kept"), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(source, "file"), []byte("kept"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := system.Bind(ctx, source, target); err != nil {
@@ -204,7 +204,7 @@ func TestBindReadOnlyAndDetach(t *testing.T) {
 		if err := system.RemountReadOnly(ctx, target); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(target, "new"), nil, 0600); !errors.Is(err, unix.EROFS) {
+		if err := os.WriteFile(filepath.Join(target, "new"), nil, 0o600); !errors.Is(err, unix.EROFS) {
 			t.Fatalf("write to read-only bind: %v", err)
 		}
 		if data, err := os.ReadFile(filepath.Join(target, "file")); err != nil || string(data) != "kept" {

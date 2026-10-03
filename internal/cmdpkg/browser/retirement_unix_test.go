@@ -23,12 +23,22 @@ import (
 // protect the stderr/exit race; no real Chrome or wall-time wait is needed.
 func TestLaunchAsRootSaysToRunRunnerAsOrdinaryUser(t *testing.T) {
 	launcher := filepath.Join(t.TempDir(), "root-chrome")
-	script := "#!/bin/sh\necho '[1:1:0927/010848.716678:ERROR:content/browser/zygote_host/zygote_host_impl_linux.cc:102] Running as root without --no-sandbox is not supported. See https://crbug.com/638180.' >&2\nexit 1\n"
-	if err := os.WriteFile(launcher, []byte(script), 0700); err != nil {
+	script := "#!/bin/sh\n" +
+		"echo '[1:1:0927/010848.716678:ERROR:content/browser/zygote_host/zygote_host_impl_linux.cc:102] " +
+		"Running as root without --no-sandbox is not supported." +
+		" See https://crbug.com/638180.' >&2\nexit 1\n"
+	if err := os.WriteFile(launcher, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	for range 8 {
-		environment, err := tabs.Launch(t.Context(), tabs.LaunchOptions{Executable: launcher, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}}, &tabstest.Numbers{})
+		environment, err := tabs.Launch(
+			t.Context(),
+			tabs.LaunchOptions{
+				Executable: launcher,
+				Locale:     commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+			},
+			&tabstest.Numbers{},
+		)
 		if environment != nil {
 			if cleanup := environment.Close(t.Context()); cleanup != nil {
 				t.Error(cleanup)
@@ -36,7 +46,8 @@ func TestLaunchAsRootSaysToRunRunnerAsOrdinaryUser(t *testing.T) {
 			t.Fatal("refused launch returned a browser")
 		}
 		var failure *cdp.BrowserError
-		if !errors.As(err, &failure) || failure.Kind != cdp.KindRoot || !strings.Contains(err.Error(), "run the runner as an ordinary user") {
+		if !errors.As(err, &failure) || failure.Kind != cdp.KindRoot ||
+			!strings.Contains(err.Error(), "run the runner as an ordinary user") {
 			t.Fatalf("root refusal: %v", err)
 		}
 	}
@@ -46,10 +57,10 @@ func TestCanceledLaunchReapsHelpersBeforeRemovingProfile(t *testing.T) {
 	root := t.TempDir()
 	launcher := filepath.Join(root, "pending-chrome")
 	record := launcher + ".record"
-	if err := syscall.Mkfifo(record, 0600); err != nil {
+	if err := syscall.Mkfifo(record, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	pipe, err := os.OpenFile(record, os.O_RDWR, 0600)
+	pipe, err := os.OpenFile(record, os.O_RDWR, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,13 +70,20 @@ func TestCanceledLaunchReapsHelpersBeforeRemovingProfile(t *testing.T) {
 		}
 	}()
 	script := "#!/bin/sh\nsleep 120 &\nprintf '%s\\n' \"$$\" \"$!\" \"$@\" ready > \"$0.record\"\nwait\n"
-	if err := os.WriteFile(launcher, []byte(script), 0700); err != nil {
+	if err := os.WriteFile(launcher, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		environment, err := tabs.Launch(ctx, tabs.LaunchOptions{Executable: launcher, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}}, &tabstest.Numbers{})
+		environment, err := tabs.Launch(
+			ctx,
+			tabs.LaunchOptions{
+				Executable: launcher,
+				Locale:     commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+			},
+			&tabstest.Numbers{},
+		)
 		if environment != nil {
 			t.Error("cancelled launch returned an environment")
 			err = errors.Join(err, environment.Close(context.Background()))

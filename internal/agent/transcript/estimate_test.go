@@ -21,7 +21,11 @@ func estimate(t *testing.T, blocks []core.Block, window uint32) uint64 {
 }
 
 func TestLatestUsageAnchorsWithinContextWindow(t *testing.T) {
-	blocks := []core.Block{userBlock("u1", strings.Repeat("x", 40000)), textBlock("t", "reply"), responseBlock("r1", 1234)}
+	blocks := []core.Block{
+		userBlock("u1", strings.Repeat("x", 40000)),
+		textBlock("t", "reply"),
+		responseBlock("r1", 1234),
+	}
 	if got := estimate(t, blocks, 1000000); got != 1384 {
 		t.Fatal(got)
 	}
@@ -65,30 +69,79 @@ func TestMediaEstimateMatchesRequest(t *testing.T) {
 	user.Content = []core.UserContentBlock{
 		&core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(image), MediaType: "image/png"}},
 		&core.UserImage{Source: &core.MediaURL{URL: "https://example.com/a.png"}},
-		&core.UserDocument{Source: &core.DocumentRef{Ref: core.BlobRefOf(document), MediaType: "application/pdf", FileName: "doc.pdf"}},
+		&core.UserDocument{
+			Source: &core.DocumentRef{Ref: core.BlobRefOf(document), MediaType: "application/pdf", FileName: "doc.pdf"},
+		},
 	}
-	call := &core.ToolCallBlock{ToolName: "shoot", Input: "{}", Status: "completed", Output: []core.ToolResultContentBlock{&core.ToolImage{Source: &core.ToolMediaRef{Ref: core.BlobRefOf(screenshot), MediaType: "image/png"}}}}
+	call := &core.ToolCallBlock{
+		ToolName: "shoot",
+		Input:    "{}",
+		Status:   "completed",
+		Output: []core.ToolResultContentBlock{
+			&core.ToolImage{Source: &core.ToolMediaRef{Ref: core.BlobRefOf(screenshot), MediaType: "image/png"}},
+		},
+	}
 	blocks := []core.Block{user, call}
-	reads := storetest.ModelReading("stub", "reads", []core.FileExtension{core.FileExtensionPNG, core.FileExtensionPDF}).Model
+	reads := storetest.ModelReading(
+		"stub",
+		"reads",
+		[]core.FileExtension{core.FileExtensionPNG, core.FileExtensionPDF},
+	).Model
 	blind := storetest.TestModel().Model
 	unread := func(kind, name string) string {
 		return fmt.Sprintf("[%s:%s, not sent: the model does not accept it]", kind, name)
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		name   string
 		model  core.Model
 		limits provider.RequestLimits
 		want   [2]uint64
 	}{
-		{"native", reads, provider.RequestLimits{}, [2]uint64{transcript.TextTokens("image/png\nhttps://example.com/a.png\ndoc.pdf application/pdf") + 3000 + 1600 + 10000, transcript.TextTokens("shoot\n{}\nimage/png") + 1800}},
-		{"unsupported", blind, provider.RequestLimits{}, [2]uint64{transcript.TextTokens(unread("image", "image/png")+"\nhttps://example.com/a.png\n"+unread("document", "doc.pdf")) + 1600, transcript.TextTokens("shoot\n{}\n" + unread("image", "image/png"))}},
-		{"body limit", reads, provider.RequestLimits{BodyBytes: new(uint64(5000000))}, [2]uint64{transcript.TextTokens("[image:image/png, not sent: too large for the model's requests]\nhttps://example.com/a.png\ndoc.pdf application/pdf") + 1600 + 10000, transcript.TextTokens("shoot\n{}\nimage/png") + 1800}},
+		{
+			"native",
+			reads,
+			provider.RequestLimits{},
+			[2]uint64{
+				transcript.TextTokens("image/png\nhttps://example.com/a.png\ndoc.pdf application/pdf") +
+					3000 +
+					1600 +
+					10000,
+				transcript.TextTokens("shoot\n{}\nimage/png") +
+					1800,
+			},
+		},
+		{
+			"unsupported",
+			blind,
+			provider.RequestLimits{},
+			[2]uint64{
+				transcript.TextTokens(unread("image", "image/png")+
+					"\nhttps://example.com/a.png\n"+
+					unread("document", "doc.pdf")) +
+					1600,
+				transcript.TextTokens("shoot\n{}\n" +
+					unread("image", "image/png")),
+			},
+		},
+		{
+			"body limit",
+			reads,
+			provider.RequestLimits{BodyBytes: new(uint64(5000000))},
+			[2]uint64{
+				transcript.TextTokens("[image:image/png, not sent: too large for the model's "+
+					"requests]\nhttps://example.com/a.png\ndoc.pdf application/pdf") +
+					1600 +
+					10000,
+				transcript.TextTokens("shoot\n{}\nimage/png") +
+					1800,
+			},
+		},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			request := requestView(t, blocks, tc.model, held, tc.limits)
+		t.Run(scenario.name, func(t *testing.T) {
+			request := requestView(t, blocks, scenario.model, held, scenario.limits)
 			got := [2]uint64{transcript.BlockTokens(user, request), transcript.BlockTokens(call, request)}
-			if got != tc.want {
-				t.Fatalf("%v != %v", got, tc.want)
+			if got != scenario.want {
+				t.Fatalf("%v != %v", got, scenario.want)
 			}
 		})
 	}

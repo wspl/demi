@@ -20,7 +20,7 @@ func TestFrozenThawsEveryPath(t *testing.T) {
 		for _, name := range []string{"system", "home"} {
 			image, target := filepath.Join(dir, name+".ext4"), filepath.Join(dir, name)
 			makeImage(ctx, t, image)
-			if err := os.Mkdir(target, 0700); err != nil {
+			if err := os.Mkdir(target, 0o700); err != nil {
 				t.Fatal(err)
 			}
 			mountImage(ctx, t, image, target)
@@ -82,7 +82,7 @@ func TestFrozenThawsEveryPath(t *testing.T) {
 				if result, err := system.Thaw(ctx, mount); err != nil || result != system.NotFrozen {
 					t.Fatalf("after %s: thaw = %v, %v", path, result, err)
 				}
-				if err := os.WriteFile(filepath.Join(mount, "written"), []byte("after"), 0600); err != nil {
+				if err := os.WriteFile(filepath.Join(mount, "written"), []byte("after"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}

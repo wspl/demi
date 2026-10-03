@@ -10,10 +10,11 @@ import (
 )
 
 // Scope owns a test shell's interpreter tasks, child processes and IO adapters.
-// Its owner must Cancel and Finish at cleanup. Commands and Edits must be set
-// before starting work and must not change while the scope is in use.
+// Its owner must Cancel and Finish at cleanup.
 type Scope struct {
+	// Commands must be set before work starts and remain unchanged while in use.
 	Commands *process.JobCommands
+	// Edits must be set before work starts and remain unchanged while in use.
 	Edits    *cmdsdk.Recorder
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -51,9 +52,18 @@ func (s *Scope) Activity() *Activity { return &s.activity }
 // Start starts a login shell in this scope. Commands and Edits come from the
 // scope. The returned job has the same output consumption and Wait obligations
 // as process.JobShell.Start.
-func (s *Scope) Start(ctx context.Context, script, cwd string, env map[string]string, live bool) (process.ShellJob, error) {
+func (s *Scope) Start(
+	ctx context.Context,
+	script, cwd string,
+	env map[string]string,
+	live bool,
+) (process.ShellJob, error) {
 	ctx, finish := s.execution(ctx)
-	job, err := engine.StartJob(ctx, process.JobStart{Script: script, Cwd: cwd, Env: env, Live: live, Commands: s.Commands, Edits: s.Edits}, observer{&s.activity})
+	job, err := engine.StartJob(
+		ctx,
+		process.JobStart{Script: script, Cwd: cwd, Env: env, Live: live, Commands: s.Commands, Edits: s.Edits},
+		observer{&s.activity},
+	)
 	if err != nil {
 		finish()
 		return nil, err
@@ -142,8 +152,12 @@ func (a *Activity) wait(ctx context.Context, minChecks uint64) error {
 
 type observer struct{ activity *Activity }
 
-func (o observer) Check()            { o.update(0, 1) }
+// Check reports interpreter progress to the scope activity.
+func (o observer) Check() { o.update(0, 1) }
+
+// Waiting reports changes in interruptible IO waits to the scope activity.
 func (o observer) Waiting(delta int) { o.update(delta, 0) }
+
 func (o observer) update(waiting int, checks uint64) {
 	a := o.activity
 	a.mu.Lock()

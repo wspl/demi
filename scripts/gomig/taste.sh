@@ -38,9 +38,17 @@ main() {
       go run -exec "env GOOS=${goos}" "${LINT}" fmt -c .golangci-taste.yml "$@"
     fi
     echo "taste: ${goos}"
+    # Only the packages goos builds: a Linux-only package has no files on
+    # the other systems, as check.sh's per-target build finds.
+    local -a packages=()
+    local package
+    while IFS= read -r package; do
+      [[ -n "${package}" ]] && packages+=("${package}")
+    done < <(GOOS="${goos}" go list -e -f '{{if or .GoFiles .TestGoFiles .XTestGoFiles}}{{.Dir}}{{end}}' "$@")
+    ((${#packages[@]} > 0)) || continue
     # The linter is built for this machine and analyzes for goos.
     go run -exec "env GOOS=${goos}" "${LINT}" run --allow-parallel-runners --max-issues-per-linter=0 --max-same-issues=0 \
-      -c .golangci-taste.yml "$@"
+      -c .golangci-taste.yml "${packages[@]}"
   done
   echo 'taste: PASS'
 }

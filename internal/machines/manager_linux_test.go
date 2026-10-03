@@ -21,25 +21,49 @@ import (
 	"github.com/wspl/demi/internal/machinewire"
 )
 
-var rootTests = flag.Bool("machines-root", false, "run Cloud storage and installer scenarios as root with filesystem tools")
+var rootTests = flag.Bool(
+	"machines-root",
+	false,
+	"run Cloud storage and installer scenarios as root with filesystem tools",
+)
 
 // managerFixture exercises actual storage and workers independently of runtime processes.
 func managerFixture(t *testing.T) *Manager {
 	t.Helper()
-	config, err := ParseConfig(nil, []string{"DEMI_MANAGED_RUNSC=/nonexistent/runsc", "DEMI_MANAGED_IMAGE=/image", "DEMI_MANAGED_BACKEND_URL=http://203.0.113.10:3271", "DEMI_MANAGED_DNS=1.1.1.1", "DEMI_MACHINE_MANAGER_SOCKET=/socket", "DEMI_MACHINE_MANAGER_DATA=" + t.TempDir(), "DEMI_MANAGED_SYSTEM_MIB=32", "DEMI_MANAGED_HOME_MIB=32", "DEMI_MANAGED_SLOTS=8"})
+	config, err := ParseConfig(
+		nil,
+		[]string{
+			"DEMI_MANAGED_RUNSC=/nonexistent/runsc",
+			"DEMI_MANAGED_IMAGE=/image",
+			"DEMI_MANAGED_BACKEND_URL=http://203.0.113.10:3271",
+			"DEMI_MANAGED_DNS=1.1.1.1",
+			"DEMI_MACHINE_MANAGER_SOCKET=/socket",
+			"DEMI_MACHINE_MANAGER_DATA=" + t.TempDir(),
+			"DEMI_MANAGED_SYSTEM_MIB=32",
+			"DEMI_MANAGED_HOME_MIB=32",
+			"DEMI_MANAGED_SLOTS=8",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	core := &Core{Config: config, Store: storage.NewStore(config.Images()), Slots: network.NewPool(config.Subnet, config.Slots)}
+	core := &Core{
+		Config: config,
+		Store:  storage.NewStore(config.Images()),
+		Slots:  network.NewPool(config.Subnet, config.Slots),
+	}
 	base := machinewire.BaseVersion("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	root := filepath.Join(core.Store.Bases(), string(base), "rootfs/etc/skel")
 	for _, path := range []string{root, config.Working()} {
-		if err = os.MkdirAll(path, 0700); err != nil {
+		if err = os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for path, data := range map[string]string{filepath.Join(root, ".profile"): "export EDITOR=vi\n", filepath.Join(core.Store.Bases(), string(base), "manifest.json"): "{}"} {
-		if err = os.WriteFile(path, []byte(data), 0600); err != nil {
+	for path, data := range map[string]string{
+		filepath.Join(root, ".profile"):                                  "export EDITOR=vi\n",
+		filepath.Join(core.Store.Bases(), string(base), "manifest.json"): "{}",
+	} {
+		if err = os.WriteFile(path, []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -57,6 +81,7 @@ func managerFixture(t *testing.T) *Manager {
 	})
 	return m
 }
+
 func stateOf(t *testing.T, m *Manager) *machinewire.MachineImageState {
 	t.Helper()
 	state, err := m.core.Store.Read(t.Context(), "dev-1")
@@ -65,9 +90,15 @@ func stateOf(t *testing.T, m *Manager) *machinewire.MachineImageState {
 	}
 	return state
 }
+
 func resetDevice(t *testing.T, m *Manager, operation string) {
 	t.Helper()
-	if _, err := m.Handle(t.Context(), &machinewire.Reset{Params: machinewire.ResetParams{DeviceID: "dev-1", OperationID: operation, BaseVersion: string(m.base)}}); err != nil {
+	if _, err := m.Handle(
+		t.Context(),
+		&machinewire.Reset{
+			Params: machinewire.ResetParams{DeviceID: "dev-1", OperationID: operation, BaseVersion: string(m.base)},
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -83,7 +114,9 @@ func TestResetPublishesFreshSystemWithSavedHomeOnce(t *testing.T) {
 	}
 	resetDevice(t, m, "op-1")
 	first := stateOf(t, m)
-	if first == nil || first.ResetID == nil || *first.ResetID != "op-1" || first.BaseVersion != m.base || first.SystemBytes != 32<<20 || first.HomeBytes != 32<<20 {
+	if first == nil || first.ResetID == nil || *first.ResetID != "op-1" || first.BaseVersion != m.base ||
+		first.SystemBytes != 32<<20 ||
+		first.HomeBytes != 32<<20 {
 		t.Fatalf("state: %+v", first)
 	}
 	generations := filepath.Join(m.core.Config.Images(), "dev-1/generations")
@@ -130,11 +163,21 @@ func TestResetPublishesFreshSystemWithSavedHomeOnce(t *testing.T) {
 			t.Fatal(entry.Name())
 		}
 	}
-	_, err = m.Handle(t.Context(), &machinewire.Reset{Params: machinewire.ResetParams{DeviceID: "dev-1", OperationID: "op-3", BaseVersion: "missing"}})
+	_, err = m.Handle(
+		t.Context(),
+		&machinewire.Reset{
+			Params: machinewire.ResetParams{DeviceID: "dev-1", OperationID: "op-3", BaseVersion: "missing"},
+		},
+	)
 	if err == nil || err.Error() != "Cloud base missing is not imported" {
 		t.Fatal(err)
 	}
-	_, err = m.Handle(t.Context(), &machinewire.Reset{Params: machinewire.ResetParams{DeviceID: "dev-1", OperationID: "op-3", BaseVersion: "../b"}})
+	_, err = m.Handle(
+		t.Context(),
+		&machinewire.Reset{
+			Params: machinewire.ResetParams{DeviceID: "dev-1", OperationID: "op-3", BaseVersion: "../b"},
+		},
+	)
 	if err == nil {
 		t.Fatal("invalid base accepted")
 	}
@@ -155,12 +198,16 @@ func TestRecoveryPublishesWorkingPairAndRemovesStages(t *testing.T) {
 	resetDevice(t, m, "op-1")
 	committed := stateOf(t, m)
 	working := storage.NewWorkingPair(m.core.Config.Working(), "dev-1")
-	if err := os.Mkdir(working.Directory(), 0700); err != nil {
+	if err := os.Mkdir(working.Directory(), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	sources := m.core.Store.Images("dev-1", committed.Generation)
 	for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
-		if err := storage.CloneSparse(t.Context(), sources.ForVolume(volume), working.Images().ForVolume(volume)); err != nil {
+		if err := storage.CloneSparse(
+			t.Context(),
+			sources.ForVolume(volume),
+			working.Images().ForVolume(volume),
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -168,10 +215,10 @@ func TestRecoveryPublishesWorkingPairAndRemovesStages(t *testing.T) {
 		t.Fatal(err)
 	}
 	stage := filepath.Join(m.core.Config.Working(), ".wake-0f6c3d4e")
-	if err := os.Mkdir(stage, 0700); err != nil {
+	if err := os.Mkdir(stage, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := recoverWorking(t.Context(), m.core); err != nil {
+	if err := fenceAndSave(t.Context(), m.core); err != nil {
 		t.Fatal(err)
 	}
 	saved := stateOf(t, m)
@@ -184,13 +231,13 @@ func TestRecoveryPublishesWorkingPairAndRemovesStages(t *testing.T) {
 		}
 	}
 	invalid := filepath.Join(m.core.Config.Working(), "not a device")
-	if err := os.Mkdir(invalid, 0700); err != nil {
+	if err := os.Mkdir(invalid, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(stage, 0700); err != nil {
+	if err := os.Mkdir(stage, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	nameErr := recoverWorking(t.Context(), m.core)
+	nameErr := fenceAndSave(t.Context(), m.core)
 	if nameErr == nil {
 		t.Fatal("invalid device silently skipped")
 	}
@@ -206,30 +253,49 @@ func TestRecoveryPublishesWorkingPairAndRemovesStages(t *testing.T) {
 	if err := os.Remove(invalid); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(working.Directory(), 0700); err != nil {
+	if err := os.Mkdir(working.Directory(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(working.SandboxRecord(), []byte(`{"id":"demi-0f6c3d4e","slot":8}`), 0600); err != nil {
+	if err := os.WriteFile(working.SandboxRecord(), []byte(`{"id":"demi-0f6c3d4e","slot":8}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := recoverWorking(t.Context(), m.core); err == nil || err.Error() != "Existing Cloud slot exceeds configured pool" {
+	if err := fenceAndSave(
+		t.Context(),
+		m.core,
+	); err == nil ||
+		err.Error() != "Existing Cloud slot exceeds configured pool" {
 		t.Fatal(err)
 	}
 }
+
 func TestStoppedDeviceOperationsAndShutdown(t *testing.T) {
 	m := managerFixture(t)
-	if _, err := m.Handle(t.Context(), &machinewire.Hibernate{Params: machinewire.HibernateParams{DeviceID: "dev-1"}}); err != nil {
+	if _, err := m.Handle(
+		t.Context(),
+		&machinewire.Hibernate{Params: machinewire.HibernateParams{DeviceID: "dev-1"}},
+	); err != nil {
 		t.Fatal(err)
 	}
-	state, err := m.Handle(t.Context(), &machinewire.RuntimeStateCall{Params: machinewire.RuntimeStateParams{DeviceID: "dev-1"}})
+	state, err := m.Handle(
+		t.Context(),
+		&machinewire.RuntimeStateCall{Params: machinewire.RuntimeStateParams{DeviceID: "dev-1"}},
+	)
 	if err != nil || string(state) != `"stopped"` {
 		t.Fatalf("%s %v", state, err)
 	}
-	_, err = m.Handle(t.Context(), &machinewire.GrowVolume{Params: machinewire.GrowVolumeParams{DeviceID: "dev-1", Volume: machinewire.VolumeHome, Bytes: 1 << 30}})
+	_, err = m.Handle(
+		t.Context(),
+		&machinewire.GrowVolume{
+			Params: machinewire.GrowVolumeParams{DeviceID: "dev-1", Volume: machinewire.VolumeHome, Bytes: 1 << 30},
+		},
+	)
 	if err == nil || err.Error() != "Cloud is not running" {
 		t.Fatal(err)
 	}
-	if _, err = m.Handle(t.Context(), &machinewire.Hibernate{Params: machinewire.HibernateParams{DeviceID: "dev/1"}}); err == nil {
+	if _, err = m.Handle(
+		t.Context(),
+		&machinewire.Hibernate{Params: machinewire.HibernateParams{DeviceID: "dev/1"}},
+	); err == nil {
 		t.Fatal("invalid device accepted")
 	}
 	t.Run("invalid device message", func(t *testing.T) {
@@ -259,7 +325,13 @@ func TestStoppedDeviceOperationsAndShutdown(t *testing.T) {
 	if err = m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = m.Handle(t.Context(), &machinewire.Hibernate{Params: machinewire.HibernateParams{DeviceID: "dev-1"}}); !errors.Is(err, ErrClosed) {
+	if _, err = m.Handle(
+		t.Context(),
+		&machinewire.Hibernate{Params: machinewire.HibernateParams{DeviceID: "dev-1"}},
+	); !errors.Is(
+		err,
+		ErrClosed,
+	) {
 		t.Fatal(err)
 	}
 }

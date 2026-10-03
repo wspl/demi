@@ -14,8 +14,8 @@ func ObjectFields(data []byte) ([]Field, error) {
 	if err := CheckJSON(data); err != nil {
 		return nil, err
 	}
-	d := json.NewDecoder(bytes.NewReader(data))
-	token, err := d.Token()
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
 	if err != nil {
 		return nil, err
 	}
@@ -23,8 +23,8 @@ func ObjectFields(data []byte) ([]Field, error) {
 		return nil, errors.New("expected object")
 	}
 	fields := []Field{}
-	for d.More() {
-		token, err := d.Token()
+	for decoder.More() {
+		token, err := decoder.Token()
 		if err != nil {
 			return nil, err
 		}
@@ -33,7 +33,7 @@ func ObjectFields(data []byte) ([]Field, error) {
 			return nil, errors.New("expected string key")
 		}
 		var raw json.RawMessage
-		if err := d.Decode(&raw); err != nil {
+		if err := decoder.Decode(&raw); err != nil {
 			return nil, At(key, err)
 		}
 		fields = append(fields, Field{Name: key, Value: raw})
@@ -46,25 +46,25 @@ func MsgpackFields(data []byte) ([]Field, error) {
 	if err := CheckMsgpack(data); err != nil {
 		return nil, err
 	}
-	d := msgpack.NewDecoder(bytes.NewReader(data))
-	code, err := d.PeekCode()
+	decoder := msgpack.NewDecoder(bytes.NewReader(data))
+	code, err := decoder.PeekCode()
 	if err != nil {
 		return nil, err
 	}
 	if !msgpcode.IsFixedMap(code) && code != msgpcode.Map16 && code != msgpcode.Map32 {
 		return nil, errors.New("expected object")
 	}
-	n, err := d.DecodeMapLen()
+	n, err := decoder.DecodeMapLen()
 	if err != nil {
 		return nil, err
 	}
 	fields := make([]Field, 0, n)
 	for range n {
-		key, err := d.DecodeString()
+		key, err := decoder.DecodeString()
 		if err != nil {
 			return nil, err
 		}
-		raw, err := d.DecodeRaw()
+		raw, err := decoder.DecodeRaw()
 		if err != nil {
 			return nil, At(key, err)
 		}
@@ -76,22 +76,22 @@ func MsgpackFields(data []byte) ([]Field, error) {
 // AdjacentFields extracts a flattened union without discarding its wire order.
 // The containing generated decoder checks sibling and unknown properties.
 func AdjacentFields(fields []Field, tag, content string) ([]Field, error) {
-	out := []Field{}
+	output := []Field{}
 	seen := false
 	for _, field := range fields {
 		switch field.Name {
 		case tag:
 			seen = true
-			out = append(out, field)
+			output = append(output, field)
 		case content:
 			if !seen {
 				return nil, At(content, errors.New("tag must precede content"))
 			}
-			out = append(out, field)
+			output = append(output, field)
 		}
 	}
-	if len(out) != 2 {
+	if len(output) != 2 {
 		return nil, errors.New("missing adjacent tag or content")
 	}
-	return out, nil
+	return output, nil
 }

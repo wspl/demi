@@ -10,10 +10,28 @@ import (
 
 // Catalog conversion is pure dense logic; the complete table costs under one second.
 func TestCatalogSelection(t *testing.T) {
-	catalog := core.ProviderModel{ID: "m-1", DisplayName: "Model One", ContextWindow: new(uint32(200000)), OutputLimit: new(uint32(8000)), SupportsAttachments: new(true)}
+	catalog := core.ProviderModel{
+		ID:                  "m-1",
+		DisplayName:         "Model One",
+		ContextWindow:       new(uint32(200000)),
+		OutputLimit:         new(uint32(8000)),
+		SupportsAttachments: new(true),
+	}
 	thinking := &core.EffortConfig{Effort: "high"}
 	got := catalog.Selection("p", thinking, new("priority"))
-	want := core.ModelSelection{ProviderID: "p", Model: core.Model{ID: "m-1", Name: "Model One", ContextWindow: 200000, OutputLimit: new(uint32(8000)), Thinking: []core.ThinkingCapability{}, AcceptedExtensions: &core.AttachmentFileExtensions}, Thinking: thinking, ServiceTierID: new("priority")}
+	want := core.ModelSelection{
+		ProviderID: "p",
+		Model: core.Model{
+			ID:                 "m-1",
+			Name:               "Model One",
+			ContextWindow:      200000,
+			OutputLimit:        new(uint32(8000)),
+			Thinking:           []core.ThinkingCapability{},
+			AcceptedExtensions: &core.AttachmentFileExtensions,
+		},
+		Thinking:      thinking,
+		ServiceTierID: new("priority"),
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%+v, want %+v", got, want)
 	}
@@ -25,44 +43,85 @@ func TestCatalogSelection(t *testing.T) {
 
 func TestCatalogAcceptedTypes(t *testing.T) {
 	both := append(append([]core.FileExtension{}, core.AttachmentFileExtensions...), core.VideoFileExtensions...)
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		attachments, video *bool
 		exact, want        *[]core.FileExtension
 	}{
-		{nil, nil, nil, nil}, {nil, new(false), nil, nil}, {new(false), nil, nil, new([]core.FileExtension{})},
-		{new(true), nil, nil, &core.AttachmentFileExtensions}, {new(true), new(false), nil, &core.AttachmentFileExtensions},
-		{new(true), new(true), nil, &both}, {new(false), new(true), nil, &core.VideoFileExtensions}, {nil, new(true), nil, &core.VideoFileExtensions},
+		{nil, nil, nil, nil},
+		{nil, new(false), nil, nil},
+		{new(false), nil, nil, new([]core.FileExtension{})},
+		{new(true), nil, nil, &core.AttachmentFileExtensions},
+		{new(true), new(false), nil, &core.AttachmentFileExtensions},
+		{new(true), new(true), nil, &both},
+		{new(false), new(true), nil, &core.VideoFileExtensions},
+		{nil, new(true), nil, &core.VideoFileExtensions},
 		{new(true), nil, new([]core.FileExtension{"png"}), new([]core.FileExtension{"png"})},
 		{new(true), new(true), new([]core.FileExtension{}), new([]core.FileExtension{})},
 	} {
-		model := core.ProviderModel{SupportsAttachments: tc.attachments, SupportsVideo: tc.video, AcceptedExtensions: tc.exact}
-		if got := model.Selection("p", nil, nil).Model.AcceptedExtensions; !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%+v: %v, want %v", tc, got, tc.want)
+		model := core.ProviderModel{
+			SupportsAttachments: scenario.attachments,
+			SupportsVideo:       scenario.video,
+			AcceptedExtensions:  scenario.exact,
+		}
+		if got := model.Selection("p", nil, nil).Model.AcceptedExtensions; !reflect.DeepEqual(got, scenario.want) {
+			t.Errorf("%+v: %v, want %v", scenario, got, scenario.want)
 		}
 	}
 }
 
 func TestCatalogThinking(t *testing.T) {
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		reasoning *bool
 		efforts   *[]string
 		fallback  *string
 		want      []core.ThinkingCapability
 	}{
 		{new(false), new([]string{"low"}), nil, []core.ThinkingCapability{&core.DisabledCapability{}}},
-		{nil, nil, nil, []core.ThinkingCapability{}}, {new(true), new([]string{}), nil, []core.ThinkingCapability{}},
-		{new(true), new([]string{"low", "high"}), new("high"), []core.ThinkingCapability{&core.EffortCapability{Efforts: []string{"low", "high"}, DefaultEffort: new("high"), Summaries: []core.ThinkingSummary{"auto", "concise", "detailed", "off", "on"}}}},
+		{nil, nil, nil, []core.ThinkingCapability{}},
+		{new(true), new([]string{}), nil, []core.ThinkingCapability{}},
+		{
+			new(true),
+			new([]string{
+				"low",
+				"high",
+			}),
+			new("high"),
+			[]core.ThinkingCapability{
+				&core.EffortCapability{
+					Efforts: []string{
+						"low",
+						"high",
+					},
+					DefaultEffort: new("high"),
+					Summaries: []core.ThinkingSummary{
+						"auto",
+						"concise",
+						"detailed",
+						"off",
+						"on",
+					},
+				},
+			},
+		},
 	} {
-		model := core.ProviderModel{SupportsReasoning: tc.reasoning, SupportedThinkingEfforts: tc.efforts, DefaultThinkingEffort: tc.fallback}
-		if got := model.Selection("p", nil, nil).Model.Thinking; !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%#v, want %#v", got, tc.want)
+		model := core.ProviderModel{
+			SupportsReasoning:        scenario.reasoning,
+			SupportedThinkingEfforts: scenario.efforts,
+			DefaultThinkingEffort:    scenario.fallback,
+		}
+		if got := model.Selection("p", nil, nil).Model.Thinking; !reflect.DeepEqual(got, scenario.want) {
+			t.Errorf("%#v, want %#v", got, scenario.want)
 		}
 	}
 }
 
 func TestModelSettings(t *testing.T) {
-	model := core.ProviderModel{SupportedThinkingEfforts: new([]string{"low", "high"}), CanDisableThinking: new(false), ServiceTiers: []core.ServiceTier{{ID: "priority"}}}
-	for _, tc := range []struct {
+	model := core.ProviderModel{
+		SupportedThinkingEfforts: new([]string{"low", "high"}),
+		CanDisableThinking:       new(false),
+		ServiceTiers:             []core.ServiceTier{{ID: "priority"}},
+	}
+	for _, scenario := range []struct {
 		effort     *string
 		fallback   *string
 		canDisable bool
@@ -71,17 +130,19 @@ func TestModelSettings(t *testing.T) {
 	}{
 		{nil, new("high"), false, &core.EffortConfig{Effort: "high"}, false},
 		{nil, new("unlisted"), false, &core.EffortConfig{Effort: "low"}, false},
-		{nil, nil, true, nil, false}, {new("disabled"), nil, true, &core.DisabledConfig{}, false},
-		{new("disabled"), nil, false, nil, true}, {new("ultra"), nil, true, nil, true},
+		{nil, nil, true, nil, false},
+		{new("disabled"), nil, true, &core.DisabledConfig{}, false},
+		{new("disabled"), nil, false, nil, true},
+		{new("ultra"), nil, true, nil, true},
 		{new("high"), nil, false, &core.EffortConfig{Effort: "high"}, false},
 	} {
-		model.CanDisableThinking = &tc.canDisable
-		model.DefaultThinkingEffort = tc.fallback
-		got, err := model.ThinkingFor(tc.effort)
-		if (err != nil) != tc.refused || !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%+v: %v, %v", tc, got, err)
+		model.CanDisableThinking = &scenario.canDisable
+		model.DefaultThinkingEffort = scenario.fallback
+		got, err := model.ThinkingFor(scenario.effort)
+		if (err != nil) != scenario.refused || !reflect.DeepEqual(got, scenario.want) {
+			t.Errorf("%+v: %v, %v", scenario, got, err)
 		}
-		if tc.refused {
+		if scenario.refused {
 			var unavailable *core.UnavailableSetting
 			if !errors.As(err, &unavailable) {
 				t.Errorf("wrong error: %v", err)
@@ -98,14 +159,18 @@ func TestModelSettings(t *testing.T) {
 			t.Fatalf("%v: %v", got, err)
 		}
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		config core.ThinkingConfig
 		want   *string
 	}{
-		{nil, nil}, {&core.AdaptiveConfig{Effort: "high"}, new("high")}, {&core.EffortConfig{Effort: "low"}, new("low")},
-		{&core.DisabledConfig{}, new(core.ThinkingOff)}, {&core.BudgetConfig{BudgetTokens: 1000}, nil},
+		{nil, nil},
+		{&core.AdaptiveConfig{Effort: "high"}, new("high")},
+		{&core.EffortConfig{Effort: "low"}, new("low")},
+		{&core.DisabledConfig{}, new(core.ThinkingOff)},
+		{&core.BudgetConfig{BudgetTokens: 1000}, nil},
 	} {
-		if got, ok := (core.ModelSelection{Thinking: tc.config}).ThinkingEffort(); ok != (tc.want != nil) || (ok && got != *tc.want) {
+		if got, ok := (core.ModelSelection{Thinking: scenario.config}).ThinkingEffort(); ok != (scenario.want != nil) ||
+			(ok && got != *scenario.want) {
 			t.Errorf("effort: %q, present: %v", got, ok)
 		}
 	}
@@ -159,7 +224,10 @@ func TestCatalogResultsDoNotAlias(t *testing.T) {
 		}
 	})
 	t.Run("capabilities", func(t *testing.T) {
-		catalog := core.ProviderModel{SupportedThinkingEfforts: new([]string{"high"}), DefaultThinkingEffort: new("high")}
+		catalog := core.ProviderModel{
+			SupportedThinkingEfforts: new([]string{"high"}),
+			DefaultThinkingEffort:    new("high"),
+		}
 		result := catalog.ThinkingCapabilities()[0].(*core.EffortCapability)
 		*result.DefaultEffort = "low"
 		result.Efforts[0] = "low"
@@ -169,7 +237,11 @@ func TestCatalogResultsDoNotAlias(t *testing.T) {
 	})
 	t.Run("unnamed effort", func(t *testing.T) {
 		for _, fallback := range []*string{nil, new("high")} {
-			catalog := core.ProviderModel{CanDisableThinking: new(false), SupportedThinkingEfforts: new([]string{"high"}), DefaultThinkingEffort: fallback}
+			catalog := core.ProviderModel{
+				CanDisableThinking:       new(false),
+				SupportedThinkingEfforts: new([]string{"high"}),
+				DefaultThinkingEffort:    fallback,
+			}
 			result := catalog.UnnamedEffort()
 			*result = "low"
 			if (*catalog.SupportedThinkingEfforts)[0] != "high" || (fallback != nil && *fallback != "high") {
@@ -189,7 +261,14 @@ func TestCatalogResultsDoNotAlias(t *testing.T) {
 		}
 	})
 	t.Run("displayed thinking effort", func(t *testing.T) {
-		for _, config := range []core.ThinkingConfig{&core.AdaptiveConfig{Effort: "high"}, &core.EffortConfig{Effort: "high"}} {
+		for _, config := range []core.ThinkingConfig{
+			&core.AdaptiveConfig{
+				Effort: "high",
+			},
+			&core.EffortConfig{
+				Effort: "high",
+			},
+		} {
 			selection := core.ModelSelection{Thinking: config}
 			result, ok := selection.ThinkingEffort()
 			if !ok || result != "high" {

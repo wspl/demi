@@ -21,7 +21,18 @@ func TestCommandPlacement(t *testing.T) {
 		}
 		return 7, nil
 	})
-	tree := host.Group("file", "Files", host.Leaf(declare.Leaf[declare.NativeOperation]{Name: "list", Summary: "List", Kind: &declare.RPC[declare.NativeOperation]{}}, handler))
+	tree := host.Group(
+		"file",
+		"Files",
+		host.Leaf(
+			declare.Leaf[declare.NativeOperation]{
+				Name:    "list",
+				Summary: "List",
+				Kind:    &declare.RPC[declare.NativeOperation]{},
+			},
+			handler,
+		),
+	)
 	p, err := NewCommandPlugin(PlacementDemi, []host.Declared{tree})
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +68,10 @@ func TestCommandPlacement(t *testing.T) {
 // the directory/path rules at the Host installation boundary.
 func TestDirectoryIdentity(t *testing.T) {
 	blob := core.BlobRefOf([]byte("contents"))
-	d := HostDirectory{Name: "test", Files: []DirectoryFile{{Path: "b", Blob: blob}, {Path: "a", Blob: blob, Executable: true}}}
+	d := HostDirectory{
+		Name:  "test",
+		Files: []DirectoryFile{{Path: "b", Blob: blob}, {Path: "a", Blob: blob, Executable: true}},
+	}
 	reverse := HostDirectory{Name: "test", Files: []DirectoryFile{d.Files[1], d.Files[0]}}
 	if d.Digest() != reverse.Digest() {
 		t.Fatal("digest depends on declaration order")
@@ -70,7 +84,8 @@ func TestDirectoryIdentity(t *testing.T) {
 		t.Fatal("mode is missing from digest")
 	}
 	for _, dirs := range [][]HostDirectory{
-		{{Name: "UPPER"}}, {{Name: "same"}, {Name: "same"}},
+		{{Name: "UPPER"}},
+		{{Name: "same"}, {Name: "same"}},
 		{{Name: "valid", Files: []DirectoryFile{{Path: "../escape"}}}},
 		{{Name: "valid", Files: []DirectoryFile{{Path: "a"}, {Path: "a"}}}},
 	} {
@@ -121,10 +136,14 @@ func TestMessageObjectBoundaries(t *testing.T) {
 	if _, err := ParseID("a-1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := DecodeRequest([]byte(`{"type":"page_call","user":"aaaaaaaaaaaaaaaaaaaaaaaaaa","method":"x","params":[]}`)); err == nil {
+	if _, err := DecodeRequest(
+		[]byte(`{"type":"page_call","user":"aaaaaaaaaaaaaaaaaaaaaaaaaa","method":"x","params":[]}`),
+	); err == nil {
 		t.Fatal("array page params accepted")
 	}
-	if _, err := DecodePortMessage([]byte(`{"type":"package_call","operation":{"package":"x","operation":"y"},"args":false,"kind":"looks"}`)); err == nil {
+	if _, err := DecodePortMessage(
+		[]byte(`{"type":"package_call","operation":{"package":"x","operation":"y"},"args":false,"kind":"looks"}`),
+	); err == nil {
 		t.Fatal("boolean package args accepted")
 	}
 }
@@ -144,7 +163,8 @@ func TestPortFailureRouting(t *testing.T) {
 	p := NewPort(answerTransport{answer: &PortAnswerDone{}})
 	_, err := p.Value(t.Context(), "x")
 	var wrong *host.PortError
-	if !errors.As(err, &wrong) || wrong.Kind != host.UnexpectedReply || wrong.Asked != "read_value" || wrong.Answered != "done" {
+	if !errors.As(err, &wrong) || wrong.Kind != host.UnexpectedReply || wrong.Asked != "read_value" ||
+		wrong.Answered != "done" {
 		t.Fatalf("wrong answer = %v", err)
 	}
 	refusal := &PortRefusalNotRunning{}

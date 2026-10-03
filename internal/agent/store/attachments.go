@@ -70,15 +70,25 @@ type Upload struct {
 	Path string
 	// MediaType is the type recorded by UploadMediaType.
 	MediaType string
-	SHA256    core.BlobRef
-	Bytes     core.B64Bytes
+	// SHA256 identifies the uploaded bytes in the blob namespace.
+	SHA256 core.BlobRef
+	// Bytes holds the uploaded file contents.
+	Bytes core.B64Bytes
 }
 
 // UploadBlocks returns a native image, video or PDF followed by its attachment
 // record, plus held bytes. Fitted images are stored first when reencoded;
 // an unfit image remains only an attachment record to read by path.
 func UploadBlocks(ctx context.Context, upload Upload, blobs BlobStore) ([]core.UserContentBlock, HeldMedia, error) {
-	record := &core.UserAttachment{Attachment: core.Attachment{Name: upload.Name, Path: upload.Path, MediaType: upload.MediaType, SizeBytes: uint64(len(upload.Bytes)), SHA256: upload.SHA256}}
+	record := &core.UserAttachment{
+		Attachment: core.Attachment{
+			Name:      upload.Name,
+			Path:      upload.Path,
+			MediaType: upload.MediaType,
+			SizeBytes: uint64(len(upload.Bytes)),
+			SHA256:    upload.SHA256,
+		},
+	}
 	if IsText(upload.Name, upload.MediaType) {
 		record.Snippet = new(Snippet(upload.Bytes))
 	}
@@ -97,16 +107,27 @@ func UploadBlocks(ctx context.Context, upload Upload, blobs BlobStore) ([]core.U
 				}
 			}
 			held.Hold(blob, fitted.Data)
-			blocks = append(blocks, &core.UserImage{Source: &core.MediaSourceRef{Ref: blob, MediaType: fitted.MediaType}})
+			blocks = append(
+				blocks,
+				&core.UserImage{Source: &core.MediaSourceRef{Ref: blob, MediaType: fitted.MediaType}},
+			)
 		}
 	case media != nil:
 		held.Hold(upload.SHA256, upload.Bytes)
-		blocks = append(blocks, &core.UserVideo{Source: &core.MediaSourceRef{Ref: upload.SHA256, MediaType: media.MediaType}})
+		blocks = append(
+			blocks,
+			&core.UserVideo{Source: &core.MediaSourceRef{Ref: upload.SHA256, MediaType: media.MediaType}},
+		)
 	default:
 		mediaType, _, _ := strings.Cut(upload.MediaType, ";")
 		if strings.TrimSpace(mediaType) == "application/pdf" || bytes.HasPrefix(upload.Bytes, []byte("%PDF-")) {
 			held.Hold(upload.SHA256, upload.Bytes)
-			blocks = append(blocks, &core.UserDocument{Source: &core.DocumentRef{Ref: upload.SHA256, MediaType: "application/pdf", FileName: upload.Name}})
+			blocks = append(
+				blocks,
+				&core.UserDocument{
+					Source: &core.DocumentRef{Ref: upload.SHA256, MediaType: "application/pdf", FileName: upload.Name},
+				},
+			)
 		}
 	}
 	return append(blocks, record), held, nil

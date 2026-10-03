@@ -58,7 +58,7 @@ func runscFixture(args []string) error {
 	if len(args) == 0 {
 		return errors.New("fixture needs a runtime command")
 	}
-	trace, err := os.OpenFile(filepath.Join(root, "trace"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	trace, err := os.OpenFile(filepath.Join(root, "trace"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -91,7 +91,7 @@ func runscFixture(args []string) error {
 		if _, err := os.Stat(filepath.Join(root, "fail-start")); err == nil {
 			return errors.New("fixture failed start")
 		}
-		return os.WriteFile(state, []byte(args[len(args)-1]+" running"), 0600)
+		return os.WriteFile(state, []byte(args[len(args)-1]+" running"), 0o600)
 	case "wait":
 		connection, err := net.Dial("unix", filepath.Join(root, "control"))
 		if err != nil {
@@ -120,7 +120,7 @@ func runscFixture(args []string) error {
 		if args[0] == "kill" {
 			status = "stopped"
 		}
-		return os.WriteFile(state, []byte(id+" "+status), 0600)
+		return os.WriteFile(state, []byte(id+" "+status), 0o600)
 	case "delete":
 		err := os.Remove(state)
 		if errors.Is(err, os.ErrNotExist) {

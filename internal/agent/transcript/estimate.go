@@ -23,39 +23,9 @@ func BlockTokens(block core.Block, request *RequestView) uint64 {
 func Estimate(request *RequestView) uint64 {
 	blocks := request.view.Blocks
 	start := ReplayStart(blocks)
-	anchor := true
-	if start < len(blocks) {
-		if boundary, ok := blocks[start].(*core.CompactionBoundaryBlock); ok {
-			anchor = false
-			for _, block := range blocks {
-				if marker, ok := block.(*core.CompactionMarkerBlock); ok && marker.BoundaryID == boundary.BlockID {
-					anchor = true
-					break
-				}
-			}
-		}
-	}
-	if anchor {
-		for i := len(blocks) - 1; i >= 0; i-- {
-			_, boundary := blocks[i].(*core.CompactionBoundaryBlock)
-			_, marker := blocks[i].(*core.CompactionMarkerBlock)
-			if boundary || marker {
-				break
-			}
-			if response, ok := blocks[i].(*core.ResponseBlock); ok {
-				u := response.Usage
-				tokens := u.InputTokens + u.OutputTokens + u.CacheReadTokens + u.CacheWriteTokens
-				if tokens == 0 {
-					continue
-				}
-				if request.model.ContextWindow > 0 && tokens > uint64(request.model.ContextWindow) {
-					break
-				}
-				for _, block := range blocks[i+1:] {
-					tokens += BlockTokens(block, request)
-				}
-				return tokens
-			}
+	if canAnchorUsage(blocks, start) {
+		if tokens, ok := anchoredTokens(request, blocks); ok {
+			return tokens
 		}
 	}
 	var tokens uint64
@@ -266,3 +236,46 @@ func resultEstimate(part core.ToolResultContentBlock, request *RequestView) (str
 
 // imageWeight is compaction's minimum image cost or decoded bytes per 1,000.
 func imageWeight(data []byte) uint64 { return max(1600, (uint64(len(data))+999)/1000) }
+
+// canAnchorUsage requires a completed compaction before trusting reported usage.
+func canAnchorUsage(blocks []core.Block, start int) bool {
+	anchor := true
+	if start < len(blocks) {
+		if boundary, ok := blocks[start].(*core.CompactionBoundaryBlock); ok {
+			anchor = false
+			for _, block := range blocks {
+				if marker, ok := block.(*core.CompactionMarkerBlock); ok && marker.BoundaryID == boundary.BlockID {
+					anchor = true
+					break
+				}
+			}
+		}
+	}
+	return anchor
+}
+
+// anchoredTokens adds later block estimates to the latest usable reported usage.
+func anchoredTokens(request *RequestView, blocks []core.Block) (uint64, bool) {
+	for i := len(blocks) - 1; i >= 0; i-- {
+		_, boundary := blocks[i].(*core.CompactionBoundaryBlock)
+		_, marker := blocks[i].(*core.CompactionMarkerBlock)
+		if boundary || marker {
+			break
+		}
+		if response, ok := blocks[i].(*core.ResponseBlock); ok {
+			u := response.Usage
+			tokens := u.InputTokens + u.OutputTokens + u.CacheReadTokens + u.CacheWriteTokens
+			if tokens == 0 {
+				continue
+			}
+			if request.model.ContextWindow > 0 && tokens > uint64(request.model.ContextWindow) {
+				break
+			}
+			for _, block := range blocks[i+1:] {
+				tokens += BlockTokens(block, request)
+			}
+			return tokens, true
+		}
+	}
+	return 0, false
+}

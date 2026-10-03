@@ -241,54 +241,19 @@ func (t *Tools) Output(ctx context.Context, tool Tool, args []string, deadline *
 		_ = streams[i].writer.Close()
 		readers.Go(func() { _, streams[i].err = io.Copy(&streams[i].data, streams[i].reader) })
 	}
-	interrupted := make(chan struct{})
-	stopInterrupt := context.AfterFunc(runCtx, func() {
-		defer close(interrupted)
-		for i := range streams {
-			_ = streams[i].reader.Close()
-		}
-	})
-	defer func() {
-		if !stopInterrupt() {
-			<-interrupted
-		}
-	}()
+	defer watchToolCancellation(runCtx, streams[0].reader, streams[1].reader)()
 	if deadline != nil {
-		// Start the deadline after spawning, as Rust does. Join an already-fired
-		// timer callback before returning, as well as always reaping the child.
-		fired := make(chan struct{})
-		timer := time.AfterFunc(*deadline, func() {
-			defer close(fired)
-			cancel(errToolDeadline)
-		})
-		defer func() {
-			if !timer.Stop() {
-				<-fired
-			}
-		}()
+		defer startToolDeadline(*deadline, cancel)()
 	}
 	err := command.Wait()
 	readers.Wait()
 	if readErr := errors.Join(streams[0].err, streams[1].err); readErr != nil {
 		err = readErr
 	}
-	if err != nil {
-		if errors.Is(context.Cause(runCtx), errToolDeadline) {
-			return Output{}, &DeadlineError{Tool: tool, Deadline: *deadline}
-		}
-		if ctx.Err() != nil {
-			return Output{}, &SpawnError{Tool: tool, Source: ctx.Err()}
-		}
-		var exit *exec.ExitError
-		if !errors.As(err, &exit) {
-			return Output{}, &SpawnError{Tool: tool, Source: err}
-		}
+	if err := toolOutputError(ctx, runCtx, tool, deadline, err); err != nil {
+		return Output{}, err
 	}
-	status, ok := command.ProcessState.Sys().(syscall.WaitStatus)
-	if !ok {
-		return Output{}, &SpawnError{Tool: tool, Source: errors.New("tool returned no Linux wait status")}
-	}
-	return Output{Status: status, Stdout: contract.LossyUTF8(streams[0].data.Bytes()), Stderr: contract.LossyUTF8(streams[1].data.Bytes())}, nil
+	return decodeToolOutput(tool, command.ProcessState, streams[0].data.Bytes(), streams[1].data.Bytes())
 }
 
 // Run runs tool and requires it to exit 0.
@@ -309,3 +274,65 @@ func Accept(tool Tool, output Output, codes []int) (Output, error) {
 }
 
 var errToolDeadline = errors.New("infrastructure tool deadline")
+
+func toolOutputError(ctx, runCtx context.Context, tool Tool, deadline *time.Duration, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(context.Cause(runCtx), errToolDeadline) {
+		return &DeadlineError{Tool: tool, Deadline: *deadline}
+	}
+	if ctx.Err() != nil {
+		return &SpawnError{Tool: tool, Source: ctx.Err()}
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		return &SpawnError{Tool: tool, Source: err}
+	}
+	return nil
+}
+
+// startToolDeadline returns cleanup that stops or joins the owned deadline callback.
+func startToolDeadline(deadline time.Duration, cancel context.CancelCauseFunc) func() {
+	// Start the deadline after spawning, as Rust does. Join an already-fired
+	// timer callback before returning, as well as always reaping the child.
+	fired := make(chan struct{})
+	timer := time.AfterFunc(deadline, func() {
+		defer close(fired)
+		cancel(errToolDeadline)
+	})
+	return func() {
+		if !timer.Stop() {
+			<-fired
+		}
+	}
+}
+
+func decodeToolOutput(tool Tool, state *os.ProcessState, stdout, stderr []byte) (Output, error) {
+	status, ok := state.Sys().(syscall.WaitStatus)
+	if !ok {
+		return Output{}, &SpawnError{Tool: tool, Source: errors.New("tool returned no Linux wait status")}
+	}
+	return Output{
+		Status: status,
+		Stdout: contract.LossyUTF8(stdout),
+		Stderr: contract.LossyUTF8(stderr),
+	}, nil
+}
+
+// watchToolCancellation returns cleanup that stops or joins the pipe interruption callback.
+func watchToolCancellation(ctx context.Context, stdout, stderr *os.File) func() {
+	interrupted := make(chan struct{})
+	stopInterrupt := context.AfterFunc(ctx, func() {
+		defer close(interrupted)
+		for _, reader := range []*os.File{stdout, stderr} {
+			_ = reader.Close()
+		}
+	})
+	return func() {
+		if !stopInterrupt() {
+			<-interrupted
+		}
+	}
+}

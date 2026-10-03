@@ -50,9 +50,22 @@ func NewResolving(resolve Resolve, clock core.Clock) (*Factory, error) {
 		if err != nil {
 			return nil, err
 		}
-		page.Methods = append(page.Methods, plugin.Method{Name: declaration.name, Scope: plugin.ScopeUser, Params: params, Result: result})
+		page.Methods = append(
+			page.Methods,
+			plugin.Method{Name: declaration.name, Scope: plugin.ScopeUser, Params: params, Result: result},
+		)
 	}
-	return &Factory{manifest: plugin.Manifest{ID: "skills", Name: "Skills", Description: "Workflows the agent follows: skills from git repositories you add, and those your repository carries.", Context: true, Page: page}, resolve: resolve, clock: clock}, nil
+	return &Factory{
+		manifest: plugin.Manifest{
+			ID:          "skills",
+			Name:        "Skills",
+			Description: "Workflows the agent follows: skills from git repositories you add, and those your repository carries.",
+			Context:     true,
+			Page:        page,
+		},
+		resolve: resolve,
+		clock:   clock,
+	}, nil
 }
 
 // pageSchema compiles a generated skills page contract through its owning codec.
@@ -78,5 +91,13 @@ func (f *Factory) Manifest() plugin.Manifest {
 // Instance creates an owner whose lifetime ends when the host calls Close.
 func (f *Factory) Instance() plugin.Plugin {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &instance{ctx: ctx, cancel: cancel, resolve: f.resolve, clock: f.clock, fetching: map[string]bool{}, projects: map[projectKey]projectSearch{}, mutations: make(chan struct{}, 1)}
+	return &instance{
+		ctx:       ctx,
+		cancel:    cancel,
+		resolve:   f.resolve,
+		clock:     f.clock,
+		fetching:  map[string]bool{},
+		projects:  map[projectKey]projectSearch{},
+		mutations: make(chan struct{}, 1),
+	}
 }

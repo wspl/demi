@@ -54,7 +54,10 @@ func TestRemoveDuringFetchAndIgnoreConcurrentUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	close(release)
-	if err := p.demi.Until(t.Context(), func(d *plugintest.TestDemi) bool { return d.Changes() >= before+4 }); err != nil {
+	if err := p.demi.Until(
+		t.Context(),
+		func(d *plugintest.TestDemi) bool { return d.Changes() >= before+4 },
+	); err != nil {
 		t.Fatal(err)
 	}
 	if uploads.Load() != 1 {
@@ -80,15 +83,21 @@ func TestSourceExtractionBoundaries(t *testing.T) {
 	p := newPlugged(t, repos)
 	id := p.add(t, "acme/root")
 	state := p.state(t).Sources[0]
-	if len(state.Skills) != 2 || state.Skills[0].Name != "root" || state.Skills[1].Name != "nested" || len(state.Skipped) != 1 {
+	if len(state.Skills) != 2 || state.Skills[0].Name != "root" || state.Skills[1].Name != "nested" ||
+		len(state.Skipped) != 1 {
 		t.Fatalf("extraction: %+v", state)
 	}
-	if _, err := p.method(t.Context(), "set_source_enabled", skills.SetSourceEnabled{Source: id, Enabled: true}); err != nil {
+	if _, err := p.method(
+		t.Context(),
+		"set_source_enabled",
+		skills.SetSourceEnabled{Source: id, Enabled: true},
+	); err != nil {
 		t.Fatal(err)
 	}
 	for _, directory := range p.demi.Directories() {
 		for _, file := range directory.Files {
-			if strings.Contains(file.Path, "broken") || strings.Contains(file.Path, "link") || strings.Contains(file.Path, "nested/") {
+			if strings.Contains(file.Path, "broken") || strings.Contains(file.Path, "link") ||
+				strings.Contains(file.Path, "nested/") {
 				t.Fatalf("nested or linked file leaked: %+v", file)
 			}
 		}
@@ -103,7 +112,13 @@ func TestSourceSkillAndFileBudgets(t *testing.T) {
 		files[i] = skillFile(name+"/SKILL.md", "description: Too many.")
 	}
 	commit(t, repos, "acme/many", files...)
-	commit(t, repos, "acme/files", skillFile("SKILL.md", "description: Too many bytes."), skillstest.File{Path: "content", Bytes: make([]byte, 16*1024*1024)})
+	commit(
+		t,
+		repos,
+		"acme/files",
+		skillFile("SKILL.md", "description: Too many bytes."),
+		skillstest.File{Path: "content", Bytes: make([]byte, 16*1024*1024)},
+	)
 	p := newPlugged(t, repos)
 	p.add(t, "acme/many")
 	p.add(t, "acme/files")
@@ -124,7 +139,11 @@ func TestManifestAndRequestContracts(t *testing.T) {
 	if err := manifest.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.ID != "skills" || !manifest.Context || manifest.Page == nil || manifest.Page.Package != "@demicodes/plugin-skills" || manifest.Page.User == nil || manifest.Page.Conversation != nil || len(manifest.Page.Methods) != 5 {
+	if manifest.ID != "skills" || !manifest.Context || manifest.Page == nil ||
+		manifest.Page.Package != "@demicodes/plugin-skills" ||
+		manifest.Page.User == nil ||
+		manifest.Page.Conversation != nil ||
+		len(manifest.Page.Methods) != 5 {
 		t.Fatalf("manifest: %+v", manifest)
 	}
 	empty, err := (skills.SkillsState{Sources: []skills.SourceState{}}).MarshalJSON()
@@ -147,7 +166,15 @@ func TestManifestAndRequestContracts(t *testing.T) {
 	if !errors.As(err, &failed) || failed.Message != `no method "does_not_exist"` {
 		t.Fatalf("undeclared method: %v", err)
 	}
-	_, err = p.call.Call(t.Context(), &plugin.RequestPageCall{User: "aaaaaaaaaaaaaaaaaaaaaaaaaa", Method: "add_source", Params: []byte(`{"origin":null}`)}, p.demi.Port())
+	_, err = p.call.Call(
+		t.Context(),
+		&plugin.RequestPageCall{
+			User:   "aaaaaaaaaaaaaaaaaaaaaaaaaa",
+			Method: "add_source",
+			Params: []byte(`{"origin":null}`),
+		},
+		p.demi.Port(),
+	)
 	var usage *plugin.ErrorUsage
 	if !errors.As(err, &usage) {
 		t.Fatalf("page input: %v", err)
@@ -157,13 +184,27 @@ func TestManifestAndRequestContracts(t *testing.T) {
 func TestProjectDepthAndHiddenSkills(t *testing.T) {
 	p := newPlugged(t, skillstest.New(t))
 	p.demi.HostFiles = map[string][]byte{
-		"/repo/.agents/skills/group/one/two/three/four/last/SKILL.md":           []byte(skillstest.SkillMD("name: last\ndescription: At depth six.")),
-		"/repo/.agents/skills/group/one/two/three/four/extra/too-deep/SKILL.md": []byte(skillstest.SkillMD("description: At depth seven.")),
-		"/repo/.agents/skills/outer/SKILL.md":                                   []byte(skillstest.SkillMD("description: Outer.")),
-		"/repo/.agents/skills/outer/inner/SKILL.md":                             []byte(skillstest.SkillMD("description: Do not descend into skills.")),
-		"/repo/.agents/skills/hidden/SKILL.md":                                  []byte(skillstest.SkillMD("description: Hidden.\ndisable-model-invocation: true")),
-		"/repo/.agents/skills/same/SKILL.md":                                    []byte(skillstest.SkillMD("description: Agents precedence.")),
-		"/repo/.claude/skills/same/SKILL.md":                                    []byte(skillstest.SkillMD("description: Claude shadowed.")),
+		"/repo/.agents/skills/group/one/two/three/four/last/SKILL.md": []byte(
+			skillstest.SkillMD("name: last\ndescription: At depth six."),
+		),
+		"/repo/.agents/skills/group/one/two/three/four/extra/too-deep/SKILL.md": []byte(
+			skillstest.SkillMD("description: At depth seven."),
+		),
+		"/repo/.agents/skills/outer/SKILL.md": []byte(
+			skillstest.SkillMD("description: Outer."),
+		),
+		"/repo/.agents/skills/outer/inner/SKILL.md": []byte(
+			skillstest.SkillMD("description: Do not descend into skills."),
+		),
+		"/repo/.agents/skills/hidden/SKILL.md": []byte(
+			skillstest.SkillMD("description: Hidden.\ndisable-model-invocation: true"),
+		),
+		"/repo/.agents/skills/same/SKILL.md": []byte(
+			skillstest.SkillMD("description: Agents precedence."),
+		),
+		"/repo/.claude/skills/same/SKILL.md": []byte(
+			skillstest.SkillMD("description: Claude shadowed."),
+		),
 	}
 	block := p.context(t, "/repo", "t1", nil)
 	if block == nil {

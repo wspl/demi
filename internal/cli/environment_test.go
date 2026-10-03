@@ -40,9 +40,14 @@ func TestUnknownVariable(t *testing.T) {
 			want:    "DEMI_MANAGED_FIRECRACKER",
 		},
 		{
-			name:    "manager ignores other prefixes",
-			prefix:  "DEMI_MANAGED_",
-			environ: []string{"DEMI_PORT=80", "DEMI_MACHINE_MANAGER_SOCKET=/run/socket", "OTHER_DEMI_MANAGED_UNKNOWN=1", "demi_managed_unknown=1"},
+			name:   "manager ignores other prefixes",
+			prefix: "DEMI_MANAGED_",
+			environ: []string{
+				"DEMI_PORT=80",
+				"DEMI_MACHINE_MANAGER_SOCKET=/run/socket",
+				"OTHER_DEMI_MANAGED_UNKNOWN=1",
+				"demi_managed_unknown=1",
+			},
 		},
 		{
 			name:    "first unknown in environment order",

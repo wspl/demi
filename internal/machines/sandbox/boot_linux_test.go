@@ -38,6 +38,7 @@ func (n *networkFixture) Attach(context.Context, Slot) error {
 	n.attached = true
 	return n.attachError
 }
+
 func (n *networkFixture) Detach(context.Context, Slot) error {
 	if n.detachError != nil {
 		return n.detachError
@@ -55,12 +56,14 @@ type diskFixture struct {
 func (d diskFixture) CloneSparse(ctx context.Context, source, destination string) error {
 	return d.copy(ctx, source, destination)
 }
+
 func (d diskFixture) GrowMounted(ctx context.Context, path string) error {
 	if d.grow != nil {
 		return d.grow(ctx, path)
 	}
 	return errors.New("unexpected grow")
 }
+
 func (d diskFixture) Capacity(ctx context.Context, path string) (uint64, error) {
 	if d.capacity != nil {
 		return d.capacity(ctx, path)
@@ -70,14 +73,18 @@ func (d diskFixture) Capacity(ctx context.Context, path string) (uint64, error) 
 
 // bootFixture supplies real loop-mounted ext4 images and a scripted runtime.
 // It keeps mounts and automatic loop detachment under the test's namespace owner.
-func bootFixture(ctx context.Context, t *testing.T, network *networkFixture) (*Sandbox, workingFixture, string, runnerwire.ManagedBoot, *leaseFixture) {
+func bootFixture(
+	ctx context.Context,
+	t *testing.T,
+	network *networkFixture,
+) (*Sandbox, workingFixture, string, runnerwire.ManagedBoot, *leaseFixture) {
 	t.Helper()
 	root := t.TempDir()
 	runtime := filepath.Join(root, "runtime")
 	base := filepath.Join(root, "base")
 	working := workingFixture(filepath.Join(root, "working"))
 	for _, path := range []string{runtime, base, working.Directory()} {
-		if err := os.Mkdir(path, 0700); err != nil {
+		if err := os.Mkdir(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -86,16 +93,33 @@ func bootFixture(ctx context.Context, t *testing.T, network *networkFixture) (*S
 		t.Fatal(err)
 	}
 	for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
-		if _, err := tools.Run(ctx, system.Mke2fs, []string{"-q", "-t", "ext4", "-F", working.Image(volume), "32m"}, nil); err != nil {
+		if _, err := tools.Run(
+			ctx,
+			system.Mke2fs,
+			[]string{"-q", "-t", "ext4", "-F", working.Image(volume), "32m"},
+			nil,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
-	boot, err := runnerwire.DecodeManagedBoot([]byte(`{"backendUrl":"https://backend.example.com","deviceToken":"private-token"}`))
+	boot, err := runnerwire.DecodeManagedBoot(
+		[]byte(`{"backendUrl":"https://backend.example.com","deviceToken":"private-token"}`),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	lease := &leaseFixture{}
-	sandbox, err := New(Config{Runtime: runtime, BackendURL: boot.BackendURL}, Dependencies{Tools: tools, Runsc: fixtureRuntime(t, runtime), Network: network, Disks: diskFixture{copy: fixtureCopy}}, Slot{Index: 3, Namespace: "demi-3"}, lease)
+	sandbox, err := New(
+		Config{Runtime: runtime, BackendURL: boot.BackendURL},
+		Dependencies{
+			Tools:   tools,
+			Runsc:   fixtureRuntime(t, runtime),
+			Network: network,
+			Disks:   diskFixture{copy: fixtureCopy},
+		},
+		Slot{Index: 3, Namespace: "demi-3"},
+		lease,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

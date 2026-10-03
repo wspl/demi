@@ -57,21 +57,33 @@ func TestCredentialModesIgnoreUmask(t *testing.T) {
 	job := func(ctx context.Context) {
 		// Only the isolated root scenario changes the thread-local mask.
 		if os.Geteuid() == 0 {
-			previous := syscall.Umask(077)
+			previous := syscall.Umask(0o77)
 			defer syscall.Umask(previous)
 		}
 		directory := NewRuntimeDirectory(t.TempDir(), "demi-test")
 		if err := directory.Create(ctx); err != nil {
 			t.Fatal(err)
 		}
-		boot, err := runnerwire.DecodeManagedBoot([]byte(`{"backendUrl":"https://backend.example.com","deviceToken":"tok"}`))
+		boot, err := runnerwire.DecodeManagedBoot(
+			[]byte(`{"backendUrl":"https://backend.example.com","deviceToken":"tok"}`),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := directory.WriteCredentials(ctx, boot, []netip.Addr{netip.MustParseAddr("1.1.1.1")}); err != nil && (os.Geteuid() == 0 || !errors.Is(err, os.ErrPermission)) {
+		if err := directory.WriteCredentials(
+			ctx,
+			boot,
+			[]netip.Addr{netip.MustParseAddr("1.1.1.1")},
+		); err != nil &&
+			(os.Geteuid() == 0 || !errors.Is(err, os.ErrPermission)) {
 			t.Fatal(err)
 		}
-		for path, mode := range map[string]os.FileMode{directory.Boot(): 0400, directory.Resolver(): 0444, directory.Hosts(): 0444, directory.Root(): 0700} {
+		for path, mode := range map[string]os.FileMode{
+			directory.Boot():     0o400,
+			directory.Resolver(): 0o444,
+			directory.Hosts():    0o444,
+			directory.Root():     0o700,
+		} {
 			info, err := os.Stat(path)
 			if err != nil {
 				t.Fatal(err)
@@ -114,11 +126,11 @@ func TestRemovalPreservesMountPointContents(t *testing.T) {
 	if err := directory.Create(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(directory.Config(), []byte("{}"), 0600); err != nil {
+	if err := os.WriteFile(directory.Config(), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	project := filepath.Join(directory.Home(), "project")
-	if err := os.WriteFile(project, []byte("work"), 0600); err != nil {
+	if err := os.WriteFile(project, []byte("work"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := directory.Remove(ctx); err == nil {
@@ -160,7 +172,7 @@ func TestRemovalPreservesSurvivingMount(t *testing.T) {
 			}
 		}()
 		project := filepath.Join(directory.Home(), "project")
-		if err := os.WriteFile(project, []byte("work"), 0600); err != nil {
+		if err := os.WriteFile(project, []byte("work"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := directory.Remove(ctx); err == nil {

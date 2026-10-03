@@ -28,7 +28,9 @@ func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T)
 			// BSD sed has no e command, and GNU sed prints its output only
 			// after the command ends, so the child's ready line never comes.
 			if strings.Contains(script, "sed -n") {
-				t.Skip("decision 4: system sed does not stream the e command's output (BSD lacks e; GNU waits for the command)")
+				t.Skip(
+					"decision 4: system sed does not stream the e command's output (BSD lacks e; GNU waits for the command)",
+				)
 			}
 			t.Parallel()
 			ctx, scope, job, _ := shellJob(t, script)

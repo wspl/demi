@@ -25,7 +25,18 @@ func state(ctx context.Context, port plugin.Port) (json.RawMessage, error) {
 	}
 	result := ExposeState{Available: listed.Available, Exposes: make([]ExposeEntry, 0, len(entries))}
 	for _, e := range entries {
-		result.Exposes = append(result.Exposes, ExposeEntry{ID: e.expose.ID, Number: e.number, DeviceID: e.expose.Device, DeviceName: e.expose.DeviceName, Address: e.expose.Address, URL: e.expose.URL, ExpiresAt: e.expose.ExpiresAt})
+		result.Exposes = append(
+			result.Exposes,
+			ExposeEntry{
+				ID:         e.expose.ID,
+				Number:     e.number,
+				DeviceID:   e.expose.Device,
+				DeviceName: e.expose.DeviceName,
+				Address:    e.expose.Address,
+				URL:        e.expose.URL,
+				ExpiresAt:  e.expose.ExpiresAt,
+			},
+		)
 	}
 	return result.MarshalJSON()
 }

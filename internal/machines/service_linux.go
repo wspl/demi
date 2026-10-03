@@ -40,13 +40,7 @@ func Run(ctx context.Context, config Config) (err error) {
 		}
 	}
 	if config.Mode == ModeRecoverNamespace {
-		if err = VerifyInherited(config.Data); err != nil {
-			return err
-		}
-		if err = ReleaseProbes(ctx, config.Data); err != nil {
-			return err
-		}
-		return FenceAndSave(ctx, core)
+		return recoverInherited(ctx, core)
 	}
 	lock, err := AcquireLock(config.Data, RuntimeDirectory)
 	if err != nil {
@@ -76,6 +70,26 @@ func Run(ctx context.Context, config Config) (err error) {
 	if config.Mode == ModeRecover {
 		return nil
 	}
+	return serveManager(ctx, core, namespace)
+}
+
+// notifyReady publishes the manager's readiness to systemd when configured.
+func notifyReady(ctx context.Context) error {
+	path := os.Getenv("NOTIFY_SOCKET")
+	if path == "" {
+		return nil
+	}
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unixgram", path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }() // Datagram close has no pending application data.
+	_, err = conn.Write([]byte("READY=1"))
+	return err
+}
+
+func serveManager(ctx context.Context, core *Core, namespace *sandbox.SavedNamespace) (err error) {
+	config, tools := core.Config, core.Tools
 	if err = core.Network.Prepare(ctx); err != nil {
 		return err
 	}
@@ -114,17 +128,13 @@ func Run(ctx context.Context, config Config) (err error) {
 	return namespace.Release(cleanup)
 }
 
-// notifyReady publishes the manager's readiness to systemd when configured.
-func notifyReady(ctx context.Context) error {
-	path := os.Getenv("NOTIFY_SOCKET")
-	if path == "" {
-		return nil
-	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, "unixgram", path)
-	if err != nil {
+func recoverInherited(ctx context.Context, core *Core) error {
+	config := core.Config
+	if err := VerifyInherited(config.Data); err != nil {
 		return err
 	}
-	defer func() { _ = conn.Close() }() // Datagram close has no pending application data.
-	_, err = conn.Write([]byte("READY=1"))
-	return err
+	if err := ReleaseProbes(ctx, config.Data); err != nil {
+		return err
+	}
+	return FenceAndSave(ctx, core)
 }

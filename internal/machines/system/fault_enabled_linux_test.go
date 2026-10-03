@@ -19,7 +19,8 @@ func TestFaultPointAbortsOnlyMatchingPoint(t *testing.T) {
 	t.Setenv("DEMI_MACHINE_MANAGER_FAULT", "fixture")
 	_, err := tools.Run(t.Context(), system.Runsc, childArgs("fault"), nil)
 	var failed *system.FailedError
-	if !errors.As(err, &failed) || !strings.Contains(failed.Output.Stderr, "demi-machine-manager: injected fault at fixture\n") {
+	if !errors.As(err, &failed) ||
+		!strings.Contains(failed.Output.Stderr, "demi-machine-manager: injected fault at fixture\n") {
 		t.Fatalf("fault = %v", err)
 	}
 }

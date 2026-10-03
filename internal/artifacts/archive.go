@@ -19,40 +19,58 @@ const entryBytes = 1024 * 1024 * 1024
 
 // Archive identifies a ZIP and the relative entry its user starts.
 type Archive struct {
+	// Digest identifies the ZIP bytes verified by the caller.
 	Digest Digest
-	Entry  string
+	// Entry is the relative path of the installed executable.
+	Entry string
 }
 
 // ArchiveError reports an unusable archive.
-type ArchiveError struct{ Cause error }
+type ArchiveError struct {
+	// Cause is the archive validation or extraction failure.
+	Cause error
+}
 
+// Error describes why the archive cannot be installed.
 func (e *ArchiveError) Error() string {
 	return fmt.Sprintf("the archive cannot be installed: %v", e.Cause)
 }
+
+// Unwrap returns the archive failure.
 func (e *ArchiveError) Unwrap() error { return e.Cause }
 
 // InstallationError reports a corrupt installation that must not be repaired.
 type InstallationError struct {
-	Directory, Reason string
-	Cause             error
+	// Directory identifies the corrupt installation.
+	Directory string
+	// Reason is the diagnostic fragment describing its failed integrity check.
+	Reason string
+	// Cause retains the underlying failure when one exists.
+	Cause error
 }
 
+// Error describes the corrupt installation.
 func (e *InstallationError) Error() string {
 	return fmt.Sprintf("the installation at %s %s", e.Directory, e.Reason)
 }
+
+// Unwrap returns the installation failure.
 func (e *InstallationError) Unwrap() error { return e.Cause }
 
 // insideArchive checks the slash-separated paths an artifact may contain.
 func insideArchive(name string) bool {
 	return name != "." && fs.ValidPath(name) && !strings.ContainsAny(name, "\\:")
 }
+
 func validateArchive(archive Archive) error {
 	hash, err := hex.DecodeString(archive.Digest.SHA256)
-	if err != nil || len(hash) != 32 || strings.ToLower(archive.Digest.SHA256) != archive.Digest.SHA256 || !insideArchive(archive.Entry) {
+	if err != nil || len(hash) != 32 || strings.ToLower(archive.Digest.SHA256) != archive.Digest.SHA256 ||
+		!insideArchive(archive.Entry) {
 		return &ArchiveError{errors.New("invalid archive digest or entry path")}
 	}
 	return nil
 }
+
 func readInstallation(ctx context.Context, directory string) (*receipt, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -135,7 +153,7 @@ func InstallArchive(ctx context.Context, root string, archive Archive) (entry st
 	if err := ctx.Err(); err != nil {
 		return "", nil, err
 	}
-	if err := os.MkdirAll(root, 0755); err != nil {
+	if err := os.MkdirAll(root, 0o755); err != nil {
 		return "", nil, err
 	}
 	lock, err := AcquireInstallLock(ctx, artifactPath(root, archive.Digest.SHA256+".lock"))
@@ -209,7 +227,11 @@ func publishInstallation(ctx context.Context, extracted, destination string, arc
 	if err != nil {
 		return "", err
 	}
-	if err := WriteReceipt(ctx, extracted, receipt{ArchiveHash: archive.Digest.SHA256, EntryHash: found.SHA256}); err != nil {
+	if err := WriteReceipt(
+		ctx,
+		extracted,
+		receipt{ArchiveHash: archive.Digest.SHA256, EntryHash: found.SHA256},
+	); err != nil {
 		return "", err
 	}
 	if err := PublishDirectory(ctx, extracted, destination); err != nil {
@@ -247,7 +269,7 @@ func extractZIP(ctx context.Context, archive, destination string) error {
 		return &ArchiveError{err}
 	}
 	defer func() { _ = reader.Close() }() // Read-only ZIP file.
-	if err := os.MkdirAll(destination, 0755); err != nil {
+	if err := os.MkdirAll(destination, 0o755); err != nil {
 		return err
 	}
 	root, err := os.OpenRoot(destination)
@@ -281,19 +303,20 @@ func extractZIP(ctx context.Context, archive, destination string) error {
 	}
 	return nil
 }
+
 func extractEntry(ctx context.Context, root *os.Root, entry *zip.File) (err error) {
 	name := strings.TrimSuffix(entry.Name, "/")
 	if !insideArchive(name) {
 		return fmt.Errorf("entry escapes installation: %q", entry.Name)
 	}
 	if entry.FileInfo().IsDir() {
-		return root.MkdirAll(filepath.FromSlash(name), 0755)
+		return root.MkdirAll(filepath.FromSlash(name), 0o755)
 	}
 	parent, _ := Parent(filepath.FromSlash(name))
 	if parent == "" {
 		parent = "."
 	}
-	if err := root.MkdirAll(parent, 0755); err != nil {
+	if err := root.MkdirAll(parent, 0o755); err != nil {
 		return err
 	}
 	input, err := entry.Open()
@@ -316,7 +339,7 @@ func extractEntry(ctx context.Context, root *os.Root, entry *zip.File) (err erro
 	if !entry.Mode().IsRegular() {
 		return fmt.Errorf("unsupported archive entry %q", name)
 	}
-	output, err := root.OpenFile(filepath.FromSlash(name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	output, err := root.OpenFile(filepath.FromSlash(name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -341,7 +364,7 @@ func removeInstallationStage(directory string) error {
 		if !entry.IsDir() {
 			return nil
 		}
-		return os.Chmod(name, 0700)
+		return os.Chmod(name, 0o700)
 	}); err != nil {
 		return err
 	}

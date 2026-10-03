@@ -44,7 +44,7 @@ func TestVerifiedBaseImportedOnceUnderManifestDigest(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(base, "rootfs.tar.zst")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("archive retained: %v", err)
 	}
-	requireStorage(t, os.Mkdir(filepath.Join(bases, ".base-stale"), 0700))
+	requireStorage(t, os.Mkdir(filepath.Join(bases, ".base-stale"), 0o700))
 	again, err := storage.ImportBase(t.Context(), tools, image.Directory, bases)
 	requireStorage(t, err)
 	if again != version {
@@ -55,7 +55,7 @@ func TestVerifiedBaseImportedOnceUnderManifestDigest(t *testing.T) {
 	if len(entries) != 1 || entries[0].Name() != string(version) {
 		t.Fatal(entries)
 	}
-	requireStorage(t, os.WriteFile(filepath.Join(base, "manifest.json"), []byte("{}"), 0600))
+	requireStorage(t, os.WriteFile(filepath.Join(base, "manifest.json"), []byte("{}"), 0o600))
 	_, err = storage.ImportBase(t.Context(), tools, image.Directory, bases)
 	if !errors.Is(err, storage.ErrPinnedManifest) {
 		t.Fatalf("pinned bytes: %v", err)
@@ -65,7 +65,14 @@ func TestVerifiedBaseImportedOnceUnderManifestDigest(t *testing.T) {
 // Cost: six small import scenarios, up to three bsdtar runs; normally <1 s.
 func TestInvalidReleaseRefusedWithoutStage(t *testing.T) {
 	tools := storageTools(t)
-	for _, name := range []string{"archive", "architecture", "missing-init", "absent-executable", "executable-digest", "escape"} {
+	for _, name := range []string{
+		"archive",
+		"architecture",
+		"missing-init",
+		"absent-executable",
+		"executable-digest",
+		"escape",
+	} {
 		t.Run(name, func(t *testing.T) {
 			architecture, ok := machinewire.HostArchitecture()
 			if !ok {

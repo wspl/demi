@@ -7,7 +7,7 @@ import (
 	"github.com/nlnwa/whatwg-url/url"
 )
 
-// The resource of `demi.browser` that the pinned release is, whose entry
+// Resource is the resource of `demi.browser` that the pinned release is, whose entry
 // is Chrome's executable (`native-runtime.md` § Bind an exact package).
 const Resource = "chrome"
 

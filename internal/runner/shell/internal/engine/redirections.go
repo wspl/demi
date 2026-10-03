@@ -11,12 +11,12 @@ import (
 
 // open captures truncation at open and wraps subsequent writes as separate mutations.
 func (e *execution) open(ctx context.Context, path string, flags int, mode os.FileMode) (io.ReadWriteCloser, error) {
-	hc := interp.HandlerCtx(ctx)
-	absolute, err := cmdsdk.Resolve(hc.Dir, shellPath(path))
+	handler := interp.HandlerCtx(ctx)
+	absolute, err := cmdsdk.Resolve(handler.Dir, shellPath(path))
 	if err != nil {
 		return nil, err
 	}
-	state := hc.Scope().(*interpreterScope)
+	state := handler.Scope().(*interpreterScope)
 	if state.attributes.Umask != nil {
 		mode &^= os.FileMode(*state.attributes.Umask)
 	}
@@ -33,7 +33,7 @@ func (e *execution) open(ctx context.Context, path string, flags int, mode os.Fi
 	if writing && e.options.Edits != nil {
 		info, statErr := file.Stat()
 		if statErr == nil && info.Mode().IsRegular() {
-			result = &recordedFile{file: file, path: absolute, owner: e, ctx: ctx, readwrite: flags&os.O_RDWR != 0}
+			result = &recordedFile{file: file, path: absolute, owner: e, ctx: ctx, readWrite: flags&os.O_RDWR != 0}
 		}
 	}
 	e.mu.Lock()
@@ -63,11 +63,16 @@ type recordedFile struct {
 	path      string
 	owner     *execution
 	ctx       context.Context
-	readwrite bool
+	readWrite bool
 }
 
+// Read preserves the native descriptor position for shell reads.
 func (f *recordedFile) Read(b []byte) (int, error) { return f.file.Read(b) }
-func (f *recordedFile) Close() error               { return f.file.Close() }
+
+// Close releases the retained native handle.
+func (f *recordedFile) Close() error { return f.file.Close() }
+
+// Write records a mutation only while the path still identifies the opened file.
 func (f *recordedFile) Write(b []byte) (int, error) {
 	current, err := os.Stat(f.path)
 	original, statErr := f.file.Stat()

@@ -15,8 +15,7 @@ type ServerFrame interface {
 // The connection is attached; the snapshot frames follow.
 // +demi:variant ServerFrame opened
 // +demi:tolerant
-type OpenedFrame struct {
-}
+type OpenedFrame struct{}
 
 // Answers `edit_and_send` at durable acceptance.
 // +demi:variant ServerFrame edit_result
@@ -158,16 +157,14 @@ type SubagentTranscriptPatchFrame struct {
 // The connection is detached.
 // +demi:variant ServerFrame closed
 // +demi:tolerant
-type ClosedFrame struct {
-}
+type ClosedFrame struct{}
 
 // Nothing: the connection sent no other frame for 30 seconds. The
 // backend's socket sends it, not the tree, so that a page can tell a
 // quiet connection from a dead one (`runtime.md` § Order and delivery).
 // +demi:variant ServerFrame heartbeat
 // +demi:tolerant
-type HeartbeatFrame struct {
-}
+type HeartbeatFrame struct{}
 
 // How an edit ended.
 // +demi:union tag=status
@@ -201,8 +198,7 @@ type SteerOutcome interface {
 // The steer is pending until the next continuation boundary.
 // +demi:variant SteerOutcome accepted
 // +demi:tolerant
-type AcceptedSteer struct {
-}
+type AcceptedSteer struct{}
 
 // +demi:variant SteerOutcome rejected
 // +demi:tolerant
@@ -295,7 +291,7 @@ type RunningStatus struct {
 }
 
 // Command returns the command and its view, whatever its status.
-func (v *RunningStatus) Command() *CommandView { return &v.CommandView }
+func (r *RunningStatus) Command() *CommandView { return &r.CommandView }
 
 // +demi:variant ShellStatus exited
 // +demi:tolerant
@@ -305,7 +301,7 @@ type ExitedStatus struct {
 }
 
 // Command returns the command and its view, whatever its status.
-func (v *ExitedStatus) Command() *CommandView { return &v.CommandView }
+func (e *ExitedStatus) Command() *CommandView { return &e.CommandView }
 
 // +demi:variant ShellStatus aborted
 // +demi:tolerant
@@ -314,7 +310,7 @@ type AbortedStatus struct {
 }
 
 // Command returns the command and its view, whatever its status.
-func (v *AbortedStatus) Command() *CommandView { return &v.CommandView }
+func (a *AbortedStatus) Command() *CommandView { return &a.CommandView }
 
 // A command as the pages see it, whatever its status (`runtime.md`
 // § Live output).

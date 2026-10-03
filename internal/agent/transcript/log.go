@@ -16,8 +16,10 @@ const InterruptedCode = "interrupted"
 
 // PendingCall is a provider-requested tool call with no result yet.
 type PendingCall struct {
+	// ToolUseID identifies the provider's tool invocation.
 	ToolUseID string
-	ToolName  string
+	// ToolName names the requested tool.
+	ToolName string
 	// Input is the JSON text the provider supplied.
 	Input string
 }
@@ -64,36 +66,98 @@ func (l *Log) TakePatches() *PatchBatch {
 		return nil
 	}
 	l.revision++
-	batch := &PatchBatch{Revision: l.revision, Patches: l.journal.patches, Touched: l.journal.touched, Rows: l.journal.rows}
+	batch := &PatchBatch{
+		Revision: l.revision,
+		Patches:  l.journal.patches,
+		Touched:  l.journal.touched,
+		Rows:     l.journal.rows,
+	}
 	l.journal = journal{}
 	return batch
 }
 
 // PushUser appends the input that opens a user turn.
-func (l *Log) PushUser(turnID core.TurnID, model core.ModelSelection, content []core.UserContentBlock, preamble *string) core.BlockID {
+func (l *Log) PushUser(
+	turnID core.TurnID,
+	model core.ModelSelection,
+	content []core.UserContentBlock,
+	preamble *string,
+) core.BlockID {
 	id := l.nextBlockID()
-	l.append(&core.UserBlock{BlockID: id, TurnID: turnID, Timestamp: l.clock.Now(), Selection: model, Content: append([]core.UserContentBlock{}, content...), Preamble: preamble})
+	l.append(
+		&core.UserBlock{
+			BlockID:   id,
+			TurnID:    turnID,
+			Timestamp: l.clock.Now(),
+			Selection: model,
+			Content:   append([]core.UserContentBlock{}, content...),
+			Preamble:  preamble,
+		},
+	)
 	return id
 }
 
 // PushContext appends context from the named source.
 func (l *Log) PushContext(turnID core.TurnID, model core.ModelSelection, source, text string) {
-	l.append(&core.ContextBlock{BlockID: l.nextBlockID(), TurnID: turnID, Timestamp: l.clock.Now(), Selection: model, Source: source, Text: text})
+	l.append(
+		&core.ContextBlock{
+			BlockID:   l.nextBlockID(),
+			TurnID:    turnID,
+			Timestamp: l.clock.Now(),
+			Selection: model,
+			Source:    source,
+			Text:      text,
+		},
+	)
 }
 
 // PushSteer appends a human steer under its existing identity.
-func (l *Log) PushSteer(id core.BlockID, turnID core.TurnID, model core.ModelSelection, content []core.UserContentBlock) {
-	l.append(&core.SteerBlock{BlockID: id, TurnID: turnID, Timestamp: l.clock.Now(), Selection: model, Content: append([]core.UserContentBlock{}, content...)})
+func (l *Log) PushSteer(
+	id core.BlockID,
+	turnID core.TurnID,
+	model core.ModelSelection,
+	content []core.UserContentBlock,
+) {
+	l.append(
+		&core.SteerBlock{
+			BlockID:   id,
+			TurnID:    turnID,
+			Timestamp: l.clock.Now(),
+			Selection: model,
+			Content:   append([]core.UserContentBlock{}, content...),
+		},
+	)
 }
 
 // PushWakeup appends a fired yield wakeup under its existing identity.
-func (l *Log) PushWakeup(id core.BlockID, turnID core.TurnID, model core.ModelSelection, placement core.WakeupPlacement) {
-	l.append(&core.WakeupBlock{BlockID: id, TurnID: turnID, Timestamp: l.clock.Now(), Selection: model, Placement: placement})
+func (l *Log) PushWakeup(
+	id core.BlockID,
+	turnID core.TurnID,
+	model core.ModelSelection,
+	placement core.WakeupPlacement,
+) {
+	l.append(
+		&core.WakeupBlock{
+			BlockID:   id,
+			TurnID:    turnID,
+			Timestamp: l.clock.Now(),
+			Selection: model,
+			Placement: placement,
+		},
+	)
 }
 
 // PushAgentMessage appends an agent message under its message identity.
 func (l *Log) PushAgentMessage(turnID core.TurnID, model core.ModelSelection, message core.AgentMessage) {
-	l.append(&core.AgentMessageBlock{BlockID: message.ID, TurnID: turnID, Timestamp: l.clock.Now(), Selection: model, Message: message})
+	l.append(
+		&core.AgentMessageBlock{
+			BlockID:   message.ID,
+			TurnID:    turnID,
+			Timestamp: l.clock.Now(),
+			Selection: model,
+			Message:   message,
+		},
+	)
 }
 
 // PushResume records that a turn continues after a cut.
@@ -119,13 +183,28 @@ func (l *Log) ReplaceAll(blocks []core.Block) PatchBatch {
 	l.journal = journal{}
 	l.revision++
 	l.blocks = append([]core.Block{}, blocks...)
-	return PatchBatch{Revision: l.revision, Patches: []framewire.TranscriptPatch{&framewire.ReplacePatch{Value: slices.Clone(l.blocks)}}, Touched: []core.BlockID{}}
+	return PatchBatch{
+		Revision: l.revision,
+		Patches:  []framewire.TranscriptPatch{&framewire.ReplacePatch{Value: slices.Clone(l.blocks)}},
+		Touched:  []core.BlockID{},
+	}
 }
 
 // InsertCompactionBoundary inserts a summary where the retained history begins.
-func (l *Log) InsertCompactionBoundary(index int, model core.ModelSelection, summary string, summaryTokens uint64) core.BlockID {
+func (l *Log) InsertCompactionBoundary(
+	index int,
+	model core.ModelSelection,
+	summary string,
+	summaryTokens uint64,
+) core.BlockID {
 	id := l.nextBlockID()
-	block := &core.CompactionBoundaryBlock{BlockID: id, Timestamp: l.clock.Now(), Selection: model, Summary: summary, SummaryTokens: summaryTokens}
+	block := &core.CompactionBoundaryBlock{
+		BlockID:       id,
+		Timestamp:     l.clock.Now(),
+		Selection:     model,
+		Summary:       summary,
+		SummaryTokens: summaryTokens,
+	}
 	l.journal.add(index, block)
 	l.blocks = slices.Insert(l.blocks, index, core.Block(block))
 	return id
@@ -133,7 +212,15 @@ func (l *Log) InsertCompactionBoundary(index int, model core.ModelSelection, sum
 
 // PushCompactionMarker appends the estimate of what the boundary summarized.
 func (l *Log) PushCompactionMarker(model core.ModelSelection, boundaryID core.BlockID, compactedTokens uint64) {
-	l.append(&core.CompactionMarkerBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, BoundaryID: boundaryID, CompactedTokens: compactedTokens})
+	l.append(
+		&core.CompactionMarkerBlock{
+			BlockID:         l.nextBlockID(),
+			Timestamp:       l.clock.Now(),
+			Selection:       model,
+			BoundaryID:      boundaryID,
+			CompactedTokens: compactedTokens,
+		},
+	)
 }
 
 // PushAbort appends the stopped marker left by Stop.
@@ -142,8 +229,22 @@ func (l *Log) PushAbort(model core.ModelSelection) {
 }
 
 // PushError appends a failed request or interrupted turn record.
-func (l *Log) PushError(model core.ModelSelection, message string, code *string, diagnostics *core.ProviderErrorDiagnostics) {
-	l.append(&core.ErrorBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Message: message, Code: code, Diagnostics: diagnostics})
+func (l *Log) PushError(
+	model core.ModelSelection,
+	message string,
+	code *string,
+	diagnostics *core.ProviderErrorDiagnostics,
+) {
+	l.append(
+		&core.ErrorBlock{
+			BlockID:     l.nextBlockID(),
+			Timestamp:   l.clock.Now(),
+			Selection:   model,
+			Message:     message,
+			Code:        code,
+			Diagnostics: diagnostics,
+		},
+	)
 }
 
 // HasUserTurn reports whether a user block opened the turn.
@@ -199,7 +300,9 @@ func (l *Log) SignThinking(signature string) {
 
 // PushRedactedThinking appends opaque reasoning data.
 func (l *Log) PushRedactedThinking(model core.ModelSelection, data string) {
-	l.append(&core.RedactedThinkingBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Data: data})
+	l.append(
+		&core.RedactedThinkingBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Data: data},
+	)
 }
 
 // AppendText extends the last incomplete text block or opens one.
@@ -257,7 +360,18 @@ func (l *Log) PushToolCall(model core.ModelSelection, call provider.ToolCall) {
 		// input as text too, so the tool reports it rather than losing the call.
 		input = string(call.Input)
 	}
-	l.append(&core.ToolCallBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, ToolUseID: call.ToolUseID, ToolName: call.ToolName, Input: input, Status: "executing", Output: []core.ToolResultContentBlock{}})
+	l.append(
+		&core.ToolCallBlock{
+			BlockID:   l.nextBlockID(),
+			Timestamp: l.clock.Now(),
+			Selection: model,
+			ToolUseID: call.ToolUseID,
+			ToolName:  call.ToolName,
+			Input:     input,
+			Status:    "executing",
+			Output:    []core.ToolResultContentBlock{},
+		},
+	)
 }
 
 // PushResponse appends the usage of one answered request.
@@ -278,7 +392,12 @@ func (l *Log) PendingToolCalls() []PendingCall {
 
 // CompleteToolCall completes the latest executing call with this provider id.
 // A provider may reuse an id across requests; an absent call is ignored.
-func (l *Log) CompleteToolCall(toolUseID string, output []core.ToolResultContentBlock, isError bool, view core.ToolView) {
+func (l *Log) CompleteToolCall(
+	toolUseID string,
+	output []core.ToolResultContentBlock,
+	isError bool,
+	view core.ToolView,
+) {
 	for i := len(l.blocks) - 1; i >= 0; i-- {
 		call, ok := l.blocks[i].(*core.ToolCallBlock)
 		if !ok || call.Status != "executing" || call.ToolUseID != toolUseID {

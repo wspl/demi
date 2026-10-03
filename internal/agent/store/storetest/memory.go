@@ -32,14 +32,29 @@ func NewMemoryTreeStore() *MemoryTreeStore { return NewMemoryTreeStoreWithBlobs(
 
 // NewMemoryTreeStoreWithBlobs creates a store using the supplied namespace.
 func NewMemoryTreeStoreWithBlobs(blobs store.BlobStore) *MemoryTreeStore {
-	return &MemoryTreeStore{nodes: map[core.NodeID]storedNode{}, sequences: map[core.Sequence]uint64{}, outputs: map[core.CommandID]store.StoredOutput{}, childrenHolds: map[core.NodeID]*StoreGate{}, blobs: blobs}
+	return &MemoryTreeStore{
+		nodes:         map[core.NodeID]storedNode{},
+		sequences:     map[core.Sequence]uint64{},
+		outputs:       map[core.CommandID]store.StoredOutput{},
+		childrenHolds: map[core.NodeID]*StoreGate{},
+		blobs:         blobs,
+	}
 }
 
 // Copy takes an independent copy of the stored state sharing its blob namespace.
 func (s *MemoryTreeStore) Copy() *MemoryTreeStore {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return &MemoryTreeStore{nodes: maps.Clone(s.nodes), saves: slices.Clone(s.saves), sequences: maps.Clone(s.sequences), outputs: maps.Clone(s.outputs), failingSaves: s.failingSaves, saveHold: s.saveHold, childrenHolds: maps.Clone(s.childrenHolds), blobs: s.blobs}
+	return &MemoryTreeStore{
+		nodes:         maps.Clone(s.nodes),
+		saves:         slices.Clone(s.saves),
+		sequences:     maps.Clone(s.sequences),
+		outputs:       maps.Clone(s.outputs),
+		failingSaves:  s.failingSaves,
+		saveHold:      s.saveHold,
+		childrenHolds: maps.Clone(s.childrenHolds),
+		blobs:         s.blobs,
+	}
 }
 
 // KeepOutput records what the conversation holds of an ended command's output.
@@ -52,7 +67,9 @@ func (s *MemoryTreeStore) KeepOutput(command core.CommandID, output store.Stored
 
 // Save records the node and update of one successful save.
 type Save struct {
-	Node   core.NodeID
+	// Node identifies the saved node.
+	Node core.NodeID
+	// Update contains the committed checkpoint changes.
 	Update store.CheckpointUpdate
 }
 
@@ -66,7 +83,11 @@ func (s *MemoryTreeStore) Saves() []Save {
 		// These immutable bytes were produced by generated encoders at admission.
 		// Decoding them cannot fail; corrupt/incomplete transcript loads use Load.
 		state, _ := store.DecodeCheckpointState(saved.rows.state)
-		update := store.CheckpointUpdate{State: state, BlockCount: saved.rows.count, ChangedBlocks: []store.ChangedBlock{}}
+		update := store.CheckpointUpdate{
+			State:         state,
+			BlockCount:    saved.rows.count,
+			ChangedBlocks: []store.ChangedBlock{},
+		}
 		if saved.rows.command != nil {
 			command, _ := store.DecodeCommandStateSnapshot(saved.rows.command)
 			update.CommandState = &command
@@ -182,7 +203,11 @@ func (s *MemoryTreeStore) Children(ctx context.Context, parent core.NodeID) ([]s
 }
 
 // CreateNode commits the record and first checkpoint; an existing node is refused.
-func (s *MemoryTreeStore) CreateNode(ctx context.Context, record store.NodeRecord, initial store.CheckpointUpdate) error {
+func (s *MemoryTreeStore) CreateNode(
+	ctx context.Context,
+	record store.NodeRecord,
+	initial store.CheckpointUpdate,
+) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -201,7 +226,7 @@ func (s *MemoryTreeStore) CreateNode(ctx context.Context, record store.NodeRecor
 		return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("node %s already exists", record.ID)}
 	}
 	s.nodes[record.ID] = storedNode{record: record, rows: checkpointRows{command: empty, blocks: map[int][]byte{}}}
-	if err := s.applySave(saved); err != nil {
+	if err := s.applySaveLocked(saved); err != nil {
 		delete(s.nodes, record.ID)
 		return err
 	}
@@ -233,7 +258,13 @@ func (s *MemoryTreeStore) CloseNode(ctx context.Context, id core.NodeID, closed 
 }
 
 // ReopenNode starts a new round and queues its reviving message atomically.
-func (s *MemoryTreeStore) ReopenNode(ctx context.Context, id core.NodeID, round uint64, startedAt core.Timestamp, message core.QueuedMessage) error {
+func (s *MemoryTreeStore) ReopenNode(
+	ctx context.Context,
+	id core.NodeID,
+	round uint64,
+	startedAt core.Timestamp,
+	message core.QueuedMessage,
+) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

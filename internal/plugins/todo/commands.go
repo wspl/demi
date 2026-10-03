@@ -48,14 +48,21 @@ func list(ctx context.Context, invocation host.RPCInvocation, port host.RPCPort)
 }
 
 func add(ctx context.Context, call host.Call[AddArgs], port host.RPCPort) (uint8, error) {
-	todos, err := host.Update(ctx, port, storageKey, decodeStoredTodos, storedTodos.MarshalJSON, func(current *storedTodos) (storedTodos, error) {
-		todos := storedTodos{}
-		if current != nil {
-			todos = *current
-		}
-		todos = append(todos, TodoItem{ID: nextID(todos), Text: call.Args.Text, Status: Pending})
-		return todos, nil
-	})
+	todos, err := host.Update(
+		ctx,
+		port,
+		storageKey,
+		decodeStoredTodos,
+		storedTodos.MarshalJSON,
+		func(current *storedTodos) (storedTodos, error) {
+			todos := storedTodos{}
+			if current != nil {
+				todos = *current
+			}
+			todos = append(todos, TodoItem{ID: nextID(todos), Text: call.Args.Text, Status: Pending})
+			return todos, nil
+		},
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -88,18 +95,25 @@ func done(ctx context.Context, call host.Call[DoneArgs], port host.RPCPort) (uin
 // change commits the requested todo edit through the node's revisioned storage.
 func change(ctx context.Context, port host.RPCPort, id string, edit func(*TodoItem)) (TodoItem, error) {
 	var changed TodoItem
-	_, err := host.Update(ctx, port, storageKey, decodeStoredTodos, storedTodos.MarshalJSON, func(current *storedTodos) (storedTodos, error) {
-		if current != nil {
-			for i := range *current {
-				if (*current)[i].ID == id {
-					edit(&(*current)[i])
-					changed = (*current)[i]
-					return *current, nil
+	_, err := host.Update(
+		ctx,
+		port,
+		storageKey,
+		decodeStoredTodos,
+		storedTodos.MarshalJSON,
+		func(current *storedTodos) (storedTodos, error) {
+			if current != nil {
+				for i := range *current {
+					if (*current)[i].ID == id {
+						edit(&(*current)[i])
+						changed = (*current)[i]
+						return *current, nil
+					}
 				}
 			}
-		}
-		return nil, &host.RPCError{Kind: host.HandlerFailed, Message: fmt.Sprintf("Todo not found: %s", id)}
-	})
+			return nil, &host.RPCError{Kind: host.HandlerFailed, Message: fmt.Sprintf("Todo not found: %s", id)}
+		},
+	)
 	return changed, err
 }
 

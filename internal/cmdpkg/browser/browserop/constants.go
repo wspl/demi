@@ -5,96 +5,96 @@ import (
 	"strconv"
 )
 
-// The package's id, which its release descriptor names and the coding
+// Package is the package's id, which its release descriptor names and the coding
 // agent's commands and the backend's `browser` user stream bind to.
 const Package = "demi.browser"
 
-// The prefix of every browser operation's name, such as `browser.open`.
+// Prefix is the prefix of every browser operation's name, such as `browser.open`.
 const Prefix = "browser."
 
-// The deadline of an operation whose input names none, in milliseconds.
+// TimeoutMS is the deadline of an operation whose input names none, in milliseconds.
 const TimeoutMS = 30_000
 
-// The longest deadline an input may name, and `open`'s default: a cold start
+// MaxTimeoutMS is the longest deadline an input may name, and `open`'s default: a cold start
 // installs and launches Chrome first.
 const MaxTimeoutMS = 300_000
 
-// The most nodes, entries or matches one result lists.
+// MaxNodes is the most nodes, entries or matches one result lists.
 const MaxNodes = 1_000
 
-// How many a result lists when the input names no limit.
+// DefaultNodes is the number of entries a result lists when the input names no limit.
 const DefaultNodes = 100
 
-// The largest result written to stdout; a larger one is shortened or fails.
+// InlineBytes is the largest result written to stdout; a larger one is shortened or fails.
 const InlineBytes = 64 * 1024
 
-// The longest text an input carries, such as typed text or an expression,
+// StdinBytes is the longest text an input carries, such as typed text or an expression,
 // in Unicode scalar values.
 const StdinBytes = 1024 * 1024
 
-// The largest PNG a clipboard holds, and its most pixels.
+// ClipboardPNGBytes is the largest PNG a clipboard holds, in bytes.
 const ClipboardPNGBytes = 16 * 1024 * 1024
 
-// The most pixels a clipboard PNG holds.
+// ClipboardPNGPixels is the most pixels a clipboard PNG holds.
 const ClipboardPNGPixels = 16_000_000
 
-// The most URLs one `content.fetch` reads.
+// FetchURLs is the most URLs one `content.fetch` reads.
 const FetchURLs = 10
 
-// The console entries a tab retains, and their most bytes.
+// ConsoleEntries is the maximum number of console entries a tab retains.
 const ConsoleEntries = 1000
 
-// The most bytes of console entries a tab retains.
+// ConsoleBytes is the most bytes of console entries a tab retains.
 const ConsoleBytes = 1024 * 1024
 
-// The CDP events a debugging connection retains, and their most bytes.
+// CDPEvents is the maximum number of CDP events a debugging connection retains.
 const CDPEvents = 10000
 
-// The most bytes of CDP events a debugging connection retains.
+// CDPBytes is the most bytes of CDP events a debugging connection retains.
 const CDPBytes = 8 * 1024 * 1024
 
-// The longest locator, URL, path or name an input carries, in Unicode
+// LocatorLength is the longest locator, URL, path or name an input carries, in Unicode
 // scalar values.
 const LocatorLength = 4096
 
-// The declared operation that serves a view (`native-runtime.md` § User
+// LiveOperation is the declared operation that serves a view (`native-runtime.md` § User
 // streams).
 const LiveOperation = "browser.live"
 
-// A frame's kind, the byte after its length.
+// ControlFrame is a frame's kind, the byte after its length.
 const ControlFrame = 1
 
-// A video frame: [`VideoHeader`], then H.264 Annex B data.
+// VideoFrame is a video frame: [`VideoHeader`], then H.264 Annex B data.
 const VideoFrame = 2
 
-// The video frames' codec as WebCodecs names it: H.264 High profile (`64`),
+// VideoCodec is the video frames' codec as WebCodecs names it: H.264 High profile (`64`),
 // no constraint flags (`00`), level 5.1 (`33`). The capture extension
 // encodes with it, and the page asks the user's browser for a decoder
 // of it before it opens a view.
 const VideoCodec = "avc1.640033"
 
-// A chosen file's bytes: [`FileHeader`], then the data.
+// FileFrame is a chosen file's bytes: [`FileHeader`], then the data.
 const FileFrame = 3
 
-// The largest frame after its length: a paste's text and HTML, or a key frame.
+// MaxFrameBytes is the largest frame after its length: a paste's text and HTML, or a key frame.
 const MaxFrameBytes = 16 * 1024 * 1024
 
-// A file frame's largest data.
+// FileChunkBytes is a file frame's largest data.
 const FileChunkBytes = 64 * 1024
 
-// How often the module speaks at least, so a still page is told from a stall.
+// HeartbeatMS is the maximum interval between module messages, so a still page is told from a stall.
 const HeartbeatMS = 250
 
-// Silence after which the page shows the stream as stalled and stops sending input.
+// StallMS is silence after which the page shows the stream as stalled and stops sending input.
 const StallMS = 1000
 
-// A notice's code when this Host cannot capture the watched tab.
+// CaptureUnavailable is a notice's code when this Host cannot capture the watched tab.
 const CaptureUnavailable = "capture_unavailable"
 
-// A notice's code when the watched tab's capture failed; the next picture ends it.
+// CaptureFailed is a notice's code when the watched tab's capture failed; the next picture ends it.
 const CaptureFailed = "capture_failed"
 
-// What a control token looks like: a UUID in lowercase, as
+// ControlTokenPattern describes a control token: a UUID in lowercase, as
 // `crypto.randomUUID` makes it. It is both the check and the schema.
 const ControlTokenPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
@@ -113,13 +113,20 @@ func NumberedNodeRef(number uint64) (NodeRef, error) {
 	return ParseNodeRef("e" + strconv.FormatUint(number, 10))
 }
 
-// Defaults used when an operation omits an optional choice.
+// DefaultLoad and the other default choices are used when an operation omits an optional choice.
 const (
-	DefaultLoad          = LoadDomContentLoaded
-	DefaultInspectView   = InspectViewAccessibility
-	DefaultMouseButton   = MouseButtonLeft
-	DefaultElementState  = ElementStateVisible
+	// DefaultLoad is the load milestone used when none is requested.
+	DefaultLoad = LoadDomContentLoaded
+	// DefaultInspectView is the inspection view used when none is requested.
+	DefaultInspectView = InspectViewAccessibility
+	// DefaultMouseButton is the mouse button used when none is requested.
+	DefaultMouseButton = MouseButtonLeft
+	// DefaultElementState is the element state used when none is requested.
+	DefaultElementState = ElementStateVisible
+	// DefaultClipboardMime is the clipboard MIME type used when none is requested.
 	DefaultClipboardMime = ClipboardMimeTextPlain
+	// DefaultContentFormat is the content format used when none is requested.
 	DefaultContentFormat = ContentFormatText
-	DefaultViewportMode  = ViewportModeWeb
+	// DefaultViewportMode is the viewport mode used when none is requested.
+	DefaultViewportMode = ViewportModeWeb
 )

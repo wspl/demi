@@ -27,7 +27,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var processTests = flag.Bool("machines-process", false, "run manager process scenarios; requires root, namespace and filesystem tools")
+var processTests = flag.Bool(
+	"machines-process",
+	false,
+	"run manager process scenarios; requires root, namespace and filesystem tools",
+)
 
 type testHost struct {
 	command *exec.Cmd
@@ -57,8 +61,25 @@ func startHost(t *testing.T, controllers bool) *testHost {
 	if controllers {
 		mounts = "mount -t tmpfs tmpfs /sys/fs/cgroup; echo 'cpu memory pids' > /sys/fs/cgroup/cgroup.controllers"
 	}
-	script := "set -e\nmount --make-rshared /\nmount -t tmpfs -o mode=0755 tmpfs /run\n" + mounts + "\necho ready\nexec sleep infinity\n"
-	command := exec.CommandContext(t.Context(), "taskset", "--cpu-list", cpu, "unshare", "--mount", "--net", "--pid", "--fork", "--mount-proc", "--kill-child", "--", "sh", "-c", script)
+	script := "set -e\nmount --make-rshared /\n" +
+		"mount -t tmpfs -o mode=0755 tmpfs /run\n" + mounts + "\necho ready\nexec sleep infinity\n"
+	command := exec.CommandContext(
+		t.Context(),
+		"taskset",
+		"--cpu-list",
+		cpu,
+		"unshare",
+		"--mount",
+		"--net",
+		"--pid",
+		"--fork",
+		"--mount-proc",
+		"--kill-child",
+		"--",
+		"sh",
+		"-c",
+		script,
+	)
 	var diagnostic bytes.Buffer
 	command.Stderr = &diagnostic
 	stdout, err := command.StdoutPipe()
@@ -75,6 +96,7 @@ func startHost(t *testing.T, controllers bool) *testHost {
 	}
 	return &testHost{command: command, cpu: cpu}
 }
+
 func (h *testHost) runtimeFile(name string) string {
 	return fmt.Sprintf("/proc/%d/root%s/%s", h.command.Process.Pid, machines.RuntimeDirectory, name)
 }
@@ -94,8 +116,11 @@ func settings(t *testing.T) *processSettings {
 	image := machinestest.NewCloudImage(t, machinestest.Entries(), architecture)
 	directory := t.TempDir()
 	runsc := filepath.Join(directory, "runsc")
-	script := "#!/bin/sh\n[ \"$1\" = --version ] || { echo \"runsc $*\" >&2; exit 1; }\necho 'runsc version " + sandbox.PinnedRelease().Version() + "'\n"
-	if err := os.WriteFile(runsc, []byte(script), 0755); err != nil {
+	script := "#!/bin/sh\n" +
+		"[ \"$1\" = --version ] || { echo \"runsc $*\" >&2; exit 1; }\necho 'runsc version " + sandbox.PinnedRelease().
+		Version() +
+		"'\n"
+	if err := os.WriteFile(runsc, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(directory, "notify")
@@ -109,14 +134,30 @@ func settings(t *testing.T) *processSettings {
 		t.Fatal(err)
 	}
 	var optionErr error
-	if err = raw.Control(func(fd uintptr) { optionErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PASSCRED, 1) }); err != nil {
+	if err = raw.Control(
+		func(fd uintptr) { optionErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PASSCRED, 1) },
+	); err != nil {
 		t.Fatal(err)
 	}
 	if optionErr != nil {
 		t.Fatal(optionErr)
 	}
 	data := filepath.Join(directory, "data")
-	return &processSettings{env: []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "NOTIFY_SOCKET=" + path, "DEMI_MACHINE_MANAGER_SOCKET=" + filepath.Join(directory, "machines.sock"), "DEMI_MACHINE_MANAGER_DATA=" + data, "DEMI_MANAGED_RUNSC=" + runsc, "DEMI_MANAGED_IMAGE=" + image.Directory, "DEMI_MANAGED_BACKEND_URL=http://203.0.113.10:3271", "DEMI_MANAGED_DNS=1.1.1.1", "DEMI_MANAGED_SLOTS=4"}, notify: notify, data: data}
+	return &processSettings{
+		env: []string{
+			"PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+			"NOTIFY_SOCKET=" + path,
+			"DEMI_MACHINE_MANAGER_SOCKET=" + filepath.Join(directory, "machines.sock"),
+			"DEMI_MACHINE_MANAGER_DATA=" + data,
+			"DEMI_MANAGED_RUNSC=" + runsc,
+			"DEMI_MANAGED_IMAGE=" + image.Directory,
+			"DEMI_MANAGED_BACKEND_URL=http://203.0.113.10:3271",
+			"DEMI_MANAGED_DNS=1.1.1.1",
+			"DEMI_MANAGED_SLOTS=4",
+		},
+		notify: notify,
+		data:   data,
+	}
 }
 
 type managerProcess struct {
@@ -134,7 +175,21 @@ func (h *testHost) manager(t *testing.T, s *processSettings, args ...string) *ma
 		t.Fatal(err)
 	}
 	pid := h.command.Process.Pid
-	flags := []string{fmt.Sprintf("--mount=/proc/%d/ns/mnt", pid), fmt.Sprintf("--net=/proc/%d/ns/net", pid), fmt.Sprintf("--pid=/proc/%d/ns/pid_for_children", pid), "--", "taskset", "--cpu-list", h.cpu, "unshare", "--mount", "--propagation", "slave", "--", program}
+	flags := []string{
+		fmt.Sprintf("--mount=/proc/%d/ns/mnt", pid),
+		fmt.Sprintf("--net=/proc/%d/ns/net", pid),
+		fmt.Sprintf("--pid=/proc/%d/ns/pid_for_children", pid),
+		"--",
+		"taskset",
+		"--cpu-list",
+		h.cpu,
+		"unshare",
+		"--mount",
+		"--propagation",
+		"slave",
+		"--",
+		program,
+	}
 	p := &managerProcess{done: make(chan struct{})}
 	p.command = exec.CommandContext(t.Context(), "nsenter", append(flags, args...)...)
 	p.command.Env = s.env
@@ -155,6 +210,7 @@ func (h *testHost) manager(t *testing.T, s *processSettings, args ...string) *ma
 	})
 	return p
 }
+
 func (p *managerProcess) ready(t *testing.T, s *processSettings) {
 	t.Helper()
 	if err := s.notify.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
@@ -198,6 +254,7 @@ func (p *managerProcess) ready(t *testing.T, s *processSettings) {
 		t.Fatalf("manager exited before readiness: %v: %s", p.err, p.output.String())
 	}
 }
+
 func (p *managerProcess) stop(t *testing.T, signal syscall.Signal) {
 	t.Helper()
 	if err := syscall.Kill(p.pid, signal); err != nil {
@@ -270,7 +327,9 @@ func TestLimitsOnNamesMissingControllers(t *testing.T) {
 		t.Fatal(err)
 	}
 	var readErr error
-	if err := raw.Control(func(fd uintptr) { _, _, readErr = unix.Recvfrom(int(fd), make([]byte, 4096), unix.MSG_DONTWAIT) }); err != nil {
+	if err := raw.Control(
+		func(fd uintptr) { _, _, readErr = unix.Recvfrom(int(fd), make([]byte, 4096), unix.MSG_DONTWAIT) },
+	); err != nil {
 		t.Fatal(err)
 	}
 	if !errors.Is(readErr, unix.EAGAIN) {
@@ -305,7 +364,8 @@ func TestLimitsOffStartsWithoutCgroups(t *testing.T) {
 		t.Fatalf("stop: %v: %s", p.err, p.output.String())
 	}
 	text := p.output.String()
-	if !strings.Contains(text, "DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits") || !strings.Contains(text, "resource limits off") {
+	if !strings.Contains(text, "DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits") ||
+		!strings.Contains(text, "resource limits off") {
 		t.Fatal(text)
 	}
 }

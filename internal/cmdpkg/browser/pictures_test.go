@@ -30,7 +30,13 @@ func (f *browserFixture) decodedPicture(t *testing.T, tab browserop.TabID, frame
 	if err != nil {
 		t.Fatal(err)
 	}
-	expression := "(" + string(script) + ")(" + string(mustBrowserValue(t, base64.StdEncoding.EncodeToString(frame))) + "," + string(mustBrowserValue(t, browserop.VideoCodec)) + ")"
+	expression := "(" + string(
+		script,
+	) + ")(" + string(
+		mustBrowserValue(t, base64.StdEncoding.EncodeToString(frame)),
+	) + "," + string(
+		mustBrowserValue(t, browserop.VideoCodec),
+	) + ")"
 	result := f.mutate(t, tab, expression)
 	length, err := contract.Decode[int](observedField(t, result, "result", "result", "value"))
 	if err != nil {
@@ -38,7 +44,11 @@ func (f *browserFixture) decodedPicture(t *testing.T, tab browserop.TabID, frame
 	}
 	encoded := ""
 	for len(encoded) < length {
-		expression := "globalThis.decodedPicture.slice(" + strconv.Itoa(len(encoded)) + "," + strconv.Itoa(len(encoded)+48*1024) + ")"
+		expression := "globalThis.decodedPicture.slice(" + strconv.Itoa(
+			len(encoded),
+		) + "," + strconv.Itoa(
+			len(encoded)+48*1024,
+		) + ")"
 		piece, err := contract.Decode[string](f.eval(t, tab, expression))
 		if err != nil || piece == "" {
 			t.Fatalf("picture slice %v", err)
@@ -60,7 +70,13 @@ func (f *browserFixture) decodedPicture(t *testing.T, tab browserop.TabID, frame
 func TestNarrowStillPictureMatchesPageCoordinates(t *testing.T) {
 	f := chromeFixture(t)
 	path := filepath.Join(f.root, "still.html")
-	if err := os.WriteFile(path, []byte(`<!doctype html><style>body{margin:0;background:white}</style><div style="position:fixed;left:10px;top:100px;width:100px;height:30px;background:red"></div>`), 0600); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			`<!doctype html><style>body{margin:0;background:white}</style><div style="position:fixed;left:10px;top:100px;width:100px;height:30px;background:red"></div>`,
+		),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	opened, err := browserop.DecodeOpenResult(f.call(t, "open", browserArgs(t, `{"url":$0}`, "file://"+path)))
@@ -73,9 +89,19 @@ func TestNarrowStillPictureMatchesPageCoordinates(t *testing.T) {
 	view.until(t, "state", nil)
 	view.send(t, &browserop.LiveViewerMessageWatch{Tab: &tab})
 	for _, size := range [][2]uint32{{409, 632}, {800, 600}, {409, 632}} {
-		view.send(t, &browserop.LiveViewerMessagePanel{Width: size[0], Height: size[1], DevicePixelRatio: 2, ScreenWidth: 1280, ScreenHeight: 720})
+		view.send(
+			t,
+			&browserop.LiveViewerMessagePanel{
+				Width:            size[0],
+				Height:           size[1],
+				DevicePixelRatio: 2,
+				ScreenWidth:      1280,
+				ScreenHeight:     720,
+			},
+		)
 		stream := view.until(t, "stream", func(raw json.RawMessage) bool {
-			return string(observedField(t, raw, "width")) == strconv.Itoa(int(size[0]*2)) && string(observedField(t, raw, "height")) == strconv.Itoa(int(size[1]*2))
+			return string(observedField(t, raw, "width")) == strconv.Itoa(int(size[0]*2)) &&
+				string(observedField(t, raw, "height")) == strconv.Itoa(int(size[1]*2))
 		})
 		generation, err := contract.Decode[uint32](observedField(t, stream, "generation"))
 		if err != nil {
@@ -114,18 +140,37 @@ func stripeContrast(picture image.Image, row, from, to int) int {
 	}
 	return most
 }
+
 func TestWatchedTabArrivesWithDetailOfViewersRatio(t *testing.T) {
 	f := chromeFixture(t)
 	tab := f.open(t, "live.html")
 	view := f.view(t)
 	view.send(t, &browserop.LiveViewerMessageHello{Platform: "linux"})
-	view.send(t, &browserop.LiveViewerMessagePanel{Width: 800, Height: 600, DevicePixelRatio: 1, ScreenWidth: 1440, ScreenHeight: 900})
+	view.send(
+		t,
+		&browserop.LiveViewerMessagePanel{
+			Width:            800,
+			Height:           600,
+			DevicePixelRatio: 1,
+			ScreenWidth:      1440,
+			ScreenHeight:     900,
+		},
+	)
 	view.until(t, "state", nil)
 	view.send(t, &browserop.LiveViewerMessageWatch{Tab: &tab})
 	contrast := []int{}
 	for _, ratio := range []uint32{1, 2} {
 		if ratio == 2 {
-			view.send(t, &browserop.LiveViewerMessagePanel{Width: 800, Height: 600, DevicePixelRatio: 2, ScreenWidth: 1440, ScreenHeight: 900})
+			view.send(
+				t,
+				&browserop.LiveViewerMessagePanel{
+					Width:            800,
+					Height:           600,
+					DevicePixelRatio: 2,
+					ScreenWidth:      1440,
+					ScreenHeight:     900,
+				},
+			)
 		}
 		stream := view.until(t, "stream", func(raw json.RawMessage) bool {
 			return string(observedField(t, raw, "width")) == strconv.Itoa(int(800*ratio))
@@ -228,7 +273,12 @@ func TestCaptureExtensionReloadPreservesPagesAndRecreatesWorker(t *testing.T) {
 		}
 		expectValue(t, f.eval(t, opened.Tab, "document.URL"), "about:blank")
 		if round < 3 {
-			value, err := cdptest.EvaluateIn(t.Context(), address, worker, "setTimeout(()=>chrome.runtime.reload(),100);true")
+			value, err := cdptest.EvaluateIn(
+				t.Context(),
+				address,
+				worker,
+				"setTimeout(()=>chrome.runtime.reload(),100);true",
+			)
 			if err != nil {
 				t.Fatal(err)
 			}

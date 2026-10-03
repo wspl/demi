@@ -35,7 +35,7 @@ func CopySkeleton(ctx context.Context, skeleton, destination string) error {
 			if err != nil {
 				return err
 			}
-			if err := os.Mkdir(target, 0777); err != nil {
+			if err := os.Mkdir(target, 0o777); err != nil {
 				return err
 			}
 			if err := os.Chmod(target, info.Mode()); err != nil {

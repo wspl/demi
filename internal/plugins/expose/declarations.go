@@ -11,16 +11,15 @@ import (
 
 // commandSet binds the expose group's generated contracts to its port handlers.
 func commandSet() (*plugin.CommandPlugin, error) {
-	declarations := []struct {
-		name, summary, success, failure string
-		input, output                   json.RawMessage
-		positionals                     []string
-	}{
+	declarations := []commandDeclaration{
 		{
-			name:        "add",
-			summary:     "Expose a service on a host under a fresh public URL for one hour: `demi expose add <host:port|port> [--host <name|id>]`.",
-			success:     "the URL, the device, and the expiry, or JSON matching { expose } when --json is passed",
-			failure:     "exposes that are not available on this instance, an unreachable --host, an address that is not host:port or a port, or a device that is not connected; writes the reason to stderr and exits non-zero",
+			name: "add",
+			summary: "Expose a service on a host under a fresh public URL for one hour: " +
+				"`demi expose add <host:port|port> [--host <name|id>]`.",
+			success: "the URL, the device, and the expiry, or JSON matching { expose } when --json is passed",
+			failure: "exposes that are not available on this instance, an unreachable --host, " +
+				"an address that is not host:port or a port, or a device that is not connected; " +
+				"writes the reason to stderr and exits non-zero",
 			input:       AddArgsJSONSchema(),
 			output:      ExposeAnswerJSONSchema(),
 			positionals: []string{"address"},
@@ -35,19 +34,21 @@ func commandSet() (*plugin.CommandPlugin, error) {
 			positionals: nil,
 		},
 		{
-			name:        "renew",
-			summary:     "Set an expose's expiry to one hour from now.",
-			success:     "the new expiry, or JSON matching { expose } when --json is passed",
-			failure:     "\"no expose <number>\" when the number names none of this user's live exposes; writes the reason to stderr and exits non-zero",
+			name:    "renew",
+			summary: "Set an expose's expiry to one hour from now.",
+			success: "the new expiry, or JSON matching { expose } when --json is passed",
+			failure: "\"no expose <number>\" when the number names none of this user's live exposes; " +
+				"writes the reason to stderr and exits non-zero",
 			input:       NumberArgsJSONSchema(),
 			output:      ExposeAnswerJSONSchema(),
 			positionals: []string{"number"},
 		},
 		{
-			name:        "remove",
-			summary:     "Destroy an expose at once; its URL no longer works.",
-			success:     "confirms the removal",
-			failure:     "\"no expose <number>\" when the number names none of this user's live exposes; writes the reason to stderr and exits non-zero",
+			name:    "remove",
+			summary: "Destroy an expose at once; its URL no longer works.",
+			success: "confirms the removal",
+			failure: "\"no expose <number>\" when the number names none of this user's live exposes; " +
+				"writes the reason to stderr and exits non-zero",
 			input:       NumberArgsJSONSchema(),
 			output:      nil,
 			positionals: []string{"number"},
@@ -55,22 +56,51 @@ func commandSet() (*plugin.CommandPlugin, error) {
 	}
 	leaves := make([]host.Declared, 0, len(declarations))
 	for _, d := range declarations {
-		input, err := declare.NewSchema(d.input)
+		leaf, err := exposeCommand(d)
 		if err != nil {
-			return nil, fmt.Errorf("%s input: %w", d.name, err)
+			return nil, err
 		}
-		leaf := declare.Leaf[declare.NativeOperation]{Name: d.name, Summary: d.summary, SuccessOutput: &d.success, FailureOutput: &d.failure, Input: input, Kind: &declare.RPC[declare.NativeOperation]{}}
-		if d.positionals != nil {
-			leaf.Positionals = &d.positionals
-		}
-		if d.output != nil {
-			output, err := declare.NewSchema(d.output)
-			if err != nil {
-				return nil, fmt.Errorf("%s output: %w", d.name, err)
-			}
-			leaf.Output = &declare.LeafOutput{JSON: output}
-		}
-		leaves = append(leaves, host.Leaf(leaf, plugin.PortHandled{}))
+		leaves = append(leaves, leaf)
 	}
-	return plugin.NewCommandPlugin(plugin.PlacementDemi, []host.Declared{host.Group("expose", "Give a service on a host a public URL for one hour: add, list, renew, remove.", leaves...)})
+	return plugin.NewCommandPlugin(
+		plugin.PlacementDemi,
+		[]host.Declared{
+			host.Group(
+				"expose",
+				"Give a service on a host a public URL for one hour: add, list, renew, remove.",
+				leaves...),
+		},
+	)
+}
+
+type commandDeclaration struct {
+	name, summary, success, failure string
+	input, output                   json.RawMessage
+	positionals                     []string
+}
+
+func exposeCommand(d commandDeclaration) (host.Declared, error) {
+	input, err := declare.NewSchema(d.input)
+	if err != nil {
+		return host.Declared{}, fmt.Errorf("%s input: %w", d.name, err)
+	}
+	leaf := declare.Leaf[declare.NativeOperation]{
+		Name:          d.name,
+		Summary:       d.summary,
+		SuccessOutput: &d.success,
+		FailureOutput: &d.failure,
+		Input:         input,
+		Kind:          &declare.RPC[declare.NativeOperation]{},
+	}
+	if d.positionals != nil {
+		leaf.Positionals = &d.positionals
+	}
+	if d.output != nil {
+		output, err := declare.NewSchema(d.output)
+		if err != nil {
+			return host.Declared{}, fmt.Errorf("%s output: %w", d.name, err)
+		}
+		leaf.Output = &declare.LeafOutput{JSON: output}
+	}
+	return host.Leaf(leaf, plugin.PortHandled{}), nil
 }

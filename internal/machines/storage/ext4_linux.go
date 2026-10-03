@@ -47,7 +47,12 @@ func Capacity(ctx context.Context, image string) (uint64, error) {
 // Overlay upper and work directories are made when it is first mounted.
 func MakeSystem(ctx context.Context, tools *system.Tools, image string, bytes uint64) error {
 	deadline := 60 * time.Second
-	_, err := tools.Run(ctx, system.Mke2fs, []string{"-q", "-t", "ext4", "-F", "-L", "system", image, kibibytes(bytes)}, &deadline)
+	_, err := tools.Run(
+		ctx,
+		system.Mke2fs,
+		[]string{"-q", "-t", "ext4", "-F", "-L", "system", image, kibibytes(bytes)},
+		&deadline,
+	)
 	return err
 }
 
@@ -55,7 +60,12 @@ func MakeSystem(ctx context.Context, tools *system.Tools, image string, bytes ui
 // and modes. bytes must be nonzero.
 func MakeHome(ctx context.Context, tools *system.Tools, root, image string, bytes uint64) error {
 	deadline := 60 * time.Second
-	_, err := tools.Run(ctx, system.Mke2fs, []string{"-q", "-t", "ext4", "-F", "-L", "home", "-d", root, image, kibibytes(bytes)}, &deadline)
+	_, err := tools.Run(
+		ctx,
+		system.Mke2fs,
+		[]string{"-q", "-t", "ext4", "-F", "-L", "home", "-d", root, image, kibibytes(bytes)},
+		&deadline,
+	)
 	return err
 }
 
