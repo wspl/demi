@@ -13,11 +13,11 @@ import (
 
 // trap records signal handlers without installing process-wide signal handlers.
 func (e *execution) trap(ctx context.Context, args []string) error {
-	hc := interp.HandlerCtx(ctx)
-	state := hc.Scope().(*interpreterScope)
+	handler := interp.HandlerCtx(ctx)
+	state := handler.Scope().(*interpreterScope)
 	args = args[1:]
 	if len(args) > 0 && args[0] == "-l" {
-		_, err := fmt.Fprintln(hc.Stdout, signalNames)
+		_, err := fmt.Fprintln(handler.Stdout, signalNames)
 		return err
 	}
 	listing := len(args) == 0
@@ -29,33 +29,11 @@ func (e *execution) trap(ctx context.Context, args []string) error {
 		args = args[1:]
 	}
 	if listing {
-		names := args
-		if len(names) == 0 {
-			for name := range state.traps {
-				names = append(names, name)
-			}
-			slices.Sort(names)
-		}
-		for _, name := range names {
-			normalized, ok := trapSignal(name)
-			if !ok {
-				return diagnostic(ctx, 1, "trap: %s: invalid signal specification\n", name)
-			}
-			if handler, exists := state.traps[normalized]; exists {
-				quoted, err := syntax.Quote(handler, syntax.LangBash)
-				if err != nil {
-					return err
-				}
-				if _, err := fmt.Fprintf(hc.Stdout, "trap -- %s %s\n", quoted, normalized); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
+		return listTraps(ctx, state, args)
 	}
-	handler := "-"
+	action := "-"
 	if len(args) > 1 {
-		handler, args = args[0], args[1:]
+		action, args = args[0], args[1:]
 	}
 	for _, name := range args {
 		normalized, ok := trapSignal(name)
@@ -65,13 +43,13 @@ func (e *execution) trap(ctx context.Context, args []string) error {
 		if state.traps == nil {
 			state.traps = make(map[string]string)
 		}
-		if handler == "-" {
+		if action == "-" {
 			delete(state.traps, normalized)
 		} else {
-			state.traps[normalized] = handler
+			state.traps[normalized] = action
 		}
 		if normalized == "EXIT" || normalized == "ERR" {
-			if err := hc.NativeBuiltin(ctx, []string{"trap", "--", handler, normalized}); err != nil {
+			if err := handler.NativeBuiltin(ctx, []string{"trap", "--", action, normalized}); err != nil {
 				return err
 			}
 		}
@@ -80,7 +58,9 @@ func (e *execution) trap(ctx context.Context, args []string) error {
 }
 
 // Signal names are shell syntax even on a host without Unix signal delivery.
-const signalNames = "EXIT HUP INT QUIT ILL TRAP ABRT IOT BUS EMT FPE KILL USR1 SEGV USR2 PIPE ALRM TERM STKFLT CHLD CLD CONT STOP TSTP TTIN TTOU URG XCPU XFSZ VTALRM PROF WINCH IO POLL PWR SYS INFO LOST UNUSED ERR DEBUG RETURN"
+const signalNames = "EXIT HUP INT QUIT ILL TRAP ABRT IOT BUS EMT FPE KILL USR1 SEGV USR2 PIPE ALRM TERM " +
+	"STKFLT CHLD CLD CONT STOP TSTP TTIN TTOU URG XCPU XFSZ VTALRM PROF WINCH IO POLL PWR SYS INFO LOST " +
+	"UNUSED ERR DEBUG RETURN"
 
 func trapSignal(name string) (string, bool) {
 	name = strings.TrimPrefix(name, "SIG")
@@ -106,4 +86,31 @@ func trapSignal(name string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func listTraps(ctx context.Context, state *interpreterScope, args []string) error {
+	handler := interp.HandlerCtx(ctx)
+	names := args
+	if len(names) == 0 {
+		for name := range state.traps {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+	}
+	for _, name := range names {
+		normalized, ok := trapSignal(name)
+		if !ok {
+			return diagnostic(ctx, 1, "trap: %s: invalid signal specification\n", name)
+		}
+		if action, exists := state.traps[normalized]; exists {
+			quoted, err := syntax.Quote(action, syntax.LangBash)
+			if err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(handler.Stdout, "trap -- %s %s\n", quoted, normalized); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -9,23 +9,31 @@ import (
 )
 
 // Options supplies an interpreter execution in an owned test scope.
-// Login enables the same profile loading and context restoration as a job.
 // The caller owns the files and keeps them open until Execute and Scope.Finish
-// have returned. Env replaces the inherited environment.
+// have returned.
 type Options struct {
-	Scope  *Scope
-	Login  bool
-	Cwd    string
-	Env    map[string]string
-	Stdin  *os.File
+	// Scope owns the execution and its cancellation callbacks.
+	Scope *Scope
+	// Login enables profile loading and restoration of the owned context.
+	Login bool
+	// Cwd is the directory requested for the script.
+	Cwd string
+	// Env replaces the inherited environment.
+	Env map[string]string
+	// Stdin is borrowed until execution and scope cleanup have returned.
+	Stdin *os.File
+	// Stdout receives script output through a caller-owned file.
 	Stdout *os.File
+	// Stderr receives diagnostics through a caller-owned file.
 	Stderr *os.File
 }
 
 // Result preserves the foreground exit status and final working directory.
 type Result struct {
+	// Code excludes statuses of nested background work.
 	Code uint8
-	Cwd  string
+	// Cwd is the directory when the foreground script finishes.
+	Cwd string
 }
 
 // Execute runs a script and joins its nested interpreter work before returning.
@@ -37,6 +45,20 @@ func Execute(ctx context.Context, script string, options Options) (Result, error
 	}
 	ctx, finish := options.Scope.execution(ctx)
 	defer finish()
-	result, err := engine.Execute(ctx, script, engine.Options{Login: options.Login, Cwd: options.Cwd, Env: options.Env, Stdin: options.Stdin, Stdout: options.Stdout, Stderr: options.Stderr, Commands: options.Scope.Commands, Edits: options.Scope.Edits, Observe: observer{options.Scope.Activity()}})
+	result, err := engine.Execute(
+		ctx,
+		script,
+		engine.Options{
+			Login:    options.Login,
+			Cwd:      options.Cwd,
+			Env:      options.Env,
+			Stdin:    options.Stdin,
+			Stdout:   options.Stdout,
+			Stderr:   options.Stderr,
+			Commands: options.Scope.Commands,
+			Edits:    options.Scope.Edits,
+			Observe:  observer{options.Scope.Activity()},
+		},
+	)
 	return Result{Code: result.Code, Cwd: result.Cwd}, err
 }

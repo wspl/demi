@@ -46,7 +46,7 @@ func TestInstallerWritesValidUnitAndSettings(t *testing.T) {
 		}
 		data, release, root := filepath.Join(directory, "data"), fixture.Directory, filepath.Join(directory, "root")
 		for _, path := range []string{data} {
-			if err = os.Mkdir(path, 0700); err != nil {
+			if err = os.Mkdir(path, 0o700); err != nil {
 				return err
 			}
 		}
@@ -64,10 +64,32 @@ func TestInstallerWritesValidUnitAndSettings(t *testing.T) {
 			}
 		}()
 		manager := filepath.Join(directory, "demi-machine-manager")
-		if err = os.WriteFile(manager, []byte("#!/bin/sh\n"), 0755); err != nil {
+		if err = os.WriteFile(manager, []byte("#!/bin/sh\n"), 0o755); err != nil {
 			return err
 		}
-		command := exec.CommandContext(ctx, "bash", script, "--root", root, "--user", "root", "--manager", manager, "--image", release, "--backend-url", "https://backend.example.com", "--dns", "1.1.1.1,8.8.8.8", "--data", data, "--slots", "16", "--limits", "off")
+		command := exec.CommandContext(
+			ctx,
+			"bash",
+			script,
+			"--root",
+			root,
+			"--user",
+			"root",
+			"--manager",
+			manager,
+			"--image",
+			release,
+			"--backend-url",
+			"https://backend.example.com",
+			"--dns",
+			"1.1.1.1,8.8.8.8",
+			"--data",
+			data,
+			"--slots",
+			"16",
+			"--limits",
+			"off",
+		)
 		if output, err := command.CombinedOutput(); err != nil {
 			return fmt.Errorf("installer: %w: %s", err, output)
 		}
@@ -76,7 +98,18 @@ func TestInstallerWritesValidUnitAndSettings(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, directive := range []string{"Type=notify", "KillMode=mixed", "TimeoutStartSec=infinity", "TimeoutStopSec=infinity", "PrivateMounts=yes", "UMask=0077", "Group=demi-cloud", "EnvironmentFile=/etc/demi-machine-manager/manager.env", "ExecStart=" + manager, "ExecStopPost=" + manager + " --recover"} {
+		for _, directive := range []string{
+			"Type=notify",
+			"KillMode=mixed",
+			"TimeoutStartSec=infinity",
+			"TimeoutStopSec=infinity",
+			"PrivateMounts=yes",
+			"UMask=0077",
+			"Group=demi-cloud",
+			"EnvironmentFile=/etc/demi-machine-manager/manager.env",
+			"ExecStart=" + manager,
+			"ExecStopPost=" + manager + " --recover",
+		} {
 			if !strings.Contains("\n"+string(unit), "\n"+directive+"\n") {
 				return fmt.Errorf("unit missing %s", directive)
 			}
@@ -96,7 +129,15 @@ func TestInstallerWritesValidUnitAndSettings(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if config.Mode != ModeServe || config.Data != data || config.Image != release || config.Socket != "/run/demi-cloud/machines.sock" || config.BackendURL.String() != "https://backend.example.com/" || config.Slots != 16 || config.Limits != nil || !strings.HasPrefix(config.Runsc, "/opt/gvisor") || len(config.DNS) != 2 || config.DNS[0].String() != "1.1.1.1" || config.DNS[1].String() != "8.8.8.8" {
+		if config.Mode != ModeServe || config.Data != data || config.Image != release ||
+			config.Socket != "/run/demi-cloud/machines.sock" ||
+			config.BackendURL.String() != "https://backend.example.com/" ||
+			config.Slots != 16 ||
+			config.Limits != nil ||
+			!strings.HasPrefix(config.Runsc, "/opt/gvisor") ||
+			len(config.DNS) != 2 ||
+			config.DNS[0].String() != "1.1.1.1" ||
+			config.DNS[1].String() != "8.8.8.8" {
 			return fmt.Errorf("installed settings: %+v", config)
 		}
 		return nil

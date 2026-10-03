@@ -9,7 +9,13 @@ import (
 )
 
 // HelpDefaults is the opening paragraph of the model's command documentation.
-const HelpDefaults = "Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --."
+const HelpDefaults = "Unless a command states otherwise: success prints raw text on stdout, " +
+	"failure writes an error message to stderr and exits non-zero. " +
+	"Pass --help at any level to print a command's documentation. " +
+	"Usage uses <placeholders> for values and [brackets] for optional arguments. " +
+	"Quote values containing spaces. " +
+	"Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. " +
+	"Use --name=value for option values beginning with --, and -- before positional values beginning with --."
 
 // Help renders this group and every command below it.
 func (g *Group[B]) Help(path string) string {
@@ -27,31 +33,8 @@ func (g *Group[B]) Help(path string) string {
 // Help renders the command's invocation, parameters and output documentation.
 func (l *Leaf[B]) Help(path string) string {
 	lines := []string{path + ": " + l.Summary, "", "Usage:", ""}
-	fields := slices.Clone(l.positionals())
-	for _, field := range l.propertyNames() {
-		if l.source(field) == sourceOption {
-			fields = append(fields, field)
-		}
-	}
-	if l.RestField != nil {
-		fields = append(fields, *l.RestField)
-	}
-	arguments := make([]string, 0, len(fields)+1)
+	arguments := l.helpArguments()
 	properties := l.properties()
-	for _, field := range fields {
-		syntax := fieldSyntax(field, properties[field], l.source(field))
-		if !l.Required(field) {
-			syntax = "[" + syntax + "]"
-		}
-		arguments = append(arguments, syntax)
-	}
-	if l.JSONOutput() != nil {
-		index := len(arguments)
-		if l.RestField != nil {
-			index--
-		}
-		arguments = slices.Insert(arguments, index, "[--json]")
-	}
 	invocation := strings.Join(append([]string{path}, arguments...), " ")
 	if l.StdinField != nil {
 		lines = append(lines, "  "+invocation+" <<'EOF'", "  <"+*l.StdinField+">", "  EOF")
@@ -79,7 +62,15 @@ func (l *Leaf[B]) Help(path string) string {
 		if source == sourceOption && schemaType(properties[field]) == "array" {
 			required += ", repeatable"
 		}
-		parameters = append(parameters, fmt.Sprintf("      %s (%s)%s", fieldSyntax(field, properties[field], source), required, fieldDescription(properties[field])))
+		parameters = append(
+			parameters,
+			fmt.Sprintf(
+				"      %s (%s)%s",
+				fieldSyntax(field, properties[field], source),
+				required,
+				fieldDescription(properties[field]),
+			),
+		)
 	}
 	if len(parameters) != 0 {
 		lines = append(lines, "    Parameters:")
@@ -154,4 +145,33 @@ func fieldDescription(schema any) string {
 		return ""
 	}
 	return " - " + description
+}
+
+func (l *Leaf[B]) helpArguments() []string {
+	fields := slices.Clone(l.positionals())
+	for _, field := range l.propertyNames() {
+		if l.source(field) == sourceOption {
+			fields = append(fields, field)
+		}
+	}
+	if l.RestField != nil {
+		fields = append(fields, *l.RestField)
+	}
+	arguments := make([]string, 0, len(fields)+1)
+	properties := l.properties()
+	for _, field := range fields {
+		syntax := fieldSyntax(field, properties[field], l.source(field))
+		if !l.Required(field) {
+			syntax = "[" + syntax + "]"
+		}
+		arguments = append(arguments, syntax)
+	}
+	if l.JSONOutput() != nil {
+		index := len(arguments)
+		if l.RestField != nil {
+			index--
+		}
+		arguments = slices.Insert(arguments, index, "[--json]")
+	}
+	return arguments
 }

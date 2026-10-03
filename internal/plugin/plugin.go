@@ -12,12 +12,15 @@ import (
 // Factory carries the immutable manifest and creates one instance per user.
 // Implementations must be safe for concurrent calls.
 type Factory interface {
+	// Manifest returns the plugin declarations.
 	Manifest() Manifest
+	// Instance creates one user's plugin handler.
 	Instance() Plugin
 }
 
 // Plugin handles one user's requests through their ports.
 type Plugin interface {
+	// Call answers one plugin request through its port.
 	Call(context.Context, Request, Port) (Reply, error)
 }
 
@@ -26,6 +29,7 @@ type Plugin interface {
 // when it drops the instance; Close cancels that work and returns once it has
 // ended.
 type Closer interface {
+	// Close cancels and joins the instance's owned work.
 	Close()
 }
 
@@ -106,7 +110,10 @@ type PortHandled struct{}
 
 // Call refuses dispatch because the plugin must handle this leaf itself.
 func (PortHandled) Call(_ context.Context, invocation host.RPCInvocation, _ host.RPCPort) (uint8, error) {
-	return 0, &host.RPCError{Kind: host.HandlerFailed, Message: fmt.Sprintf("\"%s\" is answered by its plugin, not dispatched", strings.Join(invocation.Path, " "))}
+	return 0, &host.RPCError{
+		Kind:    host.HandlerFailed,
+		Message: fmt.Sprintf("\"%s\" is answered by its plugin, not dispatched", strings.Join(invocation.Path, " ")),
+	}
 }
 
 // NoRequests is the instance for a plugin that receives no requests.

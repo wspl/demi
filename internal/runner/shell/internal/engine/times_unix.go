@@ -16,7 +16,14 @@ func (e *execution) times(ctx context.Context, _ []string) error {
 	if err := unix.Getrusage(unix.RUSAGE_SELF, &usage); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(interp.HandlerCtx(ctx).Stdout, "runner: %dm%.3fs %dm%.3fs\n", usage.Utime.Sec/60, float64(usage.Utime.Sec%60)+float64(usage.Utime.Usec)/1e6, usage.Stime.Sec/60, float64(usage.Stime.Sec%60)+float64(usage.Stime.Usec)/1e6)
+	_, err := fmt.Fprintf(
+		interp.HandlerCtx(ctx).Stdout,
+		"runner: %dm%.3fs %dm%.3fs\n",
+		usage.Utime.Sec/60,
+		float64(usage.Utime.Sec%60)+float64(usage.Utime.Usec)/1e6,
+		usage.Stime.Sec/60,
+		float64(usage.Stime.Sec%60)+float64(usage.Stime.Usec)/1e6,
+	)
 	return err
 }
 

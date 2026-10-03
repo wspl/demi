@@ -10,7 +10,17 @@ import (
 
 // builtins replaces operations on the runner process and registers declared roots.
 func (e *execution) builtins() map[string]interp.ExecHandlerFunc {
-	handlers := map[string]interp.ExecHandlerFunc{"trap": e.trap, "times": e.times, "exec": e.execBuiltin, "umask": e.umask, "ulimit": e.ulimit, "kill": e.kill, "suspend": refuseSuspend, "fg": refuseJobControl, "bg": refuseJobControl}
+	handlers := map[string]interp.ExecHandlerFunc{
+		"trap":    e.trap,
+		"times":   e.times,
+		"exec":    e.execBuiltin,
+		"umask":   e.umask,
+		"ulimit":  e.ulimit,
+		"kill":    e.kill,
+		"suspend": refuseSuspend,
+		"fg":      refuseJobControl,
+		"bg":      refuseJobControl,
+	}
 	if e.options.Commands != nil {
 		for _, root := range e.options.Commands.Roots {
 			handlers[root] = e.declared
@@ -18,9 +28,11 @@ func (e *execution) builtins() map[string]interp.ExecHandlerFunc {
 	}
 	return handlers
 }
+
 func refuseSuspend(ctx context.Context, args []string) error {
 	return diagnostic(ctx, 1, "%s: a job cannot suspend the runner it runs in\n", args[0])
 }
+
 func refuseJobControl(ctx context.Context, args []string) error {
 	return diagnostic(ctx, 1, "%s: no job control\n", args[0])
 }
@@ -33,14 +45,16 @@ func diagnostic(ctx context.Context, code uint8, format string, args ...any) err
 	return interp.ExitStatus(code)
 }
 
-type execKey struct{}
-type execOptions struct {
-	argv0 string
-	empty bool
-}
+type (
+	execKey     struct{}
+	execOptions struct {
+		argv0 string
+		empty bool
+	}
+)
 
 func (e *execution) execBuiltin(ctx context.Context, args []string) error {
-	hc := interp.HandlerCtx(ctx)
+	handler := interp.HandlerCtx(ctx)
 	options := execOptions{}
 	login := false
 	args = args[1:]
@@ -79,7 +93,7 @@ func (e *execution) execBuiltin(ctx context.Context, args []string) error {
 		}
 	}
 	if len(args) == 0 {
-		return hc.NativeBuiltin(ctx, []string{"exec"})
+		return handler.NativeBuiltin(ctx, []string{"exec"})
 	}
 	if login {
 		if options.argv0 == "" {
@@ -88,6 +102,6 @@ func (e *execution) execBuiltin(ctx context.Context, args []string) error {
 		options.argv0 = "-" + options.argv0
 	}
 	ctx = context.WithValue(ctx, execKey{}, options)
-	err := hc.NativeBuiltin(ctx, append([]string{"command"}, args...))
-	return hc.Exit(err)
+	err := handler.NativeBuiltin(ctx, append([]string{"command"}, args...))
+	return handler.Exit(err)
 }

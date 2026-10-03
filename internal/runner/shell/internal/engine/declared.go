@@ -18,10 +18,10 @@ import (
 
 // declared passes a shell invocation directly to the job's handler with demand-driven input.
 func (e *execution) declared(ctx context.Context, args []string) error {
-	hc := interp.HandlerCtx(ctx)
+	handler := interp.HandlerCtx(ctx)
 	commands := e.options.Commands
 	env := make(map[string]string)
-	for _, entry := range exported(hc.Env) {
+	for _, entry := range exported(handler.Env) {
 		name, value, _ := strings.Cut(entry, "=")
 		env[name] = value
 	}
@@ -29,7 +29,7 @@ func (e *execution) declared(ctx context.Context, args []string) error {
 		clear(env)
 	}
 	live := false
-	if input, ok := hc.Stdin.(*os.File); ok {
+	if input, ok := handler.Stdin.(*os.File); ok {
 		var err error
 		live, err = process.IsLive(input, env)
 		if err != nil {
@@ -51,66 +51,22 @@ func (e *execution) declared(ctx context.Context, args []string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	output, records := cmdsdk.OutputChannel(ctx)
-	type result struct {
-		completion commandwire.Completion
-		err        error
-	}
-	done := make(chan result, 1)
-	go func() {
-		finished := result{}
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				finished.err = errors.New("shell worker panicked")
-			}
-			done <- finished
-		}()
-		completion, err := commands.Handler.Invoke(ctx, cmdsdk.InvocationContext[commandwire.LocalInvocation]{Request: commandwire.LocalInvocation{Operation: process.Raw, InvocationID: hex.EncodeToString(id[:]), Args: encoded, Cwd: hc.Dir, Env: env}, Input: cmdsdk.NewInput(&invocationInput{reader: hc.Stdin, state: hc.Scope().(*interpreterScope)}), Output: output})
-		finished = result{completion, err}
-	}()
-	drain := func(record commandwire.Record) error {
-		var writer io.Writer
-		var bytes []byte
-		switch record := record.(type) {
-		case commandwire.Stdout:
-			writer = hc.Stdout
-			bytes = record
-		case commandwire.Stderr:
-			writer = hc.Stderr
-			bytes = record
-		case commandwire.Completed, commandwire.InputPull:
-			return errors.New("unexpected local output record")
-		}
-		_, err := writer.Write(bytes)
-		if errors.Is(err, syscall.EPIPE) {
-			return interp.ExitStatus(141)
-		}
-		return err
-	}
+	done := make(chan invocationResult, 1)
+	go invokeDeclared(ctx, commands, handler, commandwire.LocalInvocation{
+		Operation: process.Raw, InvocationID: hex.EncodeToString(id[:]),
+		Args: encoded, Cwd: handler.Dir, Env: env,
+	}, output, done)
+
 	for {
 		select {
 		case record := <-records:
-			if err := drain(record); err != nil {
+			if err := writeDeclaredRecord(handler, record); err != nil {
 				cancel()
 				<-done
 				return err
 			}
 		case finished := <-done:
-			for {
-				select {
-				case record := <-records:
-					if err := drain(record); err != nil {
-						return err
-					}
-				default:
-					if finished.err != nil {
-						return finished.err
-					}
-					if finished.completion.ExitCode != 0 {
-						return interp.ExitStatus(finished.completion.ExitCode)
-					}
-					return nil
-				}
-			}
+			return finishDeclared(handler, records, finished)
 		case <-ctx.Done():
 			cancel()
 			<-done
@@ -124,6 +80,7 @@ type invocationInput struct {
 	state  *interpreterScope
 }
 
+// Next owns an interruptible input pull without consuming input ahead of demand.
 func (i *invocationInput) Next(ctx context.Context) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -162,4 +119,78 @@ func (i *invocationInput) Next(ctx context.Context) ([]byte, error) {
 		return nil, ctx.Err()
 	}
 	return b[:n], err
+}
+
+type invocationResult struct {
+	completion commandwire.Completion
+	err        error
+}
+
+// invokeDeclared always publishes completion, including a recovered worker panic.
+func invokeDeclared(
+	ctx context.Context,
+	commands *process.JobCommands,
+	handler interp.HandlerContext,
+	request commandwire.LocalInvocation,
+	output *cmdsdk.Output,
+	done chan<- invocationResult,
+) {
+	finished := invocationResult{}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			finished.err = errors.New("shell worker panicked")
+		}
+		done <- finished
+	}()
+	completion, err := commands.Handler.Invoke(
+		ctx,
+		cmdsdk.InvocationContext[commandwire.LocalInvocation]{
+			Request: request,
+			Input: cmdsdk.NewInput(
+				&invocationInput{reader: handler.Stdin, state: handler.Scope().(*interpreterScope)},
+			),
+			Output: output,
+		},
+	)
+	finished = invocationResult{completion, err}
+}
+
+func writeDeclaredRecord(handler interp.HandlerContext, record commandwire.Record) error {
+	var writer io.Writer
+	var bytes []byte
+	switch record := record.(type) {
+	case commandwire.Stdout:
+		writer = handler.Stdout
+		bytes = record
+	case commandwire.Stderr:
+		writer = handler.Stderr
+		bytes = record
+	case commandwire.Completed, commandwire.InputPull:
+		return errors.New("unexpected local output record")
+	}
+	_, err := writer.Write(bytes)
+	if errors.Is(err, syscall.EPIPE) {
+		return interp.ExitStatus(141)
+	}
+	return err
+}
+
+// finishDeclared drains buffered records before exposing the handler completion.
+func finishDeclared(handler interp.HandlerContext, records <-chan commandwire.Record, finished invocationResult) error {
+	for {
+		select {
+		case record := <-records:
+			if err := writeDeclaredRecord(handler, record); err != nil {
+				return err
+			}
+		default:
+			if finished.err != nil {
+				return finished.err
+			}
+			if finished.completion.ExitCode != 0 {
+				return interp.ExitStatus(finished.completion.ExitCode)
+			}
+			return nil
+		}
+	}
 }

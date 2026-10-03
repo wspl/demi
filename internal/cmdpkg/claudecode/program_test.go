@@ -45,23 +45,40 @@ func (w *written) Stdout(_ context.Context, b []byte) error {
 	_, err := w.stdout.Write(b)
 	return err
 }
+
 func (w *written) Stderr(_ context.Context, b []byte) error {
 	_, err := w.stderr.Write(b)
 	return err
 }
 
-func invokeProgram(t *testing.T, client *cmdsdk.Client, operation string, input []byte) ([]byte, commandwire.Completion) {
+func invokeProgram(
+	t *testing.T,
+	client *cmdsdk.Client,
+	operation string,
+	input []byte,
+) ([]byte, commandwire.Completion) {
 	t.Helper()
 	writer, output, err := client.Invoke(t.Context(), commandwire.Invocation{
-		Operation: operation, InvocationID: "invocation",
-		Context: commandwire.CommandContext{Conversation: "conversation", Caller: &commandwire.AgentCaller{Number: 1}, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}},
-		Args:    []byte(`{}`), Cwd: "/", Env: map[string]string{},
+		Operation:    operation,
+		InvocationID: "invocation",
+		Context: commandwire.CommandContext{
+			Conversation: "conversation",
+			Caller:       &commandwire.AgentCaller{Number: 1},
+			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		},
+		Args: []byte(`{}`),
+		Cwd:  "/",
+		Env:  map[string]string{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var outputBytes written
-	completion, err := (cmdsdk.Exchange{Input: writer, Output: output}).Run(t.Context(), &releaseInput{input}, &outputBytes)
+	completion, err := (cmdsdk.Exchange{Input: writer, Output: output}).Run(
+		t.Context(),
+		&releaseInput{input},
+		&outputBytes,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,12 +111,19 @@ func TestServiceAnswersOneDocumentPerInvocation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	answered := make(chan error, 1)
 	go func() {
-		answered <- stream.AnswerArtifacts(ctx, func(_ context.Context, request commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
+		answered <- stream.AnswerArtifacts(ctx, func(
+			_ context.Context,
+			request commandwire.ArtifactRequest,
+		) (commandwire.ArtifactAnswer, error) {
 			path := "/cache/claude<&\u2028>"
 			if request.Install != nil {
 				return commandwire.ArtifactAnswer{Path: &path}, nil
 			}
-			installed := []commandwire.InstalledArtifact{{Version: "2.1.278", Path: path, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("claude")))}}
+			installed := []commandwire.InstalledArtifact{{
+				Version: "2.1.278",
+				Path:    path,
+				SHA256:  fmt.Sprintf("%x", sha256.Sum256([]byte("claude"))),
+			}}
 			return commandwire.ArtifactAnswer{Installed: &installed}, nil
 		})
 	}()
@@ -113,15 +137,31 @@ func TestServiceAnswersOneDocumentPerInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := info.Operations, []string{"claude-code.ensure", "claude-code.status"}; !reflect.DeepEqual(got, want) {
+	if got, want := info.Operations, []string{
+		"claude-code.ensure",
+		"claude-code.status",
+	}; !reflect.DeepEqual(
+		got,
+		want,
+	) {
 		t.Fatalf("got %#v, want %#v", got, want)
 	}
-	body, completion := invokeProgram(t, process.Client, "claude-code.ensure", releaseRecord("2.1.278", currentPlatform()))
+	body, completion := invokeProgram(
+		t,
+		process.Client,
+		"claude-code.ensure",
+		releaseRecord("2.1.278", currentPlatform()),
+	)
 	reply, err := claudecodeop.DecodeEnsureReply(body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := reply, claudecodeop.EnsureReply(&claudecodeop.Ensured{Installed: claudecodeop.Installed{Version: "2.1.278", Path: "/cache/claude<&\u2028>"}}); !reflect.DeepEqual(got, want) {
+	if got, want := reply, claudecodeop.EnsureReply(
+		&claudecodeop.Ensured{Installed: claudecodeop.Installed{Version: "2.1.278", Path: "/cache/claude<&\u2028>"}},
+	); !reflect.DeepEqual(
+		got,
+		want,
+	) {
 		t.Fatalf("got %#v, want %#v", got, want)
 	}
 	if completion.ExitCode != 0 || completion.Error != nil {
@@ -135,7 +175,14 @@ func TestServiceAnswersOneDocumentPerInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := claudecodeop.StatusReply(&claudecodeop.StatusDone{Status: claudecodeop.Status{Platform: currentPlatform(), Installed: []claudecodeop.Installed{{Version: "2.1.278", Path: "/cache/claude<&\u2028>"}}}})
+	want := claudecodeop.StatusReply(
+		&claudecodeop.StatusDone{
+			Status: claudecodeop.Status{
+				Platform:  currentPlatform(),
+				Installed: []claudecodeop.Installed{{Version: "2.1.278", Path: "/cache/claude<&\u2028>"}},
+			},
+		},
+	)
 	if got, want := statusReply, want; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v, want %#v", got, want)
 	}
@@ -143,7 +190,12 @@ func TestServiceAnswersOneDocumentPerInvocation(t *testing.T) {
 		t.Fatalf("completion: %+v", completion)
 	}
 	for _, input := range [][]byte{
-		[]byte(strings.Replace(string(releaseRecord("2.1.279", currentPlatform())), "https://downloads.claude.ai/claude", "http://127.0.0.1:9/claude", 1)),
+		[]byte(strings.Replace(
+			string(releaseRecord("2.1.279", currentPlatform())),
+			"https://downloads.claude.ai/claude",
+			"http://127.0.0.1:9/claude",
+			1,
+		)),
 		[]byte(`{}`), bytes.Repeat([]byte(" "), 64*1024+1),
 	} {
 		body, completion = invokeProgram(t, process.Client, "claude-code.ensure", input)

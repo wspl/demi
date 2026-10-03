@@ -32,7 +32,8 @@ func TestSlotsDisjointAndReusedAfterRelease(t *testing.T) {
 		{b.Slot(), 1, "172.30.0.5", "172.30.0.6"},
 		{pool.Slot(64), 64, "172.30.1.1", "172.30.1.2"},
 	} {
-		if check.slot.Index != check.index || check.slot.Gateway != netip.MustParseAddr(check.gateway) || check.slot.Address != netip.MustParseAddr(check.address) {
+		if check.slot.Index != check.index || check.slot.Gateway != netip.MustParseAddr(check.gateway) ||
+			check.slot.Address != netip.MustParseAddr(check.address) {
 			t.Errorf("slot: %+v; want %d %s %s", check.slot, check.index, check.gateway, check.address)
 		}
 	}
@@ -48,7 +49,8 @@ func TestSlotsDisjointAndReusedAfterRelease(t *testing.T) {
 	if c.Slot().Index != 2 {
 		t.Fatalf("third slot: %+v", c.Slot())
 	}
-	if _, err := pool.Take(); !errors.Is(err, network.ErrExhausted) || err.Error() != "All Cloud network slots are in use" {
+	if _, err := pool.Take(); !errors.Is(err, network.ErrExhausted) ||
+		err.Error() != "All Cloud network slots are in use" {
 		t.Fatalf("exhaustion: %v", err)
 	}
 	second := b.Slot()

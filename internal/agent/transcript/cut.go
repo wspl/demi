@@ -27,7 +27,17 @@ func Cut(blocks []core.Block) ResumePoint {
 			leftover = true
 		case *core.TextBlock:
 			leftover = core.IsBlank(b.Text)
-		case *core.UserBlock, *core.ContextBlock, *core.WakeupBlock, *core.SteerBlock, *core.AgentMessageBlock, *core.ResumeBlock, *core.AbortBlock, *core.ToolCallBlock, *core.ResponseBlock, *core.CompactionBoundaryBlock, *core.CompactionMarkerBlock:
+		case *core.UserBlock,
+			*core.ContextBlock,
+			*core.WakeupBlock,
+			*core.SteerBlock,
+			*core.AgentMessageBlock,
+			*core.ResumeBlock,
+			*core.AbortBlock,
+			*core.ToolCallBlock,
+			*core.ResponseBlock,
+			*core.CompactionBoundaryBlock,
+			*core.CompactionMarkerBlock:
 		}
 		if !leftover {
 			return ResumePoint{Cut: i + 1}
@@ -39,6 +49,7 @@ func Cut(blocks []core.Block) ResumePoint {
 // Rewound is the history retry keeps, including the turn's steers and all later
 // agent messages.
 type Rewound struct {
+	// Retained contains the blocks preserved for retry.
 	Retained []core.Block
 	// Input is the index of the opening input in Retained.
 	Input int
@@ -93,7 +104,15 @@ func turnOf(block core.Block) core.TurnID {
 		return b.TurnID
 	case *core.ResumeBlock:
 		return b.TurnID
-	case *core.ThinkingBlock, *core.RedactedThinkingBlock, *core.TextBlock, *core.ErrorBlock, *core.AbortBlock, *core.ToolCallBlock, *core.ResponseBlock, *core.CompactionBoundaryBlock, *core.CompactionMarkerBlock:
+	case *core.ThinkingBlock,
+		*core.RedactedThinkingBlock,
+		*core.TextBlock,
+		*core.ErrorBlock,
+		*core.AbortBlock,
+		*core.ToolCallBlock,
+		*core.ResponseBlock,
+		*core.CompactionBoundaryBlock,
+		*core.CompactionMarkerBlock:
 		return ""
 	}
 	return ""
@@ -151,8 +170,10 @@ func ThroughAssistant(blocks []core.Block, target core.BlockID) ([]core.Block, e
 
 // CompactionWindow is the half-open range of blocks the next pass summarizes.
 type CompactionWindow struct {
+	// Start is the first block included in the summary.
 	Start int
-	Cut   int
+	// Cut is the first block after the summarized range.
+	Cut int
 }
 
 // Window ends at the latest answered request's answer, or at unanswered input
@@ -208,7 +229,18 @@ func OpensInputTurn(block core.Block) bool {
 		return true
 	case *core.WakeupBlock:
 		return b.Placement == "new_turn"
-	case *core.SteerBlock, *core.AgentMessageBlock, *core.ResumeBlock, *core.ThinkingBlock, *core.RedactedThinkingBlock, *core.TextBlock, *core.ErrorBlock, *core.AbortBlock, *core.ToolCallBlock, *core.ResponseBlock, *core.CompactionBoundaryBlock, *core.CompactionMarkerBlock:
+	case *core.SteerBlock,
+		*core.AgentMessageBlock,
+		*core.ResumeBlock,
+		*core.ThinkingBlock,
+		*core.RedactedThinkingBlock,
+		*core.TextBlock,
+		*core.ErrorBlock,
+		*core.AbortBlock,
+		*core.ToolCallBlock,
+		*core.ResponseBlock,
+		*core.CompactionBoundaryBlock,
+		*core.CompactionMarkerBlock:
 		return false
 	}
 	return false
@@ -232,7 +264,17 @@ func latestAnswer(blocks []core.Block) int {
 		for j := i - 1; j >= floor; j-- {
 			switch blocks[j].(type) {
 			case *core.ThinkingBlock, *core.RedactedThinkingBlock, *core.TextBlock, *core.ToolCallBlock:
-			case *core.UserBlock, *core.ContextBlock, *core.WakeupBlock, *core.SteerBlock, *core.AgentMessageBlock, *core.ResumeBlock, *core.ErrorBlock, *core.AbortBlock, *core.ResponseBlock, *core.CompactionBoundaryBlock, *core.CompactionMarkerBlock:
+			case *core.UserBlock,
+				*core.ContextBlock,
+				*core.WakeupBlock,
+				*core.SteerBlock,
+				*core.AgentMessageBlock,
+				*core.ResumeBlock,
+				*core.ErrorBlock,
+				*core.AbortBlock,
+				*core.ResponseBlock,
+				*core.CompactionBoundaryBlock,
+				*core.CompactionMarkerBlock:
 				return j + 1
 			}
 		}

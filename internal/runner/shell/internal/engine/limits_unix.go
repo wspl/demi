@@ -5,6 +5,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -54,8 +55,29 @@ type askedLimit struct {
 }
 
 func (e *execution) ulimit(ctx context.Context, args []string) error {
-	soft, hard, all := false, false, false
-	var asked []askedLimit
+	soft, hard, all, asked, err := limitOptions(ctx, args)
+	if err != nil {
+		return err
+	}
+	handler := interp.HandlerCtx(ctx)
+	state := handler.Scope().(*interpreterScope)
+	attributes := state.attributes
+	attributes.Limits = slices.Clone(attributes.Limits)
+	var showing []shownLimit
+	for _, ask := range asked {
+		shown, err := applyLimit(ctx, ask, soft, hard, all, &attributes)
+		if err != nil {
+			return err
+		}
+		if shown != nil {
+			showing = append(showing, *shown)
+		}
+	}
+	state.attributes = attributes
+	return showLimits(handler.Stdout, showing)
+}
+
+func limitOptions(ctx context.Context, args []string) (soft, hard, all bool, asked []askedLimit, err error) {
 	for _, arg := range args[1:] {
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
 			for _, option := range []byte(arg[1:]) {
@@ -69,7 +91,7 @@ func (e *execution) ulimit(ctx context.Context, args []string) error {
 				default:
 					index := slices.IndexFunc(resources, func(r resource) bool { return r.option == option })
 					if index < 0 {
-						return diagnostic(ctx, 2, "ulimit: -%c: invalid option\n", option)
+						return false, false, false, nil, diagnostic(ctx, 2, "ulimit: -%c: invalid option\n", option)
 					}
 					asked = append(asked, askedLimit{resource: resources[index]})
 				}
@@ -79,7 +101,7 @@ func (e *execution) ulimit(ctx context.Context, args []string) error {
 				asked = append(asked, askedLimit{resource: resources[4]})
 			}
 			if asked[len(asked)-1].value != nil {
-				return diagnostic(ctx, 2, "ulimit: %s: too many arguments\n", arg)
+				return false, false, false, nil, diagnostic(ctx, 2, "ulimit: %s: too many arguments\n", arg)
 			}
 			value := arg
 			asked[len(asked)-1].value = &value
@@ -93,101 +115,131 @@ func (e *execution) ulimit(ctx context.Context, args []string) error {
 	} else if len(asked) == 0 {
 		asked = append(asked, askedLimit{resource: resources[4]})
 	}
-	hc := interp.HandlerCtx(ctx)
-	state := hc.Scope().(*interpreterScope)
-	attributes := state.attributes
-	attributes.Limits = slices.Clone(attributes.Limits)
-	type shown struct {
-		resource resource
-		text     string
+	return soft, hard, all, asked, nil
+}
+
+type shownLimit struct {
+	resource resource
+	text     string
+}
+
+func showLimit(value uint64, r resource) string {
+	if value == uint64(unix.RLIM_INFINITY) {
+		return "unlimited"
 	}
-	var showing []shown
-	show := func(value uint64, r resource) string {
-		if value == uint64(unix.RLIM_INFINITY) {
-			return "unlimited"
+	return strconv.FormatUint(value/r.scale, 10)
+}
+
+// applyLimit changes only the invocation copy; ulimit commits it after every request succeeds.
+func applyLimit(
+	ctx context.Context,
+	ask askedLimit,
+	soft, hard, all bool,
+	attributes *process.ChildAttributes,
+) (*shownLimit, error) {
+	r := ask.resource
+	if r.number == -2 {
+		if ask.value != nil {
+			return nil, diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: Invalid argument\n", r.description)
 		}
-		return strconv.FormatUint(value/r.scale, 10)
+		return &shownLimit{r, strconv.Itoa(pipeBuffer / 512)}, nil
 	}
-	for _, ask := range asked {
-		r := ask.resource
-		if r.number == -2 {
-			if ask.value != nil {
-				return diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: Invalid argument\n", r.description)
-			}
-			showing = append(showing, shown{r, strconv.Itoa(pipeBuffer / 512)})
-			continue
+	if r.number < 0 {
+		if all {
+			return nil, nil
 		}
-		if r.number < 0 {
-			if all {
-				continue
-			}
-			return diagnostic(ctx, 1, "ulimit: -%c: not supported here\n", r.option)
+		return nil, diagnostic(ctx, 1, "ulimit: -%c: not supported here\n", r.option)
+	}
+	low, high, err := process.ChildLimit(r.number)
+	if err != nil {
+		return nil, err
+	}
+	for _, limit := range attributes.Limits {
+		if limit.Resource == r.number {
+			low, high = limit.Soft, limit.Hard
+			break
 		}
-		low, high, err := process.ChildLimit(r.number)
-		if err != nil {
-			return err
-		}
-		for _, limit := range attributes.Limits {
-			if limit.Resource == r.number {
-				low, high = limit.Soft, limit.Hard
-				break
-			}
-		}
-		if ask.value == nil {
-			value := low
-			if hard {
-				value = high
-			}
-			showing = append(showing, shown{r, show(value, r)})
-			continue
-		}
-		value := uint64(0)
-		switch *ask.value {
-		case "unlimited":
-			value = uint64(unix.RLIM_INFINITY)
-		case "soft":
-			value = low
-		case "hard":
+	}
+	if ask.value == nil {
+		value := low
+		if hard {
 			value = high
-		default:
-			value, err = strconv.ParseUint(*ask.value, 10, 64)
-			if err != nil || value > math.MaxUint64/r.scale {
-				return diagnostic(ctx, 1, "ulimit: %s: invalid number\n", *ask.value)
-			}
-			value *= r.scale
 		}
-		both := soft == hard
-		if (hard || both) && value > high && os.Geteuid() != 0 {
-			return diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: Operation not permitted\n", r.description)
-		}
-		if soft || both {
-			low = value
-		}
-		if hard || both {
-			high = value
-		}
-		attributes.Limits = slices.DeleteFunc(attributes.Limits, func(limit process.ResourceLimit) bool { return limit.Resource == r.number })
-		attributes.Limits = append(attributes.Limits, process.ResourceLimit{Resource: r.number, Soft: low, Hard: high})
-		command := process.Wrap(exec.Command("/bin/sh", "-c", ":"), false, attributes)
-		if err := command.Start(ctx); err != nil {
-			return diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: %v\n", r.description, err)
-		}
-		status := command.Wait(ctx)
-		if status.Error != nil {
-			return diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: %s\n", r.description, *status.Error)
-		}
+		return &shownLimit{r, showLimit(value, r)}, nil
 	}
-	state.attributes = attributes
+	value, err := limitValue(ctx, ask, low, high)
+	if err != nil {
+		return nil, err
+	}
+	both := soft == hard
+	if (hard || both) && value > high && os.Geteuid() != 0 {
+		return nil, diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: Operation not permitted\n", r.description)
+	}
+	if soft || both {
+		low = value
+	}
+	if hard || both {
+		high = value
+	}
+	attributes.Limits = slices.DeleteFunc(
+		attributes.Limits,
+		func(limit process.ResourceLimit) bool { return limit.Resource == r.number },
+	)
+	attributes.Limits = append(attributes.Limits, process.ResourceLimit{Resource: r.number, Soft: low, Hard: high})
+	return nil, checkChildLimit(ctx, r, *attributes)
+}
+
+func limitValue(ctx context.Context, ask askedLimit, low, high uint64) (uint64, error) {
+	r := ask.resource
+	value := uint64(0)
+	switch *ask.value {
+	case "unlimited":
+		value = uint64(unix.RLIM_INFINITY)
+	case "soft":
+		value = low
+	case "hard":
+		value = high
+	default:
+		var err error
+		value, err = strconv.ParseUint(*ask.value, 10, 64)
+		if err != nil || value > math.MaxUint64/r.scale {
+			return 0, diagnostic(ctx, 1, "ulimit: %s: invalid number\n", *ask.value)
+		}
+		value *= r.scale
+	}
+	return value, nil
+}
+
+func showLimits(writer io.Writer, showing []shownLimit) error {
 	for _, value := range showing {
 		var err error
 		if len(showing) == 1 {
-			_, err = fmt.Fprintln(hc.Stdout, value.text)
+			_, err = fmt.Fprintln(writer, value.text)
 		} else {
-			_, err = fmt.Fprintf(hc.Stdout, "%-27s %18s %s\n", value.resource.description, fmt.Sprintf("(%s-%c)", value.resource.label, value.resource.option), value.text)
+			_, err = fmt.Fprintf(
+				writer,
+				"%-27s %18s %s\n",
+				value.resource.description,
+				fmt.Sprintf("(%s-%c)", value.resource.label, value.resource.option),
+				value.text,
+			)
 		}
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkChildLimit asks a job-owned child to apply the requested process attributes.
+func checkChildLimit(ctx context.Context, r resource, attributes process.ChildAttributes) error {
+	command := process.Wrap(exec.Command("/bin/sh", "-c", ":"), false, attributes)
+	if err := command.Start(ctx); err != nil {
+		return diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: %v\n", r.description, err)
+	}
+	status := command.Wait(ctx)
+	if status.Error != nil {
+		return diagnostic(ctx, 1, "ulimit: %s: cannot modify limit: %s\n", r.description, *status.Error)
 	}
 	return nil
 }

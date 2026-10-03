@@ -13,7 +13,13 @@ import (
 
 // Pure schema cases use no IO and finish within the ordinary one-second budget.
 func TestSchemaChecksArgumentsWithoutDisclosingValues(t *testing.T) {
-	schema, err := declare.NewSchema(json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"v":{"type":"array","items":{"type":"number"}},"quiet":{"type":"boolean"},"content":{"type":"string","maxLength":8},"count":{"type":"integer","minimum":1}},"required":["v"]}`))
+	schema, err := declare.NewSchema(
+		json.RawMessage(
+			`{"type":"object","additionalProperties":false,"properties":{"v":{"type":"array",` +
+				`"items":{"type":"number"}},"quiet":{"type":"boolean"},"content":{"type":"string",` +
+				`"maxLength":8},"count":{"type":"integer","minimum":1}},"required":["v"]}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +60,14 @@ func TestSchemaChecksArgumentsWithoutDisclosingValues(t *testing.T) {
 }
 
 func TestSchemaCompilationAndJSONBoundary(t *testing.T) {
-	for _, document := range []string{`[]`, `null`, `{"type":"nonsense"}`, `{"type":"string","type":"number"}`, `{"$ref":"file:///nonexistent/demi-schema.json"}`, `{"$ref":"https://example.invalid/schema"}`} {
+	for _, document := range []string{
+		`[]`,
+		`null`,
+		`{"type":"nonsense"}`,
+		`{"type":"string","type":"number"}`,
+		`{"$ref":"file:///nonexistent/demi-schema.json"}`,
+		`{"$ref":"https://example.invalid/schema"}`,
+	} {
 		t.Run(document, func(t *testing.T) {
 			if _, err := declare.NewSchema(json.RawMessage(document)); err == nil {
 				t.Fatal("invalid or external schema accepted")
@@ -90,21 +103,34 @@ func TestSchemaCompilationAndJSONBoundary(t *testing.T) {
 }
 
 func TestSchemaSupportsOutputAndLocalReferences(t *testing.T) {
-	schema, err := declare.NewSchema(json.RawMessage(`{"$defs":{"item":{"type":"integer"}},"type":"object","properties":{"items":{"type":"array","items":{"$ref":"#/$defs/item"}}},"required":["items"]}`))
+	schema, err := declare.NewSchema(
+		json.RawMessage(
+			`{"$defs":{"item":{"type":"integer"}},"type":"object",` +
+				`"properties":{"items":{"type":"array","items":{"$ref":"#/$defs/item"}}},` +
+				`"required":["items"]}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := schema.Check(json.RawMessage(`{"items":[1,2]}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := schema.Check(json.RawMessage(`{"items":[1,"private"]}`)); err == nil || err.Error() != `"items.1" is not of type "integer"` {
+	if err := schema.Check(
+		json.RawMessage(`{"items":[1,"private"]}`),
+	); err == nil ||
+		err.Error() != `"items.1" is not of type "integer"` {
 		t.Fatalf("got %v", err)
 	}
 }
 
 // Port of the_input_subset_takes_scalars_enums_and_arrays_and_refuses_the_rest.
 func TestInputSubset(t *testing.T) {
-	accepted := `{"title":"Args","type":"object","additionalProperties":false,"required":["path"],"properties":{"path":{"type":"string","minLength":1,"description":"A file"},"count":{"type":"integer","format":"uint32","minimum":0},"mode":{"type":"string","enum":["fast","slow"]},"tags":{"type":"array","items":{"type":"string","pattern":"^[a-z]+$"},"maxItems":3},"force":{"type":"boolean"}}}`
+	accepted := `{"title":"Args","type":"object","additionalProperties":false,"required":["path"],` +
+		`"properties":{"path":{"type":"string","minLength":1,"description":"A file"},` +
+		`"count":{"type":"integer","format":"uint32","minimum":0},"mode":{"type":"string",` +
+		`"enum":["fast","slow"]},"tags":{"type":"array","items":{"type":"string",` +
+		`"pattern":"^[a-z]+$"},"maxItems":3},"force":{"type":"boolean"}}}`
 	schema, err := declare.NewSchema(json.RawMessage(accepted))
 	if err != nil {
 		t.Fatal(err)
@@ -132,13 +158,17 @@ func TestInputSubset(t *testing.T) {
 		{`{"type":"string","items":{"type":"string"}}`, "has items but is not an array"},
 	} {
 		t.Run(test.reason, func(t *testing.T) {
-			document := fmt.Sprintf(`{"type":"object","additionalProperties":false,"properties":{"field":%s}}`, test.field)
+			document := fmt.Sprintf(
+				`{"type":"object","additionalProperties":false,"properties":{"field":%s}}`,
+				test.field,
+			)
 			schema, err := declare.NewSchema(json.RawMessage(document))
 			if err != nil {
 				t.Fatal(err)
 			}
 			err = declare.CheckInputSubset(schema)
-			if err == nil || !strings.HasPrefix(err.Error(), `input "field": `) || !strings.Contains(err.Error(), test.reason) {
+			if err == nil || !strings.HasPrefix(err.Error(), `input "field": `) ||
+				!strings.Contains(err.Error(), test.reason) {
 				t.Fatalf("got %v, want %s", err, test.reason)
 			}
 		})
@@ -193,7 +223,11 @@ func TestRustSchemaDiagnostics(t *testing.T) {
 }
 
 func TestInputSubsetReportsTheFirstDeclaredFieldAndKeyword(t *testing.T) {
-	schema := commandSchema(t, `{"type":"object","additionalProperties":false,"properties":{"z":{"type":"string","z-extra":true,"a-extra":true},"a":{"type":"integer","default":2}}}`)
+	schema := commandSchema(
+		t,
+		`{"type":"object","additionalProperties":false,"properties":{"z":{"type":"string",`+
+			`"z-extra":true,"a-extra":true},"a":{"type":"integer","default":2}}}`,
+	)
 	err := declare.CheckInputSubset(schema)
 	var declaration *declare.DeclarationError
 	if !errors.As(err, &declaration) || err.Error() != `input "z": uses "z-extra", outside the command input subset` {

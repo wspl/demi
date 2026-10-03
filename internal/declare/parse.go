@@ -14,22 +14,31 @@ import (
 // UsageError describes an invocation that does not fit its selected command.
 type UsageError struct{ err error }
 
+// Error describes the refused invocation.
 func (e *UsageError) Error() string { return e.err.Error() }
+
+// Unwrap returns the cause of the invocation refusal.
 func (e *UsageError) Unwrap() error { return e.err }
 
 // Selected records the command reached by argv and where its arguments start.
 type Selected[B any] struct {
-	Node          Node[B]
+	// Node is the selected command or group.
+	Node Node[B]
+	// Path lists command names from the root.
 	Path          []string
 	argumentIndex int
 }
 
 // Parsed holds argv input before or after validation.
 type Parsed struct {
-	Path   []string  `json:"path"`
+	// Path lists command names from the root.
+	Path []string `json:"path"`
+	// Values holds command inputs in insertion order.
 	Values Arguments `json:"values"`
-	JSON   bool      `json:"json"`
-	Help   bool      `json:"help"`
+	// JSON records a request for machine-readable output.
+	JSON bool `json:"json"`
+	// Help records a request for documentation.
+	Help bool `json:"help"`
 }
 
 // Select finds the command named by argv, excluding the root executable name.
@@ -81,11 +90,7 @@ func (s *Selected[B]) Parse(argv []string) (*Parsed, error) {
 		index++
 		if !optionsEnded && token == "--" {
 			if leaf.RestField != nil {
-				rest := make([]any, len(argv)-index)
-				for i, token := range argv[index:] {
-					rest[i] = token
-				}
-				result.Values.Set(*leaf.RestField, rest)
+				result.setRest(*leaf.RestField, argv[index:])
 				break
 			}
 			optionsEnded = true
@@ -103,38 +108,11 @@ func (s *Selected[B]) Parse(argv []string) (*Parsed, error) {
 			continue
 		}
 		if !optionsEnded && strings.HasPrefix(token, "--") {
-			field, inline, hasInline := strings.Cut(token[2:], "=")
-			schema, exists := properties[field]
-			if !exists {
-				return nil, usageError("Unknown option \"--%s\" for \"%s\"", field, command)
-			}
-			if leaf.StdinField != nil && *leaf.StdinField == field {
-				return nil, usageError("\"%s\" reads %s only from stdin. Remove --%s and use a quoted heredoc, pipe, or input redirection.", command, field, field)
-			}
-			source := ""
-			if leaf.RestField != nil && *leaf.RestField == field {
-				source = "passed after --"
-			} else if slices.Contains(leaf.positionals(), field) {
-				source = "a positional argument"
-			}
-			if source != "" {
-				return nil, usageError("\"%s\" is %s for \"%s\"; --%s is not an option", field, source, command, field)
-			}
-			var value any
-			if hasInline {
-				value = inline
-			} else if schemaType(schema) == "boolean" && (index == len(argv) || strings.HasPrefix(argv[index], "--")) {
-				value = true
-			} else {
-				if index == len(argv) || strings.HasPrefix(argv[index], "--") {
-					return nil, usageError("Missing value for \"--%s\"", field)
-				}
-				value = argv[index]
-				index++
-			}
-			if err := result.setValue(field, value, schema); err != nil {
+			consumed, err := leaf.parseOption(token, argv[index:], result, command)
+			if err != nil {
 				return nil, err
 			}
+			index += consumed
 			continue
 		}
 		if positional == len(leaf.positionals()) {
@@ -151,11 +129,11 @@ func (s *Selected[B]) Parse(argv []string) (*Parsed, error) {
 
 // Validate supplies stdin and validates a manifest leaf after parsing argv.
 func (p *Parsed) Validate(leaf *Leaf[Binding], stdin *string) (*Parsed, error) {
-	return validateParsed(p, leaf, stdin)
+	return validate(p, leaf, stdin)
 }
 
-// validateParsed converts argv values under the selected command's field schemas.
-func validateParsed[B any](parsed *Parsed, leaf *Leaf[B], stdin *string) (*Parsed, error) {
+// validate converts argv values under the selected command's field schemas.
+func validate[B any](parsed *Parsed, leaf *Leaf[B], stdin *string) (*Parsed, error) {
 	if parsed.Help {
 		return parsed, nil
 	}
@@ -271,4 +249,55 @@ func argvValue(value, schema any) any {
 // and retains wrapped causes for errors.Is/errors.As.
 func usageError(format string, args ...any) *UsageError {
 	return &UsageError{err: fmt.Errorf(format, args...)}
+}
+
+// parseOption returns the number of following argv tokens consumed by one option.
+func (l *Leaf[B]) parseOption(token string, argv []string, result *Parsed, command string) (int, error) {
+	consumed := 0
+	field, inline, hasInline := strings.Cut(token[2:], "=")
+	schema, exists := l.properties()[field]
+	if !exists {
+		return 0, usageError("Unknown option \"--%s\" for \"%s\"", field, command)
+	}
+	if l.StdinField != nil && *l.StdinField == field {
+		return 0, usageError(
+			"\"%s\" reads %s only from stdin. Remove --%s and use a quoted heredoc, pipe, or input redirection.",
+			command,
+			field,
+			field,
+		)
+	}
+	source := ""
+	if l.RestField != nil && *l.RestField == field {
+		source = "passed after --"
+	} else if slices.Contains(l.positionals(), field) {
+		source = "a positional argument"
+	}
+	if source != "" {
+		return 0, usageError("\"%s\" is %s for \"%s\"; --%s is not an option", field, source, command, field)
+	}
+	var value any
+	if hasInline {
+		value = inline
+	} else if schemaType(schema) == "boolean" && (len(argv) == 0 || strings.HasPrefix(argv[0], "--")) {
+		value = true
+	} else {
+		if len(argv) == 0 || strings.HasPrefix(argv[0], "--") {
+			return 0, usageError("Missing value for \"--%s\"", field)
+		}
+		value = argv[0]
+		consumed++
+	}
+	if err := result.setValue(field, value, schema); err != nil {
+		return 0, err
+	}
+	return consumed, nil
+}
+
+func (p *Parsed) setRest(field string, argv []string) {
+	rest := make([]any, len(argv))
+	for i, token := range argv {
+		rest[i] = token
+	}
+	p.Values.Set(field, rest)
 }

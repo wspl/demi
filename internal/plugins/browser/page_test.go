@@ -27,9 +27,23 @@ func world(t *testing.T, answer plugintest.PackageCalls) (plugin.Plugin, *plugin
 	return plugintest.Loopback(factory.Instance()), demi
 }
 
-func pageCall(t *testing.T, p plugin.Plugin, demi *plugintest.TestDemi, method, params string) (json.RawMessage, error) {
+func pageCall(
+	t *testing.T,
+	p plugin.Plugin,
+	demi *plugintest.TestDemi,
+	method, params string,
+) (json.RawMessage, error) {
 	t.Helper()
-	reply, err := p.Call(t.Context(), &plugin.RequestPageCall{User: "u1", Conversation: new(webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b")), Method: method, Params: json.RawMessage(params)}, demi.Port())
+	reply, err := p.Call(
+		t.Context(),
+		&plugin.RequestPageCall{
+			User:         "u1",
+			Conversation: new(webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b")),
+			Method:       method,
+			Params:       json.RawMessage(params),
+		},
+		demi.Port(),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +56,14 @@ func pageCall(t *testing.T, p plugin.Plugin, demi *plugintest.TestDemi, method, 
 
 func pageState(t *testing.T, p plugin.Plugin, demi *plugintest.TestDemi) json.RawMessage {
 	t.Helper()
-	reply, err := p.Call(t.Context(), &plugin.RequestPageState{User: "u1", Conversation: new(webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b"))}, demi.Port())
+	reply, err := p.Call(
+		t.Context(),
+		&plugin.RequestPageState{
+			User:         "u1",
+			Conversation: new(webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b")),
+		},
+		demi.Port(),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,22 +75,32 @@ func pageState(t *testing.T, p plugin.Plugin, demi *plugintest.TestDemi) json.Ra
 }
 
 func TestEachMethodCallsItsOperationAndOnlyOpenWakesHost(t *testing.T) {
-	p, demi := world(t, func(_ context.Context, operation declare.NativeOperation, args json.RawMessage, _ plugin.CallKind) (json.RawMessage, error) {
-		if operation.Package != "demi.browser" {
-			t.Fatalf("package: %s", operation.Package)
-		}
-		switch operation.Operation {
-		case "browser.open":
-			if string(args) != `{"url":"about:blank"}` {
-				t.Fatalf("open args: %s", args)
+	p, demi := world(
+		t,
+		func(
+			_ context.Context,
+			operation declare.NativeOperation,
+			args json.RawMessage,
+			_ plugin.CallKind,
+		) (json.RawMessage, error) {
+			if operation.Package != "demi.browser" {
+				t.Fatalf("package: %s", operation.Package)
 			}
-			return json.RawMessage(`{"tab":"t1","url":"about:blank"}`), nil
-		case "browser.tabs":
-			return json.RawMessage(`{"tabs":[{"id":"t1","title":"","url":"about:blank","createdBy":{"kind":"user"}}],"truncated":false}`), nil
-		default:
-			return json.RawMessage(`{}`), nil
-		}
-	})
+			switch operation.Operation {
+			case "browser.open":
+				if string(args) != `{"url":"about:blank"}` {
+					t.Fatalf("open args: %s", args)
+				}
+				return json.RawMessage(`{"tab":"t1","url":"about:blank"}`), nil
+			case "browser.tabs":
+				return json.RawMessage(
+					`{"tabs":[{"id":"t1","title":"","url":"about:blank","createdBy":{"kind":"user"}}],"truncated":false}`,
+				), nil
+			default:
+				return json.RawMessage(`{}`), nil
+			}
+		},
+	)
 	opened, err := pageCall(t, p, demi, "open", `{}`)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +109,13 @@ func TestEachMethodCallsItsOperationAndOnlyOpenWakesHost(t *testing.T) {
 	if string(opened) != want {
 		t.Fatalf("open: %s", opened)
 	}
-	if listed := pageState(t, p, demi); string(listed) != `{"tabs":[{"id":"t1","title":"","url":"about:blank","createdBy":{"kind":"user"}}]}` {
+	if listed := pageState(
+		t,
+		p,
+		demi,
+	); string(
+		listed,
+	) != `{"tabs":[{"id":"t1","title":"","url":"about:blank","createdBy":{"kind":"user"}}]}` {
 		t.Fatalf("tabs: %s", listed)
 	}
 
@@ -100,7 +137,14 @@ func TestEachMethodCallsItsOperationAndOnlyOpenWakesHost(t *testing.T) {
 	for _, call := range demi.Called() {
 		got = append(got, call.Operation.Operation+":"+string(call.Kind))
 	}
-	wantCalls := []string{"browser.open:starts", "browser.tabs:looks", "browser.goto:operates", "browser.back:operates", "browser.reload:operates", "browser.close:operates"}
+	wantCalls := []string{
+		"browser.open:starts",
+		"browser.tabs:looks",
+		"browser.goto:operates",
+		"browser.back:operates",
+		"browser.reload:operates",
+		"browser.close:operates",
+	}
 	if diff := cmp.Diff(wantCalls, got); diff != "" {
 		t.Fatal(diff)
 	}
@@ -108,14 +152,24 @@ func TestEachMethodCallsItsOperationAndOnlyOpenWakesHost(t *testing.T) {
 
 func TestStoppedHostAndMissingTabs(t *testing.T) {
 	stopped := &plugin.PortRefusalHost{Code: webapi.ErrorCodeHostStopped, Status: 409, Message: "The Cloud is stopped"}
-	p, demi := world(t, func(_ context.Context, operation declare.NativeOperation, _ json.RawMessage, _ plugin.CallKind) (json.RawMessage, error) {
-		switch operation.Operation {
-		case "browser.tabs", "browser.goto":
-			return nil, stopped
-		default:
-			return nil, &plugin.PortRefusalOperation{Stderr: `{"error":{"code":"tab_not_found","message":"No tab t9"}}`}
-		}
-	})
+	p, demi := world(
+		t,
+		func(
+			_ context.Context,
+			operation declare.NativeOperation,
+			_ json.RawMessage,
+			_ plugin.CallKind,
+		) (json.RawMessage, error) {
+			switch operation.Operation {
+			case "browser.tabs", "browser.goto":
+				return nil, stopped
+			default:
+				return nil, &plugin.PortRefusalOperation{
+					Stderr: `{"error":{"code":"tab_not_found","message":"No tab t9"}}`,
+				}
+			}
+		},
+	)
 	if got := pageState(t, p, demi); string(got) != `{"tabs":[]}` {
 		t.Fatalf("tabs: %s", got)
 	}
@@ -153,15 +207,38 @@ func TestPageValidationAndRefusalsDoNotMarkChanges(t *testing.T) {
 		{name: "unknown argument", method: "open", params: `{"extra":true}`, usage: true},
 		{name: "empty URL", method: "navigate", params: `{"tab":"t1","url":""}`, usage: true},
 		{name: "unknown history action", method: "history", params: `{"tab":"t1","action":"home"}`, usage: true},
-		{name: "invalid navigation tab", method: "navigate", params: `{"tab":"bad","url":"https://example.test"}`, reason: "tab_not_found"},
-		{name: "browser refusal", method: "open", params: `{}`, failure: &plugin.PortRefusalOperation{Stderr: ` {"error":{"code":"tab_busy","message":"busy"}} `}, reason: "tab_busy"},
+		{
+			name:   "invalid navigation tab",
+			method: "navigate",
+			params: `{"tab":"bad","url":"https://example.test"}`,
+			reason: "tab_not_found",
+		},
+		{
+			name:   "browser refusal",
+			method: "open",
+			params: `{}`,
+			failure: &plugin.PortRefusalOperation{
+				Stderr: ` {"error":{"code":"tab_busy","message":"busy"}} `,
+			},
+			reason: "tab_busy",
+		},
 		{name: "unreadable open", method: "open", params: `{}`, answer: json.RawMessage(`{"tab":42}`)},
-		{name: "unstructured failure", method: "close", params: `{"tab":"t1"}`, failure: &plugin.PortRefusalOperation{Stderr: "browser stopped unexpectedly"}},
+		{
+			name:   "unstructured failure",
+			method: "close",
+			params: `{"tab":"t1"}`,
+			failure: &plugin.PortRefusalOperation{
+				Stderr: "browser stopped unexpectedly",
+			},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			p, demi := world(t, func(context.Context, declare.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error) {
-				return test.answer, test.failure
-			})
+			p, demi := world(
+				t,
+				func(context.Context, declare.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error) {
+					return test.answer, test.failure
+				},
+			)
 			_, err := pageCall(t, p, demi, test.method, test.params)
 			if err == nil {
 				t.Fatal("call succeeded")
@@ -191,22 +268,31 @@ func TestPageValidationAndRefusalsDoNotMarkChanges(t *testing.T) {
 
 func TestExplicitURLAndForwardPreserveBrowserArguments(t *testing.T) {
 	url := "https://example.test/?x=<>&y=\u2028\u2029"
-	p, demi := world(t, func(_ context.Context, operation declare.NativeOperation, args json.RawMessage, kind plugin.CallKind) (json.RawMessage, error) {
-		if operation.Operation == "browser.open" {
-			input, err := browser.DecodeOpenTab(args)
-			if err != nil || input.URL == nil || *input.URL != url {
-				t.Fatalf("open input: %s, %v", args, err)
+	p, demi := world(
+		t,
+		func(
+			_ context.Context,
+			operation declare.NativeOperation,
+			args json.RawMessage,
+			kind plugin.CallKind,
+		) (json.RawMessage, error) {
+			if operation.Operation == "browser.open" {
+				input, err := browser.DecodeOpenTab(args)
+				if err != nil || input.URL == nil || *input.URL != url {
+					t.Fatalf("open input: %s, %v", args, err)
+				}
+				if strings.Contains(string(args), `\u003c`) || strings.Contains(string(args), `\u2028`) {
+					t.Fatalf("escaped wire: %s", args)
+				}
+				return json.RawMessage(`{"tab":"t2","url":"about:blank","title":"Hello"}`), nil
 			}
-			if strings.Contains(string(args), `\u003c`) || strings.Contains(string(args), `\u2028`) {
-				t.Fatalf("escaped wire: %s", args)
+			if operation.Operation != "browser.forward" || string(args) != `{"tab":"t2"}` ||
+				kind != plugin.CallKindOperates {
+				t.Fatalf("forward: %v %s %s", operation, args, kind)
 			}
-			return json.RawMessage(`{"tab":"t2","url":"about:blank","title":"Hello"}`), nil
-		}
-		if operation.Operation != "browser.forward" || string(args) != `{"tab":"t2"}` || kind != plugin.CallKindOperates {
-			t.Fatalf("forward: %v %s %s", operation, args, kind)
-		}
-		return json.RawMessage(`{}`), nil
-	})
+			return json.RawMessage(`{}`), nil
+		},
+	)
 	args, err := contract.EncodeJSON(browser.OpenTab{URL: &url})
 	if err != nil {
 		t.Fatal(err)

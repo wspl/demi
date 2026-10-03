@@ -22,7 +22,11 @@ type recordingHandler struct {
 }
 
 func (*recordingHandler) Operations() []string { return []string{process.Raw} }
-func (h *recordingHandler) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+
+func (h *recordingHandler) Invoke(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
+) (commandwire.Completion, error) {
 	if invocation.Request.Operation != process.Raw {
 		return commandwire.Completion{}, errors.New("declared command did not invoke raw")
 	}
@@ -48,11 +52,21 @@ func (h *recordingHandler) Invoke(ctx context.Context, invocation cmdsdk.Invocat
 		}
 	}
 }
+
 func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 	root := t.TempDir()
 	handler := &recordingHandler{}
 	contextID := "0123456789abcdef0123456789abcdef"
-	job, err := StartJob(t.Context(), process.JobStart{Script: `/usr/bin/env; printf body | fixture --flag; echo " $?"`, Cwd: root, Env: map[string]string{"HOME": root, "PATH": os.Getenv("PATH")}, Commands: &process.JobCommands{Context: contextID, Roots: []string{"fixture"}, Handler: handler}}, nil)
+	job, err := StartJob(
+		t.Context(),
+		process.JobStart{
+			Script:   `/usr/bin/env; printf body | fixture --flag; echo " $?"`,
+			Cwd:      root,
+			Env:      map[string]string{"HOME": root, "PATH": os.Getenv("PATH")},
+			Commands: &process.JobCommands{Context: contextID, Roots: []string{"fixture"}, Handler: handler},
+		},
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +81,9 @@ func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 		}
 	}
 	status, _ := job.Wait(t.Context())
-	if status.Code == nil || *status.Code != 0 || !strings.Contains(output.String(), "DEMI_CONTEXT_ID="+contextID+"\n") || !strings.HasSuffix(output.String(), "body 7\n") {
+	if status.Code == nil || *status.Code != 0 ||
+		!strings.Contains(output.String(), "DEMI_CONTEXT_ID="+contextID+"\n") ||
+		!strings.HasSuffix(output.String(), "body 7\n") {
 		t.Fatalf("exit %+v output %q", status, output.String())
 	}
 	handler.mu.Lock()
@@ -76,7 +92,8 @@ func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 		t.Fatalf("requests: %v", handler.requests)
 	}
 	asked := handler.requests[0]
-	if asked.Context != contextID || asked.Root != "fixture" || asked.Live || len(asked.Argv) != 1 || asked.Argv[0] != "--flag" {
+	if asked.Context != contextID || asked.Root != "fixture" || asked.Live || len(asked.Argv) != 1 ||
+		asked.Argv[0] != "--flag" {
 		t.Fatalf("request: %+v", asked)
 	}
 }
@@ -94,7 +111,11 @@ func TestDeclaredBrokenPipeExits141(t *testing.T) {
 	defer func() { _ = writer.Close() }() // Execute may close cancelled job streams.
 	result, output, diagnostic := shellFiles(t, root, `fixture; printf '%s' "$?" >&2`, func(o *Options) {
 		o.Stdout = writer
-		o.Commands = &process.JobCommands{Context: "0123456789abcdef0123456789abcdef", Roots: []string{"fixture"}, Handler: &recordingHandler{}}
+		o.Commands = &process.JobCommands{
+			Context: "0123456789abcdef0123456789abcdef",
+			Roots:   []string{"fixture"},
+			Handler: &recordingHandler{},
+		}
 		if _, err := o.Stdin.WriteString("body"); err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +143,11 @@ func (h *stoppedInputHandler) Waiting(delta int) {
 		h.waiting <- struct{}{}
 	}
 }
-func (h *stoppedInputHandler) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+
+func (h *stoppedInputHandler) Invoke(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
+) (commandwire.Completion, error) {
 	inputCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan error, 1)
@@ -162,7 +187,8 @@ func TestDeclaredInputCancellationPreservesShellInput(t *testing.T) {
 		// The producer cannot write until the handler has canceled and joined
 		// its input pull. Wait for both that pull and the producer's read.
 		// The following read uses the same substitution input.
-		{"process substitution", `{ fixture; read -r line; printf '%s' "$line"; } < <(read -r produced; printf '%s\n' "$produced")`, 2},
+		{"process substitution", `{ fixture; read -r line; printf '%s' "$line"; } < <(read -r produced; ` +
+			`printf '%s\n' "$produced")`, 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if test.name == "process substitution" && runtime.GOOS == "windows" {
@@ -178,7 +204,11 @@ func TestDeclaredInputCancellationPreservesShellInput(t *testing.T) {
 			result, output, diagnostic := shellFiles(t, t.TempDir(), test.script, func(o *Options) {
 				o.Stdin = reader
 				o.Observe = handler
-				o.Commands = &process.JobCommands{Context: "0123456789abcdef0123456789abcdef", Roots: []string{"fixture"}, Handler: handler}
+				o.Commands = &process.JobCommands{
+					Context: "0123456789abcdef0123456789abcdef",
+					Roots:   []string{"fixture"},
+					Handler: handler,
+				}
 			})
 			if result.Code != 0 || output != "still readable" || diagnostic != "" {
 				t.Fatalf("result %+v output %q diagnostic %q", result, output, diagnostic)

@@ -36,6 +36,14 @@ linters:
         linters:
           - funlen
           - gocognit
+          - nestif
+      # A +demi: contract marker is one machine-read line, as a //go:generate
+      # directive is: the generator reads an enum's values or a pattern from
+      # that line only.
+      - linters:
+          - lll
+        source: '^\s*// \+demi:'
+
       # As in .golangci.yml: contract doc comments are product text.
       - path: ^internal/(core|declare|framewire|commandwire|runnerwire|machinewire|webapi|cmdpkg/[a-z]+/[a-z]+op|plugins/[a-z]+)/
         linters:

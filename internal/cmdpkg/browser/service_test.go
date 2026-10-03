@@ -23,18 +23,34 @@ import (
 
 type programSuite struct{ m *testing.M }
 
+// Run builds fixture programs before running the browser suite.
 func (s programSuite) Run() int { return programtest.Run(s.m) }
-func TestMain(m *testing.M)     { goleak.VerifyTestMain(programSuite{m}) }
+
+// TestMain checks that the browser suite leaves no goroutines running.
+func TestMain(m *testing.M) { goleak.VerifyTestMain(programSuite{m}) }
 
 func invocation(operation, args, conversation string) cmdsdk.InvocationContext[commandwire.Invocation] {
 	asJSON := true
 	return cmdsdk.InvocationContext[commandwire.Invocation]{Request: commandwire.Invocation{
-		Operation: "browser." + operation, InvocationID: operation, Args: []byte(args), Cwd: "/", Env: map[string]string{}, JSON: &asJSON,
-		Context: commandwire.CommandContext{Conversation: conversation, Caller: &commandwire.AgentCaller{Number: 1}, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}},
+		Operation:    "browser." + operation,
+		InvocationID: operation,
+		Args:         []byte(args),
+		Cwd:          "/",
+		Env:          map[string]string{},
+		JSON:         &asJSON,
+		Context: commandwire.CommandContext{
+			Conversation: conversation,
+			Caller:       &commandwire.AgentCaller{Number: 1},
+			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		},
 	}}
 }
 
-func call(t *testing.T, s *service, request cmdsdk.InvocationContext[commandwire.Invocation]) (commandwire.Completion, []byte, []byte) {
+func call(
+	t *testing.T,
+	s *service,
+	request cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, []byte, []byte) {
 	t.Helper()
 	output, records := cmdsdk.OutputChannel(t.Context())
 	request.Output = output
@@ -70,8 +86,11 @@ func TestAbsentBrowserAndInputRefusals(t *testing.T) {
 		name, args, code string
 		exit             uint8
 	}{
-		{"tabs", "{}", "", 0}, {"info", `{"tab":"t1"}`, "tab_not_found", 1}, {"open", `{"url":4}`, "invalid_input", 2},
-		{"tabs", `{"limit":0}`, "invalid_input", 2}, {"live", `{"unknown":true}`, "invalid_input", 2},
+		{"tabs", "{}", "", 0},
+		{"info", `{"tab":"t1"}`, "tab_not_found", 1},
+		{"open", `{"url":4}`, "invalid_input", 2},
+		{"tabs", `{"limit":0}`, "invalid_input", 2},
+		{"live", `{"unknown":true}`, "invalid_input", 2},
 	} {
 		t.Run(test.name+test.args, func(t *testing.T) {
 			completion, stdout, stderr := call(t, s, invocation(test.name, test.args, "one"))
@@ -293,7 +312,10 @@ func TestResidentProgramListsWithoutChromeAndShutsDown(t *testing.T) {
 	}
 	answered := make(chan error, 1)
 	go func() {
-		answered <- artifacts.AnswerArtifacts(ctx, func(_ context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
+		answered <- artifacts.AnswerArtifacts(ctx, func(
+			_ context.Context,
+			q commandwire.ArtifactRequest,
+		) (commandwire.ArtifactAnswer, error) {
 			if q.Install != nil {
 				return commandwire.ArtifactAnswer{}, errors.New("tab listing requested a Chrome install")
 			}
@@ -352,7 +374,11 @@ func TestCleanupFailureFencesAnotherStart(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newService()
 		var starts atomic.Int32
-		retained := &cdp.BrowserError{Kind: cdp.KindProfileRetained, Path: "/fixture/profile", Cause: errors.New("fixture retirement refused")}
+		retained := &cdp.BrowserError{
+			Kind:  cdp.KindProfileRetained,
+			Path:  "/fixture/profile",
+			Cause: errors.New("fixture retirement refused"),
+		}
 		s.launch = func(context.Context, *starting, tabs.NumberSource) (*tabs.Environment, *live.Hub, error) {
 			starts.Add(1)
 			return nil, nil, retained
@@ -495,7 +521,12 @@ func TestRefusedArgumentsRetainOnlyStringDiagnosticTab(t *testing.T) {
 }
 
 // collectInvocation drains browser output while joining the invocation that owns it.
-func collectInvocation(ctx context.Context, s *service, request cmdsdk.InvocationContext[commandwire.Invocation], records <-chan commandwire.Record) (commandwire.Completion, []byte, []byte, error) {
+func collectInvocation(
+	ctx context.Context,
+	s *service,
+	request cmdsdk.InvocationContext[commandwire.Invocation],
+	records <-chan commandwire.Record,
+) (commandwire.Completion, []byte, []byte, error) {
 	type answer struct {
 		completion commandwire.Completion
 		err        error

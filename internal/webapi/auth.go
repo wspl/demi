@@ -118,13 +118,13 @@ type EmailChangeConfirm struct {
 // +demi:schema-primitive
 type Password string
 
-// Whether this role administers `other`: a role acts only on the roles
+// Outranks reports whether this role administers other: a role acts only on the roles
 // below it, so nobody acts on a peer or on the master.
-func (role Role) Outranks(other Role) bool {
+func (r Role) Outranks(other Role) bool {
 	rank := map[Role]int{RoleMaster: 2, RoleAdmin: 1, RoleUser: 0}
-	r, ok := rank[role]
-	o, otherOK := rank[other]
-	return ok && otherOK && r > o
+	ownRank, ok := rank[r]
+	otherRank, otherOK := rank[other]
+	return ok && otherOK && ownRank > otherRank
 }
 
 // Format keeps a request's password out of diagnostic output.

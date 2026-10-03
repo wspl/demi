@@ -57,7 +57,10 @@ func validateNewContent(content []ClientContent) error {
 	for i, part := range content {
 		switch part.(type) {
 		case *MediaContent, *AttachmentContent:
-			return contract.At(fmt.Sprintf("content[%d]", i), errors.New("only an edit refers to the files its message holds"))
+			return contract.At(
+				fmt.Sprintf("content[%d]", i),
+				errors.New("only an edit refers to the files its message holds"),
+			)
 		case *TextContent, *ReferenceContent, *UploadContent, *RemoteFileContent:
 		}
 	}

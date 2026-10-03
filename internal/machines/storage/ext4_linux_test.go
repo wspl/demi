@@ -46,7 +46,7 @@ func TestCapacityIsBlocksTimesBlockSize(t *testing.T) {
 				binary.LittleEndian.PutUint16(block[0x38:], 0xef53)
 			}
 			path := filepath.Join(t.TempDir(), "image")
-			requireStorage(t, os.WriteFile(path, data[:], 0600))
+			requireStorage(t, os.WriteFile(path, data[:], 0o600))
 			got, err := storage.Capacity(t.Context(), path)
 			if test.want == 0 {
 				var invalid *storage.NotExt4Error
@@ -87,8 +87,8 @@ func TestRecoveryCompletesInterruptedGrowth(t *testing.T) {
 	ctx := t.Context()
 	tools := storageTools(t)
 	root := filepath.Join(t.TempDir(), "mkhome")
-	requireStorage(t, os.MkdirAll(filepath.Join(root, "demi/work"), 0755))
-	requireStorage(t, os.WriteFile(filepath.Join(root, "demi/work/a.txt"), []byte("alpha\n"), 0600))
+	requireStorage(t, os.MkdirAll(filepath.Join(root, "demi/work"), 0o755))
+	requireStorage(t, os.WriteFile(filepath.Join(root, "demi/work/a.txt"), []byte("alpha\n"), 0o600))
 	image := filepath.Join(t.TempDir(), "home.ext4")
 	requireStorage(t, storage.MakeHome(ctx, tools, root, image, 64<<20))
 	info, err := os.Stat(image)
@@ -130,7 +130,7 @@ func TestGrowthWithoutCapabilityNamesCapability(t *testing.T) {
 			return err
 		}
 		target := filepath.Join(directory, "mount")
-		if err := os.Mkdir(target, 0700); err != nil {
+		if err := os.Mkdir(target, 0o700); err != nil {
 			return err
 		}
 		device, err := system.Attach(ctx, image)
@@ -142,7 +142,11 @@ func TestGrowthWithoutCapabilityNamesCapability(t *testing.T) {
 			return err
 		}
 		defer func() {
-			err = errors.Join(err, system.Unmount(context.WithoutCancel(ctx), target), systemtest.WaitLoopDetach(context.WithoutCancel(ctx), image))
+			err = errors.Join(
+				err,
+				system.Unmount(context.WithoutCancel(ctx), target),
+				systemtest.WaitLoopDetach(context.WithoutCancel(ctx), image),
+			)
 		}()
 		number := device.Number()
 		if err := device.Close(); err != nil {
@@ -156,7 +160,8 @@ func TestGrowthWithoutCapabilityNamesCapability(t *testing.T) {
 		}
 		refused := storage.GrowMounted(ctx, tools, system.LoopPath(number))
 		var capability *storage.GrowthCapabilityError
-		if !errors.As(refused, &capability) || refused.Error() != "growing a mounted ext4 filesystem needs CAP_SYS_RESOURCE; this host's manager lacks it" {
+		if !errors.As(refused, &capability) ||
+			refused.Error() != "growing a mounted ext4 filesystem needs CAP_SYS_RESOURCE; this host's manager lacks it" {
 			return fmt.Errorf("resize error: %v", refused)
 		}
 		capacity, err := storage.Capacity(ctx, image)

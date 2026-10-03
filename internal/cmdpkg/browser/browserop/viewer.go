@@ -200,7 +200,6 @@ func (*LiveViewerMessageKeyframe) liveViewerMessage() {}
 
 // Release every key and button this viewer holds.
 // +demi:variant release
-type LiveViewerMessageRelease struct {
-}
+type LiveViewerMessageRelease struct{}
 
 func (*LiveViewerMessageRelease) liveViewerMessage() {}

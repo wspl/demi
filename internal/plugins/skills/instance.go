@@ -28,22 +28,25 @@ type instance struct {
 	mutations chan struct{}
 }
 
-type projectKey struct{ conversation, cwd string }
-type projectSearch struct {
-	turn   core.TurnID
-	skills []projectSkill
-}
+type (
+	projectKey    struct{ conversation, cwd string }
+	projectSearch struct {
+		turn   core.TurnID
+		skills []projectSkill
+	}
+)
 
 // Close cancels and joins every fetch; no worker can be admitted afterwards.
-func (p *instance) Close() {
-	p.mu.Lock()
-	p.cancel()
-	p.mu.Unlock()
-	p.workers.Wait()
+func (i *instance) Close() {
+	i.mu.Lock()
+	i.cancel()
+	i.mu.Unlock()
+	i.workers.Wait()
 }
 
-func (p *instance) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
-	reply, err := p.call(ctx, request, port)
+// Call handles skill requests and classifies failures for the plugin host.
+func (i *instance) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
+	reply, err := i.call(ctx, request, port)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, &plugin.ErrorEnded{Message: err.Error()}
@@ -53,7 +56,7 @@ func (p *instance) Call(ctx context.Context, request plugin.Request, port plugin
 	return reply, nil
 }
 
-func (p *instance) call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
+func (i *instance) call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
 	switch request := request.(type) {
 	case *plugin.RequestCommand:
 		return nil, plugin.Undeclared("command")
@@ -62,51 +65,51 @@ func (p *instance) call(ctx context.Context, request plugin.Request, port plugin
 		if err != nil {
 			return nil, err
 		}
-		p.mu.Lock()
-		fetching := maps.Clone(p.fetching)
-		p.mu.Unlock()
+		i.mu.Lock()
+		fetching := maps.Clone(i.fetching)
+		i.mu.Unlock()
 		state, err := pageState(all, fetching).MarshalJSON()
 		return &plugin.ReplyState{State: state}, err
 	case *plugin.RequestPageCall:
-		if err := p.enterMutation(ctx); err != nil {
+		if err := i.enterMutation(ctx); err != nil {
 			return nil, err
 		}
-		defer p.leaveMutation()
-		result, err := p.pageCall(ctx, request.Method, request.Params, port)
+		defer i.leaveMutation()
+		result, err := i.pageCall(ctx, request.Method, request.Params, port)
 		return &plugin.ReplyResult{Result: result}, err
 	case *plugin.RequestContext:
-		text, err := p.contextBlock(ctx, request, port)
+		text, err := i.contextBlock(ctx, request, port)
 		return &plugin.ReplyContext{Text: text}, err
 	}
 	return nil, plugin.Undeclared("request")
 }
 
-func (p *instance) enterMutation(ctx context.Context) error {
+func (i *instance) enterMutation(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-p.ctx.Done():
-		return p.ctx.Err()
-	case p.mutations <- struct{}{}:
+	case <-i.ctx.Done():
+		return i.ctx.Err()
+	case i.mutations <- struct{}{}:
 		if err := ctx.Err(); err != nil {
-			p.leaveMutation()
+			i.leaveMutation()
 			return err
 		}
-		if err := p.ctx.Err(); err != nil {
-			p.leaveMutation()
+		if err := i.ctx.Err(); err != nil {
+			i.leaveMutation()
 			return err
 		}
 		return nil
 	}
 }
-func (p *instance) leaveMutation() { <-p.mutations }
+func (i *instance) leaveMutation() { <-i.mutations }
 
 // projectSkills caches only successful searches by conversation, cwd and turn.
-func (p *instance) projectSkills(ctx context.Context, request *plugin.RequestContext, port plugin.Port) []projectSkill {
+func (i *instance) projectSkills(ctx context.Context, request *plugin.RequestContext, port plugin.Port) []projectSkill {
 	key := projectKey{string(request.Conversation), request.CWD}
-	p.mu.Lock()
-	previous, ok := p.projects[key]
-	p.mu.Unlock()
+	i.mu.Lock()
+	previous, ok := i.projects[key]
+	i.mu.Unlock()
 	if ok && previous.turn == request.Turn {
 		return previous.skills
 	}
@@ -118,15 +121,19 @@ func (p *instance) projectSkills(ctx context.Context, request *plugin.RequestCon
 		}
 		return previous.skills
 	}
-	p.mu.Lock()
-	p.projects[key] = projectSearch{turn: request.Turn, skills: skills}
-	p.mu.Unlock()
+	i.mu.Lock()
+	i.projects[key] = projectSearch{turn: request.Turn, skills: skills}
+	i.mu.Unlock()
 	return skills
 }
 
-func (p *instance) contextBlock(ctx context.Context, request *plugin.RequestContext, port plugin.Port) (*string, error) {
+func (i *instance) contextBlock(
+	ctx context.Context,
+	request *plugin.RequestContext,
+	port plugin.Port,
+) (*string, error) {
 	entries := []catalogEntry{}
-	for _, skill := range p.projectSkills(ctx, request, port) {
+	for _, skill := range i.projectSkills(ctx, request, port) {
 		if !skill.disableModelInvocation {
 			entries = append(entries, skill.catalogEntry)
 		}
@@ -146,7 +153,10 @@ func (p *instance) contextBlock(ctx context.Context, request *plugin.RequestCont
 				continue
 			}
 			if !skill.DisableModelInvocation {
-				entries = append(entries, catalogEntry{name: skill.Name, description: skill.Description, location: skillLocation(skill)})
+				entries = append(
+					entries,
+					catalogEntry{name: skill.Name, description: skill.Description, location: skillLocation(skill)},
+				)
 			}
 		}
 	}
@@ -162,18 +172,23 @@ func decodePageCall[T any](raw []byte, decode func([]byte) (T, error)) (T, error
 	return value, nil
 }
 
-func (p *instance) pageCall(ctx context.Context, method string, params json.RawMessage, port plugin.Port) (json.RawMessage, error) {
+func (i *instance) pageCall(
+	ctx context.Context,
+	method string,
+	params json.RawMessage,
+	port plugin.Port,
+) (json.RawMessage, error) {
 	switch method {
 	case "add_source":
 		args, err := decodePageCall(params, DecodeAddSource)
 		if err != nil {
 			return nil, err
 		}
-		id, err := p.addSource(ctx, port, args.Origin)
+		id, err := i.addSource(ctx, port, args.Origin)
 		if err != nil {
 			return nil, err
 		}
-		p.startFetch(port, id)
+		i.startFetch(port, id)
 		return (AddedSource{Source: id}).MarshalJSON()
 	case "update_source":
 		args, err := decodePageCall(params, DecodeSourceCall)
@@ -183,13 +198,13 @@ func (p *instance) pageCall(ctx context.Context, method string, params json.RawM
 		if _, err := readSource(ctx, port, args.Source); err != nil {
 			return nil, err
 		}
-		p.startFetch(port, args.Source)
+		i.startFetch(port, args.Source)
 	case "remove_source":
 		args, err := decodePageCall(params, DecodeSourceCall)
 		if err != nil {
 			return nil, err
 		}
-		if err := p.removeSource(ctx, port, args.Source); err != nil {
+		if err := i.removeSource(ctx, port, args.Source); err != nil {
 			return nil, err
 		}
 	case "set_enabled":
@@ -197,26 +212,39 @@ func (p *instance) pageCall(ctx context.Context, method string, params json.RawM
 		if err != nil {
 			return nil, err
 		}
-		if err := p.switchSource(ctx, port, args.Source, func(source) map[string]bool { return map[string]bool{args.Skill: true} }, args.Enabled); err != nil {
+		if err := i.switchSource(
+			ctx,
+			port,
+			args.Source,
+			func(source) map[string]bool { return map[string]bool{args.Skill: true} },
+			args.Enabled,
+		); err != nil {
 			return nil, err
 		}
 	case "set_source_enabled":
-		args, err := decodePageCall(params, DecodeSetSourceEnabled)
-		if err != nil {
-			return nil, err
-		}
-		every := func(value source) map[string]bool {
-			chosen := make(map[string]bool, len(value.Skills))
-			for _, skill := range value.Skills {
-				chosen[skill.Name] = true
-			}
-			return chosen
-		}
-		if err := p.switchSource(ctx, port, args.Source, every, args.Enabled); err != nil {
+		if err := i.setSourceEnabled(ctx, params, port); err != nil {
 			return nil, err
 		}
 	default:
 		return nil, &plugin.ErrorFailed{Message: fmt.Sprintf("no method \"%s\"", method)}
 	}
 	return json.RawMessage("null"), nil
+}
+
+func (i *instance) setSourceEnabled(ctx context.Context, params json.RawMessage, port plugin.Port) error {
+	args, err := decodePageCall(params, DecodeSetSourceEnabled)
+	if err != nil {
+		return err
+	}
+	every := func(value source) map[string]bool {
+		chosen := make(map[string]bool, len(value.Skills))
+		for _, skill := range value.Skills {
+			chosen[skill.Name] = true
+		}
+		return chosen
+	}
+	if err := i.switchSource(ctx, port, args.Source, every, args.Enabled); err != nil {
+		return err
+	}
+	return nil
 }

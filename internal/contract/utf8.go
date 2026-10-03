@@ -14,6 +14,7 @@ type UTF8Error struct {
 	ErrorLen int
 }
 
+// Error describes the malformed UTF-8 sequence using Rust diagnostics.
 func (e *UTF8Error) Error() string {
 	if e.ErrorLen == 0 {
 		return fmt.Sprintf("incomplete utf-8 byte sequence from index %d", e.ValidUpTo)
@@ -54,7 +55,10 @@ func checkUTF8(data []byte) *UTF8Error {
 				return &UTF8Error{ValidUpTo: index}
 			}
 			next := data[index+offset]
-			if next < 0x80 || next > 0xbf || offset == 1 && (first == 0xe0 && next < 0xa0 || first == 0xed && next >= 0xa0 || first == 0xf0 && next < 0x90 || first == 0xf4 && next >= 0x90) {
+			if next < 0x80 || next > 0xbf ||
+				offset == 1 &&
+					(first == 0xe0 && next < 0xa0 || first == 0xed && next >= 0xa0 ||
+						first == 0xf0 && next < 0x90 || first == 0xf4 && next >= 0x90) {
 				return &UTF8Error{ValidUpTo: index, ErrorLen: offset}
 			}
 		}

@@ -2,11 +2,11 @@ package fileop
 
 import "fmt"
 
-// The package's id, which its release descriptor names and the coding
+// Package is the package's id, which its release descriptor names and the coding
 // agent's commands bind to.
 const Package = "demi.file"
 
-// A decoded invocation: the operation and its checked arguments.
+// Operation is a decoded invocation: the operation and its checked arguments.
 //
 //sumtype:decl
 type Operation interface {
@@ -18,14 +18,17 @@ func (*CreateArgs) operation() {}
 func (*EditArgs) operation()   {}
 func (*PatchArgs) operation()  {}
 
-// Why an invocation could not be decoded.
+// OperationError explains why an invocation could not be decoded.
 // An absent Err means the operation name is unknown; otherwise Err is the
 // argument decoding or validation failure.
 type OperationError struct {
+	// Name identifies the requested operation.
 	Name string
-	Err  error
+	// Err is the argument failure, or nil when the operation name is unknown.
+	Err error
 }
 
+// Error reports the argument failure or unknown operation.
 func (e *OperationError) Error() string {
 	if e.Err != nil {
 		return e.Err.Error()

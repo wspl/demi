@@ -4,19 +4,25 @@ import "github.com/wspl/demi/internal/core"
 
 // Checkpoint is a node's checkpoint as the store gives it back.
 type Checkpoint struct {
-	State        CheckpointState
-	Transcript   []core.Block
+	// State holds the saved session state.
+	State CheckpointState
+	// Transcript contains the saved blocks in row order.
+	Transcript []core.Block
+	// CommandState holds the saved command versions and boundaries.
 	CommandState CommandStateSnapshot
 }
 
 // ChangedBlock is a changed transcript row at Index.
 type ChangedBlock struct {
+	// Index is the transcript row to replace.
 	Index int
+	// Block is the replacement transcript block.
 	Block core.Block
 }
 
 // CheckpointUpdate carries only what changed since the last save.
 type CheckpointUpdate struct {
+	// State is the session state to save.
 	State CheckpointState
 	// CommandState is present when changed; a new node carries version zero.
 	CommandState *CommandStateSnapshot

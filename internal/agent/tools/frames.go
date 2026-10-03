@@ -11,7 +11,14 @@ import (
 // ShellOutput returns a command's shell_output frame. A nil subagent identifies
 // the root; otherwise it identifies the subagent whose command is shown.
 func ShellOutput(subagent *core.NodeID, view host.PageView) framewire.ServerFrame {
-	command := framewire.CommandView{ShellID: view.ShellID, CommandID: view.CommandID, ToolUseID: view.ToolUseID, Tail: view.Tail, Chars: view.Chars, RunningMs: view.RunningMs}
+	command := framewire.CommandView{
+		ShellID:   view.ShellID,
+		CommandID: view.CommandID,
+		ToolUseID: view.ToolUseID,
+		Tail:      view.Tail,
+		Chars:     view.Chars,
+		RunningMs: view.RunningMs,
+	}
 	var status framewire.ShellStatus
 	switch view.State.Phase {
 	case host.Running:

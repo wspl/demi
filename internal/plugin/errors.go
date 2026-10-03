@@ -6,18 +6,41 @@ import (
 	"github.com/wspl/demi/internal/host"
 )
 
-func (e *ErrorUsage) Error() string              { return e.Message }
-func (e *ErrorRefused) Error() string            { return e.Message }
-func (e *ErrorFailed) Error() string             { return e.Message }
-func (e *ErrorEnded) Error() string              { return e.Message }
-func (e *ErrorPort) Error() string               { return e.Refusal.Error() }
-func (e *ErrorPort) Unwrap() error               { return e.Refusal }
-func (e *PortRefusalHost) Error() string         { return e.Message }
-func (e *PortRefusalOperation) Error() string    { return "the operation failed: " + e.Stderr }
-func (*PortRefusalConflict) Error() string       { return "the value changed since it was read" }
-func (e *PortRefusalExpose) Error() string       { return e.Message }
+// Error returns the failure message.
+func (e *ErrorUsage) Error() string { return e.Message }
+
+// Error returns the failure message.
+func (e *ErrorRefused) Error() string { return e.Message }
+
+// Error returns the failure message.
+func (e *ErrorFailed) Error() string { return e.Message }
+
+// Error returns the failure message.
+func (e *ErrorEnded) Error() string { return e.Message }
+
+// Error returns the failure message.
+func (e *ErrorPort) Error() string { return e.Refusal.Error() }
+
+// Unwrap returns the port refusal that caused the failure.
+func (e *ErrorPort) Unwrap() error { return e.Refusal }
+
+// Error returns the failure message.
+func (e *PortRefusalHost) Error() string { return e.Message }
+
+// Error returns the failure message.
+func (e *PortRefusalOperation) Error() string { return "the operation failed: " + e.Stderr }
+
+// Error returns the failure message.
+func (*PortRefusalConflict) Error() string { return "the value changed since it was read" }
+
+// Error returns the failure message.
+func (e *PortRefusalExpose) Error() string { return e.Message }
+
+// Error returns the failure message.
 func (*PortRefusalNoConversation) Error() string { return "the request has no conversation" }
-func (*PortRefusalNotRunning) Error() string     { return "the conversation's Host is not running" }
+
+// Error returns the failure message.
+func (*PortRefusalNotRunning) Error() string { return "the conversation's Host is not running" }
 
 // Undeclared answers a request for a contribution the manifest does not declare.
 func Undeclared(what string) Error { return &ErrorFailed{Message: "the plugin declares no " + what} }

@@ -7,7 +7,7 @@ import (
 	"github.com/wspl/demi/internal/plugin"
 )
 
-// The name of the live view's user stream.
+// Stream names the live view's user stream.
 const Stream = "browser"
 
 // LiveStream declares the live view from the protocol owner's message schemas.
@@ -20,7 +20,12 @@ func LiveStream() (plugin.Stream, error) {
 	if err != nil {
 		return plugin.Stream{}, err
 	}
-	stream := plugin.Stream{Name: Stream, Operation: operation("live"), Receives: plugin.Schema{Schema: receives}, Sends: plugin.Schema{Schema: sends}}
+	stream := plugin.Stream{
+		Name:      Stream,
+		Operation: operation("live"),
+		Receives:  plugin.Schema{Schema: receives},
+		Sends:     plugin.Schema{Schema: sends},
+	}
 	for _, constant := range []struct {
 		name, description string
 		value             any
@@ -36,14 +41,21 @@ func LiveStream() (plugin.Stream, error) {
 		{"LIVE_HEARTBEAT_MS", "How often the module speaks at least.", browserop.HeartbeatMS},
 		{"LIVE_STALL_MS", "Silence after which the page shows the stream as stalled.", browserop.StallMS},
 		{"LIVE_VIDEO_CODEC", "The video frames' codec, as WebCodecs names it.", browserop.VideoCodec},
-		{"LIVE_CAPTURE_UNAVAILABLE", "A notice's code when the Host cannot capture the watched tab.", browserop.CaptureUnavailable},
+		{
+			"LIVE_CAPTURE_UNAVAILABLE",
+			"A notice's code when the Host cannot capture the watched tab.",
+			browserop.CaptureUnavailable,
+		},
 		{"LIVE_CAPTURE_FAILED", "A notice's code when the watched tab's capture failed.", browserop.CaptureFailed},
 	} {
 		value, err := contract.EncodeJSON(constant.value)
 		if err != nil {
 			return plugin.Stream{}, err
 		}
-		stream.Constants = append(stream.Constants, plugin.Constant{Name: constant.name, Description: constant.description, Value: value})
+		stream.Constants = append(
+			stream.Constants,
+			plugin.Constant{Name: constant.name, Description: constant.description, Value: value},
+		)
 	}
 	return stream, nil
 }

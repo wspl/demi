@@ -13,7 +13,16 @@ import (
 
 // ModelOf is a model selection with a 100,000-token window.
 func ModelOf(provider, model string) core.ModelSelection {
-	return core.ModelSelection{ProviderID: provider, Model: core.Model{ID: model, Name: model, ContextWindow: 100000, Thinking: []core.ThinkingCapability{}, AcceptedExtensions: new([]core.FileExtension{})}}
+	return core.ModelSelection{
+		ProviderID: provider,
+		Model: core.Model{
+			ID:                 model,
+			Name:               model,
+			ContextWindow:      100000,
+			Thinking:           []core.ThinkingCapability{},
+			AcceptedExtensions: new([]core.FileExtension{}),
+		},
+	}
 }
 
 // ModelReading selects a model that reads the extensions natively.
