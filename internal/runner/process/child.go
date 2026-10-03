@@ -157,7 +157,8 @@ func Spawn(ctx context.Context, options SpawnOptions) (*Child, error) {
 	return child, nil
 }
 
-// chunkWriter forwards child output in chunks of at most 64 KiB; the output channel holds four, so a slow reader blocks the child's writes.
+// chunkWriter forwards child output in chunks of at most 64 KiB; the output channel holds four,
+// so a slow reader blocks the child's writes.
 type chunkWriter struct {
 	cancel context.CancelFunc
 	ctx    context.Context

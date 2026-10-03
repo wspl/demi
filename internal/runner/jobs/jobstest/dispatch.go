@@ -104,7 +104,8 @@ func NewDispatch(
 	return d
 }
 
-// Context creates a live job context and its registration. The fixture also registers its cleanup, so a failed test cannot leave a live registration.
+// Context creates a live job context and its registration. The fixture also registers its cleanup,
+// so a failed test cannot leave a live registration.
 func (d *Dispatch) Context(
 	ctx context.Context,
 	jobID string,

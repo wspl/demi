@@ -49,10 +49,10 @@ func addHandler() host.RPCHandler {
 				"todos",
 				hosttest.DecodeItems,
 				func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() },
-				func(current *hosttest.Items) (hosttest.Items, error) {
+				func(current hosttest.Items, found bool) (hosttest.Items, error) {
 					items := hosttest.Items{}
-					if current != nil {
-						items = append(items, (*current)...)
+					if found {
+						items = append(items, current...)
 					}
 					for range count {
 						items = append(items, call.Args.Text)
@@ -290,15 +290,15 @@ func TestConcurrentUpdatesKeepBothWrites(t *testing.T) {
 				"todos",
 				hosttest.DecodeItems,
 				func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() },
-				func(current *hosttest.Items) (hosttest.Items, error) {
+				func(current hosttest.Items, found bool) (hosttest.Items, error) {
 					if first {
 						first = false
 						ready.Done()
 						ready.Wait()
 					}
 					items := hosttest.Items{}
-					if current != nil {
-						items = append(items, (*current)...)
+					if found {
+						items = append(items, current...)
 					}
 					return append(items, item), nil
 				},
@@ -332,7 +332,7 @@ func TestUnreadableStoredValueIsNotReplaced(t *testing.T) {
 		"todos",
 		hosttest.DecodeItems,
 		func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() },
-		func(_ *hosttest.Items) (hosttest.Items, error) {
+		func(_ hosttest.Items, _ bool) (hosttest.Items, error) {
 			t.Fatal("change called for unreadable data")
 			return nil, nil
 		},

@@ -52,7 +52,7 @@ func shellJob(t *testing.T, script string) (context.Context, *shelltest.Scope, p
 	}
 	t.Cleanup(func() {
 		job.Cancel()
-		job.Wait(context.Background())
+		_, _, _ = job.Wait(context.Background())
 	})
 	return ctx, scope, job, root
 }
@@ -225,7 +225,7 @@ func TestPublicShellStartsFreshJobs(t *testing.T) {
 	}
 	defer func() {
 		job.Cancel()
-		job.Wait(context.Background())
+		_, _, _ = job.Wait(context.Background())
 	}()
 	var output []byte
 	for chunk := range job.Output() {

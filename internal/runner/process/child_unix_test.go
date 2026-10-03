@@ -49,7 +49,7 @@ func spawnChild(t *testing.T, options SpawnOptions) *Child {
 	}
 	t.Cleanup(func() {
 		child.Cancel()
-		child.Wait(context.Background())
+		_, _ = child.Wait(context.Background())
 	})
 	return child
 }
@@ -127,7 +127,7 @@ func TestChildCancellationKillsDescendants(t *testing.T) {
 		t.Fatal(err)
 	}
 	child.Cancel()
-	child.Wait(childContext(t))
+	_, _ = child.Wait(childContext(t))
 	ctx := childContext(t)
 	// A reparented zombie can remain until init reaps it. Poll only the observed
 	// process state, with a hang deadline, never a fixed settling interval.
@@ -215,7 +215,7 @@ func TestBootstrapAttributesAndIdentity(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = wrapped.Kill()
-		wrapped.Wait(context.Background())
+		_, _ = wrapped.Wait(context.Background())
 	})
 	if err := unsuccessfulExit(wrapped.Wait(childContext(t))); err != nil {
 		t.Fatal(err)

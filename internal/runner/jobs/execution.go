@@ -24,6 +24,14 @@ type taskExecution struct {
 	wait   func(context.Context) (process.Exit, *string, error)
 }
 
+// stop cancels the child and joins it. Its result is not needed: the
+// caller took the child's result from its own wait, or is returning an
+// earlier failure.
+func (c taskExecution) stop(ctx context.Context) {
+	c.cancel()
+	_, _, _ = c.wait(ctx)
+}
+
 // run owns a task's shell/process, retained data and pipe workers through completion.
 func (t *Table) run(spec TaskSpec, entry *taskEntry) (frame []byte, err error) {
 	ctx := entry.lifetime
@@ -262,10 +270,7 @@ func (t *Table) executeTask(
 	stdin, stdout *runnerwire.PipeRef,
 ) (frame []byte, err error) {
 	ctx := entry.lifetime
-	defer func() {
-		child.cancel()
-		child.wait(context.WithoutCancel(ctx))
-	}()
+	defer child.stop(context.WithoutCancel(ctx))
 	pipeCtx, stopPipes := context.WithCancel(ctx)
 	inputCtx, stopInput := context.WithCancel(pipeCtx)
 	var pipes sync.WaitGroup

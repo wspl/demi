@@ -340,7 +340,7 @@ func Update[T any](
 	key string,
 	decode func([]byte) (T, error),
 	encode func(T) ([]byte, error),
-	change func(*T) (T, error),
+	change func(current T, found bool) (T, error),
 ) (T, error) {
 	var zero T
 	for {
@@ -352,7 +352,8 @@ func Update[T any](
 		if !ok {
 			return zero, unexpectedStorage("read", stored)
 		}
-		var current *T
+		var current T
+		found := false
 		if len(value.Value) != 0 && !contract.IsNull(value.Value) {
 			decoded, err := decode(value.Value)
 			if err != nil {
@@ -362,9 +363,10 @@ func Update[T any](
 					Err:     err,
 				}
 			}
-			current = &decoded
+			current = decoded
+			found = true
 		}
-		next, err := change(current)
+		next, err := change(current, found)
 		if err != nil {
 			return zero, err
 		}

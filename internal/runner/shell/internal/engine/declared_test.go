@@ -72,7 +72,7 @@ func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 	}
 	defer func() {
 		job.Cancel()
-		job.Wait(context.Background())
+		_, _, _ = job.Wait(context.Background())
 	}()
 	var output strings.Builder
 	for chunk := range job.Output() {
