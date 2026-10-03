@@ -346,7 +346,7 @@ func TestRunnerRunningJobKeepsManifestWhileNextInstallsAnother(t *testing.T) {
 	native := nativeFixture(t)
 	old, p := runnerShell(t, f, nil, selectNative(t, native, nativeCommands(t, native, "demi")))
 	next, _ := runnerShell(t, f, nil, selectNative(t, native, nativeCommands(t, native, "replacement")))
-	// Live stdin replaces the Rust test's filesystem polling rendezvous.
+	// The old job blocks reading live stdin, so it still runs while the next job installs its manifest.
 	started := runnerExec(t, old, "echo ready; read proceed; PROBE=old demi where > result", 50)
 	if started.State.Phase != host.Running {
 		t.Fatal(started)

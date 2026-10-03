@@ -70,7 +70,7 @@ func startUpload(ctx context.Context, source *remotehost.DeviceSource, body host
 // Cost: each scenario is in-process; virtual timer cases consume no wall time.
 func TestDevicePutStreamsIntoDeviceGetAndAnswersOnceDrained(t *testing.T) {
 	p := pipeBroker(t, 5*time.Second)
-	pipe := p.Mint(new("a"), nil)
+	pipe := p.Mint("a", "")
 	requirePipe(t, pipe.SinkTo("b"))
 	var fixed *remotehost.PipeError
 	if !errors.As(pipe.SinkTo("a"), &fixed) || fixed.Kind != remotehost.PipeAlreadyFixed || fixed.End != "sink" {
@@ -97,7 +97,7 @@ func TestDevicePutStreamsIntoDeviceGetAndAnswersOnceDrained(t *testing.T) {
 	if _, err = p.ClaimSink(pipe.ID(), "b"); !errors.Is(err, remotehost.PipeNotFound) {
 		t.Fatal(err)
 	}
-	second := p.Mint(new("a"), new("b"))
+	second := p.Mint("a", "b")
 	if _, err = p.ClaimSink(second.ID(), "a"); !errors.Is(err, remotehost.PipeNotFound) {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestProcessReadsPutAndFeedsGetOneChunkAtATime(t *testing.T) {
 		if string(got) != "one two three" {
 			t.Fatal(string(got))
 		}
-		local := p.Mint(nil, nil)
+		local := p.Mint("", "")
 		w, err := local.Writer()
 		requirePipe(t, err)
 		r, err := local.Reader()
@@ -183,7 +183,7 @@ func TestProcessReadsPutAndFeedsGetOneChunkAtATime(t *testing.T) {
 func TestMissingEndTimesOutLostDeviceFailsAndEarlyReaderDrains(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		p := pipeBroker(t, 200*time.Millisecond)
-		lonely := p.Mint(new("a"), new("b"))
+		lonely := p.Mint("a", "b")
 		start := time.Now()
 		err := lonely.Done(t.Context())
 		if err == nil || !strings.Contains(err.Error(), "an end never arrived") ||
@@ -193,7 +193,7 @@ func TestMissingEndTimesOutLostDeviceFailsAndEarlyReaderDrains(t *testing.T) {
 		if _, err := p.ClaimSource(lonely.ID(), "a"); !errors.Is(err, remotehost.PipeNotFound) {
 			t.Fatal(err)
 		}
-		dropped := p.Mint(new("a"), new("b"))
+		dropped := p.Mint("a", "b")
 		sink, err := p.ClaimSink(dropped.ID(), "b")
 		requirePipe(t, err)
 		p.DeviceGone("a")
@@ -222,7 +222,7 @@ func TestMissingEndTimesOutLostDeviceFailsAndEarlyReaderDrains(t *testing.T) {
 func TestArrivalWindowEndsOnceBothEndsArriveHoweverQuiet(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		p := pipeBroker(t, 40*time.Millisecond)
-		pipe := p.Mint(nil, nil)
+		pipe := p.Mint("", "")
 		w, err := pipe.Writer()
 		requirePipe(t, err)
 		r, err := pipe.Reader()
@@ -237,7 +237,7 @@ func TestArrivalWindowEndsOnceBothEndsArriveHoweverQuiet(t *testing.T) {
 			t.Fatal(string(got))
 		}
 		requirePipe(t, pipe.Done(t.Context()))
-		device := p.Mint(new("a"), new("b"))
+		device := p.Mint("a", "b")
 		source, err := p.ClaimSource(device.ID(), "a")
 		requirePipe(t, err)
 		sink, err := p.ClaimSink(device.ID(), "b")
@@ -302,7 +302,7 @@ func (quietPipeBody) Close(context.Context) error { return nil }
 
 func TestFailureInterruptsQuietBodyAndWaitingRead(t *testing.T) {
 	p := pipeBroker(t, 5*time.Second)
-	pipe := p.Mint(new("a"), new("b"))
+	pipe := p.Mint("a", "b")
 	source, err := p.ClaimSource(pipe.ID(), "a")
 	requirePipe(t, err)
 	sink, err := p.ClaimSink(pipe.ID(), "b")
@@ -326,7 +326,7 @@ func TestFailureInterruptsQuietBodyAndWaitingRead(t *testing.T) {
 
 func TestDeviceReportCountsOnlyFromAnEndWhileOpen(t *testing.T) {
 	p := pipeBroker(t, 5*time.Second)
-	pipe := p.Mint(new("a"), new("b"))
+	pipe := p.Mint("a", "b")
 	if p.FailFromDevice(pipe.ID(), "unrelated", "unauthorized failure") {
 		t.Fatal("unrelated device ended pipe")
 	}
@@ -349,7 +349,7 @@ func TestDeviceReportCountsOnlyFromAnEndWhileOpen(t *testing.T) {
 
 func TestEmptyUploadSettlesBothEnds(t *testing.T) {
 	p := pipeBroker(t, 5*time.Second)
-	pipe := p.Mint(new("a"), new("b"))
+	pipe := p.Mint("a", "b")
 	source, err := p.ClaimSource(pipe.ID(), "a")
 	requirePipe(t, err)
 	done := startUpload(t.Context(), source, pipeBody{bytes.NewReader(nil)})
@@ -404,7 +404,7 @@ func TestEndLeavingBeforeEOFFailsPipe(t *testing.T) {
 	if err := pipe.Done(t.Context()); err == nil || err.Error() != "pipe failed: source HTTP request disconnected" {
 		t.Fatal(err)
 	}
-	local := p.Mint(nil, nil)
+	local := p.Mint("", "")
 	w, err := local.Writer()
 	requirePipe(t, err)
 	r, err := local.Reader()

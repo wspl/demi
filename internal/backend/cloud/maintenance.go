@@ -55,7 +55,7 @@ func maintain(ctx context.Context, s CloudShard, m *machine, sweep time.Duration
 	}
 }
 
-// maintenanceRound chooses lifetime retirement before checkpointing, as Rust does.
+// maintenanceRound retires a Cloud past its lifetime cap before it considers a checkpoint.
 func maintenanceRound(ctx context.Context, s CloudShard, m *machine) {
 	c := s.Cloud()
 	tuning := s.CloudServices().Tuning

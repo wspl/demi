@@ -210,8 +210,7 @@ func TestNoWakeOperationsRefuseStoppedCloudAndOfflineDevice(t *testing.T) {
 				t.Fatal("stream reached unavailable Host")
 			}
 			_, err = ReadFiles(t.Context(), s, record.ID, nil)
-			var readError *ReadFilesError
-			if !errors.As(err, &readError) || readError.Kind != ReadFilesNotRunning {
+			if !errors.Is(err, ErrNotRunning) {
 				t.Fatal(err)
 			}
 			s.mu.Lock()

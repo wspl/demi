@@ -798,7 +798,7 @@ func TestRunnerTwinIsAdoptedAfterFirstDisconnects(t *testing.T) {
 		s.ctx,
 		t,
 		s.b.URL,
-		remotehosttest.RunnerProcessOptions{Name: "laptop", Token: &token},
+		remotehosttest.RunnerProcessOptions{Name: "laptop", Token: token},
 	)
 	if err != nil {
 		t.Fatal(err)

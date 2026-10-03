@@ -13,54 +13,20 @@ import (
 	"gocloud.dev/blob"
 )
 
-// PublicationErrorKind identifies why publication stopped backend startup.
-type PublicationErrorKind uint8
+// ErrArtifactConflict means an immutable native artifact object differs from the one in place.
+var ErrArtifactConflict = errors.New("an immutable native artifact object differs from the one in place")
 
-const (
-	// PublicationConfig means DEMI_NATIVE_CONFIG cannot be used.
-	PublicationConfig PublicationErrorKind = iota
-	// PublicationRelease means a release cannot be published whole.
-	PublicationRelease
-	// PublicationConflict means an immutable object differs from the one in place.
-	PublicationConflict
-	// PublicationStore means the artifact store failed.
-	PublicationStore
-	// PublicationCancelled means publication was interrupted.
-	PublicationCancelled
-)
+var errPublicationInterrupted = errors.New("native artifact publication was interrupted")
 
-// PublicationError is a configuration, release, conflict, store or cancellation
-// failure. Use errors.As to inspect Kind and errors.Is for an underlying cause.
-type PublicationError struct {
-	// Kind identifies the failure category.
-	Kind PublicationErrorKind
-	// Directory names a refused release.
-	Directory string
-	// Reason describes an invalid configuration or release, or names a conflicting key.
-	Reason string
-	// Err preserves a store, IO or context error where present.
-	Err error
+// configError refuses DEMI_NATIVE_CONFIG; err says why.
+func configError(err error) error {
+	return fmt.Errorf("DEMI_NATIVE_CONFIG cannot be used: %w", err)
 }
 
-// Error returns the publication failure shown at startup.
-func (e *PublicationError) Error() string {
-	switch e.Kind {
-	case PublicationConfig:
-		return "DEMI_NATIVE_CONFIG cannot be used: " + e.Reason
-	case PublicationRelease:
-		return fmt.Sprintf("the native release in %s cannot be published: %s", e.Directory, e.Reason)
-	case PublicationConflict:
-		return "an immutable native artifact object differs from the one in place: " + e.Reason
-	case PublicationStore:
-		return fmt.Sprintf("the native artifact store failed: %v", e.Err)
-	case PublicationCancelled:
-		return "native artifact publication was interrupted"
-	}
-	return e.Reason
+// releaseError refuses the native release in directory; err says why.
+func releaseError(directory string, err error) error {
+	return fmt.Errorf("the native release in %s cannot be published: %w", directory, err)
 }
-
-// Unwrap returns the underlying cause.
-func (e *PublicationError) Unwrap() error { return e.Err }
 
 // PublishNative reads the configuration at path, verifies all named releases and
 // publishes their artifacts before returning a catalog. A local store uploads
@@ -98,7 +64,7 @@ func PublishNative(ctx context.Context, path string) (*NativeCatalog, error) {
 		slog.Info("the development store serves the native releases' artifacts itself", "packages", len(packages))
 		catalog, err = NewNativeCatalog(packages, NewLocalArtifacts(executables, archives))
 		if err != nil {
-			return nil, &PublicationError{Kind: PublicationConfig, Reason: err.Error(), Err: err}
+			return nil, configError(err)
 		}
 	}
 	return catalog, nil

@@ -32,7 +32,7 @@ type Error struct {
 	Err error
 }
 
-// Error returns the Rust CloudError message for this failure.
+// Error returns the refusal's product text, or the cause's text for Failed.
 func (e *Error) Error() string {
 	switch e.Kind {
 	case Closed:
@@ -67,79 +67,6 @@ func (e *Error) Code() (webapi.ErrorCode, int) {
 	}
 }
 
-// ManagerErrorKind identifies why a call to the manager has no result.
-type ManagerErrorKind uint8
-
-const (
-	// ManagerUnavailable means the manager could not be reached or the socket
-	// dropped before it answered; whether the operation ran is unknown.
-	ManagerUnavailable ManagerErrorKind = iota
-	// ManagerFailed means the manager ran the operation and it failed.
-	ManagerFailed
-	// ManagerResult means the result does not match the operation's contract.
-	ManagerResult
-)
-
-// ManagerError reports a manager call's failure, retaining its cause for
-// errors.Is and errors.As. Err preserves the peer or transport diagnostic.
-type ManagerError struct {
-	// Kind distinguishes transport, operation and result failures.
-	Kind ManagerErrorKind
-	// Operation is the wire operation name for unavailable or unexpected results.
-	Operation string
-	// Err is the transport or decoding cause, or an error containing the
-	// manager's failure reply verbatim.
-	Err error
-}
-
-// Error returns the Rust MachinesError message for this failure.
-func (e *ManagerError) Error() string {
-	switch e.Kind {
-	case ManagerUnavailable:
-		return fmt.Sprintf("Machine manager unavailable during %s: %v", e.Operation, e.Err)
-	case ManagerResult:
-		return fmt.Sprintf("the machine manager answered %s with an unexpected result: %v", e.Operation, e.Err)
-	default:
-		return e.Err.Error()
-	}
-}
-
-// Unwrap returns the underlying transport or decoding failure.
-func (e *ManagerError) Unwrap() error { return e.Err }
-
-// RecoveryErrorKind identifies why startup could not recover its Clouds.
-type RecoveryErrorKind uint8
-
-const (
-	// RecoveryMachines means a manager operation failed.
-	RecoveryMachines RecoveryErrorKind = iota
-	// RecoveryStorage means a control storage operation failed.
-	RecoveryStorage
-	// RecoveryMissingDevice means a reset names a device that no longer exists.
-	RecoveryMissingDevice
-)
-
-// RecoveryError is why the backend could not recover its Clouds before serving.
-type RecoveryError struct {
-	// Kind identifies the failed recovery step.
-	Kind RecoveryErrorKind
-	// Device is the missing device for RecoveryMissingDevice.
-	Device webapi.DeviceID
-	// Err is the manager or storage cause for the other kinds.
-	Err error
-}
-
-// Error returns the Rust RecoveryError message for this failure.
-func (e *RecoveryError) Error() string {
-	if e.Kind == RecoveryMissingDevice {
-		return fmt.Sprintf("a reset names the device %s, which no longer exists", e.Device)
-	}
-	return e.Err.Error()
-}
-
-// Unwrap returns the underlying manager or storage failure.
-func (e *RecoveryError) Unwrap() error { return e.Err }
-
 // failed preserves the cause of a Cloud transition failure.
 func failed(err error) error {
 	if err == nil {
@@ -154,6 +81,6 @@ func storageFailed(err error) error {
 		return nil
 	}
 	slog.Error("the Cloud's records failed", "error", err)
-	//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+	//nolint:staticcheck // Product text, shown to the user as it is.
 	return failed(fmt.Errorf("The Cloud's records could not be read or written: %w", err))
 }

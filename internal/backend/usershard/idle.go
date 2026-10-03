@@ -125,7 +125,7 @@ func (s *Shard) holdReset(
 			return nil, ctx.Err()
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, nil
+			return nil, cloud.ErrNotLetGo
 		}
 		return nil, err
 	}
@@ -146,13 +146,13 @@ func (s *Shard) stopIdle(id webapi.ConversationID) {
 	}
 }
 
-// resetWaitError distinguishes caller cancellation from a reset wait timeout.
+// resetWaitError tells caller cancellation from a reset wait that ran out (ErrNotLetGo).
 func resetWaitError(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return nil
+		return cloud.ErrNotLetGo
 	}
 	return err
 }

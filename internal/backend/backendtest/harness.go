@@ -64,7 +64,7 @@ func NewHarness(ctx context.Context, t testing.TB, machinesSocket string) (*Harn
 	}
 	clock := providertest.NewManualClock(core.Timestamp("2026-09-24T08:00:00.000Z"))
 	config.Clock = clock
-	config.Runners.Ping = nil
+	config.Runners.Ping = 0
 	config.Conversations.Titles = false
 	config.Lifecycle.RetentionInterval = nil
 	config.ModelsDevURL, err = url.Parse("http://127.0.0.1:9/api.json")

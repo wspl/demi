@@ -82,6 +82,10 @@ func TestClaimOwnershipAndAbandonment(t *testing.T) {
 		"cancelled",
 	} {
 		t.Run(ending, func(t *testing.T) {
+			type granted struct {
+				device webapi.DeviceDTO
+				err    error
+			}
 			claims := runners.NewPendingClaims(10)
 			defer claims.Close()
 			code := runners.GenerateClaimCode()
@@ -131,28 +135,29 @@ func TestClaimOwnershipAndAbandonment(t *testing.T) {
 				wait.Release()
 			}
 			token := runners.NewDeviceToken()
-			answer := runner.Grant(database.DeviceRecord{ID: "device"}, token)
-			defer answer.Release()
-			runner.Release() // Does not withdraw a transferred grant.
+			answered := make(chan granted, 1)
+			go func() {
+				device, err := runner.Grant(t.Context(), database.DeviceRecord{ID: "device"}, token)
+				answered <- granted{device: device, err: err}
+			}()
 			if ending == "bound" {
 				grant, err := wait.Wait(t.Context())
 				if err != nil || grant == nil || grant.Device.ID != "device" || grant.Token != token {
 					t.Fatal("wrong grant", err)
 				}
+				runner.Release() // Does not withdraw a transferred grant.
 				defer grant.Release()
 				grant.Bound(webapi.DeviceDTO{ID: "device", Online: true})
 				grant.Release()
 			}
-			device, err := answer.Wait(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
+			result := <-answered
+			runner.Release()
 			if ending == "bound" {
-				if device == nil || !device.Online {
-					t.Fatal("missing bound answer")
+				if result.err != nil || !result.device.Online {
+					t.Fatal("missing bound answer", result.err)
 				}
-			} else if device != nil {
-				t.Fatal("departed runner bound")
+			} else if !errors.Is(result.err, runners.ErrRunnerLeft) {
+				t.Fatal("departed runner bound", result.err)
 			}
 		})
 	}
@@ -167,13 +172,11 @@ func TestClaimGrantRacesDeparture(t *testing.T) {
 		runner := claims.Take(code)
 		var workers sync.WaitGroup
 		workers.Go(func() { wait.Release() })
-		answer := runner.Grant(database.DeviceRecord{}, runners.NewDeviceToken())
+		_, err := runner.Grant(t.Context(), database.DeviceRecord{}, runners.NewDeviceToken())
 		workers.Wait()
-		device, err := answer.Wait(t.Context())
-		if device != nil || err != nil {
-			t.Fatalf("departure answer %v %v", device, err)
+		if !errors.Is(err, runners.ErrRunnerLeft) {
+			t.Fatalf("departure answer %v", err)
 		}
-		answer.Release()
 		runner.Release()
 		claims.Close()
 	}

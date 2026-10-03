@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -98,13 +99,13 @@ func holdReset(ctx context.Context, s CloudShard, uses []cloudUse, timeout time.
 			continue
 		}
 		hold, err := s.HoldForReset(ctx, use.id, use.role == targetRole, timeout)
-		if err != nil || hold == nil {
+		if err != nil {
 			releaseHolds(held)
-			if err != nil {
-				return nil, failed(err)
+			if errors.Is(err, ErrNotLetGo) {
+				//nolint:staticcheck // Product text, shown to the user as it is.
+				return nil, failed(fmt.Errorf("The conversation %s did not stop for the reset", use.id))
 			}
-			//nolint:staticcheck // Preserve Rust user-facing text verbatim.
-			return nil, failed(fmt.Errorf("The conversation %s did not stop for the reset", use.id))
+			return nil, failed(err)
 		}
 		held = append(held, hold)
 	}

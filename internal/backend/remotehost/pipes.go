@@ -16,15 +16,12 @@ import (
 // Arrival is the time allowed for both pipe ends to arrive.
 const Arrival = 120 * time.Second
 
-// PipeFailure is why a pipe failed; Message begins "pipe failed: ".
-type PipeFailure struct {
-	// Message describes why the pipe failed.
-	Message string
-}
+// ErrPipeFailed is wrapped by every pipe failure, whose text is "pipe failed: <reason>".
+var ErrPipeFailed = errors.New("pipe failed")
 
-// Error describes the pipe failure.
-func (e *PipeFailure) Error() string {
-	return e.Message
+// pipeFailure is the failure of a pipe for reason.
+func pipeFailure(reason string) error {
+	return fmt.Errorf("%w: %s", ErrPipeFailed, reason)
 }
 
 // PipeRefusal identifies why a device cannot claim an end.
@@ -96,8 +93,8 @@ func NewPipes(arrival time.Duration) *Pipes {
 	return &Pipes{slots: make(map[string]*Pipe), arrival: arrival}
 }
 
-// Mint creates a pipe; nil endpoints are initially unassigned.
-func (p *Pipes) Mint(source, sink *string) *Pipe {
+// Mint creates a pipe; an empty device leaves that end unassigned.
+func (p *Pipes) Mint(source, sink string) *Pipe {
 	pipe := &Pipe{
 		id:       rand.Text(),
 		broker:   p,
@@ -105,11 +102,11 @@ func (p *Pipes) Mint(source, sink *string) *Pipe {
 		settled:  make(chan struct{}),
 		deadline: time.Now().Add(p.arrival),
 	}
-	if source != nil {
-		pipe.source = pipeEnd{device: *source, kind: deviceEnd}
+	if source != "" {
+		pipe.source = pipeEnd{device: source, kind: deviceEnd}
 	}
-	if sink != nil {
-		pipe.sink = pipeEnd{device: *sink, kind: deviceEnd}
+	if sink != "" {
+		pipe.sink = pipeEnd{device: sink, kind: deviceEnd}
 	}
 	p.mu.Lock()
 	if p.closed {
@@ -126,12 +123,12 @@ func (p *Pipes) Mint(source, sink *string) *Pipe {
 
 // FromDevice creates a pipe sourced by device.
 func (p *Pipes) FromDevice(device string) *Pipe {
-	return p.Mint(&device, nil)
+	return p.Mint(device, "")
 }
 
 // ToDevice creates a pipe drained by device.
 func (p *Pipes) ToDevice(device string) *Pipe {
-	return p.Mint(nil, &device)
+	return p.Mint("", device)
 }
 
 // Pipe looks up a live pipe by ID.
@@ -202,7 +199,7 @@ func (p *Pipes) FailFromDevice(id, device, reason string) bool {
 		pipe.mu.Unlock()
 		return false
 	}
-	pipe.finishLocked(&PipeFailure{Message: "pipe failed: " + reason})
+	pipe.finishLocked(pipeFailure(reason))
 	return true
 }
 
@@ -249,7 +246,7 @@ type Pipe struct {
 	sourceTaken, sinkTaken     bool
 	deadline                   time.Time
 	outcome                    pipeOutcome
-	failure                    *PipeFailure
+	failure                    error
 	queued                     []byte
 	eof                        bool
 }
@@ -333,44 +330,39 @@ func (p *Pipe) SourceFrom(device string) error {
 // Fail fails both ends with reason.
 func (p *Pipe) Fail(reason string) {
 	p.mu.Lock()
-	p.finishLocked(&PipeFailure{Message: "pipe failed: " + reason})
+	p.finishLocked(pipeFailure(reason))
 }
 
 // Done waits for successful draining or failure.
 func (p *Pipe) Done(ctx context.Context) error {
 	select {
 	case <-p.settled:
-		return p.failureError()
+		return p.Err()
 	default:
 	}
 	select {
 	case <-p.settled:
-		return p.failureError()
+		return p.Err()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
 
-// Failure returns the current failure, or nil while open or successfully drained.
-func (p *Pipe) Failure() *PipeFailure {
+// Err returns the pipe's failure, or nil while it is open or after it drained.
+func (p *Pipe) Err() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.failure == nil {
-		return nil
-	}
-	return new(*p.failure)
+	return p.failure
 }
 
-// Failed waits for failure; successful draining does not end this wait.
-func (p *Pipe) Failed(ctx context.Context) (*PipeFailure, error) {
+// Failed waits until the pipe fails and returns the failure, which wraps
+// ErrPipeFailed; it returns ctx.Err() if ctx ends first. Draining does not end the wait.
+func (p *Pipe) Failed(ctx context.Context) error {
 	if err := p.Done(ctx); err != nil {
-		if failure := p.Failure(); failure != nil {
-			return failure, nil
-		}
-		return nil, err
+		return err
 	}
 	<-ctx.Done()
-	return nil, ctx.Err()
+	return ctx.Err()
 }
 
 // PipeReader is the backend's owned reading end. Do not read it concurrently.
@@ -476,7 +468,7 @@ func (w *PipeWriter) Write(ctx context.Context, bytes []byte) error {
 			if err != nil {
 				return err
 			}
-			return &PipeFailure{Message: "pipe failed: the sink stopped reading"}
+			return pipeFailure("the sink stopped reading")
 		}
 		if len(p.queued) == 0 {
 			p.queued = append([]byte(nil), bytes...)
@@ -546,7 +538,7 @@ func (s *DeviceSource) Pump(ctx context.Context, body host.ByteStream) (result e
 			if writeErr := s.writer.Write(readCtx, buffer[:n]); writeErr != nil {
 				select {
 				case <-p.settled:
-					return p.failureError()
+					return p.Err()
 				default:
 				}
 				p.Fail("source HTTP request disconnected")
@@ -556,7 +548,7 @@ func (s *DeviceSource) Pump(ctx context.Context, body host.ByteStream) (result e
 		if err != nil {
 			select {
 			case <-p.settled:
-				return p.failureError()
+				return p.Err()
 			default:
 			}
 			return s.finishSource(ctx, err)
@@ -648,7 +640,7 @@ func (p *Pipe) publish() {
 }
 
 // finishLocked settles a pipe once, releasing its lock before notifications.
-func (p *Pipe) finishLocked(failure *PipeFailure) {
+func (p *Pipe) finishLocked(failure error) {
 	if p.outcome != pipeOpen {
 		p.mu.Unlock()
 		return
@@ -661,14 +653,6 @@ func (p *Pipe) finishLocked(failure *PipeFailure) {
 	}
 	p.publish()
 	close(p.settled)
-}
-
-// failureError avoids placing a nil typed pipe failure in an error interface.
-func (p *Pipe) failureError() error {
-	if failure := p.Failure(); failure != nil {
-		return failure
-	}
-	return nil
 }
 
 // updateDeadline restarts arrival only when a previously complete pair loses an end.
@@ -738,7 +722,7 @@ func (p *Pipe) watchArrival() {
 		case <-expiry:
 			p.mu.Lock()
 			if !p.deadline.IsZero() && !time.Now().Before(p.deadline) {
-				p.finishLocked(&PipeFailure{Message: "pipe failed: an end never arrived"})
+				p.finishLocked(pipeFailure("an end never arrived"))
 			} else {
 				p.mu.Unlock()
 			}

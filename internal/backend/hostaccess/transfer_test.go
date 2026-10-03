@@ -16,36 +16,36 @@ import (
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
-// Dense Range and validator tables port every case of the two Rust parser tests.
+// Dense tables cover whole, suffix, open, overflowing, unsatisfiable and invalid Range headers.
 // Cost: no IO, processes, or wall-clock waits.
 func TestRangeAnswers(t *testing.T) {
 	tests := []struct {
-		header        *string
+		header        string
 		size          uint64
 		status        int
 		start, length uint64
 	}{
-		{nil, 100, 200, 0, 100},
-		{new("bytes=10-19"), 100, 206, 10, 10},
-		{new("bytes=90-"), 100, 206, 90, 10},
-		{new("bytes=-5"), 100, 206, 95, 5},
-		{new("bytes=-500"), 100, 206, 0, 100},
-		{new("bytes=50-5000"), 100, 206, 50, 50},
-		{new("bytes=100-"), 100, 416, 0, 0},
-		{new("bytes=-0"), 100, 416, 0, 0},
-		{new("bytes=0-"), 0, 416, 0, 0},
-		{new("bytes=-5"), 0, 416, 0, 0},
-		{new("bytes=99999999999999999999-"), 100, 416, 0, 0},
-		{new("bytes=10-99999999999999999999"), 100, 206, 10, 90},
-		{new("bytes=-99999999999999999999"), 100, 206, 0, 100},
+		{"", 100, 200, 0, 100},
+		{"bytes=10-19", 100, 206, 10, 10},
+		{"bytes=90-", 100, 206, 90, 10},
+		{"bytes=-5", 100, 206, 95, 5},
+		{"bytes=-500", 100, 206, 0, 100},
+		{"bytes=50-5000", 100, 206, 50, 50},
+		{"bytes=100-", 100, 416, 0, 0},
+		{"bytes=-0", 100, 416, 0, 0},
+		{"bytes=0-", 0, 416, 0, 0},
+		{"bytes=-5", 0, 416, 0, 0},
+		{"bytes=99999999999999999999-", 100, 416, 0, 0},
+		{"bytes=10-99999999999999999999", 100, 206, 10, 90},
+		{"bytes=-99999999999999999999", 100, 206, 0, 100},
 	}
 	for _, invalid := range []string{"bytes=0-1,5-6", "bytes=9-3", "items=0-1", "bytes=-", "bytes=a-b", "bytes=٣-"} {
 		tests = append(tests, struct {
-			header        *string
+			header        string
 			size          uint64
 			status        int
 			start, length uint64
-		}{new(invalid), 100, 200, 0, 100})
+		}{invalid, 100, 200, 0, 100})
 	}
 	for i, tt := range tests {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
@@ -53,12 +53,14 @@ func TestRangeAnswers(t *testing.T) {
 			if answer.Status() != tt.status {
 				t.Fatalf("status = %d, want %d", answer.Status(), tt.status)
 			}
-			var want *host.ByteRange
-			if tt.status != 416 {
-				want = &host.ByteRange{Offset: tt.start, Length: new(tt.length)}
+			got, ok := answer.Range()
+			if ok != (tt.status != 416) {
+				t.Fatalf("satisfiable = %v", ok)
 			}
-			if diff := cmp.Diff(want, answer.Range()); diff != "" {
-				t.Fatal(diff)
+			if ok {
+				if diff := cmp.Diff(host.ByteRange{Offset: tt.start, Length: new(tt.length)}, got); diff != "" {
+					t.Fatal(diff)
+				}
 			}
 			data := make([]byte, tt.size)
 			for i := range data {
@@ -73,15 +75,15 @@ func TestRangeAnswers(t *testing.T) {
 			}
 		})
 	}
-	headers := RangeOf(new("bytes=10-19"), 100).Headers()
+	headers := RangeOf("bytes=10-19", 100).Headers()
 	if headers.Get("Content-Range") != "bytes 10-19/100" || headers.Get("Content-Length") != "10" ||
 		headers.Get("Accept-Ranges") != "bytes" {
 		t.Fatal(headers)
 	}
-	if RangeOf(new("bytes=100-"), 100).Headers().Get("Content-Range") != "bytes */100" {
+	if RangeOf("bytes=100-", 100).Headers().Get("Content-Range") != "bytes */100" {
 		t.Fatal("refused range headers")
 	}
-	if RangeOf(nil, 100).Headers().Get("Content-Length") != "100" {
+	if RangeOf("", 100).Headers().Get("Content-Length") != "100" {
 		t.Fatal("whole range length")
 	}
 }
@@ -96,11 +98,11 @@ func TestFileVersionsAndWeakConditions(t *testing.T) {
 		t.Fatal(version)
 	}
 	for _, condition := range []string{version, `"493e0-1a0c4506c7b"`, `"other", W/"493e0-1a0c4506c7b"`, " * "} {
-		if !notModified(&condition, version) {
+		if !notModified(condition, version) {
 			t.Fatalf("condition %q did not match", condition)
 		}
 	}
-	if notModified(new(`W/"493e0-0"`), version) || notModified(nil, version) {
+	if notModified(`W/"493e0-0"`, version) || notModified("", version) {
 		t.Fatal("unexpected match")
 	}
 	negative, err := core.TimestampFromMillisecond(-15)
@@ -112,7 +114,8 @@ func TestFileVersionsAndWeakConditions(t *testing.T) {
 	}
 }
 
-// This is the Rust transfer-closing test plus cancellation of a concurrent close.
+// Closing revokes and drains every transfer; a cancelled close drops only its own hold,
+// and admission reopens after the last hold.
 // Synctest observes blocked work without wall time or scheduler guesses.
 func TestTransferClosingDrainsAndReopensAfterLastHold(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

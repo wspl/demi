@@ -109,7 +109,7 @@ func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T
 					},
 				)
 				d := remotehosttest.NewTestDevice(t, remotehosttest.NewCommandPolicy(relayCommands(t, handler)))
-				l := d.Connect(nil)
+				l := d.Connect(0)
 				request := startRequest("probe live")
 				request.Caller = &host.JobCaller{Node: "test-session"}
 				job, err := d.Host("/work", nil).StartJob(t.Context(), request)
@@ -216,7 +216,7 @@ func TestCallExitsAfterStdoutDrained(t *testing.T) {
 			return 3, p.Stdout(ctx, []byte("hello"))
 		})
 		d := remotehosttest.NewTestDevice(t, remotehosttest.NewCommandPolicy(commands))
-		l := d.Connect(nil)
+		l := d.Connect(0)
 		job, err := d.Host("/work", nil).StartJob(t.Context(), startRequest("probe live"))
 		requirePipe(t, err)
 		nextFrame(t, l)
@@ -228,8 +228,8 @@ func TestCallExitsAfterStdoutDrained(t *testing.T) {
 			t.Fatal("unexpected stdin")
 		}
 		synctest.Wait()
-		if frame, ok, err := l.TryNext(); ok || err != nil {
-			t.Fatal("exit before drain", frame, err)
+		if l.Queued() != 0 {
+			t.Fatal("exit before drain")
 		}
 		sink, err := d.Pipes().ClaimSink(pipes.Stdout.ID, remotehosttest.TestDeviceID)
 		requirePipe(t, err)
@@ -254,7 +254,7 @@ func (refusingPolicy) AdmitCall(remotehost.JobOrigin) error {
 func TestCallRequiresAdmittedLiveJobAndRefusalMintsNoPipe(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		d := remotehosttest.NewTestDevice(t, refusingPolicy{remotehosttest.NewCommandPolicy(nil)})
-		l := d.Connect(nil)
+		l := d.Connect(0)
 		job, err := d.Host("/work", nil).StartJob(t.Context(), startRequest("probe live"))
 		requirePipe(t, err)
 		nextFrame(t, l)
@@ -283,7 +283,7 @@ func TestCallRequiresAdmittedLiveJobAndRefusalMintsNoPipe(t *testing.T) {
 			return 0, nil
 		})
 		another := remotehosttest.NewTestDevice(t, remotehosttest.NewCommandPolicy(commands))
-		second := another.Connect(nil)
+		second := another.Connect(0)
 		running, err := another.Host("/work", nil).StartJob(t.Context(), startRequest("probe live"))
 		requirePipe(t, err)
 		nextFrame(t, second)

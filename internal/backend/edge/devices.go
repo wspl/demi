@@ -64,10 +64,8 @@ func (e *Edge) claim(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	answer := pending.Grant(device, token)
-	defer answer.Release()
-	bound, err := answer.Wait(r.Context())
-	if err != nil || bound == nil {
+	bound, err := pending.Grant(r.Context(), device, token)
+	if err != nil {
 		if failed := e.state.Services.Control.DeleteDevice(
 			context.WithoutCancel(r.Context()),
 			device.ID,
@@ -76,7 +74,7 @@ func (e *Edge) claim(w http.ResponseWriter, r *http.Request) error {
 		}
 		return invalidCode()
 	}
-	writeJSON(w, 201, webapi.ClaimedDevice{Device: *bound})
+	writeJSON(w, 201, webapi.ClaimedDevice{Device: bound})
 	return nil
 }
 

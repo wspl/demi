@@ -35,9 +35,9 @@ func ReferenceRemoteFiles(
 	if err != nil {
 		var access *Error
 		if errors.As(err, &access) && access.Kind == AccessStorage {
-			return nil, &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: access.Cause}
+			return nil, access.Cause
 		}
-		return nil, &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
+		return nil, ErrDeviceNotAccessible
 	}
 	devices := make(map[string]database.DeviceRecord)
 	ordered := make([]database.DeviceRecord, 0)
@@ -47,17 +47,18 @@ func ReferenceRemoteFiles(
 		}
 		deviceID, err := webapi.ParseDeviceID(file.Device)
 		if err != nil {
-			return nil, &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
+			return nil, ErrDeviceNotAccessible
 		}
 		device, found, err := shard.Control().Device(ctx, deviceID)
 		if err != nil {
-			return nil, &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
+			return nil, err
 		}
 		if !found || device.User != record.Owner {
-			return nil, &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
+			return nil, ErrDeviceNotAccessible
 		}
 		if !shard.Devices().Online(device.ID) {
-			return nil, &RemoteFileRefusal{Kind: RemoteFileOffline, Message: device.Name}
+			//nolint:staticcheck // ST1005: product text, shown to the user as it is.
+			return nil, fmt.Errorf("Referenced device %s is offline", device.Name)
 		}
 		devices[file.Device] = device
 		ordered = append(ordered, device)
@@ -101,7 +102,7 @@ func ResolveUpload(
 	}
 	bytes, exists, err := shard.Blobs().Read(ctx, record.SHA256)
 	if err != nil {
-		return nil, store.HeldMedia{}, &Error{Kind: AccessObjects, Cause: err}
+		return nil, store.HeldMedia{}, &Error{Kind: AccessStorage, Cause: err}
 	}
 	if !exists {
 		return unavailable, store.HeldMedia{}, nil
@@ -136,7 +137,7 @@ func ResolveUpload(
 		shard.Blobs(),
 	)
 	if err != nil {
-		return nil, store.HeldMedia{}, &Error{Kind: AccessStore, Cause: err}
+		return nil, store.HeldMedia{}, &Error{Kind: AccessStorage, Cause: err}
 	}
 	return blocks, held, nil
 }
@@ -147,15 +148,15 @@ func remoteReference(device database.DeviceRecord, path string) (core.UserConten
 	// syntax.Quote deliberately cannot represent in its POSIX mode.
 	quotedPath, err := syntax.Quote(path, syntax.LangBash)
 	if err != nil {
-		return nil, &RemoteFileRefusal{Kind: RemoteFileUnquotable}
+		return nil, ErrPathUnquotable
 	}
 	quotedRead, err := syntax.Quote("cat -- "+quotedPath, syntax.LangBash)
 	if err != nil {
-		return nil, &RemoteFileRefusal{Kind: RemoteFileUnquotable}
+		return nil, ErrPathUnquotable
 	}
 	quotedID, err := syntax.Quote(string(device.ID), syntax.LangBash)
 	if err != nil {
-		return nil, &RemoteFileRefusal{Kind: RemoteFileUnquotable}
+		return nil, ErrPathUnquotable
 	}
 	command := "demi host shell --host " + quotedID + " " + quotedRead
 	reference := url.URL{Scheme: "file", Path: path}
@@ -177,7 +178,7 @@ func attachRemoteDevices(
 ) error {
 	target, err := ResolveTarget(ctx, shard, record)
 	if err != nil {
-		return &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
+		return err
 	}
 	main, hasMain := database.ExecutionDeviceID(target)
 	for _, device := range ordered {
@@ -190,10 +191,10 @@ func attachRemoteDevices(
 				&database.RecordAttach{Host: database.AttachedHostRecord{Device: device.ID, Name: device.Name}},
 			)
 		if errors.Is(err, database.ErrConversationNotFound) || errors.Is(err, database.ErrArchived) {
-			return &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
+			return ErrDeviceNotAccessible
 		}
 		if err != nil {
-			return &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
+			return err
 		}
 	}
 	return nil

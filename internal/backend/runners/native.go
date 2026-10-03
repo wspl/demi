@@ -72,24 +72,23 @@ func (c *NativeCatalog) Resolver(backend *PublicURL) remotehost.ArtifactResolver
 	return unpublished{}
 }
 
-// LocalArtifact returns a development download, or nil for a nonlocal store or an
-// unknown sha256. An error means a known artifact could not be read or encoded.
-func (c *NativeCatalog) LocalArtifact(ctx context.Context, sha256 string) (LocalArtifact, error) {
+// LocalArtifact returns a development download, and false for a nonlocal store or an unknown sha256.
+func (c *NativeCatalog) LocalArtifact(ctx context.Context, sha256 string) (LocalArtifact, bool, error) {
 	if store, ok := c.store.(*LocalArtifacts); ok {
 		return store.Artifact(ctx, sha256)
 	}
-	return nil, nil
+	return nil, false, nil
 }
 
-// Package returns the loaded descriptor by ID, or nil; the result is an owned copy.
-func (c *NativeCatalog) Package(id string) *commandwire.PackageDescriptor {
+// Package returns an owned copy of the loaded descriptor by ID, and false when none has it.
+func (c *NativeCatalog) Package(id string) (commandwire.PackageDescriptor, bool) {
 	for _, descriptor := range c.packages {
 		if descriptor.ID == id {
 			owned := cloneDescriptor(descriptor)
-			return &owned
+			return owned, true
 		}
 	}
-	return nil
+	return commandwire.PackageDescriptor{}, false
 }
 
 // Serves reports whether the loaded package serves every named operation.

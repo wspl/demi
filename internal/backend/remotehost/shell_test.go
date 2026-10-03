@@ -47,7 +47,7 @@ func shellFixture(
 	return d, l, shell, pages
 }
 
-// shellExec uses the Rust scenario's one-millisecond observation window in virtual time.
+// shellExec observes each command for a one-millisecond window in virtual time.
 func shellExec(t *testing.T, s *remotehost.ShellEnvironment, script string) host.CommandStatus {
 	t.Helper()
 	window, _ := host.NewObservationWindow(1)
@@ -294,7 +294,7 @@ func TestConversationReleaseWaitsAndAdmitsNoWork(t *testing.T) {
 		return nil, errors.New("admission")
 	})
 	requirePipe(t, h.ReleaseConversation(t.Context(), "conversation"))
-	l := d.Connect(nil)
+	l := d.Connect(0)
 	done := make(chan error, 1)
 	for _, failure := range []*string{nil, new("cleanup failed"), new("")} {
 		go func() { done <- h.ReleaseConversation(t.Context(), "conversation") }()

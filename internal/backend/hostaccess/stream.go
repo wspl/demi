@@ -50,7 +50,8 @@ func (s *UserStreams) Lookup(name string) (ServiceBinding, bool) {
 	if !ok {
 		return ServiceBinding{}, false
 	}
-	return ServiceBinding{Package: *s.native.Package(binding.Package), Operation: binding.Operation}, true
+	descriptor, _ := s.native.Package(binding.Package) // NewUserStreams bound only packages the catalog serves.
+	return ServiceBinding{Package: descriptor, Operation: binding.Operation}, true
 }
 
 // UserStream transfers its pipes and lease to the edge, which defers Release.
@@ -93,7 +94,7 @@ func OpenUserStream(
 ) (*UserStream, error) {
 	access, waitCtx, stop, err := admitStream(ctx, shard, id, true, true)
 	if err != nil {
-		return nil, &StreamError{Kind: StreamAccess, Cause: err}
+		return nil, streamAccessError(err)
 	}
 	defer stop()
 	handed := false
@@ -104,7 +105,7 @@ func OpenUserStream(
 	}()
 	request, err := serviceRequest(waitCtx, shard, access.id, access.host, binding, nil)
 	if err != nil {
-		return nil, &StreamError{Kind: StreamAccess, Cause: err}
+		return nil, streamAccessError(err)
 	}
 	input := shard.Pipes().ToDevice(string(access.device))
 	output := shard.Pipes().FromDevice(string(access.device))
@@ -112,13 +113,13 @@ func OpenUserStream(
 	if err != nil {
 		input.Fail(err.Error())
 		output.Fail(err.Error())
-		return nil, &StreamError{Kind: StreamFailed, Cause: err}
+		return nil, &StreamError{Err: err}
 	}
 	fromHost, err := output.Reader()
 	if err != nil {
 		input.Fail(err.Error())
 		output.Fail(err.Error())
-		return nil, &StreamError{Kind: StreamFailed, Cause: err}
+		return nil, &StreamError{Err: err}
 	}
 	service, err := access.host.Host.OpenService(waitCtx, request, input.WireRef(), output.WireRef())
 	if err != nil {
@@ -126,9 +127,9 @@ func OpenUserStream(
 		output.Fail("the user stream never opened")
 		var failure *host.Error
 		if errors.As(err, &failure) && failure.Kind == host.Offline {
-			return nil, &StreamError{Kind: StreamAccess, Cause: accessError(err)}
+			return nil, streamAccessError(accessError(err))
 		}
-		return nil, &StreamError{Kind: StreamFailed, Cause: err}
+		return nil, &StreamError{Err: err}
 	}
 	lease := watchUserStream(access, service, input, output)
 
@@ -150,17 +151,17 @@ func UserCall(
 	}
 	access, waitCtx, stop, err := admitStream(ctx, shard, id, false, kind == Operates)
 	if err != nil {
-		return nil, &UserCallError{Kind: UserCallAccess, Cause: err}
+		return nil, err
 	}
 	defer stop()
 	defer access.release()
 	request, err := serviceRequest(waitCtx, shard, access.id, access.host, call.Binding, call.Args)
 	if err != nil {
-		return nil, &UserCallError{Kind: UserCallAccess, Cause: err}
+		return nil, err
 	}
 	answer, err := access.host.Host.CallService(waitCtx, request, nil, call.MaxBytes)
 	if err != nil {
-		return nil, &UserCallError{Kind: UserCallCall, Cause: err}
+		return nil, err
 	}
 	return answer, nil
 }
@@ -275,7 +276,7 @@ func serviceRequest(
 
 // watchUserStream transfers admission to the completion worker; revoking its lease also ends Done.
 func watchUserStream(access *streamAccess, service *remotehost.ServiceStream, input, output *remotehost.Pipe) *Lease {
-	lease, _ := NewLease(access.open.Context())
+	lease := NewLease(access.open.Context())
 	go func() {
 		// Done also ends when the lease context is revoked, so no second watcher is needed.
 		_, _ = service.Done(lease.Context()) // Completion is represented by the stream's pipe outcome.
@@ -289,31 +290,13 @@ func watchUserStream(access *streamAccess, service *remotehost.ServiceStream, in
 }
 
 func startUserCall(ctx context.Context, shard HostShard, id webapi.ConversationID, call ServiceCall) ([]byte, error) {
-	answer, err := WithHost(
-		ctx,
-		shard,
-		id,
-		nil,
-		func(ctx context.Context, admitted *ConversationHost) ([]byte, error) {
-			request, err := serviceRequest(ctx, shard, id, *admitted, call.Binding, call.Args)
-			if err != nil {
-				return nil, &UserCallError{Kind: UserCallAccess, Cause: err}
-			}
-			answer, err := admitted.Host.CallService(ctx, request, nil, call.MaxBytes)
-			if err != nil {
-				return nil, &UserCallError{Kind: UserCallCall, Cause: err}
-			}
-			return answer, nil
-		},
-	)
-	if err != nil {
-		var wrapped *UserCallError
-		if errors.As(err, &wrapped) {
+	return WithHost(ctx, shard, id, nil, func(ctx context.Context, admitted *ConversationHost) ([]byte, error) {
+		request, err := serviceRequest(ctx, shard, id, *admitted, call.Binding, call.Args)
+		if err != nil {
 			return nil, err
 		}
-		return nil, &UserCallError{Kind: UserCallAccess, Cause: err}
-	}
-	return answer, nil
+		return admitted.Host.CallService(ctx, request, nil, call.MaxBytes)
+	})
 }
 
 func streamHost(ctx context.Context, shard HostShard, id webapi.ConversationID) (selectedHost, error) {

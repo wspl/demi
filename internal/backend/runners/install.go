@@ -14,16 +14,6 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// InvalidBackendURL identifies a URL that an installer cannot name: not HTTP(S),
-// or containing credentials, a query or a fragment.
-type InvalidBackendURL struct {
-	// URL is the rejected installation backend URL.
-	URL string
-}
-
-// Error describes why the URL cannot name an installation's backend.
-func (e *InvalidBackendURL) Error() string { return e.URL + " cannot be an installation's backend URL" }
-
 // BackendURL checks and returns the URL as an installer names it.
 func BackendURL(value *url.URL) (*url.URL, error) {
 	text := value.String()
@@ -32,7 +22,7 @@ func BackendURL(value *url.URL) (*url.URL, error) {
 		normalized.Password() != "" ||
 		strings.Contains(normalized.Href(false), "?") ||
 		strings.Contains(normalized.Href(false), "#") {
-		return nil, &InvalidBackendURL{URL: text}
+		return nil, fmt.Errorf("%s cannot be an installation's backend URL", text)
 	}
 	return url.Parse(normalized.Href(false))
 }

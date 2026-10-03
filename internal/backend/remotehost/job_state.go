@@ -7,7 +7,7 @@ import (
 )
 
 // jobState publishes runner output and a repeatable terminal result to its owner.
-// Output remains lossless and does not block the connection router, as in Rust.
+// Output remains lossless and does not block the connection router.
 type jobState[E, C any] struct {
 	mu      sync.Mutex // Protects output, terminal result and notification publication.
 	output  []C
@@ -40,14 +40,11 @@ func (s *jobState[E, C]) finish(end E) {
 	s.publish()
 }
 
-// ended returns the current terminal result without waiting.
-func (s *jobState[E, C]) ended() *E {
+// hasEnded reports whether the terminal result is published.
+func (s *jobState[E, C]) hasEnded() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.end == nil {
-		return nil
-	}
-	return new(*s.end)
+	return s.end != nil
 }
 
 // wait joins the runner operation's terminal publication.

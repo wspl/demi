@@ -21,21 +21,15 @@ const (
 	AccessCancelled
 	// AccessHost means the Host failed an operation.
 	AccessHost
-	// AccessStorage means control storage failed.
+	// AccessStorage means control storage, the object store or the agent blob view failed.
 	AccessStorage
-	// AccessObjects means the object store failed.
-	AccessObjects
-	// AccessStore means the agent blob view failed.
-	AccessStore
 )
 
 // Error records why conversation Host access admitted no operation or failed one.
-// Cause preserves wrapped failures for errors.Is and errors.As. Message is
-// additional detail only for variants carrying text in the Rust boundary.
+// Cause preserves wrapped failures for errors.Is and errors.As.
 type Error struct {
-	Kind    AccessErrorKind
-	Message string
-	Cause   error
+	Kind  AccessErrorKind
+	Cause error
 }
 
 // Error returns the original product refusal or underlying failure text.
@@ -46,10 +40,7 @@ func (e *Error) Error() string {
 	case AccessCancelled:
 		return "the request went away"
 	default:
-		if e.Cause != nil {
-			return e.Cause.Error()
-		}
-		return e.Message
+		return e.Cause.Error()
 	}
 }
 
@@ -113,7 +104,7 @@ const (
 	ChangeSettingUnavailable
 	// ChangeModelNotSelected means choose a model for the conversation first.
 	ChangeModelNotSelected
-	// ChangeRuntime means the model cannot run; Message carries the reason.
+	// ChangeRuntime means the model cannot run; Cause says why.
 	ChangeRuntime
 	// ChangeWorkspaceNotFound means no such workspace.
 	ChangeWorkspaceNotFound
@@ -132,12 +123,10 @@ const (
 )
 
 // ChangeRefusal records why a conversation change was not applied.
-// Cause preserves wrapped failures for errors.Is and errors.As. Message is
-// additional detail only for variants carrying text in the Rust boundary.
+// Cause preserves wrapped failures for errors.Is and errors.As.
 type ChangeRefusal struct {
-	Kind    ChangeErrorKind
-	Message string
-	Cause   error
+	Kind  ChangeErrorKind
+	Cause error
 }
 
 // Error returns the original product refusal or underlying failure text.
@@ -156,7 +145,7 @@ func (e *ChangeRefusal) Error() string {
 	case ChangeModelNotSelected:
 		return "Choose a model for the conversation first"
 	case ChangeRuntime:
-		return "The model cannot run: " + e.Message
+		return "The model cannot run: " + e.Cause.Error()
 	case ChangeWorkspaceNotFound:
 		return "No such workspace"
 	case ChangeDeviceNotFound:
@@ -170,10 +159,7 @@ func (e *ChangeRefusal) Error() string {
 	case ChangeNameTaken:
 		return "Another attached host has that name"
 	default:
-		if e.Cause != nil {
-			return e.Cause.Error()
-		}
-		return e.Message
+		return e.Cause.Error()
 	}
 }
 
@@ -215,158 +201,39 @@ func (e *ChangeRefusal) Code() (webapi.ErrorCode, int) {
 	return webapi.ErrorCodeOperationFailed, 500
 }
 
-// RemoteFileErrorKind identifies the category of RemoteFileRefusal.
-type RemoteFileErrorKind uint8
+// ErrDeviceNotAccessible refuses a reference to a device that is not the user's.
+//
+//nolint:staticcheck // ST1005: product text, shown to the user as it is.
+var ErrDeviceNotAccessible = errors.New("Referenced device is not accessible")
 
-const (
-	// RemoteFileNotAccessible means referenced device is not accessible.
-	RemoteFileNotAccessible RemoteFileErrorKind = iota
-	// RemoteFileOffline means the device named by Message is offline.
-	RemoteFileOffline
-	// RemoteFileUnquotable means a referenced path cannot be written in a shell command.
-	RemoteFileUnquotable
-	// RemoteFileStorage means control storage failed.
-	RemoteFileStorage
-)
+// ErrPathUnquotable refuses a path that cannot be written in a shell command.
+//
+//nolint:staticcheck // ST1005: product text, shown to the user as it is.
+var ErrPathUnquotable = errors.New("A referenced path cannot be written in a shell command")
 
-// RemoteFileRefusal records why a message remote file reference was refused.
-// Cause preserves wrapped failures for errors.Is and errors.As. Message is
-// additional detail only for variants carrying text in the Rust boundary.
-type RemoteFileRefusal struct {
-	Kind    RemoteFileErrorKind
-	Message string
-	Cause   error
-}
+// StreamError is a user stream whose service failed to start or refused it.
+type StreamError struct{ Err error }
 
-// Error returns the original product refusal or underlying failure text.
-func (e *RemoteFileRefusal) Error() string {
-	switch e.Kind {
-	case RemoteFileNotAccessible:
-		return "Referenced device is not accessible"
-	case RemoteFileOffline:
-		return "Referenced device " + e.Message + " is offline"
-	case RemoteFileUnquotable:
-		return "A referenced path cannot be written in a shell command"
-	default:
-		if e.Cause != nil {
-			return e.Cause.Error()
-		}
-		return e.Message
-	}
-}
+// Error returns the underlying failure text.
+func (e *StreamError) Error() string { return e.Err.Error() }
 
 // Unwrap preserves the underlying failure.
-func (e *RemoteFileRefusal) Unwrap() error {
-	return e.Cause
-}
+func (e *StreamError) Unwrap() error { return e.Err }
 
-// StreamErrorKind identifies the category of StreamError.
-type StreamErrorKind uint8
+// Code returns stream_failed with status 502.
+func (e *StreamError) Code() (webapi.ErrorCode, int) { return webapi.ErrorCodeStreamFailed, 502 }
 
-const (
-	// StreamAccess means host admission failed.
-	StreamAccess StreamErrorKind = iota
-	// StreamFailed means the service failed to start or refused the stream.
-	StreamFailed
-)
-
-// StreamError records why a user stream did not open.
-// Cause preserves wrapped failures for errors.Is and errors.As. Message is
-// additional detail only for variants carrying text in the Rust boundary.
-type StreamError struct {
-	Kind    StreamErrorKind
-	Message string
-	Cause   error
-}
-
-// Error returns the original product refusal or underlying failure text.
-func (e *StreamError) Error() string {
-	if e.Cause != nil {
-		return e.Cause.Error()
-	}
-	return e.Message
-}
-
-// Unwrap preserves the underlying failure.
-func (e *StreamError) Unwrap() error {
-	return e.Cause
-}
-
-// Code returns the response error code and HTTP status.
-func (e *StreamError) Code() (webapi.ErrorCode, int) {
+// streamAccessError keeps an admission failure's own code; any other failure is a failed stream.
+func streamAccessError(err error) error {
 	var access *Error
-	if e.Kind == StreamAccess && errors.As(e.Cause, &access) {
-		return access.Code()
+	if errors.As(err, &access) {
+		return err
 	}
-	return webapi.ErrorCodeStreamFailed, 502
+	return &StreamError{Err: err}
 }
 
-// UserCallErrorKind identifies the category of UserCallError.
-type UserCallErrorKind uint8
-
-const (
-	// UserCallAccess means host admission failed.
-	UserCallAccess UserCallErrorKind = iota
-	// UserCallCall means the native service call failed with its own words.
-	UserCallCall
-)
-
-// UserCallError records why a one-shot user call failed.
-// Cause preserves wrapped failures for errors.Is and errors.As. Message is
-// additional detail only for variants carrying text in the Rust boundary.
-type UserCallError struct {
-	Kind    UserCallErrorKind
-	Message string
-	Cause   error
-}
-
-// Error returns the original product refusal or underlying failure text.
-func (e *UserCallError) Error() string {
-	if e.Cause != nil {
-		return e.Cause.Error()
-	}
-	return e.Message
-}
-
-// Unwrap preserves the underlying failure.
-func (e *UserCallError) Unwrap() error {
-	return e.Cause
-}
-
-// ReadFilesErrorKind identifies the category of ReadFilesError.
-type ReadFilesErrorKind uint8
-
-const (
-	// ReadFilesNotRunning means the Host is not running, and a read never wakes it.
-	ReadFilesNotRunning ReadFilesErrorKind = iota
-	// ReadFilesAccess means host admission or reading failed.
-	ReadFilesAccess
-)
-
-// ReadFilesError records why a read of conversation Host files did not answer.
-// Cause preserves wrapped failures for errors.Is and errors.As. Message is
-// additional detail only for variants carrying text in the Rust boundary.
-type ReadFilesError struct {
-	Kind    ReadFilesErrorKind
-	Message string
-	Cause   error
-}
-
-// Error returns the original product refusal or underlying failure text.
-func (e *ReadFilesError) Error() string {
-	if e.Kind == ReadFilesNotRunning {
-		return "the conversation's Host is not running"
-	}
-	if e.Cause != nil {
-		return e.Cause.Error()
-	}
-	return e.Message
-}
-
-// Unwrap preserves the underlying failure.
-func (e *ReadFilesError) Unwrap() error {
-	return e.Cause
-}
+// ErrNotRunning means the conversation's Host is not running; a read never wakes it.
+var ErrNotRunning = errors.New("the conversation's Host is not running")
 
 // Refusal is what the conversation's state refuses.
 type Refusal uint8

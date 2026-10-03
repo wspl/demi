@@ -18,20 +18,15 @@ import (
 // Revocation cancels Context and releases shard admission without waiting for
 // the edge; Release is idempotent and does not wait.
 type Lease struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	once     sync.Once
-	released chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+	once   sync.Once
 }
 
-// Released observes the acquiring edge's explicit release.
-type Released struct{ done <-chan struct{} }
-
-// NewLease makes an edge lease ended by ctx and its release notification.
-func NewLease(ctx context.Context) (*Lease, *Released) {
+// NewLease makes an edge lease that ctx or Release ends.
+func NewLease(ctx context.Context) *Lease {
 	lifetime, cancel := context.WithCancel(ctx)
-	released := make(chan struct{})
-	return &Lease{ctx: lifetime, cancel: cancel, released: released}, &Released{done: released}
+	return &Lease{ctx: lifetime, cancel: cancel}
 }
 
 // Context ends when the lease is revoked or released; the edge stops copying.
@@ -43,18 +38,7 @@ func (l *Lease) Context() context.Context {
 func (l *Lease) Release() {
 	l.once.Do(func() {
 		l.cancel()
-		close(l.released)
 	})
-}
-
-// Wait waits for the edge to release, or returns ctx.Err().
-func (r *Released) Wait(ctx context.Context) error {
-	select {
-	case <-r.done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 }
 
 // TransferSet atomically checks admission and registers transfers under the
@@ -77,12 +61,12 @@ func (s *TransferSet) AnyOpen() bool {
 	return len(s.open) != 0
 }
 
-// Open registers before waiting for admission, or returns TransfersBusy.
+// Open registers before waiting for admission, or returns Busy.
 func (s *TransferSet) Open() (*OpenTransfer, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closings != 0 {
-		return nil, &TransfersBusy{}
+		return nil, Busy
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	open := &OpenTransfer{set: s, ctx: ctx, cancel: cancel, done: make(chan struct{})}
@@ -115,14 +99,6 @@ func (s *TransferSet) Close(ctx context.Context) (*TransfersClosed, error) {
 		}
 	}
 	return closed, nil
-}
-
-// TransfersBusy means a transition closed transfer and stream admission.
-type TransfersBusy struct{}
-
-// Error returns the transfer admission refusal.
-func (e *TransfersBusy) Error() string {
-	return Busy.Error()
 }
 
 // OpenTransfer owns one registered transfer, including its admission wait.
@@ -172,8 +148,8 @@ type DownloadRequest struct {
 	Version *string
 	// Head asks for only the answer's head, as HEAD asks.
 	Head        bool
-	Range       *string
-	IfNoneMatch *string
+	Range       string
+	IfNoneMatch string
 }
 
 // Download is the answer decided from a file's metadata.
@@ -181,15 +157,11 @@ type DownloadRequest struct {
 //sumtype:decl
 type Download interface{ download() }
 
-// DownloadNotAFile means nothing at the path is a regular file.
-type DownloadNotAFile struct{}
+// ErrNotAFile means nothing at the path is a regular file.
+var ErrNotAFile = errors.New("not a regular file")
 
-func (*DownloadNotAFile) download() {}
-
-// DownloadChanged means the file is no longer the requested version.
-type DownloadChanged struct{}
-
-func (*DownloadChanged) download() {}
+// ErrFileChanged means the file is no longer the version the request expects.
+var ErrFileChanged = errors.New("the file is no longer the version asked for")
 
 // DownloadNotModified means the condition names the file's version.
 type DownloadNotModified struct{ Version string }
@@ -214,20 +186,11 @@ type DownloadStream struct {
 
 func (*DownloadStream) download() {}
 
-// Upload is the answer before upload bytes move.
-//
-//sumtype:decl
-type Upload interface{ upload() }
+// ErrIsDirectory refuses an upload that would overwrite a directory.
+var ErrIsDirectory = errors.New("a directory is at this path")
 
-// UploadIsDirectory refuses to overwrite a directory.
-type UploadIsDirectory struct{}
-
-func (*UploadIsDirectory) upload() {}
-
-// UploadExists refuses to overwrite a file without replace.
-type UploadExists struct{}
-
-func (*UploadExists) upload() {}
+// ErrFileExists refuses an upload that would overwrite a file without replace.
+var ErrFileExists = errors.New("a file is already at this path")
 
 // OpenUpload accepts bytes and installs the file whole or not at all. The edge
 // closes Writer after its final byte, waits for Written, and defers Release.
@@ -237,8 +200,6 @@ type OpenUpload struct {
 	Writer  *remotehost.PipeWriter
 	Lease   *Lease
 }
-
-func (*OpenUpload) upload() {}
 
 // Written waits for the Host's write outcome; cancellation ends this wait.
 func (u *OpenUpload) Written(ctx context.Context) error {
@@ -282,25 +243,25 @@ func OpenDownload(
 		return nil, transferError(open, accessError(err))
 	}
 	if stat.Kind != host.File {
-		return &DownloadNotAFile{}, nil
+		return nil, ErrNotAFile
 	}
 	version := FileVersion(stat)
 	if request.Version != nil && *request.Version != version {
-		return &DownloadChanged{}, nil
+		return nil, ErrFileChanged
 	}
 	if notModified(request.IfNoneMatch, version) {
 		return &DownloadNotModified{Version: version}, nil
 	}
 	part := RangeOf(request.Range, stat.Size)
-	span := part.Range()
-	if request.Head || span == nil || *span.Length == 0 {
+	span, ok := part.Range()
+	if request.Head || !ok || *span.Length == 0 {
 		return &DownloadHead{Stat: stat, Part: part}, nil
 	}
-	reader, err := admitted.Host.Host.ReadPipe(waitCtx, request.Path, *span)
+	reader, err := admitted.Host.Host.ReadPipe(waitCtx, request.Path, span)
 	if err != nil {
 		return nil, transferError(open, accessError(err))
 	}
-	lease, _ := NewLease(open.Context())
+	lease := NewLease(open.Context())
 	// AdmitHost's owner registration moves to this worker and ends on release.
 	go func() {
 		<-lease.Context().Done()
@@ -321,7 +282,7 @@ func UploadFile(
 	id webapi.ConversationID,
 	path string,
 	replace bool,
-) (Upload, error) {
+) (*OpenUpload, error) {
 	open, waitCtx, stop, err := registerTransfer(ctx, shard, id)
 	if err != nil {
 		return nil, err
@@ -348,10 +309,10 @@ func UploadFile(
 	}
 	if err == nil {
 		if stat.Kind == host.Directory {
-			return &UploadIsDirectory{}, nil
+			return nil, ErrIsDirectory
 		}
 		if !replace {
-			return &UploadExists{}, nil
+			return nil, ErrFileExists
 		}
 	}
 	pipe, err := admitted.Host.Host.WritePipe()
@@ -384,12 +345,9 @@ type RangeAnswer struct {
 
 // RangeOf interprets a single byte range, including suffix and overflowing
 // bounds. Invalid, multiple or reversed ranges request the whole file.
-func RangeOf(header *string, size uint64) RangeAnswer {
+func RangeOf(header string, size uint64) RangeAnswer {
 	whole := RangeAnswer{status: 200, size: size, length: size}
-	if header == nil {
-		return whole
-	}
-	text, ok := strings.CutPrefix(strings.TrimSpace(*header), "bytes=")
+	text, ok := strings.CutPrefix(strings.TrimSpace(header), "bytes=")
 	if !ok {
 		return whole
 	}
@@ -440,12 +398,12 @@ func (r RangeAnswer) Status() int {
 	return r.status
 }
 
-// Range returns the bytes to send, or nil for an unsatisfiable range.
-func (r RangeAnswer) Range() *host.ByteRange {
+// Range returns the bytes to send, and false for an unsatisfiable range.
+func (r RangeAnswer) Range() (host.ByteRange, bool) {
 	if r.status == 416 {
-		return nil
+		return host.ByteRange{}, false
 	}
-	return &host.ByteRange{Offset: r.start, Length: new(r.length)}
+	return host.ByteRange{Offset: r.start, Length: new(r.length)}, true
 }
 
 // PartOf returns the selected part of the complete file bytes, or nil on refusal.
@@ -484,7 +442,7 @@ func registerTransfer(
 	}
 	open, err := shard.Conversations().Slot(record.ID).transfers.Open()
 	if err != nil {
-		return nil, nil, nil, &Error{Kind: AccessRefused, Cause: Busy}
+		return nil, nil, nil, &Error{Kind: AccessRefused, Cause: err}
 	}
 	waitCtx, cancel := context.WithCancel(ctx)
 	cancelled := make(chan struct{})
@@ -509,14 +467,11 @@ func transferError(open *OpenTransfer, err error) error {
 }
 
 // notModified compares file validators weakly, as If-None-Match requires.
-func notModified(condition *string, version string) bool {
-	if condition == nil {
-		return false
-	}
-	if strings.TrimSpace(*condition) == "*" {
+func notModified(condition, version string) bool {
+	if strings.TrimSpace(condition) == "*" {
 		return true
 	}
-	for _, tag := range strings.Split(*condition, ",") {
+	for _, tag := range strings.Split(condition, ",") {
 		tag = strings.TrimSpace(tag)
 		for strings.HasPrefix(tag, "W/") {
 			tag = strings.TrimPrefix(tag, "W/")
@@ -548,7 +503,7 @@ func writeUpload(
 ) *OpenUpload {
 	// Normal write completion unregisters the transfer without revoking the
 	// edge's lease. Forward cancellation only while the write is running.
-	lease, _ := NewLease(context.Background())
+	lease := NewLease(context.Background())
 	revoked := make(chan struct{})
 	stopRevocation := context.AfterFunc(open.Context(), func() {
 		defer close(revoked)

@@ -90,8 +90,7 @@ func TestUnavailableUploadsAndRemoteReferencesGrantNothing(t *testing.T) {
 		record.ID,
 		[]RemoteFile{{Device: string(device.ID), Path: "/notes.txt"}},
 	)
-	var refused *RemoteFileRefusal
-	if !errors.As(err, &refused) || refused.Kind != RemoteFileOffline {
+	if err == nil || err.Error() != "Referenced device offline is offline" {
 		t.Fatal(err)
 	}
 	attached, err := s.control.AttachedHosts(t.Context(), record.ID)
@@ -179,8 +178,7 @@ func TestRemoteReferenceReadsExactPathWithoutShellInjection(t *testing.T) {
 		}
 	}
 	_, err := remoteReference(device, "/nul\x00file")
-	var refused *RemoteFileRefusal
-	if !errors.As(err, &refused) || refused.Kind != RemoteFileUnquotable {
+	if !errors.Is(err, ErrPathUnquotable) {
 		t.Fatalf("NUL path: %v", err)
 	}
 }

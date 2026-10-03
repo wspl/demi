@@ -205,7 +205,7 @@ func (f *cloudFixture) HoldForReset(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.holdFailure == id {
-		return nil, nil
+		return nil, ErrNotLetGo
 	}
 	f.holds++
 	f.heldIDs = append(f.heldIDs, id)

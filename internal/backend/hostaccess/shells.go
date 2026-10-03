@@ -183,7 +183,7 @@ func asHostError(err error) error {
 		switch access.Kind {
 		case AccessCancelled:
 			kind = host.Interrupted
-		case AccessStorage, AccessObjects, AccessStore:
+		case AccessStorage:
 			kind = host.Failed
 		}
 	}

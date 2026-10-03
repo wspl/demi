@@ -52,7 +52,7 @@ func TestPageMessageLimitForEverySocketKind(t *testing.T) {
 					}
 					toHost, hostInput := testPipe(t)
 					hostOutput, fromHost := testPipe(t)
-					lease, _ := hostaccess.NewLease(t.Context())
+					lease := hostaccess.NewLease(t.Context())
 					defer lease.Release()
 					stream := &hostaccess.UserStream{ToHost: toHost, FromHost: fromHost, Lease: lease}
 					consumed := make(chan int, 1)

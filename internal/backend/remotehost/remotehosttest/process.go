@@ -37,8 +37,8 @@ type RunnerProcessOptions struct {
 	Name string
 	// Env specifies the runner process environment.
 	Env host.SpawnEnv
-	// Token is the existing device token, if supplied.
-	Token *string
+	// Token is the existing device token; empty pairs the runner instead.
+	Token string
 	// Managed selects managed runner startup.
 	Managed bool
 }
@@ -123,8 +123,8 @@ func StartOwnedRunnerProcess(
 		options:   options,
 		changed:   make(chan struct{}),
 	}
-	if options.Token != nil {
-		if err := p.writeToken(*options.Token); err != nil {
+	if options.Token != "" {
+		if err := p.writeToken(options.Token); err != nil {
 			return nil, err
 		}
 	}
