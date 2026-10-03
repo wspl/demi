@@ -13,7 +13,6 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/usershard"
-	"github.com/wspl/demi/internal/webapi"
 )
 
 // pageHandshake refuses an invalid page upgrade before admission can wake a
@@ -59,7 +58,6 @@ func pageUpgrade(w http.ResponseWriter, r *http.Request, description string) (*w
 	if err != nil {
 		return nil, err
 	}
-	socket.SetReadLimit(webapi.MaxPageMessageBytes)
 	return socket, nil
 }
 
@@ -183,7 +181,7 @@ func relayUserStream(ctx context.Context, socket *websocket.Conn, stream *hostac
 	go func() {
 		defer close(forwarded)
 		for {
-			kind, bytes, err := socket.Read(copyCtx)
+			kind, bytes, err := usershard.ReadPageMessage(copyCtx, socket)
 			if err != nil {
 				outcomes <- streamEnd{}
 				return
