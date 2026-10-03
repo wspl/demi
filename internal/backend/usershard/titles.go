@@ -7,8 +7,9 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/wspl/demi/internal/agent/server"
-	"github.com/wspl/demi/internal/agent/transcript"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
@@ -129,7 +130,7 @@ func (s *Shard) generateTitle(ctx context.Context, id webapi.ConversationID, sel
 	if err != nil {
 		return err
 	}
-	title, err := server.Title(ctx, runtime, string(id), (transcript.RandomIDs{}).NextID(), selection, request.messages)
+	title, err := server.Title(ctx, runtime, string(id), uuid.NewString(), selection, request.messages)
 	err = errors.Join(err, runtime.Close(context.WithoutCancel(ctx)))
 	if err != nil {
 		return err

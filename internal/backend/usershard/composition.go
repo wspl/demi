@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/wspl/demi/internal/backend/blobs"
@@ -283,10 +282,11 @@ func (s *Shard) CreateExpose(ctx context.Context, device webapi.DeviceID, addres
 	if err != nil {
 		return plugin.ExposeRecord{}, &plugin.PortRefusalExpose{Reason: plugin.ExposeRefusalInvalidAddress, Message: "the address " + err.Error()}
 	}
-	if lifetime > uint64(math.MaxInt64/int64(time.Second)) {
-		return plugin.ExposeRecord{}, &exposeLifetimeRangeError{Seconds: lifetime}
+	duration, err := exposeLifetime(lifetime)
+	if err != nil {
+		return plugin.ExposeRecord{}, err
 	}
-	value, err := expose.Add(ctx, s.ExposeShard(), device, parsed, time.Duration(lifetime)*time.Second)
+	value, err := expose.Add(ctx, s.ExposeShard(), device, parsed, duration)
 	if err != nil {
 		return plugin.ExposeRecord{}, exposeFailure(err)
 	}
@@ -295,10 +295,11 @@ func (s *Shard) CreateExpose(ctx context.Context, device webapi.DeviceID, addres
 
 // RenewExpose moves expiry to lifetime seconds from now.
 func (s *Shard) RenewExpose(ctx context.Context, id webapi.ExposeID, lifetime uint64) (plugin.ExposeRecord, error) {
-	if lifetime > uint64(math.MaxInt64/int64(time.Second)) {
-		return plugin.ExposeRecord{}, &exposeLifetimeRangeError{Seconds: lifetime}
+	duration, err := exposeLifetime(lifetime)
+	if err != nil {
+		return plugin.ExposeRecord{}, err
 	}
-	value, err := expose.Renew(ctx, s.ExposeShard(), id, time.Duration(lifetime)*time.Second)
+	value, err := expose.Renew(ctx, s.ExposeShard(), id, duration)
 	if err != nil {
 		return plugin.ExposeRecord{}, exposeFailure(err)
 	}

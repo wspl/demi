@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/wspl/demi/internal/agent/server"
 	"github.com/wspl/demi/internal/agent/store"
@@ -177,6 +178,8 @@ func (s *Shard) handleMessage(ctx context.Context, id webapi.ConversationID, con
 		var refused *frameRefusal
 		if errors.As(err, &refused) {
 			code = refused.code
+		} else {
+			slog.ErrorContext(ctx, "a frame was not prepared", "conversation", id, "error", err)
 		}
 		return refusedFrame(frame, code, err.Error()), nil
 	}

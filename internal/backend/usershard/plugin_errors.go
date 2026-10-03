@@ -3,7 +3,10 @@ package usershard
 import (
 	"errors"
 	"fmt"
+	"math"
+	"time"
 
+	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/expose"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/remotehost"
@@ -54,9 +57,12 @@ func callFailure(err error) error {
 	return accessFailure(err)
 }
 
-// exposeLifetimeRangeError reports the duration representation gap at the expose API.
-type exposeLifetimeRangeError struct{ Seconds uint64 }
-
-func (e *exposeLifetimeRangeError) Error() string {
-	return fmt.Sprintf("expose lifetime %d seconds exceeds the Go expose API duration range", e.Seconds)
+// exposeLifetime converts a plugin's expose lifetime without wrapping nanoseconds.
+func exposeLifetime(seconds uint64) (time.Duration, error) {
+	const maximum = uint64(math.MaxInt64 / int64(time.Second))
+	if seconds > maximum {
+		err := &database.Error{Kind: database.TimeRange, Err: fmt.Errorf("expose lifetime exceeds %d seconds", maximum)}
+		return 0, &host.PortError{Kind: host.PortFailed, Message: err.Error(), Err: err}
+	}
+	return time.Duration(seconds) * time.Second, nil
 }

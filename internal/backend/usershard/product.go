@@ -88,11 +88,21 @@ func (s *Shard) composeAgent() {
 			id := hostaccess.ConversationOf(root)
 			s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
 			if s.agent.Tree(root) == nil {
-				s.startWorker(func(ctx context.Context) {
-					if err := s.retireMedia(ctx, id, true); err != nil && ctx.Err() == nil {
-						slog.Warn("the conversation's tool media was not retired", "conversation", id, "error", err)
+				disposed := s.Clock().Now()
+				s.mu.Lock()
+				s.saves.Add(1)
+				s.mu.Unlock()
+				go func() {
+					defer s.saves.Done()
+					if err := s.Control().MarkLive(context.WithoutCancel(s.ctx), id, disposed); err != nil {
+						slog.Warn("the disposal was not recorded", "conversation", id, "error", err)
 					}
-				})
+					s.startWorker(func(ctx context.Context) {
+						if err := s.retireMedia(ctx, id, true); err != nil {
+							slog.WarnContext(ctx, "tool media not retired", "conversation", id, "error", err)
+						}
+					})
+				}()
 			}
 		},
 	})

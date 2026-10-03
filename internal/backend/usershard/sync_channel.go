@@ -2,6 +2,7 @@ package usershard
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"sync"
 	"time"
@@ -76,6 +77,7 @@ func (s *Shard) relaySync(ctx context.Context, socket *websocket.Conn, session C
 	}()
 	state, err := s.productState(ctx, session.User)
 	if err != nil {
+		slog.ErrorContext(ctx, "a page's product state could not be read", "error", err)
 		return err
 	}
 	if s.services.Hooks != nil {
@@ -100,6 +102,7 @@ func (s *Shard) relaySync(ctx context.Context, socket *websocket.Conn, session C
 		}
 		listed, err := expose.List(ctx, s.ExposeShard())
 		if err != nil {
+			slog.ErrorContext(ctx, "a page's exposes could not be read", "error", err)
 			return err
 		}
 		expires = nil
@@ -166,6 +169,7 @@ func (s *Shard) relaySync(ctx context.Context, socket *websocket.Conn, session C
 		if s.Clock().Now() >= session.ExpiresAt {
 			current, err := s.services.Sessions.Check(ctx, session.Token)
 			if err != nil {
+				slog.ErrorContext(ctx, "a page's session could not be read", "error", err)
 				return err
 			}
 			if current == nil {
@@ -200,6 +204,7 @@ func (s *Shard) relaySync(ctx context.Context, socket *websocket.Conn, session C
 		for _, part := range parts {
 			event, err := s.readPart(ctx, part, session.User)
 			if err != nil {
+				slog.ErrorContext(ctx, "a part of a page's state could not be read", "error", err)
 				return err
 			}
 			if event == nil {

@@ -3,6 +3,7 @@ package usershard
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -105,7 +106,11 @@ func OpenStorage(ctx context.Context, dataDir string, clock core.Clock, objects 
 	}
 	conversations, err := database.OpenConversations(ctx, filepath.Join(dataDir, "conversations"), database.MaxWriters)
 	if err != nil {
-		return nil, errors.Join(err, control.Close(context.WithoutCancel(ctx)))
+		closeErr := control.Close(context.WithoutCancel(ctx))
+		if closeErr != nil {
+			slog.ErrorContext(ctx, "the control database did not close after a failed start", "error", closeErr)
+		}
+		return nil, errors.Join(err, closeErr)
 	}
 	return &Storage{Control: control, Conversations: conversations, Blobs: blobs.New(objects, clock)}, nil
 }

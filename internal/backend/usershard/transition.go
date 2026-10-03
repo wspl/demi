@@ -3,6 +3,7 @@ package usershard
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"reflect"
 
 	"github.com/wspl/demi/internal/agent/server"
@@ -277,6 +278,9 @@ func (s *Shard) applyPatch(ctx context.Context, id webapi.ConversationID, patch 
 			}
 			refusal := &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeStorage, Cause: err}
 			errors.As(err, &refusal)
+			if refusal.Kind == hostaccess.ChangeStorage {
+				slog.ErrorContext(ctx, "a conversation change failed", "field", field, "error", err)
+			}
 			code, status := refusal.Code()
 			results = append(results, &webapi.FieldResultFailed{Field: field, Code: code, Message: refusal.Error(), HTTPStatus: uint16(status)})
 		}

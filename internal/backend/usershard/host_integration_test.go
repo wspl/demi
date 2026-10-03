@@ -7,6 +7,9 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"mvdan.cc/sh/v3/shell"
+
 	"github.com/wspl/demi/internal/backend/cloud"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
@@ -153,13 +156,25 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 	if parsed.Path != path || parsed.Query().Get("deviceId") != string(build) || parsed.Query().Get("host") != "build" {
 		t.Fatalf("reference lost identity: %s", reference.Reference)
 	}
-	// This is Rust shlex's two-level quoting of the literal path: the outer
-	// shell passes one script, whose cat argument still contains $(literal).
-	command := parsed.Query().Get("readCommand")
-	wantCommand := "demi host shell --host " + string(build) + ` "cat -- \"/srv/it's \"'"'$(literal).txt'"'"`
-	if command != wantCommand {
-		t.Fatalf("read command = %q, want %q", command, wantCommand)
+	// Parse both shell levels, so quoting may vary but cannot evaluate the path.
+	command, err := shell.Fields(parsed.Query().Get("readCommand"), func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
 	}
+	if len(command) != 6 {
+		t.Fatalf("read command words = %q", command)
+	}
+	if diff := cmp.Diff([]string{"demi", "host", "shell", "--host", string(build)}, command[:5]); diff != "" {
+		t.Fatal(diff)
+	}
+	read, err := shell.Fields(command[5], func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]string{"cat", "--", path}, read); diff != "" {
+		t.Fatal(diff)
+	}
+
 	attached, err := f.services.Control.AttachedHosts(t.Context(), conversationID)
 	if err != nil {
 		t.Fatal(err)

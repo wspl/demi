@@ -20,7 +20,8 @@ func TestPageSocketRejectsOversizedMessage(t *testing.T) {
 			result <- err
 			return
 		}
-		defer socket.CloseNow()
+		// The peer may have already closed the connection under test.
+		defer func() { _ = socket.CloseNow() }()
 		page := newPageSocket(socket, DefaultPageTuning())
 		defer page.heartbeat.Stop()
 		_, _, err = socket.Read(r.Context())
@@ -31,7 +32,8 @@ func TestPageSocketRejectsOversizedMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer socket.CloseNow()
+	// The peer may have already closed the connection under test.
+	defer func() { _ = socket.CloseNow() }()
 	// The peer may close while Write is completing; the receiving refusal is the assertion.
 	_ = socket.Write(t.Context(), websocket.MessageText, make([]byte, webapi.MaxPageMessageBytes+1))
 	_, _, err = socket.Read(t.Context())

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/coder/websocket"
 
@@ -49,7 +50,11 @@ func (p shardPolicy) Storage(ctx context.Context, job remotehost.JobOrigin, op h
 	return p.shard.agent.CommandStorage(ctx, hostaccess.RootOf(conversation), *job.Caller, op)
 }
 func (p shardPolicy) GrowVolume(ctx context.Context, volume runnerwire.VolumeName, bytes uint64) error {
-	return cloud.GrowVolume(ctx, p.shard, p.device, volume, bytes)
+	err := cloud.GrowVolume(ctx, p.shard, p.device, volume, bytes)
+	if err != nil {
+		slog.WarnContext(ctx, "volume growth refused", "device", p.device, "volume", volume, "bytes", bytes, "error", err)
+	}
+	return err
 }
 func (p shardPolicy) ReserveNumbers(ctx context.Context, conversation string, sequence commandwire.ServiceSequence, count uint32) (uint64, error) {
 	id, err := webapi.ParseConversationID(conversation)
@@ -121,6 +126,7 @@ func (s *Shard) adopt(ctx context.Context, device database.DeviceRecord, runner 
 	}
 	if s.devices.Online(device.ID) {
 		order.Release()
+		slog.WarnContext(ctx, fmt.Sprintf("runner hello refused (already_connected): device %s already has a live connection [%s, %s]", device.ID, runner.Name, runner.Platform), "device", device.ID)
 		return runners.Send(ctx, socket, &runnerwire.HelloError{Code: runnerwire.HelloErrorCodeAlreadyConnected, Reason: fmt.Sprintf("device %s already has a live connection", device.ID)})
 	}
 	s.mu.Lock()

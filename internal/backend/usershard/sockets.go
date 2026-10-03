@@ -7,7 +7,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/backend/expose"
+	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/core"
@@ -70,18 +70,21 @@ func (s *Shard) DeviceList(ctx context.Context) ([]webapi.DeviceDTO, error) {
 }
 
 // ExposeConnection is the network stream admitted for a relayed expose.
-// The edge owns both pipe ends and defers releasing Lease while copying bytes.
+// The edge owns both pipe ends and defers releasing the host-access Lease.
+// Its context stops copying on expose removal, shard shutdown or edge release.
 type ExposeConnection struct {
 	// ToService carries visitor bytes; closing it half-closes the network socket.
 	ToService *remotehost.PipeWriter
 	// FromService carries bytes until the service's end-of-stream.
 	FromService *remotehost.PipeReader
 	// Lease lasts until copying ends or the expose is removed.
-	Lease *expose.RelayAdmission
+	Lease *hostaccess.Lease
 }
 
 // OpenExposeConnection admits a connection and opens its network stream through
 // device access, without a conversation, file gate or Cloud wake.
 func (s *Shard) OpenExposeConnection(ctx context.Context, id webapi.ExposeID) (*ExposeConnection, error) {
-	panic("not written: b-usershard")
+	return shardCall(ctx, s, func(ctx context.Context) (*ExposeConnection, error) {
+		return s.openExposeConnection(ctx, id)
+	})
 }

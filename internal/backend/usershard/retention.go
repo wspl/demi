@@ -22,6 +22,7 @@ const blobGrace = 24 * time.Hour
 func (s *Shard) retentionPass(ctx context.Context) error {
 	conversations, err := s.services.Control.ConversationOrder(ctx, s.user)
 	if err != nil {
+		slog.ErrorContext(ctx, "the retention pass cannot list the conversations", "user", s.user, "error", err)
 		return err
 	}
 	var failures []error
@@ -29,14 +30,25 @@ func (s *Shard) retentionPass(ctx context.Context) error {
 		if s.ctx.Err() != nil {
 			return errors.Join(failures...)
 		}
-		failures = append(failures, s.removeOutputs(ctx, id))
+		if err := s.removeOutputs(ctx, id); err != nil {
+			slog.WarnContext(ctx, "command outputs not removed", "conversation", id, "error", err)
+			failures = append(failures, err)
+		}
+		var retired error
 		if s.agent.Tree(hostaccess.RootOf(id)) != nil {
-			failures = append(failures, s.services.Control.MarkLive(ctx, id, s.Clock().Now()))
+			retired = s.services.Control.MarkLive(ctx, id, s.Clock().Now())
 		} else {
-			failures = append(failures, s.retireMedia(ctx, id, false))
+			retired = s.retireMedia(ctx, id, false)
+		}
+		if retired != nil {
+			slog.WarnContext(ctx, "tool media not retired", "conversation", id, "error", retired)
+			failures = append(failures, retired)
 		}
 	}
-	failures = append(failures, s.collectBlobs(ctx))
+	if err := s.collectBlobs(ctx); err != nil {
+		slog.WarnContext(ctx, "the collection deleted nothing", "user", s.user, "error", err)
+		failures = append(failures, err)
+	}
 	return errors.Join(failures...)
 }
 
@@ -163,15 +175,21 @@ func (s *Shard) collectBlobs(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	deleted := 0
 	for _, blob := range old {
 		if s.ctx.Err() != nil {
 			break
 		}
 		if !references[blob] {
-			if _, err := blobs.DeleteUnused(ctx, blob, blobGrace); err != nil {
-				slog.WarnContext(ctx, "a blob was not deleted", "blob", blob, "error", err)
+			if removed, err := blobs.DeleteUnused(ctx, blob, blobGrace); err != nil {
+				slog.WarnContext(ctx, "a blob was not deleted", "user", s.user, "blob", blob, "error", err)
+			} else if removed {
+				deleted++
 			}
 		}
+	}
+	if deleted != 0 {
+		slog.InfoContext(ctx, "unreferenced blobs deleted", "user", s.user, "deleted", deleted)
 	}
 	return nil
 }

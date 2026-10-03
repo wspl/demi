@@ -3,6 +3,7 @@ package usershard
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 
 	"github.com/coder/websocket"
@@ -36,6 +37,7 @@ func (s *Shard) relayConversation(ctx context.Context, record database.Conversat
 	defer cancel()
 	target, err := hostaccess.ResolveTarget(ctx, s, record)
 	if err != nil {
+		slog.ErrorContext(ctx, "the conversation's target does not resolve", "conversation", record.ID, "error", err)
 		return err
 	}
 	files := &conversationFiles{shard: s, conversation: record.ID}
