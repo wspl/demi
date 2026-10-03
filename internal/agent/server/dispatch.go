@@ -64,9 +64,9 @@ func (c *Connection[H]) handle(ctx context.Context, frame framewire.ClientFrame)
 	if tree == nil {
 		switch f := frame.(type) {
 		case *framewire.SteerFrame:
-			c.steerResult(f.SteerID, session.SteerError("No session is open on this connection"))
+			c.steerResult(f.SteerID, errNoSession)
 		case *framewire.SteerQueuedMessageFrame:
-			c.steerResult(f.SteerID, session.SteerError("No session is open on this connection"))
+			c.steerResult(f.SteerID, errNoSession)
 		case *framewire.CancelPendingSteerFrame, *framewire.AbortSubagentsFrame, *framewire.AbortSubagentFrame:
 		case *framewire.AbortFrame,
 			*framewire.ClearMessageQueueFrame,
@@ -195,14 +195,14 @@ func (c *Connection[H]) edit(ctx context.Context, tree *Tree[H], request framewi
 	tree.frames.Lock()
 	c.editReply = reply
 	tree.frames.Unlock()
-	check, err := agent.CheckEdit(request.OperationID, digest, request.Version)
+	check, err := agent.CheckEdit(ctx, request.OperationID, digest, request.Version)
 	var accepted *store.EditReceipt
 	if err == nil {
 		switch v := check.(type) {
 		case *session.EditAccepted:
 			accepted = &v.Receipt
 		case *session.EditInFlight:
-			_, err = v.Acceptance.Wait(ctx)
+			// Accepted; its EditCommitted event answered this request.
 		case *session.EditProceed:
 			var content []session.EditContent
 			var media store.HeldMedia
@@ -319,7 +319,7 @@ func (c *Connection[H]) finishEdit(
 func (c *Connection[H]) steerQueuedMessage(agent *session.Session, f *framewire.SteerQueuedMessageFrame) {
 	found, err := agent.SteerQueuedMessage(f.MessageID, f.SteerID)
 	if err == nil && !found {
-		err = session.SteerError("Queued message not found")
+		err = errQueuedMessageNotFound
 	}
 	c.steerResult(f.SteerID, err)
 }

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -81,10 +82,10 @@ func New[H host.Host](deps Deps[H]) *Server[H] {
 // Connect creates a connection for root, whose tree works in cwd when created,
 // and its bounded outbox. Resolver resolves files referenced by client frames.
 // The socket owner must defer Connection.Detach, even after cancellation.
-func (s *Server[H]) Connect(root core.NodeID, cwd string, resolver ContentResolver) (*Connection[H], *FrameReceiver) {
+func (s *Server[H]) Connect(root core.NodeID, cwd string, resolver ContentResolver) (*Connection[H], *Frames) {
 	outbox := &outbox{capacity: s.deps.Config.OutboxFrames, changed: make(chan struct{})}
 	c := &Connection[H]{server: s, root: root, cwd: cwd, resolver: resolver, outbox: outbox}
-	return c, &FrameReceiver{outbox: outbox}
+	return c, &Frames{outbox: outbox}
 }
 
 // Tree returns the conversation's live tree, or nil if it has none.
@@ -96,7 +97,7 @@ func (s *Server[H]) Tree(root core.NodeID) *Tree[H] {
 
 // Restore opens root in cwd without a connection, continues its saved work
 // and arms its wakeups. A tree already live is left as it is.
-// Failure returns *RestoreError.
+// Failure says whether the tree did not open or did not continue.
 func (s *Server[H]) Restore(ctx context.Context, root core.NodeID, cwd string) error {
 	permit, err := s.opening.Acquire(ctx, root)
 	if err != nil {
@@ -105,11 +106,11 @@ func (s *Server[H]) Restore(ctx context.Context, root core.NodeID, cwd string) e
 	defer permit.Release()
 	tree, continuation, err := s.liveOrOpen(ctx, root, cwd)
 	if err != nil {
-		return &RestoreError{Kind: RestoreOpen, Cause: err}
+		return fmt.Errorf("the tree did not open: %w", err)
 	}
 	if continuation != nil {
 		if err := tree.continueRestored(ctx, *continuation); err != nil {
-			return &RestoreError{Kind: RestoreContinue, Cause: err}
+			return fmt.Errorf("the restored tree did not continue: %w", err)
 		}
 	}
 	return nil
@@ -302,7 +303,7 @@ func (s *Server[H]) liveOrOpen(
 	}
 	s.mu.Unlock()
 	if closing {
-		return nil, nil, session.AdmissionClosed
+		return nil, nil, session.ErrClosed
 	}
 	if tree != nil {
 		return tree, nil, nil

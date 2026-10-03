@@ -32,7 +32,7 @@ func webpChunk(data []byte, wanted string) ([]byte, error) {
 	}
 }
 
-// firstWebPFrame decodes the animation's first canvas, as Rust's read_image does.
+// firstWebPFrame decodes an animation's first frame on its full canvas.
 // x/image/webp decodes static bitstreams but does not expose ANMF frames. Supply
 // its existing codec the first frame's chunks in a static RIFF envelope; the
 // declared canvas and frame bounds are checked before it allocates pixels.

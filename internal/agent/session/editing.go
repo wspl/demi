@@ -1,8 +1,6 @@
 package session
 
 import (
-	"context"
-
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
 	"github.com/wspl/demi/internal/commandwire"
@@ -47,8 +45,13 @@ type EditCheck interface{ editCheck() }
 // EditAccepted carries the receipt of an operation accepted before.
 type EditAccepted struct{ Receipt store.EditReceipt }
 
-// EditInFlight shares the acceptance of an operation still being prepared.
-type EditInFlight struct{ Acceptance *Acceptance }
+// EditInFlight means an earlier request was preparing the operation. CheckEdit
+// returns it once that edit is accepted, after its EditCommitted event, with
+// the acceptance's receipt.
+type EditInFlight struct {
+	Receipt    store.EditReceipt
+	acceptance *acceptance
+}
 
 // EditProceed means the operation is new and its snapshot current.
 type EditProceed struct{}
@@ -57,18 +60,12 @@ func (*EditAccepted) editCheck() {}
 func (*EditInFlight) editCheck() {}
 func (*EditProceed) editCheck()  {}
 
-// Acceptance is an in-flight edit's durable acceptance, shared by every caller
-// of the same request. Cancelling a wait does not cancel the admitted edit.
-// Successful waits resolve after EditCommitted delivery. To order a reply
+// acceptance is an in-flight edit's durable acceptance, shared by every request
+// of the same operation. Cancelling a wait does not cancel the admitted edit.
+// A successful wait resolves after EditCommitted delivery. To order a reply
 // before replacement events, publish it in that event's callback: waking a
 // waiter does not serialize the waiter's work with later callbacks.
-type Acceptance struct{ result *editResult }
-
-// Wait waits for acceptance, returning the receipt or *EditError. A cancelled
-// wait returns its context error; a lost session returns EditClosed.
-func (a *Acceptance) Wait(ctx context.Context) (store.EditReceipt, error) {
-	return a.wait(ctx)
-}
+type acceptance struct{ result *editResult }
 
 // EditDigest returns the SHA-256 of the request's RFC 8785 canonical JSON,
 // before its uploads are resolved. Invalid constructed requests return an error.

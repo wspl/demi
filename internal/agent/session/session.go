@@ -2,11 +2,13 @@ package session
 
 import (
 	"context"
+	"sync"
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/provider"
 )
 
@@ -58,11 +60,21 @@ func (s *ModelSwitch) Discard(ctx context.Context) error {
 	return runtime.Close(ctx)
 }
 
-// Session is a handle over one agent's state. Share its pointer; methods are
+// Session is one agent's state. Share its pointer; methods are
 // safe for concurrent calls. It owns and joins its worker, persister and wakeup
 // driver in Dispose. No callback, IO or wait runs under its short state lock.
 // Values returned to callers are detached or immutable.
-type Session struct{ *sessionOwner }
+type Session struct {
+	mu       sync.Mutex
+	core     coreState
+	deps     Deps
+	persist  gates.Serial
+	ctx      context.Context
+	cancel   context.CancelFunc
+	workers  sync.WaitGroup
+	closed   chan struct{}
+	closeErr error
+}
 
 // New creates a session with an empty transcript. Its node's first checkpoint
 // is already in the store. The caller owns the session and must call Dispose.
@@ -160,7 +172,7 @@ func (s *Session) HoldMedia(media *store.HeldMedia) {
 }
 
 // Send submits a message, queuing it when busy. A known id returns Duplicate
-// without creating another turn. Refusals return AdmissionError.
+// without creating another turn. Refusals return ErrClosed or ErrEditing.
 func (s *Session) Send(content []core.UserContentBlock, id core.TurnID) (*ActionHandle, error) {
 	return s.admit(sendAction, content, id)
 }
@@ -241,7 +253,7 @@ func (s *Session) ClearMessageQueue() int {
 }
 
 // Steer adds input to the running turn at its next boundary. A refusal returns
-// SteerError without changing input.
+// ErrEditing, ErrSteerFinishing, ErrSteerNotRunning or ErrSteerStopped without changing input.
 func (s *Session) Steer(content []core.UserContentBlock, id core.BlockID) error {
 	return s.steer(content, id)
 }
@@ -278,28 +290,41 @@ func (s *Session) SteerQueuedMessage(message core.TurnID, steer core.BlockID) (b
 }
 
 // AcceptAgentMessage admits another agent's message and returns once its
-// admissionLocked is saved. Failures return *AgentMessageError. A save that starts
+// admissionLocked is saved. A closed session returns ErrClosed and an edit being prepared ErrEditing. A save that starts
 // finishes even if ctx is cancelled.
 func (s *Session) AcceptAgentMessage(ctx context.Context, message core.AgentMessage) error {
 	return s.acceptAgentMessage(ctx, message)
 }
 
 // CheckEdit checks an edit before its uploads are resolved, so repeated
-// requests write no file. A refusal returns *EditError.
+// requests write no file. For an operation still being prepared it waits for
+// that edit's acceptance; cancelling the wait does not cancel the edit. A
+// refusal returns ErrEditConflict, ErrClosed, ErrEditBusy or ErrEditStale, and
+// a rejected in-flight edit returns its reason.
 func (s *Session) CheckEdit(
+	ctx context.Context,
 	operation core.OperationID,
 	digest string,
 	version framewire.TranscriptVersion,
 ) (EditCheck, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.core.checkEditLocked(operation, digest, version)
+	check, err := s.core.checkEditLocked(operation, digest, version)
+	s.mu.Unlock()
+	flight, inFlight := check.(*EditInFlight)
+	if err != nil || !inFlight {
+		return check, err
+	}
+	flight.Receipt, err = flight.acceptance.wait(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return flight, nil
 }
 
 // EditAndSend replaces a user message and everything after it. It returns at
 // durable acceptance; the replacement turn runs on. An accepted operation
 // returns its receipt again. Cancelling the caller's wait does not stop the
-// admitted edit; Abort does. A rejection returns *EditError.
+// admitted edit; Abort does. A rejection leaves the history unchanged and returns its reason.
 func (s *Session) EditAndSend(ctx context.Context, submission EditSubmission) (store.EditReceipt, error) {
 	return s.editAndSend(ctx, submission)
 }
@@ -342,12 +367,12 @@ func (s *Session) StopRunning(ctx context.Context) error {
 
 // UpdateModel records a switch for the next provider request, waiting behind
 // edit preparation if needed. Success transfers the runtime to the session.
-// AdmissionClosed leaves ownership with the caller, who must Discard it.
+// ErrClosed leaves ownership with the caller, who must Discard it.
 func (s *Session) UpdateModel(change ModelSwitch) error {
 	var err error
 	s.mutate(func(c *coreState) {
 		if c.disposing {
-			err = AdmissionClosed
+			err = ErrClosed
 			return
 		}
 		slot := &c.change

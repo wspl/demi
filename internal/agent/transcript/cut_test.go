@@ -73,17 +73,17 @@ func TestRewindAndEditForkBoundaries(t *testing.T) {
 	message := &core.AgentMessageBlock{BlockID: "m", TurnID: "u"}
 	answer := &core.TextBlock{BlockID: "a", Text: "done", Forkable: true}
 	blocks := []core.Block{user, &core.ThinkingBlock{}, steer, answer, message}
-	want := &transcript.Rewound{Retained: []core.Block{user, steer, message}, Input: 0, Turn: "u"}
-	if got := transcript.Rewind(blocks); !reflect.DeepEqual(want, got) {
+	want := transcript.Rewound{Retained: []core.Block{user, steer, message}, Input: 0, Turn: "u"}
+	if got, ok := transcript.Rewind(blocks); !ok || !reflect.DeepEqual(want, got) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 	continuation := &core.AgentMessageBlock{BlockID: "next", TurnID: "next"}
 	blocks = append(blocks, continuation, textBlock("later", "continued"))
-	got := transcript.Rewind(blocks)
+	got, _ := transcript.Rewind(blocks)
 	if got.Input != 5 || got.Turn != "next" || len(got.Retained) != 6 {
 		t.Fatalf("continuation rewind: %+v", got)
 	}
-	if transcript.Rewind([]core.Block{answer}) != nil {
+	if _, ok := transcript.Rewind([]core.Block{answer}); ok {
 		t.Fatal("rewound without input")
 	}
 	if got := transcript.LastAssistantText(blocks, 4); got != "continued" {
@@ -95,17 +95,17 @@ func TestRewindAndEditForkBoundaries(t *testing.T) {
 	if prefix, err := transcript.BeforeUser(blocks, "u"); err != nil || len(prefix) != 0 {
 		t.Fatalf("%v %v", prefix, err)
 	}
-	if _, err := transcript.BeforeUser(blocks, "a"); !errors.Is(err, transcript.NotUserMessage) {
+	if _, err := transcript.BeforeUser(blocks, "a"); !errors.Is(err, transcript.ErrNotUserMessage) {
 		t.Fatal(err)
 	}
 	if prefix, err := transcript.ThroughAssistant(blocks, "a"); err != nil || len(prefix) != 4 {
 		t.Fatalf("%v %v", prefix, err)
 	}
-	if _, err := transcript.ThroughAssistant(blocks, "later"); !errors.Is(err, transcript.NotCompletedText) {
+	if _, err := transcript.ThroughAssistant(blocks, "later"); !errors.Is(err, transcript.ErrNotCompletedText) {
 		t.Fatal(err)
 	}
 	blocks[1] = &core.ToolCallBlock{Status: "executing"}
-	if _, err := transcript.ThroughAssistant(blocks, "a"); !errors.Is(err, transcript.UnfinishedToolCalls) {
+	if _, err := transcript.ThroughAssistant(blocks, "a"); !errors.Is(err, transcript.ErrUnfinishedToolCalls) {
 		t.Fatal(err)
 	}
 	for _, b := range []core.Block{&core.ContextBlock{}, &core.WakeupBlock{Placement: "new_turn"}} {

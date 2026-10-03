@@ -2,8 +2,8 @@ package store_test
 
 import (
 	"encoding/json"
-	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/agent/store"
@@ -58,8 +58,7 @@ func TestStoredHistoryIsRefusedRatherThanRepaired(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			_, err := store.RestoreCommandStateHistory(scenario.snapshot)
-			var stateError *store.CommandStateError
-			if !errors.As(err, &stateError) {
+			if err == nil || !strings.HasPrefix(err.Error(), "invalid command state: ") {
 				t.Fatalf("invalid history: %v", err)
 			}
 		})

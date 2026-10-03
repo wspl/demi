@@ -167,7 +167,7 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 			defer func() { must(t, unpacking.Close()) }()
 			must(t, os.WriteFile(unpacking.ArchivePath(), data.Bytes(), 0o600))
 			_, err = unpacking.Finish(t.Context())
-			_ = assertError[*artifacts.ArchiveError](t, err)
+			assertPrefix(t, err, "the archive cannot be installed: ")
 			if got := names(t, root); len(got) != 1 || !strings.HasSuffix(got[0], ".lock") {
 				t.Fatal(got)
 			}
@@ -179,7 +179,7 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 			t.TempDir(),
 			artifacts.Archive{Digest: declared(body), Entry: entry},
 		)
-		_ = assertError[*artifacts.ArchiveError](t, err)
+		assertPrefix(t, err, "the archive cannot be installed: ")
 	}
 	root := t.TempDir()
 	archive := artifacts.Archive{Digest: declared(body), Entry: "tool"}
@@ -188,7 +188,7 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 	defer func() { must(t, unpacking.Close()) }()
 	must(t, os.WriteFile(unpacking.ArchivePath(), body, 0o600))
 	_, err = unpacking.Finish(t.Context())
-	_ = assertError[*artifacts.ArchiveError](t, err)
+	assertPrefix(t, err, "the archive cannot be installed: ")
 }
 
 type brokenReader struct{ err error }
@@ -292,7 +292,7 @@ func TestArchivePreservesDirectoryPermissionsAfterExtraction(t *testing.T) {
 	defer func() { must(t, pending.Close()) }()
 	must(t, os.WriteFile(pending.ArchivePath(), data.Bytes(), 0o600))
 	_, err = pending.Finish(t.Context())
-	_ = assertError[*artifacts.ArchiveError](t, err)
+	assertPrefix(t, err, "the archive cannot be installed: ")
 	if found := names(t, failedRoot); len(found) != 1 || !strings.HasSuffix(found[0], ".lock") {
 		t.Fatal(found)
 	}

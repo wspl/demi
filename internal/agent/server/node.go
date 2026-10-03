@@ -80,7 +80,7 @@ func (r *nodeRuntime[H]) EnterAction(ctx context.Context) (*gates.Lease, error) 
 func (r *nodeRuntime[H]) ReserveEdit(ctx context.Context) (*gates.Reservation, error) {
 	reservation := r.lifecycle.TryReserve()
 	if reservation == nil {
-		//nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
 		return nil, errors.New(
 			"Cannot edit while a child lifecycle operation is in progress",
 		)
@@ -89,7 +89,7 @@ func (r *nodeRuntime[H]) ReserveEdit(ctx context.Context) (*gates.Reservation, e
 	if err == nil {
 		for _, child := range children {
 			if child.Closed == nil || !child.Delivered {
-				//nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+				//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
 				err = errors.New(
 					"Cannot edit while children or completion notifications are pending",
 				)
@@ -226,7 +226,7 @@ func (n *Node[H]) continueFrom(ctx context.Context, continuation session.Continu
 	if continuation.Interrupted {
 		if n.record.Parent == nil {
 			n.session.RecordInterruption()
-		} else if _, err := n.session.Resume(); err != nil && !errors.Is(err, session.AdmissionClosed) {
+		} else if _, err := n.session.Resume(); err != nil && !errors.Is(err, session.ErrClosed) {
 			return err
 		}
 	}
@@ -235,7 +235,7 @@ func (n *Node[H]) continueFrom(ctx context.Context, continuation session.Continu
 			message.Content,
 			message.ID,
 		); err != nil &&
-			!errors.Is(err, session.AdmissionClosed) {
+			!errors.Is(err, session.ErrClosed) {
 			return err
 		}
 	}

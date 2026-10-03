@@ -46,7 +46,7 @@ func (t *Tree[H]) start(
 
 	lease := owner.runtime.lifecycle.TryEnter(gates.Maintenance)
 	if lease == nil {
-		//nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
 		return 0, errors.New(
 			"Cannot change children while a transcript edit is being prepared",
 		)
@@ -154,7 +154,7 @@ func (t *Tree[H]) reopen(
 		return 0, err
 	}
 	if !record.Delivered {
-		//nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
 		return 0, errors.New(
 			"The previous completion is not saved by the parent yet; retry resume after receiving it",
 		)

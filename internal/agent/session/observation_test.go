@@ -1,6 +1,7 @@
 package session_test
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -117,17 +118,20 @@ func TestEditAcceptanceIsPublishedBetweenRewriteAndProgress(t *testing.T) {
 		defer gate.Release()
 		first := editAsync(t, f.s, submission)
 		must(t, gate.Wait(t.Context(), 1))
-		check, err := f.s.CheckEdit(submission.OperationID, submission.Digest, submission.Version)
-		must(t, err)
-		flight, ok := check.(*session.EditInFlight)
-		if !ok {
-			t.Fatalf("got %T, want in-flight edit", check)
-		}
 		shared := make(chan editAnswer, 1)
 		go func() {
-			receipt, err := flight.Acceptance.Wait(t.Context())
-			shared <- editAnswer{receipt, err}
+			check, err := f.s.CheckEdit(t.Context(), submission.OperationID, submission.Digest, submission.Version)
+			flight, ok := check.(*session.EditInFlight)
+			if err == nil && !ok {
+				err = fmt.Errorf("got %T, want in-flight edit", check)
+			}
+			answer := editAnswer{err: err}
+			if ok {
+				answer.receipt = flight.Receipt
+			}
+			shared <- answer
 		}()
+		synctest.Wait()
 		gate.Release()
 		<-paused
 		synctest.Wait()

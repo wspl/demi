@@ -2,7 +2,7 @@ package store
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
-// Contract comments are product text copied verbatim from Rust.
+// Contract comments are product text: contractgen emits them as schema descriptions.
 //revive:disable:exported
 
 import "github.com/wspl/demi/internal/core"

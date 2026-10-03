@@ -421,7 +421,7 @@ func (s *Server[H]) publishTree(ctx context.Context, t *Tree[H], node *Node[H], 
 		s.mu.Unlock()
 		cancel()
 		t.subscription.Release()
-		return errors.Join(session.AdmissionClosed, node.session.Dispose(context.WithoutCancel(ctx)))
+		return errors.Join(session.ErrClosed, node.session.Dispose(context.WithoutCancel(ctx)))
 	}
 	s.trees[t.id] = t
 	s.mu.Unlock()

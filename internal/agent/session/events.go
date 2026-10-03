@@ -62,7 +62,7 @@ type TranscriptChanged struct {
 
 // EditCommitted publishes a new edit's durable receipt immediately after its
 // rewrite and before replacement progress. The server sends EditResult to the
-// initiating connections from this callback, not from an Acceptance.Wait wake.
+// initiating connections from this callback, not when CheckEdit or EditAndSend returns.
 // A duplicate request returns its receipt without publishing another event.
 type EditCommitted struct{ Receipt store.EditReceipt }
 

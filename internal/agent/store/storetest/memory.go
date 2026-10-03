@@ -109,8 +109,8 @@ func (s *MemoryTreeStore) Checkpoint(id core.NodeID) *store.Checkpoint {
 	if !exists {
 		return nil
 	}
-	// This inspection helper mirrors Rust's load(...).ok().flatten(). Load
-	// exposes corruption errors to tests that need to inspect those failures.
+	// A corrupt checkpoint reads as absent here; Load returns the corruption
+	// error to tests that inspect those failures.
 	checkpoint, _ := node.rows.checkpoint(id)
 	return checkpoint
 }

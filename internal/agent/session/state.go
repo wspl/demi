@@ -4,12 +4,10 @@ import (
 	"context"
 	"reflect"
 	"slices"
-	"sync"
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
 	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/provider"
 )
 
@@ -47,7 +45,7 @@ type pendingInput struct {
 }
 type editFlight struct {
 	submission EditSubmission
-	acceptance *Acceptance
+	acceptance *acceptance
 	accepted   bool
 }
 
@@ -90,19 +88,6 @@ type coreState struct {
 	publishedSteers  []core.PendingSteer
 	publishedPhase   core.SessionPhase
 	publishedStatus  Status
-}
-
-// sessionOwner owns all workers and save ordering independently of request waits.
-type sessionOwner struct {
-	mu       sync.Mutex
-	core     coreState
-	deps     Deps
-	persist  gates.Serial
-	ctx      context.Context
-	cancel   context.CancelFunc
-	workers  sync.WaitGroup
-	closed   chan struct{}
-	closeErr error
 }
 
 // mutate performs one atomic session decision and publishes its effects in order.
@@ -196,8 +181,8 @@ func (s *Session) emit(event Event) { s.mutate(func(_ *coreState) { s.eventLocke
 // commitLocked captures the command-state boundaries of a transcript mutation.
 func (s *Session) commitLocked() {
 	c := &s.core
-	batch := c.log.TakePatches()
-	if batch == nil {
+	batch, changed := c.log.TakePatches()
+	if !changed {
 		return
 	}
 	c.rows.Merge(batch.Rows)
@@ -298,26 +283,26 @@ func (c *coreState) statusLocked() Status {
 func (c *coreState) preparingEditLocked() bool { return c.edit != nil && !c.edit.accepted }
 func (c *coreState) admissionLocked() error {
 	if c.disposing {
-		return AdmissionClosed
+		return ErrClosed
 	}
 	if c.preparingEditLocked() {
-		return AdmissionEditing
+		return ErrEditing
 	}
 	return nil
 }
 
 func (c *coreState) steerableLocked() error {
 	if c.preparingEditLocked() {
-		return SteerEditing
+		return ErrEditing
 	}
 	if c.stage == Finalizing {
-		return SteerFinishing
+		return ErrSteerFinishing
 	}
 	if c.active == nil {
-		return SteerNotRunning
+		return ErrSteerNotRunning
 	}
 	if c.active.stopped || c.disposing {
-		return SteerStopped
+		return ErrSteerStopped
 	}
 	return nil
 }

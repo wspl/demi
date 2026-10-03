@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"slices"
 
@@ -53,34 +54,29 @@ func (s *Session) steer(content []core.UserContentBlock, id core.BlockID) error 
 
 func (s *Session) acceptAgentMessage(ctx context.Context, message core.AgentMessage) error {
 	if err := message.Validate(); err != nil {
-		return &AgentMessageError{Kind: AgentMessageInvalid, Detail: err.Error(), Cause: err}
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+		return fmt.Errorf("The agent message is invalid: %w", err)
 	}
 	var err error
 	s.mutate(func(c *coreState) {
-		refuse := func(kind AgentMessageErrorKind) { err = &AgentMessageError{Kind: kind} }
 		if message.RecipientID != c.id {
-			refuse(AgentMessageRecipient)
+			err = ErrAgentMessageRecipient
 			return
 		}
-		if c.disposing {
-			refuse(AgentMessageClosed)
-			return
-		}
-		if c.preparingEditLocked() {
-			refuse(AgentMessageEditing)
+		if err = c.admissionLocked(); err != nil {
 			return
 		}
 		existing, conflict := c.agentMessageLocked(message.ID)
 		if existing != nil {
 			if !reflect.DeepEqual(*existing, message) {
-				refuse(AgentMessageDifferentContent)
+				err = ErrAgentMessageDifferentContent
 				return
 			}
 			s.startNextLocked()
 			return
 		}
 		if conflict {
-			refuse(AgentMessageConflict)
+			err = ErrAgentMessageConflict
 			return
 		}
 		turn := core.TurnID(message.ID)
@@ -98,10 +94,7 @@ func (s *Session) acceptAgentMessage(ctx context.Context, message core.AgentMess
 	if err != nil {
 		return err
 	}
-	if err = s.Flush(ctx); err != nil {
-		return &AgentMessageError{Kind: AgentMessageStore, Cause: err}
-	}
-	return nil
+	return s.Flush(ctx)
 }
 
 type inputSelection uint8

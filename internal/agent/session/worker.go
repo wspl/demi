@@ -125,8 +125,8 @@ func (s *Session) execute(a *action) error {
 }
 
 func (s *Session) retry(ctx context.Context) error {
-	rewound := transcript.Rewind(s.Transcript().Blocks)
-	if rewound == nil {
+	rewound, ok := transcript.Rewind(s.Transcript().Blocks)
+	if !ok {
 		return &ErrorReport{Message: "There is no input turn to retry"}
 	}
 	input := rewound.Retained[rewound.Input]
@@ -236,7 +236,7 @@ func (s *Session) detachActionLocked(a *action) ActionEnd {
 	c := &s.core
 	end := Completed
 	began := a.startRevision != c.log.Version().Revision
-	s.rejectEditLocked(&EditError{Kind: EditClosed})
+	s.rejectEditLocked(ErrClosed)
 	if began {
 		s.recordStopLocked(true)
 		end = Aborted
@@ -255,17 +255,12 @@ func (s *Session) detachActionLocked(a *action) ActionEnd {
 	return end
 }
 
-func stoppedEditError(err error) *EditError {
-	editErr := &EditError{Kind: EditStopped}
-	if err != nil && !errors.Is(err, context.Canceled) {
-		var original *EditError
-		if errors.As(err, &original) {
-			editErr = original
-		} else {
-			editErr = &EditError{Kind: EditFailed, Detail: err.Error(), Cause: err}
-		}
+// stoppedEditError is the rejection of an edit whose action ended with err.
+func stoppedEditError(err error) error {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return ErrEditStopped
 	}
-	return editErr
+	return err
 }
 
 func (s *Session) sendTurn(ctx context.Context, a *action) error {

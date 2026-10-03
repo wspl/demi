@@ -123,7 +123,7 @@ func (s *MemoryTreeStore) applySaveLocked(saved savedRows) error {
 	return nil
 }
 
-// missing describes an operation on an absent tree node, as the Rust fake does.
+// missing describes an operation on an absent tree node.
 func missing(id core.NodeID) error {
 	return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("no node %s", id)}
 }

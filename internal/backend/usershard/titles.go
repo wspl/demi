@@ -130,10 +130,10 @@ func (s *Shard) generateTitle(
 	if err != nil {
 		return err
 	}
-	if title == nil || ctx.Err() != nil {
+	if title == "" || ctx.Err() != nil {
 		return nil
 	}
-	_, err = s.Control().GeneratedTitle(ctx, id, *title, request.from, request.seen)
+	_, err = s.Control().GeneratedTitle(ctx, id, title, request.from, request.seen)
 	return err
 }
 

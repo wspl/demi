@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -13,15 +14,6 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-// CommandStateError explains why a command state is refused.
-type CommandStateError struct {
-	// Reason is the command-state refusal text.
-	Reason string
-}
-
-// Error returns the refusal text.
-func (e *CommandStateError) Error() string { return e.Reason }
-
 // validateCommandStorageKey checks a node's logical command storage name.
 func validateCommandStorageKey(key CommandStorageKey) error {
 	s := string(key)
@@ -29,9 +21,7 @@ func validateCommandStorageKey(key CommandStorageKey) error {
 		(s[2] == '/' || s[2] == '\\')
 	traverses := slices.Contains(strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == '\\' }), "..")
 	if s == "" || strings.ContainsRune(s, 0) || strings.HasPrefix(s, "/") || drive || traverses {
-		return &CommandStateError{
-			Reason: fmt.Sprintf("command storage key %q is not a relative name without path traversal", s),
-		}
+		return fmt.Errorf("command storage key %q is not a relative name without path traversal", s)
 	}
 	return nil
 }
@@ -71,7 +61,7 @@ func NewCommandStateHistory() *CommandStateHistory {
 // Invalid data is refused, never repaired.
 func RestoreCommandStateHistory(snapshot CommandStateSnapshot) (*CommandStateHistory, error) {
 	refuse := func(reason string) (*CommandStateHistory, error) {
-		return nil, &CommandStateError{Reason: "invalid command state: " + reason}
+		return nil, errors.New("invalid command state: " + reason)
 	}
 	h := &CommandStateHistory{
 		versions:   map[uint64]map[CommandStorageKey]json.RawMessage{},

@@ -67,7 +67,7 @@ func (s *Shard) relayConversation(
 	readCtx, readCancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer readCancel()
 	incoming := readPage(readCtx, socket, &workers)
-	outgoing := make(chan server.Outgoing)
+	outgoing := make(chan framewire.ServerFrame)
 	workers.Add(1)
 	go forwardConversationFrames(ctx, frames, outgoing, &workers)
 	return s.exchangeConversation(ctx, conversationExchange{
@@ -77,29 +77,23 @@ func (s *Shard) relayConversation(
 		page:       page,
 		incoming:   incoming,
 		outgoing:   outgoing,
+		frames:     frames,
 	})
 }
 
-// forwardConversationFrames relays agent frames until cancellation or the closed frame.
+// forwardConversationFrames relays agent frames until cancellation or the outbox ends.
 func forwardConversationFrames(
 	ctx context.Context,
-	frames *server.FrameReceiver,
-	outgoing chan<- server.Outgoing,
+	frames *server.Frames,
+	outgoing chan<- framewire.ServerFrame,
 	workers *sync.WaitGroup,
 ) {
 	defer workers.Done()
 	defer close(outgoing)
-	for {
-		frame, err := frames.Receive(ctx)
-		if err != nil {
-			return
-		}
+	for frames.Next(ctx) {
 		select {
-		case outgoing <- frame:
+		case outgoing <- frames.Frame():
 		case <-ctx.Done():
-			return
-		}
-		if _, closed := frame.(*server.Closed); closed {
 			return
 		}
 	}
@@ -116,7 +110,8 @@ type conversationExchange struct {
 	files      *conversationFiles
 	page       *pageSocket
 	incoming   <-chan pageMessage
-	outgoing   <-chan server.Outgoing
+	outgoing   <-chan framewire.ServerFrame
+	frames     *server.Frames // Read Err only after outgoing closes.
 }
 
 // exchangeConversation sends agent frames while admitting one client message at a time.
@@ -160,12 +155,14 @@ func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationE
 			if ended {
 				return err
 			}
-		case item, ok := <-exchange.outgoing:
+		case frame, ok := <-exchange.outgoing:
 			if !ok {
+				if errors.Is(exchange.frames.Err(), server.ErrLagged) {
+					exchange.page.close(context.WithoutCancel(ctx), websocket.StatusCode(4001), "lagged")
+				}
 				return nil
 			}
-			ended, err := sendConversationItem(ctx, exchange.page, item, send)
-			if ended {
+			if err := send(frame); err != nil {
 				return err
 			}
 		case <-exchange.page.heartbeat.C:
@@ -194,27 +191,6 @@ func finishConversationMessage(
 		if err := send(result.reply); err != nil {
 			return true, err
 		}
-	}
-	return false, nil
-}
-
-// sendConversationItem sends a frame or ends a closed or lagging conversation.
-func sendConversationItem(
-	ctx context.Context,
-	page *pageSocket,
-	item server.Outgoing,
-	send func(framewire.ServerFrame) error,
-) (bool, error) {
-	switch item := item.(type) {
-	case *server.Frame:
-		if err := send(item.Frame); err != nil {
-			return true, err
-		}
-	case *server.Lagged:
-		page.close(context.WithoutCancel(ctx), websocket.StatusCode(4001), "lagged")
-		return true, nil
-	case *server.Closed:
-		return true, nil
 	}
 	return false, nil
 }

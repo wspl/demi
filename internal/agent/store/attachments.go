@@ -39,7 +39,7 @@ func IsText(name, mediaType string) bool {
 // whitespace and keeps at most SnippetMaxChars Unicode scalar values.
 func Snippet(data []byte) string {
 	// UTF-8's replacement decoder cannot fail for a byte slice; it replaces
-	// each malformed sequence just as String::from_utf8_lossy does.
+	// each malformed sequence with U+FFFD.
 	decoded, _ := unicode.UTF8.NewDecoder().Bytes(data[:min(len(data), 4096)])
 	text := strings.ReplaceAll(strings.ReplaceAll(string(decoded), "\r\n", "\n"), "\r", "\n")
 	trimmed := strings.TrimSpace(text)

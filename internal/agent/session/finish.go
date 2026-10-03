@@ -48,9 +48,9 @@ type editResult struct {
 	err     error
 }
 
-func newAcceptance() *Acceptance { return &Acceptance{result: &editResult{done: make(chan struct{})}} }
+func newAcceptance() *acceptance { return &acceptance{result: &editResult{done: make(chan struct{})}} }
 
-func (a *Acceptance) finish(receipt store.EditReceipt, err error) {
+func (a *acceptance) finish(receipt store.EditReceipt, err error) {
 	a.result.once.Do(func() {
 		a.result.receipt = receipt
 		a.result.err = err
@@ -58,7 +58,7 @@ func (a *Acceptance) finish(receipt store.EditReceipt, err error) {
 	})
 }
 
-func (a *Acceptance) wait(ctx context.Context) (store.EditReceipt, error) {
+func (a *acceptance) wait(ctx context.Context) (store.EditReceipt, error) {
 	select {
 	case <-a.result.done:
 		return a.result.receipt, a.result.err

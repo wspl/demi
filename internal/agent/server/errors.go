@@ -37,29 +37,10 @@ func (e *ResolveError) Error() string {
 // Unwrap preserves the underlying failure for errors.Is and errors.As.
 func (e *ResolveError) Unwrap() error { return e.Cause }
 
-// RestoreErrorKind distinguishes opening a tree from continuing it.
-type RestoreErrorKind uint8
-
-const (
-	// RestoreOpen means the tree did not open.
-	RestoreOpen RestoreErrorKind = iota
-	// RestoreContinue means the restored tree did not continue.
-	RestoreContinue
+//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+var (
+	// errNoSession refuses a steer on a connection with no open session.
+	errNoSession = errors.New("No session is open on this connection")
+	// errQueuedMessageNotFound refuses a steer of a message that is not queued.
+	errQueuedMessageNotFound = errors.New("Queued message not found")
 )
-
-// RestoreError explains why a tree could not be restored without a connection.
-type RestoreError struct {
-	Kind  RestoreErrorKind
-	Cause error
-}
-
-// Error returns the restoration failure's text.
-func (e *RestoreError) Error() string {
-	if e.Kind == RestoreOpen {
-		return fmt.Sprintf("the tree did not open: %v", e.Cause)
-	}
-	return fmt.Sprintf("the restored tree did not continue: %v", e.Cause)
-}
-
-// Unwrap preserves the opening or store failure.
-func (e *RestoreError) Unwrap() error { return e.Cause }

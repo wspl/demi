@@ -147,8 +147,7 @@ func TestDispatchUsesCurrentHostAndReleasesEndedHandles(t *testing.T) {
 	call.ToolName = "shell_status"
 	call.Input = []byte(`{"commandId":17}`)
 	_, err = access.Invoke(t.Context(), call)
-	var failure *session.ToolFailure
-	if !errors.As(err, &failure) || failure.Message != "offline" {
+	if err == nil || err.Error() != "offline" {
 		t.Fatal("Host failure did not become a tool failure")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
