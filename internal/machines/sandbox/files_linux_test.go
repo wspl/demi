@@ -68,7 +68,7 @@ func TestCredentialModesIgnoreUmask(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := directory.WriteCredentials(ctx, boot, []netip.Addr{netip.MustParseAddr("1.1.1.1")}); err != nil && !(os.Geteuid() != 0 && errors.Is(err, os.ErrPermission)) {
+		if err := directory.WriteCredentials(ctx, boot, []netip.Addr{netip.MustParseAddr("1.1.1.1")}); err != nil && (os.Geteuid() == 0 || !errors.Is(err, os.ErrPermission)) {
 			t.Fatal(err)
 		}
 		for path, mode := range map[string]os.FileMode{directory.Boot(): 0400, directory.Resolver(): 0444, directory.Hosts(): 0444, directory.Root(): 0700} {
