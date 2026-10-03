@@ -38,8 +38,7 @@ func (*PortMessageReadValue) portMessage() {}
 
 // Every value of the plugin's for the user.
 // +demi:variant PortMessage list_values
-type PortMessageListValues struct {
-}
+type PortMessageListValues struct{}
 
 func (*PortMessageListValues) portMessage() {}
 
@@ -122,15 +121,13 @@ func (*PortMessagePackageCall) portMessage() {}
 
 // The request's conversation's main and attached Hosts.
 // +demi:variant PortMessage conversation_hosts
-type PortMessageConversationHosts struct {
-}
+type PortMessageConversationHosts struct{}
 
 func (*PortMessageConversationHosts) portMessage() {}
 
 // The user's live exposes, soonest expiry first.
 // +demi:variant PortMessage list_exposes
-type PortMessageListExposes struct {
-}
+type PortMessageListExposes struct{}
 
 func (*PortMessageListExposes) portMessage() {}
 
@@ -234,8 +231,7 @@ func (*PortAnswerHostFiles) portAnswer() {}
 
 // The operation is done and answers nothing.
 // +demi:variant PortAnswer done
-type PortAnswerDone struct {
-}
+type PortAnswerDone struct{}
 
 func (*PortAnswerDone) portAnswer() {}
 
@@ -324,8 +320,7 @@ type HostRead struct {
 type HostFile interface{ hostFile() }
 
 // +demi:variant HostFile missing
-type HostFileMissing struct {
-}
+type HostFileMissing struct{}
 
 func (*HostFileMissing) hostFile() {}
 
@@ -348,8 +343,7 @@ func (*HostFileFile) hostFile() {}
 
 // Neither a file nor a directory.
 // +demi:variant HostFile other
-type HostFileOther struct {
-}
+type HostFileOther struct{}
 
 func (*HostFileOther) hostFile() {}
 
@@ -475,8 +469,7 @@ func (*PortRefusalOperation) portRefusal() {}
 
 // Another write of the value came first.
 // +demi:variant PortRefusal conflict
-type PortRefusalConflict struct {
-}
+type PortRefusalConflict struct{}
 
 func (*PortRefusalConflict) portRefusal() {}
 
@@ -491,16 +484,14 @@ func (*PortRefusalExpose) portRefusal() {}
 
 // The operation needs a conversation, and the request has none.
 // +demi:variant PortRefusal no_conversation
-type PortRefusalNoConversation struct {
-}
+type PortRefusalNoConversation struct{}
 
 func (*PortRefusalNoConversation) portRefusal() {}
 
 // The conversation's main Host is not running: a stopped Cloud, or a
 // device whose runner is not connected. A read never wakes it.
 // +demi:variant PortRefusal not_running
-type PortRefusalNotRunning struct {
-}
+type PortRefusalNotRunning struct{}
 
 func (*PortRefusalNotRunning) portRefusal() {}
 

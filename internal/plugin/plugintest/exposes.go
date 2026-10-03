@@ -15,13 +15,16 @@ import (
 func (d *TestDemi) LiveExposes() []plugin.ExposeRecord {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.liveExposes()
+	return d.liveExposesLocked()
 }
 
-// liveExposes applies the test clock while mu is held.
-func (d *TestDemi) liveExposes() []plugin.ExposeRecord {
+// liveExposesLocked applies the test clock while mu is held.
+func (d *TestDemi) liveExposesLocked() []plugin.ExposeRecord {
 	d.exposes = slices.DeleteFunc(d.exposes, func(e plugin.ExposeRecord) bool { return e.ExpiresAt <= d.Now })
-	slices.SortStableFunc(d.exposes, func(a, b plugin.ExposeRecord) int { return cmp.Compare(a.ExpiresAt, b.ExpiresAt) })
+	slices.SortStableFunc(
+		d.exposes,
+		func(a, b plugin.ExposeRecord) int { return cmp.Compare(a.ExpiresAt, b.ExpiresAt) },
+	)
 	return append([]plugin.ExposeRecord{}, d.exposes...)
 }
 
@@ -32,8 +35,8 @@ func (d *TestDemi) EndExposesOn(device webapi.DeviceID) {
 	d.exposes = slices.DeleteFunc(d.exposes, func(e plugin.ExposeRecord) bool { return e.Device == device })
 }
 
-// createExpose answers a creation request using the test clock and Hosts.
-func (d *TestDemi) createExpose(m *plugin.PortMessageCreateExpose) (plugin.PortAnswer, error) {
+// createExposeLocked answers a creation request using the test clock and Hosts.
+func (d *TestDemi) createExposeLocked(m *plugin.PortMessageCreateExpose) (plugin.PortAnswer, error) {
 	if !d.ExposesAvailable {
 		return exposeRefused(plugin.ExposeRefusalUnavailable, "no expose domain"), nil
 	}
@@ -49,7 +52,7 @@ func (d *TestDemi) createExpose(m *plugin.PortMessageCreateExpose) (plugin.PortA
 	if !h.Online {
 		return exposeRefused(plugin.ExposeRefusalDeviceOffline, "offline"), nil
 	}
-	expiry, err := d.after(m.Lifetime)
+	expiry, err := d.exposeExpiryLocked(m.Lifetime)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +69,8 @@ func (d *TestDemi) createExpose(m *plugin.PortMessageCreateExpose) (plugin.PortA
 	return &plugin.PortAnswerExpose{Expose: record}, nil
 }
 
-// after advances the test clock by an expose lifetime.
-func (d *TestDemi) after(seconds uint64) (core.Timestamp, error) {
+// exposeExpiryLocked computes an expiry from the test clock while mu is held.
+func (d *TestDemi) exposeExpiryLocked(seconds uint64) (core.Timestamp, error) {
 	now, err := d.Now.Millisecond()
 	if err != nil {
 		return "", err

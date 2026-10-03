@@ -96,7 +96,14 @@ func add(ctx context.Context, args AddArgs, jsonOutput bool, port plugin.Port) (
 			data, err := (ExposeAnswer{Expose: line(entry)}).MarshalJSON()
 			return string(data), "", err
 		}
-		return fmt.Sprintf("Exposed %s on %s as %s\nExpires in %d minutes (expose %d).\n", entry.expose.Address, target.Name, entry.expose.URL, lifetime/60, entry.number), "", nil
+		return fmt.Sprintf(
+			"Exposed %s on %s as %s\nExpires in %d minutes (expose %d).\n",
+			entry.expose.Address,
+			target.Name,
+			entry.expose.URL,
+			lifetime/60,
+			entry.number,
+		), "", nil
 	}
 	return "", "the expose ended at once", nil
 }
@@ -132,12 +139,27 @@ func list(ctx context.Context, jsonOutput bool, port plugin.Port) (string, error
 			return "", err
 		}
 		left := max(int64(0), expiry-now)
-		rows = append(rows, [5]string{fmt.Sprint(entry.number), entry.expose.DeviceName, string(entry.expose.Address), fmt.Sprintf("%d min", (left+30000)/60000), entry.expose.URL})
+		rows = append(
+			rows,
+			[5]string{
+				fmt.Sprint(entry.number),
+				entry.expose.DeviceName,
+				string(entry.expose.Address),
+				fmt.Sprintf("%d min", (left+30000)/60000),
+				entry.expose.URL,
+			},
+		)
 	}
 	return table(rows), nil
 }
 
-func change(ctx context.Context, method string, number uint64, jsonOutput bool, port plugin.Port) (string, string, error) {
+func change(
+	ctx context.Context,
+	method string,
+	number uint64,
+	jsonOutput bool,
+	port plugin.Port,
+) (string, string, error) {
 	listed, err := port.Exposes(ctx)
 	if err != nil {
 		return "", "", err
@@ -196,7 +218,13 @@ func exposeRefusal(err error) (string, error) {
 
 func line(entry numberedExpose) ExposeLine {
 	e := entry.expose
-	return ExposeLine{Number: entry.number, Device: e.DeviceName, Address: string(e.Address), URL: e.URL, ExpiresAt: e.ExpiresAt}
+	return ExposeLine{
+		Number:    entry.number,
+		Device:    e.DeviceName,
+		Address:   string(e.Address),
+		URL:       e.URL,
+		ExpiresAt: e.ExpiresAt,
+	}
 }
 
 // table formats expose rows at Unicode character widths, two spaces apart.
@@ -225,7 +253,11 @@ func table(rows [][5]string) string {
 func commandArgs[T any](invocation host.RPCInvocation, decode func([]byte) (T, error)) (T, error) {
 	value, err := decode(invocation.Args)
 	if err != nil {
-		return value, fmt.Errorf("the arguments of %q do not decode as declared: %w", strings.Join(invocation.Path, " "), err)
+		return value, fmt.Errorf(
+			"the arguments of %q do not decode as declared: %w",
+			strings.Join(invocation.Path, " "),
+			err,
+		)
 	}
 	return value, nil
 }

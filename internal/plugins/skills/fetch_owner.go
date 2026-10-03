@@ -10,34 +10,34 @@ import (
 )
 
 // startFetch registers each worker before launch under the same mutex as Close.
-func (p *instance) startFetch(port plugin.Port, id string) {
-	p.mu.Lock()
-	if p.ctx.Err() != nil || p.fetching[id] {
-		p.mu.Unlock()
+func (i *instance) startFetch(port plugin.Port, id string) {
+	i.mu.Lock()
+	if i.ctx.Err() != nil || i.fetching[id] {
+		i.mu.Unlock()
 		return
 	}
-	p.fetching[id] = true
-	p.workers.Add(1)
-	p.mu.Unlock()
+	i.fetching[id] = true
+	i.workers.Add(1)
+	i.mu.Unlock()
 	go func() {
-		defer p.workers.Done()
-		if err := p.fetchSource(p.ctx, port, id); err != nil && p.ctx.Err() == nil {
+		defer i.workers.Done()
+		if err := i.fetchSource(i.ctx, port, id); err != nil && i.ctx.Err() == nil {
 			slog.Warn("a skill source's fetch was not recorded", "source", id, "error", err)
 		}
-		p.mu.Lock()
-		delete(p.fetching, id)
-		p.mu.Unlock()
-		if p.ctx.Err() != nil {
+		i.mu.Lock()
+		delete(i.fetching, id)
+		i.mu.Unlock()
+		if i.ctx.Err() != nil {
 			return
 		}
 		// A page that misses this change reads the state again when it reconnects.
-		if err := port.Changed(p.ctx, plugin.ScopeUser); err != nil {
+		if err := port.Changed(i.ctx, plugin.ScopeUser); err != nil {
 			slog.Warn("the pages did not learn of a fetch's end", "source", id, "error", err)
 		}
 	}()
 }
 
-func (p *instance) fetchSource(ctx context.Context, port plugin.Port, id string) error {
+func (i *instance) fetchSource(ctx context.Context, port plugin.Port, id string) error {
 	if err := port.Changed(ctx, plugin.ScopeUser); err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func (p *instance) fetchSource(ctx context.Context, port plugin.Port, id string)
 	if err != nil {
 		return fmt.Errorf("a stored origin: %w", err)
 	}
-	fetched, fetchErr := fetch(ctx, p.resolve(origin.url), origin.repository())
+	fetched, fetchErr := fetch(ctx, i.resolve(origin.url), origin.repository())
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -60,37 +60,16 @@ func (p *instance) fetchSource(ctx context.Context, port plugin.Port, id string)
 			return err
 		}
 	}
-	if err := p.enterMutation(ctx); err != nil {
+	if err := i.enterMutation(ctx); err != nil {
 		return err
 	}
-	defer p.leaveMutation()
-	for {
-		stored, err := findSource(ctx, port, id)
-		if err != nil {
-			return err
-		}
-		if stored == nil {
-			// Removed while it was fetched.
-			return nil
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		recorded := stored.source
-		at := p.clock.Now()
-		if fetchErr == nil {
-			recorded = pinSource(recorded, fetched.commit, skills, fetched.skipped, at)
-		} else {
-			recorded.Failure = &Failure{At: at, Message: fetchErr.Error()}
-		}
-		_, err = writeSource(ctx, port, id, recorded, &stored.revision)
-		if sourceConflict(err) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		break
+	defer i.leaveMutation()
+	recorded, err := i.recordFetch(ctx, port, id, fetched, skills, fetchErr)
+	if err != nil {
+		return err
+	}
+	if !recorded {
+		return nil
 	}
 	if fetchErr == nil {
 		all, err := readSources(ctx, port)
@@ -118,7 +97,57 @@ func putFetchedFiles(ctx context.Context, port plugin.Port, fetched fetched) ([]
 			}
 			files = append(files, plugin.DirectoryFile{Path: file.path, Executable: file.executable, Blob: blob})
 		}
-		skills = append(skills, userSkill{Name: skill.parsed.name, Description: skill.parsed.description, Directory: skill.directory, Files: files, Warnings: skill.parsed.warnings, DisableModelInvocation: skill.parsed.disableModelInvocation})
+		skills = append(
+			skills,
+			userSkill{
+				Name:                   skill.parsed.name,
+				Description:            skill.parsed.description,
+				Directory:              skill.directory,
+				Files:                  files,
+				Warnings:               skill.parsed.warnings,
+				DisableModelInvocation: skill.parsed.disableModelInvocation,
+			},
+		)
 	}
 	return skills, nil
+}
+
+// recordFetch reports whether the source still existed when its fetch was recorded.
+func (i *instance) recordFetch(
+	ctx context.Context,
+	port plugin.Port,
+	id string,
+	fetched fetched,
+	skills []userSkill,
+	fetchErr error,
+) (bool, error) {
+	for {
+		stored, err := findSource(ctx, port, id)
+		if err != nil {
+			return false, err
+		}
+		if stored == nil {
+			// Removed while it was fetched.
+			return false, nil
+		}
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		recorded := stored.source
+		at := i.clock.Now()
+		if fetchErr == nil {
+			recorded = pinSource(recorded, fetched.commit, skills, fetched.skipped, at)
+		} else {
+			recorded.Failure = &Failure{At: at, Message: fetchErr.Error()}
+		}
+		_, err = writeSource(ctx, port, id, recorded, &stored.revision)
+		if sourceConflict(err) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		break
+	}
+	return true, nil
 }

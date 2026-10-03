@@ -21,7 +21,8 @@ func TestPageDeclarationsAndManifestOwnership(t *testing.T) {
 		t.Fatalf("identity: %+v", manifest)
 	}
 	state := manifest.Page.Conversation
-	if len(state.Topics) != 1 || state.Topics[0] != plugin.TopicJobs || state.Operations[0].Operation != "browser.tabs" {
+	if len(state.Topics) != 1 || state.Topics[0] != plugin.TopicJobs ||
+		state.Operations[0].Operation != "browser.tabs" {
 		t.Fatalf("state: %+v", state)
 	}
 	for _, test := range []struct{ method, accepted, refused string }{
@@ -57,10 +58,14 @@ func TestPageDeclarationsAndManifestOwnership(t *testing.T) {
 	state.Operations[0].Operation = "changed"
 	manifest.Commands[0].Tree.Node.(*declare.Group[declare.NativeOperation]).Name = "changed"
 	other := factory.Manifest()
-	if string(other.Streams[0].Constants[0].Value) != "1" || other.Streams[0].Constants[0].Name != "LIVE_CONTROL_FRAME" {
+	if string(other.Streams[0].Constants[0].Value) != "1" ||
+		other.Streams[0].Constants[0].Name != "LIVE_CONTROL_FRAME" {
 		t.Fatal("caller changed factory stream constants")
 	}
-	if other.Page.Methods[0].Operations[0].Operation != "browser.open" || other.Page.Conversation.Topics[0] != plugin.TopicJobs || other.Page.Conversation.Operations[0].Operation != "browser.tabs" || declare.Name(other.Commands[0].Tree.Node) != "browser" {
+	if other.Page.Methods[0].Operations[0].Operation != "browser.open" ||
+		other.Page.Conversation.Topics[0] != plugin.TopicJobs ||
+		other.Page.Conversation.Operations[0].Operation != "browser.tabs" ||
+		declare.Name(other.Commands[0].Tree.Node) != "browser" {
 		t.Fatal("caller changed factory manifest")
 	}
 }
@@ -75,7 +80,8 @@ func TestLiveStreamBindingAndFrameConstants(t *testing.T) {
 		t.Fatalf("streams: %d", len(streams))
 	}
 	stream := streams[0]
-	if stream.Name != "browser" || stream.Operation.Package != "demi.browser" || stream.Operation.Operation != "browser.live" {
+	if stream.Name != "browser" || stream.Operation.Package != "demi.browser" ||
+		stream.Operation.Operation != "browser.live" {
 		t.Fatalf("binding: %+v", stream)
 	}
 	for _, test := range []struct {
@@ -93,7 +99,19 @@ func TestLiveStreamBindingAndFrameConstants(t *testing.T) {
 		}
 	}
 	expected := map[string]string{
-		"LIVE_CONTROL_FRAME": "1", "LIVE_VIDEO_FRAME": "2", "LIVE_FILE_FRAME": "3", "LIVE_MAX_FRAME_BYTES": "16777216", "LIVE_FILE_CHUNK_BYTES": "65536", "LIVE_VIDEO_HEADER_BYTES": "40", "LIVE_VIDEO_TAB_BYTES": "16", "LIVE_FILE_HEADER_BYTES": "8", "LIVE_HEARTBEAT_MS": "250", "LIVE_STALL_MS": "1000", "LIVE_VIDEO_CODEC": `"avc1.640033"`, "LIVE_CAPTURE_UNAVAILABLE": `"capture_unavailable"`, "LIVE_CAPTURE_FAILED": `"capture_failed"`,
+		"LIVE_CONTROL_FRAME":       "1",
+		"LIVE_VIDEO_FRAME":         "2",
+		"LIVE_FILE_FRAME":          "3",
+		"LIVE_MAX_FRAME_BYTES":     "16777216",
+		"LIVE_FILE_CHUNK_BYTES":    "65536",
+		"LIVE_VIDEO_HEADER_BYTES":  "40",
+		"LIVE_VIDEO_TAB_BYTES":     "16",
+		"LIVE_FILE_HEADER_BYTES":   "8",
+		"LIVE_HEARTBEAT_MS":        "250",
+		"LIVE_STALL_MS":            "1000",
+		"LIVE_VIDEO_CODEC":         `"avc1.640033"`,
+		"LIVE_CAPTURE_UNAVAILABLE": `"capture_unavailable"`,
+		"LIVE_CAPTURE_FAILED":      `"capture_failed"`,
 	}
 	if len(stream.Constants) != len(expected) {
 		t.Fatalf("constants: %d", len(stream.Constants))

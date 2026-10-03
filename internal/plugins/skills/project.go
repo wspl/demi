@@ -11,9 +11,11 @@ import (
 	"github.com/wspl/demi/internal/plugin"
 )
 
-const projectMaxDirectories = 2000
-const projectMaxDepth = 6
-const sourceMaxSkills = 100
+const (
+	projectMaxDirectories = 2000
+	projectMaxDepth       = 6
+	sourceMaxSkills       = 100
+)
 
 type projectSkill struct {
 	catalogEntry
@@ -38,18 +40,18 @@ func searchProject(ctx context.Context, port plugin.Port, cwd string) ([]project
 			frontier = append(frontier, projectNode{path: hostJoin(directory, skills), rank: rank*2 + place})
 		}
 	}
-	type ranked struct {
-		rank  int
-		skill projectSkill
-	}
-	found := []ranked{}
+	found := []rankedProjectSkill{}
 	read := 0
 	for len(frontier) > 0 && read < projectMaxDirectories && len(found) < sourceMaxSkills {
 		frontier = frontier[:min(len(frontier), projectMaxDirectories-read)]
 		read += len(frontier)
 		reads := make([]plugin.HostRead, 0, len(frontier)*2)
 		for _, node := range frontier {
-			reads = append(reads, plugin.HostRead{Path: node.path}, plugin.HostRead{Path: hostJoin(node.path, "SKILL.md"), Limit: skillMDMaxBytes + 1})
+			reads = append(
+				reads,
+				plugin.HostRead{Path: node.path},
+				plugin.HostRead{Path: hostJoin(node.path, "SKILL.md"), Limit: skillMDMaxBytes + 1},
+			)
 		}
 		files, err := port.ReadHostFiles(ctx, reads)
 		if err != nil {
@@ -58,37 +60,23 @@ func searchProject(ctx context.Context, port plugin.Port, cwd string) ([]project
 		if len(files) != len(reads) {
 			return nil, fmt.Errorf("host returned %d files for %d reads", len(files), len(reads))
 		}
-		next := []projectNode{}
-		for i, node := range frontier {
-			listing, manifest := files[2*i], files[2*i+1]
-			if file, ok := manifest.(*plugin.HostFileFile); ok && node.depth > 0 {
-				skill, err := parseProjectSkill(node.path, file)
-				if err != nil {
-					slog.Info("a project SKILL.md is not a skill", "skill", hostJoin(node.path, "SKILL.md"), "reason", err)
-				} else {
-					found = append(found, ranked{node.rank, skill})
-				}
-				continue
-			}
-			directory, ok := listing.(*plugin.HostFileDirectory)
-			if !ok || node.depth == projectMaxDepth {
-				continue
-			}
-			for _, entry := range directory.Entries {
-				if entry.Kind == plugin.EntryKindDirectory || entry.Kind == plugin.EntryKindSymlink {
-					next = append(next, projectNode{path: hostJoin(node.path, entry.Name), rank: node.rank, depth: node.depth + 1})
-				}
-			}
-		}
+		next, discovered := searchProjectBatch(frontier, files)
+		found = append(found, discovered...)
 		frontier = next
 	}
 	found = found[:min(len(found), sourceMaxSkills)]
-	slices.SortStableFunc(found, func(a, b ranked) int { return cmp.Compare(a.rank, b.rank) })
+	slices.SortStableFunc(found, func(a, b rankedProjectSkill) int { return cmp.Compare(a.rank, b.rank) })
 	skills := []projectSkill{}
 	for _, value := range found {
 		index := slices.IndexFunc(skills, func(kept projectSkill) bool { return kept.name == value.skill.name })
 		if index >= 0 {
-			slog.Info("a project skill is shadowed by one of the same name", "skill", value.skill.location, "kept", skills[index].location)
+			slog.Info(
+				"a project skill is shadowed by one of the same name",
+				"skill",
+				value.skill.location,
+				"kept",
+				skills[index].location,
+			)
 		} else {
 			skills = append(skills, value.skill)
 		}
@@ -158,5 +146,49 @@ func parseProjectSkill(directory string, file *plugin.HostFileFile) (projectSkil
 	for _, warning := range parsed.warnings {
 		slog.Info("a project skill has a warning", "skill", location, "warning", warning)
 	}
-	return projectSkill{catalogEntry: catalogEntry{name: parsed.name, description: parsed.description, location: location}, disableModelInvocation: parsed.disableModelInvocation}, nil
+	return projectSkill{
+		catalogEntry:           catalogEntry{name: parsed.name, description: parsed.description, location: location},
+		disableModelInvocation: parsed.disableModelInvocation,
+	}, nil
+}
+
+type rankedProjectSkill struct {
+	rank  int
+	skill projectSkill
+}
+
+func searchProjectBatch(frontier []projectNode, files []plugin.HostFile) ([]projectNode, []rankedProjectSkill) {
+	found := []rankedProjectSkill{}
+	next := []projectNode{}
+	for i, node := range frontier {
+		listing, manifest := files[2*i], files[2*i+1]
+		if file, ok := manifest.(*plugin.HostFileFile); ok && node.depth > 0 {
+			skill, err := parseProjectSkill(node.path, file)
+			if err != nil {
+				slog.Info(
+					"a project SKILL.md is not a skill",
+					"skill",
+					hostJoin(node.path, "SKILL.md"),
+					"reason",
+					err,
+				)
+			} else {
+				found = append(found, rankedProjectSkill{node.rank, skill})
+			}
+			continue
+		}
+		directory, ok := listing.(*plugin.HostFileDirectory)
+		if !ok || node.depth == projectMaxDepth {
+			continue
+		}
+		for _, entry := range directory.Entries {
+			if entry.Kind == plugin.EntryKindDirectory || entry.Kind == plugin.EntryKindSymlink {
+				next = append(
+					next,
+					projectNode{path: hostJoin(node.path, entry.Name), rank: node.rank, depth: node.depth + 1},
+				)
+			}
+		}
+	}
+	return next, found
 }

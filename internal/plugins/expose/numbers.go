@@ -32,28 +32,7 @@ func numbered(ctx context.Context, port plugin.Port, exposes []plugin.ExposeReco
 				return nil, fmt.Errorf("the expose numbers do not read: %w", err)
 			}
 		}
-		next := numbers{Next: read.Next, Exposes: maps.Clone(read.Exposes)}
-		for id := range next.Exposes {
-			if !slices.ContainsFunc(exposes, func(e plugin.ExposeRecord) bool { return string(e.ID) == id }) {
-				delete(next.Exposes, id)
-			}
-		}
-		pending := make([]plugin.ExposeRecord, 0, len(exposes))
-		for _, e := range exposes {
-			if _, exists := next.Exposes[string(e.ID)]; !exists {
-				pending = append(pending, e)
-			}
-		}
-		slices.SortStableFunc(pending, func(a, b plugin.ExposeRecord) int {
-			if order := cmp.Compare(a.CreatedAt, b.CreatedAt); order != 0 {
-				return order
-			}
-			return cmp.Compare(a.ID, b.ID)
-		})
-		for _, e := range pending {
-			next.Exposes[string(e.ID)] = next.Next
-			next.Next++
-		}
+		next := nextNumbers(read, exposes)
 		if next.Next != read.Next || !maps.Equal(next.Exposes, read.Exposes) {
 			value, err := next.MarshalJSON()
 			if err != nil {
@@ -74,4 +53,30 @@ func numbered(ctx context.Context, port plugin.Port, exposes []plugin.ExposeReco
 		}
 		return result, nil
 	}
+}
+
+func nextNumbers(read numbers, exposes []plugin.ExposeRecord) numbers {
+	next := numbers{Next: read.Next, Exposes: maps.Clone(read.Exposes)}
+	for id := range next.Exposes {
+		if !slices.ContainsFunc(exposes, func(e plugin.ExposeRecord) bool { return string(e.ID) == id }) {
+			delete(next.Exposes, id)
+		}
+	}
+	pending := make([]plugin.ExposeRecord, 0, len(exposes))
+	for _, e := range exposes {
+		if _, exists := next.Exposes[string(e.ID)]; !exists {
+			pending = append(pending, e)
+		}
+	}
+	slices.SortStableFunc(pending, func(a, b plugin.ExposeRecord) int {
+		if order := cmp.Compare(a.CreatedAt, b.CreatedAt); order != 0 {
+			return order
+		}
+		return cmp.Compare(a.ID, b.ID)
+	})
+	for _, e := range pending {
+		next.Exposes[string(e.ID)] = next.Next
+		next.Next++
+	}
+	return next
 }

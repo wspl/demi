@@ -66,7 +66,11 @@ func TestEveryOperationHasACommandWithOneOperandSource(t *testing.T) {
 			t.Fatalf("%v: %v", test.line, parsed.Values)
 		}
 	}
-	parsed, err := plugintest.Parse(root, []string{"browser", "content", "fetch", "--url", "https://example.test/"}, nil)
+	parsed, err := plugintest.Parse(
+		root,
+		[]string{"browser", "content", "fetch", "--url", "https://example.test/"},
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
