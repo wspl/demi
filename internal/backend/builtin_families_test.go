@@ -15,7 +15,7 @@ import (
 func TestTheSubscriptionFamiliesLogInByDeviceAndStandForTheirBoundAccount(t *testing.T) {
 	ctx := t.Context()
 	registry := backend.BuiltinFamilies()
-	accountEqual(t, registry.Subscriptions(), []string{"claude-code", "codex", "grok-build"})
+	conversationEqual(t, registry.Subscriptions(), []string{"claude-code", "codex", "grok-build"})
 	const now core.Timestamp = "2026-09-18T14:00:00.000Z"
 	clock := providertest.NewManualClock(now)
 	endpoint := provider.ModelsDevURL
@@ -34,9 +34,9 @@ func TestTheSubscriptionFamiliesLogInByDeviceAndStandForTheirBoundAccount(t *tes
 			return p
 		}
 		login := build(provider.NewMemoryCredentialPool(), nil)
-		accountEqual(t, login.Accounts().Capability(), provider.AccountsCapability{Login: true})
+		conversationEqual(t, login.Accounts().Capability(), provider.AccountsCapability{Login: true})
 		message := "No " + row.name + " account is signed in"
-		accountEqual[core.AuthState](t, login.AuthStatus(ctx), &core.Unauthenticated{Message: &message})
+		conversationEqual[core.AuthState](t, login.AuthStatus(ctx), &core.Unauthenticated{Message: &message})
 		pool := provider.NewMemoryCredentialPool()
 		if err := pool.Write(ctx, provider.AccountMeta{ID: "cred-1", Label: "user@example.com", UpdatedAt: now, Source: "login:device"}, row.secret); err != nil {
 			t.Fatal(err)
@@ -47,7 +47,7 @@ func TestTheSubscriptionFamiliesLogInByDeviceAndStandForTheirBoundAccount(t *tes
 			return core.QuotaSnapshot{ObservedAt: now, Source: core.SnapshotSourceProbe, AccountLabel: &label, Windows: []core.QuotaWindow{}}
 		})
 		p := build(pool, &providers.AccountBinding{CredentialID: "cred-1", Quota: quota})
-		accountEqual[core.AuthState](t, p.AuthStatus(ctx), &core.Authenticated{AccountLabel: &label})
-		accountEqual(t, p.Quota().Latest(), quota.Latest())
+		conversationEqual[core.AuthState](t, p.AuthStatus(ctx), &core.Authenticated{AccountLabel: &label})
+		conversationEqual(t, p.Quota().Latest(), quota.Latest())
 	}
 }
