@@ -32,15 +32,15 @@ func TestPreferencePatchesMergeValidateAndSurviveRestart(t *testing.T) {
 	device, err := b.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
 	const path = "/api/settings/preferences"
-	read := func() webapi.UserPreferences {
-		return conversationDecode(t, conversationRequest(ctx, t, b, &device, "GET", path, "", 200), webapi.DecodeUserPreferences)
+	read := func(session *backendtest.Session) webapi.UserPreferences {
+		return conversationDecode(t, conversationRequest(ctx, t, b, session, "GET", path, "", 200), webapi.DecodeUserPreferences)
 	}
 	decode := func(body string) webapi.UserPreferences {
 		p, err := webapi.DecodeUserPreferences([]byte(body))
 		wireMust(t, err)
 		return p
 	}
-	conversationEqual(t, read(), decode(`{"preferences":{"appearance":{},"shortcuts":{}}}`))
+	conversationEqual(t, read(&s), decode(`{"preferences":{"appearance":{},"shortcuts":{}}}`))
 	model := `{"providerId":"codex-account","modelId":"chosen-model","thinkingEffort":"high","serviceTierId":null}`
 	bodies := []string{`{"appearance":{"theme":"dark"}}`, `{"shortcuts":{"new":"⌘⇧N"}}`, `{"appearance":{"fontSize":17}}`, `{"lastModel":` + model + `}`}
 	answers := make([]backendtest.Answer, 4)
@@ -63,7 +63,7 @@ func TestPreferencePatchesMergeValidateAndSurviveRestart(t *testing.T) {
 		}
 	}
 	expected := decode(`{"preferences":{"appearance":{"theme":"dark","fontSize":17},"shortcuts":{"new":"⌘⇧N"},"lastModel":` + model + `}}`)
-	conversationEqual(t, read(), expected)
+	conversationEqual(t, read(&device), expected)
 	for _, body := range []string{
 		`{"appearance":{"fontSize":100}}`, `{"appearance":{"theme":"sepia"}}`, `{"appearance":null}`,
 		`{"shortcuts":{"arbitrary":"x"}}`, `{"shortcuts":{"new":"` + strings.Repeat("x", 65) + `"}}`,
@@ -75,7 +75,7 @@ func TestPreferencePatchesMergeValidateAndSurviveRestart(t *testing.T) {
 	wireMust(t, b.Close(ctx))
 	b, err = h.Start(ctx, t)
 	wireMust(t, err)
-	conversationEqual(t, read(), expected)
+	conversationEqual(t, read(&s), expected)
 	removed := conversationDecode(t, conversationRequest(ctx, t, b, &s, "PATCH", path, `{"shortcuts":{"new":null}}`, 200), webapi.DecodeUserPreferences)
 	expected.Preferences.Shortcuts = webapi.Shortcuts{}
 	conversationEqual(t, removed, expected)

@@ -119,6 +119,7 @@ func TestConversationCreatedOnceAndListedOnlyForOwner(t *testing.T) {
 	}
 	second := conversationCreate(ctx, t, b, &s, conversationSecond)
 	listed := conversationDecode(t, conversationRequest(ctx, t, b, &s, "GET", "/api/conversations", "", 200), webapi.DecodeConversations).Conversations
+	conversationEqual(t, len(listed), 2)
 	conversationEqual(t, []webapi.ConversationID{listed[0].ID, listed[1].ID}, []webapi.ConversationID{conversationSecond, conversationFirst})
 	archived := conversationDecode(t, conversationRequest(ctx, t, b, &s, "GET", "/api/conversations?archived=true", "", 200), webapi.DecodeConversations)
 	conversationEqual(t, len(archived.Conversations), 0)
@@ -709,9 +710,10 @@ func TestOversizedVendorRequestCompactsAndReplaysSummary(t *testing.T) {
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
-	entry := conversationAnthropic(ctx, t, b, &s, vendor)
+	body := `{"source":"custom","providerType":"anthropic","label":"Work","apiKey":"sk-ant-test","baseUrl":` + conversationJSON(t, vendor.URL("/v1")) + `,"models":[{"id":"model-a","displayName":"A","contextWindow":200000,"outputLimit":8000,"thinkingEfforts":[],"acceptedExtensions":[],"fastTier":null}]}`
+	entry := conversationDecode(t, conversationRequest(ctx, t, b, &s, "POST", "/api/providers", body, 201), webapi.DecodeProviderAnswer).Provider.ID
 	conversationCreate(ctx, t, b, &s, conversationFirst)
-	conversationChoose(ctx, t, b, &s, conversationFirst, entry, "claude-opus-4-8")
+	conversationChoose(ctx, t, b, &s, conversationFirst, string(entry), "model-a")
 	socket := conversationOpen(ctx, t, b, &s, conversationFirst)
 	vendor.Respond(conversationAnswer(t, []string{"First answer."}, 12, 3))
 	_, err = socket.Chat(ctx, "m1", "First question")
@@ -731,7 +733,15 @@ func TestOversizedVendorRequestCompactsAndReplaysSummary(t *testing.T) {
 		t.Fatal("missing summary instruction")
 	}
 	conversationEqual(t, summaryFixed["system"], firstFixed["system"])
-	conversationEqual(t, summaryFixed["tools"], firstFixed["tools"])
+	firstFields, err := contract.Object(requests[0].Body)
+	wireMust(t, err)
+	summaryFields, err := contract.Object(requests[2].Body)
+	wireMust(t, err)
+	firstTools, err := contract.Decode[any](firstFields["tools"])
+	wireMust(t, err)
+	summaryTools, err := contract.Decode[any](summaryFields["tools"])
+	wireMust(t, err)
+	conversationEqual(t, summaryTools, firstTools)
 	refused, err := contract.Object(requests[1].Body)
 	wireMust(t, err)
 	messages, err := contract.Decode[[]json.RawMessage](refused["messages"])
@@ -763,7 +773,8 @@ func TestOversizedVendorRequestCompactsAndReplaysSummary(t *testing.T) {
 	conversationEqual(t, conversationKinds(t, live), []string{"user", "compaction_boundary", "text", "response", "user", "compaction_marker", "text", "response"})
 }
 
-// The large reset exercises TCP backpressure; its transfer costs several seconds.
+// About 27 s under -race: an 8-MiB reset exceeds the TCP send buffer, so lag
+// and adoption of a running turn are observed without relying on scheduling.
 func TestLaggingSocketClosesAndReopenAdoptsRunningTree(t *testing.T) {
 	ctx, h := conversationHarness(t)
 	h.Config.Conversations.OutboxFrames = 16
@@ -819,6 +830,16 @@ func TestLaggingSocketClosesAndReopenAdoptsRunningTree(t *testing.T) {
 	// Each acknowledged delta lets the healthy page drain while the slow
 	// page keeps its reset unread. This does not depend on goroutine scheduling.
 	for i := range 200 {
+		if i == 32 {
+			code, reason, err := slow.Closed(ctx)
+			wireMust(t, err)
+			conversationEqual(t, int(code), 4001)
+			conversationEqual(t, reason, "lagged")
+			again := conversationOpen(ctx, t, b, &s, conversationFirst)
+			conversationEqual(t, conversationSummary(ctx, t, b, &s, conversationFirst).Status, webapi.ConversationStatusRunning)
+			wireMust(t, reading.Close(ctx))
+			reading = again
+		}
 		select {
 		case advance <- struct{}{}:
 		case <-ctx.Done():
@@ -846,16 +867,7 @@ func TestLaggingSocketClosesAndReopenAdoptsRunningTree(t *testing.T) {
 		wireMust(t, err)
 	}
 	titleUntil(ctx, t, progress, func(c webapi.ConversationSummary) bool { return c.Status == webapi.ConversationStatusCompleted })
-	code, reason, err := slow.Closed(ctx)
-	wireMust(t, err)
-	conversationEqual(t, int(code), 4001)
-	conversationEqual(t, reason, "lagged")
-	again := conversationOpen(ctx, t, b, &s, conversationFirst)
-	page, state := conversationPage(ctx, t, b, &s)
-	if state.Conversations[0].Status != webapi.ConversationStatusCompleted {
-		titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return c.Status == webapi.ConversationStatusCompleted })
-	}
-	live, err := again.Live(ctx)
+	live, err := reading.Live(ctx)
 	wireMust(t, err)
 	if !strings.HasSuffix(conversationLastText(t, live), "199 ") {
 		t.Fatal("adopted turn did not finish")
