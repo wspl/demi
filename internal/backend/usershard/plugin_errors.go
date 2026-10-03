@@ -18,17 +18,15 @@ func exposeFailure(err error) error {
 	if err == nil {
 		return nil
 	}
-	var offline *expose.DeviceOfflineError
-	var missing *expose.NotFoundError
 	var reason plugin.ExposeRefusal
 	switch {
 	case errors.Is(err, expose.ErrUnavailable):
 		reason = plugin.ExposeRefusalUnavailable
 	case errors.Is(err, expose.ErrDeviceNotFound):
 		reason = plugin.ExposeRefusalDeviceNotFound
-	case errors.As(err, &offline):
+	case errors.Is(err, expose.ErrDeviceOffline):
 		reason = plugin.ExposeRefusalDeviceOffline
-	case errors.As(err, &missing):
+	case errors.Is(err, expose.ErrNotFound):
 		reason = plugin.ExposeRefusalNotFound
 	default:
 		return err

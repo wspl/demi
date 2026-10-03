@@ -118,7 +118,7 @@ func (s *realCloud) device(ctx context.Context) string {
 	return string(status.Device.ID)
 }
 
-// until uses the shared status-change observer with Rust's per-transition hang guard.
+// until waits on the shared status-change observer, with a hang guard for each transition.
 func (s *realCloud) until(ctx context.Context, check func(webapi.CloudStatus) bool) webapi.CloudStatus {
 	s.t.Helper()
 	wait, cancel := context.WithTimeout(ctx, realPatience)
@@ -383,7 +383,7 @@ func TestACloudRunsAsUID1000ForEveryConversationAndKeepsASystemPackageAndHomeAcr
 // TestACloudGrowsItsHomeOnlineAndItsSavedGenerationRecordsTheGrownCapacity
 // checks online home growth and saved capacity.
 // Tens of seconds to minutes: boot, fill, idle stop, wake, online growth and save.
-// Requires the manager's CAP_SYS_RESOURCE, as in the Rust scenario.
+// Requires the manager's CAP_SYS_RESOURCE.
 func TestACloudGrowsItsHomeOnlineAndItsSavedGenerationRecordsTheGrownCapacity(t *testing.T) {
 	s := realCloudStart(t, false)
 	first := s.work(realFirst)
@@ -493,8 +493,7 @@ time.sleep(600)
 
 func (s *realCloud) tabs(ctx context.Context, pagePath string) []browserop.BrowserTab {
 	s.t.Helper()
-	// The ignored Rust scenario calls a nonexistent tabs method. Like the page,
-	// read conversation state through its declared endpoint instead.
+	// Read the tabs as the page does, through the conversation's declared state endpoint.
 	answer := conversationRequest(ctx, s.t, s.b, &s.user, "GET", pagePath+"/state", "", 200)
 	state := conversationDecode(s.t, answer, webapi.DecodePluginStateAnswer)
 	tabs, err := browserplugin.DecodeBrowserTabs(state.State)

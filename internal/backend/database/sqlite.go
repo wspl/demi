@@ -15,7 +15,8 @@ import (
 	"modernc.org/sqlite"
 )
 
-// Schema text is copied byte for byte from the Rust backend: its digest is the version.
+// A schema's version is derived from the SHA-256 digest of its text, so any byte
+// changed in a schema file is another schema (storage.md § Schemas).
 //
 //go:embed control_schema.sql
 var controlSchema string

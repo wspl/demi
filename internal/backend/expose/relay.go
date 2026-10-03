@@ -251,7 +251,7 @@ func (a *RelayAdmission) watch(shard ExposeShard) {
 
 func expireWhenDue(ctx context.Context, shard ExposeShard, record database.ExposeRecord) {
 	for {
-		if err := FirstExpiry(ctx, shard.Clock(), &record.ExpiresAt); err != nil {
+		if err := FirstExpiry(ctx, shard.Clock(), record.ExpiresAt); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				slog.ErrorContext(ctx, "an expired expose could not be destroyed: "+err.Error(), "expose", record.ID)
 			}
@@ -278,13 +278,8 @@ func expireWhenDue(ctx context.Context, shard ExposeShard, record database.Expos
 	}
 }
 
-// FirstExpiry waits until the earliest expiry, or until ctx is canceled. A nil
-// expiry waits only for cancellation, as a page with no exposes must do.
-func FirstExpiry(ctx context.Context, clock core.Clock, first *core.Timestamp) error {
-	if first == nil {
-		<-ctx.Done()
-		return ctx.Err()
-	}
+// FirstExpiry waits until the earliest expiry, or until ctx is canceled.
+func FirstExpiry(ctx context.Context, clock core.Clock, first core.Timestamp) error {
 	now, err := clock.Now().Time()
 	if err != nil {
 		return fmt.Errorf("expose clock: %w", err)

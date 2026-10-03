@@ -1,25 +1,12 @@
 package database
 
-import (
-	"github.com/wspl/demi/internal/webapi"
+import "errors"
+
+var (
+	// ErrInvalidCode means the code is wrong, expired, used up, or no longer holds.
+	ErrInvalidCode = errors.New("the verification code is wrong, expired or used up")
+	// ErrEmailTaken means another account has the address.
+	ErrEmailTaken = errors.New("another account has the email address")
+	// ErrCoolingDown means the previous challenge was sent less than the cooldown ago.
+	ErrCoolingDown = errors.New("the previous challenge was sent within the cooldown")
 )
-
-// ChallengeOutcome describes how a confirmation ended.
-//
-//sumtype:decl
-type ChallengeOutcome interface{ challengeOutcome() }
-
-// ChallengeChanged means the account has the new address and the challenge is consumed.
-type ChallengeChanged struct{ User webapi.UserDTO }
-
-func (*ChallengeChanged) challengeOutcome() {}
-
-// ChallengeInvalidCode means the code is wrong, expired, used up, or no longer holds.
-type ChallengeInvalidCode struct{}
-
-func (*ChallengeInvalidCode) challengeOutcome() {}
-
-// ChallengeEmailTaken means another account took the address after issue.
-type ChallengeEmailTaken struct{}
-
-func (*ChallengeEmailTaken) challengeOutcome() {}

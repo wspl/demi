@@ -17,7 +17,7 @@ var ErrNotDomain = errors.New("must be a domain name, such as expose.demi.exampl
 // ParseDomain parses a domain using the same special-host rules as public URLs.
 func ParseDomain(text string) (Domain, error) {
 	// A host parser must not interpret a delimiter as another URL component,
-	// nor let the URL parser discard whitespace that Host::parse refuses.
+	// nor let the URL parser strip whitespace, which a domain never contains.
 	if text == "" || strings.ContainsAny(text, "\x00\t\n\r #/:<>?@[\\]^|") {
 		return Domain{}, ErrNotDomain
 	}

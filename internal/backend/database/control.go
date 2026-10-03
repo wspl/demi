@@ -333,33 +333,33 @@ func (c *ControlService) IssueEmailChallenge(
 	ctx context.Context,
 	issue ChallengeIssue,
 	policy ChallengePolicy,
-) (*core.Timestamp, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (*core.Timestamp, error) {
+) (core.Timestamp, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (core.Timestamp, error) {
 		var sent int64
 		err := tx.QueryRowContext(ctx, "SELECT sent_at FROM email_challenges WHERE user_id = ?", issue.User).Scan(&sent)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
+			return "", err
 		}
 		at, errTime := now.Millisecond()
 		if errTime != nil {
-			return nil, errTime
+			return "", errTime
 		}
 		if err == nil {
 			cooling, err := emailChallengeCooling(sent, now, policy)
 			if err != nil {
-				return nil, err
+				return "", err
 			}
 			if cooling {
-				return nil, nil
+				return "", ErrCoolingDown
 			}
 		}
 		expiry, err := later(now, policy.Lifetime)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		end, err := expiry.Millisecond()
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		err = execSQL(
 			ctx,
@@ -383,7 +383,7 @@ SET
 			end,
 			at,
 		)
-		return &expiry, err
+		return expiry, err
 	})
 }
 
@@ -402,42 +402,52 @@ func (c *ControlService) ConfirmEmailChallenge(
 	id string,
 	codeHash CodeHash,
 	attempts uint32,
-) (ChallengeOutcome, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ChallengeOutcome, error) {
-		found, err := queryRecord(
-			ctx,
-			tx,
-			"email_challenges",
-			"SELECT email,password_hash,code_hash,expires_at,attempts FROM email_challenges WHERE user_id = ? AND id = ?",
-			challengeRow,
-			user,
-			id,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if found == nil {
-			return &ChallengeInvalidCode{}, nil
-		}
-		var current string
-		err = tx.QueryRowContext(ctx, "SELECT password_hash FROM users WHERE id = ?", user).Scan(&current)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
-		if errors.Is(err, sql.ErrNoRows) || found.expires <= now || found.attempts >= uint64(attempts) ||
-			current != found.password {
-			return &ChallengeInvalidCode{}, nil
-		}
-		if !codeHash.Matches(found.code) {
-			return &ChallengeInvalidCode{}, execSQL(
+) (webapi.UserDTO, error) {
+	var refusal error
+	changed, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (webapi.UserDTO, error) {
+			found, err := queryRecord(
 				ctx,
 				tx,
-				"UPDATE email_challenges SET attempts = attempts + 1 WHERE user_id = ?",
+				"email_challenges",
+				"SELECT email,password_hash,code_hash,expires_at,attempts FROM email_challenges WHERE user_id = ? AND id = ?",
+				challengeRow,
 				user,
+				id,
 			)
-		}
-		return consumeEmailChallenge(ctx, tx, user, found.email)
-	})
+			if err != nil {
+				return webapi.UserDTO{}, err
+			}
+			if found == nil {
+				return webapi.UserDTO{}, ErrInvalidCode
+			}
+			var current string
+			err = tx.QueryRowContext(ctx, "SELECT password_hash FROM users WHERE id = ?", user).Scan(&current)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return webapi.UserDTO{}, err
+			}
+			if errors.Is(err, sql.ErrNoRows) || found.expires <= now || found.attempts >= uint64(attempts) ||
+				current != found.password {
+				return webapi.UserDTO{}, ErrInvalidCode
+			}
+			if !codeHash.Matches(found.code) {
+				refusal = ErrInvalidCode
+				return webapi.UserDTO{}, execSQL(
+					ctx,
+					tx,
+					"UPDATE email_challenges SET attempts = attempts + 1 WHERE user_id = ?",
+					user,
+				)
+			}
+			return consumeEmailChallenge(ctx, tx, user, found.email)
+		},
+	)
+	if err != nil {
+		return webapi.UserDTO{}, err
+	}
+	return changed, refusal
 }
 
 const userColumns = "id, email, nickname, role, created_at"
@@ -549,14 +559,14 @@ func consumeEmailChallenge(
 	tx *sql.Tx,
 	user webapi.UserID,
 	email webapi.EmailAddress,
-) (ChallengeOutcome, error) {
+) (webapi.UserDTO, error) {
 	var taken bool
 	if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM users WHERE email = ? AND id != ?)", email, user).
 		Scan(&taken); err != nil {
-		return nil, err
+		return webapi.UserDTO{}, err
 	}
 	if taken {
-		return &ChallengeEmailTaken{}, nil
+		return webapi.UserDTO{}, ErrEmailTaken
 	}
 	changed, err := queryRecord(
 		ctx,
@@ -568,15 +578,15 @@ func consumeEmailChallenge(
 		user,
 	)
 	if err != nil {
-		return nil, err
+		return webapi.UserDTO{}, err
 	}
 	if changed == nil {
-		return &ChallengeInvalidCode{}, nil
+		return webapi.UserDTO{}, ErrInvalidCode
 	}
 	if err := execSQL(ctx, tx, "DELETE FROM email_challenges WHERE user_id = ?", user); err != nil {
-		return nil, err
+		return webapi.UserDTO{}, err
 	}
-	return &ChallengeChanged{User: *changed}, nil
+	return *changed, nil
 }
 
 func emailChallengeCooling(sent int64, now core.Timestamp, policy ChallengePolicy) (bool, error) {

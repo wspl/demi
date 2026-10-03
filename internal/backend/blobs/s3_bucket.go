@@ -83,7 +83,7 @@ func (b *s3Bucket) NewRangeReader(
 	return &s3Reader{reader}, nil
 }
 
-// NewTypedWriter opens a portable writer with the Rust single-PUT and SHA-256 policy.
+// NewTypedWriter opens a portable writer that uploads in one PUT, never multipart, with a SHA-256 checksum.
 func (b *s3Bucket) NewTypedWriter(
 	ctx context.Context,
 	key, contentType string,
@@ -97,7 +97,7 @@ func (b *s3Bucket) NewTypedWriter(
 		IfNotExist: opts.IfNotExist,
 		BeforeWrite: func(as func(any) bool) error {
 			// s3blob documents mutation of its transfer manager via BeforeWrite.
-			// Rust's byte put is a single PUT, not a multipart upload at 16 MiB.
+			// An object is uploaded in a single PUT, never as a multipart upload, whatever its size.
 			var manager *transfermanager.Client
 			var service *s3.Client
 			if !as(&manager) || !b.As(&service) {

@@ -15,9 +15,9 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// These fixtures are written by the external oracle with Rust argon2 0.5.3.
-// The test covers both reading Rust hashes and byte-identical Go output.
-func TestRustPasswordFixtures(t *testing.T) {
+// The fixtures come from the reference writer described in testdata/README.md.
+// The test verifies each stored hash and checks that hashPassword writes it byte for byte.
+func TestPasswordFixtures(t *testing.T) {
 	h, err := NewPasswordHasher(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestRustPasswordFixtures(t *testing.T) {
 		password := webapi.Password(fields[0])
 		stored := fields[2]
 		if got := hashPassword(password, salt); got != stored {
-			t.Fatal("Go hash differs from Rust PHC")
+			t.Fatal("hash differs from the fixture's PHC string")
 		}
 		hash, err := database.ParsePasswordHash(stored)
 		if err != nil {
@@ -55,7 +55,7 @@ func TestRustPasswordFixtures(t *testing.T) {
 		}
 		valid, err := h.Verify(t.Context(), password, &account.PasswordHash)
 		if err != nil || !valid {
-			t.Fatalf("Rust password rejected: %v", err)
+			t.Fatalf("fixture password rejected: %v", err)
 		}
 		valid, err = h.Verify(t.Context(), password+"wrong", &account.PasswordHash)
 		if err != nil || valid {
@@ -103,9 +103,8 @@ func TestMalformedHashesReturnErrors(t *testing.T) {
 	}
 	for _, stored := range cases {
 		_, err := verifyPassword("password", stored)
-		var hashErr *HashError
-		if !errors.As(err, &hashErr) {
-			t.Fatalf("expected HashError for %q, got %v", stored, err)
+		if err == nil || !strings.HasPrefix(err.Error(), "argon2 failed: ") {
+			t.Fatalf("expected an argon2 failure for %q, got %v", stored, err)
 		}
 	}
 }
@@ -153,13 +152,12 @@ func TestUnknownAccountRunsDummyVerification(t *testing.T) {
 	// A broken dummy reaches the parser, proving nil did not short-circuit.
 	h.dummy = "broken"
 	_, err = h.Verify(t.Context(), "anything", nil)
-	var hashErr *HashError
-	if !errors.As(err, &hashErr) {
+	if err == nil || !strings.HasPrefix(err.Error(), "argon2 failed: ") {
 		t.Fatalf("dummy was not verified: %v", err)
 	}
 }
 
-func TestGoPasswordFixtureVerifiedByRust(t *testing.T) {
+func TestPasswordWriterMatchesVerifiedFixture(t *testing.T) {
 	data, err := os.ReadFile("testdata/go-password.tsv")
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +167,6 @@ func TestGoPasswordFixtureVerifiedByRust(t *testing.T) {
 		t.Fatal("invalid Go fixture")
 	}
 	if got := hashPassword(webapi.Password(fields[0]), []byte(fields[1])); got != fields[2] {
-		t.Fatal("Go writer changed from the fixture verified by Rust")
+		t.Fatal("hashPassword output differs from the verified fixture")
 	}
 }

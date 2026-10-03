@@ -63,7 +63,7 @@ func (c *ControlService) SaveDraft(
 				return webapi.ConversationDraft{}, err
 			}
 			if len(document) > webapi.DraftBytesMax {
-				return webapi.ConversationDraft{}, &DraftRefusal{Reason: DraftTooLarge}
+				return webapi.ConversationDraft{}, ErrDraftTooLarge
 			}
 			current, err := readDraft(ctx, tx, conversation)
 			if err != nil {
@@ -115,7 +115,7 @@ func (c *ControlService) ChangeReplacedDraft(
 				return webapi.ConversationDraft{}, err
 			}
 			if current == nil || current.replaced == nil || current.replaced.Revision != revision {
-				return webapi.ConversationDraft{}, &DraftRefusal{Reason: DraftChanged}
+				return webapi.ConversationDraft{}, ErrDraftChanged
 			}
 			next := storedDraft{revision: current.revision + 1, written: current.written, version: current.version}
 			switch action {
@@ -197,7 +197,7 @@ func draftWritable(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) er
 		return err
 	}
 	if archived {
-		return &DraftRefusal{Reason: DraftArchived}
+		return ErrArchived
 	}
 	return nil
 }
@@ -267,7 +267,7 @@ func presentDraftFiles(
 				return nil, err
 			}
 			if upload == nil || upload.Owner != owner {
-				return nil, &DraftRefusal{Reason: DraftUploadNotFound, Upload: f.ID}
+				return nil, &UploadNotFoundError{Upload: f.ID}
 			}
 			presented = append(
 				presented,

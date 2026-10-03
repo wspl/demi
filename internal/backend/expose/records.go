@@ -23,30 +23,21 @@ type Expose struct {
 // Errors for expose operations.
 var (
 	// ErrUnavailable means this backend has no expose domain.
-	//nolint:staticcheck // User-visible Rust text is copied verbatim.
+	//nolint:staticcheck // ST1005: user-visible text.
 	ErrUnavailable = errors.New(
 		"This backend has no expose domain configured (DEMI_EXPOSE_DOMAIN)",
 	)
 	// ErrDeviceNotFound means the device is not owned by the caller.
-	//nolint:staticcheck // User-visible Rust text is copied verbatim.
+	//nolint:staticcheck // ST1005: user-visible text.
 	ErrDeviceNotFound = errors.New(
 		"No such device",
 	)
+	// ErrDeviceOffline means the runner is not connected or the Cloud is not running.
+	ErrDeviceOffline = errors.New("is offline; connect it before exposing a service")
+	// ErrNotFound means the caller has no live expose with this ID.
+	//nolint:staticcheck // ST1005: user-visible text.
+	ErrNotFound = errors.New("No expose")
 )
-
-// DeviceOfflineError means the runner is not connected or the Cloud is not running.
-type DeviceOfflineError struct{ Device webapi.DeviceID }
-
-// Error returns the device connection refusal.
-func (e *DeviceOfflineError) Error() string {
-	return fmt.Sprintf("The device %s is offline; connect it before exposing a service", e.Device)
-}
-
-// NotFoundError means the caller has no live expose with this ID.
-type NotFoundError struct{ ID webapi.ExposeID }
-
-// Error names the missing expose.
-func (e *NotFoundError) Error() string { return "No expose " + string(e.ID) }
 
 // Add creates an expose on a connected device for lifetime.
 func Add(
@@ -68,7 +59,12 @@ func Add(
 		return Expose{}, ErrUnavailable
 	}
 	if !shard.DeviceConnected(*record) {
-		return Expose{}, &DeviceOfflineError{Device: device}
+		//nolint:staticcheck // ST1005: user-visible text.
+		return Expose{}, fmt.Errorf(
+			"The device %s %w",
+			device,
+			ErrDeviceOffline,
+		)
 	}
 	var bits [16]byte
 	if _, err := rand.Read(bits[:]); err != nil {
@@ -111,28 +107,28 @@ func List(ctx context.Context, shard ExposeShard) ([]Expose, error) {
 func Renew(ctx context.Context, shard ExposeShard, id webapi.ExposeID, lifetime time.Duration) (Expose, error) {
 	domain := shard.Domain()
 	if domain == nil {
-		return Expose{}, &NotFoundError{ID: id}
+		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
 	}
 	record, err := owned(ctx, shard, id)
 	if err != nil {
 		return Expose{}, err
 	}
 	if record == nil {
-		return Expose{}, &NotFoundError{ID: id}
+		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
 	}
 	expired, err := destroyIfExpired(ctx, shard, *record)
 	if err != nil {
 		return Expose{}, err
 	}
 	if expired {
-		return Expose{}, &NotFoundError{ID: id}
+		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
 	}
 	renewed, err := shard.Control().RenewExpose(context.WithoutCancel(ctx), id, shard.User(), lifetime)
 	if err != nil {
 		return Expose{}, fmt.Errorf("renew expose: %w", err)
 	}
 	if renewed == nil {
-		return Expose{}, &NotFoundError{ID: id}
+		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
 	}
 	shard.ExposesChanged()
 	return Expose{Record: *renewed, URL: URL(renewed.ID, *domain, shard.PublicURL())}, nil
@@ -141,21 +137,21 @@ func Renew(ctx context.Context, shard ExposeShard, id webapi.ExposeID, lifetime 
 // Remove destroys an owned expose, answering not found if it already expired.
 func Remove(ctx context.Context, shard ExposeShard, id webapi.ExposeID) error {
 	if shard.Domain() == nil {
-		return &NotFoundError{ID: id}
+		return fmt.Errorf("%w %s", ErrNotFound, id)
 	}
 	record, err := owned(ctx, shard, id)
 	if err != nil {
 		return err
 	}
 	if record == nil {
-		return &NotFoundError{ID: id}
+		return fmt.Errorf("%w %s", ErrNotFound, id)
 	}
 	expired, err := destroyIfExpired(ctx, shard, *record)
 	if err != nil {
 		return err
 	}
 	if expired {
-		return &NotFoundError{ID: id}
+		return fmt.Errorf("%w %s", ErrNotFound, id)
 	}
 	return destroy(ctx, shard, id)
 }

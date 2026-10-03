@@ -179,21 +179,21 @@ func attachRemoteDevices(
 	if err != nil {
 		return &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
 	}
-	main := database.ExecutionDeviceID(target)
+	main, hasMain := database.ExecutionDeviceID(target)
 	for _, device := range ordered {
-		if main != nil && device.ID == *main {
+		if hasMain && device.ID == main {
 			continue
 		}
-		outcome, err := shard.Control().
+		err := shard.Control().
 			ChangeConversation(
 				ctx, record.ID,
 				&database.RecordAttach{Host: database.AttachedHostRecord{Device: device.ID, Name: device.Name}},
 			)
+		if errors.Is(err, database.ErrConversationNotFound) || errors.Is(err, database.ErrArchived) {
+			return &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
+		}
 		if err != nil {
 			return &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
-		}
-		if outcome != database.ChangeApplied {
-			return &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
 		}
 	}
 	return nil

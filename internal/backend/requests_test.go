@@ -215,8 +215,8 @@ func wirePool(ctx context.Context, t *testing.T, id, document string) *provider.
 	return pool
 }
 
-// wireConversation transfers requests.rs: real sessions, tools, media, steering,
-// agent messages, compaction and model switching drive all six vendor requests.
+// wireConversation drives all six vendor requests with real sessions, tools,
+// media, steering, agent messages, compaction and model switching.
 func wireConversation(t *testing.T, family wireFamily) []string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second) // Hang guard, never a synchronization delay.

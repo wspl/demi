@@ -30,7 +30,7 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 	source := webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b")
 	committed := webapi.ConversationID("7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a")
 	uncommitted := webapi.ConversationID("5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d")
-	if _, err := control.CreateConversation(ctx, owner, source); err != nil {
+	if _, _, err := control.CreateConversation(ctx, owner, source); err != nil {
 		t.Fatal(err)
 	}
 	var attached []database.AttachedHostRecord
@@ -42,7 +42,7 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 		cwd := "/" + name
 		entry := database.AttachedHostRecord{Device: device.ID, Name: name, CWD: &cwd}
 		attached = append(attached, entry)
-		if _, err := control.ChangeConversation(ctx, source, &database.RecordAttach{Host: entry}); err != nil {
+		if err := control.ChangeConversation(ctx, source, &database.RecordAttach{Host: entry}); err != nil {
 			t.Fatal(err)
 		}
 	}

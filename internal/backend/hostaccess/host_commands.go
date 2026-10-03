@@ -171,13 +171,13 @@ func currentHost(
 	if err != nil {
 		return 0, err
 	}
-	device := database.ExecutionDeviceID(target)
+	device, ok := database.ExecutionDeviceID(target)
 	path := database.ExecutionPath(target)
-	if device == nil {
+	if !ok {
 		return 0, port.Stdout(ctx, []byte(fmt.Sprintf("host: Cloud (not allocated), directory %s\n", path)))
 	}
-	name := string(*device)
-	found, err := shard.Control().Device(ctx, *device)
+	name := string(device)
+	found, err := shard.Control().Device(ctx, device)
 	if err != nil {
 		return 0, err
 	}
@@ -200,13 +200,13 @@ func currentHost(
 			workspace,
 			path,
 			name,
-			connectionState(shard, *device),
+			connectionState(shard, device),
 		)
 	case *database.ExecutionCloud, *database.ExecutionDevice:
 		if path == "" {
 			path = "home"
 		}
-		line = fmt.Sprintf("host: machine \"%s\" (%s, %s) — %s\n", name, *device, connectionState(shard, *device), path)
+		line = fmt.Sprintf("host: machine \"%s\" (%s, %s) — %s\n", name, device, connectionState(shard, device), path)
 	}
 	return 0, port.Stdout(ctx, []byte(line))
 }

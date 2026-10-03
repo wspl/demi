@@ -10,7 +10,7 @@ import (
 
 // TestUsageGroupsInFirstUseOrderAndInstanceRequiresAdministrator checks that usage groups retain
 // first-use order and instance usage requires an administrator.
-// Ledger rows are seeded directly as in Rust; this scenario tests the HTTP view.
+// Ledger rows are seeded directly; this scenario tests the HTTP view.
 func TestUsageGroupsInFirstUseOrderAndInstanceRequiresAdministrator(t *testing.T) {
 	t.Parallel()
 	ctx, harness := conversationHarness(t)

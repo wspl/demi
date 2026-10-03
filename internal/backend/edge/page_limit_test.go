@@ -39,7 +39,7 @@ func TestPageMessageLimitForEverySocketKind(t *testing.T) {
 						t.Fatal(err)
 					}
 					id := webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01")
-					if _, err := services.Control.CreateConversation(t.Context(), user.ID, id); err != nil {
+					if _, _, err := services.Control.CreateConversation(t.Context(), user.ID, id); err != nil {
 						t.Fatal(err)
 					}
 					record, err := services.Control.Conversation(t.Context(), id)

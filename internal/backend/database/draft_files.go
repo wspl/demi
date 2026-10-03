@@ -1,6 +1,8 @@
 package database
 
 import (
+	"errors"
+
 	"github.com/wspl/demi/internal/webapi"
 )
 
@@ -25,37 +27,18 @@ type StagedRemote struct {
 
 func (*StagedRemote) stagedFile() {}
 
-// DraftRefusal is why a draft was left as it was, returned through errors.As.
-type DraftRefusal struct {
-	Reason DraftRefusalReason
+var (
+	// ErrDraftTooLarge means the stored draft would exceed its limit.
+	ErrDraftTooLarge = errors.New("draft is too large")
+	// ErrDraftChanged means the replaced version is not the requested revision.
+	ErrDraftChanged = errors.New("replaced draft has changed")
+)
+
+// UploadNotFoundError means the caller has no upload of the named ID.
+type UploadNotFoundError struct {
+	// Upload is the ID the draft named.
 	Upload webapi.AttachmentID
 }
 
-// DraftRefusalReason identifies a draft refusal.
-type DraftRefusalReason uint8
-
-const (
-	// DraftArchived means the conversation is archived.
-	DraftArchived DraftRefusalReason = iota
-	// DraftUploadNotFound means the caller has no upload of the named ID.
-	DraftUploadNotFound
-	// DraftTooLarge means the stored draft would exceed its limit.
-	DraftTooLarge
-	// DraftChanged means the replaced version is not the requested revision.
-	DraftChanged
-)
-
-// Error describes why the draft was not changed.
-func (e *DraftRefusal) Error() string {
-	switch e.Reason {
-	case DraftArchived:
-		return "conversation is archived"
-	case DraftUploadNotFound:
-		return "draft upload not found: " + string(e.Upload)
-	case DraftTooLarge:
-		return "draft is too large"
-	case DraftChanged:
-		return "replaced draft has changed"
-	}
-	return "draft refused"
-}
+// Error names the missing upload.
+func (e *UploadNotFoundError) Error() string { return "draft upload not found: " + string(e.Upload) }

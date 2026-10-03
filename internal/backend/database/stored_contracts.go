@@ -6,7 +6,8 @@ import (
 )
 
 //revive:disable:exported
-// Contract descriptions are verbatim Rust product text.
+// Contract doc comments describe the stored JSON, in the form contractgen uses
+// for schema descriptions.
 
 // A device attached to a conversation (`sessions-and-targets.md`
 // § Attached hosts): a Host the conversation reaches besides its main one.

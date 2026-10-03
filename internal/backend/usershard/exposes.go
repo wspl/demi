@@ -80,7 +80,12 @@ func (s exposeStore) CreateExpose(
 		return database.ExposeRecord{}, expose.ErrDeviceNotFound
 	}
 	if !(exposeView{s.shard}).DeviceConnected(*record) {
-		return database.ExposeRecord{}, &expose.DeviceOfflineError{Device: device}
+		//nolint:staticcheck // ST1005: user-visible text.
+		return database.ExposeRecord{}, fmt.Errorf(
+			"The device %s %w",
+			device,
+			expose.ErrDeviceOffline,
+		)
 	}
 	return s.Store.CreateExpose(ctx, id, user, device, address, lifetime)
 }

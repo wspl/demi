@@ -93,25 +93,25 @@ func (c *ControlService) DeleteWorkspace(
 	ctx context.Context,
 	user webapi.UserID,
 	id webapi.WorkspaceID,
-) (WorkspaceDeletion, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (WorkspaceDeletion, error) {
+) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
 		var found bool
 		if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM workspaces WHERE id = ? AND user_id = ?)", id, user).
 			Scan(&found); err != nil {
-			return nil, err
+			return err
 		}
 		if !found {
-			return &WorkspaceMissing{}, nil
+			return ErrWorkspaceNotFound
 		}
 		var count uint64
 		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM conversations WHERE target_workspace_id = ?", id).
 			Scan(&count); err != nil {
-			return nil, err
+			return err
 		}
 		if count > 0 {
-			return &WorkspaceInUse{Count: count}, nil
+			return &WorkspaceInUseError{Count: count}
 		}
-		return &WorkspaceDeleted{}, execSQL(ctx, tx, "DELETE FROM workspaces WHERE id = ?", id)
+		return execSQL(ctx, tx, "DELETE FROM workspaces WHERE id = ?", id)
 	})
 }
 

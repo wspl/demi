@@ -73,13 +73,12 @@ func conversation(n int) webapi.ConversationID {
 
 func createConversation(t *testing.T, c *ControlService, user webapi.UserID, n int) ConversationRecord {
 	t.Helper()
-	creation, err := c.CreateConversation(t.Context(), user, conversation(n))
+	created, isNew, err := c.CreateConversation(t.Context(), user, conversation(n))
 	require(t, err)
-	created, ok := creation.(*ConversationCreated)
-	if !ok {
-		t.Fatalf("creation %T", creation)
+	if !isNew {
+		t.Fatalf("creation %T", created)
 	}
-	return created.Record
+	return created
 }
 
 func testStores(t *testing.T, limit int) *ConversationStores {
@@ -188,9 +187,10 @@ func TestConversationSpellingOrderingAndCorruption(t *testing.T) {
 	read, err := c.Conversation(t.Context(), upper)
 	require(t, err)
 	equal(t, &first, read)
-	creation, err := c.CreateConversation(t.Context(), user.ID, upper)
+	record, isNew, err := c.CreateConversation(t.Context(), user.ID, upper)
 	require(t, err)
-	equal(t, &ConversationExisting{Record: first}, creation)
+	equal(t, false, isNew)
+	equal(t, first, record)
 	listed, err := c.Conversations(t.Context(), user.ID, false)
 	require(t, err)
 	equal(t, []ConversationRecord{second, first}, listed)
@@ -200,9 +200,7 @@ func TestConversationSpellingOrderingAndCorruption(t *testing.T) {
 	require(t, c.MarkConversationRead(t.Context(), first.ID, 5))
 	require(t, c.MarkConversationRead(t.Context(), first.ID, 3))
 	model := storetest.TestModel()
-	changed, err := c.ChangeConversation(t.Context(), first.ID, &RecordModel{Model: model})
-	require(t, err)
-	equal(t, ChangeApplied, changed)
+	require(t, c.ChangeConversation(t.Context(), first.ID, &RecordModel{Model: model}))
 	require(t, c.TouchConversation(t.Context(), first.ID))
 	read, err = c.Conversation(t.Context(), first.ID)
 	require(t, err)
@@ -230,7 +228,7 @@ func TestSavedWakeupsListUnarchivedEarliestFirst(t *testing.T) {
 	require(t, c.SetWakeup(t.Context(), conversation(1), due))
 	require(t, c.SetWakeup(t.Context(), conversation(2), &WakeupAtStart{}))
 	require(t, c.SetWakeup(t.Context(), conversation(3), due))
-	_, err = c.ChangeConversation(t.Context(), conversation(3), &RecordArchived{Archived: true})
+	err = c.ChangeConversation(t.Context(), conversation(3), &RecordArchived{Archived: true})
 	require(t, err)
 	require(t, c.SetWakeup(t.Context(), conversation(4), due))
 	require(t, c.SetWakeup(t.Context(), conversation(4), nil))

@@ -67,7 +67,7 @@ type deleteResult struct {
 	err     error
 }
 
-// The Rust deletion interleaving runs entirely in virtual time, with no network.
+// The deletion interleaving runs entirely in virtual time, with no network.
 func TestPutWaitsForDeletionAndStoresAgain(t *testing.T) {
 	for _, deletionFails := range []bool{false, true} {
 		t.Run(fmt.Sprintf("deletionFails=%t", deletionFails), func(t *testing.T) {

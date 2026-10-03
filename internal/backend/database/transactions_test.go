@@ -43,8 +43,7 @@ func TestDraftConflictsRestoreDismissAndRefusals(t *testing.T) {
 	require(t, err)
 	equal(t, (*webapi.ReplacedDraft)(nil), saved.Replaced)
 	_, err = c.ChangeReplacedDraft(ctx, id, webapi.ReplacedActionRestore, second.Revision)
-	var refusal *DraftRefusal
-	if !errors.As(err, &refusal) || refusal.Reason != DraftChanged {
+	if !errors.Is(err, ErrDraftChanged) {
 		t.Fatalf("stale restore: %v", err)
 	}
 	upload, err := c.CreateAttachment(ctx, owner.ID, "text/plain", 3, blob(1), new("abc"))
@@ -68,13 +67,14 @@ func TestDraftConflictsRestoreDismissAndRefusals(t *testing.T) {
 		saved.Files[0],
 	)
 	_, err = c.SaveDraft(ctx, id, "someone-else", saved.Revision, "bad", files)
-	if !errors.As(err, &refusal) || refusal.Reason != DraftUploadNotFound {
+	var missing *UploadNotFoundError
+	if !errors.As(err, &missing) {
 		t.Fatalf("foreign upload: %v", err)
 	}
-	_, err = c.ChangeConversation(ctx, id, &RecordArchived{Archived: true})
+	err = c.ChangeConversation(ctx, id, &RecordArchived{Archived: true})
 	require(t, err)
 	_, err = c.SaveDraft(ctx, id, owner.ID, saved.Revision, "archived", nil)
-	if !errors.As(err, &refusal) || refusal.Reason != DraftArchived {
+	if !errors.Is(err, ErrArchived) {
 		t.Fatalf("archived: %v", err)
 	}
 	read, err := c.Draft(ctx, id)

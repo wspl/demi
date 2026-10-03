@@ -11,8 +11,8 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-// Rust fixtures were written by the backend's public API, not reconstructed SQL.
-func TestRustDatabasesReadUnchanged(t *testing.T) {
+// The fixture databases were written through the backend's public API, not reconstructed SQL.
+func TestFixtureDatabasesReadUnchanged(t *testing.T) {
 	copyFixture := func(source, destination string) [32]byte {
 		t.Helper()
 		data, err := os.ReadFile(source)
@@ -32,7 +32,7 @@ func TestRustDatabasesReadUnchanged(t *testing.T) {
 	account, err := control.Account(t.Context(), users[0].ID)
 	require(t, err)
 	if account == nil || account.PasswordHash.Text() == "" {
-		t.Fatal("Rust account missing")
+		t.Fatal("fixture account missing")
 	}
 	conversations, err := control.Conversations(t.Context(), users[0].ID, false)
 	require(t, err)

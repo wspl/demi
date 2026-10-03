@@ -8,9 +8,9 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// Account operation refusals retain the messages exposed by the Rust routes.
+// Account operation refusals. Their texts are the user-visible HTTP error messages.
 //
-//nolint:staticcheck // ST1005: user-facing Rust messages must remain verbatim.
+//nolint:staticcheck // ST1005: the texts are user-visible sentences.
 var (
 	// ErrAlreadySetUp means the instance already has its master account.
 	ErrAlreadySetUp = errors.New("This instance has its master account")

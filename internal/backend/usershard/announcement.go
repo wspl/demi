@@ -71,12 +71,12 @@ func (s *Shard) executionContext(
 }
 
 func (s *Shard) describeTarget(ctx context.Context, target database.ExecutionTarget) (string, error) {
-	device := database.ExecutionDeviceID(target)
-	if device == nil {
+	device, ok := database.ExecutionDeviceID(target)
+	if !ok {
 		return "Cloud (not allocated)", nil
 	}
-	name := string(*device)
-	record, err := s.Control().Device(ctx, *device)
+	name := string(device)
+	record, err := s.Control().Device(ctx, device)
 	if err != nil {
 		return "", err
 	}
@@ -94,7 +94,7 @@ func (s *Shard) describeTarget(ctx context.Context, target database.ExecutionTar
 		}
 		return fmt.Sprintf("workspace \"%s\" — directory %s on device %s", workspace, target.Path, name), nil
 	}
-	return fmt.Sprintf("the machine %s (host %s)", name, *device), nil
+	return fmt.Sprintf("the machine %s (host %s)", name, device), nil
 }
 
 func (s *Shard) attachedHostsLine(attached []database.AttachedHostRecord) string {
@@ -134,9 +134,9 @@ func switchLines(
 			"target, and file paths from before the switch — including the full outputs " +
 			"of earlier commands — are stale here.",
 	}
-	if device := database.ExecutionDeviceID(change.From); device != nil {
+	if device, ok := database.ExecutionDeviceID(change.From); ok {
 		for _, departed := range attached {
-			if departed.Device == *device {
+			if departed.Device == device {
 				name, from := departed.Name, database.ExecutionPath(change.From)
 				lines = append(
 					lines,

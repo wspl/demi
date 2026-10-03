@@ -42,7 +42,7 @@ func TestBadUserStreamHandshakeNeverReachesAdmission(t *testing.T) {
 		t.Fatal(user, err)
 	}
 	id := webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a00")
-	if _, err := control.CreateConversation(t.Context(), user.ID, id); err != nil {
+	if _, _, err := control.CreateConversation(t.Context(), user.ID, id); err != nil {
 		t.Fatal(err)
 	}
 	native, err := runners.NewNativeCatalog(

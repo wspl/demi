@@ -10,8 +10,9 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// equalCommandValues compares immutable snapshots as serde_json values. Canonical
-// JSON digests use IEEE doubles and would lose distinct large integer values here.
+// equalCommandValues compares immutable snapshots as decoded JSON values, where a
+// number is a uint64, a negative int64 or a float64, so 1 and 1.0 differ.
+// Canonical JSON digests use IEEE doubles and would lose distinct large integer values here.
 func equalCommandValues(left, right commandValues) (bool, error) {
 	if len(left) != len(right) {
 		return false, nil
@@ -36,8 +37,8 @@ func equalCommandValues(left, right commandValues) (bool, error) {
 	return true, nil
 }
 
-// commandValue interprets validated opaque JSON for comparison, retaining Rust's
-// unsigned, negative and floating-point number categories. It writes no JSON.
+// commandValue interprets validated opaque JSON for comparison, decoding each
+// number as a uint64, a negative int64 or, otherwise, a float64. It writes no JSON.
 func commandValue(raw json.RawMessage) (any, error) {
 	if _, err := contract.JSON(raw); err != nil {
 		return nil, err

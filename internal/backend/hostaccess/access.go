@@ -411,7 +411,7 @@ func selectHost(
 	if err != nil {
 		return selectedHost{}, &Error{Kind: AccessStorage, Cause: err}
 	}
-	deviceID := database.ExecutionDeviceID(target)
+	deviceID, known := database.ExecutionDeviceID(target)
 	root := database.ExecutionPath(target)
 	_, prepare := target.(*database.ExecutionCloud)
 	if named != nil {
@@ -423,7 +423,8 @@ func selectHost(
 		if err != nil {
 			return selectedHost{}, err
 		}
-		deviceID = &bound.Device
+		deviceID = bound.Device
+		known = true
 		if bound.Role == Attached {
 			root = bound.Path
 			prepare = false
@@ -431,7 +432,7 @@ func selectHost(
 
 	}
 	var device *database.DeviceRecord
-	if deviceID == nil {
+	if !known {
 		if !allocate {
 			return selectedHost{}, &Error{Kind: AccessRefused, Cause: Stopped}
 		}
@@ -441,7 +442,7 @@ func selectHost(
 		}
 		device = &made
 	} else {
-		device, err = shard.Control().Device(ctx, *deviceID)
+		device, err = shard.Control().Device(ctx, deviceID)
 		if err != nil {
 			return selectedHost{}, &Error{Kind: AccessStorage, Cause: err}
 		}
@@ -478,10 +479,10 @@ func reachableHosts(
 	target database.ExecutionTarget,
 ) ([]ReachableHost, error) {
 	var result []ReachableHost
-	main := database.ExecutionDeviceID(target)
-	if main != nil {
-		name := string(*main)
-		device, err := shard.Control().Device(ctx, *main)
+	main, hasMain := database.ExecutionDeviceID(target)
+	if hasMain {
+		name := string(main)
+		device, err := shard.Control().Device(ctx, main)
 		if err != nil {
 			return nil, &Error{Kind: AccessStorage, Cause: err}
 		}
@@ -490,7 +491,7 @@ func reachableHosts(
 		}
 		result = append(
 			result,
-			ReachableHost{Name: name, Device: *main, Path: database.ExecutionPath(target), Role: Main},
+			ReachableHost{Name: name, Device: main, Path: database.ExecutionPath(target), Role: Main},
 		)
 	}
 	attached, err := shard.Control().AttachedHosts(ctx, record.ID)
@@ -498,7 +499,7 @@ func reachableHosts(
 		return nil, &Error{Kind: AccessStorage, Cause: err}
 	}
 	for _, bound := range attached {
-		if main != nil && bound.Device == *main {
+		if hasMain && bound.Device == main {
 			continue
 		}
 		path, _ := shard.Devices().Home(bound.Device)

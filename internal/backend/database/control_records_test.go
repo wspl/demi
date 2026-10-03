@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -91,9 +92,11 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 	)
 	require(t, err)
 	equal(t, true, changed)
-	deletion, err := c.DeleteWorkspace(ctx, owner.ID, workspace.ID)
-	require(t, err)
-	equal(t, &WorkspaceInUse{Count: 1}, deletion)
+	err = c.DeleteWorkspace(ctx, owner.ID, workspace.ID)
+	var inUse *WorkspaceInUseError
+	if !errors.As(err, &inUse) || inUse.Count != 1 {
+		t.Fatalf("deletion: %v", err)
+	}
 	operation := ForkOperation{
 		ID:     conversation(2),
 		Owner:  owner.ID,
@@ -153,30 +156,30 @@ func TestEmailChallengeCooldownAttemptsAndConsumption(t *testing.T) {
 	}
 	expires, err := c.IssueEmailChallenge(ctx, issue, policy)
 	require(t, err)
-	if expires == nil {
-		t.Fatal("challenge not issued")
+	_, err = c.IssueEmailChallenge(ctx, issue, policy)
+	if !errors.Is(err, ErrCoolingDown) {
+		t.Fatalf("cooldown: %v", err)
 	}
-	denied, err := c.IssueEmailChallenge(ctx, issue, policy)
-	require(t, err)
-	equal(t, (*core.Timestamp)(nil), denied)
-	outcome, err := c.ConfirmEmailChallenge(
+	_, err = c.ConfirmEmailChallenge(
 		ctx,
 		owner.ID,
 		issue.ID,
 		HashCode([]byte("key"), issue.ID, "wrong"),
 		policy.Attempts,
 	)
-	require(t, err)
-	equal(t, &ChallengeInvalidCode{}, outcome)
-	outcome, err = c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, code, policy.Attempts)
+	if !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("wrong code: %v", err)
+	}
+	changed, err := c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, code, policy.Attempts)
 	require(t, err)
 	expected := owner
 	expected.Email = issue.Email
-	equal(t, &ChallengeChanged{User: expected}, outcome)
-	outcome, err = c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, code, policy.Attempts)
-	require(t, err)
-	equal(t, &ChallengeInvalidCode{}, outcome)
-	clock.at = *expires
+	equal(t, expected, changed)
+	_, err = c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, code, policy.Attempts)
+	if !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("reused code: %v", err)
+	}
+	clock.at = expires
 }
 
 func TestPasswordHashPHCSyntax(t *testing.T) {

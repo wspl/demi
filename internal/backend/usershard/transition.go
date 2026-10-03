@@ -292,8 +292,8 @@ func (s *Shard) commitRecordField(
 		if err != nil {
 			return err
 		}
-		device := database.ExecutionDeviceID(target)
-		if device != nil && *device == attach.Host.Device {
+		device, ok := database.ExecutionDeviceID(target)
+		if ok && device == attach.Host.Device {
 			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeHostIsMain}
 		}
 	}

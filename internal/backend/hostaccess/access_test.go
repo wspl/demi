@@ -26,7 +26,7 @@ func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 			var named *webapi.DeviceID
 			if change == "detach" {
 				record = s.target(t, record, laptop, "/laptop")
-				if _, err := s.control.ChangeConversation(
+				if err := s.control.ChangeConversation(
 					t.Context(),
 					record.ID,
 					&database.RecordAttach{Host: database.AttachedHostRecord{Device: cloudDevice.ID, Name: "cloud"}},
@@ -152,7 +152,7 @@ func TestAdmissionRefusalsAndDispatchedWorkRunsOnce(t *testing.T) {
 	if !errors.Is(err, cause) || runs != 1 {
 		t.Fatalf("dispatched: %v, runs=%d", err, runs)
 	}
-	if _, err := s.control.ChangeConversation(
+	if err := s.control.ChangeConversation(
 		t.Context(),
 		record.ID,
 		&database.RecordArchived{Archived: true},
@@ -278,7 +278,7 @@ func TestTransitionCommitIgnoresDepartedRequesterAndKeepsConflict(t *testing.T) 
 func TestOwnershipCanonicalIDsAndRevokedTargets(t *testing.T) {
 	s := newTestShard(t)
 	id := webapi.ConversationID("abcdef00-0000-4000-8000-000000000001")
-	if _, err := s.control.CreateConversation(t.Context(), s.owner, id); err != nil {
+	if _, _, err := s.control.CreateConversation(t.Context(), s.owner, id); err != nil {
 		t.Fatal(err)
 	}
 	record, err := OwnedConversation(t.Context(), s, "ABCDEF00-0000-4000-8000-000000000001")

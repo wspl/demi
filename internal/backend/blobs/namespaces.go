@@ -75,13 +75,13 @@ type Stored struct {
 func (n *Namespace) Put(ctx context.Context, data core.B64Bytes) (core.BlobRef, error) {
 	ref := core.BlobRefOf(data)
 	if err := n.recordPut(ctx, ref); err != nil {
-		return "", &Error{Err: err}
+		return "", fmt.Errorf("the object store failed: %w", err)
 	}
 	key := n.prefix() + string(ref)
 	if _, err := n.stores.objects.Attributes(ctx, key); err == nil {
 		return ref, nil
 	} else if gcerrors.Code(err) != gcerrors.NotFound {
-		return "", &Error{Err: err}
+		return "", fmt.Errorf("the object store failed: %w", err)
 	}
 	// BlobRefOf constructed this hex digest here, so decoding it cannot fail.
 	digest, _ := hex.DecodeString(string(ref))
@@ -100,7 +100,7 @@ func (n *Namespace) Put(ctx context.Context, data core.B64Bytes) (core.BlobRef, 
 		opts,
 	); err != nil && gcerrors.Code(err) != gcerrors.FailedPrecondition &&
 		gcerrors.Code(err) != gcerrors.AlreadyExists {
-		return "", &Error{Err: err}
+		return "", fmt.Errorf("the object store failed: %w", err)
 	}
 	return ref, nil
 }
@@ -116,7 +116,7 @@ func (n *Namespace) Read(ctx context.Context, ref core.BlobRef) (core.B64Bytes, 
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, &Error{Err: err}
+		return nil, false, fmt.Errorf("the object store failed: %w", err)
 	}
 	return core.B64Bytes(data), true, nil
 }
@@ -132,7 +132,7 @@ func (n *Namespace) List(ctx context.Context) ([]Stored, error) {
 			return result, nil
 		}
 		if err != nil {
-			return nil, &Error{Err: err}
+			return nil, fmt.Errorf("the object store failed: %w", err)
 		}
 		ref, err := core.ParseBlobRef(path.Base(object.Key))
 		if err != nil {
@@ -141,7 +141,7 @@ func (n *Namespace) List(ctx context.Context) ([]Stored, error) {
 		}
 		written, err := core.TimestampFromTime(object.ModTime)
 		if err != nil {
-			return nil, &CorruptError{Location: object.Key, Field: "last modified time", Reason: err.Error()}
+			return nil, fmt.Errorf("the object %s holds an invalid last modified time: %w", object.Key, err)
 		}
 		result = append(result, Stored{Blob: ref, Written: written})
 	}
@@ -171,7 +171,7 @@ func (n *Namespace) DeleteUnused(ctx context.Context, ref core.BlobRef, grace ti
 	}()
 	err := s.objects.Delete(ctx, n.prefix()+string(ref))
 	if err != nil && gcerrors.Code(err) != gcerrors.NotFound {
-		return false, &Error{Err: err}
+		return false, fmt.Errorf("the object store failed: %w", err)
 	}
 	return true, nil
 }

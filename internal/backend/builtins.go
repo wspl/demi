@@ -148,8 +148,9 @@ func boundAccount(account *providers.AccountBinding) (*string, provider.QuotaSna
 	return &account.CredentialID, account.Quota
 }
 
-// BuiltinPlugins returns the plugins built into the backend in Rust's
-// registration order. Declaration failures are returned instead of panicking.
+// BuiltinPlugins returns the plugins built into the backend in registration
+// order: file, todo, browser, expose, skills, changes, file browser.
+// Declaration failures are returned instead of panicking.
 func BuiltinPlugins() ([]plugin.Factory, error) {
 	files, err := file.New()
 	if err != nil {

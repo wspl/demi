@@ -111,7 +111,7 @@ func (s *testShard) PluginInstalls() *PluginInstalls { return s.installs }
 func (s *testShard) conversation(t *testing.T) database.ConversationRecord {
 	t.Helper()
 	id := webapi.ConversationID("00000000-0000-4000-8000-000000000001")
-	if _, err := s.control.CreateConversation(t.Context(), s.owner, id); err != nil {
+	if _, _, err := s.control.CreateConversation(t.Context(), s.owner, id); err != nil {
 		t.Fatal(err)
 	}
 	record, err := s.control.Conversation(t.Context(), id)

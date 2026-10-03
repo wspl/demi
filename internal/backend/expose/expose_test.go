@@ -339,8 +339,7 @@ func TestRecordLifecycleAndOwnership(t *testing.T) {
 			t.Fatal(err)
 		}
 		<-admission.Ending()
-		var missing *expose.NotFoundError
-		if err := expose.Remove(t.Context(), s, first.Record.ID); !errors.As(err, &missing) {
+		if err := expose.Remove(t.Context(), s, first.Record.ID); !errors.Is(err, expose.ErrNotFound) {
 			t.Fatalf("remove again = %v", err)
 		}
 		s.store.mu.Lock()
@@ -348,10 +347,10 @@ func TestRecordLifecycleAndOwnership(t *testing.T) {
 		record.User = "other"
 		s.store.records[record.ID] = record
 		s.store.mu.Unlock()
-		if _, err := expose.Renew(t.Context(), s, record.ID, time.Hour); !errors.As(err, &missing) {
+		if _, err := expose.Renew(t.Context(), s, record.ID, time.Hour); !errors.Is(err, expose.ErrNotFound) {
 			t.Fatalf("foreign renewal = %v", err)
 		}
-		if err := expose.Remove(t.Context(), s, record.ID); !errors.As(err, &missing) {
+		if err := expose.Remove(t.Context(), s, record.ID); !errors.Is(err, expose.ErrNotFound) {
 			t.Fatalf("foreign remove = %v", err)
 		}
 		if _, err := expose.AdmitRelay(t.Context(), s, record.ID); !errors.Is(err, expose.ErrRelayNotFound) {
@@ -375,8 +374,7 @@ func TestCreationRefusalsAndDisabledInstance(t *testing.T) {
 		}
 	}
 	s.connected = false
-	var offline *expose.DeviceOfflineError
-	if _, err := expose.Add(t.Context(), s, "device", "80", time.Hour); !errors.As(err, &offline) {
+	if _, err := expose.Add(t.Context(), s, "device", "80", time.Hour); !errors.Is(err, expose.ErrDeviceOffline) {
 		t.Fatalf("offline: %v", err)
 	}
 	s.domain = nil
@@ -387,11 +385,10 @@ func TestCreationRefusalsAndDisabledInstance(t *testing.T) {
 	if err != nil || len(list) != 0 {
 		t.Fatalf("disabled list: %v, %v", list, err)
 	}
-	var missing *expose.NotFoundError
-	if _, err := expose.Renew(t.Context(), s, testID, time.Hour); !errors.As(err, &missing) {
+	if _, err := expose.Renew(t.Context(), s, testID, time.Hour); !errors.Is(err, expose.ErrNotFound) {
 		t.Fatal(err)
 	}
-	if err := expose.Remove(t.Context(), s, testID); !errors.As(err, &missing) {
+	if err := expose.Remove(t.Context(), s, testID); !errors.Is(err, expose.ErrNotFound) {
 		t.Fatal(err)
 	}
 }
@@ -531,7 +528,6 @@ func TestExpiredReadsAndDeviceDestruction(t *testing.T) {
 				value := add(t, s, time.Hour)
 				a := admit(t, s, value.Record.ID)
 				time.Sleep(time.Hour)
-				var missing *expose.NotFoundError
 				switch operation {
 				case "list":
 					list, err := expose.List(t.Context(), s)
@@ -540,11 +536,11 @@ func TestExpiredReadsAndDeviceDestruction(t *testing.T) {
 					}
 				case "renew":
 					_, err := expose.Renew(t.Context(), s, value.Record.ID, time.Hour)
-					if !errors.As(err, &missing) {
+					if !errors.Is(err, expose.ErrNotFound) {
 						t.Fatal(err)
 					}
 				case "remove":
-					if err := expose.Remove(t.Context(), s, value.Record.ID); !errors.As(err, &missing) {
+					if err := expose.Remove(t.Context(), s, value.Record.ID); !errors.Is(err, expose.ErrNotFound) {
 						t.Fatal(err)
 					}
 				case "device":
@@ -602,7 +598,7 @@ func TestFirstExpiryWaitsOrCancels(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := expose.FirstExpiry(t.Context(), core.SystemClock{}, &at); err != nil {
+		if err := expose.FirstExpiry(t.Context(), core.SystemClock{}, at); err != nil {
 			t.Fatal(err)
 		}
 		if time.Since(start) != time.Hour {
@@ -610,7 +606,11 @@ func TestFirstExpiryWaitsOrCancels(t *testing.T) {
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { done <- expose.FirstExpiry(ctx, core.SystemClock{}, nil) }()
+		later, err := core.TimestampFromTime(time.Now().Add(time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() { done <- expose.FirstExpiry(ctx, core.SystemClock{}, later) }()
 		synctest.Wait()
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {

@@ -215,8 +215,8 @@ func (i *hostInstallations) install(b *backendtest.TestBackend, mask, installati
 	return stdout.Bytes(), stderr.Bytes(), err
 }
 
-// activeHostField reads the same dynamic JSON value Rust observes, preserving
-// generic JSON validation and using the contract runtime for each string value.
+// activeHostField reads the string field name of the Host's active.json,
+// decoding the document and the value with the contract runtime.
 func activeHostField(t *testing.T, state, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(state, "active.json"))

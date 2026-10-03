@@ -41,25 +41,25 @@ func (g *gated) Check(_ context.Context) (idlewatch.Activity, error) {
 
 func (g *gated) Changed() <-chan struct{} { return g.gate.State().Changed() }
 
-func (g *gated) Reserve(ctx context.Context) (idlewatch.Retirement, error) {
+func (g *gated) Reserve(ctx context.Context) (idlewatch.Retirement, bool, error) {
 	if g.before != nil {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, false, ctx.Err()
 		case <-g.before:
 		}
 		g.before = nil
 	}
 	if g.reserve != nil {
 		if err := g.reserve(); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 	reservation := g.gate.TryReserve()
 	if reservation == nil {
-		return nil, nil
+		return nil, false, nil
 	}
-	return &retirement{Reservation: reservation, run: g.retire}, nil
+	return &retirement{Reservation: reservation, run: g.retire}, true, nil
 }
 
 type retirement struct {

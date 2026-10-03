@@ -37,11 +37,11 @@ func shardFixture(t *testing.T, names ...string) *fixture {
 	t.Helper()
 	services := usershardtest.StartServices(t)
 	owner := databasetest.Master(t.Context(), t, services.Control).ID
-	created, err := services.Control.CreateConversation(t.Context(), owner, conversationID)
+	_, created, err := services.Control.CreateConversation(t.Context(), owner, conversationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := created.(*database.ConversationCreated); !ok {
+	if !created {
 		t.Fatalf("conversation creation = %T", created)
 	}
 	shards := usershardtest.StartShards(t, services)
