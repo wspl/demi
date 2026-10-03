@@ -27,29 +27,40 @@ const (
 
 // WorkID is a job's or raw process's ID, which the two kinds do not share.
 type WorkID struct {
+	// Kind selects the shell job or raw process namespace.
 	Kind WorkKind
-	ID   string
+	// ID identifies work within its namespace.
+	ID string
 }
 
 // Config supplies what every task of one connection shares.
 // Output is a bounded queue of encoded runner frames owned by the connection.
 // The caller owns Pipes, Directories and Shell and keeps them until Table.Close.
 type Config struct {
-	Output      chan<- []byte
+	// Output receives encoded runner frames for the connection.
+	Output chan<- []byte
+	// Directories owns the connection job directories.
 	Directories *Directories
-	Pipes       *process.PipeClient
-	Shell       process.JobShell
+	// Pipes transfers task input and output.
+	Pipes *process.PipeClient
+	// Shell starts shell jobs.
+	Shell process.JobShell
 	// Commands is absent where nothing makes execution contexts live.
 	Commands *Commands
 }
 
 // Commands supplies the execution context and dispatcher for declared commands.
 type Commands struct {
-	Dispatcher   *Dispatcher
-	Connection   *ConnectionHandle
+	// Dispatcher runs declared command invocations.
+	Dispatcher *Dispatcher
+	// Connection reaches the backend for command work.
+	Connection *ConnectionHandle
+	// Installation acquires the job manifest and its service leases.
 	Installation *Installation
-	Paths        ContextPaths
-	Services     *cmdpkgs.ServiceHandle
+	// Paths locates the command aliases and client executable.
+	Paths ContextPaths
+	// Services acquires native command services.
+	Services *cmdpkgs.ServiceHandle
 	// Endpoint is the local endpoint command clients reach.
 	Endpoint string
 	// Home is the installation directory, DEMI_HOME.
@@ -63,8 +74,11 @@ type TaskCommand interface{ taskCommand() }
 
 // ShellCommand runs a script with optional pipe input and output.
 type ShellCommand struct {
+	// Script is the shell source to execute.
 	Script string
-	Stdin  *runnerwire.PipeRef
+	// Stdin is the optional job input pipe.
+	Stdin *runnerwire.PipeRef
+	// Stdout is the optional job output pipe.
 	Stdout *runnerwire.PipeRef
 	// Commands pins the manifest and command context, or is nil for no declarations.
 	Commands *DeclaredCommands
@@ -74,14 +88,19 @@ func (*ShellCommand) taskCommand() {}
 
 // DeclaredCommands names the manifest and backend command context of a job.
 type DeclaredCommands struct {
+	// ManifestHash identifies the job command manifest.
 	ManifestHash string
-	Context      commandwire.CommandContext
+	// Context supplies the backend command authority.
+	Context commandwire.CommandContext
 }
 
 // ProcessCommand runs one raw executable with its arguments.
 type ProcessCommand struct {
-	Command      string
-	Args         []string
+	// Command is the executable to start.
+	Command string
+	// Args contains its arguments.
+	Args []string
+	// ProcessGroup requests ownership of the process group.
 	ProcessGroup bool
 }
 
@@ -89,9 +108,13 @@ func (*ProcessCommand) taskCommand() {}
 
 // TaskSpec supplies a task's ID, absolute directory, environment and command.
 type TaskSpec struct {
-	ID      string
-	Cwd     string
-	Env     map[string]string
+	// ID identifies the task.
+	ID string
+	// Cwd is the absolute working directory.
+	Cwd string
+	// Env supplies the task environment.
+	Env map[string]string
+	// Command selects shell or raw process execution.
 	Command TaskCommand
 }
 
@@ -127,7 +150,14 @@ type taskEntry struct {
 // Close must still join them. The connection retains ownership of config's resources.
 func NewTable(ctx context.Context, config Config) *Table {
 	lifetime, cancel := context.WithCancel(ctx)
-	return &Table{entries: make(map[WorkID]*taskEntry), changed: make(chan struct{}), lifetime: lifetime, cancel: cancel, config: config, done: make(chan struct{})}
+	return &Table{
+		entries:  make(map[WorkID]*taskEntry),
+		changed:  make(chan struct{}),
+		lifetime: lifetime,
+		cancel:   cancel,
+		config:   config,
+		done:     make(chan struct{}),
+	}
 }
 
 // Len returns the number of registered tasks, including completed tasks not collected.
@@ -176,7 +206,13 @@ func (t *Table) Start(spec TaskSpec) error {
 		return errors.New("duplicate live task id")
 	}
 	lifetime, cancel := context.WithCancelCause(t.lifetime)
-	entry := &taskEntry{lifetime: lifetime, cancel: cancel, input: make(chan process.Input, 64), signals: make(chan runnerwire.Signal, 16), following: make(chan struct{}, 1)}
+	entry := &taskEntry{
+		lifetime:  lifetime,
+		cancel:    cancel,
+		input:     make(chan process.Input, 64),
+		signals:   make(chan runnerwire.Signal, 16),
+		following: make(chan struct{}, 1),
+	}
 	t.entries[id] = entry
 	t.workers.Add(1)
 	t.mu.Unlock()
@@ -295,7 +331,9 @@ func (t *Table) Close(ctx context.Context) error {
 func FailureExit(work WorkID, reason string) ([]byte, error) {
 	failure := &runnerwire.SpawnError{Kind: runnerwire.SpawnErrorKindOther, Detail: &reason}
 	if work.Kind == ShellWork {
-		return runnerwire.Encode(&runnerwire.JobExit{JobID: work.ID, SpawnError: failure, Files: []runnerwire.JobFileChange{}})
+		return runnerwire.Encode(
+			&runnerwire.JobExit{JobID: work.ID, SpawnError: failure, Files: []runnerwire.JobFileChange{}},
+		)
 	}
 	return runnerwire.Encode(&runnerwire.SpawnExit{SpawnID: work.ID, SpawnError: failure})
 }

@@ -10,8 +10,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// bindLocal owns successive instances of a private, local-only named pipe.
-func bindLocal(ctx context.Context) (*Listener, error) {
+// bindListener owns successive instances of a private, local-only named pipe.
+func bindListener(ctx context.Context) (*Listener, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -20,14 +20,7 @@ func bindLocal(ctx context.Context) (*Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	create := func(first bool) (windows.Handle, error) {
-		flags := uint32(windows.PIPE_ACCESS_DUPLEX | windows.FILE_FLAG_OVERLAPPED)
-		if first {
-			flags |= windows.FILE_FLAG_FIRST_PIPE_INSTANCE
-		}
-		return windows.CreateNamedPipe(name, flags, windows.PIPE_TYPE_BYTE|windows.PIPE_READMODE_BYTE|windows.PIPE_WAIT|windows.PIPE_REJECT_REMOTE_CLIENTS, windows.PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0, nil)
-	}
-	handle, err := create(true)
+	handle, err := createNamedPipe(name, true)
 	if err != nil {
 		return nil, err
 	}
@@ -53,23 +46,11 @@ func bindLocal(ctx context.Context) (*Listener, error) {
 		}
 		defer func() { _ = windows.CloseHandle(event) }() // The event is private to this completed accept.
 		overlapped := windows.Overlapped{HEvent: event}
-		err = windows.ConnectNamedPipe(current, &overlapped)
-		if errors.Is(err, windows.ERROR_IO_PENDING) {
-			done := make(chan struct{})
-			stop := context.AfterFunc(ctx, func() { _ = windows.CancelIoEx(current, &overlapped); close(done) })
-			var transferred uint32
-			err = windows.GetOverlappedResult(current, &overlapped, &transferred, true)
-			if !stop() {
-				<-done
-			}
-		}
-		if errors.Is(err, windows.ERROR_PIPE_CONNECTED) {
-			err = nil
-		}
+		err = connectNamedPipe(ctx, current, &overlapped)
 		if err != nil {
 			return nil, err
 		}
-		next, err := create(false)
+		next, err := createNamedPipe(name, false)
 		if err != nil {
 			return nil, err
 		}
@@ -91,3 +72,40 @@ type acceptedPipe struct{ *os.File }
 
 func (*acceptedPipe) LocalAddr() net.Addr  { return &net.UnixAddr{Name: "local", Net: "pipe"} }
 func (*acceptedPipe) RemoteAddr() net.Addr { return &net.UnixAddr{Name: "peer", Net: "pipe"} }
+
+func createNamedPipe(name *uint16, first bool) (windows.Handle, error) {
+	flags := uint32(windows.PIPE_ACCESS_DUPLEX | windows.FILE_FLAG_OVERLAPPED)
+	if first {
+		flags |= windows.FILE_FLAG_FIRST_PIPE_INSTANCE
+	}
+	return windows.CreateNamedPipe(
+		name,
+		flags,
+		windows.PIPE_TYPE_BYTE|windows.PIPE_READMODE_BYTE|windows.PIPE_WAIT|windows.PIPE_REJECT_REMOTE_CLIENTS,
+		windows.PIPE_UNLIMITED_INSTANCES,
+		65536,
+		65536,
+		0,
+		nil,
+	)
+}
+
+func connectNamedPipe(ctx context.Context, current windows.Handle, overlapped *windows.Overlapped) error {
+	err := windows.ConnectNamedPipe(current, overlapped)
+	if errors.Is(err, windows.ERROR_IO_PENDING) {
+		done := make(chan struct{})
+		stop := context.AfterFunc(ctx, func() {
+			_ = windows.CancelIoEx(current, overlapped)
+			close(done)
+		})
+		var transferred uint32
+		err = windows.GetOverlappedResult(current, overlapped, &transferred, true)
+		if !stop() {
+			<-done
+		}
+	}
+	if errors.Is(err, windows.ERROR_PIPE_CONNECTED) {
+		err = nil
+	}
+	return err
+}

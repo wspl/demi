@@ -13,10 +13,14 @@ import (
 func TestFunctionsAndCompoundPipelinesDrainLargeOutputAndHereDocuments(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
-	if err := os.WriteFile(filepath.Join(f.home, "input"), []byte(strings.Repeat("x", 262144)), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(f.home, "input"), []byte(strings.Repeat("x", 262144)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f.job("pipeline", "producer() { cat input; }; value=$(producer | cat | cat); printf '%s\\n' \"${#value}\"; { producer; } | wc -c; (producer) | wc -c; cat <<EOF | wc -c\n$value\nEOF\ncat <<< \"$value\" | wc -c")
+	f.job(
+		"pipeline",
+		"producer() { cat input; }; value=$(producer | cat | cat); printf '%s\\n' \"${#value}\"; "+
+			"{ producer; } | wc -c; (producer) | wc -c; cat <<EOF | wc -c\n$value\nEOF\ncat <<< \"$value\" | wc -c",
+	)
 	out, stderr, exit := f.jobOutput("pipeline")
 	requireJobSuccess(t, exit, stderr)
 	if stderr != "" {
@@ -26,6 +30,7 @@ func TestFunctionsAndCompoundPipelinesDrainLargeOutputAndHereDocuments(t *testin
 		t.Fatalf("pipeline: %q, stderr: %q", out, stderr)
 	}
 }
+
 func TestCancellationTerminatesBlockingUtility(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()

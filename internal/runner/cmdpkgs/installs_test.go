@@ -11,7 +11,14 @@ func TestInstallChangesAtEachHundredthAndLeavesWhenDone(t *testing.T) {
 	var installs Installs
 	defer installs.Close()
 	reported := installs.Subscribe()
-	installing := installs.start(Wanted{Package: "demi.browser", Name: "program", Version: "0.1.3", Artifact: commandwire.PackageArtifact{Size: 1000}})
+	installing := installs.start(
+		Wanted{
+			Package:  "demi.browser",
+			Name:     "program",
+			Version:  "0.1.3",
+			Artifact: commandwire.PackageArtifact{Size: 1000},
+		},
+	)
 	select {
 	case <-reported.seen:
 	default:

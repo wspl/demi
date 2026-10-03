@@ -45,9 +45,11 @@ type nativeWatch struct {
 	report            func(WatchEvent)
 }
 
-var watches sync.Map
-var nextID atomic.Uint64
-var activeStreams atomic.Int64
+var (
+	watches       sync.Map
+	nextID        atomic.Uint64
+	activeStreams atomic.Int64
+)
 
 // loadNative binds the FSEvents and dispatch APIs once for all tree watches.
 func loadNative() error {
@@ -56,13 +58,29 @@ func loadNative() error {
 			path    string
 			symbols map[string]any
 		}{
-			{"/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", map[string]any{
-				"CFStringCreateWithCString": &native.stringCreate, "CFArrayCreate": &native.arrayCreate, "CFRelease": &native.release}},
-			{"/System/Library/Frameworks/CoreServices.framework/CoreServices", map[string]any{
-				"FSEventStreamCreate": &native.create, "FSEventStreamStart": &native.start, "FSEventStreamStop": &native.stop,
-				"FSEventStreamInvalidate": &native.invalidate, "FSEventStreamRelease": &native.streamRelease, "FSEventStreamSetDispatchQueue": &native.setQueue}},
-			{"/usr/lib/libSystem.B.dylib", map[string]any{"dispatch_queue_create": &native.queueCreate, "dispatch_release": &native.queueRelease,
-				"dispatch_sync_f": &native.syncQueue, "strlen": &native.strlen}},
+			{
+				"/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
+				map[string]any{
+					"CFStringCreateWithCString": &native.stringCreate,
+					"CFArrayCreate":             &native.arrayCreate,
+					"CFRelease":                 &native.release,
+				},
+			},
+			{
+				"/System/Library/Frameworks/CoreServices.framework/CoreServices",
+				map[string]any{
+					"FSEventStreamCreate":           &native.create,
+					"FSEventStreamStart":            &native.start,
+					"FSEventStreamStop":             &native.stop,
+					"FSEventStreamInvalidate":       &native.invalidate,
+					"FSEventStreamRelease":          &native.streamRelease,
+					"FSEventStreamSetDispatchQueue": &native.setQueue,
+				},
+			},
+			{"/usr/lib/libSystem.B.dylib", map[string]any{
+				"dispatch_queue_create": &native.queueCreate, "dispatch_release": &native.queueRelease,
+				"dispatch_sync_f": &native.syncQueue, "strlen": &native.strlen,
+			}},
 		}
 		for _, b := range bindings {
 			h, err := purego.Dlopen(b.path, purego.RTLD_NOW|purego.RTLD_LOCAL)
@@ -94,14 +112,14 @@ func loadNative() error {
 	return native.err
 }
 
-// Start watches one directory tree and delivers copied paths without blocking dispatch.
+// startPlatformWatch watches one directory tree and delivers copied paths without blocking dispatch.
 func startPlatformWatch(ctx context.Context, trees []string, report func(WatchEvent)) (func(), error) {
 	if err := loadNative(); err != nil {
 		return nil, err
 	}
-	var strs []uintptr
+	var stringsToWatch []uintptr
 	defer func() {
-		for _, str := range strs {
+		for _, str := range stringsToWatch {
 			native.release(str)
 		}
 	}()
@@ -109,27 +127,16 @@ func startPlatformWatch(ctx context.Context, trees []string, report func(WatchEv
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		root, err := filepath.EvalSymlinks(root)
+		str, err := watchRootString(root)
 		if err != nil {
 			return nil, err
 		}
-		root, err = filepath.Abs(root)
-		if err != nil {
-			return nil, err
-		}
-		if strings.ContainsRune(root, 0) {
-			return nil, fmt.Errorf("NUL in root")
-		}
-		str := native.stringCreate(0, root, 0x08000100)
-		if str == 0 {
-			return nil, fmt.Errorf("CFStringCreateWithCString failed")
-		}
-		strs = append(strs, str)
+		stringsToWatch = append(stringsToWatch, str)
 	}
-	if len(strs) == 0 {
+	if len(stringsToWatch) == 0 {
 		return nil, fmt.Errorf("no watch roots")
 	}
-	arr := native.arrayCreate(0, &strs[0], int64(len(strs)), native.arrayCallbacks)
+	arr := native.arrayCreate(0, &stringsToWatch[0], int64(len(stringsToWatch)), native.arrayCallbacks)
 	if arr == 0 {
 		return nil, fmt.Errorf("CFArrayCreate failed")
 	}
@@ -193,4 +200,23 @@ func deliver(_ uintptr, id uintptr, count uintptr, paths **byte, flags *uint32, 
 		metadata := flag&(0x400|0x2000|0x4000|0x8000) != 0 && !content
 		w.report(WatchEvent{Kind: WatchChanged, Path: path, Metadata: metadata})
 	}
+}
+
+func watchRootString(path string) (uintptr, error) {
+	root, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return 0, err
+	}
+	root, err = filepath.Abs(root)
+	if err != nil {
+		return 0, err
+	}
+	if strings.ContainsRune(root, 0) {
+		return 0, fmt.Errorf("NUL in root")
+	}
+	str := native.stringCreate(0, root, 0x08000100)
+	if str == 0 {
+		return 0, fmt.Errorf("CFStringCreateWithCString failed")
+	}
+	return str, nil
 }

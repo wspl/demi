@@ -23,7 +23,11 @@ type localCommands struct {
 }
 
 func (localCommands) Operations() []string { return []string{"fixture"} }
-func (h localCommands) Invoke(ctx context.Context, inv cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+
+func (h localCommands) Invoke(
+	ctx context.Context,
+	inv cmdsdk.InvocationContext[commandwire.LocalInvocation],
+) (commandwire.Completion, error) {
 	return h.invoke(ctx, inv)
 }
 
@@ -39,8 +43,15 @@ func (r neverRead) Read([]byte) (int, error) {
 }
 func (neverRead) Close() error { return nil }
 func localRequest() commandwire.LocalInvocation {
-	return commandwire.LocalInvocation{Operation: "fixture", InvocationID: "test", Args: json.RawMessage(`{}`), Cwd: os.TempDir(), Env: map[string]string{}}
+	return commandwire.LocalInvocation{
+		Operation:    "fixture",
+		InvocationID: "test",
+		Args:         json.RawMessage(`{}`),
+		Cwd:          os.TempDir(),
+		Env:          map[string]string{},
+	}
 }
+
 func localServer(t *testing.T, h localCommands) *jobs.Server {
 	t.Helper()
 	server, err := jobs.StartServer(testContext(t), h)
@@ -56,11 +67,24 @@ func localServer(t *testing.T, h localCommands) *jobs.Server {
 }
 
 func TestCommandWithoutStdinNeverPollsSource(t *testing.T) {
-	server := localServer(t, localCommands{invoke: func(ctx context.Context, inv cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
-		return commandwire.Completion{}, inv.Output.Stdout(ctx, []byte("done\x00\xff"))
-	}})
+	server := localServer(
+		t,
+		localCommands{
+			invoke: func(
+				ctx context.Context,
+				inv cmdsdk.InvocationContext[commandwire.LocalInvocation],
+			) (commandwire.Completion, error) {
+				return commandwire.Completion{}, inv.Output.Stdout(ctx, []byte("done\x00\xff"))
+			},
+		},
+	)
 	stdout := &outputBuffer{}
-	result, err := process.Forward(testContext(t), server.Endpoint(), localRequest(), process.Stdio{Stdin: neverRead{t: t}, Stdout: stdout, Stderr: &outputBuffer{}})
+	result, err := process.Forward(
+		testContext(t),
+		server.Endpoint(),
+		localRequest(),
+		process.Stdio{Stdin: neverRead{t: t}, Stdout: stdout, Stderr: &outputBuffer{}},
+	)
 	if err != nil || result.ExitCode != 0 || !bytes.Equal(stdout.Bytes(), []byte("done\x00\xff")) {
 		t.Fatalf("completion %+v, error %v, output %q", result, err, stdout.Bytes())
 	}
@@ -68,23 +92,43 @@ func TestCommandWithoutStdinNeverPollsSource(t *testing.T) {
 
 func TestPendingTerminalInputAllowsOutputAndCompletion(t *testing.T) {
 	requested := make(chan struct{})
-	server := localServer(t, localCommands{invoke: func(ctx context.Context, inv cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
-		inputCtx, cancel := context.WithCancel(ctx)
-		done := make(chan struct{})
-		go func() { defer close(done); _, _ = inv.Input.Next(inputCtx) }()
-		defer func() { cancel(); <-done }()
-		select {
-		case <-ctx.Done():
-			return commandwire.Completion{}, ctx.Err()
-		case <-requested:
-		}
-		return commandwire.Completion{}, inv.Output.Stdout(ctx, []byte("done\x00\xff"))
-	}})
+	server := localServer(
+		t,
+		localCommands{
+			invoke: func(
+				ctx context.Context,
+				inv cmdsdk.InvocationContext[commandwire.LocalInvocation],
+			) (commandwire.Completion, error) {
+				inputCtx, cancel := context.WithCancel(ctx)
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					_, _ = inv.Input.Next(inputCtx)
+				}()
+				defer func() {
+					cancel()
+					<-done
+				}()
+				select {
+				case <-ctx.Done():
+					return commandwire.Completion{}, ctx.Err()
+				case <-requested:
+				}
+				return commandwire.Completion{}, inv.Output.Stdout(ctx, []byte("done\x00\xff"))
+			},
+		},
+	)
 	reader, writer := io.Pipe()
-	defer func() { _ = writer.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = writer.Close() }()
 	stdout := &outputBuffer{}
 	input := &observedRead{ReadCloser: reader, started: requested}
-	result, err := process.Forward(testContext(t), server.Endpoint(), localRequest(), process.Stdio{Stdin: input, Stdout: stdout, Stderr: &outputBuffer{}})
+	result, err := process.Forward(
+		testContext(t),
+		server.Endpoint(),
+		localRequest(),
+		process.Stdio{Stdin: input, Stdout: stdout, Stderr: &outputBuffer{}},
+	)
 	if err != nil || result.ExitCode != 0 || stdout.String() != "done\x00\xff" {
 		t.Fatalf("result %+v, %v, output %q", result, err, stdout.String())
 	}
@@ -105,20 +149,34 @@ func TestCancellationInterruptsBlockedOutput(t *testing.T)   { blockedOutput(t, 
 func TestConnectionLossInterruptsBlockedStdout(t *testing.T) { blockedOutput(t, true) }
 func blockedOutput(t *testing.T, disconnect bool) {
 	t.Helper()
-	server := localServer(t, localCommands{invoke: func(ctx context.Context, inv cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
-		for {
-			if err := inv.Output.Stdout(ctx, make([]byte, 65536)); err != nil {
-				return commandwire.Completion{}, err
-			}
-		}
-	}})
+	server := localServer(
+		t,
+		localCommands{
+			invoke: func(
+				ctx context.Context,
+				inv cmdsdk.InvocationContext[commandwire.LocalInvocation],
+			) (commandwire.Completion, error) {
+				for {
+					if err := inv.Output.Stdout(ctx, make([]byte, 65536)); err != nil {
+						return commandwire.Completion{}, err
+					}
+				}
+			},
+		},
+	)
 	reader, writer := io.Pipe()
-	defer func() { _ = reader.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = reader.Close() }()
 	ctx, cancel := context.WithCancel(testContext(t))
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := process.Forward(ctx, server.Endpoint(), localRequest(), process.Stdio{Stdin: neverRead{t: t}, Stdout: writer, Stderr: &outputBuffer{}})
+		_, err := process.Forward(
+			ctx,
+			server.Endpoint(),
+			localRequest(),
+			process.Stdio{Stdin: neverRead{t: t}, Stdout: writer, Stderr: &outputBuffer{}},
+		)
 		done <- err
 	}()
 	buffer := make([]byte, 1)
@@ -142,31 +200,39 @@ func blockedOutput(t *testing.T, disconnect bool) {
 
 func TestPrivateEndpointStreamsBinaryInputAndJoinsCancellation(t *testing.T) {
 	cancelled := make(chan struct{})
-	server := localServer(t, localCommands{invoke: func(ctx context.Context, inv cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
-		if inv.Request.InvocationID == "wait" {
-			if err := inv.Output.Stdout(ctx, []byte("ready")); err != nil {
-				return commandwire.Completion{}, err
-			}
-			<-ctx.Done()
-			close(cancelled)
-			return commandwire.Completion{}, ctx.Err()
-		}
-		for {
-			bytes, err := inv.Input.Next(ctx)
-			if errors.Is(err, io.EOF) {
-				return commandwire.Completion{}, nil
-			}
-			if err != nil {
-				return commandwire.Completion{}, err
-			}
-			if err = inv.Output.Stdout(ctx, bytes); err != nil {
-				return commandwire.Completion{}, err
-			}
-		}
-	}})
+	server := localServer(
+		t,
+		localCommands{
+			invoke: func(
+				ctx context.Context,
+				inv cmdsdk.InvocationContext[commandwire.LocalInvocation],
+			) (commandwire.Completion, error) {
+				if inv.Request.InvocationID == "wait" {
+					if err := inv.Output.Stdout(ctx, []byte("ready")); err != nil {
+						return commandwire.Completion{}, err
+					}
+					<-ctx.Done()
+					close(cancelled)
+					return commandwire.Completion{}, ctx.Err()
+				}
+				for {
+					bytes, err := inv.Input.Next(ctx)
+					if errors.Is(err, io.EOF) {
+						return commandwire.Completion{}, nil
+					}
+					if err != nil {
+						return commandwire.Completion{}, err
+					}
+					if err = inv.Output.Stdout(ctx, bytes); err != nil {
+						return commandwire.Completion{}, err
+					}
+				}
+			},
+		},
+	)
 	if runtime.GOOS != "windows" {
 		stat, err := os.Stat(server.Endpoint())
-		if err != nil || stat.Mode().Perm() != 0600 {
+		if err != nil || stat.Mode().Perm() != 0o600 {
 			t.Fatalf("private socket: %v %v", stat, err)
 		}
 	}
@@ -179,7 +245,8 @@ func TestPrivateEndpointStreamsBinaryInputAndJoinsCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = client.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = client.Close() }()
 	input, output, err := client.Invoke(ctx, localRequest())
 	if err != nil {
 		t.Fatal(err)

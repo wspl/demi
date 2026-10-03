@@ -40,13 +40,23 @@ func (h *ConnectionHandle) Done() <-chan struct{} {
 // RegisterCall registers events until ended closes. cancel ends the call when
 // it cannot keep up. The caller owns and joins call work and never closes events
 // while the relay exists; channel closure is unnecessary for caller cleanup.
-func (h *ConnectionHandle) RegisterCall(ctx context.Context, id string, events chan<- CallEvent, ended <-chan struct{}, cancel context.CancelFunc) error {
+func (h *ConnectionHandle) RegisterCall(
+	ctx context.Context,
+	id string,
+	events chan<- CallEvent,
+	ended <-chan struct{},
+	cancel context.CancelFunc,
+) error {
 	return h.request(ctx, &CallRequest{ID: id, Events: events, Ended: ended, Cancel: cancel})
 }
 
 // Locate asks where sha256 is on behalf of live work, within the backend's
 // 15-second answer window and the connection's lifetime.
-func (h *ConnectionHandle) Locate(ctx context.Context, owner runnerwire.ArtifactOwner, sha256 string) (commandwire.ArtifactLocation, error) {
+func (h *ConnectionHandle) Locate(
+	ctx context.Context,
+	owner runnerwire.ArtifactOwner,
+	sha256 string,
+) (commandwire.ArtifactLocation, error) {
 	wait, cancel := context.WithCancel(ctx)
 	defer cancel()
 	q := &LocateQuestion{Owner: owner, SHA256: sha256, ready: make(chan struct{})}
@@ -65,8 +75,18 @@ func (h *ConnectionHandle) Locate(ctx context.Context, owner runnerwire.Artifact
 // RegisterContext makes execution live and transfers leases to the connection
 // owner on success. On failure the caller releases leases. An abandoned request
 // must not retain a registration or its leases.
-func (h *ConnectionHandle) RegisterContext(ctx context.Context, execution *ExecutionContext, leases []*cmdpkgs.ServiceLease) error {
-	r := &ContextRequest{ctx: ctx, connection: h.lifetime, execution: execution, leases: leases, ready: make(chan struct{})}
+func (h *ConnectionHandle) RegisterContext(
+	ctx context.Context,
+	execution *ExecutionContext,
+	leases []*cmdpkgs.ServiceLease,
+) error {
+	r := &ContextRequest{
+		ctx:        ctx,
+		connection: h.lifetime,
+		execution:  execution,
+		leases:     leases,
+		ready:      make(chan struct{}),
+	}
 	if err := h.request(ctx, r); err != nil {
 		return err
 	}
@@ -84,7 +104,12 @@ func (h *ConnectionHandle) RegisterContext(ctx context.Context, execution *Execu
 }
 
 // Reserve requests conversation numbers with the same answer window as Locate.
-func (h *ConnectionHandle) Reserve(ctx context.Context, conversation string, sequence commandwire.ServiceSequence, count uint32) (uint64, error) {
+func (h *ConnectionHandle) Reserve(
+	ctx context.Context,
+	conversation string,
+	sequence commandwire.ServiceSequence,
+	count uint32,
+) (uint64, error) {
 	wait, cancel := context.WithCancel(ctx)
 	defer cancel()
 	q := &ReserveQuestion{Conversation: conversation, Sequence: sequence, Count: count, ready: make(chan struct{})}
@@ -124,9 +149,13 @@ type Request interface{ connectionRequest() }
 // CallRequest registers a call's events until Ended closes. Cancel is invoked
 // when the bounded event queue is full; the relay never waits for room.
 type CallRequest struct {
-	ID     string
+	// ID identifies the callback invocation.
+	ID string
+	// Events receives the callback events.
 	Events chan<- CallEvent
-	Ended  <-chan struct{}
+	// Ended closes when the callback invocation ends.
+	Ended <-chan struct{}
+	// Cancel ends a call that cannot consume its events.
 	Cancel context.CancelFunc
 }
 
@@ -134,7 +163,9 @@ func (*CallRequest) connectionRequest() {}
 
 // AskRequest asks the backend a question until the asker abandons its wait.
 type AskRequest struct {
-	Question  Question
+	// Question carries the backend question and its answer destination.
+	Question Question
+	// Abandoned ends the wait when the asker leaves.
 	Abandoned context.Context
 }
 
@@ -187,7 +218,9 @@ type Question interface{ backendQuestion() }
 // LocateQuestion asks where an artifact is on behalf of Owner.
 // Only ConnectionHandle creates questions; consumers read their public fields.
 type LocateQuestion struct {
-	Owner    runnerwire.ArtifactOwner
+	// Owner identifies the authority requesting the artifact.
+	Owner runnerwire.ArtifactOwner
+	// SHA256 identifies the artifact bytes.
 	SHA256   string
 	once     sync.Once
 	ready    chan struct{}
@@ -200,25 +233,36 @@ func (*LocateQuestion) backendQuestion() {}
 // Answer delivers the location or failure once without blocking; a departed
 // asker needs no answer. Repeated answers are ignored.
 func (q *LocateQuestion) Answer(location commandwire.ArtifactLocation, err error) {
-	q.once.Do(func() { q.location = location; q.err = err; close(q.ready) })
+	q.once.Do(func() {
+		q.location = location
+		q.err = err
+		close(q.ready)
+	})
 }
 
 // ReserveQuestion asks for numbers from a conversation's sequence.
 type ReserveQuestion struct {
+	// Conversation identifies the conversation requesting numbers.
 	Conversation string
-	Sequence     commandwire.ServiceSequence
-	Count        uint32
-	once         sync.Once
-	ready        chan struct{}
-	first        uint64
-	err          error
+	// Sequence selects the conversation number sequence.
+	Sequence commandwire.ServiceSequence
+	// Count is the number of consecutive values requested.
+	Count uint32
+	once  sync.Once
+	ready chan struct{}
+	first uint64
+	err   error
 }
 
 func (*ReserveQuestion) backendQuestion() {}
 
 // Answer delivers the first number or failure without blocking, at most once.
 func (q *ReserveQuestion) Answer(first uint64, err error) {
-	q.once.Do(func() { q.first = first; q.err = err; close(q.ready) })
+	q.once.Do(func() {
+		q.first = first
+		q.err = err
+		close(q.ready)
+	})
 }
 
 // CallEvent is what the backend tells a callback invocation.
@@ -228,14 +272,19 @@ type CallEvent interface{ callEvent() }
 
 // CallPipes supplies the callback's independently flowing IO pipes.
 type CallPipes struct {
-	Stdin  *runnerwire.PipeRef
+	// Stdin is the optional callback input pipe.
+	Stdin *runnerwire.PipeRef
+	// Stdout is the callback output pipe.
 	Stdout runnerwire.PipeRef
 }
 
 func (*CallPipes) callEvent() {}
 
 // CallStderr delivers a chunk of the callback's standard error.
-type CallStderr struct{ Bytes []byte }
+type CallStderr struct {
+	// Bytes contains the callback standard error chunk.
+	Bytes []byte
+}
 
 func (*CallStderr) callEvent() {}
 
@@ -245,7 +294,10 @@ type CallPull struct{}
 func (*CallPull) callEvent() {}
 
 // CallExit supplies the callback's completion status.
-type CallExit struct{ ExitCode uint8 }
+type CallExit struct {
+	// ExitCode is the callback completion status.
+	ExitCode uint8
+}
 
 func (*CallExit) callEvent() {}
 
@@ -272,7 +324,13 @@ type relayedQuestion struct {
 // NewRelay creates routing state owned by the connection lifetime ctx.
 func NewRelay(ctx context.Context) *Relay {
 	lifetime, cancel := context.WithCancel(ctx)
-	return &Relay{calls: make(map[string]*CallRequest), asks: make(map[string]*relayedQuestion), lifetime: lifetime, cancel: cancel, done: make(chan struct{})}
+	return &Relay{
+		calls:    make(map[string]*CallRequest),
+		asks:     make(map[string]*relayedQuestion),
+		lifetime: lifetime,
+		cancel:   cancel,
+		done:     make(chan struct{}),
+	}
 }
 
 // Call registers where a callback's events go until its Ended channel closes.
@@ -314,7 +372,12 @@ func (r *Relay) Ask(request *AskRequest) ([]byte, error) {
 		}
 		message = &runnerwire.ArtifactResolve{ID: id, Owner: q.Owner, SHA256: q.SHA256, Target: string(target)}
 	case *ReserveQuestion:
-		message = &runnerwire.NumbersReserve{ID: id, ConversationID: q.Conversation, Sequence: q.Sequence, Count: q.Count}
+		message = &runnerwire.NumbersReserve{
+			ID:             id,
+			ConversationID: q.Conversation,
+			Sequence:       q.Sequence,
+			Count:          q.Count,
+		}
 	}
 	frame, err := runnerwire.Encode(message)
 	if err != nil {
@@ -365,18 +428,7 @@ func (r *Relay) Route(message runnerwire.Inbound) bool {
 		id = m.CallID
 		event = &CallExit{ExitCode: m.ExitCode}
 	case *runnerwire.ArtifactLocation:
-		if q, ok := r.answer(m.ID).(*LocateQuestion); ok {
-			var err error
-			var location commandwire.ArtifactLocation
-			if m.Location != nil && m.Error == nil {
-				location = *m.Location
-			} else if m.Location == nil && m.Error != nil {
-				err = errors.New(*m.Error)
-			} else {
-				err = errors.New("invalid artifact location response")
-			}
-			q.Answer(location, err)
-		}
+		r.locateAnswer(m)
 		return true
 	case *runnerwire.NumbersReserved:
 		if q, ok := r.answer(m.ID).(*ReserveQuestion); ok {
@@ -417,7 +469,10 @@ func (r *Relay) Close(ctx context.Context) error {
 		r.closing = true
 		r.mu.Unlock()
 		r.cancel()
-		go func() { r.watches.Wait(); close(r.done) }()
+		go func() {
+			r.watches.Wait()
+			close(r.done)
+		}()
 	})
 	select {
 	case <-r.done:
@@ -463,4 +518,19 @@ func (r *Relay) answer(id string) Question {
 	}
 	close(entry.done)
 	return entry.question
+}
+
+func (r *Relay) locateAnswer(m *runnerwire.ArtifactLocation) {
+	if q, ok := r.answer(m.ID).(*LocateQuestion); ok {
+		var err error
+		var location commandwire.ArtifactLocation
+		if m.Location != nil && m.Error == nil {
+			location = *m.Location
+		} else if m.Location == nil && m.Error != nil {
+			err = errors.New(*m.Error)
+		} else {
+			err = errors.New("invalid artifact location response")
+		}
+		q.Answer(location, err)
+	}
 }

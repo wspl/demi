@@ -50,7 +50,16 @@ func finishEdits(ctx context.Context, recorder *cmdsdk.Recorder) ([]runnerwire.J
 			added += a
 			removed += r
 		}
-		files = append(files, runnerwire.JobFileChange{Path: file.Path, Kind: file.Kind, Edits: file.Edits, Added: added, Removed: removed})
+		files = append(
+			files,
+			runnerwire.JobFileChange{
+				Path:    file.Path,
+				Kind:    file.Kind,
+				Edits:   file.Edits,
+				Added:   added,
+				Removed: removed,
+			},
+		)
 	}
 	return files, journal.FilesTruncated
 }
@@ -61,7 +70,8 @@ func readEditSnapshot(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = file.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = file.Close() }()
 	bytes, err := io.ReadAll(io.LimitReader(file, commandwire.EditFileBytes+1))
 	if err != nil {
 		return nil, err

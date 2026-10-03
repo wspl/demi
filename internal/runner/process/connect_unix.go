@@ -41,6 +41,7 @@ func runnerMayLive(endpoint string) bool {
 	if err != nil {
 		return cmdsdk.Exhausted(err)
 	}
-	defer func() { _ = file.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = file.Close() }()
 	return errors.Is(unix.Flock(int(file.Fd()), unix.LOCK_SH|unix.LOCK_NB), unix.EWOULDBLOCK)
 }

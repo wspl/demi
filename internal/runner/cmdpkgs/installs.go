@@ -18,14 +18,17 @@ type Installs struct {
 	closed  bool
 }
 
-func (i *Installs) notification() chan struct{} {
+// notificationLocked requires the install mutex, which also protects channel replacement.
+func (i *Installs) notificationLocked() chan struct{} {
 	if i.changed == nil {
 		i.changed = make(chan struct{})
 	}
 	return i.changed
 }
-func (i *Installs) notify() {
-	close(i.notification())
+
+// notifyLocked requires the install mutex so every observer sees one channel generation.
+func (i *Installs) notifyLocked() {
+	close(i.notificationLocked())
 	i.changed = make(chan struct{})
 }
 
@@ -33,7 +36,7 @@ func (i *Installs) notify() {
 func (i *Installs) Subscribe() *InstallsReceiver {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return &InstallsReceiver{installs: i, seen: i.notification()}
+	return &InstallsReceiver{installs: i, seen: i.notificationLocked()}
 }
 
 // Close ends reporting and wakes receivers after the owner has joined its installs.
@@ -43,7 +46,7 @@ func (i *Installs) Close() {
 	defer i.mu.Unlock()
 	if !i.closed {
 		i.closed = true
-		close(i.notification())
+		close(i.notificationLocked())
 	}
 }
 
@@ -60,7 +63,7 @@ func (r *InstallsReceiver) Current() []runnerwire.Install {
 	i := r.installs
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	r.seen = i.notification()
+	r.seen = i.notificationLocked()
 	result := make([]runnerwire.Install, 0, min(len(i.list), runnerwire.MaxInstalls))
 	for _, item := range i.list[:min(len(i.list), runnerwire.MaxInstalls)] {
 		result = append(result, item.value)
@@ -73,7 +76,7 @@ func (r *InstallsReceiver) Current() []runnerwire.Install {
 func (r *InstallsReceiver) Changed(ctx context.Context) (bool, error) {
 	i := r.installs
 	i.mu.Lock()
-	if r.seen != i.notification() {
+	if r.seen != i.notificationLocked() {
 		r.seen = i.changed
 		i.mu.Unlock()
 		return true, nil
@@ -88,7 +91,7 @@ func (r *InstallsReceiver) Changed(ctx context.Context) (bool, error) {
 		return false, ctx.Err()
 	case <-r.seen:
 		i.mu.Lock()
-		r.seen = i.notification()
+		r.seen = i.notificationLocked()
 		closed = i.closed
 		i.mu.Unlock()
 		return !closed, nil
@@ -100,21 +103,32 @@ type installing struct {
 	value    runnerwire.Install
 }
 
-func (i *Installs) start(w Wanted) *installing {
-	item := &installing{installs: i, value: runnerwire.Install{Package: w.Package, Name: w.Name, Version: w.Version, Phase: runnerwire.InstallPhaseDownload, Total: w.Artifact.Size}}
+func (i *Installs) start(wanted Wanted) *installing {
+	item := &installing{
+		installs: i,
+		value: runnerwire.Install{
+			Package: wanted.Package,
+			Name:    wanted.Name,
+			Version: wanted.Version,
+			Phase:   runnerwire.InstallPhaseDownload,
+			Total:   wanted.Artifact.Size,
+		},
+	}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.list = append(i.list, item)
-	i.notify()
+	i.notifyLocked()
 	return item
 }
+
 func (i *installing) close() {
 	owner := i.installs
 	owner.mu.Lock()
 	defer owner.mu.Unlock()
 	owner.list = slices.DeleteFunc(owner.list, func(item *installing) bool { return item == i })
-	owner.notify()
+	owner.notifyLocked()
 }
+
 func (i *installing) downloaded(done uint64) {
 	owner := i.installs
 	owner.mu.Lock()
@@ -128,14 +142,15 @@ func (i *installing) downloaded(done uint64) {
 	}
 	if done != i.value.Done && (done == i.value.Total || hundredth(done) > hundredth(i.value.Done)) {
 		i.value.Done = done
-		owner.notify()
+		owner.notifyLocked()
 	}
 }
+
 func (i *installing) unpacking() {
 	owner := i.installs
 	owner.mu.Lock()
 	defer owner.mu.Unlock()
 	i.value.Phase = runnerwire.InstallPhaseUnpack
 	i.value.Done = i.value.Total
-	owner.notify()
+	owner.notifyLocked()
 }

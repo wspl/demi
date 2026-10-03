@@ -18,7 +18,9 @@ func TestJSONOutputReportsParserDetail(t *testing.T) {
 	if !errors.As(err, &syntax) {
 		t.Fatalf("missing parser cause: %v", err)
 	}
-	if !strings.HasPrefix(err.Error(), "--json output is not JSON: ") || !strings.Contains(err.Error(), syntax.Error()) || !strings.Contains(syntax.Error(), "invalid character '!'") {
+	if !strings.HasPrefix(err.Error(), "--json output is not JSON: ") ||
+		!strings.Contains(err.Error(), syntax.Error()) ||
+		!strings.Contains(syntax.Error(), "invalid character '!'") {
 		t.Fatalf("missing parser detail: %v", err)
 	}
 }

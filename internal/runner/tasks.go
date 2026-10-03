@@ -57,6 +57,10 @@ func (e taskEnvironment) processSpec(request *runnerwire.Spawn) jobs.TaskSpec {
 	if request.Args != nil {
 		args = *request.Args
 	}
-	command := &jobs.ProcessCommand{Command: request.Command, Args: args, ProcessGroup: request.KillProcessGroup != nil && *request.KillProcessGroup}
+	command := &jobs.ProcessCommand{
+		Command:      request.Command,
+		Args:         args,
+		ProcessGroup: request.KillProcessGroup != nil && *request.KillProcessGroup,
+	}
 	return jobs.TaskSpec{ID: request.SpawnID, Cwd: cwd, Env: values, Command: command}
 }

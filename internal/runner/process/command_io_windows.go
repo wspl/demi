@@ -62,6 +62,7 @@ type synchronousCommandFile struct {
 func (f *synchronousCommandFile) Read(b []byte) (int, error) {
 	return f.call(func() (int, error) { return f.file.Read(b) })
 }
+
 func (f *synchronousCommandFile) Write(b []byte) (int, error) {
 	return f.call(func() (int, error) { return f.file.Write(b) })
 }
@@ -95,6 +96,7 @@ func (f *synchronousCommandFile) call(operation func() (int, error)) (int, error
 	}
 	return n, err
 }
+
 func (f *synchronousCommandFile) Close() error {
 	f.once.Do(func() {
 		f.mu.Lock()

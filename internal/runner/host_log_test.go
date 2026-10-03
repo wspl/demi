@@ -13,22 +13,26 @@ import (
 // The rotation scenario writes 4 MiB and normally completes in about one second.
 func seededLine(t *testing.T, seq uint64, source string, conversation *string, text string) string {
 	t.Helper()
-	bytes, err := (logLine{Seq: seq, At: 1700000000000, Source: source, ConversationID: conversation, Text: text}).MarshalJSON()
+	bytes, err := (logLine{
+		Seq: seq, At: 1700000000000, Source: source, ConversationID: conversation, Text: text,
+	}).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
 	}
 	return string(bytes) + "\n"
 }
+
 func (f *runnerFixture) seedLog(older, newer string) {
 	f.stop()
 	for name, text := range map[string]string{"host.log.1": older, "host.log": newer} {
-		if err := os.WriteFile(filepath.Join(f.state, "log", name), []byte(text), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(f.state, "log", name), []byte(text), 0o600); err != nil {
 			f.t.Fatal(err)
 		}
 	}
 	f.start()
 	f.online()
 }
+
 func (f *runnerFixture) readLog(since *uint64, limit uint64, source *string) *runnerwire.LogLines {
 	f.t.Helper()
 	f.send(&runnerwire.LogRead{ID: "read", Since: since, Limit: limit, Source: source})
@@ -38,6 +42,7 @@ func (f *runnerFixture) readLog(since *uint64, limit uint64, source *string) *ru
 	}
 	return lines
 }
+
 func logTexts(lines []runnerwire.LogLine) string {
 	var text []string
 	for _, line := range lines {
@@ -45,9 +50,22 @@ func logTexts(lines []runnerwire.LogLine) string {
 	}
 	return strings.Join(text, "|")
 }
+
 func TestLogPageHoldsCursorLimitAndSource(t *testing.T) {
 	f := newRunner(t, nil, "")
-	older := seededLine(t, 100, "service:demi.browser", nil, "tabs failed") + seededLine(t, 101, "stream:browser.live", new("conversation"), "no tabs")
+	older := seededLine(
+		t,
+		100,
+		"service:demi.browser",
+		nil,
+		"tabs failed",
+	) + seededLine(
+		t,
+		101,
+		"stream:browser.live",
+		new("conversation"),
+		"no tabs",
+	)
 	newer := seededLine(t, 102, "service:demi.browser", nil, "tabs listed") + `{"seq":`
 	f.seedLog(older, newer)
 	page := f.readLog(nil, 10, new("service:demi.browser"))
@@ -59,7 +77,8 @@ func TestLogPageHoldsCursorLimitAndSource(t *testing.T) {
 		t.Fatal(page)
 	}
 	page = f.readLog(new(uint64(0)), 2, nil)
-	if logTexts(page.Lines) != "tabs failed|no tabs" || page.Next != 101 || page.Lines[1].ConversationID == nil || *page.Lines[1].ConversationID != "conversation" {
+	if logTexts(page.Lines) != "tabs failed|no tabs" || page.Next != 101 || page.Lines[1].ConversationID == nil ||
+		*page.Lines[1].ConversationID != "conversation" {
 		t.Fatal(page)
 	}
 	page = f.readLog(new(uint64(101)), 1, nil)
@@ -75,6 +94,7 @@ func TestLogPageHoldsCursorLimitAndSource(t *testing.T) {
 		t.Fatal(page)
 	}
 }
+
 func TestLongLogLinesRotateAndCursorReadsEachOnce(t *testing.T) {
 	f := newRunner(t, nil, "")
 	text := strings.Repeat("x", 4000)

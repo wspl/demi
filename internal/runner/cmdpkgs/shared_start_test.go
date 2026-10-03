@@ -50,7 +50,15 @@ func TestCallerGivingUpLeavesSharedStartToOthers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := commandwire.PackageDescriptor{ID: "demi.fixture", Version: "1", ProtocolVersion: 1, Operations: commandwiretest.FixtureOperations(), Targets: map[string]commandwire.PackageArtifact{string(target): {SHA256: digest.SHA256, Size: digest.Size}}}
+	descriptor := commandwire.PackageDescriptor{
+		ID:              "demi.fixture",
+		Version:         "1",
+		ProtocolVersion: 1,
+		Operations:      commandwiretest.FixtureOperations(),
+		Targets: map[string]commandwire.PackageArtifact{
+			string(target): {SHA256: digest.SHA256, Size: digest.Size},
+		},
+	}
 	root := t.TempDir()
 	registry, err := NewServiceRegistry(ctx, filepath.Join(root, "cache"), "", root, map[string]string{})
 	if err != nil {

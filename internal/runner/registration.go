@@ -60,28 +60,8 @@ func runRegistration(ctx context.Context, options registrationOptions) (err erro
 	}
 	defer func() { err = errors.Join(err, lease.close()) }()
 	state := runnerState{root: options.directory}
-	saved, err := state.config()
+	token, err := registrationToken(ctx, options, state)
 	if err != nil {
-		return err
-	}
-	if saved != nil && instanceID(saved.BackendURL) != instanceID(options.backend) {
-		return errors.New("installation is registered to another backend")
-	}
-	token := options.token
-	if token == nil {
-		token, err = state.token()
-		if err != nil {
-			return err
-		}
-	}
-	if options.runner.Managed != nil && *options.runner.Managed && token == nil {
-		return errors.New("managed runner requires a device token")
-	}
-	config := runnerConfig{BackendURL: options.backend}
-	if saved != nil {
-		config.DeviceID = saved.DeviceID
-	}
-	if err := state.writeConfig(ctx, config); err != nil {
 		return err
 	}
 	slog.Info("runner " + options.runner.Version + " started")
@@ -97,48 +77,24 @@ func runRegistration(ctx context.Context, options registrationOptions) (err erro
 		return err
 	}
 	defer func() { err = errors.Join(err, registry.Close(context.Background())) }()
-	paths, err := jobs.NewContextPaths(ctx, filepath.Join(state.root, "commands"), options.executable)
-	if err != nil {
-		return err
-	}
-	id, err := uuid.NewRandom()
-	if err != nil {
-		return err
-	}
-	management := newManagement(strings.ReplaceAll(id.String(), "-", ""), options.runner.Version)
-	r := &registration{options: options, state: state, management: management, services: registry.Handle(), installs: registry.Installs(), contexts: &jobs.Contexts{}, paths: paths}
-	r.token.Store(token)
-	r.pipes, err = process.NewPipeClient(options.backend, func() (runnerwire.DeviceToken, bool) {
-		token := r.token.Load()
-		if token == nil {
-			return "", false
-		}
-		return *token, true
-	})
+	r, err := prepareRegistration(ctx, options, state, registry, token)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, r.pipes.Close()) }()
-	r.dispatcher = &jobs.Dispatcher{Contexts: r.contexts, Services: r.services, Pipes: r.pipes}
-	server, err := jobs.StartServer(lifetime, &endpoint{dispatcher: r.dispatcher, management: management})
+	server, err := r.startServer(lifetime)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, server.Close(context.Background())) }()
-	r.endpoint = server.Endpoint()
-	r.reserved = options.shell.BuiltinNames()
-	r.reserved[program] = struct{}{}
-	if err := lease.publish(ctx, state, activeRunner{Endpoint: r.endpoint, Secret: management.secret, Release: options.runner.Version}); err != nil {
+	if err := lease.publish(
+		ctx,
+		state,
+		activeRunner{Endpoint: r.endpoint, Secret: r.management.secret, Release: options.runner.Version},
+	); err != nil {
 		return err
 	}
-	err = r.reconnect(ctx)
-	if management.snapshot().Draining && ctx.Err() == nil {
-		err = errors.Join(err, server.WaitIdle(ctx))
-	}
-	// Service registry must end before the local server and installation lock.
-	err = errors.Join(err, registry.Close(context.Background()))
-	slog.Info("runner stopped")
-	return err
+	return r.run(ctx, server, registry)
 }
 
 func (r *registration) reconnect(ctx context.Context) error {
@@ -201,4 +157,112 @@ func (r *registration) reconnect(ctx context.Context) error {
 		}
 		delay = min(delay*2, 10*time.Second)
 	}
+}
+
+func registrationToken(
+	ctx context.Context,
+	options registrationOptions,
+	state runnerState,
+) (*runnerwire.DeviceToken, error) {
+	saved, err := state.config()
+	if err != nil {
+		return nil, err
+	}
+	if saved != nil && instanceID(saved.BackendURL) != instanceID(options.backend) {
+		return nil, errors.New("installation is registered to another backend")
+	}
+	token := options.token
+	if token == nil {
+		token, err = state.token()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if options.runner.Managed != nil && *options.runner.Managed && token == nil {
+		return nil, errors.New("managed runner requires a device token")
+	}
+	config := runnerConfig{BackendURL: options.backend}
+	if saved != nil {
+		config.DeviceID = saved.DeviceID
+	}
+	if err := state.writeConfig(ctx, config); err != nil {
+		return nil, err
+	}
+	return token, nil
+}
+
+func newRegistration(
+	options registrationOptions,
+	state runnerState,
+	registry *cmdpkgs.ServiceRegistry,
+	paths jobs.ContextPaths,
+	token *runnerwire.DeviceToken,
+) (*registration, error) {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return nil, err
+	}
+	management := newManagement(strings.ReplaceAll(id.String(), "-", ""), options.runner.Version)
+	r := &registration{
+		options:    options,
+		state:      state,
+		management: management,
+		services:   registry.Handle(),
+		installs:   registry.Installs(),
+		contexts:   &jobs.Contexts{},
+		paths:      paths,
+	}
+	r.token.Store(token)
+	r.pipes, err = process.NewPipeClient(options.backend, func() (runnerwire.DeviceToken, bool) {
+		token := r.token.Load()
+		if token == nil {
+			return "", false
+		}
+		return *token, true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func prepareRegistration(
+	ctx context.Context,
+	options registrationOptions,
+	state runnerState,
+	registry *cmdpkgs.ServiceRegistry,
+	token *runnerwire.DeviceToken,
+) (*registration, error) {
+	paths, err := jobs.NewContextPaths(ctx, filepath.Join(state.root, "commands"), options.executable)
+	if err != nil {
+		return nil, err
+	}
+	r, err := newRegistration(options, state, registry, paths, token)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func (r *registration) startServer(ctx context.Context) (*jobs.Server, error) {
+	r.dispatcher = &jobs.Dispatcher{Contexts: r.contexts, Services: r.services, Pipes: r.pipes}
+	server, err := jobs.StartServer(ctx, &endpoint{dispatcher: r.dispatcher, management: r.management})
+	if err != nil {
+		return nil, err
+	}
+	r.endpoint = server.Endpoint()
+	r.reserved = r.options.shell.BuiltinNames()
+	r.reserved[program] = struct{}{}
+	return server, nil
+}
+
+func (r *registration) run(ctx context.Context, server *jobs.Server, registry *cmdpkgs.ServiceRegistry) error {
+	err := r.reconnect(ctx)
+	if r.management.snapshot().Draining && ctx.Err() == nil {
+		err = errors.Join(err, server.WaitIdle(ctx))
+	}
+	// Service registry must end before the local server and installation lock.
+	err = errors.Join(err, registry.Close(context.Background()))
+	slog.Info("runner stopped")
+	return err
 }

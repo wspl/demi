@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func duplicateStandard(ctx context.Context, descriptor uint32) (*os.File, error) {
+func standardFile(ctx context.Context, descriptor uint32) (*os.File, error) {
 	var file *os.File
 	switch descriptor {
 	case 0:
@@ -23,7 +23,15 @@ func duplicateStandard(ctx context.Context, descriptor uint32) (*os.File, error)
 	}
 	handle, err := cmdsdk.Retry(ctx, func() (windows.Handle, error) {
 		var result windows.Handle
-		err := windows.DuplicateHandle(windows.CurrentProcess(), windows.Handle(file.Fd()), windows.CurrentProcess(), &result, 0, false, windows.DUPLICATE_SAME_ACCESS)
+		err := windows.DuplicateHandle(
+			windows.CurrentProcess(),
+			windows.Handle(file.Fd()),
+			windows.CurrentProcess(),
+			&result,
+			0,
+			false,
+			windows.DUPLICATE_SAME_ACCESS,
+		)
 		return result, err
 	})
 	if err != nil {
@@ -31,7 +39,8 @@ func duplicateStandard(ctx context.Context, descriptor uint32) (*os.File, error)
 	}
 	return os.NewFile(uintptr(handle), "standard"), nil
 }
-func inputReference(file *os.File) (string, error) {
+
+func liveReference(file *os.File) (string, error) {
 	return fmt.Sprintf("%d:%d", os.Getpid(), file.Fd()), nil
 }
 
@@ -54,12 +63,22 @@ func matchesReference(file *os.File, reference string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer func() { _ = windows.CloseHandle(process) }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = windows.CloseHandle(process) }()
 	var duplicate windows.Handle
-	if err := windows.DuplicateHandle(process, windows.Handle(handle), windows.CurrentProcess(), &duplicate, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
+	if err := windows.DuplicateHandle(
+		process,
+		windows.Handle(handle),
+		windows.CurrentProcess(),
+		&duplicate,
+		0,
+		false,
+		windows.DUPLICATE_SAME_ACCESS,
+	); err != nil {
 		return false, err
 	}
-	defer func() { _ = windows.CloseHandle(duplicate) }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = windows.CloseHandle(duplicate) }()
 	// x/sys does not wrap CompareObjectHandles. Its BOOL is identity, not an
 	// error indication; last-error is not part of this API's result.
 	if err := compareHandles.Find(); err != nil {

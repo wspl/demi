@@ -37,7 +37,11 @@ func NewPipeClient(backend runnerwire.BackendURL, token func() (runnerwire.Devic
 
 // NewPipeClientWithConnectTimeout bounds connection opening only. Requests,
 // answers and bodies may remain quiet for as long as their contexts allow.
-func NewPipeClientWithConnectTimeout(backend runnerwire.BackendURL, token func() (runnerwire.DeviceToken, bool), timeout time.Duration) (*PipeClient, error) {
+func NewPipeClientWithConnectTimeout(
+	backend runnerwire.BackendURL,
+	token func() (runnerwire.DeviceToken, bool),
+	timeout time.Duration,
+) (*PipeClient, error) {
 	origin, err := url.Parse(backend.String())
 	if err != nil {
 		return nil, err
@@ -77,7 +81,10 @@ func NewPipeClientWithConnectTimeout(backend runnerwire.BackendURL, token func()
 	}
 	transport.TLSHandshakeTimeout = timeout
 	transport.ResponseHeaderTimeout = 0
-	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{
+		Transport:     transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	return &PipeClient{http: client, transport: transport, origin: origin, token: token}, nil
 }
 
@@ -93,7 +100,7 @@ func (c *PipeClient) Open(ctx context.Context, path string) (io.ReadCloser, erro
 	})
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, &operationFailure{message: "pipe cancelled", cause: ctx.Err()}
+			return nil, &operationError{message: "pipe cancelled", cause: ctx.Err()}
 		}
 		return nil, fmt.Errorf("pipe: %w", err)
 	}
@@ -108,7 +115,7 @@ func (c *PipeClient) Open(ctx context.Context, path string) (io.ReadCloser, erro
 func (c *PipeClient) Put(ctx context.Context, path string, body io.ReadCloser) (err error) {
 	defer func() {
 		if err != nil && ctx.Err() != nil {
-			err = &operationFailure{message: "pipe cancelled", cause: ctx.Err()}
+			err = &operationError{message: "pipe cancelled", cause: ctx.Err()}
 		}
 	}()
 	upload := &pipeUpload{body: body}
@@ -163,6 +170,7 @@ type pipeUpload struct {
 func (u *pipeUpload) close() {
 	u.once.Do(func() { _ = u.body.Close() }) // Completion/cancellation already supplies the outcome.
 }
+
 func (u *pipeUpload) Close() error {
 	u.close()
 	return nil
@@ -178,6 +186,7 @@ func (a *pipeAttempt) Read(b []byte) (int, error) {
 	a.upload.read.Store(true)
 	return a.upload.body.Read(b)
 }
+
 func (a *pipeAttempt) Close() error {
 	a.once.Do(func() {
 		if a.upload.read.Load() {
@@ -218,7 +227,8 @@ func pipeOK(response *http.Response) error {
 	if response.StatusCode == http.StatusOK {
 		return nil
 	}
-	defer func() { _ = response.Body.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(response.Body, pipeAnswerBytes))
 	if err != nil {
 		return fmt.Errorf("pipe refusal: %w", err)

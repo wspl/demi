@@ -17,8 +17,10 @@ import (
 	"github.com/wspl/demi/internal/runner/process"
 )
 
-const logFileBytes = 4 * 1024 * 1024
-const logPageBytes = 2 * 1024 * 1024
+const (
+	logFileBytes = 4 * 1024 * 1024
+	logPageBytes = 2 * 1024 * 1024
+)
 
 type logQuery struct {
 	since  *uint64
@@ -67,6 +69,7 @@ func openHostLog(ctx context.Context, directory string) (*hostLog, error) {
 	go log.serve(files)
 	return log, nil
 }
+
 func (l *hostLog) serve(files *logFiles) {
 	defer close(l.done)
 	defer files.close()
@@ -74,7 +77,13 @@ func (l *hostLog) serve(files *logFiles) {
 		if request.line != nil {
 			missed := l.dropped.Swap(0)
 			if missed > 0 {
-				files.append(logLine{At: request.line.At, Source: "runner", Text: fmt.Sprintf("%d log lines were dropped: the log fell behind", missed)})
+				files.append(
+					logLine{
+						At:     request.line.At,
+						Source: "runner",
+						Text:   fmt.Sprintf("%d log lines were dropped: the log fell behind", missed),
+					},
+				)
 			}
 			files.append(*request.line)
 		} else {
@@ -83,6 +92,7 @@ func (l *hostLog) serve(files *logFiles) {
 		}
 	}
 }
+
 func (l *hostLog) enqueue(line logLine) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -95,6 +105,7 @@ func (l *hostLog) enqueue(line logLine) {
 		l.dropped.Add(1)
 	}
 }
+
 func (l *hostLog) read(ctx context.Context, q logQuery) (logPage, error) {
 	// Reads join the same FIFO without holding the admission mutex across a send.
 	// Close happens after connection work is joined, so reads cannot race closure.
@@ -113,6 +124,7 @@ func (l *hostLog) read(ctx context.Context, q logQuery) (logPage, error) {
 		return answer.page, answer.err
 	}
 }
+
 func (l *hostLog) close(ctx context.Context) error {
 	l.mu.Lock()
 	if !l.closed {
@@ -136,11 +148,13 @@ type logHandler struct {
 }
 
 func (*logHandler) Enabled(_ context.Context, level slog.Level) bool { return level >= slog.LevelInfo }
+
 func (h *logHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	next := *h
 	next.attrs = append(slices.Clone(h.attrs), attrs...)
 	return &next
 }
+
 func (h *logHandler) WithGroup(group string) slog.Handler {
 	next := *h
 	if next.group != "" {
@@ -149,6 +163,7 @@ func (h *logHandler) WithGroup(group string) slog.Handler {
 	next.group += group
 	return &next
 }
+
 func (h *logHandler) Handle(_ context.Context, record slog.Record) error {
 	source := "runner"
 	var conversation *string
@@ -180,7 +195,9 @@ func (h *logHandler) Handle(_ context.Context, record slog.Record) error {
 		lines = append(lines, *last)
 	}
 	for _, text := range lines {
-		h.log.enqueue(logLine{At: max(record.Time.UnixMilli(), 0), Source: source, ConversationID: conversation, Text: text})
+		h.log.enqueue(
+			logLine{At: max(record.Time.UnixMilli(), 0), Source: source, ConversationID: conversation, Text: text},
+		)
 	}
 	if record.Level >= slog.LevelWarn {
 		_, _ = fmt.Fprintln(os.Stderr, "demi-runner: "+text)
@@ -203,11 +220,12 @@ func (f *logFiles) close() {
 		f.newer = nil
 	} // A failed diagnostic flush never changes work's result.
 }
+
 func (f *logFiles) open() error {
 	if f.newer != nil {
 		return nil
 	}
-	file, err := os.OpenFile(filepath.Join(f.directory, "host.log"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
+	file, err := os.OpenFile(filepath.Join(f.directory, "host.log"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -234,6 +252,7 @@ func (f *logFiles) open() error {
 	}
 	return nil
 }
+
 func (f *logFiles) append(line logLine) {
 	err := f.write(line)
 	if err == nil {
@@ -246,6 +265,7 @@ func (f *logFiles) append(line logLine) {
 	}
 	f.failing = true
 }
+
 func (f *logFiles) write(line logLine) error {
 	line.Seq = f.next
 	data, err := line.MarshalJSON()
@@ -258,7 +278,10 @@ func (f *logFiles) write(line logLine) error {
 	}
 	if f.length+int64(len(data)) > logFileBytes {
 		f.close()
-		if err := os.Rename(filepath.Join(f.directory, "host.log"), filepath.Join(f.directory, "host.log.1")); err != nil {
+		if err := os.Rename(
+			filepath.Join(f.directory, "host.log"),
+			filepath.Join(f.directory, "host.log.1"),
+		); err != nil {
 			return err
 		}
 		if err := f.open(); err != nil {
@@ -276,6 +299,7 @@ func (f *logFiles) write(line logLine) error {
 	f.next++
 	return nil
 }
+
 func readLogFile(path string) ([]logLine, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -293,6 +317,7 @@ func readLogFile(path string) ([]logLine, error) {
 	}
 	return lines, nil
 }
+
 func (f *logFiles) read(q logQuery) (logPage, error) {
 	var lines []logLine
 	for _, name := range []string{"host.log.1", "host.log"} {

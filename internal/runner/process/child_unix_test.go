@@ -25,29 +25,42 @@ import (
 // Deadlines only guard hangs; synchronization uses IO events and process exit.
 func childOptions(t *testing.T, command string, args ...string) SpawnOptions {
 	t.Helper()
-	return SpawnOptions{Command: command, Args: args, Cwd: t.TempDir(), Env: map[string]string{"PATH": "/usr/bin:/bin"}, ProcessGroup: true}
+	return SpawnOptions{
+		Command:      command,
+		Args:         args,
+		Cwd:          t.TempDir(),
+		Env:          map[string]string{"PATH": "/usr/bin:/bin"},
+		ProcessGroup: true,
+	}
 }
+
 func childContext(t *testing.T) context.Context {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
 	return ctx
 }
+
 func spawnChild(t *testing.T, options SpawnOptions) *Child {
 	t.Helper()
 	child, err := Spawn(childContext(t), options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { child.Cancel(); child.Wait(context.Background()) })
+	t.Cleanup(func() {
+		child.Cancel()
+		child.Wait(context.Background())
+	})
 	return child
 }
+
 func requireSuccess(t *testing.T, exit Exit) {
 	t.Helper()
 	if exit.Code == nil || *exit.Code != 0 || exit.Error != nil {
 		t.Fatalf("exit = %+v", exit)
 	}
 }
+
 func TestChildStreamsBinaryAndReaps(t *testing.T) {
 	child := spawnChild(t, childOptions(t, "/bin/cat"))
 	want := []byte{0, 255, 128, 10}
@@ -71,6 +84,7 @@ func TestChildStreamsBinaryAndReaps(t *testing.T) {
 		t.Fatalf("child was not reaped: %v", err)
 	}
 }
+
 func TestChildCancellationInterruptsBackpressure(t *testing.T) {
 	child := spawnChild(t, childOptions(t, "/usr/bin/yes"))
 	select {
@@ -95,6 +109,7 @@ func TestChildCancellationInterruptsBackpressure(t *testing.T) {
 		t.Fatal("cancellation not recorded")
 	}
 }
+
 func TestChildCancellationKillsDescendants(t *testing.T) {
 	child := spawnChild(t, childOptions(t, "/bin/sh", "-c", "sleep 30 & printf '%s\\n' $!; wait"))
 	var output OutputChunk
@@ -122,13 +137,23 @@ func TestChildCancellationKillsDescendants(t *testing.T) {
 		runtime.Gosched()
 	}
 }
+
 func TestSpawnFailureClassification(t *testing.T) {
 	for _, tc := range []struct {
 		name, command, cwd string
 		kind               runnerwire.SpawnErrorKind
 	}{
-		{name: "executable", command: "/definitely-not-a-demi-test-program", kind: runnerwire.SpawnErrorKindExecutableNotFound},
-		{name: "directory", command: "/bin/true", cwd: filepath.Join(t.TempDir(), "missing"), kind: runnerwire.SpawnErrorKindCwdUnusable},
+		{
+			name:    "executable",
+			command: "/definitely-not-a-demi-test-program",
+			kind:    runnerwire.SpawnErrorKindExecutableNotFound,
+		},
+		{
+			name:    "directory",
+			command: "/bin/true",
+			cwd:     filepath.Join(t.TempDir(), "missing"),
+			kind:    runnerwire.SpawnErrorKindCwdUnusable,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			options := childOptions(t, tc.command)
@@ -146,6 +171,7 @@ func TestSpawnFailureClassification(t *testing.T) {
 		})
 	}
 }
+
 func TestBootstrapAttributesAndIdentity(t *testing.T) {
 	directory := t.TempDir()
 	target := filepath.Join(directory, "created")
@@ -154,32 +180,51 @@ func TestBootstrapAttributesAndIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = extra.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = extra.Close() }()
 	var limits unix.Rlimit
 	if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &limits); err != nil {
 		t.Fatal(err)
 	}
-	mask := uint32(0077)
-	cmd := exec.Command("/bin/sh", "-c", `printf '%s\n' "$$"; umask; ulimit -Sn; printf extra >&3; : > "$1"; printf '%s\n' "$DEMI_BOOTSTRAP_TEST"`, "fixture", target)
+	mask := uint32(0o077)
+	cmd := exec.Command(
+		"/bin/sh",
+		"-c",
+		`printf '%s\n' "$$"; umask; ulimit -Sn; printf extra >&3; : > "$1"; printf '%s\n' "$DEMI_BOOTSTRAP_TEST"`,
+		"fixture",
+		target,
+	)
 	cmd.Env = append(os.Environ(), "DEMI_BOOTSTRAP_TEST=untouched")
 	cmd.ExtraFiles = []*os.File{extra}
 	var output bytes.Buffer
 	cmd.Stdout = &output
-	wrapped := Wrap(cmd, true, ChildAttributes{Umask: &mask, Limits: []ResourceLimit{{Resource: unix.RLIMIT_NOFILE, Soft: 128, Hard: limits.Max}}})
+	wrapped := Wrap(
+		cmd,
+		true,
+		ChildAttributes{
+			Umask:  &mask,
+			Limits: []ResourceLimit{{Resource: unix.RLIMIT_NOFILE, Soft: 128, Hard: limits.Max}},
+		},
+	)
 	if err := wrapped.Start(childContext(t)); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = wrapped.Kill(); wrapped.Wait(context.Background()) })
+	t.Cleanup(func() {
+		_ = wrapped.Kill()
+		wrapped.Wait(context.Background())
+	})
 	requireSuccess(t, wrapped.Wait(childContext(t)))
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-	if len(lines) != 4 || lines[0] != strconv.Itoa(int(wrapped.PID())) || strings.TrimLeft(lines[1], "0") != "77" || lines[2] != "128" || lines[3] != "untouched" {
+	if len(lines) != 4 || lines[0] != strconv.Itoa(int(wrapped.PID())) || strings.TrimLeft(lines[1], "0") != "77" ||
+		lines[2] != "128" ||
+		lines[3] != "untouched" {
 		t.Fatalf("bootstrap output %q", output.String())
 	}
 	stat, err := os.Stat(target)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stat.Mode().Perm() != 0600 {
+	if stat.Mode().Perm() != 0o600 {
 		t.Fatalf("mode %o", stat.Mode().Perm())
 	}
 	data, err := os.ReadFile(marker)
@@ -194,15 +239,21 @@ func TestBootstrapAttributesAndIdentity(t *testing.T) {
 		t.Fatalf("runner limit changed: %+v -> %+v", limits, unchanged)
 	}
 }
+
 func TestBootstrapStartFailures(t *testing.T) {
-	mask := uint32(0077)
+	mask := uint32(0o077)
 	for _, tc := range []struct {
 		name, path string
 		attrs      ChildAttributes
 		want       error
 	}{
 		{"missing", "/definitely-not-a-demi-test-program", ChildAttributes{Umask: &mask}, unix.ENOENT},
-		{"invalid limit", "/bin/true", ChildAttributes{Limits: []ResourceLimit{{Resource: unix.RLIMIT_NOFILE, Soft: 9, Hard: 8}}}, unix.EINVAL},
+		{
+			"invalid limit",
+			"/bin/true",
+			ChildAttributes{Limits: []ResourceLimit{{Resource: unix.RLIMIT_NOFILE, Soft: 9, Hard: 8}}},
+			unix.EINVAL,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			command := Wrap(exec.Command(tc.path), true, tc.attrs)
@@ -213,6 +264,7 @@ func TestBootstrapStartFailures(t *testing.T) {
 		})
 	}
 }
+
 func TestGroupLeaderExitClosesDescendantOutput(t *testing.T) {
 	child := spawnChild(t, childOptions(t, "/bin/sh", "-c", "sleep 30 & printf done"))
 	var data []byte
@@ -224,9 +276,11 @@ func TestGroupLeaderExitClosesDescendantOutput(t *testing.T) {
 		t.Fatalf("output %q", data)
 	}
 }
+
 func TestCommandWaitCancellationInterruptsIO(t *testing.T) {
 	input, writer := io.Pipe()
-	defer func() { _ = writer.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = writer.Close() }()
 	cmd := exec.Command("/bin/cat")
 	cmd.Stdin = input
 	command := Wrap(cmd, true, ChildAttributes{})
@@ -240,6 +294,7 @@ func TestCommandWaitCancellationInterruptsIO(t *testing.T) {
 		t.Fatalf("exit %+v", exit)
 	}
 }
+
 func TestCommandOutputFailureKillsChild(t *testing.T) {
 	cmd := exec.Command("/usr/bin/yes")
 	sentinel := fmt.Errorf("output failed")
@@ -260,7 +315,11 @@ func (f failingOutput) Write([]byte) (int, error) { return 0, f.err }
 
 func TestSpawnUsesJobPATHAndEnvironment(t *testing.T) {
 	options := childOptions(t, "job-program")
-	if err := os.WriteFile(filepath.Join(options.Cwd, "job-program"), []byte("#!/bin/sh\nprintf '%s' \"$JOB_VALUE\"\n"), 0700); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(options.Cwd, "job-program"),
+		[]byte("#!/bin/sh\nprintf '%s' \"$JOB_VALUE\"\n"),
+		0o700,
+	); err != nil {
 		t.Fatal(err)
 	}
 	options.Env = map[string]string{"PATH": ".", "JOB_VALUE": "job environment"}
@@ -282,7 +341,10 @@ type cancelAtStatus struct {
 	cancel context.CancelFunc
 }
 
-func (c cancelAtStatus) Err() error { c.cancel(); return c.Context.Err() }
+func (c cancelAtStatus) Err() error {
+	c.cancel()
+	return c.Context.Err()
+}
 
 func TestBootstrapCancellationAfterExecAcknowledgement(t *testing.T) {
 	reader, writer, err := os.Pipe()
@@ -292,21 +354,30 @@ func TestBootstrapCancellationAfterExecAcknowledgement(t *testing.T) {
 	defer func() { _ = reader.Close() }()
 	cmd := exec.Command("/bin/cat")
 	cmd.Stdin = reader
-	mask := uint32(0077)
+	mask := uint32(0o077)
 	owner, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
 	joined := make(chan struct{})
 	go func() {
 		defer close(joined)
-		started, err := startPlatform(cancelAtStatus{Context: owner, cancel: cancel}, cmd, true, ChildAttributes{Umask: &mask}, &platformGroup{})
+		started, err := startPlatform(
+			cancelAtStatus{Context: owner, cancel: cancel},
+			cmd,
+			true,
+			ChildAttributes{Umask: &mask},
+			&platformGroup{},
+		)
 		if started != nil {
 			_ = started.Process.Kill()
 			_ = started.Wait()
 		}
 		done <- err
 	}()
-	defer func() { _ = writer.Close(); <-joined }()
+	defer func() {
+		_ = writer.Close()
+		<-joined
+	}()
 	deadline, stop := context.WithTimeout(t.Context(), time.Second)
 	defer stop()
 	select {

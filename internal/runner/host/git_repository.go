@@ -20,54 +20,43 @@ import (
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
-// gitFailure keeps protocol words apart from wrapped library and IO causes.
-type gitFailure struct {
+// gitError keeps protocol words apart from wrapped library and IO causes.
+type gitError struct {
 	code, message string
 	cause         error
 }
 
-func (e *gitFailure) Error() string { return e.message }
-func (e *gitFailure) Unwrap() error { return e.cause }
+func (e *gitError) Error() string { return e.message }
+func (e *gitError) Unwrap() error { return e.cause }
 
-func gitProblem(err error) *gitFailure {
-	var failure *gitFailure
+func gitProblem(err error) *gitError {
+	var failure *gitError
 	if errors.As(err, &failure) {
 		return failure
 	}
 	if errors.Is(err, context.Canceled) {
-		return &gitFailure{"cancelled", "the working-tree request was cancelled", err}
+		return &gitError{"cancelled", "the working-tree request was cancelled", err}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return &gitFailure{"timeout", "the working-tree request timed out", err}
+		return &gitError{"timeout", "the working-tree request timed out", err}
 	}
 	if code := ErrorCode(err); code != nil {
-		return &gitFailure{*code, err.Error(), err}
+		return &gitError{*code, err.Error(), err}
 	}
 	var path *os.PathError
 	if errors.As(err, &path) {
-		return &gitFailure{"EIO", err.Error(), err}
+		return &gitError{"EIO", err.Error(), err}
 	}
-	return &gitFailure{"internal", err.Error(), err}
+	return &gitError{"internal", err.Error(), err}
 }
 
-type gitLocation struct{ root, workdir, gitdir, common, prefix string }
+type gitLocation struct{ root, workDir, gitDir, common, prefix string }
 
 // openRepository discovers the Host repository without shelling out or hiding IO errors.
 func openRepository(root string) (*git.Repository, *gitLocation, error) {
-	root, err := filepath.EvalSymlinks(root)
+	root, err := repositoryRoot(root)
 	if err != nil {
 		return nil, nil, err
-	}
-	root, err = filepath.Abs(root)
-	if err != nil {
-		return nil, nil, err
-	}
-	info, err := os.Stat(root)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !info.IsDir() {
-		return nil, nil, &os.PathError{Op: "open", Path: root, Err: errNotDirectory}
 	}
 	repo, err := git.PlainOpenWithOptions(root, &git.PlainOpenOptions{DetectDotGit: true})
 	if errors.Is(err, git.ErrRepositoryNotExists) {
@@ -83,64 +72,38 @@ func openRepository(root string) (*git.Repository, *gitLocation, error) {
 	if err != nil {
 		return nil, nil, errors.Join(err, closeRepository(repo))
 	}
-	workdir, err := filepath.EvalSymlinks(work.Filesystem.Root())
+	workDir, err := filepath.EvalSymlinks(work.Filesystem.Root())
 	if err != nil {
 		return nil, nil, errors.Join(err, closeRepository(repo))
 	}
-	workdir, err = filepath.Abs(workdir)
+	workDir, err = filepath.Abs(workDir)
 	if err != nil {
 		return nil, nil, errors.Join(err, closeRepository(repo))
 	}
-	gitdir := filepath.Join(workdir, ".git")
-	info, err = os.Stat(gitdir)
-	if err == nil && !info.IsDir() {
-		var data []byte
-		data, err = os.ReadFile(gitdir)
-		if err == nil {
-			target, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir: ")
-			if !ok {
-				err = fmt.Errorf("invalid git directory file")
-			} else {
-				gitdir = target
-				if !filepath.IsAbs(gitdir) {
-					gitdir = filepath.Join(workdir, gitdir)
-				}
-			}
-		}
-	}
+	gitDir, common, err := repositoryDirectories(workDir)
 	if err != nil {
 		return nil, nil, errors.Join(err, closeRepository(repo))
 	}
-	gitdir, err = filepath.EvalSymlinks(gitdir)
-	if err != nil {
-		return nil, nil, errors.Join(err, closeRepository(repo))
-	}
-	common := gitdir
-	data, err := os.ReadFile(filepath.Join(gitdir, "commondir"))
-	if err == nil {
-		common = strings.TrimSpace(string(data))
-		if !filepath.IsAbs(common) {
-			common = filepath.Join(gitdir, common)
-		}
-		common, err = filepath.EvalSymlinks(common)
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, nil, errors.Join(err, closeRepository(repo))
-	}
-	if common != gitdir {
+	if common != gitDir {
 		repo, err = withCommonDirectory(repo, work, common)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
-	prefix, err := filepath.Rel(workdir, root)
+	prefix, err := filepath.Rel(workDir, root)
 	if err != nil {
 		return nil, nil, errors.Join(err, closeRepository(repo))
 	}
 	if prefix == "." {
 		prefix = ""
 	}
-	return repo, &gitLocation{root: root, workdir: workdir, gitdir: gitdir, common: common, prefix: filepath.ToSlash(prefix)}, nil
+	return repo, &gitLocation{
+		root:    root,
+		workDir: workDir,
+		gitDir:  gitDir,
+		common:  common,
+		prefix:  filepath.ToSlash(prefix),
+	}, nil
 }
 
 // withCommonDirectory uses go-git's common-directory router while owning the
@@ -156,9 +119,16 @@ func withCommonDirectory(local *git.Repository, work *git.Worktree, common strin
 	localStorage, localOK := local.Storer.(*filesystem.Storage)
 	sharedStorage, sharedOK := shared.Storer.(*filesystem.Storage)
 	if !localOK || !sharedOK {
-		return nil, errors.Join(errors.New("unexpected Git filesystem storage"), closeRepository(local), closeRepository(shared))
+		return nil, errors.Join(
+			errors.New("unexpected Git filesystem storage"),
+			closeRepository(local),
+			closeRepository(shared),
+		)
 	}
-	storage := filesystem.NewStorage(dotgit.NewRepositoryFilesystem(localStorage.Filesystem(), sharedStorage.Filesystem()), cache.NewObjectLRUDefault())
+	storage := filesystem.NewStorage(
+		dotgit.NewRepositoryFilesystem(localStorage.Filesystem(), sharedStorage.Filesystem()),
+		cache.NewObjectLRUDefault(),
+	)
 	repo, err := git.Open(storage, work.Filesystem)
 	err = errors.Join(err, closeRepository(local), closeRepository(shared))
 	if err != nil {
@@ -177,7 +147,10 @@ func closeRepository(repo *git.Repository) error {
 }
 
 // headEntries reads the committed Git tree through go-git's object walker.
-func headEntries(ctx context.Context, repo *git.Repository) (*object.Tree, map[string]object.TreeEntry, *string, error) {
+func headEntries(
+	ctx context.Context,
+	repo *git.Repository,
+) (*object.Tree, map[string]object.TreeEntry, *string, error) {
 	entries := make(map[string]object.TreeEntry)
 	ref, err := repo.Head()
 	if errors.Is(err, plumbing.ErrReferenceNotFound) {
@@ -248,7 +221,8 @@ func diskContent(ctx context.Context, path string) (gitContent, error) {
 
 // blobContent bounds HEAD content before go-git decodes it for display or a pipe.
 func blobContent(ctx context.Context, repo *git.Repository, entry object.TreeEntry) (gitContent, error) {
-	if entry.Mode != filemode.Regular && entry.Mode != filemode.Executable && entry.Mode != filemode.Symlink && entry.Mode != filemode.Deprecated {
+	if entry.Mode != filemode.Regular && entry.Mode != filemode.Executable && entry.Mode != filemode.Symlink &&
+		entry.Mode != filemode.Deprecated {
 		return gitContent{}, nil
 	}
 	blob, err := repo.BlobObject(entry.Hash)
@@ -267,12 +241,19 @@ func blobContent(ctx context.Context, repo *git.Repository, entry object.TreeEnt
 }
 
 // judgeChange preserves the runner's HEAD-to-disk kind and shared line counts.
-func judgeChange(ctx context.Context, repo *git.Repository, location *gitLocation, head map[string]object.TreeEntry, name string, signal gitSignal) (*runnerwire.GitChange, error) {
+func judgeChange(
+	ctx context.Context,
+	repo *git.Repository,
+	location *gitLocation,
+	head map[string]object.TreeEntry,
+	name string,
+	signal gitSignal,
+) (*runnerwire.GitChange, error) {
 	path, ok := relativeGitPath(name, location.prefix)
 	if !ok || path == "" {
 		return nil, nil
 	}
-	disk, err := diskContent(ctx, filepath.Join(location.workdir, filepath.FromSlash(name)))
+	disk, err := diskContent(ctx, filepath.Join(location.workDir, filepath.FromSlash(name)))
 	if err != nil {
 		return nil, err
 	}
@@ -313,4 +294,67 @@ func relativeGitPath(path, prefix string) (string, bool) {
 		return "", true
 	}
 	return strings.CutPrefix(path, prefix+"/")
+}
+
+func repositoryDirectories(workDir string) (string, string, error) {
+	gitDir := filepath.Join(workDir, ".git")
+	info, err := os.Stat(gitDir)
+	if err == nil && !info.IsDir() {
+		gitDir, err = readGitDirectory(workDir, gitDir)
+	}
+	if err != nil {
+		return "", "", err
+	}
+	gitDir, err = filepath.EvalSymlinks(gitDir)
+	if err != nil {
+		return "", "", err
+	}
+	common := gitDir
+	data, err := os.ReadFile(filepath.Join(gitDir, "commondir"))
+	if err == nil {
+		common = strings.TrimSpace(string(data))
+		if !filepath.IsAbs(common) {
+			common = filepath.Join(gitDir, common)
+		}
+		common, err = filepath.EvalSymlinks(common)
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", "", err
+	}
+	return gitDir, common, nil
+}
+
+func readGitDirectory(workDir, gitDir string) (string, error) {
+	data, err := os.ReadFile(gitDir)
+	if err != nil {
+		return gitDir, err
+	}
+	target, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir: ")
+	if !ok {
+		return gitDir, fmt.Errorf("invalid git directory file")
+	}
+	gitDir = target
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(workDir, gitDir)
+	}
+	return gitDir, nil
+}
+
+func repositoryRoot(path string) (string, error) {
+	root, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	root, err = filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", &os.PathError{Op: "open", Path: root, Err: errNotDirectory}
+	}
+	return root, nil
 }

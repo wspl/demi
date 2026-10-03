@@ -32,6 +32,7 @@ func TestFilesystemRequestsAndKillRemainAvailableDuringJob(t *testing.T) {
 		t.Fatal("kill did not end job")
 	}
 }
+
 func TestAStartTheRunnerCannotBeginReportsSpawnError(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
@@ -41,17 +42,29 @@ func TestAStartTheRunnerCannotBeginReportsSpawnError(t *testing.T) {
 	}
 	f.job("twin", "sleep 60")
 	exit, ok := f.frame().(*runnerwire.JobExit)
-	if !ok || exit.JobID != "twin" || exit.ExitCode != nil || exit.Signal != nil || exit.SpawnError == nil || exit.SpawnError.Kind != runnerwire.SpawnErrorKindOther || exit.SpawnError.Detail == nil || *exit.SpawnError.Detail != "duplicate live task id" {
+	if !ok || exit.JobID != "twin" || exit.ExitCode != nil || exit.Signal != nil || exit.SpawnError == nil ||
+		exit.SpawnError.Kind != runnerwire.SpawnErrorKindOther ||
+		exit.SpawnError.Detail == nil ||
+		*exit.SpawnError.Detail != "duplicate live task id" {
 		t.Fatalf("duplicate start: %#v", exit)
 	}
 }
+
 func TestJobEnvironmentCombinesDeviceRequestAndOwnedValues(t *testing.T) {
 	f := newRunner(t, map[string]string{"DEVICE": "device", "OVERRIDE": "old"}, "")
 	f.online()
-	if err := os.WriteFile(filepath.Join(f.home, ".profile"), []byte("profile_home=\"$HOME\"\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(f.home, ".profile"), []byte("profile_home=\"$HOME\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f.send(&runnerwire.JobStart{JobID: "env", Context: runnerCommandContext(), Script: `printf '%s:%s:%s:%s:%s' "$DEVICE" "$OVERRIDE" "$DEMI_HOME" "$HOME" "$profile_home"`, CWD: f.home, Env: map[string]string{"OVERRIDE": "new", "DEMI_HOME": "untrusted"}})
+	f.send(
+		&runnerwire.JobStart{
+			JobID:   "env",
+			Context: runnerCommandContext(),
+			Script:  `printf '%s:%s:%s:%s:%s' "$DEVICE" "$OVERRIDE" "$DEMI_HOME" "$HOME" "$profile_home"`,
+			CWD:     f.home,
+			Env:     map[string]string{"OVERRIDE": "new", "DEMI_HOME": "untrusted"},
+		},
+	)
 	out, stderr, exit := f.jobOutput("env")
 	requireJobSuccess(t, exit, stderr)
 	want := "device:new:" + f.state + ":" + f.home + ":" + f.home
@@ -59,6 +72,7 @@ func TestJobEnvironmentCombinesDeviceRequestAndOwnedValues(t *testing.T) {
 		t.Fatalf("environment %q, want %q", out, want)
 	}
 }
+
 func TestRawSpawnInheritsEnvironmentOnlyWhenRequested(t *testing.T) {
 	f := newRunner(t, map[string]string{"DEVICE": "device", "OVERRIDE": "device"}, "")
 	f.online()
@@ -79,7 +93,16 @@ func TestRawSpawnInheritsEnvironmentOnlyWhenRequested(t *testing.T) {
 			command = `C:\Windows\System32\cmd.exe`
 			args = new([]string{"/c", "set"})
 		}
-		f.send(&runnerwire.Spawn{SpawnID: test.name, Command: command, Args: args, Env: test.env, InheritEnv: test.inherit, KillProcessGroup: new(true)})
+		f.send(
+			&runnerwire.Spawn{
+				SpawnID:          test.name,
+				Command:          command,
+				Args:             args,
+				Env:              test.env,
+				InheritEnv:       test.inherit,
+				KillProcessGroup: new(true),
+			},
+		)
 		var out strings.Builder
 		for {
 			message := f.frame()
@@ -128,14 +151,15 @@ func (f *runnerFixture) directoriesBecome(count int) {
 		}
 	}
 }
+
 func TestJobDirectoriesFollowReleaseConnectionAndNextStart(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.stop()
 	left := filepath.Join(f.state, "jobs", "job-left", "output")
-	if err := os.MkdirAll(left, 0700); err != nil {
+	if err := os.MkdirAll(left, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(left, "head"), []byte("abandoned output"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(left, "head"), []byte("abandoned output"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f.start()

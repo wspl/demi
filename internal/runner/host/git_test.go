@@ -23,7 +23,15 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 func gitCommand(t *testing.T, root string, args ...string) string {
 	t.Helper()
 	command := exec.CommandContext(t.Context(), "git", append([]string{"-C", root}, args...)...)
-	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_AUTHOR_NAME=Host Test", "GIT_AUTHOR_EMAIL=host@example.com", "GIT_COMMITTER_NAME=Host Test", "GIT_COMMITTER_EMAIL=host@example.com")
+	command.Env = append(
+		os.Environ(),
+		"GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_AUTHOR_NAME=Host Test",
+		"GIT_AUTHOR_EMAIL=host@example.com",
+		"GIT_COMMITTER_NAME=Host Test",
+		"GIT_COMMITTER_EMAIL=host@example.com",
+	)
 	out, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, out)
@@ -34,10 +42,10 @@ func gitCommand(t *testing.T, root string, args ...string) string {
 func writeFixture(t *testing.T, root, path, content string) {
 	t.Helper()
 	name := filepath.Join(root, path)
-	if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(name, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(name, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -162,7 +170,18 @@ func TestEveryPathCarriesGitStatusLetters(t *testing.T) {
 	gitCommand(t, root, "checkout", "main")
 	writeFixture(t, root, "clash", "main\n")
 	commitFixture(t, root)
-	command := exec.CommandContext(t.Context(), "git", "-C", root, "-c", "user.name=Host", "-c", "user.email=host@example.com", "merge", "other")
+	command := exec.CommandContext(
+		t.Context(),
+		"git",
+		"-C",
+		root,
+		"-c",
+		"user.name=Host",
+		"-c",
+		"user.email=host@example.com",
+		"merge",
+		"other",
+	)
 	if err := command.Run(); err == nil {
 		t.Fatal("expected conflict")
 	}
@@ -188,7 +207,7 @@ func TestEveryPathCarriesGitStatusLetters(t *testing.T) {
 	if err := os.Rename(filepath.Join(root, "f"), filepath.Join(root, "g")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(filepath.Join(root, "x.sh"), 0755); err != nil {
+	if err := os.Chmod(filepath.Join(root, "x.sh"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(filepath.Join(root, "t")); err != nil {
@@ -202,7 +221,8 @@ func TestEveryPathCarriesGitStatusLetters(t *testing.T) {
 	got := map[string]string{}
 	for _, change := range changesFixture(t, s, out, root).Files {
 		got[change.Path] = change.Status
-		if change.Path == "x.sh" && (change.Kind != runnerwire.ChangeKindModified || change.Added != 0 || change.Removed != 0) {
+		if change.Path == "x.sh" &&
+			(change.Kind != runnerwire.ChangeKindModified || change.Added != 0 || change.Removed != 0) {
 			t.Fatal(change)
 		}
 	}
@@ -252,7 +272,11 @@ func TestShowReadsCommitAndRefusesMissing(t *testing.T) {
 	if err != nil || string(data) != "1\n2\n3\n" {
 		t.Fatalf("%q %v", data, err)
 	}
-	for _, test := range []struct{ root, path, code string }{{root, "untracked", "ENOENT"}, {root, "dir", "EISDIR"}, {t.TempDir(), "a.txt", "not_repository"}} {
+	for _, test := range []struct{ root, path, code string }{
+		{root, "untracked", "ENOENT"},
+		{root, "dir", "EISDIR"},
+		{t.TempDir(), "a.txt", "not_repository"},
+	} {
 		_, err := s.showBlob(t.Context(), test.root, test.path)
 		if err == nil || gitProblem(err).code != test.code {
 			t.Fatalf("%s: %v", test.path, err)
@@ -283,10 +307,16 @@ func TestWireCarriesChangesAndErrors(t *testing.T) {
 	writeFixture(t, root, "new", "new\n")
 	s, out := testService(t, root, MaxFiles)
 	result := changesFixture(t, s, out, root)
-	if !result.Repository || result.Head == nil || len(result.Files) != 1 || result.Files[0].Path != "new" || result.Files[0].Status != "??" || result.Files[0].Kind != runnerwire.ChangeKindAdded || result.Files[0].Added != 1 {
+	if !result.Repository || result.Head == nil || len(result.Files) != 1 || result.Files[0].Path != "new" ||
+		result.Files[0].Status != "??" ||
+		result.Files[0].Kind != runnerwire.ChangeKindAdded ||
+		result.Files[0].Added != 1 {
 		t.Fatal(result)
 	}
-	if err := s.GitChanges(t.Context(), runnerwire.GitChangesMessage{ID: "missing", Root: filepath.Join(root, "missing")}); err != nil {
+	if err := s.GitChanges(
+		t.Context(),
+		runnerwire.GitChangesMessage{ID: "missing", Root: filepath.Join(root, "missing")},
+	); err != nil {
 		t.Fatal(err)
 	}
 	frame, ok := receiveFrame(t, out).(*runnerwire.GitError)
@@ -363,7 +393,14 @@ func watchedFixture(t *testing.T, root string) (*Service, chan []byte, <-chan Wa
 	}
 }
 
-func awaitChanges(t *testing.T, s *Service, out <-chan []byte, events <-chan WatchEvent, root string, want func(runnerwire.GitChanges) bool) runnerwire.GitChanges {
+func awaitChanges(
+	t *testing.T,
+	s *Service,
+	out <-chan []byte,
+	events <-chan WatchEvent,
+	root string,
+	want func(runnerwire.GitChanges) bool,
+) runnerwire.GitChanges {
 	t.Helper()
 	for {
 		result := changesFixture(t, s, out, root)
@@ -394,14 +431,19 @@ func TestLaterRequestsFollowWatchAndCommit(t *testing.T) {
 	}
 	writeFixture(t, root, "a.txt", "1\n2\n3\nmore\n")
 	awaitChanges(t, s, out, events, root, func(c runnerwire.GitChanges) bool {
-		return len(c.Files) == 1 && c.Files[0].Path == "a.txt" && c.Files[0].Kind == runnerwire.ChangeKindModified && c.Files[0].Added == 1
+		return len(c.Files) == 1 && c.Files[0].Path == "a.txt" && c.Files[0].Kind == runnerwire.ChangeKindModified &&
+			c.Files[0].Added == 1
 	})
 	writeFixture(t, root, "dir/new.txt", "n\n")
 	if err := os.Remove(filepath.Join(root, "b.txt")); err != nil {
 		t.Fatal(err)
 	}
 	awaitChanges(t, s, out, events, root, func(c runnerwire.GitChanges) bool {
-		return len(c.Files) == 3 && c.Files[0].Path == "a.txt" && c.Files[0].Kind == runnerwire.ChangeKindModified && c.Files[1].Path == "b.txt" && c.Files[1].Kind == runnerwire.ChangeKindDeleted && c.Files[2].Path == "dir/new.txt" && c.Files[2].Kind == runnerwire.ChangeKindAdded
+		return len(c.Files) == 3 && c.Files[0].Path == "a.txt" && c.Files[0].Kind == runnerwire.ChangeKindModified &&
+			c.Files[1].Path == "b.txt" &&
+			c.Files[1].Kind == runnerwire.ChangeKindDeleted &&
+			c.Files[2].Path == "dir/new.txt" &&
+			c.Files[2].Kind == runnerwire.ChangeKindAdded
 	})
 	commitFixture(t, root)
 	after := awaitChanges(t, s, out, events, root, func(c runnerwire.GitChanges) bool {
@@ -418,15 +460,36 @@ func TestWatchedRequestsFollowIgnoreRulesAndModes(t *testing.T) {
 	writeFixture(t, root, "dir/new.txt", "new\n")
 	writeFixture(t, root, "scratch.log", "scratch\n")
 	want := gitStatuses(t, root)
-	awaitChanges(t, s, out, events, root, func(c runnerwire.GitChanges) bool { return cmp.Equal(changeStatuses(c), want) })
+	awaitChanges(
+		t,
+		s,
+		out,
+		events,
+		root,
+		func(c runnerwire.GitChanges) bool { return cmp.Equal(changeStatuses(c), want) },
+	)
 	writeFixture(t, root, ".gitignore", "*.log\n")
 	want = gitStatuses(t, root)
-	awaitChanges(t, s, out, events, root, func(c runnerwire.GitChanges) bool { return cmp.Equal(changeStatuses(c), want) })
-	if err := os.Chmod(filepath.Join(root, "b.txt"), 0755); err != nil {
+	awaitChanges(
+		t,
+		s,
+		out,
+		events,
+		root,
+		func(c runnerwire.GitChanges) bool { return cmp.Equal(changeStatuses(c), want) },
+	)
+	if err := os.Chmod(filepath.Join(root, "b.txt"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	want = gitStatuses(t, root)
-	awaitChanges(t, s, out, events, root, func(c runnerwire.GitChanges) bool { return cmp.Equal(changeStatuses(c), want) })
+	awaitChanges(
+		t,
+		s,
+		out,
+		events,
+		root,
+		func(c runnerwire.GitChanges) bool { return cmp.Equal(changeStatuses(c), want) },
+	)
 }
 
 func TestRuleAboveRootReachesUnderIt(t *testing.T) {
@@ -434,7 +497,14 @@ func TestRuleAboveRootReachesUnderIt(t *testing.T) {
 	sub := filepath.Join(root, "dir")
 	s, out, events := watchedFixture(t, sub)
 	writeFixture(t, root, "dir/scratch.log", "scratch\n")
-	awaitChanges(t, s, out, events, sub, func(c runnerwire.GitChanges) bool { return len(c.Files) == 1 && c.Files[0].Path == "scratch.log" })
+	awaitChanges(
+		t,
+		s,
+		out,
+		events,
+		sub,
+		func(c runnerwire.GitChanges) bool { return len(c.Files) == 1 && c.Files[0].Path == "scratch.log" },
+	)
 	writeFixture(t, root, ".gitignore", "*.log\n")
 	if result := changesFixture(t, s, out, sub); len(result.Files) != 0 {
 		t.Fatal(result)
@@ -445,12 +515,24 @@ func TestStagedRenameStaysOneEntryAcrossWatch(t *testing.T) {
 	root := repositoryFixture(t)
 	gitCommand(t, root, "mv", "a.txt", "moved.txt")
 	s, out, events := watchedFixture(t, root)
-	want := runnerwire.GitChange{Path: "moved.txt", Status: "R ", Kind: runnerwire.ChangeKindRenamed, From: new("a.txt")}
+	want := runnerwire.GitChange{
+		Path:   "moved.txt",
+		Status: "R ",
+		Kind:   runnerwire.ChangeKindRenamed,
+		From:   new("a.txt"),
+	}
 	if diff := cmp.Diff([]runnerwire.GitChange{want}, changesFixture(t, s, out, root).Files); diff != "" {
 		t.Fatal(diff)
 	}
 	writeFixture(t, root, "moved.txt", "1\n2\n3\n4\n")
-	edited := awaitChanges(t, s, out, events, root, func(c runnerwire.GitChanges) bool { return changeMap(c)["moved.txt"].Status == "RM" })
+	edited := awaitChanges(
+		t,
+		s,
+		out,
+		events,
+		root,
+		func(c runnerwire.GitChanges) bool { return changeMap(c)["moved.txt"].Status == "RM" },
+	)
 	want.Status = "RM"
 	want.Added = 1
 	if diff := cmp.Diff([]runnerwire.GitChange{want}, edited.Files); diff != "" {
@@ -471,7 +553,9 @@ func TestStagedRenameStaysOneEntryAcrossWatch(t *testing.T) {
 		t.Fatal(diff)
 	}
 	got := changeMap(final)["moved.txt"]
-	if !reflect.DeepEqual(got.From, want.From) || got.Kind != runnerwire.ChangeKindRenamed || got.Status != "RM" || got.Added != 1 || got.Removed != 0 {
+	if !reflect.DeepEqual(got.From, want.From) || got.Kind != runnerwire.ChangeKindRenamed || got.Status != "RM" ||
+		got.Added != 1 ||
+		got.Removed != 0 {
 		t.Fatal(got)
 	}
 }
@@ -528,7 +612,10 @@ func TestRestoredMtimeEditAndNonTextLineCounts(t *testing.T) {
 // gitStatuses obtains Git's own complete path/status oracle for watched changes.
 func gitStatuses(t *testing.T, root string) map[string]string {
 	t.Helper()
-	oracle := strings.Split(gitCommand(t, root, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"), "\x00")
+	oracle := strings.Split(
+		gitCommand(t, root, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"),
+		"\x00",
+	)
 	want := map[string]string{}
 	for i := 0; i < len(oracle); i++ {
 		item := oracle[i]

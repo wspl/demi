@@ -18,12 +18,28 @@ import (
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
-func (r *ServiceRegistry) live(life *serviceLife, descriptor commandwire.PackageDescriptor, artifact commandwire.PackageArtifact, resolver ArtifactResolver, numbers NumberSource) {
+func (r *ServiceRegistry) live(
+	life *serviceLife,
+	descriptor commandwire.PackageDescriptor,
+	artifact commandwire.PackageArtifact,
+	resolver ArtifactResolver,
+	numbers NumberSource,
+) {
 	defer r.work.Done()
 	defer life.cancel()
 	hold := r.cache.Holds().Hold(artifact.SHA256)
 	defer hold.Release()
-	executable, err := r.cache.Install(life.stop, Wanted{Package: descriptor.ID, Name: "program", Version: descriptor.Version, Artifact: artifact, Form: &commandwire.ArtifactFile{}}, resolver)
+	executable, err := r.cache.Install(
+		life.stop,
+		Wanted{
+			Package:  descriptor.ID,
+			Name:     "program",
+			Version:  descriptor.Version,
+			Artifact: artifact,
+			Form:     &commandwire.ArtifactFile{},
+		},
+		resolver,
+	)
 	if err == nil {
 		err = r.runService(life, descriptor, executable, numbers)
 	}
@@ -59,13 +75,13 @@ func (r *ServiceRegistry) live(life *serviceLife, descriptor commandwire.Package
 }
 
 // runService owns every child pipe, the HTTP/2 client, stream responders and reaper.
-func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.PackageDescriptor, executable string, numbers NumberSource) (result error) {
-	cmd := exec.Command(executable, cmdsdk.CommandService)
-	cmd.Dir = r.cwd
-	cmd.Env = make([]string, 0, len(r.env))
-	for key, value := range r.env {
-		cmd.Env = append(cmd.Env, key+"="+value)
-	}
+func (r *ServiceRegistry) runService(
+	life *serviceLife,
+	descriptor commandwire.PackageDescriptor,
+	executable string,
+	numbers NumberSource,
+) (result error) {
+	cmd := r.serviceCommand(executable)
 	// Caller-owned pipes let the stderr drain finish after Wait reaps the child.
 	var pipes []*os.File
 	defer func() {
@@ -73,196 +89,20 @@ func (r *ServiceRegistry) runService(life *serviceLife, descriptor commandwire.P
 			_ = pipe.Close()
 		}
 	}() // Already-closed ends are harmless; the result describes the service.
-	stdin, input, err := os.Pipe()
+	input, output, diagnostic, err := servicePipes(cmd, &pipes)
 	if err != nil {
 		return err
 	}
-	pipes = append(pipes, stdin, input)
-	output, stdout, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	pipes = append(pipes, output, stdout)
-	diagnostic, stderr, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	pipes = append(pipes, diagnostic, stderr)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
 	child := process.Wrap(cmd, true, process.ChildAttributes{})
 	childctx, cancelChild := context.WithCancel(context.Background())
 	defer cancelChild()
-	// Start may retry a busy executable. Once started, life.stop requests graceful
-	// shutdown rather than cancelling the process owner's lifetime immediately.
-	startInterrupted := make(chan struct{})
-	stopStart := context.AfterFunc(life.stop, func() {
-		cancelChild()
-		close(startInterrupted)
-	})
-	err = child.Start(childctx)
-	if !stopStart() {
-		<-startInterrupted
-	}
-	if err != nil {
+	if err := startServiceChild(childctx, life.stop, child, cancelChild); err != nil {
 		return err
 	}
-	for _, pipe := range []*os.File{stdin, stdout, stderr} {
+	for _, pipe := range []*os.File{pipes[0], pipes[3], pipes[5]} {
 		_ = pipe.Close()
 	} // Parent no longer owns the child ends.
-	exited := make(chan struct{})
-	var state process.Exit
-	go func() {
-		state = child.Wait(childctx)
-		close(exited)
-	}()
-	tail := process.NewTail(runnerwire.ServiceStderrChars)
-	drained := make(chan struct{})
-	go drainStderr(diagnostic, descriptor.ID, tail, drained)
-	connection := &watchedConnection{Conn: &cmdsdk.PipeConn{Reader: output, Writer: input}, ended: make(chan struct{})}
-	var client *cmdsdk.Client
-	var streamWork sync.WaitGroup
-	streamctx, stopStreams := context.WithCancel(context.Background())
-	serviceArtifacts := &serviceArtifacts{registry: r, pkg: descriptor.ID}
-	reaped := false
-	defer func() {
-		stopStreams()
-		if client != nil {
-			_ = client.Close()
-		} else {
-			_ = connection.Close()
-		} // Closing interrupts every outstanding stream.
-		if !reaped {
-			if err := child.Kill(); err != nil {
-				slog.Warn("service:" + descriptor.ID + " could not be killed: " + err.Error())
-			}
-			<-exited
-		}
-		streamWork.Wait()
-		serviceArtifacts.close()
-		timer := time.NewTimer(250 * time.Millisecond)
-		select {
-		case <-drained:
-		case <-timer.C:
-			_ = diagnostic.Close()
-			<-drained
-		}
-		timer.Stop()
-		var exit *ServiceExit
-		if errors.As(result, &exit) {
-			exit.Stderr = tail.Text()
-			if exit.Reason.Kind == ProcessExited {
-				exit.Reason.State = state
-			}
-		}
-	}()
-	startctx, cancelStart := context.WithCancelCause(streamctx)
-	timedOut := make(chan struct{})
-	startTimer := time.AfterFunc(10*time.Second, func() {
-		cancelStart(context.DeadlineExceeded)
-		close(timedOut)
-	})
-	interrupted := make(chan struct{})
-	stopStarting := context.AfterFunc(life.stop, func() {
-		cancelStart(context.Canceled)
-		close(interrupted)
-	})
-	defer cancelStart(context.Canceled)
-	client, err = cmdsdk.Connect(startctx, connection)
-	var info commandwire.ServiceInfo
-	var numberStream, artifactStream *cmdsdk.RequestStream
-	if err == nil {
-		info, err = client.Info(startctx)
-	}
-	if err == nil && !descriptor.Serves(info) {
-		err = &RuntimeError{Kind: CatalogMismatch}
-	}
-	if err == nil {
-		numberStream, err = client.Numbers(startctx)
-	}
-	if err == nil {
-		artifactStream, err = client.Artifacts(startctx)
-	}
-	if !startTimer.Stop() {
-		<-timedOut
-	}
-	if !stopStarting() {
-		<-interrupted
-	}
-	startErr := context.Cause(startctx)
-	if err == nil {
-		err = startErr
-	}
-	if err != nil {
-		// A connected startup has the same shutdown obligations as a ready
-		// service: it may already hold resources despite a bad catalog or
-		// an unanswered startup request. Keep its connection and stderr alive
-		// through the shutdown deadline; the finalizer kills only afterward.
-		exitedBeforeStop := false
-		select {
-		case <-exited:
-			reaped = true
-			exitedBeforeStop = true
-		default:
-		}
-		if client != nil && !reaped {
-			reaped = shutdownService(context.Background(), client, exited, "service:"+descriptor.ID)
-		}
-		if life.stop.Err() != nil {
-			return &RuntimeError{Kind: Cancelled, Cause: life.stop.Err()}
-		}
-		if exitedBeforeStop {
-			return &ServiceExit{Service: descriptor.ID, Reason: ExitReason{Kind: ProcessExited}}
-		}
-		var runtimeErr *RuntimeError
-		if errors.As(err, &runtimeErr) {
-			return err
-		}
-		reason := ExitReason{Kind: ProtocolBroken, Detail: err.Error()}
-		if errors.Is(startErr, context.DeadlineExceeded) {
-			reason = ExitReason{Kind: StartupDeadline, Detail: "start"}
-		}
-		return &ServiceExit{Service: descriptor.ID, Reason: reason}
-	}
-	streamWork.Add(2)
-	go func() {
-		defer streamWork.Done()
-		err := numberStream.AnswerNumbers(streamctx, func(ctx context.Context, q commandwire.NumbersRequest) (uint64, error) {
-			return numbers.Reserve(ctx, q.Conversation, q.Sequence, q.Count)
-		})
-		if err != nil && streamctx.Err() == nil {
-			slog.Warn("service " + descriptor.ID + "'s numbers stream broke: " + err.Error())
-		}
-	}()
-	go func() {
-		defer streamWork.Done()
-		if err := artifactStream.AnswerArtifacts(streamctx, serviceArtifacts.answer); err != nil && streamctx.Err() == nil {
-			slog.Warn("service " + descriptor.ID + "'s artifacts stream broke: " + err.Error())
-		}
-	}()
-	slog.Info(fmt.Sprintf("service %s started (pid %d)", descriptor.ID, child.PID()))
-	r.mu.Lock()
-	life.client, life.info = client, info
-	life.connectionEnded = connection.ended
-	close(life.ready)
-	r.mu.Unlock()
-	select {
-	case <-life.stop.Done():
-		reaped = shutdownService(context.Background(), client, exited, "service:"+descriptor.ID)
-		return &RuntimeError{Kind: Stopped}
-	case <-exited:
-		reaped = true
-		return &ServiceExit{Service: descriptor.ID, Reason: ExitReason{Kind: ProcessExited}}
-	case <-connection.ended:
-		timer := time.NewTimer(250 * time.Millisecond)
-		defer timer.Stop()
-		select {
-		case <-exited:
-			reaped = true
-			return &ServiceExit{Service: descriptor.ID, Reason: ExitReason{Kind: ProcessExited}}
-		case <-timer.C:
-			return &ServiceExit{Service: descriptor.ID, Reason: ExitReason{Kind: ProtocolBroken, Detail: connection.err.Error()}}
-		}
-	}
+	return r.serveService(childctx, life, descriptor, numbers, child, input, output, diagnostic)
 }
 
 type watchedConnection struct {
@@ -280,11 +120,13 @@ func (c *watchedConnection) failed(err error) {
 		})
 	}
 }
+
 func (c *watchedConnection) Read(b []byte) (int, error) {
 	n, err := c.Conn.Read(b)
 	c.failed(err)
 	return n, err
 }
+
 func (c *watchedConnection) Write(b []byte) (int, error) {
 	n, err := c.Conn.Write(b)
 	c.failed(err)
@@ -318,7 +160,10 @@ func drainStderr(pipe *os.File, service string, tail *process.Tail, done chan<- 
 func connectionLost(err error) bool {
 	var op *net.OpError
 	var path *os.PathError
-	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, os.ErrClosed) || errors.As(err, &op) || errors.As(err, &path)
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, os.ErrClosed) ||
+		errors.As(err, &op) ||
+		errors.As(err, &path)
 }
 
 // shutdownService asks a connected service to release its resources, giving the
@@ -345,4 +190,346 @@ func shutdownService(ctx context.Context, client *cmdsdk.Client, exited <-chan s
 		slog.Warn(source + " did not shut down within 6 seconds and was killed")
 		return false
 	}
+}
+
+func connectService(
+	startctx context.Context,
+	cancelStart context.CancelCauseFunc,
+	life *serviceLife,
+	descriptor commandwire.PackageDescriptor,
+	connection *watchedConnection,
+) (
+	client *cmdsdk.Client,
+	info commandwire.ServiceInfo,
+	numberStream, artifactStream *cmdsdk.RequestStream,
+	startErr, err error,
+) {
+	timedOut := make(chan struct{})
+	startTimer := time.AfterFunc(10*time.Second, func() {
+		cancelStart(context.DeadlineExceeded)
+		close(timedOut)
+	})
+	interrupted := make(chan struct{})
+	stopStarting := context.AfterFunc(life.stop, func() {
+		cancelStart(context.Canceled)
+		close(interrupted)
+	})
+	client, err = cmdsdk.Connect(startctx, connection)
+	if err == nil {
+		info, err = client.Info(startctx)
+	}
+	if err == nil && !descriptor.Serves(info) {
+		err = &RuntimeError{Kind: CatalogMismatch}
+	}
+	if err == nil {
+		numberStream, err = client.Numbers(startctx)
+	}
+	if err == nil {
+		artifactStream, err = client.Artifacts(startctx)
+	}
+	if !startTimer.Stop() {
+		<-timedOut
+	}
+	if !stopStarting() {
+		<-interrupted
+	}
+	startErr = context.Cause(startctx)
+	if err == nil {
+		err = startErr
+	}
+	return
+}
+
+func failedServiceStart(
+	life *serviceLife,
+	service string,
+	client *cmdsdk.Client,
+	exited <-chan struct{},
+	reaped *bool,
+	startErr, err error,
+) error {
+	// A connected startup has the same shutdown obligations as a ready
+	// service: it may already hold resources despite a bad catalog or
+	// an unanswered startup request. Keep its connection and stderr alive
+	// through the shutdown deadline; the finalizer kills only afterward.
+	exitedBeforeStop := false
+	select {
+	case <-exited:
+		*reaped = true
+		exitedBeforeStop = true
+	default:
+	}
+	if client != nil && !*reaped {
+		*reaped = shutdownService(context.Background(), client, exited, "service:"+service)
+	}
+	if life.stop.Err() != nil {
+		return &RuntimeError{Kind: Cancelled, Cause: life.stop.Err()}
+	}
+	if exitedBeforeStop {
+		return &ServiceExit{Service: service, Reason: ExitReason{Kind: ProcessExited}}
+	}
+	var runtimeErr *RuntimeError
+	if errors.As(err, &runtimeErr) {
+		return err
+	}
+	reason := ExitReason{Kind: ProtocolBroken, Detail: err.Error()}
+	if errors.Is(startErr, context.DeadlineExceeded) {
+		reason = ExitReason{Kind: StartupDeadline, Detail: "start"}
+	}
+	return &ServiceExit{Service: service, Reason: reason}
+}
+
+func answerServiceRequests(
+	ctx context.Context,
+	service string,
+	numbers NumberSource,
+	serviceArtifacts *serviceArtifacts,
+	numberStream, artifactStream *cmdsdk.RequestStream,
+	streamWork *sync.WaitGroup,
+) {
+	streamWork.Add(2)
+	go func() {
+		defer streamWork.Done()
+		err := numberStream.AnswerNumbers(
+			ctx,
+			func(ctx context.Context, q commandwire.NumbersRequest) (uint64, error) {
+				return numbers.Reserve(ctx, q.Conversation, q.Sequence, q.Count)
+			},
+		)
+		if err != nil && ctx.Err() == nil {
+			slog.Warn("service " + service + "'s numbers stream broke: " + err.Error())
+		}
+	}()
+	go func() {
+		defer streamWork.Done()
+		if err := artifactStream.AnswerArtifacts(
+			ctx,
+			serviceArtifacts.answer,
+		); err != nil &&
+			ctx.Err() == nil {
+			slog.Warn("service " + service + "'s artifacts stream broke: " + err.Error())
+		}
+	}()
+}
+
+func waitService(
+	life *serviceLife,
+	service string,
+	client *cmdsdk.Client,
+	exited <-chan struct{},
+	connection *watchedConnection,
+	reaped *bool,
+) error {
+	select {
+	case <-life.stop.Done():
+		*reaped = shutdownService(context.Background(), client, exited, "service:"+service)
+		return &RuntimeError{Kind: Stopped}
+	case <-exited:
+		*reaped = true
+		return &ServiceExit{Service: service, Reason: ExitReason{Kind: ProcessExited}}
+	case <-connection.ended:
+		timer := time.NewTimer(250 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-exited:
+			*reaped = true
+			return &ServiceExit{Service: service, Reason: ExitReason{Kind: ProcessExited}}
+		case <-timer.C:
+			return &ServiceExit{
+				Service: service,
+				Reason:  ExitReason{Kind: ProtocolBroken, Detail: connection.err.Error()},
+			}
+		}
+	}
+}
+
+type serviceCleanup struct {
+	stopStreams context.CancelFunc
+	client      *cmdsdk.Client
+	connection  *watchedConnection
+	reaped      bool
+	child       *process.Command
+	service     string
+	exited      <-chan struct{}
+	streamWork  *sync.WaitGroup
+	artifacts   *serviceArtifacts
+	drained     <-chan struct{}
+	diagnostic  *os.File
+	result      error
+	tail        *process.Tail
+	state       *process.Exit
+}
+
+// finishService keeps the connection and stderr drain alive until shutdown has reaped the child.
+func finishService(cleanup serviceCleanup) {
+	cleanup.stopStreams()
+	if cleanup.client != nil {
+		_ = cleanup.client.Close()
+	} else {
+		_ = cleanup.connection.Close()
+	} // Closing interrupts every outstanding stream.
+	if !cleanup.reaped {
+		if err := cleanup.child.Kill(); err != nil {
+			slog.Warn("service:" + cleanup.service + " could not be killed: " + err.Error())
+		}
+		<-cleanup.exited
+	}
+	cleanup.streamWork.Wait()
+	cleanup.artifacts.close()
+	timer := time.NewTimer(250 * time.Millisecond)
+	select {
+	case <-cleanup.drained:
+	case <-timer.C:
+		_ = cleanup.diagnostic.Close()
+		<-cleanup.drained
+	}
+	timer.Stop()
+	var exit *ServiceExit
+	if errors.As(cleanup.result, &exit) {
+		exit.Stderr = cleanup.tail.Text()
+		if exit.Reason.Kind == ProcessExited {
+			exit.Reason.State = *cleanup.state
+		}
+	}
+}
+
+// servicePipes appends each acquired endpoint immediately so the caller owns partial setup cleanup.
+func servicePipes(cmd *exec.Cmd, pipes *[]*os.File) (*os.File, *os.File, *os.File, error) {
+	stdin, input, err := os.Pipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	*pipes = append(*pipes, stdin, input)
+	output, stdout, err := os.Pipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	*pipes = append(*pipes, output, stdout)
+	diagnostic, stderr, err := os.Pipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	*pipes = append(*pipes, diagnostic, stderr)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
+	return input, output, diagnostic, nil
+}
+
+// startServiceChild limits startup cancellation to the attempt; a running service shuts down gracefully.
+func startServiceChild(ctx, stop context.Context, child *process.Command, cancelChild context.CancelFunc) error {
+	// Start may retry a busy executable. Once started, stop requests graceful
+	// shutdown rather than cancelling the process owner's lifetime immediately.
+	startInterrupted := make(chan struct{})
+	stopStart := context.AfterFunc(stop, func() {
+		cancelChild()
+		close(startInterrupted)
+	})
+	err := child.Start(ctx)
+	if !stopStart() {
+		<-startInterrupted
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *ServiceRegistry) serviceCommand(executable string) *exec.Cmd {
+	cmd := exec.Command(executable, cmdsdk.CommandService)
+	cmd.Dir = r.cwd
+	cmd.Env = make([]string, 0, len(r.env))
+	for key, value := range r.env {
+		cmd.Env = append(cmd.Env, key+"="+value)
+	}
+	return cmd
+}
+
+func (r *ServiceRegistry) publishService(
+	life *serviceLife,
+	client *cmdsdk.Client,
+	info commandwire.ServiceInfo,
+	connection *watchedConnection,
+) {
+	r.mu.Lock()
+	life.client, life.info = client, info
+	life.connectionEnded = connection.ended
+	close(life.ready)
+	r.mu.Unlock()
+}
+
+func (r *ServiceRegistry) serveService(
+	ctx context.Context,
+	life *serviceLife,
+	descriptor commandwire.PackageDescriptor,
+	numbers NumberSource,
+	child *process.Command,
+	input, output, diagnostic *os.File,
+) (result error) {
+	state, exited, tail, drained := observeService(ctx, child, descriptor.ID, diagnostic)
+	connection := &watchedConnection{Conn: &cmdsdk.PipeConn{Reader: output, Writer: input}, ended: make(chan struct{})}
+	var client *cmdsdk.Client
+	var streamWork sync.WaitGroup
+	streamctx, stopStreams := context.WithCancel(context.Background())
+	serviceArtifacts := &serviceArtifacts{registry: r, pkg: descriptor.ID}
+	reaped := false
+	defer func() {
+		finishService(serviceCleanup{
+			stopStreams: stopStreams,
+			client:      client,
+			connection:  connection,
+			reaped:      reaped,
+			child:       child,
+			service:     descriptor.ID,
+			exited:      exited,
+			streamWork:  &streamWork,
+			artifacts:   serviceArtifacts,
+			drained:     drained,
+			diagnostic:  diagnostic,
+			result:      result,
+			tail:        tail,
+			state:       state,
+		})
+	}()
+	startctx, cancelStart := context.WithCancelCause(streamctx)
+	defer cancelStart(context.Canceled)
+	client, info, numberStream, artifactStream, startErr, err := connectService(
+		startctx,
+		cancelStart,
+		life,
+		descriptor,
+		connection,
+	)
+	if err != nil {
+		return failedServiceStart(life, descriptor.ID, client, exited, &reaped, startErr, err)
+	}
+	answerServiceRequests(
+		streamctx,
+		descriptor.ID,
+		numbers,
+		serviceArtifacts,
+		numberStream,
+		artifactStream,
+		&streamWork,
+	)
+	slog.Info(fmt.Sprintf("service %s started (pid %d)", descriptor.ID, child.PID()))
+	r.publishService(life, client, info, connection)
+	return waitService(life, descriptor.ID, client, exited, connection, &reaped)
+}
+
+// observeService starts the reaper and stderr drain; serveService joins both through finishService.
+func observeService(
+	ctx context.Context,
+	child *process.Command,
+	service string,
+	diagnostic *os.File,
+) (*process.Exit, <-chan struct{}, *process.Tail, <-chan struct{}) {
+	exited := make(chan struct{})
+	state := new(process.Exit)
+	go func() {
+		*state = child.Wait(ctx)
+		close(exited)
+	}()
+	tail := process.NewTail(runnerwire.ServiceStderrChars)
+	drained := make(chan struct{})
+	go drainStderr(diagnostic, service, tail, drained)
+	return state, exited, tail, drained
 }

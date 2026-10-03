@@ -15,26 +15,13 @@ import (
 // cancellableStdio registers owned standard files with Go's poller. A plain
 // os.NewFile of a blocking duplicate cannot interrupt Read by closing it.
 // Restore runs only after all IO is joined and all pollable copies are closed:
-// standard handles can share one underlying file description and its flags.
+// standard stdioHandles can share one underlying file description and its flags.
 func cancellableStdio(ctx context.Context, stdio Stdio) (Stdio, func() error, error) {
 	initial := stdio
-	type handle struct {
-		original *os.File
-		fd       uintptr
-		flags    int
-	}
-	originals := []handle{}
+	originals := []stdioHandle{}
 	adapted := []*os.File{}
 	restore := func(closeOriginals bool) error {
-		var result error
-		for _, entry := range originals {
-			_, err := unix.FcntlInt(entry.fd, unix.F_SETFL, entry.flags)
-			result = errors.Join(result, err)
-			if closeOriginals {
-				result = errors.Join(result, entry.original.Close())
-			}
-		}
-		return result
+		return restoreStdio(originals, closeOriginals)
 	}
 	// A preparation failure has no IO workers: close partial duplicates and
 	// restore shared flags before returning the original streams to final cleanup.
@@ -48,34 +35,20 @@ func cancellableStdio(ctx context.Context, stdio Stdio) (Stdio, func() error, er
 	files[0], _ = stdio.Stdin.(*os.File)
 	files[1], _ = stdio.Stdout.(*os.File)
 	files[2], _ = stdio.Stderr.(*os.File)
-	handles := make([]handle, len(files))
-	// Snapshot descriptors and flags before changing any. Calling File.Fd again
-	// could itself switch a Go-managed shared file description back to blocking.
-	for i, file := range files {
-		if file == nil {
-			continue
-		}
-		fd := file.Fd()
-		flags, err := unix.FcntlInt(fd, unix.F_GETFL, 0)
-		if err != nil {
-			return failed(err)
-		}
-		handles[i] = handle{original: file, fd: fd, flags: flags}
+	stdioHandles, err := stdioHandlesOf(files)
+	if err != nil {
+		return failed(err)
 	}
 	for i, file := range files {
 		if file == nil {
 			continue
 		}
-		entry := handles[i]
-		duplicate, err := cmdsdk.Retry(ctx, func() (int, error) { return unix.FcntlInt(entry.fd, unix.F_DUPFD_CLOEXEC, 0) })
+		entry := stdioHandles[i]
+		duplicate, err := duplicateStdio(ctx, entry.fd)
 		if err != nil {
 			return failed(err)
 		}
-		if err := unix.SetNonblock(duplicate, true); err != nil {
-			_ = unix.Close(duplicate) // Preparation failed before ownership transfer.
-			return failed(err)
-		}
-		if !slices.ContainsFunc(originals, func(h handle) bool { return h.original == file }) {
+		if !slices.ContainsFunc(originals, func(h stdioHandle) bool { return h.original == file }) {
 			originals = append(originals, entry)
 		}
 		stream := os.NewFile(uintptr(duplicate), file.Name())
@@ -90,4 +63,55 @@ func cancellableStdio(ctx context.Context, stdio Stdio) (Stdio, func() error, er
 		}
 	}
 	return stdio, func() error { return restore(true) }, nil
+}
+
+type stdioHandle struct {
+	original *os.File
+	fd       uintptr
+	flags    int
+}
+
+func stdioHandlesOf(files []*os.File) ([]stdioHandle, error) {
+	stdioHandles := make([]stdioHandle, len(files))
+	// Snapshot descriptors and flags before changing any. Calling File.Fd again
+	// could itself switch a Go-managed shared file description back to blocking.
+	for i, file := range files {
+		if file == nil {
+			continue
+		}
+		fd := file.Fd()
+		flags, err := unix.FcntlInt(fd, unix.F_GETFL, 0)
+		if err != nil {
+			return nil, err
+		}
+		stdioHandles[i] = stdioHandle{original: file, fd: fd, flags: flags}
+	}
+	return stdioHandles, nil
+}
+
+func duplicateStdio(ctx context.Context, fd uintptr) (int, error) {
+	duplicate, err := cmdsdk.Retry(
+		ctx,
+		func() (int, error) { return unix.FcntlInt(fd, unix.F_DUPFD_CLOEXEC, 0) },
+	)
+	if err != nil {
+		return 0, err
+	}
+	if err := unix.SetNonblock(duplicate, true); err != nil {
+		_ = unix.Close(duplicate) // Preparation failed before ownership transfer.
+		return 0, err
+	}
+	return duplicate, nil
+}
+
+func restoreStdio(originals []stdioHandle, closeOriginals bool) error {
+	var result error
+	for _, entry := range originals {
+		_, err := unix.FcntlInt(entry.fd, unix.F_SETFL, entry.flags)
+		result = errors.Join(result, err)
+		if closeOriginals {
+			result = errors.Join(result, entry.original.Close())
+		}
+	}
+	return result
 }

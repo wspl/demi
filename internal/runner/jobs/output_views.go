@@ -28,6 +28,7 @@ func (v *outputView) write(bytes []byte) (uint64, []byte) {
 	v.held += uint64(n)
 	return offset, bytes[:n]
 }
+
 func (v *outputView) due(follow bool) time.Time {
 	waiting := v.length > runnerwire.JobViewBytes && v.reported < v.length
 	interval := runnerwire.JobGrowthInterval
@@ -43,6 +44,7 @@ func (v *outputView) due(follow bool) time.Time {
 	}
 	return v.reportedAt.Add(interval)
 }
+
 func (v *outputView) frame(job string, follow bool) ([]byte, error) {
 	var offset uint64
 	if follow {
@@ -51,8 +53,16 @@ func (v *outputView) frame(job string, follow bool) ([]byte, error) {
 		offset = max(runnerwire.JobViewBytes, uint64(max(0, int64(v.length)-runnerwire.JobViewBytes)))
 	}
 	start := v.length - uint64(len(v.tail))
-	return runnerwire.Encode(&runnerwire.JobOutput{JobID: job, Stream: v.stream, Offset: offset, Bytes: append([]byte{}, v.tail[offset-start:]...)})
+	return runnerwire.Encode(
+		&runnerwire.JobOutput{
+			JobID:  job,
+			Stream: v.stream,
+			Offset: offset,
+			Bytes:  append([]byte{}, v.tail[offset-start:]...),
+		},
+	)
 }
+
 func (v *outputView) sent(follow bool) {
 	v.reported = v.length
 	v.reportedAt = time.Now()
@@ -60,6 +70,7 @@ func (v *outputView) sent(follow bool) {
 		v.held = v.length
 	}
 }
+
 func (v *outputView) beyond(job string, follow, force bool, output chan<- []byte) error {
 	due := v.due(follow)
 	if due.IsZero() || (!force && due.After(time.Now())) {
@@ -77,6 +88,7 @@ func (v *outputView) beyond(job string, follow, force bool, output chan<- []byte
 	}
 	return nil
 }
+
 func (v *outputView) last(ctx context.Context, job string, follow bool, output chan<- []byte) error {
 	if v.due(follow).IsZero() {
 		return nil

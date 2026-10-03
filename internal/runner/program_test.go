@@ -60,6 +60,7 @@ func (b *runnerDiagnostics) Write(p []byte) (int, error) {
 	defer b.mu.Unlock()
 	return b.Buffer.Write(p)
 }
+
 func (b *runnerDiagnostics) text() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -69,7 +70,17 @@ func (b *runnerDiagnostics) text() string {
 func newRunner(t *testing.T, env map[string]string, path string) *runnerFixture {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
-	f := &runnerFixture{t: t, ctx: ctx, cancel: cancel, accepted: make(chan *websocket.Conn, 8), requested: make(chan string, 8), home: t.TempDir(), state: t.TempDir(), env: env, path: path}
+	f := &runnerFixture{
+		t:         t,
+		ctx:       ctx,
+		cancel:    cancel,
+		accepted:  make(chan *websocket.Conn, 8),
+		requested: make(chan string, 8),
+		home:      t.TempDir(),
+		state:     t.TempDir(),
+		env:       env,
+		path:      path,
+	}
 	var err error
 	f.binary, err = programtest.Path(ctx, program)
 	if err != nil {
@@ -107,16 +118,25 @@ func newRunner(t *testing.T, env map[string]string, path string) *runnerFixture 
 			}
 		}
 	})
-	if err := os.WriteFile(filepath.Join(f.state, "runner-token"), []byte("test-token\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(f.state, "runner-token"), []byte("test-token\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f.start()
 	return f
 }
+
 func (f *runnerFixture) start() {
 	f.t.Helper()
 	command := exec.CommandContext(f.ctx, f.binary, "run", "--backend", f.server.URL+f.path)
-	command.Env = append(os.Environ(), "HOME="+f.home, "USERPROFILE="+f.home, "DEMI_HOME="+f.state, "DEMI_RELEASE_ID=test-release", "DEMI_RUNNER_MANAGED=", "TMPDIR=/tmp")
+	command.Env = append(
+		os.Environ(),
+		"HOME="+f.home,
+		"USERPROFILE="+f.home,
+		"DEMI_HOME="+f.state,
+		"DEMI_RELEASE_ID=test-release",
+		"DEMI_RUNNER_MANAGED=",
+		"TMPDIR=/tmp",
+	)
 	for name, value := range f.env {
 		command.Env = append(command.Env, name+"="+value)
 	}
@@ -131,6 +151,7 @@ func (f *runnerFixture) start() {
 	go func() { f.done <- command.Wait() }()
 	f.accept()
 }
+
 func (f *runnerFixture) accept() {
 	f.t.Helper()
 	select {
@@ -164,6 +185,7 @@ func (f *runnerFixture) stop() {
 	<-f.done
 	f.command = nil
 }
+
 func (f *runnerFixture) send(message runnerwire.Inbound) {
 	f.t.Helper()
 	data, err := runnerwire.Encode(message)
@@ -174,6 +196,7 @@ func (f *runnerFixture) send(message runnerwire.Inbound) {
 		f.t.Fatalf("send: %v\n%s", err, f.output.text())
 	}
 }
+
 func (f *runnerFixture) frame() runnerwire.Outbound {
 	f.t.Helper()
 	_, data, err := f.socket.Read(f.ctx)
@@ -186,12 +209,27 @@ func (f *runnerFixture) frame() runnerwire.Outbound {
 	}
 	return message
 }
+
 func runnerCommandContext() commandwire.CommandContext {
-	return commandwire.CommandContext{Conversation: "conversation", Caller: &commandwire.AgentCaller{Number: 1}, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}}
+	return commandwire.CommandContext{
+		Conversation: "conversation",
+		Caller:       &commandwire.AgentCaller{Number: 1},
+		Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+	}
 }
+
 func (f *runnerFixture) job(id, script string) {
-	f.send(&runnerwire.JobStart{JobID: id, Context: runnerCommandContext(), Script: script, CWD: f.home, Env: map[string]string{}})
+	f.send(
+		&runnerwire.JobStart{
+			JobID:   id,
+			Context: runnerCommandContext(),
+			Script:  script,
+			CWD:     f.home,
+			Env:     map[string]string{},
+		},
+	)
 }
+
 func (f *runnerFixture) jobOutput(id string) (string, string, *runnerwire.JobExit) {
 	f.t.Helper()
 	var out, stderr strings.Builder
@@ -216,6 +254,7 @@ func (f *runnerFixture) jobOutput(id string) (string, string, *runnerwire.JobExi
 		}
 	}
 }
+
 func (f *runnerFixture) management(ctx context.Context, action string, args ...string) ([]byte, error) {
 	command := exec.CommandContext(ctx, f.binary, append([]string{action, "--home", f.state}, args...)...)
 	command.Env = append(os.Environ(), "DEMI_RELEASE_ID=test-release")

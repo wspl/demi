@@ -21,7 +21,10 @@ func TestEarlyPipeResponseInterruptsPendingCommandInput(t *testing.T) {
 	source := &blockedPipeInput{reading: make(chan struct{})}
 	body := newInvocationBody(t.Context(), cmdsdk.NewInput(source))
 	done := make(chan error, 1)
-	go func() { _, err := body.Read(make([]byte, 1)); done <- err }()
+	go func() {
+		_, err := body.Read(make([]byte, 1))
+		done <- err
+	}()
 	<-source.reading
 	// PipeClient.Put owns the body and closes it when a server answers early.
 	if err := body.Close(); err != nil {

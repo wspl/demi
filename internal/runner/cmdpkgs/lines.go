@@ -41,13 +41,25 @@ func (c *ArtifactCache) record(ctx context.Context, w Wanted, path string) error
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	record := lineRecord{Package: w.Package, Name: w.Name, Version: w.Version, Path: path, InstalledAt: uint64(max(0, time.Now().UnixMilli()))}
+	record := lineRecord{
+		Package:     w.Package,
+		Name:        w.Name,
+		Version:     w.Version,
+		Path:        path,
+		InstalledAt: uint64(max(0, time.Now().UnixMilli())),
+	}
 	data, err := record.MarshalJSON()
 	if err != nil {
 		return err
 	}
-	return artifacts.PublishBytes(ctx, destination, data, artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Private, Durable: true})
+	return artifacts.PublishBytes(
+		ctx,
+		destination,
+		data,
+		artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Private, Durable: true},
+	)
 }
+
 func (c *ArtifactCache) records(ctx context.Context) ([]recordedLine, error) {
 	entries, err := os.ReadDir(c.root)
 	if err != nil {
@@ -95,11 +107,15 @@ func (c *ArtifactCache) Installed(ctx context.Context, pkg, name string) ([]comm
 	result := make([]commandwire.InstalledArtifact, 0)
 	for _, r := range records {
 		if r.record.Package == pkg && r.record.Name == name {
-			result = append(result, commandwire.InstalledArtifact{Version: r.record.Version, SHA256: r.digest, Path: r.record.Path})
+			result = append(
+				result,
+				commandwire.InstalledArtifact{Version: r.record.Version, SHA256: r.digest, Path: r.record.Path},
+			)
 		}
 	}
 	return result, nil
 }
+
 func (c *ArtifactCache) removeOlder(ctx context.Context, w Wanted) {
 	records, err := c.records(ctx)
 	if err != nil {
@@ -107,7 +123,8 @@ func (c *ArtifactCache) removeOlder(ctx context.Context, w Wanted) {
 		return
 	}
 	for _, r := range records {
-		if r.record.Package != w.Package || r.record.Name != w.Name || r.digest == w.Artifact.SHA256 || c.holds.held(r.digest) {
+		if r.record.Package != w.Package || r.record.Name != w.Name || r.digest == w.Artifact.SHA256 ||
+			c.holds.held(r.digest) {
 			continue
 		}
 		path := filepath.Join(c.root, r.digest)

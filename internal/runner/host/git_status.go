@@ -48,7 +48,12 @@ func (s gitSignal) status() string {
 
 // indexSignals compares the two committed sides and delegates staged rename
 // similarity to go-git, preserving all conflict stages and intent-to-add entries.
-func indexSignals(ctx context.Context, tree *object.Tree, head map[string]object.TreeEntry, idx *index.Index) (map[string]gitSignal, map[string]*index.Entry, error) {
+func indexSignals(
+	ctx context.Context,
+	tree *object.Tree,
+	head map[string]object.TreeEntry,
+	idx *index.Index,
+) (map[string]gitSignal, map[string]*index.Entry, error) {
 	signals := make(map[string]gitSignal)
 	tracked := make(map[string]*index.Entry)
 	stages := make(map[string]int)
@@ -90,29 +95,8 @@ func indexSignals(ctx context.Context, tree *object.Tree, head map[string]object
 	if tree == nil {
 		return signals, tracked, nil
 	}
-	var changes object.Changes
-	for name, signal := range signals {
-		if signal.index == 'D' {
-			changes = append(changes, &object.Change{From: object.ChangeEntry{Name: name, Tree: tree, TreeEntry: head[name]}})
-		}
-		if signal.index == 'A' {
-			e := tracked[name]
-			changes = append(changes, &object.Change{To: object.ChangeEntry{Name: name, Tree: tree, TreeEntry: object.TreeEntry{Name: name, Mode: e.Mode, Hash: e.Hash}}})
-		}
-	}
-	sort.Sort(changes)
-	paired, err := object.DetectRenames(changes, nil)
-	if err != nil {
+	if err := pairRenames(ctx, tree, head, tracked, signals); err != nil {
 		return nil, nil, err
-	}
-	for _, change := range paired {
-		if err = ctx.Err(); err != nil {
-			return nil, nil, err
-		}
-		if change.From.Name != "" && change.To.Name != "" && change.From.Name != change.To.Name {
-			signals[change.To.Name] = gitSignal{index: 'R', from: change.From.Name}
-			delete(signals, change.From.Name)
-		}
 	}
 	return signals, tracked, nil
 }
@@ -129,7 +113,13 @@ func gitFileKind(mode filemode.FileMode) int {
 }
 
 // diskStatus checks tracked Host paths in parallel; each worker owns its hash buffer.
-func diskStatus(ctx context.Context, location *gitLocation, base *gitBaseline, scope []string, maxFiles int) (map[string]gitSignal, error) {
+func diskStatus(
+	ctx context.Context,
+	location *gitLocation,
+	base *gitBaseline,
+	scope []string,
+	maxFiles int,
+) (map[string]gitSignal, error) {
 	signals := make(map[string]gitSignal)
 	for name, signal := range base.indexSignals {
 		if inGitScope(name, location.prefix, scope) {
@@ -150,7 +140,7 @@ func diskStatus(ctx context.Context, location *gitLocation, base *gitBaseline, s
 		workers.Go(func() {
 			buffer := make([]byte, 32*1024)
 			for entry := range jobs {
-				code, err := trackedStatus(ctx, location.workdir, entry, base.indexTime, base.fileMode, buffer)
+				code, err := trackedStatus(ctx, location.workDir, entry, base.indexTime, base.fileMode, buffer)
 				mu.Lock()
 				if failure == nil {
 					failure = err
@@ -189,7 +179,14 @@ func diskStatus(ctx context.Context, location *gitLocation, base *gitBaseline, s
 }
 
 // trackedStatus follows Git's index flags and verifies metadata before trusting an unchanged file.
-func trackedStatus(ctx context.Context, root string, e *index.Entry, indexTime int64, fileMode bool, buffer []byte) (byte, error) {
+func trackedStatus(
+	ctx context.Context,
+	root string,
+	e *index.Entry,
+	indexTime int64,
+	fileMode bool,
+	buffer []byte,
+) (byte, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -254,5 +251,54 @@ func inGitScope(name, prefix string, scope []string) bool {
 	if scope == nil {
 		return true
 	}
-	return slices.ContainsFunc(scope, func(path string) bool { return relative == path || strings.HasPrefix(relative, path+"/") })
+	return slices.ContainsFunc(
+		scope,
+		func(path string) bool { return relative == path || strings.HasPrefix(relative, path+"/") },
+	)
+}
+
+func pairRenames(
+	ctx context.Context,
+	tree *object.Tree,
+	head map[string]object.TreeEntry,
+	tracked map[string]*index.Entry,
+	signals map[string]gitSignal,
+) error {
+	var changes object.Changes
+	for name, signal := range signals {
+		if signal.index == 'D' {
+			changes = append(
+				changes,
+				&object.Change{From: object.ChangeEntry{Name: name, Tree: tree, TreeEntry: head[name]}},
+			)
+		}
+		if signal.index == 'A' {
+			e := tracked[name]
+			changes = append(
+				changes,
+				&object.Change{
+					To: object.ChangeEntry{
+						Name:      name,
+						Tree:      tree,
+						TreeEntry: object.TreeEntry{Name: name, Mode: e.Mode, Hash: e.Hash},
+					},
+				},
+			)
+		}
+	}
+	sort.Sort(changes)
+	paired, err := object.DetectRenames(changes, nil)
+	if err != nil {
+		return err
+	}
+	for _, change := range paired {
+		if err = ctx.Err(); err != nil {
+			return err
+		}
+		if change.From.Name != "" && change.To.Name != "" && change.From.Name != change.To.Name {
+			signals[change.To.Name] = gitSignal{index: 'R', from: change.From.Name}
+			delete(signals, change.From.Name)
+		}
+	}
+	return nil
 }

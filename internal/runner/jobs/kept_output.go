@@ -58,7 +58,7 @@ func CreateKeptOutput(ctx context.Context, directory string) (*KeptOutput, error
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := os.Mkdir(directory, 0700); err != nil {
+	if err := os.Mkdir(directory, 0o700); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(directory, "head")
@@ -66,7 +66,14 @@ func CreateKeptOutput(ctx context.Context, directory string) (*KeptOutput, error
 	if err != nil {
 		return nil, err
 	}
-	output := &KeptOutput{directory: directory, head: file, layout: &keptLayout{head: keptSegment{path: path}}, requests: make(chan keptRequest), stop: make(chan struct{}), done: make(chan struct{})}
+	output := &KeptOutput{
+		directory: directory,
+		head:      file,
+		layout:    &keptLayout{head: keptSegment{path: path}},
+		requests:  make(chan keptRequest),
+		stop:      make(chan struct{}),
+		done:      make(chan struct{}),
+	}
 	go output.serve()
 	return output, nil
 }
@@ -91,36 +98,27 @@ func (o *KeptOutput) writeOwned(ctx context.Context, stream runnerwire.OutputStr
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if o.head != nil {
-		room := runnerwire.JobKeptPartBytes - o.layout.head.length
-		taken := min(len(bytes), int(room))
-		var record []byte
-		for taken > 0 {
-			var err error
-			record, err = runnerwire.EncodeRecord(&runnerwire.KeptOutput{Stream: stream, Bytes: runnerwire.WireBytes(bytes[:taken])})
-			if err != nil {
-				return err
-			}
-			if len(record) <= int(room) {
-				break
-			}
-			taken = max(0, taken-(len(record)-int(room)))
-		}
-		if taken > 0 {
-			if _, err := o.head.Write(record); err != nil {
-				return err
-			}
-			o.layout.head.length += int64(len(record))
-		}
-		if taken == len(bytes) {
-			return nil
-		}
-		if err := o.head.Close(); err != nil {
+	if o.head == nil {
+		return o.writeEnd(stream, bytes)
+	}
+	taken, record, err := o.headRecord(stream, bytes)
+	if err != nil {
+		return err
+	}
+	if taken > 0 {
+		if _, err := o.head.Write(record); err != nil {
 			return err
 		}
-		o.head = nil
-		bytes = bytes[taken:]
+		o.layout.head.length += int64(len(record))
 	}
+	if taken == len(bytes) {
+		return nil
+	}
+	if err := o.head.Close(); err != nil {
+		return err
+	}
+	o.head = nil
+	bytes = bytes[taken:]
 	return o.writeEnd(stream, bytes)
 }
 
@@ -276,4 +274,24 @@ func (s *keptSnapshot) Close() error {
 		}
 	})
 	return s.err
+}
+
+func (o *KeptOutput) headRecord(stream runnerwire.OutputStream, bytes []byte) (int, []byte, error) {
+	room := runnerwire.JobKeptPartBytes - o.layout.head.length
+	taken := min(len(bytes), int(room))
+	var record []byte
+	for taken > 0 {
+		var err error
+		record, err = runnerwire.EncodeRecord(
+			&runnerwire.KeptOutput{Stream: stream, Bytes: runnerwire.WireBytes(bytes[:taken])},
+		)
+		if err != nil {
+			return 0, nil, err
+		}
+		if len(record) <= int(room) {
+			break
+		}
+		taken = max(0, taken-(len(record)-int(room)))
+	}
+	return taken, record, nil
 }

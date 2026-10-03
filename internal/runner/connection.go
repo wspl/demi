@@ -58,11 +58,38 @@ type connection struct {
 
 func (r *registration) serve(ctx context.Context, t *transport) (end connectionEnd, err error) {
 	lifetime, cancel := context.WithCancel(ctx)
-	c := &connection{registration: r, transport: t, ctx: lifetime, cancel: cancel, installation: &jobs.Installation{}, results: make(chan connectionWork), finished: make(chan jobs.WorkID), tasksChanged: make(chan struct{}, 1), installsChanged: make(chan struct{}, 1)}
+	c := &connection{
+		registration:    r,
+		transport:       t,
+		ctx:             lifetime,
+		cancel:          cancel,
+		installation:    &jobs.Installation{},
+		results:         make(chan connectionWork),
+		finished:        make(chan jobs.WorkID),
+		tasksChanged:    make(chan struct{}, 1),
+		installsChanged: make(chan struct{}, 1),
+	}
 	c.handle, c.requests = jobs.NewConnectionHandle(lifetime, t.control)
 	c.directories = jobs.OpenDirectories(lifetime, r.options.jobRoot)
 	c.contexts = jobs.NewContextTable(r.contexts)
-	c.table = jobs.NewTable(lifetime, jobs.Config{Output: t.output, Directories: c.directories, Pipes: r.pipes, Shell: r.options.shell, Commands: &jobs.Commands{Dispatcher: r.dispatcher, Connection: c.handle, Installation: c.installation, Paths: r.paths, Services: r.services, Endpoint: r.endpoint, Home: r.state.root}})
+	c.table = jobs.NewTable(
+		lifetime,
+		jobs.Config{
+			Output:      t.output,
+			Directories: c.directories,
+			Pipes:       r.pipes,
+			Shell:       r.options.shell,
+			Commands: &jobs.Commands{
+				Dispatcher:   r.dispatcher,
+				Connection:   c.handle,
+				Installation: c.installation,
+				Paths:        r.paths,
+				Services:     r.services,
+				Endpoint:     r.endpoint,
+				Home:         r.state.root,
+			},
+		},
+	)
 	c.relay = jobs.NewRelay(lifetime)
 	c.host = host.New(lifetime, r.options.cwd, r.pipes, t.output)
 	c.streams = jobs.NewServiceStreams(lifetime, c.handle, r.pipes, r.services, r.management.draining)
@@ -99,6 +126,7 @@ func (c *connection) watchTasks() {
 		}
 	}()
 }
+
 func (c *connection) watchInstalls() {
 	c.work.Add(1)
 	go func() {
@@ -130,6 +158,7 @@ func (c *connection) launch(run func() connectionWork) {
 		}
 	}()
 }
+
 func releaseInstalled(installed *jobs.Installed) {
 	if installed != nil {
 		for _, lease := range installed.Leases {
@@ -137,6 +166,7 @@ func releaseInstalled(installed *jobs.Installed) {
 		}
 	}
 }
+
 func (c *connection) send(ctx context.Context, message runnerwire.Outbound) error {
 	frame, err := runnerwire.Encode(message)
 	if err != nil {
@@ -144,6 +174,7 @@ func (c *connection) send(ctx context.Context, message runnerwire.Outbound) erro
 	}
 	return c.sendFrame(ctx, frame)
 }
+
 func (c *connection) sendFrame(ctx context.Context, frame []byte) error {
 	select {
 	case c.transport.control <- frame:
@@ -154,9 +185,13 @@ func (c *connection) sendFrame(ctx context.Context, frame []byte) error {
 		return errors.New("host connection closed")
 	}
 }
+
 func (c *connection) run(ctx context.Context) (connectionEnd, error) {
 	r := c.registration
-	if err := c.send(c.ctx, &runnerwire.Hello{Protocol: runnerwire.Version, DeviceToken: r.token.Load(), Runner: r.options.runner}); err != nil {
+	if err := c.send(
+		c.ctx,
+		&runnerwire.Hello{Protocol: runnerwire.Version, DeviceToken: r.token.Load(), Runner: r.options.runner},
+	); err != nil {
 		return disconnected, err
 	}
 	ticker := time.NewTicker(60 * time.Second)
@@ -179,68 +214,15 @@ func (c *connection) run(ctx context.Context) (connectionEnd, error) {
 		if !r.management.snapshot().Draining {
 			drain = r.management.draining
 		}
-		select {
-		case <-ctx.Done():
-			return stopped, nil
-		case <-drain:
-		case <-c.handle.Done():
-			return disconnected, nil
-		case <-ticker.C:
-			if r.management.snapshot().Phase == online && c.table.JobCount() == 0 {
-				c.pollVolumes()
-			}
-		case request := <-c.requests:
-			if err := c.request(request); err != nil {
-				return disconnected, err
-			}
-		case id := <-c.finished:
-			if id.Kind == jobs.ShellWork {
-				c.contexts.Remove(id.ID)
-			}
-			r.management.setJobs(c.table.JobCount())
-		case result := <-c.results:
-			if result.installation != 0 && result.installation != c.generation {
-				releaseInstalled(result.installed)
-				continue
-			}
-			if result.err != nil {
-				releaseInstalled(result.installed)
-				return disconnected, result.err
-			}
-			if result.installed != nil {
-				c.installation.Publish(jobs.ManifestReady, result.installed.Manifest)
-				releaseInstalled(c.installed)
-				c.installed = result.installed
-			}
-		case <-c.installsChanged:
-			if r.management.snapshot().Phase == online {
-				if err := c.reportInstalls(); err != nil {
-					return disconnected, err
-				}
-			}
-		case message, ok := <-c.transport.input:
-			if !ok {
-				return disconnected, nil
-			}
-			// A registration queued while select chose input still wins over its reply.
-			for {
-				select {
-				case request := <-c.requests:
-					if err := c.request(request); err != nil {
-						return disconnected, err
-					}
-					continue
-				default:
-				}
-				break
-			}
-			end, err := c.route(message)
-			if end != nil || err != nil {
-				if end != nil {
-					return *end, err
-				}
-				return disconnected, err
-			}
+		end, skipPoll, err := c.waitEvent(ctx, ticker.C, drain)
+		if end != nil {
+			return *end, err
+		}
+		if err != nil {
+			return disconnected, err
+		}
+		if skipPoll {
+			continue
 		}
 		if !polled && r.management.snapshot().Phase == online {
 			polled = true
@@ -250,6 +232,7 @@ func (c *connection) run(ctx context.Context) (connectionEnd, error) {
 		}
 	}
 }
+
 func (c *connection) pollVolumes() {
 	c.volumes.Poll()
 	c.launch(func() connectionWork {
@@ -264,6 +247,7 @@ func (c *connection) pollVolumes() {
 		}
 	})
 }
+
 func (c *connection) request(request jobs.Request) error {
 	switch r := request.(type) {
 	case *jobs.CallRequest:
@@ -285,6 +269,7 @@ func (c *connection) request(request jobs.Request) error {
 	}
 	return nil
 }
+
 func (c *connection) reportInstalls() error {
 	installs := c.registration.installs.Current()
 	if len(installs) == 0 && !c.installsReported {
@@ -293,6 +278,7 @@ func (c *connection) reportInstalls() error {
 	c.installsReported = true
 	return c.send(c.ctx, &runnerwire.Installs{Installs: installs})
 }
+
 func (c *connection) route(message runnerwire.Inbound) (*connectionEnd, error) {
 	if c.relay.Route(message) {
 		return nil, nil
@@ -301,22 +287,16 @@ func (c *connection) route(message runnerwire.Inbound) (*connectionEnd, error) {
 	// Authentication handles its own messages; other validated messages route below.
 	switch m := any(message).(type) {
 	case *runnerwire.HelloOK:
-		id := deviceID(m.DeviceID)
-		if err := validateDeviceID(id); err != nil {
-			return nil, err
-		}
-		c.launch(func() connectionWork {
-			return connectionWork{err: r.state.writeConfig(context.Background(), runnerConfig{BackendURL: r.options.backend, DeviceID: &id})}
-		})
-		r.management.setPhase(online)
-		slog.Warn("online")
-		return nil, c.reportInstalls()
+		return nil, c.helloOK(m)
 	case *runnerwire.ClaimPending:
 		if r.management.snapshot().Phase == online {
 			break
 		}
 		r.management.setPhase(claimPending)
-		_, _ = fmt.Fprintln(os.Stderr, "demi-runner: pairing code: "+m.ClaimToken) // Pairing secret is intentionally console-only.
+		_, _ = fmt.Fprintln(
+			os.Stderr,
+			"demi-runner: pairing code: "+m.ClaimToken,
+		) // Pairing secret is intentionally console-only.
 		slog.Info("waiting to be paired")
 		return nil, nil
 	case *runnerwire.Claimed:
@@ -354,7 +334,13 @@ func (c *connection) route(message runnerwire.Inbound) (*connectionEnd, error) {
 func (c *connection) close(cleanup context.Context) error {
 	c.cancel()
 	// All owners see cancellation before any join, so blocking IO releases together.
-	err := errors.Join(c.table.Close(cleanup), c.host.Close(cleanup), c.streams.Close(cleanup), c.volumes.Close(cleanup), c.relay.Close(cleanup))
+	err := errors.Join(
+		c.table.Close(cleanup),
+		c.host.Close(cleanup),
+		c.streams.Close(cleanup),
+		c.volumes.Close(cleanup),
+		c.relay.Close(cleanup),
+	)
 	c.work.Wait()
 	c.directories.Clear(cleanup)
 	c.contexts.Close()
@@ -388,4 +374,115 @@ func (c *connection) readJob(request *runnerwire.JobRead) error {
 		err = c.registration.pipes.Put(c.ctx, request.Output.URL, stream)
 	}
 	return process.ReportPipe(c.ctx, c.transport.control, request.Output.ID, err)
+}
+
+// pendingRequests drains registrations before a backend reply can consume them.
+func (c *connection) pendingRequests() error {
+	for {
+		select {
+		case request := <-c.requests:
+			if err := c.request(request); err != nil {
+				return err
+			}
+			continue
+		default:
+		}
+		break
+	}
+	return nil
+}
+
+func (c *connection) completeWork(result connectionWork) error {
+	if result.err != nil {
+		releaseInstalled(result.installed)
+		return result.err
+	}
+	if result.installed != nil {
+		c.installation.Publish(jobs.ManifestReady, result.installed.Manifest)
+		releaseInstalled(c.installed)
+		c.installed = result.installed
+	}
+	return nil
+}
+
+func (c *connection) helloOK(m *runnerwire.HelloOK) error {
+	id := deviceID(m.DeviceID)
+	if err := validateDeviceID(id); err != nil {
+		return err
+	}
+	c.launch(func() connectionWork {
+		return connectionWork{
+			err: c.registration.state.writeConfig(
+				context.Background(),
+				runnerConfig{BackendURL: c.registration.options.backend, DeviceID: &id},
+			),
+		}
+	})
+	c.registration.management.setPhase(online)
+	slog.Warn("online")
+	return c.reportInstalls()
+}
+
+func (c *connection) reportOnlineInstalls() error {
+	if c.registration.management.snapshot().Phase != online {
+		return nil
+	}
+	return c.reportInstalls()
+}
+
+// waitEvent returns skipPoll for stale installation results, which must bypass the first online poll.
+func (c *connection) waitEvent(
+	ctx context.Context,
+	tick <-chan time.Time,
+	drain <-chan struct{},
+) (*connectionEnd, bool, error) {
+	r := c.registration
+	select {
+	case <-ctx.Done():
+		end := stopped
+		return &end, false, nil
+	case <-drain:
+	case <-c.handle.Done():
+		end := disconnected
+		return &end, false, nil
+	case <-tick:
+		if r.management.snapshot().Phase == online && c.table.JobCount() == 0 {
+			c.pollVolumes()
+		}
+	case request := <-c.requests:
+		if err := c.request(request); err != nil {
+			return nil, false, err
+		}
+	case id := <-c.finished:
+		if id.Kind == jobs.ShellWork {
+			c.contexts.Remove(id.ID)
+		}
+		r.management.setJobs(c.table.JobCount())
+	case result := <-c.results:
+		if result.installation != 0 && result.installation != c.generation {
+			releaseInstalled(result.installed)
+			return nil, true, nil
+		}
+		if err := c.completeWork(result); err != nil {
+			return nil, false, err
+		}
+	case <-c.installsChanged:
+		if err := c.reportOnlineInstalls(); err != nil {
+			return nil, false, err
+		}
+	case message, ok := <-c.transport.input:
+		if !ok {
+			end := disconnected
+			return &end, false, nil
+		}
+		// A registration queued while select chose input still wins over its reply.
+		if err := c.pendingRequests(); err != nil {
+			return nil, false, err
+		}
+		end, err := c.route(message)
+		if end != nil || err != nil {
+			return end, false, err
+		}
+	}
+	return nil, false, nil
 }

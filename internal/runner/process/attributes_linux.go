@@ -22,7 +22,7 @@ func readUmask() uint32 {
 			}
 		}
 	}
-	previous := unix.Umask(0077)
+	previous := unix.Umask(0o077)
 	unix.Umask(previous)
 	return uint32(previous)
 }

@@ -18,10 +18,15 @@ import (
 // SpawnOptions supplies a child's executable, arguments, directory, environment and group ownership.
 // Env replaces the inherited environment.
 type SpawnOptions struct {
-	Command      string
-	Args         []string
-	Cwd          string
-	Env          map[string]string
+	// Command is the executable to start.
+	Command string
+	// Args contains its arguments.
+	Args []string
+	// Cwd is the child working directory.
+	Cwd string
+	// Env replaces the inherited environment.
+	Env map[string]string
+	// ProcessGroup requests ownership of the process group.
 	ProcessGroup bool
 }
 
@@ -38,16 +43,22 @@ type ChildAttributes struct {
 // ResourceLimit supplies the platform resource number and its soft and hard limits.
 // Resource uses golang.org/x/sys/unix RLIMIT constants on Unix.
 type ResourceLimit struct {
+	// Resource is the platform resource number.
 	Resource int
-	Soft     uint64
-	Hard     uint64
+	// Soft is the soft resource limit.
+	Soft uint64
+	// Hard is the hard resource limit.
+	Hard uint64
 }
 
 // SpawnFailure classifies a process that could not start.
 type SpawnFailure struct {
-	Kind    runnerwire.SpawnErrorKind
+	// Kind classifies the startup failure for the wire response.
+	Kind runnerwire.SpawnErrorKind
+	// Message is the startup diagnostic.
 	Message string
-	Cause   error
+	// Cause preserves the underlying operating system failure.
+	Cause error
 }
 
 // Error returns the spawn failure's diagnostic.
@@ -58,26 +69,37 @@ func (e *SpawnFailure) Unwrap() error { return e.Cause }
 
 // OutputChunk is one read from a child's standard output or error.
 type OutputChunk struct {
+	// Stream identifies standard output or standard error.
 	Stream runnerwire.OutputStream
-	Bytes  []byte
+	// Bytes contains the output chunk.
+	Bytes []byte
 }
 
 // Exit reports the child's status and any runner failure beside that status.
 type Exit struct {
-	Code   *int32
+	// Code is the known exit status, when available.
+	Code *int32
+	// Signal is the terminating signal, when available.
 	Signal *string
-	Error  *string
+	// Error is the optional runner failure diagnostic.
+	Error *string
 }
 
 // Input is a chunk of process input. A nil Bytes slice means end of input;
 // an empty non-nil slice is an empty chunk. Sending transfers ownership.
-type Input struct{ Bytes []byte }
+type Input struct {
+	// Bytes contains input; nil marks end of input.
+	Bytes []byte
+}
 
 // Child owns a process, its input writer and output drains. Its owner must
 // consume Output while waiting, or Cancel, and always Wait to join its work.
 type Child struct {
-	Input   chan<- Input
-	Output  <-chan OutputChunk
+	// Input receives child input with ownership of each chunk.
+	Input chan<- Input
+	// Output yields chunks until the child output drains.
+	Output <-chan OutputChunk
+	// PID identifies the started child process.
 	PID     uint32
 	command *Command
 	signals chan runnerwire.Signal
@@ -104,7 +126,13 @@ func Spawn(ctx context.Context, options SpawnOptions) (*Child, error) {
 	sort.Strings(cmd.Env)
 	input := make(chan Input, 4)
 	output := make(chan OutputChunk, 4)
-	child := &Child{Input: input, Output: output, cancel: cancel, done: make(chan struct{}), signals: make(chan runnerwire.Signal, 4)}
+	child := &Child{
+		Input:   input,
+		Output:  output,
+		cancel:  cancel,
+		done:    make(chan struct{}),
+		signals: make(chan runnerwire.Signal, 4),
+	}
 	// Command's IO adapters own these pipe endpoints and join each copy.
 	stdin, writer := io.Pipe()
 	cmd.Stdin = stdin
@@ -124,52 +152,9 @@ func Spawn(ctx context.Context, options SpawnOptions) (*Child, error) {
 	var writeErr error
 	go func() {
 		defer close(written)
-		defer func() { _ = writer.Close() }() // EOF closes the in-memory input pipe.
-		for {
-			select {
-			case <-owner.Done():
-				return
-			case part, ok := <-input:
-				if !ok || part.Bytes == nil {
-					return
-				}
-				if _, writeErr = writer.Write(part.Bytes); writeErr != nil {
-					return
-				}
-			}
-		}
+		writeErr = writeChildInput(owner, input, writer)
 	}()
-	go func() {
-		defer close(child.done)
-		defer cancel()
-		defer stopOutput()
-		var signalFailure error
-	awaitExit:
-		for {
-			select {
-			case <-child.command.done:
-				break awaitExit
-			case signal := <-child.signals:
-				if err := child.command.Signal(signal); err != nil {
-					signalFailure = err
-				}
-			}
-		}
-		child.exit = child.command.exit
-		if signalFailure != nil {
-			message := signalFailure.Error()
-			child.exit.Error = &message
-		}
-		_ = stdin.Close() // Unblock a writer after the child no longer accepts input.
-		_ = writer.Close()
-		cancel()
-		<-written
-		if writeErr != nil && !errors.Is(writeErr, io.ErrClosedPipe) && !errors.Is(writeErr, syscall.EPIPE) {
-			message := writeErr.Error()
-			child.exit.Error = &message
-		}
-		close(output)
-	}()
+	go child.finishIO(stdin, writer, cancel, stopOutput, written, &writeErr, output)
 	return child, nil
 }
 
@@ -181,7 +166,10 @@ type chunkWriter struct {
 	stream runnerwire.OutputStream
 }
 
-func (w *chunkWriter) Close() error { w.cancel(); return nil }
+func (w *chunkWriter) Close() error {
+	w.cancel()
+	return nil
+}
 
 func (w *chunkWriter) Write(b []byte) (int, error) {
 	n := len(b)
@@ -202,7 +190,7 @@ func (w *chunkWriter) Write(b []byte) (int, error) {
 func (c *Child) Signal(ctx context.Context, signal runnerwire.Signal) error {
 	select {
 	case <-c.done:
-		return &operationFailure{message: "process has exited", cause: io.ErrClosedPipe}
+		return &operationError{message: "process has exited", cause: io.ErrClosedPipe}
 	default:
 	}
 	if err := ctx.Err(); err != nil {
@@ -210,7 +198,7 @@ func (c *Child) Signal(ctx context.Context, signal runnerwire.Signal) error {
 	}
 	select {
 	case <-c.done:
-		return &operationFailure{message: "process has exited", cause: io.ErrClosedPipe}
+		return &operationError{message: "process has exited", cause: io.ErrClosedPipe}
 	case <-ctx.Done():
 		return ctx.Err()
 	case c.signals <- signal:
@@ -222,7 +210,10 @@ func (c *Child) Signal(ctx context.Context, signal runnerwire.Signal) error {
 func (c *Child) IsCancelled() bool { return c.command.cancelled() }
 
 // Cancel requests termination. Wait must still join the child and its IO.
-func (c *Child) Cancel() { c.command.requestCancel(); c.cancel() }
+func (c *Child) Cancel() {
+	c.command.requestCancel()
+	c.cancel()
+}
 
 // Wait returns the cached exit after reaping and draining. Cancellation cancels
 // the child and still joins it before returning.
@@ -275,8 +266,18 @@ func (c *Command) Start(ctx context.Context) error {
 	cmd := c.template
 	// Copy the public command configuration; exec.Cmd itself is never reused
 	// after a failed Start, which otherwise closes its internally-owned pipes.
-	prepared := &exec.Cmd{Path: cmd.Path, Args: append([]string(nil), cmd.Args...), Env: cmd.Env, Dir: cmd.Dir,
-		Stdin: cmd.Stdin, Stdout: cmd.Stdout, Stderr: cmd.Stderr, ExtraFiles: cmd.ExtraFiles, SysProcAttr: cmd.SysProcAttr, Err: cmd.Err}
+	prepared := &exec.Cmd{
+		Path:        cmd.Path,
+		Args:        append([]string(nil), cmd.Args...),
+		Env:         cmd.Env,
+		Dir:         cmd.Dir,
+		Stdin:       cmd.Stdin,
+		Stdout:      cmd.Stdout,
+		Stderr:      cmd.Stderr,
+		ExtraFiles:  cmd.ExtraFiles,
+		SysProcAttr: cmd.SysProcAttr,
+		Err:         cmd.Err,
+	}
 	streams, err := prepareStreams(ctx, prepared)
 	if err != nil {
 		c.cancel()
@@ -372,12 +373,14 @@ func (c *Command) Signal(signal runnerwire.Signal) error {
 
 // PID returns the process ID after a successful Start.
 func (c *Command) PID() uint32 { return uint32(c.cmd.Process.Pid) }
+
 func (c *Command) requestCancel() {
 	c.mu.Lock()
 	c.cancelledFlag = true
 	c.mu.Unlock()
 	c.cancel()
 }
+
 func (c *Command) cancelled() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -450,4 +453,61 @@ func commandExit(state *os.ProcessState, err error) Exit {
 		result.Error = &message
 	}
 	return result
+}
+
+func writeChildInput(ctx context.Context, input <-chan Input, writer *io.PipeWriter) (err error) {
+	defer func() { _ = writer.Close() }() // EOF closes the in-memory input pipe.
+	for {
+		select {
+		case <-ctx.Done():
+			return err
+		case part, ok := <-input:
+			if !ok || part.Bytes == nil {
+				return err
+			}
+			if _, err = writer.Write(part.Bytes); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// finishIO closes child input before joining its writer and publishing the cached exit.
+func (c *Child) finishIO(
+	stdin *io.PipeReader,
+	writer *io.PipeWriter,
+	cancel, stopOutput context.CancelFunc,
+	written <-chan struct{},
+	writeErr *error,
+	output chan<- OutputChunk,
+) {
+	defer close(c.done)
+	defer cancel()
+	defer stopOutput()
+	var signalFailure error
+awaitExit:
+	for {
+		select {
+		case <-c.command.done:
+			break awaitExit
+		case signal := <-c.signals:
+			if err := c.command.Signal(signal); err != nil {
+				signalFailure = err
+			}
+		}
+	}
+	c.exit = c.command.exit
+	if signalFailure != nil {
+		message := signalFailure.Error()
+		c.exit.Error = &message
+	}
+	_ = stdin.Close() // Unblock a writer after the child no longer accepts input.
+	_ = writer.Close()
+	cancel()
+	<-written
+	if *writeErr != nil && !errors.Is(*writeErr, io.ErrClosedPipe) && !errors.Is(*writeErr, syscall.EPIPE) {
+		message := (*writeErr).Error()
+		c.exit.Error = &message
+	}
+	close(output)
 }
