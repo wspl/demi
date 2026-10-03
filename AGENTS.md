@@ -82,12 +82,16 @@ reviewed.
   lines; a word or two that says what the value is in a function; a full name
   for a package-level identifier. No type in a name (`userMap`, `idStr`,
   `listOfTabs`), no Hungarian prefixes, no numbered names (`data2`).
-- When an exported function only admits, locks or routes and calls an
-  unexported one that does the work, the unexported one is named after the
-  exported one plus what it assumes: `closeLocked` when the caller holds the
-  lock, `createWorkspaceAdmitted` when it runs inside an admitted call. Use one
-  suffix for every such pair in a package, never a synonym (`make`, `do`,
-  `request`, `change`) in place of the exported verb.
+- A name says what the function does, never where it came from: not a
+  synonym chosen to avoid a clash (`make`, `request`, `change` for a `Create`,
+  `Test`, `Switch`), and not `doX`, `xImpl`, `xHelper`, `xInternal`, `innerX`.
+  When two functions differ, the names say how; when they do not, the names
+  do not invent a difference. Two standard-library conventions cover the
+  common pairs: an exported function that only wraps an unexported one doing
+  the same job (admitting the call, routing it) shares its name in lower case
+  (`Close` and `close`, as `os.File` does), and its doc comment says what the
+  wrapper adds; a function whose caller must hold a lock ends in `Locked`
+  (`closeLocked`).
 - Initialisms are only those listed above and their kin in the standard
   library (`EOF`, `DNS`, `TTL`, `UTF8`); any other abbreviation is a word
   (`Cwd` stays `Cwd`).
