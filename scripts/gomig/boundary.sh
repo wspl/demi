@@ -14,7 +14,14 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
 # Succeeds when the path is the entry or lies below it.
+# An entry is a path or a directory prefix; one with `*` is a shell pattern
+# over the file names of one directory, such as `internal/core/*_test.go`.
 under() {
+  if [[ "$2" == *'*'* ]]; then
+    # shellcheck disable=SC2053 # the entry's file name is deliberately a pattern
+    [[ "${1%/*}" == "${2%/*}" && "${1##*/}" == ${2##*/} ]]
+    return
+  fi
   [[ "$1" == "$2" || "$1" == "${2%/}/"* ]]
 }
 
