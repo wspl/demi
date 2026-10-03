@@ -24,7 +24,12 @@ func TestPipelineWaitsForDescriptors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		command := exec.CommandContext(t.Context(), executable, "-test.run=^TestPipelineWaitsForDescriptors$", "-test.timeout=15s")
+		command := exec.CommandContext(
+			t.Context(),
+			executable,
+			"-test.run=^TestPipelineWaitsForDescriptors$",
+			"-test.timeout=15s",
+		)
 		command.Env = append(os.Environ(), "DEMI_SHELL_EXHAUSTION=1")
 		if out, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("%v\n%s", err, out)

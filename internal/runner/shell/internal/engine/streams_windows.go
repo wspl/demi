@@ -22,7 +22,15 @@ func borrowFile(ctx context.Context, file *os.File) (io.ReadWriteCloser, error) 
 		var duplicateErr error
 		if err := raw.Control(func(original uintptr) {
 			process := windows.CurrentProcess()
-			duplicateErr = windows.DuplicateHandle(process, windows.Handle(original), process, &handle, 0, false, windows.DUPLICATE_SAME_ACCESS)
+			duplicateErr = windows.DuplicateHandle(
+				process,
+				windows.Handle(original),
+				process,
+				&handle,
+				0,
+				false,
+				windows.DUPLICATE_SAME_ACCESS,
+			)
 		}); err != nil {
 			return nil, err
 		}

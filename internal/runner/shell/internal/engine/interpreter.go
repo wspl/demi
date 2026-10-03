@@ -20,28 +20,40 @@ import (
 
 // Observer exposes shell activity to test scopes.
 type Observer interface {
+	// Check reports a cancellation check made by the interpreter.
 	Check()
+	// Waiting reports the change in the number of interruptible IO waits.
 	Waiting(int)
 }
 
 // Options supplies one interpreter invocation and its job-owned services.
 type Options struct {
-	Login          bool
-	Cwd            string
-	Env            map[string]string
-	Stdin          *os.File
+	// Login enables profile loading followed by restoration of the owned context.
+	Login bool
+	// Cwd is the directory requested for the script after login profiles run.
+	Cwd string
+	// Env replaces the inherited environment and supplies the owned context.
+	Env map[string]string
+	// Stdin is borrowed for the invocation and retained until its work finishes.
+	Stdin *os.File
+	// Stdout and Stderr receive script and descendant output until execution joins.
 	Stdout, Stderr io.Writer
-	Commands       *process.JobCommands
-	Edits          *cmdsdk.Recorder
-	Observe        Observer
+	// Commands supplies declared roots and their job-owned handler.
+	Commands *process.JobCommands
+	// Edits records mutations made through shell redirections.
+	Edits *cmdsdk.Recorder
+	// Observe receives progress and interruptible IO observations for test scopes.
+	Observe Observer
 	// Interrupt closes job-owned pipes after child starts have stopped.
 	Interrupt func()
 }
 
 // Result preserves the foreground status and final working directory.
 type Result struct {
+	// Code is the foreground exit status, independent of nested background statuses.
 	Code uint8
-	Cwd  string
+	// Cwd is the interpreter directory when the foreground script finishes.
+	Cwd string
 }
 
 // interpreterScope keeps per-subshell process attributes separate from job ownership.
@@ -52,6 +64,7 @@ type interpreterScope struct {
 	traps      map[string]string
 }
 
+// Clone gives a subshell its own limits and traps while retaining the job owner.
 func (s *interpreterScope) Clone() interp.ScopeState {
 	clone := &interpreterScope{attributes: s.attributes, owner: s.owner, parent: s, traps: maps.Clone(s.traps)}
 	clone.attributes.Limits = append([]process.ResourceLimit(nil), s.attributes.Limits...)
@@ -72,11 +85,14 @@ func (s *interpreterScope) register(command *process.Command) func() {
 	}
 }
 
+// Check reports interpreter progress to the job observer.
 func (s *interpreterScope) Check() {
 	if s.owner.options.Observe != nil {
 		s.owner.options.Observe.Check()
 	}
 }
+
+// Waiting reports changes in interruptible IO waits to the job observer.
 func (s *interpreterScope) Waiting(delta int) {
 	if s.owner.options.Observe != nil {
 		s.owner.options.Observe.Waiting(delta)
@@ -106,7 +122,16 @@ func Execute(ctx context.Context, script string, options Options) (result Result
 	for name, value := range options.Env {
 		env = append(env, name+"="+value)
 	}
-	r, err := interp.New(interp.Dir(options.Cwd), interp.Env(expand.ListEnviron(env...)), interp.StdIO(options.Stdin, options.Stdout, options.Stderr), interp.ExecHandlers(func(interp.ExecHandlerFunc) interp.ExecHandlerFunc { return e.external }), interp.OpenHandler(e.open), interp.Builtins(e.builtins()), interp.WithScopeState(state), interp.PipeHandler(e.pipe))
+	runner, err := interp.New(
+		interp.Dir(options.Cwd),
+		interp.Env(expand.ListEnviron(env...)),
+		interp.StdIO(options.Stdin, options.Stdout, options.Stderr),
+		interp.ExecHandlers(func(interp.ExecHandlerFunc) interp.ExecHandlerFunc { return e.external }),
+		interp.OpenHandler(e.open),
+		interp.Builtins(e.builtins()),
+		interp.WithScopeState(state),
+		interp.PipeHandler(e.pipe),
+	)
 	if err != nil {
 		return result, err
 	}
@@ -117,25 +142,25 @@ func Execute(ctx context.Context, script string, options Options) (result Result
 		if err != nil {
 			cancel()
 		}
-		r.Wait()
+		runner.Wait()
 	}()
 	if options.Login {
-		e.profile(ctx, r, "/etc/profile")
+		e.profile(ctx, runner, "/etc/profile")
 		for _, name := range []string{".bash_profile", ".bash_login", ".profile"} {
-			if e.profile(ctx, r, filepath.Join(options.Env["HOME"], name)) {
+			if e.profile(ctx, runner, filepath.Join(options.Env["HOME"], name)) {
 				break
 			}
 		}
-		if err = restoreContext(ctx, r, options.Env, options.Cwd); err != nil {
+		if err = restoreContext(ctx, runner, options.Env, options.Cwd); err != nil {
 			return result, err
 		}
 	}
 	node, err := syntax.NewParser().Parse(strings.NewReader(script), "script")
 	if err != nil {
 		_, _ = fmt.Fprintln(options.Stderr, err)
-		return Result{Code: 2, Cwd: r.Dir}, nil
+		return Result{Code: 2, Cwd: runner.Dir}, nil
 	}
-	err = r.Run(ctx, node)
+	err = runner.Run(ctx, node)
 	if ctx.Err() != nil {
 		return result, ctx.Err()
 	}
@@ -144,12 +169,12 @@ func Execute(ctx context.Context, script string, options Options) (result Result
 		result.Code = uint8(status)
 		err = nil
 	}
-	result.Cwd = r.Dir
+	result.Cwd = runner.Dir
 	return result, err
 }
 
 // profile sources a readable login profile; diagnostics do not discard the job script.
-func (e *execution) profile(ctx context.Context, r *interp.Runner, path string) bool {
+func (e *execution) profile(ctx context.Context, runner *interp.Runner, path string) bool {
 	file, err := os.Open(path)
 	if err != nil {
 		return false
@@ -158,7 +183,7 @@ func (e *execution) profile(ctx context.Context, r *interp.Runner, path string) 
 	closeErr := file.Close()
 	err = errors.Join(parseErr, closeErr)
 	if err == nil {
-		err = r.Run(ctx, node)
+		err = runner.Run(ctx, node)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintln(e.options.Stderr, err)
@@ -167,7 +192,7 @@ func (e *execution) profile(ctx context.Context, r *interp.Runner, path string) 
 }
 
 // restoreContext restores only runner-owned environment and the requested directory.
-func restoreContext(ctx context.Context, r *interp.Runner, env map[string]string, cwd string) error {
+func restoreContext(ctx context.Context, runner *interp.Runner, env map[string]string, cwd string) error {
 	var script strings.Builder
 	restored := maps.Clone(env)
 	if _, ok := env[process.ContextEnv]; ok {
@@ -175,7 +200,7 @@ func restoreContext(ctx context.Context, r *interp.Runner, env map[string]string
 		if len(paths) == 0 {
 			return errors.New("command context has no alias directory")
 		}
-		configured := r.Vars["PATH"].String()
+		configured := runner.Vars["PATH"].String()
 		kept := []string{paths[0]}
 		for _, path := range filepath.SplitList(configured) {
 			if path != paths[0] {
@@ -185,7 +210,8 @@ func restoreContext(ctx context.Context, r *interp.Runner, env map[string]string
 		restored["PATH"] = strings.Join(kept, string(os.PathListSeparator))
 	}
 	for name, value := range restored {
-		if strings.HasPrefix(name, "DEMI_") || name == "TMPDIR" || name == "TEMP" || (name == "PATH" && env[process.ContextEnv] != "") {
+		if strings.HasPrefix(name, "DEMI_") || name == "TMPDIR" || name == "TEMP" ||
+			(name == "PATH" && env[process.ContextEnv] != "") {
 			quoted, err := syntax.Quote(value, syntax.LangBash)
 			if err != nil {
 				return err
@@ -202,7 +228,7 @@ func restoreContext(ctx context.Context, r *interp.Runner, env map[string]string
 	if err != nil {
 		return err
 	}
-	return r.Run(ctx, node)
+	return runner.Run(ctx, node)
 }
 
 func (e *execution) close() {

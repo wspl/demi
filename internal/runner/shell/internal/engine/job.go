@@ -64,11 +64,18 @@ func StartJob(ctx context.Context, start process.JobStart, observe Observer) (pr
 		}
 		env[process.LiveInputEnv] = reference
 	}
-	j := &job{ctx: ctx, cancel: cancel, input: make(chan process.Input, 4), output: make(chan process.OutputChunk, 4), done: make(chan struct{})}
+	j := &job{
+		ctx:    ctx,
+		cancel: cancel,
+		input:  make(chan process.Input, 4),
+		output: make(chan process.OutputChunk, 4),
+		done:   make(chan struct{}),
+	}
 	go j.run(start, env, files, observe)
 	success = true
 	return j, nil
 }
+
 func (j *job) run(start process.JobStart, env map[string]string, files []*os.File, observe Observer) {
 	defer close(j.done)
 	defer j.cancel()
@@ -83,53 +90,36 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 	go func() {
 		defer close(inputDone)
 		defer func() { _ = files[1].Close() }() // Cleanup also runs after cancellation closes the file.
-		for {
-			select {
-			case <-inputCtx.Done():
-				return
-			case input, ok := <-j.input:
-				if !ok || input.Bytes == nil {
-					return
-				}
-				if _, err := files[1].Write(input.Bytes); err != nil {
-					if inputCtx.Err() == nil && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, os.ErrClosed) {
-						inputError = err
-					}
-					return
-				}
-			}
-		}
+		inputError = j.writeInput(inputCtx, files[1])
 	}()
 	var drains sync.WaitGroup
 	var outputErrors [2]error
 	for index, stream := range []runnerwire.OutputStream{runnerwire.Stdout, runnerwire.Stderr} {
 		file := files[2+index*2]
 		drains.Go(func() {
-			buffer := make([]byte, 64*1024)
-			for {
-				n, err := file.Read(buffer)
-				if n > 0 {
-					chunk := process.OutputChunk{Stream: stream, Bytes: append([]byte(nil), buffer[:n]...)}
-					select {
-					case j.output <- chunk:
-					case <-j.ctx.Done():
-						return
-					}
-				}
-				if err != nil {
-					if !errors.Is(err, io.EOF) && j.ctx.Err() == nil {
-						outputErrors[index] = err
-					}
-					return
-				}
-			}
+			outputErrors[index] = j.readOutput(j.ctx, file, stream)
 		})
 	}
-	result, err := Execute(j.ctx, start.Script, Options{Login: true, Cwd: start.Cwd, Env: env, Stdin: files[0], Stdout: files[3], Stderr: files[5], Commands: start.Commands, Edits: start.Edits, Observe: observe, Interrupt: func() {
-		for _, file := range files {
-			_ = file.Close()
-		}
-	}})
+	result, err := Execute(
+		j.ctx,
+		start.Script,
+		Options{
+			Login:    true,
+			Cwd:      start.Cwd,
+			Env:      env,
+			Stdin:    files[0],
+			Stdout:   files[3],
+			Stderr:   files[5],
+			Commands: start.Commands,
+			Edits:    start.Edits,
+			Observe:  observe,
+			Interrupt: func() {
+				for _, file := range files {
+					_ = file.Close()
+				}
+			},
+		},
+	)
 	stopInput()
 	_ = files[0].Close()
 	_ = files[1].Close()
@@ -138,6 +128,107 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 	_ = files[5].Close()
 	drains.Wait()
 	close(j.output)
+	j.finish(result, err)
+	if j.ctx.Err() == nil {
+		if failure := errors.Join(err, inputError, outputErrors[0], outputErrors[1]); failure != nil {
+			message := failure.Error()
+			j.exit.Error = &message
+		}
+	}
+}
+
+// Input exposes the bounded input channel consumed by the job.
+func (j *job) Input() chan<- process.Input { return j.input }
+
+// Output exposes stdout and stderr chunks until all drains finish.
+func (j *job) Output() <-chan process.OutputChunk { return j.output }
+
+// Cancel requests cancellation of the interpreter and its owned work.
+func (j *job) Cancel() { j.cancel() }
+
+// IsCancelled reports cancellation while running or the final signal after completion.
+func (j *job) IsCancelled() bool {
+	select {
+	case <-j.done:
+		return j.exit.Signal != nil
+	default:
+		return j.ctx.Err() != nil
+	}
+}
+
+// Signal records the first supported cancellation signal and cancels the job.
+func (j *job) Signal(signal runnerwire.Signal) error {
+	switch signal {
+	case runnerwire.SignalInterrupt,
+		runnerwire.SignalTerminate,
+		runnerwire.SignalKill,
+		runnerwire.SignalHangup,
+		runnerwire.SignalQuit:
+		j.mu.Lock()
+		if j.signal == "" && j.ctx.Err() == nil {
+			j.signal = string(signal)
+		}
+		j.mu.Unlock()
+		j.cancel()
+		return nil
+	default:
+		return errors.New("unsupported shell job signal")
+	}
+}
+
+// Wait joins all job work, cancelling it if the waiting context ends.
+func (j *job) Wait(ctx context.Context) (process.Exit, *string) {
+	select {
+	case <-j.done:
+	case <-ctx.Done():
+		j.cancel()
+		<-j.done
+	}
+	return j.exit, j.cwd
+}
+
+func (j *job) writeInput(ctx context.Context, file *os.File) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case input, ok := <-j.input:
+			if !ok || input.Bytes == nil {
+				return nil
+			}
+			if _, err := file.Write(input.Bytes); err != nil {
+				if ctx.Err() == nil && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, os.ErrClosed) {
+					return err
+				}
+				return nil
+			}
+		}
+	}
+}
+
+func (j *job) readOutput(ctx context.Context, file *os.File, stream runnerwire.OutputStream) error {
+	buffer := make([]byte, 64*1024)
+	for {
+		n, err := file.Read(buffer)
+		if n > 0 {
+			chunk := process.OutputChunk{Stream: stream, Bytes: append([]byte(nil), buffer[:n]...)}
+			select {
+			case j.output <- chunk:
+			case <-ctx.Done():
+				return nil
+			}
+		}
+		if err != nil {
+			if !errors.Is(err, io.EOF) && ctx.Err() == nil {
+				return err
+			}
+			return nil
+		}
+	}
+}
+
+// finish publishes the foreground result after all owned IO workers have joined.
+func (j *job) finish(result Result, err error) {
 	if j.ctx.Err() != nil {
 		j.mu.Lock()
 		signal := j.signal
@@ -154,44 +245,4 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 		j.exit.Code = &code
 		j.cwd = &result.Cwd
 	}
-	if j.ctx.Err() == nil {
-		if failure := errors.Join(err, inputError, outputErrors[0], outputErrors[1]); failure != nil {
-			message := failure.Error()
-			j.exit.Error = &message
-		}
-	}
-}
-func (j *job) Input() chan<- process.Input        { return j.input }
-func (j *job) Output() <-chan process.OutputChunk { return j.output }
-func (j *job) Cancel()                            { j.cancel() }
-func (j *job) IsCancelled() bool {
-	select {
-	case <-j.done:
-		return j.exit.Signal != nil
-	default:
-		return j.ctx.Err() != nil
-	}
-}
-func (j *job) Signal(signal runnerwire.Signal) error {
-	switch signal {
-	case runnerwire.SignalInterrupt, runnerwire.SignalTerminate, runnerwire.SignalKill, runnerwire.SignalHangup, runnerwire.SignalQuit:
-		j.mu.Lock()
-		if j.signal == "" && j.ctx.Err() == nil {
-			j.signal = string(signal)
-		}
-		j.mu.Unlock()
-		j.cancel()
-		return nil
-	default:
-		return errors.New("unsupported shell job signal")
-	}
-}
-func (j *job) Wait(ctx context.Context) (process.Exit, *string) {
-	select {
-	case <-j.done:
-	case <-ctx.Done():
-		j.cancel()
-		<-j.done
-	}
-	return j.exit, j.cwd
 }
