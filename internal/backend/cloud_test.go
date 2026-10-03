@@ -22,9 +22,11 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-const cloudFirst = "4e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01"
-const cloudSecond = "4e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02"
-const cloudReset = "6e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a09"
+const (
+	cloudFirst  = "4e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01"
+	cloudSecond = "4e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02"
+	cloudReset  = "6e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a09"
+)
 
 func (s *hostScenario) cloudStatus() webapi.CloudStatus {
 	s.t.Helper()
@@ -52,6 +54,7 @@ func (s *hostScenario) cloudUntil(check func(webapi.CloudStatus) bool) webapi.Cl
 		}
 	}
 }
+
 func (s *hostScenario) theCloud() webapi.DeviceID {
 	s.t.Helper()
 	devices := s.manager.Devices()
@@ -60,9 +63,19 @@ func (s *hostScenario) theCloud() webapi.DeviceID {
 	}
 	return devices[0]
 }
+
 func (s *hostScenario) resetCloud(id string) webapi.CloudResetAnswer {
 	s.t.Helper()
-	a := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/cloud/reset", fmt.Sprintf(`{"operationId":%q}`, id), 202)
+	a := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		"/api/cloud/reset",
+		fmt.Sprintf(`{"operationId":%q}`, id),
+		202,
+	)
 	answer, err := webapi.DecodeCloudResetAnswer(a.Body)
 	if err != nil {
 		s.t.Fatal(err)
@@ -70,6 +83,7 @@ func (s *hostScenario) resetCloud(id string) webapi.CloudResetAnswer {
 	return answer
 }
 
+// TestCloudCrashLoopRequiresReset checks crash-loop admission and recovery through reset.
 // Three real runner boots and a reset exercise crash-loop admission across the API and manager wire.
 func TestCloudCrashLoopRequiresReset(t *testing.T) {
 	t.Parallel()
@@ -83,7 +97,11 @@ func TestCloudCrashLoopRequiresReset(t *testing.T) {
 		}
 		s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 503), webapi.ErrorCodeCloudCrashLoop)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 503),
+		webapi.ErrorCodeCloudCrashLoop,
+	)
 	device := s.theCloud()
 	if s.manager.Count("wake:"+string(device)) != 3 {
 		t.Fatal(s.manager.Calls())
@@ -95,6 +113,7 @@ func TestCloudCrashLoopRequiresReset(t *testing.T) {
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 200)
 }
 
+// TestCloudCapacityIsSharedAcrossUsers checks Cloud capacity shared by users.
 // Capacity is released by the real idle watch; the scenario waits on its page event.
 func TestCloudCapacityIsSharedAcrossUsers(t *testing.T) {
 	t.Parallel()
@@ -123,15 +142,51 @@ func TestCloudCapacityIsSharedAcrossUsers(t *testing.T) {
 	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
 	conversationCreate(other.ctx, other.t, other.b, &other.user, cloudSecond)
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs", "", 200)
-	conversationRefusal(other.t, conversationRequest(other.ctx, other.t, other.b, &other.user, "GET", "/api/conversations/"+cloudSecond+"/fs", "", 503), webapi.ErrorCodeCloudCapacity)
-	conversationRefusal(other.t, conversationRequest(other.ctx, other.t, other.b, &other.user, "POST", "/api/cloud/reset", fmt.Sprintf(`{"operationId":%q}`, cloudReset), 409), webapi.ErrorCodeCloudCapacity)
+	conversationRefusal(
+		other.t,
+		conversationRequest(
+			other.ctx,
+			other.t,
+			other.b,
+			&other.user,
+			"GET",
+			"/api/conversations/"+cloudSecond+"/fs",
+			"",
+			503,
+		),
+		webapi.ErrorCodeCloudCapacity,
+	)
+	conversationRefusal(
+		other.t,
+		conversationRequest(
+			other.ctx,
+			other.t,
+			other.b,
+			&other.user,
+			"POST",
+			"/api/cloud/reset",
+			fmt.Sprintf(`{"operationId":%q}`, cloudReset),
+			409,
+		),
+		webapi.ErrorCodeCloudCapacity,
+	)
 	s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
-	conversationRequest(other.ctx, other.t, other.b, &other.user, "GET", "/api/conversations/"+cloudSecond+"/fs", "", 200)
+	conversationRequest(
+		other.ctx,
+		other.t,
+		other.b,
+		&other.user,
+		"GET",
+		"/api/conversations/"+cloudSecond+"/fs",
+		"",
+		200,
+	)
 	if len(manager.Devices()) != 2 {
 		t.Fatal(manager.Devices())
 	}
 }
 
+// TestCloudBootTimeoutSavesAndReportsFailure checks failed boot cleanup and status reporting.
 // The three-second boot deadline is the behavior under test; no sleep polls it.
 func TestCloudBootTimeoutSavesAndReportsFailure(t *testing.T) {
 	t.Parallel()
@@ -171,6 +226,7 @@ func TestCloudBootTimeoutSavesAndReportsFailure(t *testing.T) {
 	}
 }
 
+// TestStartupRecoversResetDisksWithoutBooting checks reset recovery without an extra boot.
 func TestStartupRecoversResetDisksWithoutBooting(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -184,11 +240,18 @@ func TestStartupRecoversResetDisksWithoutBooting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(s.ctx, `INSERT INTO managed_operations (device_id, operation_id, base_version, phase, error, updated_at) VALUES (?, ?, 'test-base', 'rebuilding', NULL, 0)`, device, cloudReset); err != nil {
+	if _, err := db.ExecContext(
+		s.ctx,
+		`INSERT INTO managed_operations (device_id, operation_id, base_version, phase, error, updated_at) `+
+			`VALUES (?, ?, 'test-base', 'rebuilding', NULL, 0)`,
+		device,
+		cloudReset,
+	); err != nil {
 		t.Fatal(err)
 	}
 	var before int64
-	if err := db.QueryRowContext(s.ctx, "SELECT context_version FROM conversations WHERE id = ?", cloudFirst).Scan(&before); err != nil {
+	if err := db.QueryRowContext(s.ctx, "SELECT context_version FROM conversations WHERE id = ?", cloudFirst).
+		Scan(&before); err != nil {
 		t.Fatal(err)
 	}
 	s.b, err = s.h.Start(s.ctx, t)
@@ -207,12 +270,16 @@ func TestStartupRecoversResetDisksWithoutBooting(t *testing.T) {
 		t.Fatal(calls)
 	}
 	recovered := s.cloudStatus()
-	if recovered.State != webapi.CloudStateOff || recovered.Operation == nil || recovered.Operation.Phase != webapi.ResetPhaseFailed || recovered.Operation.Error == nil || *recovered.Operation.Error != "Reset disks recovered; retry to start Cloud" {
+	if recovered.State != webapi.CloudStateOff || recovered.Operation == nil ||
+		recovered.Operation.Phase != webapi.ResetPhaseFailed ||
+		recovered.Operation.Error == nil ||
+		*recovered.Operation.Error != "Reset disks recovered; retry to start Cloud" {
 		t.Fatalf("recovered: %+v", recovered)
 	}
 	contextVersion := func() int64 {
 		var version int64
-		if err := db.QueryRowContext(s.ctx, "SELECT context_version FROM conversations WHERE id = ?", cloudFirst).Scan(&version); err != nil {
+		if err := db.QueryRowContext(s.ctx, "SELECT context_version FROM conversations WHERE id = ?", cloudFirst).
+			Scan(&version); err != nil {
 			t.Fatal(err)
 		}
 		return version
@@ -304,6 +371,7 @@ func (w *cloudWork) turn(id, script, text string, timeout ...int) string {
 	return conversationToolResult(w.s.t, requests[len(requests)-1], id)
 }
 
+// TestArchivingStoppedCloudDoesNotWakeIt checks archival without waking a stopped Cloud.
 func TestArchivingStoppedCloudDoesNotWakeIt(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -330,6 +398,7 @@ func TestArchivingStoppedCloudDoesNotWakeIt(t *testing.T) {
 	}
 }
 
+// TestCloudResetKeepsHomeIdentityAndAnnouncesOnce checks reset identity, home retention and a single announcement.
 func TestCloudResetKeepsHomeIdentityAndAnnouncesOnce(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "demi-file")
@@ -381,13 +450,28 @@ func TestCloudResetKeepsHomeIdentityAndAnnouncesOnce(t *testing.T) {
 	if err := held.UntilArrived(s.ctx, 1); err != nil {
 		t.Fatal(err)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/cloud/reset", `{"operationId":"8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a0b"}`, 409), webapi.ErrorCodeCloudResetting)
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"POST",
+			"/api/cloud/reset",
+			`{"operationId":"8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a0b"}`,
+			409,
+		),
+		webapi.ErrorCodeCloudResetting,
+	)
 	held.Release()
 	s.cloudUntil(func(status webapi.CloudStatus) bool {
-		return status.Operation != nil && string(status.Operation.ID) == second && status.Operation.Phase == webapi.ResetPhaseReady
+		return status.Operation != nil && string(status.Operation.ID) == second &&
+			status.Operation.Phase == webapi.ResetPhaseReady
 	})
 }
 
+// TestFailedCloudResetResumesOnSameBaseAndKeepsHome checks retrying a failed reset on the same base.
 func TestFailedCloudResetResumesOnSameBaseAndKeepsHome(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "demi-file")
@@ -402,7 +486,8 @@ func TestFailedCloudResetResumesOnSameBaseAndKeepsHome(t *testing.T) {
 	failed := s.cloudUntil(func(status webapi.CloudStatus) bool {
 		return status.Operation != nil && status.Operation.Phase == webapi.ResetPhaseFailed
 	})
-	if failed.State != webapi.CloudStateOff || failed.Operation.Error == nil || !strings.Contains(*failed.Operation.Error, failure) {
+	if failed.State != webapi.CloudStateOff || failed.Operation.Error == nil ||
+		!strings.Contains(*failed.Operation.Error, failure) {
 		t.Fatal(failed)
 	}
 	s.resetCloud(cloudReset)
@@ -410,7 +495,16 @@ func TestFailedCloudResetResumesOnSameBaseAndKeepsHome(t *testing.T) {
 		return status.Operation != nil && status.Operation.Phase == webapi.ResetPhaseReady
 	})
 	path := s.manager.Home(device) + "/sessions/" + cloudFirst + "/note"
-	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(path), "", 200)
+	read := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"GET",
+		"/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(path),
+		"",
+		200,
+	)
 	file, err := webapi.DecodeFileText(read.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -430,6 +524,7 @@ func TestFailedCloudResetResumesOnSameBaseAndKeepsHome(t *testing.T) {
 	}
 }
 
+// TestQuietlyStoppedCloudRecoversOnceForConcurrentReads checks a single recovery for concurrent reads.
 func TestQuietlyStoppedCloudRecoversOnceForConcurrentReads(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "demi-file")
@@ -451,7 +546,16 @@ func TestQuietlyStoppedCloudRecoversOnceForConcurrentReads(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 2 {
 		workers.Go(func() {
-			read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(path), "", 200)
+			read := conversationRequest(
+				s.ctx,
+				s.t,
+				s.b,
+				&s.user,
+				"GET",
+				"/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(path),
+				"",
+				200,
+			)
 			file, err := webapi.DecodeFileText(read.Body)
 			if err != nil {
 				t.Error(err)
@@ -468,6 +572,7 @@ func TestQuietlyStoppedCloudRecoversOnceForConcurrentReads(t *testing.T) {
 	}
 }
 
+// TestShutdownCancelsCloudBootAndSavesOnce checks boot cancellation and one save during shutdown.
 func TestShutdownCancelsCloudBootAndSavesOnce(t *testing.T) {
 	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
@@ -487,7 +592,16 @@ func TestShutdownCancelsCloudBootAndSavesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
-	conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/providers/setup-token", `{"token":"sk-ant-oat01-shutdown-account","label":"Claude"}`, 201)
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		"/api/providers/setup-token",
+		`{"token":"sk-ant-oat01-shutdown-account","label":"Claude"}`,
+		201,
+	)
 	booting := s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateBooting })
 	if booting.Device == nil {
 		t.Fatal("booting Cloud has no identity")
@@ -506,6 +620,7 @@ func TestShutdownCancelsCloudBootAndSavesOnce(t *testing.T) {
 	}
 }
 
+// TestShutdownCutsCloudDownloadAndReportsFailedSave checks download cancellation and save failure reporting.
 func TestShutdownCutsCloudDownloadAndReportsFailedSave(t *testing.T) {
 	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
@@ -525,10 +640,17 @@ func TestShutdownCutsCloudDownloadAndReportsFailedSave(t *testing.T) {
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs", "", 200)
 	device := s.theCloud()
 	big := s.manager.Home(device) + "/sessions/" + cloudFirst + "/big.bin"
-	if err := os.WriteFile(big, bytes.Repeat([]byte{7}, 8<<20), 0644); err != nil {
+	if err := os.WriteFile(big, bytes.Repeat([]byte{7}, 8<<20), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	download, err := s.b.Response(s.ctx, "GET", "/api/conversations/"+cloudFirst+"/fs/raw?path="+url.QueryEscape(big), &s.user, nil, nil)
+	download, err := s.b.Response(
+		s.ctx,
+		"GET",
+		"/api/conversations/"+cloudFirst+"/fs/raw?path="+url.QueryEscape(big),
+		&s.user,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +665,8 @@ func TestShutdownCutsCloudDownloadAndReportsFailedSave(t *testing.T) {
 	failure := "the disk is full"
 	s.manager.SetScript(backendtest.MachineScript{FailHibernate: &failure})
 	err = closeReporting(s.ctx)
-	if err == nil || !strings.Contains(err.Error(), "a Cloud was not saved") || !strings.Contains(err.Error(), failure) {
+	if err == nil || !strings.Contains(err.Error(), "a Cloud was not saved") ||
+		!strings.Contains(err.Error(), failure) {
 		t.Fatalf("shutdown: %v", err)
 	}
 	calls := s.manager.Calls()
@@ -564,6 +687,7 @@ func TestShutdownCutsCloudDownloadAndReportsFailedSave(t *testing.T) {
 	}
 }
 
+// TestCloudFilesTodosAndUsageSurviveBackendRestart checks file, todo and usage persistence across restart.
 func TestCloudFilesTodosAndUsageSurviveBackendRestart(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "demi-file")
@@ -607,6 +731,7 @@ func TestCloudFilesTodosAndUsageSurviveBackendRestart(t *testing.T) {
 	}
 }
 
+// TestCloudProjectsShareMachineAndDeletionKeepsFiles checks shared project storage and file retention on deletion.
 func TestCloudProjectsShareMachineAndDeletionKeepsFiles(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "demi-file")
@@ -614,7 +739,16 @@ func TestCloudProjectsShareMachineAndDeletionKeepsFiles(t *testing.T) {
 	var workers sync.WaitGroup
 	for i, name := range []string{"first", "second"} {
 		workers.Go(func() {
-			answer := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/workspaces", fmt.Sprintf(`{"kind":"cloud","name":%q}`, name), 201)
+			answer := conversationRequest(
+				s.ctx,
+				s.t,
+				s.b,
+				&s.user,
+				"POST",
+				"/api/workspaces",
+				fmt.Sprintf(`{"kind":"cloud","name":%q}`, name),
+				201,
+			)
 			created, err := webapi.DecodeWorkspaceAnswer(answer.Body)
 			if err != nil {
 				t.Error(err)
@@ -641,7 +775,16 @@ func TestCloudProjectsShareMachineAndDeletionKeepsFiles(t *testing.T) {
 	}
 	a, b := s.work(cloudFirst), s.work(cloudSecond)
 	for i, id := range []string{cloudFirst, cloudSecond} {
-		conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+id, fmt.Sprintf(`{"target":{"kind":"workspace","workspaceId":%q}}`, projects[i].ID), 200)
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"PATCH",
+			"/api/conversations/"+id,
+			fmt.Sprintf(`{"target":{"kind":"workspace","workspaceId":%q}}`, projects[i].ID),
+			200,
+		)
 	}
 	if result := a.turn("a1", "printf shared > note", "written"); !strings.Contains(result, "exitCode: 0") {
 		t.Fatal(result)
@@ -651,14 +794,29 @@ func TestCloudProjectsShareMachineAndDeletionKeepsFiles(t *testing.T) {
 		t.Fatal(result)
 	}
 	route := "/api/workspaces/" + string(first.ID)
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route, "", 409), webapi.ErrorCodeWorkspaceInUse)
-	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudFirst, `{"target":{"kind":"cloud"}}`, 200)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route, "", 409),
+		webapi.ErrorCodeWorkspaceInUse,
+	)
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"PATCH",
+		"/api/conversations/"+cloudFirst,
+		`{"target":{"kind":"cloud"}}`,
+		200,
+	)
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route, "", 204)
 	if result := b.turn("b2", read, "still there"); !strings.Contains(result, "shared") {
 		t.Fatal(result)
 	}
 }
 
+// TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand
+// checks one boot for concurrent use and waking after idle stop.
 // Two concurrent turns, an idle stop, and a second boot exercise shared Cloud ownership.
 func TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand(t *testing.T) {
 	t.Parallel()
@@ -746,7 +904,16 @@ func TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand(t *testing.T) {
 	if manager.Count("hibernate:"+string(device)) != 1 || manager.Running(device) {
 		t.Fatal(manager.Calls())
 	}
-	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(home+"/sessions/"+cloudFirst+"/note"), "", 200)
+	read := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"GET",
+		"/api/conversations/"+cloudFirst+"/fs/file?path="+url.QueryEscape(home+"/sessions/"+cloudFirst+"/note"),
+		"",
+		200,
+	)
 	file, err := webapi.DecodeFileText(read.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -762,6 +929,7 @@ func TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand(t *testing.T) {
 	}
 }
 
+// TestCloudLifetimeCapEndsUnattendedJobs checks the lifetime cap on unattended jobs.
 // The lifetime cap is two seconds; the abandoned job would otherwise hold the Cloud for thirty.
 func TestCloudLifetimeCapEndsUnattendedJobs(t *testing.T) {
 	t.Parallel()
@@ -795,6 +963,7 @@ func TestCloudLifetimeCapEndsUnattendedJobs(t *testing.T) {
 	}
 }
 
+// TestCloudLogSurvivesIdleStopWithoutWakingOnRead checks log retention and reads that leave the Cloud stopped.
 func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
@@ -837,7 +1006,11 @@ func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 	}
 	working.Release()
 	s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 409), webapi.ErrorCodeDeviceOffline)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 409),
+		webapi.ErrorCodeDeviceOffline,
+	)
 	if manager.Count("wake:"+string(device)) != 1 {
 		t.Fatal(manager.Calls())
 	}
@@ -847,6 +1020,7 @@ func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 	}
 }
 
+// TestAttachedCloudWakesForBrowseAndCommands checks attached Cloud access through browsing and commands.
 // Several seconds: two real runners install packages and Cloud wakes three times.
 func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 	t.Parallel()
@@ -870,19 +1044,42 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
 	alpha := s.pair("alpha")
-	if err := os.WriteFile(filepath.Join(alpha.Runner.Home(), "notes.txt"), []byte("on alpha\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(alpha.Runner.Home(), "notes.txt"), []byte("on alpha\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	w := s.work(cloudFirst)
 	route := "/api/conversations/" + cloudFirst
-	conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", route+"/hosts", fmt.Sprintf(`{"deviceId":%q}`, alpha.ID()), 201)
-	result := w.turn("t1", "echo report > report.txt && demi host shell --host alpha 'cat notes.txt'", "reached alpha", 30000)
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		route+"/hosts",
+		fmt.Sprintf(`{"deviceId":%q}`, alpha.ID()),
+		201,
+	)
+	result := w.turn(
+		"t1",
+		"echo report > report.txt && demi host shell --host alpha 'cat notes.txt'",
+		"reached alpha",
+		30000,
+	)
 	if !strings.Contains(result, "on alpha") {
 		t.Fatal(result)
 	}
 	device := s.theCloud()
 	session := manager.Home(device) + "/sessions/" + cloudFirst
-	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()), 200)
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"PATCH",
+		route,
+		fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()),
+		200,
+	)
 	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", route+"/hosts", "", 200)
 	hosts, err := webapi.DecodeAttachedHosts(read.Body)
 	if err != nil {
@@ -934,6 +1131,7 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 	}
 }
 
+// TestResetHoldsCloudConversationButNotAttachedCloudTarget checks reset admission for main and attached Cloud targets.
 func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "demi-file")
@@ -944,7 +1142,16 @@ func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {
 	}
 	device := s.theCloud()
 	local := s.work(cloudSecond)
-	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudSecond, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()), 200)
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"PATCH",
+		"/api/conversations/"+cloudSecond,
+		fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()),
+		200,
+	)
 	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudSecond+"/hosts", "", 200)
 	hosts, err := webapi.DecodeAttachedHosts(read.Body)
 	if err != nil {
@@ -995,6 +1202,8 @@ func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {
 	}
 }
 
+// TestIdleConversationReleasesNativeResourcesOnRunningCloud
+// checks idle native resource release while the Cloud stays running.
 func TestIdleConversationReleasesNativeResourcesOnRunningCloud(t *testing.T) {
 	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
@@ -1068,6 +1277,7 @@ func TestIdleConversationReleasesNativeResourcesOnRunningCloud(t *testing.T) {
 	working.Release()
 }
 
+// TestPairedTargetActivityKeepsAttachedCloudAwake checks attached Cloud activity through a paired target.
 // Two idle windows of actual file requests prove activity on a paired target
 // holds its attached Cloud; requests are event waits, without polling sleeps.
 func TestPairedTargetActivityKeepsAttachedCloudAwake(t *testing.T) {
@@ -1090,7 +1300,16 @@ func TestPairedTargetActivityKeepsAttachedCloudAwake(t *testing.T) {
 	listing := "/api/conversations/" + cloudFirst + "/fs"
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", listing, "", 200)
 	device := s.theCloud()
-	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, paired.ID(), paired.Runner.Home()), 200)
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"PATCH",
+		"/api/conversations/"+cloudFirst,
+		fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, paired.ID(), paired.Runner.Home()),
+		200,
+	)
 	working := time.Now()
 	rested := working
 	for rested.Sub(working) < 2*window {
@@ -1106,6 +1325,8 @@ func TestPairedTargetActivityKeepsAttachedCloudAwake(t *testing.T) {
 	}
 }
 
+// TestResetHoldsPairedConversationWhoseProviderUsesCloud
+// checks reset admission when a paired target uses a Cloud provider.
 func TestResetHoldsPairedConversationWhoseProviderUsesCloud(t *testing.T) {
 	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
@@ -1119,13 +1340,33 @@ func TestResetHoldsPairedConversationWhoseProviderUsesCloud(t *testing.T) {
 	}
 	s := &hostScenario{t, t.Context(), h, b, user, manager}
 	alpha := s.pair("alpha")
-	answer := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/providers", `{"source":"custom","providerType":"process","label":"Process","apiKey":"k","models":[{"id":"m","displayName":"M","contextWindow":100000,"outputLimit":null,"thinkingEfforts":[],"acceptedExtensions":null,"fastTier":null}]}`, 201)
+	answer := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		"/api/providers",
+		`{"source":"custom","providerType":"process","label":"Process","apiKey":"k",`+
+			`"models":[{"id":"m","displayName":"M","contextWindow":100000,"outputLimit":null,`+
+			`"thinkingEfforts":[],"acceptedExtensions":null,"fastTier":null}]}`,
+		201,
+	)
 	entry, err := webapi.DecodeProviderAnswer(answer.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
 	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
-	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()), 200)
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"PATCH",
+		"/api/conversations/"+cloudFirst,
+		fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, alpha.ID(), alpha.Runner.Home()),
+		200,
+	)
 	conversationChoose(s.ctx, t, s.b, &s.user, cloudFirst, string(entry.Provider.ID), "m")
 	open := func() {
 		socket := conversationOpen(s.ctx, t, b, &user, cloudFirst)

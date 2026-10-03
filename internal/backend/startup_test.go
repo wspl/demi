@@ -15,6 +15,7 @@ import (
 	"github.com/wspl/demi/internal/programtest"
 )
 
+// TestShutdownClosesListener checks listener closure at shutdown.
 func TestShutdownClosesListener(t *testing.T) {
 	t.Parallel()
 	h, _, err := backendtest.HostsHarness(t.Context(), t)
@@ -41,7 +42,12 @@ func startupRefusal(t *testing.T, variable, value string, omit bool) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := []string{"DEMI_INSTANCE_MODE=shared", "DEMI_BACKEND_PUBLIC_URL=http://127.0.0.1:3271", "DEMI_MACHINE_MANAGER_SOCKET=/nonexistent/demi-machine-manager.sock", "DEMI_NATIVE_CONFIG=/nonexistent/native.json"}
+	env := []string{
+		"DEMI_INSTANCE_MODE=shared",
+		"DEMI_BACKEND_PUBLIC_URL=http://127.0.0.1:3271",
+		"DEMI_MACHINE_MANAGER_SOCKET=/nonexistent/demi-machine-manager.sock",
+		"DEMI_NATIVE_CONFIG=/nonexistent/native.json",
+	}
 	if omit {
 		for i, entry := range env {
 			if strings.HasPrefix(entry, variable+"=") {
@@ -69,18 +75,25 @@ func startupRefusal(t *testing.T, variable, value string, omit bool) string {
 	return string(output)
 }
 
+// TestInvalidPortNamesVariable checks the named variable in invalid port errors.
 func TestInvalidPortNamesVariable(t *testing.T) {
 	t.Parallel()
 	startupRefusal(t, "DEMI_BACKEND_PORT", "abc", false)
 }
+
+// TestUnknownVariableNamesVariable checks the named variable in unknown variable errors.
 func TestUnknownVariableNamesVariable(t *testing.T) {
 	t.Parallel()
 	startupRefusal(t, "DEMI_BACKEND_PORTT", "3272", false)
 }
+
+// TestMissingPublicURLNamesVariable checks the named variable in missing public URL errors.
 func TestMissingPublicURLNamesVariable(t *testing.T) {
 	t.Parallel()
 	startupRefusal(t, "DEMI_BACKEND_PUBLIC_URL", "", true)
 }
+
+// TestMalformedSecretIsNotDisclosed checks secret redaction in startup errors.
 func TestMalformedSecretIsNotDisclosed(t *testing.T) {
 	t.Parallel()
 	output := startupRefusal(t, "DEMI_INSTANCE_SECRET", "not-a-hex-secret-value", false)
@@ -88,6 +101,8 @@ func TestMalformedSecretIsNotDisclosed(t *testing.T) {
 		t.Fatal("secret disclosed")
 	}
 }
+
+// TestInstanceSecretPersistsWithPrivatePermissions checks secret persistence, permissions and corrupt data refusal.
 func TestInstanceSecretPersistsWithPrivatePermissions(t *testing.T) {
 	t.Parallel()
 	h, _, err := backendtest.HostsHarness(t.Context(), t)
@@ -110,7 +125,7 @@ func TestInstanceSecretPersistsWithPrivatePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("permissions: %v", info.Mode())
 	}
 	b, err = h.Start(t.Context(), t)
@@ -127,7 +142,7 @@ func TestInstanceSecretPersistsWithPrivatePermissions(t *testing.T) {
 	if string(kept) != string(created) {
 		t.Fatal("secret changed")
 	}
-	if err := os.WriteFile(path, []byte("not hex\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("not hex\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	started, err := backend.Start(t.Context(), h.Config)
@@ -140,6 +155,8 @@ func TestInstanceSecretPersistsWithPrivatePermissions(t *testing.T) {
 		t.Fatalf("corrupt secret: %v", err)
 	}
 }
+
+// TestConfiguredSecretRequires64HexDigits checks the configured secret hexadecimal length.
 func TestConfiguredSecretRequires64HexDigits(t *testing.T) {
 	t.Parallel()
 	digits := strings.Repeat("0123456789abcdef", 4)

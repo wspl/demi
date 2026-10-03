@@ -15,18 +15,29 @@ import (
 
 const hostsConversation = "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a01"
 
-func (s *hostScenario) directory(p *backendtest.Paired, name string) string {
+func (s *hostScenario) directory(device *backendtest.Paired, name string) string {
 	s.t.Helper()
-	path := filepath.Join(p.Runner.Home(), name)
-	if err := os.MkdirAll(path, 0755); err != nil {
+	path := filepath.Join(device.Runner.Home(), name)
+	if err := os.MkdirAll(path, 0o755); err != nil {
 		s.t.Fatal(err)
 	}
 	return path
 }
-func (s *hostScenario) move(p *backendtest.Paired, path string) backendtest.Answer {
+
+func (s *hostScenario) move(device *backendtest.Paired, path string) backendtest.Answer {
 	s.t.Helper()
-	return conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+hostsConversation, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, p.ID(), path), 200)
+	return conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"PATCH",
+		"/api/conversations/"+hostsConversation,
+		fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, device.ID(), path),
+		200,
+	)
 }
+
 func (s *hostScenario) hosts() []webapi.AttachedHost {
 	s.t.Helper()
 	a := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+hostsConversation+"/hosts", "", 200)
@@ -36,6 +47,7 @@ func (s *hostScenario) hosts() []webapi.AttachedHost {
 	}
 	return hosts.Hosts
 }
+
 func (s *hostScenario) directoryListing(path string) webapi.Directory {
 	s.t.Helper()
 	a := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 200)
@@ -46,6 +58,7 @@ func (s *hostScenario) directoryListing(path string) webapi.Directory {
 	return d
 }
 
+// TestTargetSwitchAttachesPreviousDevice checks previous-device attachment when switching targets.
 // Pairing real runners and reading both devices proves the switch moves access without moving files.
 func TestTargetSwitchAttachesPreviousDevice(t *testing.T) {
 	t.Parallel()
@@ -72,7 +85,7 @@ func TestTargetSwitchAttachesPreviousDevice(t *testing.T) {
 	if len(s.hosts()) != 0 {
 		t.Fatal("unused Cloud attached")
 	}
-	if err := os.WriteFile(filepath.Join(onLaptop, "report.txt"), []byte("on the laptop"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(onLaptop, "report.txt"), []byte("on the laptop"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	s.move(ci, onCI)
@@ -85,7 +98,10 @@ func TestTargetSwitchAttachesPreviousDevice(t *testing.T) {
 		t.Fatal(got)
 	}
 	attached := s.hosts()
-	if len(attached) != 1 || attached[0].DeviceID != laptop.ID() || attached[0].Name != "laptop" || attached[0].Cwd == nil || *attached[0].Cwd != onLaptop || !attached[0].Online {
+	if len(attached) != 1 || attached[0].DeviceID != laptop.ID() || attached[0].Name != "laptop" ||
+		attached[0].Cwd == nil ||
+		*attached[0].Cwd != onLaptop ||
+		!attached[0].Online {
 		t.Fatalf("attached: %+v", attached)
 	}
 	left := s.directoryListing(route + "/hosts/" + string(laptop.ID()) + "/fs")
@@ -102,8 +118,34 @@ func TestTargetSwitchAttachesPreviousDevice(t *testing.T) {
 	if s.conversations("?archived=false")[0].ContextVersion != unchanged.ContextVersion {
 		t.Fatal("same target changes context")
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route, `{"target":{"kind":"workspace","workspaceId":"nowhere"}}`, 404), webapi.ErrorCodeWorkspaceNotFound)
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route, `{"target":{"kind":"device","deviceId":"nothing","path":"/"}}`, 404), webapi.ErrorCodeDeviceNotFound)
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"PATCH",
+			route,
+			`{"target":{"kind":"workspace","workspaceId":"nowhere"}}`,
+			404,
+		),
+		webapi.ErrorCodeWorkspaceNotFound,
+	)
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"PATCH",
+			route,
+			`{"target":{"kind":"device","deviceId":"nothing","path":"/"}}`,
+			404,
+		),
+		webapi.ErrorCodeDeviceNotFound,
+	)
 	if err := s.h.AddUser(s.ctx, "user@example.test", "user-pass-1", webapi.RoleUser); err != nil {
 		t.Fatal(err)
 	}
@@ -115,21 +157,48 @@ func TestTargetSwitchAttachesPreviousDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, theirs.ID(), s.directory(theirs, "x")), 404), webapi.ErrorCodeDeviceNotFound)
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"PATCH",
+			route,
+			fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, theirs.ID(), s.directory(theirs, "x")),
+			404,
+		),
+		webapi.ErrorCodeDeviceNotFound,
+	)
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route, `{"archived":true}`, 200)
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, ci.ID(), onCI), 409), webapi.ErrorCodeConversationArchived)
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"PATCH",
+			route,
+			fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, ci.ID(), onCI),
+			409,
+		),
+		webapi.ErrorCodeConversationArchived,
+	)
 }
 
+// TestTargetSwitchCutsOpenDownload checks cancellation of an open download when switching targets.
 // A 64 MiB response exceeds transport buffers so an unread download remains open at the switch.
 func TestTargetSwitchCutsOpenDownload(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
 	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
 	laptop := s.pair("laptop")
-	dir := s.directory(laptop, "work")
-	s.move(laptop, dir)
-	path := filepath.Join(dir, "long.mp4")
-	if err := os.WriteFile(path, backendtest.Pattern(64*1024*1024, 0), 0644); err != nil {
+	directory := s.directory(laptop, "work")
+	s.move(laptop, directory)
+	path := filepath.Join(directory, "long.mp4")
+	if err := os.WriteFile(path, backendtest.Pattern(64*1024*1024, 0), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	route := "/api/conversations/" + hostsConversation
@@ -155,6 +224,7 @@ func TestTargetSwitchCutsOpenDownload(t *testing.T) {
 	}
 }
 
+// TestAttachedHostsAreUniqueRenamableAndDetachable checks attached host uniqueness, renaming and detachment.
 func TestAttachedHostsAreUniqueRenamableAndDetachable(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -163,7 +233,16 @@ func TestAttachedHostsAreUniqueRenamableAndDetachable(t *testing.T) {
 	s.move(laptop, s.directory(laptop, "work"))
 	route := "/api/conversations/" + hostsConversation + "/hosts"
 	attach := func(device webapi.DeviceID, status int) backendtest.Answer {
-		return conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", route, fmt.Sprintf(`{"deviceId":%q}`, device), status)
+		return conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"POST",
+			route,
+			fmt.Sprintf(`{"deviceId":%q}`, device),
+			status,
+		)
 	}
 	firstAnswer := attach(ci.ID(), 201)
 	first, err := webapi.DecodeAttachedHosts(firstAnswer.Body)
@@ -185,8 +264,16 @@ func TestAttachedHostsAreUniqueRenamableAndDetachable(t *testing.T) {
 	if s.conversations("")[0].ContextVersion != version {
 		t.Fatal("repeat attach changes context")
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", route, fmt.Sprintf(`{"deviceId":%q}`, laptop.ID()), 409), webapi.ErrorCodeHostIsMain)
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", route, `{"deviceId":"nothing"}`, 404), webapi.ErrorCodeDeviceNotFound)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", route, fmt.Sprintf(`{"deviceId":%q}`, laptop.ID()), 409),
+		webapi.ErrorCodeHostIsMain,
+	)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", route, `{"deviceId":"nothing"}`, 404),
+		webapi.ErrorCodeDeviceNotFound,
+	)
 	secondAnswer := attach(spare.ID(), 201)
 	second, err := webapi.DecodeAttachedHosts(secondAnswer.Body)
 	if err != nil {
@@ -196,7 +283,16 @@ func TestAttachedHostsAreUniqueRenamableAndDetachable(t *testing.T) {
 	if len(both) != 2 || both[0].Name != "ci" || both[1].Name != "ci-2" {
 		t.Fatalf("names: %+v", both)
 	}
-	renamed := conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route+"/"+string(ci.ID()), `{"name":"  builder "}`, 200)
+	renamed := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"PATCH",
+		route+"/"+string(ci.ID()),
+		`{"name":"  builder "}`,
+		200,
+	)
 	hosts, err := webapi.DecodeAttachedHosts(renamed.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -204,14 +300,30 @@ func TestAttachedHostsAreUniqueRenamableAndDetachable(t *testing.T) {
 	if hosts.Hosts[0].Name != "builder" {
 		t.Fatal(hosts)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route+"/"+string(spare.ID()), `{"name":"builder"}`, 409), webapi.ErrorCodeNameTaken)
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route+"/"+string(laptop.ID()), `{"name":"main"}`, 404), webapi.ErrorCodeHostNotAttached)
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route+"/"+string(ci.ID()), `{"name":"   "}`, 400), webapi.ErrorCodeInvalidBody)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route+"/"+string(spare.ID()), `{"name":"builder"}`, 409),
+		webapi.ErrorCodeNameTaken,
+	)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route+"/"+string(laptop.ID()), `{"name":"main"}`, 404),
+		webapi.ErrorCodeHostNotAttached,
+	)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route+"/"+string(ci.ID()), `{"name":"   "}`, 400),
+		webapi.ErrorCodeInvalidBody,
+	)
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route+"/"+string(ci.ID()), "", 204)
 	left := s.hosts()
 	if len(left) != 1 || left[0].DeviceID != spare.ID() {
 		t.Fatal(left)
 	}
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route+"/"+string(ci.ID()), "", 204)
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", route+"/"+string(ci.ID())+"/fs", "", 404), webapi.ErrorCodeHostNotAttached)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", route+"/"+string(ci.ID())+"/fs", "", 404),
+		webapi.ErrorCodeHostNotAttached,
+	)
 }

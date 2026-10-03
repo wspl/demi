@@ -33,7 +33,7 @@ func publishHostRelease(t *testing.T, directory, program, name string) string {
 		t.Fatal(err)
 	}
 	executable := filepath.Join(directory, release, string(target), "demi-runner")
-	if err := os.MkdirAll(filepath.Dir(executable), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(executable), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(program, executable); err != nil {
@@ -41,20 +41,34 @@ func publishHostRelease(t *testing.T, directory, program, name string) string {
 	}
 	targets := make(map[string]commandwire.PackageArtifact)
 	for _, target := range commandwire.Targets {
-		targets[target] = commandwire.PackageArtifact{SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Size: uint64(len(data))}
+		targets[target] = commandwire.PackageArtifact{
+			SHA256: fmt.Sprintf("%x", sha256.Sum256(data)),
+			Size:   uint64(len(data)),
+		}
 	}
-	manifest, err := contract.EncodeJSON(runnerwire.RunnerRelease{Release: release, Wire: runnerwire.Version, CommandProtocol: commandwire.Version, Targets: targets})
+	manifest, err := contract.EncodeJSON(
+		runnerwire.RunnerRelease{
+			Release:         release,
+			Wire:            runnerwire.Version,
+			CommandProtocol: commandwire.Version,
+			Targets:         targets,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{filepath.Join(directory, release, "manifest.json"), filepath.Join(directory, "manifest.json")} {
-		if err := os.WriteFile(path, manifest, 0644); err != nil {
+	for _, path := range []string{
+		filepath.Join(directory, release, "manifest.json"),
+		filepath.Join(directory, "manifest.json"),
+	} {
+		if err := os.WriteFile(path, manifest, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return release
 }
 
+// TestInstallerWithoutReleasesAndArtifactAllowlist checks unconfigured releases and artifact allowlisting.
 func TestInstallerWithoutReleasesAndArtifactAllowlist(t *testing.T) {
 	t.Parallel()
 	h, _, err := backendtest.HostsHarness(t.Context(), t)
@@ -85,8 +99,8 @@ func TestInstallerWithoutReleasesAndArtifactAllowlist(t *testing.T) {
 		t.Fatal(artifact.Status)
 	}
 	program := filepath.Join(t.TempDir(), "stand-in")
-	const bytes = "a stand-in for the runner"
-	if err := os.WriteFile(program, []byte(bytes), 0644); err != nil {
+	const contents = "a stand-in for the runner"
+	if err := os.WriteFile(program, []byte(contents), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	directory := t.TempDir()
@@ -104,7 +118,8 @@ func TestInstallerWithoutReleasesAndArtifactAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if script.Headers.Get("Content-Type") != "text/x-shellscript; charset=utf-8" || script.Headers.Get("Cache-Control") != "no-store" {
+	if script.Headers.Get("Content-Type") != "text/x-shellscript; charset=utf-8" ||
+		script.Headers.Get("Cache-Control") != "no-store" {
 		t.Fatal(script.Headers)
 	}
 	if !strings.Contains(string(script.Body), "backend="+served.URL+"/") {
@@ -124,11 +139,15 @@ func TestInstallerWithoutReleasesAndArtifactAllowlist(t *testing.T) {
 			t.Fatalf("%s: %d", wrong, answer.Status)
 		}
 	}
-	executable, err := served.Read(t.Context(), fmt.Sprintf("/runner-artifacts/%s/%s/demi-runner", release, target), nil)
+	executable, err := served.Read(
+		t.Context(),
+		fmt.Sprintf("/runner-artifacts/%s/%s/demi-runner", release, target),
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if executable.Status != 200 || len(executable.Body) != len(bytes) {
+	if executable.Status != 200 || len(executable.Body) != len(contents) {
 		t.Fatalf("executable: %d %d", executable.Status, len(executable.Body))
 	}
 }
@@ -156,11 +175,13 @@ func newHostInstallations(t *testing.T) *hostInstallations {
 	})
 	return i
 }
+
 func (i *hostInstallations) state(b *backendtest.TestBackend) string {
 	state := filepath.Join(i.home, ".demi/instances", fmt.Sprintf("%x", sha256.Sum256([]byte(b.URL+"/"))))
 	i.states = append(i.states, state)
 	return state
 }
+
 func (i *hostInstallations) install(b *backendtest.TestBackend, mask, installation string) ([]byte, []byte, error) {
 	i.t.Helper()
 	script, err := b.Read(i.t.Context(), "/install.sh", nil)
@@ -171,7 +192,7 @@ func (i *hostInstallations) install(b *backendtest.TestBackend, mask, installati
 		i.t.Fatalf("installer: %d %s", script.Status, script.Body)
 	}
 	path := filepath.Join(i.home, fmt.Sprintf("install-%d.sh", b.Address().Port()))
-	if err := os.WriteFile(path, script.Body, 0600); err != nil {
+	if err := os.WriteFile(path, script.Body, 0o600); err != nil {
 		i.t.Fatal(err)
 	}
 	command := exec.CommandContext(i.t.Context(), "sh", path)
@@ -224,6 +245,8 @@ func activeHostField(t *testing.T, state, name string) string {
 	return ""
 }
 
+// TestInstallerSeparatesBackendsReusesReleaseAndUpgradesOwnRunner
+// checks independent installations, release reuse and runner upgrade.
 // Three real installs download and verify the runner; an upgrade drains only its own installation.
 func TestInstallerSeparatesBackendsReusesReleaseAndUpgradesOwnRunner(t *testing.T) {
 	t.Parallel()
@@ -252,7 +275,8 @@ func TestInstallerSeparatesBackendsReusesReleaseAndUpgradesOwnRunner(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if windows.Status != 200 || windows.Headers.Get("Content-Type") != "text/plain; charset=utf-8" || !strings.Contains(string(windows.Body), "aarch64-pc-windows-msvc") {
+	if windows.Status != 200 || windows.Headers.Get("Content-Type") != "text/plain; charset=utf-8" ||
+		!strings.Contains(string(windows.Body), "aarch64-pc-windows-msvc") {
 		t.Fatalf("Windows installer: %d %s", windows.Status, windows.Body)
 	}
 	for _, backend := range []*backendtest.TestBackend{a, b} {
@@ -285,18 +309,26 @@ func TestInstallerSeparatesBackendsReusesReleaseAndUpgradesOwnRunner(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	old, err := a.Send(t.Context(), "HEAD", fmt.Sprintf("/runner-artifacts/%s/%s/demi-runner", initial, target), nil, nil)
+	old, err := a.Send(
+		t.Context(),
+		"HEAD",
+		fmt.Sprintf("/runner-artifacts/%s/%s/demi-runner", initial, target),
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if old.Status != 200 || old.Headers.Get("Cache-Control") != "public, max-age=31536000, immutable" {
 		t.Fatal(old)
 	}
-	if activeHostField(t, stateA, "release") != upgraded || activeHostField(t, stateA, "endpoint") == firstA || activeHostField(t, stateB, "endpoint") != firstB {
+	if activeHostField(t, stateA, "release") != upgraded || activeHostField(t, stateA, "endpoint") == firstA ||
+		activeHostField(t, stateB, "endpoint") != firstB {
 		t.Fatal("upgrade changed wrong installation")
 	}
 }
 
+// TestInstalledRunnerPreservesInvokingShellMask checks the invoking shell mask in installed runner jobs.
 // The real installer and a scripted model prove a user's shell mask reaches the installed runner's jobs.
 func TestInstalledRunnerPreservesInvokingShellMask(t *testing.T) {
 	t.Parallel()
@@ -321,7 +353,7 @@ func TestInstalledRunnerPreservesInvokingShellMask(t *testing.T) {
 	if output, stderr, err := installs.install(b, "002", ""); err != nil {
 		t.Fatalf("install: %v: %s\n%s", err, output, stderr)
 	}
-	for path, want := range map[string]os.FileMode{state: 0700, filepath.Join(state, "runner.log"): 0600} {
+	for path, want := range map[string]os.FileMode{state: 0o700, filepath.Join(state, "runner.log"): 0o600} {
 		info, err := os.Stat(path)
 		if err != nil {
 			t.Fatal(err)
@@ -334,7 +366,16 @@ func TestInstalledRunnerPreservesInvokingShellMask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimed := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, code), 201)
+	claimed := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		"/api/devices/claim",
+		fmt.Sprintf(`{"code":%q}`, code),
+		201,
+	)
 	device, err := webapi.DecodeClaimedDevice(claimed.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -343,7 +384,16 @@ func TestInstalledRunnerPreservesInvokingShellMask(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := s.work(cloudFirst)
-	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, device.Device.ID, installs.home), 200)
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"PATCH",
+		"/api/conversations/"+cloudFirst,
+		fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, device.Device.ID, installs.home),
+		200,
+	)
 	result := w.turn("mask", "umask; echo made > made.txt", "done", 60000)
 	if !strings.Contains(result, "0002") {
 		t.Fatal(result)
@@ -352,7 +402,7 @@ func TestInstalledRunnerPreservesInvokingShellMask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0664 {
+	if info.Mode().Perm() != 0o664 {
 		t.Fatal(info.Mode())
 	}
 }

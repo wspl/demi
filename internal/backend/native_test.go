@@ -13,6 +13,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
+// TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts checks the allowlist and bytes of native development artifacts.
 // A real native stream installs the built fixture through the backend's development store.
 func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
 	t.Parallel()
@@ -58,7 +59,13 @@ func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
 	client := artifacts.NewClientAllowingHTTP()
 	defer client.Close()
 	var decoded bytes.Buffer
-	if err := artifacts.Download(s.ctx, client, b.URL+"/native-artifacts/"+artifact.SHA256, artifacts.Digest{Size: artifact.Size, SHA256: artifact.SHA256}, &decoded); err != nil {
+	if err := artifacts.Download(
+		s.ctx,
+		client,
+		b.URL+"/native-artifacts/"+artifact.SHA256,
+		artifacts.Digest{Size: artifact.Size, SHA256: artifact.SHA256},
+		&decoded,
+	); err != nil {
 		t.Fatal(err)
 	}
 	program, err := os.ReadFile(built.Program)
@@ -69,6 +76,10 @@ func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
 		t.Fatal("served executable differs")
 	}
 	for _, unknown := range []string{strings.Repeat("0", 64), "demi-native-fixture"} {
-		conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, nil, "GET", "/native-artifacts/"+unknown, "", 404), webapi.ErrorCodeNotFound)
+		conversationRefusal(
+			s.t,
+			conversationRequest(s.ctx, s.t, s.b, nil, "GET", "/native-artifacts/"+unknown, "", 404),
+			webapi.ErrorCodeNotFound,
+		)
 	}
 }
