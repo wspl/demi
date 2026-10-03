@@ -74,7 +74,7 @@ func Call[T any](ctx context.Context, client *Client, params machinewire.Operati
 	}
 	value, err := params.DecodeOutput(answer)
 	if err != nil {
-		return zero, &ManagerError{Kind: ManagerResult, Operation: call.Name(), Err: err}
+		return zero, fmt.Errorf("the machine manager answered %s with an unexpected result: %w", call.Name(), err)
 	}
 	return value, nil
 }
@@ -139,7 +139,8 @@ func (c *Client) command(ctx context.Context, command clientCommand) ([]byte, er
 
 // unavailable describes an uncertain manager outcome and keeps its cause.
 func unavailable(operation string, err error) error {
-	return &ManagerError{Kind: ManagerUnavailable, Operation: operation, Err: err}
+	//nolint:staticcheck // Product text, shown to the user as it is.
+	return fmt.Errorf("Machine manager unavailable during %s: %w", operation, err)
 }
 
 // run exclusively owns connection identity, request IDs and pending calls.
@@ -277,7 +278,7 @@ func (c *Client) sendCommand(
 	*next++
 	line, err := machinewire.EncodeLine(machinewire.MachineRequest{ID: id, Call: command.call})
 	if err != nil {
-		command.answer <- clientAnswer{err: &ManagerError{Kind: ManagerFailed, Err: err}}
+		command.answer <- clientAnswer{err: err}
 		return false
 	}
 	pending[id] = command
@@ -324,7 +325,11 @@ func receiveManagerLine(
 		if answer.err == nil {
 			_, answer.err = machinewire.ReconcileParams{}.DecodeOutput(answer.data)
 			if answer.err != nil {
-				answer.err = &ManagerError{Kind: ManagerResult, Operation: p.call.Name(), Err: answer.err}
+				answer.err = fmt.Errorf(
+					"the machine manager answered %s with an unexpected result: %w",
+					p.call.Name(),
+					answer.err,
+				)
 			}
 		}
 		drop(errors.New("the backend disconnected"))
@@ -360,7 +365,7 @@ func managerAnswer(ctx context.Context, data []byte, deaths chan<- webapi.Device
 		answer.data = response.Result
 	case *machinewire.ErrorResponse:
 		id = response.ID
-		answer.err = &ManagerError{Kind: ManagerFailed, Err: errors.New(response.Message)}
+		answer.err = errors.New(response.Message)
 	}
 	return id, answer, true, false
 }

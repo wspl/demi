@@ -238,8 +238,8 @@ func TestEndingJobCancelsPendingArtifactsWithoutAnswer(t *testing.T) {
 	sendFrame(t, l, &runnerwire.JobExit{JobID: job.ID(), ExitCode: new(int32(0)), Files: []runnerwire.JobFileChange{}})
 	<-resolver.done
 	barrier(t, l)
-	if _, ok, err := l.TryNext(); ok || err != nil {
-		t.Fatal("stale artifact answer", err)
+	if l.Queued() != 0 {
+		t.Fatal("stale artifact answer")
 	}
 }
 

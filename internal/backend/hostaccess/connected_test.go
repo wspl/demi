@@ -164,7 +164,7 @@ func TestConnectedUploadRevocationFailsPipeAndDrains(t *testing.T) {
 	device := s.paired(t, "laptop")
 	record := s.target(t, s.conversation(t), device, "/work")
 	r := connectHost(t, s, device)
-	result := startHostOperation(t, func(ctx context.Context) (Upload, error) {
+	result := startHostOperation(t, func(ctx context.Context) (*OpenUpload, error) {
 		return UploadFile(ctx, s, record.ID, "/file", true)
 	})
 	r.stat(t, 5)
@@ -176,7 +176,7 @@ func TestConnectedUploadRevocationFailsPipeAndDrains(t *testing.T) {
 	if opened.err != nil {
 		t.Fatal(opened.err)
 	}
-	upload := opened.value.(*OpenUpload)
+	upload := opened.value
 	defer upload.Lease.Release()
 	pipe, ok := s.pipes.Pipe(write.Input.ID)
 	if !ok {

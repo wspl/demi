@@ -3,6 +3,8 @@ package cloud
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -222,8 +224,8 @@ func Close(ctx context.Context, shard CloudShard) error {
 		}
 	}
 	c.workers.Wait()
-	// Rust drops the Cloud's remaining permit when its shard goes away. Close
-	// is Go's explicit disposal boundary, including a machine left for reconcile.
+	// Close gives back the Cloud's remaining capacity permit, also for a machine
+	// it leaves running for the manager's final reconciliation.
 	c.mu.Lock()
 	var permit *Permit
 	if m != nil {
@@ -329,11 +331,12 @@ func ensureRunning(ctx context.Context, s CloudShard, m *machine) (bool, error) 
 	}
 }
 
-// runTransition contains a failed task at the Cloud boundary, as Rust's joinable does.
+// runTransition turns a panic in work into a failed transition, so waiters get an answer.
 func runTransition(ctx context.Context, work func(context.Context) error) (err error) {
 	defer func() {
-		if recover() != nil {
-			//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		if recovered := recover(); recovered != nil {
+			slog.Error("cloud transition panicked", "panic", recovered, "stack", string(debug.Stack()))
+			//nolint:staticcheck // Product text, shown to the user as it is.
 			err = failed(errors.New("A transition of the Cloud ended without an answer"))
 		}
 	}()

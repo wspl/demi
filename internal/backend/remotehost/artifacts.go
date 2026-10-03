@@ -158,11 +158,11 @@ func (g *artifactGrant) resolve(digest, target string) (commandwire.ArtifactLoca
 			return location, nil
 		}
 	}
-	//nolint:staticcheck // ST1005: verbatim Rust protocol refusal.
+	//nolint:staticcheck // ST1005: protocol refusal text, sent to the runner as it is.
 	return nil, errors.New("Artifact does not belong to the live work's packages")
 }
 
-// answerArtifact publishes a validated location or its refusal with Rust's logging point.
+// answerArtifact sends a validated location or the refusal's text, and logs a send that fails.
 func (l *Link) answerArtifact(id string, location commandwire.ArtifactLocation, err error) {
 	answer := &runnerwire.ArtifactLocation{ID: id}
 	if err != nil {

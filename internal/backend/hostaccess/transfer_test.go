@@ -16,7 +16,7 @@ import (
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
-// Dense Range and validator tables port every case of the two Rust parser tests.
+// Dense tables cover whole, suffix, open, overflowing, unsatisfiable and invalid Range headers.
 // Cost: no IO, processes, or wall-clock waits.
 func TestRangeAnswers(t *testing.T) {
 	tests := []struct {
@@ -53,12 +53,14 @@ func TestRangeAnswers(t *testing.T) {
 			if answer.Status() != tt.status {
 				t.Fatalf("status = %d, want %d", answer.Status(), tt.status)
 			}
-			var want *host.ByteRange
-			if tt.status != 416 {
-				want = &host.ByteRange{Offset: tt.start, Length: new(tt.length)}
+			got, ok := answer.Range()
+			if ok != (tt.status != 416) {
+				t.Fatalf("satisfiable = %v", ok)
 			}
-			if diff := cmp.Diff(want, answer.Range()); diff != "" {
-				t.Fatal(diff)
+			if ok {
+				if diff := cmp.Diff(host.ByteRange{Offset: tt.start, Length: new(tt.length)}, got); diff != "" {
+					t.Fatal(diff)
+				}
 			}
 			data := make([]byte, tt.size)
 			for i := range data {
@@ -112,7 +114,8 @@ func TestFileVersionsAndWeakConditions(t *testing.T) {
 	}
 }
 
-// This is the Rust transfer-closing test plus cancellation of a concurrent close.
+// Closing revokes and drains every transfer; a cancelled close drops only its own hold,
+// and admission reopens after the last hold.
 // Synctest observes blocked work without wall time or scheduler guesses.
 func TestTransferClosingDrainsAndReopensAfterLastHold(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

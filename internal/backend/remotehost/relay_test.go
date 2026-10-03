@@ -228,8 +228,8 @@ func TestCallExitsAfterStdoutDrained(t *testing.T) {
 			t.Fatal("unexpected stdin")
 		}
 		synctest.Wait()
-		if frame, ok, err := l.TryNext(); ok || err != nil {
-			t.Fatal("exit before drain", frame, err)
+		if l.Queued() != 0 {
+			t.Fatal("exit before drain")
 		}
 		sink, err := d.Pipes().ClaimSink(pipes.Stdout.ID, remotehosttest.TestDeviceID)
 		requirePipe(t, err)

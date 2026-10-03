@@ -265,7 +265,7 @@ func TestServingRevocationAndProtocolLogging(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Fatalf("missing Rust log %q: %v", want, messages)
+				t.Fatalf("missing log %q: %v", want, messages)
 			}
 			if devices.Online("device") {
 				t.Fatal("connection left online")

@@ -126,8 +126,8 @@ func TestAdmissionHoldsCallsAndProcessLifetimesAndRefusalSendsNothing(t *testing
 		t.Fatal("job admitted")
 	}
 	barrier(t, l)
-	if _, ok, err := l.TryNext(); ok || err != nil {
-		t.Fatal("refusal emitted a frame", err)
+	if l.Queued() != 0 {
+		t.Fatal("refusal emitted a frame")
 	}
 	closed, err := l.Close(t.Context())
 	requirePipe(t, err)
@@ -342,8 +342,8 @@ func TestUnansweredPingEndsUnlessLivenessPaused(t *testing.T) {
 		if l.Link().IsClosed() {
 			t.Fatal("paused connection expired")
 		}
-		if _, ok, err := l.TryNext(); ok || err != nil {
-			t.Fatal("paused liveness emitted a frame", err)
+		if l.Queued() != 0 {
+			t.Fatal("paused liveness emitted a frame")
 		}
 		l.Link().ResumeLiveness()
 		time.Sleep(time.Second)

@@ -3,6 +3,7 @@ package runners
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"strconv"
@@ -73,7 +74,7 @@ func publish(
 	}
 	catalog, err := NewNativeCatalog(packages, &SignedArtifacts{signer: store, prefix: prefix, published: published})
 	if err != nil {
-		return nil, &PublicationError{Kind: PublicationConfig, Reason: err.Error(), Err: err}
+		return nil, configError(err)
 	}
 	return catalog, nil
 }
@@ -91,7 +92,7 @@ func uploadNative(ctx context.Context, store artifactStore, key string, upload n
 	}
 	data, err := os.ReadFile(file.Path)
 	if err != nil {
-		return &PublicationError{Kind: PublicationRelease, Directory: file.Path, Reason: err.Error(), Err: err}
+		return releaseError(file.Path, err)
 	}
 	verifier := artifacts.NewVerifier(artifacts.Digest{SHA256: file.Artifact.SHA256, Size: file.Artifact.Size})
 	err = verifier.Update(data)
@@ -99,7 +100,7 @@ func uploadNative(ctx context.Context, store artifactStore, key string, upload n
 		err = verifier.Finish()
 	}
 	if err != nil {
-		return &PublicationError{Kind: PublicationRelease, Directory: file.Path, Reason: err.Error(), Err: err}
+		return releaseError(file.Path, err)
 	}
 	coding := ""
 	if upload.encoded {
@@ -108,7 +109,7 @@ func uploadNative(ctx context.Context, store artifactStore, key string, upload n
 			if ctx.Err() != nil {
 				return publicationStoreError(ctx.Err())
 			}
-			return &PublicationError{Kind: PublicationRelease, Directory: file.Path, Reason: err.Error(), Err: err}
+			return releaseError(file.Path, err)
 		}
 		coding = artifacts.ContentCoding
 	}
@@ -164,7 +165,7 @@ func nativeInPlace(
 	}
 	if attributes.Metadata["sha256"] != artifact.SHA256 ||
 		attributes.Metadata["size"] != strconv.FormatUint(artifact.Size, 10) {
-		return false, &PublicationError{Kind: PublicationConflict, Reason: key}
+		return false, fmt.Errorf("%w: %s", ErrArtifactConflict, key)
 	}
 	return true, nil
 }
@@ -172,9 +173,9 @@ func nativeInPlace(
 // publicationStoreError keeps interruption distinct from an object-store failure.
 func publicationStoreError(err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return &PublicationError{Kind: PublicationCancelled, Err: err}
+		return errPublicationInterrupted
 	}
-	return &PublicationError{Kind: PublicationStore, Err: err}
+	return fmt.Errorf("the native artifact store failed: %w", err)
 }
 
 // publishDescriptor writes a canonical descriptor before its immutable version mapping.
@@ -186,22 +187,22 @@ func publishDescriptor(
 ) error {
 	data, err := descriptor.MarshalJSON()
 	if err != nil {
-		return &PublicationError{Kind: PublicationConfig, Reason: err.Error(), Err: err}
+		return configError(err)
 	}
 	body, err := jcs.Transform(data)
 	if err != nil {
-		return &PublicationError{Kind: PublicationConfig, Reason: err.Error(), Err: err}
+		return configError(err)
 	}
 	digest, err := descriptor.Digest()
 	if err != nil {
-		return &PublicationError{Kind: PublicationConfig, Reason: err.Error(), Err: err}
+		return configError(err)
 	}
 	artifact := commandwire.PackageArtifact{SHA256: digest, Size: uint64(len(body))}
 	if err := putImmutable(ctx, store, prefix+"/descriptors/"+digest+".json", body, artifact, ""); err != nil {
 		return err
 	}
-	// Rust's URI component set also leaves !~*'() unescaped. QueryEscape supplies
-	// percent encoding; restore those characters and encode spaces as %20.
+	// The key spells the version with A-Z a-z 0-9 and -_.!~*'() as they are and
+	// every other byte percent-encoded, a space as %20. QueryEscape escapes !*'() and writes a space as +; undo both.
 	version := strings.NewReplacer("+", "%20", "%21", "!", "%2A", "*", "%27", "'", "%28", "(", "%29", ")").
 		Replace(url.QueryEscape(descriptor.Version))
 	if err := putImmutable(

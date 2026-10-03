@@ -176,8 +176,8 @@ func TestRunnerOneShotCompletionAndLoggedStreamWords(t *testing.T) {
 		t.Fatal(report.Context)
 	}
 	_, err = call("result", nil)
-	var failure *remotehost.ServiceCallError
-	if !errors.As(err, &failure) || failure.Kind != remotehost.ServiceExited || failure.ExitCode != 17 ||
+	var failure *remotehost.ServiceExitError
+	if !errors.As(err, &failure) || failure.ExitCode != 17 ||
 		failure.Stderr != "command diagnostic" ||
 		string(failure.Stdout) != "command output" {
 		t.Fatal(err)

@@ -47,7 +47,7 @@ func shellFixture(
 	return d, l, shell, pages
 }
 
-// shellExec uses the Rust scenario's one-millisecond observation window in virtual time.
+// shellExec observes each command for a one-millisecond window in virtual time.
 func shellExec(t *testing.T, s *remotehost.ShellEnvironment, script string) host.CommandStatus {
 	t.Helper()
 	window, _ := host.NewObservationWindow(1)

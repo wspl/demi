@@ -3,6 +3,7 @@ package cloud
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -30,13 +31,13 @@ func Reset(ctx context.Context, s CloudShard, id webapi.OperationID) (database.M
 		return database.ManagedOperation{}, storageFailed(err)
 	}
 	c.mu.Lock()
-	running, err := runningResetLocked(m, id)
+	running, ok, err := runningResetLocked(m, id)
 	c.mu.Unlock()
-	if running != nil {
-		return *running, err
-	}
 	if err != nil {
 		return database.ManagedOperation{}, err
+	}
+	if ok {
+		return running, nil
 	}
 	stored, err := cloudRecords(s).ManagedOperation(ctx, device.ID, id)
 	if err != nil {
@@ -58,15 +59,14 @@ func Reset(ctx context.Context, s CloudShard, id webapi.OperationID) (database.M
 }
 
 // runningResetLocked reads the admitted reset under the shard mutex.
-func runningResetLocked(m *machine, id webapi.OperationID) (*database.ManagedOperation, error) {
+func runningResetLocked(m *machine, id webapi.OperationID) (database.ManagedOperation, bool, error) {
 	if m.reset == nil {
-		return nil, nil
+		return database.ManagedOperation{}, false, nil
 	}
 	if m.operation.ID != id {
-		return nil, &Error{Kind: Resetting}
+		return database.ManagedOperation{}, false, &Error{Kind: Resetting}
 	}
-	operation := *m.operation
-	return &operation, nil
+	return *m.operation, true, nil
 }
 
 // resetSteps writes intent before each disk step and holds affected conversations.
@@ -106,7 +106,7 @@ func resetSteps(
 	reserved, err := m.gate.Reserve(wait)
 	cancel()
 	if err != nil {
-		//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		//nolint:staticcheck // Product text, shown to the user as it is.
 		return failed(errors.New("The Cloud's operations did not end for the reset"))
 	}
 	defer reserved.Release()
@@ -201,22 +201,22 @@ type resetRecords interface {
 // recoverResets orders manager reconciliation and durable reset recovery before serving.
 func recoverResets(ctx context.Context, control resetRecords, services *Services) error {
 	if _, err := Call(ctx, services.Machines, machinewire.ReconcileParams{}); err != nil {
-		return &RecoveryError{Kind: RecoveryMachines, Err: err}
+		return err
 	}
 	if err := control.DeleteCloudExposes(ctx); err != nil {
-		return &RecoveryError{Kind: RecoveryStorage, Err: err}
+		return err
 	}
 	operations, err := control.UnfinishedManagedOperations(ctx)
 	if err != nil {
-		return &RecoveryError{Kind: RecoveryStorage, Err: err}
+		return err
 	}
 	for _, pair := range operations {
 		device, err := control.Device(ctx, pair.Device)
 		if err != nil {
-			return &RecoveryError{Kind: RecoveryStorage, Err: err}
+			return err
 		}
 		if device == nil {
-			return &RecoveryError{Kind: RecoveryMissingDevice, Device: pair.Device}
+			return fmt.Errorf("a reset names the device %s, which no longer exists", pair.Device)
 		}
 		op := pair.Operation
 		if _, err := Call(
@@ -228,16 +228,16 @@ func recoverResets(ctx context.Context, control resetRecords, services *Services
 				BaseVersion: string(op.BaseVersion),
 			},
 		); err != nil {
-			return &RecoveryError{Kind: RecoveryMachines, Err: err}
+			return err
 		}
 		if err := control.AnnounceCloudReset(ctx, device.User, op.ID); err != nil {
-			return &RecoveryError{Kind: RecoveryStorage, Err: err}
+			return err
 		}
 		text := "Reset disks recovered; retry to start Cloud"
 		op.Phase = webapi.ResetPhaseFailed
 		op.Error = &text
 		if err := control.PutManagedOperation(ctx, pair.Device, op); err != nil {
-			return &RecoveryError{Kind: RecoveryStorage, Err: err}
+			return err
 		}
 	}
 	return nil
@@ -258,13 +258,10 @@ func admitReset(
 		c.mu.Unlock()
 		return database.ManagedOperation{}, &Error{Kind: Closed}
 	}
-	running, err := runningResetLocked(m, id)
-	if running != nil || err != nil {
+	running, ok, err := runningResetLocked(m, id)
+	if ok || err != nil {
 		c.mu.Unlock()
-		if running != nil {
-			return *running, err
-		}
-		return database.ManagedOperation{}, err
+		return running, err
 	}
 	if m.permit == nil {
 		// Lock order is shard then capacity. Capacity never calls into a shard.

@@ -74,7 +74,7 @@ func TestConnectedUploadCompletionKeepsEdgeLeaseLive(t *testing.T) {
 	device := s.paired(t, "laptop")
 	record := s.target(t, s.conversation(t), device, "/work")
 	r := connectHost(t, s, device)
-	result := startHostOperation(t, func(ctx context.Context) (Upload, error) {
+	result := startHostOperation(t, func(ctx context.Context) (*OpenUpload, error) {
 		return UploadFile(ctx, s, record.ID, "/notes.md", true)
 	})
 	r.stat(t, 5)
@@ -82,7 +82,7 @@ func TestConnectedUploadCompletionKeepsEdgeLeaseLive(t *testing.T) {
 	if opened.err != nil {
 		t.Fatal(opened.err)
 	}
-	upload := opened.value.(*OpenUpload)
+	upload := opened.value
 	defer upload.Lease.Release()
 	written := startHostOperation(t, func(ctx context.Context) (struct{}, error) {
 		if err := upload.Writer.Write(ctx, []byte("first")); err != nil {

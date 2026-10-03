@@ -17,7 +17,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// HostGroup declares demi host list, current and shell with the Rust help text.
+// HostGroup declares demi host list, current and shell with their help text.
 // Its handlers fail after the shard's Conversations owner has closed.
 func HostGroup(shard HostShard) host.Declared {
 	// These schemas are generated from the declarations beside this file.
@@ -276,7 +276,7 @@ func runOnHost(
 		shard,
 		id,
 		&target.Device,
-		func(ctx context.Context, admitted *ConversationHost) (*remotehost.JobEnd, error) {
+		func(ctx context.Context, admitted *ConversationHost) (remotehost.JobEnd, error) {
 			job := hostJob{
 				shard:      shard,
 				id:         id,
@@ -290,11 +290,11 @@ func runOnHost(
 			return job.run(ctx, admitted)
 		},
 	)
+	if errors.Is(err, errNotStarted) {
+		return 130, nil
+	}
 	if err != nil {
 		return 0, err
-	}
-	if ended == nil {
-		return 130, nil
 	}
 	if target.Role == Attached && ended.CWD != nil {
 		if err := shard.Control().
@@ -343,15 +343,17 @@ type hostJob struct {
 	stdin, stdout *remotehost.Pipe
 }
 
-func (j hostJob) run(ctx context.Context, admitted *ConversationHost) (*remotehost.JobEnd, error) {
+var errNotStarted = errors.New("the command ended before it started")
+
+func (j hostJob) run(ctx context.Context, admitted *ConversationHost) (remotehost.JobEnd, error) {
 	if ctx.Err() != nil {
-		return nil, nil
+		return remotehost.JobEnd{}, errNotStarted
 	}
 	if !admitted.Host.Online() {
-		return nil, fmt.Errorf("host %s is offline", j.target.Device)
+		return remotehost.JobEnd{}, fmt.Errorf("host %s is offline", j.target.Device)
 	}
 	if err := installDirectories(ctx, j.shard, j.target.Device, admitted); err != nil {
-		return nil, err
+		return remotehost.JobEnd{}, err
 	}
 	defer j.shard.JobEnded(j.id)
 	start := remotehost.JobStart{
@@ -368,7 +370,7 @@ func (j hostJob) run(ctx context.Context, admitted *ConversationHost) (*remoteho
 	}
 	job, err := admitted.Host.StartJob(ctx, start)
 	if err != nil {
-		return nil, err
+		return remotehost.JobEnd{}, err
 	}
 	cleanup := context.WithoutCancel(ctx)
 	defer func() {
@@ -394,9 +396,9 @@ func (j hostJob) run(ctx context.Context, admitted *ConversationHost) (*remoteho
 	cancel()
 	relays.Wait()
 	if err != nil {
-		return nil, err
+		return remotehost.JobEnd{}, err
 	}
-	return &end, nil
+	return end, nil
 }
 
 func relayJobOutput(ctx, cleanup context.Context, job *remotehost.Job, port host.RPCPort) {
@@ -429,7 +431,7 @@ func relayJobInput(ctx, cleanup context.Context, job *remotehost.Job, port host.
 	}
 }
 
-// endHostJob retains the Rust termination grace period and escalates only after a failed wait.
+// endHostJob sends SIGTERM when ctx ends, waits five seconds, and sends SIGKILL only if that wait fails.
 func endHostJob(
 	ctx, cleanup context.Context,
 	job *remotehost.Job,

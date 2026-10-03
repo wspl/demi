@@ -32,7 +32,7 @@ func GrowVolume(
 		return err
 	}
 	if record == nil || record.Kind != webapi.DeviceKindManaged || record.User != shard.User() {
-		//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		//nolint:staticcheck // Product text, shown to the user as it is.
 		return errors.New("Only the Cloud grows its volumes")
 	}
 	_, err = Call(

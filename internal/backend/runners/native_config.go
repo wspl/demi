@@ -91,15 +91,15 @@ func checkNativeConfig(c NativeConfig) error {
 // readNativeConfig resolves release directories against the configuration file.
 func readNativeConfig(ctx context.Context, path string) (NativeConfig, error) {
 	if err := ctx.Err(); err != nil {
-		return NativeConfig{}, &PublicationError{Kind: PublicationCancelled, Err: err}
+		return NativeConfig{}, errPublicationInterrupted
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return NativeConfig{}, &PublicationError{Kind: PublicationConfig, Reason: path + ": " + err.Error(), Err: err}
+		return NativeConfig{}, configError(fmt.Errorf("%s: %w", path, err))
 	}
 	config, err := DecodeNativeConfig(data)
 	if err != nil {
-		return NativeConfig{}, &PublicationError{Kind: PublicationConfig, Reason: path + ": " + err.Error(), Err: err}
+		return NativeConfig{}, configError(fmt.Errorf("%s: %w", path, err))
 	}
 	for i := range config.Releases {
 		if !filepath.IsAbs(config.Releases[i].Directory) {

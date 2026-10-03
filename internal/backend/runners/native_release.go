@@ -2,6 +2,7 @@ package runners
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -28,7 +29,7 @@ func verifyReleases(ctx context.Context, releases []NativeRelease, allTargets bo
 			return nil, err
 		}
 		if ids[checked.descriptor.ID] {
-			return nil, &PublicationError{Kind: PublicationConfig, Reason: checked.descriptor.ID + " is released twice"}
+			return nil, configError(fmt.Errorf("%s is released twice", checked.descriptor.ID))
 		}
 		ids[checked.descriptor.ID] = true
 		verified = append(verified, checked)
@@ -38,34 +39,26 @@ func verifyReleases(ctx context.Context, releases []NativeRelease, allTargets bo
 
 // verifyRelease checks each declared executable and resource archive by size and hash.
 func verifyRelease(ctx context.Context, release NativeRelease, allTargets bool) (verifiedRelease, error) {
-	refused := func(reason string, cause error) (verifiedRelease, error) {
-		return verifiedRelease{}, &PublicationError{
-			Kind:      PublicationRelease,
-			Directory: release.Directory,
-			Reason:    reason,
-			Err:       cause,
-		}
-	}
 	data, err := os.ReadFile(filepath.Join(release.Directory, "descriptor.json"))
 	if err != nil {
-		return refused("descriptor.json: "+err.Error(), err)
+		return verifiedRelease{}, releaseError(release.Directory, fmt.Errorf("descriptor.json: %w", err))
 	}
 	descriptor, err := commandwire.DecodePackageDescriptor(data)
 	if err != nil {
-		return refused("descriptor.json: "+err.Error(), err)
+		return verifiedRelease{}, releaseError(release.Directory, fmt.Errorf("descriptor.json: %w", err))
 	}
 	carried := commandwire.Targets
 	if !allTargets {
 		carried = slices.Sorted(maps.Keys(descriptor.Targets))
 	}
 	if len(carried) == 0 {
-		return refused("it carries no target", nil)
+		return verifiedRelease{}, releaseError(release.Directory, errors.New("it carries no target"))
 	}
 	verified := verifiedRelease{descriptor: descriptor}
 	for _, target := range carried {
 		expected, exists := descriptor.Targets[target]
 		if !exists {
-			return refused("it lacks a target: "+target, nil)
+			return verifiedRelease{}, releaseError(release.Directory, errors.New("it lacks a target: "+target))
 		}
 		suffix := ""
 		if strings.Contains(target, "windows") {
@@ -77,14 +70,17 @@ func verifyRelease(ctx context.Context, release NativeRelease, allTargets bool) 
 			if ctx.Err() != nil {
 				return verifiedRelease{}, publicationStoreError(ctx.Err())
 			}
-			return refused(target+": "+err.Error(), err)
+			return verifiedRelease{}, releaseError(release.Directory, fmt.Errorf("%s: %w", target, err))
 		}
 		if found.Size != expected.Size || found.SHA256 != expected.SHA256 {
-			return refused(target+": the executable does not match the descriptor", nil)
+			return verifiedRelease{}, releaseError(
+				release.Directory,
+				errors.New(target+": the executable does not match the descriptor"),
+			)
 		}
 		verified.executables = append(verified.executables, ArtifactFile{Path: path, Artifact: expected})
 	}
-	archives, err := verifyResources(ctx, release, descriptor, refused)
+	archives, err := verifyResources(ctx, release, descriptor)
 	if err != nil {
 		return verifiedRelease{}, err
 	}
@@ -97,7 +93,6 @@ func verifyResources(
 	ctx context.Context,
 	release NativeRelease,
 	descriptor commandwire.PackageDescriptor,
-	refused func(string, error) (verifiedRelease, error),
 ) ([]ArtifactFile, error) {
 	var archives []ArtifactFile
 	for _, name := range slices.Sorted(maps.Keys(descriptor.Resources)) {
@@ -111,15 +106,13 @@ func verifyResources(
 				if ctx.Err() != nil {
 					return nil, publicationStoreError(ctx.Err())
 				}
-				_, err := refused(fmt.Sprintf("%s for %s: %v", name, target, err), err)
-				return nil, err
+				return nil, releaseError(release.Directory, fmt.Errorf("%s for %s: %w", name, target, err))
 			}
 			if found.Size != expected.Size || found.SHA256 != expected.SHA256 {
-				_, err := refused(
-					fmt.Sprintf("%s for %s: the archive does not match the descriptor", name, target),
-					nil,
+				return nil, releaseError(
+					release.Directory,
+					fmt.Errorf("%s for %s: the archive does not match the descriptor", name, target),
 				)
-				return nil, err
 			}
 			archives = append(archives, ArtifactFile{Path: path, Artifact: expected})
 		}

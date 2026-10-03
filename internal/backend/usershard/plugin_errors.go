@@ -50,15 +50,14 @@ func accessFailure(err error) error {
 }
 
 func callFailure(err error) error {
-	var call *remotehost.ServiceCallError
-	if errors.As(err, &call) {
-		if call.Kind == remotehost.ServiceExited {
-			return &plugin.PortRefusalOperation{Stderr: call.Stderr}
-		}
-		var remote *host.Error
-		if errors.As(call, &remote) {
-			return accessFailure(&hostaccess.Error{Kind: hostaccess.AccessHost, Cause: remote})
-		}
+	var exited *remotehost.ServiceExitError
+	if errors.As(err, &exited) {
+		return &plugin.PortRefusalOperation{Stderr: exited.Stderr}
+	}
+	var access *hostaccess.Error
+	var remote *host.Error
+	if !errors.As(err, &access) && errors.As(err, &remote) {
+		return accessFailure(&hostaccess.Error{Kind: hostaccess.AccessHost, Cause: remote})
 	}
 	return accessFailure(err)
 }

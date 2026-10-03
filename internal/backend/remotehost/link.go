@@ -143,8 +143,8 @@ func NewLink(options LinkOptions) (*Link, *LinkDriver) {
 	return l, &LinkDriver{link: l, ping: options.Ping}
 }
 
-// Downgrade returns a non-retaining connection identity.
-func (l *Link) Downgrade() WeakLink {
+// Weak returns a non-retaining connection identity.
+func (l *Link) Weak() WeakLink {
 	return WeakLink{pointer: weak.Make(l)}
 }
 
@@ -335,8 +335,8 @@ loop:
 			end = LinkEnd{Kind: LinkDisconnected, Reason: reason}
 			break loop
 		case <-ticks:
-			if pingEnd := l.ping(serveCtx); pingEnd != nil {
-				end = *pingEnd
+			if pingEnd, ended := l.ping(serveCtx); ended {
+				end = pingEnd
 				break loop
 			}
 		}
@@ -512,7 +512,7 @@ func (d *LinkDriver) writeFrames(ctx context.Context, outgoing FrameSink) LinkEn
 }
 
 // ping checks expiry before sending the next liveness probe.
-func (l *Link) ping(ctx context.Context) *LinkEnd {
+func (l *Link) ping(ctx context.Context) (LinkEnd, bool) {
 	l.mu.Lock()
 	state := l.liveness
 	if state == pingIdle {
@@ -520,15 +520,15 @@ func (l *Link) ping(ctx context.Context) *LinkEnd {
 	}
 	l.mu.Unlock()
 	if state == pingPaused {
-		return nil
+		return LinkEnd{}, false
 	}
 	if state == pingWaiting {
 		end := LinkEnd{Kind: LinkDisconnected, Reason: "liveness: ping unanswered"}
-		return &end
+		return end, true
 	}
 	if err := l.send(ctx, &runnerwire.Ping{}); err != nil {
 		end := LinkEnd{Kind: LinkClosed, Reason: "runner disconnected"}
-		return &end
+		return end, true
 	}
-	return nil
+	return LinkEnd{}, false
 }

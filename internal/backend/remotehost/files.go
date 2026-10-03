@@ -150,8 +150,8 @@ func (f remoteFS) WriteFile(
 		cancel()
 	}
 	sourceErr := <-uploaded
-	// Rust uses the source failure only when the runner refuses the write.
-	// Keep that precedence while observing redundant pipe/cancellation errors.
+	// When the runner refuses the write, a source failure that is neither a
+	// cancellation nor the pipe's own failure explains it; otherwise the refusal does.
 	if sourceErr != nil {
 		slog.Debug("file upload failed: "+sourceErr.Error(), "path", path)
 	}

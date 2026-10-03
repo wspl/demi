@@ -97,9 +97,8 @@ func (s *Shard) changeSettings(
 			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeProviderNotFound}
 		}
 		return &hostaccess.ChangeRefusal{
-			Kind:    hostaccess.ChangeRuntime,
-			Message: err.Error(),
-			Cause:   err,
+			Kind:  hostaccess.ChangeRuntime,
+			Cause: err,
 		}
 	}
 	ctx = context.WithoutCancel(ctx)
@@ -151,9 +150,8 @@ func (s *Shard) settingsSelection(
 		selection.Thinking, err = listed.ThinkingFor(effort)
 		if err != nil {
 			return selection, &hostaccess.ChangeRefusal{
-				Kind:    hostaccess.ChangeSettingUnavailable,
-				Message: err.Error(),
-				Cause:   err,
+				Kind:  hostaccess.ChangeSettingUnavailable,
+				Cause: err,
 			}
 		}
 	}
@@ -161,9 +159,8 @@ func (s *Shard) settingsSelection(
 		selection.ServiceTierID, err = listed.TierFor(tier)
 		if err != nil {
 			return selection, &hostaccess.ChangeRefusal{
-				Kind:    hostaccess.ChangeSettingUnavailable,
-				Message: err.Error(),
-				Cause:   err,
+				Kind:  hostaccess.ChangeSettingUnavailable,
+				Cause: err,
 			}
 		}
 	}

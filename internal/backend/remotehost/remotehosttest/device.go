@@ -243,16 +243,8 @@ func (l *TestLink) Next(ctx context.Context) (runnerwire.Inbound, error) {
 	}
 }
 
-// TryNext takes a queued message without waiting; false means no queued frame.
-func (l *TestLink) TryNext() (runnerwire.Inbound, bool, error) {
-	select {
-	case frame := <-l.outgoing:
-		message, err := runnerwire.DecodeInbound(frame)
-		return message, true, err
-	default:
-		return nil, false, nil
-	}
-}
+// Queued counts the backend's frames not yet taken.
+func (l *TestLink) Queued() int { return len(l.outgoing) }
 
 // Send encodes and sends a runner message to the backend.
 func (l *TestLink) Send(ctx context.Context, message runnerwire.Outbound) error {

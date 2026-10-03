@@ -37,7 +37,7 @@ func startSandbox(ctx context.Context, s CloudShard, m *machine) error {
 	}
 	backend, ok := s.PublicURL().URL()
 	if !ok {
-		//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		//nolint:staticcheck // Product text, shown to the user as it is.
 		return failed(errors.New("The backend does not listen yet"))
 	}
 	_, err := Call(

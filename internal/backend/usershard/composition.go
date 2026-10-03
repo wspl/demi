@@ -210,8 +210,8 @@ func (s *Shard) PackageCall(
 	args json.RawMessage,
 	kind plugin.CallKind,
 ) (json.RawMessage, error) {
-	packageDefinition := s.services.Native.Package(operation.Package)
-	if packageDefinition == nil {
+	packageDefinition, ok := s.services.Native.Package(operation.Package)
+	if !ok {
 		return nil, fmt.Errorf("the catalog serves no such package")
 	}
 	callKind := hostaccess.Starts
@@ -229,7 +229,7 @@ func (s *Shard) PackageCall(
 		conversation,
 		callKind,
 		hostaccess.ServiceCall{
-			Binding:  hostaccess.ServiceBinding{Package: *packageDefinition, Operation: operation.Operation},
+			Binding:  hostaccess.ServiceBinding{Package: packageDefinition, Operation: operation.Operation},
 			Args:     args,
 			MaxBytes: 1024 * 1024,
 		},
@@ -278,8 +278,7 @@ func (s *Shard) ReadHostFiles(
 	reads []plugin.HostRead,
 ) ([]plugin.HostFile, error) {
 	files, err := hostaccess.ReadFiles(ctx, s, conversation, reads)
-	var refusal *hostaccess.ReadFilesError
-	if errors.As(err, &refusal) && refusal.Kind == hostaccess.ReadFilesNotRunning {
+	if errors.Is(err, hostaccess.ErrNotRunning) {
 		return nil, &plugin.PortRefusalNotRunning{}
 	}
 	return files, accessFailure(err)

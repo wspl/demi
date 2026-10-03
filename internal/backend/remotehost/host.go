@@ -320,22 +320,22 @@ func (h *Host) OpenService(
 }
 
 // CallService sends one complete input and returns at most maxBytes of output.
-// A nonzero exit reports its code, stderr tail and whole stdout in ServiceCallError.
+// A nonzero exit reports its code, stderr tail and whole stdout in a *ServiceExitError.
 func (h *Host) CallService(ctx context.Context, request ServiceRequest, input []byte, maxBytes int) ([]byte, error) {
 	link, err := h.connection()
 	if err != nil {
-		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+		return nil, err
 	}
 	incoming := link.pipes.ToDevice(link.device)
 	outgoing := link.pipes.FromDevice(link.device)
 	writer, err := incoming.Writer()
 	if err != nil {
-		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+		return nil, err
 	}
 	defer writer.Fail("the writer went away before the end")
 	reader, err := outgoing.Reader()
 	if err != nil {
-		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+		return nil, err
 	}
 	defer func() {
 		if closeErr := reader.Close(context.WithoutCancel(ctx)); closeErr != nil {
@@ -346,16 +346,13 @@ func (h *Host) CallService(ctx context.Context, request ServiceRequest, input []
 	if err != nil {
 		incoming.Fail("service call failed")
 		outgoing.Fail("service call failed")
-		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+		return nil, err
 	}
 	defer stream.Close()
 	if err = writer.Write(ctx, input); err != nil {
 		incoming.Fail("service call failed")
 		outgoing.Fail("service call failed")
-		return nil, &ServiceCallError{
-			Kind: ServiceHostError,
-			Err:  &host.Error{Kind: host.Interrupted, Message: err.Error()},
-		}
+		return nil, &host.Error{Kind: host.Interrupted, Message: err.Error()}
 	}
 	writer.End()
 	output, err := collectService(ctx, reader, incoming, outgoing, maxBytes)
@@ -364,10 +361,10 @@ func (h *Host) CallService(ctx context.Context, request ServiceRequest, input []
 	}
 	end, err := stream.Done(ctx)
 	if err != nil {
-		return nil, &ServiceCallError{Kind: ServiceHostError, Err: err}
+		return nil, err
 	}
 	if end.ExitCode != 0 {
-		return nil, &ServiceCallError{Kind: ServiceExited, ExitCode: end.ExitCode, Stderr: end.Stderr, Stdout: output}
+		return nil, &ServiceExitError{ExitCode: end.ExitCode, Stderr: end.Stderr, Stdout: output}
 	}
 	return output, nil
 }
@@ -440,11 +437,6 @@ func (j *Job) Follow(ctx context.Context, follow bool) error {
 // RunningHint returns guidance from the latest declared command that supplies it.
 func (j *Job) RunningHint() *string {
 	return j.state.runningHint()
-}
-
-// Ended returns the terminal result, or nil while running.
-func (j *Job) Ended() *JobEnd {
-	return j.state.ended()
 }
 
 // End waits for the job's terminal result.
@@ -589,50 +581,19 @@ func (s *ServiceStream) Close() {
 	s.cancel()
 }
 
-// ServiceCallErrorKind identifies a one-shot service failure.
-type ServiceCallErrorKind uint8
-
-const (
-	// ServiceHostError wraps a Host operation failure.
-	ServiceHostError ServiceCallErrorKind = iota
-	// ServiceExited means the invocation exited nonzero.
-	ServiceExited
-	// ServiceTooLarge means stdout exceeded the requested bound.
-	ServiceTooLarge
-)
-
-// ServiceCallError carries a Host failure, nonzero completion, or output limit.
-type ServiceCallError struct {
-	// Kind identifies the service failure.
-	Kind ServiceCallErrorKind
-	// Err is the underlying Host failure, when present.
-	Err error
+// ServiceExitError is a one-shot service call whose invocation exited nonzero.
+type ServiceExitError struct {
 	// ExitCode is the nonzero service exit status.
 	ExitCode uint8
-	// Stderr is the diagnostic tail of a failed service.
+	// Stderr is the diagnostic tail of the failed service.
 	Stderr string
-	// Stdout is the collected output of a failed service.
+	// Stdout is the collected output of the failed service.
 	Stdout []byte
-	// Limit is the exceeded stdout byte bound.
-	Limit int
 }
 
 // Error describes the failed service call.
-func (e *ServiceCallError) Error() string {
-	switch e.Kind {
-	case ServiceHostError:
-		return e.Err.Error()
-	case ServiceExited:
-		return fmt.Sprintf("Service call exited with %d: %s", e.ExitCode, strings.TrimSpace(e.Stderr))
-	case ServiceTooLarge:
-		return fmt.Sprintf("Service answer exceeds %d bytes", e.Limit)
-	}
-	return "unknown service call error"
-}
-
-// Unwrap exposes an underlying Host failure for errors.Is and errors.As.
-func (e *ServiceCallError) Unwrap() error {
-	return e.Err
+func (e *ServiceExitError) Error() string {
+	return fmt.Sprintf("Service call exited with %d: %s", e.ExitCode, strings.TrimSpace(e.Stderr))
 }
 
 var _ host.Host = (*Host)(nil)
@@ -721,7 +682,7 @@ func (j *Job) finish(end JobEnd) {
 }
 
 // live reports whether a job still has a runner and no terminal result.
-func (j *Job) live() bool { return j.link != nil && j.state.ended() == nil }
+func (j *Job) live() bool { return j.link != nil && !j.state.hasEnded() }
 
 // sendStdin preserves stdin ordering while splitting writes to the runner's frame bound.
 func sendStdin(ctx context.Context, link *Link, data []byte, frame func([]byte) runnerwire.Inbound) error {
@@ -744,15 +705,13 @@ func collectService(ctx context.Context, reader *PipeReader, incoming, outgoing 
 			break
 		}
 		if readErr != nil {
-			return nil, &ServiceCallError{
-				Kind: ServiceHostError,
-				Err:  &host.Error{Kind: host.Interrupted, Message: readErr.Error()},
-			}
+			return nil, &host.Error{Kind: host.Interrupted, Message: readErr.Error()}
 		}
 		if len(chunk) > maxBytes-len(output) {
 			incoming.Fail("service call failed")
 			outgoing.Fail("service call failed")
-			return nil, &ServiceCallError{Kind: ServiceTooLarge, Limit: maxBytes}
+			//nolint:staticcheck // ST1005: product text, shown to the user as it is.
+			return nil, fmt.Errorf("Service answer exceeds %d bytes", maxBytes)
 		}
 		output = append(output, chunk...)
 	}

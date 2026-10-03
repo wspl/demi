@@ -103,7 +103,7 @@ func holdReset(ctx context.Context, s CloudShard, uses []cloudUse, timeout time.
 			if err != nil {
 				return nil, failed(err)
 			}
-			//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+			//nolint:staticcheck // Product text, shown to the user as it is.
 			return nil, failed(fmt.Errorf("The conversation %s did not stop for the reset", use.id))
 		}
 		held = append(held, hold)

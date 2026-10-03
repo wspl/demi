@@ -186,7 +186,7 @@ func (s *Shard) connectAdmittedExpose(
 
 // startExposeRelay transfers the watcher and pipe ownership to a shard worker.
 func (s *Shard) startExposeRelay(opening exposeOpening, watched <-chan struct{}) (*hostaccess.Lease, error) {
-	lease, _ := hostaccess.NewLease(opening.lifetime)
+	lease := hostaccess.NewLease(opening.lifetime)
 	if !s.startWorker(func(context.Context) {
 		defer func() {
 			lease.Release()
