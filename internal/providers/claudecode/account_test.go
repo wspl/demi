@@ -14,7 +14,14 @@ import (
 
 func TestSetupTokenAccountAndPlacementRequirement(t *testing.T) {
 	p, pool := testProvider(t, "http://127.0.0.1:9/catalog", "http://127.0.0.1:9/usage")
-	staged := New(NewConfig("entry-1", "Claude", nil), pool, &provider.MemorySnapshots{}, p.models, http.DefaultClient, testClock())
+	staged := New(
+		NewConfig("entry-1", "Claude", nil),
+		pool,
+		&provider.MemorySnapshots{},
+		p.models,
+		http.DefaultClient,
+		testClock(),
+	)
 	message := "No Claude Code account is signed in"
 	equal(t, staged.AuthStatus(t.Context()), &core.Unauthenticated{Message: &message})
 	accounts := staged.Accounts()
@@ -62,7 +69,8 @@ func TestSetupTokenAccountAndPlacementRequirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	equal(t, required.Provider, "Claude")
-	replaced, err := pool.Document(added.ID).Replace(t.Context(), `{"accessToken":"x","refreshToken":"y"}`, document.Version)
+	replaced, err := pool.Document(added.ID).
+		Replace(t.Context(), `{"accessToken":"x","refreshToken":"y"}`, document.Version)
 	if err != nil || !replaced {
 		t.Fatal(replaced, err)
 	}
@@ -70,13 +78,31 @@ func TestSetupTokenAccountAndPlacementRequirement(t *testing.T) {
 		t.Fatal("corrupt document accepted")
 	}
 }
+
 func vendorJSON(v *providertest.MockVendor, body string) {
-	v.Respond(providertest.MockResponse{Status: 200, Headers: http.Header{"Content-Type": []string{"application/json"}}, Chunks: [][]byte{[]byte(body)}})
+	v.Respond(
+		providertest.MockResponse{
+			Status:  200,
+			Headers: http.Header{"Content-Type": []string{"application/json"}},
+			Chunks:  [][]byte{[]byte(body)},
+		},
+	)
 }
+
 func TestQuotaProbeAndCLIObservation(t *testing.T) {
 	vendor := providertest.StartVendor(t)
 	p, _ := testProvider(t, "http://127.0.0.1:9/catalog", vendor.URL("/api/oauth/usage"))
-	vendorJSON(vendor, `{"five_hour":{"utilization":12,"resets_at":"2026-09-24T10:00:00.000Z"},"seven_day":{"utilization":"lots"},"seven_day_opus":null,"limits":[{"kind":"session","percent":12},{"percent":50},{"kind":"weekly_scoped","percent":100,"severity":"critical","resets_at":"2026-09-28T08:00:00Z","scope":{"model":{"display_name":"Fable"}}},{"kind":"monthly_credits","percent":85,"severity":"sideways"}]}`)
+	vendorJSON(
+		vendor,
+		`{"five_hour":{"utilization":12,`+
+			`"resets_at":"2026-09-24T10:00:00.000Z"},`+
+			`"seven_day":{"utilization":"lots"},"seven_day_opus":null,`+
+			`"limits":[{"kind":"session","percent":12},{"percent":50},`+
+			`{"kind":"weekly_scoped","percent":100,"severity":"critical",`+
+			`"resets_at":"2026-09-28T08:00:00Z",`+
+			`"scope":{"model":{"display_name":"Fable"}}},`+
+			`{"kind":"monthly_credits","percent":85,"severity":"sideways"}]}`,
+	)
 	snapshot, err := p.Quota().Probe(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +140,16 @@ func TestQuotaProbeAndCLIObservation(t *testing.T) {
 	equal(t, quotaErr.Message, "Claude usage request failed (401): token expired")
 	placement := &scriptedPlacement{t: t, setup: func(c *scriptedCLI) {
 		c.onWrite = func(_ map[string]json.RawMessage) {
-			c.say(`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1790855225,"rateLimitType":"seven_day_opus","utilization":0.97,"unifiedWindows":{"five_hour":{"utilization":0.33,"resetsAt":1790855225},"seven_day":{"utilization":0.5,"resetsAt":"soon"},"seven_day_overage_included":{"utilization":0.1,"resetsAt":1790855225}}}}`)
+			c.say(
+				`{"type":"rate_limit_event",` +
+					`"rate_limit_info":{"status":"allowed_warning",` +
+					`"resetsAt":1790855225,"rateLimitType":"seven_day_opus",` +
+					`"utilization":0.97,` +
+					`"unifiedWindows":{"five_hour":{"utilization":0.33,` +
+					`"resetsAt":1790855225},"seven_day":{"utilization":0.5,` +
+					`"resetsAt":"soon"},` +
+					`"seven_day_overage_included":{"utilization":0.1,"resetsAt":1790855225}}}}`,
+			)
 			c.result(1, 1)
 		}
 	}}
@@ -143,21 +178,53 @@ func TestQuotaProbeAndCLIObservation(t *testing.T) {
 			equal(t, *w.Severity, core.QuotaSeverity("critical"))
 		}
 	}
-	equal(t, ids, []string{"five_hour", "limit:weekly_scoped:Fable", "limit:monthly_credits", "seven_day", "seven_day_opus"})
+	equal(
+		t,
+		ids,
+		[]string{"five_hour", "limit:weekly_scoped:Fable", "limit:monthly_credits", "seven_day", "seven_day_opus"},
+	)
 }
+
 func TestClaudeCatalogMinimumOrderingAndThinking(t *testing.T) {
 	vendor := providertest.StartVendor(t)
 	p, _ := testProvider(t, vendor.URL("/api.json"), "http://127.0.0.1:9/usage")
 	models := map[string]any{}
-	for _, id := range []string{"claude-haiku-4-5", "claude-sonnet-4-6", "claude-3-5-sonnet-20241022", "claude-opus-4-8", "claude-opus-4-6", "claude-sonnet-4-20250514", "claude-mystery", "gpt-4o"} {
+	for _, id := range []string{
+		"claude-haiku-4-5",
+		"claude-sonnet-4-6",
+		"claude-3-5-sonnet-20241022",
+		"claude-opus-4-8",
+		"claude-opus-4-6",
+		"claude-sonnet-4-20250514",
+		"claude-mystery",
+		"gpt-4o",
+	} {
 		name := id
 		if id == "claude-opus-4-8" {
 			name = "Claude Opus 4.8"
 		}
-		models[id] = map[string]any{"name": name, "attachment": true, "reasoning": true, "tool_call": true, "reasoning_options": []any{map[string]any{"type": "effort", "values": []string{"low", "medium", "high"}}}, "limit": map[string]int{"context": 1000000, "output": 128000}, "cost": map[string]float64{"input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25}}
+		models[id] = map[string]any{
+			"name":              name,
+			"attachment":        true,
+			"reasoning":         true,
+			"tool_call":         true,
+			"reasoning_options": []any{map[string]any{"type": "effort", "values": []string{"low", "medium", "high"}}},
+			"limit":             map[string]int{"context": 1000000, "output": 128000},
+			"cost":              map[string]float64{"input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25},
+		}
 	}
 	models["claude-newfamily-5"] = map[string]any{"name": "Claude Newfamily 5"}
-	data, err := provider.JSONBody(map[string]any{"anthropic": map[string]any{"id": "anthropic", "name": "Anthropic", "npm": "@ai-sdk/anthropic", "models": models}, "openai": map[string]any{"id": "openai", "name": "OpenAI", "models": map[string]any{}}})
+	data, err := provider.JSONBody(
+		map[string]any{
+			"anthropic": map[string]any{
+				"id":     "anthropic",
+				"name":   "Anthropic",
+				"npm":    "@ai-sdk/anthropic",
+				"models": models,
+			},
+			"openai": map[string]any{"id": "openai", "name": "OpenAI", "models": map[string]any{}},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -55,7 +55,10 @@ type ModelsDevError struct {
 	Err     error
 }
 
+// Error returns the diagnostic for this failure.
 func (e *ModelsDevError) Error() string { return e.Message }
+
+// Unwrap returns the underlying cause.
 func (e *ModelsDevError) Unwrap() error { return e.Err }
 
 // ModelsDevSnapshot is one read's document and freshness metadata.
@@ -76,6 +79,7 @@ func (c *ModelsDevClient) Refreshed(ctx context.Context) (ModelsDevSnapshot, err
 func (c *ModelsDevClient) Current(ctx context.Context) (ModelsDevSnapshot, error) {
 	return c.read(ctx, true)
 }
+
 func (c *ModelsDevClient) read(ctx context.Context, reuse bool) (ModelsDevSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return ModelsDevSnapshot{}, err
@@ -109,39 +113,9 @@ func (c *ModelsDevClient) read(ctx context.Context, reuse bool) (ModelsDevSnapsh
 	}
 	flight.readers++
 	c.mu.Unlock()
-	select {
-	case <-ctx.Done():
-		c.mu.Lock()
-		flight.readers--
-		last := flight.readers == 0
-		if last {
-			flight.cancel()
-			if c.flight == flight {
-				c.flight = nil
-			}
-		}
-		c.mu.Unlock()
-		if last {
-			<-flight.done
-		}
-		return ModelsDevSnapshot{}, ctx.Err()
-	case <-flight.done:
-		c.mu.Lock()
-		flight.readers--
-		kept := c.copy
-		c.mu.Unlock()
-		if flight.err == nil {
-			return flight.copy.snapshot(), nil
-		}
-		if kept == nil {
-			return ModelsDevSnapshot{}, flight.err
-		}
-		result := kept.snapshot()
-		result.Stale = true
-		result.Warnings = []string{"Using stale models.dev catalog: " + flight.err.Error()}
-		return result, nil
-	}
+	return c.waitRead(ctx, flight)
 }
+
 func (c *ModelsDevClient) request(ctx context.Context, previous *documentCopy) (*documentCopy, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
@@ -170,7 +144,9 @@ func (c *ModelsDevClient) request(ctx context.Context, previous *documentCopy) (
 		return &document, nil
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, &ModelsDevError{Message: fmt.Sprintf("models.dev catalog request failed with HTTP %d", response.StatusCode)}
+		return nil, &ModelsDevError{
+			Message: fmt.Sprintf("models.dev catalog request failed with HTTP %d", response.StatusCode),
+		}
 	}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -181,8 +157,15 @@ func (c *ModelsDevClient) request(ctx context.Context, previous *documentCopy) (
 	if err != nil {
 		return nil, &ModelsDevError{Message: "models.dev catalog cannot be read at " + err.Error(), Err: err}
 	}
-	return &documentCopy{vendors: vendors, fetchedAt: c.clock.Now(), confirmedAt: time.Now(), etag: response.Header.Get("ETag"), modified: response.Header.Get("Last-Modified")}, nil
+	return &documentCopy{
+		vendors:     vendors,
+		fetchedAt:   c.clock.Now(),
+		confirmedAt: time.Now(),
+		etag:        response.Header.Get("ETag"),
+		modified:    response.Header.Get("Last-Modified"),
+	}, nil
 }
+
 func (c *documentCopy) snapshot() ModelsDevSnapshot {
 	return ModelsDevSnapshot{vendors: c.vendors, FetchedAt: c.fetchedAt, Warnings: []string{}}
 }
@@ -267,6 +250,7 @@ func vendorMembers(data []byte, visit func(string, json.RawMessage) error) error
 	}
 	return nil
 }
+
 func decodeModelsDocument(data []byte) ([]ModelsDevVendor, error) {
 	vendors := make([]ModelsDevVendor, 0)
 	err := vendorMembers(data, func(key string, raw json.RawMessage) error {
@@ -355,77 +339,19 @@ func (s ModelsDevSnapshot) VendorModels(id string) *core.ProviderModelList {
 	if vendor == nil {
 		return nil
 	}
-	return &core.ProviderModelList{Models: vendor.Models(), Warnings: append([]string{}, s.Warnings...), SourceFetchedAt: s.FetchedAt, Stale: s.Stale}
+	return &core.ProviderModelList{
+		Models:          vendor.Models(),
+		Warnings:        append([]string{}, s.Warnings...),
+		SourceFetchedAt: s.FetchedAt,
+		Stale:           s.Stale,
+	}
 }
 
 // Models returns the vendor's models in document order with unknown facts kept absent.
 func (v ModelsDevVendor) Models() []core.ProviderModel {
 	result := make([]core.ProviderModel, 0, len(v.models))
 	for _, named := range v.models {
-		// Return independently owned optional fields, without exposing the
-		// cached model's pointers.
-		model := named.model
-		catalog := core.ProviderModel{ID: named.id, DisplayName: named.id, ServiceTiers: []core.ServiceTier{}}
-		if model.Name != nil {
-			catalog.DisplayName = *model.Name
-		}
-		if model.Description != nil {
-			value := *model.Description
-			catalog.Description = &value
-		}
-		if model.ToolCall != nil {
-			value := *model.ToolCall
-			catalog.SupportsTools = &value
-		}
-		if model.Attachment != nil {
-			value := *model.Attachment
-			catalog.SupportsAttachments = &value
-		}
-		if model.Reasoning != nil {
-			value := *model.Reasoning
-			catalog.SupportsReasoning = &value
-		}
-		if model.Limit != nil {
-			catalog.ContextWindow = modelTokens(model.Limit.Context)
-			catalog.OutputLimit = modelTokens(model.Limit.Output)
-		}
-		if model.Cost != nil {
-			cost := core.ModelCost{}
-			if model.Cost.Input != nil {
-				value := *model.Cost.Input
-				cost.Input = &value
-			}
-			if model.Cost.Output != nil {
-				value := *model.Cost.Output
-				cost.Output = &value
-			}
-			if model.Cost.CacheRead != nil {
-				value := *model.Cost.CacheRead
-				cost.CacheRead = &value
-			}
-			if model.Cost.CacheWrite != nil {
-				value := *model.Cost.CacheWrite
-				cost.CacheWrite = &value
-			}
-			catalog.Cost = &cost
-		}
-		if model.ReasoningOptions != nil {
-			for _, option := range *model.ReasoningOptions {
-				if option.Kind != "effort" {
-					continue
-				}
-				if option.Values != nil {
-					efforts := make([]string, 0, len(*option.Values))
-					for _, value := range *option.Values {
-						if value != nil && *value != "" {
-							efforts = append(efforts, *value)
-						}
-					}
-					catalog.SupportedThinkingEfforts = &efforts
-				}
-				break
-			}
-		}
+		catalog := named.catalog()
 		result = append(result, catalog)
 	}
 	return result
@@ -438,4 +364,112 @@ func modelTokens(value *float64) *uint32 {
 	}
 	result := uint32(*value)
 	return &result
+}
+
+func (c *ModelsDevClient) waitRead(ctx context.Context, flight *catalogFlight) (ModelsDevSnapshot, error) {
+	select {
+	case <-ctx.Done():
+		c.mu.Lock()
+		flight.readers--
+		last := flight.readers == 0
+		if last {
+			flight.cancel()
+			if c.flight == flight {
+				c.flight = nil
+			}
+		}
+		c.mu.Unlock()
+		if last {
+			<-flight.done
+		}
+		return ModelsDevSnapshot{}, ctx.Err()
+	case <-flight.done:
+		c.mu.Lock()
+		flight.readers--
+		kept := c.copy
+		c.mu.Unlock()
+		if flight.err == nil {
+			return flight.copy.snapshot(), nil
+		}
+		if kept == nil {
+			return ModelsDevSnapshot{}, flight.err
+		}
+		result := kept.snapshot()
+		result.Stale = true
+		result.Warnings = []string{"Using stale models.dev catalog: " + flight.err.Error()}
+		return result, nil
+	}
+}
+
+func (n namedModel) catalog() core.ProviderModel {
+	// Return independently owned optional fields, without exposing the
+	// cached model's pointers.
+	model := n.model
+	catalog := core.ProviderModel{ID: n.id, DisplayName: n.id, ServiceTiers: []core.ServiceTier{}}
+	if model.Name != nil {
+		catalog.DisplayName = *model.Name
+	}
+	if model.Description != nil {
+		value := *model.Description
+		catalog.Description = &value
+	}
+	if model.ToolCall != nil {
+		value := *model.ToolCall
+		catalog.SupportsTools = &value
+	}
+	if model.Attachment != nil {
+		value := *model.Attachment
+		catalog.SupportsAttachments = &value
+	}
+	if model.Reasoning != nil {
+		value := *model.Reasoning
+		catalog.SupportsReasoning = &value
+	}
+	if model.Limit != nil {
+		catalog.ContextWindow = modelTokens(model.Limit.Context)
+		catalog.OutputLimit = modelTokens(model.Limit.Output)
+	}
+	if model.Cost != nil {
+		cost := core.ModelCost{}
+		if model.Cost.Input != nil {
+			value := *model.Cost.Input
+			cost.Input = &value
+		}
+		if model.Cost.Output != nil {
+			value := *model.Cost.Output
+			cost.Output = &value
+		}
+		if model.Cost.CacheRead != nil {
+			value := *model.Cost.CacheRead
+			cost.CacheRead = &value
+		}
+		if model.Cost.CacheWrite != nil {
+			value := *model.Cost.CacheWrite
+			cost.CacheWrite = &value
+		}
+		catalog.Cost = &cost
+	}
+	catalog.SupportedThinkingEfforts = modelThinkingEfforts(model)
+	return catalog
+}
+
+func modelThinkingEfforts(model modelsDevModel) *[]string {
+	if model.ReasoningOptions != nil {
+		for _, option := range *model.ReasoningOptions {
+			if option.Kind != "effort" {
+				continue
+			}
+			if option.Values != nil {
+				efforts := make([]string, 0, len(*option.Values))
+				for _, value := range *option.Values {
+					if value != nil && *value != "" {
+						efforts = append(efforts, *value)
+					}
+				}
+				return &efforts
+			}
+			break
+		}
+	}
+	return nil
 }

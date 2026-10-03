@@ -21,10 +21,22 @@ func TestRefusedRequestRefreshesOnce(t *testing.T) {
 	equal(t, events, []provider.Event{&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}})
 	requests := v.Requests()
 	equal(t, len(requests), 3)
-	equal(t, []string{requests[0].URI, requests[1].URI, requests[2].URI}, []string{responses, "/oauth/token", responses})
+	equal(
+		t,
+		[]string{requests[0].URI, requests[1].URI, requests[2].URI},
+		[]string{responses, "/oauth/token", responses},
+	)
 	equal(t, requests[0].Header("Authorization"), "Bearer "+freshToken(t))
 	equal(t, requests[2].Header("Authorization"), "Bearer new-access")
-	equal(t, requests[1].JSON(t), map[string]any{"client_id": "app_EMoamEEZ73f0CkXaXp7hrann", "grant_type": "refresh_token", "refresh_token": "refresh-1"})
+	equal(
+		t,
+		requests[1].JSON(t),
+		map[string]any{
+			"client_id":     "app_EMoamEEZ73f0CkXaXp7hrann",
+			"grant_type":    "refresh_token",
+			"refresh_token": "refresh-1",
+		},
+	)
 	stored, err := pool.Document(account).Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -35,6 +47,7 @@ func TestRefusedRequestRefreshesOnce(t *testing.T) {
 	equal(t, got["accountId"], "acct-1")
 	equal(t, got["lastRefresh"], string(now))
 }
+
 func TestCompetingRefresherIsAdopted(t *testing.T) {
 	v, pool, p := setup(t)
 	v.RespondAt(responses, answer(401, ""))
@@ -76,6 +89,7 @@ func TestCompetingRefresherIsAdopted(t *testing.T) {
 	equal(t, []string{v.Requests()[0].URI, v.Requests()[1].URI}, []string{responses, responses})
 	equal(t, v.Requests()[1].Header("Authorization"), "Bearer rotated-access")
 }
+
 func TestSecondRefusalFails(t *testing.T) {
 	v, _, p := setup(t)
 	v.RespondAt(responses, answer(401, ""))
@@ -86,6 +100,7 @@ func TestSecondRefusalFails(t *testing.T) {
 	equal(t, f.Message, "Codex API request failed with HTTP 401: still expired")
 	equal(t, len(v.Requests()), 3)
 }
+
 func TestDueTokensRefreshBeforeRequest(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -93,7 +108,22 @@ func TestDueTokensRefreshBeforeRequest(t *testing.T) {
 		last    core.Timestamp
 		refresh bool
 	}{
-		{"expiring", 1789740060, now, true}, {"stale", 1789743600, "2026-09-10T14:00:00.000Z", true}, {"recent", 1789743600, "2026-09-11T14:00:01.000Z", false},
+		{
+			"expiring",
+			1789740060,
+			now,
+			true,
+		}, {
+			"stale",
+			1789743600,
+			"2026-09-10T14:00:00.000Z",
+			true,
+		}, {
+			"recent",
+			1789743600,
+			"2026-09-11T14:00:01.000Z",
+			false,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			v := providertest.StartVendor(t)
@@ -112,6 +142,7 @@ func TestDueTokensRefreshBeforeRequest(t *testing.T) {
 		})
 	}
 }
+
 func TestConcurrentRequestsRefreshOnce(t *testing.T) {
 	v := providertest.StartVendor(t)
 	pool := poolWith(t, document(t, accessToken(t, 1789740060), "refresh-1", now))
@@ -141,6 +172,7 @@ func TestConcurrentRequestsRefreshOnce(t *testing.T) {
 	equal(t, refreshes, 1)
 	equal(t, len(v.Requests()), 3)
 }
+
 func TestRefusedRefreshFails(t *testing.T) {
 	v := providertest.StartVendor(t)
 	pool := poolWith(t, document(t, accessToken(t, 1789740060), "refresh-1", now))
@@ -150,6 +182,7 @@ func TestRefusedRefreshFails(t *testing.T) {
 	equal(t, *f.Code, provider.AuthRefreshFailed)
 	equal(t, f.Message, "Codex token refresh failed with HTTP 400")
 }
+
 func TestStatusAndInvalidOrMissingAccount(t *testing.T) {
 	v, pool, p := setup(t)
 	state, ok := p.AuthStatus(t.Context()).(*core.Authenticated)
@@ -167,16 +200,25 @@ func TestStatusAndInvalidOrMissingAccount(t *testing.T) {
 	corrupt := poolWith(t, `{"accessToken":"sk-secret-token","refreshToken":7}`)
 	p = configured(t, v, corrupt, nil)
 	invalid, ok := p.AuthStatus(t.Context()).(*core.AuthError)
-	if !ok || strings.Contains(invalid.Message, "sk-secret-token") || !strings.Contains(invalid.Message, "refreshToken") {
+	if !ok || strings.Contains(invalid.Message, "sk-secret-token") ||
+		!strings.Contains(invalid.Message, "refreshToken") {
 		t.Fatalf("invalid state: %v", invalid)
 	}
-	equal(t, *failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest())).Code, provider.AuthInvalid)
+	equal(
+		t,
+		*failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest())).Code,
+		provider.AuthInvalid,
+	)
 	p = configured(t, v, pool, func(c *codex.Config) { c.Account = nil })
 	missing, ok := p.AuthStatus(t.Context()).(*core.Unauthenticated)
 	if !ok {
 		t.Fatal("missing account authenticated")
 	}
 	equal(t, *missing.Message, "No Codex account is signed in")
-	equal(t, *failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest())).Code, provider.AuthMissing)
+	equal(
+		t,
+		*failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest())).Code,
+		provider.AuthMissing,
+	)
 	equal(t, len(v.Requests()), 0)
 }

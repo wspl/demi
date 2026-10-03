@@ -11,15 +11,24 @@ func responsesBody(request provider.InferenceRequest, policy provider.VendorPoli
 		assistant = provider.AssistantCompleted
 	}
 	input, err := provider.ResponsesInput(request.Items, provider.ResponsesDialect{
-		SignatureTag: signatureTag, Assistant: assistant, Reasoning: provider.ReasoningReplayable, ToolMedia: provider.ToolMediaFollowUp,
+		SignatureTag: signatureTag,
+		Assistant:    assistant,
+		Reasoning:    provider.ReasoningReplayable,
+		ToolMedia:    provider.ToolMediaFollowUp,
 	})
 	if err != nil {
 		return nil, err
 	}
 	body := responsesRequest{
-		Model: request.ModelID, Input: input, Stream: true, Store: false,
-		Include: [1]string{"reasoning.encrypted_content"}, PromptCacheKey: provider.PromptCacheKey(request.SessionID),
-		MaxOutputTokens: request.MaxOutputTokens(), Reasoning: provider.ResponsesReasoning(request.Thinking, provider.SummaryOmitted), ServiceTier: request.ServiceTierID,
+		Model:           request.ModelID,
+		Input:           input,
+		Stream:          true,
+		Store:           false,
+		Include:         [1]string{"reasoning.encrypted_content"},
+		PromptCacheKey:  provider.PromptCacheKey(request.SessionID),
+		MaxOutputTokens: request.MaxOutputTokens(),
+		Reasoning:       provider.ResponsesReasoning(request.Thinking, provider.SummaryOmitted),
+		ServiceTier:     request.ServiceTierID,
 	}
 	if !core.IsBlank(request.SystemPrompt) {
 		body.Instructions = &request.SystemPrompt
@@ -53,7 +62,11 @@ type responsesRequest struct {
 }
 
 func chatBody(request provider.InferenceRequest, policy provider.VendorPolicy) ([]byte, error) {
-	messages, err := provider.ChatMessages(request.SystemPrompt, request.Items, provider.ChatDialect{ReasoningContent: policy.PassBackReasoningContent, Media: provider.ChatNative})
+	messages, err := provider.ChatMessages(
+		request.SystemPrompt,
+		request.Items,
+		provider.ChatDialect{ReasoningContent: policy.PassBackReasoningContent, Media: provider.ChatNative},
+	)
 	if err != nil {
 		return nil, err
 	}

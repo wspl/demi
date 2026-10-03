@@ -18,7 +18,9 @@ type ProbeCost uint8
 
 // Costs a quota source may incur.
 const (
+	// ProbeFree identifies a quota probe that spends no inference.
 	ProbeFree ProbeCost = iota
+	// ProbeInference identifies a quota probe that spends inference.
 	ProbeInference
 )
 
@@ -51,10 +53,15 @@ type QuotaErrorKind uint8
 
 // Quota failure categories exposed to callers.
 const (
+	// QuotaUnsupported identifies a provider without quota probing.
 	QuotaUnsupported QuotaErrorKind = iota
+	// QuotaRequiresInference identifies a probe that would spend inference.
 	QuotaRequiresInference
+	// QuotaUnauthenticated identifies a probe prevented by authentication.
 	QuotaUnauthenticated
+	// QuotaUnavailable identifies an unavailable usage endpoint.
 	QuotaUnavailable
+	// QuotaInvalid identifies an unreadable usage answer.
 	QuotaInvalid
 )
 
@@ -64,6 +71,7 @@ type QuotaError struct {
 	Message string
 }
 
+// Error returns the diagnostic for this failure.
 func (e *QuotaError) Error() string {
 	switch e.Kind {
 	case QuotaUnsupported:
@@ -144,7 +152,12 @@ func (q *Quota) Observe(observation Observation) {
 }
 
 // mergeQuota preserves unnamed windows and replaces named windows in place.
-func mergeQuota(previous *core.QuotaSnapshot, reading ProbeReading, source core.SnapshotSource, now core.Timestamp) core.QuotaSnapshot {
+func mergeQuota(
+	previous *core.QuotaSnapshot,
+	reading ProbeReading,
+	source core.SnapshotSource,
+	now core.Timestamp,
+) core.QuotaSnapshot {
 	windows := make([]core.QuotaWindow, 0)
 	if previous != nil {
 		windows = append(windows, previous.Windows...)
@@ -162,7 +175,13 @@ func mergeQuota(previous *core.QuotaSnapshot, reading ProbeReading, source core.
 			windows = append(windows, window)
 		}
 	}
-	return core.QuotaSnapshot{ObservedAt: now, Source: source, Plan: reading.Plan, AccountLabel: reading.AccountLabel, Windows: windows}
+	return core.QuotaSnapshot{
+		ObservedAt:   now,
+		Source:       source,
+		Plan:         reading.Plan,
+		AccountLabel: reading.AccountLabel,
+		Windows:      windows,
+	}
 }
 
 // MemorySnapshots is an in-memory account snapshot store. Zero is ready to use.

@@ -83,22 +83,15 @@ type FakeWebSocket struct {
 func Start(t testing.TB, scripts []Script, fallback string) *FakeWebSocket {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	f := &FakeWebSocket{scripts: scripts, sockets: make(map[*websocket.Conn]bool), changed: make(chan struct{}), listener: &pipeListener{accepted: make(chan net.Conn), done: make(chan struct{})}, cancel: cancel, served: make(chan struct{})}
-	f.transport = &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		client, server := net.Pipe()
-		select {
-		case f.listener.accepted <- server:
-			return client, nil
-		case <-ctx.Done():
-			_ = client.Close()
-			_ = server.Close()
-			return nil, ctx.Err()
-		case <-f.listener.done:
-			_ = client.Close()
-			_ = server.Close()
-			return nil, net.ErrClosed
-		}
-	}}
+	f := &FakeWebSocket{
+		scripts:  scripts,
+		sockets:  make(map[*websocket.Conn]bool),
+		changed:  make(chan struct{}),
+		listener: &pipeListener{accepted: make(chan net.Conn), done: make(chan struct{})},
+		cancel:   cancel,
+		served:   make(chan struct{}),
+	}
+	f.transport = &http.Transport{DialContext: f.dial}
 	f.client = &http.Client{Transport: f.transport}
 	var proxy *httputil.ReverseProxy
 	if fallback != "" {
@@ -110,25 +103,28 @@ func Start(t testing.TB, scripts []Script, fallback string) *FakeWebSocket {
 		f.proxyTransport = &http.Transport{}
 		proxy.Transport = f.proxyTransport
 	}
-	f.server = &http.Server{BaseContext: func(net.Listener) context.Context { return ctx }, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		if f.closed {
-			f.mu.Unlock()
-			return
-		}
-		f.handlers.Add(1)
-		f.mu.Unlock()
-		defer f.handlers.Done()
-		if r.Header.Get("Upgrade") != "websocket" {
-			if proxy != nil {
-				proxy.ServeHTTP(w, r)
-			} else {
-				w.WriteHeader(502)
+	f.server = &http.Server{
+		BaseContext: func(net.Listener) context.Context { return ctx },
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			f.mu.Lock()
+			if f.closed {
+				f.mu.Unlock()
+				return
 			}
-			return
-		}
-		f.serve(ctx, w, r)
-	})}
+			f.handlers.Add(1)
+			f.mu.Unlock()
+			defer f.handlers.Done()
+			if r.Header.Get("Upgrade") != "websocket" {
+				if proxy != nil {
+					proxy.ServeHTTP(w, r)
+				} else {
+					w.WriteHeader(502)
+				}
+				return
+			}
+			f.serve(ctx, w, r)
+		}),
+	}
 	go func() {
 		defer close(f.served)
 		_ = f.server.Serve(f.listener)
@@ -202,6 +198,7 @@ func (f *FakeWebSocket) Close() {
 		}
 	})
 }
+
 func (f *FakeWebSocket) serve(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	script := Script{Handshake: Disconnect}
@@ -244,6 +241,51 @@ func (f *FakeWebSocket) serve(ctx context.Context, w http.ResponseWriter, r *htt
 		delete(f.sockets, socket)
 		f.mu.Unlock()
 	}()
+	f.play(ctx, socket, script, index)
+}
+
+type pipeListener struct {
+	accepted chan net.Conn
+	done     chan struct{}
+	once     sync.Once
+}
+
+// Accept waits for an in-memory connection or listener shutdown.
+func (l *pipeListener) Accept() (net.Conn, error) {
+	select {
+	case conn := <-l.accepted:
+		return conn, nil
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
+}
+
+// Close releases the in-memory listener.
+func (l *pipeListener) Close() error {
+	l.once.Do(func() { close(l.done) })
+	return nil
+}
+
+// Addr returns the in-memory listener address.
+func (*pipeListener) Addr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)} }
+
+func (f *FakeWebSocket) dial(ctx context.Context, _, _ string) (net.Conn, error) {
+	client, server := net.Pipe()
+	select {
+	case f.listener.accepted <- server:
+		return client, nil
+	case <-ctx.Done():
+		_ = client.Close()
+		_ = server.Close()
+		return nil, ctx.Err()
+	case <-f.listener.done:
+		_ = client.Close()
+		_ = server.Close()
+		return nil, net.ErrClosed
+	}
+}
+
+func (f *FakeWebSocket) play(ctx context.Context, socket *websocket.Conn, script Script, index int) {
 	_, first, err := socket.Read(ctx)
 	if err != nil {
 		return
@@ -281,20 +323,3 @@ func (f *FakeWebSocket) serve(ctx context.Context, w http.ResponseWriter, r *htt
 		f.mu.Unlock()
 	}
 }
-
-type pipeListener struct {
-	accepted chan net.Conn
-	done     chan struct{}
-	once     sync.Once
-}
-
-func (l *pipeListener) Accept() (net.Conn, error) {
-	select {
-	case conn := <-l.accepted:
-		return conn, nil
-	case <-l.done:
-		return nil, net.ErrClosed
-	}
-}
-func (l *pipeListener) Close() error { l.once.Do(func() { close(l.done) }); return nil }
-func (*pipeListener) Addr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)} }

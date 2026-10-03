@@ -3,12 +3,14 @@ package claudecode
 import "encoding/json"
 
 // rpcMessage is the sealed subset of ServerJsonRpcMessage sent by Demi.
-type rpcMessage interface{ rpcMessage() }
-type rpcSuccess struct {
-	Version string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id"`
-	Result  mcpResult       `json:"result"`
-}
+type (
+	rpcMessage interface{ rpcMessage() }
+	rpcSuccess struct {
+		Version string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Result  setModerner     `json:"result"`
+	}
+)
 
 func (rpcSuccess) rpcMessage() {}
 
@@ -30,12 +32,15 @@ type unsupportedVersion struct {
 	Supported []string `json:"supported"`
 }
 
-// mcpResult follows rmcp's ServerResult variants and declaration order.
+// setModerner selects whether an MCP result emits its modern discriminator.
+// The result shapes follow rmcp's ServerResult variants and declaration order.
 // Only result variants with a discriminator embed resultKind.
-type mcpResult interface{ setModern(bool) }
-type resultKind struct {
-	ResultType string `json:"resultType,omitempty"`
-}
+type (
+	setModerner interface{ setModern(bool) }
+	resultKind  struct {
+		ResultType string `json:"resultType,omitempty"`
+	}
+)
 
 func (r *resultKind) setModern(modern bool) {
 	r.ResultType = ""

@@ -19,38 +19,42 @@ func readFailure(d *core.ProviderErrorDiagnostics, now core.Timestamp) core.Prov
 			text = &record.Body
 		}
 	}
-	if text != nil {
-		obj, err := provider.DecodeUntagged[map[string]json.RawMessage](*text)
-		if err == nil {
-			raw := obj["error"]
-			limit, e := provider.DecodeUntagged[map[string]json.RawMessage](string(raw))
-			for _, key := range []string{"event", "response"} {
-				if e == nil && limit != nil {
-					break
-				}
-				outer, _ := provider.DecodeUntagged[map[string]json.RawMessage](string(obj[key]))
-				limit, e = provider.DecodeUntagged[map[string]json.RawMessage](string(outer["error"]))
-			}
-			if value, e := provider.DecodeUntagged[float64](string(limit["resets_at"])); e == nil {
-				return core.ProviderFailureFacts{RetryAt: provider.UnixSeconds(value)}
-			}
-			if value, e := provider.DecodeUntagged[float64](string(limit["resets_in_seconds"])); e == nil {
-				ms, _ := now.Millisecond()
-				return core.ProviderFailureFacts{RetryAt: provider.UnixSeconds(float64(ms)/1000 + value)}
-			}
+	if text == nil {
+		return provider.ReadHTTPFailure(d, now)
+	}
+	obj, err := provider.DecodeUntagged[map[string]json.RawMessage](*text)
+	if err != nil {
+		return provider.ReadHTTPFailure(d, now)
+	}
+	raw := obj["error"]
+	limit, e := provider.DecodeUntagged[map[string]json.RawMessage](string(raw))
+	for _, key := range []string{"event", "response"} {
+		if e == nil && limit != nil {
+			break
 		}
+		outer, _ := provider.DecodeUntagged[map[string]json.RawMessage](string(obj[key]))
+		limit, e = provider.DecodeUntagged[map[string]json.RawMessage](string(outer["error"]))
+	}
+	if value, e := provider.DecodeUntagged[float64](string(limit["resets_at"])); e == nil {
+		return core.ProviderFailureFacts{RetryAt: provider.UnixSeconds(value)}
+	}
+	if value, e := provider.DecodeUntagged[float64](string(limit["resets_in_seconds"])); e == nil {
+		ms, _ := now.Millisecond()
+		return core.ProviderFailureFacts{RetryAt: provider.UnixSeconds(float64(ms)/1000 + value)}
 	}
 	return provider.ReadHTTPFailure(d, now)
 }
 
-type refusal struct {
+type refusalError struct {
 	status  int
 	headers http.Header
 	body    string
 }
 
-func (r *refusal) Error() string { return http.StatusText(r.status) }
-func (p *Provider) refused(r *refusal) provider.Failure {
+// Error returns the HTTP status text of the refusal.
+func (r *refusalError) Error() string { return http.StatusText(r.status) }
+
+func (p *Provider) refused(r *refusalError) provider.Failure {
 	body, err := provider.DecodeUntagged[errorBody](r.body)
 	if err != nil {
 		body = errorBody{}
@@ -74,7 +78,7 @@ func (p *Provider) refused(r *refusal) provider.Failure {
 
 // errorBody declares only the fields Codex reports about an HTTP refusal.
 type errorBody struct {
-	Error     provider.Reported[errorFields] `json:"error" wire:"optional"`
+	Error     provider.Reported[errorFields] `json:"error"      wire:"optional"`
 	RequestID provider.ReportedString        `json:"request_id" wire:"optional"`
 }
 type errorFields struct {

@@ -23,6 +23,7 @@ type Failure struct {
 	RetryAfter  *time.Duration
 }
 
+// Error returns the diagnostic for this failure.
 func (f *Failure) Error() string { return f.Message }
 
 // ErrorCode is a recovery code or an unrecognized vendor code, retained verbatim.
@@ -30,28 +31,59 @@ type ErrorCode string
 
 // Recovery codes understood by the agent.
 const (
-	RateLimit             ErrorCode = "rate_limit"
-	RateLimited           ErrorCode = "rate_limited"
-	Overloaded            ErrorCode = "overloaded"
+	// RateLimit identifies a vendor rate limit.
+	RateLimit ErrorCode = "rate_limit"
+	// RateLimited identifies a vendor rate-limited response.
+	RateLimited ErrorCode = "rate_limited"
+	// Overloaded identifies an unavailable or overloaded vendor.
+	Overloaded ErrorCode = "overloaded"
+	// ContextLengthExceeded identifies a request beyond the model context or output limits.
 	ContextLengthExceeded ErrorCode = "context_length_exceeded"
-	Incomplete            ErrorCode = "incomplete"
-	AuthExpired           ErrorCode = "auth_expired"
-	AuthMissing           ErrorCode = "auth_missing"
-	AuthInvalid           ErrorCode = "auth_invalid"
-	AuthUnsupported       ErrorCode = "auth_unsupported"
-	AuthRefreshFailed     ErrorCode = "auth_refresh_failed"
+	// Incomplete identifies an incomplete vendor response.
+	Incomplete ErrorCode = "incomplete"
+	// AuthExpired identifies expired credentials.
+	AuthExpired ErrorCode = "auth_expired"
+	// AuthMissing identifies absent credentials.
+	AuthMissing ErrorCode = "auth_missing"
+	// AuthInvalid identifies invalid credentials.
+	AuthInvalid ErrorCode = "auth_invalid"
+	// AuthUnsupported identifies unsupported authentication.
+	AuthUnsupported ErrorCode = "auth_unsupported"
+	// AuthRefreshFailed identifies a failed credential refresh.
+	AuthRefreshFailed ErrorCode = "auth_refresh_failed"
 )
 
-var tooLarge = regexp.MustCompile(`(?i)context|too long|token|too large|too many images|many-image`)
-var categories = []struct {
-	code    ErrorCode
-	pattern *regexp.Regexp
-}{
-	{ContextLengthExceeded, regexp.MustCompile(`\bcontext\b|\btoo long\b|\btoo large\b|\btoo many images\b|\bmany image\b|\bmax\w*\b.*\btokens?\b`)},
-	{RateLimit, regexp.MustCompile(`\brate\b|\bratelimit\w*|\bquota\b|\busage limit\b|\bbilling\b|\bbalance\b`)},
-	{AuthExpired, regexp.MustCompile(`\bauth(?:entication|orization)?\b|(?:invalid|expired).*(?:api|access|auth) ?(?:key|token)|(?:api|access|auth) ?(?:key|token).*(?:invalid|expired)`)},
-	{Overloaded, regexp.MustCompile(`\boverload|\bunavailable\b|\b(?:server|internal|api) error\b|\btimed? ?out|\bfetch failed\b|\bnetwork\b|\bsocket\b|\beconn`)},
-}
+var (
+	tooLarge   = regexp.MustCompile(`(?i)context|too long|token|too large|too many images|many-image`)
+	categories = []struct {
+		code    ErrorCode
+		pattern *regexp.Regexp
+	}{
+		{
+			ContextLengthExceeded,
+			regexp.MustCompile(
+				`\bcontext\b|\btoo long\b|\btoo large\b|\btoo many images\b|` +
+					`\bmany image\b|\bmax\w*\b.*\btokens?\b`,
+			),
+		},
+		{RateLimit, regexp.MustCompile(`\brate\b|\bratelimit\w*|\bquota\b|\busage limit\b|\bbilling\b|\bbalance\b`)},
+		{
+			AuthExpired,
+			regexp.MustCompile(
+				`\bauth(?:entication|orization)?\b|(?:invalid|expired).*(?:api|` +
+					`access|auth) ?(?:key|token)|(?:api|access|auth) ?(?:key|` +
+					`token).*(?:invalid|expired)`,
+			),
+		},
+		{
+			Overloaded,
+			regexp.MustCompile(
+				`\boverload|\bunavailable\b|\b(?:server|internal|api) error\b|` +
+					`\btimed? ?out|\bfetch failed\b|\bnetwork\b|\bsocket\b|\beconn`,
+			),
+		},
+	}
+)
 var nonWords = regexp.MustCompile(`[^a-z0-9]+`)
 
 // HTTPErrorCode classifies HTTP failures by status and oversized-request text.

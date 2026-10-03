@@ -14,9 +14,17 @@ import (
 	"github.com/wspl/demi/internal/providers/codex/codextest"
 )
 
-const wsDone = `{"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`
+const wsDone = `{"type":"response.completed",` +
+	`"response":{"usage":{"input_tokens":1,"output_tokens":1}}}`
 
-func socketProvider(t *testing.T, socket *codextest.FakeWebSocket, authURL string, mode codex.TransportMode, idle *time.Duration, clock core.Clock) *codex.Provider {
+func socketProvider(
+	t *testing.T,
+	socket *codextest.FakeWebSocket,
+	authURL string,
+	mode codex.TransportMode,
+	idle *time.Duration,
+	clock core.Clock,
+) *codex.Provider {
 	t.Helper()
 	pool := poolWith(t, document(t, freshToken(t), "refresh-1", now))
 	id := account
@@ -31,13 +39,27 @@ func socketProvider(t *testing.T, socket *codextest.FakeWebSocket, authURL strin
 	}
 	return p
 }
+
 func TestWebSocketRequest(t *testing.T) {
-	socket := codextest.Start(t, []codextest.Script{{Steps: []codextest.Step{{Text: `{"type":"response.output_text.delta","delta":"ws"}`}, {Text: wsDone}}}}, "")
+	socket := codextest.Start(
+		t,
+		[]codextest.Script{
+			{Steps: []codextest.Step{{Text: `{"type":"response.output_text.delta","delta":"ws"}`}, {Text: wsDone}}},
+		},
+		"",
+	)
 	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, nil, providertest.FixedClock(now))
 	r := providertest.InferenceRequest()
 	r.ModelID = "gpt-5.4"
 	events := run(t.Context(), t, p, socket.Client(), r)
-	equal(t, events, []provider.Event{&provider.TextDelta{Text: "ws"}, &provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}})
+	equal(
+		t,
+		events,
+		[]provider.Event{
+			&provider.TextDelta{Text: "ws"},
+			&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}},
+		},
+	)
 	connection := socket.Connections()[0]
 	equal(t, connection.Headers.Get("Openai-Beta"), "responses_websockets=2026-02-06")
 	equal(t, connection.Headers.Get("Authorization"), "Bearer "+freshToken(t))
@@ -59,25 +81,54 @@ func TestWebSocketRequest(t *testing.T) {
 	httpRequest := sent(t, r)
 	equal(t, connection.Received[0], `{"type":"response.create",`+string(httpRequest.Body[1:]))
 }
+
 func TestWebSocketEnvelopes(t *testing.T) {
-	socket := codextest.Start(t, []codextest.Script{{Steps: []codextest.Step{{Text: `{"type":"event","event":{"type":"response.output_text.delta","delta":"hi"}}`}, {Text: `{"type":"response.done","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`}}}}, "")
+	socket := codextest.Start(
+		t,
+		[]codextest.Script{
+			{
+				Steps: []codextest.Step{
+					{Text: `{"type":"event","event":{"type":"response.output_text.delta","delta":"hi"}}`},
+					{Text: `{"type":"response.done","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`},
+				},
+			},
+		},
+		"",
+	)
 	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, nil, providertest.FixedClock(now))
-	equal(t, run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest()), []provider.Event{&provider.TextDelta{Text: "hi"}, &provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}})
+	equal(
+		t,
+		run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest()),
+		[]provider.Event{
+			&provider.TextDelta{Text: "hi"},
+			&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}},
+		},
+	)
 }
+
 func TestWebSocketEarlyCloseFallback(t *testing.T) {
 	v := providertest.StartVendor(t)
 	v.RespondAt(responses, completed())
 	socket := codextest.Start(t, []codextest.Script{{Steps: []codextest.Step{{Kind: codextest.Close}}}}, v.URL(""))
 	p := socketProvider(t, socket, v.URL(""), codex.Auto, nil, providertest.FixedClock(now))
-	equal(t, run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest()), []provider.Event{&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}})
+	equal(
+		t,
+		run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest()),
+		[]provider.Event{&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}},
+	)
 	equal(t, len(v.Requests()), 1)
 	equal(t, v.Requests()[0].Header("Accept"), "text/event-stream")
 }
+
 func TestWebSocketUnreachableCooldown(t *testing.T) {
 	v := providertest.StartVendor(t)
 	v.RespondAt(responses, completed())
 	v.RespondAt(responses, completed())
-	socket := codextest.Start(t, []codextest.Script{{Handshake: codextest.Disconnect}, {Steps: []codextest.Step{{Text: wsDone}}}}, v.URL(""))
+	socket := codextest.Start(
+		t,
+		[]codextest.Script{{Handshake: codextest.Disconnect}, {Steps: []codextest.Step{{Text: wsDone}}}},
+		v.URL(""),
+	)
 	clock := providertest.NewManualClock(now)
 	p := socketProvider(t, socket, v.URL(""), codex.Auto, nil, clock)
 	runtime, err := p.Runtime(provider.RuntimeEnv{HTTP: socket.Client()})
@@ -110,7 +161,11 @@ func TestWebSocketUnreachableCooldown(t *testing.T) {
 		if i > 0 {
 			selected = other
 		}
-		equal(t, providertest.Run(t.Context(), t, selected, providertest.InferenceRequest()), []provider.Event{&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}})
+		equal(
+			t,
+			providertest.Run(t.Context(), t, selected, providertest.InferenceRequest()),
+			[]provider.Event{&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}},
+		)
 		expected := 1
 		if i == 2 {
 			expected = 2
@@ -120,9 +175,21 @@ func TestWebSocketUnreachableCooldown(t *testing.T) {
 	}
 	equal(t, len(v.Requests()), 2)
 }
+
 func TestWebSocketFailureAfterEvent(t *testing.T) {
 	v := providertest.StartVendor(t)
-	socket := codextest.Start(t, []codextest.Script{{Steps: []codextest.Step{{Text: `{"type":"response.output_text.delta","delta":"ws"}`}, {Kind: codextest.Drop}}}}, v.URL(""))
+	socket := codextest.Start(
+		t,
+		[]codextest.Script{
+			{
+				Steps: []codextest.Step{
+					{Text: `{"type":"response.output_text.delta","delta":"ws"}`},
+					{Kind: codextest.Drop},
+				},
+			},
+		},
+		v.URL(""),
+	)
 	p := socketProvider(t, socket, v.URL(""), codex.Auto, nil, providertest.FixedClock(now))
 	events := run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest())
 	equal(t, len(events), 2)
@@ -134,10 +201,15 @@ func TestWebSocketFailureAfterEvent(t *testing.T) {
 	}
 	equal(t, len(v.Requests()), 0)
 }
+
 func TestWebSocketHandshakeRefresh(t *testing.T) {
 	v := providertest.StartVendor(t)
 	v.RespondAt("/oauth/token", answer(200, `{"access_token":"new-access","refresh_token":"refresh-2"}`))
-	socket := codextest.Start(t, []codextest.Script{{Handshake: codextest.Reject, Status: 401}, {Steps: []codextest.Step{{Text: wsDone}}}}, v.URL(""))
+	socket := codextest.Start(
+		t,
+		[]codextest.Script{{Handshake: codextest.Reject, Status: 401}, {Steps: []codextest.Step{{Text: wsDone}}}},
+		v.URL(""),
+	)
 	// Route login through the fixture as well, which forwards ordinary HTTP to the vendor.
 	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, nil, providertest.FixedClock(now))
 	events := run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest())
@@ -145,9 +217,14 @@ func TestWebSocketHandshakeRefresh(t *testing.T) {
 	equal(t, socket.Connections()[1].Headers.Get("Authorization"), "Bearer new-access")
 	equal(t, len(v.Requests()), 1)
 }
+
 func TestWebSocketIdleClose(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		socket := codextest.Start(t, []codextest.Script{{Steps: []codextest.Step{{Text: `{"type":"response.output_text.delta","delta":"ws"}`}}}}, "")
+		socket := codextest.Start(
+			t,
+			[]codextest.Script{{Steps: []codextest.Step{{Text: `{"type":"response.output_text.delta","delta":"ws"}`}}}},
+			"",
+		)
 		idle := 100 * time.Millisecond
 		p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, &idle, providertest.FixedClock(now))
 		events := run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest())
@@ -165,8 +242,13 @@ func TestWebSocketIdleClose(t *testing.T) {
 		equal(t, reason, "idle_timeout")
 	})
 }
+
 func TestWebSocketCancelClose(t *testing.T) {
-	socket := codextest.Start(t, []codextest.Script{{Steps: []codextest.Step{{Text: `{"type":"response.output_text.delta","delta":"hel"}`}}}}, "")
+	socket := codextest.Start(
+		t,
+		[]codextest.Script{{Steps: []codextest.Step{{Text: `{"type":"response.output_text.delta","delta":"hel"}`}}}},
+		"",
+	)
 	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, nil, providertest.FixedClock(now))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

@@ -6,9 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"testing"
-
 	"reflect"
+	"testing"
 
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
@@ -21,11 +20,26 @@ import (
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 const now core.Timestamp = "2026-09-18T14:00:00.000Z"
-const chatPath = "/v1/chat/completions"
 
-func fixture(t *testing.T, v *providertest.MockVendor, fields map[string]any) (*Provider, *provider.MemoryCredentialPool) {
+const (
+	chatPath = "/v1/chat/completions"
+)
+
+func fixture(
+	t *testing.T,
+	v *providertest.MockVendor,
+	fields map[string]any,
+) (*Provider, *provider.MemoryCredentialPool) {
 	t.Helper()
-	document := map[string]any{"accessToken": "session-token", "refreshToken": "refresh-1", "expiresAt": "2030-01-01T00:00:00.000Z", "issuer": v.URL("/"), "clientId": "client-1", "userId": "user-1", "email": "user@example.com"}
+	document := map[string]any{
+		"accessToken":  "session-token",
+		"refreshToken": "refresh-1",
+		"expiresAt":    "2030-01-01T00:00:00.000Z",
+		"issuer":       v.URL("/"),
+		"clientId":     "client-1",
+		"userId":       "user-1",
+		"email":        "user@example.com",
+	}
 	for k, value := range fields {
 		if value == nil {
 			delete(document, k)
@@ -38,7 +52,11 @@ func fixture(t *testing.T, v *providertest.MockVendor, fields map[string]any) (*
 		t.Fatal(err)
 	}
 	pool := provider.NewMemoryCredentialPool()
-	if err := pool.Write(t.Context(), provider.AccountMeta{ID: "cred-g", Label: "user@example.com", UpdatedAt: now}, string(data)); err != nil {
+	if err := pool.Write(
+		t.Context(),
+		provider.AccountMeta{ID: "cred-g", Label: "user@example.com", UpdatedAt: now},
+		string(data),
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.SetActive(t.Context(), "cred-g"); err != nil {
@@ -47,15 +65,27 @@ func fixture(t *testing.T, v *providertest.MockVendor, fields map[string]any) (*
 	account := "cred-g"
 	return testProvider(v, pool, &account, v.Client()), pool
 }
-func testProvider(v *providertest.MockVendor, pool provider.CredentialPool, account *string, client *http.Client) *Provider {
+
+func testProvider(
+	v *providertest.MockVendor,
+	pool provider.CredentialPool,
+	account *string,
+	client *http.Client,
+) *Provider {
 	config := NewConfig(account)
 	config.ProxyURL, _ = url.Parse(v.URL("/v1"))
 	config.IssuerURL, _ = url.Parse(v.URL("/"))
 	return New(config, pool, &provider.MemorySnapshots{}, client, providertest.FixedClock(now))
 }
+
 func answer(status int, text string) providertest.MockResponse {
-	return providertest.MockResponse{Status: status, Headers: http.Header{"Content-Type": {"application/json"}}, Chunks: [][]byte{[]byte(text)}}
+	return providertest.MockResponse{
+		Status:  status,
+		Headers: http.Header{"Content-Type": {"application/json"}},
+		Chunks:  [][]byte{[]byte(text)},
+	}
 }
+
 func chat(payloads ...string) providertest.MockResponse {
 	text := ""
 	for _, p := range payloads {
@@ -63,6 +93,7 @@ func chat(payloads ...string) providertest.MockResponse {
 	}
 	return providertest.EventStream(text + "data: [DONE]\n\n")
 }
+
 func run(t *testing.T, p *Provider, request provider.InferenceRequest) []provider.Event {
 	t.Helper()
 	r, err := p.Runtime(provider.RuntimeEnv{HTTP: p.http})
@@ -76,6 +107,7 @@ func run(t *testing.T, p *Provider, request provider.InferenceRequest) []provide
 	}()
 	return providertest.Run(t.Context(), t, r, request)
 }
+
 func stored(t *testing.T, pool *provider.MemoryCredentialPool) secret {
 	t.Helper()
 	entry, err := pool.Document("cred-g").Read(t.Context())
@@ -88,12 +120,14 @@ func stored(t *testing.T, pool *provider.MemoryCredentialPool) secret {
 	}
 	return value
 }
+
 func equal(t *testing.T, want, got any) {
 	t.Helper()
 	if !reflect.DeepEqual(want, got) {
 		t.Fatalf("want %#v; got %#v", want, got)
 	}
 }
+
 func jsonValue(t *testing.T, text string) any {
 	t.Helper()
 	var value any
@@ -119,6 +153,7 @@ func (b *loginTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	result := <-b.responses
 	return result.response, result.err
 }
+
 func loginClient(t *testing.T, v *providertest.MockVendor) *http.Client {
 	t.Helper()
 	bridge := &loginTransport{requests: make(chan *http.Request), responses: make(chan loginResponse)}

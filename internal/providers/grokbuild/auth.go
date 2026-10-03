@@ -13,22 +13,26 @@ import (
 )
 
 type claims struct {
-	Exp       provider.Reported[float64] `json:"exp" wire:"optional"`
-	Sub       provider.ReportedString    `json:"sub" wire:"optional"`
-	Email     provider.ReportedString    `json:"email" wire:"optional"`
+	Exp       provider.Reported[float64] `json:"exp"            wire:"optional"`
+	Sub       provider.ReportedString    `json:"sub"            wire:"optional"`
+	Email     provider.ReportedString    `json:"email"          wire:"optional"`
 	Kind      provider.ReportedString    `json:"principal_type" wire:"optional"`
-	KindCamel provider.ReportedString    `json:"principalType" wire:"optional"`
-	ID        provider.ReportedString    `json:"principal_id" wire:"optional"`
-	IDCamel   provider.ReportedString    `json:"principalId" wire:"optional"`
+	KindCamel provider.ReportedString    `json:"principalType"  wire:"optional"`
+	ID        provider.ReportedString    `json:"principal_id"   wire:"optional"`
+	IDCamel   provider.ReportedString    `json:"principalId"    wire:"optional"`
 }
 
 func tokenClaims(token provider.Secret) claims {
-	value := provider.JWTClaims(token.Expose(), func(b []byte) (claims, error) { return provider.DecodeUntagged[claims](string(b)) })
+	value := provider.JWTClaims(
+		token.Expose(),
+		func(b []byte) (claims, error) { return provider.DecodeUntagged[claims](string(b)) },
+	)
 	if value == nil {
 		return claims{}
 	}
 	return *value
 }
+
 func (c claims) principal() *principal {
 	kind, id := c.Kind.Value, c.ID.Value
 	if kind == nil {
@@ -42,12 +46,14 @@ func (c claims) principal() *principal {
 	}
 	return &principal{Kind: *kind, ID: *id}
 }
+
 func (c claims) expiry() *core.Timestamp {
 	if c.Exp.Value == nil {
 		return nil
 	}
 	return provider.UnixSeconds(*c.Exp.Value)
 }
+
 func (s secret) label() provider.AccountLabel {
 	identity := strings.TrimRight(string(s.Issuer), "/") + "::"
 	switch {
@@ -68,6 +74,7 @@ func (s secret) label() provider.AccountLabel {
 	detail := "oidc"
 	return provider.AccountLabel{Label: name, Detail: &detail, IdentityKey: &identity}
 }
+
 func (s secret) expiring(now core.Timestamp) bool {
 	expiry := s.ExpiresAt
 	if expiry == nil {
@@ -96,6 +103,7 @@ func (a *auth) document() (provider.AccountDocument, *provider.AuthFailure) {
 	}
 	return a.pool.Document(*a.account), nil
 }
+
 func (a *auth) stored(ctx context.Context) (secret, *provider.AuthFailure) {
 	doc, failure := a.document()
 	if failure != nil {
@@ -108,7 +116,12 @@ func (a *auth) stored(ctx context.Context) (secret, *provider.AuthFailure) {
 	}
 	return stored.Secret, nil
 }
-func (a *auth) credentials(ctx context.Context, client *http.Client, refused *provider.Secret) (secret, *provider.AuthFailure) {
+
+func (a *auth) credentials(
+	ctx context.Context,
+	client *http.Client,
+	refused *provider.Secret,
+) (secret, *provider.AuthFailure) {
 	doc, failure := a.document()
 	if failure != nil {
 		return secret{}, failure
@@ -127,13 +140,13 @@ func (a *auth) credentials(ctx context.Context, client *http.Client, refused *pr
 type refreshedTokens struct {
 	Access   provider.Secret   `json:"access_token"`
 	Refresh  *provider.Secret  `json:"refresh_token"`
-	Lifetime provider.Lifetime `json:"expires_in" wire:"optional"`
+	Lifetime provider.Lifetime `json:"expires_in"    wire:"optional"`
 }
 
 type tokens struct {
 	Access   provider.Secret   `json:"access_token"`
 	Refresh  *provider.Secret  `json:"refresh_token"`
-	Lifetime provider.Lifetime `json:"expires_in" wire:"optional"`
+	Lifetime provider.Lifetime `json:"expires_in"    wire:"optional"`
 	ID       *provider.Secret  `json:"id_token"`
 }
 
@@ -141,7 +154,11 @@ func decodeTokens(data []byte) (tokens, error) { return provider.DecodeUntagged[
 
 //nolint:staticcheck // ST1005: user-facing messages are copied verbatim from Rust.
 func (a *auth) refresh(ctx context.Context, client *http.Client, s secret) (secret, error) {
-	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {s.RefreshToken.Expose()}, "client_id": {s.ClientID}}
+	form := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {s.RefreshToken.Expose()},
+		"client_id":     {s.ClientID},
+	}
 	if s.Principal != nil {
 		form.Set("principal_type", s.Principal.Kind)
 		form.Set("principal_id", s.Principal.ID)
@@ -150,7 +167,12 @@ func (a *auth) refresh(ctx context.Context, client *http.Client, s secret) (secr
 	if err != nil {
 		return secret{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, provider.EndpointURL(issuer, "/oauth2/token").String(), strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		provider.EndpointURL(issuer, "/oauth2/token").String(),
+		strings.NewReader(form.Encode()),
+	)
 	if err != nil {
 		return secret{}, err
 	}
@@ -160,7 +182,8 @@ func (a *auth) refresh(ctx context.Context, client *http.Client, s secret) (secr
 	if err != nil {
 		return secret{}, fmt.Errorf("Grok token refresh failed: %w", withoutURL(err))
 	}
-	defer func() { _ = response.Body.Close() }() // The response is consumed or abandoned; close errors cannot change its result.
+	// The response is consumed or abandoned; close errors cannot change its result.
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return secret{}, fmt.Errorf("Grok token refresh failed with HTTP %d", response.StatusCode)
 	}

@@ -38,7 +38,7 @@ type initializeParams struct {
 }
 
 type requestMetadata struct {
-	Version      provider.ReportedString                       `json:"io.modelcontextprotocol/protocolVersion" wire:"optional"`
+	Version      provider.ReportedString                       `json:"io.modelcontextprotocol/protocolVersion"    wire:"optional"`
 	Capabilities provider.Reported[map[string]json.RawMessage] `json:"io.modelcontextprotocol/clientCapabilities" wire:"optional"`
 }
 
@@ -65,7 +65,11 @@ func (m *mcpServer) admit(method string, params json.RawMessage, initialize bool
 		m.phase = mcpInline
 	}
 	if meta.Version.Value != nil && !slices.Contains(mcpVersions, *meta.Version.Value) {
-		return false, &mcpError{Code: -32022, Message: "Unsupported protocol version", Data: &unsupportedVersion{*meta.Version.Value, mcpVersions}}
+		return false, &mcpError{
+			Code:    -32022,
+			Message: "Unsupported protocol version",
+			Data:    &unsupportedVersion{*meta.Version.Value, mcpVersions},
+		}
 	}
 	modern := meta.Version.Value != nil && *meta.Version.Value >= "2026-07-28"
 	if m.phase == mcpInline || method == "discover" || modern {
@@ -75,6 +79,7 @@ func (m *mcpServer) admit(method string, params json.RawMessage, initialize bool
 	}
 	return modern, nil
 }
+
 func missingMetadata(meta requestMetadata) *mcpError {
 	var missing []string
 	if meta.Version.Value == nil {
@@ -86,13 +91,17 @@ func missingMetadata(meta requestMetadata) *mcpError {
 	if len(missing) == 0 {
 		return nil
 	}
-	return &mcpError{Code: -32602, Message: "request _meta is missing or has malformed required fields: " + strings.Join(missing, ", ")}
+	return &mcpError{
+		Code: -32602,
+		Message: "request _meta is missing or has malformed required fields: " +
+			strings.Join(missing, ", "),
+	}
 }
 
 // emptyCatalog supplies the reference SDK's empty directories for capabilities
 // Demi does not advertise. Malformed pagination is an unrecognized request.
-func emptyCatalog(method string, params json.RawMessage) (mcpResult, bool) {
-	var result mcpResult
+func emptyCatalog(method string, params json.RawMessage) (setModerner, bool) {
+	var result setModerner
 	switch method {
 	case "resources/list":
 		result = &resourcesResult{Resources: []struct{}{}}
@@ -114,7 +123,7 @@ func emptyCatalog(method string, params json.RawMessage) (mcpResult, bool) {
 }
 
 // completion reads only the reference SDK's declared completion arguments.
-func completion(params json.RawMessage) (mcpResult, bool) {
+func completion(params json.RawMessage) (setModerner, bool) {
 	request, err := provider.DecodeUntagged[struct {
 		Ref      json.RawMessage `json:"ref"`
 		Argument struct {

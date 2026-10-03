@@ -13,8 +13,10 @@ import (
 const ProxyURL = "https://cli-chat-proxy.grok.com/v1"
 
 // IssuerURL is the product's login issuer.
-const IssuerURL = "https://auth.x.ai"
-const label = "Grok Build"
+const (
+	IssuerURL = "https://auth.x.ai"
+	label     = "Grok Build"
+)
 
 // Config configures one account of a grok-build entry.
 type Config struct {
@@ -44,7 +46,13 @@ type Provider struct {
 }
 
 // New connects an account's provider to the entry's credentials and quota store.
-func New(config Config, pool provider.CredentialPool, snapshots provider.QuotaSnapshotStore, httpClient *http.Client, clock core.Clock) *Provider {
+func New(
+	config Config,
+	pool provider.CredentialPool,
+	snapshots provider.QuotaSnapshotStore,
+	httpClient *http.Client,
+	clock core.Clock,
+) *Provider {
 	var account *string
 	if config.Account != nil {
 		id := *config.Account
@@ -62,7 +70,15 @@ func New(config Config, pool provider.CredentialPool, snapshots provider.QuotaSn
 	billing := provider.EndpointURL(config.ProxyURL, "/billing")
 	billing.RawQuery = "format=credits"
 	q := &quotaSource{auth: a, http: httpClient, userURL: &probeUser, billingURL: billing}
-	return &Provider{auth: a, quota: provider.NewQuota(q, snapshots, clock), accounts: provider.NewAccounts(pool, kit, clock), http: httpClient, clock: clock, chatURL: provider.EndpointURL(config.ProxyURL, "/chat/completions"), modelsURL: provider.EndpointURL(config.ProxyURL, "/models")}
+	return &Provider{
+		auth:      a,
+		quota:     provider.NewQuota(q, snapshots, clock),
+		accounts:  provider.NewAccounts(pool, kit, clock),
+		http:      httpClient,
+		clock:     clock,
+		chatURL:   provider.EndpointURL(config.ProxyURL, "/chat/completions"),
+		modelsURL: provider.EndpointURL(config.ProxyURL, "/models"),
+	}
 }
 
 // Capabilities reports that inference requires no Host process.
@@ -105,8 +121,13 @@ type runtime struct {
 	http   *http.Client
 }
 
-func (r *runtime) Fresh() provider.Runtime                       { return &runtime{shared: r.shared, http: r.http} }
-func (*runtime) Close(context.Context) error                     { return nil }
+// Fresh returns an independent runtime for another session.
+func (r *runtime) Fresh() provider.Runtime { return &runtime{shared: r.shared, http: r.http} }
+
+// Close releases the runtime resources.
+func (*runtime) Close(context.Context) error { return nil }
+
+// RequestLimits returns the request limits for the model.
 func (*runtime) RequestLimits(core.Model) provider.RequestLimits { return provider.RequestLimits{} }
 
 var _ provider.Provider = (*Provider)(nil)

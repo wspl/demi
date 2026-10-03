@@ -14,7 +14,11 @@ import (
 
 type quotaSource struct{ p *Provider }
 
-func (*quotaSource) ProbeCost() *provider.ProbeCost { cost := provider.ProbeFree; return &cost }
+// ProbeCost reports the cost of a quota probe.
+func (*quotaSource) ProbeCost() *provider.ProbeCost {
+	cost := provider.ProbeFree
+	return &cost
+}
 
 type usageStatus struct {
 	Plan  *string    `json:"plan_type"`
@@ -30,6 +34,7 @@ type usageWindow struct {
 	Reset   float64 `json:"reset_at"`
 }
 
+// Probe fetches the account quota windows.
 func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) {
 	s, err := q.p.credentials(ctx, q.p.http, nil)
 	if err != nil {
@@ -47,19 +52,31 @@ func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) 
 	request.Header.Set("Accept", "application/json")
 	response, err := q.p.http.Do(request)
 	if err != nil {
-		return provider.ProbeReading{}, &provider.QuotaError{Kind: provider.QuotaUnavailable, Message: fmt.Sprintf("Codex usage request failed: %v", withoutURL(err))}
+		return provider.ProbeReading{}, &provider.QuotaError{
+			Kind:    provider.QuotaUnavailable,
+			Message: fmt.Sprintf("Codex usage request failed: %v", withoutURL(err)),
+		}
 	}
 	defer func() { _ = response.Body.Close() }() // The reader reports IO failures; close releases the response.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return provider.ProbeReading{}, &provider.QuotaError{Kind: provider.QuotaUnavailable, Message: fmt.Sprintf("Codex usage request failed with HTTP %d", response.StatusCode)}
+		return provider.ProbeReading{}, &provider.QuotaError{
+			Kind:    provider.QuotaUnavailable,
+			Message: fmt.Sprintf("Codex usage request failed with HTTP %d", response.StatusCode),
+		}
 	}
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
-		return provider.ProbeReading{}, &provider.QuotaError{Kind: provider.QuotaUnavailable, Message: fmt.Sprintf("Codex usage request failed: %v", err)}
+		return provider.ProbeReading{}, &provider.QuotaError{
+			Kind:    provider.QuotaUnavailable,
+			Message: fmt.Sprintf("Codex usage request failed: %v", err),
+		}
 	}
 	usage, err := provider.DecodeUntagged[usageStatus](string(data))
 	if err != nil {
-		return provider.ProbeReading{}, &provider.QuotaError{Kind: provider.QuotaInvalid, Message: fmt.Sprintf("Codex usage status cannot be read: %v", err)}
+		return provider.ProbeReading{}, &provider.QuotaError{
+			Kind:    provider.QuotaInvalid,
+			Message: fmt.Sprintf("Codex usage status cannot be read: %v", err),
+		}
 	}
 	label := stored.label().Label
 	result := provider.ProbeReading{AccountLabel: &label, Windows: []core.QuotaWindow{}}
@@ -70,12 +87,17 @@ func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) 
 		for index, w := range []*usageWindow{usage.Limit.Primary, usage.Limit.Secondary} {
 			if w != nil {
 				minutes := w.Seconds / 60
-				result.Windows = append(result.Windows, windowOf(index, provider.ClampUsedPercent(w.Used), &minutes, provider.UnixSeconds(w.Reset)))
+				result.Windows = append(
+					result.Windows,
+					windowOf(index, provider.ClampUsedPercent(w.Used), &minutes, provider.UnixSeconds(w.Reset)),
+				)
 			}
 		}
 	}
 	return result, nil
 }
+
+// Observe reads quota windows from a provider observation.
 func (*quotaSource) Observe(observation provider.Observation) []core.QuotaWindow {
 	var headers http.Header
 	switch o := observation.(type) {
@@ -98,10 +120,14 @@ func (*quotaSource) Observe(observation provider.Observation) []core.QuotaWindow
 		if v := provider.HeaderNumber(headers, prefix+"-reset-at"); v != nil {
 			reset = provider.UnixSeconds(*v)
 		}
-		windows = append(windows, windowOf(index, used, provider.HeaderNumber(headers, prefix+"-window-minutes"), reset))
+		windows = append(
+			windows,
+			windowOf(index, used, provider.HeaderNumber(headers, prefix+"-window-minutes"), reset),
+		)
 	}
 	return windows
 }
+
 func windowOf(index int, used, minutes *float64, reset *core.Timestamp) core.QuotaWindow {
 	id, label := "primary", "Primary"
 	if index == 1 {
@@ -125,7 +151,14 @@ func windowOf(index int, used, minutes *float64, reset *core.Timestamp) core.Quo
 		}
 	}
 	unit := core.QuotaUnit("percent")
-	return core.QuotaWindow{ID: id, Label: label, UsedPercent: used, ResetsAt: reset, Unit: &unit, Severity: provider.Severity(used)}
+	return core.QuotaWindow{
+		ID:          id,
+		Label:       label,
+		UsedPercent: used,
+		ResetsAt:    reset,
+		Unit:        &unit,
+		Severity:    provider.Severity(used),
+	}
 }
 
 func planLabel(plan string) string {

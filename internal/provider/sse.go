@@ -18,8 +18,11 @@ type SSEErrorKind uint8
 
 // Event stream failure categories.
 const (
+	// SSETransport identifies a body transport failure.
 	SSETransport SSEErrorKind = iota
+	// SSEUTF8 identifies an invalid UTF-8 body.
 	SSEUTF8
+	// SSESyntax identifies an invalid event-stream frame.
 	SSESyntax
 )
 
@@ -29,6 +32,7 @@ type SSEError struct {
 	Err  error
 }
 
+// Error returns the diagnostic for this failure.
 func (e *SSEError) Error() string {
 	switch e.Kind {
 	case SSETransport:
@@ -39,6 +43,8 @@ func (e *SSEError) Error() string {
 		return "the event stream cannot be parsed: " + e.Err.Error()
 	}
 }
+
+// Unwrap returns the underlying cause.
 func (e *SSEError) Unwrap() error { return e.Err }
 
 var sseConfig = sse.ReadConfig{MaxEventSize: int(^uint(0) >> 1)}
@@ -98,6 +104,7 @@ type utf8Body struct {
 	end     error
 }
 
+// Read returns valid UTF-8 while retaining an incomplete suffix.
 func (r *utf8Body) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -118,17 +125,7 @@ func (r *utf8Body) Read(p []byte) (int, error) {
 			i += width
 		}
 		r.ready = data[:end]
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				if len(r.pending) != 0 {
-					r.end = &SSEError{Kind: SSEUTF8, Err: contract.CheckUTF8(r.pending)}
-				} else {
-					r.end = io.EOF
-				}
-			} else {
-				r.end = &SSEError{Kind: SSETransport, Err: err}
-			}
-		}
+		r.readEnd(err)
 	}
 	if len(r.ready) > 0 {
 		n := copy(p, r.ready)
@@ -146,4 +143,19 @@ func vendorInvalidUTF8Width(data []byte) int {
 		return invalid.ErrorLen
 	}
 	return len(data)
+}
+
+func (r *utf8Body) readEnd(err error) {
+	if err == nil {
+		return
+	}
+	if !errors.Is(err, io.EOF) {
+		r.end = &SSEError{Kind: SSETransport, Err: err}
+		return
+	}
+	if len(r.pending) != 0 {
+		r.end = &SSEError{Kind: SSEUTF8, Err: contract.CheckUTF8(r.pending)}
+		return
+	}
+	r.end = io.EOF
 }

@@ -67,8 +67,8 @@ func (u ChatUsage) TokenUsage() core.TokenUsage {
 // ChatError reports vendor failure fields without requiring them to be strings.
 type ChatError struct {
 	Message ReportedString `json:"message" wire:"optional"`
-	Code    ReportedString `json:"code" wire:"optional"`
-	Kind    ReportedString `json:"type" wire:"optional"`
+	Code    ReportedString `json:"code"    wire:"optional"`
+	Kind    ReportedString `json:"type"    wire:"optional"`
 }
 
 // DecodeChatChunk decodes the fields of a vendor chunk, naming malformed fields.
@@ -133,7 +133,11 @@ func (m *chatMapper) frame(data string, vendor Vendor) ([]Event, bool) {
 		if code == nil {
 			code = chunk.Error.Kind.Value
 		}
-		failure := Failure{Message: message, Code: ClassifyError(code, message), Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", ProviderCode: code, Upstream: &data}}
+		failure := Failure{
+			Message:     message,
+			Code:        ClassifyError(code, message),
+			Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", ProviderCode: code, Upstream: &data},
+		}
 		return []Event{&Error{Failure: failure.WithRetryWait(vendor.Reader, vendor.Clock.Now())}}, true
 	}
 	if chunk.Usage != nil {
@@ -144,29 +148,14 @@ func (m *chatMapper) frame(data string, vendor Vendor) ([]Event, bool) {
 		return out, false
 	}
 	for _, choice := range *chunk.Choices {
-		if delta := choice.Delta; delta != nil {
-			if text := delta.ReasoningContent; text != nil && *text != "" {
-				if !m.thinkingStarted {
-					m.thinkingStarted = true
-					out = append(out, &ThinkingStart{})
-				}
-				out = append(out, &ThinkingDelta{Text: *text})
-			}
-			if text := delta.Content; text != nil && *text != "" {
-				out = append(out, &TextDelta{Text: *text})
-			}
-			if delta.ToolCalls != nil {
-				for _, call := range *delta.ToolCalls {
-					m.collect(call)
-				}
-			}
-		}
+		out = append(out, m.delta(choice.Delta)...)
 		if choice.FinishReason != nil && *choice.FinishReason == "tool_calls" {
 			out = append(out, m.flush()...)
 		}
 	}
 	return out, false
 }
+
 func (m *chatMapper) collect(delta ChatToolCallDelta) {
 	index := uint32(min(uint64(len(m.calls)), uint64(^uint32(0))))
 	if delta.Index != nil {
@@ -189,6 +178,7 @@ func (m *chatMapper) collect(delta ChatToolCallDelta) {
 		}
 	}
 }
+
 func (m *chatMapper) flush() []Event {
 	indices := make([]uint32, 0, len(m.calls))
 	for index := range m.calls {
@@ -215,3 +205,26 @@ func (m *chatMapper) flush() []Event {
 	return out
 }
 func (m *chatMapper) finish() []Event { return append(m.flush(), &Response{Usage: m.usage}) }
+
+func (m *chatMapper) delta(delta *ChatDelta) []Event {
+	if delta == nil {
+		return nil
+	}
+	var out []Event
+	if text := delta.ReasoningContent; text != nil && *text != "" {
+		if !m.thinkingStarted {
+			m.thinkingStarted = true
+			out = append(out, &ThinkingStart{})
+		}
+		out = append(out, &ThinkingDelta{Text: *text})
+	}
+	if text := delta.Content; text != nil && *text != "" {
+		out = append(out, &TextDelta{Text: *text})
+	}
+	if delta.ToolCalls != nil {
+		for _, call := range *delta.ToolCalls {
+			m.collect(call)
+		}
+	}
+	return out
+}

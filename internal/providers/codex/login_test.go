@@ -22,9 +22,22 @@ func TestDeviceLogin(t *testing.T) {
 	p := configured(t, v, pool, func(c *codex.Config) { c.Account = nil })
 	v.Respond(answer(200, `{"device_auth_id":"dev_auth_1","user_code":"WXYZ-9876","interval":"0"}`))
 	v.Respond(answer(403, `{}`))
-	v.Respond(answer(200, `{"authorization_code":"authz_1","code_challenge":"challenge","code_verifier":"verifier_1"}`))
-	access := providertest.JWT(t, map[string]any{"email": "device@example.com", "https://api.openai.com/auth": map[string]any{"chatgpt_account_id": "acct-device"}})
-	data, err := provider.JSONBody(map[string]string{"access_token": access, "refresh_token": "refresh_1", "id_token": providertest.JWT(t, map[string]string{"email": "device@example.com"})})
+	v.Respond(answer(200, `{"authorization_code":"authz_1","code_challenge":"challenge",`+
+		`"code_verifier":"verifier_1"}`))
+	access := providertest.JWT(
+		t,
+		map[string]any{
+			"email":                       "device@example.com",
+			"https://api.openai.com/auth": map[string]any{"chatgpt_account_id": "acct-device"},
+		},
+	)
+	data, err := provider.JSONBody(
+		map[string]string{
+			"access_token":  access,
+			"refresh_token": "refresh_1",
+			"id_token":      providertest.JWT(t, map[string]string{"email": "device@example.com"}),
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,16 +68,35 @@ func TestDeviceLogin(t *testing.T) {
 	equal(t, doc["lastRefresh"], string(now))
 	requests := v.Requests()
 	equal(t, len(requests), 4)
-	equal(t, []string{requests[0].URI, requests[1].URI, requests[2].URI, requests[3].URI},
-		[]string{"/api/accounts/deviceauth/usercode", "/api/accounts/deviceauth/token", "/api/accounts/deviceauth/token", "/oauth/token"})
+	equal(
+		t,
+		[]string{requests[0].URI, requests[1].URI, requests[2].URI, requests[3].URI},
+		[]string{
+			"/api/accounts/deviceauth/usercode",
+			"/api/accounts/deviceauth/token",
+			"/api/accounts/deviceauth/token",
+			"/oauth/token",
+		},
+	)
 	equal(t, requests[0].JSON(t), map[string]any{"client_id": "app_EMoamEEZ73f0CkXaXp7hrann"})
 	equal(t, requests[1].JSON(t), map[string]any{"device_auth_id": "dev_auth_1", "user_code": "WXYZ-9876"})
 	form, err := url.ParseQuery(string(requests[3].Body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	equal(t, form, url.Values{"grant_type": {"authorization_code"}, "code": {"authz_1"}, "code_verifier": {"verifier_1"}, "client_id": {"app_EMoamEEZ73f0CkXaXp7hrann"}, "redirect_uri": {v.URL("/deviceauth/callback")}})
+	equal(
+		t,
+		form,
+		url.Values{
+			"grant_type":    {"authorization_code"},
+			"code":          {"authz_1"},
+			"code_verifier": {"verifier_1"},
+			"client_id":     {"app_EMoamEEZ73f0CkXaXp7hrann"},
+			"redirect_uri":  {v.URL("/deviceauth/callback")},
+		},
+	)
 }
+
 func TestDeviceCodeMissingAndUnavailable(t *testing.T) {
 	v := providertest.StartVendor(t)
 	pool := provider.NewMemoryCredentialPool()
@@ -74,7 +106,13 @@ func TestDeviceCodeMissingAndUnavailable(t *testing.T) {
 	for _, test := range []struct {
 		message     string
 		unavailable bool
-	}{{"Device code response is malformed: user_code is missing", false}, {"Device-code login is not enabled for this Codex account", true}} {
+	}{{
+		"Device code response is malformed: user_code is missing",
+		false,
+	}, {
+		"Device-code login is not enabled for this Codex account",
+		true,
+	}} {
 		_, err := p.Accounts().Login(t.Context(), func(core.LoginPending) { t.Error("unexpected code") })
 		var login *provider.LoginError
 		if !errors.As(err, &login) {
@@ -85,18 +123,28 @@ func TestDeviceCodeMissingAndUnavailable(t *testing.T) {
 	}
 	equal(t, len(pool.Entries()), 0)
 }
+
 func TestDeviceLoginLifetime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		calls := 0
 		client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			calls++
 			if strings.HasSuffix(r.URL.Path, "/usercode") {
-				return controlledResponse(200, `{"device_auth_id":"dev_auth_1","user_code":"CODE-1","interval":60}`), nil
+				return controlledResponse(
+					200,
+					`{"device_auth_id":"dev_auth_1","user_code":"CODE-1","interval":60}`,
+				), nil
 			}
 			return controlledResponse(403, `{}`), nil
 		})}
 		pool := provider.NewMemoryCredentialPool()
-		p, err := codex.New(codex.NewConfig(nil), pool, &provider.MemorySnapshots{}, client, providertest.FixedClock(now))
+		p, err := codex.New(
+			codex.NewConfig(nil),
+			pool,
+			&provider.MemorySnapshots{},
+			client,
+			providertest.FixedClock(now),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -113,6 +161,7 @@ func TestDeviceLoginLifetime(t *testing.T) {
 		equal(t, len(pool.Entries()), 0)
 	})
 }
+
 func TestCancelDeviceLogin(t *testing.T) {
 	v := providertest.StartVendor(t)
 	pool := provider.NewMemoryCredentialPool()

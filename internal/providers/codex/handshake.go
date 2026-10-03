@@ -11,9 +11,10 @@ import (
 // transport, without taking ownership of that transport's pooled connections.
 type handshakeTransport struct {
 	base    http.RoundTripper
-	refusal *refusal
+	refusal *refusalError
 }
 
+// RoundTrip retains handshake refusals before returning the response.
 func (t *handshakeTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	response, err := t.base.RoundTrip(request)
 	if err != nil || response.StatusCode == http.StatusSwitchingProtocols {
@@ -24,7 +25,11 @@ func (t *handshakeTransport) RoundTrip(request *http.Request) (*http.Response, e
 	if readErr != nil {
 		data = nil
 	}
-	t.refusal = &refusal{status: response.StatusCode, headers: response.Header.Clone(), body: string(bytes.ToValidUTF8(data, []byte("�")))}
+	t.refusal = &refusalError{
+		status:  response.StatusCode,
+		headers: response.Header.Clone(),
+		body:    string(bytes.ToValidUTF8(data, []byte("�"))),
+	}
 	response.Body = io.NopCloser(bytes.NewReader(data))
 	return response, nil
 }

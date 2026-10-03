@@ -34,5 +34,11 @@ type Config struct {
 
 // NewConfig returns the product's configuration for account.
 func NewConfig(account *string) Config {
-	return Config{Account: account, BackendURL: "https://chatgpt.com/backend-api", AuthURL: "https://auth.openai.com", HeaderTimeout: 20 * time.Second, ConnectTimeout: 10 * time.Second}
+	return Config{
+		Account:        account,
+		BackendURL:     "https://chatgpt.com/backend-api",
+		AuthURL:        "https://auth.openai.com",
+		HeaderTimeout:  20 * time.Second,
+		ConnectTimeout: 10 * time.Second,
+	}
 }

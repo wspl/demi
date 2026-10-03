@@ -22,11 +22,18 @@ func TestCancelledRequestSendsNothing(t *testing.T) {
 func openReader(ctx context.Context, t *testing.T) (*providertest.MockVendor, *providertest.EventReader) {
 	t.Helper()
 	v := providertest.StartVendor(t)
-	response := recorded(`{"type":"message_start","message":{"usage":{"input_tokens":3}}}`, `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hel"}}`)
+	response := recorded(
+		`{"type":"message_start","message":{"usage":{"input_tokens":3}}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hel"}}`,
+	)
 	response.Ending = providertest.Open
 	v.Respond(response)
 	r := testRuntime(t, v, provider.VendorPolicy{})
-	reader := providertest.NewEventReader(ctx, t, func(ctx context.Context) provider.Run { return r.Run(ctx, providertest.InferenceRequest()) })
+	reader := providertest.NewEventReader(
+		ctx,
+		t,
+		func(ctx context.Context) provider.Run { return r.Run(ctx, providertest.InferenceRequest()) },
+	)
 	event, ok := reader.NextEvent()
 	if !ok {
 		t.Fatal("no text event")
@@ -34,6 +41,7 @@ func openReader(ctx context.Context, t *testing.T) (*providertest.MockVendor, *p
 	equalEvents(t, []provider.Event{event}, []provider.Event{&provider.TextDelta{Text: "hel"}})
 	return v, reader
 }
+
 func TestCancelMidStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -44,6 +52,7 @@ func TestCancelMidStream(t *testing.T) {
 	}
 	v.Disconnected(t.Context())
 }
+
 func TestDropMidStream(t *testing.T) {
 	v, reader := openReader(t.Context(), t)
 	reader.Close()

@@ -36,7 +36,12 @@ func New(config Config, clock core.Clock) *Provider {
 	if base == nil {
 		base, _ = url.Parse(DefaultBaseURL) // The constant is a valid URL.
 	}
-	return &Provider{key: config.APIKey.HeaderValue(), endpoint: provider.EndpointURL(base, "/messages").String(), policy: config.Policy, clock: clock}
+	return &Provider{
+		key:      config.APIKey.HeaderValue(),
+		endpoint: provider.EndpointURL(base, "/messages").String(),
+		policy:   config.Policy,
+		clock:    clock,
+	}
 }
 
 // Capabilities returns this API entry's Host requirements.
@@ -75,8 +80,13 @@ type runtime struct {
 	http   *http.Client
 }
 
-func (r *runtime) Fresh() provider.Runtime   { return &runtime{shared: r.shared, http: r.http} }
+// Fresh returns an independent runtime for another session.
+func (r *runtime) Fresh() provider.Runtime { return &runtime{shared: r.shared, http: r.http} }
+
+// Close releases the runtime resources.
 func (*runtime) Close(context.Context) error { return nil }
+
+// RequestLimits returns the request limits for the model.
 func (*runtime) RequestLimits(model core.Model) provider.RequestLimits {
 	return provider.AnthropicRequestLimits(model)
 }

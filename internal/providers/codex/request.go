@@ -22,7 +22,15 @@ type requestText struct {
 }
 
 func encodeRequest(r provider.InferenceRequest) ([]byte, error) {
-	input, err := provider.ResponsesInput(r.Items, provider.ResponsesDialect{SignatureTag: "codex:", Assistant: provider.AssistantIdentified, Reasoning: provider.ReasoningWhole, ToolMedia: provider.ToolMediaInline})
+	input, err := provider.ResponsesInput(
+		r.Items,
+		provider.ResponsesDialect{
+			SignatureTag: "codex:",
+			Assistant:    provider.AssistantIdentified,
+			Reasoning:    provider.ReasoningWhole,
+			ToolMedia:    provider.ToolMediaInline,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -30,5 +38,20 @@ func encodeRequest(r provider.InferenceRequest) ([]byte, error) {
 	for _, tool := range r.Tools {
 		tools = append(tools, provider.NewResponsesTool(tool, true))
 	}
-	return provider.JSONBody(requestBody{Model: r.ModelID, Instructions: r.SystemPrompt, Input: input, Tools: tools, ToolChoice: "auto", ParallelToolCalls: true, Stream: true, Include: []string{"reasoning.encrypted_content"}, PromptCacheKey: provider.PromptCacheKey(r.SessionID), Text: requestText{Verbosity: "low"}, Reasoning: provider.ResponsesReasoning(r.Thinking, provider.SummaryAuto), ServiceTier: r.ServiceTierID})
+	return provider.JSONBody(
+		requestBody{
+			Model:             r.ModelID,
+			Instructions:      r.SystemPrompt,
+			Input:             input,
+			Tools:             tools,
+			ToolChoice:        "auto",
+			ParallelToolCalls: true,
+			Stream:            true,
+			Include:           []string{"reasoning.encrypted_content"},
+			PromptCacheKey:    provider.PromptCacheKey(r.SessionID),
+			Text:              requestText{Verbosity: "low"},
+			Reasoning:         provider.ResponsesReasoning(r.Thinking, provider.SummaryAuto),
+			ServiceTier:       r.ServiceTierID,
+		},
+	)
 }

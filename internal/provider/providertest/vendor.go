@@ -20,9 +20,13 @@ type Ending uint8
 
 // Ways a scripted vendor response can end.
 const (
+	// Complete identifies a scripted response that ends normally.
 	Complete Ending = iota
+	// Open identifies a scripted response kept open until cancellation.
 	Open
+	// Silent identifies a scripted response that sends no headers.
 	Silent
+	// Broken identifies a scripted response whose connection is broken.
 	Broken
 )
 
@@ -36,7 +40,11 @@ type MockResponse struct {
 
 // EventStream returns a completed event stream response.
 func EventStream(text string) MockResponse {
-	return MockResponse{Status: 200, Headers: http.Header{"Content-Type": []string{"text/event-stream"}}, Chunks: [][]byte{[]byte(text)}}
+	return MockResponse{
+		Status:  200,
+		Headers: http.Header{"Content-Type": []string{"text/event-stream"}},
+		Chunks:  [][]byte{[]byte(text)},
+	}
 }
 
 // RecordedRequest is the method, path/query, headers and body the vendor received.
@@ -86,10 +94,19 @@ func StartTLSVendor(t testing.TB, certificate, key []byte) *MockVendor {
 	}
 	return startVendor(t, &pair)
 }
+
 func startVendor(t testing.TB, certificate *tls.Certificate) *MockVendor {
 	ctx, cancel := context.WithCancel(context.Background())
-	vendor := &MockVendor{t: t, routes: make(map[string][]MockResponse), changed: make(chan struct{}), disconnected: make(chan struct{}, 1), cancel: cancel}
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { vendor.answer(ctx, w, r) }))
+	vendor := &MockVendor{
+		t:            t,
+		routes:       make(map[string][]MockResponse),
+		changed:      make(chan struct{}),
+		disconnected: make(chan struct{}, 1),
+		cancel:       cancel,
+	}
+	server := httptest.NewUnstartedServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { vendor.answer(ctx, w, r) }),
+	)
 	vendor.server = server
 	if certificate == nil {
 		server.Start()
@@ -174,6 +191,7 @@ func (v *MockVendor) Disconnected(ctx context.Context) {
 		v.t.Fatalf("client did not leave open response: %v", ctx.Err())
 	}
 }
+
 func (v *MockVendor) answer(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -181,7 +199,10 @@ func (v *MockVendor) answer(ctx context.Context, w http.ResponseWriter, r *http.
 		return
 	}
 	v.mu.Lock()
-	v.requests = append(v.requests, RecordedRequest{Method: r.Method, URI: r.URL.RequestURI(), Headers: r.Header.Clone(), Body: body})
+	v.requests = append(
+		v.requests,
+		RecordedRequest{Method: r.Method, URI: r.URL.RequestURI(), Headers: r.Header.Clone(), Body: body},
+	)
 	close(v.changed)
 	v.changed = make(chan struct{})
 	response := MockResponse{Status: 500, Chunks: [][]byte{[]byte("MockVendor: no response scripted")}}
@@ -193,6 +214,43 @@ func (v *MockVendor) answer(ctx context.Context, w http.ResponseWriter, r *http.
 		v.responses = v.responses[1:]
 	}
 	v.mu.Unlock()
+	v.writeResponse(ctx, w, r, response)
+}
+
+// AssertBuiltinCatalog checks a built-in API-key provider without inference or network IO.
+func AssertBuiltinCatalog(ctx context.Context, t testing.TB, p provider.Provider, vendor *MockVendor) {
+	t.Helper()
+	if p.Capabilities().ProcessHost {
+		t.Error("API-key entry starts a process")
+	}
+	if _, ok := p.AuthStatus(ctx).(*core.Authenticated); !ok {
+		t.Error("provider is not authenticated")
+	}
+	if _, ok := p.RuntimeState().(*core.RuntimeReady); !ok {
+		t.Error("provider is not ready")
+	}
+	list, err := p.ListModels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list.SourceFetchedAt != core.Timestamp("1970-01-01T00:00:00.000Z") || list.Stale {
+		t.Error("built-in catalog was marked fetched or stale")
+	}
+	found := false
+	for _, model := range list.Models {
+		if list.DefaultModelID != nil && *list.DefaultModelID == model.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("default is not a catalog model")
+	}
+	if len(vendor.Requests()) != 0 {
+		t.Error("reading status or catalog made a request")
+	}
+}
+
+func (v *MockVendor) writeResponse(ctx context.Context, w http.ResponseWriter, r *http.Request, response MockResponse) {
 	if response.Ending == Silent {
 		select {
 		case <-ctx.Done():
@@ -236,38 +294,5 @@ func (v *MockVendor) answer(ctx context.Context, w http.ResponseWriter, r *http.
 			return
 		}
 		_ = connection.Close() // Deliberately break the connection without the terminating chunk.
-	}
-}
-
-// AssertBuiltinCatalog checks a built-in API-key provider without inference or network IO.
-func AssertBuiltinCatalog(ctx context.Context, t testing.TB, p provider.Provider, vendor *MockVendor) {
-	t.Helper()
-	if p.Capabilities().ProcessHost {
-		t.Error("API-key entry starts a process")
-	}
-	if _, ok := p.AuthStatus(ctx).(*core.Authenticated); !ok {
-		t.Error("provider is not authenticated")
-	}
-	if _, ok := p.RuntimeState().(*core.RuntimeReady); !ok {
-		t.Error("provider is not ready")
-	}
-	list, err := p.ListModels(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if list.SourceFetchedAt != core.Timestamp("1970-01-01T00:00:00.000Z") || list.Stale {
-		t.Error("built-in catalog was marked fetched or stale")
-	}
-	found := false
-	for _, model := range list.Models {
-		if list.DefaultModelID != nil && *list.DefaultModelID == model.ID {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("default is not a catalog model")
-	}
-	if len(vendor.Requests()) != 0 {
-		t.Error("reading status or catalog made a request")
 	}
 }

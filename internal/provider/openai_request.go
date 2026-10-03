@@ -54,7 +54,9 @@ type SummaryOff uint8
 
 // Summary-off representations accepted by Responses endpoints.
 const (
+	// SummaryOmitted indicates that the summary field is omitted.
 	SummaryOmitted SummaryOff = iota
+	// SummaryAuto indicates that the summary is requested automatically.
 	SummaryAuto
 )
 
@@ -94,7 +96,12 @@ type ResponsesTool struct {
 
 // NewResponsesTool optionally includes strict:null, as Codex expects.
 func NewResponsesTool(tool ToolDefinition, strictNull bool) ResponsesTool {
-	result := ResponsesTool{Type: "function", Name: tool.Name, Description: tool.Description, Parameters: tool.InputSchema}
+	result := ResponsesTool{
+		Type:        "function",
+		Name:        tool.Name,
+		Description: tool.Description,
+		Parameters:  tool.InputSchema,
+	}
 	if strictNull {
 		result.Strict = json.RawMessage("null")
 	}
@@ -106,8 +113,11 @@ type AssistantReplay uint8
 
 // Assistant replay shapes accepted by Responses endpoints.
 const (
+	// AssistantMinimal identifies assistant replay without metadata.
 	AssistantMinimal AssistantReplay = iota
+	// AssistantCompleted identifies assistant replay with completed status.
 	AssistantCompleted
+	// AssistantIdentified identifies assistant replay with an ID and completed status.
 	AssistantIdentified
 )
 
@@ -116,7 +126,9 @@ type ReasoningReplay uint8
 
 // Reasoning replay shapes accepted by Responses endpoints.
 const (
+	// ReasoningReplayable identifies replay of known reasoning fields.
 	ReasoningReplayable ReasoningReplay = iota
+	// ReasoningWhole identifies replay of all reasoning fields.
 	ReasoningWhole
 )
 
@@ -125,7 +137,9 @@ type ToolMedia uint8
 
 // Tool-media placements accepted by Responses endpoints.
 const (
+	// ToolMediaFollowUp identifies tool media sent in a following user message.
 	ToolMediaFollowUp ToolMedia = iota
+	// ToolMediaInline identifies tool media sent inside the tool output.
 	ToolMediaInline
 )
 
@@ -240,7 +254,11 @@ func ResponsesInput(items []InferenceItem, dialect ResponsesDialect) ([]InputIte
 		case *UserSteer:
 			input = append(input, &UserInput{Role: "user", Content: responsesUserParts(item.Content)})
 		case *AssistantText:
-			assistant := &AssistantInput{Type: "message", Role: "assistant", Content: []OutputText{{Type: "output_text", Text: item.Text, Annotations: []json.RawMessage{}}}}
+			assistant := &AssistantInput{
+				Type:    "message",
+				Role:    "assistant",
+				Content: []OutputText{{Type: "output_text", Text: item.Text, Annotations: []json.RawMessage{}}},
+			}
 			if dialect.Assistant != AssistantMinimal {
 				status := "completed"
 				assistant.Status = &status
@@ -269,7 +287,16 @@ func ResponsesInput(items []InferenceItem, dialect ResponsesDialect) ([]InputIte
 			if err != nil {
 				return nil, err
 			}
-			input = append(input, &FunctionCallInput{Type: "function_call", ID: id, CallID: call, Name: item.ToolName, Arguments: arguments})
+			input = append(
+				input,
+				&FunctionCallInput{
+					Type:      "function_call",
+					ID:        id,
+					CallID:    call,
+					Name:      item.ToolName,
+					Arguments: arguments,
+				},
+			)
 		case *ToolResult:
 			call, _ := SplitToolUseID(item.ToolUseID)
 			input = appendResponsesResult(input, call, item.Output, dialect.ToolMedia)
@@ -286,7 +313,10 @@ func responsesUserParts(content []UserPart) []InputPart {
 		case *TextPart:
 			parts = append(parts, &InputText{Type: "input_text", Text: part.Text})
 		case *DocumentPart:
-			parts = append(parts, &InputFile{Type: "input_file", Filename: part.FileName, FileData: dataURL(part.Bytes)})
+			parts = append(
+				parts,
+				&InputFile{Type: "input_file", Filename: part.FileName, FileData: dataURL(part.Bytes)},
+			)
 		case *ImagePart:
 			parts = append(parts, &InputImage{Type: "input_image", ImageURL: mediaURL(part.Medium), Detail: "auto"})
 		case *VideoPart:
@@ -458,7 +488,10 @@ type ChatFunction struct {
 
 // NewChatTool converts an inference tool definition.
 func NewChatTool(tool ToolDefinition) ChatTool {
-	return ChatTool{Type: "function", Function: ChatFunction{Name: tool.Name, Description: tool.Description, Parameters: tool.InputSchema}}
+	return ChatTool{
+		Type:     "function",
+		Function: ChatFunction{Name: tool.Name, Description: tool.Description, Parameters: tool.InputSchema},
+	}
 }
 
 // ChatMedia specifies whether a vendor takes native media or only images.
@@ -466,7 +499,9 @@ type ChatMedia uint8
 
 // Media formats accepted by Chat endpoints.
 const (
+	// ChatNative identifies native media in chat messages.
 	ChatNative ChatMedia = iota
+	// ChatImages identifies image media with text placeholders for other media.
 	ChatImages
 )
 
@@ -494,17 +529,7 @@ func ChatMessages(systemPrompt string, items []InferenceItem, dialect ChatDialec
 		return open
 	}
 	flush := func() {
-		pending = ""
-		if open == nil {
-			return
-		}
-		if dialect.ReasoningContent && (reasoning != "" || len(open.ToolCalls) > 0) {
-			value := reasoning
-			open.ReasoningContent = &value
-		}
-		messages = append(messages, open)
-		open = nil
-		reasoning = ""
+		flushChatTurn(&messages, &open, &pending, &reasoning, dialect)
 	}
 	for _, item := range items {
 		switch item := item.(type) {
@@ -515,44 +540,30 @@ func ChatMessages(systemPrompt string, items []InferenceItem, dialect ChatDialec
 			flush()
 			messages = append(messages, &ChatUser{Role: "user", Content: chatUserContent(item.Content, dialect.Media)})
 		case *AssistantText:
-			turn := openTurn()
-			text := item.Text
-			if turn.Content != nil {
-				text = *turn.Content + text
-			}
-			if text != "" {
-				turn.Content = &text
-			}
+			appendAssistantText(openTurn(), item.Text)
 		case *ToolUse:
 			arguments, err := ToolArguments(item.Input)
 			if err != nil {
 				return nil, err
 			}
 			turn := openTurn()
-			turn.ToolCalls = append(turn.ToolCalls, ChatToolCall{ID: item.ToolUseID, Type: "function", Function: ChatFunctionCall{Name: item.ToolName, Arguments: arguments}})
+			turn.ToolCalls = append(
+				turn.ToolCalls,
+				ChatToolCall{
+					ID:       item.ToolUseID,
+					Type:     "function",
+					Function: ChatFunctionCall{Name: item.ToolName, Arguments: arguments},
+				},
+			)
 		case *ToolResult:
 			flush()
-			messages = append(messages, &ChatToolResult{Role: "tool", ToolCallID: item.ToolUseID, Content: ToolOutputTextOf(item.Output)})
-			if dialect.Media == ChatNative {
-				parts := ChatParts{}
-				for _, part := range item.Output {
-					if bytes := resultMedia(part); bytes != nil {
-						parts = append(parts, &ChatImagePart{Type: "image_url", ImageURL: ImageURL{URL: dataURL(*bytes), Detail: "auto"}})
-					}
-				}
-				if len(parts) > 0 {
-					parts = append(ChatParts{&ChatTextPart{Type: "text", Text: "[media returned by tool call " + item.ToolUseID + "]"}}, parts...)
-					messages = append(messages, &ChatUser{Role: "user", Content: &parts})
-				}
-			}
+			messages = append(
+				messages,
+				&ChatToolResult{Role: "tool", ToolCallID: item.ToolUseID, Content: ToolOutputTextOf(item.Output)},
+			)
+			messages = append(messages, chatResultMedia(item, dialect)...)
 		case *AssistantThinking:
-			if dialect.ReasoningContent {
-				if open == nil {
-					pending += item.Text
-				} else {
-					reasoning += item.Text
-				}
-			}
+			appendChatThinking(item.Text, dialect, open, &pending, &reasoning)
 		case *AssistantRedactedThinking:
 		}
 	}
@@ -569,7 +580,10 @@ func chatUserContent(content []UserPart, media ChatMedia) ChatContent {
 			parts = append(parts, &ChatTextPart{Type: "text", Text: part.Text})
 		case *DocumentPart:
 			if media == ChatNative {
-				parts = append(parts, &ChatFilePart{Type: "file", File: FileData{Filename: part.FileName, FileData: dataURL(part.Bytes)}})
+				parts = append(
+					parts,
+					&ChatFilePart{Type: "file", File: FileData{Filename: part.FileName, FileData: dataURL(part.Bytes)}},
+				)
 			}
 		case *VideoPart:
 			if media == ChatImages {
@@ -582,10 +596,16 @@ func chatUserContent(content []UserPart, media ChatMedia) ChatContent {
 				}
 				parts = append(parts, &ChatTextPart{Type: "text", Text: "[video:" + named + "]"})
 			} else {
-				parts = append(parts, &ChatImagePart{Type: "image_url", ImageURL: ImageURL{URL: mediaURL(part.Medium), Detail: "auto"}})
+				parts = append(
+					parts,
+					&ChatImagePart{Type: "image_url", ImageURL: ImageURL{URL: mediaURL(part.Medium), Detail: "auto"}},
+				)
 			}
 		case *ImagePart:
-			parts = append(parts, &ChatImagePart{Type: "image_url", ImageURL: ImageURL{URL: mediaURL(part.Medium), Detail: "auto"}})
+			parts = append(
+				parts,
+				&ChatImagePart{Type: "image_url", ImageURL: ImageURL{URL: mediaURL(part.Medium), Detail: "auto"}},
+			)
 		}
 	}
 	texts := make([]string, 0, len(parts))
@@ -660,4 +680,63 @@ func mediaURL(medium Medium) string {
 // dataURL encodes a resolved medium for vendor requests.
 func dataURL(bytes MediaBytes) string {
 	return "data:" + bytes.MediaType + ";base64," + base64.StdEncoding.EncodeToString(bytes.Data)
+}
+
+func chatResultMedia(item *ToolResult, dialect ChatDialect) []ChatMessage {
+	var messages []ChatMessage
+	if dialect.Media == ChatNative {
+		parts := ChatParts{}
+		for _, part := range item.Output {
+			if bytes := resultMedia(part); bytes != nil {
+				parts = append(
+					parts,
+					&ChatImagePart{Type: "image_url", ImageURL: ImageURL{URL: dataURL(*bytes), Detail: "auto"}},
+				)
+			}
+		}
+		if len(parts) > 0 {
+			parts = append(
+				ChatParts{
+					&ChatTextPart{Type: "text", Text: "[media returned by tool call " +
+						item.ToolUseID +
+						"]"},
+				},
+				parts...)
+			messages = append(messages, &ChatUser{Role: "user", Content: &parts})
+		}
+	}
+	return messages
+}
+
+func flushChatTurn(messages *[]ChatMessage, open **ChatAssistant, pending, reasoning *string, dialect ChatDialect) {
+	*pending = ""
+	if *open == nil {
+		return
+	}
+	if dialect.ReasoningContent && (*reasoning != "" || len((*open).ToolCalls) > 0) {
+		value := *reasoning
+		(*open).ReasoningContent = &value
+	}
+	*messages = append(*messages, *open)
+	*open = nil
+	*reasoning = ""
+}
+
+func appendAssistantText(turn *ChatAssistant, text string) {
+	if turn.Content != nil {
+		text = *turn.Content + text
+	}
+	if text != "" {
+		turn.Content = &text
+	}
+}
+
+func appendChatThinking(text string, dialect ChatDialect, open *ChatAssistant, pending, reasoning *string) {
+	if dialect.ReasoningContent {
+		if open == nil {
+			*pending += text
+		} else {
+			*reasoning += text
+		}
+	}
 }

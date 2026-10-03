@@ -28,13 +28,25 @@ func TestOAuthDurations(t *testing.T) {
 		}
 	}
 	type answer struct {
-		Interval  provider.PollInterval `json:"interval" wire:"optional"`
+		Interval  provider.PollInterval `json:"interval"   wire:"optional"`
 		ExpiresIn provider.Lifetime     `json:"expires_in" wire:"optional"`
 	}
 	for _, tc := range []struct {
 		text     string
 		interval time.Duration
-	}{{`{}`, 5 * time.Second}, {`{"interval":"soon"}`, 5 * time.Second}, {`{"interval":"0"}`, 0}, {`{"interval":3}`, 3 * time.Second}} {
+	}{{
+		`{}`,
+		5 * time.Second,
+	}, {
+		`{"interval":"soon"}`,
+		5 * time.Second,
+	}, {
+		`{"interval":"0"}`,
+		0,
+	}, {
+		`{"interval":3}`,
+		3 * time.Second,
+	}} {
 		value, err := provider.DecodeUntagged[answer](tc.text)
 		if err != nil {
 			t.Fatal(err)
@@ -45,16 +57,26 @@ func TestOAuthDurations(t *testing.T) {
 	if err != nil || value.ExpiresIn.Duration == nil || *value.ExpiresIn.Duration != 600*time.Second {
 		t.Fatalf("%+v %v", value, err)
 	}
-	for _, text := range []string{`0`, `"forever"`, `-3`} {
+	for _, text := range []string{"0", `"forever"`, `-3`} {
 		value, err := provider.DecodeUntagged[answer](`{"expires_in":` + text + `}`)
 		if err != nil || value.ExpiresIn.Duration != nil {
 			t.Fatalf("%+v %v", value, err)
 		}
 	}
 }
+
 func TestJWTClaimsWithoutSignature(t *testing.T) {
 	decode := func(data []byte) (any, error) { return provider.DecodeUntagged[any](string(data)) }
-	for _, value := range []any{map[string]any{"sub": "user-1", "exp": 1700000000}, map[string]any{"email": "zoé@example.com"}, 42} {
+	for _, value := range []any{
+		map[string]any{
+			"sub": "user-1",
+			"exp": 1700000000,
+		},
+		map[string]any{
+			"email": "zoé@example.com",
+		},
+		42,
+	} {
 		token := providertest.JWT(t, value)
 		claims := provider.JWTClaims(token, decode)
 		if claims == nil {
@@ -71,14 +93,36 @@ func TestJWTClaimsWithoutSignature(t *testing.T) {
 	type claims struct {
 		Sub string `json:"sub"`
 	}
-	if provider.JWTClaims(providertest.JWT(t, 42), func(data []byte) (claims, error) { return provider.DecodeUntagged[claims](string(data)) }) != nil {
+	if provider.JWTClaims(
+		providertest.JWT(t, 42),
+		func(data []byte) (claims, error) { return provider.DecodeUntagged[claims](string(data)) },
+	) != nil {
 		t.Fatal("accepted numeric claims as object")
 	}
 }
+
 func TestUTF16CacheKey(t *testing.T) {
 	requireEqual(t, provider.ShortHash(""), "811c9dc5")
 	requireEqual(t, provider.ShortHash("a"), "e40c292c")
-	for _, tc := range []struct{ text, want string }{{strings.Repeat("x", 64), strings.Repeat("x", 64)}, {"chat-" + strings.Repeat("x", 80), "session_cc30bf2"}, {strings.Repeat("😀", 33), "session_21a3538"}, {strings.Repeat("会话", 40), "session_1bc4bf95"}} {
+	for _, tc := range []struct{ text, want string }{
+		{
+			strings.Repeat("x", 64),
+			strings.Repeat("x", 64),
+		},
+		{
+			"chat-" +
+				strings.Repeat("x", 80),
+			"session_cc30bf2",
+		},
+		{
+			strings.Repeat("😀", 33),
+			"session_21a3538",
+		},
+		{
+			strings.Repeat("会话", 40),
+			"session_1bc4bf95",
+		},
+	} {
 		requireEqual(t, provider.PromptCacheKey(tc.text), tc.want)
 	}
 }

@@ -19,7 +19,10 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 	}
 	list := snapshot.VendorModels("anthropic")
 	if list == nil {
-		return core.ProviderModelList{}, &provider.CatalogError{Kind: provider.CatalogInvalid, Message: "models.dev does not list the anthropic vendor"}
+		return core.ProviderModelList{}, &provider.CatalogError{
+			Kind:    provider.CatalogInvalid,
+			Message: "models.dev does not list the anthropic vendor",
+		}
 	}
 	models := make([]core.ProviderModel, 0)
 	for _, model := range list.Models {
@@ -89,6 +92,7 @@ func modelVersion(id string) (uint64, uint64, bool) {
 	}
 	return major, minor, true
 }
+
 func modelFamily(id string) int {
 	parts := strings.Split(id, "-")
 	if len(parts) > 1 {

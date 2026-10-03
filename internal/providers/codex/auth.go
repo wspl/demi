@@ -51,13 +51,13 @@ func headerText(s string) bool {
 }
 
 type claims struct {
-	Exp     provider.Reported[float64]       `json:"exp" wire:"optional"`
-	Email   provider.ReportedString          `json:"email" wire:"optional"`
-	Auth    provider.Reported[authClaims]    `json:"https://api.openai.com/auth" wire:"optional"`
+	Exp     provider.Reported[float64]       `json:"exp"                            wire:"optional"`
+	Email   provider.ReportedString          `json:"email"                          wire:"optional"`
+	Auth    provider.Reported[authClaims]    `json:"https://api.openai.com/auth"    wire:"optional"`
 	Profile provider.Reported[profileClaims] `json:"https://api.openai.com/profile" wire:"optional"`
 }
 type authClaims struct {
-	AccountID provider.ReportedString `json:"chatgpt_account_id" wire:"optional"`
+	AccountID provider.ReportedString `json:"chatgpt_account_id"         wire:"optional"`
 	Fedramp   provider.Reported[bool] `json:"chatgpt_account_is_fedramp" wire:"optional"`
 }
 type profileClaims struct {
@@ -71,6 +71,7 @@ func tokenClaims(token provider.Secret) claims {
 	}
 	return *c
 }
+
 func (c claims) email() *string {
 	if c.Email.Value != nil {
 		return c.Email.Value
@@ -80,6 +81,7 @@ func (c claims) email() *string {
 	}
 	return nil
 }
+
 func (s secret) label() provider.AccountLabel {
 	label := string(s.AccountID)
 	email := tokenClaims(s.IDToken).email()
@@ -92,6 +94,7 @@ func (s secret) label() provider.AccountLabel {
 	detail, identity := "chatgpt", string(s.AccountID)
 	return provider.AccountLabel{Label: label, Detail: &detail, IdentityKey: &identity}
 }
+
 func (s secret) due(now core.Timestamp) bool {
 	current, _ := now.Millisecond()        // Clock timestamps are validated by their owner.
 	last, _ := s.LastRefresh.Millisecond() // Generated secret decoding validates timestamps.
@@ -106,12 +109,14 @@ func (s secret) due(now core.Timestamp) bool {
 	}
 	return current-last >= int64(8*24*time.Hour/time.Millisecond)
 }
+
 func (p *Provider) document() (provider.AccountDocument, error) {
 	if p.config.Account == nil {
 		return nil, provider.AuthFailure{Family: "Codex", Reason: provider.AuthReasonMissing}
 	}
 	return p.pool.Document(*p.config.Account), nil
 }
+
 func (p *Provider) stored(ctx context.Context) (secret, error) {
 	doc, err := p.document()
 	if err != nil {
@@ -123,12 +128,19 @@ func (p *Provider) stored(ctx context.Context) (secret, error) {
 	}
 	return stored.Secret, nil
 }
+
 func (p *Provider) credentials(ctx context.Context, client *http.Client, refused *provider.Secret) (secret, error) {
 	doc, err := p.document()
 	if err != nil {
 		return secret{}, err
 	}
-	value, err := provider.Renew(ctx, doc, decodeSecret, func(s secret) bool { return refused != nil && s.AccessToken == *refused || s.due(p.clock.Now()) }, func(ctx context.Context, s secret) (secret, error) { return p.refresh(ctx, client, s) })
+	value, err := provider.Renew(
+		ctx,
+		doc,
+		decodeSecret,
+		func(s secret) bool { return refused != nil && s.AccessToken == *refused || s.due(p.clock.Now()) },
+		func(ctx context.Context, s secret) (secret, error) { return p.refresh(ctx, client, s) },
+	)
 	if err != nil {
 		return secret{}, provider.AccountAuthFailure("Codex", err)
 	}
@@ -143,7 +155,16 @@ type refreshedTokens struct {
 
 //nolint:staticcheck // User-facing error text is copied verbatim from Rust.
 func (p *Provider) refresh(ctx context.Context, client *http.Client, s secret) (secret, error) {
-	response, err := postJSON(ctx, client, p.authEndpoint("/oauth/token"), map[string]string{"client_id": clientID, "grant_type": "refresh_token", "refresh_token": s.RefreshToken.Expose()})
+	response, err := postJSON(
+		ctx,
+		client,
+		p.authEndpoint("/oauth/token"),
+		map[string]string{
+			"client_id":     clientID,
+			"grant_type":    "refresh_token",
+			"refresh_token": s.RefreshToken.Expose(),
+		},
+	)
 	if err != nil {
 		return secret{}, fmt.Errorf("Codex token refresh failed: %w", withoutURL(err))
 	}
@@ -182,6 +203,7 @@ func accountHeaders(s secret) http.Header {
 	h.Set("User-Agent", userAgent)
 	return h
 }
+
 func inferenceHeaders(s secret, request provider.InferenceRequest) http.Header {
 	h := accountHeaders(s)
 	h.Set("Openai-Beta", "responses=experimental")

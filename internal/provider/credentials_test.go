@@ -19,6 +19,7 @@ type tokens = providertest.TokenDocument
 func accountMeta(id string) provider.AccountMeta {
 	return provider.AccountMeta{ID: id, Label: id + "@example.com", UpdatedAt: now, Source: "test", IdentityKey: &id}
 }
+
 func poolWith(t *testing.T, id string, value tokens) *provider.MemoryCredentialPool {
 	t.Helper()
 	pool := provider.NewMemoryCredentialPool()
@@ -27,6 +28,7 @@ func poolWith(t *testing.T, id string, value tokens) *provider.MemoryCredentialP
 	}
 	return pool
 }
+
 func storedTokens(t *testing.T, pool *provider.MemoryCredentialPool, id string) tokens {
 	t.Helper()
 	value, err := provider.ReadSecret(t.Context(), pool.Document(id), providertest.DecodeTokenDocument)
@@ -35,6 +37,7 @@ func storedTokens(t *testing.T, pool *provider.MemoryCredentialPool, id string) 
 	}
 	return value.Secret
 }
+
 func TestRefreshTurnsFIFO(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var gate provider.RefreshGates
@@ -96,16 +99,23 @@ func TestRefreshTurnsFIFO(t *testing.T) {
 		workers.Wait()
 	})
 }
+
 func TestDueSecretRefreshAndStore(t *testing.T) {
 	pool := poolWith(t, "a", tokens{Access: "old", Refresh: "r1"})
 	before, err := pool.Document("a").Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := provider.Renew(t.Context(), pool.Document("a"), providertest.DecodeTokenDocument, func(tokens) bool { return true }, func(_ context.Context, value tokens) (tokens, error) {
-		requireEqual(t, value.Refresh, "r1")
-		return tokens{Access: "new", Refresh: "r2"}, nil
-	})
+	got, err := provider.Renew(
+		t.Context(),
+		pool.Document("a"),
+		providertest.DecodeTokenDocument,
+		func(tokens) bool { return true },
+		func(_ context.Context, value tokens) (tokens, error) {
+			requireEqual(t, value.Refresh, "r1")
+			return tokens{Access: "new", Refresh: "r2"}, nil
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +129,7 @@ func TestDueSecretRefreshAndStore(t *testing.T) {
 		t.Fatal("revision did not advance")
 	}
 }
+
 func TestWaitingRefresherRereadsAndRechecks(t *testing.T) {
 	for _, always := range []bool{false, true} {
 		synctest.Test(t, func(t *testing.T) {
@@ -141,7 +152,13 @@ func TestWaitingRefresherRereadsAndRechecks(t *testing.T) {
 			var workers sync.WaitGroup
 			for range 2 {
 				workers.Go(func() {
-					value, err := provider.Renew(t.Context(), pool.Document("a"), providertest.DecodeTokenDocument, due, refresh)
+					value, err := provider.Renew(
+						t.Context(),
+						pool.Document("a"),
+						providertest.DecodeTokenDocument,
+						due,
+						refresh,
+					)
 					if err != nil {
 						t.Error(err)
 					}
@@ -164,39 +181,68 @@ func TestWaitingRefresherRereadsAndRechecks(t *testing.T) {
 		})
 	}
 }
+
 func TestRefusedRefreshUsesConcurrentWriter(t *testing.T) {
 	pool := poolWith(t, "a", tokens{Access: "old", Refresh: "r1"})
 	refused := errors.New("refresh token revoked")
-	got, err := provider.Renew(t.Context(), pool.Document("a"), providertest.DecodeTokenDocument, func(tokens) bool { return true }, func(ctx context.Context, _ tokens) (tokens, error) {
-		if err := pool.Write(ctx, accountMeta("a"), encoded(t, tokens{Access: "winner", Refresh: "rw"})); err != nil {
-			return tokens{}, err
-		}
-		return tokens{}, refused
-	})
+	got, err := provider.Renew(
+		t.Context(),
+		pool.Document("a"),
+		providertest.DecodeTokenDocument,
+		func(tokens) bool { return true },
+		func(ctx context.Context, _ tokens) (tokens, error) {
+			if err := pool.Write(
+				ctx,
+				accountMeta("a"),
+				encoded(t, tokens{Access: "winner", Refresh: "rw"}),
+			); err != nil {
+				return tokens{}, err
+			}
+			return tokens{}, refused
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	requireEqual(t, got, tokens{Access: "winner", Refresh: "rw"})
-	_, err = provider.Renew(t.Context(), pool.Document("a"), providertest.DecodeTokenDocument, func(tokens) bool { return true }, func(context.Context, tokens) (tokens, error) { return tokens{}, refused })
+	_, err = provider.Renew(
+		t.Context(),
+		pool.Document("a"),
+		providertest.DecodeTokenDocument,
+		func(tokens) bool { return true },
+		func(context.Context, tokens) (tokens, error) { return tokens{}, refused },
+	)
 	var renewal *provider.RenewError
 	if !errors.Is(err, refused) || !errors.As(err, &renewal) {
 		t.Fatalf("%v", err)
 	}
 }
+
 func TestRefreshReplaceLosesToWriter(t *testing.T) {
 	pool := poolWith(t, "a", tokens{Access: "old", Refresh: "r1"})
-	got, err := provider.Renew(t.Context(), pool.Document("a"), providertest.DecodeTokenDocument, func(tokens) bool { return true }, func(ctx context.Context, _ tokens) (tokens, error) {
-		if err := pool.Write(ctx, accountMeta("a"), encoded(t, tokens{Access: "winner", Refresh: "rw"})); err != nil {
-			return tokens{}, err
-		}
-		return tokens{Access: "loser", Refresh: "rl"}, nil
-	})
+	got, err := provider.Renew(
+		t.Context(),
+		pool.Document("a"),
+		providertest.DecodeTokenDocument,
+		func(tokens) bool { return true },
+		func(ctx context.Context, _ tokens) (tokens, error) {
+			if err := pool.Write(
+				ctx,
+				accountMeta("a"),
+				encoded(t, tokens{Access: "winner", Refresh: "rw"}),
+			); err != nil {
+				return tokens{}, err
+			}
+			return tokens{Access: "loser", Refresh: "rl"}, nil
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	requireEqual(t, got, tokens{Access: "winner", Refresh: "rw"})
 	requireEqual(t, storedTokens(t, pool, "a"), got)
 }
+
 func TestCorruptSecretPathNeverQuotesValue(t *testing.T) {
 	pool := provider.NewMemoryCredentialPool()
 	for _, tc := range []struct {
@@ -230,6 +276,7 @@ func TestCorruptSecretPathNeverQuotesValue(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
 func TestMemoryPoolVersionsAndActive(t *testing.T) {
 	pool := provider.NewMemoryCredentialPool()
 	for _, id := range []string{"b", "a"} {
@@ -293,6 +340,7 @@ func TestMemoryPoolVersionsAndActive(t *testing.T) {
 		t.Fatalf("%+v", entries)
 	}
 }
+
 func TestCredentialID(t *testing.T) {
 	key := "acct-1"
 	requireEqual(t, provider.CredentialIDFor(&key, "a@example.com"), "cred-ba36a4edd92d37c6")
@@ -306,6 +354,7 @@ type accountKit struct{ logins []provider.NewAccount }
 func (*accountKit) Capability() provider.AccountsCapability {
 	return provider.AccountsCapability{Login: true}
 }
+
 func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
 	code := "ABCD-1234"
 	pending(core.LoginPending{VerificationURL: "https://vendor.example/device", UserCode: &code})
@@ -317,16 +366,29 @@ func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending))
 	k.logins = k.logins[1:]
 	return next, nil
 }
+
 func (*accountKit) Add(provider.AddAccount) (provider.NewAccount, error) {
 	return provider.NewAccount{}, provider.ErrAccountsUnsupported
 }
+
 func newAccount(identity, secret string) provider.NewAccount {
 	detail := "device"
-	return provider.NewAccount{Secret: secret, Label: provider.AccountLabel{Label: identity + "@example.com", Detail: &detail, IdentityKey: &identity}}
+	return provider.NewAccount{
+		Secret: secret,
+		Label: provider.AccountLabel{Label: identity +
+			"@example.com", Detail: &detail, IdentityKey: &identity},
+	}
 }
+
 func TestLoginImportsIdentityAndSelectsFirst(t *testing.T) {
 	pool := provider.NewMemoryCredentialPool()
-	kit := &accountKit{logins: []provider.NewAccount{newAccount("acct-1", "first secret"), newAccount("acct-1", "second secret"), newAccount("acct-2", "other secret")}}
+	kit := &accountKit{
+		logins: []provider.NewAccount{
+			newAccount("acct-1", "first secret"),
+			newAccount("acct-1", "second secret"),
+			newAccount("acct-2", "other secret"),
+		},
+	}
 	accounts := provider.NewAccounts(pool, kit, providertest.FixedClock(now))
 	requireEqual(t, accounts.Capability(), provider.AccountsCapability{Login: true})
 	shown := []string{}
@@ -382,7 +444,10 @@ func TestLoginImportsIdentityAndSelectsFirst(t *testing.T) {
 	if err := accounts.Remove(t.Context(), other.ID); err != nil {
 		t.Fatal(err)
 	}
-	for _, err := range []error{accounts.Remove(t.Context(), "cred-absent"), accounts.SetActive(t.Context(), "cred-absent")} {
+	for _, err := range []error{
+		accounts.Remove(t.Context(), "cred-absent"),
+		accounts.SetActive(t.Context(), "cred-absent"),
+	} {
 		var missing *provider.PoolError
 		if !errors.As(err, &missing) || missing.ID != "cred-absent" {
 			t.Fatalf("%v", err)
@@ -399,10 +464,17 @@ func TestLoginImportsIdentityAndSelectsFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := accounts.Add(t.Context(), provider.AddAccount{SetupToken: secret}); !errors.Is(err, provider.ErrAccountsUnsupported) {
+	if _, err := accounts.Add(
+		t.Context(),
+		provider.AddAccount{SetupToken: secret},
+	); !errors.Is(
+		err,
+		provider.ErrAccountsUnsupported,
+	) {
 		t.Fatalf("%v", err)
 	}
 }
+
 func TestCanceledLoginStoresNothing(t *testing.T) {
 	pool := provider.NewMemoryCredentialPool()
 	accounts := provider.NewAccounts(pool, &accountKit{}, providertest.FixedClock(now))

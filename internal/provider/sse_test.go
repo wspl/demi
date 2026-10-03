@@ -26,6 +26,7 @@ func frames(t *testing.T, chunks ...[]byte) []string {
 	}
 	return out
 }
+
 func TestSSESpecification(t *testing.T) {
 	for _, tc := range []struct {
 		body string
@@ -40,11 +41,13 @@ func TestSSESpecification(t *testing.T) {
 		requireEqual(t, frames(t, []byte(tc.body)), tc.want)
 	}
 }
+
 func TestSSEFinalFrame(t *testing.T) {
 	for _, body := range []string{"data: {\"a\":1}", "data: {\"a\":1}\n"} {
 		requireEqual(t, frames(t, []byte(body)), []string{`{"a":1}`})
 	}
 }
+
 func TestSSESplitUTF8(t *testing.T) {
 	text := []byte("data: héllo\n\n")
 	requireEqual(t, frames(t, text[:8], text[8:]), []string{"héllo"})
@@ -53,6 +56,7 @@ func TestSSESplitUTF8(t *testing.T) {
 		requireEqual(t, frames(t, text[:i], text[i:]), []string{"héllo"})
 	}
 }
+
 func TestSSEEmptyData(t *testing.T) {
 	requireEqual(t, frames(t, []byte(": keep-alive\n\nevent: ping\n\ndata:\n\ndata: x\n\n")), []string{"x"})
 }
@@ -82,15 +86,19 @@ func TestSSETransportAfterFrames(t *testing.T) {
 		t.Fatalf("wrong failure: %v", failure)
 	}
 }
-func TestSSEInvalidUTF8AndLargeEvent(t *testing.T) {
 
+func TestSSEInvalidUTF8AndLargeEvent(t *testing.T) {
 	for _, tc := range []struct {
 		suffix string
 		length string
 	}{{"\xff\n\n", "1"}, {"\xc3", "1"}, {"\xe2\x82", "2"}, {"\xf0\x9f\x91", "3"}} {
 		var failure error
 		var received []string
-		for data, err := range provider.SSEData(t.Context(), io.NopCloser(strings.NewReader("data: first\n\ndata: "+tc.suffix))) {
+		for data, err := range provider.SSEData(
+			t.Context(),
+			io.NopCloser(strings.NewReader("data: first\n\ndata: "+
+				tc.suffix)),
+		) {
 			if err != nil {
 				failure = err
 			} else {
@@ -102,7 +110,13 @@ func TestSSEInvalidUTF8AndLargeEvent(t *testing.T) {
 		if !errors.As(failure, &stream) || stream.Kind != provider.SSEUTF8 {
 			t.Fatalf("expected UTF-8 failure, got %v", failure)
 		}
-		requireEqual(t, failure.Error(), "the event stream is not UTF-8: invalid utf-8 sequence of "+tc.length+" bytes from index 0")
+		requireEqual(
+			t,
+			failure.Error(),
+			"the event stream is not UTF-8: invalid utf-8 sequence of "+
+				tc.length+
+				" bytes from index 0",
+		)
 	}
 
 	long := strings.Repeat("x", 128*1024)

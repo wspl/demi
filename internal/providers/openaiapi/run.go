@@ -15,12 +15,18 @@ type runtime struct {
 	http   *http.Client
 }
 
-func (r *runtime) Fresh() provider.Runtime   { return &runtime{shared: r.shared, http: r.http} }
+// Fresh returns an independent runtime for another session.
+func (r *runtime) Fresh() provider.Runtime { return &runtime{shared: r.shared, http: r.http} }
+
+// Close releases the runtime resources.
 func (*runtime) Close(context.Context) error { return nil }
+
+// RequestLimits returns the request limits for the model.
 func (*runtime) RequestLimits(core.Model) provider.RequestLimits {
 	return provider.OpenAIRequestLimits()
 }
 
+// Run streams inference events for the request.
 func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
 	return func(yield func(provider.Event) bool) {
 		if ctx.Err() != nil {
@@ -70,17 +76,26 @@ func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) pr
 			}
 			return
 		}
-		vendor := provider.Vendor{Label: "OpenAI", Reader: provider.ReadHTTPFailure, Clock: r.shared.clock}
-		var events provider.Run
-		if r.shared.wire == core.WireAPIChatCompletions {
-			events = provider.MapChatSSE(ctx, response.Body, vendor)
-		} else {
-			events = provider.MapResponsesEvents(ctx, provider.ResponsesSSEEvents(ctx, response.Body, "OpenAI"), vendor, signatureTag)
-		}
-		for event := range events {
-			if ctx.Err() != nil || !yield(event) {
-				return
-			}
+		r.stream(ctx, response, yield)
+	}
+}
+
+func (r *runtime) stream(ctx context.Context, response *http.Response, yield func(provider.Event) bool) {
+	vendor := provider.Vendor{Label: "OpenAI", Reader: provider.ReadHTTPFailure, Clock: r.shared.clock}
+	var events provider.Run
+	if r.shared.wire == core.WireAPIChatCompletions {
+		events = provider.MapChatSSE(ctx, response.Body, vendor)
+	} else {
+		events = provider.MapResponsesEvents(
+			ctx,
+			provider.ResponsesSSEEvents(ctx, response.Body, "OpenAI"),
+			vendor,
+			signatureTag,
+		)
+	}
+	for event := range events {
+		if ctx.Err() != nil || !yield(event) {
+			return
 		}
 	}
 }

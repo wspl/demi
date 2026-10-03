@@ -22,22 +22,48 @@ func TestStreamEvents(t *testing.T) {
 	v.RespondAt(responses, stream(
 		`{"type":"response.output_item.added","item":{"type":"reasoning","id":"rs_1"}}`,
 		`{"type":"response.reasoning_text.delta","delta":"think"}`,
-		`{"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_1","encrypted_content":"enc"}}`,
+		`{"type":"response.output_item.done","item":{"type":"reasoning",`+
+			`"id":"rs_1","encrypted_content":"enc"}}`,
 		`{"type":"response.output_text.delta","delta":"hello"}`,
-		`{"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"shell_exec","arguments":"{\"script\":\"pwd\"}"}}`,
+		`{"type":"response.output_item.done",`+
+			`"item":{"type":"function_call","id":"fc_1","call_id":"call_1",`+
+			`"name":"shell_exec","arguments":"{\"script\":\"pwd\"}"}}`,
 		`{"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":3}}}`,
 	))
 	events := run(t.Context(), t, p, v.Client(), providertest.InferenceRequest())
-	equal(t, events, []provider.Event{&provider.ThinkingStart{}, &provider.ThinkingDelta{Text: "think"}, &provider.ThinkingSignature{Signature: `codex:{"type":"reasoning","id":"rs_1","encrypted_content":"enc"}`}, &provider.TextDelta{Text: "hello"}, &provider.ToolCall{ToolUseID: "call_1|fc_1", ToolName: "shell_exec", Input: json.RawMessage(`{"script":"pwd"}`)}, &provider.Response{Usage: core.TokenUsage{InputTokens: 10, OutputTokens: 3}}})
+	equal(
+		t,
+		events,
+		[]provider.Event{
+			&provider.ThinkingStart{},
+			&provider.ThinkingDelta{Text: "think"},
+			&provider.ThinkingSignature{Signature: `codex:{"type":"reasoning","id":"rs_1","encrypted_content":"enc"}`},
+			&provider.TextDelta{Text: "hello"},
+			&provider.ToolCall{
+				ToolUseID: "call_1|fc_1",
+				ToolName:  "shell_exec",
+				Input:     json.RawMessage(`{"script":"pwd"}`),
+			},
+			&provider.Response{Usage: core.TokenUsage{InputTokens: 10, OutputTokens: 3}},
+		},
+	)
 }
+
 func TestCleanStreamEnd(t *testing.T) {
 	v, _, p := setup(t)
 	v.RespondAt(responses, stream(`{"type":"response.output_text.delta","delta":"hi"}`))
-	equal(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest()), []provider.Event{&provider.TextDelta{Text: "hi"}, &provider.Response{}})
+	equal(
+		t,
+		run(t.Context(), t, p, v.Client(), providertest.InferenceRequest()),
+		[]provider.Event{&provider.TextDelta{Text: "hi"}, &provider.Response{}},
+	)
 }
+
 func TestStreamUsageLimit(t *testing.T) {
 	v, _, p := setup(t)
-	frame := `{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1790062659,"resets_in_seconds":321250},"status_code":429}`
+	frame := `{"type":"error","error":{"type":"usage_limit_reached",` +
+		`"message":"The usage limit has been reached","plan_type":"pro",` +
+		`"resets_at":1790062659,"resets_in_seconds":321250},"status_code":429}`
 	v.RespondAt(responses, stream(frame))
 	f := failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest()))
 	equal(t, *f.Code, provider.RateLimit)
@@ -47,6 +73,7 @@ func TestStreamUsageLimit(t *testing.T) {
 	equal(t, *f.Diagnostics.Upstream, frame)
 	equal(t, *f.Diagnostics.ProviderCode, "usage_limit_reached")
 }
+
 func TestHTTPFailureRecord(t *testing.T) {
 	v, _, p := setup(t)
 	body := `{"error":{"code":"server_error","message":"backend failed"}}`
@@ -83,7 +110,11 @@ func TestHeaderTimeout(t *testing.T) {
 		config := codex.NewConfig(&id)
 		config.Transport = codex.SSE
 		config.HeaderTimeout = 50 * time.Millisecond
-		client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) { <-r.Context().Done(); return nil, r.Context().Err() })}
+		client := &http.Client{
+			Transport: roundTripFunc(
+				func(r *http.Request) (*http.Response, error) { <-r.Context().Done(); return nil, r.Context().Err() },
+			),
+		}
 		p, err := codex.New(config, pool, &provider.MemorySnapshots{}, client, providertest.FixedClock(now))
 		if err != nil {
 			t.Fatal(err)
@@ -94,6 +125,7 @@ func TestHeaderTimeout(t *testing.T) {
 		equal(t, *f.Code, provider.Overloaded)
 	})
 }
+
 func TestCancelStreamStopsDownload(t *testing.T) {
 	v, _, p := setup(t)
 	a := stream(`{"type":"response.output_text.delta","delta":"hel"}`)
@@ -113,13 +145,19 @@ func TestCancelStreamStopsDownload(t *testing.T) {
 	equal(t, events, []provider.Event{&provider.TextDelta{Text: "hel"}})
 	v.Disconnected(t.Context())
 }
+
 func TestFailureResetReader(t *testing.T) {
 	_, _, p := setup(t)
 	cases := []struct {
 		text string
 		want core.Timestamp
 	}{
-		{`{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1790062659,"resets_in_seconds":321250},"status_code":429}`, "2026-09-22T07:37:39.000Z"},
+		{
+			`{"type":"error","error":{"type":"usage_limit_reached",` +
+				`"message":"The usage limit has been reached","plan_type":"pro",` +
+				`"resets_at":1790062659,"resets_in_seconds":321250},"status_code":429}`,
+			"2026-09-22T07:37:39.000Z",
+		},
 		{`{"error":{"resets_at":1790062659,"resets_in_seconds":1}}`, "2026-09-22T07:37:39.000Z"},
 		{`{"type":"event","event":{"type":"error","error":{"resets_in_seconds":90}}}`, "2026-09-18T14:01:30.000Z"},
 		{`{"type":"response.failed","response":{"error":{"resets_at":1790062659}}}`, "2026-09-22T07:37:39.000Z"},

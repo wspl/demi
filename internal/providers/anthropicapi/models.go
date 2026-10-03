@@ -21,5 +21,17 @@ func catalogModel(id, name string, output uint32, efforts []string) core.Provide
 	contextWindow := uint32(1000000)
 	yes, no := true, false
 	levels := append([]string{}, efforts...)
-	return core.ProviderModel{ID: id, DisplayName: name, ContextWindow: &contextWindow, OutputLimit: &output, SupportsTools: &yes, SupportsAttachments: &yes, SupportsVideo: &no, SupportsReasoning: &yes, SupportedThinkingEfforts: &levels, CanDisableThinking: &no, ServiceTiers: []core.ServiceTier{}}
+	return core.ProviderModel{
+		ID:                       id,
+		DisplayName:              name,
+		ContextWindow:            &contextWindow,
+		OutputLimit:              &output,
+		SupportsTools:            &yes,
+		SupportsAttachments:      &yes,
+		SupportsVideo:            &no,
+		SupportsReasoning:        &yes,
+		SupportedThinkingEfforts: &levels,
+		CanDisableThinking:       &no,
+		ServiceTiers:             []core.ServiceTier{},
+	}
 }

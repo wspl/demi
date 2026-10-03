@@ -24,21 +24,66 @@ func TestNewProcessCLIContract(t *testing.T) {
 			c.say(`{"type":"system","subtype":"init","tools":[]}`)
 			c.text("hel")
 			c.text("lo")
-			c.say(`{"type":"result","usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":7,"cache_creation_input_tokens":3}}`)
+			c.say(
+				`{"type":"result","usage":{"input_tokens":10,"output_tokens":2,` +
+					`"cache_read_input_tokens":7,"cache_creation_input_tokens":3}}`,
+			)
 		}
 	})
 	req := request(user("hi"))
 	req.Thinking = &core.EffortConfig{Effort: "high"}
 	events := collect(t.Context(), r, req)
-	equal(t, events, []provider.Event{textEvent("hel"), textEvent("lo"), &provider.Response{Usage: core.TokenUsage{InputTokens: 10, OutputTokens: 2, CacheReadTokens: 7, CacheWriteTokens: 3}}})
+	equal(
+		t,
+		events,
+		[]provider.Event{
+			textEvent("hel"),
+			textEvent("lo"),
+			&provider.Response{
+				Usage: core.TokenUsage{InputTokens: 10, OutputTokens: 2, CacheReadTokens: 7, CacheWriteTokens: 3},
+			},
+		},
+	)
 	c := p.starts[0]
 	equal(t, c.spawn.Command, "/demi/claude")
 	equal(t, *c.spawn.CWD, "/demi/run")
 	equal(t, c.spawn.Retained, true)
-	equal(t, c.spawn.Args, []string{"--print", "--output-format", "stream-json", "--verbose", "--input-format", "stream-json", "--include-partial-messages", "--no-session-persistence", "--safe-mode", "--disable-slash-commands", "--tools", "", "--permission-mode", "bypassPermissions", "--allow-dangerously-skip-permissions", "--model", "claude-test", "--system-prompt", "system", "--effort", "high"})
+	equal(
+		t,
+		c.spawn.Args,
+		[]string{
+			"--print",
+			"--output-format",
+			"stream-json",
+			"--verbose",
+			"--input-format",
+			"stream-json",
+			"--include-partial-messages",
+			"--no-session-persistence",
+			"--safe-mode",
+			"--disable-slash-commands",
+			"--tools",
+			"",
+			"--permission-mode",
+			"bypassPermissions",
+			"--allow-dangerously-skip-permissions",
+			"--model",
+			"claude-test",
+			"--system-prompt",
+			"system",
+			"--effort",
+			"high",
+		},
+	)
 	equal(t, c.spawn.Env.Mode, host.Overlay)
 	want := map[string]*string{"CLAUDECODE": nil}
-	for k, v := range map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": testToken, "CLAUDE_CONFIG_DIR": "/demi/config", "DISABLE_AUTOUPDATER": "1", "DISABLE_AUTO_COMPACT": "1", "MAX_MCP_OUTPUT_TOKENS": "1000000"} {
+	for k, v := range map[string]string{
+		"CLAUDE_CODE_OAUTH_TOKEN": testToken,
+		"CLAUDE_CONFIG_DIR":       "/demi/config",
+		"DISABLE_AUTOUPDATER":     "1",
+		"DISABLE_AUTO_COMPACT":    "1",
+		"MAX_MCP_OUTPUT_TOKENS":   "1000000",
+	} {
 		want[k] = &v
 	}
 	equal(t, c.spawn.Env.Values, want)
@@ -46,6 +91,7 @@ func TestNewProcessCLIContract(t *testing.T) {
 	equal(t, c.closed, false)
 	equal(t, c.finished, false)
 }
+
 func TestNoStartWithoutTokenOrPlacement(t *testing.T) {
 	p, pool := testProvider(t, "http://127.0.0.1:9/catalog", "http://127.0.0.1:9/usage")
 	if err := pool.Remove(t.Context(), *p.config.Account); err != nil {
@@ -63,6 +109,7 @@ func TestNoStartWithoutTokenOrPlacement(t *testing.T) {
 	equal(t, f.Message, placement.fail.Error())
 	equal(t, f.Code, (*provider.ErrorCode)(nil))
 }
+
 func TestLineBeforeInitializeAnswer(t *testing.T) {
 	r, _ := fixture(t, func(c *scriptedCLI) {
 		c.onWrite = func(v map[string]json.RawMessage) {
@@ -80,8 +127,13 @@ func TestLineBeforeInitializeAnswer(t *testing.T) {
 			c.result(1, 1)
 		}
 	})
-	equal(t, collect(t.Context(), r, withTools(request(user("hi")))), []provider.Event{textEvent("before"), textEvent("hello"), response(1, 1)})
+	equal(
+		t,
+		collect(t.Context(), r, withTools(request(user("hi")))),
+		[]provider.Event{textEvent("before"), textEvent("hello"), response(1, 1)},
+	)
 }
+
 func TestKeptProcessContinuationAndRestarts(t *testing.T) {
 	r, p := fixture(t, func(c *scriptedCLI) {
 		c.onWrite = func(v map[string]json.RawMessage) {
@@ -92,7 +144,12 @@ func TestKeptProcessContinuationAndRestarts(t *testing.T) {
 			equal(t, len(v), 2)
 			checkJSON(t, v["message"], `{"role":"user","content":[{"type":"text","text":"do work"}]}`)
 			c.text("one")
-			c.say(`{"type":"result","usage":{"input_tokens":30,"output_tokens":300,"iterations":[{"input_tokens":10,"output_tokens":100},{"input_tokens":20,"output_tokens":200,"iterations":"not read on an individual call"}]}}`)
+			c.say(
+				`{"type":"result","usage":{"input_tokens":30,"output_tokens":300,` +
+					`"iterations":[{"input_tokens":10,"output_tokens":100},` +
+					`{"input_tokens":20,"output_tokens":200,"iterations":"not read on ` +
+					`an individual call"}]}}`,
+			)
 		}
 	})
 	first := withTools(request(user("do work")))
@@ -123,7 +180,13 @@ func TestKeptProcessContinuationAndRestarts(t *testing.T) {
 	equal(t, c.signals, []host.Signal{host.Terminate})
 	replay := p.starts[1]
 	equal(t, len(replay.input), 2)
-	checkJSON(t, replay.input[1], `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"User: do other work\n\nAssistant: one\n\nUser: second question"}]}}`)
+	checkJSON(
+		t,
+		replay.input[1],
+		`{"type":"user","message":{"role":"user",`+
+			`"content":[{"type":"text","text":"User: do other `+
+			`work\n\nAssistant: one\n\nUser: second question"}]}}`,
+	)
 	second.ModelID = "claude-other"
 	second.Tools = nil
 	collect(t.Context(), r, second)
@@ -144,6 +207,7 @@ func TestKeptProcessContinuationAndRestarts(t *testing.T) {
 	collect(t.Context(), r, second)
 	equal(t, len(p.starts), 5)
 }
+
 func TestTranscriptSpeakersAndMedia(t *testing.T) {
 	r, p := fixture(t, func(c *scriptedCLI) {
 		c.onWrite = func(v map[string]json.RawMessage) {
@@ -153,19 +217,45 @@ func TestTranscriptSpeakersAndMedia(t *testing.T) {
 		}
 	})
 	signature := "signed"
-	req := withTools(request(&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: "previous work"}, &provider.ImagePart{Medium: &provider.MediaBytes{Data: []byte("png"), MediaType: "image/png"}}}}, &provider.AssistantThinking{ModelID: "claude-test", Text: "thinking", Signature: &signature}, toolUse("tool-1", "pwd"), toolOutput("tool-1", "/tmp"), user("continue")))
+	req := withTools(
+		request(
+			&provider.UserMessage{
+				Content: []provider.UserPart{
+					&provider.TextPart{Text: "previous work"},
+					&provider.ImagePart{Medium: &provider.MediaBytes{Data: []byte("png"), MediaType: "image/png"}},
+				},
+			},
+			&provider.AssistantThinking{ModelID: "claude-test", Text: "thinking", Signature: &signature},
+			toolUse("tool-1", "pwd"),
+			toolOutput("tool-1", "/tmp"),
+			user("continue"),
+		),
+	)
 	equal(t, collect(t.Context(), r, req), []provider.Event{response(3, 1)})
 	equal(t, len(p.starts[0].input), 2)
-	checkJSON(t, p.starts[0].input[1], `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"User: previous work"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"cG5n"}},{"type":"text","text":"Assistant: [Earlier in this conversation I called the tool shell_exec with input: {\"script\":\"pwd\"}.\n\nIt returned from shell_exec: /tmp]\n\nUser: continue"}]}}`)
+	checkJSON(
+		t,
+		p.starts[0].input[1],
+		`{"type":"user","message":{"role":"user",`+
+			`"content":[{"type":"text","text":"User: previous work"},`+
+			`{"type":"image","source":{"type":"base64","media_type":"image/`+
+			`png","data":"cG5n"}},{"type":"text","text":"Assistant: [Earlier `+
+			`in this conversation I called the tool shell_exec with input: `+
+			`{\"script\":\"pwd\"}.\n\nIt returned from shell_exec: /tmp]`+
+			`\n\nUser: continue"}]}}`,
+	)
 }
+
 func TestProcessExitStatusAndStderr(t *testing.T) {
 	r, p := fixture(t, nil)
 	for _, tc := range []struct {
 		code         int32
 		stderr, want string
 	}{
-		{0, "", ""}, {1, "the configuration home cannot be written\n", "the configuration home cannot be written"},
-		{2, "", "Claude Code exited with code 2"}, {1, strings.Repeat("x", 100*1024), strings.Repeat("x", 64*1024-3) + "end"},
+		{0, "", ""},
+		{1, "the configuration home cannot be written\n", "the configuration home cannot be written"},
+		{2, "", "Claude Code exited with code 2"},
+		{1, strings.Repeat("x", 100*1024), strings.Repeat("x", 64*1024-3) + "end"},
 	} {
 		p.setup = func(c *scriptedCLI) {
 			c.onWrite = func(map[string]json.RawMessage) {
@@ -187,6 +277,7 @@ func TestProcessExitStatusAndStderr(t *testing.T) {
 	}
 	equal(t, len(p.starts), 4)
 }
+
 func TestKeptProcessThatExitedIsReplaced(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r, p := fixture(t, func(c *scriptedCLI) { c.onWrite = func(map[string]json.RawMessage) { c.result(2, 2) } })
@@ -195,9 +286,15 @@ func TestKeptProcessThatExitedIsReplaced(t *testing.T) {
 		synctest.Wait()
 		equal(t, collect(t.Context(), r, request(user("hi"), user("again"))), []provider.Event{response(2, 2)})
 		equal(t, len(p.starts), 2)
-		checkJSON(t, p.starts[1].input[0], `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"},{"type":"text","text":"again"}]}}`)
+		checkJSON(
+			t,
+			p.starts[1].input[0],
+			`{"type":"user","message":{"role":"user",`+
+				`"content":[{"type":"text","text":"hi"},{"type":"text","text":"again"}]}}`,
+		)
 	})
 }
+
 func TestCancelledRunClosesWithoutEvent(t *testing.T) {
 	for _, ignore := range []bool{false, true} {
 		t.Run(map[bool]string{false: "terminate", true: "kill"}[ignore], func(t *testing.T) {
@@ -243,6 +340,7 @@ func TestCancelledRunClosesWithoutEvent(t *testing.T) {
 		})
 	}
 }
+
 func TestEarlyIteratorStopAndRuntimeClose(t *testing.T) {
 	r, p := fixture(t, func(c *scriptedCLI) { c.onWrite = func(map[string]json.RawMessage) { c.text("first") } })
 	for event := range r.Run(t.Context(), request(user("hi"))) {
@@ -260,7 +358,11 @@ func TestEarlyIteratorStopAndRuntimeClose(t *testing.T) {
 	equal(t, p.starts[1].closed, false)
 	equal(t, len(p.starts[1].signals), 0)
 	equal(t, len(p.starts[2].input), 1)
-	checkJSON(t, p.starts[2].input[0], `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"elsewhere"}]}}`)
+	checkJSON(
+		t,
+		p.starts[2].input[0],
+		`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"elsewhere"}]}}`,
+	)
 	if err := fresh.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -271,8 +373,11 @@ func TestEarlyIteratorStopAndRuntimeClose(t *testing.T) {
 	}
 	equal(t, p.starts[1].closed, true)
 }
+
 func TestResultErrorKeepsProcessButBrokenLineCloses(t *testing.T) {
-	result := `{"type":"result","is_error":true,"result":"context window exceeded","errors":["input is too long"],"usage":{"input_tokens":200000,"output_tokens":0}}`
+	result := `{"type":"result","is_error":true,"result":"context window ` +
+		`exceeded","errors":["input is too long"],` +
+		`"usage":{"input_tokens":200000,"output_tokens":0}}`
 	r, p := fixture(t, func(c *scriptedCLI) { c.onWrite = func(map[string]json.RawMessage) { c.say(result) } })
 	var events []provider.Event
 	for event := range r.Run(t.Context(), request(user("huge"))) {
@@ -300,6 +405,7 @@ func TestResultErrorKeepsProcessButBrokenLineCloses(t *testing.T) {
 	equal(t, c.signals, []host.Signal{host.Terminate})
 	equal(t, len(p.starts), 1)
 }
+
 func TestRetryWithNoNewInputReplays(t *testing.T) {
 	r, p := fixture(t, func(c *scriptedCLI) {
 		c.onWrite = func(map[string]json.RawMessage) { c.say(`{"type":"result","is_error":true,"result":"overloaded"}`) }
@@ -314,5 +420,9 @@ func TestRetryWithNoNewInputReplays(t *testing.T) {
 	equal(t, collect(t.Context(), r, request(user("hi"))), []provider.Event{response(1, 1)})
 	equal(t, len(p.starts), 2)
 	equal(t, p.starts[0].signals, []host.Signal{host.Terminate})
-	checkJSON(t, p.starts[1].input[0], `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}`)
+	checkJSON(
+		t,
+		p.starts[1].input[0],
+		`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}`,
+	)
 }

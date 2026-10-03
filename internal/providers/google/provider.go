@@ -83,8 +83,13 @@ type runtime struct {
 	http   *http.Client
 }
 
-func (r *runtime) Fresh() provider.Runtime   { return &runtime{shared: r.shared, http: r.http} }
+// Fresh returns an independent runtime for another session.
+func (r *runtime) Fresh() provider.Runtime { return &runtime{shared: r.shared, http: r.http} }
+
+// Close releases the runtime resources.
 func (*runtime) Close(context.Context) error { return nil }
+
+// RequestLimits returns the request limits for the model.
 func (*runtime) RequestLimits(core.Model) provider.RequestLimits {
 	body, images := uint64(20_000_000), uint32(3600)
 	return provider.RequestLimits{BodyBytes: &body, Images: &images}
