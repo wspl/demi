@@ -2,7 +2,7 @@ package browserop
 
 import "encoding/json"
 
-//go:generate go run ../../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // `open`: opens a tab at a URL, starting the browser when it does not run.
 // +demi:root

@@ -3,7 +3,7 @@ package todo
 //revive:disable:exported
 // Contract descriptions are verbatim Rust product text.
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // +demi:enum pending in_progress done
 type TodoStatus string

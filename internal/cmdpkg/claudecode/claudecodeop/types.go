@@ -1,6 +1,6 @@
 package claudecodeop
 
-//go:generate go run ../../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // The package's id in the native catalog.
 const Package = "demi.claude-code"

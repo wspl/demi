@@ -2,7 +2,7 @@ package live
 
 import "github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 
-//go:generate go run ../../../../../tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // +demi:root
 // +demi:union tag=type

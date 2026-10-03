@@ -1,6 +1,6 @@
 package session
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // Contract comments are product text copied verbatim from Rust.
 //revive:disable:exported

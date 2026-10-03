@@ -266,16 +266,27 @@ one only a single page could use stays in that page.
 ## Types
 
 A page's types are generated from its manifest into its package's
-`src/generated/`: its plugin's id; the schemas of its user and conversation
-state, of its methods' parameters and results, and of its streams' messages,
-such as the live view's frames; and the constants a stream's two ends share.
-`xtask contracts` reads them from the manifest and keeps no list of its own. A
-page never declares a schema by hand for a shape its manifest declares
+`src/generated/plugin.ts`: its plugin's id (`PLUGIN`); the schemas of its user
+and conversation state, of its methods' parameters and results, and of its
+streams' messages, such as the live view's frames; and the constants a
+stream's two ends share. A page never declares a schema by hand for a shape
+its manifest declares
 ([Generated TypeScript](contracts.md#generated-typescript)).
+
+The Go types behind those schemas carry root markers, as every contract type
+does, and `tools/contractgen -ts` emits them. The manifest stays the
+authority on which types a page has: the generator reads the backend's
+manifests and fails when the types it emits for a page package are not
+exactly the named schemas that package's manifest declares, less those
+`@demicodes/protocol` exports, each with the direction its use gives it
+(state, results and a stream's received messages are received; parameters and
+sent messages are sent). The generator cannot link the backend, whose
+generated Go it writes, so it runs a small program of its own that prints the
+manifests of `BuiltinPlugins` after the Go code is generated.
 
 ## Registration
 
-`xtask contracts` writes the registry, the static list of imports that `web`
+`tools/contractgen -ts` writes the registry, the static list of imports that `web`
 and `web-gallery` show: the page package of each plugin the backend registers
 whose manifest names one that the app depends on, in the order the backend
 registers their plugins, which is the order of the slots they fill. Adding a

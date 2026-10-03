@@ -5,7 +5,7 @@ package browser
 
 import "github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // The most characters of a URL a method takes.
 const URLMax = 4096

@@ -11,7 +11,7 @@ import (
 	"github.com/wspl/demi/internal/provider"
 )
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 const clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 

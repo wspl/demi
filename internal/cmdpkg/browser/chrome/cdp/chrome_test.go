@@ -155,8 +155,29 @@ func TestChromeAcceptance(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	attached, err := session.Subscribe("Target.attachedToTarget")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer attached.Close()
 	navigate("/")
 	evaluate("window.ready.then(()=>true)")
+	// Page load and the worker message do not acknowledge the iframe's
+	// flattened session. The router publishes attachment after registering it.
+	for {
+		event, err := attached.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := cdp.DecodeEvent(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		child, ok := decoded.(*target.EventAttachedToTarget)
+		if ok && child.TargetInfo.Type == "iframe" {
+			break
+		}
+	}
 	frames, err := cdp.CaptureFrames(ctx, session)
 	if err != nil {
 		t.Fatal(err)

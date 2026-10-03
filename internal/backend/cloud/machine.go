@@ -1,64 +1,359 @@
 package cloud
 
-//revive:disable:unused-parameter
-// API checkpoint: bodies follow after the public boundary is merged.
-
 import (
 	"context"
+	"errors"
 	"sync"
+	"time"
 
 	"github.com/wspl/demi/internal/backend/database"
+	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/backend/remotehost"
+	"github.com/wspl/demi/internal/gates"
+	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// Cloud is the user's one machine, made on first need, and its lifecycle work.
-// Construct it with New and share its pointer. Its opaque state uses the shard
-// mutex; methods acquire that mutex themselves and must be called without it
-// held. No IO, callback or wait runs under that mutex.
-type Cloud struct{}
+// Cloud is the user's machine and owned lifecycle work. New binds it to the
+// shard's mutex. All methods acquire that mutex themselves, never across IO.
+type Cloud struct {
+	mu      *sync.Mutex // The shard's mutex protects machine state and worker admission.
+	ctx     context.Context
+	cancel  context.CancelFunc
+	machine *machine
+	stopped bool
+	workers sync.WaitGroup
+	closing *transition
+	records records // Immutable storage boundary; nil selects CloudShard.Control.
+}
+type machine struct {
+	device     database.DeviceRecord
+	gate       *gates.Activity
+	phase      webapi.CloudState
+	permit     *Permit
+	transition *transition
+	reset      *transition
+	retirement *transition
+	operation  *database.ManagedOperation
+	failure    *string
+	deaths     []time.Time
+	started    time.Time
+	checkpoint time.Time
+	schedules  context.CancelFunc
+	marks      pagesync.UserMarks
+}
+type transition struct {
+	done chan struct{}
+	err  error
+}
 
-// New creates the Cloud component using its owning shard's lifetime context
-// and mutex. Request contexts never own transitions. The shard must call Close
-// to join all work before releasing its dependencies, even if ctx is canceled.
-func New(ctx context.Context, mu *sync.Mutex) *Cloud { panic("not written: b-cloud") }
+// New creates a Cloud with its shard's lifetime context and mutex. Close must
+// join owned work even after ctx is canceled.
+func New(ctx context.Context, mu *sync.Mutex) *Cloud {
+	life, cancel := context.WithCancel(ctx)
+	return &Cloud{mu: mu, ctx: life, cancel: cancel}
+}
 
-// Runs reports whether device's machine runs, which a new expose on it needs.
-func (c *Cloud) Runs(device webapi.DeviceID) bool { panic("not written: b-cloud") }
+// Runs reports whether device's machine runs, which a new expose needs.
+func (c *Cloud) Runs(device webapi.DeviceID) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.machine != nil && c.machine.device.ID == device && c.machine.phase == webapi.CloudStateRunning
+}
 
-// Stop admits nothing more and cancels the running machine's schedules. It
-// does not wait; a retirement already running finishes, and Close joins it.
-func (c *Cloud) Stop() { panic("not written: b-cloud") }
+// Stop refuses new admissions and cancels schedules without waiting. Close
+// joins schedules and any retirement already committed.
+func (c *Cloud) Stop() {
+	c.mu.Lock()
+	c.stopped = true
+	var cancel context.CancelFunc
+	if c.machine != nil {
+		cancel = c.machine.schedules
+	}
+	c.mu.Unlock()
+	c.cancel()
+	if cancel != nil {
+		cancel()
+	}
+}
 
-// Admission holds the Cloud running. Each operation of a Host made under it
-// takes PerOperation. The acquiring owner defers Release.
+// Admission holds the Cloud running; each Host operation takes PerOperation.
+// The acquiring owner defers Release.
 type Admission struct {
 	// Device is the admitted Cloud's identity.
 	Device webapi.DeviceID
 	// PerOperation acquires a separate lease for each Host operation.
 	PerOperation remotehost.Admission
+	held         *gates.Lease
 }
 
 // Release lets this admission go. It is idempotent and does not wait.
-func (a *Admission) Release() { panic("not written: b-cloud") }
+func (a *Admission) Release() { a.held.Release() }
 
-// Admit wakes a stopped Cloud, joins a boot under way, or waits for a running
-// reset, holding nothing while it waits for that reset. A failed reset fails
-// its waiters. Cancellation ends the wait, not the Cloud-owned transition.
-// The caller must own device through shard and release the returned admission.
+// Admit wakes a stopped Cloud or joins boot, recovery or reset. Request
+// cancellation ends the wait, not an owned transition. The caller owns device.
 func Admit(ctx context.Context, shard CloudShard, device database.DeviceRecord) (*Admission, error) {
-	panic("not written: b-cloud")
+	m, err := loadMachine(ctx, shard, device)
+	if err != nil {
+		return nil, storageFailed(err)
+	}
+	c := shard.Cloud()
+	for {
+		c.mu.Lock()
+		stopped := c.stopped || c.ctx.Err() != nil
+		reset := m.reset
+		if reset == nil {
+			reset = m.retirement
+		}
+		c.mu.Unlock()
+		if stopped {
+			return nil, &Error{Kind: Closed}
+		}
+		if reset != nil {
+			if err := reset.wait(ctx); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		lease, err := m.gate.Enter(ctx, gates.Demand)
+		if err != nil {
+			return nil, err
+		}
+		ready, err := ensureRunning(ctx, shard, m)
+		if err != nil || !ready {
+			lease.Release()
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		return &Admission{Device: device.ID, held: lease, PerOperation: func() (*gates.Lease, error) { return c.admitOperation(m) }}, nil
+	}
 }
 
-// Died handles an unsolicited sandbox exit. A running machine stops, its
-// runner disconnects, its exposes end, and the death counts toward crash-loop
-// protection, as one during boot does. Saving and resetting ignore the event.
+// admitOperation acquires a lease then rechecks the Cloud phase so reset cannot
+// win the decision while an operation escapes its admission boundary.
+func (c *Cloud) admitOperation(m *machine) (*gates.Lease, error) {
+	c.mu.Lock()
+	phase, retiring := m.phase, m.retirement != nil
+	c.mu.Unlock()
+	if phase != webapi.CloudStateRunning {
+		return nil, &host.Error{Kind: host.Unavailable, Message: "Cloud is not accepting operations"}
+	}
+	if retiring {
+		return nil, &host.Error{Kind: host.Unavailable, Message: "Cloud is changing state"}
+	}
+	lease := m.gate.TryEnter(gates.Demand)
+	if lease == nil {
+		return nil, &host.Error{Kind: host.Unavailable, Message: "Cloud is changing state"}
+	}
+	c.mu.Lock()
+	running := m.phase == webapi.CloudStateRunning && m.retirement == nil
+	c.mu.Unlock()
+	if !running {
+		lease.Release()
+		return nil, &host.Error{Kind: host.Unavailable, Message: "Cloud is not accepting operations"}
+	}
+	return lease, nil
+}
+
+// Died records an unsolicited runtime loss. Saving and resetting ignore it.
 func Died(ctx context.Context, shard CloudShard, device webapi.DeviceID) error {
-	panic("not written: b-cloud")
+	c := shard.Cloud()
+	tuning := shard.CloudServices().Tuning
+	c.mu.Lock()
+	m := c.machine
+	if m == nil || m.device.ID != device || (m.phase != webapi.CloudStateRunning && m.phase != webapi.CloudStateBooting) {
+		c.mu.Unlock()
+		return nil
+	}
+	now := time.Now()
+	m.deaths = append(m.deaths, now)
+	for len(m.deaths) > 0 && now.Sub(m.deaths[0]) >= tuning.CrashLoopWindow {
+		m.deaths = m.deaths[1:]
+	}
+	if m.phase == webapi.CloudStateBooting {
+		c.mu.Unlock()
+		return nil
+	}
+	cancel, permit := m.schedules, m.permit
+	m.schedules = nil
+	m.permit = nil
+	m.phase = webapi.CloudStateOff
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if permit != nil {
+		permit.Release()
+	}
+	m.mark()
+	shard.Devices().Disconnect(device, "the Cloud's sandbox stopped")
+	return shard.CloudStopped(ctx, device)
 }
 
-// Close stops admission and schedules, joins owned work including a reset or
-// transition under way, and saves and stops a running machine. A machine still
-// held is left to the manager's reconcile when its client disconnects. The
-// shard calls this with a usable cleanup context before disposing its state.
-func Close(ctx context.Context, shard CloudShard) error { panic("not written: b-cloud") }
+// Close stops admission, joins work, then saves a running machine if its gate
+// is free. A still-held machine is left to the manager's final reconciliation.
+func Close(ctx context.Context, shard CloudShard) error {
+	c := shard.Cloud()
+	c.Stop()
+	c.mu.Lock()
+	if t := c.closing; t != nil {
+		c.mu.Unlock()
+		return t.wait(ctx)
+	}
+	t := &transition{done: make(chan struct{})}
+	c.closing = t
+	c.mu.Unlock()
+	// Stop fenced registration; durable transitions finish with cleanup contexts.
+	c.workers.Wait()
+	c.mu.Lock()
+	m := c.machine
+	c.mu.Unlock()
+	if m != nil {
+		if reserved := m.gate.TryReserve(); reserved != nil {
+			t.err = hibernate(ctx, shard, m)
+			reserved.Release()
+		}
+	}
+	c.workers.Wait()
+	// Rust drops the Cloud's remaining permit when its shard goes away. Close
+	// is Go's explicit disposal boundary, including a machine left for reconcile.
+	c.mu.Lock()
+	var permit *Permit
+	if m != nil {
+		permit = m.permit
+		m.permit = nil
+	}
+	c.mu.Unlock()
+	if permit != nil {
+		permit.Release()
+	}
+	close(t.done)
+	return t.err
+}
+
+// loadMachine publishes the first Cloud machine after its durable reset read.
+func loadMachine(ctx context.Context, s CloudShard, device database.DeviceRecord) (*machine, error) {
+	c := s.Cloud()
+	c.mu.Lock()
+	m := c.machine
+	c.mu.Unlock()
+	if m != nil {
+		return m, nil
+	}
+	operation, err := cloudRecords(s).LatestManagedOperation(ctx, device.ID)
+	if err != nil {
+		return nil, err
+	}
+	marks := s.Marks()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.machine == nil {
+		c.machine = &machine{device: device, gate: gates.NewActivity(nil), phase: webapi.CloudStateOff, operation: operation, marks: marks}
+	}
+	return c.machine, nil
+}
+
+// wait joins one Cloud transition without granting its waiter cancellation ownership.
+func (t *transition) wait(ctx context.Context) error {
+	select {
+	case <-t.done:
+		return t.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// mark publishes a Cloud change only after its shard mutex has been released.
+func (m *machine) mark() { m.marks.Mark(pagesync.Part{Kind: pagesync.Cloud}) }
+
+// ensureRunning atomically chooses or joins the machine transition.
+func ensureRunning(ctx context.Context, s CloudShard, m *machine) (bool, error) {
+	c := s.Cloud()
+	services := s.CloudServices()
+	for {
+		online := s.Devices().Online(m.device.ID)
+		c.mu.Lock()
+		if c.stopped || c.ctx.Err() != nil {
+			c.mu.Unlock()
+			return false, &Error{Kind: Closed}
+		}
+		if m.transition != nil {
+			t := m.transition
+			c.mu.Unlock()
+			if err := t.wait(ctx); err != nil {
+				return false, err
+			}
+			continue
+		}
+		if m.phase == webapi.CloudStateResetting || m.retirement != nil {
+			c.mu.Unlock()
+			return false, nil
+		}
+		if m.phase == webapi.CloudStateRunning && online {
+			c.mu.Unlock()
+			return true, nil
+		}
+		recovering := m.phase == webapi.CloudStateRunning
+		if !recovering {
+			if m.phase != webapi.CloudStateOff {
+				c.mu.Unlock()
+				return false, failed(errors.New("Cloud is changing state"))
+			}
+			count := uint32(0)
+			for _, at := range m.deaths {
+				if time.Since(at) < services.Tuning.CrashLoopWindow {
+					count++
+				}
+			}
+			if count >= services.Tuning.CrashLoopDeaths {
+				c.mu.Unlock()
+				return false, &Error{Kind: CrashLoop}
+			}
+			// Lock order is shard then capacity; capacity never calls into a shard.
+			permit := services.Capacity.TryTake()
+			if permit == nil {
+				c.mu.Unlock()
+				return false, &Error{Kind: AtCapacity}
+			}
+			m.permit = permit
+			m.phase = webapi.CloudStateBooting
+		}
+		t := &transition{done: make(chan struct{})}
+		m.transition = t
+		c.workers.Add(1)
+		c.mu.Unlock()
+		if !recovering {
+			m.mark()
+		}
+		go func() {
+			defer c.workers.Done()
+			err := runTransition(context.WithoutCancel(c.ctx), func(ctx context.Context) error {
+				if recovering {
+					return recoverMachine(ctx, s, m)
+				}
+				return boot(ctx, s, m)
+			})
+			finishBoot(s, m, err)
+			c.mu.Lock()
+			m.transition = nil
+			c.mu.Unlock()
+			t.err = err
+			close(t.done)
+		}()
+		if err := t.wait(ctx); err != nil {
+			return false, err
+		}
+	}
+}
+
+// runTransition contains a failed task at the Cloud boundary, as Rust's joinable does.
+func runTransition(ctx context.Context, work func(context.Context) error) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = failed(errors.New("A transition of the Cloud ended without an answer")) //nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		}
+	}()
+	return work(ctx)
+}

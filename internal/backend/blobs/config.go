@@ -15,7 +15,7 @@ import (
 	"gocloud.dev/blob/s3blob"
 )
 
-//go:generate go run ../../../tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // Contract documentation is copied verbatim from Rust.
 //revive:disable:exported
