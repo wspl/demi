@@ -26,9 +26,11 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-const realFirst = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01"
-const realSecond = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02"
-const realPatience = 240 * time.Second
+const (
+	realFirst    = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01"
+	realSecond   = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02"
+	realPatience = 240 * time.Second
+)
 
 // These tests deliberately do not call Parallel: starting a backend reconciles
 // the shared manager and stops its Clouds.
@@ -42,7 +44,12 @@ type realCloud struct {
 // address and embedded command releases, using the existing conversation driver.
 func realCloudStart(t *testing.T, brokenRunner bool) *realCloud {
 	t.Helper()
-	for _, name := range []string{"DEMI_TEST_MACHINES_SOCKET", "DEMI_TEST_CLOUD_URL", "DEMI_TEST_MACHINES_DATA", "DEMI_TEST_CLOUD_NATIVE"} {
+	for _, name := range []string{
+		"DEMI_TEST_MACHINES_SOCKET",
+		"DEMI_TEST_CLOUD_URL",
+		"DEMI_TEST_MACHINES_DATA",
+		"DEMI_TEST_CLOUD_NATIVE",
+	} {
 		if os.Getenv(name) == "" {
 			t.Skip("the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)")
 		}
@@ -82,7 +89,11 @@ func realCloudStart(t *testing.T, brokenRunner bool) *realCloud {
 	}
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
-	return &realCloud{&hostScenario{t, ctx, h, b, master, nil}, os.Getenv("DEMI_TEST_MACHINES_DATA"), os.Getenv("DEMI_TEST_MACHINES_SOCKET")}
+	return &realCloud{
+		&hostScenario{t, ctx, h, b, master, nil},
+		os.Getenv("DEMI_TEST_MACHINES_DATA"),
+		os.Getenv("DEMI_TEST_MACHINES_SOCKET"),
+	}
 }
 
 // hold keeps a conversation's Cloud active through its normal file gate.
@@ -232,17 +243,21 @@ func (s *realCloud) memory(device string) {
 			continue
 		}
 		program := strings.Split(string(command), "\x00")[0]
-		p := peaks[program]
-		p.count++
+		peak := peaks[program]
+		peak.count++
 		for _, line := range strings.Split(string(status), "\n") {
 			if value, ok := strings.CutPrefix(line, "VmHWM:"); ok {
-				kb, err := strconv.ParseUint(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(value), "kB")), 10, 64)
+				kb, err := strconv.ParseUint(
+					strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(value), "kB")),
+					10,
+					64,
+				)
 				if err == nil {
-					p.kb = max(p.kb, kb)
+					peak.kb = max(peak.kb, kb)
 				}
 			}
 		}
-		peaks[program] = p
+		peaks[program] = peak
 	}
 	var programs []string
 	for program := range peaks {
@@ -250,17 +265,27 @@ func (s *realCloud) memory(device string) {
 	}
 	slices.Sort(programs)
 	for _, program := range programs {
-		p := peaks[program]
-		s.t.Logf("cloud-suite measurement: %s: %s: %d processes, largest peak %d MiB", s.t.Name(), program, p.count, p.kb/1024)
+		peak := peaks[program]
+		s.t.Logf(
+			"cloud-suite measurement: %s: %s: %d processes, largest peak %d MiB",
+			s.t.Name(),
+			program,
+			peak.count,
+			peak.kb/1024,
+		)
 	}
 }
 
 const realPackage = `mkdir -p package/DEBIAN package/usr/share/cloud-suite
-printf 'Package: cloud-suite-probe\nVersion: 1.0\nArchitecture: all\nMaintainer: Cloud suite <suite@example.test>\nDescription: what the Cloud suite installs\n' > package/DEBIAN/control
+printf 'Package: cloud-suite-probe\nVersion: 1.0\nArchitecture: all` +
+	`\nMaintainer: Cloud suite <suite@example.test>` +
+	`\nDescription: what the Cloud suite installs\n' > package/DEBIAN/control
 echo installed > package/usr/share/cloud-suite/marker
 dpkg-deb --root-owner-group --build package probe.deb > /dev/null
 sudo -n dpkg -i probe.deb > /dev/null`
 
+// TestACloudRunsAsUID1000ForEveryConversationAndKeepsASystemPackageAndHomeAcrossAStop
+// checks Cloud identity and package and home persistence across a stop.
 // Tens of seconds: a Cloud boots, installs a local package, stops, wakes and saves.
 func TestACloudRunsAsUID1000ForEveryConversationAndKeepsASystemPackageAndHomeAcrossAStop(t *testing.T) {
 	s := realCloudStart(t, false)
@@ -272,7 +297,13 @@ func TestACloudRunsAsUID1000ForEveryConversationAndKeepsASystemPackageAndHomeAcr
 	device := s.device(s.ctx)
 	s.memory(device)
 	started = time.Now()
-	facts := realRun(s.ctx, first, "facts", "set -e\nid -u\nid -g\nsudo -n id -u\necho home-data > ~/note\n"+realPackage+"\ndpkg-query -W -f='${Status}\\n' cloud-suite-probe\ngrep MemTotal /proc/meminfo")
+	facts := realRun(
+		s.ctx,
+		first,
+		"facts",
+		"set -e\nid -u\nid -g\nsudo -n id -u\necho home-data > ~/note\n"+realPackage+
+			"\ndpkg-query -W -f='${Status}\\n' cloud-suite-probe\ngrep MemTotal /proc/meminfo",
+	)
 	realMeasured(t, "first command", started)
 	realContains(t, facts, "1000\n1000\n0\n", "install ok installed")
 	memory := "MemTotal: unknown"
@@ -291,7 +322,16 @@ func TestACloudRunsAsUID1000ForEveryConversationAndKeepsASystemPackageAndHomeAcr
 	if uploaded.Status != 204 {
 		t.Fatalf("upload: %d %s", uploaded.Status, uploaded.Body)
 	}
-	seen := realRun(s.ctx, second, "seen", fmt.Sprintf("stat -c %%u:%%g /home/demi/sessions/%s/uploaded; cat /home/demi/sessions/%s/uploaded; echo; cat ~/note", realFirst, realFirst))
+	seen := realRun(
+		s.ctx,
+		second,
+		"seen",
+		fmt.Sprintf(
+			"stat -c %%u:%%g /home/demi/sessions/%s/uploaded; cat /home/demi/sessions/%s/uploaded; echo; cat ~/note",
+			realFirst,
+			realFirst,
+		),
+	)
 	realContains(t, seen, "1000:1000\nfrom-api\nhome-data")
 	conversationEqual(t, s.device(s.ctx), device)
 	started = time.Now()
@@ -299,7 +339,14 @@ func TestACloudRunsAsUID1000ForEveryConversationAndKeepsASystemPackageAndHomeAcr
 	s.until(s.ctx, func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
 	realMeasured(t, "idle stop, window included", started)
 	stopped := s.image(s.ctx, device)
-	output := realCommand(s.ctx, t, "debugfs", "-R", "ls -p /upper/var/lib/demi/jobs", filepath.Join(s.generation(device, stopped), "system.ext4"))
+	output := realCommand(
+		s.ctx,
+		t,
+		"debugfs",
+		"-R",
+		"ls -p /upper/var/lib/demi/jobs",
+		filepath.Join(s.generation(device, stopped), "system.ext4"),
+	)
 	var jobs []string
 	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Split(line, "/")
@@ -314,16 +361,27 @@ func TestACloudRunsAsUID1000ForEveryConversationAndKeepsASystemPackageAndHomeAcr
 	started = time.Now()
 	s.list(s.ctx, realFirst, 200)
 	realMeasured(t, "wake until the runner is ready", started)
-	woken := realRun(s.ctx, first, "woken", "cat ~/note; dpkg-query -W -f='${Status}\\n' cloud-suite-probe; cat /usr/share/cloud-suite/marker")
+	woken := realRun(
+		s.ctx,
+		first,
+		"woken",
+		"cat ~/note; dpkg-query -W -f='${Status}\\n' cloud-suite-probe; cat /usr/share/cloud-suite/marker",
+	)
 	realContains(t, woken, "home-data\ninstall ok installed\ninstalled")
 	conversationEqual(t, s.device(s.ctx), device)
 	s.memory(device)
 	working.Release()
 	wireMust(t, s.b.Close(s.ctx))
 	saved := s.image(s.ctx, device)
-	conversationEqual(t, saved.HomeBytes, realCapacity(s.ctx, t, filepath.Join(s.generation(device, saved), "home.ext4")))
+	conversationEqual(
+		t,
+		saved.HomeBytes,
+		realCapacity(s.ctx, t, filepath.Join(s.generation(device, saved), "home.ext4")),
+	)
 }
 
+// TestACloudGrowsItsHomeOnlineAndItsSavedGenerationRecordsTheGrownCapacity
+// checks online home growth and saved capacity.
 // Tens of seconds to minutes: boot, fill, idle stop, wake, online growth and save.
 // Requires the manager's CAP_SYS_RESOURCE, as in the Rust scenario.
 func TestACloudGrowsItsHomeOnlineAndItsSavedGenerationRecordsTheGrownCapacity(t *testing.T) {
@@ -347,7 +405,16 @@ func TestACloudGrowsItsHomeOnlineAndItsSavedGenerationRecordsTheGrownCapacity(t 
 	working = s.hold(s.ctx, realFirst)
 	s.list(s.ctx, realFirst, 200)
 	started := time.Now()
-	grown := realRun(s.ctx, first, "grown", fmt.Sprintf("for second in $(seq 180); do size=$(df -B1 --output=size /home | tail -1); [ $size -gt %d ] && break; sleep 1; done; echo home-size $size", initial))
+	grown := realRun(
+		s.ctx,
+		first,
+		"grown",
+		fmt.Sprintf(
+			"for second in $(seq 180); do size=$(df -B1 --output=size /home | tail -1); "+
+				"[ $size -gt %d ] && break; sleep 1; done; echo home-size $size",
+			initial,
+		),
+	)
 	realMeasured(t, "growth after the wake", started)
 	var size uint64
 	for _, line := range strings.Split(grown, "\n") {
@@ -364,18 +431,28 @@ func TestACloudGrowsItsHomeOnlineAndItsSavedGenerationRecordsTheGrownCapacity(t 
 	working.Release()
 	wireMust(t, s.b.Close(s.ctx))
 	saved := s.image(s.ctx, device)
-	conversationEqual(t, saved.HomeBytes, realCapacity(s.ctx, t, filepath.Join(s.generation(device, saved), "home.ext4")))
+	conversationEqual(
+		t,
+		saved.HomeBytes,
+		realCapacity(s.ctx, t, filepath.Join(s.generation(device, saved), "home.ext4")),
+	)
 	if saved.HomeBytes <= initial {
 		t.Fatal(saved)
 	}
 }
 
+// TestAResetBringsBackACloudWhoseBashOrRunnerIsBrokenAndKeepsItsHome
+// checks reset recovery with a broken shell or runner.
 // Tens of seconds: two resets and one failed boot, with a 30-second runner guard.
 func TestAResetBringsBackACloudWhoseBashOrRunnerIsBrokenAndKeepsItsHome(t *testing.T) {
 	s := realCloudStart(t, true)
 	first := s.work(realFirst)
 	working := s.hold(s.ctx, realFirst)
-	realContains(t, realRun(s.ctx, first, "break-bash", "echo latest-home > ~/note; sudo -n chmod 000 /usr/bin/bash; echo broken"), "broken")
+	realContains(
+		t,
+		realRun(s.ctx, first, "break-bash", "echo latest-home > ~/note; sudo -n chmod 000 /usr/bin/bash; echo broken"),
+		"broken",
+	)
 	device := s.device(s.ctx)
 	working.Release()
 	started := time.Now()
@@ -394,7 +471,11 @@ func TestAResetBringsBackACloudWhoseBashOrRunnerIsBrokenAndKeepsItsHome(t *testi
 	s.resetCloud("7e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02")
 	s.until(s.ctx, ready)
 	working = s.hold(s.ctx, realFirst)
-	realContains(t, realRun(s.ctx, first, "back", "cat ~/note; test -x /usr/bin/demi-runner && echo runner-back"), "latest-home\nrunner-back")
+	realContains(
+		t,
+		realRun(s.ctx, first, "back", "cat ~/note; test -x /usr/bin/demi-runner && echo runner-back"),
+		"latest-home\nrunner-back",
+	)
 	conversationEqual(t, s.device(s.ctx), device)
 	working.Release()
 	wireMust(t, s.b.Close(s.ctx))
@@ -443,15 +524,24 @@ func (s *realCloud) openTab(ctx context.Context, pagePath, page string) {
 	}
 }
 
+// TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEveryProcessUntilTheIdleConversationsRelease
+// checks checkpoint persistence with Chrome and mapped files.
 // Tens of seconds: Chrome boots, two images checkpoint, and a conversation releases.
-func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEveryProcessUntilTheIdleConversationsRelease(t *testing.T) {
+func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEveryProcessUntilTheIdleConversationsRelease(
+	t *testing.T,
+) {
 	s := realCloudStart(t, false)
 	first := s.work(realFirst)
 	working := s.hold(s.ctx, realFirst)
 	session := "/home/demi/sessions/" + realFirst
-	script := "cat > page.html <<'HTML'\n<!doctype html><title>cloud-suite page</title><p>Chrome on the Cloud</p>\nHTML\ncat > mapper.py <<'PY'\n" + realMapper + "PY\necho written"
+	script := "cat > page.html <<'HTML'\n<!doctype html><title>cloud-suite page</title><p>Chrome on the Cloud</p>" +
+		"\nHTML\ncat > mapper.py <<'PY'\n" + realMapper + "PY\necho written"
 	realContains(t, realRun(s.ctx, first, "page", script), "written")
-	realContains(t, realRun(s.ctx, first, "mapper", "python3 mapper.py mapped 'written through a mapping'", 5000), "mapped")
+	realContains(
+		t,
+		realRun(s.ctx, first, "mapper", "python3 mapper.py mapped 'written through a mapping'", 5000),
+		"mapped",
+	)
 	pagePath := "/api/conversations/" + realFirst + "/plugins/browser"
 	started := time.Now()
 	s.openTab(s.ctx, pagePath, "file://"+session+"/page.html")
@@ -459,7 +549,16 @@ func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEv
 	started = time.Now()
 	s.openTab(s.ctx, pagePath, "file://"+session+"/page.html")
 	realMeasured(t, "later Chrome tab until its page shows", started)
-	realContains(t, realRun(s.ctx, first, "renderers", "for pid in $(pgrep -f -- '--type=renderer'); do grep '^Seccomp:' /proc/$pid/status; done"), "Seccomp:\t2")
+	realContains(
+		t,
+		realRun(
+			s.ctx,
+			first,
+			"renderers",
+			"for pid in $(pgrep -f -- '--type=renderer'); do grep '^Seccomp:' /proc/$pid/status; done",
+		),
+		"Seccomp:\t2",
+	)
 	device := s.device(s.ctx)
 	s.memory(device)
 	before := s.image(s.ctx, device)
@@ -507,7 +606,11 @@ func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEv
 		wireMust(t, os.Remove(copyPath))
 	}
 	conversationEqual(t, len(s.tabs(s.ctx, pagePath)), 2)
-	realContains(t, realRun(s.ctx, first, "alive", "pgrep -f mapper.py > /dev/null && echo mapper-alive"), "mapper-alive")
+	realContains(
+		t,
+		realRun(s.ctx, first, "alive", "pgrep -f mapper.py > /dev/null && echo mapper-alive"),
+		"mapper-alive",
+	)
 	second := s.work(realSecond)
 	busy := s.hold(s.ctx, realSecond)
 	realContains(t, realRun(s.ctx, first, "end", "pkill -f mapper.py; echo ended"), "ended")
@@ -535,6 +638,8 @@ for line in sys.stdin:
         print(name, "refused")
 `
 
+// TestTwoUsersCloudsRunAtOnceAndReachTheBackendButNothingElsePrivate
+// checks Cloud concurrency and isolation between users.
 // Tens of seconds: two Clouds boot; each refused connection has a three-second guard.
 func TestTwoUsersCloudsRunAtOnceAndReachTheBackendButNothingElsePrivate(t *testing.T) {
 	s := realCloudStart(t, false)
@@ -552,7 +657,13 @@ func TestTwoUsersCloudsRunAtOnceAndReachTheBackendButNothingElsePrivate(t *testi
 	second := &cloudWork{s: &otherScenario, vendor: vendor, provider: provider, id: realSecond}
 	second.open()
 	working, alsoWorking := s.hold(s.ctx, realFirst), other.hold(s.ctx, realSecond)
-	serving := realRun(s.ctx, second, "serve", "ip -4 -o addr show scope global | awk '{print $4}'; exec python3 -m http.server 8123", 5000)
+	serving := realRun(
+		s.ctx,
+		second,
+		"serve",
+		"ip -4 -o addr show scope global | awk '{print $4}'; exec python3 -m http.server 8123",
+		5000,
+	)
 	var otherIP netip.Addr
 	for _, line := range strings.Split(serving, "\n") {
 		if prefix, err := netip.ParsePrefix(strings.TrimSpace(line)); err == nil && prefix.Addr().Is4() {
@@ -575,15 +686,42 @@ func TestTwoUsersCloudsRunAtOnceAndReachTheBackendButNothingElsePrivate(t *testi
 	defer func() { wireMust(t, private.Close()) }()
 	_, port, err := net.SplitHostPort(private.Addr().String())
 	wireMust(t, err)
-	targets := fmt.Sprintf("backend %s %d\nhost-service %s %s\nprivate 10.0.0.1 80\nmetadata 169.254.169.254 80\nother-cloud %s 8123\nipv6 fd00::1 80\n", address.Addr(), address.Port(), address.Addr(), port, otherIP)
-	probed := realRun(s.ctx, first, "probe", "cat > probe.py <<'PY'\n"+realProbe+"PY\npython3 probe.py <<'TARGETS'\n"+targets+"TARGETS\necho ipv6-addresses $(ip -6 addr show scope global | wc -l)")
-	realContains(t, probed, "backend reached", "host-service refused", "private refused", "metadata refused", "other-cloud refused", "ipv6 refused", "ipv6-addresses 0")
+	targets := fmt.Sprintf(
+		"backend %s %d\nhost-service %s %s"+
+			"\nprivate 10.0.0.1 80\nmetadata 169.254.169.254 80\nother-cloud %s 8123"+
+			"\nipv6 fd00::1 80\n",
+		address.Addr(),
+		address.Port(),
+		address.Addr(),
+		port,
+		otherIP,
+	)
+	probed := realRun(
+		s.ctx,
+		first,
+		"probe",
+		"cat > probe.py <<'PY'\n"+realProbe+"PY\npython3 probe.py <<'TARGETS'\n"+targets+
+			"TARGETS\necho ipv6-addresses $(ip -6 addr show scope global | wc -l)",
+	)
+	realContains(
+		t,
+		probed,
+		"backend reached",
+		"host-service refused",
+		"private refused",
+		"metadata refused",
+		"other-cloud refused",
+		"ipv6 refused",
+		"ipv6-addresses 0",
+	)
 	s.memory(s.device(s.ctx))
 	working.Release()
 	alsoWorking.Release()
 	wireMust(t, s.b.Close(s.ctx))
 }
 
+// TestACloudWhoseSandboxIsKilledReportsADeathAndBootsAgainWithItsFiles
+// checks recovery with retained files after sandbox death.
 // Tens of seconds: boot, kill the Sentry, observe death, and boot with saved files.
 func TestACloudWhoseSandboxIsKilledReportsADeathAndBootsAgainWithItsFiles(t *testing.T) {
 	s := realCloudStart(t, false)

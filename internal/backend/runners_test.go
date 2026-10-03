@@ -42,6 +42,7 @@ func connectHostRunner(t *testing.T, b *backendtest.TestBackend) *rawHostRunner 
 	t.Cleanup(func() { _ = socket.CloseNow() }) // Closing an already closed fixture socket is harmless.
 	return &rawHostRunner{t, t.Context(), socket}
 }
+
 func (r *rawHostRunner) send(message runnerwire.Outbound) {
 	r.t.Helper()
 	data, err := runnerwire.Encode(message)
@@ -52,6 +53,7 @@ func (r *rawHostRunner) send(message runnerwire.Outbound) {
 		r.t.Fatal(err)
 	}
 }
+
 func (r *rawHostRunner) next() runnerwire.Inbound {
 	r.t.Helper()
 	ctx, cancel := context.WithTimeout(r.ctx, 10*time.Second)
@@ -72,30 +74,42 @@ func (r *rawHostRunner) next() runnerwire.Inbound {
 	}
 	return message
 }
+
 func runnerHello(protocol uint32, token string, managed *bool) *runnerwire.Hello {
-	h := &runnerwire.Hello{Protocol: protocol, Runner: runnerwire.RunnerInfo{Name: "raw", Platform: runnerwire.RunnerPlatformLinux, Version: "0", Identity: runnerwire.HostIdentity{UID: 1, GID: 1, Hostname: "raw", HomeDir: "/home/raw"}, Managed: managed}}
+	h := &runnerwire.Hello{
+		Protocol: protocol,
+		Runner: runnerwire.RunnerInfo{
+			Name:     "raw",
+			Platform: runnerwire.RunnerPlatformLinux,
+			Version:  "0",
+			Identity: runnerwire.HostIdentity{UID: 1, GID: 1, Hostname: "raw", HomeDir: "/home/raw"},
+			Managed:  managed,
+		},
+	}
 	if token != "" {
 		v := runnerwire.DeviceToken(token)
 		h.DeviceToken = &v
 	}
 	return h
 }
+
 func (s *hostScenario) stoppedPair() (*backendtest.Paired, string) {
 	s.t.Helper()
-	p := s.pair("laptop")
-	token, err := p.Token(s.ctx)
+	paired := s.pair("laptop")
+	token, err := paired.Token(s.ctx)
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	if err := p.Runner.Stop(s.ctx); err != nil {
+	if err := paired.Runner.Stop(s.ctx); err != nil {
 		s.t.Fatal(err)
 	}
-	if err := s.b.UntilOnline(s.ctx, &s.user, p.ID(), false); err != nil {
+	if err := s.b.UntilOnline(s.ctx, &s.user, paired.ID(), false); err != nil {
 		s.t.Fatal(err)
 	}
-	return p, token
+	return paired, token
 }
 
+// TestRunnerRejectsInvalidProtocolAndUnknownIdentity checks protocol and identity refusals.
 func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
 	t.Parallel()
 	h, _, err := backendtest.HostsHarness(t.Context(), t)
@@ -107,7 +121,7 @@ func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		kind websocket.MessageType
 		data []byte
 	}{
@@ -115,7 +129,7 @@ func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
 		{websocket.MessageBinary, []byte{0xc1, 0}},
 	} {
 		r := connectHostRunner(t, b)
-		if err := r.socket.Write(t.Context(), tc.kind, tc.data); err != nil {
+		if err := r.socket.Write(t.Context(), scenario.kind, scenario.data); err != nil {
 			t.Fatal(err)
 		}
 		if got := r.next(); got != nil {
@@ -123,7 +137,7 @@ func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
 		}
 	}
 	managed := true
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		hello *runnerwire.Hello
 		code  runnerwire.HelloErrorCode
 		words string
@@ -133,9 +147,9 @@ func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
 		{runnerHello(runnerwire.Version, "", &managed), runnerwire.HelloErrorCodeUnknownDevice, "never paired"},
 	} {
 		r := connectHostRunner(t, b)
-		r.send(tc.hello)
+		r.send(scenario.hello)
 		refused, ok := r.next().(*runnerwire.HelloError)
-		if !ok || refused.Code != tc.code || !strings.Contains(refused.Reason, tc.words) {
+		if !ok || refused.Code != scenario.code || !strings.Contains(refused.Reason, scenario.words) {
 			t.Fatalf("hello refusal: %+v", refused)
 		}
 		if r.next() != nil {
@@ -152,6 +166,7 @@ func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
 	}
 }
 
+// TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored checks single binding and repeated hello handling.
 func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -184,7 +199,14 @@ func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bound.send(&runnerwire.ArtifactResolve{ID: "after-hello", Owner: &runnerwire.StreamArtifactOwner{StreamID: "none"}, SHA256: strings.Repeat("0", 64), Target: string(target)})
+	bound.send(
+		&runnerwire.ArtifactResolve{
+			ID:     "after-hello",
+			Owner:  &runnerwire.StreamArtifactOwner{StreamID: "none"},
+			SHA256: strings.Repeat("0", 64),
+			Target: string(target),
+		},
+	)
 	answer, ok := bound.next().(*runnerwire.ArtifactLocation)
 	if !ok || answer.ID != "after-hello" || answer.Error == nil {
 		t.Fatalf("later request: %+v", answer)
@@ -199,6 +221,7 @@ func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
 	}
 }
 
+// TestRunnerReservesOnlyReachableConversationNumbers checks number reservations limited to reachable conversations.
 func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -222,15 +245,26 @@ func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
 	if _, ok := r.next().(*runnerwire.HelloOK); !ok {
 		t.Fatal("not welcomed")
 	}
-	for i, tc := range []struct {
+	for i, scenario := range []struct {
 		conversation string
 		count        uint32
 		first        uint64
 	}{
-		{hostsConversation, 4, 1}, {hostsConversation, 1, 5}, {elsewhere, 1, 0}, {"no-such-conversation", 1, 0}, {hostsConversation, 2, 6},
+		{hostsConversation, 4, 1},
+		{hostsConversation, 1, 5},
+		{elsewhere, 1, 0},
+		{"no-such-conversation", 1, 0},
+		{hostsConversation, 2, 6},
 	} {
 		id := fmt.Sprint(i)
-		r.send(&runnerwire.NumbersReserve{ID: id, ConversationID: tc.conversation, Sequence: commandwire.TabSequence, Count: tc.count})
+		r.send(
+			&runnerwire.NumbersReserve{
+				ID:             id,
+				ConversationID: scenario.conversation,
+				Sequence:       commandwire.TabSequence,
+				Count:          scenario.count,
+			},
+		)
 		for {
 			message := r.next()
 			if message == nil {
@@ -240,11 +274,11 @@ func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
 			if !ok || answer.ID != id {
 				continue
 			}
-			if tc.first == 0 {
+			if scenario.first == 0 {
 				if answer.First != nil || answer.Error == nil {
 					t.Fatalf("refusal: %+v", answer)
 				}
-			} else if answer.First == nil || *answer.First != tc.first || answer.Error != nil {
+			} else if answer.First == nil || *answer.First != scenario.first || answer.Error != nil {
 				t.Fatalf("reservation: %+v", answer)
 			}
 			break
@@ -252,6 +286,7 @@ func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
 	}
 }
 
+// TestDisconnectedRunnerCancelsHeldTokenLookup checks token lookup cancellation after disconnection.
 func TestDisconnectedRunnerCancelsHeldTokenLookup(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -273,6 +308,7 @@ func TestDisconnectedRunnerCancelsHeldTokenLookup(t *testing.T) {
 	hold.Release()
 }
 
+// TestClaimOfDisconnectedRunnerCreatesNoDevice checks a disconnected pairing claim without device creation.
 func TestClaimOfDisconnectedRunnerCreatesNoDevice(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -285,7 +321,20 @@ func TestClaimOfDisconnectedRunnerCreatesNoDevice(t *testing.T) {
 	if err := r.socket.CloseNow(); err != nil {
 		t.Fatal(err)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, pending.ClaimToken), 404), webapi.ErrorCodeInvalidCode)
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"POST",
+			"/api/devices/claim",
+			fmt.Sprintf(`{"code":%q}`, pending.ClaimToken),
+			404,
+		),
+		webapi.ErrorCodeInvalidCode,
+	)
 	devices, err := s.b.Devices(s.ctx, &s.user)
 	if err != nil {
 		t.Fatal(err)
@@ -295,6 +344,7 @@ func TestClaimOfDisconnectedRunnerCreatesNoDevice(t *testing.T) {
 	}
 }
 
+// TestPipesRequireDeviceToken checks device-token authentication for pipes.
 func TestPipesRequireDeviceToken(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -304,13 +354,23 @@ func TestPipesRequireDeviceToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, method := range []string{"GET", "PUT"} {
-		for _, tc := range []struct {
+		for _, scenario := range []struct {
 			headers http.Header
 			status  int
 		}{
-			{nil, 401}, {http.Header{"Authorization": {"Bearer not-a-token"}}, 401}, {http.Header{"Cookie": {s.user.Cookie}}, 401}, {http.Header{"Authorization": {"Bearer " + token}}, 404},
+			{nil, 401},
+			{http.Header{"Authorization": {"Bearer not-a-token"}}, 401},
+			{http.Header{"Cookie": {s.user.Cookie}}, 401},
+			{http.Header{"Authorization": {"Bearer " + token}}, 404},
 		} {
-			response, err := s.b.Response(s.ctx, method, "/api/pipes/0123456789abcdef", nil, tc.headers, strings.NewReader("bytes"))
+			response, err := s.b.Response(
+				s.ctx,
+				method,
+				"/api/pipes/0123456789abcdef",
+				nil,
+				scenario.headers,
+				strings.NewReader("bytes"),
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -318,16 +378,17 @@ func TestPipesRequireDeviceToken(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if a.Status != tc.status {
+			if a.Status != scenario.status {
 				t.Fatalf("pipe: %d %s", a.Status, a.Body)
 			}
-			if tc.headers == nil && string(a.Body) != "device token required" {
+			if scenario.headers == nil && string(a.Body) != "device token required" {
 				t.Fatal(string(a.Body))
 			}
 		}
 	}
 }
 
+// TestDevicesAndRunnersReturnAfterBackendRestart checks device and runner recovery across backend restart.
 func TestDevicesAndRunnersReturnAfterBackendRestart(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -345,8 +406,8 @@ func TestDevicesAndRunnersReturnAfterBackendRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []*backendtest.Paired{laptop, desktop} {
-		if err := s.b.UntilOnline(s.ctx, &s.user, p.ID(), true); err != nil {
+	for _, paired := range []*backendtest.Paired{laptop, desktop} {
+		if err := s.b.UntilOnline(s.ctx, &s.user, paired.ID(), true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -357,13 +418,14 @@ func TestDevicesAndRunnersReturnAfterBackendRestart(t *testing.T) {
 	if len(devices) != 2 || devices[0].Name != "laptop" || devices[1].Name != "desktop" {
 		t.Fatal(devices)
 	}
-	for _, d := range devices {
-		if d.LastSeenAt == nil {
+	for _, device := range devices {
+		if device.LastSeenAt == nil {
 			t.Fatal("missing last seen")
 		}
 	}
 }
 
+// TestRunnerHelloDuringShutdownIsNotWelcomed checks hello refusal during shutdown.
 func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
@@ -402,6 +464,7 @@ func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
 	}
 }
 
+// TestPairingCodeExpiresAndClaimAttemptsAreLimited checks pairing expiry and claim rate limits.
 // A code expiry wakes the runner's output wait; no test sleep polls the code.
 func TestPairingCodeExpiresAndClaimAttemptsAreLimited(t *testing.T) {
 	t.Parallel()
@@ -431,12 +494,34 @@ func TestPairingCodeExpiresAndClaimAttemptsAreLimited(t *testing.T) {
 	if first == second {
 		t.Fatal("pairing code did not change")
 	}
-	claimed := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, second), 201)
+	claimed := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		"/api/devices/claim",
+		fmt.Sprintf(`{"code":%q}`, second),
+		201,
+	)
 	device, err := webapi.DecodeClaimedDevice(claimed.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, first), 404), webapi.ErrorCodeInvalidCode)
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"POST",
+			"/api/devices/claim",
+			fmt.Sprintf(`{"code":%q}`, first),
+			404,
+		),
+		webapi.ErrorCodeInvalidCode,
+	)
 	if err := b.UntilOnline(s.ctx, &user, device.Device.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -448,8 +533,16 @@ func TestPairingCodeExpiresAndClaimAttemptsAreLimited(t *testing.T) {
 	if errorBody.Code != webapi.ErrorCodeInvalidBody {
 		t.Fatal(errorBody)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 404), webapi.ErrorCodeInvalidCode)
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 429), webapi.ErrorCodeRateLimited)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 404),
+		webapi.ErrorCodeInvalidCode,
+	)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 429),
+		webapi.ErrorCodeRateLimited,
+	)
 }
 
 func (s *hostScenario) deviceLog(path string) webapi.DeviceLog {
@@ -461,16 +554,18 @@ func (s *hostScenario) deviceLog(path string) webapi.DeviceLog {
 	}
 	return log
 }
+
+// TestPairedDeviceDirectoryAndLogAccess checks paired device directory and log access.
 func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	home := laptop.Runner.Home()
-	if err := os.WriteFile(filepath.Join(home, "hello.txt"), []byte("hi"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "hello.txt"), []byte("hi"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	fs := "/api/devices/" + string(laptop.ID()) + "/fs"
-	listing := s.directoryListing(fs)
+	directoryRoute := "/api/devices/" + string(laptop.ID()) + "/fs"
+	listing := s.directoryListing(directoryRoute)
 	if listing.Path != home || listing.Home == nil || *listing.Home != home {
 		t.Fatal(listing)
 	}
@@ -486,15 +581,41 @@ func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
 	if !found {
 		t.Fatal("hello.txt not listed")
 	}
-	conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", fs, fmt.Sprintf(`{"path":%q}`, home+"/made/by/web"), 201)
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		directoryRoute,
+		fmt.Sprintf(`{"path":%q}`, home+"/made/by/web"),
+		201,
+	)
 	info, err := os.Stat(filepath.Join(home, "made/by/web"))
 	if err != nil || !info.IsDir() {
 		t.Fatalf("created directory: %v", err)
 	}
 	for _, query := range []string{"?path=relative", "?path="} {
-		conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", fs+query, "", 400), webapi.ErrorCodeInvalidQuery)
+		conversationRefusal(
+			s.t,
+			conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", directoryRoute+query, "", 400),
+			webapi.ErrorCodeInvalidQuery,
+		)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", fs+"?path="+url.QueryEscape(home+"/nothing"), "", 404), webapi.ErrorCodeFsError)
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"GET",
+			directoryRoute+"?path="+url.QueryEscape(home+"/nothing"),
+			"",
+			404,
+		),
+		webapi.ErrorCodeFsError,
+	)
 	path := "/api/devices/" + string(laptop.ID()) + "/log"
 	tail := s.deviceLog(path)
 	online, pairing := false, false
@@ -529,24 +650,46 @@ func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
 		t.Fatal(other)
 	}
 	for _, query := range []string{"limit=0", "limit=1001", "limit=many", "since=-1", "since=1.5", "source="} {
-		conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path+"?"+query, "", 400), webapi.ErrorCodeInvalidQuery)
+		conversationRefusal(
+			s.t,
+			conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path+"?"+query, "", 400),
+			webapi.ErrorCodeInvalidQuery,
+		)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/devices/none/log", "", 404), webapi.ErrorCodeDeviceNotFound)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/devices/none/log", "", 404),
+		webapi.ErrorCodeDeviceNotFound,
+	)
 	if err := laptop.Runner.Stop(s.ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.b.UntilOnline(s.ctx, &s.user, laptop.ID(), false); err != nil {
 		t.Fatal(err)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 409), webapi.ErrorCodeDeviceOffline)
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", fs, "", 409), webapi.ErrorCodeDeviceOffline)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 409),
+		webapi.ErrorCodeDeviceOffline,
+	)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", directoryRoute, "", 409),
+		webapi.ErrorCodeDeviceOffline,
+	)
 }
 
+// TestClaimedRunnerReconnectsUntilRevoked checks runner reconnection until revocation.
 // A real runner persists its token across restart and exits when revoked.
 func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
 	t.Parallel()
 	s := newHostScenario(t, "")
-	runner, err := remotehosttest.StartRunnerProcess(s.ctx, t, s.b.URL, remotehosttest.RunnerProcessOptions{Name: "laptop"})
+	runner, err := remotehosttest.StartRunnerProcess(
+		s.ctx,
+		t,
+		s.b.URL,
+		remotehosttest.RunnerProcessOptions{Name: "laptop"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,17 +697,44 @@ func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"AAAA-BBBB"}`, 404), webapi.ErrorCodeInvalidCode)
-	answer := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, " "+strings.ToLower(code)+" "), 201)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"AAAA-BBBB"}`, 404),
+		webapi.ErrorCodeInvalidCode,
+	)
+	answer := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		"/api/devices/claim",
+		fmt.Sprintf(`{"code":%q}`, " "+strings.ToLower(code)+" "),
+		201,
+	)
 	claimed, err := webapi.DecodeClaimedDevice(answer.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
 	device := claimed.Device
-	if device.Name != "laptop" || device.Kind != webapi.DeviceKindUser || !device.Online || device.Home == nil || *device.Home != runner.Home() {
+	if device.Name != "laptop" || device.Kind != webapi.DeviceKindUser || !device.Online || device.Home == nil ||
+		*device.Home != runner.Home() {
 		t.Fatalf("device: %+v", device)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, code), 404), webapi.ErrorCodeInvalidCode)
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"POST",
+			"/api/devices/claim",
+			fmt.Sprintf(`{"code":%q}`, code),
+			404,
+		),
+		webapi.ErrorCodeInvalidCode,
+	)
 	listed, err := s.b.Devices(s.ctx, &s.user)
 	if err != nil {
 		t.Fatal(err)
@@ -604,12 +774,17 @@ func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
 	if err != nil || len(listed) != 0 {
 		t.Fatalf("devices: %+v, %v", listed, err)
 	}
-	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+string(device.ID), "", 404), webapi.ErrorCodeDeviceNotFound)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+string(device.ID), "", 404),
+		webapi.ErrorCodeDeviceNotFound,
+	)
 	if err := s.b.Close(s.ctx); err != nil {
 		t.Fatal(err)
 	}
 }
 
+// TestRunnerTwinIsAdoptedAfterFirstDisconnects checks twin adoption after the first runner disconnects.
 // The twin's real reconnect backoff makes this scenario take several seconds.
 func TestRunnerTwinIsAdoptedAfterFirstDisconnects(t *testing.T) {
 	t.Parallel()
@@ -619,7 +794,12 @@ func TestRunnerTwinIsAdoptedAfterFirstDisconnects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	twin, err := remotehosttest.StartRunnerProcess(s.ctx, t, s.b.URL, remotehosttest.RunnerProcessOptions{Name: "laptop", Token: &token})
+	twin, err := remotehosttest.StartRunnerProcess(
+		s.ctx,
+		t,
+		s.b.URL,
+		remotehosttest.RunnerProcessOptions{Name: "laptop", Token: &token},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

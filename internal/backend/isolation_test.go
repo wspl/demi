@@ -15,7 +15,14 @@ import (
 // isolationUpload stores bytes through the attachment boundary and returns its metadata.
 func isolationUpload(s *hostScenario, media string, data []byte) webapi.AttachmentDTO {
 	s.t.Helper()
-	response, err := s.b.Response(s.ctx, "POST", "/api/attachments?name=file", &s.user, http.Header{"Content-Type": {media}}, bytes.NewReader(data))
+	response, err := s.b.Response(
+		s.ctx,
+		"POST",
+		"/api/attachments?name=file",
+		&s.user,
+		http.Header{"Content-Type": {media}},
+		bytes.NewReader(data),
+	)
 	if err != nil {
 		s.t.Fatal(err)
 	}
@@ -49,6 +56,7 @@ func isolationLists(s *hostScenario) [3]int {
 	return [3]int{len(conversations), len(devices), len(workspaces.Workspaces)}
 }
 
+// TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice checks user isolation and device identity after revocation.
 // Real runners make revocation and a new owner's pairing observable at the API.
 func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	t.Parallel()
@@ -57,7 +65,16 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	users := make([]backendtest.Session, 0, 2)
 	for _, name := range []string{"alice", "bob"} {
 		email, password := name+"@example.test", name+"-pass-1"
-		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/users", fmt.Sprintf(`{"email":%q,"password":%q,"role":"user"}`, email, password), 201)
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"POST",
+			"/api/users",
+			fmt.Sprintf(`{"email":%q,"password":%q,"role":"user"}`, email, password),
+			201,
+		)
 		user, err := s.b.Login(s.ctx, email, password)
 		if err != nil {
 			t.Fatal(err)
@@ -69,9 +86,9 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	laptop := s.pair("alice-laptop")
 	device, home := string(laptop.ID()), laptop.Runner.Home()
 	workspace := s.workspace(laptop, home, "proj")
-	c, bobs := hostsConversation, "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a02"
-	conversationCreate(s.ctx, s.t, s.b, &s.user, c)
-	base := "/api/conversations/" + c
+	aliceConversation, bobConversation := hostsConversation, "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a02"
+	conversationCreate(s.ctx, s.t, s.b, &s.user, aliceConversation)
+	base := "/api/conversations/" + aliceConversation
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", base+"/hosts", fmt.Sprintf(`{"deviceId":%q}`, device), 201)
 	png := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0xff, 0xfe, 1}
 	image := isolationUpload(s, "image/png", png)
@@ -80,7 +97,7 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	if string(fileUpload.Sha256) != fmt.Sprintf("%x", sha256.Sum256(private)) {
 		t.Fatal(fileUpload.Sha256)
 	}
-	socket, err := s.b.Conversation(s.ctx, t, &alice, c)
+	socket, err := s.b.Conversation(s.ctx, t, &alice, aliceConversation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,9 +105,9 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.user = bob
-	conversationCreate(s.ctx, s.t, s.b, &s.user, bobs)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, bobConversation)
 	made, file := home+"/made", url.QueryEscape(home)
-	other := "/api/conversations/" + bobs
+	other := "/api/conversations/" + bobConversation
 	denied := []struct{ method, path, body string }{
 		{"GET", "/api/blobs/" + string(image.Sha256), ""},
 		{"GET", "/api/blobs/" + string(fileUpload.Sha256), ""},
@@ -108,7 +125,11 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 		{"GET", base + "/draft", ""},
 		{"PUT", base + "/draft", `{"base":0,"text":"","files":[]}`},
 		{"POST", base + "/draft/replaced", `{"action":"dismiss","revision":1}`},
-		{"PUT", other + "/draft", fmt.Sprintf(`{"base":0,"text":"\uFFFC","files":[{"type":"upload","ref":%q,"fileName":"a.png"}]}`, image.ID)},
+		{
+			"PUT",
+			other + "/draft",
+			fmt.Sprintf(`{"base":0,"text":"\uFFFC","files":[{"type":"upload","ref":%q,"fileName":"a.png"}]}`, image.ID),
+		},
 		{"POST", base + "/plugins/browser/calls/tabs", `{}`},
 		{"POST", base + "/activity", ""},
 		{"GET", base + "/hosts/" + device + "/fs", ""},
@@ -124,14 +145,18 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 		{"POST", "/api/devices/" + device + "/fs", fmt.Sprintf(`{"path":%q}`, made)},
 		{"PATCH", "/api/workspaces/" + string(workspace.ID), `{"name":"taken"}`},
 		{"DELETE", "/api/workspaces/" + string(workspace.ID), ""},
-		{"POST", "/api/workspaces", fmt.Sprintf(`{"kind":"device","deviceId":%q,"path":%q,"name":"squat"}`, device, home)},
+		{
+			"POST",
+			"/api/workspaces",
+			fmt.Sprintf(`{"kind":"device","deviceId":%q,"path":%q,"name":"squat"}`, device, home),
+		},
 	}
 	for i, actor := range []backendtest.Session{bob, master} {
 		s.user = actor
 		for _, route := range denied {
 			conversationRequest(s.ctx, s.t, s.b, &s.user, route.method, route.path, route.body, 404)
 		}
-		_, refused, err := s.b.ConversationFrom(s.ctx, t, &actor, c, s.b.URL)
+		_, refused, err := s.b.ConversationFrom(s.ctx, t, &actor, aliceConversation, s.b.URL)
 		if err == nil || refused.Status != 404 {
 			t.Fatalf("foreign socket: %v %v", refused, err)
 		}
@@ -148,7 +173,19 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 		hash string
 		data []byte
 	}{{string(image.Sha256), png}, {string(fileUpload.Sha256), private}} {
-		if got := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/blobs/"+blob.hash, "", 200).Body; !bytes.Equal(got, blob.data) {
+		if got := conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"GET",
+			"/api/blobs/"+blob.hash,
+			"",
+			200,
+		).Body; !bytes.Equal(
+			got,
+			blob.data,
+		) {
 			t.Fatal("blob changed")
 		}
 	}
@@ -156,7 +193,10 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	if isolationUpload(s, "image/png", png).Sha256 != image.Sha256 {
 		t.Fatal("same bytes changed hash")
 	}
-	if !bytes.Equal(conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/blobs/"+string(image.Sha256), "", 200).Body, png) {
+	if !bytes.Equal(
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/blobs/"+string(image.Sha256), "", 200).Body,
+		png,
+	) {
 		t.Fatal("Bob's image differs")
 	}
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/blobs/"+string(fileUpload.Sha256), "", 404)
