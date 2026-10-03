@@ -2,10 +2,10 @@ package plugins_test
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,17 +20,17 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 	cases := []struct {
 		name   string
 		change func(*plugin.Manifest, *plugin.Manifest)
-		kind   plugins.RegistryErrorKind
+		want   string
 	}{
 		{"duplicate id", func(a, b *plugin.Manifest) {
 			b.ID = a.ID
-		}, plugins.DuplicateID},
+		}, `two plugins have the id "`},
 		{
 			"inherited profile",
 			func(_, b *plugin.Manifest) {
 				b.Profiles = []core.Profile{{Name: core.ProfileInherit}}
 			},
-			plugins.InvalidProfile,
+			`" declares the profile "`,
 		},
 		{
 			"duplicate profile",
@@ -38,7 +38,7 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 				a.Profiles = []core.Profile{{Name: "worker"}}
 				b.Profiles = a.Profiles
 			},
-			plugins.InvalidProfile,
+			`" declares the profile "`,
 		},
 		{"duplicate stream even when unserved", func(a, b *plugin.Manifest) {
 			a.Streams = []plugin.Stream{
@@ -50,66 +50,66 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 				},
 			}
 			b.Streams = a.Streams
-		}, plugins.TakenStream},
+		}, `" declares the user stream "`},
 		{
 			"page package",
 			func(a, b *plugin.Manifest) {
 				b.Page.Package = a.Page.Package
 			},
-			plugins.TakenPagePackage,
+			`'s page package "`,
 		},
 		{
 			"user topic",
 			func(_, b *plugin.Manifest) {
 				b.Page.User.Topics = []plugin.Topic{plugin.TopicJobs}
 			},
-			plugins.ForeignTopic,
+			`, a topic of another scope`,
 		},
 		{
 			"conversation topic",
 			func(_, b *plugin.Manifest) {
 				b.Page.Conversation.Topics = []plugin.Topic{plugin.TopicExposes}
 			},
-			plugins.ForeignTopic,
+			`, a topic of another scope`,
 		},
 		{"duplicate group", func(a, b *plugin.Manifest) {
 			a.Commands = []plugin.Commands{command("notes", plugin.PlacementDemi, nil)}
 			b.Commands = a.Commands
-		}, plugins.TakenCommand},
+		}, `" declares "demi`},
 		{"duplicate root", func(a, b *plugin.Manifest) {
 			a.Commands = []plugin.Commands{command("notes", plugin.PlacementRoot, nil)}
 			b.Commands = a.Commands
-		}, plugins.RefusedCommands},
+		}, `'s commands are refused: `},
 		{"demi root reserved even before groups", func(a, _ *plugin.Manifest) {
 			a.Commands = []plugin.Commands{command("demi", plugin.PlacementRoot, nil)}
-		}, plugins.TakenCommand},
+		}, `" declares "demi`},
 		{
 			"execution id",
 			func(_, b *plugin.Manifest) {
 				b.ID = "execution"
 			},
-			plugins.RefusedCommands,
+			`'s commands are refused: `,
 		},
 		{"malformed command", func(_, b *plugin.Manifest) {
 			b.Commands = []plugin.Commands{command("bad name", plugin.PlacementDemi, nil)}
-		}, plugins.RefusedCommands},
+		}, `'s commands are refused: `},
 		{"conflict hidden by missing catalog", func(a, b *plugin.Manifest) {
 			operation := declare.NativeOperation{Package: "missing", Operation: "run"}
 			a.Commands = []plugin.Commands{command("notes", plugin.PlacementDemi, &operation)}
 			b.Commands = a.Commands
-		}, plugins.TakenCommand},
+		}, `" declares "demi`},
 	}
 	for _, group := range []string{"agent", "shell", "host"} {
 		cases = append(cases, struct {
 			name   string
 			change func(*plugin.Manifest, *plugin.Manifest)
-			kind   plugins.RegistryErrorKind
+			want   string
 		}{
 			"reserved " + group,
 			func(_, b *plugin.Manifest) {
 				b.Commands = []plugin.Commands{command(group, plugin.PlacementDemi, nil)}
 			},
-			plugins.TakenCommand,
+			`" declares "demi`,
 		})
 	}
 	for _, scenario := range cases {
@@ -120,9 +120,8 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 				[]plugin.Factory{&fakeFactory{manifest: a}, &fakeFactory{manifest: b}},
 				func(declare.NativeOperation) bool { return false },
 			)
-			var refused *plugins.RegistryError
-			if !errors.As(err, &refused) || refused.Kind != scenario.kind {
-				t.Fatalf("got %v, want kind %v", err, scenario.kind)
+			if err == nil || !strings.Contains(err.Error(), scenario.want) {
+				t.Fatalf("got %v, want %q", err, scenario.want)
 			}
 			prefixes := map[string]string{
 				"duplicate id":    `two plugins have the id "a"`,
@@ -136,7 +135,8 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 			if prefix, ok := prefixes[scenario.name]; ok && !strings.HasPrefix(err.Error(), prefix) {
 				t.Fatalf("diagnostic %q lacks %q", err, prefix)
 			}
-			if !strings.Contains(err.Error(), string(refused.Plugin)) {
+			if !strings.Contains(err.Error(), strconv.Quote(string(a.ID))) &&
+				!strings.Contains(err.Error(), strconv.Quote(string(b.ID))) {
 				t.Fatalf("diagnostic does not name plugin: %v", err)
 			}
 		})

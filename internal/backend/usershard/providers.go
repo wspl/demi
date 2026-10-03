@@ -120,7 +120,7 @@ func (r *conversationRuntime) serve(
 			},
 		)
 		if err := r.Close(context.WithoutCancel(ctx)); err != nil {
-			// Rust close cannot fail; retain its replacement behavior and report cleanup failures.
+			// A failed close does not stop the replacement; it is only reported.
 			slog.Warn("the replaced provider runtime did not close", "error", err)
 		}
 		r.current = &currentRuntime{

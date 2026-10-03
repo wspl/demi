@@ -85,7 +85,7 @@ func Start(ctx context.Context, config Config) (_ *Backend, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("the backend cannot listen on %s: %w", config.Address, err)
 	}
-	if config.Lifecycle.RetentionInterval != nil {
+	if config.Lifecycle.RetentionInterval != 0 {
 		retentionCtx, stop := context.WithCancel(life)
 		b.stopRetention = stop
 		b.retention.Go(func() {

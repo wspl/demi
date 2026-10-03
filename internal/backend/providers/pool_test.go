@@ -38,7 +38,7 @@ func testAccount(id string) provider.AccountMeta {
 	}
 }
 
-// Cost: temporary SQLite only. Covers the persisted pool at the same boundary as Rust.
+// Cost: temporary SQLite only. Covers the persisted pool at the database boundary.
 func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 	ctx := t.Context()
 	vault, owner := vaultFixture(t)

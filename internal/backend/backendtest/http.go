@@ -235,8 +235,8 @@ func (b *TestBackend) Login(ctx context.Context, email, password string) (Sessio
 
 // LoginAnswer returns the login response including authentication refusals.
 func (b *TestBackend) LoginAnswer(ctx context.Context, email, password string) (Answer, error) {
-	// Deliberately invalid credentials must reach the server in refusal tests,
-	// just as Rust's serde_json::Value fixture does; do not validate or normalize.
+	// Deliberately invalid credentials must reach the server as they are in
+	// refusal tests; do not validate or normalize them.
 	body, err := contract.EncodeObject(
 		[]contract.Field{{Name: "email", Value: email}, {Name: "password", Value: password}},
 	)

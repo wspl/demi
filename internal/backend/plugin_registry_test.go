@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/backend/plugins"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/host"
@@ -95,20 +94,14 @@ func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 	}
 	cases := []struct {
 		factories []plugin.Factory
-		kind      plugins.RegistryErrorKind
-		id        plugin.ID
 		prefix    string
 	}{
 		{
 			[]plugin.Factory{registryProbe("todo"), registryProbe("todo")},
-			plugins.DuplicateID,
-			"todo",
 			`two plugins have the id "todo"`,
 		},
 		{
 			[]plugin.Factory{registryProbe("todo", backendtest.ProbeCommand("agent", plugin.PlacementDemi, nil))},
-			plugins.TakenCommand,
-			"todo",
 			`plugin "todo" declares "demi agent", which is taken`,
 		},
 		{
@@ -116,8 +109,6 @@ func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 				registryProbe("one", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)),
 				registryProbe("two", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)),
 			},
-			plugins.TakenCommand,
-			"two",
 			`plugin "two" declares "demi notes", which is taken`,
 		},
 		{
@@ -125,20 +116,14 @@ func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 				registryProbe("one", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil)),
 				registryProbe("two", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil)),
 			},
-			plugins.RefusedCommands,
-			"two",
 			`plugin "two"'s commands are refused`,
 		},
 		{
 			[]plugin.Factory{profile("todo", "default")},
-			plugins.InvalidProfile,
-			"todo",
 			`plugin "todo" declares the profile "default", which is reserved for inheriting the parent`,
 		},
 		{
 			[]plugin.Factory{profile("one", "explorer"), profile("two", "explorer")},
-			plugins.InvalidProfile,
-			"two",
 			`plugin "two" declares the profile "explorer", which another plugin declares`,
 		},
 	}
@@ -152,12 +137,8 @@ func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 				wireMust(t, b.Close(ctx))
 				t.Fatal("invalid manifest started")
 			}
-			var refused *plugins.RegistryError
-			if !errors.As(err, &refused) || refused.Kind != scenario.kind || refused.Plugin != scenario.id {
+			if err == nil || !strings.Contains(err.Error(), "the plugins cannot start: "+scenario.prefix) {
 				t.Fatalf("startup: %v", err)
-			}
-			if !strings.HasPrefix(refused.Error(), scenario.prefix) {
-				t.Fatalf("diagnostic: %v", refused)
 			}
 		})
 	}

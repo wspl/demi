@@ -144,7 +144,10 @@ func ConfiguredSelection(entry ProviderEntry, selection core.ModelSelection) (co
 			return ConfiguredModel(m).Selection(string(entry.ID), selection.Thinking, selection.ServiceTierID), nil
 		}
 	}
-	return core.ModelSelection{}, &NotConfigured{Model: selection.Model.ID}
+	return core.ModelSelection{}, fmt.Errorf(
+		"the model %s is not in the provider's configured list",
+		selection.Model.ID,
+	)
 }
 
 // Availability determines whether models can be used from provider health.
@@ -218,7 +221,8 @@ func offeredVendor(v provider.ModelsDevVendor) *webapi.Vendor {
 	}
 }
 
-// catalogKey hashes the RFC 8785 identity Rust uses for persisted catalogs.
+// catalogKey is the hex SHA-256 of the RFC 8785 canonical JSON of the entry's
+// family, API-key configuration and active account; stored catalogs are keyed by it.
 func catalogKey(entry ProviderEntry) (string, error) {
 	var config *APIKeyConfig
 	if c, ok := entry.Credential.(*APIKeyConfig); ok {

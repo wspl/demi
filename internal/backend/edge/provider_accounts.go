@@ -77,12 +77,12 @@ func (e *Edge) addToken(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	guard, err := e.reserve(entry)
+	reservation, err := e.reserve(entry)
 	if err != nil {
 		return err
 	}
 	account, err := providers.AddToken(r.Context(), e.state.Services.Assembly, *entry, string(request.Token))
-	guard.Release()
+	reservation.Release()
 	if err != nil {
 		return err
 	}
@@ -103,11 +103,11 @@ func (e *Edge) activateAccount(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	guard, err := e.reserve(entry)
+	reservation, err := e.reserve(entry)
 	if err != nil {
 		return err
 	}
-	defer guard.Release()
+	defer reservation.Release()
 	active, err := providers.ActivateAccount(r.Context(), e.state.Services.Assembly, *entry, request.CredentialID)
 	if err != nil {
 		return err
@@ -124,11 +124,11 @@ func (e *Edge) removeAccount(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	guard, err := e.reserve(entry)
+	reservation, err := e.reserve(entry)
 	if err != nil {
 		return err
 	}
-	defer guard.Release()
+	defer reservation.Release()
 	id, err := webapi.ParseCredentialID(r.PathValue("credential"))
 	if err != nil {
 		return apiFailure(404, "account_not_found", "No such account")

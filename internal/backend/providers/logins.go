@@ -45,7 +45,7 @@ type loginTarget struct {
 	existing      *ProviderEntry
 	staged        *provider.MemoryCredentialPool
 	family, label string
-	held          *OperationGuard
+	held          *Reservation
 }
 
 // Operations admits one configuration operation per provider. The zero value is ready to use.
@@ -55,8 +55,8 @@ type Operations struct {
 	held map[webapi.ProviderID]bool
 }
 
-// OperationGuard holds an entry until Release; do not copy it.
-type OperationGuard struct {
+// Reservation holds an entry until Release; do not copy it.
+type Reservation struct {
 	operations *Operations
 	id         webapi.ProviderID
 	once       sync.Once
@@ -91,7 +91,7 @@ func (f *LoginFlows) Start(
 	closed := f.ctx.Err() != nil
 	f.mu.Unlock()
 	if closed {
-		return "", &LoginRefusal{Kind: LoginBusy}
+		return "", ErrLoginBusy
 	}
 	if err := f.checkLoginFamily(family); err != nil {
 		return "", err
@@ -105,7 +105,7 @@ func (f *LoginFlows) Start(
 	if existing != nil {
 		target.held = f.operations.Reserve(existing.ID)
 		if target.held == nil {
-			return "", &LoginRefusal{Kind: LoginBusy}
+			return "", ErrLoginBusy
 		}
 		defer func() {
 			if target.held != nil {
@@ -121,16 +121,16 @@ func (f *LoginFlows) Start(
 		}
 	}
 	if err != nil {
-		return "", &LoginRefusal{Kind: LoginAssembly, Err: err}
+		return "", &LoginError{Kind: LoginAssembly, Err: err}
 	}
 	accounts := p.Accounts()
 	if accounts == nil || !accounts.Capability().Login {
-		return "", &LoginRefusal{Kind: LoginNoLoginFlow, Family: family}
+		return "", &LoginError{Kind: LoginNoLoginFlow, Family: family}
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.ctx.Err() != nil {
-		return "", &LoginRefusal{Kind: LoginBusy}
+		return "", ErrLoginBusy
 	}
 	f.pruneLocked()
 	f.registerLoginLocked(id, owner, starter, accounts, target)
@@ -175,8 +175,8 @@ func (f *LoginFlows) Close(_ context.Context) error {
 	return nil
 }
 
-// Reserve returns an entry guard, or nil when another operation holds it.
-func (o *Operations) Reserve(id webapi.ProviderID) *OperationGuard {
+// Reserve returns the entry's reservation, or nil when another operation holds it.
+func (o *Operations) Reserve(id webapi.ProviderID) *Reservation {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.held[id] {
@@ -186,15 +186,15 @@ func (o *Operations) Reserve(id webapi.ProviderID) *OperationGuard {
 		o.held = make(map[webapi.ProviderID]bool)
 	}
 	o.held[id] = true
-	return &OperationGuard{operations: o, id: id}
+	return &Reservation{operations: o, id: id}
 }
 
 // Release releases the entry reservation. It is idempotent.
-func (g *OperationGuard) Release() {
-	g.once.Do(func() {
-		g.operations.mu.Lock()
-		delete(g.operations.held, g.id)
-		g.operations.mu.Unlock()
+func (r *Reservation) Release() {
+	r.once.Do(func() {
+		r.operations.mu.Lock()
+		delete(r.operations.held, r.id)
+		r.operations.mu.Unlock()
 	})
 }
 
@@ -267,7 +267,7 @@ func (f *LoginFlows) publish(
 		var entry ProviderEntry
 		entry, err = f.assembly.vault.CreateSubscription(ctx, owner, target.family, target.label, target.staged)
 		if errors.Is(err, database.ErrSubscriptionExists) {
-			err = &LoginRefusal{Kind: LoginExists, Family: target.family}
+			err = &LoginError{Kind: LoginExists, Family: target.family}
 		}
 		if err == nil {
 			id = entry.ID
@@ -320,14 +320,14 @@ func hasLoginFamily(entries []ProviderEntry, family string) bool {
 func newLoginID() (webapi.LoginID, error) {
 	randomID, err := uuid.NewRandom()
 	if err != nil {
-		return "", &LoginRefusal{
+		return "", &LoginError{
 			Kind: LoginAssembly,
 			Err:  fmt.Errorf("create login identity: %w", err),
 		}
 	}
 	id, err := webapi.ParseLoginID(randomID.String())
 	if err != nil {
-		return "", &LoginRefusal{Kind: LoginAssembly, Err: err}
+		return "", &LoginError{Kind: LoginAssembly, Err: err}
 	}
 	return id, nil
 }
@@ -336,10 +336,10 @@ func newLoginID() (webapi.LoginID, error) {
 func (f *LoginFlows) checkLoginFamily(family string) error {
 	registered, err := f.assembly.Family(family)
 	if err != nil {
-		return &LoginRefusal{Kind: LoginAssembly, Err: err}
+		return &LoginError{Kind: LoginAssembly, Err: err}
 	}
 	if registered.Credential() != webapi.CredentialKindSubscription {
-		return &LoginRefusal{Kind: LoginNoLoginFlow, Family: family}
+		return &LoginError{Kind: LoginNoLoginFlow, Family: family}
 	}
 	return nil
 }
@@ -353,15 +353,15 @@ func (f *LoginFlows) prepareNewLogin(
 ) (provider.Provider, *provider.MemoryCredentialPool, error) {
 	entries, err := f.assembly.vault.Entries(ctx, owner)
 	if err != nil {
-		return nil, nil, &LoginRefusal{Kind: LoginAssembly, Err: err}
+		return nil, nil, &LoginError{Kind: LoginAssembly, Err: err}
 	}
 	if hasLoginFamily(entries, family) {
-		return nil, nil, &LoginRefusal{Kind: LoginExists, Family: family}
+		return nil, nil, &LoginError{Kind: LoginExists, Family: family}
 	}
 	staged := provider.NewMemoryCredentialPool()
 	built, err := f.assembly.Detached(family, string(id), label, staged)
 	if err != nil {
-		return nil, nil, &LoginRefusal{Kind: LoginAssembly, Err: err}
+		return nil, nil, &LoginError{Kind: LoginAssembly, Err: err}
 	}
 	return built, staged, nil
 }

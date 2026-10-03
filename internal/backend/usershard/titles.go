@@ -26,27 +26,27 @@ type titleRequest struct {
 func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
 	record, found, err := s.Control().Conversation(ctx, id)
 	if err != nil {
-		return &TitleRefusal{Kind: TitleStorage, Err: err}
+		return err
 	}
 	if !found || record.Owner != s.user {
-		return &TitleRefusal{Kind: TitleNotFound}
+		return ErrConversationNotFound
 	}
 	if record.Archived {
-		return &TitleRefusal{Kind: TitleArchived}
+		return ErrArchivedChange
 	}
 	if record.Model == nil {
-		return &TitleRefusal{Kind: TitleModelNotSelected}
+		return ErrModelNotSelected
 	}
 	provider, err := webapi.ParseProviderID(record.Model.ProviderID)
 	if err != nil {
-		return &TitleRefusal{Kind: TitleProviderNotFound}
+		return ErrProviderNotFound
 	}
 	entry, err := s.services.Vault.Visible(ctx, s.user, provider)
 	if err != nil {
-		return &TitleRefusal{Kind: TitleStorage, Err: err}
+		return err
 	}
 	if entry == nil {
-		return &TitleRefusal{Kind: TitleProviderNotFound}
+		return ErrProviderNotFound
 	}
 	var blocks []core.Block
 	if tree := s.agent.Tree(hostaccess.RootOf(id)); tree != nil {
@@ -58,12 +58,12 @@ func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
 			return err
 		})
 		if err != nil {
-			return &TitleRefusal{Kind: TitleStorage, Err: err}
+			return err
 		}
 	}
 	messages := titleMessages(blocks)
 	if len(messages) == 0 {
-		return &TitleRefusal{Kind: TitleNoMessages}
+		return ErrNoMessages
 	}
 	s.startTitle(id, *record.Model, titleRequest{
 		messages: messages,

@@ -1,1 +1,1 @@
-`rust-routes.txt` transcribes the method/path pairs in `crates/backend-http/src/lib.rs::router`, with the `/api` nest expanded and `local_store::ROUTE` resolved to `/native-artifacts`. No Rust executable or oracle was needed for this route declaration fixture.
+`routes.txt` lists every method and path the backend serves, one per line and sorted, with the `/api` prefix written out and the native artifact route at `/native-artifacts`. `TestRoutesMatchReferenceList` fails when a route is omitted, added or changed.

@@ -2,7 +2,6 @@ package providers
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -25,8 +24,7 @@ func TestRequestsAdmittedAsEarliestLeaveWindow(t *testing.T) {
 		if err := limit.Take(); err != nil {
 			t.Fatal(err)
 		}
-		var refused *RateLimited
-		if err := limit.Take(); !errors.As(err, &refused) || refused.Limit != 3 {
+		if err := limit.Take(); err == nil || err.Error() != "Provider request rate limit reached (3 per minute)" {
 			t.Fatal(err)
 		}
 		time.Sleep(30 * time.Second)
@@ -35,7 +33,7 @@ func TestRequestsAdmittedAsEarliestLeaveWindow(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := limit.Take(); !errors.As(err, &refused) || refused.Limit != 3 {
+		if err := limit.Take(); err == nil || err.Error() != "Provider request rate limit reached (3 per minute)" {
 			t.Fatal(err)
 		}
 	})

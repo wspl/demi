@@ -36,12 +36,12 @@ func (e *Edge) scoped(r *http.Request) (*providers.ProviderEntry, error) {
 	return entry, nil
 }
 
-func (e *Edge) reserve(entry *providers.ProviderEntry) (*providers.OperationGuard, error) {
-	guard := e.state.Services.Operations.Reserve(entry.ID)
-	if guard == nil {
+func (e *Edge) reserve(entry *providers.ProviderEntry) (*providers.Reservation, error) {
+	reservation := e.state.Services.Operations.Reserve(entry.ID)
+	if reservation == nil {
 		return nil, apiFailure(409, "provider_busy", "Another change of this provider is still running")
 	}
-	return guard, nil
+	return reservation, nil
 }
 
 func (e *Edge) models(w http.ResponseWriter, r *http.Request) error {
@@ -194,11 +194,11 @@ func (e *Edge) patchProvider(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	guard, err := e.reserve(entry)
+	reservation, err := e.reserve(entry)
 	if err != nil {
 		return err
 	}
-	defer guard.Release()
+	defer reservation.Release()
 	config, err := patchedAPIKey(entry, patch)
 	if err != nil {
 		return err
@@ -233,11 +233,11 @@ func (e *Edge) deleteProvider(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	guard, err := e.reserve(entry)
+	reservation, err := e.reserve(entry)
 	if err != nil {
 		return err
 	}
-	defer guard.Release()
+	defer reservation.Release()
 	if err := e.state.Services.Vault.Delete(r.Context(), *entry); err != nil {
 		return err
 	}
@@ -343,11 +343,11 @@ func (e *Edge) testProvider(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	guard, err := e.reserve(entry)
+	reservation, err := e.reserve(entry)
 	if err != nil {
 		return err
 	}
-	defer guard.Release()
+	defer reservation.Release()
 	built, err := e.accountProvider(r, *entry, request.CredentialID)
 	if err != nil {
 		return err

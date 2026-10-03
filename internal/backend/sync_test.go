@@ -454,7 +454,7 @@ func (pageSubscriptionFamily) Wires() []core.WireAPI { return nil }
 func (pageSubscriptionFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
 	subscription, ok := args.Credential.(*providers.SubscriptionArgs)
 	if !ok {
-		return nil, &providers.FamilyError{Kind: providers.FamilyWrongCredential}
+		return nil, providers.ErrWrongCredential
 	}
 	p := &pageSubscription{
 		Provider: openaiapi.New(openaiapi.Config{APIKey: "fixture"}, args.Clock),

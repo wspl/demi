@@ -53,7 +53,7 @@ func (f apiFamily) Wires() []core.WireAPI {
 func (f apiFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
 	settings, ok := args.Credential.(*providers.APIKeyArgs)
 	if !ok {
-		return nil, &providers.FamilyError{Kind: providers.FamilyWrongCredential}
+		return nil, providers.ErrWrongCredential
 	}
 	switch f.name {
 	case "anthropic":
@@ -89,7 +89,7 @@ func (subscriptionFamily) Wires() []core.WireAPI { return nil }
 func (f subscriptionFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
 	subscription, ok := args.Credential.(*providers.SubscriptionArgs)
 	if !ok {
-		return nil, &providers.FamilyError{Kind: providers.FamilyWrongCredential}
+		return nil, providers.ErrWrongCredential
 	}
 	account, quota := boundAccount(subscription.Account)
 	if f.name == "codex" {
@@ -127,7 +127,7 @@ func (f claudeFamily) ProcessRuntime(
 func (claudeFamily) provider(args providers.FamilyArgs) (*claudecode.Provider, error) {
 	subscription, ok := args.Credential.(*providers.SubscriptionArgs)
 	if !ok {
-		return nil, &providers.FamilyError{Kind: providers.FamilyWrongCredential}
+		return nil, providers.ErrWrongCredential
 	}
 	account, quota := boundAccount(subscription.Account)
 	return claudecode.New(

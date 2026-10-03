@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-// This reference fixture catches an omitted route, changed verb or path and
-// accidental extra endpoint independently of route handler implementation.
-func TestRoutesMatchRust(t *testing.T) {
-	data, err := os.ReadFile("testdata/rust-routes.txt")
+// The route list in testdata/routes.txt catches an omitted route, changed verb or
+// path and accidental extra endpoint independently of route handler implementation.
+func TestRoutesMatchReferenceList(t *testing.T) {
+	data, err := os.ReadFile("testdata/routes.txt")
 	if err != nil {
 		t.Fatal(err)
 	}

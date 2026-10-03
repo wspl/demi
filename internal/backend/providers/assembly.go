@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -133,7 +134,7 @@ func (a *Assembly) Detached(
 	}
 	p, err := registered.Provider(a.args(id, label, &SubscriptionArgs{Pool: pool}))
 	if err != nil {
-		return nil, &AssemblyError{Kind: AssemblyFamily, Err: err}
+		return nil, err
 	}
 	return p, nil
 }
@@ -160,7 +161,7 @@ func (a *Assembly) ProcessRuntime(
 	}
 	process, ok := family.(ProcessFamily)
 	if !ok {
-		return nil, &AssemblyError{Kind: AssemblyNoProcessRuntime, Family: entry.Family}
+		return nil, fmt.Errorf("the provider family %s cannot run its process", entry.Family)
 	}
 	args, err := a.entryArgs(ctx, entry, account)
 	if err != nil {
@@ -168,7 +169,7 @@ func (a *Assembly) ProcessRuntime(
 	}
 	runtime, err := process.ProcessRuntime(ctx, args, placement)
 	if err != nil {
-		return nil, &AssemblyError{Kind: AssemblyFamily, Err: err}
+		return nil, err
 	}
 	return runtime, nil
 }
@@ -384,10 +385,7 @@ func (a *Assembly) entryArgs(
 			var err error
 			base, err = url.Parse(string(*c.BaseURL))
 			if err != nil {
-				return FamilyArgs{}, &AssemblyError{
-					Kind: AssemblyFamily,
-					Err:  &FamilyError{Kind: FamilyInvalid, Message: "invalid provider endpoint"},
-				}
+				return FamilyArgs{}, errors.New("invalid provider endpoint")
 			}
 		}
 		credential = &APIKeyArgs{
@@ -430,7 +428,7 @@ func (a *Assembly) build(
 	}
 	p, err := family.Provider(args)
 	if err != nil {
-		return nil, &AssemblyError{Kind: AssemblyFamily, Err: err}
+		return nil, err
 	}
 	return p, nil
 }

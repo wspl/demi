@@ -45,7 +45,7 @@ func (p cloudPlacement) Start(
 	}
 	process, err := access.Host.Process().Spawn(ctx, spawn(site))
 	if err != nil {
-		//nolint:staticcheck // Product text is copied verbatim from Rust.
+		//nolint:staticcheck // Product text, shown to the user as it is.
 		return nil, fmt.Errorf(
 			"Claude Code could not be started on the Cloud: %w",
 			err,
@@ -69,7 +69,7 @@ func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (
 		command, err = runners.ProviderContext(ctx, p.shard.Control(), p.shard.user, p.entry)
 	}
 	if err != nil {
-		//nolint:staticcheck // Product text is copied verbatim from Rust.
+		//nolint:staticcheck // Product text, shown to the user as it is.
 		return claudecode.Site{}, fmt.Errorf(
 			"The command context could not be read: %w",
 			err,
@@ -87,7 +87,7 @@ func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (
 	}
 	for _, directory := range []string{site.RunDir, site.ConfigDir} {
 		if err := access.Host.FS().Mkdir(ctx, directory, host.MkdirOptions{Recursive: true}); err != nil {
-			//nolint:staticcheck // Product text is copied verbatim from Rust.
+			//nolint:staticcheck // Product text, shown to the user as it is.
 			return site, fmt.Errorf(
 				"Claude Code's directory %s could not be made on the Cloud: %w",
 				directory,
@@ -101,7 +101,7 @@ func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (
 func (s *Shard) cliExecutable(ctx context.Context, target cliTarget) (string, error) {
 	wanted, err := s.services.ClaudeReleases.Latest(ctx, false)
 	if err != nil {
-		//nolint:staticcheck // Product text is copied verbatim from Rust.
+		//nolint:staticcheck // Product text, shown to the user as it is.
 		return "", fmt.Errorf(
 			"Claude Code could not be installed: %w",
 			err,
@@ -157,7 +157,7 @@ func cliInstalled(
 ) (installed []claudecodeop.Installed, err error) {
 	defer func() {
 		if err != nil {
-			//nolint:staticcheck // Product text is copied verbatim from Rust.
+			//nolint:staticcheck // Product text, shown to the user as it is.
 			err = fmt.Errorf(
 				"Claude Code could not be installed: %w",
 				err,
@@ -192,7 +192,7 @@ func cliEnsure(
 ) (path string, err error) {
 	defer func() {
 		if err != nil {
-			//nolint:staticcheck // Product text is copied verbatim from Rust.
+			//nolint:staticcheck // Product text, shown to the user as it is.
 			err = fmt.Errorf(
 				"Claude Code %s could not be installed: %w",
 				release.Version,
@@ -339,7 +339,7 @@ func startInstall(
 	if err == nil {
 		shard.mu.Lock()
 		if shard.closing {
-			err = &ShardUnavailable{Kind: ShardClosing}
+			err = ErrClosing
 		} else {
 			shard.work.Add(1)
 		}

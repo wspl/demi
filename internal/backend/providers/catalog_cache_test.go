@@ -15,7 +15,7 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-// catalogStoreFixture opens the same SQLite boundary used by the Rust scenarios.
+// catalogStoreFixture opens a temporary control database holding one sealed provider entry.
 // Open it outside synctest so database workers and IO do not advance fake time.
 func catalogStoreFixture(t *testing.T) *database.ControlService {
 	t.Helper()

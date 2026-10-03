@@ -39,8 +39,7 @@ func TestPanickingCallDoesNotPoisonShard(t *testing.T) {
 	_, err := shardCall(t.Context(), s, func(context.Context) (int, error) {
 		panic("planted failure")
 	})
-	var unavailable *ShardUnavailable
-	if !errors.As(err, &unavailable) || unavailable.Kind != ShardFailed {
+	if !errors.Is(err, errShardFailed) {
 		t.Fatalf("panic result = %v", err)
 	}
 	value, err := shardCall(t.Context(), s, func(context.Context) (int, error) { return 42, nil })
@@ -82,8 +81,7 @@ func TestClosingWaitsForCallsAndRefusesNewOnes(t *testing.T) {
 			t.Error("new call ran during shutdown")
 			return struct{}{}, nil
 		})
-		var unavailable *ShardUnavailable
-		if !errors.As(err, &unavailable) || unavailable.Kind != ShardClosing {
+		if !errors.Is(err, ErrClosing) {
 			t.Fatalf("new call = %v", err)
 		}
 		close(release)
@@ -93,7 +91,7 @@ func TestClosingWaitsForCallsAndRefusesNewOnes(t *testing.T) {
 			t.Error("call ran after shutdown")
 			return struct{}{}, nil
 		})
-		if !errors.As(err, &unavailable) || unavailable.Kind != ShardClosing {
+		if !errors.Is(err, ErrClosing) {
 			t.Fatalf("call after shutdown = %v", err)
 		}
 	})

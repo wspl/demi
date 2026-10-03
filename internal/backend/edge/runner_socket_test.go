@@ -109,7 +109,7 @@ func TestRunnerRepeatedHelloBeforeAcceptanceIsDropped(t *testing.T) {
 				defer pending.Release()
 			}
 			writeRunnerHello(t, socket, hello)
-			// Rust drops every frame here, including nonprotocol text and malformed data.
+			// The edge drops every frame here, including nonprotocol text and malformed data.
 			if err := socket.Write(
 				t.Context(),
 				websocket.MessageText,

@@ -29,7 +29,7 @@ func (conversationFamily) Wires() []core.WireAPI { return nil }
 // Provider builds the scripted provider from API key credentials.
 func (f conversationFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
 	if _, ok := args.Credential.(*providers.APIKeyArgs); !ok {
-		return nil, &providers.FamilyError{Kind: providers.FamilyWrongCredential}
+		return nil, providers.ErrWrongCredential
 	}
 	return &conversationProvider{
 		Provider: openaiapi.New(openaiapi.Config{APIKey: "fixture"}, args.Clock),

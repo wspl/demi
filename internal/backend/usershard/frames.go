@@ -223,7 +223,7 @@ func (f *conversationFiles) Resolve(
 		switch file := file.(type) {
 		case *server.Upload:
 			if f.host == nil {
-				//nolint:staticcheck // Product text is copied verbatim from Rust.
+				//nolint:staticcheck // Product text, shown to the user as it is.
 				return refused(errors.New("The frame's Host was not admitted"))
 			}
 			blocks, held, err := hostaccess.ResolveUpload(ctx, f.shard, f.conversation, f.host, file.Ref, file.FileName)

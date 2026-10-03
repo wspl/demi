@@ -82,7 +82,7 @@ func ScriptedMachines(
 	ended := make(chan struct{})
 	go func() {
 		defer close(ended)
-		// As in the reference program, any end of the input read ends service.
+		// Any end of the input read ends service.
 		_, _ = io.Copy(io.Discard, input)
 	}()
 	select {
