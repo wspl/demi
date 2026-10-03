@@ -638,7 +638,7 @@ or privileged nested Docker. Unsupported operations return errors; they never
 widen isolation.
 
 The runtime inputs are pinned in the runtime release manifest,
-`crates/machine-manager/runtime/release.json`. The manager is built with that manifest
+`internal/machines/sandbox/runtime-release.json`. The manager is built with that manifest
 and refuses to start unless the configured `runsc` reports exactly the pinned
 version. amd64 uses the verified upstream distribution. arm64 uses the same
 source with the shipped `SECCOMP_RET_TRAP` register fix: Linux preserves the

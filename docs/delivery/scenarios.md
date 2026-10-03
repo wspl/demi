@@ -281,8 +281,8 @@ Deployment prerequisites are in [Cloud setup](../cloud/setup.md).
 
 ### Cloud suite
 
-The Cloud suite is `real_cloud` in the backend's scenario binary; an ordinary
-run ignores its tests. Its world is the backend scenarios'
+The Cloud suite is `internal/backend/real_cloud_test.go`, built with the
+`acceptance` tag; an ordinary run omits its tests. Its world is the backend scenarios'
 ([System under test](#system-under-test)) with the real manager in place of
 the scripted one, configured by four variables:
 
@@ -318,20 +318,26 @@ DEMI_TEST_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
 DEMI_TEST_CLOUD_URL=http://<address>:<port> \
 DEMI_TEST_MACHINES_DATA=/var/lib/demi-machine-manager \
 DEMI_TEST_CLOUD_NATIVE=<native configuration> \
-  cargo test --workspace --features demi-runner/test-fixtures --test backend \
-  -- --include-ignored real_cloud --test-threads=1 --nocapture
+  CGO_ENABLED=0 GOFLAGS=-mod=readonly go test -tags acceptance ./internal/backend \
+  -run '^Test(ACloud|AResetBringsBackACloud|ACheckpointWithChrome|TwoUsersClouds)' -p 1 -count=1 -v
 ```
 
 On a Linux machine without an installed manager,
-`crates/machine-manager/scripts/cloud-suite.sh` runs the same command against a
+`scripts/machines/cloud-suite.sh` runs the same command against a
 manager of its own, as root:
 
 ```sh
-sudo bash crates/machine-manager/scripts/cloud-suite.sh --image <release> \
+sudo bash scripts/machines/cloud-suite.sh --image <release> \
   --native <native configuration> --work <directory>
 ```
 
-The script starts the manager the workspace built (`target/debug`) with its
+Build the programs first:
+
+```sh
+CGO_ENABLED=0 GOFLAGS=-mod=readonly go build -o target/debug/ ./cmd/...
+```
+
+The script starts that manager with its
 resource limits off, in a stand-in execution host: the init of a throwaway PID
 and mount namespace with its own `/run` and an empty, read-only cgroup root,
 sharing the machine's network namespace so that the Clouds reach the backend.
@@ -351,9 +357,8 @@ anything the run made remains.
 A Cloud's disks cannot grow where the manager lacks `CAP_SYS_RESOURCE`
 ([Linux requirements](../cloud/setup.md#linux-requirements)), as in a container
 that drops it even for root. There the growth test cannot pass, and the suite
-runs without it: the script takes `-- --skip grows_its_home_online` after its
-own arguments, and the `cargo test` command takes `--skip grows_its_home_online`
-after its `--`.
+runs without it: the script takes `-- -skip TestACloudGrowsItsHomeOnline` after its
+own arguments, and the `go test` command takes `-skip TestACloudGrowsItsHomeOnline`.
 
 ### Browser suite
 

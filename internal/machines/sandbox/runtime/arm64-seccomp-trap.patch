@@ -1,0 +1,20 @@
+--- a/pkg/sentry/kernel/seccomp.go
++++ b/pkg/sentry/kernel/seccomp.go
+@@ -103,9 +103,14 @@
+ 		// portion of the return value will be passed as si_errno." -
+ 		// Documentation/prctl/seccomp_filter.txt
+ 		t.SendSignal(seccompSiginfo(t, int32(result.Data()), sysno, ip))
+-		// "The return value register will contain an arch-dependent value." In
+-		// practice, it's ~always the syscall number.
+-		t.Arch().SetReturn(uintptr(sysno))
++		// x86-64 returns the syscall number in RAX. Linux arm64 preserves X0,
++		// which also contains the first syscall argument in the signal frame.
++		// doSyscall initialized the return register to -ENOSYS before filtering.
++		if t.Arch().Arch() == arch.AMD64 {
++			t.Arch().SetReturn(uintptr(sysno))
++		} else {
++			t.Arch().SetReturn(uintptr(args[0].Uint64()))
++		}
+ 
+ 	case linux.SECCOMP_RET_ERRNO:
+ 		// "Results in the lower 16-bits of the return value being passed to

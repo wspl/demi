@@ -1,0 +1,32 @@
+# One native Linux VM; systrap requires no nested virtualization.
+minimumLimaVersion: "2.0.0"
+vmType: vz
+cpus: 4
+memory: 8GiB
+disk: 40GiB
+base: template:ubuntu-26.04
+mounts:
+  - location: "~"
+# A new named disk. Lima formats only a blank disk and preserves existing data.
+additionalDisks:
+  - name: "demi-cloud-data"
+    format: true
+    fsType: ext4
+portForwards:
+  - guestSocket: "/run/user/{{.UID}}/demi-machine-manager.sock"
+    hostSocket: "{{.Dir}}/sock/demi-machine-manager.sock"
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq
+      apt-get install -y -qq e2fsprogs xfsprogs util-linux nftables iproute2 jq curl unzip bzip2 libarchive-tools zstd debootstrap python3 build-essential crossbuild-essential-amd64 clang git python-is-python3 python3-setuptools python3-build python3-wheel python3-venv pkg-config libffi-dev libssl-dev libnuma-dev libbpf-dev
+probes:
+  - description: "the Linux Cloud data disk is mounted"
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      findmnt /mnt/lima-demi-cloud-data
+      test -f /sys/fs/cgroup/cgroup.controllers
