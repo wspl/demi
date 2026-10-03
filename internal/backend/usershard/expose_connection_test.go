@@ -190,7 +190,9 @@ func TestExposeRelayEndsBothPipesAndReleasesAdmission(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				<-lease.Context().Done()
+				if ending != "edge" {
+					<-lease.Context().Done()
+				}
 				for _, pipe := range pipes {
 					if err := pipe.Done(
 						t.Context(),
@@ -200,6 +202,9 @@ func TestExposeRelayEndsBothPipesAndReleasesAdmission(t *testing.T) {
 					}
 				}
 				synctest.Wait()
+				if ending == "edge" && lease.Context().Err() != nil {
+					t.Fatalf("edge release revoked relay: %v", lease.Context().Err())
+				}
 				if got := f.shard.ExposeShard().Exposes().Active(); got != 0 {
 					t.Fatalf("leaked admissions = %d", got)
 				}

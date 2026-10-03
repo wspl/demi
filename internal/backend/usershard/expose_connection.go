@@ -98,6 +98,7 @@ func openExposedNetwork(ctx context.Context, opening exposeOpening) error {
 
 type exposeOpening struct {
 	lifetime  context.Context
+	lease     *hostaccess.Lease
 	cancel    context.CancelFunc
 	admission *expose.RelayAdmission
 	device    *remotehost.Host
@@ -110,15 +111,26 @@ type exposeOpening struct {
 // watchExpose ends the network lifetime when its expose is removed.
 func watchExpose(
 	ctx context.Context,
+	shardCtx context.Context,
 	admission *expose.RelayAdmission,
 	cancel context.CancelFunc,
+	end context.CancelFunc,
 	watched chan<- struct{},
 ) {
 	defer close(watched)
 	select {
 	case <-admission.Ending():
+		end()
 		cancel()
 	case <-ctx.Done():
+		if shardCtx.Err() != nil {
+			end()
+		}
+		select {
+		case <-admission.Ending():
+			end()
+		default:
+		}
 	}
 }
 
@@ -155,7 +167,9 @@ func (s *Shard) connectAdmittedExpose(
 	}
 	lifetime, cancel := context.WithCancel(s.ctx)
 	watched := make(chan struct{})
-	go watchExpose(lifetime, admission, cancel, watched)
+	// The edge's revocation signal excludes cancellation used to join the watcher.
+	ended, end := context.WithCancel(context.WithoutCancel(s.ctx))
+	go watchExpose(lifetime, s.ctx, admission, cancel, end, watched)
 	// The opening call owns the watcher until the registered relay takes it.
 	defer func() {
 		if !relaying {
@@ -165,6 +179,7 @@ func (s *Shard) connectAdmittedExpose(
 	}()
 	opening := exposeOpening{
 		lifetime:  lifetime,
+		lease:     hostaccess.NewLease(ended),
 		cancel:    cancel,
 		admission: admission,
 		device:    device,
@@ -186,14 +201,13 @@ func (s *Shard) connectAdmittedExpose(
 
 // startExposeRelay transfers the watcher and pipe ownership to a shard worker.
 func (s *Shard) startExposeRelay(opening exposeOpening, watched <-chan struct{}) (*hostaccess.Lease, error) {
-	lease := hostaccess.NewLease(opening.lifetime)
+	lease := opening.lease
 	if !s.startWorker(func(context.Context) {
-		defer func() {
-			lease.Release()
+		opening.admission.Relay(lease.Context(), s.ExposeShard(), lease.Released(), func() {
+			// Stop observing removal before releasing the final admission, which
+			// itself ends the expose's connection group.
 			opening.cancel()
 			<-watched
-		}()
-		opening.admission.Relay(lease.Context(), s.ExposeShard(), nil, func() {
 			opening.input.Fail("the relayed connection ended")
 			opening.output.Fail("the relayed connection ended")
 		})
