@@ -29,12 +29,12 @@ the default of the community linter that checks it. Apply the rules exactly;
 do not substitute habits of your own. The sources:
 [EG] Effective Go, [CRC] Go Code Review Comments, [GSG] the Google Go Style
 Guide (Decisions and Best Practices), [STD] the standard library's practice.
-`scripts/gomig/taste.sh <packages>` runs the checks a tool can make.
+`scripts/gomig/check.sh` runs the checks a tool can make (`.golangci.yml`).
 
 ## Layout
 
 - Format with `gofumpt`, a stricter superset of `gofmt` [EG: gofmt], and wrap
-  long lines with `golines` (`taste.sh --fix`).
+  long lines with `golines` (`scripts/gomig/fmt.sh <files>`).
 - Go has no fixed line length; avoid uncomfortably long lines, and wrap by
   meaning, not at a column [CRC: Line Length; GSG: Line length]. The checked
   limit is `lll`'s default, 120 columns. A string a formatter cannot wrap is
@@ -93,6 +93,97 @@ Guide (Decisions and Best Practices), [STD] the standard library's practice.
 - Comments explain why and what is not obvious, not what the code plainly
   says [GSG: Commentary]; an unexported function is documented when its
   purpose or contract is not obvious from its name and signature.
+
+# Go Idioms, Not Rust Patterns
+
+The Go code was ported from Rust, and some Rust shapes survived the port: a
+result enum with a failure variant, a channel end with `Lagged` and `Closed`
+variants, a future to wait on, a guard that cleans up when dropped. Go writes
+each of them differently. The sources are those above plus [FAQ] the Go FAQ.
+
+## Results and errors
+
+- A function that can fail returns `(T, error)` with the error last, and `nil`
+  means success [GSG: Returning errors; EG: Errors]. It never returns a value
+  whose variants are success and failure, such as a `Written` that is either a
+  revision or `Refused{Err error}`: a failure carried inside the result is an
+  in-band error, and the caller can forget to check it [GSG: In-band errors;
+  CRC: In-Band Errors]. Go left variant types out on purpose; for the error
+  case the FAQ points to an interface value holding the error [FAQ: Why does
+  Go not have variant types?].
+- A result that may be absent returns `(T, bool)`, the comma-ok form, when the
+  caller needs no explanation [GSG: In-band errors; EG: comma ok], as
+  `os.LookupEnv` does [STD]. A pointer that exists only to say "absent" (a
+  `*bool`, a `*string`, a pointer to a copy of a value) is Rust's `Option` and
+  an in-band signal. A lookup of an object that callers share by pointer may
+  return nil for "not found", as `flag.Lookup` and `template.Lookup` do [STD];
+  so may a nullable field's value that the caller stores as it is.
+- A failure a caller must tell apart is a sentinel, `var ErrInUse =
+  errors.New("...")`, returned wrapped with `fmt.Errorf("...: %w", ErrInUse)`
+  and tested with `errors.Is` [GSG Best Practices: Error structure, Sentinel
+  error placement; STD: `os.ErrNotExist`, `sql.ErrNoRows`, `io.EOF`]. An error
+  type exists only when a caller reads its data with `errors.As`, as with
+  `*fs.PathError` [GSG Best Practices: Error structure]. That section gives
+  an error structure "if callers need to interrogate the error", so a `Kind`
+  or `Reason` field that no caller branches on is removed: the message
+  describes the failure, and a caller that only prints the error needs
+  nothing else.
+- Two successful results that differ (stored, or already there) are told
+  apart by an extra result value, as `sync.Map.LoadOrStore` returns `loaded
+  bool` [STD; GSG: In-band errors]. A condition the caller treats as a failure
+  (still in use) is an `error` [GSG: Returning errors], even where Rust
+  returned it as an `Ok` variant.
+- A closed set of types used as data stays an interface with a type switch:
+  wire messages, stream events, JSON unions, as `go/ast.Expr` does [FAQ: Why
+  does Go not have variant types?; STD]. The rules above are about what a
+  function returns to say how it went, not about data that is sent or stored.
+
+## Concurrency
+
+- A stream is received from a `<-chan T` that the sender closes at its end
+  [GSG Best Practices: Channel direction; EG: Channels], or read with an
+  iterator, `Next() bool` then `Err() error`, as `bufio.Scanner` and `sql.Rows`
+  do [STD]. A receive that returns `Frame`, `Lagged` or `Closed` variants is
+  Rust's channel API: lag and end are errors from `Err()`, or values the
+  channel carries. A non-blocking receive is a `select` with a `default`, not
+  a `TryReceive` method.
+- A function returns its result when the work is done [CRC: Synchronous
+  Functions]. An object whose only use is a `Wait()` right after it is
+  returned is a future; the function blocks instead. A `Start` and `Wait`
+  pair stays only where callers do real work between the two, as with
+  `exec.Cmd` [STD].
+- Every goroutine's end is plain from the code that starts it [CRC: Goroutine
+  Lifetimes].
+
+## Names and cleanup
+
+- A type is named for what it is, as `os.File`, `net.Conn`, `exec.Cmd` and
+  `http.Server` are [STD], not for a Rust ownership role: no `Handle`, `Guard`,
+  `Sender` or `Receiver` suffix unless the type really is one end of a
+  channel pair.
+- Cleanup is a `Close` or `Release` method, or a returned function as
+  `context.CancelFunc` is, that the caller runs with `defer` where it
+  acquired the resource [EG: Defer; STD]. Go has no destructor, so there is no
+  guard object that cleans up when it goes out of scope.
+- A constructor returns a ready value; where a zero value can be useful, it is
+  [EG: Allocation with new]. A `DefaultX()` that only fills fields is kept
+  only when the zero value cannot be made to work.
+
+## Comments
+
+- [Owner: no Rust remains in the repository] A comment describes Go
+  behavior. It never mentions Rust, the Rust code, or a
+  Rust library (`tokio`, `serde`, `axum`, ...). When the reason for a choice is
+  a wire format or behavior the Rust programs fixed, the comment states that
+  format or behavior itself.
+
+## What stays
+
+These look like Rust to a Rust reader but are Go practice: `Unwrap() error`
+methods [STD: `errors`], `MustX` functions [STD: `regexp.MustCompile`],
+getters without `Get` [EG: Getters], and a panic for an invariant that only a
+bug can break, which never crosses a package boundary [GSG Best Practices:
+When to panic].
 
 # Working Principles
 
