@@ -24,7 +24,7 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 const testID webapi.ExposeID = "k7x2maqw4p3s6tavaw2y4z6aab"
 
 // These in-process scenarios cost no network or wall-clock waits. Storage is
-// controlled because ControlService is still an API checkpoint on this branch.
+// controlled to interleave operations without external resources.
 type shard struct {
 	store     *memoryStore
 	exposes   expose.Exposes
@@ -160,6 +160,19 @@ func (m *memoryStore) DeleteExpose(_ context.Context, id webapi.ExposeID) error 
 	}
 	delete(m.records, id)
 	return nil
+}
+func (m *memoryStore) DeleteExpiredExpose(_ context.Context, id webapi.ExposeID, at core.Timestamp) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.failure != nil {
+		return false, m.failure
+	}
+	record, ok := m.records[id]
+	if !ok || record.ExpiresAt > at {
+		return false, nil
+	}
+	delete(m.records, id)
+	return true, nil
 }
 func (m *memoryStore) DeleteDeviceExposes(_ context.Context, device webapi.DeviceID) ([]webapi.ExposeID, error) {
 	m.mu.Lock()

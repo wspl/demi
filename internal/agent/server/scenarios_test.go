@@ -499,7 +499,13 @@ func TestOpenSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
 	for _, syncTranscript := range []bool{false, true} {
 		t.Run(fmt.Sprintf("sync=%t", syncTranscript), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				f := newFixture(t, said("answer"), said("second"))
+				// Publication can run on the sender while the session worker
+				// continues. Hold the provider too, so the snapshot cannot
+				// already contain every transcript change of the turn.
+				answer := make(chan struct{})
+				resume := sync.OnceFunc(func() { close(answer) })
+				defer resume()
+				f := newFixture(t, held(answer, providertest.Text("answer"), providertest.Response(1, 1)), said("second"))
 				first := f.opened()
 				second := f.client()
 				if syncTranscript {
@@ -508,6 +514,8 @@ func TestOpenSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
 				}
 				agent := f.server.Tree(rootID()).Root().Session()
 				paused, release := make(chan struct{}), make(chan struct{})
+				unblock := sync.OnceFunc(func() { close(release) })
+				defer unblock()
 				var once sync.Once
 				subscription := agent.Subscribe(func(event session.Event) {
 					if _, ok := event.(*session.TranscriptChanged); ok {
@@ -523,6 +531,11 @@ func TestOpenSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
 					defer close(sent)
 					first.Send(t.Context(), send("m1", "question"))
 				}()
+				defer func() {
+					unblock()
+					resume()
+					<-sent
+				}()
 				<-paused
 				agent.RecordInterruption()
 				if syncTranscript {
@@ -535,14 +548,20 @@ func TestOpenSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
 					second.Send(t.Context(), &framewire.OpenFrame{})
 				}
 				var revision uint64
+				found := false
 				for _, frame := range second.Received() {
 					if reset, ok := frame.(*framewire.TranscriptResetFrame); ok {
 						revision = reset.Version.Revision
+						found = true
 					}
 				}
-				close(release)
+				unblock()
+				resume()
 				<-sent
 				synctest.Wait()
+				if !found {
+					t.Fatal("root snapshot missing")
+				}
 				patches := 0
 				queued := false
 				for _, frame := range second.Received() {
@@ -565,6 +584,7 @@ func TestOpenSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
 				if patches == 0 {
 					t.Fatal("no events after the snapshot")
 				}
+				equal(t, agent.Transcript().Version.Revision, revision)
 			})
 		})
 	}

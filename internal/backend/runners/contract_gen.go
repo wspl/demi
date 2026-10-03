@@ -7,22 +7,22 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-func decodeLocalNativeStore(data []byte) (localNativeStore, error) {
-	return contract.Decode[localNativeStore](data)
+func DecodeLocalNativeStore(data []byte) (LocalNativeStore, error) {
+	return contract.Decode[LocalNativeStore](data)
 }
-func (v localNativeStore) Validate() error { return contractValidateLocalNativeStore(v, 0) }
-func contractValidateLocalNativeStore(v localNativeStore, depth int) error {
+func (v LocalNativeStore) Validate() error { return contractValidateLocalNativeStore(v, 0) }
+func contractValidateLocalNativeStore(v LocalNativeStore, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
 	return nil
 }
-func (v *localNativeStore) UnmarshalJSON(data []byte) error {
+func (v *LocalNativeStore) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next localNativeStore
+	var next LocalNativeStore
 	for key := range obj {
 		switch key {
 		case "provider":
@@ -44,7 +44,7 @@ func (v *localNativeStore) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v localNativeStore) MarshalJSON() ([]byte, error) {
+func (v LocalNativeStore) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -52,11 +52,11 @@ func (v localNativeStore) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "provider", Value: "local"})
 	return contract.EncodeObject(fields)
 }
-func decodeNativeConfig(data []byte) (nativeConfig, error) {
-	return contract.Decode[nativeConfig](data)
+func DecodeNativeConfig(data []byte) (NativeConfig, error) {
+	return contract.Decode[NativeConfig](data)
 }
-func (v nativeConfig) Validate() error { return contractValidateNativeConfig(v, 0) }
-func contractValidateNativeConfig(v nativeConfig, depth int) error {
+func (v NativeConfig) Validate() error { return contractValidateNativeConfig(v, 0) }
+func contractValidateNativeConfig(v NativeConfig, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -83,12 +83,12 @@ func contractValidateNativeConfig(v nativeConfig, depth int) error {
 	}
 	return nil
 }
-func (v *nativeConfig) UnmarshalJSON(data []byte) error {
+func (v *NativeConfig) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next nativeConfig
+	var next NativeConfig
 	for key := range obj {
 		switch key {
 		case "prefix", "releases", "store":
@@ -114,7 +114,7 @@ func (v *nativeConfig) UnmarshalJSON(data []byte) error {
 			return contract.At("releases", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) ([]nativeRelease, error) { return contract.List(b, contract.Decode[nativeRelease]) }(raw)
+			value, err := func(b []byte) ([]NativeRelease, error) { return contract.List(b, contract.Decode[NativeRelease]) }(raw)
 			if err != nil {
 				return contract.At("releases", err)
 			}
@@ -127,7 +127,7 @@ func (v *nativeConfig) UnmarshalJSON(data []byte) error {
 			return contract.At("store", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := decodeNativeStore(raw)
+			value, err := DecodeNativeStore(raw)
 			if err != nil {
 				return contract.At("store", err)
 			}
@@ -140,7 +140,7 @@ func (v *nativeConfig) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v nativeConfig) MarshalJSON() ([]byte, error) {
+func (v NativeConfig) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -152,11 +152,11 @@ func (v nativeConfig) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "store", Value: v.Store})
 	return contract.EncodeObject(fields)
 }
-func decodeNativeRelease(data []byte) (nativeRelease, error) {
-	return contract.Decode[nativeRelease](data)
+func DecodeNativeRelease(data []byte) (NativeRelease, error) {
+	return contract.Decode[NativeRelease](data)
 }
-func (v nativeRelease) Validate() error { return contractValidateNativeRelease(v, 0) }
-func contractValidateNativeRelease(v nativeRelease, depth int) error {
+func (v NativeRelease) Validate() error { return contractValidateNativeRelease(v, 0) }
+func contractValidateNativeRelease(v NativeRelease, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -168,12 +168,12 @@ func contractValidateNativeRelease(v nativeRelease, depth int) error {
 	}
 	return nil
 }
-func (v *nativeRelease) UnmarshalJSON(data []byte) error {
+func (v *NativeRelease) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next nativeRelease
+	var next NativeRelease
 	for key := range obj {
 		switch key {
 		case "directory", "executable":
@@ -213,7 +213,7 @@ func (v *nativeRelease) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v nativeRelease) MarshalJSON() ([]byte, error) {
+func (v NativeRelease) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -222,7 +222,7 @@ func (v nativeRelease) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "executable", Value: v.Executable})
 	return contract.EncodeObject(fields)
 }
-func decodeNativeStore(data []byte) (nativeStore, error) {
+func DecodeNativeStore(data []byte) (NativeStore, error) {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return nil, err
@@ -233,61 +233,61 @@ func decodeNativeStore(data []byte) (nativeStore, error) {
 	}
 	switch tag {
 	case "local":
-		value, err := contract.Decode[localNativeStore](data)
+		value, err := contract.Decode[LocalNativeStore](data)
 		if err != nil {
 			return nil, err
 		}
 		return &value, nil
 	case "s3":
-		value, err := contract.Decode[s3NativeStore](data)
+		value, err := contract.Decode[S3NativeStore](data)
 		if err != nil {
 			return nil, err
 		}
 		return &value, nil
 	}
-	return nil, fmt.Errorf("unknown nativeStore tag %q", tag)
+	return nil, fmt.Errorf("unknown NativeStore tag %q", tag)
 }
 
-type nativeStoreJSON struct{ Value nativeStore }
+type NativeStoreJSON struct{ Value NativeStore }
 
-func (v *nativeStoreJSON) UnmarshalJSON(data []byte) error {
-	value, err := decodeNativeStore(data)
+func (v *NativeStoreJSON) UnmarshalJSON(data []byte) error {
+	value, err := DecodeNativeStore(data)
 	if err == nil {
 		v.Value = value
 	}
 	return err
 }
-func (v nativeStoreJSON) MarshalJSON() ([]byte, error) {
-	if err := validateNativeStore(v.Value); err != nil {
+func (v NativeStoreJSON) MarshalJSON() ([]byte, error) {
+	if err := ValidateNativeStore(v.Value); err != nil {
 		return nil, err
 	}
 	return contract.EncodeJSON(v.Value)
 }
-func validateNativeStore(value nativeStore) error { return contractValidateNativeStore(value, 0) }
-func contractValidateNativeStore(value nativeStore, depth int) error {
+func ValidateNativeStore(value NativeStore) error { return contractValidateNativeStore(value, 0) }
+func contractValidateNativeStore(value NativeStore, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
 	switch v := value.(type) {
-	case *localNativeStore:
+	case *LocalNativeStore:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidateLocalNativeStore(*v, depth+1)
-	case *s3NativeStore:
+	case *S3NativeStore:
 		if v == nil {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidateS3NativeStore(*v, depth+1)
 	default:
-		return fmt.Errorf("nil or unsupported nativeStore")
+		return fmt.Errorf("nil or unsupported NativeStore")
 	}
 }
-func decodeS3NativeStore(data []byte) (s3NativeStore, error) {
-	return contract.Decode[s3NativeStore](data)
+func DecodeS3NativeStore(data []byte) (S3NativeStore, error) {
+	return contract.Decode[S3NativeStore](data)
 }
-func (v s3NativeStore) Validate() error { return contractValidateS3NativeStore(v, 0) }
-func contractValidateS3NativeStore(v s3NativeStore, depth int) error {
+func (v S3NativeStore) Validate() error { return contractValidateS3NativeStore(v, 0) }
+func contractValidateS3NativeStore(v S3NativeStore, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -296,12 +296,12 @@ func contractValidateS3NativeStore(v s3NativeStore, depth int) error {
 	}
 	return nil
 }
-func (v *s3NativeStore) UnmarshalJSON(data []byte) error {
+func (v *S3NativeStore) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next s3NativeStore
+	var next S3NativeStore
 	for key := range obj {
 		switch key {
 		case "bucket", "region", "endpoint", "forcePathStyle", "provider":
@@ -371,7 +371,7 @@ func (v *s3NativeStore) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v s3NativeStore) MarshalJSON() ([]byte, error) {
+func (v S3NativeStore) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}

@@ -22,18 +22,18 @@
  	opts runnerOpts
  
  	origDir    string
-@@ -172,6 +178,11 @@
- 	// apply to the current shell, and not just the command.
+@@ -173,6 +179,11 @@
  	// It is consumed by the enclosing statement once it finishes.
  	keepRedirs bool
-+
+ 
 +	// extraFiles holds redirections of descriptors above stderr. The open handler
 +	// retains responsibility for releasing exec's persistent files after Wait.
 +	extraFiles     map[string]io.ReadWriteCloser
 +	pipelineStatus []string
- 
++
  	// Fake signal callbacks
  	callbackErr  string
+ 	callbackExit string
 @@ -250,6 +261,10 @@
  }
  
@@ -187,7 +187,9 @@
 -		"umask",
 -		"unalias",
 -		"wait",
--
++	return slices.Contains(builtinNames, name)
++}
+ 
 -		// POSIX Shell special built-ins, obtained in September 2025 from:
 -		// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_14
 -		"break",
@@ -205,7 +207,9 @@
 -		"times",
 -		"trap",
 -		"unset",
--
++// BuiltinNames returns the native names recognized by IsBuiltin.
++func BuiltinNames() []string { return slices.Clone(builtinNames) }
+ 
 -		// Bash built-ins which are not present in POSIX, obtained in September 2025 from:
 -		// https://man.archlinux.org/man/bash.1.en#SHELL_BUILTIN_COMMANDS
 -		"source",
@@ -233,24 +237,6 @@
 -		"suspend",
 -		"type",
 -		"ulimit",
--
--		// POSIX utilities which the shell need not provide as built-ins,
--		// so they are separate executables found via PATH, but which we
--		// implement as built-ins just like Bash does. Obtained in September
--		// 2025 from https://pubs.opengroup.org/onlinepubs/9699919799/utilities/contents.html
--		"echo",
--		"printf",
--		"test",
--		"[": // NOTE: an alias for "test", not documented separately
--		return true
--	}
--	return false
-+	return slices.Contains(builtinNames, name)
-+}
-+
-+// BuiltinNames returns the native names recognized by IsBuiltin.
-+func BuiltinNames() []string { return slices.Clone(builtinNames) }
-+
 +var builtinNames = []string{
 +	// POSIX Shell regular built-ins, that is, the utilities which the shell
 +	// must provide as built-ins, from section 1.d obtained in September 2025 from:
@@ -319,7 +305,18 @@
 +	"suspend",
 +	"type",
 +	"ulimit",
-+
+ 
+-		// POSIX utilities which the shell need not provide as built-ins,
+-		// so they are separate executables found via PATH, but which we
+-		// implement as built-ins just like Bash does. Obtained in September
+-		// 2025 from https://pubs.opengroup.org/onlinepubs/9699919799/utilities/contents.html
+-		"echo",
+-		"printf",
+-		"test",
+-		"[": // NOTE: an alias for "test", not documented separately
+-		return true
+-	}
+-	return false
 +	// POSIX utilities which the shell need not provide as built-ins,
 +	// so they are separate executables found via PATH, but which we
 +	// implement as built-ins just like Bash does. Obtained in September
@@ -350,47 +347,33 @@
  			return failf(2, "usage: cd [dir]\n")
  		}
  		exit.code = r.changeDir(ctx, "cd", path)
+-	case "wait":
+-		fp := flagParser{remaining: args}
+-		for fp.more() {
+-			switch flag := fp.flag(); flag {
+-			case "-n", "-p":
+-				return failf(2, "wait: unsupported option %q\n", flag)
 +	case "jobs":
 +		for index, bg := range r.bgProcs {
 +			status := "Running"
 +			select {
 +			case <-bg.done:
 +				status = "Done"
-+			default:
-+			}
+ 			default:
+-				return failf(2, "wait: invalid option %q\n", flag)
+ 			}
 +			r.outf("[%d] %s g%d\n", index+1, status, index+1)
 +		}
- 	case "wait":
--		fp := flagParser{remaining: args}
--		for fp.more() {
--			switch flag := fp.flag(); flag {
--			case "-n", "-p":
--				return failf(2, "wait: unsupported option %q\n", flag)
--			default:
--				return failf(2, "wait: invalid option %q\n", flag)
--			}
--		}
++	case "wait":
 +		next := len(args) > 0 && args[0] == "-n"
 +		if next {
 +			args = args[1:]
-+		}
+ 		}
 +		var indices []int
  		if len(args) == 0 {
 -			// Note that "wait" without arguments always returns exit status zero.
 -			for _, bg := range r.bgProcs {
 -				<-bg.done
--			}
--			break
--		}
--		for _, arg := range args {
--			arg, ok := strings.CutPrefix(arg, "g")
--			pid := atoi(arg)
--			if !ok || pid <= 0 || pid > int64(len(r.bgProcs)) {
--				return failf(1, "wait: pid %s is not a child of this shell\n", arg)
--			}
--			bg := r.bgProcs[pid-1]
--			<-bg.done
--			exit = *bg.exit
 +			for index, bg := range r.bgProcs {
 +				if !next || !bg.waited {
 +					indices = append(indices, index)
@@ -405,13 +388,22 @@
 +				if !next || !r.bgProcs[number-1].waited {
 +					indices = append(indices, number-1)
 +				}
-+			}
-+		}
+ 			}
+-			break
+ 		}
+-		for _, arg := range args {
+-			arg, ok := strings.CutPrefix(arg, "g")
+-			pid := atoi(arg)
+-			if !ok || pid <= 0 || pid > int64(len(r.bgProcs)) {
+-				return failf(1, "wait: pid %s is not a child of this shell\n", arg)
 +		if next {
 +			if len(indices) == 0 {
 +				exit.code = 127
 +				break
-+			}
+ 			}
+-			bg := r.bgProcs[pid-1]
+-			<-bg.done
+-			exit = *bg.exit
 +			cases := []reflect.SelectCase{{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())}}
 +			for _, index := range indices {
 +				cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(r.bgProcs[index].done)})
@@ -1525,27 +1517,25 @@
  				switch ps.Op {
  				case syntax.CmdIn:
 -					f, err := os.OpenFile(path, os.O_WRONLY, 0)
-+					r2.stdout = f
-+				case syntax.CmdOut:
-+					stdin, err := newStdinFile(f, r.tasks)
- 					if err != nil {
+-					if err != nil {
 -						r.errf("cannot open fifo for stdout: %v\n", err)
-+						r2.exit.fatal(err)
- 						return
- 					}
--					r2.stdout = f
+-						return
+-					}
+ 					r2.stdout = f
 -					defer func() {
 -						if err := f.Close(); err != nil {
 -							r.errf("closing stdout fifo: %v\n", err)
 -						}
 -						os.Remove(path)
 -					}()
--				case syntax.CmdOut:
+ 				case syntax.CmdOut:
 -					f, err := os.OpenFile(path, os.O_RDONLY, 0)
--					if err != nil {
++					stdin, err := newStdinFile(f, r.tasks)
+ 					if err != nil {
 -						r.errf("cannot open fifo for stdin: %v\n", err)
--						return
--					}
++						r2.exit.fatal(err)
+ 						return
+ 					}
 -					r2.stdin = f
 +					defer stdin.Close()
 +					r2.stdin = stdin
@@ -1846,12 +1836,10 @@
  	case syntax.RdrOut, syntax.AppOut:
  		*orig = f
  	case syntax.RdrAll, syntax.AppAll:
-@@ -1125,6 +1222,20 @@
- 		return nil, fmt.Errorf("unhandled redirect op: %v", rd.Op)
- 	}
+@@ -1127,6 +1224,20 @@
  	return f, nil
-+}
-+
+ }
+ 
 +// inputRedirect closes both the redirected source and the OS pipe created
 +// for a non-file OpenHandler result. Closing only the source leaks the reader.
 +type inputRedirect struct {
@@ -1864,9 +1852,11 @@
 +		return r.source.Close()
 +	}
 +	return errors.Join(r.stdin.Close(), r.source.Close())
- }
- 
++}
++
  func (r *Runner) loopStmtsBroken(ctx context.Context, stmts []*syntax.Stmt) bool {
+ 	oldInLoop := r.inLoop
+ 	r.inLoop = true
 @@ -1180,7 +1291,7 @@
  		r.exit.returning = false
  		return

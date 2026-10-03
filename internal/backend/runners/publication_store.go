@@ -30,7 +30,7 @@ type nativeUpload struct {
 
 // publish verifies every release before the first upload and publishes immutable
 // package/version mappings only after every artifact and descriptor is in place.
-func publish(ctx context.Context, releases []nativeRelease, prefix string, store artifactStore) (*NativeCatalog, error) {
+func publish(ctx context.Context, releases []NativeRelease, prefix string, store artifactStore) (*NativeCatalog, error) {
 	verified, err := verifyReleases(ctx, releases, true)
 	if err != nil {
 		return nil, err
