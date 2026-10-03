@@ -18,7 +18,6 @@ import (
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/runnerwire"
 	"github.com/wspl/demi/internal/webapi"
@@ -205,10 +204,10 @@ func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.create(hostsConversation)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
 	s.move(laptop, laptop.Runner.Home())
 	const elsewhere = "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a02"
-	s.create(elsewhere)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, elsewhere)
 	if err := laptop.Runner.Stop(s.ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +280,7 @@ func TestClaimOfDisconnectedRunnerCreatesNoDevice(t *testing.T) {
 	if err := r.socket.CloseNow(); err != nil {
 		t.Fatal(err)
 	}
-	s.refusal("POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, pending.ClaimToken), 404, webapi.ErrorCodeInvalidCode)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, pending.ClaimToken), 404), webapi.ErrorCodeInvalidCode)
 	devices, err := s.b.Devices(s.ctx, &s.user)
 	if err != nil {
 		t.Fatal(err)
@@ -361,25 +360,14 @@ func TestDevicesAndRunnersReturnAfterBackendRestart(t *testing.T) {
 func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
 	s := newHostScenario(t, "")
 	_, token := s.stoppedPair()
-	s.create(hostsConversation)
-	page, err := backendtest.HostsSocket(s.ctx, t, s.b, &s.user, hostsConversation)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
+	page, err := s.b.Conversation(s.ctx, t, &s.user, hostsConversation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := contract.EncodeJSON(&framewire.AbortFrame{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := page.Write(s.ctx, websocket.MessageText, data); err != nil {
-		t.Fatal(err)
-	}
-	_, frame, err := page.Read(s.ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := framewire.DecodeServerFrame(frame); err != nil {
-		t.Fatal(err)
-	}
+	wireMust(t, page.Send(s.ctx, &framewire.AbortFrame{}))
+	_, err = page.Next(s.ctx)
+	wireMust(t, err)
 	hold := backendtest.HoldHellos(t, s.b.Backend, backendtest.HelloBind)
 	runner := connectHostRunner(t, s.b)
 	runner.send(runnerHello(runnerwire.Version, token, nil))
@@ -395,15 +383,10 @@ func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	for {
-		_, _, err := page.Read(s.ctx)
-		if err == nil {
-			continue
-		}
-		if websocket.CloseStatus(err) != websocket.StatusGoingAway {
-			t.Fatalf("page close: %v", err)
-		}
-		break
+	code, _, err := page.Closed(s.ctx)
+	wireMust(t, err)
+	if code != websocket.StatusGoingAway {
+		t.Fatalf("page close: %v", code)
 	}
 	hold.Release()
 	if runner.next() != nil {
@@ -439,16 +422,16 @@ func TestPairingCodeExpiresAndClaimAttemptsAreLimited(t *testing.T) {
 	if first == second {
 		t.Fatal("pairing code did not change")
 	}
-	claimed := s.request("POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, second), 201)
+	claimed := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, second), 201)
 	device, err := webapi.DecodeClaimedDevice(claimed.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.refusal("POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, first), 404, webapi.ErrorCodeInvalidCode)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, first), 404), webapi.ErrorCodeInvalidCode)
 	if err := b.UntilOnline(s.ctx, &user, device.Device.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	invalid := s.request("POST", "/api/devices/claim", `{"code":""}`, 400)
+	invalid := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":""}`, 400)
 	errorBody, err := invalid.ErrorBody()
 	if err != nil {
 		t.Fatal(err)
@@ -456,13 +439,13 @@ func TestPairingCodeExpiresAndClaimAttemptsAreLimited(t *testing.T) {
 	if errorBody.Code != webapi.ErrorCodeInvalidBody {
 		t.Fatal(errorBody)
 	}
-	s.refusal("POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 404, webapi.ErrorCodeInvalidCode)
-	s.refusal("POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 429, webapi.ErrorCodeRateLimited)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 404), webapi.ErrorCodeInvalidCode)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 429), webapi.ErrorCodeRateLimited)
 }
 
 func (s *hostScenario) deviceLog(path string) webapi.DeviceLog {
 	s.t.Helper()
-	read := s.request("GET", path, "", 200)
+	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 200)
 	log, err := webapi.DecodeDeviceLog(read.Body)
 	if err != nil {
 		s.t.Fatal(err)
@@ -493,15 +476,15 @@ func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
 	if !found {
 		t.Fatal("hello.txt not listed")
 	}
-	s.request("POST", fs, fmt.Sprintf(`{"path":%q}`, home+"/made/by/web"), 201)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", fs, fmt.Sprintf(`{"path":%q}`, home+"/made/by/web"), 201)
 	info, err := os.Stat(filepath.Join(home, "made/by/web"))
 	if err != nil || !info.IsDir() {
 		t.Fatalf("created directory: %v", err)
 	}
 	for _, query := range []string{"?path=relative", "?path="} {
-		s.refusal("GET", fs+query, "", 400, webapi.ErrorCodeInvalidQuery)
+		conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", fs+query, "", 400), webapi.ErrorCodeInvalidQuery)
 	}
-	s.refusal("GET", fs+"?path="+url.QueryEscape(home+"/nothing"), "", 404, webapi.ErrorCodeFsError)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", fs+"?path="+url.QueryEscape(home+"/nothing"), "", 404), webapi.ErrorCodeFsError)
 	path := "/api/devices/" + string(laptop.ID()) + "/log"
 	tail := s.deviceLog(path)
 	online, pairing := false, false
@@ -536,17 +519,17 @@ func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
 		t.Fatal(other)
 	}
 	for _, query := range []string{"limit=0", "limit=1001", "limit=many", "since=-1", "since=1.5", "source="} {
-		s.refusal("GET", path+"?"+query, "", 400, webapi.ErrorCodeInvalidQuery)
+		conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path+"?"+query, "", 400), webapi.ErrorCodeInvalidQuery)
 	}
-	s.refusal("GET", "/api/devices/none/log", "", 404, webapi.ErrorCodeDeviceNotFound)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/devices/none/log", "", 404), webapi.ErrorCodeDeviceNotFound)
 	if err := laptop.Runner.Stop(s.ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.b.UntilOnline(s.ctx, &s.user, laptop.ID(), false); err != nil {
 		t.Fatal(err)
 	}
-	s.refusal("GET", path, "", 409, webapi.ErrorCodeDeviceOffline)
-	s.refusal("GET", fs, "", 409, webapi.ErrorCodeDeviceOffline)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 409), webapi.ErrorCodeDeviceOffline)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", fs, "", 409), webapi.ErrorCodeDeviceOffline)
 }
 
 // A real runner persists its token across restart and exits when revoked.
@@ -560,8 +543,8 @@ func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.refusal("POST", "/api/devices/claim", `{"code":"AAAA-BBBB"}`, 404, webapi.ErrorCodeInvalidCode)
-	answer := s.request("POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, " "+strings.ToLower(code)+" "), 201)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"AAAA-BBBB"}`, 404), webapi.ErrorCodeInvalidCode)
+	answer := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, " "+strings.ToLower(code)+" "), 201)
 	claimed, err := webapi.DecodeClaimedDevice(answer.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -570,7 +553,7 @@ func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
 	if device.Name != "laptop" || device.Kind != webapi.DeviceKindUser || !device.Online || device.Home == nil || *device.Home != runner.Home() {
 		t.Fatalf("device: %+v", device)
 	}
-	s.refusal("POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, code), 404, webapi.ErrorCodeInvalidCode)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, code), 404), webapi.ErrorCodeInvalidCode)
 	listed, err := s.b.Devices(s.ctx, &s.user)
 	if err != nil {
 		t.Fatal(err)
@@ -597,7 +580,7 @@ func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
 	if err != nil || len(listed) != 1 {
 		t.Fatalf("devices: %+v, %v", listed, err)
 	}
-	s.request("DELETE", "/api/devices/"+string(device.ID), "", 204)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+string(device.ID), "", 204)
 	// Rust observes termination, without requiring a particular exit status.
 	err = runner.Exited(s.ctx)
 	if err != nil && s.ctx.Err() != nil {
@@ -610,7 +593,7 @@ func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
 	if err != nil || len(listed) != 0 {
 		t.Fatalf("devices: %+v, %v", listed, err)
 	}
-	s.refusal("DELETE", "/api/devices/"+string(device.ID), "", 404, webapi.ErrorCodeDeviceNotFound)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+string(device.ID), "", 404), webapi.ErrorCodeDeviceNotFound)
 	if err := s.b.Close(s.ctx); err != nil {
 		t.Fatal(err)
 	}

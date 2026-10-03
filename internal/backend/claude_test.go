@@ -77,29 +77,12 @@ func accountCLISettled(ctx context.Context, t *testing.T, b *backendtest.TestBac
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	for {
-		a := accountRequest(ctx, t, b, "GET", "/api/providers/"+id+"/cli", s, "")
-		accountEqual(t, a.Status, 200)
-		cli := accountDecode(t, a, webapi.DecodeProviderCLI)
+		a := conversationRequest(ctx, t, b, s, "GET", "/api/providers/"+id+"/cli", "", 200)
+		cli := conversationDecode(t, a, webapi.DecodeProviderCLI)
 		if _, installing := cli.Install.(*webapi.CLIInstallInstalling); !installing {
 			return cli
 		}
 	}
-}
-
-// accountTranscript reads the durable conversation representation.
-func accountTranscript(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session, id string) []core.Block {
-	t.Helper()
-	return accountDecode(t, accountRequest(ctx, t, b, "GET", "/api/conversations/"+id+"/transcript", s, ""), webapi.DecodeTranscript).Blocks
-}
-
-// accountLastText reads the last assistant text in the durable transcript.
-func accountLastText(blocks []core.Block) string {
-	for i := len(blocks) - 1; i >= 0; i-- {
-		if text, ok := blocks[i].(*core.TextBlock); ok {
-			return text.Text
-		}
-	}
-	return ""
 }
 
 type accountLocalArtifact string
@@ -136,7 +119,6 @@ func accountInstallCLI(ctx context.Context, t *testing.T, root, version string) 
 
 // Several seconds: a real Cloud runner installs the command package and runs its scripted CLI.
 func TestAConversationOnAPairedDeviceInfersThroughTheCloudsCLIWithTheActiveAccountsToken(t *testing.T) {
-	t.Skip("finding 3: device claim answers 500 because device.installs is nil")
 	ctx := t.Context()
 	distribution := providertest.StartVendor(t)
 	distribution.RespondAt("/releases/latest", accountVendorResponse("2.1.3\n"))
@@ -154,12 +136,12 @@ func TestAConversationOnAPairedDeviceInfersThroughTheCloudsCLIWithTheActiveAccou
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, master := accountStart(ctx, t, h)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	const firstToken = "sk-ant-oat01-first-account"
 	const secondToken = "sk-ant-oat01-second-account"
-	imported := accountRequest(ctx, t, b, "POST", "/api/providers/setup-token", &master, `{"token":"`+firstToken+`","label":"Claude"}`)
-	accountEqual(t, imported.Status, 201)
-	id := string(accountDecode(t, imported, webapi.DecodeProviderAnswer).Provider.ID)
+	imported := conversationRequest(ctx, t, b, &master, "POST", "/api/providers/setup-token", `{"token":"`+firstToken+`","label":"Claude"}`, 201)
+	id := string(conversationDecode(t, imported, webapi.DecodeProviderAnswer).Provider.ID)
 	failed := accountCLISettled(ctx, t, b, &master, id)
 	failure, ok := failed.Install.(*webapi.CLIInstallFailed)
 	if !ok {
@@ -169,18 +151,18 @@ func TestAConversationOnAPairedDeviceInfersThroughTheCloudsCLIWithTheActiveAccou
 	if !strings.HasPrefix(failure.Message, reason) {
 		t.Fatal(failure.Message)
 	}
-	accountEqual[webapi.NewestVersion](t, failed.Newest, &webapi.NewestVersionRead{Version: "2.1.3"})
+	conversationEqual[webapi.NewestVersion](t, failed.Newest, &webapi.NewestVersionRead{Version: "2.1.3"})
 	devices := manager.Devices()
-	accountEqual(t, len(devices), 1)
+	conversationEqual(t, len(devices), 1)
 	cloud := devices[0]
-	accountEqual(t, len(failed.Machines), 1)
-	accountEqual(t, failed.Machines[0].DeviceID, cloud)
+	conversationEqual(t, len(failed.Machines), 1)
+	conversationEqual(t, failed.Machines[0].DeviceID, cloud)
 	if failed.Machines[0].Versions == nil {
 		t.Fatal("no version report")
 	}
-	accountEqual(t, len(*failed.Machines[0].Versions), 0)
-	accountEqual(t, len(accountDecode(t, accountRequest(ctx, t, b, "GET", "/api/providers/"+id+"/accounts", &master, ""), webapi.DecodeAccounts).Accounts), 1)
-	accountEqual(t, accountRequest(ctx, t, b, "POST", "/api/conversations", &master, `{"id":"`+accountClaudeConversation+`"}`).Status, 201)
+	conversationEqual(t, len(*failed.Machines[0].Versions), 0)
+	conversationEqual(t, len(conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", "/api/providers/"+id+"/accounts", "", 200), webapi.DecodeAccounts).Accounts), 1)
+	conversationCreate(ctx, t, b, &master, accountClaudeConversation)
 	laptop, err := b.Pair(ctx, t, &master, "laptop")
 	if err != nil {
 		t.Fatal(err)
@@ -196,18 +178,18 @@ func TestAConversationOnAPairedDeviceInfersThroughTheCloudsCLIWithTheActiveAccou
 	if _, err := db.ExecContext(ctx, "UPDATE conversations SET target_kind = 'device', target_device_id = ?, target_path = ? WHERE id = ?", laptop.ID(), root, accountClaudeConversation); err != nil {
 		t.Fatal(err)
 	}
-	accountEqual(t, accountRequest(ctx, t, b, "PATCH", "/api/conversations/"+accountClaudeConversation, &master, `{"model":{"providerId":"`+id+`","modelId":"claude-opus-4-8"}}`).Status, 200)
-	socket, err := backendtest.OpenAccountSocket(ctx, t, b, &master, accountClaudeConversation)
+	conversationChoose(ctx, t, b, &master, accountClaudeConversation, id, "claude-opus-4-8")
+	socket, err := b.Conversation(ctx, t, &master, accountClaudeConversation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := socket.Open(ctx); err != nil {
+	if _, err := socket.Open(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := socket.Chat(ctx, "5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello"); err != nil {
 		t.Fatal(err)
 	}
-	blocks := accountTranscript(ctx, t, b, &master, accountClaudeConversation)
+	blocks := conversationTranscript(ctx, t, b, &master, accountClaudeConversation).Blocks
 	last, ok := blocks[len(blocks)-1].(*core.ErrorBlock)
 	if !ok {
 		t.Fatal("request did not fail")
@@ -217,32 +199,31 @@ func TestAConversationOnAPairedDeviceInfersThroughTheCloudsCLIWithTheActiveAccou
 	}
 	home := manager.Home(cloud)
 	older := accountInstallCLI(ctx, t, manager.Artifacts(cloud), "2.1.2")
-	accountEqual(t, accountRequest(ctx, t, b, "POST", "/api/providers/"+id+"/cli/install", &master, "{}").Status, 202)
+	conversationRequest(ctx, t, b, &master, "POST", "/api/providers/"+id+"/cli/install", "{}", 202)
 	installed := accountCLISettled(ctx, t, b, &master, id)
-	accountEqual[webapi.CLIInstall](t, installed.Install, &webapi.CLIInstallInstalled{Path: older})
-	accountEqual(t, *installed.Machines[0].Versions, []string{"2.1.2"})
-	accountEqual(t, len(distribution.Requests()), 2)
+	conversationEqual[webapi.CLIInstall](t, installed.Install, &webapi.CLIInstallInstalled{Path: older})
+	conversationEqual(t, *installed.Machines[0].Versions, []string{"2.1.2"})
+	conversationEqual(t, len(distribution.Requests()), 2)
 	answer := func(token string) string {
 		return fmt.Sprintf("cli=%s token=%s cwd=%s/.demi/claude/run config=%s/.demi/claude/config", older, token, home, home)
 	}
 	if _, err := socket.Chat(ctx, "5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a02", "hello again"); err != nil {
 		t.Fatal(err)
 	}
-	accountEqual(t, accountLastText(accountTranscript(ctx, t, b, &master, accountClaudeConversation)), answer(firstToken))
+	conversationEqual(t, conversationLastText(t, conversationTranscript(ctx, t, b, &master, accountClaudeConversation).Blocks), answer(firstToken))
 	if _, err := os.Stat(filepath.Join(laptop.Runner.Home(), ".demi/claude")); !os.IsNotExist(err) {
 		t.Fatalf("laptop CLI directory: %v", err)
 	}
-	added := accountRequest(ctx, t, b, "POST", "/api/providers/"+id+"/accounts", &master, `{"token":"`+secondToken+`"}`)
-	accountEqual(t, added.Status, 201)
-	second := accountDecode(t, added, webapi.DecodeAddedAccount).Account.ID
-	accountEqual(t, accountRequest(ctx, t, b, "PUT", "/api/providers/"+id+"/accounts/active", &master, `{"credentialId":"`+second+`"}`).Status, 200)
+	added := conversationRequest(ctx, t, b, &master, "POST", "/api/providers/"+id+"/accounts", `{"token":"`+secondToken+`"}`, 201)
+	second := conversationDecode(t, added, webapi.DecodeAddedAccount).Account.ID
+	conversationRequest(ctx, t, b, &master, "PUT", "/api/providers/"+id+"/accounts/active", `{"credentialId":"`+second+`"}`, 200)
 	if _, err := socket.Chat(ctx, "5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a03", "and again"); err != nil {
 		t.Fatal(err)
 	}
-	accountEqual(t, accountLastText(accountTranscript(ctx, t, b, &master, accountClaudeConversation)), answer(secondToken))
+	conversationEqual(t, conversationLastText(t, conversationTranscript(ctx, t, b, &master, accountClaudeConversation).Blocks), answer(secondToken))
 	processes, err := os.ReadFile(filepath.Join(home, "claude-processes.log"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	accountEqual(t, strings.Split(strings.TrimSuffix(string(processes), "\n"), "\n"), []string{"started " + firstToken, "ended " + firstToken, "started " + secondToken})
+	conversationEqual(t, strings.Split(strings.TrimSuffix(string(processes), "\n"), "\n"), []string{"started " + firstToken, "ended " + firstToken, "started " + secondToken})
 }

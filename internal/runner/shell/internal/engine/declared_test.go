@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -100,5 +101,85 @@ func TestDeclaredBrokenPipeExits141(t *testing.T) {
 	})
 	if result.Code != 0 || output != "" || diagnostic != "141" {
 		t.Fatalf("result %+v output %q diagnostic %q", result, output, diagnostic)
+	}
+}
+
+// stoppedInputHandler joins its input worker before returning, like an RPC whose
+// remote command finishes without needing stdin.
+type stoppedInputHandler struct {
+	waiting chan struct{}
+	waits   int
+	writer  *os.File
+}
+
+func (*stoppedInputHandler) Operations() []string { return []string{process.Raw} }
+func (*stoppedInputHandler) Check()               {}
+func (h *stoppedInputHandler) Waiting(delta int) {
+	if delta == 1 {
+		h.waiting <- struct{}{}
+	}
+}
+func (h *stoppedInputHandler) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+	inputCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := invocation.Input.Next(inputCtx)
+		done <- err
+	}()
+	for range h.waits {
+		select {
+		case <-h.waiting:
+		case <-ctx.Done():
+		}
+	}
+	cancel()
+	err := <-done
+	if !errors.Is(err, context.Canceled) {
+		return commandwire.Completion{}, errors.New("input read did not return cancellation")
+	}
+	if ctx.Err() != nil {
+		return commandwire.Completion{}, errors.New("input read waited for outer command cancellation")
+	}
+	// Only supply bytes after the canceled read has ended. The next shell
+	// command must receive them, with no abandoned reader consuming them.
+	_, err = h.writer.WriteString("still readable\n")
+	return commandwire.Completion{}, err
+}
+
+// One in-process shell and pipe; normally finishes in milliseconds. The outer
+// context is only a deadlock watchdog, including when run against the old code.
+func TestDeclaredInputCancellationPreservesShellInput(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		script string
+		waits  int
+	}{
+		{"pipe", `fixture; read -r line; printf '%s' "$line"`, 1},
+		// The producer cannot write until the handler has canceled and joined
+		// its input pull. Wait for both that pull and the producer's read.
+		// The following read uses the same substitution input.
+		{"process substitution", `{ fixture; read -r line; printf '%s' "$line"; } < <(read -r produced; printf '%s\n' "$produced")`, 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.name == "process substitution" && runtime.GOOS == "windows" {
+				t.Skip("process substitution requires Unix FIFOs")
+			}
+			reader, writer, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = reader.Close() }() // Execute may close canceled job streams.
+			defer func() { _ = writer.Close() }()
+			handler := &stoppedInputHandler{waiting: make(chan struct{}, test.waits), waits: test.waits, writer: writer}
+			result, output, diagnostic := shellFiles(t, t.TempDir(), test.script, func(o *Options) {
+				o.Stdin = reader
+				o.Observe = handler
+				o.Commands = &process.JobCommands{Context: "0123456789abcdef0123456789abcdef", Roots: []string{"fixture"}, Handler: handler}
+			})
+			if result.Code != 0 || output != "still readable" || diagnostic != "" {
+				t.Fatalf("result %+v output %q diagnostic %q", result, output, diagnostic)
+			}
+		})
 	}
 }
