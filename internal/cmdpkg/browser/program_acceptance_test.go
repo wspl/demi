@@ -5,6 +5,7 @@ package browser
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"image/png"
 	"io"
@@ -97,6 +98,12 @@ func exchangeBrowser(t *testing.T, client *cmdsdk.Client, request commandwire.In
 		t.Fatal(err)
 	}
 	defer input.Cancel()
+	return browserRecords(t, output)
+}
+
+// browserRecords observes command-service output and completion at its wire boundary.
+func browserRecords(t *testing.T, output *cmdsdk.CommandOutput) (commandwire.Completion, []byte, []byte) {
+	t.Helper()
 	var stdout, stderr []byte
 	var completion *commandwire.Completion
 	for {
@@ -223,11 +230,7 @@ func TestNextServiceSweepsKilledServicesBrowserAndDownloads(t *testing.T) {
 	saved := killed.download(t)
 	profile := filepath.Dir(filepath.Dir(saved))
 	leader := profileOwner(t, profile)
-	socket, err := os.Readlink(filepath.Join(profile, "SingletonSocket"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	runtimeDirectory := filepath.Dir(filepath.Dir(socket))
+	runtimeDirectory := profileRuntime(t, profile)
 	owned := markedBrowserProcesses(t, runtimeDirectory)
 	t.Cleanup(func() {
 		for _, pid := range owned {
@@ -276,12 +279,25 @@ func TestResidentConversationBrowserCommandsShareStateAndRetire(t *testing.T) {
 	}
 	expectValue(t, observedField(t, p.call(t, "tabs", `{}`), "tabs"), []string{})
 	tab := observedField(t, p.call(t, "open", browserArgs(t, `{"url":$0}`, "file://"+path)), "tab")
+	tree := observedField(t, p.call(t, "inspect", browserArgs(t, `{"tab":$0,"limit":1000}`, tab)), "tree")
+	nodes, err := contract.List(tree, contract.Decode[json.RawMessage])
+	if err != nil || len(nodes) == 0 {
+		t.Fatalf("inspect %s: %v", tree, err)
+	}
 	p.call(t, "goto", browserArgs(t, `{"tab":$0,"url":$1}`, tab, "file://"+path+"?navigated"))
 	p.call(t, "fill", browserArgs(t, `{"tab":$0,"css":"#email","text":"浏览器@example.test"}`, tab))
 	p.call(t, "click", browserArgs(t, `{"tab":$0,"css":"#normal"}`, tab))
 	expectValue(t, observedField(t, p.call(t, "read", browserArgs(t, `{"tab":$0,"css":"#email","property":"value"}`, tab)), "value"), "浏览器@example.test")
 	for _, test := range []struct{ name, args string }{{"screenshot", `{"tab":$0,"output":"browser.png"}`}, {"screenshot", `{"tab":$0,"output":"clip.png","clip":"0,0,100,80"}`}, {"probe", `{"tab":$0,"xy":"30,30","include-non-interactable":true,"output":"probe.png"}`}} {
 		result := p.call(t, test.name, browserArgs(t, test.args, tab))
+		if test.name == "screenshot" {
+			expectValue(t, observedField(t, result, "mimeType"), "image/png")
+		} else {
+			matches, err := contract.List(observedField(t, result, "matches"), contract.Decode[json.RawMessage])
+			if err != nil || len(matches) == 0 {
+				t.Fatalf("probe %s: %v", result, err)
+			}
+		}
 		path, err := contract.Decode[string](observedField(t, result, "path"))
 		if err != nil {
 			t.Fatal(err)
@@ -310,6 +326,9 @@ func TestResidentConversationBrowserCommandsShareStateAndRetire(t *testing.T) {
 		if err != nil || completion.ExitCode != test.exit || string(failure.Error.Code) != test.code {
 			t.Fatalf("%+v %s %v", completion, stderr, err)
 		}
+		if test.name == "key" && (failure.Error.Details == nil || failure.Error.Details.Action == nil || *failure.Error.Details.Action != "not_started") {
+			t.Fatalf("invalid key details: %s", stderr)
+		}
 	}
 	for _, name := range []string{"key", "inspect"} {
 		args := browserArgs(t, `{"tab":$0,"limit":1000}`, tab)
@@ -320,10 +339,10 @@ func TestResidentConversationBrowserCommandsShareStateAndRetire(t *testing.T) {
 		request.JSON = new(false)
 		completion, stdout, stderr := exchangeBrowser(t, p.process.Client, request)
 		if name == "key" {
-			if completion.ExitCode != 2 || !bytes.Contains(stderr, []byte("Action: not_started.")) || bytes.Contains(stderr, []byte("Details: {")) {
+			if completion.ExitCode != 2 || !bytes.HasPrefix(stderr, []byte("Error: invalid_input\n")) || !bytes.Contains(stderr, []byte("Tab: "+strings.Trim(string(tab), "\"")+"\n")) || !bytes.Contains(stderr, []byte("Action: not_started.")) || bytes.Contains(stderr, []byte("Details: {")) {
 				t.Fatalf("%+v %s", completion, stderr)
 			}
-		} else if !bytes.Contains(stdout, []byte("[checked=false]")) || !bytes.Contains(stdout, []byte(`[value="浏览器@example.test"]`)) || !bytes.Contains(stdout, []byte("[protected]")) || bytes.Contains(stdout, []byte("fixture-secret")) {
+		} else if completion.ExitCode != 0 || !bytes.Contains(stdout, []byte("[checked=false]")) || !bytes.Contains(stdout, []byte(`[value="浏览器@example.test"]`)) || !bytes.Contains(stdout, []byte("[protected]")) || bytes.Contains(stdout, []byte("fixture-secret")) {
 			t.Fatal(string(stdout))
 		}
 	}
@@ -333,8 +352,29 @@ func TestResidentConversationBrowserCommandsShareStateAndRetire(t *testing.T) {
 	if err != nil || len(listed.Tabs) != 1 {
 		t.Fatalf("%+v %v", listed, err)
 	}
+	expectValue(t, observedField(t, mustBrowserValue(t, listed.Tabs[0]), "createdBy", "opener"), tab)
 	p.call(t, "close", browserArgs(t, `{"tab":$0}`, listed.Tabs[0].ID))
+	input, output, err := p.process.Client.Conversation(t.Context(), &commandwire.ConversationQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Cancel()
+	completion, stdout, stderr := browserRecords(t, output)
+	if completion.ExitCode != 0 {
+		t.Fatalf("query %+v %s", completion, stderr)
+	}
+	expectValue(t, stdout, json.RawMessage(`{"conversations":[]}`))
 	p.call(t, "open", `{"url":"about:blank"}`)
+	input, output, err = p.process.Client.Conversation(t.Context(), &commandwire.ConversationRelease{Conversation: "service-program"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Cancel()
+	completion, stdout, stderr = browserRecords(t, output)
+	if completion.ExitCode != 0 {
+		t.Fatalf("release %+v %s", completion, stderr)
+	}
+	expectValue(t, stdout, json.RawMessage("{}"))
 	if err := p.process.Shutdown(t.Context()); err != nil {
 		t.Fatal(err)
 	}

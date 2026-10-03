@@ -47,7 +47,9 @@ func TestOpenersPopupsAreAnsweredOnceRegistered(t *testing.T) {
 	if ids, ready := b.popups("a"); !ready || len(ids) != 0 {
 		t.Fatal(ids, ready)
 	}
-	b.found(registrySighting("popup", "a"))
+	if b.found(registrySighting("popup", "a")) {
+		t.Fatal("new popup reported as changed")
+	}
 	id := b.name("popup", 2)
 	if _, ready := b.popups("a"); ready {
 		t.Fatal("pending popup answered")
@@ -61,6 +63,9 @@ func TestOpenersPopupsAreAnsweredOnceRegistered(t *testing.T) {
 	}
 	if err := b.ready("popup", false, &Tab{id: id}); err != nil {
 		t.Fatal(err)
+	}
+	if got, ready := b.popups("a"); !ready || !reflect.DeepEqual(got, []browserop.TabID{id}) {
+		t.Fatal(got, ready)
 	}
 	b.found(registrySighting("broken", "a"))
 	b.name("broken", 3)
@@ -121,7 +126,7 @@ func TestRegistrySealsOnceWhenLastTabGoes(t *testing.T) {
 		t.Fatal("live tab lost")
 	}
 	tab, _ := b.gone("a")
-	if tab == nil {
+	if tab == nil || tab.ID() != "t1" {
 		t.Fatal("missing removed tab")
 	}
 	if b.settle(1) || !b.settle(0) || b.settle(0) || b.admit() {
@@ -181,14 +186,21 @@ func TestReconcileFindsMissedPagesAndVanishedTargets(t *testing.T) {
 	b := registryFixture(t, "a", "b")
 	b.found(registrySighting("popup", "a"))
 	absent := b.vanished(map[target.ID]bool{"a": true, "popup": true})
-	if !reflect.DeepEqual(absent, []target.ID{"b"}) || !b.pending("popup") {
+	var pending []target.ID
+	for id := range b.entries {
+		if b.pending(id) {
+			pending = append(pending, id)
+		}
+	}
+	if !reflect.DeepEqual(absent, []target.ID{"b"}) || !reflect.DeepEqual(pending, []target.ID{"popup"}) {
 		t.Fatal(absent)
 	}
 }
 
 func TestClosingTabCanBeRetriedOnlyAfterRefusal(t *testing.T) {
 	b := registryFixture(t, "a", "b")
-	if b.startClosing("a") == nil || b.closable("a") || b.startClosing("a") != nil {
+	closed := b.startClosing("a")
+	if closed == nil || closed.ID() != "t1" || b.closable("a") || b.startClosing("a") != nil {
 		t.Fatal("duplicate closure admitted")
 	}
 	b.notClosed("a")

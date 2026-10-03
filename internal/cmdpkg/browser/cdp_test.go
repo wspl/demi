@@ -51,6 +51,12 @@ func TestCDPValidatesMethodsScopesChildrenAndPreservesEventCursors(t *testing.T)
 	expectValue(t, observedField(t, first, "hasMore"), true)
 	second := f.command(t, tab, "cdp.events", browserArgs(t, `{"method":["Runtime.consoleAPICalled"],"after":$0,"limit":1}`, observedField(t, first, "cursor")))
 	expectValue(t, observedField(t, second, "hasMore"), false)
+	for _, result := range [][]byte{first, second} {
+		rows, err := contract.List(observedField(t, result, "events"), contract.Decode[json.RawMessage])
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("events=%s: %v", result, err)
+		}
+	}
 	a, err := contract.Decode[uint64](observedField(t, first, "events", "0", "sequence"))
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +84,12 @@ func TestCDPWaitExpiryRetainsSubscriptionsAndInvocationCancellationReleasesConne
 	}
 	job := f.start(t, "cdp.events", browserArgs(t, `{"tab":$0,"after":$1,"method":["Runtime.consoleAPICalled"],"timeout":30000}`, tab, observedField(t, events, "cursor")))
 	f.waitBusy(t, tab)
+	select {
+	case result := <-job.done:
+		job.done <- result
+		t.Fatalf("command completed before cancellation: %+v", result)
+	default:
+	}
 	job.cancel()
 	requireCancelled(t, job.join(t))
 	f.rejects(t, tab, "cdp.events", browserArgs(t, `{"after":$0}`, before), "stale_cursor", "")
@@ -86,6 +98,12 @@ func TestCDPWaitExpiryRetainsSubscriptionsAndInvocationCancellationReleasesConne
 	}
 	paused := f.start(t, "cdp.send", browserArgs(t, `{"tab":$0,"method":"Runtime.evaluate","params":$1,"timeout":30000}`, tab, `{"expression":"debugger;42","returnByValue":true}`))
 	f.waitBusy(t, tab)
+	select {
+	case result := <-paused.done:
+		paused.done <- result
+		t.Fatalf("debugger command completed before cancellation: %+v", result)
+	default:
+	}
 	paused.cancel()
 	requireCancelled(t, paused.join(t))
 	expectValue(t, f.eval(t, tab, "21*2"), 42)
@@ -107,6 +125,9 @@ func TestCDPDetachReleasesOnlyItsCallerAndTimeoutsIdentifyOtherDebugOwners(t *te
 		t.Fatal(failure)
 	}
 	expectValue(t, mustBrowserValue(t, *failure.Error.Details.DebuggingCallers), []uint64{1})
+	if failure.Error.Details.Tab == nil || *failure.Error.Details.Tab != string(tab) {
+		t.Fatal(failure)
+	}
 	detached := first.command(t, tab, "cdp.detach", `{}`)
 	expectValue(t, observedField(t, detached, "detached"), tab)
 	expectValue(t, first.command(t, tab, "cdp.detach", `{}`), json.RawMessage(detached))
@@ -129,6 +150,12 @@ func TestTabCloseJoinsPausedDebugConnectionsAndPreservesOtherTabs(t *testing.T) 
 	f.command(t, tab, "cdp.send", `{"method":"Debugger.enable","params":"{}"}`)
 	job := f.start(t, "cdp.send", browserArgs(t, `{"tab":$0,"method":"Runtime.evaluate","params":$1,"timeout":30000}`, tab, `{"expression":"debugger;42"}`))
 	f.waitBusy(t, tab)
+	select {
+	case result := <-job.done:
+		job.done <- result
+		t.Fatalf("debugger command completed before close: %+v", result)
+	default:
+	}
 	f.command(t, tab, "close", `{}`)
 	result := job.join(t)
 	failure, err := browserop.DecodeFailureDocument(result.stderr)
@@ -157,7 +184,7 @@ func TestElementWaitAndInputResampleNodesInsertedDuringLocatorResolution(t *test
 		} else {
 			result := f.command(t, tab, "wait", args)
 			expectValue(t, observedField(t, result, "matched"), true)
-			if len(observedField(t, result, "target", "ref")) == 0 {
+			if _, err := contract.Decode[string](observedField(t, result, "target", "ref")); err != nil {
 				t.Fatal(string(result))
 			}
 		}
@@ -215,6 +242,10 @@ func TestCDPEvictionMarksTruncationAndWorkerHandlesExpire(t *testing.T) {
 	}
 	paged := f.command(t, tab, "cdp.targets", `{"offset":1,"limit":1}`)
 	expectValue(t, observedField(t, paged, "truncated"), false)
+	pageRows, err := contract.List(observedField(t, paged, "targets"), contract.Decode[json.RawMessage])
+	if err != nil || len(pageRows) != 1 {
+		t.Fatalf("%s: %v", paged, err)
+	}
 	f.command(t, tab, "cdp.send", `{"method":"Runtime.enable","params":"{}"}`)
 	initial := observedField(t, f.command(t, tab, "cdp.events", `{}`), "cursor")
 	f.mutate(t, tab, `for(let n=0;n<10020;n++)console.log(n);worker.terminate()`)

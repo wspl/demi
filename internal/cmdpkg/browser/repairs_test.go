@@ -3,9 +3,13 @@
 package browser
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image/png"
 	"net"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -37,7 +41,12 @@ func TestNativeFillAndTextReplacement(t *testing.T) {
 			expectValue(t, f.read(t, tab, css, property), text)
 		}
 	}
-	for _, css := range []string{"#plain", "#file", "#readonly"} {
+	started := time.Now()
+	f.rejects(t, tab, "fill", `{"css":"#plain","text":"x","timeout":10000}`, "not_actionable", "not_started")
+	if time.Since(started) >= 2*time.Second {
+		t.Fatal("non-editable target waited for the action deadline")
+	}
+	for _, css := range []string{"#file", "#readonly"} {
 		f.rejects(t, tab, "fill", browserArgs(t, `{"css":$0,"text":"x","timeout":500}`, css), "not_actionable", "not_started")
 	}
 	f.command(t, tab, "fill", `{"css":"#covered-input","text":"under overlay"}`)
@@ -68,6 +77,9 @@ func TestTargetedKeyboardPreservesSelectionAndStopsOnFocusLoss(t *testing.T) {
 	expectValue(t, f.read(t, tab, "#text", "value"), "AB")
 	for _, key := range []string{"+", "Shift+a", "Shift+Digit1"} {
 		f.command(t, tab, "key", browserArgs(t, `{"css":"#text","key":$0}`, key))
+		if key == "+" {
+			expectValue(t, f.read(t, tab, "#text", "value"), "AB+")
+		}
 	}
 	expectValue(t, f.read(t, tab, "#text", "value"), "AB+A!")
 	f.rejects(t, tab, "key", `{"css":"#text","key":"Control+NotAKey"}`, "invalid_input", "not_started")
@@ -162,17 +174,46 @@ func TestLabelTextAndAccessibleNameAreDistinctAndAmbiguityIsExplicit(t *testing.
 func TestInspectKeepsFalseValuesAndProtectsPasswordsAndHandlesExpire(t *testing.T) {
 	f := chromeFixture(t)
 	tab := f.open(t, "repairs.html")
-	tree := string(f.command(t, tab, "inspect", `{"limit":1000}`))
-	for _, part := range []string{`"hello"`, `"protected"`, `"checked=false"`} {
-		if !strings.Contains(tree, part) {
-			t.Fatalf("missing %s in %s", part, tree)
-		}
+	tree := f.command(t, tab, "inspect", `{"limit":1000}`)
+	nodes, err := contract.List(observedField(t, tree, "tree"), contract.Decode[json.RawMessage])
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(tree, "never-print-this-password") {
-		t.Fatal("password leaked")
+	var textNode, password json.RawMessage
+	unchecked := false
+	for i := 0; i < len(nodes); i++ {
+		node := nodes[i]
+		if children := observedField(t, node, "children"); len(children) > 0 {
+			more, err := contract.List(children, contract.Decode[json.RawMessage])
+			if err != nil {
+				t.Fatal(err)
+			}
+			nodes = append(nodes, more...)
+		}
+		if string(observedField(t, node, "name")) == `"Text field"` {
+			textNode = node
+		}
+		if string(observedField(t, node, "name")) == `"Password"` {
+			password = node
+		}
+		unchecked = unchecked || strings.Contains(string(observedField(t, node, "states")), `"checked=false"`)
+	}
+	if textNode == nil || password == nil || !unchecked {
+		t.Fatalf("missing nodes: %s", tree)
+	}
+	expectValue(t, observedField(t, textNode, "value"), "hello")
+	if len(observedField(t, password, "value")) != 0 || !strings.Contains(string(observedField(t, password, "states")), `"protected"`) || strings.Contains(string(tree), "never-print-this-password") {
+		t.Fatalf("password: %s", tree)
+	}
+	if !regexp.MustCompile(`^t[1-9][0-9]*$`).MatchString(string(tab)) {
+		t.Fatal(tab)
 	}
 	f.rejects(t, tab, "read", `{"css":"#password","property":"value"}`, "protected_value", "not_started")
-	reference := observedField(t, f.command(t, tab, "find", `{"css":"#text"}`), "matches", "0", "ref")
+	reference := observedField(t, textNode, "ref")
+	refString, err := contract.Decode[string](reference)
+	if err != nil || !regexp.MustCompile(`^e[1-9][0-9]*$`).MatchString(refString) {
+		t.Fatalf("ref %s: %v", reference, err)
+	}
 	again := observedField(t, f.command(t, tab, "find", `{"css":"#text"}`), "matches", "0", "ref")
 	if string(reference) != string(again) {
 		t.Fatal("reference changed in same document")
@@ -190,6 +231,11 @@ func TestInspectKeepsFalseValuesAndProtectsPasswordsAndHandlesExpire(t *testing.
 	next := f.open(t, "repairs.html")
 	if next == tab {
 		t.Fatal("tab reused")
+	}
+	for _, row := range f.tabs(t) {
+		if row.ID == tab {
+			t.Fatal("old tab listed")
+		}
 	}
 	f.rejects(t, next, "fill", browserArgs(t, `{"ref":$0,"text":"stale"}`, reference), "stale_ref", "not_started")
 	f.failure(t, "info", browserArgs(t, `{"tab":$0}`, tab), "tab_not_found")
@@ -301,7 +347,7 @@ func TestExplicitNavigationTracksDocumentsFailuresAndHistoryBoundaries(t *testin
 		t.Fatal(err)
 	}
 	failure := f.failure(t, "goto", browserArgs(t, `{"tab":$0,"url":$1}`, tab, refused), "navigation_failed")
-	if !strings.Contains(failure.Error.Message, "ERR_CONNECTION_REFUSED") {
+	if failure.Error.Details == nil || failure.Error.Details.Action == nil || *failure.Error.Details.Action != "completed" || !strings.Contains(failure.Error.Message, "ERR_CONNECTION_REFUSED") {
 		t.Fatal(failure)
 	}
 	f.rejects(t, tab, "goto", browserArgs(t, `{"url":$0}`, f.url+"/drop"), "navigation_failed", "completed")
@@ -362,6 +408,7 @@ func TestCatalogQueriesPatternsPaginationAndReadOnlyElements(t *testing.T) {
 func TestDialogsRejectAbsentAndInapplicableActions(t *testing.T) {
 	f := chromeFixture(t)
 	tab := f.open(t, "")
+	expectValue(t, observedField(t, f.command(t, tab, "dialog.inspect", `{}`), "dialog"), nil)
 	for _, name := range []string{"dialog.accept", "dialog.dismiss"} {
 		f.rejects(t, tab, name, `{}`, "dialog_not_found", "not_started")
 	}
@@ -376,11 +423,10 @@ func TestDialogsRejectAbsentAndInapplicableActions(t *testing.T) {
 			name, outcome = "dialog.accept", "accepted"
 		}
 		result := f.command(t, tab, name, `{}`)
-		expectValue(t, observedField(t, result, "type"), kind)
-		expectValue(t, observedField(t, result, "outcome"), outcome)
+		expectValue(t, result, json.RawMessage(browserArgs(t, `{"type":$0,"outcome":$1}`, kind, outcome)))
 	}
 	dialog := observedField(t, f.command(t, tab, "dialog.inspect", `{}`), "dialog")
-	if len(dialog) > 0 && string(dialog) != "null" {
+	if string(dialog) != "null" {
 		t.Fatal(string(dialog))
 	}
 }
@@ -390,7 +436,7 @@ func TestCatalogUntargetedKeysSelectionDragAndConsoleCursors(t *testing.T) {
 	tab := f.open(t, "")
 	f.click(t, tab, "#select-middle")
 	typed := f.command(t, tab, "type", `{"text":"XY"}`)
-	if len(observedField(t, typed, "target", "ref")) == 0 {
+	if ref, err := contract.Decode[string](observedField(t, typed, "target", "ref")); err != nil || !strings.HasPrefix(ref, "e") {
 		t.Fatal(string(typed))
 	}
 	expectValue(t, f.read(t, tab, "#text", "value"), "heXYo")
@@ -412,11 +458,11 @@ func TestCatalogUntargetedKeysSelectionDragAndConsoleCursors(t *testing.T) {
 	f.command(t, tab, "key", `{"css":"#key-navigate","key":"Shift"}`)
 	navigation := f.command(t, tab, "key", `{"key":"Enter","wait-url":"**/#key-focus"}`)
 	expectValue(t, observedField(t, navigation, "url"), f.url+"/#key-focus")
-	if len(observedField(t, navigation, "target", "ref")) == 0 {
+	if ref, err := contract.Decode[string](observedField(t, navigation, "target", "ref")); err != nil || !strings.HasPrefix(ref, "e") {
 		t.Fatal(string(navigation))
 	}
 	f.command(t, tab, "move", `{"css":"#drag-area"}`)
-	points, err := contract.Decode[[]string](f.eval(t, tab, `(()=>{const r=document.querySelector('#drag-area').getBoundingClientRect();return [(r.x+10)+','+(r.y+10),(r.x+40)+','+(r.y+30)]})()`))
+	points, err := contract.Decode[[]string](observedField(t, f.command(t, tab, "eval", `{"css":"#drag-area","expression":"(()=>{const r=element.getBoundingClientRect();return [(r.x+10)+','+(r.y+10),(r.x+40)+','+(r.y+30)]})()"}`), "value"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,6 +470,10 @@ func TestCatalogUntargetedKeysSelectionDragAndConsoleCursors(t *testing.T) {
 	expectValue(t, f.eval(t, tab, `dragEvents[0].type==='mousedown'&&dragEvents[0].shift&&dragEvents.at(-1).buttons===0&&dragEvents.at(-1).shift`), true)
 	f.click(t, tab, "#console-burst")
 	logs := f.command(t, tab, "logs", `{"limit":2,"filter":"catalog"}`)
+	entries, err := contract.List(observedField(t, logs, "entries"), contract.Decode[json.RawMessage])
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("%s: %v", logs, err)
+	}
 	expectValue(t, observedField(t, logs, "truncated"), true)
 	expectValue(t, observedField(t, logs, "entries", "1", "level"), "error")
 	if again := f.command(t, tab, "logs", `{"limit":2,"filter":"catalog"}`); string(again) != string(logs) {
@@ -437,10 +487,10 @@ func TestURLObservationDeliversInputAndObservesTransientMatches(t *testing.T) {
 	f := chromeFixture(t)
 	tab := f.open(t, "")
 	f.command(t, tab, "wait", browserArgs(t, `{"url":$0}`, f.url+"/"))
-	for i := 1; i <= 2; i++ {
-		f.command(t, tab, "click", browserArgs(t, `{"css":"#no-nav","wait-url":$0}`, f.url+"/"))
-		expectValue(t, f.eval(t, tab, "noNavClicks"), i)
-	}
+	f.command(t, tab, "click", browserArgs(t, `{"css":"#no-nav","wait-url":$0}`, f.url+"/"))
+	expectValue(t, f.eval(t, tab, "noNavClicks"), 1)
+	f.click(t, tab, "#no-nav")
+	expectValue(t, f.eval(t, tab, "noNavClicks"), 2)
 	for _, css := range []string{"#immediate", "#delayed"} {
 		f.command(t, tab, "click", browserArgs(t, `{"css":$0,"wait-url":"**/destination"}`, css))
 		expectValue(t, f.eval(t, tab, "location.pathname"), "/destination")
@@ -450,7 +500,7 @@ func TestURLObservationDeliversInputAndObservesTransientMatches(t *testing.T) {
 	expectValue(t, f.eval(t, tab, "location.pathname"), "/returned")
 	f.command(t, tab, "goto", browserArgs(t, `{"url":$0}`, f.url))
 	details := f.rejects(t, tab, "click", `{"css":"#no-nav","wait-url":"**/never","timeout":700}`, "timeout", "completed")
-	if details.Tab == nil || details.URL == nil {
+	if details.Tab == nil || *details.Tab != string(tab) || details.URL == nil || !strings.HasPrefix(*details.URL, f.url) {
 		t.Fatal(details)
 	}
 	f.command(t, tab, "key", `{"css":"#hash","key":"Enter","wait-url":"**/#changed"}`)
@@ -472,6 +522,7 @@ func TestCatalogCrossOriginFramesScopeFocusAndReferences(t *testing.T) {
 	outer := observedField(t, f.command(t, tab, "find", `{"css":"#cross-frame"}`), "matches", "0", "ref")
 	input := observedField(t, f.command(t, tab, "find", browserArgs(t, `{"frame":[$0],"label":"Cross frame input"}`, outer)), "matches", "0", "ref")
 	f.command(t, tab, "fill", browserArgs(t, `{"ref":$0,"text":"cross"}`, input))
+	expectValue(t, observedField(t, f.command(t, tab, "read", browserArgs(t, `{"ref":$0,"property":"value"}`, input)), "value"), "cross")
 	typed := f.command(t, tab, "type", `{"text":"-focus"}`)
 	expectValue(t, observedField(t, typed, "target", "ref"), input)
 	for _, args := range []string{browserArgs(t, `{"ref":$0,"property":"value"}`, input)} {
@@ -535,7 +586,7 @@ func TestCatalogProbeAndServerRecordedNativeFormState(t *testing.T) {
 	f := chromeFixture(t)
 	tab := f.open(t, "")
 	f.command(t, tab, "move", `{"css":"#named"}`)
-	xy, err := contract.Decode[string](f.eval(t, tab, `(()=>{const r=document.querySelector('#named').getBoundingClientRect();return (r.x+5)+','+(r.y+5)})()`))
+	xy, err := contract.Decode[string](observedField(t, f.command(t, tab, "eval", `{"css":"#named","expression":"(()=>{const r=element.getBoundingClientRect();return (r.x+5)+','+(r.y+5)})()"}`), "value"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,8 +624,9 @@ func TestViewportOverridesArePerTabAndSurviveScreenshots(t *testing.T) {
 	first, second := f.open(t, ""), f.open(t, "")
 	for _, tab := range []browserop.TabID{first, second} {
 		expectValue(t, f.eval(t, tab, "[innerWidth,innerHeight,devicePixelRatio]"), []int{1280, 720, 1})
+		expectValue(t, observedField(t, f.command(t, tab, "info", "{}"), "viewport"), json.RawMessage(`{"width":1280,"height":720,"devicePixelRatio":1,"mode":"web"}`))
 	}
-	f.command(t, first, "viewport.set", `{"width":390,"height":844}`)
+	expectValue(t, observedField(t, f.command(t, first, "viewport.set", `{"width":390,"height":844}`), "viewport"), json.RawMessage(`{"width":390,"height":844,"devicePixelRatio":1,"mode":"custom"}`))
 	for _, test := range []struct {
 		tab           browserop.TabID
 		width, height int
@@ -586,10 +638,22 @@ func TestViewportOverridesArePerTabAndSurviveScreenshots(t *testing.T) {
 		shot := f.command(t, test.tab, "screenshot", browserArgs(t, `{"output":$0}`, string(test.tab)+".png"))
 		expectValue(t, observedField(t, shot, "width"), test.width)
 		expectValue(t, observedField(t, shot, "height"), test.height)
+		path, err := contract.Decode[string](observedField(t, shot, "path"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		picture, err := png.DecodeConfig(bytes.NewReader(data))
+		if err != nil || picture.Width != test.width || picture.Height != test.height {
+			t.Fatalf("PNG %+v: %v", picture, err)
+		}
 		expectValue(t, observedField(t, f.command(t, test.tab, "info", `{}`), "viewport"), info)
 	}
 	f.command(t, second, "viewport.set", `{"width":640,"height":480}`)
-	f.command(t, first, "viewport.reset", `{}`)
+	expectValue(t, observedField(t, f.command(t, first, "viewport.reset", `{}`), "viewport"), json.RawMessage(`{"width":1280,"height":720,"devicePixelRatio":1,"mode":"web"}`))
 	expectValue(t, f.eval(t, first, "[innerWidth,innerHeight,devicePixelRatio]"), []int{1280, 720, 1})
 	expectValue(t, f.eval(t, second, "[innerWidth,innerHeight,devicePixelRatio]"), []int{640, 480, 1})
 }
@@ -652,7 +716,7 @@ func TestCatalogLoadWaitTracksOnlyCurrentDocument(t *testing.T) {
 	f.get(t, "/release-load")
 	result := job.join(t)
 	failure, err := browserop.DecodeFailureDocument(result.stderr)
-	if err != nil || failure.Error.Code != "navigation_failed" {
+	if err != nil || failure.Error.Code != "navigation_failed" || failure.Error.Details == nil || failure.Error.Details.Action == nil || *failure.Error.Details.Action != "not_started" {
 		t.Fatalf("%s %v", result.stderr, err)
 	}
 	f.command(t, tab, "wait", `{"load":"load"}`)
