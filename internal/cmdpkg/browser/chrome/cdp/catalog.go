@@ -16,25 +16,40 @@ import (
 var pinnedProtocol []byte
 
 type protocolShape struct {
-	ID         string           `json:"id"`
-	Name       string           `json:"name"`
-	Optional   bool             `json:"optional"`
-	Reference  string           `json:"$ref"`
-	Kind       string           `json:"type"`
-	Variants   []string         `json:"enum"`
-	Items      *protocolShape   `json:"items"`
+	// ID identifies a named protocol definition.
+	ID string `json:"id"`
+	// Name names the protocol field or command.
+	Name string `json:"name"`
+	// Optional reports whether the field may be omitted.
+	Optional bool `json:"optional"`
+	// Reference names the referenced protocol definition.
+	Reference string `json:"$ref"`
+	// Kind names the protocol value type.
+	Kind string `json:"type"`
+	// Variants lists the accepted enum values.
+	Variants []string `json:"enum"`
+	// Items describes each array element.
+	Items *protocolShape `json:"items"`
+	// Properties describes the object fields.
 	Properties *[]protocolShape `json:"properties"`
 }
 type protocolDeclaration struct {
-	Name       string          `json:"name"`
+	// Name names the protocol field or command.
+	Name string `json:"name"`
+	// Parameters describes the command inputs.
 	Parameters []protocolShape `json:"parameters"`
-	Returns    []protocolShape `json:"returns"`
+	// Returns describes the command reply.
+	Returns []protocolShape `json:"returns"`
 }
 type protocolDomain struct {
-	Domain   string                `json:"domain"`
-	Types    []protocolShape       `json:"types"`
+	// Domain names the protocol domain.
+	Domain string `json:"domain"`
+	// Types lists the domain definitions.
+	Types []protocolShape `json:"types"`
+	// Commands lists the domain commands.
 	Commands []protocolDeclaration `json:"commands"`
-	Events   []protocolDeclaration `json:"events"`
+	// Events lists the domain events.
+	Events []protocolDeclaration `json:"events"`
 }
 type protocolCatalog struct {
 	definitions map[string]any
@@ -53,7 +68,11 @@ func loadCatalog() (*protocolCatalog, error) {
 	if err := jsonv2.Unmarshal(pinnedProtocol, &document); err != nil {
 		return nil, err
 	}
-	c := &protocolCatalog{definitions: map[string]any{}, schemas: map[string]any{}, compiled: map[string]*jsonschema.Schema{}}
+	c := &protocolCatalog{
+		definitions: map[string]any{},
+		schemas:     map[string]any{},
+		compiled:    map[string]*jsonschema.Schema{},
+	}
 	for _, domain := range document.Domains {
 		for _, shape := range domain.Types {
 			if shape.ID == "" {
@@ -98,7 +117,10 @@ func (s protocolShape) schema(domain string) (map[string]any, error) {
 	switch s.Kind {
 	case "any":
 	case "binary":
-		result = map[string]any{"type": "string", "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"}
+		result = map[string]any{
+			"type":    "string",
+			"pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+		}
 	case "array":
 		if s.Items == nil {
 			return nil, fmt.Errorf("CDP array has no items")
@@ -147,12 +169,18 @@ func recordSchema(fields []protocolShape, domain string) (map[string]any, error)
 			required = append(required, field.Name)
 		}
 	}
-	return map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}, nil
+	return map[string]any{
+		"type":                 "object",
+		"properties":           properties,
+		"required":             required,
+		"additionalProperties": false,
+	}, nil
 }
 
 // offlineLoader refuses external schema resolution for Chrome and page tools.
 type offlineLoader struct{}
 
+// Load refuses schema references that require an external resource.
 func (offlineLoader) Load(url string) (any, error) {
 	return nil, fmt.Errorf("external schema resource is unavailable offline: %s", url)
 }
@@ -182,7 +210,10 @@ func pinnedSchema(method, kind string) (*jsonschema.Schema, error) {
 	}
 	shape, exists := c.schemas[key]
 	if !exists {
-		return nil, &BrowserError{Kind: KindConfiguration, Message: fmt.Sprintf("unknown pinned CDP %s method: %s", kind, method)}
+		return nil, &BrowserError{
+			Kind:    KindConfiguration,
+			Message: fmt.Sprintf("unknown pinned CDP %s method: %s", kind, method),
+		}
 	}
 	// Every catalog root is constructed by recordSchema above.
 	object := shape.(map[string]any)

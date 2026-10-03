@@ -14,9 +14,11 @@ import (
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/cdp"
 )
 
-const runtimePrefix = "demi-browser-"
-const profilePrefix = "demi-profile-"
-const profileLock = "demi-profile.lock"
+const (
+	runtimePrefix = "demi-browser-"
+	profilePrefix = "demi-profile-"
+	profileLock   = "demi-profile.lock"
+)
 
 type environmentDirectories struct {
 	runtime string
@@ -55,7 +57,7 @@ func createDirectories(bases DirectoryBases) (_ *environmentDirectories, err err
 		if err = os.Symlink(profile, filepath.Join(path, "profile")); err != nil {
 			return nil, err
 		}
-		if err = os.Mkdir(profile, 0700); err != nil {
+		if err = os.Mkdir(profile, 0o700); err != nil {
 			return nil, err
 		}
 		d.profile = profile
@@ -101,8 +103,8 @@ func removeDirectory(ctx context.Context, path string) error {
 	}
 }
 
-// sweepOrphansIn examines only browser directories owned by this Host user.
-func sweepOrphansIn(ctx context.Context, bases DirectoryBases, roots []string, owner uint32) error {
+// sweepOrphans examines only browser directories owned by this Host user.
+func sweepOrphans(ctx context.Context, bases DirectoryBases, roots []string, owner uint32) error {
 	entries, err := os.ReadDir(bases.Runtime)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Warn("could not list browser runtime directories", "error", err)

@@ -23,13 +23,17 @@ type InputRelease interface{ inputRelease() }
 
 // MouseRelease carries a native mouse button release.
 type MouseRelease struct {
+	// Event holds the deferred mouse release.
 	Event *input.DispatchMouseEventParams
 }
 
 func (*MouseRelease) inputRelease() {}
 
 // KeyRelease carries a native key release.
-type KeyRelease struct{ Event *input.DispatchKeyEventParams }
+type KeyRelease struct {
+	// Event holds the deferred key release.
+	Event *input.DispatchKeyEventParams
+}
 
 func (*KeyRelease) inputRelease() {}
 
@@ -77,7 +81,12 @@ func (d *DialogInput) Defer(ctx context.Context, releases []InputRelease) error 
 
 // Answer answers this exact observed dialog unless someone already answered it,
 // then delivers deferred releases. A later dialog is never cleared by this answer.
-func (d *DialogInput) Answer(ctx context.Context, dialog *page.EventJavascriptDialogOpening, accept bool, text *string) error {
+func (d *DialogInput) Answer(
+	ctx context.Context,
+	dialog *page.EventJavascriptDialogOpening,
+	accept bool,
+	text *string,
+) error {
 	reply := make(chan error, 1)
 	select {
 	case d.requests <- dialogRequest{dialog: dialog, accept: accept, text: text, reply: reply}:
@@ -185,7 +194,11 @@ func (d *DialogInput) publish(dialog *page.EventJavascriptDialogOpening) {
 // opened fails the tab when loss means its dialog state can no longer be known.
 func (d *DialogInput) opened(event dialogOpening) error {
 	if event.err != nil {
-		failure := &cdp.BrowserError{Kind: cdp.KindConnection, Message: fmt.Sprintf("browser dialog observation failed: %v", event.err), Cause: event.err}
+		failure := &cdp.BrowserError{
+			Kind:    cdp.KindConnection,
+			Message: fmt.Sprintf("browser dialog observation failed: %v", event.err),
+			Cause:   event.err,
+		}
 		d.tab.cancel(failure)
 		return failure
 	}
@@ -207,20 +220,7 @@ func (d *DialogInput) run(ctx context.Context, opening <-chan dialogOpening) {
 			releases = append(releases, request.releases...)
 			var err error
 			if request.reply != nil {
-				if request.dialog == nil || d.Open() != request.dialog {
-					err = &cdp.BrowserError{Kind: cdp.KindDialogNotFound}
-				} else {
-					bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
-					command := page.HandleJavaScriptDialog(request.accept)
-					if request.text != nil {
-						command = command.WithPromptText(*request.text)
-					}
-					err = command.Do(protocol.WithExecutor(bounded, d.tab.session))
-					cancel()
-					if err == nil {
-						d.publish(nil)
-					}
-				}
+				err = d.answer(ctx, request)
 			}
 			if err == nil {
 				releases, err = d.deliver(ctx, releases, opening)
@@ -237,7 +237,11 @@ func (d *DialogInput) run(ctx context.Context, opening <-chan dialogOpening) {
 }
 
 // deliver preserves held-release order, stopping when a release opens another dialog.
-func (d *DialogInput) deliver(ctx context.Context, releases []InputRelease, opening <-chan dialogOpening) ([]InputRelease, error) {
+func (d *DialogInput) deliver(
+	ctx context.Context,
+	releases []InputRelease,
+	opening <-chan dialogOpening,
+) ([]InputRelease, error) {
 	for len(releases) > 0 && !d.IsOpen() {
 		release := releases[0]
 		releases = releases[1:]
@@ -273,4 +277,23 @@ func (d *DialogInput) deliver(ctx context.Context, releases []InputRelease, open
 		}
 	}
 	return releases, nil
+}
+
+func (d *DialogInput) answer(ctx context.Context, request dialogRequest) error {
+	var err error
+	if request.dialog == nil || d.Open() != request.dialog {
+		err = &cdp.BrowserError{Kind: cdp.KindDialogNotFound}
+	} else {
+		bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
+		command := page.HandleJavaScriptDialog(request.accept)
+		if request.text != nil {
+			command = command.WithPromptText(*request.text)
+		}
+		err = command.Do(protocol.WithExecutor(bounded, d.tab.session))
+		cancel()
+		if err == nil {
+			d.publish(nil)
+		}
+	}
+	return err
 }

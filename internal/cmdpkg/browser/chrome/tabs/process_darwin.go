@@ -44,7 +44,15 @@ func markedProcesses(roots []string, marker string) ([]int, error) {
 		// bytes. The buffer is live through the synchronous syscall; no cgo is used.
 		path := make([]byte, 4096)
 		//nolint:staticcheck // x/sys has no proc_pidpath wrapper, and this package cannot use cgo or purego.
-		_, _, errno := unix.Syscall6(unix.SYS_PROC_INFO, 2, uintptr(pid), 11, 0, uintptr(unsafe.Pointer(&path[0])), uintptr(len(path)))
+		_, _, errno := unix.Syscall6(
+			unix.SYS_PROC_INFO,
+			2,
+			uintptr(pid),
+			11,
+			0,
+			uintptr(unsafe.Pointer(&path[0])),
+			uintptr(len(path)),
+		)
 		end := bytes.IndexByte(path, 0)
 		if errno != 0 || end <= 0 {
 			continue

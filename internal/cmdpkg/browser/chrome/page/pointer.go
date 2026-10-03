@@ -30,14 +30,20 @@ func coordinates(ctx context.Context, tab *tabs.Tab, value string) (point, error
 		return point{}, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "invalid y coordinate", Cause: err}
 	}
 	if math.IsNaN(a) || math.IsNaN(b) || math.IsInf(a, 0) || math.IsInf(b, 0) || a < 0 || b < 0 {
-		return point{}, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "coordinates must be finite, nonnegative viewport pixels"}
+		return point{}, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "coordinates must be finite, nonnegative viewport pixels",
+		}
 	}
 	_, _, _, viewport, _, _, err := chrome.GetLayoutMetrics().Do(protocol.WithExecutor(ctx, tab.Page()))
 	if err != nil {
 		return point{}, err
 	}
 	if a >= float64(viewport.ClientWidth) || b >= float64(viewport.ClientHeight) {
-		return point{}, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "coordinates must lie inside the current viewport"}
+		return point{}, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "coordinates must lie inside the current viewport",
+		}
 	}
 	return point{a, b}, nil
 }
@@ -57,21 +63,42 @@ func releaseMouse(ctx context.Context, tab *tabs.Tab, result error, release *inp
 }
 
 // clickAt delivers native pointer input and releases the button on every exit.
-func clickAt(ctx context.Context, tab *tabs.Tab, p point, button input.MouseButton, count int64, modifiers input.Modifier, operation *cdp.Operation) error {
+func clickAt(
+	ctx context.Context,
+	tab *tabs.Tab,
+	p point,
+	button input.MouseButton,
+	count int64,
+	modifiers input.Modifier,
+	operation *cdp.Operation,
+) error {
 	err := tab.Input(ctx, operation, func(work context.Context) error {
 		operation.BeginInput()
 		executor := protocol.WithExecutor(work, tab.Page())
 		if err := input.DispatchMouseEvent(input.MouseMoved, p.x, p.y).Do(executor); err != nil {
 			return err
 		}
-		if err := input.DispatchMouseEvent(input.MousePressed, p.x, p.y).WithButton(button).WithClickCount(count).WithModifiers(modifiers).Do(executor); err != nil {
+		if err := input.DispatchMouseEvent(input.MousePressed, p.x, p.y).
+			WithButton(button).
+			WithClickCount(count).
+			WithModifiers(modifiers).
+			Do(executor); err != nil {
 			return err
 		}
-		return input.DispatchMouseEvent(input.MouseReleased, p.x, p.y).WithButton(button).WithClickCount(count).WithModifiers(modifiers).Do(executor)
+		return input.DispatchMouseEvent(input.MouseReleased, p.x, p.y).
+			WithButton(button).
+			WithClickCount(count).
+			WithModifiers(modifiers).
+			Do(executor)
 	})
 	if err == nil {
 		operation.CompleteInput()
 		return nil
 	}
-	return releaseMouse(ctx, tab, err, input.DispatchMouseEvent(input.MouseReleased, p.x, p.y).WithButton(button).WithClickCount(count))
+	return releaseMouse(
+		ctx,
+		tab,
+		err,
+		input.DispatchMouseEvent(input.MouseReleased, p.x, p.y).WithButton(button).WithClickCount(count),
+	)
 }

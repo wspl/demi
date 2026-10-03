@@ -133,24 +133,7 @@ func (e *Environment) runRegistry(ctx context.Context, events *cdp.Subscription)
 	eventCtx, cancelEvents := context.WithCancel(ctx)
 	pumpDone := make(chan struct{})
 	go func() {
-		defer close(pumpDone)
-		for {
-			event, err := events.Next(eventCtx)
-			if eventCtx.Err() != nil {
-				return
-			}
-			select {
-			case e.requests <- registryRequest{kind: registryEvent, event: event, err: err}:
-			case <-eventCtx.Done():
-				return
-			}
-			if err != nil {
-				var lost *cdp.EventLoss
-				if !errors.As(err, &lost) {
-					return
-				}
-			}
-		}
+		e.pumpRegistry(eventCtx, events, pumpDone)
 	}()
 	owner := &registryOwner{environment: e, book: newRegistryBook(), closing: make(map[target.ID]chan registryReply)}
 	defer func() {
@@ -172,19 +155,7 @@ func (e *Environment) runRegistry(ctx context.Context, events *cdp.Subscription)
 			return
 		case request := <-e.requests:
 			owner.request(ctx, request)
-			pending := owner.popups[:0]
-			for _, query := range owner.popups {
-				if query.ctx.Err() != nil {
-					continue
-				}
-				ids, ready := owner.book.popups(query.target)
-				if ready {
-					query.reply <- registryReply{ids: ids}
-				} else {
-					pending = append(pending, query)
-				}
-			}
-			owner.popups = pending
+			owner.answerPopups()
 		}
 	}
 }
@@ -258,7 +229,9 @@ func (r *registryOwner) closePage(id target.ID) {
 	if err := e.StartTask(func(ctx context.Context) {
 		bounded, cancel := context.WithTimeout(ctx, cdp.ControlTimeout)
 		defer cancel()
-		if err := target.CloseTarget(id).Do(protocol.WithExecutor(bounded, e.connection)); err != nil && ctx.Err() == nil {
+		if err := target.CloseTarget(id).
+			Do(protocol.WithExecutor(bounded, e.connection)); err != nil &&
+			ctx.Err() == nil {
 			slog.Warn("could not close a browser page that is not a tab", "error", err)
 		}
 	}); err != nil {
@@ -266,7 +239,13 @@ func (r *registryOwner) closePage(id target.ID) {
 	} // Environment retirement owns every remaining page.
 }
 
-func (r *registryOwner) setup(requestCtx context.Context, id target.ID, public browserop.TabID, createdBy browserop.BrowserCreatedBy, reply chan registryReply) {
+func (r *registryOwner) setup(
+	requestCtx context.Context,
+	id target.ID,
+	public browserop.TabID,
+	createdBy browserop.BrowserCreatedBy,
+	reply chan registryReply,
+) {
 	r.book.setUp(id)
 	r.publish()
 	e := r.environment
@@ -333,107 +312,15 @@ func (r *registryOwner) reconcile(ctx context.Context) {
 }
 
 func (r *registryOwner) request(ctx context.Context, q registryRequest) {
-	e := r.environment
 	switch q.kind {
 	case registryCreate:
-		if !r.book.admit() {
-			q.reply <- registryReply{err: &cdp.BrowserError{Kind: cdp.KindClosed}}
-			return
-		}
-		if err := e.StartTask(func(ctx context.Context) {
-			// cdproto's CreateTargetParams always writes optional booleans as false.
-			// Chrome distinguishes omitted newWindow from false when no window exists;
-			// chromiumoxide sends only url. Use that vendor payload and its typed reply.
-			params := struct {
-				URL string `json:"url"`
-			}{URL: "about:blank"}
-			var result target.CreateTargetReturns
-			err := e.Browser().Execute(ctx, target.CommandCreateTarget, params, &result)
-			q.kind = registryCreated
-			q.target = result.TargetID
-			q.err = err
-			e.tell(q)
-		}); err != nil {
-			r.book.failed()
-			q.reply <- registryReply{err: err}
-			r.settle()
-		}
+		r.createRequest(q)
 	case registryCreated:
-		if q.err == nil {
-			public, err := r.number(ctx, q.target)
-			q.err = err
-			if err == nil {
-				r.setup(q.ctx, q.target, public, q.createdBy, q.reply)
-				return
-			}
-			r.closePage(q.target)
-		}
-		r.book.failed()
-		r.settle()
-		q.reply <- registryReply{err: q.err}
+		r.createdRequest(ctx, q)
 	case registryReady:
-		refused := r.book.ready(q.target, q.reply != nil, q.tab)
-		err := q.err
-		if err == nil {
-			err = refused
-		}
-		r.publish()
-		r.settle()
-		if q.tab != nil && (err != nil || q.ctx != nil && q.ctx.Err() != nil) {
-			if err == nil {
-				err = q.ctx.Err()
-			}
-			q.tab.cancel(&cdp.BrowserError{Kind: cdp.KindClosed})
-			cleanupErr := err
-			if startErr := e.StartTask(func(ctx context.Context) {
-				bounded, cancel := context.WithTimeout(ctx, cdp.ControlTimeout)
-				defer cancel()
-				closed := q.tab.closeTarget(bounded)
-				if q.reply != nil {
-					q.reply <- registryReply{err: cdp.AfterCleanup(cleanupErr, closed)}
-				}
-			}); startErr != nil && q.reply != nil {
-				q.reply <- registryReply{err: startErr}
-			}
-			return
-		}
-		if q.reply != nil {
-			q.reply <- registryReply{tab: q.tab, err: err}
-		}
-		if err != nil {
-			r.closePage(q.target)
-		}
+		r.readyRequest(q)
 	case registryClose:
-		if r.book.sealed {
-			q.reply <- registryReply{err: &cdp.BrowserError{Kind: cdp.KindClosed}}
-			return
-		}
-		if r.book.closable(q.target) && r.book.only(q.target, r.holds) {
-			r.reconcile(ctx)
-			if r.book.closable(q.target) && r.book.only(q.target, r.holds) {
-				r.book.sealed = true
-				close(e.emptied)
-				q.reply <- registryReply{closed: ClosedEnvironment}
-				return
-			}
-		}
-		tab := r.book.startClosing(q.target)
-		if tab == nil {
-			q.reply <- registryReply{err: &cdp.BrowserError{Kind: cdp.KindTabNotFound}}
-			return
-		}
-		r.closing[q.target] = q.reply
-		tab.cancel(&cdp.BrowserError{Kind: cdp.KindClosed})
-		if err := e.StartTask(func(ctx context.Context) {
-			bounded, cancel := context.WithDeadline(ctx, q.deadline)
-			defer cancel()
-			if err := tab.closeTarget(bounded); err != nil {
-				e.tell(registryRequest{kind: registryNotClosed, target: q.target, err: err})
-			}
-		}); err != nil {
-			q.reply <- registryReply{err: err}
-			delete(r.closing, q.target)
-		}
+		r.closeRequest(ctx, q)
 	case registryNotClosed:
 		r.book.notClosed(q.target)
 		if reply := r.closing[q.target]; reply != nil {
@@ -460,43 +347,204 @@ func (r *registryOwner) request(ctx context.Context, q registryRequest) {
 	case registryPopups:
 		r.popups = append(r.popups, q)
 	case registryRetitle:
-		if err := e.StartTask(func(ctx context.Context) {
-			targets, err := target.GetTargets().Do(protocol.WithExecutor(ctx, e.Browser()))
-			e.tell(registryRequest{kind: registryTitled, targets: targets, err: err, reply: q.reply})
-		}); err != nil {
-			q.reply <- registryReply{err: err}
-		}
+		r.retitleRequest(q)
 	case registryTitled:
-		changed := false
-		if q.err == nil {
-			for _, info := range q.targets {
-				changed = r.book.retitle(info) || changed
-			}
-		}
-		if changed {
-			r.publish()
-		}
-		q.reply <- registryReply{err: q.err}
+		r.titledRequest(q)
 	case registryEvent:
-		if q.err != nil {
-			var lost *cdp.EventLoss
-			if errors.As(q.err, &lost) {
-				r.reconcile(ctx)
+		r.eventRequest(ctx, q)
+	}
+}
+
+func (r *registryOwner) createRequest(q registryRequest) {
+	e := r.environment
+	if !r.book.admit() {
+		q.reply <- registryReply{err: &cdp.BrowserError{Kind: cdp.KindClosed}}
+		return
+	}
+	if err := e.StartTask(func(ctx context.Context) {
+		// cdproto's CreateTargetParams always writes optional booleans as false.
+		// Chrome distinguishes omitted newWindow from false when no window exists;
+		// chromiumoxide sends only url. Use that vendor payload and its typed reply.
+		params := struct {
+			URL string `json:"url"`
+		}{URL: "about:blank"}
+		var result target.CreateTargetReturns
+		err := e.Browser().Execute(ctx, target.CommandCreateTarget, params, &result)
+		q.kind = registryCreated
+		q.target = result.TargetID
+		q.err = err
+		e.tell(q)
+	}); err != nil {
+		r.book.failed()
+		q.reply <- registryReply{err: err}
+		r.settle()
+	}
+}
+
+func (r *registryOwner) createdRequest(ctx context.Context, q registryRequest) {
+	if q.err == nil {
+		public, err := r.number(ctx, q.target)
+		q.err = err
+		if err == nil {
+			r.setup(q.ctx, q.target, public, q.createdBy, q.reply)
+			return
+		}
+		r.closePage(q.target)
+	}
+	r.book.failed()
+	r.settle()
+	q.reply <- registryReply{err: q.err}
+}
+
+func (r *registryOwner) readyRequest(q registryRequest) {
+	e := r.environment
+	refused := r.book.ready(q.target, q.reply != nil, q.tab)
+	err := q.err
+	if err == nil {
+		err = refused
+	}
+	r.publish()
+	r.settle()
+	if q.tab != nil && (err != nil || q.ctx != nil && q.ctx.Err() != nil) {
+		if err == nil {
+			err = q.ctx.Err()
+		}
+		q.tab.cancel(&cdp.BrowserError{Kind: cdp.KindClosed})
+		cleanupErr := err
+		if startErr := e.StartTask(func(ctx context.Context) {
+			bounded, cancel := context.WithTimeout(ctx, cdp.ControlTimeout)
+			defer cancel()
+			closed := q.tab.closeTarget(bounded)
+			if q.reply != nil {
+				q.reply <- registryReply{err: cdp.AfterCleanup(cleanupErr, closed)}
 			}
+		}); startErr != nil && q.reply != nil {
+			q.reply <- registryReply{err: startErr}
+		}
+		return
+	}
+	if q.reply != nil {
+		q.reply <- registryReply{tab: q.tab, err: err}
+	}
+	if err != nil {
+		r.closePage(q.target)
+	}
+}
+
+func (r *registryOwner) closeRequest(ctx context.Context, q registryRequest) {
+	e := r.environment
+	if r.book.sealed {
+		q.reply <- registryReply{err: &cdp.BrowserError{Kind: cdp.KindClosed}}
+		return
+	}
+	if r.book.closable(q.target) && r.book.only(q.target, r.holds) {
+		r.reconcile(ctx)
+		if r.book.closable(q.target) && r.book.only(q.target, r.holds) {
+			r.book.sealed = true
+			close(e.emptied)
+			q.reply <- registryReply{closed: ClosedEnvironment}
 			return
 		}
-		event, err := cdp.DecodeEvent(q.event)
+	}
+	tab := r.book.startClosing(q.target)
+	if tab == nil {
+		q.reply <- registryReply{err: &cdp.BrowserError{Kind: cdp.KindTabNotFound}}
+		return
+	}
+	r.closing[q.target] = q.reply
+	tab.cancel(&cdp.BrowserError{Kind: cdp.KindClosed})
+	if err := e.StartTask(func(ctx context.Context) {
+		bounded, cancel := context.WithDeadline(ctx, q.deadline)
+		defer cancel()
+		if err := tab.closeTarget(bounded); err != nil {
+			e.tell(registryRequest{kind: registryNotClosed, target: q.target, err: err})
+		}
+	}); err != nil {
+		q.reply <- registryReply{err: err}
+		delete(r.closing, q.target)
+	}
+}
+
+func (r *registryOwner) retitleRequest(q registryRequest) {
+	e := r.environment
+	if err := e.StartTask(func(ctx context.Context) {
+		targets, err := target.GetTargets().Do(protocol.WithExecutor(ctx, e.Browser()))
+		e.tell(registryRequest{kind: registryTitled, targets: targets, err: err, reply: q.reply})
+	}); err != nil {
+		q.reply <- registryReply{err: err}
+	}
+}
+
+func (r *registryOwner) titledRequest(q registryRequest) {
+	changed := false
+	if q.err == nil {
+		for _, info := range q.targets {
+			changed = r.book.retitle(info) || changed
+		}
+	}
+	if changed {
+		r.publish()
+	}
+	q.reply <- registryReply{err: q.err}
+}
+
+func (r *registryOwner) eventRequest(ctx context.Context, q registryRequest) {
+	e := r.environment
+	if q.err != nil {
+		var lost *cdp.EventLoss
+		if errors.As(q.err, &lost) {
+			r.reconcile(ctx)
+		}
+		return
+	}
+	event, err := cdp.DecodeEvent(q.event)
+	if err != nil {
+		e.cancel(err)
+		return
+	}
+	switch event := event.(type) {
+	case *target.EventTargetCreated:
+		r.found(ctx, event.TargetInfo)
+	case *target.EventTargetInfoChanged:
+		r.found(ctx, event.TargetInfo)
+	case *target.EventTargetDestroyed:
+		r.gone(event.TargetID)
+	}
+}
+
+func (r *registryOwner) answerPopups() {
+	pending := r.popups[:0]
+	for _, query := range r.popups {
+		if query.ctx.Err() != nil {
+			continue
+		}
+		ids, ready := r.book.popups(query.target)
+		if ready {
+			query.reply <- registryReply{ids: ids}
+		} else {
+			pending = append(pending, query)
+		}
+	}
+	r.popups = pending
+}
+
+func (e *Environment) pumpRegistry(eventCtx context.Context, events *cdp.Subscription, pumpDone chan struct{}) {
+	defer close(pumpDone)
+	for {
+		event, err := events.Next(eventCtx)
+		if eventCtx.Err() != nil {
+			return
+		}
+		select {
+		case e.requests <- registryRequest{kind: registryEvent, event: event, err: err}:
+		case <-eventCtx.Done():
+			return
+		}
 		if err != nil {
-			e.cancel(err)
-			return
-		}
-		switch event := event.(type) {
-		case *target.EventTargetCreated:
-			r.found(ctx, event.TargetInfo)
-		case *target.EventTargetInfoChanged:
-			r.found(ctx, event.TargetInfo)
-		case *target.EventTargetDestroyed:
-			r.gone(event.TargetID)
+			var lost *cdp.EventLoss
+			if !errors.As(err, &lost) {
+				return
+			}
 		}
 	}
 }

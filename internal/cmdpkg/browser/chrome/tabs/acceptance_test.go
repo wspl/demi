@@ -38,7 +38,15 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 			http.Redirect(w, r, "/next", http.StatusFound)
 			return
 		}
-		_, err := fmt.Fprintf(w, `<!doctype html><title>%s</title><style>body{background:#37a;color:white}</style><h1>Chrome tabs</h1><button id="popup" onclick="window.open('/popup')">Open popup</button><button id="dialog" onclick="alert('hello tabs')">Dialog</button><script>console.log('loaded %s');</script>`, r.URL.Path, r.URL.Path)
+		_, err := fmt.Fprintf(
+			w,
+			`<!doctype html><title>%s</title><style>body{background:#37a;color:white}</style><h1>Chrome `+
+				`tabs</h1><button id="popup" onclick="window.open('/popup')">Open popup</button><button `+
+				`id="dialog" onclick="alert('hello tabs')">Dialog</button><script>console.log('loaded %s');`+
+				`</script>`,
+			r.URL.Path,
+			r.URL.Path,
+		)
 		if err != nil {
 			t.Logf("page client left: %v", err)
 		}
@@ -46,7 +54,17 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	environment := tabstest.Launch(ctx, t, tabs.LaunchOptions{Executable: executable, Locale: commandwire.CommandLocale{TimeZone: "Asia/Singapore", Languages: []commandwire.LanguageTag{"en-US", "zh-CN"}}})
+	environment := tabstest.Launch(
+		ctx,
+		t,
+		tabs.LaunchOptions{
+			Executable: executable,
+			Locale: commandwire.CommandLocale{
+				TimeZone:  "Asia/Singapore",
+				Languages: []commandwire.LanguageTag{"en-US", "zh-CN"},
+			},
+		},
+	)
 	profile := filepath.Dir(environment.DownloadDirectory())
 	first, err := environment.Open(ctx, server.URL+"/", 10*time.Second)
 	if err != nil {
@@ -66,7 +84,13 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		if len(listed.Tabs) != 2 || listed.Tabs[0].Tab != first || listed.Tabs[1].Tab != second {
 			t.Fatalf("listing %+v", listed.Tabs)
 		}
-		if got := evaluateString(ctx, t, first, `JSON.stringify([navigator.webdriver,Intl.DateTimeFormat().resolvedOptions().timeZone,navigator.languages])`); got != `[false,"Asia/Singapore",["en-US","zh-CN"]]` {
+		if got := evaluateString(
+			ctx,
+			t,
+			first,
+			`JSON.stringify([navigator.webdriver,Intl.DateTimeFormat().resolvedOptions().timeZone,`+
+				`navigator.languages])`,
+		); got != `[false,"Asia/Singapore",["en-US","zh-CN"]]` {
 			t.Fatal(got)
 		}
 		if strings.Contains(evaluateString(ctx, t, first, `navigator.userAgent`), "Headless") {
@@ -86,7 +110,13 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		}
 		operation := first.Operation(ctx, time.Now().Add(10*time.Second))
 		defer operation.Close()
-		final, err := first.Navigate(ctx, &tabs.Visit{URL: server.URL + "/redirect"}, browserop.LoadDomContentLoaded, operation, references)
+		final, err := first.Navigate(
+			ctx,
+			&tabs.Visit{URL: server.URL + "/redirect"},
+			browserop.LoadDomContentLoaded,
+			operation,
+			references,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -103,7 +133,13 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := first.Navigate(ctx, &tabs.History{EntryID: history.ID}, browserop.LoadDomContentLoaded, operation, references); err != nil {
+		if _, err := first.Navigate(
+			ctx,
+			&tabs.History{EntryID: history.ID},
+			browserop.LoadDomContentLoaded,
+			operation,
+			references,
+		); err != nil {
 			t.Fatal(err)
 		}
 		if evaluateString(ctx, t, first, `location.pathname`) != "/" {
@@ -170,7 +206,8 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		changedDialog := first.Dialog()
 		finished := make(chan error, 1)
 		go func() {
-			_, _, err := runtime.Evaluate(`alert('hello tabs'); 'answered'`).Do(protocol.WithExecutor(ctx, first.Page()))
+			_, _, err := runtime.Evaluate(`alert('hello tabs'); 'answered'`).
+				Do(protocol.WithExecutor(ctx, first.Page()))
 			finished <- err
 		}()
 		for {
@@ -182,7 +219,16 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 				if err := changedDialog.Answer(ctx, dialog, true, nil); err != nil {
 					t.Fatal(err)
 				}
-				if err := changedDialog.Answer(ctx, dialog, true, nil); cdp.ErrorCode(err) != browserop.BrowserErrorCode("dialog_not_found") {
+				if err := changedDialog.Answer(
+					ctx,
+					dialog,
+					true,
+					nil,
+				); cdp.ErrorCode(
+					err,
+				) != browserop.BrowserErrorCode(
+					"dialog_not_found",
+				) {
 					t.Fatalf("second answer: %v", err)
 				}
 				break
@@ -198,7 +244,12 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		}
 	})
 	t.Run("viewports and capture", func(t *testing.T) {
-		viewport := browserop.BrowserViewport{Width: 700, Height: 500, DevicePixelRatio: 1, Mode: browserop.ViewportModeWeb}
+		viewport := browserop.BrowserViewport{
+			Width:            700,
+			Height:           500,
+			DevicePixelRatio: 1,
+			Mode:             browserop.ViewportModeWeb,
+		}
 		if err := first.SetViewport(ctx, viewport); err != nil {
 			t.Fatal(err)
 		}
@@ -281,7 +332,9 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 
 func evaluateString(ctx context.Context, t *testing.T, tab *tabs.Tab, expression string) string {
 	t.Helper()
-	value, exception, err := runtime.Evaluate(expression).WithReturnByValue(true).Do(protocol.WithExecutor(ctx, tab.Page()))
+	value, exception, err := runtime.Evaluate(expression).
+		WithReturnByValue(true).
+		Do(protocol.WithExecutor(ctx, tab.Page()))
 	if err != nil {
 		t.Fatal(err)
 	}

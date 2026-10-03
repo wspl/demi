@@ -33,6 +33,7 @@ func (u *upload) close() {
 		}
 	}
 }
+
 func (u *upload) advance() error {
 	for u.current < len(u.files) {
 		f := &u.files[u.current]
@@ -50,13 +51,14 @@ func (u *upload) advance() error {
 	}
 	return nil
 }
+
 func prepareUpload(directoryBase string, request *browserop.LiveViewerMessageUpload) (*upload, error) {
 	name, err := cdp.Fresh("u")
 	if err != nil {
 		return nil, err
 	}
 	directory := filepath.Join(directoryBase, name)
-	if err := os.Mkdir(directory, 0777); err != nil {
+	if err := os.Mkdir(directory, 0o777); err != nil {
 		return nil, &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
 	}
 	u := &upload{request: request}
@@ -75,7 +77,10 @@ func prepareUpload(directoryBase string, request *browserop.LiveViewerMessageUpl
 			}
 		}
 		if file.Name == "." || file.Name == ".." || duplicate {
-			return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: fmt.Sprintf("invalid file name: %s", file.Name)}
+			return nil, &cdp.BrowserError{
+				Kind:    cdp.KindConfiguration,
+				Message: fmt.Sprintf("invalid file name: %s", file.Name),
+			}
 		}
 		path := filepath.Join(directory, file.Name)
 		handle, err := os.Create(path)
@@ -90,6 +95,7 @@ func prepareUpload(directoryBase string, request *browserop.LiveViewerMessageUpl
 	success = true
 	return u, nil
 }
+
 func (u *upload) receive(file uint32, data []byte) error {
 	if u.current >= len(u.files) || uint64(file) != uint64(u.current) {
 		return &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "file bytes arrived out of order"}
@@ -104,7 +110,14 @@ func (u *upload) receive(file uint32, data []byte) error {
 	entry.written += uint64(len(data))
 	return u.advance()
 }
-func runUploads(ctx context.Context, environment *tabs.Environment, member *membership, w *writer, items <-chan inbound) {
+
+func runUploads(
+	ctx context.Context,
+	environment *tabs.Environment,
+	member *membership,
+	w *writer,
+	items <-chan inbound,
+) {
 	var pending *upload
 	defer func() {
 		if pending != nil {
@@ -119,21 +132,16 @@ func runUploads(ctx context.Context, environment *tabs.Environment, member *memb
 		if ctx.Err() != nil {
 			return
 		}
-		var item inbound
-		select {
-		case <-ctx.Done():
+		item, ok := nextUpload(ctx, items)
+		if !ok {
 			return
-		case value, ok := <-items:
-			if !ok {
-				return
-			}
-			item = value
 		}
 		var err error
-		if start, ok := item.message.(*browserop.LiveViewerMessageUpload); ok {
-			if err := member.operated(ctx); err != nil {
-				return
-			}
+		start, announced := item.message.(*browserop.LiveViewerMessageUpload)
+		if announced && member.operated(ctx) != nil {
+			return
+		}
+		if announced {
 			if pending != nil {
 				pending.close()
 			}
@@ -143,18 +151,17 @@ func runUploads(ctx context.Context, environment *tabs.Environment, member *memb
 				continue
 			}
 		} else {
-			if pending == nil || item.file.Upload != pending.request.Upload {
+			var received bool
+			received, err = receiveUpload(pending, item)
+			if !received {
 				continue
 			}
-			err = pending.receive(item.file.File, item.data)
 		}
 		if pending == nil {
 			continue
 		}
 		if err != nil {
-			refuse(pending.request.Token, err)
-			pending.close()
-			pending = nil
+			pending = refuseUpload(pending, err, refuse)
 			continue
 		}
 		if pending.current != len(pending.files) {
@@ -162,19 +169,57 @@ func runUploads(ctx context.Context, environment *tabs.Environment, member *memb
 		}
 		done := pending
 		pending = nil
-		paths := make([]string, len(done.files))
-		for i, f := range done.files {
-			paths[i] = f.path
-		}
-		tab, err := environment.Tab(ctx, done.request.Tab, cdp.ControlTimeout)
-		accepted := false
-		if err == nil {
-			accepted, err = attach(ctx, tab, done.request.Token, done.request.Revision, paths)
-		}
-		if err != nil {
-			refuse(done.request.Token, err)
-		} else {
-			w.control(ctx, &browserop.LiveModuleMessageChoice{Token: done.request.Token, Accepted: accepted})
-		}
+		finishUpload(ctx, environment, w, done, refuse)
 	}
+}
+
+func finishUpload(
+	ctx context.Context,
+	environment *tabs.Environment,
+	w *writer,
+	done *upload,
+	refuse func(browserop.ControlToken, error),
+) {
+	paths := make([]string, len(done.files))
+	for i, f := range done.files {
+		paths[i] = f.path
+	}
+	tab, err := environment.Tab(ctx, done.request.Tab, cdp.ControlTimeout)
+	accepted := false
+	if err == nil {
+		accepted, err = attach(ctx, tab, done.request.Token, done.request.Revision, paths)
+	}
+	if err != nil {
+		refuse(done.request.Token, err)
+	} else {
+		w.control(ctx, &browserop.LiveModuleMessageChoice{Token: done.request.Token, Accepted: accepted})
+	}
+}
+
+func refuseUpload(pending *upload, err error, refuse func(browserop.ControlToken, error)) *upload {
+	refuse(pending.request.Token, err)
+	pending.close()
+	pending = nil
+	return pending
+}
+
+func receiveUpload(pending *upload, item inbound) (bool, error) {
+	if pending == nil || item.file.Upload != pending.request.Upload {
+		return false, nil
+	}
+	return true, pending.receive(item.file.File, item.data)
+}
+
+func nextUpload(ctx context.Context, items <-chan inbound) (inbound, bool) {
+	var item inbound
+	select {
+	case <-ctx.Done():
+		return inbound{}, false
+	case value, ok := <-items:
+		if !ok {
+			return inbound{}, false
+		}
+		item = value
+	}
+	return item, true
 }

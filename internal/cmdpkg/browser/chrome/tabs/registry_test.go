@@ -30,9 +30,11 @@ func registryFixture(t *testing.T, names ...string) *registryBook {
 	}
 	return b
 }
+
 func registrySighting(id, opener string) *target.Info {
 	return &target.Info{TargetID: target.ID(id), Type: "page", URL: "about:blank", OpenerID: target.ID(opener)}
 }
+
 func registryNames(b *registryBook) []browserop.TabID {
 	listed, _ := b.listing()
 	names := make([]browserop.TabID, 0, len(listed))

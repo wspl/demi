@@ -20,7 +20,13 @@ func Capabilities(ctx context.Context, tab *tabs.Tab) ([]browserop.Capability, e
 	if err != nil {
 		return nil, err
 	}
-	return []browserop.Capability{{ID: "accessibility", Available: true}, {ID: "read-only-eval", Available: true}, clipboard, {ID: "page-assets", Available: true}, {ID: "cross-origin-frames", Available: true}}, nil
+	return []browserop.Capability{
+		{ID: "accessibility", Available: true},
+		{ID: "read-only-eval", Available: true},
+		clipboard,
+		{ID: "page-assets", Available: true},
+		{ID: "cross-origin-frames", Available: true},
+	}, nil
 }
 
 // ClipboardUnisolated returns why clipboard isolation is unverified, or nil where verified.
@@ -29,7 +35,8 @@ func ClipboardUnisolated() *string {
 	if runtime.GOOS == "darwin" || (runtime.GOOS == "linux" && !wayland) {
 		return nil
 	}
-	reason := "clipboard isolation from the Host user's system clipboard has not been verified for this platform configuration"
+	reason := "clipboard isolation from the Host user's system clipboard has not been verified for this " +
+		"platform configuration"
 	return &reason
 }
 
@@ -37,28 +44,17 @@ func ClipboardUnisolated() *string {
 func ClipboardCapability(ctx context.Context, tab *tabs.Tab) (browserop.Capability, error) {
 	result := browserop.Capability{ID: "clipboard", Reason: ClipboardUnisolated()}
 	if result.Reason == nil {
-		object, exception, err := js.Evaluate("Boolean(navigator.clipboard && typeof ClipboardItem === 'function')").WithReturnByValue(true).Do(protocol.WithExecutor(ctx, tab.Page()))
+		var err error
+		result, err = clipboardDocumentReason(ctx, tab, result)
 		if err != nil {
 			return result, err
-		}
-		if err = evaluationException(exception); err != nil {
-			return result, err
-		}
-		var available bool
-		if object == nil {
-			return result, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "evaluation returned no JSON value"}
-		}
-		if err = json.Unmarshal(object.Value, &available); err != nil {
-			return result, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: err.Error(), Cause: err}
-		}
-		if !available {
-			reason := "the current document does not expose the Clipboard API; use a secure context"
-			result.Reason = &reason
 		}
 	}
 	result.Available = result.Reason == nil
 	if result.Available {
-		schema := json.RawMessage(`{"mimeTypes":["text/plain","text/html","image/png"],"help":"demi browser clipboard --help"}`)
+		schema := json.RawMessage(
+			`{"mimeTypes":["text/plain","text/html","image/png"],"help":"demi browser clipboard --help"}`,
+		)
 		result.Schema = &schema
 	}
 	return result, nil
@@ -73,4 +69,32 @@ func GrantClipboard(ctx context.Context, executor cdp.Executor) error {
 		Permissions []browser.PermissionType `json:"permissions"`
 	}{[]browser.PermissionType{browser.PermissionTypeClipboardReadWrite, browser.PermissionTypeClipboardSanitizedWrite}}
 	return executor.Execute(ctx, "Browser.grantPermissions", &params, nil)
+}
+
+func clipboardDocumentReason(
+	ctx context.Context,
+	tab *tabs.Tab,
+	result browserop.Capability,
+) (browserop.Capability, error) {
+	object, exception, err := js.Evaluate("Boolean(navigator.clipboard && typeof ClipboardItem === 'function')").
+		WithReturnByValue(true).
+		Do(protocol.WithExecutor(ctx, tab.Page()))
+	if err != nil {
+		return result, err
+	}
+	if err = evaluationException(exception); err != nil {
+		return result, err
+	}
+	var available bool
+	if object == nil {
+		return result, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "evaluation returned no JSON value"}
+	}
+	if err = json.Unmarshal(object.Value, &available); err != nil {
+		return result, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: err.Error(), Cause: err}
+	}
+	if !available {
+		reason := "the current document does not expose the Clipboard API; use a secure context"
+		result.Reason = &reason
+	}
+	return result, nil
 }

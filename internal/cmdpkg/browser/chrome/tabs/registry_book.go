@@ -41,7 +41,11 @@ type registryBook struct {
 }
 
 func newRegistryBook() *registryBook {
-	return &registryBook{entries: make(map[target.ID]*registryEntry), publicIDs: make(map[target.ID]publicTab), openers: make(map[target.ID]target.ID)}
+	return &registryBook{
+		entries:   make(map[target.ID]*registryEntry),
+		publicIDs: make(map[target.ID]publicTab),
+		openers:   make(map[target.ID]target.ID),
+	}
 }
 
 // found remembers first-sighting openers even when later Chrome metadata omits them.
@@ -87,6 +91,7 @@ func (b *registryBook) pending(id target.ID) bool {
 	entry := b.entries[id]
 	return entry != nil && entry.stage == tabPending
 }
+
 func (b *registryBook) setUp(id target.ID) {
 	entry := b.entries[id]
 	if entry == nil {
@@ -95,6 +100,7 @@ func (b *registryBook) setUp(id target.ID) {
 	}
 	entry.stage = tabSetup
 }
+
 func (b *registryBook) unusable(id target.ID) {
 	if entry := b.entries[id]; entry != nil {
 		entry.stage = tabUnusable
@@ -127,6 +133,7 @@ func (b *registryBook) closable(id target.ID) bool {
 	entry := b.entries[id]
 	return entry != nil && entry.stage == tabLive
 }
+
 func (b *registryBook) startClosing(id target.ID) *Tab {
 	if !b.closable(id) {
 		return nil
@@ -135,6 +142,7 @@ func (b *registryBook) startClosing(id target.ID) *Tab {
 	entry.stage = tabClosing
 	return entry.tab
 }
+
 func (b *registryBook) notClosed(id target.ID) {
 	if entry := b.entries[id]; entry != nil && entry.stage == tabClosing {
 		entry.stage = tabLive
@@ -154,6 +162,7 @@ func (b *registryBook) gone(id target.ID) (*Tab, bool) {
 	}
 	return entry.tab, entry.stage == tabSetup || entry.stage == tabLive || entry.stage == tabClosing
 }
+
 func (b *registryBook) counts(id target.ID, entry *registryEntry) bool {
 	switch entry.stage {
 	case tabLive, tabClosing, tabSetup:
@@ -165,6 +174,7 @@ func (b *registryBook) counts(id target.ID, entry *registryEntry) bool {
 	}
 	return false
 }
+
 func (b *registryBook) only(id target.ID, holds int) bool {
 	if b.creating != 0 || holds != 0 {
 		return false
@@ -176,6 +186,7 @@ func (b *registryBook) only(id target.ID, holds int) bool {
 	}
 	return true
 }
+
 func (b *registryBook) settle(holds int) bool {
 	if b.sealed || !b.only("", holds) {
 		return false
@@ -195,7 +206,10 @@ func (b *registryBook) listing() ([]Listed, bool) {
 	for id, entry := range b.entries {
 		switch entry.stage {
 		case tabLive, tabClosing:
-			ordered = append(ordered, orderedTab{b.publicIDs[id].order, Listed{Tab: entry.tab, Title: entry.title, URL: entry.url}})
+			ordered = append(
+				ordered,
+				orderedTab{b.publicIDs[id].order, Listed{Tab: entry.tab, Title: entry.title, URL: entry.url}},
+			)
 		case tabSetup:
 			registering = true
 		}
@@ -213,6 +227,7 @@ func (b *registryBook) name(id target.ID, number uint64) browserop.TabID {
 	b.publicIDs[id] = publicTab{id: public, order: len(b.publicIDs)}
 	return public
 }
+
 func (b *registryBook) opened(opener target.ID) []browserop.TabID {
 	ids := []browserop.TabID{}
 	for id, parent := range b.openers {
@@ -224,6 +239,7 @@ func (b *registryBook) opened(opener target.ID) []browserop.TabID {
 	}
 	return ids
 }
+
 func (b *registryBook) popups(opener target.ID) ([]browserop.TabID, bool) {
 	tabs := []publicTab{}
 	for id, entry := range b.entries {
@@ -244,6 +260,7 @@ func (b *registryBook) popups(opener target.ID) ([]browserop.TabID, bool) {
 	}
 	return ids, true
 }
+
 func (b *registryBook) vanished(present map[target.ID]bool) []target.ID {
 	var absent []target.ID
 	for id := range b.entries {

@@ -28,7 +28,12 @@ type Hub struct {
 // register with environment.StartTask, and environment.Close cancels and joins
 // them. Start returns an error if the environment has stopped admitting work.
 func Start(environment *tabs.Environment) (*Hub, error) {
-	h := &Hub{environment: environment, requests: make(chan func(context.Context, *hubOwner), 32), wake: make(chan struct{}, 1), observers: make(map[*tabs.Tab]*observerEntry)}
+	h := &Hub{
+		environment: environment,
+		requests:    make(chan func(context.Context, *hubOwner), 32),
+		wake:        make(chan struct{}, 1),
+		observers:   make(map[*tabs.Tab]*observerEntry),
+	}
 	err := environment.StartTask(h.run)
 	if err != nil {
 		return nil, err
@@ -40,14 +45,17 @@ type panel struct {
 	width, height, screenWidth, screenHeight uint32
 	ratio                                    float64
 }
-type notice struct{ code, message string }
-type membership struct {
-	hub     *Hub
-	left    context.Context
-	leave   context.CancelFunc
-	notices chan notice
-	id      uint64
-}
+type (
+	notice     struct{ code, message string }
+	membership struct {
+		hub     *Hub
+		left    context.Context
+		leave   context.CancelFunc
+		notices chan notice
+		id      uint64
+	}
+)
+
 type hubViewer struct {
 	member   *membership
 	panel    *panel
@@ -98,6 +106,7 @@ func (h *Hub) run(ctx context.Context) {
 		}
 	}
 }
+
 func (h *Hub) send(ctx context.Context, request func(context.Context, *hubOwner)) error {
 	select {
 	case <-ctx.Done():
@@ -108,6 +117,7 @@ func (h *Hub) send(ctx context.Context, request func(context.Context, *hubOwner)
 		return nil
 	}
 }
+
 func (h *Hub) join(ctx context.Context) (*membership, error) {
 	left, leave := context.WithCancel(ctx)
 	m := &membership{hub: h, left: left, leave: leave, notices: make(chan notice, 4)}
@@ -132,6 +142,7 @@ func (h *Hub) join(ctx context.Context) (*membership, error) {
 		return nil, &cdp.BrowserError{Kind: cdp.KindClosed}
 	}
 }
+
 func (m *membership) close() {
 	m.leave()
 	select {
@@ -139,6 +150,7 @@ func (m *membership) close() {
 	default:
 	}
 }
+
 func (m *membership) setPanel(ctx context.Context, p panel) error {
 	return m.hub.send(ctx, func(_ context.Context, o *hubOwner) {
 		v := o.viewers[m.id]
@@ -152,6 +164,7 @@ func (m *membership) setPanel(ctx context.Context, p panel) error {
 		o.due = true
 	})
 }
+
 func (m *membership) operated(ctx context.Context) error {
 	return m.hub.send(ctx, func(_ context.Context, o *hubOwner) {
 		o.order++
@@ -166,6 +179,7 @@ func (m *membership) operated(ctx context.Context) error {
 		o.driver = m.id
 	})
 }
+
 func (m *membership) watch(ctx context.Context, tab *tabs.Tab) (*streamView, error) {
 	type answer struct {
 		view *streamView
@@ -211,6 +225,7 @@ func (m *membership) watch(ctx context.Context, tab *tabs.Tab) (*streamView, err
 		return nil, &cdp.BrowserError{Kind: cdp.KindClosed}
 	}
 }
+
 func (m *membership) mode(ctx context.Context, tab *tabs.Tab, mode browserop.ViewportMode) error {
 	reply := make(chan error, 1)
 	err := m.hub.send(ctx, func(ownerCtx context.Context, o *hubOwner) {
@@ -229,7 +244,15 @@ func (m *membership) mode(ctx context.Context, tab *tabs.Tab, mode browserop.Vie
 		if mode == "mobile" {
 			width, height = tabs.PhoneWidth, tabs.PhoneHeight
 		}
-		reply <- tab.SetViewport(ownerCtx, browserop.BrowserViewport{Mode: mode, Width: width, Height: height, DevicePixelRatio: web.DevicePixelRatio})
+		reply <- tab.SetViewport(
+			ownerCtx,
+			browserop.BrowserViewport{
+				Mode:             mode,
+				Width:            width,
+				Height:           height,
+				DevicePixelRatio: web.DevicePixelRatio,
+			},
+		)
 	})
 	if err != nil {
 		return err
@@ -243,6 +266,7 @@ func (m *membership) mode(ctx context.Context, tab *tabs.Tab, mode browserop.Vie
 		return &cdp.BrowserError{Kind: cdp.KindClosed}
 	}
 }
+
 func (o *hubOwner) leave(ctx context.Context, id uint64) {
 	if v := o.viewers[id]; v != nil && v.tab != nil {
 		o.leaveStream(ctx, v.tab.ID(), id)
@@ -253,19 +277,22 @@ func (o *hubOwner) leave(ctx context.Context, id uint64) {
 	}
 	o.due = true
 }
+
 func (o *hubOwner) leaveStream(ctx context.Context, tab browserop.TabID, id uint64) {
 	if s := o.streams[tab]; s != nil && s.leave(id) {
 		s.close(ctx)
 		delete(o.streams, tab)
 	}
 }
+
 func (o *hubOwner) decider(tab browserop.TabID) *panel {
 	var chosen *hubViewer
 	for _, v := range o.viewers {
 		if v.tab == nil || v.tab.ID() != tab || v.panel == nil {
 			continue
 		}
-		if chosen == nil || v.operated > chosen.operated || (v.operated == chosen.operated && v.member.id < chosen.member.id) {
+		if chosen == nil || v.operated > chosen.operated ||
+			(v.operated == chosen.operated && v.member.id < chosen.member.id) {
 			chosen = v
 		}
 	}
@@ -274,6 +301,7 @@ func (o *hubOwner) decider(tab browserop.TabID) *panel {
 	}
 	return chosen.panel
 }
+
 func (o *hubOwner) notify(chosen func(uint64, *hubViewer) bool, err error) {
 	slog.Warn("live view layout", "error", err)
 	for id, v := range o.viewers {
@@ -285,6 +313,7 @@ func (o *hubOwner) notify(chosen func(uint64, *hubViewer) bool, err error) {
 		}
 	}
 }
+
 func (o *hubOwner) layout(ctx context.Context) {
 	watched := make(map[browserop.TabID]*tabs.Tab)
 	for _, v := range o.viewers {
@@ -312,6 +341,7 @@ func (o *hubOwner) layout(ctx context.Context) {
 		}
 	}
 }
+
 func fit(ctx context.Context, tab *tabs.Tab, mode browserop.ViewportMode, p panel) error {
 	width, height := p.width, p.height
 	switch mode {
@@ -320,7 +350,12 @@ func fit(ctx context.Context, tab *tabs.Tab, mode browserop.ViewportMode, p pane
 	case "mobile":
 		width, height = tabs.PhoneWidth, tabs.PhoneHeight
 	}
-	viewport := browserop.BrowserViewport{Mode: mode, Width: width, Height: height, DevicePixelRatio: tabs.RatioFor(p.ratio, width, height)}
+	viewport := browserop.BrowserViewport{
+		Mode:             mode,
+		Width:            width,
+		Height:           height,
+		DevicePixelRatio: tabs.RatioFor(p.ratio, width, height),
+	}
 	if tab.Viewport() == viewport {
 		return nil
 	}

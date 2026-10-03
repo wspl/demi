@@ -21,7 +21,13 @@ import (
 
 // Upload attaches validated Host files to a file input.
 // The operation owns its admission and cleanup; paths resolve against invocation metadata.
-func Upload(ctx context.Context, invocation *cmdsdk.InvocationContext[commandwire.Invocation], tab *tabs.Tab, input browserop.UploadInput, deadline time.Time) (browserop.UploadResult, error) {
+func Upload(
+	ctx context.Context,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	tab *tabs.Tab,
+	input browserop.UploadInput,
+	deadline time.Time,
+) (browserop.UploadResult, error) {
 	result := browserop.UploadResult{Files: []string{}}
 	if tab == nil {
 		return result, &cdp.BrowserError{Kind: cdp.KindTabNotFound}
@@ -35,30 +41,9 @@ func Upload(ctx context.Context, invocation *cmdsdk.InvocationContext[commandwir
 	defer checkout.Release()
 	err := operation.Run(ctx, func(context.Context) error {
 		for _, file := range input.File {
-			path, err := cdp.Resolve(invocation.Request.Cwd, string(file))
+			path, err := uploadPath(invocation.Request.Cwd, file)
 			if err != nil {
 				return err
-			}
-			path, err = filepath.EvalSymlinks(path)
-			if err != nil {
-				return &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
-			}
-			info, err := os.Stat(path)
-			if err != nil {
-				return &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
-			}
-			if !info.Mode().IsRegular() {
-				return &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "upload paths must name readable regular files"}
-			}
-			opened, err := os.Open(path)
-			if err != nil {
-				return &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
-			}
-			if err = opened.Close(); err != nil {
-				return &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
-			}
-			if !utf8.ValidString(path) {
-				return &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "upload paths must be UTF-8"}
 			}
 			result.Files = append(result.Files, path)
 		}
@@ -67,17 +52,18 @@ func Upload(ctx context.Context, invocation *cmdsdk.InvocationContext[commandwir
 	if err == nil {
 		var last error
 		var control readyElement
-		control, err = ready(ctx, tab, input.BrowserTarget, &checkout.Session().References, []string{"enabled"}, operation, &last)
+		control, err = ready(
+			ctx,
+			tab,
+			input.BrowserTarget,
+			&checkout.Session().References,
+			[]string{"enabled"},
+			operation,
+			&last,
+		)
 		if err == nil {
 			err = operation.Run(ctx, func(work context.Context) error {
-				isInput, err := decodeElement[bool](work, control.element, "function() { return this.localName === 'input' && this.type === 'file'; }", false)
-				if err != nil {
-					return err
-				}
-				if isInput {
-					return attachFiles(work, control.element, result.Files, operation)
-				}
-				return chooserUpload(work, tab, control.element, result.Files, operation)
+				return uploadToControl(work, tab, control, result, operation)
 			})
 		}
 	}
@@ -106,7 +92,9 @@ func attachFiles(ctx context.Context, element targetElement, files []string, ope
 		return &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "multiple files require a multiple file input"}
 	}
 	operation.BeginInput()
-	if err = dom.SetFileInputFiles(files).WithBackendNodeID(element.backend).Do(protocol.WithExecutor(ctx, element.page)); err != nil {
+	if err = dom.SetFileInputFiles(files).
+		WithBackendNodeID(element.backend).
+		Do(protocol.WithExecutor(ctx, element.page)); err != nil {
 		return err
 	}
 	operation.CompleteInput()
@@ -121,15 +109,24 @@ func attachFiles(ctx context.Context, element targetElement, files []string, ope
 	return nil
 }
 
-type eventSource interface {
+type subscriber interface {
 	Subscribe(...string) (*cdp.Subscription, error)
 }
 
 // chooserUpload subscribes before triggering and always disables chooser interception.
-func chooserUpload(ctx context.Context, tab *tabs.Tab, control targetElement, files []string, operation *cdp.Operation) (err error) {
-	source, ok := control.page.(eventSource)
+func chooserUpload(
+	ctx context.Context,
+	tab *tabs.Tab,
+	control targetElement,
+	files []string,
+	operation *cdp.Operation,
+) (err error) {
+	source, ok := control.page.(subscriber)
 	if !ok {
-		return &cdp.BrowserError{Kind: cdp.KindUnsupportedCapability, Message: "renderer does not expose event subscriptions"}
+		return &cdp.BrowserError{
+			Kind:    cdp.KindUnsupportedCapability,
+			Message: "renderer does not expose event subscriptions",
+		}
 	}
 	choosers, err := source.Subscribe("Page.fileChooserOpened")
 	if err != nil {
@@ -141,7 +138,8 @@ func chooserUpload(ctx context.Context, tab *tabs.Tab, control targetElement, fi
 		defer cancel()
 		releaseErr := chrome.SetInterceptFileChooserDialog(false).Do(protocol.WithExecutor(cleanup, control.page))
 		var failure *cdp.BrowserError
-		if errors.As(releaseErr, &failure) && (failure.Kind == cdp.KindClosed || failure.Kind == cdp.KindConnection || failure.Kind == cdp.KindTabNotFound) {
+		if errors.As(releaseErr, &failure) &&
+			(failure.Kind == cdp.KindClosed || failure.Kind == cdp.KindConnection || failure.Kind == cdp.KindTabNotFound) {
 			releaseErr = nil
 		}
 		err = cdp.AfterCleanup(err, releaseErr)
@@ -160,6 +158,49 @@ func chooserUpload(ctx context.Context, tab *tabs.Tab, control targetElement, fi
 	if err != nil {
 		return err
 	}
+	return attachChosenFiles(ctx, choosers, control, files, operation)
+}
+
+func uploadPath(cwd string, file browserop.LocatorText) (string, error) {
+	path, err := cdp.Resolve(cwd, string(file))
+	if err != nil {
+		return "", err
+	}
+	path, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
+	}
+	if !info.Mode().IsRegular() {
+		return "", &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "upload paths must name readable regular files",
+		}
+	}
+	opened, err := os.Open(path)
+	if err != nil {
+		return "", &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
+	}
+	if err = opened.Close(); err != nil {
+		return "", &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
+	}
+	if !utf8.ValidString(path) {
+		return "", &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "upload paths must be UTF-8"}
+	}
+
+	return path, nil
+}
+
+func attachChosenFiles(
+	ctx context.Context,
+	choosers *cdp.Subscription,
+	control targetElement,
+	files []string,
+	operation *cdp.Operation,
+) error {
 	event, err := choosers.Next(ctx)
 	if err != nil {
 		return err
@@ -172,11 +213,36 @@ func chooserUpload(ctx context.Context, tab *tabs.Tab, control targetElement, fi
 		return &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "multiple files require a multiple file input"}
 	}
 	if chooser.BackendNodeID == 0 {
-		return &cdp.BrowserError{Kind: cdp.KindUnsupportedCapability, Message: "the chooser does not expose an attachable file input"}
+		return &cdp.BrowserError{
+			Kind:    cdp.KindUnsupportedCapability,
+			Message: "the chooser does not expose an attachable file input",
+		}
 	}
 	element, err := resolveElement(ctx, control.page, chooser.BackendNodeID)
 	if err != nil {
 		return err
 	}
 	return attachFiles(ctx, element, files, operation)
+}
+
+func uploadToControl(
+	work context.Context,
+	tab *tabs.Tab,
+	control readyElement,
+	result browserop.UploadResult,
+	operation *cdp.Operation,
+) error {
+	isInput, err := decodeElement[bool](
+		work,
+		control.element,
+		"function() { return this.localName === 'input' && this.type === 'file'; }",
+		false,
+	)
+	if err != nil {
+		return err
+	}
+	if isInput {
+		return attachFiles(work, control.element, result.Files, operation)
+	}
+	return chooserUpload(work, tab, control.element, result.Files, operation)
 }

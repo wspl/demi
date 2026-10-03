@@ -11,7 +11,13 @@ import (
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/tabs"
 )
 
-func runCommands(ctx context.Context, environment *tabs.Environment, member *membership, w *writer, commands <-chan *browserop.LiveViewerMessageMode) {
+func runCommands(
+	ctx context.Context,
+	environment *tabs.Environment,
+	member *membership,
+	w *writer,
+	commands <-chan *browserop.LiveViewerMessageMode,
+) {
 	for {
 		if ctx.Err() != nil {
 			return
@@ -35,6 +41,7 @@ func runCommands(ctx context.Context, environment *tabs.Environment, member *mem
 		}
 	}
 }
+
 func answerDialog(ctx context.Context, tab *tabs.Tab, accept bool, text *string, w *writer, answers *sync.WaitGroup) {
 	answers.Add(1)
 	err := tab.StartTask(func(owner context.Context) {

@@ -14,7 +14,12 @@ import (
 // signals follow the creating thread, not the Go process's other threads.
 func (p *chromeProcess) start(command *exec.Cmd, profile string) error {
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
-	command.Env = append(command.Env, "DEMI_BROWSER_PROFILE="+p.runtime, "TMPDIR="+p.runtime, "CHROME_CONFIG_HOME="+profile)
+	command.Env = append(
+		command.Env,
+		"DEMI_BROWSER_PROFILE="+p.runtime,
+		"TMPDIR="+p.runtime,
+		"CHROME_CONFIG_HOME="+profile,
+	)
 	p.command = command
 	p.done = make(chan struct{})
 	started := make(chan error, 1)

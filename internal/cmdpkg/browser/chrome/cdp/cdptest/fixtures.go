@@ -26,7 +26,12 @@ import (
 // EvaluateIn evaluates an expression over its own connection in a target that
 // no public command addresses, such as the capture extension's worker.
 // It closes its connection before returning, including on failure.
-func EvaluateIn(ctx context.Context, address string, id target.ID, expression string) (value json.RawMessage, err error) {
+func EvaluateIn(
+	ctx context.Context,
+	address string,
+	id target.ID,
+	expression string,
+) (value json.RawMessage, err error) {
 	connection, err := cdp.Dial(ctx, address)
 	if err != nil {
 		return nil, err
@@ -40,7 +45,9 @@ func EvaluateIn(ctx context.Context, address string, id target.ID, expression st
 	if err != nil {
 		return nil, err
 	}
-	result, exception, err := runtime.Evaluate(expression).WithReturnByValue(true).Do(protocol.WithExecutor(ctx, session))
+	result, exception, err := runtime.Evaluate(expression).
+		WithReturnByValue(true).
+		Do(protocol.WithExecutor(ctx, session))
 	if err != nil {
 		return nil, err
 	}
@@ -56,11 +63,16 @@ func EvaluateIn(ctx context.Context, address string, id target.ID, expression st
 // Exchange is one expected command and its scripted reply or failure.
 // Params and Result use the same typed cdproto values as production callers.
 type Exchange struct {
-	Method    string
+	// Method names the expected CDP command.
+	Method string
+	// SessionID identifies the expected flattened session.
 	SessionID target.SessionID
-	Params    any
-	Result    any
-	Err       error
+	// Params holds the expected command parameters.
+	Params any
+	// Result supplies the scripted Chrome reply.
+	Result any
+	// Err supplies the scripted command failure.
+	Err error
 }
 
 // Executor is a scripted cdproto executor. Test cleanup checks all exchanges
@@ -167,7 +179,15 @@ type Server struct {
 func NewServer(t testing.TB, exchanges ...Exchange) *Server {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	s := &Server{t: t, script: NewExecutor(t, exchanges...), ctx: ctx, cancel: cancel, sockets: map[*websocket.Conn]struct{}{}, connected: make(chan struct{}, 1), done: make(chan struct{})}
+	s := &Server{
+		t:         t,
+		script:    NewExecutor(t, exchanges...),
+		ctx:       ctx,
+		cancel:    cancel,
+		sockets:   map[*websocket.Conn]struct{}{},
+		connected: make(chan struct{}, 1),
+		done:      make(chan struct{}),
+	}
 	s.server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(func() {
 		if err := s.Close(context.Background()); err != nil {
@@ -215,41 +235,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			s.t.Error(err)
 			return
 		}
-		exchange, err := s.script.take(string(request.Method), request.SessionID, request.Params)
-		if err != nil {
-			return
-		}
-		reply := struct {
-			ID        int64            `json:"id"`
-			SessionID target.SessionID `json:"sessionId,omitzero"`
-			Result    jsontext.Value   `json:"result,omitzero"`
-			Error     *cdproto.Error   `json:"error,omitzero"`
-		}{ID: request.ID, SessionID: request.SessionID}
-		if exchange.Err != nil {
-			var chrome *cdp.ProtocolError
-			if errors.As(exchange.Err, &chrome) {
-				reply.Error = &cdproto.Error{Code: chrome.Code, Message: chrome.Message}
-			} else {
-				return
-			}
-		} else {
-			result := exchange.Result
-			if result == nil {
-				result = struct{}{}
-			}
-			data, err := jsonv2.Marshal(result)
-			if err != nil {
-				s.t.Error(err)
-				return
-			}
-			reply.Result = jsontext.Value(data)
-		}
-		data, err = jsonv2.Marshal(reply)
-		if err != nil {
-			s.t.Error(err)
-			return
-		}
-		if err := socket.Write(s.ctx, websocket.MessageText, data); err != nil {
+		if !s.respond(socket, request) {
 			return
 		}
 	}
@@ -317,4 +303,44 @@ func (s *Server) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (s *Server) respond(socket *websocket.Conn, request cdproto.Message) bool {
+	exchange, err := s.script.take(string(request.Method), request.SessionID, request.Params)
+	if err != nil {
+		return false
+	}
+	reply := struct {
+		ID        int64            `json:"id"`
+		SessionID target.SessionID `json:"sessionId,omitzero"`
+		Result    jsontext.Value   `json:"result,omitzero"`
+		Error     *cdproto.Error   `json:"error,omitzero"`
+	}{ID: request.ID, SessionID: request.SessionID}
+	if exchange.Err != nil {
+		var chrome *cdp.ProtocolError
+		if !errors.As(exchange.Err, &chrome) {
+			return false
+		}
+		reply.Error = &cdproto.Error{Code: chrome.Code, Message: chrome.Message}
+	} else {
+		result := exchange.Result
+		if result == nil {
+			result = struct{}{}
+		}
+		data, err := jsonv2.Marshal(result)
+		if err != nil {
+			s.t.Error(err)
+			return false
+		}
+		reply.Result = jsontext.Value(data)
+	}
+	data, err := jsonv2.Marshal(reply)
+	if err != nil {
+		s.t.Error(err)
+		return false
+	}
+	if err := socket.Write(s.ctx, websocket.MessageText, data); err != nil {
+		return false
+	}
+	return true
 }

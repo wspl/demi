@@ -50,6 +50,7 @@ func startInput(ctx context.Context, environment *tabs.Environment, w *writer, m
 	}
 	return in, nil
 }
+
 func (in *viewerInput) send(message browserop.LiveViewerMessage) {
 	select {
 	case in.items <- inputItem{kind: inputMessage, message: message}:
@@ -57,6 +58,7 @@ func (in *viewerInput) send(message browserop.LiveViewerMessage) {
 		in.overflow.Store(true)
 	}
 }
+
 func (in *viewerInput) control(ctx context.Context, item inputItem) {
 	select {
 	case <-ctx.Done():
@@ -94,19 +96,8 @@ func (in *viewerInput) run(ctx context.Context, w *writer, mac bool) {
 			if item.kind == inputWatch {
 				tab = item.tab
 			}
-			draining := true
-			for draining {
-				select {
-				case item = <-in.items:
-					if item.kind == inputFinish {
-						return
-					}
-					if item.kind == inputWatch {
-						tab = item.tab
-					}
-				default:
-					draining = false
-				}
+			if in.drain(&tab) {
+				return
 			}
 			continue
 		}
@@ -159,25 +150,17 @@ func dispatchInput(ctx context.Context, tab *tabs.Tab, call func(context.Context
 	}
 	return err
 }
-func deliverInput(ctx context.Context, tab *tabs.Tab, held *heldInput, message browserop.LiveViewerMessage, mac bool, w *writer) error {
-	// Non-input messages are routed by the viewer, not this worker.
-	var target browserop.TabID
-	switch m := message.(type) {
-	case *browserop.LiveViewerMessagePointer:
-		target = m.Tab
-	case *browserop.LiveViewerMessageWheel:
-		target = m.Tab
-	case *browserop.LiveViewerMessageKey:
-		target = m.Tab
-	case *browserop.LiveViewerMessageText:
-		target = m.Tab
-	case *browserop.LiveViewerMessageComposition:
-		target = m.Tab
-	case *browserop.LiveViewerMessagePaste:
-		target = m.Tab
-	case *browserop.LiveViewerMessageChoice:
-		target = m.Tab
-	case *browserop.LiveViewerMessageHello, *browserop.LiveViewerMessagePanel, *browserop.LiveViewerMessageWatch, *browserop.LiveViewerMessageMode, *browserop.LiveViewerMessageUpload, *browserop.LiveViewerMessageDialog, *browserop.LiveViewerMessageAck, *browserop.LiveViewerMessageKeyframe, *browserop.LiveViewerMessageRelease:
+
+func deliverInput(
+	ctx context.Context,
+	tab *tabs.Tab,
+	held *heldInput,
+	message browserop.LiveViewerMessage,
+	mac bool,
+	w *writer,
+) error {
+	target, accepts := inputTarget(message)
+	if !accepts {
 		return nil
 	}
 	if target != tab.ID() || tab.Dialog().IsOpen() {
@@ -185,51 +168,19 @@ func deliverInput(ctx context.Context, tab *tabs.Tab, held *heldInput, message b
 	}
 	switch m := message.(type) {
 	case *browserop.LiveViewerMessagePointer:
-		held.x, held.y = m.X, m.Y
-		if tab.Viewport().Mode == "mobile" {
-			kind := input.TouchEnd
-			switch {
-			case m.Action == "down" && m.Button == "left":
-				kind = input.TouchStart
-			case m.Action == "move" && held.touching:
-				kind = input.TouchMove
-			case m.Action == "up" && held.touching:
-			default:
-				return nil
-			}
-			held.touching = kind != input.TouchEnd
-			points := []*input.TouchPoint{}
-			if held.touching {
-				points = append(points, &input.TouchPoint{X: m.X, Y: m.Y})
-			}
-			return dispatchInput(ctx, tab, input.DispatchTouchEvent(kind, points).Do)
-		}
-		kind := input.MouseMoved
-		button := input.MouseButton(m.Button)
-		if m.Action == "down" {
-			kind = input.MousePressed
-			if !slices.Contains(held.buttons, button) {
-				held.buttons = append(held.buttons, button)
-			}
-		}
-		if m.Action == "up" {
-			kind = input.MouseReleased
-			held.buttons = slices.DeleteFunc(held.buttons, func(b input.MouseButton) bool { return b == button })
-		}
-		event := input.DispatchMouseEvent(kind, m.X, m.Y).WithButton(button).WithButtons(int64(m.Buttons)).WithClickCount(int64(m.ClickCount)).WithModifiers(page.ClickModifiers(input.Modifier(m.Modifiers), mac))
-		return dispatchInput(ctx, tab, event.Do)
+		return deliverPointer(ctx, tab, held, m, mac)
 	case *browserop.LiveViewerMessageWheel:
-		return dispatchInput(ctx, tab, input.DispatchMouseEvent(input.MouseWheel, m.X, m.Y).WithDeltaX(m.DeltaX).WithDeltaY(m.DeltaY).WithModifiers(input.Modifier(m.Modifiers)).Do)
+		return dispatchInput(
+			ctx,
+			tab,
+			input.DispatchMouseEvent(input.MouseWheel, m.X, m.Y).
+				WithDeltaX(m.DeltaX).
+				WithDeltaY(m.DeltaY).
+				WithModifiers(input.Modifier(m.Modifiers)).
+				Do,
+		)
 	case *browserop.LiveViewerMessageKey:
-		event := page.ViewerKey(*m, mac)
-		if m.Action == "down" {
-			held.keys[m.Code] = event
-		} else if pressed := held.keys[m.Code]; pressed != nil {
-			delete(held.keys, m.Code)
-			event.Key, event.Code = pressed.Key, pressed.Code
-			event.WindowsVirtualKeyCode, event.Location, event.IsKeypad = pressed.WindowsVirtualKeyCode, pressed.Location, pressed.IsKeypad
-		}
-		return dispatchInput(ctx, tab, event.Do)
+		return deliverKey(ctx, tab, held, m, mac)
 	case *browserop.LiveViewerMessageText:
 		held.composing = false
 		return dispatchInput(ctx, tab, input.InsertText(m.Text).Do)
@@ -241,32 +192,26 @@ func deliverInput(ctx context.Context, tab *tabs.Tab, held *heldInput, message b
 		end := int64(len(utf16.Encode([]rune(m.Text))))
 		return dispatchInput(ctx, tab, input.ImeSetComposition(m.Text, end, end).Do)
 	case *browserop.LiveViewerMessagePaste:
-		held.composing = false
-		return dispatchInput(ctx, tab, func(execution context.Context) error {
-			written, err := writeClipboard(execution, tab, m.Text, m.HTML)
-			if err != nil {
-				return err
-			}
-			if !written {
-				return input.InsertText(m.Text).Do(execution)
-			}
-			for _, event := range page.PasteShortcut() {
-				if err := event.Do(execution); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
+		return deliverPaste(ctx, tab, held, m)
 	case *browserop.LiveViewerMessageChoice:
 		accepted, err := choose(ctx, tab, m.Token, m.Revision, m.Value, m.Indices)
 		if err != nil {
 			return err
 		}
 		w.control(ctx, &browserop.LiveModuleMessageChoice{Token: m.Token, Accepted: accepted})
-	case *browserop.LiveViewerMessageHello, *browserop.LiveViewerMessagePanel, *browserop.LiveViewerMessageWatch, *browserop.LiveViewerMessageMode, *browserop.LiveViewerMessageUpload, *browserop.LiveViewerMessageDialog, *browserop.LiveViewerMessageAck, *browserop.LiveViewerMessageKeyframe, *browserop.LiveViewerMessageRelease:
+	case *browserop.LiveViewerMessageHello,
+		*browserop.LiveViewerMessagePanel,
+		*browserop.LiveViewerMessageWatch,
+		*browserop.LiveViewerMessageMode,
+		*browserop.LiveViewerMessageUpload,
+		*browserop.LiveViewerMessageDialog,
+		*browserop.LiveViewerMessageAck,
+		*browserop.LiveViewerMessageKeyframe,
+		*browserop.LiveViewerMessageRelease:
 	}
 	return nil
 }
+
 func releaseInput(ctx context.Context, tab *tabs.Tab, held *heldInput) {
 	old := *held
 	*held = heldInput{keys: make(map[string]*input.DispatchKeyEventParams)}
@@ -279,11 +224,21 @@ func releaseInput(ctx context.Context, tab *tabs.Tab, held *heldInput) {
 	for _, pressed := range old.keys {
 		event := input.DispatchKeyEvent(input.KeyUp)
 		event.Key, event.Code = pressed.Key, pressed.Code
-		event.WindowsVirtualKeyCode, event.Location, event.IsKeypad = pressed.WindowsVirtualKeyCode, pressed.Location, pressed.IsKeypad
+		event.WindowsVirtualKeyCode = pressed.WindowsVirtualKeyCode
+		event.Location = pressed.Location
+		event.IsKeypad = pressed.IsKeypad
 		releases = append(releases, &tabs.KeyRelease{Event: event})
 	}
 	for _, button := range old.buttons {
-		releases = append(releases, &tabs.MouseRelease{Event: input.DispatchMouseEvent(input.MouseReleased, old.x, old.y).WithButton(button).WithButtons(0).WithModifiers(0)})
+		releases = append(
+			releases,
+			&tabs.MouseRelease{
+				Event: input.DispatchMouseEvent(input.MouseReleased, old.x, old.y).
+					WithButton(button).
+					WithButtons(0).
+					WithModifiers(0),
+			},
+		)
 	}
 	if tab.Dialog().IsOpen() {
 		if err := tab.Dialog().Defer(ctx, releases); err != nil {
@@ -313,4 +268,142 @@ func releaseInput(ctx context.Context, tab *tabs.Tab, held *heldInput) {
 	if err != nil && tab.Context().Err() == nil {
 		slog.Warn("live view input release", "tab", tab.ID(), "error", err)
 	}
+}
+
+func deliverPointer(
+	ctx context.Context,
+	tab *tabs.Tab,
+	held *heldInput,
+	m *browserop.LiveViewerMessagePointer,
+	mac bool,
+) error {
+	held.x, held.y = m.X, m.Y
+	if tab.Viewport().Mode == "mobile" {
+		kind := input.TouchEnd
+		switch {
+		case m.Action == "down" && m.Button == "left":
+			kind = input.TouchStart
+		case m.Action == "move" && held.touching:
+			kind = input.TouchMove
+		case m.Action == "up" && held.touching:
+		default:
+			return nil
+		}
+		held.touching = kind != input.TouchEnd
+		points := []*input.TouchPoint{}
+		if held.touching {
+			points = append(points, &input.TouchPoint{X: m.X, Y: m.Y})
+		}
+		return dispatchInput(ctx, tab, input.DispatchTouchEvent(kind, points).Do)
+	}
+	kind := input.MouseMoved
+	button := input.MouseButton(m.Button)
+	if m.Action == "down" {
+		kind = input.MousePressed
+		if !slices.Contains(held.buttons, button) {
+			held.buttons = append(held.buttons, button)
+		}
+	}
+	if m.Action == "up" {
+		kind = input.MouseReleased
+		held.buttons = slices.DeleteFunc(held.buttons, func(b input.MouseButton) bool { return b == button })
+	}
+	event := input.DispatchMouseEvent(kind, m.X, m.Y).
+		WithButton(button).
+		WithButtons(int64(m.Buttons)).
+		WithClickCount(int64(m.ClickCount)).
+		WithModifiers(page.ClickModifiers(input.Modifier(m.Modifiers), mac))
+	return dispatchInput(ctx, tab, event.Do)
+}
+
+func (in *viewerInput) drain(tab **tabs.Tab) bool {
+	var item inputItem
+	draining := true
+	for draining {
+		select {
+		case item = <-in.items:
+			if item.kind == inputFinish {
+				return true
+			}
+			if item.kind == inputWatch {
+				*tab = item.tab
+			}
+		default:
+			draining = false
+		}
+	}
+
+	return false
+}
+
+func inputTarget(message browserop.LiveViewerMessage) (browserop.TabID, bool) {
+	// Non-input messages are routed by the viewer, not this worker.
+	var target browserop.TabID
+	switch m := message.(type) {
+	case *browserop.LiveViewerMessagePointer:
+		target = m.Tab
+	case *browserop.LiveViewerMessageWheel:
+		target = m.Tab
+	case *browserop.LiveViewerMessageKey:
+		target = m.Tab
+	case *browserop.LiveViewerMessageText:
+		target = m.Tab
+	case *browserop.LiveViewerMessageComposition:
+		target = m.Tab
+	case *browserop.LiveViewerMessagePaste:
+		target = m.Tab
+	case *browserop.LiveViewerMessageChoice:
+		target = m.Tab
+	case *browserop.LiveViewerMessageHello,
+		*browserop.LiveViewerMessagePanel,
+		*browserop.LiveViewerMessageWatch,
+		*browserop.LiveViewerMessageMode,
+		*browserop.LiveViewerMessageUpload,
+		*browserop.LiveViewerMessageDialog,
+		*browserop.LiveViewerMessageAck,
+		*browserop.LiveViewerMessageKeyframe,
+		*browserop.LiveViewerMessageRelease:
+		return "", false
+	}
+
+	return target, true
+}
+
+func deliverPaste(ctx context.Context, tab *tabs.Tab, held *heldInput, m *browserop.LiveViewerMessagePaste) error {
+	held.composing = false
+	return dispatchInput(ctx, tab, func(execution context.Context) error {
+		written, err := writeClipboard(execution, tab, m.Text, m.HTML)
+		if err != nil {
+			return err
+		}
+		if !written {
+			return input.InsertText(m.Text).Do(execution)
+		}
+		for _, event := range page.PasteShortcut() {
+			if err := event.Do(execution); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func deliverKey(
+	ctx context.Context,
+	tab *tabs.Tab,
+	held *heldInput,
+	m *browserop.LiveViewerMessageKey,
+	mac bool,
+) error {
+	event := page.ViewerKey(*m, mac)
+	if m.Action == "down" {
+		held.keys[m.Code] = event
+	} else if pressed := held.keys[m.Code]; pressed != nil {
+		delete(held.keys, m.Code)
+		event.Key, event.Code = pressed.Key, pressed.Code
+		event.WindowsVirtualKeyCode = pressed.WindowsVirtualKeyCode
+		event.Location = pressed.Location
+		event.IsKeypad = pressed.IsKeypad
+	}
+	return dispatchInput(ctx, tab, event.Do)
 }

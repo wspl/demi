@@ -141,51 +141,8 @@ func Render(operation browserop.Operation, value json.RawMessage, asJSON bool) (
 			object["truncated"] = json.RawMessage(`true`)
 			continue
 		}
-		shortened := false
-		for _, key := range []string{"tree", "matches", "entries", "events", "tabs", "values"} {
-			var items []json.RawMessage
-			raw, ok := object[key]
-			if !ok || len(raw) == 0 || raw[0] != '[' || json.Unmarshal(raw, &items) != nil {
-				continue
-			}
-			if len(items) == 0 {
-				break
-			}
-			omitted := items[len(items)-1]
-			items = items[:len(items)-1]
-			object[key], err = Value(items)
-			if err != nil {
-				return nil, err
-			}
-			var cursor string
-			if raw, ok := object["cursor"]; ok && json.Unmarshal(raw, &cursor) == nil {
-				if len(items) == 0 {
-					return nil, &BrowserError{Kind: KindResultTooLarge}
-				}
-				index := strings.LastIndexByte(cursor, ':')
-				if index < 0 {
-					return nil, &BrowserError{Kind: KindInvalidResult, Message: "stream cursor has no position"}
-				}
-				var fields map[string]json.RawMessage
-				if err := json.Unmarshal(omitted, &fields); err != nil {
-					return nil, &BrowserError{Kind: KindInvalidResult, Message: "stream entry has no sequence", Cause: err}
-				}
-				var sequence uint64
-				if err := json.Unmarshal(fields["sequence"], &sequence); err != nil {
-					return nil, &BrowserError{Kind: KindInvalidResult, Message: "stream entry has no sequence", Cause: err}
-				}
-				object["cursor"], err = Value(fmt.Sprintf("%s:%d", cursor[:index], sequence))
-				if err != nil {
-					return nil, err
-				}
-				object["hasMore"] = json.RawMessage(`true`)
-			}
-			object["truncated"] = json.RawMessage(`true`)
-			shortened = true
-			break
-		}
-		if !shortened {
-			return nil, &BrowserError{Kind: KindResultTooLarge}
+		if err := shortenCollection(object); err != nil {
+			return nil, err
 		}
 	}
 	text := string(value)
@@ -238,4 +195,74 @@ func RenderError(code browserop.BrowserErrorCode, message string, details browse
 		text += title + ": " + pageValue(fields[key]) + "\n"
 	}
 	return text
+}
+
+func shortenCursor(object map[string]json.RawMessage, items []json.RawMessage, omitted json.RawMessage) error {
+	var cursor string
+	raw, ok := object["cursor"]
+	if !ok || json.Unmarshal(raw, &cursor) != nil {
+		return nil
+	}
+	if len(items) == 0 {
+		return &BrowserError{Kind: KindResultTooLarge}
+	}
+	index := strings.LastIndexByte(cursor, ':')
+	if index < 0 {
+		return &BrowserError{Kind: KindInvalidResult, Message: "stream cursor has no position"}
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(omitted, &fields); err != nil {
+		return &BrowserError{
+			Kind:    KindInvalidResult,
+			Message: "stream entry has no sequence",
+			Cause:   err,
+		}
+	}
+	var sequence uint64
+	if err := json.Unmarshal(fields["sequence"], &sequence); err != nil {
+		return &BrowserError{
+			Kind:    KindInvalidResult,
+			Message: "stream entry has no sequence",
+			Cause:   err,
+		}
+	}
+	encoded, err := Value(fmt.Sprintf("%s:%d", cursor[:index], sequence))
+	if err != nil {
+		return err
+	}
+	object["cursor"] = encoded
+	object["hasMore"] = json.RawMessage(`true`)
+
+	return nil
+}
+
+func shortenCollection(object map[string]json.RawMessage) error {
+	shortened := false
+	for _, key := range []string{"tree", "matches", "entries", "events", "tabs", "values"} {
+		var items []json.RawMessage
+		raw, ok := object[key]
+		if !ok || len(raw) == 0 || raw[0] != '[' || json.Unmarshal(raw, &items) != nil {
+			continue
+		}
+		if len(items) == 0 {
+			break
+		}
+		omitted := items[len(items)-1]
+		items = items[:len(items)-1]
+		encoded, err := Value(items)
+		if err != nil {
+			return err
+		}
+		object[key] = encoded
+		if err := shortenCursor(object, items, omitted); err != nil {
+			return err
+		}
+		object["truncated"] = json.RawMessage(`true`)
+		shortened = true
+		break
+	}
+	if !shortened {
+		return &BrowserError{Kind: KindResultTooLarge}
+	}
+	return nil
 }

@@ -9,17 +9,20 @@ import (
 
 // Rate scenarios use virtual time and no external resources; each costs <1 s.
 func healthySample() sample { return sample{roundTrip: 5, activeFrames: 30, encodedBitrate: 6_000_000} }
+
 func referenceRate() rate {
 	r := newRate(500 * 1000)
 	r.budget = 6_000_000
 	return r
 }
+
 func wantBitrate(t *testing.T, r *rate, want uint32) {
 	t.Helper()
 	if got := r.bitrate(); got != want {
 		t.Fatalf("bitrate = %d, want %d", got, want)
 	}
 }
+
 func TestShortScrollingBurstsRaiseQualityWithoutWarmingUp(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
@@ -42,6 +45,7 @@ func TestShortScrollingBurstsRaiseQualityWithoutWarmingUp(t *testing.T) {
 		wantBitrate(t, &r, 13_500_000)
 	})
 }
+
 func TestRecoveryWaitsForFeedbackAndProbesConservatively(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
@@ -61,6 +65,7 @@ func TestRecoveryWaitsForFeedbackAndProbesConservatively(t *testing.T) {
 		wantBitrate(t, &r, 4_620_000)
 	})
 }
+
 func TestFirstBudgetScalesWithDevicePixelsWithoutCeiling(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := newRate(1532 * 862)
@@ -77,6 +82,7 @@ func TestFirstBudgetScalesWithDevicePixelsWithoutCeiling(t *testing.T) {
 		wantBitrate(t, &r, constrained)
 	})
 }
+
 func TestIdlePictureIsNoEvidenceOfBandwidth(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := referenceRate()
@@ -94,6 +100,7 @@ func TestIdlePictureIsNoEvidenceOfBandwidth(t *testing.T) {
 		wantBitrate(t, &r, 4_200_000)
 	})
 }
+
 func TestLongRoundTripKeepsQualityButStalledAckDoesNot(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := referenceRate()
@@ -119,6 +126,7 @@ func TestLongRoundTripKeepsQualityButStalledAckDoesNot(t *testing.T) {
 		wantBitrate(t, &r, 100_000)
 	})
 }
+
 func TestLowEncoderDemandDoesNotRaiseBudget(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := referenceRate()
@@ -133,6 +141,7 @@ func TestLowEncoderDemandDoesNotRaiseBudget(t *testing.T) {
 		wantBitrate(t, &r, 6_000_000)
 	})
 }
+
 func TestIntermittentFramesDoNotHideScrollingDemand(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := referenceRate()
@@ -143,6 +152,7 @@ func TestIntermittentFramesDoNotHideScrollingDemand(t *testing.T) {
 		wantBitrate(t, &r, 9_000_000)
 	})
 }
+
 func TestCongestionLowersBitsFramesPixelsAndRecoveryReverses(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		type quality struct {

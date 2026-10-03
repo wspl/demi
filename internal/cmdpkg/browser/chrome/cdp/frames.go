@@ -19,21 +19,29 @@ type FrameTarget interface {
 
 // Document identifies a frame and the renderer that owns its DOM.
 type Document struct {
-	Frame        *protocol.Frame
-	Target       FrameTarget
+	// Frame holds the captured frame metadata.
+	Frame *protocol.Frame
+	// Target executes commands in the owning renderer.
+	Target FrameTarget
+	// ParentTarget identifies the renderer owning the embedding frame element.
 	ParentTarget FrameTarget
 }
 
 // RendererDocument is the DOM root and frame belonging to one renderer.
 type RendererDocument struct {
-	Root    *protocol.Node
+	// Root holds the renderer's DOM root.
+	Root *protocol.Node
+	// FrameID identifies the root document frame.
 	FrameID protocol.FrameID
 }
 
 // FrameSnapshot joins in-process documents and attached renderer sessions.
 type FrameSnapshot struct {
-	Main      protocol.FrameID
-	Frames    []Document
+	// Main identifies the main document frame.
+	Main protocol.FrameID
+	// Frames retains captured frames in traversal order.
+	Frames []Document
+	// Documents indexes each renderer's captured DOM root.
 	Documents map[target.ID]RendererDocument
 }
 
@@ -44,11 +52,6 @@ func CaptureFrames(ctx context.Context, renderer FrameTarget) (FrameSnapshot, er
 		return FrameSnapshot{}, err
 	}
 	snapshot := FrameSnapshot{Main: tree.Frame.ID, Documents: map[target.ID]RendererDocument{}}
-	type pendingFrame struct {
-		tree     *page.FrameTree
-		renderer FrameTarget
-		parent   FrameTarget
-	}
 	pending := []pendingFrame{{tree, renderer, nil}}
 	captured := map[protocol.FrameID]bool{}
 	for len(pending) > 0 {
@@ -78,28 +81,9 @@ func CaptureFrames(ctx context.Context, renderer FrameTarget) (FrameSnapshot, er
 			if err != nil {
 				return FrameSnapshot{}, err
 			}
-			nodes := []*protocol.Node{root}
-			for len(nodes) > 0 {
-				node := nodes[len(nodes)-1]
-				nodes = nodes[:len(nodes)-1]
-				if node.FrameID != "" && !captured[node.FrameID] {
-					child, err := renderer.Related(ctx, target.ID(node.FrameID))
-					if err != nil {
-						return FrameSnapshot{}, err
-					}
-					if child != nil {
-						subtree, err := page.GetFrameTree().Do(protocol.WithExecutor(ctx, child))
-						if err != nil {
-							return FrameSnapshot{}, err
-						}
-						pending = append(pending, pendingFrame{subtree, owner, owner})
-					}
-				}
-				if node.ContentDocument != nil {
-					nodes = append(nodes, node.ContentDocument)
-				}
-				nodes = append(nodes, node.Children...)
-				nodes = append(nodes, node.ShadowRoots...)
+			pending, err = attachedFrames(ctx, renderer, owner, root, captured, pending)
+			if err != nil {
+				return FrameSnapshot{}, err
 			}
 			snapshot.Documents[owner.TargetID()] = RendererDocument{Root: root, FrameID: frame.ID}
 		}
@@ -109,4 +93,44 @@ func CaptureFrames(ctx context.Context, renderer FrameTarget) (FrameSnapshot, er
 		snapshot.Frames = append(snapshot.Frames, Document{Frame: frame, Target: owner, ParentTarget: item.parent})
 	}
 	return snapshot, nil
+}
+
+type pendingFrame struct {
+	tree     *page.FrameTree
+	renderer FrameTarget
+	parent   FrameTarget
+}
+
+func attachedFrames(
+	ctx context.Context,
+	renderer, owner FrameTarget,
+	root *protocol.Node,
+	captured map[protocol.FrameID]bool,
+	pending []pendingFrame,
+) ([]pendingFrame, error) {
+	nodes := []*protocol.Node{root}
+	for len(nodes) > 0 {
+		node := nodes[len(nodes)-1]
+		nodes = nodes[:len(nodes)-1]
+		if node.FrameID != "" && !captured[node.FrameID] {
+			child, err := renderer.Related(ctx, target.ID(node.FrameID))
+			if err != nil {
+				return nil, err
+			}
+			if child != nil {
+				subtree, err := page.GetFrameTree().Do(protocol.WithExecutor(ctx, child))
+				if err != nil {
+					return nil, err
+				}
+				pending = append(pending, pendingFrame{subtree, owner, owner})
+			}
+		}
+		if node.ContentDocument != nil {
+			nodes = append(nodes, node.ContentDocument)
+		}
+		nodes = append(nodes, node.Children...)
+		nodes = append(nodes, node.ShadowRoots...)
+	}
+
+	return pending, nil
 }

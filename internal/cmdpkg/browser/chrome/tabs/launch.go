@@ -34,13 +34,17 @@ func desktopUserAgent(version string) string {
 		platform = "Windows NT 10.0; Win64; x64"
 	}
 	major, _, _ := strings.Cut(version, ".")
-	return fmt.Sprintf("Mozilla/5.0 (%s) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s.0.0.0 Safari/537.36", platform, major)
+	return fmt.Sprintf(
+		"Mozilla/5.0 (%s) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s.0.0.0 Safari/537.36",
+		platform,
+		major,
+	)
 }
 
 // configureLaunch writes the extension and locale before Chrome can create a renderer.
 func configureLaunch(options LaunchOptions, profile, capture string) (*exec.Cmd, error) {
 	extension := filepath.Join(profile, "demi-capture")
-	if err := os.Mkdir(extension, 0700); err != nil {
+	if err := os.Mkdir(extension, 0o700); err != nil {
 		return nil, err
 	}
 	for _, name := range []string{"manifest.json", "background.js", "offscreen.html", "offscreen.js"} {
@@ -48,7 +52,7 @@ func configureLaunch(options LaunchOptions, profile, capture string) (*exec.Cmd,
 		if err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(filepath.Join(extension, name), data, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(extension, name), data, 0o600); err != nil {
 			return nil, err
 		}
 	}
@@ -60,11 +64,15 @@ func configureLaunch(options LaunchOptions, profile, capture string) (*exec.Cmd,
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(filepath.Join(extension, "config.js"), fmt.Appendf(nil, "export const socket = %s;\nexport const codec = %s;\n", socket, codec), 0600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(extension, "config.js"),
+		fmt.Appendf(nil, "export const socket = %s;\nexport const codec = %s;\n", socket, codec),
+		0o600,
+	); err != nil {
 		return nil, err
 	}
 	preferences := filepath.Join(profile, "Default")
-	if err := os.Mkdir(preferences, 0700); err != nil {
+	if err := os.Mkdir(preferences, 0o700); err != nil {
 		return nil, err
 	}
 	// This Chrome preference is private launch configuration, not a Demi contract.
@@ -78,7 +86,7 @@ func configureLaunch(options LaunchOptions, profile, capture string) (*exec.Cmd,
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(filepath.Join(preferences, "Preferences"), encoded, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(preferences, "Preferences"), encoded, 0o600); err != nil {
 		return nil, err
 	}
 	version, err := PinnedVersion()
@@ -98,18 +106,43 @@ func configureLaunch(options LaunchOptions, profile, capture string) (*exec.Cmd,
 // chromeArguments is the pinned native launch policy, excluding per-environment paths.
 func chromeArguments(version string) []string {
 	args := []string{
-		"--disable-background-networking", "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows",
-		"--disable-breakpad", "--disable-client-side-phishing-detection", "--disable-component-extensions-with-background-pages",
-		"--disable-default-apps", "--disable-dev-shm-usage", "--disable-hang-monitor", "--disable-ipc-flooding-protection",
-		"--disable-popup-blocking", "--disable-prompt-on-repost", "--disable-renderer-backgrounding", "--disable-sync",
-		"--metrics-recording-only", "--no-first-run", "--use-mock-keychain", "--no-startup-window", "--headless", "--mute-audio",
+		"--disable-background-networking",
+		"--disable-background-timer-throttling",
+		"--disable-backgrounding-occluded-windows",
+		"--disable-breakpad",
+		"--disable-client-side-phishing-detection",
+		"--disable-component-extensions-with-background-pages",
+		"--disable-default-apps",
+		"--disable-dev-shm-usage",
+		"--disable-hang-monitor",
+		"--disable-ipc-flooding-protection",
+		"--disable-popup-blocking",
+		"--disable-prompt-on-repost",
+		"--disable-renderer-backgrounding",
+		"--disable-sync",
+		"--metrics-recording-only",
+		"--no-first-run",
+		"--use-mock-keychain",
+		"--no-startup-window",
+		"--headless",
+		"--mute-audio",
 		"--enable-features=NetworkService,NetworkServiceInProcess",
-		"--disable-features=ReduceAcceptLanguage,TranslateUI,InitialWebUI,WebUIToolbarProcessOverheadExperiment,PreloadTopChromeWebUI,WebUIOmniboxPopup,WebUIOmniboxAimPopup,ExtensionDisableUnsupportedDeveloper",
-		"--force-color-profile=srgb", "--password-store=basic", "--enable-blink-features=IdleDetection", "--disable-blink-features=AutomationControlled",
-		"--user-agent=" + desktopUserAgent(version), "--allowlisted-extension-id=" + captureExtensionID,
+		"--disable-features=ReduceAcceptLanguage,TranslateUI,InitialWebUI," +
+			"WebUIToolbarProcessOverheadExperiment,PreloadTopChromeWebUI,WebUIOmniboxPopup," +
+			"WebUIOmniboxAimPopup,ExtensionDisableUnsupportedDeveloper",
+		"--force-color-profile=srgb",
+		"--password-store=basic",
+		"--enable-blink-features=IdleDetection",
+		"--disable-blink-features=AutomationControlled",
+		"--user-agent=" + desktopUserAgent(version),
+		"--allowlisted-extension-id=" + captureExtensionID,
 	}
 	if runtime.GOOS == "linux" {
-		args = append(args, "--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2")
+		args = append(
+			args,
+			"--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,"+
+				"availableHoverTypes=2",
+		)
 	}
 	return args
 }
@@ -138,7 +171,11 @@ func chromeEnvironment(locale commandwire.CommandLocale) []string {
 }
 
 // startChrome retains and drains stderr while waiting for Chrome's CDP endpoint.
-func startChrome(ctx context.Context, command *exec.Cmd, directories *environmentDirectories) (*chromeProcess, string, func(), error) {
+func startChrome(
+	ctx context.Context,
+	command *exec.Cmd,
+	directories *environmentDirectories,
+) (*chromeProcess, string, func(), error) {
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		return nil, "", nil, err
@@ -148,28 +185,7 @@ func startChrome(ctx context.Context, command *exec.Cmd, directories *environmen
 	refused := make(chan struct{})
 	drained := make(chan struct{})
 	go func() {
-		defer close(drained)
-		scan := bufio.NewReader(reader)
-		for {
-			line, readErr := scan.ReadString('\n')
-			if strings.Contains(line, "Running as root without --no-sandbox is not supported") {
-				select {
-				case <-refused:
-				default:
-					close(refused)
-				}
-			}
-			line = strings.TrimSpace(line)
-			if address, ok := strings.CutPrefix(line, "DevTools listening on "); ok {
-				select {
-				case endpoint <- address:
-				default:
-				}
-			}
-			if readErr != nil {
-				return
-			}
-		}
+		scanChromeLogs(reader, endpoint, refused, drained)
 	}()
 	stopLogs := func() {
 		_ = reader.Close()
@@ -203,7 +219,11 @@ func startChrome(ctx context.Context, command *exec.Cmd, directories *environmen
 		case <-refused:
 			err = &cdp.BrowserError{Kind: cdp.KindRoot}
 		default:
-			err = &cdp.BrowserError{Kind: cdp.KindUnavailable, Message: "Chrome exited before its debugging endpoint was ready", Cause: process.waitErr}
+			err = &cdp.BrowserError{
+				Kind:    cdp.KindUnavailable,
+				Message: "Chrome exited before its debugging endpoint was ready",
+				Cause:   process.waitErr,
+			}
 		}
 	case <-bounded.Done():
 		err = bounded.Err()
@@ -218,4 +238,29 @@ func localeLanguages(locale commandwire.CommandLocale) []string {
 		languages[index] = string(language)
 	}
 	return languages
+}
+
+func scanChromeLogs(reader *os.File, endpoint chan<- string, refused chan struct{}, drained chan struct{}) {
+	defer close(drained)
+	scan := bufio.NewReader(reader)
+	for {
+		line, readErr := scan.ReadString('\n')
+		if strings.Contains(line, "Running as root without --no-sandbox is not supported") {
+			select {
+			case <-refused:
+			default:
+				close(refused)
+			}
+		}
+		line = strings.TrimSpace(line)
+		if address, ok := strings.CutPrefix(line, "DevTools listening on "); ok {
+			select {
+			case endpoint <- address:
+			default:
+			}
+		}
+		if readErr != nil {
+			return
+		}
+	}
 }

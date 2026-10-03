@@ -16,12 +16,19 @@ func deliveryFixture() (*writer, *streamView) {
 	stream := &captureStream{wake: make(chan struct{}, 1)}
 	return w, &streamView{stream: stream}
 }
+
 func TestDeliveryDropsBrokenPicturesAndResumesAtKeyFrame(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w, stream := deliveryFixture()
 		d := newDelivery()
 		d.picture(t.Context(), "t1", stream, picture{kind: pictureRestart, epoch: 3, width: 1280, height: 720}, w)
-		d.picture(t.Context(), "t1", stream, picture{kind: pictureFrame, frame: &tabs.Frame{Sequence: 1, Width: 1280, Height: 720, Data: []byte{1}}}, w)
+		d.picture(
+			t.Context(),
+			"t1",
+			stream,
+			picture{kind: pictureFrame, frame: &tabs.Frame{Sequence: 1, Width: 1280, Height: 720, Data: []byte{1}}},
+			w,
+		)
 		if len(w.videos) != 0 || stream.pace.floor != 1 {
 			t.Fatal("delta before key frame held the capture or reached viewer")
 		}
@@ -29,7 +36,8 @@ func TestDeliveryDropsBrokenPicturesAndResumesAtKeyFrame(t *testing.T) {
 		d.picture(t.Context(), "t1", stream, picture{kind: pictureFrame, frame: &frame}, w)
 		data := <-w.videos
 		header, payload, err := browserop.SplitVideoFrame(data[5:])
-		if err != nil || header.Generation != 1 || header.Sequence != 2 || !header.Key || string(payload) != string([]byte{2}) {
+		if err != nil || header.Generation != 1 || header.Sequence != 2 || !header.Key ||
+			string(payload) != string([]byte{2}) {
 			t.Fatalf("video = %+v, %v, %v", header, payload, err)
 		}
 		if stream.pace.floor != 1 || stream.pace.epoch != 3 {
@@ -58,13 +66,23 @@ func TestDeliveryDropsBrokenPicturesAndResumesAtKeyFrame(t *testing.T) {
 		}
 	})
 }
+
 func TestDeliveryBackpressureRecoversWithoutReplayingFrames(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w, stream := deliveryFixture()
 		d := newDelivery()
 		d.picture(t.Context(), "t1", stream, picture{kind: pictureRestart, epoch: 1, width: 100, height: 100}, w)
 		for sequence := uint32(1); sequence <= 5; sequence++ {
-			d.picture(t.Context(), "t1", stream, picture{kind: pictureFrame, frame: &tabs.Frame{Sequence: sequence, Key: sequence == 1, Width: 100, Height: 100}}, w)
+			d.picture(
+				t.Context(),
+				"t1",
+				stream,
+				picture{
+					kind:  pictureFrame,
+					frame: &tabs.Frame{Sequence: sequence, Key: sequence == 1, Width: 100, Height: 100},
+				},
+				w,
+			)
 		}
 		if len(w.videos) != 4 || !d.dropped || stream.pace.keys != 1 {
 			t.Fatal("full video queue did not drop and request recovery")
@@ -72,24 +90,43 @@ func TestDeliveryBackpressureRecoversWithoutReplayingFrames(t *testing.T) {
 		for len(w.videos) > 0 {
 			<-w.videos
 		}
-		d.picture(t.Context(), "t1", stream, picture{kind: pictureFrame, frame: &tabs.Frame{Sequence: 6, Width: 100, Height: 100}}, w)
+		d.picture(
+			t.Context(),
+			"t1",
+			stream,
+			picture{kind: pictureFrame, frame: &tabs.Frame{Sequence: 6, Width: 100, Height: 100}},
+			w,
+		)
 		if len(w.videos) != 0 {
 			t.Fatal("delta after overflow reached viewer")
 		}
-		d.picture(t.Context(), "t1", stream, picture{kind: pictureFrame, frame: &tabs.Frame{Sequence: 7, Key: true, Width: 100, Height: 100}}, w)
+		d.picture(
+			t.Context(),
+			"t1",
+			stream,
+			picture{kind: pictureFrame, frame: &tabs.Frame{Sequence: 7, Key: true, Width: 100, Height: 100}},
+			w,
+		)
 		header, _, err := browserop.SplitVideoFrame((<-w.videos)[5:])
 		if err != nil || header.Sequence != 7 {
 			t.Fatalf("recovery frame = %+v, %v", header, err)
 		}
 	})
 }
+
 func TestDeliveryStallReleasesCaptureWithoutLoweringBudget(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w, stream := deliveryFixture()
 		d := newDelivery()
 		budget := d.rate.bitrate()
 		time.Sleep(time.Millisecond)
-		d.picture(t.Context(), "t1", stream, picture{kind: pictureFrame, frame: &tabs.Frame{Sequence: 1, Key: true, Width: 1280, Height: 720}}, w)
+		d.picture(
+			t.Context(),
+			"t1",
+			stream,
+			picture{kind: pictureFrame, frame: &tabs.Frame{Sequence: 1, Key: true, Width: 1280, Height: 720}},
+			w,
+		)
 		// A Host pause longer than three ticks is not path congestion.
 		time.Sleep(4 * time.Second)
 		d.tick(stream, w)

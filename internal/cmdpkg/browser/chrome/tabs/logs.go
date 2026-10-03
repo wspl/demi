@@ -41,49 +41,23 @@ func observeConsole(tab *Tab) (*Console, error) {
 	if err != nil {
 		return nil, err
 	}
-	history, err := cdp.NewBuffer("logs", browserop.ConsoleEntries, browserop.ConsoleBytes, func(entry browserop.LogEntry) uint64 { return entry.Sequence }, func(entry browserop.LogEntry, sequence uint64) browserop.LogEntry {
-		entry.Sequence = sequence
-		return entry
-	})
+	history, err := cdp.NewBuffer(
+		"logs",
+		browserop.ConsoleEntries,
+		browserop.ConsoleBytes,
+		func(entry browserop.LogEntry) uint64 { return entry.Sequence },
+		func(entry browserop.LogEntry, sequence uint64) browserop.LogEntry {
+			entry.Sequence = sequence
+			return entry
+		},
+	)
 	if err != nil {
 		events.Close()
 		return nil, err
 	}
 	console := &Console{ctx: tab.ctx, history: history}
 	if err := tab.StartTask(func(ctx context.Context) {
-		defer events.Close()
-		for {
-			raw, err := events.Next(ctx)
-			if ctx.Err() != nil {
-				return
-			}
-			var entry browserop.LogEntry
-			if err == nil {
-				var decoded any
-				decoded, err = cdp.DecodeEvent(raw)
-				if err == nil {
-					if event, ok := decoded.(*runtime.EventConsoleAPICalled); ok {
-						entry, err = consoleEntry(event)
-					}
-				}
-			} else {
-				var loss *cdp.EventLoss
-				if !errors.As(err, &loss) {
-					return
-				}
-			}
-			console.mu.Lock()
-			if err == nil {
-				err = history.Push(entry)
-			}
-			if err != nil {
-				err = history.MarkGap()
-			}
-			console.mu.Unlock()
-			if err != nil {
-				return
-			}
-		}
+		console.collect(ctx, events, history)
 	}); err != nil {
 		events.Close()
 		return nil, err
@@ -99,25 +73,10 @@ func consoleEntry(event *runtime.EventConsoleAPICalled) (browserop.LogEntry, err
 		if argument.UnserializableValue != "" {
 			text = string(argument.UnserializableValue)
 		}
-		if argument.Value != nil {
-			value, err := contract.JSON(argument.Value)
-			if err != nil {
-				return browserop.LogEntry{}, err
-			}
-			// CDP already validates the remote object's vendor envelope; parse the
-			// retained JSON value through contract to preserve serde ordering/escaping.
-			encoded, err := contract.EncodeJSON(value)
-			if err != nil {
-				return browserop.LogEntry{}, err
-			}
-			text = string(encoded)
-			if len(encoded) > 0 && encoded[0] == '"' {
-				var err error
-				text, err = contract.Decode[string](encoded)
-				if err != nil {
-					return browserop.LogEntry{}, err
-				}
-			}
+		var err error
+		text, err = consoleValue(argument, text)
+		if err != nil {
+			return browserop.LogEntry{}, err
 		}
 		parts = append(parts, text)
 	}
@@ -137,7 +96,12 @@ func consoleEntry(event *runtime.EventConsoleAPICalled) (browserop.LogEntry, err
 		value := event.StackTrace.CallFrames[0].URL
 		url = &value
 	}
-	return browserop.LogEntry{Level: level, Text: strings.Join(parts, " "), URL: url, Timestamp: float64(event.Timestamp.Time().UnixNano()) / 1e6}, nil
+	return browserop.LogEntry{
+		Level:     level,
+		Text:      strings.Join(parts, " "),
+		URL:       url,
+		Timestamp: float64(event.Timestamp.Time().UnixNano()) / 1e6,
+	}, nil
 }
 
 // readConsole pages a bounded history without consuming another reader's cursor.
@@ -178,5 +142,80 @@ func readConsole(history *cdp.Buffer[browserop.LogEntry], input browserop.LogsIn
 	if more && len(page) > 0 {
 		next = page[len(page)-1].Sequence + 1
 	}
-	return browserop.LogsResult{Entries: page, Cursor: history.Cursor(next), HasMore: more, Truncated: history.HasEvicted()}, nil
+	return browserop.LogsResult{
+		Entries:   page,
+		Cursor:    history.Cursor(next),
+		HasMore:   more,
+		Truncated: history.HasEvicted(),
+	}, nil
+}
+
+func (c *Console) collect(ctx context.Context, events *cdp.Subscription, history *cdp.Buffer[browserop.LogEntry]) {
+	defer events.Close()
+	for {
+		raw, err := events.Next(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		var entry browserop.LogEntry
+		if err == nil {
+			entry, err = decodedConsole(raw)
+		} else {
+			var loss *cdp.EventLoss
+			if !errors.As(err, &loss) {
+				return
+			}
+		}
+		c.mu.Lock()
+		if err == nil {
+			err = history.Push(entry)
+		}
+		if err != nil {
+			err = history.MarkGap()
+		}
+		c.mu.Unlock()
+		if err != nil {
+			return
+		}
+	}
+}
+
+func consoleValue(argument *runtime.RemoteObject, text string) (string, error) {
+	if argument.Value == nil {
+		return text, nil
+	}
+	value, err := contract.JSON(argument.Value)
+	if err != nil {
+		return "", err
+	}
+	// CDP already validates the remote object's vendor envelope; parse the
+	// retained JSON value through contract to preserve serde ordering/escaping.
+	encoded, err := contract.EncodeJSON(value)
+	if err != nil {
+		return "", err
+	}
+	text = string(encoded)
+	if len(encoded) > 0 && encoded[0] == '"' {
+		var err error
+		text, err = contract.Decode[string](encoded)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return text, nil
+}
+
+func decodedConsole(raw cdp.Event) (browserop.LogEntry, error) {
+	var entry browserop.LogEntry
+	var err error
+	var decoded any
+	decoded, err = cdp.DecodeEvent(raw)
+	if err == nil {
+		if event, ok := decoded.(*runtime.EventConsoleAPICalled); ok {
+			entry, err = consoleEntry(event)
+		}
+	}
+
+	return entry, err
 }

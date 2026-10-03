@@ -24,7 +24,10 @@ import (
 type Navigation interface{ navigation() }
 
 // Visit navigates to an absolute supported URL.
-type Visit struct{ URL string }
+type Visit struct {
+	// URL names the navigation destination.
+	URL string
+}
 
 func (*Visit) navigation() {}
 
@@ -34,7 +37,10 @@ type Reload struct{}
 func (*Reload) navigation() {}
 
 // History navigates to a Chrome history entry ID.
-type History struct{ EntryID int64 }
+type History struct {
+	// EntryID selects the Chrome history entry.
+	EntryID int64
+}
 
 func (*History) navigation() {}
 
@@ -63,43 +69,14 @@ func (n *NavigationObservation) URL() string {
 
 // WaitLoad observes the requested lifecycle under the operation's shared deadline.
 // Ordinary clicks use Rust's 250 ms load-start classification window only.
-func (n *NavigationObservation) WaitLoad(ctx context.Context, load browserop.Load, ordinaryClick bool, operation *cdp.Operation) error {
+func (n *NavigationObservation) WaitLoad(
+	ctx context.Context,
+	load browserop.Load,
+	ordinaryClick bool,
+	operation *cdp.Operation,
+) error {
 	return operation.Run(ctx, func(ctx context.Context) error {
-		classification, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
-		defer cancel()
-		started := !ordinaryClick
-		for {
-			waitCtx := ctx
-			if !started {
-				waitCtx = classification
-			}
-			event, reason, err := n.next(waitCtx)
-			if err != nil {
-				if !started && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
-					return nil
-				}
-				return err
-			}
-			if event == navigationStarted || event == navigationCommit || event == navigationSame {
-				operation.CompleteInput()
-			}
-			switch event {
-			case navigationSame:
-				if n.expected == "" {
-					return nil
-				}
-			case navigationFailed:
-				if ordinaryClick {
-					return nil
-				}
-				return &cdp.BrowserError{Kind: cdp.KindNavigationFailed, Message: reason}
-			case navigationStarted, navigationCommit:
-				started = true
-			}
-			if n.committed != "" && (load == browserop.LoadCommit || n.states[n.committed][loadEvent(load)]) {
-				return nil
-			}
-		}
+		return n.waitLoad(ctx, load, ordinaryClick, operation)
 	})
 }
 
@@ -149,7 +126,15 @@ func (n *NavigationObservation) Close() {
 
 // ObserveNavigation installs an observer on the tab's session before page input.
 func (t *Tab) ObserveNavigation(ctx context.Context) (*NavigationObservation, error) {
-	events, err := t.session.SubscribeWithCapacity(256, "Network.requestWillBeSent", "Network.loadingFailed", "Page.frameNavigated", "Page.navigatedWithinDocument", "Page.lifecycleEvent", "Page.frameStartedLoading")
+	events, err := t.session.SubscribeWithCapacity(
+		256,
+		"Network.requestWillBeSent",
+		"Network.loadingFailed",
+		"Page.frameNavigated",
+		"Page.navigatedWithinDocument",
+		"Page.lifecycleEvent",
+		"Page.frameStartedLoading",
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +143,14 @@ func (t *Tab) ObserveNavigation(ctx context.Context) (*NavigationObservation, er
 		events.Close()
 		return nil, err
 	}
-	n := &NavigationObservation{events: events, frame: tree.Frame.ID, previous: tree.Frame.LoaderID, url: frameURL(tree.Frame), documents: make(map[network.RequestID]protocol.LoaderID), states: make(map[protocol.LoaderID]map[string]bool)}
+	n := &NavigationObservation{
+		events:    events,
+		frame:     tree.Frame.ID,
+		previous:  tree.Frame.LoaderID,
+		url:       frameURL(tree.Frame),
+		documents: make(map[network.RequestID]protocol.LoaderID),
+		states:    make(map[protocol.LoaderID]map[string]bool),
+	}
 	drain, cancel := context.WithCancel(ctx)
 	cancel()
 	for {
@@ -180,7 +172,13 @@ func (t *Tab) ObserveNavigation(ctx context.Context) (*NavigationObservation, er
 
 // Navigate runs one navigation, invalidates document references and returns its URL.
 // The caller holds the tab gate and passes that checkout's references.
-func (t *Tab) Navigate(ctx context.Context, navigation Navigation, load browserop.Load, operation *cdp.Operation, references *References) (string, error) {
+func (t *Tab) Navigate(
+	ctx context.Context,
+	navigation Navigation,
+	load browserop.Load,
+	operation *cdp.Operation,
+	references *References,
+) (string, error) {
 	if visit, ok := navigation.(*Visit); ok {
 		if err := ValidateURL(visit.URL); err != nil {
 			return "", err
@@ -252,12 +250,16 @@ func (t *Tab) WaitCurrentLoad(ctx context.Context, load browserop.Load) error {
 		return err
 	}
 	replaced := func() error {
-		return &cdp.BrowserError{Kind: cdp.KindNavigationFailed, Message: "current document was replaced before its load wait completed"}
+		return &cdp.BrowserError{
+			Kind:    cdp.KindNavigationFailed,
+			Message: "current document was replaced before its load wait completed",
+		}
 	}
 	if tree.Frame.LoaderID != frame.LoaderID {
 		return replaced()
 	}
-	if load == browserop.LoadCommit || ready == "complete" || load == browserop.LoadDomContentLoaded && ready == "interactive" {
+	if load == browserop.LoadCommit || ready == "complete" ||
+		load == browserop.LoadDomContentLoaded && ready == "interactive" {
 		return nil
 	}
 	for {
@@ -275,7 +277,8 @@ func (t *Tab) WaitCurrentLoad(ctx context.Context, load browserop.Load) error {
 				return replaced()
 			}
 		case *page.EventLifecycleEvent:
-			if event.FrameID == frame.ID && event.LoaderID == frame.LoaderID && (event.Name == "load" || event.Name == loadEvent(load)) {
+			if event.FrameID == frame.ID && event.LoaderID == frame.LoaderID &&
+				(event.Name == "load" || event.Name == loadEvent(load)) {
 				return nil
 			}
 		}
@@ -311,7 +314,11 @@ func (t *Tab) Reload() {
 }
 
 // Steer starts a user's goto, reload, back or forward without waiting for load.
-func (t *Tab) Steer(ctx context.Context, command browserop.Operation, operation *cdp.Operation) (browserop.NavigationResult, error) {
+func (t *Tab) Steer(
+	ctx context.Context,
+	command browserop.Operation,
+	operation *cdp.Operation,
+) (browserop.NavigationResult, error) {
 	var url string
 	switch command := command.(type) {
 	case *browserop.GotoInput:
@@ -332,7 +339,10 @@ func (t *Tab) Steer(ctx context.Context, command browserop.Operation, operation 
 			return browserop.NavigationResult{}, err
 		}
 		if url == "" {
-			return browserop.NavigationResult{}, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "the tab has no URL to reload"}
+			return browserop.NavigationResult{}, &cdp.BrowserError{
+				Kind:    cdp.KindInvalidResult,
+				Message: "the tab has no URL to reload",
+			}
 		}
 		t.Reload()
 	case *browserop.BackInput, *browserop.ForwardInput:
@@ -344,7 +354,10 @@ func (t *Tab) Steer(ctx context.Context, command browserop.Operation, operation 
 		url = entry.URL
 		t.detach(&History{EntryID: entry.ID})
 	default:
-		return browserop.NavigationResult{}, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "not a navigation command"}
+		return browserop.NavigationResult{}, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "not a navigation command",
+		}
 	}
 	return browserop.NavigationResult{Tab: t.id, URL: url}, nil
 }
@@ -362,7 +375,10 @@ func ValidateURL(url string) error {
 	if parsed.String() == "about:blank" {
 		return nil
 	}
-	return &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "navigation accepts http:, https:, file:, or about:blank"}
+	return &cdp.BrowserError{
+		Kind:    cdp.KindConfiguration,
+		Message: "navigation accepts http:, https:, file:, or about:blank",
+	}
 }
 
 type navigationEvent uint8
@@ -405,16 +421,7 @@ func (n *NavigationObservation) next(ctx context.Context) (navigationEvent, stri
 			return navigationSame, "", nil
 		}
 	case *page.EventFrameNavigated:
-		if event.Frame.ID == n.frame {
-			n.url = frameURL(event.Frame)
-			if (n.expected == "" || n.expected == event.Frame.LoaderID) && event.Frame.LoaderID != n.previous {
-				n.committed = event.Frame.LoaderID
-				if event.Type == page.NavigationTypeBackForwardCacheRestore {
-					n.states[n.committed] = map[string]bool{"DOMContentLoaded": true, "load": true}
-				}
-			}
-			return navigationCommit, "", nil
-		}
+		return n.committedFrame(event)
 	case *page.EventLifecycleEvent:
 		if event.FrameID == n.frame {
 			states := n.states[event.LoaderID]
@@ -496,4 +503,62 @@ func (t *Tab) detach(navigation Navigation) {
 	}); err != nil {
 		return
 	} // A closing tab must not receive a late navigation.
+}
+
+func (n *NavigationObservation) waitLoad(
+	ctx context.Context,
+	load browserop.Load,
+	ordinaryClick bool,
+	operation *cdp.Operation,
+) error {
+	classification, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancel()
+	started := !ordinaryClick
+	for {
+		waitCtx := ctx
+		if !started {
+			waitCtx = classification
+		}
+		event, reason, err := n.next(waitCtx)
+		if err != nil {
+			if !started && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+				return nil
+			}
+			return err
+		}
+		if event == navigationStarted || event == navigationCommit || event == navigationSame {
+			operation.CompleteInput()
+		}
+		switch event {
+		case navigationSame:
+			if n.expected == "" {
+				return nil
+			}
+		case navigationFailed:
+			if ordinaryClick {
+				return nil
+			}
+			return &cdp.BrowserError{Kind: cdp.KindNavigationFailed, Message: reason}
+		case navigationStarted, navigationCommit:
+			started = true
+		}
+		if n.committed != "" && (load == browserop.LoadCommit || n.states[n.committed][loadEvent(load)]) {
+			return nil
+		}
+	}
+}
+
+func (n *NavigationObservation) committedFrame(event *page.EventFrameNavigated) (navigationEvent, string, error) {
+	if event.Frame.ID == n.frame {
+		n.url = frameURL(event.Frame)
+		if (n.expected == "" || n.expected == event.Frame.LoaderID) && event.Frame.LoaderID != n.previous {
+			n.committed = event.Frame.LoaderID
+			if event.Type == page.NavigationTypeBackForwardCacheRestore {
+				n.states[n.committed] = map[string]bool{"DOMContentLoaded": true, "load": true}
+			}
+		}
+		return navigationCommit, "", nil
+	}
+
+	return navigationOther, "", nil
 }

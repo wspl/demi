@@ -46,7 +46,8 @@ func TestUserAgentCarriesMajorVersionWithoutHeadlessToken(t *testing.T) {
 
 func TestCPUWithSMEWithoutSVECannotCapture(t *testing.T) {
 	hwcap := uint64(0xefffffff) &^ (1 << 22)
-	if !smeWithoutSVE(hwcap, 0x1a03fb26181) || smeWithoutSVE(hwcap, 0x326181) || smeWithoutSVE(hwcap|1<<22, 0x1a03fb26181) {
+	if !smeWithoutSVE(hwcap, 0x1a03fb26181) || smeWithoutSVE(hwcap, 0x326181) ||
+		smeWithoutSVE(hwcap|1<<22, 0x1a03fb26181) {
 		t.Fatal("capture capability mismatch")
 	}
 }

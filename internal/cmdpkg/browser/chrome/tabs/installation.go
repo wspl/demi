@@ -51,7 +51,10 @@ func (c *Chrome) Executable(ctx context.Context, invocation string) (string, err
 	}
 	platform := release.Platform(string(host))
 	if platform == nil {
-		return "", &cdp.BrowserError{Kind: cdp.KindInstallation, Message: fmt.Sprintf("%s is unavailable on %s", release.Title(), host)}
+		return "", &cdp.BrowserError{
+			Kind:    cdp.KindInstallation,
+			Message: fmt.Sprintf("%s is unavailable on %s", release.Title(), host),
+		}
 	}
 	c.mu.Lock()
 	source := c.artifacts
@@ -59,7 +62,17 @@ func (c *Chrome) Executable(ctx context.Context, invocation string) (string, err
 	if source == nil {
 		return "", &cdp.BrowserError{Kind: cdp.KindInstallation, Message: "demi-browser has no artifacts source"}
 	}
-	path, err := source.Install(ctx, commandwire.ArtifactInstall{Invocation: invocation, Name: ChromeName, Version: release.Version, SHA256: platform.SHA256, Size: platform.Size, Form: &commandwire.ArtifactArchive{Entry: platform.Executable}})
+	path, err := source.Install(
+		ctx,
+		commandwire.ArtifactInstall{
+			Invocation: invocation,
+			Name:       ChromeName,
+			Version:    release.Version,
+			SHA256:     platform.SHA256,
+			Size:       platform.Size,
+			Form:       &commandwire.ArtifactArchive{Entry: platform.Executable},
+		},
+	)
 	if err != nil {
 		return "", &cdp.BrowserError{Kind: cdp.KindInstallation, Message: err.Error(), Cause: err}
 	}
@@ -116,7 +129,7 @@ func SweepOrphans(ctx context.Context, chrome *Chrome) error {
 	if err != nil {
 		return err
 	}
-	return sweepOrphansIn(ctx, HostDirectories(), roots, currentOwner())
+	return sweepOrphans(ctx, HostDirectories(), roots, currentOwner())
 }
 
 // installationOf finds the root containing Chrome and its executable helpers.
