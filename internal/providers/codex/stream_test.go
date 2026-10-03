@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -36,12 +37,13 @@ func TestCleanStreamEnd(t *testing.T) {
 }
 func TestStreamUsageLimit(t *testing.T) {
 	v, _, p := setup(t)
-	frame := `{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":1790062659},"status_code":429}`
+	frame := `{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1790062659,"resets_in_seconds":321250},"status_code":429}`
 	v.RespondAt(responses, stream(frame))
 	f := failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest()))
 	equal(t, *f.Code, provider.RateLimit)
 	equal(t, f.Message, "The usage limit has been reached")
 	equal(t, *f.RetryAfter, time.Duration(1790062659-1789740000)*time.Second)
+	equal(t, f.Diagnostics.Source, core.FailureSource("stream"))
 	equal(t, *f.Diagnostics.Upstream, frame)
 	equal(t, *f.Diagnostics.ProviderCode, "usage_limit_reached")
 }
@@ -56,7 +58,18 @@ func TestHTTPFailureRecord(t *testing.T) {
 	equal(t, *f.RetryAfter, 2*time.Second)
 	equal(t, *f.Diagnostics.ProviderRequestID, "req-http-1")
 	equal(t, *f.Diagnostics.ProviderCode, "server_error")
-	equal(t, provider.ReadHTTPRecord(f.Diagnostics).Body, body)
+	equal(t, f.Message, "Codex API request failed with HTTP 500: "+body)
+	equal(t, f.Diagnostics.Source, core.FailureSource("http"))
+	equal(t, *f.Diagnostics.HTTPStatus, uint16(500))
+	record := provider.ReadHTTPRecord(f.Diagnostics)
+	equal(t, record.Body, body)
+	var names []string
+	for _, pair := range record.Headers {
+		names = append(names, pair[0])
+	}
+	if !slices.Contains(names, "retry-after") || !slices.Contains(names, "x-request-id") || !slices.IsSorted(names) {
+		t.Fatalf("headers: %v", names)
+	}
 	equal(t, len(v.Requests()), 1)
 }
 
@@ -76,6 +89,7 @@ func TestHeaderTimeout(t *testing.T) {
 			t.Fatal(err)
 		}
 		f := failure(t, run(t.Context(), t, p, client, providertest.InferenceRequest()))
+		equal(t, f.Diagnostics.Source, core.FailureSource("transport"))
 		equal(t, f.Message, "Codex SSE response headers timed out after 50ms")
 		equal(t, *f.Code, provider.Overloaded)
 	})
@@ -105,10 +119,11 @@ func TestFailureResetReader(t *testing.T) {
 		text string
 		want core.Timestamp
 	}{
+		{`{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1790062659,"resets_in_seconds":321250},"status_code":429}`, "2026-09-22T07:37:39.000Z"},
 		{`{"error":{"resets_at":1790062659,"resets_in_seconds":1}}`, "2026-09-22T07:37:39.000Z"},
-		{`{"event":{"error":{"resets_in_seconds":90}}}`, "2026-09-18T14:01:30.000Z"},
-		{`{"response":{"error":{"resets_at":1790062659}}}`, "2026-09-22T07:37:39.000Z"},
-		{`{"error":{"resets_at":"soon"}}`, ""},
+		{`{"type":"event","event":{"type":"error","error":{"resets_in_seconds":90}}}`, "2026-09-18T14:01:30.000Z"},
+		{`{"type":"response.failed","response":{"error":{"resets_at":1790062659}}}`, "2026-09-22T07:37:39.000Z"},
+		{`{"type":"error","error":{"resets_at":"soon"}}`, ""},
 	}
 	for _, test := range cases {
 		d := core.ProviderErrorDiagnostics{Source: core.FailureSource("stream"), Upstream: &test.text}
@@ -123,7 +138,10 @@ func TestFailureResetReader(t *testing.T) {
 		body string
 		want core.Timestamp
 	}{{`{"error":{"resets_at":1790062659}}`, "2026-09-22T07:37:39.000Z"}, {"busy", "2026-09-18T14:00:30.000Z"}} {
-		record := provider.NewHTTPFailureRecord(429, http.Header{"Retry-After": {"30"}}, test.body)
+		record := provider.NewHTTPFailureRecord(429, nil, test.body)
+		if test.body == "busy" {
+			record = provider.NewHTTPFailureRecord(503, http.Header{"Retry-After": {"30"}}, test.body)
+		}
 		b, err := provider.JSONBody(record)
 		if err != nil {
 			t.Fatal(err)

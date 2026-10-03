@@ -80,6 +80,7 @@ func TestModelsRevalidationAndSharedRequest(t *testing.T) {
 			requireEqual(t, other.FetchedAt, first.FetchedAt)
 			requireEqual(t, other.Stale, false)
 		}
+		requireEqual(t, first.Stale, false)
 		requireEqual(t, first.FetchedAt, now)
 		requireEqual(t, first.Warnings, []string{})
 		requireEqual(t, len(requests), 1)
@@ -150,6 +151,7 @@ func TestModelsCatalogMapping(t *testing.T) {
 		t.Fatal(err)
 	}
 	vendors := snapshot.Vendors()
+	requireEqual(t, len(vendors), 2)
 	requireEqual(t, []string{vendors[0].ID, vendors[1].ID}, []string{"deepseek", "minimax"})
 	requireEqual(t, []string{vendors[0].Name, vendors[1].Name}, []string{"DeepSeek", "MiniMax"})
 	requireEqual(t, *vendors[0].NPM, "@ai-sdk/openai-compatible")

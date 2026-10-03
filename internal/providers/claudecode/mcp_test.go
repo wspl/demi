@@ -26,17 +26,9 @@ func TestMCPListsToolsAndSingleUnstreamedCall(t *testing.T) {
 			}
 			id, reply := mcpResponse(t, v)
 			switch id {
-			case "mcp-init":
-				var result struct {
-					Server struct {
-						Name string `json:"name"`
-					} `json:"serverInfo"`
-				}
-				if err := json.Unmarshal(reply["result"], &result); err != nil {
-					t.Fatal(err)
-				}
-				equal(t, result.Server.Name, "demi")
-			case "mcp-initialized", "ping":
+			case "mcp-init", "mcp-initialized":
+				// The scripted process validates the shared handshake replies.
+			case "ping":
 				checkJSON(t, reply["result"], `{}`)
 			case "list":
 				checkJSON(t, reply["result"], `{"tools":[{"name":"shell_exec","description":"Execute a shell script","inputSchema":{"type":"object","properties":{"script":{"type":"string"}},"required":["script"],"additionalProperties":false}}]}`)
@@ -53,6 +45,9 @@ func TestMCPListsToolsAndSingleUnstreamedCall(t *testing.T) {
 	c.onWrite = func(v map[string]json.RawMessage) {
 		id, reply := mcpResponse(t, v)
 		equal(t, id, "call-1")
+		equal(t, decoded(t, reply["jsonrpc"]), "2.0")
+		equal(t, decoded(t, reply["id"]), float64(3))
+		equal(t, len(reply), 3)
 		checkJSON(t, reply["result"], `{"content":[{"type":"text","text":"/tmp"}],"isError":false}`)
 		c.text("after the tool")
 		c.result(2, 4)
@@ -133,7 +128,7 @@ func TestMCPResultImagesAndErrors(t *testing.T) {
 		checkJSON(t, reply["result"], `{"content":[{"type":"text","text":"captured"},{"type":"image","data":"AQID","mimeType":"image/png"},{"type":"text","text":"[video:video/mp4]"}],"isError":true}`)
 		c.result(1, 1)
 	}
-	req.Items = append(req.Items, &provider.ToolResult{ToolUseID: call.ToolUseID, IsError: true, Output: []provider.ResultPart{&provider.TextPart{Text: "captured"}, &provider.ResultImage{Bytes: provider.MediaBytes{Data: []byte{1, 2, 3}, MediaType: "image/png"}}, &provider.ResultVideo{Bytes: provider.MediaBytes{MediaType: "video/mp4"}}}})
+	req.Items = append(req.Items, &provider.ToolUse{ModelID: "claude-test", ToolUseID: call.ToolUseID, ToolName: call.ToolName, Input: call.Input}, &provider.ToolResult{ToolUseID: call.ToolUseID, IsError: true, Output: []provider.ResultPart{&provider.TextPart{Text: "captured"}, &provider.ResultImage{Bytes: provider.MediaBytes{Data: []byte{1, 2, 3}, MediaType: "image/png"}}, &provider.ResultVideo{Bytes: provider.MediaBytes{MediaType: "video/mp4"}}}})
 	equal(t, collect(t.Context(), r, req), []provider.Event{response(1, 1)})
 }
 func TestMalformedCallAndUnknownControlRefused(t *testing.T) {
@@ -177,35 +172,36 @@ func TestMalformedCallAndUnknownControlRefused(t *testing.T) {
 	equal(t, len(p.starts[0].signals), 0)
 }
 func TestMissingAndUnaskedBatchResults(t *testing.T) {
-	for _, missing := range []bool{true, false} {
-		t.Run(map[bool]string{true: "missing", false: "unasked"}[missing], func(t *testing.T) {
-			r, p := fixture(t, func(c *scriptedCLI) {
-				c.onWrite = func(v map[string]json.RawMessage) {
-					if c.initialized(v) {
-						return
-					}
-					c.say(startLine)
-					c.say(toolLine("toolu_alpha", "printf alpha"))
-					c.say(toolLine("toolu_beta", "printf beta"))
-					c.say(stopLine)
+	synctest.Test(t, func(t *testing.T) {
+		r, p := fixture(t, func(c *scriptedCLI) {
+			c.onWrite = func(v map[string]json.RawMessage) {
+				if c.initialized(v) {
+					return
 				}
-			})
-			req := withTools(request(user("run both")))
-			equal(t, len(collect(t.Context(), r, req)), 2)
-			c := p.starts[0]
-			req.Items = append(req.Items, toolOutput("toolu_alpha", "alpha done"))
-			if missing {
-				f := failure(t, collect(t.Context(), r, req))
-				equal(t, f.Message, "Claude Code provider missing tool_result for SDK MCP tool_use toolu_beta")
-				equal(t, c.signals, []host.Signal{host.Terminate})
-			} else {
-				req.Items = append(req.Items, toolOutput("toolu_beta", "beta done"), user("continue"))
-				c.onWrite = func(map[string]json.RawMessage) { c.finish(host.ProcessEnd{Kind: host.ProcessExited}) }
-				f := failure(t, collect(t.Context(), r, req))
-				equal(t, f.Message, "Claude Code exited before requesting SDK MCP tool result for toolu_alpha, toolu_beta")
+				c.say(startLine)
+				c.say(toolLine("toolu_alpha", "printf alpha"))
+				c.say(toolLine("toolu_beta", "printf beta"))
+				c.say(stopLine)
 			}
 		})
-	}
+		first := withTools(request(user("run both")))
+		equal(t, len(collect(t.Context(), r, first)), 2)
+		partial := withTools(request(user("run both"), toolOutput("toolu_alpha", "alpha done")))
+		f := failure(t, collect(t.Context(), r, partial))
+		equal(t, f.Message, "Claude Code provider missing tool_result for SDK MCP tool_use toolu_beta")
+		equal(t, p.starts[0].signals, []host.Signal{host.Terminate})
+
+		equal(t, len(collect(t.Context(), r, first)), 2)
+		equal(t, len(p.starts), 2)
+		c := p.starts[1]
+		both := withTools(request(user("run both"), toolOutput("toolu_alpha", "alpha done"), toolOutput("toolu_beta", "beta done")))
+		ended := make(chan []provider.Event, 1)
+		go func() { ended <- collect(t.Context(), r, both) }()
+		synctest.Wait()
+		c.finish(host.ProcessEnd{Kind: host.ProcessExited})
+		f = failure(t, <-ended)
+		equal(t, f.Message, "Claude Code exited before requesting SDK MCP tool result for toolu_alpha, toolu_beta")
+	})
 }
 func TestLeftoverOutputBelongsToNoRequest(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

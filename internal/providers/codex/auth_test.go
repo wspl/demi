@@ -21,6 +21,7 @@ func TestRefusedRequestRefreshesOnce(t *testing.T) {
 	equal(t, events, []provider.Event{&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}})
 	requests := v.Requests()
 	equal(t, len(requests), 3)
+	equal(t, []string{requests[0].URI, requests[1].URI, requests[2].URI}, []string{responses, "/oauth/token", responses})
 	equal(t, requests[0].Header("Authorization"), "Bearer "+freshToken(t))
 	equal(t, requests[2].Header("Authorization"), "Bearer new-access")
 	equal(t, requests[1].JSON(t), map[string]any{"client_id": "app_EMoamEEZ73f0CkXaXp7hrann", "grant_type": "refresh_token", "refresh_token": "refresh-1"})
@@ -67,10 +68,12 @@ func TestCompetingRefresherIsAdopted(t *testing.T) {
 	}
 	permit.Release()
 	<-done
-	if _, ok := events[len(events)-1].(*provider.Response); !ok {
+	equal(t, len(events), 1)
+	if _, ok := events[0].(*provider.Response); !ok {
 		t.Fatalf("events: %v", events)
 	}
 	equal(t, len(v.Requests()), 2)
+	equal(t, []string{v.Requests()[0].URI, v.Requests()[1].URI}, []string{responses, responses})
 	equal(t, v.Requests()[1].Header("Authorization"), "Bearer rotated-access")
 }
 func TestSecondRefusalFails(t *testing.T) {
@@ -126,6 +129,16 @@ func TestConcurrentRequestsRefreshOnce(t *testing.T) {
 		})
 	}
 	wg.Wait()
+	refreshes := 0
+	for _, request := range v.Requests() {
+		if request.URI == "/oauth/token" {
+			refreshes++
+		}
+		if request.URI == responses {
+			equal(t, request.Header("Authorization"), "Bearer new-access")
+		}
+	}
+	equal(t, refreshes, 1)
 	equal(t, len(v.Requests()), 3)
 }
 func TestRefusedRefreshFails(t *testing.T) {
@@ -159,9 +172,11 @@ func TestStatusAndInvalidOrMissingAccount(t *testing.T) {
 	}
 	equal(t, *failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest())).Code, provider.AuthInvalid)
 	p = configured(t, v, pool, func(c *codex.Config) { c.Account = nil })
-	if _, ok := p.AuthStatus(t.Context()).(*core.Unauthenticated); !ok {
+	missing, ok := p.AuthStatus(t.Context()).(*core.Unauthenticated)
+	if !ok {
 		t.Fatal("missing account authenticated")
 	}
+	equal(t, *missing.Message, "No Codex account is signed in")
 	equal(t, *failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest())).Code, provider.AuthMissing)
 	equal(t, len(v.Requests()), 0)
 }
