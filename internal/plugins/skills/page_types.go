@@ -5,7 +5,7 @@ package skills
 
 import "github.com/wspl/demi/internal/core"
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // `add_source { origin }`.
 // +demi:root direction=send output=plugin-skills

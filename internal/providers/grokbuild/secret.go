@@ -5,7 +5,7 @@ import (
 	"github.com/wspl/demi/internal/provider"
 )
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // The Grok Build family's secret document: the OAuth tokens and their
 // expiry, the issuer and client that issued them, the team or organization

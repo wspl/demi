@@ -48,7 +48,7 @@ over the manager's Unix socket.
 | Module | Crate | Responsibility | Design contract |
 |---|---|---|---|
 | `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
-| `shard` | `backend-user-shard` | Shard threads, each user's shard, calls into it, the shared services every shard is given, socket adoption and the page socket both of a page's sockets are served through | [Runtime model](#runtime-model) |
+| `shard` | `backend-user-shard` | Each user's shard, calls into it, the shared services every shard is given, socket adoption and the page socket both of a page's sockets are served through | [Runtime model](#runtime-model) |
 | `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
 | `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system), [Web API](../product/web-api.md#user-preferences) |
 | `sync` | `backend-page-sync`, `backend-user-shard` | The registry that marks changes on each user's channels (`backend-page-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-user-shard`) | [Page synchronization](#page-synchronization) |
@@ -112,14 +112,12 @@ an agent tree that no socket watches closes again once it is idle
 The machine manager's death events reach one edge task, which calls the shard
 of the device's owner.
 
-The edge uses axum because its handlers are thin: parse, authenticate, check
-ownership, then call a shared service or a shard. axum's requirement that a
-handler's future be `Send` therefore costs nothing, and its extractors, tower
-middleware and socket-free router tests come with it. The edge serves the
-connections of the backend's own listener itself, with hyper's HTTP/1
-server: it keeps each header name's case, which the expose relay passes on
-and axum's `serve` cannot, and it answers a request for an expose hostname
-with the relay before the router sees it. The listener gives every
+The edge serves HTTP with `net/http` because its handlers are thin: parse,
+authenticate, check ownership, then call a shared service or a shard. The edge
+accepts the connections of the backend's own listener itself: it reads each
+request's head and answers a request for an expose hostname with the relay
+before `net/http` parses it, so the relay keeps each header name's case, which
+`net/http` would canonicalize. The listener gives every
 connection an idle deadline and a close handle and exposes the peer address.
 A download arms the 60-second deadline, a lease the shard ends closes the
 connection at once even when the user's browser has stopped reading, and the
@@ -436,8 +434,7 @@ At startup the backend:
 5. Starts the shared services, among them the plugin host, which checks
    every plugin's manifest against the others and the native catalog; a
    manifest that breaks a rule stops the start and the error names the plugin
-   ([The plugin host](../architecture/plugins.md#the-plugin-host)). Then it
-   starts the shard threads.
+   ([The plugin host](../architecture/plugins.md#the-plugin-host)).
 6. Recovers before it serves: the machine manager reconciles its machines,
    which stops every Cloud, so the exposes an earlier backend left on a Cloud
    are destroyed ([Host expose](../execution/expose.md#lifetime)), an
@@ -545,14 +542,14 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    program again, remove its directory first.
 
    ```sh
-   cargo xtask native build --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-runner --output .cache/releases/runners \
+   go run ./tools/release native build --target x86_64-unknown-linux-musl
+   go run ./tools/release native package --package demi-runner --output .cache/releases/runners \
      --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-file --output .cache/releases/demi-file \
+   go run ./tools/release native package --package demi-file --output .cache/releases/demi-file \
      --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-browser --output .cache/releases/demi-browser \
+   go run ./tools/release native package --package demi-browser --output .cache/releases/demi-browser \
      --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-claude-code --output .cache/releases/demi-claude-code \
+   go run ./tools/release native package --package demi-claude-code --output .cache/releases/demi-claude-code \
      --target x86_64-unknown-linux-musl
    ```
 
@@ -620,8 +617,8 @@ differences.
 
 ### One-command development backend
 
-`cargo xtask dev` builds the one Cargo selection and runs, until Ctrl-C or a
-termination, a backend for the page to talk to. For example, a developer runs
+`go run ./tools/release dev` builds the programs it starts and runs, until
+Ctrl-C or a termination, a backend for the page to talk to. For example, a developer runs
 it, then starts the page with the command it prints, signs in with the
 account it prints, picks the model **Echo**, sends `hello`, and the answer
 `Echo: hello` streams in. It starts the backend with the scripted manager
@@ -631,18 +628,18 @@ uses:
 
 - A fresh temporary data directory, removed when the command ends, unless
   `--keep` keeps it.
-- The backend scenarios' scripted machine manager, the backend crate's
-  example program `scripted_machines`. A conversation's Cloud is a runner it
+- The backend scenarios' scripted machine manager, the program
+  `internal/backend/backendtest/testdata/scripted-machines`. A conversation's Cloud is a runner it
   starts on this machine, with a temporary home and the artifact cache the
   command names with `--artifacts`.
-- `target/debug/demi-backend` in isolated mode on port 3271 (`--port`
+- The `demi-backend` it built, in isolated mode on port 3271 (`--port`
   changes it), with the public URL `http://127.0.0.1:<port>`, the manager's
   socket, and a native configuration with the development store that names
   a development release of each command program the build made, `demi-file`,
   `demi-browser` and `demi-claude-code`, under the data directory and for
   this machine's target only. The command passes on none of its own
   `DEMI_*` variables.
-- An Anthropic-compatible Messages endpoint inside `xtask`, on a free port of
+- An Anthropic-compatible Messages endpoint inside the command, on a free port of
   the loopback interface, that answers each request with
   `Echo: <the last user message's text>` as a stream.
 
@@ -660,12 +657,12 @@ DEMI_BACKEND_URL=http://127.0.0.1:3271 DEMI_DEV_EMAIL=developer@example.test \
 ```
 
 The backend, the manager and the runners run in process groups of their
-own, so the terminal's interrupt reaches only `xtask`, which stops them in
+own, so the terminal's interrupt reaches only the command, which stops them in
 order on every exit, the failure of a start included: the backend first,
 since it hibernates the Cloud through the manager as it shuts down, then the
 manager, whose input it closes and which ends its runners with it; then it
 removes the data directory. A process that does not stop in time, 10 seconds
-for the backend and 5 for the manager, is killed. Only a kill of `xtask`
+for the backend and 5 for the manager, is killed. Only a kill of the command
 itself leaves the backend running.
 
 It does not cover what needs the real services: the Cloud isolates nothing
@@ -697,7 +694,7 @@ relay. [Cloud setup](../cloud/setup.md) describes installing the machine
 manager.
 
 A user is the unit of placement at both levels. Inside a process, all of a
-user's work runs on one shard thread ([Runtime model](#runtime-model)). The
+user's work runs in one shard ([Runtime model](#runtime-model)). The
 multi-worker deployment pins each user to one worker process, a complete
 backend for its assigned users, and adds one internal control service:
 

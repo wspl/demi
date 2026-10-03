@@ -1,6 +1,6 @@
 package providertest
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // A secret document of a made-up family.
 // +demi:root

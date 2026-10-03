@@ -4,7 +4,7 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-//go:generate go run ../../../tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // The input of `demi agent spawn`.
 // +demi:root

@@ -27,7 +27,7 @@ import (
 )
 
 // nativeFixture writes test-only executables and their generated descriptor.
-func nativeFixture(t *testing.T, targets []string) (nativeRelease, commandwire.PackageDescriptor) {
+func nativeFixture(t *testing.T, targets []string) (NativeRelease, commandwire.PackageDescriptor) {
 	t.Helper()
 	directory := t.TempDir()
 	descriptor := commandwire.PackageDescriptor{ID: "example.commands", Version: "1.0.0+build", ProtocolVersion: 1, Operations: []string{"fixture"}, Targets: make(map[string]commandwire.PackageArtifact)}
@@ -46,7 +46,7 @@ func nativeFixture(t *testing.T, targets []string) (nativeRelease, commandwire.P
 		descriptor.Targets[target] = commandwire.PackageArtifact{SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Size: uint64(len(data))}
 	}
 	writeDescriptor(t, directory, descriptor)
-	return nativeRelease{Directory: directory, Executable: "commands"}, descriptor
+	return NativeRelease{Directory: directory, Executable: "commands"}, descriptor
 }
 
 // writeDescriptor publishes the fixture's one authoritative package contract.
@@ -88,7 +88,7 @@ func publicationBucket(t *testing.T) (*blobstest.FakeS3, *blob.Bucket) {
 func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 	fake, bucket := publicationBucket(t)
 	release, descriptor := nativeFixture(t, commandwire.Targets)
-	catalog, err := publish(t.Context(), []nativeRelease{release}, "native", bucket)
+	catalog, err := publish(t.Context(), []NativeRelease{release}, "native", bucket)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 	if !bytes.Equal(downloaded.Bytes(), plain) {
 		t.Fatal("download differs from declared executable")
 	}
-	if _, err := publish(t.Context(), []nativeRelease{release}, "native", bucket); err != nil {
+	if _, err := publish(t.Context(), []NativeRelease{release}, "native", bucket); err != nil {
 		t.Fatal(err)
 	}
 	if len(fake.Written()) != 8 {
@@ -138,7 +138,7 @@ func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 	}
 	descriptor.Operations = append(descriptor.Operations, "changed")
 	writeDescriptor(t, release.Directory, descriptor)
-	_, err = publish(t.Context(), []nativeRelease{release}, "native", bucket)
+	_, err = publish(t.Context(), []NativeRelease{release}, "native", bucket)
 	var failure *PublicationError
 	if !errors.As(err, &failure) || failure.Kind != PublicationConflict {
 		t.Fatalf("version conflict: %v", err)
@@ -167,21 +167,21 @@ func TestInvalidReleasePublishesNothing(t *testing.T) {
 	if err := os.WriteFile(path, []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = publish(t.Context(), []nativeRelease{release}, "native", bucket)
+	_, err = publish(t.Context(), []NativeRelease{release}, "native", bucket)
 	if err == nil || !strings.Contains(err.Error(), "does not match the descriptor") {
 		t.Fatalf("corrupt artifact: %v", err)
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := publish(t.Context(), []nativeRelease{release}, "native", bucket); err == nil {
+	if _, err := publish(t.Context(), []NativeRelease{release}, "native", bucket); err == nil {
 		t.Fatal("missing artifact accepted")
 	}
 	if len(fake.Written()) != 0 {
 		t.Fatal("partially verified release was uploaded")
 	}
 	partial, _ := nativeFixture(t, commandwire.Targets[:2])
-	if _, err := publish(t.Context(), []nativeRelease{partial}, "native", bucket); err == nil || !strings.Contains(err.Error(), "it lacks a target: "+commandwire.Targets[2]) {
+	if _, err := publish(t.Context(), []NativeRelease{partial}, "native", bucket); err == nil || !strings.Contains(err.Error(), "it lacks a target: "+commandwire.Targets[2]) {
 		t.Fatalf("partial published: %v", err)
 	}
 	if len(fake.Written()) != 0 {
@@ -194,7 +194,7 @@ func TestInvalidReleasePublishesNothing(t *testing.T) {
 	if err := bucket.WriteAll(t.Context(), key, []byte("other bytes"), nil); err != nil {
 		t.Fatal(err)
 	}
-	_, err = publish(t.Context(), []nativeRelease{release}, "native", bucket)
+	_, err = publish(t.Context(), []NativeRelease{release}, "native", bucket)
 	var conflict *PublicationError
 	if !errors.As(err, &conflict) || conflict.Kind != PublicationConflict {
 		t.Fatalf("squatted artifact: %v", err)
@@ -277,7 +277,7 @@ func TestNativeConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := config.Store.(*localNativeStore); !ok {
+	if _, ok := config.Store.(*LocalNativeStore); !ok {
 		t.Fatal("not a local store")
 	}
 	for _, refused := range []string{
@@ -331,7 +331,7 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeDescriptor(t, release.Directory, descriptor)
-	config := nativeConfig{Releases: []nativeRelease{release}, Store: &localNativeStore{}}
+	config := NativeConfig{Releases: []NativeRelease{release}, Store: &LocalNativeStore{}}
 	data, err := config.MarshalJSON()
 	if err != nil {
 		t.Fatal(err)

@@ -9,7 +9,7 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-//go:generate go run ../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // ClientFrame is a frame the web app sends. Its underlying contract is private
 // so DecodeClientFrame can classify errors around the generated decoder.

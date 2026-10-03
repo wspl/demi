@@ -14,7 +14,7 @@ import (
 	"github.com/wspl/demi/internal/commandwire"
 )
 
-//go:generate go run ../../../tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // What the cache records of an entry, beside it: its line, its version,
 // the path of its file or entry, and when this cache installed it.
