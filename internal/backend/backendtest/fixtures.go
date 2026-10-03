@@ -1,9 +1,8 @@
 package backendtest
 
-//revive:disable:unused-parameter
-
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/wspl/demi/internal/plugin"
@@ -34,8 +33,59 @@ func StreamsPlugin(streams []plugin.Stream) plugin.Factory {
 // and serves until input ends or ctx is canceled. It then stops and joins all
 // runners. It owns and closes input to unblock its reader during cancellation.
 // args excludes argv[0]; the caller handles process signals through ctx.
-func ScriptedMachines(ctx context.Context, args []string, input io.ReadCloser, output, diagnostics io.Writer) int {
-	panic("not written: b-backend")
+func ScriptedMachines(ctx context.Context, args []string, input io.ReadCloser, output, diagnostics io.Writer) (status int) {
+	report := func(err error) {
+		// A diagnostic write cannot recover a failure of this fixture program.
+		_, _ = fmt.Fprintln(diagnostics, err)
+		status = 1
+	}
+	defer func() {
+		if input != nil {
+			if err := input.Close(); err != nil {
+				report(err)
+			}
+		}
+	}()
+	if len(args) != 0 && (len(args) != 2 || args[0] != "--artifacts") {
+		_, _ = fmt.Fprintln(diagnostics, "Usage: scripted_machines [--artifacts <directory>]")
+		return 2
+	}
+	manager, err := startManager(ctx)
+	if err != nil {
+		report(err)
+		return status
+	}
+	defer func() {
+		if err := manager.Close(context.WithoutCancel(ctx)); err != nil {
+			report(err)
+		}
+	}()
+	if len(args) == 2 {
+		manager.SetScript(MachineScript{Artifacts: &args[1]})
+	}
+	if _, err := fmt.Fprintln(output, manager.Socket()); err != nil {
+		report(err)
+		return status
+	}
+	ended := make(chan struct{})
+	go func() {
+		defer close(ended)
+		// As in the reference program, any end of the input read ends service.
+		_, _ = io.Copy(io.Discard, input)
+	}()
+	select {
+	case <-ended:
+	case <-ctx.Done():
+	}
+	// Closing the owned input interrupts its blocking Read. Always join that
+	// reader before returning, including when a signal ends service first.
+	if err := input.Close(); err != nil {
+		report(err)
+	}
+	<-ended
+	// The input was closed above; do not close it again in the early-exit defer.
+	input = nil
+	return status
 }
 
 type streamsFactory struct{ manifest plugin.Manifest }

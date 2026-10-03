@@ -74,12 +74,13 @@ type targetHandler struct {
 
 func (*targetHandler) Enabled(context.Context, slog.Level) bool { return true }
 func (h *targetHandler) Handle(ctx context.Context, record slog.Record) error {
-	target := ""
+	var target *string
 	fields := make(map[string]bool)
 	visit := func(a slog.Attr) bool {
 		fields[a.Key] = true
 		if a.Key == "target" {
-			target = a.Value.String()
+			name := a.Value.String()
+			target = &name
 		}
 		return true
 	}
@@ -91,7 +92,7 @@ func (h *targetHandler) Handle(ctx context.Context, record slog.Record) error {
 	var selected *logTarget
 	for i := range h.targets {
 		rule := &h.targets[i]
-		if rule.target != nil && !strings.HasPrefix(target, *rule.target) {
+		if rule.target != nil && (target == nil || !strings.HasPrefix(*target, *rule.target)) {
 			continue
 		}
 		matches := true

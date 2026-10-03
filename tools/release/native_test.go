@@ -44,7 +44,7 @@ func nativeFixture(t *testing.T, root, program string, targets []string, content
 }
 func appFixture(t *testing.T) *application {
 	t.Helper()
-	return &application{Root: t.TempDir(), Out: io.Discard, Err: io.Discard}
+	return &application{Root: t.TempDir(), Out: io.Discard, Err: io.Discard, chromeRelease: browserop.PinnedRelease}
 }
 func readRunner(t *testing.T, root string) runnerwire.RunnerRelease {
 	t.Helper()

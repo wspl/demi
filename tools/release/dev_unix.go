@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 	"github.com/wspl/demi/internal/commandwire"
 )
 
@@ -130,7 +129,7 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 	if err != nil {
 		return err
 	}
-	chrome, err := browserop.PinnedRelease()
+	chrome, err := a.chromeRelease()
 	if err != nil {
 		return err
 	}

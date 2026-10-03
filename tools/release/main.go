@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
+
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 )
 
 const help = `The repository's development commands
@@ -54,6 +56,8 @@ type devOptions struct {
 type application struct {
 	Root     string
 	Out, Err io.Writer
+	// chromeRelease supplies the pinned browser resource record; tests use a local archive.
+	chromeRelease func() (browserop.BrowserRelease, error)
 }
 
 func main() {
@@ -69,7 +73,7 @@ func main() {
 		root, err = repository()
 	}
 	if err == nil {
-		err = (&application{Root: root, Out: os.Stdout, Err: os.Stderr}).run(ctx, args)
+		err = (&application{Root: root, Out: os.Stdout, Err: os.Stderr, chromeRelease: browserop.PinnedRelease}).run(ctx, args)
 	}
 	if errors.Is(err, flag.ErrHelp) {
 		err = nil
