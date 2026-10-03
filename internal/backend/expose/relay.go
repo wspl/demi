@@ -15,15 +15,20 @@ import (
 
 // Relay refusals are translated to HTTP statuses by the edge.
 var (
-	ErrRelayNotFound      = errors.New("no such expose")
+	// ErrRelayNotFound means the expose is missing or expired.
+	ErrRelayNotFound = errors.New("no such expose")
+	// ErrRelayDeviceOffline means the exposed device has no live connection.
 	ErrRelayDeviceOffline = errors.New("the device is offline")
-	ErrLimit              = errors.New("the expose is at its connection limit")
-	ErrRemoved            = errors.New("the expose was removed")
+	// ErrLimit means the expose has reached its connection limit.
+	ErrLimit = errors.New("the expose is at its connection limit")
+	// ErrRemoved means the expose ended during admission or forwarding.
+	ErrRemoved = errors.New("the expose was removed")
 )
 
 // UnreachableError carries the runner's connect failure code.
 type UnreachableError struct{ Code string }
 
+// Error returns the service connection failure.
 func (e *UnreachableError) Error() string { return "the service is unreachable (" + e.Code + ")" }
 
 // Exposes tracks a user's live connections. Its zero value is ready to use.

@@ -93,11 +93,13 @@ func (s *testShard) TrackIdle(id webapi.ConversationID) {
 		hook(id)
 	}
 }
+
 func (s *testShard) JobEnded(webapi.ConversationID) {
 	s.mu.Lock()
 	s.jobs++
 	s.mu.Unlock()
 }
+
 func (s *testShard) DirectorySets(ctx context.Context) (DirectorySets, error) {
 	if s.directoryHook != nil {
 		return s.directoryHook(ctx)
@@ -118,17 +120,35 @@ func (s *testShard) conversation(t *testing.T) database.ConversationRecord {
 	}
 	return *record
 }
+
 func (s *testShard) paired(t *testing.T, name string) database.DeviceRecord {
 	t.Helper()
-	record, err := s.control.CreateDevice(t.Context(), s.owner, name, runnerwire.RunnerPlatform("linux"), database.HashToken(name))
+	record, err := s.control.CreateDevice(
+		t.Context(),
+		s.owner,
+		name,
+		runnerwire.RunnerPlatform("linux"),
+		database.HashToken(name),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return record
 }
-func (s *testShard) target(t *testing.T, record database.ConversationRecord, device database.DeviceRecord, path string) database.ConversationRecord {
+
+func (s *testShard) target(
+	t *testing.T,
+	record database.ConversationRecord,
+	device database.DeviceRecord,
+	path string,
+) database.ConversationRecord {
 	t.Helper()
-	if err := SwitchTarget(t.Context(), s, record, &webapi.ConversationTargetDevice{DeviceID: device.ID, Path: path}); err != nil {
+	if err := SwitchTarget(
+		t.Context(),
+		s,
+		record,
+		&webapi.ConversationTargetDevice{DeviceID: device.ID, Path: path},
+	); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := OwnedConversation(t.Context(), s, record.ID)

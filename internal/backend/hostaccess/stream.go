@@ -85,7 +85,12 @@ type ServiceCall struct {
 
 // OpenUserStream opens the main Host without waking Cloud. It drops the file
 // gate after admission and holds stream activity until completion or revocation.
-func OpenUserStream(ctx context.Context, shard HostShard, id webapi.ConversationID, binding ServiceBinding) (*UserStream, error) {
+func OpenUserStream(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	binding ServiceBinding,
+) (*UserStream, error) {
 	access, waitCtx, stop, err := admitStream(ctx, shard, id, true, true)
 	if err != nil {
 		return nil, &StreamError{Kind: StreamAccess, Cause: err}
@@ -125,43 +130,23 @@ func OpenUserStream(ctx context.Context, shard HostShard, id webapi.Conversation
 		}
 		return nil, &StreamError{Kind: StreamFailed, Cause: err}
 	}
-	lease, _ := NewLease(access.open.Context())
-	go func() {
-		// Done also ends when the lease context is revoked, so no second watcher is needed.
-		_, _ = service.Done(lease.Context()) // Completion is represented by the stream's pipe outcome.
-		input.Fail("the user stream ended")
-		output.Fail("the user stream ended")
-		service.Close()
-		lease.Release()
-		access.release()
-	}()
+	lease := watchUserStream(access, service, input, output)
+
 	handed = true
 	return &UserStream{ToHost: toHost, FromHost: fromHost, Lease: lease}, nil
 }
 
 // UserCall returns a one-shot call's JSON answer. Starts holds ordinary Host
 // access; other calls register like streams and transitions end them.
-func UserCall(ctx context.Context, shard HostShard, id webapi.ConversationID, kind UserCallKind, call ServiceCall) ([]byte, error) {
+func UserCall(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	kind UserCallKind,
+	call ServiceCall,
+) ([]byte, error) {
 	if kind == Starts {
-		answer, err := WithHost(ctx, shard, id, nil, func(ctx context.Context, admitted *ConversationHost) ([]byte, error) {
-			request, err := serviceRequest(ctx, shard, id, *admitted, call.Binding, call.Args)
-			if err != nil {
-				return nil, &UserCallError{Kind: UserCallAccess, Cause: err}
-			}
-			answer, err := admitted.Host.CallService(ctx, request, nil, call.MaxBytes)
-			if err != nil {
-				return nil, &UserCallError{Kind: UserCallCall, Cause: err}
-			}
-			return answer, nil
-		})
-		if err != nil {
-			var wrapped *UserCallError
-			if errors.As(err, &wrapped) {
-				return nil, err
-			}
-			return nil, &UserCallError{Kind: UserCallAccess, Cause: err}
-		}
-		return answer, nil
+		return startUserCall(ctx, shard, id, call)
 	}
 	access, waitCtx, stop, err := admitStream(ctx, shard, id, false, kind == Operates)
 	if err != nil {
@@ -200,7 +185,12 @@ func (a *streamAccess) release() {
 
 // admitStream admits a registered no-wake operation, releasing the file gate
 // only after a watching stream has acquired its activity lease.
-func admitStream(ctx context.Context, shard HostShard, id webapi.ConversationID, watches, operates bool) (*streamAccess, context.Context, func(), error) {
+func admitStream(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	watches, operates bool,
+) (*streamAccess, context.Context, func(), error) {
 	open, waitCtx, stop, err := registerTransfer(ctx, shard, id)
 	if err != nil {
 		return nil, nil, nil, err
@@ -234,15 +224,9 @@ func admitStream(ctx context.Context, shard HostShard, id webapi.ConversationID,
 		return nil, nil, nil, transferError(open, &Error{Kind: AccessCancelled, Cause: err})
 	}
 	defer files.Release()
-	selected, err := selectHost(waitCtx, shard, record.ID, nil, false)
+	selected, err := streamHost(waitCtx, shard, record.ID)
 	if err != nil {
 		return nil, nil, nil, err
-	}
-	if !shard.Devices().Online(selected.device.ID) {
-		if selected.device.Kind == webapi.DeviceKindManaged {
-			return nil, nil, nil, &Error{Kind: AccessRefused, Cause: Stopped}
-		}
-		return nil, nil, nil, accessError(&host.Error{Kind: host.Offline, Message: "The device has no live runner"})
 	}
 	access.device = selected.device.ID
 	access.host = makeHost(shard, files, selected, func() (*gates.Lease, error) {
@@ -263,14 +247,85 @@ func admitStream(ctx context.Context, shard HostShard, id webapi.ConversationID,
 }
 
 // serviceRequest binds a user's call to the conversation's directory and catalog.
-func serviceRequest(ctx context.Context, shard HostShard, id webapi.ConversationID, admitted ConversationHost, binding ServiceBinding, args json.RawMessage) (remotehost.ServiceRequest, error) {
+func serviceRequest(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	admitted ConversationHost,
+	binding ServiceBinding,
+	args json.RawMessage,
+) (remotehost.ServiceRequest, error) {
 	commandContext, err := runners.CommandContext(ctx, shard.Control(), shard.User(), id, &commandwire.UserCaller{})
 	if err != nil {
 		return remotehost.ServiceRequest{}, &Error{Kind: AccessStorage, Cause: err}
 	}
-	request := remotehost.ServiceRequest{Context: commandContext, Package: binding.Package, Operation: binding.Operation, Args: args, CWD: admitted.Root, Resolver: shard.Native().Resolver(shard.PublicURL())}
+	request := remotehost.ServiceRequest{
+		Context:   commandContext,
+		Package:   binding.Package,
+		Operation: binding.Operation,
+		Args:      args,
+		CWD:       admitted.Root,
+		Resolver:  shard.Native().Resolver(shard.PublicURL()),
+	}
 	if args != nil {
 		request.JSON = new(true)
 	}
 	return request, nil
+}
+
+// watchUserStream transfers admission to the completion worker; revoking its lease also ends Done.
+func watchUserStream(access *streamAccess, service *remotehost.ServiceStream, input, output *remotehost.Pipe) *Lease {
+	lease, _ := NewLease(access.open.Context())
+	go func() {
+		// Done also ends when the lease context is revoked, so no second watcher is needed.
+		_, _ = service.Done(lease.Context()) // Completion is represented by the stream's pipe outcome.
+		input.Fail("the user stream ended")
+		output.Fail("the user stream ended")
+		service.Close()
+		lease.Release()
+		access.release()
+	}()
+	return lease
+}
+
+func startUserCall(ctx context.Context, shard HostShard, id webapi.ConversationID, call ServiceCall) ([]byte, error) {
+	answer, err := WithHost(
+		ctx,
+		shard,
+		id,
+		nil,
+		func(ctx context.Context, admitted *ConversationHost) ([]byte, error) {
+			request, err := serviceRequest(ctx, shard, id, *admitted, call.Binding, call.Args)
+			if err != nil {
+				return nil, &UserCallError{Kind: UserCallAccess, Cause: err}
+			}
+			answer, err := admitted.Host.CallService(ctx, request, nil, call.MaxBytes)
+			if err != nil {
+				return nil, &UserCallError{Kind: UserCallCall, Cause: err}
+			}
+			return answer, nil
+		},
+	)
+	if err != nil {
+		var wrapped *UserCallError
+		if errors.As(err, &wrapped) {
+			return nil, err
+		}
+		return nil, &UserCallError{Kind: UserCallAccess, Cause: err}
+	}
+	return answer, nil
+}
+
+func streamHost(ctx context.Context, shard HostShard, id webapi.ConversationID) (selectedHost, error) {
+	selected, err := selectHost(ctx, shard, id, nil, false)
+	if err != nil {
+		return selectedHost{}, err
+	}
+	if !shard.Devices().Online(selected.device.ID) {
+		if selected.device.Kind == webapi.DeviceKindManaged {
+			return selectedHost{}, &Error{Kind: AccessRefused, Cause: Stopped}
+		}
+		return selectedHost{}, accessError(&host.Error{Kind: host.Offline, Message: "The device has no live runner"})
+	}
+	return selected, nil
 }

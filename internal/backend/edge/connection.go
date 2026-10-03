@@ -23,31 +23,35 @@ type incoming struct {
 func readIncoming(ctx context.Context, conn net.Conn) (context.Context, *incoming) {
 	ctx, cancel := context.WithCancel(ctx)
 	reader, writer := io.Pipe()
-	c := &incoming{Conn: conn, reader: reader, cancel: cancel, done: make(chan struct{})}
+	i := &incoming{Conn: conn, reader: reader, cancel: cancel, done: make(chan struct{})}
 	go func() {
-		defer close(c.done)
+		defer close(i.done)
 		defer func() {
-			if !c.halfCloseAllowed.Load() {
+			if !i.halfCloseAllowed.Load() {
 				cancel()
 			}
 		}()
 		_, err := io.Copy(writer, conn)
 		_ = writer.CloseWithError(err)
 	}()
-	return ctx, c
+	return ctx, i
 }
-func (c *incoming) Read(p []byte) (int, error) { return c.reader.Read(p) }
-func (c *incoming) Close() error {
-	c.cancel()
-	_ = c.reader.Close()
-	err := c.Conn.Close()
-	<-c.done
+
+// Read consumes bytes from the owned read-ahead worker.
+func (i *incoming) Read(p []byte) (int, error) { return i.reader.Read(p) }
+
+// Close cancels the connection and joins its read-ahead worker.
+func (i *incoming) Close() error {
+	i.cancel()
+	_ = i.reader.Close()
+	err := i.Conn.Close()
+	<-i.done
 	return err
 }
 
 // CloseWrite forwards TCP's half-close through the read-ahead owner.
-func (c *incoming) CloseWrite() error {
-	if writer, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+func (i *incoming) CloseWrite() error {
+	if writer, ok := i.Conn.(interface{ CloseWrite() error }); ok {
 		return writer.CloseWrite()
 	}
 	return nil
@@ -75,4 +79,4 @@ func closeWriteAndWait(ctx context.Context, conn net.Conn) {
 
 // allowHalfClose lets an upgraded relay finish writing after visitor read EOF.
 // Explicit Close and parent shutdown still cancel the connection's context.
-func (c *incoming) allowHalfClose() { c.halfCloseAllowed.Store(true) }
+func (i *incoming) allowHalfClose() { i.halfCloseAllowed.Store(true) }

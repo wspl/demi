@@ -25,6 +25,7 @@ func readJSONBody(r *http.Request) ([]byte, error) {
 	}
 	return bytes, nil
 }
+
 func decodeBody[T any](r *http.Request, decode func([]byte) (T, error)) (T, error) {
 	var zero T
 	data, err := readJSONBody(r)

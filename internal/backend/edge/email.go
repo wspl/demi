@@ -38,6 +38,7 @@ func (e *Edge) startEmail(w http.ResponseWriter, r *http.Request) error {
 	}
 	return nil
 }
+
 func (e *Edge) confirmEmail(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeEmailChangeConfirm)
 	if err != nil {

@@ -45,7 +45,12 @@ func NewPluginInstalls(mu *sync.Mutex) *PluginInstalls {
 
 // ReadFiles reads the main Host as a look, with no activity or wake. A transition
 // ends the read. Path failures answer unreadable; answers keep request order.
-func ReadFiles(ctx context.Context, shard HostShard, id webapi.ConversationID, reads []plugin.HostRead) ([]plugin.HostFile, error) {
+func ReadFiles(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	reads []plugin.HostRead,
+) ([]plugin.HostFile, error) {
 	access, waitCtx, stop, err := admitStream(ctx, shard, id, false, false)
 	if err != nil {
 		return nil, readFilesError(err)
@@ -67,7 +72,8 @@ func ReadFiles(ctx context.Context, shard HostShard, id webapi.ConversationID, r
 func readFilesError(err error) error {
 	var refusal Refusal
 	var failure *host.Error
-	if errors.As(err, &refusal) && refusal == Stopped || errors.As(err, &failure) && (failure.Kind == host.Offline || failure.Kind == host.Unavailable) {
+	if errors.As(err, &refusal) && refusal == Stopped ||
+		errors.As(err, &failure) && (failure.Kind == host.Offline || failure.Kind == host.Unavailable) {
 		return &ReadFilesError{Kind: ReadFilesNotRunning}
 	}
 	return &ReadFilesError{Kind: ReadFilesAccess, Cause: err}
@@ -136,7 +142,12 @@ func unreadable(err error) (plugin.HostFile, error) {
 }
 
 // installDirectories serializes installation and records only complete revisions.
-func installDirectories(ctx context.Context, shard HostShard, device webapi.DeviceID, admitted *ConversationHost) error {
+func installDirectories(
+	ctx context.Context,
+	shard HostShard,
+	device webapi.DeviceID,
+	admitted *ConversationHost,
+) error {
 	link := shard.Devices().Link(device)
 	if link == nil {
 		return nil
@@ -178,6 +189,86 @@ func installDirectories(ctx context.Context, shard HostShard, device webapi.Devi
 	if admitted.Home == nil {
 		return &host.Error{Kind: host.Failed, Message: "the Host reported no home directory for the plugins' files"}
 	}
+	if err := syncDirectories(ctx, shard, admitted, sets); err != nil {
+		return err
+	}
+
+	installs.mu.Lock()
+	installs.synced[device] = wanted
+	installs.mu.Unlock()
+	return nil
+}
+
+// installDirectory writes a plugin directory beside its final path before renaming it.
+func installDirectory(
+	ctx context.Context,
+	shard HostShard,
+	fs host.FS,
+	base string,
+	directory plugin.HostDirectory,
+) error {
+	name := directory.HostName()
+	partial := base + "/." + name + ".partial"
+	if err := removeDirectory(ctx, fs, partial); err != nil {
+		return err
+	}
+	if err := fs.Mkdir(ctx, partial, host.MkdirOptions{Recursive: true}); err != nil {
+		return err
+	}
+	parents, err := writeDirectoryFiles(ctx, shard, fs, partial, name, directory)
+	if err != nil {
+		return err
+	}
+	sorted := make([]string, 0, len(parents))
+	for parent := range parents {
+		sorted = append(sorted, parent)
+	}
+	slices.Sort(sorted)
+	slices.Reverse(sorted)
+	for _, parent := range sorted {
+		if err := fs.Chmod(ctx, parent, 0o555); err != nil {
+			return err
+		}
+	}
+	installed := base + "/" + name
+	if err := fs.Mv(ctx, partial, installed); err != nil {
+		return err
+	}
+	return fs.Chmod(ctx, installed, 0o555)
+}
+
+// removeDirectory makes installation-owned directories writable before removing them.
+func removeDirectory(ctx context.Context, fs host.FS, path string) error {
+	stat, err := fs.Lstat(ctx, path)
+	if err != nil {
+		if hostCode(err, "ENOENT") || hostCode(err, "ENOTDIR") {
+			return nil
+		}
+		return err
+	}
+	if stat.Kind == host.Directory {
+		pending := []string{path}
+		for len(pending) > 0 {
+			directory := pending[len(pending)-1]
+			pending = pending[:len(pending)-1]
+			if err := fs.Chmod(ctx, directory, 0o755); err != nil {
+				return err
+			}
+			entries, err := fs.ReadDir(ctx, directory)
+			if err != nil {
+				return err
+			}
+			for _, entry := range entries {
+				if entry.Kind == host.Directory {
+					pending = append(pending, directory+"/"+entry.Name)
+				}
+			}
+		}
+	}
+	return fs.Rm(ctx, path, host.RmOptions{Recursive: true, Force: true})
+}
+
+func syncDirectories(ctx context.Context, shard HostShard, admitted *ConversationHost, sets DirectorySets) error {
 	for _, set := range sets {
 		base := *admitted.Home + "/.demi/plugins/" + string(set.Plugin)
 		present, err := admitted.Host.FS().ReadDir(ctx, base)
@@ -205,92 +296,48 @@ func installDirectories(ctx context.Context, shard HostShard, device webapi.Devi
 			}
 		}
 	}
-	installs.mu.Lock()
-	installs.synced[device] = wanted
-	installs.mu.Unlock()
 	return nil
 }
 
-// installDirectory writes a plugin directory beside its final path before renaming it.
-func installDirectory(ctx context.Context, shard HostShard, fs host.FS, base string, directory plugin.HostDirectory) error {
-	name := directory.HostName()
-	partial := base + "/." + name + ".partial"
-	if err := removeDirectory(ctx, fs, partial); err != nil {
-		return err
-	}
-	if err := fs.Mkdir(ctx, partial, host.MkdirOptions{Recursive: true}); err != nil {
-		return err
-	}
+func writeDirectoryFiles(
+	ctx context.Context,
+	shard HostShard,
+	fs host.FS,
+	partial, name string,
+	directory plugin.HostDirectory,
+) (map[string]bool, error) {
 	parents := make(map[string]bool)
 	for _, file := range directory.Files {
 		data, exists, err := shard.Blobs().Read(ctx, file.Blob)
 		if err != nil {
-			return &host.Error{Kind: host.Failed, Message: err.Error()}
+			return nil, &host.Error{Kind: host.Failed, Message: err.Error()}
 		}
 		if !exists {
-			return &host.Error{Kind: host.Failed, Message: fmt.Sprintf("the file %s of %s is not stored", file.Path, name)}
+			return nil, &host.Error{
+				Kind:    host.Failed,
+				Message: fmt.Sprintf("the file %s of %s is not stored", file.Path, name),
+			}
 		}
 		path := partial + "/" + file.Path
-		if err := fs.WriteFile(ctx, path, host.FileContents{Bytes: data}, host.WriteOptions{CreateParents: true}); err != nil {
-			return err
+		if err := fs.WriteFile(
+			ctx,
+			path,
+			host.FileContents{Bytes: data},
+			host.WriteOptions{CreateParents: true},
+		); err != nil {
+			return nil, err
 		}
-		mode := uint32(0444)
+		mode := uint32(0o444)
 		if file.Executable {
-			mode = 0555
+			mode = 0o555
 		}
 		if err := fs.Chmod(ctx, path, mode); err != nil {
-			return err
+			return nil, err
 		}
 		for parent := file.Path; strings.Contains(parent, "/"); {
 			parent = parent[:strings.LastIndexByte(parent, '/')]
 			parents[partial+"/"+parent] = true
 		}
 	}
-	sorted := make([]string, 0, len(parents))
-	for parent := range parents {
-		sorted = append(sorted, parent)
-	}
-	slices.Sort(sorted)
-	slices.Reverse(sorted)
-	for _, parent := range sorted {
-		if err := fs.Chmod(ctx, parent, 0555); err != nil {
-			return err
-		}
-	}
-	installed := base + "/" + name
-	if err := fs.Mv(ctx, partial, installed); err != nil {
-		return err
-	}
-	return fs.Chmod(ctx, installed, 0555)
-}
-
-// removeDirectory makes installation-owned directories writable before removing them.
-func removeDirectory(ctx context.Context, fs host.FS, path string) error {
-	stat, err := fs.Lstat(ctx, path)
-	if err != nil {
-		if hostCode(err, "ENOENT") || hostCode(err, "ENOTDIR") {
-			return nil
-		}
-		return err
-	}
-	if stat.Kind == host.Directory {
-		pending := []string{path}
-		for len(pending) > 0 {
-			directory := pending[len(pending)-1]
-			pending = pending[:len(pending)-1]
-			if err := fs.Chmod(ctx, directory, 0755); err != nil {
-				return err
-			}
-			entries, err := fs.ReadDir(ctx, directory)
-			if err != nil {
-				return err
-			}
-			for _, entry := range entries {
-				if entry.Kind == host.Directory {
-					pending = append(pending, directory+"/"+entry.Name)
-				}
-			}
-		}
-	}
-	return fs.Rm(ctx, path, host.RmOptions{Recursive: true, Force: true})
+	return parents, nil
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/remotehost"
+	"github.com/wspl/demi/internal/webapi"
 )
 
 func plain(w http.ResponseWriter, status int, text string) {
@@ -16,6 +17,7 @@ func plain(w http.ResponseWriter, status int, text string) {
 	w.WriteHeader(status)
 	_, _ = io.WriteString(w, text)
 }
+
 func (e *Edge) pipe(w http.ResponseWriter, r *http.Request) error {
 	scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
 	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" {
@@ -36,6 +38,10 @@ func (e *Edge) pipe(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(503)
 		return nil
 	}
+	return servePipe(w, r, shard.Pipes(), device.ID)
+}
+
+func servePipe(w http.ResponseWriter, r *http.Request, pipes *remotehost.Pipes, deviceID webapi.DeviceID) error {
 	refused := func(err error) {
 		status := 409
 		var refusal remotehost.PipeRefusal
@@ -45,7 +51,7 @@ func (e *Edge) pipe(w http.ResponseWriter, r *http.Request) error {
 		plain(w, status, err.Error())
 	}
 	if r.Method == "PUT" {
-		source, err := shard.Pipes().ClaimSource(r.PathValue("id"), string(device.ID))
+		source, err := pipes.ClaimSource(r.PathValue("id"), string(deviceID))
 		if err != nil {
 			refused(err)
 			return nil
@@ -58,7 +64,7 @@ func (e *Edge) pipe(w http.ResponseWriter, r *http.Request) error {
 		}
 		return nil
 	}
-	sink, err := shard.Pipes().ClaimSink(r.PathValue("id"), string(device.ID))
+	sink, err := pipes.ClaimSink(r.PathValue("id"), string(deviceID))
 	if err != nil {
 		refused(err)
 		return nil

@@ -74,7 +74,8 @@ func TestRangeAnswers(t *testing.T) {
 		})
 	}
 	headers := RangeOf(new("bytes=10-19"), 100).Headers()
-	if headers.Get("Content-Range") != "bytes 10-19/100" || headers.Get("Content-Length") != "10" || headers.Get("Accept-Ranges") != "bytes" {
+	if headers.Get("Content-Range") != "bytes 10-19/100" || headers.Get("Content-Length") != "10" ||
+		headers.Get("Accept-Ranges") != "bytes" {
 		t.Fatal(headers)
 	}
 	if RangeOf(new("bytes=100-"), 100).Headers().Get("Content-Range") != "bytes */100" {
@@ -90,7 +91,7 @@ func TestFileVersionsAndWeakConditions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	version := FileVersion(host.FileStat{Kind: host.File, Mode: 0644, Size: 300000, Modified: stamp})
+	version := FileVersion(host.FileStat{Kind: host.File, Mode: 0o644, Size: 300000, Modified: stamp})
 	if version != `W/"493e0-1a0c4506c7b"` {
 		t.Fatal(version)
 	}

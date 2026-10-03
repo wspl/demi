@@ -23,11 +23,24 @@ func TestExposeRelayPreservesMixedCaseAndRepeatedHeaders(t *testing.T) {
 			_ = service.Close()
 			_ = relay.Close()
 		}()
-		head := []byte("POST /path?q=1 HTTP/1.1\r\nHost: e_x.example.test\r\nx-MiXeD-Case: first\r\nx-MiXeD-Case: second\r\ncOnTeNt-LeNgTh: 2\r\nConnection: x-remove\r\nx-remove: gone\r\n\r\n")
+		head := []byte(
+			"POST /path?q=1 HTTP/1.1\r\nHost: e_x.example.test\r\n" +
+				"x-MiXeD-Case: first\r\nx-MiXeD-Case: second\r\ncOnTeNt-LeNgTh: 2\r\n" +
+				"Connection: x-remove\r\nx-remove: gone\r\n\r\n",
+		)
 		relayed := make(chan struct{})
 		go func() {
 			defer close(relayed)
-			forwardRelay(t.Context(), edge, bufio.NewReader(edge), head, relayTestConn{relay}, func() { _ = relay.SetDeadline(time.Now()) }, "localhost:3000", time.Minute)
+			forwardRelay(
+				t.Context(),
+				edge,
+				bufio.NewReader(edge),
+				head,
+				relayTestConn{relay},
+				func() { _ = relay.SetDeadline(time.Now()) },
+				"localhost:3000",
+				time.Minute,
+			)
 		}()
 		sent := make(chan error, 1)
 		go func() {
@@ -40,7 +53,12 @@ func TestExposeRelayPreservesMixedCaseAndRepeatedHeaders(t *testing.T) {
 			t.Fatal(err)
 		}
 		text := string(incoming)
-		if !strings.Contains(text, "x-MiXeD-Case: first\r\nx-MiXeD-Case: second\r\n") || !strings.Contains(text, "cOnTeNt-LeNgTh: 2\r\n") || strings.Contains(text, "Content-Length:") || strings.Contains(text, "X-Mixed-Case") || strings.Contains(text, "x-remove:") || strings.Contains(text, "User-Agent:") {
+		if !strings.Contains(text, "x-MiXeD-Case: first\r\nx-MiXeD-Case: second\r\n") ||
+			!strings.Contains(text, "cOnTeNt-LeNgTh: 2\r\n") ||
+			strings.Contains(text, "Content-Length:") ||
+			strings.Contains(text, "X-Mixed-Case") ||
+			strings.Contains(text, "x-remove:") ||
+			strings.Contains(text, "User-Agent:") {
 			t.Fatalf("forwarded head:\n%s", text)
 		}
 		body := make([]byte, 2)
@@ -60,7 +78,8 @@ func TestExposeRelayPreservesMixedCaseAndRepeatedHeaders(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(replyHead), "x-RePlY: kept\r\n") || !strings.Contains(string(replyHead), "cOnTeNt-LeNgTh: 2\r\n") {
+		if !strings.Contains(string(replyHead), "x-RePlY: kept\r\n") ||
+			!strings.Contains(string(replyHead), "cOnTeNt-LeNgTh: 2\r\n") {
 			t.Fatalf("reply changed: %s", replyHead)
 		}
 		answer, err := http.ReadResponse(bufio.NewReader(io.MultiReader(bytes.NewReader(replyHead), visitorInput)), nil)
@@ -78,6 +97,7 @@ func TestExposeRelayPreservesMixedCaseAndRepeatedHeaders(t *testing.T) {
 		<-relayed
 	})
 }
+
 func TestExposeUpgradeCopiesUnreadBytesBothWays(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		visitor, edge := net.Pipe()
@@ -88,18 +108,32 @@ func TestExposeUpgradeCopiesUnreadBytesBothWays(t *testing.T) {
 			_ = service.Close()
 			_ = relay.Close()
 		}()
-		head := []byte("GET /socket HTTP/1.1\r\nHost: example.test\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+		head := []byte(
+			"GET /socket HTTP/1.1\r\nHost: example.test\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n",
+		)
 		relayed := make(chan struct{})
 		go func() {
 			defer close(relayed)
-			forwardRelay(t.Context(), edge, bufio.NewReader(edge), head, relayTestConn{relay}, func() { _ = relay.SetDeadline(time.Now()) }, "localhost:3000", time.Minute)
+			forwardRelay(
+				t.Context(),
+				edge,
+				bufio.NewReader(edge),
+				head,
+				relayTestConn{relay},
+				func() { _ = relay.SetDeadline(time.Now()) },
+				"localhost:3000",
+				time.Minute,
+			)
 		}()
 		if _, err := readHead(bufio.NewReader(service)); err != nil {
 			t.Fatal(err)
 		}
 		sent := make(chan error, 1)
 		go func() {
-			_, err := io.WriteString(service, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nfrom service")
+			_, err := io.WriteString(
+				service,
+				"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nfrom service",
+			)
 			sent <- err
 		}()
 		input := bufio.NewReader(visitor)
@@ -168,7 +202,10 @@ func TestExposeUpgradeJoinsCopiesBeforeClosingPipeEnds(t *testing.T) {
 			cancel()
 			<-drained
 		}()
-		if err := serviceOutput.Write(t.Context(), []byte("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nready")); err != nil {
+		if err := serviceOutput.Write(
+			t.Context(),
+			[]byte("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nready"),
+		); err != nil {
 			t.Fatal(err)
 		}
 		input := bufio.NewReader(visitor)

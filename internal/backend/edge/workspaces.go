@@ -21,6 +21,7 @@ func (e *Edge) workspaces(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.Workspaces{Workspaces: items})
 	return nil
 }
+
 func (e *Edge) createWorkspace(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeCreateWorkspace)
 	if err != nil {
@@ -29,7 +30,14 @@ func (e *Edge) createWorkspace(w http.ResponseWriter, r *http.Request) error {
 	var record *database.WorkspaceRecord
 	switch request := request.(type) {
 	case *webapi.CreateWorkspaceDevice:
-		record, err = e.state.Services.Control.CreateWorkspace(r.Context(), database.NewWorkspaceID(), caller(r).ID, request.DeviceID, string(request.Path), string(request.Name))
+		record, err = e.state.Services.Control.CreateWorkspace(
+			r.Context(),
+			database.NewWorkspaceID(),
+			caller(r).ID,
+			request.DeviceID,
+			string(request.Path),
+			string(request.Name),
+		)
 	case *webapi.CreateWorkspaceCloud:
 		shard, failed := e.state.Shards.Of(r.Context(), caller(r).ID)
 		if failed != nil {
@@ -49,6 +57,7 @@ func (e *Edge) createWorkspace(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 201, webapi.WorkspaceAnswer{Workspace: record.DTO()})
 	return nil
 }
+
 func (e *Edge) renameWorkspace(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeRenameWorkspace)
 	if err != nil {
@@ -69,6 +78,7 @@ func (e *Edge) renameWorkspace(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.WorkspaceAnswer{Workspace: record.DTO()})
 	return nil
 }
+
 func (e *Edge) deleteWorkspace(w http.ResponseWriter, r *http.Request) error {
 	id, err := webapi.ParseWorkspaceID(r.PathValue("id"))
 	if err != nil {
@@ -85,7 +95,11 @@ func (e *Edge) deleteWorkspace(w http.ResponseWriter, r *http.Request) error {
 	case *database.WorkspaceMissing:
 		return apiFailure(404, "workspace_not_found", "No such workspace")
 	case *database.WorkspaceInUse:
-		return apiFailure(409, "workspace_in_use", fmt.Sprintf("%d conversation(s) still target this workspace", result.Count))
+		return apiFailure(
+			409,
+			"workspace_in_use",
+			fmt.Sprintf("%d conversation(s) still target this workspace", result.Count),
+		)
 	}
 	return nil
 }

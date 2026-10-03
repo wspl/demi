@@ -21,6 +21,8 @@ func (a *activity) touch() {
 	a.last = time.Now()
 	a.mu.Unlock()
 }
+
+// Read records activity only when bytes arrive.
 func (a *activity) Read(p []byte) (int, error) {
 	n, err := a.Conn.Read(p)
 	if n > 0 {
@@ -28,6 +30,8 @@ func (a *activity) Read(p []byte) (int, error) {
 	}
 	return n, err
 }
+
+// Write records activity only when bytes are sent.
 func (a *activity) Write(p []byte) (int, error) {
 	n, err := a.Conn.Write(p)
 	if n > 0 {
@@ -35,6 +39,7 @@ func (a *activity) Write(p []byte) (int, error) {
 	}
 	return n, err
 }
+
 func (a *activity) watch(ctx context.Context, limit time.Duration) func() {
 	a.touch()
 	canceled, cancel := context.WithCancel(context.Background())

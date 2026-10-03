@@ -51,12 +51,23 @@ func TestRefusedBodyAnnouncesWhetherConnectionCanBeReused(t *testing.T) {
 				t.Fatal(readErr, closeErr)
 			}
 			if first.StatusCode != test.status || first.Close != test.close {
-				t.Errorf("first response: status=%d close=%v; want status=%d close=%v", first.StatusCode, first.Close, test.status, test.close)
+				t.Errorf(
+					"first response: status=%d close=%v; want status=%d close=%v",
+					first.StatusCode,
+					first.Close,
+					test.status,
+					test.close,
+				)
 			}
 			var reused atomic.Bool
 			trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { reused.Store(info.Reused) }}
 			ctx := httptrace.WithClientTrace(t.Context(), trace)
-			request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/not-a-route", strings.NewReader("{}"))
+			request, err := http.NewRequestWithContext(
+				ctx,
+				http.MethodPost,
+				endpoint+"/not-a-route",
+				strings.NewReader("{}"),
+			)
 			if err != nil {
 				t.Fatal(err)
 			}

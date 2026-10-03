@@ -84,8 +84,13 @@ func (e *Edge) syncChannel(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return nil
 	}
-	return shard.ServeSyncChannel(r.Context(), socket, usershard.ChannelSession{Token: token, User: session.User, ExpiresAt: session.ExpiresAt})
+	return shard.ServeSyncChannel(
+		r.Context(),
+		socket,
+		usershard.ChannelSession{Token: token, User: session.User, ExpiresAt: session.ExpiresAt},
+	)
 }
+
 func (e *Edge) conversationSocket(w http.ResponseWriter, r *http.Request) error {
 	record, err := e.owned(r)
 	if err != nil {
@@ -106,6 +111,7 @@ func (e *Edge) conversationSocket(w http.ResponseWriter, r *http.Request) error 
 	}
 	return shard.ServeConversationSocket(r.Context(), *record, socket)
 }
+
 func (e *Edge) userStream(w http.ResponseWriter, r *http.Request) error {
 	name := r.PathValue("name")
 	unknown := apiFailure(404, "unknown_stream", "No stream has that name")
@@ -154,47 +160,25 @@ type streamEnd struct {
 	reason string
 }
 
-func relayUserStream(ctx context.Context, socket *websocket.Conn, stream *hostaccess.UserStream, pluginOff <-chan struct{}, closeWait time.Duration) {
+func relayUserStream(
+	ctx context.Context,
+	socket *websocket.Conn,
+	stream *hostaccess.UserStream,
+	pluginOff <-chan struct{},
+	closeWait time.Duration,
+) {
 	copyCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	outcomes := make(chan streamEnd, 2)
 	joined := make(chan struct{})
 	go func() {
 		defer close(joined)
-		for {
-			bytes, err := stream.FromHost.Next(copyCtx)
-			if errors.Is(err, io.EOF) {
-				outcomes <- streamEnd{1000, "completed"}
-				return
-			}
-			if err != nil {
-				outcomes <- streamEnd{1011, "host_unreachable"}
-				return
-			}
-			if err := socket.Write(copyCtx, websocket.MessageBinary, bytes); err != nil {
-				outcomes <- streamEnd{}
-				return
-			}
-		}
+		copyStreamFromHost(copyCtx, socket, stream, outcomes)
 	}()
 	forwarded := make(chan struct{})
 	go func() {
 		defer close(forwarded)
-		for {
-			kind, bytes, err := usershard.ReadPageMessage(copyCtx, socket)
-			if err != nil {
-				outcomes <- streamEnd{}
-				return
-			}
-			if kind != websocket.MessageBinary {
-				outcomes <- streamEnd{1003, "binary_only"}
-				return
-			}
-			if err := stream.ToHost.Write(copyCtx, bytes); err != nil {
-				outcomes <- streamEnd{1011, "host_unreachable"}
-				return
-			}
-		}
+		copyStreamToHost(copyCtx, socket, stream, outcomes)
 	}()
 	var end streamEnd
 	select {
@@ -224,4 +208,50 @@ func relayUserStream(ctx context.Context, socket *websocket.Conn, stream *hostac
 	_ = socket.CloseNow()
 	<-joined
 	<-forwarded
+}
+
+func copyStreamFromHost(
+	ctx context.Context,
+	socket *websocket.Conn,
+	stream *hostaccess.UserStream,
+	outcomes chan<- streamEnd,
+) {
+	for {
+		bytes, err := stream.FromHost.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			outcomes <- streamEnd{1000, "completed"}
+			return
+		}
+		if err != nil {
+			outcomes <- streamEnd{1011, "host_unreachable"}
+			return
+		}
+		if err := socket.Write(ctx, websocket.MessageBinary, bytes); err != nil {
+			outcomes <- streamEnd{}
+			return
+		}
+	}
+}
+
+func copyStreamToHost(
+	ctx context.Context,
+	socket *websocket.Conn,
+	stream *hostaccess.UserStream,
+	outcomes chan<- streamEnd,
+) {
+	for {
+		kind, bytes, err := usershard.ReadPageMessage(ctx, socket)
+		if err != nil {
+			outcomes <- streamEnd{}
+			return
+		}
+		if kind != websocket.MessageBinary {
+			outcomes <- streamEnd{1003, "binary_only"}
+			return
+		}
+		if err := stream.ToHost.Write(ctx, bytes); err != nil {
+			outcomes <- streamEnd{1011, "host_unreachable"}
+			return
+		}
+	}
 }

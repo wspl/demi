@@ -25,7 +25,12 @@ type RemoteFile struct {
 
 // ReferenceRemoteFiles checks every device before granting any reference,
 // attaches non-main devices, and returns references in input order.
-func ReferenceRemoteFiles(ctx context.Context, shard HostShard, id webapi.ConversationID, files []RemoteFile) ([]core.UserContentBlock, error) {
+func ReferenceRemoteFiles(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	files []RemoteFile,
+) ([]core.UserContentBlock, error) {
 	record, err := OwnedConversation(ctx, shard, id)
 	if err != nil {
 		var access *Error
@@ -66,22 +71,8 @@ func ReferenceRemoteFiles(ctx context.Context, shard HostShard, id webapi.Conver
 		}
 		references = append(references, reference)
 	}
-	target, err := ResolveTarget(ctx, shard, record)
-	if err != nil {
-		return nil, &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
-	}
-	main := database.ExecutionDeviceID(target)
-	for _, device := range ordered {
-		if main != nil && device.ID == *main {
-			continue
-		}
-		outcome, err := shard.Control().ChangeConversation(ctx, record.ID, &database.RecordAttach{Host: database.AttachedHostRecord{Device: device.ID, Name: device.Name}})
-		if err != nil {
-			return nil, &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
-		}
-		if outcome != database.ChangeApplied {
-			return nil, &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
-		}
+	if err := attachRemoteDevices(ctx, shard, record, ordered); err != nil {
+		return nil, err
 	}
 	return references, nil
 }
@@ -89,7 +80,13 @@ func ReferenceRemoteFiles(ctx context.Context, shard HostShard, id webapi.Conver
 // ResolveUpload writes the owner's upload under the Host's attachments home,
 // returning message blocks and held media. The caller already holds this Host's
 // admission for the frame; this function never enters the file gate again.
-func ResolveUpload(ctx context.Context, shard HostShard, id webapi.ConversationID, admitted *ConversationHost, reference, fileName string) ([]core.UserContentBlock, store.HeldMedia, error) {
+func ResolveUpload(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	admitted *ConversationHost,
+	reference, fileName string,
+) ([]core.UserContentBlock, store.HeldMedia, error) {
 	unavailable := []core.UserContentBlock{store.Unavailable(reference)}
 	idUpload, err := webapi.ParseAttachmentID(reference)
 	if err != nil {
@@ -129,10 +126,15 @@ func ResolveUpload(ctx context.Context, shard HostShard, id webapi.ConversationI
 		}
 	}
 	written := directory + "/" + name
-	if err := admitted.Host.FS().WriteFile(ctx, written, host.FileContents{Bytes: bytes}, host.WriteOptions{CreateParents: true}); err != nil {
+	if err := admitted.Host.FS().
+		WriteFile(ctx, written, host.FileContents{Bytes: bytes}, host.WriteOptions{CreateParents: true}); err != nil {
 		return nil, store.HeldMedia{}, accessError(err)
 	}
-	blocks, held, err := store.UploadBlocks(ctx, store.Upload{Name: name, Path: written, MediaType: record.MediaType, SHA256: record.SHA256, Bytes: bytes}, shard.Blobs())
+	blocks, held, err := store.UploadBlocks(
+		ctx,
+		store.Upload{Name: name, Path: written, MediaType: record.MediaType, SHA256: record.SHA256, Bytes: bytes},
+		shard.Blobs(),
+	)
 	if err != nil {
 		return nil, store.HeldMedia{}, &Error{Kind: AccessStore, Cause: err}
 	}
@@ -157,6 +159,42 @@ func remoteReference(device database.DeviceRecord, path string) (core.UserConten
 	}
 	command := "demi host shell --host " + quotedID + " " + quotedRead
 	reference := url.URL{Scheme: "file", Path: path}
-	reference.RawQuery = "host=" + url.QueryEscape(device.Name) + "&deviceId=" + url.QueryEscape(string(device.ID)) + "&readCommand=" + url.QueryEscape(command)
+	reference.RawQuery = "host=" + url.QueryEscape(
+		device.Name,
+	) + "&deviceId=" + url.QueryEscape(
+		string(device.ID),
+	) + "&readCommand=" + url.QueryEscape(
+		command,
+	)
 	return &core.UserReference{Reference: reference.String()}, nil
+}
+
+func attachRemoteDevices(
+	ctx context.Context,
+	shard HostShard,
+	record database.ConversationRecord,
+	ordered []database.DeviceRecord,
+) error {
+	target, err := ResolveTarget(ctx, shard, record)
+	if err != nil {
+		return &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
+	}
+	main := database.ExecutionDeviceID(target)
+	for _, device := range ordered {
+		if main != nil && device.ID == *main {
+			continue
+		}
+		outcome, err := shard.Control().
+			ChangeConversation(
+				ctx, record.ID,
+				&database.RecordAttach{Host: database.AttachedHostRecord{Device: device.ID, Name: device.Name}},
+			)
+		if err != nil {
+			return &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
+		}
+		if outcome != database.ChangeApplied {
+			return &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
+		}
+	}
+	return nil
 }

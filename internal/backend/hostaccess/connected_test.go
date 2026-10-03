@@ -29,15 +29,21 @@ func TestConnectedNodeIdentityRefusesFilesAndWithHostHoldsGate(t *testing.T) {
 	requireFileRefused(t, r, identity)
 	var escaped *remotehost.Host
 	result := startHostOperation(t, func(ctx context.Context) (host.FileStat, error) {
-		return WithHost(ctx, s, record.ID, nil, func(ctx context.Context, admitted *ConversationHost) (host.FileStat, error) {
-			if !s.mu.TryLock() {
-				t.Error("WithHost called operation under shard mutex")
-			} else {
-				s.mu.Unlock()
-			}
-			escaped = admitted.Host
-			return admitted.Host.FS().Stat(ctx, "/work/file")
-		})
+		return WithHost(
+			ctx,
+			s,
+			record.ID,
+			nil,
+			func(ctx context.Context, admitted *ConversationHost) (host.FileStat, error) {
+				if !s.mu.TryLock() {
+					t.Error("WithHost called operation under shard mutex")
+				} else {
+					s.mu.Unlock()
+				}
+				escaped = admitted.Host
+				return admitted.Host.FS().Stat(ctx, "/work/file")
+			},
+		)
 	})
 	var request *runnerwire.FSStat
 	select {
@@ -63,7 +69,13 @@ func TestConnectedNodeIdentityRefusesFilesAndWithHostHoldsGate(t *testing.T) {
 		transition.Release()
 		t.Error("transition entered while file operation awaited its reply")
 	}
-	r.send(t, &runnerwire.FSOK{ID: request.ID, Result: &runnerwire.FSStatResult{Value: runnerwire.FileStat{IsFile: true, Size: 7}}})
+	r.send(
+		t,
+		&runnerwire.FSOK{
+			ID:     request.ID,
+			Result: &runnerwire.FSStatResult{Value: runnerwire.FileStat{IsFile: true, Size: 7}},
+		},
+	)
 	completed := <-result
 	if completed.err != nil || completed.value.Size != 7 {
 		t.Fatal(completed)
@@ -184,7 +196,6 @@ func TestConnectedUploadRevocationFailsPipeAndDrains(t *testing.T) {
 	if err := upload.Writer.Write(t.Context(), []byte("late")); err == nil {
 		t.Fatal("edge wrote after upload revoked")
 	}
-
 }
 
 func TestConnectedStreamRetainsActivityWithoutFilesAndEnds(t *testing.T) {
@@ -254,7 +265,16 @@ func TestConnectedStreamRetainsActivityWithoutFilesAndEnds(t *testing.T) {
 }
 
 func testServiceBinding() ServiceBinding {
-	return ServiceBinding{Package: commandwire.PackageDescriptor{ID: "test.service", Version: "1", ProtocolVersion: 1, Operations: []string{"view"}, Targets: map[string]commandwire.PackageArtifact{}}, Operation: "view"}
+	return ServiceBinding{
+		Package: commandwire.PackageDescriptor{
+			ID:              "test.service",
+			Version:         "1",
+			ProtocolVersion: 1,
+			Operations:      []string{"view"},
+			Targets:         map[string]commandwire.PackageArtifact{},
+		},
+		Operation: "view",
+	}
 }
 
 func TestConnectedUserCallActivityAndTransitionCancellation(t *testing.T) {

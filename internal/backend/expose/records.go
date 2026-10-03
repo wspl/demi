@@ -22,13 +22,22 @@ type Expose struct {
 
 // Errors for expose operations.
 var (
-	ErrUnavailable    = errors.New("This backend has no expose domain configured (DEMI_EXPOSE_DOMAIN)") //nolint:staticcheck // User-visible Rust text is copied verbatim.
-	ErrDeviceNotFound = errors.New("No such device")                                                    //nolint:staticcheck // User-visible Rust text is copied verbatim.
+	// ErrUnavailable means this backend has no expose domain.
+	//nolint:staticcheck // User-visible Rust text is copied verbatim.
+	ErrUnavailable = errors.New(
+		"This backend has no expose domain configured (DEMI_EXPOSE_DOMAIN)",
+	)
+	// ErrDeviceNotFound means the device is not owned by the caller.
+	//nolint:staticcheck // User-visible Rust text is copied verbatim.
+	ErrDeviceNotFound = errors.New(
+		"No such device",
+	)
 )
 
 // DeviceOfflineError means the runner is not connected or the Cloud is not running.
 type DeviceOfflineError struct{ Device webapi.DeviceID }
 
+// Error returns the device connection refusal.
 func (e *DeviceOfflineError) Error() string {
 	return fmt.Sprintf("The device %s is offline; connect it before exposing a service", e.Device)
 }
@@ -36,10 +45,17 @@ func (e *DeviceOfflineError) Error() string {
 // NotFoundError means the caller has no live expose with this ID.
 type NotFoundError struct{ ID webapi.ExposeID }
 
+// Error names the missing expose.
 func (e *NotFoundError) Error() string { return "No expose " + string(e.ID) }
 
 // Add creates an expose on a connected device for lifetime.
-func Add(ctx context.Context, shard ExposeShard, device webapi.DeviceID, address webapi.ExposeAddress, lifetime time.Duration) (Expose, error) {
+func Add(
+	ctx context.Context,
+	shard ExposeShard,
+	device webapi.DeviceID,
+	address webapi.ExposeAddress,
+	lifetime time.Duration,
+) (Expose, error) {
 	record, err := shard.Control().Device(ctx, device)
 	if err != nil {
 		return Expose{}, fmt.Errorf("read expose device: %w", err)
@@ -58,7 +74,9 @@ func Add(ctx context.Context, shard ExposeShard, device webapi.DeviceID, address
 	if _, err := rand.Read(bits[:]); err != nil {
 		return Expose{}, fmt.Errorf("new expose id: %w", err)
 	}
-	id, err := webapi.ParseExposeID(strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(bits[:])))
+	id, err := webapi.ParseExposeID(
+		strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(bits[:])),
+	)
 	if err != nil {
 		return Expose{}, fmt.Errorf("new expose id: %w", err)
 	}

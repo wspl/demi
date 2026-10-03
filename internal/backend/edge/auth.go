@@ -13,6 +13,7 @@ func (e *Edge) accounts() *accounts.Accounts {
 	s := e.state.Services
 	return accounts.NewAccounts(s.Control, s.Hasher, s.Sessions, s.Limiter)
 }
+
 func (e *Edge) setupStatus(w http.ResponseWriter, r *http.Request) error {
 	needed, err := e.accounts().SetupNeeded(r.Context())
 	if err != nil {
@@ -21,6 +22,7 @@ func (e *Edge) setupStatus(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.SetupStatus{Needed: needed})
 	return nil
 }
+
 func (e *Edge) setup(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeSetupRequest)
 	if err != nil {
@@ -34,6 +36,7 @@ func (e *Edge) setup(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 201, webapi.Identity{User: result.User})
 	return nil
 }
+
 func (e *Edge) login(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeCredentials)
 	if err != nil {
@@ -47,6 +50,7 @@ func (e *Edge) login(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.Identity{User: result.User})
 	return nil
 }
+
 func (e *Edge) logout(w http.ResponseWriter, r *http.Request) error {
 	if cookie, err := r.Cookie("demi_session"); err == nil {
 		if err := e.state.Services.Sessions.Close(r.Context(), cookie.Value); err != nil {
@@ -58,10 +62,12 @@ func (e *Edge) logout(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(204)
 	return nil
 }
+
 func (e *Edge) me(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.Identity{User: caller(r)})
 	return nil
 }
+
 func (e *Edge) nickname(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeNicknamePatch)
 	if err != nil {
@@ -75,6 +81,7 @@ func (e *Edge) nickname(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.Identity{User: user})
 	return nil
 }
+
 func (e *Edge) password(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodePasswordChange)
 	if err != nil {
@@ -86,6 +93,7 @@ func (e *Edge) password(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(204)
 	return nil
 }
+
 func (e *Edge) users(w http.ResponseWriter, r *http.Request) error {
 	users, err := e.accounts().Users(r.Context(), caller(r))
 	if err != nil {
@@ -94,6 +102,7 @@ func (e *Edge) users(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.Users{Users: users})
 	return nil
 }
+
 func (e *Edge) createUser(w http.ResponseWriter, r *http.Request) error {
 	if !caller(r).Role.Outranks(webapi.RoleUser) {
 		return accounts.ErrAdminRequired
@@ -109,6 +118,7 @@ func (e *Edge) createUser(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 201, webapi.Identity{User: user})
 	return nil
 }
+
 func (e *Edge) resetPassword(w http.ResponseWriter, r *http.Request) error {
 	if !caller(r).Role.Outranks(webapi.RoleUser) {
 		return accounts.ErrAdminRequired

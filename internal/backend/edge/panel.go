@@ -37,7 +37,11 @@ func (e *Edge) panel(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if len(document) > webapi.PanelBytesMax {
-		return apiFailure(413, "too_large", fmt.Sprintf("The work panel is over its %d-byte limit", webapi.PanelBytesMax))
+		return apiFailure(
+			413,
+			"too_large",
+			fmt.Sprintf("The work panel is over its %d-byte limit", webapi.PanelBytesMax),
+		)
 	}
 	if err := e.state.Services.Control.SavePanel(r.Context(), record.ID, string(document)); err != nil {
 		return err

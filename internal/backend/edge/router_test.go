@@ -36,6 +36,7 @@ func TestRoutesMatchRust(t *testing.T) {
 		t.Fatalf("routes differ:\ngot:\n%s\nwant:\n%s", strings.Join(got, "\n"), data)
 	}
 }
+
 func TestRoutingKeepsLiteralPriorityAndExactPaths(t *testing.T) {
 	tree := &routeNode{}
 	answer := func(text string) endpoint {

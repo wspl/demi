@@ -31,7 +31,11 @@ func TestUnspecifiedIPv4ListensOnIPv4Only(t *testing.T) {
 	defer func() { _ = edge.Close(context.Background()) }()
 	port := edge.LocalAddr().Port()
 	dialer := net.Dialer{}
-	ipv4, err := dialer.DialContext(t.Context(), "tcp", netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), port).String())
+	ipv4, err := dialer.DialContext(
+		t.Context(),
+		"tcp",
+		netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), port).String(),
+	)
 	if err != nil {
 		t.Fatal("IPv4 loopback refused:", err)
 	}

@@ -26,7 +26,11 @@ func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 			var named *webapi.DeviceID
 			if change == "detach" {
 				record = s.target(t, record, laptop, "/laptop")
-				if _, err := s.control.ChangeConversation(t.Context(), record.ID, &database.RecordAttach{Host: database.AttachedHostRecord{Device: cloudDevice.ID, Name: "cloud"}}); err != nil {
+				if _, err := s.control.ChangeConversation(
+					t.Context(),
+					record.ID,
+					&database.RecordAttach{Host: database.AttachedHostRecord{Device: cloudDevice.ID, Name: "cloud"}},
+				); err != nil {
 					t.Fatal(err)
 				}
 				named = &cloudDevice.ID
@@ -34,7 +38,11 @@ func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 			waiting := make(chan struct{})
 			proceed := make(chan struct{})
 			var released atomic.Int32
-			s.conversations.cloudAdmission = func(ctx context.Context, _ cloud.CloudShard, device database.DeviceRecord) (*cloudHold, error) {
+			s.conversations.cloudAdmission = func(
+				ctx context.Context,
+				_ cloud.CloudShard,
+				device database.DeviceRecord,
+			) (*cloudHold, error) {
 				close(waiting)
 				select {
 				case <-proceed:
@@ -46,13 +54,19 @@ func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 			outcome := make(chan error, 1)
 			var ran atomic.Int32
 			go func() {
-				_, err := WithHost(t.Context(), s, record.ID, named, func(_ context.Context, h *ConversationHost) (struct{}, error) {
-					ran.Add(1)
-					if h.Root != "/laptop" {
-						t.Errorf("stale root %q", h.Root)
-					}
-					return struct{}{}, nil
-				})
+				_, err := WithHost(
+					t.Context(),
+					s,
+					record.ID,
+					named,
+					func(_ context.Context, h *ConversationHost) (struct{}, error) {
+						ran.Add(1)
+						if h.Root != "/laptop" {
+							t.Errorf("stale root %q", h.Root)
+						}
+						return struct{}{}, nil
+					},
+				)
 				outcome <- err
 			}()
 			<-waiting
@@ -64,7 +78,12 @@ func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 			}
 			switch change {
 			case "switch":
-				err = SwitchTarget(t.Context(), s, record, &webapi.ConversationTargetDevice{DeviceID: laptop.ID, Path: "/laptop"})
+				err = SwitchTarget(
+					t.Context(),
+					s,
+					record,
+					&webapi.ConversationTargetDevice{DeviceID: laptop.ID, Path: "/laptop"},
+				)
 			case "archive":
 				err = Archive(t.Context(), s, record)
 			case "detach":
@@ -133,7 +152,11 @@ func TestAdmissionRefusalsAndDispatchedWorkRunsOnce(t *testing.T) {
 	if !errors.Is(err, cause) || runs != 1 {
 		t.Fatalf("dispatched: %v, runs=%d", err, runs)
 	}
-	if _, err := s.control.ChangeConversation(t.Context(), record.ID, &database.RecordArchived{Archived: true}); err != nil {
+	if _, err := s.control.ChangeConversation(
+		t.Context(),
+		record.ID,
+		&database.RecordArchived{Archived: true},
+	); err != nil {
 		t.Fatal(err)
 	}
 	admitted, err := AdmitHost(t.Context(), s, record.ID, nil)
@@ -234,7 +257,13 @@ func TestTransitionCommitIgnoresDepartedRequesterAndKeepsConflict(t *testing.T) 
 		t.Fatal("committed switch did not restart idle tracking")
 	}
 	var conflict *ChangeRefusal
-	if err := SwitchTarget(t.Context(), s, record, target); !errors.As(err, &conflict) || conflict.Kind != ChangeConflict {
+	if err := SwitchTarget(
+		t.Context(),
+		s,
+		record,
+		target,
+	); !errors.As(err, &conflict) ||
+		conflict.Kind != ChangeConflict {
 		t.Fatalf("stale switch = %v", err)
 	}
 	if err := Archive(ctx, s, current); err != nil {
