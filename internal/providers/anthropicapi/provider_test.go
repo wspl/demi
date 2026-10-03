@@ -140,7 +140,7 @@ func TestStandardFailureReading(t *testing.T) {
 		t.Fatal(err)
 	}
 	upstream := string(raw)
-	facts := providerAt(t, v, "/v1", provider.VendorPolicy{}).ReadFailure(&core.ProviderErrorDiagnostics{Source: "http", Upstream: &upstream}, now)
+	facts := providerAt(t, v, "/v1", provider.VendorPolicy{}).ReadFailure(&core.ProviderErrorDiagnostics{Source: "http", HTTPStatus: new(uint16(429)), Upstream: &upstream}, now)
 	if facts.RetryAt == nil || *facts.RetryAt != "2026-09-18T14:01:30.000Z" {
 		t.Fatal(facts)
 	}

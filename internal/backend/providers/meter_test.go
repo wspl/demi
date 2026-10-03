@@ -3,8 +3,8 @@ package providers
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -35,7 +35,7 @@ func TestRequestsAdmittedAsEarliestLeaveWindow(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := limit.Take(); !errors.As(err, &refused) {
+		if err := limit.Take(); !errors.As(err, &refused) || refused.Limit != 3 {
 			t.Fatal(err)
 		}
 	})
@@ -57,7 +57,9 @@ func TestResponsesReachLedgerBeforeAgentAndLimitRefusesRest(t *testing.T) {
 			t.Error(err)
 		}
 	}()
+	var firstEvents []provider.Event
 	for event := range first.Run(ctx, providertest.InferenceRequest()) {
+		firstEvents = append(firstEvents, event)
 		totals, err := vault.control.UsageTotals(ctx, owner.ID)
 		if err != nil {
 			t.Fatal(err)
@@ -70,9 +72,12 @@ func TestResponsesReachLedgerBeforeAgentAndLimitRefusesRest(t *testing.T) {
 			t.Fatal("ledger before response", totals)
 		}
 	}
+	if want := []provider.Event{providertest.Text("a"), providertest.Response(100, 10)}; !reflect.DeepEqual(firstEvents, want) {
+		t.Fatalf("first run: %#v; want %#v", firstEvents, want)
+	}
 	var workers sync.WaitGroup
-	var refused atomic.Int32
-	for range 3 {
+	outcomes := make([][]provider.Event, 3)
+	for i := range 3 {
 		fork := first.Fresh()
 		workers.Go(func() {
 			defer func() {
@@ -81,15 +86,21 @@ func TestResponsesReachLedgerBeforeAgentAndLimitRefusesRest(t *testing.T) {
 				}
 			}()
 			for event := range fork.Run(ctx, providertest.InferenceRequest()) {
-				if e, ok := event.(*provider.Error); ok && e.Failure.Code != nil && *e.Failure.Code == provider.ErrorCode("rate_limited") {
-					refused.Add(1)
-				}
+				outcomes[i] = append(outcomes[i], event)
 			}
 		})
 	}
 	workers.Wait()
-	if refused.Load() != 1 || script.Remaining() != 1 {
-		t.Fatalf("refusals %d, unused turns %d", refused.Load(), script.Remaining())
+	refused := 0
+	for _, events := range outcomes {
+		if len(events) == 1 {
+			if e, ok := events[0].(*provider.Error); ok && e.Failure.Code != nil && *e.Failure.Code == provider.ErrorCode("rate_limited") {
+				refused++
+			}
+		}
+	}
+	if refused != 1 || script.Remaining() != 1 {
+		t.Fatalf("refusals %d, unused turns %d", refused, script.Remaining())
 	}
 	totals, err := vault.control.UsageTotals(ctx, owner.ID)
 	if err != nil {
