@@ -89,7 +89,7 @@ func (c *counted) ReadAll(ctx context.Context, key string) ([]byte, error) {
 			break
 		}
 	}
-	// Match the Rust counting fixture's yield so concurrently started reads can overlap.
+	// Yield so that concurrently started reads can overlap.
 	runtime.Gosched()
 	return c.Objects.ReadAll(ctx, key)
 }

@@ -85,7 +85,7 @@ func TestPinnedVersionRecordsEachOfficialArchiveWithExecutable(t *testing.T) {
 					t.Fatal("invalid release accepted")
 				}
 
-				// Rust Display text preserves the refusal class and its platform/version.
+				// The refusal text names its class and the platform and version.
 				want := ""
 				switch scenario {
 				case "unofficial":
