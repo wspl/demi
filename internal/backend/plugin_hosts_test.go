@@ -12,6 +12,7 @@ import (
 
 // One runner supplies two working directories; four jobs observe distinct Host shells.
 func TestPluginHostsKeepShellsAndRefuseHandlesOnOtherHost(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "")
 	alice, bob := filepath.Join(w.root, "alice"), filepath.Join(w.root, "bob")
 	wireMust(t, os.MkdirAll(alice, 0755))

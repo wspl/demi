@@ -30,6 +30,7 @@ import (
 
 // One paired runner; no service or model is needed to observe configuration refusal.
 func TestExposeUnavailableWithoutDomain(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -186,6 +187,7 @@ func filesExposeCall(ctx context.Context, t *testing.T, b *backendtest.TestBacke
 
 // A real relay verifies owner isolation, renewals, expiry and monotonically assigned numbers.
 func TestExposeOwnerControlsLifetimeAndVisitorsNeedNoSession(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	filesExposeConfig(t, h)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -259,6 +261,7 @@ func TestExposeOwnerControlsLifetimeAndVisitorsNeedNoSession(t *testing.T) {
 
 // Held real connections end on removal, expiry and revocation; offline records survive.
 func TestExposeConnectionsEndWithRecordAndOfflineDeviceKeepsRecords(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	filesExposeConfig(t, h)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -312,6 +315,7 @@ func TestExposeConnectionsEndWithRecordAndOfflineDeviceKeepsRecords(t *testing.T
 
 // Sixty-four held real relays fill admission; the service's close event frees a place.
 func TestExposeShedsSixtyFifthConnectionAndReusesClosedPlace(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	filesExposeConfig(t, h)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -346,6 +350,7 @@ func TestExposeShedsSixtyFifthConnectionAndReusesClosedPlace(t *testing.T) {
 
 // The real relay's one-second idle timeout is observed through connection closure.
 func TestExposeQuietConnectionEndsAtIdleLimit(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	filesExposeConfig(t, h)
 	h.Config.Exposes.Idle = time.Second
@@ -366,6 +371,7 @@ func TestExposeQuietConnectionEndsAtIdleLimit(t *testing.T) {
 
 // Three real shell turns exercise the expose CLI against the plugin's page state.
 func TestExposeAgentAddsListsRenewsAndRemoves(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-file", func(h *backendtest.Harness) { filesExposeConfig(t, h) })
 	service, _ := filesExposeService(t)
 	port := filesExposePort(t, service)
@@ -457,6 +463,7 @@ func filesExposeCloud(t *testing.T, configure func(*backendtest.Harness)) (*host
 
 // A real cloud checkpoint preserves its public relay; idle shutdown ends it before saving.
 func TestExposeCloudCheckpointKeepsConnectionAndIdleStopEndsIt(t *testing.T) {
+	t.Parallel()
 	window := 600 * time.Millisecond
 	s, vendor, socket := filesExposeCloud(t, func(h *backendtest.Harness) {
 		h.Config.Lifecycle.IdleWindow = window
@@ -509,6 +516,7 @@ func TestExposeCloudCheckpointKeepsConnectionAndIdleStopEndsIt(t *testing.T) {
 
 // Three cloud boots exercise death, reset, silent loss, and startup cleanup of old exposes.
 func TestExposeCloudDeathResetRediscoveryAndBackendStartupEndRecords(t *testing.T) {
+	t.Parallel()
 	s, vendor, socket := filesExposeCloud(t, nil)
 	service, released := filesExposeService(t)
 	port := filesExposePort(t, service)
@@ -568,6 +576,7 @@ func TestExposeCloudDeathResetRediscoveryAndBackendStartupEndRecords(t *testing.
 
 // A local WebSocket service echoes messages and records the visitor's close.
 func TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	filesExposeConfig(t, h)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -736,6 +745,7 @@ func filesExposeLines(t *testing.T, head, name string, want ...string) {
 
 // Four raw HTTP exchanges preserve headers, eight-MiB bodies, event streaming and refusals.
 func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	filesExposeConfig(t, h)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -796,8 +806,14 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 					_, err = io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Service-Header: Yes\r\nSet-Cookie: first=1; Path=/\r\nset-cookie: second=2; HttpOnly\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello")
 					return err
 				case strings.HasPrefix(head, "POST /upload"):
-					body, err := io.ReadAll(httputil.NewChunkedReader(read))
+					// Read the trailers too: closing with an unread final CRLF can
+					// reset TCP while the response is still reaching the runner.
+					request, err := http.ReadRequest(bufio.NewReader(io.MultiReader(strings.NewReader(head), read)))
 					if err != nil {
+						return err
+					}
+					body, readErr := io.ReadAll(request.Body)
+					if err := errors.Join(readErr, request.Body.Close()); err != nil {
 						return err
 					}
 					seen <- observation{head: head, body: body}

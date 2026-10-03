@@ -26,6 +26,7 @@ import (
 
 // Restart over local files, then wait on the deletion event, never elapsed time.
 func TestRetentionRunsFirstPassAfterServing(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	counts := &blobstest.ObjectCounts{}
 	h.Objects = counts
@@ -96,6 +97,7 @@ func filesResultMedia(t *testing.T, w filesWork, id string) []string {
 
 // A real image-producing job is restored after the manual retention clock advances.
 func TestRetentionIdleConversationRetiresToolImagesAndReplaysText(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Clock.FollowSystem() })
 	png := storetest.PNG(2, 2, 1)
 	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png, 0644))
@@ -127,6 +129,7 @@ func TestRetentionIdleConversationRetiresToolImagesAndReplaysText(t *testing.T) 
 
 // Three jobs read saved stdout before and after a manual 31-day retention advance.
 func TestRetentionRemovesCommandOutputThirtyDaysAfterEnd(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Clock.FollowSystem() })
 	w.vendor.Respond(conversationShell(t, "toolu_1", "echo kept", 60000))
 	w.vendor.Respond(conversationAnswer(t, []string{"Said."}, 1, 1))
@@ -156,6 +159,7 @@ func TestRetentionRemovesCommandOutputThirtyDaysAfterEnd(t *testing.T) {
 
 // Compaction plus a manual 31-day advance tests page leases and the blob grace period.
 func TestRetentionSummarizedImagesWaitForPageAndBlobGrace(t *testing.T) {
+	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
 	w := filesWorking(t, "", func(h *backendtest.Harness) {
 		h.Clock.FollowSystem()
@@ -226,6 +230,7 @@ func TestRetentionSummarizedImagesWaitForPageAndBlobGrace(t *testing.T) {
 
 // A native fixture holds release until its real runner dies; archive still commits.
 func TestRetentionArchiveSucceedsWhenDeviceDiesDuringRelease(t *testing.T) {
+	t.Parallel()
 	ctx, b, s, paired := conversationStreamDevice(t)
 	conversationCreate(ctx, t, b, &s, conversationSecond)
 	filesMove(ctx, t, b, &s, conversationSecond, paired, paired.Runner.Home())
@@ -264,6 +269,7 @@ func TestRetentionArchiveSucceedsWhenDeviceDiesDuringRelease(t *testing.T) {
 
 // A real job, skill source, uploads and draft protect referenced blobs during collection.
 func TestRetentionCollectsOnlyOldOrphansWhenEveryDatabaseReadable(t *testing.T) {
+	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
 	repos := skillstest.New(t)
 	skill := skillstest.SkillMD("name: review\ndescription: Review a change.")

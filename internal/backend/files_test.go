@@ -80,6 +80,7 @@ func (d *filesDevice) read(t *testing.T, route string) backendtest.Answer {
 
 // One paired runner, no model; startup is the principal cost.
 func TestFileDeleteProtectsHostDirectories(t *testing.T) {
+	t.Parallel()
 	d := filesOnDevice(t)
 	wireMust(t, os.MkdirAll(filepath.Join(d.root, "photos/2024"), 0755))
 	wireMust(t, os.WriteFile(filepath.Join(d.root, "photos/2024/a.jpg"), []byte("a"), 0644))
@@ -109,6 +110,7 @@ func TestFileDeleteProtectsHostDirectories(t *testing.T) {
 
 // Two paired runners; verifies ownership and attachment through HTTP, with no model.
 func TestFileAccessRequiresOwnedConversationAndAttachedHost(t *testing.T) {
+	t.Parallel()
 	d := filesOnDevice(t)
 	wireMust(t, d.harness.AddUser(d.ctx, "user@example.test", "user-pass-1", webapi.RoleUser))
 	other, err := d.backend.Login(d.ctx, "user@example.test", "user-pass-1")
@@ -162,6 +164,7 @@ func TestFileAccessRequiresOwnedConversationAndAttachedHost(t *testing.T) {
 
 // One runner and a 64 MiB file exercise shutdown under transfer backpressure.
 func TestFileShutdownEndsOpenDownload(t *testing.T) {
+	t.Parallel()
 	d := filesOnDevice(t)
 	path := filepath.Join(d.root, "long.mp4")
 	wireMust(t, os.WriteFile(path, backendtest.Pattern(64*1024*1024, 0), 0644))
@@ -197,6 +200,7 @@ func filesGit(t *testing.T, d *filesDevice, args ...string) {
 
 // A real runner and about 21,000 directory entries exercise the wire size limit.
 func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
+	t.Parallel()
 	d := filesOnDevice(t)
 	outside := d.read(t, "/changes")
 	filesStatus(t, outside, 200)
@@ -275,6 +279,7 @@ func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 
 // One runner streams beyond its message limit and reads committed Git bytes.
 func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
+	t.Parallel()
 	d := filesOnDevice(t)
 	raw := func(path string) string { return "/fs/raw?path=" + url.QueryEscape(filepath.Join(d.root, path)) }
 	image := backendtest.Pattern(300000, 0)
@@ -375,6 +380,7 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 
 // One runner and a streamed 13 MiB upload, followed by a canceled partial copy.
 func TestFileUploadIsWholeAndRequiresOverwriteConsent(t *testing.T) {
+	t.Parallel()
 	d := filesOnDevice(t)
 	put := func(path, replace string, body io.Reader) backendtest.Answer {
 		route := "/fs/raw?path=" + url.QueryEscape(filepath.Join(d.root, path))

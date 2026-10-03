@@ -17,6 +17,7 @@ import (
 // Local files only; checks first-use publication, restart identity, corruption
 // refusal and independent key labels without starting the backend or a vendor.
 func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	first, err := loadSecret(t.Context(), directory)
 	if err != nil {
@@ -77,6 +78,7 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 		{"invalid UTF8", string([]byte{0xff}), SecretRead},
 		{"leading space", " " + strings.Repeat("0", 64), SecretCorrupt},
 	} {
+		// Serial subtests corrupt and reread the same instance-secret fixture.
 		t.Run(tc.name, func(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.value), 0600); err != nil {
 				t.Fatal(err)
@@ -105,6 +107,7 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 
 // Parsing alone costs no IO and verifies absence never swallows explicit emptiness.
 func TestCLIExplicitEmptyValues(t *testing.T) {
+	t.Parallel()
 	required := []string{"--mode=shared", "--public-url=http://localhost:3271", "--machines-socket=", "--native-config="}
 	c, err := ParseConfig(required, nil)
 	if err != nil {

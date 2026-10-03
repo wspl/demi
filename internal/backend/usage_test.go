@@ -10,6 +10,7 @@ import (
 
 // Ledger rows are seeded directly as in Rust; this scenario tests the HTTP view.
 func TestUsageGroupsInFirstUseOrderAndInstanceRequiresAdministrator(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)

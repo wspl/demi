@@ -341,9 +341,14 @@ func wireMust(t *testing.T, err error) {
 // Seven conversations hit local scripted vendors, cost no model usage and take
 // about one second together. The timeout guards hangs; all ordering uses events.
 func TestProviderRequestsPreservePrefixesAcrossSummaryAndThinking(t *testing.T) {
+	t.Parallel()
+	// The Codex pair stays ordered: WebSocket compares SSE's captured requests.
 	var overEvents []string
 	for _, family := range []wireFamily{"anthropic", "responses", "chat", "google", "codex", "codex-websocket", "grok"} {
 		t.Run(string(family), func(t *testing.T) {
+			if family != "codex" && family != "codex-websocket" {
+				t.Parallel()
+			}
 			bodies := wireConversation(t, family)
 			if family == "codex" {
 				overEvents = bodies

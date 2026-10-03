@@ -66,6 +66,7 @@ func conversationThemed(t *testing.T, event webapi.SyncEvent, theme webapi.Theme
 
 // A local page sees all initial product state without waking a runner.
 func TestSnapshotIsUsersProductState(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -88,6 +89,7 @@ func TestSnapshotIsUsersProductState(t *testing.T) {
 }
 
 func TestSessionChangesReachOtherPageOnce(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, laptop, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -112,6 +114,7 @@ func TestSessionChangesReachOtherPageOnce(t *testing.T) {
 }
 
 func TestReconnectingPageCatchesChangesDuringSnapshot(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, laptop, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -141,6 +144,7 @@ func TestReconnectingPageCatchesChangesDuringSnapshot(t *testing.T) {
 }
 
 func TestLaggingPageReceivesEachCurrentPartOnce(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, laptop, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -174,6 +178,7 @@ func conversationUpgradeRefusal(ctx context.Context, t *testing.T, b *backendtes
 }
 
 func TestPageChannelOriginAuthenticationAndLifetime(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, laptop, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -216,6 +221,7 @@ func TestPageChannelOriginAuthenticationAndLifetime(t *testing.T) {
 
 // Two real sockets wait for their first heartbeat (200 ms); no polling or sleep.
 func TestPageSocketsHeartbeatAfterQuietInterval(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.Pages.Heartbeat = 200 * time.Millisecond
 	b, s, err := h.StartSetUp(ctx, t)
@@ -242,6 +248,7 @@ func TestPageSocketsHeartbeatAfterQuietInterval(t *testing.T) {
 }
 
 func TestTurnAndReadStateReachEveryPage(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, laptop, err := h.StartSetUp(ctx, t)
@@ -340,6 +347,7 @@ func (pageQuota) Probe(context.Context) (provider.ProbeReading, error) {
 func (pageQuota) Observe(provider.Observation) []core.QuotaWindow { return nil }
 
 func TestProviderChangesReachAllUsersWithAccountsOnlyForConfigurer(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.Families.Register("device", pageSubscriptionFamily{})
 	h.Config.Families.Register("claude-code", pageSubscriptionFamily{})

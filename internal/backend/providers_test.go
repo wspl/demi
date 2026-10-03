@@ -41,6 +41,7 @@ func accountModels(ctx context.Context, t *testing.T, b *backendtest.TestBackend
 }
 
 func TestAnAPIKeyEntryIsSealedAtRestAndAnsweredWithoutItsKey(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.Mode = webapi.InstanceModeIsolated
 	h.Config.Families, _ = backendtest.AccountFamilies(t, nil)
@@ -119,9 +120,8 @@ func TestAnAPIKeyEntryIsSealedAtRestAndAnsweredWithoutItsKey(t *testing.T) {
 }
 
 func TestADirectoryCatalogIsCachedRefreshedOnDemandAndKeptAfterAFailedRefresh(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	directory := &backendtest.AccountDirectory{}
 	h.Config.Families.Register("scripted", &backendtest.AccountFamily{T: t, Directory: directory})
 	b, master, err := h.StartSetUp(ctx, t)
@@ -169,9 +169,12 @@ func TestADirectoryCatalogIsCachedRefreshedOnDemandAndKeptAfterAFailedRefresh(t 
 	expired := accountModels(ctx, t, b, &master, "")
 	conversationEqual(t, len(ids(expired)), 3)
 	conversationEqual(t, expired.Providers[0].Stale, true)
+	// Bound the refresh wait, not the setup and backend restart preceding it.
+	refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	refreshed := expired
 	for len(ids(refreshed)) != 1 || ids(refreshed)[0] != "d" {
-		refreshed = accountModels(ctx, t, b, &master, "")
+		refreshed = accountModels(refreshCtx, t, b, &master, "")
 	}
 	conversationEqual(t, ids(refreshed), []string{"d"})
 	conversationEqual(t, refreshed.Providers[0].Stale, false)
@@ -197,6 +200,7 @@ func (accountRefusingFamily) Provider(providers.FamilyArgs) (provider.Provider, 
 }
 
 func TestAnEntryWhoseProviderCannotBeBuiltAnswersItsStatusWithTheReason(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.Families.Register("refusing", accountRefusingFamily{})
 	b, master, err := h.StartSetUp(ctx, t)
@@ -214,6 +218,7 @@ func accountVendorResponse(body string) providertest.MockResponse {
 }
 
 func TestTheProviderTestSendsOneRealRequestThroughTheEntrysFamily(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, master, err := h.StartSetUp(ctx, t)
@@ -273,6 +278,7 @@ func TestTheProviderTestSendsOneRealRequestThroughTheEntrysFamily(t *testing.T) 
 }
 
 func TestOnASharedInstanceOnlyTheMasterConfiguresAndEveryoneInfersWithItsEntries(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.Families.Register("scripted", &backendtest.AccountFamily{T: t, Directory: &backendtest.AccountDirectory{}})
 	b, master, err := h.StartSetUp(ctx, t)
@@ -355,6 +361,7 @@ func TestOnASharedInstanceOnlyTheMasterConfiguresAndEveryoneInfersWithItsEntries
 }
 
 func TestAVendorEntryTakesItsFamilyWireAndEndpointFromModelsDevAndReadsItsLiveModels(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	directory := &backendtest.AccountDirectory{}
@@ -406,6 +413,7 @@ func TestAVendorEntryTakesItsFamilyWireAndEndpointFromModelsDevAndReadsItsLiveMo
 }
 
 func TestAnAnthropicCompatibleVendorReceivesAnEffortAsATokenBudget(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	vendor.RespondAt("/api.json", accountVendorResponse(`{"moonshot":{"id":"moonshot","name":"Moonshot","npm":"@ai-sdk/anthropic","api":"https://api.moonshot.example/anthropic","models":{}}}`))

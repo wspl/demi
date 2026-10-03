@@ -32,11 +32,10 @@ const conversationSecond = "7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a"
 // conversationHarness owns the assembled backend's temporary data and manager.
 func conversationHarness(t *testing.T) (context.Context, *backendtest.Harness) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-	manager, err := backendtest.StartScriptedManager(ctx, t)
-	wireMust(t, err)
-	h, err := backendtest.NewHarness(ctx, t, manager.Socket())
+	// The package deadline bounds the scenario, including builds and large
+	// transfers under -race. Individual operation guards belong at their waits.
+	ctx := t.Context()
+	h, _, err := backendtest.HostsHarness(ctx, t)
 	wireMust(t, err)
 	return ctx, h
 }
@@ -101,6 +100,7 @@ func conversationCreate(ctx context.Context, t *testing.T, b *backendtest.TestBa
 
 // A local backend accepts a caller-chosen ID once without running a model.
 func TestConversationCreatedOnceAndListedOnlyForOwner(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -229,6 +229,7 @@ func conversationLastText(t *testing.T, blocks []core.Block) string {
 
 // One local vendor and a real backend, with two turns and a socket reload.
 func TestMessageSocketReloadMatchesStoredTranscript(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -329,6 +330,7 @@ func conversationOpen(ctx context.Context, t *testing.T, b *backendtest.TestBack
 }
 
 func TestConversationSocketRequiresProductOrigin(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	domain, err := expose.ParseDomain("expose.localhost")
 	wireMust(t, err)
@@ -344,6 +346,7 @@ func TestConversationSocketRequiresProductOrigin(t *testing.T) {
 }
 
 func TestRefusedFramesNeverReachSession(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -410,6 +413,7 @@ func TestRefusedFramesNeverReachSession(t *testing.T) {
 }
 
 func TestRateLimitedRequestNeverReachesVendor(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.Conversations.RequestsPerMinute = 1
 	vendor := providertest.StartVendor(t)
@@ -440,6 +444,7 @@ func TestRateLimitedRequestNeverReachesVendor(t *testing.T) {
 }
 
 func TestShutdownPersistsInterruptedTurnForRestart(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -559,6 +564,7 @@ func conversationToolResult(t *testing.T, request providertest.RecordedRequest, 
 }
 
 func TestMandatoryThinkingEffortMatchesRequest(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -586,6 +592,7 @@ func TestMandatoryThinkingEffortMatchesRequest(t *testing.T) {
 }
 
 func TestArchiveRefusesRunningWorkAndSocketResumesAfterRestore(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -628,6 +635,7 @@ func TestArchiveRefusesRunningWorkAndSocketResumesAfterRestore(t *testing.T) {
 }
 
 func TestOverdueWakeupRunsAfterBackendRestart(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -670,6 +678,7 @@ func TestOverdueWakeupRunsAfterBackendRestart(t *testing.T) {
 }
 
 func TestProviderFailureFactsReachPageAndDisappearWithEntry(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -706,6 +715,7 @@ func TestProviderFailureFactsReachPageAndDisappearWithEntry(t *testing.T) {
 }
 
 func TestOversizedVendorRequestCompactsAndReplaysSummary(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -776,6 +786,7 @@ func TestOversizedVendorRequestCompactsAndReplaysSummary(t *testing.T) {
 // About 27 s under -race: an 8-MiB reset exceeds the TCP send buffer, so lag
 // and adoption of a running turn are observed without relying on scheduling.
 func TestLaggingSocketClosesAndReopenAdoptsRunningTree(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.Conversations.OutboxFrames = 16
 	advance := make(chan struct{})
@@ -876,6 +887,7 @@ func TestLaggingSocketClosesAndReopenAdoptsRunningTree(t *testing.T) {
 }
 
 func TestPatchFieldsApplyIndependentlyAndArchiveAllowsOnlyRestore(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -945,6 +957,7 @@ func TestPatchFieldsApplyIndependentlyAndArchiveAllowsOnlyRestore(t *testing.T) 
 }
 
 func TestBatchAnswersEachConversationIndependently(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -1041,6 +1054,7 @@ func (*keyedRuntime) RequestLimits(core.Model) provider.RequestLimits {
 }
 
 func TestProviderEditRebuildsNextRequestAndDeletionRefusesInference(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	calls := make(chan keyedCall, 4)
 	release := make(chan struct{})
@@ -1106,6 +1120,7 @@ func TestProviderEditRebuildsNextRequestAndDeletionRefusesInference(t *testing.T
 }
 
 func TestModelSettingsReachEveryPageAndNextRequest(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -1192,6 +1207,7 @@ func TestModelSettingsReachEveryPageAndNextRequest(t *testing.T) {
 
 // A local compatible endpoint drives a real Cloud shell continuation.
 func TestDeepSeekToolContinuationReplaysReasoning(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	vendor.RespondAt("/api.json", providertest.MockResponse{Status: 200, Headers: http.Header{"Etag": {`"fixture"`}}, Chunks: [][]byte{[]byte(`{"deepseek":{"id":"deepseek","name":"DeepSeek","npm":"@ai-sdk/openai-compatible","api":"https://api.deepseek.com","models":{}}}`)}})
@@ -1239,8 +1255,13 @@ func TestDeepSeekToolContinuationReplaysReasoning(t *testing.T) {
 }
 
 // An 8-MiB transcript fills a deliberately stalled TCP receiver; shutdown must
-// cancel the blocked write. The local vendor and transfer take several seconds.
+// cancel the blocked write. Under -race this scenario costs about 22 seconds, mostly
+// preparing and transferring the reply. As in Rust, separate 20-second hang
+// guards cover the reset header and shutdown, not preparation; the package
+// deadline still bounds it.
 func TestStalledPageDoesNotHoldShutdown(t *testing.T) {
+	t.Parallel()
+	started := time.Now()
 	ctx, h := conversationHarness(t)
 	h.Config.Pages.CloseWait = 100 * time.Millisecond
 	vendor := providertest.StartVendor(t)
@@ -1253,10 +1274,19 @@ func TestStalledPageDoesNotHoldShutdown(t *testing.T) {
 	vendor.Respond(conversationAnswer(t, []string{strings.Repeat("x", 8<<20)}, 1, 1))
 	_, err = socket.Chat(ctx, "m1", "Write at length.")
 	wireMust(t, err)
-	stalled, err := b.StallConversationReset(ctx, t, &s, conversationFirst)
+	t.Logf("reply prepared in %s", time.Since(started))
+	resetStarted := time.Now()
+	resetCtx, cancelReset := context.WithTimeout(ctx, 20*time.Second)
+	defer cancelReset()
+	stalled, err := b.StallConversationReset(resetCtx, t, &s, conversationFirst)
 	wireMust(t, err)
 	if stalled.ResetBytes <= 8<<20 {
 		t.Fatalf("reset too small: %d", stalled.ResetBytes)
 	}
-	wireMust(t, b.Close(ctx))
+	t.Logf("reset header received in %s", time.Since(resetStarted))
+	closeStarted := time.Now()
+	closeCtx, cancelClose := context.WithTimeout(ctx, 20*time.Second)
+	defer cancelClose()
+	wireMust(t, b.Close(closeCtx))
+	t.Logf("shutdown completed in %s", time.Since(closeStarted))
 }

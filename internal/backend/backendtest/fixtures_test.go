@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/machinewire"
+	"github.com/wspl/demi/internal/programtest"
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) { goleak.VerifyTestMain(programTests{m}) }
 
 // Validates all native fixture releases through the product's publisher. The
 // workspace builds each named program once; no program or vendor is executed.
@@ -100,3 +101,8 @@ func TestScriptedManagerProtocolAndClose(t *testing.T) {
 		t.Fatal("manager left connection open")
 	}
 }
+
+// programTests releases the backend scenarios' shared program builds before leak checking.
+type programTests struct{ m *testing.M }
+
+func (p programTests) Run() int { return programtest.Run(p.m) }

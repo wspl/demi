@@ -42,6 +42,7 @@ func filesHeader(t *testing.T, answer backendtest.Answer, name, want string) {
 
 // Local HTTP and disk only; no vendor calls or runner, normally under one second.
 func TestBlobNamespaceInertAndImmutable(t *testing.T) {
+	t.Parallel()
 	ctx, harness := conversationHarness(t)
 	backend, master, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -83,6 +84,7 @@ func TestBlobNamespaceInertAndImmutable(t *testing.T) {
 
 // Local HTTP and disk only; checks the byte positions used by video players.
 func TestBlobByteRangesForVideo(t *testing.T) {
+	t.Parallel()
 	ctx, harness := conversationHarness(t)
 	backend, master, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)

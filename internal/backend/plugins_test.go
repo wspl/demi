@@ -14,6 +14,7 @@ import (
 
 // Local HTTP and page synchronization only; no runner or vendor is needed.
 func TestDisabledPluginLeavesPageAndRefusesCallsUntilEnabled(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -79,6 +80,7 @@ func TestDisabledPluginLeavesPageAndRefusesCallsUntilEnabled(t *testing.T) {
 
 // Three local scripted turns show that command changes take effect only on reload.
 func TestOpenConversationKeepsPluginCommandsUntilReload(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)

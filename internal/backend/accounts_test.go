@@ -17,6 +17,7 @@ import (
 )
 
 func TestASetupTokenBecomesASealedAccountThatNoAnswerReturns(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	cost := provider.ProbeFree
 	h.Config.Families, _ = backendtest.AccountFamilies(t, &cost)
@@ -157,6 +158,7 @@ func accountDeviceEntry(ctx context.Context, t *testing.T, b *backendtest.TestBa
 }
 
 func TestAFreeProbeFillsTheAccountsSnapshotWhichOutlivesARestart(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	cost := provider.ProbeFree
 	families, script := backendtest.AccountFamilies(t, &cost)
@@ -196,6 +198,7 @@ func TestAFreeProbeFillsTheAccountsSnapshotWhichOutlivesARestart(t *testing.T) {
 }
 
 func TestAProbeThatWouldSpendInferenceIsRefusedAndAnAPIKeyEntryHasNoQuota(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	cost := provider.ProbeInference
 	families, script := backendtest.AccountFamilies(t, &cost)
@@ -217,6 +220,7 @@ func TestAProbeThatWouldSpendInferenceIsRefusedAndAnAPIKeyEntryHasNoQuota(t *tes
 }
 
 func TestConcurrentDeviceLoginsPublishOneEntryAndTheOtherStoresNothing(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	cost := provider.ProbeFree
 	families, script := backendtest.AccountFamilies(t, &cost)
@@ -303,6 +307,7 @@ func TestConcurrentDeviceLoginsPublishOneEntryAndTheOtherStoresNothing(t *testin
 }
 
 func TestALoginIntoAnEntryHoldsItUntilItEndsAndCancellingStopsItAtOnce(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	cost := provider.ProbeFree
 	families, script := backendtest.AccountFamilies(t, &cost)
@@ -323,6 +328,7 @@ func TestALoginIntoAnEntryHoldsItUntilItEndsAndCancellingStopsItAtOnce(t *testin
 }
 
 func TestALoginExpiresAndItsResultGoesAfterTheRetention(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

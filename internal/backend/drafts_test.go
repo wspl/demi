@@ -12,6 +12,7 @@ import (
 
 // One backend and two page sessions; blob and draft storage are local, no model.
 func TestDraftReachesEverySessionAndKeepsReplacedVersion(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, laptop, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)

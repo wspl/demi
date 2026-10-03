@@ -35,6 +35,7 @@ func filesEnded(s framewire.ShellStatus) bool {
 
 // A real reader job waits for page input; the model then reads its independent cursor.
 func TestPluginFramesPageOutputRemainsForModel(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "")
 	w.vendor.Respond(conversationShell(t, "later", "read go; echo later; read line", 100))
 	w.vendor.Respond(conversationAnswer(t, []string{"started"}, 1, 1))
@@ -57,6 +58,7 @@ func TestPluginFramesPageOutputRemainsForModel(t *testing.T) {
 
 // A real shell writes 140 KB while one page reads nothing; both retain its end.
 func TestPluginFramesChattyCommandKeepsIdlePageConnected(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Config.Conversations.OutboxFrames = 64 })
 	idle := conversationOpen(w.ctx, t, w.b, &w.s, filesConversation)
 	w.vendor.Respond(conversationShell(t, "chatty", "i=0; while [ $i -lt 1000 ]; do echo $i; i=$((i+1)); done; seq 100000 120000; echo beyond; read done", 200))
@@ -105,6 +107,7 @@ func TestPluginFramesChattyCommandKeepsIdlePageConnected(t *testing.T) {
 
 // Four jobs exercise unsolicited output, two pages, input, abort and close cleanup.
 func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "")
 	w.vendor.Respond(conversationShell(t, "greeter", "echo hello", 30000))
 	w.vendor.Respond(conversationAnswer(t, []string{"greeted"}, 1, 1))

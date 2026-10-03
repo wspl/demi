@@ -97,6 +97,7 @@ func (s *hostScenario) stoppedPair() (*backendtest.Paired, string) {
 }
 
 func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
+	t.Parallel()
 	h, _, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -152,6 +153,7 @@ func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
 }
 
 func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	laptop, token := s.stoppedPair()
 	one, other := connectHostRunner(t, s.b), connectHostRunner(t, s.b)
@@ -198,6 +200,7 @@ func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
 }
 
 func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	token, err := laptop.Token(s.ctx)
@@ -250,6 +253,7 @@ func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
 }
 
 func TestDisconnectedRunnerCancelsHeldTokenLookup(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	_, token := s.stoppedPair()
 	hold := backendtest.HoldHellos(t, s.b.Backend, backendtest.HelloTokenLookup)
@@ -270,6 +274,7 @@ func TestDisconnectedRunnerCancelsHeldTokenLookup(t *testing.T) {
 }
 
 func TestClaimOfDisconnectedRunnerCreatesNoDevice(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	r := connectHostRunner(t, s.b)
 	r.send(runnerHello(runnerwire.Version, "", nil))
@@ -291,6 +296,7 @@ func TestClaimOfDisconnectedRunnerCreatesNoDevice(t *testing.T) {
 }
 
 func TestPipesRequireDeviceToken(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	token, err := laptop.Token(s.ctx)
@@ -323,6 +329,7 @@ func TestPipesRequireDeviceToken(t *testing.T) {
 }
 
 func TestDevicesAndRunnersReturnAfterBackendRestart(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	if err := s.h.Clock.Advance(time.Second); err != nil {
@@ -358,6 +365,7 @@ func TestDevicesAndRunnersReturnAfterBackendRestart(t *testing.T) {
 }
 
 func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	_, token := s.stoppedPair()
 	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
@@ -396,6 +404,7 @@ func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
 
 // A code expiry wakes the runner's output wait; no test sleep polls the code.
 func TestPairingCodeExpiresAndClaimAttemptsAreLimited(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -453,6 +462,7 @@ func (s *hostScenario) deviceLog(path string) webapi.DeviceLog {
 	return log
 }
 func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	home := laptop.Runner.Home()
@@ -534,6 +544,7 @@ func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
 
 // A real runner persists its token across restart and exits when revoked.
 func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	runner, err := remotehosttest.StartRunnerProcess(s.ctx, t, s.b.URL, remotehosttest.RunnerProcessOptions{Name: "laptop"})
 	if err != nil {
@@ -601,6 +612,7 @@ func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
 
 // The twin's real reconnect backoff makes this scenario take several seconds.
 func TestRunnerTwinIsAdoptedAfterFirstDisconnects(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	first := s.pair("laptop")
 	token, err := first.Token(s.ctx)

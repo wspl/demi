@@ -13,6 +13,7 @@ import (
 
 // Real runner and native file service; each script is one tool call in the same turn.
 func TestPluginFileReadsCreatesInsideAndOutsideWorkspace(t *testing.T) {
+	t.Parallel()
 	scripts := []string{
 		"demi file create note.txt <<'EOF'\nhello world\nEOF",
 		"demi file read note.txt",
@@ -68,6 +69,7 @@ func TestPluginFileReadsCreatesInsideAndOutsideWorkspace(t *testing.T) {
 
 // Real runner and native file service; each script is one tool call in the same turn.
 func TestPluginFileEditsAndPatchesAtomically(t *testing.T) {
+	t.Parallel()
 	scripts := []string{
 		"demi file edit file.txt --old two --new changed",
 		"demi file edit file.txt --old two --new changed --occurrence 2 && cat file.txt",

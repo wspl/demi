@@ -14,6 +14,7 @@ import (
 
 // A local Git endpoint and real runner exercise catalog-only and installed skills.
 func TestSkillCatalogInstallsOnlyForJobsAndRemovesDisabledSkills(t *testing.T) {
+	t.Parallel()
 	repos := skillstest.New(t)
 	_, err := repos.Commit(t.Context(), "acme/tools", []skillstest.File{{Path: "review/SKILL.md", Bytes: []byte(skillstest.SkillMD("name: review\ndescription: Review a change."))}, {Path: "review/check.sh", Bytes: []byte("#!/bin/sh\necho checked\n"), Executable: true}})
 	wireMust(t, err)

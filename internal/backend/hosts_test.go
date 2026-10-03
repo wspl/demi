@@ -48,6 +48,7 @@ func (s *hostScenario) directoryListing(path string) webapi.Directory {
 
 // Pairing real runners and reading both devices proves the switch moves access without moving files.
 func TestTargetSwitchAttachesPreviousDevice(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
 	laptop, ci := s.pair("laptop"), s.pair("ci")
@@ -121,6 +122,7 @@ func TestTargetSwitchAttachesPreviousDevice(t *testing.T) {
 
 // A 64 MiB response exceeds transport buffers so an unread download remains open at the switch.
 func TestTargetSwitchCutsOpenDownload(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
 	laptop := s.pair("laptop")
@@ -154,6 +156,7 @@ func TestTargetSwitchCutsOpenDownload(t *testing.T) {
 }
 
 func TestAttachedHostsAreUniqueRenamableAndDetachable(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
 	laptop, ci, spare := s.pair("laptop"), s.pair("ci"), s.pair("ci")

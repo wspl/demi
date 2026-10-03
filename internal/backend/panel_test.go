@@ -10,6 +10,7 @@ import (
 
 // One local backend; no runner or model. Exercises whole-document panel storage.
 func TestWorkPanelSavedWholeAndNeverInterpreted(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
