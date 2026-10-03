@@ -20,9 +20,14 @@ import (
 )
 
 // conversationPage opens a page and consumes its initial snapshot.
-func conversationPage(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session) (*backendtest.SyncChannel, webapi.ProductState) {
+func conversationPage(
+	ctx context.Context,
+	t *testing.T,
+	backend *backendtest.TestBackend,
+	session *backendtest.Session,
+) (*backendtest.SyncChannel, webapi.ProductState) {
 	t.Helper()
-	page, err := b.Sync(ctx, t, s)
+	page, err := backend.Sync(ctx, t, session)
 	wireMust(t, err)
 	state, err := page.Snapshot(ctx)
 	wireMust(t, err)
@@ -49,9 +54,24 @@ func conversationChanged(t *testing.T, event webapi.SyncEvent) webapi.Conversati
 }
 
 // conversationTheme changes the preference through the page's HTTP API.
-func conversationTheme(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session, theme string) {
+func conversationTheme(
+	ctx context.Context,
+	t *testing.T,
+	backend *backendtest.TestBackend,
+	session *backendtest.Session,
+	theme string,
+) {
 	t.Helper()
-	conversationRequest(ctx, t, b, s, "PATCH", "/api/settings/preferences", `{"appearance":{"theme":"`+theme+`"}}`, 200)
+	conversationRequest(
+		ctx,
+		t,
+		backend,
+		session,
+		"PATCH",
+		"/api/settings/preferences",
+		`{"appearance":{"theme":"`+theme+`"}}`,
+		200,
+	)
 }
 
 // conversationThemed checks the theme carried by the next preference event.
@@ -64,19 +84,32 @@ func conversationThemed(t *testing.T, event webapi.SyncEvent, theme webapi.Theme
 	conversationEqual(t, p.Preferences.Appearance.Theme, &theme)
 }
 
+// TestSnapshotIsUsersProductState checks that the initial snapshot contains the user's product state.
 // A local page sees all initial product state without waking a runner.
 func TestSnapshotIsUsersProductState(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
-	b, s, err := h.StartSetUp(ctx, t)
+	ctx, harness := conversationHarness(t)
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	_, state := conversationPage(ctx, t, b, &s)
+	_, state := conversationPage(ctx, t, backend, &session)
 	want := webapi.ProductState{
-		User: s.User, Mode: webapi.InstanceModeShared, Preferences: webapi.Preferences{},
-		Providers: []webapi.ProviderState{}, Workspaces: []webapi.WorkspaceDTO{}, Devices: []webapi.DeviceDTO{},
-		PublicURL: b.URL + "/", Conversations: []webapi.ConversationSummary{},
-		Cloud:   webapi.CloudStatus{State: webapi.CloudStateUnallocated, Limits: webapi.CloudVolumes{SystemBytes: 16 << 30, HomeBytes: 32 << 30}},
-		Plugins: state.Plugins, PluginStates: map[string]json.RawMessage{"expose": json.RawMessage(`{"available":false,"exposes":[]}`), "skills": json.RawMessage(`{"sources":[]}`)},
+		User:          session.User,
+		Mode:          webapi.InstanceModeShared,
+		Preferences:   webapi.Preferences{},
+		Providers:     []webapi.ProviderState{},
+		Workspaces:    []webapi.WorkspaceDTO{},
+		Devices:       []webapi.DeviceDTO{},
+		PublicURL:     backend.URL + "/",
+		Conversations: []webapi.ConversationSummary{},
+		Cloud: webapi.CloudStatus{
+			State:  webapi.CloudStateUnallocated,
+			Limits: webapi.CloudVolumes{SystemBytes: 16 << 30, HomeBytes: 32 << 30},
+		},
+		Plugins: state.Plugins,
+		PluginStates: map[string]json.RawMessage{
+			"expose": json.RawMessage(`{"available":false,"exposes":[]}`),
+			"skills": json.RawMessage(`{"sources":[]}`),
+		},
 	}
 	conversationEqual(t, state, want)
 	var names []string
@@ -85,50 +118,89 @@ func TestSnapshotIsUsersProductState(t *testing.T) {
 		conversationEqual(t, p.Enabled, true)
 	}
 	conversationEqual(t, names, []string{"file", "todo", "browser", "expose", "skills", "changes", "file-browser"})
-	conversationRequest(ctx, t, b, nil, "GET", "/install.sh", "", 503)
+	conversationRequest(ctx, t, backend, nil, "GET", "/install.sh", "", 503)
 }
 
+// TestSessionChangesReachOtherPageOnce checks that session changes reach another page once.
 func TestSessionChangesReachOtherPageOnce(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
-	b, laptop, err := h.StartSetUp(ctx, t)
+	ctx, harness := conversationHarness(t)
+	backend, laptop, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	phone, err := b.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	phone, err := backend.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	conversationCreate(ctx, t, b, &laptop, conversationFirst)
-	page, state := conversationPage(ctx, t, b, &phone)
+	conversationCreate(ctx, t, backend, &laptop, conversationFirst)
+	page, state := conversationPage(ctx, t, backend, &phone)
 	conversationEqual(t, state.Conversations[0].Title, "New conversation")
 	conversationEqual(t, state.Conversations[0].DraftRevision, uint64(0))
-	conversationRequest(ctx, t, b, &laptop, "PATCH", "/api/conversations/"+conversationFirst, `{"title":"Fix the login"}`, 200)
+	conversationRequest(
+		ctx,
+		t,
+		backend,
+		&laptop,
+		"PATCH",
+		"/api/conversations/"+conversationFirst,
+		`{"title":"Fix the login"}`,
+		200,
+	)
 	conversationEqual(t, conversationChanged(t, conversationEvent(ctx, t, page)).Title, "Fix the login")
-	conversationRequest(ctx, t, b, &laptop, "PUT", "/api/conversations/"+conversationFirst+"/draft", `{"base":0,"text":"The login fails","files":[]}`, 200)
+	conversationRequest(
+		ctx,
+		t,
+		backend,
+		&laptop,
+		"PUT",
+		"/api/conversations/"+conversationFirst+"/draft",
+		`{"base":0,"text":"The login fails","files":[]}`,
+		200,
+	)
 	conversationEqual(t, conversationChanged(t, conversationEvent(ctx, t, page)).DraftRevision, uint64(1))
-	conversationRequest(ctx, t, b, &laptop, "PATCH", "/api/auth/me", `{"nickname":"Ana"}`, 200)
+	conversationRequest(ctx, t, backend, &laptop, "PATCH", "/api/auth/me", `{"nickname":"Ana"}`, 200)
 	user, ok := conversationEvent(ctx, t, page).(*webapi.SyncEventUser)
 	if !ok {
 		t.Fatal("nickname did not send user event")
 	}
 	conversationEqual(t, user.User.Nickname, "Ana")
-	conversationTheme(ctx, t, b, &laptop, "dark")
+	conversationTheme(ctx, t, backend, &laptop, "dark")
 	conversationThemed(t, conversationEvent(ctx, t, page), webapi.ThemeDark)
 }
 
+// TestReconnectingPageCatchesChangesDuringSnapshot checks that reconnecting pages receive changes made
+// during their snapshot.
 func TestReconnectingPageCatchesChangesDuringSnapshot(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
-	b, laptop, err := h.StartSetUp(ctx, t)
+	ctx, harness := conversationHarness(t)
+	backend, laptop, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	phone, err := b.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	phone, err := backend.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	conversationCreate(ctx, t, b, &laptop, conversationFirst)
-	away, _ := conversationPage(ctx, t, b, &phone)
+	conversationCreate(ctx, t, backend, &laptop, conversationFirst)
+	away, _ := conversationPage(ctx, t, backend, &phone)
 	wireMust(t, away.Close(ctx))
-	conversationRequest(ctx, t, b, &laptop, "PATCH", "/api/conversations/"+conversationFirst, `{"title":"Renamed while away"}`, 200)
-	held := backendtest.HoldSync(t, b.Backend, backendtest.SyncSnapshot)
-	page, err := b.Sync(ctx, t, &phone)
+	conversationRequest(
+		ctx,
+		t,
+		backend,
+		&laptop,
+		"PATCH",
+		"/api/conversations/"+conversationFirst,
+		`{"title":"Renamed while away"}`,
+		200,
+	)
+	held := backendtest.HoldSync(t, backend.Backend, backendtest.SyncSnapshot)
+	page, err := backend.Sync(ctx, t, &phone)
 	wireMust(t, err)
 	wireMust(t, held.UntilArrived(ctx, 1))
-	conversationRequest(ctx, t, b, &laptop, "PATCH", "/api/conversations/"+conversationFirst, `{"pinned":true}`, 200)
+	conversationRequest(
+		ctx,
+		t,
+		backend,
+		&laptop,
+		"PATCH",
+		"/api/conversations/"+conversationFirst,
+		`{"pinned":true}`,
+		200,
+	)
 	held.Release()
 	state, err := page.Snapshot(ctx)
 	wireMust(t, err)
@@ -143,33 +215,67 @@ func TestReconnectingPageCatchesChangesDuringSnapshot(t *testing.T) {
 	conversationEqual(t, conversationChanged(t, caught[0]).Pinned, true)
 }
 
+// TestLaggingPageReceivesEachCurrentPartOnce checks that lagging pages receive each current state part
+// once.
 func TestLaggingPageReceivesEachCurrentPartOnce(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
-	b, laptop, err := h.StartSetUp(ctx, t)
+	ctx, harness := conversationHarness(t)
+	backend, laptop, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	phone, err := b.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	phone, err := backend.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	conversationCreate(ctx, t, b, &laptop, conversationFirst)
-	page, _ := conversationPage(ctx, t, b, &phone)
-	held := backendtest.HoldSync(t, b.Backend, backendtest.SyncChanges)
+	conversationCreate(ctx, t, backend, &laptop, conversationFirst)
+	page, _ := conversationPage(ctx, t, backend, &phone)
+	held := backendtest.HoldSync(t, backend.Backend, backendtest.SyncChanges)
 	for i := 1; i <= 50; i++ {
-		conversationRequest(ctx, t, b, &laptop, "PATCH", "/api/conversations/"+conversationFirst, fmt.Sprintf(`{"title":"Title %d"}`, i), 200)
+		conversationRequest(
+			ctx,
+			t,
+			backend,
+			&laptop,
+			"PATCH",
+			"/api/conversations/"+conversationFirst,
+			fmt.Sprintf(`{"title":"Title %d"}`, i),
+			200,
+		)
 	}
-	conversationTheme(ctx, t, b, &laptop, "dark")
+	conversationTheme(ctx, t, backend, &laptop, "dark")
 	wireMust(t, held.UntilArrived(ctx, 1))
 	held.Release()
 	conversationEqual(t, conversationChanged(t, conversationEvent(ctx, t, page)).Title, "Title 50")
 	conversationThemed(t, conversationEvent(ctx, t, page), webapi.ThemeDark)
-	conversationRequest(ctx, t, b, &laptop, "PATCH", "/api/conversations/"+conversationFirst, `{"title":"Caught up"}`, 200)
+	conversationRequest(
+		ctx,
+		t,
+		backend,
+		&laptop,
+		"PATCH",
+		"/api/conversations/"+conversationFirst,
+		`{"title":"Caught up"}`,
+		200,
+	)
 	conversationEqual(t, conversationChanged(t, conversationEvent(ctx, t, page)).Title, "Caught up")
 }
 
 // conversationUpgradeRefusal makes an HTTP upgrade whose refusal is observable.
-func conversationUpgradeRefusal(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session, path, origin string, status int, code webapi.ErrorCode) {
+func conversationUpgradeRefusal(
+	ctx context.Context,
+	t *testing.T,
+	backend *backendtest.TestBackend,
+	session *backendtest.Session,
+	path, origin string,
+	status int,
+	code webapi.ErrorCode,
+) {
 	t.Helper()
-	headers := http.Header{"Upgrade": {"websocket"}, "Connection": {"Upgrade"}, "Sec-Websocket-Version": {"13"}, "Sec-Websocket-Key": {"MDEyMzQ1Njc4OWFiY2RlZg=="}, "Origin": {origin}}
-	response, err := b.Response(ctx, "GET", path, s, headers, nil)
+	headers := http.Header{
+		"Upgrade":               {"websocket"},
+		"Connection":            {"Upgrade"},
+		"Sec-Websocket-Version": {"13"},
+		"Sec-Websocket-Key":     {"MDEyMzQ1Njc4OWFiY2RlZg=="},
+		"Origin":                {origin},
+	}
+	response, err := backend.Response(ctx, "GET", path, session, headers, nil)
 	wireMust(t, err)
 	a, err := backendtest.ReadAnswer(ctx, response)
 	wireMust(t, err)
@@ -177,24 +283,35 @@ func conversationUpgradeRefusal(ctx context.Context, t *testing.T, b *backendtes
 	conversationRefusal(t, a, code)
 }
 
+// TestPageChannelOriginAuthenticationAndLifetime checks that page channels enforce origin,
+// authentication and session lifetime.
 func TestPageChannelOriginAuthenticationAndLifetime(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
-	b, laptop, err := h.StartSetUp(ctx, t)
+	ctx, harness := conversationHarness(t)
+	backend, laptop, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	conversationUpgradeRefusal(ctx, t, b, &laptop, "/api/sync", "https://a1b2c3.expose.localhost", 403, webapi.ErrorCodeForbiddenOrigin)
-	conversationUpgradeRefusal(ctx, t, b, nil, "/api/sync", b.URL, 401, webapi.ErrorCodeUnauthenticated)
-	plain, err := b.ReadWith(ctx, "/api/sync", &laptop, http.Header{"Origin": {b.URL}})
+	conversationUpgradeRefusal(
+		ctx,
+		t,
+		backend,
+		&laptop,
+		"/api/sync",
+		"https://a1b2c3.expose.localhost",
+		403,
+		webapi.ErrorCodeForbiddenOrigin,
+	)
+	conversationUpgradeRefusal(ctx, t, backend, nil, "/api/sync", backend.URL, 401, webapi.ErrorCodeUnauthenticated)
+	plain, err := backend.ReadWith(ctx, "/api/sync", &laptop, http.Header{"Origin": {backend.URL}})
 	wireMust(t, err)
 	conversationEqual(t, plain.Status, 426)
 	conversationRefusal(t, plain, webapi.ErrorCodeUpgradeRequired)
-	phone, err := b.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	phone, err := backend.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	tablet, err := b.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	tablet, err := backend.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	laptopPage, _ := conversationPage(ctx, t, b, &laptop)
-	phonePage, _ := conversationPage(ctx, t, b, &phone)
-	conversationRequest(ctx, t, b, &phone, "POST", "/api/auth/logout", `{}`, 204)
+	laptopPage, _ := conversationPage(ctx, t, backend, &laptop)
+	phonePage, _ := conversationPage(ctx, t, backend, &phone)
+	conversationRequest(ctx, t, backend, &phone, "POST", "/api/auth/logout", `{}`, 204)
 	closed := func(page *backendtest.SyncChannel, code uint16, reason string) {
 		got, message, err := page.Closed(ctx)
 		wireMust(t, err)
@@ -202,35 +319,36 @@ func TestPageChannelOriginAuthenticationAndLifetime(t *testing.T) {
 		conversationEqual(t, message, reason)
 	}
 	closed(phonePage, 4002, "session_ended")
-	wireMust(t, h.Clock.Advance(20*24*time.Hour))
-	conversationTheme(ctx, t, b, &laptop, "dark")
+	wireMust(t, harness.Clock.Advance(20*24*time.Hour))
+	conversationTheme(ctx, t, backend, &laptop, "dark")
 	conversationThemed(t, conversationEvent(ctx, t, laptopPage), webapi.ThemeDark)
-	tabletPage, _ := conversationPage(ctx, t, b, &tablet)
-	wireMust(t, h.Clock.Advance(11*24*time.Hour))
-	conversationTheme(ctx, t, b, &laptop, "light")
+	tabletPage, _ := conversationPage(ctx, t, backend, &tablet)
+	wireMust(t, harness.Clock.Advance(11*24*time.Hour))
+	conversationTheme(ctx, t, backend, &laptop, "light")
 	conversationThemed(t, conversationEvent(ctx, t, laptopPage), webapi.ThemeLight)
 	closed(tabletPage, 4002, "session_ended")
 	wireMust(t, laptopPage.SendText(ctx, "hello"))
 	closed(laptopPage, 1008, "unexpected_message")
-	last, _ := conversationPage(ctx, t, b, &laptop)
+	last, _ := conversationPage(ctx, t, backend, &laptop)
 	done := make(chan error, 1)
-	go func() { done <- b.Close(ctx) }()
+	go func() { done <- backend.Close(ctx) }()
 	defer func() { wireMust(t, <-done) }()
 	closed(last, 1001, "backend_closing")
 }
 
+// TestPageSocketsHeartbeatAfterQuietInterval checks that quiet page sockets receive heartbeats.
 // Two real sockets wait for their first heartbeat (200 ms); no polling or sleep.
 func TestPageSocketsHeartbeatAfterQuietInterval(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
-	h.Config.Pages.Heartbeat = 200 * time.Millisecond
-	b, s, err := h.StartSetUp(ctx, t)
+	ctx, harness := conversationHarness(t)
+	harness.Config.Pages.Heartbeat = 200 * time.Millisecond
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	conversationCreate(ctx, t, b, &s, conversationFirst)
+	conversationCreate(ctx, t, backend, &session, conversationFirst)
 	connected := time.Now()
-	page, err := b.Sync(ctx, t, &s)
+	page, err := backend.Sync(ctx, t, &session)
 	wireMust(t, err)
-	socket, err := b.Conversation(ctx, t, &s, conversationFirst)
+	socket, err := backend.Conversation(ctx, t, &session, conversationFirst)
 	wireMust(t, err)
 	_, err = page.Snapshot(ctx)
 	wireMust(t, err)
@@ -242,30 +360,31 @@ func TestPageSocketsHeartbeatAfterQuietInterval(t *testing.T) {
 	if _, ok := frame.(*framewire.HeartbeatFrame); !ok {
 		t.Fatalf("expected heartbeat, got %T", frame)
 	}
-	if time.Since(connected) < h.Config.Pages.Heartbeat {
+	if time.Since(connected) < harness.Config.Pages.Heartbeat {
 		t.Fatal("heartbeat before quiet interval")
 	}
 }
 
+// TestTurnAndReadStateReachEveryPage checks that turn and read state changes reach every page.
 func TestTurnAndReadStateReachEveryPage(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
+	ctx, harness := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
-	b, laptop, err := h.StartSetUp(ctx, t)
+	backend, laptop, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	phone, err := b.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	phone, err := backend.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	provider := conversationAnthropic(ctx, t, b, &laptop, vendor)
-	conversationCreate(ctx, t, b, &laptop, conversationFirst)
-	conversationChoose(ctx, t, b, &laptop, conversationFirst, provider, "claude-opus-4-8")
-	page, _ := conversationPage(ctx, t, b, &phone)
+	provider := conversationAnthropic(ctx, t, backend, &laptop, vendor)
+	conversationCreate(ctx, t, backend, &laptop, conversationFirst)
+	conversationChoose(ctx, t, backend, &laptop, conversationFirst, provider, "claude-opus-4-8")
+	page, _ := conversationPage(ctx, t, backend, &phone)
 	pending := conversationAnswer(t, []string{"Hello"}, 12, 0)
 	text := string(pending.Chunks[0])
 	text = text[:strings.Index(text, "event: content_block_stop")]
 	pending.Chunks = [][]byte{[]byte(text)}
 	pending.Ending = providertest.Open
 	vendor.Respond(pending)
-	socket := conversationOpen(ctx, t, b, &laptop, conversationFirst)
+	socket := conversationOpen(ctx, t, backend, &laptop, conversationFirst)
 	wireMust(t, socket.Send(ctx, backendtest.ConversationText("m1", "Say hello")))
 	until := func(want func(webapi.ConversationSummary) bool) webapi.ConversationSummary {
 		events, err := page.Until(ctx, func(e webapi.SyncEvent) bool {
@@ -281,16 +400,28 @@ func TestTurnAndReadStateReachEveryPage(t *testing.T) {
 	if !stopped.Unread || stopped.Revision == 0 {
 		t.Fatalf("stopped summary: %#v", stopped)
 	}
-	conversationRequest(ctx, t, b, &laptop, "POST", "/api/conversations/"+conversationFirst+"/read", fmt.Sprintf(`{"revision":%d}`, stopped.Revision), 204)
+	conversationRequest(
+		ctx,
+		t,
+		backend,
+		&laptop,
+		"POST",
+		"/api/conversations/"+conversationFirst+"/read",
+		fmt.Sprintf(`{"revision":%d}`, stopped.Revision),
+		204,
+	)
 	until(func(c webapi.ConversationSummary) bool { return !c.Unread })
 }
 
 // pageLoginKit supplies the device login result without contacting a vendor.
 type pageLoginKit struct{}
 
+// Capability supports login and account addition in the fixture.
 func (pageLoginKit) Capability() provider.AccountsCapability {
 	return provider.AccountsCapability{Login: true, Add: true}
 }
+
+// Login supplies a local device login result.
 func (pageLoginKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
 	code := "ABCD-1234"
 	pending(core.LoginPending{VerificationURL: "https://verify.example/device", UserCode: &code})
@@ -298,24 +429,37 @@ func (pageLoginKit) Login(ctx context.Context, pending func(core.LoginPending)) 
 		return provider.NewAccount{}, err
 	}
 	identity := "device"
-	return provider.NewAccount{Secret: `{"token":"login-secret"}`, Label: provider.AccountLabel{Label: "device@example.test", IdentityKey: &identity}}, nil
+	return provider.NewAccount{
+		Secret: `{"token":"login-secret"}`,
+		Label:  provider.AccountLabel{Label: "device@example.test", IdentityKey: &identity},
+	}, nil
 }
+
+// Add reports that fixture account addition is unsupported.
 func (pageLoginKit) Add(provider.AddAccount) (provider.NewAccount, error) {
 	return provider.NewAccount{}, provider.ErrAccountsUnsupported
 }
 
 type pageSubscriptionFamily struct{}
 
+// Credential requires subscription credentials.
 func (pageSubscriptionFamily) Credential() webapi.CredentialKind {
 	return webapi.CredentialKindSubscription
 }
+
+// Wires declares no external wire APIs.
 func (pageSubscriptionFamily) Wires() []core.WireAPI { return nil }
+
+// Provider builds a subscription with local accounts and quota.
 func (pageSubscriptionFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
 	subscription, ok := args.Credential.(*providers.SubscriptionArgs)
 	if !ok {
 		return nil, &providers.FamilyError{Kind: providers.FamilyWrongCredential}
 	}
-	p := &pageSubscription{Provider: openaiapi.New(openaiapi.Config{APIKey: "fixture"}, args.Clock), accounts: provider.NewAccounts(subscription.Pool, pageLoginKit{}, args.Clock)}
+	p := &pageSubscription{
+		Provider: openaiapi.New(openaiapi.Config{APIKey: "fixture"}, args.Clock),
+		accounts: provider.NewAccounts(subscription.Pool, pageLoginKit{}, args.Clock),
+	}
 	if subscription.Account != nil {
 		p.account = &subscription.Account.CredentialID
 		p.quota = provider.NewQuota(pageQuota{}, subscription.Account.Quota, args.Clock)
@@ -330,48 +474,101 @@ type pageSubscription struct {
 	quota    *provider.Quota
 }
 
+// Accounts returns the fixture subscription accounts.
 func (p *pageSubscription) Accounts() provider.SubscriptionAccounts { return p.accounts }
+
+// AuthStatus reports the bound account as authenticated.
 func (p *pageSubscription) AuthStatus(context.Context) core.AuthState {
 	return &core.Authenticated{AccountLabel: p.account}
 }
+
+// Quota returns the fixture account quota.
 func (p *pageSubscription) Quota() *provider.Quota { return p.quota }
 
 type pageQuota struct{}
 
-func (pageQuota) ProbeCost() *provider.ProbeCost { cost := provider.ProbeFree; return &cost }
+// ProbeCost marks the fixture probe as free.
+func (pageQuota) ProbeCost() *provider.ProbeCost {
+	cost := provider.ProbeFree
+	return &cost
+}
+
+// Probe returns the local account quota reading.
 func (pageQuota) Probe(context.Context) (provider.ProbeReading, error) {
 	percent := float64(40)
 	label := "device@example.test"
-	return provider.ProbeReading{AccountLabel: &label, Windows: []core.QuotaWindow{{ID: "weekly", Label: "Weekly", UsedPercent: &percent}}}, nil
+	return provider.ProbeReading{
+		AccountLabel: &label,
+		Windows:      []core.QuotaWindow{{ID: "weekly", Label: "Weekly", UsedPercent: &percent}},
+	}, nil
 }
+
+// Observe produces no quota windows from observations.
 func (pageQuota) Observe(provider.Observation) []core.QuotaWindow { return nil }
 
+// TestProviderChangesReachAllUsersWithAccountsOnlyForConfigurer checks that provider changes reach all
+// users while accounts remain private to the configurer.
 func TestProviderChangesReachAllUsersWithAccountsOnlyForConfigurer(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
-	h.Config.Families.Register("device", pageSubscriptionFamily{})
-	h.Config.Families.Register("claude-code", pageSubscriptionFamily{})
-	b, s, err := h.StartSetUp(ctx, t)
+	ctx, harness := conversationHarness(t)
+	harness.Config.Families.Register("device", pageSubscriptionFamily{})
+	harness.Config.Families.Register("claude-code", pageSubscriptionFamily{})
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	wireMust(t, h.AddUser(ctx, "reader@example.test", "reader-pass-1", webapi.RoleUser))
-	reader, err := b.Login(ctx, "reader@example.test", "reader-pass-1")
+	wireMust(t, harness.AddUser(ctx, "reader@example.test", "reader-pass-1", webapi.RoleUser))
+	reader, err := backend.Login(ctx, "reader@example.test", "reader-pass-1")
 	wireMust(t, err)
-	masters, state := conversationPage(ctx, t, b, &s)
+	masters, state := conversationPage(ctx, t, backend, &session)
 	conversationEqual(t, len(state.Providers), 0)
-	readers, _ := conversationPage(ctx, t, b, &reader)
-	started := conversationDecode(t, conversationRequest(ctx, t, b, &s, "POST", "/api/providers/subscription-login", `{"providerType":"device"}`, 202), webapi.DecodeLoginStarted)
+	readers, _ := conversationPage(ctx, t, backend, &reader)
+	started := conversationDecode(
+		t,
+		conversationRequest(
+			ctx,
+			t,
+			backend,
+			&session,
+			"POST",
+			"/api/providers/subscription-login",
+			`{"providerType":"device"}`,
+			202,
+		),
+		webapi.DecodeLoginStarted,
+	)
 	// Publication of the new provider is the event that the login has committed.
 	_, err = masters.Until(ctx, func(e webapi.SyncEvent) bool {
 		p, ok := e.(*webapi.SyncEventProviders)
 		return ok && len(p.Providers) == 1
 	})
 	wireMust(t, err)
-	login := conversationDecode(t, conversationRequest(ctx, t, b, &s, "GET", "/api/providers/subscription-login/"+string(started.Login.ID), "", 200), webapi.DecodeLoginAnswer)
+	login := conversationDecode(
+		t,
+		conversationRequest(
+			ctx,
+			t,
+			backend,
+			&session,
+			"GET",
+			"/api/providers/subscription-login/"+string(started.Login.ID),
+			"",
+			200,
+		),
+		webapi.DecodeLoginAnswer,
+	)
 	completed, ok := login.Login.(*webapi.LoginStateCompleted)
 	if !ok {
 		t.Fatalf("login did not complete: %v", login.Login)
 	}
-	conversationRequest(ctx, t, b, &s, "POST", "/api/providers", `{"source":"custom","providerType":"anthropic","label":"Work","apiKey":"sk-state"}`, 201)
+	conversationRequest(
+		ctx,
+		t,
+		backend,
+		&session,
+		"POST",
+		"/api/providers",
+		`{"source":"custom","providerType":"anthropic","label":"Work","apiKey":"sk-state"}`,
+		201,
+	)
 	until := func(page *backendtest.SyncChannel) []webapi.ProviderState {
 		events, err := page.Until(ctx, func(e webapi.SyncEvent) bool {
 			p, ok := e.(*webapi.SyncEventProviders)

@@ -15,8 +15,10 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-const conversationThird = "5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d"
-const conversationFourth = "9e8d7c6b-5a49-4382-a716-f5e4d3c2b1a0"
+const (
+	conversationThird  = "5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d"
+	conversationFourth = "9e8d7c6b-5a49-4382-a716-f5e4d3c2b1a0"
+)
 
 // conversationTexts returns assistant text boundaries eligible for a fork.
 func conversationTexts(blocks []core.Block) []core.BlockID {
@@ -30,25 +32,48 @@ func conversationTexts(blocks []core.Block) []core.BlockID {
 }
 
 // conversationFork sends the user's fork operation at a completed text boundary.
-func conversationFork(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session, destination string, block core.BlockID, status int) backendtest.Answer {
+func conversationFork(
+	ctx context.Context,
+	t *testing.T,
+	backend *backendtest.TestBackend,
+	session *backendtest.Session,
+	destination string,
+	block core.BlockID,
+	status int,
+) backendtest.Answer {
 	t.Helper()
-	return conversationRequest(ctx, t, b, s, "POST", "/api/conversations/"+conversationFirst+"/fork", `{"id":"`+destination+`","blockId":"`+string(block)+`"}`, status)
+	return conversationRequest(
+		ctx,
+		t,
+		backend,
+		session,
+		"POST",
+		"/api/conversations/"+conversationFirst+"/fork",
+		`{"id":"`+destination+`","blockId":"`+string(block)+`"}`,
+		status,
+	)
 }
 
+// TestForkKeepsChosenHistoryWhileSourceRuns checks that forks retain the selected history while their
+// source runs.
 func TestForkKeepsChosenHistoryWhileSourceRuns(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
+	ctx, harness := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
-	b, s, err := h.StartSetUp(ctx, t)
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	wireMust(t, h.AddUser(ctx, "ana@example.test", "ana-pass-1", webapi.RoleUser))
-	provider := conversationAnthropic(ctx, t, b, &s, vendor)
-	conversationCreate(ctx, t, b, &s, conversationFirst)
+	wireMust(t, harness.AddUser(ctx, "ana@example.test", "ana-pass-1", webapi.RoleUser))
+	provider := conversationAnthropic(ctx, t, backend, &session, vendor)
+	conversationCreate(ctx, t, backend, &session, conversationFirst)
 	path := "/api/conversations/" + conversationFirst
-	conversationRequest(ctx, t, b, &s, "PATCH", path, `{"title":"Build"}`, 200)
-	conversationChoose(ctx, t, b, &s, conversationFirst, provider, "claude-opus-4-8")
-	raised := conversationDecode(t, conversationRequest(ctx, t, b, &s, "PATCH", path, `{"thinkingEffort":"high"}`, 200), webapi.DecodeConversationUpdate)
-	source, err := b.Conversation(ctx, t, &s, conversationFirst)
+	conversationRequest(ctx, t, backend, &session, "PATCH", path, `{"title":"Build"}`, 200)
+	conversationChoose(ctx, t, backend, &session, conversationFirst, provider, "claude-opus-4-8")
+	raised := conversationDecode(
+		t,
+		conversationRequest(ctx, t, backend, &session, "PATCH", path, `{"thinkingEffort":"high"}`, 200),
+		webapi.DecodeConversationUpdate,
+	)
+	source, err := backend.Conversation(ctx, t, &session, conversationFirst)
 	wireMust(t, err)
 	_, err = source.Open(ctx)
 	wireMust(t, err)
@@ -67,7 +92,11 @@ func TestForkKeepsChosenHistoryWhileSourceRuns(t *testing.T) {
 	vendor.Respond(pending)
 	wireMust(t, source.Send(ctx, backendtest.ConversationText("m3", "U3")))
 	vendor.Received(ctx, 3)
-	forked := conversationDecode(t, conversationFork(ctx, t, b, &s, conversationSecond, texts[0], 201), webapi.DecodeForkAnswer)
+	forked := conversationDecode(
+		t,
+		conversationFork(ctx, t, backend, &session, conversationSecond, texts[0], 201),
+		webapi.DecodeForkAnswer,
+	)
 	destination := forked.Conversation
 	conversationEqual(t, string(destination.ID), conversationSecond)
 	conversationEqual(t, destination.Title, "Build (Fork)")
@@ -78,25 +107,74 @@ func TestForkKeepsChosenHistoryWhileSourceRuns(t *testing.T) {
 	directory := "/home/demi/sessions/" + conversationFirst
 	conversationEqual(t, conversationJSON(t, destination.Target), `{"kind":"cloud","path":"`+directory+`"}`)
 	conversationEqual(t, destination.Cwd, directory)
-	conversationEqual(t, conversationTranscript(ctx, t, b, &s, conversationSecond).Blocks, history[:2])
-	listed := conversationDecode(t, conversationRequest(ctx, t, b, &s, "GET", "/api/conversations", "", 200), webapi.DecodeConversations)
+	conversationEqual(t, conversationTranscript(ctx, t, backend, &session, conversationSecond).Blocks, history[:2])
+	listed := conversationDecode(
+		t,
+		conversationRequest(ctx, t, backend, &session, "GET", "/api/conversations", "", 200),
+		webapi.DecodeConversations,
+	)
 	conversationEqual(t, len(listed.Conversations), 2)
-	conversationEqual(t, []webapi.ConversationID{listed.Conversations[0].ID, listed.Conversations[1].ID}, []webapi.ConversationID{conversationSecond, conversationFirst})
-	again := conversationDecode(t, conversationFork(ctx, t, b, &s, conversationSecond, texts[0], 200), webapi.DecodeForkAnswer)
+	conversationEqual(
+		t,
+		[]webapi.ConversationID{listed.Conversations[0].ID, listed.Conversations[1].ID},
+		[]webapi.ConversationID{conversationSecond, conversationFirst},
+	)
+	again := conversationDecode(
+		t,
+		conversationFork(ctx, t, backend, &session, conversationSecond, texts[0], 200),
+		webapi.DecodeForkAnswer,
+	)
 	conversationEqual(t, again, forked)
-	conversationRefusal(t, conversationFork(ctx, t, b, &s, conversationSecond, texts[1], 409), webapi.ErrorCodeForkConflict)
-	conversationRefusal(t, conversationFork(ctx, t, b, &s, conversationFirst, texts[0], 409), webapi.ErrorCodeIDUnavailable)
-	conversationRefusal(t, conversationFork(ctx, t, b, &s, conversationThird, history[0].ID(), 400), webapi.ErrorCodeInvalidForkTarget)
-	conversationCreate(ctx, t, b, &s, conversationThird)
-	for _, body := range []string{`{"id":"not-a-uuid","blockId":"` + string(texts[0]) + `"}`, `{"id":"` + conversationFourth + `"}`, `{"id":"` + conversationFourth + `","blockId":"` + string(texts[0]) + `","title":"mine"}`} {
-		conversationRefusal(t, conversationRequest(ctx, t, b, &s, "POST", path+"/fork", body, 400), webapi.ErrorCodeInvalidBody)
+	conversationRefusal(
+		t,
+		conversationFork(ctx, t, backend, &session, conversationSecond, texts[1], 409),
+		webapi.ErrorCodeForkConflict,
+	)
+	conversationRefusal(
+		t,
+		conversationFork(ctx, t, backend, &session, conversationFirst, texts[0], 409),
+		webapi.ErrorCodeIDUnavailable,
+	)
+	conversationRefusal(
+		t,
+		conversationFork(ctx, t, backend, &session, conversationThird, history[0].ID(), 400),
+		webapi.ErrorCodeInvalidForkTarget,
+	)
+	conversationCreate(ctx, t, backend, &session, conversationThird)
+	for _, body := range []string{
+		`{"id":"not-a-uuid","blockId":"` + string(texts[0]) + `"}`,
+		`{"id":"` + conversationFourth + `"}`,
+		`{"id":"` + conversationFourth + `","blockId":"` + string(texts[0]) + `","title":"mine"}`,
+	} {
+		conversationRefusal(
+			t,
+			conversationRequest(ctx, t, backend, &session, "POST", path+"/fork", body, 400),
+			webapi.ErrorCodeInvalidBody,
+		)
 	}
-	ana, err := b.Login(ctx, "ana@example.test", "ana-pass-1")
+	ana, err := backend.Login(ctx, "ana@example.test", "ana-pass-1")
 	wireMust(t, err)
-	conversationRefusal(t, conversationFork(ctx, t, b, &ana, conversationFourth, texts[0], 404), webapi.ErrorCodeConversationNotFound)
-	conversationRefusal(t, conversationRequest(ctx, t, b, &ana, "POST", "/api/conversations", `{"id":"`+conversationSecond+`"}`, 409), webapi.ErrorCodeIDUnavailable)
+	conversationRefusal(
+		t,
+		conversationFork(ctx, t, backend, &ana, conversationFourth, texts[0], 404),
+		webapi.ErrorCodeConversationNotFound,
+	)
+	conversationRefusal(
+		t,
+		conversationRequest(
+			ctx,
+			t,
+			backend,
+			&ana,
+			"POST",
+			"/api/conversations",
+			`{"id":"`+conversationSecond+`"}`,
+			409,
+		),
+		webapi.ErrorCodeIDUnavailable,
+	)
 	wireMust(t, source.Stop(ctx))
-	dest, err := b.Conversation(ctx, t, &s, conversationSecond)
+	dest, err := backend.Conversation(ctx, t, &session, conversationSecond)
 	wireMust(t, err)
 	_, err = dest.Open(ctx)
 	wireMust(t, err)
@@ -119,22 +197,27 @@ func TestForkKeepsChosenHistoryWhileSourceRuns(t *testing.T) {
 	live, err := dest.Live(ctx)
 	wireMust(t, err)
 	conversationEqual(t, conversationLastText(t, live), "A3")
-	conversationEqual(t, conversationSummary(ctx, t, b, &s, conversationSecond).Title, "Build (Fork)")
+	conversationEqual(t, conversationSummary(ctx, t, backend, &session, conversationSecond).Title, "Build (Fork)")
 	live, err = source.Live(ctx)
 	wireMust(t, err)
-	conversationEqual(t, conversationKinds(t, live), []string{"user", "text", "response", "user", "text", "response", "user", "abort"})
+	conversationEqual(
+		t,
+		conversationKinds(t, live),
+		[]string{"user", "text", "response", "user", "text", "response", "user", "abort"},
+	)
 }
 
+// TestForkAfterRestartReadsStoredHistory checks that forking after restart reads durable history.
 func TestForkAfterRestartReadsStoredHistory(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
+	ctx, harness := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
-	b, s, err := h.StartSetUp(ctx, t)
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	provider := conversationAnthropic(ctx, t, b, &s, vendor)
-	conversationCreate(ctx, t, b, &s, conversationFirst)
-	settings := conversationChoose(ctx, t, b, &s, conversationFirst, provider, "claude-opus-4-8").Model
-	source, err := b.Conversation(ctx, t, &s, conversationFirst)
+	provider := conversationAnthropic(ctx, t, backend, &session, vendor)
+	conversationCreate(ctx, t, backend, &session, conversationFirst)
+	settings := conversationChoose(ctx, t, backend, &session, conversationFirst, provider, "claude-opus-4-8").Model
+	source, err := backend.Conversation(ctx, t, &session, conversationFirst)
 	wireMust(t, err)
 	_, err = source.Open(ctx)
 	wireMust(t, err)
@@ -145,19 +228,23 @@ func TestForkAfterRestartReadsStoredHistory(t *testing.T) {
 	_, err = source.Chat(ctx, "m2", "U2")
 	wireMust(t, err)
 	wireMust(t, source.Close(ctx))
-	wireMust(t, b.Close(ctx))
-	b, err = h.Start(ctx, t)
+	wireMust(t, backend.Close(ctx))
+	backend, err = harness.Start(ctx, t)
 	wireMust(t, err)
-	s, err = b.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
+	session, err = backend.Login(ctx, backendtest.MasterEmail, backendtest.MasterPassword)
 	wireMust(t, err)
-	stored := conversationTranscript(ctx, t, b, &s, conversationFirst).Blocks
+	stored := conversationTranscript(ctx, t, backend, &session, conversationFirst).Blocks
 	text := conversationTexts(stored)[1]
-	forked := conversationDecode(t, conversationFork(ctx, t, b, &s, conversationSecond, text, 201), webapi.DecodeForkAnswer)
+	forked := conversationDecode(
+		t,
+		conversationFork(ctx, t, backend, &session, conversationSecond, text, 201),
+		webapi.DecodeForkAnswer,
+	)
 	conversationEqual(t, forked.Conversation.Title, "U1 (Fork)")
 	conversationEqual(t, forked.Conversation.Model, settings)
-	conversationEqual(t, conversationTranscript(ctx, t, b, &s, conversationSecond).Blocks, stored[:5])
-	conversationFork(ctx, t, b, &s, conversationSecond, text, 200)
-	conversationEqual(t, conversationTranscript(ctx, t, b, &s, conversationFirst).Blocks, stored)
+	conversationEqual(t, conversationTranscript(ctx, t, backend, &session, conversationSecond).Blocks, stored[:5])
+	conversationFork(ctx, t, backend, &session, conversationSecond, text, 200)
+	conversationEqual(t, conversationTranscript(ctx, t, backend, &session, conversationFirst).Blocks, stored)
 }
 
 // conversationCommands returns command identities visible in shell call history.
@@ -173,29 +260,31 @@ func conversationCommands(blocks []core.Block) []string {
 	return ids
 }
 
+// TestForkSharesEditBlobsWithoutWritingObjects checks that forks share edit blobs without writing new
+// objects.
 // A real runner installs the native file package and records shared edit blobs.
 func TestForkSharesEditBlobsWithoutWritingObjects(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
+	ctx, harness := conversationHarness(t)
 	counts := &blobstest.ObjectCounts{}
-	h.Objects = counts
+	harness.Objects = counts
 	built, err := backendtest.BuildPackage(ctx, t, "demi-file")
 	wireMust(t, err)
-	h.Config.Native, err = built.Catalog(ctx)
+	harness.Config.Native, err = built.Catalog(ctx)
 	wireMust(t, err)
 	vendor := providertest.StartVendor(t)
-	b, s, err := h.StartSetUp(ctx, t)
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	provider := conversationAnthropic(ctx, t, b, &s, vendor)
-	conversationCreate(ctx, t, b, &s, conversationFirst)
-	conversationOnDevice(ctx, t, h, b, &s, conversationFirst)
-	conversationChoose(ctx, t, b, &s, conversationFirst, provider, "claude-opus-4-8")
-	source := conversationOpen(ctx, t, b, &s, conversationFirst)
+	provider := conversationAnthropic(ctx, t, backend, &session, vendor)
+	conversationCreate(ctx, t, backend, &session, conversationFirst)
+	conversationOnDevice(ctx, t, harness, backend, &session, conversationFirst)
+	conversationChoose(ctx, t, backend, &session, conversationFirst, provider, "claude-opus-4-8")
+	source := conversationOpen(ctx, t, backend, &session, conversationFirst)
 	vendor.Respond(conversationShell(t, "toolu_1", `printf 'hello\n' | demi file create notes.txt`, 60000))
 	vendor.Respond(conversationAnswer(t, []string{"Written."}, 1, 1))
 	_, err = source.Chat(ctx, "m1", "Write the notes")
 	wireMust(t, err)
-	blocks := conversationTranscript(ctx, t, b, &s, conversationFirst).Blocks
+	blocks := conversationTranscript(ctx, t, backend, &session, conversationFirst).Blocks
 	files := func(blocks []core.Block) []core.EditedFile {
 		call, ok := blocks[1].(*core.ToolCallBlock)
 		if !ok {
@@ -212,29 +301,31 @@ func TestForkSharesEditBlobsWithoutWritingObjects(t *testing.T) {
 	if copies == nil {
 		t.Fatal("edit lacks copies")
 	}
-	original := conversationRequest(ctx, t, b, &s, "GET", "/api/blobs/"+string(copies.Original), "", 200)
-	modified := conversationRequest(ctx, t, b, &s, "GET", "/api/blobs/"+string(copies.Modified), "", 200)
+	original := conversationRequest(ctx, t, backend, &session, "GET", "/api/blobs/"+string(copies.Original), "", 200)
+	modified := conversationRequest(ctx, t, backend, &session, "GET", "/api/blobs/"+string(copies.Modified), "", 200)
 	conversationEqual(t, string(original.Body), "")
 	conversationEqual(t, string(modified.Body), "hello\n")
 	texts := conversationTexts(blocks)
 	before := counts.Tally()
-	conversationFork(ctx, t, b, &s, conversationSecond, texts[len(texts)-1], 201)
+	conversationFork(ctx, t, backend, &session, conversationSecond, texts[len(texts)-1], 201)
 	conversationEqual(t, counts.Tally().Since(before).Puts, uint64(0))
-	conversationEqual(t, files(conversationTranscript(ctx, t, b, &s, conversationSecond).Blocks), edited)
+	conversationEqual(t, files(conversationTranscript(ctx, t, backend, &session, conversationSecond).Blocks), edited)
 }
 
+// TestForkRestoresTodosAtSelectedHistory checks that forks restore todos at the selected history
+// boundary.
 // A real runner executes the source and both destinations' todo commands.
 func TestForkRestoresTodosAtSelectedHistory(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
+	ctx, harness := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
-	b, s, err := h.StartSetUp(ctx, t)
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	provider := conversationAnthropic(ctx, t, b, &s, vendor)
-	conversationCreate(ctx, t, b, &s, conversationFirst)
-	conversationOnDevice(ctx, t, h, b, &s, conversationFirst)
-	conversationChoose(ctx, t, b, &s, conversationFirst, provider, "claude-opus-4-8")
-	source := conversationOpen(ctx, t, b, &s, conversationFirst)
+	provider := conversationAnthropic(ctx, t, backend, &session, vendor)
+	conversationCreate(ctx, t, backend, &session, conversationFirst)
+	conversationOnDevice(ctx, t, harness, backend, &session, conversationFirst)
+	conversationChoose(ctx, t, backend, &session, conversationFirst, provider, "claude-opus-4-8")
+	source := conversationOpen(ctx, t, backend, &session, conversationFirst)
 	vendor.Respond(conversationShell(t, "toolu_add", `demi todo add "first task"`, 60000))
 	vendor.Respond(conversationAnswer(t, []string{"Added."}, 1, 1))
 	_, err = source.Chat(ctx, "m1", "Plan")
@@ -248,8 +339,8 @@ func TestForkRestoresTodosAtSelectedHistory(t *testing.T) {
 	texts := conversationTexts(live)
 	conversationEqual(t, len(texts), 2)
 	for i, destination := range []string{conversationSecond, conversationThird} {
-		conversationFork(ctx, t, b, &s, destination, texts[i], 201)
-		socket := conversationOpen(ctx, t, b, &s, destination)
+		conversationFork(ctx, t, backend, &session, destination, texts[i], 201)
+		socket := conversationOpen(ctx, t, backend, &session, destination)
 		before := len(vendor.Requests())
 		vendor.Respond(conversationShell(t, "toolu_list", "demi todo list --json", 60000))
 		vendor.Respond(conversationAnswer(t, []string{"Listed."}, 1, 1))
@@ -267,18 +358,20 @@ func TestForkRestoresTodosAtSelectedHistory(t *testing.T) {
 	}
 }
 
+// TestForkReadsOnlyCommandsItsHistoryNames checks that forks expose only the commands named in their
+// history.
 // A real runner reads retained command output and allocates the next identity.
 func TestForkReadsOnlyCommandsItsHistoryNames(t *testing.T) {
 	t.Parallel()
-	ctx, h := conversationHarness(t)
+	ctx, harness := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
-	b, s, err := h.StartSetUp(ctx, t)
+	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
-	provider := conversationAnthropic(ctx, t, b, &s, vendor)
-	conversationCreate(ctx, t, b, &s, conversationFirst)
-	conversationOnDevice(ctx, t, h, b, &s, conversationFirst)
-	conversationChoose(ctx, t, b, &s, conversationFirst, provider, "claude-opus-4-8")
-	source := conversationOpen(ctx, t, b, &s, conversationFirst)
+	provider := conversationAnthropic(ctx, t, backend, &session, vendor)
+	conversationCreate(ctx, t, backend, &session, conversationFirst)
+	conversationOnDevice(ctx, t, harness, backend, &session, conversationFirst)
+	conversationChoose(ctx, t, backend, &session, conversationFirst, provider, "claude-opus-4-8")
+	source := conversationOpen(ctx, t, backend, &session, conversationFirst)
 	vendor.Respond(conversationShell(t, "toolu_before", "seq 1 3", 60000))
 	vendor.Respond(conversationAnswer(t, []string{"Counted."}, 1, 1))
 	_, err = source.Chat(ctx, "m1", "Count")
@@ -287,11 +380,11 @@ func TestForkReadsOnlyCommandsItsHistoryNames(t *testing.T) {
 	vendor.Respond(conversationAnswer(t, []string{"Said."}, 1, 1))
 	_, err = source.Chat(ctx, "m2", "Say something")
 	wireMust(t, err)
-	blocks := conversationTranscript(ctx, t, b, &s, conversationFirst).Blocks
+	blocks := conversationTranscript(ctx, t, backend, &session, conversationFirst).Blocks
 	commands := conversationCommands(blocks)
 	conversationEqual(t, commands, []string{"1", "2"})
-	conversationFork(ctx, t, b, &s, conversationSecond, conversationTexts(blocks)[0], 201)
-	socket := conversationOpen(ctx, t, b, &s, conversationSecond)
+	conversationFork(ctx, t, backend, &session, conversationSecond, conversationTexts(blocks)[0], 201)
+	socket := conversationOpen(ctx, t, backend, &session, conversationSecond)
 	before := len(vendor.Requests())
 	vendor.Respond(conversationShell(t, "toolu_read", "demi shell output 1 --raw; demi shell output 2", 60000))
 	vendor.Respond(conversationAnswer(t, []string{"Read."}, 1, 1))
