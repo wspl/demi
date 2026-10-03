@@ -43,9 +43,11 @@ Guide (Decisions and Best Practices), [STD] the standard library's practice.
   functions named for those things [GSG: Function names; Best Practices].
   The checked limits are the linters' defaults: `funlen` (60 lines, 40
   statements), `gocognit` (30), `nestif` (5), revive `argument-limit` (8) and
-  `max-control-nesting` (5). Test files are not held to `funlen` and
-  `gocognit`: a scenario is a long sequence of steps. That exclusion is this
-  project's configuration, the one choice here that no source makes.
+  `max-control-nesting` (5). Test files are not held to `funlen`, `gocognit`
+  and `nestif`: a scenario is a long sequence of steps. That exclusion is this
+  project's configuration, the one choice here that no source makes. A
+  `+demi:` contract marker is exempt from the line limit: like a
+  `//go:generate` directive, it is one line the generator reads.
 - Handle errors first and return early; keep the normal path at the left
   margin; no `else` after a `return` [CRC: Indent Error Flow].
 - Many parameters, or several of one type, become an option struct [GSG: Function
