@@ -179,10 +179,11 @@ func DecodeJSONResponse[T any](
 
 // JWTClaims reads identity or expiry claims without verifying the signature.
 // The supplied decoder determines which claims are read and validated.
-func JWTClaims[T any](token string, decode func([]byte) (T, error)) *T {
+func JWTClaims[T any](token string, decode func([]byte) (T, error)) (T, bool) {
+	var zero T
 	segments := strings.Split(token, ".")
 	if len(segments) != 3 || segments[1] == "" {
-		return nil
+		return zero, false
 	}
 	payload := segments[1]
 	// Padding is optional, but any supplied padding must be canonical.
@@ -192,11 +193,11 @@ func JWTClaims[T any](token string, decode func([]byte) (T, error)) *T {
 	}
 	data, err := encoding.DecodeString(payload)
 	if err != nil || !json.Valid(data) {
-		return nil
+		return zero, false
 	}
 	value, err := decode(data)
 	if err != nil {
-		return nil
+		return zero, false
 	}
-	return &value
+	return value, true
 }

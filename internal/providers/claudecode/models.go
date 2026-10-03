@@ -17,8 +17,8 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 	if err != nil {
 		return core.ProviderModelList{}, err
 	}
-	list := snapshot.VendorModels("anthropic")
-	if list == nil {
+	list, ok := snapshot.VendorModels("anthropic")
+	if !ok {
 		return core.ProviderModelList{}, errors.New("models.dev does not list the anthropic vendor")
 	}
 	models := make([]core.ProviderModel, 0)
@@ -53,7 +53,7 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 		return cmp.Compare(a.ID, b.ID)
 	})
 	list.Models = models
-	return *list, nil
+	return list, nil
 }
 
 func modelVersion(id string) (uint64, uint64, bool) {

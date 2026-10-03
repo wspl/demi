@@ -41,8 +41,6 @@ func (p *Provider) open(
 		if stream, cleanup, ok := firstWebSocketEvent(stream, cleanup); ok {
 			return stream, cleanup, nil
 		}
-	} else {
-		p.markWebSocketUnreachable(err)
 	}
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
@@ -153,15 +151,7 @@ func (p *Provider) websocket(
 			} // The complete refusal is already retained.
 			return nil, nil, transport.refusal
 		}
-		message := fmt.Sprintf("Codex WebSocket connect failed: %v", provider.WithoutURL(err))
-		if expired {
-			message = fmt.Sprintf(
-				"Codex WebSocket connect timed out after %dms",
-				p.config.ConnectTimeout.Milliseconds(),
-			)
-		}
-		f := provider.NoAnswer(message)
-		return nil, nil, &f
+		return nil, nil, p.connectFailure(err, expired)
 	}
 	// A message is at most 64 MiB. coder/websocket has no separate frame-size
 	// limit, so a single frame may also be up to 64 MiB.
@@ -169,8 +159,9 @@ func (p *Provider) websocket(
 	cleanup := func() { _ = socket.CloseNow() } // Release even when the peer has already closed.
 	message := append([]byte(`{"type":"response.create",`), body[1:]...)
 	if err := socket.Write(ctx, websocket.MessageText, message); err != nil {
+		cleanup()
 		f := provider.NoAnswer(fmt.Sprintf("Codex WebSocket send failed: %v", err))
-		return func(yield func(provider.Received, error) bool) { yield(provider.Received{}, &f) }, cleanup, nil
+		return nil, nil, &f
 	}
 	return p.websocketEvents(ctx, socket, activity), cleanup, nil
 }
@@ -350,16 +341,29 @@ func dispatchSocketMessage(
 	return false
 }
 
-func (p *Provider) markWebSocketUnreachable(err error) {
-	var rejection *refusalError
-	if !errors.As(err, &rejection) {
-		ms, _ := p.clock.Now().Millisecond()
-		until := provider.UnixSeconds(float64(ms)/1000 + 600)
-		if until != nil {
-			p.mu.Lock()
-			p.unreachableUntil = *until
-			p.mu.Unlock()
-		}
+// connectFailure reports a WebSocket handshake the server did not
+// refuse. Auto requests of the next 10 minutes use server-sent events.
+func (p *Provider) connectFailure(err error, expired bool) error {
+	p.markWebSocketUnreachable()
+	message := fmt.Sprintf("Codex WebSocket connect failed: %v", provider.WithoutURL(err))
+	if expired {
+		message = fmt.Sprintf(
+			"Codex WebSocket connect timed out after %dms",
+			p.config.ConnectTimeout.Milliseconds(),
+		)
+	}
+	f := provider.NoAnswer(message)
+	return &f
+}
+
+// markWebSocketUnreachable sends the Auto requests of the next 10 minutes over server-sent events.
+func (p *Provider) markWebSocketUnreachable() {
+	ms, _ := p.clock.Now().Millisecond()
+	until := provider.UnixSeconds(float64(ms)/1000 + 600)
+	if until != nil {
+		p.mu.Lock()
+		p.unreachableUntil = *until
+		p.mu.Unlock()
 	}
 }
 

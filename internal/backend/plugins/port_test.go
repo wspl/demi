@@ -55,16 +55,16 @@ func TestStoragePortsKeepValuesBlobsAndDirectories(t *testing.T) {
 	ctx := t.Context()
 	value := json.RawMessage("{\"z\":\"<&\u2028\u2029\",\"a\":1}")
 	blob := core.BlobRef(strings.Repeat("a", 64))
-	if missing, err := port.Value(ctx, "key"); err != nil || missing != nil {
-		t.Fatalf("%v %v", missing, err)
+	if _, found, err := port.Value(ctx, "key"); err != nil || found {
+		t.Fatalf("%v %v", found, err)
 	}
 	revision, err := port.WriteValueNaming(ctx, "key", value, nil, []core.BlobRef{blob})
 	if err != nil || revision != 1 {
 		t.Fatalf("%d %v", revision, err)
 	}
-	stored, err := port.Value(ctx, "key")
-	if err != nil || stored.Revision != 1 || string(stored.Value) != string(value) {
-		t.Fatalf("%+v %v", stored, err)
+	stored, found, err := port.Value(ctx, "key")
+	if err != nil || !found || stored.Revision != 1 || string(stored.Value) != string(value) {
+		t.Fatalf("%+v %v %v", stored, found, err)
 	}
 	values, err := port.Values(ctx)
 	if err != nil || len(values) != 1 || string(values["key"].Value) != string(value) {

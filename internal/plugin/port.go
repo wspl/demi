@@ -56,16 +56,21 @@ func (p Port) ask(ctx context.Context, message PortMessage) (PortAnswer, error) 
 	return answer, nil
 }
 
-// Value performs the read_value port operation.
-func (p Port) Value(ctx context.Context, key string) (*StoredValue, error) {
+// Value performs the read_value port operation; ok is false when the
+// plugin has no value under key.
+func (p Port) Value(ctx context.Context, key string) (StoredValue, bool, error) {
 	answer, err := p.ask(ctx, &PortMessageReadValue{Key: key})
 	if err != nil {
-		return nil, err
+		return StoredValue{}, false, err
 	}
-	if a, ok := answer.(*PortAnswerValue); ok {
-		return a.Value, nil
+	a, ok := answer.(*PortAnswerValue)
+	if !ok {
+		return StoredValue{}, false, unexpected("read_value", answer)
 	}
-	return nil, unexpected("read_value", answer)
+	if a.Value == nil {
+		return StoredValue{}, false, nil
+	}
+	return *a.Value, true, nil
 }
 
 // Values performs the list_values port operation.

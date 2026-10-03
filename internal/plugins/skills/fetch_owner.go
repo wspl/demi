@@ -122,11 +122,11 @@ func (i *instance) recordFetch(
 	fetchErr error,
 ) (bool, error) {
 	for {
-		stored, err := findSource(ctx, port, id)
+		stored, found, err := findSource(ctx, port, id)
 		if err != nil {
 			return false, err
 		}
-		if stored == nil {
+		if !found {
 			// Removed while it was fetched.
 			return false, nil
 		}
