@@ -53,12 +53,12 @@ func TestDeviceLogin(t *testing.T) {
 	equal(t, shown[0].VerificationURL, v.URL("/codex/device"))
 	equal(t, *shown[0].ExpiresAt, core.Timestamp("2026-09-18T14:10:00.000Z"))
 	equal(t, info.Label, "device@example.com")
-	active, err := p.Accounts().Active(t.Context())
+	active, _, err := p.Accounts().Active(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	equal(t, *active, info.ID)
-	stored, err := pool.Document(info.ID).Read(t.Context())
+	equal(t, active, info.ID)
+	stored, _, err := pool.Document(info.ID).Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,22 +104,17 @@ func TestDeviceCodeMissingAndUnavailable(t *testing.T) {
 	v.Respond(answer(200, `{"device_auth_id":"dev_auth_1"}`))
 	v.Respond(answer(404, `{}`))
 	for _, test := range []struct {
-		message     string
-		unavailable bool
+		message string
 	}{{
 		"Device code response is malformed: user_code is missing",
-		false,
 	}, {
 		"Device-code login is not enabled for this Codex account",
-		true,
 	}} {
 		_, err := p.Accounts().Login(t.Context(), func(core.LoginPending) { t.Error("unexpected code") })
-		var login *provider.LoginError
-		if !errors.As(err, &login) {
-			t.Fatalf("error: %v", err)
+		if err == nil {
+			t.Fatal("login succeeded")
 		}
-		equal(t, login.Error(), test.message)
-		equal(t, login.Unavailable, test.unavailable)
+		equal(t, err.Error(), test.message)
 	}
 	equal(t, len(pool.Entries()), 0)
 }
@@ -139,7 +134,7 @@ func TestDeviceLoginLifetime(t *testing.T) {
 		})}
 		pool := provider.NewMemoryCredentialPool()
 		p, err := codex.New(
-			codex.NewConfig(nil),
+			codex.Config{},
 			pool,
 			&provider.MemorySnapshots{},
 			client,
@@ -150,12 +145,10 @@ func TestDeviceLoginLifetime(t *testing.T) {
 		}
 		start := time.Now()
 		_, err = p.Accounts().Login(t.Context(), func(core.LoginPending) {})
-		var login *provider.LoginError
-		if !errors.As(err, &login) {
-			t.Fatalf("login error: %v", err)
+		if err == nil {
+			t.Fatal("login succeeded")
 		}
-		equal(t, login.Unavailable, false)
-		equal(t, login.Error(), "Device-code login timed out after 10 minutes")
+		equal(t, err.Error(), "Device-code login timed out after 10 minutes")
 		equal(t, time.Since(start), 10*time.Minute)
 		equal(t, calls, 12)
 		equal(t, len(pool.Entries()), 0)

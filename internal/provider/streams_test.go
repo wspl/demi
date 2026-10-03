@@ -371,12 +371,12 @@ func TestResponsesMalformedMappedFields(t *testing.T) {
 		requireEqual(t, *failure.Diagnostics.Upstream, tc.frame)
 	}
 	for _, text := range []string{`{"type":"response.queued","id":"r1"}`, " [DONE] "} {
-		value, err := provider.DecodeResponsesFrame(text)
-		if err != nil || value != nil {
-			t.Fatalf("%v %v", value, err)
+		_, ok, err := provider.DecodeResponsesFrame(text)
+		if err != nil || ok {
+			t.Fatalf("%v %v", ok, err)
 		}
 	}
-	if _, err := provider.DecodeResponsesFrame(`{"delta":"no type"}`); err == nil {
+	if _, _, err := provider.DecodeResponsesFrame(`{"delta":"no type"}`); err == nil {
 		t.Fatal("accepted missing type")
 	}
 }

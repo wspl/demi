@@ -103,7 +103,7 @@ func (m *streamMapper) merge(u *usage) {
 
 // frame decodes only the registered Messages events and their known fields.
 func (m *streamMapper) frame(data string) (mapped, error) {
-	result, err := provider.DecodeTagged(data, map[string]func(string) (mapped, error){
+	result, _, err := provider.DecodeTagged(data, map[string]func(string) (mapped, error){
 		"message_start": func(text string) (mapped, error) {
 			value, err := provider.DecodeUntagged[struct {
 				Message struct {
@@ -146,10 +146,7 @@ func (m *streamMapper) frame(data string) (mapped, error) {
 		},
 		"error": func(text string) (mapped, error) { return m.failure(text, data) },
 	})
-	if result == nil {
-		return mapped{}, err
-	}
-	return *result, err
+	return result, err
 }
 
 // blockStart opens a tool input or emits a block's initial content.
@@ -161,7 +158,7 @@ func (m *streamMapper) blockStart(text string) (mapped, error) {
 	if err != nil {
 		return mapped{}, err
 	}
-	result, err := provider.DecodeTagged(string(value.Block), map[string]func(string) (mapped, error){
+	result, _, err := provider.DecodeTagged(string(value.Block), map[string]func(string) (mapped, error){
 		"tool_use": func(text string) (mapped, error) {
 			tool, err := provider.DecodeUntagged[struct {
 				ID    provider.NonEmpty                   `json:"id"`
@@ -193,10 +190,7 @@ func (m *streamMapper) blockStart(text string) (mapped, error) {
 			return mapped{event: &provider.TextDelta{Text: b.Text}}, err
 		},
 	})
-	if result == nil {
-		return mapped{}, err
-	}
-	return *result, err
+	return result, err
 }
 
 // blockDelta extends the block identified by the frame's index.
@@ -208,7 +202,7 @@ func (m *streamMapper) blockDelta(text string) (mapped, error) {
 	if err != nil {
 		return mapped{}, err
 	}
-	result, err := provider.DecodeTagged(string(value.Delta), map[string]func(string) (mapped, error){
+	result, _, err := provider.DecodeTagged(string(value.Delta), map[string]func(string) (mapped, error){
 		"text_delta": func(text string) (mapped, error) {
 			b, err := provider.DecodeUntagged[struct {
 				Text string `json:"text"`
@@ -246,10 +240,7 @@ func (m *streamMapper) blockDelta(text string) (mapped, error) {
 			return mapped{}, err
 		},
 	})
-	if result == nil {
-		return mapped{}, err
-	}
-	return *result, err
+	return result, err
 }
 
 // call preserves invalid streamed tool input as the vendor's original text.

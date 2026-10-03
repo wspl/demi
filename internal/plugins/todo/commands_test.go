@@ -217,7 +217,7 @@ func TestConcurrentAddsKeepEveryTodoWithItsOwnID(t *testing.T) {
 	}
 }
 
-func TestRustManifest(t *testing.T) {
+func TestManifestMatchesGolden(t *testing.T) {
 	f, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +231,7 @@ func TestRustManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(got, bytes.TrimSpace(want)) {
-		t.Fatalf("manifest differs from Rust:\ngot %s\nwant %s", got, want)
+		t.Fatalf("manifest differs from testdata/manifest.json:\ngot %s\nwant %s", got, want)
 	}
 }
 

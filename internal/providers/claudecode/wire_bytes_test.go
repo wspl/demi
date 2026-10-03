@@ -10,8 +10,8 @@ import (
 	"github.com/wspl/demi/internal/version"
 )
 
-// These complete lines follow Rust input.rs and rmcp 3.4.1's Serialize
-// declarations, including omitted optional fields. Expected bytes are literals,
+// These complete lines fix the stream-json input and MCP reply bytes: member
+// order, omitted optional fields and escaping. Expected bytes are literals,
 // not produced by the Go encoders being tested. This scenario uses no real CLI.
 func TestCLIWireBytes(t *testing.T) {
 	var initializeID string
@@ -88,7 +88,7 @@ func TestCLIWireBytes(t *testing.T) {
 	}
 }
 
-func TestToolValuesKeepReadOrderAndSerdeSpelling(t *testing.T) {
+func TestToolValuesKeepReadOrderAndCanonicalSpelling(t *testing.T) {
 	const input = `{ "z": [ { "b": "\u003c&>\u2028", "a": 1e2 } ], "a": -0, "z": [ ` +
 		`{ "b": "\u003c&>\u2028", "a": 1e2 } ] }`
 	const want = `{"z":[{"b":"<&>` + "\u2028" + `","a":100.0}],"a":-0.0}`
@@ -168,7 +168,7 @@ func TestToolValuesKeepReadOrderAndSerdeSpelling(t *testing.T) {
 	})
 }
 
-func TestFramingFailureUsesLinesCodecReasonWithoutRecord(t *testing.T) {
+func TestFramingFailureUsesFramingReasonWithoutRecord(t *testing.T) {
 	// The oversized case allocates one 64 MiB input to exercise the real bound.
 	for _, tc := range []struct{ name, line, reason string }{
 		{"UTF8", "\xff", "Unable to decode input as UTF8"},

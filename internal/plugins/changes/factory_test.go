@@ -11,7 +11,7 @@ import (
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 // The registration bytes are read by the plugin host; budget below one second.
-func TestRustManifest(t *testing.T) {
+func TestManifestMatchesGolden(t *testing.T) {
 	f := New()
 	want, err := os.ReadFile("testdata/manifest.json")
 	if err != nil {
@@ -22,6 +22,6 @@ func TestRustManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(got, bytes.TrimSpace(want)) {
-		t.Fatalf("manifest differs from Rust:\ngot %s\nwant %s", got, want)
+		t.Fatalf("manifest differs from testdata/manifest.json:\ngot %s\nwant %s", got, want)
 	}
 }

@@ -58,7 +58,7 @@ type live struct {
 func startLive(ctx context.Context, p *Provider, placement Placement, r provider.InferenceRequest) (*live, error) {
 	secret, authErr := p.stored(ctx)
 	if authErr != nil {
-		f := authErr.Failure()
+		f := provider.AccountAuthFailure(family, authErr).Failure()
 		return nil, &f
 	}
 	process, err := placement.Start(ctx, func(site Site) host.SpawnRequest {
@@ -69,7 +69,7 @@ func startLive(ctx context.Context, p *Provider, placement Placement, r provider
 			wireLevel,
 			"Claude Code wire",
 			"target",
-			"demi::provider::claude_code::wire",
+			"provider.claudecode.wire",
 			"direction",
 			"spawn",
 			"command",
@@ -117,7 +117,7 @@ func (l *live) enqueue(line queuedLine) {
 	}
 }
 
-//nolint:staticcheck // Product failure text is copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Claude Code.
 func (l *live) drain(ctx context.Context) {
 	defer close(l.drained)
 	var buffered []byte
@@ -144,7 +144,7 @@ func (l *live) drain(ctx context.Context) {
 				wireLevel,
 				"Claude Code wire",
 				"target",
-				"demi::provider::claude_code::wire",
+				"provider.claudecode.wire",
 				"direction",
 				"err",
 				"text",
@@ -218,19 +218,20 @@ func (l *live) next(ctx context.Context) (queuedLine, error) {
 	}
 }
 
-func (l *live) read(q queuedLine) (*outputLine, error) {
+// read decodes one output line; ok is false for a blank line and for a line type the provider does not read.
+func (l *live) read(q queuedLine) (outputLine, bool, error) {
 	if q.err != nil {
-		return nil, q.err
+		return outputLine{}, false, q.err
 	}
 	if strings.TrimSpace(q.text) == "" {
-		return nil, nil
+		return outputLine{}, false, nil
 	}
 	slog.Log(
 		context.Background(),
 		wireLevel,
 		"Claude Code wire",
 		"target",
-		"demi::provider::claude_code::wire",
+		"provider.claudecode.wire",
 		"direction",
 		"out",
 		"line",
@@ -240,17 +241,17 @@ func (l *live) read(q queuedLine) (*outputLine, error) {
 	_, err := provider.DecodeUntagged[any](q.text)
 	if err != nil {
 		failure := provider.ProtocolFailure("Claude Code sent a line Demi cannot read: "+err.Error(), q.text)
-		return nil, &failure
+		return outputLine{}, false, &failure
 	}
-	line, err := decodeLine(q.text)
+	line, ok, err := decodeLine(q.text)
 	if err != nil {
 		failure := provider.ProtocolFailure("Claude Code sent a line Demi cannot read: "+err.Error(), q.text)
-		return nil, &failure
+		return outputLine{}, false, &failure
 	}
-	return line, nil
+	return line, ok, nil
 }
 
-//nolint:staticcheck // Product failure text is copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Claude Code.
 func (l *live) write(ctx context.Context, value inputLine) error {
 	data, err := provider.JSONBody(value)
 	if err != nil {
@@ -261,7 +262,7 @@ func (l *live) write(ctx context.Context, value inputLine) error {
 		wireLevel,
 		"Claude Code wire",
 		"target",
-		"demi::provider::claude_code::wire",
+		"provider.claudecode.wire",
 		"direction",
 		"in",
 		"line",
@@ -296,7 +297,7 @@ func (l *live) serves(r provider.InferenceRequest) bool {
 		(len(l.held) > 0 || len(users) > l.sent)
 }
 
-//nolint:staticcheck // Product failure text is copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Claude Code.
 func (l *live) prepare(ctx context.Context, r provider.InferenceRequest) error {
 	if l.mcp != nil {
 		if err := l.initialize(ctx, r,
@@ -306,7 +307,6 @@ func (l *live) prepare(ctx context.Context, r provider.InferenceRequest) error {
 			func(name string) error {
 				return fmt.Errorf("Claude Code called the tool %s before its initialization completed", name)
 			},
-			func(reason string) error { return fmt.Errorf("Claude Code refused the SDK MCP server: %s", reason) },
 		); err != nil {
 			return err
 		}
@@ -323,7 +323,7 @@ func (l *live) prepare(ctx context.Context, r provider.InferenceRequest) error {
 	return nil
 }
 
-//nolint:staticcheck // Product failure text is copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Claude Code.
 func (l *live) continueRun(ctx context.Context, r provider.InferenceRequest) error {
 	if l.mcp != nil {
 		l.mcp.tools = r.Tools
@@ -333,11 +333,11 @@ func (l *live) continueRun(ctx context.Context, r provider.InferenceRequest) err
 		if !ok {
 			break
 		}
-		line, err := l.read(q)
+		line, ok, err := l.read(q)
 		if err != nil {
 			return err
 		}
-		if line != nil && line.Control != nil {
+		if ok && line.Control != nil {
 			if _, err := l.control(ctx, *line.Control); err != nil {
 				return err
 			}
@@ -424,7 +424,7 @@ func (l *live) exitMessage(ctx context.Context) string {
 	return ""
 }
 
-//nolint:staticcheck // Product failure text is copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Claude Code.
 func (l *live) finish(ctx context.Context) error {
 	message := l.exitMessage(ctx)
 	if l.mcp != nil && len(l.mcp.ready) > 0 {
@@ -485,7 +485,6 @@ func (l *live) initialize(
 	r provider.InferenceRequest,
 	exited func() error,
 	called func(string) error,
-	refused func(string) error,
 ) error {
 	id := controlID()
 	if err := l.write(
@@ -503,34 +502,41 @@ func (l *live) initialize(
 		if err != nil {
 			return err
 		}
-		line, err := l.read(q)
+		line, ok, err := l.read(q)
 		if err != nil {
 			return err
 		}
-		if answered, reason := initializationAnswer(line, id); reason != nil {
-			return refused(*reason)
-		} else if answered {
-			l.pending = append(l.pending, kept...)
-			break
-		}
-		if line != nil && line.Control != nil {
-			call, err := l.control(ctx, *line.Control)
-			if err != nil {
-				return err
-			}
-			if call != nil {
-				return called(call.ToolName)
-			}
-		} else {
+		if !ok {
 			kept = append(kept, q)
+			continue
+		}
+		answered, err := initializationAnswer(line, id)
+		if err != nil {
+			return err
+		}
+		if answered {
+			l.pending = append(l.pending, kept...)
+			return nil
+		}
+		if line.Control == nil {
+			kept = append(kept, q)
+			continue
+		}
+		call, err := l.control(ctx, *line.Control)
+		if err != nil {
+			return err
+		}
+		if call != nil {
+			return called(call.ToolName)
 		}
 	}
-	return nil
 }
 
-// initializationAnswer returns a matching success or refusal reason; unrelated lines return neither.
-func initializationAnswer(line *outputLine, id string) (bool, *string) {
-	if line == nil || line.Answer == nil || line.Answer.Response == nil {
+// initializationAnswer reports whether line answers the initialize request id; a refusal is the error.
+//
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Claude Code.
+func initializationAnswer(line outputLine, id string) (bool, error) {
+	if line.Answer == nil || line.Answer.Response == nil {
 		return false, nil
 	}
 	response := line.Answer.Response
@@ -544,5 +550,5 @@ func initializationAnswer(line *outputLine, id string) (bool, *string) {
 	if response.Error.Value != nil {
 		reason = *response.Error.Value
 	}
-	return false, &reason
+	return false, fmt.Errorf("Claude Code refused the SDK MCP server: %s", reason)
 }

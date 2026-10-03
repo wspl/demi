@@ -2,7 +2,7 @@ package claudecode
 
 import "encoding/json"
 
-// rpcMessage is the sealed subset of ServerJsonRpcMessage sent by Demi.
+// rpcMessage is a JSON-RPC message Demi's MCP server sends: a success or an error.
 type (
 	rpcMessage interface{ rpcMessage() }
 	rpcSuccess struct {
@@ -33,7 +33,7 @@ type unsupportedVersion struct {
 }
 
 // setModerner selects whether an MCP result emits its modern discriminator.
-// The result shapes follow rmcp's ServerResult variants and declaration order.
+// Each result type declares its fields in wire order.
 // Only result variants with a discriminator embed resultKind.
 type (
 	setModerner interface{ setModern(bool) }
@@ -83,9 +83,9 @@ type toolsResult struct {
 	Tools []mcpTool `json:"tools"`
 }
 type mcpTool struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Schema      serdeValue `json:"inputSchema"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Schema      canonicalJSON `json:"inputSchema"`
 }
 type callResult struct {
 	resultKind

@@ -93,9 +93,9 @@ func (f subscriptionFamily) Provider(args providers.FamilyArgs) (provider.Provid
 	}
 	account, quota := boundAccount(subscription.Account)
 	if f.name == "codex" {
-		return codex.New(codex.NewConfig(account), subscription.Pool, quota, args.HTTP, args.Clock)
+		return codex.New(codex.Config{Account: account}, subscription.Pool, quota, args.HTTP, args.Clock)
 	}
-	return grokbuild.New(grokbuild.NewConfig(account), subscription.Pool, quota, args.HTTP, args.Clock), nil
+	return grokbuild.New(grokbuild.Config{Account: account}, subscription.Pool, quota, args.HTTP, args.Clock), nil
 }
 
 type claudeFamily struct{}

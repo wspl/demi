@@ -6,8 +6,8 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// These private vendor types declare fields in the Rust Messages encoder's
-// order. Generic tool inputs and schemas retain their original JSON order.
+// These private vendor types declare fields in the order the Messages request
+// writes them. Generic tool inputs and schemas retain their original JSON order.
 type message struct {
 	Role    string     `json:"role"`
 	Content []*content `json:"content"`

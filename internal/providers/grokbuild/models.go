@@ -2,6 +2,7 @@ package grokbuild
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,45 +29,39 @@ type catalogEffort struct {
 }
 
 // ListModels reads a fresh catalog from the chat proxy.
+//
+//nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
 func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, error) {
 	s, failure := p.auth.credentials(ctx, p.http, nil)
 	if failure != nil {
-		return core.ProviderModelList{}, failure.CatalogError()
+		return core.ProviderModelList{}, failure
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.modelsURL.String(), nil)
 	if err != nil {
-		return core.ProviderModelList{}, &provider.CatalogError{
-			Kind:    provider.CatalogUnavailable,
-			Message: fmt.Sprintf("Grok Build models request failed: %v", withoutURL(err)),
-		}
+		return core.ProviderModelList{}, fmt.Errorf("Grok Build models request failed: %v", provider.WithoutURL(err))
 	}
 	req.Header = identityHeaders(s)
 	req.Header.Set("Accept", "application/json")
 	response, err := p.http.Do(req)
 	if err != nil {
-		return core.ProviderModelList{}, &provider.CatalogError{
-			Kind:    provider.CatalogUnavailable,
-			Message: fmt.Sprintf("Grok Build models request failed: %v", withoutURL(err)),
-		}
+		return core.ProviderModelList{}, fmt.Errorf("Grok Build models request failed: %v", provider.WithoutURL(err))
 	}
 	// The response is consumed or abandoned; close errors cannot change its result.
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return core.ProviderModelList{}, &provider.CatalogError{
-			Kind:    provider.CatalogUnavailable,
-			Message: fmt.Sprintf("Grok Build models request failed with HTTP %d", response.StatusCode),
-		}
+		return core.ProviderModelList{}, fmt.Errorf(
+			"Grok Build models request failed with HTTP %d",
+			response.StatusCode,
+		)
 	}
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
-		return core.ProviderModelList{}, &provider.CatalogError{
-			Kind:    provider.CatalogUnavailable,
-			Message: fmt.Sprintf("Grok Build models request failed: %v", withoutURL(err)),
-		}
+		return core.ProviderModelList{}, fmt.Errorf("Grok Build models request failed: %v", provider.WithoutURL(err))
 	}
 	return p.catalog(string(data))
 }
 
+//nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
 func (p *Provider) catalog(text string) (core.ProviderModelList, error) {
 	var listed []catalogModel
 	var err error
@@ -84,10 +79,7 @@ func (p *Provider) catalog(text string) (core.ProviderModelList, error) {
 		}
 	}
 	invalid := func(err error) (core.ProviderModelList, error) {
-		return core.ProviderModelList{}, &provider.CatalogError{
-			Kind:    provider.CatalogInvalid,
-			Message: fmt.Sprintf("Grok Build models answer cannot be read: %v", err),
-		}
+		return core.ProviderModelList{}, fmt.Errorf("Grok Build models answer cannot be read: %v", err)
 	}
 	if err != nil {
 		return invalid(err)
@@ -112,10 +104,7 @@ func (p *Provider) catalog(text string) (core.ProviderModelList, error) {
 		models = append(models, model)
 	}
 	if len(models) == 0 {
-		return core.ProviderModelList{}, &provider.CatalogError{
-			Kind:    provider.CatalogInvalid,
-			Message: "Grok Build models answer lists no model",
-		}
+		return core.ProviderModelList{}, errors.New("Grok Build models answer lists no model")
 	}
 	return core.ProviderModelList{
 		Models:          models,

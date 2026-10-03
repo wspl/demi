@@ -89,7 +89,7 @@ func (v *verificationURI) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-//nolint:staticcheck // ST1005: user-facing messages are copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Grok.
 func (k *loginKit) post(ctx context.Context, path string, form url.Values) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(
 		ctx,
@@ -105,21 +105,17 @@ func (k *loginKit) post(ctx context.Context, path string, form url.Values) (*htt
 	req.Header.Set("x-grok-client-surface", "ui")
 	response, err := k.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Grok sign-in request failed: %w", withoutURL(err))
+		return nil, fmt.Errorf("Grok sign-in request failed: %w", provider.WithoutURL(err))
 	}
 	return response, nil
 }
 
 // Login completes device authorization and returns the new account.
 func (k *loginKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
-	result, err := k.login(ctx, pending)
-	if err != nil {
-		return provider.NewAccount{}, &provider.LoginError{Err: err}
-	}
-	return result, nil
+	return k.login(ctx, pending)
 }
 
-//nolint:staticcheck // ST1005: user-facing messages are copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Grok.
 func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
 	response, err := k.post(
 		ctx,
@@ -183,7 +179,7 @@ func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (
 	return provider.NewAccount{Label: s.label(), Secret: string(encoded)}, nil
 }
 
-//nolint:staticcheck // ST1005: user-facing messages are copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Grok.
 func (k *loginKit) poll(ctx context.Context, device deviceAnswer) (tokens, error) {
 	deadline, _ := ctx.Deadline() // login always supplies the ten-minute deadline.
 	interval := max(device.Interval.Duration(), time.Second)

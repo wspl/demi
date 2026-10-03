@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"strconv"
@@ -48,44 +49,16 @@ type ProbeReading struct {
 	Windows      []core.QuotaWindow
 }
 
-// QuotaErrorKind identifies why a probe failed.
-type QuotaErrorKind uint8
+// ErrQuotaUnsupported means the provider cannot read its usage.
+var ErrQuotaUnsupported = errors.New("this provider cannot read its usage")
 
-// Quota failure categories exposed to callers.
-const (
-	// QuotaUnsupported identifies a provider without quota probing.
-	QuotaUnsupported QuotaErrorKind = iota
-	// QuotaRequiresInference identifies a probe that would spend inference.
-	QuotaRequiresInference
-	// QuotaUnauthenticated identifies a probe prevented by authentication.
-	QuotaUnauthenticated
-	// QuotaUnavailable identifies an unavailable usage endpoint.
-	QuotaUnavailable
-	// QuotaInvalid identifies an unreadable usage answer.
-	QuotaInvalid
-)
-
-// QuotaError describes a refused or unreadable probe.
-type QuotaError struct {
-	Kind    QuotaErrorKind
-	Message string
-}
-
-// Error returns the diagnostic for this failure.
-func (e *QuotaError) Error() string {
-	switch e.Kind {
-	case QuotaUnsupported:
-		return "this provider cannot read its usage"
-	case QuotaRequiresInference:
-		return "reading this provider's usage requires an inference request"
-	default:
-		return e.Message
-	}
-}
+// ErrQuotaRequiresInference means reading the provider's usage would spend an inference request.
+var ErrQuotaRequiresInference = errors.New("reading this provider's usage requires an inference request")
 
 // QuotaSource knows a family's usage endpoint and live quota fields.
 type QuotaSource interface {
-	ProbeCost() *ProbeCost
+	// ProbeCost reports the cost of a quota probe; ok is false when the family cannot probe.
+	ProbeCost() (cost ProbeCost, ok bool)
 	Probe(context.Context) (ProbeReading, error)
 	Observe(Observation) []core.QuotaWindow
 }
@@ -112,17 +85,17 @@ func NewQuota(source QuotaSource, store QuotaSnapshotStore, clock core.Clock) *Q
 // Latest reads the kept snapshot without probing.
 func (q *Quota) Latest() *core.QuotaSnapshot { return q.store.Latest() }
 
-// ProbeCost returns nil when the family cannot probe.
-func (q *Quota) ProbeCost() *ProbeCost { return q.source.ProbeCost() }
+// ProbeCost reports the probe cost; ok is false when the family cannot probe.
+func (q *Quota) ProbeCost() (ProbeCost, bool) { return q.source.ProbeCost() }
 
 // Probe reads a free usage endpoint and merges its plan, label and windows.
 func (q *Quota) Probe(ctx context.Context) (*core.QuotaSnapshot, error) {
-	cost := q.source.ProbeCost()
-	if cost == nil {
-		return nil, &QuotaError{Kind: QuotaUnsupported}
+	cost, ok := q.source.ProbeCost()
+	if !ok {
+		return nil, ErrQuotaUnsupported
 	}
-	if *cost == ProbeInference {
-		return nil, &QuotaError{Kind: QuotaRequiresInference}
+	if cost == ProbeInference {
+		return nil, ErrQuotaRequiresInference
 	}
 	reading, err := q.source.Probe(ctx)
 	if err != nil {

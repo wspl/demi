@@ -48,13 +48,13 @@ func ResponsesSSEEvents(ctx context.Context, body io.ReadCloser, label string) i
 				yield(Received{}, &failure)
 				return
 			}
-			received, err := DecodeResponsesFrame(data)
+			received, ok, err := DecodeResponsesFrame(data)
 			if err != nil {
 				failure := Undecodable(label, err, data)
 				yield(Received{}, &failure)
 				return
 			}
-			if received != nil && !yield(*received, nil) {
+			if ok && !yield(received, nil) {
 				return
 			}
 		}

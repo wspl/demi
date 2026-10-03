@@ -2,6 +2,7 @@ package backendtest
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -46,10 +47,7 @@ func (d *AccountDirectory) read() (core.ProviderModelList, error) {
 	defer d.mu.Unlock()
 	d.reads++
 	if len(d.answers) == 0 {
-		return core.ProviderModelList{}, &provider.CatalogError{
-			Kind:    provider.CatalogUnavailable,
-			Message: "the directory has no answer scripted",
-		}
+		return core.ProviderModelList{}, errors.New("the directory has no answer scripted")
 	}
 	a := d.answers[0]
 	d.answers = d.answers[1:]
@@ -201,7 +199,7 @@ func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending))
 func (k *accountKit) Add(input provider.AddAccount) (provider.NewAccount, error) {
 	token := input.SetupToken.Expose()
 	if strings.HasPrefix(token, "bad") {
-		return provider.NewAccount{}, &provider.AccountsError{Message: token + " is not a setup token"}
+		return provider.NewAccount{}, errors.New(token + " is not a setup token")
 	}
 	secret, err := contract.EncodeObject([]contract.Field{{Name: "setupToken", Value: token}})
 	if err != nil {
@@ -216,7 +214,12 @@ func (k *accountKit) Add(input provider.AddAccount) (provider.NewAccount, error)
 type accountQuota struct{ cost *provider.ProbeCost }
 
 // ProbeCost returns the configured quota probe cost.
-func (q accountQuota) ProbeCost() *provider.ProbeCost { return q.cost }
+func (q accountQuota) ProbeCost() (provider.ProbeCost, bool) {
+	if q.cost == nil {
+		return 0, false
+	}
+	return *q.cost, true
+}
 
 // Probe returns the scripted quota reading.
 func (q accountQuota) Probe(context.Context) (provider.ProbeReading, error) {

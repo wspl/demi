@@ -141,25 +141,25 @@ func readRun(
 			fail(err)
 			return
 		}
-		line, err := current.read(queued)
+		line, ok, err := current.read(queued)
 		if err != nil {
 			fail(err)
 			return
 		}
-		if line == nil {
+		if !ok {
 			continue
 		}
 		switch line.Type {
 		case "assistant":
-			if current.assistant(line, queued, fail, emit) {
+			if current.assistant(&line, queued, fail, emit) {
 				return
 			}
 		case "stream_event":
-			if current.streamEvent(line, queued, fail, emit, keep, yield) {
+			if current.streamEvent(&line, queued, fail, emit, keep, yield) {
 				return
 			}
 		case "control_request":
-			if current.controlEvent(ctx, line, fail, keep, yield) {
+			if current.controlEvent(ctx, &line, fail, keep, yield) {
 				return
 			}
 		case "result":
@@ -168,7 +168,7 @@ func readRun(
 			yield(line.Result.end(queued.text))
 			return
 		case "error":
-			outputFailure(line, queued, fail)
+			outputFailure(&line, queued, fail)
 			return
 		case "control_response":
 		}

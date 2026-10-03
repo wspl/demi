@@ -147,8 +147,8 @@ func TestRefusedRequestRecord(t *testing.T) {
 		*failure.Code != provider.RateLimit {
 		t.Fatalf("failure: %+v", failure)
 	}
-	record := provider.ReadHTTPRecord(failure.Diagnostics)
-	if record == nil || record.Body != body || record.Status != 429 {
+	record, ok := provider.ReadHTTPRecord(failure.Diagnostics)
+	if !ok || record.Body != body || record.Status != 429 {
 		t.Fatalf("record: %+v", record)
 	}
 }

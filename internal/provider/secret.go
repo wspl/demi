@@ -7,14 +7,12 @@ import (
 	"unicode/utf8"
 )
 
-// A credential, such as an API key or a setup token: nonempty, one line of
-// text without control characters, and never printed. `Debug` shows
-// `Secret(..)`, so a logged configuration cannot leak it.
+// Secret is a credential, such as an API key or a setup token: nonempty, one
+// line of text without control characters, and never printed. Every fmt verb
+// prints Secret(..), so a logged configuration cannot leak it.
 // +demi:root
 // +demi:length chars min=1
 // +demi:check validateSecret
-//
-//nolint:revive // Contract documentation is product text copied verbatim from Rust.
 type Secret string
 
 // ErrSecretEmpty means the credential is empty.

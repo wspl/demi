@@ -43,18 +43,10 @@ type loginTokens struct {
 
 // Login completes device authorization and returns the new account.
 func (k *loginKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
-	account, err := k.login(ctx, pending)
-	if err != nil {
-		var login *provider.LoginError
-		if errors.As(err, &login) {
-			return provider.NewAccount{}, login
-		}
-		return provider.NewAccount{}, &provider.LoginError{Err: err}
-	}
-	return account, nil
+	return k.login(ctx, pending)
 }
 
-//nolint:staticcheck // User-facing error text is copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text is a sentence starting with a capital letter.
 func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
 	started := time.Now()
 	response, err := k.post(ctx, "/api/accounts/deviceauth/usercode", map[string]string{"client_id": clientID})
@@ -63,10 +55,7 @@ func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (
 	}
 	defer func() { _ = response.Body.Close() }() // The reader reports IO failures; close releases the response.
 	if response.StatusCode == 404 {
-		return provider.NewAccount{}, &provider.LoginError{
-			Unavailable: true,
-			Message:     "Device-code login is not enabled for this Codex account",
-		}
+		return provider.NewAccount{}, errors.New("Device-code login is not enabled for this Codex account")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return provider.NewAccount{}, fmt.Errorf("Device code request failed with HTTP %d", response.StatusCode)
@@ -93,7 +82,7 @@ func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (
 	}
 	response, err = k.p.http.Do(request)
 	if err != nil {
-		return provider.NewAccount{}, fmt.Errorf("Codex sign-in request failed: %w", withoutURL(err))
+		return provider.NewAccount{}, fmt.Errorf("Codex sign-in request failed: %w", provider.WithoutURL(err))
 	}
 	defer func() { _ = response.Body.Close() }() // The reader reports IO failures; close releases the response.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -103,14 +92,14 @@ func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (
 	if err != nil {
 		return provider.NewAccount{}, fmt.Errorf("Token exchange failed: %w", err)
 	}
-	id := loginAccountID(tokens)
-	if id == nil || validateAccountID(accountID(*id)) != nil {
+	id, ok := loginAccountID(tokens)
+	if !ok || validateAccountID(accountID(id)) != nil {
 		return provider.NewAccount{}, fmt.Errorf("The Codex sign-in names no ChatGPT account")
 	}
-	return k.account(tokens, id)
+	return k.account(tokens, accountID(id))
 }
 
-//nolint:staticcheck // User-facing error text is copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text is a sentence starting with a capital letter.
 func (k *loginKit) authorize(
 	ctx context.Context,
 	device provider.NonEmpty,
@@ -151,21 +140,21 @@ func (k *loginKit) authorize(
 	}
 }
 
-//nolint:staticcheck // User-facing error text is copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Codex.
 func (k *loginKit) post(ctx context.Context, path string, body any) (*http.Response, error) {
 	response, err := postJSON(ctx, k.p.http, k.p.authEndpoint(path), body)
 	if err != nil {
-		return nil, fmt.Errorf("Codex sign-in request failed: %w", withoutURL(err))
+		return nil, fmt.Errorf("Codex sign-in request failed: %w", provider.WithoutURL(err))
 	}
 	return response, nil
 }
 
-func (k *loginKit) account(tokens loginTokens, id *string) (provider.NewAccount, error) {
+func (k *loginKit) account(tokens loginTokens, id accountID) (provider.NewAccount, error) {
 	s := secret{
 		AccessToken:  tokens.Access,
 		RefreshToken: tokens.Refresh,
 		IDToken:      tokens.ID,
-		AccountID:    accountID(*id),
+		AccountID:    id,
 		LastRefresh:  k.p.clock.Now(),
 	}
 	data, err := provider.JSONBody(s)
@@ -196,19 +185,14 @@ func (k *loginKit) tokenRequest(ctx context.Context, auth authorization) (*http.
 	return request, nil
 }
 
-func loginAccountID(tokens loginTokens) *string {
-	var id *string
+func loginAccountID(tokens loginTokens) (string, bool) {
 	for _, token := range []provider.Secret{tokens.Access, tokens.ID} {
 		c := tokenClaims(token)
-		if c.Auth.Value != nil {
-			id = c.Auth.Value.AccountID.Value
-		}
-		if id != nil {
-			break
+		if c.Auth.Value != nil && c.Auth.Value.AccountID.Value != nil {
+			return *c.Auth.Value.AccountID.Value, true
 		}
 	}
-
-	return id
+	return "", false
 }
 
 func (k *loginKit) announceDeviceCode(userCode *provider.NonEmpty, pending func(core.LoginPending)) string {

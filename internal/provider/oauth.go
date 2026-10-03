@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -141,7 +142,7 @@ func DecodeSecretDocument[T any](text string, decode func([]byte) (T, error)) (T
 	var wire *WireError
 	if errors.As(err, &field) && field.Path != "" {
 		path = field.Path
-		// serde reports a missing top-level member at the object, not at
+		// A missing top-level member is reported at the object ("."), not at
 		// the absent member. Inspect presence without quoting any value.
 		var object map[string]json.RawMessage
 		if json.Unmarshal([]byte(text), &object) == nil && object != nil && !strings.ContainsAny(path, ".[ ") {
@@ -156,20 +157,6 @@ func DecodeSecretDocument[T any](text string, decode func([]byte) (T, error)) (T
 	return zero, &SecretDecodeError{Path: path, Fault: SecretShape}
 }
 
-// ResponseError reports an unreadable OAuth reply without quoting tokens.
-type ResponseError struct{ Malformed error }
-
-// Error returns the diagnostic for this failure.
-func (e *ResponseError) Error() string {
-	if e.Malformed == nil {
-		return "the response body could not be read"
-	}
-	return "the response is " + e.Malformed.Error()
-}
-
-// Unwrap returns the underlying cause.
-func (e *ResponseError) Unwrap() error { return e.Malformed }
-
 // DecodeJSONResponse decodes and closes a token response using its schema decoder.
 func DecodeJSONResponse[T any](
 	ctx context.Context,
@@ -181,11 +168,11 @@ func DecodeJSONResponse[T any](
 	defer stop()
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
-		return zero, &ResponseError{}
+		return zero, errors.New("the response body could not be read")
 	}
 	value, err := DecodeSecretDocument(string(data), decode)
 	if err != nil {
-		return zero, &ResponseError{Malformed: err}
+		return zero, fmt.Errorf("the response is %w", err)
 	}
 	return value, nil
 }

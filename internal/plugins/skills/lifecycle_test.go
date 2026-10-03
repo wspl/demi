@@ -63,7 +63,9 @@ func TestRemoveDuringFetchAndIgnoreConcurrentUpdate(t *testing.T) {
 	if uploads.Load() != 1 {
 		t.Fatal("update started a second fetch")
 	}
-	if len(p.state(t).Sources) != 0 || p.demi.Value(added.Source) != nil || len(p.demi.Directories()) != 0 {
+	sources := len(p.state(t).Sources)
+	_, found := p.demi.Value(added.Source)
+	if sources != 0 || found || len(p.demi.Directories()) != 0 {
 		t.Fatal("fetch resurrected removed source")
 	}
 	_, err = p.method(t.Context(), "remove_source", skills.SourceCall(added))

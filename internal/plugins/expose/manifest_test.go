@@ -9,9 +9,9 @@ import (
 	"github.com/wspl/demi/internal/plugins/expose"
 )
 
-// TestRustManifest compares the public factory's complete wire manifest with
-// the captured Rust manifest, including schema annotations and order. Cost <1 s.
-func TestRustManifest(t *testing.T) {
+// TestManifestMatchesGolden compares the public factory's complete wire manifest
+// with testdata/manifest.json, including schema annotations and order. Cost <1 s.
+func TestManifestMatchesGolden(t *testing.T) {
 	data, err := os.ReadFile("testdata/manifest.json")
 	if err != nil {
 		t.Fatal(err)

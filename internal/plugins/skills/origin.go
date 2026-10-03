@@ -42,7 +42,7 @@ func githubName(part string) bool {
 	return true
 }
 
-// asciiLower preserves the Rust origin parser's ASCII-only host folding.
+// asciiLower folds only the ASCII letters A-Z to lowercase; every other character keeps its case.
 func asciiLower(text string) string {
 	return strings.Map(func(c rune) rune {
 		if c >= 'A' && c <= 'Z' {

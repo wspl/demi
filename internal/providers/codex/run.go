@@ -27,7 +27,7 @@ func (s *session) Run(ctx context.Context, request provider.InferenceRequest) pr
 				return
 			}
 			if err != nil {
-				yield(&provider.Error{Failure: authFailure(err).Failure()})
+				yield(&provider.Error{Failure: provider.AccountAuthFailure("Codex", err).Failure()})
 				return
 			}
 			events, cleanup, err := s.p.open(ctx, s.http, inferenceHeaders(credentials, request), body)

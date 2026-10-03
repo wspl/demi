@@ -37,7 +37,7 @@ func TestRefusedRequestRefreshesOnce(t *testing.T) {
 			"refresh_token": "refresh-1",
 		},
 	)
-	stored, err := pool.Document(account).Read(t.Context())
+	stored, _, err := pool.Document(account).Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestCompetingRefresherIsAdopted(t *testing.T) {
 		<-done
 	})
 	v.Received(t.Context(), 1)
-	stored, err := doc.Read(t.Context())
+	stored, _, err := doc.Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

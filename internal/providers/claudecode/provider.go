@@ -2,6 +2,7 @@ package claudecode
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/wspl/demi/internal/core"
@@ -72,7 +73,7 @@ func (*Provider) Capabilities() provider.Capabilities {
 func (p *Provider) AuthStatus(ctx context.Context) core.AuthState {
 	secret, err := p.stored(ctx)
 	if err != nil {
-		return err.State()
+		return provider.AccountAuthFailure(family, err).State()
 	}
 	label := secret.label().Label
 	return &core.Authenticated{AccountLabel: &label}
@@ -97,7 +98,7 @@ func (p *Provider) Accounts() provider.SubscriptionAccounts { return p.accounts 
 
 // Runtime refuses because only the backend can choose a process machine.
 func (p *Provider) Runtime(provider.RuntimeEnv) (provider.Runtime, error) {
-	return nil, &provider.RuntimeError{Provider: p.config.DisplayName}
+	return nil, fmt.Errorf("%s needs a Host that runs processes", p.config.DisplayName)
 }
 
 // ProcessRuntime builds a session runtime over placement.

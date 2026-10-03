@@ -189,7 +189,7 @@ func addSetupToken(ctx context.Context, p provider.Provider, token string) (core
 		}
 	}
 	var pool *provider.PoolError
-	if errors.As(err, &pool) && pool.Err != nil {
+	if errors.As(err, &pool) {
 		return core.AccountInfo{}, &AccountRefusal{Kind: AccountStore, Message: pool.Error()}
 	}
 	return core.AccountInfo{}, &AccountRefusal{Kind: AccountTokenImportFailed}

@@ -77,9 +77,9 @@ func (b *contentBlock) UnmarshalJSON(data []byte) error {
 			return contentBlock{Type: "tool_use", ID: v.ID, Name: v.Name, Input: v.Input}, e
 		},
 	}
-	value, err := provider.DecodeTagged(string(data), decoders)
-	if value != nil {
-		*b = *value
+	value, ok, err := provider.DecodeTagged(string(data), decoders)
+	if ok {
+		*b = value
 	}
 	return err
 }
@@ -110,7 +110,7 @@ func (b contentBlock) events() []provider.Event {
 }
 
 func (b contentBlock) call() (*provider.ToolCall, error) {
-	//nolint:staticcheck // Product text copied verbatim from Rust.
+	//nolint:staticcheck // ST1005: user-facing error text is a sentence starting with a capital letter.
 	invalid := errors.New("Invalid tool_use block from Claude Code")
 	if len(b.ID) == 0 || string(b.ID) == "null" || b.Name == nil || *b.Name == "" {
 		return nil, invalid
@@ -135,7 +135,7 @@ func (b contentBlock) call() (*provider.ToolCall, error) {
 	if len(input) == 0 || string(input) == "null" {
 		input = json.RawMessage(`{}`)
 	}
-	canonical, err := serdeValue(input).MarshalJSON()
+	canonical, err := canonicalJSON(input).MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
@@ -194,16 +194,16 @@ func (d *delta) UnmarshalJSON(data []byte) error {
 			return delta{tag, text}, err
 		}
 	}
-	v, err := provider.DecodeTagged(string(data), decoders)
-	if v != nil {
-		*d = *v
+	v, ok, err := provider.DecodeTagged(string(data), decoders)
+	if ok {
+		*d = v
 	}
 	return err
 }
 
 // UnmarshalJSON reads the vendor value used by this provider.
 func (s *streamEvent) UnmarshalJSON(data []byte) error {
-	v, err := provider.DecodeTagged(string(data), map[string]func(string) (streamEvent, error){
+	v, ok, err := provider.DecodeTagged(string(data), map[string]func(string) (streamEvent, error){
 		"content_block_start": func(text string) (streamEvent, error) {
 			v, e := provider.DecodeUntagged[struct {
 				Block *contentBlock `json:"content_block"`
@@ -218,8 +218,8 @@ func (s *streamEvent) UnmarshalJSON(data []byte) error {
 		},
 		"message_stop": func(string) (streamEvent, error) { return streamEvent{Type: "message_stop"}, nil },
 	})
-	if v != nil {
-		*s = *v
+	if ok {
+		*s = v
 	}
 	return err
 }
@@ -367,7 +367,7 @@ type errorLine struct {
 	Code    provider.ReportedString `json:"code"    wire:"optional"`
 }
 
-func decodeLine(text string) (*outputLine, error) {
+func decodeLine(text string) (outputLine, bool, error) {
 	return provider.DecodeTagged(text, map[string]func(string) (outputLine, error){
 		"assistant": func(s string) (outputLine, error) {
 			v, e := provider.DecodeUntagged[assistantLine](s)

@@ -48,41 +48,39 @@ func (p *VaultCredentialPool) List(ctx context.Context) ([]provider.AccountMeta,
 	return items, nil
 }
 
-// Meta returns account metadata or nil.
-func (p *VaultCredentialPool) Meta(ctx context.Context, id string) (*provider.AccountMeta, error) {
+// Meta returns account metadata; ok is false when there is none.
+func (p *VaultCredentialPool) Meta(ctx context.Context, id string) (provider.AccountMeta, bool, error) {
 	account, err := webapi.ParseCredentialID(id)
 	if err != nil {
-		return nil, nil
+		return provider.AccountMeta{}, false, nil
 	}
 	row, err := p.vault.Account(ctx, p.id, account)
 	if err != nil {
-		return nil, &provider.PoolError{Err: err}
+		return provider.AccountMeta{}, false, &provider.PoolError{Err: err}
 	}
 	if row == nil {
-		return nil, nil
+		return provider.AccountMeta{}, false, nil
 	}
-	meta := AccountMeta(*row)
-	return &meta, nil
+	return AccountMeta(*row), true, nil
 }
 
-// Active returns the selected account ID.
-func (p *VaultCredentialPool) Active(ctx context.Context) (*string, error) {
+// Active returns the selected account ID; ok is false when there is none.
+func (p *VaultCredentialPool) Active(ctx context.Context) (string, bool, error) {
 	row, err := p.vault.control.Provider(ctx, p.id)
 	if err != nil {
-		return nil, &provider.PoolError{Err: err}
+		return "", false, &provider.PoolError{Err: err}
 	}
 	if row == nil || row.Active == nil {
-		return nil, nil
+		return "", false, nil
 	}
-	id := string(*row.Active)
-	return &id, nil
+	return string(*row.Active), true, nil
 }
 
 // SetActive selects an existing account.
 func (p *VaultCredentialPool) SetActive(ctx context.Context, id string) error {
 	account, err := webapi.ParseCredentialID(id)
 	if err != nil {
-		return &provider.PoolError{ID: id}
+		return fmt.Errorf("%w %s", provider.ErrNoAccount, id)
 	}
 	ctx = context.WithoutCancel(ctx)
 	ok, err := p.vault.control.SetActiveCredential(ctx, p.id, account)
@@ -90,7 +88,7 @@ func (p *VaultCredentialPool) SetActive(ctx context.Context, id string) error {
 		return &provider.PoolError{Err: err}
 	}
 	if !ok {
-		return &provider.PoolError{ID: id}
+		return fmt.Errorf("%w %s", provider.ErrNoAccount, id)
 	}
 	p.vault.MarkEntryChanged(ctx, p.id)
 	return nil
@@ -158,29 +156,31 @@ type vaultDocument struct {
 // Name identifies the account whose sealed document is read.
 func (d *vaultDocument) Name() string { return "account " + d.id }
 
-// Read opens the account’s sealed secret with its stored version.
-func (d *vaultDocument) Read(ctx context.Context) (*provider.Revision, error) {
+// Read opens the account’s sealed secret with its stored version; ok is false when there is none.
+func (d *vaultDocument) Read(ctx context.Context) (provider.Revision, bool, error) {
 	id, err := webapi.ParseCredentialID(d.id)
 	if err != nil {
-		return nil, nil
+		return provider.Revision{}, false, nil
 	}
 	row, err := d.pool.vault.Account(ctx, d.pool.id, id)
 	if err != nil {
-		return nil, &provider.PoolError{Err: err}
+		return provider.Revision{}, false, &provider.PoolError{Err: err}
 	}
 	if row == nil {
-		return nil, nil
+		return provider.Revision{}, false, nil
 	}
 	plain, err := d.pool.vault.key.Open(SecretRow{Provider: d.pool.id, Account: id}, row.Secret)
 	if err != nil {
-		return nil, &provider.PoolError{
+		return provider.Revision{}, false, &provider.PoolError{
 			Err: fmt.Errorf("the secret of %s does not open", d.Name()),
 		}
 	}
 	if !utf8.Valid(plain) {
-		return nil, &provider.PoolError{Err: fmt.Errorf("the secret of %s is not UTF-8", d.Name())}
+		return provider.Revision{}, false, &provider.PoolError{
+			Err: fmt.Errorf("the secret of %s is not UTF-8", d.Name()),
+		}
 	}
-	return &provider.Revision{Text: string(plain), Version: row.Version}, nil
+	return provider.Revision{Text: string(plain), Version: row.Version}, true, nil
 }
 
 // Replace commits a sealed secret only when its version still matches.

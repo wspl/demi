@@ -128,8 +128,8 @@ func TestErrorClassification(t *testing.T) {
 func TestMessageObjectBoundaries(t *testing.T) {
 	for _, id := range []string{"", "execution", "UPPER", strings.Repeat("a", 33), "é"} {
 		_, err := ParseID(id)
-		var invalid *IDError
-		if !errors.As(err, &invalid) {
+		want := `"` + id + `" is not a plugin id: 1 to 32 lowercase letters, digits and hyphens, not "execution"`
+		if err == nil || err.Error() != want {
 			t.Fatalf("id %q = %v", id, err)
 		}
 	}

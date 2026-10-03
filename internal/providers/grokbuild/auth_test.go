@@ -78,7 +78,7 @@ func TestConcurrentReplacementAvoidsRefresh(t *testing.T) {
 	}()
 	t.Cleanup(func() { <-finished })
 	v.Received(t.Context(), 1)
-	entry, err := doc.Read(t.Context())
+	entry, _, err := doc.Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

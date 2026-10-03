@@ -15,9 +15,8 @@ import (
 type quotaSource struct{ p *Provider }
 
 // ProbeCost reports the cost of a quota probe.
-func (*quotaSource) ProbeCost() *provider.ProbeCost {
-	cost := provider.ProbeFree
-	return &cost
+func (*quotaSource) ProbeCost() (provider.ProbeCost, bool) {
+	return provider.ProbeFree, true
 }
 
 type usageStatus struct {
@@ -35,14 +34,16 @@ type usageWindow struct {
 }
 
 // Probe fetches the account quota windows.
+//
+//nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
 func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) {
 	s, err := q.p.credentials(ctx, q.p.http, nil)
 	if err != nil {
-		return provider.ProbeReading{}, authFailure(err).QuotaError()
+		return provider.ProbeReading{}, err
 	}
 	stored, err := q.p.stored(ctx)
 	if err != nil {
-		return provider.ProbeReading{}, authFailure(err).QuotaError()
+		return provider.ProbeReading{}, err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, q.p.usageURL, nil)
 	if err != nil {
@@ -52,31 +53,19 @@ func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) 
 	request.Header.Set("Accept", "application/json")
 	response, err := q.p.http.Do(request)
 	if err != nil {
-		return provider.ProbeReading{}, &provider.QuotaError{
-			Kind:    provider.QuotaUnavailable,
-			Message: fmt.Sprintf("Codex usage request failed: %v", withoutURL(err)),
-		}
+		return provider.ProbeReading{}, fmt.Errorf("Codex usage request failed: %v", provider.WithoutURL(err))
 	}
 	defer func() { _ = response.Body.Close() }() // The reader reports IO failures; close releases the response.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return provider.ProbeReading{}, &provider.QuotaError{
-			Kind:    provider.QuotaUnavailable,
-			Message: fmt.Sprintf("Codex usage request failed with HTTP %d", response.StatusCode),
-		}
+		return provider.ProbeReading{}, fmt.Errorf("Codex usage request failed with HTTP %d", response.StatusCode)
 	}
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
-		return provider.ProbeReading{}, &provider.QuotaError{
-			Kind:    provider.QuotaUnavailable,
-			Message: fmt.Sprintf("Codex usage request failed: %v", err),
-		}
+		return provider.ProbeReading{}, fmt.Errorf("Codex usage request failed: %v", err)
 	}
 	usage, err := provider.DecodeUntagged[usageStatus](string(data))
 	if err != nil {
-		return provider.ProbeReading{}, &provider.QuotaError{
-			Kind:    provider.QuotaInvalid,
-			Message: fmt.Sprintf("Codex usage status cannot be read: %v", err),
-		}
+		return provider.ProbeReading{}, fmt.Errorf("Codex usage status cannot be read: %v", err)
 	}
 	label := stored.label().Label
 	result := provider.ProbeReading{AccountLabel: &label, Windows: []core.QuotaWindow{}}

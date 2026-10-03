@@ -15,7 +15,7 @@ func readFailure(d *core.ProviderErrorDiagnostics, now core.Timestamp) core.Prov
 	text := d.Upstream
 	if d.Source == core.FailureSourceHTTP {
 		text = nil
-		if record := provider.ReadHTTPRecord(d); record != nil {
+		if record, ok := provider.ReadHTTPRecord(d); ok {
 			text = &record.Body
 		}
 	}

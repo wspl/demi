@@ -84,7 +84,7 @@ func (p *Provider) sse(
 	}
 	if err != nil {
 		cancel()
-		f := provider.TransportFailure("Codex", withoutURL(err))
+		f := provider.TransportFailure("Codex", provider.WithoutURL(err))
 		return nil, nil, &f
 	}
 	p.quota.Observe(&provider.HTTPObservation{Status: response.StatusCode, Headers: response.Header})
@@ -123,7 +123,7 @@ func (p *Provider) websocket(
 	}
 	dialClient := *client
 	dialClient.Transport = transport
-	// tungstenite treats redirects as handshake refusals.
+	// A redirect answering the handshake is a refusal: the dialer returns it instead of following it.
 	dialClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	activity := make(chan struct{}, 1)
 	pulse := func() {
@@ -153,7 +153,7 @@ func (p *Provider) websocket(
 			} // The complete refusal is already retained.
 			return nil, nil, transport.refusal
 		}
-		message := fmt.Sprintf("Codex WebSocket connect failed: %v", withoutURL(err))
+		message := fmt.Sprintf("Codex WebSocket connect failed: %v", provider.WithoutURL(err))
 		if expired {
 			message = fmt.Sprintf(
 				"Codex WebSocket connect timed out after %dms",
@@ -163,8 +163,8 @@ func (p *Provider) websocket(
 		f := provider.NoAnswer(message)
 		return nil, nil, &f
 	}
-	// Match tungstenite's message limit. coder/websocket has no independent
-	// frame-size option (Rust also limits a frame to 16 MiB); see the handoff request.
+	// A message is at most 64 MiB. coder/websocket has no separate frame-size
+	// limit, so a single frame may also be up to 64 MiB.
 	socket.SetReadLimit(64 * 1024 * 1024)
 	cleanup := func() { _ = socket.CloseNow() } // Release even when the peer has already closed.
 	message := append([]byte(`{"type":"response.create",`), body[1:]...)
@@ -181,9 +181,10 @@ type socketMessage struct {
 	err  error
 }
 
-// coder/websocket exposes only Close (send and wait for the peer, with its
-// built-in five-second deadlines) and CloseNow (send nothing). Normal close
-// reasons require Close; the missing send-only operation is a handoff request.
+// websocketEvents yields the socket's events until a terminal event, a failure,
+// the idle deadline or cancellation. A close with a reason uses Close, which
+// sends the close frame and waits up to five seconds for the peer's;
+// coder/websocket has no operation that sends a close frame without waiting.
 func (p *Provider) websocketEvents(ctx context.Context, socket *websocket.Conn, activity <-chan struct{}) events {
 	return func(yield func(provider.Received, error) bool) {
 		for {
@@ -197,8 +198,8 @@ func (p *Provider) websocketEvents(ctx context.Context, socket *websocket.Conn, 
 			}()
 			var timer *time.Timer
 			var idle <-chan time.Time
-			if p.config.StreamIdleTimeout != nil {
-				timer = time.NewTimer(*p.config.StreamIdleTimeout)
+			if p.config.StreamIdleTimeout > 0 {
+				timer = time.NewTimer(p.config.StreamIdleTimeout)
 				idle = timer.C
 			}
 			if p.waitSocket(ctx, socket, activity, received, timer, idle, yield) {
@@ -218,18 +219,18 @@ func (p *Provider) websocketEvents(ctx context.Context, socket *websocket.Conn, 
 	}
 }
 
-func decodeMessage(text string) (*provider.Received, error) {
+func decodeMessage(text string) (provider.Received, bool, error) {
 	envelope, err := provider.DecodeUntagged[struct {
 		Type     *string          `json:"type"`
 		Event    *json.RawMessage `json:"event"`
 		Response json.RawMessage  `json:"response" wire:"optional"`
 	}](text)
 	if err != nil {
-		return nil, err
+		return provider.Received{}, false, err
 	}
 	if envelope.Event != nil {
 		if _, err := provider.DecodeUntagged[map[string]json.RawMessage](string(*envelope.Event)); err != nil {
-			return nil, err
+			return provider.Received{}, false, err
 		}
 	}
 	payload := text
@@ -243,20 +244,21 @@ func decodeMessage(text string) (*provider.Received, error) {
 			Response json.RawMessage `json:"response"`
 		}{Type: "response.completed", Response: response})
 		if err != nil {
-			return nil, err
+			return provider.Received{}, false, err
 		}
 		payload = string(encoded)
 	} else if envelope.Event != nil {
 		payload, err = provider.ToolArguments(*envelope.Event)
 		if err != nil {
-			return nil, err
+			return provider.Received{}, false, err
 		}
 	}
-	event, err := provider.DecodeResponsesFrame(payload)
-	if event != nil {
-		event.Text = text
+	event, ok, err := provider.DecodeResponsesFrame(payload)
+	if err != nil || !ok {
+		return provider.Received{}, false, err
 	}
-	return event, err
+	event.Text = text
+	return event, true, nil
 }
 
 // firstWebSocketEvent retains the pulled iterator until its returned cleanup stops it.
@@ -312,13 +314,13 @@ func dispatchSocketMessage(
 		yield(provider.Received{}, &f)
 		return true
 	}
-	event, err := decodeMessage(text)
+	event, ok, err := decodeMessage(text)
 	if err != nil {
 		f := provider.Undecodable("Codex", err, text)
 		yield(provider.Received{}, &f)
 		return true
 	}
-	if event == nil {
+	if !ok {
 		return false
 	}
 	terminal := false
@@ -342,7 +344,7 @@ func dispatchSocketMessage(
 			"response_done",
 		) // Best effort; the stream ends even if the peer already closed.
 	}
-	if !yield(*event, nil) || terminal {
+	if !yield(event, nil) || terminal {
 		return true
 	}
 	return false
@@ -374,7 +376,7 @@ func (p *Provider) waitSocket(
 		select {
 		case <-activity:
 			if timer != nil {
-				timer.Reset(*p.config.StreamIdleTimeout)
+				timer.Reset(p.config.StreamIdleTimeout)
 			}
 		case <-ctx.Done():
 			_ = socket.Close(

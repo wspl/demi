@@ -41,7 +41,7 @@ func parseSkill(directory string, text []byte) (parsedSkill, error) {
 	}
 	var fields frontMatter
 	// Strict decoding keeps duplicate/type checks. The format explicitly ignores
-	// other fields, as Rust's FrontMatter does without deny_unknown_fields.
+	// other fields, so unknown keys are accepted and dropped.
 	if err := yaml.UnmarshalWithOptions(
 		[]byte(front),
 		&fields,

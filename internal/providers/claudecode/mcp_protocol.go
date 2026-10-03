@@ -11,7 +11,8 @@ import (
 	"github.com/wspl/demi/internal/version"
 )
 
-// These are the revisions understood by the reference's rmcp 3.4.1 server.
+// mcpVersions lists the MCP protocol revisions the server accepts, oldest first; a request naming another revision
+// is refused with -32022.
 var mcpVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"}
 
 type mcpPhase uint8
@@ -42,7 +43,10 @@ type requestMetadata struct {
 	Capabilities provider.Reported[map[string]json.RawMessage] `json:"io.modelcontextprotocol/clientCapabilities" wire:"optional"` //nolint:lll // a struct tag cannot wrap
 }
 
-// admit applies the reference SDK's handshake and inline metadata rules.
+// admit applies the MCP handshake and per-request metadata rules: initialize, and ping before any handshake, pass
+// without metadata; any other first request must carry both io.modelcontextprotocol metadata fields and puts the
+// server in inline mode, where every later request must carry them too, as must discover and any request naming
+// revision 2026-07-28 or later.
 // A rejected first request ends its MCP server; later requests cannot revive it.
 func (m *mcpServer) admit(method string, params json.RawMessage, initialize bool) (bool, *mcpError) {
 	if initialize || m.phase == mcpInitial && method == "ping" {
@@ -98,8 +102,8 @@ func missingMetadata(meta requestMetadata) *mcpError {
 	}
 }
 
-// emptyCatalog supplies the reference SDK's empty directories for capabilities
-// Demi does not advertise. Malformed pagination is an unrecognized request.
+// emptyCatalog answers resources/list, resources/templates/list and prompts/list
+// with empty lists, since Demi advertises none of them. Malformed pagination is an unrecognized request.
 func emptyCatalog(method string, params json.RawMessage) (setModerner, bool) {
 	var result setModerner
 	switch method {
@@ -122,7 +126,9 @@ func emptyCatalog(method string, params json.RawMessage) (setModerner, bool) {
 	return result, true
 }
 
-// completion reads only the reference SDK's declared completion arguments.
+// completion answers completion/complete with no values; it reads only ref (ref/resource with uri, or ref/prompt
+// with name and optional title), the argument and the context arguments, and any other shape is an unrecognized
+// request.
 func completion(params json.RawMessage) (setModerner, bool) {
 	request, err := provider.DecodeUntagged[struct {
 		Ref      json.RawMessage `json:"ref"`
@@ -137,7 +143,7 @@ func completion(params json.RawMessage) (setModerner, bool) {
 	if err != nil {
 		return nil, false
 	}
-	ref, err := provider.DecodeTagged(string(request.Ref), map[string]func(string) (bool, error){
+	_, ok, err := provider.DecodeTagged(string(request.Ref), map[string]func(string) (bool, error){
 		"ref/resource": func(text string) (bool, error) {
 			_, err := provider.DecodeUntagged[struct {
 				URI string `json:"uri"`
@@ -152,7 +158,7 @@ func completion(params json.RawMessage) (setModerner, bool) {
 			return true, err
 		},
 	})
-	if err != nil || ref == nil {
+	if err != nil || !ok {
 		return nil, false
 	}
 	return &completionResult{Completion: completionInfo{Values: []string{}}}, true
