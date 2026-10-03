@@ -321,6 +321,11 @@ func TestStatusShowsLatestFirstRegisteredHintUntilEnd(t *testing.T) {
 		sendFrame(t, l, &runnerwire.JobExit{JobID: job.JobID, Signal: new("SIGTERM"), Files: []runnerwire.JobFileChange{}})
 		requirePipe(t, <-aborted)
 		_ = nextFrame(t, l).(*runnerwire.JobRelease)
+		beforeLate, err := s.Status(started.CommandID)
+		requirePipe(t, err)
+		if beforeLate.State.Phase != host.Aborted {
+			t.Fatal(beforeLate.State)
+		}
 		hint("late", new("arrived after the end"), job.JobID)
 		status, err := s.Status(started.CommandID)
 		requirePipe(t, err)

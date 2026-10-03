@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/wspl/demi/internal/backend/backendtest"
@@ -173,7 +174,9 @@ func TestFileShutdownEndsOpenDownload(t *testing.T) {
 	first := make([]byte, 1)
 	_, err = io.ReadFull(response.Body, first)
 	wireMust(t, err)
-	wireMust(t, d.backend.Close(d.ctx))
+	closing, cancel := context.WithTimeout(d.ctx, 20*time.Second)
+	defer cancel()
+	wireMust(t, d.backend.Close(closing))
 	_, err = io.Copy(io.Discard, response.Body)
 	if err == nil {
 		t.Fatal("shutdown completed rather than cut the open download")
@@ -372,7 +375,6 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 
 // One runner and a streamed 13 MiB upload, followed by a canceled partial copy.
 func TestFileUploadIsWholeAndRequiresOverwriteConsent(t *testing.T) {
-	t.Skip("finding 2: raw upload returns conversation_busy before writing")
 	d := filesOnDevice(t)
 	put := func(path, replace string, body io.Reader) backendtest.Answer {
 		route := "/fs/raw?path=" + url.QueryEscape(filepath.Join(d.root, path))

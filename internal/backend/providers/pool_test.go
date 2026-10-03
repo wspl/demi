@@ -117,13 +117,13 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 	}
 	databasetest.Execute(ctx, t, vault.control, "UPDATE provider_credentials SET secret = (SELECT secret FROM provider_credentials WHERE provider_id = ?1 AND id = 'a') WHERE provider_id = ?2", string(entry.ID), string(other.ID))
 	var poolErr *provider.PoolError
-	if _, err := foreign.Document("a").Read(ctx); !errors.As(err, &poolErr) {
+	if _, err := foreign.Document("a").Read(ctx); !errors.As(err, &poolErr) || poolErr.Err == nil {
 		t.Fatalf("copied ciphertext: %v", err)
 	}
 	if err := pool.Write(ctx, testAccount("b"), "{}"); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.SetActive(ctx, "missing"); !errors.As(err, &poolErr) || poolErr.ID != "missing" {
+	if err := pool.SetActive(ctx, "missing"); !errors.As(err, &poolErr) || poolErr.ID != "missing" || poolErr.Err != nil {
 		t.Fatalf("missing account: %v", err)
 	}
 	if err := pool.SetActive(ctx, "b"); err != nil {

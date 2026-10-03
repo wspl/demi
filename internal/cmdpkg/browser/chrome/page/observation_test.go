@@ -1,12 +1,14 @@
 package page
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
 	"github.com/chromedp/cdproto/accessibility"
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/tabs"
+	"github.com/wspl/demi/internal/contract"
 )
 
 // Port of ax_values_omit_unsupported_types_without_losing_nodes; under 1 s.
@@ -36,6 +38,10 @@ func TestAXValuesOmitUnsupportedTypesWithoutLosingNodes(t *testing.T) {
 				t.Fatalf("states=%v, want only focusable=true", nodes[0].States)
 			}
 			if tc.want == nil {
+				encoded, err := contract.EncodeJSON(nodes[0])
+				if err != nil || bytes.Contains(encoded, []byte(`"value":`)) {
+					t.Fatalf("unsupported value was serialized: %s %v", encoded, err)
+				}
 				if nodes[0].Value != nil {
 					t.Fatalf("unexpected value: %v", nodes[0].Value)
 				}

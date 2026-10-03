@@ -280,7 +280,8 @@ func TestRunnerNetworkSocketThroughTwoPipes(t *testing.T) {
 	}
 	spokenReader.Fail("the visitor's connection ended")
 	requirePipe(t, <-speakerDone)
-	if tap.pipeDone(t, spoken.ID()).Ok || tap.pipeDone(t, held.ID()).Ok {
+	spokenDone := tap.pipeDone(t, spoken.ID())
+	if spokenDone.Ok || spokenDone.Error == nil || tap.pipeDone(t, held.ID()).Ok {
 		t.Fatal("failed stream ended cleanly")
 	}
 	heldWriter.Fail("page closed")

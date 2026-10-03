@@ -64,9 +64,13 @@ func TestTiersAndEfforts(t *testing.T) {
 	tier := "priority"
 	r.ServiceTierID = &tier
 	equal(t, jsonObject(t, sent(t, r).Body)["service_tier"], tier)
+	r.ServiceTierID = nil
 	for _, effort := range []string{"low", "xhigh", "max", "ultra", "high"} {
 		summary := core.ThinkingSummary("off")
-		r.Thinking = &core.EffortConfig{Effort: effort, Summary: &summary}
+		r.Thinking = &core.EffortConfig{Effort: effort}
+		if effort == "high" {
+			r.Thinking = &core.EffortConfig{Effort: effort, Summary: &summary}
+		}
 		equal(t, jsonObject(t, sent(t, r).Body)["reasoning"], map[string]any{"effort": effort, "summary": "auto"})
 	}
 }
@@ -76,6 +80,9 @@ func TestInferenceHeaders(t *testing.T) {
 		r.SessionID = session
 		request := sent(t, r)
 		key := provider.PromptCacheKey(session)
+		if len(key) > 64 {
+			t.Fatalf("cache key too long: %q", key)
+		}
 		for name, want := range map[string]string{"Authorization": "Bearer " + freshToken(t), "Chatgpt-Account-Id": "acct-1", "Openai-Beta": "responses=experimental", "Session-Id": key, "Thread-Id": key, "X-Client-Request-Id": "request-1", "Accept": "text/event-stream"} {
 			equal(t, request.Header(name), want)
 		}
@@ -83,7 +90,7 @@ func TestInferenceHeaders(t *testing.T) {
 		if !strings.HasPrefix(request.Header("User-Agent"), "demi-codex-provider/") {
 			t.Fatal("missing user agent")
 		}
-		equal(t, request.Header("X-Openai-Fedramp"), "")
+		equal(t, request.Headers.Values("X-Openai-Fedramp"), []string(nil))
 	}
 }
 func TestFedrampHeader(t *testing.T) {

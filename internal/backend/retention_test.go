@@ -116,7 +116,7 @@ func TestRetentionIdleConversationRetiresToolImagesAndReplaysText(t *testing.T) 
 	_, err = w.socket.Chat(w.ctx, "m2", "Anything new?")
 	wireMust(t, err)
 	requests := w.vendor.Requests()
-	sent := string(requests[len(requests)-1].Body)
+	sent := filesModelField(t, requests[len(requests)-1].Body, "messages")
 	filesContains(t, sent, "[image:image/png, removed on "+day+": a tool result's images and videos are kept for 30 days]")
 	if strings.Contains(sent, base64.StdEncoding.EncodeToString(png)) {
 		t.Fatal("retired image replayed")

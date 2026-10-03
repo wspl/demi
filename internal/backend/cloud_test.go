@@ -16,6 +16,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/backend/database"
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/provider/providertest"
 	"github.com/wspl/demi/internal/webapi"
@@ -198,7 +199,7 @@ func TestStartupRecoversResetDisksWithoutBooting(t *testing.T) {
 		}
 	}
 	want := fmt.Sprintf("reset:%s:%s:test-base", device, cloudReset)
-	if len(calls[last+1:]) != 1 || calls[last+1] != want {
+	if last < 0 || len(calls[last+1:]) != 1 || calls[last+1] != want {
 		t.Fatal(calls)
 	}
 	recovered := s.cloudStatus()
@@ -290,7 +291,9 @@ func (w *cloudWork) turn(id, script, text string, timeout ...int) string {
 	if len(requests) == 0 {
 		w.s.t.Fatal("no vendor request")
 	}
-	w.firstRequest = string(requests[0].Body)
+	fields, err := contract.Object(requests[0].Body)
+	wireMust(w.s.t, err)
+	w.firstRequest = string(fields["messages"])
 	if script == "" {
 		return ""
 	}
@@ -329,6 +332,9 @@ func TestCloudResetKeepsHomeIdentityAndAnnouncesOnce(t *testing.T) {
 		t.Fatal(result)
 	}
 	before := s.cloudStatus().Device
+	if before == nil {
+		t.Fatal("the Cloud was not made")
+	}
 	var answers [3]webapi.CloudResetAnswer
 	var workers sync.WaitGroup
 	for i := range answers {
@@ -879,6 +885,9 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 		t.Fatal("Cloud not attached")
 	}
 	s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
+	if manager.Running(device) {
+		t.Fatal("idle Cloud runner still running")
+	}
 	listed := s.directoryListing(route + "/hosts/" + string(device) + "/fs?path=" + url.QueryEscape(session))
 	found = false
 	for _, entry := range listed.Entries {
@@ -893,6 +902,9 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 		t.Fatal(manager.Calls())
 	}
 	s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
+	if manager.Running(device) {
+		t.Fatal("idle Cloud runner still running")
+	}
 	result = w.turn("t2", "demi host shell --host Cloud 'cat report.txt'", "read the Cloud", 30000)
 	if !strings.Contains(w.firstRequest, "[Execution target switched]") || !strings.Contains(result, "report") {
 		t.Fatalf("request %s\nresult %s", w.firstRequest, result)
@@ -901,6 +913,9 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 		t.Fatal(manager.Calls())
 	}
 	s.cloudUntil(func(status webapi.CloudStatus) bool { return status.State == webapi.CloudStateOff })
+	if manager.Running(device) {
+		t.Fatal("idle Cloud runner still running")
+	}
 }
 
 func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {

@@ -44,7 +44,7 @@ func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifact := built.Descriptor.Targets[string(target)]
-	served := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/native-artifacts/"+artifact.SHA256, "", 200)
+	served := conversationRequest(s.ctx, s.t, s.b, nil, "GET", "/native-artifacts/"+artifact.SHA256, "", 200)
 	if served.Headers.Get("Cache-Control") != "public, max-age=31536000, immutable" {
 		t.Fatal(served.Headers)
 	}
@@ -68,6 +68,6 @@ func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
 		t.Fatal("served executable differs")
 	}
 	for _, unknown := range []string{strings.Repeat("0", 64), "demi-native-fixture"} {
-		conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/native-artifacts/"+unknown, "", 404), webapi.ErrorCodeNotFound)
+		conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, nil, "GET", "/native-artifacts/"+unknown, "", 404), webapi.ErrorCodeNotFound)
 	}
 }

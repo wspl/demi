@@ -73,7 +73,7 @@ func TestDevicePutStreamsIntoDeviceGetAndAnswersOnceDrained(t *testing.T) {
 	pipe := p.Mint(new("a"), nil)
 	requirePipe(t, pipe.SinkTo("b"))
 	var fixed *remotehost.PipeError
-	if !errors.As(pipe.SinkTo("a"), &fixed) || fixed.Kind != remotehost.PipeAlreadyFixed {
+	if !errors.As(pipe.SinkTo("a"), &fixed) || fixed.Kind != remotehost.PipeAlreadyFixed || fixed.End != "sink" {
 		t.Fatal("sink was reassigned")
 	}
 	payload := make([]byte, 2*1024*1024)
@@ -129,6 +129,7 @@ func TestProcessReadsPutAndFeedsGetOneChunkAtATime(t *testing.T) {
 		requirePipe(t, err)
 		requirePipe(t, reader.Close(t.Context()))
 		requirePipe(t, <-uploaded)
+		requirePipe(t, inbound.Done(t.Context()))
 		if string(got) != "hello, world" {
 			t.Fatal(string(got))
 		}
@@ -159,6 +160,7 @@ func TestProcessReadsPutAndFeedsGetOneChunkAtATime(t *testing.T) {
 		requirePipe(t, err)
 		requirePipe(t, sink.Close(t.Context()))
 		requirePipe(t, <-done)
+		requirePipe(t, outbound.Done(t.Context()))
 		if string(got) != "one two three" {
 			t.Fatal(string(got))
 		}
@@ -186,6 +188,9 @@ func TestMissingEndTimesOutLostDeviceFailsAndEarlyReaderDrains(t *testing.T) {
 		err := lonely.Done(t.Context())
 		if err == nil || !strings.Contains(err.Error(), "an end never arrived") || time.Since(start) != 200*time.Millisecond {
 			t.Fatal(err, time.Since(start))
+		}
+		if _, err := p.ClaimSource(lonely.ID(), "a"); !errors.Is(err, remotehost.PipeNotFound) {
+			t.Fatal(err)
 		}
 		dropped := p.Mint(new("a"), new("b"))
 		sink, err := p.ClaimSink(dropped.ID(), "b")
@@ -227,6 +232,7 @@ func TestArrivalWindowEndsOnceBothEndsArriveHoweverQuiet(t *testing.T) {
 		if string(got) != "late" {
 			t.Fatal(string(got))
 		}
+		requirePipe(t, pipe.Done(t.Context()))
 		device := p.Mint(new("a"), new("b"))
 		source, err := p.ClaimSource(device.ID(), "a")
 		requirePipe(t, err)
@@ -238,8 +244,11 @@ func TestArrivalWindowEndsOnceBothEndsArriveHoweverQuiet(t *testing.T) {
 		if _, err = p.ClaimSink(device.ID(), "b"); !errors.Is(err, remotehost.PipeAlreadyConnected) {
 			t.Fatal(err)
 		}
+		body := &gatedPipeBody{pipeBody: pipeBody{bytes.NewReader([]byte("late"))}, entered: make(chan struct{}), release: make(chan struct{})}
+		done := startUpload(t.Context(), source, body)
+		<-body.entered
 		time.Sleep(80 * time.Millisecond)
-		done := startUpload(t.Context(), source, pipeBody{bytes.NewReader([]byte("late"))})
+		close(body.release)
 		got, err = collectPipe(t.Context(), sink)
 		requirePipe(t, err)
 		requirePipe(t, sink.Close(t.Context()))
@@ -247,6 +256,7 @@ func TestArrivalWindowEndsOnceBothEndsArriveHoweverQuiet(t *testing.T) {
 		if string(got) != "late" {
 			t.Fatal(string(got))
 		}
+		requirePipe(t, device.Done(t.Context()))
 	})
 }
 
@@ -320,6 +330,9 @@ func TestDeviceReportCountsOnlyFromAnEndWhileOpen(t *testing.T) {
 	if p.FailFromDevice(pipe.ID(), "b", "later failure") {
 		t.Fatal("terminal cause replaced")
 	}
+	if err := pipe.Done(t.Context()); err == nil || err.Error() != "pipe failed: upload refused" {
+		t.Fatal(err)
+	}
 	if err := sink.SourceArrived(t.Context()); err == nil || !strings.Contains(err.Error(), "upload refused") {
 		t.Fatal(err)
 	}
@@ -355,10 +368,13 @@ func TestEndLeavingBeforeEOFFailsPipe(t *testing.T) {
 			writer, err := pipe.Writer()
 			requirePipe(t, err)
 			requirePipe(t, writer.Write(t.Context(), []byte("first")))
-			if _, err = sink.Next(t.Context()); err != nil {
-				t.Fatal(err)
+			first, err := sink.Next(t.Context())
+			requirePipe(t, err)
+			if string(first) != "first" {
+				t.Fatal(string(first))
 			}
-			writer.End()
+			requirePipe(t, writer.Write(t.Context(), []byte("second")))
+			defer writer.Fail("test over")
 			expected = "pipe failed: sink HTTP response disconnected before EOF"
 		}
 		requirePipe(t, sink.Close(t.Context()))
@@ -375,6 +391,9 @@ func TestEndLeavingBeforeEOFFailsPipe(t *testing.T) {
 	<-body.entered
 	cancel()
 	if err := <-done; err == nil || err.Error() != "pipe failed: source HTTP request disconnected" {
+		t.Fatal(err)
+	}
+	if err := pipe.Done(t.Context()); err == nil || err.Error() != "pipe failed: source HTTP request disconnected" {
 		t.Fatal(err)
 	}
 	local := p.Mint(nil, nil)
@@ -405,3 +424,24 @@ func TestClosingFailsEveryPipeAndEveryLaterOne(t *testing.T) {
 type programTests struct{ m *testing.M }
 
 func (p programTests) Run() int { return programtest.Run(p.m) }
+
+// gatedPipeBody holds a claimed device upload quiet before releasing its payload.
+type gatedPipeBody struct {
+	pipeBody
+	entered chan struct{}
+	release chan struct{}
+	waiting bool
+}
+
+func (b *gatedPipeBody) Read(ctx context.Context, p []byte) (int, error) {
+	if !b.waiting {
+		b.waiting = true
+		close(b.entered)
+	}
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	case <-b.release:
+		return b.pipeBody.Read(ctx, p)
+	}
+}

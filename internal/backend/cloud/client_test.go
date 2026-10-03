@@ -129,7 +129,7 @@ func TestClientMatchesRepliesByID(t *testing.T) {
 		if b.err != nil || b.value != "base-1" {
 			t.Fatalf("base: %+v", b)
 		}
-		if i.err != nil || i.value == nil || i.value.Generation != "gen-1" || i.value.SystemBytes != 1024 || i.value.HomeBytes != 2048 {
+		if i.err != nil || i.value == nil || i.value.Generation != "gen-1" || i.value.BaseVersion != "base-1" || i.value.ResetID != nil || i.value.SystemBytes != 1024 || i.value.HomeBytes != 2048 {
 			t.Fatalf("image: %+v", i)
 		}
 	})
@@ -236,14 +236,15 @@ func TestClientDropFailsPendingAndReconnects(t *testing.T) {
 		}
 		for _, result := range []managerResult[machinewire.BaseVersion]{<-first, <-second} {
 			var unavailable *ManagerError
-			if !errors.As(result.err, &unavailable) || unavailable.Kind != ManagerUnavailable {
+			if !errors.As(result.err, &unavailable) || unavailable.Kind != ManagerUnavailable || unavailable.Operation != "current_base_version" {
 				t.Fatalf("drop: %v", result.err)
 			}
 		}
 		// The next dial can fail; neither an old call nor this refusal is replayed.
 		dial := c.dial
 		c.dial = func(context.Context, string, string) (net.Conn, error) { return nil, io.ErrClosedPipe }
-		if _, err := Call(t.Context(), c, machinewire.CurrentBaseVersionParams{}); !errors.Is(err, io.ErrClosedPipe) {
+		var unavailable *ManagerError
+		if _, err := Call(t.Context(), c, machinewire.CurrentBaseVersionParams{}); !errors.Is(err, io.ErrClosedPipe) || !errors.As(err, &unavailable) || unavailable.Kind != ManagerUnavailable {
 			t.Fatalf("dial failure: %v", err)
 		}
 		c.dial = dial

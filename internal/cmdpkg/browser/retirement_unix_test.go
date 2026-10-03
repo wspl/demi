@@ -67,6 +67,7 @@ func TestCanceledLaunchReapsHelpersBeforeRemovingProfile(t *testing.T) {
 	go func() {
 		environment, err := tabs.Launch(ctx, tabs.LaunchOptions{Executable: launcher, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}}, &tabstest.Numbers{})
 		if environment != nil {
+			t.Error("cancelled launch returned an environment")
 			err = errors.Join(err, environment.Close(context.Background()))
 		}
 		done <- err
@@ -104,11 +105,23 @@ func TestCanceledLaunchReapsHelpersBeforeRemovingProfile(t *testing.T) {
 			t.Fatalf("launcher helper %d survived: %v", pid, err)
 		}
 	}
+	leader, err := strconv.Atoi(lines[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(-leader, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Fatalf("process group survived: %v", err)
+	}
+	foundProfile := false
 	for _, line := range lines[2:] {
 		if profile, ok := strings.CutPrefix(line, "--user-data-dir="); ok {
+			foundProfile = true
 			if _, err := os.Stat(profile); !os.IsNotExist(err) {
 				t.Fatalf("profile survived: %v", err)
 			}
 		}
+	}
+	if !foundProfile {
+		t.Fatal("launcher did not record a profile")
 	}
 }

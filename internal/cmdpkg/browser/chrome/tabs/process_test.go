@@ -113,6 +113,9 @@ func TestRetirementIncludesMarkedHelpersInAnotherSessionOnly(t *testing.T) {
 	if !slices.Contains(marked, helper.Process.Pid) {
 		t.Fatalf("detached helper %d not observed: %v", helper.Process.Pid, marked)
 	}
+	if err := leader.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	if err := owner.retire(ctx); err != nil {

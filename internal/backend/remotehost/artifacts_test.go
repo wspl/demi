@@ -74,7 +74,9 @@ func TestJobsShareSelectedManifestOnlyWithinOneConnection(t *testing.T) {
 		requirePipe(t, err)
 		if i != 1 {
 			frame := nextFrame(t, l).(*runnerwire.ManifestMessage)
-			if !strings.Contains(string(frame.Manifest), selection.Hash()) {
+			manifest, err := runnerwire.DecodeManifest(frame.Manifest)
+			requirePipe(t, err)
+			if manifest.Hash != selection.Hash() {
 				t.Fatal("wrong manifest hash")
 			}
 		}
@@ -82,6 +84,7 @@ func TestJobsShareSelectedManifestOnlyWithinOneConnection(t *testing.T) {
 			t.Fatal("missing job start")
 		}
 	}
+	barrier(t, l)
 	_, err = l.Close(t.Context())
 	requirePipe(t, err)
 	l = d.Connect(nil)
@@ -91,6 +94,7 @@ func TestJobsShareSelectedManifestOnlyWithinOneConnection(t *testing.T) {
 	requirePipe(t, err)
 	_ = nextFrame(t, l).(*runnerwire.ManifestMessage)
 	_ = nextFrame(t, l).(*runnerwire.JobStart)
+	barrier(t, l)
 	huge, err := catalog.Select(rpcCommands(t, "huge", strings.Repeat("x", 5*1024*1024)))
 	requirePipe(t, err)
 	request.Commands = huge
@@ -104,6 +108,7 @@ func TestJobsShareSelectedManifestOnlyWithinOneConnection(t *testing.T) {
 	requirePipe(t, err)
 	_ = nextFrame(t, l).(*runnerwire.ManifestMessage)
 	_ = nextFrame(t, l).(*runnerwire.JobStart)
+	barrier(t, l)
 }
 
 func TestArtifactRequestNeedsLiveJobAndItsManifestArtifact(t *testing.T) {
@@ -121,21 +126,24 @@ func TestArtifactRequestNeedsLiveJobAndItsManifestArtifact(t *testing.T) {
 	}
 	request(strings.Repeat("f", 64))
 	answer := nextFrame(t, l).(*runnerwire.ArtifactLocation)
-	if answer.Error == nil || *answer.Error != "Artifact does not belong to the live work's packages" || resolver.calls.Load() != 0 {
+	if answer.Location != nil || answer.Error == nil || *answer.Error != "Artifact does not belong to the live work's packages" || resolver.calls.Load() != 0 {
 		t.Fatal(answer)
 	}
 	for i, hash := range []string{strings.Repeat("a", 64), strings.Repeat("b", 64)} {
 		request(hash)
 		answer = nextFrame(t, l).(*runnerwire.ArtifactLocation)
+		if answer.Location == nil {
+			t.Fatal("artifact location missing", answer)
+		}
 		location, ok := (*answer.Location).(*commandwire.ArtifactURL)
-		if answer.Error != nil || !ok || location.URL != "https://artifacts.example.test/exact" || resolver.calls.Load() != int32(i+1) {
+		if answer.Error != nil || !ok || location.URL != "https://artifacts.example.test/exact" || location.ExpiresAt != nil || resolver.calls.Load() != int32(i+1) {
 			t.Fatal(answer)
 		}
 	}
 	sendFrame(t, l, &runnerwire.JobExit{JobID: job.ID(), ExitCode: new(int32(0)), Files: []runnerwire.JobFileChange{}})
 	request(strings.Repeat("a", 64))
 	answer = nextFrame(t, l).(*runnerwire.ArtifactLocation)
-	if answer.Error == nil || *answer.Error != "No matching live job or stream" || resolver.calls.Load() != 2 {
+	if answer.Location != nil || answer.Error == nil || *answer.Error != "No matching live job or stream" || resolver.calls.Load() != 2 {
 		t.Fatal(answer)
 	}
 }
@@ -155,7 +163,7 @@ func TestEndingJobCancelsPendingArtifactsWithoutAnswer(t *testing.T) {
 	observed := <-resolver.started
 	sendFrame(t, l, request)
 	answer := nextFrame(t, l).(*runnerwire.ArtifactLocation)
-	if answer.Error == nil || *answer.Error != "Artifact resolution request limit or duplicate id" || observed.Err() != nil {
+	if answer.Location != nil || answer.Error == nil || *answer.Error != "Artifact resolution request limit or duplicate id" || observed.Err() != nil {
 		t.Fatal(answer)
 	}
 	sendFrame(t, l, &runnerwire.JobExit{JobID: job.ID(), ExitCode: new(int32(0)), Files: []runnerwire.JobFileChange{}})

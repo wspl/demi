@@ -55,7 +55,7 @@ func TestEOFRespondsWithUsage(t *testing.T) {
 }
 func TestUnknownEventsAndBlocks(t *testing.T) {
 	response := recorded(`{"type":"ping"}`, `{"type":"message_flavour","flavour":"new"}`, `{"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"s1"}}`, `{"type":"content_block_delta","index":0,"delta":{"type":"citations_delta"}}`, `{"type":"content_block_stop","index":0}`, `{"type":"message_stop"}`)
-	response.Chunks = append([][]byte{[]byte(": keep-alive\n\ndata:\n\n")}, response.Chunks...)
+	response.Chunks = append([][]byte{[]byte(": keep-alive\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\ndata:\n\n")}, response.Chunks...)
 	equalEvents(t, eventsOf(t, response), []provider.Event{&provider.Response{}})
 }
 func TestMalformedKnownEvent(t *testing.T) {

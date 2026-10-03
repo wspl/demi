@@ -217,18 +217,22 @@ func TestRunnerProcessReceivesEarlyInputAndUnreadInputDoesNotBlock(t *testing.T)
 	job, err := h.StartJob(t.Context(), request)
 	requirePipe(t, err)
 	var ready []byte
-	for !bytes.Contains(ready, []byte("ready")) {
+	for !bytes.HasSuffix(ready, []byte("ready")) {
 		chunk, err := job.NextOutput(t.Context())
 		requirePipe(t, err)
-		ready = append(ready, chunk.Bytes...)
+		if chunk.Stream == core.StreamKindStdout {
+			ready = append(ready, chunk.Bytes...)
+		}
 	}
 	p, err := h.Process().Spawn(t.Context(), host.SpawnRequest{Command: "/bin/sh", Args: []string{"-c", "printf ready; sleep 30"}})
 	requirePipe(t, err)
 	ready = nil
-	for !bytes.Contains(ready, []byte("ready")) {
+	for !bytes.HasSuffix(ready, []byte("ready")) {
 		chunk, err := p.Output.Next(t.Context())
 		requirePipe(t, err)
-		ready = append(ready, chunk.Bytes...)
+		if chunk.Stream == core.StreamKindStdout {
+			ready = append(ready, chunk.Bytes...)
+		}
 	}
 	for range 4 {
 		requirePipe(t, job.WriteStdin(t.Context(), make([]byte, runnerwire.StdinChunkBytes)))
@@ -362,7 +366,7 @@ func TestRunnerWholeOutputBeyondViewsAndJobCleanup(t *testing.T) {
 		fmt.Fprintf(&printed, "%09d\n", i)
 	}
 	result := runnerExec(t, s, "seq -f '%09g' 0 9999; echo done >&2", 10000)
-	if result.State.ExitCode != 0 || result.Whole == nil || result.Stdout.Bytes != 100000 || string(wholeStream(*result.Whole.Output, core.StreamKindStdout)) != printed.String() || string(wholeStream(*result.Whole.Output, core.StreamKindStderr)) != "done\n" {
+	if result.State.Phase != host.Exited || result.State.ExitCode != 0 || result.Whole == nil || result.Stdout.Bytes != 100000 || string(wholeStream(*result.Whole.Output, core.StreamKindStdout)) != printed.String() || string(wholeStream(*result.Whole.Output, core.StreamKindStderr)) != "done\n" {
 		t.Fatal("whole output changed")
 	}
 	link, err := f.Link(t.Context())
@@ -408,7 +412,7 @@ func TestRunnerLostConnectionEndsJobAndReconnects(t *testing.T) {
 	requirePipe(t, err)
 	link.Disconnect("the connection was lost")
 	lost := runnerEnd(t, s, p, running.CommandID)
-	if lost.State.ExitCode != 127 || lost.Whole == nil || !bytes.Contains(wholeStream(*lost.Whole.Output, core.StreamKindStderr), []byte("the connection was lost")) {
+	if lost.State.Phase != host.Exited || lost.State.ExitCode != 127 || lost.Whole == nil || !bytes.Contains(wholeStream(*lost.Whole.Output, core.StreamKindStderr), []byte("the connection was lost")) {
 		t.Fatal(lost)
 	}
 	_, err = f.Link(t.Context())

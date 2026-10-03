@@ -69,6 +69,17 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 			if !errors.As(err, &refused) || refused.Kind != tc.kind {
 				t.Fatalf("got %v, want kind %v", err, tc.kind)
 			}
+			prefixes := map[string]string{
+				"duplicate id":      `two plugins have the id "a"`,
+				"reserved agent":    `plugin "b" declares "demi agent", which is taken`,
+				"duplicate group":   `plugin "b" declares "demi notes", which is taken`,
+				"duplicate root":    `plugin "b"'s commands are refused`,
+				"inherited profile": `plugin "b" declares the profile "default", which is reserved for inheriting the parent`,
+				"duplicate profile": `plugin "b" declares the profile "worker", which another plugin declares`,
+			}
+			if prefix, ok := prefixes[tc.name]; ok && !strings.HasPrefix(err.Error(), prefix) {
+				t.Fatalf("diagnostic %q lacks %q", err, prefix)
+			}
 			if !strings.Contains(err.Error(), string(refused.Plugin)) {
 				t.Fatalf("diagnostic does not name plugin: %v", err)
 			}
@@ -107,7 +118,7 @@ func TestRegistryCatalogAndOrder(t *testing.T) {
 	if got := r.ContextSources(); !reflect.DeepEqual(got, []plugin.ID{"z-first", "a-second"}) {
 		t.Fatal(got)
 	}
-	if got := r.Profiles(); got[0].Name != "z-profile" || got[1].Name != "a-profile" {
+	if got := r.Profiles(); len(got) != 2 || got[0].Name != "z-profile" || got[1].Name != "a-profile" {
 		t.Fatal(got)
 	}
 	// A caller and the factory cannot mutate the registry's accepted snapshot.
@@ -132,7 +143,7 @@ func TestRegistryCatalogAndOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := set.Commands.RenderHelp()
-	if strings.Contains(help, "mixed") || !strings.Contains(help, "kept") {
+	if strings.Contains(help, "mixed") || !strings.Contains(help, "kept: A group.") {
 		t.Fatal(help)
 	}
 	entries, err := u.Entries(t.Context())

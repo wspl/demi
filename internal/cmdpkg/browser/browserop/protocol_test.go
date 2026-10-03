@@ -189,12 +189,12 @@ func TestInvocationDecodesToNamedOperation(t *testing.T) {
 			t.Fatal(err)
 		}
 		switch v := op.(type) {
-		case browserop.Input:
-			if v.OperationName() != strings.TrimPrefix(name, browserop.Prefix) {
+		case *browserop.TabsInput:
+			if name != "browser.tabs" || v.OperationName() != strings.TrimPrefix(name, browserop.Prefix) {
 				t.Fatalf("name = %s", v.OperationName())
 			}
 		case *browserop.LiveInput:
-			if v.FullName() != name {
+			if name != "browser.live" || v.FullName() != name {
 				t.Fatalf("name = %s", v.FullName())
 			}
 		default:

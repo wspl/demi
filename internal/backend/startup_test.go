@@ -1,6 +1,7 @@
 package backend_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -53,7 +54,10 @@ func startupRefusal(t *testing.T, variable, value string, omit bool) string {
 	env = append(env, "DEMI_BACKEND_DATA="+t.TempDir())
 	cmd := exec.CommandContext(t.Context(), path)
 	cmd.Env = env
-	output, err := cmd.CombinedOutput()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	output := stderr.Bytes()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) {
 		t.Fatalf("startup: %v: %s", err, output)

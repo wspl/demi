@@ -311,8 +311,12 @@ func (f *browserFixture) waitBusy(t *testing.T, id browserop.TabID) {
 }
 func requireCancelled(t *testing.T, r commandAnswer) {
 	t.Helper()
-	if !errors.Is(r.err, context.Canceled) && r.completion.ExitCode != 130 {
-		t.Fatalf("cancel: %+v %s", r, r.stderr)
+	if errors.Is(r.err, context.Canceled) {
+		return
+	}
+	failure, err := browserop.DecodeFailureDocument(r.stderr)
+	if r.err != nil || r.completion.ExitCode != 130 || err != nil || failure.Error.Code != "cancelled" {
+		t.Fatalf("cancel: %+v %s: %v", r, r.stderr, err)
 	}
 }
 

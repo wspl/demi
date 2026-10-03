@@ -32,6 +32,9 @@ func filesStatus(t *testing.T, answer backendtest.Answer, want int) {
 }
 func filesHeader(t *testing.T, answer backendtest.Answer, name, want string) {
 	t.Helper()
+	if want == "" && answer.Headers.Values(name) != nil {
+		t.Fatalf("%s must be absent: %q", name, answer.Headers.Values(name))
+	}
 	if got := answer.Headers.Get(name); got != want {
 		t.Fatalf("%s = %q, want %q", name, got, want)
 	}

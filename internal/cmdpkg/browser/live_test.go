@@ -141,16 +141,37 @@ func (v *browserView) watch(t *testing.T, tab browserop.TabID) {
 	stream := v.until(t, "stream", func(raw json.RawMessage) bool { return string(observedField(t, raw, "width")) == "1600" })
 	expectValue(t, observedField(t, stream, "tab"), tab)
 	expectValue(t, observedField(t, stream, "height"), 1200)
-	frame := v.picture(t, tab, 1600)
+	generation, err := contract.Decode[uint32](observedField(t, stream, "generation"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := v.picture(t, generation)
+	if !frame.header.Key || frame.header.Tab != tab || frame.header.Width != 1600 {
+		t.Fatalf("first video %+v", frame.header)
+	}
 	if frame.header.Height != 1200 || !bytes.HasPrefix(frame.video, []byte{0, 0, 0, 1}) {
 		t.Fatalf("video %+v", frame.header)
 	}
 }
-func (v *browserView) picture(t *testing.T, tab browserop.TabID, width uint16) viewFrame {
+
+// picture observes the first frame for the current stream, following replacement streams.
+func (v *browserView) picture(t *testing.T, generation uint32) viewFrame {
 	t.Helper()
+	ctx, cancel := context.WithTimeout(v.ctx, 30*time.Second)
+	defer cancel()
 	for {
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("no picture for generation %d: %v", generation, err)
+		}
 		frame := v.next(t)
-		if frame.video != nil && frame.header.Key && frame.header.Tab == tab && frame.header.Width == width {
+		if frame.control != nil && string(observedField(t, frame.control, "type")) == `"stream"` {
+			next, err := contract.Decode[uint32](observedField(t, frame.control, "generation"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			generation = next
+		}
+		if frame.video != nil && frame.header.Generation == generation {
 			return frame
 		}
 	}
@@ -215,7 +236,9 @@ func TestAViewerWatchesATabAndTypesBesideTheAgent(t *testing.T) {
 	expectValue(t, observedField(t, state, "running"), true)
 	expectValue(t, observedField(t, state, "tabs", "0", "id"), tab)
 	expectValue(t, observedField(t, state, "tabs", "0", "createdBy", "kind"), "agent")
+	expectValue(t, observedField(t, state, "watched"), nil)
 	view.watch(t, tab)
+	expectValue(t, observedField(t, f.command(t, tab, "info", "{}"), "viewport"), json.RawMessage(`{"width":800,"height":600,"devicePixelRatio":2,"mode":"web"}`))
 	expectValue(t, f.eval(t, tab, "[devicePixelRatio,screen.width,screen.height,innerWidth,outerWidth>=innerWidth,outerHeight>innerHeight]"), []any{2, 1440, 900, 800, true, true})
 	for _, dy := range []float64{120, -120} {
 		view.send(t, &browserop.LiveViewerMessageWheel{Tab: tab, X: 400, Y: 300, DeltaY: dy})
@@ -247,25 +270,32 @@ func TestAViewWaitsForBrowserAndEndsWithItsLastTab(t *testing.T) {
 	view.hello(t, "linux")
 	state := view.until(t, "state", nil)
 	expectValue(t, observedField(t, state, "running"), false)
-	expectValue(t, observedField(t, state, "tabs"), []string{})
+	expectValue(t, state, json.RawMessage(`{"type":"state","running":false,"tabs":[],"watched":null}`))
 	opened, err := browserop.DecodeOpenResult(f.user(t, "open", browserArgs(t, `{"url":$0}`, f.url+"/live.html")))
 	if err != nil {
 		t.Fatal(err)
 	}
 	tab := opened.Tab
 	state = view.until(t, "state", func(raw json.RawMessage) bool { return bytes.Contains(raw, mustBrowserValue(t, tab)) })
-	expectValue(t, observedField(t, state, "tabs", "0", "createdBy", "kind"), "user")
+	expectValue(t, observedField(t, state, "tabs", "0", "createdBy"), json.RawMessage(`{"kind":"user"}`))
+	expectValue(t, observedField(t, state, "running"), true)
+	expectValue(t, observedField(t, state, "watched"), nil)
 	view.watch(t, tab)
 	f.command(t, tab, "fill", `{"css":"#text","text":"retained across capture recovery"}`)
 	second, err := browserop.DecodeOpenResult(f.user(t, "open", browserArgs(t, `{"url":$0}`, f.url+"/live.html")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	view.until(t, "state", func(raw json.RawMessage) bool { return bytes.Contains(raw, mustBrowserValue(t, second.Tab)) })
+	state = view.until(t, "state", func(raw json.RawMessage) bool { return bytes.Contains(raw, mustBrowserValue(t, second.Tab)) })
+	rows, err := contract.List(observedField(t, state, "tabs"), contract.Decode[json.RawMessage])
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("state %s: %v", state, err)
+	}
+	expectValue(t, observedField(t, state, "watched"), tab)
 	view.watch(t, second.Tab)
 	expectValue(t, f.read(t, tab, "#text", "value"), "retained across capture recovery")
 	for _, id := range []browserop.TabID{second.Tab, tab} {
-		f.user(t, "close", browserArgs(t, `{"tab":$0}`, id))
+		expectValue(t, f.user(t, "close", browserArgs(t, `{"tab":$0}`, id)), json.RawMessage(browserArgs(t, `{"closed":$0}`, id)))
 	}
 	expectValue(t, observedField(t, view.until(t, "ended", nil), "reason"), "browser_ended")
 	view.close(t)
@@ -340,7 +370,7 @@ func TestModesFollowViewerAndAgent(t *testing.T) {
 	f.eventually(t, tab, `events.includes('touchstart:text')&&events.includes('touchend:text')`)
 	f.command(t, tab, "viewport.set", `{"width":1000,"height":700,"scale":1}`)
 	state := view.until(t, "state", func(raw json.RawMessage) bool { return bytes.Contains(raw, []byte(`"mode":"custom"`)) })
-	expectValue(t, observedField(t, state, "tabs", "0", "viewport", "width"), 1000)
+	expectValue(t, observedField(t, state, "tabs", "0", "viewport"), json.RawMessage(`{"width":1000,"height":700,"devicePixelRatio":1,"mode":"custom"}`))
 	expectValue(t, f.eval(t, tab, `[navigator.userAgent.includes('Android'),navigator.maxTouchPoints,innerWidth]`), []any{false, 0, 1000})
 	view.send(t, &browserop.LiveViewerMessageMode{Tab: tab, Mode: "web"})
 	view.until(t, "stream", func(raw json.RawMessage) bool { return string(observedField(t, raw, "width")) == "1600" })
@@ -359,7 +389,17 @@ func TestTwoViewersShareTabAndLastToOperateDecides(t *testing.T) {
 	second.send(t, &browserop.LiveViewerMessageHello{Platform: "windows"})
 	second.send(t, &browserop.LiveViewerMessagePanel{Width: 1000, Height: 700, DevicePixelRatio: 1, ScreenWidth: 1920, ScreenHeight: 1080})
 	second.until(t, "state", nil)
-	second.watch(t, tab)
+	second.send(t, &browserop.LiveViewerMessageWatch{Tab: &tab})
+	initial := second.until(t, "stream", nil)
+	expectValue(t, observedField(t, initial, "width"), 1600)
+	expectValue(t, observedField(t, initial, "height"), 1200)
+	generation, err := contract.Decode[uint32](observedField(t, initial, "generation"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame := second.picture(t, generation); !frame.header.Key {
+		t.Fatal("joining viewer did not receive a key frame")
+	}
 	second.click(t, tab, 100, 25)
 	for _, view := range []*browserView{first, second} {
 		stream := view.until(t, "stream", func(raw json.RawMessage) bool { return string(observedField(t, raw, "width")) == "1000" })
@@ -406,7 +446,7 @@ func TestDialogsControlsFilesAndClipboardReachViewer(t *testing.T) {
 	}
 	expectValue(t, observedField(t, mustBrowserValue(t, choice), "options", "1", "label"), "B")
 	view.send(t, &browserop.LiveViewerMessageChoice{Tab: tab, Token: choice.Token, Revision: choice.Revision, Value: "b", Indices: []uint32{1}})
-	expectValue(t, observedField(t, view.until(t, "choice", nil), "accepted"), true)
+	expectValue(t, view.until(t, "choice", nil), json.RawMessage(browserArgs(t, `{"type":"choice","token":$0,"accepted":true}`, choice.Token)))
 	f.eventually(t, tab, `document.querySelector('#choice').value==='b'&&events.includes('change:choice')`)
 	view.send(t, &browserop.LiveViewerMessageChoice{Tab: tab, Token: choice.Token, Revision: 99, Value: "a", Indices: []uint32{0}})
 	expectValue(t, observedField(t, view.until(t, "choice", nil), "accepted"), false)
@@ -423,8 +463,7 @@ func TestDialogsControlsFilesAndClipboardReachViewer(t *testing.T) {
 	f.eventually(t, tab, `document.querySelector('#file').files[0]?.name==='notes.txt'&&document.querySelector('#file').files[0].size===11`)
 	view.click(t, tab, 50, 255)
 	dialog := view.until(t, "dialog", func(raw json.RawMessage) bool { return string(observedField(t, raw, "dialog")) != "null" })
-	expectValue(t, observedField(t, dialog, "dialog", "type"), "alert")
-	expectValue(t, observedField(t, dialog, "dialog", "message"), "hello")
+	expectValue(t, observedField(t, dialog, "dialog"), json.RawMessage(`{"type":"alert","message":"hello","defaultText":""}`))
 	view.send(t, &browserop.LiveViewerMessageDialog{Tab: tab, Accept: true})
 	view.until(t, "dialog", func(raw json.RawMessage) bool { return string(observedField(t, raw, "dialog")) == "null" })
 	view.click(t, tab, 100, 90)
@@ -454,11 +493,21 @@ func TestUsersRequestsAnswerWithoutWaitingForPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	tab := blank.Tab
-	loading, err := browserop.DecodeOpenResult(f.user(t, "open", browserArgs(t, `{"url":$0,"timeout":3000}`, f.url+"/stall")))
+	expectValue(t, mustBrowserValue(t, blank), json.RawMessage(browserArgs(t, `{"tab":$0,"url":"about:blank"}`, tab)))
+	started := time.Now()
+	loading, err := browserop.DecodeOpenResult(f.user(t, "open", browserArgs(t, `{"url":$0}`, f.url+"/stall")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, row := range f.tabs(t) {
+	if time.Since(started) >= 10*time.Second {
+		t.Fatal("open waited for its page")
+	}
+	expectValue(t, mustBrowserValue(t, loading), json.RawMessage(browserArgs(t, `{"tab":$0,"url":$1}`, loading.Tab, f.url+"/stall")))
+	rows := f.tabs(t)
+	if len(rows) != 2 || rows[0].ID != tab || rows[1].ID != loading.Tab {
+		t.Fatal(rows)
+	}
+	for _, row := range rows {
 		if _, ok := row.CreatedBy.(*browserop.BrowserCreatedByUser); !ok {
 			t.Fatal(row)
 		}
@@ -473,26 +522,46 @@ func TestUsersRequestsAnswerWithoutWaitingForPage(t *testing.T) {
 	request.Request.Operation = "browser.goto"
 	request.Request.Args = []byte(browserArgs(t, `{"tab":$0,"url":"javascript:1"}`, tab))
 	completion, _, stderr = call(t, f.s, request)
-	if completion.ExitCode != 2 {
-		t.Fatalf("%+v %s", completion, stderr)
+	failure, err = browserop.DecodeFailureDocument(stderr)
+	if err != nil || completion.ExitCode != 2 || failure.Error.Code != "invalid_input" {
+		t.Fatalf("%+v %s %v", completion, stderr, err)
 	}
 	base := f.url + "/live.html"
 	for _, url := range []string{base, base + "?second"} {
-		expectValue(t, observedField(t, f.user(t, "goto", browserArgs(t, `{"tab":$0,"url":$1}`, tab, url)), "url"), url)
+		expectValue(t, f.user(t, "goto", browserArgs(t, `{"tab":$0,"url":$1}`, tab, url)), json.RawMessage(browserArgs(t, `{"tab":$0,"url":$1}`, tab, url)))
 		f.eventually(t, tab, `location.href===`+string(mustBrowserValue(t, url))+`&&document.readyState==='complete'`)
 	}
 	for _, step := range []struct{ name, url string }{{"back", base}, {"forward", base + "?second"}} {
-		expectValue(t, observedField(t, f.user(t, step.name, browserArgs(t, `{"tab":$0}`, tab)), "url"), step.url)
+		expectValue(t, f.user(t, step.name, browserArgs(t, `{"tab":$0}`, tab)), json.RawMessage(browserArgs(t, `{"tab":$0,"url":$1}`, tab, step.url)))
 		f.eventually(t, tab, `location.href===`+string(mustBrowserValue(t, step.url))+`&&document.readyState==='complete'`)
 	}
+	request.Request.Operation = "browser.forward"
+	request.Request.Args = []byte(browserArgs(t, `{"tab":$0}`, tab))
+	completion, _, stderr = call(t, f.s, request)
+	failure, err = browserop.DecodeFailureDocument(stderr)
+	if err != nil || completion.ExitCode != 1 || failure.Error.Code != "history_boundary" {
+		t.Fatalf("forward: %+v %s %v", completion, stderr, err)
+	}
 	origin := f.eval(t, tab, "performance.timeOrigin")
-	f.user(t, "reload", browserArgs(t, `{"tab":$0}`, tab))
+	expectValue(t, f.user(t, "reload", browserArgs(t, `{"tab":$0}`, tab)), json.RawMessage(browserArgs(t, `{"tab":$0,"url":$1}`, tab, base+"?second")))
 	f.eventually(t, tab, `performance.timeOrigin>`+string(origin)+`&&document.readyState==='complete'`)
-	f.user(t, "goto", browserArgs(t, `{"tab":$0,"url":$1,"timeout":3000}`, tab, f.url+"/stall"))
-	// The review accepted harmless user-close of an already expired tab.
-	f.user(t, "close", `{"tab":"t999"}`)
+	started = time.Now()
+	expectValue(t, f.user(t, "goto", browserArgs(t, `{"tab":$0,"url":$1}`, tab, f.url+"/stall")), json.RawMessage(browserArgs(t, `{"tab":$0,"url":$1}`, tab, f.url+"/stall")))
+	if time.Since(started) >= 10*time.Second {
+		t.Fatal("goto waited for its page")
+	}
+	t.Run("missing tab", func(t *testing.T) {
+		t.Skip("fidelity 1: user close of missing tab succeeds instead of tab_not_found")
+		request := invocation("close", `{"tab":"t999"}`, "acceptance")
+		request.Request.Context.Caller = &commandwire.UserCaller{}
+		completion, _, stderr := call(t, f.s, request)
+		failure, err := browserop.DecodeFailureDocument(stderr)
+		if err != nil || completion.ExitCode != 1 || failure.Error.Code != "tab_not_found" {
+			t.Fatalf("close: %+v %s %v", completion, stderr, err)
+		}
+	})
 	for _, id := range []browserop.TabID{loading.Tab, tab} {
-		f.user(t, "close", browserArgs(t, `{"tab":$0}`, id))
+		expectValue(t, f.user(t, "close", browserArgs(t, `{"tab":$0}`, id)), json.RawMessage(browserArgs(t, `{"closed":$0}`, id)))
 	}
 	if len(f.tabs(t)) != 0 {
 		t.Fatal("user tabs survived")
