@@ -399,12 +399,7 @@ func TestFollowedJobSendsNewestOutput(t *testing.T) {
 		var head uint64
 		for {
 			out := next()
-			if out.Offset < runnerwire.JobViewBytes {
-				if out.Offset != head {
-					t.Fatalf("head offset %d, want %d", out.Offset, head)
-				}
-				head += uint64(len(out.Bytes))
-			} else {
+			if out.Offset >= runnerwire.JobViewBytes {
 				end := out.Offset + uint64(len(out.Bytes))
 				if head != runnerwire.JobViewBytes || end > 60000 ||
 					uint64(len(out.Bytes)) != min(uint64(runnerwire.JobViewBytes), end-runnerwire.JobViewBytes) {
@@ -412,6 +407,10 @@ func TestFollowedJobSendsNewestOutput(t *testing.T) {
 				}
 				break
 			}
+			if out.Offset != head {
+				t.Fatalf("head offset %d, want %d", out.Offset, head)
+			}
+			head += uint64(len(out.Bytes))
 		}
 		synctest.Wait()
 		id := jobs.WorkID{Kind: jobs.ShellWork, ID: "job"}
