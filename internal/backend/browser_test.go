@@ -1,0 +1,222 @@
+package backend_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/wspl/demi/internal/backend/backendtest"
+	"github.com/wspl/demi/internal/contract"
+	"github.com/wspl/demi/internal/gates"
+	"github.com/wspl/demi/internal/plugins/browser"
+	"github.com/wspl/demi/internal/webapi"
+)
+
+// No browser, runner or model; absence of a package removes its page methods.
+func TestBrowserAbsentCatalogRemovesTabsAndMethods(t *testing.T) {
+	ctx, h := conversationHarness(t)
+	b, s, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
+	conversationCreate(ctx, t, b, &s, filesConversation)
+	path := "/api/conversations/" + filesConversation + "/plugins/browser"
+	a, err := b.Read(ctx, path+"/state", &s)
+	wireMust(t, err)
+	filesRefusal(t, a, 404, webapi.ErrorCodeUnknownPlugin)
+	a, err = b.Post(ctx, path+"/calls/open", &s, []byte(`{}`))
+	wireMust(t, err)
+	filesRefusal(t, a, 404, webapi.ErrorCodeUnknownPluginMethod)
+	wireMust(t, b.Close(ctx))
+}
+
+// Builds and publishes the browser package once; no Chrome or runner starts.
+func TestBrowserStoppedCloudIsNotWokenByTabMethods(t *testing.T) {
+	ctx, h := conversationHarness(t)
+	built, err := backendtest.BuildPackage(ctx, t, "demi-browser")
+	wireMust(t, err)
+	wireMust(t, h.UsePackage(ctx, built))
+	b, s, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
+	conversationCreate(ctx, t, b, &s, filesConversation)
+	path := "/api/conversations/" + filesConversation + "/plugins/browser"
+	a, err := b.Read(ctx, path+"/state", &s)
+	wireMust(t, err)
+	filesStatus(t, a, 200)
+	state, err := webapi.DecodePluginStateAnswer(a.Body)
+	wireMust(t, err)
+	tabs, err := browser.DecodeBrowserTabs(state.State)
+	wireMust(t, err)
+	if len(tabs.Tabs) != 0 {
+		t.Fatalf("tabs: %+v", tabs)
+	}
+	a, err = b.Post(ctx, path+"/calls/close", &s, []byte(`{"tab":"t999999"}`))
+	wireMust(t, err)
+	filesStatus(t, a, 200)
+	for method, body := range map[string]string{"navigate": `{"tab":"t999999","url":"https://example.test/"}`, "history": `{"tab":"t999999","action":"forward"}`} {
+		a, err = b.Post(ctx, path+"/calls/"+method, &s, []byte(body))
+		wireMust(t, err)
+		filesRefusal(t, a, 409, webapi.ErrorCodeHostStopped)
+	}
+	devices, err := b.Devices(ctx, &s)
+	wireMust(t, err)
+	if len(devices) != 0 {
+		t.Fatalf("tab methods made a cloud: %+v", devices)
+	}
+	wireMust(t, b.Close(ctx))
+}
+
+// A paired runner installs the browser package; no Chrome or model is started.
+func TestBrowserTabMethodsUseConversationHost(t *testing.T) {
+	ctx, h := conversationHarness(t)
+	built, err := backendtest.BuildPackage(ctx, t, "demi-browser")
+	wireMust(t, err)
+	wireMust(t, h.UsePackage(ctx, built))
+	b, s, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
+	laptop, err := b.Pair(ctx, t, &s, "laptop")
+	wireMust(t, err)
+	conversationCreate(ctx, t, b, &s, filesConversation)
+	path := "/api/conversations/" + filesConversation + "/plugins/browser"
+	body, err := contract.EncodeObject([]contract.Field{{Name: "target", Value: &webapi.ConversationTargetDevice{DeviceID: laptop.ID(), Path: laptop.Runner.Home()}}})
+	wireMust(t, err)
+	a, err := b.Patch(ctx, "/api/conversations/"+filesConversation, &s, body)
+	wireMust(t, err)
+	filesStatus(t, a, 200)
+	a, err = b.Read(ctx, path+"/state", &s)
+	wireMust(t, err)
+	filesStatus(t, a, 200)
+	state, err := webapi.DecodePluginStateAnswer(a.Body)
+	wireMust(t, err)
+	tabs, err := browser.DecodeBrowserTabs(state.State)
+	wireMust(t, err)
+	if state.Revision != 0 || len(tabs.Tabs) != 0 {
+		t.Fatalf("tabs: %+v %+v", state, tabs)
+	}
+	for _, tab := range []string{"t999999", "not-a-tab"} {
+		body, err := contract.EncodeJSON(browser.CloseTab{Tab: tab})
+		wireMust(t, err)
+		a, err = b.Post(ctx, path+"/calls/close", &s, body)
+		wireMust(t, err)
+		filesStatus(t, a, 200)
+		if string(a.Body) != "null" {
+			t.Fatalf("close: %s", a.Body)
+		}
+	}
+	for _, call := range []struct{ method, body string }{{"navigate", `{"tab":"t999999","url":"https://example.test/"}`}, {"history", `{"tab":"t999999","action":"reload"}`}, {"history", `{"tab":"not-a-tab","action":"reload"}`}} {
+		a, err = b.Post(ctx, path+"/calls/"+call.method, &s, []byte(call.body))
+		wireMust(t, err)
+		filesRefusal(t, a, 409, webapi.ErrorCodePluginRefused)
+		refusal, err := a.ErrorBody()
+		wireMust(t, err)
+		if refusal.Reason == nil || *refusal.Reason != "tab_not_found" {
+			t.Fatalf("reason: %+v", refusal)
+		}
+	}
+	for _, call := range []struct{ method, body string }{{"navigate", `{"tab":"t999999"}`}, {"history", `{"tab":"t999999","action":"sideways"}`}, {"open", `{"url":""}`}} {
+		a, err = b.Post(ctx, path+"/calls/"+call.method, &s, []byte(call.body))
+		wireMust(t, err)
+		filesRefusal(t, a, 400, webapi.ErrorCodeInvalidBody)
+	}
+	wireMust(t, laptop.Runner.Kill(ctx))
+	wireMust(t, b.UntilOnline(ctx, &s, laptop.ID(), false))
+	a, err = b.Read(ctx, path+"/state", &s)
+	wireMust(t, err)
+	filesRefusal(t, a, 409, webapi.ErrorCodeDeviceOffline)
+	a, err = b.Patch(ctx, "/api/conversations/"+filesConversation, &s, []byte(`{"archived":true}`))
+	wireMust(t, err)
+	filesStatus(t, a, 200)
+	a, err = b.Read(ctx, path+"/state", &s)
+	wireMust(t, err)
+	filesRefusal(t, a, 409, webapi.ErrorCodeConversationArchived)
+	a, err = b.Post(ctx, path+"/calls/open", &s, []byte(`{}`))
+	wireMust(t, err)
+	filesRefusal(t, a, 409, webapi.ErrorCodeConversationArchived)
+	a, err = b.Read(ctx, "/api/conversations/1e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01/plugins/browser/state", &s)
+	wireMust(t, err)
+	filesRefusal(t, a, 404, webapi.ErrorCodeConversationNotFound)
+	wireMust(t, b.Close(ctx))
+}
+
+// A real shell completion and a user tab operation publish independent revisions.
+func TestBrowserJobsAndTabMethodsRaiseSummaryRevisions(t *testing.T) {
+	w := filesWorking(t, "demi-browser")
+	fresh := conversationSummary(w.ctx, t, w.b, &w.s, filesConversation)
+	conversationEqual(t, fresh.WorkingTreeRevision, uint64(0))
+	conversationEqual(t, fresh.PluginRevisions, []webapi.PluginRevision{{Plugin: "browser", Revision: 0}})
+	w.vendor.Respond(conversationShell(t, "t1", "true", 30000))
+	w.vendor.Respond(conversationAnswer(t, []string{"done"}, 1, 1))
+	_, err := w.socket.Chat(w.ctx, "m1", "go")
+	wireMust(t, err)
+	ended := conversationSummary(w.ctx, t, w.b, &w.s, filesConversation)
+	conversationEqual(t, ended.WorkingTreeRevision, uint64(1))
+	conversationEqual(t, ended.PluginRevisions, []webapi.PluginRevision{{Plugin: "browser", Revision: 1}})
+	path := "/api/conversations/" + filesConversation + "/plugins/browser"
+	state := conversationDecode(t, conversationRequest(w.ctx, t, w.b, &w.s, "GET", path+"/state", "", 200), webapi.DecodePluginStateAnswer)
+	conversationEqual(t, state.Revision, uint64(1))
+	tabs, err := browser.DecodeBrowserTabs(state.State)
+	wireMust(t, err)
+	conversationEqual(t, len(tabs.Tabs), 0)
+	conversationRequest(w.ctx, t, w.b, &w.s, "POST", path+"/calls/close", `{"tab":"t999999"}`, 200)
+	operated := conversationSummary(w.ctx, t, w.b, &w.s, filesConversation)
+	conversationEqual(t, operated.WorkingTreeRevision, uint64(1))
+	conversationEqual(t, operated.PluginRevisions, []webapi.PluginRevision{{Plugin: "browser", Revision: 2}})
+	wireMust(t, w.socket.Close(w.ctx))
+	wireMust(t, w.b.Close(w.ctx))
+}
+
+// Repeated real tab reads continue while the cloud's idle watch stops its runner.
+func TestBrowserListingRunningCloudDoesNotKeepItAwake(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	h, manager, err := backendtest.HostsHarness(ctx, t)
+	wireMust(t, err)
+	built, err := backendtest.BuildPackage(ctx, t, "demi-browser")
+	wireMust(t, err)
+	wireMust(t, h.UsePackage(ctx, built))
+	window := 800 * time.Millisecond
+	h.Config.Lifecycle.IdleWindow = window
+	h.Config.Lifecycle.IdlePoll = 50 * time.Millisecond
+	h.Config.Cloud.Sweep = 50 * time.Millisecond
+	b, s, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
+	conversationCreate(ctx, t, b, &s, filesConversation)
+	conversationRequest(ctx, t, b, &s, "GET", "/api/conversations/"+filesConversation+"/fs", "", 200)
+	gate, err := backendtest.FileGate(ctx, b.Backend, s.User.ID, webapi.ConversationID(filesConversation))
+	wireMust(t, err)
+	working, err := gate.Enter(ctx, gates.Demand)
+	wireMust(t, err)
+	defer working.Release()
+	conversationRequest(ctx, t, b, &s, "POST", "/api/conversations/"+filesConversation+"/plugins/browser/calls/close", `{"tab":"t999999"}`, 200)
+	devices := manager.Devices()
+	conversationEqual(t, len(devices), 1)
+	rested := time.Now()
+	working.Release()
+	stopped := make(chan time.Time, 1)
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		at, err := manager.Arrival(ctx, "hibernate:"+string(devices[0]))
+		if err == nil {
+			stopped <- at
+		}
+	}()
+	defer func() {
+		cancel()
+		<-finished
+	}()
+	for {
+		select {
+		case at := <-stopped:
+			if at.Before(rested.Add(window)) {
+				t.Fatalf("stopped after %s", at.Sub(rested))
+			}
+			wireMust(t, b.Close(ctx))
+			return
+		default:
+		}
+		answer, err := b.Read(ctx, "/api/conversations/"+filesConversation+"/plugins/browser/state", &s)
+		wireMust(t, err)
+		if answer.Status != 200 {
+			filesRefusal(t, answer, 409, webapi.ErrorCodeDeviceOffline)
+		}
+	}
+}
