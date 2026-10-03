@@ -10,7 +10,7 @@
   },
   "scripts": {
     "generate": "CGO_ENABLED=0 GOFLAGS=-mod=readonly GOEXPERIMENT=none go run .. -ts -ts-dir generated ./blocks ./features ./text ./tables ./unions",
-    "compare": "node compare.mjs",
+    "compare": "bun ../../../scripts/gomig/compare-ts.mjs --fixtures-only",
     "typecheck": "tsc -p tsconfig.json"
   }
 }

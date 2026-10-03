@@ -1,8 +1,9 @@
 package transcript
 
 import (
-	"crypto/rand"
 	"encoding/hex"
+
+	"github.com/google/uuid"
 )
 
 // IDs supplies nonempty identities, each different from every other it supplied.
@@ -17,10 +18,6 @@ type RandomIDs struct{}
 
 // NextID returns a fresh random identity.
 func (RandomIDs) NextID() string {
-	var id [16]byte
-	// crypto/rand.Read fills the buffer or terminates the process; it never returns an error.
-	_, _ = rand.Read(id[:])
-	id[6] = (id[6] & 0x0f) | 0x40
-	id[8] = (id[8] & 0x3f) | 0x80
+	id := uuid.New()
 	return hex.EncodeToString(id[:])
 }

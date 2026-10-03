@@ -6,27 +6,30 @@ format, the build pipeline, import, and acceptance;
 [Cloud setup](../docs/cloud/setup.md) describes deployment.
 
 A build runs as root on a Linux builder of the image's architecture.
-`rootfs/build.sh` makes the Ubuntu tree, then runs `xtask cloud-image package`,
+`rootfs/build.sh` makes the Ubuntu tree, then runs `release cloud-image package`,
 which embeds the runner release, the command packages, Chrome for Testing, and
 uv, and publishes the release.
 
 First, on the developer's machine, build and package the image's target with
-the [native cross tools](../docs/delivery/builds-and-releases.md), and build
-`xtask` for the builder. For an arm64 image (use `x86_64-unknown-linux-musl`
-for amd64):
+the [Go cross builds](../docs/delivery/builds-and-releases.md), and build
+`tools/release` for the builder. For an arm64 image (use
+`x86_64-unknown-linux-musl` and `GOARCH=amd64` for an amd64 builder):
 
 ```sh
-cargo xtask native build --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-runner \
+export CGO_ENABLED=0
+export GOFLAGS=-mod=readonly
+
+go run ./tools/release native build --target aarch64-unknown-linux-musl
+go run ./tools/release native package --package demi-runner \
   --target aarch64-unknown-linux-musl --output .cache/releases/runners
-cargo xtask native package --package demi-file \
+go run ./tools/release native package --package demi-file \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-file-<build>
-cargo xtask native package --package demi-browser \
+go run ./tools/release native package --package demi-browser \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-browser-<build>
-cargo xtask native package --package demi-claude-code \
+go run ./tools/release native package --package demi-claude-code \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-claude-<build>
-cargo zigbuild --release --locked -p xtask \
-  --target aarch64-unknown-linux-musl --target-dir .cache/native-target
+GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' \
+  -o .cache/release-linux-arm64 ./tools/release
 ```
 
 Then, from the repository root on the builder, with debootstrap, GNU tar, and
@@ -34,7 +37,7 @@ util-linux installed:
 
 ```sh
 sudo bash cloud-guest-image/rootfs/build.sh \
-  --xtask .cache/native-target/aarch64-unknown-linux-musl/release/xtask \
+  --release-tool .cache/release-linux-arm64 \
   --runners .cache/releases/runners \
   --package .cache/releases/demi-file-<build> \
   --package .cache/releases/demi-browser-<build> \
@@ -59,4 +62,6 @@ The build neither starts nor resets a Cloud device; see
 `rootfs/uv.json` pins uv: its version and, for each architecture, the
 archive's URL, size, SHA-256, and executables. To change the pin, download each
 archive, check its SHA-256 against the uv release's published digest, record
-it, and rebuild `xtask`, which carries the pin it was built with.
+it, run `CGO_ENABLED=0 GOFLAGS=-mod=readonly go generate ./tools/release`
+from the repository root to refresh the generated embedded copy, and rebuild
+the release tool, which carries the pin it was built with.

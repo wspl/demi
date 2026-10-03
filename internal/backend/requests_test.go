@@ -1,0 +1,402 @@
+package backend_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/wspl/demi/internal/agent/session"
+	"github.com/wspl/demi/internal/agent/session/sessiontest"
+	"github.com/wspl/demi/internal/agent/store"
+	"github.com/wspl/demi/internal/agent/store/storetest"
+	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
+	"github.com/wspl/demi/internal/contract"
+	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/providers/anthropicapi"
+	"github.com/wspl/demi/internal/providers/codex"
+	"github.com/wspl/demi/internal/providers/codex/codextest"
+	"github.com/wspl/demi/internal/providers/google"
+	"github.com/wspl/demi/internal/providers/grokbuild"
+	"github.com/wspl/demi/internal/providers/openaiapi"
+	"go.uber.org/goleak"
+)
+
+func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+
+// wireTee sends each real session request to the vendor before playing its answer.
+type wireTee struct{ script, real provider.Runtime }
+
+func (r *wireTee) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
+	return func(yield func(provider.Event) bool) {
+		for range r.real.Run(ctx, request) {
+		}
+		for event := range r.script.Run(ctx, request) {
+			if !yield(event) {
+				return
+			}
+		}
+	}
+}
+func (r *wireTee) Fresh() provider.Runtime {
+	return &wireTee{script: r.script.Fresh(), real: r.real.Fresh()}
+}
+func (r *wireTee) Close(ctx context.Context) error {
+	return errors.Join(r.script.Close(ctx), r.real.Close(ctx))
+}
+func (r *wireTee) RequestLimits(model core.Model) provider.RequestLimits {
+	return r.real.RequestLimits(model)
+}
+
+type wireFamily string
+
+const wireNow core.Timestamp = "2026-09-18T14:00:00.000Z"
+
+func (f wireFamily) signature(name string) string {
+	switch f {
+	case "anthropic":
+		return "anthropic:" + name
+	case "google":
+		return "google:" + name
+	case "grok":
+		return "grok:" + name
+	default:
+		prefix := "openai:"
+		if f == "codex" || f == "codex-websocket" {
+			prefix = "codex:"
+		}
+		return prefix + `{"type":"reasoning","id":"rs_` + name + `","summary":[],"encrypted_content":"enc-` + name + `"}`
+	}
+}
+func (f wireFamily) sequence() string {
+	switch f {
+	case "google":
+		return "contents"
+	case "responses", "codex", "codex-websocket":
+		return "input"
+	default:
+		return "messages"
+	}
+}
+func (f wireFamily) thinkingFields() []string {
+	switch f {
+	case "anthropic":
+		return []string{"thinking", "output_config"}
+	case "responses", "codex", "codex-websocket":
+		return []string{"reasoning"}
+	case "google":
+		return []string{"generationConfig"}
+	default:
+		return []string{"reasoning_effort"}
+	}
+}
+
+// wireRuntime configures a provider at the local vendor using real credential readers.
+func wireRuntime(ctx context.Context, t *testing.T, family wireFamily, vendor *providertest.MockVendor, socket *codextest.FakeWebSocket) provider.Runtime {
+	t.Helper()
+	clock := providertest.FixedClock(wireNow)
+	env := provider.RuntimeEnv{HTTP: vendor.Client()}
+	secret, err := provider.NewSecret("sk-test")
+	wireMust(t, err)
+	base, err := url.Parse(vendor.URL("/v1"))
+	wireMust(t, err)
+	var p provider.Provider
+	switch family {
+	case "anthropic":
+		p = anthropicapi.New(anthropicapi.Config{APIKey: secret, BaseURL: base, Policy: provider.VendorPolicy{}}, clock)
+	case "responses", "chat":
+		wire := core.WireAPIResponses
+		if family == "chat" {
+			wire = core.WireAPIChatCompletions
+		}
+		p = openaiapi.New(openaiapi.Config{APIKey: secret, BaseURL: base, Wire: wire, Policy: provider.VendorPolicy{}}, clock)
+	case "google":
+		base, err = url.Parse(vendor.URL("/v1beta"))
+		wireMust(t, err)
+		p = google.New(google.Config{APIKey: secret, BaseURL: base}, clock)
+	case "codex", "codex-websocket":
+		token := providertest.JWT(t, json.RawMessage(`{"exp":1789743600,"https://api.openai.com/auth":{"chatgpt_account_id":"acct-1"}}`))
+		tokenJSON, err := contract.EncodeJSON(token)
+		wireMust(t, err)
+		document := `{"accessToken":` + string(tokenJSON) + `,"refreshToken":"refresh-1","idToken":` + string(tokenJSON) + `,"accountId":"acct-1","lastRefresh":"` + string(wireNow) + `"}`
+		id := "cred-c"
+		pool := wirePool(ctx, t, id, document)
+		config := codex.NewConfig(&id)
+		config.AuthURL = vendor.URL("")
+		config.BackendURL = vendor.URL("/backend-api")
+		config.Transport = codex.SSE
+		if family == "codex-websocket" {
+			config.BackendURL = socket.BackendURL()
+			config.Transport = codex.WebSocket
+			env.HTTP = socket.Client()
+		}
+		p, err = codex.New(config, pool, &provider.MemorySnapshots{}, env.HTTP, clock)
+		wireMust(t, err)
+	case "grok":
+		issuer, err := contract.EncodeJSON(vendor.URL(""))
+		wireMust(t, err)
+		document := `{"accessToken":"session-token","refreshToken":"refresh-1","expiresAt":"2030-01-01T00:00:00.000Z","issuer":` + string(issuer) + `,"clientId":"client-1","userId":"user-1","email":"user@example.com"}`
+		id := "cred-g"
+		config := grokbuild.NewConfig(&id)
+		config.ProxyURL = base
+		config.IssuerURL, err = url.Parse(vendor.URL(""))
+		wireMust(t, err)
+		p = grokbuild.New(config, wirePool(ctx, t, id, document), &provider.MemorySnapshots{}, env.HTTP, clock)
+	default:
+		t.Fatalf("unknown family %s", family)
+	}
+	runtime, err := p.Runtime(env)
+	wireMust(t, err)
+	return runtime
+}
+func wirePool(ctx context.Context, t *testing.T, id, document string) *provider.MemoryCredentialPool {
+	t.Helper()
+	pool := provider.NewMemoryCredentialPool()
+	identity := "acct-1"
+	wireMust(t, pool.Write(ctx, provider.AccountMeta{ID: id, Label: "user@example.com", UpdatedAt: wireNow, Source: "test", IdentityKey: &identity}, document))
+	wireMust(t, pool.SetActive(ctx, id))
+	return pool
+}
+
+// wireConversation transfers requests.rs: real sessions, tools, media, steering,
+// agent messages, compaction and model switching drive all six vendor requests.
+func wireConversation(t *testing.T, family wireFamily) []string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second) // Hang guard, never a synchronization delay.
+	defer cancel()
+	vendor := providertest.StartVendor(t)
+	scripts := make([]codextest.Script, 8)
+	for i := range scripts {
+		vendor.Respond(providertest.EventStream(""))
+		scripts[i] = codextest.Script{Handshake: codextest.Accept, Steps: []codextest.Step{{Kind: codextest.Send, Text: `{"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`}}}
+	}
+	socket := codextest.Start(t, scripts, "")
+	answer := func(text string) providertest.Turn {
+		return providertest.Events(providertest.Text(text), providertest.Response(1, 1))
+	}
+	script := providertest.NewScriptedRuntime(t,
+		providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("thinking first"), &provider.ThinkingSignature{Signature: family.signature("first")}, providertest.Text("Looking."), providertest.ToolCall("call-look", "look", json.RawMessage(`{}`)), providertest.ToolCall("call-note", "note", json.RawMessage(`{"text":"seen"}`)), providertest.Response(1, 1)),
+		answer("Both seen."),
+		providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("thinking second"), &provider.ThinkingSignature{Signature: family.signature("second")}, providertest.ToolCall("call-yield", "yield", json.RawMessage(`{"durationMs":600000}`)), providertest.Response(1, 1)),
+		answer("The user showed a screenshot and asked twice."), answer("After the summary."), answer("Thought harder."))
+	entered, release := make(chan struct{}), make(chan struct{})
+	runtime := &sessiontest.Runtime{Prompt: "system prompt", Definitions: []provider.ToolDefinition{{Name: "look", InputSchema: json.RawMessage(`{"type":"object"}`)}, {Name: "note", InputSchema: json.RawMessage(`{"type":"object"}`)}, {Name: "yield", InputSchema: json.RawMessage(`{"type":"object"}`)}}}
+	runtime.Invoke = func(ctx context.Context, call session.ToolInvocation) (session.ToolOutcome, error) {
+		switch call.ToolName {
+		case "look":
+			close(entered)
+			select {
+			case <-release:
+				return session.ToolOutcome{Output: []provider.ResultPart{&provider.ResultImage{Bytes: provider.MediaBytes{Data: storetest.PNG(3, 2, 2), MediaType: "image/png"}}}}, nil
+			case <-ctx.Done():
+				return session.ToolOutcome{}, ctx.Err()
+			}
+		case "yield":
+			return session.ToolOutcome{Effect: &session.ScheduleYield{DurationMS: 600000}}, nil
+		default:
+			return session.ToolOutcome{Output: []provider.ResultPart{&provider.TextPart{Text: "noted"}}}, nil
+		}
+	}
+	tree := storetest.NewMemoryTreeStore()
+	model := storetest.ModelReading("stub", "model-a", []core.FileExtension{core.FileExtensionPNG})
+	s := session.New(session.Init{ID: "root", CWD: "/workspace", Model: model, Runtime: &wireTee{script: script, real: wireRuntime(ctx, t, family, vendor, socket)}}, session.Deps{Runtime: runtime, Store: tree.SessionStore("root"), IDs: transcripttest.NewSequentialIDs("id"), Clock: providertest.FixedClock(core.UnixEpoch), Config: session.DefaultConfig()})
+	defer func() { wireMust(t, s.Dispose(context.Background())) }()
+	wireMust(t, tree.CreateNode(ctx, store.RootRecord("root", core.UnixEpoch), s.FirstCheckpoint()))
+	photo := storetest.PNG(4, 3, 1)
+	held := store.HeldMedia{}
+	held.Hold(core.BlobRefOf(photo), photo)
+	s.HoldMedia(&held)
+	first, err := s.Send([]core.UserContentBlock{&core.UserText{Text: "What is on the screen?"}, &core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(photo), MediaType: "image/png"}}}, "t1")
+	wireMust(t, err)
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	wireMust(t, s.Steer(storetest.Text("mind the tests"), "s1"))
+	wireMust(t, s.AcceptAgentMessage(ctx, core.AgentMessage{ID: "m1", Sender: core.Sender{ID: "child", Number: 1, Description: "worker", Round: 1}, RecipientID: "root", Timestamp: core.UnixEpoch, Content: "m1", Event: &core.MessageEvent{}}))
+	close(release)
+	wait := func(a *session.ActionHandle, err error) {
+		t.Helper()
+		wireMust(t, err)
+		_, err = a.Wait(ctx)
+		wireMust(t, err)
+	}
+	wait(first, nil)
+	wait(s.Send(storetest.Text("And the rest?"), "t2"))
+	wait(s.Compact())
+	wait(s.Send(storetest.Text("Go on."), "t3"))
+	model.Thinking = &core.AdaptiveConfig{Effort: "high"}
+	wireMust(t, s.UpdateModel(session.ModelSwitch{Model: model}))
+	wait(s.Send(storetest.Text("Think harder."), "t4"))
+	if script.Remaining() != 0 {
+		t.Fatalf("unplayed turns: %d", script.Remaining())
+	}
+	var bodies []string
+	if family == "codex-websocket" {
+		for _, connection := range socket.Connections() {
+			if len(connection.Received) != 1 {
+				t.Fatalf("received: %#v", connection.Received)
+			}
+			bodies = append(bodies, connection.Received[0])
+		}
+	} else {
+		for _, request := range vendor.Requests() {
+			bodies = append(bodies, string(request.Body))
+		}
+	}
+	if len(bodies) != 6 {
+		t.Fatalf("got %d wire requests, want 6: %v", len(bodies), bodies)
+	}
+	return bodies
+}
+
+// wireCached compares the JSON values vendors cache, excluding Anthropic cache marks.
+func wireCached(t *testing.T, family wireFamily, body string, omitThinking bool) (map[string]any, []any) {
+	t.Helper()
+	fields, err := contract.Object([]byte(body))
+	wireMust(t, err)
+	fixed := make(map[string]any)
+	var parts []any
+	for name, raw := range fields {
+		value, err := contract.Decode[any](raw)
+		wireMust(t, err)
+		value = wireUnmarked(value)
+		if name != family.sequence() {
+			omit := false
+			if omitThinking {
+				for _, thinking := range family.thinkingFields() {
+					omit = omit || name == thinking
+				}
+			}
+			if !omit {
+				fixed[name] = value
+			}
+			continue
+		}
+		messages, ok := value.([]any)
+		if !ok {
+			t.Fatalf("%s must be an array", name)
+		}
+		for _, message := range messages {
+			if family != "anthropic" && family != "google" {
+				parts = append(parts, message)
+				continue
+			}
+			object, ok := message.(map[string]any)
+			if !ok {
+				t.Fatal("message must be an object")
+			}
+			name := "content"
+			if family == "google" {
+				name = "parts"
+			}
+			blocks, ok := object[name].([]any)
+			if !ok {
+				t.Fatalf("%s must be an array", name)
+			}
+			for _, block := range blocks {
+				parts = append(parts, []any{object["role"], block})
+			}
+		}
+	}
+	return fixed, parts
+}
+func wireUnmarked(value any) any {
+	switch value := value.(type) {
+	case map[string]any:
+		delete(value, "cache_control")
+		for key, child := range value {
+			value[key] = wireUnmarked(child)
+		}
+	case []any:
+		for i, child := range value {
+			value[i] = wireUnmarked(child)
+		}
+	}
+	return value
+}
+func wireExtends(t *testing.T, family wireFamily, earlier, later string, omitThinking bool) {
+	t.Helper()
+	ef, ep := wireCached(t, family, earlier, omitThinking)
+	lf, lp := wireCached(t, family, later, omitThinking)
+	if !reflect.DeepEqual(ef, lf) {
+		t.Fatalf("fixed request fields changed:\nearlier %#v\nlater %#v", ef, lf)
+	}
+	if len(lp) <= len(ep) || !reflect.DeepEqual(lp[:len(ep)], ep) {
+		t.Fatalf("request did not extend cached prefix:\nearlier %#v\nlater %#v", ep, lp)
+	}
+}
+func wireMust(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Seven conversations hit local scripted vendors, cost no model usage and take
+// about one second together. The timeout guards hangs; all ordering uses events.
+func TestProviderRequestsPreservePrefixesAcrossSummaryAndThinking(t *testing.T) {
+	var overEvents []string
+	for _, family := range []wireFamily{"anthropic", "responses", "chat", "google", "codex", "codex-websocket", "grok"} {
+		t.Run(string(family), func(t *testing.T) {
+			bodies := wireConversation(t, family)
+			if family == "codex" {
+				overEvents = bodies
+			}
+			if family == "codex-websocket" {
+				for i, body := range bodies {
+					want := `{"type":"response.create",` + overEvents[i][1:]
+					if body != want {
+						t.Fatalf("WebSocket body %d differs from SSE:\n%s\n%s", i, body, want)
+					}
+				}
+			}
+			for i := 1; i <= 3; i++ {
+				wireExtends(t, family, bodies[i-1], bodies[i], false)
+			}
+			thirdFixed, thirdParts := wireCached(t, family, bodies[2], false)
+			_, summaryParts := wireCached(t, family, bodies[3], false)
+			if len(summaryParts) != len(thirdParts)+1 || !strings.Contains(fmt.Sprint(summaryParts[len(summaryParts)-1]), strings.Split(sessiontest.CompactionSummaryInstruction, ".")[0]) {
+				t.Fatal("summary must append only its instruction")
+			}
+			afterFixed, afterParts := wireCached(t, family, bodies[4], false)
+			if !reflect.DeepEqual(afterFixed, thirdFixed) {
+				t.Fatal("compaction changed fixed fields")
+			}
+			system := 0
+			if family == "chat" || family == "grok" {
+				system = 1
+			}
+			if !reflect.DeepEqual(afterParts[:system], thirdParts[:system]) || !strings.Contains(fmt.Sprint(afterParts[system]), "Previous conversation summary:") {
+				t.Fatal("compaction did not preserve system and restart at summary")
+			}
+			switch family {
+			case "anthropic":
+				if strings.Contains(bodies[4], `"thinking"`) {
+					t.Fatal("compaction retained Anthropic reasoning")
+				}
+			case "responses", "codex", "codex-websocket":
+				if !strings.Contains(bodies[4], "rs_second") {
+					t.Fatal("compaction lost reasoning")
+				}
+			case "google":
+				if !strings.Contains(bodies[4], `"thoughtSignature":"second"`) {
+					t.Fatal("compaction lost thought signature")
+				}
+			}
+			deeperFixed, _ := wireCached(t, family, bodies[5], false)
+			if reflect.DeepEqual(afterFixed, deeperFixed) {
+				t.Fatal("thinking setting did not change wire fields")
+			}
+			wireExtends(t, family, bodies[4], bodies[5], true)
+		})
+	}
+}

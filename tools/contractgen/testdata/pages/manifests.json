@@ -1,0 +1,15 @@
+[
+  {
+    "id": "browser",
+    "package": "@demicodes/plugin-browser",
+    "schemas": [
+      {"direction":"receive","value":{"title":"State","type":"object","$defs":{"Nested":{"type":"object"},"Shared":{"type":"string"}}}},
+      {"direction":"send","value":{"title":"Params","type":"object","$defs":{"Nested":{"type":"object"}}}},
+      {"direction":"receive","value":{"type":"null"}}
+    ],
+    "constants": [{"name":"LIVE_TEST","description":"A shared stream value.","value":{"z":"<>&\u2028\u2029","a":2}}]
+  },
+  {"id":"changes","package":"@demicodes/plugin-changes","schemas":[],"constants":[]},
+  {"id":"skills","package":"@demicodes/plugin-skills","schemas":[],"constants":[]},
+  {"id":"file-browser","package":"@demicodes/plugin-file-browser","schemas":[],"constants":[]}
+]

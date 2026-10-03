@@ -154,7 +154,8 @@ func owned(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (*databas
 }
 
 func destroyIfExpired(ctx context.Context, shard ExposeShard, record database.ExposeRecord) (bool, error) {
-	now, err := shard.Clock().Now().Time()
+	observedAt := shard.Clock().Now()
+	now, err := observedAt.Time()
 	if err != nil {
 		return false, err
 	}
@@ -165,7 +166,15 @@ func destroyIfExpired(ctx context.Context, shard ExposeShard, record database.Ex
 	if now.Before(expiry) {
 		return false, nil
 	}
-	return true, destroy(ctx, shard, record.ID)
+	deleted, err := shard.Control().DeleteExpiredExpose(context.WithoutCancel(ctx), record.ID, observedAt)
+	if err != nil {
+		return false, fmt.Errorf("delete expired expose: %w", err)
+	}
+	if deleted {
+		shard.ExposesChanged()
+		shard.Exposes().End([]webapi.ExposeID{record.ID})
+	}
+	return deleted, nil
 }
 
 func destroy(ctx context.Context, shard ExposeShard, id webapi.ExposeID) error {
