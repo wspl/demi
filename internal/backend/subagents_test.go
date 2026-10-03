@@ -119,7 +119,6 @@ func treeRequestText(r provider.InferenceRequest) string {
 
 // A real child works past its spawn job; the test releases its file wait.
 func TestChildSharesFilesButKeepsOwnTodosAfterSpawn(t *testing.T) {
-	t.Skip("finding x-shellinput: the child's cross-host demi host shell deadlocks on its pending input read")
 	ctx, b, s, scripts, root := conversationTree(t)
 	socket := conversationOpen(ctx, t, b, &s, conversationFirst)
 	scripts.root(conversationFirst, treeShell(t, "t1", `printf 'the answer is 42\n' > notes.md && demi todo add root-only`), treeSay("written"))
