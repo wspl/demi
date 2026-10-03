@@ -130,7 +130,11 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 	if err != nil {
 		return err
 	}
-	chrome, err := browserop.PinnedRelease()
+	chromeRelease := a.chromeRelease
+	if chromeRelease == nil {
+		chromeRelease = browserop.PinnedRelease
+	}
+	chrome, err := chromeRelease()
 	if err != nil {
 		return err
 	}

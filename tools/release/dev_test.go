@@ -13,14 +13,6 @@ import (
 	"github.com/wspl/demi/internal/backend/runners"
 )
 
-// The full scenario will drive application.dev in process: dev builds the
-// backend, scripted manager and other programs once, then uses Go's build cache.
-// That build cost exceeds the usual one-second scenario budget; programtest is
-// deliberately not involved because building its children is dev's behavior.
-func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
-	t.Skip("b-backend implementation pending: cmd/demi-backend and internal/backend/backendtest/testdata/scripted-machines still panic with not written: b-backend; the in-process dev scenario awaits working programs")
-}
-
 func TestDevConfigNamesRelativeReleasesInLocalStore(t *testing.T) {
 	root := t.TempDir()
 	path, err := writeDevConfig(t.Context(), root)
