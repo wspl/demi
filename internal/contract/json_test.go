@@ -12,9 +12,9 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// Captured serde_json bytes cover every runtime encoding position.
+// The golden escaping corpus covers every runtime encoding position.
 // In-memory cases and one small fixture read; budget <1 second.
-func TestSerdeJSONEscaping(t *testing.T) {
+func TestJSONStringEscaping(t *testing.T) {
 	data, err := os.ReadFile("testdata/escaping.jsonl")
 	if err != nil {
 		t.Fatal(err)
@@ -46,8 +46,8 @@ func TestSerdeJSONEscaping(t *testing.T) {
 	}
 }
 
-// Rust's oracle checks the same container counts. No IO or waits; budget <1 s.
-func TestSerdeJSONRecursionLimit(t *testing.T) {
+// 127 nested containers decode and 128 are refused. No IO or waits; budget <1 s.
+func TestJSONNestingLimit(t *testing.T) {
 	for _, shape := range []struct{ name, open, close string }{{"array", "[", "]"}, {"object", `{"x":`, "}"}} {
 		for _, depth := range []int{126, 127, 128, 129} {
 			for _, leaf := range []string{"0", "[]", "{}"} {
@@ -67,9 +67,9 @@ func TestSerdeJSONRecursionLimit(t *testing.T) {
 	}
 }
 
-// serde_json's f32 formatter has a different fixed-notation interval from f64.
+// float32 keeps fixed notation over a narrower exponent range than float64.
 // Local scalar encodes only; budget below one second, no IO or waits.
-func TestSerdeJSONFloat32(t *testing.T) {
+func TestJSONFloat32Spelling(t *testing.T) {
 	for _, test := range []struct {
 		value float32
 		want  string

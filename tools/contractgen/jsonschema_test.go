@@ -281,7 +281,7 @@ func TestCommandSchemas(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Real command schemas are compared directly with the captured
-			// manifest in TestRustManifestSchemas; these are generator-only shapes.
+			// manifest in TestManifestSchemas; these are generator-only shapes.
 			if slices.Contains(
 				[]string{
 					"ExampleArgs",
@@ -350,10 +350,10 @@ func decodeSchemaValue[T any](decode func([]byte) (T, error)) func([]byte) error
 	}
 }
 
-// TestRustManifestSchemas pins product annotations as well as validation. It
+// TestManifestSchemas pins product annotations as well as validation. It
 // compares compact JSON bytes, retaining every keyword and property position.
 // Local fixture processing costs less than one second and uses no network.
-func TestRustManifestSchemas(t *testing.T) {
+func TestManifestSchemas(t *testing.T) {
 	generated := map[string]func() json.RawMessage{
 		"AddArgs":            todo.AddArgsJSONSchema,
 		"UpdateArgs":         todo.UpdateArgsJSONSchema,
@@ -469,7 +469,7 @@ func TestRustManifestSchemas(t *testing.T) {
 					t.Fatal(err)
 				}
 				if !bytes.Equal(actual, expected.Bytes()) {
-					t.Fatalf("Rust manifest differs:\nGo:   %s\nRust: %s", actual, expected.Bytes())
+					t.Fatalf("manifest schema differs:\ngot:  %s\nwant: %s", actual, expected.Bytes())
 				}
 			})
 		}

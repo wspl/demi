@@ -13,7 +13,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5/msgpcode"
 )
 
-// encodeOpaqueMsgpack preserves serde_json object order and numeric kinds.
+// encodeOpaqueMsgpack keeps each object's member order and each number's kind, integer or float.
 func encodeOpaqueMsgpack(encoder *msgpack.Encoder, data json.RawMessage) error {
 	if err := CheckJSON(data); err != nil {
 		return err
@@ -101,7 +101,7 @@ func MsgpackJSON(data []byte) (json.RawMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		// serde_json retains float kind, including integral floats and negative zero.
+		// A float stays a float, including an integral float and negative zero.
 		var number float64
 		floating := false
 		switch v := value.(type) {
@@ -122,7 +122,8 @@ func MsgpackJSON(data []byte) (json.RawMessage, error) {
 	}
 }
 
-// encodeOpaqueNumber retains the integer or float kind serde_json reads.
+// encodeOpaqueNumber encodes a number with no fraction or exponent, other than -0,
+// as an integer when it fits 64 bits, and every other number as a float64.
 func encodeOpaqueNumber(encoder *msgpack.Encoder, number json.Number) error {
 	text := string(number)
 	if !strings.ContainsAny(text, ".eE") && text != "-0" {

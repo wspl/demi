@@ -48,7 +48,7 @@ func TestNativeCommands(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		native, ok := declare.AsLeaf(selected.Node).Kind.(*declare.Native[declare.Binding])
+		native, ok := selected.Node.(*declare.Leaf[declare.Binding]).Kind.(*declare.Native[declare.Binding])
 		if !ok || native.Binding.Package != "demi.file" || native.Binding.Operation != tc.operation {
 			t.Fatalf("wrong native binding: %+v", native)
 		}

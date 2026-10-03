@@ -5,7 +5,7 @@ import "encoding/json"
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
 // A command group or a command. `B` is how a native command names what it
-// runs: [`Binding`] in a manifest, [`NativeOperation`] in a declaration.
+// runs: [Binding] in a manifest, [NativeOperation] in a declaration.
 //
 // +demi:root
 // +demi:union untagged

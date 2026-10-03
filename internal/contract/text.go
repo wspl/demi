@@ -22,7 +22,7 @@ var emailPattern = regexp.MustCompile(`^[A-Za-z0-9_'+\-.]*[A-Za-z0-9_+-]@([A-Za-
 
 // Email canonicalizes and checks the address spelling used for storage lookups.
 func Email(value string) (string, error) {
-	// Rust uses full Unicode lowercase. U+0130 expands to i plus a combining
+	// Lowercasing is full Unicode lowercasing: U+0130 expands to i plus a combining
 	// dot, while Go's simple lowercase would turn it into an accepted ASCII i.
 	value = strings.ReplaceAll(value, "\u0130", "i\u0307")
 	value = strings.ToLower(Trim(value))

@@ -528,7 +528,7 @@ func (g *generator) tsOutputSource(
 	g.tsOutput = out
 	g.received = received
 	if strings.HasPrefix(out, "plugin-") {
-		// Rust derives each page's tolerance from that page's uses, not
+		// A plugin page's tolerance comes from that page's own uses, not
 		// from unrelated REST or other page roots that reach the type.
 		g.received = map[string]bool{}
 		for _, key := range roots {

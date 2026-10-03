@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// UTF8Error describes the first malformed sequence, matching Rust's Utf8Error.
+// UTF8Error describes the first malformed UTF-8 sequence.
 type UTF8Error struct {
 	// ValidUpTo is the byte index of the first malformed sequence.
 	ValidUpTo int
@@ -14,7 +14,7 @@ type UTF8Error struct {
 	ErrorLen int
 }
 
-// Error describes the malformed UTF-8 sequence using Rust diagnostics.
+// Error names the malformed sequence's width and byte index, or where an incomplete sequence starts.
 func (e *UTF8Error) Error() string {
 	if e.ErrorLen == 0 {
 		return fmt.Sprintf("incomplete utf-8 byte sequence from index %d", e.ValidUpTo)
@@ -22,8 +22,8 @@ func (e *UTF8Error) Error() string {
 	return fmt.Sprintf("invalid utf-8 sequence of %d bytes from index %d", e.ErrorLen, e.ValidUpTo)
 }
 
-// CheckUTF8 returns nil for valid UTF-8, otherwise a *UTF8Error whose text
-// matches Rust's std::str::Utf8Error Display for the same bytes.
+// CheckUTF8 returns nil for valid UTF-8, otherwise a *UTF8Error for the
+// first malformed sequence.
 func CheckUTF8(data []byte) error {
 	if invalid := checkUTF8(data); invalid != nil {
 		return invalid
@@ -32,7 +32,7 @@ func CheckUTF8(data []byte) error {
 }
 
 // checkUTF8 identifies the first maximal invalid subpart for both contract
-// validation and Rust-compatible lossy decoding.
+// validation and lossy decoding.
 func checkUTF8(data []byte) *UTF8Error {
 	for index := 0; index < len(data); {
 		r, size := utf8.DecodeRune(data[index:])
@@ -67,8 +67,8 @@ func checkUTF8(data []byte) *UTF8Error {
 	return nil
 }
 
-// LossyUTF8 decodes data like Rust's String::from_utf8_lossy, replacing each
-// maximal invalid UTF-8 subpart with one U+FFFD.
+// LossyUTF8 decodes data, replacing each maximal invalid UTF-8 subpart with
+// one U+FFFD.
 func LossyUTF8(data []byte) string {
 	var text strings.Builder
 	for {

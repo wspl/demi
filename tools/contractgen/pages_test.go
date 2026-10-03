@@ -224,7 +224,7 @@ func TestPackageDependenciesRejectInvalidValues(t *testing.T) {
 	}
 }
 
-// Manifest schema conflicts and invalid unnamed roots are Rust errors too.
+// Two different schemas of one name and invalid unnamed roots are refused.
 func TestPageSchemaRefusals(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

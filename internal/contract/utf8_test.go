@@ -7,7 +7,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// Rust std::str::from_utf8 diagnostics pin malformed widths and byte offsets.
+// Each malformed input pins the reported width and byte offset.
 // In-memory table only; budget <1 second.
 func TestCheckUTF8(t *testing.T) {
 	cases := []struct {
@@ -64,7 +64,7 @@ func TestCheckUTF8(t *testing.T) {
 	}
 }
 
-// Expected strings are Rust String::from_utf8_lossy results, including one
+// Each maximal invalid subpart becomes one U+FFFD, including one
 // replacement for a truncated valid prefix and separate replacements for
 // adjacent invalid leads. In-memory table; budget <1 second.
 func TestLossyUTF8(t *testing.T) {

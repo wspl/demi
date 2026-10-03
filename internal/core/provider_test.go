@@ -126,7 +126,7 @@ func TestRuleErrorsNameFields(t *testing.T) {
 			if err == nil {
 				t.Fatal("accepted invalid block")
 			}
-			// Accepted normalization F4: paths use wire fields without Rust enum wrappers.
+			// Accepted normalization F4: a field path names wire fields only, such as content[6].name.
 			if scenario.id == "u1" && (!errors.As(err, &field) || field.Path != "content[6].name") {
 				t.Fatalf("expected field error: %v", err)
 			}

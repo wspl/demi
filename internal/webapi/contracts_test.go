@@ -12,7 +12,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// These boundary tables port Rust's validation scenarios. They use no IO,
+// These boundary tables pin each contract's accepted and refused values. They use no IO,
 // clocks, or external services and run in well under one second.
 func TestVerificationCode(t *testing.T) {
 	for _, code := range []string{"012345", "abcdef", "12345", "1234567", "١٢٣٤٥٦", "12 456"} {
@@ -119,7 +119,7 @@ func TestExposeID(t *testing.T) {
 		t.Fatalf("%q %v", value, err)
 	}
 	t.Run("refusals", func(t *testing.T) {
-		t.Skip("fidelity 8: web API validation messages differ from Rust Display text")
+		t.Skip("fidelity 8: web API validation messages differ from the expected refusal texts")
 		for _, refused := range []string{"", id[:25], id + "a", strings.ToUpper(id), id[:25] + "1"} {
 			if _, err := webapi.ParseExposeID(
 				refused,
@@ -143,7 +143,7 @@ func TestConversationID(t *testing.T) {
 		}
 	}
 	t.Run("refusals", func(t *testing.T) {
-		t.Skip("fidelity 8: web API validation messages differ from Rust Display text")
+		t.Skip("fidelity 8: web API validation messages differ from the expected refusal texts")
 		for _, refused := range []string{
 			"",
 			"conversation-1",
@@ -225,7 +225,7 @@ func TestEndpoint(t *testing.T) {
 		}
 	}
 	t.Run("refusals", func(t *testing.T) {
-		t.Skip("fidelity 8: web API validation messages differ from Rust Display text")
+		t.Skip("fidelity 8: web API validation messages differ from the expected refusal texts")
 		for _, input := range []string{"", "api.openai.com/v1", "ftp://example.test/", "file:///etc", "https://"} {
 			if _, err := webapi.ParseEndpointURL(input); err == nil || err.Error() != "must be an http or https URL" {
 				t.Errorf("input %q: %v, want %q", input, err, "must be an http or https URL")

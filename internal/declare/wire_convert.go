@@ -1,6 +1,7 @@
 package declare
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -27,7 +28,7 @@ func declarationBinding(wire rawBinding) (NativeOperation, error) {
 	if binding, ok := wire.(*NativeOperation); ok {
 		return *binding, nil
 	}
-	return NativeOperation{}, declarationError("a declaration requires an unpinned native operation")
+	return NativeOperation{}, errors.New("a declaration requires an unpinned native operation")
 }
 
 // manifestBinding enforces the manifest's typed binding family.
@@ -35,7 +36,7 @@ func manifestBinding(wire rawBinding) (Binding, error) {
 	if binding, ok := wire.(*Binding); ok {
 		return *binding, nil
 	}
-	return Binding{}, declarationError("a manifest node requires a pinned binding")
+	return Binding{}, errors.New("a manifest node requires a pinned binding")
 }
 
 // nodeFromWire converts the decoded tree, compiling each carried schema once.
@@ -62,10 +63,10 @@ func nodeFromWire[B any](wire rawNode, bindingFromWire func(rawBinding) (B, erro
 		}
 		return leaf, nil
 	}
-	return nil, declarationError("missing command node")
+	return nil, errors.New("missing command node")
 }
 
-// MarshalJSON writes the same raw group shape as Rust's serde implementation.
+// MarshalJSON writes the group in the generated raw node shape.
 func (g *Group[B]) MarshalJSON() ([]byte, error) {
 	wire, err := nodeToWire[B](g)
 	if err != nil {
@@ -74,7 +75,7 @@ func (g *Group[B]) MarshalJSON() ([]byte, error) {
 	return marshalNode(wire)
 }
 
-// MarshalJSON converts the runtime leaf to Rust's RawLeaf wire representation.
+// MarshalJSON writes the leaf in the generated raw node shape.
 func (l *Leaf[B]) MarshalJSON() ([]byte, error) {
 	wire, err := nodeToWire[B](l)
 	if err != nil {
@@ -140,7 +141,7 @@ func nodeToWire[B any](node Node[B]) (rawNode, error) {
 		}
 		return leaf, nil
 	}
-	return nil, declarationError("missing command node")
+	return nil, errors.New("missing command node")
 }
 
 // bindingToWire selects the raw binding shape for the runtime binding family.
@@ -165,7 +166,7 @@ func leafFromWire[B any](wire *rawLeaf, bindingFromWire func(rawBinding) (B, err
 		StdinField:    wire.StdinField,
 		RestField:     wire.RestField,
 	}
-	// Rust deserializes Schema fields before TryFrom checks kind/binding.
+	// The schemas compile before the kind and binding are checked, so a broken schema is the refusal reported first.
 	if wire.Input != nil {
 		schema, err := NewSchema(*wire.Input)
 		if err != nil {
@@ -194,12 +195,12 @@ func leafFromWire[B any](wire *rawLeaf, bindingFromWire func(rawBinding) (B, err
 	switch wire.Kind {
 	case "rpc":
 		if wire.Binding != nil {
-			return nil, declarationError("an rpc command has no binding")
+			return nil, errors.New("an rpc command has no binding")
 		}
 		leaf.Kind = &RPC[B]{}
 	case "native":
 		if wire.Binding == nil {
-			return nil, declarationError("a native command names its binding")
+			return nil, errors.New("a native command names its binding")
 		}
 		leaf.Kind = &Native[B]{Binding: binding}
 	}
