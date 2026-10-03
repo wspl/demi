@@ -23,97 +23,74 @@ This branch replaces the Rust programs with Go ([Migration to Go](docs/delivery/
 
 # Go Readability and Naming
 
-Code is read far more often than it is written. These rules are concrete on
-purpose: follow them exactly, and do not substitute habits of your own. The
-references behind them are Effective Go, Go Code Review Comments and the
-Google Go Style Guide; where they leave a choice, this section makes it.
-`scripts/gomig/taste.sh <packages>` checks what a tool can check; the rest is
-reviewed.
+Every rule here comes from a published Go source, cited in brackets; none is
+this project's own taste. Where a source leaves a number open, the number is
+the default of the community linter that checks it. Apply the rules exactly;
+do not substitute habits of your own. The sources:
+[EG] Effective Go, [CRC] Go Code Review Comments, [GSG] the Google Go Style
+Guide (Decisions and Best Practices), [STD] the standard library's practice.
+`scripts/gomig/taste.sh <packages>` runs the checks a tool can make.
 
 ## Layout
 
-- A line is at most 120 columns, a tab counting as 4. `gofumpt` and `golines`
-  (`scripts/gomig/taste.sh --fix`) format code; a string they cannot wrap is
-  yours to split: SQL is a multi-line raw string with one clause per line, and
-  a long message is split at a sentence or clause.
-- One statement per line. A function body shares the signature's line only
-  when it is a single short `return`.
-- A composite literal or a call that does not fit on one line has one field
-  or argument per line, a trailing comma, and its closing brace on its own
-  line. A struct literal with more than three fields is always one field per
-  line.
-- A function reads as a sequence of steps, and each group of lines between
-  blank lines is one step: setting up a thing and deferring its release, a
-  call and the check of its error, a loop. A blank line separates the steps;
-  no blank line opens or closes a block. `wsl` (in taste.sh) enforces the
-  minimum; read each function after it and join or separate lines so every
-  group is one step.
-- A production function body is at most 60 lines as a rule and never more than
-  80 lines or 50 statements. Split a longer one by meaning: each part becomes a
-  function whose name says what it does, with a one-sentence doc comment. Never
-  extract a block only to shorten a function, and never name a function
-  `do`, `handle`, `process`, `helper`, `run2` or after where it was cut from.
-- At most three levels of nesting inside a function. Return early for errors
-  and special cases; no `else` after a `return`, `break` or `continue`.
-- A condition with more than two operators, or one mixing `&&` and `||`, is
-  given named booleans or a predicate function that says what it means.
-- An argument holds at most one nested call; give other intermediate results a
-  name first.
-- More than five parameters (after `ctx`) become a struct with named fields.
+- Format with `gofumpt`, a stricter superset of `gofmt` [EG: gofmt], and wrap
+  long lines with `golines` (`taste.sh --fix`).
+- Go has no fixed line length; avoid uncomfortably long lines, and wrap by
+  meaning, not at a column [CRC: Line Length; GSG: Line length]. The checked
+  limit is `lll`'s default, 120 columns. A string a formatter cannot wrap is
+  split where its meaning breaks: SQL by clause, a message by sentence.
+- Keep functions focused; when one does several things, split it into
+  functions named for those things [GSG: Function names; Best Practices].
+  The checked limits are the linters' defaults: `funlen` (60 lines, 40
+  statements), `gocognit` (30), `nestif` (5), revive `argument-limit` (8) and
+  `max-control-nesting` (5). Test files are not held to `funlen` and
+  `gocognit`: a scenario is a long sequence of steps. That exclusion is this
+  project's configuration, the one choice here that no source makes.
+- Handle errors first and return early; keep the normal path at the left
+  margin; no `else` after a `return` [CRC: Indent Error Flow].
+- Many parameters, or several of one type, become an option struct [GSG: Function
+  argument lists].
 
 ## Naming
 
-- A package name is one short lowercase word, no underscores or capitals,
-  naming what it provides; never `util`, `common`, `misc`, `helpers`, `base`.
+- A package name is short, lower case, one word, with no underscores or
+  mixedCaps, and names what the package provides; never `util`, `common`,
+  `misc` or `helper` [EG: Package names; CRC: Package Names; GSG: Package names].
 - An exported name does not repeat its package: `hostaccess.Error`, not
-  `hostaccess.HostAccessError`; `cloud.Client`, not `cloud.CloudClient`.
-- MixedCaps everywhere, constants included (no ALL_CAPS). Initialisms keep one
-  case: `ID`, `URL`, `HTTP`, `JSON`, `API`, `UUID`, `IP`, `TCP`, `SQL`, `CLI`,
-  `CDP`, `TLS` (`userID`, `parseURL`, `HTTPClient`).
-- No `Get` prefix on getters (`Owner()`), `Set` on setters. A function returning
-  a bool reads as a question (`IsOpen`, `HasBody`, `CanWake`); a boolean
-  variable or field is an adjective or past participle (`open`, `closed`,
-  `ready`), not `isClosed` or `flag`.
-- A one-method interface is the method plus `-er` (`Reader`, `Publisher`), and
-  is declared where it is used.
-- A receiver is one or two letters abbreviating its type, the same in every
-  method of the type; never `this`, `self` or `me`.
-- A name's length follows its scope: `i`, `n`, `err`, `ctx`, `ok` in a few
-  lines; a word or two that says what the value is in a function; a full name
-  for a package-level identifier. No type in a name (`userMap`, `idStr`,
-  `listOfTabs`), no Hungarian prefixes, no numbered names (`data2`).
-- A name says what the function does, never where it came from: not a
-  synonym chosen to avoid a clash (`make`, `request`, `change` for a `Create`,
-  `Test`, `Switch`), and not `doX`, `xImpl`, `xHelper`, `xInternal`, `innerX`.
-  When two functions differ, the names say how; when they do not, the names
-  do not invent a difference. Two standard-library conventions cover the
-  common pairs: an exported function that only wraps an unexported one doing
-  the same job (admitting the call, routing it) shares its name in lower case
-  (`Close` and `close`, as `os.File` does), and its doc comment says what the
-  wrapper adds; a function whose caller must hold a lock ends in `Locked`
-  (`closeLocked`).
-- Initialisms are only those listed above and their kin in the standard
-  library (`EOF`, `DNS`, `TTL`, `UTF8`); any other abbreviation is a word
-  (`Cwd` stays `Cwd`).
-- Use only the abbreviations Go code commonly uses: `ctx`, `err`, `buf`, `cfg`,
-  `req`, `resp`, `msg`, `id`, `n`, `i`, and `w`/`r` for writers and readers.
-  Spell everything else out.
-- A sentinel error is `ErrSomething`; an error type is `SomethingError`. An
-  error string starts lower case and ends without punctuation, except text
-  copied verbatim from Rust, which a user or the model sees.
-- A test is named for the behavior it protects (`TestClosedTabIsRefused`);
-  its values are `got` and `want`.
-- File names are lower case, words joined by `_`, named for the one
-  responsibility the file holds.
+  `hostaccess.HostAccessError` [EG: Package names; GSG: Repetition].
+- MixedCaps everywhere, constants included [EG: MixedCaps; GSG: Constant
+  names]. Initialisms keep one case: `ID`, `URL`, `HTTP`, `userID`, `parseURL`
+  [CRC: Initialisms]. Other abbreviations are used only when widely known
+  [GSG: Naming].
+- No `Get` prefix on getters (`Owner()`), `Set` on setters [EG: Getters].
+- A one-method interface is the method plus `-er` [EG: Interface names], and
+  an interface is declared where it is used [CRC: Interfaces].
+- A receiver is a short abbreviation of its type, the same in every method,
+  never `this` or `self` [CRC: Receiver Names; GSG: Receiver names].
+- A name is as long as its scope needs: short in a few lines, descriptive far
+  from its declaration [CRC: Variable Names; GSG: Variable names]. No type in
+  the name (`userMap`, `idStr`) [GSG: Repetition].
+- A function's name says what it does or returns [GSG: Function names]. Two
+  conventions cover the common pairs [STD]: an exported function that only
+  wraps an unexported one doing the same job shares its name in lower case
+  (`Close` and `close`, as `os.File` does), and a function whose caller must
+  hold a lock ends in `Locked` (`closeLocked`).
+- A sentinel error is `ErrSomething`, an error type `SomethingError`
+  [revive error-naming, following the standard library's `io.EOF`,
+  `*fs.PathError`]. An error string starts lower case and
+  ends without punctuation [CRC: Error Strings], except text copied verbatim
+  from Rust, which a user or the model sees (this migration's fidelity rule).
+- A test names the behavior it checks, and reports `got` and `want`
+  [CRC: Useful Test Failures].
 
 ## Comments
 
 - Every exported identifier has a doc comment, a full sentence that starts
-  with its name (contract product text excepted, as above). So does every
-  function you add, split out or rename, exported or not.
-- A comment says why: a constraint, a non-obvious decision, the Rust or design
-  rule it keeps. It does not narrate what the next line does.
-- No commented-out code; no `TODO` without what remains and who decides it.
+  with its name [EG: Commentary; CRC: Doc Comments] (contract product text
+  excepted, as above).
+- Comments explain why and what is not obvious, not what the code plainly
+  says [GSG: Commentary]; an unexported function is documented when its
+  purpose or contract is not obvious from its name and signature.
 
 # Working Principles
 
@@ -181,7 +158,7 @@ reviewed.
 
 # Coding Standards
 
-- Go: Effective Go, Go Code Review Comments and the Google Go Style Guide, as [Go Readability and Naming](#go-readability-and-naming) applies them; `gofumpt` and `golines` formatting.
+- Go: Effective Go, Go Code Review Comments, the Google Go Style Guide and the standard library's practice, as [Go Readability and Naming](#go-readability-and-naming) cites them; `gofumpt` and `golines` formatting; linter defaults for every checked number.
 - Rust: Rust API Guidelines, `rustfmt` defaults and Clippy's default lints, with no warning (`docs/delivery/builds-and-releases.md` § Validation).
 - TypeScript: Google TypeScript Style Guide.
 - JavaScript: Google JavaScript Style Guide.

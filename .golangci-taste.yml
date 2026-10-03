@@ -1,6 +1,8 @@
-# The readability rules of AGENTS.md § Go Readability and Naming that a tool
-# can check, on top of .golangci.yml. scripts/gomig/taste.sh runs it.
-# Transitional: when every package passes it, it joins .golangci.yml.
+# The checks behind AGENTS.md § Go Readability and Naming, on top of
+# .golangci.yml. Every number is the linter's documented default (lll 120,
+# funlen 60/40, gocognit 30, nestif 5, revive argument-limit 8 and
+# max-control-nesting 5); none is this project's own. scripts/gomig/taste.sh
+# runs it. Transitional: when every package passes, it joins .golangci.yml.
 version: "2"
 linters:
   default: none
@@ -10,41 +12,17 @@ linters:
     - gocognit
     - nestif
     - revive
-    - wsl_v5
   settings:
-    lll:
-      line-length: 120
-      tab-width: 4
-    funlen:
-      lines: 80
-      statements: 50
-      ignore-comments: true
-    gocognit:
-      min-complexity: 30
-    nestif:
-      min-complexity: 5
-    # Blank lines between the steps of a function. Assignments and plain
-    # expressions may stay together: they are often one step.
-    wsl_v5:
-      allow-first-in-block: true
-      allow-whole-block: false
-      branch-max-lines: 2
-      disable:
-        - assign
-        - expr
     revive:
       enable-default-rules: true
-      # Not confusing-naming: an exported wrapper and its unexported body
-      # sharing a name (Close and close) is the standard library's convention.
       rules:
         - name: receiver-naming
         - name: early-return
         - name: superfluous-else
         - name: indent-error-flow
+        - name: error-naming
         - name: argument-limit
-          arguments: [6]
         - name: max-control-nesting
-          arguments: [3]
         - name: unexported-return
         - name: redefines-builtin-id
   exclusions:
@@ -52,8 +30,8 @@ linters:
     paths:
       - (^|/)testdata/
     rules:
-      # Scenario tests are long sequences of steps by nature; their length and
-      # branching are reviewed, not counted.
+      # A scenario test is a long sequence of steps. This exclusion is the
+      # project's configuration choice (AGENTS.md says so), not a default.
       - path: _test\.go$
         linters:
           - funlen
@@ -69,9 +47,9 @@ formatters:
     - golines
     - goimports
   settings:
+    # golines wraps at lll's limit, so the formatter and the check agree.
     golines:
       max-len: 120
-      tab-len: 4
   exclusions:
     generated: strict
     paths:

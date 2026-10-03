@@ -36,9 +36,6 @@ main() {
   for goos in darwin linux windows; do
     if ((fix)); then
       go run -exec "env GOOS=${goos}" "${LINT}" fmt -c .golangci-taste.yml "$@"
-      # wsl is a linter that can fix, not a formatter.
-      go run -exec "env GOOS=${goos}" "${LINT}" run --allow-parallel-runners \
-        -c .golangci-taste.yml --enable-only wsl_v5 --fix "$@" || true
     fi
     echo "taste: ${goos}"
     # The linter is built for this machine and analyzes for goos.
