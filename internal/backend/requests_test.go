@@ -31,33 +31,40 @@ import (
 // wireTee sends each real session request to the vendor before playing its answer.
 type wireTee struct{ script, real provider.Runtime }
 
-func (r *wireTee) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
+// Run sends the vendor request before yielding the scripted answer.
+func (wt *wireTee) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
 	return func(yield func(provider.Event) bool) {
-		for range r.real.Run(ctx, request) {
+		for range wt.real.Run(ctx, request) {
 		}
-		for event := range r.script.Run(ctx, request) {
+		for event := range wt.script.Run(ctx, request) {
 			if !yield(event) {
 				return
 			}
 		}
 	}
 }
-func (r *wireTee) Fresh() provider.Runtime {
-	return &wireTee{script: r.script.Fresh(), real: r.real.Fresh()}
+
+// Fresh starts fresh runtimes for both sides of the request.
+func (wt *wireTee) Fresh() provider.Runtime {
+	return &wireTee{script: wt.script.Fresh(), real: wt.real.Fresh()}
 }
-func (r *wireTee) Close(ctx context.Context) error {
-	return errors.Join(r.script.Close(ctx), r.real.Close(ctx))
+
+// Close closes both runtimes and joins their errors.
+func (wt *wireTee) Close(ctx context.Context) error {
+	return errors.Join(wt.script.Close(ctx), wt.real.Close(ctx))
 }
-func (r *wireTee) RequestLimits(model core.Model) provider.RequestLimits {
-	return r.real.RequestLimits(model)
+
+// RequestLimits uses the real vendor runtime’s request limits.
+func (wt *wireTee) RequestLimits(model core.Model) provider.RequestLimits {
+	return wt.real.RequestLimits(model)
 }
 
 type wireFamily string
 
 const wireNow core.Timestamp = "2026-09-18T14:00:00.000Z"
 
-func (f wireFamily) signature(name string) string {
-	switch f {
+func (wf wireFamily) signature(name string) string {
+	switch wf {
 	case "anthropic":
 		return "anthropic:" + name
 	case "google":
@@ -66,14 +73,15 @@ func (f wireFamily) signature(name string) string {
 		return "grok:" + name
 	default:
 		prefix := "openai:"
-		if f == "codex" || f == "codex-websocket" {
+		if wf == "codex" || wf == "codex-websocket" {
 			prefix = "codex:"
 		}
 		return prefix + `{"type":"reasoning","id":"rs_` + name + `","summary":[],"encrypted_content":"enc-` + name + `"}`
 	}
 }
-func (f wireFamily) sequence() string {
-	switch f {
+
+func (wf wireFamily) sequence() string {
+	switch wf {
 	case "google":
 		return "contents"
 	case "responses", "codex", "codex-websocket":
@@ -82,8 +90,9 @@ func (f wireFamily) sequence() string {
 		return "messages"
 	}
 }
-func (f wireFamily) thinkingFields() []string {
-	switch f {
+
+func (wf wireFamily) thinkingFields() []string {
+	switch wf {
 	case "anthropic":
 		return []string{"thinking", "output_config"}
 	case "responses", "codex", "codex-websocket":
@@ -96,7 +105,13 @@ func (f wireFamily) thinkingFields() []string {
 }
 
 // wireRuntime configures a provider at the local vendor using real credential readers.
-func wireRuntime(ctx context.Context, t *testing.T, family wireFamily, vendor *providertest.MockVendor, socket *codextest.FakeWebSocket) provider.Runtime {
+func wireRuntime(
+	ctx context.Context,
+	t *testing.T,
+	family wireFamily,
+	vendor *providertest.MockVendor,
+	socket *codextest.FakeWebSocket,
+) provider.Runtime {
 	t.Helper()
 	clock := providertest.FixedClock(wireNow)
 	env := provider.RuntimeEnv{HTTP: vendor.Client()}
@@ -104,25 +119,40 @@ func wireRuntime(ctx context.Context, t *testing.T, family wireFamily, vendor *p
 	wireMust(t, err)
 	base, err := url.Parse(vendor.URL("/v1"))
 	wireMust(t, err)
-	var p provider.Provider
+	var inferenceProvider provider.Provider
 	switch family {
 	case "anthropic":
-		p = anthropicapi.New(anthropicapi.Config{APIKey: secret, BaseURL: base, Policy: provider.VendorPolicy{}}, clock)
+		inferenceProvider = anthropicapi.New(
+			anthropicapi.Config{APIKey: secret, BaseURL: base, Policy: provider.VendorPolicy{}},
+			clock,
+		)
 	case "responses", "chat":
 		wire := core.WireAPIResponses
 		if family == "chat" {
 			wire = core.WireAPIChatCompletions
 		}
-		p = openaiapi.New(openaiapi.Config{APIKey: secret, BaseURL: base, Wire: wire, Policy: provider.VendorPolicy{}}, clock)
+		inferenceProvider = openaiapi.New(
+			openaiapi.Config{APIKey: secret, BaseURL: base, Wire: wire, Policy: provider.VendorPolicy{}},
+			clock,
+		)
 	case "google":
 		base, err = url.Parse(vendor.URL("/v1beta"))
 		wireMust(t, err)
-		p = google.New(google.Config{APIKey: secret, BaseURL: base}, clock)
+		inferenceProvider = google.New(google.Config{APIKey: secret, BaseURL: base}, clock)
 	case "codex", "codex-websocket":
-		token := providertest.JWT(t, json.RawMessage(`{"exp":1789743600,"https://api.openai.com/auth":{"chatgpt_account_id":"acct-1"}}`))
+		token := providertest.JWT(
+			t,
+			json.RawMessage(`{"exp":1789743600,"https://api.openai.com/auth":{"chatgpt_account_id":"acct-1"}}`),
+		)
 		tokenJSON, err := contract.EncodeJSON(token)
 		wireMust(t, err)
-		document := `{"accessToken":` + string(tokenJSON) + `,"refreshToken":"refresh-1","idToken":` + string(tokenJSON) + `,"accountId":"acct-1","lastRefresh":"` + string(wireNow) + `"}`
+		document := `{"accessToken":` + string(
+			tokenJSON,
+		) + `,"refreshToken":"refresh-1","idToken":` + string(
+			tokenJSON,
+		) + `,"accountId":"acct-1","lastRefresh":"` + string(
+			wireNow,
+		) + `"}`
 		id := "cred-c"
 		pool := wirePool(ctx, t, id, document)
 		config := codex.NewConfig(&id)
@@ -134,30 +164,53 @@ func wireRuntime(ctx context.Context, t *testing.T, family wireFamily, vendor *p
 			config.Transport = codex.WebSocket
 			env.HTTP = socket.Client()
 		}
-		p, err = codex.New(config, pool, &provider.MemorySnapshots{}, env.HTTP, clock)
+		inferenceProvider, err = codex.New(config, pool, &provider.MemorySnapshots{}, env.HTTP, clock)
 		wireMust(t, err)
 	case "grok":
 		issuer, err := contract.EncodeJSON(vendor.URL(""))
 		wireMust(t, err)
-		document := `{"accessToken":"session-token","refreshToken":"refresh-1","expiresAt":"2030-01-01T00:00:00.000Z","issuer":` + string(issuer) + `,"clientId":"client-1","userId":"user-1","email":"user@example.com"}`
+		document := `{"accessToken":"session-token","refreshToken":"refresh-1",` +
+			`"expiresAt":"2030-01-01T00:00:00.000Z","issuer":` + string(
+			issuer,
+		) + `,"clientId":"client-1","userId":"user-1","email":"user@example.com"}`
 		id := "cred-g"
 		config := grokbuild.NewConfig(&id)
 		config.ProxyURL = base
 		config.IssuerURL, err = url.Parse(vendor.URL(""))
 		wireMust(t, err)
-		p = grokbuild.New(config, wirePool(ctx, t, id, document), &provider.MemorySnapshots{}, env.HTTP, clock)
+		inferenceProvider = grokbuild.New(
+			config,
+			wirePool(ctx, t, id, document),
+			&provider.MemorySnapshots{},
+			env.HTTP,
+			clock,
+		)
 	default:
 		t.Fatalf("unknown family %s", family)
 	}
-	runtime, err := p.Runtime(env)
+	runtime, err := inferenceProvider.Runtime(env)
 	wireMust(t, err)
 	return runtime
 }
+
 func wirePool(ctx context.Context, t *testing.T, id, document string) *provider.MemoryCredentialPool {
 	t.Helper()
 	pool := provider.NewMemoryCredentialPool()
 	identity := "acct-1"
-	wireMust(t, pool.Write(ctx, provider.AccountMeta{ID: id, Label: "user@example.com", UpdatedAt: wireNow, Source: "test", IdentityKey: &identity}, document))
+	wireMust(
+		t,
+		pool.Write(
+			ctx,
+			provider.AccountMeta{
+				ID:          id,
+				Label:       "user@example.com",
+				UpdatedAt:   wireNow,
+				Source:      "test",
+				IdentityKey: &identity,
+			},
+			document,
+		),
+	)
 	wireMust(t, pool.SetActive(ctx, id))
 	return pool
 }
@@ -172,26 +225,67 @@ func wireConversation(t *testing.T, family wireFamily) []string {
 	scripts := make([]codextest.Script, 8)
 	for i := range scripts {
 		vendor.Respond(providertest.EventStream(""))
-		scripts[i] = codextest.Script{Handshake: codextest.Accept, Steps: []codextest.Step{{Kind: codextest.Send, Text: `{"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`}}}
+		scripts[i] = codextest.Script{
+			Handshake: codextest.Accept,
+			Steps: []codextest.Step{
+				{
+					Kind: codextest.Send,
+					Text: `{"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
+				},
+			},
+		}
 	}
 	socket := codextest.Start(t, scripts, "")
 	answer := func(text string) providertest.Turn {
 		return providertest.Events(providertest.Text(text), providertest.Response(1, 1))
 	}
-	script := providertest.NewScriptedRuntime(t,
-		providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("thinking first"), &provider.ThinkingSignature{Signature: family.signature("first")}, providertest.Text("Looking."), providertest.ToolCall("call-look", "look", json.RawMessage(`{}`)), providertest.ToolCall("call-note", "note", json.RawMessage(`{"text":"seen"}`)), providertest.Response(1, 1)),
+	script := providertest.NewScriptedRuntime(
+		t,
+		providertest.Events(
+			&provider.ThinkingStart{},
+			providertest.Thinking("thinking first"),
+			&provider.ThinkingSignature{Signature: family.signature("first")},
+			providertest.Text("Looking."),
+			providertest.ToolCall("call-look", "look", json.RawMessage(`{}`)),
+			providertest.ToolCall("call-note", "note", json.RawMessage(`{"text":"seen"}`)),
+			providertest.Response(1, 1),
+		),
 		answer("Both seen."),
-		providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("thinking second"), &provider.ThinkingSignature{Signature: family.signature("second")}, providertest.ToolCall("call-yield", "yield", json.RawMessage(`{"durationMs":600000}`)), providertest.Response(1, 1)),
-		answer("The user showed a screenshot and asked twice."), answer("After the summary."), answer("Thought harder."))
+		providertest.Events(
+			&provider.ThinkingStart{},
+			providertest.Thinking("thinking second"),
+			&provider.ThinkingSignature{Signature: family.signature("second")},
+			providertest.ToolCall("call-yield", "yield", json.RawMessage(`{"durationMs":600000}`)),
+			providertest.Response(1, 1),
+		),
+		answer(
+			"The user showed a screenshot and asked twice.",
+		),
+		answer("After the summary."),
+		answer("Thought harder."),
+	)
 	entered, release := make(chan struct{}), make(chan struct{})
-	runtime := &sessiontest.Runtime{Prompt: "system prompt", Definitions: []provider.ToolDefinition{{Name: "look", InputSchema: json.RawMessage(`{"type":"object"}`)}, {Name: "note", InputSchema: json.RawMessage(`{"type":"object"}`)}, {Name: "yield", InputSchema: json.RawMessage(`{"type":"object"}`)}}}
+	runtime := &sessiontest.Runtime{
+		Prompt: "system prompt",
+		Definitions: []provider.ToolDefinition{
+			{Name: "look", InputSchema: json.RawMessage(`{"type":"object"}`)},
+			{Name: "note", InputSchema: json.RawMessage(`{"type":"object"}`)},
+			{Name: "yield", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
 	runtime.Invoke = func(ctx context.Context, call session.ToolInvocation) (session.ToolOutcome, error) {
 		switch call.ToolName {
 		case "look":
 			close(entered)
 			select {
 			case <-release:
-				return session.ToolOutcome{Output: []provider.ResultPart{&provider.ResultImage{Bytes: provider.MediaBytes{Data: storetest.PNG(3, 2, 2), MediaType: "image/png"}}}}, nil
+				return session.ToolOutcome{
+					Output: []provider.ResultPart{
+						&provider.ResultImage{
+							Bytes: provider.MediaBytes{Data: storetest.PNG(3, 2, 2), MediaType: "image/png"},
+						},
+					},
+				}, nil
 			case <-ctx.Done():
 				return session.ToolOutcome{}, ctx.Err()
 			}
@@ -203,22 +297,55 @@ func wireConversation(t *testing.T, family wireFamily) []string {
 	}
 	tree := storetest.NewMemoryTreeStore()
 	model := storetest.ModelReading("stub", "model-a", []core.FileExtension{core.FileExtensionPNG})
-	s := session.New(session.Init{ID: "root", CWD: "/workspace", Model: model, Runtime: &wireTee{script: script, real: wireRuntime(ctx, t, family, vendor, socket)}}, session.Deps{Runtime: runtime, Store: tree.SessionStore("root"), IDs: transcripttest.NewSequentialIDs("id"), Clock: providertest.FixedClock(core.UnixEpoch), Config: session.DefaultConfig()})
-	defer func() { wireMust(t, s.Dispose(context.Background())) }()
-	wireMust(t, tree.CreateNode(ctx, store.RootRecord("root", core.UnixEpoch), s.FirstCheckpoint()))
+	conversation := session.New(
+		session.Init{
+			ID:      "root",
+			CWD:     "/workspace",
+			Model:   model,
+			Runtime: &wireTee{script: script, real: wireRuntime(ctx, t, family, vendor, socket)},
+		},
+		session.Deps{
+			Runtime: runtime,
+			Store:   tree.SessionStore("root"),
+			IDs:     transcripttest.NewSequentialIDs("id"),
+			Clock:   providertest.FixedClock(core.UnixEpoch),
+			Config:  session.DefaultConfig(),
+		},
+	)
+	defer func() { wireMust(t, conversation.Dispose(context.Background())) }()
+	wireMust(t, tree.CreateNode(ctx, store.RootRecord("root", core.UnixEpoch), conversation.FirstCheckpoint()))
 	photo := storetest.PNG(4, 3, 1)
 	held := store.HeldMedia{}
 	held.Hold(core.BlobRefOf(photo), photo)
-	s.HoldMedia(&held)
-	first, err := s.Send([]core.UserContentBlock{&core.UserText{Text: "What is on the screen?"}, &core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(photo), MediaType: "image/png"}}}, "t1")
+	conversation.HoldMedia(&held)
+	first, err := conversation.Send(
+		[]core.UserContentBlock{
+			&core.UserText{Text: "What is on the screen?"},
+			&core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(photo), MediaType: "image/png"}},
+		},
+		"t1",
+	)
 	wireMust(t, err)
 	select {
 	case <-entered:
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	wireMust(t, s.Steer(storetest.Text("mind the tests"), "s1"))
-	wireMust(t, s.AcceptAgentMessage(ctx, core.AgentMessage{ID: "m1", Sender: core.Sender{ID: "child", Number: 1, Description: "worker", Round: 1}, RecipientID: "root", Timestamp: core.UnixEpoch, Content: "m1", Event: &core.MessageEvent{}}))
+	wireMust(t, conversation.Steer(storetest.Text("mind the tests"), "s1"))
+	wireMust(
+		t,
+		conversation.AcceptAgentMessage(
+			ctx,
+			core.AgentMessage{
+				ID:          "m1",
+				Sender:      core.Sender{ID: "child", Number: 1, Description: "worker", Round: 1},
+				RecipientID: "root",
+				Timestamp:   core.UnixEpoch,
+				Content:     "m1",
+				Event:       &core.MessageEvent{},
+			},
+		),
+	)
 	close(release)
 	wait := func(a *session.ActionHandle, err error) {
 		t.Helper()
@@ -227,12 +354,12 @@ func wireConversation(t *testing.T, family wireFamily) []string {
 		wireMust(t, err)
 	}
 	wait(first, nil)
-	wait(s.Send(storetest.Text("And the rest?"), "t2"))
-	wait(s.Compact())
-	wait(s.Send(storetest.Text("Go on."), "t3"))
+	wait(conversation.Send(storetest.Text("And the rest?"), "t2"))
+	wait(conversation.Compact())
+	wait(conversation.Send(storetest.Text("Go on."), "t3"))
 	model.Thinking = &core.AdaptiveConfig{Effort: "high"}
-	wireMust(t, s.UpdateModel(session.ModelSwitch{Model: model}))
-	wait(s.Send(storetest.Text("Think harder."), "t4"))
+	wireMust(t, conversation.UpdateModel(session.ModelSwitch{Model: model}))
+	wait(conversation.Send(storetest.Text("Think harder."), "t4"))
 	if script.Remaining() != 0 {
 		t.Fatalf("unplayed turns: %d", script.Remaining())
 	}
@@ -306,6 +433,7 @@ func wireCached(t *testing.T, family wireFamily, body string, omitThinking bool)
 	}
 	return fixed, parts
 }
+
 func wireUnmarked(value any) any {
 	switch value := value.(type) {
 	case map[string]any:
@@ -320,17 +448,19 @@ func wireUnmarked(value any) any {
 	}
 	return value
 }
+
 func wireExtends(t *testing.T, family wireFamily, earlier, later string, omitThinking bool) {
 	t.Helper()
-	ef, ep := wireCached(t, family, earlier, omitThinking)
-	lf, lp := wireCached(t, family, later, omitThinking)
-	if !reflect.DeepEqual(ef, lf) {
-		t.Fatalf("fixed request fields changed:\nearlier %#v\nlater %#v", ef, lf)
+	earlierFixed, earlierParts := wireCached(t, family, earlier, omitThinking)
+	laterFixed, laterParts := wireCached(t, family, later, omitThinking)
+	if !reflect.DeepEqual(earlierFixed, laterFixed) {
+		t.Fatalf("fixed request fields changed:\nearlier %#v\nlater %#v", earlierFixed, laterFixed)
 	}
-	if len(lp) <= len(ep) || !reflect.DeepEqual(lp[:len(ep)], ep) {
-		t.Fatalf("request did not extend cached prefix:\nearlier %#v\nlater %#v", ep, lp)
+	if len(laterParts) <= len(earlierParts) || !reflect.DeepEqual(laterParts[:len(earlierParts)], earlierParts) {
+		t.Fatalf("request did not extend cached prefix:\nearlier %#v\nlater %#v", earlierParts, laterParts)
 	}
 }
+
 func wireMust(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
@@ -338,6 +468,8 @@ func wireMust(t *testing.T, err error) {
 	}
 }
 
+// TestProviderRequestsPreservePrefixesAcrossSummaryAndThinking
+// checks cached vendor prefixes across session changes.
 // Seven conversations hit local scripted vendors, cost no model usage and take
 // about one second together. The timeout guards hangs; all ordering uses events.
 func TestProviderRequestsPreservePrefixesAcrossSummaryAndThinking(t *testing.T) {
@@ -366,7 +498,11 @@ func TestProviderRequestsPreservePrefixesAcrossSummaryAndThinking(t *testing.T) 
 			}
 			thirdFixed, thirdParts := wireCached(t, family, bodies[2], false)
 			_, summaryParts := wireCached(t, family, bodies[3], false)
-			if len(summaryParts) != len(thirdParts)+1 || !strings.Contains(fmt.Sprint(summaryParts[len(summaryParts)-1]), strings.Split(sessiontest.CompactionSummaryInstruction, ".")[0]) {
+			if len(summaryParts) != len(thirdParts)+1 ||
+				!strings.Contains(
+					fmt.Sprint(summaryParts[len(summaryParts)-1]),
+					strings.Split(sessiontest.CompactionSummaryInstruction, ".")[0],
+				) {
 				t.Fatal("summary must append only its instruction")
 			}
 			afterFixed, afterParts := wireCached(t, family, bodies[4], false)
@@ -377,7 +513,8 @@ func TestProviderRequestsPreservePrefixesAcrossSummaryAndThinking(t *testing.T) 
 			if family == "chat" || family == "grok" {
 				system = 1
 			}
-			if !reflect.DeepEqual(afterParts[:system], thirdParts[:system]) || !strings.Contains(fmt.Sprint(afterParts[system]), "Previous conversation summary:") {
+			if !reflect.DeepEqual(afterParts[:system], thirdParts[:system]) ||
+				!strings.Contains(fmt.Sprint(afterParts[system]), "Previous conversation summary:") {
 				t.Fatal("compaction did not preserve system and restart at summary")
 			}
 			switch family {
