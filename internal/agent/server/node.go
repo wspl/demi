@@ -80,7 +80,7 @@ func (r *nodeRuntime[H]) EnterAction(ctx context.Context) (*gates.Lease, error) 
 func (r *nodeRuntime[H]) ReserveEdit(ctx context.Context) (*gates.Reservation, error) {
 	reservation := r.lifecycle.TryReserve()
 	if reservation == nil {
-		//nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
 		return nil, errors.New(
 			"Cannot edit while a child lifecycle operation is in progress",
 		)
@@ -89,7 +89,7 @@ func (r *nodeRuntime[H]) ReserveEdit(ctx context.Context) (*gates.Reservation, e
 	if err == nil {
 		for _, child := range children {
 			if child.Closed == nil || !child.Delivered {
-				//nolint:staticcheck // ST1005: preserve the Rust product refusal verbatim.
+				//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
 				err = errors.New(
 					"Cannot edit while children or completion notifications are pending",
 				)
@@ -170,7 +170,7 @@ type assembly struct {
 func (t *Tree[H]) assemble(
 	ctx context.Context,
 	options assembly,
-) (node *Node[H], continuation *session.Continuation, err error) {
+) (node *Node[H], continuation session.Continuation, continues bool, err error) {
 	record, cwd, model, runtime := options.record, options.cwd, options.model, options.runtime
 	instructions, preamble, inherited, first := options.instructions, options.preamble, options.inherited, options.first
 
@@ -180,18 +180,18 @@ func (t *Tree[H]) assemble(
 			err = errors.Join(err, runtime.Close(context.WithoutCancel(ctx)))
 		}
 	}()
-	stored, checkpoint, err := t.loadNode(ctx, record.ID)
+	stored, checkpoint, found, err := t.storedNode(ctx, record.ID)
 	if err != nil {
-		return nil, nil, err
+		return nil, session.Continuation{}, false, err
 	}
-	if stored != nil {
-		record = *stored
+	if found {
+		record = stored
 		cwd = checkpoint.State.CWD
 	}
 
 	commands, err := t.commands(inherited, record.CanSpawnSubagents)
 	if err != nil {
-		return nil, nil, fmt.Errorf("the demi agent commands cannot be added: %w", err)
+		return nil, session.Continuation{}, false, fmt.Errorf("the demi agent commands cannot be added: %w", err)
 	}
 	r := t.nodeRuntime(record, cwd, instructions, preamble, inherited, commands)
 	deps := session.Deps{
@@ -202,23 +202,44 @@ func (t *Tree[H]) assemble(
 		Config:  t.server.deps.Config.Session,
 	}
 	var agent *session.Session
-	if checkpoint != nil {
-		var restored session.Continuation
-		agent, restored, err = session.Restore(*checkpoint, record.ID, runtime, deps)
+	if found {
+		agent, continuation, err = session.Restore(checkpoint, record.ID, runtime, deps)
 		if err != nil {
-			return nil, nil, err
+			return nil, session.Continuation{}, false, err
 		}
-		continuation = &restored
+		continues = true
 		transferred = true
 	} else {
 		agent = session.New(session.Init{ID: record.ID, CWD: cwd, Model: model, Runtime: runtime}, deps)
 		transferred = true
-		continuation, err = t.createNode(ctx, record, agent, first)
+		continuation, continues, err = t.createNode(ctx, record, agent, first)
 		if err != nil {
-			return nil, nil, err
+			return nil, session.Continuation{}, false, err
 		}
 	}
-	return &Node[H]{record: record, session: agent, runtime: r}, continuation, nil
+	return &Node[H]{record: record, session: agent, runtime: r}, continuation, continues, nil
+}
+
+// storedNode reads the record and checkpoint a restored node continues
+// from; found is false when no node with id is stored. A stored node
+// without a checkpoint is corrupt.
+func (t *Tree[H]) storedNode(ctx context.Context, id core.NodeID) (store.NodeRecord, store.Checkpoint, bool, error) {
+	stored, found, err := t.store.Node(ctx, id)
+	if err != nil || !found {
+		return store.NodeRecord{}, store.Checkpoint{}, false, err
+	}
+	checkpoint, saved, err := t.store.SessionStore(stored.ID).Load(ctx)
+	if err != nil {
+		return store.NodeRecord{}, store.Checkpoint{}, false, err
+	}
+	if !saved {
+		return store.NodeRecord{}, store.Checkpoint{}, false, fmt.Errorf(
+			"%w: node %s has no checkpoint",
+			store.ErrCorrupt,
+			stored.ID,
+		)
+	}
+	return stored, checkpoint, true, nil
 }
 
 // continueFrom applies the root or child's restore policy and saves its result.
@@ -226,7 +247,7 @@ func (n *Node[H]) continueFrom(ctx context.Context, continuation session.Continu
 	if continuation.Interrupted {
 		if n.record.Parent == nil {
 			n.session.RecordInterruption()
-		} else if _, err := n.session.Resume(); err != nil && !errors.Is(err, session.AdmissionClosed) {
+		} else if _, err := n.session.Resume(); err != nil && !errors.Is(err, session.ErrClosed) {
 			return err
 		}
 	}
@@ -235,7 +256,7 @@ func (n *Node[H]) continueFrom(ctx context.Context, continuation session.Continu
 			message.Content,
 			message.ID,
 		); err != nil &&
-			!errors.Is(err, session.AdmissionClosed) {
+			!errors.Is(err, session.ErrClosed) {
 			return err
 		}
 	}
@@ -300,33 +321,16 @@ func (t *Tree[H]) createNode(
 	record store.NodeRecord,
 	agent *session.Session,
 	first *core.QueuedMessage,
-) (*session.Continuation, error) {
-	var continuation *session.Continuation
+) (session.Continuation, bool, error) {
 	initial := agent.FirstCheckpoint()
 	if first != nil {
 		initial.State.Queue = append(initial.State.Queue, *first)
-		continuation = &session.Continuation{Queued: []core.QueuedMessage{*first}}
 	}
 	if err := t.store.CreateNode(ctx, record, initial); err != nil {
-		return nil, errors.Join(err, agent.Dispose(context.WithoutCancel(ctx)))
+		return session.Continuation{}, false, errors.Join(err, agent.Dispose(context.WithoutCancel(ctx)))
 	}
-	return continuation, nil
-}
-
-func (t *Tree[H]) loadNode(ctx context.Context, id core.NodeID) (*store.NodeRecord, *store.Checkpoint, error) {
-	record, err := t.store.Node(ctx, id)
-	if err != nil {
-		return nil, nil, err
+	if first == nil {
+		return session.Continuation{}, false, nil
 	}
-	if record == nil {
-		return nil, nil, nil
-	}
-	checkpoint, err := t.store.SessionStore(record.ID).Load(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	if checkpoint == nil {
-		return nil, nil, &store.Error{Kind: store.Corrupt, Message: fmt.Sprintf("node %s has no checkpoint", record.ID)}
-	}
-	return record, checkpoint, nil
+	return session.Continuation{Queued: []core.QueuedMessage{*first}}, true, nil
 }

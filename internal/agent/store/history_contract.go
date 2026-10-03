@@ -1,6 +1,6 @@
 package store
 
-// Contract comments are product text copied verbatim from Rust.
+// Contract comments are product text: contractgen emits them as schema descriptions.
 //revive:disable:exported
 
 import (

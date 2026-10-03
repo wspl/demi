@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -91,8 +92,8 @@ func TitleInput(messages []string) string {
 }
 
 // TitleFromResponse takes the first nonblank answer line without surrounding
-// quotes, cut to TitleMaxChars. Nil means nothing usable remains.
-func TitleFromResponse(text string) *string {
+// quotes, cut to TitleMaxChars. An empty result means nothing usable remains.
+func TitleFromResponse(text string) string {
 	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -101,11 +102,11 @@ func TitleFromResponse(text string) *string {
 		line = strings.TrimSpace(strings.TrimRight(strings.TrimLeft(line, "\"'“‘「『"), "\"'”’」』"))
 		line = strings.TrimSpace(line[:core.CharOffset(line, TitleMaxChars)])
 		if line == "" {
-			return nil
+			return ""
 		}
-		return &line
+		return line
 	}
-	return nil
+	return ""
 }
 
 // LowestThinking returns the model's lowest named effort; a budget model
@@ -144,33 +145,21 @@ func LowestThinking(model core.Model) core.ThinkingConfig {
 	return nil
 }
 
-// TitleError means the provider refused or failed the title request.
-type TitleError struct {
-	Message string
-	Cause   error
-}
-
-// Error returns the provider failure's text.
-func (e *TitleError) Error() string { return e.Message }
-
-// Unwrap preserves the underlying provider failure.
-func (e *TitleError) Unwrap() error { return e.Cause }
-
 // Title asks selection's model for a title from the user's messages, using
 // the lowest thinking and default service tier. Thinking output is ignored;
-// cancellation or no usable answer returns nil. Provider failures return
-// *TitleError. The caller owns runtime and closes it after the request.
-// This is no session turn and adds nothing to a transcript.
+// cancellation or no usable answer returns "". A provider failure returns an
+// error with the provider's message. The caller owns runtime and closes it
+// after the request. This is no session turn and adds nothing to a transcript.
 func Title(
 	ctx context.Context,
 	runtime provider.Runtime,
 	sessionID, requestID string,
 	selection core.ModelSelection,
 	messages []string,
-) (*string, error) {
+) (string, error) {
 	input := TitleInput(messages)
 	if input == "" {
-		return nil, nil
+		return "", nil
 	}
 	request := provider.InferenceRequest{
 		SessionID:    sessionID,
@@ -192,7 +181,7 @@ func Title(
 		case *provider.TextDelta:
 			answer.WriteString(e.Text)
 		case *provider.Error:
-			return nil, &TitleError{Message: e.Failure.Message}
+			return "", errors.New(e.Failure.Message)
 		case *provider.ThinkingStart,
 			*provider.ThinkingDelta,
 			*provider.ThinkingSignature,
@@ -202,7 +191,7 @@ func Title(
 		}
 	}
 	if ctx.Err() != nil {
-		return nil, nil
+		return "", nil
 	}
 	return TitleFromResponse(answer.String()), nil
 }

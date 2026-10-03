@@ -60,20 +60,20 @@ func (l *Log) Find(id core.BlockID) core.Block {
 	return nil
 }
 
-// TakePatches drains changes as one revision, or returns nil when nothing changed.
-func (l *Log) TakePatches() *PatchBatch {
+// TakePatches drains changes as one revision, and returns false when nothing changed.
+func (l *Log) TakePatches() (PatchBatch, bool) {
 	if len(l.journal.patches) == 0 {
-		return nil
+		return PatchBatch{}, false
 	}
 	l.revision++
-	batch := &PatchBatch{
+	batch := PatchBatch{
 		Revision: l.revision,
 		Patches:  l.journal.patches,
 		Touched:  l.journal.touched,
 		Rows:     l.journal.rows,
 	}
 	l.journal = journal{}
-	return batch
+	return batch, true
 }
 
 // PushUser appends the input that opens a user turn.
@@ -329,26 +329,26 @@ func (l *Log) EndsWithOpenText() bool {
 	return ok && !block.Forkable
 }
 
-// CompleteTailText marks tail text complete and returns its identity, or nil
+// CompleteTailText marks tail text complete and returns its identity, or false
 // when it is already complete, absent, or follows a still-executing call.
-func (l *Log) CompleteTailText() *core.BlockID {
+func (l *Log) CompleteTailText() (core.BlockID, bool) {
 	index := len(l.blocks) - 1
 	if index < 0 {
-		return nil
+		return "", false
 	}
 	block, ok := l.blocks[index].(*core.TextBlock)
 	if !ok || block.Forkable {
-		return nil
+		return "", false
 	}
 	for _, prior := range l.blocks[:index] {
 		if call, ok := prior.(*core.ToolCallBlock); ok && call.Status == "executing" {
-			return nil
+			return "", false
 		}
 	}
 	next := *block
 	next.Forkable = true
 	l.replace(index, &next)
-	return new(next.BlockID)
+	return next.BlockID, true
 }
 
 // PushToolCall appends an executing call, retaining string input as text and

@@ -35,11 +35,10 @@ func editAsync(t *testing.T, s *session.Session, sub session.EditSubmission) <-c
 	return done
 }
 
-func editError(t *testing.T, err error, kind session.EditErrorKind) {
+func editError(t *testing.T, err, want error) {
 	t.Helper()
-	var e *session.EditError
-	if !errors.As(err, &e) || e.Kind != kind {
-		t.Fatalf("got %v; want edit %v", err, kind)
+	if !errors.Is(err, want) {
+		t.Fatalf("got %v; want %v", err, want)
 	}
 }
 
@@ -66,7 +65,6 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 		equal(t, f.checkpoint().Transcript, before.Blocks)
 		gate.Release()
 		failure := <-failed
-		editError(t, failure.err, session.EditFailed)
 		equal(t, failure.err.Error(), "the database refused the save")
 		must(t, f.s.Settled(t.Context()))
 		equal(t, f.s.Transcript(), before)
@@ -83,25 +81,20 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 		equal(t, f.s.Transcript(), before)
 		equal(t, f.checkpoint().Transcript, before.Blocks)
 		equal(t, len(patches), 0)
-		check, err := f.s.CheckEdit(submission.OperationID, submission.Digest, submission.Version)
-		must(t, err)
-		if _, ok := check.(*session.EditInFlight); !ok {
-			t.Fatalf("%T", check)
-		}
 		repeat := editAsync(t, f.s, submission)
 		conflict := submission
 		conflict.Digest = "other"
-		_, err = f.s.EditAndSend(t.Context(), conflict)
-		editError(t, err, session.EditConflict)
+		_, err := f.s.EditAndSend(t.Context(), conflict)
+		editError(t, err, session.ErrEditConflict)
 		_, err = f.s.EditAndSend(t.Context(), edit(t, f.s, 0, "op3"))
-		editError(t, err, session.EditBusy)
+		editError(t, err, session.ErrEditBusy)
 		_, err = f.s.Send(storetest.Text("C"), "C")
-		equal(t, err, error(session.AdmissionEditing))
-		equal(t, f.s.Steer(storetest.Text("mind"), "s1"), error(session.SteerEditing))
+		equal(t, err, error(session.ErrEditing))
+		equal(t, f.s.Steer(storetest.Text("mind"), "s1"), error(session.ErrEditing))
 		_, err = f.s.Retry()
-		equal(t, err, error(session.AdmissionEditing))
+		equal(t, err, error(session.ErrEditing))
 		_, err = f.s.Compact()
-		equal(t, err, error(session.AdmissionEditing))
+		equal(t, err, error(session.ErrEditing))
 		_, err = f.s.Storage(t.Context(), &host.StorageRead{Key: "todo"}, store.CommitGuard{})
 		var port *host.PortError
 		if !errors.As(err, &port) || port.Kind != host.StorageRefused ||
@@ -109,8 +102,7 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 			t.Fatalf("storage refusal: %v", err)
 		}
 		err = f.s.AcceptAgentMessage(t.Context(), message("m1"))
-		var admission *session.AgentMessageError
-		if !errors.As(err, &admission) || admission.Kind != session.AgentMessageEditing {
+		if !errors.Is(err, session.ErrEditing) {
 			t.Fatalf("message refusal: %v", err)
 		}
 		must(t, f.s.UpdateModel(session.ModelSwitch{Model: storetest.ModelOf("stub", "other-model")}))
@@ -160,7 +152,7 @@ func TestStopEditPreparationAndSaveDecision(t *testing.T) {
 		stopped, err := f.s.Abort(t.Context())
 		must(t, err)
 		equal(t, *stopped.Target, framewire.AbortTargetActiveTurn)
-		editError(t, (<-preparing).err, session.EditStopped)
+		editError(t, (<-preparing).err, session.ErrEditStopped)
 		must(t, f.s.Settled(t.Context()))
 		equal(t, f.s.Transcript(), before)
 		hang.Store(false)
@@ -192,7 +184,7 @@ func TestStopEditPreparationAndSaveDecision(t *testing.T) {
 			equal(t, *result.Target, framewire.AbortTargetActiveTurn)
 			must(t, f.s.Settled(t.Context()))
 			if fail {
-				editError(t, decision.err, session.EditFailed)
+				equal(t, decision.err.Error(), "the database refused the save")
 				equal(t, f.s.Transcript(), before)
 			} else {
 				must(t, decision.err)
@@ -245,7 +237,7 @@ func TestWakeupRefusesEditAndStillFires(t *testing.T) {
 		f.done(f.send("build", "A"))
 		before := f.s.Transcript()
 		_, err := f.s.EditAndSend(t.Context(), edit(t, f.s, 0, "op1"))
-		editError(t, err, session.EditBusy)
+		editError(t, err, session.ErrEditBusy)
 		equal(t, f.s.Transcript(), before)
 		equal(t, f.s.Status().Wakeups, true)
 		time.Sleep(121 * time.Second)

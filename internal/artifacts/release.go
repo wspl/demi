@@ -32,17 +32,6 @@ type ReleaseRecord struct {
 	Bytes []byte
 }
 
-// ConflictError identifies an immutable release that differs from this one.
-type ConflictError struct {
-	// Path identifies the published file that conflicts with this release.
-	Path string
-}
-
-// Error identifies the conflicting release path.
-func (e *ConflictError) Error() string {
-	return fmt.Sprintf("%s is already published with other contents", e.Path)
-}
-
 // PublishRelease stages all verified files and the record before publishing the
 // whole immutable directory. Repeating the same publication checks its contents.
 func PublishRelease(ctx context.Context, directory string, record ReleaseRecord, files []ReleaseFile) (err error) {
@@ -137,7 +126,7 @@ func releaseInPlace(ctx context.Context, directory string, record ReleaseRecord,
 	name := artifactPath(directory, record.Name)
 	data, err := os.ReadFile(name)
 	if errors.Is(err, os.ErrNotExist) || (err == nil && !bytes.Equal(data, record.Bytes)) {
-		return &ConflictError{name}
+		return fmt.Errorf("%s is already published with other contents", name)
 	}
 	if err != nil {
 		return err
@@ -147,7 +136,7 @@ func releaseInPlace(ctx context.Context, directory string, record ReleaseRecord,
 		found, err := DigestFile(ctx, name, file.Digest.Size)
 		var tooLarge *TooLargeError
 		if errors.Is(err, os.ErrNotExist) || errors.As(err, &tooLarge) || (err == nil && found != file.Digest) {
-			return &ConflictError{name}
+			return fmt.Errorf("%s is already published with other contents", name)
 		}
 		if err != nil {
 			return err

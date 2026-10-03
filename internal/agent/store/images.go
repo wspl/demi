@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -41,52 +42,17 @@ type Fitted struct {
 	Reencoded bool
 }
 
-// UnfitKind identifies why an image cannot enter a transcript.
-type UnfitKind uint8
-
-const (
-	// Undecodable means the image could not be decoded.
-	Undecodable UnfitKind = iota
-	// TooLargeToDecode means decoding would exceed 256 MiB.
-	TooLargeToDecode
-	// TooLarge means quality-85 JPEG still exceeds 3,750,000 bytes.
-	TooLarge
-)
-
-// Unfit describes a fitting failure, retaining the decoder's underlying error.
-type Unfit struct {
-	// Kind classifies the fitting failure.
-	Kind UnfitKind
-	// Cause retains the decoder error, when present.
-	Cause error
-}
-
-// Error renders the Rust image refusal text.
-func (e *Unfit) Error() string {
-	switch e.Kind {
-	case TooLargeToDecode:
-		return "decoding it would take more than 256 MiB"
-	case TooLarge:
-		return "even as a JPEG of quality 85 it is over 3,750,000 bytes"
-	default:
-		return fmt.Sprintf("it could not be decoded (%v)", e.Cause)
-	}
-}
-
-// Unwrap returns the decoder error, when present.
-func (e *Unfit) Unwrap() error { return e.Cause }
-
 // Fit fits an image once to 2,000 pixels per side and 3,750,000 bytes.
 // PNG, JPEG and WebP within both limits keep their original bytes after decoding.
 // GIF uses its first frame. Reencoding applies orientation and scales as needed;
 // JPEG keeps quality 90, other formats become PNG, then quality-85 JPEG if needed.
 // The caller's goroutine performs codec work outside state locks.
 func Fit(ctx context.Context, data core.B64Bytes, mediaType string) (fitted Fitted, err error) {
-	// Rust treats a decoder panic as an undecodable image, not a process failure.
+	// A decoder panic means the image is undecodable, not that the process failed.
 	defer func() {
 		if failed := recover(); failed != nil {
 			fitted = Fitted{}
-			err = &Unfit{Kind: Undecodable, Cause: fmt.Errorf("%v", failed)}
+			err = fmt.Errorf("it could not be decoded (%v)", failed)
 		}
 	}()
 	if err := ctx.Err(); err != nil {
@@ -121,9 +87,9 @@ const (
 	maxDecodeBytes = 256 * 1024 * 1024
 )
 
-// decodeSize accounts for Rust's expanded color buffer before decoding pixels.
-// PNG's Go color model uses four channels even for RGB and gray-alpha; the
-// IHDR color type retains the distinction needed by Rust's allocation budget.
+// decodeSize is the decoded buffer size at the image's own channel count, checked
+// against the 256 MiB budget before decoding pixels. Go's PNG color model uses
+// four channels even for RGB and gray-alpha, so PNG counts from the IHDR color type.
 func decodeSize(config image.Config, mediaType string, data []byte) uint64 {
 	channels := uint64(4)
 	switch mediaType {
@@ -202,14 +168,14 @@ func decodeImage(data core.B64Bytes, mediaType string) (image.Config, image.Imag
 	case "image/webp":
 		config, decode = webp.DecodeConfig, webp.Decode
 	default:
-		return image.Config{}, nil, &Unfit{Kind: Undecodable, Cause: fmt.Errorf("%s is not an image type", mediaType)}
+		return image.Config{}, nil, fmt.Errorf("it could not be decoded (%s is not an image type)", mediaType)
 	}
 	dimensions, err := config(bytes.NewReader(data))
 	if err != nil {
-		return image.Config{}, nil, &Unfit{Kind: Undecodable, Cause: err}
+		return image.Config{}, nil, fmt.Errorf("it could not be decoded (%w)", err)
 	}
 	if decodeSize(dimensions, mediaType, data) > maxDecodeBytes {
-		return image.Config{}, nil, &Unfit{Kind: TooLargeToDecode}
+		return image.Config{}, nil, errors.New("decoding it would take more than 256 MiB")
 	}
 	var decoded image.Image
 	if mediaType == "image/webp" && len(data) >= 30 && string(data[12:16]) == "VP8X" && data[20]&2 != 0 {
@@ -218,7 +184,7 @@ func decodeImage(data core.B64Bytes, mediaType string) (image.Config, image.Imag
 		decoded, err = decode(bytes.NewReader(data))
 	}
 	if err != nil {
-		return image.Config{}, nil, &Unfit{Kind: Undecodable, Cause: err}
+		return image.Config{}, nil, fmt.Errorf("it could not be decoded (%w)", err)
 	}
 	return dimensions, decoded, nil
 }
@@ -230,7 +196,7 @@ func scaleImage(decoded image.Image) (image.Image, bool) {
 		ratio := float64(maxImageSide) / float64(max(bounds.Dx(), bounds.Dy()))
 		width := max(1, int(math.Round(float64(bounds.Dx())*ratio)))
 		height := max(1, int(math.Round(float64(bounds.Dy())*ratio)))
-		// Go's codec pixels may differ from Rust's; preserve dimensions and precision.
+		// Scale to the fitted dimensions, keeping the source's sample precision.
 		target := fittingBuffer(image.Rect(0, 0, width, height), decoded.ColorModel())
 		draw.CatmullRom.Scale(target, target.Bounds(), decoded, bounds, draw.Src, nil)
 		decoded = target
@@ -248,7 +214,7 @@ func encodeFittedImage(
 		}
 		encoded, err := encodeImage(decoded, format, 90)
 		if err != nil {
-			return Fitted{}, &Unfit{Kind: Undecodable, Cause: err}
+			return Fitted{}, fmt.Errorf("it could not be decoded (%w)", err)
 		}
 		if len(encoded) <= maxImageBytes {
 			return Fitted{Data: encoded, MediaType: format, Came: came, Entered: entered, Reencoded: true}, nil
@@ -256,10 +222,10 @@ func encodeFittedImage(
 	}
 	encoded, err := encodeImage(decoded, "image/jpeg", 85)
 	if err != nil {
-		return Fitted{}, &Unfit{Kind: Undecodable, Cause: err}
+		return Fitted{}, fmt.Errorf("it could not be decoded (%w)", err)
 	}
 	if len(encoded) > maxImageBytes {
-		return Fitted{}, &Unfit{Kind: TooLarge}
+		return Fitted{}, errors.New("even as a JPEG of quality 85 it is over 3,750,000 bytes")
 	}
 	return Fitted{Data: encoded, MediaType: "image/jpeg", Came: came, Entered: entered, Reencoded: true}, nil
 }

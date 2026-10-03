@@ -58,27 +58,24 @@ func encodeUpdate(id core.NodeID, update store.CheckpointUpdate) (savedRows, err
 func (r checkpointRows) checkpoint(id core.NodeID) (*store.Checkpoint, error) {
 	state, err := store.DecodeCheckpointState(r.state)
 	if err != nil {
-		return nil, &store.Error{Kind: store.Corrupt, Message: err.Error(), Cause: err}
+		return nil, fmt.Errorf("%w: %w", store.ErrCorrupt, err)
 	}
 	command, err := store.DecodeCommandStateSnapshot(r.command)
 	if err != nil {
-		return nil, &store.Error{Kind: store.Corrupt, Message: err.Error(), Cause: err}
+		return nil, fmt.Errorf("%w: %w", store.ErrCorrupt, err)
 	}
 	if _, err = store.RestoreCommandStateHistory(command); err != nil {
-		return nil, &store.Error{Kind: store.Corrupt, Message: err.Error(), Cause: err}
+		return nil, fmt.Errorf("%w: %w", store.ErrCorrupt, err)
 	}
 	blocks := make([]core.Block, 0, r.count)
 	for index := 0; index < r.count; index++ {
 		data, exists := r.blocks[index]
 		if !exists {
-			return nil, &store.Error{
-				Kind:    store.Corrupt,
-				Message: fmt.Sprintf("node %s has no block row %d", id, index),
-			}
+			return nil, fmt.Errorf("%w: %s", store.ErrCorrupt, fmt.Sprintf("node %s has no block row %d", id, index))
 		}
 		block, err := core.DecodeBlock(data)
 		if err != nil {
-			return nil, &store.Error{Kind: store.Corrupt, Message: err.Error(), Cause: err}
+			return nil, fmt.Errorf("%w: %w", store.ErrCorrupt, err)
 		}
 		blocks = append(blocks, block)
 	}
@@ -123,9 +120,9 @@ func (s *MemoryTreeStore) applySaveLocked(saved savedRows) error {
 	return nil
 }
 
-// missing describes an operation on an absent tree node, as the Rust fake does.
+// missing describes an operation on an absent tree node.
 func missing(id core.NodeID) error {
-	return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("no node %s", id)}
+	return fmt.Errorf("no node %s", id)
 }
 
 // copyRecord detaches the optional identity and close payloads of a tree record.
@@ -177,10 +174,7 @@ func checkCommandVersions(current, next []byte) error {
 				return err
 			}
 			if change != nil {
-				return &store.Error{
-					Kind:    store.OperationFailed,
-					Message: fmt.Sprintf("command-state version %d is immutable", version.Revision),
-				}
+				return fmt.Errorf("command-state version %d is immutable", version.Revision)
 			}
 		}
 	}

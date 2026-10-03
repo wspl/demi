@@ -8,7 +8,7 @@ import (
 
 // imageOrientation extracts the EXIF orientation used when an image is reencoded.
 // The standard codecs and x/image do not expose EXIF; only the orientation tag
-// in the first TIFF IFD is read, matching image::metadata::Orientation.
+// (0x0112) in the first TIFF IFD is read, and any value outside 1-8 means 1.
 func imageOrientation(data []byte, mediaType string) uint16 {
 	switch mediaType {
 	case "image/jpeg":
@@ -16,7 +16,7 @@ func imageOrientation(data []byte, mediaType string) uint16 {
 	case "image/png":
 		return pngOrientation(data)
 	case "image/webp":
-		// A malformed/missing EXIF chunk has no orientation, as in Rust.
+		// A malformed or missing EXIF chunk means no orientation.
 		if exif, err := webpChunk(data, "EXIF"); err == nil {
 			return exifOrientation(exif)
 		}
@@ -24,7 +24,7 @@ func imageOrientation(data []byte, mediaType string) uint16 {
 	return 1
 }
 
-// exifOrientation reads the same SHORT/count-one IFD entry as the Rust image codec.
+// exifOrientation reads the orientation tag only as a SHORT entry with count one.
 func exifOrientation(data []byte) uint16 {
 	if len(data) < 8 {
 		return 1

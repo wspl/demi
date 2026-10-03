@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"strconv"
 
 	"github.com/wspl/demi/internal/agent/session"
@@ -82,25 +81,19 @@ type ShellAccess[H host.Host] struct {
 }
 
 // Invoke runs one standard tool call. Refused input returns an error outcome;
-// Host failures return *session.ToolFailure, and cancellation returns ctx.Err().
+// a Host failure returns its error, and cancellation returns ctx.Err().
 // The context owns commands started by the call after Invoke returns.
 func (s *ShellAccess[H]) Invoke(ctx context.Context, call session.ToolInvocation) (session.ToolOutcome, error) {
 	outcome, err := runTool(ctx, call, s.Context.Node, s)
 	if ctx.Err() != nil {
 		return session.ToolOutcome{}, ctx.Err()
 	}
-	if err == nil {
-		return outcome, nil
-	}
-	var failure *CallError
-	if errors.As(err, &failure) && failure.Kind == Refused {
-		return session.ErrorOutcome(failure.Message), nil
-	}
-	return session.ToolOutcome{}, &session.ToolFailure{Message: err.Error()}
+	return outcome, err
 }
 
 // Write writes stdin to a running command of the current Host and returns
-// its environment. A refusal or Host failure returns *CallError.
+// its environment.
+// A Host failure returns its error.
 func (s *ShellAccess[H]) Write(
 	ctx context.Context,
 	command core.CommandID,
@@ -111,50 +104,23 @@ func (s *ShellAccess[H]) Write(
 		return nil, err
 	}
 	if err := environment.Write(ctx, command, []byte(stdin)); err != nil {
-		return nil, &CallError{Kind: Failed, Message: err.Error(), Cause: err}
+		return nil, err
 	}
 	return environment, nil
 }
 
 // Abort stops a running command of the current Host and returns its environment.
-// A refusal or Host failure returns *CallError.
+// A Host failure returns its error.
 func (s *ShellAccess[H]) Abort(ctx context.Context, command core.CommandID) (host.ShellEnvironment, error) {
 	_, environment, err := s.environment(ctx, nil, &command)
 	if err != nil {
 		return nil, err
 	}
 	if err := environment.Abort(ctx, command); err != nil {
-		return nil, &CallError{Kind: Failed, Message: err.Error(), Cause: err}
+		return nil, err
 	}
 	return environment, nil
 }
-
-// CallErrorKind distinguishes refused input from a failed Host or shell.
-type CallErrorKind uint8
-
-const (
-	// Refused means the input was refused with the text the model receives.
-	Refused CallErrorKind = iota
-	// Failed means the Host or its shells failed.
-	Failed
-)
-
-// CallError explains why a shell operation produced no tool result.
-// Cause preserves an underlying error for errors.Is and errors.As.
-type CallError struct {
-	// Kind classifies the refusal or failure.
-	Kind CallErrorKind
-	// Message holds the model-facing failure text.
-	Message string
-	// Cause retains the underlying failure, when present.
-	Cause error
-}
-
-// Error returns the refusal or failure message.
-func (e *CallError) Error() string { return e.Message }
-
-// Unwrap returns the underlying failure, if any.
-func (e *CallError) Unwrap() error { return e.Cause }
 
 // environment resolves the current target and its node-owned shell environment.
 func (s *ShellAccess[H]) environment(
@@ -164,7 +130,7 @@ func (s *ShellAccess[H]) environment(
 ) (*environmentSlot, host.ShellEnvironment, error) {
 	target, err := s.Hosts.Host(ctx, s.Context)
 	if err != nil {
-		return nil, nil, &CallError{Kind: Failed, Message: err.Error(), Cause: err}
+		return nil, nil, err
 	}
 	scope := EnvironmentScope{
 		Root:     s.Context.Root,
@@ -182,7 +148,7 @@ func (s *ShellAccess[H]) environment(
 		func(ctx context.Context) (host.ShellEnvironment, error) { return s.Shells.Create(ctx, scope, target) },
 	)
 	if err != nil {
-		return nil, nil, &CallError{Kind: Failed, Message: err.Error(), Cause: err}
+		return nil, nil, err
 	}
 	return slot, environment, nil
 }
@@ -208,19 +174,15 @@ func runTool(
 	case Yield:
 		input, decodeErr := decodeYieldInput(call.Input)
 		if decodeErr != nil {
-			return session.ToolOutcome{}, inputRefusal(call.ToolName, decodeErr)
+			return session.ErrorOutcome(inputRefusal(call.ToolName, decodeErr)), nil
 		}
 		return session.ToolOutcome{Effect: &session.ScheduleYield{DurationMS: uint32(input.DurationMS)}}, nil
 	case ShellExec:
-		var repeated *session.ToolOutcome
-		environment, status, repeated, err = execTool(ctx, call, node, s)
-		if repeated != nil {
-			return *repeated, nil
-		}
+		return execTool(ctx, call, node, s)
 	case ShellStatus, ShellAbort:
 		input, decodeErr := decodeCommandInput(call.Input)
 		if decodeErr != nil {
-			return session.ToolOutcome{}, inputRefusal(call.ToolName, decodeErr)
+			return session.ErrorOutcome(inputRefusal(call.ToolName, decodeErr)), nil
 		}
 		command := core.CommandID(strconv.FormatUint(input.CommandID, 10))
 		if StandardTool(call.ToolName) == ShellAbort {
@@ -234,7 +196,7 @@ func runTool(
 	case ShellWrite:
 		input, decodeErr := decodeShellWriteInput(call.Input)
 		if decodeErr != nil {
-			return session.ToolOutcome{}, inputRefusal(call.ToolName, decodeErr)
+			return session.ErrorOutcome(inputRefusal(call.ToolName, decodeErr)), nil
 		}
 		command := core.CommandID(strconv.FormatUint(input.CommandID, 10))
 		environment, err = s.Write(ctx, command, string(input.Stdin))
@@ -247,25 +209,35 @@ func runTool(
 	if err != nil {
 		return session.ToolOutcome{}, err
 	}
-	// Reporting an end releases the handle even if result fitting is cancelled.
+	return commandOutcome(ctx, call, environment, status), nil
+}
+
+// commandOutcome reports a command's status as the call's result. Reporting
+// an end releases the command's handle even if result fitting is cancelled.
+func commandOutcome(
+	ctx context.Context,
+	call session.ToolInvocation,
+	environment host.ShellEnvironment,
+	status host.CommandStatus,
+) session.ToolOutcome {
 	if status.State.Phase != host.Running {
 		defer environment.ReleaseCommand(context.WithoutCancel(ctx), status.CommandID)
 	}
-	outcome := shellOutcome(ctx, status, call.Model.Model, call.RequestLimits)
-	return outcome, nil
+	return shellOutcome(ctx, status, call.Model.Model, call.RequestLimits)
 }
 
-// inputRefusal names the tool and the generated decoder's offending field.
-func inputRefusal(tool string, err error) error {
-	return &CallError{Kind: Refused, Message: tool + " input is invalid:\n" + err.Error(), Cause: err}
+// inputRefusal is the model-facing text refusing a tool's invalid input,
+// naming the tool and the generated decoder's offending field.
+func inputRefusal(tool string, err error) string {
+	return tool + " input is invalid:\n" + err.Error()
 }
 
 func execTool(
 	ctx context.Context, call session.ToolInvocation, node core.NodeID, s shellOperations,
-) (host.ShellEnvironment, host.CommandStatus, *session.ToolOutcome, error) {
+) (session.ToolOutcome, error) {
 	input, decodeErr := decodeShellExecInput(call.Input)
 	if decodeErr != nil {
-		return nil, host.CommandStatus{}, nil, inputRefusal(call.ToolName, decodeErr)
+		return session.ErrorOutcome(inputRefusal(call.ToolName, decodeErr)), nil
 	}
 	var shell *core.ShellID
 	target := host.ShellTarget{Kind: host.DefaultShell}
@@ -276,10 +248,10 @@ func execTool(
 	}
 	slot, environment, err := s.environment(ctx, shell, nil)
 	if err != nil {
-		return nil, host.CommandStatus{}, nil, err
+		return session.ToolOutcome{}, err
 	}
-	if repeated := slot.repeated(input.Script); repeated != nil {
-		return nil, host.CommandStatus{}, repeated, nil
+	if repeat, suppressed := slot.repeated(input.Script); suppressed {
+		return repeat, nil
 	}
 	window, _ := host.NewObservationWindow(
 		uint64(input.TimeoutMS),
@@ -294,5 +266,8 @@ func execTool(
 			ToolUseID: call.ToolUseID,
 		},
 	)
-	return environment, status, nil, err
+	if err != nil {
+		return session.ToolOutcome{}, err
+	}
+	return commandOutcome(ctx, call, environment, status), nil
 }

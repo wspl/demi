@@ -35,12 +35,12 @@ func RootRecord(id core.NodeID, now core.Timestamp) NodeRecord {
 	return NodeRecord{ID: id, Round: 1, StartedAt: now, CanSpawnSubagents: true}
 }
 
-// Job describes a child for subagent frames; the root has no job.
-func (n NodeRecord) Job() *framewire.SubagentJob {
+// Job describes a child for subagent frames, and false for the root, which has no job.
+func (n NodeRecord) Job() (framewire.SubagentJob, bool) {
 	if n.Parent == nil {
-		return nil
+		return framewire.SubagentJob{}, false
 	}
-	job := &framewire.SubagentJob{
+	job := framewire.SubagentJob{
 		SubagentID:      n.ID,
 		ParentSessionID: *n.Parent,
 		Description:     n.Description,
@@ -58,7 +58,7 @@ func (n NodeRecord) Job() *framewire.SubagentJob {
 	if n.Profile != nil {
 		job.Profile = new(*n.Profile)
 	}
-	return job
+	return job, true
 }
 
 // NodeClose describes how and when a node closed.

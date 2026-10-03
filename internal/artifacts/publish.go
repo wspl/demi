@@ -182,8 +182,8 @@ func PublishBytes(ctx context.Context, path string, data []byte, publication Pub
 }
 
 // PublishDirectory replaces a directory with a stage on the same volume.
-// Like the Rust operation, replacing a directory removes the old tree first;
-// callers serialize installers with an InstallLock.
+// Replacing a directory removes the old tree first, so the replacement is not
+// atomic; callers serialize installers with an InstallLock.
 func PublishDirectory(ctx context.Context, staged, destination string) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -219,8 +219,8 @@ func (e *Edge) transcript(w http.ResponseWriter, r *http.Request) error {
 		Subagents: make([]webapi.SubagentHistory, 0, len(history.Subagents)),
 	}
 	for _, node := range history.Subagents {
-		job := node.Record.Job()
-		if job == nil {
+		job, ok := node.Record.Job()
+		if !ok {
 			return fmt.Errorf("subagent %s has no parent", node.Record.ID)
 		}
 		failures, err := usershard.FailureFacts(r.Context(), e.state.Services.Assembly, node.Blocks)
@@ -229,7 +229,7 @@ func (e *Edge) transcript(w http.ResponseWriter, r *http.Request) error {
 		}
 		result.Subagents = append(
 			result.Subagents,
-			webapi.SubagentHistory{Subagent: *job, Blocks: node.Blocks, Failures: &failures},
+			webapi.SubagentHistory{Subagent: job, Blocks: node.Blocks, Failures: &failures},
 		)
 	}
 	if len(*result.Failures) == 0 {

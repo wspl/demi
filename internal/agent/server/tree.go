@@ -125,24 +125,60 @@ func (s *Server[H]) openTree(
 	ctx context.Context,
 	root core.NodeID,
 	cwd string,
-) (*Tree[H], *session.Continuation, error) {
+) (*Tree[H], session.Continuation, bool, error) {
 	toolset, err := s.deps.Toolsets.Current(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("the commands the conversation opens with cannot be read: %w", err)
+		return nil, session.Continuation{}, false, fmt.Errorf(
+			"the commands the conversation opens with cannot be read: %w",
+			err,
+		)
 	}
 	if err := checkProfiles(toolset.Profiles); err != nil {
-		return nil, nil, err
+		return nil, session.Continuation{}, false, err
 	}
 	model, err := s.deps.Providers.Selection(ctx, root)
 	if err != nil {
-		return nil, nil, err
+		return nil, session.Continuation{}, false, err
 	}
 	runtime, err := s.deps.Providers.Runtime(ctx, root, model)
 	if err != nil {
-		return nil, nil, err
+		return nil, session.Continuation{}, false, err
 	}
+	t := s.newTree(root, toolset)
+	node, continuation, continues, err := t.assemble(ctx, assembly{
+		record:       store.RootRecord(root, s.deps.Clock.Now()),
+		cwd:          cwd,
+		model:        model,
+		runtime:      runtime,
+		instructions: s.deps.Instructions,
+		preamble:     nil,
+		inherited:    toolset.Commands,
+		first:        nil,
+	})
+	if err != nil {
+		t.cancel()
+		return nil, session.Continuation{}, false, err
+	}
+	t.root = node
+	if continues {
+		if err := node.session.UpdateModel(session.ModelSwitch{Model: model}); err != nil {
+			t.cancel()
+			return nil, session.Continuation{}, false, errors.Join(
+				err,
+				node.session.Dispose(context.WithoutCancel(ctx)),
+			)
+		}
+	}
+	if err := s.publishTree(ctx, t, node, t.cancel); err != nil {
+		return nil, session.Continuation{}, false, err
+	}
+	return t, continuation, continues, nil
+}
+
+// newTree makes conversation root's unpublished tree with its own lifetime.
+func (s *Server[H]) newTree(root core.NodeID, toolset tools.Toolset) *Tree[H] {
 	lifetime, cancel := context.WithCancel(context.Background())
-	t := &Tree[H]{
+	return &Tree[H]{
 		server:      s,
 		id:          root,
 		store:       s.deps.Stores(root),
@@ -157,31 +193,6 @@ func (s *Server[H]) openTree(
 		cancel:      cancel,
 		running:     map[core.CommandID]bool{},
 	}
-	node, continuation, err := t.assemble(ctx, assembly{
-		record:       store.RootRecord(root, s.deps.Clock.Now()),
-		cwd:          cwd,
-		model:        model,
-		runtime:      runtime,
-		instructions: s.deps.Instructions,
-		preamble:     nil,
-		inherited:    toolset.Commands,
-		first:        nil,
-	})
-	if err != nil {
-		cancel()
-		return nil, nil, err
-	}
-	t.root = node
-	if continuation != nil {
-		if err := node.session.UpdateModel(session.ModelSwitch{Model: model}); err != nil {
-			cancel()
-			return nil, nil, errors.Join(err, node.session.Dispose(context.WithoutCancel(ctx)))
-		}
-	}
-	if err := s.publishTree(ctx, t, node, cancel); err != nil {
-		return nil, nil, err
-	}
-	return t, continuation, nil
 }
 
 // bump announces a change after releasing the server's state lock.
@@ -421,7 +432,7 @@ func (s *Server[H]) publishTree(ctx context.Context, t *Tree[H], node *Node[H], 
 		s.mu.Unlock()
 		cancel()
 		t.subscription.Release()
-		return errors.Join(session.AdmissionClosed, node.session.Dispose(context.WithoutCancel(ctx)))
+		return errors.Join(session.ErrClosed, node.session.Dispose(context.WithoutCancel(ctx)))
 	}
 	s.trees[t.id] = t
 	s.mu.Unlock()

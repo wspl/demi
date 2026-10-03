@@ -20,41 +20,41 @@ type BlobStore interface {
 	Read(ctx context.Context, blob core.BlobRef) (core.B64Bytes, bool, error)
 }
 
-// Held is what a session holds for one medium.
+// heldMedium is what a session holds for one medium: its bytes, or the knowledge that the namespace lacks it.
 //
 //sumtype:decl
-type Held interface{ held() }
+type heldMedium interface{ heldMedium() }
 
-// HeldBytes carries a medium's bytes.
-type HeldBytes struct {
+// heldBytes carries a medium's bytes.
+type heldBytes struct {
 	// Bytes holds the medium contents.
-	Bytes core.B64Bytes
+	bytes core.B64Bytes
 }
 
-// HeldMissing records that the namespace does not hold the medium's blob.
-type HeldMissing struct{}
+// heldMissing records that the namespace does not hold the medium's blob.
+type heldMissing struct{}
 
-func (*HeldBytes) held()   {}
-func (*HeldMissing) held() {}
+func (*heldBytes) heldMedium()   {}
+func (*heldMissing) heldMedium() {}
 
 // HeldMedia holds bytes or known absence by blob name. Its zero value is empty.
 // Its session serializes mutation; selections and views own their snapshots.
-type HeldMedia struct{ media map[core.BlobRef]Held }
+type HeldMedia struct{ media map[core.BlobRef]heldMedium }
 
 // Hold keeps bytes unless something is already held for the blob.
 func (h *HeldMedia) Hold(blob core.BlobRef, data core.B64Bytes) {
 	if h.media == nil {
-		h.media = map[core.BlobRef]Held{}
+		h.media = map[core.BlobRef]heldMedium{}
 	}
 	if _, exists := h.media[blob]; !exists {
-		h.media[blob] = &HeldBytes{Bytes: bytes.Clone(data)}
+		h.media[blob] = &heldBytes{bytes: bytes.Clone(data)}
 	}
 }
 
 // Absorb holds what other holds, keeping what is held already.
 func (h *HeldMedia) Absorb(other HeldMedia) {
 	if h.media == nil {
-		h.media = map[core.BlobRef]Held{}
+		h.media = map[core.BlobRef]heldMedium{}
 	}
 	for blob, held := range other.media {
 		if _, exists := h.media[blob]; !exists {
@@ -74,7 +74,7 @@ func (h *HeldMedia) Retain(referenced map[core.BlobRef]struct{}) {
 
 // Select copies the held media that blocks reference.
 func (h *HeldMedia) Select(blocks []core.Block) HeldMedia {
-	selected := HeldMedia{media: map[core.BlobRef]Held{}}
+	selected := HeldMedia{media: map[core.BlobRef]heldMedium{}}
 	for _, block := range blocks {
 		for _, blob := range References(block) {
 			if held, exists := h.media[blob]; exists {
@@ -114,14 +114,19 @@ func NewModelView(start int, blocks []core.Block, held HeldMedia) (*ModelView, [
 	return &ModelView{Start: start, Blocks: cloneModelBlocks(blocks), media: held.Select(blocks)}, nil
 }
 
-// Held returns the media held for a referenced blob. An unreferenced blob
-// violates the view invariant and panics with the Rust invariant message.
-func (v *ModelView) Held(blob core.BlobRef) Held {
+// Held returns a copy of the bytes held for a referenced blob, or false when
+// the namespace does not hold that blob. An unreferenced blob violates the
+// view invariant and panics.
+func (v *ModelView) Held(blob core.BlobRef) (core.B64Bytes, bool) {
 	held, exists := v.media.media[blob]
 	if !exists {
 		panic("the model's view holds something for every medium its blocks reference")
 	}
-	return copyHeld(held)
+	stored, found := held.(*heldBytes)
+	if !found {
+		return nil, false
+	}
+	return bytes.Clone(stored.bytes), true
 }
 
 // MissingText renders a missing image, video or document for a model request.
@@ -287,7 +292,7 @@ func PersistResult(
 
 // ReadMedia reads blobs at most eight at a time, holding bytes or known absence.
 func ReadMedia(ctx context.Context, blobs BlobStore, refs []core.BlobRef) (HeldMedia, error) {
-	found := make([]Held, len(refs))
+	found := make([]heldMedium, len(refs))
 	var next atomic.Uint64
 	group, readCtx := errgroup.WithContext(ctx)
 	for range min(8, len(refs)) {
@@ -305,9 +310,9 @@ func ReadMedia(ctx context.Context, blobs BlobStore, refs []core.BlobRef) (HeldM
 					return err
 				}
 				if exists {
-					found[index] = &HeldBytes{Bytes: bytes.Clone(data)}
+					found[index] = &heldBytes{bytes: bytes.Clone(data)}
 				} else {
-					found[index] = &HeldMissing{}
+					found[index] = &heldMissing{}
 				}
 			}
 		})
@@ -315,7 +320,7 @@ func ReadMedia(ctx context.Context, blobs BlobStore, refs []core.BlobRef) (HeldM
 	if err := group.Wait(); err != nil {
 		return HeldMedia{}, err
 	}
-	held := HeldMedia{media: map[core.BlobRef]Held{}}
+	held := HeldMedia{media: map[core.BlobRef]heldMedium{}}
 	for index, blob := range refs {
 		held.media[blob] = found[index]
 	}
@@ -323,12 +328,12 @@ func ReadMedia(ctx context.Context, blobs BlobStore, refs []core.BlobRef) (HeldM
 }
 
 // copyHeld preserves a session's ownership of a medium's bytes.
-func copyHeld(held Held) Held {
+func copyHeld(held heldMedium) heldMedium {
 	switch held := held.(type) {
-	case *HeldBytes:
-		return &HeldBytes{Bytes: bytes.Clone(held.Bytes)}
-	case *HeldMissing:
-		return &HeldMissing{}
+	case *heldBytes:
+		return &heldBytes{bytes: bytes.Clone(held.bytes)}
+	case *heldMissing:
+		return &heldMissing{}
 	}
 	return nil
 }

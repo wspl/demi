@@ -110,8 +110,8 @@ func TestCorruptTranscriptStopsLoad(t *testing.T) {
 	if err := memory.CreateNode(t.Context(), contractRecord("root", nil, 0), update); err != nil {
 		t.Fatal(err)
 	}
-	_, err := memory.SessionStore("root").Load(t.Context())
-	if !errors.Is(err, &store.Error{Kind: store.Corrupt}) {
+	_, _, err := memory.SessionStore("root").Load(t.Context())
+	if !errors.Is(err, store.ErrCorrupt) {
 		t.Fatalf("missing row: %v", err)
 	}
 }

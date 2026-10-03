@@ -52,7 +52,7 @@ func TestForkKeepsCompletedPrefixFromLiveAndStoredRoot(t *testing.T) {
 			blocks[3].ID(),
 		); !errors.Is(
 			err,
-			transcript.NotCompletedText,
+			transcript.ErrNotCompletedText,
 		) {
 			t.Fatal("forked user block")
 		}

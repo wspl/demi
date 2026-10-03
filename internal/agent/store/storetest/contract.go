@@ -120,9 +120,9 @@ func reopenThenDelete(ctx context.Context, c contractTree) {
 		c.t.Fatal(err)
 	}
 	for _, id := range []core.NodeID{"child", "grandchild"} {
-		node, err := c.store.Node(ctx, id)
-		if err != nil || node != nil {
-			c.t.Fatalf("deleted node %s: %v %v", id, node, err)
+		_, found, err := c.store.Node(ctx, id)
+		if err != nil || found {
+			c.t.Fatalf("deleted node %s: %v %v", id, found, err)
 		}
 	}
 	c.node(ctx, "root")
@@ -323,18 +323,18 @@ func (c contractTree) close(ctx context.Context, id core.NodeID, closed store.No
 
 func (c contractTree) node(ctx context.Context, id core.NodeID) *store.NodeRecord {
 	c.t.Helper()
-	node, err := c.store.Node(ctx, id)
-	if err != nil || node == nil {
-		c.t.Fatalf("node %s: %v %v", id, node, err)
+	node, found, err := c.store.Node(ctx, id)
+	if err != nil || !found {
+		c.t.Fatalf("node %s: %v %v", id, found, err)
 	}
-	return node
+	return &node
 }
 
 func (c contractTree) load(ctx context.Context, id core.NodeID) *store.Checkpoint {
 	c.t.Helper()
-	checkpoint, err := c.store.SessionStore(id).Load(ctx)
-	if err != nil || checkpoint == nil {
-		c.t.Fatalf("checkpoint %s: %v %v", id, checkpoint, err)
+	checkpoint, found, err := c.store.SessionStore(id).Load(ctx)
+	if err != nil || !found {
+		c.t.Fatalf("checkpoint %s: %v %v", id, found, err)
 	}
-	return checkpoint
+	return &checkpoint
 }

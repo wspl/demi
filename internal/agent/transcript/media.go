@@ -88,12 +88,9 @@ func (r *RequestView) mediaBytes(
 	mediaType, name string,
 	accepted bool,
 ) (*provider.MediaBytes, string) {
-	var data core.B64Bytes
-	switch held := r.view.Held(blob).(type) {
-	case *store.HeldMissing:
+	data, found := r.view.Held(blob)
+	if !found {
 		return nil, store.MissingText(kind)
-	case *store.HeldBytes:
-		data = held.Bytes
 	}
 	reason := ""
 	if !accepted {

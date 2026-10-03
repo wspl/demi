@@ -3,6 +3,7 @@ package session_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -108,7 +109,7 @@ func TestStreamSteerWrittenBeforeTool(t *testing.T) {
 func TestStopWritesSteersAndRefusesIdleSteer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, providertest.Pending())
-		equal(t, f.s.Steer(storetest.Text("no"), "s0"), error(session.SteerNotRunning))
+		equal(t, f.s.Steer(storetest.Text("no"), "s0"), error(session.ErrSteerNotRunning))
 		a := f.send("go", "t1")
 		synctest.Wait()
 		must(t, f.s.Steer(storetest.Text("brief"), "s1"))
@@ -119,7 +120,7 @@ func TestStopWritesSteersAndRefusesIdleSteer(t *testing.T) {
 		equal(t, end, session.Aborted)
 		f.history("user", "steer", "abort")
 		equal(t, len(f.s.PendingSteers()), 0)
-		equal(t, f.s.Steer(storetest.Text("no"), "s2"), error(session.SteerNotRunning))
+		equal(t, f.s.Steer(storetest.Text("no"), "s2"), error(session.ErrSteerNotRunning))
 	})
 }
 
@@ -309,14 +310,13 @@ func TestAgentMessageIdentityRefusals(t *testing.T) {
 		wrong := message("m1")
 		wrong.RecipientID = "elsewhere"
 		err := f.s.AcceptAgentMessage(t.Context(), wrong)
-		var admission *session.AgentMessageError
-		if !errors.As(err, &admission) || admission.Kind != session.AgentMessageRecipient {
+		if !errors.Is(err, session.ErrAgentMessageRecipient) {
 			t.Fatal(err)
 		}
 		empty := message("m2")
 		empty.Content = " "
 		err = f.s.AcceptAgentMessage(t.Context(), empty)
-		if !errors.As(err, &admission) || admission.Kind != session.AgentMessageInvalid {
+		if err == nil || !strings.HasPrefix(err.Error(), "The agent message is invalid: ") {
 			t.Fatal(err)
 		}
 		must(t, f.s.AcceptAgentMessage(t.Context(), message("m3")))
@@ -324,7 +324,7 @@ func TestAgentMessageIdentityRefusals(t *testing.T) {
 		other := message("m3")
 		other.Content = "different"
 		err = f.s.AcceptAgentMessage(t.Context(), other)
-		if !errors.As(err, &admission) || admission.Kind != session.AgentMessageDifferentContent {
+		if !errors.Is(err, session.ErrAgentMessageDifferentContent) {
 			t.Fatal(err)
 		}
 		equal(t, len(f.p.Requests()), 1)
