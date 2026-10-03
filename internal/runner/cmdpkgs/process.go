@@ -152,8 +152,8 @@ func drainStderr(pipe *os.File, service string, tail *process.Tail, done chan<- 
 			break
 		}
 	}
-	if line := lines.Finish(); line != nil {
-		slog.Info(*line, "source", "service:"+service)
+	if line, ok := lines.Finish(); ok {
+		slog.Info(line, "source", "service:"+service)
 	}
 }
 
@@ -167,7 +167,7 @@ func connectionLost(err error) bool {
 }
 
 // shutdownService asks a connected service to release its resources, giving the
-// request and process exit one shared six-second deadline, as the Rust owner does.
+// request and process exit one shared six-second deadline.
 // The caller keeps draining stderr, then kills and reaps if this returns false.
 func shutdownService(ctx context.Context, client *cmdsdk.Client, exited <-chan struct{}, source string) bool {
 	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
@@ -357,7 +357,7 @@ type serviceCleanup struct {
 	diagnostic  *os.File
 	result      error
 	tail        *process.Tail
-	state       *process.Exit
+	state       *serviceWait
 }
 
 // finishService keeps the connection and stderr drain alive until shutdown has reaped the child.
@@ -388,7 +388,8 @@ func finishService(cleanup serviceCleanup) {
 	if errors.As(cleanup.result, &exit) {
 		exit.Stderr = cleanup.tail.Text()
 		if exit.Reason.Kind == ProcessExited {
-			exit.Reason.State = *cleanup.state
+			exit.Reason.State = cleanup.state.exit
+			exit.Reason.WaitErr = cleanup.state.err
 		}
 	}
 }
@@ -515,17 +516,23 @@ func (r *ServiceRegistry) serveService(
 	return waitService(life, descriptor.ID, client, exited, connection, &reaped)
 }
 
+// serviceWait is what reaping the service process reported.
+type serviceWait struct {
+	exit process.Exit
+	err  error
+}
+
 // observeService starts the reaper and stderr drain; serveService joins both through finishService.
 func observeService(
 	ctx context.Context,
 	child *process.Command,
 	service string,
 	diagnostic *os.File,
-) (*process.Exit, <-chan struct{}, *process.Tail, <-chan struct{}) {
+) (*serviceWait, <-chan struct{}, *process.Tail, <-chan struct{}) {
 	exited := make(chan struct{})
-	state := new(process.Exit)
+	state := new(serviceWait)
 	go func() {
-		*state = child.Wait(ctx)
+		state.exit, state.err = child.Wait(ctx)
 		close(exited)
 	}()
 	tail := process.NewTail(runnerwire.ServiceStderrChars)

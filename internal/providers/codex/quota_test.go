@@ -1,7 +1,6 @@
 package codex_test
 
 import (
-	"errors"
 	"net/http"
 	"testing"
 
@@ -69,7 +68,9 @@ func TestFreeUsageProbe(t *testing.T) {
 				`"reset_at":1700500000}}}`,
 		),
 	)
-	equal(t, *p.Quota().ProbeCost(), provider.ProbeFree)
+	cost, ok := p.Quota().ProbeCost()
+	equal(t, ok, true)
+	equal(t, cost, provider.ProbeFree)
 	snapshot, err := p.Quota().Probe(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -98,12 +99,10 @@ func TestUsageProbeRefusal(t *testing.T) {
 	v, _, p := setup(t)
 	v.RespondAt("/backend-api/wham/usage", answer(403, `{"error":"forbidden"}`))
 	_, err := p.Quota().Probe(t.Context())
-	var quota *provider.QuotaError
-	if !errors.As(err, &quota) {
-		t.Fatalf("error: %v", err)
+	if err == nil {
+		t.Fatal("probe succeeded")
 	}
 	equal(t, p.Quota().Latest(), (*core.QuotaSnapshot)(nil))
-	equal(t, quota.Kind, provider.QuotaUnavailable)
-	equal(t, quota.Message, "Codex usage request failed with HTTP 403")
+	equal(t, err.Error(), "Codex usage request failed with HTTP 403")
 	equal(t, len(v.Requests()), 1)
 }

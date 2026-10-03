@@ -1,6 +1,7 @@
 package transcript
 
 import (
+	"errors"
 	"slices"
 
 	"github.com/wspl/demi/internal/core"
@@ -57,9 +58,9 @@ type Rewound struct {
 	Turn core.TurnID
 }
 
-// Rewind retains the last input turn for retry, or returns nil without one.
+// Rewind retains the last input turn for retry, and returns false without one.
 // The first agent message of a continuation also opens its turn.
-func Rewind(blocks []core.Block) *Rewound {
+func Rewind(blocks []core.Block) (Rewound, bool) {
 	seen := map[core.TurnID]bool{}
 	start := -1
 	for i, b := range blocks {
@@ -74,7 +75,7 @@ func Rewind(blocks []core.Block) *Rewound {
 		seen[turn] = true
 	}
 	if start < 0 {
-		return nil
+		return Rewound{}, false
 	}
 	turn := turnOf(blocks[start])
 	retained := slices.Clone(blocks[:start+1])
@@ -86,7 +87,7 @@ func Rewind(blocks []core.Block) *Rewound {
 			retained = append(retained, b)
 		}
 	}
-	return &Rewound{Retained: retained, Input: start, Turn: turn}
+	return Rewound{Retained: retained, Input: start, Turn: turn}, true
 }
 
 // turnOf identifies the turn to which a transcript input belongs.
@@ -118,20 +119,15 @@ func turnOf(block core.Block) core.TurnID {
 	return ""
 }
 
-// CutError identifies why a requested edit or Fork boundary is invalid.
-type CutError string
-
-const (
-	// NotUserMessage rejects an edit target that is not a user message.
-	NotUserMessage CutError = "The edit target must be a user message"
-	// NotCompletedText rejects a Fork target that is not completed answer text.
-	NotCompletedText CutError = "The Fork target must be a completed assistant message"
-	// UnfinishedToolCalls rejects a Fork prefix with an executing tool call.
-	UnfinishedToolCalls CutError = "The Fork boundary contains unfinished tool calls"
+//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+var (
+	// ErrNotUserMessage rejects an edit target that is not a user message.
+	ErrNotUserMessage = errors.New("The edit target must be a user message")
+	// ErrNotCompletedText rejects a Fork target that is not completed answer text.
+	ErrNotCompletedText = errors.New("The Fork target must be a completed assistant message")
+	// ErrUnfinishedToolCalls rejects a Fork prefix with an executing tool call.
+	ErrUnfinishedToolCalls = errors.New("The Fork boundary contains unfinished tool calls")
 )
-
-// Error returns the user-facing reason the cut was refused.
-func (e CutError) Error() string { return string(e) }
 
 // BeforeUser returns the blocks before the editable user target.
 func BeforeUser(blocks []core.Block, target core.BlockID) ([]core.Block, error) {
@@ -144,7 +140,7 @@ func BeforeUser(blocks []core.Block, target core.BlockID) ([]core.Block, error) 
 		}
 		return slices.Clone(blocks[:i]), nil
 	}
-	return nil, NotUserMessage
+	return nil, ErrNotUserMessage
 }
 
 // ThroughAssistant returns the blocks through a completed answer target,
@@ -160,12 +156,12 @@ func ThroughAssistant(blocks []core.Block, target core.BlockID) ([]core.Block, e
 		}
 		for _, prior := range blocks[:i+1] {
 			if call, ok := prior.(*core.ToolCallBlock); ok && call.Status == "executing" {
-				return nil, UnfinishedToolCalls
+				return nil, ErrUnfinishedToolCalls
 			}
 		}
 		return slices.Clone(blocks[:i+1]), nil
 	}
-	return nil, NotCompletedText
+	return nil, ErrNotCompletedText
 }
 
 // CompactionWindow is the half-open range of blocks the next pass summarizes.

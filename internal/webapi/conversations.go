@@ -288,7 +288,8 @@ type ConversationBatch struct {
 	Items []BatchItem `json:"items"`
 }
 
-type BatchItem struct { //nolint:revive // The Rust contract has no product doc comment.
+// One conversation of the caller's in a batch, and the patch to apply to it.
+type BatchItem struct {
 	ID    ConversationID    `json:"id"`
 	Patch ConversationPatch `json:"patch"`
 }

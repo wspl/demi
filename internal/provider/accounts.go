@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/wspl/demi/internal/core"
 )
@@ -11,7 +12,7 @@ import (
 type SubscriptionAccounts interface {
 	Capability() AccountsCapability
 	List(context.Context) ([]core.AccountInfo, error)
-	Active(context.Context) (*string, error)
+	Active(context.Context) (string, bool, error)
 	SetActive(context.Context, string) error
 	Login(context.Context, func(core.LoginPending)) (core.AccountInfo, error)
 	Add(context.Context, AddAccount) (core.AccountInfo, error)
@@ -26,41 +27,6 @@ type AccountsCapability struct {
 
 // AddAccount is material supplied by the product: a Claude setup token.
 type AddAccount struct{ SetupToken Secret }
-
-// AccountsError reports invalid supplied material or a failed account store.
-type AccountsError struct {
-	Message string
-	Err     error
-}
-
-// Error returns the diagnostic for this failure.
-func (e *AccountsError) Error() string {
-	if e.Message != "" {
-		return e.Message
-	}
-	return e.Err.Error()
-}
-
-// Unwrap returns the underlying cause.
-func (e *AccountsError) Unwrap() error { return e.Err }
-
-// LoginError reports a failed or unavailable device login.
-type LoginError struct {
-	Unavailable bool
-	Message     string
-	Err         error
-}
-
-// Error returns the diagnostic for this failure.
-func (e *LoginError) Error() string {
-	if e.Message != "" {
-		return e.Message
-	}
-	return e.Err.Error()
-}
-
-// Unwrap returns the underlying cause.
-func (e *LoginError) Unwrap() error { return e.Err }
 
 // AccountLabel names an account and its stable identity.
 type AccountLabel struct {
@@ -111,8 +77,8 @@ func (a *Accounts) List(ctx context.Context) ([]core.AccountInfo, error) {
 	return result, nil
 }
 
-// Active returns the selected account ID.
-func (a *Accounts) Active(ctx context.Context) (*string, error) { return a.pool.Active(ctx) }
+// Active returns the selected account ID; ok is false when there is none.
+func (a *Accounts) Active(ctx context.Context) (string, bool, error) { return a.pool.Active(ctx) }
 
 // SetActive selects an existing account.
 func (a *Accounts) SetActive(ctx context.Context, id string) error { return a.pool.SetActive(ctx, id) }
@@ -128,7 +94,7 @@ func (a *Accounts) Login(ctx context.Context, pending func(core.LoginPending)) (
 	}
 	info, err := a.importAccount(ctx, account, "login:device")
 	if err != nil {
-		return core.AccountInfo{}, &LoginError{Err: err}
+		return core.AccountInfo{}, err
 	}
 	return info, nil
 }
@@ -144,35 +110,36 @@ func (a *Accounts) Add(ctx context.Context, input AddAccount) (core.AccountInfo,
 
 // Remove refuses the active account and deletes an existing inactive account.
 func (a *Accounts) Remove(ctx context.Context, id string) error {
-	active, err := a.pool.Active(ctx)
+	active, ok, err := a.pool.Active(ctx)
 	if err != nil {
 		return err
 	}
-	if active != nil && *active == id {
+	if ok && active == id {
 		return ErrActiveAccount
 	}
-	meta, err := a.pool.Meta(ctx, id)
+	_, ok, err = a.pool.Meta(ctx, id)
 	if err != nil {
 		return err
 	}
-	if meta == nil {
-		return &PoolError{ID: id}
+	if !ok {
+		return fmt.Errorf("%w %s", ErrNoAccount, id)
 	}
 	return a.pool.Remove(ctx, id)
 }
 
 // importAccount replaces matching identities and selects an entry's first account.
 func (a *Accounts) importAccount(ctx context.Context, account NewAccount, source string) (core.AccountInfo, error) {
-	var existing *AccountMeta
+	var existing AccountMeta
+	found := false
+	var err error
 	if account.Label.IdentityKey != nil {
-		var err error
-		existing, err = FindByIdentity(ctx, a.pool, *account.Label.IdentityKey)
+		existing, found, err = FindByIdentity(ctx, a.pool, *account.Label.IdentityKey)
 		if err != nil {
 			return core.AccountInfo{}, err
 		}
 	}
 	id := CredentialIDFor(account.Label.IdentityKey, account.Label.Label)
-	if existing != nil {
+	if found {
 		id = existing.ID
 	}
 	meta := AccountMeta{
@@ -186,11 +153,11 @@ func (a *Accounts) importAccount(ctx context.Context, account NewAccount, source
 	if err := a.pool.Write(ctx, meta, account.Secret); err != nil {
 		return core.AccountInfo{}, err
 	}
-	active, err := a.pool.Active(ctx)
+	_, ok, err := a.pool.Active(ctx)
 	if err != nil {
 		return core.AccountInfo{}, err
 	}
-	if active == nil {
+	if !ok {
 		if err := a.pool.SetActive(ctx, id); err != nil {
 			return core.AccountInfo{}, err
 		}
@@ -220,25 +187,29 @@ type AuthFailure struct {
 	Detail string
 }
 
-// AccountAuthFailure classifies a failed account read or renewal.
+// AccountAuthFailure classifies a failed account read or renewal; an error
+// that already holds an AuthFailure returns it unchanged.
 func AccountAuthFailure(family string, err error) AuthFailure {
-	result := AuthFailure{Family: family, Reason: AuthReasonStore, Detail: err.Error()}
-	var account *AccountError
-	var renewal *RenewError
-	if errors.As(err, &account) {
-		switch account.Kind {
-		case AccountMissing:
-			result.Reason = AuthReasonMissing
-		case AccountInvalid:
-			result.Reason = AuthReasonInvalid
-			result.Detail = "its secret document is " + account.Err.Error()
-		case AccountStore:
-			result.Detail = account.Err.Error()
-		}
-	} else if errors.As(err, &renewal) {
-		result.Reason = AuthReasonRefresh
+	var failure AuthFailure
+	if errors.As(err, &failure) {
+		return failure
 	}
-	return result
+	var renewal *RenewError
+	var decode *SecretDecodeError
+	switch {
+	case errors.As(err, &renewal):
+		return AuthFailure{Family: family, Reason: AuthReasonRefresh, Detail: err.Error()}
+	case errors.Is(err, ErrNoSecretDocument):
+		return AuthFailure{Family: family, Reason: AuthReasonMissing, Detail: err.Error()}
+	case errors.As(err, &decode):
+		return AuthFailure{
+			Family: family,
+			Reason: AuthReasonInvalid,
+			Detail: "its secret document is " + decode.Error(),
+		}
+	default:
+		return AuthFailure{Family: family, Reason: AuthReasonStore, Detail: err.Error()}
+	}
 }
 
 // Error returns the diagnostic for this failure.
@@ -280,22 +251,4 @@ func (f AuthFailure) State() core.AuthState {
 		return &core.Unauthenticated{Message: &message}
 	}
 	return &core.AuthError{Message: message}
-}
-
-// QuotaError classifies store failures as unavailable and others as unauthenticated.
-func (f AuthFailure) QuotaError() *QuotaError {
-	kind := QuotaUnauthenticated
-	if f.Reason == AuthReasonStore {
-		kind = QuotaUnavailable
-	}
-	return &QuotaError{Kind: kind, Message: f.Error()}
-}
-
-// CatalogError uses the same authentication rule as quota probes.
-func (f AuthFailure) CatalogError() *CatalogError {
-	kind := CatalogUnauthenticated
-	if f.Reason == AuthReasonStore {
-		kind = CatalogUnavailable
-	}
-	return &CatalogError{Kind: kind, Message: f.Error()}
 }

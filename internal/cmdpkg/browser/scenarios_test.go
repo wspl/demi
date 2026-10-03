@@ -26,7 +26,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// browserSite supplies the Rust fixture's navigation, form and cancellation events.
+// browserSite serves testdata/repairs.html and its navigation, form and cancellation endpoints.
 func browserSite(t *testing.T) http.Handler {
 	t.Helper()
 	fixture, err := os.ReadFile("testdata/repairs.html")

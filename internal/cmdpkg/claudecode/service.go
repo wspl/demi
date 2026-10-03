@@ -17,7 +17,7 @@ const maxInputBytes = 64 * 1024
 // Serve validates the launch argument and serves the command wire on process stdio.
 // The executable must exit when Serve returns.
 func Serve(ctx context.Context, args []string) error {
-	if _, err := cmdsdk.ParseLaunch(args); err != nil {
+	if err := cmdsdk.CheckLaunch(args); err != nil {
 		return err
 	}
 	return cmdsdk.ServeStdio(ctx, &service{})

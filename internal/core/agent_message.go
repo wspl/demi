@@ -30,34 +30,35 @@ func (c CompletionID) BlockID() (BlockID, error) {
 	return ParseBlockID(c.String())
 }
 
-// NotCompletionID identifies a malformed completion receipt identity.
-type NotCompletionID string
-
-// Error describes the refused completion identity.
-func (e NotCompletionID) Error() string {
-	return fmt.Sprintf("%q is not a completion id (subagent:<child id>:<round>)", string(e))
-}
-
 // ParseCompletionID separates the child from the final decimal round.
 func ParseCompletionID(text string) (CompletionID, error) {
+	id, ok := parseCompletionID(text)
+	if !ok {
+		return CompletionID{}, fmt.Errorf("%q is not a completion id (subagent:<child id>:<round>)", text)
+	}
+	return id, nil
+}
+
+// parseCompletionID reads subagent:<child id>:<round>, the round a decimal safe integer.
+func parseCompletionID(text string) (CompletionID, bool) {
 	rest, ok := strings.CutPrefix(text, "subagent:")
 	index := strings.LastIndexByte(rest, ':')
 	if !ok || index < 1 || index == len(rest)-1 {
-		return CompletionID{}, NotCompletionID(text)
+		return CompletionID{}, false
 	}
 	digits := rest[index+1:]
 	for _, r := range digits {
 		if r < '0' || r > '9' {
-			return CompletionID{}, NotCompletionID(text)
+			return CompletionID{}, false
 		}
 	}
 	round, err := strconv.ParseUint(digits, 10, 64)
 	if err != nil || round > MaxSafeInteger {
-		return CompletionID{}, NotCompletionID(text)
+		return CompletionID{}, false
 	}
 	child, err := ParseNodeID(rest[:index])
 	if err != nil {
-		return CompletionID{}, NotCompletionID(text)
+		return CompletionID{}, false
 	}
-	return CompletionID{Child: child, Round: round}, nil
+	return CompletionID{Child: child, Round: round}, true
 }

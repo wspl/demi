@@ -178,7 +178,7 @@ func (n *Namespace) DeleteUnused(ctx context.Context, ref core.BlobRef, grace ti
 
 // CommitUses records that a commit writes or removes references to refs, inside
 // its transaction and before committing. If any blob is being deleted, it
-// returns a store.Error of kind store.OperationFailed and the transaction must not commit.
+// returns an error and the transaction must not commit.
 func (n *Namespace) CommitUses(refs []core.BlobRef) error {
 	if len(refs) == 0 {
 		return nil
@@ -188,7 +188,7 @@ func (n *Namespace) CommitUses(refs []core.BlobRef) error {
 	defer s.mu.Unlock()
 	for _, ref := range refs {
 		if s.deleting[blobKey{n.user, ref}] != nil {
-			return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("blob %s is being deleted", ref)}
+			return fmt.Errorf("blob %s is being deleted", ref)
 		}
 	}
 	now := s.clock.Now()

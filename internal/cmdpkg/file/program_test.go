@@ -234,7 +234,7 @@ func TestResidentProgramServesEveryFileOperationAndRecordsEdits(t *testing.T) {
 // This uses a real filesystem publication failure after an earlier successful write.
 func TestPatchFailureRestoresEarlierFiles(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Rust scenario is Unix-only")
+		t.Skip("this scenario is Unix-only")
 	}
 	cwd := t.TempDir()
 	writeFixture(t, filepath.Join(cwd, "first.txt"), "first\n")

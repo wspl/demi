@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 	"github.com/wspl/demi/internal/cmdpkg/file/fileop"
 	"github.com/wspl/demi/internal/commandwire"
@@ -68,12 +68,12 @@ func readRunner(t *testing.T, root string) runnerwire.RunnerRelease {
 
 func requireConflict(t *testing.T, err error, paths ...string) {
 	t.Helper()
-	var conflict *artifacts.ConflictError
-	if !errors.As(err, &conflict) {
+	const conflict = " is already published with other contents"
+	if err == nil || !strings.HasSuffix(err.Error(), conflict) {
 		t.Fatalf("wanted immutable publication conflict, got %v", err)
 	}
-	if len(paths) != 0 && conflict.Path != paths[0] {
-		t.Fatalf("conflict path %s, want %s", conflict.Path, paths[0])
+	if len(paths) != 0 && !strings.HasSuffix(err.Error(), paths[0]+conflict) {
+		t.Fatalf("conflict %v, want path %s", err, paths[0])
 	}
 }
 

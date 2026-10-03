@@ -21,7 +21,7 @@ func validateVersion(value Version) error {
 	}
 	core, _, _ := strings.Cut(string(value), "-")
 	for component := range strings.SplitSeq(core, ".") {
-		// Rust semver's three numeric components are unsigned 64-bit integers.
+		// Each of the three numeric components must fit an unsigned 64-bit integer.
 		if _, err := strconv.ParseUint(component, 10, 64); err != nil {
 			return fmt.Errorf("version component: %w", err)
 		}
@@ -31,8 +31,8 @@ func validateVersion(value Version) error {
 
 // validateArtifact checks the absolute URL without changing its wire spelling.
 func validateArtifact(value Artifact) error {
-	// Like Rust's url crate, this is WHATWG parsing and accepts non-HTTP
-	// schemes. The download owner decides which transports it can fetch.
+	// WHATWG parsing accepts non-HTTP schemes. The download owner decides
+	// which transports it can fetch.
 	if _, err := url.Parse(value.URL); err != nil {
 		return fmt.Errorf("url: %w", err)
 	}

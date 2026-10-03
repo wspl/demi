@@ -35,7 +35,9 @@ type copyStore struct{}
 func (copyStore) Save(context.Context, store.CheckpointUpdate, store.CommitGuard) error { return nil }
 
 // Load starts the compaction copy without a persisted checkpoint.
-func (copyStore) Load(context.Context) (*store.Checkpoint, error) { return nil, nil }
+func (copyStore) Load(context.Context) (store.Checkpoint, bool, error) {
+	return store.Checkpoint{}, false, nil
+}
 
 // Blobs returns the unstored media source of the compaction copy.
 func (copyStore) Blobs() store.BlobStore { return copyBlobs{} }

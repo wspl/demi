@@ -8,7 +8,7 @@ import (
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/cdp"
 )
 
-// Clipboard diagnostics retain Rust's byte offsets for text and HTML input.
+// Clipboard diagnostics report the byte offset of invalid UTF-8 in text and HTML input.
 // In-memory validation only; budget under one second.
 func TestClipboardUTF8Diagnostic(t *testing.T) {
 	for _, tc := range []struct {

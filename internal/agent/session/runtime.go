@@ -31,7 +31,8 @@ type Runtime interface {
 	Tools() []provider.ToolDefinition
 	// InvokeTool runs one named call. Its context has the action's lifetime:
 	// commands started by the call remain bound to it after this method returns.
-	// A tool failure returns *ToolFailure; cancellation returns ctx.Err().
+	// A tool failure returns an error, whose text completes the call as Tool failed: <text>;
+	// cancellation returns ctx.Err().
 	InvokeTool(ctx context.Context, call ToolInvocation) (ToolOutcome, error)
 	// Dispose releases the tools' environments and commands. It joins owned
 	// work before returning; the session awaits it during disposal.
@@ -94,9 +95,3 @@ type ToolEffect interface{ toolEffect() }
 type ScheduleYield struct{ DurationMS uint32 }
 
 func (*ScheduleYield) toolEffect() {}
-
-// ToolFailure is a tool that failed; its call completes as Tool failed: <message>.
-type ToolFailure struct{ Message string }
-
-// Error returns the tool failure's message.
-func (e *ToolFailure) Error() string { return e.Message }

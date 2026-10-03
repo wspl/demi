@@ -54,10 +54,10 @@ func add(ctx context.Context, call host.Call[AddArgs], port host.RPCPort) (uint8
 		storageKey,
 		decodeStoredTodos,
 		storedTodos.MarshalJSON,
-		func(current *storedTodos) (storedTodos, error) {
+		func(current storedTodos, found bool) (storedTodos, error) {
 			todos := storedTodos{}
-			if current != nil {
-				todos = *current
+			if found {
+				todos = current
 			}
 			todos = append(todos, TodoItem{ID: nextID(todos), Text: call.Args.Text, Status: Pending})
 			return todos, nil
@@ -101,13 +101,13 @@ func change(ctx context.Context, port host.RPCPort, id string, edit func(*TodoIt
 		storageKey,
 		decodeStoredTodos,
 		storedTodos.MarshalJSON,
-		func(current *storedTodos) (storedTodos, error) {
-			if current != nil {
-				for i := range *current {
-					if (*current)[i].ID == id {
-						edit(&(*current)[i])
-						changed = (*current)[i]
-						return *current, nil
+		func(current storedTodos, found bool) (storedTodos, error) {
+			if found {
+				for i := range current {
+					if current[i].ID == id {
+						edit(&current[i])
+						changed = current[i]
+						return current, nil
 					}
 				}
 			}

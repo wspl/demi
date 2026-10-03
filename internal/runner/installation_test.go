@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,7 @@ func TestInstallationLockReleasedWithActiveRecord(t *testing.T) {
 		}
 	}()
 	second, err := tryInstallationLock(root)
-	if err != nil || second != nil {
+	if !errors.Is(err, errInstallationBusy) || second != nil {
 		t.Fatalf("second lock acquired: %v", err)
 	}
 	active := filepath.Join(root, "active.json")

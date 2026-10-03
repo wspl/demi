@@ -36,7 +36,7 @@ func TestMediaHeldOnceUntilReleased(t *testing.T) {
 	if len(missing) != 0 || view.Start != 7 {
 		t.Fatal("held view not ready")
 	}
-	if !bytes.Equal(view.Held(refs[0]).(*store.HeldBytes).Bytes, []byte("image")) {
+	if data, _ := view.Held(refs[0]); !bytes.Equal(data, []byte("image")) {
 		t.Fatal("wrong image bytes")
 	}
 	held.Hold(refs[0], []byte("replacement"))
@@ -58,10 +58,10 @@ func TestMediaHeldOnceUntilReleased(t *testing.T) {
 	if len(missing) != 0 {
 		t.Fatal("known missing blob not held")
 	}
-	if _, ok := view.Held(refs[1]).(*store.HeldMissing); !ok {
+	if _, found := view.Held(refs[1]); found {
 		t.Fatal("missing blob became bytes")
 	}
-	if got := view.Held(refs[0]).(*store.HeldBytes).Bytes; string(got) != "image" {
+	if got, _ := view.Held(refs[0]); string(got) != "image" {
 		t.Fatalf("held medium changed form: %q", got)
 	}
 	if store.MissingText("video") != "[missing video]" {

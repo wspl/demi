@@ -1,7 +1,6 @@
 package grokbuild
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -64,43 +63,35 @@ func TestCatalogFailures(t *testing.T) {
 	for _, tc := range []struct {
 		status  int
 		body    string
-		kind    provider.CatalogErrorKind
 		message string
 	}{{
 		200,
 		`{"data":[{"id":"frontier","context_window":"wide"}]}`,
-		provider.CatalogInvalid,
 		"context_window",
 	}, {
 		200,
 		`{"data":[]}`,
-		provider.CatalogInvalid,
 		"Grok Build models answer lists no model",
 	}, {
 		503,
 		"down",
-		provider.CatalogUnavailable,
 		"Grok Build models request failed with HTTP 503",
 	}} {
 		v.RespondAt("/v1/models", answer(tc.status, tc.body))
 		_, err := p.ListModels(t.Context())
-		var failure *provider.CatalogError
-		if !errors.As(err, &failure) {
-			t.Fatalf("unexpected error: %v", err)
+		if err == nil {
+			t.Fatal("catalog accepted")
 		}
-		equal(t, tc.kind, failure.Kind)
 		if tc.message != "context_window" {
-			equal(t, tc.message, failure.Message)
-		} else if !strings.Contains(failure.Message, tc.message) {
-			t.Fatal(failure.Message)
+			equal(t, tc.message, err.Error())
+		} else if !strings.Contains(err.Error(), tc.message) {
+			t.Fatal(err.Error())
 		}
 	}
 	staged := testProvider(v, provider.NewMemoryCredentialPool(), nil, v.Client())
 	_, err := staged.ListModels(t.Context())
-	var failure *provider.CatalogError
-	if !errors.As(err, &failure) {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("unauthenticated catalog accepted")
 	}
-	equal(t, provider.CatalogUnauthenticated, failure.Kind)
-	equal(t, "No Grok account is signed in", failure.Message)
+	equal(t, "No Grok account is signed in", err.Error())
 }

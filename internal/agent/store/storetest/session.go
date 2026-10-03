@@ -2,6 +2,7 @@ package storetest
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/core"
@@ -31,23 +32,27 @@ func (s *memorySession) Save(ctx context.Context, update store.CheckpointUpdate,
 	}
 	if s.tree.failingSaves > 0 {
 		s.tree.failingSaves--
-		return &store.Error{Kind: store.OperationFailed, Message: "the database refused the save"}
+		return errors.New("the database refused the save")
 	}
 	return s.tree.applySaveLocked(saved)
 }
 
-// Load returns the decoded checkpoint, or nil when the node is absent.
-func (s *memorySession) Load(ctx context.Context) (*store.Checkpoint, error) {
+// Load returns the decoded checkpoint, and false when the node is absent.
+func (s *memorySession) Load(ctx context.Context) (store.Checkpoint, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return store.Checkpoint{}, false, err
 	}
 	s.tree.mu.Lock()
 	node, exists := s.tree.nodes[s.id]
 	s.tree.mu.Unlock()
 	if !exists {
-		return nil, nil
+		return store.Checkpoint{}, false, nil
 	}
-	return node.rows.checkpoint(s.id)
+	checkpoint, err := node.rows.checkpoint(s.id)
+	if err != nil || checkpoint == nil {
+		return store.Checkpoint{}, false, err
+	}
+	return *checkpoint, true, nil
 }
 
 // Blobs returns the tree's shared blob namespace.

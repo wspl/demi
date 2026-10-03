@@ -3,6 +3,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -164,7 +165,7 @@ func TestFailedScheduledSaveRetainsDirtyRows(t *testing.T) {
 func TestFailingAndUnknownToolsAreResults(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := toolRuntime("broken", func(context.Context, session.ToolInvocation) (session.ToolOutcome, error) {
-			return session.ToolOutcome{}, &session.ToolFailure{Message: "it broke"}
+			return session.ToolOutcome{}, errors.New("it broke")
 		})
 		f := start(
 			t,
@@ -292,7 +293,7 @@ func TestDisposeDuringToolKeepsQueueAndInterruption(t *testing.T) {
 		equal(t, closes, 1)
 		equal(t, f.p.Closes(), 1)
 		_, err = f.s.Send(storetest.Text("no"), "t3")
-		equal(t, err, error(session.AdmissionClosed))
+		equal(t, err, error(session.ErrClosed))
 	})
 }
 

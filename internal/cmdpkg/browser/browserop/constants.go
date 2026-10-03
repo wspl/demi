@@ -64,7 +64,7 @@ const LiveOperation = "browser.live"
 // ControlFrame is a frame's kind, the byte after its length.
 const ControlFrame = 1
 
-// VideoFrame is a video frame: [`VideoHeader`], then H.264 Annex B data.
+// VideoFrame is a video frame: a [VideoHeader], then H.264 Annex B data.
 const VideoFrame = 2
 
 // VideoCodec is the video frames' codec as WebCodecs names it: H.264 High profile (`64`),
@@ -73,7 +73,7 @@ const VideoFrame = 2
 // of it before it opens a view.
 const VideoCodec = "avc1.640033"
 
-// FileFrame is a chosen file's bytes: [`FileHeader`], then the data.
+// FileFrame is a chosen file's bytes: a [FileHeader], then the data.
 const FileFrame = 3
 
 // MaxFrameBytes is the largest frame after its length: a paste's text and HTML, or a key frame.

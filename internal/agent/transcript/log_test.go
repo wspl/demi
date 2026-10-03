@@ -18,14 +18,17 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 	ids := transcripttest.NewSequentialIDs("log")
 	log := transcript.NewLog(nil, ids, providertest.FixedClock(core.UnixEpoch))
 	model := storetest.TestModel()
-	if log.TakePatches() != nil || log.CompleteTailText() != nil || log.EndsWithOpenText() ||
+	if _, changed := log.TakePatches(); changed {
+		t.Fatal("empty log has work")
+	}
+	if _, completed := log.CompleteTailText(); completed || log.EndsWithOpenText() ||
 		log.EndsWithInterruption() {
 		t.Fatal("empty log has work")
 	}
 	log.SignThinking("no reasoning")
 	log.MarkLatestAbortResumed()
 	log.CompleteToolCall("absent", nil, false, nil)
-	if log.TakePatches() != nil {
+	if _, changed := log.TakePatches(); changed {
 		t.Fatal("absent mutation published")
 	}
 	userID := log.PushUser("turn", model, storetest.Text("hello"), nil)
@@ -42,12 +45,12 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 	if savedText.(*core.TextBlock).Text != "first" {
 		t.Fatal("old snapshot changed")
 	}
-	completed := log.CompleteTailText()
-	if completed == nil || log.CompleteTailText() != nil || log.EndsWithOpenText() {
+	_, completed := log.CompleteTailText()
+	if _, again := log.CompleteTailText(); !completed || again || log.EndsWithOpenText() {
 		t.Fatal("tail completion")
 	}
-	batch := log.TakePatches()
-	if batch.Revision != 1 || log.Version().Revision != 1 || log.TakePatches() != nil {
+	batch, _ := log.TakePatches()
+	if _, again := log.TakePatches(); batch.Revision != 1 || log.Version().Revision != 1 || again {
 		t.Fatal("revision not atomic")
 	}
 	if !reflect.DeepEqual(batch.Rows.Indices(5), []int{0, 1, 2, 3, 4}) {
@@ -75,10 +78,10 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 		t.Fatal("input lookup")
 	}
 	log.SignThinking("resigned") // Row 2 changes below the later insertion floor.
-	pointBatch := log.TakePatches()
+	pointBatch, _ := log.TakePatches()
 	boundary := log.InsertCompactionBoundary(3, model, "summary", 2)
 	log.PushCompactionMarker(model, boundary, 50)
-	moved := log.TakePatches()
+	moved, _ := log.TakePatches()
 	pointBatch.Rows.Merge(moved.Rows)
 	if got := pointBatch.Rows.Indices(len(log.Blocks())); !reflect.DeepEqual(got, []int{2, 3, 4, 5, 6}) {
 		t.Fatal(got)
@@ -93,8 +96,9 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 		t.Fatal("stop patch not immutable")
 	}
 	rewrite := log.ReplaceAll([]core.Block{log.Find(userID)})
-	if len(rewrite.Patches) != 1 || len(rewrite.Touched) != 0 || len(rewrite.Rows.Indices(1)) != 0 ||
-		log.TakePatches() != nil {
+	if _, pending := log.TakePatches(); len(rewrite.Patches) != 1 || len(rewrite.Touched) != 0 ||
+		len(rewrite.Rows.Indices(1)) != 0 ||
+		pending {
 		t.Fatal("rewrite did not supersede pending journal")
 	}
 	if _, ok := rewrite.Patches[0].(*framewire.ReplacePatch); !ok {
@@ -112,7 +116,7 @@ func TestLogToolCompletionUsesLatestExecutingCall(t *testing.T) {
 	log.PushToolCall(model, provider.ToolCall{ToolUseID: "reuse", ToolName: "run", Input: []byte(`null`)})
 	log.PushToolCall(model, provider.ToolCall{ToolUseID: "reuse", ToolName: "run", Input: []byte(`"broken {"`)})
 	log.AppendText(model, "not forkable yet")
-	if log.CompleteTailText() != nil {
+	if _, completed := log.CompleteTailText(); completed {
 		t.Fatal("fork crossed executing call")
 	}
 	pending := log.PendingToolCalls()
@@ -134,7 +138,7 @@ func TestLogToolCompletionUsesLatestExecutingCall(t *testing.T) {
 		t.Fatal(got)
 	}
 	log.CompleteToolCall("reuse", []core.ToolResultContentBlock{&core.ToolText{Text: "done"}}, false, nil)
-	if log.CompleteTailText() == nil || len(log.PendingToolCalls()) != 0 {
+	if _, completed := log.CompleteTailText(); !completed || len(log.PendingToolCalls()) != 0 {
 		t.Fatal("completion did not unblock fork")
 	}
 	blocks := log.Blocks()

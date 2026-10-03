@@ -25,16 +25,8 @@ const (
 
 // ErrManifestRunner means the runner release does not identify the embedded executable.
 //
-//nolint:staticcheck // Preserve the Rust manifest diagnostic verbatim.
+//nolint:staticcheck // User-visible text, kept byte for byte.
 var ErrManifestRunner = errors.New("Runner release must identify the embedded executable")
-
-// ManifestError reports a manifest the manager or the packaging command refuses.
-type ManifestError struct{ Release string }
-
-// Error returns the failure message.
-func (e *ManifestError) Error() string {
-	return fmt.Sprintf("Missing embedded artifact for %s", e.Release)
-}
 
 // HostArchitecture returns the build architecture if Cloud images exist for it.
 func HostArchitecture() (Architecture, bool) {
@@ -82,7 +74,8 @@ func validateManifest(m CloudImageManifest) error {
 	for _, release := range m.Releases {
 		artifact, ok := release.Targets[target]
 		if !ok {
-			return &ManifestError{Release: release.ID}
+			//nolint:staticcheck // User-visible text, kept byte for byte.
+			return fmt.Errorf("Missing embedded artifact for %s", release.ID)
 		}
 		prefix := runnerwire.ArtifactsPath + "/" + artifact.SHA256 + "/"
 		found := false
@@ -93,7 +86,8 @@ func validateManifest(m CloudImageManifest) error {
 			}
 		}
 		if !found {
-			return &ManifestError{Release: release.ID}
+			//nolint:staticcheck // User-visible text, kept byte for byte.
+			return fmt.Errorf("Missing embedded artifact for %s", release.ID)
 		}
 	}
 	return nil

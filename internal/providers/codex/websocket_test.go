@@ -22,13 +22,13 @@ func socketProvider(
 	socket *codextest.FakeWebSocket,
 	authURL string,
 	mode codex.TransportMode,
-	idle *time.Duration,
+	idle time.Duration,
 	clock core.Clock,
 ) *codex.Provider {
 	t.Helper()
 	pool := poolWith(t, document(t, freshToken(t), "refresh-1", now))
 	id := account
-	config := codex.NewConfig(&id)
+	config := codex.Config{Account: &id}
 	config.BackendURL = socket.BackendURL()
 	config.AuthURL = authURL
 	config.Transport = mode
@@ -48,7 +48,7 @@ func TestWebSocketRequest(t *testing.T) {
 		},
 		"",
 	)
-	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, nil, providertest.FixedClock(now))
+	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, 0, providertest.FixedClock(now))
 	r := providertest.InferenceRequest()
 	r.ModelID = "gpt-5.4"
 	events := run(t.Context(), t, p, socket.Client(), r)
@@ -95,7 +95,7 @@ func TestWebSocketEnvelopes(t *testing.T) {
 		},
 		"",
 	)
-	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, nil, providertest.FixedClock(now))
+	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, 0, providertest.FixedClock(now))
 	equal(
 		t,
 		run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest()),
@@ -110,7 +110,7 @@ func TestWebSocketEarlyCloseFallback(t *testing.T) {
 	v := providertest.StartVendor(t)
 	v.RespondAt(responses, completed())
 	socket := codextest.Start(t, []codextest.Script{{Steps: []codextest.Step{{Kind: codextest.Close}}}}, v.URL(""))
-	p := socketProvider(t, socket, v.URL(""), codex.Auto, nil, providertest.FixedClock(now))
+	p := socketProvider(t, socket, v.URL(""), codex.Auto, 0, providertest.FixedClock(now))
 	equal(
 		t,
 		run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest()),
@@ -130,7 +130,7 @@ func TestWebSocketUnreachableCooldown(t *testing.T) {
 		v.URL(""),
 	)
 	clock := providertest.NewManualClock(now)
-	p := socketProvider(t, socket, v.URL(""), codex.Auto, nil, clock)
+	p := socketProvider(t, socket, v.URL(""), codex.Auto, 0, clock)
 	runtime, err := p.Runtime(provider.RuntimeEnv{HTTP: socket.Client()})
 	if err != nil {
 		t.Fatal(err)
@@ -190,7 +190,7 @@ func TestWebSocketFailureAfterEvent(t *testing.T) {
 		},
 		v.URL(""),
 	)
-	p := socketProvider(t, socket, v.URL(""), codex.Auto, nil, providertest.FixedClock(now))
+	p := socketProvider(t, socket, v.URL(""), codex.Auto, 0, providertest.FixedClock(now))
 	events := run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest())
 	equal(t, len(events), 2)
 	equal(t, events[0], &provider.TextDelta{Text: "ws"})
@@ -211,7 +211,7 @@ func TestWebSocketHandshakeRefresh(t *testing.T) {
 		v.URL(""),
 	)
 	// Route login through the fixture as well, which forwards ordinary HTTP to the vendor.
-	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, nil, providertest.FixedClock(now))
+	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, 0, providertest.FixedClock(now))
 	events := run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest())
 	equal(t, events, []provider.Event{&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1}}})
 	equal(t, socket.Connections()[1].Headers.Get("Authorization"), "Bearer new-access")
@@ -226,7 +226,7 @@ func TestWebSocketIdleClose(t *testing.T) {
 			"",
 		)
 		idle := 100 * time.Millisecond
-		p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, &idle, providertest.FixedClock(now))
+		p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, idle, providertest.FixedClock(now))
 		events := run(t.Context(), t, p, socket.Client(), providertest.InferenceRequest())
 		equal(t, len(events), 2)
 		if _, ok := events[0].(*provider.TextDelta); !ok {
@@ -249,7 +249,7 @@ func TestWebSocketCancelClose(t *testing.T) {
 		[]codextest.Script{{Steps: []codextest.Step{{Text: `{"type":"response.output_text.delta","delta":"hel"}`}}}},
 		"",
 	)
-	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, nil, providertest.FixedClock(now))
+	p := socketProvider(t, socket, "http://codex.test", codex.WebSocket, 0, providertest.FixedClock(now))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	runtime, err := p.Runtime(provider.RuntimeEnv{HTTP: socket.Client()})
@@ -275,6 +275,7 @@ func TestWebSocketRefusalKeepsWholeBody(t *testing.T) {
 	v.RespondAt(responses, answer(503, body))
 	p := configured(t, v, pool, func(c *codex.Config) { c.Transport = codex.WebSocket })
 	f := failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest()))
-	equal(t, provider.ReadHTTPRecord(f.Diagnostics).Body, body)
+	record, _ := provider.ReadHTTPRecord(f.Diagnostics)
+	equal(t, record.Body, body)
 	equal(t, len(v.Requests()), 1)
 }

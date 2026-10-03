@@ -6,9 +6,8 @@ import "encoding/json"
 
 // Who started the work: an agent, by its number in the conversation as the
 // model knows it (`runtime.md` § Identifiers the model sees), or the
-// conversation's user through a user stream. `User` is a struct variant so
-// that unknown fields are refused: serde ignores them for a unit variant of
-// an internally tagged enum.
+// conversation's user through a user stream. A `user` caller carries no
+// other field, and one with an unknown field is refused.
 // +demi:union tag=kind
 //
 //sumtype:decl
@@ -101,8 +100,8 @@ type Completion struct {
 }
 
 // Release a conversation's resources, or report which conversations hold
-// any. `Status` is a struct variant so that unknown fields are refused: serde
-// ignores them for a unit variant of an internally tagged enum.
+// any. A `status` request carries no other field, and one with an unknown
+// field is refused.
 // +demi:union tag=operation
 // +demi:root
 //

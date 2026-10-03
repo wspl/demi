@@ -17,7 +17,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// documentOrder retains the object-member order used by the Rust schema and instance walkers.
+// documentOrder records each object's member names in document order, by JSON pointer, for diagnostic order.
 func documentOrder(document []byte) (map[string][]string, error) {
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	decoder.UseNumber()
@@ -67,7 +67,7 @@ func pointerEscape(text string) string {
 }
 
 // exhaustiveSchemas prevents the library's type/const/enum/format fast failures
-// from hiding other Rust iter_errors diagnostics. Each assertion still uses the
+// from hiding the schema's other diagnostics: every failing keyword reports. Each assertion still uses the
 // library's compiled validator. All changes occur before the schema is published.
 func exhaustiveSchemas(root *jsonschema.Schema) {
 	seen := map[*jsonschema.Schema]bool{}
@@ -91,7 +91,7 @@ func exhaustiveSchemas(root *jsonschema.Schema) {
 	visit(root)
 }
 
-// keywordPriority mirrors jsonschema 0.56's diagnostic traversal order.
+// keywordPriority ranks a keyword's diagnostics: a keyword earlier in the list reports first.
 func keywordPriority(keyword string) int {
 	keywords := []string{
 		"type",
@@ -178,7 +178,8 @@ func (s *Schema) schemaAt(path []string) any {
 	return value
 }
 
-// diagnosticRank orders schema errors by Rust's keyword priority and input traversal.
+// diagnosticRank builds a failure's sort key: at each schema step the keyword's priority,
+// then the member's position in the schema or the instance.
 func (s *Schema) diagnosticRank(failure *jsonschema.ValidationError, order map[string][]string) string {
 	path := append(schemaPath(failure.SchemaURL), failure.ErrorKind.KeywordPath()...)
 	if reason, ok := failure.ErrorKind.(*kind.Dependency); ok {
@@ -208,7 +209,7 @@ func (s *Schema) diagnosticRank(failure *jsonschema.ValidationError, order map[s
 	return traversal.rank.String()
 }
 
-// unevaluatedFailure combines library element errors into Rust's one diagnostic.
+// unevaluatedFailure combines the library's per-member errors of one unevaluated keyword into one diagnostic.
 type unevaluatedFailure struct {
 	items bool
 	names []string
@@ -225,7 +226,8 @@ func (e *unevaluatedFailure) KeywordPath() []string {
 // LocalizedString is empty because command diagnostics render this aggregate themselves.
 func (*unevaluatedFailure) LocalizedString(*message.Printer) string { return "" }
 
-// aggregateFailures preserves Rust keywords' aggregate failure boundaries.
+// aggregateFailures keeps one contains failure per schema and instance location, and one
+// unevaluated failure per keyword and parent instance that lists every member.
 func aggregateFailures(failures []*jsonschema.ValidationError) []*jsonschema.ValidationError {
 	groups := map[string]*jsonschema.ValidationError{}
 	contains := map[string]bool{}
@@ -275,7 +277,8 @@ func aggregateFailures(failures []*jsonschema.ValidationError) []*jsonschema.Val
 	return result
 }
 
-// literal renders a schema value as Rust's compact JSON, retaining object order.
+// literal renders a schema value as compact JSON in document order: an integer as written,
+// another number as the shortest float with a .0 or, below 1e-5 or from 1e16, a signed exponent.
 func (s *Schema) literal(path []string) string {
 	value := s.schemaAt(path)
 	prefix := ""
@@ -375,7 +378,7 @@ func schemaChildren(s *jsonschema.Schema) []*jsonschema.Schema {
 	return children
 }
 
-// separateSchemaAssertions lets every Rust-compatible diagnostic be collected.
+// separateSchemaAssertions moves type, const, enum and format into allOf subschemas, so each failure is collected.
 func separateSchemaAssertions(s *jsonschema.Schema) {
 	if s.Types != nil {
 		s.AllOf = append(
@@ -426,7 +429,11 @@ func unevaluatedNameIndex(path []string, index int, location []string) int {
 	return nameIndex
 }
 
-// writeKeywordRank retains Rust fused-property and required-field priorities.
+// writeKeywordRank writes a keyword's priority. When additionalProperties is present and
+// not true, properties and patternProperties rank with it. A one-field required, with
+// additionalProperties false, properties and no patternProperties, ranks after every
+// additionalProperties diagnostic. A two-field required, with fewer than 15 properties,
+// no patternProperties and additionalProperties absent or true, ranks before the properties' diagnostics.
 func writeKeywordRank(rank *strings.Builder, keyword string, parent map[string]any) bool {
 	priority := keywordPriority(keyword)
 	additional, hasAdditional := parent["additionalProperties"]
@@ -503,7 +510,8 @@ func (t *diagnosticTraversal) writeMemberRank(s *Schema, keyword, member string,
 	}
 	index := slices.Index(s.order[t.schemaPrefix], member)
 	if keyword == "properties" && t.instanceIndex < len(t.failure.InstanceLocation) {
-		// Small Rust property tables iterate the smaller side; fused tables iterate the instance.
+		// Rank by the instance's member order when the table is fused, has 15 or more properties,
+		// or the instance has no more members than the schema; otherwise by the schema's order.
 		if fused || len(s.order[t.schemaPrefix]) >= 15 ||
 			len(t.order[t.instancePrefix]) <= len(s.order[t.schemaPrefix]) {
 			index = slices.Index(t.order[t.instancePrefix], t.failure.InstanceLocation[t.instanceIndex])

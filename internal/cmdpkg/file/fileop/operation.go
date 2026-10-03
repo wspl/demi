@@ -1,6 +1,12 @@
 package fileop
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrUnknownOperation means the invocation names no operation of this package.
+var ErrUnknownOperation = errors.New("unknown operation")
 
 // Package is the package's id, which its release descriptor names and the coding
 // agent's commands bind to.
@@ -18,33 +24,14 @@ func (*CreateArgs) operation() {}
 func (*EditArgs) operation()   {}
 func (*PatchArgs) operation()  {}
 
-// OperationError explains why an invocation could not be decoded.
-// An absent Err means the operation name is unknown; otherwise Err is the
-// argument decoding or validation failure.
-type OperationError struct {
-	// Name identifies the requested operation.
-	Name string
-	// Err is the argument failure, or nil when the operation name is unknown.
-	Err error
-}
-
-// Error reports the argument failure or unknown operation.
-func (e *OperationError) Error() string {
-	if e.Err != nil {
-		return e.Err.Error()
-	}
-	return fmt.Sprintf("unknown operation %s", e.Name)
-}
-
-// Unwrap returns the argument failure, or nil for an unknown operation.
-func (e *OperationError) Unwrap() error { return e.Err }
-
 // Operations returns the package's operations, as its descriptor lists them.
 func Operations() []string {
 	return []string{"file.read", "file.create", "file.edit", "file.patch"}
 }
 
-// Parse decodes the arguments of the operation named name.
+// Parse decodes the arguments of the operation named name. An unknown name
+// returns an error wrapping ErrUnknownOperation; invalid arguments return the
+// decoding error.
 func Parse(name string, args []byte) (Operation, error) {
 	var op Operation
 	var err error
@@ -66,10 +53,10 @@ func Parse(name string, args []byte) (Operation, error) {
 		value, err = DecodePatchArgs(args)
 		op = &value
 	default:
-		return nil, &OperationError{Name: name}
+		return nil, fmt.Errorf("%w %s", ErrUnknownOperation, name)
 	}
 	if err != nil {
-		return nil, &OperationError{Name: name, Err: err}
+		return nil, err
 	}
 	return op, nil
 }

@@ -12,11 +12,13 @@ import (
 
 const imagePolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 
-func contentHeaders(mediaType *string, download bool, name string) http.Header {
+// contentHeaders shows a known in-place media type inline; an empty or other
+// media type downloads as an attachment.
+func contentHeaders(mediaType string, download bool, name string) http.Header {
 	headers := http.Header{"X-Content-Type-Options": {"nosniff"}}
-	if mediaType != nil && !download && core.ShowsInPlace(*mediaType) {
-		headers.Set("Content-Type", *mediaType)
-		if strings.HasPrefix(*mediaType, "image/") {
+	if !download && core.ShowsInPlace(mediaType) {
+		headers.Set("Content-Type", mediaType)
+		if strings.HasPrefix(mediaType, "image/") {
 			headers.Set("Content-Security-Policy", imagePolicy)
 		}
 	} else {

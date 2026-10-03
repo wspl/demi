@@ -40,7 +40,7 @@ func takeLock(path string) (*os.File, error) {
 		// This descriptor has no buffered writes and acquired no lock.
 		_ = f.Close()
 		if errors.Is(err, unix.EWOULDBLOCK) {
-			//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+			//nolint:staticcheck // User-visible text, kept byte for byte.
 			return nil, fmt.Errorf("Another Cloud manager owns %s", path)
 		}
 		return nil, fmt.Errorf("locking %s: %w", path, err)

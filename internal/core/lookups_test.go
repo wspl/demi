@@ -3,7 +3,6 @@ package core_test
 import (
 	"encoding/json"
 	"os"
-	"reflect"
 	"testing"
 
 	"github.com/wspl/demi/internal/core"
@@ -28,8 +27,9 @@ func TestFileLookups(t *testing.T) {
 		if err := json.Unmarshal(scenario[1], &want); err != nil {
 			t.Fatal(err)
 		}
-		if got := core.PreviewMediaType(path); !reflect.DeepEqual(got, want) {
-			t.Errorf("preview %s: %v, want %v", path, got, want)
+		got, ok := core.PreviewMediaType(path)
+		if ok != (want != nil) || ok && got != *want {
+			t.Errorf("preview %s: %q %v, want %v", path, got, ok, want)
 		}
 	}
 	for _, scenario := range cases["showsInPlace"] {
@@ -68,20 +68,20 @@ func TestMediaSniffing(t *testing.T) {
 	} {
 		data := make([]byte, max(16, len(scenario.magic)))
 		copy(data, scenario.magic)
-		got := core.SniffModelMediaType(data)
+		got, ok := core.SniffModelMediaType(data)
 		if scenario.want == "" {
-			if got != nil {
+			if ok {
 				t.Errorf("recognized %q: %v", scenario.magic, got)
 			}
-		} else if got == nil || got.MediaType != scenario.want {
+		} else if !ok || got.MediaType != scenario.want {
 			t.Errorf("%q: %v, want %s", scenario.magic, got, scenario.want)
 		}
 	}
-	png := core.SniffModelMediaType(append([]byte("\x89PNG"), make([]byte, 12)...))
-	if png == nil || png.Kind != core.ModelMediaKindImage || png.Extension != core.FileExtensionPNG {
+	png, ok := core.SniffModelMediaType(append([]byte("\x89PNG"), make([]byte, 12)...))
+	if !ok || png.Kind != core.ModelMediaKindImage || png.Extension != core.FileExtensionPNG {
 		t.Fatalf("PNG facts: %+v", png)
 	}
-	if core.SniffModelMediaType([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00")) != nil {
+	if _, ok := core.SniffModelMediaType([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00")); ok {
 		t.Fatal("short header recognized")
 	}
 }
@@ -90,22 +90,16 @@ func TestModelMediaSupport(t *testing.T) {
 	for _, scenario := range []struct {
 		accepted  *[]core.FileExtension
 		extension core.FileExtension
-		want      *bool
+		want      bool
 	}{
-		{nil, "png", nil},
-		{new([]core.FileExtension{}), "png", new(false)},
-		{new([]core.FileExtension{"png"}), "png", new(true)},
-		{new([]core.FileExtension{"png"}), "pdf", new(false)},
-		{new([]core.FileExtension{"jpeg"}), "jpg", new(true)},
-		{new([]core.FileExtension{"jpg"}), "jpeg", new(true)},
+		{nil, "png", false},
+		{new([]core.FileExtension{}), "png", false},
+		{new([]core.FileExtension{"png"}), "png", true},
+		{new([]core.FileExtension{"png"}), "pdf", false},
+		{new([]core.FileExtension{"jpeg"}), "jpg", true},
+		{new([]core.FileExtension{"jpg"}), "jpeg", true},
 	} {
-		if got := core.FileExtensionSupport(
-			scenario.accepted,
-			scenario.extension,
-		); !reflect.DeepEqual(
-			got,
-			scenario.want,
-		) {
+		if got := core.AcceptsFileExtension(scenario.accepted, scenario.extension); got != scenario.want {
 			t.Errorf("support %v %s: %v", scenario.accepted, scenario.extension, got)
 		}
 	}

@@ -11,15 +11,6 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// UsageError describes an invocation that does not fit its selected command.
-type UsageError struct{ err error }
-
-// Error describes the refused invocation.
-func (e *UsageError) Error() string { return e.err.Error() }
-
-// Unwrap returns the cause of the invocation refusal.
-func (e *UsageError) Unwrap() error { return e.err }
-
 // Selected records the command reached by argv and where its arguments start.
 type Selected[B any] struct {
 	// Node is the selected command or group.
@@ -64,7 +55,8 @@ func selectNode[B any](node Node[B], argv []string) (*Selected[B], error) {
 			}
 		}
 		if next == nil {
-			return nil, usageError("Unknown subcommand \"%s %s\"", strings.Join(path, " "), argv[index])
+			//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+			return nil, fmt.Errorf("Unknown subcommand \"%s %s\"", strings.Join(path, " "), argv[index])
 		}
 		node = next
 		path = append(path, Name(node))
@@ -76,8 +68,8 @@ func selectNode[B any](node Node[B], argv []string) (*Selected[B], error) {
 // Parse reads argv without reading stdin; help never consumes a body.
 func (s *Selected[B]) Parse(argv []string) (*Parsed, error) {
 	result := &Parsed{Path: slices.Clone(s.Path)}
-	leaf := AsLeaf(s.Node)
-	if leaf == nil {
+	leaf, ok := s.Node.(*Leaf[B])
+	if !ok {
 		result.Help = true
 		return result, nil
 	}
@@ -102,7 +94,8 @@ func (s *Selected[B]) Parse(argv []string) (*Parsed, error) {
 		}
 		if !optionsEnded && token == "--json" {
 			if leaf.JSONOutput() == nil {
-				return nil, usageError("Command \"%s\" does not define JSON output", command)
+				//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+				return nil, fmt.Errorf("Command \"%s\" does not define JSON output", command)
 			}
 			result.JSON = true
 			continue
@@ -116,7 +109,8 @@ func (s *Selected[B]) Parse(argv []string) (*Parsed, error) {
 			continue
 		}
 		if positional == len(leaf.positionals()) {
-			return nil, usageError("Unexpected positional argument \"%s\"", token)
+			//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+			return nil, fmt.Errorf("Unexpected positional argument \"%s\"", token)
 		}
 		field := leaf.positionals()[positional]
 		positional++
@@ -139,11 +133,11 @@ func validate[B any](parsed *Parsed, leaf *Leaf[B], stdin *string) (*Parsed, err
 	}
 	if leaf.StdinField != nil {
 		if stdin == nil {
-			return nil, usageError("stdin field was not supplied by dispatcher")
+			return nil, fmt.Errorf("stdin field was not supplied by dispatcher")
 		}
 		parsed.Values.Set(*leaf.StdinField, *stdin)
 	} else if stdin != nil {
-		return nil, usageError("stdin body supplied to a leaf without stdinField")
+		return nil, fmt.Errorf("stdin body supplied to a leaf without stdinField")
 	}
 	for i, field := range parsed.Values.fields {
 		if schema, exists := leaf.properties()[field.Name]; exists {
@@ -152,7 +146,8 @@ func validate[B any](parsed *Parsed, leaf *Leaf[B], stdin *string) (*Parsed, err
 	}
 	document, err := parsed.Values.MarshalJSON()
 	if err != nil {
-		return nil, usageError("Invalid command arguments: %w", err)
+		//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+		return nil, fmt.Errorf("Invalid command arguments: %w", err)
 	}
 	if err := leaf.CheckArguments(document); err != nil {
 		return nil, err
@@ -165,15 +160,18 @@ func (l *Leaf[B]) CheckArguments(arguments json.RawMessage) error {
 	if l.Input == nil {
 		object, err := contract.Object(arguments)
 		if err != nil {
-			return usageError("Invalid command arguments: %w", err)
+			//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+			return fmt.Errorf("Invalid command arguments: %w", err)
 		}
 		if len(object) == 0 {
 			return nil
 		}
-		return usageError("Invalid command arguments: the command takes no arguments")
+		//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+		return fmt.Errorf("Invalid command arguments: the command takes no arguments")
 	}
 	if err := l.Input.Check(arguments); err != nil {
-		return usageError("Invalid command arguments: %w", err)
+		//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+		return fmt.Errorf("Invalid command arguments: %w", err)
 	}
 	return nil
 }
@@ -193,7 +191,8 @@ func (p *Parsed) setValue(field string, value, schema any) error {
 		return nil
 	}
 	if schemaType(schema) != "array" {
-		return usageError("Duplicate value for \"%s\"", field)
+		//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+		return fmt.Errorf("Duplicate value for \"%s\"", field)
 	}
 	if items, ok := previous.([]any); ok {
 		p.Values.Set(field, append(items, value))
@@ -220,7 +219,7 @@ func argvValue(value, schema any) any {
 	case "number", "integer":
 		if text, ok := value.(string); ok {
 			text = strings.TrimSpace(text)
-			// Rust's float grammar accepts decimal floats, but not Go's hex floats or underscores.
+			// Numbers are decimal: a hex float or a digit separator stays text, which the schema refuses.
 			if strings.ContainsAny(text, "_xXpP") {
 				return value
 			}
@@ -245,22 +244,18 @@ func argvValue(value, schema any) any {
 	return value
 }
 
-// usageError keeps the command protocol's capitalized, user-facing diagnostics
-// and retains wrapped causes for errors.Is/errors.As.
-func usageError(format string, args ...any) *UsageError {
-	return &UsageError{err: fmt.Errorf(format, args...)}
-}
-
 // parseOption returns the number of following argv tokens consumed by one option.
 func (l *Leaf[B]) parseOption(token string, argv []string, result *Parsed, command string) (int, error) {
 	consumed := 0
 	field, inline, hasInline := strings.Cut(token[2:], "=")
 	schema, exists := l.properties()[field]
 	if !exists {
-		return 0, usageError("Unknown option \"--%s\" for \"%s\"", field, command)
+		//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+		return 0, fmt.Errorf("Unknown option \"--%s\" for \"%s\"", field, command)
 	}
 	if l.StdinField != nil && *l.StdinField == field {
-		return 0, usageError(
+		//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+		return 0, fmt.Errorf(
 			"\"%s\" reads %s only from stdin. Remove --%s and use a quoted heredoc, pipe, or input redirection.",
 			command,
 			field,
@@ -274,7 +269,7 @@ func (l *Leaf[B]) parseOption(token string, argv []string, result *Parsed, comma
 		source = "a positional argument"
 	}
 	if source != "" {
-		return 0, usageError("\"%s\" is %s for \"%s\"; --%s is not an option", field, source, command, field)
+		return 0, fmt.Errorf("\"%s\" is %s for \"%s\"; --%s is not an option", field, source, command, field)
 	}
 	var value any
 	if hasInline {
@@ -283,7 +278,8 @@ func (l *Leaf[B]) parseOption(token string, argv []string, result *Parsed, comma
 		value = true
 	} else {
 		if len(argv) == 0 || strings.HasPrefix(argv[0], "--") {
-			return 0, usageError("Missing value for \"--%s\"", field)
+			//nolint:revive,staticcheck // error-strings, ST1005: product text, shown to the user as written.
+			return 0, fmt.Errorf("Missing value for \"--%s\"", field)
 		}
 		value = argv[0]
 		consumed++

@@ -180,7 +180,7 @@ func addSetupToken(ctx context.Context, p provider.Provider, token string) (core
 		return core.AccountInfo{}, ErrUseDeviceLogin
 	}
 	var pool *provider.PoolError
-	if errors.As(err, &pool) && pool.Err != nil {
+	if errors.As(err, &pool) {
 		return core.AccountInfo{}, errors.New(pool.Error())
 	}
 	return core.AccountInfo{}, ErrTokenImportFailed

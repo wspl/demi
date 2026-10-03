@@ -71,11 +71,11 @@ func (v *VendorCatalog) Vendor(ctx context.Context, id string) (*webapi.Vendor, 
 	if err != nil {
 		return nil, err
 	}
-	vendor := snapshot.Vendor(id)
-	if vendor == nil {
+	vendor, ok := snapshot.Vendor(id)
+	if !ok {
 		return nil, nil
 	}
-	return offeredVendor(*vendor), nil
+	return offeredVendor(vendor), nil
 }
 
 // Models reads a vendor catalog.
@@ -84,9 +84,9 @@ func (v *VendorCatalog) Models(ctx context.Context, id string) (core.ProviderMod
 	if err != nil {
 		return core.ProviderModelList{}, err
 	}
-	if vendor := snapshot.Vendor(id); vendor != nil && offeredVendor(*vendor) != nil {
-		if list := snapshot.VendorModels(id); list != nil {
-			return *list, nil
+	if vendor, ok := snapshot.Vendor(id); ok && offeredVendor(vendor) != nil {
+		if list, ok := snapshot.VendorModels(id); ok {
+			return list, nil
 		}
 	}
 	return core.ProviderModelList{

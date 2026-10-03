@@ -9,7 +9,7 @@ import (
 )
 
 //revive:disable:exported
-// Contract descriptions are verbatim Rust product text.
+// Contract doc comments describe the wire value; they do not start with the type's name.
 
 // +demi:root
 // +demi:union tag=type

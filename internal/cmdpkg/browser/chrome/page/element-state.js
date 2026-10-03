@@ -42,7 +42,7 @@ async function(conditions, scroll, probe, cancel, point) {
   let box = element.getBoundingClientRect();
   let stable = !conditions.includes('stable');
   if (!stable) {
-    // Chromiumoxide cannot cancel an awaited page function. The caller owns
+    // CDP cannot cancel an awaited page function. The caller owns
     // this temporary cancellation callback and invokes it on every failed wait.
     let previousFrame = null;
     let unchangedFrames = 0;

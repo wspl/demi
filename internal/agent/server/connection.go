@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"io"
 	"sync"
 	"sync/atomic"
 
@@ -11,49 +13,52 @@ import (
 	"github.com/wspl/demi/internal/host"
 )
 
-// Outgoing is what the outbox has next for the socket.
-//
-//sumtype:decl
-type Outgoing interface{ outgoing() }
+// ErrLagged means the client fell behind by a full outbox; close its socket.
+var ErrLagged = errors.New("the client fell behind by a full outbox")
 
-// Frame carries one server frame.
-type Frame struct{ Frame framewire.ServerFrame }
+// Frames reads a connection's bounded outbox. One socket reader owns it.
+// Detaching the connection ends it once its queued frames are read.
+type Frames struct {
+	outbox *outbox
+	frame  framewire.ServerFrame
+	err    error
+}
 
-// Lagged means the client fell behind by a full outbox; close its socket.
-type Lagged struct{}
-
-// Closed means the connection is gone.
-type Closed struct{}
-
-func (*Frame) outgoing()  {}
-func (*Lagged) outgoing() {}
-func (*Closed) outgoing() {}
-
-// FrameReceiver is the receiving end of a connection's bounded outbox.
-// One socket reader owns it. Detaching the connection releases the outbox.
-type FrameReceiver struct{ outbox *outbox }
-
-// Receive waits for the next frame, or the lagged or closed indication.
-// Context cancellation returns ctx.Err without detaching the connection.
-func (r *FrameReceiver) Receive(ctx context.Context) (Outgoing, error) {
+// Next waits for the next frame and reports whether there is one. A frame
+// already waiting is returned even when ctx is done, so a done context reads
+// without waiting. Next returns false at the end, after a lag, or when ctx
+// ends first; Err tells which. After a cancellation Next may be called again.
+func (f *Frames) Next(ctx context.Context) bool {
+	f.frame = nil
+	f.err = nil
 	for {
-		outgoing, changed := r.outbox.next()
-		if outgoing != nil {
-			return outgoing, nil
+		frame, changed, err := f.outbox.next()
+		if frame != nil {
+			f.frame = frame
+			return true
+		}
+		if errors.Is(err, io.EOF) {
+			return false
+		}
+		if err != nil {
+			f.err = err
+			return false
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			f.err = ctx.Err()
+			return false
 		case <-changed:
 		}
 	}
 }
 
-// TryReceive returns the next outgoing item, or nil if none is waiting.
-func (r *FrameReceiver) TryReceive() Outgoing {
-	outgoing, _ := r.outbox.next()
-	return outgoing
-}
+// Frame returns the frame the last Next found.
+func (f *Frames) Frame() framewire.ServerFrame { return f.frame }
+
+// Err returns ErrLagged after a lag, the context's error after a cancelled
+// wait, and nil at the end of the outbox.
+func (f *Frames) Err() error { return f.err }
 
 // Connection handles one conversation socket's decoded frames. The backend
 // supplies its conversation and working directory; clients never send them.
@@ -134,20 +139,23 @@ func (o *outbox) close() {
 	close(old)
 }
 
-func (o *outbox) next() (Outgoing, <-chan struct{}) {
+// next returns the next queued frame. With none queued it returns ErrLagged
+// after a lag, io.EOF once the outbox is closed, and otherwise the channel
+// that closes on the next change.
+func (o *outbox) next() (framewire.ServerFrame, <-chan struct{}, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.state == 2 {
-		return &Lagged{}, o.changed
+		return nil, nil, ErrLagged
 	}
 	if len(o.frames) != 0 {
 		frame := o.frames[0]
 		o.frames[0] = nil
 		o.frames = o.frames[1:]
-		return &Frame{Frame: frame}, o.changed
+		return frame, nil, nil
 	}
 	if o.state == 1 {
-		return &Closed{}, o.changed
+		return nil, nil, io.EOF
 	}
-	return nil, o.changed
+	return nil, o.changed, nil
 }

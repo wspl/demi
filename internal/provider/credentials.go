@@ -28,19 +28,14 @@ func (m AccountMeta) Info() core.AccountInfo {
 	return core.AccountInfo{ID: m.ID, Label: m.Label, Detail: m.Detail, UpdatedAt: &m.UpdatedAt}
 }
 
-// PoolError reports a missing account or a storage failure, without secret text.
-type PoolError struct {
-	ID  string
-	Err error
-}
+// ErrNoAccount means the pool has no account with the given ID.
+var ErrNoAccount = errors.New("no account")
+
+// PoolError reports a failed credential store operation, without secret text.
+type PoolError struct{ Err error }
 
 // Error returns the diagnostic for this failure.
-func (e *PoolError) Error() string {
-	if e.Err != nil {
-		return e.Err.Error()
-	}
-	return "no account " + e.ID
-}
+func (e *PoolError) Error() string { return e.Err.Error() }
 
 // Unwrap returns the underlying cause.
 func (e *PoolError) Unwrap() error { return e.Err }
@@ -54,7 +49,7 @@ type Revision struct {
 // AccountDocument provides versioned secret storage and serialized refresh turns.
 type AccountDocument interface {
 	Name() string
-	Read(context.Context) (*Revision, error)
+	Read(context.Context) (Revision, bool, error)
 	Replace(context.Context, string, uint64) (bool, error)
 	RefreshTurn(context.Context) (*gates.Permit, error)
 }
@@ -62,26 +57,26 @@ type AccountDocument interface {
 // CredentialPool is the accounts of one provider entry and its active selection.
 type CredentialPool interface {
 	List(context.Context) ([]AccountMeta, error)
-	Meta(context.Context, string) (*AccountMeta, error)
-	Active(context.Context) (*string, error)
+	Meta(context.Context, string) (AccountMeta, bool, error)
+	Active(context.Context) (string, bool, error)
 	SetActive(context.Context, string) error
 	Write(context.Context, AccountMeta, string) error
 	Document(string) AccountDocument
 	Remove(context.Context, string) error
 }
 
-// FindByIdentity finds an account by its family's identity key.
-func FindByIdentity(ctx context.Context, pool CredentialPool, identityKey string) (*AccountMeta, error) {
+// FindByIdentity finds an account by its family's identity key; ok is false when there is none.
+func FindByIdentity(ctx context.Context, pool CredentialPool, identityKey string) (AccountMeta, bool, error) {
 	accounts, err := pool.List(ctx)
 	if err != nil {
-		return nil, err
+		return AccountMeta{}, false, err
 	}
 	for _, account := range accounts {
 		if account.IdentityKey != nil && *account.IdentityKey == identityKey {
-			return &account, nil
+			return account, true, nil
 		}
 	}
-	return nil, nil
+	return AccountMeta{}, false, nil
 }
 
 // CredentialIDFor derives a stable account ID from identity, falling back to label.
@@ -148,33 +143,31 @@ func (p *MemoryCredentialPool) List(ctx context.Context) ([]AccountMeta, error) 
 	return result, nil
 }
 
-// Meta reads an account's metadata.
-func (p *MemoryCredentialPool) Meta(ctx context.Context, id string) (*AccountMeta, error) {
+// Meta reads an account's metadata; ok is false when there is none.
+func (p *MemoryCredentialPool) Meta(ctx context.Context, id string) (AccountMeta, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return AccountMeta{}, false, err
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	entry, ok := p.accounts[id]
 	if !ok {
-		return nil, nil
+		return AccountMeta{}, false, nil
 	}
-	result := cloneMeta(entry.meta)
-	return &result, nil
+	return cloneMeta(entry.meta), true, nil
 }
 
-// Active reads the selected account ID.
-func (p *MemoryCredentialPool) Active(ctx context.Context) (*string, error) {
+// Active reads the selected account ID; ok is false when there is none.
+func (p *MemoryCredentialPool) Active(ctx context.Context) (string, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return "", false, err
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.active == nil {
-		return nil, nil
+		return "", false, nil
 	}
-	id := *p.active
-	return &id, nil
+	return *p.active, true, nil
 }
 
 // SetActive selects an account the pool contains.
@@ -185,7 +178,7 @@ func (p *MemoryCredentialPool) SetActive(ctx context.Context, id string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, ok := p.accounts[id]; !ok {
-		return &PoolError{ID: id}
+		return fmt.Errorf("%w %s", ErrNoAccount, id)
 	}
 	p.active = &id
 	return nil
@@ -248,18 +241,18 @@ func (d *memoryDocument) Name() string {
 	return "account " + d.id
 }
 
-// Read returns the stored credential snapshot.
-func (d *memoryDocument) Read(ctx context.Context) (*Revision, error) {
+// Read returns the stored credential snapshot; ok is false when there is none.
+func (d *memoryDocument) Read(ctx context.Context) (Revision, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return Revision{}, false, err
 	}
 	d.pool.mu.Lock()
 	defer d.pool.mu.Unlock()
 	entry, ok := d.pool.accounts[d.id]
 	if !ok {
-		return nil, nil
+		return Revision{}, false, nil
 	}
-	return &Revision{Text: entry.text, Version: entry.version}, nil
+	return Revision{Text: entry.text, Version: entry.version}, true, nil
 }
 
 // Replace writes credentials when the expected revision still matches.
@@ -284,39 +277,8 @@ func (d *memoryDocument) RefreshTurn(ctx context.Context) (*gates.Permit, error)
 	return d.pool.gates.Turn(ctx, d.id)
 }
 
-// AccountErrorKind identifies why an account secret cannot be read.
-type AccountErrorKind uint8
-
-// Account read failure categories.
-const (
-	// AccountStore indicates that a credential store operation failed.
-	AccountStore AccountErrorKind = iota
-	// AccountMissing indicates that the account has no secret document.
-	AccountMissing
-	// AccountInvalid indicates that the secret document cannot be decoded.
-	AccountInvalid
-)
-
-// AccountError wraps storage or secret decoding failures.
-type AccountError struct {
-	Kind AccountErrorKind
-	Err  error
-}
-
-// Error returns the diagnostic for this failure.
-func (e *AccountError) Error() string {
-	switch e.Kind {
-	case AccountMissing:
-		return "the account has no secret document"
-	case AccountInvalid:
-		return "the account's secret document is " + e.Err.Error()
-	default:
-		return e.Err.Error()
-	}
-}
-
-// Unwrap returns the underlying cause.
-func (e *AccountError) Unwrap() error { return e.Err }
+// ErrNoSecretDocument means the account has no secret document.
+var ErrNoSecretDocument = errors.New("the account has no secret document")
 
 // RenewError distinguishes a refused refresh from a failed account operation.
 type RenewError struct{ Err error }
@@ -336,16 +298,16 @@ type Stored[S any] struct {
 // ReadSecret reads a secret using the family's generated decoder.
 func ReadSecret[S any](ctx context.Context, doc AccountDocument, decode func([]byte) (S, error)) (Stored[S], error) {
 	var zero Stored[S]
-	revision, err := doc.Read(ctx)
+	revision, ok, err := doc.Read(ctx)
 	if err != nil {
-		return zero, &AccountError{Kind: AccountStore, Err: err}
+		return zero, err
 	}
-	if revision == nil {
-		return zero, &AccountError{Kind: AccountMissing}
+	if !ok {
+		return zero, ErrNoSecretDocument
 	}
 	secret, err := DecodeSecretDocument(revision.Text, decode)
 	if err != nil {
-		return zero, &AccountError{Kind: AccountInvalid, Err: err}
+		return zero, fmt.Errorf("the account's secret document is %w", err)
 	}
 	return Stored[S]{Secret: secret, Version: revision.Version}, nil
 }
@@ -395,11 +357,14 @@ func Renew[S any](
 	}
 	encoded, err := contract.EncodeJSON(next)
 	if err != nil {
-		return zero, &AccountError{Kind: AccountInvalid, Err: &SecretDecodeError{Path: ".", Fault: SecretShape}}
+		return zero, fmt.Errorf(
+			"the account's secret document is %w",
+			&SecretDecodeError{Path: ".", Fault: SecretShape},
+		)
 	}
 	kept, err := doc.Replace(ctx, string(encoded), latest.Version)
 	if err != nil {
-		return zero, &AccountError{Kind: AccountStore, Err: err}
+		return zero, err
 	}
 	if kept {
 		return next, nil

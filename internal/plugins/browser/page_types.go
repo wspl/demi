@@ -1,5 +1,5 @@
 //revive:disable:exported
-// Contract names preserve the Rust schema titles and generated TypeScript exports.
+// Contract names are fixed by the schema titles and generated TypeScript exports.
 
 package browser
 

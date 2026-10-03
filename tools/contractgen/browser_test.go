@@ -191,8 +191,8 @@ func TestBrowserNegativeBoundsAndNullable(t *testing.T) {
 	}
 }
 
-// All nullable shapes occurring in the reference manifest must keep schemars'
-// exact representation, including its reference alternatives and annotations.
+// All nullable shapes occurring in the reference manifest keep their recorded
+// representation exactly, including reference alternatives and annotations.
 func TestManifestNullableShapes(t *testing.T) {
 	raw, err := os.ReadFile("testdata/browser/nullable-manifest.json")
 	if err != nil {
@@ -261,7 +261,7 @@ func TestBrowserFailureExportDocument(t *testing.T) {
 	}
 }
 
-// These scalar spellings are from the existing independent Rust serde_json
+// These scalar spellings are from the independent golden number
 // corpus in internal/contract/testdata/numbers.jsonl.
 func TestBrowserScalarNumberBytes(t *testing.T) {
 	for _, test := range []struct{ input, want string }{

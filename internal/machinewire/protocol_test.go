@@ -329,8 +329,8 @@ func TestManifestEmbeddedReleases(t *testing.T) {
 			delete(changed.Executables, path)
 		}
 	}
-	var missing *machinewire.ManifestError
-	if !errors.As(decodeManifest(t, changed), &missing) || missing.Release != "demi.file" {
+	if err := decodeManifest(t, changed); err == nil ||
+		!strings.Contains(err.Error(), "Missing embedded artifact for demi.file") {
 		t.Fatal("missing release not identified")
 	}
 	for _, mutation := range []struct{ old, new string }{

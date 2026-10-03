@@ -80,7 +80,10 @@ func TestDecodedSchemasAndPinning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leaf := declare.AsLeaf(manifest)
+	leaf, ok := manifest.(*declare.Leaf[declare.Binding])
+	if !ok {
+		t.Fatalf("decoded manifest is not a leaf: %T", manifest)
+	}
 	if err := leaf.CheckArguments(
 		json.RawMessage(`{"n":"bad"}`),
 	); err == nil ||

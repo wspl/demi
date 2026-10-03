@@ -37,7 +37,7 @@ func smallModel() core.ModelSelection {
 func small(t *testing.T, automatic bool, turns ...providertest.Turn) *scenario {
 	cfg := session.DefaultConfig()
 	if !automatic {
-		cfg.Compaction.ThresholdPercent = nil
+		cfg.Compaction.ThresholdPercent = 0
 	}
 	f := start(t, &sessiontest.Runtime{}, cfg, turns...)
 	must(t, f.s.UpdateModel(session.ModelSwitch{Model: smallModel()}))
@@ -140,7 +140,7 @@ func TestRequestPrefixesRestartAtSummaryAndSurviveRestore(t *testing.T) {
 		})
 		runtime.Prompt = "system prompt"
 		cfg := session.DefaultConfig()
-		cfg.Compaction.ThresholdPercent = nil
+		cfg.Compaction.ThresholdPercent = 0
 		f := start(
 			t,
 			runtime,
@@ -677,7 +677,7 @@ func TestOversizedInputIsNeverSummarized(t *testing.T) {
 func TestResumePendingSmallerSwitchCompactsOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cfg := session.DefaultConfig()
-		cfg.Compaction.ThresholdPercent = nil
+		cfg.Compaction.ThresholdPercent = 0
 		f := start(t, &sessiontest.Runtime{}, cfg, unmeasured("old answer"), hanging(providertest.Text("partial")))
 		f.done(f.send(strings.Repeat("x", 3200), "t1"))
 		a := f.send("continue", "t2")

@@ -48,13 +48,13 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	pool := vault.Pool(entry.ID)
-	if active, err := pool.Active(ctx); err != nil || active != nil {
-		t.Fatalf("initial active: %v %v", active, err)
+	if _, ok, err := pool.Active(ctx); err != nil || ok {
+		t.Fatalf("initial active: %v %v", ok, err)
 	}
 	if err := pool.Write(ctx, testAccount("a"), `{"access":"test","refresh":"one"}`); err != nil {
 		t.Fatal(err)
 	}
-	if active, err := pool.Active(ctx); err != nil || active == nil || *active != "a" {
+	if active, ok, err := pool.Active(ctx); err != nil || !ok || active != "a" {
 		t.Fatalf("first active: %v %v", active, err)
 	}
 	rows, err := vault.Accounts(ctx, entry.ID)
@@ -65,11 +65,11 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 		t.Fatal("plaintext stored")
 	}
 	doc := pool.Document("a")
-	first, err := doc.Read(ctx)
+	first, _, err := doc.Read(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := doc.Read(ctx)
+	second, _, err := doc.Read(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 	if ok, err := doc.Replace(ctx, `{"access":"test","refresh":"lost"}`, second.Version); err != nil || ok {
 		t.Fatalf("stale replace: %v %v", ok, err)
 	}
-	now, err := doc.Read(ctx)
+	now, _, err := doc.Read(ctx)
 	if err != nil || now.Text != `{"access":"test","refresh":"two"}` {
 		t.Fatalf("read: %v %v", now, err)
 	}
@@ -124,8 +124,8 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	foreign := vault.Pool(other.ID)
-	if value, err := foreign.Document("a").Read(ctx); err != nil || value != nil {
-		t.Fatalf("foreign read: %v %v", value, err)
+	if _, ok, err := foreign.Document("a").Read(ctx); err != nil || ok {
+		t.Fatalf("foreign read: %v %v", ok, err)
 	}
 	if values, err := foreign.List(ctx); err != nil || len(values) != 0 {
 		t.Fatalf("foreign list: %v %v", values, err)
@@ -144,17 +144,13 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 		string(other.ID),
 	)
 	var poolErr *provider.PoolError
-	if _, err := foreign.Document("a").Read(ctx); !errors.As(err, &poolErr) || poolErr.Err == nil {
+	if _, _, err := foreign.Document("a").Read(ctx); !errors.As(err, &poolErr) {
 		t.Fatalf("copied ciphertext: %v", err)
 	}
 	if err := pool.Write(ctx, testAccount("b"), "{}"); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.SetActive(
-		ctx,
-		"missing",
-	); !errors.As(err, &poolErr) || poolErr.ID != "missing" ||
-		poolErr.Err != nil {
+	if err := pool.SetActive(ctx, "missing"); !errors.Is(err, provider.ErrNoAccount) {
 		t.Fatalf("missing account: %v", err)
 	}
 	if err := pool.SetActive(ctx, "b"); err != nil {
@@ -163,8 +159,8 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 	if err := pool.Remove(ctx, "b"); err != nil {
 		t.Fatal(err)
 	}
-	if active, err := pool.Active(ctx); err != nil || active != nil {
-		t.Fatalf("removed active: %v %v", active, err)
+	if _, ok, err := pool.Active(ctx); err != nil || ok {
+		t.Fatalf("removed active: %v %v", ok, err)
 	}
 	if err := vault.Delete(ctx, *entry); err != nil {
 		t.Fatal(err)

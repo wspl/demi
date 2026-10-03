@@ -25,15 +25,21 @@ func NewTreeStore(db *ConversationDB, blobs OwnerBlobs, saved Saved) *TreeStore 
 
 var _ store.TreeStore = (*TreeStore)(nil)
 
-// Node returns a node's record, or nil when it does not exist.
-func (s *TreeStore) Node(ctx context.Context, id core.NodeID) (*store.NodeRecord, error) {
+// Node returns a node's record, and false when it does not exist.
+func (s *TreeStore) Node(ctx context.Context, id core.NodeID) (store.NodeRecord, bool, error) {
 	var result *store.NodeRecord
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
 		result, err = nodeByID(ctx, tx, id)
 		return err
 	})
-	return result, agentError(err)
+	if err != nil {
+		return store.NodeRecord{}, false, agentError(err)
+	}
+	if result == nil {
+		return store.NodeRecord{}, false, nil
+	}
+	return *result, true, nil
 }
 
 // Children returns direct children in number order, live and archived alike.
@@ -60,7 +66,7 @@ func (s *TreeStore) CreateNode(ctx context.Context, record store.NodeRecord, ini
 			return err
 		}
 		if existing != nil {
-			return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("node %s already exists", record.ID)}
+			return fmt.Errorf("node %s already exists", record.ID)
 		}
 		if err := insertNode(ctx, tx, record, initial.State); err != nil {
 			return err
@@ -230,18 +236,11 @@ func (s *TreeStore) CommandOutput(ctx context.Context, command core.CommandID) (
 			return nil, err
 		}
 		if !found {
-			return nil, &store.Error{
-				Kind:    store.OperationFailed,
-				Message: fmt.Sprintf("the blob %s of the output of %s is missing", output.Blob, command),
-			}
+			return nil, fmt.Errorf("the blob %s of the output of %s is missing", output.Blob, command)
 		}
 		whole, err := remotehost.DecodeOutput(data, output.Missing)
 		if err != nil {
-			return nil, &store.Error{
-				Kind:    store.Corrupt,
-				Message: fmt.Sprintf("the output of %s does not decode: %v", command, err),
-				Cause:   err,
-			}
+			return nil, fmt.Errorf("%w: the output of %s does not decode: %w", store.ErrCorrupt, command, err)
 		}
 		return &store.OutputStored{Output: whole}, nil
 	}
@@ -249,23 +248,15 @@ func (s *TreeStore) CommandOutput(ctx context.Context, command core.CommandID) (
 }
 
 func agentError(err error) error {
-	if err == nil {
-		return nil
-	}
-	var existing *store.Error
-	if errors.As(err, &existing) {
-		return err
-	}
-	kind := store.OperationFailed
 	var storage *Error
-	if errors.As(err, &storage) && storage.Kind == Corrupt {
-		kind = store.Corrupt
+	if errors.As(err, &storage) && storage.Kind == Corrupt && !errors.Is(err, store.ErrCorrupt) {
+		return fmt.Errorf("%w: %w", store.ErrCorrupt, err)
 	}
-	return &store.Error{Kind: kind, Message: err.Error(), Cause: err}
+	return err
 }
 
 func missingNode(id core.NodeID) error {
-	return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("no node %s", id)}
+	return fmt.Errorf("no node %s", id)
 }
 
 func (s *TreeStore) notify(id core.NodeID, due WakeupDue) {

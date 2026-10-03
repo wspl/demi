@@ -131,10 +131,7 @@ func writeCommandVersion(ctx context.Context, tx *sql.Tx, node core.NodeID, vers
 		return err
 	}
 	if !same {
-		return &store.Error{
-			Kind:    store.OperationFailed,
-			Message: fmt.Sprintf("command-state version %d is immutable", version.Revision),
-		}
+		return fmt.Errorf("command-state version %d is immutable", version.Revision)
 	}
 	return nil
 }

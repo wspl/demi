@@ -16,7 +16,7 @@ const fixtureDir = "testdata/"
 
 // This boundary corpus protects stored transcript compatibility; it has no IO
 // beyond local fixtures, no processes or timers, and a one-second test budget.
-func TestRustCorpus(t *testing.T) {
+func TestBlockCorpus(t *testing.T) {
 	data, err := os.ReadFile(fixtureDir + "blocks.json")
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +126,7 @@ func TestRustCorpus(t *testing.T) {
 	t.Logf("blocks=%d semantic_equal=%d refused=%d", len(fixtures), len(fixtures), len(cases.Refused))
 }
 
-// fixtureByID selects the same starting block as the Rust mutation consumer.
+// fixtureByID returns the fixture block with this id, which a refusal case mutates.
 func fixtureByID(t *testing.T, fixtures []json.RawMessage, id string) map[string]any {
 	t.Helper()
 	for _, raw := range fixtures {
@@ -171,7 +171,7 @@ func mutate(t *testing.T, root map[string]any, pointer string, value any, remove
 			}
 			if last {
 				if remove {
-					t.Fatal("Rust corpus removes object fields only")
+					t.Fatal("the corpus removes object fields only")
 				}
 				target[index] = value
 				return

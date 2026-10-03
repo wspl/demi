@@ -60,7 +60,7 @@ func fenceAndSave(ctx context.Context, core *Core) error {
 				return fmt.Errorf("%s is not a valid runtime record: %w", pair.SandboxRecord(), err)
 			}
 			if !core.Slots.Contains(record.Slot) {
-				//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+				//nolint:staticcheck // User-visible text, kept byte for byte.
 				return errors.New("Existing Cloud slot exceeds configured pool")
 			}
 			runtime := sandbox.Recorded(

@@ -92,8 +92,7 @@ func (s *Shard) changeSettings(
 	root := hostaccess.RootOf(id)
 	prepared, err := s.agent.PrepareSwitch(ctx, root, selection)
 	if err != nil {
-		var resolve *server.ResolveError
-		if errors.As(err, &resolve) && resolve.Kind == server.ResolveUnknown {
+		if errors.Is(err, server.ErrProviderUnavailable) {
 			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeProviderNotFound}
 		}
 		return &hostaccess.ChangeRefusal{

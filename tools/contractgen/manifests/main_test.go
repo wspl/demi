@@ -16,7 +16,7 @@ type factory struct{ manifest plugin.Manifest }
 func (f factory) Manifest() plugin.Manifest { return f.manifest }
 func (factory) Instance() plugin.Plugin     { return nil }
 
-// Cost: the checked-in Rust browser manifest, no backend or processes.
+// Cost: the checked-in browser manifest, no backend or processes.
 // Observe the command's JSON interface, including registration order and every use.
 func TestPrintedPageManifests(t *testing.T) {
 	data, err := os.ReadFile("../testdata/pluginbrowser/manifest.json")

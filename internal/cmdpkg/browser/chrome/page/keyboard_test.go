@@ -8,8 +8,8 @@ import (
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 )
 
-// These table cases port all nine Rust keyboard tests; they exercise the events
-// consumed by Chrome and run without timers, sockets, or a browser (under 1 s).
+// These table cases check the native key events that viewer keys produce; they
+// run without timers, sockets, or a browser (under 1 s).
 func TestViewerKeyboard(t *testing.T) {
 	cases := []struct {
 		name, code, key            string

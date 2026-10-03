@@ -32,8 +32,8 @@ func ownsDirectory(path string, _ uint32) bool {
 
 func directoryNotEmpty(err error) bool { return errors.Is(err, windows.ERROR_DIR_NOT_EMPTY) }
 
-// openEnvironmentLock permits rename/removal while the lock is still held, as
-// Rust's OpenOptions does. os.OpenFile omits FILE_SHARE_DELETE on Windows.
+// openEnvironmentLock permits rename/removal while the lock is still held
+// (FILE_SHARE_DELETE), which os.OpenFile omits on Windows.
 func openEnvironmentLock(path string, create bool) (*os.File, error) {
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {

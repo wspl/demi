@@ -15,14 +15,17 @@ import (
 )
 
 // Execute decodes and validates a tab command, then uses the same admission as the service.
-// The returned JSON is encoded through the result contract, preserving Rust wire bytes.
+// The returned JSON is encoded through the result contract, which fixes its wire bytes.
 func Execute(ctx context.Context, tab *tabs.Tab, name string, args json.RawMessage) (json.RawMessage, error) {
 	command, err := browserop.ParseOperation(name, args)
 	if err != nil {
 		return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: err.Error(), Cause: err}
 	}
 	input, ok := command.(browserop.Input)
-	if !ok || input.TabID() == nil || *input.TabID() != tab.ID() {
+	if !ok {
+		return nil, &cdp.BrowserError{Kind: cdp.KindTabNotFound}
+	}
+	if id, targeted := input.TabID(); !targeted || id != tab.ID() {
 		return nil, &cdp.BrowserError{Kind: cdp.KindTabNotFound}
 	}
 	switch command.(type) {
@@ -262,7 +265,7 @@ func commandNavigation(
 ) (*tabs.NavigationObservation, error) {
 	var navigation *tabs.NavigationObservation
 	_, click := command.(*browserop.ClickInput)
-	if input.WaitURLPattern() != nil || click {
+	if _, wait := input.WaitURLPattern(); wait || click {
 		err := operation.Run(ctx, func(work context.Context) error {
 			var err error
 			navigation, err = tab.ObserveNavigation(work)

@@ -56,7 +56,8 @@ type ShellJob interface {
 	Cancel()
 	// IsCancelled reports whether cancellation was requested.
 	IsCancelled() bool
-	// Wait joins all job work and returns its exit and optional last directory.
+	// Wait joins all job work and returns its exit, its optional last directory,
+	// and a failure of the runner's own work beside the exit.
 	// Cancellation cancels the job and still joins before returning.
-	Wait(context.Context) (Exit, *string)
+	Wait(context.Context) (Exit, *string, error)
 }

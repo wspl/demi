@@ -16,13 +16,11 @@ import (
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
-type connectionEnd uint8
+// errRegistrationRefused reports that the backend refused this runner's registration.
+var errRegistrationRefused = errors.New("backend rejected runner registration")
 
-const (
-	stopped connectionEnd = iota
-	disconnected
-	refused
-)
+// errConnectionLost reports that the backend connection ended without a local error.
+var errConnectionLost = errors.New("backend connection lost")
 
 type connectionWork struct {
 	installation uint64
@@ -36,7 +34,7 @@ type connection struct {
 	transport        *transport
 	ctx              context.Context
 	cancel           context.CancelFunc
-	handle           *jobs.ConnectionHandle
+	handle           *jobs.Connection
 	requests         <-chan jobs.Request
 	table            *jobs.Table
 	directories      *jobs.Directories
@@ -56,7 +54,7 @@ type connection struct {
 	installsReported bool
 }
 
-func (r *registration) serve(ctx context.Context, t *transport) (end connectionEnd, err error) {
+func (r *registration) serve(ctx context.Context, t *transport) (err error) {
 	lifetime, cancel := context.WithCancel(ctx)
 	c := &connection{
 		registration:    r,
@@ -69,7 +67,7 @@ func (r *registration) serve(ctx context.Context, t *transport) (end connectionE
 		tasksChanged:    make(chan struct{}, 1),
 		installsChanged: make(chan struct{}, 1),
 	}
-	c.handle, c.requests = jobs.NewConnectionHandle(lifetime, t.control)
+	c.handle, c.requests = jobs.NewConnection(lifetime, t.control)
 	c.directories = jobs.OpenDirectories(lifetime, r.options.jobRoot)
 	c.contexts = jobs.NewContextTable(r.contexts)
 	c.table = jobs.NewTable(
@@ -94,7 +92,19 @@ func (r *registration) serve(ctx context.Context, t *transport) (end connectionE
 	c.host = host.New(lifetime, r.options.cwd, r.pipes, t.output)
 	c.streams = jobs.NewServiceStreams(lifetime, c.handle, r.pipes, r.services, r.management.draining)
 	c.volumes = host.NewVolumes(lifetime, r.options.volumes, t.control)
-	defer func() { err = errors.Join(err, c.close(context.Background()), t.close(context.Background())) }()
+	defer func() {
+		closeErr := errors.Join(c.close(context.Background()), t.close(context.Background()))
+		if closeErr == nil {
+			return
+		}
+		// A failed close is reported and retried in place of the connection's
+		// ordinary end, a refusal or a lost connection.
+		if errors.Is(err, errRegistrationRefused) || errors.Is(err, errConnectionLost) {
+			err = closeErr
+			return
+		}
+		err = errors.Join(err, closeErr)
+	}()
 	c.watchTasks()
 	c.watchInstalls()
 	return c.run(ctx)
@@ -186,26 +196,26 @@ func (c *connection) sendFrame(ctx context.Context, frame []byte) error {
 	}
 }
 
-func (c *connection) run(ctx context.Context) (connectionEnd, error) {
+func (c *connection) run(ctx context.Context) error {
 	r := c.registration
 	if err := c.send(
 		c.ctx,
 		&runnerwire.Hello{Protocol: runnerwire.Version, DeviceToken: r.token.Load(), Runner: r.options.runner},
 	); err != nil {
-		return disconnected, err
+		return err
 	}
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 	polled := false
 	for {
 		if ctx.Err() != nil || r.management.snapshot().Draining && c.table.Len() == 0 {
-			return stopped, nil
+			return nil
 		}
 		// Registration precedes backend replies even if both queues are ready.
 		select {
 		case request := <-c.requests:
 			if err := c.request(request); err != nil {
-				return disconnected, err
+				return err
 			}
 			continue
 		default:
@@ -214,12 +224,9 @@ func (c *connection) run(ctx context.Context) (connectionEnd, error) {
 		if !r.management.snapshot().Draining {
 			drain = r.management.draining
 		}
-		end, skipPoll, err := c.waitEvent(ctx, ticker.C, drain)
-		if end != nil {
-			return *end, err
-		}
-		if err != nil {
-			return disconnected, err
+		skipPoll, err := c.waitEvent(ctx, ticker.C, drain)
+		if err != nil || ctx.Err() != nil {
+			return err
 		}
 		if skipPoll {
 			continue
@@ -279,15 +286,15 @@ func (c *connection) reportInstalls() error {
 	return c.send(c.ctx, &runnerwire.Installs{Installs: installs})
 }
 
-func (c *connection) route(message runnerwire.Inbound) (*connectionEnd, error) {
+func (c *connection) route(message runnerwire.Inbound) error {
 	if c.relay.Route(message) {
-		return nil, nil
+		return nil
 	}
 	r := c.registration
 	// Authentication handles its own messages; other validated messages route below.
 	switch m := any(message).(type) {
 	case *runnerwire.HelloOK:
-		return nil, c.helloOK(m)
+		return c.helloOK(m)
 	case *runnerwire.ClaimPending:
 		if r.management.snapshot().Phase == online {
 			break
@@ -298,7 +305,7 @@ func (c *connection) route(message runnerwire.Inbound) (*connectionEnd, error) {
 			"demi-runner: pairing code: "+m.ClaimToken,
 		) // Pairing secret is intentionally console-only.
 		slog.Info("waiting to be paired")
-		return nil, nil
+		return nil
 	case *runnerwire.Claimed:
 		if r.management.snapshot().Phase == online {
 			break
@@ -312,23 +319,21 @@ func (c *connection) route(message runnerwire.Inbound) (*connectionEnd, error) {
 			return connectionWork{err: err}
 		})
 		r.management.setPhase(online)
-		return nil, nil
+		return nil
 	case *runnerwire.HelloError:
 		slog.Warn(fmt.Sprintf("registration refused (%s): %s", m.Code, m.Reason))
-		end := refused
 		if m.Code == runnerwire.HelloErrorCodeAlreadyConnected {
-			end = disconnected
-		} else {
-			r.management.setPhase(rejected)
+			return errConnectionLost
 		}
-		return &end, nil
+		r.management.setPhase(rejected)
+		return errRegistrationRefused
 	case *runnerwire.Ping:
-		return nil, c.send(c.ctx, &runnerwire.Pong{Jobs: uint64(c.table.JobCount())})
+		return c.send(c.ctx, &runnerwire.Pong{Jobs: uint64(c.table.JobCount())})
 	}
 	if r.management.snapshot().Phase != online {
-		return nil, errors.New("backend work arrived before authentication")
+		return errors.New("backend work arrived before authentication")
 	}
-	return nil, c.message(message)
+	return c.message(message)
 }
 
 func (c *connection) close(cleanup context.Context) error {
@@ -435,23 +440,21 @@ func (c *connection) waitEvent(
 	ctx context.Context,
 	tick <-chan time.Time,
 	drain <-chan struct{},
-) (*connectionEnd, bool, error) {
+) (bool, error) {
 	r := c.registration
 	select {
 	case <-ctx.Done():
-		end := stopped
-		return &end, false, nil
+		return false, nil
 	case <-drain:
 	case <-c.handle.Done():
-		end := disconnected
-		return &end, false, nil
+		return false, errConnectionLost
 	case <-tick:
 		if r.management.snapshot().Phase == online && c.table.JobCount() == 0 {
 			c.pollVolumes()
 		}
 	case request := <-c.requests:
 		if err := c.request(request); err != nil {
-			return nil, false, err
+			return false, err
 		}
 	case id := <-c.finished:
 		if id.Kind == jobs.ShellWork {
@@ -461,28 +464,26 @@ func (c *connection) waitEvent(
 	case result := <-c.results:
 		if result.installation != 0 && result.installation != c.generation {
 			releaseInstalled(result.installed)
-			return nil, true, nil
+			return true, nil
 		}
 		if err := c.completeWork(result); err != nil {
-			return nil, false, err
+			return false, err
 		}
 	case <-c.installsChanged:
 		if err := c.reportOnlineInstalls(); err != nil {
-			return nil, false, err
+			return false, err
 		}
 	case message, ok := <-c.transport.input:
 		if !ok {
-			end := disconnected
-			return &end, false, nil
+			return false, errConnectionLost
 		}
 		// A registration queued while select chose input still wins over its reply.
 		if err := c.pendingRequests(); err != nil {
-			return nil, false, err
+			return false, err
 		}
-		end, err := c.route(message)
-		if end != nil || err != nil {
-			return end, false, err
+		if err := c.route(message); err != nil {
+			return false, err
 		}
 	}
-	return nil, false, nil
+	return false, nil
 }

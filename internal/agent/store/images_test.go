@@ -3,7 +3,6 @@ package store_test
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash/crc32"
 	"image"
@@ -13,6 +12,7 @@ import (
 	"image/png"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/agent/store"
@@ -148,8 +148,7 @@ func TestLargeImageUsesJPEGAndBrokenImageIsRefused(t *testing.T) {
 		t.Fatalf("byte-limited fit: %s %v %v %d", fitted.MediaType, fitted.Came, fitted.Entered, len(fitted.Data))
 	}
 	_, err = store.Fit(t.Context(), []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x01broken"), "image/png")
-	var unfit *store.Unfit
-	if !errors.As(err, &unfit) || unfit.Kind != store.Undecodable {
+	if err == nil || !strings.HasPrefix(err.Error(), "it could not be decoded (") {
 		t.Fatalf("broken image: %v", err)
 	}
 }
@@ -213,8 +212,7 @@ func TestImageDecodeMemoryLimit(t *testing.T) {
 	binary.BigEndian.PutUint32(data[20:24], 100000)
 	binary.BigEndian.PutUint32(data[29:33], crc32.ChecksumIEEE(data[12:29]))
 	_, err := store.Fit(t.Context(), data, "image/png")
-	var unfit *store.Unfit
-	if !errors.As(err, &unfit) || unfit.Kind != store.TooLargeToDecode {
+	if err == nil || err.Error() != "decoding it would take more than 256 MiB" {
 		t.Fatalf("decode budget: %v", err)
 	}
 }

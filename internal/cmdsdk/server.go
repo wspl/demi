@@ -16,16 +16,9 @@ import (
 // ErrCancellationDeadline requires the owner to retire the service process.
 var ErrCancellationDeadline = errors.New("handler exceeded cancellation deadline; retire the service process")
 
-// ConversationCleanupError requires retirement after failed conversation release.
-type ConversationCleanupError struct{ Cause error }
-
-// Error returns the failure message.
-func (e *ConversationCleanupError) Error() string {
-	return "conversation cleanup failed; retire the service process: " + e.Cause.Error()
-}
-
-// Unwrap returns the underlying failure.
-func (e *ConversationCleanupError) Unwrap() error { return e.Cause }
+// ErrConversationCleanup means a conversation release failed; the owner
+// retires the service process.
+var ErrConversationCleanup = errors.New("conversation cleanup failed; retire the service process")
 
 // InvocationContext contains explicit invocation state; process cwd and environment never change.
 type InvocationContext[M commandwire.Metadata] struct {
@@ -358,7 +351,7 @@ func (s serviceRequests[M]) respond(w http.ResponseWriter, r *http.Request, stop
 	}
 	result := runInvocation(r.Context(), r, w, remaining, invoke)
 	if release && result.cleanup != nil {
-		s.fail(&ConversationCleanupError{Cause: result.cleanup})
+		s.fail(fmt.Errorf("%w: %w", ErrConversationCleanup, result.cleanup))
 	}
 	if errors.Is(result.err, ErrCancellationDeadline) {
 		s.fail(result.err)

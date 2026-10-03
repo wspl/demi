@@ -137,54 +137,20 @@ func (v *streamMember) send(p picture) {
 	}
 }
 
-type captureResult struct {
-	event tabs.CaptureEvent
-	err   error
-}
 type runningCapture struct {
 	capture                        *tabs.Capture
-	cancel                         context.CancelFunc
-	done                           chan struct{}
-	events                         chan captureResult
 	epoch, width, height, sequence uint32
 	encoding                       encoding
 }
 
 func (r *runningCapture) close(ctx context.Context) {
-	r.cancel()
-	<-r.done
 	if err := r.capture.Close(context.WithoutCancel(ctx)); err != nil {
 		slog.Warn("live capture close", "error", err)
 	}
 }
 
-func beginCapture(ctx context.Context, capture *tabs.Capture, epoch, width, height uint32, e encoding) *runningCapture {
-	ctx, cancel := context.WithCancel(ctx)
-	r := &runningCapture{
-		capture:  capture,
-		cancel:   cancel,
-		done:     make(chan struct{}),
-		events:   make(chan captureResult),
-		epoch:    epoch,
-		width:    width,
-		height:   height,
-		encoding: e,
-	}
-	go func() {
-		defer close(r.done)
-		for {
-			event, err := capture.Next(ctx)
-			select {
-			case r.events <- captureResult{event, err}:
-			case <-ctx.Done():
-				return
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	return r
+func beginCapture(capture *tabs.Capture, epoch, width, height uint32, e encoding) *runningCapture {
+	return &runningCapture{capture: capture, epoch: epoch, width: width, height: height, encoding: e}
 }
 
 func (s *captureStream) run(ctx context.Context, tab *tabs.Tab, captures *tabs.CaptureChannel) {
@@ -225,9 +191,9 @@ func (s *captureStream) run(ctx context.Context, tab *tabs.Tab, captures *tabs.C
 			timer.Reset(time.Until(cycle.attempt))
 			retryAt = timer.C
 		}
-		var events <-chan captureResult
+		var events <-chan tabs.CaptureEvent
 		if cycle.running != nil {
-			events = cycle.running.events
+			events = cycle.running.capture.Events()
 		}
 		select {
 		case <-ctx.Done():
@@ -236,8 +202,8 @@ func (s *captureStream) run(ctx context.Context, tab *tabs.Tab, captures *tabs.C
 		case <-retryAt:
 		case <-s.wake:
 			s.updateMembers(&cycle)
-		case result := <-events:
-			cycle.captureEvent(ctx, tab, result)
+		case event, ok := <-events:
+			cycle.captureEvent(ctx, tab, event, ok)
 		}
 	}
 }
@@ -335,7 +301,7 @@ func (c *captureCycle) restart(
 	capture, err := captures.Start(ctx, tab.TargetID(), width, height, desired.fps, desired.bitrate)
 	if err == nil {
 		c.epoch++
-		c.running = beginCapture(ctx, capture, c.epoch, width, height, desired)
+		c.running = beginCapture(capture, c.epoch, width, height, desired)
 		for _, v := range c.viewers {
 			v.floor = 0
 			v.send(picture{kind: pictureRestart, epoch: c.epoch, width: width, height: height})
@@ -357,15 +323,15 @@ func (c *captureCycle) restart(
 	}
 }
 
-func (c *captureCycle) captureEvent(ctx context.Context, tab *tabs.Tab, result captureResult) {
-	if result.err != nil {
+func (c *captureCycle) captureEvent(ctx context.Context, tab *tabs.Tab, event tabs.CaptureEvent, ok bool) {
+	if !ok {
 		c.running.close(ctx)
 		c.running = nil
 		c.retry = min(max(c.retry*2, 500*time.Millisecond), 5*time.Second)
 		c.attempt = time.Now().Add(c.retry)
 		return
 	}
-	switch event := result.event.(type) {
+	switch event := event.(type) {
 	case *tabs.CaptureFrame:
 		c.retry = 0
 		c.failure = nil

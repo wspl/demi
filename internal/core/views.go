@@ -114,7 +114,7 @@ type ProviderErrorDiagnostics struct {
 // +demi:check validateAgentMessage
 type AgentMessage struct {
 	// The id of the `agent_message` block the message becomes. A
-	// completion's id is its [`CompletionId`].
+	// completion's id is its [CompletionID].
 	ID          BlockID `json:"id"`
 	Sender      Sender  `json:"sender"`
 	RecipientID NodeID  `json:"recipientId"`

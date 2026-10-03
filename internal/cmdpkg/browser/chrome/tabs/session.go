@@ -98,7 +98,7 @@ func (r *References) Lookup(id browserop.NodeRef) (Reference, bool) {
 	return node, ok
 }
 
-// Issue returns an existing node reference or the next number, subject to Rust's
+// Issue returns an existing node reference or the next number, subject to a
 // 10,000-reference document limit.
 func (r *References) Issue(reference Reference) (browserop.NodeRef, error) {
 	if id, ok := r.byNode[reference]; ok {

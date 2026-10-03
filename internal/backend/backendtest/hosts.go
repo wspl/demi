@@ -107,10 +107,7 @@ func (hostsProcessProvider) RuntimeState() core.RuntimeState { return &core.Runt
 
 // ListModels returns the scripted provider catalog.
 func (hostsProcessProvider) ListModels(context.Context) (core.ProviderModelList, error) {
-	return core.ProviderModelList{}, &provider.CatalogError{
-		Kind:    provider.CatalogUnavailable,
-		Message: "the directory has no answer scripted",
-	}
+	return core.ProviderModelList{}, errors.New("the directory has no answer scripted")
 }
 
 // ReadFailure returns empty failure facts for the fixture provider.

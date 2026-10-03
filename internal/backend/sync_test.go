@@ -488,9 +488,8 @@ func (p *pageSubscription) Quota() *provider.Quota { return p.quota }
 type pageQuota struct{}
 
 // ProbeCost marks the fixture probe as free.
-func (pageQuota) ProbeCost() *provider.ProbeCost {
-	cost := provider.ProbeFree
-	return &cost
+func (pageQuota) ProbeCost() (provider.ProbeCost, bool) {
+	return provider.ProbeFree, true
 }
 
 // Probe returns the local account quota reading.

@@ -52,7 +52,7 @@ type CLIConfig struct {
 	// ClaudeReleasesURL is the Claude Code distribution whose newest release the CLI on each Cloud follows.
 	ClaudeReleasesURL *url.URL
 	// Log selects what the backend logs: a level, and a level per target, comma-separated,
-	// such as `info,demi::provider::claude_code::wire=trace`.
+	// such as `info,provider.claudecode.wire=trace`.
 	Log string
 }
 
@@ -339,7 +339,7 @@ var settings = []struct {
 		"DEMI_LOG",
 		"info",
 		"What the backend logs: a level, and a level per target, comma-separated, " +
-			"such as `info,demi::provider::claude_code::wire=trace`",
+			"such as `info,provider.claudecode.wire=trace`",
 		false,
 	},
 }

@@ -39,7 +39,7 @@ func parseRelease(input []byte) (claudecodeop.Release, error) {
 	if err != nil {
 		return release, &operationError{claudecodeop.InvalidRelease, err}
 	}
-	// Rust's BTreeMap checks platform URLs in key order.
+	// Check platform URLs in key order, so the error names the first failing key.
 	for _, key := range slices.Sorted(maps.Keys(release.Platforms)) {
 		parsed, err := url.Parse(release.Platforms[key].URL)
 		if err != nil {
@@ -58,7 +58,7 @@ func parseRelease(input []byte) (claudecodeop.Release, error) {
 func supportedPlatform() (string, error) {
 	platform := currentPlatform()
 	if platform == "" {
-		//nolint:staticcheck // Claude Code is a product name; preserve the Rust diagnostic.
+		//nolint:staticcheck // Claude Code is a product name; user-visible text, kept byte for byte.
 		return "", &operationError{
 			claudecodeop.UnsupportedPlatform,
 			fmt.Errorf("Claude Code has no build for this machine (%s %s)", runtime.GOOS, runtime.GOARCH),
@@ -79,7 +79,7 @@ func ensure(
 	}
 	artifact, ok := release.Platforms[platform]
 	if !ok {
-		//nolint:staticcheck // Claude Code is a product name; preserve the Rust diagnostic.
+		//nolint:staticcheck // Claude Code is a product name; user-visible text, kept byte for byte.
 		return claudecodeop.Installed{}, &operationError{
 			claudecodeop.UnsupportedPlatform,
 			fmt.Errorf("Claude Code %s has no build for %s", release.Version, platform),

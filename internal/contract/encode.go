@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// EncodeJSON encodes a contract value with serde_json's string escaping
-// and scalar floating-point spelling.
+// EncodeJSON encodes a contract value with the contract's string escaping
+// (appendJSONString) and floating-point spelling (formatJSONFloat).
 // Call this or generated MarshalJSON methods directly for wire bytes: wrapping
 // them in encoding/json.Marshal reapplies Go's HTML and JavaScript escaping.
 func EncodeJSON(value any) ([]byte, error) {
@@ -46,8 +46,8 @@ func EncodeJSON(value any) ([]byte, error) {
 	return output, nil
 }
 
-// appendJSONString writes contract strings using serde_json's ESCAPE table:
-// only quotes, backslashes and ASCII controls need escaping. The standard
+// appendJSONString escapes only quotes, backslashes and ASCII controls
+// (\b \t \n \f \r by name, the others as \u00XX) and writes every other byte as is. The standard
 // library's JSON encoder also escapes U+2028/U+2029 with HTML escaping disabled.
 func appendJSONString(output []byte, text string) []byte {
 	const hex = "0123456789abcdef"
@@ -78,8 +78,10 @@ func appendJSONString(output []byte, text string) []byte {
 	return append(output, '"')
 }
 
-// formatJSONFloat retains serde_json's float kind, negative zero and exponent
-// spelling. EncodeJSON has already rejected non-finite values.
+// formatJSONFloat spells a float as a float: fixed notation with at least one
+// decimal (1.0, -0.0) while the decimal exponent is within -5..15 for float64
+// or -6..12 for float32, otherwise the shortest mantissa and a signed exponent
+// (1e-7, 1e+16). EncodeJSON has already rejected non-finite values.
 func formatJSONFloat(number float64, bits int) ([]byte, error) {
 	text := strconv.FormatFloat(number, 'e', -1, bits)
 	mantissa, exponent, _ := strings.Cut(text, "e")
@@ -87,8 +89,7 @@ func formatJSONFloat(number float64, bits int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// serde_json's zmij formatter uses different fixed-notation intervals
-	// for f32 and f64 (zmij 1.0.23, FIXED_DEC_EXP).
+	// float32 keeps fixed notation over a narrower exponent range than float64.
 	minimum, maximum := -5, 15
 	if bits == 32 {
 		minimum, maximum = -6, 12

@@ -37,8 +37,8 @@ type registration struct {
 	state      runnerState
 	token      atomic.Pointer[runnerwire.DeviceToken]
 	management *management
-	services   *cmdpkgs.ServiceHandle
-	installs   *cmdpkgs.InstallsReceiver
+	services   *cmdpkgs.ServiceRegistry
+	installs   *cmdpkgs.InstallsSubscription
 	dispatcher *jobs.Dispatcher
 	contexts   *jobs.Contexts
 	paths      jobs.ContextPaths
@@ -54,9 +54,6 @@ func runRegistration(ctx context.Context, options registrationOptions) (err erro
 	lease, err := tryInstallationLock(options.directory)
 	if err != nil {
 		return err
-	}
-	if lease == nil {
-		return errors.New("runner already active for this installation")
 	}
 	defer func() { err = errors.Join(err, lease.close()) }()
 	state := runnerState{root: options.directory}
@@ -121,22 +118,19 @@ func (r *registration) reconnect(ctx context.Context) error {
 		transport, err := connect(opening, r.options.backend)
 		cancel()
 		<-joined
-		end := disconnected
 		if err == nil {
-			end, err = r.serve(ctx, transport)
+			err = r.serve(ctx, transport)
 		}
-		if err == nil {
-			switch end {
-			case refused:
-				return errors.New("backend rejected runner registration")
-			case stopped:
-				return nil
-			case disconnected:
-				slog.Warn("backend connection lost")
-				failure = ""
-				delay = 250 * time.Millisecond
-			}
-		} else {
+		switch {
+		case err == nil:
+			return nil
+		case errors.Is(err, errRegistrationRefused):
+			return errRegistrationRefused
+		case errors.Is(err, errConnectionLost):
+			slog.Warn("backend connection lost")
+			failure = ""
+			delay = 250 * time.Millisecond
+		default:
 			text := "connection ended: " + err.Error()
 			if text == failure {
 				_, _ = fmt.Fprintln(os.Stderr, "demi-runner: "+text)
@@ -164,11 +158,11 @@ func registrationToken(
 	options registrationOptions,
 	state runnerState,
 ) (*runnerwire.DeviceToken, error) {
-	saved, err := state.config()
+	saved, found, err := state.config()
 	if err != nil {
 		return nil, err
 	}
-	if saved != nil && instanceID(saved.BackendURL) != instanceID(options.backend) {
+	if found && instanceID(saved.BackendURL) != instanceID(options.backend) {
 		return nil, errors.New("installation is registered to another backend")
 	}
 	token := options.token
@@ -182,7 +176,7 @@ func registrationToken(
 		return nil, errors.New("managed runner requires a device token")
 	}
 	config := runnerConfig{BackendURL: options.backend}
-	if saved != nil {
+	if found {
 		config.DeviceID = saved.DeviceID
 	}
 	if err := state.writeConfig(ctx, config); err != nil {
@@ -207,7 +201,7 @@ func newRegistration(
 		options:    options,
 		state:      state,
 		management: management,
-		services:   registry.Handle(),
+		services:   registry,
 		installs:   registry.Installs(),
 		contexts:   &jobs.Contexts{},
 		paths:      paths,

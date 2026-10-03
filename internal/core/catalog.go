@@ -45,17 +45,10 @@ func (m ProviderModel) Selection(providerID string, thinking ThinkingConfig, tie
 	return selection
 }
 
-// UnavailableSetting identifies an effort or tier the catalog does not offer.
-type UnavailableSetting struct {
-	// Kind identifies the unavailable setting.
-	Kind string `json:"kind"`
-	// Value is the requested setting.
-	Value string `json:"value"`
-}
-
-// Error describes the setting the model does not offer.
-func (e *UnavailableSetting) Error() string {
-	return fmt.Sprintf("The model does not offer the %s %q", e.Kind, e.Value)
+// settingUnavailable refuses a thinking effort or service tier the model does not offer.
+func settingUnavailable(setting, value string) error {
+	//nolint:staticcheck // ST1005: the page shows this text as the refusal's message.
+	return fmt.Errorf("The model does not offer the %s %q", setting, value)
 }
 
 // ThinkingFor resolves an explicit effort, Off, or the model's default.
@@ -66,19 +59,18 @@ func (m ProviderModel) ThinkingFor(effort *string) (ThinkingConfig, error) {
 			return nil, nil
 		}
 	}
-	unavailable := &UnavailableSetting{Kind: "thinking effort", Value: *effort}
 	efforts := m.thinkingEfforts()
 	if len(efforts) == 0 {
-		return nil, unavailable
+		return nil, settingUnavailable("thinking effort", *effort)
 	}
 	if *effort == ThinkingOff {
 		if m.CanDisableThinking != nil && !*m.CanDisableThinking {
-			return nil, unavailable
+			return nil, settingUnavailable("thinking effort", *effort)
 		}
 		return &DisabledConfig{}, nil
 	}
 	if !slices.Contains(efforts, *effort) {
-		return nil, unavailable
+		return nil, settingUnavailable("thinking effort", *effort)
 	}
 	return &EffortConfig{Effort: *effort}, nil
 }
@@ -119,7 +111,7 @@ func (m ProviderModel) TierFor(tier *string) (*string, error) {
 			return new(*tier), nil
 		}
 	}
-	return nil, &UnavailableSetting{Kind: "service tier", Value: *tier}
+	return nil, settingUnavailable("service tier", *tier)
 }
 
 // AcceptedFileExtensions preserves an exact list, otherwise derives known support.

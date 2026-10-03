@@ -306,13 +306,13 @@ func (v *Vault) CreateSubscription(
 	if err != nil {
 		return nil, err
 	}
-	selected, err := staged.Active(ctx)
+	selected, ok, err := staged.Active(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var active *webapi.CredentialID
 	for i := range accounts {
-		if selected != nil && string(accounts[i].ID) == *selected {
+		if ok && string(accounts[i].ID) == selected {
 			active = &accounts[i].ID
 			break
 		}

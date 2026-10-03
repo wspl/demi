@@ -19,19 +19,19 @@ func TestGrowthReserveFractionFloorAndSmallCap(t *testing.T) {
 		{8192, 820, 0},
 		{8192, 819, 16384},
 	} {
-		result, err := GrowthWanted(test.total*mib, test.free*mib)
+		result, grow, err := GrowthWanted(test.total*mib, test.free*mib)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if test.want == 0 {
-			if result != nil {
-				t.Fatal(*result)
+			if grow {
+				t.Fatal(result)
 			}
-		} else if result == nil || *result != test.want*mib {
+		} else if !grow || result != test.want*mib {
 			t.Fatalf("%+v: %v", test, result)
 		}
 	}
-	if _, err := GrowthWanted(math.MaxUint64, 0); err == nil {
+	if _, _, err := GrowthWanted(math.MaxUint64, 0); err == nil {
 		t.Fatal("overflow accepted")
 	}
 }
@@ -48,7 +48,7 @@ func TestVolumeGrowthHasOneRequestUntilMatchingReply(t *testing.T) {
 	// without filling the developer's real filesystem to its growth threshold.
 	wanted := uint64(512 * 1024 * 1024)
 	v.pending[runnerwire.VolumeNameHome] = ""
-	v.checks <- volumeCheck{name: runnerwire.VolumeNameHome, wanted: &wanted}
+	v.checks <- volumeCheck{name: runnerwire.VolumeNameHome, wanted: wanted, grow: true}
 	var jobs sync.WaitGroup
 	results := make(chan bool, 2)
 	for range 2 {

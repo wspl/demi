@@ -97,7 +97,7 @@ func (v *browserView) next(t *testing.T) viewFrame {
 					if err != nil {
 						t.Fatal(err)
 					}
-					// Recovery notices remain observable controls, as in the Rust viewer.
+					// Recovery notices are control frames the test can observe.
 					// Waiting for the requested stream decides whether recovery succeeded.
 					return viewFrame{control: frame[1:]}
 				case browserop.VideoFrame:

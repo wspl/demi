@@ -22,7 +22,7 @@ import (
 	"github.com/wspl/demi/internal/provider/providertest"
 )
 
-// nodeScripts selects a scripted runtime by the child's first brief, as Rust's Model does.
+// nodeScripts selects a scripted runtime by the child's first brief.
 type nodeScripts struct {
 	root     *providertest.ScriptedRuntime
 	children []childScript

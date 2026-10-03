@@ -24,7 +24,7 @@ func VetArchive(ctx context.Context, archive string) error {
 	}
 	defer func() { _ = file.Close() }() // Read-only archive.
 	// Synchronous streaming owns no decoder workers across namespace jobs.
-	// Match libzstd's ZSTD_WINDOWLOG_LIMIT_DEFAULT (27), used by Rust.
+	// Allow windows up to 2^27 bytes, libzstd's ZSTD_WINDOWLOG_LIMIT_DEFAULT.
 	decoder, err := zstd.NewReader(file, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxWindow(1<<27))
 	if err != nil {
 		return err

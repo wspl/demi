@@ -19,7 +19,8 @@ func headerValue(header http.Header, key string) *string {
 
 func fileHeaders(path string, download bool, stat host.FileStat, part hostaccess.RangeAnswer) (http.Header, error) {
 	result := rawFileHeaders()
-	addHeaders(result, contentHeaders(core.PreviewMediaType(path), download, fileName(path)))
+	mediaType, _ := core.PreviewMediaType(path)
+	addHeaders(result, contentHeaders(mediaType, download, fileName(path)))
 	result.Set("ETag", hostaccess.FileVersion(stat))
 	modified, err := lastModified(stat)
 	if err != nil {

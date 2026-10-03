@@ -15,9 +15,9 @@ import (
 	"github.com/wspl/demi/internal/provider/providertest"
 )
 
-// The session boundary of requests.rs. The seven-family vendor-wire matrix
-// belongs to b-providers (internal/backend/providers), as directed in review.
-// This test checks session requests and does not substitute for that matrix.
+// TestRequestPrefixesWithThinkingAndSummary checks the requests a session
+// builds. The vendor wire forms of the seven provider families are tested in
+// internal/backend/providers.
 func TestRequestPrefixesWithThinkingAndSummary(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})

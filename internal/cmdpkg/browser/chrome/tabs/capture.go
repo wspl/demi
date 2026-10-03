@@ -82,7 +82,7 @@ type CaptureChannel struct {
 }
 
 // Start captures a target at the requested encoded dimensions. The extension's
-// initial connection has Rust's ten-second bound; failure does not close the tab.
+// initial connection is bounded to ten seconds; failure does not close the tab.
 func (c *CaptureChannel) Start(
 	ctx context.Context,
 	targetID target.ID,
@@ -155,21 +155,13 @@ type Capture struct {
 	closed    chan struct{}
 }
 
-// Next waits for the next event or connection end. Frame payloads are immutable.
-func (c *Capture) Next(ctx context.Context) (CaptureEvent, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case event, ok := <-c.events:
-		if !ok {
-			return nil, &cdp.BrowserError{Kind: cdp.KindClosed}
-		}
-		return event, nil
-	}
-}
+// Events returns the capture's events. The channel is closed when the capture
+// ends: on Close, when the extension disconnects or is replaced, and when the
+// environment ends. Frame payloads are immutable.
+func (c *Capture) Events() <-chan CaptureEvent { return c.events }
 
 // Ack reports received frames and the maximum in-flight frame window.
-// Like Rust, superseding controls are dropped when the control queue is full.
+// Superseding controls are dropped when the control queue is full.
 func (c *Capture) Ack(sequence, window uint32) {
 	c.command(&browserop.CaptureCommandAck{Capture: c.id, Sequence: sequence, Window: window})
 }
@@ -452,7 +444,7 @@ func (c *CaptureChannel) accept(ctx context.Context, w http.ResponseWriter, r *h
 	if err != nil {
 		return
 	}
-	socket.SetReadLimit(64 * 1024 * 1024) // tungstenite's default message limit.
+	socket.SetReadLimit(64 * 1024 * 1024) // The largest capture extension message, 64 MiB.
 	select {
 	case c.sockets <- socket:
 	case <-ctx.Done():

@@ -105,17 +105,6 @@ type RejectedError struct {
 // Error reports the rejected HTTP status.
 func (e *RejectedError) Error() string { return fmt.Sprintf("the server answered %d", e.Status) }
 
-// CodingError reports a content coding the artifact client cannot decode.
-type CodingError struct {
-	// Coding is the unsupported Content-Encoding header value.
-	Coding string
-}
-
-// Error reports the unsupported content coding.
-func (e *CodingError) Error() string {
-	return fmt.Sprintf("unsupported artifact content coding %q", e.Coding)
-}
-
 // downloadError hides potentially signed URLs while retaining error identity.
 type downloadError struct{ cause error }
 
@@ -152,7 +141,7 @@ func (c *Client) get(ctx context.Context, location string) (*http.Response, erro
 	coding := response.Header.Get("Content-Encoding")
 	if coding != "" && coding != ContentCoding {
 		_ = response.Body.Close() // Discarding an unsupported response.
-		return nil, &CodingError{coding}
+		return nil, fmt.Errorf("unsupported artifact content coding %q", coding)
 	}
 	if coding == ContentCoding {
 		decoder, err := zstd.NewReader(response.Body, zstd.WithDecoderConcurrency(1))

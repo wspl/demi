@@ -11,8 +11,8 @@ import (
 )
 
 // decodePageValue validates page algorithm results before they become Go values.
-// json/v2 supplies duplicate, UTF-8 and field validation; Rust's non-null scalar
-// and exact-length array rules are not available as json/v2 decode options.
+// json/v2 supplies duplicate, UTF-8 and field validation; it has no option to
+// refuse null for a non-pointer value or an array of the wrong length, so this does.
 func decodePageValue[T any](raw []byte) (T, error) {
 	var value T
 	kind := reflect.TypeFor[T]().Kind()

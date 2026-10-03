@@ -18,8 +18,8 @@ func TestLineSplitterChunks(t *testing.T) {
 			t.Fatalf("Push(%q) = %q, want %q", tc.chunk, got, tc.want)
 		}
 	}
-	if got := splitter.Finish(); got == nil || *got != "third" {
-		t.Fatalf("Finish = %v", got)
+	if got, ok := splitter.Finish(); !ok || got != "third" {
+		t.Fatalf("Finish = %q", got)
 	}
 	var long LineSplitter
 	if got := long.Push(
@@ -30,11 +30,11 @@ func TestLineSplitterChunks(t *testing.T) {
 	) {
 		t.Fatalf("long lines = %q", got)
 	}
-	if got := long.Finish(); got == nil || *got != "yyy" {
-		t.Fatalf("tail = %v", got)
+	if got, ok := long.Finish(); !ok || got != "yyy" {
+		t.Fatalf("tail = %q", got)
 	}
-	if got := new(LineSplitter).Finish(); got != nil {
-		t.Fatalf("empty = %v", got)
+	if got, ok := new(LineSplitter).Finish(); ok {
+		t.Fatalf("empty = %q", got)
 	}
 }
 

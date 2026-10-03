@@ -73,7 +73,7 @@ func TestOutputLimits(t *testing.T) {
 	}
 }
 
-// transcriptBody checks the complete vendor request against the Rust fixture.
+// transcriptBody checks the complete vendor request against its golden fixture.
 func transcriptBody(ctx context.Context, t *testing.T, wire core.WireAPI, fixture, id string) {
 	t.Helper()
 	request := requestWith(

@@ -31,15 +31,21 @@ func openInstallation(ctx context.Context, root string) error {
 	return process.Chmod(ctx, root, 0o700)
 }
 
-// tryInstallationLock returns nil when another runner holds this installation.
+// errInstallationBusy reports that another runner holds the installation lock.
+var errInstallationBusy = errors.New("runner already active for this installation")
+
+// tryInstallationLock takes the installation lock, or returns errInstallationBusy when another runner holds it.
 func tryInstallationLock(root string) (*installationLease, error) {
 	file, err := os.OpenFile(filepath.Join(root, "runner.lock"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
 	}
 	locked, err := lockInstallationFile(file)
-	if err != nil || !locked {
+	if err != nil {
 		return nil, errors.Join(err, file.Close())
+	}
+	if !locked {
+		return nil, errors.Join(errInstallationBusy, file.Close())
 	}
 	return &installationLease{file: file}, nil
 }

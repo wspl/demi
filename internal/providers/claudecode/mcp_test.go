@@ -348,8 +348,8 @@ func TestLeftoverOutputBelongsToNoRequest(t *testing.T) {
 	})
 }
 
-// These scenarios cover the SDK behavior formerly supplied by rmcp, in addition
-// to the provider's Rust scenarios. All IO is the in-memory process script.
+// These scenarios cover the MCP server's protocol negotiation, metadata and
+// default answers. All IO is the in-memory process script.
 func TestMCPProtocolNegotiationAndDefaults(t *testing.T) {
 	for _, version := range []string{"2024-11-05", "2025-06-18", "2099-01-01"} {
 		t.Run(version, func(t *testing.T) {

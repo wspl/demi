@@ -18,21 +18,14 @@ const (
 	label     = "Grok Build"
 )
 
-// Config configures one account of a grok-build entry.
+// Config configures one account of a grok-build entry. A nil URL takes the product's value.
 type Config struct {
 	// The account the provider stands for; nil only for a provider built to log in.
 	Account *string
-	// The chat proxy, https://cli-chat-proxy.grok.com/v1 in the product.
+	// The chat proxy; nil for https://cli-chat-proxy.grok.com/v1.
 	ProxyURL *url.URL
-	// The login issuer; an existing account refreshes at its stored issuer.
+	// The login issuer; nil for https://auth.x.ai. An existing account refreshes at its stored issuer.
 	IssuerURL *url.URL
-}
-
-// NewConfig returns the product configuration for account, or nil for login.
-func NewConfig(account *string) Config {
-	proxy, _ := url.Parse(ProxyURL)
-	issuer, _ := url.Parse(IssuerURL + "/") // Constant URLs are valid.
-	return Config{Account: account, ProxyURL: proxy, IssuerURL: issuer}
 }
 
 // Provider is a grok-build entry's provider for one account.
@@ -59,15 +52,23 @@ func New(
 		account = &id
 	}
 	a := &auth{pool: pool, account: account, clock: clock}
-	issuer := *config.IssuerURL
+	proxy := config.ProxyURL
+	if proxy == nil {
+		proxy, _ = url.Parse(ProxyURL) // The constant URL is valid.
+	}
+	issuerURL := config.IssuerURL
+	if issuerURL == nil {
+		issuerURL, _ = url.Parse(IssuerURL) // The constant URL is valid.
+	}
+	issuer := *issuerURL
 	if issuer.Path == "" {
 		issuer.Path = "/"
 	}
-	user := provider.EndpointURL(config.ProxyURL, "/user")
+	user := provider.EndpointURL(proxy, "/user")
 	kit := &loginKit{http: httpClient, issuer: &issuer, userURL: user, clock: clock}
 	probeUser := *user
 	probeUser.RawQuery = "include=subscription"
-	billing := provider.EndpointURL(config.ProxyURL, "/billing")
+	billing := provider.EndpointURL(proxy, "/billing")
 	billing.RawQuery = "format=credits"
 	q := &quotaSource{auth: a, http: httpClient, userURL: &probeUser, billingURL: billing}
 	return &Provider{
@@ -76,8 +77,8 @@ func New(
 		accounts:  provider.NewAccounts(pool, kit, clock),
 		http:      httpClient,
 		clock:     clock,
-		chatURL:   provider.EndpointURL(config.ProxyURL, "/chat/completions"),
-		modelsURL: provider.EndpointURL(config.ProxyURL, "/models"),
+		chatURL:   provider.EndpointURL(proxy, "/chat/completions"),
+		modelsURL: provider.EndpointURL(proxy, "/models"),
 	}
 }
 
@@ -88,7 +89,7 @@ func (*Provider) Capabilities() provider.Capabilities { return provider.Capabili
 func (p *Provider) AuthStatus(ctx context.Context) core.AuthState {
 	s, failure := p.auth.stored(ctx)
 	if failure != nil {
-		return failure.State()
+		return provider.AccountAuthFailure("Grok", failure).State()
 	}
 	name := s.label().Label
 	return &core.Authenticated{AccountLabel: &name}

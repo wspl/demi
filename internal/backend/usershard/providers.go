@@ -2,6 +2,7 @@ package usershard
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -37,17 +38,11 @@ func (p *conversationProviders) Selection(
 ) (core.ModelSelection, error) {
 	record, err := p.shard.Control().Conversation(ctx, hostaccess.ConversationOf(root))
 	if err != nil {
-		return core.ModelSelection{}, &server.ResolveError{
-			Kind:    server.ResolveFailed,
-			Message: err.Error(),
-			Cause:   err,
-		}
+		return core.ModelSelection{}, err
 	}
 	if record == nil || record.Model == nil {
-		return core.ModelSelection{}, &server.ResolveError{
-			Kind:    server.ResolveFailed,
-			Message: "The conversation has no model yet",
-		}
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+		return core.ModelSelection{}, errors.New("The conversation has no model yet")
 	}
 	return *record.Model, nil
 }
@@ -60,18 +55,14 @@ func (p *conversationProviders) Runtime(
 ) (provider.Runtime, error) {
 	id, err := webapi.ParseProviderID(model.ProviderID)
 	if err != nil {
-		return nil, &server.ResolveError{Kind: server.ResolveUnknown, Provider: model.ProviderID}
+		return nil, server.ProviderUnavailable(model.ProviderID)
 	}
 	entry, err := p.shard.services.Vault.Visible(ctx, p.shard.user, id)
 	if err != nil {
-		return nil, &server.ResolveError{
-			Kind:    server.ResolveFailed,
-			Message: err.Error(),
-			Cause:   err,
-		}
+		return nil, err
 	}
 	if entry == nil {
-		return nil, &server.ResolveError{Kind: server.ResolveUnknown, Provider: model.ProviderID}
+		return nil, server.ProviderUnavailable(model.ProviderID)
 	}
 	runtime := &conversationRuntime{
 		source:       p,
@@ -80,7 +71,7 @@ func (p *conversationProviders) Runtime(
 		selection:    model,
 	}
 	if failure := runtime.serve(ctx, *entry, model); failure != nil {
-		return nil, &server.ResolveError{Kind: server.ResolveFailed, Message: failure.Message}
+		return nil, errors.New(failure.Message)
 	}
 	return runtime, nil
 }

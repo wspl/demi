@@ -470,9 +470,9 @@ func quotaCapability(p provider.Provider) webapi.QuotaCapability {
 	var capability webapi.QuotaCapability = &webapi.QuotaCapabilityNone{}
 	if q := p.Quota(); q != nil {
 		var cost *webapi.ProbeCost
-		if c := q.ProbeCost(); c != nil {
+		if c, ok := q.ProbeCost(); ok {
 			value := webapi.ProbeCostFree
-			if *c == provider.ProbeInference {
+			if c == provider.ProbeInference {
 				value = webapi.ProbeCostInference
 			}
 			cost = &value

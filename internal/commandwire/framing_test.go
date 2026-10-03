@@ -213,7 +213,7 @@ func TestLifecycleMetadataFraming(t *testing.T) {
 	}
 }
 
-func TestFramedJSONMatchesSerdeEscaping(t *testing.T) {
+func TestFramedJSONLeavesHTMLCharactersUnescaped(t *testing.T) {
 	text := "<&>\u2028\u2029"
 	for _, tc := range []struct {
 		name   string
@@ -257,7 +257,7 @@ func TestFramedJSONMatchesSerdeEscaping(t *testing.T) {
 				t.Fatalf("payload length = %d; want %d", got, len(tc.want))
 			}
 			if got := string(frame[tc.prefix:]); got != tc.want {
-				t.Fatalf("payload = %q; want serde_json bytes %q", got, tc.want)
+				t.Fatalf("payload = %q; want unescaped bytes %q", got, tc.want)
 			}
 		})
 	}

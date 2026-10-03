@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -252,11 +253,10 @@ func TestImmutableCommandVersionsPreserveJSONNumberKinds(t *testing.T) {
 				Boundaries: []store.SessionBoundary{},
 			}
 			err := tree.SessionStore("root").Save(ctx, change, store.CommitGuard{})
-			var refusal *store.Error
-			if !errors.As(err, &refusal) || refusal.Kind != store.OperationFailed {
+			if err == nil || !strings.HasSuffix(err.Error(), " is immutable") {
 				t.Fatalf("immutable number changed: %v", err)
 			}
-			loaded, err := tree.SessionStore("root").Load(ctx)
+			loaded, _, err := tree.SessionStore("root").Load(ctx)
 			require(t, err)
 			equal(t, json.RawMessage(pair[0]), loaded.CommandState.Versions[0].Values["value"])
 		})

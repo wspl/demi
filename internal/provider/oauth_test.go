@@ -78,25 +78,26 @@ func TestJWTClaimsWithoutSignature(t *testing.T) {
 		42,
 	} {
 		token := providertest.JWT(t, value)
-		claims := provider.JWTClaims(token, decode)
-		if claims == nil {
+		parsed, ok := provider.JWTClaims(token, decode)
+		if !ok {
 			t.Fatalf("no claims for %s", token)
 		}
-		requireEqual(t, *claims, jsonValue(t, encoded(t, value)))
+		requireEqual(t, parsed, jsonValue(t, encoded(t, value)))
 	}
-	requireEqual(t, *provider.JWTClaims("header.eyJhIjoxfQ==.signature", decode), jsonValue(t, `{"a":1}`))
+	parsed, _ := provider.JWTClaims("header.eyJhIjoxfQ==.signature", decode)
+	requireEqual(t, parsed, jsonValue(t, `{"a":1}`))
 	for _, text := range []string{"header.payload", "", "a..c", "header.!!!!.signature", "a.b.c.d", "header.bm9wZQ.sig"} {
-		if provider.JWTClaims(text, decode) != nil {
+		if _, ok := provider.JWTClaims(text, decode); ok {
 			t.Fatalf("accepted %s", text)
 		}
 	}
 	type claims struct {
 		Sub string `json:"sub"`
 	}
-	if provider.JWTClaims(
+	if _, ok := provider.JWTClaims(
 		providertest.JWT(t, 42),
 		func(data []byte) (claims, error) { return provider.DecodeUntagged[claims](string(data)) },
-	) != nil {
+	); ok {
 		t.Fatal("accepted numeric claims as object")
 	}
 }

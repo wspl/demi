@@ -10,7 +10,7 @@ import (
 
 func TestNodeJobTracksItsRoundAndClose(t *testing.T) {
 	root := store.RootRecord("root", "1970-01-01T00:00:00.000Z")
-	if root.Job() != nil || root.Number != 0 || root.Round != 1 || !root.CanSpawnSubagents {
+	if _, ok := root.Job(); ok || root.Number != 0 || root.Round != 1 || !root.CanSpawnSubagents {
 		t.Fatalf("root: %#v", root)
 	}
 	child := root
@@ -18,7 +18,7 @@ func TestNodeJobTracksItsRoundAndClose(t *testing.T) {
 	child.Parent = new(core.NodeID("root"))
 	child.Description = "find it"
 	child.Profile = new("research")
-	running := child.Job()
+	running, _ := child.Job()
 	if running.Phase != framewire.JobPhaseRunning || running.EndedAt != nil || running.Result != nil ||
 		running.SubagentID != "child" ||
 		running.ParentSessionID != "root" {
@@ -50,7 +50,7 @@ func TestNodeJobTracksItsRoundAndClose(t *testing.T) {
 		},
 	} {
 		child.Closed = &store.NodeClose{Phase: scenario.phase, At: "1970-01-01T00:01:00.000Z"}
-		job := child.Job()
+		job, _ := child.Job()
 		if job.Phase != scenario.want || job.EndedAt == nil || *job.EndedAt != child.Closed.At ||
 			(job.Result == nil) != (scenario.result == nil) {
 			t.Fatalf("closed job: %#v", job)

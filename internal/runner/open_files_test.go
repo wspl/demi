@@ -99,7 +99,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			printed.Write(chunk.Bytes)
 		}
 	}
-	result := child.Wait(ctx)
+	result, _ := child.Wait(ctx)
 	if result.Code == nil || *result.Code != 0 || printed.String() != "1024\n" {
 		t.Fatalf("child launch limit: %+v, %q", result, printed.String())
 	}
@@ -119,7 +119,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			printed.Write(chunk.Bytes)
 		}
 	}
-	result, _ = limits.Wait(ctx)
+	result, _, _ = limits.Wait(ctx)
 	if result.Code == nil || *result.Code != 0 || printed.String() != "1024\n1024\n" {
 		t.Fatalf("shell launch limits: %+v, %q", result, printed.String())
 	}
@@ -332,7 +332,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		defer child.Cancel()
 		for range child.Output {
 		}
-		exit := child.Wait(ctx)
+		exit, _ := child.Wait(ctx)
 		if exit.Code == nil || *exit.Code != 0 {
 			return fmt.Errorf("process: %+v", exit)
 		}
@@ -346,7 +346,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		defer job.Cancel()
 		for range job.Output() {
 		}
-		exit, _ := job.Wait(ctx)
+		exit, _, _ := job.Wait(ctx)
 		if exit.Code == nil || *exit.Code != 0 {
 			return fmt.Errorf("job: %+v", exit)
 		}
@@ -382,7 +382,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		Resources: map[string]commandwire.PackageResource{},
 	}
 	exhaustDescriptors(ctx, t, "native service start", func() error {
-		resident, err := registry.Handle().
+		resident, err := registry.
 			Acquire(ctx, descriptor, localFixtureArtifact(native), cmdpkgstest.NoNumbers{})
 		if err != nil {
 			return err
@@ -395,12 +395,12 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		t.Fatal(err)
 	}
 	dispatch := jobstest.NewDispatch(ctx, t, filepath.Join(root, "dispatch"), manifest, pipes)
-	execution, guard, err := dispatch.Context(ctx, "local", runnerCommandContext())
+	execution, registration, err := dispatch.Context(ctx, "local", runnerCommandContext())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := guard.Close(context.Background()); err != nil {
+		if err := registration.Close(context.Background()); err != nil {
 			t.Error(err)
 		}
 	}()
@@ -475,8 +475,8 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Run("utility_child", func(t *testing.T) {
-		// Unlike Rust's embedded xargs, Go starts the system utility in its own
-		// process. It can start its child while the runner has no descriptor left.
+		// The system xargs runs in its own process, so it can start its child
+		// while the runner has no descriptor left.
 		job, err := scope.Start(
 			ctx,
 			"printf ready; xargs /usr/bin/printf > child.txt",
@@ -497,7 +497,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		for chunk := range job.Output() {
 			output.Write(chunk.Bytes)
 		}
-		exit, _ := job.Wait(ctx)
+		exit, _, _ := job.Wait(ctx)
 		releaseDescriptors(held)
 		held = nil
 		data, err := os.ReadFile(filepath.Join(root, "child.txt"))
@@ -525,9 +525,9 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			job.Input() <- process.Input{}
 			for range job.Output() {
 			}
-			exit, _ := job.Wait(ctx)
-			if exit.Error != nil {
-				return errors.New(*exit.Error)
+			exit, _, err := job.Wait(ctx)
+			if err != nil {
+				return err
 			}
 			if exit.Code == nil || *exit.Code != 0 {
 				return fmt.Errorf("running job: %+v", exit)
@@ -559,12 +559,9 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		var exit process.Exit
 		go func() {
 			defer close(joined)
-			exit, _ = cancelled.Wait(ctx)
-			if exit.Error != nil {
-				joined <- errors.New(*exit.Error)
-			} else {
-				joined <- nil
-			}
+			var err error
+			exit, _, err = cancelled.Wait(ctx)
+			joined <- err
 		}()
 		defer func() {
 			cancelled.Cancel()

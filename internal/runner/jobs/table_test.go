@@ -57,14 +57,14 @@ func (j *playedJob) Signal(runnerwire.Signal) error {
 }
 func (j *playedJob) Cancel()           { j.cancel() }
 func (j *playedJob) IsCancelled() bool { return j.ctx.Err() != nil }
-func (j *playedJob) Wait(ctx context.Context) (process.Exit, *string) {
+func (j *playedJob) Wait(ctx context.Context) (process.Exit, *string, error) {
 	select {
 	case <-j.done:
 	case <-ctx.Done():
 		j.cancel()
 		<-j.done
 	}
-	return j.exit, j.cwd
+	return j.exit, j.cwd, nil
 }
 
 func printJob(

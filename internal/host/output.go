@@ -375,7 +375,7 @@ func (t OutputText) Chunks(from int) []core.OutputChunk {
 // gapNote renders bytes omitted between the first and last kept output.
 func gapNote(count uint64) string { return fmt.Sprintf("[... %d bytes left out ...]", count) }
 
-// lossy matches Rust's UTF-8 replacement of each invalid sequence, including an incomplete final character.
+// lossy replaces each invalid UTF-8 sequence, and an incomplete final character, with one U+FFFD.
 func lossy(data []byte) string {
 	var b strings.Builder
 	for len(data) > 0 {
@@ -385,7 +385,7 @@ func lossy(data []byte) string {
 		}
 		r, n := utf8.DecodeRune(data)
 		if r == utf8.RuneError && n == 1 {
-			// Rust replaces the valid prefix of an interrupted multibyte sequence once.
+			// The valid prefix of an interrupted multibyte sequence becomes a single U+FFFD.
 			for n < len(data) && n < utf8.UTFMax && !utf8.FullRune(data[:n+1]) {
 				n++
 			}

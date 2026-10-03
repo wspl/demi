@@ -2,6 +2,7 @@ package servertest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ const HangGuard = 10 * time.Second
 // the server separately and must shut it down after all clients detach.
 type TestClient[H host.Host] struct {
 	connection *server.Connection[H]
-	frames     *server.FrameReceiver
+	frames     *server.Frames
 	hangGuard  time.Duration
 }
 
@@ -52,20 +53,17 @@ func (c *TestClient[H]) Send(ctx context.Context, frame framewire.ClientFrame) {
 	c.connection.Handle(ctx, frame)
 }
 
-// Next returns the next frame, or nil once the outbox closes or lags.
+// Next returns the next frame, or nil once the outbox ends or lags.
 // Cancellation is returned as an error.
 func (c *TestClient[H]) Next(ctx context.Context) (framewire.ServerFrame, error) {
-	out, err := c.frames.Receive(ctx)
-	if err != nil {
-		return nil, err
+	if c.frames.Next(ctx) {
+		return c.frames.Frame(), nil
 	}
-	switch v := out.(type) {
-	case *server.Frame:
-		return v.Frame, nil
-	case *server.Lagged, *server.Closed:
+	err := c.frames.Err()
+	if errors.Is(err, server.ErrLagged) {
 		return nil, nil
 	}
-	return nil, nil
+	return nil, err
 }
 
 // Received returns every frame waiting now.
@@ -73,7 +71,7 @@ func (c *TestClient[H]) Received() []framewire.ServerFrame { return WaitingFrame
 
 // Split returns the connection and outbox for observing frames while another
 // goroutine handles input. Only one goroutine may read the outbox at a time.
-func (c *TestClient[H]) Split() (*server.Connection[H], *server.FrameReceiver) {
+func (c *TestClient[H]) Split() (*server.Connection[H], *server.Frames) {
 	return c.connection, c.frames
 }
 
@@ -102,27 +100,16 @@ func (c *TestClient[H]) NextUntil(
 	}
 }
 
-// Outgoing returns the next outbox item, including lagged or closed.
-func (c *TestClient[H]) Outgoing(ctx context.Context) (server.Outgoing, error) {
-	return c.frames.Receive(ctx)
-}
-
 // Connection returns the client's connection handle.
 func (c *TestClient[H]) Connection() *server.Connection[H] { return c.connection }
 
-// WaitingFrames returns every frame outbox holds now.
-func WaitingFrames(outbox *server.FrameReceiver) []framewire.ServerFrame {
-	frames := []framewire.ServerFrame{}
-	for {
-		outgoing := outbox.TryReceive()
-		if outgoing == nil {
-			return frames
-		}
-		switch v := outgoing.(type) {
-		case *server.Frame:
-			frames = append(frames, v.Frame)
-		case *server.Lagged, *server.Closed:
-			return frames
-		}
+// WaitingFrames returns every frame frames holds now.
+func WaitingFrames(frames *server.Frames) []framewire.ServerFrame {
+	now, cancel := context.WithCancel(context.Background())
+	cancel()
+	waiting := []framewire.ServerFrame{}
+	for frames.Next(now) {
+		waiting = append(waiting, frames.Frame())
 	}
+	return waiting
 }

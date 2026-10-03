@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -346,22 +347,13 @@ func TestDetachDrainsAndClosesOutbox(t *testing.T) {
 			"*framewire.QueueFrame",
 			"*framewire.PendingSteersFrame",
 		} {
-			v, err := out.Receive(t.Context())
-			if err != nil {
-				t.Fatal(err)
+			if !out.Next(t.Context()) {
+				t.Fatal(out.Err())
 			}
-			frame, ok := v.(*server.Frame)
-			if !ok {
-				t.Fatal(v)
-			}
-			equal(t, kind, fmt.Sprintf("%T", frame.Frame))
+			equal(t, kind, fmt.Sprintf("%T", out.Frame()))
 		}
-		v, err := out.Receive(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := v.(*server.Closed); !ok {
-			t.Fatal(v)
+		if out.Next(t.Context()) || out.Err() != nil {
+			t.Fatal(out.Frame(), out.Err())
 		}
 	})
 }
@@ -488,12 +480,9 @@ func TestLaggingConnectionClosesAlone(t *testing.T) {
 		if patches <= 16 {
 			t.Fatal("turn did not exceed outbox", patches)
 		}
-		out, err := stalled.Outgoing(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := out.(*server.Lagged); !ok {
-			t.Fatal(out)
+		_, out := stalled.Split()
+		if out.Next(t.Context()) || !errors.Is(out.Err(), server.ErrLagged) {
+			t.Fatal(out.Frame(), out.Err())
 		}
 		if !strings.HasSuffix(texts(f), "39 ") {
 			t.Fatal(texts(f))

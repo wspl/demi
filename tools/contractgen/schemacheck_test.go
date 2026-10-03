@@ -58,7 +58,7 @@ func TestSchemaGoOnlyChecks(t *testing.T) {
 	}
 }
 
-// Schemars omits a skipped None default, makes Option fields optional, and adds
+// A nullable optional field has no default, is not required, and adds
 // null to their type. Exact schema comparison; local CPU budget <1 second.
 func TestNullableOptionalSchema(t *testing.T) {
 	want := `{"additionalProperties":false,` +

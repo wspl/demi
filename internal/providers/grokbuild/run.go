@@ -29,7 +29,7 @@ func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) pr
 		for ctx.Err() == nil {
 			s, failure := r.shared.auth.credentials(ctx, r.http, refused)
 			if failure != nil {
-				emitFailure(failure.Failure())
+				emitFailure(provider.AccountAuthFailure("Grok", failure).Failure())
 				return
 			}
 			req, err := http.NewRequestWithContext(

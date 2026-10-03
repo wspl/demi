@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -81,10 +82,10 @@ func New[H host.Host](deps Deps[H]) *Server[H] {
 // Connect creates a connection for root, whose tree works in cwd when created,
 // and its bounded outbox. Resolver resolves files referenced by client frames.
 // The socket owner must defer Connection.Detach, even after cancellation.
-func (s *Server[H]) Connect(root core.NodeID, cwd string, resolver ContentResolver) (*Connection[H], *FrameReceiver) {
+func (s *Server[H]) Connect(root core.NodeID, cwd string, resolver ContentResolver) (*Connection[H], *Frames) {
 	outbox := &outbox{capacity: s.deps.Config.OutboxFrames, changed: make(chan struct{})}
 	c := &Connection[H]{server: s, root: root, cwd: cwd, resolver: resolver, outbox: outbox}
-	return c, &FrameReceiver{outbox: outbox}
+	return c, &Frames{outbox: outbox}
 }
 
 // Tree returns the conversation's live tree, or nil if it has none.
@@ -96,20 +97,20 @@ func (s *Server[H]) Tree(root core.NodeID) *Tree[H] {
 
 // Restore opens root in cwd without a connection, continues its saved work
 // and arms its wakeups. A tree already live is left as it is.
-// Failure returns *RestoreError.
+// Failure says whether the tree did not open or did not continue.
 func (s *Server[H]) Restore(ctx context.Context, root core.NodeID, cwd string) error {
 	permit, err := s.opening.Acquire(ctx, root)
 	if err != nil {
 		return err
 	}
 	defer permit.Release()
-	tree, continuation, err := s.liveOrOpen(ctx, root, cwd)
+	tree, continuation, continues, err := s.liveOrOpen(ctx, root, cwd)
 	if err != nil {
-		return &RestoreError{Kind: RestoreOpen, Cause: err}
+		return fmt.Errorf("the tree did not open: %w", err)
 	}
-	if continuation != nil {
-		if err := tree.continueRestored(ctx, *continuation); err != nil {
-			return &RestoreError{Kind: RestoreContinue, Cause: err}
+	if continues {
+		if err := tree.continueRestored(ctx, continuation); err != nil {
+			return fmt.Errorf("the restored tree did not continue: %w", err)
 		}
 	}
 	return nil
@@ -117,7 +118,7 @@ func (s *Server[H]) Restore(ctx context.Context, root core.NodeID, cwd string) e
 
 // PrepareSwitch prepares the live root's next model, building a runtime before
 // anything changes when the provider changes. It returns nil when no tree is
-// live, and *ResolveError when resolution fails. The caller must pass a
+// live, and an error wrapping ErrProviderUnavailable when no provider entry has the id. The caller must pass a
 // prepared switch to SwitchModel or discard it to release its runtime.
 func (s *Server[H]) PrepareSwitch(
 	ctx context.Context,
@@ -191,18 +192,18 @@ func (s *Server[H]) PrepareFork(
 		return tree.root.session.PrepareFork(target)
 	}
 	treeStore := s.deps.Stores(source)
-	record, err := treeStore.Node(ctx, source)
+	record, found, err := treeStore.Node(ctx, source)
 	if err != nil {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkStore, Detail: err.Error(), Cause: err}
 	}
-	if record == nil || record.Parent != nil {
+	if !found || record.Parent != nil {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkNotRoot}
 	}
-	checkpoint, err := treeStore.SessionStore(source).Load(ctx)
+	checkpoint, saved, err := treeStore.SessionStore(source).Load(ctx)
 	if err != nil {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkStore, Detail: err.Error(), Cause: err}
 	}
-	if checkpoint == nil {
+	if !saved {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkNoCheckpoint}
 	}
 	commands, err := store.RestoreCommandStateHistory(checkpoint.CommandState)
@@ -294,7 +295,7 @@ func (s *Server[H]) liveOrOpen(
 	ctx context.Context,
 	root core.NodeID,
 	cwd string,
-) (*Tree[H], *session.Continuation, error) {
+) (*Tree[H], session.Continuation, bool, error) {
 	s.mu.Lock()
 	tree, closing := s.trees[root], s.closing
 	if !closing && tree == nil {
@@ -302,10 +303,10 @@ func (s *Server[H]) liveOrOpen(
 	}
 	s.mu.Unlock()
 	if closing {
-		return nil, nil, session.AdmissionClosed
+		return nil, session.Continuation{}, false, session.ErrClosed
 	}
 	if tree != nil {
-		return tree, nil, nil
+		return tree, session.Continuation{}, false, nil
 	}
 	defer s.work.Done()
 	return s.openTree(ctx, root, cwd)

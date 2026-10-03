@@ -11,7 +11,7 @@ import (
 	"github.com/wspl/demi/internal/commandwire"
 )
 
-// ServiceRegistry owns resident services and their lifecycle work. It must be closed.
+// ServiceRegistry owns resident services and their lifecycle work. It is safe for concurrent use and must be closed.
 type ServiceRegistry struct {
 	mu          sync.Mutex
 	cache       *ArtifactCache
@@ -73,11 +73,8 @@ func NewServiceRegistry(
 	return r, nil
 }
 
-// Handle returns a handle sharing this registry.
-func (r *ServiceRegistry) Handle() *ServiceHandle { return &ServiceHandle{registry: r} }
-
 // Installs observes the installs made by service starts and artifact requests.
-func (r *ServiceRegistry) Installs() *InstallsReceiver { return r.installs.Subscribe() }
+func (r *ServiceRegistry) Installs() *InstallsSubscription { return r.installs.Subscribe() }
 
 // Close stops every service and joins the registry's work. If ctx ends first,
 // shutdown continues and a later Close can wait for it. Close is idempotent.
@@ -105,13 +102,9 @@ func (r *ServiceRegistry) Close(ctx context.Context) error {
 	}
 }
 
-// ServiceHandle sends requests to one shared registry; it is safe for concurrent use.
-type ServiceHandle struct{ registry *ServiceRegistry }
-
 // Invoking registers invocation in pkg against its work's artifact resolver.
 // The caller must release the returned registration when the invocation ends.
-func (h *ServiceHandle) Invoking(invocation, pkg string, resolver ArtifactResolver) *Invoking {
-	r := h.registry
+func (r *ServiceRegistry) Invoking(invocation, pkg string, resolver ArtifactResolver) *Invoking {
 	ctx, cancel := context.WithCancel(r.stop)
 	i := &Invoking{registry: r, id: invocation, pkg: pkg, resolver: resolver, ctx: ctx, cancel: cancel}
 	r.mu.Lock()
@@ -121,11 +114,10 @@ func (h *ServiceHandle) Invoking(invocation, pkg string, resolver ArtifactResolv
 }
 
 // Lease keeps digest's service resident until Release, even before it starts.
-func (h *ServiceHandle) Lease(ctx context.Context, digest string) (*ServiceLease, error) {
+func (r *ServiceRegistry) Lease(ctx context.Context, digest string) (*ServiceLease, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	r := h.registry
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
@@ -136,7 +128,7 @@ func (h *ServiceHandle) Lease(ctx context.Context, digest string) (*ServiceLease
 
 // Acquire returns descriptor's service for this Host. Concurrent callers share
 // one start, while cancellation abandons only this caller's wait.
-func (h *ServiceHandle) Acquire(
+func (r *ServiceRegistry) Acquire(
 	ctx context.Context,
 	descriptor commandwire.PackageDescriptor,
 	resolver ArtifactResolver,
@@ -153,7 +145,6 @@ func (h *ServiceHandle) Acquire(
 	if !ok {
 		return nil, &RuntimeError{Kind: CatalogMismatch}
 	}
-	r := h.registry
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
@@ -195,8 +186,7 @@ func (h *ServiceHandle) Acquire(
 
 // ReleaseConversation releases a conversation in all running services concurrently
 // and retires each service whose release fails.
-func (h *ServiceHandle) ReleaseConversation(ctx context.Context, conversation string) error {
-	r := h.registry
+func (r *ServiceRegistry) ReleaseConversation(ctx context.Context, conversation string) error {
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
@@ -224,8 +214,7 @@ func (h *ServiceHandle) ReleaseConversation(ctx context.Context, conversation st
 }
 
 // StopAll stops every service and waits until each has ended, as connection loss does.
-func (h *ServiceHandle) StopAll(ctx context.Context) error {
-	r := h.registry
+func (r *ServiceRegistry) StopAll(ctx context.Context) error {
 	r.mu.Lock()
 	lives := make([]*serviceLife, 0)
 	for _, entry := range r.entries {

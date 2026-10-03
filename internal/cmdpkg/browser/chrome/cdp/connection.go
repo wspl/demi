@@ -23,7 +23,7 @@ import (
 // contract.EncodeJSON is reserved for Demi wire values.
 type Executor = protocol.Executor
 
-// MessageLimit is Rust's maximum inbound WebSocket message size.
+// MessageLimit is the largest inbound WebSocket message from Chrome, 16 MiB.
 const MessageLimit int64 = 16 * 1024 * 1024
 
 // Connection owns a browser WebSocket, bounded queues and joined event pumps.
@@ -572,7 +572,7 @@ func (s *Subscription) Next(ctx context.Context) (Event, error) {
 			count := s.lost
 			s.lost = 0
 			s.mu.Unlock()
-			return Event{}, &EventLoss{Count: count}
+			return Event{}, fmt.Errorf("%w %d events", ErrEventsLost, count)
 		}
 		if len(s.queue) > 0 {
 			event := s.queue[0]
@@ -611,16 +611,9 @@ func (s *Subscription) Close() {
 	}
 }
 
-// EventLoss reports dropped events so registries reconcile and logs mark gaps.
-type EventLoss struct {
-	// Count counts events dropped from the subscription.
-	Count uint64
-}
-
-// Error describes the lost events.
-func (e *EventLoss) Error() string {
-	return fmt.Sprintf("CDP event subscription lost %d events", e.Count)
-}
+// ErrEventsLost is returned by Subscription.Next when the subscription dropped
+// events because the reader fell behind. Reading may go on after it.
+var ErrEventsLost = errors.New("CDP event subscription lost")
 
 func (c *Connection) receiveReply(message cdproto.Message) error {
 	c.mu.Lock()
@@ -635,8 +628,8 @@ func (c *Connection) receiveReply(message cdproto.Message) error {
 		reply.err = &BrowserError{Kind: KindCDP, Message: "malformed CDP response envelope"}
 	} else if message.Error != nil {
 		reply.err = &ProtocolError{Code: message.Error.Code, Message: message.Error.Message}
-		// Chrome supplies only this message for an absent flattened session;
-		// the Rust boundary performs the same protocol-specific classification.
+		// Chrome supplies only this message for an absent flattened session,
+		// so the message alone classifies the reply as a missing tab.
 		if message.Error.Message == "Session with given id not found." {
 			reply.err = &BrowserError{Kind: KindTabNotFound, Cause: reply.err}
 		}

@@ -17,15 +17,21 @@ type sessionStore struct {
 // Blobs returns the conversation owner’s media store.
 func (s *sessionStore) Blobs() store.BlobStore { return s.tree.blobs.Media() }
 
-// Load reads a checkpoint in one conversation transaction.
-func (s *sessionStore) Load(ctx context.Context) (*store.Checkpoint, error) {
+// Load returns a decoded, checked checkpoint, and false when none exists.
+func (s *sessionStore) Load(ctx context.Context) (store.Checkpoint, bool, error) {
 	var checkpoint *store.Checkpoint
 	err := s.tree.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
 		checkpoint, err = readCheckpoint(ctx, tx, s.node)
 		return err
 	})
-	return checkpoint, agentError(err)
+	if err != nil {
+		return store.Checkpoint{}, false, agentError(err)
+	}
+	if checkpoint == nil {
+		return store.Checkpoint{}, false, nil
+	}
+	return *checkpoint, true, nil
 }
 
 // Save commits checkpoint changes and carried completions before notifying the tree.

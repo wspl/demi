@@ -144,8 +144,7 @@ func (s *Server) serve(handler cmdsdk.Handler[commandwire.LocalInvocation]) {
 			if !stop() {
 				<-interrupted
 			}
-			var cleanup *cmdsdk.ConversationCleanupError
-			if errors.As(err, &cleanup) || errors.Is(err, cmdsdk.ErrCancellationDeadline) {
+			if errors.Is(err, cmdsdk.ErrConversationCleanup) || errors.Is(err, cmdsdk.ErrCancellationDeadline) {
 				failureMu.Lock()
 				fatal = errors.Join(fatal, err)
 				failureMu.Unlock()
