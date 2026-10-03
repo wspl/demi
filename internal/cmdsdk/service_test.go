@@ -184,7 +184,6 @@ func TestUnreadOutputsNeverHoldBackIndependentCall(t *testing.T) {
 	})
 }
 func TestAbandoningBurstKeepsConnection(t *testing.T) {
-	t.Skip("fidelity 5: cancelling a burst can overflow the HTTP/2 receive window and retire the connection")
 	c, _ := connected(t, fixture{})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -361,7 +360,6 @@ func (c *capture) Stderr(_ context.Context, b []byte) error {
 }
 
 func TestMetadataAndBinaryInputInOneBody(t *testing.T) {
-	t.Skip("fidelity 1: Go emits an extra input pull after finite input EOF")
 	c, _ := connected(t, fixture{})
 	metadata, err := commandwire.EncodeMetadata(invocation("echo"))
 	must(t, err)

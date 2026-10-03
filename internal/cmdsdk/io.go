@@ -76,21 +76,23 @@ func (o *Output) write(ctx context.Context, b []byte, stderr bool) error {
 }
 
 type httpInput struct {
-	body   io.Reader
-	output *Output
-	ended  bool
+	body      io.Reader
+	output    *Output
+	remaining int64 // -1 when the request has no Content-Length.
+	ended     bool
 }
 
 func (i *httpInput) Next(ctx context.Context) ([]byte, error) {
 	if i.ended {
 		return nil, io.EOF
 	}
-	// Demi clients send a chunk or END_STREAM only in answer to this pull.
-	// Reading that answer observes EOF and prevents any later pull. net/http
-	// has no nonblocking EOF query: a client that sends a finished body
-	// unasked can receive an extra pull before Read reports its end.
-	if err := i.output.send(ctx, commandwire.InputPull{}); err != nil {
-		return nil, err
+	// A finite request needs no further pull once its declared bytes have
+	// been consumed; still read to verify END_STREAM rather than assuming EOF.
+	// Streaming requests report EOF in answer to a pull.
+	if i.remaining != 0 {
+		if err := i.output.send(ctx, commandwire.InputPull{}); err != nil {
+			return nil, err
+		}
 	}
 	stop := context.AfterFunc(ctx, func() {
 		if c, ok := i.body.(io.Closer); ok {
@@ -99,6 +101,9 @@ func (i *httpInput) Next(ctx context.Context) ([]byte, error) {
 	})
 	defer stop()
 	b, err := readChunk(i.body, commandwire.MaxRecordBytes)
+	if err == nil && i.remaining >= 0 {
+		i.remaining -= int64(4 + len(b))
+	}
 	if errors.Is(err, io.EOF) {
 		i.ended = true
 	}
