@@ -16,7 +16,7 @@ func captureUnavailable() string {
 	data, err := os.ReadFile("/proc/self/auxv")
 	if err != nil {
 		return ""
-	} // As getauxval in Rust, an unavailable capability reads as zero.
+	} // An unreadable auxiliary vector reads as no capabilities, as getauxval reports zero.
 	var hwcap, hwcap2 uint64
 	for len(data) >= 16 {
 		key, value := binary.NativeEndian.Uint64(data), binary.NativeEndian.Uint64(data[8:])

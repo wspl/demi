@@ -257,8 +257,8 @@ func pageSchema(raw json.RawMessage) (*jsonschema.Schema, error) {
 	return compileSchema(value)
 }
 
-// typedShape preserves serde's tolerant typed CDP records and nullable optional
-// fields. Raw debugging records keep the strict pinned schemas above.
+// typedShape relaxes a pinned schema for typed CDP records: objects accept unknown
+// members and optional members accept null. Raw debugging records keep the strict pinned schemas above.
 func typedShape(value any) any {
 	switch value := value.(type) {
 	case map[string]any:
@@ -292,7 +292,7 @@ func typedShape(value any) any {
 	}
 }
 
-// validateTyped enforces the fields Rust's typed CDP decoder required. cdproto's
+// validateTyped checks that typed CDP data has every member the protocol requires. cdproto's
 // JSON decoder alone leaves absent required fields at zero (including nil trees).
 func validateTyped(method, kind string, data []byte) error {
 	c, err := catalogOnce()

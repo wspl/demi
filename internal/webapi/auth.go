@@ -114,7 +114,7 @@ type EmailChangeConfirm struct {
 	Code string `json:"code"`
 }
 
-// A password as a request carries it. `Debug` never shows it.
+// A password as a request carries it. fmt never prints it: Format writes Password(..).
 // +demi:schema-primitive
 type Password string
 

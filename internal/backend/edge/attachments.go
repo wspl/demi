@@ -88,10 +88,7 @@ func (e *Edge) blob(w http.ResponseWriter, r *http.Request) error {
 	if !found {
 		return missing
 	}
-	var media *string
-	if values := r.URL.Query()["type"]; len(values) > 0 {
-		media = &values[0]
-	}
+	media := r.URL.Query().Get("type")
 	part := hostaccess.RangeOf(r.Header.Get("Range"), uint64(len(bytes)))
 	addHeaders(w.Header(), contentHeaders(media, false, ""))
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")

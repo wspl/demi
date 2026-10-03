@@ -19,16 +19,15 @@ type quotaSource struct {
 }
 
 // ProbeCost reports the cost of a quota probe.
-func (*quotaSource) ProbeCost() *provider.ProbeCost {
-	cost := provider.ProbeFree
-	return &cost
+func (*quotaSource) ProbeCost() (provider.ProbeCost, bool) {
+	return provider.ProbeFree, true
 }
 
 // Probe fetches the account quota windows.
 func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) {
 	s, failure := q.auth.credentials(ctx, q.http, nil)
 	if failure != nil {
-		return provider.ProbeReading{}, failure.QuotaError()
+		return provider.ProbeReading{}, failure
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -66,12 +65,10 @@ func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) 
 	return quotaReading(user, billing, s.Email), nil
 }
 
+//nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
 func (q *quotaSource) fetch(ctx context.Context, u *url.URL, s secret) (string, error) {
 	failed := func(err error) error {
-		return &provider.QuotaError{
-			Kind:    provider.QuotaUnavailable,
-			Message: fmt.Sprintf("Grok quota request failed: %v", withoutURL(err)),
-		}
+		return fmt.Errorf("Grok quota request failed: %v", provider.WithoutURL(err))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -94,10 +91,7 @@ func (q *quotaSource) fetch(ctx context.Context, u *url.URL, s secret) (string, 
 		if len(text) > 200 {
 			text = text[:200]
 		}
-		return "", &provider.QuotaError{
-			Kind:    provider.QuotaUnavailable,
-			Message: fmt.Sprintf("Grok quota request failed (%d): %s", response.StatusCode, string(text)),
-		}
+		return "", fmt.Errorf("Grok quota request failed (%d): %s", response.StatusCode, string(text))
 	}
 	return string(body), nil
 }

@@ -88,7 +88,7 @@ func TestHTTPFailureRecord(t *testing.T) {
 	equal(t, f.Message, "Codex API request failed with HTTP 500: "+body)
 	equal(t, f.Diagnostics.Source, core.FailureSource("http"))
 	equal(t, *f.Diagnostics.HTTPStatus, uint16(500))
-	record := provider.ReadHTTPRecord(f.Diagnostics)
+	record, _ := provider.ReadHTTPRecord(f.Diagnostics)
 	equal(t, record.Body, body)
 	var names []string
 	for _, pair := range record.Headers {
@@ -107,7 +107,7 @@ func TestHeaderTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		pool := poolWith(t, document(t, freshToken(t), "refresh-1", now))
 		id := account
-		config := codex.NewConfig(&id)
+		config := codex.Config{Account: &id}
 		config.Transport = codex.SSE
 		config.HeaderTimeout = 50 * time.Millisecond
 		client := &http.Client{

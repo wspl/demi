@@ -68,7 +68,7 @@ func (n *NavigationObservation) URL() string {
 }
 
 // WaitLoad observes the requested lifecycle under the operation's shared deadline.
-// Ordinary clicks use Rust's 250 ms load-start classification window only.
+// An ordinary click that starts no load within 250 ms counts as not navigating.
 func (n *NavigationObservation) WaitLoad(
 	ctx context.Context,
 	load browserop.Load,
@@ -493,7 +493,7 @@ func dispatchNavigation(ctx context.Context, executor cdp.Executor, navigation N
 	return nil
 }
 
-// detach registers address-bar navigation in the tab lifetime, with Rust's bound.
+// detach registers address-bar navigation in the tab lifetime, bounded to 60 seconds.
 func (t *Tab) detach(navigation Navigation) {
 	if err := t.StartTask(func(ctx context.Context) {
 		bounded, cancel := context.WithTimeout(ctx, 60*time.Second)

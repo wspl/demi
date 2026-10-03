@@ -1,7 +1,7 @@
 package todo
 
 //revive:disable:exported
-// Contract descriptions are verbatim Rust product text.
+// Contract doc comments are product text: contractgen emits them as schema descriptions.
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 

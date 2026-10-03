@@ -63,6 +63,14 @@ func client(t *testing.T) *artifacts.Client {
 	return c
 }
 
+// assertPrefix checks that err's text starts with prefix.
+func assertPrefix(t *testing.T, err error, prefix string) {
+	t.Helper()
+	if err == nil || !strings.HasPrefix(err.Error(), prefix) {
+		t.Fatalf("got %v, want an error starting %q", err, prefix)
+	}
+}
+
 func assertError[T error](t *testing.T, err error) T {
 	t.Helper()
 	var expected T
@@ -164,12 +172,9 @@ func TestDownloadDecodesZstdAndRefusesOtherCoding(t *testing.T) {
 		if found != declared(body) {
 			t.Fatal(found)
 		}
-		coding := assertError[*artifacts.CodingError](
-			t,
-			artifacts.Download(t.Context(), c, server.URL("/gzip"), declared(body), io.Discard),
-		)
-		if coding.Coding != "gzip" {
-			t.Fatal(coding)
+		err = artifacts.Download(t.Context(), c, server.URL("/gzip"), declared(body), io.Discard)
+		if err == nil || err.Error() != "unsupported artifact content coding \"gzip\"" {
+			t.Fatal(err)
 		}
 	}
 }
@@ -419,14 +424,19 @@ func TestReleasePublishedWholeOnceAndRefusesOtherContents(t *testing.T) {
 	}
 	must(t, artifacts.PublishRelease(t.Context(), directory, record, files))
 	other := artifacts.ReleaseRecord{Name: record.Name, Bytes: []byte("other")}
-	conflict := assertError[*artifacts.ConflictError](t, artifacts.PublishRelease(t.Context(), directory, other, files))
-	if filepath.Base(conflict.Path) != record.Name {
-		t.Fatal(conflict)
+	err := artifacts.PublishRelease(t.Context(), directory, other, files)
+	if err == nil ||
+		!strings.HasSuffix(
+			err.Error(),
+			string(filepath.Separator)+record.Name+" is already published with other contents",
+		) {
+		t.Fatal(err)
 	}
 	must(t, os.WriteFile(filepath.Join(directory, "data"), []byte("corrupt"), 0o600))
-	conflict = assertError[*artifacts.ConflictError](t, artifacts.PublishRelease(t.Context(), directory, record, files))
-	if filepath.Base(conflict.Path) != "data" {
-		t.Fatal(conflict)
+	err = artifacts.PublishRelease(t.Context(), directory, record, files)
+	if err == nil ||
+		!strings.HasSuffix(err.Error(), string(filepath.Separator)+"data is already published with other contents") {
+		t.Fatal(err)
 	}
 	contents(t, filepath.Join(directory, record.Name), record.Bytes)
 	must(t, os.WriteFile(source, []byte("tool v2"), 0o600))
@@ -583,7 +593,7 @@ func TestArchiveInstalledOnceAndCheckedBeforeUse(t *testing.T) {
 	lacking := archive
 	lacking.Entry = "app/bin/other"
 	_, err = install(t.Context(), c, other, server.URL("/app.zip"), lacking)
-	_ = assertError[*artifacts.ArchiveError](t, err)
+	assertPrefix(t, err, "the archive cannot be installed: ")
 	got := names(t, other)
 	if len(got) != 2 || got[0] != wrong.Digest.SHA256+".lock" || got[1] != archive.Digest.SHA256+".lock" {
 		t.Fatal(got)
@@ -597,7 +607,7 @@ func TestArchiveExtractsInsideInstallationAndNamesFiles(t *testing.T) {
 	root := t.TempDir()
 	installs := filepath.Join(root, "installs")
 	_, err := install(t.Context(), client(t), installs, server.URL("/app.zip"), archive)
-	_ = assertError[*artifacts.ArchiveError](t, err)
+	assertPrefix(t, err, "the archive cannot be installed: ")
 	if _, err := os.Stat(filepath.Join(root, "escaped")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal(err)
 	}

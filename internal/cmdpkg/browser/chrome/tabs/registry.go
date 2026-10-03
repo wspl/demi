@@ -33,13 +33,3 @@ func (s *Snapshot) Find(id browserop.TabID) *Tab {
 	}
 	return nil
 }
-
-// Closed describes whether closing a tab empties its environment.
-type Closed uint8
-
-const (
-	// ClosedTab means the tab is gone from Chrome and the registry.
-	ClosedTab Closed = iota + 1
-	// ClosedEnvironment means the final tab sealed the registry for retirement.
-	ClosedEnvironment
-)

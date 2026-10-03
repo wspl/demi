@@ -109,7 +109,7 @@ func TestRefusalNamesToolAndOffendingField(t *testing.T) {
 				t.Fatal("invalid input accepted")
 			}
 			want := scenario.tool + " input is invalid:\n" + scenario.want
-			if got := inputRefusal(scenario.tool, err).Error(); got != want {
+			if got := inputRefusal(scenario.tool, err); got != want {
 				t.Fatal(cmp.Diff(want, got))
 			}
 		})
@@ -126,13 +126,13 @@ func TestRefusalNamesToolAndOffendingField(t *testing.T) {
 	for _, scenario := range cases {
 		t.Run(scenario.input, func(t *testing.T) {
 			if scenario.field != "shellId: " {
-				t.Skip("fidelity 1: generated tool-input diagnostics differ from Rust")
+				t.Skip("fidelity 1: the generated decoder words this diagnostic differently")
 			}
 			_, err := decodeShellExecInput([]byte(scenario.input))
 			if err == nil {
 				t.Fatal("invalid input accepted")
 			}
-			text := inputRefusal("shell_exec", err).Error()
+			text := inputRefusal("shell_exec", err)
 			if !strings.HasPrefix(text, "shell_exec input is invalid:\n") || !strings.Contains(text, scenario.field) {
 				t.Fatal(text)
 			}

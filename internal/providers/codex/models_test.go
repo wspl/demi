@@ -1,13 +1,11 @@
 package codex_test
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/provider"
 )
 
 func catalogFixture(t *testing.T) string {
@@ -91,30 +89,26 @@ func TestCatalogFailures(t *testing.T) {
 	for _, test := range []struct {
 		body   string
 		status int
-		kind   provider.CatalogErrorKind
 		field  string
 	}{
-		{strings.Replace(fixture, `"effort":"low"`, `"effort":3`, 1), 200, provider.CatalogInvalid, "effort"},
+		{strings.Replace(fixture, `"effort":"low"`, `"effort":3`, 1), 200, "effort"},
 		{
 			strings.Replace(fixture, `"default_reasoning_level":"medium"`, `"default_reasoning_level":3`, 1),
 			200,
-			provider.CatalogInvalid,
 			"default_reasoning_level",
 		},
-		{"overloaded", 503, provider.CatalogUnavailable, "HTTP 503"},
+		{"overloaded", 503, "HTTP 503"},
 	} {
 		v.RespondAt(models, answer(test.status, test.body))
 		_, err := p.ListModels(t.Context())
-		var catalog *provider.CatalogError
-		if !errors.As(err, &catalog) {
-			t.Fatalf("error: %v", err)
+		if err == nil {
+			t.Fatal("catalog accepted")
 		}
-		equal(t, catalog.Kind, test.kind)
 		if test.status == 503 {
-			equal(t, catalog.Message, "Codex models request failed with HTTP 503")
+			equal(t, err.Error(), "Codex models request failed with HTTP 503")
 		}
-		if !strings.Contains(catalog.Message, test.field) {
-			t.Fatalf("message: %s", catalog.Message)
+		if !strings.Contains(err.Error(), test.field) {
+			t.Fatalf("message: %s", err.Error())
 		}
 	}
 }

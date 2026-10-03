@@ -94,11 +94,11 @@ func AnnotateProbe(data []byte, result browserop.ProbeResult) ([]byte, error) {
 		return nil, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: err.Error(), Cause: err}
 	}
 	// Decode validated the PNG header; its color type distinguishes grayscale
-	// with alpha, which Go expands to NRGBA. Rust rejects both grayscale types.
+	// with alpha, which Go expands to NRGBA. Both grayscale types are refused.
 	if data[25] == 4 {
 		return nil, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "Chrome screenshot must be RGB or RGBA"}
 	}
-	// Rust expands palettes and strips 16-bit samples, but rejects grayscale.
+	// Palette and 16-bit images are drawn as NRGBA; grayscale is refused.
 	switch decoded.ColorModel() {
 	case color.GrayModel, color.Gray16Model:
 		return nil, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "Chrome screenshot must be RGB or RGBA"}

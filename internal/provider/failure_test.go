@@ -185,8 +185,8 @@ func TestHTTPFailureRecordAndWait(t *testing.T) {
 		} else if failure.RetryAfter != nil {
 			t.Fatal("unexpected wait")
 		}
-		record := provider.ReadHTTPRecord(failure.Diagnostics)
-		if record == nil || int(record.Status) != tc.status || record.Body != tc.body ||
+		record, ok := provider.ReadHTTPRecord(failure.Diagnostics)
+		if !ok || int(record.Status) != tc.status || record.Body != tc.body ||
 			failure.Diagnostics.Source != "http" {
 			t.Fatalf("%+v", record)
 		}
@@ -208,9 +208,12 @@ func TestHTTPFailureRecordAndWait(t *testing.T) {
 			if !slices.IsSorted(names) {
 				t.Fatalf("unsorted headers: %v", names)
 			}
-			requireEqual(t, *record.Header("retry-after"), "120")
-			requireEqual(t, *record.Header("x-request-id"), "req-9")
-			requireEqual(t, *record.Header("set-cookie"), "a=b")
+			retryAfter, _ := record.Header("retry-after")
+			requireEqual(t, retryAfter, "120")
+			requestID, _ := record.Header("x-request-id")
+			requireEqual(t, requestID, "req-9")
+			cookie, _ := record.Header("set-cookie")
+			requireEqual(t, cookie, "a=b")
 		}
 	}
 }
@@ -339,7 +342,7 @@ func TestRequestBuildFailureHasNoRetryCode(t *testing.T) {
 	}
 }
 
-func TestHTTPRecordPreservesMalformedTextAsRustDoes(t *testing.T) {
+func TestHTTPRecordReplacesEachMalformedSequenceOnce(t *testing.T) {
 	response := &http.Response{
 		StatusCode: 400,
 		Header:     http.Header{"X-Vendor": []string{"a\xff\xff\xe2\x82"}},
@@ -352,7 +355,8 @@ func TestHTTPRecordPreservesMalformedTextAsRustDoes(t *testing.T) {
 		provider.ReadHTTPFailure,
 		providertest.FixedClock(now),
 	)
-	record := provider.ReadHTTPRecord(failure.Diagnostics)
+	record, _ := provider.ReadHTTPRecord(failure.Diagnostics)
 	requireEqual(t, record.Body, "a\ufffd\ufffd\ufffd")
-	requireEqual(t, *record.Header("x-vendor"), record.Body)
+	vendor, _ := record.Header("x-vendor")
+	requireEqual(t, vendor, record.Body)
 }

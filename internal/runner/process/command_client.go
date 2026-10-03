@@ -73,7 +73,7 @@ func Forward(
 		return completion, err
 	}
 	defer func() { err = errors.Join(err, client.Close()) }()
-	// Only invocation opening has the Rust client's ten-second deadline. Its
+	// Only invocation opening has a ten-second deadline. Its
 	// stream retains the parent context after headers arrive.
 	timeoutDone := make(chan struct{})
 	timer := time.AfterFunc(10*time.Second, func() {

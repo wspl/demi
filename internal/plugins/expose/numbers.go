@@ -19,13 +19,13 @@ type numberedExpose struct {
 // numbered assigns persistent, never-reused numbers, oldest first, and preserves list order.
 func numbered(ctx context.Context, port plugin.Port, exposes []plugin.ExposeRecord) ([]numberedExpose, error) {
 	for {
-		stored, err := port.Value(ctx, "numbers")
+		stored, found, err := port.Value(ctx, "numbers")
 		if err != nil {
 			return nil, err
 		}
 		var revision *uint64
 		read := numbers{Next: 1, Exposes: map[string]uint64{}}
-		if stored != nil {
+		if found {
 			revision = &stored.Revision
 			read, err = decodeNumbers(stored.Value)
 			if err != nil {

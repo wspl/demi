@@ -247,8 +247,8 @@ func binaryVerdict(
 			binary.Info.LimitBytes,
 		)
 	}
-	media := core.SniffModelMediaType(binary.Bytes)
-	if media == nil {
+	media, ok := core.SniffModelMediaType(binary.Bytes)
+	if !ok {
 		return nil, "Binary stdout does not match any model-viewable media type; " + save + "."
 	}
 	if !core.ModelAcceptsMediaType(model, media.MediaType) {

@@ -72,7 +72,7 @@ func testProvider(
 	account *string,
 	client *http.Client,
 ) *Provider {
-	config := NewConfig(account)
+	config := Config{Account: account}
 	config.ProxyURL, _ = url.Parse(v.URL("/v1"))
 	config.IssuerURL, _ = url.Parse(v.URL("/"))
 	return New(config, pool, &provider.MemorySnapshots{}, client, providertest.FixedClock(now))
@@ -110,7 +110,7 @@ func run(t *testing.T, p *Provider, request provider.InferenceRequest) []provide
 
 func stored(t *testing.T, pool *provider.MemoryCredentialPool) secret {
 	t.Helper()
-	entry, err := pool.Document("cred-g").Read(t.Context())
+	entry, _, err := pool.Document("cred-g").Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,26 +3,23 @@ package claudecode
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/provider"
 )
 
 // ListModels refreshes models.dev and lists Claude 4.6 and later, flagship first.
 func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, error) {
 	snapshot, err := p.models.Refreshed(ctx)
 	if err != nil {
-		return core.ProviderModelList{}, &provider.CatalogError{Kind: provider.CatalogUnavailable, Message: err.Error()}
+		return core.ProviderModelList{}, err
 	}
-	list := snapshot.VendorModels("anthropic")
-	if list == nil {
-		return core.ProviderModelList{}, &provider.CatalogError{
-			Kind:    provider.CatalogInvalid,
-			Message: "models.dev does not list the anthropic vendor",
-		}
+	list, ok := snapshot.VendorModels("anthropic")
+	if !ok {
+		return core.ProviderModelList{}, errors.New("models.dev does not list the anthropic vendor")
 	}
 	models := make([]core.ProviderModel, 0)
 	for _, model := range list.Models {
@@ -56,7 +53,7 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 		return cmp.Compare(a.ID, b.ID)
 	})
 	list.Models = models
-	return *list, nil
+	return list, nil
 }
 
 func modelVersion(id string) (uint64, uint64, bool) {

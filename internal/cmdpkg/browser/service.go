@@ -18,7 +18,7 @@ import (
 // Serve validates the launch argument and serves the resident browser package.
 // The executable must exit when Serve returns.
 func Serve(ctx context.Context, args []string) error {
-	if _, err := cmdsdk.ParseLaunch(args); err != nil {
+	if err := cmdsdk.CheckLaunch(args); err != nil {
 		return err
 	}
 	s := newService()

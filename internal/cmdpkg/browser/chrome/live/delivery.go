@@ -121,8 +121,8 @@ func (d *delivery) ack(generation, sequence, decodeQueue uint32, stream *streamV
 	d.pace(stream)
 }
 
-// startTicks applies the viewer's initial rate immediately, as Tokio's interval
-// does, then schedules adaptation every second. The caller stops the ticker.
+// startTicks applies the viewer's initial rate immediately, then schedules
+// adaptation every second. The caller stops the ticker.
 func (d *delivery) startTicks(stream *streamView, w *writer) *time.Ticker {
 	d.tick(stream, w)
 	return time.NewTicker(time.Second)

@@ -91,7 +91,7 @@ func (s *Session) stream(ctx context.Context, continues bool) (bool, error) {
 		requestFailure(failure, request.RequestID)
 		unwindable := transcript.Cut(s.Transcript().Blocks).Cut <= start
 		tooLarge := failure.Code != nil && *failure.Code == provider.ContextLengthExceeded
-		if tooLarge && unwindable && !refusalCompacted && s.deps.Config.Compaction.ThresholdPercent != nil {
+		if tooLarge && unwindable && !refusalCompacted && s.deps.Config.Compaction.ThresholdPercent != 0 {
 			refusalCompacted = true
 			did, err := s.compactRefusal(ctx, start, continues)
 			if err != nil {
@@ -222,8 +222,8 @@ func (s *Session) completeText(ctx context.Context) error {
 	}
 	defer permit.Release()
 	s.mutate(func(c *coreState) {
-		if id := c.log.CompleteTailText(); id != nil {
-			c.commands.Capture(*id, store.AfterAssistant, c.commands.Revision())
+		if id, completed := c.log.CompleteTailText(); completed {
+			c.commands.Capture(id, store.AfterAssistant, c.commands.Revision())
 		}
 	})
 	return nil

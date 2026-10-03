@@ -125,7 +125,7 @@ func TestCloseCancelsEveryInstanceAndRetainedPort(t *testing.T) {
 	if err := retained.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := port.Value(t.Context(), "after-reply"); !errors.Is(err, context.Canceled) {
+	if _, _, err := port.Value(t.Context(), "after-reply"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("port survived instance: %v", err)
 	}
 }

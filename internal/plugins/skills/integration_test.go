@@ -244,7 +244,7 @@ func TestAddingSourceListsWarningsSkippedAndBlobs(t *testing.T) {
 	}
 	found := false
 	for _, blob := range p.demi.ValueBlobs(id) {
-		if content := p.demi.BlobBytes(blob); content != nil && string(*content) == "#!/bin/sh\necho ok\n" {
+		if content, ok := p.demi.BlobBytes(blob); ok && string(content) == "#!/bin/sh\necho ok\n" {
 			found = true
 		}
 	}
@@ -545,8 +545,8 @@ func TestShutdownDuringFetchPreservesSource(t *testing.T) {
 	second := newPlugged(t, repos)
 	second.demi = p.demi
 	second.add(t, "acme/other")
-	stored := p.demi.Value(added.Source)
-	if stored == nil || stored.Revision != 1 {
+	stored, found := p.demi.Value(added.Source)
+	if !found || stored.Revision != 1 {
 		t.Fatalf("cancelled fetch wrote: %+v", stored)
 	}
 	state := second.state(t).Sources[0]

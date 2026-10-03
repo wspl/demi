@@ -132,8 +132,9 @@ func (t *Tab) Close(ctx context.Context, timeout time.Duration) error {
 	return err
 }
 
-// CloseRequest closes the tab and indicates whether its environment must retire.
-func (t *Tab) CloseRequest(ctx context.Context, timeout time.Duration) (Closed, error) {
+// CloseRequest closes the tab. emptied reports that it was the environment's
+// last tab: the registry is sealed and the environment must retire.
+func (t *Tab) CloseRequest(ctx context.Context, timeout time.Duration) (emptied bool, err error) {
 	bounded, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	answer, err := t.environment.ask(
@@ -141,9 +142,9 @@ func (t *Tab) CloseRequest(ctx context.Context, timeout time.Duration) (Closed, 
 		registryRequest{kind: registryClose, target: t.TargetID(), deadline: time.Now().Add(timeout)},
 	)
 	if err != nil {
-		return 0, err
+		return false, err
 	}
-	return answer.closed, err
+	return answer.emptied, nil
 }
 
 // Input runs native input under the operation, reporting a blocking dialog.

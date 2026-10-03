@@ -119,7 +119,7 @@ func (s *Session) forkRuntime(ctx context.Context) (provider.Runtime, error) {
 		s.mu.Lock()
 		if s.core.disposing {
 			s.mu.Unlock()
-			return nil, AdmissionClosed
+			return nil, ErrClosed
 		}
 		if !s.core.providerBusy {
 			s.core.providerBusy = true
@@ -199,8 +199,8 @@ func (s *Session) applySwitch(ctx context.Context) (bool, error) {
 	defer s.mutate(func(c *coreState) { c.providerBusy = false })
 	var retired []provider.Runtime
 	s.mutate(func(c *coreState) {
-		// A newer accepted switch may arrive during compaction; installing uses
-		// the latest slot exactly as the Rust runtime does.
+		// A newer accepted switch may arrive during compaction; installing takes
+		// the latest accepted switch.
 		if c.change == nil {
 			return
 		}

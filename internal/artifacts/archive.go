@@ -25,20 +25,6 @@ type Archive struct {
 	Entry string
 }
 
-// ArchiveError reports an unusable archive.
-type ArchiveError struct {
-	// Cause is the archive validation or extraction failure.
-	Cause error
-}
-
-// Error describes why the archive cannot be installed.
-func (e *ArchiveError) Error() string {
-	return fmt.Sprintf("the archive cannot be installed: %v", e.Cause)
-}
-
-// Unwrap returns the archive failure.
-func (e *ArchiveError) Unwrap() error { return e.Cause }
-
 // InstallationError reports a corrupt installation that must not be repaired.
 type InstallationError struct {
 	// Directory identifies the corrupt installation.
@@ -66,33 +52,33 @@ func validateArchive(archive Archive) error {
 	hash, err := hex.DecodeString(archive.Digest.SHA256)
 	if err != nil || len(hash) != 32 || strings.ToLower(archive.Digest.SHA256) != archive.Digest.SHA256 ||
 		!insideArchive(archive.Entry) {
-		return &ArchiveError{errors.New("invalid archive digest or entry path")}
+		return errors.New("the archive cannot be installed: invalid archive digest or entry path")
 	}
 	return nil
 }
 
-func readInstallation(ctx context.Context, directory string) (*receipt, error) {
+func readInstallation(ctx context.Context, directory string) (receipt, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return receipt{}, false, err
 	}
 	if _, err := os.Stat(directory); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+			return receipt{}, false, nil
 		}
-		return nil, err
+		return receipt{}, false, err
 	}
 	data, err := ReadReceipt(ctx, directory)
 	if err != nil {
-		return nil, err
+		return receipt{}, false, err
 	}
 	if data == nil {
-		return nil, &InstallationError{Directory: directory, Reason: "has no receipt"}
+		return receipt{}, false, &InstallationError{Directory: directory, Reason: "has no receipt"}
 	}
 	found, err := decodeReceipt(data)
 	if err != nil {
-		return nil, &InstallationError{directory, "has an invalid receipt", err}
+		return receipt{}, false, &InstallationError{directory, "has an invalid receipt", err}
 	}
-	return &found, nil
+	return found, true, nil
 }
 
 // Recorded trusts the installer's own private cache without rereading its entry.
@@ -101,8 +87,8 @@ func Recorded(ctx context.Context, directory string, archive Archive) (string, e
 	if err := validateArchive(archive); err != nil {
 		return "", err
 	}
-	found, err := readInstallation(ctx, directory)
-	if err != nil || found == nil {
+	found, exists, err := readInstallation(ctx, directory)
+	if err != nil || !exists {
 		return "", err
 	}
 	if found.ArchiveHash != archive.Digest.SHA256 {
@@ -117,8 +103,8 @@ func Installed(ctx context.Context, directory string, archive Archive) (string, 
 	if err := validateArchive(archive); err != nil {
 		return "", err
 	}
-	found, err := readInstallation(ctx, directory)
-	if err != nil || found == nil {
+	found, exists, err := readInstallation(ctx, directory)
+	if err != nil || !exists {
 		return "", err
 	}
 	entry := artifactPath(directory, filepath.FromSlash(archive.Entry))
@@ -222,7 +208,7 @@ func (u *Unpacking) Publish(ctx context.Context, extracted string) (entry string
 func publishInstallation(ctx context.Context, extracted, destination string, archive Archive) (string, error) {
 	found, err := DigestFile(ctx, artifactPath(extracted, filepath.FromSlash(archive.Entry)), entryBytes)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", &ArchiveError{fmt.Errorf("holds no %s: %w", archive.Entry, err)}
+		return "", fmt.Errorf("the archive cannot be installed: holds no %s: %w", archive.Entry, err)
 	}
 	if err != nil {
 		return "", err
@@ -247,7 +233,7 @@ func ZipHolds(ctx context.Context, archive, name string) (bool, error) {
 	}
 	reader, err := zip.OpenReader(archive)
 	if err != nil {
-		return false, &ArchiveError{err}
+		return false, fmt.Errorf("the archive cannot be installed: %w", err)
 	}
 	defer func() { _ = reader.Close() }() // Read-only ZIP file.
 	for _, entry := range reader.File {
@@ -266,7 +252,7 @@ func extractZIP(ctx context.Context, archive, destination string) error {
 	}
 	reader, err := zip.OpenReader(archive)
 	if err != nil {
-		return &ArchiveError{err}
+		return fmt.Errorf("the archive cannot be installed: %w", err)
 	}
 	defer func() { _ = reader.Close() }() // Read-only ZIP file.
 	if err := os.MkdirAll(destination, 0o755); err != nil {
@@ -283,7 +269,7 @@ func extractZIP(ctx context.Context, archive, destination string) error {
 			return err
 		}
 		if err := extractEntry(ctx, root, entry); err != nil {
-			return &ArchiveError{err}
+			return fmt.Errorf("the archive cannot be installed: %w", err)
 		}
 		if entry.FileInfo().IsDir() {
 			directories = append(directories, entry)
@@ -298,7 +284,7 @@ func extractZIP(ctx context.Context, archive, destination string) error {
 		}
 		name := filepath.FromSlash(strings.TrimSuffix(entry.Name, "/"))
 		if err := root.Chmod(name, entry.Mode().Perm()); err != nil {
-			return &ArchiveError{err}
+			return fmt.Errorf("the archive cannot be installed: %w", err)
 		}
 	}
 	return nil

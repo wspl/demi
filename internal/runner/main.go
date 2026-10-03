@@ -263,7 +263,7 @@ Options:
   -V, --version  Print version
 `
 
-// printHelp presents the selected runner command with the Rust CLI's public options.
+// printHelp prints the selected runner command's description, usage line and public options.
 func printHelp(action string) error {
 	if action == "" {
 		_, err := fmt.Fprint(os.Stdout, runnerHelp)
@@ -365,11 +365,11 @@ func selectedBackend(
 		backend = &boot.BackendURL
 	}
 	if backend == nil {
-		config, err := state.config()
+		config, found, err := state.config()
 		if err != nil {
 			return nil, err
 		}
-		if config == nil {
+		if !found {
 			return nil, errors.New("pass --backend <url> on first start")
 		}
 		backend = &config.BackendURL
@@ -466,7 +466,7 @@ func startRunner(
 			runner:     info,
 			token:      token,
 			volumes:    volumes,
-			shell:      shell.New(),
+			shell:      &shell.Shell{},
 			log:        log,
 		},
 	)
@@ -480,11 +480,11 @@ func startRunner(
 func waitInstallation(ctx context.Context, root string) (uint8, error) {
 	for {
 		lease, err := tryInstallationLock(root)
-		if err != nil {
-			return 0, err
-		}
-		if lease != nil {
+		if err == nil {
 			return 0, lease.close()
+		}
+		if !errors.Is(err, errInstallationBusy) {
+			return 0, err
 		}
 		timer := time.NewTimer(50 * time.Millisecond)
 		select {

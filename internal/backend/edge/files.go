@@ -181,10 +181,8 @@ func (e *Edge) committedFile(w http.ResponseWriter, r *http.Request) error {
 	}
 	part := hostaccess.RangeOf(r.Header.Get("Range"), uint64(len(bytes)))
 	addHeaders(w.Header(), rawFileHeaders())
-	addHeaders(
-		w.Header(),
-		contentHeaders(core.PreviewMediaType(string(query.Path)), bool(query.Download), fileName(string(query.Path))),
-	)
+	mediaType, _ := core.PreviewMediaType(string(query.Path))
+	addHeaders(w.Header(), contentHeaders(mediaType, bool(query.Download), fileName(string(query.Path))))
 	addHeaders(w.Header(), part.Headers())
 	w.WriteHeader(part.Status())
 	if r.Method != "HEAD" {

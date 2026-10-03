@@ -60,9 +60,9 @@ func Leaf(leaf declare.Leaf[declare.NativeOperation], handler RPCHandler) Declar
 // It preserves the first refusal, which registration reports.
 func (d Declared) Describe(field, description string) Declared {
 	d.tree = cloneNode(d.tree)
-	leaf := declare.AsLeaf(d.tree)
+	leaf, isLeaf := d.tree.(*declare.Leaf[declare.NativeOperation])
 	var err error
-	if leaf == nil || leaf.Input == nil {
+	if !isLeaf || leaf.Input == nil {
 		err = fmt.Errorf("describes %s before its input", field)
 	} else {
 		document, rewriteErr := describeSchema(leaf.Input.Document(), []string{"properties", field}, description)
@@ -131,15 +131,6 @@ func describeSchema(document []byte, path []string, description string) (json.Ra
 	return contract.EncodeObject(fields)
 }
 
-// RegisterError describes a refused declaration.
-type RegisterError struct{ err error }
-
-// Error returns the failure message.
-func (e *RegisterError) Error() string { return e.err.Error() }
-
-// Unwrap returns the underlying failure.
-func (e *RegisterError) Unwrap() error { return e.err }
-
 // CommandSet holds roots in registration order and their RPC handlers.
 // Its owner serializes mutations with dispatch; declarations returned to callers are copies.
 type CommandSet struct {
@@ -151,11 +142,11 @@ type CommandSet struct {
 func (s *CommandSet) Register(d Declared) error {
 	name := declare.Name(d.tree)
 	if IsReserved(name) {
-		return &RegisterError{fmt.Errorf("command %q is reserved for shell and system commands", name)}
+		return fmt.Errorf("command %q is reserved for shell and system commands", name)
 	}
 	for _, root := range s.roots {
 		if declare.Name(root) == name {
-			return &RegisterError{fmt.Errorf("command %q is already registered", name)}
+			return fmt.Errorf("command %q is already registered", name)
 		}
 	}
 	if err := checkDeclared(d); err != nil {
@@ -174,7 +165,7 @@ func (s *CommandSet) Register(d Declared) error {
 // Graft replaces or appends a named child, checking the resulting root atomically.
 func (s *CommandSet) Graft(parent []string, d Declared) error {
 	if len(parent) == 0 {
-		return &RegisterError{fmt.Errorf("a graft names its parent group")}
+		return fmt.Errorf("a graft names its parent group")
 	}
 	index := -1
 	for i, root := range s.roots {
@@ -184,13 +175,13 @@ func (s *CommandSet) Graft(parent []string, d Declared) error {
 		}
 	}
 	if index < 0 {
-		return &RegisterError{fmt.Errorf("command %q is not registered", parent[0])}
+		return fmt.Errorf("command %q is not registered", parent[0])
 	}
 	root := cloneNode(s.roots[index])
 	node := findNode(root, parent[1:])
 	group, ok := node.(*declare.Group[declare.NativeOperation])
 	if !ok {
-		return &RegisterError{fmt.Errorf("%q is not a group", strings.Join(parent, " "))}
+		return fmt.Errorf("%q is not a group", strings.Join(parent, " "))
 	}
 	name := declare.Name(d.tree)
 	childIndex := slices.IndexFunc(
@@ -281,7 +272,7 @@ func (s *CommandSet) Check(invocation RPCInvocation) (RPCHandler, error) {
 	if len(invocation.Path) > 0 {
 		for _, root := range s.roots {
 			if declare.Name(root) == invocation.Path[0] {
-				leaf = declare.AsLeaf(findNode(root, invocation.Path[1:]))
+				leaf, _ = findNode(root, invocation.Path[1:]).(*declare.Leaf[declare.NativeOperation])
 				break
 			}
 		}
@@ -301,13 +292,13 @@ func (s *CommandSet) Check(invocation RPCInvocation) (RPCHandler, error) {
 func checkDeclared(d Declared) error {
 	name := declare.Name(d.tree)
 	if d.tree == nil {
-		return &RegisterError{fmt.Errorf("command declaration is absent")}
+		return fmt.Errorf("command declaration is absent")
 	}
 	if d.err != nil {
-		return &RegisterError{fmt.Errorf("%q: %w", name, d.err)}
+		return fmt.Errorf("%q: %w", name, d.err)
 	}
 	if err := d.tree.Validate(); err != nil {
-		return &RegisterError{fmt.Errorf("%q: %w", name, err)}
+		return fmt.Errorf("%q: %w", name, err)
 	}
 	rpc := map[string]bool{}
 	var paths []string
@@ -338,16 +329,16 @@ func checkDeclared(d Declared) error {
 		refused = fmt.Errorf("%q has no command kind", named)
 	})
 	if refused != nil {
-		return &RegisterError{refused}
+		return refused
 	}
 	for _, path := range paths {
 		if rpc[path] && d.handlers[path] == nil {
-			return &RegisterError{fmt.Errorf("rpc command %q has no handler", path)}
+			return fmt.Errorf("rpc command %q has no handler", path)
 		}
 	}
 	for _, path := range paths {
 		if d.handlers[path] != nil && !rpc[path] {
-			return &RegisterError{fmt.Errorf("%q is not an rpc command, so it takes no handler", path)}
+			return fmt.Errorf("%q is not an rpc command, so it takes no handler", path)
 		}
 	}
 	return nil

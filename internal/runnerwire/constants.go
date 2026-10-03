@@ -13,17 +13,17 @@ const MaxMessageBytes = 4 * 1024 * 1024
 // view of a running command (`runner.md` § Pipes and output).
 const JobViewBytes = 8 * 1024
 
-// The most bytes one message beyond a stream's first [`JOB_VIEW_BYTES`]
+// The most bytes one message beyond a stream's first [JobViewBytes]
 // carries while the backend follows the job: 4,096 characters of up to four
 // bytes each.
 const JobLiveBytes = 16 * 1024
 
 // How often a followed job sends each stream's newest bytes beyond its
-// first [`JOB_VIEW_BYTES`], at most.
+// first [JobViewBytes], at most.
 const JobLiveInterval = 250 * time.Millisecond
 
 // How often a job nobody follows sends how long a stream grew beyond its
-// first [`JOB_VIEW_BYTES`] and its newest [`JOB_VIEW_BYTES`], at most.
+// first [JobViewBytes] and its newest [JobViewBytes], at most.
 const JobGrowthInterval = 2 * time.Second
 
 // The most bytes of one live stdin frame.

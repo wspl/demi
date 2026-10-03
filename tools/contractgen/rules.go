@@ -73,8 +73,10 @@ func checkCustom(d *definition) error {
 	return nil
 }
 
-// checkPattern ports the Rust emitter's shared-regexp subset, also excluding
-// Go-only escapes that ECMAScript's Unicode mode cannot parse.
+// checkPattern accepts only patterns Go and the browser read alike: it refuses
+// \d \w \s \b \p and their negations, \A \z \Z, \Q..\E, backreferences, \x{...},
+// nested classes, a class starting with ], a doubled & - or ~ in a class, a dot
+// outside a class, and any group other than (?:...).
 func checkPattern(pattern string) error {
 	chars := []rune(pattern)
 	inClass := false

@@ -119,7 +119,7 @@ func collect(ctx context.Context, r provider.Runtime, req provider.InferenceRequ
 	return slices.Collect(r.Run(ctx, req))
 }
 
-// scriptedCLI is the process-side script corresponding to Rust's cli.rs.
+// scriptedCLI plays the Claude Code CLI process: it answers what the provider writes with scripted stream-json lines.
 // IO waits for channel events, never wall time. No real CLI or model runs.
 type scriptedCLI struct {
 	t                  *testing.T

@@ -260,7 +260,7 @@ func (e *Environment) Tabs(ctx context.Context, timeout time.Duration) ([]*Tab, 
 func (e *Environment) Listed(ctx context.Context, timeout time.Duration) (*Snapshot, error) {
 	operation := cdp.NewOperation(ctx, e.ctx, timeout)
 	defer operation.Close()
-	// Rust refreshes titles from Chrome, but tab lookup never does this IO.
+	// Listing refreshes titles from Chrome; tab lookup (Tab) never does this IO.
 	if _, err := e.ask(operation.Context(), registryRequest{kind: registryRetitle}); err != nil {
 		return nil, err
 	}

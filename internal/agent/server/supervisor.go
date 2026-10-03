@@ -136,7 +136,7 @@ func (t *Tree[H]) startChild(
 	model, instructions, inherited := owner.session.Model(), owner.runtime.instructions, owner.runtime.inherited
 	model, instructions, inherited = childProfile(profile, model, instructions, inherited)
 	preamble := subagentPreamble(record.Number, owner.record.Number, record.CanSpawnSubagents)
-	node, continuation, err := t.assemble(ctx, assembly{
+	node, continuation, continues, err := t.assemble(ctx, assembly{
 		record:       record,
 		cwd:          owner.CWD(),
 		model:        model,
@@ -156,8 +156,8 @@ func (t *Tree[H]) startChild(
 	c := &child[H]{node: node, done: make(chan struct{}), telemetry: telemetry{lastEvent: now}}
 	t.observeChild(c, node)
 	t.publishChild(c, node)
-	if continuation != nil {
-		if err := node.continueFrom(ctx, *continuation); err != nil {
+	if continues {
+		if err := node.continueFrom(ctx, continuation); err != nil {
 			t.report(fmt.Errorf("subagent %s did not save its start: %w", node.ID(), err))
 		}
 	}
@@ -332,7 +332,8 @@ func (t *Tree[H]) closeChild(ctx context.Context, c *child[H], phase store.Close
 	t.releaseChildObservations(record.ID)
 	if err == nil {
 		record.Closed = &ended
-		t.publish(&framewire.SubagentFrame{Event: framewire.SubagentEventClosed, Job: *record.Job()})
+		job, _ := record.Job()
+		t.publish(&framewire.SubagentFrame{Event: framewire.SubagentEventClosed, Job: job})
 	}
 	t.frames.Unlock()
 	if err != nil {
@@ -372,8 +373,7 @@ func (t *Tree[H]) deliver(ctx context.Context, owner *Node[H], record store.Node
 		Event:       &core.CompletionEvent{Outcome: outcome},
 	}
 	if err := owner.session.AcceptAgentMessage(ctx, message); err != nil {
-		var refusal *session.AgentMessageError
-		if !errors.As(err, &refusal) || refusal.Kind != session.AgentMessageClosed {
+		if !errors.Is(err, session.ErrClosed) {
 			t.report(fmt.Errorf("the completion of subagent %s was not delivered: %w", record.ID, err))
 		}
 	}
@@ -434,8 +434,9 @@ func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, c
 
 func (t *Tree[H]) childFrames(connection *Connection[H], c *child[H]) []framewire.ServerFrame {
 	snapshot := t.observeConnection(connection, c.node).Transcript
+	job, _ := c.node.record.Job()
 	return []framewire.ServerFrame{
-		&framewire.SubagentFrame{Event: framewire.SubagentEventStarted, Job: *c.node.record.Job()},
+		&framewire.SubagentFrame{Event: framewire.SubagentEventStarted, Job: job},
 		&framewire.SubagentTranscriptResetFrame{
 			SubagentID: c.node.ID(),
 			Blocks:     snapshot.Blocks,

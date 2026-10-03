@@ -261,7 +261,7 @@ func startedOutput(ctx context.Context, port host.RPCPort, jsonOutput bool, chil
 	return commandOut(ctx, port, fmt.Sprintf("subagentId: %d\n", child))
 }
 
-// commandJSON writes a declared command result with serde-compatible JSON bytes.
+// commandJSON writes a declared command result as contract JSON and a newline.
 func commandJSON(ctx context.Context, port host.RPCPort, value any) (uint8, error) {
 	data, err := contract.EncodeJSON(value)
 	if err != nil {

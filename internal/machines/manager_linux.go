@@ -117,11 +117,11 @@ func (m *Manager) Handle(ctx context.Context, call machinewire.MachineCall) (jso
 		if err != nil {
 			return nil, err
 		}
-		state, err := m.core.Store.Read(ctx, device)
+		state, found, err := m.core.Store.Read(ctx, device)
 		if err != nil {
 			return nil, err
 		}
-		if state == nil {
+		if !found {
 			return json.RawMessage("null"), nil
 		}
 		return state.MarshalJSON()

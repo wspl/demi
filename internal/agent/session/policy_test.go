@@ -91,7 +91,7 @@ func TestCompactionThresholdCountsCacheAndLimits(t *testing.T) {
 			t.Fatalf("%+v: %v", tc.size, got)
 		}
 	}
-	c.ThresholdPercent = nil
+	c.ThresholdPercent = 0
 	if c.sizeReached(limits, transcript.RequestSize{Images: 5, Bytes: 1000}) ||
 		c.reached(1000, core.TokenUsage{InputTokens: 1000}) {
 		t.Fatal("disabled compaction triggered")
@@ -103,13 +103,13 @@ func TestActionWaitCancellationDoesNotCancelResult(t *testing.T) {
 		a := newAction()
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		if _, err := a.Wait(ctx); !errors.Is(err, context.Canceled) {
+		if _, err := a.wait(ctx); !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
 		done := make(chan ActionEnd, 2)
 		for range 2 {
 			go func() {
-				end, err := a.Wait(t.Context())
+				end, err := a.wait(t.Context())
 				if err != nil {
 					t.Error(err)
 				}
@@ -132,13 +132,13 @@ func TestEditAcceptanceRemainsAfterWaitCancellation(t *testing.T) {
 		a := newAcceptance()
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		if _, err := a.Wait(ctx); !errors.Is(err, context.Canceled) {
+		if _, err := a.wait(ctx); !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
 		receipt := store.EditReceipt{OperationID: "op", Digest: "digest", TurnID: "turn"}
 		a.finish(receipt, nil)
-		a.finish(store.EditReceipt{}, &EditError{Kind: EditStopped})
-		got, err := a.Wait(t.Context())
+		a.finish(store.EditReceipt{}, ErrEditStopped)
+		got, err := a.wait(t.Context())
 		if err != nil || got != receipt {
 			t.Fatalf("%+v, %v", got, err)
 		}
@@ -152,8 +152,7 @@ func TestKeptEditMediaMustBelongToTarget(t *testing.T) {
 		t.Fatalf("%+v, %v", got, err)
 	}
 	_, err = resolveEdit([]EditContent{&KeptAttachment{Path: "/b"}}, target)
-	var refused *EditError
-	if !errors.As(err, &refused) || refused.Kind != EditUnknownAttachment {
+	if err == nil || err.Error() != "The edited message holds no attachment at /b" {
 		t.Fatal(err)
 	}
 }

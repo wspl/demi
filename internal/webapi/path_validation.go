@@ -18,7 +18,8 @@ func validateTreePath(path TreePath) error {
 	return nil
 }
 
-// A Host path uses typed-path's ordered Windows prefixes even on Unix.
+// A Host path may start with a Windows prefix even on Unix, tried in this order:
+// \\?\UNC\server\share, \\?\C:, \\?\name, \\.\device, \\server\share, C:.
 // The standard filepath package only recognizes the build target's paths.
 var hostPrefixes = []*regexp.Regexp{
 	regexp.MustCompile(`^[\\/]{2}\?[\\/]UNC[\\/][^\\/]+(?:[\\/][^\\/]*)?`),

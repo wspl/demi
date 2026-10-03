@@ -23,14 +23,11 @@ type claims struct {
 }
 
 func tokenClaims(token provider.Secret) claims {
-	value := provider.JWTClaims(
+	value, _ := provider.JWTClaims(
 		token.Expose(),
 		func(b []byte) (claims, error) { return provider.DecodeUntagged[claims](string(b)) },
 	)
-	if value == nil {
-		return claims{}
-	}
-	return *value
+	return value
 }
 
 func (c claims) principal() *principal {
@@ -97,22 +94,21 @@ type auth struct {
 	clock   core.Clock
 }
 
-func (a *auth) document() (provider.AccountDocument, *provider.AuthFailure) {
+func (a *auth) document() (provider.AccountDocument, error) {
 	if a.account == nil {
-		return nil, &provider.AuthFailure{Family: "Grok", Reason: provider.AuthReasonMissing}
+		return nil, provider.AuthFailure{Family: "Grok", Reason: provider.AuthReasonMissing}
 	}
 	return a.pool.Document(*a.account), nil
 }
 
-func (a *auth) stored(ctx context.Context) (secret, *provider.AuthFailure) {
-	doc, failure := a.document()
-	if failure != nil {
-		return secret{}, failure
+func (a *auth) stored(ctx context.Context) (secret, error) {
+	doc, err := a.document()
+	if err != nil {
+		return secret{}, err
 	}
 	stored, err := provider.ReadSecret(ctx, doc, decodeSecret)
 	if err != nil {
-		f := provider.AccountAuthFailure("Grok", err)
-		return secret{}, &f
+		return secret{}, provider.AccountAuthFailure("Grok", err)
 	}
 	return stored.Secret, nil
 }
@@ -121,17 +117,16 @@ func (a *auth) credentials(
 	ctx context.Context,
 	client *http.Client,
 	refused *provider.Secret,
-) (secret, *provider.AuthFailure) {
-	doc, failure := a.document()
-	if failure != nil {
-		return secret{}, failure
+) (secret, error) {
+	doc, err := a.document()
+	if err != nil {
+		return secret{}, err
 	}
 	s, err := provider.Renew(ctx, doc, decodeSecret, func(s secret) bool {
 		return s.RefreshToken != nil && ((refused != nil && s.AccessToken == *refused) || s.expiring(a.clock.Now()))
 	}, func(ctx context.Context, s secret) (secret, error) { return a.refresh(ctx, client, s) })
 	if err != nil {
-		f := provider.AccountAuthFailure("Grok", err)
-		return secret{}, &f
+		return secret{}, provider.AccountAuthFailure("Grok", err)
 	}
 	return s, nil
 }
@@ -150,9 +145,10 @@ type tokens struct {
 	ID       *provider.Secret  `json:"id_token"`
 }
 
+//nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
 func decodeTokens(data []byte) (tokens, error) { return provider.DecodeUntagged[tokens](string(data)) }
 
-//nolint:staticcheck // ST1005: user-facing messages are copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Grok.
 func (a *auth) refresh(ctx context.Context, client *http.Client, s secret) (secret, error) {
 	form := url.Values{
 		"grant_type":    {"refresh_token"},
@@ -180,7 +176,7 @@ func (a *auth) refresh(ctx context.Context, client *http.Client, s secret) (secr
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response, err := client.Do(req)
 	if err != nil {
-		return secret{}, fmt.Errorf("Grok token refresh failed: %w", withoutURL(err))
+		return secret{}, fmt.Errorf("Grok token refresh failed: %w", provider.WithoutURL(err))
 	}
 	// The response is consumed or abandoned; close errors cannot change its result.
 	defer func() { _ = response.Body.Close() }()
@@ -215,12 +211,4 @@ func tokenExpiry(now core.Timestamp, lifetime time.Duration) *core.Timestamp {
 		return nil
 	}
 	return &expiry
-}
-
-// withoutURL keeps issuer and proxy addresses out of local error messages.
-func withoutURL(err error) error {
-	if e, ok := err.(*url.Error); ok {
-		return e.Err
-	}
-	return err
 }

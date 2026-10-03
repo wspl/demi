@@ -245,13 +245,13 @@ func TestSeventhIdenticalExecSuppressed(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var slot environmentSlot
 		for range 6 {
-			if slot.repeated("make") != nil {
+			if _, suppressed := slot.repeated("make"); suppressed {
 				t.Fatal("suppressed too early")
 			}
 		}
 		for _, count := range []uint32{7, 8} {
-			got := slot.repeated("make")
-			if got == nil || !got.IsError {
+			got, suppressed := slot.repeated("make")
+			if !suppressed || !got.IsError {
 				t.Fatal("repeat not suppressed")
 			}
 			view, ok := got.View.(*core.RepeatedShellExec)
@@ -259,16 +259,16 @@ func TestSeventhIdenticalExecSuppressed(t *testing.T) {
 				t.Fatalf("wrong view: %+v", got.View)
 			}
 		}
-		if slot.repeated("make test") != nil {
+		if _, suppressed := slot.repeated("make test"); suppressed {
 			t.Fatal("different script suppressed")
 		}
 		for range 5 {
-			if slot.repeated("make") != nil {
+			if _, suppressed := slot.repeated("make"); suppressed {
 				t.Fatal("count not reset")
 			}
 		}
 		time.Sleep(60*time.Second + time.Millisecond) // synctest advances virtual time.
-		if slot.repeated("make") != nil {
+		if _, suppressed := slot.repeated("make"); suppressed {
 			t.Fatal("repeat window did not expire")
 		}
 	})

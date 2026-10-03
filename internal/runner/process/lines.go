@@ -21,22 +21,22 @@ func (s *LineSplitter) Push(chunk []byte) []string {
 			s.pending = append(s.pending, b)
 		}
 		if b == '\n' || len(s.pending) == LineBytes {
-			if line := s.Finish(); line != nil {
-				lines = append(lines, *line)
+			if line, ok := s.Finish(); ok {
+				lines = append(lines, line)
 			}
 		}
 	}
 	return lines
 }
 
-// Finish returns the final unterminated nonempty line, or nil.
-func (s *LineSplitter) Finish() *string {
+// Finish returns the final unterminated nonempty line, and false when there is none.
+func (s *LineSplitter) Finish() (string, bool) {
 	text := strings.TrimRight(streamText(s.pending), "\r")
 	s.pending = s.pending[:0]
 	if text == "" {
-		return nil
+		return "", false
 	}
-	return &text
+	return text, true
 }
 
 // streamText replaces malformed stream bytes by Unicode replacement characters,

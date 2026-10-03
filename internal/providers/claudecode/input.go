@@ -135,7 +135,7 @@ func transcript(items []provider.InferenceItem) (userInput, error) {
 				add("Assistant:", []inputContent{textBlock(i.Text)})
 			}
 		case *provider.ToolUse:
-			input, err := serdeValue(i.Input).MarshalJSON()
+			input, err := canonicalJSON(i.Input).MarshalJSON()
 			if err != nil {
 				return userInput{}, err
 			}

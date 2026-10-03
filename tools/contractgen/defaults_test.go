@@ -15,7 +15,7 @@ import (
 	"github.com/wspl/demi/tools/contractgen/testdata/presence"
 )
 
-// Default fields preserve Rust's absent/empty/value behavior in both formats.
+// An absent default field decodes as its empty value, and null is refused, in both formats.
 // Local codecs and schema compilation only; budget below one second.
 func TestDefaultFields(t *testing.T) {
 	const empty = `{"items":[],"labels":{},"enabled":false,"count":0,"text":""}`
@@ -117,7 +117,7 @@ func TestDefaultFields(t *testing.T) {
 			}
 		})
 	}
-	// Schemars emits Default::default() as metadata, without making null legal.
+	// A default field's schema carries its empty value as "default", without making null legal.
 	want := `{"additionalProperties":false,"properties":{"items":{"type":"array",` +
 		`"items":{"type":"string"},"maxItems":2,"default":[]},` +
 		`"labels":{"type":"object","additionalProperties":{"type":"string"},` +
@@ -144,12 +144,12 @@ func TestImportedExposeCodec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Rust plugin-expose exports this exact plain string form. Validation and
+	// The expose page exports this exact plain string form. Validation and
 	// bare-port normalization belong to the Go codec, not the page schema.
 	if !strings.Contains(string(source), "const exposeAddressSchema = z.string()\n") {
 		t.Fatalf("expose address mapping: %s", source)
 	}
-	// Captured from the Rust expose page's $defs.ExposeAddress.
+	// The golden expose page's $defs.ExposeAddress.
 	expected, err := os.ReadFile("testdata/external/expose-address.json")
 	if err != nil {
 		t.Fatal(err)
@@ -165,7 +165,7 @@ func TestImportedExposeCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(schema.Properties["address"], compact.Bytes()) {
-		t.Fatalf("expose address schema: %s; Rust: %s", schema.Properties["address"], compact.Bytes())
+		t.Fatalf("expose address schema: %s; want: %s", schema.Properties["address"], compact.Bytes())
 	}
 
 	value, err := external.DecodeExpose([]byte(`{"address":"08080"}`))

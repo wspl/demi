@@ -1,7 +1,7 @@
 package core_test
 
 import (
-	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -142,9 +142,9 @@ func TestModelSettings(t *testing.T) {
 		if (err != nil) != scenario.refused || !reflect.DeepEqual(got, scenario.want) {
 			t.Errorf("%+v: %v, %v", scenario, got, err)
 		}
-		if scenario.refused {
-			var unavailable *core.UnavailableSetting
-			if !errors.As(err, &unavailable) {
+		if scenario.refused && err != nil {
+			want := fmt.Sprintf("The model does not offer the thinking effort %q", *scenario.effort)
+			if err.Error() != want {
 				t.Errorf("wrong error: %v", err)
 			}
 		}

@@ -9,13 +9,8 @@ import (
 )
 
 // Shell runs each job in a fresh interpreter with its own state and owned work.
-// A Shell may start concurrent jobs. Go's scheduler runs their interpreter work;
-// there is no separate runtime or blocking pool to shut down.
+// Its zero value is ready, a Shell may start concurrent jobs, and it needs no shutdown.
 type Shell struct{}
-
-// New constructs a shell service. Each Start supplies the job's command handler,
-// environment, edit recorder and cancellation context.
-func New() *Shell { return &Shell{} }
 
 // Start starts a fresh login shell. The context owns the job's lifetime.
 // The caller consumes output concurrently and always calls Wait, including

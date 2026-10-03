@@ -168,7 +168,7 @@ func TestSweepLeavesOtherUsersEnvironmentsAlone(t *testing.T) {
 	requireExists(t, false, orphan, profile, left)
 }
 
-// This filesystem race ports the Rust 4,000-creation/three-sweeper scenario.
+// This filesystem race creates 4,000 environments while three sweepers run.
 // It costs several seconds on macOS; no in-memory fake can prove the atomic
 // publication of an OS lock to another concurrent directory scanner.
 func TestSweepTakesNoEnvironmentBeingMade(t *testing.T) {

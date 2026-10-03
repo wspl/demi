@@ -13,7 +13,7 @@ import (
 
 // run answers a command after its declaration has checked the invocation.
 func run(ctx context.Context, invocation host.RPCInvocation, port plugin.Port) (uint8, error) {
-	var text, refusal string
+	var text string
 	var err error
 	leaf := ""
 	if len(invocation.Path) > 0 {
@@ -24,7 +24,7 @@ func run(ctx context.Context, invocation host.RPCInvocation, port plugin.Port) (
 		var args AddArgs
 		args, err = commandArgs(invocation, DecodeAddArgs)
 		if err == nil {
-			text, refusal, err = add(ctx, args, invocation.JSON, port)
+			text, err = add(ctx, args, invocation.JSON, port)
 		}
 	case "list":
 		text, err = list(ctx, invocation.JSON, port)
@@ -32,25 +32,33 @@ func run(ctx context.Context, invocation host.RPCInvocation, port plugin.Port) (
 		var args NumberArgs
 		args, err = commandArgs(invocation, DecodeNumberArgs)
 		if err == nil {
-			text, refusal, err = change(ctx, leaf, args.Number, invocation.JSON, port)
+			text, err = change(ctx, leaf, args.Number, invocation.JSON, port)
 		}
 	default:
 		return 0, &plugin.ErrorFailed{Message: "no such expose command"}
 	}
+	var refused refusal
+	if errors.As(err, &refused) {
+		err = port.RPC().Stderr(ctx, []byte(fmt.Sprintf("expose %s: %s\n", leaf, refused)))
+		return 1, err
+	}
 	if err != nil {
 		return 0, plugin.RequestError(err)
-	}
-	if refusal != "" {
-		err = port.RPC().Stderr(ctx, []byte(fmt.Sprintf("expose %s: %s\n", leaf, refusal)))
-		return 1, err
 	}
 	return 0, port.RPC().Stdout(ctx, []byte(text))
 }
 
-func add(ctx context.Context, args AddArgs, jsonOutput bool, port plugin.Port) (string, string, error) {
+// refusal is a command's refusal: run writes it to standard error and
+// exits with status 1.
+type refusal string
+
+// Error returns the refusal's text.
+func (r refusal) Error() string { return string(r) }
+
+func add(ctx context.Context, args AddArgs, jsonOutput bool, port plugin.Port) (string, error) {
 	hosts, err := port.ConversationHosts(ctx)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	var target *plugin.ConversationHost
 	for i := range hosts {
@@ -73,20 +81,21 @@ func add(ctx context.Context, args AddArgs, jsonOutput bool, port plugin.Port) (
 		if args.Host != nil {
 			wanted = *args.Host
 		}
-		return "", fmt.Sprintf("host %s is not reachable from this conversation (see `demi host list`)", wanted), nil
+		return "", refusal(
+			fmt.Sprintf("host %s is not reachable from this conversation (see `demi host list`)", wanted),
+		)
 	}
 	created, err := port.CreateExpose(ctx, target.Device, args.Address, lifetime)
-	refused, err := exposeRefusal(err)
-	if err != nil || refused != "" {
-		return "", refused, err
+	if err != nil {
+		return "", exposeRefusal(err)
 	}
 	listed, err := port.Exposes(ctx)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	entries, err := numbered(ctx, port, listed.Exposes)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	for _, entry := range entries {
 		if entry.expose.ID != created.ID {
@@ -94,7 +103,7 @@ func add(ctx context.Context, args AddArgs, jsonOutput bool, port plugin.Port) (
 		}
 		if jsonOutput {
 			data, err := (ExposeAnswer{Expose: line(entry)}).MarshalJSON()
-			return string(data), "", err
+			return string(data), err
 		}
 		return fmt.Sprintf(
 			"Exposed %s on %s as %s\nExpires in %d minutes (expose %d).\n",
@@ -103,9 +112,9 @@ func add(ctx context.Context, args AddArgs, jsonOutput bool, port plugin.Port) (
 			entry.expose.URL,
 			lifetime/60,
 			entry.number,
-		), "", nil
+		), nil
 	}
-	return "", "the expose ended at once", nil
+	return "", refusal("the expose ended at once")
 }
 
 func list(ctx context.Context, jsonOutput bool, port plugin.Port) (string, error) {
@@ -159,61 +168,64 @@ func change(
 	number uint64,
 	jsonOutput bool,
 	port plugin.Port,
-) (string, string, error) {
+) (string, error) {
 	listed, err := port.Exposes(ctx)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	entries, err := numbered(ctx, port, listed.Exposes)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	missing := fmt.Sprintf("no expose %d", number)
+	missing := refusal(fmt.Sprintf("no expose %d", number))
 	for _, entry := range entries {
 		if entry.number != number {
 			continue
 		}
 		if method == "remove" {
-			refused, err := exposeRefusal(port.RemoveExpose(ctx, entry.expose.ID))
+			err := exposeRefusal(port.RemoveExpose(ctx, entry.expose.ID))
+			if errors.As(err, new(refusal)) {
+				return "", missing
+			}
+
 			if err != nil {
-				return "", "", err
+				return "", err
 			}
-			if refused != "" {
-				return "", missing, nil
-			}
-			return fmt.Sprintf("Removed expose %d; its URL no longer works.\n", number), "", nil
+			return fmt.Sprintf("Removed expose %d; its URL no longer works.\n", number), nil
 		}
 		renewed, err := port.RenewExpose(ctx, entry.expose.ID, lifetime)
-		refused, err := exposeRefusal(err)
-		if err != nil {
-			return "", "", err
+		err = exposeRefusal(err)
+		if errors.As(err, new(refusal)) {
+			return "", missing
 		}
-		if refused != "" {
-			return "", missing, nil
+
+		if err != nil {
+			return "", err
 		}
 		if jsonOutput {
 			data, err := (ExposeAnswer{Expose: line(numberedExpose{number: number, expose: renewed})}).MarshalJSON()
-			return string(data), "", err
+			return string(data), err
 		}
-		return fmt.Sprintf("Expose %d expires in %d minutes.\n", number, lifetime/60), "", nil
+		return fmt.Sprintf("Expose %d expires in %d minutes.\n", number, lifetime/60), nil
 	}
-	return "", missing, nil
+	return "", missing
 }
 
-func exposeRefusal(err error) (string, error) {
+// exposeRefusal turns an expose refusal from the port into the command's refusal and returns any other error as it is.
+func exposeRefusal(err error) error {
 	var refused *plugin.PortRefusalExpose
 	if !errors.As(err, &refused) {
-		return "", err
+		return err
 	}
 	switch refused.Reason {
 	case plugin.ExposeRefusalUnavailable:
-		return "exposes are not available on this instance", nil
+		return refusal("exposes are not available on this instance")
 	case plugin.ExposeRefusalDeviceOffline:
-		return "the device is offline; connect it before exposing a service", nil
+		return refusal("the device is offline; connect it before exposing a service")
 	case plugin.ExposeRefusalInvalidAddress, plugin.ExposeRefusalDeviceNotFound, plugin.ExposeRefusalNotFound:
-		return refused.Message, nil
+		return refusal(refused.Message)
 	}
-	return "", err
+	return err
 }
 
 func line(entry numberedExpose) ExposeLine {

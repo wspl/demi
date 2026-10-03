@@ -38,12 +38,12 @@ func DefaultRetryPolicy() RetryPolicy {
 // CompactionConfig controls when a session compacts.
 type CompactionConfig struct {
 	// ThresholdPercent is the share of a model's context window and each
-	// vendor request limit at which history is compacted. Nil disables
+	// vendor request limit at which history is compacted. Zero disables
 	// automatic compaction, as in a session copy.
-	ThresholdPercent *uint8
+	ThresholdPercent uint8
 }
 
 // DefaultCompactionConfig returns the eighty-percent threshold.
 func DefaultCompactionConfig() CompactionConfig {
-	return CompactionConfig{ThresholdPercent: new(uint8(80))}
+	return CompactionConfig{ThresholdPercent: 80}
 }

@@ -96,7 +96,9 @@ func closeOnCancel(ctx context.Context, body io.Closer) func() {
 	}
 }
 
-// utf8Body retains a non-UTF-8 suffix until the next read, as eventsource-stream does.
+// utf8Body passes on the valid UTF-8 prefix of what it has read and holds back the rest, from the first byte that
+// does not start a complete UTF-8 sequence, until later reads complete it; bytes still held back at EOF are a UTF-8
+// error.
 type utf8Body struct {
 	source  io.Reader
 	pending []byte
@@ -135,7 +137,8 @@ func (r *utf8Body) Read(p []byte) (int, error) {
 	return 0, r.end
 }
 
-// vendorInvalidUTF8Width adapts the shared diagnostic for Rust's lossy decoding.
+// vendorInvalidUTF8Width returns how many bytes one U+FFFD replaces: the length contract.CheckUTF8 reports for the
+// malformed sequence, or the whole rest when it reports none.
 // Its caller passes a suffix beginning with a malformed sequence.
 func vendorInvalidUTF8Width(data []byte) int {
 	var invalid *contract.UTF8Error

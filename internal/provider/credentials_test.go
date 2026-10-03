@@ -102,7 +102,7 @@ func TestRefreshTurnsFIFO(t *testing.T) {
 
 func TestDueSecretRefreshAndStore(t *testing.T) {
 	pool := poolWith(t, "a", tokens{Access: "old", Refresh: "r1"})
-	before, err := pool.Document("a").Read(t.Context())
+	before, _, err := pool.Document("a").Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestDueSecretRefreshAndStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireEqual(t, got, tokens{Access: "new", Refresh: "r2"})
-	after, err := pool.Document("a").Read(t.Context())
+	after, _, err := pool.Document("a").Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,9 +259,8 @@ func TestCorruptSecretPathNeverQuotesValue(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := provider.ReadSecret(t.Context(), pool.Document("a"), providertest.DecodeTokenDocument)
-		var account *provider.AccountError
 		var decode *provider.SecretDecodeError
-		if !errors.As(err, &account) || account.Kind != provider.AccountInvalid || !errors.As(err, &decode) {
+		if !errors.As(err, &decode) {
 			t.Fatalf("%v", err)
 		}
 		requireEqual(t, decode.Path, tc.path)
@@ -271,8 +270,7 @@ func TestCorruptSecretPathNeverQuotesValue(t *testing.T) {
 		}
 	}
 	_, err := provider.ReadSecret(t.Context(), pool.Document("absent"), providertest.DecodeTokenDocument)
-	var account *provider.AccountError
-	if !errors.As(err, &account) || account.Kind != provider.AccountMissing {
+	if !errors.Is(err, provider.ErrNoSecretDocument) {
 		t.Fatalf("%v", err)
 	}
 }
@@ -291,11 +289,11 @@ func TestMemoryPoolVersionsAndActive(t *testing.T) {
 	requireEqual(t, len(listed), 2)
 	requireEqual(t, []string{listed[0].ID, listed[1].ID}, []string{"a", "b"})
 	doc := pool.Document("a")
-	first, err := doc.Read(t.Context())
+	first, _, err := doc.Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := doc.Read(t.Context())
+	second, _, err := doc.Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,35 +303,34 @@ func TestMemoryPoolVersionsAndActive(t *testing.T) {
 	if ok, err := doc.Replace(t.Context(), "lost", second.Version); err != nil || ok {
 		t.Fatalf("%v %v", ok, err)
 	}
-	latest, err := doc.Read(t.Context())
+	latest, _, err := doc.Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	requireEqual(t, latest.Text, "two")
-	if missing, err := pool.Document("absent").Read(t.Context()); err != nil || missing != nil {
-		t.Fatalf("%v %v", missing, err)
+	if _, ok, err := pool.Document("absent").Read(t.Context()); err != nil || ok {
+		t.Fatalf("%v %v", ok, err)
 	}
-	if active, err := pool.Active(t.Context()); err != nil || active != nil {
-		t.Fatalf("%v %v", active, err)
+	if _, ok, err := pool.Active(t.Context()); err != nil || ok {
+		t.Fatalf("%v %v", ok, err)
 	}
 	err = pool.SetActive(t.Context(), "zz")
-	var missing *provider.PoolError
-	if !errors.As(err, &missing) || missing.ID != "zz" || missing.Err != nil {
+	if !errors.Is(err, provider.ErrNoAccount) || err.Error() != "no account zz" {
 		t.Fatalf("missing account error: %v", err)
 	}
 	if err := pool.SetActive(t.Context(), "b"); err != nil {
 		t.Fatal(err)
 	}
-	active, err := pool.Active(t.Context())
+	active, _, err := pool.Active(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireEqual(t, *active, "b")
+	requireEqual(t, active, "b")
 	if err := pool.Remove(t.Context(), "b"); err != nil {
 		t.Fatal(err)
 	}
-	if active, err := pool.Active(t.Context()); err != nil || active != nil {
-		t.Fatalf("%v %v", active, err)
+	if _, ok, err := pool.Active(t.Context()); err != nil || ok {
+		t.Fatalf("%v %v", ok, err)
 	}
 	entries := pool.Entries()
 	if len(entries) != 1 || entries[0].Meta.ID != "a" || entries[0].Secret != "two" {
@@ -401,17 +398,17 @@ func TestLoginImportsIdentityAndSelectsFirst(t *testing.T) {
 	requireEqual(t, first.Label, "acct-1@example.com")
 	requireEqual(t, *first.UpdatedAt, now)
 	requireEqual(t, shown, []string{"ABCD-1234"})
-	active, err := accounts.Active(t.Context())
+	active, _, err := accounts.Active(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireEqual(t, *active, first.ID)
+	requireEqual(t, active, first.ID)
 	again, err := accounts.Login(t.Context(), report)
 	if err != nil {
 		t.Fatal(err)
 	}
 	requireEqual(t, again.ID, first.ID)
-	revision, err := pool.Document(first.ID).Read(t.Context())
+	revision, _, err := pool.Document(first.ID).Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,12 +425,12 @@ func TestLoginImportsIdentityAndSelectsFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireEqual(t, len(listed), 2)
-	active, err = accounts.Active(t.Context())
+	active, _, err = accounts.Active(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireEqual(t, *active, first.ID)
-	meta, err := pool.Meta(t.Context(), other.ID)
+	requireEqual(t, active, first.ID)
+	meta, _, err := pool.Meta(t.Context(), other.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,8 +445,7 @@ func TestLoginImportsIdentityAndSelectsFirst(t *testing.T) {
 		accounts.Remove(t.Context(), "cred-absent"),
 		accounts.SetActive(t.Context(), "cred-absent"),
 	} {
-		var missing *provider.PoolError
-		if !errors.As(err, &missing) || missing.ID != "cred-absent" {
+		if !errors.Is(err, provider.ErrNoAccount) || err.Error() != "no account cred-absent" {
 			t.Fatalf("%v", err)
 		}
 	}

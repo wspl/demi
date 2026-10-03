@@ -13,9 +13,9 @@ import (
 type SessionStore interface {
 	// Save commits an update and its carried completion receipts atomically.
 	Save(ctx context.Context, update CheckpointUpdate, guard CommitGuard) error
-	// Load returns a decoded, checked checkpoint, or nil when none exists.
+	// Load returns a decoded, checked checkpoint, and false when none exists.
 	// Corrupt data stops the load.
-	Load(ctx context.Context) (*Checkpoint, error)
+	Load(ctx context.Context) (Checkpoint, bool, error)
 	// Blobs returns the conversation owner's blob namespace.
 	Blobs() BlobStore
 }
@@ -24,8 +24,8 @@ type SessionStore interface {
 // Each mutation is one atomic commit. Cancellation cancels admission waits,
 // never a transaction that has begun. Implementations support concurrent calls.
 type TreeStore interface {
-	// Node returns a node's record, or nil when it does not exist.
-	Node(ctx context.Context, id core.NodeID) (*NodeRecord, error)
+	// Node returns a node's record, and false when it does not exist.
+	Node(ctx context.Context, id core.NodeID) (NodeRecord, bool, error)
 	// Children returns direct children in number order, live and archived alike.
 	Children(ctx context.Context, parent core.NodeID) ([]NodeRecord, error)
 	// CreateNode commits the record and first checkpoint; an existing node is refused.

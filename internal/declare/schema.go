@@ -25,12 +25,7 @@ type Schema struct {
 }
 
 // NewSchema compiles a declaration's schema without loading external resources.
-func NewSchema(document json.RawMessage) (_ *Schema, err error) {
-	defer func() {
-		if err != nil {
-			err = &DeclarationError{err: err}
-		}
-	}()
+func NewSchema(document json.RawMessage) (*Schema, error) {
 	if err := contract.CheckJSON(document); err != nil {
 		return nil, fmt.Errorf("schema: %w", err)
 	}
@@ -274,7 +269,7 @@ func (s *Schema) schemaContentFailures(
 			message = unexpectedProperties("Unevaluated", reason.names, failure.InstanceLocation, order)
 		}
 	case *kind.RefCycle:
-		// The Rust compiler elides a direct recursive reference at the same instance.
+		// A reference that loops back to the same instance location adds no diagnostic.
 		return nil
 	case *kind.InvalidJsonValue:
 		// Check decodes JSON before invoking the validator, so this is unreachable.
@@ -309,7 +304,7 @@ func flattenChildren(failure *jsonschema.ValidationError) []*jsonschema.Validati
 	return children
 }
 
-// orderedFailures applies Rust's aggregation and diagnostic traversal order.
+// orderedFailures merges aggregate keywords' failures, then sorts by diagnosticRank.
 func (s *Schema) orderedFailures(
 	failures []*jsonschema.ValidationError,
 	order map[string][]string,

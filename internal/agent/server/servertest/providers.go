@@ -69,7 +69,7 @@ func (p *ScriptedProviders) Selection(_ context.Context, _ core.NodeID) (core.Mo
 	return storetest.TestModel(), nil
 }
 
-// Runtime records the resolution and supplies a fresh runtime, or *server.ResolveError.
+// Runtime records the resolution and supplies a fresh runtime, or server.ProviderUnavailable.
 func (p *ScriptedProviders) Runtime(
 	_ context.Context,
 	root core.NodeID,
@@ -80,7 +80,7 @@ func (p *ScriptedProviders) Runtime(
 	runtime := p.runtimes[model.ProviderID]
 	p.mu.Unlock()
 	if runtime == nil {
-		return nil, &server.ResolveError{Kind: server.ResolveUnknown, Provider: model.ProviderID}
+		return nil, server.ProviderUnavailable(model.ProviderID)
 	}
 	return runtime.Fresh(), nil
 }

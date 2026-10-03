@@ -155,7 +155,7 @@ func wireRuntime(
 		) + `"}`
 		id := "cred-c"
 		pool := wirePool(ctx, t, id, document)
-		config := codex.NewConfig(&id)
+		config := codex.Config{Account: &id}
 		config.AuthURL = vendor.URL("")
 		config.BackendURL = vendor.URL("/backend-api")
 		config.Transport = codex.SSE
@@ -174,7 +174,7 @@ func wireRuntime(
 			issuer,
 		) + `,"clientId":"client-1","userId":"user-1","email":"user@example.com"}`
 		id := "cred-g"
-		config := grokbuild.NewConfig(&id)
+		config := grokbuild.Config{Account: &id}
 		config.ProxyURL = base
 		config.IssuerURL, err = url.Parse(vendor.URL(""))
 		wireMust(t, err)
@@ -347,7 +347,7 @@ func wireConversation(t *testing.T, family wireFamily) []string {
 		),
 	)
 	close(release)
-	wait := func(a *session.ActionHandle, err error) {
+	wait := func(a *session.ActionAnswer, err error) {
 		t.Helper()
 		wireMust(t, err)
 		_, err = a.Wait(ctx)

@@ -8,7 +8,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// schemaObject retains schemars' keyword and property insertion order while
+// schemaObject keeps keywords and properties in insertion order while
 // later field annotations replace existing keywords in place.
 type schemaObject struct{ fields []contract.Field }
 
@@ -43,14 +43,15 @@ func (s *schemaObject) MarshalJSON() ([]byte, error) {
 	return contract.EncodeObject(s.fields)
 }
 
-// schemaKeywords starts a schema with keywords in schemars' creation order.
+// schemaKeywords starts a schema with keywords in the given order.
 func schemaKeywords(fields ...contract.Field) *schemaObject {
 	return &schemaObject{fields: fields}
 }
 
-// serializedSchema follows schemars 1.2.2 schema.rs OrderedKeywordWrapper.
-// Its json_schema! macro serializes array item schemas, unlike object fields,
-// which insert Schema::to_value() without reordering.
+// serializedSchema orders every schema object's keywords: $id, $schema, title,
+// description, type, format and properties first, the others in insertion order,
+// $defs and definitions last. Property names keep insertion order, array items
+// are ordered as schemas, and default, examples and x- values are copied as they are.
 func serializedSchema(value any, properties bool) any {
 	switch value := value.(type) {
 	case *schemaObject:

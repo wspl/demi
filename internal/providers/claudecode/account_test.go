@@ -48,12 +48,12 @@ func TestSetupTokenAccountAndPlacementRequirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	equal(t, len(list), 1)
-	active, err := pool.Active(t.Context())
+	active, _, err := pool.Active(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	equal(t, *active, added.ID)
-	document, err := pool.Document(added.ID).Read(t.Context())
+	equal(t, active, added.ID)
+	document, _, err := pool.Document(added.ID).Read(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,11 +64,9 @@ func TestSetupTokenAccountAndPlacementRequirement(t *testing.T) {
 		t.Fatal(p.RuntimeState())
 	}
 	_, err = p.Runtime(provider.RuntimeEnv{})
-	var required *provider.RuntimeError
-	if !errors.As(err, &required) {
+	if err == nil || err.Error() != "Claude needs a Host that runs processes" {
 		t.Fatal(err)
 	}
-	equal(t, required.Provider, "Claude")
 	replaced, err := pool.Document(added.ID).
 		Replace(t.Context(), `{"accessToken":"x","refreshToken":"y"}`, document.Version)
 	if err != nil || !replaced {
@@ -128,16 +126,14 @@ func TestQuotaProbeAndCLIObservation(t *testing.T) {
 	equal(t, *snapshot.Windows[2].Severity, core.QuotaSeverity("warning"))
 	vendorJSON(vendor, `["five_hour"]`)
 	_, err = p.Quota().Probe(t.Context())
-	var quotaErr *provider.QuotaError
-	if !errors.As(err, &quotaErr) || quotaErr.Kind != provider.QuotaInvalid {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("probe accepted an unreadable usage answer")
 	}
 	vendor.Respond(providertest.MockResponse{Status: 401, Chunks: [][]byte{[]byte("token expired")}})
 	_, err = p.Quota().Probe(t.Context())
-	if !errors.As(err, &quotaErr) || quotaErr.Kind != provider.QuotaUnavailable {
+	if err == nil || err.Error() != "Claude usage request failed (401): token expired" {
 		t.Fatalf("quota refusal: %v", err)
 	}
-	equal(t, quotaErr.Message, "Claude usage request failed (401): token expired")
 	placement := &scriptedPlacement{t: t, setup: func(c *scriptedCLI) {
 		c.onWrite = func(_ map[string]json.RawMessage) {
 			c.say(
@@ -246,8 +242,7 @@ func TestClaudeCatalogMinimumOrderingAndThinking(t *testing.T) {
 	equal(t, catalog.Models[3].ContextWindow, (*uint32)(nil))
 	vendorJSON(vendor, `{"openai":{"id":"openai","name":"OpenAI","models":{}}}`)
 	_, err = p.ListModels(t.Context())
-	var catalogErr *provider.CatalogError
-	if !errors.As(err, &catalogErr) || catalogErr.Kind != provider.CatalogInvalid {
+	if err == nil || err.Error() != "models.dev does not list the anthropic vendor" {
 		t.Fatal(err)
 	}
 }

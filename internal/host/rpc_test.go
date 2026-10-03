@@ -134,7 +134,7 @@ func TestInvocationRetainsArgumentOrderAndRequiresObject(t *testing.T) {
 		t.Fatalf("wire spelling: %s", encoded)
 	}
 	for _, raw := range []string{`[]`, `null`, `"text"`, `4`} {
-		// Use the decoder's current raw argument spelling after serde-compatible escaping.
+		// Use the decoder's raw argument spelling; the encoder escapes only quotes, backslashes and control characters.
 		decoded, err := host.DecodeRPCInvocation(encoded)
 		if err != nil {
 			t.Fatal(err)

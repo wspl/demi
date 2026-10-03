@@ -33,13 +33,13 @@ func (i *Installs) notifyLocked() {
 }
 
 // Subscribe observes the current installs and subsequent changes.
-func (i *Installs) Subscribe() *InstallsReceiver {
+func (i *Installs) Subscribe() *InstallsSubscription {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return &InstallsReceiver{installs: i, seen: i.notificationLocked()}
+	return &InstallsSubscription{installs: i, seen: i.notificationLocked()}
 }
 
-// Close ends reporting and wakes receivers after the owner has joined its installs.
+// Close ends reporting and wakes subscriptions after the owner has joined its installs.
 // Repeated calls do nothing.
 func (i *Installs) Close() {
 	i.mu.Lock()
@@ -50,16 +50,16 @@ func (i *Installs) Close() {
 	}
 }
 
-// InstallsReceiver observes installation snapshots. Each observer has its own cursor.
-// One goroutine owns a receiver; use Subscribe for another observer.
-type InstallsReceiver struct {
+// InstallsSubscription observes installation snapshots. Each subscription has its own cursor.
+// One goroutine owns a subscription; use Subscribe for another observer.
+type InstallsSubscription struct {
 	installs *Installs
 	seen     <-chan struct{}
 }
 
 // Current reads and marks the current list seen, keeping the oldest installs
 // when there are more than a wire message can carry.
-func (r *InstallsReceiver) Current() []runnerwire.Install {
+func (r *InstallsSubscription) Current() []runnerwire.Install {
 	i := r.installs
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -73,7 +73,7 @@ func (r *InstallsReceiver) Current() []runnerwire.Install {
 
 // Changed waits past the last observed list. It returns false when reporting ends,
 // or an error when ctx is cancelled.
-func (r *InstallsReceiver) Changed(ctx context.Context) (bool, error) {
+func (r *InstallsSubscription) Changed(ctx context.Context) (bool, error) {
 	i := r.installs
 	i.mu.Lock()
 	if r.seen != i.notificationLocked() {

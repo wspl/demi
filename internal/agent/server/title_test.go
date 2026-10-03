@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -50,18 +49,15 @@ func TestTitleUsesFirstNonblankAnswerLine(t *testing.T) {
 		"『A title』",
 	} {
 		got := server.TitleFromResponse(answer)
-		if got == nil {
-			t.Fatal(answer)
-		}
-		equal(t, "A title", *got)
+		equal(t, "A title", got)
 	}
 	for _, answer := range []string{" \n", "\"\"", "「 」"} {
-		if got := server.TitleFromResponse(answer); got != nil {
-			t.Fatal(*got)
+		if got := server.TitleFromResponse(answer); got != "" {
+			t.Fatal(got)
 		}
 	}
 	got := server.TitleFromResponse(strings.Repeat("界", 100))
-	equal(t, strings.Repeat("界", 80), *got)
+	equal(t, strings.Repeat("界", 80), got)
 }
 
 func TestTitleRequestUsesLowestThinkingAndNoTools(t *testing.T) {
@@ -86,7 +82,7 @@ func TestTitleRequestUsesLowestThinkingAndNoTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	equal(t, "A title", *title)
+	equal(t, "A title", title)
 	requests := script.Requests()
 	equal(t, 1, len(requests))
 	request := requests[0]
@@ -111,14 +107,12 @@ func TestTitleRequestUsesLowestThinkingAndNoTools(t *testing.T) {
 	equal(t, &core.EffortConfig{Effort: "minimal"}, effort)
 	model.Model.OutputLimit = new(uint32(256))
 	_, err = server.Title(t.Context(), script, "conversation", "r2", model, []string{"first"})
-	var titleError *server.TitleError
-	if !errors.As(err, &titleError) {
+	if err == nil || err.Error() != "quota" {
 		t.Fatal(err)
 	}
-	equal(t, "quota", titleError.Message)
 	equal(t, uint32(256), *script.Requests()[1].MaxOutputTokens())
 	title, err = server.Title(t.Context(), script, "conversation", "r3", model, []string{" \n"})
-	if err != nil || title != nil {
+	if err != nil || title != "" {
 		t.Fatalf("%v %v", title, err)
 	}
 	equal(t, 2, len(script.Requests()))

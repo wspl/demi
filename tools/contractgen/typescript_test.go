@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Cost: in-memory declarations; preserves the Rust Zod recursion and scalar assertions.
+// Cost: in-memory declarations; pins the Zod getter recursion and scalar assertions.
 func TestRecursiveTypeScriptUsesGetter(t *testing.T) {
 	pkg := types.NewPackage("fixture/tree", "tree")
 	tree := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Tree", nil), nil, nil)

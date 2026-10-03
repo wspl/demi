@@ -12,8 +12,8 @@ import (
 	"github.com/wspl/demi/tools/contractgen/testdata/integers"
 )
 
-// NumberVisitor in crates/agent-tools/src/input.rs delegates strings to
-// u64::from_str. These scenarios protect that boundary in both formats.
+// A numbered integer also accepts a decimal string: digits with an optional +,
+// no sign otherwise, no spaces or separators. These scenarios protect that boundary in both formats.
 // Budget: one second, no external resources.
 func TestIntegerStrings(t *testing.T) {
 	for _, tc := range []struct {
@@ -111,9 +111,9 @@ func TestIntegerStrings(t *testing.T) {
 	}
 }
 
-// The Rust tool schema test asserts integer shellId; the tool caller removes
+// The tool schema declares shellId an integer; the tool caller removes
 // the root title (the generator retains it for other schema consumers).
-// The captured schemars 1.2.2 reference is testdata/integers/rust-schema.json.
+// The golden schema is testdata/integers/rust-schema.json.
 // Budget: five seconds for generation; no network.
 func TestIntegerSchema(t *testing.T) {
 	raw, err := os.ReadFile("testdata/integers/rust-schema.json")
@@ -125,7 +125,7 @@ func TestIntegerSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := integers.InputJSONSchema(); !bytes.Equal(got, want.Bytes()) {
-		t.Fatalf("schema: %s; Rust: %s", got, want.Bytes())
+		t.Fatalf("schema: %s; want: %s", got, want.Bytes())
 	}
 
 	dest := t.TempDir()

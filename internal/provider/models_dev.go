@@ -49,18 +49,6 @@ func NewModelsDevClient(client *http.Client, url string, clock core.Clock) *Mode
 	return &ModelsDevClient{http: client, url: url, clock: clock}
 }
 
-// ModelsDevError means a request failed and no previous document was available.
-type ModelsDevError struct {
-	Message string
-	Err     error
-}
-
-// Error returns the diagnostic for this failure.
-func (e *ModelsDevError) Error() string { return e.Message }
-
-// Unwrap returns the underlying cause.
-func (e *ModelsDevError) Unwrap() error { return e.Err }
-
 // ModelsDevSnapshot is one read's document and freshness metadata.
 // Vendor values are returned as independent copies.
 type ModelsDevSnapshot struct {
@@ -120,7 +108,7 @@ func (c *ModelsDevClient) request(ctx context.Context, previous *documentCopy) (
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
 		failure := RequestBuildFailure("models.dev", err)
-		return nil, &ModelsDevError{Message: failure.Message, Err: err}
+		return nil, errors.New(failure.Message)
 	}
 	request.Header.Set("Accept", "application/json")
 	if previous != nil {
@@ -134,7 +122,7 @@ func (c *ModelsDevClient) request(ctx context.Context, previous *documentCopy) (
 	response, err := c.http.Do(request)
 	if err != nil {
 		failure := TransportFailure("models.dev", err)
-		return nil, &ModelsDevError{Message: failure.Message, Err: err}
+		return nil, errors.New(failure.Message)
 	}
 	stop := closeOnCancel(ctx, response.Body)
 	defer stop()
@@ -144,18 +132,16 @@ func (c *ModelsDevClient) request(ctx context.Context, previous *documentCopy) (
 		return &document, nil
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, &ModelsDevError{
-			Message: fmt.Sprintf("models.dev catalog request failed with HTTP %d", response.StatusCode),
-		}
+		return nil, fmt.Errorf("models.dev catalog request failed with HTTP %d", response.StatusCode)
 	}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		failure := TransportFailure("models.dev", err)
-		return nil, &ModelsDevError{Message: failure.Message, Err: err}
+		return nil, errors.New(failure.Message)
 	}
 	vendors, err := decodeModelsDocument(body)
 	if err != nil {
-		return nil, &ModelsDevError{Message: "models.dev catalog cannot be read at " + err.Error(), Err: err}
+		return nil, fmt.Errorf("models.dev catalog cannot be read at %w", err)
 	}
 	return &documentCopy{
 		vendors:     vendors,
@@ -306,14 +292,13 @@ func (s ModelsDevSnapshot) Vendors() []ModelsDevVendor {
 }
 
 // Vendor returns the vendor with the given document key.
-func (s ModelsDevSnapshot) Vendor(id string) *ModelsDevVendor {
+func (s ModelsDevSnapshot) Vendor(id string) (ModelsDevVendor, bool) {
 	for _, vendor := range s.vendors {
 		if vendor.key == id {
-			value := vendor.clone()
-			return &value
+			return vendor.clone(), true
 		}
 	}
-	return nil
+	return ModelsDevVendor{}, false
 }
 
 // clone isolates the public vendor metadata from cached state.
@@ -334,17 +319,17 @@ func (v ModelsDevVendor) clone() ModelsDevVendor {
 }
 
 // VendorModels maps a vendor's entire directory onto a catalog with this read's metadata.
-func (s ModelsDevSnapshot) VendorModels(id string) *core.ProviderModelList {
-	vendor := s.Vendor(id)
-	if vendor == nil {
-		return nil
+func (s ModelsDevSnapshot) VendorModels(id string) (core.ProviderModelList, bool) {
+	vendor, ok := s.Vendor(id)
+	if !ok {
+		return core.ProviderModelList{}, false
 	}
-	return &core.ProviderModelList{
+	return core.ProviderModelList{
 		Models:          vendor.Models(),
 		Warnings:        append([]string{}, s.Warnings...),
 		SourceFetchedAt: s.FetchedAt,
 		Stale:           s.Stale,
-	}
+	}, true
 }
 
 // Models returns the vendor's models in document order with unknown facts kept absent.

@@ -51,9 +51,7 @@ func construct(
 	}
 	c.publishedStatus = c.statusLocked()
 	c.publishedStatus.changed = make(chan struct{})
-	s := &Session{
-		sessionOwner: &sessionOwner{core: c, deps: deps, ctx: ctx, cancel: cancel, closed: make(chan struct{})},
-	}
+	s := &Session{core: c, deps: deps, ctx: ctx, cancel: cancel, closed: make(chan struct{})}
 	s.mutate(func(_ *coreState) {
 		s.armLocked()
 	})
@@ -74,7 +72,7 @@ func restore(
 	}
 	commands, err := store.RestoreCommandStateHistory(checkpoint.CommandState)
 	if err != nil {
-		return nil, Continuation{}, &RestoreError{Kind: RestoreCommandState, Cause: err}
+		return nil, Continuation{}, err
 	}
 	log := transcript.NewLog(checkpoint.Transcript, deps.IDs, deps.Clock)
 	for _, call := range log.PendingToolCalls() {
@@ -216,33 +214,32 @@ func validateRestoredInputs(checkpoint store.Checkpoint, id core.NodeID) error {
 	for _, input := range checkpoint.State.AgentInputs {
 		message := input.Message
 		if message.RecipientID != id {
-			return &RestoreError{
-				Kind:   RestoreInput,
-				Detail: fmt.Sprintf("agent message %s is addressed to %s", message.ID, message.RecipientID),
-			}
+			//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+			return fmt.Errorf(
+				"The checkpoint's waiting input is invalid: agent message %s is addressed to %s",
+				message.ID,
+				message.RecipientID,
+			)
 		}
 		if ids[message.ID] {
-			return &RestoreError{
-				Kind:   RestoreInput,
-				Detail: fmt.Sprintf("agent message %s is not unique", message.ID),
-			}
+			//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+			return fmt.Errorf("The checkpoint's waiting input is invalid: agent message %s is not unique", message.ID)
 		}
 		ids[message.ID] = true
 	}
 	wakeups := map[core.WakeupID]bool{}
 	for _, w := range checkpoint.State.Wakeups {
 		if wakeups[w.ID] {
-			return &RestoreError{
-				Kind:   RestoreInput,
-				Detail: fmt.Sprintf("wakeup %s is scheduled twice", w.ID),
-			}
+			//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+			return fmt.Errorf("The checkpoint's waiting input is invalid: wakeup %s is scheduled twice", w.ID)
 		}
 		wakeups[w.ID] = true
 	}
 	edits := map[core.OperationID]bool{}
 	for _, receipt := range checkpoint.State.Edits {
 		if edits[receipt.OperationID] {
-			return &RestoreError{Kind: RestoreEdits, Detail: string(receipt.OperationID)}
+			//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+			return fmt.Errorf("The checkpoint's edit receipts repeat operation %s", receipt.OperationID)
 		}
 		edits[receipt.OperationID] = true
 	}

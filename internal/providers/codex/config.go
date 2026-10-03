@@ -15,30 +15,21 @@ const (
 )
 
 // Config is the configuration of a codex entry's provider for one account.
+// A zero field takes the product's value.
 type Config struct {
 	// The account the provider stands for; nil only for a provider built
 	// to log in, which has no account yet.
 	Account *string
-	// The ChatGPT backend, https://chatgpt.com/backend-api in the product.
+	// The ChatGPT backend; empty for https://chatgpt.com/backend-api.
 	BackendURL string
-	// The sign-in service, https://auth.openai.com in the product.
+	// The sign-in service; empty for https://auth.openai.com.
 	AuthURL   string
 	Transport TransportMode
-	// How long a server-sent events request waits for its response headers.
+	// How long a server-sent events request waits for its response headers;
+	// zero for 20 seconds.
 	HeaderTimeout time.Duration
-	// How long a WebSocket waits to connect.
+	// How long a WebSocket waits to connect; zero for 10 seconds.
 	ConnectTimeout time.Duration
-	// How long a WebSocket may go without a message; nil for no limit.
-	StreamIdleTimeout *time.Duration
-}
-
-// NewConfig returns the product's configuration for account.
-func NewConfig(account *string) Config {
-	return Config{
-		Account:        account,
-		BackendURL:     "https://chatgpt.com/backend-api",
-		AuthURL:        "https://auth.openai.com",
-		HeaderTimeout:  20 * time.Second,
-		ConnectTimeout: 10 * time.Second,
-	}
+	// How long a WebSocket may go without a message; zero for no limit.
+	StreamIdleTimeout time.Duration
 }

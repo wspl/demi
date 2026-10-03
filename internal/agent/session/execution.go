@@ -2,7 +2,7 @@ package session
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
-// Contract comments are product text copied verbatim from Rust.
+// Contract comments are product text: contractgen emits them as schema descriptions.
 //revive:disable:exported
 
 // What a session is doing, as a supervisor observes it (`subagents.md`

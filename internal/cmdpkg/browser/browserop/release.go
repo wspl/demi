@@ -20,14 +20,14 @@ func PinnedRelease() (BrowserRelease, error) { return DecodeBrowserRelease(pinne
 // Title returns the resource's title for the user.
 func (r BrowserRelease) Title() string { return "Chrome for Testing " + r.Version }
 
-// Platform returns the archive for target, when the release has one.
-func (r BrowserRelease) Platform(target string) *ReleasePlatform {
-	for i := range r.Platforms {
-		if r.Platforms[i].Target == target {
-			return &r.Platforms[i]
+// Platform returns the archive for target; ok is false when the release has none.
+func (r BrowserRelease) Platform(target string) (ReleasePlatform, bool) {
+	for _, platform := range r.Platforms {
+		if platform.Target == target {
+			return platform, true
 		}
 	}
-	return nil
+	return ReleasePlatform{}, false
 }
 
 func validateReleasePlatform(p ReleasePlatform) error {

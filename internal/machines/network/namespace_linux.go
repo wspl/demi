@@ -43,7 +43,7 @@ func createNamespace(ctx context.Context, path string) error {
 			err = system.Bind(ctx, fmt.Sprintf("/proc/self/fd/%d", network.Fd()), path)
 			if err != nil {
 				// The new namespace ends with its job. Preserve the bind failure; a
-				// failed removal will be reported by the next creation, as in Rust.
+				// failed removal will be reported by the next creation.
 				_ = os.Remove(path)
 			}
 			return struct{}{}, err

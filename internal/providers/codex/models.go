@@ -40,12 +40,14 @@ type catalogTier struct {
 }
 
 // ListModels reads the account's current model picker, refreshing once on a 401.
+//
+//nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
 func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, error) {
 	var refused *provider.Secret
 	for {
 		s, err := p.credentials(ctx, p.http, refused)
 		if err != nil {
-			return core.ProviderModelList{}, authFailure(err).CatalogError()
+			return core.ProviderModelList{}, err
 		}
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, p.modelsURL, nil)
 		if err != nil {
@@ -55,10 +57,7 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 		request.Header.Set("Accept", "application/json")
 		response, err := p.http.Do(request)
 		if err != nil {
-			return core.ProviderModelList{}, &provider.CatalogError{
-				Kind:    provider.CatalogUnavailable,
-				Message: fmt.Sprintf("Codex models request failed: %v", withoutURL(err)),
-			}
+			return core.ProviderModelList{}, fmt.Errorf("Codex models request failed: %v", provider.WithoutURL(err))
 		}
 		if response.StatusCode == 401 && refused == nil {
 			_ = response.Body.Close() // A refused catalog contributes only its status.
@@ -67,25 +66,16 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 		}
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
 			_ = response.Body.Close() // A refused catalog contributes only its status.
-			return core.ProviderModelList{}, &provider.CatalogError{
-				Kind:    provider.CatalogUnavailable,
-				Message: fmt.Sprintf("Codex models request failed with HTTP %d", response.StatusCode),
-			}
+			return core.ProviderModelList{}, fmt.Errorf("Codex models request failed with HTTP %d", response.StatusCode)
 		}
 		data, readErr := io.ReadAll(response.Body)
 		_ = response.Body.Close() // Read reports transfer failures; close releases the body.
 		if readErr != nil {
-			return core.ProviderModelList{}, &provider.CatalogError{
-				Kind:    provider.CatalogUnavailable,
-				Message: fmt.Sprintf("Codex models request failed: %v", readErr),
-			}
+			return core.ProviderModelList{}, fmt.Errorf("Codex models request failed: %v", readErr)
 		}
 		result, err := p.catalog(string(data))
 		if err != nil {
-			return core.ProviderModelList{}, &provider.CatalogError{
-				Kind:    provider.CatalogInvalid,
-				Message: fmt.Sprintf("Codex models answer cannot be read: %v", err),
-			}
+			return core.ProviderModelList{}, fmt.Errorf("Codex models answer cannot be read: %v", err)
 		}
 		return result, nil
 	}

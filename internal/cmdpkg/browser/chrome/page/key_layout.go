@@ -1,7 +1,7 @@
 package page
 
-// keyDefinitions preserves the Chromiumoxide US keyboard layout used by Rust.
-// Source: vendor/chromiumoxide/chromiumoxide/src/keys.rs (MIT/Apache-2.0).
+// keyDefinitions is the US keyboard layout: each key's DOM key value, physical code, Windows virtual key code and text.
+// Derived from chromiumoxide's keys.rs (MIT or Apache-2.0).
 var keyDefinitions = []keyDefinition{
 	{"0", "Digit0", 48, ""},
 	{"1", "Digit1", 49, ""},

@@ -25,7 +25,7 @@ type rate struct {
 	window                                            uint32
 }
 
-// roundedBitrate preserves Rust's saturating float-to-u32 conversion.
+// roundedBitrate rounds to the nearest integer and saturates at math.MaxUint32.
 func roundedBitrate(value float64) uint32 { return uint32(min(math.Round(value), math.MaxUint32)) }
 
 func initialBitrate(pixels uint64, fps uint32) uint32 {

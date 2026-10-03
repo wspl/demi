@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// TestRustManifests protects the complete plugin registration wire; no IO
+// TestManifestsRoundTripGolden protects the complete plugin registration wire; no IO
 // beyond one fixture read, subprocesses, network or wall-clock waits.
-func TestRustManifests(t *testing.T) {
+func TestManifestsRoundTripGolden(t *testing.T) {
 	source, err := os.ReadFile("testdata/manifests.json")
 	if err != nil {
 		t.Fatal(err)
@@ -28,12 +28,13 @@ func TestRustManifests(t *testing.T) {
 	}
 	formatted.WriteByte('\n')
 	if !bytes.Equal(formatted.Bytes(), source) {
-		t.Fatalf("Rust manifest round trip differs\n%s", formatted.Bytes())
+		t.Fatalf("manifest round trip differs from testdata/manifests.json\n%s", formatted.Bytes())
 	}
 }
 
-// TestMinimalManifestDefaults checks absent Rust-defaulted fields at the plugin
-// registration boundary. It uses only in-memory JSON, with no external resources.
+// TestMinimalManifestDefaults checks that a manifest's absent defaulted fields
+// encode as empty lists and false at the plugin registration boundary. It uses
+// only in-memory JSON, with no external resources.
 func TestMinimalManifestDefaults(t *testing.T) {
 	cases := []struct{ name, input, want string }{
 		{

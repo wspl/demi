@@ -19,7 +19,7 @@ import (
 // RequireRoot checks the privileges mounts, namespaces and the firewall need.
 func RequireRoot() error {
 	if os.Geteuid() != 0 {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("Cloud manager requires privileged Linux service execution")
 	}
 	return nil
@@ -36,7 +36,7 @@ func RequirePrivateNamespace() error {
 		return err
 	}
 	if os.SameFile(own, host) {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("Cloud manager requires a private mount namespace (systemd PrivateMounts=yes)")
 	}
 	return nil
@@ -50,7 +50,7 @@ func RequireRunsc(ctx context.Context, core *Core) error {
 		return err
 	}
 	if !sandbox.ReportsVersion(reported, version) {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return fmt.Errorf("Cloud requires runsc %s", version)
 	}
 	return nil
@@ -73,7 +73,7 @@ func RequireOneFilesystem(ctx context.Context, working, images string) error {
 		devices[i] = uint64(stat.Dev)
 	}
 	if devices[0] != devices[1] {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return fmt.Errorf(
 			"DEMI_MACHINE_MANAGER_DATA must be one filesystem: %s and %s are on different filesystems",
 			working,

@@ -134,7 +134,7 @@ func (t *publicGitTransport) closeBodies() error {
 	return err
 }
 
-// packReader applies Rust's compressed-pack budget before the decoder can read
+// packReader refuses a compressed pack beyond fetchMaxBytes (64 MiB) before the decoder can read
 // beyond it, and checks cancellation during CPU-bound pack decoding as well.
 type packReader struct {
 	ctx       context.Context
@@ -167,8 +167,8 @@ type repositoryFile struct {
 	executable bool
 }
 
-// repositoryFiles records regular files breadth-first, without following links
-// or submodules, preserving the order of Rust's tree traversal.
+// repositoryFiles records regular files breadth-first, each directory's entries
+// in tree order, without following links or submodules.
 func repositoryFiles(ctx context.Context, root *object.Tree) ([]repositoryFile, error) {
 	type directory struct {
 		prefix string

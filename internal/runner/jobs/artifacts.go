@@ -55,7 +55,7 @@ func (r *jobArtifacts) Resolve(
 
 // streamArtifacts locates artifacts authorized by one open user stream.
 type streamArtifacts struct {
-	connection *ConnectionHandle
+	connection *Connection
 	stream     string
 }
 

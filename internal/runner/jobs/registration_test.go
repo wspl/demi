@@ -6,14 +6,14 @@ import (
 	"testing"
 )
 
-// TestCancelledContextCannotRegisterAfterOwnerCheck forces Rust's ordering:
+// TestCancelledContextCannotRegisterAfterOwnerCheck forces this ordering:
 // owner checks the caller, caller abandons its wait, owner attempts insertion.
 // The old uncoordinated insertion leaks live authority and transfers leases to
 // a table after their caller has reclaimed them. Register must make that impossible.
 func TestCancelledContextCannotRegisterAfterOwnerCheck(t *testing.T) {
 	connection, cancelConnection := context.WithCancel(t.Context())
 	defer cancelConnection()
-	handle, requests := NewConnectionHandle(connection, make(chan []byte, 1))
+	handle, requests := NewConnection(connection, make(chan []byte, 1))
 	contexts := &Contexts{}
 	table := NewContextTable(contexts)
 	defer table.Close()

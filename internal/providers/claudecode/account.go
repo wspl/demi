@@ -48,14 +48,13 @@ func (accountKit) Add(input provider.AddAccount) (provider.NewAccount, error) {
 	return provider.NewAccount{Secret: string(data), Label: secret.label()}, nil
 }
 
-func (p *Provider) stored(ctx context.Context) (secretDocument, *provider.AuthFailure) {
+func (p *Provider) stored(ctx context.Context) (secretDocument, error) {
 	if p.config.Account == nil {
-		return secretDocument{}, &provider.AuthFailure{Family: family, Reason: provider.AuthReasonMissing}
+		return secretDocument{}, provider.AuthFailure{Family: family, Reason: provider.AuthReasonMissing}
 	}
 	stored, err := provider.ReadSecret(ctx, p.pool.Document(*p.config.Account), decodeSecretDocument)
 	if err != nil {
-		failure := provider.AccountAuthFailure(family, err)
-		return secretDocument{}, &failure
+		return secretDocument{}, provider.AccountAuthFailure(family, err)
 	}
 	return stored.Secret, nil
 }

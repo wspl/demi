@@ -77,8 +77,7 @@ func TestTypedCDPAndLossDoNotBlockControlReplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = subscription.Next(t.Context())
-	var loss *cdp.EventLoss
-	if !errors.As(err, &loss) || loss.Count != 3 {
+	if !errors.Is(err, cdp.ErrEventsLost) || err.Error() != "CDP event subscription lost 3 events" {
 		t.Fatalf("loss=%v", err)
 	}
 	for range 16 {
@@ -302,8 +301,7 @@ func TestSubscriptionCapacityPerEventType(t *testing.T) {
 				start := 0
 				if overflow {
 					_, err := sub.Next(t.Context())
-					var loss *cdp.EventLoss
-					if !errors.As(err, &loss) || loss.Count != 2 {
+					if !errors.Is(err, cdp.ErrEventsLost) || err.Error() != "CDP event subscription lost 2 events" {
 						t.Fatalf("loss = %v; want two overwritten events", err)
 					}
 					start = 1
@@ -322,7 +320,7 @@ func TestSubscriptionCapacityPerEventType(t *testing.T) {
 	}
 }
 
-// Ports chromiumoxide's capacity_is_bounded; no transport or waiting.
+// Subscription capacity is limited to 1..256; no transport or waiting.
 func TestSubscriptionCapacityBounds(t *testing.T) {
 	var connection cdp.Connection
 	for _, capacity := range []int{0, 257} {

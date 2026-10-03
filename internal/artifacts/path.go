@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Parent returns the path without its last component, like Rust's Path::parent.
+// Parent returns the path without its last component.
 // It preserves interior separators and .., so a symlink before .. is resolved
 // by the filesystem. Trailing separators and non-leading dots are ignored.
 // A relative single component has the empty parent and ok=true; roots, volume

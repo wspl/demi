@@ -1,5 +1,6 @@
 //revive:disable:exported
-// Contract names preserve the Rust schema titles and generated TypeScript exports.
+// Contract names are the schema titles and the TypeScript export names the page
+// imports; contract doc comments are the schemas' descriptions.
 
 package skills
 

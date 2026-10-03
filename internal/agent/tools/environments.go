@@ -37,7 +37,10 @@ type environmentSlot struct {
 	at          time.Time
 }
 
-const disposedShells = "The node's shells are closed"
+// errDisposedShells refuses work after the node's shells are disposed.
+//
+//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+var errDisposedShells = errors.New("The node's shells are closed")
 
 // resolve shares creation for one Host and checks a handle against every owner.
 func (e *Environments) resolve(
@@ -51,7 +54,7 @@ func (e *Environments) resolve(
 		e.mu.Lock()
 		if e.disposed {
 			e.mu.Unlock()
-			return nil, nil, &CallError{Kind: Failed, Message: disposedShells}
+			return nil, nil, errDisposedShells
 		}
 		slot := e.slotLocked(key)
 		if ready := slot.creating; ready != nil {
@@ -80,7 +83,7 @@ func (e *Environments) resolve(
 		retired := slot.retired || e.disposed
 		e.mu.Unlock()
 		if retired {
-			return nil, nil, &CallError{Kind: Failed, Message: disposedShells}
+			return nil, nil, errDisposedShells
 		}
 		return slot, environment, nil
 	}
@@ -183,8 +186,9 @@ func (s *environmentSlot) close(ctx context.Context) error {
 	return s.closeErr
 }
 
-// repeated counts consecutive scripts on this Host within sixty seconds.
-func (s *environmentSlot) repeated(script string) *session.ToolOutcome {
+// repeated counts consecutive scripts on this Host within sixty seconds and
+// returns the suppression outcome and true from the seventh repeat on.
+func (s *environmentSlot) repeated(script string) (session.ToolOutcome, bool) {
 	s.repeatMu.Lock()
 	defer s.repeatMu.Unlock()
 	now := time.Now()
@@ -196,7 +200,7 @@ func (s *environmentSlot) repeated(script string) *session.ToolOutcome {
 	s.script = script
 	s.at = now
 	if s.count <= 6 {
-		return nil
+		return session.ToolOutcome{}, false
 	}
 	text := fmt.Sprintf(
 		"Repeated identical shell_exec suppressed.\n"+
@@ -205,11 +209,11 @@ func (s *environmentSlot) repeated(script string) *session.ToolOutcome {
 			"or provide the final answer instead of repeating it.",
 		s.count,
 	)
-	return &session.ToolOutcome{
+	return session.ToolOutcome{
 		Output:  []provider.ResultPart{&provider.TextPart{Text: text}},
 		IsError: true,
 		View:    &core.RepeatedShellExec{Script: script, Count: s.count},
-	}
+	}, true
 }
 
 // slotLocked finds or adds the current Host slot while the caller holds e.mu.
@@ -250,7 +254,7 @@ func (e *Environments) createEnvironmentLocked(
 	close(ready)
 	e.mu.Unlock()
 	if retired {
-		return nil, errors.Join(&CallError{Kind: Failed, Message: disposedShells}, err)
+		return nil, errors.Join(errDisposedShells, err)
 	}
 	if err != nil {
 		return nil, err
@@ -270,15 +274,11 @@ func (e *Environments) checkHandleOwner(key host.Key, shell *core.ShellID, comma
 		}
 		if owner != nil {
 			if shell != nil {
-				return &CallError{
-					Kind:    Failed,
-					Message: fmt.Sprintf("Shell id \"%s\" is not unique in this session", *shell),
-				}
+				//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+				return fmt.Errorf("Shell id \"%s\" is not unique in this session", *shell)
 			}
-			return &CallError{
-				Kind:    Failed,
-				Message: fmt.Sprintf("Command id \"%s\" is not unique in this session", *command),
-			}
+			//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+			return fmt.Errorf("Command id \"%s\" is not unique in this session", *command)
 		}
 		owner = candidate.slot
 	}
@@ -289,10 +289,8 @@ func (e *Environments) checkHandleOwner(key host.Key, shell *core.ShellID, comma
 		} else if command != nil {
 			id = string(*command)
 		}
-		return &CallError{
-			Kind:    Failed,
-			Message: fmt.Sprintf("Shell handle \"%s\" belongs to a different Host", id),
-		}
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+		return fmt.Errorf("Shell handle \"%s\" belongs to a different Host", id)
 	}
 	return nil
 }

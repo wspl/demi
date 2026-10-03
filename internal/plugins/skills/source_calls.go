@@ -9,25 +9,26 @@ import (
 	"github.com/wspl/demi/internal/plugin"
 )
 
-func findSource(ctx context.Context, port plugin.Port, id string) (*storedSource, error) {
-	value, err := port.Value(ctx, id)
-	if err != nil || value == nil {
-		return nil, err
+// findSource reads the source stored under id; ok is false when there is none.
+func findSource(ctx context.Context, port plugin.Port, id string) (storedSource, bool, error) {
+	value, found, err := port.Value(ctx, id)
+	if err != nil || !found {
+		return storedSource{}, false, err
 	}
 	decoded, err := decodeSource(value.Value)
 	if err != nil {
-		return nil, fmt.Errorf("a stored source does not read: %w", err)
+		return storedSource{}, false, fmt.Errorf("a stored source does not read: %w", err)
 	}
-	return &storedSource{source: decoded, revision: value.Revision}, nil
+	return storedSource{source: decoded, revision: value.Revision}, true, nil
 }
 
-func readSource(ctx context.Context, port plugin.Port, id string) (*storedSource, error) {
-	value, err := findSource(ctx, port, id)
+func readSource(ctx context.Context, port plugin.Port, id string) (storedSource, error) {
+	value, found, err := findSource(ctx, port, id)
 	if err != nil {
-		return nil, err
+		return storedSource{}, err
 	}
-	if value == nil {
-		return nil, sourceNotFound(id)
+	if !found {
+		return storedSource{}, sourceNotFound(id)
 	}
 	return value, nil
 }

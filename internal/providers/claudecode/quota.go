@@ -21,26 +21,24 @@ type quotaSource struct {
 }
 
 // ProbeCost reports the cost of a quota probe.
-func (*quotaSource) ProbeCost() *provider.ProbeCost {
-	cost := provider.ProbeFree
-	return &cost
+func (*quotaSource) ProbeCost() (provider.ProbeCost, bool) {
+	return provider.ProbeFree, true
 }
 
 // Probe fetches the account quota windows.
+//
+//nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
 func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) {
 	secret, authErr := q.owner.stored(ctx)
 	if authErr != nil {
-		return provider.ProbeReading{}, authErr.QuotaError()
+		return provider.ProbeReading{}, authErr
 	}
 	failed := func(err error) error {
 		var u *url.Error
 		if errors.As(err, &u) {
 			err = u.Err
 		}
-		return &provider.QuotaError{
-			Kind:    provider.QuotaUnavailable,
-			Message: "Claude usage request failed: " + err.Error(),
-		}
+		return errors.New("Claude usage request failed: " + err.Error())
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, q.owner.config.UsageURL, nil)
 	if err != nil {
@@ -63,14 +61,11 @@ func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) 
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		chars := []rune(string(data))
-		return provider.ProbeReading{}, &provider.QuotaError{
-			Kind: provider.QuotaUnavailable,
-			Message: fmt.Sprintf(
-				"Claude usage request failed (%d): %s",
-				response.StatusCode,
-				string(chars[:min(200, len(chars))]),
-			),
-		}
+		return provider.ProbeReading{}, fmt.Errorf(
+			"Claude usage request failed (%d): %s",
+			response.StatusCode,
+			string(chars[:min(200, len(chars))]),
+		)
 	}
 	return usageReading(data)
 }
@@ -106,21 +101,21 @@ var windowNames = []struct{ id, label string }{
 	{"seven_day_opus", "7d Opus"},
 }
 
-func namedWindow(id string, used *float64, reset *core.Timestamp) *core.QuotaWindow {
+func namedWindow(id string, used *float64, reset *core.Timestamp) (core.QuotaWindow, bool) {
 	for _, name := range windowNames {
 		if name.id == id {
 			unit := core.QuotaUnit("percent")
-			return &core.QuotaWindow{
+			return core.QuotaWindow{
 				ID:          id,
 				Label:       name.label,
 				UsedPercent: used,
 				ResetsAt:    reset,
 				Unit:        &unit,
 				Severity:    provider.Severity(used),
-			}
+			}, true
 		}
 	}
-	return nil
+	return core.QuotaWindow{}, false
 }
 
 func resetTime(text provider.ReportedString) *core.Timestamp {
@@ -141,10 +136,9 @@ func (u usageAnswer) windows() []core.QuotaWindow {
 	windows := make([]core.QuotaWindow, 0)
 	for i, w := range []provider.Reported[quotaWindow]{u.FiveHour, u.SevenDay, u.Sonnet, u.Opus} {
 		if w.Value != nil {
-			windows = append(
-				windows,
-				*namedWindow(windowNames[i].id, percentage(w.Value.Utilization), resetTime(w.Value.ResetsAt)),
-			)
+			// windowNames lists every id read here, so the window is always found.
+			window, _ := namedWindow(windowNames[i].id, percentage(w.Value.Utilization), resetTime(w.Value.ResetsAt))
+			windows = append(windows, window)
 		}
 	}
 	if u.Limits.Value == nil {
@@ -229,8 +223,8 @@ func (*quotaSource) Observe(observation provider.Observation) []core.QuotaWindow
 				}
 			}
 		}
-		if w := namedWindow(id, used, reset); w != nil {
-			windows = append(windows, *w)
+		if w, ok := namedWindow(id, used, reset); ok {
+			windows = append(windows, w)
 		}
 	}
 	if info.Windows.Value != nil {
@@ -255,28 +249,20 @@ func (*quotaSource) Observe(observation provider.Observation) []core.QuotaWindow
 	return windows
 }
 
+//nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
 func usageReading(data []byte) (provider.ProbeReading, error) {
 	value, err := provider.DecodeUntagged[any](string(data))
 	if err != nil {
-		return provider.ProbeReading{}, &provider.QuotaError{
-			Kind: provider.QuotaInvalid,
-			Message: "Claude usage answer cannot be read: " +
-				err.Error(),
-		}
+		return provider.ProbeReading{}, errors.New("Claude usage answer cannot be read: " +
+			err.Error())
 	}
 	if _, ok := value.(map[string]any); !ok {
-		return provider.ProbeReading{}, &provider.QuotaError{
-			Kind:    provider.QuotaInvalid,
-			Message: "Claude usage answer cannot be read: it is not an object",
-		}
+		return provider.ProbeReading{}, errors.New("Claude usage answer cannot be read: it is not an object")
 	}
 	usage, err := provider.DecodeUntagged[usageAnswer](string(data))
 	if err != nil {
-		return provider.ProbeReading{}, &provider.QuotaError{
-			Kind: provider.QuotaInvalid,
-			Message: "Claude usage answer cannot be read: " +
-				err.Error(),
-		}
+		return provider.ProbeReading{}, errors.New("Claude usage answer cannot be read: " +
+			err.Error())
 	}
 	return provider.ProbeReading{Windows: usage.windows()}, nil
 }

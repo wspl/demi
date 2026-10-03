@@ -20,25 +20,25 @@ func (c *coreState) checkEditLocked(
 	for _, receipt := range c.edits {
 		if receipt.OperationID == operation {
 			if receipt.Digest != digest {
-				return nil, &EditError{Kind: EditConflict}
+				return nil, ErrEditConflict
 			}
 			return &EditAccepted{Receipt: receipt}, nil
 		}
 	}
 	if c.edit != nil && c.edit.submission.OperationID == operation {
 		if c.edit.submission.Digest != digest {
-			return nil, &EditError{Kind: EditConflict}
+			return nil, ErrEditConflict
 		}
-		return &EditInFlight{Acceptance: c.edit.acceptance}, nil
+		return &EditInFlight{acceptance: c.edit.acceptance}, nil
 	}
 	if c.disposing {
-		return nil, &EditError{Kind: EditClosed}
+		return nil, ErrClosed
 	}
 	if c.statusLocked().Settle != Settled || c.edit != nil || len(c.inputs) > 0 || len(c.wakeups) > 0 {
-		return nil, &EditError{Kind: EditBusy}
+		return nil, ErrEditBusy
 	}
 	if version != c.log.Version() {
-		return nil, &EditError{Kind: EditStale}
+		return nil, ErrEditStale
 	}
 	return &EditProceed{}, nil
 }
@@ -56,7 +56,7 @@ func (s *Session) editAndSend(ctx context.Context, submission EditSubmission) (s
 		}
 		acceptance := newAcceptance()
 		c.edit = &editFlight{submission: submission, acceptance: acceptance}
-		check = &EditInFlight{Acceptance: acceptance}
+		check = &EditInFlight{acceptance: acceptance}
 		c.queue = append(c.queue, &action{kind: editAction, turn: core.TurnID(s.deps.IDs.NextID())})
 		s.startNextLocked()
 	})
@@ -67,13 +67,13 @@ func (s *Session) editAndSend(ctx context.Context, submission EditSubmission) (s
 	case *EditAccepted:
 		return v.Receipt, nil
 	case *EditInFlight:
-		return v.Acceptance.Wait(ctx)
+		return v.acceptance.wait(ctx)
 	case *EditProceed:
 	}
-	return store.EditReceipt{}, &EditError{Kind: EditClosed}
+	return store.EditReceipt{}, ErrClosed
 }
 
-func (s *Session) rejectEditLocked(err *EditError) {
+func (s *Session) rejectEditLocked(err error) {
 	c := &s.core
 	if c.edit == nil || c.edit.accepted {
 		return
@@ -101,11 +101,11 @@ func (s *Session) prepareEditLocked(preamble *string) (editCandidate, error) {
 	submission := c.edit.submission
 	prefix, err := transcript.BeforeUser(c.log.Blocks(), submission.Target)
 	if err != nil {
-		return editCandidate{}, &EditError{Kind: EditTarget, Cause: err}
+		return editCandidate{}, err
 	}
 	target, ok := c.log.Find(submission.Target).(*core.UserBlock)
 	if !ok {
-		return editCandidate{}, &EditError{Kind: EditTarget, Cause: transcript.NotUserMessage}
+		return editCandidate{}, transcript.ErrNotUserMessage
 	}
 	content, err := resolveEdit(submission.Content, target.Content)
 	if err != nil {
@@ -113,10 +113,8 @@ func (s *Session) prepareEditLocked(preamble *string) (editCandidate, error) {
 	}
 	revision, ok := c.commands.Boundary(submission.Target, store.BeforeUser)
 	if !ok {
-		return editCandidate{}, &EditError{
-			Kind:   EditFailed,
-			Detail: fmt.Sprintf("No command-state boundary before %s", submission.Target),
-		}
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+		return editCandidate{}, fmt.Errorf("No command-state boundary before %s", submission.Target)
 	}
 	model := c.model
 	source := c.provider
@@ -217,7 +215,8 @@ func resolveEdit(parts []EditContent, target []core.UserContentBlock) ([]core.Us
 				}
 			}
 			if found == nil {
-				return nil, &EditError{Kind: EditUnknownAttachment, Detail: part.Path}
+				//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+				return nil, fmt.Errorf("The edited message holds no attachment at %s", part.Path)
 			}
 			result = append(result, found)
 		case *KeptMedia:
@@ -341,7 +340,8 @@ func resolveKeptMedia(media framewire.MediaRef, target []core.UserContentBlock) 
 		}
 	}
 	if found == nil {
-		return nil, &EditError{Kind: EditUnknownMedia, MediaKind: kind, Blob: blob}
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+		return nil, fmt.Errorf("The edited message holds no %s %s", kind, blob)
 	}
 	return found, nil
 }

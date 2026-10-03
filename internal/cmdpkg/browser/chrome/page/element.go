@@ -198,28 +198,29 @@ func state(ctx context.Context, element targetElement, conditions []string, scro
 	return result, nil
 }
 
-// single selects the sole visible candidate when the locator has several matches.
-func single(ctx context.Context, elements []targetElement) (*targetElement, error) {
+// single selects the sole visible candidate when the locator has several matches;
+// the bool is false when there is no candidate.
+func single(ctx context.Context, elements []targetElement) (targetElement, bool, error) {
 	if len(elements) == 0 {
-		return nil, nil
+		return targetElement{}, false, nil
 	}
 	if len(elements) == 1 {
-		return &elements[0], nil
+		return elements[0], true, nil
 	}
 	var visible []targetElement
 	for _, element := range elements {
 		s, err := state(ctx, element, []string{}, false)
 		if err != nil {
-			return nil, err
+			return targetElement{}, false, err
 		}
 		if s.Visible {
 			visible = append(visible, element)
 		}
 	}
 	if len(visible) == 1 {
-		return &visible[0], nil
+		return visible[0], true, nil
 	}
-	return nil, &cdp.BrowserError{Kind: cdp.KindAmbiguous, Count: uint(len(elements))}
+	return targetElement{}, false, &cdp.BrowserError{Kind: cdp.KindAmbiguous, Count: uint(len(elements))}
 }
 
 // frameOffset translates child-document coordinates through its embedding element.
@@ -318,7 +319,7 @@ func callWithStates[T any](ctx context.Context, element targetElement, script st
 		args...)
 }
 
-// resampleWait follows Rust's 50 ms locator retry interval within the operation.
+// resampleWait waits 50 ms between locator retries within the operation.
 func resampleWait(ctx context.Context) error {
 	timer := time.NewTimer(50 * time.Millisecond)
 	defer timer.Stop()
@@ -347,10 +348,11 @@ func ready(
 	last *error,
 ) (readyElement, error) {
 	for {
-		var result *readyElement
+		var result readyElement
+		var found bool
 		err := operation.Run(ctx, func(work context.Context) error {
 			var err error
-			result, err = readinessSample(work, tab, target, refs, conditions, last)
+			result, found, err = readinessSample(work, tab, target, refs, conditions, last)
 			return err
 		})
 		if err != nil {
@@ -363,8 +365,8 @@ func ready(
 			}
 			return readyElement{}, err
 		}
-		if result != nil {
-			return *result, nil
+		if found {
+			return result, nil
 		}
 	}
 }
@@ -495,25 +497,25 @@ func readinessSample(
 	refs *tabs.References,
 	conditions []string,
 	last *error,
-) (*readyElement, error) {
+) (readyElement, bool, error) {
 	observation, err := captureObservation(work, tab.Page(), refs)
 	if err != nil {
-		return nil, err
+		return readyElement{}, false, err
 	}
 	elements, err := observation.resolve(work, tab.Page(), target, refs)
 	if err != nil {
 		var failure *cdp.BrowserError
 		if !errors.As(err, &failure) || failure.Kind != cdp.KindStaleReference || !canResample(target) {
-			return nil, err
+			return readyElement{}, false, err
 		}
 		elements = nil
 	}
-	element, err := single(work, elements)
+	element, found, err := single(work, elements)
 	if err != nil {
-		return nil, err
+		return readyElement{}, false, err
 	}
-	if element == nil {
-		return nil, resampleWait(work)
+	if !found {
+		return readyElement{}, false, resampleWait(work)
 	}
 	scroll := false
 	condition := "attached"
@@ -529,20 +531,20 @@ func readinessSample(
 			Details: browserop.ErrorDetails{Condition: &condition},
 		}
 	}
-	s, err := preparedState(work, *element, conditions, scroll)
+	s, err := preparedState(work, element, conditions, scroll)
 	if err != nil {
-		return nil, err
+		return readyElement{}, false, err
 	}
 	if s.Failed == nil {
-		named, err := observation.named(*element, refs)
+		named, err := observation.named(element, refs)
 		if err != nil {
-			return nil, err
+			return readyElement{}, false, err
 		}
-		return &readyElement{*element, s, named}, nil
+		return readyElement{element, s, named}, true, nil
 	}
 	if s.Permanent {
-		return nil, s.failure()
+		return readyElement{}, false, s.failure()
 	}
 	*last = s.failure()
-	return nil, resampleWait(work)
+	return readyElement{}, false, resampleWait(work)
 }

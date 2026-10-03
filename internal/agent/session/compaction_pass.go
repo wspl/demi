@@ -12,7 +12,7 @@ import (
 )
 
 func (c CompactionConfig) tokenReached(window uint32, used uint64) bool {
-	return c.ThresholdPercent != nil && window > 0 && used >= uint64(window)*uint64(*c.ThresholdPercent)/100
+	return c.ThresholdPercent != 0 && window > 0 && used >= uint64(window)*uint64(c.ThresholdPercent)/100
 }
 
 func (c CompactionConfig) reached(window uint32, usage core.TokenUsage) bool {
@@ -20,10 +20,10 @@ func (c CompactionConfig) reached(window uint32, usage core.TokenUsage) bool {
 }
 
 func (c CompactionConfig) sizeReached(limits provider.RequestLimits, size transcript.RequestSize) bool {
-	if c.ThresholdPercent == nil {
+	if c.ThresholdPercent == 0 {
 		return false
 	}
-	percent := uint64(*c.ThresholdPercent)
+	percent := uint64(c.ThresholdPercent)
 	return (limits.BodyBytes != nil && size.Bytes >= *limits.BodyBytes*percent/100) ||
 		(limits.Images != nil && size.Images >= uint64(*limits.Images)*percent/100)
 }
@@ -133,7 +133,7 @@ func (s *Session) summarize(ctx context.Context, window []core.Block) (string, e
 	deps := s.deps
 	deps.Runtime = copyRuntime{Runtime: deps.Runtime}
 	deps.Store = copyStore{}
-	deps.Config.Compaction.ThresholdPercent = nil
+	deps.Config.Compaction.ThresholdPercent = 0
 	// Copies share the parent's identity and clock sources through its mutex.
 	deps.IDs = sessionIDs{session: s}
 	deps.Clock = sessionClock{session: s}

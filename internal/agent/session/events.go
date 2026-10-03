@@ -40,13 +40,13 @@ const (
 	Duplicate
 )
 
-// ActionHandle resolves when an admitted action ends. Abandoning the handle or
+// ActionAnswer resolves when an admitted action ends. Dropping it or
 // cancelling a wait does not stop the action; Abort stops it explicitly.
-type ActionHandle struct{ result *actionResult }
+type ActionAnswer struct{ result *actionResult }
 
 // Wait waits for the action's result. An action failure returns *ErrorReport;
 // a cancelled wait returns the context error. Multiple waiters share the result.
-func (a *ActionHandle) Wait(ctx context.Context) (ActionEnd, error) { return a.wait(ctx) }
+func (a *ActionAnswer) Wait(ctx context.Context) (ActionEnd, error) { return a.wait(ctx) }
 
 // Event is a change reported once complete, in commit order outside the state
 // lock. Its data remains immutable for every listener.
@@ -62,7 +62,7 @@ type TranscriptChanged struct {
 
 // EditCommitted publishes a new edit's durable receipt immediately after its
 // rewrite and before replacement progress. The server sends EditResult to the
-// initiating connections from this callback, not from an Acceptance.Wait wake.
+// initiating connections from this callback, not when CheckEdit or EditAndSend returns.
 // A duplicate request returns its receipt without publishing another event.
 type EditCommitted struct{ Receipt store.EditReceipt }
 

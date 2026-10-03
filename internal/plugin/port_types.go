@@ -10,7 +10,7 @@ import (
 )
 
 //revive:disable:exported
-// Contract descriptions are verbatim Rust product text.
+// Contract doc comments describe the wire value; they do not start with the type's name.
 
 // One operation a plugin asks of Demi.
 // +demi:root
@@ -159,7 +159,7 @@ type PortMessageRemoveExpose struct {
 
 func (*PortMessageRemoveExpose) portMessage() {}
 
-// The answer to one [`PortMessage`].
+// The answer to one [PortMessage].
 // +demi:root
 // +demi:union tag=type
 //
@@ -287,7 +287,7 @@ type HostDirectory struct {
 	Files []DirectoryFile `json:"files"`
 }
 
-// A file of a [`HostDirectory`], whose bytes are a blob the plugin put.
+// A file of a [HostDirectory], whose bytes are a blob the plugin put.
 // +demi:root
 type DirectoryFile struct {
 	// Relative, with `/` between its parts.

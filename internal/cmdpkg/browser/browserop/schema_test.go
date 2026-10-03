@@ -10,9 +10,9 @@ import (
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 )
 
-// TestSchemasMatchRustSnapshot compares every input and result of all 47
-// browser leaves with the Rust manifest snapshot, without schema exclusions.
-func TestSchemasMatchRustSnapshot(t *testing.T) {
+// TestSchemasMatchSnapshot compares every input and result of all 47
+// browser leaves with testdata/schemas.json, without schema exclusions.
+func TestSchemasMatchSnapshot(t *testing.T) {
 	data, err := os.ReadFile("testdata/schemas.json")
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestSchemasMatchRustSnapshot(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !bytes.Equal(compact.Bytes(), schema()) {
-				t.Errorf("schema differs from Rust snapshot\nwant %s\ngot %s", reference[name], schema())
+				t.Errorf("schema differs from snapshot\nwant %s\ngot %s", reference[name], schema())
 			}
 		})
 	}

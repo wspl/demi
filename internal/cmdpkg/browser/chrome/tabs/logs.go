@@ -160,11 +160,8 @@ func (c *Console) collect(ctx context.Context, events *cdp.Subscription, history
 		var entry browserop.LogEntry
 		if err == nil {
 			entry, err = decodedConsole(raw)
-		} else {
-			var loss *cdp.EventLoss
-			if !errors.As(err, &loss) {
-				return
-			}
+		} else if !errors.Is(err, cdp.ErrEventsLost) {
+			return
 		}
 		c.mu.Lock()
 		if err == nil {
@@ -189,7 +186,7 @@ func consoleValue(argument *runtime.RemoteObject, text string) (string, error) {
 		return "", err
 	}
 	// CDP already validates the remote object's vendor envelope; parse the
-	// retained JSON value through contract to preserve serde ordering/escaping.
+	// retained JSON value through contract, which keeps member order and applies no HTML escaping.
 	encoded, err := contract.EncodeJSON(value)
 	if err != nil {
 		return "", err

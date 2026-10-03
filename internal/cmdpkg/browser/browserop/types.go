@@ -1719,7 +1719,7 @@ func (*LiveModuleMessageChoice) liveModuleMessage() {}
 // Something the viewer asked for failed; the stream goes on.
 // +demi:variant notice
 type LiveModuleMessageNotice struct {
-	// A browser failure's code, [`CAPTURE_UNAVAILABLE`] or [`CAPTURE_FAILED`].
+	// A browser failure's code, `capture_unavailable` or `capture_failed`.
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
@@ -1848,7 +1848,7 @@ type BrowserRelease struct {
 // +demi:root
 // +demi:check validateReleasePlatform
 type ReleasePlatform struct {
-	// The Rust target triple the archive runs on.
+	// The target triple the archive runs on, such as `x86_64-unknown-linux-musl`.
 	// +demi:length min=1
 	Target string `json:"target"`
 	URL    string `json:"url"`
