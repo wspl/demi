@@ -25,10 +25,10 @@ func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T)
 	for _, script := range scripts {
 		t.Run(script, func(t *testing.T) {
 			if runtime.GOOS == "darwin" && strings.Contains(script, "sed -n") {
-				t.Skip("fidelity 4: BSD sed does not support the e command")
+				t.Skip("decision 4: BSD sed does not support the e command")
 			}
 			if runtime.GOOS == "darwin" && (strings.Contains(script, "xargs") || strings.HasPrefix(script, "find")) {
-				t.Skip("fidelity 5: utility descendants can remain present when job completion returns")
+				t.Skip("macOS has no child subreaper; Linux runs this scenario with one")
 			}
 			ctx, scope, job, _ := shellJob(t, script)
 			var line []byte
