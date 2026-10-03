@@ -19,6 +19,8 @@ main() {
   fi
   local -r wp="$1"
   local -r wt="$(worktree_of "${wp}")"
+  local model effort
+  read -r model effort <<< "$(model_of "${wp}")"
   local -r brief="${REF}/briefs/${wp}.md"
   local -r snapshot="$(dirname "$0")/snapshot.sh"
   [[ -f "${brief}" && -f "${REF}/briefs/${wp}.boundary" ]] || {
@@ -38,7 +40,7 @@ main() {
   # -mod=readonly: Rust's vendor/ would otherwise make Go build in vendor mode.
   local status=0
   CGO_ENABLED=0 GOFLAGS="-mod=readonly -p=2" codex exec --ignore-user-config \
-    -m "${MODEL}" -c model_reasoning_effort="${EFFORT}" \
+    -m "${model}" -c model_reasoning_effort="${effort}" \
     --dangerously-bypass-approvals-and-sandbox \
     -C "${wt}" --json -o "${REF}/runs/${wp}.last.md" - \
     < "${REF}/runs/${wp}.prompt" \

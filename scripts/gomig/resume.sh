@@ -17,6 +17,8 @@ main() {
   local -r wp="$1"
   local -r findings="$2"
   local -r wt="$(worktree_of "${wp}")"
+  local model effort
+  read -r model effort <<< "$(model_of "${wp}")"
   local -r snapshot="$(dirname "$0")/snapshot.sh"
   local session
   session="$(head -1 "${REF}/runs/${wp}.jsonl" \
@@ -27,7 +29,7 @@ main() {
   local status=0
   cd "${wt}"
   CGO_ENABLED=0 GOFLAGS="-mod=readonly -p=2" codex exec resume "${session}" \
-    -m "${MODEL}" -c model_reasoning_effort="${EFFORT}" \
+    -m "${model}" -c model_reasoning_effort="${effort}" \
     --dangerously-bypass-approvals-and-sandbox \
     --json -o "${REF}/runs/${round}.last.md" - \
     < "${findings}" \

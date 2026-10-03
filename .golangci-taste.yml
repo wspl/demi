@@ -1,0 +1,67 @@
+# The readability rules of AGENTS.md § Go Readability and Naming that a tool
+# can check, on top of .golangci.yml. scripts/gomig/taste.sh runs it.
+# Transitional: when every package passes it, it joins .golangci.yml.
+version: "2"
+linters:
+  default: none
+  enable:
+    - lll
+    - funlen
+    - gocognit
+    - nestif
+    - revive
+  settings:
+    lll:
+      line-length: 120
+      tab-width: 4
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+    gocognit:
+      min-complexity: 30
+    nestif:
+      min-complexity: 5
+    revive:
+      enable-default-rules: true
+      rules:
+        - name: receiver-naming
+        - name: confusing-naming
+        - name: early-return
+        - name: superfluous-else
+        - name: indent-error-flow
+        - name: argument-limit
+          arguments: [6]
+        - name: max-control-nesting
+          arguments: [3]
+        - name: unexported-return
+        - name: redefines-builtin-id
+  exclusions:
+    generated: strict
+    paths:
+      - (^|/)testdata/
+    rules:
+      # Scenario tests are long sequences of steps by nature; their length and
+      # branching are reviewed, not counted.
+      - path: _test\.go$
+        linters:
+          - funlen
+          - gocognit
+      # As in .golangci.yml: contract doc comments are product text.
+      - path: ^internal/(core|declare|framewire|commandwire|runnerwire|machinewire|webapi|cmdpkg/[a-z]+/[a-z]+op|plugins/[a-z]+)/
+        linters:
+          - revive
+        text: "^exported: comment on exported"
+formatters:
+  enable:
+    - gofumpt
+    - golines
+    - goimports
+  settings:
+    golines:
+      max-len: 120
+      tab-len: 4
+  exclusions:
+    generated: strict
+    paths:
+      - (^|/)testdata/

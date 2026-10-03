@@ -9,7 +9,7 @@ This branch replaces the Rust programs with Go ([Migration to Go](docs/delivery/
 - Run every `go` command with `GOFLAGS=-mod=readonly` (the agent scripts set it): Rust's `vendor/` at the module root would otherwise put Go in vendor mode. This ends when `vendor/` is removed.
 - `go.mod` and `go.sum` belong to the tech lead. Add only the modules your brief lists; for any other, stop and say so in your report.
 - Another package's exported API is not yours to change. If you need a change, describe it in your report.
-- Follow Effective Go and the Google Go Style Guide. Short package names that say what the package provides; no stutter (`gates.Activity`, not `gates.ActivityGate`); small interfaces declared where they are used; constructors return concrete types; no getters named `Get`.
+- Follow [Go Readability and Naming](#go-readability-and-naming) below. Small interfaces are declared where they are used; constructors return concrete types.
 - `context.Context` is the first parameter of every function that waits. Errors are returned, wrapped with `%w` and compared with `errors.Is` and `errors.As`, never by text. No panic crosses a package boundary.
 - Every goroutine has an owner that cancels it and waits for it. Every lease, permit, timer, listener, file and process is released on success, failure and cancellation, with `defer` where it is acquired. No lock is held across a blocking call.
 - A contract type's and field's doc comment is product text: the generated JSON Schema's `description`, which `--help` and the model's tool schemas show. Copy it verbatim from the Rust doc comment; lint does not require it to start with the name there.
@@ -20,6 +20,82 @@ This branch replaces the Rust programs with Go ([Migration to Go](docs/delivery/
 - Port behavior, not more and not less. A Go change from the Rust behavior is allowed only as a bug fix or a reasonable normalization, and each one is listed in your report with its reason; the tech lead accepts or refuses it. Leaving out a behavior the Rust code has, or adding one it does not have (a limit, a retry, a default, an error path, a fallback), is a defect even when it seems better.
 - Every Rust test of the code you port is ported to Go in the same work package. Tests use only the standard library, `github.com/google/go-cmp`, `go.uber.org/goleak` and `testing/synctest`; a test waits for events or synctest time, never for wall time.
 - Before you report, run `scripts/gomig/check.sh` on your packages and make it pass. Write the report from `scripts/gomig/report-template.md` to the path your brief gives.
+
+# Go Readability and Naming
+
+Code is read far more often than it is written. These rules are concrete on
+purpose: follow them exactly, and do not substitute habits of your own. The
+references behind them are Effective Go, Go Code Review Comments and the
+Google Go Style Guide; where they leave a choice, this section makes it.
+`scripts/gomig/taste.sh <packages>` checks what a tool can check; the rest is
+reviewed.
+
+## Layout
+
+- A line is at most 120 columns, a tab counting as 4. `gofumpt` and `golines`
+  (`scripts/gomig/taste.sh --fix`) format code; a string they cannot wrap is
+  yours to split: SQL is a multi-line raw string with one clause per line, and
+  a long message is split at a sentence or clause.
+- One statement per line. A function body shares the signature's line only
+  when it is a single short `return`.
+- A composite literal or a call that does not fit on one line has one field
+  or argument per line, a trailing comma, and its closing brace on its own
+  line. A struct literal with more than three fields is always one field per
+  line.
+- A function reads as a sequence of steps. A blank line separates the steps;
+  no blank line opens or closes a block.
+- A production function body is at most 60 lines as a rule and never more than
+  80 lines or 50 statements. Split a longer one by meaning: each part becomes a
+  function whose name says what it does, with a one-sentence doc comment. Never
+  extract a block only to shorten a function, and never name a function
+  `do`, `handle`, `process`, `helper`, `run2` or after where it was cut from.
+- At most three levels of nesting inside a function. Return early for errors
+  and special cases; no `else` after a `return`, `break` or `continue`.
+- A condition with more than two operators, or one mixing `&&` and `||`, is
+  given named booleans or a predicate function that says what it means.
+- An argument holds at most one nested call; give other intermediate results a
+  name first.
+- More than five parameters (after `ctx`) become a struct with named fields.
+
+## Naming
+
+- A package name is one short lowercase word, no underscores or capitals,
+  naming what it provides; never `util`, `common`, `misc`, `helpers`, `base`.
+- An exported name does not repeat its package: `hostaccess.Error`, not
+  `hostaccess.HostAccessError`; `cloud.Client`, not `cloud.CloudClient`.
+- MixedCaps everywhere, constants included (no ALL_CAPS). Initialisms keep one
+  case: `ID`, `URL`, `HTTP`, `JSON`, `API`, `UUID`, `IP`, `TCP`, `SQL`, `CLI`,
+  `CDP`, `TLS` (`userID`, `parseURL`, `HTTPClient`).
+- No `Get` prefix on getters (`Owner()`), `Set` on setters. A function returning
+  a bool reads as a question (`IsOpen`, `HasBody`, `CanWake`); a boolean
+  variable or field is an adjective or past participle (`open`, `closed`,
+  `ready`), not `isClosed` or `flag`.
+- A one-method interface is the method plus `-er` (`Reader`, `Publisher`), and
+  is declared where it is used.
+- A receiver is one or two letters abbreviating its type, the same in every
+  method of the type; never `this`, `self` or `me`.
+- A name's length follows its scope: `i`, `n`, `err`, `ctx`, `ok` in a few
+  lines; a word or two that says what the value is in a function; a full name
+  for a package-level identifier. No type in a name (`userMap`, `idStr`,
+  `listOfTabs`), no Hungarian prefixes, no numbered names (`data2`).
+- Use only the abbreviations Go code commonly uses: `ctx`, `err`, `buf`, `cfg`,
+  `req`, `resp`, `msg`, `id`, `n`, `i`, and `w`/`r` for writers and readers.
+  Spell everything else out.
+- A sentinel error is `ErrSomething`; an error type is `SomethingError`. An
+  error string starts lower case and ends without punctuation, except text
+  copied verbatim from Rust, which a user or the model sees.
+- A test is named for the behavior it protects (`TestClosedTabIsRefused`);
+  its values are `got` and `want`.
+- File names are lower case, words joined by `_`, named for the one
+  responsibility the file holds.
+
+## Comments
+
+- Every exported identifier has a doc comment, a full sentence that starts
+  with its name (contract product text excepted, as above).
+- A comment says why: a constraint, a non-obvious decision, the Rust or design
+  rule it keeps. It does not narrate what the next line does.
+- No commented-out code; no `TODO` without what remains and who decides it.
 
 # Working Principles
 
@@ -87,6 +163,7 @@ This branch replaces the Rust programs with Go ([Migration to Go](docs/delivery/
 
 # Coding Standards
 
+- Go: Effective Go, Go Code Review Comments and the Google Go Style Guide, as [Go Readability and Naming](#go-readability-and-naming) applies them; `gofumpt` and `golines` formatting.
 - Rust: Rust API Guidelines, `rustfmt` defaults and Clippy's default lints, with no warning (`docs/delivery/builds-and-releases.md` § Validation).
 - TypeScript: Google TypeScript Style Guide.
 - JavaScript: Google JavaScript Style Guide.
