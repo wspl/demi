@@ -44,6 +44,7 @@ func Main(release string) int {
 	}
 	return exitCode(code, err)
 }
+
 func exitCode(code uint8, err error) int {
 	if err == nil {
 		return int(code)
@@ -77,22 +78,26 @@ func parseCLI(args []string, release string) (cliOptions, error) {
 	flags := flag.NewFlagSet(program+" "+options.action, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	backend := flags.String("backend", "", "The backend the installation belongs to.")
-	flags.StringVar(&options.home, "home", os.Getenv("DEMI_HOME"), "The installation's directory; one per backend under ~/.demi/instances by default.")
+	flags.StringVar(
+		&options.home,
+		"home",
+		os.Getenv("DEMI_HOME"),
+		"The installation's directory; one per backend under ~/.demi/instances by default.",
+	)
 	selected, releaseSet := os.LookupEnv("DEMI_RELEASE_ID")
 	options.releaseSet = releaseSet
 	_, options.homeSet = os.LookupEnv("DEMI_HOME")
 	if !releaseSet {
 		selected = release
 	}
-	flags.StringVar(&options.release, "release", selected, "This runner's release, which status compares with the active one.")
+	flags.StringVar(
+		&options.release,
+		"release",
+		selected,
+		"This runner's release, which status compares with the active one.",
+	)
 	if options.action == "run" {
-		_, options.nameSet = os.LookupEnv("DEMI_RUNNER_NAME")
-		_, options.artifactsSet = os.LookupEnv("DEMI_ARTIFACTS")
-		flags.StringVar(&options.boot, "managed-boot", "", "A managed guest's boot record, which names the backend.")
-		flags.StringVar(&options.name, "name", os.Getenv("DEMI_RUNNER_NAME"), "How the device appears to the backend; the hostname by default.")
-		options.managed, options.managedSet = os.LookupEnv("DEMI_RUNNER_MANAGED")
-		flags.StringVar(&options.managed, "managed", options.managed, "Marks a runner the backend manages, when set and not empty.")
-		flags.StringVar(&options.artifacts, "artifacts", os.Getenv("DEMI_ARTIFACTS"), "The artifact cache, which runners of one user may share; artifacts in the installation's directory by default.")
+		options.runFlags(flags)
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		return options, err
@@ -100,25 +105,7 @@ func parseCLI(args []string, release string) (cliOptions, error) {
 	if flags.NArg() != 0 {
 		return options, fmt.Errorf("unexpected argument '%s'", flags.Arg(0))
 	}
-	backendSet := false
-	flags.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "managed":
-			options.managedSet = true
-		case "home":
-			options.homeSet = true
-		case "managed-boot":
-			options.bootSet = true
-		case "name":
-			options.nameSet = true
-		case "artifacts":
-			options.artifactsSet = true
-		case "release":
-			options.releaseSet = true
-		case "backend":
-			backendSet = true
-		}
-	})
+	backendSet := options.selectedFlags(flags)
 	if backendSet {
 		parsed, err := runnerwire.ParseBackendURL(*backend)
 		if err != nil {
@@ -154,17 +141,9 @@ func runCLI(ctx context.Context, args []string, release string) (uint8, error) {
 	if err != nil {
 		return 2, err
 	}
-	var boot *runnerwire.ManagedBoot
-	if options.bootSet {
-		data, err := os.ReadFile(options.boot)
-		if err != nil {
-			return 0, err
-		}
-		record, err := runnerwire.DecodeManagedBoot(data)
-		if err != nil {
-			return 0, err
-		}
-		boot = &record
+	boot, err := readManagedBoot(options)
+	if err != nil {
+		return 0, err
 	}
 	directory, err := installationDirectory(options, boot)
 	if err != nil {
@@ -182,99 +161,15 @@ func runCLI(ctx context.Context, args []string, release string) (uint8, error) {
 		}
 		return manage(ctx, state, action(options.action), wanted)
 	}
-	backend := options.backend
-	if boot != nil {
-		backend = &boot.BackendURL
-	}
-	if backend == nil {
-		config, err := state.config()
-		if err != nil {
-			return 0, err
-		}
-		if config == nil {
-			return 0, errors.New("pass --backend <url> on first start")
-		}
-		backend = &config.BackendURL
-	}
-	home, err := userHome()
+	backend, err := selectedBackend(options, boot, state)
 	if err != nil {
 		return 0, err
 	}
-	hostname, err := os.Hostname()
+	home, info, err := runnerInfo(options, boot)
 	if err != nil {
 		return 0, err
 	}
-	if !utf8.ValidString(hostname) {
-		return 0, errors.New("the hostname is not UTF-8")
-	}
-	identity := runnerwire.HostIdentity{Hostname: hostname, HomeDir: home}
-	if runtime.GOOS != "windows" {
-		identity.UID = uint32(os.Getuid())
-		identity.GID = uint32(os.Getgid())
-	}
-	name := options.name
-	if !options.nameSet {
-		name = hostname
-	}
-	platform := runnerwire.RunnerPlatformLinux
-	if runtime.GOOS == "darwin" {
-		platform = runnerwire.RunnerPlatformDarwin
-	}
-	if runtime.GOOS == "windows" {
-		platform = runnerwire.RunnerPlatformWin32
-	}
-	target, err := commandwire.HostTarget()
-	if err != nil {
-		return 0, err
-	}
-	targetName := string(target)
-	info := runnerwire.RunnerInfo{Name: name, Platform: platform, Version: options.release, NativeTarget: &targetName, Identity: identity}
-	if boot != nil || options.managedSet {
-		managed := boot != nil || options.managed != ""
-		info.Managed = &managed
-	}
-	logDirectory := filepath.Join(directory, "log")
-	jobRoot := filepath.Join(directory, "jobs")
-	artifacts := options.artifacts
-	if !options.artifactsSet {
-		artifacts = filepath.Join(directory, "artifacts")
-	}
-	var volumes []host.ManagedVolume
-	var token *runnerwire.DeviceToken
-	if boot != nil {
-		logDirectory = "/var/log/demi"
-		jobRoot = "/var/lib/demi/jobs"
-		if !options.artifactsSet {
-			artifacts = filepath.Join(home, ".demi/artifacts")
-		}
-		token = &boot.DeviceToken
-		volumes = []host.ManagedVolume{{Name: runnerwire.VolumeNameSystem, Mount: "/"}, {Name: runnerwire.VolumeNameHome, Mount: "/home"}}
-	}
-	log, err := openHostLog(ctx, logDirectory)
-	if err != nil {
-		return 0, err
-	}
-	previous := slog.Default()
-	slog.SetDefault(slog.New(&logHandler{log: log}))
-	defer func() {
-		slog.SetDefault(previous)
-		_ = log.close(context.Background()) // Background cannot cancel the writer join.
-	}()
-	startupLimits()
-	executable, err := os.Executable()
-	if err != nil {
-		return 0, err
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return 0, err
-	}
-	err = runRegistration(ctx, registrationOptions{backend: *backend, directory: directory, artifacts: artifacts, jobRoot: jobRoot, executable: executable, cwd: cwd, env: processEnvironment(), runner: info, token: token, volumes: volumes, shell: shell.New(), log: log})
-	if err != nil {
-		slog.Error(err.Error())
-		return 1, nil
-	}
-	return 0, nil
+	return startRunner(ctx, options, boot, directory, backend, home, info)
 }
 
 func installationDirectory(options cliOptions, boot *runnerwire.ManagedBoot) (string, error) {
@@ -293,6 +188,7 @@ func installationDirectory(options cliOptions, boot *runnerwire.ManagedBoot) (st
 	}
 	return filepath.Join(home, ".demi/instances", instanceID(*options.backend)), nil
 }
+
 func userHome() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
@@ -328,27 +224,23 @@ func manage(ctx context.Context, state runnerState, action action, release *stri
 		return 0, err
 	}
 	defer func() { _ = stderr.Close() }()
-	completion, err := process.Forward(ctx, active.Endpoint, commandwire.LocalInvocation{Operation: manageOperation, InvocationID: strings.ReplaceAll(id.String(), "-", ""), Args: args, Cwd: cwd, Env: map[string]string{}}, process.Stdio{Stdin: io.NopCloser(strings.NewReader("")), Stdout: stdout, Stderr: stderr})
+	completion, err := process.Forward(
+		ctx,
+		active.Endpoint,
+		commandwire.LocalInvocation{
+			Operation:    manageOperation,
+			InvocationID: strings.ReplaceAll(id.String(), "-", ""),
+			Args:         args,
+			Cwd:          cwd,
+			Env:          map[string]string{},
+		},
+		process.Stdio{Stdin: io.NopCloser(strings.NewReader("")), Stdout: stdout, Stderr: stderr},
+	)
 	if err != nil || completion.ExitCode != 0 {
 		return completion.ExitCode, err
 	}
 	if action == drainAction {
-		for {
-			lease, err := tryInstallationLock(state.root)
-			if err != nil {
-				return 0, err
-			}
-			if lease != nil {
-				return 0, lease.close()
-			}
-			timer := time.NewTimer(50 * time.Millisecond)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return 0, ctx.Err()
-			case <-timer.C:
-			}
-		}
+		return waitInstallation(ctx, state.root)
 	}
 	if release != nil && *release != active.Release {
 		return 3, nil
@@ -390,6 +282,242 @@ func printHelp(action string) error {
 	if action == "run" {
 		options += "  --managed-boot <MANAGED_BOOT>  A managed guest's boot record, which names the backend.\n"
 	}
-	_, err := fmt.Fprintf(os.Stdout, "%s\n\nUsage: demi-runner %s [OPTIONS]\n\nOptions:\n%s  -h, --help  Print help\n", description, action, options)
+	_, err := fmt.Fprintf(
+		os.Stdout,
+		"%s\n\nUsage: demi-runner %s [OPTIONS]\n\nOptions:\n%s  -h, --help  Print help\n",
+		description,
+		action,
+		options,
+	)
 	return err
+}
+
+func (o *cliOptions) runFlags(flags *flag.FlagSet) {
+	_, o.nameSet = os.LookupEnv("DEMI_RUNNER_NAME")
+	_, o.artifactsSet = os.LookupEnv("DEMI_ARTIFACTS")
+	flags.StringVar(&o.boot, "managed-boot", "", "A managed guest's boot record, which names the backend.")
+	flags.StringVar(
+		&o.name,
+		"name",
+		os.Getenv("DEMI_RUNNER_NAME"),
+		"How the device appears to the backend; the hostname by default.",
+	)
+	o.managed, o.managedSet = os.LookupEnv("DEMI_RUNNER_MANAGED")
+	flags.StringVar(
+		&o.managed,
+		"managed",
+		o.managed,
+		"Marks a runner the backend manages, when set and not empty.",
+	)
+	flags.StringVar(
+		&o.artifacts,
+		"artifacts",
+		os.Getenv("DEMI_ARTIFACTS"),
+		"The artifact cache, which runners of one user may share; artifacts in the installation's directory by default.",
+	)
+}
+
+func (o *cliOptions) selectedFlags(flags *flag.FlagSet) (backendSet bool) {
+	flags.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "managed":
+			o.managedSet = true
+		case "home":
+			o.homeSet = true
+		case "managed-boot":
+			o.bootSet = true
+		case "name":
+			o.nameSet = true
+		case "artifacts":
+			o.artifactsSet = true
+		case "release":
+			o.releaseSet = true
+		case "backend":
+			backendSet = true
+		}
+	})
+	return backendSet
+}
+
+func readManagedBoot(options cliOptions) (*runnerwire.ManagedBoot, error) {
+	var boot *runnerwire.ManagedBoot
+	if options.bootSet {
+		data, err := os.ReadFile(options.boot)
+		if err != nil {
+			return nil, err
+		}
+		record, err := runnerwire.DecodeManagedBoot(data)
+		if err != nil {
+			return nil, err
+		}
+		boot = &record
+	}
+	return boot, nil
+}
+
+func selectedBackend(
+	options cliOptions,
+	boot *runnerwire.ManagedBoot,
+	state runnerState,
+) (*runnerwire.BackendURL, error) {
+	backend := options.backend
+	if boot != nil {
+		backend = &boot.BackendURL
+	}
+	if backend == nil {
+		config, err := state.config()
+		if err != nil {
+			return nil, err
+		}
+		if config == nil {
+			return nil, errors.New("pass --backend <url> on first start")
+		}
+		backend = &config.BackendURL
+	}
+	return backend, nil
+}
+
+func runnerInfo(options cliOptions, boot *runnerwire.ManagedBoot) (string, runnerwire.RunnerInfo, error) {
+	home, err := userHome()
+	if err != nil {
+		return "", runnerwire.RunnerInfo{}, err
+	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", runnerwire.RunnerInfo{}, err
+	}
+	if !utf8.ValidString(hostname) {
+		return "", runnerwire.RunnerInfo{}, errors.New("the hostname is not UTF-8")
+	}
+	identity := runnerwire.HostIdentity{Hostname: hostname, HomeDir: home}
+	if runtime.GOOS != "windows" {
+		identity.UID = uint32(os.Getuid())
+		identity.GID = uint32(os.Getgid())
+	}
+	name := options.name
+	if !options.nameSet {
+		name = hostname
+	}
+	platform := runnerwire.RunnerPlatformLinux
+	if runtime.GOOS == "darwin" {
+		platform = runnerwire.RunnerPlatformDarwin
+	}
+	if runtime.GOOS == "windows" {
+		platform = runnerwire.RunnerPlatformWin32
+	}
+	target, err := commandwire.HostTarget()
+	if err != nil {
+		return "", runnerwire.RunnerInfo{}, err
+	}
+	targetName := string(target)
+	info := runnerwire.RunnerInfo{
+		Name:         name,
+		Platform:     platform,
+		Version:      options.release,
+		NativeTarget: &targetName,
+		Identity:     identity,
+	}
+	if boot != nil || options.managedSet {
+		managed := boot != nil || options.managed != ""
+		info.Managed = &managed
+	}
+	return home, info, nil
+}
+
+func startRunner(
+	ctx context.Context,
+	options cliOptions,
+	boot *runnerwire.ManagedBoot,
+	directory string,
+	backend *runnerwire.BackendURL,
+	home string,
+	info runnerwire.RunnerInfo,
+) (uint8, error) {
+	logDirectory, jobRoot, artifacts, volumes, token := startupPaths(options, boot, directory, home)
+	log, err := openHostLog(ctx, logDirectory)
+	if err != nil {
+		return 0, err
+	}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(&logHandler{log: log}))
+	defer func() {
+		slog.SetDefault(previous)
+		_ = log.close(context.Background()) // Background cannot cancel the writer join.
+	}()
+	startupLimits()
+	executable, err := os.Executable()
+	if err != nil {
+		return 0, err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return 0, err
+	}
+	err = runRegistration(
+		ctx,
+		registrationOptions{
+			backend:    *backend,
+			directory:  directory,
+			artifacts:  artifacts,
+			jobRoot:    jobRoot,
+			executable: executable,
+			cwd:        cwd,
+			env:        processEnvironment(),
+			runner:     info,
+			token:      token,
+			volumes:    volumes,
+			shell:      shell.New(),
+			log:        log,
+		},
+	)
+	if err != nil {
+		slog.Error(err.Error())
+		return 1, nil
+	}
+	return 0, nil
+}
+
+func waitInstallation(ctx context.Context, root string) (uint8, error) {
+	for {
+		lease, err := tryInstallationLock(root)
+		if err != nil {
+			return 0, err
+		}
+		if lease != nil {
+			return 0, lease.close()
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return 0, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func startupPaths(
+	options cliOptions,
+	boot *runnerwire.ManagedBoot,
+	directory, home string,
+) (logDirectory, jobRoot, artifacts string, volumes []host.ManagedVolume, token *runnerwire.DeviceToken) {
+	logDirectory = filepath.Join(directory, "log")
+	jobRoot = filepath.Join(directory, "jobs")
+	artifacts = options.artifacts
+	if !options.artifactsSet {
+		artifacts = filepath.Join(directory, "artifacts")
+	}
+	if boot != nil {
+		logDirectory = "/var/log/demi"
+		jobRoot = "/var/lib/demi/jobs"
+		if !options.artifactsSet {
+			artifacts = filepath.Join(home, ".demi/artifacts")
+		}
+		token = &boot.DeviceToken
+		volumes = []host.ManagedVolume{
+			{Name: runnerwire.VolumeNameSystem, Mount: "/"},
+			{Name: runnerwire.VolumeNameHome, Mount: "/home"},
+		}
+	}
+	return
 }

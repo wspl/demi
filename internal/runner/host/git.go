@@ -106,7 +106,7 @@ func (s *Service) gitReply(ctx context.Context, id string, result runnerwire.Git
 func (s *Service) showBlob(ctx context.Context, root, path string) (data []byte, err error) {
 	defer func() {
 		if recover() != nil {
-			err = &gitFailure{code: "internal", message: "working-tree work panicked"}
+			err = &gitError{code: "internal", message: "working-tree work panicked"}
 		}
 	}()
 	if err = ctx.Err(); err != nil {
@@ -121,7 +121,7 @@ func (s *Service) showBlob(ctx context.Context, root, path string) (data []byte,
 		return nil, err
 	}
 	if location == nil {
-		return nil, &gitFailure{code: "not_repository", message: "not inside a git repository"}
+		return nil, &gitError{code: "not_repository", message: "not inside a git repository"}
 	}
 	defer func() { err = errors.Join(err, closeRepository(repo)) }()
 	tree, _, _, err := headEntries(ctx, repo)
@@ -150,7 +150,7 @@ func (s *Service) showBlob(ctx context.Context, root, path string) (data []byte,
 		return nil, syscall.EISDIR
 	}
 	if content.large {
-		return nil, &gitFailure{code: "too_large", message: "the file is too large"}
+		return nil, &gitError{code: "too_large", message: "the file is too large"}
 	}
 	return content.bytes, nil
 }

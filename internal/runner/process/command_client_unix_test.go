@@ -26,7 +26,11 @@ type localHandler struct {
 }
 
 func (localHandler) Operations() []string { return []string{Raw} }
-func (h localHandler) Invoke(ctx context.Context, call cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+
+func (h localHandler) Invoke(
+	ctx context.Context,
+	call cmdsdk.InvocationContext[commandwire.LocalInvocation],
+) (commandwire.Completion, error) {
 	return h.invoke(ctx, call)
 }
 
@@ -40,15 +44,18 @@ func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.RemoveAll(directory) }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = os.RemoveAll(directory) }()
 	endpoint := filepath.Join(directory, "socket")
 	listener, err := net.Listen("unix", endpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = listener.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = listener.Close() }()
 	input, writer := io.Pipe()
-	defer func() { _ = writer.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = writer.Close() }()
 	output := &bufferOutput{}
 	errorOutput := &bufferOutput{}
 	readRequested := make(chan struct{})
@@ -60,7 +67,10 @@ func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 			completed <- err
 			return
 		}
-		completed <- cmdsdk.ServeLocal(ctx, connection, localHandler{invoke: func(ctx context.Context, call cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+		completed <- cmdsdk.ServeLocal(ctx, connection, localHandler{invoke: func(
+			ctx context.Context,
+			call cmdsdk.InvocationContext[commandwire.LocalInvocation],
+		) (commandwire.Completion, error) {
 			if call.Request.Cwd != directory || call.Request.Env["VALUE"] != "<>&" {
 				t.Errorf("metadata %+v", call.Request)
 			}
@@ -83,8 +93,23 @@ func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 		}})
 	}()
 	sent := make(chan struct{})
-	go func() { defer close(sent); <-readRequested; _, _ = writer.Write([]byte{0, 255, 10}) }()
-	completion, err := Forward(ctx, endpoint, commandwire.LocalInvocation{Operation: Raw, InvocationID: "test", Args: json.RawMessage(`{}`), Cwd: directory, Env: map[string]string{"VALUE": "<>&"}}, Stdio{Stdin: input, Stdout: output, Stderr: errorOutput})
+	go func() {
+		defer close(sent)
+		<-readRequested
+		_, _ = writer.Write([]byte{0, 255, 10})
+	}()
+	completion, err := Forward(
+		ctx,
+		endpoint,
+		commandwire.LocalInvocation{
+			Operation:    Raw,
+			InvocationID: "test",
+			Args:         json.RawMessage(`{}`),
+			Cwd:          directory,
+			Env:          map[string]string{"VALUE": "<>&"},
+		},
+		Stdio{Stdin: input, Stdout: output, Stderr: errorOutput},
+	)
 	<-sent
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +117,8 @@ func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 	if completion.ExitCode != 7 {
 		t.Fatalf("completion %+v", completion)
 	}
-	if !bytes.Equal(output.Bytes(), append([]byte("before input"), 0, 255, 10)) || errorOutput.String() != "error stream" {
+	if !bytes.Equal(output.Bytes(), append([]byte("before input"), 0, 255, 10)) ||
+		errorOutput.String() != "error stream" {
 		t.Fatalf("stdout %q stderr %q", output.Bytes(), errorOutput.String())
 	}
 	// Forward closed the connection, so the server joins on EOF.
@@ -100,12 +126,14 @@ func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestConnectWaitsForLiveRunnerAndFailsWhenGone(t *testing.T) {
 	directory, err := os.MkdirTemp("", "demi-ipc-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.RemoveAll(directory) }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = os.RemoveAll(directory) }()
 	endpoint := filepath.Join(directory, "socket")
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: endpoint, Net: "unix"})
 	if err != nil {
@@ -119,7 +147,8 @@ func TestConnectWaitsForLiveRunnerAndFailsWhenGone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = lock.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = lock.Close() }()
 	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +201,10 @@ func TestForwardOwnedFileInputIsInterruptible(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = reader.Close() }()
-	stdio, restore, err := cancellableStdio(t.Context(), Stdio{Stdin: file, Stdout: &bufferOutput{}, Stderr: &bufferOutput{}})
+	stdio, restore, err := cancellableStdio(
+		t.Context(),
+		Stdio{Stdin: file, Stdout: &bufferOutput{}, Stderr: &bufferOutput{}},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +212,11 @@ func TestForwardOwnedFileInputIsInterruptible(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	reading := make(chan struct{})
 	done := make(chan error, 1)
-	go func() { close(reading); _, err := source.Next(ctx); done <- err }()
+	go func() {
+		close(reading)
+		_, err := source.Next(ctx)
+		done <- err
+	}()
 	<-reading
 	cancel()
 	select {
@@ -219,7 +255,10 @@ func TestForwardRestoresSharedOutputFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stdio, restore, err := cancellableStdio(t.Context(), Stdio{Stdin: io.NopCloser(strings.NewReader("")), Stdout: writer, Stderr: writer})
+	stdio, restore, err := cancellableStdio(
+		t.Context(),
+		Stdio{Stdin: io.NopCloser(strings.NewReader("")), Stdout: writer, Stderr: writer},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +318,10 @@ func TestForwardConnectionLossInterruptsBlockedOutput(t *testing.T) {
 					return
 				}
 				accepted <- conn
-				served <- cmdsdk.ServeLocal(t.Context(), conn, localHandler{invoke: func(ctx context.Context, call cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+				served <- cmdsdk.ServeLocal(t.Context(), conn, localHandler{invoke: func(
+					ctx context.Context,
+					call cmdsdk.InvocationContext[commandwire.LocalInvocation],
+				) (commandwire.Completion, error) {
 					var err error
 					if stderr {
 						err = call.Output.Stderr(ctx, []byte("blocked"))
@@ -295,7 +337,18 @@ func TestForwardConnectionLossInterruptsBlockedOutput(t *testing.T) {
 			}()
 			forwarded := make(chan error, 1)
 			go func() {
-				_, err := Forward(t.Context(), endpoint, commandwire.LocalInvocation{Operation: Raw, InvocationID: "lost", Args: json.RawMessage(`{}`), Cwd: directory, Env: map[string]string{}}, stdio)
+				_, err := Forward(
+					t.Context(),
+					endpoint,
+					commandwire.LocalInvocation{
+						Operation:    Raw,
+						InvocationID: "lost",
+						Args:         json.RawMessage(`{}`),
+						Cwd:          directory,
+						Env:          map[string]string{},
+					},
+					stdio,
+				)
 				forwarded <- err
 			}()
 			conn := <-accepted

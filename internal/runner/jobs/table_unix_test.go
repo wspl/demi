@@ -12,7 +12,9 @@ import (
 // One raw process; completion is event-driven and cancellation must reap it.
 func TestRawProcessKilledImmediatelyReportsSIGKILL(t *testing.T) {
 	table, output, _, root := newTable(t, 8, nil)
-	if err := table.Start(jobs.TaskSpec{ID: "raw", Cwd: root, Command: &jobs.ProcessCommand{Command: "/bin/sleep", Args: []string{"10"}}}); err != nil {
+	if err := table.Start(
+		jobs.TaskSpec{ID: "raw", Cwd: root, Command: &jobs.ProcessCommand{Command: "/bin/sleep", Args: []string{"10"}}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := table.Signal(jobs.WorkID{Kind: jobs.ProcessWork, ID: "raw"}, runnerwire.SignalKill); err != nil {

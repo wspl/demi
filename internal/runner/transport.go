@@ -63,7 +63,15 @@ func connect(ctx context.Context, backend runnerwire.BackendURL) (*transport, er
 
 func newTransport(socket *websocket.Conn) *transport {
 	ctx, cancel := context.WithCancel(context.Background())
-	t := &transport{output: make(chan []byte, 8), control: make(chan []byte, 128), input: make(chan runnerwire.Inbound, 8), socket: socket, cancel: cancel, done: make(chan struct{}), stopping: make(chan struct{})}
+	t := &transport{
+		output:   make(chan []byte, 8),
+		control:  make(chan []byte, 128),
+		input:    make(chan runnerwire.Inbound, 8),
+		socket:   socket,
+		cancel:   cancel,
+		done:     make(chan struct{}),
+		stopping: make(chan struct{}),
+	}
 	socket.SetReadLimit(runnerwire.MaxMessageBytes)
 	go t.run(ctx)
 	return t
@@ -113,7 +121,6 @@ func (t *transport) run(ctx context.Context) {
 	if !deadline.Stop() {
 		<-expired
 	}
-
 }
 
 func (t *transport) receive(ctx context.Context) error {

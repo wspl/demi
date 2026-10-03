@@ -19,9 +19,12 @@ import (
 // Dispatch supplies a dispatcher, local endpoint and connection owner backed
 // by channels. Its cleanup joins workers and releases services and contexts.
 type Dispatch struct {
-	Services   *cmdpkgs.ServiceRegistry
+	// Services owns the fixture service registry.
+	Services *cmdpkgs.ServiceRegistry
+	// Dispatcher runs fixture command invocations.
 	Dispatcher *jobs.Dispatcher
-	Server     *jobs.Server
+	// Server serves the fixture local command endpoint.
+	Server *jobs.Server
 	// Outgoing carries encoded frames sent to the simulated backend.
 	Outgoing <-chan []byte
 	t        testing.TB
@@ -45,7 +48,13 @@ type removal struct {
 // NewDispatch installs manifest in root and uses the test executable for aliases.
 // It registers cleanup with t, including when construction fails. Pipes remains
 // caller-owned and must outlive the fixture.
-func NewDispatch(ctx context.Context, t testing.TB, root string, manifest json.RawMessage, pipes *process.PipeClient) *Dispatch {
+func NewDispatch(
+	ctx context.Context,
+	t testing.TB,
+	root string,
+	manifest json.RawMessage,
+	pipes *process.PipeClient,
+) *Dispatch {
 	t.Helper()
 	lifetime, cancel := context.WithCancel(ctx)
 	d := &Dispatch{t: t, cancel: cancel, closed: make(chan struct{})}
@@ -55,7 +64,13 @@ func NewDispatch(ctx context.Context, t testing.TB, root string, manifest json.R
 		}
 	})
 	var err error
-	d.Services, err = cmdpkgs.NewServiceRegistry(lifetime, filepath.Join(root, "artifacts"), "", root, map[string]string{})
+	d.Services, err = cmdpkgs.NewServiceRegistry(
+		lifetime,
+		filepath.Join(root, "artifacts"),
+		"",
+		root,
+		map[string]string{},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,8 +106,15 @@ func NewDispatch(ctx context.Context, t testing.TB, root string, manifest json.R
 
 // Context creates a live job context and a guard. The fixture also registers
 // guard cleanup, so a failed test cannot leave a live registration.
-func (d *Dispatch) Context(ctx context.Context, jobID string, command commandwire.CommandContext) (*jobs.ExecutionContext, *ContextGuard, error) {
-	edits := commandwire.EditContext{Directory: filepath.Join(d.paths.Directory, jobID), Lock: filepath.Join(d.paths.Directory, "edits.lock")}
+func (d *Dispatch) Context(
+	ctx context.Context,
+	jobID string,
+	command commandwire.CommandContext,
+) (*jobs.ExecutionContext, *ContextGuard, error) {
+	edits := commandwire.EditContext{
+		Directory: filepath.Join(d.paths.Directory, jobID),
+		Lock:      filepath.Join(d.paths.Directory, "edits.lock"),
+	}
 	execution, err := jobs.NewExecutionContext(ctx, jobID, command, d.manifest, edits, d.handle, d.paths)
 	if err != nil {
 		return nil, nil, err
@@ -185,35 +207,18 @@ func (g *ContextGuard) Close(ctx context.Context) error {
 }
 
 // serve gives requests priority over backend answers, matching the connection owner.
-func (d *Dispatch) serve(ctx context.Context, requests <-chan jobs.Request, contexts *jobs.Contexts, control chan<- []byte) {
+func (d *Dispatch) serve(
+	ctx context.Context,
+	requests <-chan jobs.Request,
+	contexts *jobs.Contexts,
+	control chan<- []byte,
+) {
 	defer close(d.done)
 	relay := jobs.NewRelay(ctx)
 	defer func() { _ = relay.Close(context.Background()) }()
 	table := jobs.NewContextTable(contexts)
 	defer table.Close()
-	handle := func(request jobs.Request) {
-		switch request := request.(type) {
-		case *jobs.CallRequest:
-			relay.Call(request)
-		case *jobs.ContextRequest:
-			request.Register(table)
-		case *jobs.AskRequest:
-			frame, err := relay.Ask(request)
-			if err != nil {
-				switch q := request.Question.(type) {
-				case *jobs.LocateQuestion:
-					q.Answer(nil, err)
-				case *jobs.ReserveQuestion:
-					q.Answer(0, err)
-				}
-				return
-			}
-			select {
-			case <-ctx.Done():
-			case control <- frame:
-			}
-		}
-	}
+	handle := func(request jobs.Request) { handleRequest(ctx, request, relay, table, control) }
 	for {
 		select {
 		case <-ctx.Done():
@@ -250,6 +255,36 @@ func (d *Dispatch) serve(ctx context.Context, requests <-chan jobs.Request, cont
 		case removal := <-d.removals:
 			table.Remove(removal.job)
 			close(removal.done)
+		}
+	}
+}
+
+func handleRequest(
+	ctx context.Context,
+	request jobs.Request,
+	relay *jobs.Relay,
+	table *jobs.ContextTable,
+	control chan<- []byte,
+) {
+	switch request := request.(type) {
+	case *jobs.CallRequest:
+		relay.Call(request)
+	case *jobs.ContextRequest:
+		request.Register(table)
+	case *jobs.AskRequest:
+		frame, err := relay.Ask(request)
+		if err != nil {
+			switch q := request.Question.(type) {
+			case *jobs.LocateQuestion:
+				q.Answer(nil, err)
+			case *jobs.ReserveQuestion:
+				q.Answer(0, err)
+			}
+			return
+		}
+		select {
+		case <-ctx.Done():
+		case control <- frame:
 		}
 	}
 }

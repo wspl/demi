@@ -11,11 +11,17 @@ import (
 // jobArtifacts locates an artifact through any live job that authorizes it.
 type jobArtifacts struct{ contexts *Contexts }
 
-func (r *jobArtifacts) Resolve(ctx context.Context, artifact commandwire.PackageArtifact) (cmdpkgs.ArtifactSource, error) {
+func (r *jobArtifacts) Resolve(
+	ctx context.Context,
+	artifact commandwire.PackageArtifact,
+) (cmdpkgs.ArtifactSource, error) {
 	for {
 		execution, ok := r.contexts.Carrying(artifact.SHA256)
 		if !ok {
-			return cmdpkgs.ArtifactSource{}, &cmdpkgs.RuntimeError{Kind: cmdpkgs.LocationFailure, Detail: "no live job authorizes this artifact"}
+			return cmdpkgs.ArtifactSource{}, &cmdpkgs.RuntimeError{
+				Kind:   cmdpkgs.LocationFailure,
+				Detail: "no live job authorizes this artifact",
+			}
 		}
 		wait, cancel := context.WithCancel(ctx)
 		done := make(chan struct{})
@@ -27,7 +33,11 @@ func (r *jobArtifacts) Resolve(ctx context.Context, artifact commandwire.Package
 			case <-wait.Done():
 			}
 		}()
-		location, err := execution.Connection.Locate(wait, &runnerwire.JobArtifactOwner{JobID: execution.JobID, ManifestHash: execution.Manifest.Hash}, artifact.SHA256)
+		location, err := execution.Connection.Locate(
+			wait,
+			&runnerwire.JobArtifactOwner{JobID: execution.JobID, ManifestHash: execution.Manifest.Hash},
+			artifact.SHA256,
+		)
 		cancel()
 		<-done
 		if ctx.Err() != nil {
@@ -49,7 +59,10 @@ type streamArtifacts struct {
 	stream     string
 }
 
-func (r *streamArtifacts) Resolve(ctx context.Context, artifact commandwire.PackageArtifact) (cmdpkgs.ArtifactSource, error) {
+func (r *streamArtifacts) Resolve(
+	ctx context.Context,
+	artifact commandwire.PackageArtifact,
+) (cmdpkgs.ArtifactSource, error) {
 	location, err := r.connection.Locate(ctx, &runnerwire.StreamArtifactOwner{StreamID: r.stream}, artifact.SHA256)
 	if err != nil {
 		return cmdpkgs.ArtifactSource{}, err

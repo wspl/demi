@@ -31,7 +31,13 @@ func StartServer(ctx context.Context, handler cmdsdk.Handler[commandwire.LocalIn
 		return nil, err
 	}
 	lifetime, cancel := context.WithCancel(ctx)
-	server := &Server{listener: listener, lifetime: lifetime, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{})}
+	server := &Server{
+		listener: listener,
+		lifetime: lifetime,
+		cancel:   cancel,
+		done:     make(chan struct{}),
+		changed:  make(chan struct{}),
+	}
 	go server.serve(handler)
 	return server, nil
 }
@@ -82,7 +88,7 @@ type Listener struct {
 
 // BindListener creates a local endpoint and its platform-specific liveness resources.
 func BindListener(ctx context.Context) (*Listener, error) {
-	return bindLocal(ctx)
+	return bindListener(ctx)
 }
 
 // Endpoint returns the local address for forwarding clients.
@@ -130,7 +136,10 @@ func (s *Server) serve(handler cmdsdk.Handler[commandwire.LocalInvocation]) {
 			defer clients.Done()
 			defer s.changeActive(-1)
 			interrupted := make(chan struct{})
-			stop := context.AfterFunc(s.lifetime, func() { _ = conn.Close(); close(interrupted) })
+			stop := context.AfterFunc(s.lifetime, func() {
+				_ = conn.Close()
+				close(interrupted)
+			})
 			err := cmdsdk.ServeLocal(s.lifetime, conn, handler)
 			if !stop() {
 				<-interrupted

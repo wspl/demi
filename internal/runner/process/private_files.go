@@ -16,7 +16,12 @@ func WritePrivate(ctx context.Context, path string, data []byte) error {
 	if !bytes.HasSuffix(data, []byte{'\n'}) {
 		data = append(append([]byte(nil), data...), '\n')
 	}
-	if err := artifacts.PublishBytes(ctx, path, data, artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Private, Durable: true}); err != nil {
+	if err := artifacts.PublishBytes(
+		ctx,
+		path,
+		data,
+		artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Private, Durable: true},
+	); err != nil {
 		return fmt.Errorf("write private file: %w", err)
 	}
 	return nil
@@ -31,19 +36,19 @@ func Chmod(ctx context.Context, path string, mode uint32) error {
 		_, err := os.Stat(path)
 		return err
 	}
-	return os.Chmod(path, os.FileMode(mode&0777)|specialMode(mode))
+	return os.Chmod(path, os.FileMode(mode&0o777)|specialMode(mode))
 }
 
 // specialMode converts the Unix special permission bits for a private directory.
 func specialMode(mode uint32) os.FileMode {
 	var result os.FileMode
-	if mode&04000 != 0 {
+	if mode&0o4000 != 0 {
 		result |= os.ModeSetuid
 	}
-	if mode&02000 != 0 {
+	if mode&0o2000 != 0 {
 		result |= os.ModeSetgid
 	}
-	if mode&01000 != 0 {
+	if mode&0o1000 != 0 {
 		result |= os.ModeSticky
 	}
 	return result

@@ -36,7 +36,14 @@ func TestFilesystemWirePreservesBinaryDatesLinksAndErrors(t *testing.T) {
 	if !ok || !stat.Value.IsFile {
 		t.Fatal(value)
 	}
-	fsResult(t, out, s.Utimes(t.Context(), runnerwire.FSUtimes{ID: "test", Path: "nested/a", Atime: 1234567890123, Mtime: 1234567890123}))
+	fsResult(
+		t,
+		out,
+		s.Utimes(
+			t.Context(),
+			runnerwire.FSUtimes{ID: "test", Path: "nested/a", Atime: 1234567890123, Mtime: 1234567890123},
+		),
+	)
 	value = fsResult(t, out, s.Stat(t.Context(), runnerwire.FSStat{ID: "test", Path: "nested/a"}))
 	stat, ok = value.(*runnerwire.FSStatResult)
 	if !ok || !stat.Value.IsFile || stat.Value.Mtime != 1234567890123 || stat.Value.Size != 4 {
@@ -64,7 +71,11 @@ func TestFilesystemWirePreservesBinaryDatesLinksAndErrors(t *testing.T) {
 		t.Fatal(value)
 	}
 	yes := true
-	fsResult(t, out, s.Cp(t.Context(), runnerwire.FSCp{ID: "test", Path: "nested", Destination: "copied", Recursive: &yes}))
+	fsResult(
+		t,
+		out,
+		s.Cp(t.Context(), runnerwire.FSCp{ID: "test", Path: "nested", Destination: "copied", Recursive: &yes}),
+	)
 	fsResult(t, out, s.Mv(t.Context(), runnerwire.FSMv{ID: "test", Path: "copied", Destination: "moved"}))
 	data, err := os.ReadFile(filepath.Join(root, "moved/a"))
 	if err != nil || string(data) != string([]byte{0, 255, 128, 10}) {
@@ -80,7 +91,7 @@ func TestFilesystemWirePreservesBinaryDatesLinksAndErrors(t *testing.T) {
 	}
 	// Every remaining metadata operation is exercised through the same boundary.
 	fsResult(t, out, s.Mkdir(t.Context(), runnerwire.FSMkdir{ID: "test", Path: "created"}))
-	fsResult(t, out, s.Chmod(t.Context(), runnerwire.FSChmod{ID: "test", Path: "hard", Mode: 0600}))
+	fsResult(t, out, s.Chmod(t.Context(), runnerwire.FSChmod{ID: "test", Path: "hard", Mode: 0o600}))
 	fsResult(t, out, s.Realpath(t.Context(), runnerwire.FSRealpath{ID: "test", Path: "symbolic"}))
 	fsResult(t, out, s.Readdir(t.Context(), runnerwire.FSReaddir{ID: "test", Path: "."}))
 	if err := os.Remove(filepath.Join(root, "nested/a")); err != nil {

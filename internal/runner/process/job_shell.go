@@ -13,18 +13,23 @@ type JobCommands struct {
 	// Context is the execution context every invocation names, also in DEMI_CONTEXT_ID.
 	Context string
 	// Roots is the root commands the job's manifest declares.
-	Roots   []string
+	Roots []string
+	// Handler runs the declared root invocations.
 	Handler cmdsdk.Handler[commandwire.LocalInvocation]
 }
 
 // JobStart supplies what a job starts with. The context passed to JobShell.Start
 // owns cancellation of the job and everything it runs.
 type JobStart struct {
+	// Script is the shell source to execute.
 	Script string
-	Cwd    string
-	Env    map[string]string
+	// Cwd is the initial working directory.
+	Cwd string
+	// Env supplies the job environment.
+	Env map[string]string
 	// Live says whether input is the job's live terminal rather than a finite body.
-	Live     bool
+	Live bool
+	// Commands supplies the declared roots and invocation handler.
 	Commands *JobCommands
 	// Edits records the files the job changes.
 	Edits *cmdsdk.Recorder
@@ -32,6 +37,7 @@ type JobStart struct {
 
 // JobShell runs the runner's jobs without exposing its interpreter.
 type JobShell interface {
+	// Start creates a job whose lifetime is owned by the context.
 	Start(context.Context, JobStart) (ShellJob, error)
 	// BuiltinNames returns the shell's reserved root names as a set.
 	BuiltinNames() map[string]struct{}

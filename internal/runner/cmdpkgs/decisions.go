@@ -25,7 +25,9 @@ const (
 
 // DecisionEvent pairs a decision with the executable's digest.
 type DecisionEvent struct {
-	Digest   string
+	// Digest identifies the artifact whose decision changed.
+	Digest string
+	// Decision is the new authorization decision.
 	Decision Decision
 }
 
@@ -52,24 +54,27 @@ type decisionLog struct {
 	changed chan struct{}
 }
 
-func (d *decisionLog) notify() {
+// notifyLocked requires the decision mutex so ring publication and notification stay atomic.
+func (d *decisionLog) notifyLocked() {
 	if d.changed != nil {
 		close(d.changed)
 	}
 	d.changed = make(chan struct{})
 }
+
 func (d *decisionLog) add(digest string, decision Decision) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.events[d.next%64] = DecisionEvent{Digest: digest, Decision: decision}
 	d.next++
-	d.notify()
+	d.notifyLocked()
 }
+
 func (d *decisionLog) close() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.closed = true
-	d.notify()
+	d.notifyLocked()
 }
 
 // Next waits for a decision, reporting lag or closure as an error.

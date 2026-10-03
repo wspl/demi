@@ -65,7 +65,21 @@ func TestFixtureIOContextAndNumbers(t *testing.T) {
 		{"first", `{}`, "input chunk", "input chunk", "", 0},
 	} {
 		t.Run(tc.operation, func(t *testing.T) {
-			request := commandwire.Invocation{Operation: tc.operation, InvocationID: tc.operation, Args: []byte(tc.args), Cwd: os.TempDir(), Env: map[string]string{"PROBE": "value"}, Context: commandwire.CommandContext{Conversation: "c", Caller: &commandwire.AgentCaller{Number: 1}, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}}}
+			request := commandwire.Invocation{
+				Operation:    tc.operation,
+				InvocationID: tc.operation,
+				Args:         []byte(tc.args),
+				Cwd:          os.TempDir(),
+				Env:          map[string]string{"PROBE": "value"},
+				Context: commandwire.CommandContext{
+					Conversation: "c",
+					Caller:       &commandwire.AgentCaller{Number: 1},
+					Locale: commandwire.CommandLocale{
+						TimeZone:  "UTC",
+						Languages: []commandwire.LanguageTag{"en-US"},
+					},
+				},
+			}
 			input, output, err := service.Client.Invoke(t.Context(), request)
 			if err != nil {
 				t.Fatal(err)
@@ -101,7 +115,8 @@ func TestFixtureIOContextAndNumbers(t *testing.T) {
 					}
 				}
 			}
-			if completion == nil || completion.ExitCode != tc.code || !strings.Contains(stdout.String(), tc.stdout) || stderr.String() != tc.stderr {
+			if completion == nil || completion.ExitCode != tc.code || !strings.Contains(stdout.String(), tc.stdout) ||
+				stderr.String() != tc.stderr {
 				t.Fatalf("completion=%+v stdout=%q stderr=%q", completion, stdout.String(), stderr.String())
 			}
 		})

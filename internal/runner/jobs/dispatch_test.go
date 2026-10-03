@@ -19,7 +19,12 @@ import (
 // dispatchFixture exposes the real dispatcher through its owned local endpoint.
 func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, *jobstest.ContextGuard) {
 	t.Helper()
-	tree, err := declare.DecodeDeclaration([]byte(`{"name":"fixture","summary":"Test callback.","kind":"rpc","runningHint":"Working","input":{"type":"object","properties":{"body":{"type":"string"}},"required":["body"]},"stdinField":"body"}`))
+	tree, err := declare.DecodeDeclaration(
+		[]byte(
+			`{"name":"fixture","summary":"Test callback.","kind":"rpc","runningHint":"Working",` +
+				`"input":{"type":"object","properties":{"body":{"type":"string"}},"required":["body"]},"stdinField":"body"}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,13 +50,18 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 		}
 	})
 	fixture := jobstest.NewDispatch(testContext(t), t, t.TempDir(), value, pipes)
-	command := commandwire.CommandContext{Conversation: "conversation", Caller: &commandwire.AgentCaller{Number: 1}, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}}
+	command := commandwire.CommandContext{
+		Conversation: "conversation",
+		Caller:       &commandwire.AgentCaller{Number: 1},
+		Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+	}
 	execution, guard, err := fixture.Context(testContext(t), "job", command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return fixture, execution, guard
 }
+
 func dispatchRequest(t *testing.T, execution *jobs.ExecutionContext, argv ...string) commandwire.LocalInvocation {
 	t.Helper()
 	raw, err := process.NewRawCommand(execution.ID, "fixture", argv, true)
@@ -67,6 +77,7 @@ func dispatchRequest(t *testing.T, execution *jobs.ExecutionContext, argv ...str
 	request.Args = args
 	return request
 }
+
 func dispatchMessage(t *testing.T, fixture *jobstest.Dispatch) runnerwire.Outbound {
 	t.Helper()
 	ctx := testContext(t)
@@ -86,7 +97,12 @@ func dispatchMessage(t *testing.T, fixture *jobstest.Dispatch) runnerwire.Outbou
 func TestHelpNeverReadsStdinOrCallsBackend(t *testing.T) {
 	fixture, execution, _ := dispatchFixture(t)
 	stdout := &outputBuffer{}
-	result, err := process.Forward(testContext(t), fixture.Server.Endpoint(), dispatchRequest(t, execution, "--help"), process.Stdio{Stdin: neverRead{t: t}, Stdout: stdout, Stderr: &outputBuffer{}})
+	result, err := process.Forward(
+		testContext(t),
+		fixture.Server.Endpoint(),
+		dispatchRequest(t, execution, "--help"),
+		process.Stdio{Stdin: neverRead{t: t}, Stdout: stdout, Stderr: &outputBuffer{}},
+	)
 	if err != nil || result.ExitCode != 0 || !strings.HasPrefix(stdout.String(), "fixture: Test callback.") {
 		t.Fatalf("help: %+v %v %q", result, err, stdout.String())
 	}
@@ -102,7 +118,12 @@ func TestCallbackExitClearsHintAndRevokedContextCannotDispatch(t *testing.T) {
 	request := dispatchRequest(t, execution)
 	done := make(chan error, 1)
 	go func() {
-		result, err := process.Forward(testContext(t), fixture.Server.Endpoint(), request, process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}})
+		result, err := process.Forward(
+			testContext(t),
+			fixture.Server.Endpoint(),
+			request,
+			process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}},
+		)
 		if err == nil && result.ExitCode != 7 {
 			err = fmt.Errorf("exit %d", result.ExitCode)
 		}
@@ -129,7 +150,12 @@ func TestCallbackExitClearsHintAndRevokedContextCannotDispatch(t *testing.T) {
 	if err := guard.Close(testContext(t)); err != nil {
 		t.Fatal(err)
 	}
-	result, err := process.Forward(testContext(t), fixture.Server.Endpoint(), request, process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}})
+	result, err := process.Forward(
+		testContext(t),
+		fixture.Server.Endpoint(),
+		request,
+		process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}},
+	)
 	if err != nil || result.ExitCode == 0 {
 		t.Fatalf("revoked invocation: %+v %v", result, err)
 	}
@@ -147,7 +173,12 @@ func TestCancellationCancelsCallbackAndClearsHint(t *testing.T) {
 	request := dispatchRequest(t, execution)
 	done := make(chan error, 1)
 	go func() {
-		_, err := process.Forward(ctx, fixture.Server.Endpoint(), request, process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}})
+		_, err := process.Forward(
+			ctx,
+			fixture.Server.Endpoint(),
+			request,
+			process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}},
+		)
 		done <- err
 	}()
 	if _, ok := dispatchMessage(t, fixture).(*runnerwire.JobRunningHint); !ok {
@@ -181,7 +212,12 @@ func TestBackendCommandsAreNeverTurnedAway(t *testing.T) {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			_, err := process.Forward(ctx, fixture.Server.Endpoint(), request, process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}})
+			_, err := process.Forward(
+				ctx,
+				fixture.Server.Endpoint(),
+				request,
+				process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}},
+			)
 			ended <- err
 		}()
 	}
@@ -239,7 +275,12 @@ func TestFiniteStdinReportsUTF8Detail(t *testing.T) {
 	request.Operation = process.Raw
 	request.Args = args
 	stderr := &outputBuffer{}
-	result, err := process.Forward(testContext(t), fixture.Server.Endpoint(), request, process.Stdio{Stdin: io.NopCloser(strings.NewReader("ok\xff")), Stdout: &outputBuffer{}, Stderr: stderr})
+	result, err := process.Forward(
+		testContext(t),
+		fixture.Server.Endpoint(),
+		request,
+		process.Stdio{Stdin: io.NopCloser(strings.NewReader("ok\xff")), Stdout: &outputBuffer{}, Stderr: stderr},
+	)
 	if err != nil || result.ExitCode != 1 {
 		t.Fatalf("invalid stdin: %+v %v", result, err)
 	}

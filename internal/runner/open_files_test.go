@@ -48,7 +48,15 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		}
 		ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 		defer cancel()
-		command := exec.CommandContext(ctx, "/bin/sh", "-c", `ulimit -Sn 1024 && exec "$1" -test.run='^TestRunningOutOfOpenFilesWaitsInsteadOfFailing$' -test.count=1 -test.timeout=55s`, "sh", executable)
+		command := exec.CommandContext(
+			ctx,
+			"/bin/sh",
+			"-c",
+			`ulimit -Sn 1024 && exec "$1" -test.run='^TestRunningOutOfOpenFilesWaitsInsteadOfFailing$' `+
+				`-test.count=1 -test.timeout=55s`,
+			"sh",
+			executable,
+		)
 		command.Env = append(os.Environ(), "DEMI_TEST_RUNNER_OPEN_FILES=1", "DEMI_TEST_NATIVE="+native, "TMPDIR=/tmp")
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("descriptor subprocess: %v\n%s", err, output)
@@ -72,7 +80,16 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		scope.Finish(context.Background())
 	}()
 	// Check launch inheritance before the exhaustion fixture changes process limits.
-	child, err := process.Spawn(ctx, process.SpawnOptions{Command: "/bin/sh", Args: []string{"-c", "ulimit -Sn"}, Cwd: root, Env: map[string]string{}, ProcessGroup: true})
+	child, err := process.Spawn(
+		ctx,
+		process.SpawnOptions{
+			Command:      "/bin/sh",
+			Args:         []string{"-c", "ulimit -Sn"},
+			Cwd:          root,
+			Env:          map[string]string{},
+			ProcessGroup: true,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +103,13 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	if result.Code == nil || *result.Code != 0 || printed.String() != "1024\n" {
 		t.Fatalf("child launch limit: %+v, %q", result, printed.String())
 	}
-	limits, err := scope.Start(ctx, "/bin/sh -c 'ulimit -Sn'; env /bin/sh -c 'ulimit -Sn'", root, map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"}, false)
+	limits, err := scope.Start(
+		ctx,
+		"/bin/sh -c 'ulimit -Sn'; env /bin/sh -c 'ulimit -Sn'",
+		root,
+		map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"},
+		false,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +170,12 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		}
 		return err
 	})
-	exhaustDescriptors(ctx, t, "pipe upload", func() error { return pipes.Put(ctx, "/pipe/upload", io.NopCloser(strings.NewReader("hello"))) })
+	exhaustDescriptors(
+		ctx,
+		t,
+		"pipe upload",
+		func() error { return pipes.Put(ctx, "/pipe/upload", io.NopCloser(strings.NewReader("hello"))) },
+	)
 	output := make(chan []byte, 64)
 	service := host.New(ctx, root, pipes, output)
 	defer func() {
@@ -162,37 +190,51 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		return expectHostReply(ctx, output, "directory")
 	})
 	file := filepath.Join(root, "transfer")
-	if err := os.WriteFile(file, []byte("content"), 0600); err != nil {
+	if err := os.WriteFile(file, []byte("content"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	exhaustDescriptors(ctx, t, "file transfer", func() error {
-		if err := service.ReadFile(ctx, runnerwire.FSReadFile{ID: "file", Path: file, Output: runnerwire.PipeRef{ID: "file-out", URL: "/pipe/upload"}}); err != nil {
+		if err := service.ReadFile(
+			ctx,
+			runnerwire.FSReadFile{
+				ID:     "file",
+				Path:   file,
+				Output: runnerwire.PipeRef{ID: "file-out", URL: "/pipe/upload"},
+			},
+		); err != nil {
 			return err
 		}
 		return expectHostReply(ctx, output, "file")
 	})
 	repository := filepath.Join(root, "repository")
-	if err := os.Mkdir(repository, 0700); err != nil {
+	if err := os.Mkdir(repository, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"init", "-q"}, {"config", "user.name", "Fixture"}, {"config", "user.email", "fixture@example.com"}} {
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"config", "user.name", "Fixture"},
+		{"config", "user.email", "fixture@example.com"},
+	} {
 		command := exec.CommandContext(ctx, "git", args...)
 		command.Dir = repository
 		if out, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("git: %v %s", err, out)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(repository, "a.txt"), []byte("before\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(repository, "a.txt"), []byte("before\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"add", "a.txt"}, {"commit", "-qm", "fixture"}} {
+	for _, args := range [][]string{
+		{"add", "a.txt"},
+		{"commit", "-qm", "fixture"},
+	} {
 		command := exec.CommandContext(ctx, "git", args...)
 		command.Dir = repository
 		if out, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("git: %v %s", err, out)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(repository, "a.txt"), []byte("after\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(repository, "a.txt"), []byte("after\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	exhaustDescriptors(ctx, t, "working tree", func() error {
@@ -210,7 +252,9 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 				}
 				if reply, ok := frame.(*runnerwire.GitOK); ok && reply.ID == "git" {
 					result, ok := reply.Result.(*runnerwire.GitChangesResult)
-					if !ok || !result.Value.Repository || len(result.Value.Files) != 1 || result.Value.Files[0].Path != "a.txt" || result.Value.Files[0].Kind != runnerwire.ChangeKindModified {
+					if !ok || !result.Value.Repository || len(result.Value.Files) != 1 ||
+						result.Value.Files[0].Path != "a.txt" ||
+						result.Value.Files[0].Kind != runnerwire.ChangeKindModified {
 						return fmt.Errorf("working tree changed under exhaustion: %+v", reply)
 					}
 					return nil
@@ -243,7 +287,11 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		operation, stop := context.WithCancel(ctx)
 		done := make(chan error, 1)
 		go func() {
-			done <- service.NetOpen(operation, runnerwire.NetOpen{StreamID: "network", Host: "127.0.0.1", Port: uint16(socket.Addr().(*net.TCPAddr).Port), Input: runnerwire.PipeRef{ID: "net-in", URL: "/pipe/download"}, Output: runnerwire.PipeRef{ID: "net-out", URL: "/pipe/upload"}})
+			done <- service.NetOpen(operation, runnerwire.NetOpen{
+				StreamID: "network", Host: "127.0.0.1", Port: uint16(socket.Addr().(*net.TCPAddr).Port),
+				Input:  runnerwire.PipeRef{ID: "net-in", URL: "/pipe/download"},
+				Output: runnerwire.PipeRef{ID: "net-out", URL: "/pipe/upload"},
+			})
 		}()
 		defer func() {
 			stop()
@@ -268,7 +316,16 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		}
 	})
 	exhaustDescriptors(ctx, t, "process", func() error {
-		child, err := process.Spawn(ctx, process.SpawnOptions{Command: "/bin/echo", Args: []string{"hello"}, Cwd: root, Env: map[string]string{}, ProcessGroup: true})
+		child, err := process.Spawn(
+			ctx,
+			process.SpawnOptions{
+				Command:      "/bin/echo",
+				Args:         []string{"hello"},
+				Cwd:          root,
+				Env:          map[string]string{},
+				ProcessGroup: true,
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -314,9 +371,19 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := commandwire.PackageDescriptor{ID: "fixture", Version: "1.0.0", ProtocolVersion: 1, Operations: (&cmdpkgstest.Fixture{}).Operations(), Targets: map[string]commandwire.PackageArtifact{string(target): {SHA256: fmt.Sprintf("%x", sha256.Sum256(bytes)), Size: uint64(len(bytes))}}, Resources: map[string]commandwire.PackageResource{}}
+	descriptor := commandwire.PackageDescriptor{
+		ID:              "fixture",
+		Version:         "1.0.0",
+		ProtocolVersion: 1,
+		Operations:      (&cmdpkgstest.Fixture{}).Operations(),
+		Targets: map[string]commandwire.PackageArtifact{
+			string(target): {SHA256: fmt.Sprintf("%x", sha256.Sum256(bytes)), Size: uint64(len(bytes))},
+		},
+		Resources: map[string]commandwire.PackageResource{},
+	}
 	exhaustDescriptors(ctx, t, "native service start", func() error {
-		resident, err := registry.Handle().Acquire(ctx, descriptor, localFixtureArtifact(native), cmdpkgstest.NoNumbers{})
+		resident, err := registry.Handle().
+			Acquire(ctx, descriptor, localFixtureArtifact(native), cmdpkgstest.NoNumbers{})
 		if err != nil {
 			return err
 		}
@@ -363,7 +430,11 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 				}
 				if call, ok := message.(*runnerwire.RPCCall); ok {
 					reached.Add(1)
-					if err := dispatch.Deliver(routed, &runnerwire.RPCExit{CallID: call.CallID, ExitCode: 0}); err != nil && routed.Err() == nil {
+					if err := dispatch.Deliver(
+						routed,
+						&runnerwire.RPCExit{CallID: call.CallID, ExitCode: 0},
+					); err != nil &&
+						routed.Err() == nil {
 						t.Error(err)
 						return
 					}
@@ -376,7 +447,22 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		<-routingDone
 	}()
 	exhaustDescriptors(ctx, t, "local command connection", func() error {
-		completion, err := process.Forward(ctx, dispatch.Server.Endpoint(), commandwire.LocalInvocation{Operation: process.Raw, InvocationID: "local", Args: args, Cwd: root, Env: map[string]string{}}, process.Stdio{Stdin: io.NopCloser(strings.NewReader("")), Stdout: discardCommandOutput{}, Stderr: discardCommandOutput{}})
+		completion, err := process.Forward(
+			ctx,
+			dispatch.Server.Endpoint(),
+			commandwire.LocalInvocation{
+				Operation:    process.Raw,
+				InvocationID: "local",
+				Args:         args,
+				Cwd:          root,
+				Env:          map[string]string{},
+			},
+			process.Stdio{
+				Stdin:  io.NopCloser(strings.NewReader("")),
+				Stdout: discardCommandOutput{},
+				Stderr: discardCommandOutput{},
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -391,7 +477,13 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	t.Run("utility_child", func(t *testing.T) {
 		// Unlike Rust's embedded xargs, Go starts the system utility in its own
 		// process. It can start its child while the runner has no descriptor left.
-		job, err := scope.Start(ctx, "printf ready; xargs /usr/bin/printf > child.txt", root, map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"}, false)
+		job, err := scope.Start(
+			ctx,
+			"printf ready; xargs /usr/bin/printf > child.txt",
+			root,
+			map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"},
+			false,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -417,7 +509,13 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		}
 	})
 	t.Run("running_shell", func(t *testing.T) {
-		job, err := scope.Start(ctx, "printf ready; read go; echo one | cat > piped.txt; cat <<EOF 2>&1 > here.txt\ntwo\nEOF\n", root, map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"}, false)
+		job, err := scope.Start(
+			ctx,
+			"printf ready; read go; echo one | cat > piped.txt; cat <<EOF 2>&1 > here.txt\ntwo\nEOF\n",
+			root,
+			map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"},
+			false,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -444,7 +542,13 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		}
 	})
 	t.Run("cancelled_pipeline", func(t *testing.T) {
-		cancelled, err := scope.Start(ctx, "printf ready; read go; echo one | cat > cancelled.txt", root, map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"}, false)
+		cancelled, err := scope.Start(
+			ctx,
+			"printf ready; read go; echo one | cat > cancelled.txt",
+			root,
+			map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"},
+			false,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -474,9 +578,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		if exit.Signal == nil || *exit.Signal != "SIGKILL" {
 			t.Fatalf("cancelled descriptor wait: %+v", exit)
 		}
-
 	})
-
 }
 
 // fillDescriptors owns every available descriptor until the starvation step releases it.
@@ -495,11 +597,13 @@ func fillDescriptors(t *testing.T) []int {
 		held = append(held, fd)
 	}
 }
+
 func releaseDescriptors(held []int) {
 	for _, fd := range held {
 		_ = unix.Close(fd)
 	}
 } // Only this scope owns these descriptors.
+
 func waitDescriptorPause(ctx context.Context, t *testing.T, before uint64, done <-chan error) {
 	t.Helper()
 	for cmdsdk.DescriptorPauses() == before {
@@ -513,6 +617,7 @@ func waitDescriptorPause(ctx context.Context, t *testing.T, before uint64, done 
 		}
 	}
 }
+
 func exhaustDescriptors(ctx context.Context, t *testing.T, name string, operation func() error) {
 	t.Helper()
 	t.Log(name)
@@ -548,6 +653,7 @@ func exhaustDescriptors(ctx context.Context, t *testing.T, name string, operatio
 		t.Fatal(ctx.Err())
 	}
 }
+
 func expectHostReply(ctx context.Context, output <-chan []byte, id string) error {
 	for {
 		select {
@@ -567,6 +673,7 @@ func expectHostReply(ctx context.Context, output <-chan []byte, id string) error
 		}
 	}
 }
+
 func awaitReady(ctx context.Context, t *testing.T, scope *shelltest.Scope, job process.ShellJob) {
 	t.Helper()
 	var printed strings.Builder

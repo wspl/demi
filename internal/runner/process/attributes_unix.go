@@ -13,10 +13,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var inheritedUmask = sync.OnceValue(readUmask)
-var inheritedOpenFiles = sync.OnceValues(func() (unix.Rlimit, error) {
-	return probeOpenFiles(context.Background())
-})
+var (
+	inheritedUmask     = sync.OnceValue(readUmask)
+	inheritedOpenFiles = sync.OnceValues(func() (unix.Rlimit, error) {
+		return probeOpenFiles(context.Background())
+	})
+)
 
 // RaiseOpenFileLimit reports the launch soft descriptor limit and the current
 // limit raised by Go at startup. It never sets the runner's limits. Call it

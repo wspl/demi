@@ -11,7 +11,14 @@ import (
 
 func TestGrowthReserveFractionFloorAndSmallCap(t *testing.T) {
 	const mib = 1024 * 1024
-	for _, test := range []struct{ total, free, want uint64 }{{0, 0, 0}, {128, 32, 0}, {128, 31, 256}, {2048, 255, 4096}, {8192, 820, 0}, {8192, 819, 16384}} {
+	for _, test := range []struct{ total, free, want uint64 }{
+		{0, 0, 0},
+		{128, 32, 0},
+		{128, 31, 256},
+		{2048, 255, 4096},
+		{8192, 820, 0},
+		{8192, 819, 16384},
+	} {
 		result, err := GrowthWanted(test.total*mib, test.free*mib)
 		if err != nil {
 			t.Fatal(err)
@@ -66,7 +73,9 @@ func TestVolumeGrowthHasOneRequestUntilMatchingReply(t *testing.T) {
 	if checked, err := v.Checked(t.Context()); err != nil || checked {
 		t.Fatalf("duplicate growth: %v %v", checked, err)
 	}
-	if err := v.Grown(runnerwire.VolumeGrown{ID: "wrong", Volume: runnerwire.VolumeNameHome, Bytes: wanted}); err == nil {
+	if err := v.Grown(
+		runnerwire.VolumeGrown{ID: "wrong", Volume: runnerwire.VolumeNameHome, Bytes: wanted},
+	); err == nil {
 		t.Fatal("wrong reply accepted")
 	}
 	if err := v.Grown(runnerwire.VolumeGrown{ID: frame.ID, Volume: frame.Volume, Bytes: frame.Bytes}); err != nil {

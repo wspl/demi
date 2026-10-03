@@ -29,22 +29,33 @@ const Alive = "ipc.alive"
 // closes all three on completion or cancellation; Close must unblock IO.
 // Use StandardFile to pass duplicates of process standard handles.
 type Stdio struct {
-	Stdin  io.ReadCloser
+	// Stdin supplies invocation input.
+	Stdin io.ReadCloser
+	// Stdout receives invocation standard output.
 	Stdout io.WriteCloser
+	// Stderr receives invocation standard error.
 	Stderr io.WriteCloser
 }
 
 // Forward forwards one local invocation. Input is read only after an explicit
 // pull, while output and connection processing continue independently.
-func Forward(ctx context.Context, endpoint string, request commandwire.LocalInvocation, stdio Stdio) (completion commandwire.Completion, err error) {
+func Forward(
+	ctx context.Context,
+	endpoint string,
+	request commandwire.LocalInvocation,
+	stdio Stdio,
+) (completion commandwire.Completion, err error) {
 	defer func() {
 		if err != nil && ctx.Err() != nil {
-			err = &operationFailure{message: "command cancelled", cause: ctx.Err()}
+			err = &operationError{message: "command cancelled", cause: ctx.Err()}
 		}
 	}()
 	stdio, restore, err := cancellableStdio(ctx, stdio)
 	source := &commandReader{commandStream: commandStream[io.ReadCloser]{stream: stdio.Stdin}}
-	terminal := &commandTerminal{stdout: commandStream[io.WriteCloser]{stream: stdio.Stdout}, stderr: commandStream[io.WriteCloser]{stream: stdio.Stderr}}
+	terminal := &commandTerminal{
+		stdout: commandStream[io.WriteCloser]{stream: stdio.Stdout},
+		stderr: commandStream[io.WriteCloser]{stream: stdio.Stderr},
+	}
 	defer func() {
 		err = errors.Join(err, source.Close(), terminal.stdout.Close(), terminal.stderr.Close(), restore())
 	}()
@@ -65,7 +76,10 @@ func Forward(ctx context.Context, endpoint string, request commandwire.LocalInvo
 	// Only invocation opening has the Rust client's ten-second deadline. Its
 	// stream retains the parent context after headers arrive.
 	timeoutDone := make(chan struct{})
-	timer := time.AfterFunc(10*time.Second, func() { cancel(); close(timeoutDone) })
+	timer := time.AfterFunc(10*time.Second, func() {
+		cancel()
+		close(timeoutDone)
+	})
 	input, output, err := client.Invoke(invocation, request)
 	if !timer.Stop() {
 		<-timeoutDone
@@ -145,9 +159,11 @@ type commandTerminal struct{ stdout, stderr commandStream[io.WriteCloser] }
 func (t *commandTerminal) Stdout(ctx context.Context, b []byte) error {
 	return t.write(ctx, &t.stdout, b)
 }
+
 func (t *commandTerminal) Stderr(ctx context.Context, b []byte) error {
 	return t.write(ctx, &t.stderr, b)
 }
+
 func (*commandTerminal) write(ctx context.Context, target *commandStream[io.WriteCloser], b []byte) error {
 	stop := interruptCommandIO(ctx, target)
 	defer stop()
@@ -184,7 +200,7 @@ func interruptCommandIO(ctx context.Context, stream io.Closer) func() {
 func Connect(ctx context.Context, endpoint string) (net.Conn, error) {
 	connection, err := connectLocal(ctx, endpoint)
 	if err != nil && ctx.Err() != nil {
-		return nil, &operationFailure{message: "local connection cancelled", cause: ctx.Err()}
+		return nil, &operationError{message: "local connection cancelled", cause: ctx.Err()}
 	}
 	return connection, err
 }

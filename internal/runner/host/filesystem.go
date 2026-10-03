@@ -75,7 +75,15 @@ func (s *Service) Readdir(ctx context.Context, request runnerwire.FSReaddir) err
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			result = append(result, runnerwire.DirEntry{Name: entry.Name(), IsFile: entry.Type().IsRegular(), IsDirectory: entry.IsDir(), IsSymbolicLink: entry.Type()&os.ModeSymlink != 0})
+			result = append(
+				result,
+				runnerwire.DirEntry{
+					Name:           entry.Name(),
+					IsFile:         entry.Type().IsRegular(),
+					IsDirectory:    entry.IsDir(),
+					IsSymbolicLink: entry.Type()&os.ModeSymlink != 0,
+				},
+			)
 		}
 		return &runnerwire.FSReaddirResult{Value: result}, nil
 	})
@@ -89,9 +97,9 @@ func (s *Service) Mkdir(ctx context.Context, request runnerwire.FSMkdir) error {
 			return nil, err
 		}
 		if request.Recursive != nil && *request.Recursive {
-			err = os.MkdirAll(path, 0777)
+			err = os.MkdirAll(path, 0o777)
 		} else {
-			err = os.Mkdir(path, 0777)
+			err = os.Mkdir(path, 0o777)
 		}
 		return &runnerwire.FSMkdirResult{}, err
 	})
@@ -123,7 +131,12 @@ func (s *Service) Cp(ctx context.Context, request runnerwire.FSCp) error {
 		if err != nil {
 			return nil, err
 		}
-		return &runnerwire.FSCpResult{}, copyPath(ctx, path, destination, request.Recursive != nil && *request.Recursive)
+		return &runnerwire.FSCpResult{}, copyPath(
+			ctx,
+			path,
+			destination,
+			request.Recursive != nil && *request.Recursive,
+		)
 	})
 }
 
@@ -220,7 +233,11 @@ func (s *Service) Utimes(ctx context.Context, request runnerwire.FSUtimes) error
 		if err != nil {
 			return nil, err
 		}
-		return &runnerwire.FSUtimesResult{}, os.Chtimes(path, time.UnixMilli(int64(request.Atime)), time.UnixMilli(int64(request.Mtime)))
+		return &runnerwire.FSUtimesResult{}, os.Chtimes(
+			path,
+			time.UnixMilli(int64(request.Atime)),
+			time.UnixMilli(int64(request.Mtime)),
+		)
 	})
 }
 
@@ -231,11 +248,22 @@ func ErrorCode(err error) *string {
 		cause error
 		code  string
 	}{
-		{os.ErrNotExist, "ENOENT"}, {os.ErrPermission, "EACCES"}, {os.ErrExist, "EEXIST"},
-		{syscall.ENOTDIR, "ENOTDIR"}, {syscall.EISDIR, "EISDIR"}, {syscall.ENOTEMPTY, "ENOTEMPTY"},
-		{os.ErrInvalid, "EINVAL"}, {syscall.EINVAL, "EINVAL"}, {syscall.EXDEV, "EXDEV"},
-		{context.Canceled, "EINTR"}, {syscall.EINTR, "EINTR"}, {syscall.EROFS, "EROFS"},
-		{syscall.ENOSPC, "ENOSPC"}, {syscall.EMLINK, "EMLINK"}, {syscall.EPIPE, "EPIPE"}, {syscall.ELOOP, "ELOOP"},
+		{os.ErrNotExist, "ENOENT"},
+		{os.ErrPermission, "EACCES"},
+		{os.ErrExist, "EEXIST"},
+		{syscall.ENOTDIR, "ENOTDIR"},
+		{syscall.EISDIR, "EISDIR"},
+		{syscall.ENOTEMPTY, "ENOTEMPTY"},
+		{os.ErrInvalid, "EINVAL"},
+		{syscall.EINVAL, "EINVAL"},
+		{syscall.EXDEV, "EXDEV"},
+		{context.Canceled, "EINTR"},
+		{syscall.EINTR, "EINTR"},
+		{syscall.EROFS, "EROFS"},
+		{syscall.ENOSPC, "ENOSPC"},
+		{syscall.EMLINK, "EMLINK"},
+		{syscall.EPIPE, "EPIPE"},
+		{syscall.ELOOP, "ELOOP"},
 	}
 	for _, entry := range codes {
 		if errors.Is(err, entry.cause) {

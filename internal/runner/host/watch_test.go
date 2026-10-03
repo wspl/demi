@@ -16,7 +16,16 @@ func TestNativeWatchRecursiveDeliveryAndClose(t *testing.T) {
 	events := make(chan WatchEvent, 1024)
 	var mu sync.Mutex
 	reported := 0
-	watch, err := StartWatch(t.Context(), []string{root}, func(e WatchEvent) { mu.Lock(); reported++; mu.Unlock(); events <- e })
+	watch, err := StartWatch(
+		t.Context(),
+		[]string{root},
+		func(e WatchEvent) {
+			mu.Lock()
+			reported++
+			mu.Unlock()
+			events <- e
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +50,7 @@ func TestNativeWatchRecursiveDeliveryAndClose(t *testing.T) {
 			break
 		}
 	}
-	if err := os.Chmod(filepath.Join(root, "new/deep/file"), 0755); err != nil {
+	if err := os.Chmod(filepath.Join(root, "new/deep/file"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for {
@@ -68,7 +77,12 @@ func TestNativeWatchRecursiveDeliveryAndClose(t *testing.T) {
 }
 
 func TestWatchStartupFailureAndCancellation(t *testing.T) {
-	if watch, err := StartWatch(t.Context(), []string{filepath.Join(t.TempDir(), "missing")}, func(WatchEvent) {}); err == nil || watch != nil {
+	if watch, err := StartWatch(
+		t.Context(),
+		[]string{filepath.Join(t.TempDir(), "missing")},
+		func(WatchEvent) {},
+	); err == nil ||
+		watch != nil {
 		t.Fatalf("missing root: %v %v", watch, err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())

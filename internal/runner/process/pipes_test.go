@@ -30,37 +30,49 @@ func pipeServer(t *testing.T, client *PipeClient, handler func(*http.Request, ne
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			defer func() { _ = remote.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+			// Cleanup follows the operation result; cancellation may already have closed it.
+			defer func() { _ = remote.Close() }()
 			request, err := http.ReadRequest(bufio.NewReader(remote))
 			if err != nil {
 				t.Errorf("read request: %v", err)
 				return
 			}
-			defer func() { _ = request.Body.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+			// Cleanup follows the operation result; cancellation may already have closed it.
+			defer func() { _ = request.Body.Close() }()
 			handler(request, remote)
 		}()
 		return local, nil
 	}
-	return func() { _ = client.Close(); workers.Wait() }
+	return func() {
+		_ = client.Close()
+		workers.Wait()
+	}
 }
+
 func testPipeClient(t *testing.T, timeout time.Duration) *PipeClient {
 	t.Helper()
 	origin, err := runnerwire.ParseBackendURL("http://backend.invalid/ignored?ignored")
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := NewPipeClientWithConnectTimeout(origin, func() (runnerwire.DeviceToken, bool) { return runnerwire.DeviceToken("test-token"), true }, timeout)
+	client, err := NewPipeClientWithConnectTimeout(
+		origin,
+		func() (runnerwire.DeviceToken, bool) { return runnerwire.DeviceToken("test-token"), true },
+		timeout,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return client
 }
+
 func writeReply(t *testing.T, connection net.Conn, text string) {
 	t.Helper()
 	if _, err := io.WriteString(connection, text); err != nil {
 		t.Errorf("write reply: %v", err)
 	}
 }
+
 func TestPipeQuietIOOutlivesConnectDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const deadline = 200 * time.Millisecond
@@ -108,7 +120,8 @@ func TestPipeQuietIOOutlivesConnectDeadline(t *testing.T) {
 		sent := make(chan struct{})
 		go func() {
 			defer close(sent)
-			defer func() { _ = writer.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+			// Cleanup follows the operation result; cancellation may already have closed it.
+			defer func() { _ = writer.Close() }()
 			if _, err := writer.Write([]byte("first")); err != nil {
 				t.Error(err)
 				return
@@ -124,6 +137,7 @@ func TestPipeQuietIOOutlivesConnectDeadline(t *testing.T) {
 		<-sent
 	})
 }
+
 func TestPipeCancellationAndOrigin(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
 		t.Skip("fidelity 6: PipeClient adds pipe: to Rust origin-refusal text")
@@ -172,6 +186,7 @@ func TestPipeCancellationAndOrigin(t *testing.T) {
 		}
 	})
 }
+
 func TestPipeRefusalsAndConfirmationBounds(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		for _, tc := range []struct {
@@ -180,14 +195,25 @@ func TestPipeRefusalsAndConfirmationBounds(t *testing.T) {
 			want   string
 		}{
 			{http.StatusFound, "moved", "pipe refused (302 Found): moved"},
-			{http.StatusForbidden, strings.Repeat("x", pipeAnswerBytes+10), "pipe refused (403 Forbidden): " + strings.Repeat("x", pipeAnswerBytes)},
+			{
+				http.StatusForbidden,
+				strings.Repeat("x", pipeAnswerBytes+10),
+				"pipe refused (403 Forbidden): " + strings.Repeat("x", pipeAnswerBytes),
+			},
 			{http.StatusOK, strings.Repeat("x", pipeAnswerBytes+1), "oversized pipe confirmation"},
 		} {
 			client := testPipeClient(t, time.Second)
 			finish := pipeServer(t, client, func(request *http.Request, connection net.Conn) {
 				_, _ = io.Copy(io.Discard, request.Body)
 				// The client intentionally closes before all oversized refusal bytes.
-				_, _ = fmt.Fprintf(connection, "HTTP/1.1 %d %s\r\nContent-Length: %d\r\nLocation: http://elsewhere.invalid/\r\nConnection: close\r\n\r\n%s", tc.status, http.StatusText(tc.status), len(tc.body), tc.body)
+				_, _ = fmt.Fprintf(
+					connection,
+					"HTTP/1.1 %d %s\r\nContent-Length: %d\r\nLocation: http://elsewhere.invalid/\r\nConnection: close\r\n\r\n%s",
+					tc.status,
+					http.StatusText(tc.status),
+					len(tc.body),
+					tc.body,
+				)
 			})
 			err := client.Put(t.Context(), "/pipe", io.NopCloser(bytes.NewReader(nil)))
 			if err == nil || err.Error() != tc.want {
@@ -197,6 +223,7 @@ func TestPipeRefusalsAndConfirmationBounds(t *testing.T) {
 		}
 	})
 }
+
 func TestReportPipe(t *testing.T) {
 	frames := make(chan []byte, 1)
 	if err := ReportPipe(t.Context(), frames, "pipe", errors.New("write failed")); err != nil {

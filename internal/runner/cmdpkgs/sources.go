@@ -11,8 +11,11 @@ import (
 // ArtifactSource is a local path or an HTTP location and its optional expiry.
 // A nonempty Path selects a local file; otherwise URL selects the download.
 type ArtifactSource struct {
-	Path      string
-	URL       string
+	// Path selects a local artifact when nonempty.
+	Path string
+	// URL selects the download when Path is empty.
+	URL string
+	// ExpiresAt is the optional download URL expiry.
 	ExpiresAt *time.Time
 }
 
@@ -21,7 +24,10 @@ func SourceFromLocation(location commandwire.ArtifactLocation) (ArtifactSource, 
 	switch loc := location.(type) {
 	case *commandwire.ArtifactPath:
 		if !filepath.IsAbs(loc.Path) {
-			return ArtifactSource{}, &RuntimeError{Kind: LocationFailure, Detail: "local artifact path must be absolute"}
+			return ArtifactSource{}, &RuntimeError{
+				Kind:   LocationFailure,
+				Detail: "local artifact path must be absolute",
+			}
 		}
 		return ArtifactSource{Path: loc.Path}, nil
 	case *commandwire.ArtifactURL:
@@ -41,6 +47,7 @@ func SourceFromLocation(location commandwire.ArtifactLocation) (ArtifactSource, 
 // ArtifactResolver resolves only artifacts authorized by the calling registration's
 // catalog. URLs are resolved again for each attempt and never become cache keys.
 type ArtifactResolver interface {
+	// Resolve locates an artifact authorized by the caller.
 	Resolve(ctx context.Context, artifact commandwire.PackageArtifact) (ArtifactSource, error)
 }
 
@@ -48,5 +55,10 @@ type ArtifactResolver interface {
 // the service started. Losing that connection also ends the service.
 type NumberSource interface {
 	// Reserve returns the first of count numbers of the conversation's sequence.
-	Reserve(ctx context.Context, conversation string, sequence commandwire.ServiceSequence, count uint32) (uint64, error)
+	Reserve(
+		ctx context.Context,
+		conversation string,
+		sequence commandwire.ServiceSequence,
+		count uint32,
+	) (uint64, error)
 }

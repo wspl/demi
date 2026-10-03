@@ -31,12 +31,12 @@ func TestPrivatePublicationAndPermissions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if info.Mode().Perm() != 0600 {
+			if info.Mode().Perm() != 0o600 {
 				t.Fatalf("publication mode %o", info.Mode().Perm())
 			}
 		}
 	}
-	if err := Chmod(t.Context(), path, 0600); err != nil {
+	if err := Chmod(t.Context(), path, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if runtime.GOOS != "windows" {
@@ -44,7 +44,7 @@ func TestPrivatePublicationAndPermissions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if info.Mode().Perm() != 0600 {
+		if info.Mode().Perm() != 0o600 {
 			t.Fatalf("mode %o", info.Mode().Perm())
 		}
 	}

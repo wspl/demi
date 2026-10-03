@@ -36,14 +36,22 @@ func fixture(t *testing.T, root string, variant byte) (commandwire.PackageDescri
 	resolver := writeSource(t, root, fmt.Sprintf("fixture-%d", variant), data)
 	target, err := commandwire.HostTarget()
 	must(t, err)
-	return commandwire.PackageDescriptor{ID: "demi.fixture", Version: "1.0.0", ProtocolVersion: 1, Operations: commandwiretest.FixtureOperations(), Targets: map[string]commandwire.PackageArtifact{string(target): artifact(data)}}, resolver
+	return commandwire.PackageDescriptor{
+		ID:              "demi.fixture",
+		Version:         "1.0.0",
+		ProtocolVersion: 1,
+		Operations:      commandwiretest.FixtureOperations(),
+		Targets:         map[string]commandwire.PackageArtifact{string(target): artifact(data)},
+	}, resolver
 }
+
 func digest(d commandwire.PackageDescriptor) string {
 	for _, a := range d.Targets {
 		return a.SHA256
 	}
 	return ""
 }
+
 func registry(t *testing.T, root, image string) *cmdpkgs.ServiceRegistry {
 	t.Helper()
 	r, err := cmdpkgs.NewServiceRegistry(t.Context(), filepath.Join(root, "cache"), image, root, map[string]string{})
@@ -55,12 +63,19 @@ func registry(t *testing.T, root, image string) *cmdpkgs.ServiceRegistry {
 	})
 	return r
 }
-func acquire(t *testing.T, r *cmdpkgs.ServiceRegistry, d commandwire.PackageDescriptor, resolver cmdpkgs.ArtifactResolver) *cmdpkgs.Resident {
+
+func acquire(
+	t *testing.T,
+	r *cmdpkgs.ServiceRegistry,
+	d commandwire.PackageDescriptor,
+	resolver cmdpkgs.ArtifactResolver,
+) *cmdpkgs.Resident {
 	t.Helper()
 	resident, err := r.Handle().Acquire(t.Context(), d, resolver, cmdpkgstest.NoNumbers{})
 	must(t, err)
 	return resident
 }
+
 func lease(t *testing.T, r *cmdpkgs.ServiceRegistry, d commandwire.PackageDescriptor) *cmdpkgs.ServiceLease {
 	t.Helper()
 	l, err := r.Handle().Lease(t.Context(), digest(d))
@@ -68,9 +83,22 @@ func lease(t *testing.T, r *cmdpkgs.ServiceRegistry, d commandwire.PackageDescri
 	t.Cleanup(l.Release)
 	return l
 }
+
 func invocation(operation, conversation string) commandwire.Invocation {
-	return commandwire.Invocation{Operation: operation, InvocationID: operation, Context: commandwire.CommandContext{Conversation: conversation, Caller: &commandwire.AgentCaller{Number: 1}, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}}, Args: []byte("{}"), Cwd: os.TempDir(), Env: map[string]string{}}
+	return commandwire.Invocation{
+		Operation:    operation,
+		InvocationID: operation,
+		Context: commandwire.CommandContext{
+			Conversation: conversation,
+			Caller:       &commandwire.AgentCaller{Number: 1},
+			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		},
+		Args: []byte("{}"),
+		Cwd:  os.TempDir(),
+		Env:  map[string]string{},
+	}
 }
+
 func call(ctx context.Context, resident *cmdpkgs.Resident, operation, conversation string) (string, error) {
 	input, output, err := resident.Client().Invoke(ctx, invocation(operation, conversation))
 	if err != nil {
@@ -106,12 +134,14 @@ func call(ctx context.Context, resident *cmdpkgs.Resident, operation, conversati
 		}
 	}
 }
+
 func invoke(t *testing.T, resident *cmdpkgs.Resident, operation, conversation string) string {
 	t.Helper()
 	text, err := call(t.Context(), resident, operation, conversation)
 	must(t, err)
 	return text
 }
+
 func decided(t *testing.T, receiver *cmdpkgs.DecisionReceiver, d commandwire.PackageDescriptor, want cmdpkgs.Decision) {
 	t.Helper()
 	event, err := receiver.Next(t.Context())
@@ -120,6 +150,7 @@ func decided(t *testing.T, receiver *cmdpkgs.DecisionReceiver, d commandwire.Pac
 		t.Fatalf("decision=%+v; want %v", event, want)
 	}
 }
+
 func stopped(t *testing.T, resident *cmdpkgs.Resident) {
 	t.Helper()
 	err := resident.Failure(t.Context(), io.EOF)
@@ -131,6 +162,7 @@ func stopped(t *testing.T, resident *cmdpkgs.Resident) {
 		t.Fatal("stopped client still answers")
 	}
 }
+
 func TestServiceWithoutLeasesStaysWhileHoldingConversation(t *testing.T) {
 	root := t.TempDir()
 	r := registry(t, root, "")
@@ -157,6 +189,7 @@ func TestServiceWithoutLeasesStaysWhileHoldingConversation(t *testing.T) {
 	stopped(t, resident)
 	must(t, r.Handle().ReleaseConversation(t.Context(), "two"))
 }
+
 func TestLeaseKeepsServiceHoldingNothing(t *testing.T) {
 	root := t.TempDir()
 	r := registry(t, root, "")
@@ -181,6 +214,7 @@ func TestLeaseKeepsServiceHoldingNothing(t *testing.T) {
 	l.Release()
 	stopped(t, resident)
 }
+
 func TestUnanswerableServiceStays(t *testing.T) {
 	root := t.TempDir()
 	r := registry(t, root, "")
@@ -200,6 +234,7 @@ func TestUnanswerableServiceStays(t *testing.T) {
 	decided(t, events, d, cmdpkgs.Stops)
 	stopped(t, resident)
 }
+
 func TestAnswerBeforeReleaseIsAskedAgain(t *testing.T) {
 	root := t.TempDir()
 	r := registry(t, root, "")
@@ -218,6 +253,7 @@ func TestAnswerBeforeReleaseIsAskedAgain(t *testing.T) {
 	decided(t, events, d, cmdpkgs.Stops)
 	stopped(t, resident)
 }
+
 func TestFailedReleaseRetiresBeforeAnswerAndNextCallerStartsAgain(t *testing.T) {
 	root := t.TempDir()
 	r := registry(t, root, "")
@@ -234,6 +270,7 @@ func TestFailedReleaseRetiresBeforeAnswerAndNextCallerStartsAgain(t *testing.T) 
 	_, err := next.Client().Info(t.Context())
 	must(t, err)
 }
+
 func TestDeadServiceReportsStatusAndStderr(t *testing.T) {
 	root := t.TempDir()
 	r := registry(t, root, "")
@@ -246,19 +283,22 @@ func TestDeadServiceReportsStatusAndStderr(t *testing.T) {
 	}
 	failure := resident.Failure(t.Context(), err)
 	var exit *cmdpkgs.ServiceExit
-	if !errors.As(failure, &exit) || exit.Reason.State.Code == nil || *exit.Reason.State.Code != 3 || !strings.Contains(exit.Stderr, "fixture crashing on purpose") {
+	if !errors.As(failure, &exit) || exit.Reason.State.Code == nil || *exit.Reason.State.Code != 3 ||
+		!strings.Contains(exit.Stderr, "fixture crashing on purpose") {
 		t.Fatalf("failure: %v", failure)
 	}
 	wantStatus := "exit status: 3"
 	if runtime.GOOS == "windows" {
 		wantStatus = "exit code: 3"
 	}
-	if want := "native service demi.fixture exited with " + wantStatus + "; its standard error ended with:\nfixture crashing on purpose"; failure.Error() != want {
+	if want := "native service demi.fixture exited with " + wantStatus +
+		"; its standard error ended with:\nfixture crashing on purpose"; failure.Error() != want {
 		t.Fatalf("failure text = %q; want %q", failure, want)
 	}
 	next := acquire(t, r, d, resolver)
 	invoke(t, next, "retain", "after")
 }
+
 func TestStartNobodyWaitsForStops(t *testing.T) {
 	root := t.TempDir()
 	r := registry(t, root, "")
@@ -299,6 +339,7 @@ func TestStartNobodyWaitsForStops(t *testing.T) {
 	}
 	l.Release()
 }
+
 func TestStopAllAndCloseEndServices(t *testing.T) {
 	root := t.TempDir()
 	r := registry(t, root, "")
@@ -323,12 +364,14 @@ func TestStopAllAndCloseEndServices(t *testing.T) {
 		t.Fatal("closed registry acquired")
 	}
 }
+
 func preinstall(t *testing.T, image string, d commandwire.PackageDescriptor, data []byte) {
 	t.Helper()
 	directory := filepath.Join(image, digest(d))
-	must(t, os.MkdirAll(directory, 0700))
-	must(t, os.WriteFile(filepath.Join(directory, "fixture"), data, 0755))
+	must(t, os.MkdirAll(directory, 0o700))
+	must(t, os.WriteFile(filepath.Join(directory, "fixture"), data, 0o755))
 }
+
 func TestServiceStartsFromImageWithoutDownload(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Cloud images are Linux-only; Windows does not inspect them")
@@ -351,6 +394,7 @@ func TestServiceStartsFromImageWithoutDownload(t *testing.T) {
 		t.Fatal("image was copied into cache")
 	}
 }
+
 func TestMissingOrDamagedImageDownloads(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Cloud images are Linux-only; Windows does not inspect them")
@@ -384,7 +428,10 @@ func TestMissingOrDamagedImageDownloads(t *testing.T) {
 	for _, record := range logs.lines {
 		text := record.Message
 		hasSource := false
-		record.Attrs(func(a slog.Attr) bool { hasSource = hasSource || a.Key == "source"; return true })
+		record.Attrs(func(a slog.Attr) bool {
+			hasSource = hasSource || a.Key == "source"
+			return true
+		})
 		if strings.Contains(text, filepath.Join(image, digest(damaged))) {
 			damagedLogs++
 			if hasSource || !strings.Contains(text, "does not match its declared SHA-256") {
@@ -486,7 +533,10 @@ func TestServiceLifecycleMessages(t *testing.T) {
 			lifecycle = append(lifecycle, line.Message)
 		}
 	}
-	if len(lifecycle) != 3 || !strings.HasPrefix(lifecycle[0], "service "+d.ID+" started (pid ") || !strings.HasSuffix(lifecycle[0], ")") || lifecycle[1] != "service "+d.ID+" holds no lease or conversation and stops" || lifecycle[2] != "service "+d.ID+" stopped" {
+	if len(lifecycle) != 3 || !strings.HasPrefix(lifecycle[0], "service "+d.ID+" started (pid ") ||
+		!strings.HasSuffix(lifecycle[0], ")") ||
+		lifecycle[1] != "service "+d.ID+" holds no lease or conversation and stops" ||
+		lifecycle[2] != "service "+d.ID+" stopped" {
 		t.Fatalf("lifecycle: %q", lifecycle)
 	}
 }

@@ -24,7 +24,15 @@ func connectLocal(ctx context.Context, endpoint string) (net.Conn, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		handle, err := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE, 0, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OVERLAPPED, 0)
+		handle, err := windows.CreateFile(
+			name,
+			windows.GENERIC_READ|windows.GENERIC_WRITE,
+			0,
+			nil,
+			windows.OPEN_EXISTING,
+			windows.FILE_FLAG_OVERLAPPED,
+			0,
+		)
 		if err == nil {
 			return &localPipe{File: os.NewFile(uintptr(handle), endpoint)}, nil
 		}

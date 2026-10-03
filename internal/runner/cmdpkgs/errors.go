@@ -13,8 +13,11 @@ import (
 // RuntimeError identifies why a service could not be acquired or why it ended.
 // Cause is available through errors.Is and errors.As.
 type RuntimeError struct {
-	Kind   ErrorKind
-	Cause  error
+	// Kind classifies the runtime failure.
+	Kind ErrorKind
+	// Cause preserves the underlying failure.
+	Cause error
+	// Detail supplies the category-specific diagnostic.
 	Detail string
 }
 
@@ -70,9 +73,12 @@ func (e *RuntimeError) Unwrap() error { return e.Cause }
 
 // ServiceExit reports a service's end and the tail of its standard error.
 type ServiceExit struct {
+	// Service identifies the service that ended.
 	Service string
-	Reason  ExitReason
-	Stderr  string
+	// Reason describes how the service ended.
+	Reason ExitReason
+	// Stderr is the retained standard error tail.
+	Stderr string
 }
 
 // Error describes the exit and includes nonempty standard error.
@@ -86,6 +92,7 @@ func (e *ServiceExit) Error() string {
 
 // ExitReason identifies natural exit, protocol failure or startup deadline.
 type ExitReason struct {
+	// Kind classifies how the service ended.
 	Kind ExitKind
 	// State preserves the process owner’s exit record for a natural exit.
 	State process.Exit

@@ -93,6 +93,7 @@ func prepareStreams(ctx context.Context, cmd *exec.Cmd) (*commandStreams, error)
 	}
 	return s, nil
 }
+
 func (s *commandStreams) start() {
 	for _, file := range s.childEnds {
 		_ = file.Close()
@@ -111,8 +112,10 @@ func (s *commandStreams) start() {
 		}()
 	}
 }
+
 func (s *commandStreams) record(err error) {
-	if err == nil || errors.Is(err, os.ErrClosed) || errors.Is(err, io.ErrClosedPipe) || errors.Is(err, context.Canceled) {
+	if err == nil || errors.Is(err, os.ErrClosed) || errors.Is(err, io.ErrClosedPipe) ||
+		errors.Is(err, context.Canceled) {
 		return
 	}
 	s.mu.Lock()
@@ -122,11 +125,13 @@ func (s *commandStreams) record(err error) {
 		s.cancel()
 	}
 }
+
 func (s *commandStreams) failure() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.err
 }
+
 func (s *commandStreams) stopInput() {
 	for _, stream := range s.copies {
 		if stream.input {
@@ -135,18 +140,21 @@ func (s *commandStreams) stopInput() {
 		}
 	}
 }
+
 func (s *commandStreams) interrupt() {
 	for _, stream := range s.copies {
 		_ = stream.pipe.Close() // Cancellation supersedes close failures.
 		stream.closeExternal()
 	}
 }
+
 func (s *commandStreams) close() {
 	for _, file := range s.childEnds {
 		_ = file.Close()
 	} // Failed start cleanup.
 	s.interrupt()
 }
+
 func (s *commandStreams) wait(ctx context.Context) {
 	if ctx.Err() != nil {
 		s.interrupt()

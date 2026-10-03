@@ -39,11 +39,16 @@ type installation struct {
 
 // Wanted identifies an artifact's line, version, exact bytes and installed form.
 type Wanted struct {
-	Package  string
-	Name     string
-	Version  string
+	// Package identifies the package that owns the artifact.
+	Package string
+	// Name identifies the resource within the package.
+	Name string
+	// Version is the package version.
+	Version string
+	// Artifact describes the expected artifact bytes.
 	Artifact commandwire.PackageArtifact
-	Form     commandwire.ArtifactForm
+	// Form selects a file or extracted archive.
+	Form commandwire.ArtifactForm
 }
 
 // NewArtifactCache opens root and reports downloads through installs.
@@ -52,13 +57,21 @@ func NewArtifactCache(ctx context.Context, root, image string, installs *Install
 	if err := ctx.Err(); err != nil {
 		return nil, runtimeFailure(err)
 	}
-	if err := os.MkdirAll(root, 0700); err != nil {
+	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, runtimeFailure(err)
 	}
-	if err := process.Chmod(ctx, root, 0700); err != nil {
+	if err := process.Chmod(ctx, root, 0o700); err != nil {
 		return nil, runtimeFailure(err)
 	}
-	return &ArtifactCache{root: root, image: image, installs: installs, http: artifacts.NewClientAllowingHTTP(), checked: make(map[string]string), active: make(map[string]*installation), done: make(chan struct{})}, nil
+	return &ArtifactCache{
+		root:     root,
+		image:    image,
+		installs: installs,
+		http:     artifacts.NewClientAllowingHTTP(),
+		checked:  make(map[string]string),
+		active:   make(map[string]*installation),
+		done:     make(chan struct{}),
+	}, nil
 }
 
 // Close cancels and joins cache-owned installation work and releases HTTP resources.
@@ -162,66 +175,13 @@ func (c *ArtifactCache) install(job *installation, wanted Wanted, resolver Artif
 	c.mu.Unlock()
 }
 
-func (c *ArtifactCache) obtain(ctx context.Context, w Wanted, resolver ArtifactResolver) (path string, err error) {
-	destination := filepath.Join(c.root, w.Artifact.SHA256)
-	switch form := w.Form.(type) {
+func (c *ArtifactCache) obtain(ctx context.Context, wanted Wanted, resolver ArtifactResolver) (path string, err error) {
+	destination := filepath.Join(c.root, wanted.Artifact.SHA256)
+	switch form := wanted.Form.(type) {
 	case *commandwire.ArtifactFile:
-		if path, err = cached(destination, w.Artifact); path != "" || err != nil {
-			return path, err
-		}
-		if path, err = c.preinstalled(ctx, w); path != "" || err != nil {
-			return path, err
-		}
-		installing := c.installs.start(w)
-		defer installing.close()
-		var staged *artifacts.Staged
-		staged, err = artifacts.NewStaged(ctx, destination, artifacts.Publication{Mode: artifacts.CreateNew, Permissions: artifacts.Executable, Durable: true})
-		if err != nil {
-			return "", artifactError(err)
-		}
-		defer func() { err = errors.Join(err, staged.Close()) }()
-		if err := c.fetch(ctx, w.Artifact, staged.File(), resolver, installing); err != nil {
-			return "", err
-		}
-		if err := staged.Publish(ctx); err != nil {
-			if errors.Is(err, os.ErrExist) {
-				return cached(destination, w.Artifact)
-			}
-			return "", artifactError(err)
-		}
-		return destination, nil
+		return c.obtainFile(ctx, wanted, resolver, destination)
 	case *commandwire.ArtifactArchive:
-		archive := artifacts.Archive{Digest: digestOf(w.Artifact), Entry: form.Entry}
-		path, err = artifacts.Recorded(ctx, destination, archive)
-		if path != "" || err != nil {
-			return path, artifactError(err)
-		}
-		if path, err = c.preinstalled(ctx, w); path != "" || err != nil {
-			return path, err
-		}
-		var unpacking *artifacts.Unpacking
-		path, unpacking, err = artifacts.InstallArchive(ctx, c.root, archive)
-		if err != nil {
-			return "", artifactError(err)
-		}
-		if unpacking == nil {
-			return path, nil
-		}
-		defer func() { err = errors.Join(err, unpacking.Close()) }()
-		installing := c.installs.start(w)
-		defer installing.close()
-		var output *os.File
-		output, err = os.Create(unpacking.ArchivePath())
-		if err != nil {
-			return "", err
-		}
-		fetchErr := c.fetch(ctx, w.Artifact, output, resolver, installing)
-		if err := errors.Join(fetchErr, output.Close()); err != nil {
-			return "", err
-		}
-		installing.unpacking()
-		path, err = unpacking.Finish(ctx)
-		return path, artifactError(err)
+		return c.obtainArchive(ctx, wanted, resolver, destination, form)
 	}
 	return "", &RuntimeError{Kind: ArtifactFailure, Cause: os.ErrInvalid}
 }
@@ -229,12 +189,14 @@ func (c *ArtifactCache) obtain(ctx context.Context, w Wanted, resolver ArtifactR
 func digestOf(a commandwire.PackageArtifact) artifacts.Digest {
 	return artifacts.Digest{Size: a.Size, SHA256: a.SHA256}
 }
+
 func artifactError(err error) error {
 	if err == nil {
 		return nil
 	}
 	return &RuntimeError{Kind: ArtifactFailure, Cause: err}
 }
+
 func cached(path string, artifact commandwire.PackageArtifact) (string, error) {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -279,6 +241,7 @@ func (h *Holds) Hold(sha256 string) *Hold {
 		}
 	})}
 }
+
 func (h *Holds) held(sha256 string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -287,3 +250,79 @@ func (h *Holds) held(sha256 string) bool {
 
 // Release ends this hold exactly once; repeated calls do nothing.
 func (h *Hold) Release() { h.release() }
+
+func (c *ArtifactCache) obtainFile(
+	ctx context.Context,
+	wanted Wanted,
+	resolver ArtifactResolver,
+	destination string,
+) (path string, err error) {
+	if path, err = cached(destination, wanted.Artifact); path != "" || err != nil {
+		return path, err
+	}
+	if path, err = c.preinstalled(ctx, wanted); path != "" || err != nil {
+		return path, err
+	}
+	installing := c.installs.start(wanted)
+	defer installing.close()
+	var staged *artifacts.Staged
+	staged, err = artifacts.NewStaged(
+		ctx,
+		destination,
+		artifacts.Publication{Mode: artifacts.CreateNew, Permissions: artifacts.Executable, Durable: true},
+	)
+	if err != nil {
+		return "", artifactError(err)
+	}
+	defer func() { err = errors.Join(err, staged.Close()) }()
+	if err := c.fetch(ctx, wanted.Artifact, staged.File(), resolver, installing); err != nil {
+		return "", err
+	}
+	if err := staged.Publish(ctx); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return cached(destination, wanted.Artifact)
+		}
+		return "", artifactError(err)
+	}
+	return destination, nil
+}
+
+func (c *ArtifactCache) obtainArchive(
+	ctx context.Context,
+	wanted Wanted,
+	resolver ArtifactResolver,
+	destination string,
+	form *commandwire.ArtifactArchive,
+) (path string, err error) {
+	archive := artifacts.Archive{Digest: digestOf(wanted.Artifact), Entry: form.Entry}
+	path, err = artifacts.Recorded(ctx, destination, archive)
+	if path != "" || err != nil {
+		return path, artifactError(err)
+	}
+	if path, err = c.preinstalled(ctx, wanted); path != "" || err != nil {
+		return path, err
+	}
+	var unpacking *artifacts.Unpacking
+	path, unpacking, err = artifacts.InstallArchive(ctx, c.root, archive)
+	if err != nil {
+		return "", artifactError(err)
+	}
+	if unpacking == nil {
+		return path, nil
+	}
+	defer func() { err = errors.Join(err, unpacking.Close()) }()
+	installing := c.installs.start(wanted)
+	defer installing.close()
+	var output *os.File
+	output, err = os.Create(unpacking.ArchivePath())
+	if err != nil {
+		return "", err
+	}
+	fetchErr := c.fetch(ctx, wanted.Artifact, output, resolver, installing)
+	if err := errors.Join(fetchErr, output.Close()); err != nil {
+		return "", err
+	}
+	installing.unpacking()
+	path, err = unpacking.Finish(ctx)
+	return path, artifactError(err)
+}

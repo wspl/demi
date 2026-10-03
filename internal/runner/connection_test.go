@@ -18,6 +18,7 @@ func TestSocketURL(t *testing.T) {
 		})
 	}
 }
+
 func TestTypedExchangeAndRemoteClose(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
@@ -33,6 +34,7 @@ func TestTypedExchangeAndRemoteClose(t *testing.T) {
 		t.Fatal("reconnect lost credential")
 	}
 }
+
 func TestMalformedInputFailsConnection(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
@@ -44,6 +46,7 @@ func TestMalformedInputFailsConnection(t *testing.T) {
 	}
 	f.accept()
 }
+
 func TestFullInboundQueueWaits(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()

@@ -25,15 +25,15 @@ type installationLease struct {
 
 // openInstallation creates and protects this backend's private state directory.
 func openInstallation(ctx context.Context, root string) error {
-	if err := os.MkdirAll(root, 0700); err != nil {
+	if err := os.MkdirAll(root, 0o700); err != nil {
 		return err
 	}
-	return process.Chmod(ctx, root, 0700)
+	return process.Chmod(ctx, root, 0o700)
 }
 
 // tryInstallationLock returns nil when another runner holds this installation.
 func tryInstallationLock(root string) (*installationLease, error) {
-	file, err := os.OpenFile(filepath.Join(root, "runner.lock"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
+	file, err := os.OpenFile(filepath.Join(root, "runner.lock"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
 	}

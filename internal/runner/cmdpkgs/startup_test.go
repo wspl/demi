@@ -41,6 +41,7 @@ func (p *startupPeer) Accept() (net.Conn, error) {
 	<-p.closed
 	return nil, net.ErrClosed
 }
+
 func (p *startupPeer) Close() error {
 	p.closeOnce.Do(func() { close(p.closed) })
 	return nil
@@ -58,7 +59,7 @@ func (p *startupPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case commandwire.ShutdownPath:
-		if err := os.WriteFile(p.marker, []byte("requested"), 0600); err != nil {
+		if err := os.WriteFile(p.marker, []byte("requested"), 0o600); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -75,8 +76,15 @@ func (p *startupPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}
 }
+
 func serveStartupPeer(mode string) error {
-	peer := &startupPeer{conn: &cmdsdk.PipeConn{Reader: os.Stdin, Writer: os.Stdout}, mode: mode, marker: os.Getenv("DEMI_STARTUP_MARKER"), closed: make(chan struct{}), shutdown: make(chan struct{})}
+	peer := &startupPeer{
+		conn:     &cmdsdk.PipeConn{Reader: os.Stdin, Writer: os.Stdout},
+		mode:     mode,
+		marker:   os.Getenv("DEMI_STARTUP_MARKER"),
+		closed:   make(chan struct{}),
+		shutdown: make(chan struct{}),
+	}
 	protocols := new(http.Protocols)
 	protocols.SetUnencryptedHTTP2(true)
 	server := &http.Server{Handler: peer, Protocols: protocols}
@@ -91,7 +99,7 @@ func serveStartupPeer(mode string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(peer.marker, []byte("released"), 0600)
+	return os.WriteFile(peer.marker, []byte("released"), 0o600)
 }
 
 // A real unresponsive child costs six seconds: this checks the actual process
@@ -104,16 +112,31 @@ func TestStartupFailureRequestsShutdownBeforeTermination(t *testing.T) {
 	must(t, err)
 	target, err := commandwire.HostTarget()
 	must(t, err)
-	descriptor := commandwire.PackageDescriptor{ID: "demi.startup", Version: "1", ProtocolVersion: 1, Operations: []string{"expected"}, Targets: map[string]commandwire.PackageArtifact{string(target): {SHA256: bytes.SHA256, Size: bytes.Size}}}
+	descriptor := commandwire.PackageDescriptor{
+		ID:              "demi.startup",
+		Version:         "1",
+		ProtocolVersion: 1,
+		Operations:      []string{"expected"},
+		Targets: map[string]commandwire.PackageArtifact{
+			string(target): {SHA256: bytes.SHA256, Size: bytes.Size},
+		},
+	}
 	for _, mode := range []string{"cooperative", "ignore"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
 			marker := filepath.Join(root, "shutdown")
-			r, err := cmdpkgs.NewServiceRegistry(t.Context(), filepath.Join(root, "cache"), "", root, map[string]string{"DEMI_STARTUP_PEER": mode, "DEMI_STARTUP_MARKER": marker})
+			r, err := cmdpkgs.NewServiceRegistry(
+				t.Context(),
+				filepath.Join(root, "cache"),
+				"",
+				root,
+				map[string]string{"DEMI_STARTUP_PEER": mode, "DEMI_STARTUP_MARKER": marker},
+			)
 			must(t, err)
 			defer func() { must(t, r.Close(context.Background())) }()
 			start := time.Now()
-			_, err = r.Handle().Acquire(t.Context(), descriptor, &localResolver{path: executable}, cmdpkgstest.NoNumbers{})
+			_, err = r.Handle().
+				Acquire(t.Context(), descriptor, &localResolver{path: executable}, cmdpkgstest.NoNumbers{})
 			elapsed := time.Since(start)
 			var failure *cmdpkgs.RuntimeError
 			if !errors.As(err, &failure) || failure.Kind != cmdpkgs.CatalogMismatch {

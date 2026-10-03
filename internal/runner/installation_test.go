@@ -28,7 +28,7 @@ func TestInstallationLockReleasedWithActiveRecord(t *testing.T) {
 		t.Fatalf("second lock acquired: %v", err)
 	}
 	active := filepath.Join(root, "active.json")
-	if err := os.WriteFile(active, []byte("record"), 0600); err != nil {
+	if err := os.WriteFile(active, []byte("record"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	first.active = active

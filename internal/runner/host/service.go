@@ -40,7 +40,13 @@ func New(ctx context.Context, defaultCWD string, pipes *process.PipeClient, outp
 
 // NewWithFileLimit creates the same owner with a working-tree list limit in
 // place of MaxFiles, for callers that exercise truncation on small fixtures.
-func NewWithFileLimit(ctx context.Context, defaultCWD string, pipes *process.PipeClient, output chan<- []byte, maxFiles int) *Service {
+func NewWithFileLimit(
+	ctx context.Context,
+	defaultCWD string,
+	pipes *process.PipeClient,
+	output chan<- []byte,
+	maxFiles int,
+) *Service {
 	s := &Service{
 		life: newLifetime(ctx), defaultCWD: defaultCWD, pipes: pipes, output: output,
 		filesystem: make(chan struct{}, 32), gitRequests: make(chan struct{}, 8),

@@ -46,7 +46,16 @@ func TestDeclaredBuiltinAndDrainReleaseInstallation(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.send(&runnerwire.ManifestMessage{Manifest: data})
-	f.send(&runnerwire.JobStart{JobID: "job", ManifestHash: &manifest.Hash, Context: runnerCommandContext(), Script: "fixture --help && printf done", CWD: f.home, Env: map[string]string{}})
+	f.send(
+		&runnerwire.JobStart{
+			JobID:        "job",
+			ManifestHash: &manifest.Hash,
+			Context:      runnerCommandContext(),
+			Script:       "fixture --help && printf done",
+			CWD:          f.home,
+			Env:          map[string]string{},
+		},
+	)
 	out, stderr, exit := f.jobOutput("job")
 	requireJobSuccess(t, exit, stderr)
 	if !strings.Contains(out, "fixture: Remote declaration") || !strings.HasSuffix(out, "done") {

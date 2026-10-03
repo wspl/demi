@@ -14,8 +14,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// bindLocal owns the private Unix socket and the liveness lock clients inspect.
-func bindLocal(ctx context.Context) (*Listener, error) {
+// bindListener owns the private Unix socket and the liveness lock clients inspect.
+func bindListener(ctx context.Context) (*Listener, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -46,33 +46,42 @@ func bindLocal(ctx context.Context) (*Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = os.Chmod(path, 0600); err != nil {
+	if err = os.Chmod(path, 0o600); err != nil {
 		_ = socket.Close()
 		return nil, err
 	}
 	success = true
-	return &Listener{endpoint: path, close: func() error { return errors.Join(socket.Close(), alive.Close(), os.RemoveAll(directory)) }, accept: func(ctx context.Context) (net.Conn, error) {
-		if err := ctx.Err(); err != nil {
-			return nil, err
+	return &Listener{
+		endpoint: path,
+		close:    func() error { return errors.Join(socket.Close(), alive.Close(), os.RemoveAll(directory)) },
+		accept:   func(ctx context.Context) (net.Conn, error) { return acceptLocal(ctx, socket) },
+	}, nil
+}
+
+func acceptLocal(ctx context.Context, socket *net.UnixListener) (net.Conn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		_ = socket.SetDeadline(time.Now())
+		close(done)
+	})
+	conn, err := socket.AcceptUnix()
+	if !stop() {
+		<-done
+	}
+	if reset := socket.SetDeadline(time.Time{}); err == nil && reset != nil {
+		if conn != nil {
+			_ = conn.Close()
 		}
-		done := make(chan struct{})
-		stop := context.AfterFunc(ctx, func() { _ = socket.SetDeadline(time.Now()); close(done) })
-		conn, err := socket.AcceptUnix()
-		if !stop() {
-			<-done
+		return nil, reset
+	}
+	if ctx.Err() != nil {
+		if conn != nil {
+			_ = conn.Close()
 		}
-		if reset := socket.SetDeadline(time.Time{}); err == nil && reset != nil {
-			if conn != nil {
-				_ = conn.Close()
-			}
-			return nil, reset
-		}
-		if ctx.Err() != nil {
-			if conn != nil {
-				_ = conn.Close()
-			}
-			return nil, ctx.Err()
-		}
-		return conn, err
-	}}, nil
+		return nil, ctx.Err()
+	}
+	return conn, err
 }

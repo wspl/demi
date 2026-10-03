@@ -15,7 +15,11 @@ import (
 )
 
 // fsCall admits one finite filesystem request and reports its result.
-func (s *Service) fsCall(ctx context.Context, id string, work func(context.Context) (runnerwire.FSResult, error)) error {
+func (s *Service) fsCall(
+	ctx context.Context,
+	id string,
+	work func(context.Context) (runnerwire.FSResult, error),
+) error {
 	ctx, leave, err := s.life.enter(ctx)
 	if err != nil {
 		return err
@@ -37,7 +41,7 @@ func (s *Service) resolve(cwd *string, path string) (string, error) {
 	}
 	target, err := cmdsdk.Resolve(base, path)
 	if err != nil {
-		return "", &filesystemFailure{message: err.Error(), cause: os.ErrInvalid}
+		return "", &filesystemError{message: err.Error(), cause: os.ErrInvalid}
 	}
 	return target, nil
 }
@@ -53,7 +57,10 @@ func removePath(ctx context.Context, path string, recursive bool) error {
 	}
 	if info.IsDir() {
 		if !recursive {
-			return &filesystemFailure{message: "recursive removal is required for a directory", cause: syscall.EISDIR}
+			return &filesystemError{
+				message: "recursive removal is required for a directory",
+				cause:   syscall.EISDIR,
+			}
 		}
 		_, err = cmdsdk.Retry(ctx, func() (struct{}, error) { return struct{}{}, os.RemoveAll(path) })
 		return err
@@ -82,7 +89,7 @@ func canonicalDestination(path string) (string, error) {
 		}
 		parent, ok := artifacts.Parent(ancestor)
 		if !ok {
-			return "", &filesystemFailure{message: "invalid destination", cause: os.ErrInvalid}
+			return "", &filesystemError{message: "invalid destination", cause: os.ErrInvalid}
 		}
 		suffix = append(suffix, filepath.Base(ancestor))
 		if parent == "" {
@@ -99,23 +106,8 @@ func copyPath(ctx context.Context, source, destination string, recursive bool) e
 		return err
 	}
 	if info.IsDir() {
-		if !recursive {
-			return &filesystemFailure{message: "recursive copy is required for a directory", cause: syscall.EISDIR}
-		}
-		canonical, err := filepath.EvalSymlinks(source)
-		if err != nil {
+		if err := checkCopyDirectory(source, destination, recursive); err != nil {
 			return err
-		}
-		canonical, err = filepath.Abs(canonical)
-		if err != nil {
-			return err
-		}
-		dest, err := canonicalDestination(destination)
-		if err != nil {
-			return err
-		}
-		if pathWithin(dest, canonical) {
-			return &filesystemFailure{message: "cannot copy a directory into itself", cause: os.ErrInvalid}
 		}
 	}
 	return copyEntry(ctx, source, destination)
@@ -144,13 +136,16 @@ func copyEntry(ctx context.Context, source, destination string) error {
 		return os.Symlink(target, destination)
 	}
 	if info.Mode().IsRegular() {
-		_, err = cmdsdk.Retry(ctx, func() (struct{}, error) { return struct{}{}, copyRegular(ctx, source, destination, info.Mode()) })
+		_, err = cmdsdk.Retry(
+			ctx,
+			func() (struct{}, error) { return struct{}{}, copyRegular(ctx, source, destination, info.Mode()) },
+		)
 		return err
 	}
 	if !info.IsDir() {
-		return &filesystemFailure{message: "cannot copy a special file", cause: os.ErrInvalid}
+		return &filesystemError{message: "cannot copy a special file", cause: os.ErrInvalid}
 	}
-	if err = os.MkdirAll(destination, 0777); err != nil {
+	if err = os.MkdirAll(destination, 0o777); err != nil {
 		return err
 	}
 	entries, err := cmdsdk.Retry(ctx, func() ([]os.DirEntry, error) { return os.ReadDir(source) })
@@ -158,7 +153,11 @@ func copyEntry(ctx context.Context, source, destination string) error {
 		return err
 	}
 	for _, entry := range entries {
-		if err = copyEntry(ctx, filepath.Join(source, entry.Name()), filepath.Join(destination, entry.Name())); err != nil {
+		if err = copyEntry(
+			ctx,
+			filepath.Join(source, entry.Name()),
+			filepath.Join(destination, entry.Name()),
+		); err != nil {
 			return err
 		}
 	}
@@ -195,4 +194,26 @@ func (r *contextReader) Read(p []byte) (int, error) {
 		return 0, err
 	}
 	return r.reader.Read(p)
+}
+
+func checkCopyDirectory(source, destination string, recursive bool) error {
+	if !recursive {
+		return &filesystemError{message: "recursive copy is required for a directory", cause: syscall.EISDIR}
+	}
+	canonical, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		return err
+	}
+	canonical, err = filepath.Abs(canonical)
+	if err != nil {
+		return err
+	}
+	dest, err := canonicalDestination(destination)
+	if err != nil {
+		return err
+	}
+	if pathWithin(dest, canonical) {
+		return &filesystemError{message: "cannot copy a directory into itself", cause: os.ErrInvalid}
+	}
+	return nil
 }

@@ -30,13 +30,19 @@ func TestStartRetriesOnlyTransientFailures(t *testing.T) {
 			t.Fatalf("busy retry: %s %v", time.Since(start), err)
 		}
 		calls = 0
-		_, err = Start(t.Context(), func() (int, error) { calls++; return 0, syscall.EACCES })
+		_, err = Start(t.Context(), func() (int, error) {
+			calls++
+			return 0, syscall.EACCES
+		})
 		if !errors.Is(err, syscall.EACCES) || calls != 1 {
 			t.Fatalf("permanent failure retried: %d %v", calls, err)
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { _, err := Start(ctx, func() (int, error) { return 0, cmdsdk.Exhaustion() }); done <- err }()
+		go func() {
+			_, err := Start(ctx, func() (int, error) { return 0, cmdsdk.Exhaustion() })
+			done <- err
+		}()
 		synctest.Wait()
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {

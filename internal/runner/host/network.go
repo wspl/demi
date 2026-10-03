@@ -30,11 +30,15 @@ func (s *Service) NetOpen(ctx context.Context, request runnerwire.NetOpen) error
 	socket, failure := connectTCP(ctx, request.Host, request.Port)
 	if failure != nil {
 		code := runnerwire.NetErrorCodeUnreachable
-		var problem *netFailure
+		var problem *netError
 		if errors.As(failure, &problem) {
 			code = problem.code
 		}
-		replyErr := sendFrame(s.life.ctx, s.output, &runnerwire.NetError{StreamID: request.StreamID, Code: code, Message: failure.Error()})
+		replyErr := sendFrame(
+			s.life.ctx,
+			s.output,
+			&runnerwire.NetError{StreamID: request.StreamID, Code: code, Message: failure.Error()},
+		)
 		inputErr := process.ReportPipe(s.life.ctx, s.output, request.Input.ID, failure)
 		outputErr := process.ReportPipe(s.life.ctx, s.output, request.Output.ID, failure)
 		return errors.Join(replyErr, inputErr, outputErr)
@@ -72,15 +76,15 @@ func (s *Service) NetOpen(ctx context.Context, request runnerwire.NetOpen) error
 	return errors.Join(inputErr, outputErr)
 }
 
-// netFailure retains socket error causes for descriptor retry and wire classification.
-type netFailure struct {
+// netError retains socket error causes for descriptor retry and wire classification.
+type netError struct {
 	code    runnerwire.NetErrorCode
 	message string
 	cause   error
 }
 
-func (e *netFailure) Error() string { return e.message }
-func (e *netFailure) Unwrap() error { return e.cause }
+func (e *netError) Error() string { return e.message }
+func (e *netError) Unwrap() error { return e.cause }
 
 // connectTCP gives each socket attempt ten seconds, excluding descriptor backoff.
 func connectTCP(ctx context.Context, host string, port uint16) (*net.TCPConn, error) {
@@ -102,7 +106,7 @@ func connectTCP(ctx context.Context, host string, port uint16) (*net.TCPConn, er
 		} else if errors.Is(err, syscall.ECONNREFUSED) {
 			code = runnerwire.NetErrorCodeRefused
 		}
-		return nil, &netFailure{code: code, message: message, cause: err}
+		return nil, &netError{code: code, message: message, cause: err}
 	})
 }
 

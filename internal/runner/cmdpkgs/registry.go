@@ -49,9 +49,21 @@ type serviceLife struct {
 
 // NewServiceRegistry starts services in cwd with exactly env, caching artifacts in
 // cache and consulting image first when nonempty. The caller must Close the registry.
-func NewServiceRegistry(ctx context.Context, cache, image, cwd string, env map[string]string) (*ServiceRegistry, error) {
+func NewServiceRegistry(
+	ctx context.Context,
+	cache, image, cwd string,
+	env map[string]string,
+) (*ServiceRegistry, error) {
 	stop, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	r := &ServiceRegistry{cwd: cwd, env: maps.Clone(env), entries: make(map[string]*serviceEntry), done: make(chan struct{}), stop: stop, cancel: cancel, invocations: make(map[string]*Invoking)}
+	r := &ServiceRegistry{
+		cwd:         cwd,
+		env:         maps.Clone(env),
+		entries:     make(map[string]*serviceEntry),
+		done:        make(chan struct{}),
+		stop:        stop,
+		cancel:      cancel,
+		invocations: make(map[string]*Invoking),
+	}
 	cacheOwner, err := NewArtifactCache(ctx, cache, image, &r.installs)
 	if err != nil {
 		cancel()
@@ -119,12 +131,17 @@ func (h *ServiceHandle) Lease(ctx context.Context, digest string) (*ServiceLease
 	if r.closed {
 		return &ServiceLease{release: func() {}}, nil
 	}
-	return r.lease(digest), nil
+	return r.leaseLocked(digest), nil
 }
 
 // Acquire returns descriptor's service for this Host. Concurrent callers share
 // one start, while cancellation abandons only this caller's wait.
-func (h *ServiceHandle) Acquire(ctx context.Context, descriptor commandwire.PackageDescriptor, resolver ArtifactResolver, numbers NumberSource) (*Resident, error) {
+func (h *ServiceHandle) Acquire(
+	ctx context.Context,
+	descriptor commandwire.PackageDescriptor,
+	resolver ArtifactResolver,
+	numbers NumberSource,
+) (*Resident, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, &RuntimeError{Kind: Cancelled, Cause: err}
 	}
@@ -142,12 +159,18 @@ func (h *ServiceHandle) Acquire(ctx context.Context, descriptor commandwire.Pack
 		r.mu.Unlock()
 		return nil, &RuntimeError{Kind: Cancelled}
 	}
-	waiting := r.lease(artifact.SHA256)
+	waiting := r.leaseLocked(artifact.SHA256)
 	entry := r.entries[artifact.SHA256]
 	life := entry.current
 	if life == nil {
 		stop, cancel := context.WithCancel(r.stop)
-		life = &serviceLife{service: descriptor.ID, stop: stop, cancel: cancel, ready: make(chan struct{}), done: make(chan struct{})}
+		life = &serviceLife{
+			service: descriptor.ID,
+			stop:    stop,
+			cancel:  cancel,
+			ready:   make(chan struct{}),
+			done:    make(chan struct{}),
+		}
 		entry.current = life
 		r.work.Add(1)
 		go r.live(life, descriptor, artifact, resolver, numbers)
@@ -168,7 +191,6 @@ func (h *ServiceHandle) Acquire(ctx context.Context, descriptor commandwire.Pack
 		}
 		return &Resident{life: life}, nil
 	}
-
 }
 
 // ReleaseConversation releases a conversation in all running services concurrently
@@ -191,50 +213,7 @@ func (h *ServiceHandle) ReleaseConversation(ctx context.Context, conversation st
 	answer := make(chan error, 1)
 	go func() {
 		defer r.work.Done()
-		results := make(chan releaseResult, len(running))
-		var work sync.WaitGroup
-		for digest, life := range running {
-			work.Add(1)
-			go func() {
-				defer work.Done()
-				err := releaseConversation(r.stop, life.client, conversation)
-				results <- releaseResult{digest, life, err}
-			}()
-		}
-		work.Wait()
-		close(results)
-		var failures []error
-		var retiring []*serviceLife
-		r.mu.Lock()
-		for result := range results {
-			if result.err == nil {
-				continue
-			}
-			failures = append(failures, result.err)
-			entry := r.entries[result.digest]
-			if entry != nil && entry.current == result.life {
-				entry.current = nil
-				retiring = append(retiring, result.life)
-			}
-		}
-		r.mu.Unlock()
-		for _, life := range retiring {
-			life.cancel()
-			<-life.done
-		}
-		var reports []func()
-		r.mu.Lock()
-		for digest, entry := range r.entries {
-			entry.changes++
-			if report := r.consider(digest, entry); report != nil {
-				reports = append(reports, report)
-			}
-		}
-		r.mu.Unlock()
-		for _, report := range reports {
-			report()
-		}
-		answer <- releaseFailures(failures)
+		answer <- r.releaseConversation(conversation, running)
 	}()
 	select {
 	case <-ctx.Done():
@@ -242,7 +221,6 @@ func (h *ServiceHandle) ReleaseConversation(ctx context.Context, conversation st
 	case err := <-answer:
 		return err
 	}
-
 }
 
 // StopAll stops every service and waits until each has ended, as connection loss does.
@@ -330,8 +308,8 @@ type releaseResult struct {
 	err    error
 }
 
-// lease and consider run under the registry mutex; they never wait on IO.
-func (r *ServiceRegistry) lease(digest string) *ServiceLease {
+// leaseLocked and considerLocked run under the registry mutex; they never wait on IO.
+func (r *ServiceRegistry) leaseLocked(digest string) *ServiceLease {
 	entry := r.entries[digest]
 	if entry == nil {
 		entry = &serviceEntry{}
@@ -354,10 +332,11 @@ func (r *ServiceRegistry) lease(digest string) *ServiceLease {
 		}
 		current.leases--
 		current.changes++
-		report = r.consider(digest, current)
+		report = r.considerLocked(digest, current)
 	})}
 }
-func (r *ServiceRegistry) consider(digest string, entry *serviceEntry) (report func()) {
+
+func (r *ServiceRegistry) considerLocked(digest string, entry *serviceEntry) (report func()) {
 	if r.closed {
 		return
 	}
@@ -385,42 +364,95 @@ func (r *ServiceRegistry) consider(digest string, entry *serviceEntry) (report f
 	changes := entry.changes
 	r.decisions.add(digest, Asks)
 	r.work.Add(1)
-	go func() {
-		defer r.work.Done()
-		holds, err := serviceStatus(life.stop, life.client)
-		r.mu.Lock()
-		var report func()
-		defer func() {
-			r.mu.Unlock()
-			if report != nil {
-				report()
-			}
+	go r.checkConversations(digest, entry, life, changes)
+	return nil
+}
+
+// releaseConversation retires failed services before reconsidering residency for every entry.
+func (r *ServiceRegistry) releaseConversation(conversation string, running map[string]*serviceLife) error {
+	results := make(chan releaseResult, len(running))
+	var work sync.WaitGroup
+	for digest, life := range running {
+		work.Add(1)
+		go func() {
+			defer work.Done()
+			err := releaseConversation(r.stop, life.client, conversation)
+			results <- releaseResult{digest, life, err}
 		}()
-		current := r.entries[digest]
-		if r.closed || current != entry || current.current != life {
-			return
+	}
+	work.Wait()
+	close(results)
+	var failures []error
+	var retiring []*serviceLife
+	r.mu.Lock()
+	for result := range results {
+		if result.err == nil {
+			continue
 		}
-		life.checking = false
-		switch {
-		case entry.leases > 0:
-			r.decisions.add(digest, Leased)
-		case changes != entry.changes:
-			report = r.consider(digest, entry)
-		case err != nil:
-			report = func() {
-				slog.Warn("service " + life.service + " did not say which conversations it holds (" + err.Error() + "); it stays")
-			}
-			r.decisions.add(digest, Unanswered)
-		case holds:
-			r.decisions.add(digest, HoldsConversations)
-		default:
-			report = func() {
-				slog.Info("service " + life.service + " holds no lease or conversation and stops")
-				life.cancel()
-			}
-			delete(r.entries, digest)
-			r.decisions.add(digest, Stops)
+		failures = append(failures, result.err)
+		entry := r.entries[result.digest]
+		if entry != nil && entry.current == result.life {
+			entry.current = nil
+			retiring = append(retiring, result.life)
+		}
+	}
+	r.mu.Unlock()
+	for _, life := range retiring {
+		life.cancel()
+		<-life.done
+	}
+	var reports []func()
+	r.mu.Lock()
+	for digest, entry := range r.entries {
+		entry.changes++
+		if report := r.considerLocked(digest, entry); report != nil {
+			reports = append(reports, report)
+		}
+	}
+	r.mu.Unlock()
+	for _, report := range reports {
+		report()
+	}
+	return releaseFailures(failures)
+}
+
+// checkConversations asks outside the mutex and applies the answer only to the unchanged service lifetime.
+func (r *ServiceRegistry) checkConversations(digest string, entry *serviceEntry, life *serviceLife, changes uint64) {
+	defer r.work.Done()
+	holds, err := serviceStatus(life.stop, life.client)
+	r.mu.Lock()
+	var report func()
+	defer func() {
+		r.mu.Unlock()
+		if report != nil {
+			report()
 		}
 	}()
-	return nil
+	current := r.entries[digest]
+	if r.closed || current != entry || current.current != life {
+		return
+	}
+	life.checking = false
+	switch {
+	case entry.leases > 0:
+		r.decisions.add(digest, Leased)
+	case changes != entry.changes:
+		report = r.considerLocked(digest, entry)
+	case err != nil:
+		report = func() {
+			slog.Warn(
+				"service " + life.service + " did not say which conversations it holds (" + err.Error() + "); it stays",
+			)
+		}
+		r.decisions.add(digest, Unanswered)
+	case holds:
+		r.decisions.add(digest, HoldsConversations)
+	default:
+		report = func() {
+			slog.Info("service " + life.service + " holds no lease or conversation and stops")
+			life.cancel()
+		}
+		delete(r.entries, digest)
+		r.decisions.add(digest, Stops)
+	}
 }

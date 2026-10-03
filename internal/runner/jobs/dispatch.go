@@ -19,9 +19,12 @@ import (
 // It validates argv and holds JSON output until it passes the leaf's schema.
 // Fields are configured before use and remain unchanged while serving calls.
 type Dispatcher struct {
+	// Contexts resolves live execution authority.
 	Contexts *Contexts
+	// Services acquires native command services.
 	Services *cmdpkgs.ServiceHandle
-	Pipes    *process.PipeClient
+	// Pipes transfers callback input and output.
+	Pipes *process.PipeClient
 }
 
 // Operations returns the raw command operation served by the dispatcher.
@@ -31,8 +34,11 @@ func (d *Dispatcher) Operations() []string {
 
 // Invoke authenticates the execution context, parses the declaration and routes
 // native work to a service or an RPC call to the backend. Cancellation joins IO.
-func (d *Dispatcher) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
-	completion, err := d.command(ctx, invocation)
+func (d *Dispatcher) Invoke(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
+) (commandwire.Completion, error) {
+	completion, err := d.invoke(ctx, invocation)
 	return Reported(ctx, completion, err, invocation.Output)
 }
 
@@ -41,7 +47,12 @@ var _ cmdsdk.Handler[commandwire.LocalInvocation] = (*Dispatcher)(nil)
 // Reported presents a local invocation's end: failures other than cancellation
 // are written to stderr and become exit 1. The registration's management handler
 // uses the same reporting as declared commands.
-func Reported(ctx context.Context, completion commandwire.Completion, err error, output *cmdsdk.Output) (commandwire.Completion, error) {
+func Reported(
+	ctx context.Context,
+	completion commandwire.Completion,
+	err error,
+	output *cmdsdk.Output,
+) (commandwire.Completion, error) {
 	if err == nil {
 		return completion, nil
 	}
@@ -54,12 +65,15 @@ func Reported(ctx context.Context, completion commandwire.Completion, err error,
 	return commandwire.Completion{ExitCode: 1}, nil
 }
 
-// command validates one local invocation before selecting its declared destination.
-func (d *Dispatcher) command(ctx context.Context, inv cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
-	if inv.Request.Operation != process.Raw {
-		return commandwire.Completion{}, fmt.Errorf("unknown operation: %s", inv.Request.Operation)
+// invoke validates one local invocation before selecting its declared destination.
+func (d *Dispatcher) invoke(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
+) (commandwire.Completion, error) {
+	if invocation.Request.Operation != process.Raw {
+		return commandwire.Completion{}, fmt.Errorf("unknown operation: %s", invocation.Request.Operation)
 	}
-	raw, err := process.DecodeRawCommand(inv.Request.Args)
+	raw, err := process.DecodeRawCommand(invocation.Request.Args)
 	if err != nil {
 		return commandwire.Completion{}, err
 	}
@@ -78,10 +92,22 @@ func (d *Dispatcher) command(ctx context.Context, inv cmdsdk.InvocationContext[c
 		case <-ctx.Done():
 		}
 	}()
-	defer func() { cancel(); <-watched }()
+	defer func() {
+		cancel()
+		<-watched
+	}()
 	if execution.lifetime.Err() != nil {
 		return commandwire.Completion{}, context.Canceled
 	}
+	return d.declaredCommand(ctx, invocation, execution, raw)
+}
+
+func (d *Dispatcher) declaredCommand(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
+	execution *ExecutionContext,
+	raw process.RawCommand,
+) (commandwire.Completion, error) {
 	root, ok := execution.Manifest.Roots[raw.Root]
 	if !ok {
 		return commandwire.Completion{}, fmt.Errorf("%s: not a root command of this manifest", raw.Root)
@@ -99,41 +125,129 @@ func (d *Dispatcher) command(ctx context.Context, inv cmdsdk.InvocationContext[c
 		return commandwire.Completion{}, err
 	}
 	if parsed.Help {
-		return commandwire.Completion{}, inv.Output.Stdout(ctx, []byte(selected.Node.Help(strings.Join(selected.Path, " "))+"\n"))
+		return commandwire.Completion{}, invocation.Output.Stdout(
+			ctx,
+			[]byte(selected.Node.Help(strings.Join(selected.Path, " "))+"\n"),
+		)
 	}
 	leaf := declare.AsLeaf(selected.Node)
 	if leaf == nil {
 		return commandwire.Completion{}, errors.New("missing command leaf")
 	}
-	var body *string
-	if leaf.StdinField != nil {
-		bytes := []byte{}
-		if !raw.Live {
-			for {
-				chunk, err := inv.Input.Next(ctx)
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				if err != nil {
-					return commandwire.Completion{}, err
-				}
-				if len(bytes)+len(chunk) > 1024*1024 {
-					return commandwire.Completion{}, errors.New("command body exceeds 1 MiB")
-				}
-				bytes = append(bytes, chunk...)
-			}
-		}
-		if err := contract.CheckUTF8(bytes); err != nil {
-			return commandwire.Completion{}, err
-		}
-		text := string(bytes)
-		body = &text
+	body, err := commandBody(ctx, invocation.Input, raw.Live, leaf.StdinField != nil)
+	if err != nil {
+		return commandwire.Completion{}, err
 	}
 	parsed, err = parsed.Validate(leaf, body)
 	if err != nil {
 		return commandwire.Completion{}, err
 	}
-	output := &commandOutput{output: inv.Output}
+	return d.invokeDeclared(ctx, invocation, execution, raw, parsed, leaf)
+}
+
+func commandBody(ctx context.Context, input *cmdsdk.Input, live, hasBody bool) (*string, error) {
+	if !hasBody {
+		return nil, nil
+	}
+	bytes := []byte{}
+	if !live {
+		var err error
+		bytes, err = readCommandBody(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := contract.CheckUTF8(bytes); err != nil {
+		return nil, err
+	}
+	text := string(bytes)
+	return &text, nil
+}
+
+func (d *Dispatcher) nativeCommand(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
+	execution *ExecutionContext,
+	binding *declare.Binding,
+	parsed *declare.Parsed,
+	output *commandOutput,
+) (uint8, error) {
+	descriptor, ok := execution.Manifest.Packages[binding.DescriptorHash]
+	if !ok {
+		return 0, errors.New("native descriptor is not in this manifest")
+	}
+	resolver := &jobArtifacts{contexts: d.Contexts}
+	registration := d.Services.Invoking(invocation.Request.InvocationID, descriptor.ID, resolver)
+	defer registration.Release()
+	resident, err := d.Services.Acquire(ctx, descriptor, resolver, execution.Connection)
+	if err != nil {
+		return 0, err
+	}
+	args, err := parsed.Values.MarshalJSON()
+	if err != nil {
+		return 0, err
+	}
+	request := commandwire.Invocation{
+		Operation:    binding.Operation,
+		InvocationID: invocation.Request.InvocationID,
+		Context:      execution.Command,
+		Args:         args,
+		Cwd:          invocation.Request.Cwd,
+		Env:          invocation.Request.Env,
+		Edits:        &execution.Edits,
+		JSON:         &parsed.JSON,
+	}
+	input, response, err := resident.Client().Invoke(ctx, request)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return 0, err
+		}
+		return 0, resident.Failure(ctx, err)
+	}
+	completion, err := (cmdsdk.Exchange{Input: input, Output: response}).Run(ctx, invocation.Input, output)
+	if err != nil {
+		var exchange *cmdsdk.ExchangeError
+		if errors.As(err, &exchange) && exchange.Side == "service" && !errors.Is(err, context.Canceled) {
+			err = resident.Failure(ctx, err)
+		}
+		return 0, err
+	}
+	if completion.Error != nil {
+		if err := output.Stderr(ctx, []byte(completion.Error.Code+": "+completion.Error.Message+"\n")); err != nil {
+			return 0, err
+		}
+	}
+	return completion.ExitCode, nil
+}
+
+func readCommandBody(ctx context.Context, input *cmdsdk.Input) ([]byte, error) {
+	bytes := []byte{}
+	for {
+		chunk, err := input.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(bytes)+len(chunk) > 1024*1024 {
+			return nil, errors.New("command body exceeds 1 MiB")
+		}
+		bytes = append(bytes, chunk...)
+	}
+	return bytes, nil
+}
+
+func (d *Dispatcher) invokeDeclared(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
+	execution *ExecutionContext,
+	raw process.RawCommand,
+	parsed *declare.Parsed,
+	leaf *declare.Leaf[declare.Binding],
+) (commandwire.Completion, error) {
+	var err error
+	output := &commandOutput{output: invocation.Output}
 	if parsed.JSON {
 		output.schema = leaf.JSONOutput()
 	}
@@ -144,45 +258,21 @@ func (d *Dispatcher) command(ctx context.Context, inv cmdsdk.InvocationContext[c
 	defer clearHint()
 	var code uint8
 	if binding := leaf.Binding(); binding != nil {
-		descriptor, ok := execution.Manifest.Packages[binding.DescriptorHash]
-		if !ok {
-			return commandwire.Completion{}, errors.New("native descriptor is not in this manifest")
-		}
-		resolver := &jobArtifacts{contexts: d.Contexts}
-		registration := d.Services.Invoking(inv.Request.InvocationID, descriptor.ID, resolver)
-		defer registration.Release()
-		resident, err := d.Services.Acquire(ctx, descriptor, resolver, execution.Connection)
+		code, err = d.nativeCommand(ctx, invocation, execution, binding, parsed, output)
 		if err != nil {
 			return commandwire.Completion{}, err
 		}
-		args, err := parsed.Values.MarshalJSON()
-		if err != nil {
-			return commandwire.Completion{}, err
-		}
-		request := commandwire.Invocation{Operation: binding.Operation, InvocationID: inv.Request.InvocationID, Context: execution.Command, Args: args, Cwd: inv.Request.Cwd, Env: inv.Request.Env, Edits: &execution.Edits, JSON: &parsed.JSON}
-		input, response, err := resident.Client().Invoke(ctx, request)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return commandwire.Completion{}, err
-			}
-			return commandwire.Completion{}, resident.Failure(ctx, err)
-		}
-		completion, err := (cmdsdk.Exchange{Input: input, Output: response}).Run(ctx, inv.Input, output)
-		if err != nil {
-			var exchange *cmdsdk.ExchangeError
-			if errors.As(err, &exchange) && exchange.Side == "service" && !errors.Is(err, context.Canceled) {
-				err = resident.Failure(ctx, err)
-			}
-			return commandwire.Completion{}, err
-		}
-		if completion.Error != nil {
-			if err := output.Stderr(ctx, []byte(completion.Error.Code+": "+completion.Error.Message+"\n")); err != nil {
-				return commandwire.Completion{}, err
-			}
-		}
-		code = completion.ExitCode
 	} else {
-		code, err = invokeRPC(ctx, d.Pipes, execution, raw, parsed, inv, output, !raw.Live && leaf.StdinField == nil)
+		code, err = invokeRPC(
+			ctx,
+			d.Pipes,
+			execution,
+			raw,
+			parsed,
+			invocation,
+			output,
+			!raw.Live && leaf.StdinField == nil,
+		)
 		if err != nil {
 			return commandwire.Completion{}, err
 		}

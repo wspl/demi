@@ -36,7 +36,7 @@ type Fixture struct {
 	numbers          *cmdsdk.Numbers
 }
 
-func (f *Fixture) init() {
+func (f *Fixture) initLocked() {
 	if f.conversations == nil {
 		f.conversations = make(map[string]bool)
 		f.stalling = make(map[string]bool)
@@ -56,39 +56,19 @@ func (f *Fixture) SetNumbers(numbers *cmdsdk.Numbers) {
 }
 
 // Invoke runs a fixture operation with its supplied IO and cancellation.
-func (f *Fixture) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+func (f *Fixture) Invoke(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	f.mu.Lock()
-	f.init()
+	f.initLocked()
 	numbers, stalled, proceed := f.numbers, f.stalled, f.proceed
 	f.mu.Unlock()
 	result := commandwire.Completion{}
 	request := invocation.Request
 	switch request.Operation {
 	case "number":
-		if numbers == nil {
-			return result, errors.New("no numbers source")
-		}
-		args, err := decodeFixtureArgs(request.Args)
-		if err != nil {
-			return result, err
-		}
-		rawCount := string(args["count"])
-		count, err := strconv.ParseUint(rawCount, 10, 64)
-		if err != nil {
-			count = 1
-		}
-		if count > math.MaxUint32 {
-			return result, errors.New("out of range integral type conversion attempted")
-		}
-		first, err := numbers.Draw(ctx, request.Context.Conversation, commandwire.TabSequence, uint32(count))
-		if err != nil {
-			return result, err
-		}
-		data, err := (numberAnswer{First: first}).MarshalJSON()
-		if err != nil {
-			return result, err
-		}
-		return result, invocation.Output.Stdout(ctx, data)
+		return f.drawNumbers(ctx, invocation, numbers)
 	case "stalled":
 		select {
 		case <-ctx.Done():
@@ -101,58 +81,19 @@ func (f *Fixture) Invoke(ctx context.Context, invocation cmdsdk.InvocationContex
 		default:
 		}
 	case "retain", "stall_release":
-		f.mu.Lock()
-		f.conversations[request.Context.Conversation] = true
-		if request.Operation == "stall_release" {
-			f.stalling[request.Context.Conversation] = true
-		}
-		f.mu.Unlock()
+		f.retain(request)
 	case "held":
-		f.mu.Lock()
-		held := f.held()
-		f.mu.Unlock()
-		data, err := (commandwire.ConversationStatus{Conversations: held}).MarshalJSON()
-		if err != nil {
-			return result, err
-		}
-		return result, invocation.Output.Stdout(ctx, data)
+		return f.heldAnswer(ctx, invocation.Output)
 	case "crash":
-		_, _ = fmt.Fprintln(os.Stderr, "fixture crashing on purpose") // The exit is intentional even if diagnostics fail.
+		_, _ = fmt.Fprintln(
+			os.Stderr,
+			"fixture crashing on purpose",
+		) // The exit is intentional even if diagnostics fail.
 		os.Exit(3)
 	case "where":
-		args, err := decodeFixtureArgs(request.Args)
-		if err != nil {
-			return result, err
-		}
-		label := []byte("null")
-		if value, ok := args["label"]; ok {
-			label = value
-		}
-		var value *string
-		if v, ok := request.Env["PROBE"]; ok {
-			value = &v
-		}
-		data, err := (whereAnswer{Label: label, Context: request.Context, Cwd: request.Cwd, Value: value}).MarshalJSON()
-		if err != nil {
-			return result, err
-		}
-		return result, invocation.Output.Stdout(ctx, data)
+		return f.where(ctx, invocation)
 	case "echo", "first":
-		for {
-			data, err := invocation.Input.Next(ctx)
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if err != nil {
-				return result, err
-			}
-			if err := invocation.Output.Stdout(ctx, data); err != nil {
-				return result, err
-			}
-			if request.Operation == "first" {
-				break
-			}
-		}
+		return f.echo(ctx, invocation)
 	case "spin":
 		if err := invocation.Output.Stdout(ctx, []byte("started")); err != nil {
 			return result, err
@@ -163,22 +104,14 @@ func (f *Fixture) Invoke(ctx context.Context, invocation cmdsdk.InvocationContex
 			spins.Add(1)
 		}
 	case "result":
-		if err := invocation.Output.Stdout(ctx, []byte("command output")); err != nil {
-			return result, err
-		}
-		if err := invocation.Output.Stderr(ctx, []byte("command diagnostic")); err != nil {
-			return result, err
-		}
-		if request.Env["RESULT"] == "error" {
-			return result, errors.New("command failed")
-		}
-		result.ExitCode = 17
+		return f.result(ctx, invocation)
 	default:
 		return result, fmt.Errorf("unknown operation: %s", request.Operation)
 	}
 	return result, nil
 }
-func (f *Fixture) held() []string {
+
+func (f *Fixture) heldLocked() []string {
 	held := make([]string, 0, len(f.conversations))
 	for conversation := range f.conversations {
 		held = append(held, conversation)
@@ -188,10 +121,13 @@ func (f *Fixture) held() []string {
 }
 
 // Conversation answers retained-state queries and exercises controlled release failures.
-func (f *Fixture) Conversation(ctx context.Context, conversation cmdsdk.ConversationContext) (commandwire.Completion, error) {
+func (f *Fixture) Conversation(
+	ctx context.Context,
+	conversation cmdsdk.ConversationContext,
+) (commandwire.Completion, error) {
 	result := commandwire.Completion{}
 	f.mu.Lock()
-	f.init()
+	f.initLocked()
 	var data []byte
 	var err error
 	stall := false
@@ -217,7 +153,7 @@ func (f *Fixture) Conversation(ctx context.Context, conversation cmdsdk.Conversa
 			f.mu.Unlock()
 			return result, errors.New("fixture status unavailable")
 		}
-		data, err = (commandwire.ConversationStatus{Conversations: f.held()}).MarshalJSON()
+		data, err = (commandwire.ConversationStatus{Conversations: f.heldLocked()}).MarshalJSON()
 		stall = f.conversations["stall"]
 	}
 	stalled, proceed := f.stalled, f.proceed
@@ -237,4 +173,126 @@ func (f *Fixture) Conversation(ctx context.Context, conversation cmdsdk.Conversa
 		}
 	}
 	return result, conversation.Output.Stdout(ctx, data)
+}
+
+func (f *Fixture) drawNumbers(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+	numbers *cmdsdk.Numbers,
+) (commandwire.Completion, error) {
+	result := commandwire.Completion{}
+	request := invocation.Request
+	if numbers == nil {
+		return result, errors.New("no numbers source")
+	}
+	args, err := decodeFixtureArgs(request.Args)
+	if err != nil {
+		return result, err
+	}
+	rawCount := string(args["count"])
+	count, err := strconv.ParseUint(rawCount, 10, 64)
+	if err != nil {
+		count = 1
+	}
+	if count > math.MaxUint32 {
+		return result, errors.New("out of range integral type conversion attempted")
+	}
+	first, err := numbers.Draw(ctx, request.Context.Conversation, commandwire.TabSequence, uint32(count))
+	if err != nil {
+		return result, err
+	}
+	data, err := (numberAnswer{First: first}).MarshalJSON()
+	if err != nil {
+		return result, err
+	}
+	return result, invocation.Output.Stdout(ctx, data)
+}
+
+func (f *Fixture) where(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
+	result := commandwire.Completion{}
+	request := invocation.Request
+	args, err := decodeFixtureArgs(request.Args)
+	if err != nil {
+		return result, err
+	}
+	label := []byte("null")
+	if value, ok := args["label"]; ok {
+		label = value
+	}
+	var value *string
+	if v, ok := request.Env["PROBE"]; ok {
+		value = &v
+	}
+	data, err := (whereAnswer{Label: label, Context: request.Context, Cwd: request.Cwd, Value: value}).MarshalJSON()
+	if err != nil {
+		return result, err
+	}
+	return result, invocation.Output.Stdout(ctx, data)
+}
+
+func (f *Fixture) echo(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
+	result := commandwire.Completion{}
+	request := invocation.Request
+	for {
+		data, err := invocation.Input.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return result, err
+		}
+		if err := invocation.Output.Stdout(ctx, data); err != nil {
+			return result, err
+		}
+		if request.Operation == "first" {
+			break
+		}
+	}
+	return result, nil
+}
+
+func (f *Fixture) result(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
+	result := commandwire.Completion{}
+	request := invocation.Request
+	if err := invocation.Output.Stdout(ctx, []byte("command output")); err != nil {
+		return result, err
+	}
+	if err := invocation.Output.Stderr(ctx, []byte("command diagnostic")); err != nil {
+		return result, err
+	}
+	if request.Env["RESULT"] == "error" {
+		return result, errors.New("command failed")
+	}
+	result.ExitCode = 17
+	return result, nil
+}
+
+func (f *Fixture) heldAnswer(ctx context.Context, output *cmdsdk.Output) (commandwire.Completion, error) {
+	result := commandwire.Completion{}
+	f.mu.Lock()
+	held := f.heldLocked()
+	f.mu.Unlock()
+	data, err := (commandwire.ConversationStatus{Conversations: held}).MarshalJSON()
+	if err != nil {
+		return result, err
+	}
+	return result, output.Stdout(ctx, data)
+}
+
+func (f *Fixture) retain(request commandwire.Invocation) {
+	f.mu.Lock()
+	f.conversations[request.Context.Conversation] = true
+	if request.Operation == "stall_release" {
+		f.stalling[request.Context.Conversation] = true
+	}
+	f.mu.Unlock()
 }

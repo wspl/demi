@@ -27,9 +27,11 @@ func (o *commandOutput) Stdout(ctx context.Context, bytes []byte) error {
 	o.bytes = append(o.bytes, bytes...)
 	return nil
 }
+
 func (o *commandOutput) Stderr(ctx context.Context, bytes []byte) error {
 	return o.output.Stderr(ctx, bytes)
 }
+
 func (o *commandOutput) finish(ctx context.Context, code uint8) error {
 	if code != 0 || o.schema == nil {
 		return nil

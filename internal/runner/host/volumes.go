@@ -43,7 +43,15 @@ type volumeCheck struct {
 // NewVolumes creates a volume owner and copies blocks. The caller owns output;
 // the volume owner emits encoded volume_grow and sync_done frames there.
 func NewVolumes(ctx context.Context, blocks []ManagedVolume, output chan<- []byte) *Volumes {
-	return &Volumes{life: newLifetime(ctx), blocks: append([]ManagedVolume(nil), blocks...), output: output, syncs: make(chan struct{}, 4), checked: make(chan struct{}, 1), pending: make(map[runnerwire.VolumeName]string), checks: make(chan volumeCheck, len(blocks))}
+	return &Volumes{
+		life:    newLifetime(ctx),
+		blocks:  append([]ManagedVolume(nil), blocks...),
+		output:  output,
+		syncs:   make(chan struct{}, 4),
+		checked: make(chan struct{}, 1),
+		pending: make(map[runnerwire.VolumeName]string),
+		checks:  make(chan volumeCheck, len(blocks)),
+	}
 }
 
 // GrowthWanted returns a doubled capacity when free space is below the reserve,
@@ -142,15 +150,7 @@ func (v *Volumes) Checked(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	defer func() { <-v.checked }()
-	v.mu.Lock()
-	pending := false
-	for _, id := range v.pending {
-		if id == "" {
-			pending = true
-			break
-		}
-	}
-	v.mu.Unlock()
+	pending := v.hasPendingCheck()
 	if !pending {
 		return false, nil
 	}
@@ -226,4 +226,17 @@ func (v *Volumes) Close(ctx context.Context) error {
 	clear(v.pending)
 	v.mu.Unlock()
 	return nil
+}
+
+func (v *Volumes) hasPendingCheck() bool {
+	v.mu.Lock()
+	pending := false
+	for _, id := range v.pending {
+		if id == "" {
+			pending = true
+			break
+		}
+	}
+	v.mu.Unlock()
+	return pending
 }

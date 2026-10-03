@@ -22,7 +22,12 @@ func TestLineSplitterChunks(t *testing.T) {
 		t.Fatalf("Finish = %v", got)
 	}
 	var long LineSplitter
-	if got := long.Push([]byte(strings.Repeat("y", LineBytes+3))); !reflect.DeepEqual(got, []string{strings.Repeat("y", LineBytes)}) {
+	if got := long.Push(
+		[]byte(strings.Repeat("y", LineBytes+3)),
+	); !reflect.DeepEqual(
+		got,
+		[]string{strings.Repeat("y", LineBytes)},
+	) {
 		t.Fatalf("long lines = %q", got)
 	}
 	if got := long.Finish(); got == nil || *got != "yyy" {
@@ -32,6 +37,7 @@ func TestLineSplitterChunks(t *testing.T) {
 		t.Fatalf("empty = %v", got)
 	}
 }
+
 func TestStreamTailsAndMalformedText(t *testing.T) {
 	tail := NewTail(5)
 	tail.Push([]byte("first"))

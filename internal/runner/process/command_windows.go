@@ -19,7 +19,13 @@ type platformGroup struct {
 	job windows.Handle
 }
 
-func startPlatform(ctx context.Context, template *exec.Cmd, group bool, _ ChildAttributes, platform *platformGroup) (*exec.Cmd, error) {
+func startPlatform(
+	ctx context.Context,
+	template *exec.Cmd,
+	group bool,
+	_ ChildAttributes,
+	platform *platformGroup,
+) (*exec.Cmd, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -40,19 +46,10 @@ func startPlatform(ctx context.Context, template *exec.Cmd, group bool, _ ChildA
 			_ = windows.CloseHandle(job)
 		}
 	}()
-	limits := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
-	limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-	// x/sys exposes SetInformationJobObject as an untyped native buffer; the
-	// documented information class fixes this struct's layout and size.
-	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), uint32(unsafe.Sizeof(limits))); err != nil {
+	if err := setJobLimits(job); err != nil {
 		return nil, err
 	}
-	attr := syscall.SysProcAttr{}
-	if cmd.SysProcAttr != nil {
-		attr = *cmd.SysProcAttr
-	}
-	attr.CreationFlags |= windows.CREATE_SUSPENDED
-	cmd.SysProcAttr = &attr
+	suspendCommand(&cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -62,11 +59,16 @@ func startPlatform(ctx context.Context, template *exec.Cmd, group bool, _ ChildA
 			_ = cmd.Wait()
 		}
 	}()
-	handle, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(cmd.Process.Pid))
+	handle, err := windows.OpenProcess(
+		windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE,
+		false,
+		uint32(cmd.Process.Pid),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = windows.CloseHandle(handle) }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = windows.CloseHandle(handle) }()
 	if err := windows.AssignProcessToJobObject(job, handle); err != nil {
 		return nil, err
 	}
@@ -85,7 +87,8 @@ func resumeChild(pid uint32) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = windows.CloseHandle(snapshot) }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = windows.CloseHandle(snapshot) }()
 	entry := windows.ThreadEntry32{Size: uint32(unsafe.Sizeof(windows.ThreadEntry32{}))}
 	for err = windows.Thread32First(snapshot, &entry); err == nil; err = windows.Thread32Next(snapshot, &entry) {
 		if entry.OwnerProcessID != pid {
@@ -100,6 +103,7 @@ func resumeChild(pid uint32) error {
 	}
 	return fmt.Errorf("find suspended child thread: %w", err)
 }
+
 func (p *platformGroup) close() {
 	p.mu.Lock()
 	handle := p.job
@@ -109,6 +113,7 @@ func (p *platformGroup) close() {
 		_ = windows.CloseHandle(handle)
 	} // All job processes have already been terminated.
 }
+
 func (p *platformGroup) kill(process *os.Process, group bool) error {
 	if group {
 		// Duplicate under the lock so Close cannot invalidate a concurrent signal.
@@ -116,7 +121,15 @@ func (p *platformGroup) kill(process *os.Process, group bool) error {
 		var handle windows.Handle
 		var err error
 		if p.job != 0 {
-			err = windows.DuplicateHandle(windows.CurrentProcess(), p.job, windows.CurrentProcess(), &handle, 0, false, windows.DUPLICATE_SAME_ACCESS)
+			err = windows.DuplicateHandle(
+				windows.CurrentProcess(),
+				p.job,
+				windows.CurrentProcess(),
+				&handle,
+				0,
+				false,
+				windows.DUPLICATE_SAME_ACCESS,
+			)
 		}
 		p.mu.Unlock()
 		if err != nil {
@@ -125,7 +138,8 @@ func (p *platformGroup) kill(process *os.Process, group bool) error {
 		if handle == 0 {
 			return nil
 		}
-		defer func() { _ = windows.CloseHandle(handle) }() // Cleanup follows the operation result; cancellation may already have closed it.
+		// Cleanup follows the operation result; cancellation may already have closed it.
+		defer func() { _ = windows.CloseHandle(handle) }()
 		return windows.TerminateJobObject(handle, 1)
 	}
 	err := process.Kill()
@@ -134,6 +148,7 @@ func (p *platformGroup) kill(process *os.Process, group bool) error {
 	}
 	return err
 }
+
 func (p *platformGroup) signal(process *os.Process, group bool, signal runnerwire.Signal) error {
 	switch signal {
 	case runnerwire.SignalTerminate, runnerwire.SignalKill, runnerwire.SignalInterrupt:
@@ -143,7 +158,32 @@ func (p *platformGroup) signal(process *os.Process, group bool, signal runnerwir
 	}
 }
 func exitSignal(_ *os.ProcessState) *string { return nil }
-func runBootstrap() (bool, error)           { return false, nil }
+func runChildBootstrap() (bool, error)      { return false, nil }
 
 // wait preserves Windows Job Object cleanup; Unix additionally reaps adopted children.
 func (*platformGroup) wait(_ context.Context, _ *os.Process) error { return nil }
+
+func setJobLimits(job windows.Handle) error {
+	limits := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
+	limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	// x/sys exposes SetInformationJobObject as an untyped native buffer; the
+	// documented information class fixes this struct's layout and size.
+	if _, err := windows.SetInformationJobObject(
+		job,
+		windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&limits)),
+		uint32(unsafe.Sizeof(limits)),
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+func suspendCommand(cmd *exec.Cmd) {
+	attr := syscall.SysProcAttr{}
+	if cmd.SysProcAttr != nil {
+		attr = *cmd.SysProcAttr
+	}
+	attr.CreationFlags |= windows.CREATE_SUSPENDED
+	cmd.SysProcAttr = &attr
+}

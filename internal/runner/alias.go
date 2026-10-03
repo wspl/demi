@@ -39,11 +39,7 @@ func commandAlias(ctx context.Context, root string, argv []string) (uint8, error
 	if err != nil {
 		return 0, err
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return 0, err
-	}
-	id, err := uuid.NewRandom()
+	invocation, err := aliasInvocation(args, env)
 	if err != nil {
 		return 0, err
 	}
@@ -57,7 +53,12 @@ func commandAlias(ctx context.Context, root string, argv []string) (uint8, error
 		return 0, err
 	}
 	defer func() { _ = stderr.Close() }() // Duplicated descriptor, also closed by Forward.
-	completion, err := process.Forward(ctx, endpoint, commandwire.LocalInvocation{Operation: process.Raw, InvocationID: strings.ReplaceAll(id.String(), "-", ""), Args: args, Cwd: cwd, Env: env}, process.Stdio{Stdin: stdin, Stdout: stdout, Stderr: stderr})
+	completion, err := process.Forward(
+		ctx,
+		endpoint,
+		invocation,
+		process.Stdio{Stdin: stdin, Stdout: stdout, Stderr: stderr},
+	)
 	if ctx.Err() != nil {
 		return 130, nil
 	}
@@ -74,4 +75,22 @@ func processEnvironment() map[string]string {
 		}
 	}
 	return values
+}
+
+func aliasInvocation(args []byte, env map[string]string) (commandwire.LocalInvocation, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return commandwire.LocalInvocation{}, err
+	}
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return commandwire.LocalInvocation{}, err
+	}
+	return commandwire.LocalInvocation{
+		Operation:    process.Raw,
+		InvocationID: strings.ReplaceAll(id.String(), "-", ""),
+		Args:         args,
+		Cwd:          cwd,
+		Env:          env,
+	}, nil
 }

@@ -65,18 +65,28 @@ func (r *localResolver) Resolve(ctx context.Context, _ commandwire.PackageArtifa
 	}
 	return cmdpkgs.ArtifactSource{Path: r.path}, nil
 }
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
+
 func artifact(data []byte) commandwire.PackageArtifact {
 	return commandwire.PackageArtifact{SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Size: uint64(len(data))}
 }
+
 func wanted(name, version string, data []byte) cmdpkgs.Wanted {
-	return cmdpkgs.Wanted{Package: "demi.fixture", Name: name, Version: version, Artifact: artifact(data), Form: &commandwire.ArtifactFile{}}
+	return cmdpkgs.Wanted{
+		Package:  "demi.fixture",
+		Name:     name,
+		Version:  version,
+		Artifact: artifact(data),
+		Form:     &commandwire.ArtifactFile{},
+	}
 }
+
 func newCache(t *testing.T) (*cmdpkgs.ArtifactCache, *cmdpkgs.Installs, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -89,12 +99,14 @@ func newCache(t *testing.T) (*cmdpkgs.ArtifactCache, *cmdpkgs.Installs, string) 
 	})
 	return cache, installs, root
 }
+
 func writeSource(t *testing.T, root, name string, data []byte) *localResolver {
 	t.Helper()
 	path := filepath.Join(root, name)
-	must(t, os.WriteFile(path, data, 0700))
+	must(t, os.WriteFile(path, data, 0o700))
 	return &localResolver{path: path}
 }
+
 func TestCachedFileIsReusedAndWrongSizeFails(t *testing.T) {
 	cache, _, root := newCache(t)
 	data := []byte("native executable fixture")
@@ -109,7 +121,7 @@ func TestCachedFileIsReusedAndWrongSizeFails(t *testing.T) {
 	}
 	info, err := os.Stat(path)
 	must(t, err)
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0111 != 0111 {
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 != 0o111 {
 		t.Fatal("cached file is not executable")
 	}
 	again, err := cache.Install(t.Context(), w, resolver)
@@ -117,13 +129,14 @@ func TestCachedFileIsReusedAndWrongSizeFails(t *testing.T) {
 	if again != path || resolver.calls.Load() != 1 {
 		t.Fatal("cache hit asked resolver")
 	}
-	must(t, os.WriteFile(path, []byte("corrupt cache"), 0700))
+	must(t, os.WriteFile(path, []byte("corrupt cache"), 0o700))
 	_, err = cache.Install(t.Context(), w, resolver)
 	var size *artifacts.SizeError
 	if !errors.As(err, &size) {
 		t.Fatalf("wrong size accepted: %v", err)
 	}
 }
+
 func TestMismatchedOrCancelledInstallLeavesNothing(t *testing.T) {
 	cache, _, root := newCache(t)
 	resolver := writeSource(t, root, "source", []byte("too much data"))
@@ -144,11 +157,15 @@ func TestMismatchedOrCancelledInstallLeavesNothing(t *testing.T) {
 		t.Fatalf("left entries: %v", entries)
 	}
 }
+
 func TestArchiveUnpackedOnceAndReported(t *testing.T) {
 	cache, installs, root := newCache(t)
 	var data bytes.Buffer
 	archive := zip.NewWriter(&data)
-	for _, entry := range []struct{ name, contents string }{{"chrome-linux64/chrome", "chrome"}, {"chrome-linux64/LICENSE", "license"}} {
+	for _, entry := range []struct{ name, contents string }{
+		{"chrome-linux64/chrome", "chrome"},
+		{"chrome-linux64/LICENSE", "license"},
+	} {
 		writer, err := archive.Create(entry.name)
 		must(t, err)
 		_, err = writer.Write([]byte(entry.contents))
@@ -182,7 +199,15 @@ func TestArchiveUnpackedOnceAndReported(t *testing.T) {
 		_, err := reported.Changed(t.Context())
 		must(t, err)
 	}
-	expected := []runnerwire.Install{{Package: w.Package, Name: w.Name, Version: w.Version, Phase: runnerwire.InstallPhaseDownload, Total: w.Artifact.Size}}
+	expected := []runnerwire.Install{
+		{
+			Package: w.Package,
+			Name:    w.Name,
+			Version: w.Version,
+			Phase:   runnerwire.InstallPhaseDownload,
+			Total:   w.Artifact.Size,
+		},
+	}
 	if got := reported.Current(); !reflect.DeepEqual(got, expected) {
 		t.Fatalf("installs = %#v", got)
 	}
@@ -204,6 +229,7 @@ func TestArchiveUnpackedOnceAndReported(t *testing.T) {
 		t.Fatal("archive not reused")
 	}
 }
+
 func TestNewerVersionRemovesOnlyUnheldArtifactsOfItsLine(t *testing.T) {
 	cache, _, root := newCache(t)
 	install := func(name, version string) (string, cmdpkgs.Wanted) {

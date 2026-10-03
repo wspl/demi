@@ -41,9 +41,24 @@ type streamBinding struct {
 
 // NewServiceStreams creates an owner that cancels streams with ctx. Closing
 // draining refuses new calls while retaining the service binding, as Rust does.
-func NewServiceStreams(ctx context.Context, connection *ConnectionHandle, pipes *process.PipeClient, services *cmdpkgs.ServiceHandle, draining <-chan struct{}) *ServiceStreams {
+func NewServiceStreams(
+	ctx context.Context,
+	connection *ConnectionHandle,
+	pipes *process.PipeClient,
+	services *cmdpkgs.ServiceHandle,
+	draining <-chan struct{},
+) *ServiceStreams {
 	lifetime, cancel := context.WithCancel(ctx)
-	return &ServiceStreams{connection: connection, pipes: pipes, services: services, lifetime: lifetime, cancel: cancel, draining: draining, bindings: make(map[string]*streamBinding), done: make(chan struct{})}
+	return &ServiceStreams{
+		connection: connection,
+		pipes:      pipes,
+		services:   services,
+		lifetime:   lifetime,
+		cancel:     cancel,
+		draining:   draining,
+		bindings:   make(map[string]*streamBinding),
+		done:       make(chan struct{}),
+	}
 }
 
 // HandleOpen registers a service_open request and starts its owned work without
@@ -80,7 +95,10 @@ func (s *ServiceStreams) HandleOpen(message runnerwire.Inbound) error {
 	if oldLease != nil {
 		oldLease.Release()
 	}
-	go func() { defer s.workers.Done(); s.run(request, moved) }()
+	go func() {
+		defer s.workers.Done()
+		s.run(request, moved)
+	}()
 	return nil
 }
 
@@ -123,25 +141,17 @@ func (s *ServiceStreams) run(request *runnerwire.ServiceOpen, moved *streamBindi
 	}
 	refuse := func(code runnerwire.ServiceErrorCode, message string) {
 		log("refused (" + string(code) + "): " + message)
-		if err := s.connection.send(ctx, &runnerwire.ServiceError{StreamID: request.StreamID, Code: code, Message: message}); err != nil && ctx.Err() == nil {
+		if err := s.connection.send(
+			ctx,
+			&runnerwire.ServiceError{StreamID: request.StreamID, Code: code, Message: message},
+		); err != nil &&
+			ctx.Err() == nil {
 			slog.Warn("service_error encoding failed", "error", err)
 		}
 	}
-	if moved != nil {
-		lease, err := s.services.Lease(ctx, moved.digest)
-		if err != nil {
-			refuse(runnerwire.ServiceErrorCodeServiceFailed, err.Error())
-			return
-		}
-		s.mu.Lock()
-		held := s.bindings[request.Package.ID] == moved && !s.closing
-		if held {
-			moved.lease = lease
-		}
-		s.mu.Unlock()
-		if !held {
-			lease.Release()
-		}
+	if err := s.holdBinding(ctx, request, moved); err != nil {
+		refuse(runnerwire.ServiceErrorCodeServiceFailed, err.Error())
+		return
 	}
 	select {
 	case <-s.draining:
@@ -150,7 +160,10 @@ func (s *ServiceStreams) run(request *runnerwire.ServiceOpen, moved *streamBindi
 	default:
 	}
 	if !slices.Contains(request.Package.Operations, request.Operation) {
-		refuse(runnerwire.ServiceErrorCodeUnknownOperation, fmt.Sprintf("%s has no operation %s", request.Package.ID, request.Operation))
+		refuse(
+			runnerwire.ServiceErrorCodeUnknownOperation,
+			fmt.Sprintf("%s has no operation %s", request.Package.ID, request.Operation),
+		)
 		return
 	}
 	target, err := commandwire.HostTarget()
@@ -174,74 +187,7 @@ func (s *ServiceStreams) run(request *runnerwire.ServiceOpen, moved *streamBindi
 		refuse(runnerwire.ServiceErrorCodeServiceFailed, err.Error())
 		return
 	}
-	args := json.RawMessage(`{}`)
-	if request.Args != nil {
-		args = *request.Args
-	}
-	invocation := commandwire.Invocation{Operation: request.Operation, InvocationID: request.StreamID, Context: request.Context, Args: args, Cwd: request.CWD, Env: map[string]string{}, JSON: request.JSON}
-	input, response, err := resident.Client().Invoke(ctx, invocation)
-	if err != nil {
-		refuse(runnerwire.ServiceErrorCodeServiceFailed, resident.Failure(ctx, err).Error())
-		return
-	}
-	defer input.Cancel()
-	if err = s.connection.send(ctx, &runnerwire.ServiceOpened{StreamID: request.StreamID}); err != nil {
-		return
-	}
-	log("opened")
-	source := &streamInput{pipes: s.pipes, url: request.Input.URL}
-	defer source.close()
-	uploads := make(chan []byte, 4)
-	uploadCtx, stopUpload := context.WithCancel(ctx)
-	defer stopUpload()
-	uploaded := make(chan error, 1)
-	go func() {
-		err := s.pipes.Put(uploadCtx, request.Output.URL, newInvocationBody(uploadCtx, cmdsdk.NewInput(&chunkSource{chunks: uploads})))
-		if err != nil {
-			cancel()
-		}
-		uploaded <- err
-	}()
-	sink := &streamOutput{uploads: uploads, tail: process.NewTail(runnerwire.ServiceStderrChars), conversation: request.Context.Conversation, operation: request.Operation}
-	completion, result := (cmdsdk.Exchange{Input: input, Output: response}).Run(ctx, source, sink)
-	if result != nil {
-		stopUpload()
-	}
-	close(uploads)
-	upload := <-uploaded
-	if line := sink.lines.Finish(); line != nil {
-		sink.log(*line)
-	}
-	var inputResult error
-	if result != nil {
-		var exchange *cmdsdk.ExchangeError
-		if errors.As(result, &exchange) && exchange.Side == "input" {
-			inputResult = exchange.Cause
-		} else if errors.As(result, &exchange) && exchange.Side == "service" && !errors.Is(result, context.Canceled) {
-			log("failed: " + result.Error())
-			inputResult = errors.New("the service stream's invocation failed")
-		} else {
-			inputResult = errors.New("service stream cancelled")
-		}
-	}
-	if upload != nil || inputResult != nil {
-		cancel()
-	}
-	if err := process.ReportPipe(s.lifetime, s.connection.Control, request.Input.ID, inputResult); err != nil && s.lifetime.Err() == nil {
-		slog.Warn("pipe reporting failed", "error", err)
-	}
-	if err := process.ReportPipe(s.lifetime, s.connection.Control, request.Output.ID, upload); err != nil && s.lifetime.Err() == nil {
-		slog.Warn("pipe reporting failed", "error", err)
-	}
-	if result == nil {
-		if completion.Error != nil {
-			log("failed: " + completion.Error.Code + ": " + completion.Error.Message)
-		}
-		if err := s.connection.send(s.lifetime, &runnerwire.ServiceDone{StreamID: request.StreamID, ExitCode: completion.ExitCode, Stderr: sink.tail.Text()}); err != nil && s.lifetime.Err() == nil {
-			slog.Warn("service_done encoding failed", "error", err)
-		}
-	}
-	log("ended")
+	s.invokeStream(ctx, cancel, request, resident, log, refuse)
 }
 
 // streamInput opens a user input pipe only after the service's first pull.
@@ -266,6 +212,7 @@ func (s *streamInput) Next(ctx context.Context) ([]byte, error) {
 	}
 	return nil, err
 }
+
 func (s *streamInput) close() {
 	if s.body != nil {
 		_ = s.body.Close()
@@ -288,6 +235,7 @@ func (s *streamOutput) Stdout(ctx context.Context, bytes []byte) error {
 		return nil
 	}
 }
+
 func (s *streamOutput) Stderr(_ context.Context, bytes []byte) error {
 	s.tail.Push(bytes)
 	for _, line := range s.lines.Push(bytes) {
@@ -295,6 +243,157 @@ func (s *streamOutput) Stderr(_ context.Context, bytes []byte) error {
 	}
 	return nil
 }
+
 func (s *streamOutput) log(line string) {
 	slog.Info(line, "source", "stream:"+s.operation, "conversation", s.conversation)
+}
+
+func (s *ServiceStreams) holdBinding(ctx context.Context, request *runnerwire.ServiceOpen, moved *streamBinding) error {
+	if moved != nil {
+		lease, err := s.services.Lease(ctx, moved.digest)
+		if err != nil {
+			return err
+		}
+		s.mu.Lock()
+		held := s.bindings[request.Package.ID] == moved && !s.closing
+		if held {
+			moved.lease = lease
+		}
+		s.mu.Unlock()
+		if !held {
+			lease.Release()
+		}
+	}
+	return nil
+}
+
+func (s *ServiceStreams) invokeStream(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	request *runnerwire.ServiceOpen,
+	resident *cmdpkgs.Resident,
+	log func(string),
+	refuse func(runnerwire.ServiceErrorCode, string),
+) {
+	invocation := streamInvocation(request)
+	input, response, err := resident.Client().Invoke(ctx, invocation)
+	if err != nil {
+		refuse(runnerwire.ServiceErrorCodeServiceFailed, resident.Failure(ctx, err).Error())
+		return
+	}
+	defer input.Cancel()
+	if err = s.connection.send(ctx, &runnerwire.ServiceOpened{StreamID: request.StreamID}); err != nil {
+		return
+	}
+	log("opened")
+	source := &streamInput{pipes: s.pipes, url: request.Input.URL}
+	defer source.close()
+	uploads := make(chan []byte, 4)
+	uploadCtx, stopUpload := context.WithCancel(ctx)
+	defer stopUpload()
+	uploaded := make(chan error, 1)
+	go func() {
+		err := s.pipes.Put(
+			uploadCtx,
+			request.Output.URL,
+			newInvocationBody(uploadCtx, cmdsdk.NewInput(&chunkSource{chunks: uploads})),
+		)
+		if err != nil {
+			cancel()
+		}
+		uploaded <- err
+	}()
+	sink := &streamOutput{
+		uploads:      uploads,
+		tail:         process.NewTail(runnerwire.ServiceStderrChars),
+		conversation: request.Context.Conversation,
+		operation:    request.Operation,
+	}
+	completion, result := (cmdsdk.Exchange{Input: input, Output: response}).Run(ctx, source, sink)
+	if result != nil {
+		stopUpload()
+	}
+	close(uploads)
+	upload := <-uploaded
+	if line := sink.lines.Finish(); line != nil {
+		sink.log(*line)
+	}
+	s.finishStream(request, completion, result, upload, sink, cancel, log)
+}
+
+func (s *ServiceStreams) finishStream(
+	request *runnerwire.ServiceOpen,
+	completion commandwire.Completion,
+	result, upload error,
+	sink *streamOutput,
+	cancel context.CancelFunc,
+	log func(string),
+) {
+	var inputResult error
+	if result != nil {
+		var exchange *cmdsdk.ExchangeError
+		if errors.As(result, &exchange) && exchange.Side == "input" {
+			inputResult = exchange.Cause
+		} else if errors.As(result, &exchange) && exchange.Side == "service" && !errors.Is(result, context.Canceled) {
+			log("failed: " + result.Error())
+			inputResult = errors.New("the service stream's invocation failed")
+		} else {
+			inputResult = errors.New("service stream cancelled")
+		}
+	}
+	if upload != nil || inputResult != nil {
+		cancel()
+	}
+	if err := process.ReportPipe(
+		s.lifetime,
+		s.connection.Control,
+		request.Input.ID,
+		inputResult,
+	); err != nil &&
+		s.lifetime.Err() == nil {
+		slog.Warn("pipe reporting failed", "error", err)
+	}
+	if err := process.ReportPipe(
+		s.lifetime,
+		s.connection.Control,
+		request.Output.ID,
+		upload,
+	); err != nil &&
+		s.lifetime.Err() == nil {
+		slog.Warn("pipe reporting failed", "error", err)
+	}
+	if result == nil {
+		if completion.Error != nil {
+			log("failed: " + completion.Error.Code + ": " + completion.Error.Message)
+		}
+		if err := s.connection.send(
+			s.lifetime,
+			&runnerwire.ServiceDone{
+				StreamID: request.StreamID,
+				ExitCode: completion.ExitCode,
+				Stderr:   sink.tail.Text(),
+			},
+		); err != nil &&
+			s.lifetime.Err() == nil {
+			slog.Warn("service_done encoding failed", "error", err)
+		}
+	}
+	log("ended")
+}
+
+func streamInvocation(request *runnerwire.ServiceOpen) commandwire.Invocation {
+	args := json.RawMessage(`{}`)
+	if request.Args != nil {
+		args = *request.Args
+	}
+	invocation := commandwire.Invocation{
+		Operation:    request.Operation,
+		InvocationID: request.StreamID,
+		Context:      request.Context,
+		Args:         args,
+		Cwd:          request.CWD,
+		Env:          map[string]string{},
+		JSON:         request.JSON,
+	}
+	return invocation
 }

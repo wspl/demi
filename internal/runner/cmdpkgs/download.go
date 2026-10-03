@@ -12,7 +12,13 @@ import (
 )
 
 // fetch verifies bytes while reporting the download. Only an expired URL is refreshed.
-func (c *ArtifactCache) fetch(ctx context.Context, artifact commandwire.PackageArtifact, output io.Writer, resolver ArtifactResolver, installing *installing) error {
+func (c *ArtifactCache) fetch(
+	ctx context.Context,
+	artifact commandwire.PackageArtifact,
+	output io.Writer,
+	resolver ArtifactResolver,
+	installing *installing,
+) error {
 	refreshed := false
 	for {
 		source, err := resolver.Resolve(ctx, artifact)

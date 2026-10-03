@@ -24,7 +24,13 @@ type playedShell struct {
 func (*playedShell) BuiltinNames() map[string]struct{} { return map[string]struct{}{} }
 func (s *playedShell) Start(ctx context.Context, start process.JobStart) (process.ShellJob, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	job := &playedJob{ctx: ctx, cancel: cancel, input: make(chan process.Input), output: make(chan process.OutputChunk), done: make(chan struct{})}
+	job := &playedJob{
+		ctx:    ctx,
+		cancel: cancel,
+		input:  make(chan process.Input),
+		output: make(chan process.OutputChunk),
+		done:   make(chan struct{}),
+	}
 	go func() {
 		defer close(job.done)
 		defer close(job.output)
@@ -45,9 +51,12 @@ type playedJob struct {
 
 func (j *playedJob) Input() chan<- process.Input        { return j.input }
 func (j *playedJob) Output() <-chan process.OutputChunk { return j.output }
-func (j *playedJob) Signal(runnerwire.Signal) error     { j.cancel(); return nil }
-func (j *playedJob) Cancel()                            { j.cancel() }
-func (j *playedJob) IsCancelled() bool                  { return j.ctx.Err() != nil }
+func (j *playedJob) Signal(runnerwire.Signal) error {
+	j.cancel()
+	return nil
+}
+func (j *playedJob) Cancel()           { j.cancel() }
+func (j *playedJob) IsCancelled() bool { return j.ctx.Err() != nil }
 func (j *playedJob) Wait(ctx context.Context) (process.Exit, *string) {
 	select {
 	case <-j.done:
@@ -57,7 +66,13 @@ func (j *playedJob) Wait(ctx context.Context) (process.Exit, *string) {
 	}
 	return j.exit, j.cwd
 }
-func printJob(ctx context.Context, output chan<- process.OutputChunk, stream runnerwire.OutputStream, data []byte) bool {
+
+func printJob(
+	ctx context.Context,
+	output chan<- process.OutputChunk,
+	stream runnerwire.OutputStream,
+	data []byte,
+) bool {
 	for len(data) > 0 {
 		n := min(len(data), 65536)
 		select {
@@ -69,7 +84,12 @@ func printJob(ctx context.Context, output chan<- process.OutputChunk, stream run
 	}
 	return true
 }
-func successfulExit() process.Exit { code := int32(0); return process.Exit{Code: &code} }
+
+func successfulExit() process.Exit {
+	code := int32(0)
+	return process.Exit{Code: &code}
+}
+
 func newTable(t *testing.T, capacity int, shell *playedShell) (*jobs.Table, <-chan []byte, *jobs.Directories, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -84,12 +104,16 @@ func newTable(t *testing.T, capacity int, shell *playedShell) (*jobs.Table, <-ch
 	})
 	return table, output, directories, root
 }
+
 func startJob(t *testing.T, table *jobs.Table, root string) {
 	t.Helper()
-	if err := table.Start(jobs.TaskSpec{ID: "job", Cwd: root, Env: map[string]string{}, Command: &jobs.ShellCommand{Script: "fixture"}}); err != nil {
+	if err := table.Start(
+		jobs.TaskSpec{ID: "job", Cwd: root, Env: map[string]string{}, Command: &jobs.ShellCommand{Script: "fixture"}},
+	); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func reply(t *testing.T, output <-chan []byte) runnerwire.Outbound {
 	t.Helper()
 	ctx := testContext(t)
@@ -105,6 +129,7 @@ func reply(t *testing.T, output <-chan []byte) runnerwire.Outbound {
 		return nil
 	}
 }
+
 func kept(t *testing.T, directories *jobs.Directories) []runnerwire.KeptRecord {
 	t.Helper()
 	reader, ok := directories.Output("job")
@@ -115,7 +140,8 @@ func kept(t *testing.T, directories *jobs.Directories) []runnerwire.KeptRecord {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = snapshot.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+	// Cleanup follows the operation result; cancellation may already have closed it.
+	defer func() { _ = snapshot.Close() }()
 	data, err := io.ReadAll(snapshot)
 	if err != nil {
 		t.Fatal(err)
@@ -126,6 +152,7 @@ func kept(t *testing.T, directories *jobs.Directories) []runnerwire.KeptRecord {
 	}
 	return records
 }
+
 func streamBytes(records []runnerwire.KeptRecord, stream runnerwire.OutputStream) []byte {
 	var bytes []byte
 	for _, record := range records {
@@ -139,15 +166,26 @@ func streamBytes(records []runnerwire.KeptRecord, stream runnerwire.OutputStream
 func TestShellJobKeepsReadsAndSendsViews(t *testing.T) {
 	stdout := bytes.Repeat([]byte{'0'}, 60000)
 	stderr := bytes.Repeat([]byte{'1'}, 40000)
-	table, output, directories, root := newTable(t, 8, &playedShell{run: func(ctx context.Context, start process.JobStart, out chan<- process.OutputChunk, _ <-chan process.Input) (process.Exit, *string) {
-		if start.Script != "fixture" {
-			t.Error("script changed")
-		}
-		printJob(ctx, out, runnerwire.Stdout, stdout)
-		printJob(ctx, out, runnerwire.Stderr, stderr)
-		cwd := filepath.Join(start.Cwd, "child")
-		return successfulExit(), &cwd
-	}})
+	table, output, directories, root := newTable(
+		t,
+		8,
+		&playedShell{
+			run: func(
+				ctx context.Context,
+				start process.JobStart,
+				out chan<- process.OutputChunk,
+				_ <-chan process.Input,
+			) (process.Exit, *string) {
+				if start.Script != "fixture" {
+					t.Error("script changed")
+				}
+				printJob(ctx, out, runnerwire.Stdout, stdout)
+				printJob(ctx, out, runnerwire.Stderr, stderr)
+				cwd := filepath.Join(start.Cwd, "child")
+				return successfulExit(), &cwd
+			},
+		},
+	)
 	startJob(t, table, root)
 	heads := map[runnerwire.OutputStream][]byte{}
 	newest := map[runnerwire.OutputStream]*runnerwire.JobOutput{}
@@ -164,7 +202,8 @@ func TestShellJobKeepsReadsAndSendsViews(t *testing.T) {
 				}
 				heads[out.Stream] = append(heads[out.Stream], out.Bytes...)
 			} else {
-				if len(out.Bytes) > runnerwire.JobViewBytes || !bytes.Equal(out.Bytes, printed[out.Offset:int(out.Offset)+len(out.Bytes)]) {
+				if len(out.Bytes) > runnerwire.JobViewBytes ||
+					!bytes.Equal(out.Bytes, printed[out.Offset:int(out.Offset)+len(out.Bytes)]) {
 					t.Fatal("invalid newest view")
 				}
 				newest[out.Stream] = out
@@ -175,7 +214,11 @@ func TestShellJobKeepsReadsAndSendsViews(t *testing.T) {
 		if !ok {
 			t.Fatalf("unexpected %T", message)
 		}
-		if exit.ExitCode == nil || *exit.ExitCode != 0 || exit.CWD == nil || *exit.CWD != filepath.Join(root, "child") || exit.Output == nil || exit.Output.StdoutBytes != 60000 || exit.Output.StderrBytes != 40000 {
+		if exit.ExitCode == nil || *exit.ExitCode != 0 || exit.CWD == nil ||
+			*exit.CWD != filepath.Join(root, "child") ||
+			exit.Output == nil ||
+			exit.Output.StdoutBytes != 60000 ||
+			exit.Output.StderrBytes != 40000 {
 			t.Fatalf("exit %+v", exit)
 		}
 		break
@@ -185,12 +228,14 @@ func TestShellJobKeepsReadsAndSendsViews(t *testing.T) {
 			t.Fatal("initial view changed")
 		}
 		last := newest[stream]
-		if last == nil || len(last.Bytes) != runnerwire.JobViewBytes || last.Offset+uint64(len(last.Bytes)) != uint64(len(printed)) {
+		if last == nil || len(last.Bytes) != runnerwire.JobViewBytes ||
+			last.Offset+uint64(len(last.Bytes)) != uint64(len(printed)) {
 			t.Fatal("missing last view")
 		}
 	}
 	records := kept(t, directories)
-	if !bytes.Equal(streamBytes(records, runnerwire.Stdout), stdout) || !bytes.Equal(streamBytes(records, runnerwire.Stderr), stderr) {
+	if !bytes.Equal(streamBytes(records, runnerwire.Stdout), stdout) ||
+		!bytes.Equal(streamBytes(records, runnerwire.Stderr), stderr) {
 		t.Fatal("kept output differs")
 	}
 	if err := table.Close(testContext(t)); err != nil {
@@ -222,11 +267,22 @@ func TestEndlessJobKeepsBoundedHeadAndTail(t *testing.T) {
 	for i := range data {
 		data[i] = pattern[i%len(pattern)]
 	}
-	table, output, directories, root := newTable(t, 64, &playedShell{run: func(ctx context.Context, _ process.JobStart, out chan<- process.OutputChunk, _ <-chan process.Input) (process.Exit, *string) {
-		printJob(ctx, out, runnerwire.Stdout, data)
-		printJob(ctx, out, runnerwire.Stdout, []byte("END"))
-		return successfulExit(), nil
-	}})
+	table, output, directories, root := newTable(
+		t,
+		64,
+		&playedShell{
+			run: func(
+				ctx context.Context,
+				_ process.JobStart,
+				out chan<- process.OutputChunk,
+				_ <-chan process.Input,
+			) (process.Exit, *string) {
+				printJob(ctx, out, runnerwire.Stdout, data)
+				printJob(ctx, out, runnerwire.Stdout, []byte("END"))
+				return successfulExit(), nil
+			},
+		},
+	)
 	startJob(t, table, root)
 	for {
 		if exit, ok := reply(t, output).(*runnerwire.JobExit); ok {
@@ -270,7 +326,8 @@ func TestEndlessJobKeepsBoundedHeadAndTail(t *testing.T) {
 		t.Fatal("missing gap")
 	}
 	first, last := streamBytes(records[:gap], runnerwire.Stdout), streamBytes(records[gap+1:], runnerwire.Stdout)
-	if !bytes.HasPrefix(first, []byte("0123456789\n0123456789\n")) || !bytes.HasSuffix(last, []byte("01END")) || uint64(len(first)+len(last))+omitted != total+3 {
+	if !bytes.HasPrefix(first, []byte("0123456789\n0123456789\n")) || !bytes.HasSuffix(last, []byte("01END")) ||
+		uint64(len(first)+len(last))+omitted != total+3 {
 		t.Fatal("head, gap and tail do not reconstruct length")
 	}
 	headBytes := 0
@@ -290,34 +347,45 @@ func TestEndlessJobKeepsBoundedHeadAndTail(t *testing.T) {
 func TestFollowedJobSendsNewestOutput(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		printed := make(chan struct{}, 4)
-		table, output, _, root := newTable(t, 64, &playedShell{run: func(ctx context.Context, _ process.JobStart, out chan<- process.OutputChunk, input <-chan process.Input) (process.Exit, *string) {
-			printJob(ctx, out, runnerwire.Stdout, bytes.Repeat([]byte{'0'}, 60000))
-			printed <- struct{}{}
-			select {
-			case <-ctx.Done():
-				return process.Exit{}, nil
-			case <-input:
-			}
-			for line := range 50 {
-				printJob(ctx, out, runnerwire.Stdout, []byte(fmt.Sprintf("%05d\n", line)))
-				time.Sleep(10 * time.Millisecond)
-			}
-			printed <- struct{}{}
-			select {
-			case <-ctx.Done():
-				return process.Exit{}, nil
-			case <-input:
-			}
-			printJob(ctx, out, runnerwire.Stdout, []byte(fmt.Sprintf("%020000d", 1)))
-			printed <- struct{}{}
-			select {
-			case <-ctx.Done():
-				return process.Exit{}, nil
-			case <-input:
-			}
-			printJob(ctx, out, runnerwire.Stdout, []byte("end"))
-			return successfulExit(), nil
-		}})
+		table, output, _, root := newTable(
+			t,
+			64,
+			&playedShell{
+				run: func(
+					ctx context.Context,
+					_ process.JobStart,
+					out chan<- process.OutputChunk,
+					input <-chan process.Input,
+				) (process.Exit, *string) {
+					printJob(ctx, out, runnerwire.Stdout, bytes.Repeat([]byte{'0'}, 60000))
+					printed <- struct{}{}
+					select {
+					case <-ctx.Done():
+						return process.Exit{}, nil
+					case <-input:
+					}
+					for line := range 50 {
+						printJob(ctx, out, runnerwire.Stdout, []byte(fmt.Sprintf("%05d\n", line)))
+						time.Sleep(10 * time.Millisecond)
+					}
+					printed <- struct{}{}
+					select {
+					case <-ctx.Done():
+						return process.Exit{}, nil
+					case <-input:
+					}
+					printJob(ctx, out, runnerwire.Stdout, []byte(fmt.Sprintf("%020000d", 1)))
+					printed <- struct{}{}
+					select {
+					case <-ctx.Done():
+						return process.Exit{}, nil
+					case <-input:
+					}
+					printJob(ctx, out, runnerwire.Stdout, []byte("end"))
+					return successfulExit(), nil
+				},
+			},
+		)
 		startJob(t, table, root)
 		<-printed
 		next := func() *runnerwire.JobOutput {
@@ -338,7 +406,8 @@ func TestFollowedJobSendsNewestOutput(t *testing.T) {
 				head += uint64(len(out.Bytes))
 			} else {
 				end := out.Offset + uint64(len(out.Bytes))
-				if head != runnerwire.JobViewBytes || end > 60000 || uint64(len(out.Bytes)) != min(uint64(runnerwire.JobViewBytes), end-runnerwire.JobViewBytes) {
+				if head != runnerwire.JobViewBytes || end > 60000 ||
+					uint64(len(out.Bytes)) != min(uint64(runnerwire.JobViewBytes), end-runnerwire.JobViewBytes) {
 					t.Fatalf("unfollowed head %d, growth %+v", head, out)
 				}
 				break
@@ -348,7 +417,8 @@ func TestFollowedJobSendsNewestOutput(t *testing.T) {
 		id := jobs.WorkID{Kind: jobs.ShellWork, ID: "job"}
 		table.Follow(id, true)
 		out := next()
-		if out.Offset != 60000-runnerwire.JobLiveBytes || !bytes.Equal(out.Bytes, bytes.Repeat([]byte{'0'}, runnerwire.JobLiveBytes)) {
+		if out.Offset != 60000-runnerwire.JobLiveBytes ||
+			!bytes.Equal(out.Bytes, bytes.Repeat([]byte{'0'}, runnerwire.JobLiveBytes)) {
 			t.Fatalf("catchup %+v", out)
 		}
 		at := time.Now()
@@ -415,11 +485,22 @@ func TestFollowedJobSendsNewestOutput(t *testing.T) {
 }
 
 func TestShutdownWithBlockedOutputConsumer(t *testing.T) {
-	table, output, _, root := newTable(t, 1, &playedShell{run: func(ctx context.Context, _ process.JobStart, out chan<- process.OutputChunk, _ <-chan process.Input) (process.Exit, *string) {
-		for printJob(ctx, out, runnerwire.Stdout, bytes.Repeat([]byte{'0'}, 4096)) {
-		}
-		return process.Exit{}, nil
-	}})
+	table, output, _, root := newTable(
+		t,
+		1,
+		&playedShell{
+			run: func(
+				ctx context.Context,
+				_ process.JobStart,
+				out chan<- process.OutputChunk,
+				_ <-chan process.Input,
+			) (process.Exit, *string) {
+				for printJob(ctx, out, runnerwire.Stdout, bytes.Repeat([]byte{'0'}, 4096)) {
+				}
+				return process.Exit{}, nil
+			},
+		},
+	)
 	startJob(t, table, root)
 	reply(t, output)
 	if err := table.Close(testContext(t)); err != nil {

@@ -20,7 +20,11 @@ func (a *serviceArtifacts) close() {
 		hold.Release()
 	}
 }
-func (a *serviceArtifacts) answer(ctx context.Context, request commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
+
+func (a *serviceArtifacts) answer(
+	ctx context.Context,
+	request commandwire.ArtifactRequest,
+) (commandwire.ArtifactAnswer, error) {
 	r := a.registry
 	if request.Installed != nil {
 		installed, err := r.cache.Installed(ctx, a.pkg, request.Installed.Name)
@@ -46,7 +50,13 @@ func (a *serviceArtifacts) answer(ctx context.Context, request commandwire.Artif
 	}()
 	defer cancel()
 	hold := r.cache.Holds().Hold(install.SHA256)
-	wanted := Wanted{Package: a.pkg, Name: install.Name, Version: install.Version, Artifact: commandwire.PackageArtifact{SHA256: install.SHA256, Size: install.Size}, Form: install.Form}
+	wanted := Wanted{
+		Package:  a.pkg,
+		Name:     install.Name,
+		Version:  install.Version,
+		Artifact: commandwire.PackageArtifact{SHA256: install.SHA256, Size: install.Size},
+		Form:     install.Form,
+	}
 	path, err := r.cache.Install(ctx, wanted, invocation.resolver)
 	if err != nil {
 		hold.Release()

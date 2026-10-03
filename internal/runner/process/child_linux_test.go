@@ -20,16 +20,17 @@ func TestStartBusyExecutable(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "program")
-			writing, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0755)
+			writing, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o755)
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = writing.Close() }() // Cleanup follows the operation result; cancellation may already have closed it.
+			// Cleanup follows the operation result; cancellation may already have closed it.
+			defer func() { _ = writing.Close() }()
 			if _, err := writing.WriteString("#!/bin/sh\necho started\n"); err != nil {
 				t.Fatal(err)
 			}
 			attributes := ChildAttributes{}
-			mask := uint32(0077)
+			mask := uint32(0o077)
 			if bootstrap {
 				attributes.Umask = &mask
 			}
@@ -58,7 +59,10 @@ func TestStartBusyExecutable(t *testing.T) {
 			if err := <-done; err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = command.Kill(); command.Wait(context.Background()) })
+			t.Cleanup(func() {
+				_ = command.Kill()
+				command.Wait(context.Background())
+			})
 			requireSuccess(t, command.Wait(ctx))
 			if stdout.String() != "started\n" {
 				t.Fatalf("stdout = %q", stdout.String())

@@ -37,7 +37,7 @@ func (d *Directories) Create(ctx context.Context, job string) (*Directory, error
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(d.root, 0700); err != nil {
+	if err := os.MkdirAll(d.root, 0o700); err != nil {
 		return nil, err
 	}
 	path, err := os.MkdirTemp(d.root, "job-")
@@ -125,8 +125,11 @@ func (d *Directories) Clear(ctx context.Context) {
 // Directory holds a job's kept output and scratch directory until Finish.
 // Finish preserves Path and Output's readable data until Directories.Release.
 type Directory struct {
-	Path    string
+	// Path is the retained job directory.
+	Path string
+	// Scratch is the temporary job workspace removed by Finish.
 	Scratch string
+	// Output owns the retained job output.
 	Output  *KeptOutput
 	owner   *Directories
 	job     string

@@ -22,7 +22,7 @@ func serviceStatus(ctx context.Context, client *cmdsdk.Client) (bool, error) {
 	answer, err := conversationCall(ctx, client, &commandwire.ConversationQuery{})
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return false, &conversationFailure{message: "no answer within 5 seconds", cause: err}
+			return false, &conversationError{message: "no answer within 5 seconds", cause: err}
 		}
 		return false, err
 	}
@@ -32,13 +32,14 @@ func serviceStatus(ctx context.Context, client *cmdsdk.Client) (bool, error) {
 	}
 	return len(status.Conversations) != 0, nil
 }
+
 func releaseConversation(ctx context.Context, client *cmdsdk.Client, conversation string) error {
 	ctx, cancel := context.WithTimeout(ctx, 360*time.Second)
 	defer cancel()
 	answer, err := conversationCall(ctx, client, &commandwire.ConversationRelease{Conversation: conversation})
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return &conversationFailure{message: "the conversation release did not finish in time", cause: err}
+			return &conversationError{message: "the conversation release did not finish in time", cause: err}
 		}
 		return err
 	}
@@ -47,7 +48,12 @@ func releaseConversation(ctx context.Context, client *cmdsdk.Client, conversatio
 	}
 	return nil
 }
-func conversationCall(ctx context.Context, client *cmdsdk.Client, request commandwire.ConversationRequest) ([]byte, error) {
+
+func conversationCall(
+	ctx context.Context,
+	client *cmdsdk.Client,
+	request commandwire.ConversationRequest,
+) ([]byte, error) {
 	input, output, err := client.Conversation(ctx, request)
 	if err != nil {
 		return nil, err
@@ -86,14 +92,14 @@ func conversationCall(ctx context.Context, client *cmdsdk.Client, request comman
 	return data, nil
 }
 
-// conversationFailure preserves the wire-facing diagnostic and its underlying cause.
-type conversationFailure struct {
+// conversationError preserves the wire-facing diagnostic and its underlying cause.
+type conversationError struct {
 	message string
 	cause   error
 }
 
-func (e *conversationFailure) Error() string { return e.message }
-func (e *conversationFailure) Unwrap() error { return e.cause }
+func (e *conversationError) Error() string { return e.message }
+func (e *conversationError) Unwrap() error { return e.cause }
 
 func releaseFailures(failures []error) error {
 	if len(failures) == 0 {
@@ -103,5 +109,5 @@ func releaseFailures(failures []error) error {
 	for i, err := range failures {
 		messages[i] = err.Error()
 	}
-	return &conversationFailure{message: strings.Join(messages, "; "), cause: errors.Join(failures...)}
+	return &conversationError{message: strings.Join(messages, "; "), cause: errors.Join(failures...)}
 }

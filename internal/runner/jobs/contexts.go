@@ -26,10 +26,13 @@ import (
 // Published fields and the manifest are immutable. Its creator must Close it
 // after the job and all its command invocations have ended.
 type ExecutionContext struct {
-	ID    string
+	// ID identifies this execution authority.
+	ID string
+	// JobID identifies the job that owns this authority.
 	JobID string
 	// Command is what the backend told the job's declared commands.
-	Command  commandwire.CommandContext
+	Command commandwire.CommandContext
+	// Manifest contains the job declarations and package catalog.
 	Manifest *runnerwire.Manifest
 	// Edits is where the job records the files its commands change.
 	Edits commandwire.EditContext
@@ -44,7 +47,15 @@ type ExecutionContext struct {
 
 // NewExecutionContext creates private command aliases. The context becomes live
 // only when registered on its connection. ctx owns cancellation of its work.
-func NewExecutionContext(ctx context.Context, jobID string, command commandwire.CommandContext, manifest *runnerwire.Manifest, edits commandwire.EditContext, connection *ConnectionHandle, paths ContextPaths) (*ExecutionContext, error) {
+func NewExecutionContext(
+	ctx context.Context,
+	jobID string,
+	command commandwire.CommandContext,
+	manifest *runnerwire.Manifest,
+	edits commandwire.EditContext,
+	connection *ConnectionHandle,
+	paths ContextPaths,
+) (*ExecutionContext, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -67,7 +78,7 @@ func NewExecutionContext(ctx context.Context, jobID string, command commandwire.
 				var bytes []byte
 				bytes, err = os.ReadFile(paths.Executable)
 				if err == nil {
-					err = os.WriteFile(destination, bytes, 0700)
+					err = os.WriteFile(destination, bytes, 0o700)
 				}
 			}
 		} else {
@@ -79,7 +90,17 @@ func NewExecutionContext(ctx context.Context, jobID string, command commandwire.
 	}
 	lifetime, cancel := context.WithCancel(ctx)
 	success = true
-	return &ExecutionContext{ID: executionID(), JobID: jobID, Command: command, Manifest: manifest, Edits: edits, Connection: connection, lifetime: lifetime, cancel: cancel, aliases: aliases}, nil
+	return &ExecutionContext{
+		ID:         executionID(),
+		JobID:      jobID,
+		Command:    command,
+		Manifest:   manifest,
+		Edits:      edits,
+		Connection: connection,
+		lifetime:   lifetime,
+		cancel:     cancel,
+		aliases:    aliases,
+	}, nil
 }
 
 // Environment supplies the local endpoint, context ID, DEMI_HOME and alias-first
@@ -100,7 +121,12 @@ func (e *ExecutionContext) Environment(endpoint, home string, path *string) (map
 	if path != nil {
 		aliasPath += string(os.PathListSeparator) + *path
 	}
-	return map[string]string{process.EndpointEnv: endpoint, process.ContextEnv: e.ID, "DEMI_HOME": home, "PATH": aliasPath}, nil
+	return map[string]string{
+		process.EndpointEnv: endpoint,
+		process.ContextEnv:  e.ID,
+		"DEMI_HOME":         home,
+		"PATH":              aliasPath,
+	}, nil
 }
 
 // Carries reports whether this context's manifest carries digest for this Host.
@@ -137,7 +163,9 @@ func (e *ExecutionContext) Close(_ context.Context) error {
 
 // ContextPaths names the private context directory and the executable aliases run.
 type ContextPaths struct {
-	Directory  string
+	// Directory holds the private command alias directories.
+	Directory string
+	// Executable is the command client executable used for aliases.
 	Executable string
 }
 
@@ -146,10 +174,10 @@ func NewContextPaths(ctx context.Context, directory, executable string) (Context
 	if err := ctx.Err(); err != nil {
 		return ContextPaths{}, err
 	}
-	if err := os.MkdirAll(directory, 0700); err != nil {
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return ContextPaths{}, err
 	}
-	if err := process.Chmod(ctx, directory, 0700); err != nil {
+	if err := process.Chmod(ctx, directory, 0o700); err != nil {
 		return ContextPaths{}, err
 	}
 	return ContextPaths{Directory: directory, Executable: executable}, nil
@@ -157,8 +185,10 @@ func NewContextPaths(ctx context.Context, directory, executable string) (Context
 
 // Contexts provides concurrent lookup in the connection's immutable snapshot.
 // Its zero value contains no contexts and may be shared across reconnects.
-type Contexts struct{ snapshot atomic.Pointer[contextIndex] }
-type contextIndex map[string]*ExecutionContext
+type (
+	Contexts     struct{ snapshot atomic.Pointer[contextIndex] }
+	contextIndex map[string]*ExecutionContext
+)
 
 // Lookup returns the live context with id or a permission error.
 func (c *Contexts) Lookup(id string) (*ExecutionContext, error) {
@@ -167,7 +197,7 @@ func (c *Contexts) Lookup(id string) (*ExecutionContext, error) {
 			return found, nil
 		}
 	}
-	return nil, contextUnavailable{}
+	return nil, contextUnavailableError{}
 }
 
 // Carrying finds an uncancelled context authorizing digest for this Host.
@@ -193,7 +223,11 @@ type ContextTable struct {
 
 // NewContextTable clears and publishes registrations through contexts.
 func NewContextTable(contexts *Contexts) *ContextTable {
-	t := &ContextTable{contexts: contexts, entries: make(contextIndex), leases: make(map[string][]*cmdpkgs.ServiceLease)}
+	t := &ContextTable{
+		contexts: contexts,
+		entries:  make(contextIndex),
+		leases:   make(map[string][]*cmdpkgs.ServiceLease),
+	}
 	t.publish()
 	return t
 }
@@ -306,13 +340,21 @@ func (i *Installation) Wait(ctx context.Context) (InstallationPhase, *runnerwire
 // Installed holds a checked manifest and the service leases keeping it resident.
 // The connection releases Leases when replacing this installed selection.
 type Installed struct {
+	// Manifest contains the installed declarations and package catalog.
 	Manifest *runnerwire.Manifest
-	Leases   []*cmdpkgs.ServiceLease
+	// Leases holds the services acquired for the installation.
+	Leases []*cmdpkgs.ServiceLease
 }
 
 // Install decodes, checks and keeps the manifest, refusing reserved root commands.
 // It acquires leases for this Host's packages; failure releases partial acquisitions.
-func Install(ctx context.Context, value json.RawMessage, paths ContextPaths, services *cmdpkgs.ServiceHandle, reserved map[string]struct{}) (*Installed, error) {
+func Install(
+	ctx context.Context,
+	value json.RawMessage,
+	paths ContextPaths,
+	services *cmdpkgs.ServiceHandle,
+	reserved map[string]struct{},
+) (*Installed, error) {
 	manifest, err := runnerwire.DecodeManifest(value)
 	if err != nil {
 		return nil, err
@@ -353,7 +395,11 @@ func Install(ctx context.Context, value json.RawMessage, paths ContextPaths, ser
 
 // Leases acquires the manifest's services for this Host. The caller releases all
 // returned leases; failure releases acquisitions already made.
-func Leases(ctx context.Context, manifest *runnerwire.Manifest, services *cmdpkgs.ServiceHandle) ([]*cmdpkgs.ServiceLease, error) {
+func Leases(
+	ctx context.Context,
+	manifest *runnerwire.Manifest,
+	services *cmdpkgs.ServiceHandle,
+) ([]*cmdpkgs.ServiceLease, error) {
 	var leases []*cmdpkgs.ServiceLease
 	target, err := commandwire.HostTarget()
 	if err != nil {
@@ -387,8 +433,8 @@ func executionID() string {
 	return hex.EncodeToString(bytes[:])
 }
 
-// contextUnavailable retains the protocol diagnostic and permission classification.
-type contextUnavailable struct{}
+// contextUnavailableError retains the protocol diagnostic and permission classification.
+type contextUnavailableError struct{}
 
-func (contextUnavailable) Error() string { return "execution context is not live on this runner" }
-func (contextUnavailable) Unwrap() error { return os.ErrPermission }
+func (contextUnavailableError) Error() string { return "execution context is not live on this runner" }
+func (contextUnavailableError) Unwrap() error { return os.ErrPermission }

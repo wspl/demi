@@ -24,7 +24,11 @@ type management struct {
 }
 
 func newManagement(secret, release string) *management {
-	return &management{secret: secret, status: managementStatus{Release: release, Phase: connecting}, draining: make(chan struct{})}
+	return &management{
+		secret:   secret,
+		status:   managementStatus{Release: release, Phase: connecting},
+		draining: make(chan struct{}),
+	}
 }
 
 func (m *management) snapshot() managementStatus {
@@ -32,16 +36,19 @@ func (m *management) snapshot() managementStatus {
 	defer m.mu.Unlock()
 	return m.status
 }
+
 func (m *management) setPhase(p phase) {
 	m.mu.Lock()
 	m.status.Phase = p
 	m.mu.Unlock()
 }
+
 func (m *management) setJobs(n int) {
 	m.mu.Lock()
 	m.status.Jobs = uint64(n)
 	m.mu.Unlock()
 }
+
 func (m *management) drain() {
 	m.once.Do(func() {
 		m.mu.Lock()
@@ -60,13 +67,18 @@ type endpoint struct {
 func (e *endpoint) Operations() []string {
 	return append(e.dispatcher.Operations(), manageOperation)
 }
-func (e *endpoint) Invoke(ctx context.Context, inv cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+
+func (e *endpoint) Invoke(
+	ctx context.Context,
+	inv cmdsdk.InvocationContext[commandwire.LocalInvocation],
+) (commandwire.Completion, error) {
 	if inv.Request.Operation != manageOperation {
 		return e.dispatcher.Invoke(ctx, inv)
 	}
 	err := e.answer(ctx, inv)
 	return jobs.Reported(ctx, commandwire.Completion{}, err, inv.Output)
 }
+
 func (e *endpoint) answer(ctx context.Context, inv cmdsdk.InvocationContext[commandwire.LocalInvocation]) error {
 	request, err := decodeManagementRequest(inv.Request.Args)
 	if err != nil {

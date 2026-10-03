@@ -69,7 +69,7 @@ func (s *Service) openRange(ctx context.Context, request runnerwire.FSReadFile) 
 	}
 	info, err := file.Stat()
 	if err == nil && !info.Mode().IsRegular() {
-		err = &filesystemFailure{message: "not a regular file", cause: syscall.EISDIR}
+		err = &filesystemError{message: "not a regular file", cause: syscall.EISDIR}
 	}
 	offset := uint64(0)
 	if request.Offset != nil {
@@ -122,18 +122,22 @@ func (s *Service) writeFromPipe(ctx context.Context, request runnerwire.FSWriteF
 	}
 	parent, ok := artifacts.Parent(target)
 	if !ok {
-		return &filesystemFailure{message: "a file needs a parent directory", cause: os.ErrInvalid}
+		return &filesystemError{message: "a file needs a parent directory", cause: os.ErrInvalid}
 	}
 	if request.CreateParents != nil && *request.CreateParents {
 		if parent == "" {
 			parent = "."
 		}
-		if err = os.MkdirAll(parent, 0777); err != nil {
+		if err = os.MkdirAll(parent, 0o777); err != nil {
 			return err
 		}
 	}
 	staged, err := cmdsdk.Retry(ctx, func() (*artifacts.Staged, error) {
-		return artifacts.NewStaged(ctx, target, artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Default})
+		return artifacts.NewStaged(
+			ctx,
+			target,
+			artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Default},
+		)
 	})
 	if err != nil {
 		return err

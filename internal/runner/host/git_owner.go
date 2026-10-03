@@ -86,64 +86,11 @@ func (o *gitOwner) run(slots chan struct{}, limit int) {
 		}
 	}()
 	start := func(path string, root *gitRoot) {
-		if len(root.current) > 0 {
-			return
-		}
-		live := root.queued[:0]
-		for _, request := range root.queued {
-			if request.ctx.Err() == nil {
-				live = append(live, request)
-			}
-		}
-		root.queued = nil
-		if len(live) == 0 {
-			return
-		}
-		root.current = live
-		workers.Go(func() {
-			changes, err := retryChanges(o.ctx, root.state, path, slots, limit)
-			select {
-			case completed <- gitCompleted{path, gitAnswer{changes, err}}:
-			case <-o.ctx.Done():
-			}
-		})
+		o.startRoot(path, root, &workers, completed, slots, limit)
 	}
-	expire := func() {
-		for path, root := range roots {
-			if len(root.current) == 0 && len(root.queued) == 0 && time.Since(root.last) >= 15*time.Minute {
-				root.state.stop()
-				delete(roots, path)
-			}
-		}
-	}
+	expire := func() { expireRoots(roots) }
 	accept := func(request gitRequest) bool {
-		if request.ctx.Err() != nil {
-			return true
-		}
-		expire()
-		root := roots[request.root]
-		if root == nil {
-			if len(roots) >= 8 {
-				var oldest string
-				for path, candidate := range roots {
-					if len(candidate.current) == 0 && (oldest == "" || candidate.last.Before(roots[oldest].last)) {
-						oldest = path
-					}
-				}
-				if oldest == "" {
-					return false
-				}
-				roots[oldest].state.stop()
-				delete(roots, oldest)
-			}
-			ctx, cancel := context.WithCancel(o.ctx)
-			root = &gitRoot{state: &treeState{ctx: ctx, cancel: cancel, touched: make(map[string]bool)}}
-			roots[request.root] = root
-		}
-		root.last = time.Now()
-		root.queued = append(root.queued, request)
-		start(request.root, root)
-		return true
+		return o.acceptRoot(request, roots, expire, start)
 	}
 	var waiting []gitRequest
 	for {
@@ -172,4 +119,83 @@ func (o *gitOwner) run(slots chan struct{}, limit int) {
 			waiting = pending
 		}
 	}
+}
+
+func (o *gitOwner) startRoot(
+	path string,
+	root *gitRoot,
+	workers *sync.WaitGroup,
+	completed chan<- gitCompleted,
+	slots chan struct{},
+	limit int,
+) {
+	if len(root.current) > 0 {
+		return
+	}
+	live := root.queued[:0]
+	for _, request := range root.queued {
+		if request.ctx.Err() == nil {
+			live = append(live, request)
+		}
+	}
+	root.queued = nil
+	if len(live) == 0 {
+		return
+	}
+	root.current = live
+	workers.Go(func() {
+		changes, err := retryChanges(o.ctx, root.state, path, slots, limit)
+		select {
+		case completed <- gitCompleted{path, gitAnswer{changes, err}}:
+		case <-o.ctx.Done():
+		}
+	})
+}
+
+func expireRoots(roots map[string]*gitRoot) {
+	for path, root := range roots {
+		if len(root.current) == 0 && len(root.queued) == 0 && time.Since(root.last) >= 15*time.Minute {
+			root.state.stop()
+			delete(roots, path)
+		}
+	}
+}
+
+func (o *gitOwner) acceptRoot(
+	request gitRequest,
+	roots map[string]*gitRoot,
+	expire func(),
+	start func(string, *gitRoot),
+) bool {
+	if request.ctx.Err() != nil {
+		return true
+	}
+	expire()
+	root := roots[request.root]
+	if root == nil {
+		if len(roots) >= 8 {
+			oldest := oldestIdleRoot(roots)
+			if oldest == "" {
+				return false
+			}
+			roots[oldest].state.stop()
+			delete(roots, oldest)
+		}
+		ctx, cancel := context.WithCancel(o.ctx)
+		root = &gitRoot{state: &treeState{ctx: ctx, cancel: cancel, touched: make(map[string]bool)}}
+		roots[request.root] = root
+	}
+	root.last = time.Now()
+	root.queued = append(root.queued, request)
+	start(request.root, root)
+	return true
+}
+
+func oldestIdleRoot(roots map[string]*gitRoot) (oldest string) {
+	for path, candidate := range roots {
+		if len(candidate.current) == 0 && (oldest == "" || candidate.last.Before(roots[oldest].last)) {
+			oldest = path
+		}
+	}
+	return oldest
 }

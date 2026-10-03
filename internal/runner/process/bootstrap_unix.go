@@ -15,9 +15,9 @@ import (
 
 const bootstrapArgument = "--demi-child-bootstrap"
 
-// runBootstrap applies only arguments constructed by startPlatform. No marker
+// runChildBootstrap applies only arguments constructed by startPlatform. No marker
 // is placed in the environment, so a launched program cannot inherit the mode.
-func runBootstrap() (bool, error) {
+func runChildBootstrap() (bool, error) {
 	args := os.Args
 	if len(args) < 2 || args[1] != bootstrapArgument {
 		return false, nil

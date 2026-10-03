@@ -29,13 +29,17 @@ func TestLineCountsGitNumstat(t *testing.T) {
 		{"blank lines", "\n\na\n", "\na\n\n", 1, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := os.WriteFile(beforePath, []byte(tc.before), 0600); err != nil {
+			if err := os.WriteFile(beforePath, []byte(tc.before), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(afterPath, []byte(tc.after), 0600); err != nil {
+			if err := os.WriteFile(afterPath, []byte(tc.after), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			output, err := exec.CommandContext(t.Context(), "git", "-c", "diff.algorithm=myers", "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--numstat", "--", beforePath, afterPath).Output()
+			output, err := exec.CommandContext(
+				t.Context(), "git", "-c", "diff.algorithm=myers", "diff", "--no-index",
+				"--no-ext-diff", "--no-textconv", "--numstat", "--", beforePath, afterPath,
+			).
+				Output()
 			var exit *exec.ExitError
 			if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
 				t.Fatalf("git: %v", err)
@@ -56,13 +60,17 @@ func TestLineCountsGitNumstat(t *testing.T) {
 		})
 	}
 }
+
 func TestLineCountsAbsentBinaryAndManyLines(t *testing.T) {
 	for _, tc := range []struct {
 		before, after  []byte
 		added, removed uint64
 	}{
-		{nil, []byte("a\nb"), 2, 0}, {[]byte("a\n"), nil, 0, 1},
-		{[]byte{0xff}, []byte("text"), 0, 0}, {nil, []byte{0}, 0, 0}, {nil, nil, 0, 0},
+		{nil, []byte("a\nb"), 2, 0},
+		{[]byte("a\n"), nil, 0, 1},
+		{[]byte{0xff}, []byte("text"), 0, 0},
+		{nil, []byte{0}, 0, 0},
+		{nil, nil, 0, 0},
 	} {
 		a, r := LineCounts(tc.before, tc.after)
 		if a != tc.added || r != tc.removed {

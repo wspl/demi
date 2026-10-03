@@ -27,7 +27,10 @@ func TestStandardDuplicatesAndLiveInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = reader.Close(); _ = writer.Close() }()
+	defer func() {
+		_ = reader.Close()
+		_ = writer.Close()
+	}()
 	reference, err := LiveReference(reader)
 	if err != nil {
 		t.Fatal(err)

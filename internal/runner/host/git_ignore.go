@@ -69,7 +69,7 @@ func repositoryPatterns(ctx context.Context, repo *git.Repository, location *git
 	}
 	patterns = append(patterns, local...)
 	// A nested requested root still inherits every ignore file above it.
-	path := location.workdir
+	path := location.workDir
 	var domain []string
 	if location.prefix != "" {
 		for _, component := range strings.Split(location.prefix, "/") {
@@ -87,7 +87,14 @@ func repositoryPatterns(ctx context.Context, repo *git.Repository, location *git
 
 // walkUntracked discovers Host files through the repository's ordered ignore
 // rules. A whole walk retains those patterns for later changed-path walks.
-func walkUntracked(ctx context.Context, location *gitLocation, base *gitBaseline, scope []string, signals map[string]gitSignal, maxFiles int) error {
+func walkUntracked(
+	ctx context.Context,
+	location *gitLocation,
+	base *gitBaseline,
+	scope []string,
+	signals map[string]gitSignal,
+	maxFiles int,
+) error {
 	roots := []string{location.root}
 	patterns := append([]gitignore.Pattern(nil), base.patterns...)
 	matcher := gitignore.NewMatcher(patterns)
@@ -102,70 +109,10 @@ func walkUntracked(ctx context.Context, location *gitLocation, base *gitBaseline
 			base.truncated = true
 			break
 		}
-		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, failure error) error {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if errors.Is(failure, os.ErrNotExist) || errors.Is(failure, errNotDirectory) {
-				return nil
-			}
-			if failure != nil {
-				return failure
-			}
-			if filepath.Base(path) == ".git" {
-				if entry.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			name, err := filepath.Rel(location.workdir, path)
-			if err != nil {
-				return err
-			}
-			name = filepath.ToSlash(name)
-			if entry.IsDir() {
-				if path != location.root {
-					if matcher.Match(strings.Split(name, "/"), true) {
-						return filepath.SkipDir
-					}
-					if _, err := os.Lstat(filepath.Join(path, ".git")); err == nil {
-						return filepath.SkipDir
-					} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, errNotDirectory) {
-						return err
-					}
-				}
-				if scope == nil {
-					domain := strings.Split(name, "/")
-					if name == "." {
-						domain = nil
-					}
-					rules, err := ignorePatterns(ctx, filepath.Join(path, ".gitignore"), domain)
-					if err != nil {
-						return err
-					}
-					patterns = append(patterns, rules...)
-					matcher = gitignore.NewMatcher(patterns)
-				}
-				return nil
-			}
-			if base.tracked[name] != nil || signals[name].conflict != "" {
-				return nil
-			}
-			if !entry.Type().IsRegular() && entry.Type()&os.ModeSymlink == 0 {
-				return nil
-			}
-			if matcher.Match(strings.Split(name, "/"), false) {
-				return nil
-			}
-			signal := signals[name]
-			signal.untracked = true
-			signals[name] = signal
-			if len(signals) > maxFiles {
-				base.truncated = true
-				return filepath.SkipAll
-			}
-			return nil
-		})
+		err := filepath.WalkDir(
+			root,
+			untrackedEntry(ctx, location, base, scope, signals, maxFiles, &patterns, &matcher),
+		)
 		if err != nil {
 			return err
 		}
@@ -174,4 +121,92 @@ func walkUntracked(ctx context.Context, location *gitLocation, base *gitBaseline
 		base.patterns = patterns
 	}
 	return nil
+}
+
+// untrackedDirectory appends ignore rules in walk order so later entries see the same precedence.
+func untrackedDirectory(
+	ctx context.Context,
+	location *gitLocation,
+	path, name string,
+	scope []string,
+	patterns *[]gitignore.Pattern,
+	matcher *gitignore.Matcher,
+) error {
+	if path != location.root {
+		if (*matcher).Match(strings.Split(name, "/"), true) {
+			return filepath.SkipDir
+		}
+		if _, err := os.Lstat(filepath.Join(path, ".git")); err == nil {
+			return filepath.SkipDir
+		} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, errNotDirectory) {
+			return err
+		}
+	}
+	if scope == nil {
+		domain := strings.Split(name, "/")
+		if name == "." {
+			domain = nil
+		}
+		rules, err := ignorePatterns(ctx, filepath.Join(path, ".gitignore"), domain)
+		if err != nil {
+			return err
+		}
+		*patterns = append(*patterns, rules...)
+		*matcher = gitignore.NewMatcher(*patterns)
+	}
+	return nil
+}
+
+func untrackedEntry(
+	ctx context.Context,
+	location *gitLocation,
+	base *gitBaseline,
+	scope []string,
+	signals map[string]gitSignal,
+	maxFiles int,
+	patterns *[]gitignore.Pattern,
+	matcher *gitignore.Matcher,
+) fs.WalkDirFunc {
+	return func(path string, entry fs.DirEntry, failure error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if errors.Is(failure, os.ErrNotExist) || errors.Is(failure, errNotDirectory) {
+			return nil
+		}
+		if failure != nil {
+			return failure
+		}
+		if filepath.Base(path) == ".git" {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name, err := filepath.Rel(location.workDir, path)
+		if err != nil {
+			return err
+		}
+		name = filepath.ToSlash(name)
+		if entry.IsDir() {
+			return untrackedDirectory(ctx, location, path, name, scope, patterns, matcher)
+		}
+		if base.tracked[name] != nil || signals[name].conflict != "" {
+			return nil
+		}
+		if !entry.Type().IsRegular() && entry.Type()&os.ModeSymlink == 0 {
+			return nil
+		}
+		if (*matcher).Match(strings.Split(name, "/"), false) {
+			return nil
+		}
+		signal := signals[name]
+		signal.untracked = true
+		signals[name] = signal
+		if len(signals) > maxFiles {
+			base.truncated = true
+			return filepath.SkipAll
+		}
+		return nil
+	}
 }

@@ -15,7 +15,13 @@ func fileStat(info os.FileInfo) runnerwire.FileStat {
 	if modified.Unix() < 0 && modified.Nanosecond()%int(time.Millisecond) != 0 {
 		millis++
 	}
-	result := runnerwire.FileStat{IsFile: info.Mode().IsRegular(), IsDirectory: info.IsDir(), IsSymbolicLink: info.Mode()&os.ModeSymlink != 0, Size: uint64(info.Size()), Mtime: runnerwire.Timestamp(millis)}
+	result := runnerwire.FileStat{
+		IsFile:         info.Mode().IsRegular(),
+		IsDirectory:    info.IsDir(),
+		IsSymbolicLink: info.Mode()&os.ModeSymlink != 0,
+		Size:           uint64(info.Size()),
+		Mtime:          runnerwire.Timestamp(millis),
+	}
 	nativeStat(info, &result)
 	return result
 }

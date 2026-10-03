@@ -30,7 +30,11 @@ func (c *ArtifactCache) preinstalled(ctx context.Context, w Wanted) (string, err
 	case *commandwire.ArtifactFile:
 		path, err = checkImageFile(ctx, directory, digestOf(w.Artifact))
 	case *commandwire.ArtifactArchive:
-		path, err = artifacts.Installed(ctx, directory, artifacts.Archive{Digest: digestOf(w.Artifact), Entry: form.Entry})
+		path, err = artifacts.Installed(
+			ctx,
+			directory,
+			artifacts.Archive{Digest: digestOf(w.Artifact), Entry: form.Entry},
+		)
 		if err == nil && path == "" {
 			err = os.ErrNotExist
 		}
