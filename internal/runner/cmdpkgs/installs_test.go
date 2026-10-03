@@ -12,6 +12,11 @@ func TestInstallChangesAtEachHundredthAndLeavesWhenDone(t *testing.T) {
 	defer installs.Close()
 	reported := installs.Subscribe()
 	installing := installs.start(Wanted{Package: "demi.browser", Name: "program", Version: "0.1.3", Artifact: commandwire.PackageArtifact{Size: 1000}})
+	select {
+	case <-reported.seen:
+	default:
+		t.Fatal("starting install did not notify subscriber")
+	}
 	if got := reported.Current(); len(got) != 1 || got[0].Done != 0 {
 		t.Fatalf("initial: %v", got)
 	}

@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -336,7 +337,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	raw, err := process.NewRawCommand(execution.ID, "fixture", []string{"--help"}, false)
+	raw, err := process.NewRawCommand(execution.ID, "fixture", nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,13 +345,43 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Observe the callback at the backend boundary, not merely local help.
+	var reached atomic.Int32
+	routed, stopRouting := context.WithCancel(ctx)
+	routingDone := make(chan struct{})
+	go func() {
+		defer close(routingDone)
+		for {
+			select {
+			case <-routed.Done():
+				return
+			case data := <-dispatch.Outgoing:
+				message, err := runnerwire.DecodeOutbound(data)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if call, ok := message.(*runnerwire.RPCCall); ok {
+					reached.Add(1)
+					if err := dispatch.Deliver(routed, &runnerwire.RPCExit{CallID: call.CallID, ExitCode: 0}); err != nil && routed.Err() == nil {
+						t.Error(err)
+						return
+					}
+				}
+			}
+		}
+	}()
+	defer func() {
+		stopRouting()
+		<-routingDone
+	}()
 	exhaustDescriptors(ctx, t, "local command connection", func() error {
 		completion, err := process.Forward(ctx, dispatch.Server.Endpoint(), commandwire.LocalInvocation{Operation: process.Raw, InvocationID: "local", Args: args, Cwd: root, Env: map[string]string{}}, process.Stdio{Stdin: io.NopCloser(strings.NewReader("")), Stdout: discardCommandOutput{}, Stderr: discardCommandOutput{}})
 		if err != nil {
 			return err
 		}
-		if completion.ExitCode != 0 {
-			return fmt.Errorf("command exit %d", completion.ExitCode)
+		if reached.Load() != 1 {
+			return fmt.Errorf("local command did not reach backend (exit %d)", completion.ExitCode)
 		}
 		return nil
 	})
@@ -360,14 +391,14 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	t.Run("utility_child", func(t *testing.T) {
 		// Unlike Rust's embedded xargs, Go starts the system utility in its own
 		// process. It can start its child while the runner has no descriptor left.
-		job, err := scope.Start(ctx, "sh -c 'printf ready; xargs /usr/bin/printf'", root, map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"}, false)
+		job, err := scope.Start(ctx, "printf ready; xargs /usr/bin/printf > child.txt", root, map[string]string{"HOME": root, "PATH": "/usr/bin:/bin"}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer job.Cancel()
 		awaitReady(ctx, t, scope, job)
 		held := fillDescriptors(t)
-		defer releaseDescriptors(held)
+		defer func() { releaseDescriptors(held) }()
 		job.Input() <- process.Input{Bytes: []byte("three\n")}
 		job.Input() <- process.Input{}
 		var output strings.Builder
@@ -375,7 +406,13 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			output.Write(chunk.Bytes)
 		}
 		exit, _ := job.Wait(ctx)
-		if exit.Code == nil || *exit.Code != 0 || output.String() != "three" {
+		releaseDescriptors(held)
+		held = nil
+		data, err := os.ReadFile(filepath.Join(root, "child.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if exit.Code == nil || *exit.Code != 0 || string(data) != "three" {
 			t.Fatalf("utility child: %+v, %q", exit, output.String())
 		}
 	})
@@ -413,7 +450,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		}
 		awaitReady(ctx, t, scope, cancelled)
 		held := fillDescriptors(t)
-		defer releaseDescriptors(held)
+		defer func() { releaseDescriptors(held) }()
 		joined := make(chan error, 1)
 		var exit process.Exit
 		go func() {
@@ -496,8 +533,12 @@ func exhaustDescriptors(ctx context.Context, t *testing.T, name string, operatio
 		t.Fatalf("%s completed while exhausted: %v", name, err)
 	default:
 	}
-	releaseDescriptors(held)
-	held = nil
+	free := min(128, len(held))
+	if name == "shell job start" {
+		free = len(held)
+	}
+	releaseDescriptors(held[:free])
+	held = held[free:]
 	select {
 	case err := <-done:
 		if err != nil {

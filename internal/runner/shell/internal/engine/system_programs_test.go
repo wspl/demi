@@ -16,7 +16,7 @@ import (
 func utility(t *testing.T, root, name string, args ...string) (Result, string, string) {
 	t.Helper()
 	if _, err := exec.LookPath(name); err != nil {
-		t.Skipf("system utility %s is unavailable (utility provisioning is deferred): %v", name, err)
+		t.Skipf("fidelity 3: system utility %s is unavailable; provisioning is deferred: %v", name, err)
 	}
 	words := []string{name}
 	for _, arg := range args {
@@ -48,13 +48,24 @@ func TestUtilitiesCwdAndExitStateArePerInvocation(t *testing.T) {
 	if result.Code != 0 || output != "two" {
 		t.Fatalf("failure leaked: %d %q %q", result.Code, output, stderr)
 	}
+	t.Run("help", func(t *testing.T) {
+		if runtime.GOOS == "darwin" {
+			t.Skip("fidelity 3: BSD cat refuses --help instead of printing help to stdout")
+		}
+		result, output, stderr := utility(t, second, "cat", "--help")
+		if result.Code != 0 || !strings.Contains(strings.ToLower(output), "usage:") {
+			t.Fatalf("cat help %d %q %q", result.Code, output, stderr)
+		}
+	})
 }
 
 func TestEveryUtilityRoutesHelpToTheInvocationStream(t *testing.T) {
-	// There is no embedded utility registry in Go. These installed programs retain
-	// --help on both BSD and GNU hosts; BSD coreutils do not offer that interface.
-	for _, name := range []string{"jq", "rg"} {
+	// The reference utility registry defines the promised CLI coverage.
+	for _, name := range []string{"cat", "head", "tail", "wc", "ls", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "tee", "sort", "uniq", "cut", "tr", "paste", "nl", "tac", "basename", "dirname", "realpath", "env", "seq", "date", "sleep", "mktemp", "stat", "du", "df", "od", "chmod", "chown", "grep", "sed", "find", "xargs", "diff", "cmp", "jq", "rg"} {
 		t.Run(name, func(t *testing.T) {
+			if runtime.GOOS == "darwin" && name != "sort" && name != "tac" && name != "diff" && name != "jq" && name != "rg" {
+				t.Skip("fidelity 3: BSD utility does not provide Rust's --help stdout interface")
+			}
 			result, output, stderr := utility(t, t.TempDir(), name, "--help")
 			if result.Code != 0 || !strings.Contains(strings.ToLower(output), "usage:") {
 				t.Fatalf("%s exit %d output %q stderr %q", name, result.Code, output, stderr)
@@ -74,8 +85,8 @@ func TestFilesystemUtilitiesUseTheInvocationDirectory(t *testing.T) {
 			t.Fatalf("%v: %d %s %s", args, result.Code, output, stderr)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, "new")); err != nil {
-		t.Fatal(err)
+	if info, err := os.Stat(filepath.Join(root, "new")); err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("new is not a file: %v, %v", info, err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "moved")); !os.IsNotExist(err) {
 		t.Fatalf("moved remains: %v", err)
@@ -146,11 +157,7 @@ func TestConcurrentExternalSortsOwnTheirTemporaryFilesAndWorkers(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(root, "input"), []byte(text.String()), 0600); err != nil {
 				t.Fatal(err)
 			}
-			// GNU's worker option has no BSD counterpart; -S/-T still force external sort.
-			args := []string{"-S", "1K", "-T", "temporary", "input"}
-			if runtime.GOOS != "darwin" {
-				args = append([]string{"--parallel=2"}, args...)
-			}
+			args := []string{"--parallel=2", "-S", "1K", "-T", "temporary", "input"}
 			result, output, stderr := utility(t, root, "sort", args...)
 			if result.Code != 0 || output != want.String() {
 				t.Fatalf("exit %d bytes %d stderr %q", result.Code, len(output), stderr)
@@ -194,6 +201,9 @@ func TestRelativeSymlinksAndExplicitDirectoryModesArePreserved(t *testing.T) {
 }
 
 func TestSearchEditAndCompareUtilitiesKeepTheirCLIAndLocalPaths(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("fidelity 4: BSD sed requires an extension after -i")
+	}
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "tree"), 0700); err != nil {
 		t.Fatal(err)
@@ -210,9 +220,7 @@ func TestSearchEditAndCompareUtilitiesKeepTheirCLIAndLocalPaths(t *testing.T) {
 		t.Fatalf("find %d %q %q", result.Code, output, stderr)
 	}
 	args := []string{"-i", "s/apple/orange/", "tree/input"}
-	if runtime.GOOS == "darwin" {
-		args = []string{"-i", "", "s/apple/orange/", "tree/input"}
-	}
+
 	result, output, stderr = utility(t, root, "sed", args...)
 	if result.Code != 0 {
 		t.Fatalf("sed %d %q %q", result.Code, output, stderr)

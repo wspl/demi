@@ -124,8 +124,11 @@ func TestAdmissionHoldsCallsAndProcessLifetimesAndRefusalSendsNothing(t *testing
 	if _, ok, err := l.TryNext(); ok || err != nil {
 		t.Fatal("refusal emitted a frame", err)
 	}
-	_, err = l.Close(t.Context())
+	closed, err := l.Close(t.Context())
 	requirePipe(t, err)
+	if closed.Kind != remotehost.LinkClosed || closed.Reason != "runner disconnected" {
+		t.Fatal(closed)
+	}
 	end, err := process.Wait(t.Context())
 	requirePipe(t, err)
 	jobEnd, err := job.End(t.Context())
@@ -220,6 +223,7 @@ func TestStdinTravelsInBoundedFramesInOrderBeforeEnd(t *testing.T) {
 		if !bytes.Equal(spawned, data) || !bytes.Equal(jobbed, data) {
 			t.Fatal("stdin changed")
 		}
+		barrier(t, l)
 	}
 	requirePipe(t, p.Control.CloseStdin(t.Context()))
 	requirePipe(t, j.CloseStdin(t.Context()))
@@ -229,6 +233,7 @@ func TestStdinTravelsInBoundedFramesInOrderBeforeEnd(t *testing.T) {
 	if _, ok := nextFrame(t, l).(*runnerwire.JobStdinEnd); !ok {
 		t.Fatal("missing job EOF")
 	}
+	barrier(t, l)
 }
 
 func TestLostConnectionFailsItsWorkAndNextServesSameHost(t *testing.T) {
@@ -267,7 +272,7 @@ func TestLostConnectionFailsItsWorkAndNextServesSameHost(t *testing.T) {
 	requirePipe(t, err)
 	jEnd, err := j.End(t.Context())
 	requirePipe(t, err)
-	if pEnd.Kind != host.ProcessLost || jEnd.Status.Kind != host.ProcessLost || h.Identity() != identity {
+	if pEnd.Kind != host.ProcessLost || pEnd.Reason != "runner disconnected" || jEnd.Status.Kind != host.ProcessLost || jEnd.Status.Reason != "runner disconnected" || h.Identity() != identity {
 		t.Fatal("lost work or identity")
 	}
 	p, err = h.Process().Spawn(t.Context(), host.SpawnRequest{Command: "echo"})
@@ -329,6 +334,9 @@ func TestUnansweredPingEndsUnlessLivenessPaused(t *testing.T) {
 		time.Sleep(4 * time.Second)
 		if l.Link().IsClosed() {
 			t.Fatal("paused connection expired")
+		}
+		if _, ok, err := l.TryNext(); ok || err != nil {
+			t.Fatal("paused liveness emitted a frame", err)
 		}
 		l.Link().ResumeLiveness()
 		time.Sleep(time.Second)

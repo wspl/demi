@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -186,7 +187,9 @@ func TestRunnerOneShotCompletionAndLoggedStreamWords(t *testing.T) {
 	started := false
 	for _, line := range page.Lines {
 		if line.Source == "runner" && strings.HasPrefix(line.Text, "service demicodes.runner-test started (pid ") && strings.HasSuffix(line.Text, ")") {
-			started = true
+			pid := strings.TrimSuffix(strings.TrimPrefix(line.Text, "service demicodes.runner-test started (pid "), ")")
+			_, err := strconv.ParseUint(pid, 10, 32)
+			started = started || err == nil
 		}
 	}
 	if !started {
