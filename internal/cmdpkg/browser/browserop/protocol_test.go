@@ -66,8 +66,8 @@ func TestEveryOperationDecodesItsSmallestInput(t *testing.T) {
 				t.Fatalf("name = %s", op.OperationName())
 			}
 			wantTab := name != "open" && name != "tabs" && name != "content.fetch"
-			if (op.TabID() != nil) != wantTab {
-				t.Fatalf("tab = %v", op.TabID())
+			if _, ok := op.TabID(); ok != wantTab {
+				t.Fatalf("tab = %v", ok)
 			}
 			encoded, err := contract.EncodeJSON(op)
 			if err != nil {
@@ -134,11 +134,13 @@ func TestInputsAnswerTabTargetWaitAndDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if *click.TabID() != "t1" || *click.WaitURLPattern() != "**/done" || click.Timeout() != 5*time.Second {
+	tab, _ := click.TabID()
+	pattern, _ := click.WaitURLPattern()
+	if tab != "t1" || pattern != "**/done" || click.Timeout() != 5*time.Second {
 		t.Fatalf("wrong scheduling values: %#v", click)
 	}
-	target := click.ElementTarget()
-	if target == nil || *target.Role != "button" || *target.NamePattern != "^Save" || *target.Nth != 2 ||
+	target, ok := click.ElementTarget()
+	if !ok || *target.Role != "button" || *target.NamePattern != "^Save" || *target.Nth != 2 ||
 		!reflect.DeepEqual(*target.Frame, []browserop.NodeRef{"e2"}) {
 		t.Fatalf("target = %#v", target)
 	}
@@ -160,7 +162,7 @@ func TestInputsAnswerTabTargetWaitAndDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Timeout() != 30*time.Second || info.ElementTarget() != nil {
+	if _, ok := info.ElementTarget(); info.Timeout() != 30*time.Second || ok {
 		t.Fatalf("info = %#v", info)
 	}
 }
@@ -540,17 +542,13 @@ func TestBrowserAccessorsReturnDetachedCopies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := input.ElementTarget()
+	target, _ := input.ElementTarget()
 	*target.Role = "changed"
 	(*target.Frame)[0] = "e9"
 	*target.Nth = 9
 	*target.Within = "e9"
-	*input.TabID() = "t9"
-	*input.WaitURLPattern() = "changed"
-	again := input.ElementTarget()
-	if *again.Role != "button" || (*again.Frame)[0] != "e2" || *again.Nth != 2 || *again.Within != "e3" ||
-		*input.TabID() != "t1" ||
-		*input.WaitURLPattern() != "**/done" {
+	again, _ := input.ElementTarget()
+	if *again.Role != "button" || (*again.Frame)[0] != "e2" || *again.Nth != 2 || *again.Within != "e3" {
 		t.Fatalf("mutating accessor copies changed input: %#v", input)
 	}
 	query, err := browserop.ParseQuery(
@@ -573,7 +571,7 @@ func TestBrowserAccessorsReturnDetachedCopies(t *testing.T) {
 	*(*branches[0].And)[0].Match.Role = "changed"
 	*branches[1].Match.TextMatch = "changed"
 	*branches[3].Match.Role = "changed"
-	target = new((*query.And)[0].Match.Target())
+	target = (*query.And)[0].Match.Target()
 	*target.Role = "changed too"
 	if !*query.Visible || *query.Nth != 0 || *(*query.And)[0].Match.Role != "row" ||
 		*(*query.And)[1].Match.TextMatch != "Order A" ||

@@ -29,13 +29,15 @@ const (
 	KindClosed
 	// KindConnection is a lost CDP connection; Cause holds the transport failure (browser_lost).
 	KindConnection
-	// KindOutcomeUnknown identifies the Rust BrowserError::OutcomeUnknown failure.
+	// KindOutcomeUnknown is input whose delivery is unknown because the connection was lost after it was sent
+	// (outcome_unknown).
 	KindOutcomeUnknown
 	// KindTabNotFound is a tab or CDP session that does not exist (tab_not_found).
 	KindTabNotFound
 	// KindTargetNotFound is an element or debugging target that matched nothing (target_not_found).
 	KindTargetNotFound
-	// KindNotActionable identifies the Rust BrowserError::NotActionable failure.
+	// KindNotActionable is an element that failed an actionability condition; Details holds the condition
+	// (not_actionable).
 	KindNotActionable
 	// KindHistoryBoundary is a back or forward step past the end of the tab's history (history_boundary).
 	KindHistoryBoundary
@@ -47,13 +49,15 @@ const (
 	KindResultTooLarge
 	// KindProtectedValue is a read of a password field's value (protected_value).
 	KindProtectedValue
-	// KindUnavailable identifies the Rust BrowserError::Unavailable failure.
+	// KindUnavailable is a browser that could not start or lacks a service it needs; Message says why
+	// (browser_unavailable).
 	KindUnavailable
 	// KindRoot is Chrome refusing to run as root with its sandbox on Linux (browser_unavailable).
 	KindRoot
 	// KindInstallation is a missing or unusable Chrome for Testing installation (browser_unavailable).
 	KindInstallation
-	// KindAction identifies the Rust BrowserError::Action failure.
+	// KindAction is a failed action; Cause holds the failure, whose code it reports, and Details its tab, URL
+	// and input progress.
 	KindAction
 	// KindCancelled is a cancelled operation (cancelled).
 	KindCancelled
@@ -79,9 +83,11 @@ const (
 	KindCDP
 	// KindIO is a local file system failure; Cause holds it (io_error).
 	KindIO
-	// KindProfileRetained identifies the Rust BrowserError::ProfileRetained failure.
+	// KindProfileRetained is a retirement that kept the profile; Path holds it and Cause the failure, whose code
+	// it reports.
 	KindProfileRetained
-	// KindCleanup identifies the Rust BrowserError::Cleanup failure.
+	// KindCleanup is a failed cleanup; Cause holds the preceding failure, possibly nil, and Cleanup the
+	// cleanup's, and the code is the first one present.
 	KindCleanup
 )
 

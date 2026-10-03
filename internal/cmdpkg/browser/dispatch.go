@@ -64,11 +64,11 @@ func (s *service) execute(
 	case *browserop.TabsInput:
 		return listTabs(ctx, environment, input)
 	}
-	id := command.TabID()
-	if id == nil {
+	id, ok := command.TabID()
+	if !ok {
 		return commandOutput{}, &cdp.BrowserError{Kind: cdp.KindTabNotFound}
 	}
-	tab, err := environment.Tab(ctx, *id, command.Timeout())
+	tab, err := environment.Tab(ctx, id, command.Timeout())
 	if err != nil {
 		return commandOutput{}, err
 	}

@@ -168,10 +168,7 @@ func elementText(node textObject) string {
 }
 
 // requestedText describes the browser target in an upload invocation.
-func requestedText(target *browserop.BrowserTarget) string {
-	if target == nil {
-		return ""
-	}
+func requestedText(target browserop.BrowserTarget) string {
 	if target.Ref != nil {
 		return "[ref=" + string(*target.Ref) + "]"
 	}
@@ -517,7 +514,10 @@ func renderUploadText(input browserop.Input, object textObject) (string, error) 
 	if object.number("attached") == "1" {
 		files = "file"
 	}
-	through := requestedText(input.ElementTarget())
+	through := ""
+	if target, ok := input.ElementTarget(); ok {
+		through = requestedText(target)
+	}
 	if through != "" {
 		through = " through " + through
 	}
