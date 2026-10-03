@@ -47,8 +47,14 @@ func TestConcurrentReplacementAvoidsRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer turn.Release()
-	done := make(chan []provider.Event)
-	go func() { done <- run(t, p, providertest.InferenceRequest()) }()
+	done := make(chan []provider.Event, 1)
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		defer close(done)
+		done <- run(t, p, providertest.InferenceRequest())
+	}()
+	t.Cleanup(func() { <-finished })
 	v.Received(t.Context(), 1)
 	entry, err := doc.Read(t.Context())
 	if err != nil {
@@ -63,6 +69,9 @@ func TestConcurrentReplacementAvoidsRefresh(t *testing.T) {
 	turn.Release()
 	equal(t, []provider.Event{&provider.Response{}}, <-done)
 	equal(t, 2, len(v.Requests()))
+	for _, request := range v.Requests() {
+		equal(t, chatPath, request.URI)
+	}
 	equal(t, "Bearer rotated-token", v.Requests()[1].Header("authorization"))
 }
 func TestExpiringAndUnrefreshableTokens(t *testing.T) {
@@ -80,6 +89,7 @@ func TestExpiringAndUnrefreshableTokens(t *testing.T) {
 			equal(t, []provider.Event{&provider.Response{}}, run(t, p, providertest.InferenceRequest()))
 			if refresh {
 				equal(t, 2, len(v.Requests()))
+				equal(t, "/oauth2/token", v.Requests()[0].URI)
 				equal(t, "Bearer fresh", v.Requests()[1].Header("authorization"))
 				equal(t, "refresh-1", stored(t, pool).RefreshToken.Expose())
 			} else {
@@ -126,7 +136,9 @@ func TestFailedRefresh(t *testing.T) {
 			equal(t, 1, len(events))
 			failure := events[0].(*provider.Error).Failure
 			equal(t, provider.AuthRefreshFailed, *failure.Code)
-			if !strings.HasPrefix(failure.Message, tc.message) {
+			if tc.status == 400 {
+				equal(t, tc.message, failure.Message)
+			} else if !strings.HasPrefix(failure.Message, tc.message) {
 				t.Fatal(failure.Message)
 			}
 			equal(t, 1, len(v.Requests()))
@@ -156,11 +168,13 @@ func TestAccountStatus(t *testing.T) {
 		t.Fatal(state.Message)
 	}
 	events := run(t, corrupt, providertest.InferenceRequest())
+	equal(t, 1, len(events))
 	equal(t, provider.AuthInvalid, *events[0].(*provider.Error).Failure.Code)
 	staged := testProvider(v, provider.NewMemoryCredentialPool(), nil, v.Client())
 	message := "No Grok account is signed in"
 	equal(t, core.AuthState(&core.Unauthenticated{Message: &message}), staged.AuthStatus(t.Context()))
 	events = run(t, staged, providertest.InferenceRequest())
+	equal(t, 1, len(events))
 	equal(t, provider.AuthMissing, *events[0].(*provider.Error).Failure.Code)
 	equal(t, 0, len(v.Requests()))
 }

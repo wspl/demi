@@ -3,6 +3,7 @@ package grokbuild
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -77,14 +78,11 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 			t.Fatal(err)
 		}
 		equal(t, account.ID, *active)
-		s := loginStored(t, pool, account.ID)
-		equal(t, "at_1", s.AccessToken.Expose())
-		equal(t, "rt_1", s.RefreshToken.Expose())
-		equal(t, core.Timestamp("2026-09-18T15:00:00.000Z"), *s.ExpiresAt)
-		equal(t, v.URL("/"), string(s.Issuer))
-		equal(t, clientID, s.ClientID)
-		equal(t, "user_1", *s.UserID)
-		equal(t, "g@example.com", *s.Email)
+		entry, err := pool.Document(account.ID).Read(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		equal(t, jsonValue(t, fmt.Sprintf(`{"accessToken":"at_1","refreshToken":"rt_1","expiresAt":"2026-09-18T15:00:00.000Z","issuer":%q,"clientId":"b1a00492-073a-47ea-816f-4c329264a828","userId":"user_1","email":"g@example.com"}`, v.URL("/"))), jsonValue(t, entry.Text))
 		listed, err := pool.List(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -95,6 +93,7 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		for i, path := range []string{"/oauth2/device/code", "/oauth2/token", "/oauth2/token", "/v1/user"} {
 			equal(t, path, requests[i].URI)
 		}
+
 		form, err := url.ParseQuery(string(requests[0].Body))
 		if err != nil {
 			t.Fatal(err)
@@ -113,6 +112,18 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		equal(t, "xai-grok-cli", requests[3].Header("x-xai-token-auth"))
 		equal(t, "interactive", requests[3].Header("x-grok-client-mode"))
 	})
+	requests := v.Requests()
+	t.Run("form bytes", func(t *testing.T) {
+		t.Skip("fidelity 1: Grok OAuth forms sort fields instead of preserving Rust insertion order")
+		const id = "b1a00492-073a-47ea-816f-4c329264a828"
+		const scopes = "openid+profile+email+offline_access+grok-cli%3Aaccess+api%3Aaccess+conversations%3Aread+conversations%3Awrite+workspaces%3Aread+workspaces%3Awrite"
+		if want := "client_id=" + id + "&scope=" + scopes + "&referrer=grok-build"; string(requests[0].Body) != want {
+			t.Errorf("device form: got %s; want %s", requests[0].Body, want)
+		}
+		if want := "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&device_code=dev_code_1&client_id=" + id; string(requests[1].Body) != want {
+			t.Errorf("token form: got %s; want %s", requests[1].Body, want)
+		}
+	})
 }
 func TestTeamLoginIdentity(t *testing.T) {
 	v := providertest.StartVendor(t)
@@ -130,11 +141,15 @@ func TestTeamLoginIdentity(t *testing.T) {
 			t.Fatal(err)
 		}
 		equal(t, "team-123", account.Label)
-		s := loginStored(t, pool, account.ID)
-		equal(t, "team-123", *s.UserID)
-		equal(t, &principal{Kind: "Team", ID: "team-123"}, s.Principal)
-		if s.Email != nil {
-			t.Fatal("team keeps member email")
+		entry, err := pool.Document(account.ID).Read(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		document := jsonValue(t, entry.Text).(map[string]any)
+		equal(t, "team-123", document["userId"])
+		equal(t, jsonValue(t, `{"kind":"Team","id":"team-123"}`), document["principal"])
+		if _, present := document["email"]; present {
+			t.Fatal("team document includes email")
 		}
 	})
 }
@@ -167,14 +182,19 @@ func TestLoginTenMinuteDeadline(t *testing.T) {
 	p := testProvider(v, pool, nil, client)
 	synctest.Test(t, func(t *testing.T) {
 		started := time.Now()
-		var shown core.LoginPending
-		_, err := p.Accounts().Login(context.Background(), func(p core.LoginPending) { shown = p })
+		var shown []core.LoginPending
+		_, err := p.Accounts().Login(context.Background(), func(p core.LoginPending) { shown = append(shown, p) })
 		if err == nil {
 			t.Fatal("unconfirmed login succeeded")
 		}
-		equal(t, "Grok device login timed out before the user confirmed", err.Error())
+		var failure *provider.LoginError
+		if !errors.As(err, &failure) || failure.Unavailable {
+			t.Fatalf("expected failed login: %v", err)
+		}
+		equal(t, "Grok device login timed out before the user confirmed", failure.Error())
 		equal(t, 600*time.Second, time.Since(started))
-		equal(t, core.Timestamp("2026-09-18T14:10:00.000Z"), *shown.ExpiresAt)
+		equal(t, 1, len(shown))
+		equal(t, core.Timestamp("2026-09-18T14:10:00.000Z"), *shown[0].ExpiresAt)
 		equal(t, 10, len(v.Requests()))
 		equal(t, 0, len(pool.Entries()))
 	})
@@ -198,7 +218,11 @@ func TestRefusedAndUnsafeLogin(t *testing.T) {
 			if err == nil {
 				t.Fatal("login succeeded")
 			}
-			equal(t, want, err.Error())
+			var failure *provider.LoginError
+			if !errors.As(err, &failure) || failure.Unavailable {
+				t.Fatalf("expected failed login: %v", err)
+			}
+			equal(t, want, failure.Error())
 		}
 		equal(t, 0, len(pool.Entries()))
 	})
@@ -218,6 +242,7 @@ func TestCancelPendingLogin(t *testing.T) {
 		}
 		time.Sleep(time.Minute)
 		equal(t, 1, len(v.Requests()))
+		equal(t, "/oauth2/device/code", v.Requests()[0].URI)
 		equal(t, 0, len(pool.Entries()))
 	})
 }
@@ -257,9 +282,14 @@ func TestLoginLongPollIntervalDeadline(t *testing.T) {
 		if err == nil {
 			t.Fatal("unconfirmed login succeeded")
 		}
-		equal(t, "Grok device login timed out before the user confirmed", err.Error())
+		var failure *provider.LoginError
+		if !errors.As(err, &failure) || failure.Unavailable {
+			t.Fatalf("expected failed login: %v", err)
+		}
+		equal(t, "Grok device login timed out before the user confirmed", failure.Error())
 		equal(t, 600*time.Second, time.Since(started))
 		equal(t, 1, len(v.Requests()))
+		equal(t, "/oauth2/device/code", v.Requests()[0].URI)
 		equal(t, 0, len(pool.Entries()))
 	})
 }

@@ -23,6 +23,7 @@ func TestCatalogEnvelopeAndList(t *testing.T) {
 	equal(t, now, list.SourceFetchedAt)
 	equal(t, false, list.Stale)
 	frontier, fast := list.Models[0], list.Models[1]
+	equal(t, []string{"frontier", "fast"}, []string{frontier.ID, fast.ID})
 	equal(t, "Frontier", frontier.DisplayName)
 	equal(t, uint32(500000), *frontier.ContextWindow)
 	equal(t, []string{"high", "medium", "low"}, *frontier.SupportedThinkingEfforts)
@@ -61,11 +62,18 @@ func TestCatalogFailures(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		equal(t, tc.kind, failure.Kind)
-		if !strings.Contains(failure.Message, tc.message) {
+		if tc.message != "context_window" {
+			equal(t, tc.message, failure.Message)
+		} else if !strings.Contains(failure.Message, tc.message) {
 			t.Fatal(failure.Message)
 		}
 	}
 	staged := testProvider(v, provider.NewMemoryCredentialPool(), nil, v.Client())
 	_, err := staged.ListModels(t.Context())
-	equal(t, "No Grok account is signed in", err.Error())
+	var failure *provider.CatalogError
+	if !errors.As(err, &failure) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	equal(t, provider.CatalogUnauthenticated, failure.Kind)
+	equal(t, "No Grok account is signed in", failure.Message)
 }

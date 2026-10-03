@@ -23,6 +23,7 @@ func probe(t *testing.T, user, billing string) (*core.QuotaSnapshot, *providerte
 func TestSubscriptionAndBillingProbe(t *testing.T) {
 	s, v := probe(t, `{"subscriptionTier":"XPremiumPlus","email":"a@b.com","hasGrokCodeAccess":true}`, `{"config":{"monthlyLimit":{"val":20000},"used":{"val":5000},"onDemandCap":{"val":0},"billingPeriodEnd":"2026-08-01T00:00:00+00:00"}}`)
 	requests := v.Requests()
+	equal(t, 2, len(requests))
 	paths := []string{requests[0].URI, requests[1].URI}
 	sort.Strings(paths)
 	equal(t, []string{"/v1/billing?format=credits", "/v1/user?include=subscription"}, paths)
@@ -38,6 +39,9 @@ func TestSubscriptionAndBillingProbe(t *testing.T) {
 	equal(t, core.QuotaUnit("credits"), *w.Unit)
 	equal(t, core.Timestamp("2026-08-01T00:00:00.000Z"), *w.ResetsAt)
 	equal(t, core.QuotaSeverity("normal"), *w.Severity)
+	if w.Scope != nil {
+		t.Fatal("monthly window has a scope", w.Scope)
+	}
 }
 func TestWeeklyCreditsAndCap(t *testing.T) {
 	s, _ := probe(t, `{"subscriptionTier":"XPremiumPlus"}`, `{"config":{"creditUsagePercent":2,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-08-14T10:45:24.951512+00:00","end":"2026-08-21T10:45:24.951512+00:00"},"onDemandCap":50,"billingPeriodEnd":"2026-08-30T00:00:00+00:00"}}`)
@@ -80,19 +84,15 @@ func TestEveryChatObservesLimits(t *testing.T) {
 		run(t, p, providertest.InferenceRequest())
 		s := p.Quota().Latest()
 		equal(t, 2, len(s.Windows))
-		var rpm, tpm core.QuotaWindow
-		for _, w := range s.Windows {
-			switch w.ID {
-			case "rpm":
-				rpm = w
-			case "tpm":
-				tpm = w
-			}
-		}
+		equal(t, []string{"rpm", "tpm"}, []string{s.Windows[0].ID, s.Windows[1].ID})
+		rpm, tpm := s.Windows[0], s.Windows[1]
 		equal(t, used, *rpm.Used)
 		equal(t, 120.0, *rpm.Limit)
 		equal(t, 1000.0, *tpm.Used)
 		equal(t, 5000.0, *tpm.Limit)
+		equal(t, core.QuotaUnit("requests"), *rpm.Unit)
+		equal(t, core.QuotaUnit("tokens"), *tpm.Unit)
 	}
+	equal(t, 100.0, *p.Quota().Latest().Windows[0].UsedPercent)
 	equal(t, core.QuotaSeverity("critical"), *p.Quota().Latest().Windows[0].Severity)
 }

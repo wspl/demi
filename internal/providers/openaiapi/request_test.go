@@ -75,15 +75,17 @@ func TestChatTranscript(t *testing.T) {
 
 func TestOmittedSettings(t *testing.T) {
 	request := requestWith(user("hello"))
-	request.SystemPrompt = " \n\ufeff"
-	body := bodyOf(t.Context(), t, core.WireAPIResponses, provider.VendorPolicy{}, request)
-	for _, field := range []string{"instructions", "tools", "tool_choice", "parallel_tool_calls", "reasoning", "service_tier", "stream_options"} {
-		if _, found := body[field]; found {
-			t.Errorf("unexpected %s", field)
+	for _, blank := range []string{" \n", " \n\ufeff"} {
+		request.SystemPrompt = blank
+		body := bodyOf(t.Context(), t, core.WireAPIResponses, provider.VendorPolicy{}, request)
+		for _, field := range []string{"instructions", "tools", "tool_choice", "parallel_tool_calls", "reasoning", "service_tier", "stream_options"} {
+			if _, found := body[field]; found {
+				t.Errorf("unexpected %s", field)
+			}
 		}
 	}
 	request.SystemPrompt = ""
-	body = bodyOf(t.Context(), t, core.WireAPIChatCompletions, provider.VendorPolicy{}, request)
+	body := bodyOf(t.Context(), t, core.WireAPIChatCompletions, provider.VendorPolicy{}, request)
 	assertJSON(t, body["messages"], `[{"role":"user","content":"hello"}]`)
 	for _, field := range []string{"tools", "tool_choice", "reasoning_effort", "service_tier"} {
 		if _, found := body[field]; found {
