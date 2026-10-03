@@ -25,7 +25,13 @@ func TestEditSelection(t *testing.T) {
 		{name: "occurrence", occurrence: &two, old: "a", new: "b", want: "a\nx\nb\n"},
 		{name: "out of range", occurrence: &three, old: "a", new: "b", failure: "Occurrence 3 is out of range"},
 		{name: "nearest", line: &four, old: "a", new: "b", want: "a\nx\nb\n"},
-		{name: "tie", line: &two, old: "a", new: "b", failure: "Context line 2 is ambiguous: occurrence 1 at line 1; occurrence 2 at line 3"},
+		{
+			name:    "tie",
+			line:    &two,
+			old:     "a",
+			new:     "b",
+			failure: "Context line 2 is ambiguous: occurrence 1 at line 1; occurrence 2 at line 3",
+		},
 		{name: "no context match", line: &one, old: "z", new: "b", failure: "No match found"},
 		{name: "occurrence takes precedence", occurrence: &one, line: &three, old: "a", new: "b", want: "b\nx\na\n"},
 		{name: "unchanged", occurrence: &one, old: "a", new: "a", want: "a\nx\na\n"},
@@ -33,7 +39,18 @@ func TestEditSelection(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			cwd := t.TempDir()
 			writeFixture(t, filepath.Join(cwd, "f"), "a\nx\na\n")
-			_, err := edit(t.Context(), cwd, &fileop.EditArgs{Path: "f", Old: test.old, New: test.new, Occurrence: test.occurrence, Context: test.line}, nil)
+			_, err := edit(
+				t.Context(),
+				cwd,
+				&fileop.EditArgs{
+					Path:       "f",
+					Old:        test.old,
+					New:        test.new,
+					Occurrence: test.occurrence,
+					Context:    test.line,
+				},
+				nil,
+			)
 			if test.failure != "" {
 				if err == nil || err.Error() != test.failure {
 					t.Fatalf("error=%v, want %s", err, test.failure)
@@ -51,18 +68,42 @@ func TestEditSelection(t *testing.T) {
 
 func TestUnifiedDiffCases(t *testing.T) {
 	for _, test := range []struct{ name, original, patch, want, failure string }{
-		{"no newline", "old", "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n\\ No newline at end of file\n", "new", ""},
+		{
+			"no newline",
+			"old",
+			"--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n\\ No newline at end of file\n",
+			"new",
+			"",
+		},
 		{"header-like contents", "-- old\n", "--- a/f\n+++ b/f\n@@ -1 +1 @@\n--- old\n+++ new\n", "++ new\n", ""},
 		{"offset", "a\nb\nc\n", "--- a/f\n+++ b/f\n@@ -1 +1,2 @@\n a\n+x\n@@ -3 +4 @@\n-c\n+d\n", "a\nx\nb\nd\n", ""},
 		{"insertion", "a\n", "--- a/f\n+++ b/f\n@@ -1,0 +2 @@\n+b\n", "a\nb\n", ""},
 		{"equivalent paths", "a\n", "--- a/./f\n+++ b/f\n@@ -1 +1 @@\n-a\n+b\n", "b\n", ""},
 		{"timestamps", "a\n", "--- a/f 2026-01-01 12:00:00 +0000\n+++ b/f\t2026-01-01\n@@ -1 +1 @@\n-a\n+b\n", "b\n", ""},
-		{"counts", "a\n", "--- a/f\n+++ b/f\n@@ -1,2 +1 @@\n-a\n+b\n", "", "Patch does not apply to f: Patch hunk line counts do not match header"},
-		{"mismatch", "a\n", "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-x\n+b\n", "", "Patch does not apply to f: Patch does not apply at line 1"},
+		{
+			"counts",
+			"a\n",
+			"--- a/f\n+++ b/f\n@@ -1,2 +1 @@\n-a\n+b\n",
+			"",
+			"Patch does not apply to f: Patch hunk line counts do not match header",
+		},
+		{
+			"mismatch",
+			"a\n",
+			"--- a/f\n+++ b/f\n@@ -1 +1 @@\n-x\n+b\n",
+			"",
+			"Patch does not apply to f: Patch does not apply at line 1",
+		},
 		{"new first", "a\n", "+++ b/f\n", "", "New header precedes old header"},
 		{"incomplete", "a\n", "--- a/f\n+++ b/f\n", "", "Invalid patch: missing file headers or hunks"},
 		{"bad header", "a\n", "--- a/f\n+++ b/f\n@@ bad\n", "", "Invalid patch hunk header"},
-		{"marker", "a\n", "--- a/f\n+++ b/f\n@@ -1 +1 @@\n\\ No newline at end of file\n", "", "Newline marker without patch line"},
+		{
+			"marker",
+			"a\n",
+			"--- a/f\n+++ b/f\n@@ -1 +1 @@\n\\ No newline at end of file\n",
+			"",
+			"Newline marker without patch line",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cwd := t.TempDir()
@@ -97,7 +138,13 @@ func TestPatchRenameDeleteAndDuplicatePlanning(t *testing.T) {
 		t.Fatal("rename contents")
 	}
 	patch := "--- a/new\n+++ b/new\n@@ -1 +1 @@\n-b\n+c\n"
-	if _, err := applyPatch(t.Context(), cwd, patch+patch, nil); err == nil || err.Error() != "Patch changes the same path more than once" {
+	if _, err := applyPatch(
+		t.Context(),
+		cwd,
+		patch+patch,
+		nil,
+	); err == nil ||
+		err.Error() != "Patch changes the same path more than once" {
 		t.Fatal(err)
 	}
 	if string(contents(t, filepath.Join(cwd, "new"))) != "b\n" {
@@ -123,7 +170,15 @@ func TestMutationWaitCancellationReleasesAdmission(t *testing.T) {
 		defer cancel()
 		done := make(chan error, 1)
 		go func() {
-			_, err := s.Invoke(ctx, cmdsdk.InvocationContext[commandwire.Invocation]{Request: commandwire.Invocation{Operation: "file.create", Args: []byte(`{"path":"unused","content":""}`)}})
+			_, err := s.Invoke(
+				ctx,
+				cmdsdk.InvocationContext[commandwire.Invocation]{
+					Request: commandwire.Invocation{
+						Operation: "file.create",
+						Args:      []byte(`{"path":"unused","content":""}`),
+					},
+				},
+			)
 			done <- err
 		}()
 		synctest.Wait()

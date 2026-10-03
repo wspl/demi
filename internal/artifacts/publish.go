@@ -36,9 +36,12 @@ const (
 
 // Publication describes how an artifact file becomes visible.
 type Publication struct {
-	Mode        Mode
+	// Mode determines whether publication may replace an existing file.
+	Mode Mode
+	// Permissions determines the staged file's permissions.
 	Permissions Permissions
-	Durable     bool
+	// Durable requests file and parent-directory synchronization during publication.
+	Durable bool
 }
 
 // Staged owns a temporary file. Call Close with defer immediately after creation;
@@ -58,12 +61,12 @@ func NewStaged(ctx context.Context, path string, publication Publication) (*Stag
 	if !ok {
 		return nil, fmt.Errorf("a file needs a parent directory: %w", os.ErrInvalid)
 	}
-	mode := os.FileMode(0666)
+	mode := os.FileMode(0o666)
 	switch publication.Permissions {
 	case Private, Keep:
-		mode = 0600
+		mode = 0o600
 	case Executable:
-		mode = 0755
+		mode = 0o755
 	}
 	var file *os.File
 	var err error
@@ -87,7 +90,7 @@ func NewStaged(ctx context.Context, path string, publication Publication) (*Stag
 			err = file.Chmod(info.Mode())
 		}
 	case Executable:
-		err = file.Chmod(0755)
+		err = file.Chmod(0o755)
 	}
 	if err != nil {
 		return nil, errors.Join(err, staged.Close())

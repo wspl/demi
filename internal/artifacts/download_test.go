@@ -22,7 +22,11 @@ func TestDownloadIdleTimeoutResetsOnProgress(t *testing.T) {
 				clientSide, serverSide := net.Pipe()
 				defer func() { _ = clientSide.Close() }() // Also unblocks the transport on failure.
 				defer func() { _ = serverSide.Close() }() // Also unblocks the fixture on failure.
-				transport := &http.Transport{DialContext: func(context.Context, string, string) (net.Conn, error) { return &progressConn{Conn: clientSide}, nil }}
+				transport := &http.Transport{
+					DialContext: func(context.Context, string, string) (net.Conn, error) {
+						return &progressConn{Conn: clientSide}, nil
+					},
+				}
 				client := &Client{http: &http.Client{Transport: transport}, allowHTTP: true}
 				defer client.Close()
 				done := make(chan error, 1)
@@ -32,7 +36,10 @@ func TestDownloadIdleTimeoutResetsOnProgress(t *testing.T) {
 						done <- err
 						return
 					}
-					_, err = io.WriteString(serverSide, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n")
+					_, err = io.WriteString(
+						serverSide,
+						"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n",
+					)
 					if err != nil {
 						done <- err
 						return

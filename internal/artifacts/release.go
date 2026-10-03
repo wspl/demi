@@ -14,20 +14,31 @@ import (
 
 // ReleaseFile describes one verified file and its path inside a release.
 type ReleaseFile struct {
-	Source, Path string
-	Digest       Digest
-	Executable   bool
+	// Source names the local file whose bytes will be verified and staged.
+	Source string
+	// Path is the file's relative destination inside the release directory.
+	Path string
+	// Digest specifies the bytes required for publication.
+	Digest Digest
+	// Executable requests executable permissions for the staged file.
+	Executable bool
 }
 
 // ReleaseRecord is the caller-owned release descriptor, encoded by its contract.
 type ReleaseRecord struct {
-	Name  string
+	// Name is the descriptor's single file name inside the release directory.
+	Name string
+	// Bytes holds the descriptor already encoded by its contract owner.
 	Bytes []byte
 }
 
 // ConflictError identifies an immutable release that differs from this one.
-type ConflictError struct{ Path string }
+type ConflictError struct {
+	// Path identifies the published file that conflicts with this release.
+	Path string
+}
 
+// Error identifies the conflicting release path.
 func (e *ConflictError) Error() string {
 	return fmt.Sprintf("%s is already published with other contents", e.Path)
 }
@@ -35,16 +46,8 @@ func (e *ConflictError) Error() string {
 // PublishRelease stages all verified files and the record before publishing the
 // whole immutable directory. Repeating the same publication checks its contents.
 func PublishRelease(ctx context.Context, directory string, record ReleaseRecord, files []ReleaseFile) (err error) {
-	if !insideArchive(record.Name) || strings.Contains(record.Name, "/") {
-		return fmt.Errorf("release record must be one file name: %w", fs.ErrInvalid)
-	}
-	names := map[string]bool{record.Name: true}
-	for _, file := range files {
-		name := filepath.ToSlash(file.Path)
-		if !insideArchive(name) || names[name] {
-			return fmt.Errorf("invalid or duplicate release path %q: %w", file.Path, fs.ErrInvalid)
-		}
-		names[name] = true
+	if err := validateReleasePaths(record, files); err != nil {
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -53,7 +56,7 @@ func PublishRelease(ctx context.Context, directory string, record ReleaseRecord,
 	if !ok || parent == "" || filepath.Base(directory) == "." || filepath.Base(directory) == ".." {
 		return fmt.Errorf("release directory needs a parent: %w", fs.ErrInvalid)
 	}
-	if err := os.MkdirAll(parent, 0755); err != nil {
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
 	}
 	stage, err := os.MkdirTemp(parent, "."+filepath.Base(directory)+"-stage-")
@@ -71,7 +74,12 @@ func PublishRelease(ctx context.Context, directory string, record ReleaseRecord,
 			return err
 		}
 	}
-	if err := PublishBytes(ctx, artifactPath(stage, record.Name), record.Bytes, Publication{Durable: true}); err != nil {
+	if err := PublishBytes(
+		ctx,
+		artifactPath(stage, record.Name),
+		record.Bytes,
+		Publication{Durable: true},
+	); err != nil {
 		return err
 	}
 	ordered := make([]string, 0, len(directories))
@@ -96,9 +104,10 @@ func PublishRelease(ctx context.Context, directory string, record ReleaseRecord,
 	}
 	return syncDirectory(context.WithoutCancel(ctx), parent)
 }
+
 func stageReleaseFile(ctx context.Context, file ReleaseFile, destination string) (err error) {
 	parent, _ := Parent(destination)
-	if err := os.MkdirAll(parent, 0755); err != nil {
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
 	}
 	input, err := os.Open(file.Source)
@@ -108,7 +117,7 @@ func stageReleaseFile(ctx context.Context, file ReleaseFile, destination string)
 	defer func() { _ = input.Close() }() // Read-only source.
 	// The release directory is already private staging: individual files need
 	// no second temporary or directory sync before the whole stage is committed.
-	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
+	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
 	if err != nil {
 		return err
 	}
@@ -117,12 +126,13 @@ func stageReleaseFile(ctx context.Context, file ReleaseFile, destination string)
 		return err
 	}
 	if file.Executable {
-		if err := output.Chmod(0755); err != nil {
+		if err := output.Chmod(0o755); err != nil {
 			return err
 		}
 	}
 	return output.Sync()
 }
+
 func releaseInPlace(ctx context.Context, directory string, record ReleaseRecord, files []ReleaseFile) error {
 	name := artifactPath(directory, record.Name)
 	data, err := os.ReadFile(name)
@@ -142,6 +152,21 @@ func releaseInPlace(ctx context.Context, directory string, record ReleaseRecord,
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateReleasePaths(record ReleaseRecord, files []ReleaseFile) error {
+	if !insideArchive(record.Name) || strings.Contains(record.Name, "/") {
+		return fmt.Errorf("release record must be one file name: %w", fs.ErrInvalid)
+	}
+	names := map[string]bool{record.Name: true}
+	for _, file := range files {
+		name := filepath.ToSlash(file.Path)
+		if !insideArchive(name) || names[name] {
+			return fmt.Errorf("invalid or duplicate release path %q: %w", file.Path, fs.ErrInvalid)
+		}
+		names[name] = true
 	}
 	return nil
 }

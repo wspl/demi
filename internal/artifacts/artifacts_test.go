@@ -28,12 +28,14 @@ func declared(data []byte) artifacts.Digest {
 	hash := sha256.Sum256(data)
 	return artifacts.Digest{Size: uint64(len(data)), SHA256: hex.EncodeToString(hash[:])}
 }
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
+
 func contents(t *testing.T, path string, expected []byte) {
 	t.Helper()
 	found, err := os.ReadFile(path)
@@ -42,6 +44,7 @@ func contents(t *testing.T, path string, expected []byte) {
 		t.Fatalf("%s: got %q, want %q", path, found, expected)
 	}
 }
+
 func names(t *testing.T, directory string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(directory)
@@ -52,12 +55,14 @@ func names(t *testing.T, directory string) []string {
 	}
 	return found
 }
+
 func client(t *testing.T) *artifacts.Client {
 	t.Helper()
 	c := artifacts.NewClientAllowingHTTP()
 	t.Cleanup(c.Close)
 	return c
 }
+
 func assertError[T error](t *testing.T, err error) T {
 	t.Helper()
 	var expected T
@@ -83,32 +88,60 @@ func TestDownloadVerifiesAsBytesArrive(t *testing.T) {
 	}
 	wrong := declared(body)
 	wrong.SHA256 = strings.Repeat("0", 64)
-	if err := artifacts.Download(t.Context(), c, server.URL("/artifact"), wrong, io.Discard); !errors.Is(err, artifacts.ErrDigest) {
+	if err := artifacts.Download(
+		t.Context(),
+		c,
+		server.URL("/artifact"),
+		wrong,
+		io.Discard,
+	); !errors.Is(
+		err,
+		artifacts.ErrDigest,
+	) {
 		t.Fatalf("wrong hash: %v", err)
 	}
 	short := declared(body)
 	short.Size = 3
 	output.Reset()
-	size := assertError[*artifacts.SizeError](t, artifacts.Download(t.Context(), c, server.URL("/artifact"), short, &output))
+	size := assertError[*artifacts.SizeError](
+		t,
+		artifacts.Download(t.Context(), c, server.URL("/artifact"), short, &output),
+	)
 	if size.Declared != 3 || output.Len() != 0 {
 		t.Fatal("contradictory length was not rejected before writing")
 	}
-	tooLarge := assertError[*artifacts.TooLargeError](t, artifacts.Download(t.Context(), c, server.URL("/unsized"), short, io.Discard))
+	tooLarge := assertError[*artifacts.TooLargeError](
+		t,
+		artifacts.Download(t.Context(), c, server.URL("/unsized"), short, io.Discard),
+	)
 	if tooLarge.Declared != 3 {
 		t.Fatal(tooLarge)
 	}
 	for path, status := range map[string]int{"/missing": 404, "/moved": 302} {
-		rejected := assertError[*artifacts.RejectedError](t, artifacts.Download(t.Context(), c, server.URL(path), declared(body), io.Discard))
+		rejected := assertError[*artifacts.RejectedError](
+			t,
+			artifacts.Download(t.Context(), c, server.URL(path), declared(body), io.Discard),
+		)
 		if rejected.Status != status {
 			t.Fatal(rejected)
 		}
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := artifacts.Download(ctx, c, server.URL("/artifact"), declared(body), io.Discard); !errors.Is(err, context.Canceled) {
+	if err := artifacts.Download(
+		ctx,
+		c,
+		server.URL("/artifact"),
+		declared(body),
+		io.Discard,
+	); !errors.Is(
+		err,
+		context.Canceled,
+	) {
 		t.Fatal(err)
 	}
 }
+
 func TestDownloadDecodesZstdAndRefusesOtherCoding(t *testing.T) {
 	for _, effort := range []artifacts.Effort{artifacts.Published, artifacts.Development} {
 		encoded, err := artifacts.Encode(t.Context(), body, effort)
@@ -131,12 +164,16 @@ func TestDownloadDecodesZstdAndRefusesOtherCoding(t *testing.T) {
 		if found != declared(body) {
 			t.Fatal(found)
 		}
-		coding := assertError[*artifacts.CodingError](t, artifacts.Download(t.Context(), c, server.URL("/gzip"), declared(body), io.Discard))
+		coding := assertError[*artifacts.CodingError](
+			t,
+			artifacts.Download(t.Context(), c, server.URL("/gzip"), declared(body), io.Discard),
+		)
 		if coding.Coding != "gzip" {
 			t.Fatal(coding)
 		}
 	}
 }
+
 func TestMeasuredDownloadReportsBytesWithinLimit(t *testing.T) {
 	server := artifactstest.Start(t, map[string]artifactstest.Answer{
 		"/sized":   artifactstest.OK(body),
@@ -160,6 +197,7 @@ func TestMeasuredDownloadReportsBytesWithinLimit(t *testing.T) {
 		t.Fatal(rejected)
 	}
 }
+
 func TestClientRefusesHTTPAndHidesSignedURL(t *testing.T) {
 	server := artifactstest.Start(t, map[string]artifactstest.Answer{"/artifact": artifactstest.OK(body)})
 	c := artifacts.NewClient()
@@ -169,9 +207,15 @@ func TestClientRefusesHTTPAndHidesSignedURL(t *testing.T) {
 		t.Fatalf("HTTP request leaked: %v", err)
 	}
 }
+
 func TestCancellationInterruptsWaitingDownload(t *testing.T) {
 	requested := make(chan struct{})
-	server := artifactstest.Start(t, map[string]artifactstest.Answer{"/artifact": {Status: 200, Body: body, Length: true, Requested: requested, Gate: make(chan struct{})}})
+	server := artifactstest.Start(
+		t,
+		map[string]artifactstest.Answer{
+			"/artifact": {Status: 200, Body: body, Length: true, Requested: requested, Gate: make(chan struct{})},
+		},
+	)
 	c := client(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -183,9 +227,10 @@ func TestCancellationInterruptsWaitingDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestCopiesAndDigestsCheckDeclaredBytes(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "source")
-	must(t, os.WriteFile(source, body, 0600))
+	must(t, os.WriteFile(source, body, 0o600))
 	found, err := artifacts.DigestFile(t.Context(), source, 1024)
 	must(t, err)
 	if found != declared(body) {
@@ -218,6 +263,7 @@ func TestCopiesAndDigestsCheckDeclaredBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestPublicationCreatesOrReplacesWholeFiles(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "file")
@@ -243,6 +289,7 @@ func TestPublicationCreatesOrReplacesWholeFiles(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
 func TestCancelledPublicationPublishesNothing(t *testing.T) {
 	directory := t.TempDir()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -255,6 +302,7 @@ func TestCancelledPublicationPublishesNothing(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
 func TestStagedFileAppearsOnlyWhenPublished(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "tool")
@@ -285,6 +333,7 @@ func TestStagedFileAppearsOnlyWhenPublished(t *testing.T) {
 		t.Fatal("staging file remained")
 	}
 }
+
 func TestPublicationSetsOrKeepsPermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix permissions")
@@ -294,17 +343,25 @@ func TestPublicationSetsOrKeepsPermissions(t *testing.T) {
 	for _, test := range []struct {
 		permissions artifacts.Permissions
 		want        os.FileMode
-	}{{artifacts.Private, 0600}, {artifacts.Executable, 0755}, {artifacts.Keep, 0640}} {
+	}{{artifacts.Private, 0o600}, {artifacts.Executable, 0o755}, {artifacts.Keep, 0o640}} {
 		mode := artifacts.CreateNew
 		switch test.permissions {
 		case artifacts.Keep:
 			path = filepath.Join(directory, "file")
-			must(t, os.Chmod(path, 0640))
+			must(t, os.Chmod(path, 0o640))
 			mode = artifacts.Replace
 		case artifacts.Executable:
 			path = filepath.Join(directory, "tool")
 		}
-		must(t, artifacts.PublishBytes(t.Context(), path, body, artifacts.Publication{Mode: mode, Permissions: test.permissions}))
+		must(
+			t,
+			artifacts.PublishBytes(
+				t.Context(),
+				path,
+				body,
+				artifacts.Publication{Mode: mode, Permissions: test.permissions},
+			),
+		)
 		info, err := os.Stat(path)
 		must(t, err)
 		if info.Mode().Perm() != test.want {
@@ -312,13 +369,14 @@ func TestPublicationSetsOrKeepsPermissions(t *testing.T) {
 		}
 	}
 }
+
 func TestStagedDirectoryReplacesInstallation(t *testing.T) {
 	root := t.TempDir()
 	destination, staged := filepath.Join(root, "1.0.0"), filepath.Join(root, "stage")
-	must(t, os.Mkdir(destination, 0755))
-	must(t, os.Mkdir(staged, 0755))
-	must(t, os.WriteFile(filepath.Join(destination, "old"), body, 0600))
-	must(t, os.WriteFile(filepath.Join(staged, "new"), body, 0600))
+	must(t, os.Mkdir(destination, 0o755))
+	must(t, os.Mkdir(staged, 0o755))
+	must(t, os.WriteFile(filepath.Join(destination, "old"), body, 0o600))
+	must(t, os.WriteFile(filepath.Join(staged, "new"), body, 0o600))
 	must(t, artifacts.PublishDirectory(t.Context(), staged, destination))
 	contents(t, filepath.Join(destination, "new"), body)
 	if got := names(t, destination); len(got) != 1 || got[0] != "new" {
@@ -328,12 +386,13 @@ func TestStagedDirectoryReplacesInstallation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestReleasePublishedWholeOnceAndRefusesOtherContents(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "tool")
-	must(t, os.WriteFile(source, []byte("tool v1"), 0600))
+	must(t, os.WriteFile(source, []byte("tool v1"), 0o600))
 	data := filepath.Join(root, "data")
-	must(t, os.WriteFile(data, []byte("data"), 0600))
+	must(t, os.WriteFile(data, []byte("data"), 0o600))
 	files := []artifacts.ReleaseFile{
 		{Source: source, Path: "target/tool", Digest: declared([]byte("tool v1")), Executable: true},
 		{Source: data, Path: "data", Digest: declared([]byte("data"))},
@@ -351,9 +410,9 @@ func TestReleasePublishedWholeOnceAndRefusesOtherContents(t *testing.T) {
 			must(t, err)
 			want := os.FileMode(0)
 			if file.Executable {
-				want = 0111
+				want = 0o111
 			}
-			if info.Mode().Perm()&0111 != want {
+			if info.Mode().Perm()&0o111 != want {
 				t.Fatal("incorrect execute permissions")
 			}
 		}
@@ -364,20 +423,29 @@ func TestReleasePublishedWholeOnceAndRefusesOtherContents(t *testing.T) {
 	if filepath.Base(conflict.Path) != record.Name {
 		t.Fatal(conflict)
 	}
-	must(t, os.WriteFile(filepath.Join(directory, "data"), []byte("corrupt"), 0600))
+	must(t, os.WriteFile(filepath.Join(directory, "data"), []byte("corrupt"), 0o600))
 	conflict = assertError[*artifacts.ConflictError](t, artifacts.PublishRelease(t.Context(), directory, record, files))
 	if filepath.Base(conflict.Path) != "data" {
 		t.Fatal(conflict)
 	}
 	contents(t, filepath.Join(directory, record.Name), record.Bytes)
-	must(t, os.WriteFile(source, []byte("tool v2"), 0600))
-	if err := artifacts.PublishRelease(t.Context(), filepath.Join(releases, "tool-2"), record, files); !errors.Is(err, artifacts.ErrDigest) {
+	must(t, os.WriteFile(source, []byte("tool v2"), 0o600))
+	if err := artifacts.PublishRelease(
+		t.Context(),
+		filepath.Join(releases, "tool-2"),
+		record,
+		files,
+	); !errors.Is(
+		err,
+		artifacts.ErrDigest,
+	) {
 		t.Fatal(err)
 	}
 	if got := names(t, releases); len(got) != 1 || got[0] != "tool-1" {
 		t.Fatal(got)
 	}
 }
+
 func TestInstallLockWaitsAndCanGiveUp(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "artifact.lock")
@@ -424,7 +492,12 @@ func TestInstallLockWaitsAndCanGiveUp(t *testing.T) {
 }
 
 // install runs the runner's download-then-unpack flow with explicit ownership.
-func install(ctx context.Context, c *artifacts.Client, root, url string, archive artifacts.Archive) (entry string, err error) {
+func install(
+	ctx context.Context,
+	c *artifacts.Client,
+	root, url string,
+	archive artifacts.Archive,
+) (entry string, err error) {
 	entry, unpacking, err := artifacts.InstallArchive(ctx, root, archive)
 	if err != nil || unpacking == nil {
 		return entry, err
@@ -440,6 +513,7 @@ func install(ctx context.Context, c *artifacts.Client, root, url string, archive
 	}
 	return unpacking.Finish(ctx)
 }
+
 func TestArchiveInstalledOnceAndCheckedBeforeUse(t *testing.T) {
 	data := artifactstest.Zip(t, map[string][]byte{"app/bin/tool": []byte("tool"), "app/data": []byte("data")})
 	server := artifactstest.Start(t, map[string]artifactstest.Answer{"/app.zip": artifactstest.OK(data)})
@@ -475,10 +549,14 @@ func TestArchiveInstalledOnceAndCheckedBeforeUse(t *testing.T) {
 	if checked != entry || recorded != entry {
 		t.Fatal("receipt did not name entry")
 	}
-	if got := names(t, root); len(got) != 2 || got[0] != archive.Digest.SHA256 || got[1] != archive.Digest.SHA256+".lock" {
+	if got := names(
+		t,
+		root,
+	); len(got) != 2 || got[0] != archive.Digest.SHA256 ||
+		got[1] != archive.Digest.SHA256+".lock" {
 		t.Fatal(got)
 	}
-	must(t, os.WriteFile(entry, []byte("changed"), 0600))
+	must(t, os.WriteFile(entry, []byte("changed"), 0o600))
 	_, err = artifacts.Installed(t.Context(), directory, archive)
 	_ = assertError[*artifacts.InstallationError](t, err)
 	_, err = install(t.Context(), c, root, server.URL("/app.zip"), archive)
@@ -511,6 +589,7 @@ func TestArchiveInstalledOnceAndCheckedBeforeUse(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
 func TestArchiveExtractsInsideInstallationAndNamesFiles(t *testing.T) {
 	data := artifactstest.Zip(t, map[string][]byte{"app/bin/tool": []byte("tool"), "../escaped": []byte("no")})
 	server := artifactstest.Start(t, map[string]artifactstest.Answer{"/app.zip": artifactstest.OK(data)})
@@ -526,7 +605,7 @@ func TestArchiveExtractsInsideInstallationAndNamesFiles(t *testing.T) {
 		t.Fatal(got)
 	}
 	file := filepath.Join(root, "app.zip")
-	must(t, os.WriteFile(file, artifactstest.Zip(t, map[string][]byte{"app/bin/tool": []byte("tool")}), 0600))
+	must(t, os.WriteFile(file, artifactstest.Zip(t, map[string][]byte{"app/bin/tool": []byte("tool")}), 0o600))
 	for name, want := range map[string]bool{"app/bin/tool": true, "app/bin": false, "app/bin/other": false} {
 		found, err := artifacts.ZipHolds(t.Context(), file, name)
 		must(t, err)

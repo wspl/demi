@@ -88,9 +88,9 @@ func TestUnpackedFixtureInstallsAndPreservesSymlinks(t *testing.T) {
 		t.Skip("Unix fixture symlinks")
 	}
 	source := t.TempDir()
-	must(t, os.MkdirAll(filepath.Join(source, "app/bin"), 0755))
+	must(t, os.MkdirAll(filepath.Join(source, "app/bin"), 0o755))
 	entry := filepath.Join(source, "app/bin/tool")
-	must(t, os.WriteFile(entry, body, 0755))
+	must(t, os.WriteFile(entry, body, 0o755))
 	must(t, os.Symlink("bin/tool", filepath.Join(source, "app/current")))
 	archive := artifacts.Archive{Digest: declared([]byte("fixture identity")), Entry: "app/bin/tool"}
 	root := t.TempDir()
@@ -117,11 +117,11 @@ func TestUnpackedFixtureInstallsAndPreservesSymlinks(t *testing.T) {
 	}
 	info, err := os.Stat(result)
 	must(t, err)
-	if info.Mode().Perm() != 0755 {
+	if info.Mode().Perm() != 0o755 {
 		t.Fatal(info.Mode())
 	}
 	must(t, os.Chmod(result, 0))
-	defer func() { must(t, os.Chmod(result, 0755)) }()
+	defer func() { must(t, os.Chmod(result, 0o755)) }()
 	// The stored receipt alone must suffice in a private cache. No corrupt
 	// bytes are planted to assert that a defect is correct behavior.
 	recorded, err := artifacts.Recorded(t.Context(), installed, archive)
@@ -141,7 +141,7 @@ func TestInvalidReceiptsAreErrorsNotCacheMisses(t *testing.T) {
 	} {
 		t.Run(data, func(t *testing.T) {
 			directory := t.TempDir()
-			must(t, os.WriteFile(filepath.Join(directory, artifacts.ReceiptFile), []byte(data), 0600))
+			must(t, os.WriteFile(filepath.Join(directory, artifacts.ReceiptFile), []byte(data), 0o600))
 			_, err := artifacts.Recorded(t.Context(), directory, archive)
 			_ = assertError[*artifacts.InstallationError](t, err)
 		})
@@ -154,7 +154,7 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 			var data bytes.Buffer
 			writer := zip.NewWriter(&data)
 			header := &zip.FileHeader{Name: "app/link"}
-			header.SetMode(os.ModeSymlink | 0777)
+			header.SetMode(os.ModeSymlink | 0o777)
 			entry, err := writer.CreateHeader(header)
 			must(t, err)
 			_, err = io.WriteString(entry, target)
@@ -165,7 +165,7 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 			_, unpacking, err := artifacts.InstallArchive(t.Context(), root, archive)
 			must(t, err)
 			defer func() { must(t, unpacking.Close()) }()
-			must(t, os.WriteFile(unpacking.ArchivePath(), data.Bytes(), 0600))
+			must(t, os.WriteFile(unpacking.ArchivePath(), data.Bytes(), 0o600))
 			_, err = unpacking.Finish(t.Context())
 			_ = assertError[*artifacts.ArchiveError](t, err)
 			if got := names(t, root); len(got) != 1 || !strings.HasSuffix(got[0], ".lock") {
@@ -174,7 +174,11 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 		})
 	}
 	for _, entry := range []string{"../outside", "/outside", "app\\tool", "."} {
-		_, _, err := artifacts.InstallArchive(t.Context(), t.TempDir(), artifacts.Archive{Digest: declared(body), Entry: entry})
+		_, _, err := artifacts.InstallArchive(
+			t.Context(),
+			t.TempDir(),
+			artifacts.Archive{Digest: declared(body), Entry: entry},
+		)
 		_ = assertError[*artifacts.ArchiveError](t, err)
 	}
 	root := t.TempDir()
@@ -182,7 +186,7 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 	_, unpacking, err := artifacts.InstallArchive(t.Context(), root, archive)
 	must(t, err)
 	defer func() { must(t, unpacking.Close()) }()
-	must(t, os.WriteFile(unpacking.ArchivePath(), body, 0600))
+	must(t, os.WriteFile(unpacking.ArchivePath(), body, 0o600))
 	_, err = unpacking.Finish(t.Context())
 	_ = assertError[*artifacts.ArchiveError](t, err)
 }
@@ -192,7 +196,7 @@ type brokenReader struct{ err error }
 func (r brokenReader) Read([]byte) (int, error) { return 0, r.err }
 func TestFailedAndMidstreamCancelledPublicationKeepsOldFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "artifact")
-	must(t, os.WriteFile(path, body, 0600))
+	must(t, os.WriteFile(path, body, 0o600))
 	failure := errors.New("input failed")
 	err := artifacts.Publish(t.Context(), path, brokenReader{failure}, artifacts.Publication{Mode: artifacts.Replace})
 	if !errors.Is(err, failure) {
@@ -222,13 +226,18 @@ func (r *cancelReader) Read(p []byte) (int, error) {
 func TestReleaseRejectsEscapesDuplicatesAndCancellation(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "source")
-	must(t, os.WriteFile(source, body, 0600))
+	must(t, os.WriteFile(source, body, 0o600))
 	file := artifacts.ReleaseFile{Source: source, Path: "tool", Digest: declared(body)}
 	record := artifacts.ReleaseRecord{Name: "record.json", Bytes: []byte("record")}
 	for _, name := range []string{"../outside", "/outside", "record.json"} {
 		invalid := file
 		invalid.Path = name
-		err := artifacts.PublishRelease(t.Context(), filepath.Join(root, "release"), record, []artifacts.ReleaseFile{invalid})
+		err := artifacts.PublishRelease(
+			t.Context(),
+			filepath.Join(root, "release"),
+			record,
+			[]artifacts.ReleaseFile{invalid},
+		)
 		if !errors.Is(err, os.ErrInvalid) {
 			t.Fatal(err)
 		}
@@ -251,7 +260,7 @@ func TestArchivePreservesDirectoryPermissionsAfterExtraction(t *testing.T) {
 	var data bytes.Buffer
 	writer := zip.NewWriter(&data)
 	header := &zip.FileHeader{Name: "app/"}
-	header.SetMode(os.ModeDir | 0500)
+	header.SetMode(os.ModeDir | 0o500)
 	_, err := writer.CreateHeader(header)
 	must(t, err)
 	output, err := writer.Create("app/tool")
@@ -264,15 +273,15 @@ func TestArchivePreservesDirectoryPermissionsAfterExtraction(t *testing.T) {
 	_, unpacking, err := artifacts.InstallArchive(t.Context(), root, archive)
 	must(t, err)
 	defer func() { must(t, unpacking.Close()) }()
-	must(t, os.WriteFile(unpacking.ArchivePath(), data.Bytes(), 0600))
+	must(t, os.WriteFile(unpacking.ArchivePath(), data.Bytes(), 0o600))
 	entry, err := unpacking.Finish(t.Context())
 	must(t, err)
 	directory := filepath.Dir(entry)
-	defer func() { must(t, os.Chmod(directory, 0755)) }()
+	defer func() { must(t, os.Chmod(directory, 0o755)) }()
 	contents(t, entry, body)
 	info, err := os.Stat(directory)
 	must(t, err)
-	if info.Mode().Perm() != 0500 {
+	if info.Mode().Perm() != 0o500 {
 		t.Fatalf("directory mode = %o", info.Mode().Perm())
 	}
 	// Failed verification must still remove a read-only extracted subtree.
@@ -281,7 +290,7 @@ func TestArchivePreservesDirectoryPermissionsAfterExtraction(t *testing.T) {
 	_, pending, err := artifacts.InstallArchive(t.Context(), failedRoot, archive)
 	must(t, err)
 	defer func() { must(t, pending.Close()) }()
-	must(t, os.WriteFile(pending.ArchivePath(), data.Bytes(), 0600))
+	must(t, os.WriteFile(pending.ArchivePath(), data.Bytes(), 0o600))
 	_, err = pending.Finish(t.Context())
 	_ = assertError[*artifacts.ArchiveError](t, err)
 	if found := names(t, failedRoot); len(found) != 1 || !strings.HasSuffix(found[0], ".lock") {

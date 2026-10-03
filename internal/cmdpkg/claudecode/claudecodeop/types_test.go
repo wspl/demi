@@ -32,7 +32,15 @@ func TestReleaseChecksEveryEntry(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// A second, valid platform ensures all entries are checked, regardless
 			// of which target the eventual caller runs on.
-			input := fmt.Sprintf(`{"version":%q,"platforms":{"darwin-arm64":{"url":%q,"size":%d,"sha256":%q},"linux-arm64":{"url":"https://example.test/claude","size":3,"sha256":%q}}}`, tc.version, tc.url, tc.size, tc.digest, digest)
+			input := fmt.Sprintf(
+				`{"version":%q,"platforms":{"darwin-arm64":{"url":%q,"size":%d,"sha256":%q},`+
+					`"linux-arm64":{"url":"https://example.test/claude","size":3,"sha256":%q}}}`,
+				tc.version,
+				tc.url,
+				tc.size,
+				tc.digest,
+				digest,
+			)
 			release, err := claudecodeop.DecodeRelease([]byte(input))
 			if (err == nil) != tc.valid {
 				t.Fatalf("DecodeRelease() error = %v, want valid %v", err, tc.valid)
