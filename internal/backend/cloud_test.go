@@ -72,6 +72,7 @@ func (s *hostScenario) resetCloud(id string) webapi.CloudResetAnswer {
 
 // Three real runner boots and a reset exercise crash-loop admission across the API and manager wire.
 func TestCloudCrashLoopRequiresReset(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
 	listing := "/api/conversations/" + cloudFirst + "/fs"
@@ -96,6 +97,7 @@ func TestCloudCrashLoopRequiresReset(t *testing.T) {
 
 // Capacity is released by the real idle watch; the scenario waits on its page event.
 func TestCloudCapacityIsSharedAcrossUsers(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -132,6 +134,7 @@ func TestCloudCapacityIsSharedAcrossUsers(t *testing.T) {
 
 // The three-second boot deadline is the behavior under test; no sleep polls it.
 func TestCloudBootTimeoutSavesAndReportsFailure(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +172,7 @@ func TestCloudBootTimeoutSavesAndReportsFailure(t *testing.T) {
 }
 
 func TestStartupRecoversResetDisksWithoutBooting(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	conversationCreate(s.ctx, s.t, s.b, &s.user, cloudFirst)
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations/"+cloudFirst+"/fs", "", 200)
@@ -301,6 +305,7 @@ func (w *cloudWork) turn(id, script, text string, timeout ...int) string {
 }
 
 func TestArchivingStoppedCloudDoesNotWakeIt(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "")
 	w := s.work(cloudFirst)
 	if result := w.turn("t1", "echo ran", "ran"); !strings.Contains(result, "exitCode: 0") {
@@ -326,6 +331,7 @@ func TestArchivingStoppedCloudDoesNotWakeIt(t *testing.T) {
 }
 
 func TestCloudResetKeepsHomeIdentityAndAnnouncesOnce(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "demi-file")
 	w := s.work(cloudFirst)
 	if result := w.turn("t1", "echo retained > note", "written"); !strings.Contains(result, "exitCode: 0") {
@@ -383,6 +389,7 @@ func TestCloudResetKeepsHomeIdentityAndAnnouncesOnce(t *testing.T) {
 }
 
 func TestFailedCloudResetResumesOnSameBaseAndKeepsHome(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "demi-file")
 	w := s.work(cloudFirst)
 	if result := w.turn("t1", "printf retained > note", "written"); !strings.Contains(result, "exitCode: 0") {
@@ -424,6 +431,7 @@ func TestFailedCloudResetResumesOnSameBaseAndKeepsHome(t *testing.T) {
 }
 
 func TestQuietlyStoppedCloudRecoversOnceForConcurrentReads(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "demi-file")
 	w := s.work(cloudFirst)
 	if result := w.turn("t1", "echo retained > note", "saved"); !strings.Contains(result, "exitCode: 0") {
@@ -461,6 +469,7 @@ func TestQuietlyStoppedCloudRecoversOnceForConcurrentReads(t *testing.T) {
 }
 
 func TestShutdownCancelsCloudBootAndSavesOnce(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -498,6 +507,7 @@ func TestShutdownCancelsCloudBootAndSavesOnce(t *testing.T) {
 }
 
 func TestShutdownCutsCloudDownloadAndReportsFailedSave(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -555,6 +565,7 @@ func TestShutdownCutsCloudDownloadAndReportsFailedSave(t *testing.T) {
 }
 
 func TestCloudFilesTodosAndUsageSurviveBackendRestart(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "demi-file")
 	w := s.work(cloudFirst)
 	script := "demi file create notes.md <<'EOF'\nkeep me\nEOF\ndemi todo add \"still here\""
@@ -597,6 +608,7 @@ func TestCloudFilesTodosAndUsageSurviveBackendRestart(t *testing.T) {
 }
 
 func TestCloudProjectsShareMachineAndDeletionKeepsFiles(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "demi-file")
 	var projects [2]webapi.WorkspaceDTO
 	var workers sync.WaitGroup
@@ -649,6 +661,7 @@ func TestCloudProjectsShareMachineAndDeletionKeepsFiles(t *testing.T) {
 
 // Two concurrent turns, an idle stop, and a second boot exercise shared Cloud ownership.
 func TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -751,6 +764,7 @@ func TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand(t *testing.T) {
 
 // The lifetime cap is two seconds; the abandoned job would otherwise hold the Cloud for thirty.
 func TestCloudLifetimeCapEndsUnattendedJobs(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -782,6 +796,7 @@ func TestCloudLifetimeCapEndsUnattendedJobs(t *testing.T) {
 }
 
 func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -834,6 +849,7 @@ func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 
 // Several seconds: two real runners install packages and Cloud wakes three times.
 func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -919,6 +935,7 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 }
 
 func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {
+	t.Parallel()
 	s := newHostScenario(t, "demi-file")
 	alpha := s.pair("alpha")
 	work := s.work(cloudFirst)
@@ -979,6 +996,7 @@ func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {
 }
 
 func TestIdleConversationReleasesNativeResourcesOnRunningCloud(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -1053,6 +1071,7 @@ func TestIdleConversationReleasesNativeResourcesOnRunningCloud(t *testing.T) {
 // Two idle windows of actual file requests prove activity on a paired target
 // holds its attached Cloud; requests are event waits, without polling sleeps.
 func TestPairedTargetActivityKeepsAttachedCloudAwake(t *testing.T) {
+	t.Parallel()
 	const window = 600 * time.Millisecond
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
@@ -1088,6 +1107,7 @@ func TestPairedTargetActivityKeepsAttachedCloudAwake(t *testing.T) {
 }
 
 func TestResetHoldsPairedConversationWhoseProviderUsesCloud(t *testing.T) {
+	t.Parallel()
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)

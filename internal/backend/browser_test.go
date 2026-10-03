@@ -14,6 +14,7 @@ import (
 
 // No browser, runner or model; absence of a package removes its page methods.
 func TestBrowserAbsentCatalogRemovesTabsAndMethods(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -30,6 +31,7 @@ func TestBrowserAbsentCatalogRemovesTabsAndMethods(t *testing.T) {
 
 // Builds and publishes the browser package once; no Chrome or runner starts.
 func TestBrowserStoppedCloudIsNotWokenByTabMethods(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	built, err := backendtest.BuildPackage(ctx, t, "demi-browser")
 	wireMust(t, err)
@@ -66,6 +68,7 @@ func TestBrowserStoppedCloudIsNotWokenByTabMethods(t *testing.T) {
 
 // A paired runner installs the browser package; no Chrome or model is started.
 func TestBrowserTabMethodsUseConversationHost(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	built, err := backendtest.BuildPackage(ctx, t, "demi-browser")
 	wireMust(t, err)
@@ -138,6 +141,7 @@ func TestBrowserTabMethodsUseConversationHost(t *testing.T) {
 
 // A real shell completion and a user tab operation publish independent revisions.
 func TestBrowserJobsAndTabMethodsRaiseSummaryRevisions(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-browser")
 	fresh := conversationSummary(w.ctx, t, w.b, &w.s, filesConversation)
 	conversationEqual(t, fresh.WorkingTreeRevision, uint64(0))
@@ -165,6 +169,7 @@ func TestBrowserJobsAndTabMethodsRaiseSummaryRevisions(t *testing.T) {
 
 // Repeated real tab reads continue while the cloud's idle watch stops its runner.
 func TestBrowserListingRunningCloudDoesNotKeepItAwake(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	h, manager, err := backendtest.HostsHarness(ctx, t)

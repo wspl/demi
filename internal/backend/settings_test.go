@@ -12,8 +12,10 @@ import (
 
 // These HTTP scenarios use local databases and no runner or model.
 func TestInstanceModeReadBackAsConfigured(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []webapi.InstanceMode{webapi.InstanceModeShared, webapi.InstanceModeIsolated} {
 		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
 			ctx, h := conversationHarness(t)
 			h.Config.Mode = mode
 			b, s, err := h.StartSetUp(ctx, t)
@@ -26,6 +28,7 @@ func TestInstanceModeReadBackAsConfigured(t *testing.T) {
 }
 
 func TestPreferencePatchesMergeValidateAndSurviveRestart(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -82,6 +85,7 @@ func TestPreferencePatchesMergeValidateAndSurviveRestart(t *testing.T) {
 }
 
 func TestReportedLocaleValidatedAndCanonicalized(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)

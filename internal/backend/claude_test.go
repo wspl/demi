@@ -119,6 +119,7 @@ func accountInstallCLI(ctx context.Context, t *testing.T, root, version string) 
 
 // Several seconds: a real Cloud runner installs the command package and runs its scripted CLI.
 func TestAConversationOnAPairedDeviceInfersThroughTheCloudsCLIWithTheActiveAccountsToken(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	distribution := providertest.StartVendor(t)
 	distribution.RespondAt("/releases/latest", accountVendorResponse("2.1.3\n"))

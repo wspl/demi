@@ -78,6 +78,7 @@ func (v *realView) next(ctx context.Context, t *testing.T) (browserop.LiveModule
 // About 13 seconds: a real runner installs demi.browser, launches Chrome and
 // encodes the first live picture. No model request leaves the fixture vendor.
 func TestAnAgentDrivesChromeOnAPairedDeviceWhichTheUserWatchesUntilRelease(t *testing.T) {
+	t.Parallel()
 	chrome := os.Getenv("DEMI_TEST_CHROME")
 	if chrome == "" {
 		t.Skip("the browser suite: needs DEMI_TEST_CHROME and an ordinary user (scenarios.md § Browser suite)")

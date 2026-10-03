@@ -104,6 +104,7 @@ func conversationTree(t *testing.T) (context.Context, *backendtest.TestBackend, 
 
 // A real child works past its spawn job; the test releases its file wait.
 func TestChildSharesFilesButKeepsOwnTodosAfterSpawn(t *testing.T) {
+	t.Parallel()
 	ctx, b, s, scripts, root := conversationTree(t)
 	socket := conversationOpen(ctx, t, b, &s, conversationFirst)
 	scripts.root(conversationFirst, treeShell(t, "t1", `printf 'the answer is 42\n' > notes.md && demi todo add root-only`), treeSay("written"))
@@ -140,6 +141,7 @@ func TestChildSharesFilesButKeepsOwnTodosAfterSpawn(t *testing.T) {
 }
 
 func TestForkLeavesRunningChildWithSource(t *testing.T) {
+	t.Parallel()
 	ctx, b, s, scripts, root := conversationTree(t)
 	socket := conversationOpen(ctx, t, b, &s, conversationFirst)
 	scripts.child(treeShell(t, "c1", `until [ -f go ]; do sleep 0.05; done`), treeSay("the child's result"))

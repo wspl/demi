@@ -10,6 +10,7 @@ import (
 )
 
 func TestTheMasterCreatesAdminsAndUsersAnAdminUsersOnlyAndNobodyOutranksTheMaster(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)

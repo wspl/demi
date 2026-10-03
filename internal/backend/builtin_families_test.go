@@ -13,6 +13,7 @@ import (
 )
 
 func TestTheSubscriptionFamiliesLogInByDeviceAndStandForTheirBoundAccount(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	registry := backend.BuiltinFamilies()
 	conversationEqual(t, registry.Subscriptions(), []string{"claude-code", "codex", "grok-build"})

@@ -16,6 +16,7 @@ import (
 )
 
 func TestShutdownClosesListener(t *testing.T) {
+	t.Parallel()
 	h, _, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -68,20 +69,27 @@ func startupRefusal(t *testing.T, variable, value string, omit bool) string {
 	return string(output)
 }
 
-func TestInvalidPortNamesVariable(t *testing.T) { startupRefusal(t, "DEMI_BACKEND_PORT", "abc", false) }
+func TestInvalidPortNamesVariable(t *testing.T) {
+	t.Parallel()
+	startupRefusal(t, "DEMI_BACKEND_PORT", "abc", false)
+}
 func TestUnknownVariableNamesVariable(t *testing.T) {
+	t.Parallel()
 	startupRefusal(t, "DEMI_BACKEND_PORTT", "3272", false)
 }
 func TestMissingPublicURLNamesVariable(t *testing.T) {
+	t.Parallel()
 	startupRefusal(t, "DEMI_BACKEND_PUBLIC_URL", "", true)
 }
 func TestMalformedSecretIsNotDisclosed(t *testing.T) {
+	t.Parallel()
 	output := startupRefusal(t, "DEMI_INSTANCE_SECRET", "not-a-hex-secret-value", false)
 	if strings.Contains(output, "not-a-hex-secret-value") {
 		t.Fatal("secret disclosed")
 	}
 }
 func TestInstanceSecretPersistsWithPrivatePermissions(t *testing.T) {
+	t.Parallel()
 	h, _, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -133,6 +141,7 @@ func TestInstanceSecretPersistsWithPrivatePermissions(t *testing.T) {
 	}
 }
 func TestConfiguredSecretRequires64HexDigits(t *testing.T) {
+	t.Parallel()
 	digits := strings.Repeat("0123456789abcdef", 4)
 	for _, text := range []string{digits, strings.ToUpper(digits)} {
 		if _, err := backend.ParseInstanceSecret(text); err != nil {

@@ -49,6 +49,7 @@ func accountCookie(t *testing.T, a backendtest.Answer, attribute string) {
 }
 
 func TestSetupCreatesTheMasterOnceAndSignsItIn(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, err := h.Start(ctx, t)
 	if err != nil {
@@ -81,6 +82,7 @@ func TestSetupCreatesTheMasterOnceAndSignsItIn(t *testing.T) {
 }
 
 func TestConcurrentSetupsCreateOneMaster(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, err := h.Start(ctx, t)
 	if err != nil {
@@ -105,6 +107,7 @@ func TestConcurrentSetupsCreateOneMaster(t *testing.T) {
 }
 
 func TestEveryOtherAPIPathWantsALiveSession(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -126,6 +129,7 @@ func TestEveryOtherAPIPathWantsALiveSession(t *testing.T) {
 }
 
 func TestARequestOverHTTPSGetsASecureCookie(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, _, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -142,6 +146,7 @@ func TestARequestOverHTTPSGetsASecureCookie(t *testing.T) {
 }
 
 func TestLoginLocksOutAfterFiveFailuresAndLogoutEndsTheSession(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -176,6 +181,7 @@ func TestLoginLocksOutAfterFiveFailuresAndLogoutEndsTheSession(t *testing.T) {
 }
 
 func TestAnAddressWithoutAnAccountIsLockedOutToo(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, _, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -188,6 +194,7 @@ func TestAnAddressWithoutAnAccountIsLockedOutToo(t *testing.T) {
 }
 
 func TestAUserChangesTheirOwnPasswordWithTheCurrentOne(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -216,6 +223,7 @@ func TestAUserChangesTheirOwnPasswordWithTheCurrentOne(t *testing.T) {
 }
 
 func TestASessionSlidesWhileUsedAndExpiresWhenSilent(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -240,6 +248,7 @@ func TestASessionSlidesWhileUsedAndExpiresWhenSilent(t *testing.T) {
 }
 
 func TestEmailIdentityIsNormalizedAndTheNicknamePersists(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -263,6 +272,7 @@ func TestEmailIdentityIsNormalizedAndTheNicknamePersists(t *testing.T) {
 }
 
 func TestAnEmailChangeNeedsADeliveredUnexpiredSingleUseCodeAndSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.AccountMail = h.Mailbox
 	b, master, err := h.StartSetUp(ctx, t)
@@ -337,6 +347,7 @@ func TestAnEmailChangeNeedsADeliveredUnexpiredSingleUseCodeAndSurvivesRestart(t 
 }
 
 func TestAFailedDeliveryAllowsARetryAndWrongCodesOrANewPasswordEndAChallenge(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.AccountMail = h.Mailbox
 	b, master, err := h.StartSetUp(ctx, t)
@@ -386,6 +397,7 @@ func TestAFailedDeliveryAllowsARetryAndWrongCodesOrANewPasswordEndAChallenge(t *
 }
 
 func TestARequestThatCouldActComesFromAPageOfTheProductOrFromNoPage(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	domain, err := expose.ParseDomain("expose.localhost")
 	if err != nil {
@@ -456,6 +468,7 @@ func TestARequestThatCouldActComesFromAPageOfTheProductOrFromNoPage(t *testing.T
 }
 
 func TestARequestWhoseOriginAProxyDroppedPassesAndTheLogSaysSoOnce(t *testing.T) {
+	// Serial: this scenario replaces the process-wide slog logger.
 	ctx, h := conversationHarness(t)
 	path := filepath.Join(t.TempDir(), "backend.log")
 	file, err := os.Create(path)

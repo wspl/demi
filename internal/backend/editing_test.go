@@ -55,6 +55,7 @@ func conversationIdle(f framewire.ServerFrame) bool {
 }
 
 func TestEditPublishedOnlyAfterCommit(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -101,6 +102,7 @@ func TestEditPublishedOnlyAfterCommit(t *testing.T) {
 }
 
 func TestTurnEndWaitsForCommitAndImmediatelyAdmitsEdit(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -150,6 +152,7 @@ func TestTurnEndWaitsForCommitAndImmediatelyAdmitsEdit(t *testing.T) {
 
 // A real runner executes tool effects and reconnects after the backend restart.
 func TestEditRestoresTodosKeepsFilesAndDurableReceipt(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)

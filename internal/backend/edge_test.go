@@ -18,6 +18,7 @@ import (
 )
 
 func TestAJSONBodyOverItsLimitIsRefusedBeforeItIsRead(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -66,6 +67,7 @@ func TestAJSONBodyOverItsLimitIsRefusedBeforeItIsRead(t *testing.T) {
 }
 
 func TestAJSONBodyIsReadWhateverItsContentTypeAndMustMatchItsType(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, _, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -95,6 +97,7 @@ func TestAJSONBodyIsReadWhateverItsContentTypeAndMustMatchItsType(t *testing.T) 
 }
 
 func TestTheWebAppBuildIsServedWithDeepNavigationWhileAPIMissesStayJSON(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	if err := h.WriteWeb(ctx, map[string]string{"index.html": "<html>fixture page</html>", "main.js": "export const fixture = true"}); err != nil {
 		t.Fatal(err)
@@ -127,6 +130,7 @@ func TestTheWebAppBuildIsServedWithDeepNavigationWhileAPIMissesStayJSON(t *testi
 }
 
 func TestAPageSocketMessageOverTheLimitFailsTheSocket(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)

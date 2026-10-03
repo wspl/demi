@@ -11,6 +11,7 @@ import (
 // Checks the configuration's documented filter at the output boundary, without
 // process-global logger changes or wall-time waits.
 func TestLogTargets(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		filter  string
 		level   slog.Level

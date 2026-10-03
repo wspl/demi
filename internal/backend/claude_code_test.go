@@ -207,6 +207,7 @@ func realAccountReplayed(t *testing.T, r providertest.RecordedRequest, parts ...
 
 // Several seconds: each Cloud installs and verifies the supplied CLI, whose processes start for real.
 func TestTheCloudsVerifiedCLIStreamsReasoningAndTextAndRunsAToolBatchThroughDemiInOneProcess(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	w := realAccountStart(ctx, t)
 	devices := w.manager.Devices()
@@ -368,6 +369,7 @@ func TestTheCloudsVerifiedCLIStreamsReasoningAndTextAndRunsAToolBatchThroughDemi
 
 // Several seconds: the real CLI is installed and restarted after stop and model changes.
 func TestStopEndsTheCLIsStreamAndEachNewProcessReplaysTheTranscriptForItsModelAndEffort(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	w := realAccountStart(ctx, t)
 	socket := w.conversation(ctx, t)
@@ -430,6 +432,7 @@ func TestStopEndsTheCLIsStreamAndEachNewProcessReplaysTheTranscriptForItsModelAn
 
 // Several seconds: the real CLI is installed and handles two scripted vendor requests.
 func TestAVendorErrorFailsTheRequestInTheCLIsWordsAndTheKeptProcessAnswersTheNext(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	w := realAccountStart(ctx, t)
 	socket := w.conversation(ctx, t)

@@ -135,6 +135,7 @@ func titleUntil(ctx context.Context, t *testing.T, page *backendtest.SyncChannel
 }
 
 func TestGeneratedTitleLosesToRenameAndArchive(t *testing.T) {
+	t.Parallel()
 	const generated = "TS2307 after package split"
 	ctx, b, s, entry, script := conversationTitling(t, "\""+generated+"\"\n")
 	conversationCreate(ctx, t, b, &s, conversationFirst)
@@ -196,6 +197,7 @@ func TestGeneratedTitleLosesToRenameAndArchive(t *testing.T) {
 }
 
 func TestEmptyGeneratedTitleKeepsMessageTitleAndAllowsRetry(t *testing.T) {
+	t.Parallel()
 	ctx, b, s, entry, script := conversationTitling(t, " \n\n")
 	conversationCreate(ctx, t, b, &s, conversationFirst)
 	conversationChoose(ctx, t, b, &s, conversationFirst, entry, "m")

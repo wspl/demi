@@ -14,6 +14,7 @@ import (
 
 // Six real shell turns exercise retained output; no real model is called.
 func TestLongOutputNamesOmittedLinesAndShellOutputReadsThem(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	built, err := backendtest.BuildPackage(ctx, t, "demi-file")
 	wireMust(t, err)

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/fsnotify/fsnotify"
@@ -241,10 +242,12 @@ func (b *TestBackend) StallConversationReset(ctx context.Context, t testing.TB, 
 		_ = conn.Close()
 		close(stopped)
 	})
-	t.Cleanup(func() {
+	defer func() {
 		if !stop() {
 			<-stopped
 		}
+	}()
+	t.Cleanup(func() {
 		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			t.Error(err)
 		}
@@ -315,6 +318,11 @@ func (b *TestBackend) StallConversationReset(ctx context.Context, t testing.TB, 
 	size := binary.BigEndian.Uint64(length)
 	if size > 64<<20 {
 		return nil, fmt.Errorf("reset frame too large: %d", size)
+	}
+	// The read guard ends here; only the test owns the stalled socket now.
+	// Its expired deadline must not release a later blocked shutdown.
+	if err := tcp.SetDeadline(time.Time{}); err != nil {
+		return nil, err
 	}
 	return &StalledConversation{conn: tcp, reader: reader, ResetBytes: size}, nil
 }

@@ -36,6 +36,7 @@ func conversationFork(ctx context.Context, t *testing.T, b *backendtest.TestBack
 }
 
 func TestForkKeepsChosenHistoryWhileSourceRuns(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -125,6 +126,7 @@ func TestForkKeepsChosenHistoryWhileSourceRuns(t *testing.T) {
 }
 
 func TestForkAfterRestartReadsStoredHistory(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -173,6 +175,7 @@ func conversationCommands(blocks []core.Block) []string {
 
 // A real runner installs the native file package and records shared edit blobs.
 func TestForkSharesEditBlobsWithoutWritingObjects(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	counts := &blobstest.ObjectCounts{}
 	h.Objects = counts
@@ -222,6 +225,7 @@ func TestForkSharesEditBlobsWithoutWritingObjects(t *testing.T) {
 
 // A real runner executes the source and both destinations' todo commands.
 func TestForkRestoresTodosAtSelectedHistory(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)
@@ -265,6 +269,7 @@ func TestForkRestoresTodosAtSelectedHistory(t *testing.T) {
 
 // A real runner reads retained command output and allocates the next identity.
 func TestForkReadsOnlyCommandsItsHistoryNames(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	vendor := providertest.StartVendor(t)
 	b, s, err := h.StartSetUp(ctx, t)

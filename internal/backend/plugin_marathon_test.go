@@ -62,6 +62,7 @@ func filesExec(t *testing.T, id, script string, timeout int) provider.Event {
 
 // Six scripts run on a real runner, preserving the todo and shell across messages.
 func TestPluginMarathonCodingWorkflowKeepsFilesTodosAndShell(t *testing.T) {
+	t.Parallel()
 	scripts := []string{"demi file create src/app.ts <<'EOF'\nexport const value = 1\nEOF", `demi todo add "Run tests" --json`, "grep -q 'value = 2' src/app.ts", `demi file edit src/app.ts --old "1" --new "2" && cd src`, "grep -q 'value = 2' app.ts && echo passed", "demi todo done T1 && pwd"}
 	var turns []providertest.Turn
 	for i, script := range scripts {
@@ -128,6 +129,7 @@ func TestPluginMarathonCodingWorkflowKeepsFilesTodosAndShell(t *testing.T) {
 
 // A scripted model feeds a real reader, yields between checks, and aborts a long job.
 func TestPluginMarathonShellToolsFeedStopAndYield(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	phase := 0
 	var reader, long core.CommandID

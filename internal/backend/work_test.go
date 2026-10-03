@@ -89,6 +89,7 @@ func filesRead(t *testing.T, path string) string {
 
 // Four shell jobs on a real runner; the first installs the file package.
 func TestWorkCreatesReadsEditsAndListsConversationFiles(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-file")
 	for i, step := range []struct {
 		script, answer string
@@ -125,6 +126,7 @@ func filesMove(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s 
 
 // A killed runner ends an in-flight command and a fresh runner reads kept files.
 func TestWorkRunnerLossEndsCommandAndReconnectServesNextTurn(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-file")
 	w.vendor.Respond(conversationShell(t, "t1", "echo -n before > before.txt", 10000))
 	w.vendor.Respond(conversationAnswer(t, []string{"written"}, 1, 1))
@@ -186,6 +188,7 @@ func filesEditSides(ctx context.Context, t *testing.T, b *backendtest.TestBacken
 
 // Two file-editing jobs and an archive preserve copies after the runner dies.
 func TestWorkCommandEditsOutliveRunner(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-file")
 	script := "set -e\nprintf 'before\\n' > note.txt\nprintf 'created\\n' | demi file create native.txt\nprintf '\\0binary' > asset.bin\nprintf 'temporary' > removed.txt\nrm removed.txt"
 	w.vendor.Respond(conversationShell(t, "create", script, 10000))
@@ -224,6 +227,7 @@ func TestWorkCommandEditsOutliveRunner(t *testing.T) {
 
 // Restart while a runner job is blocked; its successor preserves files and IDs.
 func TestWorkBackendRestartReconnectsRunnerAndInterruptsTurn(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-file")
 	w.vendor.Respond(conversationShell(t, "t1", "echo -n kept > kept.txt && cat kept.txt", 10000))
 	w.vendor.Respond(conversationAnswer(t, []string{"remember me"}, 1, 1))
@@ -275,6 +279,7 @@ func TestWorkBackendRestartReconnectsRunnerAndInterruptsTurn(t *testing.T) {
 
 // Two paired targets retain separate files; switch and attachment news reach the model once.
 func TestWorkSwitchKeepsDepartedFilesReachable(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-file")
 	beta, err := w.b.Pair(w.ctx, t, &w.s, "beta")
 	wireMust(t, err)
@@ -333,6 +338,7 @@ func TestWorkSwitchKeepsDepartedFilesReachable(t *testing.T) {
 
 // Concurrent turns share a device but retain separate cwd, environment and todos.
 func TestWorkConversationsKeepDirectoriesShellsAndTodosApart(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-file")
 	otherVendor := providertest.StartVendor(t)
 	entry := conversationAnthropic(w.ctx, t, w.b, &w.s, otherVendor)
@@ -371,6 +377,7 @@ func TestWorkConversationsKeepDirectoriesShellsAndTodosApart(t *testing.T) {
 
 // Two real runners transfer 300 KiB through far-host pipes and preserve its cwd.
 func TestWorkHostShellPipesCarryBytesAndKeepFarDirectory(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-file")
 	beta, err := w.b.Pair(w.ctx, t, &w.s, "beta")
 	wireMust(t, err)
@@ -413,6 +420,7 @@ func TestWorkHostShellPipesCarryBytesAndKeepFarDirectory(t *testing.T) {
 
 // A far-host reader streams stderr, accepts input, and dies with its caller's abort.
 func TestWorkHostShellStreamsErrorsAcceptsInputAndStopsFarJob(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "demi-file")
 	beta, err := w.b.Pair(w.ctx, t, &w.s, "beta")
 	wireMust(t, err)

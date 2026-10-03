@@ -23,6 +23,7 @@ func registryProbe(id string, commands ...plugin.Commands) *backendtest.CommandP
 
 // Local backend and command RPCs; no vendor or runner.
 func TestPluginGroupsComposeAndCallsReceiveOwnPath(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	h.Config.Plugins = []plugin.Factory{registryProbe("notes", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)), registryProbe("lint", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil))}
 	b, s, err := h.StartSetUp(ctx, t)
@@ -65,6 +66,7 @@ func TestPluginGroupsComposeAndCallsReceiveOwnPath(t *testing.T) {
 
 // Six invalid manifests fail assembled startup before serving or starting a runner.
 func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
+	t.Parallel()
 	profile := func(id, name string) *backendtest.CommandProbe {
 		p := registryProbe(id)
 		p.Declaration.Profiles = []core.Profile{{Name: name, Description: "A profile.", CanSpawnSubagents: true}}
@@ -85,6 +87,7 @@ func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.prefix, func(t *testing.T) {
+			t.Parallel()
 			ctx, h := conversationHarness(t)
 			h.Config.Plugins = tc.factories
 			b, err := h.Start(ctx, t)
@@ -105,6 +108,7 @@ func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 
 // Publishes the file package, but executes no command or model.
 func TestPluginUnservedNativeTreeIsOmittedWhole(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	built, err := backendtest.BuildPackage(ctx, t, "demi-file")
 	wireMust(t, err)

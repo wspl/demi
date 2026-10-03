@@ -25,6 +25,7 @@ import (
 
 // Two local uploads; no model or runner. Object counts pin deduplication.
 func TestRepeatedUploadSendsNoObjectBytes(t *testing.T) {
+	t.Parallel()
 	ctx, h := conversationHarness(t)
 	counts := &blobstest.ObjectCounts{}
 	h.Objects = counts
@@ -88,6 +89,7 @@ func filesCloseTree(ctx context.Context, t *testing.T, s *backendtest.Conversati
 
 // A local vendor and runner restore two image references without writing objects.
 func TestUploadReopeningTwoPagesAndSyncWritesNoBlob(t *testing.T) {
+	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Objects = counts })
 	shots := []filesAttachment{filesUpload(w.ctx, t, w.b, &w.s, "a.png", "image/png", storetest.PNG(4, 3, 1)), filesUpload(w.ctx, t, w.b, &w.s, "b.png", "image/png", storetest.PNG(4, 3, 2))}
@@ -124,6 +126,7 @@ func TestUploadReopeningTwoPagesAndSyncWritesNoBlob(t *testing.T) {
 
 // Nine replayed images are read once with bounded concurrency after a compaction.
 func TestUploadRestoreReadsReplayBlobsOnceAfterCompaction(t *testing.T) {
+	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
 	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Objects = counts })
 	old := filesUpload(w.ctx, t, w.b, &w.s, "old.png", "image/png", storetest.PNG(4, 3, 0))
@@ -176,6 +179,7 @@ func TestUploadRestoreReadsReplayBlobsOnceAfterCompaction(t *testing.T) {
 
 // A 2400px upload and command output are fitted identically; Host bytes stay whole.
 func TestUploadAndToolFitWideImageButKeepHostOriginal(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "")
 	wide := storetest.PNG(2400, 10, 1)
 	wireMust(t, os.WriteFile(filepath.Join(w.root, "wide.png"), wide, 0644))
@@ -222,6 +226,7 @@ func TestUploadAndToolFitWideImageButKeepHostOriginal(t *testing.T) {
 
 // A failed local object write replaces tool media with a reason and preserves the turn.
 func TestUploadUnstorableToolMediaBecomesGoneAndTurnContinues(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "")
 	png := storetest.PNG(4, 3, 0)
 	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png, 0644))
@@ -279,6 +284,7 @@ func TestUploadUnstorableToolMediaBecomesGoneAndTurnContinues(t *testing.T) {
 
 // A real runner and local vendor carry uploads, a steer and an image-preserving edit.
 func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
+	t.Parallel()
 	w := filesWorking(t, "")
 	wireMust(t, w.h.AddUser(w.ctx, "ana@example.test", "ana-pass-1", webapi.RoleUser))
 	png := storetest.PNG(4, 3, 0)
