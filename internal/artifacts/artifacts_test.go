@@ -172,12 +172,9 @@ func TestDownloadDecodesZstdAndRefusesOtherCoding(t *testing.T) {
 		if found != declared(body) {
 			t.Fatal(found)
 		}
-		coding := assertError[*artifacts.CodingError](
-			t,
-			artifacts.Download(t.Context(), c, server.URL("/gzip"), declared(body), io.Discard),
-		)
-		if coding.Coding != "gzip" {
-			t.Fatal(coding)
+		err = artifacts.Download(t.Context(), c, server.URL("/gzip"), declared(body), io.Discard)
+		if err == nil || err.Error() != "unsupported artifact content coding \"gzip\"" {
+			t.Fatal(err)
 		}
 	}
 }

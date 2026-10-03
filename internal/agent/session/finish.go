@@ -15,11 +15,11 @@ type actionResult struct {
 	err  error
 }
 
-func newAction() *ActionHandle {
-	return &ActionHandle{result: &actionResult{done: make(chan struct{})}}
+func newAction() *ActionAnswer {
+	return &ActionAnswer{result: &actionResult{done: make(chan struct{})}}
 }
 
-func (a *ActionHandle) finish(end ActionEnd, err error) {
+func (a *ActionAnswer) finish(end ActionEnd, err error) {
 	if a == nil {
 		return
 	}
@@ -31,7 +31,7 @@ func (a *ActionHandle) finish(end ActionEnd, err error) {
 }
 
 // wait waits without transferring cancellation to the session's action.
-func (a *ActionHandle) wait(ctx context.Context) (ActionEnd, error) {
+func (a *ActionAnswer) wait(ctx context.Context) (ActionEnd, error) {
 	select {
 	case <-a.result.done:
 		return a.result.end, a.result.err

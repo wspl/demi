@@ -125,21 +125,24 @@ func (s *Server[H]) openTree(
 	ctx context.Context,
 	root core.NodeID,
 	cwd string,
-) (*Tree[H], *session.Continuation, error) {
+) (*Tree[H], session.Continuation, bool, error) {
 	toolset, err := s.deps.Toolsets.Current(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("the commands the conversation opens with cannot be read: %w", err)
+		return nil, session.Continuation{}, false, fmt.Errorf(
+			"the commands the conversation opens with cannot be read: %w",
+			err,
+		)
 	}
 	if err := checkProfiles(toolset.Profiles); err != nil {
-		return nil, nil, err
+		return nil, session.Continuation{}, false, err
 	}
 	model, err := s.deps.Providers.Selection(ctx, root)
 	if err != nil {
-		return nil, nil, err
+		return nil, session.Continuation{}, false, err
 	}
 	runtime, err := s.deps.Providers.Runtime(ctx, root, model)
 	if err != nil {
-		return nil, nil, err
+		return nil, session.Continuation{}, false, err
 	}
 	lifetime, cancel := context.WithCancel(context.Background())
 	t := &Tree[H]{
@@ -157,7 +160,7 @@ func (s *Server[H]) openTree(
 		cancel:      cancel,
 		running:     map[core.CommandID]bool{},
 	}
-	node, continuation, err := t.assemble(ctx, assembly{
+	node, continuation, continues, err := t.assemble(ctx, assembly{
 		record:       store.RootRecord(root, s.deps.Clock.Now()),
 		cwd:          cwd,
 		model:        model,
@@ -169,19 +172,22 @@ func (s *Server[H]) openTree(
 	})
 	if err != nil {
 		cancel()
-		return nil, nil, err
+		return nil, session.Continuation{}, false, err
 	}
 	t.root = node
-	if continuation != nil {
+	if continues {
 		if err := node.session.UpdateModel(session.ModelSwitch{Model: model}); err != nil {
 			cancel()
-			return nil, nil, errors.Join(err, node.session.Dispose(context.WithoutCancel(ctx)))
+			return nil, session.Continuation{}, false, errors.Join(
+				err,
+				node.session.Dispose(context.WithoutCancel(ctx)),
+			)
 		}
 	}
 	if err := s.publishTree(ctx, t, node, cancel); err != nil {
-		return nil, nil, err
+		return nil, session.Continuation{}, false, err
 	}
-	return t, continuation, nil
+	return t, continuation, continues, nil
 }
 
 // bump announces a change after releasing the server's state lock.

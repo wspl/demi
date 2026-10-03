@@ -1,6 +1,10 @@
 package store
 
-import "github.com/wspl/demi/internal/core"
+import (
+	"fmt"
+
+	"github.com/wspl/demi/internal/core"
+)
 
 // Checkpoint is a node's checkpoint as the store gives it back.
 type Checkpoint struct {
@@ -52,7 +56,7 @@ func (u CheckpointUpdate) CarriedCompletions() ([]core.CompletionID, error) {
 		}
 		round, err := core.ParseCompletionID(string(message.ID))
 		if err != nil {
-			return nil, &Error{Kind: Corrupt, Message: err.Error(), Cause: err}
+			return nil, fmt.Errorf("%w: %w", ErrCorrupt, err)
 		}
 		if !seen[round] {
 			seen[round] = true

@@ -156,13 +156,7 @@ func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationE
 				return err
 			}
 		case frame, ok := <-exchange.outgoing:
-			if !ok {
-				if errors.Is(exchange.frames.Err(), server.ErrLagged) {
-					exchange.page.close(context.WithoutCancel(ctx), websocket.StatusCode(4001), "lagged")
-				}
-				return nil
-			}
-			if err := send(frame); err != nil {
+			if ended, err := forwardFrame(ctx, exchange, frame, ok, send); ended {
 				return err
 			}
 		case <-exchange.page.heartbeat.C:
@@ -171,6 +165,28 @@ func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationE
 			}
 		}
 	}
+}
+
+// forwardFrame sends one conversation frame. When the frames ended it
+// closes the page as "lagged" if the subscriber fell behind; ended
+// reports that the exchange is over.
+func forwardFrame(
+	ctx context.Context,
+	exchange conversationExchange,
+	frame framewire.ServerFrame,
+	ok bool,
+	send func(framewire.ServerFrame) error,
+) (ended bool, err error) {
+	if !ok {
+		if errors.Is(exchange.frames.Err(), server.ErrLagged) {
+			exchange.page.close(context.WithoutCancel(ctx), websocket.StatusCode(4001), "lagged")
+		}
+		return true, nil
+	}
+	if err := send(frame); err != nil {
+		return true, err
+	}
+	return false, nil
 }
 
 // finishConversationMessage closes invalid input or sends the completed client reply.

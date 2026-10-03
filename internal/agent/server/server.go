@@ -104,12 +104,12 @@ func (s *Server[H]) Restore(ctx context.Context, root core.NodeID, cwd string) e
 		return err
 	}
 	defer permit.Release()
-	tree, continuation, err := s.liveOrOpen(ctx, root, cwd)
+	tree, continuation, continues, err := s.liveOrOpen(ctx, root, cwd)
 	if err != nil {
 		return fmt.Errorf("the tree did not open: %w", err)
 	}
-	if continuation != nil {
-		if err := tree.continueRestored(ctx, *continuation); err != nil {
+	if continues {
+		if err := tree.continueRestored(ctx, continuation); err != nil {
 			return fmt.Errorf("the restored tree did not continue: %w", err)
 		}
 	}
@@ -118,7 +118,7 @@ func (s *Server[H]) Restore(ctx context.Context, root core.NodeID, cwd string) e
 
 // PrepareSwitch prepares the live root's next model, building a runtime before
 // anything changes when the provider changes. It returns nil when no tree is
-// live, and *ResolveError when resolution fails. The caller must pass a
+// live, and an error wrapping ErrProviderUnavailable when no provider entry has the id. The caller must pass a
 // prepared switch to SwitchModel or discard it to release its runtime.
 func (s *Server[H]) PrepareSwitch(
 	ctx context.Context,
@@ -192,18 +192,18 @@ func (s *Server[H]) PrepareFork(
 		return tree.root.session.PrepareFork(target)
 	}
 	treeStore := s.deps.Stores(source)
-	record, err := treeStore.Node(ctx, source)
+	record, found, err := treeStore.Node(ctx, source)
 	if err != nil {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkStore, Detail: err.Error(), Cause: err}
 	}
-	if record == nil || record.Parent != nil {
+	if !found || record.Parent != nil {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkNotRoot}
 	}
-	checkpoint, err := treeStore.SessionStore(source).Load(ctx)
+	checkpoint, saved, err := treeStore.SessionStore(source).Load(ctx)
 	if err != nil {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkStore, Detail: err.Error(), Cause: err}
 	}
-	if checkpoint == nil {
+	if !saved {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkNoCheckpoint}
 	}
 	commands, err := store.RestoreCommandStateHistory(checkpoint.CommandState)
@@ -295,7 +295,7 @@ func (s *Server[H]) liveOrOpen(
 	ctx context.Context,
 	root core.NodeID,
 	cwd string,
-) (*Tree[H], *session.Continuation, error) {
+) (*Tree[H], session.Continuation, bool, error) {
 	s.mu.Lock()
 	tree, closing := s.trees[root], s.closing
 	if !closing && tree == nil {
@@ -303,10 +303,10 @@ func (s *Server[H]) liveOrOpen(
 	}
 	s.mu.Unlock()
 	if closing {
-		return nil, nil, session.ErrClosed
+		return nil, session.Continuation{}, false, session.ErrClosed
 	}
 	if tree != nil {
-		return tree, nil, nil
+		return tree, session.Continuation{}, false, nil
 	}
 	defer s.work.Done()
 	return s.openTree(ctx, root, cwd)

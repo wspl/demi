@@ -67,21 +67,21 @@ func setup(t *testing.T, turns ...providertest.Turn) *scenario {
 	return start(t, &sessiontest.Runtime{}, config, turns...)
 }
 
-func (f *scenario) send(text, id string) *session.ActionHandle {
+func (f *scenario) send(text, id string) *session.ActionAnswer {
 	f.t.Helper()
 	a, err := f.s.Send(storetest.Text(text), core.TurnID(id))
 	must(f.t, err)
 	return a
 }
 
-func (f *scenario) done(a *session.ActionHandle) {
+func (f *scenario) done(a *session.ActionAnswer) {
 	f.t.Helper()
 	end, err := a.Wait(f.t.Context())
 	must(f.t, err)
 	equal(f.t, end, session.Completed)
 }
 
-func (f *scenario) fail(a *session.ActionHandle) {
+func (f *scenario) fail(a *session.ActionAnswer) {
 	f.t.Helper()
 	_, err := a.Wait(f.t.Context())
 	if err == nil {
@@ -91,12 +91,12 @@ func (f *scenario) fail(a *session.ActionHandle) {
 
 func (f *scenario) checkpoint() store.Checkpoint {
 	f.t.Helper()
-	cp, err := f.tree.SessionStore("root").Load(f.t.Context())
+	cp, found, err := f.tree.SessionStore("root").Load(f.t.Context())
 	must(f.t, err)
-	if cp == nil {
+	if !found {
 		f.t.Fatal("missing checkpoint")
 	}
-	return *cp
+	return cp
 }
 
 func (f *scenario) restore(

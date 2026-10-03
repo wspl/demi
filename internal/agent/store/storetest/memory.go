@@ -165,12 +165,16 @@ func (s *MemoryTreeStore) HoldChildrenOf(parent core.NodeID) *StoreGate {
 	return gate
 }
 
-// Node returns a node's record, or nil when it does not exist.
-func (s *MemoryTreeStore) Node(ctx context.Context, id core.NodeID) (*store.NodeRecord, error) {
+// Node returns a node's record, and false when it does not exist.
+func (s *MemoryTreeStore) Node(ctx context.Context, id core.NodeID) (store.NodeRecord, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return store.NodeRecord{}, false, err
 	}
-	return s.Record(id), nil
+	record := s.Record(id)
+	if record == nil {
+		return store.NodeRecord{}, false, nil
+	}
+	return *record, true, nil
 }
 
 // Children returns direct children in number order, live and archived alike.
@@ -223,7 +227,7 @@ func (s *MemoryTreeStore) CreateNode(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.nodes[record.ID]; exists {
-		return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("node %s already exists", record.ID)}
+		return fmt.Errorf("node %s already exists", record.ID)
 	}
 	s.nodes[record.ID] = storedNode{record: record, rows: checkpointRows{command: empty, blocks: map[int][]byte{}}}
 	if err := s.applySaveLocked(saved); err != nil {

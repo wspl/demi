@@ -173,22 +173,22 @@ func (s *Session) HoldMedia(media *store.HeldMedia) {
 
 // Send submits a message, queuing it when busy. A known id returns Duplicate
 // without creating another turn. Refusals return ErrClosed or ErrEditing.
-func (s *Session) Send(content []core.UserContentBlock, id core.TurnID) (*ActionHandle, error) {
+func (s *Session) Send(content []core.UserContentBlock, id core.TurnID) (*ActionAnswer, error) {
 	return s.admit(sendAction, content, id)
 }
 
 // Retry rewinds the last input turn and runs it again.
-func (s *Session) Retry() (*ActionHandle, error) {
+func (s *Session) Retry() (*ActionAnswer, error) {
 	return s.admit(retryAction, nil, "")
 }
 
 // Resume unwinds the unfinished turn to its resume point and continues it.
-func (s *Session) Resume() (*ActionHandle, error) {
+func (s *Session) Resume() (*ActionAnswer, error) {
 	return s.admit(resumeAction, nil, "")
 }
 
 // Compact runs one compaction pass.
-func (s *Session) Compact() (*ActionHandle, error) {
+func (s *Session) Compact() (*ActionAnswer, error) {
 	return s.admit(compactAction, nil, "")
 }
 
@@ -290,8 +290,8 @@ func (s *Session) SteerQueuedMessage(message core.TurnID, steer core.BlockID) (b
 }
 
 // AcceptAgentMessage admits another agent's message and returns once its
-// admissionLocked is saved. A closed session returns ErrClosed and an edit being prepared ErrEditing. A save that starts
-// finishes even if ctx is cancelled.
+// admissionLocked is saved. A closed session returns ErrClosed and an edit being prepared ErrEditing.
+// A save that starts finishes even if ctx is cancelled.
 func (s *Session) AcceptAgentMessage(ctx context.Context, message core.AgentMessage) error {
 	return s.acceptAgentMessage(ctx, message)
 }

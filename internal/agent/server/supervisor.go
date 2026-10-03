@@ -136,7 +136,7 @@ func (t *Tree[H]) startChild(
 	model, instructions, inherited := owner.session.Model(), owner.runtime.instructions, owner.runtime.inherited
 	model, instructions, inherited = childProfile(profile, model, instructions, inherited)
 	preamble := subagentPreamble(record.Number, owner.record.Number, record.CanSpawnSubagents)
-	node, continuation, err := t.assemble(ctx, assembly{
+	node, continuation, continues, err := t.assemble(ctx, assembly{
 		record:       record,
 		cwd:          owner.CWD(),
 		model:        model,
@@ -156,8 +156,8 @@ func (t *Tree[H]) startChild(
 	c := &child[H]{node: node, done: make(chan struct{}), telemetry: telemetry{lastEvent: now}}
 	t.observeChild(c, node)
 	t.publishChild(c, node)
-	if continuation != nil {
-		if err := node.continueFrom(ctx, *continuation); err != nil {
+	if continues {
+		if err := node.continueFrom(ctx, continuation); err != nil {
 			t.report(fmt.Errorf("subagent %s did not save its start: %w", node.ID(), err))
 		}
 	}

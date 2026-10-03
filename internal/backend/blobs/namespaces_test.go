@@ -18,7 +18,6 @@ import (
 	"gocloud.dev/blob"
 	"gocloud.dev/blob/memblob"
 
-	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/backend/blobs"
 	"github.com/wspl/demi/internal/backend/blobs/blobstest"
 	"github.com/wspl/demi/internal/core"
@@ -110,10 +109,8 @@ func TestPutWaitsForDeletionAndStoresAgain(t *testing.T) {
 				<-held.reached
 				if err := namespace.CommitUses(
 					[]core.BlobRef{ref},
-				); !errors.Is(
-					err,
-					&store.Error{Kind: store.OperationFailed},
-				) {
+				); err == nil ||
+					err.Error() != fmt.Sprintf("blob %s is being deleted", ref) {
 					t.Fatalf("commit during deletion = %v", err)
 				}
 				if deleted, err := namespace.DeleteUnused(ctx, ref, day); deleted || err != nil {

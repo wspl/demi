@@ -563,7 +563,7 @@ func TestRefusedSaveLeavesWholeCheckpoint(t *testing.T) {
 	ctx := t.Context()
 	require(t, tree.CreateNode(ctx, node("root", nil, 0), update(0)))
 	root := tree.SessionStore("root")
-	before, err := root.Load(ctx)
+	before, _, err := root.Load(ctx)
 	require(t, err)
 	changed := store.InitialCommandState()
 	changed.Versions[0].Values["todos.json"] = json.RawMessage("true")
@@ -571,12 +571,10 @@ func TestRefusedSaveLeavesWholeCheckpoint(t *testing.T) {
 	save.CommandState = &changed
 	save.State.Phase = core.SessionPhaseRunning
 	err = root.Save(ctx, save, store.CommitGuard{})
-	var refusal *store.Error
-	if !errors.As(err, &refusal) || refusal.Kind != store.OperationFailed ||
-		refusal.Message != "command-state version 0 is immutable" {
+	if err == nil || err.Error() != "storage operation: command-state version 0 is immutable" {
 		t.Fatalf("immutable version refusal: %v", err)
 	}
-	after, err := root.Load(ctx)
+	after, _, err := root.Load(ctx)
 	require(t, err)
 	equal(t, before, after)
 	stale, cancel := context.WithCancel(ctx)
@@ -585,7 +583,7 @@ func TestRefusedSaveLeavesWholeCheckpoint(t *testing.T) {
 	if !errors.Is(err, store.ErrInvalidated) {
 		t.Fatal(err)
 	}
-	after, err = root.Load(ctx)
+	after, _, err = root.Load(ctx)
 	require(t, err)
 	equal(t, before, after)
 }

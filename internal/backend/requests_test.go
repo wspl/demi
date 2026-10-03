@@ -347,7 +347,7 @@ func wireConversation(t *testing.T, family wireFamily) []string {
 		),
 	)
 	close(release)
-	wait := func(a *session.ActionHandle, err error) {
+	wait := func(a *session.ActionAnswer, err error) {
 		t.Helper()
 		wireMust(t, err)
 		_, err = a.Wait(ctx)

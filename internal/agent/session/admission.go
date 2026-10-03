@@ -10,8 +10,8 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-func (s *Session) admit(kind actionKind, content []core.UserContentBlock, id core.TurnID) (*ActionHandle, error) {
-	var answer *ActionHandle
+func (s *Session) admit(kind actionKind, content []core.UserContentBlock, id core.TurnID) (*ActionAnswer, error) {
+	var answer *ActionAnswer
 	var err error
 	s.mutate(func(c *coreState) {
 		if err = c.admissionLocked(); err != nil {

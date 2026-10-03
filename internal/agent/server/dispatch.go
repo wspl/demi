@@ -100,14 +100,14 @@ func (c *Connection[H]) open(ctx context.Context) {
 		c.reject(framewire.ClientFrameKindOpen, "A session is already open on this connection")
 		return
 	}
-	tree, continuation, err := c.server.liveOrOpen(ctx, c.root, c.cwd)
+	tree, continuation, continues, err := c.server.liveOrOpen(ctx, c.root, c.cwd)
 	if err != nil {
 		c.report(err)
 		return
 	}
 	tree.attach(c)
-	if continuation != nil {
-		if err := tree.continueRestored(ctx, *continuation); err != nil {
+	if continues {
+		if err := tree.continueRestored(ctx, continuation); err != nil {
 			c.report(err)
 		}
 	}

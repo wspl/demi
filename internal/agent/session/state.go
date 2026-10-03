@@ -29,7 +29,7 @@ type action struct {
 	kind          actionKind
 	turn          core.TurnID
 	content       []core.UserContentBlock
-	answer        *ActionHandle
+	answer        *ActionAnswer
 	ctx           context.Context
 	cancel        context.CancelFunc
 	stopped       bool

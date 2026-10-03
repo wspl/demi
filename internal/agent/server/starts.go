@@ -70,11 +70,11 @@ func (t *Tree[H]) finishStart(ctx context.Context, owner *Node[H], receipt start
 	if disposing {
 		return 0, errors.New("owner session is closing")
 	}
-	record, err := t.store.Node(ctx, receipt.NodeID)
+	record, found, err := t.store.Node(ctx, receipt.NodeID)
 	if err != nil {
 		return 0, err
 	}
-	if record != nil {
+	if found {
 		done, number, err := t.restoreStart(ctx, owner, receipt, record)
 		if done || err != nil {
 			return number, err
@@ -137,11 +137,11 @@ func (t *Tree[H]) reopen(
 	message string,
 	round uint64,
 ) (uint64, error) {
-	record, err := t.store.Node(ctx, id)
+	record, found, err := t.store.Node(ctx, id)
 	if err != nil {
 		return 0, err
 	}
-	if record == nil || record.Parent == nil || *record.Parent != owner.ID() {
+	if !found || record.Parent == nil || *record.Parent != owner.ID() {
 		return 0, errors.New("no such subagent of yours (see `demi agent list`)")
 	}
 	if t.Node(id) != nil {
@@ -171,7 +171,7 @@ func (t *Tree[H]) reopen(
 		return 0, err
 	}
 	record.Round, record.StartedAt, record.Closed, record.Delivered = round, at, nil, false
-	if err := t.startChild(ctx, owner, *record, nil); err != nil {
+	if err := t.startChild(ctx, owner, record, nil); err != nil {
 		return 0, err
 	}
 	return record.Number, nil
@@ -199,11 +199,11 @@ func (t *Tree[H]) startReceipt(ctx context.Context, input startInput) (startRece
 		}
 	case *resumeInput:
 		fresh.NodeID = v.ID
-		previous, err := t.store.Node(ctx, v.ID)
+		previous, found, err := t.store.Node(ctx, v.ID)
 		if err != nil {
 			return startReceipt{}, err
 		}
-		if previous != nil {
+		if found {
 			fresh.Round = previous.Round + 1
 		}
 	}
@@ -215,7 +215,7 @@ func (t *Tree[H]) restoreStart(
 	ctx context.Context,
 	owner *Node[H],
 	receipt startReceipt,
-	record *store.NodeRecord,
+	record store.NodeRecord,
 ) (bool, uint64, error) {
 	if record.Parent == nil || *record.Parent != owner.ID() {
 		return false, 0, errors.New("request-id references an agent owned by another session")
@@ -223,7 +223,7 @@ func (t *Tree[H]) restoreStart(
 	_, spawn := receipt.Input.(*spawnInput)
 	if spawn || record.Round == receipt.Round {
 		if record.Closed == nil && t.Node(record.ID) == nil {
-			if err := t.startChild(ctx, owner, *record, nil); err != nil {
+			if err := t.startChild(ctx, owner, record, nil); err != nil {
 				return false, 0, err
 			}
 		}

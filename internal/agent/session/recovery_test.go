@@ -309,7 +309,7 @@ func TestStopDuringResumeSave(t *testing.T) {
 }
 
 // assertActionCode checks the failure class returned by a session action.
-func assertActionCode(t *testing.T, action *session.ActionHandle, code string) {
+func assertActionCode(t *testing.T, action *session.ActionAnswer, code string) {
 	t.Helper()
 	_, err := action.Wait(t.Context())
 	var report *session.ErrorReport
