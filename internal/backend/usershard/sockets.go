@@ -33,7 +33,7 @@ func (s *Shard) ServeSyncChannel(
 	socket *websocket.Conn,
 	session ChannelSession,
 ) error {
-	return s.serveSync(ctx, socket, session)
+	return s.serveSyncChannel(ctx, socket, session)
 }
 
 // ServeConversationSocket takes ownership of socket. An admitted agent frame
@@ -44,7 +44,7 @@ func (s *Shard) ServeConversationSocket(
 	conversation database.ConversationRecord,
 	socket *websocket.Conn,
 ) error {
-	return s.serveConversation(ctx, conversation, socket)
+	return s.serveConversationSocket(ctx, conversation, socket)
 }
 
 // Mark marks part changed on this user's open synchronization channels.
@@ -110,6 +110,6 @@ type ExposeConnection struct {
 // device access, without a conversation, file gate or Cloud wake.
 func (s *Shard) OpenExposeConnection(ctx context.Context, id webapi.ExposeID) (*ExposeConnection, error) {
 	return shardCall(ctx, s, func(ctx context.Context) (*ExposeConnection, error) {
-		return s.connectExpose(ctx, id)
+		return s.openExposeConnection(ctx, id)
 	})
 }

@@ -35,7 +35,7 @@ func (s *Shard) Fork(
 	return shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (Forked, error) { return s.forkConversation(ctx, source, destination, block) },
+		func(ctx context.Context) (Forked, error) { return s.fork(ctx, source, destination, block) },
 	)
 }
 
@@ -51,7 +51,7 @@ func (s *Shard) Transition(
 		ctx,
 		s,
 		func(ctx context.Context) (struct{}, error) {
-			return struct{}{}, s.commitConversationChange(ctx, id, change)
+			return struct{}{}, s.transition(ctx, id, change)
 		},
 	)
 	return err
@@ -68,7 +68,7 @@ func (s *Shard) ApplyPatch(
 		ctx,
 		s,
 		func(ctx context.Context) (*webapi.ConversationUpdate, error) {
-			return s.applyConversationFields(ctx, id, patch)
+			return s.applyPatch(ctx, id, patch)
 		},
 	)
 }
@@ -124,13 +124,9 @@ func (s *Shard) ConversationSummary(
 	if err != nil {
 		return webapi.ConversationSummary{}, err
 	}
-	changed := false
-	if current := s.agent.Tree(hostaccess.RootOf(record.ID)); current != nil {
-		revision, err := s.plugins.Revision(ctx)
-		if err != nil {
-			return webapi.ConversationSummary{}, err
-		}
-		changed = current.Toolset() != revision
+	changed, err := s.pluginsChanged(ctx, record.ID)
+	if err != nil {
+		return webapi.ConversationSummary{}, err
 	}
 	s.mu.Lock()
 	jobs := s.jobsEnded[record.ID]
@@ -165,7 +161,7 @@ func (s *Shard) AskTitle(ctx context.Context, id webapi.ConversationID) error {
 	_, err := shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.requestConversationTitle(ctx, id) },
+		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.askTitle(ctx, id) },
 	)
 	return err
 }
@@ -176,11 +172,11 @@ func (s *Shard) CreateCloudWorkspace(ctx context.Context, name string) (database
 	return shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (database.WorkspaceRecord, error) { return s.makeCloudWorkspace(ctx, name) },
+		func(ctx context.Context) (database.WorkspaceRecord, error) { return s.createCloudWorkspace(ctx, name) },
 	)
 }
 
-func (s *Shard) makeCloudWorkspace(ctx context.Context, name string) (database.WorkspaceRecord, error) {
+func (s *Shard) createCloudWorkspace(ctx context.Context, name string) (database.WorkspaceRecord, error) {
 	id := database.NewWorkspaceID()
 	access, err := cloud.Access(ctx, s)
 	if err != nil {
@@ -211,7 +207,7 @@ func (s *Shard) TestProvider(
 	modelID string,
 ) (webapi.TestResult, error) {
 	return shardCall(ctx, s, func(ctx context.Context) (webapi.TestResult, error) {
-		return s.requestProviderTest(ctx, entry, builtProvider, account, modelID)
+		return s.testProvider(ctx, entry, builtProvider, account, modelID)
 	})
 }
 
@@ -253,12 +249,12 @@ func (s *Shard) SwitchPlugin(ctx context.Context, id string, enabled bool) error
 	_, err := shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.changePluginChoice(ctx, id, enabled) },
+		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.switchPlugin(ctx, id, enabled) },
 	)
 	return err
 }
 
-func (s *Shard) changePluginChoice(ctx context.Context, id string, enabled bool) error {
+func (s *Shard) switchPlugin(ctx context.Context, id string, enabled bool) error {
 	changed, err := s.plugins.Switch(ctx, id, enabled)
 	if err != nil || !changed {
 		return err
@@ -278,12 +274,12 @@ func (s *Shard) ReloadConversation(ctx context.Context, id webapi.ConversationID
 	_, err := shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.closeConversationForReload(ctx, id) },
+		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.reloadConversation(ctx, id) },
 	)
 	return err
 }
 
-func (s *Shard) closeConversationForReload(ctx context.Context, id webapi.ConversationID) error {
+func (s *Shard) reloadConversation(ctx context.Context, id webapi.ConversationID) error {
 	record, err := hostaccess.OwnedConversation(ctx, s, id)
 	if err != nil {
 		return &ReloadRefusal{Kind: ReloadAccess, Err: err}
@@ -338,7 +334,7 @@ func (s *Shard) CLIMachines(ctx context.Context, entry webapi.ProviderID) ([]web
 	return shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) ([]webapi.CLIMachine, error) { return s.connectedCLIMachines(ctx, entry) },
+		func(ctx context.Context) ([]webapi.CLIMachine, error) { return s.cliMachines(ctx, entry) },
 	)
 }
 
@@ -351,7 +347,7 @@ func StartInstall(
 	user webapi.UserID,
 	entry webapi.ProviderID,
 ) (webapi.CLIInstall, error) {
-	return launchCLIInstall(ctx, services, shards, user, entry)
+	return startInstall(ctx, services, shards, user, entry)
 }
 
 // summaryModel presents the selected model and thinking effort for the sidebar.
@@ -421,4 +417,17 @@ func summaryStatus(
 		}
 	}
 	return status
+}
+
+// pluginsChanged compares a live conversation’s command tree with the current plugin revision.
+func (s *Shard) pluginsChanged(ctx context.Context, id webapi.ConversationID) (bool, error) {
+	changed := false
+	if current := s.agent.Tree(hostaccess.RootOf(id)); current != nil {
+		revision, err := s.plugins.Revision(ctx)
+		if err != nil {
+			return false, err
+		}
+		changed = current.Toolset() != revision
+	}
+	return changed, nil
 }

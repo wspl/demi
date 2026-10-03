@@ -113,18 +113,7 @@ func (c *ModelCatalogCache) Read(
 		return catalogAnswer(record, true, failure)
 	}
 	c.mu.Unlock()
-	select {
-	case <-ctx.Done():
-		return core.ProviderModelList{}, ctx.Err()
-	case <-refresh.done:
-	}
-	if refresh.err == nil {
-		return catalogAnswer(refresh.record, false, nil)
-	}
-	c.mu.Lock()
-	record = entry.record
-	c.mu.Unlock()
-	return catalogAnswer(record, true, refresh.err)
+	return c.waitCatalogRefresh(ctx, entry, refresh)
 }
 
 // Invalidate cancels the entry refresh and removes its cached record.
@@ -310,4 +299,24 @@ func (c *ModelCatalogCache) loadEntry(
 	}
 	c.mu.Unlock()
 	return nil
+}
+
+// waitCatalogRefresh waits for a refresh and returns the current stale record if it fails.
+func (c *ModelCatalogCache) waitCatalogRefresh(
+	ctx context.Context,
+	entry *catalogEntry,
+	refresh *catalogRefresh,
+) (core.ProviderModelList, error) {
+	select {
+	case <-ctx.Done():
+		return core.ProviderModelList{}, ctx.Err()
+	case <-refresh.done:
+	}
+	if refresh.err == nil {
+		return catalogAnswer(refresh.record, false, nil)
+	}
+	c.mu.Lock()
+	record := entry.record
+	c.mu.Unlock()
+	return catalogAnswer(record, true, refresh.err)
 }

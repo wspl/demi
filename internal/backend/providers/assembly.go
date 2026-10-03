@@ -339,18 +339,7 @@ func (a *Assembly) Details(
 			quota = account.Quota
 		}
 	}
-	var capability webapi.QuotaCapability = &webapi.QuotaCapabilityNone{}
-	if q := p.Quota(); q != nil {
-		var cost *webapi.ProbeCost
-		if c := q.ProbeCost(); c != nil {
-			value := webapi.ProbeCostFree
-			if *c == provider.ProbeInference {
-				value = webapi.ProbeCostInference
-			}
-			cost = &value
-		}
-		capability = &webapi.QuotaCapabilitySupported{Probe: cost}
-	}
+	capability := quotaCapability(p)
 	details := webapi.ProviderDetails{
 		Auth:            auth,
 		Runtime:         runtime,
@@ -476,4 +465,21 @@ func emptyCatalog(err error) core.ProviderModelList {
 		Warnings:        []string{err.Error()},
 		SourceFetchedAt: core.UnixEpoch,
 	}
+}
+
+// quotaCapability presents the provider’s supported quota probe and its cost.
+func quotaCapability(p provider.Provider) webapi.QuotaCapability {
+	var capability webapi.QuotaCapability = &webapi.QuotaCapabilityNone{}
+	if q := p.Quota(); q != nil {
+		var cost *webapi.ProbeCost
+		if c := q.ProbeCost(); c != nil {
+			value := webapi.ProbeCostFree
+			if *c == provider.ProbeInference {
+				value = webapi.ProbeCostInference
+			}
+			cost = &value
+		}
+		capability = &webapi.QuotaCapabilitySupported{Probe: cost}
+	}
+	return capability
 }

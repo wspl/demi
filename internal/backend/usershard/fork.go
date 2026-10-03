@@ -14,7 +14,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func (s *Shard) forkConversation(
+func (s *Shard) fork(
 	ctx context.Context,
 	source, destination webapi.ConversationID,
 	block core.BlockID,

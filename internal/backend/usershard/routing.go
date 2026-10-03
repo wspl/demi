@@ -93,14 +93,14 @@ func NewShards(ctx context.Context, services *Services) (*Shards, error) {
 // Of returns the user's stable shard, creating it on first use. Routing refuses
 // new requests once shutdown starts; callers invoke shard methods directly.
 func (s *Shards) Of(ctx context.Context, user webapi.UserID) (*Shard, error) {
-	return s.acquireShard(ctx, user, false)
+	return s.of(ctx, user, false)
 }
 
 // OfWhileClosing returns the user's shard for runner pipe requests needed by
 // shutdown. It remains available during draining and refuses after routing has
 // fully closed. Ordinary product requests use Of.
 func (s *Shards) OfWhileClosing(ctx context.Context, user webapi.UserID) (*Shard, error) {
-	return s.acquireShard(ctx, user, true)
+	return s.of(ctx, user, true)
 }
 
 // Close drains admitted transitions and sockets and joins all shard workers.
@@ -221,7 +221,7 @@ func (s *Shard) RetentionPass(ctx context.Context) error {
 	_, err := shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.removeExpiredConversations(ctx) },
+		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.retentionPass(ctx) },
 	)
 	return err
 }
@@ -270,7 +270,7 @@ func RearmWakeups(ctx context.Context, control *database.ControlService, shards 
 }
 
 // of selects the user's shard without introducing a per-request mailbox.
-func (s *Shards) acquireShard(ctx context.Context, user webapi.UserID, draining bool) (*Shard, error) {
+func (s *Shards) of(ctx context.Context, user webapi.UserID, draining bool) (*Shard, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

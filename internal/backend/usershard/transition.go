@@ -57,16 +57,9 @@ func (s *Shard) applyChange(
 		defer admitted.Release()
 		return s.commitRecordField(ctx, *record, field)
 	}
-	var reserved *gates.Reservation
-	if tree := s.agent.Tree(hostaccess.RootOf(id)); tree != nil {
-		reserved = tree.Admission().TryReserve()
-		if reserved == nil {
-			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeTurnInFlight}
-		}
-		if !tree.IsQuiescent() {
-			reserved.Release()
-			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeTurnInFlight}
-		}
+	reserved, err := s.reserveConversationChange(id)
+	if err != nil {
+		return err
 	}
 	hold, err := hostaccess.HoldForTransition(ctx, s, id, reserved)
 	if err != nil {
@@ -212,7 +205,7 @@ func (s *Shard) stopTitle(id webapi.ConversationID) {
 	}
 }
 
-func (s *Shard) applyConversationFields(
+func (s *Shard) applyPatch(
 	ctx context.Context,
 	id webapi.ConversationID,
 	patch webapi.ConversationPatch,
@@ -227,7 +220,7 @@ func (s *Shard) applyConversationFields(
 	changes := patchChanges(patch)
 	results := make([]webapi.FieldResult, 0)
 	for _, change := range changes {
-		err := s.commitConversationChange(ctx, id, change.change)
+		err := s.transition(ctx, id, change.change)
 		for _, field := range change.fields {
 			if err == nil {
 				results = append(results, &webapi.FieldResultApplied{Field: field})
@@ -261,7 +254,7 @@ func (s *Shard) applyConversationFields(
 	return &webapi.ConversationUpdate{Conversation: summary, Results: results}, nil
 }
 
-func (s *Shard) commitConversationChange(
+func (s *Shard) transition(
 	ctx context.Context,
 	id webapi.ConversationID,
 	change database.ConversationChange,
@@ -456,4 +449,20 @@ func appendPatchSettings(changes []modification, patch webapi.ConversationPatch)
 		)
 	}
 	return changes
+}
+
+// reserveConversationChange reserves a quiescent live turn or refuses an in-flight change.
+func (s *Shard) reserveConversationChange(id webapi.ConversationID) (*gates.Reservation, error) {
+	var reserved *gates.Reservation
+	if tree := s.agent.Tree(hostaccess.RootOf(id)); tree != nil {
+		reserved = tree.Admission().TryReserve()
+		if reserved == nil {
+			return nil, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeTurnInFlight}
+		}
+		if !tree.IsQuiescent() {
+			reserved.Release()
+			return nil, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeTurnInFlight}
+		}
+	}
+	return reserved, nil
 }

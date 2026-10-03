@@ -79,7 +79,7 @@ func (r *ClaudeReleases) Latest(ctx context.Context, refresh bool) (claudecodeop
 		r.mu.Unlock()
 		return claudecodeop.Release{}, r.ctx.Err()
 	}
-	if r.newest != nil && r.hasCurrentRelease(refresh, asked) {
+	if r.newest != nil && r.hasCurrentReleaseLocked(refresh, asked) {
 		result := *r.newest
 		r.mu.Unlock()
 		return copyRelease(result)
@@ -216,8 +216,8 @@ func copyRelease(release claudecodeop.Release) (claudecodeop.Release, error) {
 	return claudecodeop.DecodeRelease(data)
 }
 
-// hasCurrentRelease checks the cached release’s lifetime or a refresh completed after this request.
-func (r *ClaudeReleases) hasCurrentRelease(refresh bool, asked time.Time) bool {
+// hasCurrentReleaseLocked checks the cached release’s freshness while the caller holds the release mutex.
+func (r *ClaudeReleases) hasCurrentReleaseLocked(refresh bool, asked time.Time) bool {
 	if !refresh && time.Since(r.readAt) < 6*time.Hour {
 		return true
 	}

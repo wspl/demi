@@ -41,7 +41,6 @@ func (p requestPort) Request(ctx context.Context, message plugin.PortMessage) (p
 
 // answer routes each plugin service to its owner without holding a user mutex.
 func (p requestPort) answer(ctx context.Context, message plugin.PortMessage) (plugin.PortAnswer, error) {
-	u := p.user
 	switch m := message.(type) {
 	case *plugin.PortMessageRPC:
 		return p.forwardRPC(ctx, m)
@@ -54,45 +53,27 @@ func (p requestPort) answer(ctx context.Context, message plugin.PortMessage) (pl
 	case *plugin.PortMessageRemoveValue:
 		return p.removeValue(ctx, m)
 	case *plugin.PortMessagePutBlob:
-		blob, err := u.shard.PutBlob(ctx, m.Bytes)
-		return &plugin.PortAnswerBlob{Blob: blob}, err
+		return p.putBlob(ctx, m)
 	case *plugin.PortMessageGetBlob:
-		bytes, err := u.shard.Blob(ctx, m.Blob)
-		return &plugin.PortAnswerBytes{Bytes: bytes}, err
+		return p.getBlob(ctx, m)
 	case *plugin.PortMessageSetDirectories:
 		return p.setDirectories(ctx, m)
 	case *plugin.PortMessageReadHostFiles:
-		conversation, err := p.conversationID()
-		if err != nil {
-			return nil, err
-		}
-		files, err := u.shard.ReadHostFiles(ctx, conversation, m.Reads)
-		return &plugin.PortAnswerHostFiles{Files: files}, err
+		return p.readHostFiles(ctx, m)
 	case *plugin.PortMessageChanged:
 		return p.markChanged(ctx, m)
 	case *plugin.PortMessagePackageCall:
 		return p.callPackage(ctx, m)
 	case *plugin.PortMessageConversationHosts:
-		conversation, err := p.conversationID()
-		if err != nil {
-			return nil, err
-		}
-		hosts, err := u.shard.ConversationHosts(ctx, conversation)
-		return &plugin.PortAnswerHosts{Hosts: hosts}, err
+		return p.conversationHosts(ctx)
 	case *plugin.PortMessageListExposes:
-		list, err := u.shard.Exposes(ctx)
-		return &plugin.PortAnswerExposes{List: list}, err
+		return p.listExposes(ctx)
 	case *plugin.PortMessageCreateExpose:
-		expose, err := u.shard.CreateExpose(ctx, m.Device, m.Address, m.Lifetime)
-		return &plugin.PortAnswerExpose{Expose: expose}, err
+		return p.createExpose(ctx, m)
 	case *plugin.PortMessageRenewExpose:
-		expose, err := u.shard.RenewExpose(ctx, m.Expose, m.Lifetime)
-		return &plugin.PortAnswerExpose{Expose: expose}, err
+		return p.renewExpose(ctx, m)
 	case *plugin.PortMessageRemoveExpose:
-		if err := u.shard.RemoveExpose(ctx, m.Expose); err != nil {
-			return nil, err
-		}
-		return &plugin.PortAnswerDone{}, nil
+		return p.removeExpose(ctx, m)
 	}
 	return nil, &host.PortError{
 		Kind:     host.UnexpectedReply,
@@ -280,6 +261,64 @@ func (p requestPort) markChanged(_ context.Context, m *plugin.PortMessageChanged
 		u.changed(p.index, p.conversation)
 	} else {
 		u.changed(p.index, nil)
+	}
+	return &plugin.PortAnswerDone{}, nil
+}
+
+// putBlob stores plugin blob bytes.
+func (p requestPort) putBlob(ctx context.Context, m *plugin.PortMessagePutBlob) (plugin.PortAnswer, error) {
+	blob, err := p.user.shard.PutBlob(ctx, m.Bytes)
+	return &plugin.PortAnswerBlob{Blob: blob}, err
+}
+
+// getBlob reads plugin blob bytes.
+func (p requestPort) getBlob(ctx context.Context, m *plugin.PortMessageGetBlob) (plugin.PortAnswer, error) {
+	bytes, err := p.user.shard.Blob(ctx, m.Blob)
+	return &plugin.PortAnswerBytes{Bytes: bytes}, err
+}
+
+// readHostFiles reads files from the request’s conversation hosts.
+func (p requestPort) readHostFiles(ctx context.Context, m *plugin.PortMessageReadHostFiles) (plugin.PortAnswer, error) {
+	conversation, err := p.conversationID()
+	if err != nil {
+		return nil, err
+	}
+	files, err := p.user.shard.ReadHostFiles(ctx, conversation, m.Reads)
+	return &plugin.PortAnswerHostFiles{Files: files}, err
+}
+
+// conversationHosts lists hosts reachable from the request’s conversation.
+func (p requestPort) conversationHosts(ctx context.Context) (plugin.PortAnswer, error) {
+	conversation, err := p.conversationID()
+	if err != nil {
+		return nil, err
+	}
+	hosts, err := p.user.shard.ConversationHosts(ctx, conversation)
+	return &plugin.PortAnswerHosts{Hosts: hosts}, err
+}
+
+// listExposes lists the user’s available exposes.
+func (p requestPort) listExposes(ctx context.Context) (plugin.PortAnswer, error) {
+	list, err := p.user.shard.Exposes(ctx)
+	return &plugin.PortAnswerExposes{List: list}, err
+}
+
+// createExpose creates an expose through the shard.
+func (p requestPort) createExpose(ctx context.Context, m *plugin.PortMessageCreateExpose) (plugin.PortAnswer, error) {
+	expose, err := p.user.shard.CreateExpose(ctx, m.Device, m.Address, m.Lifetime)
+	return &plugin.PortAnswerExpose{Expose: expose}, err
+}
+
+// renewExpose renews an expose through the shard.
+func (p requestPort) renewExpose(ctx context.Context, m *plugin.PortMessageRenewExpose) (plugin.PortAnswer, error) {
+	expose, err := p.user.shard.RenewExpose(ctx, m.Expose, m.Lifetime)
+	return &plugin.PortAnswerExpose{Expose: expose}, err
+}
+
+// removeExpose removes an expose through the shard.
+func (p requestPort) removeExpose(ctx context.Context, m *plugin.PortMessageRemoveExpose) (plugin.PortAnswer, error) {
+	if err := p.user.shard.RemoveExpose(ctx, m.Expose); err != nil {
+		return nil, err
 	}
 	return &plugin.PortAnswerDone{}, nil
 }

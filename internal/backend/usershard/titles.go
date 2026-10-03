@@ -23,7 +23,7 @@ type titleRequest struct {
 	seen     uint64
 }
 
-func (s *Shard) requestConversationTitle(ctx context.Context, id webapi.ConversationID) error {
+func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
 	record, err := s.Control().Conversation(ctx, id)
 	if err != nil {
 		return &TitleRefusal{Kind: TitleStorage, Err: err}

@@ -16,7 +16,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func (s *Shard) serveConversation(
+func (s *Shard) serveConversationSocket(
 	ctx context.Context,
 	record database.ConversationRecord,
 	socket *websocket.Conn,

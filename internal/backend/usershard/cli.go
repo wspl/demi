@@ -283,7 +283,7 @@ func cliCall(
 	return output, exited, nil
 }
 
-func (s *Shard) connectedCLIMachines(
+func (s *Shard) cliMachines(
 	ctx context.Context,
 	entry webapi.ProviderID,
 ) ([]webapi.CLIMachine, error) {
@@ -316,7 +316,7 @@ func (s *Shard) connectedCLIMachines(
 	return append(result, webapi.CLIMachine{DeviceID: device.ID, Name: device.Name, Versions: versions}), nil
 }
 
-func launchCLIInstall(
+func startInstall(
 	ctx context.Context,
 	services *Services,
 	shards *Shards,

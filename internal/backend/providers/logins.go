@@ -132,18 +132,7 @@ func (f *LoginFlows) Start(
 		return "", &LoginRefusal{Kind: LoginBusy}
 	}
 	f.pruneLocked()
-	runCtx, cancel := context.WithTimeout(f.ctx, f.timing.Lifetime)
-	flow := &loginFlow{
-		owner:  starter,
-		state:  &webapi.LoginStatePending{},
-		cancel: cancel,
-		done:   make(chan struct{}),
-	}
-	f.flows[id] = flow
-	owned := target
-	f.workers.Go(func() {
-		f.run(runCtx, owner, accounts, owned, flow)
-	})
+	f.registerLoginLocked(id, owner, starter, accounts, target)
 	target.held = nil // The task now owns the reservation.
 	return id, nil
 }
@@ -374,4 +363,25 @@ func (f *LoginFlows) prepareNewLogin(
 		return nil, nil, &LoginRefusal{Kind: LoginAssembly, Err: err}
 	}
 	return built, staged, nil
+}
+
+// registerLoginLocked publishes and starts a login while the caller holds the flow mutex.
+func (f *LoginFlows) registerLoginLocked(
+	id webapi.LoginID,
+	owner, starter webapi.UserID,
+	accounts provider.SubscriptionAccounts,
+	target loginTarget,
+) {
+	runCtx, cancel := context.WithTimeout(f.ctx, f.timing.Lifetime)
+	flow := &loginFlow{
+		owner:  starter,
+		state:  &webapi.LoginStatePending{},
+		cancel: cancel,
+		done:   make(chan struct{}),
+	}
+	f.flows[id] = flow
+	owned := target
+	f.workers.Go(func() {
+		f.run(runCtx, owner, accounts, owned, flow)
+	})
 }

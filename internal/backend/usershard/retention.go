@@ -19,7 +19,7 @@ import (
 
 const blobGrace = 24 * time.Hour
 
-func (s *Shard) removeExpiredConversations(ctx context.Context) error {
+func (s *Shard) retentionPass(ctx context.Context) error {
 	conversations, err := s.services.Control.ConversationOrder(ctx, s.user)
 	if err != nil {
 		slog.ErrorContext(ctx, "the retention pass cannot list the conversations", "user", s.user, "error", err)

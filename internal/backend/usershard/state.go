@@ -77,15 +77,7 @@ func (s *Shard) readPart(
 ) (webapi.SyncEvent, error) {
 	switch part.Kind {
 	case pagesync.Conversation:
-		record, err := s.Control().Conversation(ctx, part.ConversationID)
-		if err != nil || record == nil {
-			return nil, err
-		}
-		if record.Owner != s.user {
-			return nil, nil
-		}
-		summary, err := s.ConversationSummary(ctx, *record)
-		return &webapi.SyncEventConversation{Conversation: summary}, err
+		return s.conversationEvent(ctx, part.ConversationID)
 	case pagesync.ConversationOrder:
 		ids, err := s.Control().ConversationOrder(ctx, s.user)
 		return &webapi.SyncEventConversationOrder{IDs: ids}, err
@@ -149,4 +141,17 @@ func (s *Shard) providerStates(ctx context.Context, user webapi.UserDTO) ([]weba
 	}
 	workers.Wait()
 	return result, nil
+}
+
+// conversationEvent presents a changed conversation only when it belongs to this user.
+func (s *Shard) conversationEvent(ctx context.Context, id webapi.ConversationID) (webapi.SyncEvent, error) {
+	record, err := s.Control().Conversation(ctx, id)
+	if err != nil || record == nil {
+		return nil, err
+	}
+	if record.Owner != s.user {
+		return nil, nil
+	}
+	summary, err := s.ConversationSummary(ctx, *record)
+	return &webapi.SyncEventConversation{Conversation: summary}, err
 }

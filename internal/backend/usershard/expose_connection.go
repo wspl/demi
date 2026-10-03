@@ -12,7 +12,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func (s *Shard) connectExpose(ctx context.Context, id webapi.ExposeID) (*ExposeConnection, error) {
+func (s *Shard) openExposeConnection(ctx context.Context, id webapi.ExposeID) (*ExposeConnection, error) {
 	admission, err := expose.AdmitRelay(ctx, s.ExposeShard(), id)
 	if err != nil {
 		if ctx.Err() != nil || s.ctx.Err() != nil {
@@ -149,11 +149,7 @@ func (s *Shard) connectAdmittedExpose(
 			output.Fail("the relayed connection never opened")
 		}
 	}()
-	writer, err := input.Writer()
-	if err != nil {
-		return nil, err
-	}
-	reader, err := output.Reader()
+	writer, reader, err := exposeStreams(input, output)
 	if err != nil {
 		return nil, err
 	}
@@ -206,4 +202,17 @@ func (s *Shard) startExposeRelay(opening exposeOpening, watched <-chan struct{})
 		return nil, expose.ErrRemoved
 	}
 	return lease, nil
+}
+
+// exposeStreams obtains the visitor writer before the service reader, preserving opening failure order.
+func exposeStreams(input, output *remotehost.Pipe) (*remotehost.PipeWriter, *remotehost.PipeReader, error) {
+	writer, err := input.Writer()
+	if err != nil {
+		return nil, nil, err
+	}
+	reader, err := output.Reader()
+	if err != nil {
+		return nil, nil, err
+	}
+	return writer, reader, nil
 }

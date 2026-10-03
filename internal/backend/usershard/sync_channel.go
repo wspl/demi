@@ -15,7 +15,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func (s *Shard) serveSync(ctx context.Context, socket *websocket.Conn, session ChannelSession) error {
+func (s *Shard) serveSyncChannel(ctx context.Context, socket *websocket.Conn, session ChannelSession) error {
 	// Closing an already broken socket needs no recovery.
 	defer func() {
 		_ = socket.CloseNow()

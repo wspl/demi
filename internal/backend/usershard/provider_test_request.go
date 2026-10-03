@@ -11,7 +11,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func (s *Shard) requestProviderTest(
+func (s *Shard) testProvider(
 	ctx context.Context,
 	entry providers.ProviderEntry,
 	builtProvider provider.Provider,

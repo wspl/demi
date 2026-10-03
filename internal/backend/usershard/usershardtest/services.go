@@ -35,31 +35,8 @@ func StartServicesWithLifecycle(t testing.TB, lifecycle usershard.LifecycleTunin
 	t.Cleanup(cancel)
 	data := t.TempDir()
 	clock := core.SystemClock{}
-	objects, err := blobs.Open(t.Context(), data, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := objects.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	storage, err := usershard.OpenStorage(t.Context(), data, clock, objects)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := storage.Close(context.Background()); err != nil {
-			t.Error(err)
-		}
-	})
-	var vaultKey, codeKey [32]byte
-	if _, err := rand.Read(vaultKey[:]); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := rand.Read(codeKey[:]); err != nil {
-		t.Fatal(err)
-	}
+	storage := openTestStorage(t, data, clock)
+	vaultKey, codeKey := randomServiceKeys(t)
 	models, err := url.Parse(provider.ModelsDevURL)
 	if err != nil {
 		t.Fatal(err)
@@ -122,4 +99,38 @@ func StartShards(t testing.TB, services *usershard.Services) *usershard.Shards {
 		}
 	})
 	return shards
+}
+
+// openTestStorage registers blob and database cleanup in their ownership order.
+func openTestStorage(t testing.TB, data string, clock core.Clock) *usershard.Storage {
+	objects, err := blobs.Open(t.Context(), data, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := objects.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	storage, err := usershard.OpenStorage(t.Context(), data, clock, objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := storage.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	return storage
+}
+
+// randomServiceKeys supplies independent vault and email-code keys for the service fixture.
+func randomServiceKeys(t testing.TB) (vaultKey, codeKey [32]byte) {
+	if _, err := rand.Read(vaultKey[:]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rand.Read(codeKey[:]); err != nil {
+		t.Fatal(err)
+	}
+	return vaultKey, codeKey
 }

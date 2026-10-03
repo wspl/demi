@@ -194,11 +194,9 @@ func StartServices(
 	setup ProviderSetup,
 	settings ServiceSettings,
 ) (*Services, error) {
-	registry, err := plugins.NewRegistry(settings.Plugins, func(operation declare.NativeOperation) bool {
-		return settings.Native.Serves(operation.Package, []string{operation.Operation})
-	})
+	registry, err := serviceRegistry(settings)
 	if err != nil {
-		return nil, &ServicesError{Kind: ServicesPlugins, Err: err}
+		return nil, err
 	}
 	hasher, err := accounts.NewPasswordHasher(ctx)
 	if err != nil {
@@ -323,4 +321,15 @@ func assembleProviders(
 		setup.Clock,
 	)
 	return assembly
+}
+
+// serviceRegistry validates plugin declarations against the deployment’s native operation catalog.
+func serviceRegistry(settings ServiceSettings) (*plugins.Registry, error) {
+	registry, err := plugins.NewRegistry(settings.Plugins, func(operation declare.NativeOperation) bool {
+		return settings.Native.Serves(operation.Package, []string{operation.Operation})
+	})
+	if err != nil {
+		return nil, &ServicesError{Kind: ServicesPlugins, Err: err}
+	}
+	return registry, nil
 }
