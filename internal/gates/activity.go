@@ -25,9 +25,13 @@ const (
 // State is an immutable publication. A zero LastDemandEnd means demand has
 // never ended. Changed closes after a newer state has been published.
 type State struct {
-	Demand        uint32
-	Maintenance   uint32
-	Reserved      bool
+	// Demand counts admitted leases that keep the resource active.
+	Demand uint32
+	// Maintenance counts admitted leases that do not reset idle time.
+	Maintenance uint32
+	// Reserved reports an admitted exclusive reservation.
+	Reserved bool
+	// LastDemandEnd records when the final demand lease ended; zero means never.
 	LastDemandEnd time.Time
 	changed       chan struct{}
 }

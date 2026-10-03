@@ -100,7 +100,10 @@ func browserSite(t *testing.T) http.Handler {
 			submissions = append(submissions, r.URL.RequestURI())
 			mu.Unlock()
 		case "/load-replaced":
-			_, _ = io.WriteString(w, `<!doctype html><img src='/stall'><script>fetch('/replace-load').then(() => location.href='/')</script>`)
+			_, _ = io.WriteString(
+				w,
+				`<!doctype html><img src='/stall'><script>fetch('/replace-load').then(() => location.href='/')</script>`,
+			)
 			return
 		case "/500":
 			w.WriteHeader(500)
@@ -113,7 +116,10 @@ func browserSite(t *testing.T) http.Handler {
 			_, _ = io.WriteString(w, `<!doctype html><title>Destination</title><h1>Arrived</h1>`)
 			return
 		case "/frame-child":
-			_, _ = io.WriteString(w, `<!doctype html><label>Cross frame input<input id='cross-input'></label><button id='cross-button' onclick='this.textContent="Cross clicked";this.dataset.clicks=String(Number(this.dataset.clicks||0)+1);console.info("cross-frame console")'>Cross button</button><iframe id='nested' srcdoc="<label>Nested input<input id='nested-input'></label>"></iframe><script>window.pointerEvents=[];for(const type of ['pointerdown','mousedown','pointerup','mouseup','click','mousemove','scroll','focusin'])document.addEventListener(type,event=>pointerEvents.push({type,target:event.target.id,x:event.clientX,y:event.clientY,scrollY,top:document.querySelector('#cross-button').getBoundingClientRect().top,at:Date.now()}),true);</script>`)
+			_, _ = io.WriteString(
+				w,
+				`<!doctype html><label>Cross frame input<input id='cross-input'></label><button id='cross-button' onclick='this.textContent="Cross clicked";this.dataset.clicks=String(Number(this.dataset.clicks||0)+1);console.info("cross-frame console")'>Cross button</button><iframe id='nested' srcdoc="<label>Nested input<input id='nested-input'></label>"></iframe><script>window.pointerEvents=[];for(const type of ['pointerdown','mousedown','pointerup','mouseup','click','mousemove','scroll','focusin'])document.addEventListener(type,event=>pointerEvents.push({type,target:event.target.id,x:event.clientX,y:event.clientY,scrollY,top:document.querySelector('#cross-button').getBoundingClientRect().top,at:Date.now()}),true);</script>`,
+			)
 			return
 		}
 		if filepath.Ext(r.URL.Path) != "" {
@@ -180,6 +186,7 @@ func (f *browserFixture) command(t *testing.T, tab browserop.TabID, name, args s
 	args = strings.ReplaceAll(args, ",}", "}")
 	return f.call(t, name, args)
 }
+
 func mustBrowserValue(t *testing.T, v any) []byte {
 	t.Helper()
 	raw, err := cdp.Value(v)
@@ -188,19 +195,28 @@ func mustBrowserValue(t *testing.T, v any) []byte {
 	}
 	return raw
 }
+
 func (f *browserFixture) eval(t *testing.T, tab browserop.TabID, expression string) json.RawMessage {
 	t.Helper()
-	result, err := browserop.DecodeEvalResult(f.command(t, tab, "eval", browserArgs(t, `{"expression":$0}`, expression)))
+	result, err := browserop.DecodeEvalResult(
+		f.command(t, tab, "eval", browserArgs(t, `{"expression":$0}`, expression)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return result.Value
 }
+
 func (f *browserFixture) click(t *testing.T, tab browserop.TabID, css string) {
 	t.Helper()
 	f.command(t, tab, "click", browserArgs(t, `{"css":$0}`, css))
 }
-func (f *browserFixture) rejects(t *testing.T, tab browserop.TabID, name, args, code, action string) browserop.ErrorDetails {
+
+func (f *browserFixture) rejects(
+	t *testing.T,
+	tab browserop.TabID,
+	name, args, code, action string,
+) browserop.ErrorDetails {
 	t.Helper()
 	args = `{"tab":` + string(mustBrowserValue(t, tab)) + `,` + strings.TrimPrefix(args, "{")
 	args = strings.ReplaceAll(args, ",}", "}")
@@ -214,6 +230,7 @@ func (f *browserFixture) rejects(t *testing.T, tab browserop.TabID, name, args, 
 	}
 	return details
 }
+
 func (f *browserFixture) tab(t *testing.T, id browserop.TabID) *tabs.Tab {
 	t.Helper()
 	f.s.mu.Lock()
@@ -281,12 +298,14 @@ func (f *browserFixture) start(t *testing.T, name, args string) *waitingCommand 
 	})
 	return job
 }
-func (j *waitingCommand) join(t *testing.T) commandAnswer {
+
+func (w *waitingCommand) join(t *testing.T) commandAnswer {
 	t.Helper()
-	r := <-j.done
-	j.done <- r
+	r := <-w.done
+	w.done <- r
 	return r
 }
+
 func (f *browserFixture) waitBusy(t *testing.T, id browserop.TabID) {
 	t.Helper()
 	tab := f.tab(t, id)
@@ -309,6 +328,7 @@ func (f *browserFixture) waitBusy(t *testing.T, id browserop.TabID) {
 		}
 	}
 }
+
 func requireCancelled(t *testing.T, r commandAnswer) {
 	t.Helper()
 	if errors.Is(r.err, context.Canceled) {
@@ -356,11 +376,12 @@ func (f *browserFixture) get(t *testing.T, path string) []byte {
 // fixtureInput supplies framed viewer messages or finite clipboard bytes.
 type fixtureInput struct{ data chan []byte }
 
-func (s *fixtureInput) Next(ctx context.Context) ([]byte, error) {
+// Next waits for fixture input or cancellation.
+func (f *fixtureInput) Next(ctx context.Context) ([]byte, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case data, ok := <-s.data:
+	case data, ok := <-f.data:
 		if !ok {
 			return nil, io.EOF
 		}

@@ -17,8 +17,7 @@ type clientFrame interface {
 // it is not live with the model selection the conversation's record
 // holds; no frame names a model (`runtime.md` § Model switch).
 // +demi:variant clientFrame open
-type OpenFrame struct {
-}
+type OpenFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
 func (*OpenFrame) Kind() ClientFrameKind { return ClientFrameKindOpen }
@@ -91,23 +90,20 @@ type SteerQueuedMessageFrame struct {
 func (*SteerQueuedMessageFrame) Kind() ClientFrameKind { return ClientFrameKindSteerQueuedMessage }
 
 // +demi:variant clientFrame clear_message_queue
-type ClearMessageQueueFrame struct {
-}
+type ClearMessageQueueFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
 func (*ClearMessageQueueFrame) Kind() ClientFrameKind { return ClientFrameKindClearMessageQueue }
 
 // Stop one thing (`runtime.md` § Stop).
 // +demi:variant clientFrame abort
-type AbortFrame struct {
-}
+type AbortFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
 func (*AbortFrame) Kind() ClientFrameKind { return ClientFrameKindAbort }
 
 // +demi:variant clientFrame abort_subagents
-type AbortSubagentsFrame struct {
-}
+type AbortSubagentsFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
 func (*AbortSubagentsFrame) Kind() ClientFrameKind { return ClientFrameKindAbortSubagents }
@@ -122,22 +118,19 @@ type AbortSubagentFrame struct {
 func (*AbortSubagentFrame) Kind() ClientFrameKind { return ClientFrameKindAbortSubagent }
 
 // +demi:variant clientFrame retry
-type RetryFrame struct {
-}
+type RetryFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
 func (*RetryFrame) Kind() ClientFrameKind { return ClientFrameKindRetry }
 
 // +demi:variant clientFrame resume
-type ResumeFrame struct {
-}
+type ResumeFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
 func (*ResumeFrame) Kind() ClientFrameKind { return ClientFrameKindResume }
 
 // +demi:variant clientFrame compact
-type CompactFrame struct {
-}
+type CompactFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
 func (*CompactFrame) Kind() ClientFrameKind { return ClientFrameKindCompact }
@@ -163,16 +156,14 @@ func (*ShellAbortFrame) Kind() ClientFrameKind { return ClientFrameKindShellAbor
 
 // Ask for a fresh transcript, after a gap in the patch revisions.
 // +demi:variant clientFrame sync_transcript
-type SyncTranscriptFrame struct {
-}
+type SyncTranscriptFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
 func (*SyncTranscriptFrame) Kind() ClientFrameKind { return ClientFrameKindSyncTranscript }
 
 // Dispose the tree.
 // +demi:variant clientFrame close
-type CloseFrame struct {
-}
+type CloseFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
 func (*CloseFrame) Kind() ClientFrameKind { return ClientFrameKindClose }

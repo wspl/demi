@@ -8,7 +8,14 @@ import (
 
 // AttachmentFileExtensions are the image and document types implied by attachment support.
 // +demi:table
-var AttachmentFileExtensions = []FileExtension{FileExtensionPNG, FileExtensionJPG, FileExtensionJPEG, FileExtensionGIF, FileExtensionWebP, FileExtensionPDF}
+var AttachmentFileExtensions = []FileExtension{
+	FileExtensionPNG,
+	FileExtensionJPG,
+	FileExtensionJPEG,
+	FileExtensionGIF,
+	FileExtensionWebP,
+	FileExtensionPDF,
+}
 
 // VideoFileExtensions are the types implied only by known video support.
 // +demi:table

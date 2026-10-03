@@ -989,8 +989,7 @@ type BrowserCreatedByTemporary struct {
 func (*BrowserCreatedByTemporary) browserCreatedBy() {}
 
 // +demi:variant user
-type BrowserCreatedByUser struct {
-}
+type BrowserCreatedByUser struct{}
 
 func (*BrowserCreatedByUser) browserCreatedBy() {}
 
@@ -1462,8 +1461,7 @@ const (
 
 // The view's arguments: none; the page and the module speak over the stream.
 // +demi:root
-type LiveInput struct {
-}
+type LiveInput struct{}
 
 // The viewer's platform, which decides how its keys map on the Host.
 // +demi:root
@@ -1668,8 +1666,7 @@ type LiveModuleMessageStream struct {
 func (*LiveModuleMessageStream) liveModuleMessage() {}
 
 // +demi:variant heartbeat
-type LiveModuleMessageHeartbeat struct {
-}
+type LiveModuleMessageHeartbeat struct{}
 
 func (*LiveModuleMessageHeartbeat) liveModuleMessage() {}
 
@@ -1801,8 +1798,7 @@ type CaptureEvent interface{ captureEvent() }
 
 // The connection is open and takes commands.
 // +demi:variant ready
-type CaptureEventReady struct {
-}
+type CaptureEventReady struct{}
 
 func (*CaptureEventReady) captureEvent() {}
 

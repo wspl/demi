@@ -30,11 +30,21 @@ func Serve(ctx context.Context, args []string) error {
 
 type service struct{ mutations gates.Serial }
 
+// Operations lists the resident service operations.
 func (*service) Operations() []string { return fileop.Operations() }
+
 func failure(err error) commandwire.Completion {
-	return commandwire.Completion{ExitCode: 1, Error: &commandwire.CommandError{Code: "command_failed", Message: err.Error()}}
+	return commandwire.Completion{
+		ExitCode: 1,
+		Error:    &commandwire.CommandError{Code: "command_failed", Message: err.Error()},
+	}
 }
-func (s *service) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+
+// Invoke decodes a file operation and serializes mutations.
+func (s *service) Invoke(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	op, err := fileop.Parse(invocation.Request.Operation, invocation.Request.Args)
 	if err != nil {
 		var opErr *fileop.OperationError
@@ -61,7 +71,11 @@ func (s *service) Invoke(ctx context.Context, invocation cmdsdk.InvocationContex
 	return commandwire.Completion{}, invocation.Output.Stdout(ctx, []byte(message))
 }
 
-func read(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.Invocation], name string) (commandwire.Completion, error) {
+func read(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+	name string,
+) (commandwire.Completion, error) {
 	path, err := cmdsdk.Resolve(invocation.Request.Cwd, name)
 	if err != nil {
 		return failure(err), nil
@@ -167,7 +181,7 @@ func atomicWrite(ctx context.Context, path string, data []byte, create bool) err
 	if parent == "" {
 		parent = "."
 	}
-	if err := os.MkdirAll(parent, 0777); err != nil {
+	if err := os.MkdirAll(parent, 0o777); err != nil {
 		return err
 	}
 	publication := artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Keep, Durable: true}
@@ -191,58 +205,13 @@ func edit(ctx context.Context, cwd string, args *fileop.EditArgs, recording *cmd
 		return "", errors.New("stream did not contain valid UTF-8")
 	}
 	content := string(data)
-	var matches []int
-	for offset := 0; offset <= len(content); {
-		index := strings.Index(content[offset:], args.Old)
-		if index < 0 {
-			break
-		}
-		index += offset
-		matches = append(matches, index)
-		offset = index + len(args.Old)
-	}
+	matches := editMatches(content, args.Old)
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	index := 0
-	switch {
-	case args.Occurrence != nil:
-		if *args.Occurrence > uint(len(matches)) {
-			return "", fmt.Errorf("Occurrence %d is out of range", *args.Occurrence)
-		}
-		index = matches[*args.Occurrence-1]
-	case args.Context != nil:
-		if len(matches) == 0 {
-			return "", errors.New("No match found")
-		}
-		distance := ^uint(0)
-		ambiguous := false
-		for _, candidate := range matches {
-			line := uint(strings.Count(content[:candidate], "\n") + 1)
-			d := max(line, *args.Context) - min(line, *args.Context)
-			if d < distance {
-				distance = d
-				index = candidate
-				ambiguous = false
-			} else if d == distance {
-				ambiguous = true
-			}
-		}
-		if ambiguous {
-			candidates := make([]string, len(matches))
-			for i, candidate := range matches {
-				candidates[i] = fmt.Sprintf("occurrence %d at line %d", i+1, strings.Count(content[:candidate], "\n")+1)
-			}
-			return "", fmt.Errorf("Context line %d is ambiguous: %s", *args.Context, strings.Join(candidates, "; "))
-		}
-	default:
-		if len(matches) == 0 {
-			return "", fmt.Errorf("No match found in %s", args.Path)
-		}
-		if len(matches) > 1 {
-			return "", fmt.Errorf("Multiple matches in %s; specify --occurrence or --context", args.Path)
-		}
-		index = matches[0]
+	index, err := selectEditMatch(content, matches, args)
+	if err != nil {
+		return "", err
 	}
 	if args.Old != args.New {
 		updated := content[:index] + args.New + content[index+len(args.Old):]
@@ -257,4 +226,68 @@ func edit(ctx context.Context, cwd string, args *fileop.EditArgs, recording *cmd
 		}
 	}
 	return fmt.Sprintf("Edited %s\n", args.Path), nil
+}
+
+func editMatches(content, old string) []int {
+	var matches []int
+	for offset := 0; offset <= len(content); {
+		index := strings.Index(content[offset:], old)
+		if index < 0 {
+			break
+		}
+		index += offset
+		matches = append(matches, index)
+		offset = index + len(old)
+	}
+	return matches
+}
+
+func selectEditMatch(content string, matches []int, args *fileop.EditArgs) (int, error) {
+	index := 0
+	switch {
+	case args.Occurrence != nil:
+		if *args.Occurrence > uint(len(matches)) {
+			return 0, fmt.Errorf("Occurrence %d is out of range", *args.Occurrence)
+		}
+		index = matches[*args.Occurrence-1]
+	case args.Context != nil:
+		return nearestEditMatch(content, matches, *args.Context)
+	default:
+		if len(matches) == 0 {
+			return 0, fmt.Errorf("No match found in %s", args.Path)
+		}
+		if len(matches) > 1 {
+			return 0, fmt.Errorf("Multiple matches in %s; specify --occurrence or --context", args.Path)
+		}
+		index = matches[0]
+	}
+	return index, nil
+}
+
+func nearestEditMatch(content string, matches []int, contextLine uint) (int, error) {
+	index := 0
+	if len(matches) == 0 {
+		return 0, errors.New("No match found")
+	}
+	distance := ^uint(0)
+	ambiguous := false
+	for _, candidate := range matches {
+		line := uint(strings.Count(content[:candidate], "\n") + 1)
+		d := max(line, contextLine) - min(line, contextLine)
+		if d < distance {
+			distance = d
+			index = candidate
+			ambiguous = false
+		} else if d == distance {
+			ambiguous = true
+		}
+	}
+	if ambiguous {
+		candidates := make([]string, len(matches))
+		for i, candidate := range matches {
+			candidates[i] = fmt.Sprintf("occurrence %d at line %d", i+1, strings.Count(content[:candidate], "\n")+1)
+		}
+		return 0, fmt.Errorf("Context line %d is ambiguous: %s", contextLine, strings.Join(candidates, "; "))
+	}
+	return index, nil
 }

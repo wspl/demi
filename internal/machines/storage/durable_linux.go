@@ -24,7 +24,12 @@ func WriteJSON(ctx context.Context, path string, value any) error {
 	if err != nil {
 		return err
 	}
-	if err := artifacts.PublishBytes(context.WithoutCancel(ctx), path, data, artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Default, Durable: true}); err != nil {
+	if err := artifacts.PublishBytes(
+		context.WithoutCancel(ctx),
+		path,
+		data,
+		artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Default, Durable: true},
+	); err != nil {
 		return fmt.Errorf("failed to write %s: %w", path, err)
 	}
 	return nil
@@ -70,7 +75,7 @@ func CreatePrivate(ctx context.Context, path string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(path, 0700); err != nil {
+	if err := os.MkdirAll(path, 0o700); err != nil {
 		return fmt.Errorf("failed to create %s: %w", path, err)
 	}
 	return nil

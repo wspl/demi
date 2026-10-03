@@ -40,7 +40,13 @@ func shellJob(t *testing.T, script string) (context.Context, *shelltest.Scope, p
 		scope.Cancel()
 		scope.Finish(context.Background())
 	})
-	job, err := scope.Start(ctx, script, root, map[string]string{"HOME": root, "PATH": os.Getenv("PATH"), "TMPDIR": root}, true)
+	job, err := scope.Start(
+		ctx,
+		script,
+		root,
+		map[string]string{"HOME": root, "PATH": os.Getenv("PATH"), "TMPDIR": root},
+		true,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +82,14 @@ func marker(ctx context.Context, t *testing.T, job process.ShellJob, want string
 }
 
 func TestShellCancellationReportsTheRequestingSignal(t *testing.T) {
-	for _, signal := range []runnerwire.Signal{runnerwire.SignalTerminate, runnerwire.SignalInterrupt, runnerwire.SignalHangup, runnerwire.SignalQuit, runnerwire.SignalKill, ""} {
+	for _, signal := range []runnerwire.Signal{
+		runnerwire.SignalTerminate,
+		runnerwire.SignalInterrupt,
+		runnerwire.SignalHangup,
+		runnerwire.SignalQuit,
+		runnerwire.SignalKill,
+		"",
+	} {
 		t.Run(string(signal), func(t *testing.T) {
 			t.Parallel()
 			ctx, scope, job, _ := shellJob(t, "printf ready; sleep 60")
@@ -201,7 +214,12 @@ func TestJobCompletionPreservesProcessSubstitutionOutput(t *testing.T) {
 
 func TestPublicShellStartsFreshJobs(t *testing.T) {
 	root := t.TempDir()
-	job, err := shell.New().Start(t.Context(), process.JobStart{Script: "printf public", Cwd: root, Env: map[string]string{"HOME": root, "PATH": os.Getenv("PATH")}})
+	job, err := shell.New().
+		Start(t.Context(), process.JobStart{
+			Script: "printf public",
+			Cwd:    root,
+			Env:    map[string]string{"HOME": root, "PATH": os.Getenv("PATH")},
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +232,8 @@ func TestPublicShellStartsFreshJobs(t *testing.T) {
 		output = append(output, chunk.Bytes...)
 	}
 	exit, cwd := job.Wait(t.Context())
-	if exit.Code == nil || *exit.Code != 0 || cwd == nil || *cwd != root || string(output) != "public" || job.IsCancelled() {
+	if exit.Code == nil || *exit.Code != 0 || cwd == nil || *cwd != root || string(output) != "public" ||
+		job.IsCancelled() {
 		t.Fatalf("exit %+v cwd %v output %q", exit, cwd, output)
 	}
 }

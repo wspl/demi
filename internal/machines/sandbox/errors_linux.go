@@ -13,11 +13,20 @@ import (
 
 var (
 	// ErrAllowlist means a boot names a different configured backend.
-	ErrAllowlist = errors.New("Cloud backend differs from configured allowlist") //nolint:staticcheck // Preserve the Rust product error verbatim.
+	//nolint:staticcheck // Preserve the Rust product error verbatim.
+	ErrAllowlist = errors.New(
+		"Cloud backend differs from configured allowlist",
+	)
 	// ErrNotGrowable means a recovered boot has no owned loop device numbers.
-	ErrNotGrowable = errors.New("Cloud volume growth needs the running sandbox's loop devices") //nolint:staticcheck // Preserve the Rust product error verbatim.
+	//nolint:staticcheck // Preserve the Rust product error verbatim.
+	ErrNotGrowable = errors.New(
+		"Cloud volume growth needs the running sandbox's loop devices",
+	)
 	// ErrWriters means the cgroup did not empty after its writers were killed.
-	ErrWriters = errors.New("Cloud runtime writers did not terminate") //nolint:staticcheck // Preserve the Rust product error verbatim.
+	//nolint:staticcheck // Preserve the Rust product error verbatim.
+	ErrWriters = errors.New(
+		"Cloud runtime writers did not terminate",
+	)
 )
 
 // NeedsRecoveryError identifies a filesystem e2fsck could not recover.
@@ -65,7 +74,11 @@ type MissingControllersError struct{ Missing []string }
 
 // Error names the missing controllers and the setting for running without limits.
 func (e *MissingControllersError) Error() string {
-	return "Cloud resource limits need the cgroup v2 cpu, memory and pids controllers at /sys/fs/cgroup; missing: " + strings.Join(e.Missing, ", ") + ". DEMI_MANAGED_LIMITS=off runs Clouds without limits"
+	return "Cloud resource limits need the cgroup v2 cpu, memory and pids controllers " +
+		"at /sys/fs/cgroup; missing: " + strings.Join(
+		e.Missing,
+		", ",
+	) + ". DEMI_MANAGED_LIMITS=off runs Clouds without limits"
 }
 
 // OwnerError reports an invalid saved-namespace owner record.

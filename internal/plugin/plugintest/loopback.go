@@ -17,6 +17,7 @@ func Port(rpc host.PortTransport) plugin.Port { return WithRPC(rpc).Port() }
 
 type loopback struct{ plugin plugin.Plugin }
 
+// Call round-trips the request and reply through their JSON contracts.
 func (l loopback) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
 	request, err := across(plugin.RequestJSON{Value: request}, plugin.DecodeRequest)
 	if err != nil {
@@ -35,6 +36,7 @@ func (l loopback) Call(ctx context.Context, request plugin.Request, port plugin.
 
 type jsonMessages struct{ port plugin.Port }
 
+// Request round-trips the port message and answer through their JSON contracts.
 func (j jsonMessages) Request(ctx context.Context, message plugin.PortMessage) (plugin.PortAnswer, error) {
 	message, err := across(plugin.PortMessageJSON{Value: message}, plugin.DecodePortMessage)
 	if err != nil {

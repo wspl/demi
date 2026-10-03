@@ -32,7 +32,7 @@ func AcquireLock(data, runtime string) (*ManagerLock, error) {
 
 // takeLock opens and exclusively locks one manager directory's lock file.
 func takeLock(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,10 @@ func (l *ManagerLock) Close() error { return errors.Join(l.runtime.Close(), l.da
 func VerifyInherited(data string) error {
 	path := filepath.Join(data, "manager.lock")
 	var held, expected unix.Stat_t
-	if unix.Fstat(sandbox.RecoveryLockFD, &held) != nil || unix.Stat(path, &expected) != nil || held.Dev != expected.Dev || held.Ino != expected.Ino || unix.Flock(sandbox.RecoveryLockFD, unix.LOCK_EX|unix.LOCK_NB) != nil {
+	if unix.Fstat(sandbox.RecoveryLockFD, &held) != nil || unix.Stat(path, &expected) != nil ||
+		held.Dev != expected.Dev ||
+		held.Ino != expected.Ino ||
+		unix.Flock(sandbox.RecoveryLockFD, unix.LOCK_EX|unix.LOCK_NB) != nil {
 		return fmt.Errorf("the recovery process needs the manager's lock on %s", path)
 	}
 	return nil

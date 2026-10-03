@@ -17,20 +17,20 @@ import (
 
 // extraDescriptors forwards writable numbered outputs through the recorder.
 // Read/write descriptors retain their native file semantics, as in the Rust host.
-func extraDescriptors(ctx context.Context, launchesDone <-chan struct{}, cmd *exec.Cmd, files map[string]io.ReadWriteCloser) (func() error, error) {
-	type forwarding struct {
-		reader, writer *os.File
-		target         *recordedFile
-		err            error
-	}
-	var forwards []*forwarding
+func extraDescriptors(
+	ctx context.Context,
+	launchesDone <-chan struct{},
+	cmd *exec.Cmd,
+	files map[string]io.ReadWriteCloser,
+) (func() error, error) {
+	var forwards []*descriptorForwarding
 	copies := make(map[*recordedFile]*os.File)
 	success := false
 	defer func() {
 		if !success {
-			for _, copy := range forwards {
-				_ = copy.reader.Close()
-				_ = copy.writer.Close()
+			for _, forward := range forwards {
+				_ = forward.reader.Close()
+				_ = forward.writer.Close()
 			}
 		}
 	}()
@@ -39,71 +39,104 @@ func extraDescriptors(ctx context.Context, launchesDone <-chan struct{}, cmd *ex
 		if err != nil || n < 3 {
 			continue
 		}
-		f, ok := file.(*os.File)
-		if tracked, yes := file.(*recordedFile); yes {
-			f, ok = tracked.file, true
-			if !tracked.readwrite {
-				if existing := copies[tracked]; existing != nil {
-					f = existing
-				} else {
-					pair, err := cmdsdk.Retry(ctx, func() ([2]*os.File, error) {
-						r, w, err := os.Pipe()
-						return [2]*os.File{r, w}, err
-					})
-					if err != nil {
-						return nil, err
-					}
-					f = pair[1]
-					copies[tracked] = f
-					forwards = append(forwards, &forwarding{reader: pair[0], writer: pair[1], target: tracked})
-					if cmd.Stdout == tracked {
-						cmd.Stdout = f
-					}
-					if cmd.Stderr == tracked {
-						cmd.Stderr = f
-					}
-				}
-			}
-		}
-		if !ok {
-			return nil, fmt.Errorf("descriptor %s has no native file", name)
+		f, err := descriptorFile(ctx, cmd, name, file, copies, &forwards)
+		if err != nil {
+			return nil, err
 		}
 		for len(cmd.ExtraFiles) <= n-3 {
 			cmd.ExtraFiles = append(cmd.ExtraFiles, nil)
 		}
 		cmd.ExtraFiles[n-3] = f
 	}
+	finish := forwardDescriptors(ctx, launchesDone, forwards)
+	success = true
+	return finish, nil
+}
+
+type descriptorForwarding struct {
+	reader, writer *os.File
+	target         *recordedFile
+	err            error
+}
+
+// descriptorFile shares one forwarding pipe among aliases of a writable recorded file.
+func descriptorFile(
+	ctx context.Context,
+	cmd *exec.Cmd,
+	name string,
+	file io.ReadWriteCloser,
+	copies map[*recordedFile]*os.File,
+	forwards *[]*descriptorForwarding,
+) (*os.File, error) {
+	tracked, ok := file.(*recordedFile)
+	if !ok {
+		native, ok := file.(*os.File)
+		if !ok {
+			return nil, fmt.Errorf("descriptor %s has no native file", name)
+		}
+		return native, nil
+	}
+	if tracked.readWrite {
+		return tracked.file, nil
+	}
+	if existing := copies[tracked]; existing != nil {
+		return existing, nil
+	}
+	pair, err := cmdsdk.Retry(ctx, func() ([2]*os.File, error) {
+		reader, writer, err := os.Pipe()
+		return [2]*os.File{reader, writer}, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	native := pair[1]
+	copies[tracked] = native
+	*forwards = append(*forwards, &descriptorForwarding{reader: pair[0], writer: pair[1], target: tracked})
+	if cmd.Stdout == tracked {
+		cmd.Stdout = native
+	}
+	if cmd.Stderr == tracked {
+		cmd.Stderr = native
+	}
+	return native, nil
+}
+
+// forwardDescriptors owns the forwarding workers until their caller joins them.
+func forwardDescriptors(
+	ctx context.Context,
+	launchesDone <-chan struct{},
+	forwards []*descriptorForwarding,
+) func() error {
 	interrupted := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		<-launchesDone
-		for _, copy := range forwards {
-			_ = copy.reader.Close()
-			_ = copy.writer.Close()
+		for _, forward := range forwards {
+			_ = forward.reader.Close()
+			_ = forward.writer.Close()
 		}
 		close(interrupted)
 	})
 	var workers sync.WaitGroup
-	for _, copy := range forwards {
+	for _, forward := range forwards {
 		workers.Go(func() {
-			_, copy.err = io.Copy(copy.target, copy.reader)
-			_ = copy.reader.Close()
+			_, forward.err = io.Copy(forward.target, forward.reader)
+			_ = forward.reader.Close()
 		})
 	}
-	success = true
 	return sync.OnceValue(func() error {
-		for _, copy := range forwards {
-			_ = copy.writer.Close()
+		for _, forward := range forwards {
+			_ = forward.writer.Close()
 		}
 		workers.Wait()
 		if !stop() {
 			<-interrupted
 		}
 		var err error
-		for _, copy := range forwards {
-			if !errors.Is(copy.err, os.ErrClosed) {
-				err = errors.Join(err, copy.err)
+		for _, forward := range forwards {
+			if !errors.Is(forward.err, os.ErrClosed) {
+				err = errors.Join(err, forward.err)
 			}
 		}
 		return err
-	}), nil
+	})
 }

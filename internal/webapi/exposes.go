@@ -32,14 +32,14 @@ func ParseExposeAddress(text string) (ExposeAddress, error) {
 }
 
 // Host returns the host without IPv6 brackets, refusing an invalid value.
-func (address ExposeAddress) Host() (string, error) {
-	host, _, err := splitExposeAddress(string(address))
+func (a ExposeAddress) Host() (string, error) {
+	host, _, err := splitExposeAddress(string(a))
 	return strings.TrimSuffix(strings.TrimPrefix(host, "["), "]"), err
 }
 
 // Port returns the port, refusing an invalid value.
-func (address ExposeAddress) Port() (uint16, error) {
-	_, port, err := splitExposeAddress(string(address))
+func (a ExposeAddress) Port() (uint16, error) {
+	_, port, err := splitExposeAddress(string(a))
 	return port, err
 }
 
@@ -55,7 +55,8 @@ func splitExposeAddress(address string) (string, uint16, error) {
 		}
 	}
 	bracketed := strings.HasPrefix(host, "[") || strings.HasSuffix(host, "]")
-	if bracketed && (len(host) <= 2 || !strings.HasPrefix(host, "[") || !strings.HasSuffix(host, "]")) || !bracketed && strings.Contains(host, ":") {
+	if bracketed && (len(host) <= 2 || !strings.HasPrefix(host, "[") || !strings.HasSuffix(host, "]")) ||
+		!bracketed && strings.Contains(host, ":") {
 		return "", 0, ErrExposeAddress
 	}
 	port, err := exposePort(address[i+1:])
@@ -94,18 +95,18 @@ func DecodeExposeAddress(data []byte) (ExposeAddress, error) {
 }
 
 // UnmarshalJSON validates and normalizes a wire address.
-func (address *ExposeAddress) UnmarshalJSON(data []byte) error {
+func (a *ExposeAddress) UnmarshalJSON(data []byte) error {
 	value, err := DecodeExposeAddress(data)
 	if err != nil {
 		return err
 	}
-	*address = value
+	*a = value
 	return nil
 }
 
 // MarshalJSON writes the normalized wire address.
-func (address ExposeAddress) MarshalJSON() ([]byte, error) {
-	value, err := ParseExposeAddress(string(address))
+func (a ExposeAddress) MarshalJSON() ([]byte, error) {
+	value, err := ParseExposeAddress(string(a))
 	if err != nil {
 		return nil, err
 	}

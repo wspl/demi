@@ -19,7 +19,7 @@ func AcquireInstallLock(ctx context.Context, path string) (*InstallLock, error) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0666)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666)
 	if err != nil {
 		return nil, err
 	}

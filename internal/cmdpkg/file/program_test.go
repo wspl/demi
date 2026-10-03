@@ -24,18 +24,34 @@ type programSuite struct{ m *testing.M }
 func (s programSuite) Run() int { return programtest.Run(s.m) }
 func TestMain(m *testing.M)     { goleak.VerifyTestMain(programSuite{m}) }
 
-type argument interface{ MarshalJSON() ([]byte, error) }
+type marshaler interface{ MarshalJSON() ([]byte, error) }
 
 // callFile leaves stdin open to verify that file operations never request it.
-func callFile(t *testing.T, client *cmdsdk.Client, cwd, operation string, args argument) (commandwire.Completion, []byte) {
+func callFile(
+	t *testing.T,
+	client *cmdsdk.Client,
+	cwd, operation string,
+	args marshaler,
+) (commandwire.Completion, []byte) {
 	t.Helper()
 	body, err := args.MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
 	}
 	input, output, err := client.Invoke(t.Context(), commandwire.Invocation{
-		Context: commandwire.CommandContext{Conversation: "file-test-conversation", Caller: &commandwire.AgentCaller{Number: 1}, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}},
-		Edits:   editContext(cwd), Operation: operation, InvocationID: operation, Args: body, Cwd: cwd, Env: map[string]string{},
+		Context: commandwire.CommandContext{
+			Conversation: "file-test-conversation",
+			Caller:       &commandwire.AgentCaller{Number: 1},
+			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		},
+		Edits: editContext(
+			cwd,
+		),
+		Operation:    operation,
+		InvocationID: operation,
+		Args:         body,
+		Cwd:          cwd,
+		Env:          map[string]string{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -69,9 +85,11 @@ func collect(t *testing.T, output *cmdsdk.CommandOutput) (commandwire.Completion
 		}
 	}
 }
+
 func editContext(cwd string) *commandwire.EditContext {
 	return &commandwire.EditContext{Directory: filepath.Join(cwd, "changes"), Lock: filepath.Join(cwd, "edits.lock")}
 }
+
 func startFile(t *testing.T) *cmdsdktest.ServiceProcess {
 	t.Helper()
 	path, err := programtest.Path(t.Context(), "demi-file")
@@ -84,12 +102,14 @@ func startFile(t *testing.T) *cmdsdktest.ServiceProcess {
 	}
 	return process
 }
+
 func writeFixture(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func contents(t *testing.T, path string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -98,6 +118,7 @@ func contents(t *testing.T, path string) []byte {
 	}
 	return b
 }
+
 func report(t *testing.T, cwd string) commandwire.EditJournal {
 	t.Helper()
 	recorder, err := cmdsdk.NewRecorder(t.Context(), *editContext(cwd))
@@ -121,19 +142,38 @@ func TestResidentProgramServesEveryFileOperationAndRecordsEdits(t *testing.T) {
 	if err != nil || !slices.Equal(info.Operations, fileop.Operations()) {
 		t.Fatalf("info=%+v error=%v", info, err)
 	}
-	result, output := callFile(t, process.Client, cwd, "file.create", fileop.CreateArgs{Path: "nested/a.txt", Content: "alpha\nbeta\n"})
+	result, output := callFile(
+		t,
+		process.Client,
+		cwd,
+		"file.create",
+		fileop.CreateArgs{Path: "nested/a.txt", Content: "alpha\nbeta\n"},
+	)
 	if result.ExitCode != 0 || string(output) != "Created nested/a.txt\n" {
 		t.Fatalf("%+v %q", result, output)
 	}
-	result, _ = callFile(t, process.Client, cwd, "file.create", fileop.CreateArgs{Path: "nested/a.txt", Content: "overwrite"})
+	result, _ = callFile(
+		t,
+		process.Client,
+		cwd,
+		"file.create",
+		fileop.CreateArgs{Path: "nested/a.txt", Content: "overwrite"},
+	)
 	if result.ExitCode != 1 {
 		t.Fatal(result)
 	}
-	result, _ = callFile(t, process.Client, cwd, "file.edit", fileop.EditArgs{Path: "nested/a.txt", Old: "beta", New: "gamma"})
+	result, _ = callFile(
+		t,
+		process.Client,
+		cwd,
+		"file.edit",
+		fileop.EditArgs{Path: "nested/a.txt", Old: "beta", New: "gamma"},
+	)
 	if result.ExitCode != 0 {
 		t.Fatal(result)
 	}
-	patch := "--- a/nested/a.txt\n+++ b/nested/a.txt\n@@ -1,2 +1,2 @@\n alpha\n-gamma\n+delta\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+created\n"
+	patch := "--- a/nested/a.txt\n+++ b/nested/a.txt\n@@ -1,2 +1,2 @@\n alpha\n-gamma\n+delta\n" +
+		"--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+created\n"
 	result, output = callFile(t, process.Client, cwd, "file.patch", fileop.PatchArgs{Patch: patch})
 	if result.ExitCode != 0 || string(output) != "Patched 2 file(s)\n" {
 		t.Fatalf("%+v %q", result, output)
@@ -161,7 +201,7 @@ func TestResidentProgramServesEveryFileOperationAndRecordsEdits(t *testing.T) {
 	writeFixture(t, filepath.Join(cwd, "large.txt"), strings.Repeat("x", commandwire.EditFileBytes+1))
 	for _, c := range []struct {
 		operation string
-		args      argument
+		args      marshaler
 	}{
 		{"file.create", fileop.CreateArgs{Path: "large.txt", Content: "overwrite"}},
 		{"file.edit", fileop.EditArgs{Path: "large.txt", Old: "absent", New: "replacement"}},
@@ -207,26 +247,30 @@ func TestPatchFailureRestoresEarlierFiles(t *testing.T) {
 		name = "ostype"
 		text = string(contents(t, filepath.Join(locked, name)))
 	} else {
-		if err := os.Mkdir(locked, 0755); err != nil {
+		if err := os.Mkdir(locked, 0o755); err != nil {
 			t.Fatal(err)
 		}
 		writeFixture(t, filepath.Join(locked, name), text)
-		if err := os.Chmod(locked, 0555); err != nil {
+		if err := os.Chmod(locked, 0o555); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
-			if err := os.Chmod(locked, 0755); err != nil {
+			if err := os.Chmod(locked, 0o755); err != nil {
 				t.Error(err)
 			}
 		})
 	}
 	process := startFile(t)
-	patch := "--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/locked/" + name + "\n+++ b/locked/" + name + "\n@@ -1 +1 @@\n-" + strings.TrimSpace(text) + "\n+changed\n"
+	patch := "--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n" +
+		"--- a/locked/" + name + "\n+++ b/locked/" + name + "\n@@ -1 +1 @@\n-" + strings.TrimSpace(
+		text,
+	) + "\n+changed\n"
 	result, _ := callFile(t, process.Client, cwd, "file.patch", fileop.PatchArgs{Patch: patch})
 	if result.ExitCode != 1 {
 		t.Fatal(result)
 	}
-	if string(contents(t, filepath.Join(cwd, "first.txt"))) != "first\n" || string(contents(t, filepath.Join(locked, name))) != text {
+	if string(contents(t, filepath.Join(cwd, "first.txt"))) != "first\n" ||
+		string(contents(t, filepath.Join(locked, name))) != text {
 		t.Fatal("patch did not roll back")
 	}
 	if journal := report(t, cwd); len(journal.Files) != 0 {
@@ -245,7 +289,7 @@ func TestCreatePreservesSymlinkParent(t *testing.T) {
 	workspace := t.TempDir()
 	other := t.TempDir()
 	target := filepath.Join(other, "directory")
-	if err := os.Mkdir(target, 0700); err != nil {
+	if err := os.Mkdir(target, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, filepath.Join(workspace, "link")); err != nil {
@@ -255,7 +299,13 @@ func TestCreatePreservesSymlinkParent(t *testing.T) {
 	for _, name := range []string{"file", "new/file"} {
 		// Preserve the caller's components: Join would erase link/.. here.
 		path := workspace + "/link/../" + name
-		result, _ := callFile(t, process.Client, workspace, "file.create", fileop.CreateArgs{Path: path, Content: "created\n"})
+		result, _ := callFile(
+			t,
+			process.Client,
+			workspace,
+			"file.create",
+			fileop.CreateArgs{Path: path, Content: "created\n"},
+		)
 		if result.ExitCode != 0 {
 			t.Fatalf("create %s: %+v", name, result.Error)
 		}

@@ -28,7 +28,10 @@ type serverFixture struct {
 	stop    func()
 }
 
-func server(t *testing.T, script func(context.Context, machinewire.MachineCall) (json.RawMessage, error)) *serverFixture {
+func server(
+	t *testing.T,
+	script func(context.Context, machinewire.MachineCall) (json.RawMessage, error),
+) *serverFixture {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	path := filepath.Join(t.TempDir(), "sock")
@@ -68,12 +71,14 @@ func (f *serverFixture) connect(t *testing.T) *socketClient {
 	}
 	return &socketClient{conn, bufio.NewReader(conn)}
 }
+
 func (c *socketClient) send(t *testing.T, line string) {
 	t.Helper()
 	if _, err := c.conn.Write([]byte(line)); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func (c *socketClient) receive(t *testing.T) machinewire.MachineResponse {
 	t.Helper()
 	line, err := c.reader.ReadBytes('\n')
@@ -86,6 +91,7 @@ func (c *socketClient) receive(t *testing.T) machinewire.MachineResponse {
 	}
 	return value
 }
+
 func TestEveryCallReachesService(t *testing.T) {
 	f := server(t, func(_ context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
 		switch call.(type) {
@@ -93,7 +99,13 @@ func TestEveryCallReachesService(t *testing.T) {
 			return machinewire.BaseVersion("base").MarshalJSON()
 		case *machinewire.RuntimeStateCall:
 			return machinewire.RuntimeStateStopped.MarshalJSON()
-		case *machinewire.Reconcile, *machinewire.ImageState, *machinewire.Wake, *machinewire.Hibernate, *machinewire.Checkpoint, *machinewire.GrowVolume, *machinewire.Reset:
+		case *machinewire.Reconcile,
+			*machinewire.ImageState,
+			*machinewire.Wake,
+			*machinewire.Hibernate,
+			*machinewire.Checkpoint,
+			*machinewire.GrowVolume,
+			*machinewire.Reset:
 			return json.RawMessage("null"), nil
 		}
 		return nil, errors.New("unknown call")
@@ -143,6 +155,7 @@ func TestEveryCallReachesService(t *testing.T) {
 		}
 	}
 }
+
 func TestFailureLeavesConnectionUsable(t *testing.T) {
 	f := server(t, func(_ context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
 		if call.Name() == "hibernate" {
@@ -161,6 +174,7 @@ func TestFailureLeavesConnectionUsable(t *testing.T) {
 		t.Fatalf("%+v", reply)
 	}
 }
+
 func TestConcurrentRepliesCompleteInOrder(t *testing.T) {
 	release := make(chan struct{})
 	var once sync.Once
@@ -173,7 +187,11 @@ func TestConcurrentRepliesCompleteInOrder(t *testing.T) {
 	})
 	t.Cleanup(unblock)
 	c := f.connect(t)
-	c.send(t, "{\"id\":\"slow\",\"op\":\"current_base_version\",\"params\":{}}\n{\"id\":\"fast\",\"op\":\"reconcile\",\"params\":{}}\n")
+	c.send(
+		t,
+		"{\"id\":\"slow\",\"op\":\"current_base_version\",\"params\":{}}\n"+
+			"{\"id\":\"fast\",\"op\":\"reconcile\",\"params\":{}}\n",
+	)
 	if reply, ok := c.receive(t).(*machinewire.OK); !ok || reply.ID != "fast" {
 		t.Fatalf("%+v", reply)
 	}
@@ -182,6 +200,7 @@ func TestConcurrentRepliesCompleteInOrder(t *testing.T) {
 		t.Fatalf("%+v", reply)
 	}
 }
+
 func TestDeathReachesEveryConnection(t *testing.T) {
 	f := server(t, nil)
 	clients := []*socketClient{f.connect(t), f.connect(t)}
@@ -197,9 +216,15 @@ func TestDeathReachesEveryConnection(t *testing.T) {
 		}
 	}
 }
+
 func TestBadLineDropsConnectionAndLaterLines(t *testing.T) {
 	f := server(t, nil)
-	for _, bad := range []string{"{\"id\":\"1\",\"op\":\"wake\",\"params\":{}}\n", "not json\n", string([]byte{255, '\n'}), strings.Repeat("x", machinewire.MaxLineBytes+1) + "\n"} {
+	for _, bad := range []string{
+		"{\"id\":\"1\",\"op\":\"wake\",\"params\":{}}\n",
+		"not json\n",
+		string([]byte{255, '\n'}),
+		strings.Repeat("x", machinewire.MaxLineBytes+1) + "\n",
+	} {
 		c := f.connect(t)
 		_, _ = c.conn.Write([]byte(bad + "{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n"))
 		line, err := c.reader.ReadBytes('\n')
@@ -216,6 +241,7 @@ func TestBadLineDropsConnectionAndLaterLines(t *testing.T) {
 		t.Fatal("served behind bad frame")
 	}
 }
+
 func TestDisconnectedRequestCompletes(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -239,6 +265,7 @@ func TestDisconnectedRequestCompletes(t *testing.T) {
 	f.stop()
 	<-finished
 }
+
 func TestSocketOwnership(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "socket")
 	old, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
@@ -257,7 +284,7 @@ func TestSocketOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0660 {
+	if info.Mode().Perm() != 0o660 {
 		t.Fatal(info.Mode())
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -266,7 +293,7 @@ func TestSocketOwnership(t *testing.T) {
 	if _, err = os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("socket retained: %v", err)
 	}
-	if err = os.WriteFile(path, []byte("data"), 0600); err != nil {
+	if err = os.WriteFile(path, []byte("data"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = machines.BindSocket(t.Context(), path); err == nil {
@@ -277,6 +304,7 @@ func TestSocketOwnership(t *testing.T) {
 		t.Fatalf("file: %s %v", data, err)
 	}
 }
+
 func TestSecondManagerRefusedWithPath(t *testing.T) {
 	data, runtime := t.TempDir(), t.TempDir()
 	first, err := machines.AcquireLock(data, runtime)

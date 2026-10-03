@@ -44,7 +44,18 @@ func TestBuiltinPipelineEmitsBeforeInputEOF(t *testing.T) {
 	done := make(chan struct{})
 	var finished outcome
 	go func() {
-		result, err := shelltest.Execute(t.Context(), "cat | cat", shelltest.Options{Scope: scope, Cwd: root, Env: map[string]string{"HOME": root, "PATH": os.Getenv("PATH")}, Stdin: input, Stdout: output, Stderr: stderr})
+		result, err := shelltest.Execute(
+			t.Context(),
+			"cat | cat",
+			shelltest.Options{
+				Scope:  scope,
+				Cwd:    root,
+				Env:    map[string]string{"HOME": root, "PATH": os.Getenv("PATH")},
+				Stdin:  input,
+				Stdout: output,
+				Stderr: stderr,
+			},
+		)
 		finished = outcome{result, err}
 		close(done)
 	}()
@@ -103,7 +114,11 @@ func TestExecuteCancellationInterruptsBorrowedInput(t *testing.T) {
 		if runtime.GOOS != "windows" {
 			script = "/bin/sh -c :; " + script
 		}
-		_, err := shelltest.Execute(ctx, script, shelltest.Options{Scope: scope, Cwd: root, Stdin: input, Stdout: output, Stderr: output})
+		_, err := shelltest.Execute(
+			ctx,
+			script,
+			shelltest.Options{Scope: scope, Cwd: root, Stdin: input, Stdout: output, Stderr: output},
+		)
 		done <- err
 	}()
 	ready := make([]byte, 5)

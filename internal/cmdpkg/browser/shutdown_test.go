@@ -17,11 +17,21 @@ type sweepShutdownHandler struct {
 	installed []commandwire.InstalledArtifact
 }
 
-func (h *sweepShutdownHandler) Operations() []string             { return []string{"test"} }
+// Operations returns the fixture operation name.
+func (h *sweepShutdownHandler) Operations() []string { return []string{"test"} }
+
+// SetArtifacts attaches the fixture artifact stream.
 func (h *sweepShutdownHandler) SetArtifacts(a *cmdsdk.Artifacts) { h.artifacts = a }
-func (h *sweepShutdownHandler) Invoke(context.Context, cmdsdk.InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+
+// Invoke completes the fixture invocation.
+func (h *sweepShutdownHandler) Invoke(
+	context.Context,
+	cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	return commandwire.Completion{}, nil
 }
+
+// Close requests installed artifacts before completing shutdown.
 func (h *sweepShutdownHandler) Close(ctx context.Context) error {
 	var err error
 	h.installed, err = h.artifacts.Installed(ctx, "chrome")
@@ -60,14 +70,19 @@ func TestShutdownKeepsHandlerArtifactStreamUntilCloseEnds(t *testing.T) {
 		release := make(chan struct{})
 		answered := make(chan error, 1)
 		go func() {
-			answered <- stream.AnswerArtifacts(ctx, func(ctx context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
+			answered <- stream.AnswerArtifacts(ctx, func(
+				ctx context.Context,
+				q commandwire.ArtifactRequest,
+			) (commandwire.ArtifactAnswer, error) {
 				close(requested)
 				select {
 				case <-release:
 				case <-ctx.Done():
 					return commandwire.ArtifactAnswer{}, ctx.Err()
 				}
-				installed := []commandwire.InstalledArtifact{{Version: "1", SHA256: strings.Repeat("a", 64), Path: "/runner/chrome"}}
+				installed := []commandwire.InstalledArtifact{
+					{Version: "1", SHA256: strings.Repeat("a", 64), Path: "/runner/chrome"},
+				}
 				return commandwire.ArtifactAnswer{ID: q.ID, Installed: &installed}, nil
 			})
 		}()

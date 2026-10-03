@@ -13,7 +13,11 @@ var ociFixture []byte
 
 func TestShippedOCIProfile(t *testing.T) {
 	id := ID("demi-00000000-0000-4000-8000-000000000000")
-	boot := Boot{Directory: NewRuntimeDirectory("/run/demi-machine-manager", id), Namespace: "demi-3", Cgroup: &Cgroup{Name: id, Limits: Limits{CPUs: 2, MemoryMiB: 2048}}}
+	boot := Boot{
+		Directory: NewRuntimeDirectory("/run/demi-machine-manager", id),
+		Namespace: "demi-3",
+		Cgroup:    &Cgroup{Name: id, Limits: Limits{CPUs: 2, MemoryMiB: 2048}},
+	}
 	data, err := Spec(boot)
 	if err != nil {
 		t.Fatal(err)

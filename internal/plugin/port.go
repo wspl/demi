@@ -12,6 +12,7 @@ import (
 
 // Transport carries one plugin port operation to its answer.
 type Transport interface {
+	// Request sends a port message and returns its answer.
 	Request(context.Context, PortMessage) (PortAnswer, error)
 }
 
@@ -31,6 +32,7 @@ func (p Port) RPC() host.RPCPort { return host.NewRPCPort(rpcMessages(p)) }
 
 type rpcMessages struct{ transport Transport }
 
+// Request forwards an RPC request through the plugin port.
 func (r rpcMessages) Request(ctx context.Context, request host.PortRequest) (host.PortResponse, error) {
 	answer, err := r.transport.Request(ctx, &PortMessageRPC{Request: request})
 	if err != nil {
@@ -79,7 +81,13 @@ func (p Port) Values(ctx context.Context) (map[string]StoredValue, error) {
 }
 
 // WriteValueNaming performs the write_value port operation.
-func (p Port) WriteValueNaming(ctx context.Context, key string, value json.RawMessage, revision *uint64, blobs []core.BlobRef) (uint64, error) {
+func (p Port) WriteValueNaming(
+	ctx context.Context,
+	key string,
+	value json.RawMessage,
+	revision *uint64,
+	blobs []core.BlobRef,
+) (uint64, error) {
 	answer, err := p.ask(ctx, &PortMessageWriteValue{Key: key, Value: value, Revision: revision, Blobs: blobs})
 	if err != nil {
 		return 0, err
@@ -163,7 +171,12 @@ func (p Port) Changed(ctx context.Context, scope Scope) error {
 }
 
 // PackageCall performs the package_call port operation.
-func (p Port) PackageCall(ctx context.Context, operation declare.NativeOperation, args json.RawMessage, kind CallKind) (json.RawMessage, error) {
+func (p Port) PackageCall(
+	ctx context.Context,
+	operation declare.NativeOperation,
+	args json.RawMessage,
+	kind CallKind,
+) (json.RawMessage, error) {
 	answer, err := p.ask(ctx, &PortMessagePackageCall{Operation: operation, Args: args, Kind: kind})
 	if err != nil {
 		return nil, err
@@ -199,7 +212,12 @@ func (p Port) Exposes(ctx context.Context) (ExposeList, error) {
 }
 
 // CreateExpose performs the create_expose port operation.
-func (p Port) CreateExpose(ctx context.Context, device webapi.DeviceID, address string, lifetime uint64) (ExposeRecord, error) {
+func (p Port) CreateExpose(
+	ctx context.Context,
+	device webapi.DeviceID,
+	address string,
+	lifetime uint64,
+) (ExposeRecord, error) {
 	answer, err := p.ask(ctx, &PortMessageCreateExpose{Device: device, Address: address, Lifetime: lifetime})
 	if err != nil {
 		return ExposeRecord{}, err

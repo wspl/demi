@@ -46,8 +46,10 @@ type schemaRegexp struct {
 	regexp *regexp2.Regexp
 }
 
+// String returns the schema pattern.
 func (r schemaRegexp) String() string { return r.regexp.String() }
 
+// MatchString reports whether the value matches the schema pattern.
 func (r schemaRegexp) MatchString(value string) bool {
 	// No timeout is installed, so the library documents no possible matching
 	// error except an internal engine bug. The schema interface returns bool.

@@ -13,7 +13,7 @@ func TestResumeDropsOnlyUnactedLeftovers(t *testing.T) {
 	thinking := &core.ThinkingBlock{Text: "hmm"}
 	failure := &core.ErrorBlock{Message: "failed"}
 	user := userBlock("u1", "")
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		name   string
 		blocks []core.Block
 		want   transcript.ResumePoint
@@ -23,14 +23,45 @@ func TestResumeDropsOnlyUnactedLeftovers(t *testing.T) {
 		{"posted", []core.Block{user, textBlock("text", "posted"), failure}, transcript.ResumePoint{Cut: 2}},
 		{"response", []core.Block{user, responseBlock("r", 0), thinking}, transcript.ResumePoint{Cut: 2}},
 		{"stop", []core.Block{user, &core.AbortBlock{}}, transcript.ResumePoint{Cut: 2}},
-		{"completed call", []core.Block{user, &core.ToolCallBlock{Status: "completed"}, thinking, failure}, transcript.ResumePoint{Cut: 2}},
-		{"executing call", []core.Block{user, &core.ToolCallBlock{Status: "executing"}, thinking, failure}, transcript.ResumePoint{Cut: 2}},
-		{"latest turn", []core.Block{user, textBlock("a", "answer"), responseBlock("r", 0), userBlock("u2", ""), failure}, transcript.ResumePoint{Cut: 4, FullRerun: true}},
+		{
+			"completed call",
+			[]core.Block{
+				user,
+				&core.ToolCallBlock{Status: "completed"},
+				thinking,
+				failure,
+			},
+			transcript.ResumePoint{Cut: 2},
+		},
+		{
+			"executing call",
+			[]core.Block{
+				user,
+				&core.ToolCallBlock{Status: "executing"},
+				thinking,
+				failure,
+			},
+			transcript.ResumePoint{Cut: 2},
+		},
+		{
+			"latest turn",
+			[]core.Block{
+				user,
+				textBlock("a", "answer"),
+				responseBlock("r", 0),
+				userBlock("u2", ""),
+				failure,
+			},
+			transcript.ResumePoint{
+				Cut:       4,
+				FullRerun: true,
+			},
+		},
 		{"empty", nil, transcript.ResumePoint{}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := transcript.Cut(tc.blocks); got != tc.want {
-				t.Fatalf("got %+v, want %+v", got, tc.want)
+		t.Run(scenario.name, func(t *testing.T) {
+			if got := transcript.Cut(scenario.blocks); got != scenario.want {
+				t.Fatalf("got %+v, want %+v", got, scenario.want)
 			}
 		})
 	}
@@ -91,21 +122,63 @@ func TestCompactionWindowKeepsUnansweredInput(t *testing.T) {
 	user := userBlock("u", "input")
 	boundary := &core.CompactionBoundaryBlock{BlockID: "b"}
 	marker := &core.CompactionMarkerBlock{BoundaryID: "b"}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		name   string
 		blocks []core.Block
 		want   transcript.CompactionWindow
 	}{
-		{"answered", []core.Block{user, textBlock("a", "answer"), responseBlock("r", 1)}, transcript.CompactionWindow{Cut: 1}},
+		{
+			"answered",
+			[]core.Block{
+				user,
+				textBlock("a", "answer"),
+				responseBlock("r", 1),
+			},
+			transcript.CompactionWindow{Cut: 1},
+		},
 		{"unanswered", []core.Block{user, textBlock("a", "partial"), &core.ResumeBlock{}}, transcript.CompactionWindow{}},
-		{"response then input", []core.Block{responseBlock("r", 1), marker, user, &core.ErrorBlock{}}, transcript.CompactionWindow{Cut: 2}},
-		{"after compaction", []core.Block{user, boundary, textBlock("a", "kept"), responseBlock("r", 1), marker}, transcript.CompactionWindow{Start: 1, Cut: 4}},
-		{"boundary without marker", []core.Block{user, boundary, textBlock("a", "kept"), responseBlock("r", 1)}, transcript.CompactionWindow{Start: 1, Cut: 2}},
+		{
+			"response then input",
+			[]core.Block{
+				responseBlock("r", 1),
+				marker,
+				user,
+				&core.ErrorBlock{},
+			},
+			transcript.CompactionWindow{Cut: 2},
+		},
+		{
+			"after compaction",
+			[]core.Block{
+				user,
+				boundary,
+				textBlock("a", "kept"),
+				responseBlock("r", 1),
+				marker,
+			},
+			transcript.CompactionWindow{
+				Start: 1,
+				Cut:   4,
+			},
+		},
+		{
+			"boundary without marker",
+			[]core.Block{
+				user,
+				boundary,
+				textBlock("a", "kept"),
+				responseBlock("r", 1),
+			},
+			transcript.CompactionWindow{
+				Start: 1,
+				Cut:   2,
+			},
+		},
 		{"never below boundary", []core.Block{user, boundary, marker}, transcript.CompactionWindow{Start: 1, Cut: 1}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := transcript.Window(tc.blocks); got != tc.want {
-				t.Fatalf("%+v != %+v", got, tc.want)
+		t.Run(scenario.name, func(t *testing.T) {
+			if got := transcript.Window(scenario.blocks); got != scenario.want {
+				t.Fatalf("%+v != %+v", got, scenario.want)
 			}
 		})
 	}

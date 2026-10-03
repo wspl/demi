@@ -14,24 +14,28 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-func (s *service) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+// Invoke executes a browser command and writes its completion output.
+func (s *service) Invoke(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	operation, parseErr := browserop.ParseOperation(invocation.Request.Operation, invocation.Request.Args)
 	var unknown *browserop.UnknownOperation
 	var unserved *browserop.UnservedOperation
 	if errors.As(parseErr, &unknown) || errors.As(parseErr, &unserved) {
 		return commandwire.Completion{}, parseErr
 	}
-	b, err := s.admit(invocation.Request.Context.Conversation)
+	browser, err := s.admit(invocation.Request.Context.Conversation)
 	if err != nil {
 		return commandwire.Completion{}, err
 	}
-	defer b.commands.Done()
+	defer browser.commands.Done()
 	if _, ok := operation.(*browserop.LiveInput); ok {
-		return live.Serve(ctx, b, invocation)
+		return live.Serve(ctx, browser, invocation)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})
-	stop := context.AfterFunc(b.released, func() {
+	stop := context.AfterFunc(browser.released, func() {
 		cancel()
 		close(stopped)
 	})
@@ -49,22 +53,7 @@ func (s *service) Invoke(ctx context.Context, invocation cmdsdk.InvocationContex
 		if !ok {
 			return commandwire.Completion{}, &browserop.UnknownOperation{Name: invocation.Request.Operation}
 		}
-		deadline := time.Now().Add(command.Timeout())
-		work, finish := context.WithDeadline(ctx, deadline)
-		result, executeErr := s.execute(work, ctx, b, &invocation, command, deadline)
-		err = executeErr
-		if errors.Is(work.Err(), context.DeadlineExceeded) && (cdp.ErrorCode(err) == "cancelled" || cdp.ErrorCode(err) == "timeout") {
-			err = &cdp.BrowserError{Kind: cdp.KindAction, Details: cdp.ErrorDetails(err), Cause: &cdp.BrowserError{Kind: cdp.KindTimeout}}
-		}
-		finish()
-
-		if err == nil {
-			if result.png != nil {
-				bytes = result.png
-			} else {
-				bytes, err = cdp.Render(command, result.json, invocation.Request.JSON != nil && *invocation.Request.JSON)
-			}
-		}
+		bytes, err = s.invoke(ctx, browser, &invocation, command)
 	}
 	if err == nil {
 		return commandwire.Completion{}, invocation.Output.Stdout(ctx, bytes)
@@ -72,10 +61,15 @@ func (s *service) Invoke(ctx context.Context, invocation cmdsdk.InvocationContex
 	if ctx.Err() != nil {
 		return commandwire.Completion{}, ctx.Err()
 	}
-	return failure(ctx, b, invocation, err)
+	return failure(ctx, browser, invocation, err)
 }
 
-func failure(ctx context.Context, b *conversation, invocation cmdsdk.InvocationContext[commandwire.Invocation], err error) (commandwire.Completion, error) {
+func failure(
+	ctx context.Context,
+	browser *conversation,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+	err error,
+) (commandwire.Completion, error) {
 	code := cdp.ErrorCode(err)
 	details := cdp.ErrorDetails(err)
 	if details.Action == nil {
@@ -83,40 +77,19 @@ func failure(ctx context.Context, b *conversation, invocation cmdsdk.InvocationC
 		details.Action = &action
 	}
 	if details.Tab == nil {
-		// A refused object may still name a tab. This is diagnostic data only;
-		// dispatch always uses the generated operation decoder above.
-		if fields, fieldErr := contract.ObjectFields(invocation.Request.Args); fieldErr == nil {
-			for _, field := range fields {
-				if field.Name == "tab" {
-					raw, ok := field.Value.(json.RawMessage)
-					if !ok || contract.IsNull(raw) {
-						continue
-					}
-					if tab, textErr := contract.Decode[string](raw); textErr == nil {
-						details.Tab = &tab
-					}
-				}
-			}
-		}
+		readFailureTab(invocation.Request.Args, &details)
 	}
 
 	if code == "timeout" && details.Tab != nil {
-		environment, _, lookupErr := b.Running(ctx)
-		if lookupErr == nil && environment != nil {
-			var caller *uint64
-			if agent, ok := invocation.Request.Context.Caller.(*commandwire.AgentCaller); ok {
-				caller = &agent.Number
-			}
-			callers := environment.DebuggingCallers(browserop.TabID(*details.Tab), caller)
-			if len(callers) > 0 {
-				details.DebuggingCallers = &callers
-			}
-		}
+		readDebuggingCallers(ctx, browser, invocation, &details)
 	}
+
 	bytes := []byte(cdp.RenderError(code, err.Error(), details))
 	if invocation.Request.JSON != nil && *invocation.Request.JSON {
 		var encodeErr error
-		bytes, encodeErr = (browserop.FailureDocument{Error: browserop.BrowserFailure{Code: code, Message: err.Error(), Details: &details}}).MarshalJSON()
+		bytes, encodeErr = (browserop.FailureDocument{
+			Error: browserop.BrowserFailure{Code: code, Message: err.Error(), Details: &details},
+		}).MarshalJSON()
 		if encodeErr != nil {
 			return commandwire.Completion{}, encodeErr
 		}
@@ -129,4 +102,80 @@ func failure(ctx context.Context, b *conversation, invocation cmdsdk.InvocationC
 		exit = 130
 	}
 	return commandwire.Completion{ExitCode: exit}, invocation.Output.Stderr(ctx, bytes)
+}
+
+func (s *service) invoke(
+	ctx context.Context,
+	browser *conversation,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	command browserop.Input,
+) ([]byte, error) {
+	var bytes []byte
+	deadline := time.Now().Add(command.Timeout())
+	work, finish := context.WithDeadline(ctx, deadline)
+	result, executeErr := s.execute(work, ctx, browser, invocation, command, deadline)
+	err := executeErr
+	if errors.Is(work.Err(), context.DeadlineExceeded) &&
+		(cdp.ErrorCode(err) == "cancelled" || cdp.ErrorCode(err) == "timeout") {
+		err = &cdp.BrowserError{
+			Kind:    cdp.KindAction,
+			Details: cdp.ErrorDetails(err),
+			Cause:   &cdp.BrowserError{Kind: cdp.KindTimeout},
+		}
+	}
+	finish()
+
+	if err == nil {
+		if result.png != nil {
+			bytes = result.png
+		} else {
+			bytes, err = cdp.Render(
+				command,
+				result.json,
+				invocation.Request.JSON != nil && *invocation.Request.JSON,
+			)
+		}
+	}
+	return bytes, err
+}
+
+// readFailureTab reads a refused tab identity for diagnostics, without dispatching it.
+func readFailureTab(args []byte, details *browserop.ErrorDetails) {
+	// A refused object may still name a tab. This is diagnostic data only;
+	// dispatch always uses the generated operation decoder above.
+	fields, fieldErr := contract.ObjectFields(args)
+	if fieldErr != nil {
+		return
+	}
+	for _, field := range fields {
+		if field.Name != "tab" {
+			continue
+		}
+		raw, ok := field.Value.(json.RawMessage)
+		if !ok || contract.IsNull(raw) {
+			continue
+		}
+		if tab, textErr := contract.Decode[string](raw); textErr == nil {
+			details.Tab = &tab
+		}
+	}
+}
+
+func readDebuggingCallers(
+	ctx context.Context,
+	browser *conversation,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+	details *browserop.ErrorDetails,
+) {
+	environment, _, lookupErr := browser.Running(ctx)
+	if lookupErr == nil && environment != nil {
+		var caller *uint64
+		if agent, ok := invocation.Request.Context.Caller.(*commandwire.AgentCaller); ok {
+			caller = &agent.Number
+		}
+		callers := environment.DebuggingCallers(browserop.TabID(*details.Tab), caller)
+		if len(callers) > 0 {
+			details.DebuggingCallers = &callers
+		}
+	}
 }

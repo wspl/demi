@@ -67,34 +67,7 @@ func (n *SavedNamespace) Recover(ctx context.Context, stateLock *os.File, args [
 		return &OtherOwnerError{Data: owner.DataDir}
 	}
 	_, err = system.RunNamespace(ctx, system.Mount(saved), func(ctx context.Context) (struct{}, error) {
-		childArgs := make([]string, 0, len(args)+1)
-		for _, arg := range args {
-			if arg != "--recover" {
-				childArgs = append(childArgs, arg)
-			}
-		}
-		childArgs = append(childArgs, "--recover-namespace")
-		// Start and Wait stay on this entered OS thread. All of the child runtime's
-		// threads inherit the mount namespace; entering only in main is too late.
-		command := exec.CommandContext(ctx, "/proc/self/exe", childArgs...)
-		command.ExtraFiles = []*os.File{stateLock}
-		command.Stdin = os.Stdin
-		command.Stdout = os.Stdout
-		command.Stderr = os.Stderr
-		if err := command.Run(); err != nil {
-			if ctx.Err() != nil {
-				return struct{}{}, fmt.Errorf("namespace recovery: %w", ctx.Err())
-			}
-			var exit *exec.ExitError
-			if errors.As(err, &exit) {
-				status, ok := exit.Sys().(syscall.WaitStatus)
-				if ok {
-					return struct{}{}, &RecoveryError{Status: status}
-				}
-			}
-			return struct{}{}, err
-		}
-		return struct{}{}, nil
+		return struct{}{}, runRecoveryChild(ctx, stateLock, args)
 	})
 	if err != nil {
 		return err
@@ -132,7 +105,7 @@ func (n *SavedNamespace) Pin(ctx context.Context) (err error) {
 		return err
 	}
 	handle := filepath.Join(n.runtime, "mount-namespace")
-	file, err := os.OpenFile(handle, os.O_WRONLY|os.O_CREATE, 0600)
+	file, err := os.OpenFile(handle, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return err
 	}
@@ -143,7 +116,12 @@ func (n *SavedNamespace) Pin(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	if err := artifacts.PublishBytes(ctx, filepath.Join(n.runtime, "mount-namespace-owner.json"), owner, artifacts.Publication{Mode: artifacts.Replace, Durable: true}); err != nil {
+	if err := artifacts.PublishBytes(
+		ctx,
+		filepath.Join(n.runtime, "mount-namespace-owner.json"),
+		owner,
+		artifacts.Publication{Mode: artifacts.Replace, Durable: true},
+	); err != nil {
 		return err
 	}
 	source := fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), own.Fd())
@@ -180,6 +158,38 @@ func (n *SavedNamespace) Release(ctx context.Context) error {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
+	}
+	return nil
+}
+
+// runRecoveryChild starts and joins recovery on the caller's entered namespace thread.
+func runRecoveryChild(ctx context.Context, stateLock *os.File, args []string) error {
+	childArgs := make([]string, 0, len(args)+1)
+	for _, arg := range args {
+		if arg != "--recover" {
+			childArgs = append(childArgs, arg)
+		}
+	}
+	childArgs = append(childArgs, "--recover-namespace")
+	// Start and Wait stay on this entered OS thread. All of the child runtime's
+	// threads inherit the mount namespace; entering only in main is too late.
+	command := exec.CommandContext(ctx, "/proc/self/exe", childArgs...)
+	command.ExtraFiles = []*os.File{stateLock}
+	command.Stdin = os.Stdin
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	if err := command.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("namespace recovery: %w", ctx.Err())
+		}
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			status, ok := exit.Sys().(syscall.WaitStatus)
+			if ok {
+				return &RecoveryError{Status: status}
+			}
+		}
+		return err
 	}
 	return nil
 }

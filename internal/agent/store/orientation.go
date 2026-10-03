@@ -12,47 +12,9 @@ import (
 func imageOrientation(data []byte, mediaType string) uint16 {
 	switch mediaType {
 	case "image/jpeg":
-		for at := 2; at+4 <= len(data); {
-			if data[at] != 0xff {
-				break
-			}
-			marker := data[at+1]
-			if marker == 0xff {
-				at++
-				continue
-			}
-			if marker == 0xda || marker == 0xd9 {
-				break
-			}
-			if marker == 1 || marker >= 0xd0 && marker <= 0xd7 {
-				at += 2
-				continue
-			}
-			size := int(binary.BigEndian.Uint16(data[at+2:]))
-			if size < 2 || size > len(data)-at-2 {
-				break
-			}
-			chunk := data[at+4 : at+2+size]
-			if marker == 0xe1 && bytes.HasPrefix(chunk, []byte("Exif\x00\x00")) {
-				return exifOrientation(chunk[6:])
-			}
-			at += size + 2
-		}
+		return jpegOrientation(data)
 	case "image/png":
-		for at := 8; at+12 <= len(data); {
-			size := uint64(binary.BigEndian.Uint32(data[at:]))
-			if size > uint64(len(data)-at-12) {
-				break
-			}
-			end := at + 8 + int(size)
-			if string(data[at+4:at+8]) == "IDAT" {
-				break
-			}
-			if string(data[at+4:at+8]) == "eXIf" {
-				return exifOrientation(data[at+8 : end])
-			}
-			at = end + 4
-		}
+		return pngOrientation(data)
 	case "image/webp":
 		// A malformed/missing EXIF chunk has no orientation, as in Rust.
 		if exif, err := webpChunk(data, "EXIF"); err == nil {
@@ -134,4 +96,52 @@ func orientImage(source image.Image, orientation uint16) image.Image {
 		}
 	}
 	return target
+}
+
+func jpegOrientation(data []byte) uint16 {
+	for at := 2; at+4 <= len(data); {
+		if data[at] != 0xff {
+			break
+		}
+		marker := data[at+1]
+		if marker == 0xff {
+			at++
+			continue
+		}
+		if marker == 0xda || marker == 0xd9 {
+			break
+		}
+		if marker == 1 || marker >= 0xd0 && marker <= 0xd7 {
+			at += 2
+			continue
+		}
+		size := int(binary.BigEndian.Uint16(data[at+2:]))
+		if size < 2 || size > len(data)-at-2 {
+			break
+		}
+		chunk := data[at+4 : at+2+size]
+		if marker == 0xe1 && bytes.HasPrefix(chunk, []byte("Exif\x00\x00")) {
+			return exifOrientation(chunk[6:])
+		}
+		at += size + 2
+	}
+	return 1
+}
+
+func pngOrientation(data []byte) uint16 {
+	for at := 8; at+12 <= len(data); {
+		size := uint64(binary.BigEndian.Uint32(data[at:]))
+		if size > uint64(len(data)-at-12) {
+			break
+		}
+		end := at + 8 + int(size)
+		if string(data[at+4:at+8]) == "IDAT" {
+			break
+		}
+		if string(data[at+4:at+8]) == "eXIf" {
+			return exifOrientation(data[at+8 : end])
+		}
+		at = end + 4
+	}
+	return 1
 }

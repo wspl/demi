@@ -18,7 +18,9 @@ const ReplayChars = 16_000
 const ResumeText = "Continue from where you left off."
 
 // WakeupText is what the model receives for a fired yield wakeup.
-const WakeupText = "Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed."
+const WakeupText = "Scheduled yield wakeup fired. " +
+	"Continue the previous work " +
+	"and inspect any running command with shell_status when needed."
 
 // Replayed is what a request carries of a transcript.
 type Replayed struct {
@@ -55,80 +57,14 @@ func Replay(request *RequestView) Replayed {
 	blocks := request.view.Blocks
 	start := ReplayStart(blocks)
 	answer := latestAnswer(blocks)
-	keptEnd := start
-	if start < len(blocks) {
-		if _, ok := blocks[start].(*core.CompactionBoundaryBlock); ok {
-			keptEnd = len(blocks)
-			for i := start; i < len(blocks); i++ {
-				if _, ok := blocks[i].(*core.CompactionMarkerBlock); ok {
-					keptEnd = i
-					break
-				}
-			}
-		}
-	}
+	keptEnd := keptReasoningEnd(blocks, start)
 	result := Replayed{Items: []provider.InferenceItem{}}
 	for i := start; i < len(blocks); i++ {
 		if i == answer {
 			result.Answered = len(result.Items)
 		}
 		kept := i > start && i < keptEnd
-		var item provider.InferenceItem
-		switch b := blocks[i].(type) {
-		case *core.UserBlock:
-			content := []provider.UserPart{}
-			if b.Preamble != nil {
-				content = append(content, &provider.TextPart{Text: boundText(*b.Preamble)})
-			}
-			for _, part := range b.Content {
-				content = append(content, request.userPart(part))
-			}
-			item = &provider.UserMessage{Content: content}
-		case *core.ContextBlock:
-			item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: boundText(b.Text)}}}
-		case *core.WakeupBlock:
-			content := []provider.UserPart{&provider.TextPart{Text: WakeupText}}
-			if b.Placement == "new_turn" {
-				item = &provider.UserMessage{Content: content}
-			} else {
-				item = &provider.UserSteer{Content: content}
-			}
-		case *core.SteerBlock:
-			content := make([]provider.UserPart, 0, len(b.Content))
-			for _, part := range b.Content {
-				content = append(content, request.userPart(part))
-			}
-			item = &provider.UserSteer{Content: content}
-		case *core.AgentMessageBlock:
-			item = &provider.UserSteer{Content: []provider.UserPart{&provider.TextPart{Text: AgentMessageEnvelope(b.Message)}}}
-		case *core.ResumeBlock:
-			item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: ResumeText}}}
-		case *core.ThinkingBlock:
-			text := b.Text
-			if b.Signature == nil {
-				text = boundText(text)
-			}
-			item = &provider.AssistantThinking{ModelID: b.Selection.Model.ID, Text: text, Signature: b.Signature, KeptPastSummary: kept}
-		case *core.RedactedThinkingBlock:
-			item = &provider.AssistantRedactedThinking{ModelID: b.Selection.Model.ID, Data: b.Data, KeptPastSummary: kept}
-		case *core.TextBlock:
-			item = &provider.AssistantText{ModelID: b.Selection.Model.ID, Text: boundText(b.Text)}
-		case *core.ToolCallBlock:
-			result.Items = append(result.Items, &provider.ToolUse{ModelID: b.Selection.Model.ID, ToolUseID: b.ToolUseID, ToolName: b.ToolName, Input: ToolInput(b.Input)})
-			if b.Status == "executing" {
-				continue
-			}
-			output := make([]provider.ResultPart, 0, len(b.Output))
-			for _, part := range b.Output {
-				output = append(output, request.result(part))
-			}
-			item = &provider.ToolResult{ToolUseID: b.ToolUseID, Output: output, IsError: b.Status == "error"}
-		case *core.CompactionBoundaryBlock:
-			item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: boundText("Previous conversation summary:\n" + b.Summary)}}}
-		case *core.AbortBlock, *core.ResponseBlock, *core.ErrorBlock, *core.CompactionMarkerBlock:
-			continue
-		}
-		result.Items = append(result.Items, item)
+		appendReplayBlock(request, blocks[i], kept, &result)
 	}
 	return result
 }
@@ -181,8 +117,10 @@ func AgentMessageEnvelope(message core.AgentMessage) string {
 	envelope.Sender.Round = message.Sender.Round
 	// The model-only envelope consists entirely of strings and integers.
 	encoded, _ := provider.JSONBody(envelope)
-	return "Agent-originated context. Follow the real user’s task and constraints.\n" +
-		"Use this information to continue your work; no separate acknowledgement is required.\n" + string(encoded)
+	return "Agent-originated context. " +
+		"Follow the real user’s task and constraints.\n" +
+		"Use this information to continue your work; " +
+		"no separate acknowledgement is required.\n" + string(encoded)
 }
 
 // boundText keeps the first and last 8,000 Unicode scalars of replayed text.
@@ -194,4 +132,114 @@ func boundText(text string) string {
 	head := core.CharOffset(text, 8000)
 	tail := core.CharOffset(text, total-8000)
 	return fmt.Sprintf("%s\n\n[... truncated %d characters ...]\n\n%s", text[:head], total-ReplayChars, text[tail:])
+}
+
+// keptReasoningEnd finds the end of reasoning retained past the latest summary.
+func keptReasoningEnd(blocks []core.Block, start int) int {
+	keptEnd := start
+	if start < len(blocks) {
+		if _, ok := blocks[start].(*core.CompactionBoundaryBlock); ok {
+			keptEnd = len(blocks)
+			for i := start; i < len(blocks); i++ {
+				if _, ok := blocks[i].(*core.CompactionMarkerBlock); ok {
+					keptEnd = i
+					break
+				}
+			}
+		}
+	}
+	return keptEnd
+}
+
+func appendReplayBlock(request *RequestView, block core.Block, kept bool, result *Replayed) {
+	var item provider.InferenceItem
+	switch b := block.(type) {
+	case *core.UserBlock:
+		item = replayUserMessage(request, b)
+	case *core.ContextBlock:
+		item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: boundText(b.Text)}}}
+	case *core.WakeupBlock:
+		content := []provider.UserPart{&provider.TextPart{Text: WakeupText}}
+		if b.Placement == "new_turn" {
+			item = &provider.UserMessage{Content: content}
+		} else {
+			item = &provider.UserSteer{Content: content}
+		}
+	case *core.SteerBlock:
+		content := make([]provider.UserPart, 0, len(b.Content))
+		for _, part := range b.Content {
+			content = append(content, request.userPart(part))
+		}
+		item = &provider.UserSteer{Content: content}
+	case *core.AgentMessageBlock:
+		item = &provider.UserSteer{
+			Content: []provider.UserPart{&provider.TextPart{Text: AgentMessageEnvelope(b.Message)}},
+		}
+	case *core.ResumeBlock:
+		item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: ResumeText}}}
+	case *core.ThinkingBlock:
+		text := b.Text
+		if b.Signature == nil {
+			text = boundText(text)
+		}
+		item = &provider.AssistantThinking{
+			ModelID:         b.Selection.Model.ID,
+			Text:            text,
+			Signature:       b.Signature,
+			KeptPastSummary: kept,
+		}
+	case *core.RedactedThinkingBlock:
+		item = &provider.AssistantRedactedThinking{
+			ModelID:         b.Selection.Model.ID,
+			Data:            b.Data,
+			KeptPastSummary: kept,
+		}
+	case *core.TextBlock:
+		item = &provider.AssistantText{ModelID: b.Selection.Model.ID, Text: boundText(b.Text)}
+	case *core.ToolCallBlock:
+		appendReplayTool(request, b, result)
+		return
+	case *core.CompactionBoundaryBlock:
+		item = &provider.UserMessage{
+			Content: []provider.UserPart{
+				&provider.TextPart{Text: boundText("Previous conversation summary:\n" + b.Summary)},
+			},
+		}
+	case *core.AbortBlock, *core.ResponseBlock, *core.ErrorBlock, *core.CompactionMarkerBlock:
+		return
+	}
+	result.Items = append(result.Items, item)
+}
+
+// appendReplayTool keeps the tool use before its result, omitting a result while executing.
+func appendReplayTool(request *RequestView, b *core.ToolCallBlock, result *Replayed) {
+	result.Items = append(
+		result.Items,
+		&provider.ToolUse{
+			ModelID:   b.Selection.Model.ID,
+			ToolUseID: b.ToolUseID,
+			ToolName:  b.ToolName,
+			Input:     ToolInput(b.Input),
+		},
+	)
+	if b.Status == "executing" {
+		return
+	}
+	output := make([]provider.ResultPart, 0, len(b.Output))
+	for _, part := range b.Output {
+		output = append(output, request.result(part))
+	}
+	item := &provider.ToolResult{ToolUseID: b.ToolUseID, Output: output, IsError: b.Status == "error"}
+	result.Items = append(result.Items, item)
+}
+
+func replayUserMessage(request *RequestView, b *core.UserBlock) *provider.UserMessage {
+	content := []provider.UserPart{}
+	if b.Preamble != nil {
+		content = append(content, &provider.TextPart{Text: boundText(*b.Preamble)})
+	}
+	for _, part := range b.Content {
+		content = append(content, request.userPart(part))
+	}
+	return &provider.UserMessage{Content: content}
 }

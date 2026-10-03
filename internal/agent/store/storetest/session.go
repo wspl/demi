@@ -33,9 +33,10 @@ func (s *memorySession) Save(ctx context.Context, update store.CheckpointUpdate,
 		s.tree.failingSaves--
 		return &store.Error{Kind: store.OperationFailed, Message: "the database refused the save"}
 	}
-	return s.tree.applySave(saved)
+	return s.tree.applySaveLocked(saved)
 }
 
+// Load returns the decoded checkpoint, or nil when the node is absent.
 func (s *memorySession) Load(ctx context.Context) (*store.Checkpoint, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -49,4 +50,5 @@ func (s *memorySession) Load(ctx context.Context) (*store.Checkpoint, error) {
 	return node.rows.checkpoint(s.id)
 }
 
+// Blobs returns the tree's shared blob namespace.
 func (s *memorySession) Blobs() store.BlobStore { return s.tree.blobs }

@@ -21,19 +21,21 @@ func TestSerdeJSONEscaping(t *testing.T) {
 	}
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
-		var tc struct{ Name, Input, Encoded string }
-		if err := json.Unmarshal(scanner.Bytes(), &tc); err != nil {
+		var scenario struct{ Name, Input, Encoded string }
+		if err := json.Unmarshal(scanner.Bytes(), &scenario); err != nil {
 			t.Fatal(err)
 		}
-		t.Run(tc.Name, func(t *testing.T) {
-			for _, value := range []any{tc.Input, json.RawMessage(tc.Encoded)} {
+		t.Run(scenario.Name, func(t *testing.T) {
+			for _, value := range []any{scenario.Input, json.RawMessage(scenario.Encoded)} {
 				got, err := contract.EncodeJSON(value)
-				if err != nil || string(got) != tc.Encoded {
-					t.Fatalf("EncodeJSON = %s, %v; want %s", got, err, tc.Encoded)
+				if err != nil || string(got) != scenario.Encoded {
+					t.Fatalf("EncodeJSON = %s, %v; want %s", got, err, scenario.Encoded)
 				}
 			}
-			got, err := contract.EncodeObject([]contract.Field{{Name: tc.Input, Value: map[string][]string{tc.Input: {tc.Input}}}})
-			want := "{" + tc.Encoded + ":{" + tc.Encoded + ":[" + tc.Encoded + "]}}"
+			got, err := contract.EncodeObject(
+				[]contract.Field{{Name: scenario.Input, Value: map[string][]string{scenario.Input: {scenario.Input}}}},
+			)
+			want := "{" + scenario.Encoded + ":{" + scenario.Encoded + ":[" + scenario.Encoded + "]}}"
 			if err != nil || string(got) != want {
 				t.Fatalf("EncodeObject = %s, %v; want %s", got, err, want)
 			}

@@ -44,9 +44,9 @@ type PasswordReset struct {
 }
 
 // Role is the existing account role corresponding to the new account role.
-func (role NewRole) Role() (Role, error) {
-	if err := role.Validate(); err != nil {
+func (r NewRole) Role() (Role, error) {
+	if err := r.Validate(); err != nil {
 		return "", err
 	}
-	return Role(role), nil
+	return Role(r), nil
 }

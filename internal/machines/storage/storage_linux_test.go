@@ -14,7 +14,11 @@ import (
 	"go.uber.org/goleak"
 )
 
-var rootTests = flag.Bool("storage-root", false, "run storage tests in private Linux namespaces (requires root and filesystem tools)")
+var rootTests = flag.Bool(
+	"storage-root",
+	false,
+	"run storage tests in private Linux namespaces (requires root and filesystem tools)",
+)
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 

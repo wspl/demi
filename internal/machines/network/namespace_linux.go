@@ -30,10 +30,10 @@ func createNamespace(ctx context.Context, path string) error {
 		}
 		defer func() { _ = network.Close() }()
 		return system.RunNamespace(ctx, system.Mount(mounts), func(ctx context.Context) (struct{}, error) {
-			if err := os.MkdirAll(filepath.Dir(path), 0777); err != nil {
+			if err := os.MkdirAll(filepath.Dir(path), 0o777); err != nil {
 				return struct{}{}, err
 			}
-			file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0444)
+			file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o444)
 			if err != nil {
 				return struct{}{}, err
 			}

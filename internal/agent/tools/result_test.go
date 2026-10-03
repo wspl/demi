@@ -22,7 +22,15 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 // exited supplies a command whose whole stdout has not yet been seen.
 func exited(text string) host.CommandStatus {
 	output := host.WholeOutput{Records: []host.OutputRecord{{Stream: core.StreamKindStdout, Bytes: []byte(text)}}}
-	return host.CommandStatus{ShellID: "3", CommandID: "17", Output: core.OutputView{Line: 1}, Whole: &host.WholeView{Output: &output}, RunningMs: 5, IdleMs: 1, State: host.CommandState{Phase: host.Exited, ExitCode: 1}}
+	return host.CommandStatus{
+		ShellID:   "3",
+		CommandID: "17",
+		Output:    core.OutputView{Line: 1},
+		Whole:     &host.WholeView{Output: &output},
+		RunningMs: 5,
+		IdleMs:    1,
+		State:     host.CommandState{Phase: host.Exited, ExitCode: 1},
+	}
 }
 
 // result reads the text a shell tool would return to the model.
@@ -64,7 +72,13 @@ func TestUnfinishedLineRepeatsUntilNewlineOrEnd(t *testing.T) {
 			t.Fatal(got)
 		}
 	}
-	whole := &host.WholeOutput{Records: []host.OutputRecord{{Stream: core.StreamKindStdout, Bytes: []byte("done\nre")}, {Stream: core.StreamKindStderr, Bytes: []byte("a")}, {Stream: core.StreamKindStdout, Bytes: []byte("dy\nprompt")}}}
+	whole := &host.WholeOutput{
+		Records: []host.OutputRecord{
+			{Stream: core.StreamKindStdout, Bytes: []byte("done\nre")},
+			{Stream: core.StreamKindStderr, Bytes: []byte("a")},
+			{Stream: core.StreamKindStdout, Bytes: []byte("dy\nprompt")},
+		},
+	}
 	record.Settle(host.Ending{Phase: host.Exited}, whole, nil, "")
 	if got := result(t, record.Status(0, nil)); !strings.HasSuffix(got, "\noutput:\nprompt") {
 		t.Fatal(got)
@@ -109,7 +123,14 @@ func TestLongOutputNamesOmittedLines(t *testing.T) {
 	for n := before + 1; n < after; n++ {
 		bytes += len(fmt.Sprintf("%d\n", n))
 	}
-	want := fmt.Sprintf("[... lines %d-%d not shown (%d bytes); read them: demi shell output 17 --lines %d-%d ...]", before+1, after-1, bytes, before+1, after-1)
+	want := fmt.Sprintf(
+		"[... lines %d-%d not shown (%d bytes); read them: demi shell output 17 --lines %d-%d ...]",
+		before+1,
+		after-1,
+		bytes,
+		before+1,
+		after-1,
+	)
 	if lines[marker] != want {
 		t.Fatal(cmp.Diff(want, lines[marker]))
 	}
@@ -129,7 +150,13 @@ func TestSingleLongLineNamesOmittedCharacters(t *testing.T) {
 		t.Fatalf("got %d lines", len(lines))
 	}
 	from, to := len(lines[4])+1, 40000-len(lines[6])
-	want := fmt.Sprintf("[... characters %d-%d of line 1 not shown; read them: demi shell output 17 --raw | sed -n 1p | cut -c %d-%d ...]", from, to, from, from+PageChars-1)
+	want := fmt.Sprintf(
+		"[... characters %d-%d of line 1 not shown; read them: demi shell output 17 --raw | sed -n 1p | cut -c %d-%d ...]",
+		from,
+		to,
+		from,
+		from+PageChars-1,
+	)
 	if lines[5] != want {
 		t.Fatal(cmp.Diff(want, lines[5]))
 	}
@@ -141,8 +168,25 @@ func TestRunningStartAndNewestWithinBound(t *testing.T) {
 	status.State = host.CommandState{Phase: host.Running}
 	status.Output.Text = "building\n"
 	status.Unreceived = 1048576
-	status.Newest = []host.Newest{{Stream: core.StreamKindStdout, Offset: 1048576, LeftOut: 1040384, Text: "ne 998\nline 999\nline 1000\n"}}
-	want := strings.Join([]string{"status: running", "commandId: 17", "shellId: 3", "runningMs: 5", "idleMs: 1", "output:", "building", "[... 1040384 bytes of stdout not shown; its newest lines follow ...]", "line 999", "line 1000", runningNext}, "\n")
+	status.Newest = []host.Newest{
+		{Stream: core.StreamKindStdout, Offset: 1048576, LeftOut: 1040384, Text: "ne 998\nline 999\nline 1000\n"},
+	}
+	want := strings.Join(
+		[]string{
+			"status: running",
+			"commandId: 17",
+			"shellId: 3",
+			"runningMs: 5",
+			"idleMs: 1",
+			"output:",
+			"building",
+			"[... 1040384 bytes of stdout not shown; its newest lines follow ...]",
+			"line 999",
+			"line 1000",
+			runningNext,
+		},
+		"\n",
+	)
 	if got := result(t, status); got != want {
 		t.Fatal(cmp.Diff(want, got))
 	}
@@ -175,7 +219,20 @@ func TestRunningHandlesAndUnreceivedOutput(t *testing.T) {
 	status.State = host.CommandState{Phase: host.Running}
 	status.Output.Text = "building\n"
 	status.Unreceived = 1048576
-	want := strings.Join([]string{"status: running", "commandId: 17", "shellId: 3", "runningMs: 5", "idleMs: 1", "output:", "building", "[... 1048576 bytes not shown so far; the newest: demi shell output 17 --tail 50 ...]", runningNext}, "\n")
+	want := strings.Join(
+		[]string{
+			"status: running",
+			"commandId: 17",
+			"shellId: 3",
+			"runningMs: 5",
+			"idleMs: 1",
+			"output:",
+			"building",
+			"[... 1048576 bytes not shown so far; the newest: demi shell output 17 --tail 50 ...]",
+			runningNext,
+		},
+		"\n",
+	)
 	if got := result(t, status); got != want {
 		t.Fatal(cmp.Diff(want, got))
 	}
@@ -209,25 +266,102 @@ func TestBinaryStdoutAttachmentPolicy(t *testing.T) {
 		truncated            bool
 		want, prefix, suffix string
 	}{
-		{name: "unchanged image", data: png, model: model, want: fmt.Sprintf("<image> | Attached stdout as image/png (%d bytes).", len(png))},
-		{name: "fitted image", data: wide, model: model, prefix: fmt.Sprintf("<image> | Attached stdout, image/png of 2400x10 px (%d bytes), as image/png of 2000x8 px (", len(wide)), suffix: " bytes), fitted to what every model accepts; to keep the original, " + save + "."},
-		{name: "broken image", data: []byte("\x89PNG\r\n\x1a\n\x00\xff\xfe\x01"), model: model, prefix: "Binary stdout is image/png (12 bytes), which was not attached because it could not be decoded", suffix: "; " + save + "."},
-		{name: "unsupported video", data: mp4, model: model, want: "Binary stdout is video/mp4, which this model does not accept natively; " + save + "."},
-		{name: "video at body bound", data: mp4, model: videoModel, body: &body40, want: "<video> | Attached stdout as video/mp4 (14 bytes)."},
-		{name: "video exceeds body", data: mp4, model: videoModel, body: &body39, want: "Binary stdout is video/mp4 (14 bytes), whose base64 takes more than 19 bytes, half of what this model's requests may carry, so it was not attached; " + save + ", or produce a smaller version, with fewer frames or a lower resolution, and run it again."},
-		{name: "video cap", data: mp4, model: videoModel, total: 17 * 1024 * 1024, want: "Binary stdout is video/mp4 (17825792 bytes), over the 16777216-byte video cap, so it was not attached; " + save + ", or produce a smaller version, with fewer frames or a lower resolution, and run it again."},
-		{name: "opaque", data: []byte("\xde\xad\xbe\xef\xff\xfe\x00\x01\x02\x03\x04\x05"), model: model, want: "Binary stdout does not match any model-viewable media type; " + save + "."},
-		{name: "truncated", data: png, model: model, total: 20000000, truncated: true, want: "Binary stdout (20000000 bytes) is more than the 16777216 bytes a command's output keeps whole, so it was not attached and is kept whole nowhere; write it to a file instead and run the command again."},
+		{
+			name:  "unchanged image",
+			data:  png,
+			model: model,
+			want:  fmt.Sprintf("<image> | Attached stdout as image/png (%d bytes).", len(png)),
+		},
+		{
+			name:  "fitted image",
+			data:  wide,
+			model: model,
+			prefix: fmt.Sprintf(
+				"<image> | Attached stdout, image/png of 2400x10 px (%d bytes), as image/png of 2000x8 px (",
+				len(wide),
+			),
+			suffix: " bytes), fitted to what every model accepts; to keep the original, " + save + ".",
+		},
+		{
+			name:   "broken image",
+			data:   []byte("\x89PNG\r\n\x1a\n\x00\xff\xfe\x01"),
+			model:  model,
+			prefix: "Binary stdout is image/png (12 bytes), which was not attached because it could not be decoded",
+			suffix: "; " + save + ".",
+		},
+		{
+			name:  "unsupported video",
+			data:  mp4,
+			model: model,
+			want:  "Binary stdout is video/mp4, which this model does not accept natively; " + save + ".",
+		},
+		{
+			name:  "video at body bound",
+			data:  mp4,
+			model: videoModel,
+			body:  &body40,
+			want:  "<video> | Attached stdout as video/mp4 (14 bytes).",
+		},
+		{
+			name:  "video exceeds body",
+			data:  mp4,
+			model: videoModel,
+			body:  &body39,
+			want: "Binary stdout is video/mp4 (14 bytes), whose base64 takes more than 19 bytes, half " +
+				"of what this model's requests may carry, so it was not attached; " +
+				save +
+				", or produce a smaller version, with fewer frames or a lower resolution, and run it " +
+				"again.",
+		},
+		{
+			name:  "video cap",
+			data:  mp4,
+			model: videoModel,
+			total: 17 * 1024 * 1024,
+			want: "Binary stdout is video/mp4 (17825792 bytes), over the 16777216-byte video cap, so it " +
+				"was not attached; " +
+				save +
+				", or produce a smaller version, with fewer frames or a lower resolution, and run it " +
+				"again.",
+		},
+		{
+			name:  "opaque",
+			data:  []byte("\xde\xad\xbe\xef\xff\xfe\x00\x01\x02\x03\x04\x05"),
+			model: model,
+			want:  "Binary stdout does not match any model-viewable media type; " + save + ".",
+		},
+		{
+			name:      "truncated",
+			data:      png,
+			model:     model,
+			total:     20000000,
+			truncated: true,
+			want: "Binary stdout (20000000 bytes) is more than the 16777216 bytes a command's output " +
+				"keeps whole, so it was not attached and is kept whole nowhere; write it to a file " +
+				"instead and run the command again.",
+		},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			total := tc.total
+	for _, scenario := range cases {
+		t.Run(scenario.name, func(t *testing.T) {
+			total := scenario.total
 			if total == 0 {
-				total = uint64(len(tc.data))
+				total = uint64(len(scenario.data))
 			}
 			status := exited("")
-			status.State.BinaryStdout = &host.BinaryOutput{Bytes: tc.data, Info: core.BinaryStdout{TotalBytes: total, LimitBytes: 16 * 1024 * 1024, Truncated: tc.truncated}}
-			outcome := shellOutcome(t.Context(), status, tc.model, provider.RequestLimits{BodyBytes: tc.body})
+			status.State.BinaryStdout = &host.BinaryOutput{
+				Bytes: scenario.data,
+				Info: core.BinaryStdout{
+					TotalBytes: total,
+					LimitBytes: 16 * 1024 * 1024,
+					Truncated:  scenario.truncated,
+				},
+			}
+			outcome := shellOutcome(
+				t.Context(),
+				status,
+				scenario.model,
+				provider.RequestLimits{BodyBytes: scenario.body},
+			)
 			var parts []string
 			for _, part := range outcome.Output[1:] {
 				switch p := part.(type) {
@@ -240,10 +374,11 @@ func TestBinaryStdoutAttachmentPolicy(t *testing.T) {
 				}
 			}
 			got := strings.Join(parts, " | ")
-			if tc.want != "" && got != tc.want {
-				t.Fatal(cmp.Diff(tc.want, got))
+			if scenario.want != "" && got != scenario.want {
+				t.Fatal(cmp.Diff(scenario.want, got))
 			}
-			if tc.prefix != "" && (!strings.HasPrefix(got, tc.prefix) || !strings.HasSuffix(got, tc.suffix)) {
+			if scenario.prefix != "" &&
+				(!strings.HasPrefix(got, scenario.prefix) || !strings.HasSuffix(got, scenario.suffix)) {
 				t.Fatal(got)
 			}
 		})
@@ -251,8 +386,12 @@ func TestBinaryStdoutAttachmentPolicy(t *testing.T) {
 }
 
 func TestViewWindowKeepsNewestMergedCharacters(t *testing.T) {
-	chunks := []core.OutputChunk{{Stream: core.StreamKindStdout, Text: "ab"}, {Stream: core.StreamKindStderr}, {Stream: core.StreamKindStderr, Text: "cdé"}}
-	for _, tc := range []struct {
+	chunks := []core.OutputChunk{
+		{Stream: core.StreamKindStdout, Text: "ab"},
+		{Stream: core.StreamKindStderr},
+		{Stream: core.StreamKindStderr, Text: "cdé"},
+	}
+	for _, scenario := range []struct {
 		limit int
 		want  []core.OutputChunk
 		cut   bool
@@ -261,10 +400,10 @@ func TestViewWindowKeepsNewestMergedCharacters(t *testing.T) {
 		{4, []core.OutputChunk{{Stream: core.StreamKindStdout, Text: "b"}, chunks[2]}, true},
 		{3, []core.OutputChunk{chunks[2]}, true},
 	} {
-		t.Run(strconv.Itoa(tc.limit), func(t *testing.T) {
-			got, cut := tailWindow(chunks, tc.limit)
-			if diff := cmp.Diff(tc.want, got); diff != "" || cut != tc.cut {
-				t.Fatalf("chunks %s; cut %v want %v", diff, cut, tc.cut)
+		t.Run(strconv.Itoa(scenario.limit), func(t *testing.T) {
+			got, cut := tailWindow(chunks, scenario.limit)
+			if diff := cmp.Diff(scenario.want, got); diff != "" || cut != scenario.cut {
+				t.Fatalf("chunks %s; cut %v want %v", diff, cut, scenario.cut)
 			}
 		})
 	}

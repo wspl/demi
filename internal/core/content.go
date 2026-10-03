@@ -27,7 +27,13 @@ func (b B64Bytes) String() string {
 func AttachmentTag(a Attachment) string {
 	// XML's encoder escapes quotes numerically; the transcript uses these named entities.
 	escape := strings.NewReplacer("&", "&amp;", "\"", "&quot;", "<", "&lt;", ">", "&gt;")
-	return fmt.Sprintf(`<attachment name="%s" type="%s" size="%d" path="%s"/>`, escape.Replace(a.Name), escape.Replace(a.MediaType), a.SizeBytes, escape.Replace(a.Path))
+	return fmt.Sprintf(
+		`<attachment name="%s" type="%s" size="%d" path="%s"/>`,
+		escape.Replace(a.Name),
+		escape.Replace(a.MediaType),
+		a.SizeBytes,
+		escape.Replace(a.Path),
+	)
 }
 
 // Trim removes JavaScript's whitespace and line terminators.

@@ -43,11 +43,11 @@ func DecodeDeviceLogValues(values url.Values) (DeviceLogQuery, error) {
 }
 
 // UnmarshalText implements the exact boolean spelling of query parameters.
-func (value *StrictBool) UnmarshalText(text []byte) error {
+func (b *StrictBool) UnmarshalText(text []byte) error {
 	next, err := ParseStrictBool(string(text))
 	if err != nil {
 		return err
 	}
-	*value = next
+	*b = next
 	return nil
 }

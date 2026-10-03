@@ -21,11 +21,22 @@ func Roots(manifest plugin.Manifest) ([]declare.Node[declare.Binding], error) {
 		}
 	}
 	if len(demi) > 0 {
-		roots = append([]declare.Node[declare.NativeOperation]{&declare.Group[declare.NativeOperation]{Name: plugin.DemiRoot, Summary: plugin.DemiSummary, Subcommands: demi}}, roots...)
+		roots = append(
+			[]declare.Node[declare.NativeOperation]{
+				&declare.Group[declare.NativeOperation]{
+					Name:        plugin.DemiRoot,
+					Summary:     plugin.DemiSummary,
+					Subcommands: demi,
+				},
+			},
+			roots...)
 	}
 	result := make([]declare.Node[declare.Binding], 0, len(roots))
 	for _, root := range roots {
-		pinned, err := declare.Pin(root, func(declare.NativeOperation) (string, error) { return strings.Repeat("0", 64), nil })
+		pinned, err := declare.Pin(
+			root,
+			func(declare.NativeOperation) (string, error) { return strings.Repeat("0", 64), nil },
+		)
 		if err != nil {
 			return nil, err
 		}

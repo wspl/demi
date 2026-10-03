@@ -32,7 +32,7 @@ func utility(t *testing.T, root, name string, args ...string) (Result, string, s
 func TestUtilitiesCwdAndExitStateArePerInvocation(t *testing.T) {
 	first, second := t.TempDir(), t.TempDir()
 	for root, value := range map[string]string{first: "one", second: "two"} {
-		if err := os.WriteFile(filepath.Join(root, "file"), []byte(value), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(root, "file"), []byte(value), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		result, output, stderr := utility(t, root, "cat", "file")
@@ -61,9 +61,52 @@ func TestUtilitiesCwdAndExitStateArePerInvocation(t *testing.T) {
 
 func TestEveryUtilityRoutesHelpToTheInvocationStream(t *testing.T) {
 	// The reference utility registry defines the promised CLI coverage.
-	for _, name := range []string{"cat", "head", "tail", "wc", "ls", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "tee", "sort", "uniq", "cut", "tr", "paste", "nl", "tac", "basename", "dirname", "realpath", "env", "seq", "date", "sleep", "mktemp", "stat", "du", "df", "od", "chmod", "chown", "grep", "sed", "find", "xargs", "diff", "cmp", "jq", "rg"} {
+	for _, name := range []string{
+		"cat",
+		"head",
+		"tail",
+		"wc",
+		"ls",
+		"cp",
+		"mv",
+		"rm",
+		"mkdir",
+		"rmdir",
+		"touch",
+		"tee",
+		"sort",
+		"uniq",
+		"cut",
+		"tr",
+		"paste",
+		"nl",
+		"tac",
+		"basename",
+		"dirname",
+		"realpath",
+		"env",
+		"seq",
+		"date",
+		"sleep",
+		"mktemp",
+		"stat",
+		"du",
+		"df",
+		"od",
+		"chmod",
+		"chown",
+		"grep",
+		"sed",
+		"find",
+		"xargs",
+		"diff",
+		"cmp",
+		"jq",
+		"rg",
+	} {
 		t.Run(name, func(t *testing.T) {
-			if runtime.GOOS == "darwin" && name != "sort" && name != "tac" && name != "diff" && name != "jq" && name != "rg" {
+			if runtime.GOOS == "darwin" && name != "sort" && name != "tac" && name != "diff" && name != "jq" &&
+				name != "rg" {
 				t.Skip("decision 4: BSD utility does not provide Rust's --help stdout interface")
 			}
 			result, output, stderr := utility(t, t.TempDir(), name, "--help")
@@ -76,10 +119,21 @@ func TestEveryUtilityRoutesHelpToTheInvocationStream(t *testing.T) {
 
 func TestFilesystemUtilitiesUseTheInvocationDirectory(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "input"), []byte("hello\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "input"), []byte("hello\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"mkdir", "-p", "nested/child"}, {"touch", "new"}, {"cp", "input", "copy"}, {"mv", "copy", "moved"}, {"ls", "-la", "."}, {"stat", "input"}, {"du", "input"}, {"df", "."}, {"rm", "moved"}, {"rmdir", "nested/child"}} {
+	for _, args := range [][]string{
+		{"mkdir", "-p", "nested/child"},
+		{"touch", "new"},
+		{"cp", "input", "copy"},
+		{"mv", "copy", "moved"},
+		{"ls", "-la", "."},
+		{"stat", "input"},
+		{"du", "input"},
+		{"df", "."},
+		{"rm", "moved"},
+		{"rmdir", "nested/child"},
+	} {
 		result, output, stderr := utility(t, root, args[0], args[1:]...)
 		if result.Code != 0 {
 			t.Fatalf("%v: %d %s %s", args, result.Code, output, stderr)
@@ -98,7 +152,16 @@ func TestEnvExecutesChildWithLocalEnvironmentAndStreams(t *testing.T) {
 		t.Skip("original test is Unix-only")
 	}
 	root := t.TempDir()
-	result, output, stderr := utility(t, root, "env", "-i", "DEMI_TEST_VALUE=local", "/bin/sh", "-c", `printf '%s' "$DEMI_TEST_VALUE"; pwd; exit 7`)
+	result, output, stderr := utility(
+		t,
+		root,
+		"env",
+		"-i",
+		"DEMI_TEST_VALUE=local",
+		"/bin/sh",
+		"-c",
+		`printf '%s' "$DEMI_TEST_VALUE"; pwd; exit 7`,
+	)
 	physical, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		t.Fatal(err)
@@ -113,13 +176,18 @@ func TestEnvExecutesChildWithLocalEnvironmentAndStreams(t *testing.T) {
 
 func TestRecursiveOperationsStayInTheInvocationDirectory(t *testing.T) {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "source/child"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "source/child"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "source/child/file"), []byte("nested"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "source/child/file"), []byte("nested"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"cp", "-R", "source", "copy"}, {"du", "copy"}, {"ls", "-R", "copy"}, {"rm", "-r", "copy"}} {
+	for _, args := range [][]string{
+		{"cp", "-R", "source", "copy"},
+		{"du", "copy"},
+		{"ls", "-R", "copy"},
+		{"rm", "-r", "copy"},
+	} {
 		result, output, stderr := utility(t, root, args[0], args[1:]...)
 		if result.Code != 0 {
 			t.Fatalf("%v: %d %s %s", args, result.Code, output, stderr)
@@ -144,7 +212,7 @@ func TestConcurrentExternalSortsOwnTheirTemporaryFilesAndWorkers(t *testing.T) {
 		t.Run(fmt.Sprint(index), func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
-			if err := os.Mkdir(filepath.Join(root, "temporary"), 0700); err != nil {
+			if err := os.Mkdir(filepath.Join(root, "temporary"), 0o700); err != nil {
 				t.Fatal(err)
 			}
 			var text, want strings.Builder
@@ -154,7 +222,7 @@ func TestConcurrentExternalSortsOwnTheirTemporaryFilesAndWorkers(t *testing.T) {
 			for number := range 2000 {
 				fmt.Fprintf(&want, "%04d-%d\n", number, index)
 			}
-			if err := os.WriteFile(filepath.Join(root, "input"), []byte(text.String()), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(root, "input"), []byte(text.String()), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			args := []string{"--parallel=2", "-S", "1K", "-T", "temporary", "input"}
@@ -175,13 +243,17 @@ func TestRelativeSymlinksAndExplicitDirectoryModesArePreserved(t *testing.T) {
 		t.Skip("original test is Unix-only")
 	}
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "target"), []byte("bytes"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "target"), []byte("bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("target", filepath.Join(root, "link")); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"cp", "-P", "link", "copy"}, {"touch", "-h", "link"}, {"mkdir", "-m", "0777", "directory"}} {
+	for _, args := range [][]string{
+		{"cp", "-P", "link", "copy"},
+		{"touch", "-h", "link"},
+		{"mkdir", "-m", "0777", "directory"},
+	} {
 		result, output, stderr := utility(t, root, args[0], args[1:]...)
 		if result.Code != 0 {
 			t.Fatalf("%v: %d %q %q", args, result.Code, output, stderr)
@@ -195,7 +267,7 @@ func TestRelativeSymlinksAndExplicitDirectoryModesArePreserved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0777 {
+	if info.Mode().Perm() != 0o777 {
 		t.Fatalf("directory mode %o", info.Mode().Perm())
 	}
 }
@@ -205,10 +277,10 @@ func TestSearchEditAndCompareUtilitiesKeepTheirCLIAndLocalPaths(t *testing.T) {
 		t.Skip("decision 4: BSD sed requires an extension after -i")
 	}
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "tree"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "tree"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "tree/input"), []byte("apple\npear\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "tree/input"), []byte("apple\npear\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	result, output, stderr := utility(t, root, "grep", "-rn", "apple", "tree")
@@ -229,7 +301,7 @@ func TestSearchEditAndCompareUtilitiesKeepTheirCLIAndLocalPaths(t *testing.T) {
 	if err != nil || string(data) != "orange\npear\n" {
 		t.Fatalf("edited %q: %v", data, err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "other"), []byte("different\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "other"), []byte("different\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"diff", "cmp"} {
@@ -246,10 +318,20 @@ func TestSearchEditAndCompareUtilitiesKeepTheirCLIAndLocalPaths(t *testing.T) {
 
 func TestJqUsesFullFiltersFilesArgumentsAndInvocationEnvironment(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "input.json"), []byte(`[{"x":1},{"x":3}]`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "input.json"), []byte(`[{"x":1},{"x":3}]`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	result, output, stderr := utility(t, root, "jq", "-c", "--argjson", "min", "2", "map(select(.x > $min)) | .[].x", "input.json")
+	result, output, stderr := utility(
+		t,
+		root,
+		"jq",
+		"-c",
+		"--argjson",
+		"min",
+		"2",
+		"map(select(.x > $min)) | .[].x",
+		"input.json",
+	)
 	if result.Code != 0 || output != "3\n" {
 		t.Fatalf("jq %d %q %q", result.Code, output, stderr)
 	}
@@ -273,11 +355,15 @@ func TestJqUsesFullFiltersFilesArgumentsAndInvocationEnvironment(t *testing.T) {
 
 func TestRipgrepSearchesAndFiltersLocalFilesWithUpstreamOptions(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "tree"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "tree"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range map[string]string{".gitignore": "ignored\n", "ignored": "apple\n", "input": "apple\npear\nAPPLE\n"} {
-		if err := os.WriteFile(filepath.Join(root, "tree", name), []byte(data), 0600); err != nil {
+	for name, data := range map[string]string{
+		".gitignore": "ignored\n",
+		"ignored":    "apple\n",
+		"input":      "apple\npear\nAPPLE\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, "tree", name), []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

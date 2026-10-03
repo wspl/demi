@@ -71,7 +71,13 @@ func command(t *testing.T, d *testWorld, line ...string) (uint8, string, string)
 	memory := hosttest.NewMemoryPort(nil)
 	d.RPC = memory
 	reply, err := d.plugin.Call(t.Context(), &plugin.RequestCommand{User: "u1", Invocation: host.RPCInvocation{
-		Path: parsed.Path[1:], Argv: line, Args: args, JSON: parsed.JSON, CWD: "/workspace", Env: map[string]string{}, Context: hosttest.CommandContext(),
+		Path:    parsed.Path[1:],
+		Argv:    line,
+		Args:    args,
+		JSON:    parsed.JSON,
+		CWD:     "/workspace",
+		Env:     map[string]string{},
+		Context: hosttest.CommandContext(),
 	}}, d.Port())
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +108,11 @@ func pageState(t *testing.T, d *testWorld) expose.ExposeState {
 
 func pageCall(t *testing.T, d *testWorld, method string, params json.RawMessage) (json.RawMessage, error) {
 	t.Helper()
-	reply, err := d.plugin.Call(t.Context(), &plugin.RequestPageCall{User: "u1", Method: method, Params: params}, d.Port())
+	reply, err := d.plugin.Call(
+		t.Context(),
+		&plugin.RequestPageCall{User: "u1", Method: method, Params: params},
+		d.Port(),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +139,13 @@ func TestExposesKnownByNumbersNeverGivenTwice(t *testing.T) {
 	}
 	d.Now = minutes(t, 2)
 	_, listed, _ := command(t, d, "expose", "list")
-	want = fmt.Sprintf("Expose  Device  Address         Expires  URL\n1       laptop  127.0.0.1:5173  58 min   %s\n2       ci      127.0.0.1:8080  59 min   %s\n", url, d.LiveExposes()[1].URL)
+	want = fmt.Sprintf(
+		"Expose  Device  Address         Expires  URL\n"+
+			"1       laptop  127.0.0.1:5173  58 min   %s\n"+
+			"2       ci      127.0.0.1:8080  59 min   %s\n",
+		url,
+		d.LiveExposes()[1].URL,
+	)
 	if listed != want {
 		t.Fatalf("list = %q, want %q", listed, want)
 	}
@@ -138,7 +154,8 @@ func TestExposesKnownByNumbersNeverGivenTwice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines.Exposes) != 2 || lines.Exposes[0].Number != 1 || lines.Exposes[1].Device != "ci" || strings.Contains(listed, `"id"`) {
+	if len(lines.Exposes) != 2 || lines.Exposes[0].Number != 1 || lines.Exposes[1].Device != "ci" ||
+		strings.Contains(listed, `"id"`) {
 		t.Fatal(listed)
 	}
 	_, renewed, _ := command(t, d, "expose", "renew", "1")
@@ -170,7 +187,16 @@ func TestAddRefusals(t *testing.T) {
 		args   []string
 		reason string
 	}{
-		{[]string{"expose", "add", "8080", "--host", "nope"}, "host nope is not reachable from this conversation (see `demi host list`)"},
+		{
+			[]string{
+				"expose",
+				"add",
+				"8080",
+				"--host",
+				"nope",
+			},
+			"host nope is not reachable from this conversation (see `demi host list`)",
+		},
 		{[]string{"expose", "add", "8080", "--host", "ci"}, "the device is offline; connect it before exposing a service"},
 		{[]string{"expose", "add", "localhost"}, "must be host:port or a port, the port 1 to 65535"},
 	} {
@@ -199,7 +225,11 @@ func TestPageStateRenewAndRemoveByID(t *testing.T) {
 		t.Fatal(s)
 	}
 	entry := s.Exposes[0]
-	if entry.ID != record.ID || entry.Number != 1 || entry.DeviceID != "device-laptop" || entry.DeviceName != "laptop" || entry.Address != "127.0.0.1:5173" || entry.URL != record.URL || entry.ExpiresAt != minutes(t, 60) {
+	if entry.ID != record.ID || entry.Number != 1 || entry.DeviceID != "device-laptop" ||
+		entry.DeviceName != "laptop" ||
+		entry.Address != "127.0.0.1:5173" ||
+		entry.URL != record.URL ||
+		entry.ExpiresAt != minutes(t, 60) {
 		t.Fatal(entry)
 	}
 	d.Now = minutes(t, 30)

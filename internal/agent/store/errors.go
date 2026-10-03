@@ -17,9 +17,12 @@ const (
 // Error describes a store failure and preserves its underlying cause.
 // Errors compare by Kind through errors.Is; errors.As exposes the details.
 type Error struct {
-	Kind    ErrorKind
+	// Kind classifies the store failure.
+	Kind ErrorKind
+	// Message holds the failure details shown to the user.
 	Message string
-	Cause   error
+	// Cause retains the underlying operation error.
+	Cause error
 }
 
 // ErrInvalidated means the command storage handle is no longer current.

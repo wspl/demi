@@ -12,18 +12,11 @@ type Factory struct{ commands *plugin.CommandPlugin }
 // New constructs and validates the todo command declarations.
 func New() (*Factory, error) {
 	var children []host.Declared
-	listOutput, err := declare.NewSchema(TodoListJSONSchema())
+	list, err := listCommand()
 	if err != nil {
 		return nil, err
 	}
-	children = append(children, host.Leaf(declare.Leaf[declare.NativeOperation]{
-		Name:          "list",
-		Summary:       "List todos for the current agent session.",
-		SuccessOutput: new("writes the session todo list as raw text, or JSON matching { todos } when --json is passed"),
-		FailureOutput: new("writes storage or validation errors to stderr and exits non-zero"),
-		Output:        &declare.LeafOutput{JSON: listOutput},
-		Kind:          &declare.RPC[declare.NativeOperation]{},
-	}, host.RPCHandlerFunc(list)))
+	children = append(children, list)
 	changedOutput, err := declare.NewSchema(OneTodoJSONSchema())
 	if err != nil {
 		return nil, err
@@ -70,7 +63,10 @@ func New() (*Factory, error) {
 		Output:        &declare.LeafOutput{JSON: changedOutput},
 		Kind:          &declare.RPC[declare.NativeOperation]{},
 	}, host.TypedRPC(DecodeDoneArgs, done)))
-	commands, err := plugin.NewCommandPlugin(plugin.PlacementDemi, []host.Declared{host.Group("todo", "Manage an agent-session-scoped task list for coding work.", children...)})
+	commands, err := plugin.NewCommandPlugin(
+		plugin.PlacementDemi,
+		[]host.Declared{host.Group("todo", "Manage an agent-session-scoped task list for coding work.", children...)},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +75,30 @@ func New() (*Factory, error) {
 
 // Manifest returns the plugin's declarations.
 func (f *Factory) Manifest() plugin.Manifest {
-	return plugin.Manifest{ID: "todo", Name: "Todo list", Description: "A task list the agent keeps for each conversation, with `demi todo`.", Commands: f.commands.ManifestCommands()}
+	return plugin.Manifest{
+		ID:          "todo",
+		Name:        "Todo list",
+		Description: "A task list the agent keeps for each conversation, with `demi todo`.",
+		Commands:    f.commands.ManifestCommands(),
+	}
 }
 
 // Instance returns the stateless todo command dispatcher.
 func (f *Factory) Instance() plugin.Plugin { return f.commands }
+
+func listCommand() (host.Declared, error) {
+	listOutput, err := declare.NewSchema(TodoListJSONSchema())
+	if err != nil {
+		return host.Declared{}, err
+	}
+	return host.Leaf(declare.Leaf[declare.NativeOperation]{
+		Name:    "list",
+		Summary: "List todos for the current agent session.",
+		SuccessOutput: new(
+			"writes the session todo list as raw text, or JSON matching { todos } when --json is passed",
+		),
+		FailureOutput: new("writes storage or validation errors to stderr and exits non-zero"),
+		Output:        &declare.LeafOutput{JSON: listOutput},
+		Kind:          &declare.RPC[declare.NativeOperation]{},
+	}, host.RPCHandlerFunc(list)), nil
+}

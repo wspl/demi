@@ -43,7 +43,13 @@ func startBrowserProgram(t *testing.T, home, temporary string) *browserProgram {
 	if err != nil {
 		t.Fatal(err)
 	}
-	process, err := cmdsdktest.Start(t.Context(), t, path, []string{"--command-service"}, []string{"HOME=" + home, "TMPDIR=" + temporary})
+	process, err := cmdsdktest.Start(
+		t.Context(),
+		t,
+		path,
+		[]string{"--command-service"},
+		[]string{"HOME=" + home, "TMPDIR=" + temporary},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +97,11 @@ func startBrowserProgram(t *testing.T, home, temporary string) *browserProgram {
 }
 
 // exchange collects an SDK command and rejects unexpected input pulls.
-func exchangeBrowser(t *testing.T, client *cmdsdk.Client, request commandwire.Invocation) (commandwire.Completion, []byte, []byte) {
+func exchangeBrowser(
+	t *testing.T,
+	client *cmdsdk.Client,
+	request commandwire.Invocation,
+) (commandwire.Completion, []byte, []byte) {
 	t.Helper()
 	input, output, err := client.Invoke(t.Context(), request)
 	if err != nil {
@@ -130,6 +140,7 @@ func browserRecords(t *testing.T, output *cmdsdk.CommandOutput) (commandwire.Com
 	}
 	return *completion, stdout, stderr
 }
+
 func (p *browserProgram) call(t *testing.T, name, args string) []byte {
 	t.Helper()
 	request := invocation(name, args, "service-program").Request
@@ -140,6 +151,7 @@ func (p *browserProgram) call(t *testing.T, name, args string) []byte {
 	}
 	return stdout
 }
+
 func (p *browserProgram) download(t *testing.T) string {
 	t.Helper()
 	path, err := filepath.Abs("testdata/download.html")
@@ -162,7 +174,7 @@ func (p *browserProgram) download(t *testing.T) string {
 func TestChromeKeepsDirectoriesApartWhateverServiceHomeAndTemporaryDirectory(t *testing.T) {
 	scratch, home := t.TempDir(), t.TempDir()
 	temporary := filepath.Join(scratch, strings.Repeat("t", max(1, 90-len(scratch)-1)))
-	if err := os.Mkdir(temporary, 0700); err != nil {
+	if err := os.Mkdir(temporary, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	service := startBrowserProgram(t, home, temporary)
@@ -287,7 +299,15 @@ func TestResidentConversationBrowserCommandsShareStateAndRetire(t *testing.T) {
 	p.call(t, "goto", browserArgs(t, `{"tab":$0,"url":$1}`, tab, "file://"+path+"?navigated"))
 	p.call(t, "fill", browserArgs(t, `{"tab":$0,"css":"#email","text":"浏览器@example.test"}`, tab))
 	p.call(t, "click", browserArgs(t, `{"tab":$0,"css":"#normal"}`, tab))
-	expectValue(t, observedField(t, p.call(t, "read", browserArgs(t, `{"tab":$0,"css":"#email","property":"value"}`, tab)), "value"), "浏览器@example.test")
+	expectValue(
+		t,
+		observedField(
+			t,
+			p.call(t, "read", browserArgs(t, `{"tab":$0,"css":"#email","property":"value"}`, tab)),
+			"value",
+		),
+		"浏览器@example.test",
+	)
 	for _, test := range []struct{ name, args string }{{"screenshot", `{"tab":$0,"output":"browser.png"}`}, {"screenshot", `{"tab":$0,"output":"clip.png","clip":"0,0,100,80"}`}, {"probe", `{"tab":$0,"xy":"30,30","include-non-interactable":true,"output":"probe.png"}`}} {
 		result := p.call(t, test.name, browserArgs(t, test.args, tab))
 		if test.name == "screenshot" {
@@ -326,7 +346,8 @@ func TestResidentConversationBrowserCommandsShareStateAndRetire(t *testing.T) {
 		if err != nil || completion.ExitCode != test.exit || string(failure.Error.Code) != test.code {
 			t.Fatalf("%+v %s %v", completion, stderr, err)
 		}
-		if test.name == "key" && (failure.Error.Details == nil || failure.Error.Details.Action == nil || *failure.Error.Details.Action != "not_started") {
+		if test.name == "key" &&
+			(failure.Error.Details == nil || failure.Error.Details.Action == nil || *failure.Error.Details.Action != "not_started") {
 			t.Fatalf("invalid key details: %s", stderr)
 		}
 	}
@@ -339,7 +360,10 @@ func TestResidentConversationBrowserCommandsShareStateAndRetire(t *testing.T) {
 		request.JSON = new(false)
 		completion, stdout, stderr := exchangeBrowser(t, p.process.Client, request)
 		if name == "key" {
-			if completion.ExitCode != 2 || !bytes.HasPrefix(stderr, []byte("Error: invalid_input\n")) || !bytes.Contains(stderr, []byte("Tab: "+strings.Trim(string(tab), "\"")+"\n")) || !bytes.Contains(stderr, []byte("Action: not_started.")) || bytes.Contains(stderr, []byte("Details: {")) {
+			if completion.ExitCode != 2 || !bytes.HasPrefix(stderr, []byte("Error: invalid_input\n")) ||
+				!bytes.Contains(stderr, []byte("Tab: "+strings.Trim(string(tab), "\"")+"\n")) ||
+				!bytes.Contains(stderr, []byte("Action: not_started.")) ||
+				bytes.Contains(stderr, []byte("Details: {")) {
 				t.Fatalf("%+v %s", completion, stderr)
 			}
 		} else if completion.ExitCode != 0 || !bytes.Contains(stdout, []byte("[checked=false]")) || !bytes.Contains(stdout, []byte(`[value="浏览器@example.test"]`)) || !bytes.Contains(stdout, []byte("[protected]")) || bytes.Contains(stdout, []byte("fixture-secret")) {
@@ -365,7 +389,10 @@ func TestResidentConversationBrowserCommandsShareStateAndRetire(t *testing.T) {
 	}
 	expectValue(t, stdout, json.RawMessage(`{"conversations":[]}`))
 	p.call(t, "open", `{"url":"about:blank"}`)
-	input, output, err = p.process.Client.Conversation(t.Context(), &commandwire.ConversationRelease{Conversation: "service-program"})
+	input, output, err = p.process.Client.Conversation(
+		t.Context(),
+		&commandwire.ConversationRelease{Conversation: "service-program"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

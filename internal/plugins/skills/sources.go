@@ -64,7 +64,10 @@ func switchSkills(all sources, id string, chosen map[string]bool, enabled bool) 
 	changed.Skills = slices.Clone(changed.Skills)
 	for _, name := range slices.Sorted(maps.Keys(chosen)) {
 		if !slices.ContainsFunc(changed.Skills, func(skill userSkill) bool { return skill.Name == name }) {
-			return source{}, &plugin.ErrorRefused{Reason: "skill_not_found", Message: fmt.Sprintf("The source has no skill \"%s\"", name)}
+			return source{}, &plugin.ErrorRefused{
+				Reason:  "skill_not_found",
+				Message: fmt.Sprintf("The source has no skill \"%s\"", name),
+			}
 		}
 	}
 	if enabled {
@@ -84,10 +87,16 @@ func switchSkills(all sources, id string, chosen map[string]bool, enabled bool) 
 			}
 			directory := directoryName(skill.Name)
 			if origin, exists := taken[directory]; exists {
-				return source{}, &plugin.ErrorRefused{Reason: "skill_name_taken", Message: fmt.Sprintf("A skill named \"%s\" from %s is on; turn it off first", skill.Name, origin)}
+				return source{}, &plugin.ErrorRefused{
+					Reason:  "skill_name_taken",
+					Message: fmt.Sprintf("A skill named \"%s\" from %s is on; turn it off first", skill.Name, origin),
+				}
 			}
 			if turning[directory] {
-				return source{}, &plugin.ErrorRefused{Reason: "skill_name_taken", Message: fmt.Sprintf("%s has two skills named \"%s\"; turn on one", changed.Origin, skill.Name)}
+				return source{}, &plugin.ErrorRefused{
+					Reason:  "skill_name_taken",
+					Message: fmt.Sprintf("%s has two skills named \"%s\"; turn on one", changed.Origin, skill.Name),
+				}
 			}
 			turning[directory] = true
 		}
@@ -122,7 +131,10 @@ func sourceDirectories(all sources) []plugin.HostDirectory {
 	for _, id := range slices.Sorted(maps.Keys(all)) {
 		for _, skill := range all[id].source.Skills {
 			if skill.Enabled {
-				directories = append(directories, plugin.HostDirectory{Name: directoryName(skill.Name), Files: slices.Clone(skill.Files)})
+				directories = append(
+					directories,
+					plugin.HostDirectory{Name: directoryName(skill.Name), Files: slices.Clone(skill.Files)},
+				)
 			}
 		}
 	}
@@ -159,7 +171,8 @@ func directoryName(name string) string {
 }
 
 func validName(name string) bool {
-	if len(name) < 1 || len(name) > 64 || strings.HasPrefix(name, "-") || strings.HasSuffix(name, "-") || strings.Contains(name, "--") {
+	if len(name) < 1 || len(name) > 64 || strings.HasPrefix(name, "-") || strings.HasSuffix(name, "-") ||
+		strings.Contains(name, "--") {
 		return false
 	}
 	for _, c := range []byte(name) {
@@ -185,9 +198,30 @@ func pageState(all sources, fetching map[string]bool) SkillsState {
 		value := all[id].source
 		skills := make([]SkillState, 0, len(value.Skills))
 		for _, skill := range value.Skills {
-			skills = append(skills, SkillState{Name: skill.Name, Description: skill.Description, Warnings: slices.Clone(skill.Warnings), Enabled: skill.Enabled, DisableModelInvocation: skill.DisableModelInvocation})
+			skills = append(
+				skills,
+				SkillState{
+					Name:                   skill.Name,
+					Description:            skill.Description,
+					Warnings:               slices.Clone(skill.Warnings),
+					Enabled:                skill.Enabled,
+					DisableModelInvocation: skill.DisableModelInvocation,
+				},
+			)
 		}
-		state.Sources = append(state.Sources, SourceState{ID: id, Origin: value.Origin, Commit: value.Commit, FetchedAt: value.FetchedAt, Fetching: fetching[id], Failure: value.Failure, Skills: skills, Skipped: slices.Clone(value.Skipped)})
+		state.Sources = append(
+			state.Sources,
+			SourceState{
+				ID:        id,
+				Origin:    value.Origin,
+				Commit:    value.Commit,
+				FetchedAt: value.FetchedAt,
+				Fetching:  fetching[id],
+				Failure:   value.Failure,
+				Skills:    skills,
+				Skipped:   slices.Clone(value.Skipped),
+			},
+		)
 	}
 	return state
 }

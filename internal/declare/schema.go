@@ -108,6 +108,14 @@ func (s *Schema) schemaFailures(failure *jsonschema.ValidationError, order map[s
 	if len(failure.InstanceLocation) != 0 {
 		name = "\"" + strings.Join(failure.InstanceLocation, ".") + "\""
 	}
+	return s.schemaConstraintFailures(failure, order, name)
+}
+
+func (s *Schema) schemaConstraintFailures(
+	failure *jsonschema.ValidationError,
+	order map[string][]string,
+	name string,
+) []string {
 	var message string
 	switch reason := failure.ErrorKind.(type) {
 	case *kind.Schema, *kind.Group, *kind.Reference, *kind.AllOf:
@@ -120,18 +128,7 @@ func (s *Schema) schemaFailures(failure *jsonschema.ValidationError, order map[s
 	case *kind.Required:
 		return requiredFailures(reason.Missing)
 	case *kind.Type:
-		if len(reason.Want) == 1 {
-			message = fmt.Sprintf("%s is not of type %q", name, reason.Want[0])
-		} else {
-			types := slices.Clone(reason.Want)
-			order := []string{"null", "boolean", "integer", "number", "string", "array", "object"}
-			slices.SortFunc(types, func(a, b string) int { return cmp.Compare(slices.Index(order, a), slices.Index(order, b)) })
-			quoted := make([]string, len(types))
-			for i, value := range types {
-				quoted[i] = fmt.Sprintf("%q", value)
-			}
-			message = name + " is not of types " + strings.Join(quoted, ", ")
-		}
+		message = typeFailure(name, reason)
 	case *kind.MinLength:
 		message = fmt.Sprintf("%s is shorter than %d character%s", name, reason.Want, plural(reason.Want))
 	case *kind.MaxLength:
@@ -151,33 +148,38 @@ func (s *Schema) schemaFailures(failure *jsonschema.ValidationError, order map[s
 		if value := s.schemaAt(append(schemaPath(failure.SchemaURL), keyword)); value == true {
 			keyword = "minimum"
 		}
-		message = name + " is less than or equal to the minimum of " + s.literal(append(schemaPath(failure.SchemaURL), keyword))
+		message = name + " is less than or equal to the minimum of " + s.literal(
+			append(schemaPath(failure.SchemaURL), keyword),
+		)
 	case *kind.ExclusiveMaximum:
 		keyword := "exclusiveMaximum"
 		if value := s.schemaAt(append(schemaPath(failure.SchemaURL), keyword)); value == true {
 			keyword = "maximum"
 		}
-		message = name + " is greater than or equal to the maximum of " + s.literal(append(schemaPath(failure.SchemaURL), keyword))
+		message = name + " is greater than or equal to the maximum of " + s.literal(
+			append(schemaPath(failure.SchemaURL), keyword),
+		)
+	default:
+		return s.schemaChoiceFailures(failure, order, name)
+	}
+	return []string{message}
+}
+
+func (s *Schema) schemaChoiceFailures(
+	failure *jsonschema.ValidationError,
+	order map[string][]string,
+	name string,
+) []string {
+	var message string
+	switch reason := failure.ErrorKind.(type) {
 	case *kind.Pattern:
 		message = fmt.Sprintf("%s does not match \"%s\"", name, reason.Want)
 	case *kind.Enum:
-		options := make([]string, 0, len(reason.Want))
-		for i := range reason.Want {
-			options = append(options, s.literal(append(schemaPath(failure.SchemaURL), "enum", strconv.Itoa(i))))
-		}
-		if len(options) > 3 {
-			options = append(options[:2], fmt.Sprintf("%d other candidates", len(options)-2))
-		}
-		message = name + " is not one of "
-		if len(options) > 1 {
-			message += strings.Join(options[:len(options)-1], ", ") + " or "
-		}
-		if len(options) > 0 {
-			message += options[len(options)-1]
-		}
+		message = s.enumFailure(name, failure, reason)
 	case *kind.AdditionalProperties:
 		parent, _ := s.schemaAt(schemaPath(failure.SchemaURL)).(map[string]any)
-		if parent["properties"] == nil && parent["patternProperties"] == nil && parent["additionalProperties"] == false {
+		if parent["properties"] == nil && parent["patternProperties"] == nil &&
+			parent["additionalProperties"] == false {
 			return []string{"False schema does not allow " + name}
 		}
 		message = unexpectedProperties("Additional", reason.Properties, failure.InstanceLocation, order)
@@ -197,6 +199,19 @@ func (s *Schema) schemaFailures(failure *jsonschema.ValidationError, order map[s
 		message = name + " has non-unique elements"
 	case *kind.Format:
 		message = fmt.Sprintf("%s is not a %q", name, reason.Want)
+	default:
+		return s.schemaCollectionFailures(failure, order, name)
+	}
+	return []string{message}
+}
+
+func (s *Schema) schemaCollectionFailures(
+	failure *jsonschema.ValidationError,
+	order map[string][]string,
+	name string,
+) []string {
+	var message string
+	switch reason := failure.ErrorKind.(type) {
 	case *kind.MinProperties:
 		suffix := "ies"
 		if reason.Want == 1 {
@@ -224,6 +239,19 @@ func (s *Schema) schemaFailures(failure *jsonschema.ValidationError, order map[s
 		return requiredFailures(reason.Missing)
 	case *kind.DependentRequired:
 		return requiredFailures(reason.Missing)
+	default:
+		return s.schemaContentFailures(failure, order, name)
+	}
+	return []string{message}
+}
+
+func (s *Schema) schemaContentFailures(
+	failure *jsonschema.ValidationError,
+	order map[string][]string,
+	name string,
+) []string {
+	var message string
+	switch reason := failure.ErrorKind.(type) {
 	case *kind.ContentEncoding:
 		message = fmt.Sprintf("%s is not compliant with %q content encoding", name, reason.Want)
 	case *kind.ContentMediaType:
@@ -238,15 +266,7 @@ func (s *Schema) schemaFailures(failure *jsonschema.ValidationError, order map[s
 		}
 		return messages
 	case *kind.PropertyNames:
-		var messages []string
-		children := s.orderedFailures(flattenChildren(failure), order)
-		for _, child := range children {
-			rendered := s.schemaFailures(child, order)
-			for _, text := range rendered {
-				messages = append(messages, strings.Replace(text, "value", strconv.Quote(reason.Property), 1))
-			}
-		}
-		return messages
+		return s.propertyNameFailures(failure, reason, order)
 	case *unevaluatedFailure:
 		if reason.items {
 			message = fmt.Sprintf("Unevaluated items are not allowed (%d items)", len(reason.names))
@@ -290,7 +310,10 @@ func flattenChildren(failure *jsonschema.ValidationError) []*jsonschema.Validati
 }
 
 // orderedFailures applies Rust's aggregation and diagnostic traversal order.
-func (s *Schema) orderedFailures(failures []*jsonschema.ValidationError, order map[string][]string) []*jsonschema.ValidationError {
+func (s *Schema) orderedFailures(
+	failures []*jsonschema.ValidationError,
+	order map[string][]string,
+) []*jsonschema.ValidationError {
 	failures = aggregateFailures(failures)
 	slices.SortStableFunc(failures, func(a, b *jsonschema.ValidationError) int {
 		return cmp.Compare(s.diagnosticRank(a, order), s.diagnosticRank(b, order))
@@ -325,4 +348,57 @@ func unexpectedProperties(keyword string, fields, location []string, order map[s
 		suffix = " was unexpected)"
 	}
 	return keyword + " properties are not allowed (" + strings.Join(names, ", ") + suffix
+}
+
+func typeFailure(name string, reason *kind.Type) string {
+	var message string
+	if len(reason.Want) == 1 {
+		message = fmt.Sprintf("%s is not of type %q", name, reason.Want[0])
+	} else {
+		types := slices.Clone(reason.Want)
+		order := []string{"null", "boolean", "integer", "number", "string", "array", "object"}
+		slices.SortFunc(
+			types,
+			func(a, b string) int { return cmp.Compare(slices.Index(order, a), slices.Index(order, b)) },
+		)
+		quoted := make([]string, len(types))
+		for i, value := range types {
+			quoted[i] = fmt.Sprintf("%q", value)
+		}
+		message = name + " is not of types " + strings.Join(quoted, ", ")
+	}
+	return message
+}
+
+func (s *Schema) enumFailure(name string, failure *jsonschema.ValidationError, reason *kind.Enum) string {
+	var message string
+	options := make([]string, 0, len(reason.Want))
+	for i := range reason.Want {
+		options = append(options, s.literal(append(schemaPath(failure.SchemaURL), "enum", strconv.Itoa(i))))
+	}
+	if len(options) > 3 {
+		options = append(options[:2], fmt.Sprintf("%d other candidates", len(options)-2))
+	}
+	message = name + " is not one of "
+	if len(options) > 1 {
+		message += strings.Join(options[:len(options)-1], ", ") + " or "
+	}
+	if len(options) > 0 {
+		message += options[len(options)-1]
+	}
+	return message
+}
+
+func (s *Schema) propertyNameFailures(
+	failure *jsonschema.ValidationError, reason *kind.PropertyNames, order map[string][]string,
+) []string {
+	var messages []string
+	children := s.orderedFailures(flattenChildren(failure), order)
+	for _, child := range children {
+		rendered := s.schemaFailures(child, order)
+		for _, text := range rendered {
+			messages = append(messages, strings.Replace(text, "value", strconv.Quote(reason.Property), 1))
+		}
+	}
+	return messages
 }

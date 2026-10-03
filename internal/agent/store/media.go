@@ -26,7 +26,10 @@ type BlobStore interface {
 type Held interface{ held() }
 
 // HeldBytes carries a medium's bytes.
-type HeldBytes struct{ Bytes core.B64Bytes }
+type HeldBytes struct {
+	// Bytes holds the medium contents.
+	Bytes core.B64Bytes
+}
 
 // HeldMissing records that the namespace does not hold the medium's blob.
 type HeldMissing struct{}
@@ -86,7 +89,8 @@ func (h *HeldMedia) Select(blocks []core.Block) HeldMedia {
 // Treat its blocks and the bytes returned by Held as immutable.
 type ModelView struct {
 	// Start is where the blocks start in the transcript.
-	Start  int
+	Start int
+	// Blocks contains immutable transcript snapshots in replay order.
 	Blocks []core.Block
 	media  HeldMedia
 }
@@ -147,7 +151,18 @@ func References(block core.Block) []core.BlobRef {
 			}
 		}
 		return refs
-	case *core.ContextBlock, *core.WakeupBlock, *core.AgentMessageBlock, *core.ResumeBlock, *core.AbortBlock, *core.ThinkingBlock, *core.RedactedThinkingBlock, *core.TextBlock, *core.ResponseBlock, *core.ErrorBlock, *core.CompactionBoundaryBlock, *core.CompactionMarkerBlock:
+	case *core.ContextBlock,
+		*core.WakeupBlock,
+		*core.AgentMessageBlock,
+		*core.ResumeBlock,
+		*core.AbortBlock,
+		*core.ThinkingBlock,
+		*core.RedactedThinkingBlock,
+		*core.TextBlock,
+		*core.ResponseBlock,
+		*core.ErrorBlock,
+		*core.CompactionBoundaryBlock,
+		*core.CompactionMarkerBlock:
 		return nil
 	}
 	return nil
@@ -167,7 +182,9 @@ const (
 
 // BlockReference is a blob indexed by the store for retention.
 type BlockReference struct {
-	Blob   core.BlobRef
+	// Blob identifies the referenced bytes.
+	Blob core.BlobRef
+	// Holder identifies the retention category.
 	Holder Holder
 }
 
@@ -188,7 +205,11 @@ func BlockReferences(block core.Block) []BlockReference {
 			for _, file := range *view.Files {
 				for _, edit := range file.Edits {
 					if edit.Copies != nil {
-						refs = append(refs, BlockReference{Blob: edit.Copies.Original, Holder: EditCopy}, BlockReference{Blob: edit.Copies.Modified, Holder: EditCopy})
+						refs = append(
+							refs,
+							BlockReference{Blob: edit.Copies.Original, Holder: EditCopy},
+							BlockReference{Blob: edit.Copies.Modified, Holder: EditCopy},
+						)
 					}
 				}
 			}
@@ -224,7 +245,11 @@ func ContentReferences(content []core.UserContentBlock) []core.BlobRef {
 
 // PersistResult stores tool media once as it enters the transcript and holds its
 // bytes. A failed put becomes a gone part containing the store's error.
-func PersistResult(ctx context.Context, output []provider.ResultPart, blobs BlobStore) ([]core.ToolResultContentBlock, HeldMedia) {
+func PersistResult(
+	ctx context.Context,
+	output []provider.ResultPart,
+	blobs BlobStore,
+) ([]core.ToolResultContentBlock, HeldMedia) {
 	held := HeldMedia{}
 	stored := make([]core.ToolResultContentBlock, 0, len(output))
 	for _, part := range output {
@@ -243,7 +268,10 @@ func PersistResult(ctx context.Context, output []provider.ResultPart, blobs Blob
 		}
 		blob, err := blobs.Put(ctx, data.Data)
 		if err != nil {
-			stored = append(stored, &core.ToolGone{Kind: kind, MediaType: data.MediaType, Cause: &core.NotStored{Error: err.Error()}})
+			stored = append(
+				stored,
+				&core.ToolGone{Kind: kind, MediaType: data.MediaType, Cause: &core.NotStored{Error: err.Error()}},
+			)
 			continue
 		}
 		held.Hold(blob, data.Data)

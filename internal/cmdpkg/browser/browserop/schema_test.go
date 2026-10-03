@@ -104,7 +104,11 @@ func TestSchemasMatchRustSnapshot(t *testing.T) {
 		"WebmcpListResult":     browserop.WebmcpListResultJSONSchema,
 	}
 	if len(reference) != 80 || len(schemas) != len(reference) {
-		t.Fatalf("schema coverage: got %d, reference %d, want 80 unique schemas across 47 leaves", len(schemas), len(reference))
+		t.Fatalf(
+			"schema coverage: got %d, reference %d, want 80 unique schemas across 47 leaves",
+			len(schemas),
+			len(reference),
+		)
 	}
 	for name := range reference {
 		if schemas[name] == nil {
@@ -116,7 +120,11 @@ func TestSchemasMatchRustSnapshot(t *testing.T) {
 			// Only the declaration builder's timeout help differs from the type.
 			want := string(reference[name])
 			for _, deadline := range []string{"30000", "300000"} {
-				want = strings.ReplaceAll(want, "Whole operation deadline in milliseconds; default "+deadline+", maximum 300000.", "Whole operation deadline in milliseconds")
+				want = strings.ReplaceAll(
+					want,
+					"Whole operation deadline in milliseconds; default "+deadline+", maximum 300000.",
+					"Whole operation deadline in milliseconds",
+				)
 			}
 			var compact bytes.Buffer
 			if err := json.Compact(&compact, []byte(want)); err != nil {
