@@ -1,6 +1,6 @@
 package usershard
 
-//revive:disable:unused-parameter
+import "fmt"
 
 // ForkErrorKind identifies why a Fork was refused.
 type ForkErrorKind uint8
@@ -28,10 +28,26 @@ type ForkRefusal struct {
 }
 
 // Error returns the refusal in the reference spelling.
-func (e *ForkRefusal) Error() string { panic("not written: b-usershard") }
+func (e *ForkRefusal) Error() string {
+	switch e.Kind {
+	case ForkSourceNotFound:
+		return "No such conversation"
+	case ForkConflict:
+		return "The Fork's id belongs to another creation attempt"
+	case ForkUnavailable:
+		return "Conversation id is unavailable"
+	case ForkTarget:
+		return e.Message
+	case ForkStorage:
+		return fmt.Sprintf("%v", e.Err)
+	case ForkFailed:
+		return e.Message
+	}
+	return e.Message
+}
 
 // Unwrap returns the underlying failure, if any.
-func (e *ForkRefusal) Unwrap() error { panic("not written: b-usershard") }
+func (e *ForkRefusal) Unwrap() error { return e.Err }
 
 // TitleErrorKind identifies why a title was refused.
 type TitleErrorKind uint8
@@ -59,10 +75,26 @@ type TitleRefusal struct {
 }
 
 // Error returns the refusal in the reference spelling.
-func (e *TitleRefusal) Error() string { panic("not written: b-usershard") }
+func (e *TitleRefusal) Error() string {
+	switch e.Kind {
+	case TitleNotFound:
+		return "No such conversation"
+	case TitleArchived:
+		return "Restore the conversation before changing it"
+	case TitleProviderNotFound:
+		return "No such provider"
+	case TitleModelNotSelected:
+		return "Choose a model for the conversation first"
+	case TitleNoMessages:
+		return "The conversation has no message to title"
+	case TitleStorage:
+		return fmt.Sprintf("%v", e.Err)
+	}
+	return e.Message
+}
 
 // Unwrap returns the underlying failure, if any.
-func (e *TitleRefusal) Unwrap() error { panic("not written: b-usershard") }
+func (e *TitleRefusal) Unwrap() error { return e.Err }
 
 // ReloadErrorKind identifies why a tree was not reloaded.
 type ReloadErrorKind uint8
@@ -84,10 +116,20 @@ type ReloadRefusal struct {
 }
 
 // Error returns the refusal in the reference spelling.
-func (e *ReloadRefusal) Error() string { panic("not written: b-usershard") }
+func (e *ReloadRefusal) Error() string {
+	switch e.Kind {
+	case ReloadAccess:
+		return fmt.Sprintf("%v", e.Err)
+	case ReloadArchived:
+		return "The conversation is archived"
+	case ReloadWorking:
+		return "The conversation's agents are working; reload once they are done"
+	}
+	return e.Message
+}
 
 // Unwrap returns the underlying failure, if any.
-func (e *ReloadRefusal) Unwrap() error { panic("not written: b-usershard") }
+func (e *ReloadRefusal) Unwrap() error { return e.Err }
 
 // ServicesErrorKind identifies why shared services could not start.
 type ServicesErrorKind uint8
@@ -109,10 +151,20 @@ type ServicesError struct {
 }
 
 // Error returns the refusal in the reference spelling.
-func (e *ServicesError) Error() string { panic("not written: b-usershard") }
+func (e *ServicesError) Error() string {
+	switch e.Kind {
+	case ServicesHashing:
+		return fmt.Sprintf("password hashing cannot start: %v", e.Err)
+	case ServicesHTTP:
+		return fmt.Sprintf("the HTTP client cannot start: %v", e.Err)
+	case ServicesPlugins:
+		return fmt.Sprintf("the plugins cannot start: %v", e.Err)
+	}
+	return e.Message
+}
 
 // Unwrap returns the underlying failure, if any.
-func (e *ServicesError) Unwrap() error { panic("not written: b-usershard") }
+func (e *ServicesError) Unwrap() error { return e.Err }
 
 // CloseErrorKind identifies which database did not close.
 type CloseErrorKind uint8
@@ -132,10 +184,18 @@ type CloseError struct {
 }
 
 // Error returns the refusal in the reference spelling.
-func (e *CloseError) Error() string { panic("not written: b-usershard") }
+func (e *CloseError) Error() string {
+	switch e.Kind {
+	case CloseConversation:
+		return fmt.Sprintf("a conversation database did not close: %v", e.Err)
+	case CloseControl:
+		return fmt.Sprintf("the control database did not close: %v", e.Err)
+	}
+	return e.Message
+}
 
 // Unwrap returns the underlying failure, if any.
-func (e *CloseError) Unwrap() error { panic("not written: b-usershard") }
+func (e *CloseError) Unwrap() error { return e.Err }
 
 // UnavailableKind identifies why shard admission failed.
 type UnavailableKind uint8
@@ -155,7 +215,15 @@ type ShardUnavailable struct {
 }
 
 // Error returns the refusal in the reference spelling.
-func (e *ShardUnavailable) Error() string { panic("not written: b-usershard") }
+func (e *ShardUnavailable) Error() string {
+	switch e.Kind {
+	case ShardClosing:
+		return "the backend is shutting down"
+	case ShardFailed:
+		return "the shard call failed"
+	}
+	return e.Message
+}
 
 // Unwrap returns the underlying failure, if any.
-func (e *ShardUnavailable) Unwrap() error { panic("not written: b-usershard") }
+func (e *ShardUnavailable) Unwrap() error { return e.Err }
