@@ -55,36 +55,55 @@ func filesOnDevice(t *testing.T) *filesDevice {
 	wireMust(t, err)
 	conversationCreate(ctx, t, b, &s, filesConversation)
 	root := filepath.Join(paired.Runner.Home(), "work")
-	wireMust(t, os.MkdirAll(root, 0755))
+	wireMust(t, os.MkdirAll(root, 0o755))
 	control, err := h.ControlDatabase(ctx, t)
 	wireMust(t, err)
-	_, err = control.ExecContext(ctx, "INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at) VALUES ('workspace-1', ?1, ?2, ?3, 'work', 0, 0)", s.User.ID, paired.ID(), root)
+	_, err = control.ExecContext(
+		ctx,
+		"INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at) "+
+			"VALUES ('workspace-1', ?1, ?2, ?3, 'work', 0, 0)",
+		s.User.ID,
+		paired.ID(),
+		root,
+	)
 	wireMust(t, err)
-	_, err = control.ExecContext(ctx, "UPDATE conversations SET target_kind = 'workspace', target_workspace_id = 'workspace-1' WHERE id = ?1", filesConversation)
+	_, err = control.ExecContext(
+		ctx,
+		"UPDATE conversations SET target_kind = 'workspace', target_workspace_id = 'workspace-1' WHERE id = ?1",
+		filesConversation,
+	)
 	wireMust(t, err)
 	return &filesDevice{ctx, h, b, s, paired, root, control}
 }
 
 func (d *filesDevice) call(t *testing.T, method, route string, headers http.Header, body io.Reader) backendtest.Answer {
 	t.Helper()
-	response, err := d.backend.Response(d.ctx, method, "/api/conversations/"+filesConversation+route, &d.master, headers, body)
+	response, err := d.backend.Response(
+		d.ctx,
+		method,
+		"/api/conversations/"+filesConversation+route,
+		&d.master,
+		headers,
+		body,
+	)
 	wireMust(t, err)
 	answer, err := backendtest.ReadAnswer(d.ctx, response)
 	wireMust(t, err)
 	return answer
 }
+
 func (d *filesDevice) read(t *testing.T, route string) backendtest.Answer {
 	t.Helper()
 	return d.call(t, http.MethodGet, route, nil, nil)
 }
 
-// One paired runner, no model; startup is the principal cost.
+// TestFileDeleteProtectsHostDirectories uses one paired runner and no model; startup is the principal cost.
 func TestFileDeleteProtectsHostDirectories(t *testing.T) {
 	t.Parallel()
 	d := filesOnDevice(t)
-	wireMust(t, os.MkdirAll(filepath.Join(d.root, "photos/2024"), 0755))
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "photos/2024/a.jpg"), []byte("a"), 0644))
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "notes.md"), []byte("n"), 0644))
+	wireMust(t, os.MkdirAll(filepath.Join(d.root, "photos/2024"), 0o755))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "photos/2024/a.jpg"), []byte("a"), 0o644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "notes.md"), []byte("n"), 0o644))
 	remove := func(path string) backendtest.Answer {
 		return d.call(t, http.MethodDelete, "/fs?path="+url.QueryEscape(path), nil, nil)
 	}
@@ -108,7 +127,8 @@ func TestFileDeleteProtectsHostDirectories(t *testing.T) {
 	wireMust(t, d.backend.Close(d.ctx))
 }
 
-// Two paired runners; verifies ownership and attachment through HTTP, with no model.
+// TestFileAccessRequiresOwnedConversationAndAttachedHost uses two paired runners to verify ownership and
+// attachment through HTTP, with no model.
 func TestFileAccessRequiresOwnedConversationAndAttachedHost(t *testing.T) {
 	t.Parallel()
 	d := filesOnDevice(t)
@@ -125,7 +145,12 @@ func TestFileAccessRequiresOwnedConversationAndAttachedHost(t *testing.T) {
 	wireMust(t, err)
 	route := "/hosts/" + string(ci.ID()) + "/fs"
 	filesRefusal(t, d.read(t, route), 404, webapi.ErrorCodeHostNotAttached)
-	_, err = d.control.ExecContext(d.ctx, "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at) VALUES (?1, ?2, 'ci', NULL, 0)", filesConversation, ci.ID())
+	_, err = d.control.ExecContext(
+		d.ctx,
+		"INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at) VALUES (?1, ?2, 'ci', NULL, 0)",
+		filesConversation,
+		ci.ID(),
+	)
 	wireMust(t, err)
 	listing := d.read(t, route)
 	filesStatus(t, listing, 200)
@@ -137,7 +162,17 @@ func TestFileAccessRequiresOwnedConversationAndAttachedHost(t *testing.T) {
 	made := filepath.Join(ci.Runner.Home(), "made")
 	body, err := contract.EncodeJSON(webapi.CreateDirectory{Path: made})
 	wireMust(t, err)
-	filesStatus(t, d.call(t, http.MethodPost, route, http.Header{"Content-Type": []string{"application/json"}}, strings.NewReader(string(body))), 201)
+	filesStatus(
+		t,
+		d.call(
+			t,
+			http.MethodPost,
+			route,
+			http.Header{"Content-Type": []string{"application/json"}},
+			strings.NewReader(string(body)),
+		),
+		201,
+	)
 	info, err := os.Stat(made)
 	wireMust(t, err)
 	if !info.IsDir() {
@@ -158,17 +193,30 @@ func TestFileAccessRequiresOwnedConversationAndAttachedHost(t *testing.T) {
 	_, err = d.control.ExecContext(d.ctx, "UPDATE conversations SET archived = 1 WHERE id = ?1", filesConversation)
 	wireMust(t, err)
 	filesRefusal(t, d.read(t, "/fs"), 409, webapi.ErrorCodeConversationArchived)
-	filesRefusal(t, d.read(t, "/fs/raw?path="+url.QueryEscape(filepath.Join(d.root, "a.txt"))), 409, webapi.ErrorCodeConversationArchived)
+	filesRefusal(
+		t,
+		d.read(t, "/fs/raw?path="+url.QueryEscape(filepath.Join(d.root, "a.txt"))),
+		409,
+		webapi.ErrorCodeConversationArchived,
+	)
 	wireMust(t, d.backend.Close(d.ctx))
 }
 
-// One runner and a 64 MiB file exercise shutdown under transfer backpressure.
+// TestFileShutdownEndsOpenDownload uses one runner and a 64 MiB file to exercise shutdown under transfer
+// backpressure.
 func TestFileShutdownEndsOpenDownload(t *testing.T) {
 	t.Parallel()
 	d := filesOnDevice(t)
 	path := filepath.Join(d.root, "long.mp4")
-	wireMust(t, os.WriteFile(path, backendtest.Pattern(64*1024*1024, 0), 0644))
-	response, err := d.backend.Response(d.ctx, http.MethodGet, "/api/conversations/"+filesConversation+"/fs/raw?path="+url.QueryEscape(path), &d.master, nil, nil)
+	wireMust(t, os.WriteFile(path, backendtest.Pattern(64*1024*1024, 0), 0o644))
+	response, err := d.backend.Response(
+		d.ctx,
+		http.MethodGet,
+		"/api/conversations/"+filesConversation+"/fs/raw?path="+url.QueryEscape(path),
+		&d.master,
+		nil,
+		nil,
+	)
 	wireMust(t, err)
 	defer func() { wireMust(t, response.Body.Close()) }()
 	if response.StatusCode != 200 {
@@ -189,16 +237,26 @@ func TestFileShutdownEndsOpenDownload(t *testing.T) {
 // filesGit creates reference commits in the fixture repository.
 func filesGit(t *testing.T, d *filesDevice, args ...string) {
 	t.Helper()
-	cmd := exec.CommandContext(d.ctx, "git", append([]string{"-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"}, args...)...)
+	cmd := exec.CommandContext(
+		d.ctx,
+		"git",
+		append([]string{"-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"}, args...)...)
 	cmd.Dir = d.root
-	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@example.com", "GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@example.com")
+	cmd.Env = append(
+		os.Environ(),
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@example.com",
+	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, output)
 	}
 }
 
-// A real runner and about 21,000 directory entries exercise the wire size limit.
+// TestFilesWorkingTreeTextListingAndOffline uses a real runner and about 21,000 directory entries to exercise
+// the wire size limit.
 func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 	t.Parallel()
 	d := filesOnDevice(t)
@@ -210,12 +268,12 @@ func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 		t.Fatalf("non-repository: %+v", changes)
 	}
 	filesGit(t, d, "init", "-q", "-b", "main")
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "a.txt"), []byte("1\n2\n"), 0644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "a.txt"), []byte("1\n2\n"), 0o644))
 	filesGit(t, d, "add", ".")
 	filesGit(t, d, "commit", "-q", "-m", "first")
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "a.txt"), []byte("1\n2\n3\n"), 0644))
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "b.txt"), []byte("new\n"), 0644))
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "blob.bin"), []byte{0, 255, 1}, 0644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "a.txt"), []byte("1\n2\n3\n"), 0o644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "b.txt"), []byte("new\n"), 0o644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "blob.bin"), []byte{0, 255, 1}, 0o644))
 	changes, err = webapi.DecodeWorkingTreeChanges(d.read(t, "/changes").Body)
 	wireMust(t, err)
 	if !changes.Repository || changes.Truncated || changes.Head == nil || len(*changes.Head) != 40 {
@@ -223,11 +281,28 @@ func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 	}
 	_, err = hex.DecodeString(*changes.Head)
 	wireMust(t, err)
-	want := []runnerwire.GitChange{{Path: "a.txt", Status: " M", Kind: runnerwire.ChangeKindModified, Added: 1}, {Path: "b.txt", Status: "??", Kind: runnerwire.ChangeKindAdded, Added: 1}, {Path: "blob.bin", Status: "??", Kind: runnerwire.ChangeKindAdded}}
+	want := []runnerwire.GitChange{
+		{Path: "a.txt", Status: " M", Kind: runnerwire.ChangeKindModified, Added: 1},
+		{Path: "b.txt", Status: "??", Kind: runnerwire.ChangeKindAdded, Added: 1},
+		{Path: "blob.bin", Status: "??", Kind: runnerwire.ChangeKindAdded},
+	}
 	if !reflect.DeepEqual(changes.Files, want) {
 		t.Fatalf("changes: %+v, want %+v", changes.Files, want)
 	}
-	for _, c := range []struct{ path, original, modified string }{{"a.txt", "1\n2\n", "1\n2\n3\n"}, {"b.txt", "", "new\n"}} {
+	for _, c := range []struct {
+		path, original, modified string
+	}{
+		{
+			"a.txt",
+			"1\n2\n",
+			"1\n2\n3\n",
+		},
+		{
+			"b.txt",
+			"",
+			"new\n",
+		},
+	} {
 		sides, err := webapi.DecodeChangeSides(d.read(t, "/changes/file?path="+c.path).Body)
 		wireMust(t, err)
 		if sides.Original != c.original || sides.Modified != c.modified {
@@ -242,10 +317,19 @@ func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 	if text.Path != a || text.Text != "1\n2\n3\n" {
 		t.Fatalf("text: %+v", text)
 	}
-	filesRefusal(t, d.read(t, "/fs/file?path="+url.QueryEscape(filepath.Join(d.root, "nope"))), 404, webapi.ErrorCodeFsError)
+	filesRefusal(
+		t,
+		d.read(t, "/fs/file?path="+url.QueryEscape(filepath.Join(d.root, "nope"))),
+		404,
+		webapi.ErrorCodeFsError,
+	)
 	body, err := contract.EncodeJSON(webapi.CreateDirectory{Path: filepath.Join(d.root, "made/deep")})
 	wireMust(t, err)
-	filesStatus(t, d.call(t, "POST", "/fs", http.Header{"Content-Type": []string{"application/json"}}, bytes.NewReader(body)), 201)
+	filesStatus(
+		t,
+		d.call(t, "POST", "/fs", http.Header{"Content-Type": []string{"application/json"}}, bytes.NewReader(body)),
+		201,
+	)
 	info, err := os.Stat(filepath.Join(d.root, "made/deep"))
 	wireMust(t, err)
 	if !info.IsDir() {
@@ -265,9 +349,9 @@ func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 		t.Fatalf("entries: %v", names)
 	}
 	crowded := filepath.Join(d.root, "crowded")
-	wireMust(t, os.Mkdir(crowded, 0755))
+	wireMust(t, os.Mkdir(crowded, 0o755))
 	for i := 0; i <= runnerwire.MaxMessageBytes/200; i++ {
-		wireMust(t, os.WriteFile(filepath.Join(crowded, fmt.Sprintf("%s%d", strings.Repeat("n", 200), i)), nil, 0644))
+		wireMust(t, os.WriteFile(filepath.Join(crowded, fmt.Sprintf("%s%d", strings.Repeat("n", 200), i)), nil, 0o644))
 	}
 	filesRefusal(t, d.read(t, "/fs?path="+url.QueryEscape(crowded)), 413, webapi.ErrorCodeDirectoryTooLarge)
 	filesStatus(t, d.read(t, "/fs/file?path="+url.QueryEscape(a)), 200)
@@ -277,16 +361,24 @@ func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 	wireMust(t, d.backend.Close(d.ctx))
 }
 
-// One runner streams beyond its message limit and reads committed Git bytes.
+// TestFilesRawRangesInertHeadersAndCommittedSide uses one runner to stream beyond its message limit and read
+// committed Git bytes.
 func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 	t.Parallel()
 	d := filesOnDevice(t)
 	raw := func(path string) string { return "/fs/raw?path=" + url.QueryEscape(filepath.Join(d.root, path)) }
 	image := backendtest.Pattern(300000, 0)
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "logo.svg"), image, 0644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "logo.svg"), image, 0o644))
 	whole := d.read(t, raw("logo.svg"))
 	filesStatus(t, whole, 200)
-	for name, value := range map[string]string{"content-type": "image/svg+xml", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "x-content-type-options": "nosniff", "x-accel-buffering": "no", "cache-control": "private, no-cache", "accept-ranges": "bytes"} {
+	for name, value := range map[string]string{
+		"content-type":            "image/svg+xml",
+		"content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+		"x-content-type-options":  "nosniff",
+		"x-accel-buffering":       "no",
+		"cache-control":           "private, no-cache",
+		"accept-ranges":           "bytes",
+	} {
 		filesHeader(t, whole, name, value)
 	}
 	etag := whole.Headers.Get("ETag")
@@ -319,7 +411,7 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 	filesStatus(t, d.call(t, "GET", raw("logo.svg"), http.Header{"If-None-Match": []string{etag}}, nil), 304)
 	version := raw("logo.svg") + "&version=" + url.QueryEscape(etag)
 	filesStatus(t, d.read(t, version), 200)
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "logo.svg"), backendtest.Pattern(10, 0), 0644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "logo.svg"), backendtest.Pattern(10, 0), 0o644))
 	filesRefusal(t, d.read(t, version), 412, webapi.ErrorCodeFileChanged)
 	download := d.read(t, raw("logo.svg")+"&download=true")
 	filesHeader(t, download, "content-type", "application/octet-stream")
@@ -327,7 +419,7 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 		t.Fatal("download filename missing")
 	}
 	filesHeader(t, download, "content-security-policy", "")
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "page.html"), []byte("<script>alert(1)</script>"), 0644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "page.html"), []byte("<script>alert(1)</script>"), 0o644))
 	html := d.read(t, raw("page.html"))
 	filesHeader(t, html, "content-type", "application/octet-stream")
 	if !strings.HasPrefix(html.Headers.Get("content-disposition"), "attachment") {
@@ -337,7 +429,7 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 	filesRefusal(t, d.read(t, raw("missing.png")), 404, webapi.ErrorCodeFsError)
 	filesRefusal(t, d.read(t, raw("logo.svg")+"&download=1"), 400, webapi.ErrorCodeInvalidQuery)
 	video := backendtest.Pattern(3*runnerwire.MaxMessageBytes+5, 0)
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "demo.mp4"), video, 0644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "demo.mp4"), video, 0o644))
 	streamed := d.read(t, raw("demo.mp4"))
 	filesHeader(t, streamed, "content-type", "video/mp4")
 	filesHeader(t, streamed, "content-length", "")
@@ -347,10 +439,10 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 	}
 	filesGit(t, d, "init", "-q", "-b", "main")
 	committed := backendtest.Pattern(5000, 0)
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "chart.png"), committed, 0644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "chart.png"), committed, 0o644))
 	filesGit(t, d, "add", "chart.png")
 	filesGit(t, d, "commit", "-q", "-m", "chart")
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "chart.png"), backendtest.Pattern(7, 0), 0644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "chart.png"), backendtest.Pattern(7, 0), 0o644))
 	before := d.read(t, "/changes/raw?path=chart.png")
 	filesStatus(t, before, 200)
 	filesHeader(t, before, "content-type", "image/png")
@@ -365,12 +457,13 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 	filesHeader(t, d.call(t, "HEAD", "/changes/raw?path=chart.png", nil, nil), "content-length", "5000")
 	saved := d.read(t, "/changes/raw?path=chart.png&download=true")
 	filesHeader(t, saved, "content-type", "application/octet-stream")
-	if !strings.HasPrefix(saved.Headers.Get("content-disposition"), `attachment; filename="chart.png"`) || !bytes.Equal(saved.Body, committed) {
+	if !strings.HasPrefix(saved.Headers.Get("content-disposition"), `attachment; filename="chart.png"`) ||
+		!bytes.Equal(saved.Body, committed) {
 		t.Fatal("committed download changed")
 	}
 	filesStatus(t, d.read(t, "/changes/raw?path=new.png"), 404)
 	filesRefusal(t, d.read(t, "/changes/raw?path=../escape.png"), 400, webapi.ErrorCodeInvalidQuery)
-	wireMust(t, os.WriteFile(filepath.Join(d.root, "poster.png"), backendtest.Pattern(8*1024*1024+1, 0), 0644))
+	wireMust(t, os.WriteFile(filepath.Join(d.root, "poster.png"), backendtest.Pattern(8*1024*1024+1, 0), 0o644))
 	filesGit(t, d, "add", "poster.png")
 	filesGit(t, d, "commit", "-q", "-m", "poster")
 	filesRefusal(t, d.read(t, "/changes/raw?path=poster.png"), 413, webapi.ErrorCodeFileTooLarge)
@@ -378,7 +471,8 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 	wireMust(t, d.backend.Close(d.ctx))
 }
 
-// One runner and a streamed 13 MiB upload, followed by a canceled partial copy.
+// TestFileUploadIsWholeAndRequiresOverwriteConsent uses one runner and a streamed 13 MiB upload, followed by a
+// canceled partial copy.
 func TestFileUploadIsWholeAndRequiresOverwriteConsent(t *testing.T) {
 	t.Parallel()
 	d := filesOnDevice(t)
@@ -405,7 +499,7 @@ func TestFileUploadIsWholeAndRequiresOverwriteConsent(t *testing.T) {
 	read("notes.md", "second")
 	filesStatus(t, put("empty.txt", "", strings.NewReader("")), 204)
 	read("empty.txt", "")
-	wireMust(t, os.Mkdir(filepath.Join(d.root, "docs"), 0755))
+	wireMust(t, os.Mkdir(filepath.Join(d.root, "docs"), 0o755))
 	filesRefusal(t, put("docs", "true", strings.NewReader("x")), 409, webapi.ErrorCodeIsDirectory)
 	filesRefusal(t, put("missing/file.txt", "", strings.NewReader("x")), 404, webapi.ErrorCodeFsError)
 	filesRefusal(t, put("notes.md", "yes", strings.NewReader("x")), 400, webapi.ErrorCodeInvalidQuery)
@@ -454,7 +548,16 @@ func TestFileUploadIsWholeAndRequiresOverwriteConsent(t *testing.T) {
 	done := make(chan struct{})
 	var responseErr error
 	go func() {
-		response, err := d.backend.Response(ctx, "PUT", "/api/conversations/"+filesConversation+"/fs/raw?path="+url.QueryEscape(filepath.Join(d.root, "notes.md"))+"&replace=true", &d.master, nil, reader)
+		response, err := d.backend.Response(
+			ctx,
+			"PUT",
+			"/api/conversations/"+filesConversation+"/fs/raw?path="+url.QueryEscape(
+				filepath.Join(d.root, "notes.md"),
+			)+"&replace=true",
+			&d.master,
+			nil,
+			reader,
+		)
 		if response != nil {
 			err = errors.Join(err, response.Body.Close())
 		}

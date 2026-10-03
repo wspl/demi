@@ -10,15 +10,34 @@ import (
 	"github.com/wspl/demi/internal/framewire"
 )
 
-// One runner supplies two working directories; four jobs observe distinct Host shells.
+// TestPluginHostsKeepShellsAndRefuseHandlesOnOtherHost uses one runner to supply two working directories; four
+// jobs observe distinct Host shells.
 func TestPluginHostsKeepShellsAndRefuseHandlesOnOtherHost(t *testing.T) {
 	t.Parallel()
 	w := filesWorking(t, "")
 	alice, bob := filepath.Join(w.root, "alice"), filepath.Join(w.root, "bob")
-	wireMust(t, os.MkdirAll(alice, 0755))
-	wireMust(t, os.MkdirAll(bob, 0755))
-	for i, step := range []struct{ path, script, want string }{{alice, "mkdir nested && cd nested && pwd", alice + "/nested\n"}, {bob, "pwd", bob + "\n"}, {alice, "pwd", alice + "/nested\n"}} {
-		filesMove(w.ctx, t, w.b, &w.s, filesConversation, w.paired, step.path)
+	wireMust(t, os.MkdirAll(alice, 0o755))
+	wireMust(t, os.MkdirAll(bob, 0o755))
+	for i, step := range []struct {
+		path, script, want string
+	}{
+		{
+			alice,
+			"mkdir nested && cd nested && pwd",
+			alice + "/nested\n",
+		},
+		{
+			bob,
+			"pwd",
+			bob + "\n",
+		},
+		{
+			alice,
+			"pwd",
+			alice + "/nested\n",
+		},
+	} {
+		filesMove(w.ctx, t, w.backend, &w.session, filesConversation, w.paired, step.path)
 		id := string(rune('a' + i))
 		w.vendor.Respond(conversationShell(t, id, step.script, 30000))
 		w.vendor.Respond(conversationAnswer(t, []string{"done"}, 1, 1))
@@ -33,7 +52,7 @@ func TestPluginHostsKeepShellsAndRefuseHandlesOnOtherHost(t *testing.T) {
 	wireMust(t, err)
 	requests := w.vendor.Requests()
 	id := core.CommandID(toolstest.Field(conversationToolResult(t, requests[len(requests)-1], "reader"), "commandId"))
-	db, err := w.h.ControlDatabase(w.ctx, t)
+	db, err := w.harness.ControlDatabase(w.ctx, t)
 	wireMust(t, err)
 	// Rust changes the fixture Host directly while the job lives; the public route forbids it.
 	_, err = db.ExecContext(w.ctx, "UPDATE conversations SET target_path=? WHERE id=?", bob, filesConversation)
@@ -58,5 +77,5 @@ func TestPluginHostsKeepShellsAndRefuseHandlesOnOtherHost(t *testing.T) {
 		t.Fatalf("write: %+v", frames)
 	}
 	wireMust(t, w.socket.Close(w.ctx))
-	wireMust(t, w.b.Close(w.ctx))
+	wireMust(t, w.backend.Close(w.ctx))
 }
