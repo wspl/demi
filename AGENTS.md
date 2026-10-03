@@ -42,8 +42,12 @@ reviewed.
   or argument per line, a trailing comma, and its closing brace on its own
   line. A struct literal with more than three fields is always one field per
   line.
-- A function reads as a sequence of steps. A blank line separates the steps;
-  no blank line opens or closes a block.
+- A function reads as a sequence of steps, and each group of lines between
+  blank lines is one step: setting up a thing and deferring its release, a
+  call and the check of its error, a loop. A blank line separates the steps;
+  no blank line opens or closes a block. `wsl` (in taste.sh) enforces the
+  minimum; read each function after it and join or separate lines so every
+  group is one step.
 - A production function body is at most 60 lines as a rule and never more than
   80 lines or 50 statements. Split a longer one by meaning: each part becomes a
   function whose name says what it does, with a one-sentence doc comment. Never
@@ -78,6 +82,15 @@ reviewed.
   lines; a word or two that says what the value is in a function; a full name
   for a package-level identifier. No type in a name (`userMap`, `idStr`,
   `listOfTabs`), no Hungarian prefixes, no numbered names (`data2`).
+- When an exported function only admits, locks or routes and calls an
+  unexported one that does the work, the unexported one is named after the
+  exported one plus what it assumes: `closeLocked` when the caller holds the
+  lock, `createWorkspaceAdmitted` when it runs inside an admitted call. Use one
+  suffix for every such pair in a package, never a synonym (`make`, `do`,
+  `request`, `change`) in place of the exported verb.
+- Initialisms are only those listed above and their kin in the standard
+  library (`EOF`, `DNS`, `TTL`, `UTF8`); any other abbreviation is a word
+  (`Cwd` stays `Cwd`).
 - Use only the abbreviations Go code commonly uses: `ctx`, `err`, `buf`, `cfg`,
   `req`, `resp`, `msg`, `id`, `n`, `i`, and `w`/`r` for writers and readers.
   Spell everything else out.
@@ -92,7 +105,8 @@ reviewed.
 ## Comments
 
 - Every exported identifier has a doc comment, a full sentence that starts
-  with its name (contract product text excepted, as above).
+  with its name (contract product text excepted, as above). So does every
+  function you add, split out or rename, exported or not.
 - A comment says why: a constraint, a non-obvious decision, the Rust or design
   rule it keeps. It does not narrate what the next line does.
 - No commented-out code; no `TODO` without what remains and who decides it.

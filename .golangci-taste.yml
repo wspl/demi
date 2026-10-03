@@ -10,6 +10,7 @@ linters:
     - gocognit
     - nestif
     - revive
+    - wsl_v5
   settings:
     lll:
       line-length: 120
@@ -22,6 +23,15 @@ linters:
       min-complexity: 30
     nestif:
       min-complexity: 5
+    # Blank lines between the steps of a function. Assignments and plain
+    # expressions may stay together: they are often one step.
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+      disable:
+        - assign
+        - expr
     revive:
       enable-default-rules: true
       rules:

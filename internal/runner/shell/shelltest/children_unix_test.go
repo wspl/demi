@@ -5,7 +5,6 @@ package shelltest_test
 import (
 	"bytes"
 	"errors"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,8 +24,11 @@ func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T)
 	scripts = append(scripts, `printf line | sed -n 'e /bin/sh -c "echo $$; exec /bin/sleep 60"'`)
 	for _, script := range scripts {
 		t.Run(script, func(t *testing.T) {
-			if runtime.GOOS == "darwin" && strings.Contains(script, "sed -n") {
-				t.Skip("decision 4: BSD sed does not support the e command")
+			// Rust's embedded sed streamed the e command's output as it ran.
+			// BSD sed has no e command, and GNU sed prints its output only
+			// after the command ends, so the child's ready line never comes.
+			if strings.Contains(script, "sed -n") {
+				t.Skip("decision 4: system sed does not stream the e command's output (BSD lacks e; GNU waits for the command)")
 			}
 			t.Parallel()
 			ctx, scope, job, _ := shellJob(t, script)
