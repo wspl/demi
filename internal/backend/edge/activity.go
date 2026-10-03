@@ -67,3 +67,11 @@ func (a *activity) watch(ctx context.Context, limit time.Duration) func() {
 		<-done
 	}
 }
+
+// CloseWrite forwards the transport half-close without losing activity tracking.
+func (a *activity) CloseWrite() error {
+	if writer, ok := a.Conn.(interface{ CloseWrite() error }); ok {
+		return writer.CloseWrite()
+	}
+	return nil
+}

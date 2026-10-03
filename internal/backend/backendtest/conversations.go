@@ -227,83 +227,178 @@ func WaitRunnerJobsRemoved(ctx context.Context, stateDir string) (err error) {
 }
 
 // StallConversationReset opens a page with a tiny receive buffer and stops at
-// the reset's frame header. It returns that frame's payload size. Reading below
-// the WebSocket API is necessary here: Read would consume the entire reset.
-func (b *TestBackend) StallConversationReset(ctx context.Context, t testing.TB, s *Session, id string) (uint64, error) {
+// the reset's frame header. Reading below the WebSocket API is necessary here:
+// Read would consume the entire reset.
+func (b *TestBackend) StallConversationReset(ctx context.Context, t testing.TB, s *Session, id string) (*StalledConversation, error) {
 	t.Helper()
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", b.Address().String())
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
+	stopped := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		// Cancellation breaks pending IO; cleanup below releases the connection.
+		_ = conn.Close()
+		close(stopped)
+	})
 	t.Cleanup(func() {
-		if err := conn.Close(); err != nil {
+		if !stop() {
+			<-stopped
+		}
+		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			t.Error(err)
 		}
 	})
 	tcp, ok := conn.(*net.TCPConn)
 	if !ok {
-		return 0, errors.New("conversation transport is not TCP")
+		return nil, errors.New("conversation transport is not TCP")
 	}
 	if err := tcp.SetReadBuffer(4096); err != nil {
-		return 0, err
+		return nil, err
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := tcp.SetDeadline(deadline); err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
 	path := "/api/conversations/" + id + "/stream"
 	request, err := http.NewRequestWithContext(ctx, "GET", b.URL+path, nil)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	request.Header = http.Header{"Cookie": {s.Cookie}, "Origin": {b.URL}, "Connection": {"Upgrade"}, "Upgrade": {"websocket"}, "Sec-Websocket-Version": {"13"}, "Sec-Websocket-Key": {"MDEyMzQ1Njc4OWFiY2RlZg=="}}
 	if err := request.Write(conn); err != nil {
-		return 0, err
+		return nil, err
 	}
 	reader := bufio.NewReader(conn)
 	response, err := http.ReadResponse(reader, request)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if response.StatusCode != 101 {
 		answer, readErr := ReadAnswer(ctx, response)
-		return 0, errors.Join(fmt.Errorf("upgrade: %d: %s", answer.Status, answer.Body), readErr)
+		return nil, errors.Join(fmt.Errorf("upgrade: %d: %s", answer.Status, answer.Body), readErr)
 	}
 	// The upgraded response body is the connection, which test cleanup owns.
 	payload, err := contract.EncodeJSON(&framewire.OpenFrame{})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	frame := append([]byte{0x81, 0x80 | byte(len(payload)), 0, 0, 0, 0}, payload...)
 	if _, err := conn.Write(frame); err != nil {
-		return 0, err
+		return nil, err
 	}
 	header := make([]byte, 2)
 	if _, err := io.ReadFull(reader, header); err != nil {
-		return 0, err
+		return nil, err
 	}
 	if header[0] != 0x81 || header[1] != 17 {
-		return 0, fmt.Errorf("opened frame header: %x", header)
+		return nil, fmt.Errorf("opened frame header: %x", header)
 	}
 	opened := make([]byte, 17)
 	if _, err := io.ReadFull(reader, opened); err != nil {
-		return 0, err
+		return nil, err
 	}
 	if string(opened) != `{"type":"opened"}` {
-		return 0, fmt.Errorf("opened: %s", opened)
+		return nil, fmt.Errorf("opened: %s", opened)
 	}
 	if _, err := io.ReadFull(reader, header); err != nil {
-		return 0, err
+		return nil, err
 	}
 	if header[0] != 0x81 || header[1] != 127 {
-		return 0, fmt.Errorf("reset frame header: %x", header)
+		return nil, fmt.Errorf("reset frame header: %x", header)
 	}
 	length := make([]byte, 8)
 	if _, err := io.ReadFull(reader, length); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return binary.BigEndian.Uint64(length), nil
+	size := binary.BigEndian.Uint64(length)
+	if size > 64<<20 {
+		return nil, fmt.Errorf("reset frame too large: %d", size)
+	}
+	return &StalledConversation{conn: tcp, reader: reader, ResetBytes: size}, nil
+}
+
+// StalledConversation holds a reset whose payload has not been read yet.
+// The creating test owns its connection through registered cleanup.
+type StalledConversation struct {
+	conn   *net.TCPConn
+	reader *bufio.Reader
+	// ResetBytes is the unread reset payload size.
+	ResetBytes uint64
+}
+
+// Closed resumes the reset and reads through queued frames to the server close.
+func (s *StalledConversation) Closed(ctx context.Context) (websocket.StatusCode, string, error) {
+	stopped := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		// Cancellation ends this page; its test cleanup also closes it safely.
+		_ = s.conn.Close()
+		close(stopped)
+	})
+	defer func() {
+		if !stop() {
+			<-stopped
+		}
+	}()
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := s.conn.SetDeadline(deadline); err != nil {
+			return 0, "", err
+		}
+	}
+	// Restore a normal window now that this page is reading again.
+	if err := s.conn.SetReadBuffer(1 << 20); err != nil {
+		return 0, "", err
+	}
+	if _, err := io.CopyN(io.Discard, s.reader, int64(s.ResetBytes)); err != nil {
+		return 0, "", err
+	}
+	for {
+		var header [2]byte
+		if _, err := io.ReadFull(s.reader, header[:]); err != nil {
+			return 0, "", err
+		}
+		if header[0]&0x70 != 0 || header[1]&0x80 != 0 {
+			return 0, "", fmt.Errorf("invalid server frame header: %x", header)
+		}
+		length := uint64(header[1] & 0x7f)
+		switch length {
+		case 126:
+			var extended [2]byte
+			if _, err := io.ReadFull(s.reader, extended[:]); err != nil {
+				return 0, "", err
+			}
+			length = uint64(binary.BigEndian.Uint16(extended[:]))
+		case 127:
+			var extended [8]byte
+			if _, err := io.ReadFull(s.reader, extended[:]); err != nil {
+				return 0, "", err
+			}
+			length = binary.BigEndian.Uint64(extended[:])
+		}
+		if length > 64<<20 {
+			return 0, "", fmt.Errorf("server frame too large: %d", length)
+		}
+		if header[0]&0x0f != 8 {
+			if _, err := io.CopyN(io.Discard, s.reader, int64(length)); err != nil {
+				return 0, "", err
+			}
+			continue
+		}
+		if header[0] != 0x88 || length < 2 || length > 125 {
+			return 0, "", fmt.Errorf("invalid close frame: %x, length %d", header, length)
+		}
+		payload := make([]byte, length)
+		if _, err := io.ReadFull(s.reader, payload); err != nil {
+			return 0, "", err
+		}
+		// Echo the close with a zero masking key to finish the handshake.
+		frame := append([]byte{0x88, 0x80 | byte(length), 0, 0, 0, 0}, payload...)
+		if _, err := s.conn.Write(frame); err != nil {
+			return 0, "", err
+		}
+		return websocket.StatusCode(binary.BigEndian.Uint16(payload[:2])), string(payload[2:]), nil
+	}
 }
 
 // ConversationText constructs the text frame a page sends for one user message.

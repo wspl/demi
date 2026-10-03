@@ -18,7 +18,6 @@ import (
 )
 
 func TestAJSONBodyOverItsLimitIsRefusedBeforeItIsRead(t *testing.T) {
-	t.Skip("finding 1: oversized authenticated HTTP body loses its JSON refusal to a connection reset")
 	ctx, h := conversationHarness(t)
 	b, master, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
