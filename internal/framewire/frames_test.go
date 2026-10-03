@@ -246,9 +246,8 @@ func TestNestingLimitClosesConnection(t *testing.T) {
 	}
 }
 
-// Rust's diagnostic named the Rust field; retain that observation for review.
+// Accepted normalization F6: diagnostics name the field as spelled on the wire.
 func TestRustAttachmentFieldDiagnostic(t *testing.T) {
-	t.Skip("fidelity 6: frame diagnostics use wire fileName instead of Rust file_name")
 	value := fixture(t, readFixtures(t, "client-frames.json"), "send")
 	mutate(t, value, "/content/2/fileName", "..", false)
 	raw, err := contract.EncodeJSON(value)
@@ -256,7 +255,8 @@ func TestRustAttachmentFieldDiagnostic(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = framewire.DecodeClientFrame(raw)
-	if err == nil || !strings.Contains(err.Error(), "content[2].file_name") {
+	var field *contract.Error
+	if !errors.As(err, &field) || field.Path != "content[2].fileName" {
 		t.Fatalf("attachment diagnostic: %v", err)
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"os"
@@ -79,12 +80,15 @@ func TestNamedTargetsMustBeEachExecutablesAndUnnamedAreAllOfTheirs(t *testing.T)
 		{defaultPrograms, nil, commandwire.Targets, false},
 	} {
 		got, err := selectTargets(test.programs, test.named)
+		if test.refused && (err == nil || err.Error() != "demi-machine-manager is not built for aarch64-apple-darwin") {
+			t.Fatalf("target refusal: %v", err)
+		}
 		if (err != nil) != test.refused || !reflect.DeepEqual(got, test.want) {
 			t.Fatalf("targets(%v,%v) = %v, %v; want %v", test.programs, test.named, got, err, test.want)
 		}
 	}
 	a := appFixture(t)
-	if err := a.run(t.Context(), []string{"native", "build", "--package", "demi-machine-manager", "--target", commandwire.Targets[0]}); err == nil {
+	if err := a.run(t.Context(), []string{"native", "build", "--package", "demi-machine-manager", "--target", commandwire.Targets[0]}); err == nil || err.Error() != "demi-machine-manager is not built for aarch64-apple-darwin" {
 		t.Fatal("unsupported build accepted")
 	}
 	if _, err := os.Stat(filepath.Join(a.Root, ".cache")); !errors.Is(err, os.ErrNotExist) {
@@ -178,9 +182,18 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 	nativeFixture(t, a.Root, "demi-file", targets, "file")
 	output := filepath.Join(a.Root, "file")
 	args := []string{"native", "package", "--package", "demi-file", "--output", output}
-	if err := a.run(t.Context(), args); err == nil {
+	missingBuild := a.run(t.Context(), args)
+	if missingBuild == nil {
 		t.Fatal("incomplete release accepted")
 	}
+	t.Run("missing build message", func(t *testing.T) {
+		t.Skip("fidelity 9: missing-build message changes the build instruction and adds an OS error")
+		source := filepath.Join(a.Root, ".cache/native-target", commandwire.Targets[1], "release", "demi-file")
+		want := fmt.Sprintf("no build of demi-file for %s at %s: run cargo xtask native build first", commandwire.Targets[1], source)
+		if missingBuild.Error() != want {
+			t.Fatalf("missing build: %v, want %q", missingBuild, want)
+		}
+	})
 	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("published incomplete release")
 	}
@@ -208,6 +221,8 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 	}
 }
 func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
+	// Accepted R5 removal: Chrome is the only resource a command package carries.
+	// Rust's entirely uncarried second resource has no Go counterpart; uncarried Chrome targets remain covered.
 	a := appFixture(t)
 	target := commandwire.Targets[3]
 	program := filepath.Join(a.Root, "browser")

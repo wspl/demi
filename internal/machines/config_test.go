@@ -70,6 +70,7 @@ func TestServingNeedsSocketRecoveryDoesNot(t *testing.T) {
 	if err != nil || c.Mode != machines.ModeRecover {
 		t.Fatalf("recovery: %+v %v", c, err)
 	}
+	// Rust MissingSocket is distinguished by its exact Display text.
 	if _, err = machines.ParseConfig(nil, env); err == nil || err.Error() != "DEMI_MACHINE_MANAGER_SOCKET is required" {
 		t.Fatal(err)
 	}

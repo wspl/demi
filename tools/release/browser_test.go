@@ -68,6 +68,20 @@ func TestPinnedVersionRecordsEachOfficialArchiveWithExecutable(t *testing.T) {
 				if err == nil {
 					t.Fatal("invalid release accepted")
 				}
+
+				// Rust Display text preserves the refusal class and its platform/version.
+				want := ""
+				switch scenario {
+				case "unofficial":
+					want = "the mac-arm64 archive is not an official download: " + archives.URL("/mac-arm64")
+				case "missing executable":
+					want = "the linux64 archive holds no chrome-linux64/chrome"
+				case "wrong version":
+					want = "the metadata of Chrome for Testing 153.0.8010.36 is invalid: it describes 153.0.8010.37"
+				}
+				if want != "" && err.Error() != want {
+					t.Fatalf("%v, want %q", err, want)
+				}
 				if (scenario == "wrong version" || scenario == "invalid argument") && archives.Requests() != 0 {
 					t.Fatal("downloaded before checking version")
 				}
