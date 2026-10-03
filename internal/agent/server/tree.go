@@ -144,8 +144,41 @@ func (s *Server[H]) openTree(
 	if err != nil {
 		return nil, session.Continuation{}, false, err
 	}
+	t := s.newTree(root, toolset)
+	node, continuation, continues, err := t.assemble(ctx, assembly{
+		record:       store.RootRecord(root, s.deps.Clock.Now()),
+		cwd:          cwd,
+		model:        model,
+		runtime:      runtime,
+		instructions: s.deps.Instructions,
+		preamble:     nil,
+		inherited:    toolset.Commands,
+		first:        nil,
+	})
+	if err != nil {
+		t.cancel()
+		return nil, session.Continuation{}, false, err
+	}
+	t.root = node
+	if continues {
+		if err := node.session.UpdateModel(session.ModelSwitch{Model: model}); err != nil {
+			t.cancel()
+			return nil, session.Continuation{}, false, errors.Join(
+				err,
+				node.session.Dispose(context.WithoutCancel(ctx)),
+			)
+		}
+	}
+	if err := s.publishTree(ctx, t, node, t.cancel); err != nil {
+		return nil, session.Continuation{}, false, err
+	}
+	return t, continuation, continues, nil
+}
+
+// newTree makes conversation root's unpublished tree with its own lifetime.
+func (s *Server[H]) newTree(root core.NodeID, toolset tools.Toolset) *Tree[H] {
 	lifetime, cancel := context.WithCancel(context.Background())
-	t := &Tree[H]{
+	return &Tree[H]{
 		server:      s,
 		id:          root,
 		store:       s.deps.Stores(root),
@@ -160,34 +193,6 @@ func (s *Server[H]) openTree(
 		cancel:      cancel,
 		running:     map[core.CommandID]bool{},
 	}
-	node, continuation, continues, err := t.assemble(ctx, assembly{
-		record:       store.RootRecord(root, s.deps.Clock.Now()),
-		cwd:          cwd,
-		model:        model,
-		runtime:      runtime,
-		instructions: s.deps.Instructions,
-		preamble:     nil,
-		inherited:    toolset.Commands,
-		first:        nil,
-	})
-	if err != nil {
-		cancel()
-		return nil, session.Continuation{}, false, err
-	}
-	t.root = node
-	if continues {
-		if err := node.session.UpdateModel(session.ModelSwitch{Model: model}); err != nil {
-			cancel()
-			return nil, session.Continuation{}, false, errors.Join(
-				err,
-				node.session.Dispose(context.WithoutCancel(ctx)),
-			)
-		}
-	}
-	if err := s.publishTree(ctx, t, node, cancel); err != nil {
-		return nil, session.Continuation{}, false, err
-	}
-	return t, continuation, continues, nil
 }
 
 // bump announces a change after releasing the server's state lock.

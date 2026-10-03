@@ -180,24 +180,11 @@ func (t *Tree[H]) assemble(
 			err = errors.Join(err, runtime.Close(context.WithoutCancel(ctx)))
 		}
 	}()
-	stored, found, err := t.store.Node(ctx, record.ID)
+	stored, checkpoint, found, err := t.storedNode(ctx, record.ID)
 	if err != nil {
 		return nil, session.Continuation{}, false, err
 	}
-	var checkpoint store.Checkpoint
 	if found {
-		var saved bool
-		checkpoint, saved, err = t.store.SessionStore(stored.ID).Load(ctx)
-		if err != nil {
-			return nil, session.Continuation{}, false, err
-		}
-		if !saved {
-			return nil, session.Continuation{}, false, fmt.Errorf(
-				"%w: node %s has no checkpoint",
-				store.ErrCorrupt,
-				stored.ID,
-			)
-		}
 		record = stored
 		cwd = checkpoint.State.CWD
 	}
@@ -231,6 +218,28 @@ func (t *Tree[H]) assemble(
 		}
 	}
 	return &Node[H]{record: record, session: agent, runtime: r}, continuation, continues, nil
+}
+
+// storedNode reads the record and checkpoint a restored node continues
+// from; found is false when no node with id is stored. A stored node
+// without a checkpoint is corrupt.
+func (t *Tree[H]) storedNode(ctx context.Context, id core.NodeID) (store.NodeRecord, store.Checkpoint, bool, error) {
+	stored, found, err := t.store.Node(ctx, id)
+	if err != nil || !found {
+		return store.NodeRecord{}, store.Checkpoint{}, false, err
+	}
+	checkpoint, saved, err := t.store.SessionStore(stored.ID).Load(ctx)
+	if err != nil {
+		return store.NodeRecord{}, store.Checkpoint{}, false, err
+	}
+	if !saved {
+		return store.NodeRecord{}, store.Checkpoint{}, false, fmt.Errorf(
+			"%w: node %s has no checkpoint",
+			store.ErrCorrupt,
+			stored.ID,
+		)
+	}
+	return stored, checkpoint, true, nil
 }
 
 // continueFrom applies the root or child's restore policy and saves its result.
