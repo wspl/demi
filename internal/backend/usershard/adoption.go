@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/coder/websocket"
-
 	"github.com/wspl/demi/internal/backend/cloud"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
@@ -84,9 +82,7 @@ func (p shardPolicy) ReserveNumbers(ctx context.Context, conversation string, se
 	return value, err
 }
 
-func (s *Shard) adopt(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *websocket.Conn, bound chan<- webapi.DeviceDTO) error {
-	// Closing an already broken socket needs no recovery.
-	defer func() { _ = socket.CloseNow() }()
+func (s *Shard) adopt(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *runners.Socket, bound chan<- webapi.DeviceDTO) error {
 	if bound != nil {
 		defer close(bound)
 	}
@@ -94,11 +90,16 @@ func (s *Shard) adopt(ctx context.Context, device database.DeviceRecord, runner 
 	s.mu.Lock()
 	if s.closing {
 		s.mu.Unlock()
+		socket.Release()
 		return &ShardUnavailable{Kind: ShardClosing}
 	}
 	s.runners.Add(1)
 	s.mu.Unlock()
-	defer s.runners.Done()
+	defer func() {
+		// Shard shutdown joins the socket reader as well as its driver.
+		socket.Release()
+		s.runners.Done()
+	}()
 	ctx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})
 	stop := context.AfterFunc(s.runnerCtx, func() {

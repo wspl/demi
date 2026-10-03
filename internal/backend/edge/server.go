@@ -38,7 +38,13 @@ type Edge struct {
 // ctx owns the edge's lifetime; cancellation closes its connections and listener.
 // The caller must still call Close to join its work.
 func Start(ctx context.Context, address netip.AddrPort, state AppState, webDirectory string) (*Edge, error) {
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", address.String())
+	// "tcp" would make an unspecified IPv4 address a dual-stack socket that
+	// also accepts IPv6; the backend listens on exactly the address's family.
+	network := "tcp6"
+	if address.Addr().Unmap().Is4() {
+		network = "tcp4"
+	}
+	listener, err := (&net.ListenConfig{}).Listen(ctx, network, address.String())
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +159,7 @@ func (e *Edge) serveConnection(ctx context.Context, conn net.Conn) {
 		body := trackBody(request, conn)
 		request.RemoteAddr = conn.RemoteAddr().String()
 		request = request.WithContext(context.WithValue(ctx, connectionKey{}, conn))
-		writer := &response{conn: conn, input: input, request: request, header: make(http.Header)}
+		writer := &response{conn: conn, input: input, request: request, requestBody: body, header: make(http.Header)}
 		func() {
 			defer func() {
 				if failure := recover(); failure != nil {
@@ -169,12 +175,11 @@ func (e *Edge) serveConnection(ctx context.Context, conn net.Conn) {
 			return
 		}
 		err = writer.finish()
-		// A unread body may block draining, so close the connection rather than
-		// parsing its bytes as another request when a response has failed.
+		// A failed response cannot be followed by another response on this wire.
 		if err != nil {
 			return
 		}
-		if !body.complete {
+		if writer.closeAfterReply {
 			// A handler may refuse before reading a declared body. Closing first
 			// prevents Body.Close from waiting for an upload the caller never sends.
 			_ = conn.Close()
@@ -182,7 +187,7 @@ func (e *Edge) serveConnection(ctx context.Context, conn net.Conn) {
 		if err := request.Body.Close(); err != nil {
 			return
 		}
-		if request.Close || !body.complete {
+		if writer.closeAfterReply {
 			return
 		}
 	}

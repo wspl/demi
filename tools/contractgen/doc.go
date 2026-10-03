@@ -117,9 +117,12 @@
 // +demi:root direction=receive|send output=protocol|web|plugin-<name> selects a
 // contract root. Only roots and their reachable types receive generated code.
 // Output and direction are optional for Go-only roots. Go initialisms become
-// capitalized TypeScript words. Factored scalar and variant schemas are private
-// unless explicitly rooted. Receive
-// propagates through reachable types, producing tolerant Zod objects. Send-only
+// capitalized TypeScript words. Factored scalar, collection and variant schemas
+// are private unless rooted; schema-primitive roots only export a name when
+// selected for TypeScript. Page manifests override that factoring: every named
+// definition a manifest declares is exported by its page unless protocol owns
+// the export. A Go-only root absent from the manifest stays private in the page.
+// Receive propagates through reachable types, producing tolerant Zod objects. Send-only
 // objects must be strict. Shared protocol schemas are imported by web and plugin
 // outputs. Unknown markers, incompatible rules, ambiguous names and unsupported
 // shapes fail with the declaration's position. The generator excludes its own

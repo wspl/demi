@@ -13,14 +13,16 @@ import (
 // response streams a single response through net/http's HTTP/1 encoder. The
 // connection owner joins the encoder before reading the next request head.
 type response struct {
-	conn     net.Conn
-	input    *bufio.Reader
-	request  *http.Request
-	header   http.Header
-	body     *io.PipeWriter
-	done     chan error
-	status   int
-	hijacked bool
+	conn            net.Conn
+	input           *bufio.Reader
+	request         *http.Request
+	requestBody     *requestBody
+	closeAfterReply bool
+	header          http.Header
+	body            *io.PipeWriter
+	done            chan error
+	status          int
+	hijacked        bool
 }
 
 func (w *response) Header() http.Header { return w.header }
@@ -29,10 +31,19 @@ func (w *response) WriteHeader(status int) {
 		return
 	}
 	w.status = status
+	// Decide before publishing headers: an unread body cannot be reused without
+	// draining, which could wait forever for a refused upload. The connection
+	// loop honors this same decision even if the handler later finishes reading.
+	if status != http.StatusSwitchingProtocols {
+		w.closeAfterReply = w.request.Close || !w.requestBody.complete || websocketToken(w.header, "Connection", "close")
+		if w.closeAfterReply {
+			w.header.Set("Connection", "close")
+		}
+	}
 	reader, writer := io.Pipe()
 	w.body = writer
 	w.done = make(chan error, 1)
-	answer := &http.Response{StatusCode: status, ProtoMajor: 1, ProtoMinor: 1, Header: w.header.Clone(), Body: reader, ContentLength: -1, Request: w.request, Close: w.request.Close}
+	answer := &http.Response{StatusCode: status, ProtoMajor: 1, ProtoMinor: 1, Header: w.header.Clone(), Body: reader, ContentLength: -1, Request: w.request, Close: w.closeAfterReply}
 	if length := w.header.Get("Content-Length"); length != "" {
 		if size, err := strconv.ParseInt(length, 10, 64); err == nil {
 			answer.ContentLength = size

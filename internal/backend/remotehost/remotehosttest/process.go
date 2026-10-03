@@ -187,6 +187,39 @@ func (p *RunnerProcess) PairingCode(ctx context.Context, index int) (string, err
 	}
 }
 
+// UntilOutput waits until the runner's captured output contains text, such as
+// a diagnostic it prints when the backend refuses it.
+func (p *RunnerProcess) UntilOutput(ctx context.Context, text string) error {
+	for {
+		p.mu.Lock()
+		found := strings.Contains(p.output.String(), text)
+		changed := p.changed
+		p.mu.Unlock()
+		if found {
+			return nil
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return fmt.Errorf("the runner never printed %q:\n%s: %w", text, p.Output(), ctx.Err())
+		}
+	}
+}
+
+// Exited waits for the child to end on its own, without signalling it, and
+// answers how it ended. The owner still calls Stop to release the fixture.
+func (p *RunnerProcess) Exited(ctx context.Context) error {
+	if p.command == nil {
+		return errors.New("the runner is not running")
+	}
+	select {
+	case <-p.done:
+		return p.waitErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // Running reports whether the child is still running.
 func (p *RunnerProcess) Running() bool {
 	if p.command == nil {

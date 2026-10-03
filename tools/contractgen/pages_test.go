@@ -55,7 +55,7 @@ func TestPageModulesAndRegistries(t *testing.T) {
 	}, []string{`json:"params"`}))
 	g.defs[typeKey(named["Other"])].marks["root"] = "direction=receive output=web"
 
-	sources, err := g.tsSources()
+	sources, err := g.tsSources(pages...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,5 +186,62 @@ func TestPageSchemaRefusals(t *testing.T) {
 				t.Fatalf("got %v, want plugin and %s", err, tc.want)
 			}
 		})
+	}
+}
+
+// A manifest's named scalar is public in its page even when other modules
+// factor that scalar privately. Cost: in-memory type model, under a millisecond.
+func TestManifestNamedScalarExport(t *testing.T) {
+	data, err := os.ReadFile("testdata/pages/scalar.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := pagemeta.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := types.NewPackage("fixture/scalar", "scalar")
+	address := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Address", nil), types.Typ[types.String], nil)
+	hidden := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Hidden", nil), types.Typ[types.String], nil)
+	state := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "State", nil), types.NewStruct(
+		[]*types.Var{types.NewVar(token.NoPos, pkg, "Address", address), types.NewVar(token.NoPos, pkg, "Hidden", hidden)}, []string{`json:"address"`, `json:"hidden"`}), nil)
+	failures := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Failures", nil), types.NewMap(types.Typ[types.String], types.Typ[types.String]), nil)
+	web := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Web", nil), types.NewStruct(
+		[]*types.Var{types.NewVar(token.NoPos, pkg, "Address", address), types.NewVar(token.NoPos, pkg, "Hidden", hidden), types.NewVar(token.NoPos, pkg, "Failures", failures)},
+		[]string{`json:"address"`, `json:"hidden"`, `json:"failures"`}), nil)
+	g := generator{defs: map[string]*definition{}}
+	for _, d := range []*definition{
+		{name: "Address", typ: address, marks: map[string]string{"codec": "string"}},
+		{name: "Hidden", typ: hidden, marks: map[string]string{"root": "", "schema-primitive": ""}},
+		{name: "Failures", typ: failures, marks: map[string]string{}},
+		{name: "State", typ: state, marks: map[string]string{"root": "direction=receive output=plugin-scalar"}},
+		{name: "Web", typ: web, marks: map[string]string{"root": "direction=receive output=web"}},
+	} {
+		d.key = typeKey(d.typ)
+		g.defs[d.key] = d
+		g.order = append(g.order, d.key)
+	}
+	sources, err := g.tsSources(pages...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.pageSources(pages, sources); err != nil {
+		t.Fatal(err)
+	}
+	for _, private := range []string{"Hidden", "Failures"} {
+		if strings.Contains(string(sources["web"]), "export type "+private) {
+			t.Errorf("private factoring leaked into web: %s", private)
+		}
+	}
+	if strings.Contains(string(sources["plugin-scalar"]), "export type Hidden") {
+		t.Fatal("Go-only root leaked into page exports")
+	}
+	for _, declaration := range []string{"export const addressSchema", "export type Address"} {
+		if !strings.Contains(string(sources["plugin-scalar"]), declaration) {
+			t.Errorf("page missing %s", declaration)
+		}
+		if strings.Contains(string(sources["web"]), declaration) {
+			t.Errorf("page export leaked into web: %s", declaration)
+		}
 	}
 }

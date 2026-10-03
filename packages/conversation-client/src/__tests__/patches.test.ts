@@ -5,15 +5,15 @@ import { z } from 'zod'
 import { applyTranscriptPatches } from '../patch'
 import { harness, text } from './harness'
 
-// The agent's Rust tests record a patch sequence with the transcript it must
-// produce; the one applier and the client must rebuild exactly that
+// The Go agent tests check this reference patch sequence and its transcript;
+// the one applier and the client must rebuild exactly that
 // transcript (`contracts.md` § One patch applier).
-const fixture = resolve(import.meta.dir, '../../../../crates/agent-server/tests/agent-server/fixtures/transcript-patches.json')
+const fixture = resolve(import.meta.dir, '../../../../internal/agent/server/testdata/transcript-patches.json')
 const cases = z
   .array(z.strictObject({ name: z.string(), reset: z.json(), patches: z.array(z.json()), transcript: z.array(z.json()) }))
   .parse(await Bun.file(fixture).json())
 
-test('the patches the Rust session produced rebuild its transcript', () => {
+test('the agent fixture patches rebuild its transcript', () => {
   expect(cases.length).toBeGreaterThan(0)
   for (const recorded of cases) {
     const reset = serverFrameSchema.parse(recorded.reset)
