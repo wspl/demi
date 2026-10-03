@@ -31,6 +31,7 @@ func newDelivery() delivery {
 	now := time.Now()
 	return delivery{awaitingKey: true, rate: newRate(1280 * 720), started: now, ticked: now, lastAck: now}
 }
+
 func (d *delivery) floor() uint32 {
 	if len(d.flight) == 0 {
 		return d.last
@@ -40,11 +41,13 @@ func (d *delivery) floor() uint32 {
 	}
 	return d.flight[0].sequence - 1
 }
+
 func (d *delivery) pace(stream *streamView) {
 	if stream != nil {
 		stream.paced(d.epoch, d.floor(), d.rate.window)
 	}
 }
+
 func (d *delivery) picture(ctx context.Context, tab browserop.TabID, stream *streamView, p picture, w *writer) {
 	switch p.kind {
 	case pictureRestart:
@@ -54,7 +57,10 @@ func (d *delivery) picture(ctx context.Context, tab browserop.TabID, stream *str
 		d.last = 0
 		d.flight = nil
 		d.rate.resize(uint64(p.width) * uint64(p.height))
-		w.control(ctx, &browserop.LiveModuleMessageStream{Tab: tab, Generation: d.generation, Width: p.width, Height: p.height})
+		w.control(
+			ctx,
+			&browserop.LiveModuleMessageStream{Tab: tab, Generation: d.generation, Width: p.width, Height: p.height},
+		)
 	case pictureFrame:
 		frame := p.frame
 		if frame.Sequence <= d.last {
@@ -95,6 +101,7 @@ func (d *delivery) picture(ctx context.Context, tab browserop.TabID, stream *str
 		w.notice(ctx, browserop.CaptureFailed, p.reason)
 	}
 }
+
 func (d *delivery) ack(generation, sequence, decodeQueue uint32, stream *streamView) {
 	if d.generation != generation {
 		return
@@ -138,27 +145,61 @@ func (d *delivery) tick(stream *streamView, w *writer) {
 			d.pace(stream)
 		}
 	} else {
-		seconds := max(elapsed.Seconds(), .001)
-		s := sample{now: now.Sub(d.started).Seconds() * 1000, bufferedBytes: w.queued.Load(), decodeQueue: d.decodeQueue, activeFrames: d.frames, congested: d.dropped, encodedBitrate: float64(d.bytes) * 8 / seconds, deliveredBitrate: float64(d.acknowledged) * 8 / seconds}
-		if !oldest.IsZero() {
-			s.ackAge = now.Sub(oldest).Seconds() * 1000
-		}
-		if d.frames > 0 {
-			s.roundTrip = d.roundTrip
-		}
-		if cause := d.rate.update(s); cause != "" {
-			slog.Info("live view rate fell", "bitrate", d.rate.bitrate(), "fps", d.rate.fps(), "scale", d.rate.scale(), "cause", cause, "buffered_bytes", s.bufferedBytes, "ack_age_ms", s.ackAge, "round_trip_ms", s.roundTrip, "decode_queue", s.decodeQueue, "encoded_bitrate", s.encodedBitrate, "delivered_bitrate", s.deliveredBitrate)
-		}
-		e := encoding{d.rate.bitrate(), d.rate.fps(), d.rate.scale()}
-		if d.applied == nil || *d.applied != e {
-			d.applied = &e
-			if stream != nil {
-				stream.encode(e)
-			}
-		}
+		d.adaptRate(stream, w, now, oldest, elapsed)
 	}
 	d.frames = 0
 	d.bytes = 0
 	d.acknowledged = 0
 	d.dropped = false
+}
+
+func (d *delivery) adaptRate(stream *streamView, w *writer, now, oldest time.Time, elapsed time.Duration) {
+	seconds := max(elapsed.Seconds(), .001)
+	s := sample{
+		now:              now.Sub(d.started).Seconds() * 1000,
+		bufferedBytes:    w.queued.Load(),
+		decodeQueue:      d.decodeQueue,
+		activeFrames:     d.frames,
+		congested:        d.dropped,
+		encodedBitrate:   float64(d.bytes) * 8 / seconds,
+		deliveredBitrate: float64(d.acknowledged) * 8 / seconds,
+	}
+	if !oldest.IsZero() {
+		s.ackAge = now.Sub(oldest).Seconds() * 1000
+	}
+	if d.frames > 0 {
+		s.roundTrip = d.roundTrip
+	}
+	if cause := d.rate.update(s); cause != "" {
+		slog.Info(
+			"live view rate fell",
+			"bitrate",
+			d.rate.bitrate(),
+			"fps",
+			d.rate.fps(),
+			"scale",
+			d.rate.scale(),
+			"cause",
+			cause,
+			"buffered_bytes",
+			s.bufferedBytes,
+			"ack_age_ms",
+			s.ackAge,
+			"round_trip_ms",
+			s.roundTrip,
+			"decode_queue",
+			s.decodeQueue,
+			"encoded_bitrate",
+			s.encodedBitrate,
+			"delivered_bitrate",
+			s.deliveredBitrate,
+		)
+	}
+	e := encoding{d.rate.bitrate(), d.rate.fps(), d.rate.scale()}
+	if d.applied == nil || *d.applied != e {
+		d.applied = &e
+		if stream != nil {
+			stream.encode(e)
+		}
+	}
 }

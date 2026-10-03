@@ -10,7 +10,12 @@ import (
 
 // Info reads current tab information.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Info(ctx context.Context, tab *tabs.Tab, input browserop.InfoInput, deadline time.Time) (browserop.InfoResult, error) {
+func Info(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.InfoInput,
+	deadline time.Time,
+) (browserop.InfoResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.InfoResult
@@ -21,7 +26,12 @@ func Info(ctx context.Context, tab *tabs.Tab, input browserop.InfoInput, deadlin
 
 // Goto navigates to the requested URL.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Goto(ctx context.Context, tab *tabs.Tab, input browserop.GotoInput, deadline time.Time) (browserop.NavigationResult, error) {
+func Goto(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.GotoInput,
+	deadline time.Time,
+) (browserop.NavigationResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.NavigationResult
@@ -32,7 +42,12 @@ func Goto(ctx context.Context, tab *tabs.Tab, input browserop.GotoInput, deadlin
 
 // Back navigates to the previous history entry.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Back(ctx context.Context, tab *tabs.Tab, input browserop.BackInput, deadline time.Time) (browserop.NavigationResult, error) {
+func Back(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.BackInput,
+	deadline time.Time,
+) (browserop.NavigationResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.NavigationResult
@@ -43,7 +58,12 @@ func Back(ctx context.Context, tab *tabs.Tab, input browserop.BackInput, deadlin
 
 // Forward navigates to the next history entry.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Forward(ctx context.Context, tab *tabs.Tab, input browserop.ForwardInput, deadline time.Time) (browserop.NavigationResult, error) {
+func Forward(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ForwardInput,
+	deadline time.Time,
+) (browserop.NavigationResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.NavigationResult
@@ -54,7 +74,12 @@ func Forward(ctx context.Context, tab *tabs.Tab, input browserop.ForwardInput, d
 
 // Reload reloads the current document.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Reload(ctx context.Context, tab *tabs.Tab, input browserop.ReloadInput, deadline time.Time) (browserop.NavigationResult, error) {
+func Reload(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ReloadInput,
+	deadline time.Time,
+) (browserop.NavigationResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.NavigationResult
@@ -65,7 +90,12 @@ func Reload(ctx context.Context, tab *tabs.Tab, input browserop.ReloadInput, dea
 
 // History reads the requested history page.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func History(ctx context.Context, tab *tabs.Tab, input browserop.HistoryInput, deadline time.Time) (browserop.HistoryResult, error) {
+func History(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.HistoryInput,
+	deadline time.Time,
+) (browserop.HistoryResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.HistoryResult
@@ -76,7 +106,12 @@ func History(ctx context.Context, tab *tabs.Tab, input browserop.HistoryInput, d
 
 // Inspect observes the accessibility or DOM tree.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Inspect(ctx context.Context, tab *tabs.Tab, input browserop.InspectInput, deadline time.Time) (browserop.InspectResult, error) {
+func Inspect(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.InspectInput,
+	deadline time.Time,
+) (browserop.InspectResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.InspectResult
@@ -87,7 +122,12 @@ func Inspect(ctx context.Context, tab *tabs.Tab, input browserop.InspectInput, d
 
 // Find resolves a locator or query and describes its matches.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Find(ctx context.Context, tab *tabs.Tab, input browserop.FindInput, deadline time.Time) (browserop.FindResult, error) {
+func Find(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.FindInput,
+	deadline time.Time,
+) (browserop.FindResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.FindResult
@@ -98,7 +138,12 @@ func Find(ctx context.Context, tab *tabs.Tab, input browserop.FindInput, deadlin
 
 // Read reads element properties while protecting password values.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Read(ctx context.Context, tab *tabs.Tab, input browserop.ReadInput, deadline time.Time) (browserop.ReadResult, error) {
+func Read(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ReadInput,
+	deadline time.Time,
+) (browserop.ReadResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ReadResult
@@ -109,7 +154,12 @@ func Read(ctx context.Context, tab *tabs.Tab, input browserop.ReadInput, deadlin
 
 // Probe describes the elements at viewport coordinates.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Probe(ctx context.Context, tab *tabs.Tab, input browserop.ProbeInput, deadline time.Time) (browserop.ProbeResult, error) {
+func Probe(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ProbeInput,
+	deadline time.Time,
+) (browserop.ProbeResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ProbeResult
@@ -120,7 +170,12 @@ func Probe(ctx context.Context, tab *tabs.Tab, input browserop.ProbeInput, deadl
 
 // Click delivers a native click and observes its associated navigation.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Click(ctx context.Context, tab *tabs.Tab, input browserop.ClickInput, deadline time.Time) (browserop.ActionResult, error) {
+func Click(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ClickInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -131,7 +186,12 @@ func Click(ctx context.Context, tab *tabs.Tab, input browserop.ClickInput, deadl
 
 // Move moves the pointer to an element or viewport coordinates.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Move(ctx context.Context, tab *tabs.Tab, input browserop.MoveInput, deadline time.Time) (browserop.ActionResult, error) {
+func Move(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.MoveInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -142,7 +202,12 @@ func Move(ctx context.Context, tab *tabs.Tab, input browserop.MoveInput, deadlin
 
 // Drag delivers a native pointer drag.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Drag(ctx context.Context, tab *tabs.Tab, input browserop.DragInput, deadline time.Time) (browserop.ActionResult, error) {
+func Drag(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.DragInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -153,7 +218,12 @@ func Drag(ctx context.Context, tab *tabs.Tab, input browserop.DragInput, deadlin
 
 // Scroll delivers a native wheel event.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Scroll(ctx context.Context, tab *tabs.Tab, input browserop.ScrollInput, deadline time.Time) (browserop.ActionResult, error) {
+func Scroll(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ScrollInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -164,7 +234,12 @@ func Scroll(ctx context.Context, tab *tabs.Tab, input browserop.ScrollInput, dea
 
 // Fill replaces the value of a fillable element.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Fill(ctx context.Context, tab *tabs.Tab, input browserop.FillInput, deadline time.Time) (browserop.ActionResult, error) {
+func Fill(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.FillInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -175,7 +250,12 @@ func Fill(ctx context.Context, tab *tabs.Tab, input browserop.FillInput, deadlin
 
 // Type types text into a target or the focused element.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Type(ctx context.Context, tab *tabs.Tab, input browserop.TypeInput, deadline time.Time) (browserop.ActionResult, error) {
+func Type(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.TypeInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -186,7 +266,12 @@ func Type(ctx context.Context, tab *tabs.Tab, input browserop.TypeInput, deadlin
 
 // Key delivers a validated key combination.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Key(ctx context.Context, tab *tabs.Tab, input browserop.KeyInput, deadline time.Time) (browserop.ActionResult, error) {
+func Key(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.KeyInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -197,7 +282,12 @@ func Key(ctx context.Context, tab *tabs.Tab, input browserop.KeyInput, deadline 
 
 // Check sets and verifies the requested checked state.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Check(ctx context.Context, tab *tabs.Tab, input browserop.CheckInput, deadline time.Time) (browserop.ActionResult, error) {
+func Check(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.CheckInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -208,7 +298,12 @@ func Check(ctx context.Context, tab *tabs.Tab, input browserop.CheckInput, deadl
 
 // Select selects native options by value, label, or index.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Select(ctx context.Context, tab *tabs.Tab, input browserop.SelectInput, deadline time.Time) (browserop.ActionResult, error) {
+func Select(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.SelectInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -219,7 +314,12 @@ func Select(ctx context.Context, tab *tabs.Tab, input browserop.SelectInput, dea
 
 // SelectText selects text in an element.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func SelectText(ctx context.Context, tab *tabs.Tab, input browserop.SelectTextInput, deadline time.Time) (browserop.ActionResult, error) {
+func SelectText(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.SelectTextInput,
+	deadline time.Time,
+) (browserop.ActionResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ActionResult
@@ -230,7 +330,12 @@ func SelectText(ctx context.Context, tab *tabs.Tab, input browserop.SelectTextIn
 
 // Wait waits for a URL, load, or element condition.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Wait(ctx context.Context, tab *tabs.Tab, input browserop.WaitInput, deadline time.Time) (browserop.WaitResult, error) {
+func Wait(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.WaitInput,
+	deadline time.Time,
+) (browserop.WaitResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.WaitResult
@@ -241,7 +346,12 @@ func Wait(ctx context.Context, tab *tabs.Tab, input browserop.WaitInput, deadlin
 
 // Eval evaluates a read-only expression with optional element targets.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Eval(ctx context.Context, tab *tabs.Tab, input browserop.EvalInput, deadline time.Time) (browserop.EvalResult, error) {
+func Eval(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.EvalInput,
+	deadline time.Time,
+) (browserop.EvalResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.EvalResult
@@ -252,7 +362,12 @@ func Eval(ctx context.Context, tab *tabs.Tab, input browserop.EvalInput, deadlin
 
 // Logs reads the tab console using its independent cursor.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func Logs(ctx context.Context, tab *tabs.Tab, input browserop.LogsInput, deadline time.Time) (browserop.LogsResult, error) {
+func Logs(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.LogsInput,
+	deadline time.Time,
+) (browserop.LogsResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.LogsResult
@@ -263,7 +378,12 @@ func Logs(ctx context.Context, tab *tabs.Tab, input browserop.LogsInput, deadlin
 
 // ViewportSet sets the custom viewport.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func ViewportSet(ctx context.Context, tab *tabs.Tab, input browserop.ViewportSetInput, deadline time.Time) (browserop.ViewportResult, error) {
+func ViewportSet(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ViewportSetInput,
+	deadline time.Time,
+) (browserop.ViewportResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ViewportResult
@@ -274,7 +394,12 @@ func ViewportSet(ctx context.Context, tab *tabs.Tab, input browserop.ViewportSet
 
 // ViewportReset restores the live-view viewport.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func ViewportReset(ctx context.Context, tab *tabs.Tab, input browserop.ViewportResetInput, deadline time.Time) (browserop.ViewportResult, error) {
+func ViewportReset(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ViewportResetInput,
+	deadline time.Time,
+) (browserop.ViewportResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ViewportResult
@@ -285,7 +410,12 @@ func ViewportReset(ctx context.Context, tab *tabs.Tab, input browserop.ViewportR
 
 // DialogInspect reads the current dialog.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func DialogInspect(ctx context.Context, tab *tabs.Tab, input browserop.DialogInspectInput, deadline time.Time) (browserop.DialogInspectResult, error) {
+func DialogInspect(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.DialogInspectInput,
+	deadline time.Time,
+) (browserop.DialogInspectResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.DialogInspectResult
@@ -296,7 +426,12 @@ func DialogInspect(ctx context.Context, tab *tabs.Tab, input browserop.DialogIns
 
 // DialogAccept accepts the observed dialog.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func DialogAccept(ctx context.Context, tab *tabs.Tab, input browserop.DialogAcceptInput, deadline time.Time) (browserop.DialogResult, error) {
+func DialogAccept(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.DialogAcceptInput,
+	deadline time.Time,
+) (browserop.DialogResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.DialogResult
@@ -307,7 +442,12 @@ func DialogAccept(ctx context.Context, tab *tabs.Tab, input browserop.DialogAcce
 
 // DialogDismiss dismisses the observed dialog.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func DialogDismiss(ctx context.Context, tab *tabs.Tab, input browserop.DialogDismissInput, deadline time.Time) (browserop.DialogResult, error) {
+func DialogDismiss(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.DialogDismissInput,
+	deadline time.Time,
+) (browserop.DialogResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.DialogResult
@@ -318,7 +458,12 @@ func DialogDismiss(ctx context.Context, tab *tabs.Tab, input browserop.DialogDis
 
 // ContentRead reads document content in the requested format.
 // It holds one tab admission through observation, input, cleanup, and associated waits.
-func ContentRead(ctx context.Context, tab *tabs.Tab, input browserop.ContentReadInput, deadline time.Time) (browserop.ContentReadResult, error) {
+func ContentRead(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ContentReadInput,
+	deadline time.Time,
+) (browserop.ContentReadResult, error) {
 	raw, err := Command(ctx, tab, &input, deadline)
 	if err != nil {
 		var zero browserop.ContentReadResult

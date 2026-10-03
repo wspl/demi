@@ -61,7 +61,12 @@ func Dial(ctx context.Context, address string) (*Connection, error) {
 }
 
 // dial separates Chrome connection setup cancellation from its owning lifetime.
-func dial(ctx, owner context.Context, address string, validate bool, record func(Event, *Connection) error) (*Connection, error) {
+func dial(
+	ctx, owner context.Context,
+	address string,
+	validate bool,
+	record func(Event, *Connection) error,
+) (*Connection, error) {
 	socket, response, err := websocket.Dial(ctx, address, nil)
 	if err != nil {
 		if response != nil && response.Body != nil {
@@ -71,7 +76,18 @@ func dial(ctx, owner context.Context, address string, validate bool, record func
 	}
 	socket.SetReadLimit(MessageLimit)
 	lifetime, cancel := context.WithCancel(owner)
-	c := &Connection{socket: socket, validate: validate, record: record, ctx: lifetime, cancel: cancel, done: make(chan struct{}), outbound: make(chan []byte, 16), pending: make(map[int64]pendingCall), sessions: make(map[target.SessionID]*Session), subscriptions: make(map[*Subscription]struct{})}
+	c := &Connection{
+		socket:        socket,
+		validate:      validate,
+		record:        record,
+		ctx:           lifetime,
+		cancel:        cancel,
+		done:          make(chan struct{}),
+		outbound:      make(chan []byte, 16),
+		pending:       make(map[int64]pendingCall),
+		sessions:      make(map[target.SessionID]*Session),
+		subscriptions: make(map[*Subscription]struct{}),
+	}
 	go c.pump()
 	return c, nil
 }
@@ -128,30 +144,8 @@ func (c *Connection) read() {
 			return
 		}
 		if message.ID != 0 {
-			c.mu.Lock()
-			pending, found := c.pending[message.ID]
-			delete(c.pending, message.ID)
-			c.mu.Unlock()
-			if !found {
-				continue
-			} // The waiting command was cancelled.
-			reply := commandReply{data: json.RawMessage(message.Result)}
-			if message.SessionID != pending.session || (message.Error == nil) == (message.Result == nil) {
-				reply.err = &BrowserError{Kind: KindCDP, Message: "malformed CDP response envelope"}
-			} else if message.Error != nil {
-				reply.err = &ProtocolError{Code: message.Error.Code, Message: message.Error.Message}
-				// Chrome supplies only this message for an absent flattened session;
-				// the Rust boundary performs the same protocol-specific classification.
-				if message.Error.Message == "Session with given id not found." {
-					reply.err = &BrowserError{Kind: KindTabNotFound, Cause: reply.err}
-				}
-			} else if c.validate {
-				reply.err = validatePinned(pending.method, "returns", reply.data)
-			}
-			if pending.reply != nil {
-				pending.reply <- reply
-			} else if reply.err != nil {
-				c.fail(reply.err)
+			if err := c.receiveReply(message); err != nil {
+				c.fail(err)
 				return
 			}
 			continue
@@ -160,30 +154,15 @@ func (c *Connection) read() {
 			c.fail(&BrowserError{Kind: KindCDP, Message: "malformed CDP response envelope"})
 			return
 		}
-		event := Event{Method: string(message.Method), Params: json.RawMessage(message.Params), SessionID: message.SessionID}
-		if c.validate {
-			if err := validatePinned(event.Method, "event", event.Params); err != nil {
-				c.fail(err)
-				return
-			}
+		event := Event{
+			Method:    string(message.Method),
+			Params:    json.RawMessage(message.Params),
+			SessionID: message.SessionID,
 		}
-		if err := c.route(event); err != nil {
+		if err := c.receiveEvent(event); err != nil {
 			c.fail(err)
 			return
 		}
-		if c.record != nil {
-			if err := c.record(event, c); err != nil {
-				c.fail(err)
-				return
-			}
-		}
-		c.mu.Lock()
-		for subscription := range c.subscriptions {
-			if subscription.session == "" || c.descendantLocked(event.SessionID, subscription.session) {
-				subscription.deliver(event)
-			}
-		}
-		c.mu.Unlock()
 	}
 }
 
@@ -191,73 +170,9 @@ func (c *Connection) read() {
 func (c *Connection) route(event Event) error {
 	switch event.Method {
 	case "Target.attachedToTarget":
-		if !c.validate {
-			if err := validateTyped(event.Method, "event", event.Params); err != nil {
-				return err
-			}
-		}
-		var attached target.EventAttachedToTarget
-		if err := jsonv2.Unmarshal(event.Params, &attached); err != nil {
-			return &BrowserError{Kind: KindCDP, Cause: err}
-		}
-		if attached.TargetInfo == nil || attached.SessionID == "" {
-			return &BrowserError{Kind: KindCDP, Message: "malformed CDP attachment"}
-		}
-		c.mu.Lock()
-		s := c.sessions[attached.SessionID]
-		if s == nil {
-			s = &Session{connection: c, id: attached.SessionID, target: attached.TargetInfo.TargetID, parent: event.SessionID}
-		}
-		c.mu.Unlock()
-		if event.SessionID != "" {
-			// Ordinary renderer children need the same observation domains as
-			// their parent. Raw debugging connections leave domains to callers.
-			// Queue setup before publishing the attachment; the reader must
-			// remain available to receive these commands' acknowledgements.
-			if !c.validate && attached.TargetInfo.Type == "iframe" {
-				for _, command := range []struct {
-					method string
-					params any
-				}{
-					{"Page.enable", page.Enable()},
-					{"Runtime.enable", runtime.Enable()},
-					{"Network.enable", network.Enable()},
-					{"Page.setLifecycleEventsEnabled", page.SetLifecycleEventsEnabled(true)},
-				} {
-					if err := c.submit(c.ctx, s.id, command.method, command.params, nil); err != nil {
-						return err
-					}
-				}
-			}
-			if err := c.submit(c.ctx, s.id, "Target.setAutoAttach", descendantParams(), nil); err != nil {
-				return err
-			}
-		}
-		c.mu.Lock()
-		c.sessions[s.id] = s
-		c.mu.Unlock()
+		return c.attachEvent(event)
 	case "Target.detachedFromTarget":
-		if !c.validate {
-			if err := validateTyped(event.Method, "event", event.Params); err != nil {
-				return err
-			}
-		}
-		var detached target.EventDetachedFromTarget
-		if err := jsonv2.Unmarshal(event.Params, &detached); err != nil {
-			return &BrowserError{Kind: KindCDP, Cause: err}
-		}
-		c.mu.Lock()
-		var removed []target.SessionID
-		for id, s := range c.sessions {
-			if c.descendantLocked(id, detached.SessionID) {
-				s.detached = true
-				removed = append(removed, id)
-			}
-		}
-		for _, id := range removed {
-			delete(c.sessions, id)
-		}
-		c.mu.Unlock()
+		return c.detachEvent(event)
 	}
 	return nil
 }
@@ -278,7 +193,13 @@ func (c *Connection) descendantLocked(id, parent target.SessionID) bool {
 }
 
 // submit queues a CDP command; the bounded writer owns all socket writes.
-func (c *Connection) submit(ctx context.Context, session target.SessionID, method string, params any, reply chan commandReply) error {
+func (c *Connection) submit(
+	ctx context.Context,
+	session target.SessionID,
+	method string,
+	params any,
+	reply chan commandReply,
+) error {
 	if params == nil {
 		params = struct{}{}
 	} // cdproto uses nil for parameterless commands.
@@ -375,13 +296,26 @@ func (c *Connection) Execute(ctx context.Context, method string, params, result 
 
 // descendantParams selects only the tab's renderer and worker descendants.
 func descendantParams() *target.SetAutoAttachParams {
-	return target.SetAutoAttach(true, false).WithFlatten(true).WithFilter(target.Filter{{Type: "iframe"}, {Type: "worker"}, {Type: "shared_worker"}, {Type: "service_worker"}, {Exclude: true}})
+	return target.SetAutoAttach(true, false).
+		WithFlatten(true).
+		WithFilter(target.Filter{
+			{Type: "iframe"},
+			{Type: "worker"},
+			{Type: "shared_worker"},
+			{Type: "service_worker"},
+			{Exclude: true},
+		})
 }
 
 // Attach attaches a flattened target session and tracks its renderer descendants.
 func (c *Connection) Attach(ctx context.Context, id target.ID) (*Session, error) {
 	var attached target.AttachToTargetReturns
-	if err := c.Execute(ctx, "Target.attachToTarget", target.AttachToTarget(id).WithFlatten(true), &attached); err != nil {
+	if err := c.Execute(
+		ctx,
+		"Target.attachToTarget",
+		target.AttachToTarget(id).WithFlatten(true),
+		&attached,
+	); err != nil {
 		return nil, err
 	}
 	c.mu.Lock()
@@ -423,7 +357,13 @@ func (c *Connection) subscribe(session target.SessionID, capacity int, methods [
 	if c.ctx.Err() != nil {
 		return nil, &BrowserError{Kind: KindClosed}
 	}
-	s := &Subscription{capacity: capacity, connection: c, session: session, methods: append([]string(nil), methods...), wake: make(chan struct{}, 1)}
+	s := &Subscription{
+		capacity:   capacity,
+		connection: c,
+		session:    session,
+		methods:    append([]string(nil), methods...),
+		wake:       make(chan struct{}, 1),
+	}
 	c.subscriptions[s] = struct{}{}
 	return s, nil
 }
@@ -533,7 +473,8 @@ func (s *Session) Close(ctx context.Context) error {
 	}
 	err := c.execute(ctx, s.parent, "Target.detachFromTarget", target.DetachFromTarget().WithSessionID(s.id), nil)
 	var chrome *ProtocolError
-	if connectionLoss(err) || ErrorCode(err) == "browser_lost" || (errors.As(err, &chrome) && chrome.Code == -32602 && chrome.Message == "No session with given id") {
+	if connectionLoss(err) || ErrorCode(err) == "browser_lost" ||
+		(errors.As(err, &chrome) && chrome.Code == -32602 && chrome.Message == "No session with given id") {
 		err = nil
 	}
 	if err == nil {
@@ -547,8 +488,11 @@ func (s *Session) Close(ctx context.Context) error {
 // Event preserves a validated vendor envelope and its original session identity.
 // Params is decoded with cdproto's event types by DecodeEvent.
 type Event struct {
-	Method    string
-	Params    json.RawMessage
+	// Method names the Chrome event.
+	Method string
+	// Params retains the event payload.
+	Params json.RawMessage
+	// SessionID identifies the flattened session that emitted the event.
 	SessionID target.SessionID
 }
 
@@ -557,7 +501,13 @@ func DecodeEvent(event Event) (any, error) {
 	if err := validateTyped(event.Method, "event", event.Params); err != nil {
 		return nil, err
 	}
-	return cdproto.UnmarshalMessage(&cdproto.Message{Method: cdproto.MethodType(event.Method), Params: jsontext.Value(event.Params), SessionID: event.SessionID})
+	return cdproto.UnmarshalMessage(
+		&cdproto.Message{
+			Method:    cdproto.MethodType(event.Method),
+			Params:    jsontext.Value(event.Params),
+			SessionID: event.SessionID,
+		},
+	)
 }
 
 // Subscription is a bounded event stream. A slow reader does not block commands.
@@ -662,9 +612,144 @@ func (s *Subscription) Close() {
 }
 
 // EventLoss reports dropped events so registries reconcile and logs mark gaps.
-type EventLoss struct{ Count uint64 }
+type EventLoss struct {
+	// Count counts events dropped from the subscription.
+	Count uint64
+}
 
 // Error describes the lost events.
 func (e *EventLoss) Error() string {
 	return fmt.Sprintf("CDP event subscription lost %d events", e.Count)
+}
+
+func (c *Connection) receiveReply(message cdproto.Message) error {
+	c.mu.Lock()
+	pending, found := c.pending[message.ID]
+	delete(c.pending, message.ID)
+	c.mu.Unlock()
+	if !found {
+		return nil
+	} // The waiting command was cancelled.
+	reply := commandReply{data: json.RawMessage(message.Result)}
+	if message.SessionID != pending.session || (message.Error == nil) == (message.Result == nil) {
+		reply.err = &BrowserError{Kind: KindCDP, Message: "malformed CDP response envelope"}
+	} else if message.Error != nil {
+		reply.err = &ProtocolError{Code: message.Error.Code, Message: message.Error.Message}
+		// Chrome supplies only this message for an absent flattened session;
+		// the Rust boundary performs the same protocol-specific classification.
+		if message.Error.Message == "Session with given id not found." {
+			reply.err = &BrowserError{Kind: KindTabNotFound, Cause: reply.err}
+		}
+	} else if c.validate {
+		reply.err = validatePinned(pending.method, "returns", reply.data)
+	}
+	if pending.reply != nil {
+		pending.reply <- reply
+	} else if reply.err != nil {
+		return reply.err
+	}
+	return nil
+}
+
+func (c *Connection) receiveEvent(event Event) error {
+	if c.validate {
+		if err := validatePinned(event.Method, "event", event.Params); err != nil {
+			return err
+		}
+	}
+	if err := c.route(event); err != nil {
+		return err
+	}
+	if c.record != nil {
+		if err := c.record(event, c); err != nil {
+			return err
+		}
+	}
+	c.mu.Lock()
+	for subscription := range c.subscriptions {
+		if subscription.session == "" || c.descendantLocked(event.SessionID, subscription.session) {
+			subscription.deliver(event)
+		}
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *Connection) attachEvent(event Event) error {
+	if !c.validate {
+		if err := validateTyped(event.Method, "event", event.Params); err != nil {
+			return err
+		}
+	}
+	var attached target.EventAttachedToTarget
+	if err := jsonv2.Unmarshal(event.Params, &attached); err != nil {
+		return &BrowserError{Kind: KindCDP, Cause: err}
+	}
+	if attached.TargetInfo == nil || attached.SessionID == "" {
+		return &BrowserError{Kind: KindCDP, Message: "malformed CDP attachment"}
+	}
+	c.mu.Lock()
+	s := c.sessions[attached.SessionID]
+	if s == nil {
+		s = &Session{
+			connection: c,
+			id:         attached.SessionID,
+			target:     attached.TargetInfo.TargetID,
+			parent:     event.SessionID,
+		}
+	}
+	c.mu.Unlock()
+	if event.SessionID != "" {
+		// Ordinary renderer children need the same observation domains as
+		// their parent. Raw debugging connections leave domains to callers.
+		// Queue setup before publishing the attachment; the reader must
+		// remain available to receive these commands' acknowledgements.
+		if !c.validate && attached.TargetInfo.Type == "iframe" {
+			for _, command := range []struct {
+				method string
+				params any
+			}{
+				{"Page.enable", page.Enable()},
+				{"Runtime.enable", runtime.Enable()},
+				{"Network.enable", network.Enable()},
+				{"Page.setLifecycleEventsEnabled", page.SetLifecycleEventsEnabled(true)},
+			} {
+				if err := c.submit(c.ctx, s.id, command.method, command.params, nil); err != nil {
+					return err
+				}
+			}
+		}
+		if err := c.submit(c.ctx, s.id, "Target.setAutoAttach", descendantParams(), nil); err != nil {
+			return err
+		}
+	}
+	c.mu.Lock()
+	c.sessions[s.id] = s
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *Connection) detachEvent(event Event) error {
+	if !c.validate {
+		if err := validateTyped(event.Method, "event", event.Params); err != nil {
+			return err
+		}
+	}
+	var detached target.EventDetachedFromTarget
+	if err := jsonv2.Unmarshal(event.Params, &detached); err != nil {
+		return &BrowserError{Kind: KindCDP, Cause: err}
+	}
+	c.mu.Lock()
+	var removed []target.SessionID
+	for id, s := range c.sessions {
+		if c.descendantLocked(id, detached.SessionID) {
+			s.detached = true
+			removed = append(removed, id)
+		}
+	}
+	for _, id := range removed {
+		delete(c.sessions, id)
+	}
+	c.mu.Unlock()
+	return nil
 }

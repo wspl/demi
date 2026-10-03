@@ -76,7 +76,13 @@ func inventoryDocuments(state *tabs.Assets, frames []inventoryFrame) {
 
 // AssetsList inventories resources already observed by the page.
 // The operation owns its admission and cleanup; paths resolve against invocation metadata.
-func AssetsList(ctx context.Context, _ *cmdsdk.InvocationContext[commandwire.Invocation], tab *tabs.Tab, _ browserop.AssetsListInput, deadline time.Time) (result browserop.AssetsListResult, err error) {
+func AssetsList(
+	ctx context.Context,
+	_ *cmdsdk.InvocationContext[commandwire.Invocation],
+	tab *tabs.Tab,
+	_ browserop.AssetsListInput,
+	deadline time.Time,
+) (result browserop.AssetsListResult, err error) {
 	if tab == nil {
 		return result, &cdp.BrowserError{Kind: cdp.KindTabNotFound}
 	}
@@ -98,7 +104,11 @@ func AssetsList(ctx context.Context, _ *cmdsdk.InvocationContext[commandwire.Inv
 		if err != nil {
 			return err
 		}
-		result = browserop.AssetsListResult{Inventory: handle, Assets: []browserop.Asset{}, InlineSvgs: []browserop.InlineSvg{}}
+		result = browserop.AssetsListResult{
+			Inventory:  handle,
+			Assets:     []browserop.Asset{},
+			InlineSvgs: []browserop.InlineSvg{},
+		}
 		inventory := tabs.Inventory{Assets: []tabs.Asset{}}
 		size := 0
 		observation, err := captureObservation(work, tab.Page(), &checkout.Session().References)
@@ -106,70 +116,11 @@ func AssetsList(ctx context.Context, _ *cmdsdk.InvocationContext[commandwire.Inv
 			return err
 		}
 		for _, frame := range frames {
-			for _, resource := range frame.tree.Resources {
-				var kind browserop.AssetKind
-				switch resource.Type {
-				case network.ResourceTypeFont:
-					kind = "font"
-				case network.ResourceTypeImage:
-					kind = "image"
-				case network.ResourceTypeStylesheet:
-					kind = "stylesheet"
-				case network.ResourceTypeMedia:
-					if strings.HasPrefix(resource.MimeType, "video/") {
-						kind = "video"
-					}
-				}
-				if kind == "" {
-					continue
-				}
-				id, err := cdp.Fresh("asset")
-				if err != nil {
-					return err
-				}
-				entry := browserop.Asset{ID: id, Kind: kind, URL: resource.URL, MIMEType: &resource.MimeType}
-				encoded, err := cdp.Value(entry)
-				if err != nil {
-					return err
-				}
-				if len(inventory.Assets) >= browserop.MaxNodes || size+len(encoded) > browserop.InlineBytes/2 {
-					result.Truncated = true
-					continue
-				}
-				size += len(encoded)
-				result.Assets = append(result.Assets, entry)
-				inventory.Assets = append(inventory.Assets, tabs.Asset{ID: id, Kind: kind, MIME: resource.MimeType, Source: &tabs.ResourceAsset{Page: frame.page, Frame: frame.tree.Frame.ID, URL: resource.URL}})
-			}
-			var document *targetElement
-			for _, item := range observation.dom {
-				if item.frame == frame.tree.Frame.ID && item.node.NodeType == 9 {
-					resolved, err := resolveElement(work, frame.page, item.node.BackendNodeID)
-					if err != nil {
-						return err
-					}
-					document = &resolved
-					break
-				}
-			}
-			if document == nil {
-				return &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "asset frame has no execution context"}
-			}
-			svgs, err := decodeElement[[]string](work, *document, "function() { return Array.from(document.querySelectorAll('svg'), svg => svg.outerHTML); }", false)
-			if err != nil {
+			if err := inventoryResources(frame, &inventory, &result, &size); err != nil {
 				return err
 			}
-			for _, html := range svgs {
-				if len(inventory.Assets) >= browserop.MaxNodes || size+len(html) > browserop.InlineBytes/2 {
-					result.Truncated = true
-					continue
-				}
-				size += len(html)
-				id, err := cdp.Fresh("asset")
-				if err != nil {
-					return err
-				}
-				result.InlineSvgs = append(result.InlineSvgs, browserop.InlineSvg{ID: id, HTML: html})
-				inventory.Assets = append(inventory.Assets, tabs.Asset{ID: id, Kind: "image", MIME: "image/svg+xml", Source: &tabs.SVGAsset{SVG: html}})
+			if err := inventorySVGs(work, frame, observation, &inventory, &result, &size); err != nil {
+				return err
 			}
 		}
 		state.Inventories[handle] = inventory
@@ -181,18 +132,29 @@ func AssetsList(ctx context.Context, _ *cmdsdk.InvocationContext[commandwire.Inv
 }
 
 type exportFailure struct {
-	ID    string                   `json:"id"`
+	// ID identifies the asset that could not be exported.
+	ID string `json:"id"`
+	// Error describes the export failure.
 	Error browserop.BrowserFailure `json:"error"`
 }
 type exportManifest struct {
-	Inventory string                    `json:"inventory"`
-	Files     []browserop.ExportedAsset `json:"files"`
-	Failures  []exportFailure           `json:"failures"`
+	// Inventory identifies the inventory used for this export.
+	Inventory string `json:"inventory"`
+	// Files lists the successfully exported assets.
+	Files []browserop.ExportedAsset `json:"files"`
+	// Failures lists the assets that could not be exported.
+	Failures []exportFailure `json:"failures"`
 }
 
 // AssetsExport exports resources from the selected page inventory.
 // The operation owns its admission and cleanup; paths resolve against invocation metadata.
-func AssetsExport(ctx context.Context, invocation *cmdsdk.InvocationContext[commandwire.Invocation], tab *tabs.Tab, input browserop.AssetsExportInput, deadline time.Time) (result browserop.AssetsExportResult, err error) {
+func AssetsExport(
+	ctx context.Context,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	tab *tabs.Tab,
+	input browserop.AssetsExportInput,
+	deadline time.Time,
+) (result browserop.AssetsExportResult, err error) {
 	if tab == nil {
 		return result, &cdp.BrowserError{Kind: cdp.KindTabNotFound}
 	}
@@ -214,29 +176,15 @@ func AssetsExport(ctx context.Context, invocation *cmdsdk.InvocationContext[comm
 	}
 	state := &checkout.Session().Assets
 	inventoryDocuments(state, frames)
-	if (input.ID != nil) == (input.Kind != nil) {
-		return result, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "asset export requires either --id or --kind"}
-	}
-	inventory, ok := state.Inventories[input.Inventory]
-	if !ok {
-		return result, &cdp.BrowserError{Kind: cdp.KindStaleInventory}
-	}
-	if input.ID != nil {
-		for _, id := range *input.ID {
-			found := false
-			for _, asset := range inventory.Assets {
-				found = found || asset.ID == id
-			}
-			if !found {
-				return result, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "asset " + id + " is not in this inventory"}
-			}
-		}
+	inventory, err := exportInventory(state, input)
+	if err != nil {
+		return result, err
 	}
 	directory, err := cdp.Resolve(invocation.Request.Cwd, input.OutputDir)
 	if err != nil {
 		return result, err
 	}
-	if err = os.MkdirAll(directory, 0755); err != nil {
+	if err = os.MkdirAll(directory, 0o755); err != nil {
 		return result, &cdp.BrowserError{Kind: cdp.KindIO, Cause: err}
 	}
 	manifestPath := filepath.Join(directory, "manifest.json")
@@ -244,60 +192,19 @@ func AssetsExport(ctx context.Context, invocation *cmdsdk.InvocationContext[comm
 	if _, err = cdp.Preflight(operation.Context(), invocation.Request.Cwd, manifestPath, overwrite); err != nil {
 		return result, err
 	}
-	manifest := exportManifest{Inventory: input.Inventory, Files: []browserop.ExportedAsset{}, Failures: []exportFailure{}}
-	for _, asset := range inventory.Assets {
-		selected := input.ID != nil && slices.Contains(*input.ID, asset.ID) || input.Kind != nil && slices.Contains(*input.Kind, asset.Kind)
-		if !selected {
-			continue
-		}
-		var data []byte
-		var saved string
-		itemErr := operation.Run(ctx, func(work context.Context) error {
-			var err error
-			switch source := asset.Source.(type) {
-			case *tabs.SVGAsset:
-				data = []byte(source.SVG)
-			case *tabs.ResourceAsset:
-				data, err = resourceBytes(work, source.Page, source.Frame, source.URL)
-			}
-			if err != nil {
-				return err
-			}
-			saved, err = cdp.SaveWithOverwrite(work, invocation.Request.Cwd, filepath.Join(directory, asset.ID+"."+assetExtension(asset.MIME)), data, overwrite)
-			return err
-		})
-		if itemErr != nil {
-			manifest.Failures = append(manifest.Failures, exportFailure{asset.ID, browserop.BrowserFailure{Code: cdp.ErrorCode(itemErr), Message: itemErr.Error()}})
-		} else {
-			manifest.Files = append(manifest.Files, browserop.ExportedAsset{ID: asset.ID, Path: saved, Bytes: uint(len(data)), MIMEType: asset.MIME})
-		}
-	}
-	encoded, err := cdp.Value(manifest)
+	manifest := exportAssets(ctx, operation, invocation.Request.Cwd, directory, input, inventory, overwrite)
+	manifestBytes, err := encodeAssetManifest(manifest)
 	if err != nil {
-		return result, err
-	}
-	var pretty bytes.Buffer
-	if err = json.Indent(&pretty, encoded, "", "  "); err != nil {
 		return result, err
 	}
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), cdp.ControlTimeout)
 	defer cancel()
-	path, err := cdp.SaveWithOverwrite(cleanup, invocation.Request.Cwd, manifestPath, pretty.Bytes(), overwrite)
+	path, err := cdp.SaveWithOverwrite(cleanup, invocation.Request.Cwd, manifestPath, manifestBytes, overwrite)
 	if err != nil {
 		return result, err
 	}
 	result = browserop.AssetsExportResult{Directory: directory, Manifest: path, Files: manifest.Files}
-	if ctx.Err() != nil || !time.Now().Before(deadline) {
-		kind := cdp.KindCancelled
-		if !time.Now().Before(deadline) {
-			kind = cdp.KindTimeout
-		}
-		return result, &cdp.BrowserError{Kind: cdp.KindAction, Cause: &cdp.BrowserError{Kind: kind}, Details: browserop.ErrorDetails{AssetsExportResult: &result}}
-	}
-	if len(manifest.Failures) > 0 {
-		return result, &cdp.BrowserError{Kind: cdp.KindPartialFailure, Details: browserop.ErrorDetails{AssetsExportResult: &result}}
-	}
-	return result, nil
+	return assetExportResult(ctx, deadline, result, manifest)
 }
 
 // assetExtension names exported resources from their declared media type.
@@ -337,4 +244,240 @@ func resourceBytes(ctx context.Context, page cdp.FrameTarget, frame protocol.Fra
 		return nil, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: err.Error(), Cause: err}
 	}
 	return data, err
+}
+
+func inventoryResources(
+	frame inventoryFrame,
+	inventory *tabs.Inventory,
+	result *browserop.AssetsListResult,
+	size *int,
+) error {
+	for _, resource := range frame.tree.Resources {
+		var kind browserop.AssetKind
+		switch resource.Type {
+		case network.ResourceTypeFont:
+			kind = "font"
+		case network.ResourceTypeImage:
+			kind = "image"
+		case network.ResourceTypeStylesheet:
+			kind = "stylesheet"
+		case network.ResourceTypeMedia:
+			if strings.HasPrefix(resource.MimeType, "video/") {
+				kind = "video"
+			}
+		}
+		if kind == "" {
+			continue
+		}
+		id, err := cdp.Fresh("asset")
+		if err != nil {
+			return err
+		}
+		entry := browserop.Asset{ID: id, Kind: kind, URL: resource.URL, MIMEType: &resource.MimeType}
+		encoded, err := cdp.Value(entry)
+		if err != nil {
+			return err
+		}
+		if len(inventory.Assets) >= browserop.MaxNodes || *size+len(encoded) > browserop.InlineBytes/2 {
+			result.Truncated = true
+			continue
+		}
+		*size += len(encoded)
+		result.Assets = append(result.Assets, entry)
+		inventory.Assets = append(
+			inventory.Assets,
+			tabs.Asset{
+				ID:     id,
+				Kind:   kind,
+				MIME:   resource.MimeType,
+				Source: &tabs.ResourceAsset{Page: frame.page, Frame: frame.tree.Frame.ID, URL: resource.URL},
+			},
+		)
+	}
+
+	return nil
+}
+
+func inventorySVGs(
+	work context.Context,
+	frame inventoryFrame,
+	observation *observation,
+	inventory *tabs.Inventory,
+	result *browserop.AssetsListResult,
+	size *int,
+) error {
+	var document *targetElement
+	for _, item := range observation.dom {
+		if item.frame == frame.tree.Frame.ID && item.node.NodeType == 9 {
+			resolved, err := resolveElement(work, frame.page, item.node.BackendNodeID)
+			if err != nil {
+				return err
+			}
+			document = &resolved
+			break
+		}
+	}
+	if document == nil {
+		return &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "asset frame has no execution context"}
+	}
+	svgs, err := decodeElement[[]string](
+		work,
+		*document,
+		"function() { return Array.from(document.querySelectorAll('svg'), svg => svg.outerHTML); }",
+		false,
+	)
+	if err != nil {
+		return err
+	}
+	for _, html := range svgs {
+		if len(inventory.Assets) >= browserop.MaxNodes || *size+len(html) > browserop.InlineBytes/2 {
+			result.Truncated = true
+			continue
+		}
+		*size += len(html)
+		id, err := cdp.Fresh("asset")
+		if err != nil {
+			return err
+		}
+		result.InlineSvgs = append(result.InlineSvgs, browserop.InlineSvg{ID: id, HTML: html})
+		inventory.Assets = append(
+			inventory.Assets,
+			tabs.Asset{ID: id, Kind: "image", MIME: "image/svg+xml", Source: &tabs.SVGAsset{SVG: html}},
+		)
+	}
+	return nil
+}
+
+func validateAssetIDs(input browserop.AssetsExportInput, inventory tabs.Inventory) error {
+	if input.ID != nil {
+		for _, id := range *input.ID {
+			found := false
+			for _, asset := range inventory.Assets {
+				found = found || asset.ID == id
+			}
+			if !found {
+				return &cdp.BrowserError{
+					Kind:    cdp.KindConfiguration,
+					Message: "asset " + id + " is not in this inventory",
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func exportInventory(state *tabs.Assets, input browserop.AssetsExportInput) (tabs.Inventory, error) {
+	if (input.ID != nil) == (input.Kind != nil) {
+		return tabs.Inventory{}, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "asset export requires either --id or --kind",
+		}
+	}
+	inventory, ok := state.Inventories[input.Inventory]
+	if !ok {
+		return tabs.Inventory{}, &cdp.BrowserError{Kind: cdp.KindStaleInventory}
+	}
+	if err := validateAssetIDs(input, inventory); err != nil {
+		return tabs.Inventory{}, err
+	}
+
+	return inventory, nil
+}
+
+func encodeAssetManifest(manifest exportManifest) ([]byte, error) {
+	encoded, err := cdp.Value(manifest)
+	if err != nil {
+		return nil, err
+	}
+	var pretty bytes.Buffer
+	if err = json.Indent(&pretty, encoded, "", "  "); err != nil {
+		return nil, err
+	}
+	return pretty.Bytes(), nil
+}
+
+func exportAssets(
+	ctx context.Context,
+	operation *cdp.Operation,
+	cwd, directory string,
+	input browserop.AssetsExportInput,
+	inventory tabs.Inventory,
+	overwrite bool,
+) exportManifest {
+	manifest := exportManifest{
+		Inventory: input.Inventory,
+		Files:     []browserop.ExportedAsset{},
+		Failures:  []exportFailure{},
+	}
+	for _, asset := range inventory.Assets {
+		selected := input.ID != nil && slices.Contains(*input.ID, asset.ID) ||
+			input.Kind != nil && slices.Contains(*input.Kind, asset.Kind)
+		if !selected {
+			continue
+		}
+		var data []byte
+		var saved string
+		itemErr := operation.Run(ctx, func(work context.Context) error {
+			var err error
+			switch source := asset.Source.(type) {
+			case *tabs.SVGAsset:
+				data = []byte(source.SVG)
+			case *tabs.ResourceAsset:
+				data, err = resourceBytes(work, source.Page, source.Frame, source.URL)
+			}
+			if err != nil {
+				return err
+			}
+			saved, err = cdp.SaveWithOverwrite(
+				work,
+				cwd,
+				filepath.Join(directory, asset.ID+"."+assetExtension(asset.MIME)),
+				data,
+				overwrite,
+			)
+			return err
+		})
+		if itemErr != nil {
+			manifest.Failures = append(
+				manifest.Failures,
+				exportFailure{
+					asset.ID,
+					browserop.BrowserFailure{Code: cdp.ErrorCode(itemErr), Message: itemErr.Error()},
+				},
+			)
+		} else {
+			manifest.Files = append(
+				manifest.Files,
+				browserop.ExportedAsset{ID: asset.ID, Path: saved, Bytes: uint(len(data)), MIMEType: asset.MIME},
+			)
+		}
+	}
+	return manifest
+}
+
+func assetExportResult(
+	ctx context.Context,
+	deadline time.Time,
+	result browserop.AssetsExportResult,
+	manifest exportManifest,
+) (browserop.AssetsExportResult, error) {
+	if ctx.Err() != nil || !time.Now().Before(deadline) {
+		kind := cdp.KindCancelled
+		if !time.Now().Before(deadline) {
+			kind = cdp.KindTimeout
+		}
+		return result, &cdp.BrowserError{
+			Kind:    cdp.KindAction,
+			Cause:   &cdp.BrowserError{Kind: kind},
+			Details: browserop.ErrorDetails{AssetsExportResult: &result},
+		}
+	}
+	if len(manifest.Failures) > 0 {
+		return result, &cdp.BrowserError{
+			Kind:    cdp.KindPartialFailure,
+			Details: browserop.ErrorDetails{AssetsExportResult: &result},
+		}
+	}
+	return result, nil
 }

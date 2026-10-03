@@ -51,43 +51,35 @@ func ScreenshotBytes(ctx context.Context, tab *tabs.Tab, fullPage bool, clip *st
 }
 
 // screenshotBytes captures a CDP rectangle at the tab's CSS pixel scale.
-func screenshotBytes(ctx context.Context, executor cdp.Executor, viewport browserop.BrowserViewport, fullPage bool, clip *string) ([]byte, error) {
+func screenshotBytes(
+	ctx context.Context,
+	executor cdp.Executor,
+	viewport browserop.BrowserViewport,
+	fullPage bool,
+	clip *string,
+) ([]byte, error) {
 	if fullPage && clip != nil {
-		return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "--full-page and --clip are mutually exclusive"}
+		return nil, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "--full-page and --clip are mutually exclusive",
+		}
 	}
 	rectangle := &chrome.Viewport{Scale: 1 / viewport.DevicePixelRatio}
 	if clip != nil {
-		parts := strings.Split(*clip, ",")
-		if len(parts) != 4 {
-			return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "clip requires x,y,width,height"}
-		}
-		values := [4]float64{}
-		for i, part := range parts {
-			number, err := strconv.ParseFloat(part, 64)
-			if err != nil {
-				return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "clip requires x,y,width,height", Cause: err}
-			}
-			values[i] = number
-		}
-		for i, value := range values {
-			if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || (i >= 2 && value == 0) {
-				return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "clip requires finite nonnegative coordinates and positive dimensions"}
-			}
-		}
-		rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height = values[0], values[1], values[2], values[3]
-	} else {
-		_, _, _, _, visible, size, err := chrome.GetLayoutMetrics().Do(protocol.WithExecutor(ctx, executor))
-		if err != nil {
+		if err := parseScreenshotClip(clip, rectangle); err != nil {
 			return nil, err
 		}
-		if fullPage {
-			rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height = size.X, size.Y, size.Width, size.Height
-		} else {
-			rectangle.X, rectangle.Y = visible.PageX, visible.PageY
-			rectangle.Width, rectangle.Height = float64(viewport.Width), float64(viewport.Height)
+	} else {
+		if err := screenshotViewport(ctx, executor, viewport, fullPage, rectangle); err != nil {
+			return nil, err
 		}
 	}
-	data, err := chrome.CaptureScreenshot().WithFormat(chrome.CaptureScreenshotFormatPng).WithFromSurface(true).WithCaptureBeyondViewport(fullPage || clip != nil).WithClip(rectangle).Do(protocol.WithExecutor(ctx, executor))
+	data, err := chrome.CaptureScreenshot().
+		WithFormat(chrome.CaptureScreenshotFormatPng).
+		WithFromSurface(true).
+		WithCaptureBeyondViewport(fullPage || clip != nil).
+		WithClip(rectangle).
+		Do(protocol.WithExecutor(ctx, executor))
 	var corrupt base64.CorruptInputError
 	if errors.As(err, &corrupt) {
 		return nil, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: err.Error(), Cause: err}
@@ -120,9 +112,22 @@ func AnnotateProbe(data []byte, result browserop.ProbeResult) ([]byte, error) {
 			return nil, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "probe bounds are missing"}
 		}
 		b := node.Bounds
-		left, top := int(math.Min(math.Max(b.X*sx, 0), float64(width))), int(math.Min(math.Max(b.Y*sy, 0), float64(height)))
-		right, bottom := int(math.Min(math.Max((b.X+b.Width)*sx, 0), float64(width))), int(math.Min(math.Max((b.Y+b.Height)*sy, 0), float64(height)))
-		rectangles := []image.Rectangle{image.Rect(left, top, right, min(top+2, bottom)), image.Rect(left, max(bottom-2, top), right, bottom), image.Rect(left, top, min(left+2, right), bottom), image.Rect(max(right-2, left), top, right, bottom)}
+		left, top := int(
+			math.Min(math.Max(b.X*sx, 0), float64(width)),
+		), int(
+			math.Min(math.Max(b.Y*sy, 0), float64(height)),
+		)
+		right, bottom := int(
+			math.Min(math.Max((b.X+b.Width)*sx, 0), float64(width)),
+		), int(
+			math.Min(math.Max((b.Y+b.Height)*sy, 0), float64(height)),
+		)
+		rectangles := []image.Rectangle{
+			image.Rect(left, top, right, min(top+2, bottom)),
+			image.Rect(left, max(bottom-2, top), right, bottom),
+			image.Rect(left, top, min(left+2, right), bottom),
+			image.Rect(max(right-2, left), top, right, bottom),
+		}
 		for _, r := range rectangles {
 			for y := r.Min.Y; y < r.Max.Y; y++ {
 				for x := r.Min.X; x < r.Max.X; x++ {
@@ -137,4 +142,54 @@ func AnnotateProbe(data []byte, result browserop.ProbeResult) ([]byte, error) {
 		return nil, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: err.Error(), Cause: err}
 	}
 	return output.Bytes(), nil
+}
+
+func parseScreenshotClip(clip *string, rectangle *chrome.Viewport) error {
+	parts := strings.Split(*clip, ",")
+	if len(parts) != 4 {
+		return &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "clip requires x,y,width,height"}
+	}
+	values := [4]float64{}
+	for i, part := range parts {
+		number, err := strconv.ParseFloat(part, 64)
+		if err != nil {
+			return &cdp.BrowserError{
+				Kind:    cdp.KindConfiguration,
+				Message: "clip requires x,y,width,height",
+				Cause:   err,
+			}
+		}
+		values[i] = number
+	}
+	for i, value := range values {
+		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || (i >= 2 && value == 0) {
+			return &cdp.BrowserError{
+				Kind:    cdp.KindConfiguration,
+				Message: "clip requires finite nonnegative coordinates and positive dimensions",
+			}
+		}
+	}
+	rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height = values[0], values[1], values[2], values[3]
+
+	return nil
+}
+
+func screenshotViewport(
+	ctx context.Context,
+	executor cdp.Executor,
+	viewport browserop.BrowserViewport,
+	fullPage bool,
+	rectangle *chrome.Viewport,
+) error {
+	_, _, _, _, visible, size, err := chrome.GetLayoutMetrics().Do(protocol.WithExecutor(ctx, executor))
+	if err != nil {
+		return err
+	}
+	if fullPage {
+		rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height = size.X, size.Y, size.Width, size.Height
+	} else {
+		rectangle.X, rectangle.Y = visible.PageX, visible.PageY
+		rectangle.Width, rectangle.Height = float64(viewport.Width), float64(viewport.Height)
+	}
+	return nil
 }

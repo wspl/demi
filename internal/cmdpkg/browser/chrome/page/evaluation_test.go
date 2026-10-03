@@ -22,11 +22,35 @@ func TestReadOnlyEvaluationBoundary(t *testing.T) {
 		{name: "ordered_unescaped_result", result: json.RawMessage(`"{\"z\":\"<>&\",\"a\":1}"`)},
 		{name: "non_json", result: json.RawMessage(`"undefined"`), code: "unsupported_result"},
 		{name: "wrong_result_type", result: json.RawMessage(`42`), code: "unsupported_result"},
-		{name: "side_effect", exception: &runtime.ExceptionDetails{Text: "Uncaught", Exception: &runtime.RemoteObject{Type: runtime.TypeObject, Description: "EvalError: Possible side-effect in debug-evaluate"}}, code: "side_effect_rejected"},
+		{
+			name: "side_effect",
+			exception: &runtime.ExceptionDetails{
+				Text: "Uncaught",
+				Exception: &runtime.RemoteObject{
+					Type:        runtime.TypeObject,
+					Description: "EvalError: Possible side-effect in debug-evaluate",
+				},
+			},
+			code: "side_effect_rejected",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expression := "document.title"
-			executor := cdptest.NewExecutor(t, cdptest.Exchange{Method: runtime.CommandEvaluate, Params: runtime.Evaluate(fmt.Sprintf("%s(\n(%s)\n, %d)", scriptReadOnly, expression, maxEvalBytes)).WithThrowOnSideEffect(true).WithReturnByValue(true).WithAwaitPromise(false).WithTimeout(1000), Result: &runtime.EvaluateReturns{Result: &runtime.RemoteObject{Type: runtime.TypeString, Value: tc.result}, ExceptionDetails: tc.exception}})
+			executor := cdptest.NewExecutor(
+				t,
+				cdptest.Exchange{
+					Method: runtime.CommandEvaluate,
+					Params: runtime.Evaluate(fmt.Sprintf("%s(\n(%s)\n, %d)", scriptReadOnly, expression, maxEvalBytes)).
+						WithThrowOnSideEffect(true).
+						WithReturnByValue(true).
+						WithAwaitPromise(false).
+						WithTimeout(1000),
+					Result: &runtime.EvaluateReturns{
+						Result:           &runtime.RemoteObject{Type: runtime.TypeString, Value: tc.result},
+						ExceptionDetails: tc.exception,
+					},
+				},
+			)
 			result, err := readOnly(t.Context(), executor, expression)
 			if tc.code != "" {
 				if err == nil || string(cdp.ErrorCode(err)) != tc.code {
@@ -52,7 +76,8 @@ func TestReadOnlyEvaluationBoundary(t *testing.T) {
 }
 
 func TestElementStateRejectsMalformedBrowserData(t *testing.T) {
-	valid := `{"fillKind":"text","attached":true,"visible":true,"enabled":true,"checked":null,"radio":false,"failed":null,"interceptor":null,"permanent":false,"x":1,"y":2}`
+	valid := `{"fillKind":"text","attached":true,"visible":true,"enabled":true,"checked":null,` +
+		`"radio":false,"failed":null,"interceptor":null,"permanent":false,"x":1,"y":2}`
 	for _, tc := range []struct{ name, body string }{
 		{"missing", strings.Replace(valid, `"attached":true,`, "", 1)},
 		{"null", strings.Replace(valid, `"visible":true`, `"visible":null`, 1)},

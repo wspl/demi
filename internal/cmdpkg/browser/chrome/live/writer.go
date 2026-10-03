@@ -21,13 +21,19 @@ type writer struct {
 
 func startWriter(ctx context.Context, output *cmdsdk.Output) *writer {
 	ctx, cancel := context.WithCancel(ctx)
-	w := &writer{controls: make(chan []byte, 64), videos: make(chan []byte, 4), done: make(chan struct{}), cancel: cancel}
+	w := &writer{
+		controls: make(chan []byte, 64),
+		videos:   make(chan []byte, 4),
+		done:     make(chan struct{}),
+		cancel:   cancel,
+	}
 	go func() {
 		defer close(w.done)
 		w.run(ctx, output)
 	}()
 	return w
 }
+
 func (w *writer) control(ctx context.Context, message browserop.LiveModuleMessage) {
 	data, err := controlFrame(message)
 	if err != nil {
@@ -40,9 +46,11 @@ func (w *writer) control(ctx context.Context, message browserop.LiveModuleMessag
 	case w.controls <- data:
 	}
 }
+
 func (w *writer) notice(ctx context.Context, code, message string) {
 	w.control(ctx, &browserop.LiveModuleMessageNotice{Code: code, Message: message})
 }
+
 func (w *writer) video(data []byte) bool {
 	w.queued.Add(int64(len(data)))
 	select {
@@ -70,6 +78,7 @@ func (w *writer) finish(ctx context.Context) {
 	w.cancel()
 	<-w.done
 }
+
 func (w *writer) run(ctx context.Context, output *cmdsdk.Output) {
 	heartbeat, err := controlFrame(&browserop.LiveModuleMessageHeartbeat{})
 	if err != nil {

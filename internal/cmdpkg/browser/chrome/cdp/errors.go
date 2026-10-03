@@ -94,12 +94,19 @@ const (
 // profile, and Details its action, condition or export data. Cleanup retains both
 // the preceding Cause (possibly nil) and Cleanup; errors.Is/As reach both.
 type BrowserError struct {
-	Kind    ErrorKind
+	// Kind identifies the browser failure variant.
+	Kind ErrorKind
+	// Message holds the variant text payload.
 	Message string
-	Count   uint
-	Path    string
+	// Count holds the ambiguous match count.
+	Count uint
+	// Path names a retained profile.
+	Path string
+	// Details holds action, condition or export progress.
 	Details browserop.ErrorDetails
-	Cause   error
+	// Cause retains the preceding failure.
+	Cause error
+	// Cleanup retains the cleanup failure.
 	Cleanup error
 }
 
@@ -129,15 +136,7 @@ func (e *BrowserError) Error() string {
 	case KindTargetNotFound:
 		return "browser target matched no elements"
 	case KindNotActionable:
-		condition := ""
-		if e.Details.Condition != nil {
-			condition = *e.Details.Condition
-		}
-		interceptor := "None"
-		if e.Details.Interceptor != nil {
-			interceptor = "Some(" + quoted(*e.Details.Interceptor) + ")"
-		}
-		return fmt.Sprintf("element condition failed: %s; interceptor: %s", condition, interceptor)
+		return e.conditionError()
 	case KindHistoryBoundary:
 		return "no navigation entry in that direction"
 	case KindNavigationFailed:
@@ -150,46 +149,8 @@ func (e *BrowserError) Error() string {
 		return "password values are protected"
 	case KindUnavailable:
 		return "browser could not start: " + e.Message
-	case KindRoot:
-		return "Chrome does not run as root on Linux with its sandbox, which Demi keeps: run the runner as an ordinary user"
-	case KindInstallation:
-		return "Chrome for Testing " + e.Message
-	case KindAction:
-		return e.Cause.Error()
-	case KindCancelled:
-		return "browser operation was cancelled"
-	case KindTimeout:
-		return "browser operation exceeded its deadline"
-	case KindBusy:
-		return "another operation owns this browser tab"
-	case KindDialogBlocked:
-		return "browser action is blocked by a JavaScript dialog; inspect and handle the dialog before continuing"
-	case KindDialogNotFound:
-		return "the browser tab has no JavaScript dialog"
-	case KindInvalidDialogAction:
-		return "this action is not valid for the current JavaScript dialog"
-	case KindAmbiguous:
-		return fmt.Sprintf("browser target matched %d elements; exactly one is required", e.Count)
-	case KindStaleReference:
-		return "browser node reference is stale or belongs to another tab"
-	case KindInvalidResult:
-		return "browser result is not representable as JSON: " + e.Message
-	case KindConfiguration:
-		return "invalid browser configuration: " + e.Message
-	case KindProfileRetained:
-		return fmt.Sprintf("browser profile retained at %s: %v", e.Path, e.Cause)
-	case KindTask:
-		return fmt.Sprintf("browser event task failed: %v", e.Cause)
-	case KindCleanup:
-		return fmt.Sprintf("browser cleanup failed: %v; preceding operation: %v", e.Cleanup, e.Cause)
 	default:
-		if e.Message != "" {
-			return e.Message
-		}
-		if e.Cause != nil {
-			return e.Cause.Error()
-		}
-		return e.Message
+		return e.driverError()
 	}
 }
 
@@ -258,10 +219,71 @@ var errorCodes = map[ErrorKind]browserop.BrowserErrorCode{
 
 // ProtocolError preserves Chrome's numeric error code, message and optional data.
 type ProtocolError struct {
-	Code    int64
+	// Code holds Chrome's numeric rejection code.
+	Code int64
+	// Message holds Chrome's rejection text.
 	Message string
-	Data    json.RawMessage
+	// Data retains optional rejection details.
+	Data json.RawMessage
 }
 
 // Error describes Chrome's command rejection.
 func (e *ProtocolError) Error() string { return fmt.Sprintf("%s (%d)", e.Message, e.Code) }
+
+func (e *BrowserError) conditionError() string {
+	condition := ""
+	if e.Details.Condition != nil {
+		condition = *e.Details.Condition
+	}
+	interceptor := "None"
+	if e.Details.Interceptor != nil {
+		interceptor = "Some(" + quoted(*e.Details.Interceptor) + ")"
+	}
+	return fmt.Sprintf("element condition failed: %s; interceptor: %s", condition, interceptor)
+}
+
+func (e *BrowserError) driverError() string {
+	switch e.Kind {
+	case KindRoot:
+		return "Chrome does not run as root on Linux with its sandbox, which Demi keeps: run the runner as " +
+			"an ordinary user"
+	case KindInstallation:
+		return "Chrome for Testing " + e.Message
+	case KindAction:
+		return e.Cause.Error()
+	case KindCancelled:
+		return "browser operation was cancelled"
+	case KindTimeout:
+		return "browser operation exceeded its deadline"
+	case KindBusy:
+		return "another operation owns this browser tab"
+	case KindDialogBlocked:
+		return "browser action is blocked by a JavaScript dialog; inspect and handle the dialog before continuing"
+	case KindDialogNotFound:
+		return "the browser tab has no JavaScript dialog"
+	case KindInvalidDialogAction:
+		return "this action is not valid for the current JavaScript dialog"
+	case KindAmbiguous:
+		return fmt.Sprintf("browser target matched %d elements; exactly one is required", e.Count)
+	case KindStaleReference:
+		return "browser node reference is stale or belongs to another tab"
+	case KindInvalidResult:
+		return "browser result is not representable as JSON: " + e.Message
+	case KindConfiguration:
+		return "invalid browser configuration: " + e.Message
+	case KindProfileRetained:
+		return fmt.Sprintf("browser profile retained at %s: %v", e.Path, e.Cause)
+	case KindTask:
+		return fmt.Sprintf("browser event task failed: %v", e.Cause)
+	case KindCleanup:
+		return fmt.Sprintf("browser cleanup failed: %v; preceding operation: %v", e.Cleanup, e.Cause)
+	default:
+		if e.Message != "" {
+			return e.Message
+		}
+		if e.Cause != nil {
+			return e.Cause.Error()
+		}
+		return e.Message
+	}
+}

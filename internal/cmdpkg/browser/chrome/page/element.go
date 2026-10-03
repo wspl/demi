@@ -39,7 +39,10 @@ func (e targetElement) identity() domIdentity { return domIdentity{e.page.Target
 
 // resolveElement binds the observed node to a command-owned remote object.
 func resolveElement(ctx context.Context, page cdp.FrameTarget, backend protocol.BackendNodeID) (targetElement, error) {
-	object, err := dom.ResolveNode().WithBackendNodeID(backend).WithObjectGroup(objectGroup).Do(protocol.WithExecutor(ctx, page))
+	object, err := dom.ResolveNode().
+		WithBackendNodeID(backend).
+		WithObjectGroup(objectGroup).
+		Do(protocol.WithExecutor(ctx, page))
 	if err != nil {
 		return targetElement{}, err
 	}
@@ -59,16 +62,28 @@ func pageScriptCall(script string, args []any) (*runtime.CallFunctionOnParams, e
 	if err != nil {
 		return nil, err
 	}
-	return runtime.CallFunctionOn(fmt.Sprintf("function(input) { return (%s).apply(this, input.args); }", script)).WithArguments([]*runtime.CallArgument{{Value: payload}}), nil
+	return runtime.CallFunctionOn(fmt.Sprintf("function(input) { return (%s).apply(this, input.args); }", script)).
+			WithArguments([]*runtime.CallArgument{{Value: payload}}),
+		nil
 }
 
 // elementCall runs a page algorithm with the selected node as its receiver.
-func elementCall(ctx context.Context, element targetElement, script string, gesture bool, args ...any) (json.RawMessage, error) {
+func elementCall(
+	ctx context.Context,
+	element targetElement,
+	script string,
+	gesture bool,
+	args ...any,
+) (json.RawMessage, error) {
 	call, err := pageScriptCall(script, args)
 	if err != nil {
 		return nil, err
 	}
-	object, exception, err := call.WithObjectID(element.object).WithAwaitPromise(true).WithUserGesture(gesture).WithReturnByValue(true).Do(protocol.WithExecutor(ctx, element.page))
+	object, exception, err := call.WithObjectID(element.object).
+		WithAwaitPromise(true).
+		WithUserGesture(gesture).
+		WithReturnByValue(true).
+		Do(protocol.WithExecutor(ctx, element.page))
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +102,13 @@ func elementCall(ctx context.Context, element targetElement, script string, gest
 }
 
 // decodeElement validates the CDP algorithm's payload before page logic consumes it.
-func decodeElement[T any](ctx context.Context, element targetElement, script string, gesture bool, args ...any) (T, error) {
+func decodeElement[T any](
+	ctx context.Context,
+	element targetElement,
+	script string,
+	gesture bool,
+	args ...any,
+) (T, error) {
 	var result T
 	raw, err := elementCall(ctx, element, script, gesture, args...)
 	if err != nil {
@@ -97,17 +118,28 @@ func decodeElement[T any](ctx context.Context, element targetElement, script str
 }
 
 type elementState struct {
-	FillKind    string  `json:"fillKind"`
-	Attached    bool    `json:"attached"`
-	Visible     bool    `json:"visible"`
-	Enabled     bool    `json:"enabled"`
-	Checked     *bool   `json:"checked"`
-	Radio       bool    `json:"radio"`
-	Failed      *string `json:"failed"`
+	// FillKind identifies the supported input replacement method.
+	FillKind string `json:"fillKind"`
+	// Attached reports whether the element remains in the document.
+	Attached bool `json:"attached"`
+	// Visible reports whether the element is rendered.
+	Visible bool `json:"visible"`
+	// Enabled reports whether the control accepts input.
+	Enabled bool `json:"enabled"`
+	// Checked holds the checkbox or radio state when applicable.
+	Checked *bool `json:"checked"`
+	// Radio reports whether the control is a radio button.
+	Radio bool `json:"radio"`
+	// Failed names the unmet readiness condition.
+	Failed *string `json:"failed"`
+	// Interceptor describes the element covering the input point.
 	Interceptor *string `json:"interceptor"`
-	Permanent   bool    `json:"permanent"`
-	X           float64 `json:"x"`
-	Y           float64 `json:"y"`
+	// Permanent reports whether resampling cannot satisfy the condition.
+	Permanent bool `json:"permanent"`
+	// X holds the horizontal input coordinate.
+	X float64 `json:"x"`
+	// Y holds the vertical input coordinate.
+	Y float64 `json:"y"`
 }
 
 // failure retains the condition and intercepting element from the shared algorithm.
@@ -116,7 +148,10 @@ func (s elementState) failure() error {
 	if s.Failed != nil {
 		condition = *s.Failed
 	}
-	return &cdp.BrowserError{Kind: cdp.KindNotActionable, Details: browserop.ErrorDetails{Condition: &condition, Interceptor: s.Interceptor}}
+	return &cdp.BrowserError{
+		Kind:    cdp.KindNotActionable,
+		Details: browserop.ErrorDetails{Condition: &condition, Interceptor: s.Interceptor},
+	}
 }
 
 // needsCheck rejects inapplicable radio and checkbox mutations before input.
@@ -126,7 +161,10 @@ func (s elementState) needsCheck(desired bool) (bool, error) {
 	}
 	if s.Checked == nil {
 		condition := "checkable"
-		return false, &cdp.BrowserError{Kind: cdp.KindNotActionable, Details: browserop.ErrorDetails{Condition: &condition}}
+		return false, &cdp.BrowserError{
+			Kind:    cdp.KindNotActionable,
+			Details: browserop.ErrorDetails{Condition: &condition},
+		}
 	}
 	return *s.Checked != desired, nil
 }
@@ -186,7 +224,13 @@ func single(ctx context.Context, elements []targetElement) (*targetElement, erro
 
 // frameOffset translates child-document coordinates through its embedding element.
 func frameOffset(ctx context.Context, element targetElement) ([2]float64, error) {
-	return decodeElement[[2]float64](ctx, element, "function() { const box = this.getBoundingClientRect(); return [box.left + this.clientLeft, box.top + this.clientTop]; }", false)
+	return decodeElement[[2]float64](
+		ctx,
+		element,
+		"function() { const box = this.getBoundingClientRect(); return [box.left + this.clientLeft, "+
+			"box.top + this.clientTop]; }",
+		false,
+	)
 }
 
 // localPreparedState joins the page's animation probe cleanup after cancellation.
@@ -206,7 +250,8 @@ func localPreparedState(ctx context.Context, element targetElement, conditions [
 			defer cancel()
 			_, releaseErr := elementCall(cleanup, element, scriptElementState, false, []string{}, false, probe, true)
 			var failure *cdp.BrowserError
-			if errors.As(releaseErr, &failure) && (failure.Kind == cdp.KindConnection || failure.Kind == cdp.KindClosed) {
+			if errors.As(releaseErr, &failure) &&
+				(failure.Kind == cdp.KindConnection || failure.Kind == cdp.KindClosed) {
 				releaseErr = nil
 			}
 			err = cdp.AfterCleanup(err, releaseErr)
@@ -226,12 +271,7 @@ func preparedState(ctx context.Context, element targetElement, conditions []stri
 		frames = append(frames, frame)
 	}
 	if scroll {
-		for i := len(frames) - 1; i >= 0; i-- {
-			if _, err := decodeElement[elementState](ctx, frames[i], scriptElementState, false, []string{}, true); err != nil {
-				return elementState{}, err
-			}
-		}
-		if _, err := decodeElement[elementState](ctx, element, scriptElementState, false, []string{}, true); err != nil {
+		if err := scrollFrames(ctx, element, frames); err != nil {
 			return elementState{}, err
 		}
 	}
@@ -261,26 +301,21 @@ func preparedState(ctx context.Context, element targetElement, conditions []stri
 	if err != nil || result.Failed != nil {
 		return result, err
 	}
-	for _, frame := range frames {
-		offset, err := frameOffset(ctx, frame)
-		if err != nil {
-			return result, err
-		}
-		result.X += offset[0]
-		result.Y += offset[1]
-		if hit {
-			s, err := decodeElement[elementState](ctx, frame, scriptElementState, false, []string{"visible", "geometry", "hit"}, false, nil, false, [2]float64{result.X, result.Y})
-			if err != nil || s.Failed != nil {
-				return s, err
-			}
-		}
-	}
-	return result, nil
+	return translateFramePoint(ctx, frames, hit, result)
 }
 
 // callWithStates supplies the shared readiness algorithm to form algorithms.
 func callWithStates[T any](ctx context.Context, element targetElement, script string, args ...any) (T, error) {
-	return decodeElement[T](ctx, element, fmt.Sprintf("async function(...args) { const elementState = (%s); return (%s).apply(this, args); }", scriptElementState, script), false, args...)
+	return decodeElement[T](
+		ctx,
+		element,
+		fmt.Sprintf(
+			"async function(...args) { const elementState = (%s); return (%s).apply(this, args); }",
+			scriptElementState,
+			script,
+		),
+		false,
+		args...)
 }
 
 // resampleWait follows Rust's 50 ms locator retry interval within the operation.
@@ -302,56 +337,21 @@ type readyElement struct {
 }
 
 // ready resamples locators until the selected element satisfies action conditions.
-func ready(ctx context.Context, tab *tabs.Tab, target browserop.BrowserTarget, refs *tabs.References, conditions []string, operation *cdp.Operation, last *error) (readyElement, error) {
+func ready(
+	ctx context.Context,
+	tab *tabs.Tab,
+	target browserop.BrowserTarget,
+	refs *tabs.References,
+	conditions []string,
+	operation *cdp.Operation,
+	last *error,
+) (readyElement, error) {
 	for {
 		var result *readyElement
 		err := operation.Run(ctx, func(work context.Context) error {
-			observation, err := captureObservation(work, tab.Page(), refs)
-			if err != nil {
-				return err
-			}
-			elements, err := observation.resolve(work, tab.Page(), target, refs)
-			if err != nil {
-				var failure *cdp.BrowserError
-				if !errors.As(err, &failure) || failure.Kind != cdp.KindStaleReference || !canResample(target) {
-					return err
-				}
-				elements = nil
-			}
-			element, err := single(work, elements)
-			if err != nil {
-				return err
-			}
-			if element != nil {
-				scroll := false
-				condition := "attached"
-				for _, c := range conditions {
-					scroll = scroll || c == "visible" || c == "geometry"
-					if c == "stable" {
-						condition = "stable"
-					}
-				}
-				if *last == nil {
-					*last = &cdp.BrowserError{Kind: cdp.KindNotActionable, Details: browserop.ErrorDetails{Condition: &condition}}
-				}
-				s, err := preparedState(work, *element, conditions, scroll)
-				if err != nil {
-					return err
-				}
-				if s.Failed == nil {
-					named, err := observation.named(*element, refs)
-					if err != nil {
-						return err
-					}
-					result = &readyElement{*element, s, named}
-					return nil
-				}
-				if s.Permanent {
-					return s.failure()
-				}
-				*last = s.failure()
-			}
-			return resampleWait(work)
+			var err error
+			result, err = readinessSample(work, tab, target, refs, conditions, last)
+			return err
 		})
 		if err != nil {
 			if cdp.IsDeadline(err) {
@@ -392,7 +392,8 @@ func releaseObjects(ctx context.Context, tab *tabs.Tab) error {
 		}
 	}
 	var failure *cdp.BrowserError
-	if errors.As(err, &failure) && (failure.Kind == cdp.KindClosed || failure.Kind == cdp.KindConnection || failure.Kind == cdp.KindTabNotFound) {
+	if errors.As(err, &failure) &&
+		(failure.Kind == cdp.KindClosed || failure.Kind == cdp.KindConnection || failure.Kind == cdp.KindTabNotFound) {
 		return nil
 	}
 	return err
@@ -425,4 +426,123 @@ func (s *elementState) UnmarshalJSON(data []byte) error {
 	}
 	*s = elementState(next)
 	return nil
+}
+
+func scrollFrames(ctx context.Context, element targetElement, frames []targetElement) error {
+	for i := len(frames) - 1; i >= 0; i-- {
+		if _, err := decodeElement[elementState](
+			ctx,
+			frames[i],
+			scriptElementState,
+			false,
+			[]string{},
+			true,
+		); err != nil {
+			return err
+		}
+	}
+	if _, err := decodeElement[elementState](
+		ctx,
+		element,
+		scriptElementState,
+		false,
+		[]string{},
+		true,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func translateFramePoint(
+	ctx context.Context,
+	frames []targetElement,
+	hit bool,
+	result elementState,
+) (elementState, error) {
+	for _, frame := range frames {
+		offset, err := frameOffset(ctx, frame)
+		if err != nil {
+			return result, err
+		}
+		result.X += offset[0]
+		result.Y += offset[1]
+		if hit {
+			s, err := decodeElement[elementState](
+				ctx,
+				frame,
+				scriptElementState,
+				false,
+				[]string{"visible", "geometry", "hit"},
+				false,
+				nil,
+				false,
+				[2]float64{result.X, result.Y},
+			)
+			if err != nil || s.Failed != nil {
+				return s, err
+			}
+		}
+	}
+	return result, nil
+}
+
+func readinessSample(
+	work context.Context,
+	tab *tabs.Tab,
+	target browserop.BrowserTarget,
+	refs *tabs.References,
+	conditions []string,
+	last *error,
+) (*readyElement, error) {
+	observation, err := captureObservation(work, tab.Page(), refs)
+	if err != nil {
+		return nil, err
+	}
+	elements, err := observation.resolve(work, tab.Page(), target, refs)
+	if err != nil {
+		var failure *cdp.BrowserError
+		if !errors.As(err, &failure) || failure.Kind != cdp.KindStaleReference || !canResample(target) {
+			return nil, err
+		}
+		elements = nil
+	}
+	element, err := single(work, elements)
+	if err != nil {
+		return nil, err
+	}
+	if element == nil {
+		return nil, resampleWait(work)
+	}
+	scroll := false
+	condition := "attached"
+	for _, c := range conditions {
+		scroll = scroll || c == "visible" || c == "geometry"
+		if c == "stable" {
+			condition = "stable"
+		}
+	}
+	if *last == nil {
+		*last = &cdp.BrowserError{
+			Kind:    cdp.KindNotActionable,
+			Details: browserop.ErrorDetails{Condition: &condition},
+		}
+	}
+	s, err := preparedState(work, *element, conditions, scroll)
+	if err != nil {
+		return nil, err
+	}
+	if s.Failed == nil {
+		named, err := observation.named(*element, refs)
+		if err != nil {
+			return nil, err
+		}
+		return &readyElement{*element, s, named}, nil
+	}
+	if s.Permanent {
+		return nil, s.failure()
+	}
+	*last = s.failure()
+	return nil, resampleWait(work)
 }

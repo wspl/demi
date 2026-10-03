@@ -11,7 +11,9 @@ import (
 
 // Local temporary files only; upload validation costs less than one second.
 func TestUploadKeepsChosenNamesAndSkipsEmptyFiles(t *testing.T) {
-	request := &browserop.LiveViewerMessageUpload{Files: []browserop.UploadFile{{Name: "empty.txt", Size: 0}, {Name: "chosen.txt", Size: 3}}}
+	request := &browserop.LiveViewerMessageUpload{
+		Files: []browserop.UploadFile{{Name: "empty.txt", Size: 0}, {Name: "chosen.txt", Size: 3}},
+	}
 	u, err := prepareUpload(t.TempDir(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -36,6 +38,7 @@ func TestUploadKeepsChosenNamesAndSkipsEmptyFiles(t *testing.T) {
 		}
 	}
 }
+
 func TestUploadRefusesOutOfOrderOversizedAndDuplicateFiles(t *testing.T) {
 	for _, name := range []string{"out of order", "oversized", "duplicate", "dot"} {
 		t.Run(name, func(t *testing.T) {

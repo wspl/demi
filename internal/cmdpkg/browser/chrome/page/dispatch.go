@@ -24,175 +24,71 @@ func browserOption[T any](value *T, fallback T) T {
 }
 
 // dispatch runs one admitted browser command over tab-owned state.
-func dispatch(ctx context.Context, tab *tabs.Tab, command browserop.Operation, refs *tabs.References, operation *cdp.Operation, navigation *tabs.NavigationObservation) (any, error) {
+func dispatch(
+	ctx context.Context,
+	tab *tabs.Tab,
+	command browserop.Operation,
+	refs *tabs.References,
+	operation *cdp.Operation,
+	navigation *tabs.NavigationObservation,
+) (any, error) {
 	switch input := command.(type) {
 	case *browserop.InfoInput:
 		return Metadata(ctx, tab, input.Timeout())
 	case *browserop.GotoInput:
-		url, err := tab.Navigate(ctx, &tabs.Visit{URL: input.URL}, browserOption(input.Load, browserop.Load("domcontentloaded")), operation, refs)
-		if err != nil {
-			return nil, err
-		}
-		return completedNavigation(ctx, tab, url), nil
+		return navigateResult(
+			ctx,
+			tab,
+			&tabs.Visit{URL: input.URL},
+			browserOption(input.Load, browserop.Load("domcontentloaded")),
+			operation,
+			refs,
+		)
 	case *browserop.ReloadInput:
-		url, err := tab.Navigate(ctx, &tabs.Reload{}, browserOption(input.Load, browserop.Load("domcontentloaded")), operation, refs)
-		if err != nil {
-			return nil, err
-		}
-		return completedNavigation(ctx, tab, url), nil
+		return navigateResult(
+			ctx,
+			tab,
+			&tabs.Reload{},
+			browserOption(input.Load, browserop.Load("domcontentloaded")),
+			operation,
+			refs,
+		)
 	case *browserop.BackInput:
-		return historyNavigation(ctx, tab, true, browserOption(input.Load, browserop.Load("domcontentloaded")), operation, refs)
+		return historyNavigation(ctx, tab, true, input.Load, operation, refs)
 	case *browserop.ForwardInput:
-		return historyNavigation(ctx, tab, false, browserOption(input.Load, browserop.Load("domcontentloaded")), operation, refs)
+		return historyNavigation(ctx, tab, false, input.Load, operation, refs)
 	case *browserop.HistoryInput:
-		current, entries, err := chrome.GetNavigationHistory().Do(protocol.WithExecutor(ctx, tab.Page()))
-		if err != nil {
-			return nil, err
-		}
-		offset, limit := browserOption(input.Offset, uint(0)), browserOption(input.Limit, uint(browserop.DefaultNodes))
-		result := browserop.HistoryResult{Entries: []browserop.HistoryEntry{}, Truncated: uint(len(entries)) > offset+limit}
-		for i := min(offset, uint(len(entries))); i < min(offset+limit, uint(len(entries))); i++ {
-			entry := entries[i]
-			result.Entries = append(result.Entries, browserop.HistoryEntry{Index: i, URL: entry.URL, Title: entry.Title, Current: int64(i) == current})
-		}
-		return result, nil
+		return readHistory(ctx, tab, input)
 	case *browserop.InspectInput:
-		observation, err := captureObservation(ctx, tab.Page(), refs)
-		if err != nil {
-			return nil, err
-		}
-		observation.scope, err = observation.targetScope(input.Within, input.Frame, refs)
-		if err != nil {
-			return nil, err
-		}
-		view := browserOption(input.View, browserop.InspectView("accessibility"))
-		limit := browserOption(input.Limit, uint(browserop.DefaultNodes))
-		var tree []browserop.BrowserTreeNode
-		var truncated bool
-		if view == "dom" {
-			tree, truncated, err = observation.domTree(refs, limit)
-		} else {
-			var nodes []browserop.BrowserNode
-			nodes, truncated, err = observation.tree(refs, limit)
-			tree = hierarchy(nodes)
-		}
-		if err != nil {
-			return nil, err
-		}
-		url, title, err := targetInfo(ctx, tab)
-		return browserop.InspectResult{Tab: tab.ID(), URL: url, Title: title, View: view, Tree: tree, Truncated: truncated}, err
+		return inspect(ctx, tab, input, refs)
 	case *browserop.FindInput:
-		observation, err := captureObservation(ctx, tab.Page(), refs)
-		if err != nil {
-			return nil, err
-		}
-		var elements []targetElement
-		if browserOption(input.Query, false) {
-			if hasTargetFlags(&input.BrowserTarget) {
-				return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "find --query cannot combine ordinary target flags"}
-			}
-			if input.Body == nil {
-				return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "find --query requires stdin"}
-			}
-			query, parseErr := browserop.ParseQuery([]byte(*input.Body))
-			if parseErr != nil {
-				return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: parseErr.Error(), Cause: parseErr}
-			}
-			for _, branch := range query.Branches() {
-				if branch.Match != nil {
-					if err := validateTarget(browserop.BrowserTarget{BrowserQueryMatch: *branch.Match}); err != nil {
-						return nil, err
-					}
-				}
-			}
-			elements, err = observation.query(ctx, tab.Page(), query, refs, nil)
-		} else {
-			if input.Body != nil {
-				return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "find stdin requires --query"}
-			}
-			elements, err = observation.resolve(ctx, tab.Page(), input.BrowserTarget, refs)
-		}
-		if err != nil {
-			return nil, err
-		}
-		limit, offset := browserOption(input.Limit, uint(browserop.DefaultNodes)), min(browserOption(input.Offset, uint(0)), uint(len(elements)))
-		nodes, err := observation.describeElements(elements[offset:], refs, limit)
-		return browserop.FindResult{Matches: nodes, Count: uint(len(elements)), Truncated: uint(len(elements)) > offset+limit}, err
+		return find(ctx, tab, input, refs)
 	case *browserop.ReadInput:
 		return readElements(ctx, tab, *input, refs)
 	case *browserop.EvalInput:
-		if hasTargetFlags(&input.BrowserTarget) {
-			observation, err := captureObservation(ctx, tab.Page(), refs)
-			if err != nil {
-				return nil, err
-			}
-			elements, err := observation.resolve(ctx, tab.Page(), input.BrowserTarget, refs)
-			if err != nil {
-				return nil, err
-			}
-			if len(elements) > 1 && !browserOption(input.All, false) {
-				return nil, &cdp.BrowserError{Kind: cdp.KindAmbiguous, Count: uint(len(elements))}
-			}
-			value, err := targetedEvaluation(ctx, input.Expression, elements, browserOption(input.All, false))
-			return browserop.EvalResult{Value: value}, err
-		}
-		if browserOption(input.All, false) {
-			return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "eval --all requires an element locator"}
-		}
-		value, err := readOnly(ctx, tab.Page(), input.Expression)
-		return browserop.EvalResult{Value: value}, err
+		return evaluate(ctx, tab, input, refs)
 	case *browserop.LogsInput:
 		return tab.Console().Read(ctx, *input)
-	case *browserop.ViewportSetInput:
-		viewport := browserop.BrowserViewport{Mode: "custom", Width: input.Width, Height: input.Height, DevicePixelRatio: browserOption(input.Scale, 1.0)}
-		err := tab.SetViewport(ctx, viewport)
-		return browserop.ViewportResult{Viewport: viewport}, err
-	case *browserop.ViewportResetInput:
-		viewport := tab.WebViewport()
-		err := tab.SetViewport(ctx, viewport)
-		return browserop.ViewportResult{Viewport: viewport}, err
-	case *browserop.DialogInspectInput:
-		result := browserop.DialogInspectResult{}
-		if dialog := tab.Dialog().Open(); dialog != nil {
-			result.Dialog = &browserop.Dialog{Type: tabs.DialogType(dialog.Type), Message: dialog.Message}
-		}
-		return result, nil
-	case *browserop.DialogAcceptInput:
-		return answerDialog(ctx, tab, true, input.Text)
-	case *browserop.DialogDismissInput:
-		return answerDialog(ctx, tab, false, nil)
-	case *browserop.ContentReadInput:
-		format := browserOption(input.Format, browserop.ContentFormat("text"))
-		content, err := readContent(ctx, tab, format, refs)
-		if err != nil {
-			return nil, err
-		}
-		truncated := input.Output == nil && len(content) > browserop.InlineBytes
-		if input.Output == nil {
-			content = content[:textBoundary(content, browserop.InlineBytes)]
-		}
-		url, title, err := targetInfo(ctx, tab)
-		return &browserop.ContentReadResultInline{URL: url, Title: title, Format: format, Content: content, Truncated: truncated}, err
-	case *browserop.WaitInput:
-		return waitCondition(ctx, tab, *input, refs)
-	case *browserop.ProbeInput:
-		return probe(ctx, tab, *input, refs)
 	default:
-		return dispatchInput(ctx, tab, command, refs, operation, navigation)
+		return dispatchControls(ctx, tab, command, refs, operation, navigation)
 	}
 }
 
 // historyNavigation selects and commits the adjacent browser history entry.
-func historyNavigation(ctx context.Context, tab *tabs.Tab, back bool, load browserop.Load, operation *cdp.Operation, refs *tabs.References) (browserop.NavigationResult, error) {
+func historyNavigation(
+	ctx context.Context,
+	tab *tabs.Tab,
+	back bool,
+	load *browserop.Load,
+	operation *cdp.Operation,
+	refs *tabs.References,
+) (browserop.NavigationResult, error) {
+	loadState := browserOption(load, browserop.Load("domcontentloaded"))
 	entry, err := tab.HistoryStep(ctx, back, operation)
 	if err != nil {
 		return browserop.NavigationResult{}, err
 	}
-	url, err := tab.Navigate(ctx, &tabs.History{EntryID: entry.ID}, load, operation, refs)
-	if err != nil {
-		return browserop.NavigationResult{}, err
-	}
-	return completedNavigation(ctx, tab, url), nil
+	return navigateResult(ctx, tab, &tabs.History{EntryID: entry.ID}, loadState, operation, refs)
 }
 
 // answerDialog answers the exact observed dialog; a subsequent one stays open.
@@ -222,7 +118,12 @@ func textBoundary(text string, limit int) int {
 }
 
 // readContent shares content extraction between reads and temporary fetch tabs.
-func readContent(ctx context.Context, tab *tabs.Tab, format browserop.ContentFormat, refs *tabs.References) (string, error) {
+func readContent(
+	ctx context.Context,
+	tab *tabs.Tab,
+	format browserop.ContentFormat,
+	refs *tabs.References,
+) (string, error) {
 	if format == "dom" {
 		observation, err := captureObservation(ctx, tab.Page(), refs)
 		if err != nil {
@@ -263,7 +164,12 @@ func readContent(ctx context.Context, tab *tabs.Tab, format browserop.ContentFor
 }
 
 // readElements exposes only the selected property and protects native password values.
-func readElements(ctx context.Context, tab *tabs.Tab, input browserop.ReadInput, refs *tabs.References) (browserop.ReadResult, error) {
+func readElements(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.ReadInput,
+	refs *tabs.References,
+) (browserop.ReadResult, error) {
 	observation, err := captureObservation(ctx, tab.Page(), refs)
 	if err != nil {
 		return nil, err
@@ -280,48 +186,14 @@ func readElements(ctx context.Context, tab *tabs.Tab, input browserop.ReadInput,
 		return nil, &cdp.BrowserError{Kind: cdp.KindAmbiguous, Count: uint(len(elements))}
 	}
 	if (input.Property != nil) == (input.Attribute != nil) {
-		return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "read requires exactly one --property or --attribute"}
+		return nil, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "read requires exactly one --property or --attribute",
+		}
 	}
 	values := []json.RawMessage{}
 	for _, element := range elements[:min(len(elements), browserop.MaxNodes)] {
-		var value json.RawMessage
-		if input.Property == nil {
-			value, err = elementCall(ctx, element, "function(name) { return this.getAttribute(name); }", false, *input.Attribute)
-		} else {
-			switch *input.Property {
-			case "visible", "enabled", "checked":
-				var s elementState
-				s, err = state(ctx, element, []string{}, false)
-				if err == nil {
-					switch *input.Property {
-					case "visible":
-						value, err = cdp.Value(s.Visible)
-					case "enabled":
-						value, err = cdp.Value(s.Enabled)
-					case "checked":
-						value, err = cdp.Value(s.Checked)
-					}
-				}
-			default:
-				property := string(*input.Property)
-				var fallback any
-				switch property {
-				case "text":
-					property = "innerText"
-					fallback = ""
-				case "html":
-					property = "outerHTML"
-					fallback = ""
-				case "text-content":
-					property = "textContent"
-				case "value":
-					if observation.protected(element.identity()) {
-						return nil, &cdp.BrowserError{Kind: cdp.KindProtectedValue}
-					}
-				}
-				value, err = elementCall(ctx, element, "function(property, fallback) { return this[property] ?? fallback; }", false, property, fallback)
-			}
-		}
+		value, err := readElement(ctx, observation, element, input)
 		if err != nil {
 			return nil, err
 		}
@@ -334,7 +206,12 @@ func readElements(ctx context.Context, tab *tabs.Tab, input browserop.ReadInput,
 }
 
 // waitCondition waits for exactly one URL, load or element state condition.
-func waitCondition(ctx context.Context, tab *tabs.Tab, input browserop.WaitInput, refs *tabs.References) (browserop.WaitResult, error) {
+func waitCondition(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.WaitInput,
+	refs *tabs.References,
+) (browserop.WaitResult, error) {
 	count := 0
 	if input.URL != nil {
 		count++
@@ -346,7 +223,10 @@ func waitCondition(ctx context.Context, tab *tabs.Tab, input browserop.WaitInput
 		count++
 	}
 	if count != 1 {
-		return browserop.WaitResult{}, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "wait requires exactly one URL, current-document load, or element condition"}
+		return browserop.WaitResult{}, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "wait requires exactly one URL, current-document load, or element condition",
+		}
 	}
 	result := browserop.WaitResult{Matched: true}
 	if input.URL != nil {
@@ -365,6 +245,255 @@ func waitCondition(ctx context.Context, tab *tabs.Tab, input browserop.WaitInput
 		result.Condition = string(*input.Load)
 		return result, tab.WaitCurrentLoad(ctx, *input.Load)
 	}
+	return waitElements(ctx, tab, input, refs, result)
+}
+
+func readHistory(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input *browserop.HistoryInput,
+) (any, error) {
+	current, entries, err := chrome.GetNavigationHistory().Do(protocol.WithExecutor(ctx, tab.Page()))
+	if err != nil {
+		return nil, err
+	}
+	offset, limit := browserOption(input.Offset, uint(0)), browserOption(input.Limit, uint(browserop.DefaultNodes))
+	result := browserop.HistoryResult{
+		Entries:   []browserop.HistoryEntry{},
+		Truncated: uint(len(entries)) > offset+limit,
+	}
+	for i := min(offset, uint(len(entries))); i < min(offset+limit, uint(len(entries))); i++ {
+		entry := entries[i]
+		result.Entries = append(
+			result.Entries,
+			browserop.HistoryEntry{Index: i, URL: entry.URL, Title: entry.Title, Current: int64(i) == current},
+		)
+	}
+	return result, nil
+}
+
+func inspect(ctx context.Context, tab *tabs.Tab, input *browserop.InspectInput, refs *tabs.References) (any, error) {
+	observation, err := captureObservation(ctx, tab.Page(), refs)
+	if err != nil {
+		return nil, err
+	}
+	observation.scope, err = observation.targetScope(input.Within, input.Frame, refs)
+	if err != nil {
+		return nil, err
+	}
+	view := browserOption(input.View, browserop.InspectView("accessibility"))
+	limit := browserOption(input.Limit, uint(browserop.DefaultNodes))
+	var tree []browserop.BrowserTreeNode
+	var truncated bool
+	if view == "dom" {
+		tree, truncated, err = observation.domTree(refs, limit)
+	} else {
+		var nodes []browserop.BrowserNode
+		nodes, truncated, err = observation.tree(refs, limit)
+		tree = hierarchy(nodes)
+	}
+	if err != nil {
+		return nil, err
+	}
+	url, title, err := targetInfo(ctx, tab)
+	return browserop.InspectResult{
+		Tab:       tab.ID(),
+		URL:       url,
+		Title:     title,
+		View:      view,
+		Tree:      tree,
+		Truncated: truncated,
+	}, err
+}
+
+func find(ctx context.Context, tab *tabs.Tab, input *browserop.FindInput, refs *tabs.References) (any, error) {
+	observation, err := captureObservation(ctx, tab.Page(), refs)
+	if err != nil {
+		return nil, err
+	}
+	var elements []targetElement
+	if browserOption(input.Query, false) {
+		query, parseErr := findQuery(input)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		elements, err = observation.query(ctx, tab.Page(), query, refs, nil)
+	} else {
+		if input.Body != nil {
+			return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "find stdin requires --query"}
+		}
+		elements, err = observation.resolve(ctx, tab.Page(), input.BrowserTarget, refs)
+	}
+	if err != nil {
+		return nil, err
+	}
+	limit, offset := browserOption(
+		input.Limit,
+		uint(browserop.DefaultNodes),
+	), min(
+		browserOption(input.Offset, uint(0)),
+		uint(len(elements)),
+	)
+	nodes, err := observation.describeElements(elements[offset:], refs, limit)
+	return browserop.FindResult{
+		Matches:   nodes,
+		Count:     uint(len(elements)),
+		Truncated: uint(len(elements)) > offset+limit,
+	}, err
+}
+
+func evaluate(ctx context.Context, tab *tabs.Tab, input *browserop.EvalInput, refs *tabs.References) (any, error) {
+	if hasTargetFlags(&input.BrowserTarget) {
+		observation, err := captureObservation(ctx, tab.Page(), refs)
+		if err != nil {
+			return nil, err
+		}
+		elements, err := observation.resolve(ctx, tab.Page(), input.BrowserTarget, refs)
+		if err != nil {
+			return nil, err
+		}
+		if len(elements) > 1 && !browserOption(input.All, false) {
+			return nil, &cdp.BrowserError{Kind: cdp.KindAmbiguous, Count: uint(len(elements))}
+		}
+		value, err := targetedEvaluation(ctx, input.Expression, elements, browserOption(input.All, false))
+		return browserop.EvalResult{Value: value}, err
+	}
+	if browserOption(input.All, false) {
+		return nil, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "eval --all requires an element locator",
+		}
+	}
+	value, err := readOnly(ctx, tab.Page(), input.Expression)
+	return browserop.EvalResult{Value: value}, err
+}
+
+func contentRead(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input *browserop.ContentReadInput,
+	refs *tabs.References,
+) (any, error) {
+	format := browserOption(input.Format, browserop.ContentFormat("text"))
+	content, err := readContent(ctx, tab, format, refs)
+	if err != nil {
+		return nil, err
+	}
+	truncated := input.Output == nil && len(content) > browserop.InlineBytes
+	if input.Output == nil {
+		content = content[:textBoundary(content, browserop.InlineBytes)]
+	}
+	url, title, err := targetInfo(ctx, tab)
+	return &browserop.ContentReadResultInline{
+		URL:       url,
+		Title:     title,
+		Format:    format,
+		Content:   content,
+		Truncated: truncated,
+	}, err
+}
+
+func findQuery(input *browserop.FindInput) (browserop.BrowserQuery, error) {
+	if hasTargetFlags(&input.BrowserTarget) {
+		return browserop.BrowserQuery{}, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "find --query cannot combine ordinary target flags",
+		}
+	}
+	if input.Body == nil {
+		return browserop.BrowserQuery{}, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "find --query requires stdin",
+		}
+	}
+	query, parseErr := browserop.ParseQuery([]byte(*input.Body))
+	if parseErr != nil {
+		return browserop.BrowserQuery{}, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: parseErr.Error(),
+			Cause:   parseErr,
+		}
+	}
+	for _, branch := range query.Branches() {
+		if branch.Match != nil {
+			if err := validateTarget(browserop.BrowserTarget{BrowserQueryMatch: *branch.Match}); err != nil {
+				return browserop.BrowserQuery{}, err
+			}
+		}
+	}
+
+	return query, nil
+}
+
+func readElement(
+	ctx context.Context,
+	observation *observation,
+	element targetElement,
+	input browserop.ReadInput,
+) (json.RawMessage, error) {
+	var value json.RawMessage
+	var err error
+	if input.Property == nil {
+		value, err = elementCall(
+			ctx,
+			element,
+			"function(name) { return this.getAttribute(name); }",
+			false,
+			*input.Attribute,
+		)
+	} else {
+		switch *input.Property {
+		case "visible", "enabled", "checked":
+			var s elementState
+			s, err = state(ctx, element, []string{}, false)
+			if err == nil {
+				switch *input.Property {
+				case "visible":
+					value, err = cdp.Value(s.Visible)
+				case "enabled":
+					value, err = cdp.Value(s.Enabled)
+				case "checked":
+					value, err = cdp.Value(s.Checked)
+				}
+			}
+		default:
+			property := string(*input.Property)
+			var fallback any
+			switch property {
+			case "text":
+				property = "innerText"
+				fallback = ""
+			case "html":
+				property = "outerHTML"
+				fallback = ""
+			case "text-content":
+				property = "textContent"
+			case "value":
+				if observation.protected(element.identity()) {
+					return nil, &cdp.BrowserError{Kind: cdp.KindProtectedValue}
+				}
+			}
+			value, err = elementCall(
+				ctx,
+				element,
+				"function(property, fallback) { return this[property] ?? fallback; }",
+				false,
+				property,
+				fallback,
+			)
+		}
+	}
+
+	return value, err
+}
+
+func waitElements(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.WaitInput,
+	refs *tabs.References,
+	result browserop.WaitResult,
+) (browserop.WaitResult, error) {
 	expected := browserOption(input.State, browserop.ElementState("visible"))
 	result.Condition = string(expected)
 	for {
@@ -383,23 +512,9 @@ func waitCondition(ctx context.Context, tab *tabs.Tab, input browserop.WaitInput
 			}
 			return result, err
 		}
-		matched := false
-		for _, element := range elements {
-			s, err := state(ctx, element, []string{}, false)
-			if err != nil {
-				return result, err
-			}
-			switch expected {
-			case "visible", "hidden":
-				matched = matched || s.Visible
-			case "attached", "detached":
-				matched = matched || s.Attached
-			case "enabled":
-				matched = matched || s.Enabled
-			}
-		}
-		if expected == "hidden" || expected == "detached" {
-			matched = !matched
+		matched, err := matchesWaitState(ctx, elements, expected)
+		if err != nil {
+			return result, err
 		}
 		if matched {
 			if len(elements) > 0 {
@@ -415,4 +530,85 @@ func waitCondition(ctx context.Context, tab *tabs.Tab, input browserop.WaitInput
 			return result, err
 		}
 	}
+}
+
+func dispatchControls(
+	ctx context.Context,
+	tab *tabs.Tab,
+	command browserop.Operation,
+	refs *tabs.References,
+	operation *cdp.Operation,
+	navigation *tabs.NavigationObservation,
+) (any, error) {
+	switch input := command.(type) {
+	case *browserop.ViewportSetInput:
+		viewport := browserop.BrowserViewport{
+			Mode:             "custom",
+			Width:            input.Width,
+			Height:           input.Height,
+			DevicePixelRatio: browserOption(input.Scale, 1.0),
+		}
+		err := tab.SetViewport(ctx, viewport)
+		return browserop.ViewportResult{Viewport: viewport}, err
+	case *browserop.ViewportResetInput:
+		viewport := tab.WebViewport()
+		err := tab.SetViewport(ctx, viewport)
+		return browserop.ViewportResult{Viewport: viewport}, err
+	case *browserop.DialogInspectInput:
+		result := browserop.DialogInspectResult{}
+		if dialog := tab.Dialog().Open(); dialog != nil {
+			result.Dialog = &browserop.Dialog{Type: tabs.DialogType(dialog.Type), Message: dialog.Message}
+		}
+		return result, nil
+	case *browserop.DialogAcceptInput:
+		return answerDialog(ctx, tab, true, input.Text)
+	case *browserop.DialogDismissInput:
+		return answerDialog(ctx, tab, false, nil)
+	case *browserop.ContentReadInput:
+		return contentRead(ctx, tab, input, refs)
+	case *browserop.WaitInput:
+		return waitCondition(ctx, tab, *input, refs)
+	case *browserop.ProbeInput:
+		return probe(ctx, tab, *input, refs)
+	default:
+		return dispatchInput(ctx, tab, command, refs, operation, navigation)
+	}
+}
+
+func matchesWaitState(ctx context.Context, elements []targetElement, expected browserop.ElementState) (bool, error) {
+	matched := false
+	for _, element := range elements {
+		s, err := state(ctx, element, []string{}, false)
+		if err != nil {
+			return false, err
+		}
+		switch expected {
+		case "visible", "hidden":
+			matched = matched || s.Visible
+		case "attached", "detached":
+			matched = matched || s.Attached
+		case "enabled":
+			matched = matched || s.Enabled
+		}
+	}
+	if expected == "hidden" || expected == "detached" {
+		matched = !matched
+	}
+
+	return matched, nil
+}
+
+func navigateResult(
+	ctx context.Context,
+	tab *tabs.Tab,
+	navigation tabs.Navigation,
+	load browserop.Load,
+	operation *cdp.Operation,
+	refs *tabs.References,
+) (browserop.NavigationResult, error) {
+	url, err := tab.Navigate(ctx, navigation, load, operation, refs)
+	if err != nil {
+		return browserop.NavigationResult{}, err
+	}
+	return completedNavigation(ctx, tab, url), nil
 }

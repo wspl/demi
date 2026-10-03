@@ -36,7 +36,20 @@ func TestChromeAcceptance(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
-	command := exec.Command(executable, "--headless=new", "--remote-debugging-port=0", "--user-data-dir="+t.TempDir(), "--no-first-run", "--no-default-browser-check", "--use-mock-keychain", "--password-store=basic", "--enable-features=NetworkService,NetworkServiceInProcess", "--disable-background-networking", "--site-per-process", "about:blank")
+	command := exec.Command(
+		executable,
+		"--headless=new",
+		"--remote-debugging-port=0",
+		"--user-data-dir="+t.TempDir(),
+		"--no-first-run",
+		"--no-default-browser-check",
+		"--use-mock-keychain",
+		"--password-store=basic",
+		"--enable-features=NetworkService,NetworkServiceInProcess",
+		"--disable-background-networking",
+		"--site-per-process",
+		"about:blank",
+	)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stderr, err := command.StderrPipe()
 	if err != nil {
@@ -106,7 +119,10 @@ func TestChromeAcceptance(t *testing.T) {
 	}
 	evaluate := func(script string) json.RawMessage {
 		t.Helper()
-		value, exception, err := runtime.Evaluate(script).WithAwaitPromise(true).WithReturnByValue(true).Do(protocol.WithExecutor(ctx, session))
+		value, exception, err := runtime.Evaluate(script).
+			WithAwaitPromise(true).
+			WithReturnByValue(true).
+			Do(protocol.WithExecutor(ctx, session))
 		if err != nil || exception != nil {
 			t.Fatalf("%s: %v %v", script, err, exception)
 		}
@@ -133,7 +149,14 @@ func TestChromeAcceptance(t *testing.T) {
 			_, _ = fmt.Fprint(w, "<!doctype html><title>Child</title><button>Frame button</button>")
 			return
 		}
-		_, _ = fmt.Fprintf(w, `<!doctype html><title>CDP fixture</title><iframe src="http://localhost:%s/frame"></iframe><script>const worker=new Worker(URL.createObjectURL(new Blob(['self.answer=42;postMessage(42)'],{type:'text/javascript'})));window.ready=new Promise(resolve=>worker.onmessage=resolve);</script>`, strings.Split(r.Host, ":")[1])
+		_, _ = fmt.Fprintf(
+			w,
+			`<!doctype html><title>CDP fixture</title><iframe `+
+				`src="http://localhost:%s/frame"></iframe><script>const worker=new `+
+				`Worker(URL.createObjectURL(new Blob(['self.answer=42;postMessage(42)'],`+
+				`{type:'text/javascript'})));window.ready=new Promise(resolve=>worker.onmessage=resolve);</script>`,
+			strings.Split(r.Host, ":")[1],
+		)
 	}))
 	defer server.Close()
 	navigate := func(path string) {
@@ -147,7 +170,9 @@ func TestChromeAcceptance(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Log("navigating", server.URL+path)
-		if _, _, failure, _, err := page.Navigate(server.URL + path).Do(protocol.WithExecutor(ctx, session)); err != nil || failure != "" {
+		if _, _, failure, _, err := page.Navigate(server.URL + path).
+			Do(protocol.WithExecutor(ctx, session)); err != nil ||
+			failure != "" {
 			t.Fatal(failure, err)
 		}
 		t.Log("navigation replied, waiting for load")
@@ -220,13 +245,31 @@ func TestChromeAcceptance(t *testing.T) {
 	if worker == "" {
 		t.Fatalf("worker missing: %+v", rows)
 	}
-	sent, err := browserop.DecodeCdpSendResult(call(1, "cdp.send", map[string]any{"tab": "t1", "method": "Runtime.evaluate", "params": `{"expression":"self.answer","returnByValue":true}`, "target": worker}))
+	sent, err := browserop.DecodeCdpSendResult(
+		call(
+			1,
+			"cdp.send",
+			map[string]any{
+				"tab":    "t1",
+				"method": "Runtime.evaluate",
+				"params": `{"expression":"self.answer","returnByValue":true}`,
+				"target": worker,
+			},
+		),
+	)
 	if err != nil || !strings.Contains(string(sent.Result), `"value":42`) {
 		t.Fatal(string(sent.Result), err)
 	}
 	for _, method := range []string{"Browser.close", "Target.createTarget", "Page.close", "SystemInfo.getInfo"} {
 		operation := cdp.NewOperation(ctx, ctx, time.Second)
-		_, err := cdp.ExecuteCommand(ctx, operation, debug, 1, "t1", &browserop.CdpSendInput{Tab: "t1", Method: method, Params: "{}"})
+		_, err := cdp.ExecuteCommand(
+			ctx,
+			operation,
+			debug,
+			1,
+			"t1",
+			&browserop.CdpSendInput{Tab: "t1", Method: method, Params: "{}"},
+		)
 		operation.Close()
 		requireCode(t, err, "cdp_method_denied")
 	}
@@ -235,15 +278,45 @@ func TestChromeAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	call(1, "cdp.send", map[string]any{"tab": "t1", "method": "Runtime.evaluate", "params": `{"expression":"console.log('first'); console.log('second')"}`})
-	first, err := browserop.DecodeCdpEventsResult(call(1, "cdp.events", map[string]any{"tab": "t1", "after": initial.Cursor, "method": []string{"Runtime.consoleAPICalled"}, "limit": 1}))
+	call(
+		1,
+		"cdp.send",
+		map[string]any{
+			"tab":    "t1",
+			"method": "Runtime.evaluate",
+			"params": `{"expression":"console.log('first'); console.log('second')"}`,
+		},
+	)
+	first, err := browserop.DecodeCdpEventsResult(
+		call(
+			1,
+			"cdp.events",
+			map[string]any{
+				"tab":    "t1",
+				"after":  initial.Cursor,
+				"method": []string{"Runtime.consoleAPICalled"},
+				"limit":  1,
+			},
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(first.Events) != 1 || !first.HasMore {
 		t.Fatalf("first page: %+v", first)
 	}
-	second, err := browserop.DecodeCdpEventsResult(call(1, "cdp.events", map[string]any{"tab": "t1", "after": first.Cursor, "method": []string{"Runtime.consoleAPICalled"}, "limit": 1}))
+	second, err := browserop.DecodeCdpEventsResult(
+		call(
+			1,
+			"cdp.events",
+			map[string]any{
+				"tab":    "t1",
+				"after":  first.Cursor,
+				"method": []string{"Runtime.consoleAPICalled"},
+				"limit":  1,
+			},
+		),
+	)
 	if err != nil || len(second.Events) != 1 || second.HasMore {
 		t.Fatal(second, err)
 	}
@@ -276,7 +349,9 @@ func TestChromeAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err = web(&browserop.WebmcpCallInput{Tab: "t1", Tools: tools.Tools, Tool: "echo", Arguments: `{"text":"hello"}`})
+	raw, err = web(
+		&browserop.WebmcpCallInput{Tab: "t1", Tools: tools.Tools, Tool: "echo", Arguments: `{"text":"hello"}`},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

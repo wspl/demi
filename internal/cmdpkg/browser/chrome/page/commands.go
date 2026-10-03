@@ -26,15 +26,27 @@ func Execute(ctx context.Context, tab *tabs.Tab, name string, args json.RawMessa
 		return nil, &cdp.BrowserError{Kind: cdp.KindTabNotFound}
 	}
 	switch command.(type) {
-	case *browserop.OpenInput, *browserop.TabsInput, *browserop.CloseInput, *browserop.ScreenshotInput, *browserop.CapabilitiesInput:
-		return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "this operation requires the browser conversation controller"}
+	case *browserop.OpenInput,
+		*browserop.TabsInput,
+		*browserop.CloseInput,
+		*browserop.ScreenshotInput,
+		*browserop.CapabilitiesInput:
+		return nil, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "this operation requires the browser conversation controller",
+		}
 	}
 	return Command(ctx, tab, command, time.Now().Add(input.Timeout()))
 }
 
 // Command executes a parsed tab command under one admission and absolute deadline.
 // Results are encoded through their browserop contract; no second result union is declared.
-func Command(ctx context.Context, tab *tabs.Tab, command browserop.Operation, deadline time.Time) (json.RawMessage, error) {
+func Command(
+	ctx context.Context,
+	tab *tabs.Tab,
+	command browserop.Operation,
+	deadline time.Time,
+) (json.RawMessage, error) {
 	checkout := tab.Gate().TryCheckout()
 	if checkout == nil {
 		operation := tab.Operation(ctx, deadline)
@@ -47,42 +59,34 @@ func Command(ctx context.Context, tab *tabs.Tab, command browserop.Operation, de
 
 // CommandAdmitted keeps one browser-tab admission through a command and its attached artifact capture.
 // The caller holds the tab checkout and passes its References until this call returns.
-func CommandAdmitted(ctx context.Context, tab *tabs.Tab, command browserop.Operation, deadline time.Time, references *tabs.References) (json.RawMessage, error) {
+func CommandAdmitted(
+	ctx context.Context,
+	tab *tabs.Tab,
+	command browserop.Operation,
+	deadline time.Time,
+	references *tabs.References,
+) (json.RawMessage, error) {
 	operation := tab.Operation(ctx, deadline)
 	defer operation.Close()
 	input, ok := command.(browserop.Input)
 	if !ok {
-		return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "this operation requires the browser conversation controller"}
-	}
-	dialogCommand := false
-	switch command.(type) {
-	case *browserop.DialogInspectInput, *browserop.DialogAcceptInput, *browserop.DialogDismissInput:
-		dialogCommand = true
-	}
-	if !dialogCommand && tab.Dialog().IsOpen() {
-		return nil, operation.Failure(&cdp.BrowserError{Kind: cdp.KindDialogBlocked}, string(tab.ID()), nil)
-	}
-	var navigation *tabs.NavigationObservation
-	var currentURL *string
-	_, click := command.(*browserop.ClickInput)
-	if input.WaitURLPattern() != nil || click {
-		err := operation.Run(ctx, func(work context.Context) error {
-			var err error
-			navigation, err = tab.ObserveNavigation(work)
-			return err
-		})
-		if err != nil {
-			return nil, operation.Failure(err, string(tab.ID()), nil)
+		return nil, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "this operation requires the browser conversation controller",
 		}
+	}
+	dialogCommand, err := admitCommand(tab, command, operation)
+	if err != nil {
+		return nil, err
+	}
+	navigation, err := commandNavigation(ctx, tab, input, command, operation)
+	if err != nil {
+		return nil, err
+	}
+	if navigation != nil {
 		defer navigation.Close()
 	}
-	err := operation.Run(ctx, func(work context.Context) error {
-		url, _, err := targetInfo(work, tab)
-		if err == nil {
-			currentURL = &url
-		}
-		return err
-	})
+	currentURL, err := currentCommandURL(ctx, operation, tab)
 	if err != nil {
 		return nil, operation.Failure(err, string(tab.ID()), nil)
 	}
@@ -109,18 +113,7 @@ func CommandAdmitted(ctx context.Context, tab *tabs.Tab, command browserop.Opera
 		err = cdp.AfterCleanup(err, releaseObjects(ctx, tab))
 	}
 	if err == nil && observedBefore {
-		if action, ok := result.(browserop.ActionResult); ok {
-			bounded, cancel := context.WithTimeout(operation.Context(), cdp.ControlTimeout)
-			after, popupErr := tab.Popups(bounded)
-			cancel()
-			if popupErr == nil {
-				opened := slices.DeleteFunc(after, func(id browserop.TabID) bool { return slices.Contains(before, id) })
-				if len(opened) > 0 {
-					action.OpenedTabs = &opened
-				}
-			}
-			result = action
-		}
+		result = includeOpenedTabs(operation, tab, result, before)
 	}
 	if navigation != nil && navigation.DocumentChanged() {
 		references.Invalidate()
@@ -162,7 +155,16 @@ func targetInfo(ctx context.Context, tab *tabs.Tab) (string, string, error) {
 // opensTabs identifies pointer and form actions whose result reports new tabs.
 func opensTabs(command browserop.Operation) bool {
 	switch command.(type) {
-	case *browserop.ClickInput, *browserop.MoveInput, *browserop.DragInput, *browserop.ScrollInput, *browserop.FillInput, *browserop.TypeInput, *browserop.KeyInput, *browserop.CheckInput, *browserop.SelectInput, *browserop.SelectTextInput:
+	case *browserop.ClickInput,
+		*browserop.MoveInput,
+		*browserop.DragInput,
+		*browserop.ScrollInput,
+		*browserop.FillInput,
+		*browserop.TypeInput,
+		*browserop.KeyInput,
+		*browserop.CheckInput,
+		*browserop.SelectInput,
+		*browserop.SelectTextInput:
 		return true
 	}
 	return false
@@ -181,7 +183,14 @@ func completedNavigation(ctx context.Context, tab *tabs.Tab, url string) browser
 }
 
 // actionResult observes navigation only after input has completed.
-func actionResult(ctx context.Context, tab *tabs.Tab, operation *cdp.Operation, name string, wait *string, navigation *tabs.NavigationObservation) (browserop.ActionResult, error) {
+func actionResult(
+	ctx context.Context,
+	tab *tabs.Tab,
+	operation *cdp.Operation,
+	name string,
+	wait *string,
+	navigation *tabs.NavigationObservation,
+) (browserop.ActionResult, error) {
 	result := browserop.ActionResult{Operation: name, Result: json.RawMessage(`"completed"`)}
 	if navigation != nil {
 		var err error
@@ -197,4 +206,71 @@ func actionResult(ctx context.Context, tab *tabs.Tab, operation *cdp.Operation, 
 		result.URL = &url
 	}
 	return result, nil
+}
+
+func includeOpenedTabs(operation *cdp.Operation, tab *tabs.Tab, result any, before []browserop.TabID) any {
+	if action, ok := result.(browserop.ActionResult); ok {
+		bounded, cancel := context.WithTimeout(operation.Context(), cdp.ControlTimeout)
+		after, popupErr := tab.Popups(bounded)
+		cancel()
+		if popupErr == nil {
+			opened := slices.DeleteFunc(after, func(id browserop.TabID) bool { return slices.Contains(before, id) })
+			if len(opened) > 0 {
+				action.OpenedTabs = &opened
+			}
+		}
+		result = action
+	}
+	return result
+}
+
+func currentCommandURL(ctx context.Context, operation *cdp.Operation, tab *tabs.Tab) (*string, error) {
+	var currentURL *string
+	err := operation.Run(ctx, func(work context.Context) error {
+		url, _, err := targetInfo(work, tab)
+		if err == nil {
+			currentURL = &url
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return currentURL, nil
+}
+
+func admitCommand(tab *tabs.Tab, command browserop.Operation, operation *cdp.Operation) (bool, error) {
+	dialogCommand := false
+	switch command.(type) {
+	case *browserop.DialogInspectInput, *browserop.DialogAcceptInput, *browserop.DialogDismissInput:
+		dialogCommand = true
+	}
+	if !dialogCommand && tab.Dialog().IsOpen() {
+		return false, operation.Failure(&cdp.BrowserError{Kind: cdp.KindDialogBlocked}, string(tab.ID()), nil)
+	}
+
+	return dialogCommand, nil
+}
+
+func commandNavigation(
+	ctx context.Context,
+	tab *tabs.Tab,
+	input browserop.Input,
+	command browserop.Operation,
+	operation *cdp.Operation,
+) (*tabs.NavigationObservation, error) {
+	var navigation *tabs.NavigationObservation
+	_, click := command.(*browserop.ClickInput)
+	if input.WaitURLPattern() != nil || click {
+		err := operation.Run(ctx, func(work context.Context) error {
+			var err error
+			navigation, err = tab.ObserveNavigation(work)
+			return err
+		})
+		if err != nil {
+			return nil, operation.Failure(err, string(tab.ID()), nil)
+		}
+	}
+	return navigation, nil
 }

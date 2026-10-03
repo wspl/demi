@@ -29,6 +29,7 @@ func mustValue(t *testing.T, value any) json.RawMessage {
 	}
 	return raw
 }
+
 func mustInput(t *testing.T, name string, args string) browserop.Input {
 	t.Helper()
 	input, err := browserop.ParseInput(name, []byte(args))
@@ -37,6 +38,7 @@ func mustInput(t *testing.T, name string, args string) browserop.Input {
 	}
 	return input
 }
+
 func requireCode(t *testing.T, err error, code string) {
 	t.Helper()
 	if string(cdp.ErrorCode(err)) != code {
@@ -51,11 +53,15 @@ func TestDeadlineCauseSurvivesCleanupWrappers(t *testing.T) {
 		t.Fatal(err)
 	}
 	condition, interceptor := "hit", "overlay"
-	cause := &cdp.BrowserError{Kind: cdp.KindNotActionable, Details: browserop.ErrorDetails{Condition: &condition, Interceptor: &interceptor}}
+	cause := &cdp.BrowserError{
+		Kind:    cdp.KindNotActionable,
+		Details: browserop.ErrorDetails{Condition: &condition, Interceptor: &interceptor},
+	}
 	err = cdp.WithDeadlineCause(err, cause)
 	requireCode(t, err, "not_actionable")
 	details := cdp.ErrorDetails(err)
-	if details.Condition == nil || *details.Condition != condition || details.Interceptor == nil || *details.Interceptor != interceptor {
+	if details.Condition == nil || *details.Condition != condition || details.Interceptor == nil ||
+		*details.Interceptor != interceptor {
 		t.Fatal(details)
 	}
 	var wrapper *cdp.BrowserError
@@ -151,7 +157,17 @@ func TestConnectionLossAfterDispatchHasAnUnknownOutcome(t *testing.T) {
 }
 
 func TestBrowserErrorsKeepCausesAndInputProgress(t *testing.T) {
-	for kind, code := range map[cdp.ErrorKind]string{cdp.KindTabNotFound: "tab_not_found", cdp.KindClosed: "browser_lost", cdp.KindTargetNotFound: "target_not_found", cdp.KindAmbiguous: "ambiguous_target", cdp.KindHistoryBoundary: "history_boundary", cdp.KindNavigationFailed: "navigation_failed", cdp.KindOutputExists: "output_exists", cdp.KindIO: "io_error", cdp.KindConfiguration: "invalid_input"} {
+	for kind, code := range map[cdp.ErrorKind]string{
+		cdp.KindTabNotFound:      "tab_not_found",
+		cdp.KindClosed:           "browser_lost",
+		cdp.KindTargetNotFound:   "target_not_found",
+		cdp.KindAmbiguous:        "ambiguous_target",
+		cdp.KindHistoryBoundary:  "history_boundary",
+		cdp.KindNavigationFailed: "navigation_failed",
+		cdp.KindOutputExists:     "output_exists",
+		cdp.KindIO:               "io_error",
+		cdp.KindConfiguration:    "invalid_input",
+	} {
 		requireCode(t, &cdp.BrowserError{Kind: kind}, code)
 	}
 	operation := cdp.NewOperation(t.Context(), t.Context(), cdp.ControlTimeout)
@@ -231,7 +247,10 @@ func TestBrowserStreamsKeepIndependentCursorsAndReportCountAndByteEviction(t *te
 func TestStreamOutputTruncationDoesNotSkipTheOmittedEntries(t *testing.T) {
 	entries := []browserop.LogEntry{}
 	for sequence := uint64(0); sequence < 3; sequence++ {
-		entries = append(entries, browserop.LogEntry{Sequence: sequence, Level: "info", Text: strings.Repeat("x", 30000)})
+		entries = append(
+			entries,
+			browserop.LogEntry{Sequence: sequence, Level: "info", Text: strings.Repeat("x", 30000)},
+		)
 	}
 	value := mustValue(t, browserop.LogsResult{Entries: entries, Cursor: "logs_test:3"})
 	output, err := cdp.Render(mustInput(t, "logs", `{"tab":"t1"}`), value, true)
@@ -242,7 +261,8 @@ func TestStreamOutputTruncationDoesNotSkipTheOmittedEntries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Entries) != 2 || result.Cursor != "logs_test:2" || !result.HasMore || !result.Truncated || len(output) > browserop.InlineBytes {
+	if len(result.Entries) != 2 || result.Cursor != "logs_test:2" || !result.HasMore || !result.Truncated ||
+		len(output) > browserop.InlineBytes {
 		t.Fatal(result.Cursor, len(result.Entries))
 	}
 }
@@ -251,11 +271,20 @@ func TestTextErrorsShowProgressAndIndividualDetails(t *testing.T) {
 	action := browserop.ActionProgress("not_started")
 	tab, url, interceptor := "t1", "https://example.test/", "<div id=overlay>"
 	delivered := uint(0)
-	text := cdp.RenderError("not_actionable", "The button is covered.", browserop.ErrorDetails{Action: &action, Tab: &tab, URL: &url, Interceptor: &interceptor, Delivered: &delivered})
+	text := cdp.RenderError(
+		"not_actionable",
+		"The button is covered.",
+		browserop.ErrorDetails{Action: &action, Tab: &tab, URL: &url, Interceptor: &interceptor, Delivered: &delivered},
+	)
 	if !strings.HasPrefix(text, "Error: not_actionable\nThe button is covered.\nAction: not_started.\n") {
 		t.Fatal(text)
 	}
-	for _, line := range []string{"Tab: t1\n", "Current URL: https://example.test/\n", "Interceptor: <div id=overlay>\n", "Delivered: 0\n"} {
+	for _, line := range []string{
+		"Tab: t1\n",
+		"Current URL: https://example.test/\n",
+		"Interceptor: <div id=overlay>\n",
+		"Delivered: 0\n",
+	} {
 		if !strings.Contains(text, line) {
 			t.Fatal(text, line)
 		}
@@ -306,14 +335,23 @@ func TestEveryResultRendersAsReadableLines(t *testing.T) {
 func TestPageTextStaysInsideItsValue(t *testing.T) {
 	operation := mustInput(t, "open", `{"url":"http://localhost:3000/"}`)
 	title := "Sign in\nError: forged\r\x1b[31m"
-	text, err := cdp.Render(operation, mustValue(t, browserop.OpenResult{Tab: "t1", URL: "http://localhost:3000/", Title: &title}), false)
+	text, err := cdp.Render(
+		operation,
+		mustValue(t, browserop.OpenResult{Tab: "t1", URL: "http://localhost:3000/", Title: &title}),
+		false,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(text), `Title: Sign in\nError: forged\r\u{1b}[31m`+"\n") || strings.Contains(string(text), "\x1b") || strings.Contains(string(text), "\nError:") {
+	if !strings.Contains(string(text), `Title: Sign in\nError: forged\r\u{1b}[31m`+"\n") ||
+		strings.Contains(string(text), "\x1b") ||
+		strings.Contains(string(text), "\nError:") {
 		t.Fatal(string(text))
 	}
-	content := json.RawMessage(`{"url":"http://localhost:3000/","title":"Page","format":"text","content":"First line\nSecond\u001b[2J line","truncated":false}`)
+	content := json.RawMessage(
+		`{"url":"http://localhost:3000/","title":"Page","format":"text","content":"First ` +
+			`line\nSecond\u001b[2J line","truncated":false}`,
+	)
 	text, err = cdp.Render(mustInput(t, "content.read", `{"tab":"t1"}`), content, false)
 	if err != nil {
 		t.Fatal(err)
@@ -341,7 +379,7 @@ func TestBrowserPublicationsAndConversationNumbers(t *testing.T) {
 		t.Fatal(string(data), err)
 	}
 	source := filepath.Join(directory, "download")
-	if err := os.WriteFile(source, []byte("downloaded"), 0600); err != nil {
+	if err := os.WriteFile(source, []byte("downloaded"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := cdp.PublishFile(t.Context(), directory, "output", source, true); err != nil {

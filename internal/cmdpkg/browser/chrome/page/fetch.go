@@ -13,7 +13,13 @@ import (
 
 // ContentFetch reads URLs through environment-owned temporary tabs.
 // The operation owns its admission and cleanup; paths resolve against invocation metadata.
-func ContentFetch(ctx context.Context, invocation *cmdsdk.InvocationContext[commandwire.Invocation], environment *tabs.Environment, input browserop.ContentFetchInput, deadline time.Time) (result browserop.ContentFetchResult, err error) {
+func ContentFetch(
+	ctx context.Context,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	environment *tabs.Environment,
+	input browserop.ContentFetchInput,
+	deadline time.Time,
+) (result browserop.ContentFetchResult, err error) {
 	result.Pages = []browserop.FetchedPage{}
 	for _, url := range input.URL {
 		if err = tabs.ValidateURL(string(url)); err != nil {
@@ -35,7 +41,13 @@ func ContentFetch(ctx context.Context, invocation *cmdsdk.InvocationContext[comm
 	}()
 	for i, tab := range batch.Tabs() {
 		requested := string(input.URL[i])
-		page, itemErr := fetchPage(ctx, tab, requested, browserOption(input.Format, browserop.ContentFormat("text")), deadline)
+		page, itemErr := fetchPage(
+			ctx,
+			tab,
+			requested,
+			browserOption(input.Format, browserop.ContentFormat("text")),
+			deadline,
+		)
 		if itemErr != nil {
 			if tab.Context().Err() != nil && environment.Context().Err() == nil && ctx.Err() == nil {
 				itemErr = &cdp.BrowserError{Kind: cdp.KindTabNotFound}
@@ -45,7 +57,15 @@ func ContentFetch(ctx context.Context, invocation *cmdsdk.InvocationContext[comm
 				return result, itemErr
 			}
 			details := cdp.ErrorDetails(itemErr)
-			page = browserop.FetchedPage{RequestedURL: requested, URL: requested, Error: &browserop.BrowserFailure{Code: cdp.ErrorCode(itemErr), Message: itemErr.Error(), Details: &details}}
+			page = browserop.FetchedPage{
+				RequestedURL: requested,
+				URL:          requested,
+				Error: &browserop.BrowserFailure{
+					Code:    cdp.ErrorCode(itemErr),
+					Message: itemErr.Error(),
+					Details: &details,
+				},
+			}
 		} else {
 			end := textBoundary(page.Content, browserop.InlineBytes/max(len(input.URL), 1)/2)
 			result.Truncated = result.Truncated || end < len(page.Content)
@@ -57,7 +77,13 @@ func ContentFetch(ctx context.Context, invocation *cmdsdk.InvocationContext[comm
 }
 
 // fetchPage extracts one temporary tab while holding its command admission.
-func fetchPage(ctx context.Context, tab *tabs.Tab, requested string, format browserop.ContentFormat, deadline time.Time) (browserop.FetchedPage, error) {
+func fetchPage(
+	ctx context.Context,
+	tab *tabs.Tab,
+	requested string,
+	format browserop.ContentFormat,
+	deadline time.Time,
+) (browserop.FetchedPage, error) {
 	result := browserop.FetchedPage{RequestedURL: requested}
 	operation := tab.Operation(ctx, deadline)
 	defer operation.Close()
@@ -68,7 +94,13 @@ func fetchPage(ctx context.Context, tab *tabs.Tab, requested string, format brow
 	defer checkout.Release()
 	err := operation.Run(ctx, func(work context.Context) error {
 		var err error
-		result.URL, err = tab.Navigate(work, &tabs.Visit{URL: requested}, "domcontentloaded", operation, &checkout.Session().References)
+		result.URL, err = tab.Navigate(
+			work,
+			&tabs.Visit{URL: requested},
+			"domcontentloaded",
+			operation,
+			&checkout.Session().References,
+		)
 		if err != nil {
 			return err
 		}

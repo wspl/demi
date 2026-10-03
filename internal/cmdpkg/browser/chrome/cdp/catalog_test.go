@@ -17,7 +17,11 @@ func TestPinnedProtocolRejectsUnknownMalformedAndExternalSchemas(t *testing.T) {
 		{"Runtime.noSuchMethod", "params", `{}`, false},
 		{"Runtime.evaluate", "returns", `{"result":{"type":"number","value":1}}`, true},
 		{"Runtime.evaluate", "returns", `{"result":{}}`, false},
-		{"Target.attachedToTarget", "event", `{"sessionId":"child","targetInfo":{"targetId":"frame","type":"iframe","title":"","url":"about:blank","attached":true,"canAccessOpener":false},"waitingForDebugger":false}`, true},
+		{
+			"Target.attachedToTarget", "event",
+			`{"sessionId":"child","targetInfo":{"targetId":"frame","type":"iframe","title":"",` +
+				`"url":"about:blank","attached":true,"canAccessOpener":false},"waitingForDebugger":false}`, true,
+		},
 	} {
 		t.Run(test.method+"/"+test.kind+"/"+test.value, func(t *testing.T) {
 			err := validatePinned(test.method, test.kind, []byte(test.value))
@@ -29,7 +33,12 @@ func TestPinnedProtocolRejectsUnknownMalformedAndExternalSchemas(t *testing.T) {
 	if _, err := pageSchema(json.RawMessage(`{"$ref":"https://unreachable.invalid/schema"}`)); err == nil {
 		t.Fatal("external page schema accepted")
 	}
-	schema, err := pageSchema(json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}},"required":["q"],"additionalProperties":false}`))
+	schema, err := pageSchema(
+		json.RawMessage(
+			`{"type":"object","properties":{"q":{"type":"string"}},"required":["q"],` +
+				`"additionalProperties":false}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

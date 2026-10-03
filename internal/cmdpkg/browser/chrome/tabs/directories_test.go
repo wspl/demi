@@ -19,18 +19,19 @@ func directoryBases(t *testing.T) DirectoryBases {
 	root := t.TempDir()
 	bases := DirectoryBases{Runtime: filepath.Join(root, "runtime"), Profiles: filepath.Join(root, "profiles")}
 	for _, path := range []string{bases.Runtime, bases.Profiles} {
-		if err := os.Mkdir(path, 0700); err != nil {
+		if err := os.Mkdir(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return bases
 }
+
 func directoryFixture(t *testing.T, bases DirectoryBases, id string) (string, string) {
 	t.Helper()
 	runtime := filepath.Join(bases.Runtime, runtimePrefix+id)
 	profile := filepath.Join(bases.Profiles, profilePrefix+id)
 	for _, path := range []string{runtime, profile} {
-		if err := os.Mkdir(path, 0700); err != nil {
+		if err := os.Mkdir(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -39,9 +40,10 @@ func directoryFixture(t *testing.T, bases DirectoryBases, id string) (string, st
 	}
 	return runtime, profile
 }
+
 func lockFixture(t *testing.T, path string, held bool) {
 	t.Helper()
-	file, err := os.OpenFile(filepath.Join(path, profileLock), os.O_CREATE|os.O_RDWR, 0600)
+	file, err := os.OpenFile(filepath.Join(path, profileLock), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,6 +61,7 @@ func lockFixture(t *testing.T, path string, held bool) {
 		t.Fatal(err)
 	}
 }
+
 func requireExists(t *testing.T, want bool, paths ...string) {
 	t.Helper()
 	for _, path := range paths {
@@ -77,11 +80,11 @@ func TestSweepRemovesOnlyEnvironmentsNoServiceHolds(t *testing.T) {
 	lockFixture(t, held, true)
 	staged, stagedProfile := directoryFixture(t, bases, "being-made")
 	other := filepath.Join(bases.Runtime, "not-an-environment")
-	if err := os.Mkdir(other, 0700); err != nil {
+	if err := os.Mkdir(other, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	lockFixture(t, other, false)
-	if err := sweepOrphansIn(t.Context(), bases, nil, currentOwner()); err != nil {
+	if err := sweepOrphans(t.Context(), bases, nil, currentOwner()); err != nil {
 		t.Fatal(err)
 	}
 	requireExists(t, false, orphan, orphanProfile)
@@ -97,10 +100,10 @@ func TestSweepRemovesProfileWhoseRuntimeIsGone(t *testing.T) {
 	held, heldProfile := directoryFixture(t, bases, "held")
 	lockFixture(t, held, true)
 	other := filepath.Join(bases.Profiles, "not-a-profile")
-	if err := os.Mkdir(other, 0700); err != nil {
+	if err := os.Mkdir(other, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := sweepOrphansIn(t.Context(), bases, nil, currentOwner()); err != nil {
+	if err := sweepOrphans(t.Context(), bases, nil, currentOwner()); err != nil {
 		t.Fatal(err)
 	}
 	requireExists(t, false, left)
@@ -110,7 +113,7 @@ func TestSweepRemovesProfileWhoseRuntimeIsGone(t *testing.T) {
 func TestSweepFollowsOrphanLinkOnlyToOwnedProfile(t *testing.T) {
 	bases := directoryBases(t)
 	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
-	if err := os.Mkdir(elsewhere, 0700); err != nil {
+	if err := os.Mkdir(elsewhere, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	symbolic := filepath.Join(bases.Profiles, profilePrefix+"symbolic")
@@ -120,7 +123,7 @@ func TestSweepFollowsOrphanLinkOnlyToOwnedProfile(t *testing.T) {
 	paths := []string{elsewhere, symbolic}
 	if os.Getuid() == 0 {
 		foreign := filepath.Join(bases.Profiles, profilePrefix+"foreign")
-		if err := os.Mkdir(foreign, 0700); err != nil {
+		if err := os.Mkdir(foreign, 0o700); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Chown(foreign, 65534, 65534); err != nil {
@@ -140,7 +143,7 @@ func TestSweepFollowsOrphanLinkOnlyToOwnedProfile(t *testing.T) {
 		}
 		runtimes = append(runtimes, runtime)
 	}
-	if err := sweepOrphansIn(t.Context(), bases, nil, currentOwner()); err != nil {
+	if err := sweepOrphans(t.Context(), bases, nil, currentOwner()); err != nil {
 		t.Fatal(err)
 	}
 	requireExists(t, false, runtimes...)
@@ -155,11 +158,11 @@ func TestSweepLeavesOtherUsersEnvironmentsAlone(t *testing.T) {
 	if err := os.RemoveAll(runtime); err != nil {
 		t.Fatal(err)
 	}
-	if err := sweepOrphansIn(t.Context(), bases, nil, currentOwner()+1); err != nil {
+	if err := sweepOrphans(t.Context(), bases, nil, currentOwner()+1); err != nil {
 		t.Fatal(err)
 	}
 	requireExists(t, true, orphan, profile, left)
-	if err := sweepOrphansIn(t.Context(), bases, nil, currentOwner()); err != nil {
+	if err := sweepOrphans(t.Context(), bases, nil, currentOwner()); err != nil {
 		t.Fatal(err)
 	}
 	requireExists(t, false, orphan, profile, left)
@@ -175,7 +178,13 @@ func TestSweepTakesNoEnvironmentBeingMade(t *testing.T) {
 	for range 3 {
 		sweeps.Go(func() {
 			for ctx.Err() == nil {
-				if err := sweepOrphansIn(ctx, bases, nil, currentOwner()); err != nil && !errors.Is(err, context.Canceled) {
+				if err := sweepOrphans(
+					ctx,
+					bases,
+					nil,
+					currentOwner(),
+				); err != nil &&
+					!errors.Is(err, context.Canceled) {
 					t.Error(err)
 					return
 				}
@@ -213,7 +222,8 @@ func TestFailedProcessRetirementRetainsDirectoriesAndCause(t *testing.T) {
 	failure := &cdp.BrowserError{Kind: cdp.KindTimeout}
 	err = directories.remove(t.Context(), failure)
 	var retained *cdp.BrowserError
-	if !errors.As(err, &retained) || retained.Kind != cdp.KindProfileRetained || retained.Path != directories.profile || !errors.Is(err, failure) {
+	if !errors.As(err, &retained) || retained.Kind != cdp.KindProfileRetained || retained.Path != directories.profile ||
+		!errors.Is(err, failure) {
 		t.Fatalf("retention lost cause: %v", err)
 	}
 	for _, path := range []string{directories.runtime, directories.profile} {

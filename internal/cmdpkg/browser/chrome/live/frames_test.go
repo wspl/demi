@@ -27,6 +27,7 @@ func (c *chunks) Next(ctx context.Context) ([]byte, error) {
 	c.parts = c.parts[1:]
 	return part, nil
 }
+
 func TestFramesSplitAcrossChunksAndJoinWithinOne(t *testing.T) {
 	data := framed(browserop.ControlFrame, []byte(`{"type":"hello","platform":"mac"}`))
 	data = append(data, framed(browserop.ControlFrame, []byte(`{"type":"release"}`))...)
@@ -58,6 +59,7 @@ func TestFramesSplitAcrossChunksAndJoinWithinOne(t *testing.T) {
 		}
 	}
 }
+
 func TestFramePageCannotSendEndsStream(t *testing.T) {
 	for name, data := range map[string][]byte{
 		"empty": {0, 0, 0, 0}, "unknown kind": {0, 0, 0, 1, 9},

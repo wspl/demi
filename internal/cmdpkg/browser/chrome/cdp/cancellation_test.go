@@ -81,7 +81,18 @@ func TestCancelledRawSendDetachesItsSessionAndJoinsSocket(t *testing.T) {
 	defer operation.Close()
 	result := make(chan error, 1)
 	go func() {
-		_, err := cdp.ExecuteCommand(ctx, operation, debug, 1, "t1", &browserop.CdpSendInput{Tab: "t1", Method: "Runtime.evaluate", Params: `{"expression":"debugger; 42","returnByValue":true}`})
+		_, err := cdp.ExecuteCommand(
+			ctx,
+			operation,
+			debug,
+			1,
+			"t1",
+			&browserop.CdpSendInput{
+				Tab:    "t1",
+				Method: "Runtime.evaluate",
+				Params: `{"expression":"debugger; 42","returnByValue":true}`,
+			},
+		)
 		result <- err
 	}()
 	<-started
@@ -98,7 +109,14 @@ func TestUnavailableWebMCPDoesNotInstallPageHooks(t *testing.T) {
 	executor := &capabilityExecutor{}
 	operation := cdp.NewOperation(t.Context(), t.Context(), time.Second)
 	defer operation.Close()
-	_, err := cdp.ExecuteWebMCP(t.Context(), operation, executor, &cdp.WebMCPState{}, "t1", &browserop.WebmcpListInput{Tab: "t1"})
+	_, err := cdp.ExecuteWebMCP(
+		t.Context(),
+		operation,
+		executor,
+		&cdp.WebMCPState{},
+		"t1",
+		&browserop.WebmcpListInput{Tab: "t1"},
+	)
 	requireCode(t, err, "unsupported_capability")
 	if executor.calls != 1 {
 		t.Fatal("unavailable WebMCP performed page work", executor.calls)

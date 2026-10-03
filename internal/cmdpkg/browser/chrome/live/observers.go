@@ -20,8 +20,10 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-const observerWorld = "demi-live"
-const observerBinding = "demiLiveReport"
+const (
+	observerWorld   = "demi-live"
+	observerBinding = "demiLiveReport"
+)
 
 //go:embed observer.js
 var observerSource string
@@ -78,11 +80,13 @@ func (h *Hub) observer(ctx context.Context, tab *tabs.Tab) (*observed, error) {
 		return entry.observed, entry.err
 	}
 }
+
 func (o *observed) snapshot() observedState {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return o.state
 }
+
 func (o *observed) subscribe() (chan string, func()) {
 	copies := make(chan string, 4)
 	o.mu.Lock()
@@ -94,6 +98,7 @@ func (o *observed) subscribe() (chan string, func()) {
 		o.mu.Unlock()
 	}
 }
+
 func (o *observed) publish(change func(*observedState)) {
 	o.mu.Lock()
 	previous := o.state.changed
@@ -102,6 +107,7 @@ func (o *observed) publish(change func(*observedState)) {
 	o.mu.Unlock()
 	close(previous)
 }
+
 func startObserver(ctx context.Context, tab *tabs.Tab) (*observed, error) {
 	events, err := tab.Subscribe("Runtime.bindingCalled", "Page.frameNavigated")
 	if err != nil {
@@ -117,7 +123,10 @@ func startObserver(ctx context.Context, tab *tabs.Tab) (*observed, error) {
 	if err := runtime.AddBinding(observerBinding).WithExecutionContextName(observerWorld).Do(execution); err != nil {
 		return nil, err
 	}
-	if _, err := chromepage.AddScriptToEvaluateOnNewDocument(observerSource).WithWorldName(observerWorld).WithRunImmediately(true).Do(execution); err != nil {
+	if _, err := chromepage.AddScriptToEvaluateOnNewDocument(observerSource).
+		WithWorldName(observerWorld).
+		WithRunImmediately(true).
+		Do(execution); err != nil {
 		return nil, err
 	}
 	if err := emulation.SetFocusEmulationEnabled(true).Do(execution); err != nil {
@@ -128,80 +137,12 @@ func startObserver(ctx context.Context, tab *tabs.Tab) (*observed, error) {
 			return nil, err
 		}
 	}
-	o := &observed{state: observedState{controls: []browserop.LiveControl{}, cursor: "default", changed: make(chan struct{})}, copies: make(map[chan string]struct{})}
+	o := &observed{
+		state:  observedState{controls: []browserop.LiveControl{}, cursor: "default", changed: make(chan struct{})},
+		copies: make(map[chan string]struct{}),
+	}
 	err = tab.StartTask(func(owner context.Context) {
-		defer events.Close()
-		for {
-			event, err := events.Next(owner)
-			if err != nil {
-				var loss *cdp.EventLoss
-				if errors.As(err, &loss) {
-					continue
-				}
-				return
-			}
-			decoded, err := cdp.DecodeEvent(event)
-			if err != nil {
-				slog.Warn("live view observer event", "error", err)
-				continue
-			}
-			switch value := decoded.(type) {
-			case *runtime.EventBindingCalled:
-				if value.Name != observerBinding {
-					continue
-				}
-				report, err := decodeObserverReport([]byte(value.Payload))
-				if err != nil {
-					slog.Warn("live view observer report", "error", err)
-					continue
-				}
-				switch report := report.(type) {
-				case *cursorReport:
-					o.publish(func(s *observedState) {
-						s.cursor, s.editable = report.Cursor, report.Editable
-						s.cursorVersion++
-					})
-				case *controlsReport:
-					o.publish(func(s *observedState) {
-						s.controls = report.Controls
-						s.controlsVersion++
-					})
-				case *copyReport:
-					o.mu.Lock()
-					subscribers := make([]chan string, 0, len(o.copies))
-					for copies := range o.copies {
-						subscribers = append(subscribers, copies)
-					}
-					o.mu.Unlock()
-					for _, copies := range subscribers {
-						// Match broadcast lag: retain the newest four copies for each subscriber.
-						select {
-						case copies <- report.Text:
-						default:
-							select {
-							case <-copies:
-							default:
-							}
-							select {
-							case copies <- report.Text:
-							default:
-							}
-						}
-					}
-				}
-			case *chromepage.EventFrameNavigated:
-				if value.Frame.ParentID == "" {
-					o.publish(func(s *observedState) {
-						s.controls = []browserop.LiveControl{}
-						s.cursor = "default"
-						s.editable = false
-						s.documents++
-						s.cursorVersion++
-						s.controlsVersion++
-					})
-				}
-			}
-		}
+		o.runObserver(owner, events)
 	})
 	if err != nil {
 		return nil, err
@@ -209,6 +150,7 @@ func startObserver(ctx context.Context, tab *tabs.Tab) (*observed, error) {
 	admitted = true
 	return o, nil
 }
+
 func observerCall(ctx context.Context, tab *tabs.Tab, expression string, byValue bool) (*runtime.RemoteObject, error) {
 	execution := protocol.WithExecutor(ctx, tab.Page())
 	tree, err := chromepage.GetFrameTree().Do(execution)
@@ -219,7 +161,11 @@ func observerCall(ctx context.Context, tab *tabs.Tab, expression string, byValue
 	if err != nil {
 		return nil, err
 	}
-	result, exception, err := runtime.Evaluate(observerSource + "\n" + expression).WithContextID(world).WithAwaitPromise(true).WithReturnByValue(byValue).Do(execution)
+	result, exception, err := runtime.Evaluate(observerSource + "\n" + expression).
+		WithContextID(world).
+		WithAwaitPromise(true).
+		WithReturnByValue(byValue).
+		Do(execution)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +174,15 @@ func observerCall(ctx context.Context, tab *tabs.Tab, expression string, byValue
 	}
 	return result, nil
 }
-func choose(ctx context.Context, tab *tabs.Tab, token browserop.ControlToken, revision uint64, value string, indices []uint32) (bool, error) {
+
+func choose(
+	ctx context.Context,
+	tab *tabs.Tab,
+	token browserop.ControlToken,
+	revision uint64,
+	value string,
+	indices []uint32,
+) (bool, error) {
 	message, err := contract.EncodeJSON(struct {
 		Token    browserop.ControlToken `json:"token"`
 		Revision uint64                 `json:"revision"`
@@ -241,7 +195,14 @@ func choose(ctx context.Context, tab *tabs.Tab, token browserop.ControlToken, re
 	result, err := observerCall(ctx, tab, "globalThis.demiLive.commit("+string(message)+")", true)
 	return err == nil && bytes.Equal(bytes.TrimSpace(result.Value), []byte("true")), err
 }
-func attach(ctx context.Context, tab *tabs.Tab, token browserop.ControlToken, revision uint64, files []string) (bool, error) {
+
+func attach(
+	ctx context.Context,
+	tab *tabs.Tab,
+	token browserop.ControlToken,
+	revision uint64,
+	files []string,
+) (bool, error) {
 	message, err := contract.EncodeJSON(struct {
 		Token    browserop.ControlToken `json:"token"`
 		Revision uint64                 `json:"revision"`
@@ -276,6 +237,7 @@ func attach(ctx context.Context, tab *tabs.Tab, token browserop.ControlToken, re
 	_, err = observerCall(ctx, tab, "globalThis.demiLive.committed("+string(message)+")", true)
 	return err == nil, err
 }
+
 func writeClipboard(ctx context.Context, tab *tabs.Tab, text, html string) (bool, error) {
 	capability, err := page.ClipboardCapability(ctx, tab)
 	if err != nil || !capability.Available {
@@ -298,4 +260,83 @@ func writeClipboard(ctx context.Context, tab *tabs.Tab, text, html string) (bool
  catch { return false; }
  })(`+string(data)+`)`, true)
 	return err == nil && bytes.Equal(bytes.TrimSpace(result.Value), []byte("true")), err
+}
+
+func (o *observed) runObserver(owner context.Context, events *cdp.Subscription) {
+	defer events.Close()
+	for {
+		event, err := events.Next(owner)
+		if err != nil {
+			var loss *cdp.EventLoss
+			if errors.As(err, &loss) {
+				continue
+			}
+			return
+		}
+		decoded, err := cdp.DecodeEvent(event)
+		if err != nil {
+			slog.Warn("live view observer event", "error", err)
+			continue
+		}
+		switch value := decoded.(type) {
+		case *runtime.EventBindingCalled:
+			if value.Name != observerBinding {
+				continue
+			}
+			report, err := decodeObserverReport([]byte(value.Payload))
+			if err != nil {
+				slog.Warn("live view observer report", "error", err)
+				continue
+			}
+			o.publishReport(report)
+		case *chromepage.EventFrameNavigated:
+			if value.Frame.ParentID == "" {
+				o.publish(func(s *observedState) {
+					s.controls = []browserop.LiveControl{}
+					s.cursor = "default"
+					s.editable = false
+					s.documents++
+					s.cursorVersion++
+					s.controlsVersion++
+				})
+			}
+		}
+	}
+}
+
+func (o *observed) publishReport(report observerReport) {
+	switch report := report.(type) {
+	case *cursorReport:
+		o.publish(func(s *observedState) {
+			s.cursor, s.editable = report.Cursor, report.Editable
+			s.cursorVersion++
+		})
+	case *controlsReport:
+		o.publish(func(s *observedState) {
+			s.controls = report.Controls
+			s.controlsVersion++
+		})
+	case *copyReport:
+		o.mu.Lock()
+		subscribers := make([]chan string, 0, len(o.copies))
+		for copies := range o.copies {
+			subscribers = append(subscribers, copies)
+		}
+		o.mu.Unlock()
+		for _, copies := range subscribers {
+			// Match broadcast lag: retain the newest four copies for each subscriber.
+			select {
+			case copies <- report.Text:
+			default:
+				select {
+				case <-copies:
+				default:
+				}
+				select {
+				case copies <- report.Text:
+				default:
+				}
+			}
+		}
+	}
 }

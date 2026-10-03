@@ -42,7 +42,15 @@ func OperationUntil(ctx context.Context, lifetime context.Context, deadline time
 		defer close(callbackDone)
 		cancel()
 	})
-	return &Operation{ctx: bounded, lifetime: lifetime, deadline: deadline, cancel: cancel, stop: stop, callbackDone: callbackDone, progress: browserop.ActionProgress("not_started")}
+	return &Operation{
+		ctx:          bounded,
+		lifetime:     lifetime,
+		deadline:     deadline,
+		cancel:       cancel,
+		stop:         stop,
+		callbackDone: callbackDone,
+		progress:     browserop.ActionProgress("not_started"),
+	}
 }
 
 // Context supplies the shared deadline and cancellation to low-level steps.

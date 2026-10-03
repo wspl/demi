@@ -136,7 +136,10 @@ func (t *Tab) Close(ctx context.Context, timeout time.Duration) error {
 func (t *Tab) CloseRequest(ctx context.Context, timeout time.Duration) (Closed, error) {
 	bounded, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	answer, err := t.environment.ask(bounded, registryRequest{kind: registryClose, target: t.TargetID(), deadline: time.Now().Add(timeout)})
+	answer, err := t.environment.ask(
+		bounded,
+		registryRequest{kind: registryClose, target: t.TargetID(), deadline: time.Now().Add(timeout)},
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -203,14 +206,28 @@ func (t *Tab) StartTask(work func(context.Context)) error {
 }
 
 // setUpTab subscribes to page state before enabling events and admitting commands.
-func (e *Environment) setUpTab(ctx context.Context, id target.ID, public browserop.TabID, createdBy browserop.BrowserCreatedBy) (_ *Tab, err error) {
+func (e *Environment) setUpTab(
+	ctx context.Context,
+	id target.ID,
+	public browserop.TabID,
+	createdBy browserop.BrowserCreatedBy,
+) (_ *Tab, err error) {
 	session, err := e.connection.Attach(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	lifetime, cancel := context.WithCancelCause(e.ctx)
 	view := unwatchedViewport()
-	t := &Tab{environment: e, session: session, id: public, createdBy: createdBy, ctx: lifetime, cancel: cancel, viewports: Viewports{Current: view, Web: view}, viewportChanged: make(chan struct{})}
+	t := &Tab{
+		environment:     e,
+		session:         session,
+		id:              public,
+		createdBy:       createdBy,
+		ctx:             lifetime,
+		cancel:          cancel,
+		viewports:       Viewports{Current: view, Web: view},
+		viewportChanged: make(chan struct{}),
+	}
 	defer func() {
 		if err != nil {
 			cleanup, done := context.WithTimeout(context.WithoutCancel(ctx), cdp.ControlTimeout)
@@ -228,7 +245,14 @@ func (e *Environment) setUpTab(ctx context.Context, id target.ID, public browser
 		return nil, err
 	}
 	renderer := protocol.WithExecutor(ctx, session)
-	for _, enable := range []func(context.Context) error{page.Enable().Do, runtime.Enable().Do, network.Enable().Do, page.SetLifecycleEventsEnabled(true).Do} {
+	for _, enable := range []func(context.Context) error{
+		page.Enable().Do,
+		runtime.Enable().Do,
+		network.Enable().Do,
+		page.SetLifecycleEventsEnabled(
+			true,
+		).Do,
+	} {
 		if err := enable(renderer); err != nil {
 			return nil, err
 		}
@@ -283,16 +307,25 @@ func (t *Tab) closeTarget(ctx context.Context) error {
 
 type tabExecutor struct{ tab *Tab }
 
-func (p tabExecutor) Execute(ctx context.Context, method string, params, result any) error {
-	operation := cdp.NewOperation(ctx, p.tab.ctx, 30*time.Second)
+// Execute runs a renderer command within the tab lifetime and control deadline.
+func (e tabExecutor) Execute(ctx context.Context, method string, params, result any) error {
+	operation := cdp.NewOperation(ctx, e.tab.ctx, 30*time.Second)
 	defer operation.Close()
-	return operation.Run(ctx, func(ctx context.Context) error { return p.tab.session.Execute(ctx, method, params, result) })
-}
-func (p tabExecutor) TargetID() target.ID { return p.tab.TargetID() }
-func (p tabExecutor) Related(ctx context.Context, id target.ID) (cdp.FrameTarget, error) {
-	return p.tab.session.Related(ctx, id)
+	return operation.Run(
+		ctx,
+		func(ctx context.Context) error { return e.tab.session.Execute(ctx, method, params, result) },
+	)
 }
 
-func (p tabExecutor) Subscribe(methods ...string) (*cdp.Subscription, error) {
-	return p.tab.Subscribe(methods...)
+// TargetID identifies the tab renderer.
+func (e tabExecutor) TargetID() target.ID { return e.tab.TargetID() }
+
+// Related finds a renderer attached beneath the tab.
+func (e tabExecutor) Related(ctx context.Context, id target.ID) (cdp.FrameTarget, error) {
+	return e.tab.session.Related(ctx, id)
+}
+
+// Subscribe observes renderer events through the tab.
+func (e tabExecutor) Subscribe(methods ...string) (*cdp.Subscription, error) {
+	return e.tab.Subscribe(methods...)
 }

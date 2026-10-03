@@ -50,13 +50,21 @@ func TestChromePage(t *testing.T) {
 <label>Password<input type="password" value="secret"></label>
 <label><input id="confirm" type="checkbox">Confirm</label>
 <select id="options"><option value="a">Alpha</option><option value="b">Beta</option></select>
-<input id="file" type="file"><button id="submit" onclick="document.querySelector('#status').textContent=document.querySelector('#email').value+' '+document.querySelector('#date').value+' '+document.querySelector('#confirm').checked">Submit</button>
+<input id="file" type="file"><button id="submit" ` +
+			`onclick="document.querySelector('#status').textContent=document.querySelector('#email').value+' '+document.querySelector('#date').value+' '+document.querySelector('#confirm').checked">Submit</button>
 <p id="status">Ready</p><a id="download" href="/download">Download</a>
 <svg width="20" height="20"><rect width="20" height="20" fill="red"/></svg>
 </body></html>`))
 	}))
 	defer server.Close()
-	environment := tabstest.Launch(ctx, t, tabs.LaunchOptions{Executable: executable, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}})
+	environment := tabstest.Launch(
+		ctx,
+		t,
+		tabs.LaunchOptions{
+			Executable: executable,
+			Locale:     commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		},
+	)
 	tab, err := environment.Open(ctx, server.URL, 10*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -76,8 +84,30 @@ func TestChromePage(t *testing.T) {
 	if strings.Contains(string(encoded), "secret") || !strings.Contains(string(encoded), "protected") {
 		t.Fatalf("password observation: %s", encoded)
 	}
-	for _, fill := range []struct{ selector, text string }{{"#email", "discard"}, {"#email", ""}, {"#email", "agent@example.test"}, {"#date", "2026-10-03"}} {
-		if _, err = page.Fill(ctx, tab, browserop.FillInput{Tab: tab.ID(), BrowserTarget: target(fill.selector), Text: fill.text}, deadline); err != nil {
+	for _, fill := range []struct{ selector, text string }{
+		{
+			"#email",
+			"discard",
+		},
+		{
+			"#email",
+			"",
+		},
+		{
+			"#email",
+			"agent@example.test",
+		},
+		{
+			"#date",
+			"2026-10-03",
+		},
+	} {
+		if _, err = page.Fill(
+			ctx,
+			tab,
+			browserop.FillInput{Tab: tab.ID(), BrowserTarget: target(fill.selector), Text: fill.text},
+			deadline,
+		); err != nil {
 			t.Fatal(err)
 		}
 		if fill.text == "" {
@@ -87,14 +117,29 @@ func TestChromePage(t *testing.T) {
 			}
 		}
 	}
-	if _, err = page.Check(ctx, tab, browserop.CheckInput{Tab: tab.ID(), BrowserTarget: target("#confirm"), Value: true}, deadline); err != nil {
+	if _, err = page.Check(
+		ctx,
+		tab,
+		browserop.CheckInput{Tab: tab.ID(), BrowserTarget: target("#confirm"), Value: true},
+		deadline,
+	); err != nil {
 		t.Fatal(err)
 	}
 	options := []string{"b"}
-	if _, err = page.Select(ctx, tab, browserop.SelectInput{Tab: tab.ID(), BrowserTarget: target("#options"), Value: &options}, deadline); err != nil {
+	if _, err = page.Select(
+		ctx,
+		tab,
+		browserop.SelectInput{Tab: tab.ID(), BrowserTarget: target("#options"), Value: &options},
+		deadline,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = page.Click(ctx, tab, browserop.ClickInput{Tab: tab.ID(), BrowserTarget: target("#submit")}, deadline); err != nil {
+	if _, err = page.Click(
+		ctx,
+		tab,
+		browserop.ClickInput{Tab: tab.ID(), BrowserTarget: target("#submit")},
+		deadline,
+	); err != nil {
 		t.Fatal(err)
 	}
 	evaluated, err := page.Evaluate(ctx, tab, `document.querySelector('#status').textContent`, time.Second)
@@ -108,7 +153,12 @@ func TestChromePage(t *testing.T) {
 	if status != "agent@example.test 2026-10-03 true" {
 		t.Fatalf("submitted state: %q", status)
 	}
-	if _, err = page.Evaluate(ctx, tab, `document.querySelector('#status').textContent='changed'`, time.Second); err == nil {
+	if _, err = page.Evaluate(
+		ctx,
+		tab,
+		`document.querySelector('#status').textContent='changed'`,
+		time.Second,
+	); err == nil {
 		t.Fatal("read-only evaluation allowed mutation")
 	}
 	screenshot, err := page.Screenshot(ctx, tab, time.Second)
@@ -120,16 +170,33 @@ func TestChromePage(t *testing.T) {
 	}
 	cwd := t.TempDir()
 	file := filepath.Join(cwd, "upload.txt")
-	if err = os.WriteFile(file, []byte("upload fixture"), 0600); err != nil {
+	if err = os.WriteFile(file, []byte("upload fixture"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	invocation := &cmdsdk.InvocationContext[commandwire.Invocation]{Request: commandwire.Invocation{Cwd: cwd}}
-	uploaded, err := page.Upload(ctx, invocation, tab, browserop.UploadInput{Tab: tab.ID(), BrowserTarget: target("#file"), File: []browserop.LocatorText{browserop.LocatorText(file)}}, deadline)
+	uploaded, err := page.Upload(
+		ctx,
+		invocation,
+		tab,
+		browserop.UploadInput{
+			Tab:           tab.ID(),
+			BrowserTarget: target("#file"),
+			File:          []browserop.LocatorText{browserop.LocatorText(file)},
+		},
+		deadline,
+	)
 	if err != nil || uploaded.Attached != 1 {
 		t.Fatalf("upload=%+v err=%v", uploaded, err)
 	}
 	output := "download.txt"
-	downloaded, err := page.Download(ctx, invocation, environment, tab, browserop.DownloadInput{Tab: tab.ID(), BrowserTarget: target("#download"), Output: &output}, deadline)
+	downloaded, err := page.Download(
+		ctx,
+		invocation,
+		environment,
+		tab,
+		browserop.DownloadInput{Tab: tab.ID(), BrowserTarget: target("#download"), Output: &output},
+		deadline,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,13 +236,33 @@ func TestChromeRendererUploadsAssetsConsoleAndFailedNavigation(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/html")
 		if r.URL.Path == "/child" {
-			_, _ = w.Write([]byte(`<button id="log" onclick="console.info('child-console')">Log</button><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20'/%3E%3C/svg%3E">`))
+			_, _ = w.Write(
+				[]byte(
+					`<button id="log" onclick="console.info('child-console')">Log</button><img ` +
+						`src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' ` +
+						`height='20'%3E%3Crect width='20' height='20'/%3E%3C/svg%3E">`,
+				),
+			)
 			return
 		}
-		_, _ = w.Write([]byte(`<!doctype html><input id="files" type="file" multiple hidden><button id="choose" onclick="document.querySelector('#files').click()">Choose</button><button id="disabled" disabled>Disabled</button><iframe id="child"></iframe><script>document.querySelector('iframe').src=location.href.replace('127.0.0.1','localhost')+'child';</script>`))
+		_, _ = w.Write(
+			[]byte(
+				`<!doctype html><input id="files" type="file" multiple hidden><button id="choose" ` +
+					`onclick="document.querySelector('#files').click()">Choose</button><button id="disabled" ` +
+					`disabled>Disabled</button><iframe ` +
+					`id="child"></iframe><script>document.querySelector('iframe').src=location.href.replace('127.0.0.1','localhost')+'child';</script>`,
+			),
+		)
 	}))
 	defer server.Close()
-	environment := tabstest.Launch(ctx, t, tabs.LaunchOptions{Executable: executable, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}})
+	environment := tabstest.Launch(
+		ctx,
+		t,
+		tabs.LaunchOptions{
+			Executable: executable,
+			Locale:     commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		},
+	)
 	tab, err := environment.Open(ctx, server.URL+"/", 10*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -187,11 +274,15 @@ func TestChromeRendererUploadsAssetsConsoleAndFailedNavigation(t *testing.T) {
 	cwd := t.TempDir()
 	invocation := &cmdsdk.InvocationContext[commandwire.Invocation]{Request: commandwire.Invocation{Cwd: cwd}}
 	file := filepath.Join(cwd, "chooser.txt")
-	if err := os.WriteFile(file, []byte("chooser contents"), 0600); err != nil {
+	if err := os.WriteFile(file, []byte("chooser contents"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	selector := "#choose"
-	upload := browserop.UploadInput{Tab: tab.ID(), BrowserTarget: browserop.BrowserTarget{BrowserQueryMatch: browserop.BrowserQueryMatch{CSS: &selector}}, File: []browserop.LocatorText{browserop.LocatorText(file)}}
+	upload := browserop.UploadInput{
+		Tab:           tab.ID(),
+		BrowserTarget: browserop.BrowserTarget{BrowserQueryMatch: browserop.BrowserQueryMatch{CSS: &selector}},
+		File:          []browserop.LocatorText{browserop.LocatorText(file)},
+	}
 	result, err := page.Upload(ctx, invocation, tab, upload, deadline())
 	if err != nil || result.Attached != 1 {
 		t.Fatalf("chooser result=%+v error=%v", result, err)
@@ -210,7 +301,18 @@ func TestChromeRendererUploadsAssetsConsoleAndFailedNavigation(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := filepath.Join(cwd, "assets")
-	exported, err := page.AssetsExport(ctx, invocation, tab, browserop.AssetsExportInput{Tab: tab.ID(), Inventory: inventory.Inventory, Kind: &[]browserop.AssetKind{browserop.AssetKindImage}, OutputDir: output}, deadline())
+	exported, err := page.AssetsExport(
+		ctx,
+		invocation,
+		tab,
+		browserop.AssetsExportInput{
+			Tab:       tab.ID(),
+			Inventory: inventory.Inventory,
+			Kind:      &[]browserop.AssetKind{browserop.AssetKindImage},
+			OutputDir: output,
+		},
+		deadline(),
+	)
 	if err != nil || len(exported.Files) != 1 {
 		t.Fatalf("child asset export=%+v error=%v", exported, err)
 	}
@@ -227,7 +329,8 @@ func TestChromeRendererUploadsAssetsConsoleAndFailedNavigation(t *testing.T) {
 	if child == nil {
 		t.Fatal("fixture did not create a cross-process renderer")
 	}
-	_, exception, err := runtime.Evaluate(`document.querySelector('#log').click()`).Do(protocol.WithExecutor(ctx, child))
+	_, exception, err := runtime.Evaluate(`document.querySelector('#log').click()`).
+		Do(protocol.WithExecutor(ctx, child))
 	if err != nil || exception != nil {
 		t.Fatalf("child console: %v %v", err, exception)
 	}
@@ -252,7 +355,13 @@ func TestChromeRendererUploadsAssetsConsoleAndFailedNavigation(t *testing.T) {
 		t.Fatal("tab busy")
 	}
 	defer checkout.Release()
-	_, err = tab.Navigate(ctx, &tabs.Visit{URL: server.URL + "/drop"}, browserop.LoadLoad, operation, &checkout.Session().References)
+	_, err = tab.Navigate(
+		ctx,
+		&tabs.Visit{URL: server.URL + "/drop"},
+		browserop.LoadLoad,
+		operation,
+		&checkout.Session().References,
+	)
 	details := cdp.ErrorDetails(err)
 	if cdp.ErrorCode(err) != "navigation_failed" || details.Action == nil || *details.Action != "completed" {
 		t.Fatalf("navigation error=%v details=%+v", err, details)

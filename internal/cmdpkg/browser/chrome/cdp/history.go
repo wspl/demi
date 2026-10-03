@@ -24,12 +24,23 @@ type Buffer[T any] struct {
 // NewBuffer creates a stream with count and encoded-byte bounds. setSequence
 // assigns a position in a copied entry; sequence reads that assigned position.
 // Callbacks adapt the existing generated contract types without redeclaring them.
-func NewBuffer[T any](prefix string, entryLimit, byteLimit int, sequence func(T) uint64, setSequence func(T, uint64) T) (*Buffer[T], error) {
+func NewBuffer[T any](
+	prefix string,
+	entryLimit, byteLimit int,
+	sequence func(T) uint64,
+	setSequence func(T, uint64) T,
+) (*Buffer[T], error) {
 	generation, err := Fresh(prefix)
 	if err != nil {
 		return nil, err
 	}
-	return &Buffer[T]{generation: generation, entryLimit: entryLimit, byteLimit: byteLimit, sequence: sequence, setSequence: setSequence}, nil
+	return &Buffer[T]{
+		generation:  generation,
+		entryLimit:  entryLimit,
+		byteLimit:   byteLimit,
+		sequence:    sequence,
+		setSequence: setSequence,
+	}, nil
 }
 
 // Push appends at the next position, evicting oldest entries past the limits.

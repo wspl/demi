@@ -27,13 +27,17 @@ type NumberSource interface {
 
 // LaunchOptions identifies the installed pinned Chrome and the user's locale.
 type LaunchOptions struct {
+	// Executable names the absolute Chrome executable.
 	Executable string
-	Locale     commandwire.CommandLocale
+	// Locale supplies the command's language preferences.
+	Locale commandwire.CommandLocale
 }
 
 // DirectoryBases are the Host's separate runtime and profile storage roots.
 type DirectoryBases struct {
-	Runtime  string
+	// Runtime names the base for ephemeral runtime files.
+	Runtime string
+	// Profiles names the base for isolated profiles.
 	Profiles string
 }
 
@@ -80,7 +84,7 @@ type Environment struct {
 // Launch starts the pinned Chrome with capture and CDP observation. Failed startup
 // completes the same cleanup as Close before returning; no page actions are retried.
 func Launch(ctx context.Context, options LaunchOptions, numbers NumberSource) (*Environment, error) {
-	return launchIn(ctx, options, numbers, HostDirectories())
+	return launch(ctx, options, numbers, HostDirectories())
 }
 
 // Close stops admission, cancels work, retires Chrome, joins workers and removes
@@ -158,7 +162,13 @@ func (e *Environment) Open(ctx context.Context, url string, timeout time.Duratio
 }
 
 // OpenFor opens a distinct agent tab and returns its final URL after the chosen load.
-func (e *Environment) OpenFor(ctx context.Context, url string, caller uint64, load browserop.Load, deadline time.Time) (*Tab, string, error) {
+func (e *Environment) OpenFor(
+	ctx context.Context,
+	url string,
+	caller uint64,
+	load browserop.Load,
+	deadline time.Time,
+) (*Tab, string, error) {
 	if err := ValidateURL(url); err != nil {
 		return nil, "", err
 	}
@@ -197,7 +207,12 @@ func (e *Environment) OpenUser(ctx context.Context, url *string, deadline time.T
 }
 
 // TemporaryTabs creates a batch and prevents final-tab retirement until it closes.
-func (e *Environment) TemporaryTabs(ctx context.Context, caller uint64, count uint, deadline time.Time) (*TemporaryBatch, error) {
+func (e *Environment) TemporaryTabs(
+	ctx context.Context,
+	caller uint64,
+	count uint,
+	deadline time.Time,
+) (*TemporaryBatch, error) {
 	operation := cdp.OperationUntil(ctx, e.ctx, deadline)
 	defer operation.Close()
 	if _, err := e.ask(operation.Context(), registryRequest{kind: registryHold}); err != nil {
@@ -338,8 +353,13 @@ func (e *Environment) StartTask(work func(context.Context)) error {
 	return nil
 }
 
-// launchIn owns startup rollback as well as the launched environment's retirement.
-func launchIn(ctx context.Context, options LaunchOptions, numbers NumberSource, bases DirectoryBases) (_ *Environment, err error) {
+// launch owns startup rollback as well as the launched environment's retirement.
+func launch(
+	ctx context.Context,
+	options LaunchOptions,
+	numbers NumberSource,
+	bases DirectoryBases,
+) (_ *Environment, err error) {
 	if !filepath.IsAbs(options.Executable) {
 		return nil, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "Chrome executable must be absolute"}
 	}
@@ -348,7 +368,16 @@ func launchIn(ctx context.Context, options LaunchOptions, numbers NumberSource, 
 		return nil, err
 	}
 	lifetime, cancel := context.WithCancelCause(ctx)
-	e := &Environment{ctx: lifetime, cancel: cancel, directories: directories, numbers: numbers, requests: make(chan registryRequest, 64), emptied: make(chan struct{}), closed: make(chan struct{}), changed: make(chan struct{})}
+	e := &Environment{
+		ctx:         lifetime,
+		cancel:      cancel,
+		directories: directories,
+		numbers:     numbers,
+		requests:    make(chan registryRequest, 64),
+		emptied:     make(chan struct{}),
+		closed:      make(chan struct{}),
+		changed:     make(chan struct{}),
+	}
 	e.snapshotChanged = make(chan struct{})
 	e.snapshot.Store(&Snapshot{Tabs: []Listed{}, Changed: e.snapshotChanged})
 	defer func() {
@@ -358,75 +387,19 @@ func launchIn(ctx context.Context, options LaunchOptions, numbers NumberSource, 
 			err = cdp.AfterCleanup(err, e.cleanup)
 		}
 	}()
-	for _, directory := range []string{e.DownloadDirectory(), e.UploadDirectory()} {
-		if err := os.Mkdir(directory, 0700); err != nil {
-			return nil, err
-		}
-	}
-	var captureAddress string
-	e.captures, captureAddress, e.closeCapture, err = bindCapture(lifetime)
-	if err != nil {
+	if err := e.startChrome(ctx, options, directories); err != nil {
 		return nil, err
 	}
-	command, err := configureLaunch(options, directories.profile, captureAddress)
-	if err != nil {
+	if err := e.connectChrome(ctx); err != nil {
 		return nil, err
 	}
-	e.process, e.address, e.stopLogs, err = startChrome(ctx, command, directories)
-	if err != nil {
-		return nil, err
-	}
-	transport, transportCancel := context.WithCancel(context.Background())
-	e.transportCancel = transportCancel
-	// Dial's context owns its pump too. Startup cancellation only applies until
-	// the connection has been established; retirement needs a live CDP pump.
-	callbackDone := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() {
-		defer close(callbackDone)
-		transportCancel()
-	})
-	e.connection, err = cdp.Dial(transport, e.address)
-	if !stop() {
-		<-callbackDone
-	}
-	if err != nil {
-		return nil, err
-	}
-	setup, done := context.WithTimeout(lifetime, 30*time.Second)
+	setup, done := context.WithTimeout(e.ctx, 30*time.Second)
 	defer done()
-	if err := browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllowAndName).WithDownloadPath(e.DownloadDirectory()).WithEventsEnabled(true).Do(protocol.WithExecutor(setup, e.connection)); err != nil {
-		return nil, err
-	}
-	events, err := e.connection.SubscribeWithCapacity(256, "Target.targetCreated", "Target.targetInfoChanged", "Target.targetDestroyed")
-	if err != nil {
-		return nil, err
-	}
-	if err := target.SetDiscoverTargets(true).Do(protocol.WithExecutor(setup, e.connection)); err != nil {
-		events.Close()
-		return nil, err
-	}
-	if err := e.StartTask(func(ctx context.Context) { e.runRegistry(ctx, events) }); err != nil {
-		events.Close()
+	if err := e.discoverTabs(setup); err != nil {
 		return nil, err
 	}
 	go func() {
-		select {
-		case <-e.ctx.Done():
-		case <-e.emptied:
-			e.cancel(&cdp.BrowserError{Kind: cdp.KindClosed})
-		case <-e.connection.Done():
-			failure := e.connection.Err()
-			if failure == nil {
-				failure = &cdp.BrowserError{Kind: cdp.KindConnection, Message: "browser connection ended"}
-			}
-			e.mu.Lock()
-			if e.ctx.Err() == nil {
-				e.failure = failure
-			}
-			e.mu.Unlock()
-			e.cancel(failure)
-		}
-		e.retire()
+		e.watchRetirement(e.ctx)
 	}()
 	return e, nil
 }
@@ -485,8 +458,109 @@ func (e *Environment) markChanged() {
 type environmentExecutor struct{ environment *Environment }
 
 // Execute admits one bounded browser call while its environment is live.
-func (b environmentExecutor) Execute(ctx context.Context, method string, params, result any) error {
-	operation := cdp.NewOperation(ctx, b.environment.ctx, 30*time.Second)
+func (e environmentExecutor) Execute(ctx context.Context, method string, params, result any) error {
+	operation := cdp.NewOperation(ctx, e.environment.ctx, 30*time.Second)
 	defer operation.Close()
-	return operation.Run(ctx, func(ctx context.Context) error { return b.environment.connection.Execute(ctx, method, params, result) })
+	return operation.Run(
+		ctx,
+		func(ctx context.Context) error { return e.environment.connection.Execute(ctx, method, params, result) },
+	)
+}
+
+func (e *Environment) startChrome(
+	ctx context.Context,
+	options LaunchOptions,
+	directories *environmentDirectories,
+) error {
+	var err error
+	for _, directory := range []string{e.DownloadDirectory(), e.UploadDirectory()} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			return err
+		}
+	}
+	var captureAddress string
+	e.captures, captureAddress, e.closeCapture, err = bindCapture(e.ctx)
+	if err != nil {
+		return err
+	}
+	command, err := configureLaunch(options, directories.profile, captureAddress)
+	if err != nil {
+		return err
+	}
+	e.process, e.address, e.stopLogs, err = startChrome(ctx, command, directories)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *Environment) connectChrome(ctx context.Context) error {
+	var err error
+	transport, transportCancel := context.WithCancel(context.Background())
+	e.transportCancel = transportCancel
+	// Dial's context owns its pump too. Startup cancellation only applies until
+	// the connection has been established; retirement needs a live CDP pump.
+	callbackDone := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(callbackDone)
+		transportCancel()
+	})
+	e.connection, err = cdp.Dial(transport, e.address)
+	if !stop() {
+		<-callbackDone
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *Environment) discoverTabs(ctx context.Context) error {
+	if err := browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllowAndName).
+		WithDownloadPath(e.DownloadDirectory()).
+		WithEventsEnabled(true).
+		Do(protocol.WithExecutor(ctx, e.connection)); err != nil {
+		return err
+	}
+	events, err := e.connection.SubscribeWithCapacity(
+		256,
+		"Target.targetCreated",
+		"Target.targetInfoChanged",
+		"Target.targetDestroyed",
+	)
+	if err != nil {
+		return err
+	}
+	if err := target.SetDiscoverTargets(true).Do(protocol.WithExecutor(ctx, e.connection)); err != nil {
+		events.Close()
+		return err
+	}
+	if err := e.StartTask(func(ctx context.Context) { e.runRegistry(ctx, events) }); err != nil {
+		events.Close()
+		return err
+	}
+
+	return nil
+}
+
+func (e *Environment) watchRetirement(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+	case <-e.emptied:
+		e.cancel(&cdp.BrowserError{Kind: cdp.KindClosed})
+	case <-e.connection.Done():
+		failure := e.connection.Err()
+		if failure == nil {
+			failure = &cdp.BrowserError{Kind: cdp.KindConnection, Message: "browser connection ended"}
+		}
+		e.mu.Lock()
+		if e.ctx.Err() == nil {
+			e.failure = failure
+		}
+		e.mu.Unlock()
+		e.cancel(failure)
+	}
+	e.retire()
 }

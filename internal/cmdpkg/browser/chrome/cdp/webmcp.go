@@ -18,21 +18,29 @@ import (
 // ToolSet is a page-declared set of tools and its version-bound opaque handle.
 // This is state held by the tab, not a second wire contract.
 type ToolSet struct {
-	Handle  string
+	// Handle binds the declarations to their document version.
+	Handle string
+	// Entries holds the page's validated tool declarations.
 	Entries []browserop.WebmcpTool
 }
 
 // WebMCPState belongs to the calling tab and is held under its operation gate.
 // A nil Document means no document has yet been observed.
 type WebMCPState struct {
+	// Document identifies the observed document loader.
 	Document *protocol.LoaderID
-	Key      *string
-	Tools    *ToolSet
+	// Key names the document's WebMCP observer state.
+	Key *string
+	// Tools retains the current discovered tool set.
+	Tools *ToolSet
 }
 
 // evaluatePage reads a by-value result from Chrome without replacing execution scope.
 func evaluatePage(ctx context.Context, executor Executor, script string, await bool) (json.RawMessage, error) {
-	result, exception, err := runtime.Evaluate(script).WithAwaitPromise(await).WithReturnByValue(true).Do(protocol.WithExecutor(ctx, executor))
+	result, exception, err := runtime.Evaluate(script).
+		WithAwaitPromise(await).
+		WithReturnByValue(true).
+		Do(protocol.WithExecutor(ctx, executor))
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +64,13 @@ func scriptString(value string) (string, error) {
 
 // webMCPCapability asks this document whether Chrome exposes its native tool API.
 func webMCPCapability(ctx context.Context, executor Executor) (browserop.Capability, error) {
-	raw, err := evaluatePage(ctx, executor, "Boolean(document.modelContext && typeof document.modelContext.getTools === 'function' && typeof document.modelContext.executeTool === 'function')", false)
+	raw, err := evaluatePage(
+		ctx,
+		executor,
+		"Boolean(document.modelContext && typeof document.modelContext.getTools === 'function' && "+
+			"typeof document.modelContext.executeTool === 'function')",
+		false,
+	)
 	if err != nil {
 		return browserop.Capability{}, err
 	}
@@ -78,57 +92,16 @@ func webMCPCapability(ctx context.Context, executor Executor) (browserop.Capabil
 // ExecuteWebMCP discovers or calls native page tools under the caller's existing
 // tab admission, validating declarations and values with offline JSON Schema.
 // The caller supplies the document executor and tab-owned state.
-func ExecuteWebMCP(ctx context.Context, operation *Operation, executor Executor, state *WebMCPState, tab browserop.TabID, command browserop.Operation) (json.RawMessage, error) {
+func ExecuteWebMCP(
+	ctx context.Context,
+	operation *Operation,
+	executor Executor,
+	state *WebMCPState,
+	tab browserop.TabID,
+	command browserop.Operation,
+) (json.RawMessage, error) {
 	err := operation.Run(ctx, func(work context.Context) error {
-		capability, err := webMCPCapability(work, executor)
-		if err != nil {
-			return err
-		}
-		if !capability.Available {
-			return &BrowserError{Kind: KindUnsupportedCapability, Message: *capability.Reason}
-		}
-		tree, err := page.GetFrameTree().Do(protocol.WithExecutor(work, executor))
-		if err != nil {
-			return err
-		}
-		document := tree.Frame.LoaderID
-		if state.Document == nil || *state.Document != document {
-			state.Document = &document
-			state.Key = nil
-			state.Tools = nil
-		}
-		if state.Key == nil {
-			key, err := Fresh("webmcp")
-			if err != nil {
-				return err
-			}
-			state.Key = &key
-		}
-		keyLiteral, err := scriptString(*state.Key)
-		if err != nil {
-			return err
-		}
-		script := fmt.Sprintf(`(() => {
-   const key = %s;
-   if (globalThis[key]) return true;
-   const context = document.modelContext;
-   const state = {version: 0, current: null, calls: new Map(), context};
-   Object.defineProperty(globalThis, key, {value: state});
-   context.addEventListener('toolchange', () => { state.version++; state.current = null; });
-   return true;
-  })()`, keyLiteral)
-		raw, err := evaluatePage(work, executor, script, false)
-		if err != nil {
-			return err
-		}
-		var installed bool
-		if err := jsonv2.Unmarshal(raw, &installed); err != nil {
-			return &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
-		}
-		if !installed {
-			return &BrowserError{Kind: KindInvalidResult, Message: "WebMCP observer was not installed"}
-		}
-		return nil
+		return prepareWebMCP(work, executor, state)
 	})
 	if err != nil {
 		return nil, err
@@ -138,77 +111,106 @@ func ExecuteWebMCP(ctx context.Context, operation *Operation, executor Executor,
 		return nil, err
 	}
 	if _, ok := command.(*browserop.WebmcpListInput); ok {
-		handle, err := Fresh("tools")
-		if err != nil {
-			return nil, err
-		}
-		handleLiteral, err := scriptString(handle)
-		if err != nil {
-			return nil, err
-		}
-		script := fmt.Sprintf(`(async () => {
-   const state = globalThis[%s];
-   const version = state.version;
-   const tools = await state.context.getTools();
-   if (version !== state.version) return {status:'stale'};
-   const entries = tools.map(tool => ({name:tool.name, description:tool.description, inputSchema:JSON.parse(tool.inputSchema)}));
-   const handle = state.current?.version === version ? state.current.handle : %s;
-   state.current = {version, tools, handle};
-   return {status:'ready', entries, handle};
-  })()`, key, handleLiteral)
-		var raw json.RawMessage
-		err = operation.Run(ctx, func(work context.Context) error {
-			var err error
-			raw, err = evaluatePage(work, executor, script, true)
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-		var snapshot struct {
-			Status  string           `json:"status"`
-			Entries []jsontext.Value `json:"entries"`
-			Handle  *string          `json:"handle"`
-		}
-		if err := jsonv2.Unmarshal(raw, &snapshot, jsonv2.RejectUnknownMembers(true)); err != nil {
-			return nil, &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
-		}
-		if snapshot.Status == "stale" && snapshot.Entries == nil && snapshot.Handle == nil {
-			return nil, &BrowserError{Kind: KindStaleTools}
-		}
-		if snapshot.Status != "ready" || snapshot.Entries == nil || snapshot.Handle == nil {
-			return nil, &BrowserError{Kind: KindInvalidResult, Message: "invalid WebMCP discovery result"}
-		}
-		entries := make([]browserop.WebmcpTool, 0, len(snapshot.Entries))
-		for _, raw := range snapshot.Entries {
-			entry, err := browserop.DecodeWebmcpTool(raw)
-			if err != nil {
-				return nil, &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
-			}
-			if _, err := pageSchema(entry.InputSchema); err != nil {
-				return nil, &BrowserError{Kind: KindInvalidResult, Message: "invalid tool input schema: " + err.Error(), Cause: err}
-			}
-			if entry.OutputSchema != nil {
-				if _, err := pageSchema(*entry.OutputSchema); err != nil {
-					return nil, &BrowserError{Kind: KindInvalidResult, Message: "invalid tool output schema: " + err.Error(), Cause: err}
-				}
-			}
-			entries = append(entries, entry)
-		}
-		result, err := Value(browserop.WebmcpListResult{Tools: *snapshot.Handle, Entries: entries})
-		if err != nil {
-			return nil, err
-		}
-		if len(result) > browserop.InlineBytes {
-			return nil, &BrowserError{Kind: KindResultTooLarge}
-		}
-		state.Tools = &ToolSet{Handle: *snapshot.Handle, Entries: entries}
-		return result, nil
+		return listWebMCP(ctx, operation, executor, state, key)
 	}
 	input, ok := command.(*browserop.WebmcpCallInput)
 	if !ok {
 		return nil, &BrowserError{Kind: KindConfiguration, Message: "WebMCP dispatch accepts only list/call"}
 	}
+	return callWebMCP(ctx, operation, executor, state, tab, input, key)
+}
+
+func prepareWebMCP(work context.Context, executor Executor, state *WebMCPState) error {
+	capability, err := webMCPCapability(work, executor)
+	if err != nil {
+		return err
+	}
+	if !capability.Available {
+		return &BrowserError{Kind: KindUnsupportedCapability, Message: *capability.Reason}
+	}
+	tree, err := page.GetFrameTree().Do(protocol.WithExecutor(work, executor))
+	if err != nil {
+		return err
+	}
+	document := tree.Frame.LoaderID
+	if state.Document == nil || *state.Document != document {
+		state.Document = &document
+		state.Key = nil
+		state.Tools = nil
+	}
+	if state.Key == nil {
+		key, err := Fresh("webmcp")
+		if err != nil {
+			return err
+		}
+		state.Key = &key
+	}
+	keyLiteral, err := scriptString(*state.Key)
+	if err != nil {
+		return err
+	}
+	script := fmt.Sprintf(`(() => {
+   const key = %s;
+   if (globalThis[key]) return true;
+   const context = document.modelContext;
+   const state = {version: 0, current: null, calls: new Map(), context};
+   Object.defineProperty(globalThis, key, {value: state});
+   context.addEventListener('toolchange', () => { state.version++; state.current = null; });
+   return true;
+  })()`, keyLiteral)
+	raw, err := evaluatePage(work, executor, script, false)
+	if err != nil {
+		return err
+	}
+	var installed bool
+	if err := jsonv2.Unmarshal(raw, &installed); err != nil {
+		return &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
+	}
+	if !installed {
+		return &BrowserError{Kind: KindInvalidResult, Message: "WebMCP observer was not installed"}
+	}
+	return nil
+}
+
+func listWebMCP(
+	ctx context.Context,
+	operation *Operation,
+	executor Executor,
+	state *WebMCPState,
+	key string,
+) (json.RawMessage, error) {
+	handle, err := Fresh("tools")
+	if err != nil {
+		return nil, err
+	}
+	handleLiteral, err := scriptString(handle)
+	if err != nil {
+		return nil, err
+	}
+	script := fmt.Sprintf(`(async () => {
+   const state = globalThis[%s];
+   const version = state.version;
+   const tools = await state.context.getTools();
+   if (version !== state.version) return {status:'stale'};
+   const entries = tools.map(tool => ({name:tool.name, description:tool.description, `+
+		`inputSchema:JSON.parse(tool.inputSchema)}));
+   const handle = state.current?.version === version ? state.current.handle : %s;
+   state.current = {version, tools, handle};
+   return {status:'ready', entries, handle};
+  })()`, key, handleLiteral)
+	var raw json.RawMessage
+	err = operation.Run(ctx, func(work context.Context) error {
+		var err error
+		raw, err = evaluatePage(work, executor, script, true)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return retainWebMCPTools(state, raw)
+}
+
+func webMCPCallEntry(state *WebMCPState, input *browserop.WebmcpCallInput) (*browserop.WebmcpTool, error) {
 	if state.Tools == nil || state.Tools.Handle != input.Tools {
 		return nil, &BrowserError{Kind: KindStaleTools}
 	}
@@ -237,25 +239,187 @@ func ExecuteWebMCP(ctx context.Context, operation *Operation, executor Executor,
 	if err := schema.Validate(arguments); err != nil {
 		return nil, &BrowserError{Kind: KindConfiguration, Message: err.Error(), Cause: err}
 	}
-	call, err := Fresh("toolcall")
+
+	return entry, nil
+}
+
+func webMCPEntries(rawEntries []jsontext.Value) ([]browserop.WebmcpTool, error) {
+	entries := make([]browserop.WebmcpTool, 0, len(rawEntries))
+	for _, raw := range rawEntries {
+		entry, err := browserop.DecodeWebmcpTool(raw)
+		if err != nil {
+			return nil, &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
+		}
+		if _, err := pageSchema(entry.InputSchema); err != nil {
+			return nil, &BrowserError{
+				Kind:    KindInvalidResult,
+				Message: "invalid tool input schema: " + err.Error(),
+				Cause:   err,
+			}
+		}
+		if entry.OutputSchema != nil {
+			if _, err := pageSchema(*entry.OutputSchema); err != nil {
+				return nil, &BrowserError{
+					Kind:    KindInvalidResult,
+					Message: "invalid tool output schema: " + err.Error(),
+					Cause:   err,
+				}
+			}
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
+func validateToolOutput(entry *browserop.WebmcpTool, result jsontext.Value) error {
+	if entry.OutputSchema != nil {
+		schema, err := pageSchema(*entry.OutputSchema)
+		if err != nil {
+			return &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
+		}
+		value, err := jsonschema.UnmarshalJSON(bytes.NewReader(result))
+		if err == nil {
+			err = schema.Validate(value)
+		}
+		if err != nil {
+			return &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
+		}
+	}
+
+	return nil
+}
+
+func callWebMCP(
+	ctx context.Context,
+	operation *Operation,
+	executor Executor,
+	state *WebMCPState,
+	tab browserop.TabID,
+	input *browserop.WebmcpCallInput,
+	key string,
+) (json.RawMessage, error) {
+	entry, err := webMCPCallEntry(state, input)
 	if err != nil {
 		return nil, err
+	}
+	script, callString, err := webMCPCallScript(input, key)
+	if err != nil {
+		return nil, err
+	}
+	var result json.RawMessage
+	err = operation.Run(ctx, func(work context.Context) error {
+		var err error
+		result, err = completeToolCall(work, operation, executor, script, entry, input)
+		return err
+	})
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), ControlTimeout)
+	defer cancel()
+	_, cleanupErr := evaluatePage(
+		cleanup,
+		executor,
+		fmt.Sprintf(
+			`(() => { const state = globalThis[%s]; const call = state?.calls.get(%s); if (call) { `+
+				`call.abort(); state.calls.delete(%s); } return true; })()`,
+			key,
+			callString,
+			callString,
+		),
+		false,
+	)
+	if ErrorCode(cleanupErr) == "browser_lost" || ErrorCode(cleanupErr) == "tab_not_found" {
+		cleanupErr = nil
+	}
+	if err = AfterCleanup(err, cleanupErr); err != nil {
+		return nil, operation.Failure(err, string(tab), nil)
+	}
+	return result, nil
+}
+
+func completeToolCall(
+	work context.Context,
+	operation *Operation,
+	executor Executor,
+	script string,
+	entry *browserop.WebmcpTool,
+	input *browserop.WebmcpCallInput,
+) (json.RawMessage, error) {
+	operation.BeginInput()
+	raw, err := evaluatePage(work, executor, script, true)
+	if err != nil {
+		return nil, err
+	}
+	var reply struct {
+		Status string         `json:"status"`
+		Result jsontext.Value `json:"result"`
+	}
+	if err := jsonv2.Unmarshal(raw, &reply, jsonv2.RejectUnknownMembers(true)); err != nil {
+		return nil, &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
+	}
+	if reply.Status == "stale" && reply.Result == nil {
+		operation.InputNotDelivered()
+		return nil, &BrowserError{Kind: KindStaleTools}
+	}
+	if reply.Status != "completed" || reply.Result == nil {
+		return nil, &BrowserError{Kind: KindInvalidResult, Message: "invalid WebMCP call result"}
+	}
+	operation.CompleteInput()
+	if err := validateToolOutput(entry, reply.Result); err != nil {
+		return nil, err
+	}
+	return Value(browserop.WebmcpCallResult{Name: input.Tool, Result: json.RawMessage(reply.Result)})
+}
+
+func retainWebMCPTools(state *WebMCPState, raw json.RawMessage) (json.RawMessage, error) {
+	var snapshot struct {
+		Status  string           `json:"status"`
+		Entries []jsontext.Value `json:"entries"`
+		Handle  *string          `json:"handle"`
+	}
+	if err := jsonv2.Unmarshal(raw, &snapshot, jsonv2.RejectUnknownMembers(true)); err != nil {
+		return nil, &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
+	}
+	if snapshot.Status == "stale" && snapshot.Entries == nil && snapshot.Handle == nil {
+		return nil, &BrowserError{Kind: KindStaleTools}
+	}
+	if snapshot.Status != "ready" || snapshot.Entries == nil || snapshot.Handle == nil {
+		return nil, &BrowserError{Kind: KindInvalidResult, Message: "invalid WebMCP discovery result"}
+	}
+	entries, err := webMCPEntries(snapshot.Entries)
+	if err != nil {
+		return nil, err
+	}
+	result, err := Value(browserop.WebmcpListResult{Tools: *snapshot.Handle, Entries: entries})
+	if err != nil {
+		return nil, err
+	}
+	if len(result) > browserop.InlineBytes {
+		return nil, &BrowserError{Kind: KindResultTooLarge}
+	}
+	state.Tools = &ToolSet{Handle: *snapshot.Handle, Entries: entries}
+	return result, nil
+}
+
+func webMCPCallScript(input *browserop.WebmcpCallInput, key string) (string, string, error) {
+	call, err := Fresh("toolcall")
+	if err != nil {
+		return "", "", err
 	}
 	callString, err := scriptString(call)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 	toolsLiteral, err := scriptString(input.Tools)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 	toolLiteral, err := scriptString(input.Tool)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 	argumentsLiteral, err := scriptString(input.Arguments)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 	script := fmt.Sprintf(`(async () => {
   const state = globalThis[%s];
@@ -270,52 +434,6 @@ func ExecuteWebMCP(ctx context.Context, operation *Operation, executor Executor,
    return {status:'completed', result: result === null ? null : JSON.parse(result)};
   } finally { state.calls.delete(%s); }
  })()`, key, toolsLiteral, toolLiteral, callString, argumentsLiteral, callString)
-	var result json.RawMessage
-	err = operation.Run(ctx, func(work context.Context) error {
-		operation.BeginInput()
-		raw, err := evaluatePage(work, executor, script, true)
-		if err != nil {
-			return err
-		}
-		var reply struct {
-			Status string         `json:"status"`
-			Result jsontext.Value `json:"result"`
-		}
-		if err := jsonv2.Unmarshal(raw, &reply, jsonv2.RejectUnknownMembers(true)); err != nil {
-			return &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
-		}
-		if reply.Status == "stale" && reply.Result == nil {
-			operation.InputNotDelivered()
-			return &BrowserError{Kind: KindStaleTools}
-		}
-		if reply.Status != "completed" || reply.Result == nil {
-			return &BrowserError{Kind: KindInvalidResult, Message: "invalid WebMCP call result"}
-		}
-		operation.CompleteInput()
-		if entry.OutputSchema != nil {
-			schema, err := pageSchema(*entry.OutputSchema)
-			if err != nil {
-				return &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
-			}
-			value, err := jsonschema.UnmarshalJSON(bytes.NewReader(reply.Result))
-			if err == nil {
-				err = schema.Validate(value)
-			}
-			if err != nil {
-				return &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
-			}
-		}
-		result, err = Value(browserop.WebmcpCallResult{Name: input.Tool, Result: json.RawMessage(reply.Result)})
-		return err
-	})
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), ControlTimeout)
-	defer cancel()
-	_, cleanupErr := evaluatePage(cleanup, executor, fmt.Sprintf(`(() => { const state = globalThis[%s]; const call = state?.calls.get(%s); if (call) { call.abort(); state.calls.delete(%s); } return true; })()`, key, callString, callString), false)
-	if ErrorCode(cleanupErr) == "browser_lost" || ErrorCode(cleanupErr) == "tab_not_found" {
-		cleanupErr = nil
-	}
-	if err = AfterCleanup(err, cleanupErr); err != nil {
-		return nil, operation.Failure(err, string(tab), nil)
-	}
-	return result, nil
+
+	return script, callString, nil
 }

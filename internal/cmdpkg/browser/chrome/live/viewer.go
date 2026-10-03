@@ -43,7 +43,11 @@ type ViewedBrowser interface {
 // returning. Protocol refusal returns completion exit code 2 with invalid_input;
 // ordinary completion returns exit code 0, and cancellation returns an error
 // matching context.Canceled. The SDK owns the invocation input and output.
-func Serve(ctx context.Context, browser ViewedBrowser, invocation cmdsdk.InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+func Serve(
+	ctx context.Context,
+	browser ViewedBrowser,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
 	w := startWriter(ctx, invocation.Output)
@@ -63,7 +67,10 @@ func Serve(ctx context.Context, browser ViewedBrowser, invocation cmdsdk.Invocat
 		return commandwire.Completion{}, err
 	}
 	if err != nil {
-		return commandwire.Completion{ExitCode: 2, Error: &commandwire.CommandError{Code: "invalid_input", Message: err.Error()}}, nil
+		return commandwire.Completion{
+			ExitCode: 2,
+			Error:    &commandwire.CommandError{Code: "invalid_input", Message: err.Error()},
+		}, nil
 	}
 	return commandwire.Completion{ExitCode: 0}, nil
 }
@@ -116,24 +123,10 @@ type viewer struct {
 }
 
 func (v *viewer) run(ctx context.Context) error {
-	var hello readResult
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case value, ok := <-v.incoming:
-		if !ok {
-			return nil
-		}
-		hello = value
+	ready, err := v.greet(ctx)
+	if err != nil || !ready {
+		return err
 	}
-	if hello.err != nil {
-		return hello.err
-	}
-	greeting, ok := hello.message.(*browserop.LiveViewerMessageHello)
-	if !ok {
-		return errors.New("a view starts with hello")
-	}
-	v.mac = greeting.Platform == "mac"
 	for {
 		changed := v.browser.Changed()
 		environment, hub, err := v.browser.Running(ctx)
@@ -174,11 +167,19 @@ func (v *viewer) run(ctx context.Context) error {
 		}
 	}
 }
+
 func (v *viewer) end(ctx context.Context, reason browserop.EndReason) {
 	v.writer.control(ctx, &browserop.LiveModuleMessageEnded{Reason: reason})
 }
+
 func viewerPanel(p *browserop.LiveViewerMessagePanel) panel {
-	return panel{width: p.Width, height: p.Height, screenWidth: p.ScreenWidth, screenHeight: p.ScreenHeight, ratio: p.DevicePixelRatio}
+	return panel{
+		width:        p.Width,
+		height:       p.Height,
+		screenWidth:  p.ScreenWidth,
+		screenHeight: p.ScreenHeight,
+		ratio:        p.DevicePixelRatio,
+	}
 }
 
 type viewSession struct {
@@ -200,9 +201,10 @@ type viewSession struct {
 	answers       sync.WaitGroup
 }
 
-type viewEnded struct{ reason browserop.EndReason }
+type viewEndedError struct{ reason browserop.EndReason }
 
-func (e *viewEnded) Error() string { return string(e.reason) }
+// Error returns the live view termination reason.
+func (e *viewEndedError) Error() string { return string(e.reason) }
 
 func (v *viewer) view(ctx context.Context, environment *tabs.Environment, hub *Hub) error {
 	result := make(chan error, 1)
@@ -215,7 +217,7 @@ func (v *viewer) view(ctx context.Context, environment *tabs.Environment, hub *H
 	// input releases. The final protocol message belongs to the invocation, so a
 	// blocked output cannot hold the environment's retirement open.
 	err = <-result
-	var ended *viewEnded
+	var ended *viewEndedError
 	if errors.As(err, &ended) {
 		v.end(ctx, ended.reason)
 		return nil
@@ -226,7 +228,7 @@ func (v *viewer) view(ctx context.Context, environment *tabs.Environment, hub *H
 func (v *viewer) runView(ctx context.Context, environment *tabs.Environment, hub *Hub) error {
 	member, err := hub.join(ctx)
 	if err != nil {
-		return &viewEnded{reason: "browser_ended"}
+		return &viewEndedError{reason: "browser_ended"}
 	}
 	defer member.close()
 	work, cancel := context.WithCancel(ctx)
@@ -237,9 +239,16 @@ func (v *viewer) runView(ctx context.Context, environment *tabs.Environment, hub
 	input, err := startInput(inputContext, environment, v.writer, v.mac)
 	if err != nil {
 		stopInput()
-		return &viewEnded{reason: "browser_ended"}
+		return &viewEndedError{reason: "browser_ended"}
 	}
-	session := &viewSession{environment: environment, hub: hub, member: member, input: input, writer: v.writer, delivery: newDelivery()}
+	session := &viewSession{
+		environment: environment,
+		hub:         hub,
+		member:      member,
+		input:       input,
+		writer:      v.writer,
+		delivery:    newDelivery(),
+	}
 	var workers sync.WaitGroup
 	commands := make(chan *browserop.LiveViewerMessageMode, 8)
 	start := func(run func(context.Context)) error {
@@ -254,107 +263,26 @@ func (v *viewer) runView(ctx context.Context, environment *tabs.Environment, hub
 		return err
 	}
 	defer func() {
-		cancel()
-		workers.Wait()
-		session.answers.Wait()
-		// The Rust viewer queues its final release behind already accepted input.
-		// Preserve that ordering, then cancel and join if the five-second flush ends.
-		cleanup, stopCleanup := context.WithTimeout(context.WithoutCancel(ctx), cdp.ControlTimeout)
-		input.control(cleanup, inputItem{kind: inputFinish})
-		select {
-		case <-input.done:
-		case <-cleanup.Done():
-		}
-		stopCleanup()
-		stopInput()
-		<-input.done
-		if session.unsubscribe != nil {
-			session.unsubscribe()
-		}
+		session.finishInput(ctx, cancel, &workers, input, stopInput)
 	}()
-	if err := start(func(work context.Context) { runCommands(work, environment, member, v.writer, commands) }); err != nil {
-		return &viewEnded{reason: "browser_ended"}
+	if err := start(
+		func(work context.Context) { runCommands(work, environment, member, v.writer, commands) },
+	); err != nil {
+		return &viewEndedError{reason: "browser_ended"}
 	}
-	if err := start(func(work context.Context) { runUploads(work, environment, member, v.writer, v.uploads) }); err != nil {
-		return &viewEnded{reason: "browser_ended"}
+	if err := start(
+		func(work context.Context) { runUploads(work, environment, member, v.writer, v.uploads) },
+	); err != nil {
+		return &viewEndedError{reason: "browser_ended"}
 	}
 	if v.panel != nil {
 		if err := member.setPanel(work, *v.panel); err != nil {
 			return nil
 		}
 	}
-	_, changed := environment.Changes()
-	session.state(work)
-	refresh := time.NewTimer(time.Hour)
-	defer refresh.Stop()
-	refresh.Stop()
-	var refreshAt <-chan time.Time
-	ticks := session.delivery.startTicks(session.stream, v.writer)
-	defer ticks.Stop()
-	for {
-		var pictures <-chan picture
-		var streamEnded <-chan struct{}
-		var observedChanged <-chan struct{}
-		dialogChanged := session.dialogChanged
-		if session.stream != nil {
-			pictures = session.stream.events
-			streamEnded = session.stream.stream.done
-		}
-		if session.observed != nil {
-			observedChanged = session.observing.changed
-		}
-
-		select {
-		case <-v.browser.Released():
-			return &viewEnded{reason: "released"}
-		case <-environment.Done():
-			return &viewEnded{reason: "browser_ended"}
-		case <-ctx.Done():
-			return ctx.Err()
-		case item, ok := <-v.incoming:
-			if !ok {
-				return nil
-			}
-			if item.err != nil {
-				return item.err
-			}
-			if p, ok := item.message.(*browserop.LiveViewerMessagePanel); ok {
-				value := viewerPanel(p)
-				v.panel = &value
-				if err := member.setPanel(work, value); err != nil {
-					return nil
-				}
-			} else {
-				session.receive(work, item.message, commands)
-			}
-		case p := <-pictures:
-			session.delivery.picture(work, session.watched.ID(), session.stream, p, v.writer)
-		case <-streamEnded:
-			session.stream = nil
-		case <-dialogChanged:
-			session.dialog(work)
-		case <-observedChanged:
-			session.observation(work, false)
-		case text := <-session.copies:
-			if !session.operated.IsZero() && time.Since(session.operated) <= 5*time.Second && (session.pasted == nil || *session.pasted != text) {
-				v.writer.control(work, &browserop.LiveModuleMessageClipboard{Text: text})
-			}
-		case n := <-member.notices:
-			v.writer.notice(work, n.code, n.message)
-		case <-changed:
-			_, changed = environment.Changes()
-			if refreshAt == nil {
-				refresh.Reset(100 * time.Millisecond)
-				refreshAt = refresh.C
-			}
-		case <-refreshAt:
-			refreshAt = nil
-			session.state(work)
-		case <-ticks.C:
-			session.delivery.tick(session.stream, v.writer)
-		}
-	}
+	return v.exchangeView(ctx, work, environment, session, member, commands)
 }
+
 func (s *viewSession) state(ctx context.Context) {
 	listing, err := s.environment.Listed(ctx, cdp.ControlTimeout)
 	if err != nil {
@@ -369,7 +297,16 @@ func (s *viewSession) state(ctx context.Context) {
 	}
 	listed := make([]browserop.LiveTab, 0, len(listing.Tabs))
 	for _, t := range listing.Tabs {
-		listed = append(listed, browserop.LiveTab{ID: t.Tab.ID(), Title: t.Title, URL: t.URL, CreatedBy: t.Tab.CreatedBy(), Viewport: t.Tab.Viewport()})
+		listed = append(
+			listed,
+			browserop.LiveTab{
+				ID:        t.Tab.ID(),
+				Title:     t.Title,
+				URL:       t.URL,
+				CreatedBy: t.Tab.CreatedBy(),
+				Viewport:  t.Tab.Viewport(),
+			},
+		)
 	}
 	message := &browserop.LiveModuleMessageState{Running: true, Tabs: listed}
 	if s.watched != nil {
@@ -378,6 +315,7 @@ func (s *viewSession) state(ctx context.Context) {
 	}
 	s.writer.control(ctx, message)
 }
+
 func (s *viewSession) watch(ctx context.Context, tab *tabs.Tab) {
 	if s.watched == tab {
 		return
@@ -417,6 +355,7 @@ func (s *viewSession) watch(ctx context.Context, tab *tabs.Tab) {
 	s.dialog(ctx)
 	s.observation(ctx, true)
 }
+
 func (s *viewSession) dialog(ctx context.Context) {
 	if s.watched == nil {
 		return
@@ -425,10 +364,15 @@ func (s *viewSession) dialog(ctx context.Context) {
 	s.dialogChanged = changed
 	message := &browserop.LiveModuleMessageDialog{Tab: s.watched.ID()}
 	if dialog != nil {
-		message.Dialog = &browserop.LiveDialog{Type: tabs.DialogType(dialog.Type), Message: dialog.Message, DefaultText: dialog.DefaultPrompt}
+		message.Dialog = &browserop.LiveDialog{
+			Type:        tabs.DialogType(dialog.Type),
+			Message:     dialog.Message,
+			DefaultText: dialog.DefaultPrompt,
+		}
 	}
 	s.writer.control(ctx, message)
 }
+
 func (s *viewSession) observation(ctx context.Context, initial bool) {
 	if s.observed == nil {
 		return
@@ -442,11 +386,19 @@ func (s *viewSession) observation(ctx context.Context, initial bool) {
 		s.writer.control(ctx, &browserop.LiveModuleMessageControls{Tab: s.watched.ID(), Controls: state.controls})
 	}
 	if initial || state.cursorVersion != s.observing.cursorVersion {
-		s.writer.control(ctx, &browserop.LiveModuleMessageCursor{Tab: s.watched.ID(), Cursor: state.cursor, Editable: state.editable})
+		s.writer.control(
+			ctx,
+			&browserop.LiveModuleMessageCursor{Tab: s.watched.ID(), Cursor: state.cursor, Editable: state.editable},
+		)
 	}
 	s.observing = state
 }
-func (s *viewSession) receive(ctx context.Context, message browserop.LiveViewerMessage, commands chan<- *browserop.LiveViewerMessageMode) {
+
+func (s *viewSession) receive(
+	ctx context.Context,
+	message browserop.LiveViewerMessage,
+	commands chan<- *browserop.LiveViewerMessageMode,
+) {
 	switch m := message.(type) {
 	case *browserop.LiveViewerMessageWatch:
 		var tab *tabs.Tab
@@ -479,7 +431,13 @@ func (s *viewSession) receive(ctx context.Context, message browserop.LiveViewerM
 		}
 	case *browserop.LiveViewerMessageRelease:
 		s.input.control(ctx, inputItem{})
-	case *browserop.LiveViewerMessagePointer, *browserop.LiveViewerMessageWheel, *browserop.LiveViewerMessageKey, *browserop.LiveViewerMessageText, *browserop.LiveViewerMessageComposition, *browserop.LiveViewerMessagePaste, *browserop.LiveViewerMessageChoice:
+	case *browserop.LiveViewerMessagePointer,
+		*browserop.LiveViewerMessageWheel,
+		*browserop.LiveViewerMessageKey,
+		*browserop.LiveViewerMessageText,
+		*browserop.LiveViewerMessageComposition,
+		*browserop.LiveViewerMessagePaste,
+		*browserop.LiveViewerMessageChoice:
 		if paste, ok := message.(*browserop.LiveViewerMessagePaste); ok {
 			text := paste.Text
 			s.pasted = &text
@@ -493,5 +451,159 @@ func (s *viewSession) receive(ctx context.Context, message browserop.LiveViewerM
 		}
 		s.input.send(message)
 	case *browserop.LiveViewerMessageHello, *browserop.LiveViewerMessagePanel, *browserop.LiveViewerMessageUpload:
+	}
+}
+
+func (v *viewer) greet(ctx context.Context) (bool, error) {
+	var hello readResult
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case value, ok := <-v.incoming:
+		if !ok {
+			return false, nil
+		}
+		hello = value
+	}
+	if hello.err != nil {
+		return false, hello.err
+	}
+	greeting, ok := hello.message.(*browserop.LiveViewerMessageHello)
+	if !ok {
+		return false, errors.New("a view starts with hello")
+	}
+	v.mac = greeting.Platform == "mac"
+
+	return true, nil
+}
+
+func (v *viewer) exchangeView(
+	ctx, work context.Context,
+	environment *tabs.Environment,
+	session *viewSession,
+	member *membership,
+	commands chan<- *browserop.LiveViewerMessageMode,
+) error {
+	_, changed := environment.Changes()
+	session.state(work)
+	refresh := time.NewTimer(time.Hour)
+	defer refresh.Stop()
+	refresh.Stop()
+	var refreshAt <-chan time.Time
+	ticks := session.delivery.startTicks(session.stream, v.writer)
+	defer ticks.Stop()
+	for {
+		pictures, streamEnded, observedChanged, dialogChanged := session.viewChannels()
+
+		select {
+		case <-v.browser.Released():
+			return &viewEndedError{reason: "released"}
+		case <-environment.Done():
+			return &viewEndedError{reason: "browser_ended"}
+		case <-ctx.Done():
+			return ctx.Err()
+		case item, ok := <-v.incoming:
+			if !ok {
+				return nil
+			}
+			if item.err != nil {
+				return item.err
+			}
+			if !v.receiveView(work, member, session, item, commands) {
+				return nil
+			}
+		case p := <-pictures:
+			session.delivery.picture(work, session.watched.ID(), session.stream, p, v.writer)
+		case <-streamEnded:
+			session.stream = nil
+		case <-dialogChanged:
+			session.dialog(work)
+		case <-observedChanged:
+			session.observation(work, false)
+		case text := <-session.copies:
+			session.copyClipboard(work, text)
+		case n := <-member.notices:
+			v.writer.notice(work, n.code, n.message)
+		case <-changed:
+			_, changed = environment.Changes()
+			if refreshAt == nil {
+				refresh.Reset(100 * time.Millisecond)
+				refreshAt = refresh.C
+			}
+		case <-refreshAt:
+			refreshAt = nil
+			session.state(work)
+		case <-ticks.C:
+			session.delivery.tick(session.stream, v.writer)
+		}
+	}
+}
+
+func (s *viewSession) finishInput(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	workers *sync.WaitGroup,
+	input *viewerInput,
+	stopInput context.CancelFunc,
+) {
+	cancel()
+	workers.Wait()
+	s.answers.Wait()
+	// The Rust viewer queues its final release behind already accepted input.
+	// Preserve that ordering, then cancel and join if the five-second flush ends.
+	cleanup, stopCleanup := context.WithTimeout(context.WithoutCancel(ctx), cdp.ControlTimeout)
+	input.control(cleanup, inputItem{kind: inputFinish})
+	select {
+	case <-input.done:
+	case <-cleanup.Done():
+	}
+	stopCleanup()
+	stopInput()
+	<-input.done
+	if s.unsubscribe != nil {
+		s.unsubscribe()
+	}
+}
+
+func (v *viewer) receiveView(
+	work context.Context,
+	member *membership,
+	session *viewSession,
+	item readResult,
+	commands chan<- *browserop.LiveViewerMessageMode,
+) bool {
+	if p, ok := item.message.(*browserop.LiveViewerMessagePanel); ok {
+		value := viewerPanel(p)
+		v.panel = &value
+		if err := member.setPanel(work, value); err != nil {
+			return false
+		}
+	} else {
+		session.receive(work, item.message, commands)
+	}
+
+	return true
+}
+
+func (s *viewSession) viewChannels() (<-chan picture, <-chan struct{}, <-chan struct{}, <-chan struct{}) {
+	var pictures <-chan picture
+	var streamEnded <-chan struct{}
+	var observedChanged <-chan struct{}
+	dialogChanged := s.dialogChanged
+	if s.stream != nil {
+		pictures = s.stream.events
+		streamEnded = s.stream.stream.done
+	}
+	if s.observed != nil {
+		observedChanged = s.observing.changed
+	}
+
+	return pictures, streamEnded, observedChanged, dialogChanged
+}
+
+func (s *viewSession) copyClipboard(work context.Context, text string) {
+	if !s.operated.IsZero() && time.Since(s.operated) <= 5*time.Second &&
+		(s.pasted == nil || *s.pasted != text) {
+		s.writer.control(work, &browserop.LiveModuleMessageClipboard{Text: text})
 	}
 }

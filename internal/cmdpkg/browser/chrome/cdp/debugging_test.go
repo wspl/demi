@@ -14,13 +14,39 @@ import (
 )
 
 func TestDebuggingGenerationFiltersAndCallerCleanup(t *testing.T) {
-	auto := target.SetAutoAttach(true, false).WithFlatten(true).WithFilter(target.Filter{{Type: "iframe"}, {Type: "worker"}, {Type: "shared_worker"}, {Type: "service_worker"}, {Exclude: true}})
-	server := cdptest.NewServer(t,
-		cdptest.Exchange{Method: "Target.attachToTarget", Params: target.AttachToTarget("tab").WithFlatten(true), Result: jsontext.Value(`{"sessionId":"one"}`)},
+	auto := target.SetAutoAttach(true, false).
+		WithFlatten(true).
+		WithFilter(target.Filter{
+			{Type: "iframe"},
+			{Type: "worker"},
+			{Type: "shared_worker"},
+			{Type: "service_worker"},
+			{Exclude: true},
+		})
+	server := cdptest.NewServer(
+		t,
+		cdptest.Exchange{
+			Method: "Target.attachToTarget",
+			Params: target.AttachToTarget("tab").WithFlatten(true),
+			Result: jsontext.Value(`{"sessionId":"one"}`),
+		},
 		cdptest.Exchange{Method: "Target.setAutoAttach", SessionID: "one", Params: auto, Result: struct{}{}},
-		cdptest.Exchange{Method: "Runtime.getIsolateId", SessionID: "one", Params: struct{}{}, Result: jsontext.Value(`{"id":"barrier"}`)},
-		cdptest.Exchange{Method: "Target.detachFromTarget", Params: target.DetachFromTarget().WithSessionID("one"), Result: struct{}{}},
-		cdptest.Exchange{Method: "Target.attachToTarget", Params: target.AttachToTarget("tab").WithFlatten(true), Result: jsontext.Value(`{"sessionId":"two"}`)},
+		cdptest.Exchange{
+			Method:    "Runtime.getIsolateId",
+			SessionID: "one",
+			Params:    struct{}{},
+			Result:    jsontext.Value(`{"id":"barrier"}`),
+		},
+		cdptest.Exchange{
+			Method: "Target.detachFromTarget",
+			Params: target.DetachFromTarget().WithSessionID("one"),
+			Result: struct{}{},
+		},
+		cdptest.Exchange{
+			Method: "Target.attachToTarget",
+			Params: target.AttachToTarget("tab").WithFlatten(true),
+			Result: jsontext.Value(`{"sessionId":"two"}`),
+		},
 		cdptest.Exchange{Method: "Target.setAutoAttach", SessionID: "two", Params: auto, Result: struct{}{}},
 	)
 	debug := cdp.StartDebug(t.Context(), server.Address(), "tab")
@@ -42,7 +68,14 @@ func TestDebuggingGenerationFiltersAndCallerCleanup(t *testing.T) {
 	}
 	recorded := debug.Recorded()
 	for range 2 {
-		if err := server.Emit(t.Context(), cdp.Event{Method: "Runtime.consoleAPICalled", SessionID: "one", Params: json.RawMessage(`{"type":"log","args":[],"executionContextId":1,"timestamp":0}`)}); err != nil {
+		if err := server.Emit(
+			t.Context(),
+			cdp.Event{
+				Method:    "Runtime.consoleAPICalled",
+				SessionID: "one",
+				Params:    json.RawMessage(`{"type":"log","args":[],"executionContextId":1,"timestamp":0}`),
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -54,21 +87,45 @@ func TestDebuggingGenerationFiltersAndCallerCleanup(t *testing.T) {
 	if _, err := handle.Send(t.Context(), "Runtime.getIsolateId", json.RawMessage(`{}`), "main"); err != nil {
 		t.Fatal(err)
 	}
-	first, err := debug.Events(t.Context(), cdp.EventQuery{After: &initial.Result.Cursor, Target: "main", Methods: []string{"Runtime.consoleAPICalled"}, Limit: 1})
+	first, err := debug.Events(
+		t.Context(),
+		cdp.EventQuery{
+			After:   &initial.Result.Cursor,
+			Target:  "main",
+			Methods: []string{"Runtime.consoleAPICalled"},
+			Limit:   1,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(first.Result.Events) != 1 || !first.Result.HasMore {
 		t.Fatal(first)
 	}
-	second, err := debug.Events(t.Context(), cdp.EventQuery{After: &first.Result.Cursor, Target: "main", Methods: []string{"Runtime.consoleAPICalled"}, Limit: 1})
+	second, err := debug.Events(
+		t.Context(),
+		cdp.EventQuery{
+			After:   &first.Result.Cursor,
+			Target:  "main",
+			Methods: []string{"Runtime.consoleAPICalled"},
+			Limit:   1,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(second.Result.Events) != 1 || second.Result.HasMore || second.Result.Events[0].Sequence <= first.Result.Events[0].Sequence {
+	if len(second.Result.Events) != 1 || second.Result.HasMore ||
+		second.Result.Events[0].Sequence <= first.Result.Events[0].Sequence {
 		t.Fatal(second)
 	}
-	if _, err := handle.Send(t.Context(), "Runtime.evaluate", json.RawMessage(`{"expression":"1"}`), "external"); cdp.ErrorCode(err) != "target_not_found" {
+	if _, err := handle.Send(
+		t.Context(),
+		"Runtime.evaluate",
+		json.RawMessage(`{"expression":"1"}`),
+		"external",
+	); cdp.ErrorCode(
+		err,
+	) != "target_not_found" {
 		t.Fatal(err)
 	}
 	if err := debug.Detach(t.Context(), 17); err != nil {
@@ -101,7 +158,14 @@ func TestRawMethodAdmissionPrecedesConnection(t *testing.T) {
 		{"Runtime.evaluate", `{"expression":"1","sessionId":"external"}`, "invalid_input"},
 	} {
 		operation := cdp.NewOperation(t.Context(), t.Context(), time.Second)
-		_, err := cdp.ExecuteCommand(t.Context(), operation, debug, 1, "t1", &browserop.CdpSendInput{Tab: "t1", Method: test.method, Params: test.params})
+		_, err := cdp.ExecuteCommand(
+			t.Context(),
+			operation,
+			debug,
+			1,
+			"t1",
+			&browserop.CdpSendInput{Tab: "t1", Method: test.method, Params: test.params},
+		)
 		operation.Close()
 		requireCode(t, err, test.code)
 	}

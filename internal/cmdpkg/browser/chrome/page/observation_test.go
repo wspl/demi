@@ -23,10 +23,27 @@ func TestAXValuesOmitUnsupportedTypesWithoutLosingNodes(t *testing.T) {
 		{"number", json.RawMessage(`42`), json.RawMessage(`42.0`)},
 	} {
 		t.Run(tc.kind, func(t *testing.T) {
-			observation := observation{nodes: []observedNode{{ax: &accessibility.Node{NodeID: "1", Role: &accessibility.Value{Type: "role", Value: json.RawMessage(`"textbox"`)}, Value: &accessibility.Value{Type: accessibility.ValueType(tc.kind), Value: tc.value}, Properties: []*accessibility.Property{
-				{Name: "labelledby", Value: &accessibility.Value{Type: "idrefList"}},
-				{Name: "focusable", Value: &accessibility.Value{Type: "boolean", Value: json.RawMessage(`true`)}},
-			}}, frame: "frame", loader: "loader"}}, order: []nodeDepth{{0, 0}}}
+			observation := observation{
+				nodes: []observedNode{
+					{
+						ax: &accessibility.Node{
+							NodeID: "1",
+							Role:   &accessibility.Value{Type: "role", Value: json.RawMessage(`"textbox"`)},
+							Value:  &accessibility.Value{Type: accessibility.ValueType(tc.kind), Value: tc.value},
+							Properties: []*accessibility.Property{
+								{Name: "labelledby", Value: &accessibility.Value{Type: "idrefList"}},
+								{
+									Name:  "focusable",
+									Value: &accessibility.Value{Type: "boolean", Value: json.RawMessage(`true`)},
+								},
+							},
+						},
+						frame:  "frame",
+						loader: "loader",
+					},
+				},
+				order: []nodeDepth{{0, 0}},
+			}
 			nodes, truncated, err := observation.tree(&tabs.References{}, 100)
 			if err != nil {
 				t.Fatal(err)

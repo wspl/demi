@@ -30,7 +30,12 @@ func TestRatioStaysWithinCaptureEncoding(t *testing.T) {
 }
 
 func TestPictureHasEvenDevicePixels(t *testing.T) {
-	viewport := browserop.BrowserViewport{Mode: browserop.ViewportModeWeb, Width: 701, Height: 401, DevicePixelRatio: 1.5}
+	viewport := browserop.BrowserViewport{
+		Mode:             browserop.ViewportModeWeb,
+		Width:            701,
+		Height:           401,
+		DevicePixelRatio: 1.5,
+	}
 	for _, test := range []struct {
 		scale         float64
 		width, height uint32

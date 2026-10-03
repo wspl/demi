@@ -6,9 +6,12 @@ import (
 
 // Listed is a tab and the metadata last published by the registry.
 type Listed struct {
-	Tab   *Tab
+	// Tab identifies the registered tab.
+	Tab *Tab
+	// Title holds the observed page title.
 	Title string
-	URL   string
+	// URL holds the observed page URL.
+	URL string
 }
 
 // Snapshot is an immutable publication; callers must not mutate its slice.

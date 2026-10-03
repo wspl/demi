@@ -29,7 +29,8 @@ func captureUnavailable() string {
 		data = data[16:]
 	}
 	if smeWithoutSVE(hwcap, hwcap2) {
-		return "this Host's CPU reports SME without SVE, which Chrome's tab capture cannot run on; boot its kernel with arm64.nosme to show the browser"
+		return "this Host's CPU reports SME without SVE, which Chrome's tab capture cannot run on; boot its " +
+			"kernel with arm64.nosme to show the browser"
 	}
 	return ""
 }

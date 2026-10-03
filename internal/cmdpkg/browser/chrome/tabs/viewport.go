@@ -25,20 +25,29 @@ const PhoneHeight uint32 = 844
 
 // Viewports holds the current viewport and the last Web viewport for reset.
 type Viewports struct {
+	// Current holds the applied viewport.
 	Current browserop.BrowserViewport
-	Web     browserop.BrowserViewport
+	// Web holds the panel's web viewport.
+	Web browserop.BrowserViewport
 }
 
 // Screen describes the virtual screen shared by the browser's windows.
 type Screen struct {
-	Width  uint32
+	// Width holds the screen width in CSS pixels.
+	Width uint32
+	// Height holds the screen height in CSS pixels.
 	Height uint32
-	Ratio  float64
+	// Ratio holds the screen device pixel ratio.
+	Ratio float64
 }
 
 // Pixels gives the even encoded picture dimensions at the requested scale.
 func Pixels(viewport browserop.BrowserViewport, scale float64) (uint32, uint32) {
-	return uint32(math.Ceil(float64(viewport.Width)*viewport.DevicePixelRatio*scale/2)) * 2, uint32(math.Ceil(float64(viewport.Height)*viewport.DevicePixelRatio*scale/2)) * 2
+	return uint32(
+			math.Ceil(float64(viewport.Width)*viewport.DevicePixelRatio*scale/2),
+		) * 2, uint32(
+			math.Ceil(float64(viewport.Height)*viewport.DevicePixelRatio*scale/2),
+		) * 2
 }
 
 // ScreenRatio clamps to at least one and rounds upward to whole ratios on macOS.
@@ -62,7 +71,12 @@ func RatioFor(deviceRatio float64, width, height uint32) float64 {
 
 // Paint flushes layout to the painted view without resizing it.
 func Paint(ctx context.Context, executor cdp.Executor) error {
-	_, err := page.CaptureScreenshot().WithFormat(page.CaptureScreenshotFormatJpeg).WithQuality(1).WithFromSurface(false).WithCaptureBeyondViewport(false).Do(protocol.WithExecutor(ctx, executor))
+	_, err := page.CaptureScreenshot().
+		WithFormat(page.CaptureScreenshotFormatJpeg).
+		WithQuality(1).
+		WithFromSurface(false).
+		WithCaptureBeyondViewport(false).
+		Do(protocol.WithExecutor(ctx, executor))
 	var chrome *cdp.ProtocolError
 	// This precise vendor rejection is emitted after the ForceRedraw callback.
 	if errors.As(err, &chrome) && chrome.Code == -32000 && chrome.Message == "Unable to capture screenshot" {
@@ -96,23 +110,7 @@ func (t *Tab) SetViewport(ctx context.Context, viewport browserop.BrowserViewpor
 	renderer := protocol.WithExecutor(ctx, t.Page())
 	mobile := viewport.Mode == browserop.ViewportModeMobile
 	if mobile != (t.Viewport().Mode == browserop.ViewportModeMobile) {
-		agent := emulation.SetUserAgentOverride("")
-		if mobile {
-			version, err := PinnedVersion()
-			if err != nil {
-				return err
-			}
-			major, _, _ := strings.Cut(version, ".")
-			agent = emulation.SetUserAgentOverride(fmt.Sprintf("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s.0.0.0 Mobile Safari/537.36", major)).WithPlatform("Linux armv8l").WithUserAgentMetadata(&emulation.UserAgentMetadata{Platform: "Android", PlatformVersion: "14.0.0", Architecture: "", Model: "Pixel 7", Mobile: true})
-		}
-		if err := agent.Do(renderer); err != nil {
-			return err
-		}
-		touch := emulation.SetTouchEmulationEnabled(mobile)
-		if mobile {
-			touch = touch.WithMaxTouchPoints(5)
-		}
-		if err := touch.Do(renderer); err != nil {
+		if err := setMobileEmulation(renderer, mobile); err != nil {
 			return err
 		}
 	}
@@ -121,10 +119,31 @@ func (t *Tab) SetViewport(ctx context.Context, viewport browserop.BrowserViewpor
 	if err != nil {
 		return err
 	}
-	if err := browser.SetWindowBounds(window, &browser.Bounds{Width: int64(viewport.Width), Height: int64(viewport.Height) + 87}).Do(browserCtx); err != nil {
+	if err := browser.SetWindowBounds(
+		window,
+		&browser.Bounds{
+			Width: int64(
+				viewport.Width,
+			),
+			Height: int64(
+				viewport.Height,
+			) + 87,
+		},
+	).
+		Do(browserCtx); err != nil {
 		return err
 	}
-	if err := emulation.SetDeviceMetricsOverride(int64(viewport.Width), int64(viewport.Height), viewport.DevicePixelRatio, mobile).Do(renderer); err != nil {
+	if err := emulation.SetDeviceMetricsOverride(
+		int64(
+			viewport.Width,
+		),
+		int64(
+			viewport.Height,
+		),
+		viewport.DevicePixelRatio,
+		mobile,
+	).
+		Do(renderer); err != nil {
 		return err
 	}
 	if err := Paint(ctx, t.Page()); err != nil {
@@ -153,7 +172,10 @@ func (t *Tab) UpdateScreen(ctx context.Context, screen Screen) error {
 	if len(screens) == 0 {
 		return &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "the browser has no screen"}
 	}
-	params := emulation.UpdateScreen(screens[0].ID).WithWidth(int64(math.Round(float64(screen.Width) * screen.Ratio))).WithHeight(int64(math.Round(float64(screen.Height) * screen.Ratio))).WithDevicePixelRatio(screen.Ratio)
+	params := emulation.UpdateScreen(screens[0].ID).
+		WithWidth(int64(math.Round(float64(screen.Width) * screen.Ratio))).
+		WithHeight(int64(math.Round(float64(screen.Height) * screen.Ratio))).
+		WithDevicePixelRatio(screen.Ratio)
 	// Rust discards this method's result; no vendor fields are read here.
 	return t.Page().Execute(ctx, emulation.CommandUpdateScreen, params, nil)
 }
@@ -161,4 +183,37 @@ func (t *Tab) UpdateScreen(ctx context.Context, screen Screen) error {
 // unwatchedViewport is the initial viewport of a tab no viewer has resized.
 func unwatchedViewport() browserop.BrowserViewport {
 	return browserop.BrowserViewport{Width: 1280, Height: 720, DevicePixelRatio: 1, Mode: browserop.ViewportModeWeb}
+}
+
+func setMobileEmulation(ctx context.Context, mobile bool) error {
+	agent := emulation.SetUserAgentOverride("")
+	if mobile {
+		version, err := PinnedVersion()
+		if err != nil {
+			return err
+		}
+		major, _, _ := strings.Cut(version, ".")
+		agent = emulation.SetUserAgentOverride(fmt.Sprintf(
+			"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s.0.0.0 "+
+				"Mobile Safari/537.36", major)).
+			WithPlatform("Linux armv8l").
+			WithUserAgentMetadata(&emulation.UserAgentMetadata{
+				Platform:        "Android",
+				PlatformVersion: "14.0.0",
+				Architecture:    "",
+				Model:           "Pixel 7",
+				Mobile:          true,
+			})
+	}
+	if err := agent.Do(ctx); err != nil {
+		return err
+	}
+	touch := emulation.SetTouchEmulationEnabled(mobile)
+	if mobile {
+		touch = touch.WithMaxTouchPoints(5)
+	}
+	if err := touch.Do(ctx); err != nil {
+		return err
+	}
+	return nil
 }

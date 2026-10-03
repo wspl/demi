@@ -60,7 +60,9 @@ func TestCaptureReplacementAndCloseOwnership(t *testing.T) {
 	first := dial()
 	old, err := channel.Start(ctx, "old", 700, 500, 30, 2_000_000)
 	var capability *cdp.BrowserError
-	if reason := captureUnavailable(); reason != "" && errors.As(err, &capability) && capability.Kind == cdp.KindUnsupportedCapability && capability.Message == reason {
+	if reason := captureUnavailable(); reason != "" && errors.As(err, &capability) &&
+		capability.Kind == cdp.KindUnsupportedCapability &&
+		capability.Message == reason {
 		t.Skipf("Chrome capture unavailable: %s", reason)
 	}
 	if err != nil {

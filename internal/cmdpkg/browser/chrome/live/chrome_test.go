@@ -54,13 +54,21 @@ func TestChromeLiveAcceptance(t *testing.T) {
 		w.Header().Set("Content-Type", "text/html")
 		if _, err := fmt.Fprint(w, `<!doctype html><input autofocus><script>
  document.addEventListener('keydown', e => fetch('/key?value='+encodeURIComponent(e.key)));
- let hue=0; function paint(){document.body.style.background='hsl('+(hue++%360)+' 50% 60%)';requestAnimationFrame(paint)} paint();
+ let hue=0; function paint(){document.body.style.background='hsl('+(hue++%360)+' 50% 60%)';`+
+			`requestAnimationFrame(paint)} paint();
  </script>`); err != nil {
 			t.Log(err)
 		}
 	}))
 	defer server.Close()
-	environment := tabstest.Launch(ctx, t, tabs.LaunchOptions{Executable: executable, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}})
+	environment := tabstest.Launch(
+		ctx,
+		t,
+		tabs.LaunchOptions{
+			Executable: executable,
+			Locale:     commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		},
+	)
 	hub, err := Start(environment)
 	if err != nil {
 		t.Fatal(err)
@@ -71,10 +79,19 @@ func TestChromeLiveAcceptance(t *testing.T) {
 	}
 	source := &viewerSource{data: make(chan []byte, 8)}
 	output, records := cmdsdk.OutputChannel(ctx)
-	browser := &chromeViewerBrowser{environment: environment, hub: hub, released: make(chan struct{}), changed: make(chan struct{})}
+	browser := &chromeViewerBrowser{
+		environment: environment,
+		hub:         hub,
+		released:    make(chan struct{}),
+		changed:     make(chan struct{}),
+	}
 	completed := make(chan error, 1)
 	go func() {
-		completion, err := Serve(ctx, browser, cmdsdk.InvocationContext[commandwire.Invocation]{Input: cmdsdk.NewInput(source), Output: output})
+		completion, err := Serve(
+			ctx,
+			browser,
+			cmdsdk.InvocationContext[commandwire.Invocation]{Input: cmdsdk.NewInput(source), Output: output},
+		)
 		if err == nil && completion.ExitCode != 0 {
 			err = fmt.Errorf("live completion: %+v", completion)
 		}
@@ -98,7 +115,15 @@ func TestChromeLiveAcceptance(t *testing.T) {
 	}
 	id := tab.ID()
 	send(&browserop.LiveViewerMessageHello{Platform: "mac"})
-	send(&browserop.LiveViewerMessagePanel{Width: 640, Height: 480, DevicePixelRatio: 1, ScreenWidth: 1280, ScreenHeight: 720})
+	send(
+		&browserop.LiveViewerMessagePanel{
+			Width:            640,
+			Height:           480,
+			DevicePixelRatio: 1,
+			ScreenWidth:      1280,
+			ScreenHeight:     720,
+		},
+	)
 	send(&browserop.LiveViewerMessageWatch{Tab: &id})
 	var pending []byte
 	video := false

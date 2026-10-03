@@ -22,12 +22,18 @@ import (
 // Frame is one encoded picture received from the capture extension.
 // Data is immutable after publication.
 type Frame struct {
-	Sequence  uint32
-	Key       bool
+	// Sequence identifies the frame within the capture.
+	Sequence uint32
+	// Key reports whether the frame can begin decoding.
+	Key bool
+	// Timestamp holds the encoded presentation timestamp.
 	Timestamp float64
-	Width     uint16
-	Height    uint16
-	Data      []byte
+	// Width holds the encoded width in pixels.
+	Width uint16
+	// Height holds the encoded height in pixels.
+	Height uint16
+	// Data retains the encoded video bytes.
+	Data []byte
 }
 
 // CaptureEvent is a validated event from the extension connection.
@@ -41,7 +47,10 @@ type CaptureStarted struct{}
 func (*CaptureStarted) captureEvent() {}
 
 // CaptureFrame carries one encoded picture.
-type CaptureFrame struct{ Frame Frame }
+type CaptureFrame struct {
+	// Frame holds the encoded frame.
+	Frame Frame
+}
 
 func (*CaptureFrame) captureEvent() {}
 
@@ -51,7 +60,10 @@ type CaptureStalled struct{}
 func (*CaptureStalled) captureEvent() {}
 
 // CaptureFailed carries the extension's capture failure reason.
-type CaptureFailed struct{ Reason string }
+type CaptureFailed struct {
+	// Reason describes the capture failure.
+	Reason string
+}
 
 func (*CaptureFailed) captureEvent() {}
 
@@ -71,7 +83,11 @@ type CaptureChannel struct {
 
 // Start captures a target at the requested encoded dimensions. The extension's
 // initial connection has Rust's ten-second bound; failure does not close the tab.
-func (c *CaptureChannel) Start(ctx context.Context, targetID target.ID, width, height, fps, bitrate uint32) (*Capture, error) {
+func (c *CaptureChannel) Start(
+	ctx context.Context,
+	targetID target.ID,
+	width, height, fps, bitrate uint32,
+) (*Capture, error) {
 	if reason := captureUnavailable(); reason != "" {
 		return nil, &cdp.BrowserError{Kind: cdp.KindUnsupportedCapability, Message: reason}
 	}
@@ -95,7 +111,16 @@ func (c *CaptureChannel) Start(ctx context.Context, targetID target.ID, width, h
 		}
 	}
 	reply := make(chan captureReply, 1)
-	request := captureRequest{start: &browserop.CaptureCommandStart{Target: string(targetID), Width: width, Height: height, FPS: fps, Bitrate: bitrate}, reply: reply}
+	request := captureRequest{
+		start: &browserop.CaptureCommandStart{
+			Target:  string(targetID),
+			Width:   width,
+			Height:  height,
+			FPS:     fps,
+			Bitrate: bitrate,
+		},
+		reply: reply,
+	}
 	select {
 	case c.requests <- request:
 	case <-ctx.Done():
@@ -223,7 +248,14 @@ func bindCapture(ctx context.Context) (*CaptureChannel, string, func() error, er
 	}
 	expected := "token=" + hex.EncodeToString(token)
 	lifetime, cancel := context.WithCancel(ctx)
-	c := &CaptureChannel{ctx: lifetime, requests: make(chan captureRequest, 64), sockets: make(chan *websocket.Conn), inbound: make(chan captureInbound, 16), done: make(chan struct{}), changed: make(chan struct{})}
+	c := &CaptureChannel{
+		ctx:      lifetime,
+		requests: make(chan captureRequest, 64),
+		sockets:  make(chan *websocket.Conn),
+		inbound:  make(chan captureInbound, 16),
+		done:     make(chan struct{}),
+		changed:  make(chan struct{}),
+	}
 	server := &http.Server{BaseContext: func(net.Listener) context.Context { return lifetime }}
 	var handlers sync.WaitGroup
 	var admission sync.Mutex
@@ -237,20 +269,7 @@ func bindCapture(ctx context.Context) (*CaptureChannel, string, func() error, er
 		handlers.Add(1)
 		admission.Unlock()
 		defer handlers.Done()
-		if r.URL.RawQuery != expected {
-			http.Error(w, "", http.StatusForbidden)
-			return
-		}
-		socket, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
-		if err != nil {
-			return
-		}
-		socket.SetReadLimit(64 * 1024 * 1024) // tungstenite's default message limit.
-		select {
-		case c.sockets <- socket:
-		case <-lifetime.Done():
-			_ = socket.CloseNow() // The environment already ended.
-		}
+		c.accept(lifetime, w, r, expected)
 	})
 	served := make(chan struct{})
 	go func() {
@@ -336,47 +355,7 @@ func (c *CaptureChannel) run() {
 				} // Drop newest pictures for a lagging consumer.
 			}
 		case request := <-c.requests:
-			switch {
-			case request.start != nil:
-				if connection == nil {
-					request.reply <- captureReply{err: &cdp.BrowserError{Kind: cdp.KindUnavailable, Message: "the capture extension is not connected"}}
-					continue
-				}
-				id := next
-				next++
-				request.start.Capture = id
-				select {
-				case connection.commands <- request.start:
-					capture := &Capture{channel: c, id: id, events: make(chan CaptureEvent, 8), closed: make(chan struct{})}
-					routes[id] = capture
-					request.reply <- captureReply{capture: capture}
-				default:
-					disconnect()
-					request.reply <- captureReply{err: &cdp.BrowserError{Kind: cdp.KindUnavailable, Message: "the capture extension is not keeping up"}}
-				}
-			case request.stop != nil:
-				if routes[request.stop.id] != request.stop {
-					request.reply <- captureReply{}
-					continue
-				}
-				delete(routes, request.stop.id)
-				close(request.stop.events)
-				if connection != nil {
-					select {
-					case connection.commands <- &browserop.CaptureCommandStop{Capture: request.stop.id}:
-					default:
-						disconnect()
-					}
-				}
-				request.reply <- captureReply{}
-			case request.command != nil:
-				if connection != nil {
-					select {
-					case connection.commands <- request.command:
-					default:
-					}
-				}
-			}
+			c.requestCapture(request, connection, routes, &next, disconnect)
 		}
 	}
 }
@@ -384,28 +363,17 @@ func (c *CaptureChannel) run() {
 // connect owns and joins both directions of one capture extension socket.
 func (c *CaptureChannel) connect(socket *websocket.Conn, generation uint64) *captureConnection {
 	ctx, cancel := context.WithCancel(c.ctx)
-	connection := &captureConnection{socket: socket, commands: make(chan browserop.CaptureCommand, 64), cancel: cancel, done: make(chan struct{})}
+	connection := &captureConnection{
+		socket:   socket,
+		commands: make(chan browserop.CaptureCommand, 64),
+		cancel:   cancel,
+		done:     make(chan struct{}),
+	}
 	go func() {
 		defer close(connection.done)
 		written := make(chan struct{})
 		go func() {
-			defer close(written)
-			defer cancel()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case command := <-connection.commands:
-					data, err := contract.EncodeJSON(command)
-					if err != nil {
-						slog.Warn("capture command refused", "error", err)
-						return
-					}
-					if err := socket.Write(ctx, websocket.MessageText, data); err != nil {
-						return
-					}
-				}
-			}
+			writeCapture(ctx, socket, connection, written, cancel)
 		}()
 		for {
 			kind, data, err := socket.Read(ctx)
@@ -444,7 +412,19 @@ func decodeCapture(kind websocket.MessageType, data []byte) (captureInbound, err
 		if err != nil {
 			return captureInbound{}, err
 		}
-		return captureInbound{id: header.Capture, event: &CaptureFrame{Frame: Frame{Sequence: header.Sequence, Key: header.Key, Timestamp: header.Timestamp, Width: header.Width, Height: header.Height, Data: payload}}}, nil
+		return captureInbound{
+			id: header.Capture,
+			event: &CaptureFrame{
+				Frame: Frame{
+					Sequence:  header.Sequence,
+					Key:       header.Key,
+					Timestamp: header.Timestamp,
+					Width:     header.Width,
+					Height:    header.Height,
+					Data:      payload,
+				},
+			},
+		}, nil
 	}
 	event, err := browserop.DecodeCaptureEvent(data)
 	if err != nil {
@@ -461,4 +441,116 @@ func decodeCapture(kind websocket.MessageType, data []byte) (captureInbound, err
 		return captureInbound{id: event.Capture, event: &CaptureFailed{Reason: event.Message}}, nil
 	}
 	return captureInbound{}, nil
+}
+
+func (c *CaptureChannel) accept(ctx context.Context, w http.ResponseWriter, r *http.Request, expected string) {
+	if r.URL.RawQuery != expected {
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+	socket, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	if err != nil {
+		return
+	}
+	socket.SetReadLimit(64 * 1024 * 1024) // tungstenite's default message limit.
+	select {
+	case c.sockets <- socket:
+	case <-ctx.Done():
+		_ = socket.CloseNow() // The environment already ended.
+	}
+}
+
+func (c *CaptureChannel) requestCapture(
+	request captureRequest,
+	connection *captureConnection,
+	routes map[uint32]*Capture,
+	next *uint32,
+	disconnect func(),
+) {
+	switch {
+	case request.start != nil:
+		if connection == nil {
+			request.reply <- captureReply{
+				err: &cdp.BrowserError{
+					Kind:    cdp.KindUnavailable,
+					Message: "the capture extension is not connected",
+				},
+			}
+			return
+		}
+		id := *next
+		*next++
+		request.start.Capture = id
+		select {
+		case connection.commands <- request.start:
+			capture := &Capture{
+				channel: c,
+				id:      id,
+				events:  make(chan CaptureEvent, 8),
+				closed:  make(chan struct{}),
+			}
+			routes[id] = capture
+			request.reply <- captureReply{capture: capture}
+		default:
+			disconnect()
+			request.reply <- captureReply{
+				err: &cdp.BrowserError{
+					Kind:    cdp.KindUnavailable,
+					Message: "the capture extension is not keeping up",
+				},
+			}
+		}
+	case request.stop != nil:
+		if routes[request.stop.id] != request.stop {
+			request.reply <- captureReply{}
+			return
+		}
+		delete(routes, request.stop.id)
+		close(request.stop.events)
+		stopCapture(connection, request, disconnect)
+		request.reply <- captureReply{}
+	case request.command != nil:
+		if connection != nil {
+			select {
+			case connection.commands <- request.command:
+			default:
+			}
+		}
+	}
+}
+
+func writeCapture(
+	ctx context.Context,
+	socket *websocket.Conn,
+	connection *captureConnection,
+	written chan struct{},
+	cancel context.CancelFunc,
+) {
+	defer close(written)
+	defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case command := <-connection.commands:
+			data, err := contract.EncodeJSON(command)
+			if err != nil {
+				slog.Warn("capture command refused", "error", err)
+				return
+			}
+			if err := socket.Write(ctx, websocket.MessageText, data); err != nil {
+				return
+			}
+		}
+	}
+}
+
+func stopCapture(connection *captureConnection, request captureRequest, disconnect func()) {
+	if connection != nil {
+		select {
+		case connection.commands <- &browserop.CaptureCommandStop{Capture: request.stop.id}:
+		default:
+			disconnect()
+		}
+	}
 }

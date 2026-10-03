@@ -135,7 +135,11 @@ func (key keyboardKey) event(kind input.KeyType, modifiers input.Modifier) *inpu
 			}
 		}
 	}
-	event := input.DispatchKeyEvent(kind).WithKey(name).WithCode(key.code).WithWindowsVirtualKeyCode(key.virtual).WithModifiers(modifiers)
+	event := input.DispatchKeyEvent(kind).
+		WithKey(name).
+		WithCode(key.code).
+		WithWindowsVirtualKeyCode(key.virtual).
+		WithModifiers(modifiers)
 	if kind == input.KeyDown {
 		if modifiers&^shift == 0 {
 			if shifted {
@@ -209,7 +213,9 @@ func typingFocus(ctx context.Context, element targetElement) error {
 	if err != nil {
 		var protocolErr *cdp.ProtocolError
 		// Chrome has no typed stale-object/context code: preserve Rust's exact messages.
-		if !errors.As(err, &protocolErr) || (protocolErr.Message != "Cannot find context with specified id" && protocolErr.Message != "Could not find object with given id") {
+		if !errors.As(err, &protocolErr) ||
+			(protocolErr.Message != "Cannot find context with specified id" &&
+				protocolErr.Message != "Could not find object with given id") {
 			return err
 		}
 		condition = "typing document changed"
@@ -220,7 +226,13 @@ func typingFocus(ctx context.Context, element targetElement) error {
 }
 
 // typeFocused reports how many characters were delivered before a typing failure.
-func typeFocused(ctx context.Context, tab *tabs.Tab, element *targetElement, text string, operation *cdp.Operation) error {
+func typeFocused(
+	ctx context.Context,
+	tab *tabs.Tab,
+	element *targetElement,
+	text string,
+	operation *cdp.Operation,
+) error {
 	delivered := uint(0)
 	var result error
 	for _, character := range text {

@@ -12,9 +12,12 @@ import (
 // Session is mutable command data, accessed only through an exclusive Checkout.
 // Zero values of its collections are ready for use through their methods.
 type Session struct {
+	// References owns document-bound node references.
 	References References
-	Assets     Assets
-	WebMCP     cdp.WebMCPState
+	// Assets owns captured asset inventories.
+	Assets Assets
+	// WebMCP owns document-bound tool declarations.
+	WebMCP cdp.WebMCPState
 }
 
 // Gate admits one command without queuing. Its zero value is ready for use.
@@ -58,9 +61,12 @@ func (c *Checkout) Release() {
 
 // Reference identifies a node within the document in which it was observed.
 type Reference struct {
+	// Backend identifies the Chrome DOM node.
 	Backend protocol.BackendNodeID
-	Frame   protocol.FrameID
-	Loader  protocol.LoaderID
+	// Frame identifies the node's document frame.
+	Frame protocol.FrameID
+	// Loader binds the node to its document loader.
+	Loader protocol.LoaderID
 }
 
 // References numbers nodes monotonically within a tab. Its zero value is ready.
@@ -99,7 +105,10 @@ func (r *References) Issue(reference Reference) (browserop.NodeRef, error) {
 		return id, nil
 	}
 	if len(r.byID) >= 10000 {
-		return "", &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "browser reference limit reached for this document"}
+		return "", &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "browser reference limit reached for this document",
+		}
 	}
 	if r.byID == nil {
 		r.byID = make(map[browserop.NodeRef]Reference)
@@ -115,19 +124,28 @@ func (r *References) Issue(reference Reference) (browserop.NodeRef, error) {
 // Assets holds document-scoped inventories under the tab's command gate.
 // Callers initialize nil maps when first storing entries.
 type Assets struct {
-	Documents   map[protocol.FrameID]protocol.LoaderID
+	// Documents tracks the loaders captured by the inventories.
+	Documents map[protocol.FrameID]protocol.LoaderID
+	// Inventories indexes inventories by their opaque handles.
 	Inventories map[string]Inventory
 }
 
 // Inventory holds the assets returned by one listing.
-type Inventory struct{ Assets []Asset }
+type Inventory struct {
+	// Assets retains the captured resource and SVG entries.
+	Assets []Asset
+}
 
 // Asset holds an inventoried resource and where its bytes can be obtained.
 // This is internal tab state, not a duplicate browser wire contract.
 type Asset struct {
-	ID     string
-	Kind   browserop.AssetKind
-	MIME   string
+	// ID identifies the entry within its inventory.
+	ID string
+	// Kind classifies the captured resource.
+	Kind browserop.AssetKind
+	// MIME holds the observed media type.
+	MIME string
+	// Source retains the renderer resource or inline SVG.
 	Source AssetSource
 }
 
@@ -138,14 +156,20 @@ type AssetSource interface{ assetSource() }
 
 // ResourceAsset retrieves a URL through the renderer owning its frame.
 type ResourceAsset struct {
-	Page  cdp.FrameTarget
+	// Page executes commands in the resource's renderer.
+	Page cdp.FrameTarget
+	// Frame identifies the resource's document frame.
 	Frame protocol.FrameID
-	URL   string
+	// URL names the observed resource.
+	URL string
 }
 
 func (*ResourceAsset) assetSource() {}
 
 // SVGAsset holds an inline SVG document.
-type SVGAsset struct{ SVG string }
+type SVGAsset struct {
+	// SVG retains the captured SVG markup.
+	SVG string
+}
 
 func (*SVGAsset) assetSource() {}

@@ -13,9 +13,26 @@ import (
 // Chooser listeners must be available on the renderer supplied to page actions.
 // One scripted socket, no Chrome or clock waits.
 func TestPageExecutorSubscribesToChooserEvents(t *testing.T) {
-	server := cdptest.NewServer(t,
-		cdptest.Exchange{Method: "Target.attachToTarget", Params: target.AttachToTarget("tab").WithFlatten(true), Result: target.AttachToTargetReturns{SessionID: "main"}},
-		cdptest.Exchange{Method: "Target.setAutoAttach", SessionID: "main", Params: target.SetAutoAttach(true, false).WithFlatten(true).WithFilter(target.Filter{{Type: "iframe"}, {Type: "worker"}, {Type: "shared_worker"}, {Type: "service_worker"}, {Exclude: true}})},
+	server := cdptest.NewServer(
+		t,
+		cdptest.Exchange{
+			Method: "Target.attachToTarget",
+			Params: target.AttachToTarget("tab").WithFlatten(true),
+			Result: target.AttachToTargetReturns{SessionID: "main"},
+		},
+		cdptest.Exchange{
+			Method:    "Target.setAutoAttach",
+			SessionID: "main",
+			Params: target.SetAutoAttach(true, false).
+				WithFlatten(true).
+				WithFilter(target.Filter{
+					{Type: "iframe"},
+					{Type: "worker"},
+					{Type: "shared_worker"},
+					{Type: "service_worker"},
+					{Exclude: true},
+				}),
+		},
 	)
 	connection, err := cdp.Dial(t.Context(), server.Address())
 	if err != nil {
@@ -44,7 +61,14 @@ func TestPageExecutorSubscribesToChooserEvents(t *testing.T) {
 	defer events.Close()
 	// An unrelated tab's chooser must not be delivered to this renderer.
 	for _, id := range []target.SessionID{"other", "main"} {
-		if err := server.Emit(t.Context(), cdp.Event{Method: "Page.fileChooserOpened", SessionID: id, Params: json.RawMessage(`{"frameId":"frame","mode":"selectSingle","backendNodeId":7}`)}); err != nil {
+		if err := server.Emit(
+			t.Context(),
+			cdp.Event{
+				Method:    "Page.fileChooserOpened",
+				SessionID: id,
+				Params:    json.RawMessage(`{"frameId":"frame","mode":"selectSingle","backendNodeId":7}`),
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}

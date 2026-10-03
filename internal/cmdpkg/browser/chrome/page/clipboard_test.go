@@ -17,8 +17,18 @@ func TestClipboardUTF8Diagnostic(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"invalid_text", "text/plain", "é\xe1\x80!", "clipboard text is not UTF-8: invalid utf-8 sequence of 2 bytes from index 2"},
-		{"incomplete_html", "text/html", "<p>é\xf1\x80", "clipboard text is not UTF-8: incomplete utf-8 byte sequence from index 5"},
+		{
+			"invalid_text",
+			"text/plain",
+			"é\xe1\x80!",
+			"clipboard text is not UTF-8: invalid utf-8 sequence of 2 bytes from index 2",
+		},
+		{
+			"incomplete_html",
+			"text/html",
+			"<p>é\xf1\x80",
+			"clipboard text is not UTF-8: incomplete utf-8 byte sequence from index 5",
+		},
 		{"valid_text", "text/plain", "é😀�", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

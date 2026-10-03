@@ -41,5 +41,5 @@ func openEnvironmentLock(path string, create bool) (*os.File, error) {
 	if create {
 		flags |= os.O_CREATE | os.O_EXCL
 	}
-	return os.OpenFile(path, flags, 0600)
+	return os.OpenFile(path, flags, 0o600)
 }

@@ -36,6 +36,7 @@ func (s *viewerSource) Next(ctx context.Context) ([]byte, error) {
 		return data, nil
 	}
 }
+
 func moduleRecord(t *testing.T, record commandwire.Record) browserop.LiveModuleMessage {
 	t.Helper()
 	data, ok := record.(commandwire.Stdout)
@@ -51,17 +52,27 @@ func moduleRecord(t *testing.T, record commandwire.Record) browserop.LiveModuleM
 	}
 	return message
 }
+
 func TestViewerRequiresHelloAndReportsProtocolRefusal(t *testing.T) {
 	for _, data := range [][]byte{framed(browserop.ControlFrame, []byte(`{"type":"release"}`)), {0, 0, 0, 0}} {
 		ctx, cancel := context.WithCancel(t.Context())
 		output, _ := cmdsdk.OutputChannel(ctx)
-		completion, err := Serve(ctx, &viewerBrowser{}, cmdsdk.InvocationContext[commandwire.Invocation]{Input: cmdsdk.NewInput(&chunks{[][]byte{data}}), Output: output})
+		completion, err := Serve(
+			ctx,
+			&viewerBrowser{},
+			cmdsdk.InvocationContext[commandwire.Invocation]{
+				Input:  cmdsdk.NewInput(&chunks{[][]byte{data}}),
+				Output: output,
+			},
+		)
 		cancel()
-		if err != nil || completion.ExitCode != 2 || completion.Error == nil || completion.Error.Code != "invalid_input" {
+		if err != nil || completion.ExitCode != 2 || completion.Error == nil ||
+			completion.Error.Code != "invalid_input" {
 			t.Fatalf("completion=%+v err=%v", completion, err)
 		}
 	}
 }
+
 func TestViewerWaitsWithoutBrowserAndEndsOnRelease(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -72,7 +83,11 @@ func TestViewerWaitsWithoutBrowserAndEndsOnRelease(t *testing.T) {
 		browser := &viewerBrowser{released: make(chan struct{}), changed: make(chan struct{})}
 		done := make(chan error, 1)
 		go func() {
-			completion, err := Serve(ctx, browser, cmdsdk.InvocationContext[commandwire.Invocation]{Input: cmdsdk.NewInput(source), Output: output})
+			completion, err := Serve(
+				ctx,
+				browser,
+				cmdsdk.InvocationContext[commandwire.Invocation]{Input: cmdsdk.NewInput(source), Output: output},
+			)
 			if err == nil && completion.ExitCode != 0 {
 				err = errors.New("nonzero completion")
 			}
@@ -94,6 +109,7 @@ func TestViewerWaitsWithoutBrowserAndEndsOnRelease(t *testing.T) {
 		}
 	})
 }
+
 func TestWriterHeartbeatAndCancellationWhileOutputBlocked(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
