@@ -65,12 +65,16 @@ func TestSSETransportAfterFrames(t *testing.T) {
 	body := io.NopCloser(io.MultiReader(strings.NewReader("data: first\n\n"), failedReader{broken}))
 	var data []string
 	var failure error
+	index := 0
 	for frame, err := range provider.SSEData(t.Context(), body) {
 		if err != nil {
+			requireEqual(t, index, 1)
 			failure = err
 		} else {
+			requireEqual(t, index, 0)
 			data = append(data, frame)
 		}
+		index++
 	}
 	requireEqual(t, data, []string{"first"})
 	var stream *provider.SSEError

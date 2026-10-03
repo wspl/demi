@@ -90,8 +90,8 @@ func TestResponsesFinishedTextOnlyWithoutDelta(t *testing.T) {
 		`{"type":"response.output_item.added","item":{"type":"reasoning","id":"rs_1"}}`,
 		`{"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_1","content":[{"text":"raw reasoning"}],"encrypted_content":"enc"}}`,
 		`{"type":"response.output_text.delta","delta":"因为"}`, `{"type":"response.output_text.delta","delta":"天空是蓝的"}`,
-		`{"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"因为天空是蓝的"},{"type":"output_audio","data":"…"}]}}`,
-		`{"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"and the next message"}]}}`,
+		`{"type":"response.output_item.done","item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"因为天空是蓝的","annotations":[]},{"type":"output_audio","data":"…"}]}}`,
+		`{"type":"response.output_item.done","item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"and the next message","annotations":[]},{"type":"output_audio","data":"…"}]}}`,
 		`{"type":"response.output_item.done","item":{"type":"web_search_call","status":"completed"}}`,
 		`{"type":"response.output_item.done","item":{"type":"message","content":[{"type":"refusal","refusal":"no"}]}}`,
 		`{"type":"response.completed"}`)
@@ -113,7 +113,8 @@ func TestResponsesEOFZeroUsage(t *testing.T) {
 }
 func TestResponsesFailureRecordAndReaderWait(t *testing.T) {
 	frame := `{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":"soon"},"status_code":"429"}`
-	reader := func(d *core.ProviderErrorDiagnostics, _ core.Timestamp) core.ProviderFailureFacts {
+	reader := func(d *core.ProviderErrorDiagnostics, received core.Timestamp) core.ProviderFailureFacts {
+		requireEqual(t, received, now)
 		requireEqual(t, *d.Upstream, frame)
 		later := core.Timestamp("2026-09-18T14:01:00.000Z")
 		return core.ProviderFailureFacts{RetryAt: &later}

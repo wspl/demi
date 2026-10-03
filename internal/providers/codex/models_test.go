@@ -26,6 +26,7 @@ func TestModelCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	equal(t, len(list.Models), 3)
+	equal(t, []string{list.Models[0].ID, list.Models[1].ID, list.Models[2].ID}, []string{"first", "gpt-5.5", "gpt-5.4-mini"})
 	equal(t, *list.DefaultModelID, "first")
 	equal(t, list.SourceFetchedAt, now)
 	equal(t, list.Stale, false)
@@ -38,6 +39,7 @@ func TestModelCatalog(t *testing.T) {
 	equal(t, gpt.ID, "gpt-5.5")
 	equal(t, gpt.DisplayName, "GPT-5.5")
 	equal(t, *gpt.ContextWindow, uint32(272000))
+	equal(t, gpt.OutputLimit, (*uint32)(nil))
 	equal(t, *gpt.SupportsTools, true)
 	equal(t, *gpt.SupportsAttachments, true)
 	equal(t, *gpt.SupportsReasoning, true)
@@ -64,7 +66,13 @@ func TestCatalogRefreshesOnce(t *testing.T) {
 	}
 	equal(t, len(list.Models), 3)
 	equal(t, len(v.Requests()), 3)
-	equal(t, v.Requests()[2].Header("Authorization"), "Bearer new-access")
+	var authorizations []string
+	for _, request := range v.Requests() {
+		if strings.HasPrefix(request.URI, models+"?") {
+			authorizations = append(authorizations, request.Header("Authorization"))
+		}
+	}
+	equal(t, authorizations, []string{"Bearer " + freshToken(t), "Bearer new-access"})
 }
 func TestCatalogFailures(t *testing.T) {
 	v, _, p := setup(t)
@@ -86,6 +94,9 @@ func TestCatalogFailures(t *testing.T) {
 			t.Fatalf("error: %v", err)
 		}
 		equal(t, catalog.Kind, test.kind)
+		if test.status == 503 {
+			equal(t, catalog.Message, "Codex models request failed with HTTP 503")
+		}
 		if !strings.Contains(catalog.Message, test.field) {
 			t.Fatalf("message: %s", catalog.Message)
 		}

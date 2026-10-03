@@ -96,6 +96,7 @@ func TestQuotaProbeAndCLIObservation(t *testing.T) {
 	equal(t, *snapshot.Windows[0].UsedPercent, 12.0)
 	equal(t, *snapshot.Windows[0].ResetsAt, core.Timestamp("2026-09-24T10:00:00.000Z"))
 	equal(t, *snapshot.Windows[1].Severity, core.QuotaSeverity("critical"))
+	equal(t, snapshot.Windows[1].Label, "weekly_scoped (Fable)")
 	equal(t, snapshot.Windows[1].Scope.Kind, "model")
 	equal(t, *snapshot.Windows[1].Scope.Label, "Fable")
 	equal(t, *snapshot.Windows[2].Severity, core.QuotaSeverity("warning"))
@@ -107,7 +108,10 @@ func TestQuotaProbeAndCLIObservation(t *testing.T) {
 	}
 	vendor.Respond(providertest.MockResponse{Status: 401, Chunks: [][]byte{[]byte("token expired")}})
 	_, err = p.Quota().Probe(t.Context())
-	equal(t, err.Error(), "Claude usage request failed (401): token expired")
+	if !errors.As(err, &quotaErr) || quotaErr.Kind != provider.QuotaUnavailable {
+		t.Fatalf("quota refusal: %v", err)
+	}
+	equal(t, quotaErr.Message, "Claude usage request failed (401): token expired")
 	placement := &scriptedPlacement{t: t, setup: func(c *scriptedCLI) {
 		c.onWrite = func(_ map[string]json.RawMessage) {
 			c.say(`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1790855225,"rateLimitType":"seven_day_opus","utilization":0.97,"unifiedWindows":{"five_hour":{"utilization":0.33,"resetsAt":1790855225},"seven_day":{"utilization":0.5,"resetsAt":"soon"},"seven_day_overage_included":{"utilization":0.1,"resetsAt":1790855225}}}}`)
@@ -124,7 +128,9 @@ func TestQuotaProbeAndCLIObservation(t *testing.T) {
 	snapshot = p.Quota().Latest()
 	equal(t, snapshot.Source, core.SnapshotSource("observation"))
 	equal(t, len(snapshot.Windows), 5)
+	ids = nil
 	for _, w := range snapshot.Windows {
+		ids = append(ids, w.ID)
 		switch w.ID {
 		case "five_hour":
 			equal(t, *w.UsedPercent, 33.0)
@@ -137,13 +143,18 @@ func TestQuotaProbeAndCLIObservation(t *testing.T) {
 			equal(t, *w.Severity, core.QuotaSeverity("critical"))
 		}
 	}
+	equal(t, ids, []string{"five_hour", "limit:weekly_scoped:Fable", "limit:monthly_credits", "seven_day", "seven_day_opus"})
 }
 func TestClaudeCatalogMinimumOrderingAndThinking(t *testing.T) {
 	vendor := providertest.StartVendor(t)
 	p, _ := testProvider(t, vendor.URL("/api.json"), "http://127.0.0.1:9/usage")
 	models := map[string]any{}
 	for _, id := range []string{"claude-haiku-4-5", "claude-sonnet-4-6", "claude-3-5-sonnet-20241022", "claude-opus-4-8", "claude-opus-4-6", "claude-sonnet-4-20250514", "claude-mystery", "gpt-4o"} {
-		models[id] = map[string]any{"name": id, "attachment": true, "reasoning": true, "tool_call": true, "reasoning_options": []any{map[string]any{"type": "effort", "values": []string{"low", "medium", "high"}}}, "limit": map[string]int{"context": 1000000, "output": 128000}, "cost": map[string]float64{"input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25}}
+		name := id
+		if id == "claude-opus-4-8" {
+			name = "Claude Opus 4.8"
+		}
+		models[id] = map[string]any{"name": name, "attachment": true, "reasoning": true, "tool_call": true, "reasoning_options": []any{map[string]any{"type": "effort", "values": []string{"low", "medium", "high"}}}, "limit": map[string]int{"context": 1000000, "output": 128000}, "cost": map[string]float64{"input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25}}
 	}
 	models["claude-newfamily-5"] = map[string]any{"name": "Claude Newfamily 5"}
 	data, err := provider.JSONBody(map[string]any{"anthropic": map[string]any{"id": "anthropic", "name": "Anthropic", "npm": "@ai-sdk/anthropic", "models": models}, "openai": map[string]any{"id": "openai", "name": "OpenAI", "models": map[string]any{}}})
@@ -162,6 +173,7 @@ func TestClaudeCatalogMinimumOrderingAndThinking(t *testing.T) {
 	}
 	equal(t, ids, []string{"claude-opus-4-8", "claude-opus-4-6", "claude-sonnet-4-6", "claude-newfamily-5"})
 	equal(t, catalog.Warnings, []string{"Skipped Claude model with unparseable version: claude-mystery"})
+	equal(t, catalog.Models[0].DisplayName, "Claude Opus 4.8")
 	equal(t, *catalog.Models[0].ContextWindow, uint32(1000000))
 	equal(t, catalog.Models[3].SupportsTools, (*bool)(nil))
 	equal(t, catalog.Models[3].ContextWindow, (*uint32)(nil))

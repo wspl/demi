@@ -3,13 +3,16 @@ package provider_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
@@ -56,7 +59,11 @@ func TestVendorClassification(t *testing.T) {
 		{"", "iterate over the unlimited list", ""}, {"invalid_request_error", "Invalid usage of the tools parameter", "invalid_request_error"},
 		{"", "usage limit exceeded for this month", provider.RateLimit}, {"", "nothing to see", ""},
 	} {
-		code := provider.ClassifyError(&tc.code, tc.message)
+		var vendorCode *string
+		if tc.code != "" || tc.message == "nothing to see" {
+			vendorCode = &tc.code
+		}
+		code := provider.ClassifyError(vendorCode, tc.message)
 		if tc.want == "" {
 			if code != nil {
 				t.Fatalf("%s: %s", tc.message, *code)
@@ -96,7 +103,7 @@ func TestHTTPFailureRecordAndWait(t *testing.T) {
 			t.Fatal(err)
 		}
 		failure := provider.HTTPFailure(t.Context(), response, "Acme", provider.ReadHTTPFailure, providertest.FixedClock(now))
-		if failure.Code == nil || *failure.Code != tc.code || !strings.HasSuffix(failure.Message, tc.body) {
+		if failure.Code == nil || *failure.Code != tc.code || failure.Message != fmt.Sprintf("Acme API request failed with HTTP %d: %s", tc.status, tc.body) {
 			t.Fatalf("%+v", failure)
 		}
 		if tc.wait != 0 {
@@ -110,7 +117,25 @@ func TestHTTPFailureRecordAndWait(t *testing.T) {
 		if record == nil || int(record.Status) != tc.status || record.Body != tc.body || failure.Diagnostics.Source != "http" {
 			t.Fatalf("%+v", record)
 		}
+		requireEqual(t, *failure.Diagnostics.HTTPStatus, uint16(tc.status))
 		if tc.status == 429 {
+			fields, err := contract.ObjectFields([]byte(*failure.Diagnostics.Upstream))
+			if err != nil {
+				t.Fatal(err)
+			}
+			names := make([]string, len(fields))
+			for i, field := range fields {
+				names[i] = field.Name
+			}
+			requireEqual(t, names, []string{"status", "headers", "body"})
+			names = names[:0]
+			for _, pair := range record.Headers {
+				names = append(names, pair[0])
+			}
+			if !slices.IsSorted(names) {
+				t.Fatalf("unsorted headers: %v", names)
+			}
+			requireEqual(t, *record.Header("retry-after"), "120")
 			requireEqual(t, *record.Header("x-request-id"), "req-9")
 			requireEqual(t, *record.Header("set-cookie"), "a=b")
 		}
@@ -166,7 +191,11 @@ func TestRetryWaitOnlyWhenNamed(t *testing.T) {
 	}
 	requireEqual(t, failure.WithRetryWait(none, now), failure)
 	failure.Diagnostics = nil
-	requireEqual(t, failure.WithRetryWait(none, now), failure)
+	later := func(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts {
+		at := core.Timestamp("2026-09-18T14:00:30.000Z")
+		return core.ProviderFailureFacts{RetryAt: &at}
+	}
+	requireEqual(t, failure.WithRetryWait(later, now), failure)
 }
 func TestTransportFailureOmitsEndpoint(t *testing.T) {
 	// A controlled dial failure does not race with reuse of a temporarily free port.

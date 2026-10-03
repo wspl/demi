@@ -85,18 +85,19 @@ func collect(ctx context.Context, r provider.Runtime, req provider.InferenceRequ
 // scriptedCLI is the process-side script corresponding to Rust's cli.rs.
 // IO waits for channel events, never wall time. No real CLI or model runs.
 type scriptedCLI struct {
-	t               *testing.T
-	spawn           host.SpawnRequest
-	output          chan host.ProcessOutput
-	ended           chan struct{}
-	mu              sync.Mutex
-	end             host.ProcessEnd
-	finished        bool
-	signals         []host.Signal
-	closed          bool
-	ignoreTerminate bool
-	input           []json.RawMessage
-	onWrite         func(map[string]json.RawMessage)
+	t                  *testing.T
+	spawn              host.SpawnRequest
+	output             chan host.ProcessOutput
+	ended              chan struct{}
+	mu                 sync.Mutex
+	end                host.ProcessEnd
+	finished           bool
+	signals            []host.Signal
+	closed             bool
+	closedWhileRunning bool
+	ignoreTerminate    bool
+	input              []json.RawMessage
+	onWrite            func(map[string]json.RawMessage)
 }
 
 func (c *scriptedCLI) say(raw string) {
@@ -152,6 +153,33 @@ func (c *scriptedCLI) WriteStdin(_ context.Context, data []byte) error {
 		c.t.Fatal(err)
 	}
 	c.input = append(c.input, slices.Clone(data))
+	if string(value["type"]) == `"control_response"` {
+		var outer struct {
+			ID string `json:"request_id"`
+		}
+		if err := json.Unmarshal(value["response"], &outer); err != nil {
+			c.t.Fatal(err)
+		}
+		if outer.ID == "mcp-init" || outer.ID == "mcp-initialized" {
+			_, reply := mcpResponse(c.t, value)
+			if outer.ID == "mcp-initialized" {
+				equal(c.t, decoded(c.t, reply["jsonrpc"]), "2.0")
+				equal(c.t, decoded(c.t, reply["id"]), float64(0))
+				checkJSON(c.t, reply["result"], `{}`)
+				equal(c.t, len(reply), 3)
+			} else {
+				var result struct {
+					Server struct {
+						Name string `json:"name"`
+					} `json:"serverInfo"`
+				}
+				if err := json.Unmarshal(reply["result"], &result); err != nil {
+					c.t.Fatal(err)
+				}
+				equal(c.t, result.Server.Name, "demi")
+			}
+		}
+	}
 	if c.onWrite != nil {
 		c.onWrite(value)
 	}
@@ -166,6 +194,9 @@ func (c *scriptedCLI) Kill(_ context.Context, signal host.Signal) error {
 	return nil
 }
 func (c *scriptedCLI) Close(context.Context) error {
+	c.mu.Lock()
+	c.closedWhileRunning = !c.finished
+	c.mu.Unlock()
 	c.closed = true
 	c.finish(host.ProcessEnd{Kind: host.ProcessSignalled, Signal: "SIGKILL"})
 	return nil
@@ -174,6 +205,13 @@ func (c *scriptedCLI) initialized(v map[string]json.RawMessage) bool {
 	if string(v["type"]) != `"control_request"` {
 		return false
 	}
+	var request struct {
+		Subtype string `json:"subtype"`
+	}
+	if err := json.Unmarshal(v["request"], &request); err != nil {
+		c.t.Fatal(err)
+	}
+	equal(c.t, request.Subtype, "initialize")
 	c.sayValue(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": v["request_id"]}})
 	return true
 }
@@ -252,6 +290,7 @@ func checkJSON(t *testing.T, raw []byte, want string) {
 }
 func mcpResponse(t *testing.T, v map[string]json.RawMessage) (string, map[string]json.RawMessage) {
 	t.Helper()
+	equal(t, decoded(t, v["type"]), "control_response")
 	var response struct {
 		ID       string `json:"request_id"`
 		Subtype  string `json:"subtype"`
