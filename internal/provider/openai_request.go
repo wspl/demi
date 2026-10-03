@@ -517,38 +517,23 @@ func ChatMessages(systemPrompt string, items []InferenceItem, dialect ChatDialec
 	if !core.IsBlank(systemPrompt) {
 		messages = append(messages, &ChatSystem{Role: "system", Content: systemPrompt})
 	}
-	var open *ChatAssistant
-	pending := ""
-	reasoning := ""
-	openTurn := func() *ChatAssistant {
-		if open == nil {
-			open = &ChatAssistant{Role: "assistant"}
-			reasoning = pending
-			pending = ""
-		}
-		return open
-	}
-	flush := func() {
-		flushChatTurn(&messages, &open, &pending, &reasoning, dialect)
-	}
+	turn := chatTurn{reasoningContent: dialect.ReasoningContent}
 	for _, item := range items {
 		switch item := item.(type) {
 		case *UserMessage:
-			flush()
+			messages = turn.flush(messages)
 			messages = append(messages, &ChatUser{Role: "user", Content: chatUserContent(item.Content, dialect.Media)})
 		case *UserSteer:
-			flush()
+			messages = turn.flush(messages)
 			messages = append(messages, &ChatUser{Role: "user", Content: chatUserContent(item.Content, dialect.Media)})
 		case *AssistantText:
-			appendAssistantText(openTurn(), item.Text)
+			turn.appendText(item.Text)
 		case *ToolUse:
 			arguments, err := ToolArguments(item.Input)
 			if err != nil {
 				return nil, err
 			}
-			turn := openTurn()
-			turn.ToolCalls = append(
-				turn.ToolCalls,
+			turn.appendCall(
 				ChatToolCall{
 					ID:       item.ToolUseID,
 					Type:     "function",
@@ -556,18 +541,18 @@ func ChatMessages(systemPrompt string, items []InferenceItem, dialect ChatDialec
 				},
 			)
 		case *ToolResult:
-			flush()
+			messages = turn.flush(messages)
 			messages = append(
 				messages,
 				&ChatToolResult{Role: "tool", ToolCallID: item.ToolUseID, Content: ToolOutputTextOf(item.Output)},
 			)
 			messages = append(messages, chatResultMedia(item, dialect)...)
 		case *AssistantThinking:
-			appendChatThinking(item.Text, dialect, open, &pending, &reasoning)
+			turn.appendThinking(item.Text)
 		case *AssistantRedactedThinking:
 		}
 	}
-	flush()
+	messages = turn.flush(messages)
 	return messages, nil
 }
 
@@ -708,35 +693,61 @@ func chatResultMedia(item *ToolResult, dialect ChatDialect) []ChatMessage {
 	return messages
 }
 
-func flushChatTurn(messages *[]ChatMessage, open **ChatAssistant, pending, reasoning *string, dialect ChatDialect) {
-	*pending = ""
-	if *open == nil {
-		return
-	}
-	if dialect.ReasoningContent && (*reasoning != "" || len((*open).ToolCalls) > 0) {
-		value := *reasoning
-		(*open).ReasoningContent = &value
-	}
-	*messages = append(*messages, *open)
-	*open = nil
-	*reasoning = ""
+// chatTurn owns the assistant message and reasoning collected between transcript boundaries.
+type chatTurn struct {
+	open             *ChatAssistant
+	pending          string
+	reasoning        string
+	reasoningContent bool
 }
 
-func appendAssistantText(turn *ChatAssistant, text string) {
-	if turn.Content != nil {
-		text = *turn.Content + text
+func (t *chatTurn) openAssistant() *ChatAssistant {
+	if t.open == nil {
+		t.open = &ChatAssistant{Role: "assistant"}
+		t.reasoning = t.pending
+		t.pending = ""
+	}
+	return t.open
+}
+
+func (t *chatTurn) appendText(text string) {
+	assistant := t.openAssistant()
+	if assistant.Content != nil {
+		text = *assistant.Content + text
 	}
 	if text != "" {
-		turn.Content = &text
+		assistant.Content = &text
 	}
 }
 
-func appendChatThinking(text string, dialect ChatDialect, open *ChatAssistant, pending, reasoning *string) {
-	if dialect.ReasoningContent {
-		if open == nil {
-			*pending += text
-		} else {
-			*reasoning += text
-		}
+func (t *chatTurn) appendCall(call ChatToolCall) {
+	assistant := t.openAssistant()
+	assistant.ToolCalls = append(assistant.ToolCalls, call)
+}
+
+func (t *chatTurn) appendThinking(text string) {
+	if !t.reasoningContent {
+		return
 	}
+	if t.open == nil {
+		t.pending += text
+		return
+	}
+	t.reasoning += text
+}
+
+// flush discards orphaned reasoning and appends the completed assistant turn, if one is open.
+func (t *chatTurn) flush(messages []ChatMessage) []ChatMessage {
+	t.pending = ""
+	if t.open == nil {
+		return messages
+	}
+	if t.reasoningContent && (t.reasoning != "" || len(t.open.ToolCalls) > 0) {
+		value := t.reasoning
+		t.open.ReasoningContent = &value
+	}
+	messages = append(messages, t.open)
+	t.open = nil
+	t.reasoning = ""
+	return messages
 }
