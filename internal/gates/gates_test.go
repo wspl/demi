@@ -238,12 +238,16 @@ func TestStateCountsPurposesAndRetainsDemandEnd(t *testing.T) {
 		}
 		time.Sleep(5 * time.Second) // Virtual time, not scheduling synchronization.
 		ended := time.Now()
+		bumps = hub.Subscribe()
 		second.Release()
+		<-bumps
 		if a.State().LastDemandEnd != ended {
 			t.Fatal("last demand end was not recorded")
 		}
 		time.Sleep(5 * time.Second)
+		bumps = hub.Subscribe()
 		maintenance.Release()
+		<-bumps
 		if s := a.State(); s.LastDemandEnd != ended || s.Maintenance != 0 {
 			t.Fatalf("maintenance changed demand end: %+v", s)
 		}

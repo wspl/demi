@@ -58,6 +58,9 @@ func assertIndex(t *testing.T, db *ConversationDB) []string {
 		return err
 	})
 	require(t, err)
+	if len(held) == 0 {
+		t.Fatal("blob index holds no rows")
+	}
 	equal(t, derived, held)
 	return held
 }
@@ -91,11 +94,11 @@ func TestEveryBlockWriteKeepsBlobIndexDerived(t *testing.T) {
 	var holders []string
 	_, err = db.Read(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
-		holders, err = queryRecords(ctx, tx, "blob_refs", "SELECT holder FROM blob_refs ORDER BY idx,part", func(r *storedRow) string { return r.text("holder") })
+		holders, err = queryRecords(ctx, tx, "blob_refs", "SELECT idx,holder FROM blob_refs ORDER BY idx,part", func(r *storedRow) string { return fmt.Sprintf("%d/%s", r.integer("idx"), r.text("holder")) })
 		return err
 	})
 	require(t, err)
-	equal(t, []string{"message", "edit_copy", "edit_copy", "edit_copy", "edit_copy"}, holders)
+	equal(t, []string{"0/message", "2/edit_copy", "2/edit_copy", "2/edit_copy", "2/edit_copy"}, holders)
 	equal(t, before, facts(t, db))
 }
 func waiting(due ...*core.Timestamp) store.CheckpointUpdate {

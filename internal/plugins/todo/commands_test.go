@@ -174,10 +174,15 @@ func TestConcurrentAddsKeepEveryTodoWithItsOwnID(t *testing.T) {
 	if len(ids) != 2 || ids[0] != "T1" || ids[1] != "T2" {
 		t.Fatalf("returned ids: %v", ids)
 	}
-	todos, err := decodeStoredTodos(storage.Value(storageKey))
+	listed, err := callTodo(ctx, f, storage, nil, "todo", "list", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
+	list, err := DecodeTodoList([]byte(listed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	todos := list.Todos
 	if len(todos) != 2 || todos[0].ID != "T1" || todos[1].ID != "T2" {
 		t.Fatalf("todos: %+v", todos)
 	}
