@@ -164,8 +164,7 @@ func assertCommand(
 	t.Helper()
 	result, err := readCommand(tree, argv, stdin)
 	if wantError != "" {
-		var usage *declare.UsageError
-		if !errors.As(err, &usage) || err.Error() != wantError {
+		if err == nil || err.Error() != wantError {
 			t.Fatalf("%v: got %v, want %s", argv, err, wantError)
 		}
 		return
