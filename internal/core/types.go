@@ -1,6 +1,6 @@
 package core
 
-//go:generate go run ../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // A transcript block. A steer's id and an agent message's id are the ids
 // of the blocks they become.

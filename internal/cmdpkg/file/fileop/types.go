@@ -1,6 +1,6 @@
 package fileop
 
-//go:generate go run ../../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // `file.read`: writes the file's bytes to stdout.
 // +demi:root

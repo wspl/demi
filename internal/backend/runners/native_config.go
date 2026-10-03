@@ -10,7 +10,7 @@ import (
 	"github.com/wspl/demi/internal/backend/blobs"
 )
 
-//go:generate go run ../../../tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // `DEMI_NATIVE_CONFIG`: the releases, and the store runners download their
 // executables from.

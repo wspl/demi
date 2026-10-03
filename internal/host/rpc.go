@@ -14,7 +14,7 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-//go:generate go run ../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // One `rpc` call: the leaf it names, its validated arguments, and the
 // invoking process's surroundings (`commands.md` § Handle an rpc call).

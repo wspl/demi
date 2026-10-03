@@ -3,8 +3,8 @@ package fixture
 
 import "github.com/wspl/demi/internal/commandwire"
 
-//go:generate go run ../../../../../tools/contractgen
-//go:generate go run ../../../../../tools/contractgen -ts -ts-dir zod .
+//go:generate go run github.com/wspl/demi/tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen -ts -ts-dir zod .
 
 // The input of `todo add` and `todo note`.
 // +demi:schema

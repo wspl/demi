@@ -2,7 +2,7 @@ package commandwire
 
 import "encoding/json"
 
-//go:generate go run ../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // Who started the work: an agent, by its number in the conversation as the
 // model knows it (`runtime.md` § Identifiers the model sees), or the

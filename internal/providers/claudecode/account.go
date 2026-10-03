@@ -9,7 +9,7 @@ import (
 	"github.com/wspl/demi/internal/provider"
 )
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // The `claude-code` family's secret document. Demi defines it; it is not the
 // CLI's own credentials file.

@@ -3,7 +3,7 @@ package hosttest
 //revive:disable:exported
 // Contract descriptions below are verbatim Rust product text.
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // The input of `demi todo add`.
 // +demi:schema
