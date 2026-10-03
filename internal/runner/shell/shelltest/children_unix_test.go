@@ -14,7 +14,8 @@ import (
 )
 
 func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T) {
-	// Child readiness travels through stdout instead of polling a PID file.
+	// Real utility processes, normally below one second. Readiness travels
+	// through stdout; concurrent jobs also exercise independent group ownership.
 	scripts := []string{
 		`/bin/sh -c 'echo $$; exec /bin/sleep 60'`,
 		`printf x | xargs /bin/sh -c 'echo $$; exec /bin/sleep 60'`,
@@ -27,9 +28,7 @@ func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T)
 			if runtime.GOOS == "darwin" && strings.Contains(script, "sed -n") {
 				t.Skip("decision 4: BSD sed does not support the e command")
 			}
-			if runtime.GOOS == "darwin" && (strings.Contains(script, "xargs") || strings.HasPrefix(script, "find")) {
-				t.Skip("macOS has no child subreaper; Linux runs this scenario with one")
-			}
+			t.Parallel()
 			ctx, scope, job, _ := shellJob(t, script)
 			var line []byte
 			for !bytes.ContainsRune(line, '\n') {
@@ -49,14 +48,13 @@ func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T)
 			}
 			job.Cancel()
 			exit, _ := job.Wait(ctx)
-			scope.Finish(ctx)
-			if exit.Signal == nil || *exit.Signal != "SIGKILL" {
+			if exit.Signal == nil || *exit.Signal != "SIGKILL" || exit.Error != nil {
 				t.Fatalf("exit %+v", exit)
 			}
 			if err := unix.Kill(pid, 0); !errors.Is(err, unix.ESRCH) {
 				t.Fatalf("child %d remains after completion: %v", pid, err)
 			}
-
+			scope.Finish(ctx)
 		})
 	}
 }

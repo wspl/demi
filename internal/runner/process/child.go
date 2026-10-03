@@ -317,6 +317,8 @@ func (c *Command) own(streams *commandStreams) {
 	streams.stopInput()
 	if c.group {
 		streams.record(c.Kill())
+		// Reaping is cleanup: cancellation must not abandon the owned group.
+		streams.record(c.platform.wait(context.WithoutCancel(c.ctx), c.cmd.Process))
 	}
 	streams.wait(c.ctx)
 	if !stop() {
