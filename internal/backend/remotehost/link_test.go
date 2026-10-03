@@ -40,7 +40,12 @@ func sendFrame(t *testing.T, l *remotehosttest.TestLink, message runnerwire.Outb
 
 // startRequest supplies the command context required by a shell job.
 func startRequest(script string) remotehost.JobStart {
-	return remotehost.JobStart{Script: script, CWD: "/work", Env: map[string]string{}, Context: hosttest.CommandContext()}
+	return remotehost.JobStart{
+		Script:  script,
+		CWD:     "/work",
+		Env:     map[string]string{},
+		Context: hosttest.CommandContext(),
+	}
 }
 
 // barrier observes all earlier runner responses without scheduler polling.
@@ -272,7 +277,9 @@ func TestLostConnectionFailsItsWorkAndNextServesSameHost(t *testing.T) {
 	requirePipe(t, err)
 	jEnd, err := j.End(t.Context())
 	requirePipe(t, err)
-	if pEnd.Kind != host.ProcessLost || pEnd.Reason != "runner disconnected" || jEnd.Status.Kind != host.ProcessLost || jEnd.Status.Reason != "runner disconnected" || h.Identity() != identity {
+	if pEnd.Kind != host.ProcessLost || pEnd.Reason != "runner disconnected" || jEnd.Status.Kind != host.ProcessLost ||
+		jEnd.Status.Reason != "runner disconnected" ||
+		h.Identity() != identity {
 		t.Fatal("lost work or identity")
 	}
 	p, err = h.Process().Spawn(t.Context(), host.SpawnRequest{Command: "echo"})

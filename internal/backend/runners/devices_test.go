@@ -39,6 +39,7 @@ func (f runnerFrames) Receive(ctx context.Context) ([]byte, error) {
 		return nil, ctx.Err()
 	}
 }
+
 func (f runnerFrames) Send(ctx context.Context, data []byte) error {
 	select {
 	case f <- data:
@@ -83,7 +84,14 @@ func TestDeviceConnectionLifecycleWithUnavailableLastSeen(t *testing.T) {
 	}
 	connect := func(home string) (*remotehost.Link, *runnerstest.Connection, runnerFrames) {
 		t.Helper()
-		link, driver := remotehost.NewLink(remotehost.LinkOptions{Device: "device", Identity: host.Identity{HomeDir: home}, Pipes: pipes, Policy: remotehosttest.NewCommandPolicy(nil)})
+		link, driver := remotehost.NewLink(
+			remotehost.LinkOptions{
+				Device:   "device",
+				Identity: host.Identity{HomeDir: home},
+				Pipes:    pipes,
+				Policy:   remotehosttest.NewCommandPolicy(nil),
+			},
+		)
 		serving := devices.Bind("device", link, driver, seen)
 		incoming := make(runnerFrames, 8)
 		connection := runnerstest.Serve(t, serving, incoming, make(runnerFrames, 64))
@@ -96,7 +104,16 @@ func TestDeviceConnectionLifecycleWithUnavailableLastSeen(t *testing.T) {
 	if !h.Online() || h.Identity().HomeDir != "/first" || devices.DeviceAccess("device") == nil {
 		t.Fatal("bound host unavailable")
 	}
-	installs := []runnerwire.Install{{Package: "example.commands", Name: "Commands", Version: "1", Phase: runnerwire.InstallPhaseDownload, Done: 1, Total: 2}}
+	installs := []runnerwire.Install{
+		{
+			Package: "example.commands",
+			Name:    "Commands",
+			Version: "1",
+			Phase:   runnerwire.InstallPhaseDownload,
+			Done:    1,
+			Total:   2,
+		},
+	}
 	frame, err := runnerwire.Encode(&runnerwire.Installs{Installs: installs})
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +192,9 @@ func TestServingRevocationAndProtocolLogging(t *testing.T) {
 				}
 			}()
 			var devices runners.Devices
-			link, driver := remotehost.NewLink(remotehost.LinkOptions{Device: "device", Pipes: pipes, Policy: remotehosttest.NewCommandPolicy(nil)})
+			link, driver := remotehost.NewLink(
+				remotehost.LinkOptions{Device: "device", Pipes: pipes, Policy: remotehosttest.NewCommandPolicy(nil)},
+			)
 			serving := devices.Bind("device", link, driver, seen)
 			done := make(chan remotehost.LinkEnd, 1)
 			lifetime, cancel := context.WithCancel(t.Context())

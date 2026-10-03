@@ -127,7 +127,11 @@ func Admit(ctx context.Context, shard CloudShard, device database.DeviceRecord) 
 			}
 			continue
 		}
-		return &Admission{Device: device.ID, held: lease, PerOperation: func() (*gates.Lease, error) { return c.admitOperation(m) }}, nil
+		return &Admission{
+			Device:       device.ID,
+			held:         lease,
+			PerOperation: func() (*gates.Lease, error) { return c.admitOperation(m) },
+		}, nil
 	}
 }
 
@@ -163,7 +167,8 @@ func Died(ctx context.Context, shard CloudShard, device webapi.DeviceID) error {
 	tuning := shard.CloudServices().Tuning
 	c.mu.Lock()
 	m := c.machine
-	if m == nil || m.device.ID != device || (m.phase != webapi.CloudStateRunning && m.phase != webapi.CloudStateBooting) {
+	if m == nil || m.device.ID != device ||
+		(m.phase != webapi.CloudStateRunning && m.phase != webapi.CloudStateBooting) {
 		c.mu.Unlock()
 		return nil
 	}
@@ -250,7 +255,13 @@ func loadMachine(ctx context.Context, s CloudShard, device database.DeviceRecord
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.machine == nil {
-		c.machine = &machine{device: device, gate: gates.NewActivity(nil), phase: webapi.CloudStateOff, operation: operation, marks: marks}
+		c.machine = &machine{
+			device:    device,
+			gate:      gates.NewActivity(nil),
+			phase:     webapi.CloudStateOff,
+			operation: operation,
+			marks:     marks,
+		}
 	}
 	return c.machine, nil
 }
@@ -297,28 +308,9 @@ func ensureRunning(ctx context.Context, s CloudShard, m *machine) (bool, error) 
 		}
 		recovering := m.phase == webapi.CloudStateRunning
 		if !recovering {
-			if m.phase != webapi.CloudStateOff {
-				c.mu.Unlock()
-				return false, failed(errors.New("Cloud is changing state"))
+			if err := prepareBootLocked(c, m, services); err != nil {
+				return false, err
 			}
-			count := uint32(0)
-			for _, at := range m.deaths {
-				if time.Since(at) < services.Tuning.CrashLoopWindow {
-					count++
-				}
-			}
-			if count >= services.Tuning.CrashLoopDeaths {
-				c.mu.Unlock()
-				return false, &Error{Kind: CrashLoop}
-			}
-			// Lock order is shard then capacity; capacity never calls into a shard.
-			permit := services.Capacity.TryTake()
-			if permit == nil {
-				c.mu.Unlock()
-				return false, &Error{Kind: AtCapacity}
-			}
-			m.permit = permit
-			m.phase = webapi.CloudStateBooting
 		}
 		t := &transition{done: make(chan struct{})}
 		m.transition = t
@@ -329,18 +321,7 @@ func ensureRunning(ctx context.Context, s CloudShard, m *machine) (bool, error) 
 		}
 		go func() {
 			defer c.workers.Done()
-			err := runTransition(context.WithoutCancel(c.ctx), func(ctx context.Context) error {
-				if recovering {
-					return recoverMachine(ctx, s, m)
-				}
-				return boot(ctx, s, m)
-			})
-			finishBoot(s, m, err)
-			c.mu.Lock()
-			m.transition = nil
-			c.mu.Unlock()
-			t.err = err
-			close(t.done)
+			completeBootTransition(c.ctx, s, c, m, t, recovering)
 		}()
 		if err := t.wait(ctx); err != nil {
 			return false, err
@@ -352,8 +333,53 @@ func ensureRunning(ctx context.Context, s CloudShard, m *machine) (bool, error) 
 func runTransition(ctx context.Context, work func(context.Context) error) (err error) {
 	defer func() {
 		if recover() != nil {
-			err = failed(errors.New("A transition of the Cloud ended without an answer")) //nolint:staticcheck // Preserve Rust user-facing text verbatim.
+			//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+			err = failed(errors.New("A transition of the Cloud ended without an answer"))
 		}
 	}()
 	return work(ctx)
+}
+
+// prepareBootLocked checks crash history and takes capacity with the shard mutex held.
+// On failure it releases the mutex before constructing the error.
+func prepareBootLocked(c *Cloud, m *machine, services *Services) error {
+	if m.phase != webapi.CloudStateOff {
+		c.mu.Unlock()
+		return failed(errors.New("Cloud is changing state"))
+	}
+	count := uint32(0)
+	for _, at := range m.deaths {
+		if time.Since(at) < services.Tuning.CrashLoopWindow {
+			count++
+		}
+	}
+	if count >= services.Tuning.CrashLoopDeaths {
+		c.mu.Unlock()
+		return &Error{Kind: CrashLoop}
+	}
+	// Lock order is shard then capacity; capacity never calls into a shard.
+	permit := services.Capacity.TryTake()
+	if permit == nil {
+		c.mu.Unlock()
+		return &Error{Kind: AtCapacity}
+	}
+	m.permit = permit
+	m.phase = webapi.CloudStateBooting
+	return nil
+}
+
+// completeBootTransition publishes readiness before waking callers waiting on the transition.
+func completeBootTransition(ctx context.Context, s CloudShard, c *Cloud, m *machine, t *transition, recovering bool) {
+	err := runTransition(context.WithoutCancel(ctx), func(ctx context.Context) error {
+		if recovering {
+			return recoverMachine(ctx, s, m)
+		}
+		return boot(ctx, s, m)
+	})
+	finishBoot(s, m, err)
+	c.mu.Lock()
+	m.transition = nil
+	c.mu.Unlock()
+	t.err = err
+	close(t.done)
 }

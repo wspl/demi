@@ -40,7 +40,8 @@ func runnerFixture(t *testing.T, options remotehosttest.FixtureOptions) *remoteh
 		}
 		output, err := exec.CommandContext(t.Context(), path, "--help").CombinedOutput()
 		var exit *exec.ExitError
-		runnerAvailability.waiting = errors.As(err, &exit) && exit.ExitCode() == 1 && string(output) == "demi-runner: not migrated yet\n"
+		runnerAvailability.waiting = errors.As(err, &exit) && exit.ExitCode() == 1 &&
+			string(output) == "demi-runner: not migrated yet\n"
 		if err != nil && !runnerAvailability.waiting {
 			runnerAvailability.err = fmt.Errorf("runner --help: %w: %s", err, output)
 		}
@@ -55,10 +56,20 @@ func runnerFixture(t *testing.T, options remotehosttest.FixtureOptions) *remoteh
 }
 
 // runnerShell owns a shell's jobs and observes their completion through page events.
-func runnerShell(t *testing.T, f *remotehosttest.RunnerFixture, env map[string]string, commands *remotehost.CommandSelection) (*remotehost.ShellEnvironment, *hosttest.Pages) {
+func runnerShell(
+	t *testing.T,
+	f *remotehosttest.RunnerFixture,
+	env map[string]string,
+	commands *remotehost.CommandSelection,
+) (*remotehost.ShellEnvironment, *hosttest.Pages) {
 	t.Helper()
 	pages := hosttest.NewPages(false)
-	options := remotehost.NewEnvironmentOptions(f.Host(), func(context.Context) (commandwire.CommandContext, error) { return hosttest.CommandContext(), nil }, pages, &hosttest.CountingNumbers{})
+	options := remotehost.NewEnvironmentOptions(
+		f.Host(),
+		func(context.Context) (commandwire.CommandContext, error) { return hosttest.CommandContext(), nil },
+		pages,
+		&hosttest.CountingNumbers{},
+	)
 	options.InitialEnv = map[string]string{"PATH": "/usr/bin:/bin"}
 	for name, value := range env {
 		options.InitialEnv[name] = value
@@ -79,7 +90,15 @@ func runnerExec(t *testing.T, s *remotehost.ShellEnvironment, script string, mil
 	if !ok {
 		t.Fatal("invalid observation window")
 	}
-	result, err := s.Exec(t.Context(), host.ExecRequest{Script: script, Window: window, Caller: host.JobCaller{Node: "test-session"}, ToolUseID: "call"})
+	result, err := s.Exec(
+		t.Context(),
+		host.ExecRequest{
+			Script:    script,
+			Window:    window,
+			Caller:    host.JobCaller{Node: "test-session"},
+			ToolUseID: "call",
+		},
+	)
 	requirePipe(t, err)
 	return result
 }
@@ -167,6 +186,7 @@ func (tap *wireTap) find(t *testing.T, match func(runnerwire.Outbound) bool) run
 		}
 	}
 }
+
 func (tap *wireTap) pipeDone(t *testing.T, id string) *runnerwire.PipeDone {
 	t.Helper()
 	return tap.find(t, func(message runnerwire.Outbound) bool {
@@ -179,7 +199,7 @@ func (tap *wireTap) pipeDone(t *testing.T, id string) *runnerwire.PipeDone {
 func TestRunnerPassesHostConformanceOverWire(t *testing.T) {
 	f := runnerFixture(t, remotehosttest.FixtureOptions{})
 	root := filepath.Join(f.Home(), "conformance")
-	requirePipe(t, os.Mkdir(root, 0700))
+	requirePipe(t, os.Mkdir(root, 0o700))
 	for _, scenario := range hosttest.ConformanceCases(f.HostAt(root), root, "/usr/bin:/bin") {
 		t.Run(scenario.Name, func(t *testing.T) { requirePipe(t, scenario.Run(t.Context())) })
 	}
@@ -205,7 +225,8 @@ func TestRunnerProcessReceivesEarlyInputAndUnreadInputDoesNotBlock(t *testing.T)
 	requirePipe(t, err)
 	requirePipe(t, sleeper.Control.Kill(t.Context(), host.Kill))
 	output, end := processOutput(t, cat)
-	if !bytes.Equal(output, append([]byte("early input|"), data...)) || end.Kind != host.ProcessExited || end.ExitCode != 0 {
+	if !bytes.Equal(output, append([]byte("early input|"), data...)) || end.Kind != host.ProcessExited ||
+		end.ExitCode != 0 {
 		t.Fatal("cat input changed", end)
 	}
 	_, end = processOutput(t, sleeper)
@@ -224,7 +245,8 @@ func TestRunnerProcessReceivesEarlyInputAndUnreadInputDoesNotBlock(t *testing.T)
 			ready = append(ready, chunk.Bytes...)
 		}
 	}
-	p, err := h.Process().Spawn(t.Context(), host.SpawnRequest{Command: "/bin/sh", Args: []string{"-c", "printf ready; sleep 30"}})
+	p, err := h.Process().
+		Spawn(t.Context(), host.SpawnRequest{Command: "/bin/sh", Args: []string{"-c", "printf ready; sleep 30"}})
 	requirePipe(t, err)
 	ready = nil
 	for !bytes.HasSuffix(ready, []byte("ready")) {
@@ -261,10 +283,14 @@ func TestRunnerProcessReceivesEarlyInputAndUnreadInputDoesNotBlock(t *testing.T)
 }
 
 func TestRunnerJobStreamsAndDeviceEnvironment(t *testing.T) {
-	f := runnerFixture(t, remotehosttest.FixtureOptions{Env: map[string]string{"DEVICE_FACT": "from the device", "SHARED": "device"}})
+	f := runnerFixture(
+		t,
+		remotehosttest.FixtureOptions{Env: map[string]string{"DEVICE_FACT": "from the device", "SHARED": "device"}},
+	)
 	s, _ := runnerShell(t, f, nil, nil)
 	result := runnerExec(t, s, "echo hello; echo oops >&2; exit 4", 10000)
-	if result.State.Phase != host.Exited || result.State.ExitCode != 4 || result.Stdout.Delta != "hello\n" || result.Stderr.Delta != "oops\n" {
+	if result.State.Phase != host.Exited || result.State.ExitCode != 4 || result.Stdout.Delta != "hello\n" ||
+		result.Stderr.Delta != "oops\n" {
 		t.Fatal(result)
 	}
 	for _, stream := range []core.StreamKind{core.StreamKindStdout, core.StreamKindStderr} {
@@ -287,9 +313,16 @@ func TestRunnerJobStreamsAndDeviceEnvironment(t *testing.T) {
 	if link.RunningJobs() != 0 {
 		t.Fatal("job remained running")
 	}
-	result = runnerExec(t, s, `echo "$DEVICE_FACT|$SHARED|${DEMI_SESSION_ID:-none}|${DEMI_SHELL_ID:-none}|${DEMI_CONVERSATION_ID:-none}|${DEMI_AGENT_NODE_ID:-none}"; echo "$PATH"`, 10000)
+	result = runnerExec(
+		t,
+		s,
+		`echo "$DEVICE_FACT|$SHARED|${DEMI_SESSION_ID:-none}|${DEMI_SHELL_ID:-none}|`+
+			`${DEMI_CONVERSATION_ID:-none}|${DEMI_AGENT_NODE_ID:-none}"; echo "$PATH"`,
+		10000,
+	)
 	facts, path, _ := strings.Cut(result.Stdout.Delta, "\n")
-	if facts != "from the device|device|none|none|none|none" || !strings.Contains(":"+strings.TrimSpace(path)+":", ":/usr/bin:") {
+	if facts != "from the device|device|none|none|none|none" ||
+		!strings.Contains(":"+strings.TrimSpace(path)+":", ":/usr/bin:") {
 		t.Fatal(result.Stdout)
 	}
 	overriding, _ := runnerShell(t, f, map[string]string{"SHARED": "backend"}, nil)
@@ -300,19 +333,60 @@ func TestRunnerJobStreamsAndDeviceEnvironment(t *testing.T) {
 
 func TestRunnerShellCarriesOnlyWorkingDirectory(t *testing.T) {
 	f := runnerFixture(t, remotehosttest.FixtureOptions{})
-	requirePipe(t, os.Mkdir(filepath.Join(f.Home(), "sub"), 0700))
+	requirePipe(t, os.Mkdir(filepath.Join(f.Home(), "sub"), 0o700))
 	s, _ := runnerShell(t, f, nil, nil)
 	for _, scenario := range []struct {
 		script, output string
 		code           int32
-	}{{"cd sub && export FOO=1 && pwd", f.Home() + "/sub\n", 0}, {`pwd; echo "${FOO:-unset}"`, f.Home() + "/sub\nunset\n", 0}, {"cd ..; exit 3", "", 3}, {"pwd", f.Home() + "\n", 0}, {"cd sub; do", "", 2}, {"pwd", f.Home() + "\n", 0}} {
+	}{
+		{
+			"cd sub && export FOO=1 && pwd",
+			f.Home() + "/sub\n",
+			0,
+		},
+		{
+			`pwd; echo "${FOO:-unset}"`,
+			f.Home() + "/sub\nunset\n",
+			0,
+		},
+		{
+			"cd ..; exit 3",
+			"",
+			3,
+		},
+		{
+			"pwd",
+			f.Home() + "\n",
+			0,
+		},
+		{
+			"cd sub; do",
+			"",
+			2,
+		},
+		{
+			"pwd",
+			f.Home() + "\n",
+			0,
+		},
+	} {
 		result := runnerExec(t, s, scenario.script, 10000)
-		if result.State.Phase != host.Exited || result.State.ExitCode != scenario.code || result.Stdout.Delta != scenario.output {
+		if result.State.Phase != host.Exited || result.State.ExitCode != scenario.code ||
+			result.Stdout.Delta != scenario.output {
 			t.Fatal(scenario.script, result)
 		}
 	}
 	window, _ := host.NewObservationWindow(10000)
-	ephemeral, err := s.Exec(t.Context(), host.ExecRequest{Script: "pwd", Shell: host.ShellTarget{Kind: host.EphemeralShell, CWD: new(f.Home() + "/sub")}, Window: window, Caller: host.JobCaller{Node: "test-session"}, ToolUseID: "call"})
+	ephemeral, err := s.Exec(
+		t.Context(),
+		host.ExecRequest{
+			Script:    "pwd",
+			Shell:     host.ShellTarget{Kind: host.EphemeralShell, CWD: new(f.Home() + "/sub")},
+			Window:    window,
+			Caller:    host.JobCaller{Node: "test-session"},
+			ToolUseID: "call",
+		},
+	)
 	requirePipe(t, err)
 	if ephemeral.Stdout.Delta != f.Home()+"/sub\n" || runnerExec(t, s, "pwd", 10000).Stdout.Delta != f.Home()+"\n" {
 		t.Fatal("ephemeral shell changed default cwd")
@@ -366,7 +440,10 @@ func TestRunnerWholeOutputBeyondViewsAndJobCleanup(t *testing.T) {
 		fmt.Fprintf(&printed, "%09d\n", i)
 	}
 	result := runnerExec(t, s, "seq -f '%09g' 0 9999; echo done >&2", 10000)
-	if result.State.Phase != host.Exited || result.State.ExitCode != 0 || result.Whole == nil || result.Stdout.Bytes != 100000 || string(wholeStream(*result.Whole.Output, core.StreamKindStdout)) != printed.String() || string(wholeStream(*result.Whole.Output, core.StreamKindStderr)) != "done\n" {
+	if result.State.Phase != host.Exited || result.State.ExitCode != 0 || result.Whole == nil ||
+		result.Stdout.Bytes != 100000 ||
+		string(wholeStream(*result.Whole.Output, core.StreamKindStdout)) != printed.String() ||
+		string(wholeStream(*result.Whole.Output, core.StreamKindStderr)) != "done\n" {
 		t.Fatal("whole output changed")
 	}
 	link, err := f.Link(t.Context())
@@ -412,7 +489,8 @@ func TestRunnerLostConnectionEndsJobAndReconnects(t *testing.T) {
 	requirePipe(t, err)
 	link.Disconnect("the connection was lost")
 	lost := runnerEnd(t, s, p, running.CommandID)
-	if lost.State.Phase != host.Exited || lost.State.ExitCode != 127 || lost.Whole == nil || !bytes.Contains(wholeStream(*lost.Whole.Output, core.StreamKindStderr), []byte("the connection was lost")) {
+	if lost.State.Phase != host.Exited || lost.State.ExitCode != 127 || lost.Whole == nil ||
+		!bytes.Contains(wholeStream(*lost.Whole.Output, core.StreamKindStderr), []byte("the connection was lost")) {
 		t.Fatal(lost)
 	}
 	_, err = f.Link(t.Context())

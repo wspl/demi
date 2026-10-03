@@ -186,7 +186,8 @@ func TestMissingEndTimesOutLostDeviceFailsAndEarlyReaderDrains(t *testing.T) {
 		lonely := p.Mint(new("a"), new("b"))
 		start := time.Now()
 		err := lonely.Done(t.Context())
-		if err == nil || !strings.Contains(err.Error(), "an end never arrived") || time.Since(start) != 200*time.Millisecond {
+		if err == nil || !strings.Contains(err.Error(), "an end never arrived") ||
+			time.Since(start) != 200*time.Millisecond {
 			t.Fatal(err, time.Since(start))
 		}
 		if _, err := p.ClaimSource(lonely.ID(), "a"); !errors.Is(err, remotehost.PipeNotFound) {
@@ -196,7 +197,10 @@ func TestMissingEndTimesOutLostDeviceFailsAndEarlyReaderDrains(t *testing.T) {
 		sink, err := p.ClaimSink(dropped.ID(), "b")
 		requirePipe(t, err)
 		p.DeviceGone("a")
-		if err := sink.SourceArrived(t.Context()); err == nil || !strings.Contains(err.Error(), "device a disconnected") {
+		if err := sink.SourceArrived(
+			t.Context(),
+		); err == nil ||
+			!strings.Contains(err.Error(), "device a disconnected") {
 			t.Fatal(err)
 		}
 		requirePipe(t, sink.Close(t.Context()))
@@ -244,7 +248,11 @@ func TestArrivalWindowEndsOnceBothEndsArriveHoweverQuiet(t *testing.T) {
 		if _, err = p.ClaimSink(device.ID(), "b"); !errors.Is(err, remotehost.PipeAlreadyConnected) {
 			t.Fatal(err)
 		}
-		body := &gatedPipeBody{pipeBody: pipeBody{bytes.NewReader([]byte("late"))}, entered: make(chan struct{}), release: make(chan struct{})}
+		body := &gatedPipeBody{
+			pipeBody: pipeBody{bytes.NewReader([]byte("late"))},
+			entered:  make(chan struct{}),
+			release:  make(chan struct{}),
+		}
 		done := startUpload(t.Context(), source, body)
 		<-body.entered
 		time.Sleep(80 * time.Millisecond)

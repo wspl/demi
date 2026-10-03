@@ -40,18 +40,26 @@ type LinkPolicy interface {
 
 // JobOrigin records whose a job is when it starts.
 type JobOrigin struct {
-	Host    host.Key
+	// Host identifies the admitted Host.
+	Host host.Key
+	// Context identifies the conversation and command locale.
 	Context commandwire.CommandContext
-	Caller  *host.JobCaller
+	// Caller identifies the node that owns command callbacks.
+	Caller *host.JobCaller
 }
 
 // LinkOptions describes a runner connection. Nil Ping disables liveness checks.
 type LinkOptions struct {
-	Device   string
+	// Device identifies the connected device.
+	Device string
+	// Identity is the account reported by the runner.
 	Identity host.Identity
-	Pipes    *Pipes
-	Policy   LinkPolicy
-	Ping     *time.Duration
+	// Pipes is the broker serving this connection.
+	Pipes *Pipes
+	// Policy supplies callback admission and execution.
+	Policy LinkPolicy
+	// Ping is the liveness interval; nil disables probes.
+	Ping *time.Duration
 }
 
 // LinkEndKind identifies why a connection ended.
@@ -68,7 +76,9 @@ const (
 
 // LinkEnd is the terminal reason for a connection.
 type LinkEnd struct {
-	Kind   LinkEndKind
+	// Kind identifies why the connection ended.
+	Kind LinkEndKind
+	// Reason describes the connection end.
 	Reason string
 }
 
@@ -113,7 +123,23 @@ func (w WeakLink) Is(link *Link) bool {
 // NewLink creates a connection and its single driver.
 func NewLink(options LinkOptions) (*Link, *LinkDriver) {
 	ctx, cancel := context.WithCancel(context.Background())
-	l := &Link{device: options.Device, identity: options.Identity, pipes: options.Pipes, policy: options.Policy, ctx: ctx, cancel: cancel, outbound: make(chan []byte, OutboundFrames), waiting: make(map[string]*replyWait), services: make(map[string]*ServiceStream), jobs: make(map[string]*Job), spawns: make(map[string]*runnerProcess), calls: make(map[string]*relayCall), numbers: make(map[string]struct{}), artifacts: make(map[string]struct{}), installsChanged: make(chan struct{})}
+	l := &Link{
+		device:          options.Device,
+		identity:        options.Identity,
+		pipes:           options.Pipes,
+		policy:          options.Policy,
+		ctx:             ctx,
+		cancel:          cancel,
+		outbound:        make(chan []byte, OutboundFrames),
+		waiting:         make(map[string]*replyWait),
+		services:        make(map[string]*ServiceStream),
+		jobs:            make(map[string]*Job),
+		spawns:          make(map[string]*runnerProcess),
+		calls:           make(map[string]*relayCall),
+		numbers:         make(map[string]struct{}),
+		artifacts:       make(map[string]struct{}),
+		installsChanged: make(chan struct{}),
+	}
 	return l, &LinkDriver{link: l, ping: options.Ping}
 }
 
@@ -218,17 +244,25 @@ func (l *Link) ReleaseConversation(ctx context.Context, conversation string) err
 
 // JobOutput holds one output view and its offset in the stream.
 type JobOutput struct {
+	// Stream identifies stdout or stderr.
 	Stream core.StreamKind
+	// Offset is the chunk start in that stream.
 	Offset uint64
-	Bytes  []byte
+	// Bytes contains the output chunk.
+	Bytes []byte
 }
 
 // JobEnd holds the job's terminal status, directory, output lengths and edits.
 type JobEnd struct {
-	Status         host.ProcessEnd
-	CWD            *string
-	Output         *runnerwire.OutputLengths
-	Files          []runnerwire.JobFileChange
+	// Status is the process completion reported by the runner.
+	Status host.ProcessEnd
+	// CWD is the final shell directory, when reported.
+	CWD *string
+	// Output contains the final stream lengths, when reported.
+	Output *runnerwire.OutputLengths
+	// Files lists tracked file changes.
+	Files []runnerwire.JobFileChange
+	// FilesTruncated reports whether tracking omitted additional file changes.
 	FilesTruncated bool
 }
 
@@ -301,21 +335,8 @@ loop:
 			end = LinkEnd{Kind: LinkDisconnected, Reason: reason}
 			break loop
 		case <-ticks:
-			l.mu.Lock()
-			state := l.liveness
-			if state == pingIdle {
-				l.liveness = pingWaiting
-			}
-			l.mu.Unlock()
-			if state == pingPaused {
-				continue
-			}
-			if state == pingWaiting {
-				end = LinkEnd{Kind: LinkDisconnected, Reason: "liveness: ping unanswered"}
-				break loop
-			}
-			if err := l.send(serveCtx, &runnerwire.Ping{}); err != nil {
-				end = LinkEnd{Kind: LinkClosed, Reason: "runner disconnected"}
+			if pingEnd := l.ping(serveCtx); pingEnd != nil {
+				end = *pingEnd
 				break loop
 			}
 		}
@@ -373,7 +394,14 @@ func (l *Link) send(ctx context.Context, message runnerwire.Inbound) error {
 		return &host.Error{Kind: host.Protocol, Message: err.Error()}
 	}
 	if len(frame) > runnerwire.MaxMessageBytes {
-		return &host.Error{Kind: host.TooLarge, Message: fmt.Sprintf("the request is %d bytes, over the %d-byte message limit", len(frame), runnerwire.MaxMessageBytes)}
+		return &host.Error{
+			Kind: host.TooLarge,
+			Message: fmt.Sprintf(
+				"the request is %d bytes, over the %d-byte message limit",
+				len(frame),
+				runnerwire.MaxMessageBytes,
+			),
+		}
 	}
 	select {
 	case <-l.ctx.Done():
@@ -386,12 +414,20 @@ func (l *Link) send(ctx context.Context, message runnerwire.Inbound) error {
 }
 
 // call registers a runner reply before sending the request and forgets canceled waits.
-func (l *Link) call(ctx context.Context, expected string, build func(string) runnerwire.Inbound) (runnerwire.Outbound, error) {
+func (l *Link) call(
+	ctx context.Context,
+	expected string,
+	build func(string) runnerwire.Inbound,
+) (runnerwire.Outbound, error) {
 	return l.callID(ctx, rand.Text(), expected, build)
 }
 
 // callID registers a stream-open reply under the stream's already allocated identity.
-func (l *Link) callID(ctx context.Context, id, expected string, build func(string) runnerwire.Inbound) (runnerwire.Outbound, error) {
+func (l *Link) callID(
+	ctx context.Context,
+	id, expected string,
+	build func(string) runnerwire.Inbound,
+) (runnerwire.Outbound, error) {
 	waiting := &replyWait{expected: expected, ready: make(chan reply, 1)}
 	l.mu.Lock()
 	if l.IsClosed() {
@@ -428,7 +464,10 @@ func (l *Link) answer(id, expected string, message runnerwire.Outbound, err erro
 		return
 	}
 	if err == nil && waiting.expected != expected {
-		err = &host.Error{Kind: host.Protocol, Message: fmt.Sprintf("the runner answered %s to a %s request", expected, waiting.expected)}
+		err = &host.Error{
+			Kind:    host.Protocol,
+			Message: fmt.Sprintf("the runner answered %s to a %s request", expected, waiting.expected),
+		}
 	}
 	waiting.ready <- reply{message: message, err: err}
 }
@@ -470,4 +509,26 @@ func (d *LinkDriver) writeFrames(ctx context.Context, outgoing FrameSink) LinkEn
 			}
 		}
 	}
+}
+
+// ping checks expiry before sending the next liveness probe.
+func (l *Link) ping(ctx context.Context) *LinkEnd {
+	l.mu.Lock()
+	state := l.liveness
+	if state == pingIdle {
+		l.liveness = pingWaiting
+	}
+	l.mu.Unlock()
+	if state == pingPaused {
+		return nil
+	}
+	if state == pingWaiting {
+		end := LinkEnd{Kind: LinkDisconnected, Reason: "liveness: ping unanswered"}
+		return &end
+	}
+	if err := l.send(ctx, &runnerwire.Ping{}); err != nil {
+		end := LinkEnd{Kind: LinkClosed, Reason: "runner disconnected"}
+		return &end
+	}
+	return nil
 }

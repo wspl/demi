@@ -16,7 +16,10 @@ func DecodeOutput(bytes []byte, missing *host.Missing) (host.WholeOutput, error)
 	for _, record := range records {
 		switch record := record.(type) {
 		case *runnerwire.KeptOutput:
-			output.Records = append(output.Records, host.OutputRecord{Stream: core.StreamKind(record.Stream), Bytes: record.Bytes})
+			output.Records = append(
+				output.Records,
+				host.OutputRecord{Stream: core.StreamKind(record.Stream), Bytes: record.Bytes},
+			)
 		case *runnerwire.KeptLeftOut:
 			output.Records = append(output.Records, host.OutputRecord{LeftOut: new(record.Bytes)})
 		}

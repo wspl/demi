@@ -32,7 +32,11 @@ func NewCommandPolicy(commands *host.CommandSet) *CommandPolicy {
 	if commands == nil {
 		commands = &host.CommandSet{}
 	}
-	return &CommandPolicy{commands: commands, storage: make(map[string]*hosttest.MemoryStorage), sequences: make(map[sequenceKey]uint64)}
+	return &CommandPolicy{
+		commands:  commands,
+		storage:   make(map[string]*hosttest.MemoryStorage),
+		sequences: make(map[sequenceKey]uint64),
+	}
 }
 
 // NodeStorage returns the command storage of node.
@@ -53,12 +57,21 @@ func (p *CommandPolicy) AdmitCall(_ remotehost.JobOrigin) error {
 }
 
 // Dispatch runs invocation in the test command set.
-func (p *CommandPolicy) Dispatch(ctx context.Context, _ remotehost.JobOrigin, invocation host.RPCInvocation, port host.RPCPort) (uint8, error) {
+func (p *CommandPolicy) Dispatch(
+	ctx context.Context,
+	_ remotehost.JobOrigin,
+	invocation host.RPCInvocation,
+	port host.RPCPort,
+) (uint8, error) {
 	return p.commands.Dispatch(ctx, invocation, port)
 }
 
 // Storage operates on the caller node's storage while the call lives.
-func (p *CommandPolicy) Storage(ctx context.Context, job remotehost.JobOrigin, op host.StorageOp) (host.StorageReply, error) {
+func (p *CommandPolicy) Storage(
+	ctx context.Context,
+	job remotehost.JobOrigin,
+	op host.StorageOp,
+) (host.StorageReply, error) {
 	if job.Caller == nil {
 		return nil, &host.PortError{Kind: host.StorageRefused, Message: "the job has no command storage"}
 	}
@@ -75,7 +88,12 @@ func (p *CommandPolicy) GrowVolume(_ context.Context, _ runnerwire.VolumeName, _
 }
 
 // ReserveNumbers counts each conversation's sequence from one.
-func (p *CommandPolicy) ReserveNumbers(_ context.Context, conversation string, sequence commandwire.ServiceSequence, count uint32) (uint64, error) {
+func (p *CommandPolicy) ReserveNumbers(
+	_ context.Context,
+	conversation string,
+	sequence commandwire.ServiceSequence,
+	count uint32,
+) (uint64, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	key := sequenceKey{conversation: conversation, sequence: sequence}
@@ -101,7 +119,11 @@ type TestDevice struct {
 
 // NewTestDevice creates a device with policy and registers test cleanup.
 func NewTestDevice(t testing.TB, policy remotehost.LinkPolicy) *TestDevice {
-	d := &TestDevice{policy: policy, pipes: remotehost.NewPipes(remotehost.Arrival), identity: host.Identity{UID: 501, GID: 20, Hostname: "test", HomeDir: "/work"}}
+	d := &TestDevice{
+		policy:   policy,
+		pipes:    remotehost.NewPipes(remotehost.Arrival),
+		identity: host.Identity{UID: 501, GID: 20, Hostname: "test", HomeDir: "/work"},
+	}
 	t.Cleanup(func() {
 		if err := d.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -126,9 +148,24 @@ func (d *TestDevice) Host(cwd string, admission remotehost.Admission) *remotehos
 
 // Connect connects a fake runner. Nil ping disables liveness.
 func (d *TestDevice) Connect(ping *time.Duration) *TestLink {
-	link, driver := remotehost.NewLink(remotehost.LinkOptions{Device: TestDeviceID, Identity: d.identity, Pipes: d.pipes, Policy: d.policy, Ping: ping})
+	link, driver := remotehost.NewLink(
+		remotehost.LinkOptions{
+			Device:   TestDeviceID,
+			Identity: d.identity,
+			Pipes:    d.pipes,
+			Policy:   d.policy,
+			Ping:     ping,
+		},
+	)
 	ctx, cancel := context.WithCancel(context.Background())
-	connection := &TestLink{link: link, incoming: make(chan []byte, 8), outgoing: make(chan []byte, remotehost.OutboundFrames), ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	connection := &TestLink{
+		link:     link,
+		incoming: make(chan []byte, 8),
+		outgoing: make(chan []byte, remotehost.OutboundFrames),
+		ctx:      ctx,
+		cancel:   cancel,
+		done:     make(chan struct{}),
+	}
 	d.mu.Lock()
 	d.current = remotehost.DeviceLink{Link: link}
 	d.links = append(d.links, connection)
@@ -138,7 +175,11 @@ func (d *TestDevice) Connect(ping *time.Duration) *TestLink {
 		cancel()
 	}
 	serve := func() {
-		connection.end = driver.Serve(context.Background(), testFrames{frames: connection.incoming, gone: ctx.Done()}, testFrames{frames: connection.outgoing})
+		connection.end = driver.Serve(
+			context.Background(),
+			testFrames{frames: connection.incoming, gone: ctx.Done()},
+			testFrames{frames: connection.outgoing},
+		)
 		d.mu.Lock()
 		if d.current.Link == link {
 			d.current = remotehost.DeviceLink{Last: new(d.identity)}
@@ -263,6 +304,7 @@ type testFrames struct {
 	gone   <-chan struct{}
 }
 
+// Receive reads accepted runner frames before reporting disconnection.
 func (f testFrames) Receive(ctx context.Context) ([]byte, error) {
 	// A runner that closes still leaves its already accepted frames to be read.
 	select {
@@ -279,6 +321,8 @@ func (f testFrames) Receive(ctx context.Context) ([]byte, error) {
 		return nil, ctx.Err()
 	}
 }
+
+// Send queues a backend frame until delivery or cancellation.
 func (f testFrames) Send(ctx context.Context, frame []byte) error {
 	select {
 	case f.frames <- frame:

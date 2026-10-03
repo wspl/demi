@@ -248,7 +248,11 @@ func TestIdleUsesAttachedActivityAndReleasesPartialHolds(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newCloudFixture(t)
 		f.flush = true
-		f.records.uses = []database.CloudUseRecord{{ID: "target", OnCloud: true}, {ID: "second", OnCloud: true}, {ID: "attached", Attached: true}}
+		f.records.uses = []database.CloudUseRecord{
+			{ID: "target", OnCloud: true},
+			{ID: "second", OnCloud: true},
+			{ID: "attached", Attached: true},
+		}
 		f.activity["attached"] = idlewatch.Activity{Busy: true}
 		a := f.access()
 		a.Release()
@@ -355,11 +359,18 @@ func TestResetIdempotencyAndWaitingAdmission(t *testing.T) {
 		if f.count("reset") != 1 || f.count("wake") != 2 || f.count("current_base_version") != 1 {
 			t.Fatal("reset not idempotent")
 		}
-		want := []webapi.ResetPhase{webapi.ResetPhaseStopping, webapi.ResetPhaseSaving, webapi.ResetPhaseRebuilding, webapi.ResetPhaseBooting, webapi.ResetPhaseReady}
+		want := []webapi.ResetPhase{
+			webapi.ResetPhaseStopping,
+			webapi.ResetPhaseSaving,
+			webapi.ResetPhaseRebuilding,
+			webapi.ResetPhaseBooting,
+			webapi.ResetPhaseReady,
+		}
 		if !reflect.DeepEqual(f.records.phases, want) {
 			t.Fatalf("phases: %v", f.records.phases)
 		}
-		if !reflect.DeepEqual(f.heldIDs, []webapi.ConversationID{"target"}) || !reflect.DeepEqual(f.resetFiles, []bool{true}) {
+		if !reflect.DeepEqual(f.heldIDs, []webapi.ConversationID{"target"}) ||
+			!reflect.DeepEqual(f.resetFiles, []bool{true}) {
 			t.Fatal("reset held wrong conversations")
 		}
 		if p := f.services.Capacity.TryTake(); p != nil {
@@ -466,7 +477,8 @@ func TestStatusDoesNotAllocateAndGrowthChecksOwnership(t *testing.T) {
 			t.Fatal(err)
 		}
 		status, err = Status(t.Context(), f)
-		if err != nil || status.State != webapi.CloudStateOff || status.Volumes == nil || status.Volumes.HomeBytes != 2048 {
+		if err != nil || status.State != webapi.CloudStateOff || status.Volumes == nil ||
+			status.Volumes.HomeBytes != 2048 {
 			t.Fatalf("off status: %+v %v", status, err)
 		}
 		if f.count("wake") != 0 {
@@ -521,7 +533,16 @@ func TestConversationHoldsReleaseOnPartialResetFailure(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newCloudFixture(t)
 		f.holdFailure = "second"
-		held, err := holdReset(t.Context(), f, []cloudUse{{id: "first", role: targetRole}, {id: "second", role: targetRole}, {id: "attached", role: attachedRole}}, time.Second)
+		held, err := holdReset(
+			t.Context(),
+			f,
+			[]cloudUse{
+				{id: "first", role: targetRole},
+				{id: "second", role: targetRole},
+				{id: "attached", role: attachedRole},
+			},
+			time.Second,
+		)
 		if held != nil || err == nil || f.holds != 0 {
 			t.Fatalf("partial reset: %v %v holds=%d", held, err, f.holds)
 		}
@@ -568,7 +589,11 @@ func TestStartupReconcilesAndRecoversWithoutBooting(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		op := database.ManagedOperation{ID: "interrupted", BaseVersion: "pinned-base", Phase: webapi.ResetPhaseRebuilding}
+		op := database.ManagedOperation{
+			ID:          "interrupted",
+			BaseVersion: "pinned-base",
+			Phase:       webapi.ResetPhaseRebuilding,
+		}
 		if err := f.records.PutManagedOperation(t.Context(), device.ID, op); err != nil {
 			t.Fatal(err)
 		}
@@ -586,7 +611,8 @@ func TestStartupReconcilesAndRecoversWithoutBooting(t *testing.T) {
 		if !ok || reset.Params.BaseVersion != "pinned-base" || reset.Params.OperationID != "interrupted" {
 			t.Fatal("startup lost durable reset identity")
 		}
-		if f.records.latest.Phase != webapi.ResetPhaseFailed || f.records.latest.Error == nil || *f.records.latest.Error != "Reset disks recovered; retry to start Cloud" {
+		if f.records.latest.Phase != webapi.ResetPhaseFailed || f.records.latest.Error == nil ||
+			*f.records.latest.Error != "Reset disks recovered; retry to start Cloud" {
 			t.Fatalf("recovered status: %+v", f.records.latest)
 		}
 		if !reflect.DeepEqual(f.records.announced, []webapi.OperationID{"interrupted"}) {
@@ -610,6 +636,7 @@ func (r *recoveryFixture) DeleteCloudExposes(context.Context) error {
 	r.exposesDeleted = true
 	return nil
 }
+
 func (r *recoveryFixture) UnfinishedManagedOperations(context.Context) ([]database.DeviceOperation, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -654,7 +681,8 @@ func TestResetDuringBootJoinsItAndSharesItsPermit(t *testing.T) {
 			t.Fatal("did not join reset after boot")
 		}
 		status, err := Status(t.Context(), f)
-		if err != nil || status.Operation == nil || status.Operation.Phase != webapi.ResetPhaseReady || status.State != webapi.CloudStateRunning {
+		if err != nil || status.Operation == nil || status.Operation.Phase != webapi.ResetPhaseReady ||
+			status.State != webapi.CloudStateRunning {
 			t.Fatalf("reset status: %+v %v", status, err)
 		}
 	})
@@ -730,7 +758,8 @@ func TestFlushDeadlineStillSavesCloud(t *testing.T) {
 		if err := Close(t.Context(), f); err != nil {
 			t.Fatal(err)
 		}
-		if time.Since(start) != f.services.Tuning.SyncTimeout || f.count("hibernate") != 1 || f.phase() != webapi.CloudStateOff {
+		if time.Since(start) != f.services.Tuning.SyncTimeout || f.count("hibernate") != 1 ||
+			f.phase() != webapi.CloudStateOff {
 			t.Fatalf("flush timeout prevented save: %s %s", time.Since(start), f.phase())
 		}
 	})

@@ -45,22 +45,38 @@ func TestRunnerFileContentsWholeRangesAndOutsideMessages(t *testing.T) {
 	link, err := f.Link(t.Context())
 	requirePipe(t, err)
 	large := patternedBytes(runnerwire.MaxMessageBytes + 3)
-	requirePipe(t, os.WriteFile(filepath.Join(home, "large.bin"), large, 0600))
+	requirePipe(t, os.WriteFile(filepath.Join(home, "large.bin"), large, 0o600))
 	read, err := h.FS().ReadFile(t.Context(), filepath.Join(home, "large.bin"))
 	requirePipe(t, err)
 	if !bytes.Equal(read, large) {
 		t.Fatal("large read changed")
 	}
-	requirePipe(t, h.FS().WriteFile(t.Context(), filepath.Join(home, "copy/large.bin"), host.FileContents{Bytes: large}, host.WriteOptions{CreateParents: true}))
+	requirePipe(
+		t,
+		h.FS().
+			WriteFile(
+				t.Context(),
+				filepath.Join(home, "copy/large.bin"),
+				host.FileContents{Bytes: large},
+				host.WriteOptions{CreateParents: true}),
+	)
 	read, err = os.ReadFile(filepath.Join(home, "copy/large.bin"))
 	requirePipe(t, err)
-	if !bytes.Equal(read, large) || !reflect.DeepEqual(fileNames(t, filepath.Join(home, "copy")), []string{"large.bin"}) {
+	if !bytes.Equal(read, large) ||
+		!reflect.DeepEqual(fileNames(t, filepath.Join(home, "copy")), []string{"large.bin"}) {
 		t.Fatal("large write changed or left temporary file")
 	}
 	video := patternedBytes(3 * 1024 * 1024)
 	path := filepath.Join(home, "video.bin")
-	requirePipe(t, os.WriteFile(path, video, 0600))
-	for _, span := range []host.ByteRange{{Offset: 1024*1024 + 7, Length: new(uint64(4096))}, {Offset: uint64(len(video) - 10)}, {Length: new(uint64(0))}} {
+	requirePipe(t, os.WriteFile(path, video, 0o600))
+	for _, span := range []host.ByteRange{
+		{
+			Offset: 1024*1024 + 7,
+			Length: new(uint64(4096)),
+		},
+		{Offset: uint64(len(video) - 10)},
+		{Length: new(uint64(0))},
+	} {
 		stream, err := h.FS().ReadStream(t.Context(), path, span)
 		requirePipe(t, err)
 		data, err := collectPipe(t.Context(), stream)
@@ -79,15 +95,25 @@ func TestRunnerFileContentsWholeRangesAndOutsideMessages(t *testing.T) {
 	_, err = h.FS().ReadStream(t.Context(), home, host.ByteRange{})
 	requireHostCode(t, err, "EISDIR")
 	before := fileNames(t, home)
-	err = h.FS().WriteFile(t.Context(), filepath.Join(home, "absent/file"), host.FileContents{Bytes: patternedBytes(10)}, host.WriteOptions{})
+	err = h.FS().
+		WriteFile(
+			t.Context(),
+			filepath.Join(home, "absent/file"),
+			host.FileContents{Bytes: patternedBytes(10)},
+			host.WriteOptions{})
 	requireHostCode(t, err, "ENOENT")
 	if !reflect.DeepEqual(fileNames(t, home), before) {
 		t.Fatal("refused write left temporary file")
 	}
-	requirePipe(t, os.Mkdir(filepath.Join(home, "target"), 0700))
-	requirePipe(t, os.WriteFile(filepath.Join(home, "target/kept"), []byte("kept"), 0600))
+	requirePipe(t, os.Mkdir(filepath.Join(home, "target"), 0o700))
+	requirePipe(t, os.WriteFile(filepath.Join(home, "target/kept"), []byte("kept"), 0o600))
 	before = fileNames(t, home)
-	if err = h.FS().WriteFile(t.Context(), filepath.Join(home, "target"), host.FileContents{Bytes: patternedBytes(2 * 1024 * 1024)}, host.WriteOptions{}); err == nil {
+	if err = h.FS().
+		WriteFile(
+			t.Context(),
+			filepath.Join(home, "target"),
+			host.FileContents{Bytes: patternedBytes(2 * 1024 * 1024)},
+			host.WriteOptions{}); err == nil {
 		t.Fatal("replaced a directory")
 	}
 	read, err = os.ReadFile(filepath.Join(home, "target/kept"))
@@ -95,14 +121,22 @@ func TestRunnerFileContentsWholeRangesAndOutsideMessages(t *testing.T) {
 	if string(read) != "kept" || !reflect.DeepEqual(fileNames(t, home), before) {
 		t.Fatal("refused directory write changed files")
 	}
-	requirePipe(t, os.WriteFile(filepath.Join(home, "replaced"), []byte("old"), 0600))
-	requirePipe(t, h.FS().WriteFile(t.Context(), filepath.Join(home, "replaced"), host.FileContents{Bytes: []byte("new")}, host.WriteOptions{}))
+	requirePipe(t, os.WriteFile(filepath.Join(home, "replaced"), []byte("old"), 0o600))
+	requirePipe(
+		t,
+		h.FS().
+			WriteFile(
+				t.Context(),
+				filepath.Join(home, "replaced"),
+				host.FileContents{Bytes: []byte("new")},
+				host.WriteOptions{}),
+	)
 	read, err = os.ReadFile(filepath.Join(home, "replaced"))
 	requirePipe(t, err)
 	if string(read) != "new" {
 		t.Fatal("replacement failed")
 	}
-	requirePipe(t, os.Mkdir(filepath.Join(home, "empty"), 0700))
+	requirePipe(t, os.Mkdir(filepath.Join(home, "empty"), 0o700))
 	entries, err := h.FS().ReadDir(t.Context(), filepath.Join(home, "empty"))
 	requirePipe(t, err)
 	if len(entries) != 0 {
@@ -114,10 +148,10 @@ func TestRunnerFileContentsWholeRangesAndOutsideMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	listing := filepath.Join(home, "listing")
-	requirePipe(t, os.Mkdir(listing, 0700))
+	requirePipe(t, os.Mkdir(listing, 0o700))
 	name := strings.Repeat("n", 250)
 	for i := 0; i <= runnerwire.MaxMessageBytes/len(name); i++ {
-		requirePipe(t, os.WriteFile(filepath.Join(listing, fmt.Sprintf("%s%d", name, i)), nil, 0600))
+		requirePipe(t, os.WriteFile(filepath.Join(listing, fmt.Sprintf("%s%d", name, i)), nil, 0o600))
 	}
 	_, err = h.FS().ReadDir(t.Context(), listing)
 	if !errors.As(err, &failure) || failure.Kind != host.TooLarge {
@@ -205,7 +239,8 @@ func TestRunnerJobPipesCarryStreamsAndRefusedEndsDoNotBlock(t *testing.T) {
 	}
 	end, err := job.End(t.Context())
 	requirePipe(t, err)
-	if end.Status.Kind != host.ProcessExited || end.Status.ExitCode != 0 || end.Output == nil || end.Output.StdoutBytes != uint64(len(payload)) {
+	if end.Status.Kind != host.ProcessExited || end.Status.ExitCode != 0 || end.Output == nil ||
+		end.Output.StdoutBytes != uint64(len(payload)) {
 		t.Fatal(end)
 	}
 	for _, id := range []string{input.ID(), output.ID()} {
@@ -235,7 +270,8 @@ func TestRunnerJobPipesCarryStreamsAndRefusedEndsDoNotBlock(t *testing.T) {
 	requirePipe(t, err)
 	end, err = head.End(t.Context())
 	requirePipe(t, err)
-	if end.Status.Kind != host.ProcessExited || end.Status.ExitCode != 0 || end.Output == nil || end.Output.StdoutBytes != 2000000 {
+	if end.Status.Kind != host.ProcessExited || end.Status.ExitCode != 0 || end.Output == nil ||
+		end.Output.StdoutBytes != 2000000 {
 		t.Fatal(end)
 	}
 	done := tap.pipeDone(t, "gone")

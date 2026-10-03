@@ -77,8 +77,8 @@ func (e *ShellEnvironment) active(id core.CommandID) (*runningCommand, error) {
 	return running, nil
 }
 
-// checkFree checks a shell reservation under the environment mutex.
-func (e *ShellEnvironment) checkFree(id core.ShellID) error {
+// checkFreeLocked checks a shell reservation under the environment mutex.
+func (e *ShellEnvironment) checkFreeLocked(id core.ShellID) error {
 	shell := e.shells[id]
 	if shell == nil {
 		return &host.ShellError{Kind: host.UnknownShell, Shell: id}
@@ -95,25 +95,17 @@ func (e *ShellEnvironment) reserve(target host.ShellTarget, command core.Command
 	defer e.mu.Unlock()
 	var id core.ShellID
 	if target.Kind == host.ExistingShell {
-		if err := e.checkFree(target.ID); err != nil {
+		if err := e.checkFreeLocked(target.ID); err != nil {
 			return "", false, err
 		}
 		id = target.ID
 	} else if target.Kind == host.DefaultShell && e.defaultShell != nil && e.shells[*e.defaultShell].foreground == nil {
 		id = *e.defaultShell
 	} else {
-		if e.spareShell == nil {
+		var ok bool
+		id, ok = e.reserveNewShellLocked(target)
+		if !ok {
 			return "", false, nil
-		}
-		id = *e.spareShell
-		e.spareShell = nil
-		cwd := e.options.Host.DefaultCWD()
-		if target.Kind == host.EphemeralShell && target.CWD != nil {
-			cwd = *target.CWD
-		}
-		e.shells[id] = &shellState{cwd: cwd, env: maps.Clone(e.options.InitialEnv)}
-		if target.Kind == host.DefaultShell && e.defaultShell == nil {
-			e.defaultShell = new(id)
 		}
 	}
 	e.shells[id].foreground = new(command)
@@ -121,10 +113,13 @@ func (e *ShellEnvironment) reserve(target host.ShellTarget, command core.Command
 }
 
 // start takes sequence numbers outside locks and registers one owned shell task.
-func (e *ShellEnvironment) start(ctx context.Context, request host.ExecRequest) (core.CommandID, *runningCommand, error) {
+func (e *ShellEnvironment) start(
+	ctx context.Context,
+	request host.ExecRequest,
+) (core.CommandID, *runningCommand, error) {
 	if request.Shell.Kind == host.ExistingShell {
 		e.mu.Lock()
-		err := e.checkFree(request.Shell.ID)
+		err := e.checkFreeLocked(request.Shell.ID)
 		e.mu.Unlock()
 		if err != nil {
 			return "", nil, err
@@ -156,7 +151,12 @@ func (e *ShellEnvironment) start(ctx context.Context, request host.ExecRequest) 
 	}
 	record := host.NewCommandRecord(shell, command, request.ToolUseID)
 	lifetime, cancel := context.WithCancel(ctx)
-	running := &runningCommand{ctx: lifetime, cancel: cancel, startedJob: make(chan struct{}), settled: make(chan struct{})}
+	running := &runningCommand{
+		ctx:        lifetime,
+		cancel:     cancel,
+		startedJob: make(chan struct{}),
+		settled:    make(chan struct{}),
+	}
 	e.mu.Lock()
 	e.records[command] = record
 	e.running[command] = running
@@ -168,7 +168,13 @@ func (e *ShellEnvironment) start(ctx context.Context, request host.ExecRequest) 
 }
 
 // run keeps Host admission through edits, output storage and the runner's job release.
-func (e *ShellEnvironment) run(shell core.ShellID, command core.CommandID, request host.ExecRequest, running *runningCommand, record *host.CommandRecord) {
+func (e *ShellEnvironment) run(
+	shell core.ShellID,
+	command core.CommandID,
+	request host.ExecRequest,
+	running *runningCommand,
+	record *host.CommandRecord,
+) {
 	defer e.tasks.Done()
 	var failure error
 	job := func(ctx context.Context) error {
@@ -190,7 +196,16 @@ func (e *ShellEnvironment) run(shell core.ShellID, command core.CommandID, reque
 		} else {
 			page = pushReason(&running.received, failure.Error())
 		}
-		e.settle(context.WithoutCancel(running.ctx), command, record, ending, host.WholeOutput{Records: running.received}, nil, page, nil)
+		e.settle(
+			context.WithoutCancel(running.ctx),
+			command,
+			record,
+			ending,
+			host.WholeOutput{Records: running.received},
+			nil,
+			page,
+			nil,
+		)
 	}
 	e.mu.Lock()
 	if state := e.shells[shell]; state != nil && state.foreground != nil && *state.foreground == command {
@@ -203,7 +218,14 @@ func (e *ShellEnvironment) run(shell core.ShellID, command core.CommandID, reque
 }
 
 // execute follows one runner job while preserving the command's cancellation and page demand.
-func (e *ShellEnvironment) execute(ctx context.Context, shell core.ShellID, command core.CommandID, request host.ExecRequest, running *runningCommand, record *host.CommandRecord) error {
+func (e *ShellEnvironment) execute(
+	ctx context.Context,
+	shell core.ShellID,
+	command core.CommandID,
+	request host.ExecRequest,
+	running *runningCommand,
+	record *host.CommandRecord,
+) error {
 	commandContext, err := e.options.Context(ctx)
 	if err != nil {
 		return err
@@ -224,7 +246,17 @@ func (e *ShellEnvironment) execute(ctx context.Context, shell core.ShellID, comm
 		env = make(map[string]string)
 	}
 	env["PWD"] = cwd
-	job, err := e.options.Host.StartJob(ctx, JobStart{Script: request.Script, CWD: cwd, Env: env, Context: commandContext, Caller: new(request.Caller), Commands: e.options.Commands})
+	job, err := e.options.Host.StartJob(
+		ctx,
+		JobStart{
+			Script:   request.Script,
+			CWD:      cwd,
+			Env:      env,
+			Context:  commandContext,
+			Caller:   new(request.Caller),
+			Commands: e.options.Commands,
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -232,6 +264,42 @@ func (e *ShellEnvironment) execute(ctx context.Context, shell core.ShellID, comm
 	running.job = job
 	running.mu.Unlock()
 	close(running.startedJob)
+	streams := e.followJob(ctx, command, running, record, job)
+	workCtx := context.WithoutCancel(ctx)
+	end, err := job.End(workCtx)
+	if err != nil {
+		return err
+	}
+	e.finishJob(workCtx, shell, command, running, record, job, end, streams)
+	return nil
+}
+
+// reserveNewShellLocked consumes a spare number and initializes a shell under the environment mutex.
+func (e *ShellEnvironment) reserveNewShellLocked(target host.ShellTarget) (core.ShellID, bool) {
+	if e.spareShell == nil {
+		return "", false
+	}
+	id := *e.spareShell
+	e.spareShell = nil
+	cwd := e.options.Host.DefaultCWD()
+	if target.Kind == host.EphemeralShell && target.CWD != nil {
+		cwd = *target.CWD
+	}
+	e.shells[id] = &shellState{cwd: cwd, env: maps.Clone(e.options.InitialEnv)}
+	if target.Kind == host.DefaultShell && e.defaultShell == nil {
+		e.defaultShell = new(id)
+	}
+	return id, true
+}
+
+// followJob receives job output and forwards following and interruption decisions until exit.
+func (e *ShellEnvironment) followJob(
+	ctx context.Context,
+	command core.CommandID,
+	running *runningCommand,
+	record *host.CommandRecord,
+	job *Job,
+) [2]receivedStream {
 	var streams [2]receivedStream
 	followed := false
 	stop := running.ctx.Done()
@@ -268,10 +336,5 @@ func (e *ShellEnvironment) execute(ctx context.Context, shell core.ShellID, comm
 			}
 		}
 	}
-	end, err := job.End(workCtx)
-	if err != nil {
-		return err
-	}
-	e.finishJob(workCtx, shell, command, running, record, job, end, streams)
-	return nil
+	return streams
 }

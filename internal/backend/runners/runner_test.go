@@ -21,7 +21,12 @@ func TestRunnerFileListingsAndText(t *testing.T) {
 	}
 	fs := fixture.Host().FS()
 	path := filepath.Join(fixture.Home(), "report.txt")
-	if err := fs.WriteFile(t.Context(), path, host.FileContents{Bytes: []byte("first\nsecond\n")}, host.WriteOptions{}); err != nil {
+	if err := fs.WriteFile(
+		t.Context(),
+		path,
+		host.FileContents{Bytes: []byte("first\nsecond\n")},
+		host.WriteOptions{},
+	); err != nil {
 		t.Fatal(err)
 	}
 	text, err := runners.ReadTextFile(t.Context(), fs, path)
@@ -44,7 +49,12 @@ func TestRunnerFileListingsAndText(t *testing.T) {
 	if !found {
 		t.Fatal("report absent from directory")
 	}
-	if err := fs.WriteFile(t.Context(), path, host.FileContents{Bytes: []byte{0, 255}}, host.WriteOptions{}); err != nil {
+	if err := fs.WriteFile(
+		t.Context(),
+		path,
+		host.FileContents{Bytes: []byte{0, 255}},
+		host.WriteOptions{},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runners.ReadTextFile(t.Context(), fs, path); !errors.Is(err, runners.TextNotText) {
@@ -62,7 +72,14 @@ func TestRunnerFileListingsAndText(t *testing.T) {
 	if err := large.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runners.ReadTextFile(t.Context(), fs, filepath.Join(fixture.Home(), "large")); !errors.Is(err, runners.TextTooLarge) {
+	if _, err := runners.ReadTextFile(
+		t.Context(),
+		fs,
+		filepath.Join(fixture.Home(), "large"),
+	); !errors.Is(
+		err,
+		runners.TextTooLarge,
+	) {
 		t.Fatalf("large file: %v", err)
 	}
 }

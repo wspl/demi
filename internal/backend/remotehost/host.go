@@ -21,7 +21,9 @@ import (
 // DeviceLink is a device's current connection, or its last identity while offline.
 // A nil Link means offline; Last is used only while offline.
 type DeviceLink struct {
+	// Link is the current runner connection, if any.
 	Link *Link
+	// Last is the identity retained after the runner disconnects.
 	Last *host.Identity
 }
 
@@ -91,7 +93,15 @@ func (h *Host) StartJob(ctx context.Context, job JobStart) (*Job, error) {
 		return nil, err
 	}
 	jobCtx, cancel := context.WithCancel(context.Background())
-	running := &Job{id: rand.Text(), state: newJobState[JobEnd, JobOutput](), ctx: jobCtx, cancel: cancel, lease: lease, origin: JobOrigin{Host: h.key, Context: job.Context, Caller: job.Caller}, commands: job.Commands}
+	running := &Job{
+		id:       rand.Text(),
+		state:    newJobState[JobEnd, JobOutput](),
+		ctx:      jobCtx,
+		cancel:   cancel,
+		lease:    lease,
+		origin:   JobOrigin{Host: h.key, Context: job.Context, Caller: job.Caller},
+		commands: job.Commands,
+	}
 	link, err := h.connection()
 	if err != nil {
 		running.finish(JobEnd{Status: host.ProcessEnd{Kind: host.ProcessLost, Reason: "runner disconnected"}})
@@ -183,7 +193,11 @@ func (h *Host) GitChanges(ctx context.Context, root string) (runnerwire.GitChang
 	if lease != nil {
 		defer lease.Release()
 	}
-	reply, err := link.call(ctx, `Git("changes")`, func(id string) runnerwire.Inbound { return &runnerwire.GitChangesMessage{ID: id, Root: root} })
+	reply, err := link.call(
+		ctx,
+		`Git("changes")`,
+		func(id string) runnerwire.Inbound { return &runnerwire.GitChangesMessage{ID: id, Root: root} },
+	)
 	if err != nil {
 		return runnerwire.GitChanges{}, err
 	}
@@ -256,13 +270,24 @@ func (h *Host) OpenNet(ctx context.Context, hostname string, port uint16, input,
 
 // OpenService opens a resident user stream. Streams are retention, not activity.
 // The caller must Close the returned stream, including after Done.
-func (h *Host) OpenService(ctx context.Context, request ServiceRequest, input, output runnerwire.PipeRef) (*ServiceStream, error) {
+func (h *Host) OpenService(
+	ctx context.Context,
+	request ServiceRequest,
+	input, output runnerwire.PipeRef,
+) (*ServiceStream, error) {
 	link, err := h.connection()
 	if err != nil {
 		return nil, err
 	}
 	lifetime, cancel := context.WithCancel(link.ctx)
-	stream := &ServiceStream{link: link, id: rand.Text(), request: request, ctx: lifetime, cancel: cancel, done: make(chan struct{})}
+	stream := &ServiceStream{
+		link:    link,
+		id:      rand.Text(),
+		request: request,
+		ctx:     lifetime,
+		cancel:  cancel,
+		done:    make(chan struct{}),
+	}
 	link.mu.Lock()
 	if link.IsClosed() {
 		link.mu.Unlock()
@@ -272,7 +297,16 @@ func (h *Host) OpenService(ctx context.Context, request ServiceRequest, input, o
 	link.services[stream.id] = stream
 	link.mu.Unlock()
 	_, err = link.callID(ctx, stream.id, "Service", func(id string) runnerwire.Inbound {
-		message := &runnerwire.ServiceOpen{StreamID: id, Context: request.Context, Package: request.Package, Operation: request.Operation, JSON: request.JSON, CWD: request.CWD, Input: input, Output: output}
+		message := &runnerwire.ServiceOpen{
+			StreamID:  id,
+			Context:   request.Context,
+			Package:   request.Package,
+			Operation: request.Operation,
+			JSON:      request.JSON,
+			CWD:       request.CWD,
+			Input:     input,
+			Output:    output,
+		}
 		if request.Args != nil {
 			message.Args = new(request.Args)
 		}
@@ -318,24 +352,15 @@ func (h *Host) CallService(ctx context.Context, request ServiceRequest, input []
 	if err = writer.Write(ctx, input); err != nil {
 		incoming.Fail("service call failed")
 		outgoing.Fail("service call failed")
-		return nil, &ServiceCallError{Kind: ServiceHostError, Err: &host.Error{Kind: host.Interrupted, Message: err.Error()}}
+		return nil, &ServiceCallError{
+			Kind: ServiceHostError,
+			Err:  &host.Error{Kind: host.Interrupted, Message: err.Error()},
+		}
 	}
 	writer.End()
-	var output []byte
-	for {
-		chunk, readErr := reader.Next(ctx)
-		if errors.Is(readErr, io.EOF) {
-			break
-		}
-		if readErr != nil {
-			return nil, &ServiceCallError{Kind: ServiceHostError, Err: &host.Error{Kind: host.Interrupted, Message: readErr.Error()}}
-		}
-		if len(chunk) > maxBytes-len(output) {
-			incoming.Fail("service call failed")
-			outgoing.Fail("service call failed")
-			return nil, &ServiceCallError{Kind: ServiceTooLarge, Limit: maxBytes}
-		}
-		output = append(output, chunk...)
+	output, err := collectService(ctx, reader, incoming, outgoing, maxBytes)
+	if err != nil {
+		return nil, err
 	}
 	end, err := stream.Done(ctx)
 	if err != nil {
@@ -363,15 +388,22 @@ func HostIdentity(identity runnerwire.HostIdentity) host.Identity {
 
 // JobStart describes one shell job and its optional declared commands and pipes.
 type JobStart struct {
+	// Script is the shell source dispatched to the runner.
 	Script string
-	CWD    string
+	// CWD is the starting working directory.
+	CWD string
 	// Env is exactly the variables above the device's environment.
-	Env      map[string]string
-	Context  commandwire.CommandContext
-	Caller   *host.JobCaller
+	Env map[string]string
+	// Context identifies the conversation and command locale.
+	Context commandwire.CommandContext
+	// Caller identifies the node that owns command callbacks.
+	Caller *host.JobCaller
+	// Commands pins the declared command manifest for this job.
 	Commands *CommandSelection
-	Stdin    *runnerwire.PipeRef
-	Stdout   *runnerwire.PipeRef
+	// Stdin names the optional input pipe.
+	Stdin *runnerwire.PipeRef
+	// Stdout names the optional output pipe.
+	Stdout *runnerwire.PipeRef
 }
 
 // Job is one shell job on the runner. The owner releases it after keeping its output and edits.
@@ -425,7 +457,12 @@ func (j *Job) WriteStdin(ctx context.Context, bytes []byte) error {
 	if !j.live() {
 		return nil
 	}
-	return sendStdin(ctx, j.link, bytes, func(chunk []byte) runnerwire.Inbound { return &runnerwire.JobStdin{JobID: j.id, Bytes: chunk} })
+	return sendStdin(
+		ctx,
+		j.link,
+		bytes,
+		func(chunk []byte) runnerwire.Inbound { return &runnerwire.JobStdin{JobID: j.id, Bytes: chunk} },
+	)
 }
 
 // CloseStdin ends the job's standard input; ended jobs do nothing.
@@ -453,7 +490,10 @@ func (j *Job) ReadOutput(ctx context.Context) (host.WholeOutput, error) {
 	}
 	output, err := DecodeOutput(data, nil)
 	if err != nil {
-		return host.WholeOutput{}, &host.Error{Kind: host.Protocol, Message: "the job's kept output does not decode: " + err.Error()}
+		return host.WholeOutput{}, &host.Error{
+			Kind:    host.Protocol,
+			Message: "the job's kept output does not decode: " + err.Error(),
+		}
 	}
 	return output, nil
 }
@@ -476,33 +516,46 @@ func (j *Job) Kill(ctx context.Context, signal runnerwire.Signal) error {
 
 // LogPage is a page of the Host's log with the next read's cursor.
 type LogPage struct {
+	// Lines contains the log entries returned by this read.
 	Lines []runnerwire.LogLine
-	Next  uint64
+	// Next is the cursor for the next log read.
+	Next uint64
 }
 
 // ServiceRequest describes a user stream or one-shot service invocation.
 type ServiceRequest struct {
-	Context   commandwire.CommandContext
-	Package   commandwire.PackageDescriptor
+	// Context identifies the conversation and command locale.
+	Context commandwire.CommandContext
+	// Package is the descriptor of the invoked command package.
+	Package commandwire.PackageDescriptor
+	// Operation names the package operation.
 	Operation string
 	// Args is the optional invocation argument object, encoded with contract codecs.
-	Args     json.RawMessage
-	JSON     *bool
-	CWD      string
+	Args json.RawMessage
+	// JSON selects JSON output when supplied.
+	JSON *bool
+	// CWD is the invocation working directory.
+	CWD string
+	// Resolver locates executable artifacts for this service.
 	Resolver ArtifactResolver
+	// Attached lists additional artifacts to install for this invocation.
 	Attached []AttachedArtifact
 }
 
 // AttachedArtifact allows a user stream to install an artifact beside its package's own.
 type AttachedArtifact struct {
+	// Artifact describes the artifact bytes.
 	Artifact commandwire.PackageArtifact
+	// Location specifies where the runner downloads those bytes.
 	Location commandwire.ArtifactLocation
 }
 
 // ServiceEnd describes completion and the bounded stderr tail.
 type ServiceEnd struct {
+	// ExitCode is the service exit status.
 	ExitCode uint8
-	Stderr   string
+	// Stderr contains the bounded diagnostic tail.
+	Stderr string
 }
 
 // ServiceStream owns answers to a user stream's artifact requests until Close.
@@ -550,12 +603,18 @@ const (
 
 // ServiceCallError carries a Host failure, nonzero completion, or output limit.
 type ServiceCallError struct {
-	Kind     ServiceCallErrorKind
-	Err      error
+	// Kind identifies the service failure.
+	Kind ServiceCallErrorKind
+	// Err is the underlying Host failure, when present.
+	Err error
+	// ExitCode is the nonzero service exit status.
 	ExitCode uint8
-	Stderr   string
-	Stdout   []byte
-	Limit    int
+	// Stderr is the diagnostic tail of a failed service.
+	Stderr string
+	// Stdout is the collected output of a failed service.
+	Stdout []byte
+	// Limit is the exceeded stdout byte bound.
+	Limit int
 }
 
 // Error describes the failed service call.
@@ -635,7 +694,19 @@ func (j *Job) start(ctx context.Context, job JobStart) (err error) {
 			}
 		}
 	}
-	return j.link.send(ctx, &runnerwire.JobStart{JobID: j.id, ManifestHash: hash, Context: job.Context, Script: job.Script, CWD: job.CWD, Env: job.Env, Stdin: job.Stdin, Stdout: job.Stdout})
+	return j.link.send(
+		ctx,
+		&runnerwire.JobStart{
+			JobID:        j.id,
+			ManifestHash: hash,
+			Context:      job.Context,
+			Script:       job.Script,
+			CWD:          job.CWD,
+			Env:          job.Env,
+			Stdin:        job.Stdin,
+			Stdout:       job.Stdout,
+		},
+	)
 }
 
 // finish releases a running job's admission before publishing its terminal result.
@@ -662,4 +733,28 @@ func sendStdin(ctx context.Context, link *Link, data []byte, frame func([]byte) 
 		data = data[n:]
 	}
 	return nil
+}
+
+// collectService enforces the service call output bound and fails both pipes on overflow.
+func collectService(ctx context.Context, reader *PipeReader, incoming, outgoing *Pipe, maxBytes int) ([]byte, error) {
+	var output []byte
+	for {
+		chunk, readErr := reader.Next(ctx)
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return nil, &ServiceCallError{
+				Kind: ServiceHostError,
+				Err:  &host.Error{Kind: host.Interrupted, Message: readErr.Error()},
+			}
+		}
+		if len(chunk) > maxBytes-len(output) {
+			incoming.Fail("service call failed")
+			outgoing.Fail("service call failed")
+			return nil, &ServiceCallError{Kind: ServiceTooLarge, Limit: maxBytes}
+		}
+		output = append(output, chunk...)
+	}
+	return output, nil
 }

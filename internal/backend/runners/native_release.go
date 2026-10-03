@@ -39,7 +39,12 @@ func verifyReleases(ctx context.Context, releases []NativeRelease, allTargets bo
 // verifyRelease checks each declared executable and resource archive by size and hash.
 func verifyRelease(ctx context.Context, release NativeRelease, allTargets bool) (verifiedRelease, error) {
 	refused := func(reason string, cause error) (verifiedRelease, error) {
-		return verifiedRelease{}, &PublicationError{Kind: PublicationRelease, Directory: release.Directory, Reason: reason, Err: cause}
+		return verifiedRelease{}, &PublicationError{
+			Kind:      PublicationRelease,
+			Directory: release.Directory,
+			Reason:    reason,
+			Err:       cause,
+		}
 	}
 	data, err := os.ReadFile(filepath.Join(release.Directory, "descriptor.json"))
 	if err != nil {
@@ -79,6 +84,22 @@ func verifyRelease(ctx context.Context, release NativeRelease, allTargets bool) 
 		}
 		verified.executables = append(verified.executables, ArtifactFile{Path: path, Artifact: expected})
 	}
+	archives, err := verifyResources(ctx, release, descriptor, refused)
+	if err != nil {
+		return verifiedRelease{}, err
+	}
+	verified.archives = archives
+	return verified, nil
+}
+
+// verifyResources checks every resource archive in descriptor order before publication.
+func verifyResources(
+	ctx context.Context,
+	release NativeRelease,
+	descriptor commandwire.PackageDescriptor,
+	refused func(string, error) (verifiedRelease, error),
+) ([]ArtifactFile, error) {
+	var archives []ArtifactFile
 	for _, name := range slices.Sorted(maps.Keys(descriptor.Resources)) {
 		resource := descriptor.Resources[name]
 		for _, target := range slices.Sorted(maps.Keys(resource.Targets)) {
@@ -88,15 +109,20 @@ func verifyRelease(ctx context.Context, release NativeRelease, allTargets bool) 
 			found, err := artifacts.DigestFile(ctx, path, expected.Size)
 			if err != nil {
 				if ctx.Err() != nil {
-					return verifiedRelease{}, publicationStoreError(ctx.Err())
+					return nil, publicationStoreError(ctx.Err())
 				}
-				return refused(fmt.Sprintf("%s for %s: %v", name, target, err), err)
+				_, err := refused(fmt.Sprintf("%s for %s: %v", name, target, err), err)
+				return nil, err
 			}
 			if found.Size != expected.Size || found.SHA256 != expected.SHA256 {
-				return refused(fmt.Sprintf("%s for %s: the archive does not match the descriptor", name, target), nil)
+				_, err := refused(
+					fmt.Sprintf("%s for %s: the archive does not match the descriptor", name, target),
+					nil,
+				)
+				return nil, err
 			}
-			verified.archives = append(verified.archives, ArtifactFile{Path: path, Artifact: expected})
+			archives = append(archives, ArtifactFile{Path: path, Artifact: expected})
 		}
 	}
-	return verified, nil
+	return archives, nil
 }

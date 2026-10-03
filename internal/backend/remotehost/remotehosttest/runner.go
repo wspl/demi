@@ -23,9 +23,12 @@ import (
 
 // FixtureOptions supplies a runner's environment, callback commands and optional wire tap.
 type FixtureOptions struct {
-	Env      map[string]string
+	// Env overlays variables on the runner environment.
+	Env map[string]string
+	// Commands provides commands available to callback invocations.
 	Commands *host.CommandSet
-	Tap      chan<- runnerwire.Outbound
+	// Tap receives runner messages when supplied.
+	Tap chan<- runnerwire.Outbound
 }
 
 // RunnerFixture owns a real runner connected to a backend end of its own.
@@ -49,7 +52,14 @@ type RunnerFixture struct {
 // StartRunnerFixture starts the backend and runner and waits until it is online.
 func StartRunnerFixture(ctx context.Context, t testing.TB, options FixtureOptions) (*RunnerFixture, error) {
 	lifetime, cancel := context.WithCancel(context.Background())
-	f := &RunnerFixture{pipes: remotehost.NewPipes(remotehost.Arrival), policy: NewCommandPolicy(options.Commands), ctx: lifetime, cancel: cancel, changed: make(chan struct{}), tap: options.Tap}
+	f := &RunnerFixture{
+		pipes:   remotehost.NewPipes(remotehost.Arrival),
+		policy:  NewCommandPolicy(options.Commands),
+		ctx:     lifetime,
+		cancel:  cancel,
+		changed: make(chan struct{}),
+		tap:     options.Tap,
+	}
 	t.Cleanup(func() {
 		if err := f.Stop(context.Background()); err != nil {
 			t.Error(err)

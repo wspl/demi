@@ -107,19 +107,23 @@ func PublishNative(ctx context.Context, path string) (*NativeCatalog, error) {
 // SignedArtifacts resolves published artifacts with a URL signed for each request.
 // PublishNative constructs it only after all artifacts and mappings are published.
 type SignedArtifacts struct {
-	signer    artifactSigner
+	signer    signedURLer
 	prefix    string
 	published map[string]uint64
 }
 
-// artifactSigner signs only the download operation native publication needs.
-type artifactSigner interface {
+// signedURLer signs only the download operation native publication needs.
+type signedURLer interface {
 	SignedURL(context.Context, string, *blob.SignedURLOptions) (string, error)
 }
 
 // Resolve returns an HTTPS download signed for five minutes, only when the
 // artifact's SHA-256 and size occur in the published catalog.
-func (a *SignedArtifacts) Resolve(ctx context.Context, artifact commandwire.PackageArtifact, _ string) (commandwire.ArtifactLocation, error) {
+func (a *SignedArtifacts) Resolve(
+	ctx context.Context,
+	artifact commandwire.PackageArtifact,
+	_ string,
+) (commandwire.ArtifactLocation, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("the work that asked no longer runs: %w", err)
 	}
@@ -127,7 +131,11 @@ func (a *SignedArtifacts) Resolve(ctx context.Context, artifact commandwire.Pack
 	if !ok || size != artifact.Size {
 		return nil, errors.New("the artifact is not in the published package catalog")
 	}
-	location, err := a.signer.SignedURL(ctx, a.prefix+"/blobs/"+artifact.SHA256, &blob.SignedURLOptions{Expiry: 300 * time.Second, Method: http.MethodGet})
+	location, err := a.signer.SignedURL(
+		ctx,
+		a.prefix+"/blobs/"+artifact.SHA256,
+		&blob.SignedURLOptions{Expiry: 300 * time.Second, Method: http.MethodGet},
+	)
 	if err != nil {
 		return nil, err
 	}

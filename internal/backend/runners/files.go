@@ -70,7 +70,16 @@ func BrowseDirectory(ctx context.Context, fs host.FS, path string) ([]webapi.Dir
 			}
 			return nil, err
 		}
-		entries = append(entries, webapi.DirectoryEntry{Name: entry.Name, IsDirectory: entry.Kind == host.Directory, IsSymbolicLink: stat.Kind == host.Symlink, Size: stat.Size, ModifiedAt: stat.Modified})
+		entries = append(
+			entries,
+			webapi.DirectoryEntry{
+				Name:           entry.Name,
+				IsDirectory:    entry.Kind == host.Directory,
+				IsSymbolicLink: stat.Kind == host.Symlink,
+				Size:           stat.Size,
+				ModifiedAt:     stat.Modified,
+			},
+		)
 	}
 	return entries, nil
 }

@@ -30,6 +30,7 @@ func newPeer(t *testing.T, conn net.Conn) *managerPeer {
 	t.Cleanup(func() { _ = conn.Close() })
 	return &managerPeer{t: t, conn: conn, reader: bufio.NewReader(conn)}
 }
+
 func (p *managerPeer) request() machinewire.MachineRequest {
 	p.t.Helper()
 	line, err := p.reader.ReadBytes('\n')
@@ -42,6 +43,7 @@ func (p *managerPeer) request() machinewire.MachineRequest {
 	}
 	return request
 }
+
 func (p *managerPeer) write(response machinewire.MachineResponse) {
 	p.t.Helper()
 	line, err := machinewire.EncodeLine(response)
@@ -52,10 +54,12 @@ func (p *managerPeer) write(response machinewire.MachineResponse) {
 		p.t.Fatal(err)
 	}
 }
+
 func (p *managerPeer) ok(id, result string) {
 	p.t.Helper()
 	p.write(&machinewire.OK{ID: id, Result: []byte(result)})
 }
+
 func (p *managerPeer) closed() {
 	p.t.Helper()
 	_, err := p.reader.ReadByte()
@@ -122,14 +126,20 @@ func TestClientMatchesRepliesByID(t *testing.T) {
 			if request.Call.Name() == "current_base_version" {
 				peer.ok(request.ID, `"base-1"`)
 			} else {
-				peer.ok(request.ID, `{"generation":"gen-1","baseVersion":"base-1","resetId":null,"systemBytes":1024,"homeBytes":2048}`)
+				peer.ok(
+					request.ID,
+					`{"generation":"gen-1","baseVersion":"base-1","resetId":null,"systemBytes":1024,"homeBytes":2048}`,
+				)
 			}
 		}
 		b, i := <-base, <-image
 		if b.err != nil || b.value != "base-1" {
 			t.Fatalf("base: %+v", b)
 		}
-		if i.err != nil || i.value == nil || i.value.Generation != "gen-1" || i.value.BaseVersion != "base-1" || i.value.ResetID != nil || i.value.SystemBytes != 1024 || i.value.HomeBytes != 2048 {
+		if i.err != nil || i.value == nil || i.value.Generation != "gen-1" || i.value.BaseVersion != "base-1" ||
+			i.value.ResetID != nil ||
+			i.value.SystemBytes != 1024 ||
+			i.value.HomeBytes != 2048 {
 			t.Fatalf("image: %+v", i)
 		}
 	})
@@ -143,10 +153,13 @@ func TestClientFailureKeepsConnectionUsable(t *testing.T) {
 		request := peer.request()
 		peer.write(&machinewire.ErrorResponse{ID: request.ID, Message: "no such machine"})
 		var failure *ManagerError
-		if err := (<-failing).err; !errors.As(err, &failure) || failure.Kind != ManagerFailed || err.Error() != "no such machine" {
+		if err := (<-failing).err; !errors.As(err, &failure) || failure.Kind != ManagerFailed ||
+			err.Error() != "no such machine" {
 			t.Fatalf("failure: %v", err)
 		}
-		if _, err := peer.conn.Write([]byte("not json\n{\"type\":\"ok\",\"id\":\"99\",\"result\":null}\n\n")); err != nil {
+		if _, err := peer.conn.Write(
+			[]byte("not json\n{\"type\":\"ok\",\"id\":\"99\",\"result\":null}\n\n"),
+		); err != nil {
 			t.Fatal(err)
 		}
 		answered := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
@@ -236,7 +249,8 @@ func TestClientDropFailsPendingAndReconnects(t *testing.T) {
 		}
 		for _, result := range []managerResult[machinewire.BaseVersion]{<-first, <-second} {
 			var unavailable *ManagerError
-			if !errors.As(result.err, &unavailable) || unavailable.Kind != ManagerUnavailable || unavailable.Operation != "current_base_version" {
+			if !errors.As(result.err, &unavailable) || unavailable.Kind != ManagerUnavailable ||
+				unavailable.Operation != "current_base_version" {
 				t.Fatalf("drop: %v", result.err)
 			}
 		}
@@ -244,7 +258,12 @@ func TestClientDropFailsPendingAndReconnects(t *testing.T) {
 		dial := c.dial
 		c.dial = func(context.Context, string, string) (net.Conn, error) { return nil, io.ErrClosedPipe }
 		var unavailable *ManagerError
-		if _, err := Call(t.Context(), c, machinewire.CurrentBaseVersionParams{}); !errors.Is(err, io.ErrClosedPipe) || !errors.As(err, &unavailable) || unavailable.Kind != ManagerUnavailable {
+		if _, err := Call(
+			t.Context(),
+			c,
+			machinewire.CurrentBaseVersionParams{},
+		); !errors.Is(err, io.ErrClosedPipe) || !errors.As(err, &unavailable) ||
+			unavailable.Kind != ManagerUnavailable {
 			t.Fatalf("dial failure: %v", err)
 		}
 		c.dial = dial

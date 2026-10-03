@@ -15,18 +15,35 @@ func DefaultLocale() commandwire.CommandLocale {
 
 // CommandContext builds the context of caller's work for conversation and its
 // owner user, with the user's reported locale or the default before one.
-func CommandContext(ctx context.Context, control *database.ControlService, user webapi.UserID, conversation webapi.ConversationID, caller commandwire.CommandCaller) (commandwire.CommandContext, error) {
+func CommandContext(
+	ctx context.Context,
+	control *database.ControlService,
+	user webapi.UserID,
+	conversation webapi.ConversationID,
+	caller commandwire.CommandCaller,
+) (commandwire.CommandContext, error) {
 	return workContext(ctx, control, user, string(conversation), caller)
 }
 
 // ProviderContext builds the context of user's work for a provider entry outside
 // a conversation, such as installing its CLI; the context names the entry.
-func ProviderContext(ctx context.Context, control *database.ControlService, user webapi.UserID, provider webapi.ProviderID) (commandwire.CommandContext, error) {
+func ProviderContext(
+	ctx context.Context,
+	control *database.ControlService,
+	user webapi.UserID,
+	provider webapi.ProviderID,
+) (commandwire.CommandContext, error) {
 	return workContext(ctx, control, user, "provider-"+string(provider), &commandwire.UserCaller{})
 }
 
 // workContext supplies the user's saved locale to a command's scope and caller.
-func workContext(ctx context.Context, control *database.ControlService, user webapi.UserID, scope string, caller commandwire.CommandCaller) (commandwire.CommandContext, error) {
+func workContext(
+	ctx context.Context,
+	control *database.ControlService,
+	user webapi.UserID,
+	scope string,
+	caller commandwire.CommandCaller,
+) (commandwire.CommandContext, error) {
 	preferences, err := control.Preferences(ctx, user)
 	if err != nil {
 		return commandwire.CommandContext{}, err

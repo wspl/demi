@@ -27,7 +27,12 @@ type commandNode struct {
 
 // Register registers node's commands and manifest for conversation. An existing
 // registration is shared. Each returned hold must be released by its environment.
-func (r *CommandRouter) Register(node string, conversation webapi.ConversationID, commands *host.CommandSet, selection *remotehost.CommandSelection) *CommandRegistration {
+func (r *CommandRouter) Register(
+	node string,
+	conversation webapi.ConversationID,
+	commands *host.CommandSet,
+	selection *remotehost.CommandSelection,
+) *CommandRegistration {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.nodes == nil {
@@ -55,7 +60,12 @@ func (r *CommandRouter) SelectionOf(node string, conversation webapi.Conversatio
 
 // Dispatch runs job's call in its node's commands, refusing a missing node or a
 // node registered to another conversation.
-func (r *CommandRouter) Dispatch(ctx context.Context, job remotehost.JobOrigin, invocation host.RPCInvocation, port host.RPCPort) (uint8, error) {
+func (r *CommandRouter) Dispatch(
+	ctx context.Context,
+	job remotehost.JobOrigin,
+	invocation host.RPCInvocation,
+	port host.RPCPort,
+) (uint8, error) {
 	if job.Caller == nil {
 		return 0, &host.RPCError{Kind: host.HandlerFailed, Message: "rpc commands run for an agent's jobs"}
 	}
@@ -64,10 +74,16 @@ func (r *CommandRouter) Dispatch(ctx context.Context, job remotehost.JobOrigin, 
 	registered := r.nodes[node]
 	r.mu.Unlock()
 	if registered == nil {
-		return 0, &host.RPCError{Kind: host.HandlerFailed, Message: fmt.Sprintf("no agent session behind node %s", node)}
+		return 0, &host.RPCError{
+			Kind:    host.HandlerFailed,
+			Message: fmt.Sprintf("no agent session behind node %s", node),
+		}
 	}
 	if string(registered.conversation) != job.Context.Conversation {
-		return 0, &host.RPCError{Kind: host.HandlerFailed, Message: fmt.Sprintf("node %s belongs to another conversation", node)}
+		return 0, &host.RPCError{
+			Kind:    host.HandlerFailed,
+			Message: fmt.Sprintf("node %s belongs to another conversation", node),
+		}
 	}
 	return registered.commands.Dispatch(ctx, invocation, port)
 }

@@ -23,6 +23,7 @@ type runnerProcess struct {
 	finished sync.Once
 }
 
+// Spawn starts a process on the runner under Host admission.
 func (f processFacet) Spawn(ctx context.Context, request host.SpawnRequest) (*host.StartedProcess, error) {
 	var lease *gates.Lease
 	var err error
@@ -32,7 +33,12 @@ func (f processFacet) Spawn(ctx context.Context, request host.SpawnRequest) (*ho
 			return nil, err
 		}
 	}
-	process := &runnerProcess{id: rand.Text(), retained: request.Retained, state: newJobState[host.ProcessEnd, host.ProcessOutput](), lease: lease}
+	process := &runnerProcess{
+		id:       rand.Text(),
+		retained: request.Retained,
+		state:    newJobState[host.ProcessEnd, host.ProcessOutput](),
+		lease:    lease,
+	}
 	link, err := f.host.connection()
 	if err != nil {
 		process.finish(host.ProcessEnd{Kind: host.ProcessLost, Reason: "runner disconnected"})
@@ -87,27 +93,41 @@ func (p *runnerProcess) finish(end host.ProcessEnd) {
 	})
 }
 
+// Next waits for the next process output chunk.
 func (p *runnerProcess) Next(ctx context.Context) (host.ProcessOutput, error) {
 	return p.state.next(ctx)
 }
+
+// WriteStdin sends bytes to the runner process input.
 func (p *runnerProcess) WriteStdin(ctx context.Context, data []byte) error {
 	if p.link == nil || p.state.ended() != nil {
 		return nil
 	}
-	return sendStdin(ctx, p.link, data, func(chunk []byte) runnerwire.Inbound { return &runnerwire.SpawnStdin{SpawnID: p.id, Bytes: chunk} })
+	return sendStdin(
+		ctx,
+		p.link,
+		data,
+		func(chunk []byte) runnerwire.Inbound { return &runnerwire.SpawnStdin{SpawnID: p.id, Bytes: chunk} },
+	)
 }
+
+// CloseStdin ends the runner process input.
 func (p *runnerProcess) CloseStdin(ctx context.Context) error {
 	if p.link == nil || p.state.ended() != nil {
 		return nil
 	}
 	return p.link.send(ctx, &runnerwire.SpawnStdinEnd{SpawnID: p.id})
 }
+
+// Kill signals the runner process.
 func (p *runnerProcess) Kill(ctx context.Context, signal host.Signal) error {
 	if p.link == nil || p.state.ended() != nil {
 		return nil
 	}
 	return p.link.send(ctx, &runnerwire.SpawnKill{SpawnID: p.id, Signal: new(runnerwire.Signal(signal))})
 }
+
+// Close kills the runner process.
 func (p *runnerProcess) Close(ctx context.Context) error { return p.Kill(ctx, host.Kill) }
 
 // processEnd translates the runner's terminal status in its specified precedence.
@@ -116,7 +136,10 @@ func processEnd(code *int32, signal *string, spawnError *runnerwire.SpawnError) 
 		return host.ProcessEnd{Kind: host.ProcessExited, ExitCode: *code}
 	}
 	if spawnError != nil {
-		return host.ProcessEnd{Kind: host.ProcessNotStarted, SpawnError: &host.SpawnError{Kind: host.SpawnErrorKind(spawnError.Kind), Detail: spawnError.Detail}}
+		return host.ProcessEnd{
+			Kind:       host.ProcessNotStarted,
+			SpawnError: &host.SpawnError{Kind: host.SpawnErrorKind(spawnError.Kind), Detail: spawnError.Detail},
+		}
 	}
 	if signal != nil {
 		return host.ProcessEnd{Kind: host.ProcessSignalled, Signal: *signal}

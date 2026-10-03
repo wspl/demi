@@ -17,7 +17,10 @@ import (
 const Arrival = 120 * time.Second
 
 // PipeFailure is why a pipe failed; Message begins "pipe failed: ".
-type PipeFailure struct{ Message string }
+type PipeFailure struct {
+	// Message describes why the pipe failed.
+	Message string
+}
 
 // Error describes the pipe failure.
 func (e *PipeFailure) Error() string {
@@ -59,8 +62,10 @@ const (
 
 // PipeError describes an unavailable backend end (source or sink).
 type PipeError struct {
+	// Kind identifies the rejected pipe operation.
 	Kind PipeErrorKind
-	End  string
+	// End identifies the pipe endpoint involved.
+	End string
 }
 
 // Error describes why the backend cannot take the end.
@@ -93,7 +98,13 @@ func NewPipes(arrival time.Duration) *Pipes {
 
 // Mint creates a pipe; nil endpoints are initially unassigned.
 func (p *Pipes) Mint(source, sink *string) *Pipe {
-	pipe := &Pipe{id: rand.Text(), broker: p, changed: make(chan struct{}), settled: make(chan struct{}), deadline: time.Now().Add(p.arrival)}
+	pipe := &Pipe{
+		id:       rand.Text(),
+		broker:   p,
+		changed:  make(chan struct{}),
+		settled:  make(chan struct{}),
+		deadline: time.Now().Add(p.arrival),
+	}
 	if source != nil {
 		pipe.source = pipeEnd{device: *source, kind: deviceEnd}
 	}
@@ -548,22 +559,7 @@ func (s *DeviceSource) Pump(ctx context.Context, body host.ByteStream) (result e
 				return p.failureError()
 			default:
 			}
-			if errors.Is(err, io.EOF) {
-				s.writer.End()
-				if err := p.Done(ctx); err != nil {
-					if ctx.Err() != nil {
-						p.Fail("source HTTP request disconnected")
-					}
-					return p.Done(context.WithoutCancel(ctx))
-				}
-				return nil
-			}
-			if ctx.Err() != nil {
-				p.Fail("source HTTP request disconnected")
-			} else {
-				p.Fail("source HTTP request disconnected: " + err.Error())
-			}
-			return p.Done(context.WithoutCancel(ctx))
+			return s.finishSource(ctx, err)
 		}
 	}
 }
@@ -617,8 +613,10 @@ func (s *DeviceSink) Close(ctx context.Context) error {
 	return s.reader.Close(ctx)
 }
 
-var _ host.ByteStream = (*PipeReader)(nil)
-var _ host.ByteStream = (*DeviceSink)(nil)
+var (
+	_ host.ByteStream = (*PipeReader)(nil)
+	_ host.ByteStream = (*DeviceSink)(nil)
+)
 
 // pipeEnd identifies which participant may take one end of a runner pipe.
 type pipeEnd struct {
@@ -746,4 +744,25 @@ func (p *Pipe) watchArrival() {
 			}
 		}
 	}
+}
+
+// finishSource settles EOF or a read failure after checking whether the pipe already settled.
+func (s *DeviceSource) finishSource(ctx context.Context, err error) error {
+	p := s.writer.pipe
+	if errors.Is(err, io.EOF) {
+		s.writer.End()
+		if err := p.Done(ctx); err != nil {
+			if ctx.Err() != nil {
+				p.Fail("source HTTP request disconnected")
+			}
+			return p.Done(context.WithoutCancel(ctx))
+		}
+		return nil
+	}
+	if ctx.Err() != nil {
+		p.Fail("source HTTP request disconnected")
+	} else {
+		p.Fail("source HTTP request disconnected: " + err.Error())
+	}
+	return p.Done(context.WithoutCancel(ctx))
 }

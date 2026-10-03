@@ -18,7 +18,7 @@ func TestRunnerTemporaryDirectoryFitsLocalSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &RunnerProcess{binary: "unused", state: t.TempDir(), home: t.TempDir(), temporary: temporary}
-	if err := os.Mkdir(filepath.Join(p.state, "tmp"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(p.state, "tmp"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	command := p.Command(context.Background())

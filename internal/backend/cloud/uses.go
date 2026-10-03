@@ -46,16 +46,7 @@ func cloudUses(ctx context.Context, s CloudShard) ([]cloudUse, error) {
 			var ok bool
 			process, ok = known[provider]
 			if !ok {
-				entry, err := s.Vault().Visible(ctx, s.User(), provider)
-				if err != nil {
-					slog.Warn("a conversation's provider could not be read", "provider", provider, "error", err)
-				} else if entry != nil {
-					process, err = s.Assembly().RunsAProcess(ctx, *entry)
-					if err != nil {
-						slog.Warn("a conversation's provider could not be built", "provider", provider, "error", err)
-						process = false
-					}
-				}
+				process = providerRunsProcess(ctx, s, provider)
 				known[provider] = process
 			}
 		}
@@ -112,9 +103,26 @@ func holdReset(ctx context.Context, s CloudShard, uses []cloudUse, timeout time.
 			if err != nil {
 				return nil, failed(err)
 			}
-			return nil, failed(fmt.Errorf("The conversation %s did not stop for the reset", use.id)) //nolint:staticcheck // Preserve Rust user-facing text verbatim.
+			//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+			return nil, failed(fmt.Errorf("The conversation %s did not stop for the reset", use.id))
 		}
 		held = append(held, hold)
 	}
 	return held, nil
+}
+
+// providerRunsProcess reads and builds a provider for Cloud demand classification.
+func providerRunsProcess(ctx context.Context, s CloudShard, provider webapi.ProviderID) bool {
+	process := false
+	entry, err := s.Vault().Visible(ctx, s.User(), provider)
+	if err != nil {
+		slog.Warn("a conversation's provider could not be read", "provider", provider, "error", err)
+	} else if entry != nil {
+		process, err = s.Assembly().RunsAProcess(ctx, *entry)
+		if err != nil {
+			slog.Warn("a conversation's provider could not be built", "provider", provider, "error", err)
+			process = false
+		}
+	}
+	return process
 }

@@ -51,7 +51,13 @@ type managerConnection struct {
 // the reader. The backend drains it until Close closes the channel.
 func NewClient(ctx context.Context, socket string) (*Client, <-chan webapi.DeviceID) {
 	life, cancel := context.WithCancel(ctx)
-	c := &Client{ctx: life, cancel: cancel, commands: make(chan clientCommand, 64), done: make(chan struct{}), dial: (&net.Dialer{}).DialContext}
+	c := &Client{
+		ctx:      life,
+		cancel:   cancel,
+		commands: make(chan clientCommand, 64),
+		done:     make(chan struct{}),
+		dial:     (&net.Dialer{}).DialContext,
+	}
 	deaths := make(chan webapi.DeviceID, 256)
 	go c.run(life, socket, deaths)
 	return c, deaths
@@ -163,98 +169,11 @@ func (c *Client) run(ctx context.Context, socket string, deaths chan<- webapi.De
 		case <-ctx.Done():
 			return
 		case command := <-c.commands:
-			if c.closing.Load() && !command.final {
-				command.answer <- clientAnswer{err: unavailable(command.call.Name(), errors.New("the machine manager's client is closed"))}
-				continue
-			}
-			if connection == nil {
-				if command.disconnect {
-					command.answer <- clientAnswer{}
-					if command.final {
-						return
-					}
-					continue
-				}
-				conn, err := c.dial(ctx, "unix", socket)
-				if err != nil {
-					command.answer <- clientAnswer{err: unavailable(command.call.Name(), fmt.Errorf("%s: %w", socket, err))}
-					continue
-				}
-				connection = readManager(ctx, conn)
-			}
-			id := strconv.FormatUint(next, 10)
-			next++
-			line, err := machinewire.EncodeLine(machinewire.MachineRequest{ID: id, Call: command.call})
-			if err != nil {
-				command.answer <- clientAnswer{err: &ManagerError{Kind: ManagerFailed, Err: err}}
-				continue
-			}
-			pending[id] = command
-			if _, err = connection.socket.Write(line); err != nil {
-				drop(err)
-				if command.final {
-					return
-				}
+			if c.sendCommand(ctx, socket, command, &connection, pending, &next, drop) {
+				return
 			}
 		case line := <-incoming:
-			if line.err != nil {
-				final := false
-				for _, p := range pending {
-					final = final || p.final
-				}
-				drop(line.err)
-				if final {
-					return
-				}
-				continue
-			}
-			if len(line.data) == 0 {
-				continue
-			}
-			response, err := machinewire.DecodeResponse(line.data)
-			if err != nil {
-				slog.Warn("an unreadable line from the machine manager was dropped", "error", err)
-				continue
-			}
-			var id string
-			var answer clientAnswer
-			switch response := response.(type) {
-			case *machinewire.Death:
-				device, err := webapi.ParseDeviceID(response.DeviceID)
-				if err != nil {
-					slog.Warn("the machine manager reported an invalid device death", "error", err)
-					continue
-				}
-				select {
-				case deaths <- device:
-				case <-ctx.Done():
-					return
-				}
-				continue
-			case *machinewire.OK:
-				id = response.ID
-				answer.data = response.Result
-			case *machinewire.ErrorResponse:
-				id = response.ID
-				answer.err = &ManagerError{Kind: ManagerFailed, Err: errors.New(response.Message)}
-			}
-			p, ok := pending[id]
-			if !ok {
-				slog.Warn("the machine manager answered a request this backend did not send", "id", id)
-				continue
-			}
-			delete(pending, id)
-			if p.disconnect {
-				if answer.err == nil {
-					_, answer.err = machinewire.ReconcileParams{}.DecodeOutput(answer.data)
-					if answer.err != nil {
-						answer.err = &ManagerError{Kind: ManagerResult, Operation: p.call.Name(), Err: answer.err}
-					}
-				}
-				drop(errors.New("the backend disconnected"))
-			}
-			p.answer <- answer
-			if p.final {
+			if receiveManagerLine(ctx, line, pending, deaths, drop) {
 				return
 			}
 		}
@@ -264,7 +183,12 @@ func (c *Client) run(ctx context.Context, socket string, deaths chan<- webapi.De
 // readManager owns a reader and cancellation watcher for one manager connection.
 func readManager(ctx context.Context, conn net.Conn) *managerConnection {
 	life, cancel := context.WithCancel(ctx)
-	c := &managerConnection{socket: conn, incoming: make(chan receivedLine, 64), cancel: cancel, done: make(chan struct{})}
+	c := &managerConnection{
+		socket:   conn,
+		incoming: make(chan receivedLine, 64),
+		cancel:   cancel,
+		done:     make(chan struct{}),
+	}
 	go func() {
 		defer close(c.done)
 		closed := make(chan struct{})
@@ -319,4 +243,124 @@ func (c *managerConnection) close(ctx context.Context) error {
 		<-c.done
 		return ctx.Err()
 	}
+}
+
+// sendCommand opens a connection as needed and registers an operation before writing it.
+// Its result tells the supervisor when a final command has ended the client.
+func (c *Client) sendCommand(
+	ctx context.Context,
+	socket string,
+	command clientCommand,
+	connection **managerConnection,
+	pending map[string]clientCommand,
+	next *uint64,
+	drop func(error),
+) bool {
+	if c.closing.Load() && !command.final {
+		command.answer <- clientAnswer{err: unavailable(command.call.Name(),
+			errors.New("the machine manager's client is closed"))}
+		return false
+	}
+	if *connection == nil {
+		if command.disconnect {
+			command.answer <- clientAnswer{}
+			return command.final
+		}
+		conn, err := c.dial(ctx, "unix", socket)
+		if err != nil {
+			command.answer <- clientAnswer{err: unavailable(command.call.Name(), fmt.Errorf("%s: %w", socket, err))}
+			return false
+		}
+		*connection = readManager(ctx, conn)
+	}
+	id := strconv.FormatUint(*next, 10)
+	*next++
+	line, err := machinewire.EncodeLine(machinewire.MachineRequest{ID: id, Call: command.call})
+	if err != nil {
+		command.answer <- clientAnswer{err: &ManagerError{Kind: ManagerFailed, Err: err}}
+		return false
+	}
+	pending[id] = command
+	if _, err = (*connection).socket.Write(line); err != nil {
+		drop(err)
+		if command.final {
+			return true
+		}
+	}
+	return false
+}
+
+// receiveManagerLine delivers deaths or answers and reconciles disconnect commands.
+// Its result tells the supervisor when a final reply or cancellation ends the client.
+func receiveManagerLine(
+	ctx context.Context,
+	line receivedLine,
+	pending map[string]clientCommand,
+	deaths chan<- webapi.DeviceID,
+	drop func(error),
+) bool {
+	if line.err != nil {
+		final := false
+		for _, p := range pending {
+			final = final || p.final
+		}
+		drop(line.err)
+		return final
+	}
+	if len(line.data) == 0 {
+		return false
+	}
+	id, answer, reply, stop := managerAnswer(ctx, line.data, deaths)
+	if !reply {
+		return stop
+	}
+	p, ok := pending[id]
+	if !ok {
+		slog.Warn("the machine manager answered a request this backend did not send", "id", id)
+		return false
+	}
+	delete(pending, id)
+	if p.disconnect {
+		if answer.err == nil {
+			_, answer.err = machinewire.ReconcileParams{}.DecodeOutput(answer.data)
+			if answer.err != nil {
+				answer.err = &ManagerError{Kind: ManagerResult, Operation: p.call.Name(), Err: answer.err}
+			}
+		}
+		drop(errors.New("the backend disconnected"))
+	}
+	p.answer <- answer
+	return p.final
+}
+
+// managerAnswer decodes one response and forwards death events before any reply delivery.
+func managerAnswer(ctx context.Context, data []byte, deaths chan<- webapi.DeviceID) (string, clientAnswer, bool, bool) {
+	response, err := machinewire.DecodeResponse(data)
+	if err != nil {
+		slog.Warn("an unreadable line from the machine manager was dropped", "error", err)
+		return "", clientAnswer{}, false, false
+	}
+	var id string
+	var answer clientAnswer
+	switch response := response.(type) {
+	case *machinewire.Death:
+		device, err := webapi.ParseDeviceID(response.DeviceID)
+		if err != nil {
+			slog.Warn("the machine manager reported an invalid device death", "error", err)
+			return "", clientAnswer{}, false, false
+		}
+		select {
+		case deaths <- device:
+		case <-ctx.Done():
+			return "", clientAnswer{}, false, true
+		}
+		return "", clientAnswer{}, false, false
+	case *machinewire.OK:
+		id = response.ID
+		answer.data = response.Result
+	case *machinewire.ErrorResponse:
+		id = response.ID
+		answer.err = &ManagerError{Kind: ManagerFailed, Err: errors.New(response.Message)}
+	}
+	return id, answer, true, false
 }

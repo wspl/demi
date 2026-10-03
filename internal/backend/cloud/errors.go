@@ -154,5 +154,6 @@ func storageFailed(err error) error {
 		return nil
 	}
 	slog.Error("the Cloud's records failed", "error", err)
-	return failed(fmt.Errorf("The Cloud's records could not be read or written: %w", err)) //nolint:staticcheck // Preserve Rust user-facing text verbatim.
+	//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+	return failed(fmt.Errorf("The Cloud's records could not be read or written: %w", err))
 }
