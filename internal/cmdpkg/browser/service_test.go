@@ -446,7 +446,6 @@ func TestViewerNotificationsEndWithConversation(t *testing.T) {
 }
 
 func TestUserCloseOfExpiredTabIsRefused(t *testing.T) {
-	t.Skip("fidelity 1: user close of missing tab succeeds instead of tab_not_found")
 	s := newService()
 	defer func() {
 		if err := s.Close(t.Context()); err != nil {
