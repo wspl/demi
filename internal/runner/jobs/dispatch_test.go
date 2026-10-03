@@ -17,7 +17,7 @@ import (
 )
 
 // dispatchFixture exposes the real dispatcher through its owned local endpoint.
-func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, *jobstest.ContextGuard) {
+func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, *jobstest.ContextRegistration) {
 	t.Helper()
 	tree, err := declare.DecodeDeclaration(
 		[]byte(
@@ -55,11 +55,11 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 		Caller:       &commandwire.AgentCaller{Number: 1},
 		Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
 	}
-	execution, guard, err := fixture.Context(testContext(t), "job", command)
+	execution, registration, err := fixture.Context(testContext(t), "job", command)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture, execution, guard
+	return fixture, execution, registration
 }
 
 func dispatchRequest(t *testing.T, execution *jobs.ExecutionContext, argv ...string) commandwire.LocalInvocation {
@@ -114,7 +114,7 @@ func TestHelpNeverReadsStdinOrCallsBackend(t *testing.T) {
 }
 
 func TestCallbackExitClearsHintAndRevokedContextCannotDispatch(t *testing.T) {
-	fixture, execution, guard := dispatchFixture(t)
+	fixture, execution, registration := dispatchFixture(t)
 	request := dispatchRequest(t, execution)
 	done := make(chan error, 1)
 	go func() {
@@ -147,7 +147,7 @@ func TestCallbackExitClearsHintAndRevokedContextCannotDispatch(t *testing.T) {
 	if !ok || clearHint.Hint != nil || clearHint.InvocationID != hint.InvocationID {
 		t.Fatal("hint not cleared")
 	}
-	if err := guard.Close(testContext(t)); err != nil {
+	if err := registration.Close(testContext(t)); err != nil {
 		t.Fatal(err)
 	}
 	result, err := process.Forward(

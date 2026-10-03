@@ -15,7 +15,7 @@ func TestRelayRoutesAnswersAndCancelsLaggingCalls(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		handle, requests := NewConnectionHandle(ctx, make(chan []byte, 1))
+		handle, requests := NewConnection(ctx, make(chan []byte, 1))
 		relay := NewRelay(ctx)
 		defer func() {
 			if err := relay.Close(context.Background()); err != nil {
@@ -73,7 +73,7 @@ func TestBackendAnswerDeadlineStartsAfterQueueAdmission(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		handle, requests := NewConnectionHandle(ctx, make(chan []byte, 1))
+		handle, requests := NewConnection(ctx, make(chan []byte, 1))
 		for range cap(handle.requests) {
 			handle.requests <- &CallRequest{}
 		}
@@ -83,7 +83,7 @@ func TestBackendAnswerDeadlineStartsAfterQueueAdmission(t *testing.T) {
 			returned <- err
 		}()
 		synctest.Wait()
-		// Waiting for room has no backend-answer deadline in Rust.
+		// Waiting for room in the request queue has no backend-answer deadline.
 		time.Sleep(20 * time.Second)
 		select {
 		case <-returned:

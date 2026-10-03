@@ -30,7 +30,7 @@ type Dispatch struct {
 	t        testing.TB
 	manifest *runnerwire.Manifest
 	paths    jobs.ContextPaths
-	handle   *jobs.ConnectionHandle
+	handle   *jobs.Connection
 	inbound  chan runnerwire.Inbound
 	removals chan removal
 	cancel   context.CancelFunc
@@ -82,20 +82,20 @@ func NewDispatch(
 	if err != nil {
 		t.Fatal(err)
 	}
-	installed, err := jobs.Install(lifetime, manifest, d.paths, d.Services.Handle(), map[string]struct{}{})
+	installed, err := jobs.Install(lifetime, manifest, d.paths, d.Services, map[string]struct{}{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	d.manifest, d.leases = installed.Manifest, installed.Leases
 	contexts := &jobs.Contexts{}
-	d.Dispatcher = &jobs.Dispatcher{Contexts: contexts, Services: d.Services.Handle(), Pipes: pipes}
+	d.Dispatcher = &jobs.Dispatcher{Contexts: contexts, Services: d.Services, Pipes: pipes}
 	d.Server, err = jobs.StartServer(lifetime, d.Dispatcher)
 	if err != nil {
 		t.Fatal(err)
 	}
 	control := make(chan []byte, 32)
 	d.Outgoing = control
-	handle, requests := jobs.NewConnectionHandle(lifetime, control)
+	handle, requests := jobs.NewConnection(lifetime, control)
 	d.handle = handle
 	d.inbound = make(chan runnerwire.Inbound, 32)
 	d.removals = make(chan removal, 16)
@@ -104,13 +104,13 @@ func NewDispatch(
 	return d
 }
 
-// Context creates a live job context and a guard. The fixture also registers
-// guard cleanup, so a failed test cannot leave a live registration.
+// Context creates a live job context and its registration. The fixture also registers its cleanup,
+// so a failed test cannot leave a live registration.
 func (d *Dispatch) Context(
 	ctx context.Context,
 	jobID string,
 	command commandwire.CommandContext,
-) (*jobs.ExecutionContext, *ContextGuard, error) {
+) (*jobs.ExecutionContext, *ContextRegistration, error) {
 	edits := commandwire.EditContext{
 		Directory: filepath.Join(d.paths.Directory, jobID),
 		Lock:      filepath.Join(d.paths.Directory, "edits.lock"),
@@ -119,7 +119,7 @@ func (d *Dispatch) Context(
 	if err != nil {
 		return nil, nil, err
 	}
-	leases, err := jobs.Leases(ctx, d.manifest, d.Services.Handle())
+	leases, err := jobs.Leases(ctx, d.manifest, d.Services)
 	if err == nil {
 		err = d.handle.RegisterContext(ctx, execution, leases)
 	}
@@ -130,13 +130,13 @@ func (d *Dispatch) Context(
 		_ = execution.Close(context.WithoutCancel(ctx))
 		return nil, nil, err
 	}
-	guard := &ContextGuard{dispatch: d, execution: execution}
+	registration := &ContextRegistration{dispatch: d, execution: execution}
 	d.t.Cleanup(func() {
-		if err := guard.Close(context.Background()); err != nil {
+		if err := registration.Close(context.Background()); err != nil {
 			d.t.Errorf("context cleanup: %v", err)
 		}
 	})
-	return execution, guard, nil
+	return execution, registration, nil
 }
 
 // Deliver hands a validated backend message to the channel-backed owner.
@@ -180,30 +180,30 @@ func (d *Dispatch) Close(ctx context.Context) error {
 	}
 }
 
-// ContextGuard owns one fixture context registration and its alias directory.
-type ContextGuard struct {
+// ContextRegistration owns one fixture context registration and its alias directory.
+type ContextRegistration struct {
 	dispatch  *Dispatch
 	execution *jobs.ExecutionContext
 }
 
 // Close revokes the context and waits for its removal, then removes aliases.
 // Callers first join invocations using it. Repeated calls are harmless.
-func (g *ContextGuard) Close(ctx context.Context) error {
-	g.execution.Cancel()
-	removal := removal{job: g.execution.JobID, done: make(chan struct{})}
+func (r *ContextRegistration) Close(ctx context.Context) error {
+	r.execution.Cancel()
+	removal := removal{job: r.execution.JobID, done: make(chan struct{})}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-g.dispatch.done:
-	case g.dispatch.removals <- removal:
+	case <-r.dispatch.done:
+	case r.dispatch.removals <- removal:
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-g.dispatch.done:
+		case <-r.dispatch.done:
 		case <-removal.done:
 		}
 	}
-	return g.execution.Close(ctx)
+	return r.execution.Close(ctx)
 }
 
 // serve gives requests priority over backend answers, matching the connection owner.

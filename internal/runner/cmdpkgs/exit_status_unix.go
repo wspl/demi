@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// platformExitStatus uses Rust's Unix ExitStatus spelling. The process record
+// platformExitStatus spells a Unix status `exit status: N`, `signal: N (SIGNAME)` or `signal: N`. The process record
 // omits the core-dump bit; omitting that suffix is an accepted normalization.
 func platformExitStatus(exit process.Exit) string {
 	if exit.Code != nil {

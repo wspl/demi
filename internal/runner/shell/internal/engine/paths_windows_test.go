@@ -16,7 +16,7 @@ func TestWindowsDrivePathsWorkForCdRedirectionUtilitiesAndExecutables(t *testing
 		path = filepath.ToSlash(path)
 		return "/" + path[:1] + path[2:]
 	}
-	// Rust also passes the drive-form path to cat; retain that utility boundary.
+	// The shell passes the drive-form path to cat unchanged; the utility resolves it.
 	result, output, stderr := shellFiles(
 		t,
 		root,

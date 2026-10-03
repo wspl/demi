@@ -107,7 +107,7 @@ func TestEveryUtilityRoutesHelpToTheInvocationStream(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if runtime.GOOS == "darwin" && name != "sort" && name != "tac" && name != "diff" && name != "jq" &&
 				name != "rg" {
-				t.Skip("decision 4: BSD utility does not provide Rust's --help stdout interface")
+				t.Skip("decision 4: BSD utility does not print usage to stdout for --help")
 			}
 			result, output, stderr := utility(t, t.TempDir(), name, "--help")
 			if result.Code != 0 || !strings.Contains(strings.ToLower(output), "usage:") {

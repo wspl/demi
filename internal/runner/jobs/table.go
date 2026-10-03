@@ -54,13 +54,13 @@ type Commands struct {
 	// Dispatcher runs declared command invocations.
 	Dispatcher *Dispatcher
 	// Connection reaches the backend for command work.
-	Connection *ConnectionHandle
+	Connection *Connection
 	// Installation acquires the job manifest and its service leases.
 	Installation *Installation
 	// Paths locates the command aliases and client executable.
 	Paths ContextPaths
 	// Services acquires native command services.
-	Services *cmdpkgs.ServiceHandle
+	Services *cmdpkgs.ServiceRegistry
 	// Endpoint is the local endpoint command clients reach.
 	Endpoint string
 	// Home is the installation directory, DEMI_HOME.

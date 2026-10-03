@@ -37,7 +37,8 @@ type Volumes struct {
 }
 type volumeCheck struct {
 	name   runnerwire.VolumeName
-	wanted *uint64
+	wanted uint64
+	grow   bool
 }
 
 // NewVolumes creates a volume owner and copies blocks. The caller owns output;
@@ -55,28 +56,27 @@ func NewVolumes(ctx context.Context, blocks []ManagedVolume, output chan<- []byt
 }
 
 // GrowthWanted returns a doubled capacity when free space is below the reserve,
-// or nil when no growth is needed. The reserve is a tenth of capacity, at least
+// and false when no growth is needed. The reserve is a tenth of capacity, at least
 // 256 MiB but capped at a quarter for small volumes. Growth beyond the protocol's
 // safe integer limit fails; a zero-sized volume requests no growth.
-func GrowthWanted(total, available uint64) (*uint64, error) {
+func GrowthWanted(total, available uint64) (wanted uint64, grow bool, err error) {
 	if total == 0 {
-		return nil, nil
+		return 0, false, nil
 	}
 	reserve := max(total/10, min(uint64(256*1024*1024), total/4))
 	if available >= reserve {
-		return nil, nil
+		return 0, false, nil
 	}
 	if total > 9007199254740991/2 {
-		return nil, errors.New("volume growth exceeds the protocol size limit")
+		return 0, false, errors.New("volume growth exceeds the protocol size limit")
 	}
-	wanted := total * 2
-	return &wanted, nil
+	return total * 2, true, nil
 }
 
 // Sync flushes the managed filesystems and emits sync_done. At most four flushes
 // run concurrently; later requests wait with ctx. An admitted filesystem flush
 // is joined even if the request is canceled. Paired Unix devices sync all
-// filesystems; Windows answers an unsupported-operation error, matching Rust.
+// filesystems; on Windows, Sync answers an error, since whole-filesystem sync is unavailable there.
 func (v *Volumes) Sync(ctx context.Context, request runnerwire.Sync) error {
 	ctx, leave, err := v.life.enter(ctx)
 	if err != nil {
@@ -121,15 +121,16 @@ func (v *Volumes) Poll() {
 		go func() {
 			defer leave()
 			total, available, err := volumeUsage(volume.Mount)
-			var wanted *uint64
+			var wanted uint64
+			var grow bool
 			if err == nil {
-				wanted, err = GrowthWanted(total, available)
+				wanted, grow, err = GrowthWanted(total, available)
 			}
 			if err != nil {
 				slog.Warn("volume capacity check", "error", err)
 			}
 			select {
-			case v.checks <- volumeCheck{name: volume.Name, wanted: wanted}:
+			case v.checks <- volumeCheck{name: volume.Name, wanted: wanted, grow: grow}:
 			case <-ctx.Done():
 			}
 		}()
@@ -160,7 +161,7 @@ func (v *Volumes) Checked(ctx context.Context) (bool, error) {
 		return false, ctx.Err()
 	case result = <-v.checks:
 	}
-	if result.wanted == nil {
+	if !result.grow {
 		v.mu.Lock()
 		delete(v.pending, result.name)
 		v.mu.Unlock()
@@ -177,7 +178,7 @@ func (v *Volumes) Checked(ctx context.Context) (bool, error) {
 	v.mu.Lock()
 	v.pending[result.name] = requestID
 	v.mu.Unlock()
-	err = sendFrame(ctx, v.output, &runnerwire.VolumeGrow{ID: requestID, Volume: result.name, Bytes: *result.wanted})
+	err = sendFrame(ctx, v.output, &runnerwire.VolumeGrow{ID: requestID, Volume: result.name, Bytes: result.wanted})
 	if err != nil {
 		v.mu.Lock()
 		if v.pending[result.name] == requestID {
