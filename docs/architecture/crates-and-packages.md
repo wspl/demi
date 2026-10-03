@@ -1825,7 +1825,8 @@ command downloads it from the Go module proxy, checks it against the hash the
 Go checksum database records, and compares it with the fork file by file:
 it lists each changed, added and removed file with its added and removed line
 counts, and the upstream files the fork leaves out. `--patch` prints the unified diff instead,
-which equals `demi.patch`; a difference between them fails the command.
+which is what `demi.patch` holds: the command fails when the file differs from
+it, so the patch never drifts from the fork.
 
 The other Rust vendored crates have no Go successor. System utilities replace
 embedded uutils, findutils, diffutils, sed, grep, ripgrep and jaq; cdproto with
