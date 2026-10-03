@@ -1817,6 +1817,16 @@ joining, process-substitution cancellation and writable-redirection
 interception; Demi adapters stay in the runner shell. The fork is an external
 module, not a first-party graph entry.
 
+`go run ./tools/release fork diff` shows how the fork differs from the upstream
+release it was taken from, so an upgrade or a review sees every local change,
+not only the ones `demi.patch` describes. The release is the version the root
+`go.mod` requires before its replacement (`mvdan.cc/sh/v3 v3.14.1`). The
+command downloads it from the Go module proxy, checks it against the hash the
+Go checksum database records, and compares it with the fork file by file:
+it lists each changed, added and removed file with its added and removed line
+counts, and the upstream files the fork leaves out. `--patch` prints the unified diff instead,
+which equals `demi.patch`; a difference between them fails the command.
+
 The other Rust vendored crates have no Go successor. System utilities replace
 embedded uutils, findutils, diffutils, sed, grep, ripgrep and jaq; cdproto with
 Demi's transport replaces the vendored Chromium client. Follow [owner decisions

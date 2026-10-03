@@ -468,7 +468,7 @@ not the draft: it stays in the user's browser where it was opened.
 
 Start the backend executable, `demi-backend`, which listens on port 3271 by
 default ([Development backend](../backend/backend.md#development-backend) gives
-the whole launch, and `cargo xtask dev` starts one with a scripted Cloud, an
+the whole launch, and `go run ./tools/release dev` starts one with a scripted Cloud, an
 echo model and a seeded account in one command), then run the root package script `web:dev` for the product
 at `http://127.0.0.1:18934`. Vite forwards `/api` HTTP and WebSocket requests
 to the backend; set `DEMI_BACKEND_URL` when the backend runs at another
