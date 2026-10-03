@@ -94,7 +94,7 @@ func childArgs(args ...string) []string {
 func TestToolOutputAndFailures(t *testing.T) {
 	tools := childTools(t)
 	t.Setenv("LC_ALL", "inherited-locale")
-	out, err := tools.Output(t.Context(), system.Runsc, childArgs("output"), nil)
+	out, err := tools.Output(t.Context(), system.Runsc, childArgs("output"), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,19 +105,25 @@ func TestToolOutputAndFailures(t *testing.T) {
 	if _, err := system.Accept(system.Runsc, out, []int{0, 7}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = tools.Run(t.Context(), system.Runsc, childArgs("output"), nil)
-	var failed *system.FailedError
-	if !errors.As(err, &failed) || failed.Error() != "runsc exited 7: \ufffd\ufffd\ufffd" {
+	_, err = tools.Run(t.Context(), system.Runsc, childArgs("output"), 0)
+	if err == nil || err.Error() != "runsc exited 7: ���" {
 		t.Fatalf("failed tool = %v", err)
 	}
-	_, err = tools.Run(t.Context(), system.Runsc, childArgs("signal"), nil)
-	if !errors.As(err, &failed) || !failed.Output.Status.Signaled() || failed.Error() != "runsc exited by signal: " {
+	signaled, err := tools.Output(t.Context(), system.Runsc, childArgs("signal"), 0)
+	if err != nil || !signaled.Status.Signaled() {
+		t.Fatalf("signaled tool = %+v, %v", signaled, err)
+	}
+	if _, err = system.Accept(
+		system.Runsc,
+		signaled,
+		[]int{0},
+	); err == nil ||
+		err.Error() != "runsc exited by signal: " {
 		t.Fatalf("signaled tool = %v", err)
 	}
 	missing := system.NewTools(map[system.Tool]string{system.Runsc: filepath.Join(t.TempDir(), "missing")})
-	_, err = missing.Run(t.Context(), system.Runsc, nil, nil)
-	var spawn *system.SpawnError
-	if !errors.As(err, &spawn) || !errors.Is(err, os.ErrNotExist) {
+	_, err = missing.Run(t.Context(), system.Runsc, nil, 0)
+	if err == nil || !strings.HasPrefix(err.Error(), "runsc could not start: ") || !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("spawn error lost cause: %v", err)
 	}
 }
@@ -145,7 +151,7 @@ func TestToolCancellationReapsChild(t *testing.T) {
 	var result error
 	go func() {
 		defer close(done)
-		_, result = tools.Output(ctx, system.Runsc, childArgs("wait", fifo), nil)
+		_, result = tools.Output(ctx, system.Runsc, childArgs("wait", fifo), 0)
 	}()
 	// Cancel and join even when readiness fails.
 	defer func() {
@@ -193,10 +199,8 @@ func TestToolDeadline(t *testing.T) {
 	if err := unix.Mkfifo(fifo, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	zero := time.Duration(0)
-	_, err := tools.Output(t.Context(), system.Runsc, childArgs("wait", fifo), &zero)
-	var deadline *system.DeadlineError
-	if !errors.As(err, &deadline) || deadline.Error() != "runsc did not finish within 0 s" {
+	_, err := tools.Output(t.Context(), system.Runsc, childArgs("wait", fifo), time.Nanosecond)
+	if err == nil || err.Error() != "runsc did not finish within 0 s" {
 		t.Fatalf("deadline = %v", err)
 	}
 }
@@ -234,8 +238,7 @@ func TestResolveAndTestTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := system.Resolve(t.Context(), runsc)
-	var missing *system.MissingTools
-	if !errors.As(err, &missing) || err.Error() != "Cloud manager needs: mke2fs, e2fsck, resize2fs, bsdtar" {
+	if err == nil || err.Error() != "Cloud manager needs: mke2fs, e2fsck, resize2fs, bsdtar" {
 		t.Fatalf("missing tools = %v", err)
 	}
 	for _, name := range []string{"mke2fs", "e2fsck", "resize2fs", "bsdtar"} {
@@ -250,7 +253,7 @@ func TestResolveAndTestTools(t *testing.T) {
 	if tools.Path(system.Runsc) != runsc {
 		t.Fatalf("configured runsc = %s", tools.Path(system.Runsc))
 	}
-	if _, err := tools.Run(t.Context(), system.Mke2fs, nil, nil); err != nil {
+	if _, err := tools.Run(t.Context(), system.Mke2fs, nil, 0); err != nil {
 		t.Fatal(err)
 	}
 	fixture, err := systemtest.OnPath(t.Context())
@@ -277,22 +280,22 @@ func TestResolveAndTestTools(t *testing.T) {
 	if strings.Join(command.Args, " ") != " --root fixture" {
 		t.Fatalf("placeholder command = %q", command.Args)
 	}
-	// Relative PATH entries are accepted by Rust's which and become explicit
-	// absolute paths before os/exec applies its ErrDot protection.
+	// Relative PATH entries are accepted and become explicit absolute paths
+	// before os/exec applies its ErrDot protection.
 	t.Chdir(dir)
 	t.Setenv("PATH", ".")
 	relative, err := system.Resolve(t.Context(), runsc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := relative.Run(t.Context(), system.Mke2fs, nil, nil); err != nil {
+	if _, err := relative.Run(t.Context(), system.Mke2fs, nil, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(runsc); err != nil {
 		t.Fatal(err)
 	}
 	_, err = system.Resolve(t.Context(), runsc)
-	if !errors.As(err, &missing) || err.Error() != "Cloud manager needs: runsc" {
+	if err == nil || err.Error() != "Cloud manager needs: runsc" {
 		t.Fatalf("missing runsc = %v", err)
 	}
 }

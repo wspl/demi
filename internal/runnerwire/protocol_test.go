@@ -515,7 +515,7 @@ func TestGitChangesJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(encoded, data) {
-		t.Fatalf("GitChanges JSON differs from Rust form: %s", encoded)
+		t.Fatalf("GitChanges JSON differs from the wire form: %s", encoded)
 	}
 	for _, invalid := range [][]byte{
 		bytes.Replace(data, []byte(`"head":null,`), nil, 1),

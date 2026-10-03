@@ -68,57 +68,12 @@ type Tools struct{ paths map[Tool]string }
 // substitute infrastructure programs; production callers use Resolve.
 func NewTools(paths map[Tool]string) *Tools { return &Tools{paths: maps.Clone(paths)} }
 
-// MissingTools names programs that are not installed.
-type MissingTools struct {
-	// Names lists missing programs in lookup order.
-	Names []string
-}
+// SpawnFailed reports that tool could not start or that waiting for it failed.
+func SpawnFailed(tool Tool, err error) error { return fmt.Errorf("%s could not start: %w", tool, err) }
 
-// Error describes the missing programs.
-func (e *MissingTools) Error() string { return "Cloud manager needs: " + strings.Join(e.Names, ", ") }
-
-// SpawnError reports a program that could not start or whose wait failed.
-type SpawnError struct {
-	// Tool identifies the program.
-	Tool Tool
-	// Source is the start or wait failure.
-	Source error
-}
-
-// Error describes the failure to run the tool.
-func (e *SpawnError) Error() string { return fmt.Sprintf("%s could not start: %v", e.Tool, e.Source) }
-
-// Unwrap preserves the underlying IO error.
-func (e *SpawnError) Unwrap() error { return e.Source }
-
-// DeadlineError reports a tool that did not finish within its deadline.
-type DeadlineError struct {
-	// Tool identifies the program.
-	Tool Tool
-	// Deadline is the permitted runtime.
-	Deadline time.Duration
-}
-
-// Error describes the tool's exceeded deadline.
-func (e *DeadlineError) Error() string {
-	return fmt.Sprintf("%s did not finish within %d s", e.Tool, int64(e.Deadline/time.Second))
-}
-
-// FailedError reports a program whose exit status was not accepted.
-type FailedError struct {
-	// Tool identifies the program.
-	Tool Tool
-	// Output carries the rejected status and decoded output.
-	Output Output
-}
-
-// Error describes the exit status and the kept tail of output.
-func (e *FailedError) Error() string {
-	status := "by signal"
-	if e.Output.Status.Exited() {
-		status = strconv.Itoa(e.Output.Status.ExitStatus())
-	}
-	return fmt.Sprintf("%s exited %s: %s", e.Tool, status, e.Output.Message())
+// DeadlinePassed reports that tool did not finish within deadline.
+func DeadlinePassed(tool Tool, deadline time.Duration) error {
+	return fmt.Errorf("%s did not finish within %d s", tool, int64(deadline/time.Second))
 }
 
 // Output is what a program wrote, decoded lossily: tools write text.
@@ -162,8 +117,8 @@ func Resolve(ctx context.Context, runsc string) (*Tools, error) {
 	var missing []string
 	for _, tool := range []Tool{Mke2fs, E2fsck, Resize2fs, Bsdtar} {
 		path, err := exec.LookPath(tool.Name())
-		// Rust's which accepts a program found through a relative PATH entry.
-		// Make that explicit instead of carrying exec.ErrDot into Command.
+		// Accept a program found through a relative PATH entry, made absolute
+		// instead of carrying exec.ErrDot into Command.
 		if errors.Is(err, exec.ErrDot) {
 			path, err = filepath.Abs(path)
 		}
@@ -178,7 +133,8 @@ func Resolve(ctx context.Context, runsc string) (*Tools, error) {
 		missing = append(missing, Runsc.Name())
 	}
 	if len(missing) > 0 {
-		return nil, &MissingTools{Names: missing}
+		//nolint:staticcheck // User-visible text, kept byte for byte.
+		return nil, fmt.Errorf("Cloud manager needs: %s", strings.Join(missing, ", "))
 	}
 	paths[Runsc] = runsc
 	return NewTools(paths), nil
@@ -197,9 +153,9 @@ func (t *Tools) Command(ctx context.Context, tool Tool) *exec.Cmd {
 }
 
 // Output runs tool to completion and returns output regardless of exit status.
-// A nil deadline means no timeout; a non-nil zero duration expires immediately.
+// A zero deadline means no timeout.
 // Cancellation or timeout kills and reaps the child before returning.
-func (t *Tools) Output(ctx context.Context, tool Tool, args []string, deadline *time.Duration) (Output, error) {
+func (t *Tools) Output(ctx context.Context, tool Tool, args []string, deadline time.Duration) (Output, error) {
 	runCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	command := t.Command(runCtx, tool)
@@ -225,7 +181,7 @@ func (t *Tools) Output(ctx context.Context, tool Tool, args []string, deadline *
 	for i := range streams {
 		reader, writer, err := os.Pipe()
 		if err != nil {
-			return Output{}, &SpawnError{Tool: tool, Source: err}
+			return Output{}, SpawnFailed(tool, err)
 		}
 		streams[i].reader = reader
 		streams[i].writer = writer
@@ -233,7 +189,7 @@ func (t *Tools) Output(ctx context.Context, tool Tool, args []string, deadline *
 	command.Stdout = streams[0].writer
 	command.Stderr = streams[1].writer
 	if err := command.Start(); err != nil {
-		return Output{}, &SpawnError{Tool: tool, Source: err}
+		return Output{}, SpawnFailed(tool, err)
 	}
 	var readers sync.WaitGroup
 	for i := range streams {
@@ -242,8 +198,8 @@ func (t *Tools) Output(ctx context.Context, tool Tool, args []string, deadline *
 		readers.Go(func() { _, streams[i].err = io.Copy(&streams[i].data, streams[i].reader) })
 	}
 	defer watchToolCancellation(runCtx, streams[0].reader, streams[1].reader)()
-	if deadline != nil {
-		defer startToolDeadline(*deadline, cancel)()
+	if deadline > 0 {
+		defer startToolDeadline(deadline, cancel)()
 	}
 	err := command.Wait()
 	readers.Wait()
@@ -257,7 +213,7 @@ func (t *Tools) Output(ctx context.Context, tool Tool, args []string, deadline *
 }
 
 // Run runs tool and requires it to exit 0.
-func (t *Tools) Run(ctx context.Context, tool Tool, args []string, deadline *time.Duration) (Output, error) {
+func (t *Tools) Run(ctx context.Context, tool Tool, args []string, deadline time.Duration) (Output, error) {
 	output, err := t.Output(ctx, tool, args, deadline)
 	if err != nil {
 		return Output{}, err
@@ -270,33 +226,37 @@ func Accept(tool Tool, output Output, codes []int) (Output, error) {
 	if output.Status.Exited() && slices.Contains(codes, output.Status.ExitStatus()) {
 		return output, nil
 	}
-	return Output{}, &FailedError{Tool: tool, Output: output}
+	status := "by signal"
+	if output.Status.Exited() {
+		status = strconv.Itoa(output.Status.ExitStatus())
+	}
+	return Output{}, fmt.Errorf("%s exited %s: %s", tool, status, output.Message())
 }
 
 var errToolDeadline = errors.New("infrastructure tool deadline")
 
-func toolOutputError(ctx, runCtx context.Context, tool Tool, deadline *time.Duration, err error) error {
+func toolOutputError(ctx, runCtx context.Context, tool Tool, deadline time.Duration, err error) error {
 	if err == nil {
 		return nil
 	}
 
 	if errors.Is(context.Cause(runCtx), errToolDeadline) {
-		return &DeadlineError{Tool: tool, Deadline: *deadline}
+		return DeadlinePassed(tool, deadline)
 	}
 	if ctx.Err() != nil {
-		return &SpawnError{Tool: tool, Source: ctx.Err()}
+		return SpawnFailed(tool, ctx.Err())
 	}
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) {
-		return &SpawnError{Tool: tool, Source: err}
+		return SpawnFailed(tool, err)
 	}
 	return nil
 }
 
 // startToolDeadline returns cleanup that stops or joins the owned deadline callback.
 func startToolDeadline(deadline time.Duration, cancel context.CancelCauseFunc) func() {
-	// Start the deadline after spawning, as Rust does. Join an already-fired
-	// timer callback before returning, as well as always reaping the child.
+	// The deadline starts after spawning. Join an already-fired timer
+	// callback before returning, as well as always reaping the child.
 	fired := make(chan struct{})
 	timer := time.AfterFunc(deadline, func() {
 		defer close(fired)
@@ -312,7 +272,7 @@ func startToolDeadline(deadline time.Duration, cancel context.CancelCauseFunc) f
 func decodeToolOutput(tool Tool, state *os.ProcessState, stdout, stderr []byte) (Output, error) {
 	status, ok := state.Sys().(syscall.WaitStatus)
 	if !ok {
-		return Output{}, &SpawnError{Tool: tool, Source: errors.New("tool returned no Linux wait status")}
+		return Output{}, SpawnFailed(tool, errors.New("tool returned no Linux wait status"))
 	}
 	return Output{
 		Status: status,

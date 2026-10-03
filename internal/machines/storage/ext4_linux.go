@@ -30,7 +30,7 @@ func Capacity(ctx context.Context, image string) (uint64, error) {
 	}
 	logSize := binary.LittleEndian.Uint32(block[0x18:])
 	if binary.LittleEndian.Uint16(block[0x38:]) != 0xef53 || logSize > 6 {
-		return 0, &NotExt4Error{Path: image}
+		return 0, fmt.Errorf("%s is not an ext4 image", image)
 	}
 	blocks := uint64(binary.LittleEndian.Uint32(block[4:]))
 	if binary.LittleEndian.Uint32(block[0x60:])&0x80 != 0 {
@@ -38,7 +38,7 @@ func Capacity(ctx context.Context, image string) (uint64, error) {
 	}
 	size := uint64(1024) << logSize
 	if blocks == 0 || blocks > math.MaxUint64/size {
-		return 0, &NotExt4Error{Path: image}
+		return 0, fmt.Errorf("%s is not an ext4 image", image)
 	}
 	return blocks * size, nil
 }
@@ -51,7 +51,7 @@ func MakeSystem(ctx context.Context, tools *system.Tools, image string, bytes ui
 		ctx,
 		system.Mke2fs,
 		[]string{"-q", "-t", "ext4", "-F", "-L", "system", image, kibibytes(bytes)},
-		&deadline,
+		deadline,
 	)
 	return err
 }
@@ -64,7 +64,7 @@ func MakeHome(ctx context.Context, tools *system.Tools, root, image string, byte
 		ctx,
 		system.Mke2fs,
 		[]string{"-q", "-t", "ext4", "-F", "-L", "home", "-d", root, image, kibibytes(bytes)},
-		&deadline,
+		deadline,
 	)
 	return err
 }
@@ -75,7 +75,7 @@ func GrowMounted(ctx context.Context, tools *system.Tools, device string) error 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_, failed := tools.Run(context.WithoutCancel(ctx), system.Resize2fs, []string{device}, nil)
+	_, failed := tools.Run(context.WithoutCancel(ctx), system.Resize2fs, []string{device}, 0)
 	if failed == nil {
 		return nil
 	}
@@ -112,7 +112,7 @@ func Recover(ctx context.Context, tools *system.Tools, image string) (uint64, er
 		if err := checkExt4(ctx, tools, image, "-pf"); err != nil {
 			return 0, err
 		}
-		if _, err := tools.Run(ctx, system.Resize2fs, []string{image}, nil); err != nil {
+		if _, err := tools.Run(ctx, system.Resize2fs, []string{image}, 0); err != nil {
 			return 0, err
 		}
 	}
@@ -133,7 +133,7 @@ func kibibytes(bytes uint64) string {
 
 // checkExt4 accepts e2fsck's successful repair status as well as a clean image.
 func checkExt4(ctx context.Context, tools *system.Tools, image, mode string) error {
-	output, err := tools.Output(ctx, system.E2fsck, []string{mode, image}, nil)
+	output, err := tools.Output(ctx, system.E2fsck, []string{mode, image}, 0)
 	if err != nil {
 		return err
 	}

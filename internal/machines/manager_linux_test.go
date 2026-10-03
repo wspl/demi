@@ -30,7 +30,7 @@ var rootTests = flag.Bool(
 // managerFixture exercises actual storage and workers independently of runtime processes.
 func managerFixture(t *testing.T) *Manager {
 	t.Helper()
-	config, err := ParseConfig(
+	config, _, err := ParseConfig(
 		nil,
 		[]string{
 			"DEMI_MANAGED_RUNSC=/nonexistent/runsc",
@@ -82,13 +82,13 @@ func managerFixture(t *testing.T) *Manager {
 	return m
 }
 
-func stateOf(t *testing.T, m *Manager) *machinewire.MachineImageState {
+func stateOf(t *testing.T, m *Manager) (machinewire.MachineImageState, bool) {
 	t.Helper()
-	state, err := m.core.Store.Read(t.Context(), "dev-1")
+	state, found, err := m.core.Store.Read(t.Context(), "dev-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return state
+	return state, found
 }
 
 func resetDevice(t *testing.T, m *Manager, operation string) {
@@ -109,12 +109,12 @@ func TestResetPublishesFreshSystemWithSavedHomeOnce(t *testing.T) {
 		t.Skip("requires -machines-root and filesystem tools")
 	}
 	m := managerFixture(t)
-	if stateOf(t, m) != nil {
+	if _, found := stateOf(t, m); found {
 		t.Fatal("unexpected first generation")
 	}
 	resetDevice(t, m, "op-1")
-	first := stateOf(t, m)
-	if first == nil || first.ResetID == nil || *first.ResetID != "op-1" || first.BaseVersion != m.base ||
+	first, found := stateOf(t, m)
+	if !found || first.ResetID == nil || *first.ResetID != "op-1" || first.BaseVersion != m.base ||
 		first.SystemBytes != 32<<20 ||
 		first.HomeBytes != 32<<20 {
 		t.Fatalf("state: %+v", first)
@@ -134,11 +134,11 @@ func TestResetPublishesFreshSystemWithSavedHomeOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	resetDevice(t, m, "op-1")
-	if !reflect.DeepEqual(stateOf(t, m), first) {
+	if now, _ := stateOf(t, m); !reflect.DeepEqual(now, first) {
 		t.Fatal("reset was not idempotent")
 	}
 	resetDevice(t, m, "op-2")
-	second := stateOf(t, m)
+	second, _ := stateOf(t, m)
 	if second.Generation == first.Generation || *second.ResetID != "op-2" {
 		t.Fatal(second)
 	}
@@ -196,7 +196,7 @@ func TestRecoveryPublishesWorkingPairAndRemovesStages(t *testing.T) {
 	}
 	m := managerFixture(t)
 	resetDevice(t, m, "op-1")
-	committed := stateOf(t, m)
+	committed, _ := stateOf(t, m)
 	working := storage.NewWorkingPair(m.core.Config.Working(), "dev-1")
 	if err := os.Mkdir(working.Directory(), 0o700); err != nil {
 		t.Fatal(err)
@@ -211,7 +211,7 @@ func TestRecoveryPublishesWorkingPairAndRemovesStages(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := working.WriteManifest(t.Context(), *committed); err != nil {
+	if err := working.WriteManifest(t.Context(), committed); err != nil {
 		t.Fatal(err)
 	}
 	stage := filepath.Join(m.core.Config.Working(), ".wake-0f6c3d4e")
@@ -221,7 +221,7 @@ func TestRecoveryPublishesWorkingPairAndRemovesStages(t *testing.T) {
 	if err := fenceAndSave(t.Context(), m.core); err != nil {
 		t.Fatal(err)
 	}
-	saved := stateOf(t, m)
+	saved, _ := stateOf(t, m)
 	if saved.Generation == committed.Generation || !reflect.DeepEqual(saved.ResetID, committed.ResetID) {
 		t.Fatal(saved)
 	}

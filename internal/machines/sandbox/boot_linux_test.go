@@ -97,7 +97,7 @@ func bootFixture(
 			ctx,
 			system.Mke2fs,
 			[]string{"-q", "-t", "ext4", "-F", working.Image(volume), "32m"},
-			nil,
+			0,
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -200,8 +200,8 @@ func TestCheckpointThawsAfterCopyFailureAndPanic(t *testing.T) {
 			t.Fatal(err)
 		}
 		copies := workingFixture(t.TempDir())
-		if result := sandbox.Capture(ctx, working, copies); result.Copied != nil || len(result.ThawErrors) != 0 {
-			t.Fatalf("capture = %+v", result)
+		if thawFailures, err := sandbox.Capture(ctx, working, copies); err != nil || len(thawFailures) != 0 {
+			t.Fatalf("capture = %v, %v", thawFailures, err)
 		}
 		for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
 			info, err := os.Stat(copies.Image(volume))
@@ -217,13 +217,13 @@ func TestCheckpointThawsAfterCopyFailureAndPanic(t *testing.T) {
 				}
 				return failure
 			}}
-			result := sandbox.Capture(ctx, working, copies)
-			if !errors.Is(result.Copied, failure) || len(result.ThawErrors) != 0 {
-				t.Fatalf("capture failure = %+v", result)
+			thawFailures, err := sandbox.Capture(ctx, working, copies)
+			if !errors.Is(err, failure) || len(thawFailures) != 0 {
+				t.Fatalf("capture failure = %v, %v", thawFailures, err)
 			}
 			for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
 				thawed, err := system.Thaw(ctx, sandbox.directory.Volume(volume))
-				if err != nil || thawed != system.NotFrozen {
+				if err != nil || thawed {
 					t.Fatalf("%s stayed frozen: %v, %v", volume, thawed, err)
 				}
 			}

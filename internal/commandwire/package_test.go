@@ -16,7 +16,7 @@ import (
 )
 
 // These in-memory contract scenarios need no services or wall-clock waits.
-func TestRustManifestDigests(t *testing.T) {
+func TestManifestDigests(t *testing.T) {
 	data, err := os.ReadFile("testdata/manifest.json")
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestRustManifestDigests(t *testing.T) {
 			t.Fatalf("descriptor digest = %s, %v; want %s", got, err, want)
 		}
 		if len(commandwire.Targets) != len(p.Targets) {
-			t.Fatal("publication catalog does not cover the Rust release fixture")
+			t.Fatal("publication catalog does not cover the release fixture")
 		}
 		for i, target := range commandwire.Targets {
 			artifact, err := p.TargetArtifact(commandwire.TargetTriple(target))
@@ -147,7 +147,7 @@ func TestResourceSelectionAndDescriptorValidation(t *testing.T) {
 	}
 }
 
-func TestArtifactLocationRustWire(t *testing.T) {
+func TestArtifactLocationWire(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		wire  string
@@ -197,7 +197,7 @@ func TestArtifactLocationRustWire(t *testing.T) {
 	}
 }
 
-func TestRustDescriptorEmptyResources(t *testing.T) {
+func TestDescriptorEmptyResources(t *testing.T) {
 	data, err := os.ReadFile("testdata/manifest.json")
 	if err != nil {
 		t.Fatal(err)
@@ -244,7 +244,7 @@ func TestRustDescriptorEmptyResources(t *testing.T) {
 				}
 				got, err := p.Digest()
 				if err != nil || got != want {
-					t.Fatalf("descriptor digest = %s, %v; want Rust hash %s", got, err, want)
+					t.Fatalf("descriptor digest = %s, %v; want fixture hash %s", got, err, want)
 				}
 				encoded, err := contract.EncodeJSON(p)
 				if err != nil {
@@ -370,8 +370,9 @@ func TestReleaseTargetArtifacts(t *testing.T) {
 }
 
 // TestRunnerMessagePackCorpus pins commandwire's embedded values to the
-// rmp_serde::to_vec_named bytes used by the runner. It needs only fixture IO
-// and takes less than a second; parent encodings include nested wire values.
+// runner's MessagePack fixture bytes, maps keyed by field name. It needs only
+// fixture IO and takes less than a second; parent encodings include nested
+// wire values.
 func TestRunnerMessagePackCorpus(t *testing.T) {
 	for _, tc := range []struct {
 		fixture   string
@@ -405,7 +406,7 @@ func TestRunnerMessagePackCorpus(t *testing.T) {
 					t.Fatalf("part %d: %v", i, err)
 				}
 				if !bytes.Equal(got, want) {
-					t.Errorf("part %d: MessagePack = %x; Rust wrote %x", i, got, want)
+					t.Errorf("part %d: MessagePack = %x; fixture has %x", i, got, want)
 				}
 			}
 		})

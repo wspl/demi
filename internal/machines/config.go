@@ -85,20 +85,8 @@ func (c Config) SystemBytes() uint64 { return uint64(c.SystemMiB) << 20 }
 // HomeBytes returns a new home filesystem's capacity.
 func (c Config) HomeBytes() uint64 { return uint64(c.HomeMiB) << 20 }
 
-// ConfigFromEnv reads process arguments and environment.
-func ConfigFromEnv() (Config, error) { return ParseConfig(os.Args[1:], os.Environ()) }
-
-// ParseConfig reads flags (without argv[0]) and environment, rejecting unknown managed settings.
-func ParseConfig(args, environ []string) (c Config, err error) {
-	defer func() {
-		var display *ConfigDisplay
-		var setting *ConfigError
-		if err != nil && !errors.As(err, &display) && !errors.As(err, &setting) {
-			err = &InvalidConfigError{Cause: err}
-		}
-	}()
-	return parseConfig(args, environ)
-}
+// ConfigFromEnv reads process arguments and environment, as ParseConfig does.
+func ConfigFromEnv() (Config, string, error) { return ParseConfig(os.Args[1:], os.Environ()) }
 
 type configSetting struct {
 	flag, name, initial, help string
@@ -127,19 +115,21 @@ func configSettings() []configSetting {
 	}
 }
 
-// parseConfig retains partial configuration assignments when a later setting fails.
-func parseConfig(args, environ []string) (c Config, err error) {
+// ParseConfig reads flags (without argv[0]) and environment, rejecting unknown
+// managed settings. A help or version request returns its text in display.
+// Partial assignments remain in c when a later setting fails.
+func ParseConfig(args, environ []string) (c Config, display string, err error) {
 	settings := configSettings()
 	env, err := configEnvironment(settings, environ)
 	if err != nil {
-		return c, err
+		return c, "", err
 	}
 	for _, arg := range args {
 		if arg == "--version" || arg == "-V" {
-			return c, &ConfigDisplay{Text: "demi-machine-manager " + version.Release + "\n"}
+			return c, "demi-machine-manager " + version.Release + "\n", nil
 		}
 		if arg == "--help" || arg == "-h" {
-			return c, configHelp(settings)
+			return c, configHelp(settings), nil
 		}
 	}
 	fs := flag.NewFlagSet("demi-machine-manager", flag.ContinueOnError)
@@ -165,14 +155,14 @@ func parseConfig(args, environ []string) (c Config, err error) {
 		"Recover inside a saved mount namespace; only the manager starts this.",
 	)
 	if err := fs.Parse(args); err != nil {
-		return c, err
+		return c, "", err
 	}
 	if fs.NArg() != 0 {
-		return c, fmt.Errorf("unexpected argument: %s", fs.Arg(0))
+		return c, "", fmt.Errorf("unexpected argument: %s", fs.Arg(0))
 	}
 	fs.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
 	if *recovery && *namespace {
-		return c, errors.New("--recover conflicts with --recover-namespace")
+		return c, "", errors.New("--recover conflicts with --recover-namespace")
 	}
 	if *recovery {
 		c.Mode = ModeRecover
@@ -181,40 +171,23 @@ func parseConfig(args, environ []string) (c Config, err error) {
 		c.Mode = ModeRecoverNamespace
 	}
 	err = c.applyConfig(settings, values, explicit)
-	return c, err
+	return c, "", err
 }
 
-// ConfigDisplay is a successful help or version request, handled before startup.
-type ConfigDisplay struct {
-	// Text is the help or version output.
-	Text string
-}
+// ErrConfigRejected marks a configuration the manager refuses although each
+// value is well formed; the command exits with status 1 for it and with
+// status 2 for any other configuration error.
+var ErrConfigRejected = errors.New("configuration rejected")
 
-// Error returns the help or version text.
-func (d *ConfigDisplay) Error() string { return d.Text }
+// rejectedConfig is a configuration rejection whose text is its message alone.
+type rejectedConfig struct{ message string }
 
-// ConfigError is a manager-specific configuration rejection, reported with exit status 1.
-type ConfigError struct {
-	// Message is the configuration rejection shown to the operator.
-	Message string
-}
+func (e *rejectedConfig) Error() string { return e.message }
 
-// Error returns the failure message.
-func (e *ConfigError) Error() string { return e.Message }
+// Is reports whether target is ErrConfigRejected.
+func (*rejectedConfig) Is(target error) bool { return target == ErrConfigRejected }
 
-// InvalidConfigError is a malformed command-line value, reported with exit status 2.
-type InvalidConfigError struct {
-	// Cause is the malformed command-line value error.
-	Cause error
-}
-
-// Error returns the failure message.
-func (e *InvalidConfigError) Error() string { return e.Cause.Error() }
-
-// Unwrap returns the underlying failure.
-func (e *InvalidConfigError) Unwrap() error { return e.Cause }
-
-func configHelp(settings []configSetting) error {
+func configHelp(settings []configSetting) string {
 	var help strings.Builder
 	help.WriteString(
 		"The Cloud machine manager: runs users' Cloud machines as gVisor\n" +
@@ -232,7 +205,7 @@ func configHelp(settings []configSetting) error {
 		}
 	}
 	help.WriteString("  -h, --help\n      Print help\n  -V, --version\n      Print version\n")
-	return &ConfigDisplay{Text: help.String()}
+	return help.String()
 }
 
 func (c *Config) applyConfig(settings []configSetting, values map[string]*string, explicit map[string]bool) error {
@@ -252,16 +225,16 @@ func (c *Config) applyConfig(settings []configSetting, values map[string]*string
 		}
 	}
 	if c.Mode == ModeServe && c.Socket == "" {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
-		return &ConfigError{Message: "DEMI_MACHINE_MANAGER_SOCKET is required"}
+		//nolint:staticcheck // User-visible text, kept byte for byte.
+		return &rejectedConfig{message: "DEMI_MACHINE_MANAGER_SOCKET is required"}
 	}
 	backend, err := runnerwire.ParseBackendURL(*values["backend-url"])
 	if err != nil {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return fmt.Errorf("DEMI_MANAGED_BACKEND_URL: %w", err)
 	}
 	if !strings.HasPrefix(backend.String(), "http://") && !strings.HasPrefix(backend.String(), "https://") {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("DEMI_MANAGED_BACKEND_URL: must be an http or https URL")
 	}
 	c.BackendURL = backend
@@ -292,11 +265,13 @@ func (c *Config) applyLimits(settings []configSetting, values map[string]*string
 	case "off":
 		for _, setting := range settings[6:8] {
 			if explicit[setting.flag] {
-				return &ConfigError{Message: fmt.Sprintf("%s applies only with DEMI_MANAGED_LIMITS=on", setting.name)}
+				return &rejectedConfig{
+					message: fmt.Sprintf("%s applies only with DEMI_MANAGED_LIMITS=on", setting.name),
+				}
 			}
 		}
 	default:
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("DEMI_MANAGED_LIMITS: must be on or off")
 	}
 	return nil
@@ -307,25 +282,25 @@ func (c *Config) applyNetwork(values map[string]*string) error {
 	c.Subnet, err = netip.ParsePrefix(*values["subnet"])
 	if err != nil || !c.Subnet.Addr().Is4() || c.Subnet.Bits() < 8 || c.Subnet.Bits() > 30 ||
 		c.Subnet != c.Subnet.Masked() {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("DEMI_MANAGED_SUBNET: must be an aligned IPv4 network with prefix /8 through /30")
 	}
 	v := *values["slots"]
 	n, err := strconv.ParseUint(v, 10, 16)
 	if err != nil || strings.Trim(v, "0123456789") != "" || n < 1 || n > 16384 {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("DEMI_MANAGED_SLOTS: must be from 1 to 16384")
 	}
 	c.Slots = uint16(n)
 	if n*4 > uint64(1)<<(32-c.Subnet.Bits()) {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
-		return &ConfigError{Message: "DEMI_MANAGED_SLOTS exceeds DEMI_MANAGED_SUBNET capacity"}
+		//nolint:staticcheck // User-visible text, kept byte for byte.
+		return &rejectedConfig{message: "DEMI_MANAGED_SLOTS exceeds DEMI_MANAGED_SUBNET capacity"}
 	}
 	for _, v := range strings.Split(*values["dns"], ",") {
 		a, e := netip.ParseAddr(v)
 		if e != nil || !a.Is4() || a.As4()[0] == 0 || a.IsLoopback() || a.IsMulticast() ||
 			a == netip.AddrFrom4([4]byte{255, 255, 255, 255}) {
-			//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+			//nolint:staticcheck // User-visible text, kept byte for byte.
 			return errors.New("DEMI_MANAGED_DNS: resolver must be reachable IPv4")
 		}
 		c.DNS = append(c.DNS, a)
@@ -344,7 +319,7 @@ func configEnvironment(settings []configSetting, environ []string) (map[string]s
 		names = append(names, setting.name)
 	}
 	if name, ok := cli.UnknownVariable("DEMI_MANAGED_", names, environ); ok {
-		return nil, &ConfigError{Message: fmt.Sprintf("%s is not a Cloud manager setting", name)}
+		return nil, &rejectedConfig{message: fmt.Sprintf("%s is not a Cloud manager setting", name)}
 	}
 	return env, nil
 }

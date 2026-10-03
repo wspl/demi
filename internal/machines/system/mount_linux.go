@@ -26,7 +26,7 @@ func MountRoot(ctx context.Context, path string) (mounted, exists bool, err erro
 		return false, false, Failed("inspecting", path, err)
 	}
 	if status.Attributes_mask&unix.STATX_ATTR_MOUNT_ROOT == 0 {
-		return false, true, mountRootUnsupportedError{}
+		return false, true, errMountRootUnsupported
 	}
 	return status.Attributes&unix.STATX_ATTR_MOUNT_ROOT != 0, true, nil
 }
@@ -118,11 +118,5 @@ func MakePrivate(ctx context.Context, target string) error {
 	return Failed("changing the propagation of", target, unix.Mount("", target, "", unix.MS_PRIVATE, ""))
 }
 
-// mountRootUnsupportedError keeps the Rust diagnostic while exposing its error kind.
-type mountRootUnsupportedError struct{}
-
-func (mountRootUnsupportedError) Error() string {
-	return "the kernel does not report mount roots (Linux 5.8 or later is required)"
-}
-
-func (mountRootUnsupportedError) Unwrap() error { return errors.ErrUnsupported }
+// errMountRootUnsupported means the kernel is older than Linux 5.8.
+var errMountRootUnsupported = errors.New("the kernel does not report mount roots (Linux 5.8 or later is required)")

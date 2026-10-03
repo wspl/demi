@@ -32,7 +32,7 @@ func configEnv(extra ...string) []string {
 }
 
 func TestConfigDefaults(t *testing.T) {
-	c, err := machines.ParseConfig(nil, configEnv())
+	c, _, err := machines.ParseConfig(nil, configEnv())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestConfigRefusesInvalidSettings(t *testing.T) {
 	}
 	for _, settings := range cases {
 		t.Run(strings.Join(settings, ","), func(t *testing.T) {
-			if _, err := machines.ParseConfig(nil, configEnv(settings...)); err == nil {
+			if _, _, err := machines.ParseConfig(nil, configEnv(settings...)); err == nil {
 				t.Fatal("invalid setting accepted")
 			}
 		})
@@ -85,12 +85,12 @@ func TestConfigRefusesInvalidSettings(t *testing.T) {
 }
 
 func TestLimitsOffRefusesExplicitBudgets(t *testing.T) {
-	c, err := machines.ParseConfig(nil, configEnv("DEMI_MANAGED_LIMITS=off"))
+	c, _, err := machines.ParseConfig(nil, configEnv("DEMI_MANAGED_LIMITS=off"))
 	if err != nil || c.Limits != nil {
 		t.Fatalf("limits off: %+v %v", c, err)
 	}
 	for _, setting := range []string{"DEMI_MANAGED_CPUS=2", "DEMI_MANAGED_MEM_MIB=2048"} {
-		_, err := machines.ParseConfig(nil, configEnv("DEMI_MANAGED_LIMITS=off", setting))
+		_, _, err := machines.ParseConfig(nil, configEnv("DEMI_MANAGED_LIMITS=off", setting))
 		name, _, _ := strings.Cut(setting, "=")
 		if err == nil || err.Error() != name+" applies only with DEMI_MANAGED_LIMITS=on" {
 			t.Fatalf("budget: %v", err)
@@ -99,7 +99,7 @@ func TestLimitsOffRefusesExplicitBudgets(t *testing.T) {
 }
 
 func TestUnknownManagedVariableNamed(t *testing.T) {
-	_, err := machines.ParseConfig(nil, configEnv("DEMI_MANAGED_FIRECRACKER=/old"))
+	_, _, err := machines.ParseConfig(nil, configEnv("DEMI_MANAGED_FIRECRACKER=/old"))
 	if err == nil || err.Error() != "DEMI_MANAGED_FIRECRACKER is not a Cloud manager setting" {
 		t.Fatal(err)
 	}
@@ -108,15 +108,19 @@ func TestUnknownManagedVariableNamed(t *testing.T) {
 func TestServingNeedsSocketRecoveryDoesNot(t *testing.T) {
 	env := configEnv()
 	env = env[:len(env)-1]
-	c, err := machines.ParseConfig([]string{"--recover"}, env)
+	c, _, err := machines.ParseConfig([]string{"--recover"}, env)
 	if err != nil || c.Mode != machines.ModeRecover {
 		t.Fatalf("recovery: %+v %v", c, err)
 	}
-	// Rust MissingSocket is distinguished by its exact Display text.
-	if _, err = machines.ParseConfig(nil, env); err == nil || err.Error() != "DEMI_MACHINE_MANAGER_SOCKET is required" {
+	// A missing socket is reported with this exact text.
+	if _, _, err = machines.ParseConfig(
+		nil,
+		env,
+	); err == nil ||
+		err.Error() != "DEMI_MACHINE_MANAGER_SOCKET is required" {
 		t.Fatal(err)
 	}
-	if _, err = machines.ParseConfig([]string{"--recover", "--recover-namespace"}, env); err == nil {
+	if _, _, err = machines.ParseConfig([]string{"--recover", "--recover-namespace"}, env); err == nil {
 		t.Fatal("conflicting modes accepted")
 	}
 }

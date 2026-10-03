@@ -1,6 +1,6 @@
 package sandbox
 
-// revive:disable:exported Contract documentation preserves the Rust product text.
+// revive:disable:exported Contract doc comments describe the data and need not start with the name.
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 

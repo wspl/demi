@@ -16,23 +16,14 @@ type Message interface{ WireMessage() }
 // WireMessage identifies a message of the machine-manager socket.
 func (MachineRequest) WireMessage() {}
 
-// DecodeError reports a line that is not a message of this wire.
-type DecodeError struct{ Err error }
-
-// Error returns the failure message.
-func (e *DecodeError) Error() string { return e.Err.Error() }
-
-// Unwrap returns the underlying failure.
-func (e *DecodeError) Unwrap() error { return e.Err }
-
 // DecodeRequest decodes one request line, its newline removed.
 func DecodeRequest(line []byte) (MachineRequest, error) {
 	if len(line) > MaxLineBytes {
-		return MachineRequest{}, &DecodeError{fmt.Errorf("machine line exceeds %d bytes", MaxLineBytes)}
+		return MachineRequest{}, fmt.Errorf("machine line exceeds %d bytes", MaxLineBytes)
 	}
 	value, err := DecodeMachineRequest(line)
 	if err != nil {
-		return MachineRequest{}, &DecodeError{err}
+		return MachineRequest{}, err
 	}
 	return value, nil
 }
@@ -40,11 +31,11 @@ func DecodeRequest(line []byte) (MachineRequest, error) {
 // DecodeResponse decodes one response line, its newline removed.
 func DecodeResponse(line []byte) (MachineResponse, error) {
 	if len(line) > MaxLineBytes {
-		return nil, &DecodeError{fmt.Errorf("machine line exceeds %d bytes", MaxLineBytes)}
+		return nil, fmt.Errorf("machine line exceeds %d bytes", MaxLineBytes)
 	}
 	value, err := DecodeMachineResponse(line)
 	if err != nil {
-		return nil, &DecodeError{err}
+		return nil, err
 	}
 	return value, nil
 }

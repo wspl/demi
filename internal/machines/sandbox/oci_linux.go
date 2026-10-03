@@ -69,7 +69,7 @@ func Spec(boot Boot) ([]byte, error) {
 		},
 	}
 	if group := boot.Cgroup; group != nil {
-		// Rust's NonZeroU32 inputs make these values impossible there.
+		// Zero CPU or memory limits are refused, never written to the spec.
 		if group.Limits.CPUs == 0 || group.Limits.MemoryMiB == 0 {
 			return nil, fmt.Errorf("sandbox resource limits must be nonzero")
 		}

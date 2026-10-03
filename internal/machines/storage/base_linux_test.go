@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/machines/storage"
@@ -107,24 +108,22 @@ func TestInvalidReleaseRefusedWithoutStage(t *testing.T) {
 			image.Write(t)
 			bases := t.TempDir()
 			_, err := storage.ImportBase(t.Context(), tools, image.Directory, bases)
-			var integrity *storage.ArchiveIntegrityError
-			var missing *storage.MissingExecutableError
-			var executable *storage.ExecutableIntegrityError
-			var escape *storage.ExecutablePathError
 			matches := false
 			switch name {
 			case "archive":
-				matches = errors.As(err, &integrity)
+				matches = err != nil && strings.Contains(err.Error(), "Cloud root archive integrity mismatch: ")
 			case "architecture":
 				matches = errors.Is(err, storage.ErrArchitecture)
 			case "missing-init":
-				matches = errors.As(err, &missing) && missing.Path == machinewire.InitPath
+				matches = err != nil &&
+					strings.Contains(err.Error(), "Cloud image manifest lacks "+machinewire.InitPath)
 			case "absent-executable":
 				matches = errors.Is(err, os.ErrNotExist)
 			case "executable-digest":
-				matches = errors.As(err, &executable) && executable.Path == machinewire.InitPath
+				matches = err != nil &&
+					strings.Contains(err.Error(), "Cloud executable integrity mismatch: "+machinewire.InitPath)
 			case "escape":
-				matches = errors.As(err, &escape) && escape.Path == "/usr/bin/escape"
+				matches = err != nil && strings.Contains(err.Error(), "Invalid image executable path: /usr/bin/escape")
 			}
 			if !matches {
 				t.Fatalf("%s: unexpected failure %v", name, err)

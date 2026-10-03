@@ -173,7 +173,7 @@ func TestEditContinuityAndRestoration(t *testing.T) {
 }
 
 // Cost: one local recording and journal read; no subprocesses or timed waits.
-func TestJournalPreservesSerdeStringBytes(t *testing.T) {
+func TestJournalLeavesPathCharactersUnescaped(t *testing.T) {
 	root := t.TempDir()
 	r := recorder(t, root)
 	name := "file&\u2028\u2029"
