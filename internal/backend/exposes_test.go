@@ -478,8 +478,9 @@ func TestExposeCloudCheckpointKeepsConnectionAndIdleStopEndsIt(t *testing.T) {
 	service, released := filesExposeService(t, proceed)
 	entry := filesExpose(s.ctx, t, s.b, &s.user, device, filesExposePort(t, service))
 	held := filesExposeHeld(s.ctx, t, s.b, entry)
-	_, err = s.manager.Arrival(s.ctx, "checkpoint:"+string(device))
-	wireMust(t, err)
+	checkpoint := "checkpoint:" + string(device)
+	before := s.manager.Count(checkpoint)
+	wireMust(t, s.manager.WaitCount(s.ctx, checkpoint, before+1))
 	answer, err := backendtest.ReadAnswer(s.ctx, filesExposeFetch(s.ctx, t, s.b, entry, "/hello"))
 	wireMust(t, err)
 	filesStatus(t, answer, 200)
@@ -719,6 +720,20 @@ func filesExposeHead(ctx context.Context, read *bufio.Reader) (string, error) {
 	}
 }
 
+// filesExposeLines checks every occurrence of a relayed header, retaining its
+// spelling and order instead of accepting an extra or differently cased line.
+func filesExposeLines(t *testing.T, head, name string, want ...string) {
+	t.Helper()
+	var got []string
+	for _, line := range strings.Split(head, "\r\n")[1:] {
+		key, _, ok := strings.Cut(line, ":")
+		if ok && strings.EqualFold(key, name) {
+			got = append(got, line)
+		}
+	}
+	conversationEqual(t, got, want)
+}
+
 // Four raw HTTP exchanges preserve headers, eight-MiB bodies, event streaming and refusals.
 func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	ctx, h := conversationHarness(t)
@@ -886,23 +901,23 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	if !strings.HasPrefix(observed.head, "GET /headers?q=1 HTTP/1.1\r\n") {
 		t.Fatal(observed.head)
 	}
-	for _, line := range []string{"Host: 127.0.0.1:" + port, "x-lower-case: two", "X-UPPER-CASE: THREE", "Cookie: a=1; b=2", "X-Custom-Header: One", "X-Custom-Header: Four"} {
-		filesContains(t, observed.head, "\r\n"+line+"\r\n")
+	for _, line := range []string{"Host: 127.0.0.1:" + port, "x-lower-case: two", "X-UPPER-CASE: THREE", "Cookie: a=1; b=2"} {
+		name, _, _ := strings.Cut(line, ":")
+		filesExposeLines(t, observed.head, name, line)
 	}
-	if strings.Index(observed.head, "X-Custom-Header: One") > strings.Index(observed.head, "X-Custom-Header: Four") {
-		t.Fatal("duplicate header order reversed")
-	}
+	filesExposeLines(t, observed.head, "x-custom-header", "X-Custom-Header: One", "X-Custom-Header: Four")
 	for _, line := range []string{"connection: close", "x-forwarded-for: 127.0.0.1", "x-forwarded-host: " + public.Host, "x-forwarded-proto: http"} {
-		filesContains(t, strings.ToLower(observed.head), "\r\n"+line+"\r\n")
+		name, _, _ := strings.Cut(line, ":")
+		filesExposeLines(t, strings.ToLower(observed.head), name, line)
 	}
 	conversationEqual(t, len(strings.Split(strings.TrimSuffix(observed.head, "\r\n\r\n"), "\r\n"))-1, 10)
-	filesContains(t, answer, "HTTP/1.1 200 OK\r\n", "\r\nContent-Type: text/plain\r\n", "\r\nX-Service-Header: Yes\r\n", "\r\nContent-Length: 5\r\n", "\r\nSet-Cookie: first=1; Path=/\r\n", "\r\nset-cookie: second=2; HttpOnly\r\n")
-	if strings.Count(strings.ToLower(answer), "\r\nset-cookie:") != 2 || strings.Index(answer, "Set-Cookie: first=1") > strings.Index(answer, "set-cookie: second=2") {
-		t.Fatal("duplicate response headers changed order or count")
+	conversationEqual(t, strings.SplitN(answer, "\r\n", 2)[0], "HTTP/1.1 200 OK")
+	for _, line := range []string{"Content-Type: text/plain", "X-Service-Header: Yes", "Content-Length: 5"} {
+		name, _, _ := strings.Cut(line, ":")
+		filesExposeLines(t, answer, name, line)
 	}
-	if strings.Contains(strings.ToLower(answer), "\r\nconnection:") {
-		t.Fatal(answer)
-	}
+	filesExposeLines(t, answer, "set-cookie", "Set-Cookie: first=1; Path=/", "set-cookie: second=2; HttpOnly")
+	filesExposeLines(t, answer, "connection")
 	body := make([]byte, 5)
 	_, err = io.ReadFull(read, body)
 	wireMust(t, err)
@@ -923,21 +938,22 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	read = bufio.NewReader(conn)
 	answer, err = filesExposeHead(ctx, read)
 	wireMust(t, err)
-	filesContains(t, answer, "HTTP/1.1 200 OK\r\n")
-	filesContains(t, strings.ToLower(answer), "\r\ntransfer-encoding: chunked\r\n")
+	conversationEqual(t, strings.SplitN(answer, "\r\n", 2)[0], "HTTP/1.1 200 OK")
+	filesExposeLines(t, strings.ToLower(answer), "transfer-encoding", "transfer-encoding: chunked")
 	body, err = io.ReadAll(httputil.NewChunkedReader(read))
 	wireMust(t, err)
 	if !bytes.Equal(body, backendtest.Pattern(8<<20, 7)) {
 		t.Fatal("response body changed")
 	}
 	observed = observe()
-	filesContains(t, observed.head, "POST /upload HTTP/1.1\r\n")
-	filesContains(t, strings.ToLower(observed.head), "\r\ntransfer-encoding: chunked\r\n")
+	conversationEqual(t, strings.SplitN(observed.head, "\r\n", 2)[0], "POST /upload HTTP/1.1")
+	filesExposeLines(t, strings.ToLower(observed.head), "transfer-encoding", "transfer-encoding: chunked")
 	if !bytes.Equal(observed.body, backendtest.Pattern(8<<20, 3)) {
 		t.Fatal("request body changed")
 	}
 	_, read, answer = visit("GET /events HTTP/1.1\r\nHost: " + public.Host + "\r\nAccept: text/event-stream\r\n\r\n")
-	filesContains(t, answer, "HTTP/1.1 200 OK\r\n", "\r\nContent-Type: text/event-stream\r\n")
+	conversationEqual(t, strings.SplitN(answer, "\r\n", 2)[0], "HTTP/1.1 200 OK")
+	filesExposeLines(t, answer, "Content-Type", "Content-Type: text/event-stream")
 	events := httputil.NewChunkedReader(read)
 	for i := 1; i <= 2; i++ {
 		want := fmt.Sprintf("event: tick\ndata: %d\n\n", i)
@@ -956,14 +972,16 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	conversationEqual(t, observed.open, true)
 	conversationEqual(t, observed.ended, true)
 	_, read, answer = visit("GET /refuse HTTP/1.1\r\nHost: " + public.Host + "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
-	filesContains(t, answer, "HTTP/1.1 426 Upgrade Required\r\n", "\r\nContent-Length: 17\r\n")
+	conversationEqual(t, strings.SplitN(answer, "\r\n", 2)[0], "HTTP/1.1 426 Upgrade Required")
+	filesExposeLines(t, answer, "Content-Length", "Content-Length: 17")
 	body = make([]byte, 17)
 	_, err = io.ReadFull(read, body)
 	wireMust(t, err)
 	conversationEqual(t, string(body), "no upgrades here\n")
 	observed = observe()
 	for _, line := range []string{"Upgrade: websocket", "Connection: Upgrade", "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==", "Sec-WebSocket-Version: 13"} {
-		filesContains(t, observed.head, "\r\n"+line+"\r\n")
+		name, _, _ := strings.Cut(line, ":")
+		filesExposeLines(t, observed.head, name, line)
 	}
 	wireMust(t, b.Close(ctx))
 }

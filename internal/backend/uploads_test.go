@@ -162,10 +162,11 @@ func TestUploadRestoreReadsReplayBlobsOnceAfterCompaction(t *testing.T) {
 		t.Fatalf("read concurrency: %+v", both)
 	}
 	for _, request := range w.vendor.Requests()[requestCount:] {
+		messages := filesModelField(t, request.Body, "messages")
 		for i := 1; i <= 9; i++ {
-			filesContains(t, string(request.Body), base64.StdEncoding.EncodeToString(storetest.PNG(4, 3, byte(i))))
+			filesContains(t, messages, base64.StdEncoding.EncodeToString(storetest.PNG(4, 3, byte(i))))
 		}
-		if strings.Contains(string(request.Body), base64.StdEncoding.EncodeToString(storetest.PNG(4, 3, 0))) {
+		if strings.Contains(messages, base64.StdEncoding.EncodeToString(storetest.PNG(4, 3, 0))) {
 			t.Fatal("old image replayed")
 		}
 	}
@@ -188,12 +189,13 @@ func TestUploadAndToolFitWideImageButKeepHostOriginal(t *testing.T) {
 	requests := w.vendor.Requests()
 	firstImage := func(body []byte) string {
 		t.Helper()
+		messages := filesModelField(t, body, "messages")
 		marker := `"data":"`
-		start := strings.Index(string(body), marker)
+		start := strings.Index(messages, marker)
 		if start < 0 {
 			t.Fatalf("no image: %s", body)
 		}
-		return strings.SplitN(string(body)[start+len(marker):], `"`, 2)[0]
+		return strings.SplitN(messages[start+len(marker):], `"`, 2)[0]
 	}
 	fitted := firstImage(requests[0].Body)
 	data, err := base64.StdEncoding.DecodeString(fitted)
@@ -201,12 +203,12 @@ func TestUploadAndToolFitWideImageButKeepHostOriginal(t *testing.T) {
 	config, err := png.DecodeConfig(bytes.NewReader(data))
 	wireMust(t, err)
 	conversationEqual(t, []int{config.Width, config.Height}, []int{2000, 8})
-	if strings.Contains(string(requests[0].Body), base64.StdEncoding.EncodeToString(wide)) {
+	if strings.Contains(filesModelField(t, requests[0].Body, "messages"), base64.StdEncoding.EncodeToString(wide)) {
 		t.Fatal("original image sent")
 	}
 	conversationEqual(t, firstImage(requests[1].Body), fitted)
-	conversationEqual(t, strings.Count(string(requests[1].Body), fitted), 2)
-	filesContains(t, string(requests[1].Body), "fitted to what every model accepts; to keep the original, save it: demi shell output ")
+	conversationEqual(t, strings.Count(filesModelField(t, requests[1].Body, "messages"), fitted), 2)
+	filesContains(t, filesModelField(t, requests[1].Body, "messages"), "fitted to what every model accepts; to keep the original, save it: demi shell output ")
 	user := conversationTranscript(w.ctx, t, w.b, &w.s, filesConversation).Blocks[0].(*core.UserBlock)
 	image := user.Content[1].(*core.UserImage).Source.(*core.MediaSourceRef)
 	if image.Ref == upload.Sha256 {
@@ -266,7 +268,7 @@ func TestUploadUnstorableToolMediaBecomesGoneAndTurnContinues(t *testing.T) {
 	if strings.Contains(encoded, b64) {
 		t.Fatal("frames carry picture bytes")
 	}
-	continued := string(w.vendor.Requests()[1].Body)
+	continued := filesModelField(t, w.vendor.Requests()[1].Body, "messages")
 	filesContains(t, continued, conversationJSON(t, "[image not stored: "+cause.Error+"]"))
 	if strings.Contains(continued, b64) {
 		t.Fatal("request carries picture bytes")
@@ -321,7 +323,7 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 		t.Fatalf("foreign attachment: %v", err)
 	}
 	b64 := base64.StdEncoding.EncodeToString(png)
-	sent := string(w.vendor.Requests()[0].Body)
+	sent := filesModelField(t, w.vendor.Requests()[0].Body, "messages")
 	filesContains(t, sent, b64, directory+"/shot.png", directory+"/notes.log", "[attachment "+string(hers.ID)+" is not available]")
 	encoded := conversationJSON(t, frames)
 	filesContains(t, encoded, ref)
@@ -373,7 +375,7 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 	_, err = w.socket.Until(w.ctx, conversationIdle)
 	wireMust(t, err)
 	conversationEqual(t, []byte(filesRead(t, filepath.Join(directory, "shot-3.png"))), png)
-	filesContains(t, string(w.vendor.Requests()[3].Body), "And this one", b64, directory+"/shot-3.png")
+	filesContains(t, filesModelField(t, w.vendor.Requests()[3].Body, "messages"), "And this one", b64, directory+"/shot-3.png")
 	wireMust(t, w.socket.Send(w.ctx, &framewire.SyncTranscriptFrame{}))
 	synced, err := w.socket.Until(w.ctx, func(f framewire.ServerFrame) bool {
 		_, ok := f.(*framewire.TranscriptResetFrame)
@@ -397,7 +399,7 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 	}
 	requests := w.vendor.Requests()
 	conversationEqual(t, len(requests), 5)
-	filesContains(t, string(requests[4].Body), "Look again", b64)
+	filesContains(t, filesModelField(t, requests[4].Body, "messages"), "Look again", b64)
 	wireMust(t, w.socket.Close(w.ctx))
 	wireMust(t, w.b.Close(w.ctx))
 }

@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/wspl/demi/internal/backend/backendtest"
@@ -173,7 +174,9 @@ func TestFileShutdownEndsOpenDownload(t *testing.T) {
 	first := make([]byte, 1)
 	_, err = io.ReadFull(response.Body, first)
 	wireMust(t, err)
-	wireMust(t, d.backend.Close(d.ctx))
+	closing, cancel := context.WithTimeout(d.ctx, 20*time.Second)
+	defer cancel()
+	wireMust(t, d.backend.Close(closing))
 	_, err = io.Copy(io.Discard, response.Body)
 	if err == nil {
 		t.Fatal("shutdown completed rather than cut the open download")
