@@ -32,7 +32,13 @@ guest receives a token at boot and keeps temporary state. The backend owns devic
 claiming and user ownership. The runner opens an outbound WebSocket and sends its
 `hello` first; the backend closes a connection that has sent nothing within 30
 seconds of opening. The backend looks a hello's token up while it watches the
-connection, and lets a runner that goes away meanwhile go without adopting it.
+connection, and lets a runner that goes away meanwhile go without adopting it;
+it drops what else the runner sends before it is answered, such as a repeated
+hello, as it does while an unclaimed runner waits for its claim. One goroutine
+reads the connection for its whole life (`runners.Socket`), so the edge, which
+watches the connection during the lookup and the claim wait, hands the same
+reader to the user's shard that adopts it: a WebSocket library's read cannot be
+stopped without closing the connection.
 It answers a known token with `hello_ok` once it has bound the connection to
 the token's device, which is online from then until the connection ends. A
 hello that meets the backend's shutdown gets no answer: its connection closes,
