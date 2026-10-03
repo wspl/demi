@@ -5,7 +5,9 @@ package tabs
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/cdp"
@@ -66,4 +68,15 @@ func (p *chromeProcess) terminate(ctx context.Context) error {
 			timer.Stop()
 		}
 	}
+}
+
+// installedProcess narrows inspection to Chrome installations before reading markers.
+func installedProcess(roots []string, path string) bool {
+	for _, root := range roots {
+		relative, err := filepath.Rel(root, path)
+		if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }

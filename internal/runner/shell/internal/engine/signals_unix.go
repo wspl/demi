@@ -4,11 +4,13 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerwire"
 	"golang.org/x/sys/unix"
 	"mvdan.cc/sh/v3/interp"
@@ -84,3 +86,24 @@ func (e *execution) kill(ctx context.Context, args []string) error {
 }
 
 func signalExitCode(name string) uint8 { return uint8(128 + unix.SignalNum(name)) }
+
+// signal sends to active processes descended from this shell scope. The job
+// retains only active commands, not every scope ever made by a long-running loop.
+func (s *interpreterScope) signal(signal runnerwire.Signal) error {
+	s.owner.mu.Lock()
+	var commands []*process.Command
+	for command, scope := range s.owner.commands {
+		for ancestor := scope; ancestor != nil; ancestor = ancestor.parent {
+			if ancestor == s {
+				commands = append(commands, command)
+				break
+			}
+		}
+	}
+	s.owner.mu.Unlock()
+	var err error
+	for _, command := range commands {
+		err = errors.Join(err, command.Signal(signal))
+	}
+	return err
+}

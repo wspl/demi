@@ -12,11 +12,14 @@ import (
 )
 
 func duplicateStandard(ctx context.Context, descriptor uint32) (*os.File, error) {
-	file := os.Stderr
-	if descriptor == 0 {
+	var file *os.File
+	switch descriptor {
+	case 0:
 		file = os.Stdin
-	} else if descriptor == 1 {
+	case 1:
 		file = os.Stdout
+	default:
+		file = os.Stderr
 	}
 	handle, err := cmdsdk.Retry(ctx, func() (windows.Handle, error) {
 		var result windows.Handle

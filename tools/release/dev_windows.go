@@ -5,11 +5,7 @@ import (
 	"errors"
 )
 
-type devProcess struct {
-	done chan struct{}
-	err  error
-}
-
-func (*application) serveDev(context.Context, devOptions, string, string) error {
+// dev needs Unix process groups to stop what it starts in order.
+func (*application) dev(context.Context, devOptions) error {
 	return errors.New("dev requires Unix process groups")
 }

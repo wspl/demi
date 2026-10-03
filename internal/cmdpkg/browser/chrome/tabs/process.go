@@ -5,8 +5,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/cdp"
 )
@@ -18,17 +16,6 @@ type chromeProcess struct {
 	command       *exec.Cmd
 	done          chan struct{}
 	waitErr       error // Written before done closes.
-}
-
-// installedProcess narrows inspection to Chrome installations before reading markers.
-func installedProcess(roots []string, path string) bool {
-	for _, root := range roots {
-		relative, err := filepath.Rel(root, path)
-		if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
 }
 
 // killLeader reaps the launched Chrome even when the CDP connection has gone.

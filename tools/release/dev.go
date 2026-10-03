@@ -1,3 +1,5 @@
+//go:build unix
+
 package main
 
 import (
@@ -10,7 +12,6 @@ import (
 	"net/http/cookiejar"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -25,9 +26,6 @@ const devEmail = "developer@example.test"
 const devPassword = "development"
 
 func (a *application) dev(ctx context.Context, o devOptions) (err error) {
-	if runtime.GOOS == "windows" {
-		return errors.New("dev requires Unix process groups")
-	}
 	programs := filepath.Join(a.Root, ".cache/dev-programs")
 	if err := os.MkdirAll(programs, 0755); err != nil {
 		return err

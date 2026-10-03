@@ -13,7 +13,6 @@ import (
 
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
@@ -57,27 +56,6 @@ func (s *interpreterScope) Clone() interp.ScopeState {
 	clone := &interpreterScope{attributes: s.attributes, owner: s.owner, parent: s, traps: maps.Clone(s.traps)}
 	clone.attributes.Limits = append([]process.ResourceLimit(nil), s.attributes.Limits...)
 	return clone
-}
-
-// signal sends to active processes descended from this shell scope. The job
-// retains only active commands, not every scope ever made by a long-running loop.
-func (s *interpreterScope) signal(signal runnerwire.Signal) error {
-	s.owner.mu.Lock()
-	var commands []*process.Command
-	for command, scope := range s.owner.commands {
-		for ancestor := scope; ancestor != nil; ancestor = ancestor.parent {
-			if ancestor == s {
-				commands = append(commands, command)
-				break
-			}
-		}
-	}
-	s.owner.mu.Unlock()
-	var err error
-	for _, command := range commands {
-		err = errors.Join(err, command.Signal(signal))
-	}
-	return err
 }
 
 func (s *interpreterScope) register(command *process.Command) func() {
