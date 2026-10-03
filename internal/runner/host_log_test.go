@@ -33,8 +33,8 @@ func (f *runnerFixture) readLog(since *uint64, limit uint64, source *string) *ru
 	f.t.Helper()
 	f.send(&runnerwire.LogRead{ID: "read", Since: since, Limit: limit, Source: source})
 	lines, ok := f.frame().(*runnerwire.LogLines)
-	if !ok {
-		f.t.Fatal("log read failed")
+	if !ok || lines.ID != "read" {
+		f.t.Fatal("log read failed or returned the wrong request ID")
 	}
 	return lines
 }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
@@ -96,8 +97,13 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 	selection := selectNative(t, native, nativeCommands(t, native, "demi"))
 	onA, pages := runnerShell(t, a, nil, selection)
 	onB, _ := runnerShell(t, b, nil, selection)
-	fromA := runnerExec(t, onA, "DEMI_CONVERSATION_ID=forged DEMI_AGENT_NODE_ID=forged PROBE=alpha demi where --label A", 10000)
-	fromB := runnerExec(t, onB, "PROBE=beta demi where --label B", 10000)
+	var fromA, fromB host.CommandStatus
+	var calls sync.WaitGroup
+	calls.Go(func() {
+		fromA = runnerExec(t, onA, "DEMI_CONVERSATION_ID=forged DEMI_AGENT_NODE_ID=forged PROBE=alpha demi where --label A", 10000)
+	})
+	calls.Go(func() { fromB = runnerExec(t, onB, "PROBE=beta demi where --label B", 10000) })
+	calls.Wait()
 	for _, item := range []struct {
 		status            host.CommandStatus
 		label, cwd, value string
@@ -229,6 +235,11 @@ func TestRunnerCommandShowsLeafHintUntilLeafEnds(t *testing.T) {
 	}
 	nextHint(t, tap, link, nil)
 	requirePipe(t, s.Abort(t.Context(), child.CommandID))
+	stopped, err := s.Status(child.CommandID)
+	requirePipe(t, err)
+	if stopped.State.Phase != host.Aborted {
+		t.Fatal(stopped)
+	}
 	before := len(tap.seen)
 	for _, script := range []string{"attend native --help", "attend native --unknown", "attend"} {
 		if runnerExec(t, s, script, 10000).State.Phase == host.Running {
@@ -293,6 +304,9 @@ func TestRunnerRunningJobKeepsManifestWhileNextInstallsAnother(t *testing.T) {
 	next, _ := runnerShell(t, f, nil, selectNative(t, native, nativeCommands(t, native, "replacement")))
 	// Live stdin replaces the Rust test's filesystem polling rendezvous.
 	started := runnerExec(t, old, "echo ready; read proceed; PROBE=old demi where > result", 50)
+	if started.State.Phase != host.Running {
+		t.Fatal(started)
+	}
 	awaitStdout(t, old, p, started.CommandID, "ready")
 	result := runnerExec(t, next, "PROBE=new replacement where", 10000)
 	report, err := fixture.DecodeWhereReport([]byte(result.Stdout.Delta))
