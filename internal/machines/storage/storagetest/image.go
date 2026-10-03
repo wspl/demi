@@ -18,24 +18,39 @@ import (
 type Entry struct {
 	// Kind is a tar entry type; zero selects a regular file or, with Link, a symlink.
 	Kind byte
+	// Path is the archive entry path.
 	Path string
+	// Data is the regular file content.
 	Data []byte
+	// Link is the symbolic link target.
 	Link string
 }
 
 // Entries returns the small root used by image-import and manager scenarios.
 func Entries() []Entry {
-	return []Entry{{Path: "usr/bin/demi-runner", Data: []byte("runner")}, {Path: "usr/bin/tini", Data: []byte("tini")}, {Path: "usr/sbin/init", Link: "../bin/tini"}, {Path: "etc/skel/.profile", Data: []byte("export EDITOR=vi\n")}}
+	return []Entry{
+		{Path: "usr/bin/demi-runner", Data: []byte("runner")},
+		{Path: "usr/bin/tini", Data: []byte("tini")},
+		{Path: "usr/sbin/init", Link: "../bin/tini"},
+		{Path: "etc/skel/.profile", Data: []byte("export EDITOR=vi\n")},
+	}
 }
 
 // CloudImage is a fixture release directory, owned by its test.
 type CloudImage struct {
+	// Directory holds the fixture release files.
 	Directory string
-	Manifest  machinewire.CloudImageManifest
+	// Manifest is the fixture release manifest.
+	Manifest machinewire.CloudImageManifest
 }
 
 // NewCloudImage writes a tar/zstd release and matching generated manifest.
-func NewCloudImage(t *testing.T, entries []Entry, architecture machinewire.Architecture, executables ...Entry) *CloudImage {
+func NewCloudImage(
+	t *testing.T,
+	entries []Entry,
+	architecture machinewire.Architecture,
+	executables ...Entry,
+) *CloudImage {
 	t.Helper()
 	directory := t.TempDir()
 	archive := WriteArchive(t, directory, entries)
@@ -83,7 +98,7 @@ func (i *CloudImage) Write(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(i.Directory, "manifest.json"), data, 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(i.Directory, "manifest.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -96,7 +111,7 @@ func (i *CloudImage) EditBytes(t *testing.T, change func([]byte) []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(path, change(data), 0600); err != nil {
+	if err = os.WriteFile(path, change(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -121,7 +136,15 @@ func WriteArchive(t *testing.T, directory string, entries []Entry) string {
 		if entry.Kind == 0 && entry.Link != "" {
 			kind = tar.TypeSymlink
 		}
-		if err = writer.WriteHeader(&tar.Header{Name: entry.Path, Typeflag: kind, Linkname: entry.Link, Mode: 0755, Size: int64(len(entry.Data))}); err != nil {
+		if err = writer.WriteHeader(
+			&tar.Header{
+				Name:     entry.Path,
+				Typeflag: kind,
+				Linkname: entry.Link,
+				Mode:     0o755,
+				Size:     int64(len(entry.Data)),
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = writer.Write(entry.Data); err != nil {
@@ -136,7 +159,7 @@ func WriteArchive(t *testing.T, directory string, entries []Entry) string {
 	}
 
 	path := filepath.Join(directory, "rootfs.tar.zst")
-	if err := os.WriteFile(path, compressed.Bytes(), 0600); err != nil {
+	if err := os.WriteFile(path, compressed.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return path

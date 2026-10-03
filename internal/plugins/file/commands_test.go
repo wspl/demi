@@ -24,7 +24,20 @@ func TestNativeCommands(t *testing.T) {
 	}{
 		{[]string{"file", "read", "a.txt"}, nil, "file.read", `{"path":"a.txt"}`},
 		{[]string{"file", "create", "a.txt"}, new("<hello>&"), "file.create", `{"path":"a.txt","content":"<hello>&"}`},
-		{[]string{"file", "edit", "a.txt", "--old", "old", "--new", "new"}, nil, "file.edit", `{"path":"a.txt","old":"old","new":"new"}`},
+		{
+			[]string{
+				"file",
+				"edit",
+				"a.txt",
+				"--old",
+				"old",
+				"--new",
+				"new",
+			},
+			nil,
+			"file.edit",
+			`{"path":"a.txt","old":"old","new":"new"}`,
+		},
 		{[]string{"file", "patch"}, new("patch"), "file.patch", `{"patch":"patch"}`},
 	} {
 		parsed, err := plugintest.Parse(roots[0], tc.args, tc.stdin)

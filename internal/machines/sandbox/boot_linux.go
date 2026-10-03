@@ -23,14 +23,19 @@ import (
 // Config supplies trusted manager configuration. Limits is nil only when the
 // operator explicitly disables resource limits; there is no fallback mode.
 type Config struct {
-	Runtime    string
+	// Runtime is the runtime bundle directory.
+	Runtime string
+	// BackendURL is the only allowed sandbox backend.
 	BackendURL runnerwire.BackendURL
-	DNS        []netip.Addr
-	Limits     *Limits
+	// DNS lists the sandbox IPv4 resolvers.
+	DNS []netip.Addr
+	// Limits is nil when resource limits are disabled.
+	Limits *Limits
 }
 
 // Slot names a network allocation made by the manager, without choosing policy.
 type Slot struct {
+	// Index identifies the reserved network slot.
 	Index uint16
 	// Namespace is the name under /run/netns.
 	Namespace string
@@ -62,10 +67,14 @@ type Disks interface {
 // Dependencies supplies the infrastructure a boot uses. The manager retains
 // ownership of these services for the lifetime of every sandbox using them.
 type Dependencies struct {
-	Tools   *system.Tools
-	Runsc   *Runsc
+	// Tools holds the resolved infrastructure executables.
+	Tools *system.Tools
+	// Runsc runs the pinned sandbox runtime.
+	Runsc *Runsc
+	// Network attaches the manager-selected network slot.
 	Network Network
-	Disks   Disks
+	// Disks supplies storage image operations.
+	Disks Disks
 }
 
 // Images supplies paths for the two volumes. Storage owns image naming; the
@@ -124,7 +133,13 @@ func Recorded(config Config, dependencies Dependencies, record Record, namespace
 		limits := *config.Limits
 		config.Limits = &limits
 	}
-	return &Sandbox{config: config, dependencies: dependencies, record: record, slot: Slot{Index: record.Slot, Namespace: namespace}, directory: NewRuntimeDirectory(config.Runtime, record.ID)}
+	return &Sandbox{
+		config:       config,
+		dependencies: dependencies,
+		record:       record,
+		slot:         Slot{Index: record.Slot, Namespace: namespace},
+		directory:    NewRuntimeDirectory(config.Runtime, record.ID),
+	}
 }
 
 // ID returns the boot identity used by the device worker to reject stale exits.
@@ -143,7 +158,12 @@ func (s *Sandbox) Start(ctx context.Context, working Working, base string, boot 
 	if err != nil {
 		return err
 	}
-	if err := artifacts.PublishBytes(ctx, filepath.Join(working.Directory(), "sandbox.json"), record, artifacts.Publication{Mode: artifacts.Replace, Durable: true}); err != nil {
+	if err := artifacts.PublishBytes(
+		ctx,
+		filepath.Join(working.Directory(), "sandbox.json"),
+		record,
+		artifacts.Publication{Mode: artifacts.Replace, Durable: true},
+	); err != nil {
 		return err
 	}
 	system.FaultPoint("sandbox-record")
@@ -157,25 +177,15 @@ func (s *Sandbox) Start(ctx context.Context, working Working, base string, boot 
 		return err
 	}
 	system.FaultPoint("base-bound")
-	var loops [2]uint32
-	for i, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
-		image := working.Image(volume)
-		output, err := s.dependencies.Tools.Output(ctx, system.E2fsck, []string{"-p", image}, nil)
-		if err != nil {
-			return err
-		}
-		if !output.Status.Exited() || (output.Status.ExitStatus() != 0 && output.Status.ExitStatus() != 1) {
-			return &NeedsRecoveryError{Volume: volume, Message: output.Message()}
-		}
-		number, err := s.mountImage(ctx, image, volume)
-		if err != nil {
-			return err
-		}
-		loops[i] = number
-		system.FaultPoint("volume-mounted")
+	if err := s.mountWorking(ctx, working); err != nil {
+		return err
 	}
-	s.loops = &loops
-	if err := system.Overlay(ctx, s.directory.Base(), s.directory.Volume(machinewire.VolumeSystem), s.directory.RootFS()); err != nil {
+	if err := system.Overlay(
+		ctx,
+		s.directory.Base(),
+		s.directory.Volume(machinewire.VolumeSystem),
+		s.directory.RootFS(),
+	); err != nil {
 		return err
 	}
 	if err := system.Tmpfs(ctx, s.directory.Credentials(), "size=1m,mode=0700"); err != nil {
@@ -189,15 +199,7 @@ func (s *Sandbox) Start(ctx context.Context, working Working, base string, boot 
 		return err
 	}
 	system.FaultPoint("network-attached")
-	profile := Boot{Directory: s.directory, Namespace: s.slot.Namespace}
-	if s.config.Limits != nil {
-		profile.Cgroup = &Cgroup{Name: s.record.ID, Limits: *s.config.Limits}
-	}
-	spec, err := Spec(profile)
-	if err != nil {
-		return err
-	}
-	if err := artifacts.PublishBytes(ctx, s.directory.Config(), spec, artifacts.Publication{Mode: artifacts.Replace, Durable: true}); err != nil {
+	if err := s.writeSpec(ctx); err != nil {
 		return err
 	}
 	if err := s.startRuntime(ctx); err != nil {
@@ -245,7 +247,9 @@ func (s *Sandbox) Resume(ctx context.Context) error {
 // Capture is what a checkpoint's frozen window produced: whether the copies
 // were made, and each thaw that failed. Copied is nil on successful copying.
 type Capture struct {
-	Copied     error
+	// Copied is nil when the checkpoint copies succeeded.
+	Copied error
+	// ThawErrors records each failed thaw after copying.
 	ThawErrors []error
 }
 
@@ -284,7 +288,12 @@ func (s *Sandbox) Capture(ctx context.Context, working Working, copies Images) (
 // Grow extends the image without shrinking it, refreshes the boot's loop
 // device and grows its mounted filesystem. bytes must be nonzero. The returned
 // capacity is read from the filesystem after syncing the image.
-func (s *Sandbox) Grow(ctx context.Context, working Working, volume machinewire.Volume, bytes uint64) (capacity uint64, err error) {
+func (s *Sandbox) Grow(
+	ctx context.Context,
+	working Working,
+	volume machinewire.Volume,
+	bytes uint64,
+) (capacity uint64, err error) {
 	if s.loops == nil {
 		return 0, ErrNotGrowable
 	}
@@ -332,17 +341,8 @@ func (s *Sandbox) Grow(ctx context.Context, working Working, volume machinewire.
 // with limits on, unmounts, detaches networking, removes credentials and the
 // record, and releases the slot lease. Failure retains resources for retry.
 func (s *Sandbox) Close(ctx context.Context, working Working) (err error) {
-	for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
-		path := s.directory.Volume(volume)
-		mounted, _, err := system.MountRoot(ctx, path)
-		if err != nil {
-			return err
-		}
-		if mounted {
-			if _, err := system.Thaw(ctx, path); err != nil {
-				return err
-			}
-		}
+	if err := s.thawVolumes(ctx); err != nil {
+		return err
 	}
 	if err := s.stopRuntime(ctx); err != nil {
 		return err
@@ -365,23 +365,8 @@ func (s *Sandbox) Close(ctx context.Context, working Working) (err error) {
 			return err
 		}
 	}
-	for _, name := range MountPoints() {
-		path := filepath.Join(s.directory.Root(), name)
-		mounted, _, err := system.MountRoot(ctx, path)
-		if err != nil {
-			return err
-		}
-		if !mounted {
-			continue
-		}
-		if name == "system" || name == "home" {
-			if _, err := system.Thaw(ctx, path); err != nil {
-				return err
-			}
-		}
-		if err := system.Unmount(ctx, path); err != nil {
-			return err
-		}
+	if err := s.unmountVolumes(ctx); err != nil {
+		return err
 	}
 	if err := s.dependencies.Network.Detach(ctx, s.slot); err != nil {
 		return err
@@ -389,7 +374,10 @@ func (s *Sandbox) Close(ctx context.Context, working Working) (err error) {
 	if err := s.directory.Remove(ctx); err != nil {
 		return err
 	}
-	if err := os.Remove(filepath.Join(working.Directory(), "sandbox.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(
+		filepath.Join(working.Directory(), "sandbox.json"),
+	); err != nil &&
+		!errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	directory, err := os.Open(working.Directory())
@@ -439,7 +427,7 @@ func (s *Sandbox) mountImage(ctx context.Context, image string, volume machinewi
 
 // startRuntime owns the runtime log descriptor until runsc has inherited it.
 func (s *Sandbox) startRuntime(ctx context.Context) (err error) {
-	log, err := os.OpenFile(s.directory.Log(), os.O_APPEND|os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	log, err := os.OpenFile(s.directory.Log(), os.O_APPEND|os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -491,41 +479,8 @@ func (s *Sandbox) stopRuntime(ctx context.Context) error {
 		return err
 	}
 	if found && status != Stopped {
-		if status == Paused {
-			if err := runsc.Resume(ctx, id); err != nil {
-				return err
-			}
-		}
-		signalled, err := runsc.Terminate(ctx, id)
-		if err != nil {
+		if err := s.terminateRuntime(ctx, status); err != nil {
 			return err
-		}
-		if !signalled.Status.Exited() || signalled.Status.ExitStatus() != 0 {
-			status, found, err := runsc.Status(ctx, id)
-			if err != nil {
-				return err
-			}
-			if !found || status != Stopped {
-				return &SignalError{Message: signalled.Message()}
-			}
-		}
-		deadline := time.Now().Add(3 * time.Second)
-		for time.Now().Before(deadline) {
-			status, found, err := runsc.Status(ctx, id)
-			if err != nil {
-				return err
-			}
-			if !found || status != Running {
-				break
-			}
-			timer := time.NewTimer(50 * time.Millisecond)
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-				timer.Stop()
-				return ctx.Err()
-			}
-			timer.Stop()
 		}
 	}
 	_, found, err = runsc.Status(ctx, id)
@@ -534,6 +489,132 @@ func (s *Sandbox) stopRuntime(ctx context.Context) error {
 	}
 	if found {
 		return runsc.Delete(ctx, id)
+	}
+	return nil
+}
+
+// mountWorking records loop numbers only after both working volumes have mounted.
+func (s *Sandbox) mountWorking(ctx context.Context, working Working) error {
+	var loops [2]uint32
+	for i, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
+		image := working.Image(volume)
+		output, err := s.dependencies.Tools.Output(ctx, system.E2fsck, []string{"-p", image}, nil)
+		if err != nil {
+			return err
+		}
+		if !output.Status.Exited() || (output.Status.ExitStatus() != 0 && output.Status.ExitStatus() != 1) {
+			return &NeedsRecoveryError{Volume: volume, Message: output.Message()}
+		}
+		number, err := s.mountImage(ctx, image, volume)
+		if err != nil {
+			return err
+		}
+		loops[i] = number
+		system.FaultPoint("volume-mounted")
+	}
+	s.loops = &loops
+	return nil
+}
+
+// thawVolumes thaws mounted volumes before the runtime is signaled.
+func (s *Sandbox) thawVolumes(ctx context.Context) error {
+	for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
+		path := s.directory.Volume(volume)
+		mounted, _, err := system.MountRoot(ctx, path)
+		if err != nil {
+			return err
+		}
+		if mounted {
+			if _, err := system.Thaw(ctx, path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// unmountVolumes releases mounts in the established cleanup order.
+func (s *Sandbox) unmountVolumes(ctx context.Context) error {
+	for _, name := range MountPoints() {
+		path := filepath.Join(s.directory.Root(), name)
+		mounted, _, err := system.MountRoot(ctx, path)
+		if err != nil {
+			return err
+		}
+		if !mounted {
+			continue
+		}
+		if name == "system" || name == "home" {
+			if _, err := system.Thaw(ctx, path); err != nil {
+				return err
+			}
+		}
+		if err := system.Unmount(ctx, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// terminateRuntime resumes a paused boot and waits through the original TERM grace period.
+func (s *Sandbox) terminateRuntime(ctx context.Context, status Status) error {
+	runsc, id := s.dependencies.Runsc, s.record.ID
+	if status == Paused {
+		if err := runsc.Resume(ctx, id); err != nil {
+			return err
+		}
+	}
+	signalled, err := runsc.Terminate(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !signalled.Status.Exited() || signalled.Status.ExitStatus() != 0 {
+		status, found, err := runsc.Status(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !found || status != Stopped {
+			return &SignalError{Message: signalled.Message()}
+		}
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		status, found, err := runsc.Status(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !found || status != Running {
+			break
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		}
+		timer.Stop()
+	}
+	return nil
+}
+
+// writeSpec durably publishes the boot profile before starting runsc.
+func (s *Sandbox) writeSpec(ctx context.Context) error {
+	profile := Boot{Directory: s.directory, Namespace: s.slot.Namespace}
+	if s.config.Limits != nil {
+		profile.Cgroup = &Cgroup{Name: s.record.ID, Limits: *s.config.Limits}
+	}
+	spec, err := Spec(profile)
+	if err != nil {
+		return err
+	}
+	if err := artifacts.PublishBytes(
+		ctx,
+		s.directory.Config(),
+		spec,
+		artifacts.Publication{Mode: artifacts.Replace, Durable: true},
+	); err != nil {
+		return err
 	}
 	return nil
 }

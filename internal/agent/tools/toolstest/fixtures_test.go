@@ -17,13 +17,15 @@ func TestNoHostRefusesResolution(t *testing.T) {
 	var resolver toolstest.NoHost
 	target, err := resolver.Host(t.Context(), tools.NodeContext{})
 	var failure *host.Error
-	if target != nil || !errors.As(err, &failure) || failure.Kind != host.Unavailable || failure.Message != "this agent runs no shell tools" {
+	if target != nil || !errors.As(err, &failure) || failure.Kind != host.Unavailable ||
+		failure.Message != "this agent runs no shell tools" {
 		t.Fatalf("unexpected refusal: %v", err)
 	}
 }
 
 func TestResultReaders(t *testing.T) {
-	result := "status: running\ncommandId: 17\noutput:\nline\nprompt\n[... 10 bytes not shown so far; the newest: demi shell output 17 --tail 50 ...]\nnext: check"
+	result := "status: running\ncommandId: 17\noutput:\nline\nprompt\n[... 10 bytes not shown so " +
+		"far; the newest: demi shell output 17 --tail 50 ...]\nnext: check"
 	if got := toolstest.Field(result, "commandId"); got != "17" {
 		t.Fatal(got)
 	}

@@ -32,6 +32,7 @@ const FetchedAt int64 = 1790000000000
 
 type fixedClock struct{}
 
+// Now returns the fixture fetch timestamp.
 func (fixedClock) Now() core.Timestamp {
 	return core.Timestamp(time.UnixMilli(FetchedAt).UTC().Format("2006-01-02T15:04:05.000Z"))
 }
@@ -42,10 +43,14 @@ func SkillMD(front string) string { return "---\n" + front + "\n---\n\nFollow th
 // File is one path in a fixture commit. Mode defaults to a regular file;
 // setting Executable preserves script permissions. Mode can also model links.
 type File struct {
-	Path       string
-	Bytes      []byte
+	// Path names the file within the repository.
+	Path string
+	// Bytes holds the file contents.
+	Bytes []byte
+	// Executable requests executable file permissions.
 	Executable bool
-	Mode       filemode.FileMode
+	// Mode overrides the default regular file mode.
+	Mode filemode.FileMode
 }
 
 type revision struct {
@@ -77,7 +82,10 @@ func New(t testing.TB) *Repos {
 
 // Factory fetches these repositories by their public owner/repo names.
 func (r *Repos) Factory() (*skills.Factory, error) {
-	return skills.NewResolving(func(url string) string { return r.server.URL + "/" + strings.TrimPrefix(url, "https://github.com/") }, fixedClock{})
+	return skills.NewResolving(
+		func(url string) string { return r.server.URL + "/" + strings.TrimPrefix(url, "https://github.com/") },
+		fixedClock{},
+	)
 }
 
 // URL returns the local HTTP endpoint of a fixture repository.
@@ -91,11 +99,7 @@ func (r *Repos) Commit(ctx context.Context, name string, files []File) (string, 
 	r.mu.Lock()
 	previous := r.repositories[name]
 	r.mu.Unlock()
-	next := &revision{store: memory.NewStorage(), files: make([]File, len(files))}
-	for i, file := range files {
-		next.files[i] = file
-		next.files[i].Bytes = bytes.Clone(file.Bytes)
-	}
+	next := newRevision(files)
 	root := &fixtureTree{directories: map[string]*fixtureTree{}}
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
@@ -109,30 +113,9 @@ func (r *Repos) Commit(ctx context.Context, name string, files []File) (string, 
 			}
 			tree = tree.directories[component]
 		}
-		blob := &plumbing.MemoryObject{}
-		blob.SetType(plumbing.BlobObject)
-		writer, err := blob.Writer()
-		if err != nil {
+		if err := tree.addFile(next.store, components[len(components)-1], file); err != nil {
 			return "", err
 		}
-		if _, err := writer.Write(file.Bytes); err != nil {
-			return "", errors.Join(err, writer.Close())
-		}
-		if err := writer.Close(); err != nil {
-			return "", err
-		}
-		hash, err := next.store.SetEncodedObject(blob)
-		if err != nil {
-			return "", err
-		}
-		mode := file.Mode
-		if mode == filemode.Empty {
-			mode = filemode.Regular
-		}
-		if file.Executable {
-			mode = filemode.Executable
-		}
-		tree.files = append(tree.files, object.TreeEntry{Name: components[len(components)-1], Mode: mode, Hash: hash})
 	}
 	treeHash, err := root.store(ctx, next.store)
 	if err != nil {
@@ -246,20 +229,9 @@ func (r *Repos) serve(w http.ResponseWriter, request *http.Request) error {
 		return nil
 	}
 	if advertisement {
-		refs := packp.NewAdvRefs()
-		refs.Prefix = [][]byte{[]byte("# service=git-upload-pack\n"), {}}
-		refs.Head = &revision.head
-		refs.References["refs/heads/main"] = revision.head
-		if err := refs.Capabilities.Set(capability.Shallow); err != nil {
-			return err
-		}
-		if err := refs.Capabilities.Set(capability.SymRef, "HEAD:refs/heads/main"); err != nil {
-			return err
-		}
-		w.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
-		return refs.Encode(w)
+		return advertiseRevision(w, revision)
 	}
-	var upload = packp.NewUploadPackRequest()
+	upload := packp.NewUploadPackRequest()
 	if err := upload.Decode(request.Body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return err
@@ -285,7 +257,8 @@ func (r *Repos) serve(w http.ResponseWriter, request *http.Request) error {
 	}
 	// The go-git server does not implement shallow traversal. The fixture uses
 	// its protocol and pack encoder, sending only this snapshot's objects.
-	_, err := packfile.NewEncoder(contextWriter{request.Context(), w}, revision.store, false).Encode(revision.objects, 0)
+	_, err := packfile.NewEncoder(contextWriter{request.Context(), w}, revision.store, false).
+		Encode(revision.objects, 0)
 	return err
 }
 
@@ -294,9 +267,62 @@ type contextWriter struct {
 	writer io.Writer
 }
 
+// Write checks request cancellation before writing the response.
 func (w contextWriter) Write(bytes []byte) (int, error) {
 	if err := w.ctx.Err(); err != nil {
 		return 0, err
 	}
 	return w.writer.Write(bytes)
+}
+
+func (t *fixtureTree) addFile(storage *memory.Storage, name string, file File) error {
+	blob := &plumbing.MemoryObject{}
+	blob.SetType(plumbing.BlobObject)
+	writer, err := blob.Writer()
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(file.Bytes); err != nil {
+		return errors.Join(err, writer.Close())
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	hash, err := storage.SetEncodedObject(blob)
+	if err != nil {
+		return err
+	}
+	mode := file.Mode
+	if mode == filemode.Empty {
+		mode = filemode.Regular
+	}
+	if file.Executable {
+		mode = filemode.Executable
+	}
+	t.files = append(t.files, object.TreeEntry{Name: name, Mode: mode, Hash: hash})
+	return nil
+}
+
+func advertiseRevision(w http.ResponseWriter, revision *revision) error {
+	refs := packp.NewAdvRefs()
+	refs.Prefix = [][]byte{[]byte("# service=git-upload-pack\n"), {}}
+	refs.Head = &revision.head
+	refs.References["refs/heads/main"] = revision.head
+	if err := refs.Capabilities.Set(capability.Shallow); err != nil {
+		return err
+	}
+	if err := refs.Capabilities.Set(capability.SymRef, "HEAD:refs/heads/main"); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
+	return refs.Encode(w)
+}
+
+func newRevision(files []File) *revision {
+	next := &revision{store: memory.NewStorage(), files: make([]File, len(files))}
+	for i, file := range files {
+		next.files[i] = file
+		next.files[i].Bytes = bytes.Clone(file.Bytes)
+	}
+	return next
 }

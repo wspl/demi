@@ -17,25 +17,40 @@ import (
 )
 
 // PackageCalls answers a test's package calls. A refusal can be returned as an error.
-type PackageCalls func(context.Context, declare.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error)
+type PackageCalls func(
+	context.Context,
+	declare.NativeOperation,
+	json.RawMessage,
+	plugin.CallKind,
+) (json.RawMessage, error)
 
 // PackageCall records a package call made by the plugin.
 type PackageCall struct {
+	// Operation identifies the called package operation.
 	Operation declare.NativeOperation
-	Args      json.RawMessage
-	Kind      plugin.CallKind
+	// Args contains the call's JSON input.
+	Args json.RawMessage
+	// Kind records the Host access the call needs.
+	Kind plugin.CallKind
 }
 
 // TestDemi answers a plugin port from memory. Configure exported fields only
 // while no requests are running; its inspection methods are concurrency-safe.
 type TestDemi struct {
-	Plugin           plugin.ID
-	RPC              host.PortTransport
-	HostFiles        map[string][]byte
-	Hosts            []plugin.ConversationHost
+	// Plugin names the plugin whose port is being tested.
+	Plugin plugin.ID
+	// RPC answers command transport requests.
+	RPC host.PortTransport
+	// HostFiles supplies the running Host's file contents.
+	HostFiles map[string][]byte
+	// Hosts lists the conversation's available Hosts.
+	Hosts []plugin.ConversationHost
+	// ExposesAvailable reports whether the test expose domain is available.
 	ExposesAvailable bool
-	Now              core.Timestamp
-	PackageCalls     PackageCalls
+	// Now supplies the test clock for expose lifetimes.
+	Now core.Timestamp
+	// PackageCalls answers native package operations.
+	PackageCalls PackageCalls
 
 	mu          sync.Mutex
 	values      map[string]plugin.StoredValue
@@ -157,7 +172,7 @@ func (d *TestDemi) Request(ctx context.Context, message plugin.PortMessage) (plu
 		result, err := d.PackageCalls(ctx, m.Operation, bytes.Clone(m.Args), m.Kind)
 		d.mu.Lock()
 		d.called = append(d.called, PackageCall{Operation: m.Operation, Args: bytes.Clone(m.Args), Kind: m.Kind})
-		d.notify()
+		d.notifyLocked()
 		d.mu.Unlock()
 		if err != nil {
 			var refusal plugin.PortRefusal
@@ -170,50 +185,25 @@ func (d *TestDemi) Request(ctx context.Context, message plugin.PortMessage) (plu
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	defer d.notify()
-	return d.answer(message)
+	defer d.notifyLocked()
+	return d.answerLocked(message)
 }
 
-// notify wakes every inspection waiter after a port message while mu is held.
-func (d *TestDemi) notify() {
+// notifyLocked wakes every inspection waiter after a port message while mu is held.
+func (d *TestDemi) notifyLocked() {
 	close(d.answered)
 	d.answered = make(chan struct{})
 }
 
-// answer performs the in-memory portion of a plugin operation while mu is held.
-func (d *TestDemi) answer(message plugin.PortMessage) (plugin.PortAnswer, error) {
+// answerLocked performs the in-memory portion of a plugin operation while mu is held.
+func (d *TestDemi) answerLocked(message plugin.PortMessage) (plugin.PortAnswer, error) {
 	switch m := message.(type) {
 	case *plugin.PortMessageReadValue:
-		v, ok := d.values[m.Key]
-		if !ok {
-			return &plugin.PortAnswerValue{}, nil
-		}
-		v.Value = bytes.Clone(v.Value)
-		return &plugin.PortAnswerValue{Value: &v}, nil
+		return d.readValueLocked(m)
 	case *plugin.PortMessageListValues:
-		values := maps.Clone(d.values)
-		for key, v := range values {
-			v.Value = bytes.Clone(v.Value)
-			values[key] = v
-		}
-		return &plugin.PortAnswerValues{Values: values}, nil
+		return d.listValuesLocked(m)
 	case *plugin.PortMessageWriteValue:
-		current, exists := d.values[m.Key]
-		if exists != (m.Revision != nil) || exists && current.Revision != *m.Revision {
-			return refused(&plugin.PortRefusalConflict{}), nil
-		}
-		for _, blob := range m.Blobs {
-			if _, ok := d.blobs[blob]; !ok {
-				return nil, fmt.Errorf("the value names a blob it never put: %s", blob)
-			}
-		}
-		revision := uint64(1)
-		if m.Revision != nil {
-			revision = *m.Revision + 1
-		}
-		d.values[m.Key] = plugin.StoredValue{Value: bytes.Clone(m.Value), Revision: revision}
-		d.valueBlobs[m.Key] = slices.Clone(m.Blobs)
-		return &plugin.PortAnswerWritten{Revision: revision}, nil
+		return d.writeValueLocked(m)
 	case *plugin.PortMessageRemoveValue:
 		current, exists := d.values[m.Key]
 		if !exists || current.Revision != m.Revision {
@@ -227,66 +217,24 @@ func (d *TestDemi) answer(message plugin.PortMessage) (plugin.PortAnswer, error)
 		d.blobs[blob] = slices.Clone(m.Bytes)
 		return &plugin.PortAnswerBlob{Blob: blob}, nil
 	case *plugin.PortMessageGetBlob:
-		value, ok := d.blobs[m.Blob]
-		if !ok {
-			return &plugin.PortAnswerBytes{}, nil
-		}
-		value = slices.Clone(value)
-		return &plugin.PortAnswerBytes{Bytes: &value}, nil
+		return d.getBlobLocked(m)
 	case *plugin.PortMessageSetDirectories:
-		if err := plugin.CheckDirectories(m.Directories); err != nil {
-			return nil, err
-		}
-		paths := make([]plugin.DirectoryPath, 0, len(m.Directories))
-		for _, directory := range m.Directories {
-			paths = append(paths, plugin.DirectoryPath{Name: directory.Name, Path: directory.Path(d.Plugin)})
-		}
-		d.directories = cloneDirectories(m.Directories)
-		return &plugin.PortAnswerDirectories{Paths: paths}, nil
+		return d.setDirectoriesLocked(m)
 	case *plugin.PortMessageReadHostFiles:
-		if d.HostFiles == nil {
-			return refused(&plugin.PortRefusalNotRunning{}), nil
-		}
-		files := make([]plugin.HostFile, 0, len(m.Reads))
-		for _, read := range m.Reads {
-			files = append(files, hostFile(d.HostFiles, read))
-		}
-		return &plugin.PortAnswerHostFiles{Files: files}, nil
+		return d.readHostFilesLocked(m)
 	case *plugin.PortMessageChanged:
 		d.changed++
 		return &plugin.PortAnswerDone{}, nil
 	case *plugin.PortMessageConversationHosts:
 		return &plugin.PortAnswerHosts{Hosts: append([]plugin.ConversationHost{}, d.Hosts...)}, nil
 	case *plugin.PortMessageListExposes:
-		exposes := []plugin.ExposeRecord{}
-		if d.ExposesAvailable {
-			exposes = d.liveExposes()
-		}
-		return &plugin.PortAnswerExposes{List: plugin.ExposeList{Available: d.ExposesAvailable, ListedAt: d.Now, Exposes: exposes}}, nil
+		return d.listExposesLocked(m)
 	case *plugin.PortMessageCreateExpose:
-		return d.createExpose(m)
+		return d.createExposeLocked(m)
 	case *plugin.PortMessageRenewExpose:
-		d.liveExposes()
-		for i, record := range d.exposes {
-			if record.ID == m.Expose {
-				expiry, err := d.after(m.Lifetime)
-				if err != nil {
-					return nil, err
-				}
-				d.exposes[i].ExpiresAt = expiry
-				return &plugin.PortAnswerExpose{Expose: d.exposes[i]}, nil
-			}
-		}
-		return exposeRefused(plugin.ExposeRefusalNotFound, "No expose "+string(m.Expose)), nil
+		return d.renewExposeLocked(m)
 	case *plugin.PortMessageRemoveExpose:
-		d.liveExposes()
-		for i, record := range d.exposes {
-			if record.ID == m.Expose {
-				d.exposes = slices.Delete(d.exposes, i, i+1)
-				return &plugin.PortAnswerDone{}, nil
-			}
-		}
-		return exposeRefused(plugin.ExposeRefusalNotFound, "No expose "+string(m.Expose)), nil
+		return d.removeExposeLocked(m)
 	case *plugin.PortMessageRPC, *plugin.PortMessagePackageCall:
 		return nil, fmt.Errorf("callback operation must run outside the memory lock")
 	}
@@ -303,4 +251,118 @@ func cloneDirectories(directories []plugin.HostDirectory) []plugin.HostDirectory
 		result[i].Files = slices.Clone(result[i].Files)
 	}
 	return result
+}
+
+// writeValueLocked answers the memory port operation while mu is held.
+func (d *TestDemi) writeValueLocked(m *plugin.PortMessageWriteValue) (plugin.PortAnswer, error) {
+	current, exists := d.values[m.Key]
+	if exists != (m.Revision != nil) || exists && current.Revision != *m.Revision {
+		return refused(&plugin.PortRefusalConflict{}), nil
+	}
+	for _, blob := range m.Blobs {
+		if _, ok := d.blobs[blob]; !ok {
+			return nil, fmt.Errorf("the value names a blob it never put: %s", blob)
+		}
+	}
+	revision := uint64(1)
+	if m.Revision != nil {
+		revision = *m.Revision + 1
+	}
+	d.values[m.Key] = plugin.StoredValue{Value: bytes.Clone(m.Value), Revision: revision}
+	d.valueBlobs[m.Key] = slices.Clone(m.Blobs)
+	return &plugin.PortAnswerWritten{Revision: revision}, nil
+}
+
+// setDirectoriesLocked answers the memory port operation while mu is held.
+func (d *TestDemi) setDirectoriesLocked(m *plugin.PortMessageSetDirectories) (plugin.PortAnswer, error) {
+	if err := plugin.CheckDirectories(m.Directories); err != nil {
+		return nil, err
+	}
+	paths := make([]plugin.DirectoryPath, 0, len(m.Directories))
+	for _, directory := range m.Directories {
+		paths = append(paths, plugin.DirectoryPath{Name: directory.Name, Path: directory.Path(d.Plugin)})
+	}
+	d.directories = cloneDirectories(m.Directories)
+	return &plugin.PortAnswerDirectories{Paths: paths}, nil
+}
+
+// readHostFilesLocked answers the memory port operation while mu is held.
+func (d *TestDemi) readHostFilesLocked(m *plugin.PortMessageReadHostFiles) (plugin.PortAnswer, error) {
+	if d.HostFiles == nil {
+		return refused(&plugin.PortRefusalNotRunning{}), nil
+	}
+	files := make([]plugin.HostFile, 0, len(m.Reads))
+	for _, read := range m.Reads {
+		files = append(files, hostFile(d.HostFiles, read))
+	}
+	return &plugin.PortAnswerHostFiles{Files: files}, nil
+}
+
+// renewExposeLocked answers the memory port operation while mu is held.
+func (d *TestDemi) renewExposeLocked(m *plugin.PortMessageRenewExpose) (plugin.PortAnswer, error) {
+	d.liveExposesLocked()
+	for i, record := range d.exposes {
+		if record.ID == m.Expose {
+			expiry, err := d.exposeExpiryLocked(m.Lifetime)
+			if err != nil {
+				return nil, err
+			}
+			d.exposes[i].ExpiresAt = expiry
+			return &plugin.PortAnswerExpose{Expose: d.exposes[i]}, nil
+		}
+	}
+	return exposeRefused(plugin.ExposeRefusalNotFound, "No expose "+string(m.Expose)), nil
+}
+
+// removeExposeLocked answers the memory port operation while mu is held.
+func (d *TestDemi) removeExposeLocked(m *plugin.PortMessageRemoveExpose) (plugin.PortAnswer, error) {
+	d.liveExposesLocked()
+	for i, record := range d.exposes {
+		if record.ID == m.Expose {
+			d.exposes = slices.Delete(d.exposes, i, i+1)
+			return &plugin.PortAnswerDone{}, nil
+		}
+	}
+	return exposeRefused(plugin.ExposeRefusalNotFound, "No expose "+string(m.Expose)), nil
+}
+
+// readValueLocked answers the memory port operation while mu is held.
+func (d *TestDemi) readValueLocked(m *plugin.PortMessageReadValue) (plugin.PortAnswer, error) {
+	v, ok := d.values[m.Key]
+	if !ok {
+		return &plugin.PortAnswerValue{}, nil
+	}
+	v.Value = bytes.Clone(v.Value)
+	return &plugin.PortAnswerValue{Value: &v}, nil
+}
+
+// listValuesLocked answers the memory port operation while mu is held.
+func (d *TestDemi) listValuesLocked(_ *plugin.PortMessageListValues) (plugin.PortAnswer, error) {
+	values := maps.Clone(d.values)
+	for key, v := range values {
+		v.Value = bytes.Clone(v.Value)
+		values[key] = v
+	}
+	return &plugin.PortAnswerValues{Values: values}, nil
+}
+
+// getBlobLocked answers the memory port operation while mu is held.
+func (d *TestDemi) getBlobLocked(m *plugin.PortMessageGetBlob) (plugin.PortAnswer, error) {
+	value, ok := d.blobs[m.Blob]
+	if !ok {
+		return &plugin.PortAnswerBytes{}, nil
+	}
+	value = slices.Clone(value)
+	return &plugin.PortAnswerBytes{Bytes: &value}, nil
+}
+
+// listExposesLocked answers the memory port operation while mu is held.
+func (d *TestDemi) listExposesLocked(_ *plugin.PortMessageListExposes) (plugin.PortAnswer, error) {
+	exposes := []plugin.ExposeRecord{}
+	if d.ExposesAvailable {
+		exposes = d.liveExposesLocked()
+	}
+	return &plugin.PortAnswerExposes{
+		List: plugin.ExposeList{Available: d.ExposesAvailable, ListedAt: d.Now, Exposes: exposes},
+	}, nil
 }

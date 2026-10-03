@@ -27,12 +27,12 @@ func TestSavedNamespaceRecoveryInheritsMountsAndLock(t *testing.T) {
 	runtime := filepath.Join(root, "runtime")
 	project := filepath.Join(root, "project")
 	for _, path := range []string{runtime, project} {
-		if err := os.Mkdir(path, 0700); err != nil {
+		if err := os.Mkdir(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	lockPath := filepath.Join(root, "manager.lock")
-	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestSavedNamespaceRecoveryInheritsMountsAndLock(t *testing.T) {
 			return err
 		}
 		// This namespace deliberately outlives its creating thread via the pin.
-		return os.WriteFile(marker, []byte("inside saved namespace"), 0600)
+		return os.WriteFile(marker, []byte("inside saved namespace"), 0o600)
 	}); err != nil {
 		t.Fatal(err)
 	}

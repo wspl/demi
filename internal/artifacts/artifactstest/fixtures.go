@@ -23,11 +23,17 @@ import (
 // Answer describes one HTTP fixture. Gate holds the answer until an event;
 // request cancellation and server cleanup also release a waiting handler.
 type Answer struct {
-	Status    int
-	Body      []byte
-	Length    bool
-	Coding    string
-	Gate      <-chan struct{}
+	// Status is the fixture's HTTP response status code.
+	Status int
+	// Body contains the fixture's response bytes.
+	Body []byte
+	// Length includes a Content-Length header instead of flushing an unsized response.
+	Length bool
+	// Coding supplies the Content-Encoding header when nonempty.
+	Coding string
+	// Gate delays the answer until it receives an event or closes.
+	Gate <-chan struct{}
+	// Requested receives a notification before the handler waits on Gate.
 	Requested chan<- struct{}
 }
 
@@ -129,7 +135,12 @@ func Zip(t testing.TB, entries map[string][]byte) []byte {
 // Files are hard links when permitted and copies otherwise; symlinks are
 // preserved on Unix. Receipt generation and publication use the same owner
 // as archive installation.
-func InstallUnpacked(ctx context.Context, root string, archive artifacts.Archive, entry string) (result string, err error) {
+func InstallUnpacked(
+	ctx context.Context,
+	root string,
+	archive artifacts.Archive,
+	entry string,
+) (result string, err error) {
 	source := filepath.Clean(entry)
 	for range strings.Split(archive.Entry, "/") {
 		source = filepath.Dir(source)
@@ -169,7 +180,7 @@ func linkArtifactTree(ctx context.Context, source, destination string) error {
 		}
 		target := filepath.Join(destination, relative)
 		if item.IsDir() {
-			return os.Mkdir(target, 0755)
+			return os.Mkdir(target, 0o755)
 		}
 		if item.Type()&os.ModeSymlink != 0 {
 			if runtime.GOOS == "windows" {
@@ -204,7 +215,7 @@ func copyArtifactFile(ctx context.Context, source, destination string) (err erro
 	if err != nil {
 		return err
 	}
-	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}

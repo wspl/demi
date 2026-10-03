@@ -20,11 +20,18 @@ import (
 )
 
 // Dimensions gives an image's width and height in pixels.
-type Dimensions struct{ Width, Height uint32 }
+type Dimensions struct {
+	// Width is the image width in pixels.
+	Width uint32
+	// Height is the image height in pixels.
+	Height uint32
+}
 
 // Fitted is an image as it enters a transcript.
 type Fitted struct {
-	Data      core.B64Bytes
+	// Data holds the bytes entering the transcript.
+	Data core.B64Bytes
+	// MediaType identifies the encoding of Data.
 	MediaType string
 	// Came is the size in pixels as the image came.
 	Came Dimensions
@@ -48,7 +55,9 @@ const (
 
 // Unfit describes a fitting failure, retaining the decoder's underlying error.
 type Unfit struct {
-	Kind  UnfitKind
+	// Kind classifies the fitting failure.
+	Kind UnfitKind
+	// Cause retains the decoder error, when present.
 	Cause error
 }
 
@@ -83,35 +92,9 @@ func Fit(ctx context.Context, data core.B64Bytes, mediaType string) (fitted Fitt
 	if err := ctx.Err(); err != nil {
 		return Fitted{}, err
 	}
-	var config func(io.Reader) (image.Config, error)
-	var decode func(io.Reader) (image.Image, error)
-	switch mediaType {
-	case "image/png":
-		config, decode = png.DecodeConfig, png.Decode
-	case "image/jpeg":
-		config, decode = jpeg.DecodeConfig, jpeg.Decode
-	case "image/gif":
-		config, decode = gif.DecodeConfig, gif.Decode
-	case "image/webp":
-		config, decode = webp.DecodeConfig, webp.Decode
-	default:
-		return Fitted{}, &Unfit{Kind: Undecodable, Cause: fmt.Errorf("%s is not an image type", mediaType)}
-	}
-	dimensions, err := config(bytes.NewReader(data))
+	dimensions, decoded, err := decodeImage(data, mediaType)
 	if err != nil {
-		return Fitted{}, &Unfit{Kind: Undecodable, Cause: err}
-	}
-	if decodeSize(dimensions, mediaType, data) > maxDecodeBytes {
-		return Fitted{}, &Unfit{Kind: TooLargeToDecode}
-	}
-	var decoded image.Image
-	if mediaType == "image/webp" && len(data) >= 30 && string(data[12:16]) == "VP8X" && data[20]&2 != 0 {
-		decoded, err = firstWebPFrame(data, dimensions)
-	} else {
-		decoded, err = decode(bytes.NewReader(data))
-	}
-	if err != nil {
-		return Fitted{}, &Unfit{Kind: Undecodable, Cause: err}
+		return Fitted{}, err
 	}
 	came := Dimensions{Width: uint32(dimensions.Width), Height: uint32(dimensions.Height)}
 	if mediaType != "image/gif" && max(came.Width, came.Height) <= maxImageSide && len(data) <= maxImageBytes {
@@ -124,42 +107,12 @@ func Fit(ctx context.Context, data core.B64Bytes, mediaType string) (fitted Fitt
 		decoded = canvas
 	}
 	decoded = orientImage(decoded, imageOrientation(data, mediaType))
-	bounds := decoded.Bounds()
-	scaled := max(bounds.Dx(), bounds.Dy()) > maxImageSide
-	if scaled {
-		ratio := float64(maxImageSide) / float64(max(bounds.Dx(), bounds.Dy()))
-		width := max(1, int(math.Round(float64(bounds.Dx())*ratio)))
-		height := max(1, int(math.Round(float64(bounds.Dy())*ratio)))
-		// Go's codec pixels may differ from Rust's; preserve dimensions and precision.
-		target := fittingBuffer(image.Rect(0, 0, width, height), decoded.ColorModel())
-		draw.CatmullRom.Scale(target, target.Bounds(), decoded, bounds, draw.Src, nil)
-		decoded = target
-	}
+	decoded, scaled := scaleImage(decoded)
 	entered := Dimensions{Width: uint32(decoded.Bounds().Dx()), Height: uint32(decoded.Bounds().Dy())}
 	if err := ctx.Err(); err != nil {
 		return Fitted{}, err
 	}
-	if scaled || mediaType == "image/gif" {
-		format := "image/png"
-		if mediaType == "image/jpeg" {
-			format = mediaType
-		}
-		encoded, err := encodeImage(decoded, format, 90)
-		if err != nil {
-			return Fitted{}, &Unfit{Kind: Undecodable, Cause: err}
-		}
-		if len(encoded) <= maxImageBytes {
-			return Fitted{Data: encoded, MediaType: format, Came: came, Entered: entered, Reencoded: true}, nil
-		}
-	}
-	encoded, err := encodeImage(decoded, "image/jpeg", 85)
-	if err != nil {
-		return Fitted{}, &Unfit{Kind: Undecodable, Cause: err}
-	}
-	if len(encoded) > maxImageBytes {
-		return Fitted{}, &Unfit{Kind: TooLarge}
-	}
-	return Fitted{Data: encoded, MediaType: "image/jpeg", Came: came, Entered: entered, Reencoded: true}, nil
+	return encodeFittedImage(decoded, mediaType, came, entered, scaled)
 }
 
 const (
@@ -191,39 +144,7 @@ func decodeSize(config image.Config, mediaType string, data []byte) uint64 {
 			channels = 4
 		}
 	case "image/png":
-		if len(data) >= 26 {
-			switch data[25] {
-			case 0:
-				channels = 1
-			case 2, 3:
-				channels = 3
-			case 4:
-				channels = 2
-			case 6:
-				channels = 4
-			}
-			for at := 8; at+12 <= len(data); {
-				size := uint64(binary.BigEndian.Uint32(data[at:]))
-				if size > uint64(len(data)-at-12) {
-					break
-				}
-				kind := string(data[at+4 : at+8])
-				if kind == "IDAT" {
-					break
-				}
-				if kind == "tRNS" {
-					if data[25] == 0 {
-						channels = 2
-					} else {
-						channels = 4
-					}
-				}
-				at += 12 + int(size)
-			}
-			if data[24] == 16 {
-				channels *= 2
-			}
-		}
+		channels = pngDecodeChannels(data)
 	}
 	// Division avoids overflow for malicious headers near the codec's maximum.
 	row := uint64(config.Width) * channels
@@ -266,4 +187,119 @@ func encodeImage(source image.Image, mediaType string, quality int) ([]byte, err
 	}
 	err := jpeg.Encode(&out, opaque, &jpeg.Options{Quality: quality})
 	return out.Bytes(), err
+}
+
+func decodeImage(data core.B64Bytes, mediaType string) (image.Config, image.Image, error) {
+	var config func(io.Reader) (image.Config, error)
+	var decode func(io.Reader) (image.Image, error)
+	switch mediaType {
+	case "image/png":
+		config, decode = png.DecodeConfig, png.Decode
+	case "image/jpeg":
+		config, decode = jpeg.DecodeConfig, jpeg.Decode
+	case "image/gif":
+		config, decode = gif.DecodeConfig, gif.Decode
+	case "image/webp":
+		config, decode = webp.DecodeConfig, webp.Decode
+	default:
+		return image.Config{}, nil, &Unfit{Kind: Undecodable, Cause: fmt.Errorf("%s is not an image type", mediaType)}
+	}
+	dimensions, err := config(bytes.NewReader(data))
+	if err != nil {
+		return image.Config{}, nil, &Unfit{Kind: Undecodable, Cause: err}
+	}
+	if decodeSize(dimensions, mediaType, data) > maxDecodeBytes {
+		return image.Config{}, nil, &Unfit{Kind: TooLargeToDecode}
+	}
+	var decoded image.Image
+	if mediaType == "image/webp" && len(data) >= 30 && string(data[12:16]) == "VP8X" && data[20]&2 != 0 {
+		decoded, err = firstWebPFrame(data, dimensions)
+	} else {
+		decoded, err = decode(bytes.NewReader(data))
+	}
+	if err != nil {
+		return image.Config{}, nil, &Unfit{Kind: Undecodable, Cause: err}
+	}
+	return dimensions, decoded, nil
+}
+
+func scaleImage(decoded image.Image) (image.Image, bool) {
+	bounds := decoded.Bounds()
+	scaled := max(bounds.Dx(), bounds.Dy()) > maxImageSide
+	if scaled {
+		ratio := float64(maxImageSide) / float64(max(bounds.Dx(), bounds.Dy()))
+		width := max(1, int(math.Round(float64(bounds.Dx())*ratio)))
+		height := max(1, int(math.Round(float64(bounds.Dy())*ratio)))
+		// Go's codec pixels may differ from Rust's; preserve dimensions and precision.
+		target := fittingBuffer(image.Rect(0, 0, width, height), decoded.ColorModel())
+		draw.CatmullRom.Scale(target, target.Bounds(), decoded, bounds, draw.Src, nil)
+		decoded = target
+	}
+	return decoded, scaled
+}
+
+func encodeFittedImage(
+	decoded image.Image, mediaType string, came, entered Dimensions, scaled bool,
+) (Fitted, error) {
+	if scaled || mediaType == "image/gif" {
+		format := "image/png"
+		if mediaType == "image/jpeg" {
+			format = mediaType
+		}
+		encoded, err := encodeImage(decoded, format, 90)
+		if err != nil {
+			return Fitted{}, &Unfit{Kind: Undecodable, Cause: err}
+		}
+		if len(encoded) <= maxImageBytes {
+			return Fitted{Data: encoded, MediaType: format, Came: came, Entered: entered, Reencoded: true}, nil
+		}
+	}
+	encoded, err := encodeImage(decoded, "image/jpeg", 85)
+	if err != nil {
+		return Fitted{}, &Unfit{Kind: Undecodable, Cause: err}
+	}
+	if len(encoded) > maxImageBytes {
+		return Fitted{}, &Unfit{Kind: TooLarge}
+	}
+	return Fitted{Data: encoded, MediaType: "image/jpeg", Came: came, Entered: entered, Reencoded: true}, nil
+}
+
+// pngDecodeChannels counts bytes per PNG pixel using IHDR and pre-IDAT transparency.
+func pngDecodeChannels(data []byte) uint64 {
+	if len(data) < 26 {
+		return 4
+	}
+	channels := uint64(4)
+	switch data[25] {
+	case 0:
+		channels = 1
+	case 2, 3:
+		channels = 3
+	case 4:
+		channels = 2
+	case 6:
+		channels = 4
+	}
+	for at := 8; at+12 <= len(data); {
+		size := uint64(binary.BigEndian.Uint32(data[at:]))
+		if size > uint64(len(data)-at-12) {
+			break
+		}
+		kind := string(data[at+4 : at+8])
+		if kind == "IDAT" {
+			break
+		}
+		if kind == "tRNS" {
+			if data[25] == 0 {
+				channels = 2
+			} else {
+				channels = 4
+			}
+		}
+		at += 12 + int(size)
+	}
+	if data[24] == 16 {
+		channels *= 2
+	}
+	return channels
 }

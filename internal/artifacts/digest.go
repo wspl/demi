@@ -13,7 +13,9 @@ import (
 
 // Digest describes the verified bytes, before any HTTP content coding.
 type Digest struct {
-	Size   uint64
+	// Size counts bytes before HTTP content coding.
+	Size uint64
+	// SHA256 is the lowercase hexadecimal digest of those bytes.
 	SHA256 string
 }
 
@@ -21,15 +23,25 @@ type Digest struct {
 var ErrDigest = errors.New("the artifact does not match its declared SHA-256")
 
 // TooLargeError means the artifact exceeded its allowed size.
-type TooLargeError struct{ Declared uint64 }
+type TooLargeError struct {
+	// Declared is the byte limit that was exceeded.
+	Declared uint64
+}
 
+// Error describes the exceeded artifact size.
 func (e *TooLargeError) Error() string {
 	return fmt.Sprintf("the artifact has more than its declared %d bytes", e.Declared)
 }
 
 // SizeError reports a short body or a contradictory declared length.
-type SizeError struct{ Declared, Actual uint64 }
+type SizeError struct {
+	// Declared is the expected byte count.
+	Declared uint64
+	// Actual is the byte count observed in the body or its declared length.
+	Actual uint64
+}
 
+// Error describes the actual and declared artifact sizes.
 func (e *SizeError) Error() string {
 	return fmt.Sprintf("the artifact has %d bytes, not the declared %d", e.Actual, e.Declared)
 }
@@ -85,20 +97,8 @@ func transfer(ctx context.Context, input io.Reader, output io.Writer, check func
 		}
 		n, err := input.Read(buffer)
 		if n > 0 {
-			if e := ctx.Err(); e != nil {
-				return e
-			}
-			if check != nil {
-				if e := check(buffer[:n]); e != nil {
-					return e
-				}
-			}
-			written, e := output.Write(buffer[:n])
-			if e != nil {
-				return e
-			}
-			if written != n {
-				return io.ErrShortWrite
+			if writeErr := writeArtifactChunk(ctx, output, buffer[:n], check); writeErr != nil {
+				return writeErr
 			}
 		}
 		if errors.Is(err, io.EOF) {
@@ -132,4 +132,24 @@ func DigestFile(ctx context.Context, path string, limit uint64) (Digest, error) 
 		return Digest{}, err
 	}
 	return m.finish(), nil
+}
+
+// writeArtifactChunk checks an artifact chunk before delivering it to its destination.
+func writeArtifactChunk(ctx context.Context, output io.Writer, chunk []byte, check func([]byte) error) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	if check != nil {
+		if e := check(chunk); e != nil {
+			return e
+		}
+	}
+	written, e := output.Write(chunk)
+	if e != nil {
+		return e
+	}
+	if written != len(chunk) {
+		return io.ErrShortWrite
+	}
+	return nil
 }

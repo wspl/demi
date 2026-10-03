@@ -36,7 +36,13 @@ type TreeStore interface {
 	// CloseNode closes a node after its final checkpoint, initially undelivered.
 	CloseNode(ctx context.Context, id core.NodeID, closed NodeClose) error
 	// ReopenNode starts a new round and queues its reviving message atomically.
-	ReopenNode(ctx context.Context, id core.NodeID, round uint64, startedAt core.Timestamp, message core.QueuedMessage) error
+	ReopenNode(
+		ctx context.Context,
+		id core.NodeID,
+		round uint64,
+		startedAt core.Timestamp,
+		message core.QueuedMessage,
+	) error
 	// MarkDelivered marks only the named current round delivered.
 	MarkDelivered(ctx context.Context, id core.NodeID, round uint64) error
 	// DeleteNode deletes the node and all descendants with all their rows.
@@ -56,13 +62,22 @@ const CommandOutputDays int64 = 30
 type StoredOutput interface{ storedOutput() }
 
 // OutputStored carries the kept output.
-type OutputStored struct{ Output host.WholeOutput }
+type OutputStored struct {
+	// Output holds the ended command's retained output.
+	Output host.WholeOutput
+}
 
 // OutputNotStored records why the backend could not store the output.
-type OutputNotStored struct{ Reason string }
+type OutputNotStored struct {
+	// Reason explains why the output could not be stored.
+	Reason string
+}
 
 // OutputRemoved records when retention removed the output.
-type OutputRemoved struct{ At core.Timestamp }
+type OutputRemoved struct {
+	// At records when retention removed the output.
+	At core.Timestamp
+}
 
 func (*OutputStored) storedOutput()    {}
 func (*OutputNotStored) storedOutput() {}

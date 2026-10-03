@@ -47,40 +47,14 @@ func (n *Network) Prepare(ctx context.Context) error {
 		return err
 	}
 	defer handle.Close()
-	routes, err := handle.RouteListFiltered(netlink.FAMILY_V4, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
-	if err != nil {
+	if err := n.checkRoutes(ctx, handle); err != nil {
 		return err
-	}
-	links, err := handle.LinkList()
-	if err != nil {
-		return err
-	}
-	names := make(map[int]string, len(links))
-	for _, link := range links {
-		names[link.Attrs().Index] = link.Attrs().Name
-	}
-	for _, route := range routes {
-		if route.Dst == nil || strings.HasPrefix(names[route.LinkIndex], hostInterfacePrefix) {
-			continue
-		}
-		bits, _ := route.Dst.Mask.Size()
-		if bits == 0 {
-			continue
-		}
-		address, ok := netip.AddrFromSlice(route.Dst.IP)
-		if !ok {
-			return fmt.Errorf("invalid IPv4 route destination: %w", unix.EINVAL)
-		}
-		prefix := netip.PrefixFrom(address.Unmap(), bits).Masked()
-		if n.pool.Overlaps(prefix) {
-			return &OverlapError{Route: prefix}
-		}
 	}
 	backend, err := n.backendAddresses(ctx)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0644); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0o644); err != nil {
 		return err
 	}
 	port := uint16(80)
@@ -121,7 +95,9 @@ func (n *Network) Attach(ctx context.Context, slot Slot) error {
 		return err
 	}
 	defer handle.Close()
-	if err := handle.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: slot.HostInterface()}, PeerName: slot.PeerInterface()}); err != nil {
+	if err := handle.LinkAdd(
+		&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: slot.HostInterface()}, PeerName: slot.PeerInterface()},
+	); err != nil {
 		return err
 	}
 	peer, err := handle.LinkByName(slot.PeerInterface())
@@ -140,37 +116,22 @@ func (n *Network) Attach(ctx context.Context, slot Slot) error {
 		return err
 	}
 	if ipv6 {
-		if err := os.WriteFile(ipv6Settings+"/conf/"+slot.HostInterface()+"/disable_ipv6", []byte("1"), 0644); err != nil {
+		if err := os.WriteFile(
+			ipv6Settings+"/conf/"+slot.HostInterface()+"/disable_ipv6",
+			[]byte("1"),
+			0o644,
+		); err != nil {
 			return err
 		}
 	}
 	// A descriptor path also works when the caller has an isolated mount namespace.
-	_, err = system.RunNamespace(ctx, system.Network(fmt.Sprintf("/proc/self/fd/%d", file.Fd())), func(ctx context.Context) (struct{}, error) {
-		if err := ctx.Err(); err != nil {
-			return struct{}{}, err
-		}
-		if ipv6 {
-			if err := os.WriteFile(ipv6Settings+"/conf/all/disable_ipv6", []byte("1"), 0644); err != nil {
-				return struct{}{}, err
-			}
-		}
-		inside, err := netlink.NewHandle(unix.NETLINK_ROUTE)
-		if err != nil {
-			return struct{}{}, err
-		}
-		defer inside.Close()
-		loopback, err := inside.LinkByName("lo")
-		if err != nil {
-			return struct{}{}, err
-		}
-		if err := inside.LinkSetUp(loopback); err != nil {
-			return struct{}{}, err
-		}
-		if err := addressAndUp(ctx, inside, slot.PeerInterface(), slot.Address); err != nil {
-			return struct{}{}, err
-		}
-		return struct{}{}, inside.RouteAdd(&netlink.Route{Gw: net.IP(slot.Gateway.AsSlice())})
-	})
+	_, err = system.RunNamespace(
+		ctx,
+		system.Network(fmt.Sprintf("/proc/self/fd/%d", file.Fd())),
+		func(ctx context.Context) (struct{}, error) {
+			return struct{}{}, configurePeer(ctx, slot, ipv6)
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -245,8 +206,76 @@ func addressAndUp(ctx context.Context, handle *netlink.Handle, name string, addr
 	if err != nil {
 		return err
 	}
-	if err := handle.AddrAdd(link, &netlink.Addr{IPNet: &net.IPNet{IP: net.IP(address.AsSlice()), Mask: net.CIDRMask(30, 32)}}); err != nil {
+	if err := handle.AddrAdd(
+		link,
+		&netlink.Addr{IPNet: &net.IPNet{IP: net.IP(address.AsSlice()), Mask: net.CIDRMask(30, 32)}},
+	); err != nil {
 		return err
 	}
 	return handle.LinkSetUp(link)
+}
+
+// checkRoutes borrows the route handle; Prepare retains it through firewall installation.
+func (n *Network) checkRoutes(_ context.Context, handle *netlink.Handle) error {
+	routes, err := handle.RouteListFiltered(
+		netlink.FAMILY_V4,
+		&netlink.Route{Table: unix.RT_TABLE_MAIN},
+		netlink.RT_FILTER_TABLE,
+	)
+	if err != nil {
+		return err
+	}
+	links, err := handle.LinkList()
+	if err != nil {
+		return err
+	}
+	names := make(map[int]string, len(links))
+	for _, link := range links {
+		names[link.Attrs().Index] = link.Attrs().Name
+	}
+	for _, route := range routes {
+		if route.Dst == nil || strings.HasPrefix(names[route.LinkIndex], hostInterfacePrefix) {
+			continue
+		}
+		bits, _ := route.Dst.Mask.Size()
+		if bits == 0 {
+			continue
+		}
+		address, ok := netip.AddrFromSlice(route.Dst.IP)
+		if !ok {
+			return fmt.Errorf("invalid IPv4 route destination: %w", unix.EINVAL)
+		}
+		prefix := netip.PrefixFrom(address.Unmap(), bits).Masked()
+		if n.pool.Overlaps(prefix) {
+			return &OverlapError{Route: prefix}
+		}
+	}
+	return nil
+}
+
+func configurePeer(ctx context.Context, slot Slot, ipv6 bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if ipv6 {
+		if err := os.WriteFile(ipv6Settings+"/conf/all/disable_ipv6", []byte("1"), 0o644); err != nil {
+			return err
+		}
+	}
+	inside, err := netlink.NewHandle(unix.NETLINK_ROUTE)
+	if err != nil {
+		return err
+	}
+	defer inside.Close()
+	loopback, err := inside.LinkByName("lo")
+	if err != nil {
+		return err
+	}
+	if err := inside.LinkSetUp(loopback); err != nil {
+		return err
+	}
+	if err := addressAndUp(ctx, inside, slot.PeerInterface(), slot.Address); err != nil {
+		return err
+	}
+	return inside.RouteAdd(&netlink.Route{Gw: net.IP(slot.Gateway.AsSlice())})
 }

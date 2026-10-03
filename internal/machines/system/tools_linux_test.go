@@ -98,7 +98,8 @@ func TestToolOutputAndFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !out.Status.Exited() || out.Status.ExitStatus() != 7 || out.Stdout != "C.UTF-8" || out.Stderr != " \ufffd\ufffd\ufffd \n" {
+	if !out.Status.Exited() || out.Status.ExitStatus() != 7 || out.Stdout != "C.UTF-8" ||
+		out.Stderr != " \ufffd\ufffd\ufffd \n" {
 		t.Fatalf("output = %#v", out)
 	}
 	if _, err := system.Accept(system.Runsc, out, []int{0, 7}); err != nil {
@@ -124,7 +125,7 @@ func TestToolOutputAndFailures(t *testing.T) {
 func TestToolCancellationReapsChild(t *testing.T) {
 	tools := childTools(t)
 	fifo := filepath.Join(t.TempDir(), "ready")
-	if err := unix.Mkfifo(fifo, 0600); err != nil {
+	if err := unix.Mkfifo(fifo, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	ready, err := os.OpenFile(fifo, os.O_RDWR, 0)
@@ -189,7 +190,7 @@ func TestToolCancellationReapsChild(t *testing.T) {
 func TestToolDeadline(t *testing.T) {
 	tools := childTools(t)
 	fifo := filepath.Join(t.TempDir(), "unopened")
-	if err := unix.Mkfifo(fifo, 0600); err != nil {
+	if err := unix.Mkfifo(fifo, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	zero := time.Duration(0)
@@ -229,7 +230,7 @@ func TestResolveAndTestTools(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PATH", dir)
 	runsc := filepath.Join(dir, "configured-runsc")
-	if err := os.WriteFile(runsc, nil, 0600); err != nil {
+	if err := os.WriteFile(runsc, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := system.Resolve(t.Context(), runsc)
@@ -238,7 +239,7 @@ func TestResolveAndTestTools(t *testing.T) {
 		t.Fatalf("missing tools = %v", err)
 	}
 	for _, name := range []string{"mke2fs", "e2fsck", "resize2fs", "bsdtar"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -262,7 +263,7 @@ func TestResolveAndTestTools(t *testing.T) {
 		t.Fatalf("missing test nft = %v", err)
 	}
 	nft := filepath.Join(dir, "nft")
-	if err := os.WriteFile(nft, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+	if err := os.WriteFile(nft, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if path, err := systemtest.NftPath(t.Context()); err != nil || path != nft {

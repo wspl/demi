@@ -34,19 +34,29 @@ func TestCgroupControllersCheckedBeforeChanges(t *testing.T) {
 			}
 		}()
 		var missing *MissingControllersError
-		if err := PrepareCgroups(ctx); !errors.As(err, &missing) || !reflect.DeepEqual(missing.Missing, []string{"cpu", "memory", "pids"}) {
+		if err := PrepareCgroups(
+			ctx,
+		); !errors.As(err, &missing) ||
+			!reflect.DeepEqual(missing.Missing, []string{"cpu", "memory", "pids"}) {
 			t.Fatalf("absent hierarchy = %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(cgroupRoot, "cgroup.controllers"), []byte("cpu pids"), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(cgroupRoot, "cgroup.controllers"), []byte("cpu pids"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := PrepareCgroups(ctx); !errors.As(err, &missing) || !reflect.DeepEqual(missing.Missing, []string{"memory"}) {
+		if err := PrepareCgroups(
+			ctx,
+		); !errors.As(err, &missing) ||
+			!reflect.DeepEqual(missing.Missing, []string{"memory"}) {
 			t.Fatalf("missing controllers = %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(cgroupRoot, "cgroup.subtree_control")); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("changed hierarchy before validation: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(cgroupRoot, "cgroup.controllers"), []byte("cpu memory pids"), 0600); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(cgroupRoot, "cgroup.controllers"),
+			[]byte("cpu memory pids"),
+			0o600,
+		); err != nil {
 			t.Fatal(err)
 		}
 		if err := PrepareCgroups(ctx); err != nil {
@@ -74,10 +84,10 @@ func TestCgroupFenceDeadline(t *testing.T) {
 				}
 			}()
 			group := filepath.Join(cgroupRoot, "demi-cloud/demi-busy")
-			if err := os.MkdirAll(group, 0700); err != nil {
+			if err := os.MkdirAll(group, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(group, "cgroup.events"), []byte("populated 1\n"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(group, "cgroup.events"), []byte("populated 1\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			start := time.Now()

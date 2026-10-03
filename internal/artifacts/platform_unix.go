@@ -17,6 +17,7 @@ func tryLock(file *os.File) (bool, error) {
 	}
 	return err == nil, err
 }
+
 func syncDirectory(ctx context.Context, path string) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err

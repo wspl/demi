@@ -22,16 +22,21 @@ var ErrSyntax = errors.New("invalid JSON syntax")
 
 // Error identifies the path at which a contract was refused.
 type Error struct {
+	// Path identifies the refused field or element.
 	Path string
-	Err  error
+	// Err is the underlying refusal.
+	Err error
 }
 
+// Error describes the refused path and its cause.
 func (e *Error) Error() string {
 	if e.Path == "" {
 		return e.Err.Error()
 	}
 	return e.Path + ": " + e.Err.Error()
 }
+
+// Unwrap returns the cause of the contract refusal.
 func (e *Error) Unwrap() error { return e.Err }
 
 // At adds a field or array index to an error's path.
@@ -61,12 +66,12 @@ func CheckJSON(data []byte) error {
 	if err := checkSurrogates(data); err != nil {
 		return fmt.Errorf("%w: %w", ErrSyntax, err)
 	}
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.UseNumber()
-	if err := scanJSON(d, 0); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := scanJSON(decoder, 0); err != nil {
 		return err
 	}
-	if _, err := d.Token(); !errors.Is(err, io.EOF) {
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
 		if err != nil {
 			return fmt.Errorf("%w: %w", ErrSyntax, err)
 		}
@@ -74,8 +79,9 @@ func CheckJSON(data []byte) error {
 	}
 	return nil
 }
-func scanJSON(d *json.Decoder, depth int) error {
-	token, err := d.Token()
+
+func scanJSON(decoder *json.Decoder, depth int) error {
+	token, err := decoder.Token()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrSyntax, err)
 	}
@@ -92,8 +98,8 @@ func scanJSON(d *json.Decoder, depth int) error {
 	switch delim {
 	case '{':
 		seen := map[string]bool{}
-		for d.More() {
-			token, err := d.Token()
+		for decoder.More() {
+			token, err := decoder.Token()
 			if err != nil {
 				return fmt.Errorf("%w: %w", ErrSyntax, err)
 			}
@@ -105,20 +111,20 @@ func scanJSON(d *json.Decoder, depth int) error {
 				return At(key, errors.New("duplicate key"))
 			}
 			seen[key] = true
-			if err := scanJSON(d, depth+1); err != nil {
+			if err := scanJSON(decoder, depth+1); err != nil {
 				return At(key, err)
 			}
 		}
 	case '[':
-		for i := 0; d.More(); i++ {
-			if err := scanJSON(d, depth+1); err != nil {
+		for i := 0; decoder.More(); i++ {
+			if err := scanJSON(decoder, depth+1); err != nil {
 				return At(fmt.Sprintf("[%d]", i), err)
 			}
 		}
 	default:
 		return fmt.Errorf("%w: unexpected delimiter", ErrSyntax)
 	}
-	_, err = d.Token()
+	_, err = decoder.Token()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrSyntax, err)
 	}
@@ -149,14 +155,14 @@ func List[T any](data []byte, decode func([]byte) (T, error)) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]T, len(raw))
+	output := make([]T, len(raw))
 	for i, item := range raw {
-		out[i], err = decode(item)
+		output[i], err = decode(item)
 		if err != nil {
 			return nil, At(fmt.Sprintf("[%d]", i), err)
 		}
 	}
-	return out, nil
+	return output, nil
 }
 
 // Pointer retains a present zero value for an optional field.
@@ -179,7 +185,7 @@ func KeyedRecord[K ~string, T any](data []byte, decode func([]byte) (T, error), 
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[K]T, len(raw))
+	output := make(map[K]T, len(raw))
 	for key, item := range raw {
 		var value T
 		if !nullable || !IsNull(item) {
@@ -188,9 +194,9 @@ func KeyedRecord[K ~string, T any](data []byte, decode func([]byte) (T, error), 
 				return nil, At(key, err)
 			}
 		}
-		out[K(key)] = value
+		output[K(key)] = value
 	}
-	return out, nil
+	return output, nil
 }
 
 // Text validates lengths in Unicode scalar values and a generation-checked pattern.
@@ -305,17 +311,19 @@ func JSON(data []byte) (json.RawMessage, error) {
 
 // Field is one codec property in declaration order.
 type Field struct {
-	Name  string
+	// Name is the property name.
+	Name string
+	// Value is the property value.
 	Value any
 }
 
 // EncodeObject preserves generated field order, including flattened properties.
 func EncodeObject(fields []Field) ([]byte, error) {
-	var out bytes.Buffer
-	out.WriteByte('{')
+	var output bytes.Buffer
+	output.WriteByte('{')
 	for i, field := range fields {
 		if i > 0 {
-			out.WriteByte(',')
+			output.WriteByte(',')
 		}
 		key, err := EncodeJSON(field.Name)
 		if err != nil {
@@ -325,10 +333,10 @@ func EncodeObject(fields []Field) ([]byte, error) {
 		if err != nil {
 			return nil, At(field.Name, err)
 		}
-		out.Write(key)
-		out.WriteByte(':')
-		out.Write(value)
+		output.Write(key)
+		output.WriteByte(':')
+		output.Write(value)
 	}
-	out.WriteByte('}')
-	return out.Bytes(), nil
+	output.WriteByte('}')
+	return output.Bytes(), nil
 }

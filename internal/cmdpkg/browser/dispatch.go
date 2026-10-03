@@ -27,14 +27,20 @@ func resultOutput(result any, err error) (commandOutput, error) {
 	return commandOutput{json: raw}, err
 }
 
-func (s *service) execute(ctx, cancellation context.Context, b *conversation, invocation *cmdsdk.InvocationContext[commandwire.Invocation], command browserop.Input, deadline time.Time) (commandOutput, error) {
+func (s *service) execute(
+	ctx, cancellation context.Context,
+	browser *conversation,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	command browserop.Input,
+	deadline time.Time,
+) (commandOutput, error) {
 	var start *starting
 	_, user := invocation.Request.Context.Caller.(*commandwire.UserCaller)
 	switch command.(type) {
 	case *browserop.OpenInput, *browserop.ContentFetchInput:
 		start = &starting{locale: invocation.Request.Context.Locale, invocation: invocation.Request.InvocationID}
 	}
-	environment, _, err := b.running(ctx, start)
+	environment, _, err := browser.running(ctx, start)
 	if err != nil {
 		return commandOutput{}, err
 	}
@@ -51,29 +57,12 @@ func (s *service) execute(ctx, cancellation context.Context, b *conversation, in
 		result, err := page.ContentFetch(ctx, invocation, environment, *input, deadline)
 		select {
 		case <-environment.Emptied():
-			err = cdp.AfterCleanup(err, b.retire(context.WithoutCancel(ctx), environment))
+			err = cdp.AfterCleanup(err, browser.retire(context.WithoutCancel(ctx), environment))
 		default:
 		}
 		return resultOutput(result, err)
 	case *browserop.TabsInput:
-		listing, err := environment.Listed(ctx, command.Timeout())
-		if err != nil {
-			return commandOutput{}, err
-		}
-		offset, limit := uint(0), uint(browserop.DefaultNodes)
-		if input.Offset != nil {
-			offset = *input.Offset
-		}
-		if input.Limit != nil {
-			limit = *input.Limit
-		}
-		rows := []browserop.BrowserTab{}
-		offset = min(offset, uint(len(listing.Tabs)))
-		end := offset + min(limit, uint(len(listing.Tabs))-offset)
-		for _, row := range listing.Tabs[offset:end] {
-			rows = append(rows, browserop.BrowserTab{ID: row.Tab.ID(), URL: row.URL, Title: row.Title, CreatedBy: row.Tab.CreatedBy()})
-		}
-		return resultOutput(browserop.TabsResult{Tabs: rows, Truncated: end < uint(len(listing.Tabs))}, nil)
+		return listTabs(ctx, environment, input)
 	}
 	id := command.TabID()
 	if id == nil {
@@ -91,22 +80,21 @@ func (s *service) execute(ctx, cancellation context.Context, b *conversation, in
 			return resultOutput(tab.Steer(ctx, command, operation))
 		}
 	}
+	return executeTab(ctx, cancellation, browser, environment, tab, invocation, command, deadline)
+}
+
+func executeTab(
+	ctx, cancellation context.Context,
+	browser *conversation,
+	environment *tabs.Environment,
+	tab *tabs.Tab,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	command browserop.Input,
+	deadline time.Time,
+) (commandOutput, error) {
 	switch input := command.(type) {
 	case *browserop.CloseInput:
-		closed, err := tab.CloseRequest(ctx, command.Timeout())
-		if err != nil {
-			return commandOutput{}, err
-		}
-		if closed == tabs.ClosedEnvironment {
-			err = b.retire(context.WithoutCancel(ctx), environment)
-		} else {
-			select {
-			case <-environment.Emptied():
-				err = b.retire(context.WithoutCancel(ctx), environment)
-			default:
-			}
-		}
-		return resultOutput(browserop.CloseResult{Closed: tab.ID()}, err)
+		return closeTab(ctx, browser, environment, tab, command.Timeout())
 	case *browserop.CapabilitiesInput:
 		return capabilities(ctx, tab, deadline)
 	case *browserop.ScreenshotInput:
@@ -124,24 +112,7 @@ func (s *service) execute(ctx, cancellation context.Context, b *conversation, in
 	case *browserop.AssetsExportInput:
 		return resultOutput(page.AssetsExport(ctx, invocation, tab, *input, deadline))
 	case *browserop.CdpTargetsInput, *browserop.CdpDetachInput, *browserop.CdpSendInput, *browserop.CdpEventsInput:
-		checkout := tab.Gate().TryCheckout()
-		if checkout == nil {
-			return commandOutput{}, &cdp.BrowserError{Kind: cdp.KindBusy}
-		}
-		defer checkout.Release()
-		caller, err := cdp.Agent(invocation)
-		if err != nil {
-			return commandOutput{}, err
-		}
-		operation := tab.Operation(ctx, deadline)
-		defer operation.Close()
-		// CDP event expiry returns an empty page; only invocation cancellation
-		// detaches the subscription. The operation retains the absolute deadline.
-		raw, err := cdp.ExecuteCommand(cancellation, operation, tab.Debug(), caller, tab.ID(), command)
-		if cancellation.Err() != nil {
-			err = cdp.AfterCleanup(err, tab.Debug().Detach(context.WithoutCancel(cancellation), caller))
-		}
-		return commandOutput{json: raw}, err
+		return executeDebugging(ctx, cancellation, tab, invocation, command, deadline)
 	case *browserop.WebmcpListInput, *browserop.WebmcpCallInput:
 		return webMCP(ctx, tab, command, deadline)
 	case *browserop.ProbeInput:
@@ -149,6 +120,16 @@ func (s *service) execute(ctx, cancellation context.Context, b *conversation, in
 			return probe(ctx, tab, invocation, input, deadline)
 		}
 	}
+	return executePage(ctx, tab, invocation, command, deadline)
+}
+
+func executePage(
+	ctx context.Context,
+	tab *tabs.Tab,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	command browserop.Input,
+	deadline time.Time,
+) (commandOutput, error) {
 	raw, err := page.Command(ctx, tab, command, deadline)
 	if err != nil {
 		return commandOutput{}, err
@@ -160,15 +141,33 @@ func (s *service) execute(ctx, cancellation context.Context, b *conversation, in
 		}
 		inline, ok := result.(*browserop.ContentReadResultInline)
 		if !ok {
-			return commandOutput{}, &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: "content export did not return text"}
+			return commandOutput{}, &cdp.BrowserError{
+				Kind:    cdp.KindInvalidResult,
+				Message: "content export did not return text",
+			}
 		}
-		path, err := cdp.SaveWithOverwrite(ctx, invocation.Request.Cwd, *input.Output, []byte(inline.Content), input.Overwrite != nil && *input.Overwrite)
-		return resultOutput(&browserop.ContentReadResultFile{URL: inline.URL, Title: inline.Title, Format: inline.Format, Path: path}, err)
+		path, err := cdp.SaveWithOverwrite(
+			ctx,
+			invocation.Request.Cwd,
+			*input.Output,
+			[]byte(inline.Content),
+			input.Overwrite != nil && *input.Overwrite,
+		)
+		return resultOutput(
+			&browserop.ContentReadResultFile{URL: inline.URL, Title: inline.Title, Format: inline.Format, Path: path},
+			err,
+		)
 	}
 	return commandOutput{json: raw}, nil
 }
 
-func open(ctx context.Context, environment *tabs.Environment, invocation *cmdsdk.InvocationContext[commandwire.Invocation], input *browserop.OpenInput, deadline time.Time) (commandOutput, error) {
+func open(
+	ctx context.Context,
+	environment *tabs.Environment,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	input *browserop.OpenInput,
+	deadline time.Time,
+) (commandOutput, error) {
 	if _, user := invocation.Request.Context.Caller.(*commandwire.UserCaller); user {
 		var url *string
 		if input.URL != "about:blank" {
@@ -229,7 +228,12 @@ func capabilities(ctx context.Context, tab *tabs.Tab, deadline time.Time) (comma
 	return resultOutput(browserop.CapabilitiesResult{Capabilities: capabilities}, nil)
 }
 
-func webMCP(ctx context.Context, tab *tabs.Tab, command browserop.Operation, deadline time.Time) (commandOutput, error) {
+func webMCP(
+	ctx context.Context,
+	tab *tabs.Tab,
+	command browserop.Operation,
+	deadline time.Time,
+) (commandOutput, error) {
 	operation := tab.Operation(ctx, deadline)
 	defer operation.Close()
 	checkout := tab.Gate().TryCheckout()
@@ -238,5 +242,79 @@ func webMCP(ctx context.Context, tab *tabs.Tab, command browserop.Operation, dea
 	}
 	defer checkout.Release()
 	raw, err := cdp.ExecuteWebMCP(ctx, operation, tab.Page(), &checkout.Session().WebMCP, tab.ID(), command)
+	return commandOutput{json: raw}, err
+}
+
+func listTabs(ctx context.Context, environment *tabs.Environment, input *browserop.TabsInput) (commandOutput, error) {
+	listing, err := environment.Listed(ctx, input.Timeout())
+	if err != nil {
+		return commandOutput{}, err
+	}
+	offset, limit := uint(0), uint(browserop.DefaultNodes)
+	if input.Offset != nil {
+		offset = *input.Offset
+	}
+	if input.Limit != nil {
+		limit = *input.Limit
+	}
+	rows := []browserop.BrowserTab{}
+	offset = min(offset, uint(len(listing.Tabs)))
+	end := offset + min(limit, uint(len(listing.Tabs))-offset)
+	for _, row := range listing.Tabs[offset:end] {
+		rows = append(
+			rows,
+			browserop.BrowserTab{ID: row.Tab.ID(), URL: row.URL, Title: row.Title, CreatedBy: row.Tab.CreatedBy()},
+		)
+	}
+	return resultOutput(browserop.TabsResult{Tabs: rows, Truncated: end < uint(len(listing.Tabs))}, nil)
+}
+
+func closeTab(
+	ctx context.Context,
+	browser *conversation,
+	environment *tabs.Environment,
+	tab *tabs.Tab,
+	timeout time.Duration,
+) (commandOutput, error) {
+	closed, err := tab.CloseRequest(ctx, timeout)
+	if err != nil {
+		return commandOutput{}, err
+	}
+	if closed == tabs.ClosedEnvironment {
+		err = browser.retire(context.WithoutCancel(ctx), environment)
+	} else {
+		select {
+		case <-environment.Emptied():
+			err = browser.retire(context.WithoutCancel(ctx), environment)
+		default:
+		}
+	}
+	return resultOutput(browserop.CloseResult{Closed: tab.ID()}, err)
+}
+
+func executeDebugging(
+	ctx, cancellation context.Context,
+	tab *tabs.Tab,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	command browserop.Input,
+	deadline time.Time,
+) (commandOutput, error) {
+	checkout := tab.Gate().TryCheckout()
+	if checkout == nil {
+		return commandOutput{}, &cdp.BrowserError{Kind: cdp.KindBusy}
+	}
+	defer checkout.Release()
+	caller, err := cdp.Agent(invocation)
+	if err != nil {
+		return commandOutput{}, err
+	}
+	operation := tab.Operation(ctx, deadline)
+	defer operation.Close()
+	// CDP event expiry returns an empty page; only invocation cancellation
+	// detaches the subscription. The operation retains the absolute deadline.
+	raw, err := cdp.ExecuteCommand(cancellation, operation, tab.Debug(), caller, tab.ID(), command)
+	if cancellation.Err() != nil {
+		err = cdp.AfterCleanup(err, tab.Debug().Detach(context.WithoutCancel(cancellation), caller))
+	}
 	return commandOutput{json: raw}, err
 }

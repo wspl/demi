@@ -1,9 +1,8 @@
 package webapi
 
 import (
-	"errors"
-
 	"encoding/json"
+	"errors"
 )
 
 // The most bytes of one work panel's document, as the backend stores it.

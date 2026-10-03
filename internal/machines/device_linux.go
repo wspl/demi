@@ -19,9 +19,9 @@ import (
 )
 
 type deviceRequest struct {
-	ctx   context.Context
-	op    machinewire.MachineCall
-	reply chan deviceReply
+	ctx       context.Context
+	operation machinewire.MachineCall
+	reply     chan deviceReply
 }
 type deviceReply struct {
 	value json.RawMessage
@@ -43,19 +43,26 @@ type deviceWorker struct {
 }
 
 func newDeviceWorker(m *Manager, id machinewire.DeviceID) *deviceWorker {
-	return &deviceWorker{manager: m, id: id, working: workingImages{storage.NewWorkingPair(m.core.Config.Working(), id)}, queue: make(chan deviceRequest, 64)}
+	return &deviceWorker{
+		manager: m,
+		id:      id,
+		working: workingImages{storage.NewWorkingPair(m.core.Config.Working(), id)},
+		queue:   make(chan deviceRequest, 64),
+	}
 }
-func (w *deviceWorker) call(ctx context.Context, op machinewire.MachineCall) (json.RawMessage, error) {
-	r := deviceRequest{ctx: ctx, op: op, reply: make(chan deviceReply, 1)}
-	w.queue <- r
-	answer := <-r.reply
+
+func (w *deviceWorker) call(ctx context.Context, operation machinewire.MachineCall) (json.RawMessage, error) {
+	request := deviceRequest{ctx: ctx, operation: operation, reply: make(chan deviceReply, 1)}
+	w.queue <- request
+	answer := <-request.reply
 	return answer.value, answer.err
 }
+
 func (w *deviceWorker) run(ctx context.Context) {
 	defer w.stopWait(context.WithoutCancel(ctx))
 	for {
 		select {
-		case r, ok := <-w.queue:
+		case request, ok := <-w.queue:
 			if !ok {
 				if w.runtime != nil {
 					if err := w.runtime.StopWaiting(context.Background()); err != nil {
@@ -64,8 +71,8 @@ func (w *deviceWorker) run(ctx context.Context) {
 				}
 				return
 			}
-			value, err := w.operate(r.ctx, r.op)
-			r.reply <- deviceReply{value, err}
+			value, err := w.operate(request.ctx, request.operation)
+			request.reply <- deviceReply{value, err}
 		case exit := <-w.exit:
 			w.exit = nil
 			if w.runtime == nil || w.runtime.ID() != exit.id {
@@ -86,6 +93,7 @@ func (w *deviceWorker) run(ctx context.Context) {
 		}
 	}
 }
+
 func (w *deviceWorker) stopWait(_ context.Context) {
 	if w.cancelWait != nil {
 		w.cancelWait()
@@ -94,6 +102,7 @@ func (w *deviceWorker) stopWait(_ context.Context) {
 		w.exit = nil
 	}
 }
+
 func (w *deviceWorker) startWait(ctx context.Context) {
 	w.stopWait(ctx)
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -107,15 +116,17 @@ func (w *deviceWorker) startWait(ctx context.Context) {
 		exit <- bootExit{runtime.ID(), err}
 	}()
 }
+
 func (w *deviceWorker) reportDeath(_ context.Context) {
 	select {
 	case w.manager.deaths <- w.id:
 	case <-w.manager.stopping:
 	}
 }
-func (w *deviceWorker) operate(ctx context.Context, op machinewire.MachineCall) (json.RawMessage, error) {
+
+func (w *deviceWorker) operate(ctx context.Context, operation machinewire.MachineCall) (json.RawMessage, error) {
 	var err error
-	switch v := op.(type) {
+	switch call := operation.(type) {
 	case *machinewire.RuntimeStateCall:
 		state := machinewire.RuntimeStateStopped
 		if w.runtime != nil {
@@ -123,7 +134,7 @@ func (w *deviceWorker) operate(ctx context.Context, op machinewire.MachineCall) 
 		}
 		return state.MarshalJSON()
 	case *machinewire.Wake:
-		err = w.wake(ctx, v.Params.Boot)
+		err = w.wake(ctx, call.Params.Boot)
 	case *machinewire.Hibernate:
 		err = w.stop(ctx)
 		if err == nil {
@@ -132,14 +143,15 @@ func (w *deviceWorker) operate(ctx context.Context, op machinewire.MachineCall) 
 	case *machinewire.Checkpoint:
 		err = w.checkpoint(ctx)
 	case *machinewire.GrowVolume:
-		err = w.grow(ctx, v.Params.Volume, v.Params.Bytes)
+		err = w.grow(ctx, call.Params.Volume, call.Params.Bytes)
 	case *machinewire.Reset:
-		err = w.reset(ctx, v.Params.OperationID, machinewire.BaseVersion(v.Params.BaseVersion))
+		err = w.reset(ctx, call.Params.OperationID, machinewire.BaseVersion(call.Params.BaseVersion))
 	case *machinewire.Reconcile, *machinewire.CurrentBaseVersion, *machinewire.ImageState:
 		err = errors.New("the device's worker stopped")
 	}
 	return json.RawMessage("null"), err
 }
+
 func (w *deviceWorker) stop(ctx context.Context) error {
 	if w.runtime == nil {
 		return nil
@@ -151,6 +163,7 @@ func (w *deviceWorker) stop(ctx context.Context) error {
 	w.runtime = nil
 	return nil
 }
+
 func (w *deviceWorker) save(ctx context.Context) error {
 	if w.runtime != nil {
 		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
@@ -175,6 +188,7 @@ func (w *deviceWorker) stage(ctx context.Context, name string) (string, func(), 
 		}
 	}, nil
 }
+
 func (w *deviceWorker) wake(ctx context.Context, boot runnerwire.ManagedBoot) error {
 	if w.runtime != nil {
 		return nil
@@ -207,7 +221,12 @@ func (w *deviceWorker) wake(ctx context.Context, boot runnerwire.ManagedBoot) er
 		return err
 	}
 	slot := lease.Slot()
-	runtime, err := sandbox.New(core.sandboxConfig(), core.dependencies(), sandbox.Slot{Index: slot.Index, Namespace: slot.Namespace()}, lease)
+	runtime, err := sandbox.New(
+		core.sandboxConfig(),
+		core.dependencies(),
+		sandbox.Slot{Index: slot.Index, Namespace: slot.Namespace()},
+		lease,
+	)
 	if err != nil {
 		lease.Release()
 		return err
@@ -221,10 +240,14 @@ func (w *deviceWorker) wake(ctx context.Context, boot runnerwire.ManagedBoot) er
 	if cleanup := runtime.Close(ctx, w.working); cleanup != nil {
 		w.runtime = runtime
 		w.startWait(ctx)
-		return &OperationError{Message: "Cloud start and cleanup failed; working storage retained", Cause: errors.Join(err, cleanup)}
+		return &OperationError{
+			Message: "Cloud start and cleanup failed; working storage retained",
+			Cause:   errors.Join(err, cleanup),
+		}
 	}
 	return err
 }
+
 func (w *deviceWorker) stageWorking(ctx context.Context, state machinewire.MachineImageState, stage string) error {
 	source := w.manager.core.Store.Images(w.id, state.Generation)
 	copies := storage.ImagesInDirectory(stage)
@@ -247,7 +270,11 @@ func (w *deviceWorker) stageWorking(ctx context.Context, state machinewire.Machi
 	}
 	return storage.Sync(ctx, filepath.Dir(w.working.Directory()))
 }
-func (w *deviceWorker) initialize(ctx context.Context, base machinewire.BaseVersion) (*machinewire.MachineImageState, error) {
+
+func (w *deviceWorker) initialize(
+	ctx context.Context,
+	base machinewire.BaseVersion,
+) (*machinewire.MachineImageState, error) {
 	stage, remove, err := w.stage(ctx, "initial")
 	if err != nil {
 		return nil, err
@@ -255,13 +282,17 @@ func (w *deviceWorker) initialize(ctx context.Context, base machinewire.BaseVers
 	defer remove()
 	core := w.manager.core
 	root := filepath.Join(stage, "mkhome")
-	if err = os.Mkdir(root, 0755); err != nil {
+	if err = os.Mkdir(root, 0o755); err != nil {
 		return nil, err
 	}
-	if err = os.Chmod(root, 0755); err != nil {
+	if err = os.Chmod(root, 0o755); err != nil {
 		return nil, err
 	}
-	if err = storage.CopySkeleton(ctx, filepath.Join(core.Store.Bases(), string(base), "rootfs/etc/skel"), filepath.Join(root, "demi")); err != nil {
+	if err = storage.CopySkeleton(
+		ctx,
+		filepath.Join(core.Store.Bases(), string(base), "rootfs/etc/skel"),
+		filepath.Join(root, "demi"),
+	); err != nil {
 		return nil, err
 	}
 	images := storage.ImagesInDirectory(stage)
@@ -275,7 +306,12 @@ func (w *deviceWorker) initialize(ctx context.Context, base machinewire.BaseVers
 	if err != nil {
 		return nil, err
 	}
-	state := machinewire.MachineImageState{Generation: generation, BaseVersion: base, SystemBytes: core.Config.SystemBytes(), HomeBytes: core.Config.HomeBytes()}
+	state := machinewire.MachineImageState{
+		Generation:  generation,
+		BaseVersion: base,
+		SystemBytes: core.Config.SystemBytes(),
+		HomeBytes:   core.Config.HomeBytes(),
+	}
 	for _, path := range []string{images.System, images.Home} {
 		if err = storage.Sync(ctx, path); err != nil {
 			return nil, err
@@ -286,6 +322,7 @@ func (w *deviceWorker) initialize(ctx context.Context, base machinewire.BaseVers
 	}
 	return &state, nil
 }
+
 func (w *deviceWorker) checkpoint(ctx context.Context) error {
 	if w.runtime == nil {
 		return nil
@@ -319,7 +356,10 @@ func (w *deviceWorker) checkpoint(ctx context.Context) error {
 			cleanup = append(cleanup, err)
 		}
 		w.reportDeath(ctx)
-		return &OperationError{Message: "Cloud checkpoint recovery failed", Cause: errors.Join(append([]error{captured}, cleanup...)...)}
+		return &OperationError{
+			Message: "Cloud checkpoint recovery failed",
+			Cause:   errors.Join(append([]error{captured}, cleanup...)...),
+		}
 	}
 	if captured != nil {
 		return captured
@@ -330,6 +370,7 @@ func (w *deviceWorker) checkpoint(ctx context.Context) error {
 	}
 	return w.manager.core.Store.Publish(ctx, w.id, *state, copies.ImagePair)
 }
+
 func (w *deviceWorker) grow(ctx context.Context, volume machinewire.Volume, bytes uint64) error {
 	if w.runtime == nil {
 		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
@@ -361,6 +402,7 @@ func (w *deviceWorker) grow(ctx context.Context, volume machinewire.Volume, byte
 	}
 	return w.working.WriteManifest(ctx, *state)
 }
+
 func (w *deviceWorker) reset(ctx context.Context, operation string, base machinewire.BaseVersion) error {
 	core := w.manager.core
 	if _, err := os.Stat(filepath.Join(core.Store.Bases(), string(base), "manifest.json")); err != nil {

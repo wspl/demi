@@ -71,7 +71,10 @@ func (r checkpointRows) checkpoint(id core.NodeID) (*store.Checkpoint, error) {
 	for index := 0; index < r.count; index++ {
 		data, exists := r.blocks[index]
 		if !exists {
-			return nil, &store.Error{Kind: store.Corrupt, Message: fmt.Sprintf("node %s has no block row %d", id, index)}
+			return nil, &store.Error{
+				Kind:    store.Corrupt,
+				Message: fmt.Sprintf("node %s has no block row %d", id, index),
+			}
 		}
 		block, err := core.DecodeBlock(data)
 		if err != nil {
@@ -82,9 +85,9 @@ func (r checkpointRows) checkpoint(id core.NodeID) (*store.Checkpoint, error) {
 	return &store.Checkpoint{State: state, Transcript: blocks, CommandState: command}, nil
 }
 
-// applySave publishes all node rows and carried completion deliveries together.
+// applySaveLocked publishes all node rows and carried completion deliveries together.
 // The caller holds the tree mutex; no IO or wait occurs here.
-func (s *MemoryTreeStore) applySave(saved savedRows) error {
+func (s *MemoryTreeStore) applySaveLocked(saved savedRows) error {
 	node, exists := s.nodes[saved.id]
 	if !exists {
 		return missing(saved.id)
@@ -92,34 +95,8 @@ func (s *MemoryTreeStore) applySave(saved savedRows) error {
 	next := node
 	next.rows.blocks = maps.Clone(node.rows.blocks)
 	if saved.rows.command != nil {
-		previous, err := store.DecodeCommandStateSnapshot(node.rows.command)
-		if err != nil {
+		if err := checkCommandVersions(node.rows.command, saved.rows.command); err != nil {
 			return err
-		}
-		proposed, err := store.DecodeCommandStateSnapshot(saved.rows.command)
-		if err != nil {
-			return err
-		}
-		for _, version := range proposed.Versions {
-			for _, old := range previous.Versions {
-				if old.Revision != version.Revision {
-					continue
-				}
-				// CommandStateHistory owns canonical JSON equality, including number form.
-				snapshot := previous
-				snapshot.Revision = old.Revision
-				history, err := store.RestoreCommandStateHistory(snapshot)
-				if err != nil {
-					return err
-				}
-				change, err := history.Prepare(version.Values)
-				if err != nil {
-					return err
-				}
-				if change != nil {
-					return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("command-state version %d is immutable", version.Revision)}
-				}
-			}
 		}
 		next.rows.command = saved.rows.command
 	}
@@ -136,7 +113,8 @@ func (s *MemoryTreeStore) applySave(saved savedRows) error {
 	s.nodes[saved.id] = next
 	for _, round := range saved.completions {
 		child, exists := s.nodes[round.Child]
-		if exists && child.record.Parent != nil && *child.record.Parent == saved.id && child.record.Round == round.Round {
+		if exists && child.record.Parent != nil && *child.record.Parent == saved.id &&
+			child.record.Round == round.Round {
 			child.record.Delivered = true
 			s.nodes[round.Child] = child
 		}
@@ -171,4 +149,40 @@ func copyRecord(record store.NodeRecord) store.NodeRecord {
 		record.Closed = &closed
 	}
 	return record
+}
+
+func checkCommandVersions(current, next []byte) error {
+	previous, err := store.DecodeCommandStateSnapshot(current)
+	if err != nil {
+		return err
+	}
+	proposed, err := store.DecodeCommandStateSnapshot(next)
+	if err != nil {
+		return err
+	}
+	for _, version := range proposed.Versions {
+		for _, old := range previous.Versions {
+			if old.Revision != version.Revision {
+				continue
+			}
+			// CommandStateHistory owns canonical JSON equality, including number form.
+			snapshot := previous
+			snapshot.Revision = old.Revision
+			history, err := store.RestoreCommandStateHistory(snapshot)
+			if err != nil {
+				return err
+			}
+			change, err := history.Prepare(version.Values)
+			if err != nil {
+				return err
+			}
+			if change != nil {
+				return &store.Error{
+					Kind:    store.OperationFailed,
+					Message: fmt.Sprintf("command-state version %d is immutable", version.Revision),
+				}
+			}
+		}
+	}
+	return nil
 }

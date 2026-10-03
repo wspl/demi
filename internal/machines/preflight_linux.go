@@ -63,7 +63,7 @@ func RequireOneFilesystem(ctx context.Context, working, images string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := os.MkdirAll(path, 0777); err != nil {
+		if err := os.MkdirAll(path, 0o777); err != nil {
 			return err
 		}
 		var stat unix.Stat_t
@@ -74,7 +74,11 @@ func RequireOneFilesystem(ctx context.Context, working, images string) error {
 	}
 	if devices[0] != devices[1] {
 		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
-		return fmt.Errorf("DEMI_MACHINE_MANAGER_DATA must be one filesystem: %s and %s are on different filesystems", working, images)
+		return fmt.Errorf(
+			"DEMI_MACHINE_MANAGER_DATA must be one filesystem: %s and %s are on different filesystems",
+			working,
+			images,
+		)
 	}
 	return nil
 }
@@ -88,12 +92,12 @@ func ProbeStorage(ctx context.Context, core *Core) (err error) {
 		return err
 	}
 	stage := filepath.Join(core.Config.Data, probePrefix+string(id))
-	if err = os.Mkdir(stage, 0700); err != nil {
+	if err = os.Mkdir(stage, 0o700); err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, releaseProbe(context.WithoutCancel(ctx), stage)) }()
 	for _, name := range []string{"volume", "merged", "base"} {
-		if err = os.Mkdir(filepath.Join(stage, name), 0700); err != nil {
+		if err = os.Mkdir(filepath.Join(stage, name), 0o700); err != nil {
 			return err
 		}
 	}
@@ -114,7 +118,7 @@ func ProbeStorage(ctx context.Context, core *Core) (err error) {
 	if err = system.Overlay(ctx, filepath.Join(stage, "base"), volume, filepath.Join(stage, "merged")); err != nil {
 		return err
 	}
-	if err = os.WriteFile(filepath.Join(stage, "merged/probe"), []byte("Cloud storage preflight"), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(stage, "merged/probe"), []byte("Cloud storage preflight"), 0o600); err != nil {
 		return err
 	}
 	if err = system.Freeze(ctx, volume); err != nil {

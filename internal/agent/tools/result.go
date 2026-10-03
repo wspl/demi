@@ -19,11 +19,18 @@ import (
 const (
 	viewChars     = 32768
 	videoCapBytes = 16 * 1024 * 1024
-	runningNext   = "next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it."
+	runningNext   = "next: command is still running; " +
+		"check again with shell_status, or call yield to end this turn and be woken later, " +
+		"or shell_abort to stop it."
 )
 
 // shellOutcome renders the model's result and the independent page view.
-func shellOutcome(ctx context.Context, status host.CommandStatus, model core.Model, limits provider.RequestLimits) session.ToolOutcome {
+func shellOutcome(
+	ctx context.Context,
+	status host.CommandStatus,
+	model core.Model,
+	limits provider.RequestLimits,
+) session.ToolOutcome {
 	var text host.OutputText
 	if status.Whole != nil {
 		var binaryLength *uint64
@@ -49,37 +56,20 @@ func shellOutcome(ctx context.Context, status host.CommandStatus, model core.Mod
 func resultText(status host.CommandStatus, text host.OutputText) string {
 	command := status.CommandID
 	running := status.State.Phase == host.Running
-	before := []string{"status: " + string(viewStatus(status.State.Phase))}
-	if status.State.Phase == host.Exited {
-		before = append(before, fmt.Sprintf("exitCode: %d", status.State.ExitCode))
-	}
-	before = append(before, "commandId: "+string(command))
-	if running {
-		before = append(before, "shellId: "+string(status.ShellID), fmt.Sprintf("runningMs: %d", status.RunningMs), fmt.Sprintf("idleMs: %d", status.IdleMs))
-	}
+	before := resultHeader(status)
 	var newest []host.Newest
 	for _, item := range status.Newest {
 		if running && item.Text != "" {
 			newest = append(newest, item)
 		}
 	}
-	var after []string
-	if running && status.Unreceived > 0 && len(newest) == 0 {
-		after = append(after, fmt.Sprintf("[... %d bytes not shown so far; the newest: demi shell output %s --tail 50 ...]", status.Unreceived, command))
-	}
-	switch status.State.Phase {
-	case host.Running:
-		hint := runningNext
-		if status.State.Hint != nil {
-			hint = *status.State.Hint
-		}
-		after = append(after, hint)
-	case host.Aborted:
-		after = append(after, "next: command was intentionally stopped.")
-	}
+	after := resultFollowup(status, newest)
 	var markers []string
 	for _, item := range newest {
-		markers = append(markers, fmt.Sprintf("[... %d bytes of %s not shown; its newest lines follow ...]", item.LeftOut, item.Stream))
+		markers = append(
+			markers,
+			fmt.Sprintf("[... %d bytes of %s not shown; its newest lines follow ...]", item.LeftOut, item.Stream),
+		)
 	}
 	others := len("output:\n")
 	for _, lines := range [][]string{before, after, markers} {
@@ -100,19 +90,7 @@ func resultText(status host.CommandStatus, text host.OutputText) string {
 	for _, line := range shown {
 		used += utf8.RuneCountInString(line) + 1
 	}
-	var newestLines []string
-	if len(newest) != 0 {
-		each := max(0, budget-used) / len(newest)
-		for i, item := range newest {
-			newestLines = append(newestLines, markers[i])
-			tail := item.Text
-			if _, rest, ok := strings.Cut(tail, "\n"); ok && item.LeftOut > 0 && rest != "" {
-				tail = rest
-			}
-			lines, _ := takeEnd(host.ReceivedOutput(tail, 1), each)
-			newestLines = append(newestLines, lines...)
-		}
-	}
+	newestLines := newestOutput(newest, markers, budget, used)
 	lines := before
 	if len(shown) == 0 && len(newestLines) == 0 {
 		lines = append(lines, "output: (empty)")
@@ -134,7 +112,10 @@ func cutOutput(text host.OutputText, from uint64, command core.CommandID, budget
 		used += utf8.RuneCountInString(shown) + 1
 		if used > budget {
 			length := len(text.Bytes())
-			widest := max(utf8.RuneCountInString(linesMarker(command, text.LastLine(), text.LastLine(), length)), utf8.RuneCountInString(charsMarker(command, text.LastLine(), length, length))) + 1
+			widest := max(
+				utf8.RuneCountInString(linesMarker(command, text.LastLine(), text.LastLine(), length)),
+				utf8.RuneCountInString(charsMarker(command, text.LastLine(), length, length)),
+			) + 1
 			half := max(0, budget-widest) / 2
 			head, start := takeStart(text, from, half)
 			tail, end := takeEnd(text, half)
@@ -222,49 +203,65 @@ func outputMarker(text host.OutputText, command core.CommandID, start, end int) 
 
 // linesMarker points to the shell command that reads omitted whole lines.
 func linesMarker(command core.CommandID, first, last uint64, bytes int) string {
-	return fmt.Sprintf("[... lines %d-%d not shown (%d bytes); read them: demi shell output %s --lines %d-%d ...]", first, last, bytes, command, first, last)
+	return fmt.Sprintf(
+		"[... lines %d-%d not shown (%d bytes); read them: demi shell output %s --lines %d-%d ...]",
+		first,
+		last,
+		bytes,
+		command,
+		first,
+		last,
+	)
 }
 
 // charsMarker points to a page of omitted characters of one output line.
 func charsMarker(command core.CommandID, line uint64, from, to int) string {
-	return fmt.Sprintf("[... characters %d-%d of line %d not shown; read them: demi shell output %s --raw | sed -n %dp | cut -c %d-%d ...]", from, to, line, command, line, from, min(to, from+PageChars-1))
+	return fmt.Sprintf(
+		"[... characters %d-%d of line %d not shown; read them: demi shell output %s --raw | sed -n %dp | cut -c %d-%d ...]",
+		from,
+		to,
+		line,
+		command,
+		line,
+		from,
+		min(to, from+PageChars-1),
+	)
 }
 
 // binaryVerdict attaches accepted whole media, or explains how to save the bytes.
-func binaryVerdict(ctx context.Context, binary *host.BinaryOutput, command core.CommandID, model core.Model, limits provider.RequestLimits) (provider.ResultPart, string) {
+func binaryVerdict(
+	ctx context.Context,
+	binary *host.BinaryOutput,
+	command core.CommandID,
+	model core.Model,
+	limits provider.RequestLimits,
+) (provider.ResultPart, string) {
 	total := binary.Info.TotalBytes
 	save := fmt.Sprintf("save it: demi shell output %s --raw --stdout > <file>", command)
 	if binary.Info.Truncated {
-		return nil, fmt.Sprintf("Binary stdout (%d bytes) is more than the %d bytes a command's output keeps whole, so it was not attached and is kept whole nowhere; write it to a file instead and run the command again.", total, binary.Info.LimitBytes)
+		return nil, fmt.Sprintf(
+			"Binary stdout (%d bytes) is more than the %d bytes a command's output keeps whole, "+
+				"so it was not attached and is kept whole nowhere; "+
+				"write it to a file instead and run the command again.",
+			total,
+			binary.Info.LimitBytes,
+		)
 	}
 	media := core.SniffModelMediaType(binary.Bytes)
 	if media == nil {
 		return nil, "Binary stdout does not match any model-viewable media type; " + save + "."
 	}
 	if !core.ModelAcceptsMediaType(model, media.MediaType) {
-		return nil, fmt.Sprintf("Binary stdout is %s, which this model does not accept natively; %s.", media.MediaType, save)
+		return nil, fmt.Sprintf(
+			"Binary stdout is %s, which this model does not accept natively; %s.",
+			media.MediaType,
+			save,
+		)
 	}
 	if media.Kind == core.ModelMediaKindImage {
-		fitted, err := store.Fit(ctx, binary.Bytes, media.MediaType)
-		if err != nil {
-			return nil, fmt.Sprintf("Binary stdout is %s (%d bytes), which was not attached because %s; %s.", media.MediaType, total, err, save)
-		}
-		note := fmt.Sprintf("Attached stdout as %s (%d bytes).", media.MediaType, total)
-		if fitted.Reencoded {
-			note = fmt.Sprintf("Attached stdout, %s of %dx%d px (%d bytes), as %s of %dx%d px (%d bytes), fitted to what every model accepts; to keep the original, %s.", media.MediaType, fitted.Came.Width, fitted.Came.Height, total, fitted.MediaType, fitted.Entered.Width, fitted.Entered.Height, len(fitted.Data), save)
-		}
-		return &provider.ResultImage{Bytes: provider.MediaBytes{Data: fitted.Data, MediaType: fitted.MediaType}}, note
+		return imageVerdict(ctx, binary, media.MediaType, total, save)
 	}
-	if total > videoCapBytes {
-		return nil, fmt.Sprintf("Binary stdout is %s (%d bytes), over the %d-byte video cap, so it was not attached; %s, or produce a smaller version, with fewer frames or a lower resolution, and run it again.", media.MediaType, total, videoCapBytes, save)
-	}
-	if limits.BodyBytes != nil {
-		half := *limits.BodyBytes / 2
-		if uint64(base64.StdEncoding.EncodedLen(len(binary.Bytes))) > half {
-			return nil, fmt.Sprintf("Binary stdout is %s (%d bytes), whose base64 takes more than %d bytes, half of what this model's requests may carry, so it was not attached; %s, or produce a smaller version, with fewer frames or a lower resolution, and run it again.", media.MediaType, total, half, save)
-		}
-	}
-	return &provider.ResultVideo{Bytes: provider.MediaBytes{Data: slices.Clone(binary.Bytes), MediaType: media.MediaType}}, fmt.Sprintf("Attached stdout as %s (%d bytes).", media.MediaType, total)
+	return videoVerdict(binary, media.MediaType, limits, total, save)
 }
 
 // viewStatus maps a shell environment phase to its transcript view.
@@ -293,7 +290,15 @@ func shellView(status host.CommandStatus, text host.OutputText) core.ShellToolVi
 		chunks, cut = tailWindow(status.Output.Chunks, viewChars)
 		cut = cut || status.Output.Truncated
 	}
-	view := core.ShellToolView{Status: viewStatus(status.State.Phase), ShellID: status.ShellID, CommandID: status.CommandID, RunningMs: status.RunningMs, IdleMs: status.IdleMs, Chunks: chunks, ViewTruncated: cut}
+	view := core.ShellToolView{
+		Status:        viewStatus(status.State.Phase),
+		ShellID:       status.ShellID,
+		CommandID:     status.CommandID,
+		RunningMs:     status.RunningMs,
+		IdleMs:        status.IdleMs,
+		Chunks:        chunks,
+		ViewTruncated: cut,
+	}
 	if status.State.Phase == host.Exited {
 		view.ExitCode = &status.State.ExitCode
 	}
@@ -333,4 +338,145 @@ func tailWindow(chunks []core.OutputChunk, limit int) ([]core.OutputChunk, bool)
 	}
 	slices.Reverse(kept)
 	return kept, false
+}
+
+func resultHeader(status host.CommandStatus) []string {
+	command := status.CommandID
+	running := status.State.Phase == host.Running
+	before := []string{"status: " + string(viewStatus(status.State.Phase))}
+	if status.State.Phase == host.Exited {
+		before = append(before, fmt.Sprintf("exitCode: %d", status.State.ExitCode))
+	}
+	before = append(before, "commandId: "+string(command))
+	if running {
+		before = append(
+			before,
+			"shellId: "+string(status.ShellID),
+			fmt.Sprintf("runningMs: %d", status.RunningMs),
+			fmt.Sprintf("idleMs: %d", status.IdleMs),
+		)
+	}
+	return before
+}
+
+func resultFollowup(status host.CommandStatus, newest []host.Newest) []string {
+	command := status.CommandID
+	running := status.State.Phase == host.Running
+	var after []string
+	if running && status.Unreceived > 0 && len(newest) == 0 {
+		after = append(
+			after,
+			fmt.Sprintf(
+				"[... %d bytes not shown so far; the newest: demi shell output %s --tail 50 ...]",
+				status.Unreceived,
+				command,
+			),
+		)
+	}
+	switch status.State.Phase {
+	case host.Running:
+		hint := runningNext
+		if status.State.Hint != nil {
+			hint = *status.State.Hint
+		}
+		after = append(after, hint)
+	case host.Aborted:
+		after = append(after, "next: command was intentionally stopped.")
+	}
+	return after
+}
+
+func newestOutput(newest []host.Newest, markers []string, budget, used int) []string {
+	var newestLines []string
+	if len(newest) != 0 {
+		each := max(0, budget-used) / len(newest)
+		for i, item := range newest {
+			newestLines = append(newestLines, markers[i])
+			tail := item.Text
+			if _, rest, ok := strings.Cut(tail, "\n"); ok && item.LeftOut > 0 && rest != "" {
+				tail = rest
+			}
+			lines, _ := takeEnd(host.ReceivedOutput(tail, 1), each)
+			newestLines = append(newestLines, lines...)
+		}
+	}
+	return newestLines
+}
+
+func imageVerdict(
+	ctx context.Context,
+	binary *host.BinaryOutput,
+	mediaType string,
+	total uint64,
+	save string,
+) (provider.ResultPart, string) {
+	fitted, err := store.Fit(ctx, binary.Bytes, mediaType)
+	if err != nil {
+		return nil, fmt.Sprintf(
+			"Binary stdout is %s (%d bytes), which was not attached because %s; %s.",
+			mediaType,
+			total,
+			err,
+			save,
+		)
+	}
+	note := fmt.Sprintf("Attached stdout as %s (%d bytes).", mediaType, total)
+	if fitted.Reencoded {
+		note = fmt.Sprintf(
+			"Attached stdout, %s of %dx%d px (%d bytes), as %s of %dx%d px (%d bytes), "+
+				"fitted to what every model accepts; to keep the original, %s.",
+			mediaType,
+			fitted.Came.Width,
+			fitted.Came.Height,
+			total,
+			fitted.MediaType,
+			fitted.Entered.Width,
+			fitted.Entered.Height,
+			len(fitted.Data),
+			save,
+		)
+	}
+	return &provider.ResultImage{Bytes: provider.MediaBytes{Data: fitted.Data, MediaType: fitted.MediaType}}, note
+}
+
+func videoVerdict(
+	binary *host.BinaryOutput,
+	mediaType string,
+	limits provider.RequestLimits,
+	total uint64,
+	save string,
+) (provider.ResultPart, string) {
+	if total > videoCapBytes {
+		return nil, fmt.Sprintf(
+			"Binary stdout is %s (%d bytes), over the %d-byte video cap, so it was not attached; "+
+				"%s, or produce a smaller version, with fewer frames or a lower resolution, "+
+				"and run it again.",
+			mediaType,
+			total,
+			videoCapBytes,
+			save,
+		)
+	}
+	if limits.BodyBytes != nil {
+		half := *limits.BodyBytes / 2
+		if uint64(base64.StdEncoding.EncodedLen(len(binary.Bytes))) > half {
+			return nil, fmt.Sprintf(
+				"Binary stdout is %s (%d bytes), whose base64 takes more than %d bytes, "+
+					"half of what this model's requests may carry, so it was not attached; "+
+					"%s, or produce a smaller version, with fewer frames or a lower resolution, "+
+					"and run it again.",
+				mediaType,
+				total,
+				half,
+				save,
+			)
+		}
+	}
+	return &provider.ResultVideo{
+		Bytes: provider.MediaBytes{Data: slices.Clone(binary.Bytes), MediaType: mediaType},
+	}, fmt.Sprintf(
+		"Attached stdout as %s (%d bytes).",
+		mediaType,
+		total,
+	)
 }

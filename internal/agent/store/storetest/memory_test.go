@@ -118,7 +118,9 @@ func TestCorruptTranscriptStopsLoad(t *testing.T) {
 
 func TestCommandOutputRecordsSurviveCopyAndOwnTheirBytes(t *testing.T) {
 	memory := NewMemoryTreeStore()
-	kept := &store.OutputStored{Output: host.WholeOutput{Records: []host.OutputRecord{{Stream: "stdout", Bytes: []byte("kept")}}}}
+	kept := &store.OutputStored{
+		Output: host.WholeOutput{Records: []host.OutputRecord{{Stream: "stdout", Bytes: []byte("kept")}}},
+	}
 	memory.KeepOutput("1", kept)
 	memory.KeepOutput("2", &store.OutputNotStored{Reason: "offline"})
 	memory.KeepOutput("3", &store.OutputRemoved{At: contractEpoch})

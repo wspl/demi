@@ -36,7 +36,8 @@ func TestSchemaDeclaresIntegerWindowsAndHandles(t *testing.T) {
 		t.Fatalf("unexpected required properties: %+v", schema)
 	}
 	window := schema.Properties["timeoutMs"]
-	if window.Type != "integer" || window.Minimum != 1 || window.Maximum != 600000 || schema.Properties["shellId"].Type != "integer" {
+	if window.Type != "integer" || window.Minimum != 1 || window.Maximum != 600000 ||
+		schema.Properties["shellId"].Type != "integer" {
 		t.Fatalf("incorrect numeric schema: %+v", schema.Properties)
 	}
 	var properties map[string]json.RawMessage
@@ -51,11 +52,15 @@ func TestSchemaDeclaresIntegerWindowsAndHandles(t *testing.T) {
 		t.Fatalf("description has extra schema fields: %s", properties["description"])
 	}
 	description := schema.Properties["description"]
-	if description.Type != "string" || description.Description != "Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons." {
+	if description.Type != "string" ||
+		description.Description != "Concise title for the concrete user-visible state or result to make visible or "+
+			"confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object "+
+			"labels, steps, tool names, ids, internals, or reasons." {
 		t.Fatal("changed description")
 	}
 	for _, definition := range definitions {
-		if strings.Contains(string(definition.InputSchema), `"$schema"`) || strings.Contains(string(definition.InputSchema), `"title"`) {
+		if strings.Contains(string(definition.InputSchema), `"$schema"`) ||
+			strings.Contains(string(definition.InputSchema), `"title"`) {
 			t.Fatal("tool schema contains title or dialect")
 		}
 	}
@@ -75,28 +80,36 @@ func TestSchemaDeclaresIntegerWindowsAndHandles(t *testing.T) {
 }
 
 func TestRefusalNamesToolAndOffendingField(t *testing.T) {
-	for _, tc := range []struct{ tool, input, want string }{
-		{"shell_exec", `{"script":"true","timeoutMs":0}`, "timeoutMs: 0 is not a whole number of milliseconds from 1 to 600000"},
-		{"shell_exec", `{"script":"true","timeoutMs":600001}`, "timeoutMs: 600001 is not a whole number of milliseconds from 1 to 600000"},
+	for _, scenario := range []struct{ tool, input, want string }{
+		{
+			"shell_exec",
+			`{"script":"true","timeoutMs":0}`,
+			"timeoutMs: 0 is not a whole number of milliseconds from 1 to 600000",
+		},
+		{
+			"shell_exec",
+			`{"script":"true","timeoutMs":600001}`,
+			"timeoutMs: 600001 is not a whole number of milliseconds from 1 to 600000",
+		},
 		{"yield", `{"durationMs":0}`, "durationMs: 0 is not a whole number of milliseconds from 1 to 600000"},
 		{"yield", `{"durationMs":600001}`, "durationMs: 600001 is not a whole number of milliseconds from 1 to 600000"},
 		{"shell_write", `{"commandId":7,"stdin":""}`, "stdin: must not be empty; use shell_status to poll"},
 	} {
-		t.Run(tc.tool+tc.input, func(t *testing.T) {
+		t.Run(scenario.tool+scenario.input, func(t *testing.T) {
 			var err error
-			switch tc.tool {
+			switch scenario.tool {
 			case "shell_exec":
-				_, err = decodeShellExecInput([]byte(tc.input))
+				_, err = decodeShellExecInput([]byte(scenario.input))
 			case "yield":
-				_, err = decodeYieldInput([]byte(tc.input))
+				_, err = decodeYieldInput([]byte(scenario.input))
 			case "shell_write":
-				_, err = decodeShellWriteInput([]byte(tc.input))
+				_, err = decodeShellWriteInput([]byte(scenario.input))
 			}
 			if err == nil {
 				t.Fatal("invalid input accepted")
 			}
-			want := tc.tool + " input is invalid:\n" + tc.want
-			if got := inputRefusal(tc.tool, err).Error(); got != want {
+			want := scenario.tool + " input is invalid:\n" + scenario.want
+			if got := inputRefusal(scenario.tool, err).Error(); got != want {
 				t.Fatal(cmp.Diff(want, got))
 			}
 		})
@@ -110,17 +123,17 @@ func TestRefusalNamesToolAndOffendingField(t *testing.T) {
 		{`{"script":"true","timeoutMs":1,"description":null}`, "description: invalid type: null"},
 		{`"not json"`, "invalid type: string"},
 	}
-	for _, tc := range cases {
-		t.Run(tc.input, func(t *testing.T) {
-			if tc.field != "shellId: " {
+	for _, scenario := range cases {
+		t.Run(scenario.input, func(t *testing.T) {
+			if scenario.field != "shellId: " {
 				t.Skip("fidelity 1: generated tool-input diagnostics differ from Rust")
 			}
-			_, err := decodeShellExecInput([]byte(tc.input))
+			_, err := decodeShellExecInput([]byte(scenario.input))
 			if err == nil {
 				t.Fatal("invalid input accepted")
 			}
 			text := inputRefusal("shell_exec", err).Error()
-			if !strings.HasPrefix(text, "shell_exec input is invalid:\n") || !strings.Contains(text, tc.field) {
+			if !strings.HasPrefix(text, "shell_exec input is invalid:\n") || !strings.Contains(text, scenario.field) {
 				t.Fatal(text)
 			}
 		})
@@ -129,7 +142,10 @@ func TestRefusalNamesToolAndOffendingField(t *testing.T) {
 	if err != nil || got.Script != "ls" || got.TimeoutMS != 600000 || got.ShellID != nil {
 		t.Fatalf("valid input: %+v %v", got, err)
 	}
-	for _, input := range []string{`{"script":"ls","timeoutMs":1,"shellId":3}`, `{"script":"ls","timeoutMs":1,"shellId":"3"}`} {
+	for _, input := range []string{
+		`{"script":"ls","timeoutMs":1,"shellId":3}`,
+		`{"script":"ls","timeoutMs":1,"shellId":"3"}`,
+	} {
 		got, err := decodeShellExecInput([]byte(input))
 		if err != nil || got.ShellID == nil || *got.ShellID != 3 {
 			t.Errorf("valid optional numbered handle %s: %+v %v", input, got, err)

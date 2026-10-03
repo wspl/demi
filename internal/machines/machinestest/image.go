@@ -17,7 +17,12 @@ type CloudImage = storagetest.CloudImage
 func Entries() []Entry { return storagetest.Entries() }
 
 // NewCloudImage builds a release through storage's single fixture implementation.
-func NewCloudImage(t *testing.T, entries []Entry, architecture machinewire.Architecture, executables ...Entry) *CloudImage {
+func NewCloudImage(
+	t *testing.T,
+	entries []Entry,
+	architecture machinewire.Architecture,
+	executables ...Entry,
+) *CloudImage {
 	t.Helper()
 	return storagetest.NewCloudImage(t, entries, architecture, executables...)
 }

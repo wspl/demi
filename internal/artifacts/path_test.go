@@ -16,7 +16,7 @@ func TestPublicationStagesBesideSymlinkParent(t *testing.T) {
 	}
 	root := t.TempDir()
 	other := t.TempDir()
-	must(t, os.Mkdir(filepath.Join(other, "dir"), 0700))
+	must(t, os.Mkdir(filepath.Join(other, "dir"), 0o700))
 	must(t, os.Symlink(filepath.Join(other, "dir"), filepath.Join(root, "link")))
 	destination := root + "/link/../file"
 	staged, err := artifacts.NewStaged(t.Context(), destination, artifacts.Publication{Durable: true})
@@ -37,10 +37,16 @@ func TestParent(t *testing.T) {
 		path, parent string
 		ok           bool
 	}{
-		{"", "", false}, {"/", "", false}, {"file", "", true},
-		{".", "", true}, {"..", "", true}, {"./file", ".", true},
-		{"a/../file", "a/..", true}, {"a/./file", "a", true},
-		{"a//b///./", "a", true}, {"/a", "/", true},
+		{"", "", false},
+		{"/", "", false},
+		{"file", "", true},
+		{".", "", true},
+		{"..", "", true},
+		{"./file", ".", true},
+		{"a/../file", "a/..", true},
+		{"a/./file", "a", true},
+		{"a//b///./", "a", true},
+		{"/a", "/", true},
 		{"/a/link/../file", "/a/link/..", true},
 	}
 	if runtime.GOOS == "windows" {

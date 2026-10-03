@@ -14,7 +14,7 @@ import (
 )
 
 // encodeOpaqueMsgpack preserves serde_json object order and numeric kinds.
-func encodeOpaqueMsgpack(e *msgpack.Encoder, data json.RawMessage) error {
+func encodeOpaqueMsgpack(encoder *msgpack.Encoder, data json.RawMessage) error {
 	if err := CheckJSON(data); err != nil {
 		return err
 	}
@@ -25,14 +25,14 @@ func encodeOpaqueMsgpack(e *msgpack.Encoder, data json.RawMessage) error {
 		if err != nil {
 			return err
 		}
-		if err := e.EncodeMapLen(len(fields)); err != nil {
+		if err := encoder.EncodeMapLen(len(fields)); err != nil {
 			return err
 		}
 		for _, field := range fields {
-			if err := e.EncodeString(field.Name); err != nil {
+			if err := encoder.EncodeString(field.Name); err != nil {
 				return err
 			}
-			if err := encodeMsgpackValue(e, reflect.ValueOf(field.Value)); err != nil {
+			if err := encodeMsgpackValue(encoder, reflect.ValueOf(field.Value)); err != nil {
 				return At(field.Name, err)
 			}
 		}
@@ -42,40 +42,26 @@ func encodeOpaqueMsgpack(e *msgpack.Encoder, data json.RawMessage) error {
 		if err != nil {
 			return err
 		}
-		if err := e.EncodeArrayLen(len(values)); err != nil {
+		if err := encoder.EncodeArrayLen(len(values)); err != nil {
 			return err
 		}
 		for _, value := range values {
-			if err := encodeOpaqueMsgpack(e, value); err != nil {
+			if err := encodeOpaqueMsgpack(encoder, value); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.UseNumber()
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
 	var value any
-	if err := d.Decode(&value); err != nil {
+	if err := decoder.Decode(&value); err != nil {
 		return err
 	}
 	if number, ok := value.(json.Number); ok {
-		text := string(number)
-		if !strings.ContainsAny(text, ".eE") && text != "-0" {
-			if strings.HasPrefix(text, "-") {
-				if n, err := strconv.ParseInt(text, 10, 64); err == nil {
-					return e.EncodeInt(n)
-				}
-			} else if n, err := strconv.ParseUint(text, 10, 64); err == nil {
-				return e.EncodeUint(n)
-			}
-		}
-		n, err := strconv.ParseFloat(text, 64)
-		if err != nil {
-			return err
-		}
-		return e.EncodeFloat64(n)
+		return encodeOpaqueNumber(encoder, number)
 	}
-	return e.Encode(value)
+	return encoder.Encode(value)
 }
 
 // MsgpackJSON converts opaque MessagePack values to ordered, lossless JSON.
@@ -108,7 +94,9 @@ func MsgpackJSON(data []byte) (json.RawMessage, error) {
 			return nil, err
 		}
 		return EncodeJSON(values)
-	case code == msgpcode.Nil || code == msgpcode.True || code == msgpcode.False || msgpcode.IsString(code) || msgpcode.IsFixedNum(code) || code >= msgpcode.Uint8 && code <= msgpcode.Int64 || code == msgpcode.Float || code == msgpcode.Double:
+	case code == msgpcode.Nil || code == msgpcode.True || code == msgpcode.False ||
+		msgpcode.IsString(code) || msgpcode.IsFixedNum(code) ||
+		code >= msgpcode.Uint8 && code <= msgpcode.Int64 || code == msgpcode.Float || code == msgpcode.Double:
 		value, err := msgpack.NewDecoder(bytes.NewReader(data)).DecodeInterface()
 		if err != nil {
 			return nil, err
@@ -132,4 +120,23 @@ func MsgpackJSON(data []byte) (json.RawMessage, error) {
 	default:
 		return nil, errors.New("MessagePack value is not JSON")
 	}
+}
+
+// encodeOpaqueNumber retains the integer or float kind serde_json reads.
+func encodeOpaqueNumber(encoder *msgpack.Encoder, number json.Number) error {
+	text := string(number)
+	if !strings.ContainsAny(text, ".eE") && text != "-0" {
+		if strings.HasPrefix(text, "-") {
+			if n, err := strconv.ParseInt(text, 10, 64); err == nil {
+				return encoder.EncodeInt(n)
+			}
+		} else if n, err := strconv.ParseUint(text, 10, 64); err == nil {
+			return encoder.EncodeUint(n)
+		}
+	}
+	n, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return err
+	}
+	return encoder.EncodeFloat64(n)
 }
