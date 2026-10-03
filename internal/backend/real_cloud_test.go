@@ -410,16 +410,23 @@ print("mapped", flush=True)
 time.sleep(600)
 `
 
-func (s *realCloud) tabs(ctx context.Context, calls string) []browserop.BrowserTab {
+func (s *realCloud) tabs(ctx context.Context, pagePath string) []browserop.BrowserTab {
 	s.t.Helper()
-	answer := conversationRequest(ctx, s.t, s.b, &s.user, "POST", calls+"/tabs", `{}`, 200)
-	return conversationDecode(s.t, answer, browserplugin.DecodeBrowserTabs).Tabs
+	// The ignored Rust scenario calls a nonexistent tabs method. Like the page,
+	// read conversation state through its declared endpoint instead.
+	answer := conversationRequest(ctx, s.t, s.b, &s.user, "GET", pagePath+"/state", "", 200)
+	state := conversationDecode(s.t, answer, webapi.DecodePluginStateAnswer)
+	tabs, err := browserplugin.DecodeBrowserTabs(state.State)
+	wireMust(s.t, err)
+	return tabs.Tabs
 }
 
-// openTab observes the page's title through the browser plugin's real calls.
-func (s *realCloud) openTab(ctx context.Context, calls, page string) {
+// openTab opens through the page call and observes the title in page state.
+func (s *realCloud) openTab(ctx context.Context, pagePath, page string) {
 	s.t.Helper()
-	answer, err := s.b.Post(ctx, calls+"/open", &s.user, []byte(fmt.Sprintf(`{"url":%q}`, page)))
+	params, err := (browserplugin.OpenTab{URL: &page}).MarshalJSON()
+	wireMust(s.t, err)
+	answer, err := s.b.Post(ctx, pagePath+"/calls/open", &s.user, params)
 	wireMust(s.t, err)
 	if answer.Status < 200 || answer.Status >= 300 {
 		s.t.Fatalf("open: %d %s", answer.Status, answer.Body)
@@ -428,7 +435,7 @@ func (s *realCloud) openTab(ctx context.Context, calls, page string) {
 	wait, cancel := context.WithTimeout(ctx, realPatience)
 	defer cancel()
 	for {
-		for _, tab := range s.tabs(wait, calls) {
+		for _, tab := range s.tabs(wait, pagePath) {
 			if tab.ID == opened.Tab.ID && tab.Title == "cloud-suite page" {
 				return
 			}
@@ -445,12 +452,12 @@ func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEv
 	script := "cat > page.html <<'HTML'\n<!doctype html><title>cloud-suite page</title><p>Chrome on the Cloud</p>\nHTML\ncat > mapper.py <<'PY'\n" + realMapper + "PY\necho written"
 	realContains(t, realRun(s.ctx, first, "page", script), "written")
 	realContains(t, realRun(s.ctx, first, "mapper", "python3 mapper.py mapped 'written through a mapping'", 5000), "mapped")
-	calls := "/api/conversations/" + realFirst + "/plugins/browser/calls"
+	pagePath := "/api/conversations/" + realFirst + "/plugins/browser"
 	started := time.Now()
-	s.openTab(s.ctx, calls, "file://"+session+"/page.html")
+	s.openTab(s.ctx, pagePath, "file://"+session+"/page.html")
 	realMeasured(t, "first Chrome tab until its page shows", started)
 	started = time.Now()
-	s.openTab(s.ctx, calls, "file://"+session+"/page.html")
+	s.openTab(s.ctx, pagePath, "file://"+session+"/page.html")
 	realMeasured(t, "later Chrome tab until its page shows", started)
 	realContains(t, realRun(s.ctx, first, "renderers", "for pid in $(pgrep -f -- '--type=renderer'); do grep '^Seccomp:' /proc/$pid/status; done"), "Seccomp:\t2")
 	device := s.device(s.ctx)
@@ -499,7 +506,7 @@ func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEv
 		}
 		wireMust(t, os.Remove(copyPath))
 	}
-	conversationEqual(t, len(s.tabs(s.ctx, calls)), 2)
+	conversationEqual(t, len(s.tabs(s.ctx, pagePath)), 2)
 	realContains(t, realRun(s.ctx, first, "alive", "pgrep -f mapper.py > /dev/null && echo mapper-alive"), "mapper-alive")
 	second := s.work(realSecond)
 	busy := s.hold(s.ctx, realSecond)
@@ -508,7 +515,7 @@ func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEv
 	working.Release()
 	wait, cancel := context.WithTimeout(s.ctx, realPatience)
 	defer cancel()
-	for len(s.tabs(wait, calls)) != 0 {
+	for len(s.tabs(wait, pagePath)) != 0 {
 		wireMust(t, wait.Err())
 	}
 	realMeasured(t, "release of an idle conversation, window included", started)

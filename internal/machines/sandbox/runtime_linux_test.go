@@ -35,7 +35,11 @@ func guestProbe() error {
 	if _, err := runnerwire.DecodeManagedBoot(data); err != nil {
 		return err
 	}
-	if err := os.WriteFile("/home/demi/ready", []byte("guest running"), 0600); err != nil {
+	if err := os.WriteFile("/home/demi/ready.tmp", []byte("guest running"), 0600); err != nil {
+		return err
+	}
+	// Publish only the complete record; existence is the parent's readiness event.
+	if err := os.Rename("/home/demi/ready.tmp", "/home/demi/ready"); err != nil {
 		return err
 	}
 	<-ctx.Done()
