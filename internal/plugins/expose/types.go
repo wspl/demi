@@ -5,7 +5,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-//go:generate go run ../../../tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 //revive:disable:exported
 // Contract descriptions are verbatim Rust product text.

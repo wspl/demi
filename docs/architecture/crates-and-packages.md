@@ -1441,6 +1441,20 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** hold a second contract declaration or a hand-maintained root
   list; roots are markers on Go types.
 
+#### `tools/contractgen/manifests`
+
+- **Owns:** printing the manifests of the backend's built-in plugins that name
+  a page, in registration order, for `tools/contractgen -ts`.
+- **Public boundary:** a command that writes them to standard output.
+- **Must not:** choose or order plugins itself; `BuiltinPlugins` does.
+
+#### `tools/contractgen/pagemeta`
+
+- **Owns:** the tool-internal page metadata shared by the manifest printer and
+  generator, including schemas, directions and stream constants.
+- **Public boundary:** plain Go types and strict metadata decoding.
+- **Must not:** import generated contracts or contain contract markers.
+
 #### `tools/archcheck`
 
 - **Owns:** the import-direction check over this document and `go list -deps
@@ -1810,6 +1824,17 @@ joining, process-substitution cancellation and writable-redirection
 interception; Demi adapters stay in the runner shell. The fork is an external
 module, not a first-party graph entry.
 
+`go run ./tools/release fork diff` shows how the fork differs from the upstream
+release it was taken from, so an upgrade or a review sees every local change,
+not only the ones `demi.patch` describes. The release is the version the root
+`go.mod` requires before its replacement (`mvdan.cc/sh/v3 v3.14.1`). The
+command downloads it from the Go module proxy, checks it against the hash the
+Go checksum database records, and compares it with the fork file by file:
+it lists each changed, added and removed file with its added and removed line
+counts, and the upstream files the fork leaves out. `--patch` prints the unified diff instead,
+which is what `demi.patch` holds: the command fails when the file differs from
+it, so the patch never drifts from the fork.
+
 The other Rust vendored crates have no Go successor. System utilities replace
 embedded uutils, findutils, diffutils, sed, grep, ripgrep and jaq; cdproto with
 Demi's transport replaces the vendored Chromium client. Follow [owner decisions
@@ -2069,8 +2094,10 @@ internal/backend/providers -> internal/backend/database, internal/backend/pagesy
 internal/backend/remotehost -> internal/commandwire, internal/declare, internal/core, internal/gates, internal/runnerwire, internal/host
 internal/backend/runners -> internal/artifacts, internal/backend/blobs, internal/backend/database, internal/backend/pagesync, internal/commandwire, internal/gates, internal/backend/remotehost, internal/runnerwire, internal/host, internal/webapi
 internal/backend/usershard -> internal/agent/server, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/idlewatch, internal/backend/blobs, internal/backend/plugins, internal/backend/providers, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/declare, internal/core, internal/gates, internal/plugin, internal/backend/remotehost, internal/machinewire, internal/provider, internal/providers/claudecode, internal/runnerwire, internal/host, internal/webapi
-tools/release -> internal/framewire, internal/artifacts, internal/cmdpkg/browser/browserop, internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/core, internal/cmdpkg/file/fileop, internal/machinewire, internal/runnerwire, internal/webapi, internal/backend, internal/plugin
-tools/contractgen -> internal/contract
+tools/release -> internal/framewire, internal/artifacts, internal/cmdpkg/browser/browserop, internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/core, internal/cmdpkg/file/fileop, internal/machinewire, internal/runnerwire, internal/webapi, internal/backend, internal/plugin, internal/version, internal/backend/runners
+tools/contractgen -> internal/contract, tools/contractgen/pagemeta
+tools/contractgen/manifests -> internal/backend, internal/plugin, tools/contractgen/pagemeta
+tools/contractgen/pagemeta -> none
 tools/archcheck -> none
 tools/cgocheck -> none
 scripts/gomig/accept -> none

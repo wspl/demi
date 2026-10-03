@@ -6,7 +6,7 @@ import (
 	"github.com/wspl/demi/internal/commandwire"
 )
 
-//go:generate go run ../../../../tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // fixtureArgs retains arbitrary fixture arguments, as Rust's JSON value does.
 // +demi:root

@@ -2,7 +2,7 @@ package sandbox
 
 // revive:disable:exported Contract documentation preserves the Rust product text.
 
-//go:generate go run ../../../tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // One boot's id, `demi-` and a UUID: it names the runtime directory, the
 // runsc container and the cgroup.

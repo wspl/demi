@@ -38,6 +38,7 @@ type definition struct {
 }
 
 type generator struct {
+	tsExports map[string]map[string]bool
 	jsonReach map[string]bool
 	msgReach  map[string]bool
 	tables    []*table
@@ -263,7 +264,7 @@ func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string
 		return err
 	}
 	if ts {
-		return g.writeTS(collected[0], sources, verify)
+		return g.writeTS(ctx, collected[0], sources, verify)
 	}
 	for _, p := range pkgs {
 		g.current = p.Types

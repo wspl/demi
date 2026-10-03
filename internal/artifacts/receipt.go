@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-//go:generate go run github.com/wspl/demi/tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // ReceiptFile is the receipt's name inside an installation.
 const ReceiptFile = "receipt.json"
