@@ -41,9 +41,15 @@ func tsName(name string) string {
 	return strings.Join(parts, "")
 }
 
-func isPrivateScalar(d *definition) bool {
-	_, basic := d.typ.Underlying().(*types.Basic)
-	return (basic || has(d.marks, "base64")) && !has(d.marks, "enum")
+func isPrivateValue(d *definition) bool {
+	if has(d.marks, "enum") {
+		return false
+	}
+	switch d.typ.Underlying().(type) {
+	case *types.Basic, *types.Map, *types.Slice:
+		return true
+	}
+	return false
 }
 
 // goName keeps generated entry points as private as their contract type while
