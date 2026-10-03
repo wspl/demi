@@ -207,14 +207,15 @@ func realAccountReplayed(t *testing.T, r providertest.RecordedRequest, parts ...
 
 // Several seconds: each Cloud installs and verifies the supplied CLI, whose processes start for real.
 func TestTheCloudsVerifiedCLIStreamsReasoningAndTextAndRunsAToolBatchThroughDemiInOneProcess(t *testing.T) {
-	t.Skip("finding 4: installed CLI path is the runner artifact cache rather than the Rust scenario home path")
+	t.Skip("finding 5: supplied CLI prepends a date reminder to the exact user message expected by Rust")
 	ctx := t.Context()
 	w := realAccountStart(ctx, t)
 	devices := w.manager.Devices()
 	conversationEqual(t, len(devices), 1)
-	home := w.manager.Home(devices[0])
 	cli := accountCLISettled(ctx, t, w.b, &w.master, w.provider)
-	path := filepath.Join(home, ".demi/claude", w.version, "claude")
+	// The ignored Rust scenario predates 700143f3a: ensure now returns the
+	// verified artifact cache entry, not a versioned executable under home.
+	path := filepath.Join(w.manager.State(devices[0]), "artifacts", w.digest)
 	conversationEqual[webapi.CLIInstall](t, cli.Install, &webapi.CLIInstallInstalled{Path: path})
 	conversationEqual[webapi.NewestVersion](t, cli.Newest, &webapi.NewestVersionRead{Version: w.version})
 	conversationEqual(t, *cli.Machines[0].Versions, []string{w.version})
