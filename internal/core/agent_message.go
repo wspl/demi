@@ -8,28 +8,32 @@ import (
 
 // CompletionID names one execution round of a child.
 type CompletionID struct {
+	// Child identifies the child agent.
 	Child NodeID
+	// Round identifies the child execution.
 	Round uint64
 }
 
-func (id CompletionID) String() string {
-	return fmt.Sprintf("subagent:%s:%d", id.Child, id.Round)
+// String spells the receipt identity for this child round.
+func (c CompletionID) String() string {
+	return fmt.Sprintf("subagent:%s:%d", c.Child, c.Round)
 }
 
 // BlockID is the block identity of the completion receipt.
-func (id CompletionID) BlockID() (BlockID, error) {
-	if err := id.Child.Validate(); err != nil {
+func (c CompletionID) BlockID() (BlockID, error) {
+	if err := c.Child.Validate(); err != nil {
 		return "", fmt.Errorf("completion id: %w", err)
 	}
-	if id.Round > MaxSafeInteger {
+	if c.Round > MaxSafeInteger {
 		return "", fmt.Errorf("completion id: round exceeds maximum safe integer")
 	}
-	return ParseBlockID(id.String())
+	return ParseBlockID(c.String())
 }
 
 // NotCompletionID identifies a malformed completion receipt identity.
 type NotCompletionID string
 
+// Error describes the refused completion identity.
 func (e NotCompletionID) Error() string {
 	return fmt.Sprintf("%q is not a completion id (subagent:<child id>:<round>)", string(e))
 }

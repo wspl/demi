@@ -158,8 +158,7 @@ type QuotaCapability interface{ quotaCapability() }
 // The family reports no quota.
 // +demi:variant QuotaCapability none
 // +demi:tolerant
-type QuotaCapabilityNone struct {
-}
+type QuotaCapabilityNone struct{}
 
 // The family reports quota, from responses and, when `probe` names its
 // cost, from a probe of its usage endpoint.
@@ -494,8 +493,7 @@ type Availability interface{ availability() }
 
 // +demi:variant Availability available
 // +demi:tolerant
-type AvailabilityAvailable struct {
-}
+type AvailabilityAvailable struct{}
 
 // +demi:variant Availability unavailable
 // +demi:tolerant
@@ -556,8 +554,7 @@ type CLIInstall interface{ cliInstall() }
 
 // +demi:variant CLIInstall installing
 // +demi:tolerant
-type CLIInstallInstalling struct {
-}
+type CLIInstallInstalling struct{}
 
 // `path` is the executable on the Cloud.
 // +demi:variant CLIInstall installed

@@ -19,7 +19,14 @@ func CheckInputSubset(schema *Schema) (err error) {
 		return errors.New("uninitialized schema")
 	}
 	object := schema.object
-	allowed := []string{"type", "properties", "required", "additionalProperties", "title", "description"}
+	allowed := []string{
+		"type",
+		"properties",
+		"required",
+		"additionalProperties",
+		"title",
+		"description",
+	}
 	for _, keyword := range slices.Sorted(maps.Keys(object)) {
 		if !slices.Contains(allowed, keyword) {
 			return fmt.Errorf("command input uses %q, outside the command input subset", keyword)
@@ -61,37 +68,12 @@ func (s *Schema) checkField(value any, path string) error {
 	if !ok {
 		return errors.New("must be a schema object")
 	}
-	if _, present := schema["default"]; present {
-		return errors.New("carries a default; a missing value is the handler's to supply")
+	if err := s.checkFieldKeywords(schema, path); err != nil {
+		return err
 	}
-	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
-		if _, present := schema[keyword]; present {
-			return errors.New("is a union, which has no command-line form")
-		}
-	}
-	if _, present := schema["$ref"]; present {
-		return errors.New("refers to another schema")
-	}
-	if _, present := schema["properties"]; present {
-		return errors.New("is a nested object, which has no command-line form")
-	}
-	allowed := []string{"type", "enum", "items", "description", "format", "minLength", "maxLength", "pattern", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minItems", "maxItems"}
-	for _, keyword := range s.order[path] {
-		if !slices.Contains(allowed, keyword) {
-			return fmt.Errorf("uses %q, outside the command input subset", keyword)
-		}
-	}
-	kind, ok := schema["type"].(string)
-	if !ok {
-		if kinds, ok := schema["type"].([]any); ok {
-			for _, kind := range kinds {
-				if kind == "null" {
-					return errors.New("allows null; an optional field is absent instead")
-				}
-			}
-			return errors.New("has several types")
-		}
-		return errors.New("declares no type")
+	kind, err := inputFieldType(schema)
+	if err != nil {
+		return err
 	}
 	if _, present := schema["format"]; present && kind != "integer" && kind != "number" {
 		return errors.New("carries a format, which only a number's schema may")
@@ -104,19 +86,7 @@ func (s *Schema) checkField(value any, path string) error {
 		if !hasEnum {
 			return nil
 		}
-		values, ok := enum.([]any)
-		if !ok {
-			return errors.New("has an enum that is not a list")
-		}
-		for _, value := range values {
-			if value == nil {
-				return errors.New("allows null; an optional field is absent instead")
-			}
-			if _, ok := value.(string); !ok {
-				return errors.New("is an enum of values that are not all strings")
-			}
-		}
-		return nil
+		return checkStringEnum(enum)
 	}
 	if hasEnum {
 		return errors.New("is an enum of values that are not strings")
@@ -141,4 +111,75 @@ func (s *Schema) checkField(value any, path string) error {
 	default:
 		return fmt.Errorf("has type %q, outside the command input subset", kind)
 	}
+}
+
+func inputFieldType(schema map[string]any) (string, error) {
+	kind, ok := schema["type"].(string)
+	if !ok {
+		if kinds, ok := schema["type"].([]any); ok {
+			for _, kind := range kinds {
+				if kind == "null" {
+					return "", errors.New("allows null; an optional field is absent instead")
+				}
+			}
+			return "", errors.New("has several types")
+		}
+		return "", errors.New("declares no type")
+	}
+	return kind, nil
+}
+
+func checkStringEnum(enum any) error {
+	values, ok := enum.([]any)
+	if !ok {
+		return errors.New("has an enum that is not a list")
+	}
+	for _, value := range values {
+		if value == nil {
+			return errors.New("allows null; an optional field is absent instead")
+		}
+		if _, ok := value.(string); !ok {
+			return errors.New("is an enum of values that are not all strings")
+		}
+	}
+	return nil
+}
+
+func (s *Schema) checkFieldKeywords(schema map[string]any, path string) error {
+	if _, present := schema["default"]; present {
+		return errors.New("carries a default; a missing value is the handler's to supply")
+	}
+	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
+		if _, present := schema[keyword]; present {
+			return errors.New("is a union, which has no command-line form")
+		}
+	}
+	if _, present := schema["$ref"]; present {
+		return errors.New("refers to another schema")
+	}
+	if _, present := schema["properties"]; present {
+		return errors.New("is a nested object, which has no command-line form")
+	}
+	allowed := []string{
+		"type",
+		"enum",
+		"items",
+		"description",
+		"format",
+		"minLength",
+		"maxLength",
+		"pattern",
+		"minimum",
+		"maximum",
+		"exclusiveMinimum",
+		"exclusiveMaximum",
+		"minItems",
+		"maxItems",
+	}
+	for _, keyword := range s.order[path] {
+		if !slices.Contains(allowed, keyword) {
+			return fmt.Errorf("uses %q, outside the command input subset", keyword)
+		}
+	}
+	return nil
 }

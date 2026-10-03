@@ -47,10 +47,13 @@ func (m ProviderModel) Selection(providerID string, thinking ThinkingConfig, tie
 
 // UnavailableSetting identifies an effort or tier the catalog does not offer.
 type UnavailableSetting struct {
-	Kind  string `json:"kind"`
+	// Kind identifies the unavailable setting.
+	Kind string `json:"kind"`
+	// Value is the requested setting.
 	Value string `json:"value"`
 }
 
+// Error describes the setting the model does not offer.
 func (e *UnavailableSetting) Error() string {
 	return fmt.Sprintf("The model does not offer the %s %q", e.Kind, e.Value)
 }
@@ -153,8 +156,15 @@ func (m ProviderModel) ThinkingCapabilities() []ThinkingCapability {
 		defaultEffort = new(*m.DefaultThinkingEffort)
 	}
 	return []ThinkingCapability{&EffortCapability{
-		Efforts: slices.Clone(efforts), DefaultEffort: defaultEffort,
-		Summaries: []ThinkingSummary{ThinkingSummaryAuto, ThinkingSummaryConcise, ThinkingSummaryDetailed, ThinkingSummaryOff, ThinkingSummaryOn},
+		Efforts:       slices.Clone(efforts),
+		DefaultEffort: defaultEffort,
+		Summaries: []ThinkingSummary{
+			ThinkingSummaryAuto,
+			ThinkingSummaryConcise,
+			ThinkingSummaryDetailed,
+			ThinkingSummaryOff,
+			ThinkingSummaryOn,
+		},
 	}}
 }
 

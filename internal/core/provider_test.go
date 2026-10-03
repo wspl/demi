@@ -14,7 +14,7 @@ import (
 
 // Stored provider fixtures and mutations pin restoration; budget is one second.
 func TestStoredProviderData(t *testing.T) {
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		file      string
 		decode    func([]byte) (any, error)
 		mutations []struct {
@@ -28,22 +28,40 @@ func TestStoredProviderData(t *testing.T) {
 			value   any
 			remove  bool
 		}{
-			{"/models/0/providerId", "anthropic", false}, {"/models/0/description", nil, true}, {"/models/0/outputLimit", 0, false},
+			{"/models/0/providerId", "anthropic", false}, {
+				"/models/0/description",
+				nil,
+				true,
+			}, {
+				"/models/0/outputLimit",
+				0,
+				false,
+			},
 		}},
 		{"snapshot", func(b []byte) (any, error) { return core.DecodeQuotaSnapshot(b) }, []struct {
 			pointer string
 			value   any
 			remove  bool
 		}{
-			{"/windows/0/usedPercent", 100.5, false}, {"/source", "cache", false}, {"/raw", map[string]any{"plan_type": "pro"}, false},
+			{"/windows/0/usedPercent", 100.5, false}, {
+				"/source",
+				"cache",
+				false,
+			}, {
+				"/raw",
+				map[string]any{
+					"plan_type": "pro",
+				},
+				false,
+			},
 		}},
 	} {
-		t.Run(tc.file, func(t *testing.T) {
-			data, err := os.ReadFile("testdata/" + tc.file + ".json")
+		t.Run(scenario.file, func(t *testing.T) {
+			data, err := os.ReadFile("testdata/" + scenario.file + ".json")
 			if err != nil {
 				t.Fatal(err)
 			}
-			decoded, err := tc.decode(data)
+			decoded, err := scenario.decode(data)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -61,7 +79,7 @@ func TestStoredProviderData(t *testing.T) {
 			if !reflect.DeepEqual(before, after) {
 				t.Fatalf("wire shape changed: %s", encoded)
 			}
-			for _, mutation := range tc.mutations {
+			for _, mutation := range scenario.mutations {
 				var value map[string]any
 				if err := json.Unmarshal(data, &value); err != nil {
 					t.Fatal(err)
@@ -71,7 +89,7 @@ func TestStoredProviderData(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := tc.decode(raw); err == nil {
+				if _, err := scenario.decode(raw); err == nil {
 					t.Errorf("accepted %s", raw)
 				}
 			}
@@ -88,7 +106,7 @@ func TestRuleErrorsNameFields(t *testing.T) {
 	if err := json.Unmarshal(data, &fixtures); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		id, path string
 		value    any
 		parts    []string
@@ -96,9 +114,9 @@ func TestRuleErrorsNameFields(t *testing.T) {
 		{"u1", "/content/6/name", "", []string{"content[6].name"}},
 		{"m1", "/id", "m2", []string{"must be the message's id, m1"}},
 	} {
-		t.Run(tc.id, func(t *testing.T) {
-			value := fixtureByID(t, fixtures, tc.id)
-			mutate(t, value, tc.path, tc.value, false)
+		t.Run(scenario.id, func(t *testing.T) {
+			value := fixtureByID(t, fixtures, scenario.id)
+			mutate(t, value, scenario.path, scenario.value, false)
 			raw, err := contract.EncodeJSON(value)
 			if err != nil {
 				t.Fatal(err)
@@ -109,10 +127,10 @@ func TestRuleErrorsNameFields(t *testing.T) {
 				t.Fatal("accepted invalid block")
 			}
 			// Accepted normalization F4: paths use wire fields without Rust enum wrappers.
-			if tc.id == "u1" && (!errors.As(err, &field) || field.Path != "content[6].name") {
+			if scenario.id == "u1" && (!errors.As(err, &field) || field.Path != "content[6].name") {
 				t.Fatalf("expected field error: %v", err)
 			}
-			for _, part := range tc.parts {
+			for _, part := range scenario.parts {
 				if !strings.Contains(err.Error(), part) {
 					t.Errorf("missing %q in %v", part, err)
 				}
@@ -122,7 +140,7 @@ func TestRuleErrorsNameFields(t *testing.T) {
 }
 
 func TestReceiveOnlyStatesTolerateNewFields(t *testing.T) {
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		raw    string
 		decode func([]byte) error
 	}{
@@ -135,7 +153,7 @@ func TestReceiveOnlyStatesTolerateNewFields(t *testing.T) {
 			return err
 		}},
 	} {
-		if err := tc.decode([]byte(tc.raw)); err != nil {
+		if err := scenario.decode([]byte(scenario.raw)); err != nil {
 			t.Error(err)
 		}
 	}
