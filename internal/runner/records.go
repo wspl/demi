@@ -6,7 +6,7 @@ import (
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
-//go:generate go run ../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // +demi:root
 // +demi:strict

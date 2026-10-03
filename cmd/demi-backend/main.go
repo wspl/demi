@@ -1,13 +1,6 @@
-// Command demi-backend is awaiting migration to Go.
+// Command demi-backend serves the hosted Demi product.
 package main
 
-import (
-	"fmt"
-	"os"
-)
-
-func main() {
-	// A failed diagnostic write cannot change the required failure exit status.
-	_, _ = fmt.Fprintln(os.Stderr, "demi-backend: not migrated yet")
-	os.Exit(1)
-}
+// The implementation checkpoint wires backend.Main with version.Release.
+// The architecture graph must first admit cmd/demi-backend -> internal/version.
+func main() { panic("not written: b-backend") }

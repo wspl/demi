@@ -10,52 +10,53 @@ import (
 	"github.com/wspl/demi/internal/backend/blobs"
 )
 
-//go:generate go run ../../../tools/contractgen .
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
-// `DEMI_NATIVE_CONFIG`: the releases, and the store runners download their
+// NativeConfig is `DEMI_NATIVE_CONFIG`: the releases, and the store runners download their
 // executables from.
 // +demi:root
 // +demi:check checkNativeConfig
-type nativeConfig struct {
+type NativeConfig struct {
 	// The key prefix of every object published to S3; the local store
 	// takes none.
 	// +demi:nullable
 	Prefix   *string         `json:"prefix,omitempty"`
-	Releases []nativeRelease `json:"releases"`
-	Store    nativeStore     `json:"store"`
+	Releases []NativeRelease `json:"releases"`
+	Store    NativeStore     `json:"store"`
 }
 
-// One release directory: `descriptor.json`, and one executable per target
+// NativeRelease is one release directory: `descriptor.json`, and one executable per target
 // triple, named `executable` (with `.exe` for Windows).
-type nativeRelease struct {
+type NativeRelease struct {
 	Directory  string `json:"directory"`
 	Executable string `json:"executable"`
 }
 
-// Where runners download the executables: object storage the releases
+// NativeStore is where runners download the executables: object storage the releases
 // are published to, where S3 is the one protocol, or a development store,
 // which is the backend itself.
 // +demi:union tag=provider
 //
 //sumtype:decl
-type nativeStore interface{ nativeConfigStore() }
+type NativeStore interface{ nativeConfigStore() }
 
-// +demi:variant nativeStore s3
-type s3NativeStore struct{ blobs.S3Config }
+// S3NativeStore publishes the releases to an S3 bucket.
+// +demi:variant NativeStore s3
+type S3NativeStore struct{ blobs.S3Config }
 
-func (*s3NativeStore) nativeConfigStore() {}
+func (*S3NativeStore) nativeConfigStore() {}
 
-// A development store's settings: it has none.
-// +demi:variant nativeStore local
-type localNativeStore struct{}
+// LocalNativeStore is a development store's settings: it has none.
+// +demi:variant NativeStore local
+type LocalNativeStore struct{}
 
-func (*localNativeStore) nativeConfigStore() {}
+func (*LocalNativeStore) nativeConfigStore() {}
 
 var nativePrefix = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*(/[A-Za-z0-9_-]+)*$`)
 var executableBasename = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // prefix supplies the default namespace for published native objects.
-func (c nativeConfig) prefix() string {
+func (c NativeConfig) prefix() string {
 	if c.Prefix != nil {
 		return *c.Prefix
 	}
@@ -63,16 +64,16 @@ func (c nativeConfig) prefix() string {
 }
 
 // checkNativeConfig checks the store-specific namespace and executable basenames.
-func checkNativeConfig(c nativeConfig) error {
+func checkNativeConfig(c NativeConfig) error {
 	switch store := c.Store.(type) {
-	case *s3NativeStore:
+	case *S3NativeStore:
 		if !nativePrefix.MatchString(c.prefix()) {
 			return fmt.Errorf("%s is no object key prefix", c.prefix())
 		}
 		if err := store.S3Config.Validate(); err != nil {
 			return err
 		}
-	case *localNativeStore:
+	case *LocalNativeStore:
 		if c.Prefix != nil {
 			return fmt.Errorf("prefix names object storage keys, and the local store has none")
 		}
@@ -86,17 +87,17 @@ func checkNativeConfig(c nativeConfig) error {
 }
 
 // readNativeConfig resolves release directories against the configuration file.
-func readNativeConfig(ctx context.Context, path string) (nativeConfig, error) {
+func readNativeConfig(ctx context.Context, path string) (NativeConfig, error) {
 	if err := ctx.Err(); err != nil {
-		return nativeConfig{}, &PublicationError{Kind: PublicationCancelled, Err: err}
+		return NativeConfig{}, &PublicationError{Kind: PublicationCancelled, Err: err}
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nativeConfig{}, &PublicationError{Kind: PublicationConfig, Reason: path + ": " + err.Error(), Err: err}
+		return NativeConfig{}, &PublicationError{Kind: PublicationConfig, Reason: path + ": " + err.Error(), Err: err}
 	}
-	config, err := decodeNativeConfig(data)
+	config, err := DecodeNativeConfig(data)
 	if err != nil {
-		return nativeConfig{}, &PublicationError{Kind: PublicationConfig, Reason: path + ": " + err.Error(), Err: err}
+		return NativeConfig{}, &PublicationError{Kind: PublicationConfig, Reason: path + ": " + err.Error(), Err: err}
 	}
 	for i := range config.Releases {
 		if !filepath.IsAbs(config.Releases[i].Directory) {

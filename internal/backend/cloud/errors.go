@@ -1,6 +1,11 @@
 package cloud
 
-import "github.com/wspl/demi/internal/webapi"
+import (
+	"fmt"
+	"log/slog"
+
+	"github.com/wspl/demi/internal/webapi"
+)
 
 // ErrorKind identifies a Cloud admission or transition failure.
 type ErrorKind uint8
@@ -28,13 +33,39 @@ type Error struct {
 }
 
 // Error returns the Rust CloudError message for this failure.
-func (e *Error) Error() string { panic("not written: b-cloud") }
+func (e *Error) Error() string {
+	switch e.Kind {
+	case Closed:
+		return "Cloud is shutting down"
+	case CrashLoop:
+		return "Cloud repeatedly failed; reset the environment to recover"
+	case AtCapacity:
+		return "Cloud capacity is currently full; retry later"
+	case Resetting:
+		return "Another reset is in progress"
+	default:
+		return e.Err.Error()
+	}
+}
 
 // Unwrap returns the underlying failure.
-func (e *Error) Unwrap() error { panic("not written: b-cloud") }
+func (e *Error) Unwrap() error { return e.Err }
 
 // Code returns the web error code and HTTP status for a refused operation.
-func (e *Error) Code() (webapi.ErrorCode, int) { panic("not written: b-cloud") }
+func (e *Error) Code() (webapi.ErrorCode, int) {
+	switch e.Kind {
+	case Closed:
+		return webapi.ErrorCodeBackendClosing, 503
+	case CrashLoop:
+		return webapi.ErrorCodeCloudCrashLoop, 503
+	case AtCapacity:
+		return webapi.ErrorCodeCloudCapacity, 503
+	case Resetting:
+		return webapi.ErrorCodeCloudResetting, 409
+	default:
+		return webapi.ErrorCodeCloudUnavailable, 503
+	}
+}
 
 // ManagerErrorKind identifies why a call to the manager has no result.
 type ManagerErrorKind uint8
@@ -62,10 +93,19 @@ type ManagerError struct {
 }
 
 // Error returns the Rust MachinesError message for this failure.
-func (e *ManagerError) Error() string { panic("not written: b-cloud") }
+func (e *ManagerError) Error() string {
+	switch e.Kind {
+	case ManagerUnavailable:
+		return fmt.Sprintf("Machine manager unavailable during %s: %v", e.Operation, e.Err)
+	case ManagerResult:
+		return fmt.Sprintf("the machine manager answered %s with an unexpected result: %v", e.Operation, e.Err)
+	default:
+		return e.Err.Error()
+	}
+}
 
 // Unwrap returns the underlying transport or decoding failure.
-func (e *ManagerError) Unwrap() error { panic("not written: b-cloud") }
+func (e *ManagerError) Unwrap() error { return e.Err }
 
 // RecoveryErrorKind identifies why startup could not recover its Clouds.
 type RecoveryErrorKind uint8
@@ -90,7 +130,29 @@ type RecoveryError struct {
 }
 
 // Error returns the Rust RecoveryError message for this failure.
-func (e *RecoveryError) Error() string { panic("not written: b-cloud") }
+func (e *RecoveryError) Error() string {
+	if e.Kind == RecoveryMissingDevice {
+		return fmt.Sprintf("a reset names the device %s, which no longer exists", e.Device)
+	}
+	return e.Err.Error()
+}
 
 // Unwrap returns the underlying manager or storage failure.
-func (e *RecoveryError) Unwrap() error { panic("not written: b-cloud") }
+func (e *RecoveryError) Unwrap() error { return e.Err }
+
+// failed preserves the cause of a Cloud transition failure.
+func failed(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &Error{Kind: Failed, Err: err}
+}
+
+// storageFailed preserves the storage cause with the Cloud's user-facing diagnostic.
+func storageFailed(err error) error {
+	if err == nil {
+		return nil
+	}
+	slog.Error("the Cloud's records failed", "error", err)
+	return failed(fmt.Errorf("The Cloud's records could not be read or written: %w", err)) //nolint:staticcheck // Preserve Rust user-facing text verbatim.
+}

@@ -275,7 +275,7 @@ It reads that version's official download metadata and, for each platform
 Demi supports, downloads the `chrome` archive from Chrome for Testing's
 download host through the artifact library, measures its size and SHA-256, and
 checks that it holds the executable the record names. It then writes the
-release record, `internal/cmdpkg/browser/browserop/release/chrome.json`, from which
+release record, `internal/cmdpkg/browser/browserop/chrome.json`, from which
 packaging writes the `chrome` resource of `demi-browser`'s releases; commit it
 with the change that adopts the version. Chrome for Testing publishes no
 Windows arm64 build, so the record carries five of the six targets. The

@@ -1,44 +1,322 @@
 package cloud
 
-//revive:disable:unused-parameter
-// API checkpoint: bodies follow after the public boundary is merged.
-
 import (
+	"bufio"
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"strconv"
+	"sync/atomic"
 
 	"github.com/wspl/demi/internal/machinewire"
 	"github.com/wspl/demi/internal/webapi"
 )
 
 // Client owns the machine manager's socket, opened on first use and again by
-// the next call after a drop. Every in-flight call fails on a drop; requests
-// are never replayed. Concurrent calls match replies by request ID. Share its
-// pointer; the owner must Close it to join its supervisor and reader.
-type Client struct{}
+// the next call after a drop. Calls are never replayed. The owner must Close it.
+type Client struct {
+	ctx      context.Context
+	cancel   context.CancelFunc
+	commands chan clientCommand
+	done     chan struct{}
+	closing  atomic.Bool
+	// dial is the socket boundary; tests use a scripted in-memory connection.
+	dial func(context.Context, string, string) (net.Conn, error)
+}
+type clientCommand struct {
+	call       machinewire.MachineCall
+	disconnect bool
+	final      bool
+	answer     chan clientAnswer
+}
+type clientAnswer struct {
+	data []byte
+	err  error
+}
+type receivedLine struct {
+	data []byte
+	err  error
+}
+type managerConnection struct {
+	socket   net.Conn
+	incoming chan receivedLine
+	cancel   context.CancelFunc
+	done     chan struct{}
+}
 
-// NewClient creates a client of socket and the sole receiver of death events:
-// the devices whose sandboxes exited without being asked to stop. ctx belongs
-// to the backend lifetime. The backend routes events until the client closes
-// the channel; the queue holds 256 events and backpressures the reader.
+// NewClient creates a client and the sole receiver of sandbox death events.
+// ctx belongs to the backend lifetime. The bounded death queue backpressures
+// the reader. The backend drains it until Close closes the channel.
 func NewClient(ctx context.Context, socket string) (*Client, <-chan webapi.DeviceID) {
-	panic("not written: b-cloud")
+	life, cancel := context.WithCancel(ctx)
+	c := &Client{ctx: life, cancel: cancel, commands: make(chan clientCommand, 64), done: make(chan struct{}), dial: (&net.Dialer{}).DialContext}
+	deaths := make(chan webapi.DeviceID, 256)
+	go c.run(life, socket, deaths)
+	return c, deaths
 }
 
-// Call runs params on the manager and decodes the reply through its operation
-// contract. Cancellation ends this wait without retrying or undoing the
-// manager's operation. Lifecycle callers query state before retrying a lost call.
+// Call runs params and decodes the reply through its operation contract.
+// Cancellation ends the wait, never the manager's operation or a retry of it.
 func Call[T any](ctx context.Context, client *Client, params machinewire.Operation[T]) (T, error) {
-	panic("not written: b-cloud")
+	var zero T
+	call := params.Call()
+	answer, err := client.command(ctx, clientCommand{call: call})
+	if err != nil {
+		return zero, err
+	}
+	value, err := params.DecodeOutput(answer)
+	if err != nil {
+		return zero, &ManagerError{Kind: ManagerResult, Operation: call.Name(), Err: err}
+	}
+	return value, nil
 }
 
-// Disconnect reconciles over the live connection, if any, then disconnects
-// even if reconciliation failed. It returns that failure; the manager keeps
-// running and a later call connects again. No connection is opened solely to
-// disconnect. This is the reusable close operation of the Rust client.
-func (c *Client) Disconnect(ctx context.Context) error { panic("not written: b-cloud") }
+// Disconnect reconciles a live connection, then disconnects even on failure.
+// Nothing connects solely to disconnect; subsequent calls can reconnect.
+func (c *Client) Disconnect(ctx context.Context) error {
+	_, err := c.command(ctx, clientCommand{call: &machinewire.Reconcile{}, disconnect: true})
+	return err
+}
 
-// Close permanently stops new calls, reconciles and disconnects a live socket,
-// and joins every owned goroutine. It is idempotent. The owner calls it with a
-// usable cleanup context after all Clouds have closed. It replaces Rust's
-// final client drop as well as its shutdown disconnect.
-func (c *Client) Close(ctx context.Context) error { panic("not written: b-cloud") }
+// Close permanently stops admission, reconciles a live socket and joins workers.
+// A canceled cleanup context forces the socket closed and still joins workers.
+func (c *Client) Close(ctx context.Context) error {
+	var err error
+	if c.closing.CompareAndSwap(false, true) {
+		_, err = c.command(ctx, clientCommand{call: &machinewire.Reconcile{}, disconnect: true, final: true})
+		c.cancel()
+	}
+	select {
+	case <-c.done:
+	case <-ctx.Done():
+		c.cancel()
+		<-c.done
+		if err == nil {
+			err = ctx.Err()
+		}
+	}
+	return err
+}
+
+// command submits a manager operation without giving its caller socket ownership.
+func (c *Client) command(ctx context.Context, command clientCommand) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if c.closing.Load() && !command.final {
+		return nil, unavailable(command.call.Name(), errors.New("the machine manager's client is closed"))
+	}
+	command.answer = make(chan clientAnswer, 1)
+	select {
+	case c.commands <- command:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.done:
+		return nil, unavailable(command.call.Name(), errors.New("the machine manager's client is closed"))
+	}
+	select {
+	case a := <-command.answer:
+		return a.data, a.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.done:
+		select {
+		case a := <-command.answer:
+			return a.data, a.err
+		default:
+			return nil, unavailable(command.call.Name(), errors.New("the machine manager's client is closed"))
+		}
+	}
+}
+
+// unavailable describes an uncertain manager outcome and keeps its cause.
+func unavailable(operation string, err error) error {
+	return &ManagerError{Kind: ManagerUnavailable, Operation: operation, Err: err}
+}
+
+// run exclusively owns connection identity, request IDs and pending calls.
+func (c *Client) run(ctx context.Context, socket string, deaths chan<- webapi.DeviceID) {
+	defer close(c.done)
+	defer close(deaths)
+	var connection *managerConnection
+	pending := make(map[string]clientCommand)
+	var next uint64 = 1
+	drop := func(reason error) {
+		if connection != nil {
+			_ = connection.close(context.WithoutCancel(ctx)) // Teardown joins without a cancellation deadline.
+			connection = nil
+		}
+		for id, p := range pending {
+			p.answer <- clientAnswer{err: unavailable(p.call.Name(), reason)}
+			delete(pending, id)
+		}
+	}
+	defer func() { drop(errors.New("the machine manager's client is closed")) }()
+	for {
+		var incoming <-chan receivedLine
+		if connection != nil {
+			incoming = connection.incoming
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case command := <-c.commands:
+			if c.closing.Load() && !command.final {
+				command.answer <- clientAnswer{err: unavailable(command.call.Name(), errors.New("the machine manager's client is closed"))}
+				continue
+			}
+			if connection == nil {
+				if command.disconnect {
+					command.answer <- clientAnswer{}
+					if command.final {
+						return
+					}
+					continue
+				}
+				conn, err := c.dial(ctx, "unix", socket)
+				if err != nil {
+					command.answer <- clientAnswer{err: unavailable(command.call.Name(), fmt.Errorf("%s: %w", socket, err))}
+					continue
+				}
+				connection = readManager(ctx, conn)
+			}
+			id := strconv.FormatUint(next, 10)
+			next++
+			line, err := machinewire.EncodeLine(machinewire.MachineRequest{ID: id, Call: command.call})
+			if err != nil {
+				command.answer <- clientAnswer{err: &ManagerError{Kind: ManagerFailed, Err: err}}
+				continue
+			}
+			pending[id] = command
+			if _, err = connection.socket.Write(line); err != nil {
+				drop(err)
+				if command.final {
+					return
+				}
+			}
+		case line := <-incoming:
+			if line.err != nil {
+				final := false
+				for _, p := range pending {
+					final = final || p.final
+				}
+				drop(line.err)
+				if final {
+					return
+				}
+				continue
+			}
+			if len(line.data) == 0 {
+				continue
+			}
+			response, err := machinewire.DecodeResponse(line.data)
+			if err != nil {
+				slog.Warn("an unreadable line from the machine manager was dropped", "error", err)
+				continue
+			}
+			var id string
+			var answer clientAnswer
+			switch response := response.(type) {
+			case *machinewire.Death:
+				device, err := webapi.ParseDeviceID(response.DeviceID)
+				if err != nil {
+					slog.Warn("the machine manager reported an invalid device death", "error", err)
+					continue
+				}
+				select {
+				case deaths <- device:
+				case <-ctx.Done():
+					return
+				}
+				continue
+			case *machinewire.OK:
+				id = response.ID
+				answer.data = response.Result
+			case *machinewire.ErrorResponse:
+				id = response.ID
+				answer.err = &ManagerError{Kind: ManagerFailed, Err: errors.New(response.Message)}
+			}
+			p, ok := pending[id]
+			if !ok {
+				slog.Warn("the machine manager answered a request this backend did not send", "id", id)
+				continue
+			}
+			delete(pending, id)
+			if p.disconnect {
+				if answer.err == nil {
+					_, answer.err = machinewire.ReconcileParams{}.DecodeOutput(answer.data)
+					if answer.err != nil {
+						answer.err = &ManagerError{Kind: ManagerResult, Operation: p.call.Name(), Err: answer.err}
+					}
+				}
+				drop(errors.New("the backend disconnected"))
+			}
+			p.answer <- answer
+			if p.final {
+				return
+			}
+		}
+	}
+}
+
+// readManager owns a reader and cancellation watcher for one manager connection.
+func readManager(ctx context.Context, conn net.Conn) *managerConnection {
+	life, cancel := context.WithCancel(ctx)
+	c := &managerConnection{socket: conn, incoming: make(chan receivedLine, 64), cancel: cancel, done: make(chan struct{})}
+	go func() {
+		defer close(c.done)
+		closed := make(chan struct{})
+		stop := context.AfterFunc(life, func() {
+			// Closing an already-failed connection cannot lose accepted work.
+			_ = conn.Close()
+			close(closed)
+		})
+		defer func() {
+			// The reader is ending; only descriptor cleanup remains.
+			_ = conn.Close()
+			if !stop() {
+				<-closed
+			}
+		}()
+		scanner := bufio.NewScanner(conn)
+		scanner.Buffer(make([]byte, 4096), machinewire.MaxLineBytes+2)
+		for scanner.Scan() {
+			data := append([]byte(nil), scanner.Bytes()...)
+			if len(data) > machinewire.MaxLineBytes {
+				break
+			}
+			select {
+			case c.incoming <- receivedLine{data: data}:
+			case <-life.Done():
+				return
+			}
+		}
+		err := scanner.Err()
+		if err == nil {
+			err = errors.New("the machine manager closed the connection")
+		}
+		// Closing also unblocks a supervisor whose write met a dead peer.
+		_ = conn.Close()
+		select {
+		case c.incoming <- receivedLine{err: err}:
+		case <-life.Done():
+		}
+	}()
+	return c
+}
+
+// close releases the connection and joins its reader, including cancellation IO.
+func (c *managerConnection) close(ctx context.Context) error {
+	c.cancel()
+	// The supervisor already failed or answered the pending calls.
+	_ = c.socket.Close()
+	select {
+	case <-c.done:
+		return nil
+	case <-ctx.Done():
+		<-c.done
+		return ctx.Err()
+	}
+}

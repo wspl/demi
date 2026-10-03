@@ -39,4 +39,6 @@ type CloudTuning struct {
 // 15-minute checkpoints, a 24-hour lifetime cap, 60-second runner connection,
 // three deaths in ten minutes, a five-second flush, a 30-second reset hold,
 // 16 GiB system and 32 GiB home quotas, and capacity for 16 Clouds.
-func DefaultTuning() CloudTuning { panic("not written: b-cloud") }
+func DefaultTuning() CloudTuning {
+	return CloudTuning{Sweep: 30 * time.Second, CheckpointInterval: 15 * time.Minute, LifetimeCap: 24 * time.Hour, RunnerConnection: time.Minute, CrashLoopDeaths: 3, CrashLoopWindow: 10 * time.Minute, SyncTimeout: 5 * time.Second, ResetHold: 30 * time.Second, SystemQuota: 16 << 30, HomeQuota: 32 << 30, Capacity: 16}
+}

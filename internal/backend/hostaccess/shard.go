@@ -1,7 +1,5 @@
 package hostaccess
 
-//revive:disable:unused-parameter
-
 import (
 	"context"
 
@@ -19,8 +17,6 @@ import (
 // Callbacks synchronize their own state and run without the shard mutex held.
 // No callback exposes mutable shard state. Conversations and PluginInstalls
 // use the same mutex as their owning shard.
-//
-//nolint:revive // The architecture names this boundary HostShard.
 type HostShard interface {
 	// User identifies the owner.
 	User() webapi.UserID
@@ -57,7 +53,11 @@ type HostShard interface {
 }
 
 // RootOf names the root node in the spelling the conversation index keeps.
-func RootOf(conversation webapi.ConversationID) core.NodeID { panic("not written: b-hostaccess") }
+func RootOf(conversation webapi.ConversationID) core.NodeID {
+	return core.NodeID(conversation)
+}
 
 // ConversationOf names the conversation of a root opened by RootOf.
-func ConversationOf(root core.NodeID) webapi.ConversationID { panic("not written: b-hostaccess") }
+func ConversationOf(root core.NodeID) webapi.ConversationID {
+	return webapi.ConversationID(root)
+}

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 //revive:disable:exported // Contract descriptions copy the Rust product text verbatim.
 

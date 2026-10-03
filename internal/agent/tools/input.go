@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-//go:generate go run ../../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // +demi:root
 // +demi:schema

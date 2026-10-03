@@ -14,7 +14,7 @@ import (
 	"github.com/wspl/demi/internal/core"
 )
 
-//go:generate go run ../../tools/contractgen
+//go:generate go run github.com/wspl/demi/tools/contractgen
 
 // What an HTTP failure keeps as its `upstream`: the status, every response
 // header as a `[name, value]` pair with the name in lowercase, sorted by
