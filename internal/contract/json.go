@@ -89,9 +89,8 @@ func scanJSON(decoder *json.Decoder, depth int) error {
 	if !ok {
 		return nil
 	}
-	// serde_json 1.0.151 de.rs starts remaining_depth at 128;
-	// check_recursion! decrements before entering an array/object and rejects
-	// zero. Thus 127 open containers are accepted, and the 128th is refused.
+	// A document nests at most 127 arrays and objects; the 128th open one is
+	// refused with "JSON recursion limit exceeded (128)".
 	if depth >= 127 {
 		return fmt.Errorf("%w: JSON recursion limit exceeded (128)", ErrSyntax)
 	}

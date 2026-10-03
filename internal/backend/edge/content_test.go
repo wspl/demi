@@ -24,11 +24,7 @@ func TestMediaInPlaceImagesInertAndRestDownloads(t *testing.T) {
 			"attachment; filename=\"_ (1)'s.png\"; filename*=UTF-8''%E5%9B%BE%20%281%29%27s.png",
 		},
 	} {
-		var media *string
-		if test.media != "" {
-			media = &test.media
-		}
-		headers := contentHeaders(media, test.download, test.name)
+		headers := contentHeaders(test.media, test.download, test.name)
 		want := http.Header{
 			"Content-Type":           {"application/octet-stream"},
 			"Content-Disposition":    {test.disposition},
@@ -43,7 +39,7 @@ func TestMediaInPlaceImagesInertAndRestDownloads(t *testing.T) {
 		if media == "image/svg+xml" {
 			name = "logo.svg"
 		}
-		headers := contentHeaders(&media, false, name)
+		headers := contentHeaders(media, false, name)
 		if headers.Get("Content-Type") != media {
 			t.Fatal(headers)
 		}

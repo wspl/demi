@@ -130,8 +130,8 @@ func (d *Dispatcher) declaredCommand(
 			[]byte(selected.Node.Help(strings.Join(selected.Path, " "))+"\n"),
 		)
 	}
-	leaf := declare.AsLeaf(selected.Node)
-	if leaf == nil {
+	leaf, ok := selected.Node.(*declare.Leaf[declare.Binding])
+	if !ok {
 		return commandwire.Completion{}, errors.New("missing command leaf")
 	}
 	body, err := commandBody(ctx, invocation.Input, raw.Live, leaf.StdinField != nil)
@@ -168,7 +168,7 @@ func (d *Dispatcher) nativeCommand(
 	ctx context.Context,
 	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
 	execution *ExecutionContext,
-	binding *declare.Binding,
+	binding declare.Binding,
 	parsed *declare.Parsed,
 	output *commandOutput,
 ) (uint8, error) {
@@ -257,7 +257,7 @@ func (d *Dispatcher) invokeDeclared(
 	}
 	defer clearHint()
 	var code uint8
-	if binding := leaf.Binding(); binding != nil {
+	if binding, native := leaf.Binding(); native {
 		code, err = d.nativeCommand(ctx, invocation, execution, binding, parsed, output)
 		if err != nil {
 			return commandwire.Completion{}, err

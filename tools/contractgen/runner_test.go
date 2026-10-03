@@ -11,7 +11,7 @@ import (
 	"github.com/wspl/demi/tools/contractgen/testdata/runner"
 )
 
-// The generator's runner boundary must reproduce independent Rust bytes.
+// The generator's runner boundary must reproduce the independently recorded bytes.
 // This local fixture suite has a one-second budget and starts no processes.
 func TestRunnerCorpus(t *testing.T) {
 	count := 0

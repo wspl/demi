@@ -168,8 +168,8 @@ func (g *generator) tsUnion(d *definition, name string) string {
 	tag := bounds(d.marks["union"])["tag"]
 	var variants []string
 	declarations := g.variants(name)
-	// Zod numbers recursive JSON definitions in traversal order. Rust's
-	// variants follow declaration order, including discriminated unions.
+	// Zod numbers recursive JSON definitions in traversal order. Variants
+	// follow declaration order, including discriminated unions.
 	sort.SliceStable(declarations, func(i, j int) bool {
 		return declarations[i].typ.Obj().Pos() < declarations[j].typ.Obj().Pos()
 	})

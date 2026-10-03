@@ -9,7 +9,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// subschema follows SchemaGenerator::subschema_for. Commands inline named
+// subschema returns a type's schema at a use. Commands inline named
 // values; plugin page and stream uses retain definitions in discovery order.
 func (e *schemaEmitter) subschema(t types.Type) (any, error) {
 	if pointer, ok := t.(*types.Pointer); ok {
@@ -21,7 +21,7 @@ func (e *schemaEmitter) subschema(t types.Type) (any, error) {
 	}
 	key := typeKey(named)
 	d := e.g.defs[key]
-	// Custom primitive schemas opt out of named definitions in Rust.
+	// Schema primitives and string timestamps are always inline, never a named definition.
 	if primitiveSchema(d) || has(d.marks, "timestamp") {
 		return e.schema(t)
 	}
@@ -38,7 +38,7 @@ func (e *schemaEmitter) subschema(t types.Type) (any, error) {
 	return schemaKeywords(contract.Field{Name: "$ref", Value: "#/$defs/" + name}), nil
 }
 
-// definitionName reserves a schemars definition before visiting its fields,
+// definitionName reserves a $defs name before visiting the type's fields,
 // so recursive and repeated uses share a reference without changing order.
 func (e *schemaEmitter) definitionName(d *definition) string {
 	if name := e.names[d.key]; name != "" {
@@ -57,8 +57,8 @@ func (e *schemaEmitter) definitionName(d *definition) string {
 	return name
 }
 
-// primitiveSchema identifies contracts whose Rust JsonSchema implementation
-// returns a primitive schema directly, without derived type metadata.
+// primitiveSchema identifies contracts whose schema is an inline primitive without
+// type metadata: +demi:schema-primitive types and string timestamps.
 func primitiveSchema(d *definition) bool {
 	return has(d.marks, "schema-primitive") || has(d.marks, "timestamp") && !integerTimestamp(d.typ)
 }

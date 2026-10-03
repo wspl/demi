@@ -49,7 +49,7 @@ func pageTypes(page pagemeta.Page, protocol map[string]bool) (map[string]bool, e
 	return names, nil
 }
 
-// insertPageDefinition enforces Rust's one-schema-per-name rule across a page.
+// insertPageDefinition keeps one schema per name across a page and refuses a different second one.
 func insertPageDefinition(plugin string, definitions map[string]any, name string, data []byte) error {
 	var definition any
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -293,7 +293,7 @@ func pageSuffix(page pagemeta.Page) (string, error) {
 			suffix.WriteString(" */\n")
 		}
 		// Metadata uses encoding/json, which re-escapes U+2028/U+2029.
-		// Restore serde_json spelling without decoding objects into maps.
+		// Re-encode with EncodeJSON, which leaves them unescaped, without decoding objects into maps.
 		value, err := contract.EncodeJSON(constant.Value)
 		if err != nil {
 			return "", fmt.Errorf("plugin %s constant %s: %w", page.ID, constant.Name, err)

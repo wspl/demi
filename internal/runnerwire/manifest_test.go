@@ -88,7 +88,7 @@ func unpin(node declare.Node[declare.Binding]) declare.Node[declare.NativeOperat
 			RestField:     node.RestField,
 			Output:        node.Output,
 		}
-		if binding := node.Binding(); binding != nil {
+		if binding, native := node.Binding(); native {
 			leaf.Kind = &declare.Native[declare.NativeOperation]{
 				Binding: declare.NativeOperation{Package: binding.Package, Operation: binding.Operation},
 			}
@@ -239,7 +239,7 @@ func TestManifestBindingAndRootRefusals(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			binding := tree.Leaves()[0].Binding()
+			binding := &tree.Leaves()[0].Kind.(*declare.Native[declare.Binding]).Binding
 			switch field {
 			case "package":
 				binding.Package = "demicodes.other"

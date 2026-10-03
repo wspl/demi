@@ -421,7 +421,7 @@ func TestDescriptionReplacementAndServedDeclarations(t *testing.T) {
 	if err := s.Register(declared); err != nil {
 		t.Fatal(err)
 	}
-	updated := declare.AsLeaf(s.Declarations()[0])
+	updated := s.Declarations()[0].(*declare.Leaf[declare.NativeOperation])
 	if !strings.Contains(string(updated.Input.Document()), "How many copies; default 2.") ||
 		strings.Contains(string(leaf.Input.Document()), "default 2") {
 		t.Fatal("description failed or mutated source")
@@ -451,7 +451,7 @@ func TestDescriptionKeepsPropertyOrderAndFirstRefusal(t *testing.T) {
 	if err := set.Register(host.Leaf(leaf, addHandler()).Describe("z", "Dynamic")); err != nil {
 		t.Fatal(err)
 	}
-	doc := string(declare.AsLeaf(set.Declarations()[0]).Input.Document())
+	doc := string(set.Declarations()[0].(*declare.Leaf[declare.NativeOperation]).Input.Document())
 	if strings.Index(doc, `"z"`) > strings.Index(doc, `"a"`) {
 		t.Fatalf("properties reordered: %s", doc)
 	}

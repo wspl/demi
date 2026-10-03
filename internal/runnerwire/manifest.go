@@ -105,8 +105,8 @@ func verifyManifest(manifest Manifest) error {
 			return fmt.Errorf("root %s: %w", name, err)
 		}
 		for _, leaf := range tree.Leaves() {
-			binding := leaf.Binding()
-			if binding == nil {
+			binding, native := leaf.Binding()
+			if !native {
 				continue
 			}
 			descriptor, ok := manifest.Packages[binding.DescriptorHash]

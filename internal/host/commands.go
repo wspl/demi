@@ -60,9 +60,9 @@ func Leaf(leaf declare.Leaf[declare.NativeOperation], handler RPCHandler) Declar
 // It preserves the first refusal, which registration reports.
 func (d Declared) Describe(field, description string) Declared {
 	d.tree = cloneNode(d.tree)
-	leaf := declare.AsLeaf(d.tree)
+	leaf, isLeaf := d.tree.(*declare.Leaf[declare.NativeOperation])
 	var err error
-	if leaf == nil || leaf.Input == nil {
+	if !isLeaf || leaf.Input == nil {
 		err = fmt.Errorf("describes %s before its input", field)
 	} else {
 		document, rewriteErr := describeSchema(leaf.Input.Document(), []string{"properties", field}, description)
@@ -281,7 +281,7 @@ func (s *CommandSet) Check(invocation RPCInvocation) (RPCHandler, error) {
 	if len(invocation.Path) > 0 {
 		for _, root := range s.roots {
 			if declare.Name(root) == invocation.Path[0] {
-				leaf = declare.AsLeaf(findNode(root, invocation.Path[1:]))
+				leaf, _ = findNode(root, invocation.Path[1:]).(*declare.Leaf[declare.NativeOperation])
 				break
 			}
 		}

@@ -1,5 +1,5 @@
 //revive:disable:exported
-// Contract names preserve the Rust schema titles and generated TypeScript exports.
+// Contract names keep the golden manifest's schema titles and generated TypeScript exports.
 
 package pluginbrowser
 

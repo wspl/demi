@@ -76,8 +76,8 @@ func selectNode[B any](node Node[B], argv []string) (*Selected[B], error) {
 // Parse reads argv without reading stdin; help never consumes a body.
 func (s *Selected[B]) Parse(argv []string) (*Parsed, error) {
 	result := &Parsed{Path: slices.Clone(s.Path)}
-	leaf := AsLeaf(s.Node)
-	if leaf == nil {
+	leaf, ok := s.Node.(*Leaf[B])
+	if !ok {
 		result.Help = true
 		return result, nil
 	}
@@ -220,7 +220,7 @@ func argvValue(value, schema any) any {
 	case "number", "integer":
 		if text, ok := value.(string); ok {
 			text = strings.TrimSpace(text)
-			// Rust's float grammar accepts decimal floats, but not Go's hex floats or underscores.
+			// Numbers are decimal: a hex float or a digit separator stays text, which the schema refuses.
 			if strings.ContainsAny(text, "_xXpP") {
 				return value
 			}
