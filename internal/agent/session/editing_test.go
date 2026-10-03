@@ -13,6 +13,7 @@ import (
 	"github.com/wspl/demi/internal/agent/session/sessiontest"
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
+	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/host"
@@ -60,11 +61,18 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 		must(t, gate.Wait(t.Context(), 1))
 		equal(t, f.s.Transcript(), before)
 		equal(t, len(patches), 0)
+		equal(t, f.checkpoint().Transcript, before.Blocks)
 		gate.Release()
-		editError(t, (<-failed).err, session.EditFailed)
+		failure := <-failed
+		editError(t, failure.err, session.EditFailed)
+		equal(t, failure.err.Error(), "the database refused the save")
 		must(t, f.s.Settled(t.Context()))
 		equal(t, f.s.Transcript(), before)
 		equal(t, f.p.Closes(), 1)
+		f.trace.assert(t, []int{0, 0}, []int{1})
+		equal(t, len(patches), 0)
+		equal(t, f.checkpoint().Transcript, before.Blocks)
+		equal(t, len(f.checkpoint().State.Edits), 0)
 		gate = f.tree.HoldSaves()
 		defer gate.Release()
 		submission := edit(t, f.s, 3, "op2")
@@ -72,6 +80,7 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 		must(t, gate.Wait(t.Context(), 1))
 		equal(t, f.s.Transcript(), before)
 		equal(t, f.checkpoint().Transcript, before.Blocks)
+		equal(t, len(patches), 0)
 		check, err := f.s.CheckEdit(submission.OperationID, submission.Digest, submission.Version)
 		must(t, err)
 		if _, ok := check.(*session.EditInFlight); !ok {
@@ -82,6 +91,8 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 		conflict.Digest = "other"
 		_, err = f.s.EditAndSend(t.Context(), conflict)
 		editError(t, err, session.EditConflict)
+		_, err = f.s.EditAndSend(t.Context(), edit(t, f.s, 0, "op3"))
+		editError(t, err, session.EditBusy)
 		_, err = f.s.Send(storetest.Text("C"), "C")
 		equal(t, err, error(session.AdmissionEditing))
 		equal(t, f.s.Steer(storetest.Text("mind"), "s1"), error(session.SteerEditing))
@@ -90,8 +101,14 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 		_, err = f.s.Compact()
 		equal(t, err, error(session.AdmissionEditing))
 		_, err = f.s.Storage(t.Context(), &host.StorageRead{Key: "todo"}, store.CommitGuard{})
-		if err == nil {
-			t.Fatal("storage admitted")
+		var port *host.PortError
+		if !errors.As(err, &port) || port.Kind != host.StorageRefused || port.Error() != "Command storage is reserved for a transcript edit" {
+			t.Fatalf("storage refusal: %v", err)
+		}
+		err = f.s.AcceptAgentMessage(t.Context(), message("m1"))
+		var admission *session.AgentMessageError
+		if !errors.As(err, &admission) || admission.Kind != session.AgentMessageEditing {
+			t.Fatalf("message refusal: %v", err)
 		}
 		must(t, f.s.UpdateModel(session.ModelSwitch{Model: storetest.ModelOf("stub", "other-model")}))
 		synctest.Wait()
@@ -112,6 +129,12 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 			}
 		}
 		equal(t, rewrites, 1)
+		blocks := f.s.Transcript().Blocks
+		equal(t, blocks[3].(*core.UserBlock).TurnID, one.receipt.TurnID)
+		equal(t, patches[0].(*framewire.ReplacePatch).Value, blocks[:4])
+		equal(t, f.checkpoint().Transcript, blocks)
+		equal(t, len(f.s.QueuedMessages()), 0)
+		f.trace.assert(t, []int{0, 0, 2}, []int{1, 0})
 	})
 }
 func TestStopEditPreparationAndSaveDecision(t *testing.T) {
@@ -171,6 +194,8 @@ func TestStopEditPreparationAndSaveDecision(t *testing.T) {
 				must(t, decision.err)
 				f.history("user", "abort")
 				equal(t, f.checkpoint().State.Edits, []store.EditReceipt{decision.receipt})
+				equal(t, f.s.Transcript().Blocks[0].(*core.UserBlock).TurnID, decision.receipt.TurnID)
+				equal(t, f.checkpoint().Transcript, f.s.Transcript().Blocks)
 			}
 		}
 		equal(t, len(f.p.Requests()), 1)
@@ -203,6 +228,9 @@ func TestDisposeWaitsForEditSaveAndKeepsReplacement(t *testing.T) {
 		equal(t, kinds(cp.Transcript), []string{"user", "error"})
 		equal(t, cp.State.Edits, []store.EditReceipt{decision.receipt})
 		equal(t, cp.State.Phase, core.SessionPhase("running"))
+		equal(t, cp.Transcript, f.s.Transcript().Blocks)
+		equal(t, cp.Transcript[0].(*core.UserBlock).TurnID, decision.receipt.TurnID)
+		f.trace.assert(t, []int{0}, []int{0, 1})
 	})
 }
 func TestWakeupRefusesEditAndStillFires(t *testing.T) {
@@ -249,9 +277,12 @@ func TestPriorSaveCommitsBeforeEditWithoutRestoringRemovedRows(t *testing.T) {
 		must(t, decision.err)
 		<-streaming
 		equal(t, kinds(f.checkpoint().Transcript), []string{"user"})
+		equal(t, f.checkpoint().Transcript, s.Transcript().Blocks)
 		close(release)
 		must(t, s.Settled(t.Context()))
 		equal(t, kinds(f.checkpoint().Transcript), []string{"user", "text", "response"})
+		equal(t, f.checkpoint().Transcript, s.Transcript().Blocks)
+		equal(t, f.checkpoint().State.Edits, []store.EditReceipt{decision.receipt})
 	})
 }
 func TestAcceptedEditSurvivesTurnFailureAndResume(t *testing.T) {
@@ -263,12 +294,21 @@ func TestAcceptedEditSurvivesTurnFailureAndResume(t *testing.T) {
 		})
 		f := start(t, r, session.DefaultConfig(), answer("A"), tool("effect"), providertest.Events(providertest.Error("continuation failed", nil)), answer("recovered"))
 		f.done(f.send("A", "A"))
+		failures := []string{}
+		sub := f.s.Subscribe(func(e session.Event) {
+			if e, ok := e.(*session.ErrorEvent); ok {
+				failures = append(failures, e.Report.Message)
+			}
+		})
+		defer sub.Release()
 		submission := edit(t, f.s, 0, "op1")
 		receipt, err := f.s.EditAndSend(t.Context(), submission)
 		must(t, err)
 		must(t, f.s.Settled(t.Context()))
 		equal(t, calls, 1)
 		f.history("user", "tool_call:completed", "response", "error")
+		equal(t, failures, []string{"continuation failed"})
+		equal(t, f.s.Transcript().Blocks[0].(*core.UserBlock).TurnID, receipt.TurnID)
 		equal(t, f.checkpoint().State.Edits, []store.EditReceipt{receipt})
 		version := f.s.Transcript().Version
 		again, err := f.s.EditAndSend(t.Context(), submission)
@@ -280,6 +320,9 @@ func TestAcceptedEditSurvivesTurnFailureAndResume(t *testing.T) {
 		must(t, err)
 		f.done(a)
 		equal(t, calls, 1)
+		items := f.p.Requests()[3].Items
+		equal(t, itemKinds(items), []string{"user_message", "tool_use", "tool_result", "user_message"})
+		equal(t, items[3], userItem(transcripttest.ResumeText))
 	})
 }
 func TestEditFirstMiddleLastKeepsExactPrefix(t *testing.T) {
@@ -298,8 +341,18 @@ func TestEditFirstMiddleLastKeepsExactPrefix(t *testing.T) {
 		f.done(f.send("C", "C"))
 		cp := f.checkpoint()
 		before := f.s.Transcript().Blocks
+		f.history("user", "tool_call:completed", "response", "text", "response", "user", "text", "response", "steer", "text", "response", "user", "text", "response")
+		turnA := []provider.InferenceItem{userItem("A"), &provider.ToolUse{ModelID: "test-model", ToolUseID: "call", ToolName: "note", Input: []byte(`{}`)}, &provider.ToolResult{ToolUseID: "call", Output: []provider.ResultPart{&provider.TextPart{Text: "noted"}}}, assistantItem("test-model", "A")}
+		turnB := []provider.InferenceItem{userItem("B"), assistantItem("test-model", "B1"), &provider.UserSteer{Content: storetest.SentText("mind tests")}, assistantItem("test-model", "B2")}
 		for _, index := range []int{0, 5, 11} {
 			s, _, p := f.restore(cp, answer("replacement"))
+			patches := []framewire.TranscriptPatch{}
+			sub := s.Subscribe(func(e session.Event) {
+				if e, ok := e.(*session.TranscriptChanged); ok {
+					patches = append(patches, e.Patches...)
+				}
+			})
+			defer sub.Release()
 			receipt, err := s.EditAndSend(t.Context(), edit(t, s, index, "op1"))
 			must(t, err)
 			must(t, s.Settled(t.Context()))
@@ -307,7 +360,18 @@ func TestEditFirstMiddleLastKeepsExactPrefix(t *testing.T) {
 			equal(t, blocks[:index], before[:index])
 			equal(t, kinds(blocks[index:]), []string{"user", "text", "response"})
 			equal(t, blocks[index].(*core.UserBlock).TurnID, receipt.TurnID)
-			equal(t, p.Requests()[0].Items[len(p.Requests()[0].Items)-1], provider.InferenceItem(&provider.UserMessage{Content: storetest.SentText("replacement")}))
+			equal(t, blocks[index].(*core.UserBlock).Content, storetest.Text("replacement"))
+			equal(t, patches[0].(*framewire.ReplacePatch).Value, blocks[:index+1])
+			equal(t, f.checkpoint().Transcript, blocks)
+			want := []provider.InferenceItem{}
+			if index >= 5 {
+				want = append(want, turnA...)
+			}
+			if index >= 11 {
+				want = append(want, turnB...)
+			}
+			want = append(want, userItem("replacement"))
+			equal(t, p.Requests()[0].Items, want)
 			must(t, s.Dispose(t.Context()))
 		}
 	})

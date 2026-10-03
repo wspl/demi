@@ -112,6 +112,10 @@ func TestMaintenancePostponesRetirementUntilRelease(t *testing.T) {
 		if got := <-attempts; got != released {
 			t.Fatalf("retired at %v, want release %v", got, released)
 		}
+		synctest.Wait()
+		if len(attempts) != 0 {
+			t.Fatal("unexpected additional retirement")
+		}
 	})
 }
 
@@ -131,6 +135,10 @@ func TestDemandRestartsFullWindow(t *testing.T) {
 		held.Release()
 		if elapsed := (<-attempts).Sub(ended); elapsed < window || elapsed > window+poll {
 			t.Fatalf("retired after %v, want full window", elapsed)
+		}
+		synctest.Wait()
+		if len(attempts) != 0 {
+			t.Fatal("unexpected additional retirement")
 		}
 	})
 }
@@ -166,6 +174,10 @@ func TestCanceledWatchFinishesRetirementWhileOtherWatchesContinue(t *testing.T) 
 		}
 		release()
 		<-done
+		synctest.Wait()
+		if len(attempts) != 0 {
+			t.Fatal("unexpected additional retirement")
+		}
 	})
 }
 
@@ -186,6 +198,10 @@ func TestFailedRetirementReleasesAndRetriesAfterPoll(t *testing.T) {
 		if elapsed := (<-attempts).Sub(first); elapsed != poll {
 			t.Fatalf("retry after %v, want %v", elapsed, poll)
 		}
+		synctest.Wait()
+		if len(attempts) != 0 {
+			t.Fatal("unexpected additional retirement")
+		}
 	})
 }
 
@@ -203,6 +219,10 @@ func TestBriefDemandDuringReservationRestartsWindow(t *testing.T) {
 		close(proceed)
 		if elapsed := (<-attempts).Sub(ended); elapsed < window {
 			t.Fatalf("retired after only %v", elapsed)
+		}
+		synctest.Wait()
+		if len(attempts) != 0 {
+			t.Fatal("unexpected additional retirement")
 		}
 	})
 }

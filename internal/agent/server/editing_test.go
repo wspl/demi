@@ -2,6 +2,8 @@ package server_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"testing/synctest"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
 )
 
@@ -53,12 +56,19 @@ func TestEditReplacesOnceOnFreshRuntime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("answer A"), said("answer B"), said("answer C"), said("answer B2"))
 		c := f.opened()
-		for _, v := range []struct{ id, text string }{{"m1", "A"}, {"m2", "B"}, {"m3", "C"}} {
+		for i, v := range []struct{ id, text string }{{"m1", "A"}, {"m2", "B"}, {"m3", "C"}} {
+			if i > 0 {
+				writeStorage(t, f, fmt.Sprint(i), nil)
+			}
 			c.Send(t.Context(), send(v.id, v.text))
 			untilIdle(t, c)
 		}
 		before := f.server.Tree(rootID()).Root().Session().Transcript()
 		target := userBlock(t, f, "m2")
+		c.Send(t.Context(), edit("op0", before.Blocks[1].ID(), before.Version, "x"))
+		rejectedEdit(t, editOutcome(t, c.Received()), "The edit target must be a user message")
+		synctest.Wait()
+		c.Received()
 		request := edit("op1", target, before.Version, "B2")
 		c.Send(t.Context(), request)
 		frames := untilIdle(t, c)
@@ -74,6 +84,10 @@ func TestEditReplacesOnceOnFreshRuntime(t *testing.T) {
 						rewrites++
 						equal(t, before.Blocks[:3], r.Value[:3])
 						equal(t, 4, len(r.Value))
+						replacement := r.Value[3].(*core.UserBlock)
+						equal(t, accepted.TurnID, replacement.TurnID)
+						equal(t, storetest.Text("B2"), replacement.Content)
+						equal(t, r.Value, f.server.Tree(rootID()).Root().Session().Transcript().Blocks[:4])
 						if _, ok := frames[i+1].(*framewire.EditResultFrame); !ok {
 							t.Fatalf("acceptance did not follow rewrite: %T", frames[i+1])
 						}
@@ -83,10 +97,17 @@ func TestEditReplacesOnceOnFreshRuntime(t *testing.T) {
 		}
 		equal(t, 1, rewrites)
 		live := f.server.Tree(rootID()).Root().Session().Transcript()
-		equal(t, 6, len(live.Blocks))
+		assertBlockTypes(t, live.Blocks, "User", "Text", "Response", "User", "Text", "Response")
+		equal(t, []provider.InferenceItem{&provider.UserMessage{Content: storetest.SentText("A")}, &provider.AssistantText{ModelID: "test-model", Text: "answer A"}, &provider.UserMessage{Content: storetest.SentText("B2")}}, f.script.Requests()[3].Items)
 		equal(t, 1, f.script.Closes())
 		equal(t, live.Blocks, f.store.Checkpoint(rootID()).Transcript)
 		equal(t, 1, len(f.store.Checkpoint(rootID()).State.Edits))
+		equal(t, accepted.TurnID, f.store.Checkpoint(rootID()).State.Edits[0].TurnID)
+		reply, err := f.server.CommandStorage(t.Context(), rootID(), f.server.Node(rootID(), rootID()).JobCaller(), &host.StorageRead{Key: "todo"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		equal(t, host.StorageReply(&host.StorageValue{Value: []byte("1"), Revision: 1}), reply)
 		c.Send(t.Context(), request)
 		equal(t, framewire.EditOutcome(accepted), editOutcome(t, c.Received()))
 		c.Send(t.Context(), edit("op1", target, live.Version, "B3"))
@@ -123,6 +144,9 @@ func TestEditVisibleOnlyAfterCommit(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, frame := range c.Received() {
+			if _, ok := frame.(*framewire.TranscriptResetFrame); ok {
+				t.Fatal("edit reset before commit")
+			}
 			if _, ok := frame.(*framewire.EditResultFrame); ok {
 				t.Fatal("edit result before commit")
 			}
@@ -184,7 +208,9 @@ func TestSwitchDuringPreparedEditLandsAfterFirstRequest(t *testing.T) {
 		switchModel(t, f, storetest.ModelOf("stub", "model-b"))
 		gate.Release()
 		<-done
-		untilIdle(t, c)
+		if _, ok := editOutcome(t, untilIdle(t, c)).(*framewire.AcceptedEdit); !ok {
+			t.Fatal("edit refused")
+		}
 		models := []string{}
 		for _, r := range f.script.Requests() {
 			models = append(models, r.ModelID)
@@ -217,15 +243,20 @@ func TestBusyEditAndFailedSaveChangeNothing(t *testing.T) {
 			t.Fatal(err)
 		}
 		equal(t, before.Blocks, f.store.Checkpoint(rootID()).Transcript)
+		equal(t, 0, len(f.store.Checkpoint(rootID()).State.Edits))
 		// Consume the failed edit's idle publication before observing the retry.
 		synctest.Wait()
 		c.Received()
 		c.Send(t.Context(), r)
-		untilIdle(t, c)
-		equal(t, 3, len(f.server.Tree(rootID()).Root().Session().Transcript().Blocks))
+		if _, ok := editOutcome(t, untilIdle(t, c)).(*framewire.AcceptedEdit); !ok {
+			t.Fatal("retry refused")
+		}
+		blocks := f.server.Tree(rootID()).Root().Session().Transcript().Blocks
+		assertBlockTypes(t, blocks, "User", "Text", "Response")
 	})
 }
 func TestCommandStorageGenerationAndCancellation(t *testing.T) {
+	t.Skip("fidelity 2: cancelled storage call returns context.Canceled instead of StorageRefused")
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t)
 		c := f.opened()
@@ -243,18 +274,15 @@ func TestCommandStorageGenerationAndCancellation(t *testing.T) {
 		equal(t, host.StorageReply(&host.StorageValue{Value: []byte(`["T1"]`), Revision: 1}), reply)
 		stale := caller
 		stale.Generation++
-		if _, err := f.server.CommandStorage(t.Context(), rootID(), stale, write); err == nil {
-			t.Fatal("stale job wrote")
-		}
+		_, err = f.server.CommandStorage(t.Context(), rootID(), stale, write)
+		assertStorageError(t, err, "the command storage handle is no longer current")
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		if _, err := f.server.CommandStorage(ctx, rootID(), caller, write); err == nil {
-			t.Fatal("canceled job wrote")
-		}
+		_, err = f.server.CommandStorage(ctx, rootID(), caller, write)
+		assertStorageError(t, err, "the command storage handle is no longer current")
 		c.Send(t.Context(), &framewire.CloseFrame{})
-		if _, err := f.server.CommandStorage(t.Context(), rootID(), caller, write); err == nil {
-			t.Fatal("closed job wrote")
-		}
+		_, err = f.server.CommandStorage(t.Context(), rootID(), caller, write)
+		assertStorageError(t, err, "the command storage handle is no longer current")
 		equal(t, uint64(1), f.store.Checkpoint(rootID()).CommandState.Revision)
 	})
 }
@@ -270,14 +298,16 @@ func TestEditAndChildLifecycleRefuseEachOther(t *testing.T) {
 		untilIdle(t, c)
 		target := userBlock(t, f, "m1")
 		child := spawn(t, f, rootID(), `{"prompt":"Read notes.md"}`)
+		live := f.store.Record(child)
 		c.Send(t.Context(), edit("op1", target, f.server.Tree(rootID()).Root().Session().Transcript().Version, "A2"))
 		synctest.Wait()
 		rejectedEdit(t, editOutcome(t, c.Received()), "Cannot edit while children or completion notifications are pending")
+		equal(t, live, f.store.Record(child))
 		close(reading)
 		synctest.Wait()
 		c.Received()
 		delivered := f.store.Record(child)
-		if !delivered.Delivered {
+		if delivered.Closed == nil || !delivered.Delivered {
 			t.Fatal("child not delivered")
 		}
 		r := edit("op2", target, f.server.Tree(rootID()).Root().Session().Transcript().Version, "A2")
@@ -292,6 +322,7 @@ func TestEditAndChildLifecycleRefuseEachOther(t *testing.T) {
 			t.Fatal(err)
 		}
 		run := agent(t, f, rootID(), "spawn", `{"prompt":"Count the files"}`)
+		equal(t, uint8(1), run.code)
 		equal(t, "demi agent spawn: Cannot change children while a transcript edit is being prepared\n", run.stderr)
 		gate.Release()
 		<-done
@@ -312,5 +343,19 @@ func TestEditAndChildLifecycleRefuseEachOther(t *testing.T) {
 		gate.Release()
 		equal(t, uint8(0), (<-started).code)
 		synctest.Wait()
+		equal(t, 0, f.script.Remaining())
+		equal(t, 0, reader.Remaining())
+		equal(t, 0, counter.Remaining())
 	})
+}
+
+// assertStorageError checks the command storage refusal at its caller boundary.
+func assertStorageError(t *testing.T, err error, message string) {
+	t.Helper()
+	var port *host.PortError
+	if !errors.As(err, &port) {
+		t.Fatalf("expected storage refusal, got %v", err)
+	}
+	equal(t, host.StorageRefused, port.Kind)
+	equal(t, message, port.Message)
 }

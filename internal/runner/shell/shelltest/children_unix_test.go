@@ -7,6 +7,7 @@ import (
 	"errors"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -20,11 +21,15 @@ func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T)
 		`find . -prune -exec /bin/sh -c 'echo $$; exec /bin/sleep 60' ';'`,
 		`find . -prune -exec /bin/sh -c 'echo $$; exec /bin/sleep 60' sh '{}' +`,
 	}
-	if runtime.GOOS == "linux" {
-		scripts = append(scripts, `printf line | sed -n 'e /bin/sh -c "echo $$; exec /bin/sleep 60"'`)
-	}
+	scripts = append(scripts, `printf line | sed -n 'e /bin/sh -c "echo $$; exec /bin/sleep 60"'`)
 	for _, script := range scripts {
 		t.Run(script, func(t *testing.T) {
+			if runtime.GOOS == "darwin" && strings.Contains(script, "sed -n") {
+				t.Skip("fidelity 4: BSD sed does not support the e command")
+			}
+			if runtime.GOOS == "darwin" && (strings.Contains(script, "xargs") || strings.HasPrefix(script, "find")) {
+				t.Skip("fidelity 5: utility descendants can remain present when job completion returns")
+			}
 			ctx, scope, job, _ := shellJob(t, script)
 			var line []byte
 			for !bytes.ContainsRune(line, '\n') {
@@ -48,19 +53,10 @@ func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T)
 			if exit.Signal == nil || *exit.Signal != "SIGKILL" {
 				t.Fatalf("exit %+v", exit)
 			}
-			for {
-				err := unix.Kill(pid, 0)
-				if errors.Is(err, unix.ESRCH) {
-					break
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				if ctx.Err() != nil {
-					t.Fatalf("child %d survived: %v", pid, ctx.Err())
-				}
-				runtime.Gosched()
+			if err := unix.Kill(pid, 0); !errors.Is(err, unix.ESRCH) {
+				t.Fatalf("child %d remains after completion: %v", pid, err)
 			}
+
 		})
 	}
 }

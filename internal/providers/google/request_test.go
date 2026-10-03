@@ -2,8 +2,10 @@ package google_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
@@ -98,7 +100,15 @@ func TestUnsignedCallReplay(t *testing.T) {
 			&provider.ToolUse{ToolUseID: "call-9", ToolName: "shell_exec", Input: []byte(`{"command":"ls"}`)},
 			&provider.ToolResult{ToolUseID: "call-9", Output: []provider.ResultPart{&provider.TextPart{Text: "a.md"}, &provider.ResultImage{Bytes: provider.MediaBytes{Data: []byte("PNG"), MediaType: "image/png"}}}},
 		}
-		equalJSON(t, bodyOf(t, request)["contents"], `[
+		body := bodyOf(t, request)
+		encoded, err := contract.EncodeJSON(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(encoded), "functionCall") {
+			t.Fatal("unsigned history emitted a functionCall", string(encoded))
+		}
+		equalJSON(t, body["contents"], `[
   {"role":"user","parts":[{"text":"list files"}]},
   {"role":"model","parts":[{"text":"[called shell_exec with {\"command\":\"ls\"}]"}]},
   {"role":"user","parts":[{"text":"[shell_exec returned] a.md\n[image/png]"}]}]`)

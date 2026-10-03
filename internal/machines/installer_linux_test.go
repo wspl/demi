@@ -96,7 +96,7 @@ func TestInstallerWritesValidUnitAndSettings(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if config.Mode != ModeServe || config.Data != data || config.Image != release || config.Socket != "/run/demi-cloud/machines.sock" || config.BackendURL.String() != "https://backend.example.com/" || config.Slots != 16 || config.Limits != nil || !strings.HasPrefix(config.Runsc, "/opt/gvisor") || len(config.DNS) != 2 {
+		if config.Mode != ModeServe || config.Data != data || config.Image != release || config.Socket != "/run/demi-cloud/machines.sock" || config.BackendURL.String() != "https://backend.example.com/" || config.Slots != 16 || config.Limits != nil || !strings.HasPrefix(config.Runsc, "/opt/gvisor") || len(config.DNS) != 2 || config.DNS[0].String() != "1.1.1.1" || config.DNS[1].String() != "8.8.8.8" {
 			return fmt.Errorf("installed settings: %+v", config)
 		}
 		return nil

@@ -144,7 +144,7 @@ func TestBlankOptionalFieldsOmitted(t *testing.T) {
 func TestReusedRuntimeOutputLimits(t *testing.T) {
 	v := providertest.StartVendor(t)
 	r := testRuntime(t, v, provider.VendorPolicy{})
-	for _, c := range []struct {
+	for i, c := range []struct {
 		model      string
 		limit, cap uint32
 		want       float64
@@ -162,6 +162,9 @@ func TestReusedRuntimeOutputLimits(t *testing.T) {
 		}
 		equalEvents(t, providertest.Run(t.Context(), t, r, request), []provider.Event{&provider.Response{}})
 		sent := v.Requests()
+		if len(sent) != i+1 {
+			t.Fatalf("requests: got %d, want %d", len(sent), i+1)
+		}
 		body := sent[len(sent)-1].JSON(t).(map[string]any)
 		if body["model"] != c.model || body["max_tokens"] != c.want {
 			t.Fatal(body)
@@ -197,6 +200,11 @@ func TestThinkingConfiguration(t *testing.T) {
 			body := sentBody(t, request, c.policy)
 			equalJSON(t, body["thinking"], c.thinking)
 			equalJSON(t, body["output_config"], c.output)
+			if c.policy.EffortAsBudget {
+				if _, present := body["output_config"]; present {
+					t.Fatal("budget-only vendor received output_config")
+				}
+			}
 		})
 	}
 }

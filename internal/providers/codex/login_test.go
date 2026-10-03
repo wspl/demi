@@ -40,7 +40,7 @@ func TestDeviceLogin(t *testing.T) {
 	equal(t, shown[0].VerificationURL, v.URL("/codex/device"))
 	equal(t, *shown[0].ExpiresAt, core.Timestamp("2026-09-18T14:10:00.000Z"))
 	equal(t, info.Label, "device@example.com")
-	active, err := pool.Active(t.Context())
+	active, err := p.Accounts().Active(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +55,8 @@ func TestDeviceLogin(t *testing.T) {
 	equal(t, doc["lastRefresh"], string(now))
 	requests := v.Requests()
 	equal(t, len(requests), 4)
+	equal(t, []string{requests[0].URI, requests[1].URI, requests[2].URI, requests[3].URI},
+		[]string{"/api/accounts/deviceauth/usercode", "/api/accounts/deviceauth/token", "/api/accounts/deviceauth/token", "/oauth/token"})
 	equal(t, requests[0].JSON(t), map[string]any{"client_id": "app_EMoamEEZ73f0CkXaXp7hrann"})
 	equal(t, requests[1].JSON(t), map[string]any{"device_auth_id": "dev_auth_1", "user_code": "WXYZ-9876"})
 	form, err := url.ParseQuery(string(requests[3].Body))
@@ -64,7 +66,9 @@ func TestDeviceLogin(t *testing.T) {
 	equal(t, form, url.Values{"grant_type": {"authorization_code"}, "code": {"authz_1"}, "code_verifier": {"verifier_1"}, "client_id": {"app_EMoamEEZ73f0CkXaXp7hrann"}, "redirect_uri": {v.URL("/deviceauth/callback")}})
 }
 func TestDeviceCodeMissingAndUnavailable(t *testing.T) {
-	v, pool, p := setup(t)
+	v := providertest.StartVendor(t)
+	pool := provider.NewMemoryCredentialPool()
+	p := configured(t, v, pool, func(c *codex.Config) { c.Account = nil })
 	v.Respond(answer(200, `{"device_auth_id":"dev_auth_1"}`))
 	v.Respond(answer(404, `{}`))
 	for _, test := range []struct {
@@ -79,7 +83,7 @@ func TestDeviceCodeMissingAndUnavailable(t *testing.T) {
 		equal(t, login.Error(), test.message)
 		equal(t, login.Unavailable, test.unavailable)
 	}
-	equal(t, len(pool.Entries()), 1)
+	equal(t, len(pool.Entries()), 0)
 }
 func TestDeviceLoginLifetime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -98,7 +102,12 @@ func TestDeviceLoginLifetime(t *testing.T) {
 		}
 		start := time.Now()
 		_, err = p.Accounts().Login(t.Context(), func(core.LoginPending) {})
-		equal(t, err.Error(), "Device-code login timed out after 10 minutes")
+		var login *provider.LoginError
+		if !errors.As(err, &login) {
+			t.Fatalf("login error: %v", err)
+		}
+		equal(t, login.Unavailable, false)
+		equal(t, login.Error(), "Device-code login timed out after 10 minutes")
 		equal(t, time.Since(start), 10*time.Minute)
 		equal(t, calls, 12)
 		equal(t, len(pool.Entries()), 0)

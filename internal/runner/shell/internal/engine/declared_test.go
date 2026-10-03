@@ -23,6 +23,9 @@ type recordingHandler struct {
 
 func (*recordingHandler) Operations() []string { return []string{process.Raw} }
 func (h *recordingHandler) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+	if invocation.Request.Operation != process.Raw {
+		return commandwire.Completion{}, errors.New("declared command did not invoke raw")
+	}
 	raw, err := process.DecodeRawCommand(invocation.Request.Args)
 	if err != nil {
 		return commandwire.Completion{}, err

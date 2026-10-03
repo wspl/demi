@@ -39,7 +39,7 @@ func TestFilesystemWirePreservesBinaryDatesLinksAndErrors(t *testing.T) {
 	fsResult(t, out, s.Utimes(t.Context(), runnerwire.FSUtimes{ID: "test", Path: "nested/a", Atime: 1234567890123, Mtime: 1234567890123}))
 	value = fsResult(t, out, s.Stat(t.Context(), runnerwire.FSStat{ID: "test", Path: "nested/a"}))
 	stat, ok = value.(*runnerwire.FSStatResult)
-	if !ok || stat.Value.Mtime != 1234567890123 || stat.Value.Size != 4 {
+	if !ok || !stat.Value.IsFile || stat.Value.Mtime != 1234567890123 || stat.Value.Size != 4 {
 		t.Fatal(value)
 	}
 	preEpoch := time.Unix(-1, 998500000)

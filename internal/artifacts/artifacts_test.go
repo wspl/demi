@@ -113,6 +113,9 @@ func TestDownloadDecodesZstdAndRefusesOtherCoding(t *testing.T) {
 	for _, effort := range []artifacts.Effort{artifacts.Published, artifacts.Development} {
 		encoded, err := artifacts.Encode(t.Context(), body, effort)
 		must(t, err)
+		if bytes.Equal(encoded, body) {
+			t.Fatal("zstd encoding left bytes unchanged")
+		}
 		server := artifactstest.Start(t, map[string]artifactstest.Answer{
 			"/zstd": {Status: 200, Body: encoded, Length: true, Coding: artifacts.ContentCoding},
 			"/gzip": {Status: 200, Body: body, Length: true, Coding: "gzip"},
@@ -148,10 +151,14 @@ func TestMeasuredDownloadReportsBytesWithinLimit(t *testing.T) {
 			t.Fatal("incorrect measurement")
 		}
 		_, err = artifacts.DownloadMeasured(t.Context(), c, server.URL(path), 3, io.Discard)
-		_ = assertError[*artifacts.TooLargeError](t, err)
+		if tooLarge := assertError[*artifacts.TooLargeError](t, err); tooLarge.Declared != 3 {
+			t.Fatal(tooLarge)
+		}
 	}
 	_, err := artifacts.DownloadMeasured(t.Context(), c, server.URL("/missing"), 1024, io.Discard)
-	_ = assertError[*artifacts.RejectedError](t, err)
+	if rejected := assertError[*artifacts.RejectedError](t, err); rejected.Status != 404 {
+		t.Fatal(rejected)
+	}
 }
 func TestClientRefusesHTTPAndHidesSignedURL(t *testing.T) {
 	server := artifactstest.Start(t, map[string]artifactstest.Answer{"/artifact": artifactstest.OK(body)})
@@ -185,9 +192,14 @@ func TestCopiesAndDigestsCheckDeclaredBytes(t *testing.T) {
 		t.Fatal(found)
 	}
 	_, err = artifacts.DigestFile(t.Context(), source, 3)
-	_ = assertError[*artifacts.TooLargeError](t, err)
+	if tooLarge := assertError[*artifacts.TooLargeError](t, err); tooLarge.Declared != 3 {
+		t.Fatal(tooLarge)
+	}
 	var output bytes.Buffer
-	must(t, artifacts.Copy(t.Context(), bytes.NewReader(body), declared(body), &output))
+	input, err := os.Open(source)
+	must(t, err)
+	defer func() { must(t, input.Close()) }()
+	must(t, artifacts.Copy(t.Context(), input, declared(body), &output))
 	if !bytes.Equal(output.Bytes(), body) {
 		t.Fatal("copy changed bytes")
 	}
@@ -218,6 +230,9 @@ func TestPublicationCreatesOrReplacesWholeFiles(t *testing.T) {
 	publication.Mode = artifacts.Replace
 	must(t, artifacts.Publish(t.Context(), path, strings.NewReader("replaced"), publication))
 	contents(t, path, []byte("replaced"))
+	if got := names(t, directory); len(got) != 1 || got[0] != "file" {
+		t.Fatal(got)
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := artifacts.Publish(ctx, path, strings.NewReader("never"), publication); !errors.Is(err, context.Canceled) {
@@ -280,10 +295,16 @@ func TestPublicationSetsOrKeepsPermissions(t *testing.T) {
 		permissions artifacts.Permissions
 		want        os.FileMode
 	}{{artifacts.Private, 0600}, {artifacts.Executable, 0755}, {artifacts.Keep, 0640}} {
-		if test.permissions == artifacts.Keep {
+		mode := artifacts.CreateNew
+		switch test.permissions {
+		case artifacts.Keep:
+			path = filepath.Join(directory, "file")
 			must(t, os.Chmod(path, 0640))
+			mode = artifacts.Replace
+		case artifacts.Executable:
+			path = filepath.Join(directory, "tool")
 		}
-		must(t, artifacts.PublishBytes(t.Context(), path, body, artifacts.Publication{Mode: artifacts.Replace, Permissions: test.permissions}))
+		must(t, artifacts.PublishBytes(t.Context(), path, body, artifacts.Publication{Mode: mode, Permissions: test.permissions}))
 		info, err := os.Stat(path)
 		must(t, err)
 		if info.Mode().Perm() != test.want {
@@ -328,7 +349,11 @@ func TestReleasePublishedWholeOnceAndRefusesOtherContents(t *testing.T) {
 		for _, file := range files {
 			info, err := os.Stat(filepath.Join(directory, file.Path))
 			must(t, err)
-			if (info.Mode().Perm()&0111 != 0) != file.Executable {
+			want := os.FileMode(0)
+			if file.Executable {
+				want = 0111
+			}
+			if info.Mode().Perm()&0111 != want {
 				t.Fatal("incorrect execute permissions")
 			}
 		}
@@ -461,8 +486,12 @@ func TestArchiveInstalledOnceAndCheckedBeforeUse(t *testing.T) {
 	if server.Requests() != 1 {
 		t.Fatal("corruption caused redownload")
 	}
-	// Do not repeat the Rust assertion accepting deliberately corrupt bytes via
-	// Recorded: its no-read contract is tested on an unreadable entry separately.
+	// Recorded trusts the receipt; Installed above verifies the bytes.
+	recorded, err = artifacts.Recorded(t.Context(), directory, archive)
+	must(t, err)
+	if recorded != entry {
+		t.Fatal("receipt no longer names its entry")
+	}
 	must(t, os.Remove(filepath.Join(directory, artifacts.ReceiptFile)))
 	_, err = artifacts.Installed(t.Context(), directory, archive)
 	_ = assertError[*artifacts.InstallationError](t, err)
@@ -478,7 +507,7 @@ func TestArchiveInstalledOnceAndCheckedBeforeUse(t *testing.T) {
 	_, err = install(t.Context(), c, other, server.URL("/app.zip"), lacking)
 	_ = assertError[*artifacts.ArchiveError](t, err)
 	got := names(t, other)
-	if len(got) != 2 || !strings.HasSuffix(got[0], ".lock") || !strings.HasSuffix(got[1], ".lock") {
+	if len(got) != 2 || got[0] != wrong.Digest.SHA256+".lock" || got[1] != archive.Digest.SHA256+".lock" {
 		t.Fatal(got)
 	}
 }

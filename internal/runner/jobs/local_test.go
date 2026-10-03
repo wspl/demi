@@ -33,8 +33,11 @@ func (*outputBuffer) Close() error { return nil }
 
 type neverRead struct{ t testing.TB }
 
-func (neverRead) Read([]byte) (int, error) { return 0, errors.New("stdin consumed without demand") }
-func (neverRead) Close() error             { return nil }
+func (r neverRead) Read([]byte) (int, error) {
+	r.t.Error("stdin consumed without demand")
+	return 0, errors.New("stdin consumed without demand")
+}
+func (neverRead) Close() error { return nil }
 func localRequest() commandwire.LocalInvocation {
 	return commandwire.LocalInvocation{Operation: "fixture", InvocationID: "test", Args: json.RawMessage(`{}`), Cwd: os.TempDir(), Env: map[string]string{}}
 }

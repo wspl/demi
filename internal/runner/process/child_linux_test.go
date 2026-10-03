@@ -1,6 +1,7 @@
 package process
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -32,7 +33,10 @@ func TestStartBusyExecutable(t *testing.T) {
 			if bootstrap {
 				attributes.Umask = &mask
 			}
-			command := Wrap(exec.Command(path), true, attributes)
+			cmd := exec.Command(path)
+			var stdout bytes.Buffer
+			cmd.Stdout = &stdout
+			command := Wrap(cmd, true, attributes)
 			baseline := cmdsdktest.Pauses()
 			done := make(chan error, 1)
 			ctx := childContext(t)
@@ -56,6 +60,9 @@ func TestStartBusyExecutable(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = command.Kill(); command.Wait(context.Background()) })
 			requireSuccess(t, command.Wait(ctx))
+			if stdout.String() != "started\n" {
+				t.Fatalf("stdout = %q", stdout.String())
+			}
 		})
 	}
 }

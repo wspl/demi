@@ -99,7 +99,7 @@ func (s *scriptedShells) Create(_ context.Context, scope tools.EnvironmentScope,
 }
 func serving(t *testing.T) (*server.Server[*scriptedHost], *scriptedShell, *servertest.TestClient[*scriptedHost]) {
 	t.Helper()
-	script := providertest.NewScriptedRuntime(t, providertest.Events(providertest.ToolCall("call-1", "shell_exec", []byte(`{"script":"serve","timeoutMs":200}`)), providertest.Response(1, 1)), said("serving"))
+	script := providertest.NewScriptedRuntime(t, providertest.Events(providertest.ToolCall("call-1", "shell_exec", []byte(`{"script":"serve","timeoutMs":200}`))), said("serving"))
 	providers := &servertest.ScriptedProviders{}
 	providers.Provide("stub", script)
 	memory := storetest.NewMemoryTreeStore()
@@ -128,13 +128,15 @@ func serving(t *testing.T) (*server.Server[*scriptedHost], *scriptedShell, *serv
 	}
 	return s, shell, c
 }
-func tails(frames []framewire.ServerFrame) []string {
+func tails(t *testing.T, frames []framewire.ServerFrame) []string {
 	result := []string{}
 	for _, frame := range frames {
 		if s, ok := frame.(*framewire.ShellOutputFrame); ok {
-			if r, ok := s.Status.(*framewire.RunningStatus); ok {
-				result = append(result, r.Tail)
+			r, ok := s.Status.(*framewire.RunningStatus)
+			if !ok {
+				t.Fatalf("expected running shell status, got %T", s.Status)
 			}
+			result = append(result, r.Tail)
 		}
 	}
 	return result
@@ -145,7 +147,7 @@ func TestDetachedOutputDoesNotReplayAsNewOutput(t *testing.T) {
 		shell.print("one\n")
 		time.Sleep(250 * time.Millisecond)
 		synctest.Wait()
-		seen := tails(first.Received())
+		seen := tails(t, first.Received())
 		equal(t, "one\n", seen[len(seen)-1])
 		shell.print("two\n")
 		first.Connection().Detach()
@@ -153,14 +155,14 @@ func TestDetachedOutputDoesNotReplayAsNewOutput(t *testing.T) {
 		shell.print("three\n")
 		second := servertest.Connect(t, s, rootID(), "/workspace")
 		second.Send(t.Context(), &framewire.OpenFrame{})
-		equal(t, []string{"one\ntwo\nthree\n"}, tails(second.Received()))
+		equal(t, []string{"one\ntwo\nthree\n"}, tails(t, second.Received()))
 		time.Sleep(500 * time.Millisecond)
 		synctest.Wait()
-		equal(t, []string{}, tails(second.Received()))
+		equal(t, []string{}, tails(t, second.Received()))
 		shell.print("four\n")
 		time.Sleep(250 * time.Millisecond)
 		synctest.Wait()
-		equal(t, []string{"one\ntwo\nthree\nfour\n"}, tails(second.Received()))
+		equal(t, []string{"one\ntwo\nthree\nfour\n"}, tails(t, second.Received()))
 	})
 }
 func TestDetachedRunningCommandKeepsTreeLive(t *testing.T) {

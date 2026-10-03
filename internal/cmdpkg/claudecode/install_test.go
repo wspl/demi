@@ -21,8 +21,11 @@ func releaseRecord(version, platform string) []byte {
 
 func TestEnsureAsksRunnerForMachineExecutable(t *testing.T) {
 	asked := make(chan commandwire.ArtifactRequest, 1)
+	var count atomic.Int32
 	artifacts := cmdsdktest.ArtifactsFrom(t, func(_ context.Context, request commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
-		asked <- request
+		if count.Add(1) == 1 {
+			asked <- request
+		}
 		path := "/cache/claude"
 		return commandwire.ArtifactAnswer{Path: &path}, nil
 	})
@@ -36,6 +39,9 @@ func TestEnsureAsksRunnerForMachineExecutable(t *testing.T) {
 	}
 	if got, want := installed, (claudecodeop.Installed{Version: "2.1.278", Path: "/cache/claude"}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v, want %#v", got, want)
+	}
+	if count.Load() != 1 {
+		t.Fatalf("install requests = %d", count.Load())
 	}
 	want := commandwire.ArtifactRequest{Install: &commandwire.ArtifactInstall{Invocation: "invocation", Name: "Claude Code", Version: "2.1.278", SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("claude"))), Size: 6, Form: &commandwire.ArtifactFile{}}}
 	if got, want := <-asked, want; !reflect.DeepEqual(got, want) {

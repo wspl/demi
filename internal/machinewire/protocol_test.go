@@ -75,6 +75,16 @@ func output[T any](t *testing.T, name string, op machinewire.Operation[T]) T {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Unit has no public null encoder; that missing API is reported in R6.
+	if _, unit := any(value).(machinewire.Unit); !unit {
+		encoded, err := contract.EncodeJSON(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(encoded, ok.Result) {
+			t.Fatalf("result round trip: %s, want %s", encoded, ok.Result)
+		}
+	}
 	return value
 }
 
@@ -259,12 +269,12 @@ func TestManifestEmbeddedReleases(t *testing.T) {
 	artifact := changed.Executables[machinewire.RunnerPath]
 	artifact.Size = 1
 	changed.Executables[machinewire.RunnerPath] = artifact
-	if !errors.Is(changed.Validate(), machinewire.ErrManifestRunner) {
+	if !errors.Is(decodeManifest(t, changed), machinewire.ErrManifestRunner) {
 		t.Fatal("runner mismatch accepted")
 	}
 	changed = manifest()
 	changed.Architecture = machinewire.ArchitectureAMD64
-	if !errors.Is(changed.Validate(), machinewire.ErrManifestRunner) {
+	if !errors.Is(decodeManifest(t, changed), machinewire.ErrManifestRunner) {
 		t.Fatal("wrong target accepted")
 	}
 	changed = manifest()
@@ -274,7 +284,7 @@ func TestManifestEmbeddedReleases(t *testing.T) {
 		}
 	}
 	var missing *machinewire.ManifestError
-	if !errors.As(changed.Validate(), &missing) || missing.Release != "demi.file" {
+	if !errors.As(decodeManifest(t, changed), &missing) || missing.Release != "demi.file" {
 		t.Fatal("missing release not identified")
 	}
 	for _, mutation := range []struct{ old, new string }{
@@ -287,7 +297,7 @@ func TestManifestEmbeddedReleases(t *testing.T) {
 	for _, path := range []string{"/etc/passwd", "/usr/", "/usr/../etc/shadow", "/opt/x\ny", "usr/bin/x"} {
 		changed := manifest()
 		changed.Executables[path] = commandwire.PackageArtifact{SHA256: strings.Repeat("e", 64), Size: 10}
-		if err := changed.Validate(); err == nil {
+		if err := decodeManifest(t, changed); err == nil {
 			t.Errorf("accepted path %q", path)
 		}
 	}
@@ -336,4 +346,16 @@ func TestResultIntegerPrecision(t *testing.T) {
 	if err != nil || state.SystemBytes != ^uint64(0) {
 		t.Fatalf("integer precision: %v %v", state, err)
 	}
+}
+
+// decodeManifest exercises manifest constraints at the image import boundary.
+func decodeManifest(t *testing.T, value machinewire.CloudImageManifest) error {
+	t.Helper()
+	type unchecked machinewire.CloudImageManifest
+	data, err := contract.EncodeJSON(unchecked(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = machinewire.DecodeCloudImageManifest(data)
+	return err
 }

@@ -241,6 +241,7 @@ func TestMemoryPoolVersionsAndActive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requireEqual(t, len(listed), 2)
 	requireEqual(t, []string{listed[0].ID, listed[1].ID}, []string{"a", "b"})
 	doc := pool.Document("a")
 	first, err := doc.Read(t.Context())
@@ -268,8 +269,10 @@ func TestMemoryPoolVersionsAndActive(t *testing.T) {
 	if active, err := pool.Active(t.Context()); err != nil || active != nil {
 		t.Fatalf("%v %v", active, err)
 	}
-	if err := pool.SetActive(t.Context(), "zz"); err == nil {
-		t.Fatal("selected missing account")
+	err = pool.SetActive(t.Context(), "zz")
+	var missing *provider.PoolError
+	if !errors.As(err, &missing) || missing.ID != "zz" || missing.Err != nil {
+		t.Fatalf("missing account error: %v", err)
 	}
 	if err := pool.SetActive(t.Context(), "b"); err != nil {
 		t.Fatal(err)

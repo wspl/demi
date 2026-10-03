@@ -5,6 +5,7 @@ package machines_test
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -219,6 +220,13 @@ func TestNextStartRecoversKilledManagerNamespace(t *testing.T) {
 	if err != nil || !os.SameFile(pinned, own) {
 		t.Fatalf("pin: %v", err)
 	}
+	owner, err := os.ReadFile(host.runtimeFile("mount-namespace-owner.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(owner) != `{"dataDir":`+strconv.Quote(s.data)+`}` {
+		t.Fatalf("namespace owner: %s", owner)
+	}
 	first.stop(t, syscall.SIGKILL)
 	kept, err := os.Stat(host.runtimeFile("mount-namespace"))
 	if err != nil || !os.SameFile(kept, pinned) {
@@ -229,6 +237,10 @@ func TestNextStartRecoversKilledManagerNamespace(t *testing.T) {
 	replacement, err := os.Stat(host.runtimeFile("mount-namespace"))
 	if err != nil || os.SameFile(replacement, pinned) {
 		t.Fatal("recovery did not replace namespace")
+	}
+	secondOwn, err := os.Stat(fmt.Sprintf("/proc/%d/ns/mnt", second.pid))
+	if err != nil || !os.SameFile(replacement, secondOwn) {
+		t.Fatalf("replacement pin: %v", err)
 	}
 	second.stop(t, syscall.SIGKILL)
 	recovery := host.manager(t, s, "--recover")
@@ -251,6 +263,18 @@ func TestLimitsOnNamesMissingControllers(t *testing.T) {
 	<-p.done
 	if p.err == nil {
 		t.Fatal("started without controllers")
+	}
+
+	raw, err := s.notify.SyscallConn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var readErr error
+	if err := raw.Control(func(fd uintptr) { _, _, readErr = unix.Recvfrom(int(fd), make([]byte, 4096), unix.MSG_DONTWAIT) }); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(readErr, unix.EAGAIN) {
+		t.Fatalf("startup sent readiness before failing: %v", readErr)
 	}
 	text := p.output.String()
 	if !strings.Contains(text, "missing: cpu, memory, pids.") || !strings.Contains(text, "DEMI_MANAGED_LIMITS=off") {

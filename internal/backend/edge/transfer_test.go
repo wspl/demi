@@ -39,41 +39,6 @@ func testPipe(t *testing.T) (*remotehost.PipeWriter, *remotehost.PipeReader) {
 	})
 	return writer, reader
 }
-func TestDownloadEndsCompleteOnlyWhenHostReadDid(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		writer, reader := testPipe(t)
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			if err := writer.Write(t.Context(), []byte("one ")); err != nil {
-				t.Error(err)
-			}
-			if err := writer.Write(t.Context(), []byte("two")); err != nil {
-				t.Error(err)
-			}
-			writer.End()
-		}()
-		var result bytes.Buffer
-		if err := copyDownload(t.Context(), &result, reader); err != nil {
-			t.Fatal(err)
-		}
-		<-done
-		if result.String() != "one two" {
-			t.Fatal(result.String())
-		}
-		writer, reader = testPipe(t)
-		writer.Fail("read failed")
-		if err := copyDownload(t.Context(), io.Discard, reader); err == nil {
-			t.Fatal("failed Host read completed")
-		}
-		_, reader = testPipe(t)
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-		if err := copyDownload(ctx, io.Discard, reader); !errors.Is(err, context.Canceled) {
-			t.Fatal(err)
-		}
-	})
-}
 func TestConnectionInactivityFollowsLastByte(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		first, second := net.Pipe()
@@ -202,7 +167,7 @@ type testDownloadLease struct {
 func (l *testDownloadLease) Context() context.Context { return l.ctx }
 func (l *testDownloadLease) Release()                 { close(l.released) }
 
-func TestDownloadReleasesAdmissionOnCompletionFailureAndVisitorDeparture(t *testing.T) {
+func TestDownloadEndsCompleteOnlyWhenHostReadDid(t *testing.T) {
 	for _, scenario := range []string{"complete", "host_failed", "visitor_left", "revoked"} {
 		t.Run(scenario, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -223,8 +188,10 @@ func TestDownloadReleasesAdmissionOnCompletionFailureAndVisitorDeparture(t *test
 				go func() { done <- serveDownload(request, response, peer, reader, lease, 200) }()
 				switch scenario {
 				case "complete":
-					if err := writer.Write(t.Context(), []byte("one two")); err != nil {
-						t.Fatal(err)
+					for _, chunk := range []string{"one ", "two"} {
+						if err := writer.Write(t.Context(), []byte(chunk)); err != nil {
+							t.Fatal(err)
+						}
 					}
 					writer.End()
 				case "host_failed":
@@ -248,8 +215,14 @@ func TestDownloadReleasesAdmissionOnCompletionFailureAndVisitorDeparture(t *test
 					if err != nil || response.Body.String() != "one two" {
 						t.Fatal(err, response.Body.String())
 					}
-				} else if err == nil {
-					t.Fatal("interrupted transfer completed")
+				} else {
+					if err == nil {
+						t.Fatal("interrupted transfer completed")
+					}
+					closedAt := time.Now()
+					if _, err := second.Read(make([]byte, 1)); !errors.Is(err, io.EOF) || time.Now() != closedAt {
+						t.Fatalf("interrupted connection was not closed immediately: %v", err)
+					}
 				}
 			})
 		})

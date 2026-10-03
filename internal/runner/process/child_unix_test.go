@@ -61,7 +61,8 @@ func TestChildStreamsBinaryAndReaps(t *testing.T) {
 		t.Fatal("output did not arrive before input EOF")
 	}
 	child.Input <- Input{}
-	for range child.Output {
+	for chunk := range child.Output {
+		t.Fatalf("unexpected output after EOF: %+v", chunk)
 	}
 	exit := child.Wait(childContext(t))
 	requireSuccess(t, exit)

@@ -5,6 +5,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -81,6 +82,21 @@ func TestPageModulesAndRegistries(t *testing.T) {
 		}
 		if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"unrelated":true,"dependencies":{"@demicodes/plugin-skills":"workspace:^","@demicodes/utils":"workspace:^","@demicodes/plugin-browser":"workspace:^","@demicodes/plugin-file-browser":"workspace:^"}}`), 0600); err != nil {
 			t.Fatal(err)
+		}
+	}
+
+	for _, app := range []string{"web", "web-gallery"} {
+		selected, err := pagesOf(root, filepath.Join("packages", app), pages)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var pairs [][2]string
+		for _, page := range selected {
+			pairs = append(pairs, [2]string{page.ID, page.Package})
+		}
+		want := [][2]string{{"browser", "@demicodes/plugin-browser"}, {"skills", "@demicodes/plugin-skills"}, {"file-browser", "@demicodes/plugin-file-browser"}}
+		if !reflect.DeepEqual(pairs, want) {
+			t.Fatalf("%s pages: %v, want %v", app, pairs, want)
 		}
 	}
 	if err := writeRegistries(root, pages, false); err != nil {

@@ -2,7 +2,6 @@ package server_test
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"testing/synctest"
 
@@ -73,13 +72,14 @@ func TestUploadedImageTravelsByReferenceAndLoadsInline(t *testing.T) {
 		c.Send(t.Context(), send("m4", "and now?"))
 		untilIdle(t, c)
 		requests := f.script.Requests()
+		equal(t, 4, len(requests))
 		for i, r := range requests {
 			parts := r.Items[0].(*provider.UserMessage).Content
 			equal(t, 3, len(parts))
+			equal(t, provider.UserPart(&provider.TextPart{Text: "describe this"}), parts[0])
+			equal(t, provider.UserPart(&provider.TextPart{Text: core.AttachmentTag(blocks[1].(*core.UserAttachment).Attachment)}), parts[2])
 			if i < 2 {
-				if _, ok := parts[1].(*provider.ImagePart); !ok {
-					t.Fatal(parts)
-				}
+				equal(t, provider.UserPart(&provider.ImagePart{Medium: &provider.MediaBytes{Data: png, MediaType: "image/png"}}), parts[1])
 			} else {
 				equal(t, provider.UserPart(&provider.TextPart{Text: "[missing image]"}), parts[1])
 			}
@@ -112,7 +112,7 @@ func TestEditKeepsOnlyFilesHeldByItsMessage(t *testing.T) {
 		untilIdle(t, c)
 		target := userBlock(t, f, "m1")
 		version := f.server.Tree(rootID()).Root().Session().Transcript().Version
-		elsewhere, err := core.ParseBlobRef(strings.Repeat("b", 64))
+		elsewhere, err := blobs.Put(t.Context(), []byte("GIF89a"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,17 +121,18 @@ func TestEditKeepsOnlyFilesHeldByItsMessage(t *testing.T) {
 			r := edit(fmt.Sprintf("op%d", i), target, version, "")
 			r.Request.Content = []framewire.ClientContent{content}
 			c.Send(t.Context(), r)
-			if _, ok := editOutcome(t, c.Received()).(*framewire.RejectedEdit); !ok {
-				t.Fatal("foreign file accepted")
-			}
+			rejectedEdit(t, editOutcome(t, c.Received()), []string{"The edited message holds no attachment at /elsewhere/chart.png", fmt.Sprintf("The edited message holds no image %s", elsewhere), fmt.Sprintf("The edited message holds no video %s", refs[0])}[i])
+			synctest.Wait()
+			c.Received()
 		}
 		r := edit("op4", target, version, "look again")
 		r.Request.Content = append(r.Request.Content, &framewire.MediaContent{Media: &framewire.MediaImageRef{Ref: refs[0], MediaType: "image/png"}}, &framewire.MediaContent{Media: &framewire.MediaVideoRef{Ref: refs[1], MediaType: "video/mp4"}}, &framewire.MediaContent{Media: &framewire.MediaDocumentRef{Ref: refs[2], MediaType: "text/plain", FileName: "renamed.txt"}}, &framewire.AttachmentContent{Path: attachment.Path})
 		c.Send(t.Context(), r)
-		untilIdle(t, c)
+		if _, ok := editOutcome(t, untilIdle(t, c)).(*framewire.AcceptedEdit); !ok {
+			t.Fatal("held files refused")
+		}
 		equal(t, append(storetest.Text("look again"), blocks...), f.store.Checkpoint(rootID()).Transcript[0].(*core.UserBlock).Content)
 		parts := f.script.Requests()[1].Items[0].(*provider.UserMessage).Content
-		equal(t, 5, len(parts))
-		equal(t, "paper.pdf", parts[3].(*provider.DocumentPart).FileName)
+		equal(t, []provider.UserPart{&provider.TextPart{Text: "look again"}, &provider.ImagePart{Medium: &provider.MediaBytes{Data: []byte{0x89, 'P', 'N', 'G'}, MediaType: "image/png"}}, &provider.VideoPart{Medium: &provider.MediaBytes{Data: []byte("\x00\x00\x00\x18ftypmp42"), MediaType: "video/mp4"}}, &provider.DocumentPart{Bytes: provider.MediaBytes{Data: []byte("%PDF-1.7"), MediaType: "application/pdf"}, FileName: "paper.pdf"}, &provider.TextPart{Text: core.AttachmentTag(attachment.Attachment)}}, parts)
 	})
 }

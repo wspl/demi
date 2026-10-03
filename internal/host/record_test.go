@@ -30,7 +30,7 @@ func TestByteViewsAndRepeatedUnfinishedLines(t *testing.T) {
 		hint := "Working"
 		rest := r.Status(0, &hint)
 		want := []core.OutputChunk{{Stream: "stdout", Text: "héllo "}, {Stream: "stderr", Text: "warn\n"}, {Stream: "stdout", Text: "wörld\n"}}
-		if rest.Stdout.Delta != "éllo wörld\n" || rest.Stdout.Bytes != uint64(len("héllo wörld\n")) || rest.Stdout.Truncated || rest.Stdout.Tail != "héllo wörld\n" || rest.Stderr.Delta != "rn\n" || !reflect.DeepEqual(rest.Output.Chunks, want) || rest.State.Hint == nil || *rest.State.Hint != hint {
+		if rest.Stdout.Delta != "éllo wörld\n" || rest.Stdout.Bytes != uint64(len("héllo wörld\n")) || rest.Stdout.Truncated || rest.Stdout.Tail != "héllo wörld\n" || rest.Stderr.Delta != "rn\n" || !reflect.DeepEqual(rest.Output.Chunks, want) || rest.State.Phase != host.Running || rest.State.Hint == nil || *rest.State.Hint != hint {
 			t.Fatalf("rest %+v", rest)
 		}
 		empty := r.Status(0, nil)

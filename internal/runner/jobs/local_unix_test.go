@@ -29,6 +29,8 @@ func TestClientWaitsForBusyRunnerButNotGoneRunner(t *testing.T) {
 	if conn, err := process.Connect(ctx, endpoint); err == nil {
 		_ = conn.Close()
 		t.Fatal("connected to stopped runner")
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("stopped runner waited for the hang guard", err)
 	}
 	directory, err := os.MkdirTemp("", "demi-busy-")
 	if err != nil {
@@ -52,6 +54,8 @@ func TestClientWaitsForBusyRunnerButNotGoneRunner(t *testing.T) {
 	if conn, err := process.Connect(ctx, endpoint); err == nil {
 		_ = conn.Close()
 		t.Fatal("connected to crashed runner")
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("crashed runner waited for the hang guard", err)
 	}
 	if err = unix.Flock(int(alive.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		t.Fatal(err)
