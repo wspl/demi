@@ -38,8 +38,13 @@ type listedFS struct {
 }
 
 func (f *listedFS) ReadDir(context.Context, string) ([]host.DirEntry, error) {
-	return []host.DirEntry{{Name: "file", Kind: host.File}, {Name: "gone", Kind: host.File}, {Name: "link", Kind: host.Directory}}, nil
+	return []host.DirEntry{
+		{Name: "file", Kind: host.File},
+		{Name: "gone", Kind: host.File},
+		{Name: "link", Kind: host.Directory},
+	}, nil
 }
+
 func (f *listedFS) Lstat(_ context.Context, path string) (host.FileStat, error) {
 	f.calls = append(f.calls, path)
 	switch path {
@@ -51,9 +56,11 @@ func (f *listedFS) Lstat(_ context.Context, path string) (host.FileStat, error) 
 		return host.FileStat{Kind: host.Symlink, Size: 4}, nil
 	}
 }
+
 func (f *listedFS) Stat(context.Context, string) (host.FileStat, error) {
 	return host.FileStat{Size: f.size}, nil
 }
+
 func (f *listedFS) ReadFile(context.Context, string) ([]byte, error) {
 	f.calls = append(f.calls, "read")
 	return []byte("hello"), nil
@@ -61,14 +68,22 @@ func (f *listedFS) ReadFile(context.Context, string) ([]byte, error) {
 
 func TestHostFileListingAndEarlySizeRefusal(t *testing.T) {
 	fs := &listedFS{size: commandwire.EditFileBytes + 1}
-	if _, err := runners.ReadTextFile(t.Context(), fs, "/work/file"); !errors.Is(err, runners.TextTooLarge) || len(fs.calls) != 0 {
+	if _, err := runners.ReadTextFile(
+		t.Context(),
+		fs,
+		"/work/file",
+	); !errors.Is(err, runners.TextTooLarge) ||
+		len(fs.calls) != 0 {
 		t.Fatalf("oversized file was read: %v %v", err, fs.calls)
 	}
 	entries, err := runners.BrowseDirectory(t.Context(), fs, "/work///")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(fs.calls, []string{"/work/file", "/work/gone", "/work/link"}) || len(entries) != 2 || entries[0].Name != "file" || !entries[1].IsDirectory || !entries[1].IsSymbolicLink {
+	if !reflect.DeepEqual(fs.calls, []string{"/work/file", "/work/gone", "/work/link"}) || len(entries) != 2 ||
+		entries[0].Name != "file" ||
+		!entries[1].IsDirectory ||
+		!entries[1].IsSymbolicLink {
 		t.Fatalf("listing: %+v calls=%v", entries, fs.calls)
 	}
 	fs.size = 5

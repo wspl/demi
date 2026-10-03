@@ -30,20 +30,29 @@ import (
 func nativeFixture(t *testing.T, targets []string) (NativeRelease, commandwire.PackageDescriptor) {
 	t.Helper()
 	directory := t.TempDir()
-	descriptor := commandwire.PackageDescriptor{ID: "example.commands", Version: "1.0.0+build", ProtocolVersion: 1, Operations: []string{"fixture"}, Targets: make(map[string]commandwire.PackageArtifact)}
+	descriptor := commandwire.PackageDescriptor{
+		ID:              "example.commands",
+		Version:         "1.0.0+build",
+		ProtocolVersion: 1,
+		Operations:      []string{"fixture"},
+		Targets:         make(map[string]commandwire.PackageArtifact),
+	}
 	for _, target := range targets {
 		data := []byte("test-only artifact " + target)
 		suffix := ""
 		if strings.Contains(target, "windows") {
 			suffix = ".exe"
 		}
-		if err := os.MkdirAll(filepath.Join(directory, target), 0700); err != nil {
+		if err := os.MkdirAll(filepath.Join(directory, target), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(directory, target, "commands"+suffix), data, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(directory, target, "commands"+suffix), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		descriptor.Targets[target] = commandwire.PackageArtifact{SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Size: uint64(len(data))}
+		descriptor.Targets[target] = commandwire.PackageArtifact{
+			SHA256: fmt.Sprintf("%x", sha256.Sum256(data)),
+			Size:   uint64(len(data)),
+		}
 	}
 	writeDescriptor(t, directory, descriptor)
 	return NativeRelease{Directory: directory, Executable: "commands"}, descriptor
@@ -56,7 +65,7 @@ func writeDescriptor(t *testing.T, directory string, descriptor commandwire.Pack
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, "descriptor.json"), data, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "descriptor.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -124,7 +133,13 @@ func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 	client := artifacts.NewClientAllowingHTTP()
 	defer client.Close()
 	var downloaded bytes.Buffer
-	if err := artifacts.Download(t.Context(), client, fake.Endpoint+"/demi/"+key, artifacts.Digest{SHA256: artifact.SHA256, Size: artifact.Size}, &downloaded); err != nil {
+	if err := artifacts.Download(
+		t.Context(),
+		client,
+		fake.Endpoint+"/demi/"+key,
+		artifacts.Digest{SHA256: artifact.SHA256, Size: artifact.Size},
+		&downloaded,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(downloaded.Bytes(), plain) {
@@ -164,7 +179,7 @@ func TestInvalidReleasePublishesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("corrupt"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("corrupt"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err = publish(t.Context(), []NativeRelease{release}, "native", bucket)
@@ -181,13 +196,19 @@ func TestInvalidReleasePublishesNothing(t *testing.T) {
 		t.Fatal("partially verified release was uploaded")
 	}
 	partial, _ := nativeFixture(t, commandwire.Targets[:2])
-	if _, err := publish(t.Context(), []NativeRelease{partial}, "native", bucket); err == nil || !strings.Contains(err.Error(), "it lacks a target: "+commandwire.Targets[2]) {
+	if _, err := publish(
+		t.Context(),
+		[]NativeRelease{partial},
+		"native",
+		bucket,
+	); err == nil ||
+		!strings.Contains(err.Error(), "it lacks a target: "+commandwire.Targets[2]) {
 		t.Fatalf("partial published: %v", err)
 	}
 	if len(fake.Written()) != 0 {
 		t.Fatal("partial release uploaded")
 	}
-	if err := os.WriteFile(path, original, 0600); err != nil {
+	if err := os.WriteFile(path, original, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	key := "native/blobs/" + descriptor.Targets[commandwire.Targets[5]].SHA256
@@ -238,14 +259,20 @@ func TestPublishedDownloadLocation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if parsed.Scheme != "https" || !strings.HasSuffix(parsed.Path, "/native/blobs/"+artifact.SHA256) || parsed.Query().Get("X-Amz-Expires") != "300" {
+		if parsed.Scheme != "https" || !strings.HasSuffix(parsed.Path, "/native/blobs/"+artifact.SHA256) ||
+			parsed.Query().Get("X-Amz-Expires") != "300" {
 			t.Fatal(download.URL)
 		}
 		if download.ExpiresAt == nil || *download.ExpiresAt != asked.Add(300*time.Second).UnixMilli() {
 			t.Fatal("expiry differs from five minutes")
 		}
 		artifact.Size++
-		if _, err := signed.Resolve(t.Context(), artifact, ""); err == nil || !strings.Contains(err.Error(), "not in the published") {
+		if _, err := signed.Resolve(
+			t.Context(),
+			artifact,
+			"",
+		); err == nil ||
+			!strings.Contains(err.Error(), "not in the published") {
 			t.Fatalf("unpublished accepted: %v", err)
 		}
 	})
@@ -255,11 +282,14 @@ func TestNativeConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "native.json")
 	write := func(text string) {
 		t.Helper()
-		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write(`{"releases":[{"directory":"./demi-file","executable":"demi-file"}],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}`)
+	write(
+		`{"releases":[{"directory":"./demi-file","executable":"demi-file"}]` +
+			`,"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}`,
+	)
 	config, err := readNativeConfig(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -286,9 +316,12 @@ func TestNativeConfiguration(t *testing.T) {
 		`{"store":{"provider":"s3","bucket":"b","region":"r"}}`,
 		`{"releases":[{"directory":"d","executable":"a.exe"}],"store":{"provider":"s3","bucket":"b","region":"r"}}`,
 		`{"releases":[{"directory":"d","executable":"a"}],"store":{"provider":"gcs","bucket":"b","region":"r"}}`,
-		`{"prefix":"native/","releases":[{"directory":"d","executable":"a"}],"store":{"provider":"s3","bucket":"b","region":"r"}}`,
-		`{"prefix":"a//b","releases":[{"directory":"d","executable":"a"}],"store":{"provider":"s3","bucket":"b","region":"r"}}`,
-		`{"releases":[{"directory":"d","executable":"a"}],"store":{"provider":"s3","bucket":"b","region":"r","endpoint":"http://s3.test"}}`,
+		`{"prefix":"native/","releases":[{"directory":"d","executable":"a"}]` +
+			`,"store":{"provider":"s3","bucket":"b","region":"r"}}`,
+		`{"prefix":"a//b","releases":[{"directory":"d","executable":"a"}]` +
+			`,"store":{"provider":"s3","bucket":"b","region":"r"}}`,
+		`{"releases":[{"directory":"d","executable":"a"}]` +
+			`,"store":{"provider":"s3","bucket":"b","region":"r","endpoint":"http://s3.test"}}`,
 	} {
 		write(refused)
 		if _, err := readNativeConfig(t.Context(), path); err == nil {
@@ -302,7 +335,11 @@ func TestEmptyNativeCatalog(t *testing.T) {
 	t.Setenv("AWS_ACCESS_KEY_ID", "fixture")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "fixture")
 	path := filepath.Join(t.TempDir(), "native.json")
-	if err := os.WriteFile(path, []byte(`{"releases":[],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}`), 0600); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte(`{"releases":[],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}`),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err := PublishNative(t.Context(), path)
@@ -323,11 +360,18 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	release, descriptor := nativeFixture(t, commandwire.Targets[:1])
 	resource := []byte("resource archive bytes")
 	digest := fmt.Sprintf("%x", sha256.Sum256(resource))
-	descriptor.Resources = map[string]commandwire.PackageResource{"bundle": {Title: "Bundle", Targets: map[string]commandwire.ResourceArtifact{commandwire.Targets[0]: {SHA256: digest, Size: uint64(len(resource)), Entry: "file"}}}}
-	if err := os.Mkdir(filepath.Join(release.Directory, "resources"), 0700); err != nil {
+	descriptor.Resources = map[string]commandwire.PackageResource{
+		"bundle": {
+			Title: "Bundle",
+			Targets: map[string]commandwire.ResourceArtifact{
+				commandwire.Targets[0]: {SHA256: digest, Size: uint64(len(resource)), Entry: "file"},
+			},
+		},
+	}
+	if err := os.Mkdir(filepath.Join(release.Directory, "resources"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(release.Directory, "resources", digest), resource, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(release.Directory, "resources", digest), resource, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	writeDescriptor(t, release.Directory, descriptor)
@@ -337,7 +381,7 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "native.json")
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err := PublishNative(t.Context(), path)
@@ -378,7 +422,13 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	resolver := catalog.Resolver(&address)
 	client := artifacts.NewClientAllowingHTTP()
 	defer client.Close()
-	for _, artifact := range []commandwire.PackageArtifact{descriptor.Targets[commandwire.Targets[0]], {SHA256: digest, Size: uint64(len(resource))}} {
+	for _, artifact := range []commandwire.PackageArtifact{
+		descriptor.Targets[commandwire.Targets[0]],
+		{
+			SHA256: digest,
+			Size:   uint64(len(resource)),
+		},
+	} {
 		location, err := resolver.Resolve(t.Context(), artifact, commandwire.Targets[0])
 		if err != nil {
 			t.Fatal(err)
@@ -391,12 +441,26 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 			t.Fatal("wrong local location", download)
 		}
 		var output bytes.Buffer
-		if err := artifacts.Download(t.Context(), client, download.URL, artifacts.Digest{SHA256: artifact.SHA256, Size: artifact.Size}, &output); err != nil {
+		if err := artifacts.Download(
+			t.Context(),
+			client,
+			download.URL,
+			artifacts.Digest{SHA256: artifact.SHA256, Size: artifact.Size},
+			&output,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// Concurrent first requests share one immutable encoding and leave no worker.
-	fresh := NewLocalArtifacts([]ArtifactFile{{Path: filepath.Join(release.Directory, commandwire.Targets[0], "commands"), Artifact: descriptor.Targets[commandwire.Targets[0]]}}, nil)
+	fresh := NewLocalArtifacts(
+		[]ArtifactFile{
+			{
+				Path:     filepath.Join(release.Directory, commandwire.Targets[0], "commands"),
+				Artifact: descriptor.Targets[commandwire.Targets[0]],
+			},
+		},
+		nil,
+	)
 	var workers sync.WaitGroup
 	for range 8 {
 		workers.Go(func() {

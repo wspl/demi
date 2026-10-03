@@ -22,7 +22,14 @@ func TestInstallerBackendURL(t *testing.T) {
 			t.Fatalf("usable %s: %v", text, err)
 		}
 	}
-	for _, text := range []string{"ftp://demi.example.com/", "https://user@demi.example.com/", "https://user:secret@demi.example.com/", "https://demi.example.com/?token=1", "https://demi.example.com/#fragment", "https://demi.example.com/?"} {
+	for _, text := range []string{
+		"ftp://demi.example.com/",
+		"https://user@demi.example.com/",
+		"https://user:secret@demi.example.com/",
+		"https://demi.example.com/?token=1",
+		"https://demi.example.com/#fragment",
+		"https://demi.example.com/?",
+	} {
 		value, err := url.Parse(text)
 		if err != nil {
 			t.Fatal(err)
@@ -42,17 +49,26 @@ func TestInstallersNameReleaseAndBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	release := runnerwire.RunnerRelease{Release: strings.Repeat("a", 64), Targets: map[string]commandwire.PackageArtifact{
-		"aarch64-apple-darwin":   {SHA256: strings.Repeat("b", 64), Size: 42},
-		"x86_64-pc-windows-msvc": {SHA256: strings.Repeat("c", 64), Size: 43},
-	}}
+	release := runnerwire.RunnerRelease{
+		Release: strings.Repeat("a", 64),
+		Targets: map[string]commandwire.PackageArtifact{
+			"aarch64-apple-darwin":   {SHA256: strings.Repeat("b", 64), Size: 42},
+			"x86_64-pc-windows-msvc": {SHA256: strings.Repeat("c", 64), Size: 43},
+		},
+	}
 	for _, script := range []string{runners.ShellScript(backend, release), runners.PowerShellScript(backend, release)} {
-		for _, part := range []string{backend.String(), release.Release, fmt.Sprintf("%x", sha256.Sum256([]byte(backend.String()))), strings.Repeat("c", 64)} {
+		for _, part := range []string{
+			backend.String(),
+			release.Release,
+			fmt.Sprintf("%x", sha256.Sum256([]byte(backend.String()))),
+			strings.Repeat("c", 64),
+		} {
 			if !strings.Contains(script, part) {
 				t.Fatalf("script lacks %s", part)
 			}
 		}
-		if strings.Contains(script, "@BACKEND@") || strings.Contains(script, "@CASES@") || strings.Contains(script, "@ARTIFACTS@") {
+		if strings.Contains(script, "@BACKEND@") || strings.Contains(script, "@CASES@") ||
+			strings.Contains(script, "@ARTIFACTS@") {
 			t.Fatal("template not rendered")
 		}
 	}

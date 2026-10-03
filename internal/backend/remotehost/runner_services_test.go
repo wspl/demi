@@ -29,10 +29,22 @@ func nativeFixture(t *testing.T) *remotehosttest.NativeFixture {
 }
 
 // serviceRequest names a user invocation with no environment inherited from a shell.
-func serviceRequest(f *remotehosttest.RunnerFixture, n *remotehosttest.NativeFixture, operation string, args json.RawMessage) remotehost.ServiceRequest {
+func serviceRequest(
+	f *remotehosttest.RunnerFixture,
+	n *remotehosttest.NativeFixture,
+	operation string,
+	args json.RawMessage,
+) remotehost.ServiceRequest {
 	context := hosttest.CommandContext()
 	context.Caller = &commandwire.UserCaller{}
-	request := remotehost.ServiceRequest{Context: context, Package: n.Descriptor, Operation: operation, Args: args, CWD: f.Home(), Resolver: n.Resolver()}
+	request := remotehost.ServiceRequest{
+		Context:   context,
+		Package:   n.Descriptor,
+		Operation: operation,
+		Args:      args,
+		CWD:       f.Home(),
+		Resolver:  n.Resolver(),
+	}
 	if args != nil {
 		request.JSON = new(true)
 	}
@@ -40,7 +52,11 @@ func serviceRequest(f *remotehosttest.RunnerFixture, n *remotehosttest.NativeFix
 }
 
 // openService gives the page ownership of both pipe ends and the service lifetime.
-func openService(t *testing.T, f *remotehosttest.RunnerFixture, request remotehost.ServiceRequest) (*remotehost.Pipe, *remotehost.Pipe, *remotehost.ServiceStream, error) {
+func openService(
+	t *testing.T,
+	f *remotehosttest.RunnerFixture,
+	request remotehost.ServiceRequest,
+) (*remotehost.Pipe, *remotehost.Pipe, *remotehost.ServiceStream, error) {
 	t.Helper()
 	input := f.Pipes().ToDevice(remotehosttest.TestDeviceID)
 	output := f.Pipes().FromDevice(remotehosttest.TestDeviceID)
@@ -71,7 +87,8 @@ func TestRunnerServiceStreamCarriesBytesAndEndsWithInvocation(t *testing.T) {
 	report, err := fixture.DecodeWhereReport(answer)
 	requirePipe(t, err)
 	expected := serviceRequest(f, native, "where", nil).Context
-	if report.Label != nil || report.Value != nil || report.CWD != f.Home() || !reflect.DeepEqual(report.Context, expected) {
+	if report.Label != nil || report.Value != nil || report.CWD != f.Home() ||
+		!reflect.DeepEqual(report.Context, expected) {
 		t.Fatal(report)
 	}
 	end, err := stream.Done(t.Context())
@@ -160,7 +177,9 @@ func TestRunnerOneShotCompletionAndLoggedStreamWords(t *testing.T) {
 	}
 	_, err = call("result", nil)
 	var failure *remotehost.ServiceCallError
-	if !errors.As(err, &failure) || failure.Kind != remotehost.ServiceExited || failure.ExitCode != 17 || failure.Stderr != "command diagnostic" || string(failure.Stdout) != "command output" {
+	if !errors.As(err, &failure) || failure.Kind != remotehost.ServiceExited || failure.ExitCode != 17 ||
+		failure.Stderr != "command diagnostic" ||
+		string(failure.Stdout) != "command output" {
 		t.Fatal(err)
 	}
 	_, err = call("retain", nil)
@@ -171,12 +190,37 @@ func TestRunnerOneShotCompletionAndLoggedStreamWords(t *testing.T) {
 		t.Fatal("missing operation admitted")
 	}
 	page := logMatching(t, h, new(uint64(0)), nil, func(page remotehost.LogPage) bool {
-		return logCount(page, "stream:result ended") > 0 && logCount(page, "stream:missing refused (unknown_operation): demicodes.runner-test has no operation missing") > 0
+		return logCount(page, "stream:result ended") > 0 &&
+			logCount(
+				page,
+				"stream:missing refused (unknown_operation): demicodes.runner-test has no operation missing",
+			) > 0
 	})
-	for _, want := range []struct{ source, text string }{{"stream:result", "command diagnostic"}, {"runner", "stream:result opened"}, {"runner", "stream:result ended"}, {"runner", "stream:missing refused (unknown_operation): demicodes.runner-test has no operation missing"}} {
+	for _, want := range []struct {
+		source, text string
+	}{
+		{
+			"stream:result",
+			"command diagnostic",
+		},
+		{
+			"runner",
+			"stream:result opened",
+		},
+		{
+			"runner",
+			"stream:result ended",
+		},
+		{
+			"runner",
+			"stream:missing refused (unknown_operation): demicodes.runner-test has no operation missing",
+		},
+	} {
 		found := false
 		for _, line := range page.Lines {
-			if line.Source == want.source && line.ConversationID != nil && *line.ConversationID == report.Context.Conversation && line.Text == want.text {
+			if line.Source == want.source && line.ConversationID != nil &&
+				*line.ConversationID == report.Context.Conversation &&
+				line.Text == want.text {
 				found = true
 			}
 		}
@@ -186,7 +230,8 @@ func TestRunnerOneShotCompletionAndLoggedStreamWords(t *testing.T) {
 	}
 	started := false
 	for _, line := range page.Lines {
-		if line.Source == "runner" && strings.HasPrefix(line.Text, "service demicodes.runner-test started (pid ") && strings.HasSuffix(line.Text, ")") {
+		if line.Source == "runner" && strings.HasPrefix(line.Text, "service demicodes.runner-test started (pid ") &&
+			strings.HasSuffix(line.Text, ")") {
 			pid := strings.TrimSuffix(strings.TrimPrefix(line.Text, "service demicodes.runner-test started (pid "), ")")
 			_, err := strconv.ParseUint(pid, 10, 32)
 			started = started || err == nil
@@ -205,7 +250,7 @@ func TestRunnerUserCallsReuseLastBoundServiceRelease(t *testing.T) {
 	executable, err := os.ReadFile(binary)
 	requirePipe(t, err)
 	path := filepath.Join(t.TempDir(), "fixture")
-	requirePipe(t, os.WriteFile(path, append(executable, 0), 0700))
+	requirePipe(t, os.WriteFile(path, append(executable, 0), 0o700))
 	second, err := remotehosttest.NewNativeFixture(t.Context(), first.Descriptor.ID, path, first.Descriptor.Operations)
 	requirePipe(t, err)
 	call := func(native *remotehosttest.NativeFixture) {

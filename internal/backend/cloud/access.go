@@ -61,7 +61,13 @@ func Access(ctx context.Context, shard CloudShard) (*MachineAccess, error) {
 	home, ok := shard.Devices().Home(device.ID)
 	if !ok {
 		admission.Release()
-		return nil, failed(errors.New("The Cloud did not report its home directory")) //nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		return nil, failed(errors.New("The Cloud did not report its home directory"))
 	}
-	return &MachineAccess{Device: device, Host: shard.Devices().MachineHost(device.ID, home, admission.PerOperation), Home: home, admission: admission}, nil
+	return &MachineAccess{
+		Device:    device,
+		Host:      shard.Devices().MachineHost(device.ID, home, admission.PerOperation),
+		Home:      home,
+		admission: admission,
+	}, nil
 }

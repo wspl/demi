@@ -19,7 +19,12 @@ type Connection struct {
 // Serve starts serving without a socket. It owns the driver in serving; incoming
 // and outgoing must unblock on cancellation and their resources stay with the
 // caller. Cleanup cancels and joins the driver, including on a failed test.
-func Serve(t testing.TB, serving *runners.Serving, incoming remotehost.FrameSource, outgoing remotehost.FrameSink) *Connection {
+func Serve(
+	t testing.TB,
+	serving *runners.Serving,
+	incoming remotehost.FrameSource,
+	outgoing remotehost.FrameSink,
+) *Connection {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	c := &Connection{cancel: cancel, done: make(chan struct{})}

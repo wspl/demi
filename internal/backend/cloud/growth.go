@@ -12,7 +12,13 @@ import (
 
 // GrowVolume grows volume of the Cloud device to bytes, which must be positive
 // and at most its quota. Only the shard owner's managed device can grow.
-func GrowVolume(ctx context.Context, shard CloudShard, device webapi.DeviceID, volume runnerwire.VolumeName, bytes uint64) error {
+func GrowVolume(
+	ctx context.Context,
+	shard CloudShard,
+	device webapi.DeviceID,
+	volume runnerwire.VolumeName,
+	bytes uint64,
+) error {
 	tuning := shard.CloudServices().Tuning
 	quota := tuning.SystemQuota
 	if volume == runnerwire.VolumeNameHome {
@@ -26,8 +32,13 @@ func GrowVolume(ctx context.Context, shard CloudShard, device webapi.DeviceID, v
 		return err
 	}
 	if record == nil || record.Kind != webapi.DeviceKindManaged || record.User != shard.User() {
-		return errors.New("Only the Cloud grows its volumes") //nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		return errors.New("Only the Cloud grows its volumes")
 	}
-	_, err = Call(ctx, shard.CloudServices().Machines, machinewire.GrowVolumeParams{DeviceID: string(device), Volume: machinewire.Volume(volume), Bytes: bytes})
+	_, err = Call(
+		ctx,
+		shard.CloudServices().Machines,
+		machinewire.GrowVolumeParams{DeviceID: string(device), Volume: machinewire.Volume(volume), Bytes: bytes},
+	)
 	return err
 }

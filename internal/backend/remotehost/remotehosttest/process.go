@@ -33,9 +33,13 @@ func NativeFixtureBinary(ctx context.Context) (string, error) {
 
 // RunnerProcessOptions controls the runner's device name, environment and registration.
 type RunnerProcessOptions struct {
-	Name    string
-	Env     host.SpawnEnv
-	Token   *string
+	// Name is the runner device name.
+	Name string
+	// Env specifies the runner process environment.
+	Env host.SpawnEnv
+	// Token is the existing device token, if supplied.
+	Token *string
+	// Managed selects managed runner startup.
 	Managed bool
 }
 
@@ -52,14 +56,20 @@ type RunnerProcess struct {
 	command                                 *exec.Cmd
 	done                                    chan struct{}
 	waitErr                                 error
-	mu                                      sync.Mutex // Protects captured output, partial lines and pairing-code notifications.
-	output                                  strings.Builder
-	codes                                   []string
-	changed                                 chan struct{}
+	// Protects captured output, partial lines and pairing-code notifications.
+	mu      sync.Mutex
+	output  strings.Builder
+	codes   []string
+	changed chan struct{}
 }
 
 // StartRunnerProcess starts a runner for backend and registers cleanup with t.
-func StartRunnerProcess(ctx context.Context, t testing.TB, backend string, options RunnerProcessOptions) (*RunnerProcess, error) {
+func StartRunnerProcess(
+	ctx context.Context,
+	t testing.TB,
+	backend string,
+	options RunnerProcessOptions,
+) (*RunnerProcess, error) {
 	t.Helper()
 	directory, err := runnerTempDir(t)
 	if err != nil {
@@ -82,7 +92,11 @@ func StartRunnerProcess(ctx context.Context, t testing.TB, backend string, optio
 // process and output readers, before removing that directory. Stop leaves the
 // directories available for restart. Use a short directory path on Unix to leave
 // room for the runner's local command socket. A failed start leaves no process.
-func StartOwnedRunnerProcess(ctx context.Context, directory, backend string, options RunnerProcessOptions) (*RunnerProcess, error) {
+func StartOwnedRunnerProcess(
+	ctx context.Context,
+	directory, backend string,
+	options RunnerProcessOptions,
+) (*RunnerProcess, error) {
 	directory, err := filepath.Abs(directory)
 	if err != nil {
 		return nil, err
@@ -92,7 +106,7 @@ func StartOwnedRunnerProcess(ctx context.Context, directory, backend string, opt
 		return nil, err
 	}
 	for _, name := range []string{"home", "state", "tmp"} {
-		if err := os.MkdirAll(filepath.Join(directory, name), 0700); err != nil {
+		if err := os.MkdirAll(filepath.Join(directory, name), 0o700); err != nil {
 			return nil, err
 		}
 	}
@@ -100,7 +114,15 @@ func StartOwnedRunnerProcess(ctx context.Context, directory, backend string, opt
 	if err != nil {
 		return nil, err
 	}
-	p := &RunnerProcess{binary: binary, home: home, state: filepath.Join(directory, "state"), temporary: filepath.Join(directory, "tmp"), backend: backend, options: options, changed: make(chan struct{})}
+	p := &RunnerProcess{
+		binary:    binary,
+		home:      home,
+		state:     filepath.Join(directory, "state"),
+		temporary: filepath.Join(directory, "tmp"),
+		backend:   backend,
+		options:   options,
+		changed:   make(chan struct{}),
+	}
 	if options.Token != nil {
 		if err := p.writeToken(*options.Token); err != nil {
 			return nil, err
@@ -299,6 +321,7 @@ type runnerLog struct {
 	partial string
 }
 
+// Write captures runner output and publishes complete pairing codes.
 func (w *runnerLog) Write(data []byte) (int, error) {
 	w.partial += string(data)
 	for {
@@ -337,7 +360,7 @@ func (p *RunnerProcess) captureLine(line string) {
 
 // writeToken publishes the fixture's private device credential.
 func (p *RunnerProcess) writeToken(token string) error {
-	return os.WriteFile(filepath.Join(p.state, "runner-token"), []byte(token+"\n"), 0600)
+	return os.WriteFile(filepath.Join(p.state, "runner-token"), []byte(token+"\n"), 0o600)
 }
 
 // stop owns termination and reaping, even if its caller has canceled.

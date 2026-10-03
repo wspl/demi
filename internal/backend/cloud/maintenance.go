@@ -94,7 +94,11 @@ func maintenanceRound(ctx context.Context, s CloudShard, m *machine) {
 			link.PauseLiveness()
 			defer link.ResumeLiveness()
 		}
-		_, err := Call(context.WithoutCancel(ctx), s.CloudServices().Machines, machinewire.CheckpointParams{DeviceID: string(m.device.ID)})
+		_, err := Call(
+			context.WithoutCancel(ctx),
+			s.CloudServices().Machines,
+			machinewire.CheckpointParams{DeviceID: string(m.device.ID)},
+		)
 		if err != nil {
 			slog.Warn("the Cloud's checkpoint failed", "device", m.device.ID, "error", err)
 			return
@@ -138,38 +142,7 @@ func stopAtCap(ctx context.Context, s CloudShard, m *machine) {
 			c.mu.Unlock()
 			close(retirement.done)
 		}()
-		reserved := m.gate.TryReserve()
-		if reserved == nil {
-			s.Devices().Disconnect(m.device.ID, "Cloud reached its lifetime cap")
-			wait, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.CloudServices().Tuning.ResetHold)
-			var err error
-			reserved, err = m.gate.Reserve(wait)
-			cancel()
-			if err != nil {
-				slog.Warn("the Cloud's jobs did not end at its lifetime cap", "device", m.device.ID)
-				return
-			}
-		}
-		defer reserved.Release()
-		// The read and reservation can race conversation work; re-read and check
-		// attendance before committing retirement under held conversation gates.
-		uses, err := cloudUses(context.WithoutCancel(ctx), s)
-		if err != nil {
-			return
-		}
-		for _, use := range uses {
-			if s.Attended(use.id) {
-				return
-			}
-		}
-		held, ok := holdIdle(s, uses)
-		if !ok {
-			return
-		}
-		defer releaseHolds(held)
-		if err := hibernate(context.WithoutCancel(ctx), s, m); err != nil {
-			slog.Warn("the Cloud was not saved at its lifetime cap", "error", err)
-		}
+		retireAtCap(ctx, s, m)
 	}()
 }
 
@@ -183,7 +156,8 @@ func (p *cloudIdle) Check(ctx context.Context) (idlewatch.Activity, error) {
 	activity := idlewatch.Of(p.m.gate.State())
 	c := p.s.Cloud()
 	c.mu.Lock()
-	activity.Busy = activity.Busy || p.m.phase != webapi.CloudStateRunning || p.m.transition != nil || p.m.retirement != nil
+	activity.Busy = activity.Busy || p.m.phase != webapi.CloudStateRunning || p.m.transition != nil ||
+		p.m.retirement != nil
 	c.mu.Unlock()
 	if link := p.s.Devices().Link(p.m.device.ID); link != nil {
 		activity.Busy = activity.Busy || link.RunningJobs() > 0
@@ -236,4 +210,40 @@ func (r *idleRetirement) Retire(ctx context.Context) error {
 func (r *idleRetirement) Release() {
 	releaseHolds(r.held)
 	r.reserved.Release()
+}
+
+// retireAtCap drains jobs and rechecks attendance under conversation holds.
+func retireAtCap(ctx context.Context, s CloudShard, m *machine) {
+	reserved := m.gate.TryReserve()
+	if reserved == nil {
+		s.Devices().Disconnect(m.device.ID, "Cloud reached its lifetime cap")
+		wait, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.CloudServices().Tuning.ResetHold)
+		var err error
+		reserved, err = m.gate.Reserve(wait)
+		cancel()
+		if err != nil {
+			slog.Warn("the Cloud's jobs did not end at its lifetime cap", "device", m.device.ID)
+			return
+		}
+	}
+	defer reserved.Release()
+	// The read and reservation can race conversation work; re-read and check
+	// attendance before committing retirement under held conversation gates.
+	uses, err := cloudUses(context.WithoutCancel(ctx), s)
+	if err != nil {
+		return
+	}
+	for _, use := range uses {
+		if s.Attended(use.id) {
+			return
+		}
+	}
+	held, ok := holdIdle(s, uses)
+	if !ok {
+		return
+	}
+	defer releaseHolds(held)
+	if err := hibernate(context.WithoutCancel(ctx), s, m); err != nil {
+		slog.Warn("the Cloud was not saved at its lifetime cap", "error", err)
+	}
 }

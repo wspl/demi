@@ -20,7 +20,13 @@ import (
 
 // logMatching reads across the log writer's publication until the scenario's event appears.
 // Every retry waits for a runner reply; the timeout is only a hang guard.
-func logMatching(t *testing.T, h *remotehost.Host, after *uint64, source *string, match func(remotehost.LogPage) bool) remotehost.LogPage {
+func logMatching(
+	t *testing.T,
+	h *remotehost.Host,
+	after *uint64,
+	source *string,
+	match func(remotehost.LogPage) bool,
+) remotehost.LogPage {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
@@ -32,6 +38,7 @@ func logMatching(t *testing.T, h *remotehost.Host, after *uint64, source *string
 		}
 	}
 }
+
 func logCount(page remotehost.LogPage, text string) int {
 	count := 0
 	for _, line := range page.Lines {
@@ -45,7 +52,13 @@ func logCount(page remotehost.LogPage, text string) int {
 func TestRunnerLogNewestLinesThenLaterLines(t *testing.T) {
 	f := runnerFixture(t, remotehosttest.FixtureOptions{})
 	h := f.Host()
-	page := logMatching(t, h, nil, new("runner"), func(page remotehost.LogPage) bool { return logCount(page, "online") > 0 })
+	page := logMatching(
+		t,
+		h,
+		nil,
+		new("runner"),
+		func(page remotehost.LogPage) bool { return logCount(page, "online") > 0 },
+	)
 	started := false
 	for _, line := range page.Lines {
 		if line.Source != "runner" {
@@ -84,7 +97,13 @@ func TestRunnerWorkingTreeChangesAndLastCommit(t *testing.T) {
 		t.Helper()
 		command := exec.CommandContext(t.Context(), "git", args...)
 		command.Dir = home
-		command.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@example.com", "GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@example.com")
+		command.Env = append(
+			os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@example.com",
+		)
 		output, err := command.CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %v: %v: %s", args, err, output)
@@ -96,11 +115,11 @@ func TestRunnerWorkingTreeChangesAndLastCommit(t *testing.T) {
 		t.Fatal(outside)
 	}
 	git("init", "-q", "-b", "main")
-	requirePipe(t, os.WriteFile(filepath.Join(home, "a.txt"), []byte("1\n2\n"), 0600))
+	requirePipe(t, os.WriteFile(filepath.Join(home, "a.txt"), []byte("1\n2\n"), 0o600))
 	git("add", ".")
 	git("commit", "-q", "-m", "first")
-	requirePipe(t, os.WriteFile(filepath.Join(home, "a.txt"), []byte("1\n2\n3\n"), 0600))
-	requirePipe(t, os.WriteFile(filepath.Join(home, "b.txt"), []byte("new\n"), 0600))
+	requirePipe(t, os.WriteFile(filepath.Join(home, "a.txt"), []byte("1\n2\n3\n"), 0o600))
+	requirePipe(t, os.WriteFile(filepath.Join(home, "b.txt"), []byte("new\n"), 0o600))
 	changes, err := h.GitChanges(t.Context(), home)
 	requirePipe(t, err)
 	if !changes.Repository || changes.Head == nil || len(*changes.Head) != 40 {
@@ -111,7 +130,10 @@ func TestRunnerWorkingTreeChangesAndLastCommit(t *testing.T) {
 			t.Fatal(*changes.Head)
 		}
 	}
-	want := []runnerwire.GitChange{{Path: "a.txt", Status: " M", Kind: runnerwire.ChangeKindModified, Added: 1}, {Path: "b.txt", Status: "??", Kind: runnerwire.ChangeKindAdded, Added: 1}}
+	want := []runnerwire.GitChange{
+		{Path: "a.txt", Status: " M", Kind: runnerwire.ChangeKindModified, Added: 1},
+		{Path: "b.txt", Status: "??", Kind: runnerwire.ChangeKindAdded, Added: 1},
+	}
 	if !reflect.DeepEqual(changes.Files, want) {
 		t.Fatal(changes.Files)
 	}
@@ -222,7 +244,13 @@ func TestRunnerNetworkSocketThroughTwoPipes(t *testing.T) {
 	requirePipe(t, err)
 	port := uint16(vacant.Addr().(*net.TCPAddr).Port)
 	requirePipe(t, vacant.Close())
-	err = h.OpenNet(t.Context(), "127.0.0.1", port, f.Pipes().ToDevice(remotehosttest.TestDeviceID).WireRef(), f.Pipes().FromDevice(remotehosttest.TestDeviceID).WireRef())
+	err = h.OpenNet(
+		t.Context(),
+		"127.0.0.1",
+		port,
+		f.Pipes().ToDevice(remotehosttest.TestDeviceID).WireRef(),
+		f.Pipes().FromDevice(remotehosttest.TestDeviceID).WireRef(),
+	)
 	requireHostCode(t, err, "refused")
 	resetPort, _, resetDone := socketPeer(t, func(conn *net.TCPConn) error {
 		var first [1]byte

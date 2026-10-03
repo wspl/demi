@@ -95,8 +95,18 @@ func (d *Devices) Home(device webapi.DeviceID) (string, bool) {
 // ConversationHost makes the conversation's Host for the operation holding files.
 // Only host access calls it, and the handle must not outlive the lease. Its key
 // names the lease's conversation, device and cwd; offline handles follow reconnects.
-func (d *Devices) ConversationHost(device webapi.DeviceID, files *FileLease, cwd string, admission remotehost.Admission) *remotehost.Host {
-	return d.host(device, host.Key("conversation "+string(files.Conversation())+" "+string(device)+" "+cwd), cwd, admission)
+func (d *Devices) ConversationHost(
+	device webapi.DeviceID,
+	files *FileLease,
+	cwd string,
+	admission remotehost.Admission,
+) *remotehost.Host {
+	return d.host(
+		device,
+		host.Key("conversation "+string(files.Conversation())+" "+string(device)+" "+cwd),
+		cwd,
+		admission,
+	)
 }
 
 // MachineHost makes the Cloud's Host starting in home, whose operations take the
@@ -118,7 +128,12 @@ func (d *Devices) DeviceAccess(device webapi.DeviceID) *remotehost.Host {
 // Bind publishes the new connection immediately; sends queue until Serve starts.
 // The caller first waits for Settled and refuses a duplicate live connection.
 // It transfers driver to the returned Serving and must run Serve or Close.
-func (d *Devices) Bind(device webapi.DeviceID, link *remotehost.Link, driver *remotehost.LinkDriver, seen *LastSeen) *Serving {
+func (d *Devices) Bind(
+	device webapi.DeviceID,
+	link *remotehost.Link,
+	driver *remotehost.LinkDriver,
+	seen *LastSeen,
+) *Serving {
 	slot := d.slot(device, true)
 	slot.publish(remotehost.DeviceLink{Link: link})
 	slog.Info("runner connected", "device", device)
@@ -135,11 +150,25 @@ func (d *Devices) DTO(device database.DeviceRecord) webapi.DeviceDTO {
 	if link := d.Link(device.ID); link != nil {
 		installs = link.Installs()
 	}
-	return webapi.DeviceDTO{ID: device.ID, Kind: device.Kind, Name: device.Name, Platform: device.Platform, ClaimedAt: device.ClaimedAt, LastSeenAt: device.LastSeenAt, Online: d.Online(device.ID), Home: home, Installs: installs}
+	return webapi.DeviceDTO{
+		ID:         device.ID,
+		Kind:       device.Kind,
+		Name:       device.Name,
+		Platform:   device.Platform,
+		ClaimedAt:  device.ClaimedAt,
+		LastSeenAt: device.LastSeenAt,
+		Online:     d.Online(device.ID),
+		Home:       home,
+		Installs:   installs,
+	}
 }
 
 // DeviceList returns user's paired devices oldest first, then its Cloud if created.
-func (d *Devices) DeviceList(ctx context.Context, control *database.ControlService, user webapi.UserID) ([]webapi.DeviceDTO, error) {
+func (d *Devices) DeviceList(
+	ctx context.Context,
+	control *database.ControlService,
+	user webapi.UserID,
+) ([]webapi.DeviceDTO, error) {
 	devices, err := control.PairedDevices(ctx, user)
 	if err != nil {
 		return nil, err
@@ -221,7 +250,11 @@ func (s *Serving) Close(ctx context.Context) {
 // TestingServe is the bridge for runnerstest's socket-free connection fixture.
 // It serves with the same slot and last-seen cleanup as Serve. Source and sink
 // must unblock on cancellation; their resources remain the caller's.
-func (s *Serving) TestingServe(ctx context.Context, incoming remotehost.FrameSource, outgoing remotehost.FrameSink) remotehost.LinkEnd {
+func (s *Serving) TestingServe(
+	ctx context.Context,
+	incoming remotehost.FrameSource,
+	outgoing remotehost.FrameSink,
+) remotehost.LinkEnd {
 	defer s.finished(context.WithoutCancel(ctx))
 	return s.run(ctx, incoming, outgoing)
 }
@@ -291,7 +324,12 @@ func (s *deviceSlot) publish(current remotehost.DeviceLink) {
 }
 
 // host follows the device's connection slot without taking conversation admission.
-func (d *Devices) host(device webapi.DeviceID, key host.Key, cwd string, admission remotehost.Admission) *remotehost.Host {
+func (d *Devices) host(
+	device webapi.DeviceID,
+	key host.Key,
+	cwd string,
+	admission remotehost.Admission,
+) *remotehost.Host {
 	slot := d.slot(device, true)
 	return remotehost.NewHost(key, cwd, func() remotehost.DeviceLink {
 		current, _ := slot.snapshot()
@@ -317,7 +355,11 @@ func (s *Serving) finished(ctx context.Context) {
 }
 
 // run owns install notifications for exactly the lifetime of the runner driver.
-func (s *Serving) run(ctx context.Context, incoming remotehost.FrameSource, outgoing remotehost.FrameSink) remotehost.LinkEnd {
+func (s *Serving) run(
+	ctx context.Context,
+	incoming remotehost.FrameSource,
+	outgoing remotehost.FrameSink,
+) remotehost.LinkEnd {
 	watchCtx, cancel := context.WithCancel(ctx)
 	_, changed := s.link.WatchInstalls()
 	done := make(chan struct{})
@@ -347,5 +389,8 @@ func (s *Serving) run(ctx context.Context, incoming remotehost.FrameSource, outg
 // stoppedFrames ends an adopted runner that never acquired its socket.
 type stoppedFrames struct{}
 
+// Receive reports EOF for a connection that never started serving.
 func (stoppedFrames) Receive(context.Context) ([]byte, error) { return nil, io.EOF }
-func (stoppedFrames) Send(context.Context, []byte) error      { return io.EOF }
+
+// Send reports EOF for a connection that never started serving.
+func (stoppedFrames) Send(context.Context, []byte) error { return io.EOF }

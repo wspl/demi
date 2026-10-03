@@ -25,7 +25,13 @@ import (
 
 // nativeLeaf binds the declared command name to a fixture operation.
 func nativeLeaf(n *remotehosttest.NativeFixture, name, operation string) declare.Leaf[declare.NativeOperation] {
-	return declare.Leaf[declare.NativeOperation]{Name: name, Summary: "The fixture's " + operation + ".", Kind: &declare.Native[declare.NativeOperation]{Binding: declare.NativeOperation{Package: n.Descriptor.ID, Operation: operation}}}
+	return declare.Leaf[declare.NativeOperation]{
+		Name:    name,
+		Summary: "The fixture's " + operation + ".",
+		Kind: &declare.Native[declare.NativeOperation]{
+			Binding: declare.NativeOperation{Package: n.Descriptor.ID, Operation: operation},
+		},
+	}
 }
 
 // nativeCommands declares the fixture's public shell operations.
@@ -45,7 +51,11 @@ func nativeCommands(t *testing.T, n *remotehosttest.NativeFixture, name string) 
 }
 
 // selectNative pins one fixture release to the selected commands.
-func selectNative(t *testing.T, n *remotehosttest.NativeFixture, commands *host.CommandSet) *remotehost.CommandSelection {
+func selectNative(
+	t *testing.T,
+	n *remotehosttest.NativeFixture,
+	commands *host.CommandSet,
+) *remotehost.CommandSelection {
 	t.Helper()
 	catalog, err := remotehost.NewCommandCatalog([]commandwire.PackageDescriptor{n.Descriptor}, n.Resolver())
 	requirePipe(t, err)
@@ -100,7 +110,12 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 	var fromA, fromB host.CommandStatus
 	var calls sync.WaitGroup
 	calls.Go(func() {
-		fromA = runnerExec(t, onA, "DEMI_CONVERSATION_ID=forged DEMI_AGENT_NODE_ID=forged PROBE=alpha demi where --label A", 10000)
+		fromA = runnerExec(
+			t,
+			onA,
+			"DEMI_CONVERSATION_ID=forged DEMI_AGENT_NODE_ID=forged PROBE=alpha demi where --label A",
+			10000,
+		)
 	})
 	calls.Go(func() { fromB = runnerExec(t, onB, "PROBE=beta demi where --label B", 10000) })
 	calls.Wait()
@@ -110,7 +125,11 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 	}{{fromA, "A", a.Home(), "alpha"}, {fromB, "B", b.Home(), "beta"}} {
 		report, err := fixture.DecodeWhereReport([]byte(item.status.Stdout.Delta))
 		requirePipe(t, err)
-		if !reflect.DeepEqual(report.Context, hosttest.CommandContext()) || report.Label == nil || *report.Label != item.label || report.CWD != item.cwd || report.Value == nil || *report.Value != item.value {
+		if !reflect.DeepEqual(report.Context, hosttest.CommandContext()) || report.Label == nil ||
+			*report.Label != item.label ||
+			report.CWD != item.cwd ||
+			report.Value == nil ||
+			*report.Value != item.value {
 			t.Fatal(report)
 		}
 	}
@@ -118,7 +137,7 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
-	requirePipe(t, os.WriteFile(filepath.Join(a.Home(), "input"), data, 0600))
+	requirePipe(t, os.WriteFile(filepath.Join(a.Home(), "input"), data, 0o600))
 	echoed := runnerExec(t, onA, "cat input | demi echo > output", 10000)
 	output, err := os.ReadFile(filepath.Join(a.Home(), "output"))
 	requirePipe(t, err)
@@ -126,7 +145,8 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 		t.Fatal("native binary echo changed")
 	}
 	result := runnerExec(t, onA, "demi result", 10000)
-	if result.State.ExitCode != 17 || result.Stdout.Delta != "command output" || result.Stderr.Delta != "command diagnostic" {
+	if result.State.ExitCode != 17 || result.Stdout.Delta != "command output" ||
+		result.Stderr.Delta != "command diagnostic" {
 		t.Fatal(result)
 	}
 	failed := runnerExec(t, onA, "RESULT=error demi result", 10000)
@@ -137,7 +157,12 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 	if numbered.State.ExitCode != 0 || numbered.Stdout.Delta != `{"first":1}{"first":2}` {
 		t.Fatal(numbered)
 	}
-	capture := runnerExec(t, onA, `printf '%s\n%s\n' "$DEMI_RUNNER_ENDPOINT" "$DEMI_CONTEXT_ID" > context; echo ready; sleep 30`, 50)
+	capture := runnerExec(
+		t,
+		onA,
+		`printf '%s\n%s\n' "$DEMI_RUNNER_ENDPOINT" "$DEMI_CONTEXT_ID" > context; echo ready; sleep 30`,
+		50,
+	)
 	awaitStdout(t, onA, pages, capture.CommandID, "ready")
 	captured, err := os.ReadFile(filepath.Join(a.Home(), "context"))
 	requirePipe(t, err)
@@ -159,7 +184,8 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 		command.Env = append(os.Environ(), "DEMI_RUNNER_ENDPOINT="+endpoint, "DEMI_CONTEXT_ID="+id)
 		output, err := command.CombinedOutput()
 		var exit *exec.ExitError
-		if !errors.As(err, &exit) || exit.ExitCode() != 1 || !bytes.Contains(output, []byte("not live on this runner")) {
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 ||
+			!bytes.Contains(output, []byte("not live on this runner")) {
 			t.Fatalf("stale client: %v %s", err, output)
 		}
 	}
@@ -193,9 +219,25 @@ func TestRunnerCommandShowsLeafHintUntilLeafEnds(t *testing.T) {
 	requirePipe(t, base.Stop(t.Context()))
 	nativeHint := nativeLeaf(native, "native", "first")
 	nativeHint.RunningHint = new("native: do not poll")
-	rpc := declare.Leaf[declare.NativeOperation]{Name: "rpc", Summary: "Wait for a line on the backend.", Kind: &declare.RPC[declare.NativeOperation]{}, RunningHint: new("rpc: do not poll")}
+	rpc := declare.Leaf[declare.NativeOperation]{
+		Name:        "rpc",
+		Summary:     "Wait for a line on the backend.",
+		Kind:        &declare.RPC[declare.NativeOperation]{},
+		RunningHint: new("rpc: do not poll"),
+	}
 	commands := &host.CommandSet{}
-	requirePipe(t, commands.Register(host.Group("attend", "Hint probes.", host.Leaf(nativeHint, nil), host.Leaf(nativeLeaf(native, "plain", "first"), nil), host.Leaf(rpc, host.RPCHandlerFunc(firstLine)))))
+	requirePipe(
+		t,
+		commands.Register(
+			host.Group(
+				"attend",
+				"Hint probes.",
+				host.Leaf(nativeHint, nil),
+				host.Leaf(nativeLeaf(native, "plain", "first"), nil),
+				host.Leaf(rpc, host.RPCHandlerFunc(firstLine)),
+			),
+		),
+	)
 	tap := newWireTap()
 	f := runnerFixture(t, remotehosttest.FixtureOptions{Commands: commands, Tap: tap.input})
 	s, p := runnerShell(t, f, nil, selectNative(t, native, commands))
@@ -227,7 +269,9 @@ func TestRunnerCommandShowsLeafHintUntilLeafEnds(t *testing.T) {
 	nextHint(t, tap, link, new("native: do not poll"))
 	pid, err := os.ReadFile(filepath.Join(f.Home(), "child.pid"))
 	requirePipe(t, err)
-	kill, err := f.Host().Process().Spawn(t.Context(), host.SpawnRequest{Command: "/bin/kill", Args: []string{"-KILL", strings.TrimSpace(string(pid))}})
+	kill, err := f.Host().
+		Process().
+		Spawn(t.Context(), host.SpawnRequest{Command: "/bin/kill", Args: []string{"-KILL", strings.TrimSpace(string(pid))}})
 	requirePipe(t, err)
 	_, end := processOutput(t, kill)
 	if end.Kind != host.ProcessExited || end.ExitCode != 0 {

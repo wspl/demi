@@ -22,13 +22,39 @@ import (
 func relayCommands(t *testing.T, handler host.RPCHandlerFunc) *host.CommandSet {
 	t.Helper()
 	commands := &host.CommandSet{}
-	requirePipe(t, commands.Register(host.Group("probe", "Probes.", host.Leaf(declare.Leaf[declare.NativeOperation]{Name: "live", Summary: "Live input.", Kind: &declare.RPC[declare.NativeOperation]{}}, handler))))
+	requirePipe(
+		t,
+		commands.Register(
+			host.Group(
+				"probe",
+				"Probes.",
+				host.Leaf(
+					declare.Leaf[declare.NativeOperation]{
+						Name:    "live",
+						Summary: "Live input.",
+						Kind:    &declare.RPC[declare.NativeOperation]{},
+					},
+					handler,
+				),
+			),
+		),
+	)
 	return commands
 }
 
 // rpcRequest names the job whose context must authorize and reach the handler.
 func rpcRequest(job, id string) *runnerwire.RPCCall {
-	return &runnerwire.RPCCall{JobID: job, CallID: id, Root: "probe", Path: []string{"probe", "live"}, Argv: []string{"live"}, Args: json.RawMessage(`{}`), CWD: "/work", Env: map[string]string{}, Stdin: true}
+	return &runnerwire.RPCCall{
+		JobID:  job,
+		CallID: id,
+		Root:   "probe",
+		Path:   []string{"probe", "live"},
+		Argv:   []string{"live"},
+		Args:   json.RawMessage(`{}`),
+		CWD:    "/work",
+		Env:    map[string]string{},
+		Stdin:  true,
+	}
 }
 
 // callOutcome observes stderr then exit and rejects unexpected pipe allocation.
@@ -49,27 +75,39 @@ func callOutcome(t *testing.T, l *remotehosttest.TestLink) (string, uint8) {
 }
 
 func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T) {
-	for _, event := range []string{"cancel", "job", "report", "stdout", "stdin", "chunk", "unasked", "disconnect", "shutdown"} {
+	for _, event := range []string{
+		"cancel",
+		"job",
+		"report",
+		"stdout",
+		"stdin",
+		"chunk",
+		"unasked",
+		"disconnect",
+		"shutdown",
+	} {
 		t.Run(event, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				ended := make(chan struct{})
 				observed := make(chan host.RPCInvocation, 1)
-				handler := host.RPCHandlerFunc(func(ctx context.Context, inv host.RPCInvocation, port host.RPCPort) (uint8, error) {
-					defer close(ended)
-					observed <- inv
-					for {
-						data, err := port.ReadLiveStdin(ctx)
-						if err != nil || data == nil {
-							break
+				handler := host.RPCHandlerFunc(
+					func(ctx context.Context, inv host.RPCInvocation, port host.RPCPort) (uint8, error) {
+						defer close(ended)
+						observed <- inv
+						for {
+							data, err := port.ReadLiveStdin(ctx)
+							if err != nil || data == nil {
+								break
+							}
+							if event == "unasked" {
+								<-ctx.Done()
+								break
+							}
 						}
-						if event == "unasked" {
-							<-ctx.Done()
-							break
-						}
-					}
-					<-ctx.Done()
-					return 0, nil
-				})
+						<-ctx.Done()
+						return 0, nil
+					},
+				)
 				d := remotehosttest.NewTestDevice(t, remotehosttest.NewCommandPolicy(relayCommands(t, handler)))
 				l := d.Connect(nil)
 				request := startRequest("probe live")
@@ -89,10 +127,22 @@ func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T
 					sendFrame(t, l, &runnerwire.RPCCancel{CallID: "call"})
 					expected = "command cancelled"
 				case "job":
-					sendFrame(t, l, &runnerwire.JobExit{JobID: job.ID(), ExitCode: new(int32(7)), Files: []runnerwire.JobFileChange{}})
+					sendFrame(
+						t,
+						l,
+						&runnerwire.JobExit{
+							JobID:    job.ID(),
+							ExitCode: new(int32(7)),
+							Files:    []runnerwire.JobFileChange{},
+						},
+					)
 					expected = fmt.Sprintf("calling job %s exited before its RPC completed", job.ID())
 				case "report":
-					sendFrame(t, l, &runnerwire.PipeDone{PipeID: pipes.Stdout.ID, Ok: false, Error: new("upload failed")})
+					sendFrame(
+						t,
+						l,
+						&runnerwire.PipeDone{PipeID: pipes.Stdout.ID, Ok: false, Error: new("upload failed")},
+					)
 					expected = "pipe failed: upload failed"
 				case "stdout", "stdin":
 					id := pipes.Stdout.ID
@@ -102,7 +152,11 @@ func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T
 					d.Pipes().Fail(id, "HTTP connection lost")
 					expected = "pipe failed: HTTP connection lost"
 				case "chunk":
-					sendFrame(t, l, &runnerwire.RPCStdin{CallID: "call", Bytes: make([]byte, runnerwire.StdinChunkBytes+1)})
+					sendFrame(
+						t,
+						l,
+						&runnerwire.RPCStdin{CallID: "call", Bytes: make([]byte, runnerwire.StdinChunkBytes+1)},
+					)
 					expected = "Unrequested or oversized RPC stdin chunk"
 				case "unasked":
 					for range 2 {
@@ -128,7 +182,11 @@ func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T
 					}
 					return
 				}
-				sendFrame(t, l, &runnerwire.JobExit{JobID: job.ID(), ExitCode: new(int32(7)), Files: []runnerwire.JobFileChange{}})
+				sendFrame(
+					t,
+					l,
+					&runnerwire.JobExit{JobID: job.ID(), ExitCode: new(int32(7)), Files: []runnerwire.JobFileChange{}},
+				)
 				stderr, code := callOutcome(t, l)
 				select {
 				case <-ended:
@@ -143,7 +201,8 @@ func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T
 					t.Fatalf("%q, %d", stderr, code)
 				}
 				inv := <-observed
-				if inv.Context.Conversation != hosttest.CommandContext().Conversation || !reflect.DeepEqual(inv.Caller, request.Caller) {
+				if inv.Context.Conversation != hosttest.CommandContext().Conversation ||
+					!reflect.DeepEqual(inv.Caller, request.Caller) {
 					t.Fatal(inv)
 				}
 			})
@@ -199,7 +258,20 @@ func TestCallRequiresAdmittedLiveJobAndRefusalMintsNoPipe(t *testing.T) {
 		job, err := d.Host("/work", nil).StartJob(t.Context(), startRequest("probe live"))
 		requirePipe(t, err)
 		nextFrame(t, l)
-		for _, item := range []struct{ job, id, reason string }{{"invented", "unknown", "rpc requires a live job dispatched to this device"}, {job.ID(), "refused", "rpc job belongs to another conversation"}} {
+		for _, item := range []struct {
+			job, id, reason string
+		}{
+			{
+				"invented",
+				"unknown",
+				"rpc requires a live job dispatched to this device",
+			},
+			{
+				job.ID(),
+				"refused",
+				"rpc job belongs to another conversation",
+			},
+		} {
 			sendFrame(t, l, rpcRequest(item.job, item.id))
 			stderr, code := callOutcome(t, l)
 			if stderr != "probe: "+item.reason+"\n" || code != 1 {

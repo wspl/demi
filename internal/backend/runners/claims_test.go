@@ -47,13 +47,24 @@ func TestClaimCodeSpellings(t *testing.T) {
 	if strings.Trim(printed, "0123456789ABCDEFGHJKMNPQRSTVWXYZ-") != "" {
 		t.Fatal("unexpected alphabet", printed)
 	}
-	for _, spelling := range []string{printed, " " + strings.ReplaceAll(strings.ToLower(printed), "-", " ") + " ", strings.NewReplacer("0", "o", "1", "l").Replace(printed)} {
+	for _, spelling := range []string{
+		printed,
+		" " + strings.ReplaceAll(strings.ToLower(printed), "-", " ") + " ",
+		strings.NewReplacer("0", "o", "1", "l").Replace(printed),
+	} {
 		parsed, ok := runners.ParseClaimCode(spelling)
 		if !ok || parsed != code {
 			t.Fatalf("did not read %q", spelling)
 		}
 	}
-	for _, invalid := range []string{"", "AAAA-BBBB", "NOPE-NOPE", printed[:len(printed)-1], strings.Repeat("U", 26), strings.Repeat("0", 25) + "1"} {
+	for _, invalid := range []string{
+		"",
+		"AAAA-BBBB",
+		"NOPE-NOPE",
+		printed[:len(printed)-1],
+		strings.Repeat("U", 26),
+		strings.Repeat("0", 25) + "1",
+	} {
 		if _, ok := runners.ParseClaimCode(invalid); ok {
 			t.Fatalf("accepted %q", invalid)
 		}
@@ -61,7 +72,15 @@ func TestClaimCodeSpellings(t *testing.T) {
 }
 
 func TestClaimOwnershipAndAbandonment(t *testing.T) {
-	for _, ending := range []string{"bound", "withdrawn", "runner-left", "claim-left", "shutdown", "replaced", "cancelled"} {
+	for _, ending := range []string{
+		"bound",
+		"withdrawn",
+		"runner-left",
+		"claim-left",
+		"shutdown",
+		"replaced",
+		"cancelled",
+	} {
 		t.Run(ending, func(t *testing.T) {
 			claims := runners.NewPendingClaims(10)
 			defer claims.Close()

@@ -31,21 +31,39 @@ type ContextSource func(context.Context) (commandwire.CommandContext, error)
 
 // EnvironmentOptions supplies a node's Host, commands, page feed and lifetime services.
 type EnvironmentOptions struct {
-	Host        *Host
-	Commands    *CommandSelection
-	Context     ContextSource
-	Feed        host.PageFeed
-	Numbers     host.Numbers
-	Access      HostAccess
-	Keeper      CommandKeeper
-	InitialEnv  map[string]string
+	// Host is the runner Host on which jobs execute.
+	Host *Host
+	// Commands pins the commands available to jobs.
+	Commands *CommandSelection
+	// Context builds the command context for each job.
+	Context ContextSource
+	// Feed publishes command records and watching decisions.
+	Feed host.PageFeed
+	// Numbers allocates shell and command sequence numbers.
+	Numbers host.Numbers
+	// Access holds the product admission through job publication.
+	Access HostAccess
+	// Keeper retains file edits and whole command output.
+	Keeper CommandKeeper
+	// InitialEnv overlays variables on every new shell.
+	InitialEnv map[string]string
+	// OutputLimit bounds the returned text output bytes.
 	OutputLimit int
+	// BinaryLimit bounds retained binary stdout bytes.
 	BinaryLimit int
 }
 
 // NewEnvironmentOptions supplies the standard output and binary budgets.
 func NewEnvironmentOptions(h *Host, source ContextSource, feed host.PageFeed, numbers host.Numbers) EnvironmentOptions {
-	return EnvironmentOptions{Host: h, Context: source, Feed: feed, Numbers: numbers, InitialEnv: map[string]string{}, OutputLimit: host.DefaultOutputLimitBytes, BinaryLimit: host.DefaultBinaryLimitBytes}
+	return EnvironmentOptions{
+		Host:        h,
+		Context:     source,
+		Feed:        feed,
+		Numbers:     numbers,
+		InitialEnv:  map[string]string{},
+		OutputLimit: host.DefaultOutputLimitBytes,
+		BinaryLimit: host.DefaultBinaryLimitBytes,
+	}
 }
 
 // ShellEnvironmentFactory creates node environments against a fixed startup catalog.
@@ -59,7 +77,10 @@ func NewShellEnvironmentFactory(catalog *CommandCatalog) *ShellEnvironmentFactor
 }
 
 // Create constructs an environment whose jobs run commands on options.Host.
-func (f *ShellEnvironmentFactory) Create(commands *host.CommandSet, options EnvironmentOptions) (*ShellEnvironment, error) {
+func (f *ShellEnvironmentFactory) Create(
+	commands *host.CommandSet,
+	options EnvironmentOptions,
+) (*ShellEnvironment, error) {
 	selection, err := f.catalog.Select(commands)
 	if err != nil {
 		return nil, err
@@ -82,7 +103,12 @@ type ShellEnvironment struct {
 
 // NewShellEnvironment constructs a node's environment.
 func NewShellEnvironment(options EnvironmentOptions) *ShellEnvironment {
-	return &ShellEnvironment{options: options, shells: make(map[core.ShellID]*shellState), records: make(map[core.CommandID]*host.CommandRecord), running: make(map[core.CommandID]*runningCommand)}
+	return &ShellEnvironment{
+		options: options,
+		shells:  make(map[core.ShellID]*shellState),
+		records: make(map[core.CommandID]*host.CommandRecord),
+		running: make(map[core.CommandID]*runningCommand),
+	}
 }
 
 // Exec starts a shell command and observes it for the requested window.
@@ -301,7 +327,13 @@ func (e *ShellEnvironment) OwnsCommand(id core.CommandID) bool {
 
 // EditedFile builds a file's page record with stored copies for each edit segment.
 func EditedFile(file runnerwire.JobFileChange, copies func(int) *core.EditCopies) core.EditedFile {
-	edited := core.EditedFile{Path: file.Path, Kind: core.EditKind(file.Kind), Added: uint32(min(file.Added, math.MaxUint32)), Removed: uint32(min(file.Removed, math.MaxUint32)), Edits: make([]core.EditSegment, len(file.Edits))}
+	edited := core.EditedFile{
+		Path:    file.Path,
+		Kind:    core.EditKind(file.Kind),
+		Added:   uint32(min(file.Added, math.MaxUint32)),
+		Removed: uint32(min(file.Removed, math.MaxUint32)),
+		Edits:   make([]core.EditSegment, len(file.Edits)),
+	}
 	for i := range edited.Edits {
 		edited.Edits[i].Copies = copies(i)
 	}

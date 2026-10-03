@@ -67,14 +67,27 @@ func (s *receivedStream) receive(record *host.CommandRecord, chunk JobOutput, re
 		tail = tail[1:]
 	}
 	var pending []byte
-	record.SetNewest(chunk.Stream, s.newestOffset, subtract(s.newestOffset, s.head), decodeOutputText(&pending, tail, false))
+	record.SetNewest(
+		chunk.Stream,
+		s.newestOffset,
+		subtract(s.newestOffset, s.head),
+		decodeOutputText(&pending, tail, false),
+	)
 	held := subtract(s.next, chunk.Offset)
 	if held >= uint64(len(chunk.Bytes)) {
 		return false
 	}
 	text := ""
 	if leftOut := subtract(chunk.Offset, s.next); leftOut > 0 {
-		text = decodeOutputText(&s.pending, nil, true) + fmt.Sprintf("\n[... %d bytes of %s not shown ...]\n", leftOut, chunk.Stream)
+		text = decodeOutputText(
+			&s.pending,
+			nil,
+			true,
+		) + fmt.Sprintf(
+			"\n[... %d bytes of %s not shown ...]\n",
+			leftOut,
+			chunk.Stream,
+		)
 	}
 	text += decodeOutputText(&s.pending, chunk.Bytes[held:], false)
 	s.next = end
@@ -107,30 +120,17 @@ func pushReason(records *[]host.OutputRecord, reason string) string {
 }
 
 // finishJob stores edits, retains whole output and updates the shell directory before settlement.
-func (e *ShellEnvironment) finishJob(ctx context.Context, shell core.ShellID, command core.CommandID, running *runningCommand, record *host.CommandRecord, job *Job, end JobEnd, streams [2]receivedStream) {
-	if len(end.Files) > 0 {
-		var files []core.EditedFile
-		if e.options.Keeper != nil {
-			retained, err := e.options.Keeper.Retain(ctx, command, end.Files)
-			files = retained
-			if err != nil {
-				slog.Warn("an edit's copies were not stored: "+err.Error(), "command", command)
-			}
-		}
-		if e.options.Keeper == nil {
-			for _, file := range end.Files {
-				files = append(files, EditedFile(file, func(int) *core.EditCopies { return nil }))
-			}
-		}
-		record.SetFiles(host.EditedFiles{Files: files, Truncated: end.FilesTruncated})
-	}
-	if end.CWD != nil {
-		e.mu.Lock()
-		if state := e.shells[shell]; state != nil {
-			state.cwd = *end.CWD
-		}
-		e.mu.Unlock()
-	}
+func (e *ShellEnvironment) finishJob(
+	ctx context.Context,
+	shell core.ShellID,
+	command core.CommandID,
+	running *runningCommand,
+	record *host.CommandRecord,
+	job *Job,
+	end JobEnd,
+	streams [2]receivedStream,
+) {
+	e.keepJobFiles(ctx, shell, command, record, end)
 	received := running.received
 	ending := host.Ending{Phase: host.Exited}
 	switch end.Status.Kind {
@@ -163,12 +163,79 @@ func (e *ShellEnvironment) finishJob(ctx context.Context, shell core.ShellID, co
 			ending.ExitCode = 130
 		}
 	}
-	lengths := runnerwire.OutputLengths{StdoutBytes: streams[0].head, StderrBytes: streams[1].head}
-	if end.Output != nil {
-		lengths = *end.Output
+	e.finishJobOutput(ctx, command, running, record, job, end, streams, ending)
+}
+
+// settle stores output, releases the runner directory, then publishes the command's end.
+func (e *ShellEnvironment) settle(
+	ctx context.Context,
+	command core.CommandID,
+	record *host.CommandRecord,
+	ending host.Ending,
+	output host.WholeOutput,
+	binary *host.BinaryOutput,
+	page string,
+	job *Job,
+) {
+	if e.options.Keeper != nil {
+		if err := e.options.Keeper.KeepOutput(ctx, command, output); err != nil {
+			slog.Warn("a command's output was not stored: "+err.Error(), "command", command)
+		}
 	}
+	if job != nil {
+		if err := job.Release(ctx); err != nil {
+			slog.Debug("job release not sent: "+err.Error(), "job", job.ID())
+		}
+	}
+	if record.Settle(ending, &output, binary, page) {
+		e.options.Feed.Changed(record)
+	}
+}
+
+// keepJobFiles retains edits before updating the shell directory for settlement.
+func (e *ShellEnvironment) keepJobFiles(
+	ctx context.Context,
+	shell core.ShellID,
+	command core.CommandID,
+	record *host.CommandRecord,
+	end JobEnd,
+) {
+	if len(end.Files) > 0 {
+		var files []core.EditedFile
+		if e.options.Keeper != nil {
+			retained, err := e.options.Keeper.Retain(ctx, command, end.Files)
+			files = retained
+			if err != nil {
+				slog.Warn("an edit's copies were not stored: "+err.Error(), "command", command)
+			}
+		}
+		if e.options.Keeper == nil {
+			for _, file := range end.Files {
+				files = append(files, EditedFile(file, func(int) *core.EditCopies { return nil }))
+			}
+		}
+		record.SetFiles(host.EditedFiles{Files: files, Truncated: end.FilesTruncated})
+	}
+	if end.CWD != nil {
+		e.mu.Lock()
+		if state := e.shells[shell]; state != nil {
+			state.cwd = *end.CWD
+		}
+		e.mu.Unlock()
+	}
+}
+
+// completeJobOutput reads retained output when views omit bytes, keeping received tails on failure.
+func completeJobOutput(
+	ctx context.Context,
+	command core.CommandID,
+	running *runningCommand,
+	job *Job,
+	lengths runnerwire.OutputLengths,
+	streams [2]receivedStream,
+) (host.WholeOutput, string, bool) {
 	unreceived := subtract(lengths.StdoutBytes, streams[0].head) + subtract(lengths.StderrBytes, streams[1].head)
-	output := host.WholeOutput{Records: received}
+	output := host.WholeOutput{Records: running.received}
 	page := ""
 	read := false
 	if unreceived > 0 {
@@ -178,31 +245,62 @@ func (e *ShellEnvironment) finishJob(ctx context.Context, shell core.ShellID, co
 			read = true
 		} else {
 			slog.Warn("could not read the command's kept output: "+err.Error(), "command", command)
-			var newest []host.OutputRecord
-			var leftOut, kept uint64
-			for i, stream := range streams {
-				if len(stream.newest) == 0 {
-					continue
-				}
-				gap := subtract(stream.newestOffset, stream.head)
-				leftOut += gap
-				kept += gap + uint64(len(stream.newest))
-				kind := core.StreamKind("stdout")
-				if i == 1 {
-					kind = core.StreamKind("stderr")
-				}
-				newest = append(newest, host.OutputRecord{Stream: kind, Bytes: stream.newest})
-			}
-			if len(newest) > 0 {
-				output.Records = append(output.Records, host.OutputRecord{LeftOut: new(leftOut)})
-				output.Records = append(output.Records, newest...)
-			}
-			if missing := subtract(unreceived, kept); missing > 0 {
-				output.Missing = &host.Missing{Bytes: missing, Reason: "not read from the Host: " + err.Error()}
-				page = output.Missing.Line() + "\n"
-			}
+			output, page = partialJobOutput(output, streams, unreceived, err)
 		}
 	}
+	return output, page, read
+}
+
+// partialJobOutput appends received tails and reports bytes missing after a failed retained-output read.
+func partialJobOutput(
+	output host.WholeOutput,
+	streams [2]receivedStream,
+	unreceived uint64,
+	err error,
+) (host.WholeOutput, string) {
+	page := ""
+	var newest []host.OutputRecord
+	var leftOut, kept uint64
+	for i, stream := range streams {
+		if len(stream.newest) == 0 {
+			continue
+		}
+		gap := subtract(stream.newestOffset, stream.head)
+		leftOut += gap
+		kept += gap + uint64(len(stream.newest))
+		kind := core.StreamKind("stdout")
+		if i == 1 {
+			kind = core.StreamKind("stderr")
+		}
+		newest = append(newest, host.OutputRecord{Stream: kind, Bytes: stream.newest})
+	}
+	if len(newest) > 0 {
+		output.Records = append(output.Records, host.OutputRecord{LeftOut: new(leftOut)})
+		output.Records = append(output.Records, newest...)
+	}
+	if missing := subtract(unreceived, kept); missing > 0 {
+		output.Missing = &host.Missing{Bytes: missing, Reason: "not read from the Host: " + err.Error()}
+		page = output.Missing.Line() + "\n"
+	}
+	return output, page
+}
+
+// finishJobOutput builds the final output view and settles an exited or signalled command.
+func (e *ShellEnvironment) finishJobOutput(
+	ctx context.Context,
+	command core.CommandID,
+	running *runningCommand,
+	record *host.CommandRecord,
+	job *Job,
+	end JobEnd,
+	streams [2]receivedStream,
+	ending host.Ending,
+) {
+	lengths := runnerwire.OutputLengths{StdoutBytes: streams[0].head, StderrBytes: streams[1].head}
+	if end.Output != nil {
+		lengths = *end.Output
+	}
+	output, page, read := completeJobOutput(ctx, command, running, job, lengths, streams)
 	binary := output.BinaryStdout(lengths.StdoutBytes, e.options.BinaryLimit)
 	var binaryLength *uint64
 	if binary != nil {
@@ -222,21 +320,4 @@ func (e *ShellEnvironment) finishJob(ctx context.Context, shell core.ShellID, co
 	record.Grew(core.StreamKind("stdout"), lengths.StdoutBytes)
 	record.Grew(core.StreamKind("stderr"), lengths.StderrBytes)
 	e.settle(ctx, command, record, ending, output, binary, page, job)
-}
-
-// settle stores output, releases the runner directory, then publishes the command's end.
-func (e *ShellEnvironment) settle(ctx context.Context, command core.CommandID, record *host.CommandRecord, ending host.Ending, output host.WholeOutput, binary *host.BinaryOutput, page string, job *Job) {
-	if e.options.Keeper != nil {
-		if err := e.options.Keeper.KeepOutput(ctx, command, output); err != nil {
-			slog.Warn("a command's output was not stored: "+err.Error(), "command", command)
-		}
-	}
-	if job != nil {
-		if err := job.Release(ctx); err != nil {
-			slog.Debug("job release not sent: "+err.Error(), "job", job.ID())
-		}
-	}
-	if record.Settle(ending, &output, binary, page) {
-		e.options.Feed.Changed(record)
-	}
 }

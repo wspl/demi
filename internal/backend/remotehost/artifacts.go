@@ -95,7 +95,12 @@ func (l *Link) grant(owner runnerwire.ArtifactOwner) *artifactGrant {
 		if stream == nil || stream.ctx.Err() != nil {
 			return nil
 		}
-		return &artifactGrant{ctx: stream.ctx, resolver: stream.request.Resolver, packages: []commandwire.PackageDescriptor{stream.request.Package}, attached: stream.request.Attached}
+		return &artifactGrant{
+			ctx:      stream.ctx,
+			resolver: stream.request.Resolver,
+			packages: []commandwire.PackageDescriptor{stream.request.Package},
+			attached: stream.request.Attached,
+		}
 	}
 	return nil
 }
@@ -153,7 +158,8 @@ func (g *artifactGrant) resolve(digest, target string) (commandwire.ArtifactLoca
 			return location, nil
 		}
 	}
-	return nil, errors.New("Artifact does not belong to the live work's packages") //nolint:staticcheck // ST1005: verbatim Rust protocol refusal.
+	//nolint:staticcheck // ST1005: verbatim Rust protocol refusal.
+	return nil, errors.New("Artifact does not belong to the live work's packages")
 }
 
 // answerArtifact publishes a validated location or its refusal with Rust's logging point.

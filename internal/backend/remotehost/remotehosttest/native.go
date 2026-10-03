@@ -16,6 +16,7 @@ import (
 
 // NativeFixture is a built native command package and its executable location.
 type NativeFixture struct {
+	// Descriptor describes the fixture command executable.
 	Descriptor commandwire.PackageDescriptor
 	path       string
 }
@@ -43,7 +44,15 @@ func NewNativeFixture(ctx context.Context, id, path string, operations []string)
 		return nil, err
 	}
 	digest := sha256.Sum256(data)
-	descriptor := commandwire.PackageDescriptor{ID: id, Version: "test", ProtocolVersion: 1, Operations: slices.Clone(operations), Targets: map[string]commandwire.PackageArtifact{string(target): {SHA256: hex.EncodeToString(digest[:]), Size: uint64(len(data))}}}
+	descriptor := commandwire.PackageDescriptor{
+		ID:              id,
+		Version:         "test",
+		ProtocolVersion: 1,
+		Operations:      slices.Clone(operations),
+		Targets: map[string]commandwire.PackageArtifact{
+			string(target): {SHA256: hex.EncodeToString(digest[:]), Size: uint64(len(data))},
+		},
+	}
 	if err := descriptor.Validate(); err != nil {
 		return nil, err
 	}
@@ -61,7 +70,12 @@ type localArtifact struct {
 	descriptor commandwire.PackageDescriptor
 }
 
-func (a localArtifact) Resolve(ctx context.Context, artifact commandwire.PackageArtifact, _ string) (commandwire.ArtifactLocation, error) {
+// Resolve locates an executable for the requesting job.
+func (a localArtifact) Resolve(
+	ctx context.Context,
+	artifact commandwire.PackageArtifact,
+	_ string,
+) (commandwire.ArtifactLocation, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

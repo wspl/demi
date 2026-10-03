@@ -151,7 +151,10 @@ func (l *Link) startCall(request *runnerwire.RPCCall) {
 		defer cancel()
 		code, err := call.run(request, job)
 		if err != nil {
-			if sendErr := l.send(l.ctx, &runnerwire.RPCOutput{CallID: call.id, Bytes: []byte(request.Root + ": " + err.Error() + "\n")}); sendErr != nil {
+			if sendErr := l.send(
+				l.ctx,
+				&runnerwire.RPCOutput{CallID: call.id, Bytes: []byte(request.Root + ": " + err.Error() + "\n")},
+			); sendErr != nil {
 				slog.Debug("rpc error not sent: "+sendErr.Error(), "call", call.id)
 			}
 			code = 1
@@ -194,35 +197,25 @@ func (c *relayCall) run(request *runnerwire.RPCCall, job *Job) (uint8, error) {
 	if cause := c.stopped(); cause != nil {
 		return 0, errors.New(cause.text)
 	}
-	wire := &runnerwire.RPCPipes{CallID: c.id, Stdout: stdout.WireRef()}
-	relayed := &host.RelayedPipes{Stdout: stdout.ID()}
-	if stdin != nil {
-		wire.Stdin = new(stdin.WireRef())
-		relayed.Stdin = new(stdin.ID())
-	}
-	if err := c.link.send(c.ctx, wire); err != nil {
+	relayed, err := c.announcePipes(c.ctx, stdout, stdin)
+	if err != nil {
 		return 0, err
 	}
 	port := &relayPort{call: c, origin: job.origin, stdout: stdout, stdin: stdin}
 	defer port.close()
-	invocation := host.RPCInvocation{Path: request.Path, Argv: request.Argv, Args: request.Args, JSON: request.JSON, CWD: request.CWD, Env: request.Env, Context: job.origin.Context, Caller: job.origin.Caller, Stdin: request.Stdin, Pipes: relayed}
-	watching, cancel := context.WithCancel(c.ctx)
-	var watches sync.WaitGroup
-	for _, pipe := range c.pipes {
-		watches.Add(1)
-		go func() {
-			defer watches.Done()
-			failure, err := pipe.Failed(watching)
-			if err == nil {
-				c.stop(failure.Error(), false)
-			} else if !errors.Is(err, context.Canceled) {
-				slog.Debug("rpc pipe watch ended: "+err.Error(), "call", c.id)
-			}
-		}()
+	invocation := host.RPCInvocation{
+		Path:    request.Path,
+		Argv:    request.Argv,
+		Args:    request.Args,
+		JSON:    request.JSON,
+		CWD:     request.CWD,
+		Env:     request.Env,
+		Context: job.origin.Context,
+		Caller:  job.origin.Caller,
+		Stdin:   request.Stdin,
+		Pipes:   relayed,
 	}
-	code, err := c.link.policy.Dispatch(c.ctx, job.origin, invocation, host.NewRPCPort(port))
-	cancel()
-	watches.Wait()
+	code, err := c.dispatch(c.ctx, job.origin, invocation, port)
 	if cause := c.stopped(); cause != nil {
 		return 0, errors.New(cause.text)
 	}
@@ -284,60 +277,26 @@ func (p *relayPort) close() {
 	}
 }
 
+// Request handles a command port request while its RPC call lives.
 func (p *relayPort) Request(ctx context.Context, request host.PortRequest) (host.PortResponse, error) {
 	if p.call.ctx.Err() != nil {
 		return nil, &host.PortError{Kind: host.PortEnded, Message: "the call has ended"}
 	}
 	switch request := request.(type) {
 	case *host.PortStdout:
-		permit, err := p.outTurn.Acquire(ctx)
-		if err != nil {
-			return nil, err
-		}
-		defer permit.Release()
-		if p.outEnded {
-			return nil, &host.PortError{Kind: host.PortEnded, Message: "the call has ended"}
-		}
-		if p.writer == nil {
-			p.writer, err = p.stdout.Writer()
-			if err != nil {
-				return nil, &host.PortError{Kind: host.PortEnded, Message: "standard output: " + err.Error(), Err: err}
-			}
-		}
-		if err := p.writer.Write(ctx, request.Bytes); err != nil {
-			return nil, &host.PortError{Kind: host.PortEnded, Message: err.Error(), Err: err}
-		}
-		return &host.PortWritten{}, nil
+		return p.writeStdout(ctx, request)
 	case *host.PortStderr:
 		if len(request.Bytes) > 0 {
-			if err := p.call.link.send(ctx, &runnerwire.RPCOutput{CallID: p.call.id, Bytes: runnerwire.WireBytes(request.Bytes)}); err != nil {
+			if err := p.call.link.send(
+				ctx,
+				&runnerwire.RPCOutput{CallID: p.call.id, Bytes: runnerwire.WireBytes(request.Bytes)},
+			); err != nil {
 				return nil, &host.PortError{Kind: host.PortEnded, Message: err.Error(), Err: err}
 			}
 		}
 		return &host.PortWritten{}, nil
 	case *host.PortReadStdin:
-		permit, err := p.inTurn.Acquire(ctx)
-		if err != nil {
-			return nil, err
-		}
-		defer permit.Release()
-		if p.stdin == nil {
-			return &host.PortInput{}, nil
-		}
-		if p.reader == nil {
-			p.reader, err = p.stdin.Reader()
-			if err != nil {
-				return nil, &host.PortError{Kind: host.PortEnded, Message: "standard input: " + err.Error(), Err: err}
-			}
-		}
-		chunk, err := p.reader.Next(ctx)
-		if errors.Is(err, io.EOF) {
-			return &host.PortInput{}, nil
-		}
-		if err != nil {
-			return nil, &host.PortError{Kind: host.PortEnded, Message: err.Error(), Err: err}
-		}
-		return &host.PortInput{Bytes: new(core.B64Bytes(chunk))}, nil
+		return p.readStdin(ctx)
 	case *host.PortReadLiveStdin:
 		chunk, err := p.call.nextInput(ctx)
 		if err != nil {
@@ -355,4 +314,93 @@ func (p *relayPort) Request(ctx context.Context, request host.PortRequest) (host
 		return &host.PortStored{Reply: reply}, nil
 	}
 	return nil, &host.PortError{Kind: host.PortFailed, Message: "unknown port request"}
+}
+
+// writeStdout serializes access to the RPC output writer.
+func (p *relayPort) writeStdout(ctx context.Context, request *host.PortStdout) (host.PortResponse, error) {
+	permit, err := p.outTurn.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer permit.Release()
+	if p.outEnded {
+		return nil, &host.PortError{Kind: host.PortEnded, Message: "the call has ended"}
+	}
+	if p.writer == nil {
+		p.writer, err = p.stdout.Writer()
+		if err != nil {
+			return nil, &host.PortError{Kind: host.PortEnded, Message: "standard output: " + err.Error(), Err: err}
+		}
+	}
+	if err := p.writer.Write(ctx, request.Bytes); err != nil {
+		return nil, &host.PortError{Kind: host.PortEnded, Message: err.Error(), Err: err}
+	}
+	return &host.PortWritten{}, nil
+}
+
+// readStdin serializes access to the RPC finite input reader.
+func (p *relayPort) readStdin(ctx context.Context) (host.PortResponse, error) {
+	permit, err := p.inTurn.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer permit.Release()
+	if p.stdin == nil {
+		return &host.PortInput{}, nil
+	}
+	if p.reader == nil {
+		p.reader, err = p.stdin.Reader()
+		if err != nil {
+			return nil, &host.PortError{Kind: host.PortEnded, Message: "standard input: " + err.Error(), Err: err}
+		}
+	}
+	chunk, err := p.reader.Next(ctx)
+	if errors.Is(err, io.EOF) {
+		return &host.PortInput{}, nil
+	}
+	if err != nil {
+		return nil, &host.PortError{Kind: host.PortEnded, Message: err.Error(), Err: err}
+	}
+	return &host.PortInput{Bytes: new(core.B64Bytes(chunk))}, nil
+}
+
+// dispatch watches pipe failures while the policy handles a call, then joins every watcher.
+func (c *relayCall) dispatch(
+	ctx context.Context,
+	origin JobOrigin,
+	invocation host.RPCInvocation,
+	port *relayPort,
+) (uint8, error) {
+	watching, cancel := context.WithCancel(ctx)
+	var watches sync.WaitGroup
+	for _, pipe := range c.pipes {
+		watches.Add(1)
+		go func() {
+			defer watches.Done()
+			failure, err := pipe.Failed(watching)
+			if err == nil {
+				c.stop(failure.Error(), false)
+			} else if !errors.Is(err, context.Canceled) {
+				slog.Debug("rpc pipe watch ended: "+err.Error(), "call", c.id)
+			}
+		}()
+	}
+	code, err := c.link.policy.Dispatch(ctx, origin, invocation, host.NewRPCPort(port))
+	cancel()
+	watches.Wait()
+	return code, err
+}
+
+// announcePipes sends the RPC pipe references before the policy receives their local identities.
+func (c *relayCall) announcePipes(ctx context.Context, stdout, stdin *Pipe) (*host.RelayedPipes, error) {
+	wire := &runnerwire.RPCPipes{CallID: c.id, Stdout: stdout.WireRef()}
+	relayed := &host.RelayedPipes{Stdout: stdout.ID()}
+	if stdin != nil {
+		wire.Stdin = new(stdin.WireRef())
+		relayed.Stdin = new(stdin.ID())
+	}
+	if err := c.link.send(ctx, wire); err != nil {
+		return nil, err
+	}
+	return relayed, nil
 }

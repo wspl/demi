@@ -20,7 +20,11 @@ import (
 // callbackLeaf obtains command schemas from their single generated declarations.
 func callbackLeaf(t *testing.T, name, summary string, schema json.RawMessage) declare.Leaf[declare.NativeOperation] {
 	t.Helper()
-	leaf := declare.Leaf[declare.NativeOperation]{Name: name, Summary: summary, Kind: &declare.RPC[declare.NativeOperation]{}}
+	leaf := declare.Leaf[declare.NativeOperation]{
+		Name:    name,
+		Summary: summary,
+		Kind:    &declare.RPC[declare.NativeOperation]{},
+	}
 	if schema != nil {
 		var err error
 		leaf.Input, err = declare.NewSchema(schema)
@@ -49,19 +53,29 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 	hold := callbackLeaf(t, "hold", "Wait.", fixture.HoldArgsJSONSchema())
 	hold.Positionals = new([]string{"ms"})
 	commands := &host.CommandSet{}
-	addHandler := host.TypedRPC(fixture.DecodeTodoArgs, func(ctx context.Context, call host.Call[fixture.TodoArgs], p host.RPCPort) (uint8, error) {
-		items, err := host.Update(ctx, p, "todos", hosttest.DecodeItems, func(items hosttest.Items) ([]byte, error) { return items.MarshalJSON() }, func(current *hosttest.Items) (hosttest.Items, error) {
-			items := hosttest.Items{}
-			if current != nil {
-				items = append(items, (*current)...)
+	addHandler := host.TypedRPC(
+		fixture.DecodeTodoArgs,
+		func(ctx context.Context, call host.Call[fixture.TodoArgs], p host.RPCPort) (uint8, error) {
+			items, err := host.Update(
+				ctx,
+				p,
+				"todos",
+				hosttest.DecodeItems,
+				func(items hosttest.Items) ([]byte, error) { return items.MarshalJSON() },
+				func(current *hosttest.Items) (hosttest.Items, error) {
+					items := hosttest.Items{}
+					if current != nil {
+						items = append(items, (*current)...)
+					}
+					return append(items, call.Args.Text), nil
+				},
+			)
+			if err != nil {
+				return 0, err
 			}
-			return append(items, call.Args.Text), nil
-		})
-		if err != nil {
-			return 0, err
-		}
-		return 0, p.Stdout(ctx, []byte(fmt.Sprintf("added %d\n", len(items))))
-	})
+			return 0, p.Stdout(ctx, []byte(fmt.Sprintf("added %d\n", len(items))))
+		},
+	)
 	listHandler := host.RPCHandlerFunc(func(ctx context.Context, _ host.RPCInvocation, p host.RPCPort) (uint8, error) {
 		reply, err := p.Storage(ctx, &host.StorageRead{Key: "todos"})
 		if err != nil {
@@ -80,22 +94,39 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 		}
 		return 0, p.Stdout(ctx, []byte(strings.Join(items, ",")+"\n"))
 	})
-	noteHandler := host.TypedRPC(fixture.DecodeTodoArgs, func(ctx context.Context, call host.Call[fixture.TodoArgs], p host.RPCPort) (uint8, error) {
-		return 0, p.Stdout(ctx, []byte("noted: "+call.Args.Text))
-	})
-	requirePipe(t, commands.Register(host.Group("todo", "Todos.", host.Leaf(add, addHandler), host.Leaf(callbackLeaf(t, "list", "List the todos.", nil), listHandler), host.Leaf(note, noteHandler))))
-	holdHandler := host.TypedRPC(fixture.DecodeHoldArgs, func(ctx context.Context, call host.Call[fixture.HoldArgs], _ host.RPCPort) (uint8, error) {
-		close(started)
-		timer := time.NewTimer(time.Duration(call.Args.Ms) * time.Millisecond)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-			return 0, nil
-		case <-ctx.Done():
-			close(stopped)
-			return 130, nil
-		}
-	})
+	noteHandler := host.TypedRPC(
+		fixture.DecodeTodoArgs,
+		func(ctx context.Context, call host.Call[fixture.TodoArgs], p host.RPCPort) (uint8, error) {
+			return 0, p.Stdout(ctx, []byte("noted: "+call.Args.Text))
+		},
+	)
+	requirePipe(
+		t,
+		commands.Register(
+			host.Group(
+				"todo",
+				"Todos.",
+				host.Leaf(add, addHandler),
+				host.Leaf(callbackLeaf(t, "list", "List the todos.", nil), listHandler),
+				host.Leaf(note, noteHandler),
+			),
+		),
+	)
+	holdHandler := host.TypedRPC(
+		fixture.DecodeHoldArgs,
+		func(ctx context.Context, call host.Call[fixture.HoldArgs], _ host.RPCPort) (uint8, error) {
+			close(started)
+			timer := time.NewTimer(time.Duration(call.Args.Ms) * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				return 0, nil
+			case <-ctx.Done():
+				close(stopped)
+				return 130, nil
+			}
+		},
+	)
 	spew := host.RPCHandlerFunc(func(ctx context.Context, _ host.RPCInvocation, p host.RPCPort) (uint8, error) {
 		for block := range 100 {
 			var lines strings.Builder
@@ -108,7 +139,18 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 		}
 		return 0, nil
 	})
-	requirePipe(t, commands.Register(host.Group("probe", "Probes.", host.Leaf(hold, holdHandler), host.Leaf(callbackLeaf(t, "line", "Answer the first line typed.", nil), host.RPCHandlerFunc(firstLine)), host.Leaf(callbackLeaf(t, "spew", "Print many lines.", nil), spew))))
+	requirePipe(
+		t,
+		commands.Register(
+			host.Group(
+				"probe",
+				"Probes.",
+				host.Leaf(hold, holdHandler),
+				host.Leaf(callbackLeaf(t, "line", "Answer the first line typed.", nil), host.RPCHandlerFunc(firstLine)),
+				host.Leaf(callbackLeaf(t, "spew", "Print many lines.", nil), spew),
+			),
+		),
+	)
 	f := runnerFixture(t, remotehosttest.FixtureOptions{Commands: commands})
 	s, p := runnerShell(t, f, nil, callbackSelection(t, commands))
 	added := runnerExec(t, s, "todo add first && todo add second && todo list", 10000)
@@ -125,7 +167,8 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 	}
 	script := `probe spew | head -n 1; echo "status=${PIPESTATUS[0]}"`
 	headed := runnerExec(t, s, script+"; bash -c '"+script+"'", 10000)
-	if headed.State.ExitCode != 0 || headed.Stdout.Delta != "line 1\nstatus=141\nline 1\nstatus=141\n" || headed.Stderr.Delta != "" {
+	if headed.State.ExitCode != 0 || headed.Stdout.Delta != "line 1\nstatus=141\nline 1\nstatus=141\n" ||
+		headed.Stderr.Delta != "" {
 		t.Fatal(headed)
 	}
 	typing := runnerExec(t, s, "probe line", 300)
@@ -161,15 +204,24 @@ func TestRunnerNestedGroupHelpAndValidatedJSONOutput(t *testing.T) {
 	schema, err := declare.NewSchema(fixture.EmittedJSONSchema())
 	requirePipe(t, err)
 	emit.Output = &declare.LeafOutput{JSON: schema}
-	handler := host.TypedRPC(fixture.DecodeEmitArgs, func(ctx context.Context, call host.Call[fixture.EmitArgs], p host.RPCPort) (uint8, error) {
-		return 0, p.Stdout(ctx, []byte(call.Args.Text))
-	})
+	handler := host.TypedRPC(
+		fixture.DecodeEmitArgs,
+		func(ctx context.Context, call host.Call[fixture.EmitArgs], p host.RPCPort) (uint8, error) {
+			return 0, p.Stdout(ctx, []byte(call.Args.Text))
+		},
+	)
 	commands := &host.CommandSet{}
-	requirePipe(t, commands.Register(host.Group("probe", "Probes.", host.Group("json", "Output probes.", host.Leaf(emit, handler)))))
+	requirePipe(
+		t,
+		commands.Register(
+			host.Group("probe", "Probes.", host.Group("json", "Output probes.", host.Leaf(emit, handler))),
+		),
+	)
 	f := runnerFixture(t, remotehosttest.FixtureOptions{Commands: commands})
 	s, _ := runnerShell(t, f, nil, callbackSelection(t, commands))
 	help := runnerExec(t, s, "probe json --help", 10000)
-	if help.State.ExitCode != 0 || !strings.HasPrefix(help.Stdout.Delta, "probe json: Output probes.\n") || !strings.Contains(help.Stdout.Delta, "  probe json emit <text> [--json]\n") {
+	if help.State.ExitCode != 0 || !strings.HasPrefix(help.Stdout.Delta, "probe json: Output probes.\n") ||
+		!strings.Contains(help.Stdout.Delta, "  probe json emit <text> [--json]\n") {
 		t.Fatal(help)
 	}
 	raw := runnerExec(t, s, "probe json emit 'not json'", 10000)
@@ -190,7 +242,8 @@ func TestRunnerNestedGroupHelpAndValidatedJSONOutput(t *testing.T) {
 	if !strings.HasPrefix(invalid.Stderr.Delta, "demi-runner: --json output is not JSON: ") {
 		t.Fatal(invalid.Stderr)
 	}
-	if mismatch.Stderr.Delta != "demi-runner: --json output does not match its schema: \"ok\" is not of type \"boolean\"\n" {
+	if mismatch.Stderr.Delta != "demi-runner: --json output does not match its schema: "+
+		"\"ok\" is not of type \"boolean\"\n" {
 		t.Fatal(mismatch.Stderr)
 	}
 	usage := runnerExec(t, s, "probe json emit", 10000)

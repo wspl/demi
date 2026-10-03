@@ -57,7 +57,12 @@ type CloudShard interface {
 	// once its operations end. Each wait has hold; nil, nil means the
 	// conversation did not let go in time. Cancellation returns ctx.Err().
 	// Failure releases partial holds; success transfers Release to the caller.
-	HoldForReset(ctx context.Context, conversation webapi.ConversationID, filesOnCloud bool, hold time.Duration) (ConversationHold, error)
+	HoldForReset(
+		ctx context.Context,
+		conversation webapi.ConversationID,
+		filesOnCloud bool,
+		hold time.Duration,
+	) (ConversationHold, error)
 	// CloudStopped ends the exposes of a Cloud that stops or stopped.
 	CloudStopped(ctx context.Context, device webapi.DeviceID) error
 }

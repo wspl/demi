@@ -24,14 +24,16 @@ type ArtifactFile struct {
 
 // LocalArtifacts holds loaded development artifacts by SHA-256. Construct it with
 // NewLocalArtifacts; concurrent requests share each executable's first encoding.
-type LocalArtifacts struct{ files map[string]*localFile }
-type localFile struct {
-	path    string
-	size    uint64
-	encode  bool
-	gate    gates.Serial
-	encoded []byte
-}
+type (
+	LocalArtifacts struct{ files map[string]*localFile }
+	localFile      struct {
+		path    string
+		size    uint64
+		encode  bool
+		gate    gates.Serial
+		encoded []byte
+	}
+)
 
 // NewLocalArtifacts records executable and resource archive files, keeping an
 // artifact shared by several releases once. Archives are served without encoding.
@@ -39,7 +41,11 @@ func NewLocalArtifacts(executables, archives []ArtifactFile) *LocalArtifacts {
 	files := make(map[string]*localFile)
 	for _, executable := range executables {
 		if _, exists := files[executable.Artifact.SHA256]; !exists {
-			files[executable.Artifact.SHA256] = &localFile{path: executable.Path, size: executable.Artifact.Size, encode: true}
+			files[executable.Artifact.SHA256] = &localFile{
+				path:   executable.Path,
+				size:   executable.Artifact.Size,
+				encode: true,
+			}
 		}
 	}
 	for _, archive := range archives {
@@ -108,7 +114,11 @@ type ServedArtifacts struct {
 }
 
 // Resolve locates artifact on the development backend without an expiry.
-func (a *ServedArtifacts) Resolve(_ context.Context, artifact commandwire.PackageArtifact, _ string) (commandwire.ArtifactLocation, error) {
+func (a *ServedArtifacts) Resolve(
+	_ context.Context,
+	artifact commandwire.PackageArtifact,
+	_ string,
+) (commandwire.ArtifactLocation, error) {
 	file := a.Artifacts.files[artifact.SHA256]
 	if file == nil || file.size != artifact.Size {
 		return nil, errors.New("the artifact is not in a loaded development release")
@@ -121,5 +131,7 @@ func (a *ServedArtifacts) Resolve(_ context.Context, artifact commandwire.Packag
 	if err != nil {
 		return nil, err
 	}
-	return &commandwire.ArtifactURL{URL: parsed.Scheme() + "://" + parsed.Host() + NativeArtifactsRoute + "/" + artifact.SHA256}, nil
+	return &commandwire.ArtifactURL{
+		URL: parsed.Scheme() + "://" + parsed.Host() + NativeArtifactsRoute + "/" + artifact.SHA256,
+	}, nil
 }

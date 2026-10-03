@@ -122,7 +122,12 @@ func (c *NativeCatalog) Close(_ context.Context) error {
 // unpublished refuses artifact lookups on a catalog containing no package.
 type unpublished struct{}
 
-func (unpublished) Resolve(_ context.Context, _ commandwire.PackageArtifact, target string) (commandwire.ArtifactLocation, error) {
+// Resolve locates an executable for the requesting job.
+func (unpublished) Resolve(
+	_ context.Context,
+	_ commandwire.PackageArtifact,
+	target string,
+) (commandwire.ArtifactLocation, error) {
 	return nil, fmt.Errorf("no command package is published for %s", target)
 }
 

@@ -94,7 +94,10 @@ func TestCommandRouterLifetimeAndConversationOwnership(t *testing.T) {
 	if router.SelectionOf("node", "conversation") != selection || router.SelectionOf("node", "other") != nil {
 		t.Fatal("re-registration replaced owner")
 	}
-	job := remotehost.JobOrigin{Context: commandwire.CommandContext{Conversation: "conversation"}, Caller: &host.JobCaller{Node: "node"}}
+	job := remotehost.JobOrigin{
+		Context: commandwire.CommandContext{Conversation: "conversation"},
+		Caller:  &host.JobCaller{Node: "node"},
+	}
 	assertFailure := func(job remotehost.JobOrigin, kind host.RPCErrorKind, text string) {
 		t.Helper()
 		_, err := router.Dispatch(t.Context(), job, host.RPCInvocation{Path: []string{"missing"}}, host.RPCPort{})

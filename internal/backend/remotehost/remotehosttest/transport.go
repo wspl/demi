@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
+	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/runnerwire"
 	"golang.org/x/net/websocket"
 )
@@ -29,6 +30,7 @@ var binaryFrames = websocket.Codec{
 // socketFrames feeds complete frames to the engine without giving it socket ownership.
 type socketFrames struct{ socket *websocket.Conn }
 
+// Receive reads one binary runner frame with cancellation.
 func (s socketFrames) Receive(ctx context.Context) ([]byte, error) {
 	release := s.cancelIO(ctx)
 	defer release()
@@ -36,6 +38,8 @@ func (s socketFrames) Receive(ctx context.Context) ([]byte, error) {
 	err := binaryFrames.Receive(s.socket, &frame)
 	return frame, err
 }
+
+// Send writes one binary runner frame with cancellation.
 func (s socketFrames) Send(ctx context.Context, frame []byte) error {
 	release := s.cancelIO(ctx)
 	defer release()
@@ -104,58 +108,7 @@ func (f *RunnerFixture) adopt(socket *websocket.Conn) {
 	if err != nil {
 		return
 	}
-	// Admission serializes hello decisions, not the lifetime of an adopted link.
-	var refusal *runnerwire.HelloError
-	if hello.Protocol != runnerwire.Version {
-		refusal = &runnerwire.HelloError{Code: runnerwire.HelloErrorCodeUnsupportedProtocol, Reason: "unsupported protocol"}
-	} else if hello.DeviceToken == nil || hello.DeviceToken.Expose() != fixtureToken {
-		refusal = &runnerwire.HelloError{Code: runnerwire.HelloErrorCodeUnknownDevice, Reason: "unknown device"}
-	} else {
-		f.mu.Lock()
-		current := f.device.Link
-		f.mu.Unlock()
-		if current != nil && !current.IsClosed() {
-			refusal = &runnerwire.HelloError{Code: runnerwire.HelloErrorCodeAlreadyConnected, Reason: "already connected"}
-		}
-	}
-	if refusal != nil {
-		permit.Release()
-		frame, err := runnerwire.Encode(refusal)
-		if err != nil {
-			slog.Error("fixture refusal encoding failed: " + err.Error())
-			return
-		}
-		if err := frames.Send(f.ctx, frame); err != nil {
-			slog.Debug("fixture refusal not sent: " + err.Error())
-		}
-		return
-	}
-	welcome, err := runnerwire.Encode(&runnerwire.HelloOK{DeviceID: TestDeviceID})
-	if err != nil {
-		permit.Release()
-		slog.Error("fixture welcome encoding failed: " + err.Error())
-		return
-	}
-	if err := frames.Send(f.ctx, welcome); err != nil {
-		permit.Release()
-		return
-	}
-	identity := remotehost.HostIdentity(hello.Runner.Identity)
-	link, driver := remotehost.NewLink(remotehost.LinkOptions{Device: TestDeviceID, Identity: identity, Pipes: f.pipes, Policy: f.policy})
-	driver.Tap(f.tap)
-	f.publish(remotehost.DeviceLink{Link: link})
-	permit.Release()
-	driver.Serve(f.ctx, frames, frames)
-	f.mu.Lock()
-	if f.device.Link == link {
-		previous := f.changed
-		f.device = remotehost.DeviceLink{Last: new(identity)}
-		f.changed = make(chan struct{})
-		f.mu.Unlock()
-		close(previous)
-	} else {
-		f.mu.Unlock()
-	}
+	f.acceptHello(f.ctx, frames, hello, permit)
 }
 
 // pipeHTTPBody adapts request cancellation and explicit body closure to a pipe source.
@@ -164,6 +117,7 @@ type pipeHTTPBody struct {
 	response *http.ResponseController
 }
 
+// Read reads the HTTP body with cancellation deadlines.
 func (b pipeHTTPBody) Read(ctx context.Context, data []byte) (int, error) {
 	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
@@ -182,6 +136,8 @@ func (b pipeHTTPBody) Read(ctx context.Context, data []byte) (int, error) {
 	}()
 	return b.body.Read(data)
 }
+
+// Close closes the HTTP request body.
 func (b pipeHTTPBody) Close(context.Context) error { return b.body.Close() }
 
 // pipeRefused maps the broker's two claim refusals to the fixture's HTTP boundary.
@@ -203,7 +159,10 @@ func (f *RunnerFixture) pipeSource(response http.ResponseWriter, request *http.R
 		pipeRefused(response, err)
 		return
 	}
-	if err := source.Pump(request.Context(), pipeHTTPBody{request.Body, http.NewResponseController(response)}); err != nil {
+	if err := source.Pump(
+		request.Context(),
+		pipeHTTPBody{request.Body, http.NewResponseController(response)},
+	); err != nil {
 		pipeResponse(response, http.StatusConflict, err.Error())
 		return
 	}
@@ -273,5 +232,80 @@ func pipeResponse(response http.ResponseWriter, status int, text string) {
 	response.WriteHeader(status)
 	if _, err := io.WriteString(response, text); err != nil {
 		slog.Debug("fixture pipe reply not sent: " + err.Error())
+	}
+}
+
+// refuseHello checks a fixture hello while the caller holds admission.
+func (f *RunnerFixture) refuseHello(hello *runnerwire.Hello) *runnerwire.HelloError {
+	// Admission serializes hello decisions, not the lifetime of an adopted link.
+	var refusal *runnerwire.HelloError
+	if hello.Protocol != runnerwire.Version {
+		refusal = &runnerwire.HelloError{
+			Code:   runnerwire.HelloErrorCodeUnsupportedProtocol,
+			Reason: "unsupported protocol",
+		}
+	} else if hello.DeviceToken == nil || hello.DeviceToken.Expose() != fixtureToken {
+		refusal = &runnerwire.HelloError{Code: runnerwire.HelloErrorCodeUnknownDevice, Reason: "unknown device"}
+	} else {
+		f.mu.Lock()
+		current := f.device.Link
+		f.mu.Unlock()
+		if current != nil && !current.IsClosed() {
+			refusal = &runnerwire.HelloError{
+				Code:   runnerwire.HelloErrorCodeAlreadyConnected,
+				Reason: "already connected",
+			}
+		}
+	}
+	return refusal
+}
+
+// acceptHello answers an admitted hello, transfers its permit, and serves the connection.
+func (f *RunnerFixture) acceptHello(
+	ctx context.Context,
+	frames socketFrames,
+	hello *runnerwire.Hello,
+	permit *gates.Permit,
+) {
+	refusal := f.refuseHello(hello)
+	if refusal != nil {
+		permit.Release()
+		frame, err := runnerwire.Encode(refusal)
+		if err != nil {
+			slog.Error("fixture refusal encoding failed: " + err.Error())
+			return
+		}
+		if err := frames.Send(ctx, frame); err != nil {
+			slog.Debug("fixture refusal not sent: " + err.Error())
+		}
+		return
+	}
+	welcome, err := runnerwire.Encode(&runnerwire.HelloOK{DeviceID: TestDeviceID})
+	if err != nil {
+		permit.Release()
+		slog.Error("fixture welcome encoding failed: " + err.Error())
+		return
+	}
+	if err := frames.Send(ctx, welcome); err != nil {
+		permit.Release()
+		return
+	}
+	identity := remotehost.HostIdentity(hello.Runner.Identity)
+	link, driver := remotehost.NewLink(
+		remotehost.LinkOptions{Device: TestDeviceID, Identity: identity, Pipes: f.pipes, Policy: f.policy},
+	)
+	driver.Tap(f.tap)
+	f.publish(remotehost.DeviceLink{Link: link})
+	permit.Release()
+	driver.Serve(ctx, frames, frames)
+	f.mu.Lock()
+	if f.device.Link == link {
+		previous := f.changed
+		f.device = remotehost.DeviceLink{Last: new(identity)}
+		f.changed = make(chan struct{})
+		f.mu.Unlock()
+		close(previous)
+	} else {
+		f.mu.Unlock()
 	}
 }

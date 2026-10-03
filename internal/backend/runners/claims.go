@@ -23,7 +23,11 @@ type PendingClaims struct {
 
 // NewPendingClaims sets the number of attempts each user may make in one minute.
 func NewPendingClaims(attemptsPerMinute int) *PendingClaims {
-	return &PendingClaims{waiting: make(map[ClaimCode]*PendingRunner), attempts: make(map[webapi.UserID][]time.Time), attemptsPerMinute: attemptsPerMinute}
+	return &PendingClaims{
+		waiting:           make(map[ClaimCode]*PendingRunner),
+		attempts:          make(map[webapi.UserID][]time.Time),
+		attemptsPerMinute: attemptsPerMinute,
+	}
 }
 
 // Attempt counts a claim attempt unless the user has exhausted the minute's

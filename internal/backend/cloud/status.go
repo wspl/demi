@@ -13,7 +13,10 @@ import (
 // capacities and limits without waking it. A manager read failure omits volumes.
 func Status(ctx context.Context, shard CloudShard) (webapi.CloudStatus, error) {
 	tuning := shard.CloudServices().Tuning
-	status := webapi.CloudStatus{State: webapi.CloudStateUnallocated, Limits: webapi.CloudVolumes{SystemBytes: tuning.SystemQuota, HomeBytes: tuning.HomeQuota}}
+	status := webapi.CloudStatus{
+		State:  webapi.CloudStateUnallocated,
+		Limits: webapi.CloudVolumes{SystemBytes: tuning.SystemQuota, HomeBytes: tuning.HomeQuota},
+	}
 	device, err := cloudRecords(shard).ManagedDevice(ctx, shard.User())
 	if err != nil || device == nil {
 		return status, err

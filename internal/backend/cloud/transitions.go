@@ -17,7 +17,11 @@ import (
 func boot(ctx context.Context, s CloudShard, m *machine) error {
 	err := startSandbox(ctx, s, m)
 	if err != nil {
-		if _, saved := Call(ctx, s.CloudServices().Machines, machinewire.HibernateParams{DeviceID: string(m.device.ID)}); saved != nil {
+		if _, saved := Call(
+			ctx,
+			s.CloudServices().Machines,
+			machinewire.HibernateParams{DeviceID: string(m.device.ID)},
+		); saved != nil {
 			slog.Warn("a Cloud whose boot failed was not saved", "error", saved)
 		}
 		s.Devices().Disconnect(m.device.ID, "Cloud boot failed")
@@ -33,9 +37,17 @@ func startSandbox(ctx context.Context, s CloudShard, m *machine) error {
 	}
 	backend, ok := s.PublicURL().URL()
 	if !ok {
-		return failed(errors.New("The backend does not listen yet")) //nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		return failed(errors.New("The backend does not listen yet"))
 	}
-	_, err := Call(ctx, s.CloudServices().Machines, machinewire.WakeParams{DeviceID: string(m.device.ID), Boot: runnerwire.ManagedBoot{BackendURL: backend, DeviceToken: token}})
+	_, err := Call(
+		ctx,
+		s.CloudServices().Machines,
+		machinewire.WakeParams{
+			DeviceID: string(m.device.ID),
+			Boot:     runnerwire.ManagedBoot{BackendURL: backend, DeviceToken: token},
+		},
+	)
 	if err != nil {
 		return failed(err)
 	}

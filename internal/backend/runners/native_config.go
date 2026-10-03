@@ -52,8 +52,10 @@ type LocalNativeStore struct{}
 
 func (*LocalNativeStore) nativeConfigStore() {}
 
-var nativePrefix = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*(/[A-Za-z0-9_-]+)*$`)
-var executableBasename = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+var (
+	nativePrefix       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*(/[A-Za-z0-9_-]+)*$`)
+	executableBasename = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+)
 
 // prefix supplies the default namespace for published native objects.
 func (c NativeConfig) prefix() string {
