@@ -18,7 +18,8 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 	ids := transcripttest.NewSequentialIDs("log")
 	log := transcript.NewLog(nil, ids, providertest.FixedClock(core.UnixEpoch))
 	model := storetest.TestModel()
-	if log.TakePatches() != nil || log.CompleteTailText() != nil || log.EndsWithOpenText() || log.EndsWithInterruption() {
+	if log.TakePatches() != nil || log.CompleteTailText() != nil || log.EndsWithOpenText() ||
+		log.EndsWithInterruption() {
 		t.Fatal("empty log has work")
 	}
 	log.SignThinking("no reasoning")
@@ -92,7 +93,8 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 		t.Fatal("stop patch not immutable")
 	}
 	rewrite := log.ReplaceAll([]core.Block{log.Find(userID)})
-	if len(rewrite.Patches) != 1 || len(rewrite.Touched) != 0 || len(rewrite.Rows.Indices(1)) != 0 || log.TakePatches() != nil {
+	if len(rewrite.Patches) != 1 || len(rewrite.Touched) != 0 || len(rewrite.Rows.Indices(1)) != 0 ||
+		log.TakePatches() != nil {
 		t.Fatal("rewrite did not supersede pending journal")
 	}
 	if _, ok := rewrite.Patches[0].(*framewire.ReplacePatch); !ok {
@@ -114,7 +116,13 @@ func TestLogToolCompletionUsesLatestExecutingCall(t *testing.T) {
 		t.Fatal("fork crossed executing call")
 	}
 	pending := log.PendingToolCalls()
-	if !reflect.DeepEqual(pending, []transcript.PendingCall{{ToolUseID: "reuse", ToolName: "run", Input: "{}"}, {ToolUseID: "reuse", ToolName: "run", Input: "broken {"}}) {
+	if !reflect.DeepEqual(
+		pending,
+		[]transcript.PendingCall{
+			{ToolUseID: "reuse", ToolName: "run", Input: "{}"},
+			{ToolUseID: "reuse", ToolName: "run", Input: "broken {"},
+		},
+	) {
 		t.Fatal(pending)
 	}
 	before := log.Blocks()
@@ -141,7 +149,14 @@ func TestLogInputsReachReplayInOrder(t *testing.T) {
 	log.PushContext("turn", model, "execution", "context")
 	log.PushSteer("steer", "turn", model, storetest.Text("steer"))
 	log.PushWakeup("wake", "turn", model, "new_turn")
-	message := core.AgentMessage{ID: "message", Sender: core.Sender{ID: "agent", Number: 1, Description: "reader", Round: 1}, RecipientID: "root", Timestamp: core.UnixEpoch, Content: "message", Event: &core.MessageEvent{}}
+	message := core.AgentMessage{
+		ID:          "message",
+		Sender:      core.Sender{ID: "agent", Number: 1, Description: "reader", Round: 1},
+		RecipientID: "root",
+		Timestamp:   core.UnixEpoch,
+		Content:     "message",
+		Event:       &core.MessageEvent{},
+	}
 	log.PushAgentMessage("turn", model, message)
 	log.PushResume("turn", model)
 	log.PushError(model, transcript.InterruptedTurnMessage, new(transcript.InterruptedCode), nil)

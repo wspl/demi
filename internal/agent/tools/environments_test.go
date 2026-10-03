@@ -29,6 +29,7 @@ func (e *ownedEnvironment) OwnsCommand(command core.CommandID) bool {
 	}
 	return false
 }
+
 func (e *ownedEnvironment) OwnsShell(shell core.ShellID) bool {
 	for _, id := range e.shells {
 		if id == shell {
@@ -37,6 +38,7 @@ func (e *ownedEnvironment) OwnsShell(shell core.ShellID) bool {
 	}
 	return false
 }
+
 func (e *ownedEnvironment) DisposeAll(ctx context.Context) error {
 	e.disposals.Add(1)
 	if e.dispose != nil {
@@ -44,6 +46,7 @@ func (e *ownedEnvironment) DisposeAll(ctx context.Context) error {
 	}
 	return nil
 }
+
 func (e *ownedEnvironment) PageViews() []host.PageView {
 	var views []host.PageView
 	for _, id := range e.commands {
@@ -106,7 +109,7 @@ func TestHandleBelongsToItsHost(t *testing.T) {
 	if _, _, err := environments.resolve(t.Context(), "a", nil, nil, create); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		name    string
 		shell   *core.ShellID
 		command *core.CommandID
@@ -115,17 +118,29 @@ func TestHandleBelongsToItsHost(t *testing.T) {
 		{"command", nil, &command, `Shell handle "cmd-a" belongs to a different Host`},
 		{"shell", &shell, nil, `Shell handle "shell-a" belongs to a different Host`},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := environments.resolve(t.Context(), "b", tc.shell, tc.command, func(context.Context) (host.ShellEnvironment, error) { return &ownedEnvironment{}, nil })
-			if err == nil || err.Error() != tc.want {
-				t.Fatalf("got %v want %s", err, tc.want)
+		t.Run(scenario.name, func(t *testing.T) {
+			_, _, err := environments.resolve(
+				t.Context(),
+				"b",
+				scenario.shell,
+				scenario.command,
+				func(context.Context) (host.ShellEnvironment, error) { return &ownedEnvironment{}, nil },
+			)
+			if err == nil || err.Error() != scenario.want {
+				t.Fatalf("got %v want %s", err, scenario.want)
 			}
 		})
 	}
-	if _, _, err := environments.resolve(t.Context(), "a", nil, &command, func(context.Context) (host.ShellEnvironment, error) {
-		t.Fatal("created twice")
-		return nil, nil
-	}); err != nil {
+	if _, _, err := environments.resolve(
+		t.Context(),
+		"a",
+		nil,
+		&command,
+		func(context.Context) (host.ShellEnvironment, error) {
+			t.Fatal("created twice")
+			return nil, nil
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if environments.Owning(command) != owner || len(environments.PageViews()) != 1 {
@@ -144,7 +159,7 @@ func TestHandleBelongsToItsHost(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		shell   *core.ShellID
 		command *core.CommandID
 		want    string
@@ -152,9 +167,9 @@ func TestHandleBelongsToItsHost(t *testing.T) {
 		{nil, &command, `Command id "cmd-a" is not unique in this session`},
 		{&shell, nil, `Shell id "shell-a" is not unique in this session`},
 	} {
-		_, _, err := twice.resolve(t.Context(), "a", tc.shell, tc.command, create)
-		if err == nil || err.Error() != tc.want {
-			t.Fatalf("got %v want %s", err, tc.want)
+		_, _, err := twice.resolve(t.Context(), "a", scenario.shell, scenario.command, create)
+		if err == nil || err.Error() != scenario.want {
+			t.Fatalf("got %v want %s", err, scenario.want)
 		}
 	}
 }
@@ -163,17 +178,29 @@ func TestDisposeEndsExistingAndConcurrentCreation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var environments Environments
 		first, late := &ownedEnvironment{}, &ownedEnvironment{}
-		if _, _, err := environments.resolve(t.Context(), "a", nil, nil, func(context.Context) (host.ShellEnvironment, error) { return first, nil }); err != nil {
+		if _, _, err := environments.resolve(
+			t.Context(),
+			"a",
+			nil,
+			nil,
+			func(context.Context) (host.ShellEnvironment, error) { return first, nil },
+		); err != nil {
 			t.Fatal(err)
 		}
 		gate, started := make(chan struct{}), make(chan struct{})
 		made := make(chan error, 1)
 		go func() {
-			_, _, err := environments.resolve(t.Context(), "b", nil, nil, func(context.Context) (host.ShellEnvironment, error) {
-				close(started)
-				<-gate
-				return late, nil
-			})
+			_, _, err := environments.resolve(
+				t.Context(),
+				"b",
+				nil,
+				nil,
+				func(context.Context) (host.ShellEnvironment, error) {
+					close(started)
+					<-gate
+					return late, nil
+				},
+			)
 			made <- err
 		}()
 		<-started
@@ -199,10 +226,16 @@ func TestDisposeEndsExistingAndConcurrentCreation(t *testing.T) {
 		if first.disposals.Load() != 1 || late.disposals.Load() != 1 {
 			t.Fatal("cleanup missing or duplicated")
 		}
-		if _, _, err := environments.resolve(t.Context(), "a", nil, nil, func(context.Context) (host.ShellEnvironment, error) {
-			t.Fatal("created after disposal")
-			return nil, nil
-		}); err == nil {
+		if _, _, err := environments.resolve(
+			t.Context(),
+			"a",
+			nil,
+			nil,
+			func(context.Context) (host.ShellEnvironment, error) {
+				t.Fatal("created after disposal")
+				return nil, nil
+			},
+		); err == nil {
 			t.Fatal("admitted after disposal")
 		}
 	})
@@ -245,14 +278,27 @@ func TestEndAllRecreatesAndCleanupErrorsAreReturned(t *testing.T) {
 	var environments Environments
 	failure := errors.New("cleanup failed")
 	first := &ownedEnvironment{dispose: func(context.Context) error { return failure }}
-	if _, _, err := environments.resolve(t.Context(), "a", nil, nil, func(context.Context) (host.ShellEnvironment, error) { return first, nil }); err != nil {
+	if _, _, err := environments.resolve(
+		t.Context(),
+		"a",
+		nil,
+		nil,
+		func(context.Context) (host.ShellEnvironment, error) { return first, nil },
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := environments.EndAll(t.Context()); !errors.Is(err, failure) {
 		t.Fatalf("cleanup error lost: %v", err)
 	}
 	next := &ownedEnvironment{}
-	if _, got, err := environments.resolve(t.Context(), "a", nil, nil, func(context.Context) (host.ShellEnvironment, error) { return next, nil }); err != nil || got != next {
+	if _, got, err := environments.resolve(
+		t.Context(),
+		"a",
+		nil,
+		nil,
+		func(context.Context) (host.ShellEnvironment, error) { return next, nil },
+	); err != nil ||
+		got != next {
 		t.Fatalf("did not create fresh environment: %v", err)
 	}
 	if err := environments.Dispose(t.Context()); err != nil {
@@ -272,7 +318,13 @@ func TestDisposeJoinsConcurrentEndAll(t *testing.T) {
 			<-finish
 			return nil
 		}}
-		if _, _, err := environments.resolve(t.Context(), "a", nil, nil, func(context.Context) (host.ShellEnvironment, error) { return owner, nil }); err != nil {
+		if _, _, err := environments.resolve(
+			t.Context(),
+			"a",
+			nil,
+			nil,
+			func(context.Context) (host.ShellEnvironment, error) { return owner, nil },
+		); err != nil {
 			t.Fatal(err)
 		}
 		ended := make(chan error, 1)
@@ -310,18 +362,30 @@ func TestCancelledWaiterDoesNotCancelSharedCreation(t *testing.T) {
 		started, finish := make(chan struct{}), make(chan struct{})
 		created := make(chan error, 1)
 		go func() {
-			_, _, err := environments.resolve(t.Context(), "a", nil, nil, func(context.Context) (host.ShellEnvironment, error) {
-				close(started)
-				<-finish
-				return owner, nil
-			})
+			_, _, err := environments.resolve(
+				t.Context(),
+				"a",
+				nil,
+				nil,
+				func(context.Context) (host.ShellEnvironment, error) {
+					close(started)
+					<-finish
+					return owner, nil
+				},
+			)
 			created <- err
 		}()
 		<-started
 		ctx, cancel := context.WithCancel(t.Context())
 		waited := make(chan error, 1)
 		go func() {
-			_, _, err := environments.resolve(ctx, "a", nil, nil, func(context.Context) (host.ShellEnvironment, error) { return nil, errors.New("created twice") })
+			_, _, err := environments.resolve(
+				ctx,
+				"a",
+				nil,
+				nil,
+				func(context.Context) (host.ShellEnvironment, error) { return nil, errors.New("created twice") },
+			)
 			waited <- err
 		}()
 		synctest.Wait()

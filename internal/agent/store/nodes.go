@@ -8,17 +8,21 @@ import (
 // NodeRecord holds identity and relationship, never runtime state.
 // The root has no parent. Returned records are owned snapshots.
 type NodeRecord struct {
+	// ID identifies the node.
 	ID core.NodeID
 	// Number is the model-facing agent number: zero for the root.
 	Number uint64
+	// Parent identifies the parent, or is nil for the root.
 	Parent *core.NodeID
 	// Description is a short title, empty for the root.
 	Description string
 	// Profile is absent for the root and inherited setups.
 	Profile *string
 	// Round starts at one and increases on each resume.
-	Round             uint64
-	StartedAt         core.Timestamp
+	Round uint64
+	// StartedAt records when the current round started.
+	StartedAt core.Timestamp
+	// CanSpawnSubagents reports whether the node may create children.
 	CanSpawnSubagents bool
 	// Closed is nil while the node is live.
 	Closed *NodeClose
@@ -36,7 +40,14 @@ func (n NodeRecord) Job() *framewire.SubagentJob {
 	if n.Parent == nil {
 		return nil
 	}
-	job := &framewire.SubagentJob{SubagentID: n.ID, ParentSessionID: *n.Parent, Description: n.Description, Profile: n.Profile, Phase: framewire.JobPhaseRunning, StartedAt: n.StartedAt}
+	job := &framewire.SubagentJob{
+		SubagentID:      n.ID,
+		ParentSessionID: *n.Parent,
+		Description:     n.Description,
+		Profile:         n.Profile,
+		Phase:           framewire.JobPhaseRunning,
+		StartedAt:       n.StartedAt,
+	}
 	if n.Closed != nil {
 		job.Phase = n.Closed.Phase.JobPhase()
 		job.EndedAt = new(n.Closed.At)
@@ -52,8 +63,10 @@ func (n NodeRecord) Job() *framewire.SubagentJob {
 
 // NodeClose describes how and when a node closed.
 type NodeClose struct {
+	// Phase records the close outcome.
 	Phase ClosePhase
-	At    core.Timestamp
+	// At records when the node closed.
+	At core.Timestamp
 }
 
 // ClosePhase is the phase a node closed in.
@@ -66,13 +79,19 @@ type ClosePhase interface {
 }
 
 // Completed carries the child's bounded last assistant text.
-type Completed struct{ Result string }
+type Completed struct {
+	// Result holds the child's final bounded assistant text.
+	Result string
+}
 
 // Aborted marks a node that was aborted.
 type Aborted struct{}
 
 // Failed carries the failure's text.
-type Failed struct{ Failure string }
+type Failed struct {
+	// Failure holds the failure text.
+	Failure string
+}
 
 func (*Completed) closePhase() {}
 func (*Aborted) closePhase()   {}

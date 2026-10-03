@@ -14,7 +14,10 @@ import (
 )
 
 // CommandStateError explains why a command state is refused.
-type CommandStateError struct{ Reason string }
+type CommandStateError struct {
+	// Reason is the command-state refusal text.
+	Reason string
+}
 
 // Error returns the refusal text.
 func (e *CommandStateError) Error() string { return e.Reason }
@@ -22,17 +25,23 @@ func (e *CommandStateError) Error() string { return e.Reason }
 // validateCommandStorageKey checks a node's logical command storage name.
 func validateCommandStorageKey(key CommandStorageKey) error {
 	s := string(key)
-	drive := len(s) >= 3 && (s[0] >= 'a' && s[0] <= 'z' || s[0] >= 'A' && s[0] <= 'Z') && s[1] == ':' && (s[2] == '/' || s[2] == '\\')
+	drive := len(s) >= 3 && (s[0] >= 'a' && s[0] <= 'z' || s[0] >= 'A' && s[0] <= 'Z') && s[1] == ':' &&
+		(s[2] == '/' || s[2] == '\\')
 	traverses := slices.Contains(strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == '\\' }), "..")
 	if s == "" || strings.ContainsRune(s, 0) || strings.HasPrefix(s, "/") || drive || traverses {
-		return &CommandStateError{Reason: fmt.Sprintf("command storage key %q is not a relative name without path traversal", s)}
+		return &CommandStateError{
+			Reason: fmt.Sprintf("command storage key %q is not a relative name without path traversal", s),
+		}
 	}
 	return nil
 }
 
 // InitialCommandState returns the explicit empty version zero, current.
 func InitialCommandState() CommandStateSnapshot {
-	return CommandStateSnapshot{Versions: []CommandVersion{{Values: map[CommandStorageKey]json.RawMessage{}}}, Boundaries: []SessionBoundary{}}
+	return CommandStateSnapshot{
+		Versions:   []CommandVersion{{Values: map[CommandStorageKey]json.RawMessage{}}},
+		Boundaries: []SessionBoundary{},
+	}
 }
 
 type boundaryKey struct {
@@ -51,7 +60,10 @@ type CommandStateHistory struct {
 
 // NewCommandStateHistory creates a node's history, already held by its first checkpoint.
 func NewCommandStateHistory() *CommandStateHistory {
-	return &CommandStateHistory{versions: map[uint64]map[CommandStorageKey]json.RawMessage{0: {}}, boundaries: map[boundaryKey]uint64{}}
+	return &CommandStateHistory{
+		versions:   map[uint64]map[CommandStorageKey]json.RawMessage{0: {}},
+		boundaries: map[boundaryKey]uint64{},
+	}
 }
 
 // RestoreCommandStateHistory checks unique revisions, empty version zero, the
@@ -61,7 +73,11 @@ func RestoreCommandStateHistory(snapshot CommandStateSnapshot) (*CommandStateHis
 	refuse := func(reason string) (*CommandStateHistory, error) {
 		return nil, &CommandStateError{Reason: "invalid command state: " + reason}
 	}
-	h := &CommandStateHistory{versions: map[uint64]map[CommandStorageKey]json.RawMessage{}, boundaries: map[boundaryKey]uint64{}, current: snapshot.Revision}
+	h := &CommandStateHistory{
+		versions:   map[uint64]map[CommandStorageKey]json.RawMessage{},
+		boundaries: map[boundaryKey]uint64{},
+		current:    snapshot.Revision,
+	}
 	for _, version := range snapshot.Versions {
 		if _, exists := h.versions[version.Revision]; exists {
 			return refuse("a revision appears twice")
@@ -138,13 +154,19 @@ func (h *CommandStateHistory) Select(blocks []core.Block, revision uint64, refer
 	}
 	snapshot := h.Snapshot(nil)
 	snapshot.Revision = revision
-	snapshot.Boundaries = slices.DeleteFunc(snapshot.Boundaries, func(b SessionBoundary) bool { return !retained[b.BlockID] })
+	snapshot.Boundaries = slices.DeleteFunc(
+		snapshot.Boundaries,
+		func(b SessionBoundary) bool { return !retained[b.BlockID] },
+	)
 	if referencedOnly {
 		referenced := map[uint64]bool{0: true, revision: true}
 		for _, boundary := range snapshot.Boundaries {
 			referenced[boundary.CommandRevision] = true
 		}
-		snapshot.Versions = slices.DeleteFunc(snapshot.Versions, func(v CommandVersion) bool { return !referenced[v.Revision] })
+		snapshot.Versions = slices.DeleteFunc(
+			snapshot.Versions,
+			func(v CommandVersion) bool { return !referenced[v.Revision] },
+		)
 	}
 	return snapshot
 }
@@ -170,14 +192,23 @@ func (h *CommandStateHistory) HasBoundary(block core.BlockID, edge BoundaryEdge)
 func (h *CommandStateHistory) Snapshot(pending *CommandVersion) CommandStateSnapshot {
 	snapshot := CommandStateSnapshot{Revision: h.current, Versions: []CommandVersion{}, Boundaries: []SessionBoundary{}}
 	for _, revision := range slices.Sorted(maps.Keys(h.versions)) {
-		snapshot.Versions = append(snapshot.Versions, CommandVersion{Revision: revision, Values: cloneValues(h.versions[revision])})
+		snapshot.Versions = append(
+			snapshot.Versions,
+			CommandVersion{Revision: revision, Values: cloneValues(h.versions[revision])},
+		)
 	}
 	if pending != nil {
 		snapshot.Revision = pending.Revision
-		snapshot.Versions = append(snapshot.Versions, CommandVersion{Revision: pending.Revision, Values: cloneValues(pending.Values)})
+		snapshot.Versions = append(
+			snapshot.Versions,
+			CommandVersion{Revision: pending.Revision, Values: cloneValues(pending.Values)},
+		)
 	}
 	for key, revision := range h.boundaries {
-		snapshot.Boundaries = append(snapshot.Boundaries, SessionBoundary{BlockID: key.block, Edge: key.edge, CommandRevision: revision})
+		snapshot.Boundaries = append(
+			snapshot.Boundaries,
+			SessionBoundary{BlockID: key.block, Edge: key.edge, CommandRevision: revision},
+		)
 	}
 	rank := map[BoundaryEdge]int{BeforeUser: 0, AfterAssistant: 1, AfterBlock: 2}
 	slices.SortFunc(snapshot.Boundaries, func(a, b SessionBoundary) int {

@@ -15,8 +15,11 @@ type Profile = core.Profile
 // keeps until it closes. Revision distinguishes changed commands or profiles.
 // Callers treat its commands and profiles as immutable.
 type Toolset struct {
+	// Commands contains the tree's offered commands.
 	Commands *host.CommandSet
+	// Profiles contains its named subagent profiles.
 	Profiles []Profile
+	// Revision identifies the command and profile revision.
 	Revision string
 }
 

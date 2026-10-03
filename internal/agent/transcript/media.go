@@ -49,7 +49,13 @@ func (r *RequestView) medium(kind string, source core.MediaSource) (provider.Med
 	case *core.MediaURL:
 		return &provider.MediaURL{URL: s.URL}, ""
 	case *core.MediaSourceRef:
-		data, text := r.mediaBytes(kind, s.Ref, s.MediaType, s.MediaType, core.ModelAcceptsMediaType(r.model, s.MediaType))
+		data, text := r.mediaBytes(
+			kind,
+			s.Ref,
+			s.MediaType,
+			s.MediaType,
+			core.ModelAcceptsMediaType(r.model, s.MediaType),
+		)
 		if data == nil {
 			return nil, text
 		}
@@ -76,7 +82,12 @@ func (r *RequestView) toolMedium(kind string, source core.ToolMediaSource) (*pro
 }
 
 // mediaBytes resolves held media or its stable model-facing refusal text.
-func (r *RequestView) mediaBytes(kind string, blob core.BlobRef, mediaType, name string, accepted bool) (*provider.MediaBytes, string) {
+func (r *RequestView) mediaBytes(
+	kind string,
+	blob core.BlobRef,
+	mediaType, name string,
+	accepted bool,
+) (*provider.MediaBytes, string) {
 	var data core.B64Bytes
 	switch held := r.view.Held(blob).(type) {
 	case *store.HeldMissing:
@@ -127,7 +138,12 @@ func goneText(part *core.ToolGone) string {
 	case *core.Retired:
 		// Timestamps were validated at the transcript's entry boundary.
 		day, _, _ := strings.Cut(string(cause.At), "T")
-		return fmt.Sprintf("[%s:%s, removed on %s: a tool result's images and videos are kept for 30 days]", part.Kind, part.MediaType, day)
+		return fmt.Sprintf(
+			"[%s:%s, removed on %s: a tool result's images and videos are kept for 30 days]",
+			part.Kind,
+			part.MediaType,
+			day,
+		)
 	}
 	return ""
 }
