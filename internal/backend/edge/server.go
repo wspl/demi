@@ -49,7 +49,14 @@ func Start(ctx context.Context, address netip.AddrPort, state AppState, webDirec
 		return nil, err
 	}
 	lifetime, cancel := context.WithCancel(ctx)
-	e := &Edge{listener: listener, address: listener.Addr().(*net.TCPAddr).AddrPort(), state: state, cancel: cancel, done: make(chan struct{}), connections: make(map[net.Conn]struct{})}
+	e := &Edge{
+		listener:    listener,
+		address:     listener.Addr().(*net.TCPAddr).AddrPort(),
+		state:       state,
+		cancel:      cancel,
+		done:        make(chan struct{}),
+		connections: make(map[net.Conn]struct{}),
+	}
 	state.Services.PublicURL.Listening(state.Site.PublicURL, e.address)
 	e.handler = e.routes(webDirectory)
 	go e.serve(lifetime)
@@ -160,17 +167,8 @@ func (e *Edge) serveConnection(ctx context.Context, conn net.Conn) {
 		request.RemoteAddr = conn.RemoteAddr().String()
 		request = request.WithContext(context.WithValue(ctx, connectionKey{}, conn))
 		writer := &response{conn: conn, input: input, request: request, requestBody: body, header: make(http.Header)}
-		func() {
-			defer func() {
-				if failure := recover(); failure != nil {
-					slog.Error("a request failed", "panic", failure)
-					if writer.status == 0 && !writer.hijacked {
-						writeError(writer, internalError(errors.New("a request failed")))
-					}
-				}
-			}()
-			e.handler.ServeHTTP(writer, request)
-		}()
+		e.serveRequest(writer, request)
+
 		if writer.hijacked {
 			return
 		}
@@ -208,4 +206,17 @@ func readHead(input *bufio.Reader) ([]byte, error) {
 			return head, nil
 		}
 	}
+}
+
+// serveRequest confines handler panics to the current response.
+func (e *Edge) serveRequest(writer *response, request *http.Request) {
+	defer func() {
+		if failure := recover(); failure != nil {
+			slog.Error("a request failed", "panic", failure)
+			if writer.status == 0 && !writer.hijacked {
+				writeError(writer, internalError(errors.New("a request failed")))
+			}
+		}
+	}()
+	e.handler.ServeHTTP(writer, request)
 }

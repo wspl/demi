@@ -22,11 +22,21 @@ func (e *Edge) hosts(w http.ResponseWriter, r *http.Request) error {
 	}
 	hosts := make([]webapi.AttachedHost, 0, len(listed))
 	for _, item := range listed {
-		hosts = append(hosts, webapi.AttachedHost{DeviceID: item.Host.Device, Name: item.Host.Name, Cwd: item.Host.CWD, AttachedAt: item.At, Online: shard.Devices().Online(item.Host.Device)})
+		hosts = append(
+			hosts,
+			webapi.AttachedHost{
+				DeviceID:   item.Host.Device,
+				Name:       item.Host.Name,
+				Cwd:        item.Host.CWD,
+				AttachedAt: item.At,
+				Online:     shard.Devices().Online(item.Host.Device),
+			},
+		)
 	}
 	writeJSON(w, 200, webapi.AttachedHosts{Hosts: hosts})
 	return nil
 }
+
 func (e *Edge) changeHost(w http.ResponseWriter, r *http.Request) error {
 	id, err := webapi.ParseConversationID(r.PathValue("id"))
 	if err != nil {
@@ -88,9 +98,10 @@ type statusResponse struct {
 	status int
 }
 
-func (w *statusResponse) WriteHeader(status int) {
+// WriteHeader substitutes the successful status selected by the host change.
+func (r *statusResponse) WriteHeader(status int) {
 	if status == 200 {
-		status = w.status
+		status = r.status
 	}
-	w.ResponseWriter.WriteHeader(status)
+	r.ResponseWriter.WriteHeader(status)
 }

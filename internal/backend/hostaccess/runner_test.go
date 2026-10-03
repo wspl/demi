@@ -33,6 +33,7 @@ func (f runnerFrames) Receive(ctx context.Context) ([]byte, error) {
 		return nil, ctx.Err()
 	}
 }
+
 func (f runnerFrames) Send(ctx context.Context, frame []byte) error {
 	select {
 	case f <- frame:
@@ -44,12 +45,20 @@ func (f runnerFrames) Send(ctx context.Context, frame []byte) error {
 
 func connectHost(t *testing.T, s *testShard, device database.DeviceRecord) *boundRunner {
 	t.Helper()
-	link, driver := remotehost.NewLink(remotehost.LinkOptions{Device: string(device.ID), Identity: host.Identity{HomeDir: "/home/test", Hostname: "connected"}, Pipes: s.pipes, Policy: remotehosttest.NewCommandPolicy(nil)})
+	link, driver := remotehost.NewLink(
+		remotehost.LinkOptions{
+			Device:   string(device.ID),
+			Identity: host.Identity{HomeDir: "/home/test", Hostname: "connected"},
+			Pipes:    s.pipes,
+			Policy:   remotehosttest.NewCommandPolicy(nil),
+		},
+	)
 	serving := s.devices.Bind(device.ID, link, driver, runnerstest.LastSeen(s.control, s.owner))
 	r := &boundRunner{incoming: make(runnerFrames, 64), outgoing: make(runnerFrames, 64)}
 	r.connection = runnerstest.Serve(t, serving, r.incoming, r.outgoing)
 	return r
 }
+
 func (r *boundRunner) next(t *testing.T) runnerwire.Inbound {
 	t.Helper()
 	frame, err := r.outgoing.Receive(t.Context())
@@ -62,6 +71,7 @@ func (r *boundRunner) next(t *testing.T) runnerwire.Inbound {
 	}
 	return message
 }
+
 func (r *boundRunner) send(t *testing.T, message runnerwire.Outbound) {
 	t.Helper()
 	frame, err := runnerwire.Encode(message)
@@ -72,13 +82,22 @@ func (r *boundRunner) send(t *testing.T, message runnerwire.Outbound) {
 		t.Fatal(err)
 	}
 }
+
 func (r *boundRunner) stat(t *testing.T, size uint64) {
 	t.Helper()
 	request, ok := r.next(t).(*runnerwire.FSStat)
 	if !ok {
 		t.Fatal("expected stat")
 	}
-	r.send(t, &runnerwire.FSOK{ID: request.ID, Result: &runnerwire.FSStatResult{Value: runnerwire.FileStat{IsFile: true, Size: size, Mode: 0644, Mtime: 1767225600000}}})
+	r.send(
+		t,
+		&runnerwire.FSOK{
+			ID: request.ID,
+			Result: &runnerwire.FSStatResult{
+				Value: runnerwire.FileStat{IsFile: true, Size: size, Mode: 0o644, Mtime: 1767225600000},
+			},
+		},
+	)
 }
 
 type hostResult[T any] struct {

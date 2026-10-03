@@ -24,6 +24,7 @@ func (e *Edge) switchPlugin(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(204)
 	return nil
 }
+
 func (e *Edge) pageCall(w http.ResponseWriter, r *http.Request) error {
 	data, err := readJSONBody(r)
 	if err != nil {
@@ -55,6 +56,7 @@ func (e *Edge) pageCall(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, result)
 	return nil
 }
+
 func (e *Edge) pluginState(w http.ResponseWriter, r *http.Request) error {
 	record, err := e.owned(r)
 	if err != nil {
@@ -71,6 +73,7 @@ func (e *Edge) pluginState(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, result)
 	return nil
 }
+
 func (e *Edge) reload(w http.ResponseWriter, r *http.Request) error {
 	record, err := e.owned(r)
 	if err != nil {

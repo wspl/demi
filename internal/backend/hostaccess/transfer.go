@@ -251,7 +251,12 @@ func (u *OpenUpload) Written(ctx context.Context) error {
 }
 
 // OpenDownload admits a main-Host download and returns bytes or metadata.
-func OpenDownload(ctx context.Context, shard HostShard, id webapi.ConversationID, request DownloadRequest) (Download, error) {
+func OpenDownload(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	request DownloadRequest,
+) (Download, error) {
 	open, waitCtx, stop, err := registerTransfer(ctx, shard, id)
 	if err != nil {
 		return nil, err
@@ -310,7 +315,13 @@ func OpenDownload(ctx context.Context, shard HostShard, id webapi.ConversationID
 
 // UploadFile admits an upload to the main Host, replacing files only if asked.
 // The returned OpenUpload transfers explicit lease ownership to the edge.
-func UploadFile(ctx context.Context, shard HostShard, id webapi.ConversationID, path string, replace bool) (Upload, error) {
+func UploadFile(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	path string,
+	replace bool,
+) (Upload, error) {
 	open, waitCtx, stop, err := registerTransfer(ctx, shard, id)
 	if err != nil {
 		return nil, err
@@ -352,27 +363,8 @@ func UploadFile(ctx context.Context, shard HostShard, id webapi.ConversationID, 
 		pipe.Fail(err.Error())
 		return nil, accessError(err)
 	}
-	// Normal write completion unregisters the transfer without revoking the
-	// edge's lease. Forward cancellation only while the write is running.
-	lease, _ := NewLease(context.Background())
-	revoked := make(chan struct{})
-	stopRevocation := context.AfterFunc(open.Context(), func() {
-		defer close(revoked)
-		lease.Release()
-	})
-	result := &OpenUpload{Writer: writer, Lease: lease, written: make(chan struct{})}
-	go func() {
-		result.outcome = admitted.Host.Host.WriteFrom(lease.Context(), path, pipe, host.WriteOptions{})
-		if !stopRevocation() {
-			<-revoked
-		}
-		if result.outcome != nil {
-			pipe.Fail("the upload ended before its last byte")
-		}
-		close(result.written)
-		admitted.Release()
-		open.Release()
-	}()
+	result := writeUpload(admitted, open, path, pipe, writer)
+
 	handed = true
 	return result, nil
 }
@@ -419,27 +411,27 @@ func RangeOf(header *string, size uint64) RangeAnswer {
 			start = size - suffix
 		}
 		end = size - 1
-	} else {
-		var err error
-		start, err = strconv.ParseUint(first, 10, 64)
-		if err != nil {
-			return refused
-		}
-		end = ^uint64(0)
-		if last != "" {
-			parsed, err := strconv.ParseUint(last, 10, 64)
-			if err == nil {
-				end = parsed
-			}
-			if end < start {
-				return whole
-			}
-		}
-		if size == 0 || start >= size {
-			return refused
-		}
-		end = min(end, size-1)
+		return RangeAnswer{status: 206, start: start, length: end - start + 1, size: size}
 	}
+	var err error
+	start, err = strconv.ParseUint(first, 10, 64)
+	if err != nil {
+		return refused
+	}
+	end = ^uint64(0)
+	if last != "" {
+		parsed, err := strconv.ParseUint(last, 10, 64)
+		if err == nil {
+			end = parsed
+		}
+		if end < start {
+			return whole
+		}
+	}
+	if size == 0 || start >= size {
+		return refused
+	}
+	end = min(end, size-1)
 	return RangeAnswer{status: 206, start: start, length: end - start + 1, size: size}
 }
 
@@ -481,7 +473,11 @@ func (r RangeAnswer) Headers() http.Header {
 }
 
 // registerTransfer makes a transition see an operation even while it awaits admission.
-func registerTransfer(ctx context.Context, shard HostShard, id webapi.ConversationID) (*OpenTransfer, context.Context, func(), error) {
+func registerTransfer(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+) (*OpenTransfer, context.Context, func(), error) {
 	record, err := OwnedConversation(ctx, shard, id)
 	if err != nil {
 		return nil, nil, nil, err
@@ -540,4 +536,36 @@ func notModified(condition *string, version string) bool {
 func hostCode(err error, code string) bool {
 	var failure *host.Error
 	return errors.As(err, &failure) && failure.Code == code
+}
+
+// writeUpload forwards cancellation only while the write is running.
+func writeUpload(
+	admitted *Admitted,
+	open *OpenTransfer,
+	path string,
+	pipe *remotehost.Pipe,
+	writer *remotehost.PipeWriter,
+) *OpenUpload {
+	// Normal write completion unregisters the transfer without revoking the
+	// edge's lease. Forward cancellation only while the write is running.
+	lease, _ := NewLease(context.Background())
+	revoked := make(chan struct{})
+	stopRevocation := context.AfterFunc(open.Context(), func() {
+		defer close(revoked)
+		lease.Release()
+	})
+	result := &OpenUpload{Writer: writer, Lease: lease, written: make(chan struct{})}
+	go func() {
+		result.outcome = admitted.Host.Host.WriteFrom(lease.Context(), path, pipe, host.WriteOptions{})
+		if !stopRevocation() {
+			<-revoked
+		}
+		if result.outcome != nil {
+			pipe.Fail("the upload ended before its last byte")
+		}
+		close(result.written)
+		admitted.Release()
+		open.Release()
+	}()
+	return result
 }

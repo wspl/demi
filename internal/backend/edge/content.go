@@ -25,6 +25,7 @@ func contentHeaders(mediaType *string, download bool, name string) http.Header {
 	}
 	return headers
 }
+
 func attachment(name string) string {
 	if name == "" {
 		return "attachment"
@@ -38,7 +39,8 @@ func attachment(name string) string {
 		}
 	}
 	for _, char := range []byte(name) {
-		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || strings.ContainsRune("-._~!", rune(char)) {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' ||
+			strings.ContainsRune("-._~!", rune(char)) {
 			encoded.WriteByte(char)
 		} else {
 			fmt.Fprintf(&encoded, "%%%02X", char)
@@ -46,6 +48,7 @@ func attachment(name string) string {
 	}
 	return fmt.Sprintf("attachment; filename=\"%s\"; filename*=UTF-8''%s", fallback.String(), encoded.String())
 }
+
 func fileName(name string) string {
 	if strings.Contains(name, "\\") {
 		name = strings.ReplaceAll(name, "\\", "/")
@@ -57,6 +60,7 @@ func fileName(name string) string {
 	}
 	return last
 }
+
 func protectedPath(name string, kept ...string) bool {
 	normalize := func(value string) string { return path.Clean(strings.ReplaceAll(strings.ToLower(value), "\\", "/")) }
 	top := normalize(name)
@@ -71,6 +75,7 @@ func protectedPath(name string, kept ...string) bool {
 	}
 	return false
 }
+
 func lastModified(stat host.FileStat) (string, error) {
 	value, err := stat.Modified.Time()
 	if err != nil {
@@ -78,9 +83,11 @@ func lastModified(stat host.FileStat) (string, error) {
 	}
 	return value.UTC().Format(http.TimeFormat), nil
 }
+
 func rawFileHeaders() http.Header {
 	return http.Header{"Cache-Control": {"private, no-cache"}, "Vary": {"Cookie"}, "X-Accel-Buffering": {"no"}}
 }
+
 func addHeaders(to, from http.Header) {
 	for name, values := range from {
 		to[name] = values

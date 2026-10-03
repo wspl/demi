@@ -21,6 +21,7 @@ type bodyStream struct {
 	control *http.ResponseController
 }
 
+// Read applies the request deadline and observes cancellation while reading upload bytes.
 func (s *bodyStream) Read(ctx context.Context, p []byte) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
@@ -40,11 +41,18 @@ func (s *bodyStream) Read(ctx context.Context, p []byte) (int, error) {
 	}
 	return n, err
 }
+
+// Close releases the request body.
 func (s *bodyStream) Close(context.Context) error { return s.body.Close() }
 
 // copyUpload paces reads by the Host's acceptance, timing only one side at a
 // time. Failure leaves the Host's atomic upload uncommitted.
-func copyUpload(ctx context.Context, body host.ByteStream, writer *remotehost.PipeWriter, written func(context.Context) error) error {
+func copyUpload(
+	ctx context.Context,
+	body host.ByteStream,
+	writer *remotehost.PipeWriter,
+	written func(context.Context) error,
+) error {
 	defer writer.Fail("the upload was cut short")
 	buffer := make([]byte, 64*1024)
 	changed := func() error { return apiFailure(409, "conversation_busy", "The conversation changed under the upload") }
@@ -96,6 +104,7 @@ func copyUpload(ctx context.Context, body host.ByteStream, writer *remotehost.Pi
 	}
 	return nil
 }
+
 func copyDownload(ctx context.Context, to io.Writer, from host.ByteStream) error {
 	buffer := make([]byte, 64*1024)
 	for {
@@ -129,7 +138,14 @@ func streamDownload(w http.ResponseWriter, r *http.Request, download *hostaccess
 
 // serveDownload holds admission until the bytes finish, fail, or the visitor
 // leaves. Both the request's lifetime and the lease can end a blocked Host read.
-func serveDownload(ctx context.Context, w http.ResponseWriter, peer *activity, body host.ByteStream, lease downloadLease, status int) error {
+func serveDownload(
+	ctx context.Context,
+	w http.ResponseWriter,
+	peer *activity,
+	body host.ByteStream,
+	lease downloadLease,
+	status int,
+) error {
 	defer lease.Release()
 	// The copy reports IO failures; closing the source only releases resources.
 	defer func() { _ = body.Close(context.WithoutCancel(ctx)) }()

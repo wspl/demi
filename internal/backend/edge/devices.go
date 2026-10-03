@@ -31,9 +31,11 @@ func (e *Edge) devices(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.Devices{Devices: list})
 	return nil
 }
+
 func invalidCode() *apiError {
 	return apiFailure(404, "invalid_code", "Unknown or expired pairing code")
 }
+
 func (e *Edge) claim(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeClaim)
 	if err != nil {
@@ -52,7 +54,13 @@ func (e *Edge) claim(w http.ResponseWriter, r *http.Request) error {
 	}
 	defer pending.Release()
 	token := runners.NewDeviceToken()
-	device, err := e.state.Services.Control.CreateDevice(r.Context(), caller(r).ID, pending.Runner.Name, pending.Runner.Platform, database.HashToken(token.Expose()))
+	device, err := e.state.Services.Control.CreateDevice(
+		r.Context(),
+		caller(r).ID,
+		pending.Runner.Name,
+		pending.Runner.Platform,
+		database.HashToken(token.Expose()),
+	)
 	if err != nil {
 		return err
 	}
@@ -60,7 +68,10 @@ func (e *Edge) claim(w http.ResponseWriter, r *http.Request) error {
 	defer answer.Release()
 	bound, err := answer.Wait(r.Context())
 	if err != nil || bound == nil {
-		if failed := e.state.Services.Control.DeleteDevice(context.WithoutCancel(r.Context()), device.ID); failed != nil {
+		if failed := e.state.Services.Control.DeleteDevice(
+			context.WithoutCancel(r.Context()),
+			device.ID,
+		); failed != nil {
 			return failed
 		}
 		return invalidCode()
@@ -68,6 +79,7 @@ func (e *Edge) claim(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 201, webapi.ClaimedDevice{Device: *bound})
 	return nil
 }
+
 func (e *Edge) ownedDevice(r *http.Request, paired bool) (*database.DeviceRecord, error) {
 	missing := apiFailure(404, "device_not_found", "No such device")
 	id, err := webapi.ParseDeviceID(r.PathValue("id"))
@@ -83,6 +95,7 @@ func (e *Edge) ownedDevice(r *http.Request, paired bool) (*database.DeviceRecord
 	}
 	return device, nil
 }
+
 func (e *Edge) revoke(w http.ResponseWriter, r *http.Request) error {
 	device, err := e.ownedDevice(r, true)
 	if err != nil {
@@ -105,6 +118,7 @@ func (e *Edge) revoke(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(204)
 	return nil
 }
+
 func deviceFSError(err error) error {
 	var failure *host.Error
 	if !errors.As(err, &failure) {
@@ -119,6 +133,7 @@ func deviceFSError(err error) error {
 	}
 	return apiFailure(status, "fs_error", failure.Message)
 }
+
 func (e *Edge) deviceDirectory(w http.ResponseWriter, r *http.Request) error {
 	query, err := decodeQuery(r, webapi.DecodeDeviceDirectoryQuery)
 	if err != nil {
@@ -154,6 +169,7 @@ func (e *Edge) deviceDirectory(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.Directory{Path: path, Home: homeValue, Entries: entries})
 	return nil
 }
+
 func (e *Edge) deviceMkdir(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeCreateDeviceDirectory)
 	if err != nil {
@@ -177,6 +193,7 @@ func (e *Edge) deviceMkdir(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 201, webapi.CreatedDirectory{Path: string(request.Path)})
 	return nil
 }
+
 func (e *Edge) deviceLog(w http.ResponseWriter, r *http.Request) error {
 	query, err := webapi.DecodeDeviceLogValues(r.URL.Query())
 	if err != nil {
@@ -213,7 +230,10 @@ func (e *Edge) deviceLog(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return apiFailure(500, "log_unreadable", err.Error())
 		}
-		lines = append(lines, webapi.DeviceLogLine{At: at, Source: line.Source, ConversationID: line.ConversationID, Text: line.Text})
+		lines = append(
+			lines,
+			webapi.DeviceLogLine{At: at, Source: line.Source, ConversationID: line.ConversationID, Text: line.Text},
+		)
 	}
 	writeJSON(w, 200, webapi.DeviceLog{Lines: lines, Next: page.Next})
 	return nil

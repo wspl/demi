@@ -65,7 +65,6 @@ func TestConnectedUploadUsesExistingAdmissionWithTransitionQueued(t *testing.T) 
 		if completed.err != nil || len(completed.value) == 0 {
 			t.Fatal(completed)
 		}
-
 	})
 }
 

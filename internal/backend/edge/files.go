@@ -13,7 +13,11 @@ import (
 )
 
 // onHost admits each conversation file operation through its owning shard.
-func onHost[T any](e *Edge, r *http.Request, operation func(context.Context, *hostaccess.ConversationHost) (T, error)) (T, error) {
+func onHost[T any](
+	e *Edge,
+	r *http.Request,
+	operation func(context.Context, *hostaccess.ConversationHost) (T, error),
+) (T, error) {
 	var zero T
 	id, err := webapi.ParseConversationID(r.PathValue("id"))
 	if err != nil {
@@ -33,6 +37,7 @@ func onHost[T any](e *Edge, r *http.Request, operation func(context.Context, *ho
 	}
 	return hostaccess.WithHost(r.Context(), shard.HostShard(), id, device, operation)
 }
+
 func (e *Edge) directory(w http.ResponseWriter, r *http.Request) error {
 	query, err := decodeQuery(r, webapi.DecodeDirectoryQuery)
 	if err != nil {
@@ -52,20 +57,29 @@ func (e *Edge) directory(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, result)
 	return nil
 }
+
 func (e *Edge) mkdir(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeCreateDirectory)
 	if err != nil {
 		return err
 	}
-	result, err := onHost(e, r, func(ctx context.Context, h *hostaccess.ConversationHost) (webapi.CreatedDirectory, error) {
-		return webapi.CreatedDirectory(request), h.Host.FS().Mkdir(ctx, request.Path, host.MkdirOptions{Recursive: true})
-	})
+	result, err := onHost(
+		e,
+		r,
+		func(ctx context.Context, h *hostaccess.ConversationHost) (webapi.CreatedDirectory, error) {
+			return webapi.CreatedDirectory(
+					request,
+				), h.Host.FS().
+					Mkdir(ctx, request.Path, host.MkdirOptions{Recursive: true})
+		},
+	)
 	if err != nil {
 		return err
 	}
 	writeJSON(w, 201, result)
 	return nil
 }
+
 func (e *Edge) removeFile(w http.ResponseWriter, r *http.Request) error {
 	query, err := decodeQuery(r, webapi.DecodeRemoveQuery)
 	if err != nil {
@@ -77,7 +91,11 @@ func (e *Edge) removeFile(w http.ResponseWriter, r *http.Request) error {
 			kept = append(kept, *h.Home)
 		}
 		if protectedPath(string(query.Path), kept...) {
-			return struct{}{}, apiFailure(409, "protected_path", "The root, the home directory and the execution directory stay, with every directory holding them")
+			return struct{}{}, apiFailure(
+				409,
+				"protected_path",
+				"The root, the home directory and the execution directory stay, with every directory holding them",
+			)
 		}
 		return struct{}{}, h.Host.FS().Rm(ctx, string(query.Path), host.RmOptions{Recursive: true, Force: true})
 	})
@@ -87,6 +105,7 @@ func (e *Edge) removeFile(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(204)
 	return nil
 }
+
 func (e *Edge) fileText(w http.ResponseWriter, r *http.Request) error {
 	query, err := decodeQuery(r, webapi.DecodeFileQuery)
 	if err != nil {
@@ -102,11 +121,16 @@ func (e *Edge) fileText(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, result)
 	return nil
 }
+
 func (e *Edge) changes(w http.ResponseWriter, r *http.Request) error {
-	result, err := onHost(e, r, func(ctx context.Context, h *hostaccess.ConversationHost) (webapi.WorkingTreeChanges, error) {
-		changes, err := h.Host.GitChanges(ctx, h.Root)
-		return webapi.WorkingTreeChanges{Root: h.Root, GitChanges: changes}, err
-	})
+	result, err := onHost(
+		e,
+		r,
+		func(ctx context.Context, h *hostaccess.ConversationHost) (webapi.WorkingTreeChanges, error) {
+			changes, err := h.Host.GitChanges(ctx, h.Root)
+			return webapi.WorkingTreeChanges{Root: h.Root, GitChanges: changes}, err
+		},
+	)
 	if err != nil {
 		return workingTreeError(err)
 	}
@@ -142,6 +166,7 @@ func (e *Edge) changedFile(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, sides)
 	return nil
 }
+
 func (e *Edge) committedFile(w http.ResponseWriter, r *http.Request) error {
 	query, err := decodeQuery(r, webapi.DecodeCommittedFileQuery, "download")
 	if err != nil {
@@ -156,7 +181,10 @@ func (e *Edge) committedFile(w http.ResponseWriter, r *http.Request) error {
 	}
 	part := hostaccess.RangeOf(headerValue(r.Header, "Range"), uint64(len(bytes)))
 	addHeaders(w.Header(), rawFileHeaders())
-	addHeaders(w.Header(), contentHeaders(core.PreviewMediaType(string(query.Path)), bool(query.Download), fileName(string(query.Path))))
+	addHeaders(
+		w.Header(),
+		contentHeaders(core.PreviewMediaType(string(query.Path)), bool(query.Download), fileName(string(query.Path))),
+	)
 	addHeaders(w.Header(), part.Headers())
 	w.WriteHeader(part.Status())
 	if r.Method != "HEAD" {

@@ -42,7 +42,12 @@ func (h *TransitionHold) Release() {
 // HoldForTransition takes ownership of tree, including on failure. It closes
 // transfers atomically, ends and joins their admissions outside the mutex,
 // then tries the file reservation. Other file work answers busy.
-func HoldForTransition(ctx context.Context, shard HostShard, id webapi.ConversationID, tree *gates.Reservation) (*TransitionHold, error) {
+func HoldForTransition(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	tree *gates.Reservation,
+) (*TransitionHold, error) {
 	hold := &TransitionHold{tree: tree}
 	var err error
 	hold.done, err = shard.Conversations().begin()
@@ -87,7 +92,12 @@ func Commit(ctx context.Context, shard HostShard, id webapi.ConversationID, chan
 }
 
 // CheckDestination checks ownership of the workspace or paired destination.
-func CheckDestination(ctx context.Context, shard HostShard, record database.ConversationRecord, to webapi.ConversationTarget) error {
+func CheckDestination(
+	ctx context.Context,
+	shard HostShard,
+	record database.ConversationRecord,
+	to webapi.ConversationTarget,
+) error {
 	switch target := to.(type) {
 	case *webapi.ConversationTargetWorkspace:
 		workspace, err := shard.Control().Workspace(ctx, target.WorkspaceID)
@@ -113,7 +123,12 @@ func CheckDestination(ctx context.Context, shard HostShard, record database.Conv
 // SwitchTarget releases the departed device and commits against the expected
 // selection while the caller holds a TransitionHold. A successful write
 // restarts idle tracking even if the requester left during commit.
-func SwitchTarget(ctx context.Context, shard HostShard, expected database.ConversationRecord, to webapi.ConversationTarget) error {
+func SwitchTarget(
+	ctx context.Context,
+	shard HostShard,
+	expected database.ConversationRecord,
+	to webapi.ConversationTarget,
+) error {
 	ctx = context.WithoutCancel(ctx)
 	current, err := shard.Control().Conversation(ctx, expected.ID)
 	if err != nil {
@@ -144,7 +159,11 @@ func SwitchTarget(ctx context.Context, shard HostShard, expected database.Conver
 			releaseOn(ctx, shard, expected.ID, *departed)
 		}
 	}
-	won, err := shard.Control().SwitchConversationTarget(ctx, expected.ID, expected.Target, to, database.TargetSwitch{From: from, To: destination}, ends)
+	won, err := shard.Control().
+		SwitchConversationTarget(
+			ctx, expected.ID, expected.Target, to,
+			database.TargetSwitch{From: from, To: destination}, ends,
+		)
 	if err != nil {
 		return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
 	}

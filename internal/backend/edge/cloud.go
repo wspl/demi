@@ -20,6 +20,7 @@ func (e *Edge) cloudStatus(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, status)
 	return nil
 }
+
 func (e *Edge) resetCloud(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeCloudReset)
 	if err != nil {

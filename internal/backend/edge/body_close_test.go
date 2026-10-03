@@ -20,12 +20,15 @@ func TestOversizedStreamingBodyReceivesRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	edge := &Edge{state: AppState{Services: &usershard.Services{}}, handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := readJSONBody(r)
-		if err != nil {
-			writeError(w, err)
-		}
-	})}
+	edge := &Edge{
+		state: AppState{Services: &usershard.Services{}},
+		handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := readJSONBody(r)
+			if err != nil {
+				writeError(w, err)
+			}
+		}),
+	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -46,7 +49,10 @@ func TestOversizedStreamingBodyReceivesRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	if _, err := fmt.Fprint(conn, "PATCH / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n"); err != nil {
+	if _, err := fmt.Fprint(
+		conn,
+		"PATCH / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n",
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := fmt.Fprintf(conn, "%x\r\n%s\r\n", jsonBodyLimit+1, strings.Repeat("x", jsonBodyLimit+1)); err != nil {

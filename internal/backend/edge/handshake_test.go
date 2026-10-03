@@ -31,7 +31,9 @@ func TestBadUserStreamHandshakeNeverReachesAdmission(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	hash, err := database.ParsePasswordHash("$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$0mUbQTTMhhaEBFGMq7WTZxOlVoS9sY3qVqLiV7Q1Izo")
+	hash, err := database.ParsePasswordHash(
+		"$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$0mUbQTTMhhaEBFGMq7WTZxOlVoS9sY3qVqLiV7Q1Izo",
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +45,18 @@ func TestBadUserStreamHandshakeNeverReachesAdmission(t *testing.T) {
 	if _, err := control.CreateConversation(t.Context(), user.ID, id); err != nil {
 		t.Fatal(err)
 	}
-	native, err := runners.NewNativeCatalog([]commandwire.PackageDescriptor{{ID: "example.commands", Version: "1", ProtocolVersion: 1, Operations: []string{"fixture"}, Targets: map[string]commandwire.PackageArtifact{}}}, &runners.UnpublishedStore{})
+	native, err := runners.NewNativeCatalog(
+		[]commandwire.PackageDescriptor{
+			{
+				ID:              "example.commands",
+				Version:         "1",
+				ProtocolVersion: 1,
+				Operations:      []string{"fixture"},
+				Targets:         map[string]commandwire.PackageArtifact{},
+			},
+		},
+		&runners.UnpublishedStore{},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +99,8 @@ func TestBadUserStreamHandshakeNeverReachesAdmission(t *testing.T) {
 			answer := httptest.NewRecorder()
 			serveEndpoint(edge.userStream)(answer, request)
 			body, err := webapi.DecodeErrorBody(answer.Body.Bytes())
-			if err != nil || answer.Code != 426 || body.Code != "upgrade_required" || body.Message != "A user stream is a WebSocket" {
+			if err != nil || answer.Code != 426 || body.Code != "upgrade_required" ||
+				body.Message != "A user stream is a WebSocket" {
 				t.Fatalf("%d %s: %v", answer.Code, answer.Body.String(), err)
 			}
 		})
@@ -120,7 +134,10 @@ func TestValidationRefusalsKeepStatusCodeAndField(t *testing.T) {
 		decode            func() error
 	}{
 		{"body", "invalid_body", "email", func() error {
-			_, err := decodeBody(httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(`{"email":42,"password":"test"}`)), webapi.DecodeCredentials)
+			_, err := decodeBody(
+				httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(`{"email":42,"password":"test"}`)),
+				webapi.DecodeCredentials,
+			)
 			return err
 		}},
 		{"query", "invalid_query", "refresh", func() error {
@@ -136,7 +153,8 @@ func TestValidationRefusalsKeepStatusCodeAndField(t *testing.T) {
 			answer := httptest.NewRecorder()
 			writeError(answer, err)
 			body, failed := webapi.DecodeErrorBody(answer.Body.Bytes())
-			if failed != nil || answer.Code != 400 || string(body.Code) != test.code || !strings.Contains(body.Message, test.field) {
+			if failed != nil || answer.Code != 400 || string(body.Code) != test.code ||
+				!strings.Contains(body.Message, test.field) {
 				t.Fatalf("%d %s: %v", answer.Code, answer.Body.String(), failed)
 			}
 		})

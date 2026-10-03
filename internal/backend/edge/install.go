@@ -33,6 +33,7 @@ func readRelease(path string) (*runnerwire.RunnerRelease, error) {
 	}
 	return &release, nil
 }
+
 func (e *Edge) installer(w http.ResponseWriter, r *http.Request) error {
 	if e.state.Site.RunnerReleases == "" {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -76,6 +77,7 @@ func (e *Edge) installer(w http.ResponseWriter, r *http.Request) error {
 	_, err = io.WriteString(w, script)
 	return err
 }
+
 func (e *Edge) runnerArtifact(w http.ResponseWriter, r *http.Request) error {
 	missing := apiFailure(404, "not_found", "No such runner artifact")
 	release, target, name := r.PathValue("release"), r.PathValue("target"), r.PathValue("file")
@@ -83,7 +85,8 @@ func (e *Edge) runnerArtifact(w http.ResponseWriter, r *http.Request) error {
 	if strings.Contains(target, "windows") {
 		executable += ".exe"
 	}
-	if e.state.Site.RunnerReleases == "" || !commandwire.IsDigest(release) || !commandwire.IsTarget(target) || name != executable {
+	if e.state.Site.RunnerReleases == "" || !commandwire.IsDigest(release) || !commandwire.IsTarget(target) ||
+		name != executable {
 		return missing
 	}
 	directory := filepath.Join(e.state.Site.RunnerReleases, release)
@@ -103,6 +106,7 @@ func (e *Edge) runnerArtifact(w http.ResponseWriter, r *http.Request) error {
 	}
 	return err
 }
+
 func (e *Edge) nativeArtifact(w http.ResponseWriter, r *http.Request) error {
 	artifact, err := e.state.Services.Native.LocalArtifact(r.Context(), r.PathValue("sha256"))
 	if err != nil {
@@ -124,6 +128,7 @@ func (e *Edge) nativeArtifact(w http.ResponseWriter, r *http.Request) error {
 	}
 	return nil
 }
+
 func immutableFile(w http.ResponseWriter, r *http.Request, path string) error {
 	file, err := os.Open(path)
 	if err != nil {

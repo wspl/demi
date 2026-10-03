@@ -24,7 +24,18 @@ func TestConnectedNodeJobKeepsAdmissionThroughEditRetention(t *testing.T) {
 	}
 	pages := hosttest.NewPages(false)
 	factory := NewShardShellEnvironments(s, s.native.Catalog(nil))
-	environment, err := factory.Create(t.Context(), tools.EnvironmentScope{Root: RootOf(record.ID), Node: RootOf(record.ID), Agent: 1, Commands: &host.CommandSet{}, Feed: pages, Numbers: &hosttest.CountingNumbers{}}, identity)
+	environment, err := factory.Create(
+		t.Context(),
+		tools.EnvironmentScope{
+			Root:     RootOf(record.ID),
+			Node:     RootOf(record.ID),
+			Agent:    1,
+			Commands: &host.CommandSet{},
+			Feed:     pages,
+			Numbers:  &hosttest.CountingNumbers{},
+		},
+		identity,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,14 +50,34 @@ func TestConnectedNodeJobKeepsAdmissionThroughEditRetention(t *testing.T) {
 		}
 	})
 	result := startHostOperation(t, func(ctx context.Context) (host.CommandStatus, error) {
-		return environment.Exec(ctx, host.ExecRequest{Script: "edit file", Caller: host.JobCaller{Node: RootOf(record.ID)}, ToolUseID: "call"})
+		return environment.Exec(
+			ctx,
+			host.ExecRequest{Script: "edit file", Caller: host.JobCaller{Node: RootOf(record.ID)}, ToolUseID: "call"},
+		)
 	})
 	_ = nextHostMessage[*runnerwire.ManifestMessage](t, r)
 	job := nextHostMessage[*runnerwire.JobStart](t, r)
 	if job.CWD != "/work" {
 		t.Fatal(job.CWD)
 	}
-	r.send(t, &runnerwire.JobExit{JobID: job.JobID, ExitCode: new(int32(7)), Files: []runnerwire.JobFileChange{{Path: "/work/file", Kind: commandwire.EditModified, Added: 1, Removed: 1, Edits: []commandwire.EditCopies{{Original: new("/copies/before"), Modified: new("/copies/after")}}}}})
+	r.send(
+		t,
+		&runnerwire.JobExit{
+			JobID:    job.JobID,
+			ExitCode: new(int32(7)),
+			Files: []runnerwire.JobFileChange{
+				{
+					Path:    "/work/file",
+					Kind:    commandwire.EditModified,
+					Added:   1,
+					Removed: 1,
+					Edits: []commandwire.EditCopies{
+						{Original: new("/copies/before"), Modified: new("/copies/after")},
+					},
+				},
+			},
+		},
+	)
 	if path := sendHostRead(t, s, r, device, "before\n"); path != "/copies/before" {
 		t.Fatal(path)
 	}
@@ -66,7 +97,8 @@ func TestConnectedNodeJobKeepsAdmissionThroughEditRetention(t *testing.T) {
 		t.Fatal(completed.err)
 	}
 	status := completed.value
-	if status.State.Phase != host.Exited || status.State.ExitCode != 7 || status.Files == nil || len(status.Files.Files) != 1 {
+	if status.State.Phase != host.Exited || status.State.ExitCode != 7 || status.Files == nil ||
+		len(status.Files.Files) != 1 {
 		t.Fatal(status)
 	}
 	copies := status.Files.Files[0].Edits[0].Copies

@@ -17,10 +17,17 @@ type requestBody struct {
 }
 
 func trackBody(request *http.Request, conn net.Conn) *requestBody {
-	body := &requestBody{ReadCloser: request.Body, conn: conn, expect: strings.EqualFold(request.Header.Get("Expect"), "100-continue"), complete: request.Body == http.NoBody}
+	body := &requestBody{
+		ReadCloser: request.Body,
+		conn:       conn,
+		expect:     strings.EqualFold(request.Header.Get("Expect"), "100-continue"),
+		complete:   request.Body == http.NoBody,
+	}
 	request.Body = body
 	return body
 }
+
+// Read sends a requested 100 Continue before the first body read and tracks completion.
 func (b *requestBody) Read(p []byte) (int, error) {
 	if b.expect {
 		b.expect = false

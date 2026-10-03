@@ -21,7 +21,13 @@ func TestCommandOutputStoredWithRetentionRecordAndFailureReason(t *testing.T) {
 	s := newTestShard(t)
 	record := s.conversation(t)
 	keeper := &commandKeeper{shard: s, id: record.ID}
-	output := host.WholeOutput{Records: []host.OutputRecord{{Stream: "stdout", Bytes: []byte("<whole> & output\n")}, {Stream: "stderr", Bytes: []byte("warning\n")}}, Missing: &host.Missing{Bytes: 4, Reason: "not read"}}
+	output := host.WholeOutput{
+		Records: []host.OutputRecord{
+			{Stream: "stdout", Bytes: []byte("<whole> & output\n")},
+			{Stream: "stderr", Bytes: []byte("warning\n")},
+		},
+		Missing: &host.Missing{Bytes: 4, Reason: "not read"},
+	}
 	if err := keeper.KeepOutput(t.Context(), "1", output); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +83,12 @@ func TestUnavailableUploadsAndRemoteReferencesGrantNothing(t *testing.T) {
 		}
 	}
 	device := s.paired(t, "offline")
-	_, err := ReferenceRemoteFiles(t.Context(), s, record.ID, []RemoteFile{{Device: string(device.ID), Path: "/notes.txt"}})
+	_, err := ReferenceRemoteFiles(
+		t.Context(),
+		s,
+		record.ID,
+		[]RemoteFile{{Device: string(device.ID), Path: "/notes.txt"}},
+	)
 	var refused *RemoteFileRefusal
 	if !errors.As(err, &refused) || refused.Kind != RemoteFileOffline {
 		t.Fatal(err)
@@ -133,7 +144,12 @@ func TestRemoteReferenceReadsExactPathWithoutShellInjection(t *testing.T) {
 		}
 		return calls[0]
 	}
-	for _, path := range []string{"/plain.txt", "/a 'quote' & $(touch injected); `false`", "/line\nnext\tfile", "/control\x01é"} {
+	for _, path := range []string{
+		"/plain.txt",
+		"/a 'quote' & $(touch injected); `false`",
+		"/line\nnext\tfile",
+		"/control\x01é",
+	} {
 		block, err := remoteReference(device, path)
 		if err != nil {
 			t.Fatal(err)
@@ -146,7 +162,8 @@ func TestRemoteReferenceReadsExactPathWithoutShellInjection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if parsed.Path != path || parsed.Query().Get("host") != device.Name || parsed.Query().Get("deviceId") != string(device.ID) {
+		if parsed.Path != path || parsed.Query().Get("host") != device.Name ||
+			parsed.Query().Get("deviceId") != string(device.ID) {
 			t.Fatalf("reference changed its file: %s", reference.Reference)
 		}
 		command := words(parsed.Query().Get("readCommand"))

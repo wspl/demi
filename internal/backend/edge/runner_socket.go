@@ -36,40 +36,27 @@ func (e *Edge) runnerSocket(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	if hello.Protocol != runnerwire.Version {
-		return refuseRunner(r.Context(), socket, runnerwire.HelloErrorCodeUnsupportedProtocol, fmt.Sprintf("unsupported protocol %d; this backend speaks %d", hello.Protocol, runnerwire.Version))
+		return refuseRunner(
+			r.Context(),
+			socket,
+			runnerwire.HelloErrorCodeUnsupportedProtocol,
+			fmt.Sprintf("unsupported protocol %d; this backend speaks %d", hello.Protocol, runnerwire.Version),
+		)
 	}
 	if hello.DeviceToken == nil {
 		if hello.Runner.Managed != nil && *hello.Runner.Managed {
-			return refuseRunner(r.Context(), socket, runnerwire.HelloErrorCodeUnknownDevice, "a managed host presents its device token; it is never paired")
+			return refuseRunner(
+				r.Context(),
+				socket,
+				runnerwire.HelloErrorCodeUnknownDevice,
+				"a managed host presents its device token; it is never paired",
+			)
 		}
 		return e.awaitClaim(r.Context(), socket, hello.Runner)
 	}
-	var device *database.DeviceRecord
-	err = watchRunner(r.Context(), socket, func(ctx context.Context) error {
-		if e.state.Services.Hooks != nil {
-			if err := e.state.Services.Hooks.Hello(ctx, usershard.HelloTokenLookup); err != nil {
-				return err
-			}
-		}
-		var err error
-		device, err = e.state.Services.Control.DeviceByToken(ctx, database.HashToken(hello.DeviceToken.Expose()))
-		return err
-	})
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return nil
-	}
-	if err != nil {
-		return refuseRunner(r.Context(), socket, runnerwire.HelloErrorCodeInternal, "the device could not be read")
-	}
-	if device == nil {
-		return refuseRunner(r.Context(), socket, runnerwire.HelloErrorCodeUnknownDevice, "unknown device")
-	}
-	shard, err := e.state.Shards.Of(r.Context(), device.User)
-	if err != nil {
-		return nil
-	}
-	return shard.AdoptRunner(r.Context(), *device, hello.Runner, socket)
+	return e.adoptRunner(r.Context(), socket, hello)
 }
+
 func refuseRunner(ctx context.Context, socket *runners.Socket, code runnerwire.HelloErrorCode, reason string) error {
 	if err := runners.Send(ctx, socket, &runnerwire.HelloError{Code: code, Reason: reason}); err != nil {
 		return nil
@@ -78,6 +65,7 @@ func refuseRunner(ctx context.Context, socket *runners.Socket, code runnerwire.H
 	_ = socket.Close(websocket.StatusNormalClosure, "")
 	return nil
 }
+
 func (e *Edge) awaitClaim(ctx context.Context, socket *runners.Socket, runner runnerwire.RunnerInfo) error {
 	for {
 		code := runners.GenerateClaimCode()
@@ -114,7 +102,13 @@ func (e *Edge) awaitClaim(ctx context.Context, socket *runners.Socket, runner ru
 		return e.handOver(ctx, socket, runner, grant)
 	}
 }
-func (e *Edge) handOver(ctx context.Context, socket *runners.Socket, runner runnerwire.RunnerInfo, grant *runners.ClaimGrant) error {
+
+func (e *Edge) handOver(
+	ctx context.Context,
+	socket *runners.Socket,
+	runner runnerwire.RunnerInfo,
+	grant *runners.ClaimGrant,
+) error {
 	defer grant.Release()
 	if err := runners.Send(ctx, socket, &runnerwire.Claimed{DeviceToken: grant.Token}); err != nil {
 		return nil
@@ -161,4 +155,32 @@ func watchRunner(ctx context.Context, socket *runners.Socket, work func(context.
 		return workCtx.Err()
 	}
 	return err
+}
+
+func (e *Edge) adoptRunner(ctx context.Context, socket *runners.Socket, hello *runnerwire.Hello) error {
+	var device *database.DeviceRecord
+	err := watchRunner(ctx, socket, func(ctx context.Context) error {
+		if e.state.Services.Hooks != nil {
+			if err := e.state.Services.Hooks.Hello(ctx, usershard.HelloTokenLookup); err != nil {
+				return err
+			}
+		}
+		var err error
+		device, err = e.state.Services.Control.DeviceByToken(ctx, database.HashToken(hello.DeviceToken.Expose()))
+		return err
+	})
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil
+	}
+	if err != nil {
+		return refuseRunner(ctx, socket, runnerwire.HelloErrorCodeInternal, "the device could not be read")
+	}
+	if device == nil {
+		return refuseRunner(ctx, socket, runnerwire.HelloErrorCodeUnknownDevice, "unknown device")
+	}
+	shard, err := e.state.Shards.Of(ctx, device.User)
+	if err != nil {
+		return nil
+	}
+	return shard.AdoptRunner(ctx, *device, hello.Runner, socket)
 }

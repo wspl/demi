@@ -109,7 +109,11 @@ func TestRunnerRepeatedHelloBeforeAcceptanceIsDropped(t *testing.T) {
 			}
 			writeRunnerHello(t, socket, hello)
 			// Rust drops every frame here, including nonprotocol text and malformed data.
-			if err := socket.Write(t.Context(), websocket.MessageText, []byte("ignored before acceptance")); err != nil {
+			if err := socket.Write(
+				t.Context(),
+				websocket.MessageText,
+				[]byte("ignored before acceptance"),
+			); err != nil {
 				t.Fatal(err)
 			}
 			if err := socket.Write(t.Context(), websocket.MessageBinary, []byte{0xc1}); err != nil {
@@ -177,16 +181,36 @@ func pairedRunner(t *testing.T, services *usershard.Services) (database.DeviceRe
 	t.Helper()
 	user := databasetest.Master(t.Context(), t, services.Control)
 	token := runners.NewDeviceToken()
-	device, err := services.Control.CreateDevice(t.Context(), user.ID, "fixture", runnerwire.RunnerPlatformLinux, database.HashToken(token.Expose()))
+	device, err := services.Control.CreateDevice(
+		t.Context(),
+		user.ID,
+		"fixture",
+		runnerwire.RunnerPlatformLinux,
+		database.HashToken(token.Expose()),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return device, &runnerwire.Hello{Protocol: runnerwire.Version, DeviceToken: &token, Runner: runnerwire.RunnerInfo{Name: "fixture", Platform: runnerwire.RunnerPlatformLinux, Version: "fixture", Identity: runnerwire.HostIdentity{Hostname: "fixture", HomeDir: "/home/fixture"}}}
+	return device, &runnerwire.Hello{
+		Protocol:    runnerwire.Version,
+		DeviceToken: &token,
+		Runner: runnerwire.RunnerInfo{
+			Name:     "fixture",
+			Platform: runnerwire.RunnerPlatformLinux,
+			Version:  "fixture",
+			Identity: runnerwire.HostIdentity{Hostname: "fixture", HomeDir: "/home/fixture"},
+		},
+	}
 }
 
 func dialRunner(t *testing.T, services *usershard.Services, shards *usershard.Shards) *websocket.Conn {
 	t.Helper()
-	e, err := Start(t.Context(), netip.MustParseAddrPort("127.0.0.1:0"), AppState{Services: services, Shards: shards, Site: &Site{}}, "")
+	e, err := Start(
+		t.Context(),
+		netip.MustParseAddrPort("127.0.0.1:0"),
+		AppState{Services: services, Shards: shards, Site: &Site{}},
+		"",
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -20,7 +20,10 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	directory := plugin.HostDirectory{Name: "tools", Files: []plugin.DirectoryFile{{Path: "bin/tool", Executable: true, Blob: blob}, {Path: "readme", Blob: blob}}}
+	directory := plugin.HostDirectory{
+		Name:  "tools",
+		Files: []plugin.DirectoryFile{{Path: "bin/tool", Executable: true, Blob: blob}, {Path: "readme", Blob: blob}},
+	}
 	s.directories = DirectorySets{{Plugin: "test", Directories: []plugin.HostDirectory{directory}}}
 	identity, err := ConversationHostForNode(t.Context(), s, record.ID)
 	if err != nil {
@@ -61,9 +64,9 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 			t.Fatal(path, string(bytes))
 		}
 		chmod := nextHostMessage[*runnerwire.FSChmod](t, r)
-		mode := uint32(0444)
+		mode := uint32(0o444)
 		if file.Executable {
-			mode = 0555
+			mode = 0o555
 		}
 		if chmod.Path != path || chmod.Mode != mode {
 			t.Fatal(chmod)
@@ -71,7 +74,7 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 		r.send(t, &runnerwire.FSOK{ID: chmod.ID, Result: &runnerwire.FSChmodResult{}})
 	}
 	chmod := nextHostMessage[*runnerwire.FSChmod](t, r)
-	if chmod.Path != partial+"/bin" || chmod.Mode != 0555 {
+	if chmod.Path != partial+"/bin" || chmod.Mode != 0o555 {
 		t.Fatal(chmod)
 	}
 	r.send(t, &runnerwire.FSOK{ID: chmod.ID, Result: &runnerwire.FSChmodResult{}})
@@ -82,7 +85,7 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 	}
 	r.send(t, &runnerwire.FSOK{ID: move.ID, Result: &runnerwire.FSMvResult{}})
 	chmod = nextHostMessage[*runnerwire.FSChmod](t, r)
-	if chmod.Path != installed || chmod.Mode != 0555 {
+	if chmod.Path != installed || chmod.Mode != 0o555 {
 		t.Fatal(chmod)
 	}
 	r.send(t, &runnerwire.FSOK{ID: chmod.ID, Result: &runnerwire.FSChmodResult{}})
@@ -105,7 +108,15 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 	r = connectHost(t, s, device)
 	reconnected := job()
 	listing = nextHostMessage[*runnerwire.FSReaddir](t, r)
-	r.send(t, &runnerwire.FSOK{ID: listing.ID, Result: &runnerwire.FSReaddirResult{Value: []runnerwire.DirEntry{{Name: directory.HostName(), IsDirectory: true}}}})
+	r.send(
+		t,
+		&runnerwire.FSOK{
+			ID: listing.ID,
+			Result: &runnerwire.FSReaddirResult{
+				Value: []runnerwire.DirEntry{{Name: directory.HostName(), IsDirectory: true}},
+			},
+		},
+	)
 	if result := <-reconnected; result.err != nil {
 		t.Fatal(result.err)
 	}
@@ -113,11 +124,22 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 	s.directories = DirectorySets{{Plugin: "test"}}
 	disabled := job()
 	listing = nextHostMessage[*runnerwire.FSReaddir](t, r)
-	r.send(t, &runnerwire.FSOK{ID: listing.ID, Result: &runnerwire.FSReaddirResult{Value: []runnerwire.DirEntry{{Name: directory.HostName(), IsDirectory: true}}}})
+	r.send(
+		t,
+		&runnerwire.FSOK{
+			ID: listing.ID,
+			Result: &runnerwire.FSReaddirResult{
+				Value: []runnerwire.DirEntry{{Name: directory.HostName(), IsDirectory: true}},
+			},
+		},
+	)
 	stat = nextHostMessage[*runnerwire.FSLstat](t, r)
-	r.send(t, &runnerwire.FSOK{ID: stat.ID, Result: &runnerwire.FSLstatResult{Value: runnerwire.FileStat{IsDirectory: true}}})
+	r.send(
+		t,
+		&runnerwire.FSOK{ID: stat.ID, Result: &runnerwire.FSLstatResult{Value: runnerwire.FileStat{IsDirectory: true}}},
+	)
 	chmod = nextHostMessage[*runnerwire.FSChmod](t, r)
-	if chmod.Path != installed || chmod.Mode != 0755 {
+	if chmod.Path != installed || chmod.Mode != 0o755 {
 		t.Fatal(chmod)
 	}
 	r.send(t, &runnerwire.FSOK{ID: chmod.ID, Result: &runnerwire.FSChmodResult{}})
@@ -173,16 +195,36 @@ func TestConnectedPluginReadsKeepPathOrderAndPathFailuresLocal(t *testing.T) {
 	record := s.target(t, s.conversation(t), device, "/work")
 	r := connectHost(t, s, device)
 	result := startHostOperation(t, func(ctx context.Context) ([]plugin.HostFile, error) {
-		return ReadFiles(ctx, s, record.ID, []plugin.HostRead{{Path: "/missing"}, {Path: "/denied"}, {Path: "/dir"}, {Path: "/other"}, {Path: "/file", Limit: 5}})
+		return ReadFiles(
+			ctx,
+			s,
+			record.ID,
+			[]plugin.HostRead{
+				{Path: "/missing"},
+				{Path: "/denied"},
+				{Path: "/dir"},
+				{Path: "/other"},
+				{Path: "/file", Limit: 5},
+			},
+		)
 	})
 	for _, code := range []string{"ENOENT", "EACCES"} {
 		stat := nextHostMessage[*runnerwire.FSStat](t, r)
 		r.send(t, &runnerwire.FSError{ID: stat.ID, Code: &code, Message: code})
 	}
 	stat := nextHostMessage[*runnerwire.FSStat](t, r)
-	r.send(t, &runnerwire.FSOK{ID: stat.ID, Result: &runnerwire.FSStatResult{Value: runnerwire.FileStat{IsDirectory: true}}})
+	r.send(
+		t,
+		&runnerwire.FSOK{ID: stat.ID, Result: &runnerwire.FSStatResult{Value: runnerwire.FileStat{IsDirectory: true}}},
+	)
 	listing := nextHostMessage[*runnerwire.FSReaddir](t, r)
-	r.send(t, &runnerwire.FSOK{ID: listing.ID, Result: &runnerwire.FSReaddirResult{Value: []runnerwire.DirEntry{{Name: "a", IsSymbolicLink: true}}}})
+	r.send(
+		t,
+		&runnerwire.FSOK{
+			ID:     listing.ID,
+			Result: &runnerwire.FSReaddirResult{Value: []runnerwire.DirEntry{{Name: "a", IsSymbolicLink: true}}},
+		},
+	)
 	stat = nextHostMessage[*runnerwire.FSStat](t, r)
 	r.send(t, &runnerwire.FSOK{ID: stat.ID, Result: &runnerwire.FSStatResult{Value: runnerwire.FileStat{}}})
 	r.stat(t, 100)
@@ -193,7 +235,13 @@ func TestConnectedPluginReadsKeepPathOrderAndPathFailuresLocal(t *testing.T) {
 	if completed.err != nil {
 		t.Fatal(completed.err)
 	}
-	wanted := []plugin.HostFile{&plugin.HostFileMissing{}, &plugin.HostFileUnreadable{Message: "EACCES"}, &plugin.HostFileDirectory{Entries: []plugin.HostEntry{{Name: "a", Kind: plugin.EntryKindSymlink}}}, &plugin.HostFileOther{}, &plugin.HostFileFile{Bytes: []byte("short"), Size: 100}}
+	wanted := []plugin.HostFile{
+		&plugin.HostFileMissing{},
+		&plugin.HostFileUnreadable{Message: "EACCES"},
+		&plugin.HostFileDirectory{Entries: []plugin.HostEntry{{Name: "a", Kind: plugin.EntryKindSymlink}}},
+		&plugin.HostFileOther{},
+		&plugin.HostFileFile{Bytes: []byte("short"), Size: 100},
+	}
 	if diff := cmp.Diff(wanted, completed.value); diff != "" {
 		t.Fatal(diff)
 	}

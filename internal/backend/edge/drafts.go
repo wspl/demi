@@ -30,7 +30,11 @@ func (e *Edge) draft(w http.ResponseWriter, r *http.Request) error {
 	}
 	count := strings.Count(request.Text, string(webapi.AttachmentMark))
 	if count != len(request.Files) {
-		return apiFailure(400, "invalid_body", fmt.Sprintf("text: holds %d attachment marks for %d files", count, len(request.Files)))
+		return apiFailure(
+			400,
+			"invalid_body",
+			fmt.Sprintf("text: holds %d attachment marks for %d files", count, len(request.Files)),
+		)
 	}
 	files := make([]database.StagedFile, 0, len(request.Files))
 	for index, file := range request.Files {
@@ -44,10 +48,21 @@ func (e *Edge) draft(w http.ResponseWriter, r *http.Request) error {
 		case *framewire.RemoteFileContent:
 			files = append(files, &database.StagedRemote{DeviceID: file.DeviceID, Path: file.Path})
 		case *framewire.TextContent, *framewire.ReferenceContent, *framewire.MediaContent, *framewire.AttachmentContent:
-			return apiFailure(400, "invalid_body", fmt.Sprintf("files[%d]: a draft's file is an upload or a remote file", index))
+			return apiFailure(
+				400,
+				"invalid_body",
+				fmt.Sprintf("files[%d]: a draft's file is an upload or a remote file", index),
+			)
 		}
 	}
-	saved, err := e.state.Services.Control.SaveDraft(r.Context(), record.ID, caller(r).ID, request.Base, request.Text, files)
+	saved, err := e.state.Services.Control.SaveDraft(
+		r.Context(),
+		record.ID,
+		caller(r).ID,
+		request.Base,
+		request.Text,
+		files,
+	)
 	if err != nil {
 		return err
 	}
@@ -55,6 +70,7 @@ func (e *Edge) draft(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.DraftAnswer{Draft: saved})
 	return nil
 }
+
 func (e *Edge) replacedDraft(w http.ResponseWriter, r *http.Request) error {
 	record, err := e.owned(r)
 	if err != nil {
@@ -72,6 +88,7 @@ func (e *Edge) replacedDraft(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.DraftAnswer{Draft: saved})
 	return nil
 }
+
 func (e *Edge) reorder(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeSidebarReorder)
 	if err != nil {
@@ -81,7 +98,12 @@ func (e *Edge) reorder(w http.ResponseWriter, r *http.Request) error {
 	var kind pagesync.Kind
 	switch request := request.(type) {
 	case *webapi.SidebarReorderConversation:
-		moved, err = e.state.Services.Control.ReorderConversations(r.Context(), caller(r).ID, request.ID, request.BeforeID)
+		moved, err = e.state.Services.Control.ReorderConversations(
+			r.Context(),
+			caller(r).ID,
+			request.ID,
+			request.BeforeID,
+		)
 		kind = pagesync.ConversationOrder
 	case *webapi.SidebarReorderWorkspace:
 		moved, err = e.state.Services.Control.ReorderWorkspaces(r.Context(), caller(r).ID, request.ID, request.BeforeID)

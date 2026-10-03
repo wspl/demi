@@ -35,7 +35,13 @@ type Conversations struct {
 // context and mutex. Request cancellation never abandons an admitted commit.
 func NewConversations(ctx context.Context, mu *sync.Mutex) *Conversations {
 	lifetime, cancel := context.WithCancel(ctx)
-	return &Conversations{mu: mu, ctx: lifetime, cancel: cancel, slots: make(map[webapi.ConversationID]*ConversationSlot), closed: make(chan struct{})}
+	return &Conversations{
+		mu:     mu,
+		ctx:    lifetime,
+		cancel: cancel,
+		slots:  make(map[webapi.ConversationID]*ConversationSlot),
+		closed: make(chan struct{}),
+	}
 }
 
 // Slot returns the stable opaque slot of the canonical conversation ID.
@@ -45,7 +51,11 @@ func (c *Conversations) Slot(id webapi.ConversationID) *ConversationSlot {
 	if slot := c.slots[id]; slot != nil {
 		return slot
 	}
-	slot := &ConversationSlot{files: runners.NewFileGate(id), streams: gates.NewActivity(nil), transfers: NewTransferSet(c.mu)}
+	slot := &ConversationSlot{
+		files:     runners.NewFileGate(id),
+		streams:   gates.NewActivity(nil),
+		transfers: NewTransferSet(c.mu),
+	}
 	if c.closing {
 		slot.transfers.closings++
 	}
@@ -183,7 +193,11 @@ type ReachableHost struct {
 
 // OwnedConversation reads the owner's conversation, regardless of ID case.
 // Another user's conversation answers as missing.
-func OwnedConversation(ctx context.Context, shard HostShard, id webapi.ConversationID) (database.ConversationRecord, error) {
+func OwnedConversation(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+) (database.ConversationRecord, error) {
 	record, err := shard.Control().Conversation(ctx, id)
 	if err != nil {
 		return database.ConversationRecord{}, &Error{Kind: AccessStorage, Cause: err}
@@ -197,7 +211,13 @@ func OwnedConversation(ctx context.Context, shard HostShard, id webapi.Conversat
 // WithHost runs operation once on the main Host or named bound device, holding
 // file and Cloud admission until it returns. Waiting rechecks ownership,
 // binding and archive state; dispatched work is never retried.
-func WithHost[T any](ctx context.Context, shard HostShard, id webapi.ConversationID, device *webapi.DeviceID, operation func(context.Context, *ConversationHost) (T, error)) (T, error) {
+func WithHost[T any](
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	device *webapi.DeviceID,
+	operation func(context.Context, *ConversationHost) (T, error),
+) (T, error) {
 	admitted, err := AdmitHost(ctx, shard, id, device)
 	if err != nil {
 		var zero T
@@ -210,7 +230,12 @@ func WithHost[T any](ctx context.Context, shard HostShard, id webapi.Conversatio
 // AdmitHost takes the conversation's Host admission. It releases the file gate
 // before waiting for Cloud and repeats every check after reacquiring it.
 // The caller must defer Release on success; ctx cancels admission waits.
-func AdmitHost(ctx context.Context, shard HostShard, id webapi.ConversationID, device *webapi.DeviceID) (*Admitted, error) {
+func AdmitHost(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	device *webapi.DeviceID,
+) (*Admitted, error) {
 	owner := shard.Conversations()
 	done, err := owner.begin()
 	if err != nil {
@@ -238,61 +263,20 @@ func AdmitHost(ctx context.Context, shard HostShard, id webapi.ConversationID, d
 	if err != nil {
 		return nil, err
 	}
-	slot := owner.Slot(record.ID)
-	var admission *cloudHold
-	defer func() {
-		if admission != nil {
-			admission.release()
-		}
-	}()
-	for {
-		files, err := slot.files.Enter(waitCtx, gates.Demand)
-		if err != nil {
-			return nil, &Error{Kind: AccessCancelled, Cause: err}
-		}
-		selected, err := selectHost(waitCtx, shard, record.ID, device, true)
-		if err != nil {
-			files.Release()
-			return nil, err
-		}
-		if selected.device.Kind == webapi.DeviceKindManaged && (admission == nil || admission.device != selected.device.ID) {
-			files.Release()
-			if admission != nil {
-				admission.release()
-				admission = nil
-			}
-			admission, err = owner.admitCloud(waitCtx, shard.CloudShard(), selected.device)
-			if err != nil {
-				return nil, &Error{Kind: AccessCloud, Cause: err}
-			}
-			continue
-		}
-		if selected.device.Kind != webapi.DeviceKindManaged && admission != nil {
-			admission.release()
-			admission = nil
-		}
-		admitted := &Admitted{files: files, done: done}
-		if admission != nil {
-			admitted.cloudRelease = admission.release
-			admitted.perOperation = admission.operation
-			admission = nil
-		}
-		admitted.Host = makeHost(shard, files, selected, admitted.admit)
-		if selected.prepare {
-			if err := admitted.Host.Host.FS().Mkdir(waitCtx, selected.root, host.MkdirOptions{Recursive: true}); err != nil {
-				admitted.done = nil
-				admitted.Release()
-				return nil, &Error{Kind: AccessHost, Cause: err}
-			}
-		}
-		shard.TrackIdle(record.ID)
-		handed = true
-		return admitted, nil
+	admitted, err := admitHost(waitCtx, shard, owner, record.ID, device, done)
+	if err != nil {
+		return nil, err
 	}
+	handed = true
+	return admitted, nil
 }
 
 // ResolveTarget resolves metadata without allocating or starting Cloud.
-func ResolveTarget(ctx context.Context, shard HostShard, record database.ConversationRecord) (database.ExecutionTarget, error) {
+func ResolveTarget(
+	ctx context.Context,
+	shard HostShard,
+	record database.ConversationRecord,
+) (database.ExecutionTarget, error) {
 	switch target := record.Target.(type) {
 	case *webapi.ConversationTargetWorkspace:
 		workspace, err := shard.Control().Workspace(ctx, target.WorkspaceID)
@@ -300,9 +284,18 @@ func ResolveTarget(ctx context.Context, shard HostShard, record database.Convers
 			return nil, err
 		}
 		if workspace == nil || workspace.User != record.Owner {
-			return nil, &database.Error{Kind: database.Corrupt, Table: "conversations", Column: "target_workspace_id", Reason: fmt.Sprintf("workspace %s is not one of the owner's", target.WorkspaceID)}
+			return nil, &database.Error{
+				Kind:   database.Corrupt,
+				Table:  "conversations",
+				Column: "target_workspace_id",
+				Reason: fmt.Sprintf("workspace %s is not one of the owner's", target.WorkspaceID),
+			}
 		}
-		return &database.ExecutionWorkspace{WorkspaceID: workspace.ID, DeviceID: workspace.Device, Path: workspace.Path}, nil
+		return &database.ExecutionWorkspace{
+			WorkspaceID: workspace.ID,
+			DeviceID:    workspace.Device,
+			Path:        workspace.Path,
+		}, nil
 	case *webapi.ConversationTargetDevice:
 		return &database.ExecutionDevice{DeviceID: target.DeviceID, Path: target.Path}, nil
 	case *webapi.ConversationTargetCloud:
@@ -324,7 +317,12 @@ func ResolveTarget(ctx context.Context, shard HostShard, record database.Convers
 		}
 		return &database.ExecutionCloud{DeviceID: id, Path: path}, nil
 	}
-	return nil, &database.Error{Kind: database.Corrupt, Table: "conversations", Column: "target", Reason: "missing target"}
+	return nil, &database.Error{
+		Kind:   database.Corrupt,
+		Table:  "conversations",
+		Column: "target",
+		Reason: "missing target",
+	}
 }
 
 // ConversationHosts lists the main Host followed by the attached Hosts.
@@ -359,7 +357,11 @@ type cloudHold struct {
 }
 
 // admitCloud takes Cloud admission without a conversation file lease.
-func (c *Conversations) admitCloud(ctx context.Context, shard cloud.CloudShard, device database.DeviceRecord) (*cloudHold, error) {
+func (c *Conversations) admitCloud(
+	ctx context.Context,
+	shard cloud.CloudShard,
+	device database.DeviceRecord,
+) (*cloudHold, error) {
 	if c.cloudAdmission != nil {
 		return c.cloudAdmission(ctx, shard, device)
 	}
@@ -373,7 +375,10 @@ func (c *Conversations) admitCloud(ctx context.Context, shard cloud.CloudShard, 
 // admit refuses operations after their enclosing conversation admission ends.
 func (a *Admitted) admit() (*gates.Lease, error) {
 	if a.released.Load() {
-		return nil, &host.Error{Kind: host.Unavailable, Message: "the conversation's Host changed; the command did not run"}
+		return nil, &host.Error{
+			Kind:    host.Unavailable,
+			Message: "the conversation's Host changed; the command did not run",
+		}
 	}
 	if a.perOperation != nil {
 		return a.perOperation()
@@ -388,7 +393,13 @@ type selectedHost struct {
 }
 
 // selectHost rechecks the authoritative binding after each file-gate wait.
-func selectHost(ctx context.Context, shard HostShard, id webapi.ConversationID, named *webapi.DeviceID, allocate bool) (selectedHost, error) {
+func selectHost(
+	ctx context.Context,
+	shard HostShard,
+	id webapi.ConversationID,
+	named *webapi.DeviceID,
+	allocate bool,
+) (selectedHost, error) {
 	record, err := OwnedConversation(ctx, shard, id)
 	if err != nil {
 		return selectedHost{}, err
@@ -408,21 +419,16 @@ func selectHost(ctx context.Context, shard HostShard, id webapi.ConversationID, 
 		if err != nil {
 			return selectedHost{}, err
 		}
-		found := false
-		for _, bound := range reachable {
-			if bound.Device == *named {
-				found = true
-				deviceID = &bound.Device
-				if bound.Role == Attached {
-					root = bound.Path
-					prepare = false
-				}
-				break
-			}
+		bound, err := namedHost(reachable, *named)
+		if err != nil {
+			return selectedHost{}, err
 		}
-		if !found {
-			return selectedHost{}, &Error{Kind: AccessRefused, Cause: NotAttached}
+		deviceID = &bound.Device
+		if bound.Role == Attached {
+			root = bound.Path
+			prepare = false
 		}
+
 	}
 	var device *database.DeviceRecord
 	if deviceID == nil {
@@ -447,16 +453,30 @@ func selectHost(ctx context.Context, shard HostShard, id webapi.ConversationID, 
 }
 
 // makeHost binds the private runner file lease to a checked target.
-func makeHost(shard HostShard, files *runners.FileLease, selected selectedHost, admission remotehost.Admission) ConversationHost {
+func makeHost(
+	shard HostShard,
+	files *runners.FileLease,
+	selected selectedHost,
+	admission remotehost.Admission,
+) ConversationHost {
 	var home *string
 	if value, ok := shard.Devices().Home(selected.device.ID); ok {
 		home = &value
 	}
-	return ConversationHost{Host: shard.Devices().ConversationHost(selected.device.ID, files, selected.root, admission), Root: selected.root, Home: home}
+	return ConversationHost{
+		Host: shard.Devices().ConversationHost(selected.device.ID, files, selected.root, admission),
+		Root: selected.root,
+		Home: home,
+	}
 }
 
 // reachableHosts keeps the main-first order used by commands and host routes.
-func reachableHosts(ctx context.Context, shard HostShard, record database.ConversationRecord, target database.ExecutionTarget) ([]ReachableHost, error) {
+func reachableHosts(
+	ctx context.Context,
+	shard HostShard,
+	record database.ConversationRecord,
+	target database.ExecutionTarget,
+) ([]ReachableHost, error) {
 	var result []ReachableHost
 	main := database.ExecutionDeviceID(target)
 	if main != nil {
@@ -468,7 +488,10 @@ func reachableHosts(ctx context.Context, shard HostShard, record database.Conver
 		if device != nil {
 			name = device.Name
 		}
-		result = append(result, ReachableHost{Name: name, Device: *main, Path: database.ExecutionPath(target), Role: Main})
+		result = append(
+			result,
+			ReachableHost{Name: name, Device: *main, Path: database.ExecutionPath(target), Role: Main},
+		)
 	}
 	attached, err := shard.Control().AttachedHosts(ctx, record.ID)
 	if err != nil {
@@ -497,4 +520,84 @@ func accessError(err error) error {
 		return err
 	}
 	return &Error{Kind: AccessHost, Cause: err}
+}
+
+// prepareAdmittedHost releases a failed admission but leaves the caller to unregister its work.
+func prepareAdmittedHost(ctx context.Context, admitted *Admitted, selected selectedHost) error {
+	if selected.prepare {
+		if err := admitted.Host.Host.FS().
+			Mkdir(ctx, selected.root, host.MkdirOptions{Recursive: true}); err != nil {
+			admitted.done = nil
+			admitted.Release()
+			return &Error{Kind: AccessHost, Cause: err}
+		}
+	}
+	return nil
+}
+
+func namedHost(reachable []ReachableHost, named webapi.DeviceID) (ReachableHost, error) {
+	for _, bound := range reachable {
+		if bound.Device == named {
+			return bound, nil
+		}
+	}
+	return ReachableHost{}, &Error{Kind: AccessRefused, Cause: NotAttached}
+}
+
+// admitHost reacquires the file gate after Cloud admission and transfers both holds on success.
+func admitHost(
+	waitCtx context.Context,
+	shard HostShard,
+	owner *Conversations,
+	id webapi.ConversationID,
+	device *webapi.DeviceID,
+	done func(),
+) (*Admitted, error) {
+	slot := owner.Slot(id)
+	var admission *cloudHold
+	defer func() {
+		if admission != nil {
+			admission.release()
+		}
+	}()
+	for {
+		files, err := slot.files.Enter(waitCtx, gates.Demand)
+		if err != nil {
+			return nil, &Error{Kind: AccessCancelled, Cause: err}
+		}
+		selected, err := selectHost(waitCtx, shard, id, device, true)
+		if err != nil {
+			files.Release()
+			return nil, err
+		}
+		if selected.device.Kind == webapi.DeviceKindManaged &&
+			(admission == nil || admission.device != selected.device.ID) {
+			files.Release()
+			if admission != nil {
+				admission.release()
+				admission = nil
+			}
+			admission, err = owner.admitCloud(waitCtx, shard.CloudShard(), selected.device)
+			if err != nil {
+				return nil, &Error{Kind: AccessCloud, Cause: err}
+			}
+			continue
+		}
+		if selected.device.Kind != webapi.DeviceKindManaged && admission != nil {
+			admission.release()
+			admission = nil
+		}
+		admitted := &Admitted{files: files, done: done}
+		if admission != nil {
+			admitted.cloudRelease = admission.release
+			admitted.perOperation = admission.operation
+			admission = nil
+		}
+		admitted.Host = makeHost(shard, files, selected, admitted.admit)
+		if err := prepareAdmittedHost(waitCtx, admitted, selected); err != nil {
+			return nil, err
+		}
+		shard.TrackIdle(id)
+		return admitted, nil
+	}
 }

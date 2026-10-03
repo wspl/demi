@@ -19,6 +19,7 @@ func (e *Edge) installForAccount(r *http.Request, entry providers.ProviderEntry)
 		slog.Warn("the CLI install was not started", "provider", entry.ID, "error", err)
 	}
 }
+
 func (e *Edge) setupToken(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeSetupTokenImport)
 	if err != nil {
@@ -31,7 +32,13 @@ func (e *Edge) setupToken(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	entry, err := providers.ImportSetupToken(r.Context(), e.state.Services.Assembly, owner, string(request.Label), string(request.Token))
+	entry, err := providers.ImportSetupToken(
+		r.Context(),
+		e.state.Services.Assembly,
+		owner,
+		string(request.Label),
+		string(request.Token),
+	)
 	if err != nil {
 		return err
 	}
@@ -39,18 +46,25 @@ func (e *Edge) setupToken(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 201, webapi.ProviderAnswer{Provider: entry.DTO()})
 	return nil
 }
+
 func (e *Edge) providerAccounts(w http.ResponseWriter, r *http.Request) error {
 	entry, err := e.scoped(r)
 	if err != nil {
 		return err
 	}
-	answer, err := providers.ListAccounts(r.Context(), e.state.Services.Assembly, *entry, e.state.Services.Vault.Configures(caller(r)))
+	answer, err := providers.ListAccounts(
+		r.Context(),
+		e.state.Services.Assembly,
+		*entry,
+		e.state.Services.Vault.Configures(caller(r)),
+	)
 	if err != nil {
 		return err
 	}
 	writeJSON(w, 200, answer)
 	return nil
 }
+
 func (e *Edge) addToken(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeAddToken)
 	if err != nil {
@@ -76,6 +90,7 @@ func (e *Edge) addToken(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 201, webapi.AddedAccount{Account: account})
 	return nil
 }
+
 func (e *Edge) activateAccount(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeActivateAccount)
 	if err != nil {
@@ -100,6 +115,7 @@ func (e *Edge) activateAccount(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.ActiveAccount{Active: active})
 	return nil
 }
+
 func (e *Edge) removeAccount(w http.ResponseWriter, r *http.Request) error {
 	if err := e.configures(r); err != nil {
 		return err
@@ -123,6 +139,7 @@ func (e *Edge) removeAccount(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(204)
 	return nil
 }
+
 func (e *Edge) startLogin(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeSubscriptionLogin)
 	if err != nil {
@@ -146,6 +163,7 @@ func (e *Edge) startLogin(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 202, webapi.LoginStarted{Login: webapi.StartedLogin{ID: id, Status: webapi.PendingStatusPending}})
 	return nil
 }
+
 func (e *Edge) loginInto(w http.ResponseWriter, r *http.Request) error {
 	if err := e.configures(r); err != nil {
 		return err
@@ -164,6 +182,7 @@ func (e *Edge) loginInto(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 202, webapi.LoginStarted{Login: webapi.StartedLogin{ID: id, Status: webapi.PendingStatusPending}})
 	return nil
 }
+
 func (e *Edge) loginState(w http.ResponseWriter, r *http.Request) error {
 	missing := apiFailure(404, "login_not_found", "No such login")
 	if r.Method == "DELETE" {
@@ -189,6 +208,7 @@ func (e *Edge) loginState(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.LoginAnswer{Login: state})
 	return nil
 }
+
 func (e *Edge) providerCLI(w http.ResponseWriter, r *http.Request) error {
 	query, err := decodeQuery(r, webapi.DecodeRefresh, "refresh")
 	if err != nil {
@@ -233,6 +253,14 @@ func (e *Edge) providerCLI(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	writeJSON(w, 200, webapi.ProviderCLI{Newest: result.newest, Install: e.state.Services.CLIInstalls.State(caller(r).ID, entry.ID), Machines: machines})
+	writeJSON(
+		w,
+		200,
+		webapi.ProviderCLI{
+			Newest:   result.newest,
+			Install:  e.state.Services.CLIInstalls.State(caller(r).ID, entry.ID),
+			Machines: machines,
+		},
+	)
 	return nil
 }

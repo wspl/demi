@@ -47,13 +47,34 @@ func (e *Edge) attachment(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	record, err := e.state.Services.Control.CreateAttachment(r.Context(), caller(r).ID, media, uint64(len(bytes)), ref, opening)
+	record, err := e.state.Services.Control.CreateAttachment(
+		r.Context(),
+		caller(r).ID,
+		media,
+		uint64(len(bytes)),
+		ref,
+		opening,
+	)
 	if err != nil {
 		return err
 	}
-	writeJSON(w, 201, webapi.AttachmentAnswer{Attachment: webapi.AttachmentDTO{ID: record.ID, MediaType: record.MediaType, SizeBytes: record.SizeBytes, Sha256: record.SHA256, CreatedAt: record.CreatedAt, Snippet: record.Snippet}})
+	writeJSON(
+		w,
+		201,
+		webapi.AttachmentAnswer{
+			Attachment: webapi.AttachmentDTO{
+				ID:        record.ID,
+				MediaType: record.MediaType,
+				SizeBytes: record.SizeBytes,
+				Sha256:    record.SHA256,
+				CreatedAt: record.CreatedAt,
+				Snippet:   record.Snippet,
+			},
+		},
+	)
 	return nil
 }
+
 func (e *Edge) blob(w http.ResponseWriter, r *http.Request) error {
 	missing := apiFailure(404, "not_found", "No such blob")
 	ref, err := core.ParseBlobRef(r.PathValue("sha256"))

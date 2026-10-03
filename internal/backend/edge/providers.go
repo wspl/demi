@@ -18,6 +18,7 @@ func (e *Edge) configures(r *http.Request) error {
 	}
 	return nil
 }
+
 func (e *Edge) scoped(r *http.Request) (*providers.ProviderEntry, error) {
 	missing := apiFailure(404, "provider_not_found", "No such provider")
 	id, err := webapi.ParseProviderID(r.PathValue("id"))
@@ -33,6 +34,7 @@ func (e *Edge) scoped(r *http.Request) (*providers.ProviderEntry, error) {
 	}
 	return entry, nil
 }
+
 func (e *Edge) reserve(entry *providers.ProviderEntry) (*providers.OperationGuard, error) {
 	guard := e.state.Services.Operations.Reserve(entry.ID)
 	if guard == nil {
@@ -40,6 +42,7 @@ func (e *Edge) reserve(entry *providers.ProviderEntry) (*providers.OperationGuar
 	}
 	return guard, nil
 }
+
 func (e *Edge) models(w http.ResponseWriter, r *http.Request) error {
 	query, err := decodeQuery(r, webapi.DecodeRefresh, "refresh")
 	if err != nil {
@@ -53,9 +56,16 @@ func (e *Edge) models(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	writeJSON(w, 200, webapi.ModelCatalog{Providers: e.state.Services.Assembly.ModelCatalog(r.Context(), entries, bool(query.Refresh))})
+	writeJSON(
+		w,
+		200,
+		webapi.ModelCatalog{
+			Providers: e.state.Services.Assembly.ModelCatalog(r.Context(), entries, bool(query.Refresh)),
+		},
+	)
 	return nil
 }
+
 func (e *Edge) providers(w http.ResponseWriter, r *http.Request) error {
 	owner, err := e.state.Services.Vault.OwnerFor(r.Context(), caller(r).ID)
 	if err != nil {
@@ -72,6 +82,7 @@ func (e *Edge) providers(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.Providers{Providers: result})
 	return nil
 }
+
 func (e *Edge) vendorCatalog(w http.ResponseWriter, r *http.Request) error {
 	owner, err := e.state.Services.Vault.OwnerFor(r.Context(), caller(r).ID)
 	if err != nil {
@@ -98,6 +109,7 @@ func (e *Edge) vendorCatalog(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.VendorCatalog{Subscriptions: subscriptions, Vendors: vendors})
 	return nil
 }
+
 func (e *Edge) apiKeyFamily(name string, wire *core.WireAPI) error {
 	family := e.state.Services.Assembly.Families().Family(name)
 	if family == nil {
@@ -111,6 +123,7 @@ func (e *Edge) apiKeyFamily(name string, wire *core.WireAPI) error {
 	}
 	return nil
 }
+
 func (e *Edge) createProvider(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeCreateProvider)
 	if err != nil {
@@ -138,13 +151,14 @@ func (e *Edge) createProvider(w http.ResponseWriter, r *http.Request) error {
 		family = vendor.ProviderType
 		label = string(request.Label)
 		key = request.APIKey
-		config = providers.APIKeyConfig{BaseURL: request.BaseURL, WireAPI: vendor.WireAPI, VendorID: &vendor.ID, Models: request.Models}
-		if config.BaseURL == nil && vendor.BaseURL != nil {
-			endpoint, err := webapi.ParseEndpointURL(*vendor.BaseURL)
-			if err != nil {
-				return apiFailure(502, "catalog_unavailable", "models.dev names no usable endpoint for "+request.VendorID)
-			}
-			config.BaseURL = &endpoint
+		config = providers.APIKeyConfig{
+			BaseURL:  request.BaseURL,
+			WireAPI:  vendor.WireAPI,
+			VendorID: &vendor.ID,
+			Models:   request.Models,
+		}
+		if err := vendorEndpoint(&config, vendor, request.VendorID); err != nil {
+			return err
 		}
 	}
 	if err := e.apiKeyFamily(family, config.WireAPI); err != nil {
@@ -166,6 +180,7 @@ func (e *Edge) createProvider(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 201, webapi.ProviderAnswer{Provider: entry.DTO()})
 	return nil
 }
+
 func (e *Edge) patchProvider(w http.ResponseWriter, r *http.Request) error {
 	patch, err := decodeBody(r, webapi.DecodeProviderPatch)
 	if err != nil {
@@ -183,27 +198,9 @@ func (e *Edge) patchProvider(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	defer guard.Release()
-	var config *providers.APIKeyConfig
-	if patch.APIKey != nil || patch.BaseURL != nil || patch.Models != nil {
-		old, ok := entry.Credential.(*providers.APIKeyConfig)
-		if !ok {
-			return apiFailure(400, "subscription_only", "A subscription entry takes only a new label")
-		}
-		next := *old
-		config = &next
-		if patch.APIKey != nil {
-			secret, err := provider.NewSecret(*patch.APIKey)
-			if err != nil {
-				return apiFailure(400, "invalid_body", "apiKey: "+err.Error())
-			}
-			config.APIKey = secret
-		}
-		if patch.BaseURL != nil {
-			config.BaseURL = *patch.BaseURL
-		}
-		if patch.Models != nil {
-			config.Models = *patch.Models
-		}
+	config, err := patchedAPIKey(entry, patch)
+	if err != nil {
+		return err
 	}
 	var label *string
 	if patch.Label != nil {
@@ -225,6 +222,7 @@ func (e *Edge) patchProvider(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.ProviderAnswer{Provider: updated.DTO()})
 	return nil
 }
+
 func (e *Edge) deleteProvider(w http.ResponseWriter, r *http.Request) error {
 	if err := e.configures(r); err != nil {
 		return err
@@ -248,6 +246,7 @@ func (e *Edge) deleteProvider(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(204)
 	return nil
 }
+
 func (e *Edge) providerStatus(w http.ResponseWriter, r *http.Request) error {
 	entry, err := e.scoped(r)
 	if err != nil {
@@ -264,7 +263,12 @@ func (e *Edge) providerStatus(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, result)
 	return nil
 }
-func (e *Edge) accountProvider(r *http.Request, entry providers.ProviderEntry, account *webapi.CredentialID) (provider.Provider, error) {
+
+func (e *Edge) accountProvider(
+	r *http.Request,
+	entry providers.ProviderEntry,
+	account *webapi.CredentialID,
+) (provider.Provider, error) {
 	if account == nil {
 		return e.state.Services.Assembly.ProviderFor(r.Context(), entry)
 	}
@@ -277,6 +281,7 @@ func (e *Edge) accountProvider(r *http.Request, entry providers.ProviderEntry, a
 	}
 	return built, nil
 }
+
 func (e *Edge) quota(w http.ResponseWriter, r *http.Request) error {
 	data, err := readJSONBody(r)
 	if err != nil {
@@ -308,22 +313,26 @@ func (e *Edge) quota(w http.ResponseWriter, r *http.Request) error {
 	snapshot, err := quota.Probe(r.Context())
 	if err != nil {
 		var failed *provider.QuotaError
-		if errors.As(err, &failed) {
-			switch failed.Kind {
-			case provider.QuotaUnsupported:
-				snapshot = quota.Latest()
-			case provider.QuotaRequiresInference:
-				return apiFailure(409, "quota_requires_inference", "This provider cannot read its usage without an inference request")
-			default:
-				return apiFailure(502, "quota_unavailable", err.Error())
-			}
-		} else {
+		if !errors.As(err, &failed) {
+			return apiFailure(502, "quota_unavailable", err.Error())
+		}
+		switch failed.Kind {
+		case provider.QuotaUnsupported:
+			snapshot = quota.Latest()
+		case provider.QuotaRequiresInference:
+			return apiFailure(
+				409,
+				"quota_requires_inference",
+				"This provider cannot read its usage without an inference request",
+			)
+		default:
 			return apiFailure(502, "quota_unavailable", err.Error())
 		}
 	}
 	writeJSON(w, 200, webapi.QuotaAnswer{Quota: snapshot})
 	return nil
 }
+
 func (e *Edge) testProvider(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeTestRequest)
 	if err != nil {
@@ -354,5 +363,46 @@ func (e *Edge) testProvider(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	writeJSON(w, 200, result)
+	return nil
+}
+
+func patchedAPIKey(entry *providers.ProviderEntry, patch webapi.ProviderPatch) (*providers.APIKeyConfig, error) {
+	if patch.APIKey == nil && patch.BaseURL == nil && patch.Models == nil {
+		return nil, nil
+	}
+	old, ok := entry.Credential.(*providers.APIKeyConfig)
+	if !ok {
+		return nil, apiFailure(400, "subscription_only", "A subscription entry takes only a new label")
+	}
+	next := *old
+	config := &next
+	if patch.APIKey != nil {
+		secret, err := provider.NewSecret(*patch.APIKey)
+		if err != nil {
+			return nil, apiFailure(400, "invalid_body", "apiKey: "+err.Error())
+		}
+		config.APIKey = secret
+	}
+	if patch.BaseURL != nil {
+		config.BaseURL = *patch.BaseURL
+	}
+	if patch.Models != nil {
+		config.Models = *patch.Models
+	}
+	return config, nil
+}
+
+func vendorEndpoint(config *providers.APIKeyConfig, vendor *webapi.Vendor, vendorID string) error {
+	if config.BaseURL == nil && vendor.BaseURL != nil {
+		endpoint, err := webapi.ParseEndpointURL(*vendor.BaseURL)
+		if err != nil {
+			return apiFailure(
+				502,
+				"catalog_unavailable",
+				"models.dev names no usable endpoint for "+vendorID,
+			)
+		}
+		config.BaseURL = &endpoint
+	}
 	return nil
 }

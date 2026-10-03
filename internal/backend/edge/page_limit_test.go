@@ -74,26 +74,38 @@ func TestPageMessageLimitForEverySocketKind(t *testing.T) {
 						<-consumed
 					}()
 					done := make(chan struct{})
-					server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						defer close(done)
-						defer toHost.Fail("page ended")
-						socket, err := pageUpgrade(w, r, "page socket")
-						if err != nil {
-							t.Error(err)
-							return
-						}
-						defer func() { _ = socket.CloseNow() }()
-						// Serving may return the expected overflow error; the peer close
-						// below is the assertion at the socket boundary.
-						switch kind {
-						case "conversation":
-							_ = shard.ServeConversationSocket(r.Context(), *record, socket)
-						case "sync":
-							_ = shard.ServeSyncChannel(r.Context(), socket, usershard.ChannelSession{User: user, ExpiresAt: expires})
-						case "user stream":
-							relayUserStream(r.Context(), socket, stream, make(chan struct{}), services.Pages.CloseWait)
-						}
-					}))
+					server := httptest.NewUnstartedServer(
+						http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							defer close(done)
+							defer toHost.Fail("page ended")
+							socket, err := pageUpgrade(w, r, "page socket")
+							if err != nil {
+								t.Error(err)
+								return
+							}
+							defer func() { _ = socket.CloseNow() }()
+							// Serving may return the expected overflow error; the peer close
+							// below is the assertion at the socket boundary.
+							switch kind {
+							case "conversation":
+								_ = shard.ServeConversationSocket(r.Context(), *record, socket)
+							case "sync":
+								_ = shard.ServeSyncChannel(
+									r.Context(),
+									socket,
+									usershard.ChannelSession{User: user, ExpiresAt: expires},
+								)
+							case "user stream":
+								relayUserStream(
+									r.Context(),
+									socket,
+									stream,
+									make(chan struct{}),
+									services.Pages.CloseWait,
+								)
+							}
+						}),
+					)
 					services.PublicURL.Listening(nil, server.Listener.Addr().(*net.TCPAddr).AddrPort())
 					server.Start()
 					defer server.Close()

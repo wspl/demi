@@ -28,6 +28,7 @@ func (e *Edge) owned(r *http.Request) (*database.ConversationRecord, error) {
 	}
 	return record, nil
 }
+
 func (e *Edge) conversations(w http.ResponseWriter, r *http.Request) error {
 	query, err := decodeQuery(r, webapi.DecodeConversationsQuery, "archived")
 	if err != nil {
@@ -44,6 +45,7 @@ func (e *Edge) conversations(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, webapi.Conversations{Conversations: result})
 	return nil
 }
+
 func (e *Edge) createConversation(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeCreateConversation)
 	if err != nil {
@@ -77,6 +79,7 @@ func (e *Edge) createConversation(w http.ResponseWriter, r *http.Request) error 
 	writeJSON(w, status, webapi.ConversationAnswer{Conversation: summary})
 	return nil
 }
+
 func (e *Edge) patchConversation(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeConversationPatch)
 	if err != nil {
@@ -111,6 +114,7 @@ func (e *Edge) patchConversation(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, status, update)
 	return nil
 }
+
 func (e *Edge) title(w http.ResponseWriter, r *http.Request) error {
 	id, err := webapi.ParseConversationID(r.PathValue("id"))
 	if err != nil {
@@ -126,6 +130,7 @@ func (e *Edge) title(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(202)
 	return nil
 }
+
 func (e *Edge) fork(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeForkRequest)
 	if err != nil {
@@ -171,14 +176,25 @@ func (e *Edge) batch(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		if update == nil {
-			results = append(results, &webapi.BatchResultRefused{ID: item.ID, Code: "conversation_not_found", Message: "No such conversation"})
+			results = append(
+				results,
+				&webapi.BatchResultRefused{
+					ID:      item.ID,
+					Code:    "conversation_not_found",
+					Message: "No such conversation",
+				},
+			)
 		} else {
-			results = append(results, &webapi.BatchResultUpdated{ID: item.ID, Conversation: update.Conversation, Results: update.Results})
+			results = append(
+				results,
+				&webapi.BatchResultUpdated{ID: item.ID, Conversation: update.Conversation, Results: update.Results},
+			)
 		}
 	}
 	writeJSON(w, 207, webapi.BatchAnswer{Results: results})
 	return nil
 }
+
 func (e *Edge) transcript(w http.ResponseWriter, r *http.Request) error {
 	record, err := e.owned(r)
 	if err != nil {
@@ -197,7 +213,11 @@ func (e *Edge) transcript(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	result := webapi.Transcript{Blocks: history.Blocks, Failures: &failures, Subagents: make([]webapi.SubagentHistory, 0, len(history.Subagents))}
+	result := webapi.Transcript{
+		Blocks:    history.Blocks,
+		Failures:  &failures,
+		Subagents: make([]webapi.SubagentHistory, 0, len(history.Subagents)),
+	}
 	for _, node := range history.Subagents {
 		job := node.Record.Job()
 		if job == nil {
@@ -207,7 +227,10 @@ func (e *Edge) transcript(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		result.Subagents = append(result.Subagents, webapi.SubagentHistory{Subagent: *job, Blocks: node.Blocks, Failures: &failures})
+		result.Subagents = append(
+			result.Subagents,
+			webapi.SubagentHistory{Subagent: *job, Blocks: node.Blocks, Failures: &failures},
+		)
 	}
 	if len(*result.Failures) == 0 {
 		result.Failures = nil
@@ -220,6 +243,7 @@ func (e *Edge) transcript(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, 200, result)
 	return nil
 }
+
 func (e *Edge) readConversation(w http.ResponseWriter, r *http.Request) error {
 	request, err := decodeBody(r, webapi.DecodeReadRequest)
 	if err != nil {

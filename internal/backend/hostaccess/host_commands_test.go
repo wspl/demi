@@ -26,14 +26,22 @@ func TestHostCommandsUseConversationAndStopWithShard(t *testing.T) {
 	}
 	run := func(verb, args string) (uint8, string, error) {
 		memory := hosttest.NewMemoryPort(nil)
-		invocation := host.RPCInvocation{Path: []string{"host", verb}, Args: []byte(args), Context: commandwire.CommandContext{Conversation: string(record.ID)}}
+		invocation := host.RPCInvocation{
+			Path:    []string{"host", verb},
+			Args:    []byte(args),
+			Context: commandwire.CommandContext{Conversation: string(record.ID)},
+		}
 		code, err := commands.Dispatch(t.Context(), invocation, host.NewRPCPort(memory))
 		return code, string(memory.Stdout()), err
 	}
 	if code, out, err := run("list", `{}`); err != nil || code != 0 || out != "Cloud has not been allocated\n" {
 		t.Fatalf("list: %d %q %v", code, out, err)
 	}
-	if _, out, err := run("current", `{}`); err != nil || out != "host: Cloud (not allocated), directory /home/demi/sessions/"+string(record.ID)+"\n" {
+	if _, out, err := run(
+		"current",
+		`{}`,
+	); err != nil ||
+		out != "host: Cloud (not allocated), directory /home/demi/sessions/"+string(record.ID)+"\n" {
 		t.Fatalf("current: %q %v", out, err)
 	}
 	if _, _, err := run("list", `{"unexpected":true}`); err == nil {
@@ -53,7 +61,11 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 	main := s.paired(t, "main")
 	record := s.target(t, s.conversation(t), main, "/work")
 	device := s.paired(t, "attached")
-	if _, err := s.control.ChangeConversation(t.Context(), record.ID, &database.RecordAttach{Host: database.AttachedHostRecord{Device: device.ID, Name: "remote"}}); err != nil {
+	if _, err := s.control.ChangeConversation(
+		t.Context(),
+		record.ID,
+		&database.RecordAttach{Host: database.AttachedHostRecord{Device: device.ID, Name: "remote"}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	r := connectHost(t, s, device)
@@ -62,7 +74,13 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 	if err := commands.Register(HostGroup(s)); err != nil {
 		t.Fatal(err)
 	}
-	commandContext, err := runners.CommandContext(t.Context(), s.control, s.owner, record.ID, &commandwire.AgentCaller{Number: 1})
+	commandContext, err := runners.CommandContext(
+		t.Context(),
+		s.control,
+		s.owner,
+		record.ID,
+		&commandwire.AgentCaller{Number: 1},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +101,13 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	invocation := host.RPCInvocation{Path: []string{"host", "shell"}, Args: args, Context: commandContext, Caller: &host.JobCaller{Node: RootOf(record.ID)}, Pipes: &host.RelayedPipes{Stdin: new(input.ID()), Stdout: output.ID()}}
+	invocation := host.RPCInvocation{
+		Path:    []string{"host", "shell"},
+		Args:    args,
+		Context: commandContext,
+		Caller:  &host.JobCaller{Node: RootOf(record.ID)},
+		Pipes:   &host.RelayedPipes{Stdin: new(input.ID()), Stdout: output.ID()},
+	}
 	port := hosttest.NewMemoryPort(nil)
 	result := startHostOperation(t, func(ctx context.Context) (uint8, error) {
 		return commands.Dispatch(ctx, invocation, host.NewRPCPort(port))
@@ -98,11 +122,20 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 	}
 	r.send(t, &runnerwire.FSOK{ID: listing.ID, Result: &runnerwire.FSReaddirResult{Value: []runnerwire.DirEntry{}}})
 	job := nextHostMessage[*runnerwire.JobStart](t, r)
-	if job.CWD != "/home/test" || job.Stdin == nil || job.Stdin.ID != input.ID() || job.Stdout == nil || job.Stdout.ID != output.ID() {
+	if job.CWD != "/home/test" || job.Stdin == nil || job.Stdin.ID != input.ID() || job.Stdout == nil ||
+		job.Stdout.ID != output.ID() {
 		t.Fatal(job)
 	}
 	r.send(t, &runnerwire.JobOutput{JobID: job.JobID, Stream: runnerwire.Stderr, Bytes: []byte("remote warning\n")})
-	r.send(t, &runnerwire.JobExit{JobID: job.JobID, ExitCode: new(int32(7)), CWD: new("/next"), Files: []runnerwire.JobFileChange{}})
+	r.send(
+		t,
+		&runnerwire.JobExit{
+			JobID:    job.JobID,
+			ExitCode: new(int32(7)),
+			CWD:      new("/next"),
+			Files:    []runnerwire.JobFileChange{},
+		},
+	)
 	_ = nextHostMessage[*runnerwire.JobRelease](t, r)
 	completed := <-result
 	if completed.err != nil || completed.value != 7 || string(port.Stderr()) != "remote warning\n" {

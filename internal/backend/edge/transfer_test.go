@@ -39,6 +39,7 @@ func testPipe(t *testing.T) (*remotehost.PipeWriter, *remotehost.PipeReader) {
 	})
 	return writer, reader
 }
+
 func TestConnectionInactivityFollowsLastByte(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		first, second := net.Pipe()

@@ -16,6 +16,7 @@ func headerValue(header http.Header, key string) *string {
 	}
 	return &value
 }
+
 func fileHeaders(path string, download bool, stat host.FileStat, part hostaccess.RangeAnswer) (http.Header, error) {
 	result := rawFileHeaders()
 	addHeaders(result, contentHeaders(core.PreviewMediaType(path), download, fileName(path)))
@@ -28,6 +29,7 @@ func fileHeaders(path string, download bool, stat host.FileStat, part hostaccess
 	addHeaders(result, part.Headers())
 	return result, nil
 }
+
 func (e *Edge) rawFile(w http.ResponseWriter, r *http.Request) error {
 	query, err := decodeQuery(r, webapi.DecodeRawFileQuery, "download")
 	if err != nil {
@@ -46,10 +48,71 @@ func (e *Edge) rawFile(w http.ResponseWriter, r *http.Request) error {
 		v := string(*query.Version)
 		version = &v
 	}
-	answer, err := hostaccess.OpenDownload(r.Context(), shard.HostShard(), id, hostaccess.DownloadRequest{Path: string(query.Path), Version: version, Head: r.Method == "HEAD", Range: headerValue(r.Header, "Range"), IfNoneMatch: headerValue(r.Header, "If-None-Match")})
+	answer, err := hostaccess.OpenDownload(
+		r.Context(),
+		shard.HostShard(),
+		id,
+		hostaccess.DownloadRequest{
+			Path:        string(query.Path),
+			Version:     version,
+			Head:        r.Method == "HEAD",
+			Range:       headerValue(r.Header, "Range"),
+			IfNoneMatch: headerValue(r.Header, "If-None-Match"),
+		},
+	)
 	if err != nil {
 		return err
 	}
+	return writeDownload(w, r, query, answer)
+}
+
+func (e *Edge) uploadFile(w http.ResponseWriter, r *http.Request) error {
+	query, err := decodeQuery(r, webapi.DecodeFileUploadQuery, "replace")
+	if err != nil {
+		return err
+	}
+	id, err := webapi.ParseConversationID(r.PathValue("id"))
+	if err != nil {
+		return apiFailure(404, "conversation_not_found", "No such conversation")
+	}
+	shard, err := e.state.Shards.Of(r.Context(), caller(r).ID)
+	if err != nil {
+		return err
+	}
+	answer, err := hostaccess.UploadFile(r.Context(), shard.HostShard(), id, string(query.Path), bool(query.Replace))
+	if err != nil {
+		return err
+	}
+	switch answer := answer.(type) {
+	case *hostaccess.UploadIsDirectory:
+		return apiFailure(409, "is_directory", "A directory is at this path")
+	case *hostaccess.UploadExists:
+		return apiFailure(409, "file_exists", "A file is already at this path")
+	case *hostaccess.OpenUpload:
+		defer answer.Lease.Release()
+		err := copyUpload(
+			answer.Lease.Context(),
+			&bodyStream{body: r.Body, control: http.NewResponseController(w)},
+			answer.Writer,
+			answer.Written,
+		)
+		if failure, ok := err.(*apiError); ok && failure.status == 504 {
+			_ = r.Context().Value(connectionKey{}).(*activity).Close()
+		}
+		if err != nil {
+			return err
+		}
+	}
+	w.WriteHeader(204)
+	return nil
+}
+
+func writeDownload(
+	w http.ResponseWriter,
+	r *http.Request,
+	query webapi.RawFileQuery,
+	answer hostaccess.Download,
+) error {
 	switch answer := answer.(type) {
 	case *hostaccess.DownloadNotAFile:
 		return apiFailure(404, "not_found", "Not a regular file")
@@ -77,40 +140,5 @@ func (e *Edge) rawFile(w http.ResponseWriter, r *http.Request) error {
 		addHeaders(w.Header(), headers)
 		return streamDownload(w, r, answer)
 	}
-	return nil
-}
-func (e *Edge) uploadFile(w http.ResponseWriter, r *http.Request) error {
-	query, err := decodeQuery(r, webapi.DecodeFileUploadQuery, "replace")
-	if err != nil {
-		return err
-	}
-	id, err := webapi.ParseConversationID(r.PathValue("id"))
-	if err != nil {
-		return apiFailure(404, "conversation_not_found", "No such conversation")
-	}
-	shard, err := e.state.Shards.Of(r.Context(), caller(r).ID)
-	if err != nil {
-		return err
-	}
-	answer, err := hostaccess.UploadFile(r.Context(), shard.HostShard(), id, string(query.Path), bool(query.Replace))
-	if err != nil {
-		return err
-	}
-	switch answer := answer.(type) {
-	case *hostaccess.UploadIsDirectory:
-		return apiFailure(409, "is_directory", "A directory is at this path")
-	case *hostaccess.UploadExists:
-		return apiFailure(409, "file_exists", "A file is already at this path")
-	case *hostaccess.OpenUpload:
-		defer answer.Lease.Release()
-		err := copyUpload(answer.Lease.Context(), &bodyStream{body: r.Body, control: http.NewResponseController(w)}, answer.Writer, answer.Written)
-		if failure, ok := err.(*apiError); ok && failure.status == 504 {
-			_ = r.Context().Value(connectionKey{}).(*activity).Close()
-		}
-		if err != nil {
-			return err
-		}
-	}
-	w.WriteHeader(204)
 	return nil
 }

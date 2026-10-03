@@ -53,7 +53,12 @@ func newShard(t *testing.T) *shard {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &shard{domain: &domain, backend: backend, connected: true, store: &memoryStore{records: make(map[webapi.ExposeID]database.ExposeRecord)}}
+	s := &shard{
+		domain:    &domain,
+		backend:   backend,
+		connected: true,
+		store:     &memoryStore{records: make(map[webapi.ExposeID]database.ExposeRecord)},
+	}
 	t.Cleanup(func() {
 		if err := s.exposes.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -82,7 +87,15 @@ func (m *memoryStore) Device(_ context.Context, id webapi.DeviceID) (*database.D
 	}
 	return &database.DeviceRecord{ID: id, User: user}, m.failure
 }
-func (m *memoryStore) CreateExpose(_ context.Context, id webapi.ExposeID, user webapi.UserID, device webapi.DeviceID, address webapi.ExposeAddress, lifetime time.Duration) (database.ExposeRecord, error) {
+
+func (m *memoryStore) CreateExpose(
+	_ context.Context,
+	id webapi.ExposeID,
+	user webapi.UserID,
+	device webapi.DeviceID,
+	address webapi.ExposeAddress,
+	lifetime time.Duration,
+) (database.ExposeRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failure != nil {
@@ -92,10 +105,18 @@ func (m *memoryStore) CreateExpose(_ context.Context, id webapi.ExposeID, user w
 	if err != nil {
 		return database.ExposeRecord{}, err
 	}
-	record := database.ExposeRecord{ID: id, User: user, Device: device, Address: address, CreatedAt: core.SystemClock{}.Now(), ExpiresAt: expiry}
+	record := database.ExposeRecord{
+		ID:        id,
+		User:      user,
+		Device:    device,
+		Address:   address,
+		CreatedAt: core.SystemClock{}.Now(),
+		ExpiresAt: expiry,
+	}
 	m.records[id] = record
 	return record, nil
 }
+
 func (m *memoryStore) Expose(ctx context.Context, id webapi.ExposeID) (*database.ExposeRecord, error) {
 	if m.read != nil {
 		if err := m.read(ctx); err != nil {
@@ -113,6 +134,7 @@ func (m *memoryStore) Expose(ctx context.Context, id webapi.ExposeID) (*database
 	}
 	return &record, nil
 }
+
 func (m *memoryStore) UserExposes(_ context.Context, user webapi.UserID) (database.UserExposes, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -134,7 +156,13 @@ func (m *memoryStore) UserExposes(_ context.Context, user webapi.UserID) (databa
 	sort.Slice(result.Live, func(i, j int) bool { return result.Live[i].ExpiresAt < result.Live[j].ExpiresAt })
 	return result, nil
 }
-func (m *memoryStore) RenewExpose(_ context.Context, id webapi.ExposeID, user webapi.UserID, lifetime time.Duration) (*database.ExposeRecord, error) {
+
+func (m *memoryStore) RenewExpose(
+	_ context.Context,
+	id webapi.ExposeID,
+	user webapi.UserID,
+	lifetime time.Duration,
+) (*database.ExposeRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failure != nil {
@@ -152,6 +180,7 @@ func (m *memoryStore) RenewExpose(_ context.Context, id webapi.ExposeID, user we
 	m.records[id] = record
 	return &record, nil
 }
+
 func (m *memoryStore) DeleteExpose(_ context.Context, id webapi.ExposeID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -161,6 +190,7 @@ func (m *memoryStore) DeleteExpose(_ context.Context, id webapi.ExposeID) error 
 	delete(m.records, id)
 	return nil
 }
+
 func (m *memoryStore) DeleteExpiredExpose(_ context.Context, id webapi.ExposeID, at core.Timestamp) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -174,6 +204,7 @@ func (m *memoryStore) DeleteExpiredExpose(_ context.Context, id webapi.ExposeID,
 	delete(m.records, id)
 	return true, nil
 }
+
 func (m *memoryStore) DeleteDeviceExposes(_ context.Context, device webapi.DeviceID) ([]webapi.ExposeID, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -198,6 +229,7 @@ func add(t *testing.T, s *shard, duration time.Duration) expose.Expose {
 	}
 	return value
 }
+
 func admit(t *testing.T, s *shard, id webapi.ExposeID) *expose.RelayAdmission {
 	t.Helper()
 	admission, err := expose.AdmitRelay(t.Context(), s, id)
@@ -233,8 +265,20 @@ func TestExposeURLTakesBackendSchemeAndNondefaultPort(t *testing.T) {
 
 func TestDomainRouting(t *testing.T) {
 	for _, tc := range []struct{ input, want string }{
-		{"EXPOSE.Example", "expose.example"}, {"bücher.example", "xn--bcher-kva.example"}, {"expose%2eexample", "expose.example"},
-		{"", ""}, {"127.0.0.1", ""}, {"0x7f000001", ""}, {"[::1]", ""}, {"expose..example", ""}, {"example.", ""}, {" example", ""}, {"example:80", ""}, {"example/path", ""}, {"example%2fpath", ""}, {"user@example", ""},
+		{"EXPOSE.Example", "expose.example"},
+		{"bücher.example", "xn--bcher-kva.example"},
+		{"expose%2eexample", "expose.example"},
+		{"", ""},
+		{"127.0.0.1", ""},
+		{"0x7f000001", ""},
+		{"[::1]", ""},
+		{"expose..example", ""},
+		{"example.", ""},
+		{" example", ""},
+		{"example:80", ""},
+		{"example/path", ""},
+		{"example%2fpath", ""},
+		{"user@example", ""},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			domain, err := expose.ParseDomain(tc.input)
@@ -257,7 +301,12 @@ func TestDomainRouting(t *testing.T) {
 		host, label string
 		ok          bool
 	}{
-		{"ABC.EXPOSE.EXAMPLE", "abc", true}, {"expose.example", "", false}, {".expose.example", "", false}, {"a.b.expose.example", "", false}, {"a.expose.example:80", "", false}, {"a.other.example", "", false},
+		{"ABC.EXPOSE.EXAMPLE", "abc", true},
+		{"expose.example", "", false},
+		{".expose.example", "", false},
+		{"a.b.expose.example", "", false},
+		{"a.expose.example:80", "", false},
+		{"a.other.example", "", false},
 	} {
 		label, ok := domain.Label(tc.host)
 		if ok != tc.ok || (ok && label != tc.label) {

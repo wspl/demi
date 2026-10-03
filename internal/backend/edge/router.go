@@ -38,6 +38,7 @@ func (n *routeNode) add(pattern string, handler endpoint) {
 	}
 	n.methods[method] = handler
 }
+
 func (n *routeNode) match(parts []string, r *http.Request) *routeNode {
 	if len(parts) == 0 {
 		if n.methods != nil {
@@ -62,9 +63,11 @@ func (n *routeNode) match(parts []string, r *http.Request) *routeNode {
 	}
 	return nil
 }
+
 func noRoute(w http.ResponseWriter, r *http.Request) {
 	writeError(w, apiFailure(404, "not_found", "No route for "+r.Method+" "+r.URL.EscapedPath()))
 }
+
 func (n *routeNode) handler(fallback http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := n.match(strings.Split(strings.TrimPrefix(r.URL.EscapedPath(), "/"), "/"), r)
