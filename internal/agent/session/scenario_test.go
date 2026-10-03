@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -32,16 +33,18 @@ type scenario struct {
 	tree    *storetest.MemoryTreeStore
 	runtime *sessiontest.Runtime
 	config  session.Config
+	trace   *runtimeTrace
 }
 
 func start(t *testing.T, runtime *sessiontest.Runtime, config session.Config, turns ...providertest.Turn) *scenario {
 	t.Helper()
 	p := providertest.NewScriptedRuntime(t, turns...)
 	tree := storetest.NewMemoryTreeStore()
-	s := session.New(session.Init{ID: "root", CWD: "/workspace", Model: storetest.TestModel(), Runtime: p}, session.Deps{Runtime: runtime, Store: tree.SessionStore("root"), IDs: transcripttest.NewSequentialIDs("id"), Clock: core.SystemClock{}, Config: config})
+	trace := &runtimeTrace{}
+	s := session.New(session.Init{ID: "root", CWD: "/workspace", Model: storetest.TestModel(), Runtime: &numberedRuntime{Runtime: p, trace: trace}}, session.Deps{Runtime: runtime, Store: tree.SessionStore("root"), IDs: transcripttest.NewSequentialIDs("id"), Clock: core.SystemClock{}, Config: config})
 	must(t, tree.CreateNode(t.Context(), store.RootRecord("root", core.SystemClock{}.Now()), s.FirstCheckpoint()))
 	t.Cleanup(func() { must(t, s.Dispose(context.Background())) })
-	return &scenario{t: t, s: s, p: p, tree: tree, runtime: runtime, config: config}
+	return &scenario{t: t, s: s, p: p, tree: tree, runtime: runtime, config: config, trace: trace}
 }
 func setup(t *testing.T, turns ...providertest.Turn) *scenario {
 	config := session.DefaultConfig()
@@ -77,9 +80,14 @@ func (f *scenario) checkpoint() store.Checkpoint {
 	return *cp
 }
 func (f *scenario) restore(cp store.Checkpoint, turns ...providertest.Turn) (*session.Session, session.Continuation, *providertest.ScriptedRuntime) {
+	return f.restoreWith(cp, &sessiontest.Runtime{}, core.SystemClock{}, turns...)
+}
+
+// restoreWith restores a checkpoint with explicit node hooks and clock.
+func (f *scenario) restoreWith(cp store.Checkpoint, runtime *sessiontest.Runtime, clock core.Clock, turns ...providertest.Turn) (*session.Session, session.Continuation, *providertest.ScriptedRuntime) {
 	f.t.Helper()
 	p := providertest.NewScriptedRuntime(f.t, turns...)
-	s, c, err := session.Restore(cp, "root", p, session.Deps{Runtime: &sessiontest.Runtime{}, Store: f.tree.SessionStore("root"), IDs: transcripttest.NewSequentialIDs("restored"), Clock: core.SystemClock{}, Config: f.config})
+	s, c, err := session.Restore(cp, "root", p, session.Deps{Runtime: runtime, Store: f.tree.SessionStore("root"), IDs: transcripttest.NewSequentialIDs("restored"), Clock: clock, Config: f.config})
 	must(f.t, err)
 	f.t.Cleanup(func() { must(f.t, s.Dispose(context.Background())) })
 	return s, c, p
@@ -185,19 +193,22 @@ func (f *scenario) history(want ...string) {
 	f.t.Helper()
 	equal(f.t, kinds(f.s.Transcript().Blocks), want)
 }
-func steers(r provider.InferenceRequest) []string {
+func steers(t *testing.T, r provider.InferenceRequest) []string {
+	t.Helper()
 	out := []string{}
 	for _, item := range r.Items {
 		if item, ok := item.(*provider.UserSteer); ok {
-			for _, part := range item.Content {
-				if part, ok := part.(*provider.TextPart); ok {
-					out = append(out, part.Text)
-				}
+			equal(t, len(item.Content), 1)
+			part, ok := item.Content[0].(*provider.TextPart)
+			if !ok {
+				t.Fatalf("steer content: %T", item.Content[0])
 			}
+			out = append(out, part.Text)
 		}
 	}
 	return out
 }
+
 func edit(t *testing.T, s *session.Session, target int, id string) session.EditSubmission {
 	t.Helper()
 	snap := s.Transcript()
@@ -244,4 +255,70 @@ func TestReentrantEvents(t *testing.T) {
 		synctest.Wait()
 		equal(t, seen, []string{"phase running", "queue 1", "queue 0"})
 	})
+}
+
+// itemKinds observes the ordered roles sent to the provider.
+func itemKinds(items []provider.InferenceItem) []string {
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		switch item.(type) {
+		case *provider.UserMessage:
+			result = append(result, "user_message")
+		case *provider.UserSteer:
+			result = append(result, "user_steer")
+		case *provider.AssistantThinking:
+			result = append(result, "assistant_thinking")
+		case *provider.AssistantText:
+			result = append(result, "assistant_text")
+		case *provider.AssistantRedactedThinking:
+			result = append(result, "assistant_redacted_thinking")
+		case *provider.ToolUse:
+			result = append(result, "tool_use")
+		case *provider.ToolResult:
+			result = append(result, "tool_result")
+		default:
+			result = append(result, fmt.Sprintf("%T", item))
+		}
+	}
+	return result
+}
+
+// runtimeTrace records which session runtime serves and closes each request.
+type runtimeTrace struct {
+	mu     sync.Mutex
+	next   int
+	served []int
+	closed []int
+}
+type numberedRuntime struct {
+	provider.Runtime
+	trace *runtimeTrace
+	id    int
+}
+
+func (r *numberedRuntime) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
+	r.trace.mu.Lock()
+	r.trace.served = append(r.trace.served, r.id)
+	r.trace.mu.Unlock()
+	return r.Runtime.Run(ctx, request)
+}
+func (r *numberedRuntime) Fresh() provider.Runtime {
+	r.trace.mu.Lock()
+	r.trace.next++
+	id := r.trace.next
+	r.trace.mu.Unlock()
+	return &numberedRuntime{Runtime: r.Runtime.Fresh(), trace: r.trace, id: id}
+}
+func (r *numberedRuntime) Close(ctx context.Context) error {
+	r.trace.mu.Lock()
+	r.trace.closed = append(r.trace.closed, r.id)
+	r.trace.mu.Unlock()
+	return r.Runtime.Close(ctx)
+}
+func (r *runtimeTrace) assert(t *testing.T, served, closed []int) {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	equal(t, r.served, served)
+	equal(t, r.closed, closed)
 }
