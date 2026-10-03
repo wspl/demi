@@ -60,9 +60,13 @@ func (s *Shard) Assembly() *providers.Assembly { return s.services.Assembly }
 // operation holding its file gate, or a user stream someone has open.
 func (s *Shard) Activity(conversation webapi.ConversationID) idlewatch.Activity {
 	slot := s.conversations.Slot(conversation)
-	activity := idlewatch.Of(slot.FileGate().State()).And(idlewatch.Of(slot.Streams().State()))
+	fileState := slot.FileGate().State()
+	fileActivity := idlewatch.Of(fileState)
+	streamState := slot.Streams().State()
+	activity := fileActivity.And(idlewatch.Of(streamState))
 	if tree := s.agent.Tree(hostaccess.RootOf(conversation)); tree != nil {
-		activity = activity.And(idlewatch.Of(tree.Admission().State()))
+		treeState := tree.Admission().State()
+		activity = activity.And(idlewatch.Of(treeState))
 	}
 	return activity
 }
@@ -99,7 +103,12 @@ func (s *Shard) HoldForIdle(conversation webapi.ConversationID) cloud.Conversati
 // once its operations end. Each wait has hold; nil, nil means the
 // conversation did not let go in time. Cancellation returns ctx.Err().
 // Failure releases partial holds; success transfers Release to the caller.
-func (s *Shard) HoldForReset(ctx context.Context, conversation webapi.ConversationID, filesOnCloud bool, hold time.Duration) (cloud.ConversationHold, error) {
+func (s *Shard) HoldForReset(
+	ctx context.Context,
+	conversation webapi.ConversationID,
+	filesOnCloud bool,
+	hold time.Duration,
+) (cloud.ConversationHold, error) {
 	return s.holdReset(ctx, conversation, filesOnCloud, hold)
 }
 
@@ -153,7 +162,12 @@ func (s *Shard) TrackIdle(conversation webapi.ConversationID) {
 		defer s.work.Done()
 		defer close(watch.done)
 		defer cancel()
-		idlewatch.Watch(ctx, conversationIdle{shard: s, id: conversation}, s.services.Lifecycle.IdleWindow, s.services.Lifecycle.IdlePoll)
+		idlewatch.Watch(
+			ctx,
+			conversationIdle{shard: s, id: conversation},
+			s.services.Lifecycle.IdleWindow,
+			s.services.Lifecycle.IdlePoll,
+		)
 		s.mu.Lock()
 		if s.idle[conversation] == watch {
 			delete(s.idle, conversation)
@@ -189,9 +203,15 @@ func (s *Shard) JobEnded(conversation webapi.ConversationID) {
 
 // PackageCall runs operation on the conversation's main Host, waking it as kind
 // specifies. Args is a JSON object preserving its input member order.
-func (s *Shard) PackageCall(ctx context.Context, conversation webapi.ConversationID, operation declare.NativeOperation, args json.RawMessage, kind plugin.CallKind) (json.RawMessage, error) {
-	pkg := s.services.Native.Package(operation.Package)
-	if pkg == nil {
+func (s *Shard) PackageCall(
+	ctx context.Context,
+	conversation webapi.ConversationID,
+	operation declare.NativeOperation,
+	args json.RawMessage,
+	kind plugin.CallKind,
+) (json.RawMessage, error) {
+	packageDefinition := s.services.Native.Package(operation.Package)
+	if packageDefinition == nil {
 		return nil, fmt.Errorf("the catalog serves no such package")
 	}
 	callKind := hostaccess.Starts
@@ -203,7 +223,17 @@ func (s *Shard) PackageCall(ctx context.Context, conversation webapi.Conversatio
 	case plugin.CallKindLooks:
 		callKind = hostaccess.Looks
 	}
-	answer, err := hostaccess.UserCall(ctx, s, conversation, callKind, hostaccess.ServiceCall{Binding: hostaccess.ServiceBinding{Package: *pkg, Operation: operation.Operation}, Args: args, MaxBytes: 1024 * 1024})
+	answer, err := hostaccess.UserCall(
+		ctx,
+		s,
+		conversation,
+		callKind,
+		hostaccess.ServiceCall{
+			Binding:  hostaccess.ServiceBinding{Package: *packageDefinition, Operation: operation.Operation},
+			Args:     args,
+			MaxBytes: 1024 * 1024,
+		},
+	)
 	if err != nil {
 		return nil, callFailure(err)
 	}
@@ -214,7 +244,10 @@ func (s *Shard) PackageCall(ctx context.Context, conversation webapi.Conversatio
 }
 
 // ConversationHosts lists the conversation's main and attached Hosts.
-func (s *Shard) ConversationHosts(ctx context.Context, conversation webapi.ConversationID) ([]plugin.ConversationHost, error) {
+func (s *Shard) ConversationHosts(
+	ctx context.Context,
+	conversation webapi.ConversationID,
+) ([]plugin.ConversationHost, error) {
 	hosts, err := hostaccess.ConversationHosts(ctx, s, conversation)
 	if err != nil {
 		return nil, accessFailure(err)
@@ -225,13 +258,25 @@ func (s *Shard) ConversationHosts(ctx context.Context, conversation webapi.Conve
 		if h.Role == hostaccess.Attached {
 			role = plugin.HostRoleAttached
 		}
-		result = append(result, plugin.ConversationHost{Name: h.Name, Device: h.Device, Role: role, Online: s.devices.Online(h.Device)})
+		result = append(
+			result,
+			plugin.ConversationHost{
+				Name:   h.Name,
+				Device: h.Device,
+				Role:   role,
+				Online: s.devices.Online(h.Device),
+			},
+		)
 	}
 	return result, nil
 }
 
 // ReadHostFiles never wakes a Host; a stopped Host returns plugin.PortRefusalNotRunning.
-func (s *Shard) ReadHostFiles(ctx context.Context, conversation webapi.ConversationID, reads []plugin.HostRead) ([]plugin.HostFile, error) {
+func (s *Shard) ReadHostFiles(
+	ctx context.Context,
+	conversation webapi.ConversationID,
+	reads []plugin.HostRead,
+) ([]plugin.HostFile, error) {
 	files, err := hostaccess.ReadFiles(ctx, s, conversation, reads)
 	var refusal *hostaccess.ReadFilesError
 	if errors.As(err, &refusal) && refusal.Kind == hostaccess.ReadFilesNotRunning {
@@ -273,14 +318,26 @@ func (s *Shard) Exposes(ctx context.Context) (plugin.ExposeList, error) {
 		}
 		records = append(records, record)
 	}
-	return plugin.ExposeList{Available: s.services.ExposeDomain != nil, ListedAt: s.Clock().Now(), Exposes: records}, nil
+	return plugin.ExposeList{
+		Available: s.services.ExposeDomain != nil,
+		ListedAt:  s.Clock().Now(),
+		Exposes:   records,
+	}, nil
 }
 
 // CreateExpose exposes address on device for lifetime seconds.
-func (s *Shard) CreateExpose(ctx context.Context, device webapi.DeviceID, address string, lifetime uint64) (plugin.ExposeRecord, error) {
+func (s *Shard) CreateExpose(
+	ctx context.Context,
+	device webapi.DeviceID,
+	address string,
+	lifetime uint64,
+) (plugin.ExposeRecord, error) {
 	parsed, err := webapi.ParseExposeAddress(address)
 	if err != nil {
-		return plugin.ExposeRecord{}, &plugin.PortRefusalExpose{Reason: plugin.ExposeRefusalInvalidAddress, Message: "the address " + err.Error()}
+		return plugin.ExposeRecord{}, &plugin.PortRefusalExpose{
+			Reason:  plugin.ExposeRefusalInvalidAddress,
+			Message: "the address " + err.Error(),
+		}
 	}
 	duration, err := exposeLifetime(lifetime)
 	if err != nil {
@@ -294,7 +351,11 @@ func (s *Shard) CreateExpose(ctx context.Context, device webapi.DeviceID, addres
 }
 
 // RenewExpose moves expiry to lifetime seconds from now.
-func (s *Shard) RenewExpose(ctx context.Context, id webapi.ExposeID, lifetime uint64) (plugin.ExposeRecord, error) {
+func (s *Shard) RenewExpose(
+	ctx context.Context,
+	id webapi.ExposeID,
+	lifetime uint64,
+) (plugin.ExposeRecord, error) {
 	duration, err := exposeLifetime(lifetime)
 	if err != nil {
 		return plugin.ExposeRecord{}, err
@@ -308,9 +369,12 @@ func (s *Shard) RenewExpose(ctx context.Context, id webapi.ExposeID, lifetime ui
 
 // RemoveExpose destroys the expose at once.
 func (s *Shard) RemoveExpose(ctx context.Context, id webapi.ExposeID) error {
-	return exposeFailure(expose.Remove(ctx, s.ExposeShard(), id))
+	err := expose.Remove(ctx, s.ExposeShard(), id)
+	return exposeFailure(err)
 }
 
-var _ cloud.CloudShard = (*Shard)(nil)
-var _ hostaccess.HostShard = (*Shard)(nil)
-var _ plugins.PluginShard = (*Shard)(nil)
+var (
+	_ cloud.CloudShard     = (*Shard)(nil)
+	_ hostaccess.HostShard = (*Shard)(nil)
+	_ plugins.PluginShard  = (*Shard)(nil)
+)

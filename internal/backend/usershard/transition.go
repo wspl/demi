@@ -15,7 +15,11 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func (s *Shard) applyChange(ctx context.Context, id webapi.ConversationID, change database.ConversationChange) error {
+func (s *Shard) applyChange(
+	ctx context.Context,
+	id webapi.ConversationID,
+	change database.ConversationChange,
+) error {
 	record, err := s.services.Control.Conversation(ctx, id)
 	if err != nil {
 		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeStorage, Cause: err}
@@ -41,36 +45,17 @@ func (s *Shard) applyChange(ctx context.Context, id webapi.ConversationID, chang
 	}
 	slot := s.conversations.Slot(id)
 	if settings, ok := change.(*database.ConversationSettingsChange); ok {
-		admitted, err := slot.FileGate().Enter(ctx, gates.Demand)
-		if err != nil {
-			return err
-		}
-		defer admitted.Release()
-		turn, err := slot.Settings().Acquire(ctx)
-		if err != nil {
-			return err
-		}
-		defer turn.Release()
-		return s.changeSettings(ctx, id, settings.Change)
+		return s.commitSettingsChange(ctx, id, settings.Change)
 	}
 	_, detach := field.(*database.RecordDetach)
-	if field != nil && !archive && !detach {
+	ordinaryField := field != nil && !archive && !detach
+	if ordinaryField {
 		admitted, err := slot.FileGate().Enter(ctx, gates.Demand)
 		if err != nil {
 			return err
 		}
 		defer admitted.Release()
-		if attach, ok := field.(*database.RecordAttach); ok {
-			target, err := hostaccess.ResolveTarget(ctx, s, *record)
-			if err != nil {
-				return err
-			}
-			device := database.ExecutionDeviceID(target)
-			if device != nil && *device == attach.Host.Device {
-				return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeHostIsMain}
-			}
-		}
-		return hostaccess.Commit(context.WithoutCancel(ctx), s, id, field)
+		return s.commitRecordField(ctx, *record, field)
 	}
 	var reserved *gates.Reservation
 	if tree := s.agent.Tree(hostaccess.RootOf(id)); tree != nil {
@@ -89,37 +74,14 @@ func (s *Shard) applyChange(ctx context.Context, id webapi.ConversationID, chang
 	}
 	defer hold.Release()
 	ctx = context.WithoutCancel(ctx)
-	switch c := change.(type) {
-	case *database.ConversationTargetChange:
-		err = hostaccess.SwitchTarget(ctx, s, *record, c.Target)
-		if err == nil {
-			s.stopIdle(id)
-			s.TrackIdle(id)
-		}
-	case *database.ConversationRecordChange:
-		switch c := c.Change.(type) {
-		case *database.RecordArchived:
-			if c.Archived {
-				err = hostaccess.Archive(ctx, s, *record)
-				if err == nil {
-					s.stopTitle(id)
-					s.stopIdle(id)
-				}
-			} else {
-				err = hostaccess.Commit(ctx, s, id, c)
-			}
-		case *database.RecordDetach:
-			err = hostaccess.Detach(ctx, s, *record, c.Device)
-		case *database.RecordAttach, *database.RecordModel, *database.RecordPinned, *database.RecordRename, *database.RecordTitle:
-			err = hostaccess.Commit(ctx, s, id, c)
-		}
-	case *database.ConversationSettingsChange:
-		// Settings returned before reserving the idle tree.
-	}
-	return err
+	return s.commitReservedChange(ctx, *record, change)
 }
 
-func (s *Shard) changeSettings(ctx context.Context, id webapi.ConversationID, change database.SettingsChange) error {
+func (s *Shard) changeSettings(
+	ctx context.Context,
+	id webapi.ConversationID,
+	change database.SettingsChange,
+) error {
 	record, err := s.services.Control.Conversation(ctx, id)
 	if err != nil {
 		return err
@@ -141,7 +103,11 @@ func (s *Shard) changeSettings(ctx context.Context, id webapi.ConversationID, ch
 		if errors.As(err, &resolve) && resolve.Kind == server.ResolveUnknown {
 			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeProviderNotFound}
 		}
-		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeRuntime, Message: err.Error(), Cause: err}
+		return &hostaccess.ChangeRefusal{
+			Kind:    hostaccess.ChangeRuntime,
+			Message: err.Error(),
+			Cause:   err,
+		}
 	}
 	ctx = context.WithoutCancel(ctx)
 	committed := hostaccess.Commit(ctx, s, id, &database.RecordModel{Model: selection})
@@ -154,7 +120,11 @@ func (s *Shard) changeSettings(ctx context.Context, id webapi.ConversationID, ch
 	return committed
 }
 
-func (s *Shard) settingsSelection(ctx context.Context, current *core.ModelSelection, change database.SettingsChange) (core.ModelSelection, error) {
+func (s *Shard) settingsSelection(
+	ctx context.Context,
+	current *core.ModelSelection,
+	change database.SettingsChange,
+) (core.ModelSelection, error) {
 	var selection core.ModelSelection
 	var entry webapi.ProviderID
 	var model string
@@ -187,13 +157,21 @@ func (s *Shard) settingsSelection(ctx context.Context, current *core.ModelSelect
 	if change.Model != nil || change.ThinkingEffort != nil {
 		selection.Thinking, err = listed.ThinkingFor(effort)
 		if err != nil {
-			return selection, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeSettingUnavailable, Message: err.Error(), Cause: err}
+			return selection, &hostaccess.ChangeRefusal{
+				Kind:    hostaccess.ChangeSettingUnavailable,
+				Message: err.Error(),
+				Cause:   err,
+			}
 		}
 	}
 	if change.Model != nil || change.ServiceTierID != nil {
 		selection.ServiceTierID, err = listed.TierFor(tier)
 		if err != nil {
-			return selection, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeSettingUnavailable, Message: err.Error(), Cause: err}
+			return selection, &hostaccess.ChangeRefusal{
+				Kind:    hostaccess.ChangeSettingUnavailable,
+				Message: err.Error(),
+				Cause:   err,
+			}
 		}
 	}
 	if change.Model != nil {
@@ -202,7 +180,11 @@ func (s *Shard) settingsSelection(ctx context.Context, current *core.ModelSelect
 	return selection, nil
 }
 
-func (s *Shard) listedModel(ctx context.Context, id webapi.ProviderID, model string) (core.ProviderModel, error) {
+func (s *Shard) listedModel(
+	ctx context.Context,
+	id webapi.ProviderID,
+	model string,
+) (core.ProviderModel, error) {
 	entry, err := s.services.Vault.Visible(ctx, s.user, id)
 	if err != nil {
 		return core.ProviderModel{}, err
@@ -230,7 +212,11 @@ func (s *Shard) stopTitle(id webapi.ConversationID) {
 	}
 }
 
-func (s *Shard) applyPatch(ctx context.Context, id webapi.ConversationID, patch webapi.ConversationPatch) (*webapi.ConversationUpdate, error) {
+func (s *Shard) applyConversationFields(
+	ctx context.Context,
+	id webapi.ConversationID,
+	patch webapi.ConversationPatch,
+) (*webapi.ConversationUpdate, error) {
 	record, err := s.services.Control.Conversation(ctx, id)
 	if err != nil || record == nil {
 		return nil, err
@@ -238,39 +224,10 @@ func (s *Shard) applyPatch(ctx context.Context, id webapi.ConversationID, patch 
 	if record.Owner != s.user {
 		return nil, nil
 	}
-	type modification struct {
-		fields []webapi.PatchField
-		change database.ConversationChange
-	}
-	var changes []modification
-	if patch.Archived != nil {
-		changes = append(changes, modification{[]webapi.PatchField{webapi.PatchFieldArchived}, &database.ConversationRecordChange{Change: &database.RecordArchived{Archived: *patch.Archived}}})
-	}
-	if patch.Title != nil {
-		changes = append(changes, modification{[]webapi.PatchField{webapi.PatchFieldTitle}, &database.ConversationRecordChange{Change: &database.RecordTitle{Title: string(*patch.Title)}}})
-	}
-	if patch.Pinned != nil {
-		changes = append(changes, modification{[]webapi.PatchField{webapi.PatchFieldPinned}, &database.ConversationRecordChange{Change: &database.RecordPinned{Pinned: *patch.Pinned}}})
-	}
-	var settings []webapi.PatchField
-	if patch.Model != nil {
-		settings = append(settings, webapi.PatchFieldModel)
-	}
-	if patch.ThinkingEffort != nil {
-		settings = append(settings, webapi.PatchFieldThinkingEffort)
-	}
-	if patch.ServiceTierID != nil {
-		settings = append(settings, webapi.PatchFieldServiceTierID)
-	}
-	if len(settings) > 0 {
-		changes = append(changes, modification{settings, &database.ConversationSettingsChange{Change: database.SettingsChange{Model: patch.Model, ThinkingEffort: patch.ThinkingEffort, ServiceTierID: patch.ServiceTierID}}})
-	}
-	if patch.Target != nil {
-		changes = append(changes, modification{[]webapi.PatchField{webapi.PatchFieldTarget}, &database.ConversationTargetChange{Target: *patch.Target}})
-	}
+	changes := patchChanges(patch)
 	results := make([]webapi.FieldResult, 0)
 	for _, change := range changes {
-		err := s.transition(ctx, id, change.change)
+		err := s.commitConversationChange(ctx, id, change.change)
 		for _, field := range change.fields {
 			if err == nil {
 				results = append(results, &webapi.FieldResultApplied{Field: field})
@@ -282,7 +239,15 @@ func (s *Shard) applyPatch(ctx context.Context, id webapi.ConversationID, patch 
 				slog.ErrorContext(ctx, "a conversation change failed", "field", field, "error", err)
 			}
 			code, status := refusal.Code()
-			results = append(results, &webapi.FieldResultFailed{Field: field, Code: code, Message: refusal.Error(), HTTPStatus: uint16(status)})
+			results = append(
+				results,
+				&webapi.FieldResultFailed{
+					Field:      field,
+					Code:       code,
+					Message:    refusal.Error(),
+					HTTPStatus: uint16(status),
+				},
+			)
 		}
 	}
 	record, err = s.services.Control.Conversation(ctx, id)
@@ -296,7 +261,11 @@ func (s *Shard) applyPatch(ctx context.Context, id webapi.ConversationID, patch 
 	return &webapi.ConversationUpdate{Conversation: summary, Results: results}, nil
 }
 
-func (s *Shard) transition(ctx context.Context, id webapi.ConversationID, change database.ConversationChange) error {
+func (s *Shard) commitConversationChange(
+	ctx context.Context,
+	id webapi.ConversationID,
+	change database.ConversationChange,
+) error {
 	if err := s.applyChange(ctx, id, change); err != nil {
 		var refused *hostaccess.ChangeRefusal
 		if errors.As(err, &refused) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -309,8 +278,182 @@ func (s *Shard) transition(ctx context.Context, id webapi.ConversationID, change
 		switch c.Change.(type) {
 		case *database.RecordPinned, *database.RecordArchived:
 			s.Mark(pagesync.Part{Kind: pagesync.ConversationOrder})
-		case *database.RecordAttach, *database.RecordDetach, *database.RecordModel, *database.RecordRename, *database.RecordTitle:
+		case *database.RecordAttach,
+			*database.RecordDetach,
+			*database.RecordModel,
+			*database.RecordRename,
+			*database.RecordTitle:
 		}
 	}
 	return nil
+}
+
+// commitRecordField checks an attached host before committing an ordinary field.
+func (s *Shard) commitRecordField(
+	ctx context.Context,
+	record database.ConversationRecord,
+	field database.RecordChange,
+) error {
+	if attach, ok := field.(*database.RecordAttach); ok {
+		target, err := hostaccess.ResolveTarget(ctx, s, record)
+		if err != nil {
+			return err
+		}
+		device := database.ExecutionDeviceID(target)
+		if device != nil && *device == attach.Host.Device {
+			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeHostIsMain}
+		}
+	}
+	return hostaccess.Commit(context.WithoutCancel(ctx), s, record.ID, field)
+}
+
+// commitReservedChange applies a change while the conversation transition hold is owned.
+func (s *Shard) commitReservedChange(
+	ctx context.Context,
+	record database.ConversationRecord,
+	change database.ConversationChange,
+) error {
+	var err error
+	id := record.ID
+	switch c := change.(type) {
+	case *database.ConversationTargetChange:
+		err = hostaccess.SwitchTarget(ctx, s, record, c.Target)
+		if err == nil {
+			s.stopIdle(id)
+			s.TrackIdle(id)
+		}
+	case *database.ConversationRecordChange:
+		switch c := c.Change.(type) {
+		case *database.RecordArchived:
+			err = s.commitArchive(ctx, record, c)
+		case *database.RecordDetach:
+			err = hostaccess.Detach(ctx, s, record, c.Device)
+		case *database.RecordAttach,
+			*database.RecordModel,
+			*database.RecordPinned,
+			*database.RecordRename,
+			*database.RecordTitle:
+			err = hostaccess.Commit(ctx, s, id, c)
+		}
+	case *database.ConversationSettingsChange:
+		// Settings returned before reserving the idle tree.
+	}
+	return err
+}
+
+// commitArchive stops title and idle work after a successful archive commit.
+func (s *Shard) commitArchive(
+	ctx context.Context,
+	record database.ConversationRecord,
+	change *database.RecordArchived,
+) error {
+	if !change.Archived {
+		return hostaccess.Commit(ctx, s, record.ID, change)
+	}
+	err := hostaccess.Archive(ctx, s, record)
+	if err == nil {
+		s.stopTitle(record.ID)
+		s.stopIdle(record.ID)
+	}
+	return err
+}
+
+type modification struct {
+	fields []webapi.PatchField
+	change database.ConversationChange
+}
+
+// patchChanges preserves the independent patch fields in archive-first order.
+func patchChanges(patch webapi.ConversationPatch) []modification {
+	var changes []modification
+	if patch.Archived != nil {
+		changes = append(
+			changes,
+			modification{
+				[]webapi.PatchField{webapi.PatchFieldArchived},
+				&database.ConversationRecordChange{
+					Change: &database.RecordArchived{Archived: *patch.Archived},
+				},
+			},
+		)
+	}
+	if patch.Title != nil {
+		changes = append(
+			changes,
+			modification{
+				[]webapi.PatchField{webapi.PatchFieldTitle},
+				&database.ConversationRecordChange{Change: &database.RecordTitle{Title: string(*patch.Title)}},
+			},
+		)
+	}
+	if patch.Pinned != nil {
+		changes = append(
+			changes,
+			modification{
+				[]webapi.PatchField{webapi.PatchFieldPinned},
+				&database.ConversationRecordChange{Change: &database.RecordPinned{Pinned: *patch.Pinned}},
+			},
+		)
+	}
+	changes = appendPatchSettings(changes, patch)
+	if patch.Target != nil {
+		changes = append(
+			changes,
+			modification{
+				[]webapi.PatchField{webapi.PatchFieldTarget},
+				&database.ConversationTargetChange{Target: *patch.Target},
+			},
+		)
+	}
+	return changes
+}
+
+// commitSettingsChange owns file and settings admission while changing the selected model.
+func (s *Shard) commitSettingsChange(
+	ctx context.Context,
+	id webapi.ConversationID,
+	change database.SettingsChange,
+) error {
+	slot := s.conversations.Slot(id)
+	admitted, err := slot.FileGate().Enter(ctx, gates.Demand)
+	if err != nil {
+		return err
+	}
+	defer admitted.Release()
+	turn, err := slot.Settings().Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer turn.Release()
+	return s.changeSettings(ctx, id, change)
+}
+
+// appendPatchSettings groups model, thinking effort and tier into one settings change.
+func appendPatchSettings(changes []modification, patch webapi.ConversationPatch) []modification {
+	var settings []webapi.PatchField
+	if patch.Model != nil {
+		settings = append(settings, webapi.PatchFieldModel)
+	}
+	if patch.ThinkingEffort != nil {
+		settings = append(settings, webapi.PatchFieldThinkingEffort)
+	}
+	if patch.ServiceTierID != nil {
+		settings = append(settings, webapi.PatchFieldServiceTierID)
+	}
+	if len(settings) > 0 {
+		changes = append(
+			changes,
+			modification{
+				settings,
+				&database.ConversationSettingsChange{
+					Change: database.SettingsChange{
+						Model:          patch.Model,
+						ThinkingEffort: patch.ThinkingEffort,
+						ServiceTierID:  patch.ServiceTierID,
+					},
+				},
+			},
+		)
+	}
+	return changes
 }

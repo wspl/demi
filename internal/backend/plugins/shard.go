@@ -23,11 +23,24 @@ type PluginShard interface {
 	Marks() pagesync.UserMarks
 	// PackageCall runs operation on the conversation's main Host, waking it as kind
 	// specifies. Args is a JSON object preserving its input member order.
-	PackageCall(ctx context.Context, conversation webapi.ConversationID, operation declare.NativeOperation, args json.RawMessage, kind plugin.CallKind) (json.RawMessage, error)
+	PackageCall(
+		ctx context.Context,
+		conversation webapi.ConversationID,
+		operation declare.NativeOperation,
+		args json.RawMessage,
+		kind plugin.CallKind,
+	) (json.RawMessage, error)
 	// ConversationHosts lists the conversation's main and attached Hosts.
-	ConversationHosts(ctx context.Context, conversation webapi.ConversationID) ([]plugin.ConversationHost, error)
+	ConversationHosts(
+		ctx context.Context,
+		conversation webapi.ConversationID,
+	) ([]plugin.ConversationHost, error)
 	// ReadHostFiles never wakes a Host; a stopped Host returns plugin.PortRefusalNotRunning.
-	ReadHostFiles(ctx context.Context, conversation webapi.ConversationID, reads []plugin.HostRead) ([]plugin.HostFile, error)
+	ReadHostFiles(
+		ctx context.Context,
+		conversation webapi.ConversationID,
+		reads []plugin.HostRead,
+	) ([]plugin.HostFile, error)
 	// PutBlob stores bytes in the user's blob namespace.
 	PutBlob(ctx context.Context, bytes core.B64Bytes) (core.BlobRef, error)
 	// Blob returns the user's blob bytes, or nil when absent.
@@ -37,7 +50,12 @@ type PluginShard interface {
 	// Exposes lists the user's live exposes, soonest expiry first.
 	Exposes(ctx context.Context) (plugin.ExposeList, error)
 	// CreateExpose exposes address on device for lifetime seconds.
-	CreateExpose(ctx context.Context, device webapi.DeviceID, address string, lifetime uint64) (plugin.ExposeRecord, error)
+	CreateExpose(
+		ctx context.Context,
+		device webapi.DeviceID,
+		address string,
+		lifetime uint64,
+	) (plugin.ExposeRecord, error)
 	// RenewExpose moves expiry to lifetime seconds from now.
 	RenewExpose(ctx context.Context, expose webapi.ExposeID, lifetime uint64) (plugin.ExposeRecord, error)
 	// RemoveExpose destroys the expose at once.

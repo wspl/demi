@@ -33,9 +33,12 @@ func TestCancelledRequesterStillFinishesAdmittedCall(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
 func TestPanickingCallDoesNotPoisonShard(t *testing.T) {
 	s := &Shard{}
-	_, err := shardCall(t.Context(), s, func(context.Context) (int, error) { panic("planted failure") })
+	_, err := shardCall(t.Context(), s, func(context.Context) (int, error) {
+		panic("planted failure")
+	})
 	var unavailable *ShardUnavailable
 	if !errors.As(err, &unavailable) || unavailable.Kind != ShardFailed {
 		t.Fatalf("panic result = %v", err)
@@ -45,6 +48,7 @@ func TestPanickingCallDoesNotPoisonShard(t *testing.T) {
 		t.Fatalf("subsequent call = %d, %v", value, err)
 	}
 }
+
 func TestClosingWaitsForCallsAndRefusesNewOnes(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())

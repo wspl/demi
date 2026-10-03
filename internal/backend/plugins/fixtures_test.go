@@ -18,14 +18,20 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 type fakePlugin struct {
 	call  func(context.Context, plugin.Request, plugin.Port) (plugin.Reply, error)
 	close func()
 }
 
-func (p *fakePlugin) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
+func (p *fakePlugin) Call(
+	ctx context.Context,
+	request plugin.Request,
+	port plugin.Port,
+) (plugin.Reply, error) {
 	if p.call != nil {
 		return p.call(ctx, request, port)
 	}
@@ -64,16 +70,38 @@ func (f *fakeFactory) Instance() plugin.Plugin {
 // manifest declares a fake plugin's page, both state scopes and both method scopes.
 func manifest(t *testing.T, id string) plugin.Manifest {
 	t.Helper()
-	schema, err := declare.NewSchema([]byte(`{"type":"object","properties":{"text":{"type":"string"}},"additionalProperties":false}`))
+	schema, err := declare.NewSchema(
+		[]byte(`{"type":"object","properties":{"text":{"type":"string"}},"additionalProperties":false}`),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := plugin.Schema{Schema: schema}
-	return plugin.Manifest{ID: plugin.ID(id), Name: "Name " + id, Description: "Description " + id, Context: true,
-		Page: &plugin.Page{Package: "@test/" + id,
+	return plugin.Manifest{
+		ID:          plugin.ID(id),
+		Name:        "Name " + id,
+		Description: "Description " + id,
+		Context:     true,
+		Page: &plugin.Page{
+			Package:      "@test/" + id,
 			User:         &plugin.State{Schema: s, Topics: []plugin.Topic{plugin.TopicExposes}},
 			Conversation: &plugin.State{Schema: s, Topics: []plugin.Topic{plugin.TopicJobs}},
-			Methods:      []plugin.Method{{Name: "user", Scope: plugin.ScopeUser, Params: s, Result: s}, {Name: "conversation", Scope: plugin.ScopeConversation, Params: s, Result: s}}}}
+			Methods: []plugin.Method{
+				{
+					Name:   "user",
+					Scope:  plugin.ScopeUser,
+					Params: s,
+					Result: s,
+				},
+				{
+					Name:   "conversation",
+					Scope:  plugin.ScopeConversation,
+					Params: s,
+					Result: s,
+				},
+			},
+		},
+	}
 }
 
 // command declares one group with one leaf for a fake plugin.
@@ -82,8 +110,18 @@ func command(name string, placement plugin.Placement, operation *declare.NativeO
 	if operation != nil {
 		kind = &declare.Native[declare.NativeOperation]{Binding: *operation}
 	}
-	return plugin.Commands{Placement: placement, Tree: plugin.Declaration{Node: &declare.Group[declare.NativeOperation]{Name: name, Summary: "A group.", Subcommands: []declare.Node[declare.NativeOperation]{&declare.Leaf[declare.NativeOperation]{Name: "run", Summary: "Run.", Kind: kind}}}}}
-
+	return plugin.Commands{
+		Placement: placement,
+		Tree: plugin.Declaration{
+			Node: &declare.Group[declare.NativeOperation]{
+				Name:    name,
+				Summary: "A group.",
+				Subcommands: []declare.Node[declare.NativeOperation]{
+					&declare.Leaf[declare.NativeOperation]{Name: "run", Summary: "Run.", Kind: kind},
+				},
+			},
+		},
+	}
 }
 
 // registry builds fake plugins against a catalog serving every declared operation.
@@ -103,15 +141,21 @@ type fakeShard struct {
 	// Only CommitUses is reached by the plugin host; Media belongs to the agent
 	// store and deliberately has no fake here.
 	uses        fakeUses
-	packageCall func(context.Context, webapi.ConversationID, declare.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error)
-	hosts       func(context.Context, webapi.ConversationID) ([]plugin.ConversationHost, error)
-	files       func(context.Context, webapi.ConversationID, []plugin.HostRead) ([]plugin.HostFile, error)
-	put         func(context.Context, core.B64Bytes) (core.BlobRef, error)
-	blob        func(context.Context, core.BlobRef) (*core.B64Bytes, error)
-	exposes     func(context.Context) (plugin.ExposeList, error)
-	create      func(context.Context, webapi.DeviceID, string, uint64) (plugin.ExposeRecord, error)
-	renew       func(context.Context, webapi.ExposeID, uint64) (plugin.ExposeRecord, error)
-	remove      func(context.Context, webapi.ExposeID) error
+	packageCall func(
+		context.Context,
+		webapi.ConversationID,
+		declare.NativeOperation,
+		json.RawMessage,
+		plugin.CallKind,
+	) (json.RawMessage, error)
+	hosts   func(context.Context, webapi.ConversationID) ([]plugin.ConversationHost, error)
+	files   func(context.Context, webapi.ConversationID, []plugin.HostRead) ([]plugin.HostFile, error)
+	put     func(context.Context, core.B64Bytes) (core.BlobRef, error)
+	blob    func(context.Context, core.BlobRef) (*core.B64Bytes, error)
+	exposes func(context.Context) (plugin.ExposeList, error)
+	create  func(context.Context, webapi.DeviceID, string, uint64) (plugin.ExposeRecord, error)
+	renew   func(context.Context, webapi.ExposeID, uint64) (plugin.ExposeRecord, error)
+	remove  func(context.Context, webapi.ExposeID) error
 }
 
 type fakeUses struct {
@@ -130,28 +174,59 @@ func (u *fakeUses) CommitUses(_ context.Context, blobs []core.BlobRef) error {
 func (s *fakeShard) Control() *database.ControlService { return s.control }
 func (s *fakeShard) Marks() pagesync.UserMarks         { return s.sync.Of(s.user) }
 func (s *fakeShard) BlobUses() database.OwnerBlobs     { return &s.uses }
-func (s *fakeShard) PackageCall(ctx context.Context, c webapi.ConversationID, op declare.NativeOperation, args json.RawMessage, kind plugin.CallKind) (json.RawMessage, error) {
-	return s.packageCall(ctx, c, op, args, kind)
+
+func (s *fakeShard) PackageCall(
+	ctx context.Context,
+	c webapi.ConversationID,
+	operation declare.NativeOperation,
+	args json.RawMessage,
+	kind plugin.CallKind,
+) (json.RawMessage, error) {
+	return s.packageCall(ctx, c, operation, args, kind)
 }
-func (s *fakeShard) ConversationHosts(ctx context.Context, c webapi.ConversationID) ([]plugin.ConversationHost, error) {
+
+func (s *fakeShard) ConversationHosts(
+	ctx context.Context,
+	c webapi.ConversationID,
+) ([]plugin.ConversationHost, error) {
 	return s.hosts(ctx, c)
 }
-func (s *fakeShard) ReadHostFiles(ctx context.Context, c webapi.ConversationID, reads []plugin.HostRead) ([]plugin.HostFile, error) {
+
+func (s *fakeShard) ReadHostFiles(
+	ctx context.Context,
+	c webapi.ConversationID,
+	reads []plugin.HostRead,
+) ([]plugin.HostFile, error) {
 	return s.files(ctx, c, reads)
 }
+
 func (s *fakeShard) PutBlob(ctx context.Context, bytes core.B64Bytes) (core.BlobRef, error) {
 	return s.put(ctx, bytes)
 }
+
 func (s *fakeShard) Blob(ctx context.Context, ref core.BlobRef) (*core.B64Bytes, error) {
 	return s.blob(ctx, ref)
 }
+
 func (s *fakeShard) Exposes(ctx context.Context) (plugin.ExposeList, error) { return s.exposes(ctx) }
-func (s *fakeShard) CreateExpose(ctx context.Context, d webapi.DeviceID, address string, lifetime uint64) (plugin.ExposeRecord, error) {
+
+func (s *fakeShard) CreateExpose(
+	ctx context.Context,
+	d webapi.DeviceID,
+	address string,
+	lifetime uint64,
+) (plugin.ExposeRecord, error) {
 	return s.create(ctx, d, address, lifetime)
 }
-func (s *fakeShard) RenewExpose(ctx context.Context, id webapi.ExposeID, lifetime uint64) (plugin.ExposeRecord, error) {
+
+func (s *fakeShard) RenewExpose(
+	ctx context.Context,
+	id webapi.ExposeID,
+	lifetime uint64,
+) (plugin.ExposeRecord, error) {
 	return s.renew(ctx, id, lifetime)
 }
+
 func (s *fakeShard) RemoveExpose(ctx context.Context, id webapi.ExposeID) error {
 	return s.remove(ctx, id)
 }
@@ -159,7 +234,9 @@ func (s *fakeShard) RemoveExpose(ctx context.Context, id webapi.ExposeID) error 
 // userFixture owns a real control store and a fake product boundary, with no Host.
 func userFixture(t *testing.T, r *plugins.Registry) (*plugins.User, *fakeShard) {
 	t.Helper()
-	s := &fakeShard{control: databasetest.Control(t.Context(), t, core.SystemClock{})}
+	s := &fakeShard{
+		control: databasetest.Control(t.Context(), t, core.SystemClock{}),
+	}
 	s.user = databasetest.Master(t.Context(), t, s.control).ID
 	u := newUser(t, r, s)
 	return u, s

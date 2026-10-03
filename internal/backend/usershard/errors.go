@@ -22,9 +22,12 @@ const (
 
 // ForkRefusal reports why a Fork was refused. Its cause is available through errors.As.
 type ForkRefusal struct {
-	Kind    ForkErrorKind
+	// Kind selects the failure category and applicable details.
+	Kind ForkErrorKind
+	// Message holds the diagnostic for categories with custom text.
 	Message string
-	Err     error
+	// Err retains the underlying failure for errors.Is and errors.As.
+	Err error
 }
 
 // Error returns the refusal in the reference spelling.
@@ -69,9 +72,12 @@ const (
 
 // TitleRefusal reports why a title was refused. Its cause is available through errors.As.
 type TitleRefusal struct {
-	Kind    TitleErrorKind
+	// Kind selects the failure category and applicable details.
+	Kind TitleErrorKind
+	// Message holds the diagnostic for categories with custom text.
 	Message string
-	Err     error
+	// Err retains the underlying failure for errors.Is and errors.As.
+	Err error
 }
 
 // Error returns the refusal in the reference spelling.
@@ -110,9 +116,12 @@ const (
 
 // ReloadRefusal reports why a tree was not reloaded. Its cause is available through errors.As.
 type ReloadRefusal struct {
-	Kind    ReloadErrorKind
+	// Kind selects the failure category and applicable details.
+	Kind ReloadErrorKind
+	// Message holds the diagnostic for categories with custom text.
 	Message string
-	Err     error
+	// Err retains the underlying failure for errors.Is and errors.As.
+	Err error
 }
 
 // Error returns the refusal in the reference spelling.
@@ -145,9 +154,12 @@ const (
 
 // ServicesError reports why shared services could not start. Its cause is available through errors.As.
 type ServicesError struct {
-	Kind    ServicesErrorKind
+	// Kind selects the failure category and applicable details.
+	Kind ServicesErrorKind
+	// Message holds the diagnostic for categories with custom text.
 	Message string
-	Err     error
+	// Err retains the underlying failure for errors.Is and errors.As.
+	Err error
 }
 
 // Error returns the refusal in the reference spelling.
@@ -178,9 +190,12 @@ const (
 
 // CloseError reports which database did not close. Its cause is available through errors.As.
 type CloseError struct {
-	Kind    CloseErrorKind
+	// Kind selects the failure category and applicable details.
+	Kind CloseErrorKind
+	// Message holds the diagnostic for categories with custom text.
 	Message string
-	Err     error
+	// Err retains the underlying failure for errors.Is and errors.As.
+	Err error
 }
 
 // Error returns the refusal in the reference spelling.
@@ -209,9 +224,12 @@ const (
 
 // ShardUnavailable reports why shard admission failed. Its cause is available through errors.As.
 type ShardUnavailable struct {
-	Kind    UnavailableKind
+	// Kind selects the failure category and applicable details.
+	Kind UnavailableKind
+	// Message holds the diagnostic for categories with custom text.
 	Message string
-	Err     error
+	// Err retains the underlying failure for errors.Is and errors.As.
+	Err error
 }
 
 // Error returns the refusal in the reference spelling.

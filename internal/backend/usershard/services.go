@@ -28,78 +28,132 @@ import (
 // Services are shared by the edge and every user's shard. Their handles are
 // immutable after startup; each service synchronizes its own mutable state.
 type Services struct {
-	Mode               webapi.InstanceMode
-	Clock              core.Clock
-	Control            *database.ControlService
-	Conversations      *database.ConversationStores
-	Blobs              *blobs.Stores
-	Hasher             *accounts.PasswordHasher
-	Sessions           *accounts.WebSessions
-	Limiter            *accounts.LoginLimiter
-	Email              *accounts.EmailChanges
-	Vault              *providers.Vault
-	Assembly           *providers.Assembly
-	ClaudeReleases     *providers.ClaudeReleases
-	CLIInstalls        *CLIInstalls
-	Operations         *providers.Operations
-	Logins             *providers.LoginFlows
-	Claims             *runners.PendingClaims
-	Runners            RunnerTuning
+	// Mode selects the instance’s user isolation policy.
+	Mode webapi.InstanceMode
+	// Clock supplies timestamps for the shared services.
+	Clock core.Clock
+	// Control provides access to persisted control records.
+	Control *database.ControlService
+	// Conversations provides per-conversation database storage.
+	Conversations *database.ConversationStores
+	// Blobs provides the users’ object namespaces.
+	Blobs *blobs.Stores
+	// Hasher hashes and verifies account passwords.
+	Hasher *accounts.PasswordHasher
+	// Sessions authenticates browser sessions.
+	Sessions *accounts.WebSessions
+	// Limiter enforces account login admission.
+	Limiter *accounts.LoginLimiter
+	// Email owns pending account email changes.
+	Email *accounts.EmailChanges
+	// Vault provides sealed provider credential storage.
+	Vault *providers.Vault
+	// Assembly assembles provider instances from their configuration.
+	Assembly *providers.Assembly
+	// ClaudeReleases supplies Claude Code releases for Cloud installs.
+	ClaudeReleases *providers.ClaudeReleases
+	// CLIInstalls records the state of requested Cloud CLI installations.
+	CLIInstalls *CLIInstalls
+	// Operations serializes provider configuration operations.
+	Operations *providers.Operations
+	// Logins owns provider login flows and their results.
+	Logins *providers.LoginFlows
+	// Claims owns pending runner pairing claims.
+	Claims *runners.PendingClaims
+	// Runners configures runner connections and admission.
+	Runners RunnerTuning
+	// ConversationTuning configures conversation execution limits.
 	ConversationTuning ConversationTuning
-	Pages              PageTuning
-	Native             *runners.NativeCatalog
-	Plugins            *plugins.Registry
-	UserStreams        *hostaccess.UserStreams
-	Cloud              *cloud.Services
-	PublicURL          *runners.PublicURL
-	Lifecycle          LifecycleTuning
-	ExposeDomain       *expose.Domain
-	ExposeTuning       ExposeTuning
-	Sync               *pagesync.SyncRegistry
+	// Pages configures browser page connections.
+	Pages PageTuning
+	// Native supplies the deployment’s native command packages.
+	Native *runners.NativeCatalog
+	// Plugins supplies registered plugins in their declared order.
+	Plugins *plugins.Registry
+	// UserStreams owns user-scoped host streams.
+	UserStreams *hostaccess.UserStreams
+	// Cloud provides Cloud lifecycle services.
+	Cloud *cloud.Services
+	// PublicURL supplies the backend’s public URL.
+	PublicURL *runners.PublicURL
+	// Lifecycle configures shard lifecycle and retention.
+	Lifecycle LifecycleTuning
+	// ExposeDomain supplies the domain for public exposes.
+	ExposeDomain *expose.Domain
+	// ExposeTuning configures expose admission and lifetimes.
+	ExposeTuning ExposeTuning
+	// Sync publishes page state change marks.
+	Sync *pagesync.SyncRegistry
 	// Hooks are optional synchronization points supplied by test support.
 	Hooks FlowHooks
 }
 
 // ProviderSetup supplies the provider families, catalogs, timing and clock.
 type ProviderSetup struct {
-	Families       *providers.FamilyRegistry
-	ModelsDevURL   *url.URL
+	// Families registers the provider families available in the deployment.
+	Families *providers.FamilyRegistry
+	// ModelsDevURL locates the vendor and model catalog service.
+	ModelsDevURL *url.URL
+	// ClaudeReleases locates the Claude Code release service.
 	ClaudeReleases *url.URL
-	Logins         providers.LoginTiming
-	Clock          core.Clock
+	// Logins configures login lifetime and result retention.
+	Logins providers.LoginTiming
+	// Clock supplies timestamps for the shared services.
+	Clock core.Clock
 }
 
 // ServiceKeys are derived from the instance secret by the executable.
 type ServiceKeys struct {
-	Vault      providers.VaultKey
+	// Vault protects persisted provider secrets.
+	Vault providers.VaultKey
+	// EmailCodes protects account email verification codes.
 	EmailCodes accounts.CodeKey
 }
 
 // ServiceSettings configures services independently of storage and keys.
 type ServiceSettings struct {
-	Mode          webapi.InstanceMode
-	Mail          accounts.AccountMail
-	Runners       RunnerTuning
+	// Mode selects the instance’s user isolation policy.
+	Mode webapi.InstanceMode
+	// Mail delivers account email messages.
+	Mail accounts.AccountMail
+	// Runners configures runner connections and admission.
+	Runners RunnerTuning
+	// Conversations configures conversation execution limits.
 	Conversations ConversationTuning
-	Pages         PageTuning
-	Native        *runners.NativeCatalog
-	Plugins       []plugin.Factory
-	Cloud         *cloud.Services
-	Lifecycle     LifecycleTuning
-	ExposeDomain  *expose.Domain
-	Exposes       ExposeTuning
+	// Pages configures browser page connections.
+	Pages PageTuning
+	// Native supplies the deployment’s native command packages.
+	Native *runners.NativeCatalog
+	// Plugins lists plugin factories in registration order.
+	Plugins []plugin.Factory
+	// Cloud provides Cloud lifecycle services.
+	Cloud *cloud.Services
+	// Lifecycle configures shard lifecycle and retention.
+	Lifecycle LifecycleTuning
+	// ExposeDomain supplies the domain for public exposes.
+	ExposeDomain *expose.Domain
+	// Exposes configures expose admission and lifetimes.
+	Exposes ExposeTuning
 }
 
 // Storage holds the databases and object namespaces used by the services.
 type Storage struct {
-	Control       *database.ControlService
+	// Control provides access to persisted control records.
+	Control *database.ControlService
+	// Conversations provides per-conversation database storage.
 	Conversations *database.ConversationStores
-	Blobs         *blobs.Stores
+	// Blobs provides the users’ object namespaces.
+	Blobs *blobs.Stores
 }
 
 // OpenStorage opens the databases in dataDir beside objects. A failed open
 // closes everything opened by that attempt.
-func OpenStorage(ctx context.Context, dataDir string, clock core.Clock, objects blobs.Objects) (*Storage, error) {
+func OpenStorage(
+	ctx context.Context,
+	dataDir string,
+	clock core.Clock,
+	objects blobs.Objects,
+) (*Storage, error) {
 	control, err := database.OpenControl(ctx, filepath.Join(dataDir, "control.sqlite"), clock)
 	if err != nil {
 		return nil, err
@@ -112,7 +166,11 @@ func OpenStorage(ctx context.Context, dataDir string, clock core.Clock, objects 
 		}
 		return nil, errors.Join(err, closeErr)
 	}
-	return &Storage{Control: control, Conversations: conversations, Blobs: blobs.New(objects, clock)}, nil
+	return &Storage{
+		Control:       control,
+		Conversations: conversations,
+		Blobs:         blobs.New(objects, clock),
+	}, nil
 }
 
 // Close closes conversation databases before control, returning all failures.
@@ -129,9 +187,15 @@ func (s *Storage) Close(ctx context.Context) error {
 
 // StartServices starts the shared services. The caller retains Storage and
 // closes services before closing storage; ctx owns their background work.
-func StartServices(ctx context.Context, storage *Storage, keys ServiceKeys, setup ProviderSetup, settings ServiceSettings) (*Services, error) {
-	registry, err := plugins.NewRegistry(settings.Plugins, func(op declare.NativeOperation) bool {
-		return settings.Native.Serves(op.Package, []string{op.Operation})
+func StartServices(
+	ctx context.Context,
+	storage *Storage,
+	keys ServiceKeys,
+	setup ProviderSetup,
+	settings ServiceSettings,
+) (*Services, error) {
+	registry, err := plugins.NewRegistry(settings.Plugins, func(operation declare.NativeOperation) bool {
+		return settings.Native.Serves(operation.Package, []string{operation.Operation})
 	})
 	if err != nil {
 		return nil, &ServicesError{Kind: ServicesPlugins, Err: err}
@@ -147,19 +211,43 @@ func StartServices(ctx context.Context, storage *Storage, keys ServiceKeys, setu
 	syncs := &pagesync.SyncRegistry{}
 	vault := providers.NewVault(storage.Control, &keys.Vault, settings.Mode, syncs)
 	httpClient := &http.Client{}
-	models := provider.NewModelsDevClient(httpClient, setup.ModelsDevURL.String(), setup.Clock)
-	assembly := providers.NewAssembly(vault, setup.Families, providers.NewAccountQuotas(vault), providers.NewModelCatalogCache(storage.Control, setup.Clock), providers.NewVendorCatalog(models), httpClient, setup.Clock)
+	assembly := assembleProviders(vault, storage, setup, httpClient)
 	operations := &providers.Operations{}
-	var streams []hostaccess.StreamDeclaration
-	for _, stream := range registry.Streams() {
-		streams = append(streams, hostaccess.StreamDeclaration{Name: string(stream.Name), Operation: stream.Operation})
-	}
+	streams := pluginStreams(registry)
 	return &Services{
-		Mode: settings.Mode, Clock: setup.Clock, Control: storage.Control, Conversations: storage.Conversations, Blobs: storage.Blobs,
-		Hasher: hasher, Sessions: accounts.NewWebSessions(storage.Control), Limiter: accounts.NewLoginLimiter(), Email: accounts.NewEmailChanges(storage.Control, hasher, settings.Mail, keys.EmailCodes),
-		Vault: vault, Assembly: assembly, ClaudeReleases: releases, CLIInstalls: &CLIInstalls{}, Operations: operations, Logins: providers.NewLoginFlows(assembly, operations, setup.Logins),
-		Claims: runners.NewPendingClaims(settings.Runners.ClaimsPerMinute), Runners: settings.Runners, ConversationTuning: settings.Conversations, Pages: settings.Pages, Native: settings.Native, Plugins: registry,
-		UserStreams: hostaccess.NewUserStreams(streams, settings.Native), Cloud: settings.Cloud, PublicURL: &runners.PublicURL{}, Lifecycle: settings.Lifecycle, ExposeDomain: settings.ExposeDomain, ExposeTuning: settings.Exposes, Sync: syncs,
+		Mode:           settings.Mode,
+		Clock:          setup.Clock,
+		Control:        storage.Control,
+		Conversations:  storage.Conversations,
+		Blobs:          storage.Blobs,
+		Hasher:         hasher,
+		Sessions:       accounts.NewWebSessions(storage.Control),
+		Limiter:        accounts.NewLoginLimiter(),
+		Email:          accounts.NewEmailChanges(storage.Control, hasher, settings.Mail, keys.EmailCodes),
+		Vault:          vault,
+		Assembly:       assembly,
+		ClaudeReleases: releases,
+		CLIInstalls:    &CLIInstalls{},
+		Operations:     operations,
+		Logins:         providers.NewLoginFlows(assembly, operations, setup.Logins),
+		Claims: runners.NewPendingClaims(
+			settings.Runners.ClaimsPerMinute,
+		),
+		Runners:            settings.Runners,
+		ConversationTuning: settings.Conversations,
+		Pages:              settings.Pages,
+		Native:             settings.Native,
+		Plugins:            registry,
+		UserStreams: hostaccess.NewUserStreams(
+			streams,
+			settings.Native,
+		),
+		Cloud:        settings.Cloud,
+		PublicURL:    &runners.PublicURL{},
+		Lifecycle:    settings.Lifecycle,
+		ExposeDomain: settings.ExposeDomain,
+		ExposeTuning: settings.Exposes,
+		Sync:         syncs,
 	}, nil
 }
 
@@ -207,3 +295,32 @@ const (
 	// SyncChanges follows a change wakeup and precedes reading changed parts.
 	SyncChanges
 )
+
+// pluginStreams supplies registered stream operations to host access.
+func pluginStreams(registry *plugins.Registry) []hostaccess.StreamDeclaration {
+	var streams []hostaccess.StreamDeclaration
+	for _, stream := range registry.Streams() {
+		streams = append(streams, hostaccess.StreamDeclaration{Name: string(stream.Name), Operation: stream.Operation})
+	}
+	return streams
+}
+
+// assembleProviders connects provider families to the shared catalogs and account services.
+func assembleProviders(
+	vault *providers.Vault,
+	storage *Storage,
+	setup ProviderSetup,
+	httpClient *http.Client,
+) *providers.Assembly {
+	models := provider.NewModelsDevClient(httpClient, setup.ModelsDevURL.String(), setup.Clock)
+	assembly := providers.NewAssembly(
+		vault,
+		setup.Families,
+		providers.NewAccountQuotas(vault),
+		providers.NewModelCatalogCache(storage.Control, setup.Clock),
+		providers.NewVendorCatalog(models),
+		httpClient,
+		setup.Clock,
+	)
+	return assembly
+}

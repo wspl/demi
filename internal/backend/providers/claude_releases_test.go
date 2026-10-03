@@ -54,7 +54,15 @@ func TestNewestReleaseUsesPointerManifestAndCache(t *testing.T) {
 		if r.URL.Path == "/r/2.1.5/manifest.json" {
 			version = "2.1.4"
 		}
-		_, _ = fmt.Fprintf(w, `{"version":%q,"commit":"ignored","platforms":{"linux-x64":{"binary":"claude","checksum":%q,"size":1024},"win32-x64":{"binary":"claude.exe","checksum":%q,"size":2048}}}`, version, strings.Repeat("ab", 32), strings.Repeat("cd", 32))
+		_, _ = fmt.Fprintf(
+			w,
+			`{"version":%q,"commit":"ignored",`+
+				`"platforms":{"linux-x64":{"binary":"claude","checksum":%q,"size":1024},`+
+				`"win32-x64":{"binary":"claude.exe","checksum":%q,"size":2048}}}`,
+			version,
+			strings.Repeat("ab", 32),
+			strings.Repeat("cd", 32),
+		)
 	}))
 	defer server.Close()
 	base, err := url.Parse(server.URL + "/r")
@@ -92,7 +100,9 @@ func TestNewestReleaseUsesPointerManifestAndCache(t *testing.T) {
 		t.Fatal(first, requests.Load())
 	}
 	linux := first.Platforms["linux-x64"]
-	if linux.URL != server.URL+"/r/2.1.3/linux-x64/claude" || linux.Size != 1024 || linux.SHA256 != strings.Repeat("ab", 32) || first.Platforms["win32-x64"].URL != server.URL+"/r/2.1.3/win32-x64/claude.exe" {
+	if linux.URL != server.URL+"/r/2.1.3/linux-x64/claude" || linux.Size != 1024 ||
+		linux.SHA256 != strings.Repeat("ab", 32) ||
+		first.Platforms["win32-x64"].URL != server.URL+"/r/2.1.3/win32-x64/claude.exe" {
 		t.Fatal(first)
 	}
 	mode.Store(1)
@@ -109,7 +119,14 @@ func TestNewestReleaseUsesPointerManifestAndCache(t *testing.T) {
 	for _, c := range []struct {
 		mode int32
 		want string
-	}{{2, "the distribution named no version"}, {3, "the release of version 2.1.4 could not be read (the distribution answered 404 Not Found)"}, {4, "the release of version 2.1.5 could not be read (its manifest names version 2.1.4)"}, {5, "the distribution answered 302 Found"}} {
+	}{
+		{2, "the distribution named no version"},
+		{3, "the release of version 2.1.4 could not be read " +
+			"(the distribution answered 404 Not Found)"},
+		{4, "the release of version 2.1.5 could not be read " +
+			"(its manifest names version 2.1.4)"},
+		{5, "the distribution answered 302 Found"},
+	} {
 		mode.Store(c.mode)
 		if _, err := releases.Latest(t.Context(), true); err == nil || err.Error() != c.want {
 			t.Fatalf("mode %d: %v", c.mode, err)

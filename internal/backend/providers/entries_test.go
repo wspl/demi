@@ -42,7 +42,8 @@ func TestVaultScopeAndSecretDisclosure(t *testing.T) {
 	if err != nil || visible == nil {
 		t.Fatalf("shared entry missing: %v %v", visible, err)
 	}
-	if shared.Configures(webapi.UserDTO{Role: webapi.RoleUser}) || !shared.Configures(owner) || !vault.Configures(webapi.UserDTO{Role: webapi.RoleUser}) {
+	if shared.Configures(webapi.UserDTO{Role: webapi.RoleUser}) || !shared.Configures(owner) ||
+		!vault.Configures(webapi.UserDTO{Role: webapi.RoleUser}) {
 		t.Fatal("scope configuration admission")
 	}
 	label := "Renamed"
@@ -52,7 +53,12 @@ func TestVaultScopeAndSecretDisclosure(t *testing.T) {
 	}
 	// A malformed sealed configuration is never repaired, and failure text never
 	// quotes a secret even if it occurs as an unknown object key.
-	for _, plain := range []string{`{"apiKey":123,"private":"` + secret + `"}`, `{"apiKey":"safe","` + secret + `":true}`, `{"apiKey":"safe","wireApi":"` + secret + `"}`, `{"apiKey":"safe","models":[{"` + secret + `":true}]}`} {
+	for _, plain := range []string{
+		`{"apiKey":123,"private":"` + secret + `"}`,
+		`{"apiKey":"safe","` + secret + `":true}`,
+		`{"apiKey":"safe","wireApi":"` + secret + `"}`,
+		`{"apiKey":"safe","models":[{"` + secret + `":true}]}`,
+	} {
 		sealed, err := vault.key.Seal(ConfigRow{Provider: entry.ID}, []byte(plain))
 		if err != nil {
 			t.Fatal(err)
@@ -102,7 +108,14 @@ func TestCatalogRestartsFromSQLiteAndRefusesCorruptStoredRecord(t *testing.T) {
 	if err := cache.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	databasetest.Execute(ctx, t, vault.control, "UPDATE model_catalogs SET record = ? WHERE provider_id = ?", `{"broken":true}`, string(entry.ID))
+	databasetest.Execute(
+		ctx,
+		t,
+		vault.control,
+		"UPDATE model_catalogs SET record = ? WHERE provider_id = ?",
+		`{"broken":true}`,
+		string(entry.ID),
+	)
 	cache = NewModelCatalogCache(vault.control, core.SystemClock{})
 	defer func() {
 		if err := cache.Close(context.Background()); err != nil {

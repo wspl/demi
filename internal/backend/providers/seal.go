@@ -17,14 +17,19 @@ type VaultKey struct{ key [32]byte }
 type Row interface{ sealedRow() }
 
 // ConfigRow is an API-key entry configuration row.
-type ConfigRow struct{ Provider webapi.ProviderID }
+type ConfigRow struct {
+	// Provider identifies the provider entry bound to this record.
+	Provider webapi.ProviderID
+}
 
 func (ConfigRow) sealedRow() {}
 
 // SecretRow is a subscription account secret document row.
 type SecretRow struct {
+	// Provider identifies the provider entry bound to this record.
 	Provider webapi.ProviderID
-	Account  webapi.CredentialID
+	// Account identifies the subscription account bound to this provider.
+	Account webapi.CredentialID
 }
 
 func (SecretRow) sealedRow() {}
@@ -94,7 +99,8 @@ func rowName(row Row) ([]byte, error) {
 		return nil, &Unsealable{}
 	}
 	for _, id := range ids {
-		name = binary.BigEndian.AppendUint32(name, uint32(len(id)))
+		length := uint32(len(id))
+		name = binary.BigEndian.AppendUint32(name, length)
 		name = append(name, id...)
 	}
 	return name, nil

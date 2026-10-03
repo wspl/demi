@@ -25,7 +25,11 @@ type LifecycleTuning struct {
 // DefaultLifecycleTuning returns the production timing and bounds.
 func DefaultLifecycleTuning() LifecycleTuning {
 	interval := 24 * time.Hour
-	return LifecycleTuning{IdleWindow: time.Hour, IdlePoll: 30 * time.Second, RetentionInterval: &interval}
+	return LifecycleTuning{
+		IdleWindow:        time.Hour,
+		IdlePoll:          30 * time.Second,
+		RetentionInterval: &interval,
+	}
 }
 
 // ExposeTuning configures relay connection idle time.
@@ -53,7 +57,11 @@ type ConversationTuning struct {
 
 // DefaultConversationTuning returns the production timing and bounds.
 func DefaultConversationTuning() ConversationTuning {
-	return ConversationTuning{OutboxFrames: server.DefaultConfig().OutboxFrames, RequestsPerMinute: providers.RequestsPerWindow, Titles: true}
+	return ConversationTuning{
+		OutboxFrames:      server.DefaultConfig().OutboxFrames,
+		RequestsPerMinute: providers.RequestsPerWindow,
+		Titles:            true,
+	}
 }
 
 // PageTuning configures page socket timing.
@@ -88,5 +96,10 @@ type RunnerTuning struct {
 // DefaultRunnerTuning returns the production timing and bounds.
 func DefaultRunnerTuning() RunnerTuning {
 	ping := remotehost.PingInterval
-	return RunnerTuning{HelloDeadline: 30 * time.Second, ClaimLifetime: 10 * time.Minute, ClaimsPerMinute: 10, Ping: &ping}
+	return RunnerTuning{
+		HelloDeadline:   30 * time.Second,
+		ClaimLifetime:   10 * time.Minute,
+		ClaimsPerMinute: 10,
+		Ping:            &ping,
+	}
 }

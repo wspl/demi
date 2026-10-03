@@ -10,10 +10,18 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-const switched = "[Execution target switched]"
-const cloudReset = "Cloud was reset: system packages and configuration were rebuilt from the base image. Files under /home remain. Running processes, temporary files, and previous shell state are gone; check the environment before continuing."
+const (
+	switched   = "[Execution target switched]"
+	cloudReset = "Cloud was reset: system packages and configuration were rebuilt from the " +
+		"base image. Files under /home remain. Running processes, temporary files, " +
+		"and previous shell state are gone; check the environment before continuing."
+)
 
-func (s *Shard) executionContext(ctx context.Context, id webapi.ConversationID, seen []string) (*string, error) {
+func (s *Shard) executionContext(
+	ctx context.Context,
+	id webapi.ConversationID,
+	seen []string,
+) (*string, error) {
 	control := s.Control()
 	record, err := control.Conversation(ctx, id)
 	if err != nil || record == nil {
@@ -47,26 +55,12 @@ func (s *Shard) executionContext(ctx context.Context, id webapi.ConversationID, 
 	}
 	announced := false
 	if change != nil {
-		before, err := s.describeTarget(ctx, change.From)
+		var additions []string
+		additions, announced, err = s.unseenTargetSwitch(ctx, *change, seen, attached)
 		if err != nil {
 			return nil, err
 		}
-		after, err := s.describeTarget(ctx, change.To)
-		if err != nil {
-			return nil, err
-		}
-		description := fmt.Sprintf("Previous target: %s. Current target: %s. New shells start in %s.", before, after, database.ExecutionPath(change.To))
-		observed := false
-		for i := len(seen) - 1; i >= 0; i-- {
-			if strings.Contains(seen[i], switched) {
-				observed = strings.Contains(seen[i], description)
-				break
-			}
-		}
-		if !observed {
-			lines = append(lines, switchLines(*change, description, attached)...)
-			announced = true
-		}
+		lines = append(lines, additions...)
 	}
 	if !announced {
 		lines = append(lines, "[Attached hosts changed]")
@@ -75,6 +69,7 @@ func (s *Shard) executionContext(ctx context.Context, id webapi.ConversationID, 
 	text := strings.Join(lines, "\n")
 	return &text, nil
 }
+
 func (s *Shard) describeTarget(ctx context.Context, target database.ExecutionTarget) (string, error) {
 	device := database.ExecutionDeviceID(target)
 	if device == nil {
@@ -101,6 +96,7 @@ func (s *Shard) describeTarget(ctx context.Context, target database.ExecutionTar
 	}
 	return fmt.Sprintf("the machine %s (host %s)", name, *device), nil
 }
+
 func (s *Shard) attachedHostsLine(attached []database.AttachedHostRecord) string {
 	const list = "`demi host list` shows every host this conversation can reach."
 	if len(attached) == 0 {
@@ -120,15 +116,42 @@ func (s *Shard) attachedHostsLine(attached []database.AttachedHostRecord) string
 		}
 		entries = append(entries, fmt.Sprintf("\"%s\" (%s, shells start in %s)", host.Name, state, directory))
 	}
-	return "Attached hosts: " + strings.Join(entries, ", ") + ". `demi host shell --host <name> <script>` runs a shell string on one; " + list
+	return "Attached hosts: " + strings.Join(
+		entries,
+		", ",
+	) + ". `demi host shell --host <name> <script>` runs a shell string on one; " + list
 }
-func switchLines(change database.TargetSwitch, description string, attached []database.AttachedHostRecord) []string {
-	lines := []string{switched, description, "No files were moved: everything created earlier lives on the previous target, and file paths from before the switch — including the full outputs of earlier commands — are stale here."}
+
+func switchLines(
+	change database.TargetSwitch,
+	description string,
+	attached []database.AttachedHostRecord,
+) []string {
+	lines := []string{
+		switched,
+		description,
+		"No files were moved: everything created earlier lives on the previous " +
+			"target, and file paths from before the switch — including the full outputs " +
+			"of earlier commands — are stale here.",
+	}
 	if device := database.ExecutionDeviceID(change.From); device != nil {
 		for _, departed := range attached {
 			if departed.Device == *device {
 				name, from := departed.Name, database.ExecutionPath(change.From)
-				lines = append(lines, fmt.Sprintf("The previous host stays attached as \"%s\": `demi host shell --host %s <script>` runs a shell string there with byte-faithful stdio, starting in %s (e.g. `demi host shell --host %s \"tar c -C %s .\" | tar x` pulls its files into the current directory).", name, name, from, name, from))
+				lines = append(
+					lines,
+					fmt.Sprintf(
+						"The previous host stays attached as \"%s\": `demi host shell --host %s "+
+							"<script>` runs a shell string there with byte-faithful stdio, starting in "+
+							"%s (e.g. `demi host shell --host %s \"tar c -C %s .\" | tar x` pulls its "+
+							"files into the current directory).",
+						name,
+						name,
+						from,
+						name,
+						from,
+					),
+				)
 				break
 			}
 		}
@@ -136,7 +159,47 @@ func switchLines(change database.TargetSwitch, description string, attached []da
 	before, ok := change.From.(*database.ExecutionWorkspace)
 	after, also := change.To.(*database.ExecutionWorkspace)
 	if ok && also && before.DeviceID == after.DeviceID {
-		lines = append(lines, fmt.Sprintf("The previous directory %s is on the same device, so it is also directly accessible from this shell.", before.Path))
+		lines = append(
+			lines,
+			fmt.Sprintf(
+				"The previous directory %s is on the same device, so it is also directly accessible from this shell.",
+				before.Path,
+			),
+		)
 	}
 	return lines
+}
+
+// unseenTargetSwitch describes the latest switch only when the model has not seen it.
+func (s *Shard) unseenTargetSwitch(
+	ctx context.Context,
+	change database.TargetSwitch,
+	seen []string,
+	attached []database.AttachedHostRecord,
+) ([]string, bool, error) {
+	before, err := s.describeTarget(ctx, change.From)
+	if err != nil {
+		return nil, false, err
+	}
+	after, err := s.describeTarget(ctx, change.To)
+	if err != nil {
+		return nil, false, err
+	}
+	description := fmt.Sprintf(
+		"Previous target: %s. Current target: %s. New shells start in %s.",
+		before,
+		after,
+		database.ExecutionPath(change.To),
+	)
+	observed := false
+	for i := len(seen) - 1; i >= 0; i-- {
+		if strings.Contains(seen[i], switched) {
+			observed = strings.Contains(seen[i], description)
+			break
+		}
+	}
+	if !observed {
+		return switchLines(change, description, attached), true, nil
+	}
+	return nil, false, nil
 }

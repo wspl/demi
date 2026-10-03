@@ -11,18 +11,31 @@ import (
 	"github.com/wspl/demi/internal/agent/server"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
+	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/webapi"
 )
 
-func (s *Shard) serveConversation(ctx context.Context, record database.ConversationRecord, socket *websocket.Conn) error {
+func (s *Shard) serveConversation(
+	ctx context.Context,
+	record database.ConversationRecord,
+	socket *websocket.Conn,
+) error {
 	// Closing an already broken socket needs no recovery.
-	defer func() { _ = socket.CloseNow() }()
+	defer func() {
+		_ = socket.CloseNow()
+	}()
 	_, err := shardCall(ctx, s, func(ctx context.Context) (struct{}, error) {
 		return struct{}{}, s.relayConversation(ctx, record, socket)
 	})
 	return err
 }
-func (s *Shard) relayConversation(ctx context.Context, record database.ConversationRecord, socket *websocket.Conn) error {
+
+func (s *Shard) relayConversation(
+	ctx context.Context,
+	record database.ConversationRecord,
+	socket *websocket.Conn,
+) error {
 	ctx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})
 	stop := context.AfterFunc(s.ctx, func() {
@@ -56,28 +69,58 @@ func (s *Shard) relayConversation(ctx context.Context, record database.Conversat
 	incoming := readPage(readCtx, socket, &workers)
 	outgoing := make(chan server.Outgoing)
 	workers.Add(1)
-	go func() {
-		defer workers.Done()
-		defer close(outgoing)
-		for {
-			frame, err := frames.Receive(ctx)
-			if err != nil {
-				return
-			}
-			select {
-			case outgoing <- frame:
-			case <-ctx.Done():
-				return
-			}
-			if _, closed := frame.(*server.Closed); closed {
-				return
-			}
+	go forwardConversationFrames(ctx, frames, outgoing, &workers)
+	return s.exchangeConversation(ctx, conversationExchange{
+		id:         record.ID,
+		connection: connection,
+		files:      files,
+		page:       page,
+		incoming:   incoming,
+		outgoing:   outgoing,
+	})
+}
+
+// forwardConversationFrames relays agent frames until cancellation or the closed frame.
+func forwardConversationFrames(
+	ctx context.Context,
+	frames *server.FrameReceiver,
+	outgoing chan<- server.Outgoing,
+	workers *sync.WaitGroup,
+) {
+	defer workers.Done()
+	defer close(outgoing)
+	for {
+		frame, err := frames.Receive(ctx)
+		if err != nil {
+			return
 		}
-	}()
-	type handled struct {
-		reply framewire.ServerFrame
-		err   error
+		select {
+		case outgoing <- frame:
+		case <-ctx.Done():
+			return
+		}
+		if _, closed := frame.(*server.Closed); closed {
+			return
+		}
 	}
+}
+
+type handled struct {
+	reply framewire.ServerFrame
+	err   error
+}
+
+type conversationExchange struct {
+	id         webapi.ConversationID
+	connection *server.Connection[*remotehost.Host]
+	files      *conversationFiles
+	page       *pageSocket
+	incoming   <-chan pageMessage
+	outgoing   <-chan server.Outgoing
+}
+
+// exchangeConversation sends agent frames while admitting one client message at a time.
+func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationExchange) error {
 	var handling <-chan handled
 	defer func() {
 		if handling != nil {
@@ -89,64 +132,106 @@ func (s *Shard) relayConversation(ctx context.Context, record database.Conversat
 		if err != nil {
 			return err
 		}
-		return page.send(ctx, frame)
+		return exchange.page.send(ctx, frame)
 	}
 	for {
-		reading := incoming
+		reading := exchange.incoming
 		if handling != nil {
 			reading = nil
 		}
 		select {
 		case <-ctx.Done():
-			page.close(context.WithoutCancel(ctx), websocket.StatusGoingAway, "backend_closing")
+			exchange.page.close(context.WithoutCancel(ctx), websocket.StatusGoingAway, "backend_closing")
 			return ctx.Err()
 		case message, ok := <-reading:
 			if !ok || message.err != nil {
 				return message.err
 			}
 			if message.kind != websocket.MessageText {
-				page.close(context.WithoutCancel(ctx), websocket.StatusInvalidFramePayloadData, "not_json")
+				exchange.page.close(context.WithoutCancel(ctx), websocket.StatusInvalidFramePayloadData, "not_json")
 				return nil
 			}
 			result := make(chan handled, 1)
 			handling = result
-			go func() {
-				reply, err := s.handleMessage(context.WithoutCancel(ctx), record.ID, connection, files, message.data)
-				result <- handled{reply: reply, err: err}
-			}()
+			go s.answerConversationMessage(ctx, exchange, message, result)
 		case result := <-handling:
 			handling = nil
-			if errors.Is(result.err, framewire.ErrNotJSON) {
-				page.close(context.WithoutCancel(ctx), websocket.StatusInvalidFramePayloadData, "not_json")
-				return nil
+			ended, err := finishConversationMessage(ctx, exchange.page, result, send)
+			if ended {
+				return err
 			}
-			if result.err != nil {
-				return result.err
-			}
-			if result.reply != nil {
-				if err := send(result.reply); err != nil {
-					return err
-				}
-			}
-		case item, ok := <-outgoing:
+		case item, ok := <-exchange.outgoing:
 			if !ok {
 				return nil
 			}
-			switch item := item.(type) {
-			case *server.Frame:
-				if err := send(item.Frame); err != nil {
-					return err
-				}
-			case *server.Lagged:
-				page.close(context.WithoutCancel(ctx), websocket.StatusCode(4001), "lagged")
-				return nil
-			case *server.Closed:
-				return nil
+			ended, err := sendConversationItem(ctx, exchange.page, item, send)
+			if ended {
+				return err
 			}
-		case <-page.heartbeat.C:
-			if err := page.send(ctx, &framewire.HeartbeatFrame{}); err != nil {
+		case <-exchange.page.heartbeat.C:
+			if err := exchange.page.send(ctx, &framewire.HeartbeatFrame{}); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+// finishConversationMessage closes invalid input or sends the completed client reply.
+func finishConversationMessage(
+	ctx context.Context,
+	page *pageSocket,
+	result handled,
+	send func(framewire.ServerFrame) error,
+) (bool, error) {
+	if errors.Is(result.err, framewire.ErrNotJSON) {
+		page.close(context.WithoutCancel(ctx), websocket.StatusInvalidFramePayloadData, "not_json")
+		return true, nil
+	}
+	if result.err != nil {
+		return true, result.err
+	}
+	if result.reply != nil {
+		if err := send(result.reply); err != nil {
+			return true, err
+		}
+	}
+	return false, nil
+}
+
+// sendConversationItem sends a frame or ends a closed or lagging conversation.
+func sendConversationItem(
+	ctx context.Context,
+	page *pageSocket,
+	item server.Outgoing,
+	send func(framewire.ServerFrame) error,
+) (bool, error) {
+	switch item := item.(type) {
+	case *server.Frame:
+		if err := send(item.Frame); err != nil {
+			return true, err
+		}
+	case *server.Lagged:
+		page.close(context.WithoutCancel(ctx), websocket.StatusCode(4001), "lagged")
+		return true, nil
+	case *server.Closed:
+		return true, nil
+	}
+	return false, nil
+}
+
+// answerConversationMessage finishes an admitted client message even if its socket leaves.
+func (s *Shard) answerConversationMessage(
+	ctx context.Context,
+	exchange conversationExchange,
+	message pageMessage,
+	result chan<- handled,
+) {
+	reply, err := s.handleMessage(
+		context.WithoutCancel(ctx),
+		exchange.id,
+		exchange.connection,
+		exchange.files,
+		message.data,
+	)
+	result <- handled{reply: reply, err: err}
 }

@@ -30,7 +30,11 @@ func TestQuotaUpdatesMergeAndClosePersistsNewestWithoutSharingMutableData(t *tes
 	for _, id := range []string{"probe", "observation"} {
 		workers.Go(func() {
 			store.Update(func(previous *core.QuotaSnapshot) core.QuotaSnapshot {
-				next := core.QuotaSnapshot{ObservedAt: core.SystemClock{}.Now(), Source: "probe", Windows: []core.QuotaWindow{}}
+				next := core.QuotaSnapshot{
+					ObservedAt: core.SystemClock{}.Now(),
+					Source:     "probe",
+					Windows:    []core.QuotaWindow{},
+				}
 				if previous != nil {
 					next = *previous
 				}

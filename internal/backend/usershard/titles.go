@@ -23,7 +23,7 @@ type titleRequest struct {
 	seen     uint64
 }
 
-func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
+func (s *Shard) requestConversationTitle(ctx context.Context, id webapi.ConversationID) error {
 	record, err := s.Control().Conversation(ctx, id)
 	if err != nil {
 		return &TitleRefusal{Kind: TitleStorage, Err: err}
@@ -61,35 +61,23 @@ func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
 			return &TitleRefusal{Kind: TitleStorage, Err: err}
 		}
 	}
-	var messages []string
-	for _, block := range blocks {
-		var content []core.UserContentBlock
-		switch block := block.(type) {
-		case *core.UserBlock:
-			content = block.Content
-		case *core.SteerBlock:
-			content = block.Content
-		case *core.AbortBlock, *core.AgentMessageBlock, *core.CompactionBoundaryBlock, *core.CompactionMarkerBlock, *core.ContextBlock, *core.ErrorBlock, *core.RedactedThinkingBlock, *core.ResponseBlock, *core.ResumeBlock, *core.TextBlock, *core.ThinkingBlock, *core.ToolCallBlock, *core.WakeupBlock:
-			continue
-		}
-		var texts []string
-		for _, part := range content {
-			if text, ok := part.(*core.UserText); ok {
-				texts = append(texts, text.Text)
-			}
-		}
-		text := strings.Join(texts, "\n")
-		if strings.TrimSpace(text) != "" {
-			messages = append(messages, text)
-		}
-	}
+	messages := titleMessages(blocks)
 	if len(messages) == 0 {
 		return &TitleRefusal{Kind: TitleNoMessages}
 	}
-	s.startTitle(id, *record.Model, titleRequest{messages: messages, from: record.Title, seen: record.UserMessages})
+	s.startTitle(id, *record.Model, titleRequest{
+		messages: messages,
+		from:     record.Title,
+		seen:     record.UserMessages,
+	})
 	return nil
 }
-func (s *Shard) startTitle(id webapi.ConversationID, selection core.ModelSelection, request titleRequest) {
+
+func (s *Shard) startTitle(
+	id webapi.ConversationID,
+	selection core.ModelSelection,
+	request titleRequest,
+) {
 	if !s.services.ConversationTuning.Titles {
 		return
 	}
@@ -125,13 +113,20 @@ func (s *Shard) startTitle(id webapi.ConversationID, selection core.ModelSelecti
 		}
 	}()
 }
-func (s *Shard) generateTitle(ctx context.Context, id webapi.ConversationID, selection core.ModelSelection, request titleRequest) error {
+
+func (s *Shard) generateTitle(
+	ctx context.Context,
+	id webapi.ConversationID,
+	selection core.ModelSelection,
+	request titleRequest,
+) error {
 	runtime, err := s.providers.Runtime(ctx, hostaccess.RootOf(id), selection)
 	if err != nil {
 		return err
 	}
 	title, err := server.Title(ctx, runtime, string(id), uuid.NewString(), selection, request.messages)
-	err = errors.Join(err, runtime.Close(context.WithoutCancel(ctx)))
+	closeErr := runtime.Close(context.WithoutCancel(ctx))
+	err = errors.Join(err, closeErr)
 	if err != nil {
 		return err
 	}
@@ -140,4 +135,43 @@ func (s *Shard) generateTitle(ctx context.Context, id webapi.ConversationID, sel
 	}
 	_, err = s.Control().GeneratedTitle(ctx, id, *title, request.from, request.seen)
 	return err
+}
+
+// titleMessages preserves the user and steer text used to request a conversation title.
+func titleMessages(blocks []core.Block) []string {
+	var messages []string
+	for _, block := range blocks {
+		var content []core.UserContentBlock
+		switch block := block.(type) {
+		case *core.UserBlock:
+			content = block.Content
+		case *core.SteerBlock:
+			content = block.Content
+		case *core.AbortBlock,
+			*core.AgentMessageBlock,
+			*core.CompactionBoundaryBlock,
+			*core.CompactionMarkerBlock,
+			*core.ContextBlock,
+			*core.ErrorBlock,
+			*core.RedactedThinkingBlock,
+			*core.ResponseBlock,
+			*core.ResumeBlock,
+			*core.TextBlock,
+			*core.ThinkingBlock,
+			*core.ToolCallBlock,
+			*core.WakeupBlock:
+			continue
+		}
+		var texts []string
+		for _, part := range content {
+			if text, ok := part.(*core.UserText); ok {
+				texts = append(texts, text.Text)
+			}
+		}
+		text := strings.Join(texts, "\n")
+		if strings.TrimSpace(text) != "" {
+			messages = append(messages, text)
+		}
+	}
+	return messages
 }

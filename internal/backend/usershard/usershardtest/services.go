@@ -30,7 +30,8 @@ func StartServices(t testing.TB) *usershard.Services {
 // the same ownership and cleanup as StartServices.
 func StartServicesWithLifecycle(t testing.TB, lifecycle usershard.LifecycleTuning) *usershard.Services {
 	t.Helper()
-	life, cancel := context.WithCancel(context.WithoutCancel(t.Context()))
+	cleanupCtx := context.WithoutCancel(t.Context())
+	lifetime, cancel := context.WithCancel(cleanupCtx)
 	t.Cleanup(cancel)
 	data := t.TempDir()
 	clock := core.SystemClock{}
@@ -67,9 +68,33 @@ func StartServicesWithLifecycle(t testing.TB, lifecycle usershard.LifecycleTunin
 	if err != nil {
 		t.Fatal(err)
 	}
-	machines, _ := cloud.NewClient(life, filepath.Join(data, "machines.sock"))
+	machines, _ := cloud.NewClient(lifetime, filepath.Join(data, "machines.sock"))
 
-	services, err := usershard.StartServices(t.Context(), storage, usershard.ServiceKeys{Vault: *providers.NewVaultKey(vaultKey), EmailCodes: accounts.NewCodeKey(codeKey)}, usershard.ProviderSetup{Families: &providers.FamilyRegistry{}, ModelsDevURL: models, ClaudeReleases: releases, Logins: providers.DefaultLoginTiming(), Clock: clock}, usershard.ServiceSettings{Mode: webapi.InstanceModeShared, Runners: usershard.DefaultRunnerTuning(), Conversations: usershard.DefaultConversationTuning(), Pages: usershard.DefaultPageTuning(), Native: runners.UnpublishedCatalog(), Cloud: cloud.NewServices(machines, cloud.DefaultTuning()), Lifecycle: lifecycle, Exposes: usershard.DefaultExposeTuning()})
+	services, err := usershard.StartServices(
+		t.Context(),
+		storage,
+		usershard.ServiceKeys{
+			Vault:      *providers.NewVaultKey(vaultKey),
+			EmailCodes: accounts.NewCodeKey(codeKey),
+		},
+		usershard.ProviderSetup{
+			Families:       &providers.FamilyRegistry{},
+			ModelsDevURL:   models,
+			ClaudeReleases: releases,
+			Logins:         providers.DefaultLoginTiming(),
+			Clock:          clock,
+		},
+		usershard.ServiceSettings{
+			Mode:          webapi.InstanceModeShared,
+			Runners:       usershard.DefaultRunnerTuning(),
+			Conversations: usershard.DefaultConversationTuning(),
+			Pages:         usershard.DefaultPageTuning(),
+			Native:        runners.UnpublishedCatalog(),
+			Cloud:         cloud.NewServices(machines, cloud.DefaultTuning()),
+			Lifecycle:     lifecycle,
+			Exposes:       usershard.DefaultExposeTuning(),
+		},
+	)
 	if err != nil {
 		if closeErr := machines.Close(context.Background()); closeErr != nil {
 			t.Error(closeErr)

@@ -24,7 +24,9 @@ func TestPageSocketRejectsOversizedMessage(t *testing.T) {
 			return
 		}
 		// The peer may have already closed the connection under test.
-		defer func() { _ = socket.CloseNow() }()
+		defer func() {
+			_ = socket.CloseNow()
+		}()
 		page := newPageSocket(socket, DefaultPageTuning())
 		defer page.heartbeat.Stop()
 		_, _, err = ReadPageMessage(r.Context(), socket)

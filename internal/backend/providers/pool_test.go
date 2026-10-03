@@ -20,10 +20,22 @@ func vaultFixture(t *testing.T) (*Vault, webapi.UserDTO) {
 	t.Helper()
 	control := databasetest.Control(t.Context(), t, core.SystemClock{})
 	owner := databasetest.Master(t.Context(), t, control)
-	return NewVault(control, NewVaultKey(databasetest.Key()), webapi.InstanceModeIsolated, &pagesync.SyncRegistry{}), owner
+	return NewVault(
+		control,
+		NewVaultKey(databasetest.Key()),
+		webapi.InstanceModeIsolated,
+		&pagesync.SyncRegistry{},
+	), owner
 }
+
 func testAccount(id string) provider.AccountMeta {
-	return provider.AccountMeta{ID: id, Label: id + "@example.test", UpdatedAt: core.UnixEpoch, Source: "login:device", IdentityKey: &id}
+	return provider.AccountMeta{
+		ID:          id,
+		Label:       id + "@example.test",
+		UpdatedAt:   core.UnixEpoch,
+		Source:      "login:device",
+		IdentityKey: &id,
+	}
 }
 
 // Cost: temporary SQLite only. Covers the persisted pool at the same boundary as Rust.
@@ -79,11 +91,17 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 	results := make(chan string, 2)
 	for range 2 {
 		workers.Go(func() {
-			value, err := provider.Renew(ctx, pool.Document("a"), providertest.DecodeTokenDocument, func(v providertest.TokenDocument) bool { return v.Refresh == "two" }, func(_ context.Context, v providertest.TokenDocument) (providertest.TokenDocument, error) {
-				asked.Add(1)
-				v.Refresh += "+"
-				return v, nil
-			})
+			value, err := provider.Renew(
+				ctx,
+				pool.Document("a"),
+				providertest.DecodeTokenDocument,
+				func(v providertest.TokenDocument) bool { return v.Refresh == "two" },
+				func(_ context.Context, v providertest.TokenDocument) (providertest.TokenDocument, error) {
+					asked.Add(1)
+					v.Refresh += "+"
+					return v, nil
+				},
+			)
 			if err != nil {
 				t.Error(err)
 				return
@@ -115,7 +133,16 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 	if err := foreign.Write(ctx, testAccount("a"), "{}"); err != nil {
 		t.Fatal(err)
 	}
-	databasetest.Execute(ctx, t, vault.control, "UPDATE provider_credentials SET secret = (SELECT secret FROM provider_credentials WHERE provider_id = ?1 AND id = 'a') WHERE provider_id = ?2", string(entry.ID), string(other.ID))
+	databasetest.Execute(
+		ctx,
+		t,
+		vault.control,
+		"UPDATE provider_credentials SET secret = (SELECT secret FROM "+
+			"provider_credentials WHERE provider_id = ?1 AND id = 'a') WHERE "+
+			"provider_id = ?2",
+		string(entry.ID),
+		string(other.ID),
+	)
 	var poolErr *provider.PoolError
 	if _, err := foreign.Document("a").Read(ctx); !errors.As(err, &poolErr) || poolErr.Err == nil {
 		t.Fatalf("copied ciphertext: %v", err)
@@ -123,7 +150,11 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 	if err := pool.Write(ctx, testAccount("b"), "{}"); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.SetActive(ctx, "missing"); !errors.As(err, &poolErr) || poolErr.ID != "missing" || poolErr.Err != nil {
+	if err := pool.SetActive(
+		ctx,
+		"missing",
+	); !errors.As(err, &poolErr) || poolErr.ID != "missing" ||
+		poolErr.Err != nil {
 		t.Fatalf("missing account: %v", err)
 	}
 	if err := pool.SetActive(ctx, "b"); err != nil {

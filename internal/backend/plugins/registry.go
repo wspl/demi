@@ -25,7 +25,10 @@ type registered struct {
 // serves refuses are left out and logged; an invalid manifest refuses startup.
 func NewRegistry(factories []plugin.Factory, serves func(declare.NativeOperation) bool) (*Registry, error) {
 	r := &Registry{}
-	ids, profiles, streams, pages := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
+	ids := map[string]bool{}
+	profiles := map[string]bool{}
+	streams := map[string]bool{}
+	pages := map[string]bool{}
 	for _, factory := range factories {
 		manifest := factory.Manifest()
 		id := string(manifest.ID)
@@ -33,38 +36,8 @@ func NewRegistry(factories []plugin.Factory, serves func(declare.NativeOperation
 			return nil, &RegistryError{Kind: DuplicateID, Plugin: manifest.ID}
 		}
 		ids[id] = true
-		for _, profile := range manifest.Profiles {
-			reason := ""
-			if profile.Name == core.ProfileInherit {
-				reason = "is reserved for inheriting the parent"
-			} else if profiles[profile.Name] {
-				reason = "another plugin declares"
-			}
-			if reason != "" {
-				return nil, &RegistryError{Kind: InvalidProfile, Plugin: manifest.ID, Name: profile.Name, Reason: reason}
-			}
-			profiles[profile.Name] = true
-		}
-		for _, stream := range manifest.Streams {
-			if streams[stream.Name] {
-				return nil, &RegistryError{Kind: TakenStream, Plugin: manifest.ID, Name: stream.Name}
-			}
-			streams[stream.Name] = true
-		}
-		if page := manifest.Page; page != nil {
-			if pages[page.Package] {
-				return nil, &RegistryError{Kind: TakenPagePackage, Plugin: manifest.ID, Name: page.Package}
-			}
-			pages[page.Package] = true
-			for _, scope := range []plugin.Scope{plugin.ScopeUser, plugin.ScopeConversation} {
-				if state := page.State(scope); state != nil {
-					for _, topic := range state.Topics {
-						if topic.Scope() != scope {
-							return nil, &RegistryError{Kind: ForeignTopic, Plugin: manifest.ID, Scope: scope, Topic: topic}
-						}
-					}
-				}
-			}
+		if err := checkManifestContributions(manifest, profiles, streams, pages); err != nil {
+			return nil, err
 		}
 		// The generated codec detaches the manifest and checks values Rust's types
 		// make unrepresentable (notably the reserved execution id).
@@ -148,17 +121,29 @@ func (r *Registry) lookup(id string) (int, *registered) {
 }
 
 // served keeps whole contributions only when the startup catalog serves them.
-func served(factory plugin.Factory, manifest plugin.Manifest, serves func(declare.NativeOperation) bool) registered {
+func served(
+	factory plugin.Factory,
+	manifest plugin.Manifest,
+	serves func(declare.NativeOperation) bool,
+) registered {
 	packages := map[string]bool{}
 	keep := func(what, name string, operations []declare.NativeOperation) bool {
-		for _, op := range operations {
-			if !serves(op) {
-				slog.Info("a part whose package the catalog does not serve is left out", "plugin", manifest.ID, "what", what, "name", name)
+		for _, operation := range operations {
+			if !serves(operation) {
+				slog.Info(
+					"a part whose package the catalog does not serve is left out",
+					"plugin",
+					manifest.ID,
+					"what",
+					what,
+					"name",
+					name,
+				)
 				return false
 			}
 		}
-		for _, op := range operations {
-			packages[op.Package] = true
+		for _, operation := range operations {
+			packages[operation.Package] = true
 		}
 		return true
 	}
@@ -175,7 +160,10 @@ func served(factory plugin.Factory, manifest plugin.Manifest, serves func(declar
 		if page.Conversation != nil && !keep("page state", "conversation", page.Conversation.Operations) {
 			page.Conversation = nil
 		}
-		page.Methods = slices.DeleteFunc(page.Methods, func(m plugin.Method) bool { return !keep("page method", m.Name, m.Operations) })
+		page.Methods = slices.DeleteFunc(
+			page.Methods,
+			func(m plugin.Method) bool { return !keep("page method", m.Name, m.Operations) },
+		)
 	}
 	names := make([]string, 0, len(packages))
 	for name := range packages {
@@ -222,7 +210,11 @@ func (r *Registry) compose(user *User, product []host.Declared, enabled []bool) 
 			strip := 0
 			if c.Placement == plugin.PlacementDemi {
 				if names[name] {
-					return nil, &RegistryError{Kind: TakenCommand, Plugin: p.manifest.ID, Name: "demi " + name}
+					return nil, &RegistryError{
+						Kind:   TakenCommand,
+						Plugin: p.manifest.ID,
+						Name:   "demi " + name,
+					}
 				}
 				names[name] = true
 				strip = 1
@@ -284,6 +276,65 @@ func copyProfileModel(selection core.ModelSelection) *core.ModelSelection {
 	if model.AcceptedExtensions != nil {
 		model.AcceptedExtensions = new(slices.Clone(*model.AcceptedExtensions))
 	}
+	copyModelCapabilities(model)
+	switch config := selection.Thinking.(type) {
+	case *core.AdaptiveConfig:
+		selection.Thinking = new(*config)
+	case *core.BudgetConfig:
+		selection.Thinking = new(*config)
+	case *core.EffortConfig:
+		value := *config
+		if value.Summary != nil {
+			value.Summary = new(*value.Summary)
+		}
+		selection.Thinking = &value
+	case *core.DisabledConfig:
+		selection.Thinking = &core.DisabledConfig{}
+	}
+	return &selection
+}
+
+// checkManifestContributions checks ownership of profiles, streams and page topics.
+func checkManifestContributions(manifest plugin.Manifest, profiles, streams, pages map[string]bool) error {
+	for _, profile := range manifest.Profiles {
+		reason := ""
+		if profile.Name == core.ProfileInherit {
+			reason = "is reserved for inheriting the parent"
+		} else if profiles[profile.Name] {
+			reason = "another plugin declares"
+		}
+		if reason != "" {
+			return &RegistryError{
+				Kind:   InvalidProfile,
+				Plugin: manifest.ID,
+				Name:   profile.Name,
+				Reason: reason,
+			}
+		}
+		profiles[profile.Name] = true
+	}
+	for _, stream := range manifest.Streams {
+		if streams[stream.Name] {
+			return &RegistryError{Kind: TakenStream, Plugin: manifest.ID, Name: stream.Name}
+		}
+		streams[stream.Name] = true
+	}
+	if page := manifest.Page; page != nil {
+		if pages[page.Package] {
+			return &RegistryError{
+				Kind:   TakenPagePackage,
+				Plugin: manifest.ID,
+				Name:   page.Package,
+			}
+		}
+		pages[page.Package] = true
+		return checkPageTopics(manifest.ID, page)
+	}
+	return nil
+}
+
+// copyModelCapabilities detaches the model’s mutable thinking capabilities.
+func copyModelCapabilities(model *core.Model) {
 	model.Thinking = slices.Clone(model.Thinking)
 	for i, capability := range model.Thinking {
 		switch c := capability.(type) {
@@ -321,19 +372,25 @@ func copyProfileModel(selection core.ModelSelection) *core.ModelSelection {
 			model.Thinking[i] = &core.DisabledCapability{}
 		}
 	}
-	switch config := selection.Thinking.(type) {
-	case *core.AdaptiveConfig:
-		selection.Thinking = new(*config)
-	case *core.BudgetConfig:
-		selection.Thinking = new(*config)
-	case *core.EffortConfig:
-		value := *config
-		if value.Summary != nil {
-			value.Summary = new(*value.Summary)
+}
+
+// checkPageTopics refuses topics outside a page state’s declared scope.
+func checkPageTopics(id plugin.ID, page *plugin.Page) error {
+	for _, scope := range []plugin.Scope{plugin.ScopeUser, plugin.ScopeConversation} {
+		state := page.State(scope)
+		if state == nil {
+			continue
 		}
-		selection.Thinking = &value
-	case *core.DisabledConfig:
-		selection.Thinking = &core.DisabledConfig{}
+		for _, topic := range state.Topics {
+			if topic.Scope() != scope {
+				return &RegistryError{
+					Kind:   ForeignTopic,
+					Plugin: id,
+					Scope:  scope,
+					Topic:  topic,
+				}
+			}
+		}
 	}
-	return &selection
+	return nil
 }

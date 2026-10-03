@@ -24,8 +24,13 @@ type pageSocket struct {
 }
 
 func newPageSocket(socket *websocket.Conn, tuning PageTuning) *pageSocket {
-	return &pageSocket{socket: socket, tuning: tuning, heartbeat: time.NewTimer(tuning.Heartbeat)}
+	return &pageSocket{
+		socket:    socket,
+		tuning:    tuning,
+		heartbeat: time.NewTimer(tuning.Heartbeat),
+	}
 }
+
 func (p *pageSocket) send(ctx context.Context, value any) error {
 	data, err := contract.EncodeJSON(value)
 	if err != nil {
@@ -37,6 +42,7 @@ func (p *pageSocket) send(ctx context.Context, value any) error {
 	p.heartbeat.Reset(p.tuning.Heartbeat)
 	return nil
 }
+
 func (p *pageSocket) close(ctx context.Context, code websocket.StatusCode, reason string) {
 	p.heartbeat.Stop()
 	// Close has no context; the owner interrupts its handshake after CloseWait.
@@ -53,6 +59,7 @@ func (p *pageSocket) close(ctx context.Context, code websocket.StatusCode, reaso
 	}
 	_ = p.socket.CloseNow()
 }
+
 func readPage(ctx context.Context, socket *websocket.Conn, workers *sync.WaitGroup) <-chan pageMessage {
 	incoming := make(chan pageMessage)
 	workers.Add(1)

@@ -19,7 +19,7 @@ import (
 
 const blobGrace = 24 * time.Hour
 
-func (s *Shard) retentionPass(ctx context.Context) error {
+func (s *Shard) removeExpiredConversations(ctx context.Context) error {
 	conversations, err := s.services.Control.ConversationOrder(ctx, s.user)
 	if err != nil {
 		slog.ErrorContext(ctx, "the retention pass cannot list the conversations", "user", s.user, "error", err)
@@ -36,7 +36,8 @@ func (s *Shard) retentionPass(ctx context.Context) error {
 		}
 		var retired error
 		if s.agent.Tree(hostaccess.RootOf(id)) != nil {
-			retired = s.services.Control.MarkLive(ctx, id, s.Clock().Now())
+			now := s.Clock().Now()
+			retired = s.services.Control.MarkLive(ctx, id, now)
 		} else {
 			retired = s.retireMedia(ctx, id, false)
 		}
@@ -58,7 +59,8 @@ func (s *Shard) removeOutputs(ctx context.Context, id webapi.ConversationID) err
 	if err != nil {
 		return err
 	}
-	expired, err := core.TimestampFromTime(at.Add(-time.Duration(store.CommandOutputDays) * 24 * time.Hour))
+	cutoff := at.Add(-time.Duration(store.CommandOutputDays) * 24 * time.Hour)
+	expired, err := core.TimestampFromTime(cutoff)
 	if err != nil {
 		return err
 	}

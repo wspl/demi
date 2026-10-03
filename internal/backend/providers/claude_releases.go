@@ -59,7 +59,16 @@ func CLIPackage(p provider.Provider) *string {
 // NewClaudeReleases creates a distribution reader that refuses redirects.
 func NewClaudeReleases(base *url.URL) (*ClaudeReleases, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &ClaudeReleases{base: strings.TrimRight(base.String(), "/"), http: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, releases: make(map[string]claudecodeop.Release), ctx: ctx, cancel: cancel}, nil
+	return &ClaudeReleases{
+		base: strings.TrimRight(base.String(), "/"),
+		http: &http.Client{
+			Timeout:       15 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+		releases: make(map[string]claudecodeop.Release),
+		ctx:      ctx,
+		cancel:   cancel,
+	}, nil
 }
 
 // Latest returns the newest release, believed for six hours unless refreshed.
@@ -70,7 +79,7 @@ func (r *ClaudeReleases) Latest(ctx context.Context, refresh bool) (claudecodeop
 		r.mu.Unlock()
 		return claudecodeop.Release{}, r.ctx.Err()
 	}
-	if r.newest != nil && ((!refresh && time.Since(r.readAt) < 6*time.Hour) || (refresh && !r.readAt.Before(asked))) {
+	if r.newest != nil && r.hasCurrentRelease(refresh, asked) {
 		result := *r.newest
 		r.mu.Unlock()
 		return copyRelease(result)
@@ -79,7 +88,9 @@ func (r *ClaudeReleases) Latest(ctx context.Context, refresh bool) (claudecodeop
 	if pending == nil {
 		pending = &releaseRead{done: make(chan struct{})}
 		r.pending = pending
-		r.workers.Go(func() { r.read(pending) })
+		r.workers.Go(func() {
+			r.read(pending)
+		})
 	}
 	r.mu.Unlock()
 	select {
@@ -113,7 +124,9 @@ func (r *ClaudeReleases) text(ctx context.Context, path string) (string, error) 
 		return "", fmt.Errorf("the distribution did not answer (%w)", err)
 	}
 	// The response body is read to completion or discarded; a close error cannot change the read outcome.
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return "", fmt.Errorf("the distribution answered %s", response.Status)
 	}
@@ -123,6 +136,7 @@ func (r *ClaudeReleases) text(ctx context.Context, path string) (string, error) 
 	}
 	return string(data), nil
 }
+
 func (r *ClaudeReleases) read(pending *releaseRead) {
 	release, err := r.fetch()
 	r.mu.Lock()
@@ -138,6 +152,7 @@ func (r *ClaudeReleases) read(pending *releaseRead) {
 	close(pending.done)
 	r.mu.Unlock()
 }
+
 func (r *ClaudeReleases) fetch() (claudecodeop.Release, error) {
 	pointer, err := r.text(r.ctx, "latest")
 	if err != nil {
@@ -162,6 +177,7 @@ func (r *ClaudeReleases) fetch() (claudecodeop.Release, error) {
 	r.mu.Unlock()
 	return release, nil
 }
+
 func (r *ClaudeReleases) manifest(version string) (claudecodeop.Release, error) {
 	text, err := r.text(r.ctx, version+"/manifest.json")
 	if err != nil {
@@ -174,9 +190,16 @@ func (r *ClaudeReleases) manifest(version string) (claudecodeop.Release, error) 
 	if manifest.Version != version {
 		return claudecodeop.Release{}, fmt.Errorf("its manifest names version %s", manifest.Version)
 	}
-	release := claudecodeop.Release{Version: claudecodeop.Version(version), Platforms: make(map[string]claudecodeop.Artifact)}
+	release := claudecodeop.Release{
+		Version:   claudecodeop.Version(version),
+		Platforms: make(map[string]claudecodeop.Artifact),
+	}
 	for platform, entry := range manifest.Platforms {
-		release.Platforms[platform] = claudecodeop.Artifact{URL: r.base + "/" + version + "/" + platform + "/" + entry.Binary, Size: entry.Size, SHA256: entry.Checksum}
+		release.Platforms[platform] = claudecodeop.Artifact{
+			URL:    r.base + "/" + version + "/" + platform + "/" + entry.Binary,
+			Size:   entry.Size,
+			SHA256: entry.Checksum,
+		}
 	}
 	if err := release.Validate(); err != nil {
 		return claudecodeop.Release{}, err
@@ -191,4 +214,12 @@ func copyRelease(release claudecodeop.Release) (claudecodeop.Release, error) {
 		return claudecodeop.Release{}, err
 	}
 	return claudecodeop.DecodeRelease(data)
+}
+
+// hasCurrentRelease checks the cached release’s lifetime or a refresh completed after this request.
+func (r *ClaudeReleases) hasCurrentRelease(refresh bool, asked time.Time) bool {
+	if !refresh && time.Since(r.readAt) < 6*time.Hour {
+		return true
+	}
+	return refresh && !r.readAt.Before(asked)
 }

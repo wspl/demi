@@ -30,10 +30,21 @@ func portFixture(t *testing.T) (*plugins.User, *fakeShard, plugin.Port, plugin.P
 		}}
 	}}
 	u, shard := userFixture(t, registry(t, f, &fakeFactory{manifest: manifest(t, "other")}))
-	if _, err := u.PageCall(t.Context(), plugins.PageCall{Plugin: "storage", Method: "user", Params: []byte(`{}`)}); err != nil {
+	if _, err := u.PageCall(
+		t.Context(),
+		plugins.PageCall{Plugin: "storage", Method: "user", Params: []byte(`{}`)},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := u.PageCall(t.Context(), plugins.PageCall{Plugin: "storage", Method: "conversation", Params: []byte(`{}`), Conversation: new(webapi.ConversationID("conversation"))}); err != nil {
+	if _, err := u.PageCall(
+		t.Context(),
+		plugins.PageCall{
+			Plugin:       "storage",
+			Method:       "conversation",
+			Params:       []byte(`{}`),
+			Conversation: new(webapi.ConversationID("conversation")),
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	return u, shard, ports[0], ports[1]
@@ -106,19 +117,32 @@ func TestStoragePortsKeepValuesBlobsAndDirectories(t *testing.T) {
 	if values, err := port.Values(ctx); err != nil || len(values) != 0 {
 		t.Fatalf("%v %v", values, err)
 	}
-	dirs := []plugin.HostDirectory{{Name: "docs", Files: []plugin.DirectoryFile{{Path: "SKILL.md", Blob: blob}}}}
-	paths, err := port.SetDirectories(ctx, dirs)
-	if err != nil || len(paths) != 1 || paths[0].Path != dirs[0].Path("storage") {
+	directories := []plugin.HostDirectory{
+		{
+			Name:  "docs",
+			Files: []plugin.DirectoryFile{{Path: "SKILL.md", Blob: blob}},
+		},
+	}
+	paths, err := port.SetDirectories(ctx, directories)
+	if err != nil || len(paths) != 1 || paths[0].Path != directories[0].Path("storage") {
 		t.Fatalf("%v %v", paths, err)
 	}
 	installed, err := u.Directories(ctx)
-	if err != nil || !reflect.DeepEqual(installed[0].Directories, dirs) || len(installed[1].Directories) != 0 {
+	if err != nil || !reflect.DeepEqual(installed[0].Directories, directories) || len(installed[1].Directories) != 0 {
 		t.Fatalf("%+v %v", installed, err)
 	}
-	if _, err := port.SetDirectories(ctx, []plugin.HostDirectory{dirs[0], dirs[0]}); err == nil {
+	if _, err := port.SetDirectories(ctx, []plugin.HostDirectory{directories[0], directories[0]}); err == nil {
 		t.Fatal("duplicate directories accepted")
 	}
-	if _, err := port.SetDirectories(ctx, []plugin.HostDirectory{{Name: "bad", Files: []plugin.DirectoryFile{{Path: "../escape", Blob: blob}}}}); err == nil {
+	if _, err := port.SetDirectories(
+		ctx,
+		[]plugin.HostDirectory{
+			{
+				Name:  "bad",
+				Files: []plugin.DirectoryFile{{Path: "../escape", Blob: blob}},
+			},
+		},
+	); err == nil {
 		t.Fatal("escaping file accepted")
 	}
 	failure := errors.New("blob is being collected")
@@ -130,7 +154,7 @@ func TestStoragePortsKeepValuesBlobsAndDirectories(t *testing.T) {
 		t.Fatalf("directory refusal lost: %v", err)
 	}
 	installed, err = u.Directories(ctx)
-	if err != nil || !reflect.DeepEqual(installed[0].Directories, dirs) {
+	if err != nil || !reflect.DeepEqual(installed[0].Directories, directories) {
 		t.Fatalf("failed write changed directories: %+v %v", installed, err)
 	}
 	shard.uses.fail = nil
@@ -148,7 +172,7 @@ func TestStoragePortsKeepValuesBlobsAndDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	installed, err = u.Directories(ctx)
-	if err != nil || !reflect.DeepEqual(installed[0].Directories, dirs) {
+	if err != nil || !reflect.DeepEqual(installed[0].Directories, directories) {
 		t.Fatalf("restored directories: %+v %v", installed, err)
 	}
 }
@@ -158,8 +182,17 @@ func TestProductPortsForwardServicesAndRefusals(t *testing.T) {
 	ctx := t.Context()
 	ref := core.BlobRef(strings.Repeat("b", 64))
 	bytes := core.B64Bytes("blob bytes")
-	record := plugin.ExposeRecord{ID: "expose", Device: "device", URL: "https://example.test"}
-	hostList := []plugin.ConversationHost{{Name: "main", Device: "device", Role: plugin.HostRoleMain, Online: true}}
+	record := plugin.ExposeRecord{
+		ID:     "expose",
+		Device: "device",
+		URL:    "https://example.test",
+	}
+	hostList := []plugin.ConversationHost{{
+		Name:   "main",
+		Device: "device",
+		Role:   plugin.HostRoleMain,
+		Online: true,
+	}}
 	reads := []plugin.HostRead{{Path: "notes"}}
 	files := []plugin.HostFile{}
 	var calls []string
@@ -184,7 +217,11 @@ func TestProductPortsForwardServicesAndRefusals(t *testing.T) {
 		calls = append(calls, "hosts")
 		return hostList, nil
 	}
-	shard.files = func(_ context.Context, c webapi.ConversationID, got []plugin.HostRead) ([]plugin.HostFile, error) {
+	shard.files = func(
+		_ context.Context,
+		c webapi.ConversationID,
+		got []plugin.HostRead,
+	) ([]plugin.HostFile, error) {
 		if c != "conversation" || !reflect.DeepEqual(got, reads) {
 			t.Errorf("%s %+v", c, got)
 		}
@@ -195,7 +232,12 @@ func TestProductPortsForwardServicesAndRefusals(t *testing.T) {
 		calls = append(calls, "exposes")
 		return plugin.ExposeList{Available: true, Exposes: []plugin.ExposeRecord{record}}, nil
 	}
-	shard.create = func(_ context.Context, d webapi.DeviceID, address string, lifetime uint64) (plugin.ExposeRecord, error) {
+	shard.create = func(
+		_ context.Context,
+		d webapi.DeviceID,
+		address string,
+		lifetime uint64,
+	) (plugin.ExposeRecord, error) {
 		if d != "device" || address != "127.0.0.1:80" || lifetime != 60 {
 			t.Errorf("%s %s %d", d, address, lifetime)
 		}
@@ -219,9 +261,16 @@ func TestProductPortsForwardServicesAndRefusals(t *testing.T) {
 	raw := json.RawMessage(`{"z":1,"a":"<&"}`)
 	// Calls are allowed for the package, not just the one declared operation.
 	operation := declare.NativeOperation{Package: "allowed", Operation: "another"}
-	shard.packageCall = func(_ context.Context, c webapi.ConversationID, op declare.NativeOperation, args json.RawMessage, kind plugin.CallKind) (json.RawMessage, error) {
-		if c != "conversation" || op != operation || string(args) != string(raw) || kind != plugin.CallKindLooks {
-			t.Errorf("%s %+v %s %s", c, op, args, kind)
+	shard.packageCall = func(
+		_ context.Context,
+		c webapi.ConversationID,
+		receivedOperation declare.NativeOperation,
+		args json.RawMessage,
+		kind plugin.CallKind,
+	) (json.RawMessage, error) {
+		if c != "conversation" || receivedOperation != operation || string(args) != string(raw) ||
+			kind != plugin.CallKindLooks {
+			t.Errorf("%s %+v %s %s", c, receivedOperation, args, kind)
 		}
 		calls = append(calls, "package")
 		return raw, nil
@@ -231,26 +280,90 @@ func TestProductPortsForwardServicesAndRefusals(t *testing.T) {
 		message plugin.PortMessage
 		answer  plugin.PortAnswer
 	}{
-		{userPort, &plugin.PortMessagePutBlob{Bytes: bytes}, &plugin.PortAnswerBlob{Blob: ref}},
-		{userPort, &plugin.PortMessageGetBlob{Blob: ref}, &plugin.PortAnswerBytes{Bytes: &bytes}},
-		{conversationPort, &plugin.PortMessageConversationHosts{}, &plugin.PortAnswerHosts{Hosts: hostList}},
-		{conversationPort, &plugin.PortMessageReadHostFiles{Reads: reads}, &plugin.PortAnswerHostFiles{Files: files}},
-		{userPort, &plugin.PortMessageListExposes{}, &plugin.PortAnswerExposes{List: plugin.ExposeList{Available: true, Exposes: []plugin.ExposeRecord{record}}}},
-		{userPort, &plugin.PortMessageCreateExpose{Device: "device", Address: "127.0.0.1:80", Lifetime: 60}, &plugin.PortAnswerExpose{Expose: record}},
-		{userPort, &plugin.PortMessageRenewExpose{Expose: "expose", Lifetime: 90}, &plugin.PortAnswerExpose{Expose: record}},
-		{userPort, &plugin.PortMessageRemoveExpose{Expose: "expose"}, &plugin.PortAnswerDone{}},
-		{conversationPort, &plugin.PortMessagePackageCall{Operation: operation, Args: raw, Kind: plugin.CallKindLooks}, &plugin.PortAnswerCalled{Result: raw}},
+		{
+			userPort,
+			&plugin.PortMessagePutBlob{Bytes: bytes},
+			&plugin.PortAnswerBlob{Blob: ref},
+		},
+		{
+			userPort,
+			&plugin.PortMessageGetBlob{Blob: ref},
+			&plugin.PortAnswerBytes{Bytes: &bytes},
+		},
+		{
+			conversationPort,
+			&plugin.PortMessageConversationHosts{},
+			&plugin.PortAnswerHosts{Hosts: hostList},
+		},
+		{
+			conversationPort,
+			&plugin.PortMessageReadHostFiles{Reads: reads},
+			&plugin.PortAnswerHostFiles{Files: files},
+		},
+		{
+			userPort,
+			&plugin.PortMessageListExposes{},
+			&plugin.PortAnswerExposes{
+				List: plugin.ExposeList{Available: true, Exposes: []plugin.ExposeRecord{record}},
+			},
+		},
+		{
+			userPort,
+			&plugin.PortMessageCreateExpose{Device: "device", Address: "127.0.0.1:80", Lifetime: 60},
+			&plugin.PortAnswerExpose{Expose: record},
+		},
+		{
+			userPort,
+			&plugin.PortMessageRenewExpose{Expose: "expose", Lifetime: 90},
+			&plugin.PortAnswerExpose{Expose: record},
+		},
+		{
+			userPort,
+			&plugin.PortMessageRemoveExpose{Expose: "expose"},
+			&plugin.PortAnswerDone{},
+		},
+		{
+			conversationPort,
+			&plugin.PortMessagePackageCall{
+				Operation: operation,
+				Args:      raw,
+				Kind:      plugin.CallKindLooks,
+			},
+			&plugin.PortAnswerCalled{Result: raw},
+		},
 	}
-	for _, tc := range tests {
-		got, err := tc.port.Forward(ctx, tc.message)
-		if err != nil || !reflect.DeepEqual(got, tc.answer) {
-			t.Fatalf("%T: %+v %v", tc.message, got, err)
+	for _, scenario := range tests {
+		got, err := scenario.port.Forward(ctx, scenario.message)
+		if err != nil || !reflect.DeepEqual(got, scenario.answer) {
+			t.Fatalf("%T: %+v %v", scenario.message, got, err)
 		}
 	}
-	if !reflect.DeepEqual(calls, []string{"put", "blob", "hosts", "files", "exposes", "create", "renew", "remove", "package"}) {
+	if !reflect.DeepEqual(
+		calls,
+		[]string{
+			"put",
+			"blob",
+			"hosts",
+			"files",
+			"exposes",
+			"create",
+			"renew",
+			"remove",
+			"package",
+		},
+	) {
 		t.Fatal(calls)
 	}
-	for _, message := range []plugin.PortMessage{&plugin.PortMessageConversationHosts{}, &plugin.PortMessageReadHostFiles{Reads: reads}, &plugin.PortMessagePackageCall{Operation: operation, Args: raw, Kind: plugin.CallKindLooks}, &plugin.PortMessageChanged{Scope: plugin.ScopeConversation}} {
+	for _, message := range []plugin.PortMessage{
+		&plugin.PortMessageConversationHosts{},
+		&plugin.PortMessageReadHostFiles{Reads: reads},
+		&plugin.PortMessagePackageCall{
+			Operation: operation,
+			Args:      raw,
+			Kind:      plugin.CallKindLooks,
+		},
+		&plugin.PortMessageChanged{Scope: plugin.ScopeConversation},
+	} {
 		answer, err := userPort.Forward(ctx, message)
 		refused, ok := answer.(*plugin.PortAnswerRefused)
 		if err != nil || !ok {
@@ -260,7 +373,14 @@ func TestProductPortsForwardServicesAndRefusals(t *testing.T) {
 			t.Fatalf("%T", refused.Refusal)
 		}
 	}
-	for _, message := range []plugin.PortMessage{&plugin.PortMessageRPC{Request: &host.PortStdout{Bytes: bytes}}, &plugin.PortMessagePackageCall{Operation: declare.NativeOperation{Package: "foreign", Operation: "run"}, Args: raw, Kind: plugin.CallKindStarts}} {
+	for _, message := range []plugin.PortMessage{
+		&plugin.PortMessageRPC{Request: &host.PortStdout{Bytes: bytes}},
+		&plugin.PortMessagePackageCall{
+			Operation: declare.NativeOperation{Package: "foreign", Operation: "run"},
+			Args:      raw,
+			Kind:      plugin.CallKindStarts,
+		},
+	} {
 		_, err := userPort.Forward(ctx, message)
 		var unexpected *host.PortError
 		if !errors.As(err, &unexpected) || unexpected.Kind != host.UnexpectedReply {

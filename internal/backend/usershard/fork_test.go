@@ -47,17 +47,49 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 		}
 	}
 	at := core.Timestamp("2026-09-24T08:00:00.000Z")
-	model := core.ModelSelection{ProviderID: "test", Model: core.Model{ID: "test", ContextWindow: 10000, Thinking: []core.ThinkingCapability{}}}
+	model := core.ModelSelection{
+		ProviderID: "test",
+		Model: core.Model{
+			ID:            "test",
+			ContextWindow: 10000,
+			Thinking:      []core.ThinkingCapability{},
+		},
+	}
 	path := "/home/demi/sessions/" + string(source)
-	metadata := database.ForkMetadata{Title: "New conversation (Fork)", Target: &webapi.ConversationTargetCloud{Path: &path}, Model: &model, CreatedAt: at, AttachedHosts: attached}
+	metadata := database.ForkMetadata{
+		Title:         "New conversation (Fork)",
+		Target:        &webapi.ConversationTargetCloud{Path: &path},
+		Model:         &model,
+		CreatedAt:     at,
+		AttachedHosts: attached,
+	}
 	for _, id := range []webapi.ConversationID{committed, uncommitted} {
-		reserved, err := control.ReserveFork(ctx, database.ForkOperation{ID: id, Owner: owner, Source: source, Block: "text-1", Metadata: metadata})
+		reserved, err := control.ReserveFork(
+			ctx,
+			database.ForkOperation{
+				ID:       id,
+				Owner:    owner,
+				Source:   source,
+				Block:    "text-1",
+				Metadata: metadata,
+			},
+		)
 		if err != nil || reserved == nil {
 			t.Fatalf("reserve = %v, %v", reserved, err)
 		}
 	}
 	tree := database.NewTreeStore(stores.DB(committed), forkBlobs{storetest.NewMemoryBlobs()}, nil)
-	initial := store.CheckpointUpdate{State: store.CheckpointState{Phase: core.SessionPhaseIdle, Queue: []core.QueuedMessage{}, AgentInputs: []store.PendingAgentInput{}, Wakeups: []store.ScheduledWakeup{}, CWD: "/work", Model: model, Edits: []store.EditReceipt{}}}
+	initial := store.CheckpointUpdate{
+		State: store.CheckpointState{
+			Phase:       core.SessionPhaseIdle,
+			Queue:       []core.QueuedMessage{},
+			AgentInputs: []store.PendingAgentInput{},
+			Wakeups:     []store.ScheduledWakeup{},
+			CWD:         "/work",
+			Model:       model,
+			Edits:       []store.EditReceipt{},
+		},
+	}
 	if err := tree.CreateNode(ctx, store.RootRecord(core.NodeID(committed), at), initial); err != nil {
 		t.Fatal(err)
 	}

@@ -34,8 +34,25 @@ type builtProvider struct {
 }
 
 // NewAssembly creates the shared provider assembly.
-func NewAssembly(vault *Vault, families *FamilyRegistry, quotas *AccountQuotas, catalogs *ModelCatalogCache, vendors *VendorCatalog, http *http.Client, clock core.Clock) *Assembly {
-	return &Assembly{vault: vault, families: families, quotas: quotas, catalogs: catalogs, vendors: vendors, http: http, clock: clock, built: make(map[webapi.ProviderID]builtProvider)}
+func NewAssembly(
+	vault *Vault,
+	families *FamilyRegistry,
+	quotas *AccountQuotas,
+	catalogs *ModelCatalogCache,
+	vendors *VendorCatalog,
+	http *http.Client,
+	clock core.Clock,
+) *Assembly {
+	return &Assembly{
+		vault:    vault,
+		families: families,
+		quotas:   quotas,
+		catalogs: catalogs,
+		vendors:  vendors,
+		http:     http,
+		clock:    clock,
+		built:    make(map[webapi.ProviderID]builtProvider),
+	}
 }
 
 // Vault returns the assembly vault.
@@ -87,7 +104,11 @@ func (a *Assembly) ProviderFor(ctx context.Context, entry ProviderEntry) (provid
 }
 
 // ForAccount builds the provider for an account, or nil when absent.
-func (a *Assembly) ForAccount(ctx context.Context, entry ProviderEntry, account webapi.CredentialID) (provider.Provider, error) {
+func (a *Assembly) ForAccount(
+	ctx context.Context,
+	entry ProviderEntry,
+	account webapi.CredentialID,
+) (provider.Provider, error) {
 	if active := entry.Active(); active != nil && *active == account {
 		return a.ProviderFor(ctx, entry)
 	}
@@ -102,7 +123,10 @@ func (a *Assembly) ForAccount(ctx context.Context, entry ProviderEntry, account 
 }
 
 // Detached builds a subscription provider before its entry exists.
-func (a *Assembly) Detached(family, id, label string, pool provider.CredentialPool) (provider.Provider, error) {
+func (a *Assembly) Detached(
+	family, id, label string,
+	pool provider.CredentialPool,
+) (provider.Provider, error) {
 	registered, err := a.Family(family)
 	if err != nil {
 		return nil, err
@@ -124,7 +148,12 @@ func (a *Assembly) RunsAProcess(ctx context.Context, entry ProviderEntry) (bool,
 }
 
 // ProcessRuntime builds a session runtime over the supplied process placement.
-func (a *Assembly) ProcessRuntime(ctx context.Context, entry ProviderEntry, account *webapi.CredentialID, placement claudecode.Placement) (provider.Runtime, error) {
+func (a *Assembly) ProcessRuntime(
+	ctx context.Context,
+	entry ProviderEntry,
+	account *webapi.CredentialID,
+	placement claudecode.Placement,
+) (provider.Runtime, error) {
 	family, err := a.Family(entry.Family)
 	if err != nil {
 		return nil, err
@@ -175,13 +204,23 @@ func (a *Assembly) Family(name string) (ProviderFamily, error) {
 }
 
 // EntryCatalog reads the first available source; source failures become warnings.
-func (a *Assembly) EntryCatalog(ctx context.Context, entry ProviderEntry, built provider.Provider, buildError error, refresh bool) core.ProviderModelList {
+func (a *Assembly) EntryCatalog(
+	ctx context.Context,
+	entry ProviderEntry,
+	built provider.Provider,
+	buildError error,
+	refresh bool,
+) core.ProviderModelList {
 	if c, ok := entry.Credential.(*APIKeyConfig); ok && c.Models != nil {
 		models := make([]core.ProviderModel, 0, len(*c.Models))
 		for _, m := range *c.Models {
 			models = append(models, ConfiguredModel(m))
 		}
-		return core.ProviderModelList{Models: models, Warnings: []string{}, SourceFetchedAt: core.UnixEpoch}
+		return core.ProviderModelList{
+			Models:          models,
+			Warnings:        []string{},
+			SourceFetchedAt: core.UnixEpoch,
+		}
 	}
 	var fetch CatalogFetch
 	if c, ok := entry.Credential.(*APIKeyConfig); ok && c.VendorID != nil {
@@ -204,7 +243,11 @@ func (a *Assembly) EntryCatalog(ctx context.Context, entry ProviderEntry, built 
 }
 
 // ModelCatalog returns each entry catalog and health independently.
-func (a *Assembly) ModelCatalog(ctx context.Context, entries []ProviderEntry, refresh bool) []webapi.CatalogProvider {
+func (a *Assembly) ModelCatalog(
+	ctx context.Context,
+	entries []ProviderEntry,
+	refresh bool,
+) []webapi.CatalogProvider {
 	result := make([]webapi.CatalogProvider, len(entries))
 	var workers sync.WaitGroup
 	for i, entry := range entries {
@@ -214,13 +257,31 @@ func (a *Assembly) ModelCatalog(ctx context.Context, entries []ProviderEntry, re
 			auth, runtime := a.Health(ctx, entry, p, err)
 			models := make([]webapi.CatalogModel, 0, len(list.Models))
 			for _, model := range list.Models {
-				models = append(models, webapi.CatalogModel{ProviderModel: model, Selection: model.Selection(string(entry.ID), nil, nil), UnnamedEffort: model.UnnamedEffort()})
+				models = append(
+					models,
+					webapi.CatalogModel{
+						ProviderModel: model,
+						Selection:     model.Selection(string(entry.ID), nil, nil),
+						UnnamedEffort: model.UnnamedEffort(),
+					},
+				)
 			}
 			var cli *string
 			if p != nil {
 				cli = CLIPackage(p)
 			}
-			result[i] = webapi.CatalogProvider{ProviderID: entry.ID, DisplayName: entry.Label, CLIPackage: cli, Models: models, SourceFetchedAt: list.SourceFetchedAt, Stale: list.Stale, Warnings: list.Warnings, Auth: auth, Runtime: runtime, Availability: Availability(auth, runtime)}
+			result[i] = webapi.CatalogProvider{
+				ProviderID:      entry.ID,
+				DisplayName:     entry.Label,
+				CLIPackage:      cli,
+				Models:          models,
+				SourceFetchedAt: list.SourceFetchedAt,
+				Stale:           list.Stale,
+				Warnings:        list.Warnings,
+				Auth:            auth,
+				Runtime:         runtime,
+				Availability:    Availability(auth, runtime),
+			}
 		})
 	}
 	workers.Wait()
@@ -228,7 +289,12 @@ func (a *Assembly) ModelCatalog(ctx context.Context, entries []ProviderEntry, re
 }
 
 // Health returns authentication and runtime state; an accountless subscription is unauthenticated.
-func (a *Assembly) Health(ctx context.Context, entry ProviderEntry, built provider.Provider, buildError error) (core.AuthState, core.RuntimeState) {
+func (a *Assembly) Health(
+	ctx context.Context,
+	entry ProviderEntry,
+	built provider.Provider,
+	buildError error,
+) (core.AuthState, core.RuntimeState) {
 	if buildError != nil {
 		return &core.AuthError{Message: buildError.Error()}, &core.RuntimeUnknown{}
 	}
@@ -240,7 +306,11 @@ func (a *Assembly) Health(ctx context.Context, entry ProviderEntry, built provid
 }
 
 // Details discloses accounts and quotas only to a configuring user.
-func (a *Assembly) Details(ctx context.Context, entry ProviderEntry, disclose bool) (webapi.ProviderDetails, error) {
+func (a *Assembly) Details(
+	ctx context.Context,
+	entry ProviderEntry,
+	disclose bool,
+) (webapi.ProviderDetails, error) {
 	p, err := a.ProviderFor(ctx, entry)
 	auth, runtime := a.Health(ctx, entry, p, err)
 	if err != nil {
@@ -253,7 +323,13 @@ func (a *Assembly) Details(ctx context.Context, entry ProviderEntry, disclose bo
 			return webapi.ProviderDetails{}, &AssemblyError{Kind: AssemblyStorage, Err: err}
 		}
 		for _, row := range rows {
-			accounts = append(accounts, webapi.AccountDTO{AccountInfo: AccountMeta(row).Info(), Quota: a.quotas.Latest(entry.ID, row)})
+			accounts = append(
+				accounts,
+				webapi.AccountDTO{
+					AccountInfo: AccountMeta(row).Info(),
+					Quota:       a.quotas.Latest(entry.ID, row),
+				},
+			)
 		}
 	}
 	var quota *core.QuotaSnapshot
@@ -275,7 +351,15 @@ func (a *Assembly) Details(ctx context.Context, entry ProviderEntry, disclose bo
 		}
 		capability = &webapi.QuotaCapabilitySupported{Probe: cost}
 	}
-	details := webapi.ProviderDetails{Auth: auth, Runtime: runtime, Accounts: accounts, Active: active, Quota: quota, QuotaCapability: capability, CLIPackage: CLIPackage(p)}
+	details := webapi.ProviderDetails{
+		Auth:            auth,
+		Runtime:         runtime,
+		Accounts:        accounts,
+		Active:          active,
+		Quota:           quota,
+		QuotaCapability: capability,
+		CLIPackage:      CLIPackage(p),
+	}
 	if !disclose {
 		details.Accounts = []webapi.AccountDTO{}
 		details.Active = nil
@@ -288,9 +372,21 @@ func (a *Assembly) Details(ctx context.Context, entry ProviderEntry, disclose bo
 }
 
 func (a *Assembly) args(id, label string, credential FamilyCredential) FamilyArgs {
-	return FamilyArgs{EntryID: id, Label: label, Credential: credential, HTTP: a.http, Clock: a.clock, ModelsDev: a.vendors.ModelsDev()}
+	return FamilyArgs{
+		EntryID:    id,
+		Label:      label,
+		Credential: credential,
+		HTTP:       a.http,
+		Clock:      a.clock,
+		ModelsDev:  a.vendors.ModelsDev(),
+	}
 }
-func (a *Assembly) entryArgs(ctx context.Context, entry ProviderEntry, account *webapi.CredentialID) (FamilyArgs, error) {
+
+func (a *Assembly) entryArgs(
+	ctx context.Context,
+	entry ProviderEntry,
+	account *webapi.CredentialID,
+) (FamilyArgs, error) {
 	var credential FamilyCredential
 	switch c := entry.Credential.(type) {
 	case *APIKeyConfig:
@@ -299,10 +395,18 @@ func (a *Assembly) entryArgs(ctx context.Context, entry ProviderEntry, account *
 			var err error
 			base, err = url.Parse(string(*c.BaseURL))
 			if err != nil {
-				return FamilyArgs{}, &AssemblyError{Kind: AssemblyFamily, Err: &FamilyError{Kind: FamilyInvalid, Message: "invalid provider endpoint"}}
+				return FamilyArgs{}, &AssemblyError{
+					Kind: AssemblyFamily,
+					Err:  &FamilyError{Kind: FamilyInvalid, Message: "invalid provider endpoint"},
+				}
 			}
 		}
-		credential = &APIKeyArgs{APIKey: c.APIKey, BaseURL: base, WireAPI: c.WireAPI, Vendor: a.vendors.Policy(c.VendorID)}
+		credential = &APIKeyArgs{
+			APIKey:  c.APIKey,
+			BaseURL: base,
+			WireAPI: c.WireAPI,
+			Vendor:  a.vendors.Policy(c.VendorID),
+		}
 	case *SubscriptionCredential:
 		var binding *AccountBinding
 		if account != nil {
@@ -311,14 +415,22 @@ func (a *Assembly) entryArgs(ctx context.Context, entry ProviderEntry, account *
 				return FamilyArgs{}, &AssemblyError{Kind: AssemblyStorage, Err: err}
 			}
 			if record != nil {
-				binding = &AccountBinding{CredentialID: string(record.ID), Quota: a.quotas.Store(entry.ID, *record)}
+				binding = &AccountBinding{
+					CredentialID: string(record.ID),
+					Quota:        a.quotas.Store(entry.ID, *record),
+				}
 			}
 		}
 		credential = &SubscriptionArgs{Pool: a.vault.Pool(entry.ID), Account: binding}
 	}
 	return a.args(string(entry.ID), entry.Label, credential), nil
 }
-func (a *Assembly) build(ctx context.Context, entry ProviderEntry, account *webapi.CredentialID) (provider.Provider, error) {
+
+func (a *Assembly) build(
+	ctx context.Context,
+	entry ProviderEntry,
+	account *webapi.CredentialID,
+) (provider.Provider, error) {
 	family, err := a.Family(entry.Family)
 	if err != nil {
 		return nil, err
@@ -357,6 +469,11 @@ func cloneEntry(entry ProviderEntry) (ProviderEntry, error) {
 	}
 	return entry, nil
 }
+
 func emptyCatalog(err error) core.ProviderModelList {
-	return core.ProviderModelList{Models: []core.ProviderModel{}, Warnings: []string{err.Error()}, SourceFetchedAt: core.UnixEpoch}
+	return core.ProviderModelList{
+		Models:          []core.ProviderModel{},
+		Warnings:        []string{err.Error()},
+		SourceFetchedAt: core.UnixEpoch,
+	}
 }

@@ -15,7 +15,9 @@ import (
 
 // LoginTiming is how long a login waits for its user and keeps its result.
 type LoginTiming struct {
-	Lifetime  time.Duration
+	// Lifetime limits how long a login waits for its user.
+	Lifetime time.Duration
+	// Retention limits how long a completed login result remains readable.
 	Retention time.Duration
 }
 
@@ -67,31 +69,35 @@ func DefaultLoginTiming() LoginTiming {
 // NewLoginFlows creates the backend login owner.
 func NewLoginFlows(assembly *Assembly, operations *Operations, timing LoginTiming) *LoginFlows {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &LoginFlows{assembly: assembly, operations: operations, timing: timing, flows: make(map[webapi.LoginID]*loginFlow), ctx: ctx, cancel: cancel}
+	return &LoginFlows{
+		assembly:   assembly,
+		operations: operations,
+		timing:     timing,
+		flows:      make(map[webapi.LoginID]*loginFlow),
+		ctx:        ctx,
+		cancel:     cancel,
+	}
 }
 
 // Start starts a device login; only starter can read and cancel it.
-func (f *LoginFlows) Start(ctx context.Context, owner, starter webapi.UserID, family, label string, existing *ProviderEntry) (webapi.LoginID, error) {
+func (f *LoginFlows) Start(
+	ctx context.Context,
+	owner, starter webapi.UserID,
+	family, label string,
+	existing *ProviderEntry,
+) (webapi.LoginID, error) {
 	f.mu.Lock()
 	closed := f.ctx.Err() != nil
 	f.mu.Unlock()
 	if closed {
 		return "", &LoginRefusal{Kind: LoginBusy}
 	}
-	registered, err := f.assembly.Family(family)
-	if err != nil {
-		return "", &LoginRefusal{Kind: LoginAssembly, Err: err}
+	if err := f.checkLoginFamily(family); err != nil {
+		return "", err
 	}
-	if registered.Credential() != webapi.CredentialKindSubscription {
-		return "", &LoginRefusal{Kind: LoginNoLoginFlow, Family: family}
-	}
-	randomID, err := uuid.NewRandom()
+	id, err := newLoginID()
 	if err != nil {
-		return "", &LoginRefusal{Kind: LoginAssembly, Err: fmt.Errorf("create login identity: %w", err)}
-	}
-	id, err := webapi.ParseLoginID(randomID.String())
-	if err != nil {
-		return "", &LoginRefusal{Kind: LoginAssembly, Err: err}
+		return "", err
 	}
 	target := loginTarget{existing: existing, family: family, label: label}
 	var p provider.Provider
@@ -107,16 +113,10 @@ func (f *LoginFlows) Start(ctx context.Context, owner, starter webapi.UserID, fa
 		}()
 		p, err = f.assembly.ProviderFor(ctx, *existing)
 	} else {
-		var entries []ProviderEntry
-		entries, err = f.assembly.vault.Entries(ctx, owner)
-		if err == nil {
-			for _, e := range entries {
-				if e.Family == family {
-					return "", &LoginRefusal{Kind: LoginExists, Family: family}
-				}
-			}
-			target.staged = provider.NewMemoryCredentialPool()
-			p, err = f.assembly.Detached(family, string(id), label, target.staged)
+		var refusal error
+		p, target.staged, refusal = f.prepareNewLogin(ctx, owner, family, label, id)
+		if refusal != nil {
+			return "", refusal
 		}
 	}
 	if err != nil {
@@ -133,10 +133,17 @@ func (f *LoginFlows) Start(ctx context.Context, owner, starter webapi.UserID, fa
 	}
 	f.pruneLocked()
 	runCtx, cancel := context.WithTimeout(f.ctx, f.timing.Lifetime)
-	flow := &loginFlow{owner: starter, state: &webapi.LoginStatePending{}, cancel: cancel, done: make(chan struct{})}
+	flow := &loginFlow{
+		owner:  starter,
+		state:  &webapi.LoginStatePending{},
+		cancel: cancel,
+		done:   make(chan struct{}),
+	}
 	f.flows[id] = flow
 	owned := target
-	f.workers.Go(func() { f.run(runCtx, owner, accounts, owned, flow) })
+	f.workers.Go(func() {
+		f.run(runCtx, owner, accounts, owned, flow)
+	})
 	target.held = nil // The task now owns the reservation.
 	return id, nil
 }
@@ -208,14 +215,25 @@ func (f *LoginFlows) pruneLocked() {
 		}
 	}
 }
-func (f *LoginFlows) run(ctx context.Context, owner webapi.UserID, accounts provider.SubscriptionAccounts, target loginTarget, flow *loginFlow) {
+
+func (f *LoginFlows) run(
+	ctx context.Context,
+	owner webapi.UserID,
+	accounts provider.SubscriptionAccounts,
+	target loginTarget,
+	flow *loginFlow,
+) {
 	defer flow.cancel()
 	account, err := accounts.Login(ctx, func(p core.LoginPending) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		if ctx.Err() == nil {
 			if _, ok := flow.state.(*webapi.LoginStatePending); ok {
-				flow.state = &webapi.LoginStatePending{VerificationURL: &p.VerificationURL, UserCode: p.UserCode, ExpiresAt: p.ExpiresAt}
+				flow.state = &webapi.LoginStatePending{
+					VerificationURL: &p.VerificationURL,
+					UserCode:        p.UserCode,
+					ExpiresAt:       p.ExpiresAt,
+				}
 			}
 		}
 	})
@@ -240,7 +258,13 @@ func (f *LoginFlows) run(ctx context.Context, owner webapi.UserID, accounts prov
 	f.mu.Unlock()
 	close(flow.done)
 }
-func (f *LoginFlows) publish(ctx context.Context, owner webapi.UserID, target loginTarget, account string) webapi.LoginState {
+
+func (f *LoginFlows) publish(
+	ctx context.Context,
+	owner webapi.UserID,
+	target loginTarget,
+	account string,
+) webapi.LoginState {
 	credential, err := webapi.ParseCredentialID(account)
 	if err != nil {
 		return &webapi.LoginStateFailed{Message: err.Error()}
@@ -264,6 +288,7 @@ func (f *LoginFlows) publish(ctx context.Context, owner webapi.UserID, target lo
 	}
 	return &webapi.LoginStateCompleted{ProviderID: id, CredentialID: credential}
 }
+
 func copyLoginState(state webapi.LoginState) webapi.LoginState {
 	switch s := state.(type) {
 	case *webapi.LoginStatePending:
@@ -289,4 +314,64 @@ func copyLoginState(state webapi.LoginState) webapi.LoginState {
 		return &snapshot
 	}
 	return nil
+}
+
+// hasLoginFamily checks whether the user already configured the requested login family.
+func hasLoginFamily(entries []ProviderEntry, family string) bool {
+	for _, entry := range entries {
+		if entry.Family == family {
+			return true
+		}
+	}
+	return false
+}
+
+// newLoginID creates and validates a login identity.
+func newLoginID() (webapi.LoginID, error) {
+	randomID, err := uuid.NewRandom()
+	if err != nil {
+		return "", &LoginRefusal{
+			Kind: LoginAssembly,
+			Err:  fmt.Errorf("create login identity: %w", err),
+		}
+	}
+	id, err := webapi.ParseLoginID(randomID.String())
+	if err != nil {
+		return "", &LoginRefusal{Kind: LoginAssembly, Err: err}
+	}
+	return id, nil
+}
+
+// checkLoginFamily refuses unregistered families and families without subscription credentials.
+func (f *LoginFlows) checkLoginFamily(family string) error {
+	registered, err := f.assembly.Family(family)
+	if err != nil {
+		return &LoginRefusal{Kind: LoginAssembly, Err: err}
+	}
+	if registered.Credential() != webapi.CredentialKindSubscription {
+		return &LoginRefusal{Kind: LoginNoLoginFlow, Family: family}
+	}
+	return nil
+}
+
+// prepareNewLogin builds a detached subscription provider after checking the user’s existing families.
+func (f *LoginFlows) prepareNewLogin(
+	ctx context.Context,
+	owner webapi.UserID,
+	family, label string,
+	id webapi.LoginID,
+) (provider.Provider, *provider.MemoryCredentialPool, error) {
+	entries, err := f.assembly.vault.Entries(ctx, owner)
+	if err != nil {
+		return nil, nil, &LoginRefusal{Kind: LoginAssembly, Err: err}
+	}
+	if hasLoginFamily(entries, family) {
+		return nil, nil, &LoginRefusal{Kind: LoginExists, Family: family}
+	}
+	staged := provider.NewMemoryCredentialPool()
+	built, err := f.assembly.Detached(family, string(id), label, staged)
+	if err != nil {
+		return nil, nil, &LoginRefusal{Kind: LoginAssembly, Err: err}
+	}
+	return built, staged, nil
 }

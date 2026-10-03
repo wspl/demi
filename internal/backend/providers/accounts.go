@@ -15,9 +15,17 @@ import (
 const SetupTokenFamily = "claude-code"
 
 // ImportSetupToken creates the Claude Code entry and its first account in one transaction.
-func ImportSetupToken(ctx context.Context, assembly *Assembly, owner webapi.UserID, label, token string) (ProviderEntry, error) {
+func ImportSetupToken(
+	ctx context.Context,
+	assembly *Assembly,
+	owner webapi.UserID,
+	label, token string,
+) (ProviderEntry, error) {
 	if assembly.families.Family(SetupTokenFamily) == nil {
-		return ProviderEntry{}, &AccountRefusal{Kind: AccountUnsupported, Message: "Setup-token import is unavailable"}
+		return ProviderEntry{}, &AccountRefusal{
+			Kind:    AccountUnsupported,
+			Message: "Setup-token import is unavailable",
+		}
 	}
 	entries, err := assembly.vault.Entries(ctx, owner)
 	if err != nil {
@@ -51,7 +59,12 @@ func ImportSetupToken(ctx context.Context, assembly *Assembly, owner webapi.User
 }
 
 // AddToken adds a setup token account to an entry.
-func AddToken(ctx context.Context, assembly *Assembly, entry ProviderEntry, token string) (core.AccountInfo, error) {
+func AddToken(
+	ctx context.Context,
+	assembly *Assembly,
+	entry ProviderEntry,
+	token string,
+) (core.AccountInfo, error) {
 	if err := subscription(entry); err != nil {
 		return core.AccountInfo{}, err
 	}
@@ -70,7 +83,12 @@ func AddToken(ctx context.Context, assembly *Assembly, entry ProviderEntry, toke
 }
 
 // ListAccounts returns accounts and active selection only when disclose is true.
-func ListAccounts(ctx context.Context, assembly *Assembly, entry ProviderEntry, disclose bool) (webapi.Accounts, error) {
+func ListAccounts(
+	ctx context.Context,
+	assembly *Assembly,
+	entry ProviderEntry,
+	disclose bool,
+) (webapi.Accounts, error) {
 	if err := subscription(entry); err != nil {
 		return webapi.Accounts{}, err
 	}
@@ -83,14 +101,20 @@ func ListAccounts(ctx context.Context, assembly *Assembly, entry ProviderEntry, 
 		return result, accountAssembly(err)
 	}
 	for _, row := range rows {
-		result.Accounts = append(result.Accounts, AccountMeta(row).Info())
+		meta := AccountMeta(row)
+		result.Accounts = append(result.Accounts, meta.Info())
 	}
 	result.Active = entry.Active()
 	return result, nil
 }
 
 // ActivateAccount selects the account for subsequent requests.
-func ActivateAccount(ctx context.Context, assembly *Assembly, entry ProviderEntry, account webapi.CredentialID) (webapi.CredentialID, error) {
+func ActivateAccount(
+	ctx context.Context,
+	assembly *Assembly,
+	entry ProviderEntry,
+	account webapi.CredentialID,
+) (webapi.CredentialID, error) {
 	if err := subscription(entry); err != nil {
 		return "", err
 	}
@@ -110,7 +134,12 @@ func ActivateAccount(ctx context.Context, assembly *Assembly, entry ProviderEntr
 }
 
 // RemoveAccount removes a non-active account and its quota snapshot.
-func RemoveAccount(ctx context.Context, assembly *Assembly, entry ProviderEntry, account webapi.CredentialID) error {
+func RemoveAccount(
+	ctx context.Context,
+	assembly *Assembly,
+	entry ProviderEntry,
+	account webapi.CredentialID,
+) error {
 	if err := subscription(entry); err != nil {
 		return err
 	}
@@ -140,7 +169,10 @@ func RemoveAccount(ctx context.Context, assembly *Assembly, entry ProviderEntry,
 func addSetupToken(ctx context.Context, p provider.Provider, token string) (core.AccountInfo, error) {
 	accounts := p.Accounts()
 	if accounts == nil || !accounts.Capability().Add {
-		return core.AccountInfo{}, &AccountRefusal{Kind: AccountUnsupported, Message: "Use device login for this provider"}
+		return core.AccountInfo{}, &AccountRefusal{
+			Kind:    AccountUnsupported,
+			Message: "Use device login for this provider",
+		}
 	}
 	secret, err := provider.NewSecret(token)
 	if err != nil {
@@ -151,7 +183,10 @@ func addSetupToken(ctx context.Context, p provider.Provider, token string) (core
 		return account, nil
 	}
 	if errors.Is(err, provider.ErrAccountsUnsupported) {
-		return core.AccountInfo{}, &AccountRefusal{Kind: AccountUnsupported, Message: "Use device login for this provider"}
+		return core.AccountInfo{}, &AccountRefusal{
+			Kind:    AccountUnsupported,
+			Message: "Use device login for this provider",
+		}
 	}
 	var pool *provider.PoolError
 	if errors.As(err, &pool) && pool.Err != nil {
@@ -159,6 +194,7 @@ func addSetupToken(ctx context.Context, p provider.Provider, token string) (core
 	}
 	return core.AccountInfo{}, &AccountRefusal{Kind: AccountTokenImportFailed}
 }
+
 func accountAssembly(err error) error {
 	var assembly *AssemblyError
 	if !errors.As(err, &assembly) {
@@ -166,9 +202,13 @@ func accountAssembly(err error) error {
 	}
 	return &AccountRefusal{Kind: AccountAssembly, Err: err}
 }
+
 func subscription(entry ProviderEntry) error {
 	if _, ok := entry.Credential.(*SubscriptionCredential); !ok {
-		return &AccountRefusal{Kind: AccountUnsupported, Message: "This provider does not use subscription accounts"}
+		return &AccountRefusal{
+			Kind:    AccountUnsupported,
+			Message: "This provider does not use subscription accounts",
+		}
 	}
 	return nil
 }

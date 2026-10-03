@@ -30,37 +30,66 @@ type currentRuntime struct {
 	runtime  provider.Runtime
 }
 
-func (p *conversationProviders) Selection(ctx context.Context, root core.NodeID) (core.ModelSelection, error) {
+// Selection reads the conversation’s persisted model selection.
+func (p *conversationProviders) Selection(
+	ctx context.Context,
+	root core.NodeID,
+) (core.ModelSelection, error) {
 	record, err := p.shard.Control().Conversation(ctx, hostaccess.ConversationOf(root))
 	if err != nil {
-		return core.ModelSelection{}, &server.ResolveError{Kind: server.ResolveFailed, Message: err.Error(), Cause: err}
+		return core.ModelSelection{}, &server.ResolveError{
+			Kind:    server.ResolveFailed,
+			Message: err.Error(),
+			Cause:   err,
+		}
 	}
 	if record == nil || record.Model == nil {
-		return core.ModelSelection{}, &server.ResolveError{Kind: server.ResolveFailed, Message: "The conversation has no model yet"}
+		return core.ModelSelection{}, &server.ResolveError{
+			Kind:    server.ResolveFailed,
+			Message: "The conversation has no model yet",
+		}
 	}
 	return *record.Model, nil
 }
 
-func (p *conversationProviders) Runtime(ctx context.Context, root core.NodeID, model core.ModelSelection) (provider.Runtime, error) {
+// Runtime resolves a visible provider and serves the conversation’s selected model.
+func (p *conversationProviders) Runtime(
+	ctx context.Context,
+	root core.NodeID,
+	model core.ModelSelection,
+) (provider.Runtime, error) {
 	id, err := webapi.ParseProviderID(model.ProviderID)
 	if err != nil {
 		return nil, &server.ResolveError{Kind: server.ResolveUnknown, Provider: model.ProviderID}
 	}
 	entry, err := p.shard.services.Vault.Visible(ctx, p.shard.user, id)
 	if err != nil {
-		return nil, &server.ResolveError{Kind: server.ResolveFailed, Message: err.Error(), Cause: err}
+		return nil, &server.ResolveError{
+			Kind:    server.ResolveFailed,
+			Message: err.Error(),
+			Cause:   err,
+		}
 	}
 	if entry == nil {
 		return nil, &server.ResolveError{Kind: server.ResolveUnknown, Provider: model.ProviderID}
 	}
-	runtime := &conversationRuntime{source: p, conversation: hostaccess.ConversationOf(root), entry: id, selection: model}
+	runtime := &conversationRuntime{
+		source:       p,
+		conversation: hostaccess.ConversationOf(root),
+		entry:        id,
+		selection:    model,
+	}
 	if failure := runtime.serve(ctx, *entry, model); failure != nil {
 		return nil, &server.ResolveError{Kind: server.ResolveFailed, Message: failure.Message}
 	}
 	return runtime, nil
 }
 
-func (r *conversationRuntime) serve(ctx context.Context, entry providers.ProviderEntry, requested core.ModelSelection) *provider.Failure {
+func (r *conversationRuntime) serve(
+	ctx context.Context,
+	entry providers.ProviderEntry,
+	requested core.ModelSelection,
+) *provider.Failure {
 	if credential, ok := entry.Credential.(*providers.SubscriptionCredential); ok && credential.Active == nil {
 		code := provider.AuthMissing
 		return &provider.Failure{Message: "No subscription account configured", Code: &code}
@@ -77,24 +106,43 @@ func (r *conversationRuntime) serve(ctx context.Context, entry providers.Provide
 	if r.current == nil || r.current.provider != built || r.current.model != selection.Model.ID {
 		var runtime provider.Runtime
 		if built.Capabilities().ProcessHost {
-			runtime, err = shard.services.Assembly.ProcessRuntime(ctx, entry, entry.Active(), cloudPlacement{shard: shard, conversation: &r.conversation})
+			runtime, err = shard.services.Assembly.ProcessRuntime(
+				ctx,
+				entry,
+				entry.Active(),
+				cloudPlacement{shard: shard, conversation: &r.conversation},
+			)
 		} else {
 			runtime, err = built.Runtime(provider.RuntimeEnv{HTTP: shard.http})
 		}
 		if err != nil {
 			return &provider.Failure{Message: err.Error()}
 		}
-		metered := providers.NewMeteredRuntime(runtime, r.source.rate, providers.Ledger{Control: shard.Control(), User: shard.user, Conversation: r.conversation, Provider: r.entry})
+		metered := providers.NewMeteredRuntime(
+			runtime,
+			r.source.rate,
+			providers.Ledger{
+				Control:      shard.Control(),
+				User:         shard.user,
+				Conversation: r.conversation,
+				Provider:     r.entry,
+			},
+		)
 		if err := r.Close(context.WithoutCancel(ctx)); err != nil {
 			// Rust close cannot fail; retain its replacement behavior and report cleanup failures.
 			slog.Warn("the replaced provider runtime did not close", "error", err)
 		}
-		r.current = &currentRuntime{provider: built, model: selection.Model.ID, runtime: metered}
+		r.current = &currentRuntime{
+			provider: built,
+			model:    selection.Model.ID,
+			runtime:  metered,
+		}
 	}
 	r.selection = selection
 	return nil
 }
 
+// Run refreshes the provider selection before starting the inference request.
 func (r *conversationRuntime) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
 	return func(yield func(provider.Event) bool) {
 		shard := r.source.shard
@@ -105,11 +153,15 @@ func (r *conversationRuntime) Run(ctx context.Context, request provider.Inferenc
 		var failure *provider.Failure
 		switch {
 		case err != nil:
-			failure = &provider.Failure{Message: fmt.Sprintf("The provider entry could not be read: %v", err)}
+			failure = &provider.Failure{
+				Message: fmt.Sprintf("The provider entry could not be read: %v", err),
+			}
 		case entry == nil:
 			// Runtime release is best effort; the removed entry is the refusal the user needs.
 			_ = r.Close(context.WithoutCancel(ctx))
-			failure = &provider.Failure{Message: fmt.Sprintf("Provider %q is no longer available to this conversation", r.entry)}
+			failure = &provider.Failure{
+				Message: fmt.Sprintf("Provider %q is no longer available to this conversation", r.entry),
+			}
 		default:
 			requested := r.selection
 			requested.Model.ID = request.ModelID
@@ -129,13 +181,26 @@ func (r *conversationRuntime) Run(ctx context.Context, request provider.Inferenc
 		r.current.runtime.Run(ctx, request)(yield)
 	}
 }
+
+// Fresh returns a runtime with independent request state.
 func (r *conversationRuntime) Fresh() provider.Runtime {
-	fresh := &conversationRuntime{source: r.source, conversation: r.conversation, entry: r.entry, selection: r.selection}
+	fresh := &conversationRuntime{
+		source:       r.source,
+		conversation: r.conversation,
+		entry:        r.entry,
+		selection:    r.selection,
+	}
 	if r.current != nil {
-		fresh.current = &currentRuntime{provider: r.current.provider, model: r.current.model, runtime: r.current.runtime.Fresh()}
+		fresh.current = &currentRuntime{
+			provider: r.current.provider,
+			model:    r.current.model,
+			runtime:  r.current.runtime.Fresh(),
+		}
 	}
 	return fresh
 }
+
+// Close releases the current provider runtime.
 func (r *conversationRuntime) Close(ctx context.Context) error {
 	current := r.current
 	r.current = nil
@@ -144,6 +209,8 @@ func (r *conversationRuntime) Close(ctx context.Context) error {
 	}
 	return current.runtime.Close(ctx)
 }
+
+// RequestLimits returns the current provider’s model limits.
 func (r *conversationRuntime) RequestLimits(model core.Model) provider.RequestLimits {
 	if r.current == nil {
 		return provider.RequestLimits{}
