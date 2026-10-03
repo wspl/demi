@@ -34,9 +34,10 @@ linters:
         - expr
     revive:
       enable-default-rules: true
+      # Not confusing-naming: an exported wrapper and its unexported body
+      # sharing a name (Close and close) is the standard library's convention.
       rules:
         - name: receiver-naming
-        - name: confusing-naming
         - name: early-return
         - name: superfluous-else
         - name: indent-error-flow
