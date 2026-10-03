@@ -13,7 +13,10 @@ import (
 // editRecorder gives one shell job a journal while jobs share the same edit lock.
 func editRecorder(t *testing.T, root, job string) *cmdsdk.Recorder {
 	t.Helper()
-	recorder, err := cmdsdk.NewRecorder(t.Context(), commandwire.EditContext{Directory: filepath.Join(root, job), Lock: filepath.Join(root, "edits.lock")})
+	recorder, err := cmdsdk.NewRecorder(
+		t.Context(),
+		commandwire.EditContext{Directory: filepath.Join(root, job), Lock: filepath.Join(root, "edits.lock")},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,19 +32,30 @@ func editJournal(t *testing.T, recorder *cmdsdk.Recorder) commandwire.EditJourna
 	}
 	return journal
 }
+
 func TestRedirectionsDescriptorsAndUtilitiesRecordActualContents(t *testing.T) {
 	t.Skip("decision 4: system utility writes are absent from the edit report")
 	root := t.TempDir()
 	recorder := editRecorder(t, root, "job")
 	for name, contents := range map[string]string{"sorted": "pear\napple\n", "restored": "same\n"} {
-		if err := os.WriteFile(filepath.Join(root, name), []byte(contents), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(contents), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	result, _, stderr := shellFiles(t, root, `printf 'one\n' > file; printf 'changed\n' > restored; printf 'same\n' > restored; exec 3>>file; printf 'two\n' >&3; exec 3>&-; printf 'tea\n' | tee tee-file >/dev/null; sort sorted -o sorted; sed -i 's/one/first/' file; printf 'same\nsame\n' | uniq - unique; printf temporary > temporary; rm temporary; cp file copy; mv copy moved; touch touched; mktemp >/dev/null`, func(o *Options) {
-		o.Edits = recorder
-		o.Env["TMPDIR"] = root
-	})
+	result, _, stderr := shellFiles(
+		t,
+		root,
+		`printf 'one\n' > file; printf 'changed\n' > restored; `+
+			`printf 'same\n' > restored; exec 3>>file; printf 'two\n' >&3; exec 3>&-; `+
+			`printf 'tea\n' | tee tee-file >/dev/null; sort sorted -o sorted; `+
+			`sed -i 's/one/first/' file; printf 'same\nsame\n' | uniq - unique; `+
+			`printf temporary > temporary; rm temporary; cp file copy; mv copy moved; `+
+			`touch touched; mktemp >/dev/null`,
+		func(o *Options) {
+			o.Edits = recorder
+			o.Env["TMPDIR"] = root
+		},
+	)
 	if result.Code != 0 {
 		t.Fatalf("exit %d: %s", result.Code, stderr)
 	}
@@ -55,7 +69,12 @@ func TestRedirectionsDescriptorsAndUtilitiesRecordActualContents(t *testing.T) {
 	}
 	for _, file := range journal.Files {
 		name := filepath.Base(file.Path)
-		want := map[string]string{"file": "first\ntwo\n", "tee-file": "tea\n", "sorted": "apple\npear\n", "unique": "same\n"}[name]
+		want := map[string]string{
+			"file":     "first\ntwo\n",
+			"tee-file": "tea\n",
+			"sorted":   "apple\npear\n",
+			"unique":   "same\n",
+		}[name]
 		if len(file.Edits) != 1 || file.Edits[0].Modified == nil {
 			t.Fatalf("%s edits %+v", name, file.Edits)
 		}
@@ -74,14 +93,28 @@ func TestRedirectionsDescriptorsAndUtilitiesRecordActualContents(t *testing.T) {
 		}
 	}
 }
+
 func TestRedirectedExternalOutputIsForwardedThroughTheRecorder(t *testing.T) {
 	root := t.TempDir()
 	recorder := editRecorder(t, root, "job")
-	result, _, stderr := shellFiles(t, root, `/bin/sh -c 'printf child; printf error >&2' > out 2> err; cat out > observed; /bin/sh -c 'printf first; printf second >&2; printf third' > combined 2>&1; /bin/sh -c 'printf numbered >&3' 3> numbered`, func(o *Options) { o.Edits = recorder })
+	result, _, stderr := shellFiles(
+		t,
+		root,
+		`/bin/sh -c 'printf child; printf error >&2' > out 2> err; cat out > observed; `+
+			`/bin/sh -c 'printf first; printf second >&2; printf third' > combined 2>&1; `+
+			`/bin/sh -c 'printf numbered >&3' 3> numbered`,
+		func(o *Options) { o.Edits = recorder },
+	)
 	if result.Code != 0 {
 		t.Fatalf("exit %d: %s", result.Code, stderr)
 	}
-	want := map[string]string{"out": "child", "err": "error", "observed": "child", "combined": "firstsecondthird", "numbered": "numbered"}
+	want := map[string]string{
+		"out":      "child",
+		"err":      "error",
+		"observed": "child",
+		"combined": "firstsecondthird",
+		"numbered": "numbered",
+	}
 	journal := editJournal(t, recorder)
 	if len(journal.Files) != len(want) {
 		t.Fatalf("files %+v", journal.Files)
@@ -101,10 +134,11 @@ func TestRedirectedExternalOutputIsForwardedThroughTheRecorder(t *testing.T) {
 		t.Fatalf("missing edits: %v", want)
 	}
 }
+
 func TestAnotherJobCannotChangeAnAlreadyCapturedAfterSide(t *testing.T) {
 	root := t.TempDir()
 	a, b := editRecorder(t, root, "a"), editRecorder(t, root, "b")
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("before\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("before\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, step := range []struct {

@@ -14,27 +14,14 @@ import (
 
 // external executes system utilities under the job's process ownership.
 func (e *execution) external(ctx context.Context, args []string) error {
-	hc := interp.HandlerCtx(ctx)
-	state := hc.Scope().(*interpreterScope)
-	path, err := interp.LookPathDir(hc.Dir, hc.Env, shellPath(args[0]))
+	handler := interp.HandlerCtx(ctx)
+	state := handler.Scope().(*interpreterScope)
+	path, err := interp.LookPathDir(handler.Dir, handler.Env, shellPath(args[0]))
 	if err != nil {
-		_, _ = fmt.Fprintln(hc.Stderr, err)
+		_, _ = fmt.Fprintln(handler.Stderr, err)
 		return interp.ExitStatus(127)
 	}
-	cmd := exec.Command(path, args[1:]...)
-	cmd.Dir = hc.Dir
-	cmd.Env = exported(hc.Env)
-	if options, ok := ctx.Value(execKey{}).(execOptions); ok {
-		if options.empty {
-			cmd.Env = []string{}
-		}
-		if options.argv0 != "" {
-			cmd.Args[0] = options.argv0
-		}
-	}
-	cmd.Stdin = hc.Stdin
-	cmd.Stdout = hc.Stdout
-	cmd.Stderr = hc.Stderr
+	cmd := externalCommand(ctx, path, args)
 	closeStreams, err := borrowStreams(ctx, cmd)
 	if err != nil {
 		return err
@@ -42,7 +29,7 @@ func (e *execution) external(ctx context.Context, args []string) error {
 	defer closeStreams()
 	launchDone := make(chan struct{})
 	finishedStart := false
-	finishDescriptors, err := extraDescriptors(ctx, launchDone, cmd, hc.Descriptors())
+	finishDescriptors, err := extraDescriptors(ctx, launchDone, cmd, handler.Descriptors())
 	if err != nil {
 		return err
 	}
@@ -62,12 +49,7 @@ func (e *execution) external(ctx context.Context, args []string) error {
 	finishedStart = true
 	releaseLaunch()
 	if err != nil {
-		if errors.Is(err, syscall.ENOEXEC) {
-			hc.Env = expand.ListEnviron(cmd.Env...)
-			return hc.RunScript(ctx, path, cmd.Args)
-		}
-		_, _ = fmt.Fprintln(hc.Stderr, err)
-		return interp.ExitStatus(126)
+		return externalStartError(ctx, handler, cmd, path, err)
 	}
 	release := state.register(child)
 	defer release()
@@ -80,6 +62,41 @@ func (e *execution) external(ctx context.Context, args []string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	return externalStatus(status)
+}
+
+// exported supplies only variables marked for child inheritance.
+func exported(env expand.Environ) []string {
+	result := make([]string, 0)
+	env.Each(func(name string, value expand.Variable) bool {
+		if value.Exported && value.IsSet() {
+			result = append(result, name+"="+value.String())
+		}
+		return true
+	})
+	return result
+}
+
+func externalCommand(ctx context.Context, path string, args []string) *exec.Cmd {
+	handler := interp.HandlerCtx(ctx)
+	cmd := exec.Command(path, args[1:]...)
+	cmd.Dir = handler.Dir
+	cmd.Env = exported(handler.Env)
+	if options, ok := ctx.Value(execKey{}).(execOptions); ok {
+		if options.empty {
+			cmd.Env = []string{}
+		}
+		if options.argv0 != "" {
+			cmd.Args[0] = options.argv0
+		}
+	}
+	cmd.Stdin = handler.Stdin
+	cmd.Stdout = handler.Stdout
+	cmd.Stderr = handler.Stderr
+	return cmd
+}
+
+func externalStatus(status process.Exit) error {
 	if status.Error != nil {
 		return errors.New(*status.Error)
 	}
@@ -95,14 +112,17 @@ func (e *execution) external(ctx context.Context, args []string) error {
 	return interp.ExitStatus(1)
 }
 
-// exported supplies only variables marked for child inheritance.
-func exported(env expand.Environ) []string {
-	result := make([]string, 0)
-	env.Each(func(name string, value expand.Variable) bool {
-		if value.Exported && value.IsSet() {
-			result = append(result, name+"="+value.String())
-		}
-		return true
-	})
-	return result
+func externalStartError(
+	ctx context.Context,
+	handler interp.HandlerContext,
+	cmd *exec.Cmd,
+	path string,
+	err error,
+) error {
+	if errors.Is(err, syscall.ENOEXEC) {
+		handler.Env = expand.ListEnviron(cmd.Env...)
+		return handler.RunScript(ctx, path, cmd.Args)
+	}
+	_, _ = fmt.Fprintln(handler.Stderr, err)
+	return interp.ExitStatus(126)
 }
