@@ -19,6 +19,7 @@ type CheckedPatch struct{ patch webapi.PreferencesPatch }
 // UnknownTimeZone identifies an unrecognized reported time zone.
 type UnknownTimeZone struct{ Zone string }
 
+// Error identifies the rejected time zone in the preference patch.
 func (e *UnknownTimeZone) Error() string {
 	return fmt.Sprintf("locale.timeZone: %q is not a time zone the backend knows", e.Zone)
 }
@@ -29,6 +30,7 @@ type MalformedTag struct {
 	Tag   string
 }
 
+// Error identifies the rejected language at its preference index.
 func (e *MalformedTag) Error() string {
 	return fmt.Sprintf("locale.languages[%d]: %q is not a BCP 47 language tag", e.Index, e.Tag)
 }
@@ -82,60 +84,24 @@ func canonicalLocale(locale commandwire.CommandLocale) (commandwire.CommandLocal
 
 // x/text accepts underscore separators, grandfathered tags and private-only
 // tags that ICU Locale rejects. This guard keeps the Rust input grammar.
-var localeSyntax = regexp.MustCompile(`(?i)^[a-z]{2,3}(-[a-z]{4})?(-([a-z]{2}|[0-9]{3}))?(-([a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*((-[a-wy-z0-9](-[a-z0-9]{2,8})+)*)(-x(-[a-z0-9]{1,8})+)?$`)
-var errLanguage = errors.New("invalid locale")
+var (
+	localeSyntax = regexp.MustCompile(
+		`(?i)^[a-z]{2,3}(-[a-z]{4})?(-([a-z]{2}|[0-9]{3}))?` +
+			`(-([a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*` +
+			`((-[a-wy-z0-9](-[a-z0-9]{2,8})+)*)(-x(-[a-z0-9]{1,8})+)?$`,
+	)
+	errLanguage = errors.New("invalid locale")
+)
 
 func canonicalLanguage(tag string) (string, error) {
 	if strings.ContainsFunc(tag, func(r rune) bool { return r > 127 }) || !localeSyntax.MatchString(tag) {
 		return "", errLanguage
 	}
-	parts := strings.Split(strings.ToLower(tag), "-")
-	seen := make(map[string]bool)
-	unknownVariants := []string{}
-	input := []string{parts[0]}
-	extension := false
-	for i, part := range parts[1:] {
-		if len(part) == 1 {
-			if seen[part] {
-				return "", errLanguage
-			}
-			seen[part] = true
-			extension = true
-		}
-		if !extension && (len(part) >= 5 || (len(part) == 4 && part[0] >= '0' && part[0] <= '9')) {
-			if seen[part] {
-				return "", errLanguage
-			}
-			seen[part] = true
-			if _, err := language.ParseVariant(part); err != nil {
-				// ICU retains syntactically valid unregistered variants, which x/text
-				// cannot represent. Keep them outside its tag and restore them below.
-				unknownVariants = append(unknownVariants, part)
-				continue
-			}
-		}
-		input = append(input, part)
-		if extension && part == "x" {
-			// Private-use subtags are not extension singleton keys.
-			input = append(input, parts[i+2:]...)
-			break
-		}
+	input, unknownVariants, err := languageSubtags(tag)
+	if err != nil {
+		return "", err
 	}
-	input = icuUnicodeKeywords(input)
-	// x/text maps mo to ro-MD, whereas ICU canonicalizes only the language.
-	if input[0] == "mo" {
-		input[0] = "ro"
-	}
-	canonicalizer := language.Default | language.Macro
-	// ICU retains nb; x/text's Macro mapping predates that CLDR decision.
-	if input[0] == "nb" {
-		canonicalizer = language.Default
-	}
-	// ICU's language/variant alias is not in x/text's canonicalizer.
-	if input[0] == "zh" && slices.Contains(unknownVariants, "hakka") {
-		input[0] = "hak"
-		unknownVariants = slices.DeleteFunc(unknownVariants, func(v string) bool { return v == "hakka" })
-	}
+	input, unknownVariants, canonicalizer := canonicalLanguageAliases(input, unknownVariants)
 	parsed, err := canonicalizer.Parse(strings.Join(input, "-"))
 	unknownBase := ""
 	if err != nil {
@@ -156,30 +122,7 @@ func canonicalLanguage(tag string) (string, error) {
 		canonical = unknownBase + strings.TrimPrefix(canonical, "und")
 	}
 	if len(unknownVariants) != 0 {
-		parts = strings.Split(canonical, "-")
-		end := len(parts)
-		start := end
-		for i, part := range parts[1:] {
-			index := i + 1
-			if len(part) == 1 {
-				end = index
-				break
-			}
-			if len(part) >= 5 || (len(part) == 4 && part[0] >= '0' && part[0] <= '9') {
-				if start == len(parts) {
-					start = index
-				}
-			}
-		}
-		if start > end {
-			start = end
-		}
-		variants := append(unknownVariants, parts[start:end]...)
-		slices.Sort(variants)
-		canonical = strings.Join(parts[:start], "-") + "-" + strings.Join(variants, "-")
-		if end < len(parts) {
-			canonical += "-" + strings.Join(parts[end:], "-")
-		}
+		canonical = restoreLanguageVariants(canonical, unknownVariants)
 	}
 	return canonical, nil
 }
@@ -227,4 +170,90 @@ func icuUnicodeKeywords(parts []string) []string {
 		i = next
 	}
 	return append(result, parts[end:]...)
+}
+
+// languageSubtags separates ICU variants that x/text cannot represent from the parseable tag.
+func languageSubtags(tag string) ([]string, []string, error) {
+	parts := strings.Split(strings.ToLower(tag), "-")
+	seen := make(map[string]bool)
+	unknownVariants := []string{}
+	input := []string{parts[0]}
+	extension := false
+	for i, part := range parts[1:] {
+		if len(part) == 1 {
+			if seen[part] {
+				return nil, nil, errLanguage
+			}
+			seen[part] = true
+			extension = true
+		}
+		if !extension && (len(part) >= 5 || (len(part) == 4 && part[0] >= '0' && part[0] <= '9')) {
+			if seen[part] {
+				return nil, nil, errLanguage
+			}
+			seen[part] = true
+			if _, err := language.ParseVariant(part); err != nil {
+				// ICU retains syntactically valid unregistered variants, which x/text
+				// cannot represent. Keep them outside its tag and restore them below.
+				unknownVariants = append(unknownVariants, part)
+				continue
+			}
+		}
+		input = append(input, part)
+		if extension && part == "x" {
+			// Private-use subtags are not extension singleton keys.
+			input = append(input, parts[i+2:]...)
+			break
+		}
+	}
+	return input, unknownVariants, nil
+}
+
+// canonicalLanguageAliases applies ICU aliases before x/text canonicalization.
+func canonicalLanguageAliases(input, unknownVariants []string) ([]string, []string, language.CanonType) {
+	input = icuUnicodeKeywords(input)
+	// x/text maps mo to ro-MD, whereas ICU canonicalizes only the language.
+	if input[0] == "mo" {
+		input[0] = "ro"
+	}
+	canonicalizer := language.Default | language.Macro
+	// ICU retains nb; x/text's Macro mapping predates that CLDR decision.
+	if input[0] == "nb" {
+		canonicalizer = language.Default
+	}
+	// ICU's language/variant alias is not in x/text's canonicalizer.
+	if input[0] == "zh" && slices.Contains(unknownVariants, "hakka") {
+		input[0] = "hak"
+		unknownVariants = slices.DeleteFunc(unknownVariants, func(v string) bool { return v == "hakka" })
+	}
+	return input, unknownVariants, canonicalizer
+}
+
+// restoreLanguageVariants inserts unregistered variants before extensions in sorted order.
+func restoreLanguageVariants(canonical string, unknownVariants []string) string {
+	parts := strings.Split(canonical, "-")
+	end := len(parts)
+	start := end
+	for i, part := range parts[1:] {
+		index := i + 1
+		if len(part) == 1 {
+			end = index
+			break
+		}
+		if len(part) >= 5 || (len(part) == 4 && part[0] >= '0' && part[0] <= '9') {
+			if start == len(parts) {
+				start = index
+			}
+		}
+	}
+	if start > end {
+		start = end
+	}
+	variants := append(unknownVariants, parts[start:end]...)
+	slices.Sort(variants)
+	canonical = strings.Join(parts[:start], "-") + "-" + strings.Join(variants, "-")
+	if end < len(parts) {
+		canonical += "-" + strings.Join(parts[end:], "-")
+	}
+	return canonical
 }

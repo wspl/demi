@@ -13,7 +13,14 @@ import (
 // not repaired.
 func (c *ControlService) Panel(ctx context.Context, conversation webapi.ConversationID) (*webapi.WorkPanel, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*webapi.WorkPanel, error) {
-		return queryRecord(ctx, tx, "conversation_panels", "SELECT document FROM conversation_panels WHERE conversation_id = ?", func(r *storedRow) webapi.WorkPanel { return storedJSON(r, "document", webapi.DecodeWorkPanel) }, conversation)
+		return queryRecord(
+			ctx,
+			tx,
+			"conversation_panels",
+			"SELECT document FROM conversation_panels WHERE conversation_id = ?",
+			func(r *storedRow) webapi.WorkPanel { return storedJSON(r, "document", webapi.DecodeWorkPanel) },
+			conversation,
+		)
 	})
 }
 
@@ -24,6 +31,16 @@ func (c *ControlService) SavePanel(ctx context.Context, conversation webapi.Conv
 		if err != nil {
 			return err
 		}
-		return execSQL(ctx, tx, "INSERT INTO conversation_panels (conversation_id,document,updated_at) VALUES (?,?,?) ON CONFLICT (conversation_id) DO UPDATE SET document=excluded.document,updated_at=excluded.updated_at", conversation, document, at)
+		return execSQL(
+			ctx,
+			tx,
+			`INSERT INTO conversation_panels (conversation_id,document,updated_at)
+VALUES (?,?,?)
+ON CONFLICT (conversation_id) DO UPDATE
+SET document=excluded.document,updated_at=excluded.updated_at`,
+			conversation,
+			document,
+			at,
+		)
 	})
 }

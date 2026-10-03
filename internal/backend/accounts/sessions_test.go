@@ -28,7 +28,8 @@ func TestWebSessionLifecycle(t *testing.T) {
 	// Exactly fifteen days remaining does not renew; less than fifteen does.
 	clock.at = "2026-01-16T00:00:00.000Z"
 	resolved, err := sessions.Resolve(t.Context(), opened.Token)
-	if err != nil || resolved == nil || resolved.User.ID != user.ID || resolved.Renewed || resolved.ExpiresAt != opened.ExpiresAt {
+	if err != nil || resolved == nil || resolved.User.ID != user.ID || resolved.Renewed ||
+		resolved.ExpiresAt != opened.ExpiresAt {
 		t.Fatalf("resolve at renewal boundary: %+v, %v", resolved, err)
 	}
 	clock.at = "2026-01-17T00:00:00.000Z"

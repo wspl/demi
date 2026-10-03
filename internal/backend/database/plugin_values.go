@@ -17,10 +17,17 @@ import (
 func (c *ControlService) UserPlugins(ctx context.Context, user webapi.UserID) (map[string]bool, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (map[string]bool, error) {
 		choices := make(map[string]bool)
-		_, err := queryRecords(ctx, tx, "user_plugins", "SELECT plugin,enabled FROM user_plugins WHERE user_id = ?", func(r *storedRow) struct{} {
-			choices[r.text("plugin")] = r.boolean("enabled")
-			return struct{}{}
-		}, user)
+		_, err := queryRecords(
+			ctx,
+			tx,
+			"user_plugins",
+			"SELECT plugin,enabled FROM user_plugins WHERE user_id = ?",
+			func(r *storedRow) struct{} {
+				choices[r.text("plugin")] = r.boolean("enabled")
+				return struct{}{}
+			},
+			user,
+		)
 		return choices, err
 	})
 }
@@ -28,25 +35,61 @@ func (c *ControlService) UserPlugins(ctx context.Context, user webapi.UserID) (m
 // SetUserPlugin records that `user` has `plugin` on or off.
 func (c *ControlService) SetUserPlugin(ctx context.Context, user webapi.UserID, plugin string, enabled bool) error {
 	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
-		return execSQL(ctx, tx, "INSERT INTO user_plugins (user_id,plugin,enabled) VALUES (?,?,?) ON CONFLICT (user_id,plugin) DO UPDATE SET enabled=excluded.enabled", user, plugin, enabled)
+		return execSQL(
+			ctx,
+			tx,
+			`INSERT INTO user_plugins (user_id,plugin,enabled)
+VALUES (?,?,?)
+ON CONFLICT (user_id,plugin) DO UPDATE
+SET enabled=excluded.enabled`,
+			user,
+			plugin,
+			enabled,
+		)
 	})
 }
 
 // PluginValue returns `plugin`'s value `key` for `user`.
-func (c *ControlService) PluginValue(ctx context.Context, user webapi.UserID, plugin string, key string) (*PluginValue, error) {
+func (c *ControlService) PluginValue(
+	ctx context.Context,
+	user webapi.UserID,
+	plugin string,
+	key string,
+) (*PluginValue, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*PluginValue, error) {
-		return queryRecord(ctx, tx, "plugin_values", "SELECT document,revision FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?", pluginValueRow, user, plugin, key)
+		return queryRecord(
+			ctx,
+			tx,
+			"plugin_values",
+			"SELECT document,revision FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?",
+			pluginValueRow,
+			user,
+			plugin,
+			key,
+		)
 	})
 }
 
 // PluginValues returns every value of `plugin`'s for `user`, by key.
-func (c *ControlService) PluginValues(ctx context.Context, user webapi.UserID, plugin string) (map[string]PluginValue, error) {
+func (c *ControlService) PluginValues(
+	ctx context.Context,
+	user webapi.UserID,
+	plugin string,
+) (map[string]PluginValue, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (map[string]PluginValue, error) {
 		values := make(map[string]PluginValue)
-		_, err := queryRecords(ctx, tx, "plugin_values", "SELECT key,document,revision FROM plugin_values WHERE user_id = ? AND plugin = ?", func(r *storedRow) struct{} {
-			values[r.text("key")] = pluginValueRow(r)
-			return struct{}{}
-		}, user, plugin)
+		_, err := queryRecords(
+			ctx,
+			tx,
+			"plugin_values",
+			"SELECT key,document,revision FROM plugin_values WHERE user_id = ? AND plugin = ?",
+			func(r *storedRow) struct{} {
+				values[r.text("key")] = pluginValueRow(r)
+				return struct{}{}
+			},
+			user,
+			plugin,
+		)
 		return values, err
 	})
 }
@@ -66,7 +109,16 @@ func (c *ControlService) WritePluginValue(ctx context.Context, write ValueWrite,
 		if err != nil {
 			return nil, err
 		}
-		before, err := queryRecord(ctx, tx, "plugin_values", "SELECT revision,blobs FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?", valueBlobRow, write.User, write.Plugin, write.Key)
+		before, err := queryRecord(
+			ctx,
+			tx,
+			"plugin_values",
+			"SELECT revision,blobs FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?",
+			valueBlobRow,
+			write.User,
+			write.Plugin,
+			write.Key,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +140,20 @@ func (c *ControlService) WritePluginValue(ctx context.Context, write ValueWrite,
 		if write.Revision != nil {
 			revision = *write.Revision + 1
 		}
-		err = execSQL(ctx, tx, "INSERT INTO plugin_values (user_id,plugin,key,document,revision,blobs) VALUES (?,?,?,?,?,?) ON CONFLICT (user_id,plugin,key) DO UPDATE SET document=excluded.document,revision=excluded.revision,blobs=excluded.blobs", write.User, write.Plugin, write.Key, text, integer(revision), named)
+		err = execSQL(
+			ctx,
+			tx,
+			`INSERT INTO plugin_values (user_id,plugin,key,document,revision,blobs)
+VALUES (?,?,?,?,?,?)
+ON CONFLICT (user_id,plugin,key) DO UPDATE
+SET document=excluded.document,revision=excluded.revision,blobs=excluded.blobs`,
+			write.User,
+			write.Plugin,
+			write.Key,
+			text,
+			integer(revision),
+			named,
+		)
 		return &WrittenRevision{Revision: revision}, err
 	})
 }
@@ -96,9 +161,25 @@ func (c *ControlService) WritePluginValue(ctx context.Context, write ValueWrite,
 // RemovePluginValue removes `plugin`'s value `key` for `user` if it is still at
 // `revision`, in one transaction; the blobs it named are used before
 // it commits. Answers WrittenRevision with the removed revision.
-func (c *ControlService) RemovePluginValue(ctx context.Context, user webapi.UserID, plugin string, key string, revision uint64, uses OwnerBlobs) (Written, error) {
+func (c *ControlService) RemovePluginValue(
+	ctx context.Context,
+	user webapi.UserID,
+	plugin string,
+	key string,
+	revision uint64,
+	uses OwnerBlobs,
+) (Written, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (Written, error) {
-		before, err := queryRecord(ctx, tx, "plugin_values", "SELECT revision,blobs FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?", valueBlobRow, user, plugin, key)
+		before, err := queryRecord(
+			ctx,
+			tx,
+			"plugin_values",
+			"SELECT revision,blobs FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?",
+			valueBlobRow,
+			user,
+			plugin,
+			key,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -108,35 +189,77 @@ func (c *ControlService) RemovePluginValue(ctx context.Context, user webapi.User
 		if err := uses.CommitUses(ctx, before.blobs); err != nil {
 			return &WrittenRefused{Err: err}, nil
 		}
-		err = execSQL(ctx, tx, "DELETE FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?", user, plugin, key)
+		err = execSQL(
+			ctx,
+			tx,
+			"DELETE FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?",
+			user,
+			plugin,
+			key,
+		)
 		return &WrittenRevision{Revision: revision}, err
 	})
 }
 
 // PluginDirectories returns every Host directory of each of `user`'s plugins, by plugin id, each
 // set in name order.
-func (c *ControlService) PluginDirectories(ctx context.Context, user webapi.UserID) (map[string][]plugin.HostDirectory, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (map[string][]plugin.HostDirectory, error) {
-		sets := make(map[string][]plugin.HostDirectory)
-		_, err := queryRecords(ctx, tx, "plugin_directories", "SELECT plugin,name,files FROM plugin_directories WHERE user_id = ? ORDER BY plugin,name", func(r *storedRow) struct{} {
-			id := r.text("plugin")
-			sets[id] = append(sets[id], plugin.HostDirectory{Name: r.text("name"), Files: storedJSON(r, "files", decodeDirectoryFiles)})
-			return struct{}{}
-		}, user)
-		return sets, err
-	})
+func (c *ControlService) PluginDirectories(
+	ctx context.Context,
+	user webapi.UserID,
+) (map[string][]plugin.HostDirectory, error) {
+	return controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (map[string][]plugin.HostDirectory, error) {
+			sets := make(map[string][]plugin.HostDirectory)
+			_, err := queryRecords(
+				ctx,
+				tx,
+				"plugin_directories",
+				"SELECT plugin,name,files FROM plugin_directories WHERE user_id = ? ORDER BY plugin,name",
+				func(r *storedRow) struct{} {
+					id := r.text("plugin")
+					sets[id] = append(
+						sets[id],
+						plugin.HostDirectory{Name: r.text("name"), Files: storedJSON(r, "files", decodeDirectoryFiles)},
+					)
+					return struct{}{}
+				},
+				user,
+			)
+			return sets, err
+		},
+	)
 }
 
 // SetPluginDirectories replaces `plugin`'s Host directories for `user` whole, in one
 // transaction; the blobs the set named before and names now are used
 // before it commits.
-func (c *ControlService) SetPluginDirectories(ctx context.Context, user webapi.UserID, plugin string, directories []plugin.HostDirectory, uses OwnerBlobs) error {
+func (c *ControlService) SetPluginDirectories(
+	ctx context.Context,
+	user webapi.UserID,
+	plugin string,
+	directories []plugin.HostDirectory,
+	uses OwnerBlobs,
+) error {
 	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
-		touched, err := directoryBlobs(ctx, tx, "SELECT files FROM plugin_directories WHERE user_id = ? AND plugin = ?", user, plugin)
+		touched, err := directoryBlobs(
+			ctx,
+			tx,
+			"SELECT files FROM plugin_directories WHERE user_id = ? AND plugin = ?",
+			user,
+			plugin,
+		)
 		if err != nil {
 			return err
 		}
-		if err := execSQL(ctx, tx, "DELETE FROM plugin_directories WHERE user_id = ? AND plugin = ?", user, plugin); err != nil {
+		if err := execSQL(
+			ctx,
+			tx,
+			"DELETE FROM plugin_directories WHERE user_id = ? AND plugin = ?",
+			user,
+			plugin,
+		); err != nil {
 			return err
 		}
 		for _, directory := range directories {
@@ -144,7 +267,16 @@ func (c *ControlService) SetPluginDirectories(ctx context.Context, user webapi.U
 			if err != nil {
 				return err
 			}
-			if err := execSQL(ctx, tx, "INSERT INTO plugin_directories (user_id,plugin,name,digest,files) VALUES (?,?,?,?,?)", user, plugin, directory.Name, directory.Digest(), files); err != nil {
+			if err := execSQL(
+				ctx,
+				tx,
+				"INSERT INTO plugin_directories (user_id,plugin,name,digest,files) VALUES (?,?,?,?,?)",
+				user,
+				plugin,
+				directory.Name,
+				directory.Digest(),
+				files,
+			); err != nil {
 				return err
 			}
 			for _, file := range directory.Files {
@@ -159,7 +291,14 @@ func (c *ControlService) SetPluginDirectories(ctx context.Context, user webapi.U
 // the collector keeps.
 func (c *ControlService) PluginBlobs(ctx context.Context, user webapi.UserID) ([]core.BlobRef, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]core.BlobRef, error) {
-		rows, err := queryRecords(ctx, tx, "plugin_values", "SELECT blobs FROM plugin_values WHERE user_id = ?", func(r *storedRow) blobNames { return storedJSON(r, "blobs", decodeBlobNames) }, user)
+		rows, err := queryRecords(
+			ctx,
+			tx,
+			"plugin_values",
+			"SELECT blobs FROM plugin_values WHERE user_id = ?",
+			func(r *storedRow) blobNames { return storedJSON(r, "blobs", decodeBlobNames) },
+			user,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -188,13 +327,21 @@ type valueBlobs struct {
 func valueBlobRow(r *storedRow) valueBlobs {
 	return valueBlobs{revision: r.count("revision"), blobs: storedJSON(r, "blobs", decodeBlobNames)}
 }
+
 func pluginValueRow(r *storedRow) PluginValue {
 	document := json.RawMessage(r.text("document"))
 	r.bad("document", contract.CheckJSON(document))
 	return PluginValue{Document: document, Revision: r.count("revision")}
 }
+
 func directoryBlobs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]core.BlobRef, error) {
-	rows, err := queryRecords(ctx, tx, "plugin_directories", query, func(r *storedRow) directoryFiles { return storedJSON(r, "files", decodeDirectoryFiles) }, args...)
+	rows, err := queryRecords(
+		ctx,
+		tx,
+		"plugin_directories",
+		query,
+		func(r *storedRow) directoryFiles { return storedJSON(r, "files", decodeDirectoryFiles) },
+		args...)
 	if err != nil {
 		return nil, err
 	}

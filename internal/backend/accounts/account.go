@@ -12,16 +12,26 @@ import (
 //
 //nolint:staticcheck // ST1005: user-facing Rust messages must remain verbatim.
 var (
-	ErrAlreadySetUp       = errors.New("This instance has its master account")
-	ErrTooManyAttempts    = errors.New("Too many failed logins; try again in a minute")
+	// ErrAlreadySetUp means the instance already has its master account.
+	ErrAlreadySetUp = errors.New("This instance has its master account")
+	// ErrTooManyAttempts means the login failure window is locked.
+	ErrTooManyAttempts = errors.New("Too many failed logins; try again in a minute")
+	// ErrInvalidCredentials means the email or password did not authenticate.
 	ErrInvalidCredentials = errors.New("Wrong email or password")
-	ErrCurrentPassword    = errors.New("Current password is wrong")
-	ErrUnauthenticated    = errors.New("Sign in first")
-	ErrOnlyMaster         = errors.New("Only the master creates admins")
-	ErrLowerRolesOnly     = errors.New("A role acts on lower roles only")
-	ErrAdminRequired      = errors.New("Account administration is for administrators")
-	ErrEmailTaken         = errors.New("An account has that email")
-	ErrUserNotFound       = errors.New("No such user")
+	// ErrCurrentPassword means the supplied current password did not verify.
+	ErrCurrentPassword = errors.New("Current password is wrong")
+	// ErrUnauthenticated means the caller has no authenticated account.
+	ErrUnauthenticated = errors.New("Sign in first")
+	// ErrOnlyMaster means the caller cannot create the requested role.
+	ErrOnlyMaster = errors.New("Only the master creates admins")
+	// ErrLowerRolesOnly means the caller cannot act on the target role.
+	ErrLowerRolesOnly = errors.New("A role acts on lower roles only")
+	// ErrAdminRequired means the operation requires an administrator.
+	ErrAdminRequired = errors.New("Account administration is for administrators")
+	// ErrEmailTaken means an account already has the requested email.
+	ErrEmailTaken = errors.New("An account has that email")
+	// ErrUserNotFound means the target account does not exist.
+	ErrUserNotFound = errors.New("No such user")
 )
 
 // AccountStore is the control database's account boundary.
@@ -129,7 +139,11 @@ func (a *Accounts) signIn(ctx context.Context, user webapi.UserDTO) (SignedIn, e
 }
 
 // SetNickname changes the authenticated caller's display name.
-func (a *Accounts) SetNickname(ctx context.Context, caller webapi.UserID, patch webapi.NicknamePatch) (webapi.UserDTO, error) {
+func (a *Accounts) SetNickname(
+	ctx context.Context,
+	caller webapi.UserID,
+	patch webapi.NicknamePatch,
+) (webapi.UserDTO, error) {
 	if err := patch.Validate(); err != nil {
 		return webapi.UserDTO{}, err
 	}
@@ -179,7 +193,11 @@ func (a *Accounts) Users(ctx context.Context, caller webapi.UserDTO) ([]webapi.U
 }
 
 // Create creates an account of a role below the authenticated administrator.
-func (a *Accounts) Create(ctx context.Context, caller webapi.UserDTO, request webapi.CreateUser) (webapi.UserDTO, error) {
+func (a *Accounts) Create(
+	ctx context.Context,
+	caller webapi.UserDTO,
+	request webapi.CreateUser,
+) (webapi.UserDTO, error) {
 	if !caller.Role.Outranks(webapi.RoleUser) {
 		return webapi.UserDTO{}, ErrAdminRequired
 	}
@@ -209,7 +227,12 @@ func (a *Accounts) Create(ctx context.Context, caller webapi.UserDTO, request we
 
 // ResetPassword resets a lower-role account's password, checking the target
 // and authorization before validating the new password.
-func (a *Accounts) ResetPassword(ctx context.Context, caller webapi.UserDTO, target webapi.UserID, reset webapi.PasswordReset) error {
+func (a *Accounts) ResetPassword(
+	ctx context.Context,
+	caller webapi.UserDTO,
+	target webapi.UserID,
+	reset webapi.PasswordReset,
+) error {
 	if !caller.Role.Outranks(webapi.RoleUser) {
 		return ErrAdminRequired
 	}

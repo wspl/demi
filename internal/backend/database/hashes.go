@@ -22,18 +22,7 @@ func ParsePasswordHash(text string) (PasswordHash, error) {
 	if len(parts) < 2 || len(parts) > 6 || parts[0] != "" {
 		return PasswordHash{}, fmt.Errorf("invalid password hash")
 	}
-	identifier := func(s string) bool {
-		if len(s) == 0 || len(s) > 32 {
-			return false
-		}
-		for _, c := range s {
-			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
-				return false
-			}
-		}
-		return true
-	}
-	if !identifier(parts[1]) {
+	if !validPHCIdentifier(parts[1]) {
 		return PasswordHash{}, fmt.Errorf("invalid algorithm")
 	}
 	i := 2
@@ -47,44 +36,20 @@ func ParsePasswordHash(text string) (PasswordHash, error) {
 		i++
 	}
 	if i < len(parts) && strings.Contains(parts[i], "=") {
-		if len(parts[i]) > 127 {
-			return PasswordHash{}, fmt.Errorf("invalid parameters")
-		}
-		for _, param := range strings.Split(parts[i], ",") {
-			key, value, ok := strings.Cut(param, "=")
-			if !ok || !identifier(key) || len(value) > 64 {
-				return PasswordHash{}, fmt.Errorf("invalid parameters")
-			}
-			for _, c := range value {
-				if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') && !strings.ContainsRune("/+.-", c) {
-					return PasswordHash{}, fmt.Errorf("invalid parameter value")
-				}
-			}
+		if err := checkPHCParameters(parts[i]); err != nil {
+			return PasswordHash{}, err
 		}
 		i++
 	}
 	if i < len(parts) {
-		salt := parts[i]
-		if len(salt) < 4 || len(salt) > 64 {
-			return PasswordHash{}, fmt.Errorf("invalid salt length")
-		}
-		for _, c := range salt {
-			if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') && !strings.ContainsRune("/+.-", c) {
-				return PasswordHash{}, fmt.Errorf("invalid salt")
-			}
+		if err := checkPHCSalt(parts[i]); err != nil {
+			return PasswordHash{}, err
 		}
 		i++
 	}
 	if i < len(parts) {
-		if strings.ContainsAny(parts[i], "\r\n") {
-			return PasswordHash{}, fmt.Errorf("invalid hash")
-		}
-		hash, err := base64.RawStdEncoding.Strict().DecodeString(parts[i])
-		if err != nil {
-			return PasswordHash{}, fmt.Errorf("invalid hash: %w", err)
-		}
-		if len(hash) < 10 || len(hash) > 64 {
-			return PasswordHash{}, fmt.Errorf("invalid hash length")
+		if err := checkPHCHash(parts[i]); err != nil {
+			return PasswordHash{}, err
 		}
 		i++
 	}
@@ -130,4 +95,63 @@ func (h CodeHash) Text() string { return h.value }
 // Matches compares in constant time without revealing a guess's matching prefix.
 func (h CodeHash) Matches(stored string) bool {
 	return subtle.ConstantTimeCompare([]byte(h.value), []byte(stored)) == 1
+}
+
+// validPHCIdentifier checks PHC algorithm and parameter names without selecting an algorithm.
+func validPHCIdentifier(s string) bool {
+	if len(s) == 0 || len(s) > 32 {
+		return false
+	}
+	for _, c := range s {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func checkPHCParameters(text string) error {
+	if len(text) > 127 {
+		return fmt.Errorf("invalid parameters")
+	}
+	for _, param := range strings.Split(text, ",") {
+		key, value, ok := strings.Cut(param, "=")
+		if !ok || !validPHCIdentifier(key) || len(value) > 64 {
+			return fmt.Errorf("invalid parameters")
+		}
+		for _, c := range value {
+			if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') &&
+				!strings.ContainsRune("/+.-", c) {
+				return fmt.Errorf("invalid parameter value")
+			}
+		}
+	}
+	return nil
+}
+
+func checkPHCSalt(salt string) error {
+	if len(salt) < 4 || len(salt) > 64 {
+		return fmt.Errorf("invalid salt length")
+	}
+	for _, c := range salt {
+		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') &&
+			!strings.ContainsRune("/+.-", c) {
+			return fmt.Errorf("invalid salt")
+		}
+	}
+	return nil
+}
+
+func checkPHCHash(text string) error {
+	if strings.ContainsAny(text, "\r\n") {
+		return fmt.Errorf("invalid hash")
+	}
+	hash, err := base64.RawStdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		return fmt.Errorf("invalid hash: %w", err)
+	}
+	if len(hash) < 10 || len(hash) > 64 {
+		return fmt.Errorf("invalid hash length")
+	}
+	return nil
 }

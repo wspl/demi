@@ -23,18 +23,31 @@ func (s *accountStore) AccountByEmail(context.Context, webapi.EmailAddress) (*da
 	s.lookups++
 	return s.account, nil
 }
+
 func (s *accountStore) Account(context.Context, webapi.UserID) (*database.Account, error) {
 	return s.account, nil
 }
+
 func (s *accountStore) SetPassword(context.Context, webapi.UserID, database.PasswordHash) error {
 	s.passwordWrites++
 	return nil
 }
-func (s *accountStore) CreateUser(_ context.Context, email webapi.EmailAddress, _ database.PasswordHash, role webapi.Role) (*webapi.UserDTO, error) {
+
+func (s *accountStore) CreateUser(
+	_ context.Context,
+	email webapi.EmailAddress,
+	_ database.PasswordHash,
+	role webapi.Role,
+) (*webapi.UserDTO, error) {
 	s.createdRole = role
 	return &webapi.UserDTO{ID: "new", Email: email, Role: role}, nil
 }
-func (s *accountStore) CreateMaster(context.Context, webapi.EmailAddress, database.PasswordHash) (*webapi.UserDTO, error) {
+
+func (s *accountStore) CreateMaster(
+	context.Context,
+	webapi.EmailAddress,
+	database.PasswordHash,
+) (*webapi.UserDTO, error) {
 	if s.account != nil {
 		return nil, nil
 	}
@@ -56,6 +69,7 @@ func (p *testPasswords) Verify(_ context.Context, _ webapi.Password, stored *dat
 	}
 	return p.valid && stored != nil, nil
 }
+
 func (p *testPasswords) Hash(context.Context, webapi.Password) (database.PasswordHash, error) {
 	p.hashed++
 	return database.PasswordHash{}, nil
@@ -122,7 +136,15 @@ func TestAccountAdministrationChecksRolesBeforeHashing(t *testing.T) {
 	if _, err := service.Create(t.Context(), admin, create); !errors.Is(err, ErrOnlyMaster) {
 		t.Fatalf("admin creating admin: %v", err)
 	}
-	if err := service.ResetPassword(t.Context(), admin, "target", webapi.PasswordReset{Password: "password123"}); !errors.Is(err, ErrLowerRolesOnly) {
+	if err := service.ResetPassword(
+		t.Context(),
+		admin,
+		"target",
+		webapi.PasswordReset{Password: "password123"},
+	); !errors.Is(
+		err,
+		ErrLowerRolesOnly,
+	) {
 		t.Fatalf("peer reset: %v", err)
 	}
 	if passwords.hashed != 0 || store.passwordWrites != 0 {
@@ -135,7 +157,12 @@ func TestAccountAdministrationChecksRolesBeforeHashing(t *testing.T) {
 	if store.createdRole != webapi.RoleAdmin {
 		t.Fatal("wrong created role")
 	}
-	if err := service.ResetPassword(t.Context(), master, "target", webapi.PasswordReset{Password: "password123"}); err != nil {
+	if err := service.ResetPassword(
+		t.Context(),
+		master,
+		"target",
+		webapi.PasswordReset{Password: "password123"},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if passwords.hashed != 2 || store.passwordWrites != 1 {

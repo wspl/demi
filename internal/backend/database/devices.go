@@ -12,14 +12,38 @@ import (
 
 // CreateDevice stores a device the user paired, with the hash of the token its
 // runner receives.
-func (c *ControlService) CreateDevice(ctx context.Context, user webapi.UserID, name string, platform runnerwire.RunnerPlatform, token TokenHash) (DeviceRecord, error) {
+func (c *ControlService) CreateDevice(
+	ctx context.Context,
+	user webapi.UserID,
+	name string,
+	platform runnerwire.RunnerPlatform,
+	token TokenHash,
+) (DeviceRecord, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (DeviceRecord, error) {
 		at, err := now.Millisecond()
 		if err != nil {
 			return DeviceRecord{}, err
 		}
-		d := DeviceRecord{ID: webapi.DeviceID(uuid.NewString()), User: user, Kind: webapi.DeviceKindUser, Name: name, Platform: platform, ClaimedAt: now}
-		return d, execSQL(ctx, tx, "INSERT INTO devices (id,user_id,kind,name,platform,token_hash,claimed_at,last_seen_at) VALUES (?,?,'user',?,?,?,?,NULL)", d.ID, user, name, platform, token.Text(), at)
+		d := DeviceRecord{
+			ID:        webapi.DeviceID(uuid.NewString()),
+			User:      user,
+			Kind:      webapi.DeviceKindUser,
+			Name:      name,
+			Platform:  platform,
+			ClaimedAt: now,
+		}
+		return d, execSQL(
+			ctx,
+			tx,
+			`INSERT INTO devices (id,user_id,kind,name,platform,token_hash,claimed_at,last_seen_at)
+VALUES (?,?,'user',?,?,?,?,NULL)`,
+			d.ID,
+			user,
+			name,
+			platform,
+			token.Text(),
+			at,
+		)
 	})
 }
 
@@ -40,7 +64,14 @@ func (c *ControlService) DeviceByToken(ctx context.Context, token TokenHash) (*D
 // ManagedDevice returns the user's Cloud device, when its first use made it.
 func (c *ControlService) ManagedDevice(ctx context.Context, user webapi.UserID) (*DeviceRecord, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*DeviceRecord, error) {
-		return queryRecord(ctx, tx, "devices", "SELECT * FROM devices WHERE kind = 'managed' AND user_id = ?", deviceRow, user)
+		return queryRecord(
+			ctx,
+			tx,
+			"devices",
+			"SELECT * FROM devices WHERE kind = 'managed' AND user_id = ?",
+			deviceRow,
+			user,
+		)
 	})
 }
 
@@ -53,15 +84,36 @@ func (c *ControlService) ManagedDeviceOrCreate(ctx context.Context, user webapi.
 		if err != nil {
 			return DeviceRecord{}, err
 		}
-		if err := execSQL(ctx, tx, "INSERT INTO devices (id,user_id,kind,name,platform,token_hash,claimed_at,last_seen_at) VALUES (?,?,'managed','Cloud','linux',NULL,?,NULL) ON CONFLICT DO NOTHING", uuid.NewString(), user, at); err != nil {
+		if err := execSQL(
+			ctx,
+			tx,
+			`INSERT INTO devices (id,user_id,kind,name,platform,token_hash,claimed_at,last_seen_at)
+VALUES (?,?,'managed','Cloud','linux',NULL,?,NULL)
+ON CONFLICT DO NOTHING`,
+			uuid.NewString(),
+			user,
+			at,
+		); err != nil {
 			return DeviceRecord{}, err
 		}
-		d, err := queryRecord(ctx, tx, "devices", "SELECT * FROM devices WHERE kind = 'managed' AND user_id = ?", deviceRow, user)
+		d, err := queryRecord(
+			ctx,
+			tx,
+			"devices",
+			"SELECT * FROM devices WHERE kind = 'managed' AND user_id = ?",
+			deviceRow,
+			user,
+		)
 		if err != nil {
 			return DeviceRecord{}, err
 		}
 		if d == nil {
-			return DeviceRecord{}, &Error{Kind: Corrupt, Table: "devices", Column: "kind", Reason: "the user's Cloud device was neither found nor made"}
+			return DeviceRecord{}, &Error{
+				Kind:   Corrupt,
+				Table:  "devices",
+				Column: "kind",
+				Reason: "the user's Cloud device was neither found nor made",
+			}
 		}
 		return *d, nil
 	})
@@ -70,7 +122,14 @@ func (c *ControlService) ManagedDeviceOrCreate(ctx context.Context, user webapi.
 // PairedDevices returns the devices the user paired, oldest first.
 func (c *ControlService) PairedDevices(ctx context.Context, user webapi.UserID) ([]DeviceRecord, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]DeviceRecord, error) {
-		return queryRecords(ctx, tx, "devices", "SELECT * FROM devices WHERE user_id = ? AND kind = 'user' ORDER BY claimed_at,id", deviceRow, user)
+		return queryRecords(
+			ctx,
+			tx,
+			"devices",
+			"SELECT * FROM devices WHERE user_id = ? AND kind = 'user' ORDER BY claimed_at,id",
+			deviceRow,
+			user,
+		)
 	})
 }
 
@@ -106,7 +165,15 @@ func (c *ControlService) TouchDeviceSeen(ctx context.Context, device webapi.Devi
 }
 
 func deviceRow(r *storedRow) DeviceRecord {
-	d := DeviceRecord{ID: checked(r, "id", webapi.ParseDeviceID), User: checked(r, "user_id", webapi.ParseUserID), Kind: webapi.DeviceKind(r.text("kind")), Name: r.text("name"), Platform: runnerwire.RunnerPlatform(r.text("platform")), ClaimedAt: r.instant("claimed_at"), LastSeenAt: r.optionalInstant("last_seen_at")}
+	d := DeviceRecord{
+		ID:         checked(r, "id", webapi.ParseDeviceID),
+		User:       checked(r, "user_id", webapi.ParseUserID),
+		Kind:       webapi.DeviceKind(r.text("kind")),
+		Name:       r.text("name"),
+		Platform:   runnerwire.RunnerPlatform(r.text("platform")),
+		ClaimedAt:  r.instant("claimed_at"),
+		LastSeenAt: r.optionalInstant("last_seen_at"),
+	}
 	r.bad("kind", d.Kind.Validate())
 	r.bad("platform", d.Platform.Validate())
 	return d

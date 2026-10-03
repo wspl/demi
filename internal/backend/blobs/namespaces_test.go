@@ -108,7 +108,12 @@ func TestPutWaitsForDeletionAndStoresAgain(t *testing.T) {
 					deletion <- deleteResult{deleted, err}
 				})
 				<-held.reached
-				if err := namespace.CommitUses([]core.BlobRef{ref}); !errors.Is(err, &store.Error{Kind: store.OperationFailed}) {
+				if err := namespace.CommitUses(
+					[]core.BlobRef{ref},
+				); !errors.Is(
+					err,
+					&store.Error{Kind: store.OperationFailed},
+				) {
 					t.Fatalf("commit during deletion = %v", err)
 				}
 				if deleted, err := namespace.DeleteUnused(ctx, ref, day); deleted || err != nil {
@@ -280,7 +285,6 @@ func TestS3BucketHoldsEachBlobOnceUnderUserNamespace(t *testing.T) {
 			if data, found, err := ana.Read(ctx, empty); err != nil || !found || len(data) != 0 {
 				t.Fatalf("empty blob = %q, %t, %v", data, found, err)
 			}
-
 		})
 	}
 }
@@ -291,7 +295,11 @@ func TestS3ConfigurationNamesBucketAndRegionOverHTTPS(t *testing.T) {
 		name, text string
 		valid      bool
 	}{
-		{"full", `{"bucket":"demi","region":"eu-west-1","endpoint":"https://objects.example.com","forcePathStyle":true}`, true},
+		{
+			"full",
+			`{"bucket":"demi","region":"eu-west-1","endpoint":"https://objects.example.com","forcePathStyle":true}`,
+			true,
+		},
 		{"defaults", `{"bucket":"demi","region":"eu-west-1"}`, true},
 		{"null endpoint", `{"bucket":"demi","region":"eu-west-1","endpoint":null}`, true},
 		{"http", `{"bucket":"demi","region":"eu-west-1","endpoint":"http://objects.example.com"}`, false},
@@ -301,16 +309,16 @@ func TestS3ConfigurationNamesBucketAndRegionOverHTTPS(t *testing.T) {
 		{"missing", `{"region":"eu-west-1"}`, false},
 		{"invalid URL", `{"bucket":"demi","region":"eu-west-1","endpoint":"https://%zz"}`, false},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := os.WriteFile(path, []byte(tc.text), 0600); err != nil {
+	for _, scenario := range cases {
+		t.Run(scenario.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(scenario.text), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			config, err := blobs.ReadS3Config(t.Context(), path)
-			if (err == nil) != tc.valid {
+			if (err == nil) != scenario.valid {
 				t.Fatalf("configuration = %+v, %v", config, err)
 			}
-			if tc.name == "full" && !config.ForcePathStyle {
+			if scenario.name == "full" && !config.ForcePathStyle {
 				t.Fatal("path style lost")
 			}
 		})

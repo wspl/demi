@@ -51,15 +51,36 @@ func HolderName(holder store.Holder) string {
 }
 
 // WriteBlock replaces a block and its index rows, adding old and new blobs to touched.
-func WriteBlock(ctx context.Context, tx *sql.Tx, node core.NodeID, index int, block core.Block, touched *[]core.BlobRef) error {
+func WriteBlock(
+	ctx context.Context,
+	tx *sql.Tx,
+	node core.NodeID,
+	index int,
+	block core.Block,
+	touched *[]core.BlobRef,
+) error {
 	document, err := encoded(block)
 	if err != nil {
 		return err
 	}
-	if err := execSQL(ctx, tx, "INSERT INTO blocks (node_id,idx,block) VALUES (?,?,?) ON CONFLICT (node_id,idx) DO UPDATE SET block=excluded.block", node, index, document); err != nil {
+	if err := execSQL(
+		ctx,
+		tx,
+		"INSERT INTO blocks (node_id,idx,block) VALUES (?,?,?) ON CONFLICT (node_id,idx) DO UPDATE SET block=excluded.block",
+		node,
+		index,
+		document,
+	); err != nil {
 		return err
 	}
-	if err := removedBlobs(ctx, tx, "DELETE FROM blob_refs WHERE node_id = ? AND idx = ? RETURNING blob", node, index, touched); err != nil {
+	if err := removedBlobs(
+		ctx,
+		tx,
+		"DELETE FROM blob_refs WHERE node_id = ? AND idx = ? RETURNING blob",
+		node,
+		index,
+		touched,
+	); err != nil {
 		return err
 	}
 	for _, row := range BlobRows(block) {
@@ -67,7 +88,17 @@ func WriteBlock(ctx context.Context, tx *sql.Tx, node core.NodeID, index int, bl
 		if err != nil {
 			return err
 		}
-		if err := execSQL(ctx, tx, "INSERT INTO blob_refs (node_id,idx,part,blob,holder,at) VALUES (?,?,?,?,?,?)", node, index, row.Part, row.Blob, HolderName(row.Holder), at); err != nil {
+		if err := execSQL(
+			ctx,
+			tx,
+			"INSERT INTO blob_refs (node_id,idx,part,blob,holder,at) VALUES (?,?,?,?,?,?)",
+			node,
+			index,
+			row.Part,
+			row.Blob,
+			HolderName(row.Holder),
+			at,
+		); err != nil {
 			return err
 		}
 		*touched = append(*touched, row.Blob)
@@ -77,7 +108,14 @@ func WriteBlock(ctx context.Context, tx *sql.Tx, node core.NodeID, index int, bl
 
 // TruncateBlocks removes blocks and index rows from index on, adding removed blobs to touched.
 func TruncateBlocks(ctx context.Context, tx *sql.Tx, node core.NodeID, index int, touched *[]core.BlobRef) error {
-	if err := removedBlobs(ctx, tx, "DELETE FROM blob_refs WHERE node_id = ? AND idx >= ? RETURNING blob", node, index, touched); err != nil {
+	if err := removedBlobs(
+		ctx,
+		tx,
+		"DELETE FROM blob_refs WHERE node_id = ? AND idx >= ? RETURNING blob",
+		node,
+		index,
+		touched,
+	); err != nil {
 		return err
 	}
 	return execSQL(ctx, tx, "DELETE FROM blocks WHERE node_id = ? AND idx >= ?", node, index)
@@ -85,7 +123,23 @@ func TruncateBlocks(ctx context.Context, tx *sql.Tx, node core.NodeID, index int
 
 // SubtreeBlobs returns index blobs referenced by node and its descendants.
 func SubtreeBlobs(ctx context.Context, tx *sql.Tx, node core.NodeID) ([]core.BlobRef, error) {
-	return queryRecords(ctx, tx, "blob_refs", `WITH RECURSIVE subtree (id) AS (SELECT ? UNION SELECT nodes.id FROM nodes JOIN subtree ON nodes.parent_id=subtree.id) SELECT blob FROM blob_refs WHERE node_id IN subtree`, func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) }, node)
+	return queryRecords(
+		ctx,
+		tx,
+		"blob_refs",
+		`WITH RECURSIVE subtree (id) AS (
+    SELECT ?
+    UNION
+    SELECT nodes.id
+    FROM nodes
+    JOIN subtree ON nodes.parent_id=subtree.id
+)
+SELECT blob
+FROM blob_refs
+WHERE node_id IN subtree`,
+		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+		node,
+	)
 }
 
 // Retirable reads indexed nodes with expired tool media and applies the agent's rule.
@@ -102,9 +156,20 @@ func Retirable(ctx context.Context, tx *sql.Tx, retirement transcript.Retirement
 		id    core.NodeID
 		count int64
 	}
-	nodes, err := queryRecords(ctx, tx, "nodes", "SELECT id,block_count FROM nodes WHERE id IN (SELECT node_id FROM blob_refs WHERE holder = ? AND at < ?) ORDER BY id", func(r *storedRow) nodeCount {
-		return nodeCount{id: checked(r, "id", core.ParseNodeID), count: r.integer("block_count")}
-	}, HolderName(store.ToolResult), expired)
+	nodes, err := queryRecords(
+		ctx,
+		tx,
+		"nodes",
+		`SELECT id,block_count
+FROM nodes
+WHERE id IN (SELECT node_id FROM blob_refs WHERE holder = ? AND at < ?)
+ORDER BY id`,
+		func(r *storedRow) nodeCount {
+			return nodeCount{id: checked(r, "id", core.ParseNodeID), count: r.integer("block_count")}
+		},
+		HolderName(store.ToolResult),
+		expired,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -149,12 +214,24 @@ func References(ctx context.Context, tx *sql.Tx) ([]core.BlobRef, error) {
 	if err != nil {
 		return nil, err
 	}
-	indexed, err := queryRecords(ctx, tx, "blob_refs", "SELECT DISTINCT blob FROM blob_refs", func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) })
+	indexed, err := queryRecords(
+		ctx,
+		tx,
+		"blob_refs",
+		"SELECT DISTINCT blob FROM blob_refs",
+		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+	)
 	if err != nil {
 		return nil, err
 	}
 	refs = append(refs, indexed...)
-	states, err := queryRecords(ctx, tx, "nodes", "SELECT state FROM nodes", func(r *storedRow) store.CheckpointState { return storedJSON(r, "state", store.DecodeCheckpointState) })
+	states, err := queryRecords(
+		ctx,
+		tx,
+		"nodes",
+		"SELECT state FROM nodes",
+		func(r *storedRow) store.CheckpointState { return storedJSON(r, "state", store.DecodeCheckpointState) },
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +244,23 @@ func References(ctx context.Context, tx *sql.Tx) ([]core.BlobRef, error) {
 	return slices.Compact(refs), nil
 }
 
-func removedBlobs(ctx context.Context, tx *sql.Tx, query string, node core.NodeID, index int, touched *[]core.BlobRef) error {
-	rows, err := queryRecords(ctx, tx, "blob_refs", query, func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) }, node, index)
+func removedBlobs(
+	ctx context.Context,
+	tx *sql.Tx,
+	query string,
+	node core.NodeID,
+	index int,
+	touched *[]core.BlobRef,
+) error {
+	rows, err := queryRecords(
+		ctx,
+		tx,
+		"blob_refs",
+		query,
+		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+		node,
+		index,
+	)
 	if err != nil {
 		return err
 	}

@@ -20,6 +20,7 @@ type emailStore struct {
 func (s *emailStore) Account(context.Context, webapi.UserID) (*database.Account, error) {
 	return s.account, nil
 }
+
 func (s *emailStore) EmailInUse(context.Context, webapi.EmailAddress) (bool, error) {
 	return s.taken, nil
 }
@@ -45,26 +46,31 @@ func TestEmailStartRefusalsDoNotIssueChallenges(t *testing.T) {
 		{name: "wrong password", mail: true, account: true, want: InvalidCredentials},
 		{name: "address taken", mail: true, account: true, valid: true, taken: true, want: EmailTaken},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			store := &emailStore{taken: tc.taken}
-			if tc.account {
+	for _, scenario := range cases {
+		t.Run(scenario.name, func(t *testing.T) {
+			store := &emailStore{taken: scenario.taken}
+			if scenario.account {
 				store.account = &database.Account{}
 			}
-			passwords := &testPasswords{valid: tc.valid}
+			passwords := &testPasswords{valid: scenario.valid}
 			var mail AccountMail
-			if tc.mail {
+			if scenario.mail {
 				mail = unexpectedMail{t: t}
 			}
-			outcome, err := NewEmailChanges(store, passwords, mail, CodeKey{}).Start(t.Context(), "caller", "new@example.test", "password")
+			outcome, err := NewEmailChanges(
+				store,
+				passwords,
+				mail,
+				CodeKey{},
+			).Start(t.Context(), "caller", "new@example.test", "password")
 			if err != nil {
 				t.Fatal(err)
 			}
 			refused, ok := outcome.(*StartRefused)
-			if !ok || refused.Reason != tc.want {
+			if !ok || refused.Reason != scenario.want {
 				t.Fatalf("got %#v", outcome)
 			}
-			if !tc.account && passwords.verified != 0 {
+			if !scenario.account && passwords.verified != 0 {
 				t.Fatal("absent account verified password")
 			}
 		})

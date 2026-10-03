@@ -35,7 +35,9 @@ func Control(ctx context.Context, t testing.TB, clock core.Clock) *database.Cont
 // Master creates the fixture's master@example.test account with the Rust test PHC hash.
 func Master(ctx context.Context, t testing.TB, control *database.ControlService) webapi.UserDTO {
 	t.Helper()
-	hash, err := database.ParsePasswordHash("$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$0mUbQTTMhhaEBFGMq7WTZxOlVoS9sY3qVqLiV7Q1Izo")
+	hash, err := database.ParsePasswordHash(
+		"$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$0mUbQTTMhhaEBFGMq7WTZxOlVoS9sY3qVqLiV7Q1Izo",
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +57,13 @@ func Master(ctx context.Context, t testing.TB, control *database.ControlService)
 
 // Execute runs SQL with text parameters behind the control service's back, for
 // black-box corruption tests. It fails the test on an execution error.
-func Execute(ctx context.Context, t testing.TB, control *database.ControlService, statement string, parameters ...string) {
+func Execute(
+	ctx context.Context,
+	t testing.TB,
+	control *database.ControlService,
+	statement string,
+	parameters ...string,
+) {
 	t.Helper()
 	value, ok := controlPaths.Load(control)
 	if !ok {

@@ -38,11 +38,16 @@ type StartRefusal string
 
 // Reasons an email change may not start.
 const (
-	MailUnavailable    StartRefusal = "mail_unavailable"
+	// MailUnavailable means no mail delivery service is configured.
+	MailUnavailable StartRefusal = "mail_unavailable"
+	// InvalidCredentials means the current account credentials did not authenticate.
 	InvalidCredentials StartRefusal = "invalid_credentials"
-	EmailTaken         StartRefusal = "email_taken"
-	CoolingDown        StartRefusal = "cooling_down"
-	MailFailed         StartRefusal = "mail_failed"
+	// EmailTaken means an account already has the requested email.
+	EmailTaken StartRefusal = "email_taken"
+	// CoolingDown means the previous challenge was sent within the cooldown.
+	CoolingDown StartRefusal = "cooling_down"
+	// MailFailed means the verification mail could not be delivered.
+	MailFailed StartRefusal = "mail_failed"
 )
 
 // StartOutcome either issues a challenge or refuses it.
@@ -66,7 +71,13 @@ type EmailStore interface {
 	EmailInUse(context.Context, webapi.EmailAddress) (bool, error)
 	IssueEmailChallenge(context.Context, database.ChallengeIssue, database.ChallengePolicy) (*core.Timestamp, error)
 	DeleteEmailChallenge(context.Context, webapi.UserID, string) error
-	ConfirmEmailChallenge(context.Context, webapi.UserID, string, database.CodeHash, uint32) (database.ChallengeOutcome, error)
+	ConfirmEmailChallenge(
+		context.Context,
+		webapi.UserID,
+		string,
+		database.CodeHash,
+		uint32,
+	) (database.ChallengeOutcome, error)
 }
 
 // PasswordVerifier checks current account credentials.
@@ -92,7 +103,12 @@ func challengePolicy() database.ChallengePolicy {
 }
 
 // Start checks the current password and sends a code to email.
-func (e *EmailChanges) Start(ctx context.Context, user webapi.UserID, email webapi.EmailAddress, password webapi.Password) (StartOutcome, error) {
+func (e *EmailChanges) Start(
+	ctx context.Context,
+	user webapi.UserID,
+	email webapi.EmailAddress,
+	password webapi.Password,
+) (StartOutcome, error) {
 	if e.mail == nil {
 		return &StartRefused{Reason: MailUnavailable}, nil
 	}
@@ -117,6 +133,36 @@ func (e *EmailChanges) Start(ctx context.Context, user webapi.UserID, email weba
 	if taken {
 		return &StartRefused{Reason: EmailTaken}, nil
 	}
+	return e.issueChallenge(ctx, user, email, account.PasswordHash)
+}
+
+// Confirm changes the address when code is the one the challenge sent.
+func (e *EmailChanges) Confirm(
+	ctx context.Context,
+	user webapi.UserID,
+	challenge, code string,
+) (database.ChallengeOutcome, error) {
+	return e.control.ConfirmEmailChallenge(
+		ctx,
+		user,
+		challenge,
+		database.HashCode(e.key[:], challenge, code),
+		challengePolicy().Attempts,
+	)
+}
+
+// Format keeps the email-change key out of diagnostics.
+func (CodeKey) Format(state fmt.State, _ rune) {
+	// fmt owns the destination and reports write errors to its caller.
+	_, _ = state.Write([]byte("CodeKey(..)"))
+}
+
+func (e *EmailChanges) issueChallenge(
+	ctx context.Context,
+	user webapi.UserID,
+	email webapi.EmailAddress,
+	passwordHash database.PasswordHash,
+) (StartOutcome, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("generate email challenge: %w", err)
@@ -126,7 +172,13 @@ func (e *EmailChanges) Start(ctx context.Context, user webapi.UserID, email weba
 		return nil, fmt.Errorf("generate verification code: %w", err)
 	}
 	code := fmt.Sprintf("%06d", number.Int64())
-	issue := database.ChallengeIssue{User: user, ID: id.String(), Email: email, PasswordHash: account.PasswordHash, CodeHash: database.HashCode(e.key[:], id.String(), code)}
+	issue := database.ChallengeIssue{
+		User:         user,
+		ID:           id.String(),
+		Email:        email,
+		PasswordHash: passwordHash,
+		CodeHash:     database.HashCode(e.key[:], id.String(), code),
+	}
 	expires, err := e.control.IssueEmailChallenge(ctx, issue, challengePolicy())
 	if err != nil {
 		return nil, err
@@ -145,15 +197,4 @@ func (e *EmailChanges) Start(ctx context.Context, user webapi.UserID, email weba
 		return &StartRefused{Reason: MailFailed}, nil
 	}
 	return &StartIssued{Challenge: webapi.EmailChallengeDTO{ID: issue.ID, Email: email, ExpiresAt: *expires}}, nil
-}
-
-// Confirm changes the address when code is the one the challenge sent.
-func (e *EmailChanges) Confirm(ctx context.Context, user webapi.UserID, challenge, code string) (database.ChallengeOutcome, error) {
-	return e.control.ConfirmEmailChallenge(ctx, user, challenge, database.HashCode(e.key[:], challenge, code), challengePolicy().Attempts)
-}
-
-// Format keeps the email-change key out of diagnostics.
-func (CodeKey) Format(state fmt.State, _ rune) {
-	// fmt owns the destination and reports write errors to its caller.
-	_, _ = state.Write([]byte("CodeKey(..)"))
 }

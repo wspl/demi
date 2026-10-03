@@ -20,42 +20,47 @@ type credentialLifetime struct {
 	pending sync.WaitGroup
 }
 
-func (p *credentialLifetime) Retrieve(ctx context.Context) (aws.Credentials, error) {
-	p.mu.Lock()
-	if p.closing {
-		p.mu.Unlock()
+// Retrieve owns a credential refresh until completion or bucket shutdown.
+func (l *credentialLifetime) Retrieve(ctx context.Context) (aws.Credentials, error) {
+	l.mu.Lock()
+	if l.closing {
+		l.mu.Unlock()
 		return aws.Credentials{}, context.Canceled
 	}
-	p.pending.Add(1)
-	p.mu.Unlock()
-	defer p.pending.Done()
+	l.pending.Add(1)
+	l.mu.Unlock()
+	defer l.pending.Done()
 	ctx, cancel := context.WithCancel(ctx)
-	stop := context.AfterFunc(p.ctx, cancel)
+	stop := context.AfterFunc(l.ctx, cancel)
 	defer stop()
 	defer cancel()
-	return p.provider.Retrieve(ctx)
+	return l.provider.Retrieve(ctx)
 }
 
 // close cancels and joins refreshes before the bucket releases its transport.
-func (p *credentialLifetime) close() {
-	p.mu.Lock()
-	p.closing = true
-	p.mu.Unlock()
-	p.cancel()
-	p.pending.Wait()
+func (l *credentialLifetime) close() {
+	l.mu.Lock()
+	l.closing = true
+	l.mu.Unlock()
+	l.cancel()
+	l.pending.Wait()
 }
 
 // HandleFailToRefresh retains the SDK provider's refresh-failure policy.
-func (p *credentialLifetime) HandleFailToRefresh(ctx context.Context, previous aws.Credentials, err error) (aws.Credentials, error) {
-	if strategy, ok := p.provider.(aws.HandleFailRefreshCredentialsCacheStrategy); ok {
+func (l *credentialLifetime) HandleFailToRefresh(
+	ctx context.Context,
+	previous aws.Credentials,
+	err error,
+) (aws.Credentials, error) {
+	if strategy, ok := l.provider.(aws.HandleFailRefreshCredentialsCacheStrategy); ok {
 		return strategy.HandleFailToRefresh(ctx, previous, err)
 	}
 	return aws.Credentials{}, err
 }
 
 // AdjustExpiresBy retains the SDK provider's expiration adjustment policy.
-func (p *credentialLifetime) AdjustExpiresBy(value aws.Credentials, duration time.Duration) (aws.Credentials, error) {
-	if strategy, ok := p.provider.(aws.AdjustExpiresByCredentialsCacheStrategy); ok {
+func (l *credentialLifetime) AdjustExpiresBy(value aws.Credentials, duration time.Duration) (aws.Credentials, error) {
+	if strategy, ok := l.provider.(aws.AdjustExpiresByCredentialsCacheStrategy); ok {
 		return strategy.AdjustExpiresBy(value, duration)
 	}
 	if value.CanExpire {

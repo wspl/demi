@@ -11,7 +11,14 @@ import (
 
 // CreateExpose returns a new expose `id` of `user` on `device`, from now until `lifetime`
 // from now.
-func (c *ControlService) CreateExpose(ctx context.Context, id webapi.ExposeID, user webapi.UserID, device webapi.DeviceID, address webapi.ExposeAddress, lifetime time.Duration) (ExposeRecord, error) {
+func (c *ControlService) CreateExpose(
+	ctx context.Context,
+	id webapi.ExposeID,
+	user webapi.UserID,
+	device webapi.DeviceID,
+	address webapi.ExposeAddress,
+	lifetime time.Duration,
+) (ExposeRecord, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ExposeRecord, error) {
 		expiry, err := later(now, lifetime)
 		if err != nil {
@@ -26,7 +33,17 @@ func (c *ControlService) CreateExpose(ctx context.Context, id webapi.ExposeID, u
 			return ExposeRecord{}, err
 		}
 		r := ExposeRecord{ID: id, User: user, Device: device, Address: address, CreatedAt: now, ExpiresAt: expiry}
-		return r, execSQL(ctx, tx, "INSERT INTO exposes (id,user_id,device_id,address,created_at,expires_at) VALUES (?,?,?,?,?,?)", id, user, device, address, at, end)
+		return r, execSQL(
+			ctx,
+			tx,
+			"INSERT INTO exposes (id,user_id,device_id,address,created_at,expires_at) VALUES (?,?,?,?,?,?)",
+			id,
+			user,
+			device,
+			address,
+			at,
+			end,
+		)
 	})
 }
 
@@ -41,7 +58,14 @@ func (c *ControlService) Expose(ctx context.Context, id webapi.ExposeID) (*Expos
 // that finds none expired writes nothing.
 func (c *ControlService) UserExposes(ctx context.Context, user webapi.UserID) (UserExposes, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (UserExposes, error) {
-		rows, err := queryRecords(ctx, tx, "exposes", "SELECT * FROM exposes WHERE user_id = ? ORDER BY expires_at,id", exposeRow, user)
+		rows, err := queryRecords(
+			ctx,
+			tx,
+			"exposes",
+			"SELECT * FROM exposes WHERE user_id = ? ORDER BY expires_at,id",
+			exposeRow,
+			user,
+		)
 		if err != nil {
 			return UserExposes{}, err
 		}
@@ -62,7 +86,12 @@ func (c *ControlService) UserExposes(ctx context.Context, user webapi.UserID) (U
 
 // RenewExpose moves the expiry of the live expose `id` of `user` to `lifetime` from
 // now; none when `user` has no such live expose.
-func (c *ControlService) RenewExpose(ctx context.Context, id webapi.ExposeID, user webapi.UserID, lifetime time.Duration) (*ExposeRecord, error) {
+func (c *ControlService) RenewExpose(
+	ctx context.Context,
+	id webapi.ExposeID,
+	user webapi.UserID,
+	lifetime time.Duration,
+) (*ExposeRecord, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (*ExposeRecord, error) {
 		expiry, err := later(now, lifetime)
 		if err != nil {
@@ -76,7 +105,17 @@ func (c *ControlService) RenewExpose(ctx context.Context, id webapi.ExposeID, us
 		if err != nil {
 			return nil, err
 		}
-		return queryRecord(ctx, tx, "exposes", "UPDATE exposes SET expires_at = ? WHERE id = ? AND user_id = ? AND expires_at > ? RETURNING *", exposeRow, end, id, user, at)
+		return queryRecord(
+			ctx,
+			tx,
+			"exposes",
+			"UPDATE exposes SET expires_at = ? WHERE id = ? AND user_id = ? AND expires_at > ? RETURNING *",
+			exposeRow,
+			end,
+			id,
+			user,
+			at,
+		)
 	})
 }
 
@@ -90,7 +129,11 @@ func (c *ControlService) DeleteExpose(ctx context.Context, id webapi.ExposeID) e
 // DeleteExpiredExpose deletes id only if its current expiry is at or before
 // observedAt. A renewal committed after the caller read the row survives.
 // The result reports whether this transaction removed the row.
-func (c *ControlService) DeleteExpiredExpose(ctx context.Context, id webapi.ExposeID, observedAt core.Timestamp) (bool, error) {
+func (c *ControlService) DeleteExpiredExpose(
+	ctx context.Context,
+	id webapi.ExposeID,
+	observedAt core.Timestamp,
+) (bool, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
 		at, err := observedAt.Millisecond()
 		if err != nil {
@@ -108,7 +151,14 @@ func (c *ControlService) DeleteExpiredExpose(ctx context.Context, id webapi.Expo
 // DeleteDeviceExposes deletes every expose on `device`; answers their ids.
 func (c *ControlService) DeleteDeviceExposes(ctx context.Context, device webapi.DeviceID) ([]webapi.ExposeID, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]webapi.ExposeID, error) {
-		return queryRecords(ctx, tx, "exposes", "DELETE FROM exposes WHERE device_id = ? RETURNING id", func(r *storedRow) webapi.ExposeID { return checked(r, "id", webapi.ParseExposeID) }, device)
+		return queryRecords(
+			ctx,
+			tx,
+			"exposes",
+			"DELETE FROM exposes WHERE device_id = ? RETURNING id",
+			func(r *storedRow) webapi.ExposeID { return checked(r, "id", webapi.ParseExposeID) },
+			device,
+		)
 	})
 }
 
@@ -116,10 +166,21 @@ func (c *ControlService) DeleteDeviceExposes(ctx context.Context, device webapi.
 // does: the machine manager has stopped every Cloud by then.
 func (c *ControlService) DeleteCloudExposes(ctx context.Context) error {
 	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
-		return execSQL(ctx, tx, "DELETE FROM exposes WHERE device_id IN (SELECT id FROM devices WHERE kind = 'managed')")
+		return execSQL(
+			ctx,
+			tx,
+			"DELETE FROM exposes WHERE device_id IN (SELECT id FROM devices WHERE kind = 'managed')",
+		)
 	})
 }
 
 func exposeRow(r *storedRow) ExposeRecord {
-	return ExposeRecord{ID: checked(r, "id", webapi.ParseExposeID), User: checked(r, "user_id", webapi.ParseUserID), Device: checked(r, "device_id", webapi.ParseDeviceID), Address: checked(r, "address", webapi.ParseExposeAddress), CreatedAt: r.instant("created_at"), ExpiresAt: r.instant("expires_at")}
+	return ExposeRecord{
+		ID:        checked(r, "id", webapi.ParseExposeID),
+		User:      checked(r, "user_id", webapi.ParseUserID),
+		Device:    checked(r, "device_id", webapi.ParseDeviceID),
+		Address:   checked(r, "address", webapi.ParseExposeAddress),
+		CreatedAt: r.instant("created_at"),
+		ExpiresAt: r.instant("expires_at"),
+	}
 }

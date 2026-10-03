@@ -41,7 +41,12 @@ type preferenceStore struct {
 func (*preferenceStore) Preferences(context.Context, webapi.UserID) (webapi.Preferences, error) {
 	return webapi.Preferences{}, nil
 }
-func (s *preferenceStore) PatchPreferences(_ context.Context, _ webapi.UserID, patch webapi.PreferencesPatch) (webapi.Preferences, error) {
+
+func (s *preferenceStore) PatchPreferences(
+	_ context.Context,
+	_ webapi.UserID,
+	patch webapi.PreferencesPatch,
+) (webapi.Preferences, error) {
 	s.patch = &patch
 	return webapi.Preferences{Locale: patch.Locale}, nil
 }
@@ -50,14 +55,20 @@ func TestPreferencePatchCanonicalizesBeforeStorage(t *testing.T) {
 	control := databasetest.Control(t.Context(), t, core.SystemClock{})
 	user := databasetest.Master(t.Context(), t, control)
 	service := NewPreferences(control)
-	initial, err := webapi.DecodePreferencesPatch([]byte(`{"appearance":{"theme":"dark"},"shortcuts":{"new":"N","sidebar":"S"}}`))
+	initial, err := webapi.DecodePreferencesPatch(
+		[]byte(`{"appearance":{"theme":"dark"},"shortcuts":{"new":"N","sidebar":"S"}}`),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.Patch(t.Context(), user.ID, initial); err != nil {
 		t.Fatal(err)
 	}
-	patch, err := webapi.DecodePreferencesPatch([]byte(`{"locale":{"timeZone":"asia/shanghai","languages":["zh-cn","EN","zh-CN","iw"]},"shortcuts":{"new":null}}`))
+	patch, err := webapi.DecodePreferencesPatch(
+		[]byte(
+			`{"locale":{"timeZone":"asia/shanghai","languages":["zh-cn","EN","zh-CN","iw"]},"shortcuts":{"new":null}}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +83,16 @@ func TestPreferencePatchCanonicalizesBeforeStorage(t *testing.T) {
 	if diff := cmp.Diff(saved, read); diff != "" {
 		t.Fatal(diff)
 	}
-	want := commandwire.CommandLocale{TimeZone: "Asia/Shanghai", Languages: []commandwire.LanguageTag{"zh-CN", "en", "he"}}
+	want := commandwire.CommandLocale{
+		TimeZone:  "Asia/Shanghai",
+		Languages: []commandwire.LanguageTag{"zh-CN", "en", "he"},
+	}
 	if diff := cmp.Diff(&want, read.Locale); diff != "" {
 		t.Fatal(diff)
 	}
-	if read.Shortcuts.New != nil || read.Shortcuts.Sidebar == nil || *read.Shortcuts.Sidebar != "S" || read.Appearance.Theme == nil || *read.Appearance.Theme != webapi.ThemeDark {
+	if read.Shortcuts.New != nil || read.Shortcuts.Sidebar == nil || *read.Shortcuts.Sidebar != "S" ||
+		read.Appearance.Theme == nil ||
+		*read.Appearance.Theme != webapi.ThemeDark {
 		t.Fatalf("patch did not preserve omitted fields or remove explicit null: %+v", read)
 	}
 	if patch.Locale.TimeZone != "asia/shanghai" || len(patch.Locale.Languages) != 4 {
@@ -94,14 +110,26 @@ func TestInvalidLocaleDoesNotReachStorage(t *testing.T) {
 		{"UTC", []commandwire.LanguageTag{"en--US"}},
 		{"UTC", make([]commandwire.LanguageTag, 17)},
 	}
-	for _, tc := range cases {
+	for _, scenario := range cases {
 		store := &preferenceStore{}
-		_, err := NewPreferences(store).Patch(t.Context(), "caller", webapi.PreferencesPatch{Locale: &commandwire.CommandLocale{TimeZone: tc.zone, Languages: tc.tags}})
+		_, err := NewPreferences(
+			store,
+		).Patch(
+			t.Context(),
+			"caller",
+			webapi.PreferencesPatch{
+				Locale: &commandwire.CommandLocale{TimeZone: scenario.zone, Languages: scenario.tags},
+			},
+		)
 		if err == nil || store.patch != nil {
 			t.Fatal("invalid locale reached storage")
 		}
 	}
-	_, err := Check(webapi.PreferencesPatch{Locale: &commandwire.CommandLocale{TimeZone: "wrong", Languages: []commandwire.LanguageTag{"en"}}})
+	_, err := Check(
+		webapi.PreferencesPatch{
+			Locale: &commandwire.CommandLocale{TimeZone: "wrong", Languages: []commandwire.LanguageTag{"en"}},
+		},
+	)
 	var zoneErr *UnknownTimeZone
 	if !errors.As(err, &zoneErr) {
 		t.Fatalf("wrong error: %v", err)

@@ -21,7 +21,10 @@ import (
 // HashError is why hashing or verifying failed.
 type HashError struct{ Err error }
 
+// Error describes the failed Argon2 operation.
 func (e *HashError) Error() string { return "argon2 failed: " + e.Err.Error() }
+
+// Unwrap exposes the underlying hashing or verification error.
 func (e *HashError) Unwrap() error { return e.Err }
 
 // PasswordHasher bounds concurrent password hashes to the runtime's available CPU parallelism.
@@ -77,7 +80,11 @@ func (h *PasswordHasher) hash(ctx context.Context, password webapi.Password) (st
 
 // Verify checks a password against stored; nil spends the same work against a
 // dummy hash and always answers false.
-func (h *PasswordHasher) Verify(ctx context.Context, password webapi.Password, stored *database.PasswordHash) (bool, error) {
+func (h *PasswordHasher) Verify(
+	ctx context.Context,
+	password webapi.Password,
+	stored *database.PasswordHash,
+) (bool, error) {
 	against := h.dummy
 	if stored != nil {
 		against = stored.Text()
@@ -97,7 +104,11 @@ func (h *PasswordHasher) verify(ctx context.Context, password webapi.Password, s
 // hashPassword writes the PHC representation used by Rust's default Argon2.
 func hashPassword(password webapi.Password, salt []byte) string {
 	key := argon2.IDKey([]byte(password), salt, 2, 19456, 1, 32)
-	return "$argon2id$v=19$m=19456,t=2,p=1$" + base64.RawStdEncoding.EncodeToString(salt) + "$" + base64.RawStdEncoding.EncodeToString(key)
+	return "$argon2id$v=19$m=19456,t=2,p=1$" + base64.RawStdEncoding.EncodeToString(
+		salt,
+	) + "$" + base64.RawStdEncoding.EncodeToString(
+		key,
+	)
 }
 
 // verifyPassword reads the algorithm and costs from a stored PHC string.
@@ -109,9 +120,23 @@ func verifyPassword(password webapi.Password, stored string) (bool, error) {
 	var key []byte
 	switch parsed.algorithm {
 	case "argon2id":
-		key = argon2.IDKey([]byte(password), parsed.salt, parsed.iterations, parsed.memory, parsed.threads, uint32(len(parsed.hash)))
+		key = argon2.IDKey(
+			[]byte(password),
+			parsed.salt,
+			parsed.iterations,
+			parsed.memory,
+			parsed.threads,
+			uint32(len(parsed.hash)),
+		)
 	case "argon2i":
-		key = argon2.Key([]byte(password), parsed.salt, parsed.iterations, parsed.memory, parsed.threads, uint32(len(parsed.hash)))
+		key = argon2.Key(
+			[]byte(password),
+			parsed.salt,
+			parsed.iterations,
+			parsed.memory,
+			parsed.threads,
+			uint32(len(parsed.hash)),
+		)
 	}
 	return subtle.ConstantTimeCompare(key, parsed.hash) == 1, nil
 }
@@ -123,8 +148,10 @@ type phc struct {
 	salt, hash         []byte
 }
 
-var errInvalidPHC = errors.New("invalid password hash")
-var errUnsupportedPHC = errors.New("unsupported Argon2 parameters")
+var (
+	errInvalidPHC     = errors.New("invalid password hash")
+	errUnsupportedPHC = errors.New("unsupported Argon2 parameters")
+)
 
 func parsePHC(text string) (phc, error) {
 	p := phc{memory: 19456, iterations: 2, threads: 1}
@@ -146,38 +173,8 @@ func parsePHC(text string) (phc, error) {
 	if len(fields) != 3 {
 		return p, errInvalidPHC
 	}
-	seen := make(map[string]bool)
-	for _, param := range strings.Split(fields[0], ",") {
-		name, value, ok := strings.Cut(param, "=")
-		if !ok || seen[name] || value == "" || (len(value) > 1 && value[0] == '0') {
-			return p, errInvalidPHC
-		}
-		seen[name] = true
-		for _, c := range value {
-			if c < '0' || c > '9' {
-				return p, errInvalidPHC
-			}
-		}
-		n, err := strconv.ParseUint(value, 10, 32)
-		if err != nil {
-			return p, fmt.Errorf("%w: %w", errInvalidPHC, err)
-		}
-		switch name {
-		case "m":
-			p.memory = uint32(n)
-		case "t":
-			p.iterations = uint32(n)
-		case "p":
-			if n > 255 {
-				return p, errUnsupportedPHC
-			}
-			p.threads = uint8(n)
-		default:
-			return p, errUnsupportedPHC
-		}
-	}
-	if p.threads == 0 || p.iterations == 0 || p.memory < 8*uint32(p.threads) {
-		return p, errInvalidPHC
+	if err := p.parseParameters(fields[0]); err != nil {
+		return p, err
 	}
 	var err error
 	p.salt, err = base64.RawStdEncoding.Strict().DecodeString(fields[1])
@@ -199,3 +196,40 @@ func parsePHC(text string) (phc, error) {
 
 // String keeps the dummy password hash out of diagnostics.
 func (*PasswordHasher) String() string { return "PasswordHasher(..)" }
+
+func (p *phc) parseParameters(text string) error {
+	seen := make(map[string]bool)
+	for _, param := range strings.Split(text, ",") {
+		name, value, ok := strings.Cut(param, "=")
+		if !ok || seen[name] || value == "" || (len(value) > 1 && value[0] == '0') {
+			return errInvalidPHC
+		}
+		seen[name] = true
+		for _, c := range value {
+			if c < '0' || c > '9' {
+				return errInvalidPHC
+			}
+		}
+		n, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			return fmt.Errorf("%w: %w", errInvalidPHC, err)
+		}
+		switch name {
+		case "m":
+			p.memory = uint32(n)
+		case "t":
+			p.iterations = uint32(n)
+		case "p":
+			if n > 255 {
+				return errUnsupportedPHC
+			}
+			p.threads = uint8(n)
+		default:
+			return errUnsupportedPHC
+		}
+	}
+	if p.threads == 0 || p.iterations == 0 || p.memory < 8*uint32(p.threads) {
+		return errInvalidPHC
+	}
+	return nil
+}

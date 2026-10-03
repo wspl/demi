@@ -69,7 +69,10 @@ func (c S3Config) Open(ctx context.Context) (*blob.Bucket, error) {
 	if err := c.Validate(); err != nil {
 		return nil, &ConfigError{Err: err}
 	}
-	client := &http.Client{Transport: awshttp.NewBuildableClient().GetTransport(), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{
+		Transport:     awshttp.NewBuildableClient().GetTransport(),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	provider, err := storageCredentials(ctx, c.Region, client)
 	if err != nil {
 		client.CloseIdleConnections()
@@ -87,8 +90,10 @@ func (c S3Config) Open(ctx context.Context) (*blob.Bucket, error) {
 	}
 	lifetime, cancel := context.WithCancel(context.Background())
 	owner := &credentialLifetime{provider: provider, ctx: lifetime, cancel: cancel}
-	service := s3.New(s3.Options{Region: c.Region, HTTPClient: client, Credentials: aws.NewCredentialsCache(owner),
-		BaseEndpoint: endpoint, UsePathStyle: c.ForcePathStyle})
+	service := s3.New(s3.Options{
+		Region: c.Region, HTTPClient: client, Credentials: aws.NewCredentialsCache(owner),
+		BaseEndpoint: endpoint, UsePathStyle: c.ForcePathStyle,
+	})
 	bucket, err := s3blob.OpenBucket(ctx, service, c.Bucket, nil)
 	if err != nil {
 		owner.close()

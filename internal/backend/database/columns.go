@@ -24,6 +24,7 @@ func (r *storedRow) bad(column string, err error) {
 		r.err = &Error{Kind: Corrupt, Table: r.table, Column: column, Reason: err.Error(), Err: err}
 	}
 }
+
 func (r *storedRow) text(column string) string {
 	value, ok := r.values[column].(string)
 	if !ok {
@@ -31,6 +32,7 @@ func (r *storedRow) text(column string) string {
 	}
 	return value
 }
+
 func (r *storedRow) integer(column string) int64 {
 	value, ok := r.values[column].(int64)
 	if !ok {
@@ -38,6 +40,7 @@ func (r *storedRow) integer(column string) int64 {
 	}
 	return value
 }
+
 func (r *storedRow) count(column string) uint64 {
 	v := r.integer(column)
 	if v < 0 {
@@ -54,11 +57,13 @@ func (r *storedRow) bytes(column string) []byte {
 	}
 	return v
 }
+
 func (r *storedRow) instant(column string) core.Timestamp {
 	t, err := core.TimestampFromMillisecond(r.integer(column))
 	r.bad(column, err)
 	return t
 }
+
 func (r *storedRow) optionalText(column string) *string {
 	if r.values[column] == nil {
 		return nil
@@ -66,6 +71,7 @@ func (r *storedRow) optionalText(column string) *string {
 	v := r.text(column)
 	return &v
 }
+
 func (r *storedRow) optionalInstant(column string) *core.Timestamp {
 	if r.values[column] == nil {
 		return nil
@@ -73,11 +79,13 @@ func (r *storedRow) optionalInstant(column string) *core.Timestamp {
 	v := r.instant(column)
 	return &v
 }
+
 func checked[T ~string](r *storedRow, column string, parse func(string) (T, error)) T {
 	v, err := parse(r.text(column))
 	r.bad(column, err)
 	return v
 }
+
 func optionalChecked[T ~string](r *storedRow, column string, parse func(string) (T, error)) *T {
 	if r.values[column] == nil {
 		return nil
@@ -85,11 +93,13 @@ func optionalChecked[T ~string](r *storedRow, column string, parse func(string) 
 	v := checked(r, column, parse)
 	return &v
 }
+
 func storedJSON[T any](r *storedRow, column string, decode func([]byte) (T, error)) T {
 	v, err := decode([]byte(r.text(column)))
 	r.bad(column, err)
 	return v
 }
+
 func optionalJSON[T any](r *storedRow, column string, decode func([]byte) (T, error)) *T {
 	if r.values[column] == nil {
 		return nil
@@ -99,7 +109,13 @@ func optionalJSON[T any](r *storedRow, column string, decode func([]byte) (T, er
 }
 
 // queryRecords decodes and validates every selected SQL row and owns its result set.
-func queryRecords[T any](ctx context.Context, tx *sql.Tx, table, query string, decode func(*storedRow) T, args ...any) (result []T, err error) {
+func queryRecords[T any](
+	ctx context.Context,
+	tx *sql.Tx,
+	table, query string,
+	decode func(*storedRow) T,
+	args ...any,
+) (result []T, err error) {
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -131,21 +147,31 @@ func queryRecords[T any](ctx context.Context, tx *sql.Tx, table, query string, d
 	}
 	return result, rows.Err()
 }
-func queryRecord[T any](ctx context.Context, tx *sql.Tx, table, query string, decode func(*storedRow) T, args ...any) (*T, error) {
+
+func queryRecord[T any](
+	ctx context.Context,
+	tx *sql.Tx,
+	table, query string,
+	decode func(*storedRow) T,
+	args ...any,
+) (*T, error) {
 	rows, err := queryRecords(ctx, tx, table, query, decode, args...)
 	if err != nil || len(rows) == 0 {
 		return nil, err
 	}
 	return &rows[0], nil
 }
+
 func execSQL(ctx context.Context, tx *sql.Tx, query string, args ...any) error {
 	_, err := tx.ExecContext(ctx, query, args...)
 	return err
 }
+
 func encoded(value any) (string, error) {
 	data, err := contract.EncodeJSON(value)
 	return string(data), err
 }
+
 func later(now core.Timestamp, by time.Duration) (core.Timestamp, error) {
 	t, err := now.Time()
 	if err != nil {

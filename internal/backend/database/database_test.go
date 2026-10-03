@@ -36,12 +36,14 @@ func require(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
 func equal(t *testing.T, want, got any) {
 	t.Helper()
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatalf("(-want +got):\n%s", diff)
 	}
 }
+
 func testControl(t *testing.T) (*ControlService, *testClock) {
 	t.Helper()
 	clock := &testClock{at: core.UnixEpoch}
@@ -50,9 +52,12 @@ func testControl(t *testing.T) (*ControlService, *testClock) {
 	t.Cleanup(func() { require(t, c.Close(context.Background())) })
 	return c, clock
 }
+
 func testMaster(t *testing.T, c *ControlService) webapi.UserDTO {
 	t.Helper()
-	hash, err := ParsePasswordHash("$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$0mUbQTTMhhaEBFGMq7WTZxOlVoS9sY3qVqLiV7Q1Izo")
+	hash, err := ParsePasswordHash(
+		"$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$0mUbQTTMhhaEBFGMq7WTZxOlVoS9sY3qVqLiV7Q1Izo",
+	)
 	require(t, err)
 	u, err := c.CreateMaster(t.Context(), "master@example.test", hash)
 	require(t, err)
@@ -61,9 +66,11 @@ func testMaster(t *testing.T, c *ControlService) webapi.UserDTO {
 	}
 	return *u
 }
+
 func conversation(n int) webapi.ConversationID {
 	return webapi.ConversationID(fmt.Sprintf("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a%02x", n))
 }
+
 func createConversation(t *testing.T, c *ControlService, user webapi.UserID, n int) ConversationRecord {
 	t.Helper()
 	creation, err := c.CreateConversation(t.Context(), user, conversation(n))
@@ -74,6 +81,7 @@ func createConversation(t *testing.T, c *ControlService, user webapi.UserID, n i
 	}
 	return created.Record
 }
+
 func testStores(t *testing.T, limit int) *ConversationStores {
 	t.Helper()
 	s, err := OpenConversations(t.Context(), t.TempDir(), limit)
@@ -81,8 +89,12 @@ func testStores(t *testing.T, limit int) *ConversationStores {
 	t.Cleanup(func() { require(t, s.Close(context.Background())) })
 	return s
 }
+
 func TestOtherSchemaRefusedAndCurrentReopens(t *testing.T) {
-	for _, schema := range []string{"CREATE TABLE users(id TEXT PRIMARY KEY); PRAGMA user_version=1;", "CREATE TABLE schema_migrations(version INTEGER);"} {
+	for _, schema := range []string{
+		"CREATE TABLE users(id TEXT PRIMARY KEY); PRAGMA user_version=1;",
+		"CREATE TABLE schema_migrations(version INTEGER);",
+	} {
 		path := filepath.Join(t.TempDir(), "other.sqlite")
 		db, err := sql.Open("sqlite", path)
 		require(t, err)
@@ -107,6 +119,7 @@ func TestOtherSchemaRefusedAndCurrentReopens(t *testing.T) {
 	require(t, err)
 	equal(t, 1, len(users))
 }
+
 func TestExpiredWebSessionsSweptOnOpen(t *testing.T) {
 	c, clock := testControl(t)
 	user := testMaster(t, c)
@@ -129,6 +142,7 @@ func TestExpiredWebSessionsSweptOnOpen(t *testing.T) {
 	require(t, err)
 	equal(t, user, live.User)
 }
+
 func TestPreferencesAreUserOwnedAndCorruptionRefused(t *testing.T) {
 	c, _ := testControl(t)
 	user := testMaster(t, c)
@@ -151,6 +165,7 @@ func TestPreferencesAreUserOwnedAndCorruptionRefused(t *testing.T) {
 	_, err = c.Preferences(t.Context(), user.ID)
 	assertCorrupt(t, err, "user_preferences", "preferences")
 }
+
 func assertCorrupt(t *testing.T, err error, table, column string) {
 	t.Helper()
 	var e *Error
@@ -158,6 +173,7 @@ func assertCorrupt(t *testing.T, err error, table, column string) {
 		t.Fatalf("corruption %s.%s: %v", table, column, err)
 	}
 }
+
 func TestConversationSpellingOrderingAndCorruption(t *testing.T) {
 	c, _ := testControl(t)
 	user := testMaster(t, c)
@@ -201,6 +217,7 @@ func TestConversationSpellingOrderingAndCorruption(t *testing.T) {
 	_, err = c.Conversation(t.Context(), first.ID)
 	assertCorrupt(t, err, "conversations", "model")
 }
+
 func TestSavedWakeupsListUnarchivedEarliestFirst(t *testing.T) {
 	c, _ := testControl(t)
 	user := testMaster(t, c)
@@ -219,8 +236,16 @@ func TestSavedWakeupsListUnarchivedEarliestFirst(t *testing.T) {
 	require(t, c.SetWakeup(t.Context(), conversation(4), nil))
 	saved, err := c.SavedWakeups(t.Context())
 	require(t, err)
-	equal(t, []SavedWakeup{{Conversation: conversation(2), Owner: user.ID, Due: &WakeupAtStart{}}, {Conversation: conversation(1), Owner: user.ID, Due: due}}, saved)
+	equal(
+		t,
+		[]SavedWakeup{
+			{Conversation: conversation(2), Owner: user.ID, Due: &WakeupAtStart{}},
+			{Conversation: conversation(1), Owner: user.ID, Due: due},
+		},
+		saved,
+	)
 }
+
 func TestHostAttachesOnceUnderFreeName(t *testing.T) {
 	c, _ := testControl(t)
 	user := testMaster(t, c)
@@ -231,7 +256,12 @@ func TestHostAttachesOnceUnderFreeName(t *testing.T) {
 		require(t, err)
 		devices = append(devices, d)
 	}
-	attaching := []AttachedHostRecord{{Device: devices[0].ID, Name: "laptop"}, {Device: devices[1].ID, Name: "laptop", CWD: new("/work")}, {Device: devices[2].ID, Name: " "}, {Device: devices[0].ID, Name: "renamed", CWD: new("/elsewhere")}}
+	attaching := []AttachedHostRecord{
+		{Device: devices[0].ID, Name: "laptop"},
+		{Device: devices[1].ID, Name: "laptop", CWD: new("/work")},
+		{Device: devices[2].ID, Name: " "},
+		{Device: devices[0].ID, Name: "renamed", CWD: new("/elsewhere")},
+	}
 	require(t, controlDo(t.Context(), c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) error {
 		for i, h := range attaching {
 			changed, err := InsertAttachedHost(ctx, tx, id, h, now)
@@ -242,12 +272,17 @@ func TestHostAttachesOnceUnderFreeName(t *testing.T) {
 		}
 		return nil
 	}))
-	expected := []AttachedHostRecord{attaching[0], {Device: devices[1].ID, Name: "laptop-2", CWD: new("/work")}, {Device: devices[2].ID, Name: string(devices[2].ID)}}
+	expected := []AttachedHostRecord{
+		attaching[0],
+		{Device: devices[1].ID, Name: "laptop-2", CWD: new("/work")},
+		{Device: devices[2].ID, Name: string(devices[2].ID)},
+	}
 	slices.SortFunc(expected, func(a, b AttachedHostRecord) int { return strings.Compare(a.Name, b.Name) })
 	got, err := c.AttachedHosts(t.Context(), id)
 	require(t, err)
 	equal(t, expected, got)
 }
+
 func TestConcurrentTargetSwitchKeepsWinnerAnnouncement(t *testing.T) {
 	c, _ := testControl(t)
 	user := testMaster(t, c)
@@ -264,8 +299,18 @@ func TestConcurrentTargetSwitchKeepsWinnerAnnouncement(t *testing.T) {
 	for _, path := range []string{"/first", "/second"} {
 		wg.Go(func() {
 			target := &webapi.ConversationTargetDevice{DeviceID: laptop.ID, Path: path}
-			announcement := TargetSwitch{From: &ExecutionCloud{Path: "/home/demi/sessions/" + string(id)}, To: &ExecutionDevice{DeviceID: laptop.ID, Path: path}}
-			won, err := c.SwitchConversationTarget(t.Context(), id, &webapi.ConversationTargetCloud{}, target, announcement, SwitchEnds{Arriving: &laptop.ID})
+			announcement := TargetSwitch{
+				From: &ExecutionCloud{Path: "/home/demi/sessions/" + string(id)},
+				To:   &ExecutionDevice{DeviceID: laptop.ID, Path: path},
+			}
+			won, err := c.SwitchConversationTarget(
+				t.Context(),
+				id,
+				&webapi.ConversationTargetCloud{},
+				target,
+				announcement,
+				SwitchEnds{Arriving: &laptop.ID},
+			)
 			results <- result{path, won, err}
 		})
 	}
@@ -292,16 +337,42 @@ func TestConcurrentTargetSwitchKeepsWinnerAnnouncement(t *testing.T) {
 	require(t, err)
 	equal(t, &ExecutionDevice{DeviceID: laptop.ID, Path: winner}, announcement.To)
 }
+
 func writeRoot(ctx context.Context, db *ConversationDB, id webapi.ConversationID, state string) error {
 	return db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		return execSQL(ctx, tx, `INSERT INTO nodes (id,number,parent_id,description,profile,round,started_at,can_spawn,delivered,state,block_count,command_revision,output_revision) VALUES (?,0,NULL,'',NULL,1,0,1,0,?,0,0,0) ON CONFLICT(id) DO UPDATE SET state=excluded.state`, id, state)
+		return execSQL(
+			ctx,
+			tx,
+			`INSERT INTO nodes (
+    id,
+    number,
+    parent_id,
+    description,
+    profile,
+    round,
+    started_at,
+    can_spawn,
+    delivered,
+    state,
+    block_count,
+    command_revision,
+    output_revision
+)
+VALUES (?,0,NULL,'',NULL,1,0,1,0,?,0,0,0)
+ON CONFLICT(id) DO UPDATE
+SET state=excluded.state`,
+			id,
+			state,
+		)
 	})
 }
+
 func rootState(ctx context.Context, tx *sql.Tx) (string, error) {
 	var state string
 	err := tx.QueryRowContext(ctx, "SELECT state FROM nodes WHERE parent_id IS NULL").Scan(&state)
 	return state, err
 }
+
 func TestWritersBoundedColdReadsCreateNothing(t *testing.T) {
 	stores := testStores(t, 2)
 	ctx := t.Context()
@@ -361,6 +432,7 @@ func TestWritersBoundedColdReadsCreateNothing(t *testing.T) {
 	read(reopened.DB(c), "c")
 	equal(t, 0, openWriters(reopened))
 }
+
 func TestConcurrentFirstCallsOpenOneWriter(t *testing.T) {
 	stores := testStores(t, MaxWriters)
 	id := conversation(1)
@@ -388,27 +460,64 @@ func (b *testBlobs) CommitUses(_ context.Context, blobs []core.BlobRef) error {
 	b.touched = append(b.touched, blobs...)
 	return b.refuse
 }
+
 func testTree(t *testing.T) (*TreeStore, *ConversationDB, *testBlobs) {
 	t.Helper()
 	db := testStores(t, 4).DB(conversation(1))
 	blobs := &testBlobs{MemoryBlobs: storetest.NewMemoryBlobs()}
 	return NewTreeStore(db, blobs, nil), db, blobs
 }
+
 func node(id core.NodeID, parent *core.NodeID, number uint64) store.NodeRecord {
-	return store.NodeRecord{ID: id, Parent: parent, Number: number, Round: 1, StartedAt: core.UnixEpoch, CanSpawnSubagents: true}
+	return store.NodeRecord{
+		ID:                id,
+		Parent:            parent,
+		Number:            number,
+		Round:             1,
+		StartedAt:         core.UnixEpoch,
+		CanSpawnSubagents: true,
+	}
 }
+
 func update(count int, changes ...store.ChangedBlock) store.CheckpointUpdate {
-	return store.CheckpointUpdate{State: store.CheckpointState{Phase: core.SessionPhaseIdle, Queue: []core.QueuedMessage{}, AgentInputs: []store.PendingAgentInput{}, Wakeups: []store.ScheduledWakeup{}, CWD: "/work", Model: storetest.TestModel(), Edits: []store.EditReceipt{}}, ChangedBlocks: changes, BlockCount: count}
+	return store.CheckpointUpdate{
+		State: store.CheckpointState{
+			Phase:       core.SessionPhaseIdle,
+			Queue:       []core.QueuedMessage{},
+			AgentInputs: []store.PendingAgentInput{},
+			Wakeups:     []store.ScheduledWakeup{},
+			CWD:         "/work",
+			Model:       storetest.TestModel(),
+			Edits:       []store.EditReceipt{},
+		},
+		ChangedBlocks: changes,
+		BlockCount:    count,
+	}
 }
+
 func user(id string) core.Block {
-	return &core.UserBlock{BlockID: core.BlockID(id), TurnID: core.TurnID(id), Timestamp: core.UnixEpoch, Selection: storetest.TestModel(), Content: storetest.Text("hello")}
+	return &core.UserBlock{
+		BlockID:   core.BlockID(id),
+		TurnID:    core.TurnID(id),
+		Timestamp: core.UnixEpoch,
+		Selection: storetest.TestModel(),
+		Content:   storetest.Text("hello"),
+	}
 }
+
 func reply(id string) core.Block {
-	return &core.TextBlock{BlockID: core.BlockID(id), Timestamp: core.UnixEpoch, Selection: storetest.TestModel(), Text: "hello"}
+	return &core.TextBlock{
+		BlockID:   core.BlockID(id),
+		Timestamp: core.UnixEpoch,
+		Selection: storetest.TestModel(),
+		Text:      "hello",
+	}
 }
+
 func response(id string) core.Block {
 	return &core.ResponseBlock{BlockID: core.BlockID(id), Timestamp: core.UnixEpoch, Selection: storetest.TestModel()}
 }
+
 func facts(t *testing.T, db *ConversationDB) SummaryFacts {
 	t.Helper()
 	var facts SummaryFacts
@@ -420,6 +529,7 @@ func facts(t *testing.T, db *ConversationDB) SummaryFacts {
 	require(t, err)
 	return facts
 }
+
 func TestOutputRevisionIgnoresInputAndAdvancesOnRewrite(t *testing.T) {
 	tree, db, _ := testTree(t)
 	ctx := t.Context()
@@ -431,11 +541,23 @@ func TestOutputRevisionIgnoresInputAndAdvancesOnRewrite(t *testing.T) {
 	root := tree.SessionStore("root")
 	require(t, root.Save(ctx, update(1, store.ChangedBlock{Index: 0, Block: user("u1")}), store.CommitGuard{}))
 	equal(t, uint64(0), facts(t, db).Revision)
-	require(t, root.Save(ctx, update(3, store.ChangedBlock{Index: 1, Block: reply("a1")}, store.ChangedBlock{Index: 2, Block: response("r1")}), store.CommitGuard{}))
+	require(
+		t,
+		root.Save(
+			ctx,
+			update(
+				3,
+				store.ChangedBlock{Index: 1, Block: reply("a1")},
+				store.ChangedBlock{Index: 2, Block: response("r1")},
+			),
+			store.CommitGuard{},
+		),
+	)
 	equal(t, SummaryFacts{Phase: core.SessionPhaseIdle, Revision: 1, Last: new(TerminalResponse)}, facts(t, db))
 	require(t, root.Save(ctx, update(1), store.CommitGuard{}))
 	equal(t, SummaryFacts{Phase: core.SessionPhaseIdle, Revision: 2}, facts(t, db))
 }
+
 func TestRefusedSaveLeavesWholeCheckpoint(t *testing.T) {
 	tree, _, _ := testTree(t)
 	ctx := t.Context()
@@ -450,7 +572,8 @@ func TestRefusedSaveLeavesWholeCheckpoint(t *testing.T) {
 	save.State.Phase = core.SessionPhaseRunning
 	err = root.Save(ctx, save, store.CommitGuard{})
 	var refusal *store.Error
-	if !errors.As(err, &refusal) || refusal.Kind != store.OperationFailed || refusal.Message != "command-state version 0 is immutable" {
+	if !errors.As(err, &refusal) || refusal.Kind != store.OperationFailed ||
+		refusal.Message != "command-state version 0 is immutable" {
 		t.Fatalf("immutable version refusal: %v", err)
 	}
 	after, err := root.Load(ctx)
@@ -466,12 +589,24 @@ func TestRefusedSaveLeavesWholeCheckpoint(t *testing.T) {
 	require(t, err)
 	equal(t, before, after)
 }
+
 func TestHistoryIsDepthFirstInSpawnOrder(t *testing.T) {
 	tree, db, _ := testTree(t)
 	ctx := t.Context()
 	require(t, tree.CreateNode(ctx, node("root", nil, 0), update(1, store.ChangedBlock{Index: 0, Block: user("u1")})))
-	for _, record := range []store.NodeRecord{node("b", new(core.NodeID("root")), 5), node("a", new(core.NodeID("root")), 3), node("a1", new(core.NodeID("a")), 4)} {
-		require(t, tree.CreateNode(ctx, record, update(1, store.ChangedBlock{Index: 0, Block: reply(string(record.ID) + "-text")})))
+	for _, record := range []store.NodeRecord{
+		node("b", new(core.NodeID("root")), 5),
+		node("a", new(core.NodeID("root")), 3),
+		node("a1", new(core.NodeID("a")), 4),
+	} {
+		require(
+			t,
+			tree.CreateNode(
+				ctx,
+				record,
+				update(1, store.ChangedBlock{Index: 0, Block: reply(string(record.ID) + "-text")}),
+			),
+		)
 	}
 	var history History
 	_, err := db.Read(ctx, func(ctx context.Context, tx *sql.Tx) error {
@@ -488,12 +623,14 @@ func TestHistoryIsDepthFirstInSpawnOrder(t *testing.T) {
 	}
 	equal(t, node("a", new(core.NodeID("root")), 3), history.Subagents[0].Record)
 }
+
 func TestTreeStoreContract(t *testing.T) {
 	storetest.StoreContract(t, func(t *testing.T) store.TreeStore {
 		tree, _, _ := testTree(t)
 		return tree
 	})
 }
+
 func blob(value byte) core.BlobRef {
 	return core.BlobRef(fmt.Sprintf("%x", sha256.Sum256([]byte{value})))
 }

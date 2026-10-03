@@ -29,10 +29,16 @@ func TestFanoutAndCoalescing(t *testing.T) {
 		want := []pagesync.Part{
 			{Kind: pagesync.Conversation, ConversationID: "a"},
 			{Kind: pagesync.Conversation, ConversationID: "z"},
-			{Kind: pagesync.ConversationOrder}, {Kind: pagesync.Preferences},
-			{Kind: pagesync.User}, {Kind: pagesync.Workspaces}, {Kind: pagesync.Devices},
-			{Kind: pagesync.Providers}, {Kind: pagesync.Cloud}, {Kind: pagesync.Plugins},
-			{Kind: pagesync.Plugin, PluginID: "a"}, {Kind: pagesync.Plugin, PluginID: "z"},
+			{Kind: pagesync.ConversationOrder},
+			{Kind: pagesync.Preferences},
+			{Kind: pagesync.User},
+			{Kind: pagesync.Workspaces},
+			{Kind: pagesync.Devices},
+			{Kind: pagesync.Providers},
+			{Kind: pagesync.Cloud},
+			{Kind: pagesync.Plugins},
+			{Kind: pagesync.Plugin, PluginID: "a"},
+			{Kind: pagesync.Plugin, PluginID: "z"},
 		}
 		for range 100 {
 			for i := len(want) - 1; i >= 0; i-- {
