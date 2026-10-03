@@ -18,7 +18,9 @@ import (
 
 // Paired is a claimed device and its test-owned runner process.
 type Paired struct {
+	// Runner owns the paired device runner process.
 	Runner *remotehosttest.RunnerProcess
+	// Device is the validated claimed device.
 	Device webapi.DeviceDTO
 }
 

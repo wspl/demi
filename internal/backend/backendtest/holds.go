@@ -69,7 +69,12 @@ func HoldSync(t testing.TB, b *backend.Backend, step SyncStep) *StepHold {
 
 // FileGate returns the user's conversation file gate. A lease is activity;
 // transitions reserve the gate and waiting entrants expose held operations.
-func FileGate(ctx context.Context, b *backend.Backend, user webapi.UserID, conversation webapi.ConversationID) (*gates.Activity, error) {
+func FileGate(
+	ctx context.Context,
+	b *backend.Backend,
+	user webapi.UserID,
+	conversation webapi.ConversationID,
+) (*gates.Activity, error) {
 	shard, err := b.Shards().Of(ctx, user)
 	if err != nil {
 		return nil, err
@@ -88,7 +93,13 @@ func RunRetention(ctx context.Context, b *backend.Backend, user webapi.UserID) e
 
 // CreateExpose creates an hour-long expose as the expose plugin does, without
 // an agent turn. The address is validated at entry.
-func CreateExpose(ctx context.Context, b *backend.Backend, user webapi.UserID, device webapi.DeviceID, address string) (expose.Expose, error) {
+func CreateExpose(
+	ctx context.Context,
+	b *backend.Backend,
+	user webapi.UserID,
+	device webapi.DeviceID,
+	address string,
+) (expose.Expose, error) {
 	parsed, err := webapi.ParseExposeAddress(address)
 	if err != nil {
 		return expose.Expose{}, err
@@ -123,6 +134,7 @@ type fixtureHooks struct {
 	previous usershard.FlowHooks
 }
 
+// Hello runs the fixture hold before forwarding the runner hello observation.
 func (h *fixtureHooks) Hello(ctx context.Context, step usershard.HelloStep) error {
 	if err := h.hooks.Hello(ctx, step); err != nil {
 		return err
@@ -132,6 +144,8 @@ func (h *fixtureHooks) Hello(ctx context.Context, step usershard.HelloStep) erro
 	}
 	return nil
 }
+
+// Sync runs the fixture hold before forwarding the page synchronization observation.
 func (h *fixtureHooks) Sync(ctx context.Context, step usershard.SyncStep) error {
 	if err := h.hooks.Sync(ctx, step); err != nil {
 		return err

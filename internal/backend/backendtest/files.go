@@ -16,7 +16,10 @@ import (
 
 // CommandProbe prints the invoking user and the plugin-relative command path.
 // Its manifest is configurable for assembled registry scenarios.
-type CommandProbe struct{ Declaration plugin.Manifest }
+type CommandProbe struct {
+	// Declaration contains the configurable command probe manifest.
+	Declaration plugin.Manifest
+}
 
 // Manifest returns the scenario's declarations.
 func (p *CommandProbe) Manifest() plugin.Manifest { return p.Declaration }
@@ -26,6 +29,7 @@ func (*CommandProbe) Instance() plugin.Plugin { return commandPrinter{} }
 
 type commandPrinter struct{}
 
+// Call handles the fixture plugin request.
 func (commandPrinter) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
 	call, ok := request.(*plugin.RequestCommand)
 	if !ok {
@@ -43,7 +47,18 @@ func ProbeCommand(name string, placement plugin.Placement, operation *declare.Na
 		kind = &declare.Native[declare.NativeOperation]{Binding: *operation}
 		summary = "A native group."
 	}
-	return plugin.Commands{Placement: placement, Tree: plugin.Declaration{Node: &declare.Group[declare.NativeOperation]{Name: name, Summary: summary, Subcommands: []declare.Node[declare.NativeOperation]{&declare.Leaf[declare.NativeOperation]{Name: "run", Summary: "Run.", Kind: kind}}}}}
+	return plugin.Commands{
+		Placement: placement,
+		Tree: plugin.Declaration{
+			Node: &declare.Group[declare.NativeOperation]{
+				Name:    name,
+				Summary: summary,
+				Subcommands: []declare.Node[declare.NativeOperation]{
+					&declare.Leaf[declare.NativeOperation]{Name: "run", Summary: "Run.", Kind: kind},
+				},
+			},
+		},
+	}
 }
 
 // WaitFile waits for a Host's fixture file to have the observed bytes, using

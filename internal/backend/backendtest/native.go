@@ -27,13 +27,15 @@ import (
 // owner's tests. Descriptor and Program are immutable after construction.
 // Share this fixture across harnesses that use the same development release.
 type Built struct {
+	// Descriptor describes the built native package and its target artifacts.
 	Descriptor commandwire.PackageDescriptor
-	Program    string
-	directory  string
-	mu         sync.Mutex
-	published  chan struct{}
-	catalog    *runners.NativeCatalog
-	err        error
+	// Program is the path to the built native executable.
+	Program   string
+	directory string
+	mu        sync.Mutex
+	published chan struct{}
+	catalog   *runners.NativeCatalog
+	err       error
 }
 
 // BuildPackage obtains demi-file, demi-browser, demi-claude-code or the native
@@ -53,8 +55,8 @@ func BuildPackage(ctx context.Context, t testing.TB, program string) (*Built, er
 		fixture, err = remotehosttest.NewNativeFixture(ctx, browserop.Package, path, browserop.OperationNames())
 	case "demi-claude-code":
 		var names []string
-		for _, op := range claudecodeop.Operations() {
-			names = append(names, string(op))
+		for _, operation := range claudecodeop.Operations() {
+			names = append(names, string(operation))
 		}
 		fixture, err = remotehosttest.NewNativeFixture(ctx, claudecodeop.Package, path, names)
 	case "demi-native-fixture":
@@ -108,7 +110,7 @@ func (b *Built) Catalog(ctx context.Context) (*runners.NativeCatalog, error) {
 func (b *Built) publish(ctx context.Context) (*runners.NativeCatalog, error) {
 	for target := range b.Descriptor.Targets {
 		directory := filepath.Join(b.directory, target)
-		if err := os.MkdirAll(directory, 0755); err != nil {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, err
 		}
 		name := "commands"
@@ -124,12 +126,19 @@ func (b *Built) publish(ctx context.Context) (*runners.NativeCatalog, error) {
 		return nil, err
 	}
 	publication := artifacts.Publication{Mode: artifacts.CreateNew, Permissions: artifacts.Default}
-	if err := artifacts.PublishBytes(ctx, filepath.Join(b.directory, "descriptor.json"), descriptor, publication); err != nil {
+	if err := artifacts.PublishBytes(
+		ctx,
+		filepath.Join(b.directory, "descriptor.json"),
+		descriptor,
+		publication,
+	); err != nil {
 		return nil, err
 	}
 	// A fixed fixture document, validated by runners' generated native decoder;
 	// this is not a second Go declaration of the private nativeConfig shape.
-	config, err := contract.EncodeJSON(json.RawMessage(`{"releases":[{"directory":".","executable":"commands"}],"store":{"provider":"local"}}`))
+	config, err := contract.EncodeJSON(
+		json.RawMessage(`{"releases":[{"directory":".","executable":"commands"}],"store":{"provider":"local"}}`),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +170,15 @@ func (h *Harness) UseNativeFixture(ctx context.Context, built *Built) error {
 	}
 	var streams []plugin.Stream
 	for _, name := range []string{"echo", "where", "retain", "held", "stall_release", "stalled"} {
-		streams = append(streams, plugin.Stream{Name: name, Operation: declare.NativeOperation{Package: built.Descriptor.ID, Operation: name}, Receives: plugin.Schema{Schema: schema}, Sends: plugin.Schema{Schema: schema}})
+		streams = append(
+			streams,
+			plugin.Stream{
+				Name:      name,
+				Operation: declare.NativeOperation{Package: built.Descriptor.ID, Operation: name},
+				Receives:  plugin.Schema{Schema: schema},
+				Sends:     plugin.Schema{Schema: schema},
+			},
+		)
 	}
 	h.Config.Plugins = append(h.Config.Plugins, StreamsPlugin(streams))
 	return nil

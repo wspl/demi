@@ -26,16 +26,16 @@ const Base = "test-base"
 // MachineScript is what the manager does differently, as a test sets it.
 // Configure between calls; running requests retain the script they admitted.
 type MachineScript struct {
-	// Fail the next reset with this message.
+	// FailReset makes the next reset fail with this message.
 	FailReset *string
-	// Wakes start no runner, as a guest that never connects.
+	// SilentWake makes wakes start no runner, as a guest that never connects.
 	SilentWake bool
-	// Fail the next hibernate with this message.
+	// FailHibernate makes the next hibernate fail with this message.
 	FailHibernate *string
 	// CloudEnv replaces the environment of newly started Cloud runners;
 	// nil inherits the test process's environment.
 	CloudEnv map[string]string
-	// The artifact cache each Cloud runner that starts from now on uses,
+	// Artifacts names the artifact cache each Cloud runner that starts from now on uses,
 	// as `DEMI_ARTIFACTS`; none keeps its own in its state.
 	Artifacts *string
 }
@@ -73,7 +73,7 @@ type machineGuest struct {
 // StartScriptedManager starts a manager with temporary socket and device data.
 func StartScriptedManager(ctx context.Context, t testing.TB) (*ScriptedManager, error) {
 	t.Helper()
-	manager, err := startManager(ctx)
+	manager, err := startScriptedManager(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -85,8 +85,8 @@ func StartScriptedManager(ctx context.Context, t testing.TB) (*ScriptedManager, 
 	return manager, nil
 }
 
-// startManager composes the manager protocol with the existing runner fixture.
-func startManager(ctx context.Context) (*ScriptedManager, error) {
+// startScriptedManager composes the manager protocol with the existing runner fixture.
+func startScriptedManager(ctx context.Context) (*ScriptedManager, error) {
 	root := ""
 	if runtime.GOOS != "windows" {
 		root = "/tmp"
@@ -95,7 +95,11 @@ func startManager(ctx context.Context) (*ScriptedManager, error) {
 	if err != nil {
 		return nil, err
 	}
-	start := func(ctx context.Context, backend string, options remotehosttest.RunnerProcessOptions) (*remotehosttest.RunnerProcess, error) {
+	start := func(
+		ctx context.Context,
+		backend string,
+		options remotehosttest.RunnerProcessOptions,
+	) (*remotehosttest.RunnerProcess, error) {
 		runnerDir, err := os.MkdirTemp(directory, "runner-")
 		if err != nil {
 			return nil, err
@@ -108,7 +112,17 @@ func startManager(ctx context.Context) (*ScriptedManager, error) {
 		return nil, errors.Join(err, os.RemoveAll(directory))
 	}
 	life, cancel := context.WithCancel(ctx)
-	m := &ScriptedManager{socket: socket, listener: listener, ctx: life, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{}), guests: make(map[string]*machineGuest), connections: make(map[*machineConnection]struct{}), startRunner: start}
+	m := &ScriptedManager{
+		socket:      socket,
+		listener:    listener,
+		ctx:         life,
+		cancel:      cancel,
+		done:        make(chan struct{}),
+		changed:     make(chan struct{}),
+		guests:      make(map[string]*machineGuest),
+		connections: make(map[*machineConnection]struct{}),
+		startRunner: start,
+	}
 	m.workers.Go(m.serve)
 	go func() {
 		<-life.Done()

@@ -53,7 +53,12 @@ func NewHarness(ctx context.Context, t testing.TB, machinesSocket string) (*Harn
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	config, err := backend.NewConfig(filepath.Join(t.TempDir(), "backend"), netip.MustParseAddrPort("127.0.0.1:0"), webapi.InstanceModeShared, machinesSocket)
+	config, err := backend.NewConfig(
+		filepath.Join(t.TempDir(), "backend"),
+		netip.MustParseAddrPort("127.0.0.1:0"),
+		webapi.InstanceModeShared,
+		machinesSocket,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -125,11 +130,11 @@ func (h *Harness) WriteWeb(ctx context.Context, files map[string]string) error {
 		return err
 	}
 	directory := filepath.Join(filepath.Dir(h.DataDir()), "web")
-	if err := os.MkdirAll(directory, 0755); err != nil {
+	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return err
 	}
 	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0o644); err != nil {
 			return err
 		}
 	}
@@ -140,21 +145,21 @@ func (h *Harness) WriteWeb(ctx context.Context, files map[string]string) error {
 // Start starts over the harness data with its configured mode and address;
 // NewHarness selects a loopback address and port zero. Test cleanup joins it.
 func (h *Harness) Start(ctx context.Context, t testing.TB) (*TestBackend, error) {
-	return h.launch(ctx, t, h.Config)
+	return h.start(ctx, t, h.Config)
 }
 
 // StartInMode starts over the same data with mode replacing Config.Mode.
 func (h *Harness) StartInMode(ctx context.Context, t testing.TB, mode webapi.InstanceMode) (*TestBackend, error) {
 	config := h.Config
 	config.Mode = mode
-	return h.launch(ctx, t, config)
+	return h.start(ctx, t, config)
 }
 
 // StartAt starts at a previous listener address for runner reconnection tests.
 func (h *Harness) StartAt(ctx context.Context, t testing.TB, address netip.AddrPort) (*TestBackend, error) {
 	config := h.Config
 	config.Address = address
-	return h.launch(ctx, t, config)
+	return h.start(ctx, t, config)
 }
 
 // StartSetUp starts and signs in the master account through the setup route.
@@ -167,8 +172,8 @@ func (h *Harness) StartSetUp(ctx context.Context, t testing.TB) (*TestBackend, S
 	return b, session, err
 }
 
-// launch applies fixture-only observation and owns the HTTP connection pool.
-func (h *Harness) launch(ctx context.Context, t testing.TB, config backend.Config) (*TestBackend, error) {
+// start applies fixture-only observation and owns the HTTP connection pool.
+func (h *Harness) start(ctx context.Context, t testing.TB, config backend.Config) (*TestBackend, error) {
 	t.Helper()
 	if h.Objects != nil {
 		config.ObserveObjects = h.Objects.Observe

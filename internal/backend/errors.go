@@ -32,10 +32,14 @@ const (
 
 // StartError is why the backend did not start.
 type StartError struct {
-	Kind    StartErrorKind
-	Path    string
+	// Kind identifies the failed operation.
+	Kind StartErrorKind
+	// Path names the path involved in the failed operation.
+	Path string
+	// Address is the listener address that could not be bound.
 	Address netip.AddrPort
-	Err     error
+	// Err is the underlying failure, when present.
+	Err error
 }
 
 // Error describes the failed startup step.
@@ -80,8 +84,10 @@ const (
 
 // ShutdownError is a shutdown step that failed; later steps still ran.
 type ShutdownError struct {
+	// Kind identifies the failed operation.
 	Kind ShutdownErrorKind
-	Err  error
+	// Err is the underlying failure, when present.
+	Err error
 }
 
 // Error describes the failed shutdown step.
@@ -103,7 +109,10 @@ func (e *ShutdownError) Error() string {
 func (e *ShutdownError) Unwrap() error { return e.Err }
 
 // ShutdownErrors holds every shutdown step that failed, in shutdown order.
-type ShutdownErrors struct{ Failures []*ShutdownError }
+type ShutdownErrors struct {
+	// Failures contains failed shutdown steps in shutdown order.
+	Failures []*ShutdownError
+}
 
 // Error describes every failed step in shutdown order.
 func (e *ShutdownErrors) Error() string {

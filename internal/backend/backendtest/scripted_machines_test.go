@@ -81,7 +81,17 @@ func TestScriptedMachinesEndsWithInputOrCancellation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			line, err := machinewire.EncodeLine(machinewire.MachineRequest{ID: "wake", Call: &machinewire.Wake{Params: machinewire.WakeParams{DeviceID: "device", Boot: runnerwire.ManagedBoot{BackendURL: backend, DeviceToken: token}}}})
+			line, err := machinewire.EncodeLine(
+				machinewire.MachineRequest{
+					ID: "wake",
+					Call: &machinewire.Wake{
+						Params: machinewire.WakeParams{
+							DeviceID: "device",
+							Boot:     runnerwire.ManagedBoot{BackendURL: backend, DeviceToken: token},
+						},
+					},
+				},
+			)
 			if err != nil {
 				t.Fatal(err)
 			}

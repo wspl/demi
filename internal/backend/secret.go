@@ -59,9 +59,12 @@ const (
 // SecretError is why the instance secret is unusable. A malformed secret
 // stops startup, and no error shows the secret itself.
 type SecretError struct {
+	// Kind identifies the failed operation.
 	Kind SecretErrorKind
+	// Path names the path involved in the failed operation.
 	Path string
-	Err  error
+	// Err is the underlying failure, when present.
+	Err error
 }
 
 // Error describes the failure without revealing the secret.
@@ -88,7 +91,11 @@ func loadSecret(ctx context.Context, directory string) (InstanceSecret, error) {
 	data, err := os.ReadFile(path)
 	if err == nil {
 		if !utf8.Valid(data) {
-			return InstanceSecret{}, &SecretError{Kind: SecretRead, Path: path, Err: errors.New("stream did not contain valid UTF-8")}
+			return InstanceSecret{}, &SecretError{
+				Kind: SecretRead,
+				Path: path,
+				Err:  errors.New("stream did not contain valid UTF-8"),
+			}
 		}
 		secret, parseErr := ParseInstanceSecret(strings.TrimRightFunc(string(data), unicode.IsSpace))
 		if parseErr != nil {
@@ -104,7 +111,12 @@ func loadSecret(ctx context.Context, directory string) (InstanceSecret, error) {
 		return secret, &SecretError{Kind: SecretCreate, Path: path, Err: err}
 	}
 	text := hex.EncodeToString(secret.bytes[:]) + "\n"
-	if err := artifacts.PublishBytes(ctx, path, []byte(text), artifacts.Publication{Mode: artifacts.CreateNew, Permissions: artifacts.Private, Durable: true}); err != nil {
+	if err := artifacts.PublishBytes(
+		ctx,
+		path,
+		[]byte(text),
+		artifacts.Publication{Mode: artifacts.CreateNew, Permissions: artifacts.Private, Durable: true},
+	); err != nil {
 		return InstanceSecret{}, &SecretError{Kind: SecretCreate, Path: path, Err: err}
 	}
 	return secret, nil
@@ -120,5 +132,8 @@ func (s InstanceSecret) serviceKeys() (usershard.ServiceKeys, error) {
 	if err != nil {
 		return usershard.ServiceKeys{}, fmt.Errorf("derive provider vault key: %w", err)
 	}
-	return usershard.ServiceKeys{EmailCodes: accounts.NewCodeKey([32]byte(email)), Vault: *providers.NewVaultKey([32]byte(vault))}, nil
+	return usershard.ServiceKeys{
+		EmailCodes: accounts.NewCodeKey([32]byte(email)),
+		Vault:      *providers.NewVaultKey([32]byte(vault)),
+	}, nil
 }

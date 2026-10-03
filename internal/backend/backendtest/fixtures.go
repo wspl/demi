@@ -25,7 +25,14 @@ func Pattern(length int, seed byte) []byte {
 // StreamsPlugin declares user streams bound to a scenario's native fixture.
 // It serves the same manifest through the normal plugin registration boundary.
 func StreamsPlugin(streams []plugin.Stream) plugin.Factory {
-	return &streamsFactory{manifest: plugin.Manifest{ID: "fixture", Name: "Fixture streams", Description: "The native test fixture's user streams.", Streams: append([]plugin.Stream{}, streams...)}}
+	return &streamsFactory{
+		manifest: plugin.Manifest{
+			ID:          "fixture",
+			Name:        "Fixture streams",
+			Description: "The native test fixture's user streams.",
+			Streams:     append([]plugin.Stream{}, streams...),
+		},
+	}
 }
 
 // ScriptedMachines runs the scenario machine manager as a program. It accepts
@@ -33,7 +40,12 @@ func StreamsPlugin(streams []plugin.Stream) plugin.Factory {
 // and serves until input ends or ctx is canceled. It then stops and joins all
 // runners. It owns and closes input to unblock its reader during cancellation.
 // args excludes argv[0]; the caller handles process signals through ctx.
-func ScriptedMachines(ctx context.Context, args []string, input io.ReadCloser, output, diagnostics io.Writer) (status int) {
+func ScriptedMachines(
+	ctx context.Context,
+	args []string,
+	input io.ReadCloser,
+	output, diagnostics io.Writer,
+) (status int) {
 	report := func(err error) {
 		// A diagnostic write cannot recover a failure of this fixture program.
 		_, _ = fmt.Fprintln(diagnostics, err)
@@ -50,7 +62,7 @@ func ScriptedMachines(ctx context.Context, args []string, input io.ReadCloser, o
 		_, _ = fmt.Fprintln(diagnostics, "Usage: scripted_machines [--artifacts <directory>]")
 		return 2
 	}
-	manager, err := startManager(ctx)
+	manager, err := startScriptedManager(ctx)
 	if err != nil {
 		report(err)
 		return status
@@ -90,11 +102,15 @@ func ScriptedMachines(ctx context.Context, args []string, input io.ReadCloser, o
 
 type streamsFactory struct{ manifest plugin.Manifest }
 
+// Manifest returns the fixture stream declarations.
 func (f *streamsFactory) Manifest() plugin.Manifest { return f.manifest }
-func (*streamsFactory) Instance() plugin.Plugin     { return noRequests{} }
+
+// Instance creates the stateless fixture plugin.
+func (*streamsFactory) Instance() plugin.Plugin { return noRequests{} }
 
 type noRequests struct{}
 
+// Call handles the fixture plugin request.
 func (noRequests) Call(context.Context, plugin.Request, plugin.Port) (plugin.Reply, error) {
 	return nil, &plugin.ErrorFailed{Message: "a plugin of streams only receives no request"}
 }

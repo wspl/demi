@@ -40,12 +40,16 @@ func (d *AccountDirectory) Reads() int {
 	defer d.mu.Unlock()
 	return d.reads
 }
+
 func (d *AccountDirectory) read() (core.ProviderModelList, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.reads++
 	if len(d.answers) == 0 {
-		return core.ProviderModelList{}, &provider.CatalogError{Kind: provider.CatalogUnavailable, Message: "the directory has no answer scripted"}
+		return core.ProviderModelList{}, &provider.CatalogError{
+			Kind:    provider.CatalogUnavailable,
+			Message: "the directory has no answer scripted",
+		}
 	}
 	a := d.answers[0]
 	d.answers = d.answers[1:]
@@ -54,22 +58,41 @@ func (d *AccountDirectory) read() (core.ProviderModelList, error) {
 
 // AccountCatalog makes the models used by directory cache scenarios.
 func AccountCatalog(names ...string) core.ProviderModelList {
-	result := core.ProviderModelList{Models: []core.ProviderModel{}, Warnings: []string{}, SourceFetchedAt: "2026-09-24T07:00:00.000Z"}
+	result := core.ProviderModelList{
+		Models:          []core.ProviderModel{},
+		Warnings:        []string{},
+		SourceFetchedAt: "2026-09-24T07:00:00.000Z",
+	}
 	contextWindow, output := uint32(100000), uint32(8000)
 	yes := true
 	low := "low"
 	efforts := []string{"low", "high"}
 	for _, name := range names {
-		result.Models = append(result.Models, core.ProviderModel{ID: name, DisplayName: name + " model", ContextWindow: &contextWindow, OutputLimit: &output, SupportsTools: &yes, SupportsAttachments: &yes, SupportsReasoning: &yes, SupportedThinkingEfforts: &efforts, DefaultThinkingEffort: &low, ServiceTiers: []core.ServiceTier{}})
+		result.Models = append(
+			result.Models,
+			core.ProviderModel{
+				ID:                       name,
+				DisplayName:              name + " model",
+				ContextWindow:            &contextWindow,
+				OutputLimit:              &output,
+				SupportsTools:            &yes,
+				SupportsAttachments:      &yes,
+				SupportsReasoning:        &yes,
+				SupportedThinkingEfforts: &efforts,
+				DefaultThinkingEffort:    &low,
+				ServiceTiers:             []core.ServiceTier{},
+			},
+		)
 	}
 	return result
 }
 
 // AccountLoginScript holds device logins until the scenario approves them.
 type AccountLoginScript struct {
-	mu        sync.Mutex
-	approved  bool
-	changed   chan struct{}
+	mu       sync.Mutex
+	approved bool
+	changed  chan struct{}
+	// Cancelled counts logins whose wait ended through cancellation.
 	Cancelled atomic.Int64
 }
 
@@ -83,6 +106,7 @@ func (s *AccountLoginScript) Approve(value bool) {
 	}
 	s.changed = make(chan struct{})
 }
+
 func (s *AccountLoginScript) wait(ctx context.Context) error {
 	for {
 		s.mu.Lock()
@@ -106,10 +130,15 @@ func (s *AccountLoginScript) wait(ctx context.Context) error {
 
 // AccountFamily replaces a subscription or API-key family at the real assembly boundary.
 type AccountFamily struct {
-	T         testing.TB
+	// T owns assertions and cleanup for the scripted family.
+	T testing.TB
+	// Directory supplies scripted provider catalog responses.
 	Directory *AccountDirectory
-	Login     *AccountLoginScript
-	Cost      *provider.ProbeCost
+	// Login supplies approval and cancellation observations for device logins.
+	Login *AccountLoginScript
+	// Cost sets the scripted quota probe cost.
+	Cost *provider.ProbeCost
+	// WireTypes lists selectable wire protocols.
 	WireTypes []core.WireAPI
 }
 
@@ -149,9 +178,12 @@ func (f *AccountFamily) Provider(args providers.FamilyArgs) (provider.Provider, 
 
 type accountKit struct{ script *AccountLoginScript }
 
+// Capability declares the scripted login and account addition capabilities.
 func (k *accountKit) Capability() provider.AccountsCapability {
 	return provider.AccountsCapability{Login: true, Add: true}
 }
+
+// Login waits for approval and returns the scripted device account.
 func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
 	code := "ABCD-1234"
 	pending(core.LoginPending{VerificationURL: "https://verify.example/device", UserCode: &code})
@@ -159,8 +191,13 @@ func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending))
 		return provider.NewAccount{}, err
 	}
 	identity := "device"
-	return provider.NewAccount{Secret: `{"token":"login-secret"}`, Label: provider.AccountLabel{Label: "device@example.test", IdentityKey: &identity}}, nil
+	return provider.NewAccount{
+		Secret: `{"token":"login-secret"}`,
+		Label:  provider.AccountLabel{Label: "device@example.test", IdentityKey: &identity},
+	}, nil
 }
+
+// Add validates the scripted setup token and returns its account.
 func (k *accountKit) Add(input provider.AddAccount) (provider.NewAccount, error) {
 	token := input.SetupToken.Expose()
 	if strings.HasPrefix(token, "bad") {
@@ -170,17 +207,28 @@ func (k *accountKit) Add(input provider.AddAccount) (provider.NewAccount, error)
 	if err != nil {
 		return provider.NewAccount{}, err
 	}
-	return provider.NewAccount{Secret: string(secret), Label: provider.AccountLabel{Label: "Account " + token[len(token)-1:], IdentityKey: &token}}, nil
+	return provider.NewAccount{
+		Secret: string(secret),
+		Label:  provider.AccountLabel{Label: "Account " + token[len(token)-1:], IdentityKey: &token},
+	}, nil
 }
 
 type accountQuota struct{ cost *provider.ProbeCost }
 
+// ProbeCost returns the configured quota probe cost.
 func (q accountQuota) ProbeCost() *provider.ProbeCost { return q.cost }
+
+// Probe returns the scripted quota reading.
 func (q accountQuota) Probe(context.Context) (provider.ProbeReading, error) {
 	label := "device@example.test"
 	used := float64(40)
-	return provider.ProbeReading{AccountLabel: &label, Windows: []core.QuotaWindow{{ID: "weekly", Label: "Weekly", UsedPercent: &used}}}, nil
+	return provider.ProbeReading{
+		AccountLabel: &label,
+		Windows:      []core.QuotaWindow{{ID: "weekly", Label: "Weekly", UsedPercent: &used}},
+	}, nil
 }
+
+// Observe reports no quota windows from fixture observations.
 func (accountQuota) Observe(provider.Observation) []core.QuotaWindow { return nil }
 
 type accountProvider struct {
@@ -190,19 +238,37 @@ type accountProvider struct {
 	account  *string
 }
 
+// Capabilities returns the fixture provider capabilities.
 func (p *accountProvider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
+
+// AuthStatus reports the fixture authentication state.
 func (p *accountProvider) AuthStatus(context.Context) core.AuthState {
 	return &core.Authenticated{AccountLabel: p.account}
 }
+
+// RuntimeState reports that the fixture runtime is ready.
 func (p *accountProvider) RuntimeState() core.RuntimeState { return &core.RuntimeReady{} }
+
+// ListModels returns the scripted provider catalog.
 func (p *accountProvider) ListModels(context.Context) (core.ProviderModelList, error) {
 	return p.family.Directory.read()
 }
+
+// ReadFailure returns empty failure facts for the fixture provider.
 func (p *accountProvider) ReadFailure(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts {
 	return core.ProviderFailureFacts{}
 }
-func (p *accountProvider) Quota() *provider.Quota                  { return p.quota }
+
+// Quota returns the fixture quota capability.
+func (p *accountProvider) Quota() *provider.Quota { return p.quota }
+
+// Accounts returns the fixture subscription accounts capability.
 func (p *accountProvider) Accounts() provider.SubscriptionAccounts { return p.accounts }
+
+// Runtime creates the scripted fixture runtime.
 func (p *accountProvider) Runtime(provider.RuntimeEnv) (provider.Runtime, error) {
-	return providertest.NewScriptedRuntime(p.family.T, providertest.Events(providertest.Text("ok"), providertest.Response(1, 1))), nil
+	return providertest.NewScriptedRuntime(
+		p.family.T,
+		providertest.Events(providertest.Text("ok"), providertest.Response(1, 1)),
+	), nil
 }

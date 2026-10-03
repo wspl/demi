@@ -13,6 +13,7 @@ import (
 	"github.com/wspl/demi/internal/backend/cloud"
 	"github.com/wspl/demi/internal/backend/edge"
 	"github.com/wspl/demi/internal/backend/usershard"
+	"github.com/wspl/demi/internal/webapi"
 )
 
 // Backend is a running backend. Its owner must call Close and wait for all
@@ -40,28 +41,9 @@ type Backend struct {
 // shared services and the shards, and the listener last. A failed start
 // releases everything acquired by that attempt. ctx owns the backend lifetime.
 func Start(ctx context.Context, config Config) (_ *Backend, err error) {
-	// Empty paths in Rust's create_dir_all are a successful no-op; subsequent
-	// relative paths still address this directory, rather than a default directory.
-	if config.DataDir != "" {
-		if err := os.MkdirAll(config.DataDir, 0755); err != nil {
-			return nil, &StartError{Kind: StartDataDirectory, Path: config.DataDir, Err: err}
-		}
-	}
-	secret := config.InstanceSecret
-	if secret == nil {
-		value, err := loadSecret(ctx, config.DataDir)
-		if err != nil {
-			return nil, &StartError{Kind: StartSecret, Err: err}
-		}
-		secret = &value
-	}
-	var s3 *blobs.S3Config
-	if config.ObjectStore != "" || config.objectStoreSet {
-		value, err := blobs.ReadS3Config(ctx, config.ObjectStore)
-		if err != nil {
-			return nil, &StartError{Kind: StartObjectStore, Err: err}
-		}
-		s3 = &value
+	secret, s3, err := startupStorageConfig(ctx, config)
+	if err != nil {
+		return nil, err
 	}
 	objects, err := blobs.Open(ctx, config.DataDir, s3)
 	if err != nil {
@@ -86,41 +68,18 @@ func Start(ctx context.Context, config Config) (_ *Backend, err error) {
 	if err != nil {
 		return nil, &StartError{Kind: StartStorage, Err: err}
 	}
-	keys, err := secret.serviceKeys()
+	deaths, err := b.startServices(life, config, secret)
 	if err != nil {
-		return nil, &StartError{Kind: StartSecret, Err: err}
+		return nil, err
 	}
-	machines, deaths := cloud.NewClient(life, config.MachinesSocket)
-	b.machines = machines
-	setup := usershard.ProviderSetup{Families: config.Families, ModelsDevURL: config.ModelsDevURL, ClaudeReleases: config.ClaudeReleases, Logins: config.Logins, Clock: config.Clock}
-	settings := usershard.ServiceSettings{Mode: config.Mode, Mail: config.AccountMail, Runners: config.Runners, Conversations: config.Conversations, Pages: config.Pages, Native: config.Native, Plugins: config.Plugins, Cloud: cloud.NewServices(machines, config.Cloud), Lifecycle: config.Lifecycle, ExposeDomain: config.ExposeDomain, Exposes: config.Exposes}
-	b.services, err = usershard.StartServices(life, b.storage, keys, setup, settings)
-	if err != nil {
-		return nil, &StartError{Kind: StartServices, Err: err}
+	if err := b.recover(ctx, life, deaths); err != nil {
+		return nil, err
 	}
-	b.services.Hooks = config.Hooks
-	b.shards, err = usershard.NewShards(life, b.services)
-	if err != nil {
-		return nil, &StartError{Kind: StartShards, Err: err}
+	state := edge.AppState{
+		Services: b.services,
+		Shards:   b.shards,
+		Site:     &edge.Site{PublicURL: config.PublicURL, RunnerReleases: config.RunnerReleases},
 	}
-	deathCtx, stopDeaths := context.WithCancel(life)
-	b.stopDeaths = stopDeaths
-	b.deaths.Go(func() {
-		// Cancellation is the expected termination of this owner task.
-		if err := usershard.RouteDeaths(deathCtx, deaths, b.services, b.shards); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Error(fmt.Sprintf("the death of a Cloud could not be routed: %v", err))
-		}
-	})
-	if err := cloud.RecoverResets(ctx, b.services.Control, b.services.Cloud); err != nil {
-		return nil, &StartError{Kind: StartCloud, Err: err}
-	}
-	if err := usershard.RecoverForks(ctx, b.services.Control, b.services.Conversations); err != nil {
-		return nil, &StartError{Kind: StartStorage, Err: err}
-	}
-	if err := usershard.RearmWakeups(ctx, b.services.Control, b.shards); err != nil {
-		slog.Error("the saved wakeups cannot be listed", "error", err)
-	}
-	state := edge.AppState{Services: b.services, Shards: b.shards, Site: &edge.Site{PublicURL: config.PublicURL, RunnerReleases: config.RunnerReleases}}
 	b.edge, err = edge.Start(life, config.Address, state, config.WebDirectory)
 	if err != nil {
 		return nil, &StartError{Kind: StartListen, Address: config.Address, Err: err}
@@ -210,6 +169,106 @@ func (b *Backend) shutdown(ctx context.Context) error {
 	b.cancel()
 	if len(failures.Failures) != 0 {
 		return failures
+	}
+	return nil
+}
+
+// startupStorageConfig resolves the secret and object store before opening storage.
+func startupStorageConfig(ctx context.Context, config Config) (*InstanceSecret, *blobs.S3Config, error) {
+	// Empty paths in Rust's create_dir_all are a successful no-op; subsequent
+	// relative paths still address this directory, rather than a default directory.
+	if config.DataDir != "" {
+		if err := os.MkdirAll(config.DataDir, 0o755); err != nil {
+			return nil, nil, &StartError{Kind: StartDataDirectory, Path: config.DataDir, Err: err}
+		}
+	}
+	secret := config.InstanceSecret
+	if secret == nil {
+		value, err := loadSecret(ctx, config.DataDir)
+		if err != nil {
+			return nil, nil, &StartError{Kind: StartSecret, Err: err}
+		}
+		secret = &value
+	}
+	var s3 *blobs.S3Config
+	if config.ObjectStore != "" || config.objectStoreSet {
+		value, err := blobs.ReadS3Config(ctx, config.ObjectStore)
+		if err != nil {
+			return nil, nil, &StartError{Kind: StartObjectStore, Err: err}
+		}
+		s3 = &value
+	}
+	return secret, s3, nil
+}
+
+// startServices composes the shared services and shard routing after storage opens.
+func (b *Backend) startServices(
+	life context.Context,
+	config Config,
+	secret *InstanceSecret,
+) (<-chan webapi.DeviceID, error) {
+	keys, err := secret.serviceKeys()
+	if err != nil {
+		return nil, &StartError{Kind: StartSecret, Err: err}
+	}
+	machines, deaths := cloud.NewClient(life, config.MachinesSocket)
+	b.machines = machines
+	setup := usershard.ProviderSetup{
+		Families:       config.Families,
+		ModelsDevURL:   config.ModelsDevURL,
+		ClaudeReleases: config.ClaudeReleases,
+		Logins:         config.Logins,
+		Clock:          config.Clock,
+	}
+	settings := usershard.ServiceSettings{
+		Mode:          config.Mode,
+		Mail:          config.AccountMail,
+		Runners:       config.Runners,
+		Conversations: config.Conversations,
+		Pages:         config.Pages,
+		Native:        config.Native,
+		Plugins:       config.Plugins,
+		Cloud:         cloud.NewServices(machines, config.Cloud),
+		Lifecycle:     config.Lifecycle,
+		ExposeDomain:  config.ExposeDomain,
+		Exposes:       config.Exposes,
+	}
+	b.services, err = usershard.StartServices(life, b.storage, keys, setup, settings)
+	if err != nil {
+		return nil, &StartError{Kind: StartServices, Err: err}
+	}
+	b.services.Hooks = config.Hooks
+	b.shards, err = usershard.NewShards(life, b.services)
+	if err != nil {
+		return nil, &StartError{Kind: StartShards, Err: err}
+	}
+	return deaths, nil
+}
+
+// recover routes Cloud deaths before recovering saved resets, forks and wakeups.
+func (b *Backend) recover(ctx, life context.Context, deaths <-chan webapi.DeviceID) error {
+	deathCtx, stopDeaths := context.WithCancel(life)
+	b.stopDeaths = stopDeaths
+	b.deaths.Go(func() {
+		// Cancellation is the expected termination of this owner task.
+		if err := usershard.RouteDeaths(
+			deathCtx,
+			deaths,
+			b.services,
+			b.shards,
+		); err != nil &&
+			!errors.Is(err, context.Canceled) {
+			slog.Error(fmt.Sprintf("the death of a Cloud could not be routed: %v", err))
+		}
+	})
+	if err := cloud.RecoverResets(ctx, b.services.Control, b.services.Cloud); err != nil {
+		return &StartError{Kind: StartCloud, Err: err}
+	}
+	if err := usershard.RecoverForks(ctx, b.services.Control, b.services.Conversations); err != nil {
+		return &StartError{Kind: StartStorage, Err: err}
+	}
+	if err := usershard.RearmWakeups(ctx, b.services.Control, b.shards); err != nil {
+		slog.Error("the saved wakeups cannot be listed", "error", err)
 	}
 	return nil
 }
