@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wspl/demi/internal/artifacts"
+	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/commandwire"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/webapi"
@@ -69,11 +71,25 @@ func devEnvironment() []string {
 	return result
 }
 
-// writeDevConfig is blocked on the owner exposing its existing generated native
-// configuration contract. Defining another shape here would violate the contract
-// boundary. The backend and scripted manager also remain API-checkpoint stubs.
-func writeDevConfig(_ context.Context, _ string) (string, error) {
-	return "", errors.New("dev requires backend's exported native configuration encoder (internal/backend/runners.nativeConfig is private; request recorded in t-release report)")
+// writeDevConfig names the host-target releases relative to the development
+// directory, using the backend's own native configuration contract.
+func writeDevConfig(ctx context.Context, root string) (string, error) {
+	config := runners.NativeConfig{Store: &runners.LocalNativeStore{}}
+	for _, name := range commandPrograms {
+		config.Releases = append(config.Releases, runners.NativeRelease{
+			Directory:  "releases/" + name,
+			Executable: name,
+		})
+	}
+	data, err := contract.EncodeJSON(config)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(root, "native.json")
+	if err := artifacts.PublishBytes(ctx, path, data, artifacts.Publication{Mode: artifacts.Replace}); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func seedDev(ctx context.Context, client *http.Client, origin, echo string) (string, error) {

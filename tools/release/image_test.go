@@ -21,6 +21,14 @@ import (
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
+// The generated-code check covers contractgen, not the embedded uv pin copy.
+func TestEmbeddedUVPinMatchesSource(t *testing.T) {
+	source := readFixture(t, filepath.Join("..", "..", "cloud-guest-image", "rootfs", "uv.json"))
+	if !bytes.Equal(uvPin, source) {
+		t.Fatal("tools/release/uv.json is stale; run CGO_ENABLED=0 GOFLAGS=-mod=readonly go generate ./tools/release from the repository root")
+	}
+}
+
 type imageFixture struct {
 	app     *application
 	options imageOptions

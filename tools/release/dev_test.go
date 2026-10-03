@@ -5,13 +5,48 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/wspl/demi/internal/backend/runners"
 )
 
+// The full scenario will drive application.dev in process: dev builds the
+// backend, scripted manager and other programs once, then uses Go's build cache.
+// That build cost exceeds the usual one-second scenario budget; programtest is
+// deliberately not involved because building its children is dev's behavior.
 func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
-	t.Skip("b-backend API checkpoint: cmd/demi-backend and internal/backend/backendtest/testdata/scripted-machines still panic; nativeConfig is private. Full programtest scenario waits for those implementations and the API request in the report.")
+	t.Skip("b-backend implementation pending: cmd/demi-backend and internal/backend/backendtest/testdata/scripted-machines still panic with not written: b-backend; the in-process dev scenario awaits working programs")
 }
+
+func TestDevConfigNamesRelativeReleasesInLocalStore(t *testing.T) {
+	root := t.TempDir()
+	path, err := writeDevConfig(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(root, "native.json") {
+		t.Fatalf("configuration path = %s", path)
+	}
+	config, err := runners.DecodeNativeConfig(readFixture(t, path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := runners.NativeConfig{
+		Releases: []runners.NativeRelease{
+			{Directory: "releases/demi-file", Executable: "demi-file"},
+			{Directory: "releases/demi-browser", Executable: "demi-browser"},
+			{Directory: "releases/demi-claude-code", Executable: "demi-claude-code"},
+		},
+		Store: &runners.LocalNativeStore{},
+	}
+	if !reflect.DeepEqual(config, want) {
+		t.Fatalf("native configuration = %#v; want %#v", config, want)
+	}
+}
+
 func TestEchoStreamsLastUserTextAndCloses(t *testing.T) {
 	echo, err := startEcho(t.Context())
 	if err != nil {
