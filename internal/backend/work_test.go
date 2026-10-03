@@ -13,6 +13,7 @@ import (
 
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
 	"github.com/wspl/demi/internal/backend/backendtest"
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/provider/providertest"
@@ -65,6 +66,19 @@ func filesContains(t *testing.T, got string, wants ...string) {
 	}
 }
 
+// filesModelField observes the named part of a model request, so a system
+// declaration cannot accidentally satisfy an assertion about message history.
+func filesModelField(t *testing.T, body []byte, name string) string {
+	t.Helper()
+	fields, err := contract.Object(body)
+	wireMust(t, err)
+	value, ok := fields[name]
+	if !ok {
+		t.Fatalf("model request has no %s: %s", name, body)
+	}
+	return string(value)
+}
+
 // filesRead observes files independently of the command that changed them.
 func filesRead(t *testing.T, path string) string {
 	t.Helper()
@@ -97,7 +111,7 @@ func TestWorkCreatesReadsEditsAndListsConversationFiles(t *testing.T) {
 			conversationEqual(t, filesRead(t, filepath.Join(w.root, "src/notes.md")), step.file)
 		}
 	}
-	filesContains(t, string(w.vendor.Requests()[0].Body), "demi file create", "demi host")
+	filesContains(t, filesModelField(t, w.vendor.Requests()[0].Body, "system"), "demi file create", "demi host")
 	wireMust(t, w.socket.Close(w.ctx))
 	wireMust(t, w.b.Close(w.ctx))
 }
@@ -280,7 +294,7 @@ func TestWorkSwitchKeepsDepartedFilesReachable(t *testing.T) {
 	_, err = w.socket.Chat(w.ctx, "m2", "go")
 	wireMust(t, err)
 	requests := w.vendor.Requests()
-	context := string(requests[before].Body)
+	context := filesModelField(t, requests[before].Body, "messages")
 	told := strings.Count(context, "[Execution context ")
 	switches := strings.Count(context, "[Execution target switched]")
 	filesContains(t, context, "[Execution target switched]", `Previous target: the machine \"laptop\"`, `stays attached as \"laptop\"`)
@@ -295,13 +309,13 @@ func TestWorkSwitchKeepsDepartedFilesReachable(t *testing.T) {
 	filesContains(t, conversationToolResult(t, requests[len(requests)-1], "t4"), "alpha\ndelta\ngamma")
 	conversationEqual(t, filesRead(t, filepath.Join(onBeta, "notes.md")), "alpha\ndelta\ngamma\n")
 	conversationEqual(t, filesRead(t, filepath.Join(w.root, "notes.md")), "alpha\nbeta\ngamma\n")
-	conversationEqual(t, strings.Count(string(requests[before].Body), "[Execution context "), told)
+	conversationEqual(t, strings.Count(filesModelField(t, requests[before].Body, "messages"), "[Execution context "), told)
 	conversationRequest(w.ctx, t, w.b, &w.s, "PATCH", "/api/conversations/"+filesConversation+"/hosts/"+string(w.paired.ID()), `{"name":"first"}`, 200)
 	w.vendor.Respond(conversationAnswer(t, []string{"noted"}, 1, 1))
 	_, err = w.socket.Chat(w.ctx, "m4", "go")
 	wireMust(t, err)
 	requests = w.vendor.Requests()
-	noted := string(requests[len(requests)-1].Body)
+	noted := filesModelField(t, requests[len(requests)-1].Body, "messages")
 	filesContains(t, noted, "[Attached hosts changed]", `\"first\" (online, shells start in`)
 	conversationEqual(t, strings.Count(noted, "[Execution target switched]"), switches)
 	filesMove(w.ctx, t, w.b, &w.s, filesConversation, w.paired, w.root)
@@ -311,7 +325,7 @@ func TestWorkSwitchKeepsDepartedFilesReachable(t *testing.T) {
 	_, err = w.socket.Chat(w.ctx, "m5", "go")
 	wireMust(t, err)
 	requests = w.vendor.Requests()
-	filesContains(t, string(requests[before].Body), "[Execution target switched]")
+	filesContains(t, filesModelField(t, requests[before].Body, "messages"), "[Execution target switched]")
 	filesContains(t, conversationToolResult(t, requests[len(requests)-1], "t5"), "alpha\nbeta\ngamma\nalpha\ndelta\ngamma")
 	wireMust(t, w.socket.Close(w.ctx))
 	wireMust(t, w.b.Close(w.ctx))
@@ -429,7 +443,11 @@ func TestWorkHostShellStreamsErrorsAcceptsInputAndStopsFarJob(t *testing.T) {
 		_, err = w.socket.Chat(w.ctx, "m2", "check")
 		wireMust(t, err)
 		requests = w.vendor.Requests()
-		filesContains(t, toolstest.ShownOutput(started)+toolstest.ShownOutput(conversationToolResult(t, requests[len(requests)-1], "check")), "ready")
+		checked := conversationToolResult(t, requests[len(requests)-1], "check")
+		if !strings.HasPrefix(checked, "status: running") {
+			t.Fatal(checked)
+		}
+		filesContains(t, toolstest.ShownOutput(started)+toolstest.ShownOutput(checked), "ready")
 	}
 	w.vendor.Respond(conversationToolUse(t, "write", "shell_write", `{"commandId":"`+string(command)+`","stdin":"hello\n"}`))
 	w.vendor.Respond(conversationAnswer(t, []string{"written"}, 1, 1))

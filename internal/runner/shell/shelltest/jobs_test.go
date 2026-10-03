@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -71,7 +70,7 @@ func marker(ctx context.Context, t *testing.T, job process.ShellJob, want string
 			output = append(output, chunk.Bytes...)
 		}
 	}
-	if !strings.HasPrefix(string(output), want) {
+	if string(output) != want {
 		t.Fatalf("marker %q want %q", output, want)
 	}
 }
@@ -79,7 +78,8 @@ func marker(ctx context.Context, t *testing.T, job process.ShellJob, want string
 func TestShellCancellationReportsTheRequestingSignal(t *testing.T) {
 	for _, signal := range []runnerwire.Signal{runnerwire.SignalTerminate, runnerwire.SignalInterrupt, runnerwire.SignalHangup, runnerwire.SignalQuit, runnerwire.SignalKill, ""} {
 		t.Run(string(signal), func(t *testing.T) {
-			ctx, scope, job, _ := shellJob(t, "printf ready; read value")
+			t.Parallel()
+			ctx, scope, job, _ := shellJob(t, "printf ready; sleep 60")
 			marker(ctx, t, job, "ready")
 			if err := job.Signal(runnerwire.SignalUser1); err == nil {
 				t.Fatal("accepted unsupported signal")
@@ -120,31 +120,50 @@ func TestJobsShareTheRunnerProcessAndCancellationIsIsolated(t *testing.T) {
 		"while :; do :; done",
 		"printf line | sed ':again; b again'",
 		"cat", "tee file", "wc -c", "head -c 99999", "tail -c +1", "od -j 99999",
-		"(sleep 60) & wait", "cat <(sleep 60)", "touch file; tail -f file",
+		"(sleep 60) & wait", "cat <(sleep 60)", "touch file; tail -f -s 60 file",
 		"while :; do printf 'a long line to fill the output pipe\n'; done",
 	}
-	if _, err := exec.LookPath("jq"); err == nil {
-		scripts = append(scripts, "jq -n 'def spin: spin; spin'")
-	}
-	for _, script := range scripts {
-		t.Run(script, func(t *testing.T) {
-			ctx, scope, job, _ := shellJob(t, "printf ready; "+script)
-			marker(ctx, t, job, "ready")
-			if err := scope.Activity().WaitBlockedOrChecks(ctx, scope.Activity().Checks()+100); err != nil {
-				t.Fatal(err)
-			}
-			job.Cancel()
-			exit, _ := job.Wait(ctx)
-			if exit.Signal == nil || *exit.Signal != "SIGKILL" {
-				t.Fatalf("exit %+v", exit)
-			}
-			scope.Finish(ctx)
-		})
-	}
+	scripts = append(scripts, "jq -n 'def spin: spin; spin'")
+	t.Run("blocked", func(t *testing.T) {
+		for _, script := range scripts {
+			t.Run(script, func(t *testing.T) {
+				t.Parallel()
+				if script == "jq -n 'def spin: spin; spin'" {
+					if _, err := exec.LookPath("jq"); err != nil {
+						t.Skip("fidelity 3: system jq unavailable; utility provisioning is deferred")
+					}
+				}
+				// Gate the additional output-pressure case so its ready marker is a
+				// separate observation even when the OS coalesces adjacent writes.
+				prelude := "printf ready; "
+				pressure := script == "while :; do printf 'a long line to fill the output pipe\n'; done"
+				if pressure {
+					prelude += "read go; "
+				}
+				ctx, scope, job, _ := shellJob(t, prelude+script)
+				marker(ctx, t, job, "ready")
+				if pressure {
+					job.Input() <- process.Input{Bytes: []byte("go\n")}
+				}
+				if err := scope.Activity().WaitBlockedOrChecks(ctx, scope.Activity().Checks()+100); err != nil {
+					t.Fatal(err)
+				}
+				job.Cancel()
+				exit, _ := job.Wait(ctx)
+				if exit.Signal == nil || *exit.Signal != "SIGKILL" {
+					t.Fatalf("exit %+v", exit)
+				}
+				scope.Finish(ctx)
+			})
+		}
+	})
 	sibling.Input() <- process.Input{Bytes: []byte("go\n")}
 	sibling.Input() <- process.Input{}
 	var output []byte
 	for chunk := range sibling.Output() {
+		if chunk.Stream != runnerwire.Stdout {
+			t.Fatalf("unexpected sibling stderr: %q", chunk.Bytes)
+		}
 		output = append(output, chunk.Bytes...)
 	}
 	exit, _ := sibling.Wait(ctx)

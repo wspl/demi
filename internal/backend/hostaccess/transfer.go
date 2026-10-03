@@ -352,15 +352,26 @@ func UploadFile(ctx context.Context, shard HostShard, id webapi.ConversationID, 
 		pipe.Fail(err.Error())
 		return nil, accessError(err)
 	}
-	lease, _ := NewLease(open.Context())
+	// Normal write completion unregisters the transfer without revoking the
+	// edge's lease. Forward cancellation only while the write is running.
+	lease, _ := NewLease(context.Background())
+	revoked := make(chan struct{})
+	stopRevocation := context.AfterFunc(open.Context(), func() {
+		defer close(revoked)
+		lease.Release()
+	})
 	result := &OpenUpload{Writer: writer, Lease: lease, written: make(chan struct{})}
 	go func() {
 		result.outcome = admitted.Host.Host.WriteFrom(lease.Context(), path, pipe, host.WriteOptions{})
-		pipe.Fail("the upload ended before its last byte")
-		lease.Release()
+		if !stopRevocation() {
+			<-revoked
+		}
+		if result.outcome != nil {
+			pipe.Fail("the upload ended before its last byte")
+		}
+		close(result.written)
 		admitted.Release()
 		open.Release()
-		close(result.written)
 	}()
 	handed = true
 	return result, nil

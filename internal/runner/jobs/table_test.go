@@ -3,6 +3,7 @@ package jobs_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -184,7 +185,7 @@ func TestShellJobKeepsReadsAndSendsViews(t *testing.T) {
 			t.Fatal("initial view changed")
 		}
 		last := newest[stream]
-		if last == nil || last.Offset+uint64(len(last.Bytes)) != uint64(len(printed)) {
+		if last == nil || len(last.Bytes) != runnerwire.JobViewBytes || last.Offset+uint64(len(last.Bytes)) != uint64(len(printed)) {
 			t.Fatal("missing last view")
 		}
 	}
@@ -194,6 +195,9 @@ func TestShellJobKeepsReadsAndSendsViews(t *testing.T) {
 	}
 	if err := table.Close(testContext(t)); err != nil {
 		t.Fatal(err)
+	}
+	if table.Len() != 0 {
+		t.Fatal("tasks remain after shutdown")
 	}
 	directories.Release(testContext(t), "job")
 	if _, ok := directories.Output("job"); ok {
@@ -282,31 +286,40 @@ func TestEndlessJobKeepsBoundedHeadAndTail(t *testing.T) {
 	}
 }
 
+// Cost: 500 ms of virtual printing time; no wall-clock delays.
 func TestFollowedJobSendsNewestOutput(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		printed := make(chan struct{}, 4)
 		table, output, _, root := newTable(t, 64, &playedShell{run: func(ctx context.Context, _ process.JobStart, out chan<- process.OutputChunk, input <-chan process.Input) (process.Exit, *string) {
 			printJob(ctx, out, runnerwire.Stdout, bytes.Repeat([]byte{'0'}, 60000))
 			printed <- struct{}{}
-			for _, chunk := range [][]byte{[]byte("small"), bytes.Repeat([]byte{'1'}, 20000), []byte("end")} {
-				select {
-				case <-ctx.Done():
-					return process.Exit{}, nil
-				case <-input:
-				}
-				printJob(ctx, out, runnerwire.Stdout, chunk)
-				printed <- struct{}{}
+			select {
+			case <-ctx.Done():
+				return process.Exit{}, nil
+			case <-input:
 			}
+			for line := range 50 {
+				printJob(ctx, out, runnerwire.Stdout, []byte(fmt.Sprintf("%05d\n", line)))
+				time.Sleep(10 * time.Millisecond)
+			}
+			printed <- struct{}{}
+			select {
+			case <-ctx.Done():
+				return process.Exit{}, nil
+			case <-input:
+			}
+			printJob(ctx, out, runnerwire.Stdout, []byte(fmt.Sprintf("%020000d", 1)))
+			printed <- struct{}{}
+			select {
+			case <-ctx.Done():
+				return process.Exit{}, nil
+			case <-input:
+			}
+			printJob(ctx, out, runnerwire.Stdout, []byte("end"))
 			return successfulExit(), nil
 		}})
 		startJob(t, table, root)
 		<-printed
-		synctest.Wait()
-		for len(output) > 0 {
-			reply(t, output)
-		}
-		id := jobs.WorkID{Kind: jobs.ShellWork, ID: "job"}
-		table.Follow(id, true)
 		next := func() *runnerwire.JobOutput {
 			t.Helper()
 			out, ok := reply(t, output).(*runnerwire.JobOutput)
@@ -315,19 +328,47 @@ func TestFollowedJobSendsNewestOutput(t *testing.T) {
 			}
 			return out
 		}
+		var head uint64
+		for {
+			out := next()
+			if out.Offset < runnerwire.JobViewBytes {
+				if out.Offset != head {
+					t.Fatalf("head offset %d, want %d", out.Offset, head)
+				}
+				head += uint64(len(out.Bytes))
+			} else {
+				end := out.Offset + uint64(len(out.Bytes))
+				if head != runnerwire.JobViewBytes || end > 60000 || uint64(len(out.Bytes)) != min(uint64(runnerwire.JobViewBytes), end-runnerwire.JobViewBytes) {
+					t.Fatalf("unfollowed head %d, growth %+v", head, out)
+				}
+				break
+			}
+		}
+		synctest.Wait()
+		id := jobs.WorkID{Kind: jobs.ShellWork, ID: "job"}
+		table.Follow(id, true)
 		out := next()
-		if out.Offset != 60000-runnerwire.JobLiveBytes || len(out.Bytes) != runnerwire.JobLiveBytes {
+		if out.Offset != 60000-runnerwire.JobLiveBytes || !bytes.Equal(out.Bytes, bytes.Repeat([]byte{'0'}, runnerwire.JobLiveBytes)) {
 			t.Fatalf("catchup %+v", out)
 		}
 		at := time.Now()
 		if err := table.Input(id, []byte("\n")); err != nil {
 			t.Fatal(err)
 		}
-		<-printed
-		out = next()
-		if out.Offset != 60000 || string(out.Bytes) != "small" || time.Since(at) < runnerwire.JobLiveInterval {
-			t.Fatalf("live view %+v after %v", out, time.Since(at))
+		end, messages := uint64(60000), 0
+		for end < 60300 {
+			out = next()
+			if out.Offset != end {
+				t.Fatalf("live offset %d, want %d", out.Offset, end)
+			}
+			end += uint64(len(out.Bytes))
+			messages++
 		}
+		intervals := int(time.Since(at) / runnerwire.JobLiveInterval)
+		if messages > intervals+2 {
+			t.Fatalf("%d messages in %v", messages, time.Since(at))
+		}
+		<-printed
 		table.Follow(id, false)
 		synctest.Wait()
 		if err := table.Input(id, []byte("\n")); err != nil {
@@ -335,26 +376,37 @@ func TestFollowedJobSendsNewestOutput(t *testing.T) {
 		}
 		<-printed
 		synctest.Wait()
-		// Before its growth interval, the unfollowed stream sends nothing.
-		if len(output) != 0 {
-			t.Fatal("unfollowed output sent before growth interval")
+		for len(output) > 0 {
+			if out := next(); len(out.Bytes) != 0 {
+				t.Fatalf("unfollowed bytes %+v", out)
+			}
 		}
 		table.Follow(id, true)
 		out = next()
-		if out.Offset != 80005-runnerwire.JobLiveBytes || !bytes.Equal(out.Bytes, bytes.Repeat([]byte{'1'}, runnerwire.JobLiveBytes)) {
+		newest := append(bytes.Repeat([]byte{'0'}, runnerwire.JobLiveBytes-1), '1')
+		if out.Offset != 80300-runnerwire.JobLiveBytes || !bytes.Equal(out.Bytes, newest) {
 			t.Fatalf("second catchup %+v", out)
 		}
 		if err := table.Input(id, []byte("\n")); err != nil {
 			t.Fatal(err)
 		}
-		<-printed
-		out = next()
-		if out.Offset != 80005 || string(out.Bytes) != "end" {
-			t.Fatalf("last output %+v", out)
-		}
-		exit, ok := reply(t, output).(*runnerwire.JobExit)
-		if !ok || exit.Output.StdoutBytes != 80008 {
-			t.Fatalf("exit %+v", exit)
+		var last []byte
+		for {
+			frame := reply(t, output)
+			if out, ok := frame.(*runnerwire.JobOutput); ok {
+				if len(out.Bytes) > 0 {
+					if out.Offset != 80300+uint64(len(last)) {
+						t.Fatalf("final offset %+v", out)
+					}
+					last = append(last, out.Bytes...)
+				}
+				continue
+			}
+			exit, ok := frame.(*runnerwire.JobExit)
+			if !ok || exit.Output == nil || exit.Output.StdoutBytes != 80303 || string(last) != "end" {
+				t.Fatalf("last %q exit %+v", last, frame)
+			}
+			break
 		}
 		if err := table.Close(context.Background()); err != nil {
 			t.Fatal(err)

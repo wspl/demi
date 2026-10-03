@@ -59,18 +59,32 @@ func (f *browserFixture) decodedPicture(t *testing.T, tab browserop.TabID, frame
 
 func TestNarrowStillPictureMatchesPageCoordinates(t *testing.T) {
 	f := chromeFixture(t)
-	tab := f.open(t, "live.html")
-	f.mutate(t, tab, `document.documentElement.innerHTML='<head><style>body{margin:0;background:white}</style></head><body><div style="position:fixed;left:10px;top:100px;width:100px;height:30px;background:red"></div></body>'`)
+	path := filepath.Join(f.root, "still.html")
+	if err := os.WriteFile(path, []byte(`<!doctype html><style>body{margin:0;background:white}</style><div style="position:fixed;left:10px;top:100px;width:100px;height:30px;background:red"></div>`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := browserop.DecodeOpenResult(f.call(t, "open", browserArgs(t, `{"url":$0}`, "file://"+path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab := opened.Tab
 	view := f.view(t)
 	view.send(t, &browserop.LiveViewerMessageHello{Platform: "mac"})
 	view.until(t, "state", nil)
 	view.send(t, &browserop.LiveViewerMessageWatch{Tab: &tab})
 	for _, size := range [][2]uint32{{409, 632}, {800, 600}, {409, 632}} {
 		view.send(t, &browserop.LiveViewerMessagePanel{Width: size[0], Height: size[1], DevicePixelRatio: 2, ScreenWidth: 1280, ScreenHeight: 720})
-		view.until(t, "stream", func(raw json.RawMessage) bool {
+		stream := view.until(t, "stream", func(raw json.RawMessage) bool {
 			return string(observedField(t, raw, "width")) == strconv.Itoa(int(size[0]*2)) && string(observedField(t, raw, "height")) == strconv.Itoa(int(size[1]*2))
 		})
-		frame := view.picture(t, tab, uint16(size[0]*2))
+		generation, err := contract.Decode[uint32](observedField(t, stream, "generation"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		frame := view.picture(t, generation)
+		if !frame.header.Key {
+			t.Fatal("first picture is not a key frame")
+		}
 		picture := f.decodedPicture(t, tab, frame.video)
 		for _, point := range [][2]int{{4, 4}, {int(size[0]*2) - 5, int(size[1]*2) - 5}} {
 			r, g, b, _ := picture.At(point[0], point[1]).RGBA()
@@ -113,11 +127,18 @@ func TestWatchedTabArrivesWithDetailOfViewersRatio(t *testing.T) {
 		if ratio == 2 {
 			view.send(t, &browserop.LiveViewerMessagePanel{Width: 800, Height: 600, DevicePixelRatio: 2, ScreenWidth: 1440, ScreenHeight: 900})
 		}
-		view.until(t, "stream", func(raw json.RawMessage) bool {
+		stream := view.until(t, "stream", func(raw json.RawMessage) bool {
 			return string(observedField(t, raw, "width")) == strconv.Itoa(int(800*ratio))
 		})
 		f.eventually(t, tab, "devicePixelRatio==="+strconv.Itoa(int(ratio)))
-		frame := view.picture(t, tab, uint16(800*ratio))
+		generation, err := contract.Decode[uint32](observedField(t, stream, "generation"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		frame := view.picture(t, generation)
+		if !frame.header.Key || frame.header.Width != uint16(800*ratio) || ratio == 2 && frame.header.Height != 1200 {
+			t.Fatalf("first picture %+v", frame.header)
+		}
 		picture := f.decodedPicture(t, tab, frame.video)
 		if picture.Bounds().Dx() != int(800*ratio) {
 			t.Fatal(picture.Bounds())

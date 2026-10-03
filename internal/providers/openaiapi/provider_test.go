@@ -203,6 +203,9 @@ func TestHTTPFailureRecordAndWait(t *testing.T) {
 		if failure.Message != "OpenAI API request failed with HTTP 429: "+body || failure.Code == nil || *failure.Code != provider.RateLimit || failure.RetryAfter == nil || *failure.RetryAfter != 20*time.Second {
 			t.Fatalf("failure: %+v", failure)
 		}
+		if failure.Diagnostics == nil || failure.Diagnostics.HTTPStatus == nil || *failure.Diagnostics.HTTPStatus != 429 {
+			t.Fatalf("diagnostic status: %+v", failure.Diagnostics)
+		}
 		record := provider.ReadHTTPRecord(failure.Diagnostics)
 		if record == nil || record.Status != 429 || record.Body != body {
 			t.Fatalf("record: %+v", record)

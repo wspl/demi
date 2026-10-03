@@ -192,6 +192,9 @@ func TestConversationSpellingOrderingAndCorruption(t *testing.T) {
 	require(t, err)
 	equal(t, uint64(5), read.ReadRevision)
 	equal(t, &model, read.Model)
+	if read.UpdatedAt < first.UpdatedAt {
+		t.Fatal("touch moved updated_at backwards")
+	}
 	require(t, controlDo(t.Context(), c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
 		return execSQL(ctx, tx, `UPDATE conversations SET model='{"providerId":""}' WHERE id=?`, first.ID)
 	}))
@@ -447,7 +450,7 @@ func TestRefusedSaveLeavesWholeCheckpoint(t *testing.T) {
 	save.State.Phase = core.SessionPhaseRunning
 	err = root.Save(ctx, save, store.CommitGuard{})
 	var refusal *store.Error
-	if !errors.As(err, &refusal) || refusal.Kind != store.OperationFailed {
+	if !errors.As(err, &refusal) || refusal.Kind != store.OperationFailed || refusal.Message != "command-state version 0 is immutable" {
 		t.Fatalf("immutable version refusal: %v", err)
 	}
 	after, err := root.Load(ctx)
@@ -478,6 +481,7 @@ func TestHistoryIsDepthFirstInSpawnOrder(t *testing.T) {
 	})
 	require(t, err)
 	equal(t, []core.Block{user("u1")}, history.Blocks)
+	equal(t, 3, len(history.Subagents))
 	for i, id := range []core.NodeID{"a", "a1", "b"} {
 		equal(t, id, history.Subagents[i].Record.ID)
 		equal(t, []core.Block{reply(string(id) + "-text")}, history.Subagents[i].Blocks)

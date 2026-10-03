@@ -20,7 +20,17 @@ func TestDeclaredBuiltinAndDrainReleaseInstallation(t *testing.T) {
 		t.Fatal("wrong runner protocol")
 	}
 	page := f.readLog(nil, 10, new("runner"))
-	if !strings.Contains(logTexts(page.Lines), "runner test-release started") {
+	if page.Next == 0 {
+		t.Fatal("startup log has no cursor")
+	}
+	started := false
+	for _, line := range page.Lines {
+		if line.Source != "runner" {
+			t.Fatalf("unexpected log source: %q", line.Source)
+		}
+		started = started || line.Text == "runner test-release started"
+	}
+	if !started {
 		t.Fatal("missing startup log")
 	}
 	fixture, err := os.ReadFile("testdata/declared-help.json")
@@ -77,5 +87,10 @@ func TestDeclaredBuiltinAndDrainReleaseInstallation(t *testing.T) {
 	}
 	if _, err := f.management(f.ctx, "status"); err == nil {
 		t.Fatal("inactive installation reported active")
+	} else {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+			t.Fatalf("inactive status: %v", err)
+		}
 	}
 }

@@ -243,7 +243,10 @@ func TestGitStatusPairs(t *testing.T) {
 
 func TestRunnerPlatforms(t *testing.T) {
 	data := frame(t, "runner-to-backend", "hello")
-	for _, platform := range []runnerwire.RunnerPlatform{runnerwire.RunnerPlatformDarwin, runnerwire.RunnerPlatformWin32, runnerwire.RunnerPlatformLinux} {
+	for name, platform := range map[string]runnerwire.RunnerPlatform{"darwin": runnerwire.RunnerPlatformDarwin, "win32": runnerwire.RunnerPlatformWin32, "linux": runnerwire.RunnerPlatformLinux} {
+		if string(platform) != name {
+			t.Fatalf("platform %q, want %q", platform, name)
+		}
 		message, err := runnerwire.DecodeOutbound(data)
 		if err != nil {
 			t.Fatal(err)

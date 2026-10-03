@@ -49,7 +49,14 @@ func TestReasoningKeptPastSummary(t *testing.T) {
 			if !reflect.DeepEqual(flags, tc.want) {
 				t.Fatalf("%v != %v", flags, tc.want)
 			}
-			if tc.name == "marked" && !reflect.DeepEqual(texts, []string{"kept", "anthropic:opaque", "after"}) {
+			wantTexts := []string{"kept", "anthropic:opaque", "after"}
+			switch tc.name {
+			case "no summary":
+				wantTexts = []string{"after"}
+			case "marker removed":
+				wantTexts = wantTexts[:2]
+			}
+			if !reflect.DeepEqual(texts, wantTexts) {
 				t.Fatal(texts)
 			}
 		})
@@ -76,7 +83,15 @@ func TestReplayBoundsUnicodeScalars(t *testing.T) {
 	for _, text := range []string{long, strings.Repeat("x", 16000)} {
 		user := userBlock("u", text).(*core.UserBlock)
 		user.Preamble = nil
-		got := transcript.Replay(requestView(t, []core.Block{user}, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{})).Items[0].(*provider.UserMessage).Content[0].(*provider.TextPart).Text
+		replayed := transcript.Replay(requestView(t, []core.Block{user}, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{})).Items
+		if len(replayed) != 1 {
+			t.Fatalf("expected one replayed message, got %d", len(replayed))
+		}
+		content := replayed[0].(*provider.UserMessage).Content
+		if len(content) != 1 {
+			t.Fatalf("expected one text part, got %d", len(content))
+		}
+		got := content[0].(*provider.TextPart).Text
 		expected := text
 		if text == long {
 			expected = want

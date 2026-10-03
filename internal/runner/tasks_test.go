@@ -41,7 +41,7 @@ func TestAStartTheRunnerCannotBeginReportsSpawnError(t *testing.T) {
 	}
 	f.job("twin", "sleep 60")
 	exit, ok := f.frame().(*runnerwire.JobExit)
-	if !ok || exit.ExitCode != nil || exit.Signal != nil || exit.SpawnError == nil || exit.SpawnError.Kind != runnerwire.SpawnErrorKindOther || exit.SpawnError.Detail == nil || *exit.SpawnError.Detail != "duplicate live task id" {
+	if !ok || exit.JobID != "twin" || exit.ExitCode != nil || exit.Signal != nil || exit.SpawnError == nil || exit.SpawnError.Kind != runnerwire.SpawnErrorKindOther || exit.SpawnError.Detail == nil || *exit.SpawnError.Detail != "duplicate live task id" {
 		t.Fatalf("duplicate start: %#v", exit)
 	}
 }

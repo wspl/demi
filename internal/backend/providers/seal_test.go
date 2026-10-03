@@ -50,6 +50,10 @@ func TestSealedValueOpensOnlyForItsRowUnderItsKey(t *testing.T) {
 	if bytes.Contains(sealed, []byte("sk-test-123")) {
 		t.Fatal("plaintext in sealed row")
 	}
+	plain, err := key.Open(row, sealed)
+	if err != nil || string(plain) != `{"apiKey":"sk-test-123"}` {
+		t.Fatalf("Go round trip: %q, %v", plain, err)
+	}
 	first, err := key.Seal(row, []byte("same"))
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +94,8 @@ func TestSealedValueOpensOnlyForItsRowUnderItsKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = key.Open(SecretRow{Provider: "a", Account: "bc"}, sealed); err == nil {
+	var bad *Unsealable
+	if _, err = key.Open(SecretRow{Provider: "a", Account: "bc"}, sealed); !errors.As(err, &bad) {
 		t.Fatal("ambiguous row identity")
 	}
 }

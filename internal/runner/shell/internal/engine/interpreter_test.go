@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -63,17 +64,20 @@ func TestShellHandlesRedirectsFunctionsSubshellCwdAndFreshState(t *testing.T) {
 	if result.Code != 0 || result.Cwd != filepath.Join(root, "b") || output != "PEAR\n" {
 		t.Fatalf("result %+v output %q stderr %q", result, output, stderr)
 	}
-	_, output, _ = shellFiles(t, result.Cwd, `printf '%s' "${LEAK-unset}"`, nil)
-	if output != "unset" {
-		t.Fatalf("state leaked: %q", output)
+	result, output, stderr = shellFiles(t, result.Cwd, `printf '%s' "${LEAK-unset}"`, nil)
+	if result.Code != 0 || output != "unset" {
+		t.Fatalf("fresh state: result %+v output %q stderr %q", result, output, stderr)
 	}
 }
 
 func TestTeeAndOdUsePipelineStreams(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("fidelity 2: BSD od inserts extra spaces between hex bytes")
+	}
 	root := t.TempDir()
 	result, output, stderr := shellFiles(t, root, `printf hello | tee made.txt | grep hello | od -An -tx1`, nil)
 	data, err := os.ReadFile(filepath.Join(root, "made.txt"))
-	if err != nil || string(data) != "hello" || result.Code != 0 || strings.Join(strings.Fields(output), " ") != "68 65 6c 6c 6f 0a" {
+	if err != nil || string(data) != "hello" || result.Code != 0 || strings.TrimSpace(output) != "68 65 6c 6c 6f 0a" {
 		t.Fatalf("file %q (%v), result %+v output %q stderr %q", data, err, result, output, stderr)
 	}
 }
@@ -84,7 +88,7 @@ func TestWcCountsAFileOfWholePagesWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, output, stderr := shellFiles(t, root, "wc -c pages.bin", nil)
-	if result.Code != 0 || strings.Join(strings.Fields(output), " ") != "327680 pages.bin" {
+	if result.Code != 0 || strings.TrimSpace(output) != "327680 pages.bin" {
 		t.Fatalf("result %+v output %q stderr %q", result, output, stderr)
 	}
 }

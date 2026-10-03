@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"slices"
 	"testing"
 	"testing/synctest"
 
@@ -57,16 +58,33 @@ func TestRestoreLostBriefQuietChildAndMissedCompletion(t *testing.T) {
 		c := f.client()
 		c.Send(t.Context(), &framewire.OpenFrame{})
 		synctest.Wait()
-		for _, id := range []core.NodeID{"lost", "quiet", "closed"} {
+		senders := []core.NodeID{}
+		for _, receipt := range agentReceipts(f, rootID()) {
+			senders = append(senders, receipt.Sender.ID)
+		}
+		slices.Sort(senders)
+		equal(t, []core.NodeID{"closed", "lost", "quiet"}, senders)
+		for i, id := range []core.NodeID{"lost", "quiet", "closed"} {
 			record := memory.Record(id)
 			if record.Closed == nil || !record.Delivered {
 				t.Fatal("restore did not close and deliver", id, record)
 			}
+			equal(t, store.ClosePhase(&store.Completed{Result: []string{"lost result", "quiet result", "closed result"}[i]}), record.Closed.Phase)
 		}
 		if memory.Record("orphan") != nil || memory.Record("orphan-child") != nil {
 			t.Fatal("missing profile left subtree")
 		}
+		pending := false
+		for _, frame := range c.Received() {
+			if _, ok := frame.(*framewire.PendingSteersFrame); ok {
+				pending = true
+			}
+		}
+		if !pending {
+			t.Fatal("no pending steers handshake")
+		}
 		run := agent(t, f, rootID(), "resume", `{"id":5,"message":"again"}`)
+		equal(t, uint8(1), run.code)
 		equal(t, "demi agent resume: unknown profile \"retired\" (available: none; omit --profile to inherit the parent)\n", run.stderr)
 		equal(t, store.ClosePhase(&store.Aborted{}), memory.Record("archived").Closed.Phase)
 	})
@@ -104,5 +122,6 @@ func TestUndeliveredCompletionRefusesEditUntilLaterSave(t *testing.T) {
 		if _, ok := editOutcome(t, frames).(*framewire.AcceptedEdit); !ok {
 			t.Fatal(frames)
 		}
+		equal(t, 0, f.script.Remaining())
 	})
 }

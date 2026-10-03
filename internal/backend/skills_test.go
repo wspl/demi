@@ -48,7 +48,7 @@ func TestSkillCatalogInstallsOnlyForJobsAndRemovesDisabledSkills(t *testing.T) {
 	w.vendor.Respond(conversationAnswer(t, []string{"hello"}, 1, 1))
 	_, err = w.socket.Chat(w.ctx, "m1", "go")
 	wireMust(t, err)
-	filesContains(t, string(w.vendor.Requests()[0].Body), "<name>review</name>", "<location>~/.demi/plugins/skills/review-", "/.agents/skills/release/SKILL.md</location>")
+	filesContains(t, filesModelField(t, w.vendor.Requests()[0].Body, "messages"), "<name>review</name>", "<location>~/.demi/plugins/skills/review-", "/.agents/skills/release/SKILL.md</location>")
 	if _, err := os.Stat(filepath.Join(w.paired.Runner.Home(), ".demi/plugins/skills")); !os.IsNotExist(err) {
 		t.Fatalf("installed without a job: %v", err)
 	}
@@ -68,7 +68,8 @@ func TestSkillCatalogInstallsOnlyForJobsAndRemovesDisabledSkills(t *testing.T) {
 		t.Fatal(result)
 	}
 	blocks := func(body []byte) int {
-		return strings.Count(string(body), "<available_skills>") + strings.Count(string(body), "No skills are available now.")
+		messages := filesModelField(t, body, "messages")
+		return strings.Count(messages, "<available_skills>") + strings.Count(messages, "No skills are available now.")
 	}
 	before := blocks(requests[len(requests)-1].Body)
 	conversationRequest(w.ctx, t, w.b, &w.s, "PUT", "/api/plugins/skills", `{"enabled":false}`, 204)

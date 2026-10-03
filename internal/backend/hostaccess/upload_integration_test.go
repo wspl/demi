@@ -68,3 +68,52 @@ func TestConnectedUploadUsesExistingAdmissionWithTransitionQueued(t *testing.T) 
 
 	})
 }
+
+// Cost: local storage and in-process runner frames; no subprocess or wall-time wait.
+func TestConnectedUploadCompletionKeepsEdgeLeaseLive(t *testing.T) {
+	s := newTestShard(t)
+	device := s.paired(t, "laptop")
+	record := s.target(t, s.conversation(t), device, "/work")
+	r := connectHost(t, s, device)
+	result := startHostOperation(t, func(ctx context.Context) (Upload, error) {
+		return UploadFile(ctx, s, record.ID, "/notes.md", true)
+	})
+	r.stat(t, 5)
+	opened := <-result
+	if opened.err != nil {
+		t.Fatal(opened.err)
+	}
+	upload := opened.value.(*OpenUpload)
+	defer upload.Lease.Release()
+	written := startHostOperation(t, func(ctx context.Context) (struct{}, error) {
+		if err := upload.Writer.Write(ctx, []byte("first")); err != nil {
+			return struct{}{}, err
+		}
+		upload.Writer.End()
+		return struct{}{}, upload.Written(ctx)
+	})
+	path, data := receiveHostWrite(t, s, r, device)
+	if path != "/notes.md" || string(data) != "first" {
+		t.Fatal(path, string(data))
+	}
+	if completed := <-written; completed.err != nil {
+		t.Fatal(completed.err)
+	}
+	// Wait for admission cleanup too: publishing Written just before cancelling
+	// the lease would still race the edge's completion check.
+	hold, err := s.conversations.Slot(record.ID).FileGate().Reserve(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hold.Release()
+	if err := upload.Lease.Context().Err(); err != nil {
+		t.Fatalf("successful upload revoked the edge lease: %v", err)
+	}
+	if err := upload.Written(upload.Lease.Context()); err != nil {
+		t.Fatal(err)
+	}
+	upload.Lease.Release()
+	if upload.Lease.Context().Err() == nil {
+		t.Fatal("edge release left upload lease live")
+	}
+}

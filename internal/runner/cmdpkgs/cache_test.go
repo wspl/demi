@@ -221,6 +221,14 @@ func TestNewerVersionRemovesOnlyUnheldArtifactsOfItsLine(t *testing.T) {
 	if _, err := os.Stat(first); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("old version remains")
 	}
+	initial, err := cache.Installed(t.Context(), "demi.fixture", "cli")
+	must(t, err)
+	if len(initial) != 1 || initial[0].Version != "2" {
+		t.Fatalf("initial versions = %v", initial)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Fatal(err)
+	}
 	hold := cache.Holds().Hold(two.Artifact.SHA256)
 	defer hold.Release()
 	_, three := install("cli", "3")

@@ -65,8 +65,8 @@ func TestViewerKeyboard(t *testing.T) {
 		})
 	}
 	t.Run("keys_without_a_character_stay_raw", func(t *testing.T) {
-		for _, code := range []string{"Tab", "Backspace", "ArrowLeft", "Escape"} {
-			event := viewerKeyOn(browserop.LiveViewerMessageKey{Action: "down", Code: code, Key: code}, false, false)
+		for code, keyCode := range map[string]uint8{"Tab": 9, "Backspace": 8, "ArrowLeft": 37, "Escape": 27} {
+			event := viewerKeyOn(browserop.LiveViewerMessageKey{Action: "down", Code: code, Key: code, KeyCode: keyCode}, false, false)
 			if event.Type != input.KeyRawDown || event.Text != "" {
 				t.Fatalf("%s: %+v", code, event)
 			}

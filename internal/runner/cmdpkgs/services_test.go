@@ -81,9 +81,13 @@ func call(ctx context.Context, resident *cmdpkgs.Resident, operation, conversati
 		return "", err
 	}
 	var text strings.Builder
+	completed := false
 	for {
 		record, err := output.Next(ctx)
 		if errors.Is(err, io.EOF) {
+			if !completed {
+				return "", errors.New("invocation ended without completion")
+			}
 			return text.String(), nil
 		}
 		if err != nil {
@@ -94,6 +98,7 @@ func call(ctx context.Context, resident *cmdpkgs.Resident, operation, conversati
 			text.Write(v)
 		case commandwire.Stderr:
 		case commandwire.Completed:
+			completed = true
 			if v.Completion.ExitCode != 0 {
 				return "", fmt.Errorf("completion: %+v", v.Completion)
 			}
@@ -134,16 +139,23 @@ func TestServiceWithoutLeasesStaysWhileHoldingConversation(t *testing.T) {
 	l := lease(t, r, d)
 	resident := acquire(t, r, d, resolver)
 	decided(t, events, d, cmdpkgs.Leased)
-	invoke(t, resident, "retain", "held")
+	invoke(t, resident, "retain", "one")
+	invoke(t, resident, "retain", "two")
 	l.Release()
-	decided(t, events, d, cmdpkgs.Asks)
-	decided(t, events, d, cmdpkgs.HoldsConversations)
+	for _, conversation := range []string{"", "unknown", "one"} {
+		if conversation != "" {
+			must(t, r.Handle().ReleaseConversation(t.Context(), conversation))
+		}
+		decided(t, events, d, cmdpkgs.Asks)
+		decided(t, events, d, cmdpkgs.HoldsConversations)
+	}
 	_, err := resident.Client().Info(t.Context())
 	must(t, err)
-	must(t, r.Handle().ReleaseConversation(t.Context(), "held"))
+	must(t, r.Handle().ReleaseConversation(t.Context(), "two"))
 	decided(t, events, d, cmdpkgs.Asks)
 	decided(t, events, d, cmdpkgs.Stops)
 	stopped(t, resident)
+	must(t, r.Handle().ReleaseConversation(t.Context(), "two"))
 }
 func TestLeaseKeepsServiceHoldingNothing(t *testing.T) {
 	root := t.TempDir()
@@ -153,6 +165,8 @@ func TestLeaseKeepsServiceHoldingNothing(t *testing.T) {
 	l := lease(t, r, d)
 	resident := acquire(t, r, d, resolver)
 	decided(t, events, d, cmdpkgs.Leased)
+	_, infoErr := resident.Client().Info(t.Context())
+	must(t, infoErr)
 	again := acquire(t, r, d, resolver)
 	if again.Client() != resident.Client() {
 		t.Fatal("did not reuse client")
@@ -271,7 +285,10 @@ func TestStartNobodyWaitsForStops(t *testing.T) {
 	second := make(chan error, 1)
 	l := lease(t, r, d)
 	go func() {
-		_, err := r.Handle().Acquire(t.Context(), d, resolver, cmdpkgstest.NoNumbers{})
+		resident, err := r.Handle().Acquire(t.Context(), d, resolver, cmdpkgstest.NoNumbers{})
+		if err == nil {
+			_, err = resident.Client().Info(t.Context())
+		}
 		second <- err
 	}()
 	<-resolver.entered
@@ -295,6 +312,9 @@ func TestStopAllAndCloseEndServices(t *testing.T) {
 	}
 	must(t, r.Handle().StopAll(t.Context()))
 	for _, resident := range residents {
+		if _, err := resident.Client().Info(t.Context()); err == nil {
+			t.Fatal("stopped service still answers")
+		}
 		stopped(t, resident)
 	}
 	must(t, r.Close(t.Context()))
@@ -361,14 +381,17 @@ func TestMissingOrDamagedImageDownloads(t *testing.T) {
 	logs.mu.Lock()
 	defer logs.mu.Unlock()
 	damagedLogs := 0
-	for _, text := range logs.lines {
+	for _, record := range logs.lines {
+		text := record.Message
+		hasSource := false
+		record.Attrs(func(a slog.Attr) bool { hasSource = hasSource || a.Key == "source"; return true })
 		if strings.Contains(text, filepath.Join(image, digest(damaged))) {
 			damagedLogs++
-			if !strings.Contains(text, "does not match its declared SHA-256") {
+			if hasSource || !strings.Contains(text, "does not match its declared SHA-256") {
 				t.Fatalf("diagnostic: %s", text)
 			}
 		}
-		if strings.Contains(text, filepath.Join(image, digest(absent))) {
+		if strings.Contains(text, digest(absent)) {
 			t.Fatalf("logged absent image: %s", text)
 		}
 	}
@@ -379,14 +402,14 @@ func TestMissingOrDamagedImageDownloads(t *testing.T) {
 
 type logCapture struct {
 	mu    sync.Mutex
-	lines []string
+	lines []slog.Record
 }
 
 func (*logCapture) Enabled(context.Context, slog.Level) bool { return true }
 func (l *logCapture) Handle(_ context.Context, r slog.Record) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.lines = append(l.lines, r.Message)
+	l.lines = append(l.lines, r.Clone())
 	return nil
 }
 func (l *logCapture) WithAttrs([]slog.Attr) slog.Handler { return l }
@@ -459,8 +482,8 @@ func TestServiceLifecycleMessages(t *testing.T) {
 	defer logs.mu.Unlock()
 	var lifecycle []string
 	for _, line := range logs.lines {
-		if strings.HasPrefix(line, "service "+d.ID+" ") {
-			lifecycle = append(lifecycle, line)
+		if strings.HasPrefix(line.Message, "service "+d.ID+" ") {
+			lifecycle = append(lifecycle, line.Message)
 		}
 	}
 	if len(lifecycle) != 3 || !strings.HasPrefix(lifecycle[0], "service "+d.ID+" started (pid ") || !strings.HasSuffix(lifecycle[0], ")") || lifecycle[1] != "service "+d.ID+" holds no lease or conversation and stops" || lifecycle[2] != "service "+d.ID+" stopped" {

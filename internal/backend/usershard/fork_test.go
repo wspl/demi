@@ -89,9 +89,13 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 	if diff := cmp.Diff(attached[:1], kept); diff != "" {
 		t.Fatal(diff)
 	}
-	listed, err := control.ConversationOrder(ctx, owner)
+	records, err := control.Conversations(ctx, owner, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+	var listed []webapi.ConversationID
+	for _, record := range records {
+		listed = append(listed, record.ID)
 	}
 	if !slices.Equal(listed, []webapi.ConversationID{committed, source}) {
 		t.Fatalf("sidebar = %v", listed)

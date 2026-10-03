@@ -79,6 +79,7 @@ func TestForkKeepsChosenHistoryWhileSourceRuns(t *testing.T) {
 	conversationEqual(t, destination.Cwd, directory)
 	conversationEqual(t, conversationTranscript(ctx, t, b, &s, conversationSecond).Blocks, history[:2])
 	listed := conversationDecode(t, conversationRequest(ctx, t, b, &s, "GET", "/api/conversations", "", 200), webapi.DecodeConversations)
+	conversationEqual(t, len(listed.Conversations), 2)
 	conversationEqual(t, []webapi.ConversationID{listed.Conversations[0].ID, listed.Conversations[1].ID}, []webapi.ConversationID{conversationSecond, conversationFirst})
 	again := conversationDecode(t, conversationFork(ctx, t, b, &s, conversationSecond, texts[0], 200), webapi.DecodeForkAnswer)
 	conversationEqual(t, again, forked)
@@ -170,7 +171,7 @@ func conversationCommands(blocks []core.Block) []string {
 	return ids
 }
 
-// Real runner and native file package; blocked before the first tool by finding 1.
+// A real runner installs the native file package and records shared edit blobs.
 func TestForkSharesEditBlobsWithoutWritingObjects(t *testing.T) {
 	ctx, h := conversationHarness(t)
 	counts := &blobstest.ObjectCounts{}

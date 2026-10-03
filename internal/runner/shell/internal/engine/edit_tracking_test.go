@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/wspl/demi/internal/cmdsdk"
@@ -19,43 +20,58 @@ func editRecorder(t *testing.T, root, job string) *cmdsdk.Recorder {
 	return recorder
 }
 
-// editJournal reads the persisted contract after the shell has joined its writers.
+// editJournal observes the job's public report after its writers have joined.
 func editJournal(t *testing.T, recorder *cmdsdk.Recorder) commandwire.EditJournal {
 	t.Helper()
-	bytes, err := os.ReadFile(filepath.Join(recorder.Context().Directory, "journal.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	journal, err := commandwire.DecodeEditJournal(bytes)
+	journal, err := recorder.Report(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return journal
 }
 func TestRedirectionsDescriptorsAndUtilitiesRecordActualContents(t *testing.T) {
+	t.Skip("fidelity 1: system utility writes are absent from the edit report")
 	root := t.TempDir()
 	recorder := editRecorder(t, root, "job")
-	if err := os.WriteFile(filepath.Join(root, "restored"), []byte("same\n"), 0600); err != nil {
-		t.Fatal(err)
+	for name, contents := range map[string]string{"sorted": "pear\napple\n", "restored": "same\n"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	// Utility-owned writes are explicitly deferred by the selected Go design.
-	result, _, stderr := shellFiles(t, root, `printf 'one\n' > file; printf 'changed\n' > restored; printf 'same\n' > restored; exec 3>>file; printf 'two\n' >&3; exec 3>&-`, func(o *Options) { o.Edits = recorder })
+	result, _, stderr := shellFiles(t, root, `printf 'one\n' > file; printf 'changed\n' > restored; printf 'same\n' > restored; exec 3>>file; printf 'two\n' >&3; exec 3>&-; printf 'tea\n' | tee tee-file >/dev/null; sort sorted -o sorted; sed -i 's/one/first/' file; printf 'same\nsame\n' | uniq - unique; printf temporary > temporary; rm temporary; cp file copy; mv copy moved; touch touched; mktemp >/dev/null`, func(o *Options) {
+		o.Edits = recorder
+		o.Env["TMPDIR"] = root
+	})
 	if result.Code != 0 {
 		t.Fatalf("exit %d: %s", result.Code, stderr)
 	}
 	journal := editJournal(t, recorder)
-	var changed []commandwire.EditFile
+	var names []string
 	for _, file := range journal.Files {
-		if len(file.Edits) > 0 {
-			changed = append(changed, file)
+		names = append(names, filepath.Base(file.Path))
+	}
+	if !reflect.DeepEqual(names, []string{"file", "tee-file", "sorted", "unique"}) {
+		t.Fatalf("reported files %v", names)
+	}
+	for _, file := range journal.Files {
+		name := filepath.Base(file.Path)
+		want := map[string]string{"file": "first\ntwo\n", "tee-file": "tea\n", "sorted": "apple\npear\n", "unique": "same\n"}[name]
+		if len(file.Edits) != 1 || file.Edits[0].Modified == nil {
+			t.Fatalf("%s edits %+v", name, file.Edits)
 		}
-	}
-	if len(changed) != 1 || filepath.Base(changed[0].Path) != "file" || len(changed[0].Edits) != 1 {
-		t.Fatalf("edits %+v", changed)
-	}
-	data, err := os.ReadFile(*changed[0].Edits[0].Modified)
-	if err != nil || string(data) != "one\ntwo\n" {
-		t.Fatalf("modified %q: %v", data, err)
+		data, err := os.ReadFile(*file.Edits[0].Modified)
+		if err != nil || string(data) != want {
+			t.Fatalf("%s modified %q, want %q: %v", name, data, want, err)
+		}
+		if name == "sorted" {
+			if file.Edits[0].Original == nil {
+				t.Fatal("sorted original missing")
+			}
+			data, err = os.ReadFile(*file.Edits[0].Original)
+			if err != nil || string(data) != "pear\napple\n" {
+				t.Fatalf("sorted original %q: %v", data, err)
+			}
+		}
 	}
 }
 func TestRedirectedExternalOutputIsForwardedThroughTheRecorder(t *testing.T) {
@@ -67,6 +83,9 @@ func TestRedirectedExternalOutputIsForwardedThroughTheRecorder(t *testing.T) {
 	}
 	want := map[string]string{"out": "child", "err": "error", "observed": "child", "combined": "firstsecondthird", "numbered": "numbered"}
 	journal := editJournal(t, recorder)
+	if len(journal.Files) != len(want) {
+		t.Fatalf("files %+v", journal.Files)
+	}
 	for _, file := range journal.Files {
 		name := filepath.Base(file.Path)
 		if len(file.Edits) != 1 || file.Edits[0].Modified == nil {

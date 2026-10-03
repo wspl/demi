@@ -102,21 +102,6 @@ func conversationTree(t *testing.T) (context.Context, *backendtest.TestBackend, 
 	return ctx, b, s, script, root
 }
 
-// treeRequestText observes typed model input, including tool-result text.
-func treeRequestText(r provider.InferenceRequest) string {
-	var text strings.Builder
-	for _, item := range r.Items {
-		if result, ok := item.(*provider.ToolResult); ok {
-			for _, part := range result.Output {
-				if p, ok := part.(*provider.TextPart); ok {
-					text.WriteString(p.Text)
-				}
-			}
-		}
-	}
-	return text.String()
-}
-
 // A real child works past its spawn job; the test releases its file wait.
 func TestChildSharesFilesButKeepsOwnTodosAfterSpawn(t *testing.T) {
 	ctx, b, s, scripts, root := conversationTree(t)
@@ -133,7 +118,7 @@ func TestChildSharesFilesButKeepsOwnTodosAfterSpawn(t *testing.T) {
 	_, err = socket.UntilIdle(ctx)
 	wireMust(t, err)
 	children := scripts.requests(conversationFirst, false)
-	read := treeRequestText(children[len(children)-1])
+	read := conversationJSON(t, children[len(children)-1].Items)
 	if !strings.Contains(read, "the answer is 42") || !strings.Contains(read, "child-only") || strings.Contains(read, "root-only") {
 		t.Fatalf("child files/todos: %s", read)
 	}
@@ -144,7 +129,7 @@ func TestChildSharesFilesButKeepsOwnTodosAfterSpawn(t *testing.T) {
 	_, err = socket.Chat(ctx, "m3", "Check")
 	wireMust(t, err)
 	roots := scripts.requests(conversationFirst, true)
-	checked := treeRequestText(roots[len(roots)-1])
+	checked := conversationJSON(t, roots[len(roots)-1].Items)
 	if !strings.Contains(checked, "from the child") || !strings.Contains(checked, "root-only") || strings.Contains(checked, "child-only") {
 		t.Fatalf("parent files/todos: %s", checked)
 	}
