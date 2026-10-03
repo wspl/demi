@@ -18,8 +18,9 @@ import (
 )
 
 func TestAJSONBodyOverItsLimitIsRefusedBeforeItIsRead(t *testing.T) {
-	ctx := t.Context()
-	b, master := accountStart(ctx, t, accountHarness(ctx, t))
+	ctx, h := conversationHarness(t)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	body := accountJSON(t, contract.Field{Name: "nickname", Value: strings.Repeat("x", 1024*1024)})
 	for _, streamed := range []bool{false, true} {
 		var reader io.Reader = strings.NewReader(body)
@@ -34,7 +35,8 @@ func TestAJSONBodyOverItsLimitIsRefusedBeforeItIsRead(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		accountRefusal(t, a, 413, webapi.ErrorCodeTooLarge)
+		conversationEqual(t, a.Status, 413)
+		conversationRefusal(t, a, webapi.ErrorCodeTooLarge)
 	}
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", b.Address().String())
 	if err != nil {
@@ -59,12 +61,14 @@ func TestAJSONBodyOverItsLimitIsRefusedBeforeItIsRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	accountRefusal(t, a, 401, webapi.ErrorCodeUnauthenticated)
+	conversationEqual(t, a.Status, 401)
+	conversationRefusal(t, a, webapi.ErrorCodeUnauthenticated)
 }
 
 func TestAJSONBodyIsReadWhateverItsContentTypeAndMustMatchItsType(t *testing.T) {
-	ctx := t.Context()
-	b, _ := accountStart(ctx, t, accountHarness(ctx, t))
+	ctx, h := conversationHarness(t)
+	b, _, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	login := func(body string) backendtest.Answer {
 		r, err := b.Response(ctx, "POST", "/api/auth/login", nil, nil, strings.NewReader(body))
 		if err != nil {
@@ -77,10 +81,13 @@ func TestAJSONBodyIsReadWhateverItsContentTypeAndMustMatchItsType(t *testing.T) 
 		return a
 	}
 	untyped := login(accountCredentials(t, backendtest.MasterEmail, backendtest.MasterPassword))
-	accountEqual(t, untyped.Status, 200)
-	accountEqual(t, string(accountDecode(t, untyped, webapi.DecodeIdentity).User.Email), backendtest.MasterEmail)
+	conversationEqual(t, untyped.Status, 200)
+	conversationEqual(t, string(conversationDecode(t, untyped, webapi.DecodeIdentity).User.Email), backendtest.MasterEmail)
 	for _, row := range [][2]string{{`{"email":"master@example.test","password":"master-pass-1","remember":true}`, "remember"}, {`{"email":"master@example.test"}`, "password"}, {`{"email":"master@example.test","password":""}`, "password"}, {`{"email":"master@example.test","password":5}`, "password"}, {"", ""}, {"{", ""}} {
-		e := accountRefusal(t, login(row[0]), 400, webapi.ErrorCodeInvalidBody)
+		eAnswer := login(row[0])
+		conversationEqual(t, eAnswer.Status, 400)
+		e := conversationDecode(t, eAnswer, webapi.DecodeErrorBody)
+		conversationEqual(t, e.Code, webapi.ErrorCodeInvalidBody)
 		if !strings.Contains(e.Message, row[1]) {
 			t.Fatal(e.Message)
 		}
@@ -88,12 +95,12 @@ func TestAJSONBodyIsReadWhateverItsContentTypeAndMustMatchItsType(t *testing.T) 
 }
 
 func TestTheWebAppBuildIsServedWithDeepNavigationWhileAPIMissesStayJSON(t *testing.T) {
-	ctx := t.Context()
-	h := accountHarness(ctx, t)
+	ctx, h := conversationHarness(t)
 	if err := h.WriteWeb(ctx, map[string]string{"index.html": "<html>fixture page</html>", "main.js": "export const fixture = true"}); err != nil {
 		t.Fatal(err)
 	}
-	b, master := accountStart(ctx, t, h)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	html := func(path string) backendtest.Answer {
 		a, err := b.ReadWith(ctx, path, nil, http.Header{"Accept": []string{"text/html"}})
 		if err != nil {
@@ -102,27 +109,31 @@ func TestTheWebAppBuildIsServedWithDeepNavigationWhileAPIMissesStayJSON(t *testi
 		return a
 	}
 	deep := html("/conversation/example")
-	accountEqual(t, deep.Status, 200)
+	conversationEqual(t, deep.Status, 200)
 	if !strings.Contains(string(deep.Body), "fixture page") {
 		t.Fatal(string(deep.Body))
 	}
-	script := accountRequest(ctx, t, b, "GET", "/main.js", nil, "")
-	accountEqual(t, script.Status, 200)
+	script := conversationRequest(ctx, t, b, nil, "GET", "/main.js", "", 200)
 	if !strings.Contains(string(script.Body), "fixture = true") {
 		t.Fatal(string(script.Body))
 	}
-	accountRefusal(t, html("/missing.js"), 404, webapi.ErrorCodeNotFound)
-	accountRefusal(t, accountRequest(ctx, t, b, "GET", "/conversation/example", nil, ""), 404, webapi.ErrorCodeNotFound)
-	accountRefusal(t, accountRequest(ctx, t, b, "GET", "/api/no-such-resource", &master, ""), 404, webapi.ErrorCodeNotFound)
+	{
+		answer := html("/missing.js")
+		conversationEqual(t, answer.Status, 404)
+		conversationRefusal(t, answer, webapi.ErrorCodeNotFound)
+	}
+	conversationRefusal(t, conversationRequest(ctx, t, b, nil, "GET", "/conversation/example", "", 404), webapi.ErrorCodeNotFound)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "GET", "/api/no-such-resource", "", 404), webapi.ErrorCodeNotFound)
 }
 
 func TestAPageSocketMessageOverTheLimitFailsTheSocket(t *testing.T) {
 	t.Skip("finding 2: oversized page message sends close code 1009 instead of closing without a code")
-	ctx := t.Context()
-	b, master := accountStart(ctx, t, accountHarness(ctx, t))
+	ctx, h := conversationHarness(t)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	id := "3c1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01"
-	accountEqual(t, accountRequest(ctx, t, b, "POST", "/api/conversations", &master, `{"id":"`+id+`"}`).Status, 201)
-	socket, err := backendtest.OpenAccountSocket(ctx, t, b, &master, id)
+	conversationCreate(ctx, t, b, &master, id)
+	socket, err := b.Conversation(ctx, t, &master, id)
 	if err != nil {
 		t.Fatal(err)
 	}
