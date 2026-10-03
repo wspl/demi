@@ -237,7 +237,7 @@ type UploadContent struct {
 	Ref string `json:"ref"`
 	// The name the file is written under: no path separator, no NUL,
 	// and neither `.` nor `..`. The pattern has no lookaround, so that
-	// a web browser's regex engine and Rust's read it alike.
+	// a web browser's regex engine and Go's regexp read it alike.
 	// +demi:length chars min=1 max=255
 	// +demi:pattern ^(?:[^./\\\x00][^/\\\x00]*|\.[^./\\\x00][^/\\\x00]*|\.\.[^/\\\x00]+)$
 	FileName string `json:"fileName"`

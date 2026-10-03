@@ -65,8 +65,8 @@ func TestConversationEndpointHasNoGrantsAndValidatesReleaseIdentity(t *testing.T
 		binary.BigEndian.PutUint32(b, uint32(len(test.body)))
 		b = append(b, []byte(test.body)...)
 		_, _, err := c.invokeAt(t.Context(), test.path, b, true)
-		var rejected *RejectedError
-		if !errors.As(err, &rejected) || rejected.Status != test.status {
+		if err == nil ||
+			!strings.Contains(err.Error(), fmt.Sprintf("service rejected HTTP request with status %d", test.status)) {
 			t.Fatalf("%s: %v", test.body, err)
 		}
 	}
@@ -114,8 +114,7 @@ func TestConversationCancellationJoinsHookAndCleanupFailureRetiresService(t *tes
 		t.Fatal("cleanup reported success")
 	}
 	err = <-done
-	var cleanup *ConversationCleanupError
-	if !errors.As(err, &cleanup) || !strings.Contains(err.Error(), "profile cleanup failed") {
+	if !errors.Is(err, ErrConversationCleanup) || !strings.Contains(err.Error(), "profile cleanup failed") {
 		t.Fatalf("cleanup: %v", err)
 	}
 	<-h.closed
@@ -186,8 +185,7 @@ func TestDrawsWaitForNumbersStreamContinuePerConversationAndShutdownEndsIt(t *te
 		}
 	}
 	_, err = c.Numbers(t.Context())
-	var rejected *RejectedError
-	if !errors.As(err, &rejected) || rejected.Status != http.StatusConflict {
+	if err == nil || !strings.Contains(err.Error(), "service rejected HTTP request with status 409") {
 		t.Fatalf("duplicate stream: %v", err)
 	}
 	must(t, c.Shutdown(t.Context()))
@@ -264,8 +262,7 @@ func TestArtifactsUseRunnerAnswersAndEndAtShutdown(t *testing.T) {
 		t.Fatal(got)
 	}
 	_, err = c.Artifacts(t.Context())
-	var rejected *RejectedError
-	if !errors.As(err, &rejected) || rejected.Status != 409 {
+	if err == nil || !strings.Contains(err.Error(), "service rejected HTTP request with status 409") {
 		t.Fatal(err)
 	}
 	must(t, c.Shutdown(t.Context()))

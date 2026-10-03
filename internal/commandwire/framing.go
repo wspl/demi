@@ -92,7 +92,7 @@ func EncodeRecord(record Record) ([]byte, error) {
 }
 
 // The metadata that opens an invocation stream: the native protocol's
-// [`Invocation`], or the local command client's [`LocalInvocation`], which
+// [Invocation], or the local command client's [LocalInvocation], which
 // shares its framing, input demand and completion.
 type Metadata interface {
 	metadata()

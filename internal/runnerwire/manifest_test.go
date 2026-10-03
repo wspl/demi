@@ -116,7 +116,7 @@ func TestManifestBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	if built.Hash != recorded.Hash {
-		t.Fatalf("hash=%s, want Rust %s", built.Hash, recorded.Hash)
+		t.Fatalf("hash=%s, want fixture %s", built.Hash, recorded.Hash)
 	}
 	encoded, err := contract.EncodeJSON(built)
 	if err != nil {
@@ -131,7 +131,7 @@ func TestManifestBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatal("built manifest differs from Rust fixture")
+		t.Fatal("built manifest differs from fixture")
 	}
 	native := func(pkg, op string) declare.Node[declare.NativeOperation] {
 		return &declare.Leaf[declare.NativeOperation]{
@@ -302,6 +302,6 @@ func TestManifestJSONThroughWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	if verified.Hash != "0cf18d78aae679a7d2e1af76e21e2f1d4c27a7e3a56ad6394a87b5b6229b0235" {
-		t.Fatalf("Rust hash changed: %s", verified.Hash)
+		t.Fatalf("fixture hash changed: %s", verified.Hash)
 	}
 }

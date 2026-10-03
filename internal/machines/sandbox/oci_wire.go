@@ -1,7 +1,7 @@
 package sandbox
 
 // Only the fields written by the fixed profile are represented. Declaration
-// order follows oci-spec 0.10.0's runtime structs, the Rust encoder's order.
+// order follows oci-spec 0.10.0's runtime structs, which fixes the JSON key order.
 // +demi:root
 type ociSpec struct {
 	Version  string     `json:"ociVersion"`

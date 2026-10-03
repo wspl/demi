@@ -61,10 +61,11 @@ func (n *SavedNamespace) Recover(ctx context.Context, stateLock *os.File, args [
 	}
 	owner, err := decodeNamespaceOwner(data)
 	if err != nil {
-		return &OwnerError{Path: ownerPath, Source: err}
+		return fmt.Errorf("%s is not a valid namespace owner record: %w", ownerPath, err)
 	}
 	if owner.DataDir != n.data {
-		return &OtherOwnerError{Data: owner.DataDir}
+		//nolint:staticcheck // User-visible text, kept byte for byte.
+		return fmt.Errorf("Recover the previous Cloud manager with its original state directory: %s", owner.DataDir)
 	}
 	_, err = system.RunNamespace(ctx, system.Mount(saved), func(ctx context.Context) (struct{}, error) {
 		return struct{}{}, runRecoveryChild(ctx, stateLock, args)
@@ -186,7 +187,8 @@ func runRecoveryChild(ctx context.Context, stateLock *os.File, args []string) er
 		if errors.As(err, &exit) {
 			status, ok := exit.Sys().(syscall.WaitStatus)
 			if ok {
-				return &RecoveryError{Status: status}
+				//nolint:staticcheck // User-visible text, kept byte for byte.
+				return fmt.Errorf("Cloud namespace recovery failed: %s", exitDescription(status))
 			}
 		}
 		return err

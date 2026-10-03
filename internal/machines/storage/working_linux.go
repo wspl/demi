@@ -41,8 +41,8 @@ func (p *WorkingPair) Images() ImagePair[string] { return ImagesInDirectory(p.di
 // SandboxRecord returns the runtime record path, sandbox.json.
 func (p *WorkingPair) SandboxRecord() string { return filepath.Join(p.directory, "sandbox.json") }
 
-// Manifest reads the working pair's record, or nil when there is none.
-func (p *WorkingPair) Manifest(ctx context.Context) (*machinewire.MachineImageState, error) {
+// Manifest reads the working pair's record; found is false when there is none.
+func (p *WorkingPair) Manifest(ctx context.Context) (machinewire.MachineImageState, bool, error) {
 	return ReadState(ctx, filepath.Join(p.directory, "manifest.json"))
 }
 
@@ -62,8 +62,8 @@ func (p *WorkingPair) WriteManifest(ctx context.Context, state machinewire.Machi
 // nothing happens without a manifest. Nothing may write the images: each is
 // checked, interrupted growth completed, and synced before publication.
 func (p *WorkingPair) Save(ctx context.Context, tools *system.Tools, store *Store, device machinewire.DeviceID) error {
-	state, err := p.Manifest(ctx)
-	if err != nil || state == nil {
+	state, found, err := p.Manifest(ctx)
+	if err != nil || !found {
 		return err
 	}
 	ctx = context.WithoutCancel(ctx)
@@ -80,7 +80,7 @@ func (p *WorkingPair) Save(ctx context.Context, tools *system.Tools, store *Stor
 	if err != nil {
 		return err
 	}
-	if err := store.Publish(ctx, device, *state, images); err != nil {
+	if err := store.Publish(ctx, device, state, images); err != nil {
 		return err
 	}
 	system.FaultPoint("working-published")
