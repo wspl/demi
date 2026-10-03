@@ -70,7 +70,11 @@ func (p *ScriptedProviders) Selection(_ context.Context, _ core.NodeID) (core.Mo
 }
 
 // Runtime records the resolution and supplies a fresh runtime, or *server.ResolveError.
-func (p *ScriptedProviders) Runtime(_ context.Context, root core.NodeID, model core.ModelSelection) (provider.Runtime, error) {
+func (p *ScriptedProviders) Runtime(
+	_ context.Context,
+	root core.NodeID,
+	model core.ModelSelection,
+) (provider.Runtime, error) {
 	p.mu.Lock()
 	p.calls = append(p.calls, Resolution{Root: root, Provider: model.ProviderID})
 	runtime := p.runtimes[model.ProviderID]

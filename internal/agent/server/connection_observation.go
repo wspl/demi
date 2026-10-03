@@ -30,37 +30,7 @@ func (t *Tree[H]) observeConnection(c *Connection[H], node *Node[H]) session.Sna
 	snapshot, subscription := node.session.Observe(func(event session.Event) {
 		t.frames.Lock()
 		defer t.frames.Unlock()
-		t.server.mu.Lock()
-		current := c.observations[node.ID()] == subscription
-		state := c.stateObservation == subscription
-		t.server.mu.Unlock()
-		if _, transcript := event.(*session.TranscriptChanged); transcript {
-			if !current {
-				return
-			}
-		} else if !state {
-			return
-		}
-		if node.ID() != t.id {
-			if e, ok := event.(*session.TranscriptChanged); ok {
-				c.send(&framewire.SubagentTranscriptPatchFrame{SubagentID: node.ID(), Patches: e.Patches, Revision: e.Revision})
-			}
-			return
-		}
-		if e, ok := event.(*session.EditCommitted); ok {
-			reply := c.editReply
-			if reply != nil && reply.operation == e.Receipt.OperationID && reply.digest == e.Receipt.Digest {
-				c.editReply = nil
-				c.send(&framewire.EditResultFrame{OperationID: e.Receipt.OperationID, Outcome: &framewire.AcceptedEdit{TurnID: e.Receipt.TurnID}})
-			}
-			return
-		}
-		if e, ok := event.(*session.TranscriptChanged); ok {
-			c.publishedRevision = e.Revision
-		}
-		if frame := frameOf(event); frame != nil {
-			c.send(frame)
-		}
+		t.connectionEventLocked(c, node, subscription, event)
 	})
 	if node.ID() == t.id {
 		c.publishedRevision = snapshot.Transcript.Version.Revision
@@ -107,5 +77,56 @@ func (c *Connection[H]) waitPublished(ctx context.Context, tree *Tree[H], revisi
 			return ctx.Err()
 		case <-changed:
 		}
+	}
+}
+
+// connectionEventLocked delivers an event while the tree frame lock is held.
+func (t *Tree[H]) connectionEventLocked(
+	c *Connection[H],
+	node *Node[H],
+	subscription *session.Subscription,
+	event session.Event,
+) {
+	t.server.mu.Lock()
+	current := c.observations[node.ID()] == subscription
+	state := c.stateObservation == subscription
+	t.server.mu.Unlock()
+	if _, transcript := event.(*session.TranscriptChanged); transcript {
+		if !current {
+			return
+		}
+	} else if !state {
+		return
+	}
+	if node.ID() != t.id {
+		if e, ok := event.(*session.TranscriptChanged); ok {
+			c.send(
+				&framewire.SubagentTranscriptPatchFrame{
+					SubagentID: node.ID(),
+					Patches:    e.Patches,
+					Revision:   e.Revision,
+				},
+			)
+		}
+		return
+	}
+	if e, ok := event.(*session.EditCommitted); ok {
+		reply := c.editReply
+		if reply != nil && reply.operation == e.Receipt.OperationID && reply.digest == e.Receipt.Digest {
+			c.editReply = nil
+			c.send(
+				&framewire.EditResultFrame{
+					OperationID: e.Receipt.OperationID,
+					Outcome:     &framewire.AcceptedEdit{TurnID: e.Receipt.TurnID},
+				},
+			)
+		}
+		return
+	}
+	if e, ok := event.(*session.TranscriptChanged); ok {
+		c.publishedRevision = e.Revision
+	}
+	if frame := frameOf(event); frame != nil {
+		c.send(frame)
 	}
 }

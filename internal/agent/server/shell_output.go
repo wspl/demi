@@ -22,21 +22,37 @@ func (t *Tree[H]) shellGroup() (host.Declared, error) {
 	if err != nil {
 		return host.Declared{}, err
 	}
-	leaf := declare.Leaf[declare.NativeOperation]{Name: "output", Summary: shellOutputSummary, Input: input, Positionals: new([]string{"id"}), Kind: &declare.RPC[declare.NativeOperation]{}, SuccessOutput: new("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out"), FailureOutput: new(`"demi shell output: <reason>" on stderr, exit 1`)}
-	handler := host.TypedRPC(shape.decode, func(ctx context.Context, call host.Call[outputArgs], port host.RPCPort) (uint8, error) {
-		if call.Invocation.Caller == nil {
-			return 0, &host.RPCError{Kind: host.HandlerFailed, Message: "the command runs only in an agent's job"}
-		}
-		root, err := core.ParseNodeID(call.Invocation.Context.Conversation)
-		if err != nil {
-			return 0, err
-		}
-		tree := t.server.Tree(root)
-		if tree == nil {
-			return 0, &host.RPCError{Kind: host.HandlerFailed, Message: fmt.Sprintf("the conversation %s is not open", root)}
-		}
-		return tree.output(ctx, call.Args, port)
-	})
+	leaf := declare.Leaf[declare.NativeOperation]{
+		Name:        "output",
+		Summary:     shellOutputSummary,
+		Input:       input,
+		Positionals: new([]string{"id"}),
+		Kind:        &declare.RPC[declare.NativeOperation]{},
+		SuccessOutput: new(
+			"the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out",
+		),
+		FailureOutput: new(`"demi shell output: <reason>" on stderr, exit 1`),
+	}
+	handler := host.TypedRPC(
+		shape.decode,
+		func(ctx context.Context, call host.Call[outputArgs], port host.RPCPort) (uint8, error) {
+			if call.Invocation.Caller == nil {
+				return 0, &host.RPCError{Kind: host.HandlerFailed, Message: "the command runs only in an agent's job"}
+			}
+			root, err := core.ParseNodeID(call.Invocation.Context.Conversation)
+			if err != nil {
+				return 0, err
+			}
+			tree := t.server.Tree(root)
+			if tree == nil {
+				return 0, &host.RPCError{
+					Kind:    host.HandlerFailed,
+					Message: fmt.Sprintf("the conversation %s is not open", root),
+				}
+			}
+			return tree.output(ctx, call.Args, port)
+		},
+	)
 	return host.Group("shell", shellGroupSummary, host.Leaf(leaf, handler)), nil
 }
 
@@ -58,15 +74,9 @@ func (t *Tree[H]) output(ctx context.Context, args outputArgs, port host.RPCPort
 	if args.Lines != nil && args.Tail != nil {
 		return fail("--lines and --tail do not go together")
 	}
-	from, to := uint64(1), ^uint64(0)
-	if args.Lines != nil {
-		left, right, _ := strings.Cut(*args.Lines, "-")
-		var firstErr, lastErr error
-		from, firstErr = strconv.ParseUint(left, 10, 64)
-		to, lastErr = strconv.ParseUint(right, 10, 64)
-		if firstErr != nil || lastErr != nil || from < 1 || to < from {
-			return fail(fmt.Sprintf("--lines %s: lines count from 1, and a range ends at or after its start", *args.Lines))
-		}
+	from, to, reason := outputRange(args.Lines)
+	if reason != "" {
+		return fail(reason)
 	}
 	raw := args.Raw != nil && *args.Raw
 	if raw && (args.Lines != nil || args.Tail != nil) {
@@ -77,28 +87,20 @@ func (t *Tree[H]) output(ctx context.Context, args outputArgs, port host.RPCPort
 		return fail(err.Error())
 	}
 	if raw {
-		text := output.Text(streams, nil, host.Seen{})
-		data := text.Bytes()
-		for len(data) != 0 {
-			size := min(len(data), 1024*1024)
-			if err := port.Stdout(ctx, data[:size]); err != nil {
-				return 0, err
-			}
-			data = data[size:]
-		}
-		for _, note := range text.Notes() {
-			if err := port.Stderr(ctx, []byte(note+"\n")); err != nil {
-				return 0, err
-			}
-		}
-		return 0, nil
+		return writeRawOutput(ctx, port, output.Text(streams, nil, host.Seen{}))
 	}
 	var binary *uint64
 	if length, ok := output.BinaryStdoutLength(); ok {
 		binary = &length
 	}
 	if binary != nil && streams == host.OnlyStdout {
-		return fail(fmt.Sprintf("the stdout of %s is binary; save it: demi shell output %s --raw --stdout > <file>", args.ID, args.ID))
+		return fail(
+			fmt.Sprintf(
+				"the stdout of %s is binary; save it: demi shell output %s --raw --stdout > <file>",
+				args.ID,
+				args.ID,
+			),
+		)
 	}
 	text := output.Text(streams, binary, host.Seen{})
 	page := outputPage{text: text, id: args.ID, streams: streams, running: running}
@@ -138,7 +140,12 @@ func (t *Tree[H]) commandOutput(ctx context.Context, id string) (host.WholeOutpu
 	case *store.OutputNotStored:
 		return host.WholeOutput{}, false, fmt.Errorf("the output of %s was not stored: %s", id, v.Reason)
 	case *store.OutputRemoved:
-		return host.WholeOutput{}, false, fmt.Errorf("the output of %s was removed on %s, %d days after the command ended", id, string(v.At)[:10], store.CommandOutputDays)
+		return host.WholeOutput{}, false, fmt.Errorf(
+			"the output of %s was removed on %s, %d days after the command ended",
+			id,
+			string(v.At)[:10],
+			store.CommandOutputDays,
+		)
 	}
 	return host.WholeOutput{}, false, unknown
 }
@@ -174,13 +181,25 @@ func (p outputPage) header(first, last uint64) string {
 		soFar = " so far"
 	}
 	if first != 0 {
-		return fmt.Sprintf("[command %s: lines %d-%d of %d%s, %s]", p.id, first, last, p.text.LastLine(), soFar, streams)
+		return fmt.Sprintf(
+			"[command %s: lines %d-%d of %d%s, %s]",
+			p.id,
+			first,
+			last,
+			p.text.LastLine(),
+			soFar,
+			streams,
+		)
 	}
 	return fmt.Sprintf("[command %s: %d lines%s, %s]", p.id, p.text.LastLine(), soFar, streams)
 }
 
 func (p outputPage) reserved(to uint64) int {
-	return utf8.RuneCountInString(p.header(to, to)) + utf8.RuneCountInString(fmt.Sprintf("[next: demi shell output %s --lines %d-%d%s]", p.id, to, to, p.flags())) + 2
+	return utf8.RuneCountInString(
+		p.header(to, to),
+	) + utf8.RuneCountInString(
+		fmt.Sprintf("[next: demi shell output %s --lines %d-%d%s]", p.id, to, to, p.flags()),
+	) + 2
 }
 
 func (p outputPage) render(piece host.Piece) []string {
@@ -192,7 +211,17 @@ func (p outputPage) render(piece host.Piece) []string {
 	if length <= 2000 {
 		return []string{fmt.Sprintf("%6d\t%s", piece.Number, text)}
 	}
-	return []string{fmt.Sprintf("%6d\t%s", piece.Number, text[:core.CharOffset(text, 2000)]), fmt.Sprintf("[line %d is %d characters; whole: demi shell output %s --raw%s | sed -n %dp]", piece.Number, length, p.id, p.flags(), piece.Number)}
+	return []string{
+		fmt.Sprintf("%6d\t%s", piece.Number, text[:core.CharOffset(text, 2000)]),
+		fmt.Sprintf(
+			"[line %d is %d characters; whole: demi shell output %s --raw%s | sed -n %dp]",
+			piece.Number,
+			length,
+			p.id,
+			p.flags(),
+			piece.Number,
+		),
+	}
 }
 
 func (p outputPage) forward(from, to uint64) string {
@@ -264,4 +293,35 @@ func (p outputPage) tail(count uint64) string {
 		page = append(page, line...)
 	}
 	return strings.Join(page, "\n") + "\n"
+}
+
+func writeRawOutput(ctx context.Context, port host.RPCPort, text host.OutputText) (uint8, error) {
+	data := text.Bytes()
+	for len(data) != 0 {
+		size := min(len(data), 1024*1024)
+		if err := port.Stdout(ctx, data[:size]); err != nil {
+			return 0, err
+		}
+		data = data[size:]
+	}
+	for _, note := range text.Notes() {
+		if err := port.Stderr(ctx, []byte(note+"\n")); err != nil {
+			return 0, err
+		}
+	}
+	return 0, nil
+}
+
+func outputRange(lines *string) (uint64, uint64, string) {
+	from, to := uint64(1), ^uint64(0)
+	if lines != nil {
+		left, right, _ := strings.Cut(*lines, "-")
+		var firstErr, lastErr error
+		from, firstErr = strconv.ParseUint(left, 10, 64)
+		to, lastErr = strconv.ParseUint(right, 10, 64)
+		if firstErr != nil || lastErr != nil || from < 1 || to < from {
+			return 0, 0, fmt.Sprintf("--lines %s: lines count from 1, and a range ends at or after its start", *lines)
+		}
+	}
+	return from, to, ""
 }

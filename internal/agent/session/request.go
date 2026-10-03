@@ -43,6 +43,7 @@ func (s *Session) requestView(ctx context.Context) (*transcript.RequestView, err
 	s.mu.Unlock()
 	return transcript.NewRequestView(view, model.Model, runtime.RequestLimits(model.Model)), nil
 }
+
 func (s *Session) estimate(ctx context.Context) (uint64, error) {
 	request, err := s.requestView(ctx)
 	if err != nil {
@@ -94,7 +95,19 @@ func (s *Session) request(ctx context.Context) (provider.InferenceRequest, error
 	requestID := s.deps.IDs.NextID()
 	s.core.releaseMediaLocked()
 	s.mu.Unlock()
-	return provider.InferenceRequest{SessionID: string(id), TurnID: string(turn), RequestID: requestID, ModelID: model.Model.ID, OutputLimit: model.Model.OutputLimit, SystemPrompt: prompt, Items: replayed.Items, Tools: s.deps.Runtime.Tools(), Thinking: model.Thinking, ServiceTierID: model.ServiceTierID, PromptCache: provider.PromptCache{AnsweredItems: new(replayed.Answered)}}, nil
+	return provider.InferenceRequest{
+		SessionID:     string(id),
+		TurnID:        string(turn),
+		RequestID:     requestID,
+		ModelID:       model.Model.ID,
+		OutputLimit:   model.Model.OutputLimit,
+		SystemPrompt:  prompt,
+		Items:         replayed.Items,
+		Tools:         s.deps.Runtime.Tools(),
+		Thinking:      model.Thinking,
+		ServiceTierID: model.ServiceTierID,
+		PromptCache:   provider.PromptCache{AnsweredItems: new(replayed.Answered)},
+	}, nil
 }
 
 // forkRuntime excludes concurrent provider runs while Fresh uses the runtime.

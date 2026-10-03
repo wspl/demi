@@ -12,7 +12,11 @@ import (
 	"github.com/wspl/demi/internal/provider"
 )
 
-func (c *coreState) checkEdit(operation core.OperationID, digest string, version framewire.TranscriptVersion) (EditCheck, error) {
+func (c *coreState) checkEditLocked(
+	operation core.OperationID,
+	digest string,
+	version framewire.TranscriptVersion,
+) (EditCheck, error) {
 	for _, receipt := range c.edits {
 		if receipt.OperationID == operation {
 			if receipt.Digest != digest {
@@ -30,7 +34,7 @@ func (c *coreState) checkEdit(operation core.OperationID, digest string, version
 	if c.disposing {
 		return nil, &EditError{Kind: EditClosed}
 	}
-	if c.status().Settle != Settled || c.edit != nil || len(c.inputs) > 0 || len(c.wakeups) > 0 {
+	if c.statusLocked().Settle != Settled || c.edit != nil || len(c.inputs) > 0 || len(c.wakeups) > 0 {
 		return nil, &EditError{Kind: EditBusy}
 	}
 	if version != c.log.Version() {
@@ -38,11 +42,12 @@ func (c *coreState) checkEdit(operation core.OperationID, digest string, version
 	}
 	return &EditProceed{}, nil
 }
+
 func (s *Session) editAndSend(ctx context.Context, submission EditSubmission) (store.EditReceipt, error) {
 	var check EditCheck
 	var err error
 	s.mutate(func(c *coreState) {
-		check, err = c.checkEdit(submission.OperationID, submission.Digest, submission.Version)
+		check, err = c.checkEditLocked(submission.OperationID, submission.Digest, submission.Version)
 		if err != nil {
 			return
 		}
@@ -67,6 +72,7 @@ func (s *Session) editAndSend(ctx context.Context, submission EditSubmission) (s
 	}
 	return store.EditReceipt{}, &EditError{Kind: EditClosed}
 }
+
 func (s *Session) rejectEditLocked(err *EditError) {
 	c := &s.core
 	if c.edit == nil || c.edit.accepted {
@@ -107,7 +113,10 @@ func (s *Session) prepareEditLocked(preamble *string) (editCandidate, error) {
 	}
 	revision, ok := c.commands.Boundary(submission.Target, store.BeforeUser)
 	if !ok {
-		return editCandidate{}, &EditError{Kind: EditFailed, Detail: fmt.Sprintf("No command-state boundary before %s", submission.Target)}
+		return editCandidate{}, &EditError{
+			Kind:   EditFailed,
+			Detail: fmt.Sprintf("No command-state boundary before %s", submission.Target),
+		}
 	}
 	model := c.model
 	source := c.provider
@@ -127,17 +136,15 @@ func (s *Session) prepareEditLocked(preamble *string) (editCandidate, error) {
 	commands.Capture(user, store.BeforeUser, revision)
 	commands.Capture(user, store.AfterBlock, revision)
 	receipt := store.EditReceipt{OperationID: submission.OperationID, Digest: submission.Digest, TurnID: c.active.turn}
-	state := c.checkpointState()
-	state.Phase = "running"
-	state.Model = model
-	state.Queue = []core.QueuedMessage{}
-	state.Edits = append(state.Edits, receipt)
-	snapshot := commands.Snapshot(nil)
-	update := store.CheckpointUpdate{State: state, CommandState: &snapshot, BlockCount: len(blocks), ChangedBlocks: []store.ChangedBlock{}}
-	for i, b := range blocks {
-		update.ChangedBlocks = append(update.ChangedBlocks, store.ChangedBlock{Index: i, Block: b})
-	}
-	return editCandidate{blocks: blocks, commands: commands, model: model, receipt: receipt, update: update, source: source}, nil
+	update := c.editUpdateLocked(model, receipt, commands, blocks)
+	return editCandidate{
+		blocks:   blocks,
+		commands: commands,
+		model:    model,
+		receipt:  receipt,
+		update:   update,
+		source:   source,
+	}, nil
 }
 
 func (s *Session) runEdit(ctx context.Context) error {
@@ -173,49 +180,9 @@ func (s *Session) runEdit(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fresh := candidate.source.Fresh()
-	accepted := false
-	defer func() {
-		if !accepted {
-			if closeErr := fresh.Close(context.WithoutCancel(ctx)); closeErr != nil {
-				s.emit(&ErrorEvent{Report: ErrorReport{Message: closeErr.Error()}})
-			}
-		}
-	}()
-	permit, err := s.persist.Acquire(ctx)
-	if err != nil {
+	committed, err := s.commitEdit(ctx, candidate)
+	if !committed {
 		return err
-	}
-	err = ctx.Err()
-	if err == nil {
-		err = s.deps.Store.Save(context.WithoutCancel(ctx), candidate.update, store.CommitGuard{})
-	}
-	if err != nil {
-		permit.Release()
-		return err
-	}
-	var retired []provider.Runtime
-	s.mutate(func(c *coreState) {
-		s.adoptLocked(candidate.blocks, candidate.commands)
-		c.edits = append(c.edits, candidate.receipt)
-		retired = append(c.retired, c.provider)
-		if c.change != nil && c.change.Runtime != nil {
-			retired = append(retired, c.change.Runtime)
-		}
-		c.retired = nil
-		c.provider = fresh
-		c.model = candidate.model
-		c.change = c.waitingChange
-		c.waitingChange = nil
-		c.edit.accepted = true
-		s.eventLocked(&EditCommitted{Receipt: candidate.receipt})
-		acceptance := c.edit.acceptance
-		c.effects = append(c.effects, func() { acceptance.finish(candidate.receipt, nil) })
-	})
-	accepted = true
-	permit.Release()
-	for _, old := range retired {
-		err = errors.Join(err, old.Close(context.WithoutCancel(ctx)))
 	}
 	s.mutate(func(c *coreState) { c.providerBusy = false })
 	reserved = false
@@ -254,47 +221,127 @@ func resolveEdit(parts []EditContent, target []core.UserContentBlock) ([]core.Us
 			}
 			result = append(result, found)
 		case *KeptMedia:
-			var kind string
-			var blob core.BlobRef
-			switch ref := part.Media.(type) {
-			case *framewire.MediaImageRef:
-				kind = "image"
-				blob = ref.Ref
-			case *framewire.MediaVideoRef:
-				kind = "video"
-				blob = ref.Ref
-			case *framewire.MediaDocumentRef:
-				kind = "document"
-				blob = ref.Ref
-			}
-			var found core.UserContentBlock
-			for _, block := range target {
-				var match bool
-				switch b := block.(type) {
-				case *core.UserImage:
-					if ref, ok := b.Source.(*core.MediaSourceRef); ok {
-						match = kind == "image" && ref.Ref == blob
-					}
-				case *core.UserVideo:
-					if ref, ok := b.Source.(*core.MediaSourceRef); ok {
-						match = kind == "video" && ref.Ref == blob
-					}
-				case *core.UserDocument:
-					if ref, ok := b.Source.(*core.DocumentRef); ok {
-						match = kind == "document" && ref.Ref == blob
-					}
-				case *core.UserText, *core.UserAttachment, *core.UserReference:
-				}
-				if match {
-					found = block
-					break
-				}
-			}
-			if found == nil {
-				return nil, &EditError{Kind: EditUnknownMedia, MediaKind: kind, Blob: blob}
+			found, err := resolveKeptMedia(part.Media, target)
+			if err != nil {
+				return nil, err
 			}
 			result = append(result, found)
 		}
 	}
 	return result, nil
+}
+
+func (c *coreState) editUpdateLocked(
+	model core.ModelSelection,
+	receipt store.EditReceipt,
+	commands *store.CommandStateHistory,
+	blocks []core.Block,
+) store.CheckpointUpdate {
+	state := c.checkpointStateLocked()
+	state.Phase = "running"
+	state.Model = model
+	state.Queue = []core.QueuedMessage{}
+	state.Edits = append(state.Edits, receipt)
+	snapshot := commands.Snapshot(nil)
+	update := store.CheckpointUpdate{
+		State:         state,
+		CommandState:  &snapshot,
+		BlockCount:    len(blocks),
+		ChangedBlocks: []store.ChangedBlock{},
+	}
+	for i, b := range blocks {
+		update.ChangedBlocks = append(update.ChangedBlocks, store.ChangedBlock{Index: i, Block: b})
+	}
+	return update
+}
+
+func (s *Session) commitEdit(ctx context.Context, candidate editCandidate) (bool, error) {
+	fresh := candidate.source.Fresh()
+	accepted := false
+	defer func() {
+		if !accepted {
+			if closeErr := fresh.Close(context.WithoutCancel(ctx)); closeErr != nil {
+				s.emit(&ErrorEvent{Report: ErrorReport{Message: closeErr.Error()}})
+			}
+		}
+	}()
+	permit, err := s.persist.Acquire(ctx)
+	if err != nil {
+		return false, err
+	}
+	err = ctx.Err()
+	if err == nil {
+		err = s.deps.Store.Save(context.WithoutCancel(ctx), candidate.update, store.CommitGuard{})
+	}
+	if err != nil {
+		permit.Release()
+		return false, err
+	}
+	var retired []provider.Runtime
+	s.mutate(func(c *coreState) {
+		s.adoptLocked(candidate.blocks, candidate.commands)
+		c.edits = append(c.edits, candidate.receipt)
+		retired = append(c.retired, c.provider)
+		if c.change != nil && c.change.Runtime != nil {
+			retired = append(retired, c.change.Runtime)
+		}
+		c.retired = nil
+		c.provider = fresh
+		c.model = candidate.model
+		c.change = c.waitingChange
+		c.waitingChange = nil
+		c.edit.accepted = true
+		s.eventLocked(&EditCommitted{Receipt: candidate.receipt})
+		acceptance := c.edit.acceptance
+		c.effects = append(c.effects, func() { acceptance.finish(candidate.receipt, nil) })
+	})
+	accepted = true
+	permit.Release()
+	for _, old := range retired {
+		err = errors.Join(err, old.Close(context.WithoutCancel(ctx)))
+	}
+	return true, err
+}
+
+func resolveKeptMedia(media framewire.MediaRef, target []core.UserContentBlock) (core.UserContentBlock, error) {
+	var kind string
+	var blob core.BlobRef
+	switch ref := media.(type) {
+	case *framewire.MediaImageRef:
+		kind = "image"
+		blob = ref.Ref
+	case *framewire.MediaVideoRef:
+		kind = "video"
+		blob = ref.Ref
+	case *framewire.MediaDocumentRef:
+		kind = "document"
+		blob = ref.Ref
+	}
+	var found core.UserContentBlock
+	for _, block := range target {
+		var match bool
+		switch b := block.(type) {
+		case *core.UserImage:
+			if ref, ok := b.Source.(*core.MediaSourceRef); ok {
+				match = kind == "image" && ref.Ref == blob
+			}
+		case *core.UserVideo:
+			if ref, ok := b.Source.(*core.MediaSourceRef); ok {
+				match = kind == "video" && ref.Ref == blob
+			}
+		case *core.UserDocument:
+			if ref, ok := b.Source.(*core.DocumentRef); ok {
+				match = kind == "document" && ref.Ref == blob
+			}
+		case *core.UserText, *core.UserAttachment, *core.UserReference:
+		}
+		if match {
+			found = block
+			break
+		}
+	}
+	if found == nil {
+		return nil, &EditError{Kind: EditUnknownMedia, MediaKind: kind, Blob: blob}
+	}
+	return found, nil
 }

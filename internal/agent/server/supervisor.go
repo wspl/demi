@@ -18,8 +18,10 @@ import (
 	"github.com/wspl/demi/internal/host"
 )
 
-const maxLiveChildren = 8
-const resultMaxBytes = 32 * 1024
+const (
+	maxLiveChildren = 8
+	resultMaxBytes  = 32 * 1024
+)
 
 type child[H host.Host] struct {
 	node      *Node[H]
@@ -112,7 +114,12 @@ func (t *Tree[H]) checkCapacity(owner core.NodeID) error {
 	return nil
 }
 
-func (t *Tree[H]) startChild(ctx context.Context, owner *Node[H], record store.NodeRecord, first *core.QueuedMessage) error {
+func (t *Tree[H]) startChild(
+	ctx context.Context,
+	owner *Node[H],
+	record store.NodeRecord,
+	first *core.QueuedMessage,
+) error {
 	profile, err := t.profile(record.Profile)
 	if err != nil {
 		return err
@@ -127,26 +134,18 @@ func (t *Tree[H]) startChild(ctx context.Context, owner *Node[H], record store.N
 		return err
 	}
 	model, instructions, inherited := owner.session.Model(), owner.runtime.instructions, owner.runtime.inherited
-	if profile != nil {
-		if profile.Model != nil {
-			model = *profile.Model
-		}
-		if profile.Instructions != nil {
-			instructions = *profile.Instructions
-		}
-		if profile.Commands != nil {
-			inherited = inherited.Filter(func(path []string) bool {
-				for _, keep := range *profile.Commands {
-					if len(path) >= len(keep) && slices.Equal(path[:len(keep)], keep) {
-						return true
-					}
-				}
-				return false
-			})
-		}
-	}
+	model, instructions, inherited = childProfile(profile, model, instructions, inherited)
 	preamble := subagentPreamble(record.Number, owner.record.Number, record.CanSpawnSubagents)
-	node, continuation, err := t.assemble(ctx, record, owner.CWD(), model, runtime, instructions, &preamble, inherited, first)
+	node, continuation, err := t.assemble(ctx, assembly{
+		record:       record,
+		cwd:          owner.CWD(),
+		model:        model,
+		runtime:      runtime,
+		instructions: instructions,
+		preamble:     &preamble,
+		inherited:    inherited,
+		first:        first,
+	})
 	if err != nil {
 		return err
 	}
@@ -155,29 +154,8 @@ func (t *Tree[H]) startChild(ctx context.Context, owner *Node[H], record store.N
 		return errors.Join(err, node.session.Dispose(context.WithoutCancel(ctx)))
 	}
 	c := &child[H]{node: node, done: make(chan struct{}), telemetry: telemetry{lastEvent: now}}
-	_, c.events = node.session.Observe(func(event session.Event) {
-		switch e := event.(type) {
-		case *session.TranscriptChanged:
-			t.observe(c, e)
-		case *session.ActionFailed:
-			t.server.mu.Lock()
-			c.failure = new(e.Report.Message)
-			t.server.mu.Unlock()
-			t.bump()
-		case *session.EditCommitted, *session.PhaseChanged, *session.QueueChanged, *session.PendingSteersChanged, *session.RetryScheduled, *session.ErrorEvent:
-		}
-	})
-	t.frames.Lock()
-	t.server.mu.Lock()
-	t.children[node.ID()] = c
-	t.server.mu.Unlock()
-	t.bump()
-	for _, connection := range t.connections() {
-		for _, frame := range t.childFrames(connection, c) {
-			connection.send(frame)
-		}
-	}
-	t.frames.Unlock()
+	t.observeChild(c, node)
+	t.publishChild(c, node)
 	if continuation != nil {
 		if err := node.continueFrom(ctx, *continuation); err != nil {
 			t.report(fmt.Errorf("subagent %s did not save its start: %w", node.ID(), err))
@@ -251,7 +229,8 @@ func (t *Tree[H]) supervise(c *child[H]) {
 		if !stop {
 			if c.failure != nil {
 				phase = &store.Failed{Failure: *c.failure}
-			} else if status.Settle == session.Settled && !status.Wakeups && !status.AgentInput && descendants == 0 && t.changing[c.node.ID()] == 0 {
+			} else if status.Settle == session.Settled && !status.Wakeups && !status.AgentInput &&
+				descendants == 0 && t.changing[c.node.ID()] == 0 {
 				phase = &store.Completed{}
 			}
 			if phase != nil {
@@ -333,26 +312,9 @@ func (t *Tree[H]) closeChild(ctx context.Context, c *child[H], phase store.Close
 	}
 	agent := c.node.session
 	if _, completed := phase.(*store.Completed); !completed {
-		agent.Hold()
-		for {
-			result, err := agent.Abort(ctx)
-			if err != nil {
-				t.report(err)
-				break
-			}
-			if result.Target == nil {
-				break
-			}
-		}
-		permit, err := t.starts.Acquire(ctx, record.ID)
-		if err != nil {
-			t.report(err)
+		if !t.stopChild(ctx, agent, record.ID) {
 			return
 		}
-		if err := t.abortChildren(ctx, record.ID); err != nil {
-			t.report(err)
-		}
-		permit.Release()
 	} else {
 		phase = &store.Completed{Result: boundedResult(agent.LastAssistantText())}
 	}
@@ -367,15 +329,7 @@ func (t *Tree[H]) closeChild(ctx context.Context, c *child[H], phase store.Close
 	t.server.mu.Unlock()
 	t.bump()
 	t.frames.Lock()
-	for _, connection := range t.connections() {
-		t.server.mu.Lock()
-		subscription := connection.observations[record.ID]
-		delete(connection.observations, record.ID)
-		t.server.mu.Unlock()
-		if subscription != nil {
-			subscription.Release()
-		}
-	}
+	t.releaseChildObservations(record.ID)
 	if err == nil {
 		record.Closed = &ended
 		t.publish(&framewire.SubagentFrame{Event: framewire.SubagentEventClosed, Job: *record.Job()})
@@ -404,7 +358,19 @@ func (t *Tree[H]) deliver(ctx context.Context, owner *Node[H], record store.Node
 		content, outcome = phase.Failure, "failed"
 	case *store.Aborted:
 	}
-	message := core.AgentMessage{ID: id, Sender: core.Sender{ID: record.ID, Number: record.Number, Description: record.Description, Round: record.Round}, RecipientID: owner.ID(), Timestamp: ended.At, Content: content, Event: &core.CompletionEvent{Outcome: outcome}}
+	message := core.AgentMessage{
+		ID: id,
+		Sender: core.Sender{
+			ID:          record.ID,
+			Number:      record.Number,
+			Description: record.Description,
+			Round:       record.Round,
+		},
+		RecipientID: owner.ID(),
+		Timestamp:   ended.At,
+		Content:     content,
+		Event:       &core.CompletionEvent{Outcome: outcome},
+	}
 	if err := owner.session.AcceptAgentMessage(ctx, message); err != nil {
 		var refusal *session.AgentMessageError
 		if !errors.As(err, &refusal) || refusal.Kind != session.AgentMessageClosed {
@@ -418,24 +384,13 @@ func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, c
 	if sender == nil {
 		return 0, errors.New("this session is not in the agent directory")
 	}
-	noLive := fmt.Errorf("no live agent %q (see `demi agent list`; an archived child is revived only by its parent via resume)", target)
-	var recipient *Node[H]
-	if target == "parent" {
-		if sender.record.Parent == nil {
-			return 0, errors.New("the root session has no parent")
-		}
-		recipient = t.Node(*sender.record.Parent)
-	} else if number, err := strconv.ParseUint(target, 10, 64); err == nil {
-		if number == 0 {
-			recipient = t.root
-		} else {
-			for _, c := range t.descendants(t.id) {
-				if c.node.record.Number == number {
-					recipient = c.node
-					break
-				}
-			}
-		}
+	noLive := fmt.Errorf(
+		"no live agent %q (see `demi agent list`; an archived child is revived only by its parent via resume)",
+		target,
+	)
+	recipient, err := t.recipient(sender, target)
+	if err != nil {
+		return 0, err
 	}
 	if recipient == nil {
 		return 0, noLive
@@ -444,23 +399,11 @@ func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, c
 		return 0, errors.New("cannot message your own session")
 	}
 	if recipient.ID() != t.id {
-		t.server.mu.Lock()
-		child := t.children[recipient.ID()]
-		t.server.mu.Unlock()
-		if child == nil {
-			return 0, noLive
-		}
-		permit, err := child.delivery.Acquire(ctx)
+		permit, err := t.messagePermit(ctx, recipient, noLive)
 		if err != nil {
 			return 0, err
 		}
 		defer permit.Release()
-		t.server.mu.Lock()
-		closing := child.closing
-		t.server.mu.Unlock()
-		if closing {
-			return 0, noLive
-		}
 	}
 	description := sender.record.Description
 	if sender.record.Parent == nil {
@@ -470,7 +413,19 @@ func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, c
 	if err != nil {
 		return 0, err
 	}
-	message := core.AgentMessage{ID: id, Sender: core.Sender{ID: caller, Number: sender.record.Number, Description: description, Round: sender.record.Round}, RecipientID: recipient.ID(), Timestamp: t.server.deps.Clock.Now(), Content: content, Event: &core.MessageEvent{}}
+	message := core.AgentMessage{
+		ID: id,
+		Sender: core.Sender{
+			ID:          caller,
+			Number:      sender.record.Number,
+			Description: description,
+			Round:       sender.record.Round,
+		},
+		RecipientID: recipient.ID(),
+		Timestamp:   t.server.deps.Clock.Now(),
+		Content:     content,
+		Event:       &core.MessageEvent{},
+	}
 	if err := recipient.session.AcceptAgentMessage(ctx, message); err != nil {
 		return 0, err
 	}
@@ -479,8 +434,16 @@ func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, c
 
 func (t *Tree[H]) childFrames(connection *Connection[H], c *child[H]) []framewire.ServerFrame {
 	snapshot := t.observeConnection(connection, c.node).Transcript
-	return []framewire.ServerFrame{&framewire.SubagentFrame{Event: framewire.SubagentEventStarted, Job: *c.node.record.Job()}, &framewire.SubagentTranscriptResetFrame{SubagentID: c.node.ID(), Blocks: snapshot.Blocks, Revision: snapshot.Version.Revision}}
+	return []framewire.ServerFrame{
+		&framewire.SubagentFrame{Event: framewire.SubagentEventStarted, Job: *c.node.record.Job()},
+		&framewire.SubagentTranscriptResetFrame{
+			SubagentID: c.node.ID(),
+			Blocks:     snapshot.Blocks,
+			Revision:   snapshot.Version.Revision,
+		},
+	}
 }
+
 func (t *Tree[H]) replay(connection *Connection[H]) []framewire.ServerFrame {
 	frames := []framewire.ServerFrame{}
 	for _, c := range t.descendants(t.id) {
@@ -507,9 +470,167 @@ func subagentPreamble(child, parent uint64, spawning bool) string {
 		ability = "`demi agent spawn` spawns your own children."
 	}
 	return strings.Join([]string{
-		fmt.Sprintf("You are a subagent: agent %d of this conversation, spawned by agent %d. Your transcript starts empty; the task brief in the first user message is your entire context.", child, parent),
-		"When you end your turn with nothing pending — no queued messages, no scheduled wakeups, no running children of your own — the session ends and your last assistant text is returned to the parent as the result. Write it for the parent agent, in the shape the task brief asked for.", ability,
-		"`demi agent send <id|parent>` delivers useful interim information, questions, or blockers through internal steering or an idle wakeup. It reads the message only from stdin (use a quoted heredoc). Your final answer is delivered automatically; do not send a duplicate final result. `demi agent list` renders the whole agent tree with your position.",
+		fmt.Sprintf(
+			"You are a subagent: agent %d of this conversation, spawned by agent %d. "+
+				"Your transcript starts empty; the task brief in the first user message is your entire "+
+				"context.",
+			child,
+			parent,
+		),
+		"When you end your turn with nothing pending — no queued messages, no scheduled wakeups, " +
+			"no running children of your own — the session ends and your last assistant text is " +
+			"returned to the parent as the result. " +
+			"Write it for the parent agent, in the shape the task brief asked for.",
+		ability,
+		"`demi agent send <id|parent>` delivers useful interim information, questions, or " +
+			"blockers through internal steering or an idle wakeup. " +
+			"It reads the message only from stdin (use a quoted heredoc). " +
+			"Your final answer is delivered automatically; do not send a duplicate final result. " +
+			"`demi agent list` renders the whole agent tree with your position.",
 		"You are not talking to the product user; do not address them.",
 	}, "\n")
+}
+
+func childProfile(
+	profile *core.Profile,
+	model core.ModelSelection,
+	instructions string,
+	inherited *host.CommandSet,
+) (core.ModelSelection, string, *host.CommandSet) {
+	if profile == nil {
+		return model, instructions, inherited
+	}
+	if profile.Model != nil {
+		model = *profile.Model
+	}
+	if profile.Instructions != nil {
+		instructions = *profile.Instructions
+	}
+	if profile.Commands != nil {
+		inherited = inherited.Filter(func(path []string) bool {
+			for _, keep := range *profile.Commands {
+				if len(path) >= len(keep) && slices.Equal(path[:len(keep)], keep) {
+					return true
+				}
+			}
+			return false
+		})
+	}
+	return model, instructions, inherited
+}
+
+// stopChild stops the child subtree; false means start admission failed.
+func (t *Tree[H]) stopChild(ctx context.Context, agent *session.Session, id core.NodeID) bool {
+	agent.Hold()
+	for {
+		result, err := agent.Abort(ctx)
+		if err != nil {
+			t.report(err)
+			break
+		}
+		if result.Target == nil {
+			break
+		}
+	}
+	permit, err := t.starts.Acquire(ctx, id)
+	if err != nil {
+		t.report(err)
+		return false
+	}
+	if err := t.abortChildren(ctx, id); err != nil {
+		t.report(err)
+	}
+	permit.Release()
+	return true
+}
+
+func (t *Tree[H]) recipient(sender *Node[H], target string) (*Node[H], error) {
+	if target == "parent" {
+		if sender.record.Parent == nil {
+			return nil, errors.New("the root session has no parent")
+		}
+		return t.Node(*sender.record.Parent), nil
+	}
+	number, err := strconv.ParseUint(target, 10, 64)
+	if err != nil {
+		return nil, nil
+	}
+	if number == 0 {
+		return t.root, nil
+	}
+	for _, c := range t.descendants(t.id) {
+		if c.node.record.Number == number {
+			return c.node, nil
+		}
+	}
+	return nil, nil
+}
+
+func (t *Tree[H]) observeChild(c *child[H], node *Node[H]) {
+	_, c.events = node.session.Observe(func(event session.Event) {
+		switch e := event.(type) {
+		case *session.TranscriptChanged:
+			t.observe(c, e)
+		case *session.ActionFailed:
+			t.server.mu.Lock()
+			c.failure = new(e.Report.Message)
+			t.server.mu.Unlock()
+			t.bump()
+		case *session.EditCommitted,
+			*session.PhaseChanged,
+			*session.QueueChanged,
+			*session.PendingSteersChanged,
+			*session.RetryScheduled,
+			*session.ErrorEvent:
+		}
+	})
+}
+
+// releaseChildObservations releases child cursors while the tree frame lock is held.
+func (t *Tree[H]) releaseChildObservations(id core.NodeID) {
+	for _, connection := range t.connections() {
+		t.server.mu.Lock()
+		subscription := connection.observations[id]
+		delete(connection.observations, id)
+		t.server.mu.Unlock()
+		if subscription != nil {
+			subscription.Release()
+		}
+	}
+}
+
+// messagePermit orders message admission with child closing.
+func (t *Tree[H]) messagePermit(ctx context.Context, recipient *Node[H], noLive error) (*gates.Permit, error) {
+	t.server.mu.Lock()
+	child := t.children[recipient.ID()]
+	t.server.mu.Unlock()
+	if child == nil {
+		return nil, noLive
+	}
+	permit, err := child.delivery.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t.server.mu.Lock()
+	closing := child.closing
+	t.server.mu.Unlock()
+	if closing {
+		permit.Release()
+		return nil, noLive
+	}
+	return permit, nil
+}
+
+func (t *Tree[H]) publishChild(c *child[H], node *Node[H]) {
+	t.frames.Lock()
+	t.server.mu.Lock()
+	t.children[node.ID()] = c
+	t.server.mu.Unlock()
+	t.bump()
+	for _, connection := range t.connections() {
+		for _, frame := range t.childFrames(connection, c) {
+			connection.send(frame)
+		}
+	}
+	t.frames.Unlock()
 }

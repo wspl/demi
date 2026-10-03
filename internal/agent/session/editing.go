@@ -78,7 +78,12 @@ func EditDigest(request framewire.EditRequest) (string, error) {
 
 // ForkSeed prepares an idle root checkpoint through completed text target,
 // with the command state bound to that completion and no waiting work.
-func ForkSeed(blocks []core.Block, commands *store.CommandStateHistory, state store.CheckpointState, target core.BlockID) (store.Checkpoint, error) {
+func ForkSeed(
+	blocks []core.Block,
+	commands *store.CommandStateHistory,
+	state store.CheckpointState,
+	target core.BlockID,
+) (store.Checkpoint, error) {
 	prefix, err := transcript.ThroughAssistant(blocks, target)
 	if err != nil {
 		return store.Checkpoint{}, &ForkError{Kind: ForkTarget, Cause: err}
@@ -92,5 +97,9 @@ func ForkSeed(blocks []core.Block, commands *store.CommandStateHistory, state st
 	state.AgentInputs = []store.PendingAgentInput{}
 	state.Wakeups = []store.ScheduledWakeup{}
 	state.Edits = []store.EditReceipt{}
-	return store.Checkpoint{State: state, Transcript: prefix, CommandState: commands.Select(prefix, revision, true)}, nil
+	return store.Checkpoint{
+		State:        state,
+		Transcript:   prefix,
+		CommandState: commands.Select(prefix, revision, true),
+	}, nil
 }

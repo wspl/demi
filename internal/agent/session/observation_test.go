@@ -40,7 +40,13 @@ func TestObserveExcludesPendingCallbacks(t *testing.T) {
 		equal(t, kinds(snapshot.Transcript.Blocks), []string{"user", "error"})
 		equal(t, snapshot.Phase, core.SessionPhase("running"))
 		equal(t, snapshot.Queue, []core.QueuedMessage{{ID: "queued", Content: storetest.Text("later")}})
-		equal(t, snapshot.PendingSteers, []core.PendingSteer{{ID: "steer", TurnID: "turn", Model: storetest.TestModel(), Content: storetest.Text("remember")}})
+		equal(
+			t,
+			snapshot.PendingSteers,
+			[]core.PendingSteer{
+				{ID: "steer", TurnID: "turn", Model: storetest.TestModel(), Content: storetest.Text("remember")},
+			},
+		)
 		f.s.DequeueMessage("queued")
 		f.s.CancelPendingSteer("steer")
 		unblock()
@@ -98,7 +104,12 @@ func TestEditAcceptanceIsPublishedBetweenRewriteAndProgress(t *testing.T) {
 			switch event.(type) {
 			case *session.TranscriptChanged, *session.EditCommitted:
 				events = append(events, event)
-			case *session.ActionFailed, *session.ErrorEvent, *session.PendingSteersChanged, *session.PhaseChanged, *session.QueueChanged, *session.RetryScheduled:
+			case *session.ActionFailed,
+				*session.ErrorEvent,
+				*session.PendingSteersChanged,
+				*session.PhaseChanged,
+				*session.QueueChanged,
+				*session.RetryScheduled:
 			}
 		})
 		defer listener.Release()

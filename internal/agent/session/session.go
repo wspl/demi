@@ -74,7 +74,12 @@ func New(init Init, deps Deps) *Session {
 // become interrupted without running again. The session starts idle with
 // wakeups armed; input of an interrupted turn waits for the node's next action.
 // Success transfers runtime ownership; failure leaves it with the caller.
-func Restore(checkpoint store.Checkpoint, id core.NodeID, runtime provider.Runtime, deps Deps) (*Session, Continuation, error) {
+func Restore(
+	checkpoint store.Checkpoint,
+	id core.NodeID,
+	runtime provider.Runtime,
+	deps Deps,
+) (*Session, Continuation, error) {
 	return restore(checkpoint, id, runtime, deps)
 }
 
@@ -83,7 +88,12 @@ func Restore(checkpoint store.Checkpoint, id core.NodeID, runtime provider.Runti
 func (s *Session) FirstCheckpoint() store.CheckpointUpdate {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return store.CheckpointUpdate{State: s.core.checkpointState(), CommandState: new(s.core.commands.Snapshot(nil)), ChangedBlocks: []store.ChangedBlock{}, BlockCount: 0}
+	return store.CheckpointUpdate{
+		State:         s.core.checkpointStateLocked(),
+		CommandState:  new(s.core.commands.Snapshot(nil)),
+		ChangedBlocks: []store.ChangedBlock{},
+		BlockCount:    0,
+	}
 }
 
 // ID returns the session's node identity.
@@ -97,7 +107,7 @@ func (s *Session) ID() core.NodeID {
 func (s *Session) Phase() core.SessionPhase {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.core.phase()
+	return s.core.phaseLocked()
 }
 
 // IsSettled reports whether no action runs or waits.
@@ -107,7 +117,7 @@ func (s *Session) IsSettled() bool {
 
 // Settled waits until no action runs or waits. Cancellation stops only the wait.
 func (s *Session) Settled(ctx context.Context) error {
-	return s.waitSettled(ctx)
+	return s.settled(ctx)
 }
 
 // Model returns the selection current now.
@@ -128,14 +138,14 @@ func (s *Session) Transcript() TranscriptSnapshot {
 func (s *Session) QueuedMessages() []core.QueuedMessage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.core.queued()
+	return s.core.queuedMessagesLocked()
 }
 
 // PendingSteers returns the human steers accepted and not yet written.
 func (s *Session) PendingSteers() []core.PendingSteer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.core.steers()
+	return s.core.pendingSteersLocked()
 }
 
 // LastAssistantText returns the last text block's text, the result a child closes with.
@@ -177,7 +187,7 @@ func (s *Session) DequeueMessage(id core.TurnID) bool {
 		if c.disposing {
 			return
 		}
-		a := c.removeQueued(id)
+		a := c.removeQueuedLocked(id)
 		if a != nil {
 			removed = true
 			c.effects = append(c.effects, func() { a.answer.finish(Dropped, nil) })
@@ -193,7 +203,7 @@ func (s *Session) SendQueuedMessage(id core.TurnID) bool {
 		if c.disposing {
 			return
 		}
-		a := c.removeQueued(id)
+		a := c.removeQueuedLocked(id)
 		if a == nil {
 			return
 		}
@@ -238,7 +248,7 @@ func (s *Session) Steer(content []core.UserContentBlock, id core.BlockID) error 
 
 // CancelPendingSteer withdraws a pending steer. An id not pending changes nothing.
 func (s *Session) CancelPendingSteer(id core.BlockID) bool {
-	return s.cancelSteer(id)
+	return s.cancelPendingSteer(id)
 }
 
 // SteerQueuedMessage turns a queued message into a steer, preserving its queue
@@ -247,34 +257,43 @@ func (s *Session) SteerQueuedMessage(message core.TurnID, steer core.BlockID) (b
 	var err error
 	found := false
 	s.mutate(func(c *coreState) {
-		if err = c.steerable(); err != nil {
+		if err = c.steerableLocked(); err != nil {
 			return
 		}
-		a := c.removeQueued(message)
+		a := c.removeQueuedLocked(message)
 		if a == nil {
 			return
 		}
 		found = true
 		c.effects = append(c.effects, func() { a.answer.finish(Dropped, nil) })
-		c.inputs = append(c.inputs, pendingInput{steer: &core.PendingSteer{ID: steer, TurnID: c.active.turn, Model: c.model, Content: a.content}})
+		c.inputs = append(
+			c.inputs,
+			pendingInput{
+				steer: &core.PendingSteer{ID: steer, TurnID: c.active.turn, Model: c.model, Content: a.content},
+			},
+		)
 		c.arrivals++
 	})
 	return found, err
 }
 
 // AcceptAgentMessage admits another agent's message and returns once its
-// admission is saved. Failures return *AgentMessageError. A save that starts
+// admissionLocked is saved. Failures return *AgentMessageError. A save that starts
 // finishes even if ctx is cancelled.
 func (s *Session) AcceptAgentMessage(ctx context.Context, message core.AgentMessage) error {
-	return s.acceptAgent(ctx, message)
+	return s.acceptAgentMessage(ctx, message)
 }
 
 // CheckEdit checks an edit before its uploads are resolved, so repeated
 // requests write no file. A refusal returns *EditError.
-func (s *Session) CheckEdit(operation core.OperationID, digest string, version framewire.TranscriptVersion) (EditCheck, error) {
+func (s *Session) CheckEdit(
+	operation core.OperationID,
+	digest string,
+	version framewire.TranscriptVersion,
+) (EditCheck, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.core.checkEdit(operation, digest, version)
+	return s.core.checkEditLocked(operation, digest, version)
 }
 
 // EditAndSend replaces a user message and everything after it. It returns at
@@ -290,8 +309,8 @@ func (s *Session) EditAndSend(ctx context.Context, submission EditSubmission) (s
 func (s *Session) PrepareFork(target core.BlockID) (store.Checkpoint, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	state := s.core.checkpointState()
-	state.Model = s.core.latestSelection()
+	state := s.core.checkpointStateLocked()
+	state.Model = s.core.latestSelectionLocked()
 	return ForkSeed(s.core.log.Blocks(), s.core.commands, state, target)
 }
 
@@ -332,7 +351,7 @@ func (s *Session) UpdateModel(change ModelSwitch) error {
 			return
 		}
 		slot := &c.change
-		if c.preparingEdit() {
+		if c.preparingEditLocked() {
 			slot = &c.waitingChange
 		}
 		c.replaceSwitchLocked(slot, change)
@@ -345,7 +364,7 @@ func (s *Session) UpdateModel(change ModelSwitch) error {
 func (s *Session) NeedsRuntimeFor(model core.ModelSelection) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.core.latestSelection().ProviderID != model.ProviderID
+	return s.core.latestSelectionLocked().ProviderID != model.ProviderID
 }
 
 // ForkRuntime waits for the current runtime and returns a fresh one with the
@@ -404,9 +423,9 @@ func (s *Session) Observe(listener func(Event)) (Snapshot, *Subscription) {
 	c := &s.core
 	snapshot := Snapshot{
 		Transcript:    TranscriptSnapshot{Blocks: c.log.Blocks(), Version: c.log.Version()},
-		Phase:         c.phase(),
-		Queue:         c.queued(),
-		PendingSteers: c.steers(),
+		Phase:         c.phaseLocked(),
+		Queue:         c.queuedMessagesLocked(),
+		PendingSteers: c.pendingSteersLocked(),
 	}
 	return snapshot, s.subscribeLocked(listener)
 }

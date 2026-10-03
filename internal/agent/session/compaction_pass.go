@@ -14,16 +14,20 @@ import (
 func (c CompactionConfig) tokenReached(window uint32, used uint64) bool {
 	return c.ThresholdPercent != nil && window > 0 && used >= uint64(window)*uint64(*c.ThresholdPercent)/100
 }
+
 func (c CompactionConfig) reached(window uint32, usage core.TokenUsage) bool {
 	return c.tokenReached(window, usage.InputTokens+usage.OutputTokens+usage.CacheReadTokens+usage.CacheWriteTokens)
 }
+
 func (c CompactionConfig) sizeReached(limits provider.RequestLimits, size transcript.RequestSize) bool {
 	if c.ThresholdPercent == nil {
 		return false
 	}
 	percent := uint64(*c.ThresholdPercent)
-	return (limits.BodyBytes != nil && size.Bytes >= *limits.BodyBytes*percent/100) || (limits.Images != nil && size.Images >= uint64(*limits.Images)*percent/100)
+	return (limits.BodyBytes != nil && size.Bytes >= *limits.BodyBytes*percent/100) ||
+		(limits.Images != nil && size.Images >= uint64(*limits.Images)*percent/100)
 }
+
 func (s *Session) preflight(ctx context.Context) error {
 	estimate, err := s.estimate(ctx)
 	if err != nil {
@@ -34,7 +38,12 @@ func (s *Session) preflight(ctx context.Context) error {
 	}
 	return err
 }
-func (s *Session) overThreshold(ctx context.Context, model core.ModelSelection, limits provider.RequestLimits) (bool, error) {
+
+func (s *Session) overThreshold(
+	ctx context.Context,
+	model core.ModelSelection,
+	limits provider.RequestLimits,
+) (bool, error) {
 	view, err := s.modelView(ctx)
 	if err != nil {
 		return false, err
@@ -70,15 +79,7 @@ func (s *Session) compactPass(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	window := transcript.Window(view.Blocks)
-	first := -1
-	for i := window.Start; i < window.Cut; i++ {
-		_, boundary := view.Blocks[i].(*core.CompactionBoundaryBlock)
-		_, marker := view.Blocks[i].(*core.CompactionMarkerBlock)
-		if !boundary && !marker {
-			first = i
-			break
-		}
-	}
+	first := firstCompactionBlock(view.Blocks, window.Start, window.Cut)
 	if first < 0 {
 		return false, nil
 	}
@@ -92,7 +93,9 @@ func (s *Session) compactPass(ctx context.Context) (bool, error) {
 		summary, err := s.summarize(ctx, view.Blocks[window.Start:cut])
 		if err != nil {
 			var report *ErrorReport
-			if errors.As(err, &report) && report.Code != nil && *report.Code == string(provider.ContextLengthExceeded) && cut > first+1 {
+			if errors.As(err, &report) && report.Code != nil &&
+				*report.Code == string(provider.ContextLengthExceeded) &&
+				cut > first+1 {
 				cut = max(window.Start+(cut-window.Start)/2, first+1)
 				continue
 			}
@@ -143,7 +146,10 @@ func (s *Session) summarize(ctx context.Context, window []core.Block) (string, e
 		}
 	})
 	defer subscription.Release()
-	answer, sendErr := summarySession.Send([]core.UserContentBlock{&core.UserText{Text: CompactionSummaryInstruction}}, core.TurnID(deps.IDs.NextID()))
+	answer, sendErr := summarySession.Send(
+		[]core.UserContentBlock{&core.UserText{Text: CompactionSummaryInstruction}},
+		core.TurnID(deps.IDs.NextID()),
+	)
 	var end ActionEnd
 	if sendErr == nil {
 		end, err = answer.Wait(ctx)
@@ -160,4 +166,17 @@ func (s *Session) summarize(ctx context.Context, window []core.Block) (string, e
 	}
 	err = errors.Join(err, summarySession.Dispose(context.WithoutCancel(ctx)))
 	return text, err
+}
+
+func firstCompactionBlock(blocks []core.Block, start, cut int) int {
+	first := -1
+	for i := start; i < cut; i++ {
+		_, boundary := blocks[i].(*core.CompactionBoundaryBlock)
+		_, marker := blocks[i].(*core.CompactionMarkerBlock)
+		if !boundary && !marker {
+			first = i
+			break
+		}
+	}
+	return first
 }

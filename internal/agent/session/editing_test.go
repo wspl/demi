@@ -34,6 +34,7 @@ func editAsync(t *testing.T, s *session.Session, sub session.EditSubmission) <-c
 	}()
 	return done
 }
+
 func editError(t *testing.T, err error, kind session.EditErrorKind) {
 	t.Helper()
 	var e *session.EditError
@@ -41,6 +42,7 @@ func editError(t *testing.T, err error, kind session.EditErrorKind) {
 		t.Fatalf("got %v; want edit %v", err, kind)
 	}
 }
+
 func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, answer("A"), answer("B"), answer("B3"))
@@ -102,7 +104,8 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 		equal(t, err, error(session.AdmissionEditing))
 		_, err = f.s.Storage(t.Context(), &host.StorageRead{Key: "todo"}, store.CommitGuard{})
 		var port *host.PortError
-		if !errors.As(err, &port) || port.Kind != host.StorageRefused || port.Error() != "Command storage is reserved for a transcript edit" {
+		if !errors.As(err, &port) || port.Kind != host.StorageRefused ||
+			port.Error() != "Command storage is reserved for a transcript edit" {
 			t.Fatalf("storage refusal: %v", err)
 		}
 		err = f.s.AcceptAgentMessage(t.Context(), message("m1"))
@@ -137,6 +140,7 @@ func TestEditSaveIsInvisibleAndIdempotent(t *testing.T) {
 		f.trace.assert(t, []int{0, 0, 2}, []int{1, 0})
 	})
 }
+
 func TestStopEditPreparationAndSaveDecision(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var hang atomic.Bool
@@ -201,6 +205,7 @@ func TestStopEditPreparationAndSaveDecision(t *testing.T) {
 		equal(t, len(f.p.Requests()), 1)
 	})
 }
+
 func TestDisposeWaitsForEditSaveAndKeepsReplacement(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, answer("A"))
@@ -233,6 +238,7 @@ func TestDisposeWaitsForEditSaveAndKeepsReplacement(t *testing.T) {
 		f.trace.assert(t, []int{0}, []int{0, 1})
 	})
 }
+
 func TestWakeupRefusesEditAndStillFires(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := start(t, yieldRuntime(), session.DefaultConfig(), tool("yield"), answer("checked"))
@@ -248,6 +254,7 @@ func TestWakeupRefusesEditAndStillFires(t *testing.T) {
 		equal(t, kinds(f.s.Transcript().Blocks[3:]), []string{"wakeup", "text", "response"})
 	})
 }
+
 func TestPriorSaveCommitsBeforeEditWithoutRestoringRemovedRows(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered := make(chan struct{})
@@ -285,6 +292,7 @@ func TestPriorSaveCommitsBeforeEditWithoutRestoringRemovedRows(t *testing.T) {
 		equal(t, f.checkpoint().State.Edits, []store.EditReceipt{decision.receipt})
 	})
 }
+
 func TestAcceptedEditSurvivesTurnFailureAndResume(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		calls := 0
@@ -292,7 +300,15 @@ func TestAcceptedEditSurvivesTurnFailureAndResume(t *testing.T) {
 			calls++
 			return textOutcome("permanent"), nil
 		})
-		f := start(t, r, session.DefaultConfig(), answer("A"), tool("effect"), providertest.Events(providertest.Error("continuation failed", nil)), answer("recovered"))
+		f := start(
+			t,
+			r,
+			session.DefaultConfig(),
+			answer("A"),
+			tool("effect"),
+			providertest.Events(providertest.Error("continuation failed", nil)),
+			answer("recovered"),
+		)
 		f.done(f.send("A", "A"))
 		failures := []string{}
 		sub := f.s.Subscribe(func(e session.Event) {
@@ -325,6 +341,7 @@ func TestAcceptedEditSurvivesTurnFailureAndResume(t *testing.T) {
 		equal(t, items[3], userItem(transcripttest.ResumeText))
 	})
 }
+
 func TestEditFirstMiddleLastKeepsExactPrefix(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		turn, entered, release := gated(providertest.Text("B1"), providertest.Response(1, 1))
@@ -341,9 +358,34 @@ func TestEditFirstMiddleLastKeepsExactPrefix(t *testing.T) {
 		f.done(f.send("C", "C"))
 		cp := f.checkpoint()
 		before := f.s.Transcript().Blocks
-		f.history("user", "tool_call:completed", "response", "text", "response", "user", "text", "response", "steer", "text", "response", "user", "text", "response")
-		turnA := []provider.InferenceItem{userItem("A"), &provider.ToolUse{ModelID: "test-model", ToolUseID: "call", ToolName: "note", Input: []byte(`{}`)}, &provider.ToolResult{ToolUseID: "call", Output: []provider.ResultPart{&provider.TextPart{Text: "noted"}}}, assistantItem("test-model", "A")}
-		turnB := []provider.InferenceItem{userItem("B"), assistantItem("test-model", "B1"), &provider.UserSteer{Content: storetest.SentText("mind tests")}, assistantItem("test-model", "B2")}
+		f.history(
+			"user",
+			"tool_call:completed",
+			"response",
+			"text",
+			"response",
+			"user",
+			"text",
+			"response",
+			"steer",
+			"text",
+			"response",
+			"user",
+			"text",
+			"response",
+		)
+		turnA := []provider.InferenceItem{
+			userItem("A"),
+			&provider.ToolUse{ModelID: "test-model", ToolUseID: "call", ToolName: "note", Input: []byte(`{}`)},
+			&provider.ToolResult{ToolUseID: "call", Output: []provider.ResultPart{&provider.TextPart{Text: "noted"}}},
+			assistantItem("test-model", "A"),
+		}
+		turnB := []provider.InferenceItem{
+			userItem("B"),
+			assistantItem("test-model", "B1"),
+			&provider.UserSteer{Content: storetest.SentText("mind tests")},
+			assistantItem("test-model", "B2"),
+		}
 		for _, index := range []int{0, 5, 11} {
 			s, _, p := f.restore(cp, answer("replacement"))
 			patches := []framewire.TranscriptPatch{}

@@ -39,10 +39,26 @@ func (c *testContext) Context(_ context.Context, _ tools.NodeContext, _ core.Tur
 	}
 	return new(cloudContext), nil
 }
+
 func product(contextSource *testContext, profiles ...core.Profile) func(*server.Deps[*toolstest.NoHost]) {
 	return func(deps *server.Deps[*toolstest.NoHost]) {
 		commands := &host.CommandSet{}
-		err := commands.Register(host.Group("greet", "Greets the caller.", host.Leaf(declare.Leaf[declare.NativeOperation]{Name: "hello", Summary: "Say hello.", Kind: &declare.RPC[declare.NativeOperation]{}}, host.RPCHandlerFunc(func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 0, nil }))))
+		err := commands.Register(
+			host.Group(
+				"greet",
+				"Greets the caller.",
+				host.Leaf(
+					declare.Leaf[declare.NativeOperation]{
+						Name:    "hello",
+						Summary: "Say hello.",
+						Kind:    &declare.RPC[declare.NativeOperation]{},
+					},
+					host.RPCHandlerFunc(
+						func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 0, nil },
+					),
+				),
+			),
+		)
 		if err != nil {
 			panic(err)
 		}
@@ -52,25 +68,39 @@ func product(contextSource *testContext, profiles ...core.Profile) func(*server.
 		}
 	}
 }
+
 func TestPromptIncludesHelpAndContextIsSavedBeforeRequest(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		memory := storetest.NewMemoryTreeStore()
-		script := providertest.NewScriptedRuntime(t, providertest.Respond(func(_ provider.InferenceRequest) []provider.Event {
-			blocks := memory.Checkpoint(rootID()).Transcript
-			assertBlockTypes(t, blocks, "User", "Context")
-			return []provider.Event{providertest.Text("answer"), providertest.Response(1, 1)}
-		}), said("again"))
+		script := providertest.NewScriptedRuntime(
+			t,
+			providertest.Respond(func(_ provider.InferenceRequest) []provider.Event {
+				blocks := memory.Checkpoint(rootID()).Transcript
+				assertBlockTypes(t, blocks, "User", "Context")
+				return []provider.Event{providertest.Text("answer"), providertest.Response(1, 1)}
+			}),
+			said("again"),
+		)
 		source := &testContext{}
 		f := fixtureWith(t, script, memory, server.DefaultConfig(), product(source))
 		c := f.opened()
 		c.Send(t.Context(), send("m1", "hi"))
 		untilIdle(t, c)
 		r := script.Requests()[0]
-		if !strings.HasPrefix(r.SystemPrompt, "system prompt\n") || !strings.Contains(r.SystemPrompt, "greet: Greets the caller.") || !strings.Contains(r.SystemPrompt, "greet hello") {
+		if !strings.HasPrefix(r.SystemPrompt, "system prompt\n") ||
+			!strings.Contains(r.SystemPrompt, "greet: Greets the caller.") ||
+			!strings.Contains(r.SystemPrompt, "greet hello") {
 			t.Fatal(r.SystemPrompt)
 		}
 		equal(t, 2, len(r.Items))
-		assertBlockTypes(t, f.server.Tree(rootID()).Root().Session().Transcript().Blocks, "User", "Context", "Text", "Response")
+		assertBlockTypes(
+			t,
+			f.server.Tree(rootID()).Root().Session().Transcript().Blocks,
+			"User",
+			"Context",
+			"Text",
+			"Response",
+		)
 		c.Send(t.Context(), send("m2", "again"))
 		untilIdle(t, c)
 		source.mu.Lock()
@@ -84,11 +114,26 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		first, second := make(chan struct{}), make(chan struct{})
 		explore := providertest.NewScriptedRuntime(t, said("explored"))
-		restricted := providertest.NewScriptedRuntime(t, held(first, providertest.Text("restricted done"), providertest.Response(1, 1)), held(second, providertest.Text("more done"), providertest.Response(1, 1)))
+		restricted := providertest.NewScriptedRuntime(
+			t,
+			held(first, providertest.Text("restricted done"), providertest.Response(1, 1)),
+			held(second, providertest.Text("more done"), providertest.Response(1, 1)),
+		)
 		rootScript := providertest.NewScriptedRuntime(t, said("noted"), said("noted"), said("noted"))
-		profile := core.Profile{Name: "explorer", Description: "Reads, never edits.", Instructions: new("explorer prompt"), CanSpawnSubagents: false}
+		profile := core.Profile{
+			Name:              "explorer",
+			Description:       "Reads, never edits.",
+			Instructions:      new("explorer prompt"),
+			CanSpawnSubagents: false,
+		}
 		f := fixtureWith(t, rootScript, storetest.NewMemoryTreeStore(), server.DefaultConfig(), product(nil, profile))
-		f.resolver.ProvideRuntime("stub", &nodeScripts{root: rootScript, children: []childScript{{"task explore", explore}, {"task restricted", restricted}}})
+		f.resolver.ProvideRuntime(
+			"stub",
+			&nodeScripts{
+				root:     rootScript,
+				children: []childScript{{"task explore", explore}, {"task restricted", restricted}},
+			},
+		)
 		f.opened()
 		for _, name := range []string{"nope", "default"} {
 			r := agent(t, f, rootID(), "spawn", fmt.Sprintf(`{"prompt":"task x","profile":%q}`, name))
@@ -99,10 +144,13 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 		synctest.Wait()
 		equal(t, "explorer", *f.store.Record(child).Profile)
 		r := explore.Requests()[0]
-		if !strings.HasPrefix(r.SystemPrompt, "explorer prompt\n") || strings.Contains(r.SystemPrompt, "demi agent spawn") || !strings.Contains(r.SystemPrompt, "demi agent send") {
+		if !strings.HasPrefix(r.SystemPrompt, "explorer prompt\n") ||
+			strings.Contains(r.SystemPrompt, "demi agent spawn") ||
+			!strings.Contains(r.SystemPrompt, "demi agent send") {
 			t.Fatal(r.SystemPrompt)
 		}
-		if !strings.HasPrefix(requestText(r), "You are a subagent") || !strings.Contains(requestText(r), "This session may not spawn subagents.") {
+		if !strings.HasPrefix(requestText(r), "You are a subagent") ||
+			!strings.Contains(requestText(r), "This session may not spawn subagents.") {
 			t.Fatal(requestText(r))
 		}
 		id := spawn(t, f, rootID(), `{"prompt":"task restricted","no-subagents":true}`)
@@ -110,7 +158,9 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 		assertMissingSpawn(t, err)
 		synctest.Wait()
 		asked := restricted.Requests()[0]
-		if !strings.HasPrefix(asked.SystemPrompt, "system prompt\n") || strings.Contains(asked.SystemPrompt, "demi agent spawn") || !strings.HasPrefix(requestText(asked), "You are a subagent") {
+		if !strings.HasPrefix(asked.SystemPrompt, "system prompt\n") ||
+			strings.Contains(asked.SystemPrompt, "demi agent spawn") ||
+			!strings.HasPrefix(requestText(asked), "You are a subagent") {
 			t.Fatal(asked)
 		}
 		equal(t, uint8(0), agent(t, f, id, "list", `{}`).code)
@@ -126,24 +176,65 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 		if f.store.Record(id).CanSpawnSubagents {
 			t.Fatal("restriction was not stored")
 		}
-		reserved := fixtureWith(t, providertest.NewScriptedRuntime(t), storetest.NewMemoryTreeStore(), server.DefaultConfig(), product(nil, core.Profile{Name: "default", CanSpawnSubagents: true}))
+		reserved := fixtureWith(
+			t,
+			providertest.NewScriptedRuntime(t),
+			storetest.NewMemoryTreeStore(),
+			server.DefaultConfig(),
+			product(nil, core.Profile{Name: "default", CanSpawnSubagents: true}),
+		)
 		c := reserved.client()
 		c.Send(t.Context(), &framewire.OpenFrame{})
 		frames := c.Received()
-		equal(t, []framewire.ServerFrame{&framewire.ErrorFrame{Message: `subagent profile name "default" is reserved: omitting --profile already inherits the parent`}}, frames)
+		equal(
+			t,
+			[]framewire.ServerFrame{
+				&framewire.ErrorFrame{
+					Message: `subagent profile name "default" is reserved: omitting --profile already inherits the parent`,
+				},
+			},
+			frames,
+		)
 	})
 }
+
 func TestGrandchildInheritsProfileAndReadsOwnContext(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		outerGate, innerGate := make(chan struct{}), make(chan struct{})
-		outerScript := providertest.NewScriptedRuntime(t, held(outerGate, providertest.Text("delegated"), providertest.Response(1, 1)), said("outer done"))
-		innerScript := providertest.NewScriptedRuntime(t, held(innerGate, providertest.Text("inner done"), providertest.Response(1, 1)))
+		outerScript := providertest.NewScriptedRuntime(
+			t,
+			held(outerGate, providertest.Text("delegated"), providertest.Response(1, 1)),
+			said("outer done"),
+		)
+		innerScript := providertest.NewScriptedRuntime(
+			t,
+			held(innerGate, providertest.Text("inner done"), providertest.Response(1, 1)),
+		)
 		rootScript := providertest.NewScriptedRuntime(t, said("noted"))
 		model := storetest.ModelOf("stub", "worker-model")
-		profile := core.Profile{Name: "worker", Description: "Works through a task list.", Instructions: new("worker prompt"), Commands: new([][]string{}), CanSpawnSubagents: true, Model: &model}
+		profile := core.Profile{
+			Name:              "worker",
+			Description:       "Works through a task list.",
+			Instructions:      new("worker prompt"),
+			Commands:          new([][]string{}),
+			CanSpawnSubagents: true,
+			Model:             &model,
+		}
 		source := &testContext{}
-		f := fixtureWith(t, rootScript, storetest.NewMemoryTreeStore(), server.DefaultConfig(), product(source, profile))
-		f.resolver.ProvideRuntime("stub", &nodeScripts{root: rootScript, children: []childScript{{"task outer", outerScript}, {"task inner", innerScript}}})
+		f := fixtureWith(
+			t,
+			rootScript,
+			storetest.NewMemoryTreeStore(),
+			server.DefaultConfig(),
+			product(source, profile),
+		)
+		f.resolver.ProvideRuntime(
+			"stub",
+			&nodeScripts{
+				root:     rootScript,
+				children: []childScript{{"task outer", outerScript}, {"task inner", innerScript}},
+			},
+		)
 		f.opened()
 		outer := spawn(t, f, rootID(), `{"prompt":"task outer","profile":"worker"}`)
 		done := make(chan core.NodeID, 1)
@@ -154,7 +245,8 @@ func TestGrandchildInheritsProfileAndReadsOwnContext(t *testing.T) {
 		synctest.Wait()
 		equal(t, uint8(0), agent(t, f, inner, "list", `{}`).code)
 		r := innerScript.Requests()[0]
-		if !strings.HasPrefix(r.SystemPrompt, "worker prompt\n") || strings.Contains(r.SystemPrompt, "greet") || !strings.Contains(r.SystemPrompt, "demi agent send") {
+		if !strings.HasPrefix(r.SystemPrompt, "worker prompt\n") || strings.Contains(r.SystemPrompt, "greet") ||
+			!strings.Contains(r.SystemPrompt, "demi agent send") {
 			t.Fatal(r.SystemPrompt)
 		}
 		equal(t, "worker-model", r.ModelID)

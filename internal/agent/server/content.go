@@ -62,7 +62,11 @@ func (e *ContentError) Error() string { return e.Message }
 func (e *ContentError) Unwrap() error { return e.Cause }
 
 // resolveEdit replaces a frame's external file references while retaining its order.
-func resolveEdit(ctx context.Context, resolver ContentResolver, content []framewire.ClientContent) ([]session.EditContent, store.HeldMedia, error) {
+func resolveEdit(
+	ctx context.Context,
+	resolver ContentResolver,
+	content []framewire.ClientContent,
+) ([]session.EditContent, store.HeldMedia, error) {
 	files := []FileReference{}
 	for _, item := range content {
 		switch v := item.(type) {
@@ -82,7 +86,9 @@ func resolveEdit(ctx context.Context, resolver ContentResolver, content []framew
 		}
 	}
 	if len(resolved.Blocks) != len(files) {
-		return nil, store.HeldMedia{}, &ContentError{Message: fmt.Sprintf("the backend resolved %d of %d file references", len(resolved.Blocks), len(files))}
+		return nil, store.HeldMedia{}, &ContentError{
+			Message: fmt.Sprintf("the backend resolved %d of %d file references", len(resolved.Blocks), len(files)),
+		}
 	}
 	parts := []session.EditContent{}
 	next := 0
@@ -107,7 +113,11 @@ func resolveEdit(ctx context.Context, resolver ContentResolver, content []framew
 }
 
 // resolveMessage gives a validated send or steer its resolved content and media.
-func resolveMessage(ctx context.Context, resolver ContentResolver, content []framewire.ClientContent) ([]core.UserContentBlock, store.HeldMedia, error) {
+func resolveMessage(
+	ctx context.Context,
+	resolver ContentResolver,
+	content []framewire.ClientContent,
+) ([]core.UserContentBlock, store.HeldMedia, error) {
 	parts, media, err := resolveEdit(ctx, resolver, content)
 	if err != nil {
 		return nil, media, err

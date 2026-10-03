@@ -49,7 +49,13 @@ func TestSteerDuringToolAndWithdrawal(t *testing.T) {
 		must(t, f.s.Steer(storetest.Text("never mind"), "s2"))
 		equal(t, f.s.CancelPendingSteer("s2"), true)
 		equal(t, f.s.CancelPendingSteer("s2"), false)
-		equal(t, f.s.PendingSteers(), []core.PendingSteer{{ID: "s1", TurnID: "t1", Model: storetest.TestModel(), Content: storetest.Text("skip e2e")}})
+		equal(
+			t,
+			f.s.PendingSteers(),
+			[]core.PendingSteer{
+				{ID: "s1", TurnID: "t1", Model: storetest.TestModel(), Content: storetest.Text("skip e2e")},
+			},
+		)
 		close(release)
 		f.done(a)
 		equal(t, steers(t, f.p.Requests()[1]), []string{"skip e2e"})
@@ -60,6 +66,7 @@ func TestSteerDuringToolAndWithdrawal(t *testing.T) {
 		equal(t, published, [][]core.BlockID{{"s1"}, {"s1", "s2"}, {"s1"}, {}})
 	})
 }
+
 func TestInputDuringLastStreamContinues(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		turn, entered, release := gated(providertest.Text("done"), providertest.Response(1, 1))
@@ -74,9 +81,13 @@ func TestInputDuringLastStreamContinues(t *testing.T) {
 		f.history("user", "text", "response", "steer", "text", "response")
 	})
 }
+
 func TestStreamSteerWrittenBeforeTool(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		turn, entered, release := gated(providertest.ToolCall("call", "look", []byte(`{}`)), providertest.Response(1, 1))
+		turn, entered, release := gated(
+			providertest.ToolCall("call", "look", []byte(`{}`)),
+			providertest.Response(1, 1),
+		)
 		var f *scenario
 		r := toolRuntime("look", func(context.Context, session.ToolInvocation) (session.ToolOutcome, error) {
 			equal(t, kinds(f.s.Transcript().Blocks), []string{"user", "tool_call:executing", "response", "steer"})
@@ -93,6 +104,7 @@ func TestStreamSteerWrittenBeforeTool(t *testing.T) {
 		equal(t, itemKinds(f.p.Requests()[1].Items), []string{"user_message", "tool_use", "tool_result", "user_steer"})
 	})
 }
+
 func TestStopWritesSteersAndRefusesIdleSteer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, providertest.Pending())
@@ -110,6 +122,7 @@ func TestStopWritesSteersAndRefusesIdleSteer(t *testing.T) {
 		equal(t, f.s.Steer(storetest.Text("no"), "s2"), error(session.SteerNotRunning))
 	})
 }
+
 func TestQueuedMessageBecomesSteer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})
@@ -142,6 +155,7 @@ func TestQueuedMessageBecomesSteer(t *testing.T) {
 		equal(t, steers(t, f.p.Requests()[1]), []string{"brief"})
 	})
 }
+
 func TestAgentMessagesDuringToolAreDurableAndOrdered(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})
@@ -170,11 +184,16 @@ func TestAgentMessagesDuringToolAreDurableAndOrdered(t *testing.T) {
 		equal(t, f.s.CancelPendingSteer(one.ID), false)
 		close(release)
 		f.done(a)
-		equal(t, steers(t, f.p.Requests()[1]), []string{transcripttest.AgentMessageEnvelope(one), transcripttest.AgentMessageEnvelope(two)})
+		equal(
+			t,
+			steers(t, f.p.Requests()[1]),
+			[]string{transcripttest.AgentMessageEnvelope(one), transcripttest.AgentMessageEnvelope(two)},
+		)
 		equal(t, len(f.checkpoint().State.AgentInputs), 0)
 		f.history("user", "tool_call:completed", "response", "agent_message", "agent_message", "text", "response")
 	})
 }
+
 func TestIdleAgentMessagesOpenOneContinuation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		release := make(chan struct{})
@@ -199,9 +218,15 @@ func TestIdleAgentMessagesOpenOneContinuation(t *testing.T) {
 		equal(t, len(f.s.QueuedMessages()), 0)
 	})
 }
+
 func TestRetryFailedAgentContinuation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		f := setup(t, answer("task answer"), providertest.Events(providertest.Error("failure", nil)), answer("read result"))
+		f := setup(
+			t,
+			answer("task answer"),
+			providertest.Events(providertest.Error("failure", nil)),
+			answer("read result"),
+		)
 		f.done(f.send("task", "t1"))
 		must(t, f.s.AcceptAgentMessage(t.Context(), message("result")))
 		must(t, f.s.Settled(t.Context()))
@@ -212,9 +237,20 @@ func TestRetryFailedAgentContinuation(t *testing.T) {
 		f.history("user", "text", "response", "agent_message", "text", "response")
 		req := f.p.Requests()
 		equal(t, req[1].TurnID, req[2].TurnID)
-		equal(t, req[2].Items, []provider.InferenceItem{userItem("task"), assistantItem("test-model", "task answer"), &provider.UserSteer{Content: storetest.SentText(transcripttest.AgentMessageEnvelope(message("result")))}})
+		equal(
+			t,
+			req[2].Items,
+			[]provider.InferenceItem{
+				userItem("task"),
+				assistantItem("test-model", "task answer"),
+				&provider.UserSteer{
+					Content: storetest.SentText(transcripttest.AgentMessageEnvelope(message("result"))),
+				},
+			},
+		)
 	})
 }
+
 func TestMessagesAfterStopWaitForUser(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, providertest.Pending())
@@ -237,9 +273,17 @@ func TestMessagesAfterStopWaitForUser(t *testing.T) {
 		_, err = resumed.Wait(t.Context())
 		must(t, err)
 		equal(t, len(p.Requests()), 1)
-		equal(t, steers(t, p.Requests()[0]), []string{transcripttest.AgentMessageEnvelope(message("unread")), transcripttest.AgentMessageEnvelope(message("late"))})
+		equal(
+			t,
+			steers(t, p.Requests()[0]),
+			[]string{
+				transcripttest.AgentMessageEnvelope(message("unread")),
+				transcripttest.AgentMessageEnvelope(message("late")),
+			},
+		)
 	})
 }
+
 func TestMessageDuringFinalSaveOpensContinuation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, answer("first"), answer("receipt consumed"))
@@ -258,6 +302,7 @@ func TestMessageDuringFinalSaveOpensContinuation(t *testing.T) {
 		f.history("user", "text", "response", "agent_message", "text", "response")
 	})
 }
+
 func TestAgentMessageIdentityRefusals(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, answer("read"))
@@ -285,13 +330,16 @@ func TestAgentMessageIdentityRefusals(t *testing.T) {
 		equal(t, len(f.p.Requests()), 1)
 	})
 }
+
 func TestRestoredMessageDeliveredOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, answer("original"))
 		f.done(f.send("task", "t1"))
 		must(t, f.s.Dispose(t.Context()))
 		cp := f.checkpoint()
-		cp.State.AgentInputs = []store.PendingAgentInput{{TurnID: "t1", Model: storetest.TestModel(), Message: message("restored")}}
+		cp.State.AgentInputs = []store.PendingAgentInput{
+			{TurnID: "t1", Model: storetest.TestModel(), Message: message("restored")},
+		}
 		s, c, p := f.restore(cp, answer("recovered"))
 		equal(t, c.Interrupted, false)
 		s.Wake()
@@ -309,11 +357,13 @@ func TestRestoredMessageDeliveredOnce(t *testing.T) {
 		equal(t, again.IsSettled(), true)
 	})
 }
+
 func yieldRuntime() *sessiontest.Runtime {
 	return toolRuntime("yield", func(context.Context, session.ToolInvocation) (session.ToolOutcome, error) {
 		return session.ToolOutcome{Effect: &session.ScheduleYield{DurationMS: 120000}}, nil
 	})
 }
+
 func TestYieldEndsTurnAndWakesOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := start(t, yieldRuntime(), session.DefaultConfig(), tool("yield"), answer("checked build"))
@@ -326,7 +376,11 @@ func TestYieldEndsTurnAndWakesOnce(t *testing.T) {
 		equal(t, view.DurationMs, uint32(120000))
 		equal(t, cp.State.Wakeups[0].ID, view.WakeupID)
 		equal(t, cp.State.Wakeups[0].DurationMS, uint32(120000))
-		equal(t, call.Output, []core.ToolResultContentBlock{&core.ToolText{Text: "yield scheduled\ndurationMs: 120000"}})
+		equal(
+			t,
+			call.Output,
+			[]core.ToolResultContentBlock{&core.ToolText{Text: "yield scheduled\ndurationMs: 120000"}},
+		)
 		if cp.State.Wakeups[0].DueAt == nil {
 			t.Fatal("not armed")
 		}
@@ -343,6 +397,7 @@ func TestYieldEndsTurnAndWakesOnce(t *testing.T) {
 		equal(t, items[len(items)-1], userItem(transcripttest.WakeupText))
 	})
 }
+
 func TestStopCancelsOldestWakeup(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := start(t, yieldRuntime(), session.DefaultConfig(), tool("yield"))
@@ -357,6 +412,7 @@ func TestStopCancelsOldestWakeup(t *testing.T) {
 		equal(t, len(f.p.Requests()), 1)
 	})
 }
+
 func TestWakeupDuringTurnBecomesSteer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		turn, entered, release := gated(providertest.Text("building"), providertest.Response(1, 1))
@@ -374,6 +430,7 @@ func TestWakeupDuringTurnBecomesSteer(t *testing.T) {
 		equal(t, steers(t, f.p.Requests()[2]), []string{transcripttest.WakeupText})
 	})
 }
+
 func TestWakeupSurvivesDisposeAndRestore(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := start(t, yieldRuntime(), session.DefaultConfig(), tool("yield"))
@@ -387,6 +444,7 @@ func TestWakeupSurvivesDisposeAndRestore(t *testing.T) {
 		equal(t, kinds(s.Transcript().Blocks[3:]), []string{"wakeup", "text", "response"})
 	})
 }
+
 func TestInterruptedRestoreHoldsWakeupsAndMessages(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := start(t, yieldRuntime(), session.DefaultConfig(), tool("yield"), providertest.Pending())
@@ -407,6 +465,10 @@ func TestInterruptedRestoreHoldsWakeupsAndMessages(t *testing.T) {
 		must(t, err)
 		_, err = a.Wait(t.Context())
 		must(t, err)
-		equal(t, steers(t, p.Requests()[0]), []string{transcripttest.AgentMessageEnvelope(message("news")), transcripttest.WakeupText})
+		equal(
+			t,
+			steers(t, p.Requests()[0]),
+			[]string{transcripttest.AgentMessageEnvelope(message("news")), transcripttest.WakeupText},
+		)
 	})
 }

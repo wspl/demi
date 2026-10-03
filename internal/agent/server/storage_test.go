@@ -19,12 +19,18 @@ import (
 
 func writeStorage(t *testing.T, f *fixture, value string, expected *host.Revision) host.StorageReply {
 	t.Helper()
-	reply, err := f.server.CommandStorage(t.Context(), rootID(), f.server.Node(rootID(), rootID()).JobCaller(), &host.StorageWriteIf{Key: "todo", Value: []byte(value), Expected: expected})
+	reply, err := f.server.CommandStorage(
+		t.Context(),
+		rootID(),
+		f.server.Node(rootID(), rootID()).JobCaller(),
+		&host.StorageWriteIf{Key: "todo", Value: []byte(value), Expected: expected},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return reply
 }
+
 func TestForkKeepsCompletedPrefixFromLiveAndStoredRoot(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("answer A"), said("answer B"), said("answer U3"))
@@ -40,7 +46,14 @@ func TestForkKeepsCompletedPrefixFromLiveAndStoredRoot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.server.PrepareFork(t.Context(), rootID(), blocks[3].ID()); !errors.Is(err, transcript.NotCompletedText) {
+		if _, err := f.server.PrepareFork(
+			t.Context(),
+			rootID(),
+			blocks[3].ID(),
+		); !errors.Is(
+			err,
+			transcript.NotCompletedText,
+		) {
 			t.Fatal("forked user block")
 		}
 		c.Send(t.Context(), &framewire.CloseFrame{})
@@ -75,7 +88,12 @@ func TestForkKeepsCompletedPrefixFromLiveAndStoredRoot(t *testing.T) {
 		forked.Send(t.Context(), &framewire.OpenFrame{})
 		frames := forked.Received()
 		equal(t, blocks[:2], frames[1].(*framewire.TranscriptResetFrame).Blocks)
-		reply, err := f.server.CommandStorage(t.Context(), destination, f.server.Node(destination, destination).JobCaller(), &host.StorageRead{Key: "todo"})
+		reply, err := f.server.CommandStorage(
+			t.Context(),
+			destination,
+			f.server.Node(destination, destination).JobCaller(),
+			&host.StorageRead{Key: "todo"},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,9 +101,18 @@ func TestForkKeepsCompletedPrefixFromLiveAndStoredRoot(t *testing.T) {
 		forked.Send(t.Context(), send("m3", "U3"))
 		untilIdle(t, forked)
 		equal(t, 0, f.script.Remaining())
-		equal(t, []provider.InferenceItem{&provider.UserMessage{Content: storetest.SentText("A")}, &provider.AssistantText{ModelID: "test-model", Text: "answer A"}, &provider.UserMessage{Content: storetest.SentText("U3")}}, f.script.Requests()[2].Items)
+		equal(
+			t,
+			[]provider.InferenceItem{
+				&provider.UserMessage{Content: storetest.SentText("A")},
+				&provider.AssistantText{ModelID: "test-model", Text: "answer A"},
+				&provider.UserMessage{Content: storetest.SentText("U3")},
+			},
+			f.script.Requests()[2].Items,
+		)
 	})
 }
+
 func TestStorageRevisionAndRewriteEndOlderJobs(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("answer A"), said("answer A again"))
@@ -103,13 +130,23 @@ func TestStorageRevisionAndRewriteEndOlderJobs(t *testing.T) {
 		equal(t, []uint64{0, 1}, versions)
 		c.Send(t.Context(), &framewire.RetryFrame{})
 		untilIdle(t, c)
-		_, err := f.server.CommandStorage(t.Context(), rootID(), caller, &host.StorageWriteIf{Key: "todo", Value: []byte("3")})
+		_, err := f.server.CommandStorage(
+			t.Context(),
+			rootID(),
+			caller,
+			&host.StorageWriteIf{Key: "todo", Value: []byte("3")},
+		)
 		assertStorageError(t, err, "the command storage handle is no longer current")
 		equal(t, host.StorageReply(&host.StorageCommitted{Revision: 2}), writeStorage(t, f, "3", nil))
 		equal(t, "● 0  (root session) ← you\n", agent(t, f, rootID(), "list", `{}`).stdout)
 		f.store.FailSaves(1)
 		fresh := f.server.Node(rootID(), rootID()).JobCaller()
-		_, err = f.server.CommandStorage(t.Context(), rootID(), fresh, &host.StorageWriteIf{Key: "todo", Value: []byte("4")})
+		_, err = f.server.CommandStorage(
+			t.Context(),
+			rootID(),
+			fresh,
+			&host.StorageWriteIf{Key: "todo", Value: []byte("4")},
+		)
 		assertStorageError(t, err, "the database refused the save")
 		reply, err := f.server.CommandStorage(t.Context(), rootID(), fresh, &host.StorageRead{Key: "todo"})
 		if err != nil {
@@ -118,6 +155,7 @@ func TestStorageRevisionAndRewriteEndOlderJobs(t *testing.T) {
 		equal(t, host.StorageReply(&host.StorageValue{Value: []byte("3"), Revision: 2}), reply)
 	})
 }
+
 func TestWriteBeforeAnswerBelongsToItsForkBoundary(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		finish := make(chan struct{})
@@ -138,7 +176,11 @@ func TestWriteBeforeAnswerBelongsToItsForkBoundary(t *testing.T) {
 		}
 		f := newFixture(t, stream)
 		c := f.opened()
-		equal(t, host.StorageReply(&host.StorageCommitted{Revision: 1}), writeStorage(t, f, `["T1"]`, new(host.Revision(0))))
+		equal(
+			t,
+			host.StorageReply(&host.StorageCommitted{Revision: 1}),
+			writeStorage(t, f, `["T1"]`, new(host.Revision(0))),
+		)
 		c.Send(t.Context(), send("m1", "plan it"))
 		synctest.Wait()
 		gate := f.store.HoldSaves()
@@ -149,7 +191,12 @@ func TestWriteBeforeAnswerBelongsToItsForkBoundary(t *testing.T) {
 		}, 1)
 		caller := f.server.Node(rootID(), rootID()).JobCaller()
 		go func() {
-			reply, err := f.server.CommandStorage(t.Context(), rootID(), caller, &host.StorageWriteIf{Key: "todo", Value: []byte(`["T1","T2"]`), Expected: new(host.Revision(1))})
+			reply, err := f.server.CommandStorage(
+				t.Context(),
+				rootID(),
+				caller,
+				&host.StorageWriteIf{Key: "todo", Value: []byte(`["T1","T2"]`), Expected: new(host.Revision(1))},
+			)
 			result <- struct {
 				reply host.StorageReply
 				err   error
@@ -175,7 +222,11 @@ func TestWriteBeforeAnswerBelongsToItsForkBoundary(t *testing.T) {
 		if !f.server.Tree(rootID()).Root().Session().Transcript().Blocks[1].(*core.TextBlock).Forkable {
 			t.Fatal("answer not completed")
 		}
-		equal(t, host.StorageReply(&host.StorageCommitted{Revision: 3}), writeStorage(t, f, `["T1","T2","T3"]`, new(host.Revision(2))))
+		equal(
+			t,
+			host.StorageReply(&host.StorageCommitted{Revision: 3}),
+			writeStorage(t, f, `["T1","T2","T3"]`, new(host.Revision(2))),
+		)
 		seed, err := f.server.PrepareFork(t.Context(), rootID(), answer.ID())
 		if err != nil {
 			t.Fatal(err)

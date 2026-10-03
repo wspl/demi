@@ -23,11 +23,28 @@ import (
 func TestTurnPatchesRebuildTranscript(t *testing.T) {
 	t.Skip("fidelity 1: tool-input diagnostics differ from the unmodified Rust transcript fixture")
 	synctest.Test(t, func(t *testing.T) {
-
-		script := providertest.NewScriptedRuntime(t, providertest.Events(&provider.ThinkingStart{}, providertest.Thinking("Let me look."), &provider.ThinkingSignature{Signature: "anthropic:sig-1"}, providertest.Text("Checking "), providertest.Text("the files."), providertest.ToolCall("call-1", "shell_exec", []byte(`{"script":"ls"}`)), providertest.Response(12, 8)), providertest.Events(providertest.Text("There are two files."), providertest.Response(30, 6)))
-		f := fixtureWith(t, script, storetest.NewMemoryTreeStore(), server.DefaultConfig(), func(deps *server.Deps[*toolstest.NoHost]) {
-			deps.Clock = providertest.FixedClock("2026-09-24T12:00:00.000Z")
-		})
+		script := providertest.NewScriptedRuntime(
+			t,
+			providertest.Events(
+				&provider.ThinkingStart{},
+				providertest.Thinking("Let me look."),
+				&provider.ThinkingSignature{Signature: "anthropic:sig-1"},
+				providertest.Text("Checking "),
+				providertest.Text("the files."),
+				providertest.ToolCall("call-1", "shell_exec", []byte(`{"script":"ls"}`)),
+				providertest.Response(12, 8),
+			),
+			providertest.Events(providertest.Text("There are two files."), providertest.Response(30, 6)),
+		)
+		f := fixtureWith(
+			t,
+			script,
+			storetest.NewMemoryTreeStore(),
+			server.DefaultConfig(),
+			func(deps *server.Deps[*toolstest.NoHost]) {
+				deps.Clock = providertest.FixedClock("2026-09-24T12:00:00.000Z")
+			},
+		)
 		c := f.client()
 		c.Send(t.Context(), &framewire.OpenFrame{})
 		handshake := c.Received()
@@ -58,7 +75,7 @@ func TestTurnPatchesRebuildTranscript(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(compact.Bytes(), actual) {
-			if err := os.WriteFile(t.TempDir()+"/transcript-patches.actual.json", actual, 0600); err != nil {
+			if err := os.WriteFile(t.TempDir()+"/transcript-patches.actual.json", actual, 0o600); err != nil {
 				t.Fatal(err)
 			}
 			equal(t, compact.String(), string(actual))
@@ -85,12 +102,21 @@ func TestTurnPatchesRebuildTranscript(t *testing.T) {
 		}
 	})
 }
+
 func TestProviderFailureIsPublishedOnceAndQueueContinues(t *testing.T) {
-	for _, code := range []provider.ErrorCode{provider.AuthExpired, provider.AuthMissing, provider.ErrorCode("invalid_request_error")} {
+	for _, code := range []provider.ErrorCode{
+		provider.AuthExpired,
+		provider.AuthMissing,
+		provider.ErrorCode("invalid_request_error"),
+	} {
 		t.Run(string(code), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				gate := make(chan struct{})
-				f := newFixture(t, held(gate, providertest.Text("partial"), providertest.Error("the vendor refused", &code)), said("second"))
+				f := newFixture(
+					t,
+					held(gate, providertest.Text("partial"), providertest.Error("the vendor refused", &code)),
+					said("second"),
+				)
 				c := f.opened()
 				c.Send(t.Context(), send("m1", "first"))
 				c.Send(t.Context(), send("m2", "second"))
@@ -119,6 +145,7 @@ func TestProviderFailureIsPublishedOnceAndQueueContinues(t *testing.T) {
 		})
 	}
 }
+
 func TestStopPublishesMarkerBeforeReplyAndRunsQueue(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, providertest.Pending(), said("second answer"))
@@ -184,10 +211,19 @@ func TestStopPublishesMarkerBeforeReplyAndRunsQueue(t *testing.T) {
 			t.Fatal(reply)
 		}
 		synctest.Wait()
-		assertBlockTypes(t, f.server.Tree(rootID()).Root().Session().Transcript().Blocks, "User", "Abort", "User", "Text", "Response")
+		assertBlockTypes(
+			t,
+			f.server.Tree(rootID()).Root().Session().Transcript().Blocks,
+			"User",
+			"Abort",
+			"User",
+			"Text",
+			"Response",
+		)
 		equal(t, "second answer", texts(f))
 	})
 }
+
 func TestInterruptHoldsQueuedMessageUntilRelease(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, providertest.Pending(), said("second answer"))
@@ -210,6 +246,7 @@ func TestInterruptHoldsQueuedMessageUntilRelease(t *testing.T) {
 		equal(t, "second answer", texts(f))
 	})
 }
+
 func TestCloseSavesInterruptionAndReopenRunsQueue(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, providertest.Pending(), said("later"))
@@ -232,10 +269,19 @@ func TestCloseSavesInterruptionAndReopenRunsQueue(t *testing.T) {
 		synctest.Wait()
 		frames := c.Received()
 		assertBlockTypes(t, frames[1].(*framewire.TranscriptResetFrame).Blocks, "User", "Error")
-		assertBlockTypes(t, f.server.Tree(rootID()).Root().Session().Transcript().Blocks, "User", "Error", "User", "Text", "Response")
+		assertBlockTypes(
+			t,
+			f.server.Tree(rootID()).Root().Session().Transcript().Blocks,
+			"User",
+			"Error",
+			"User",
+			"Text",
+			"Response",
+		)
 		equal(t, "later", texts(f))
 	})
 }
+
 func TestCrashRecordsInterruptionOnReopen(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, providertest.Pending())
@@ -269,6 +315,7 @@ func TestCrashRecordsInterruptionOnReopen(t *testing.T) {
 		equal(t, core.SessionPhaseIdle, cp.State.Phase)
 	})
 }
+
 func switchModel(t *testing.T, f *fixture, model core.ModelSelection) {
 	t.Helper()
 	change, err := f.server.PrepareSwitch(t.Context(), rootID(), model)
@@ -282,10 +329,16 @@ func switchModel(t *testing.T, f *fixture, model core.ModelSelection) {
 		t.Fatal(err)
 	}
 }
+
 func TestSwitchLandsAtNextRequestInsideTurn(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		gate := make(chan struct{})
-		f := newFixture(t, held(gate, providertest.ToolCall("call-1", "shell_exec", []byte(`{}`)), providertest.Response(1, 1)), said("one"), said("two"))
+		f := newFixture(
+			t,
+			held(gate, providertest.ToolCall("call-1", "shell_exec", []byte(`{}`)), providertest.Response(1, 1)),
+			said("one"),
+			said("two"),
+		)
 		c := f.opened()
 		c.Send(t.Context(), send("m1", "first"))
 		synctest.Wait()
@@ -321,6 +374,7 @@ func TestSwitchLandsAtNextRequestInsideTurn(t *testing.T) {
 		equal(t, "model-b", f.store.Checkpoint(rootID()).State.Model.Model.ID)
 	})
 }
+
 func TestSwitchProviderOwnsAndClosesRuntimes(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, said("from stub"))
@@ -331,7 +385,11 @@ func TestSwitchProviderOwnsAndClosesRuntimes(t *testing.T) {
 		c := f.opened()
 		c.Send(t.Context(), send("m1", "first"))
 		untilIdle(t, c)
-		for _, m := range []core.ModelSelection{storetest.ModelOf("replaced", "replaced-model"), storetest.ModelOf("other", "other-model"), storetest.ModelOf("other", "other-model-2")} {
+		for _, m := range []core.ModelSelection{
+			storetest.ModelOf("replaced", "replaced-model"),
+			storetest.ModelOf("other", "other-model"),
+			storetest.ModelOf("other", "other-model-2"),
+		} {
 			switchModel(t, f, m)
 		}
 		c.Send(t.Context(), send("m2", "second"))
@@ -353,10 +411,16 @@ func TestSwitchProviderOwnsAndClosesRuntimes(t *testing.T) {
 		equal(t, 0, other.Closes())
 	})
 }
+
 func TestQueueCanBeReorderedAndEmptied(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		first, last := make(chan struct{}), make(chan struct{})
-		f := newFixture(t, held(first, providertest.Text("one"), providertest.Response(1, 1)), said("three"), held(last, providertest.Text("two"), providertest.Response(1, 1)))
+		f := newFixture(
+			t,
+			held(first, providertest.Text("one"), providertest.Response(1, 1)),
+			said("three"),
+			held(last, providertest.Text("two"), providertest.Response(1, 1)),
+		)
 		c := f.opened()
 		c.Send(t.Context(), send("m1", "one"))
 		synctest.Wait()
@@ -375,7 +439,18 @@ func TestQueueCanBeReorderedAndEmptied(t *testing.T) {
 				queues = append(queues, ids)
 			}
 		}
-		equal(t, [][]string{{"m2"}, {"m2", "m3"}, {"m2", "m3", "m4"}, {"m2", "m3", "m4", "m5"}, {"m3", "m2", "m4", "m5"}, {"m3", "m2", "m5"}}, queues)
+		equal(
+			t,
+			[][]string{
+				{"m2"},
+				{"m2", "m3"},
+				{"m2", "m3", "m4"},
+				{"m2", "m3", "m4", "m5"},
+				{"m3", "m2", "m4", "m5"},
+				{"m3", "m2", "m5"},
+			},
+			queues,
+		)
 		queue := f.server.Tree(rootID()).Root().Session().QueuedMessages()
 		equal(t, 3, len(queue))
 		equal(t, turnID("m3"), queue[0].ID)

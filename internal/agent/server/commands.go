@@ -13,7 +13,14 @@ import (
 )
 
 // agentLeaf binds one generated command contract to the invoking live tree.
-func agentLeaf[H host.Host, A any](t *Tree[H], name, summary string, shape commandContract[A], positionals []string, stdin *string, run func(context.Context, *Tree[H], core.NodeID, bool, A, host.RPCPort) (uint8, error)) (host.Declared, error) {
+func agentLeaf[H host.Host, A any](
+	t *Tree[H],
+	name, summary string,
+	shape commandContract[A],
+	positionals []string,
+	stdin *string,
+	run func(context.Context, *Tree[H], core.NodeID, bool, A, host.RPCPort) (uint8, error),
+) (host.Declared, error) {
 	var input *declare.Schema
 	if shape.input != nil {
 		var err error
@@ -22,7 +29,13 @@ func agentLeaf[H host.Host, A any](t *Tree[H], name, summary string, shape comma
 			return host.Declared{}, err
 		}
 	}
-	leaf := declare.Leaf[declare.NativeOperation]{Name: name, Summary: summary, Input: input, StdinField: stdin, Kind: &declare.RPC[declare.NativeOperation]{}}
+	leaf := declare.Leaf[declare.NativeOperation]{
+		Name:       name,
+		Summary:    summary,
+		Input:      input,
+		StdinField: stdin,
+		Kind:       &declare.RPC[declare.NativeOperation]{},
+	}
 	if positionals != nil {
 		leaf.Positionals = &positionals
 	}
@@ -33,20 +46,26 @@ func agentLeaf[H host.Host, A any](t *Tree[H], name, summary string, shape comma
 		}
 		leaf.Output = &declare.LeafOutput{JSON: result}
 	}
-	handler := host.TypedRPC(shape.decode, func(ctx context.Context, call host.Call[A], port host.RPCPort) (uint8, error) {
-		if call.Invocation.Caller == nil {
-			return 0, &host.RPCError{Kind: host.HandlerFailed, Message: "the command runs only in an agent's job"}
-		}
-		root, err := core.ParseNodeID(call.Invocation.Context.Conversation)
-		if err != nil {
-			return 0, err
-		}
-		tree := t.server.Tree(root)
-		if tree == nil {
-			return 0, &host.RPCError{Kind: host.HandlerFailed, Message: fmt.Sprintf("the conversation %s is not open", root)}
-		}
-		return run(ctx, tree, call.Invocation.Caller.Node, call.Invocation.JSON, call.Args, port)
-	})
+	handler := host.TypedRPC(
+		shape.decode,
+		func(ctx context.Context, call host.Call[A], port host.RPCPort) (uint8, error) {
+			if call.Invocation.Caller == nil {
+				return 0, &host.RPCError{Kind: host.HandlerFailed, Message: "the command runs only in an agent's job"}
+			}
+			root, err := core.ParseNodeID(call.Invocation.Context.Conversation)
+			if err != nil {
+				return 0, err
+			}
+			tree := t.server.Tree(root)
+			if tree == nil {
+				return 0, &host.RPCError{
+					Kind:    host.HandlerFailed,
+					Message: fmt.Sprintf("the conversation %s is not open", root),
+				}
+			}
+			return run(ctx, tree, call.Invocation.Caller.Node, call.Invocation.JSON, call.Args, port)
+		},
+	)
 	if name == "spawn" {
 		leaf.SuccessOutput = new(`stdout is "subagentId: <id>"; creation succeeded, not necessarily execution`)
 		leaf.FailureOutput = new("non-zero exit with the creation failure reason on stderr")
@@ -62,15 +81,14 @@ func (t *Tree[H]) commands(inherited *host.CommandSet, spawning bool) (*host.Com
 		if err != nil {
 			return nil, err
 		}
-		names := []string{}
-		for _, profile := range t.profiles {
-			names = append(names, profile.Name)
-		}
-		available := strings.Join(names, ", ")
-		if available == "" {
-			available = "none"
-		}
-		children = append(children, leaf.Describe("prompt", spawnPrompt).Describe("profile", fmt.Sprintf("Named subagent profile; omit to inherit the parent's model, prompt, Host and commands. Available: %s.", available)))
+		available := t.profileNames()
+		children = append(
+			children,
+			leaf.Describe("prompt", spawnPrompt).
+				Describe("profile", fmt.Sprintf("Named subagent profile; omit to inherit the parent's model, prompt, "+
+					"Host and commands. "+
+					"Available: %s.", available)),
+		)
 	}
 	send, err := agentLeaf(t, "send", sendSummary, sendContract(), []string{"id"}, new("message"), sendCommand[H])
 	if err != nil {
@@ -82,7 +100,15 @@ func (t *Tree[H]) commands(inherited *host.CommandSet, spawning bool) (*host.Com
 		if err != nil {
 			return nil, err
 		}
-		resume, err := agentLeaf(t, "resume", resumeSummary, resumeContract(), []string{"id"}, new("message"), resumeCommand[H])
+		resume, err := agentLeaf(
+			t,
+			"resume",
+			resumeSummary,
+			resumeContract(),
+			[]string{"id"},
+			new("message"),
+			resumeCommand[H],
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -106,26 +132,17 @@ func (t *Tree[H]) commands(inherited *host.CommandSet, spawning bool) (*host.Com
 	if err != nil {
 		return nil, err
 	}
-	hasDemi := false
-	for _, root := range commands.Declarations() {
-		if declare.Name(root) == "demi" {
-			hasDemi = true
-		}
-	}
-	if hasDemi {
-		if err := commands.Graft([]string{"demi"}, agent); err != nil {
-			return nil, err
-		}
-		if err := commands.Graft([]string{"demi"}, shell); err != nil {
-			return nil, err
-		}
-	} else if err := commands.Register(host.Group("demi", "Demi agent runtime commands.", agent, shell)); err != nil {
-		return nil, err
-	}
-	return commands, nil
+	return graftCommands(commands, agent, shell)
 }
 
-func spawnCommand[H host.Host](ctx context.Context, t *Tree[H], caller core.NodeID, jsonOutput bool, args spawnArgs, port host.RPCPort) (uint8, error) {
+func spawnCommand[H host.Host](
+	ctx context.Context,
+	t *Tree[H],
+	caller core.NodeID,
+	jsonOutput bool,
+	args spawnArgs,
+	port host.RPCPort,
+) (uint8, error) {
 	prompt := core.Trim(args.Prompt)
 	if prompt == "" {
 		return commandFail(ctx, port, "spawn", errors.New("prompt must not be empty"))
@@ -150,7 +167,14 @@ func spawnCommand[H host.Host](ctx context.Context, t *Tree[H], caller core.Node
 	return startedOutput(ctx, port, jsonOutput, child)
 }
 
-func resumeCommand[H host.Host](ctx context.Context, t *Tree[H], caller core.NodeID, jsonOutput bool, args resumeArgs, port host.RPCPort) (uint8, error) {
+func resumeCommand[H host.Host](
+	ctx context.Context,
+	t *Tree[H],
+	caller core.NodeID,
+	jsonOutput bool,
+	args resumeArgs,
+	port host.RPCPort,
+) (uint8, error) {
 	message := core.Trim(args.Message)
 	if message == "" {
 		return commandFail(ctx, port, "resume", errors.New("message must not be empty"))
@@ -182,7 +206,14 @@ func resumeCommand[H host.Host](ctx context.Context, t *Tree[H], caller core.Nod
 	return startedOutput(ctx, port, jsonOutput, child)
 }
 
-func sendCommand[H host.Host](ctx context.Context, t *Tree[H], caller core.NodeID, jsonOutput bool, args sendArgs, port host.RPCPort) (uint8, error) {
+func sendCommand[H host.Host](
+	ctx context.Context,
+	t *Tree[H],
+	caller core.NodeID,
+	jsonOutput bool,
+	args sendArgs,
+	port host.RPCPort,
+) (uint8, error) {
 	if core.IsBlank(args.Message) {
 		return commandFail(ctx, port, "send", errors.New("message must not be empty"))
 	}
@@ -196,7 +227,14 @@ func sendCommand[H host.Host](ctx context.Context, t *Tree[H], caller core.NodeI
 	return commandOut(ctx, port, fmt.Sprintf("sent to %d\n", target))
 }
 
-func abortCommand[H host.Host](ctx context.Context, t *Tree[H], caller core.NodeID, jsonOutput bool, args abortArgs, port host.RPCPort) (uint8, error) {
+func abortCommand[H host.Host](
+	ctx context.Context,
+	t *Tree[H],
+	caller core.NodeID,
+	jsonOutput bool,
+	args abortArgs,
+	port host.RPCPort,
+) (uint8, error) {
 	var id core.NodeID
 	for _, child := range t.childrenOf(caller) {
 		if child.node.record.Number == args.ID {
@@ -235,6 +273,39 @@ func commandJSON(ctx context.Context, port host.RPCPort, value any) (uint8, erro
 func commandOut(ctx context.Context, port host.RPCPort, text string) (uint8, error) {
 	return 0, port.Stdout(ctx, []byte(text))
 }
+
 func commandFail(ctx context.Context, port host.RPCPort, verb string, err error) (uint8, error) {
 	return 1, port.Stderr(ctx, []byte(fmt.Sprintf("demi agent %s: %s\n", verb, err)))
+}
+
+func graftCommands(commands *host.CommandSet, agent, shell host.Declared) (*host.CommandSet, error) {
+	hasDemi := false
+	for _, root := range commands.Declarations() {
+		if declare.Name(root) == "demi" {
+			hasDemi = true
+		}
+	}
+	if hasDemi {
+		if err := commands.Graft([]string{"demi"}, agent); err != nil {
+			return nil, err
+		}
+		if err := commands.Graft([]string{"demi"}, shell); err != nil {
+			return nil, err
+		}
+	} else if err := commands.Register(host.Group("demi", "Demi agent runtime commands.", agent, shell)); err != nil {
+		return nil, err
+	}
+	return commands, nil
+}
+
+func (t *Tree[H]) profileNames() string {
+	names := []string{}
+	for _, profile := range t.profiles {
+		names = append(names, profile.Name)
+	}
+	available := strings.Join(names, ", ")
+	if available == "" {
+		available = "none"
+	}
+	return available
 }

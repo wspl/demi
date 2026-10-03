@@ -19,6 +19,7 @@ func TestTitleFromFirstMessage(t *testing.T) {
 	equal(t, "", server.TitleFromMessage(" \n\t"))
 	equal(t, strings.Repeat("界", 80), server.TitleFromMessage(strings.Repeat("界", 100)))
 }
+
 func TestTitleInputKeepsFirstAndRecentMessages(t *testing.T) {
 	equal(t, "", server.TitleInput(nil))
 	equal(t, "1. first line\n2. second", server.TitleInput([]string{" \n", " first\nline ", "second"}))
@@ -29,7 +30,8 @@ func TestTitleInputKeepsFirstAndRecentMessages(t *testing.T) {
 	}
 	messages = append(messages, "latest topic")
 	input := server.TitleInput(messages)
-	if !strings.HasPrefix(input, "1. opening goal\n…\n") || !strings.HasSuffix(input, "21. latest topic") || utf8.RuneCountInString(input) > 4002 {
+	if !strings.HasPrefix(input, "1. opening goal\n…\n") || !strings.HasSuffix(input, "21. latest topic") ||
+		utf8.RuneCountInString(input) > 4002 {
 		t.Fatal(input)
 	}
 	lines := strings.Split(input, "\n")
@@ -38,8 +40,15 @@ func TestTitleInputKeepsFirstAndRecentMessages(t *testing.T) {
 		t.Fatal(input)
 	}
 }
+
 func TestTitleUsesFirstNonblankAnswerLine(t *testing.T) {
-	for _, answer := range []string{"\n  \"A title\"\nignored", "‘A title’", "\n  “A title”  \nignored", "「A title」", "『A title』"} {
+	for _, answer := range []string{
+		"\n  \"A title\"\nignored",
+		"‘A title’",
+		"\n  “A title”  \nignored",
+		"「A title」",
+		"『A title』",
+	} {
 		got := server.TitleFromResponse(answer)
 		if got == nil {
 			t.Fatal(answer)
@@ -54,12 +63,25 @@ func TestTitleUsesFirstNonblankAnswerLine(t *testing.T) {
 	got := server.TitleFromResponse(strings.Repeat("界", 100))
 	equal(t, strings.Repeat("界", 80), *got)
 }
+
 func TestTitleRequestUsesLowestThinkingAndNoTools(t *testing.T) {
 	model := storetest.TestModel()
 	model.ServiceTierID = new("priority")
 	model.Model.OutputLimit = new(uint32(32000))
-	model.Model.Thinking = []core.ThinkingCapability{&core.BudgetCapability{}, &core.EffortCapability{Efforts: []string{"high", "minimal", "medium"}}}
-	script := providertest.NewScriptedRuntime(t, providertest.Events(providertest.Thinking("ignored"), providertest.Text("\"A "), providertest.Text("title\""), providertest.Response(1, 1)), providertest.Events(providertest.Error("quota", nil)))
+	model.Model.Thinking = []core.ThinkingCapability{
+		&core.BudgetCapability{},
+		&core.EffortCapability{Efforts: []string{"high", "minimal", "medium"}},
+	}
+	script := providertest.NewScriptedRuntime(
+		t,
+		providertest.Events(
+			providertest.Thinking("ignored"),
+			providertest.Text("\"A "),
+			providertest.Text("title\""),
+			providertest.Response(1, 1),
+		),
+		providertest.Events(providertest.Error("quota", nil)),
+	)
 	title, err := server.Title(t.Context(), script, "conversation", "r1", model, []string{"first", "second"})
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +96,13 @@ func TestTitleRequestUsesLowestThinkingAndNoTools(t *testing.T) {
 	equal(t, uint32(1024), *request.MaxOutputTokens())
 	equal(t, (*string)(nil), request.ServiceTierID)
 	equal(t, provider.PromptCache{}, request.PromptCache)
-	equal(t, []provider.InferenceItem{&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: "1. first\n2. second"}}}}, request.Items)
+	equal(
+		t,
+		[]provider.InferenceItem{
+			&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: "1. first\n2. second"}}},
+		},
+		request.Items,
+	)
 	equal(t, 0, len(request.Tools))
 	effort, ok := request.Thinking.(*core.EffortConfig)
 	if !ok {

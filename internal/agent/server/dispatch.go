@@ -29,9 +29,11 @@ func (c *Connection[H]) send(frame framewire.ServerFrame) {
 		c.Detach()
 	}
 }
+
 func (c *Connection[H]) reject(kind framewire.ClientFrameKind, reason string) {
 	c.send(&framewire.RejectedFrame{Command: kind, Reason: reason})
 }
+
 func (c *Connection[H]) report(err error) {
 	frame := &framewire.ErrorFrame{Message: err.Error()}
 	var content *ContentError
@@ -40,6 +42,7 @@ func (c *Connection[H]) report(err error) {
 	}
 	c.send(frame)
 }
+
 func (c *Connection[H]) steerResult(id core.BlockID, err error) {
 	var outcome framewire.SteerOutcome = &framewire.AcceptedSteer{}
 	if err != nil {
@@ -65,7 +68,20 @@ func (c *Connection[H]) handle(ctx context.Context, frame framewire.ClientFrame)
 		case *framewire.SteerQueuedMessageFrame:
 			c.steerResult(f.SteerID, session.SteerError("No session is open on this connection"))
 		case *framewire.CancelPendingSteerFrame, *framewire.AbortSubagentsFrame, *framewire.AbortSubagentFrame:
-		case *framewire.AbortFrame, *framewire.ClearMessageQueueFrame, *framewire.CloseFrame, *framewire.CompactFrame, *framewire.DequeueMessageFrame, *framewire.EditAndSendFrame, *framewire.OpenFrame, *framewire.ResumeFrame, *framewire.RetryFrame, *framewire.SendFrame, *framewire.SendQueuedMessageFrame, *framewire.ShellAbortFrame, *framewire.ShellWriteFrame, *framewire.SyncTranscriptFrame:
+		case *framewire.AbortFrame,
+			*framewire.ClearMessageQueueFrame,
+			*framewire.CloseFrame,
+			*framewire.CompactFrame,
+			*framewire.DequeueMessageFrame,
+			*framewire.EditAndSendFrame,
+			*framewire.OpenFrame,
+			*framewire.ResumeFrame,
+			*framewire.RetryFrame,
+			*framewire.SendFrame,
+			*framewire.SendQueuedMessageFrame,
+			*framewire.ShellAbortFrame,
+			*framewire.ShellWriteFrame,
+			*framewire.SyncTranscriptFrame:
 			c.reject(frame.Kind(), "No session is open")
 		}
 		return
@@ -116,28 +132,11 @@ func (c *Connection[H]) dispatch(ctx context.Context, tree *Tree[H], frame frame
 	agent := tree.root.session
 	switch f := frame.(type) {
 	case *framewire.SendFrame:
-		content, media, err := resolveMessage(ctx, c.resolver, f.Content)
-		if err != nil {
-			c.report(err)
-			return
-		}
-		agent.HoldMedia(&media)
-		if _, err := agent.Send(content, f.MessageID); err != nil {
-			c.reject(frame.Kind(), err.Error())
-		}
+		c.sendMessage(ctx, agent, f)
 	case *framewire.SteerFrame:
-		content, media, err := resolveMessage(ctx, c.resolver, f.Content)
-		if err == nil {
-			agent.HoldMedia(&media)
-			err = agent.Steer(content, f.SteerID)
-		}
-		c.steerResult(f.SteerID, err)
+		c.steer(ctx, agent, f)
 	case *framewire.SteerQueuedMessageFrame:
-		found, err := agent.SteerQueuedMessage(f.MessageID, f.SteerID)
-		if err == nil && !found {
-			err = session.SteerError("Queued message not found")
-		}
-		c.steerResult(f.SteerID, err)
+		c.steerQueuedMessage(agent, f)
 	case *framewire.CancelPendingSteerFrame:
 		agent.CancelPendingSteer(f.SteerID)
 	case *framewire.DequeueMessageFrame:
@@ -147,15 +146,7 @@ func (c *Connection[H]) dispatch(ctx context.Context, tree *Tree[H], frame frame
 	case *framewire.ClearMessageQueueFrame:
 		agent.ClearMessageQueue()
 	case *framewire.AbortFrame:
-		result, err := agent.Abort(ctx)
-		if err == nil {
-			err = c.waitPublished(ctx, tree, agent.Transcript().Version.Revision)
-		}
-		if err != nil {
-			c.report(err)
-		} else {
-			c.send(&framewire.AbortResultFrame{Result: result})
-		}
+		c.abort(ctx, tree, agent)
 	case *framewire.SyncTranscriptFrame:
 		tree.frames.Lock()
 		for _, frame := range tree.freshTranscripts(c) {
@@ -173,32 +164,11 @@ func (c *Connection[H]) dispatch(ctx context.Context, tree *Tree[H], frame frame
 			}
 		}
 	case *framewire.RetryFrame, *framewire.ResumeFrame, *framewire.CompactFrame:
-		phase := agent.Phase()
-		if phase != core.SessionPhaseIdle {
-			c.reject(frame.Kind(), fmt.Sprintf("Session is busy (%s)", phase))
-			return
-		}
-		var err error
-		switch frame.Kind() {
-		case framewire.ClientFrameKindRetry:
-			_, err = agent.Retry()
-		case framewire.ClientFrameKindResume:
-			_, err = agent.Resume()
-		default:
-			_, err = agent.Compact()
-		}
-		if err != nil {
-			c.reject(frame.Kind(), err.Error())
-		}
+		c.startAction(agent, frame)
 	case *framewire.EditAndSendFrame:
 		c.edit(ctx, tree, f.Request)
 	case *framewire.ShellWriteFrame:
-		_, err := tree.shellsOf(f.CommandID).runtime.access.Write(ctx, f.CommandID, f.Stdin)
-		if err != nil {
-			c.report(err)
-		} else {
-			c.send(&framewire.ShellWriteResultFrame{CommandID: f.CommandID})
-		}
+		c.shellWrite(ctx, tree, f)
 	case *framewire.ShellAbortFrame:
 		if _, err := tree.shellsOf(f.CommandID).runtime.access.Abort(ctx, f.CommandID); err != nil {
 			c.report(err)
@@ -213,7 +183,12 @@ func (c *Connection[H]) edit(ctx context.Context, tree *Tree[H], request framewi
 	agent := tree.root.session
 	digest, err := session.EditDigest(request)
 	if err != nil {
-		c.send(&framewire.EditResultFrame{OperationID: request.OperationID, Outcome: &framewire.RejectedEdit{Reason: err.Error()}})
+		c.send(
+			&framewire.EditResultFrame{
+				OperationID: request.OperationID,
+				Outcome:     &framewire.RejectedEdit{Reason: err.Error()},
+			},
+		)
 		return
 	}
 	reply := &editReply{operation: request.OperationID, digest: digest}
@@ -234,21 +209,20 @@ func (c *Connection[H]) edit(ctx context.Context, tree *Tree[H], request framewi
 			content, media, err = resolveEdit(ctx, c.resolver, request.Content)
 			if err == nil {
 				agent.HoldMedia(&media)
-				_, err = agent.EditAndSend(ctx, session.EditSubmission{OperationID: request.OperationID, Target: request.TargetBlockID, Version: request.Version, Content: content, Digest: digest})
+				_, err = agent.EditAndSend(
+					ctx,
+					session.EditSubmission{
+						OperationID: request.OperationID,
+						Target:      request.TargetBlockID,
+						Version:     request.Version,
+						Content:     content,
+						Digest:      digest,
+					},
+				)
 			}
 		}
 	}
-	tree.frames.Lock()
-	defer tree.frames.Unlock()
-	if c.editReply != reply {
-		return
-	}
-	c.editReply = nil
-	if err != nil {
-		c.send(&framewire.EditResultFrame{OperationID: request.OperationID, Outcome: &framewire.RejectedEdit{Reason: err.Error()}})
-	} else if accepted != nil {
-		c.send(&framewire.EditResultFrame{OperationID: request.OperationID, Outcome: &framewire.AcceptedEdit{TurnID: accepted.TurnID}})
-	}
+	c.finishEdit(tree, request, reply, accepted, err)
 }
 
 type editReply struct {
@@ -266,4 +240,104 @@ func (t *Tree[H]) shellsOf(command core.CommandID) *Node[H] {
 		}
 	}
 	return t.root
+}
+
+func (c *Connection[H]) sendMessage(ctx context.Context, agent *session.Session, f *framewire.SendFrame) {
+	content, media, err := resolveMessage(ctx, c.resolver, f.Content)
+	if err != nil {
+		c.report(err)
+		return
+	}
+	agent.HoldMedia(&media)
+	if _, err := agent.Send(content, f.MessageID); err != nil {
+		c.reject(f.Kind(), err.Error())
+	}
+}
+
+func (c *Connection[H]) abort(ctx context.Context, tree *Tree[H], agent *session.Session) {
+	result, err := agent.Abort(ctx)
+	if err == nil {
+		err = c.waitPublished(ctx, tree, agent.Transcript().Version.Revision)
+	}
+	if err != nil {
+		c.report(err)
+	} else {
+		c.send(&framewire.AbortResultFrame{Result: result})
+	}
+}
+
+func (c *Connection[H]) startAction(agent *session.Session, frame framewire.ClientFrame) {
+	phase := agent.Phase()
+	if phase != core.SessionPhaseIdle {
+		c.reject(frame.Kind(), fmt.Sprintf("Session is busy (%s)", phase))
+		return
+	}
+	var err error
+	switch frame.Kind() {
+	case framewire.ClientFrameKindRetry:
+		_, err = agent.Retry()
+	case framewire.ClientFrameKindResume:
+		_, err = agent.Resume()
+	default:
+		_, err = agent.Compact()
+	}
+	if err != nil {
+		c.reject(frame.Kind(), err.Error())
+	}
+}
+
+func (c *Connection[H]) finishEdit(
+	tree *Tree[H],
+	request framewire.EditRequest,
+	reply *editReply,
+	accepted *store.EditReceipt,
+	err error,
+) {
+	tree.frames.Lock()
+	defer tree.frames.Unlock()
+	if c.editReply != reply {
+		return
+	}
+	c.editReply = nil
+	if err != nil {
+		c.send(
+			&framewire.EditResultFrame{
+				OperationID: request.OperationID,
+				Outcome:     &framewire.RejectedEdit{Reason: err.Error()},
+			},
+		)
+	} else if accepted != nil {
+		c.send(
+			&framewire.EditResultFrame{
+				OperationID: request.OperationID,
+				Outcome:     &framewire.AcceptedEdit{TurnID: accepted.TurnID},
+			},
+		)
+	}
+}
+
+func (c *Connection[H]) steerQueuedMessage(agent *session.Session, f *framewire.SteerQueuedMessageFrame) {
+	found, err := agent.SteerQueuedMessage(f.MessageID, f.SteerID)
+	if err == nil && !found {
+		err = session.SteerError("Queued message not found")
+	}
+	c.steerResult(f.SteerID, err)
+}
+
+func (c *Connection[H]) steer(ctx context.Context, agent *session.Session, f *framewire.SteerFrame) {
+	content, media, err := resolveMessage(ctx, c.resolver, f.Content)
+	if err == nil {
+		agent.HoldMedia(&media)
+		err = agent.Steer(content, f.SteerID)
+	}
+	c.steerResult(f.SteerID, err)
+}
+
+func (c *Connection[H]) shellWrite(ctx context.Context, tree *Tree[H], f *framewire.ShellWriteFrame) {
+	_, err := tree.shellsOf(f.CommandID).runtime.access.Write(ctx, f.CommandID, f.Stdin)
+	if err != nil {
+		c.report(err)
+	} else {
+		c.send(&framewire.ShellWriteResultFrame{CommandID: f.CommandID})
+	}
 }

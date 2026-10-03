@@ -119,7 +119,11 @@ func (s *Server[H]) Restore(ctx context.Context, root core.NodeID, cwd string) e
 // anything changes when the provider changes. It returns nil when no tree is
 // live, and *ResolveError when resolution fails. The caller must pass a
 // prepared switch to SwitchModel or discard it to release its runtime.
-func (s *Server[H]) PrepareSwitch(ctx context.Context, root core.NodeID, model core.ModelSelection) (*session.ModelSwitch, error) {
+func (s *Server[H]) PrepareSwitch(
+	ctx context.Context,
+	root core.NodeID,
+	model core.ModelSelection,
+) (*session.ModelSwitch, error) {
 	tree := s.Tree(root)
 	if tree == nil {
 		return nil, nil
@@ -158,10 +162,19 @@ func (s *Server[H]) Node(root, node core.NodeID) *Node[H] {
 // CommandStorage serves a job's storage message in its recorded history
 // generation. Context is the invocation lifetime; a disposed node or an ended
 // generation cannot read or write. Failure returns *host.PortError.
-func (s *Server[H]) CommandStorage(ctx context.Context, root core.NodeID, caller host.JobCaller, op host.StorageOp) (host.StorageReply, error) {
+func (s *Server[H]) CommandStorage(
+	ctx context.Context,
+	root core.NodeID,
+	caller host.JobCaller,
+	op host.StorageOp,
+) (host.StorageReply, error) {
 	node := s.Node(root, caller.Node)
 	if node == nil {
-		return nil, &host.PortError{Kind: host.StorageRefused, Message: store.ErrInvalidated.Error(), Err: store.ErrInvalidated}
+		return nil, &host.PortError{
+			Kind:    host.StorageRefused,
+			Message: store.ErrInvalidated.Error(),
+			Err:     store.ErrInvalidated,
+		}
 	}
 	return node.session.JobStorage(ctx, caller.Generation, op)
 }
@@ -169,7 +182,11 @@ func (s *Server[H]) CommandStorage(ctx context.Context, root core.NodeID, caller
 // PrepareFork captures a seed through source's completed target text from its
 // live session or committed checkpoint. Source keeps running either way.
 // Failure returns *session.ForkError.
-func (s *Server[H]) PrepareFork(ctx context.Context, source core.NodeID, target core.BlockID) (store.Checkpoint, error) {
+func (s *Server[H]) PrepareFork(
+	ctx context.Context,
+	source core.NodeID,
+	target core.BlockID,
+) (store.Checkpoint, error) {
 	if tree := s.Tree(source); tree != nil {
 		return tree.root.session.PrepareFork(target)
 	}
@@ -200,10 +217,16 @@ func (s *Server[H]) PrepareFork(ctx context.Context, source core.NodeID, target 
 // refused with *session.ForkError. Opening the tree assembles its runtime.
 func (s *Server[H]) InitializeFork(ctx context.Context, destination core.NodeID, seed store.Checkpoint) error {
 	state := seed.State
-	if state.Phase != core.SessionPhaseIdle || len(state.Queue)+len(state.AgentInputs)+len(state.Wakeups)+len(state.Edits) != 0 {
+	if state.Phase != core.SessionPhaseIdle ||
+		len(state.Queue)+len(state.AgentInputs)+len(state.Wakeups)+len(state.Edits) != 0 {
 		return &session.ForkError{Kind: session.ForkInvalidSeed}
 	}
-	initial := store.CheckpointUpdate{State: state, CommandState: &seed.CommandState, BlockCount: len(seed.Transcript), ChangedBlocks: []store.ChangedBlock{}}
+	initial := store.CheckpointUpdate{
+		State:         state,
+		CommandState:  &seed.CommandState,
+		BlockCount:    len(seed.Transcript),
+		ChangedBlocks: []store.ChangedBlock{},
+	}
 	for i, block := range seed.Transcript {
 		initial.ChangedBlocks = append(initial.ChangedBlocks, store.ChangedBlock{Index: i, Block: block})
 	}
@@ -267,7 +290,11 @@ func (s *Server[H]) Shutdown(ctx context.Context) error {
 }
 
 // liveOrOpen shares a tree under the conversation's opening gate.
-func (s *Server[H]) liveOrOpen(ctx context.Context, root core.NodeID, cwd string) (*Tree[H], *session.Continuation, error) {
+func (s *Server[H]) liveOrOpen(
+	ctx context.Context,
+	root core.NodeID,
+	cwd string,
+) (*Tree[H], *session.Continuation, error) {
 	s.mu.Lock()
 	tree, closing := s.trees[root], s.closing
 	if !closing && tree == nil {

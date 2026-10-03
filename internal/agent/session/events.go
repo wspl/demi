@@ -46,7 +46,7 @@ type ActionHandle struct{ result *actionResult }
 
 // Wait waits for the action's result. An action failure returns *ErrorReport;
 // a cancelled wait returns the context error. Multiple waiters share the result.
-func (a *ActionHandle) Wait(ctx context.Context) (ActionEnd, error) { return a.waitAction(ctx) }
+func (a *ActionHandle) Wait(ctx context.Context) (ActionEnd, error) { return a.wait(ctx) }
 
 // Event is a change reported once complete, in commit order outside the state
 // lock. Its data remains immutable for every listener.

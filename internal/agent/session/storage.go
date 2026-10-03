@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"slices"
 	"strings"
 
@@ -45,19 +46,9 @@ func storageError(err error) error {
 }
 
 func (s *Session) storage(ctx context.Context, op host.StorageOp, guard store.CommitGuard) (host.StorageReply, error) {
-	var key string
-	switch v := op.(type) {
-	case *host.StorageRead:
-		key = v.Key
-	case *host.StorageList:
-		key = v.Prefix
-	case *host.StorageWriteIf:
-		key = v.Key
-	}
-	if _, list := op.(*host.StorageList); !list || key != "" {
-		if _, err := store.ParseCommandStorageKey(key); err != nil {
-			return nil, storageError(err)
-		}
+	key, err := storageKey(op)
+	if err != nil {
+		return nil, err
 	}
 	write, isWrite := op.(*host.StorageWriteIf)
 	if isWrite {
@@ -72,30 +63,19 @@ func (s *Session) storage(ctx context.Context, op host.StorageOp, guard store.Co
 		s.mu.Unlock()
 		return nil, storageError(err)
 	}
-	if s.core.preparingEdit() {
+	if s.core.preparingEditLocked() {
 		s.mu.Unlock()
-		return nil, &host.PortError{Kind: host.StorageRefused, Message: "Command storage is reserved for a transcript edit"}
+		return nil, &host.PortError{
+			Kind:    host.StorageRefused,
+			Message: "Command storage is reserved for a transcript edit",
+		}
 	}
 	values, revision := s.core.commands.Values(), s.core.commands.Revision()
 	if !isWrite {
 		s.mu.Unlock()
-		switch op.(type) {
-		case *host.StorageRead:
-			value := values[store.CommandStorageKey(key)]
-			if value == nil {
-				value = []byte("null")
-			}
-			return &host.StorageValue{Value: value, Revision: host.Revision(revision)}, nil
-		case *host.StorageList:
-			keys := []string{}
-			for name := range values {
-				if strings.HasPrefix(string(name), key) {
-					keys = append(keys, string(name))
-				}
-			}
-			slices.Sort(keys)
-			return &host.StorageKeys{Keys: keys}, nil
-		case *host.StorageWriteIf:
+		reply := readStorage(op, key, values, revision)
+		if reply != nil {
+			return reply, nil
 		}
 	}
 	if write.Expected != nil && uint64(*write.Expected) != revision {
@@ -120,4 +100,49 @@ func (s *Session) storage(ctx context.Context, op host.StorageOp, guard store.Co
 	}
 	s.mutate(func(c *coreState) { c.commands.Accept(*pending) })
 	return &host.StorageCommitted{Revision: host.Revision(pending.Revision)}, nil
+}
+
+func readStorage(
+	op host.StorageOp,
+	key string,
+	values map[store.CommandStorageKey]json.RawMessage,
+	revision uint64,
+) host.StorageReply {
+	switch op.(type) {
+	case *host.StorageRead:
+		value := values[store.CommandStorageKey(key)]
+		if value == nil {
+			value = []byte("null")
+		}
+		return &host.StorageValue{Value: value, Revision: host.Revision(revision)}
+	case *host.StorageList:
+		keys := []string{}
+		for name := range values {
+			if strings.HasPrefix(string(name), key) {
+				keys = append(keys, string(name))
+			}
+		}
+		slices.Sort(keys)
+		return &host.StorageKeys{Keys: keys}
+	case *host.StorageWriteIf:
+	}
+	return nil
+}
+
+func storageKey(op host.StorageOp) (string, error) {
+	var key string
+	switch v := op.(type) {
+	case *host.StorageRead:
+		key = v.Key
+	case *host.StorageList:
+		key = v.Prefix
+	case *host.StorageWriteIf:
+		key = v.Key
+	}
+	if _, list := op.(*host.StorageList); !list || key != "" {
+		if _, err := store.ParseCommandStorageKey(key); err != nil {
+			return "", storageError(err)
+		}
+	}
+	return key, nil
 }

@@ -111,27 +111,28 @@ func (s *Session) mutate(change func(*coreState)) {
 	c := &s.core
 	change(c)
 	s.commitLocked()
-	queue := c.queued()
+	queue := c.queuedMessagesLocked()
 	if !reflect.DeepEqual(queue, c.publishedQueue) {
 		c.publishedQueue = queue
 		c.dirty = true
 		s.eventLocked(&QueueChanged{Queue: queue})
 	}
-	steers := c.steers()
+	steers := c.pendingSteersLocked()
 	if !reflect.DeepEqual(steers, c.publishedSteers) {
 		c.publishedSteers = steers
 		s.eventLocked(&PendingSteersChanged{PendingSteers: steers})
 	}
-	phase := c.phase()
+	phase := c.phaseLocked()
 	if phase != c.publishedPhase {
 		c.publishedPhase = phase
 		s.eventLocked(&PhaseChanged{Phase: phase})
 	}
 	old := c.changed
 	c.changed = make(chan struct{})
-	status := c.status()
+	status := c.statusLocked()
 	previous := c.publishedStatus
-	if status.Settle != previous.Settle || status.Wakeups != previous.Wakeups || status.AgentInput != previous.AgentInput {
+	if status.Settle != previous.Settle || status.Wakeups != previous.Wakeups ||
+		status.AgentInput != previous.AgentInput {
 		c.publishedStatus = status
 		c.publishedStatus.changed = make(chan struct{})
 		if previous.changed != nil {
@@ -209,7 +210,18 @@ func (s *Session) commitLocked() {
 			opens = true
 		case *core.WakeupBlock:
 			opens = b.Placement == "new_turn"
-		case *core.SteerBlock, *core.AgentMessageBlock, *core.ResumeBlock, *core.AbortBlock, *core.ThinkingBlock, *core.RedactedThinkingBlock, *core.TextBlock, *core.ResponseBlock, *core.ToolCallBlock, *core.ErrorBlock, *core.CompactionBoundaryBlock, *core.CompactionMarkerBlock:
+		case *core.SteerBlock,
+			*core.AgentMessageBlock,
+			*core.ResumeBlock,
+			*core.AbortBlock,
+			*core.ThinkingBlock,
+			*core.RedactedThinkingBlock,
+			*core.TextBlock,
+			*core.ResponseBlock,
+			*core.ToolCallBlock,
+			*core.ErrorBlock,
+			*core.CompactionBoundaryBlock,
+			*core.CompactionMarkerBlock:
 		}
 		if opens {
 			c.commands.Capture(id, store.BeforeUser, c.commands.Revision())
@@ -219,7 +231,7 @@ func (s *Session) commitLocked() {
 	s.eventLocked(&TranscriptChanged{Patches: batch.Patches, Revision: batch.Revision})
 }
 
-func (c *coreState) phase() core.SessionPhase {
+func (c *coreState) phaseLocked() core.SessionPhase {
 	if c.stage == Compacting {
 		return "compacting"
 	}
@@ -228,7 +240,8 @@ func (c *coreState) phase() core.SessionPhase {
 	}
 	return "idle"
 }
-func (c *coreState) queued() []core.QueuedMessage {
+
+func (c *coreState) queuedMessagesLocked() []core.QueuedMessage {
 	queue := []core.QueuedMessage{}
 	for _, a := range c.queue {
 		if a.kind == sendAction {
@@ -237,7 +250,8 @@ func (c *coreState) queued() []core.QueuedMessage {
 	}
 	return queue
 }
-func (c *coreState) steers() []core.PendingSteer {
+
+func (c *coreState) pendingSteersLocked() []core.PendingSteer {
 	steers := []core.PendingSteer{}
 	for _, input := range c.inputs {
 		if input.steer != nil {
@@ -246,7 +260,8 @@ func (c *coreState) steers() []core.PendingSteer {
 	}
 	return steers
 }
-func (c *coreState) agentInputs() []store.PendingAgentInput {
+
+func (c *coreState) agentInputsLocked() []store.PendingAgentInput {
 	inputs := []store.PendingAgentInput{}
 	for _, input := range c.inputs {
 		if input.agent != nil {
@@ -255,7 +270,8 @@ func (c *coreState) agentInputs() []store.PendingAgentInput {
 	}
 	return inputs
 }
-func (c *coreState) savedWakeups() []store.ScheduledWakeup {
+
+func (c *coreState) savedWakeupsLocked() []store.ScheduledWakeup {
 	wakeups := append([]store.ScheduledWakeup{}, c.wakeups...)
 	for _, input := range c.inputs {
 		if input.wakeup != nil {
@@ -264,7 +280,8 @@ func (c *coreState) savedWakeups() []store.ScheduledWakeup {
 	}
 	return wakeups
 }
-func (c *coreState) status() Status {
+
+func (c *coreState) statusLocked() Status {
 	status := Status{Settle: Settled, Wakeups: len(c.wakeups) > 0}
 	if c.active != nil || c.stage == Finalizing || len(c.queue) > 0 {
 		status.Settle = Busy
@@ -278,18 +295,19 @@ func (c *coreState) status() Status {
 	}
 	return status
 }
-func (c *coreState) preparingEdit() bool { return c.edit != nil && !c.edit.accepted }
-func (c *coreState) admission() error {
+func (c *coreState) preparingEditLocked() bool { return c.edit != nil && !c.edit.accepted }
+func (c *coreState) admissionLocked() error {
 	if c.disposing {
 		return AdmissionClosed
 	}
-	if c.preparingEdit() {
+	if c.preparingEditLocked() {
 		return AdmissionEditing
 	}
 	return nil
 }
-func (c *coreState) steerable() error {
-	if c.preparingEdit() {
+
+func (c *coreState) steerableLocked() error {
+	if c.preparingEditLocked() {
 		return SteerEditing
 	}
 	if c.stage == Finalizing {
@@ -303,7 +321,8 @@ func (c *coreState) steerable() error {
 	}
 	return nil
 }
-func (c *coreState) latestSelection() core.ModelSelection {
+
+func (c *coreState) latestSelectionLocked() core.ModelSelection {
 	if c.waitingChange != nil {
 		return c.waitingChange.Model
 	}
@@ -312,8 +331,10 @@ func (c *coreState) latestSelection() core.ModelSelection {
 	}
 	return c.model
 }
-func (c *coreState) canAbort() bool {
-	return !c.disposing && ((c.active != nil && !c.active.stopped && c.stage != Finalizing) || len(c.queue) > 0 || len(c.wakeups) > 0)
+
+func (c *coreState) canAbortLocked() bool {
+	return !c.disposing &&
+		((c.active != nil && !c.active.stopped && c.stage != Finalizing) || len(c.queue) > 0 || len(c.wakeups) > 0)
 }
 
 // startNextLocked reserves the next session action before admission can race it.
@@ -370,7 +391,7 @@ func (c *coreState) releaseMediaLocked() {
 			refs[r] = struct{}{}
 		}
 	}
-	for _, steer := range c.steers() {
+	for _, steer := range c.pendingSteersLocked() {
 		for _, r := range store.ContentReferences(steer.Content) {
 			refs[r] = struct{}{}
 		}
@@ -390,7 +411,7 @@ func (c *coreState) replaceSwitchLocked(slot **ModelSwitch, change ModelSwitch) 
 	*slot = &change
 }
 
-func (c *coreState) removeQueued(id core.TurnID) *action {
+func (c *coreState) removeQueuedLocked(id core.TurnID) *action {
 	for i, a := range c.queue {
 		if a.kind == sendAction && a.turn == id {
 			c.queue = slices.Delete(c.queue, i, i+1)
