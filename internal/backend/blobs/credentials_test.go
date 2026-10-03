@@ -25,14 +25,26 @@ func (f credentialTransport) RoundTrip(r *http.Request) (*http.Response, error) 
 func TestCredentialSourcesExcludeProfiles(t *testing.T) {
 	for _, source := range []string{"environment", "web identity", "container", "instance", "incomplete environment"} {
 		t.Run(source, func(t *testing.T) {
-			for _, name := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY", "AWS_SECRET_KEY", "AWS_SESSION_TOKEN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_ARN", "AWS_ROLE_SESSION_NAME", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE"} {
+			for _, name := range []string{
+				"AWS_ACCESS_KEY_ID",
+				"AWS_SECRET_ACCESS_KEY",
+				"AWS_ACCESS_KEY",
+				"AWS_SECRET_KEY",
+				"AWS_SESSION_TOKEN",
+				"AWS_WEB_IDENTITY_TOKEN_FILE",
+				"AWS_ROLE_ARN",
+				"AWS_ROLE_SESSION_NAME",
+				"AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+				"AWS_CONTAINER_CREDENTIALS_FULL_URI",
+				"AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+			} {
 				t.Setenv(name, "")
 			}
 			t.Setenv("AWS_EC2_METADATA_DISABLED", "false")
 			t.Setenv("AWS_EC2_METADATA_SERVICE_ENDPOINT", "http://metadata.invalid")
 			t.Setenv("AWS_PROFILE", "ignored-profile")
 			tokenFile := filepath.Join(t.TempDir(), "token")
-			if err := os.WriteFile(tokenFile, []byte("test-token"), 0600); err != nil {
+			if err := os.WriteFile(tokenFile, []byte("test-token"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			switch source {
@@ -82,15 +94,21 @@ func TestCredentialSourcesExcludeProfiles(t *testing.T) {
 					if err := r.ParseForm(); err != nil {
 						return nil, err
 					}
-					if r.Form.Get("WebIdentityToken") != "test-token" || r.Form.Get("RoleSessionName") != "WebIdentitySession" {
+					if r.Form.Get("WebIdentityToken") != "test-token" ||
+						r.Form.Get("RoleSessionName") != "WebIdentitySession" {
 						return nil, fmt.Errorf("unexpected web identity form")
 					}
-					body = `<AssumeRoleWithWebIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><AssumeRoleWithWebIdentityResult><Credentials><AccessKeyId>test-key</AccessKeyId><SecretAccessKey>test-secret</SecretAccessKey><SessionToken>test-session</SessionToken><Expiration>2099-01-01T00:00:00Z</Expiration></Credentials></AssumeRoleWithWebIdentityResult></AssumeRoleWithWebIdentityResponse>`
+					body = `<AssumeRoleWithWebIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">` +
+						`<AssumeRoleWithWebIdentityResult><Credentials><AccessKeyId>test-key</AccessKeyId>` +
+						`<SecretAccessKey>test-secret</SecretAccessKey><SessionToken>test-session</SessionToken>` +
+						`<Expiration>2099-01-01T00:00:00Z</Expiration></Credentials>` +
+						`</AssumeRoleWithWebIdentityResult></AssumeRoleWithWebIdentityResponse>`
 				case source == "container" && r.URL.Host == "container.invalid":
 					if r.Header.Get("Authorization") != "test-token" {
 						return nil, fmt.Errorf("missing container authorization")
 					}
-					body = `{"AccessKeyId":"test-key","SecretAccessKey":"test-secret","Token":"test-session","Expiration":"2099-01-01T00:00:00Z"}`
+					body = `{"AccessKeyId":"test-key","SecretAccessKey":"test-secret","Token":"test-session",` +
+						`"Expiration":"2099-01-01T00:00:00Z"}`
 				case source == "instance" && r.URL.Host == "metadata.invalid":
 					switch r.URL.Path {
 					case "/latest/api/token":
@@ -98,14 +116,20 @@ func TestCredentialSourcesExcludeProfiles(t *testing.T) {
 					case "/latest/meta-data/iam/security-credentials/":
 						body = "test-role"
 					case "/latest/meta-data/iam/security-credentials/test-role":
-						body = `{"Code":"Success","AccessKeyId":"test-key","SecretAccessKey":"test-secret","Token":"test-session","Expiration":"2099-01-01T00:00:00Z"}`
+						body = `{"Code":"Success","AccessKeyId":"test-key","SecretAccessKey":"test-secret",` +
+							`"Token":"test-session","Expiration":"2099-01-01T00:00:00Z"}`
 					default:
 						return nil, fmt.Errorf("unexpected metadata path %s", r.URL.Path)
 					}
 				default:
 					return nil, fmt.Errorf("unexpected credential request to %s", r.URL.Host)
 				}
-				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    r,
+				}, nil
 			})
 			value, err := service.Options().Credentials.Retrieve(t.Context())
 			if err != nil {
@@ -119,11 +143,16 @@ func TestCredentialSourcesExcludeProfiles(t *testing.T) {
 }
 
 func TestBucketCloseJoinsCanceledCredentialRefresh(t *testing.T) {
-	for _, name := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"} {
+	for _, name := range []string{
+		"AWS_ACCESS_KEY_ID",
+		"AWS_SECRET_ACCESS_KEY",
+		"AWS_WEB_IDENTITY_TOKEN_FILE",
+		"AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+	} {
 		t.Setenv(name, "")
 	}
 	token := filepath.Join(t.TempDir(), "token")
-	if err := os.WriteFile(token, []byte("test-token"), 0600); err != nil {
+	if err := os.WriteFile(token, []byte("test-token"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("AWS_CONTAINER_CREDENTIALS_FULL_URI", "http://container.invalid/credentials")

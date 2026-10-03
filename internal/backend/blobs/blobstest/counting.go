@@ -37,12 +37,28 @@ type ObjectTally struct {
 // Since returns what reached the store since earlier; the most reads at once
 // is this tally's.
 func (t ObjectTally) Since(earlier ObjectTally) ObjectTally {
-	return ObjectTally{Puts: t.Puts - earlier.Puts, BytesPut: t.BytesPut - earlier.BytesPut, Gets: t.Gets - earlier.Gets, Heads: t.Heads - earlier.Heads, MostGetsAtOnce: t.MostGetsAtOnce, Lists: t.Lists - earlier.Lists, Deletes: t.Deletes - earlier.Deletes}
+	return ObjectTally{
+		Puts:           t.Puts - earlier.Puts,
+		BytesPut:       t.BytesPut - earlier.BytesPut,
+		Gets:           t.Gets - earlier.Gets,
+		Heads:          t.Heads - earlier.Heads,
+		MostGetsAtOnce: t.MostGetsAtOnce,
+		Lists:          t.Lists - earlier.Lists,
+		Deletes:        t.Deletes - earlier.Deletes,
+	}
 }
 
 // Tally returns a snapshot of the operations observed so far.
 func (c *ObjectCounts) Tally() ObjectTally {
-	return ObjectTally{Puts: c.puts.Load(), BytesPut: c.bytesPut.Load(), Gets: c.gets.Load(), Heads: c.heads.Load(), MostGetsAtOnce: c.mostReading.Load(), Lists: c.lists.Load(), Deletes: c.deletes.Load()}
+	return ObjectTally{
+		Puts:           c.puts.Load(),
+		BytesPut:       c.bytesPut.Load(),
+		Gets:           c.gets.Load(),
+		Heads:          c.heads.Load(),
+		MostGetsAtOnce: c.mostReading.Load(),
+		Lists:          c.lists.Load(),
+		Deletes:        c.deletes.Load(),
+	}
 }
 
 // Observe returns objects with what reaches it counted here. It borrows objects;
@@ -56,11 +72,13 @@ type counted struct {
 	counts *ObjectCounts
 }
 
+// Attributes counts metadata requests before forwarding them.
 func (c *counted) Attributes(ctx context.Context, key string) (*blob.Attributes, error) {
 	c.counts.heads.Add(1)
 	return c.Objects.Attributes(ctx, key)
 }
 
+// ReadAll counts read requests and successfully read bytes.
 func (c *counted) ReadAll(ctx context.Context, key string) ([]byte, error) {
 	counts := c.counts
 	counts.gets.Add(1)
@@ -76,17 +94,20 @@ func (c *counted) ReadAll(ctx context.Context, key string) ([]byte, error) {
 	return c.Objects.ReadAll(ctx, key)
 }
 
+// WriteAll counts write requests before forwarding them.
 func (c *counted) WriteAll(ctx context.Context, key string, data []byte, opts *blob.WriterOptions) error {
 	c.counts.puts.Add(1)
 	c.counts.bytesPut.Add(uint64(len(data)))
 	return c.Objects.WriteAll(ctx, key, data, opts)
 }
 
+// List counts listings before forwarding them.
 func (c *counted) List(opts *blob.ListOptions) *blob.ListIterator {
 	c.counts.lists.Add(1)
 	return c.Objects.List(opts)
 }
 
+// Delete counts deletions before forwarding them.
 func (c *counted) Delete(ctx context.Context, key string) error {
 	c.counts.deletes.Add(1)
 	return c.Objects.Delete(ctx, key)

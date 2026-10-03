@@ -37,7 +37,19 @@ func InsertCommandOutputs(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, row
 		if err != nil {
 			return err
 		}
-		if err := execSQL(ctx, tx, "INSERT INTO command_outputs (command_id,ended_at,blob,missing_bytes,missing_reason,not_stored,removed_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (command_id) DO NOTHING", row.Command, ended, blob, missingBytes, missingReason, notStored, removed); err != nil {
+		if err := execSQL(
+			ctx,
+			tx,
+			"INSERT INTO command_outputs (command_id,ended_at,blob,missing_bytes,missing_reason,"+
+				"not_stored,removed_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (command_id) DO NOTHING",
+			row.Command,
+			ended,
+			blob,
+			missingBytes,
+			missingReason,
+			notStored,
+			removed,
+		); err != nil {
 			return err
 		}
 	}
@@ -46,7 +58,14 @@ func InsertCommandOutputs(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, row
 
 // ReadCommandOutput reads a command's row; nil means it has no row.
 func ReadCommandOutput(ctx context.Context, tx *sql.Tx, command core.CommandID) (*CommandOutput, error) {
-	return queryRecord(ctx, tx, "command_outputs", "SELECT * FROM command_outputs WHERE command_id = ?", commandOutputRow, command)
+	return queryRecord(
+		ctx,
+		tx,
+		"command_outputs",
+		"SELECT * FROM command_outputs WHERE command_id = ?",
+		commandOutputRow,
+		command,
+	)
 }
 
 // CommandOutputRows reads the commands' rows for a Fork to copy.
@@ -84,7 +103,12 @@ func HasExpiredOutputs(ctx context.Context, tx *sql.Tx, expired core.Timestamp) 
 		return false, err
 	}
 	var exists bool
-	err = tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?)", at).Scan(&exists)
+	err = tx.QueryRowContext(
+		ctx,
+		"SELECT EXISTS (SELECT 1 FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?)",
+		at,
+	).
+		Scan(&exists)
 	return exists, err
 }
 
@@ -99,11 +123,25 @@ func RemoveExpiredOutputs(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, exp
 	if err != nil {
 		return 0, err
 	}
-	released, err := queryRecords(ctx, tx, "command_outputs", "SELECT blob FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?", func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) }, before)
+	released, err := queryRecords(
+		ctx,
+		tx,
+		"command_outputs",
+		"SELECT blob FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?",
+		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+		before,
+	)
 	if err != nil {
 		return 0, err
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE command_outputs SET blob=NULL,missing_bytes=NULL,missing_reason=NULL,removed_at=? WHERE blob IS NOT NULL AND ended_at < ?", at, before)
+	result, err := tx.ExecContext(
+		ctx,
+		"UPDATE command_outputs "+
+			"SET blob=NULL,missing_bytes=NULL,missing_reason=NULL,removed_at=? "+
+			"WHERE blob IS NOT NULL AND ended_at < ?",
+		at,
+		before,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -116,7 +154,13 @@ func RemoveExpiredOutputs(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, exp
 
 // CommandOutputReferences returns the blobs held by command-output rows.
 func CommandOutputReferences(ctx context.Context, tx *sql.Tx) ([]core.BlobRef, error) {
-	return queryRecords(ctx, tx, "command_outputs", "SELECT blob FROM command_outputs WHERE blob IS NOT NULL", func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) })
+	return queryRecords(
+		ctx,
+		tx,
+		"command_outputs",
+		"SELECT blob FROM command_outputs WHERE blob IS NOT NULL",
+		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+	)
 }
 
 func commandOutputRow(r *storedRow) CommandOutput {

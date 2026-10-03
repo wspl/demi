@@ -62,19 +62,7 @@ func (s *TreeStore) CreateNode(ctx context.Context, record store.NodeRecord, ini
 		if existing != nil {
 			return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("node %s already exists", record.ID)}
 		}
-		phase, closed, result, failure, err := closeColumns(record.Closed)
-		if err != nil {
-			return err
-		}
-		at, err := record.StartedAt.Millisecond()
-		if err != nil {
-			return err
-		}
-		state, err := encoded(initial.State)
-		if err != nil {
-			return err
-		}
-		if err := execSQL(ctx, tx, `INSERT INTO nodes (id,number,parent_id,description,profile,round,started_at,can_spawn,closed_phase,closed_at,result,failure,delivered,state,block_count,command_revision,output_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,0)`, record.ID, record.Number, record.Parent, record.Description, record.Profile, record.Round, at, record.CanSpawnSubagents, phase, closed, result, failure, record.Delivered, state); err != nil {
+		if err := insertNode(ctx, tx, record, initial.State); err != nil {
 			return err
 		}
 		if initial.CommandState == nil {
@@ -106,7 +94,16 @@ func (s *TreeStore) CloseNode(ctx context.Context, id core.NodeID, closed store.
 		if err != nil {
 			return err
 		}
-		changed, err := affected(ctx, tx, "UPDATE nodes SET closed_phase=?,closed_at=?,result=?,failure=?,delivered=0 WHERE id=?", phase, at, result, failure, id)
+		changed, err := affected(
+			ctx,
+			tx,
+			"UPDATE nodes SET closed_phase=?,closed_at=?,result=?,failure=?,delivered=0 WHERE id=?",
+			phase,
+			at,
+			result,
+			failure,
+			id,
+		)
 		if err != nil {
 			return err
 		}
@@ -119,7 +116,13 @@ func (s *TreeStore) CloseNode(ctx context.Context, id core.NodeID, closed store.
 }
 
 // ReopenNode starts a new round and queues its reviving message atomically.
-func (s *TreeStore) ReopenNode(ctx context.Context, id core.NodeID, round uint64, startedAt core.Timestamp, message core.QueuedMessage) error {
+func (s *TreeStore) ReopenNode(
+	ctx context.Context,
+	id core.NodeID,
+	round uint64,
+	startedAt core.Timestamp,
+	message core.QueuedMessage,
+) error {
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		state, err := nodeState(ctx, tx, id)
 		if err != nil {
@@ -137,7 +140,16 @@ func (s *TreeStore) ReopenNode(ctx context.Context, id core.NodeID, round uint64
 		if err != nil {
 			return err
 		}
-		return execSQL(ctx, tx, "UPDATE nodes SET round=?,started_at=?,closed_phase=NULL,closed_at=NULL,result=NULL,failure=NULL,delivered=0,state=? WHERE id=?", round, at, document, id)
+		return execSQL(
+			ctx,
+			tx,
+			"UPDATE nodes SET round=?,started_at=?,closed_phase=NULL,closed_at=NULL,result=NULL,"+
+				"failure=NULL,delivered=0,state=? WHERE id=?",
+			round,
+			at,
+			document,
+			id,
+		)
 	})
 	return agentError(err)
 }
@@ -217,11 +229,18 @@ func (s *TreeStore) CommandOutput(ctx context.Context, command core.CommandID) (
 			return nil, err
 		}
 		if !found {
-			return nil, &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("the blob %s of the output of %s is missing", output.Blob, command)}
+			return nil, &store.Error{
+				Kind:    store.OperationFailed,
+				Message: fmt.Sprintf("the blob %s of the output of %s is missing", output.Blob, command),
+			}
 		}
 		whole, err := remotehost.DecodeOutput(data, output.Missing)
 		if err != nil {
-			return nil, &store.Error{Kind: store.Corrupt, Message: fmt.Sprintf("the output of %s does not decode: %v", command, err), Cause: err}
+			return nil, &store.Error{
+				Kind:    store.Corrupt,
+				Message: fmt.Sprintf("the output of %s does not decode: %v", command, err),
+				Cause:   err,
+			}
 		}
 		return &store.OutputStored{Output: whole}, nil
 	}
@@ -243,21 +262,31 @@ func agentError(err error) error {
 	}
 	return &store.Error{Kind: kind, Message: err.Error(), Cause: err}
 }
+
 func missingNode(id core.NodeID) error {
 	return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("no node %s", id)}
 }
+
 func (s *TreeStore) notify(id core.NodeID, due WakeupDue) {
 	if s.saved != nil {
 		s.saved(id, due)
 	}
 }
+
 func earliestWakeup(ctx context.Context, tx *sql.Tx) (WakeupDue, error) {
-	row, err := queryRecord(ctx, tx, "nodes", "SELECT MIN(wakeup_at) AS wakeup_at FROM nodes", func(r *storedRow) WakeupDue { return rowWakeup(r, "wakeup_at") })
+	row, err := queryRecord(
+		ctx,
+		tx,
+		"nodes",
+		"SELECT MIN(wakeup_at) AS wakeup_at FROM nodes",
+		func(r *storedRow) WakeupDue { return rowWakeup(r, "wakeup_at") },
+	)
 	if err != nil {
 		return nil, err
 	}
 	return *row, nil
 }
+
 func stateWakeup(state store.CheckpointState) WakeupDue {
 	var earliest *core.Timestamp
 	for _, wakeup := range state.Wakeups {
@@ -272,4 +301,43 @@ func stateWakeup(state store.CheckpointState) WakeupDue {
 		return nil
 	}
 	return &WakeupAt{At: *earliest}
+}
+
+func insertNode(ctx context.Context, tx *sql.Tx, record store.NodeRecord, state store.CheckpointState) error {
+	phase, closed, result, failure, err := closeColumns(record.Closed)
+	if err != nil {
+		return err
+	}
+	at, err := record.StartedAt.Millisecond()
+	if err != nil {
+		return err
+	}
+	document, err := encoded(state)
+	if err != nil {
+		return err
+	}
+	if err := execSQL(
+		ctx,
+		tx,
+		`INSERT INTO nodes (id,number,parent_id,description,profile,round,started_at,can_spawn,`+
+			`closed_phase,closed_at,result,failure,delivered,state,block_count,command_revision,`+
+			`output_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,0)`,
+		record.ID,
+		record.Number,
+		record.Parent,
+		record.Description,
+		record.Profile,
+		record.Round,
+		at,
+		record.CanSpawnSubagents,
+		phase,
+		closed,
+		result,
+		failure,
+		record.Delivered,
+		document,
+	); err != nil {
+		return err
+	}
+	return nil
 }

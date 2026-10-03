@@ -35,7 +35,11 @@ func OpenControl(ctx context.Context, path string, clock core.Clock) (*ControlSe
 }
 
 // controlCall admits a control operation and captures its timestamp inside its transaction.
-func controlCall[T any](ctx context.Context, c *ControlService, work func(context.Context, *sql.Tx, core.Timestamp) (T, error)) (result T, err error) {
+func controlCall[T any](
+	ctx context.Context,
+	c *ControlService,
+	work func(context.Context, *sql.Tx, core.Timestamp) (T, error),
+) (result T, err error) {
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
@@ -95,10 +99,15 @@ func OpenConversations(ctx context.Context, directory string, maxWriters int) (*
 	if maxWriters < 1 || maxWriters > MaxWriters {
 		return nil, fmt.Errorf("writer count must be between 1 and %d", MaxWriters)
 	}
-	if err := os.MkdirAll(directory, 0755); err != nil {
+	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return nil, &Error{Kind: IOFailure, Err: err}
 	}
-	return &ConversationStores{directory: directory, limit: maxWriters, writers: make(map[string]*writer), changed: make(chan struct{})}, nil
+	return &ConversationStores{
+		directory: directory,
+		limit:     maxWriters,
+		writers:   make(map[string]*writer),
+		changed:   make(chan struct{}),
+	}, nil
 }
 
 // DB returns a stable lazy handle, comparing conversation IDs without case.
@@ -107,14 +116,20 @@ func (s *ConversationStores) DB(conversation webapi.ConversationID) *Conversatio
 }
 
 // Read runs work in a cold read transaction; false means no database exists yet.
-func (s *ConversationStores) Read(ctx context.Context, conversation webapi.ConversationID, work func(context.Context, *sql.Tx) error) (bool, error) {
+func (s *ConversationStores) Read(
+	ctx context.Context,
+	conversation webapi.ConversationID,
+	work func(context.Context, *sql.Tx) error,
+) (bool, error) {
 	return s.DB(conversation).Read(ctx, work)
 }
 
-func (s *ConversationStores) notify() {
+// notifyLocked wakes operations waiting for writer availability or shutdown.
+func (s *ConversationStores) notifyLocked() {
 	close(s.changed)
 	s.changed = make(chan struct{})
 }
+
 func (s *ConversationStores) begin() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -124,10 +139,11 @@ func (s *ConversationStores) begin() error {
 	s.active++
 	return nil
 }
+
 func (s *ConversationStores) end() {
 	s.mu.Lock()
 	s.active--
-	s.notify()
+	s.notifyLocked()
 	s.mu.Unlock()
 }
 
@@ -139,7 +155,7 @@ func (s *ConversationStores) Close(ctx context.Context) error {
 	}
 	s.mu.Lock()
 	s.closed = true
-	s.notify()
+	s.notifyLocked()
 	for s.active != 0 {
 		changed := s.changed
 		s.mu.Unlock()
@@ -187,12 +203,7 @@ func (d *ConversationDB) acquire(ctx context.Context) (*writer, error) {
 		var evicted *writer
 		if len(s.writers) >= s.limit {
 			var key string
-			for name, w := range s.writers {
-				if w.db != nil && w.pins == 0 && (evicted == nil || w.used < evicted.used) {
-					key = name
-					evicted = w
-				}
-			}
+			key, evicted = s.oldestWriterLocked()
 			if evicted == nil {
 				changed := s.changed
 				s.mu.Unlock()
@@ -208,36 +219,15 @@ func (d *ConversationDB) acquire(ctx context.Context) (*writer, error) {
 		w := &writer{ready: make(chan struct{}), pins: 1}
 		s.writers[d.file] = w
 		s.mu.Unlock()
-		var db *sql.DB
-		var err error
-		if evicted != nil {
-			err = evicted.db.Close()
-		}
-		if err == nil {
-			db, err = openSQLite(ctx, filepath.Join(s.directory, d.file+".sqlite"), conversationSchema, false)
-		}
-		s.mu.Lock()
-		if err != nil {
-			delete(s.writers, d.file)
-		} else {
-			s.tick++
-			w.used = s.tick
-			w.db = db
-		}
-		close(w.ready)
-		s.notify()
-		s.mu.Unlock()
-		if err != nil {
-			return nil, sqlError(err)
-		}
-		return w, nil
+		return d.openWriter(ctx, w, evicted)
 	}
 }
+
 func (d *ConversationDB) release(w *writer) {
 	s := d.stores
 	s.mu.Lock()
 	w.pins--
-	s.notify()
+	s.notifyLocked()
 	s.mu.Unlock()
 }
 
@@ -245,7 +235,12 @@ func (d *ConversationDB) release(w *writer) {
 func (d *ConversationDB) Call(ctx context.Context, work func(context.Context, *sql.Tx) error) error {
 	return d.call(ctx, work, nil)
 }
-func (d *ConversationDB) call(ctx context.Context, work func(context.Context, *sql.Tx) error, commit func(context.Context, *sql.Tx) error) error {
+
+func (d *ConversationDB) call(
+	ctx context.Context,
+	work func(context.Context, *sql.Tx) error,
+	commit func(context.Context, *sql.Tx) error,
+) error {
 	if err := d.stores.begin(); err != nil {
 		return err
 	}
@@ -299,4 +294,45 @@ func (d *ConversationDB) Read(ctx context.Context, work func(context.Context, *s
 		return work(ctx, tx)
 	}, nil)
 	return found, errors.Join(err, db.Close())
+}
+
+// oldestWriterLocked selects the least recently used writer that no operation pins.
+func (s *ConversationStores) oldestWriterLocked() (string, *writer) {
+	var evicted *writer
+	var key string
+	for name, w := range s.writers {
+		if w.db != nil && w.pins == 0 && (evicted == nil || w.used < evicted.used) {
+			key = name
+			evicted = w
+		}
+	}
+	return key, evicted
+}
+
+// openWriter completes the reserved writer opening and publishes its result to waiting operations.
+func (d *ConversationDB) openWriter(ctx context.Context, w, evicted *writer) (*writer, error) {
+	s := d.stores
+	var db *sql.DB
+	var err error
+	if evicted != nil {
+		err = evicted.db.Close()
+	}
+	if err == nil {
+		db, err = openSQLite(ctx, filepath.Join(s.directory, d.file+".sqlite"), conversationSchema, false)
+	}
+	s.mu.Lock()
+	if err != nil {
+		delete(s.writers, d.file)
+	} else {
+		s.tick++
+		w.used = s.tick
+		w.db = db
+	}
+	close(w.ready)
+	s.notifyLocked()
+	s.mu.Unlock()
+	if err != nil {
+		return nil, sqlError(err)
+	}
+	return w, nil
 }

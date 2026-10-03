@@ -39,7 +39,12 @@ type blobKey struct {
 // New returns the namespaces in objects, whose uses are timed by clock.
 // It borrows objects; its caller retains responsibility for closing the bucket.
 func New(objects Objects, clock core.Clock) *Stores {
-	return &Stores{objects: objects, clock: clock, last: make(map[webapi.UserID]map[core.BlobRef]core.Timestamp), deleting: make(map[blobKey]chan struct{})}
+	return &Stores{
+		objects:  objects,
+		clock:    clock,
+		last:     make(map[webapi.UserID]map[core.BlobRef]core.Timestamp),
+		deleting: make(map[blobKey]chan struct{}),
+	}
 }
 
 // ForUser returns user's namespace: the signed-in user's for uploads and
@@ -81,10 +86,20 @@ func (n *Namespace) Put(ctx context.Context, data core.B64Bytes) (core.BlobRef, 
 	// BlobRefOf constructed this hex digest here, so decoding it cannot fail.
 	digest, _ := hex.DecodeString(string(ref))
 	checksum := base64.StdEncoding.EncodeToString(digest)
-	opts := &blob.WriterOptions{IfNotExist: true, DisableContentTypeDetection: true, BeforeWrite: func(as func(any) bool) error {
-		return sha256Upload(as, &checksum)
-	}}
-	if err := n.stores.objects.WriteAll(ctx, key, data, opts); err != nil && gcerrors.Code(err) != gcerrors.FailedPrecondition && gcerrors.Code(err) != gcerrors.AlreadyExists {
+	opts := &blob.WriterOptions{
+		IfNotExist:                  true,
+		DisableContentTypeDetection: true,
+		BeforeWrite: func(as func(any) bool) error {
+			return sha256Upload(as, &checksum)
+		},
+	}
+	if err := n.stores.objects.WriteAll(
+		ctx,
+		key,
+		data,
+		opts,
+	); err != nil && gcerrors.Code(err) != gcerrors.FailedPrecondition &&
+		gcerrors.Code(err) != gcerrors.AlreadyExists {
 		return "", &Error{Err: err}
 	}
 	return ref, nil
@@ -178,7 +193,7 @@ func (n *Namespace) CommitUses(refs []core.BlobRef) error {
 	}
 	now := s.clock.Now()
 	for _, ref := range refs {
-		n.recordUse(ref, now)
+		n.recordUseLocked(ref, now)
 	}
 	return nil
 }
@@ -209,7 +224,7 @@ func (n *Namespace) recordPut(ctx context.Context, ref core.BlobRef) error {
 		s.mu.Lock()
 		ended := s.deleting[blobKey{n.user, ref}]
 		if ended == nil {
-			n.recordUse(ref, s.clock.Now())
+			n.recordUseLocked(ref, s.clock.Now())
 			s.mu.Unlock()
 			return nil
 		}
@@ -222,8 +237,8 @@ func (n *Namespace) recordPut(ctx context.Context, ref core.BlobRef) error {
 	}
 }
 
-// recordUse updates a user's blob-use record while its store's mutex is held.
-func (n *Namespace) recordUse(ref core.BlobRef, now core.Timestamp) {
+// recordUseLocked updates a user's blob-use record while its store's mutex is held.
+func (n *Namespace) recordUseLocked(ref core.BlobRef, now core.Timestamp) {
 	if n.stores.last[n.user] == nil {
 		n.stores.last[n.user] = make(map[core.BlobRef]core.Timestamp)
 	}

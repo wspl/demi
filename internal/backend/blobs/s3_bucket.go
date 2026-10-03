@@ -22,24 +22,30 @@ type s3Bucket struct {
 	closeTransport func()
 }
 
+// Close releases the bucket before stopping its credential refreshes and transport.
 func (b *s3Bucket) Close() error {
 	defer b.closeTransport()
 	return b.Bucket.Close()
 }
 
+// ErrorCode preserves Go Cloud error classification for the adapter.
 func (*s3Bucket) ErrorCode(err error) gcerrors.ErrorCode { return gcerrors.Code(err) }
 
+// Attributes translates portable object metadata into driver metadata.
 func (b *s3Bucket) Attributes(ctx context.Context, key string) (*driver.Attributes, error) {
 	a, err := b.Bucket.Attributes(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	return &driver.Attributes{CacheControl: a.CacheControl, ContentDisposition: a.ContentDisposition,
+	return &driver.Attributes{
+		CacheControl: a.CacheControl, ContentDisposition: a.ContentDisposition,
 		ContentEncoding: a.ContentEncoding, ContentLanguage: a.ContentLanguage, ContentType: a.ContentType,
 		Metadata: a.Metadata, CreateTime: a.CreateTime, ModTime: a.ModTime, Size: a.Size,
-		MD5: a.MD5, ETag: a.ETag, AsFunc: a.As}, nil
+		MD5: a.MD5, ETag: a.ETag, AsFunc: a.As,
+	}, nil
 }
 
+// ListPaged translates a portable listing page into a driver page.
 func (b *s3Bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driver.ListPage, error) {
 	objects, token, err := b.ListPage(ctx, opts.PageToken, opts.PageSize,
 		&blob.ListOptions{Prefix: opts.Prefix, Delimiter: opts.Delimiter, BeforeList: opts.BeforeList})
@@ -48,19 +54,28 @@ func (b *s3Bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*dr
 	}
 	page := &driver.ListPage{NextPageToken: token}
 	for _, o := range objects {
-		page.Objects = append(page.Objects, &driver.ListObject{Key: o.Key, ModTime: o.ModTime,
-			Size: o.Size, MD5: o.MD5, IsDir: o.IsDir, AsFunc: o.As})
+		page.Objects = append(page.Objects, &driver.ListObject{
+			Key: o.Key, ModTime: o.ModTime,
+			Size: o.Size, MD5: o.MD5, IsDir: o.IsDir, AsFunc: o.As,
+		})
 	}
 	return page, nil
 }
 
 type s3Reader struct{ *blob.Reader }
 
+// Attributes exposes the portable reader metadata expected by the driver.
 func (r *s3Reader) Attributes() *driver.ReaderAttributes {
 	return &driver.ReaderAttributes{ContentType: r.ContentType(), ModTime: r.ModTime(), Size: r.Size()}
 }
 
-func (b *s3Bucket) NewRangeReader(ctx context.Context, key string, offset, length int64, opts *driver.ReaderOptions) (driver.Reader, error) {
+// NewRangeReader opens a portable reader for the requested object range.
+func (b *s3Bucket) NewRangeReader(
+	ctx context.Context,
+	key string,
+	offset, length int64,
+	opts *driver.ReaderOptions,
+) (driver.Reader, error) {
 	reader, err := b.Bucket.NewRangeReader(ctx, key, offset, length, &blob.ReaderOptions{BeforeRead: opts.BeforeRead})
 	if err != nil {
 		return nil, err
@@ -68,7 +83,12 @@ func (b *s3Bucket) NewRangeReader(ctx context.Context, key string, offset, lengt
 	return &s3Reader{reader}, nil
 }
 
-func (b *s3Bucket) NewTypedWriter(ctx context.Context, key, contentType string, opts *driver.WriterOptions) (driver.Writer, error) {
+// NewTypedWriter opens a portable writer with the Rust single-PUT and SHA-256 policy.
+func (b *s3Bucket) NewTypedWriter(
+	ctx context.Context,
+	key, contentType string,
+	opts *driver.WriterOptions,
+) (driver.Writer, error) {
 	return b.NewWriter(ctx, key, &blob.WriterOptions{
 		BufferSize: opts.BufferSize, MaxConcurrency: opts.MaxConcurrency, CacheControl: opts.CacheControl,
 		ContentDisposition: opts.ContentDisposition, ContentEncoding: opts.ContentEncoding,
@@ -98,13 +118,20 @@ func (b *s3Bucket) NewTypedWriter(ctx context.Context, key, contentType string, 
 	})
 }
 
+// Copy delegates object copying with the driver hook.
 func (b *s3Bucket) Copy(ctx context.Context, dst, src string, opts *driver.CopyOptions) error {
 	return b.Bucket.Copy(ctx, dst, src, &blob.CopyOptions{BeforeCopy: opts.BeforeCopy})
 }
 
+// SignedURL delegates signing with the driver options.
 func (b *s3Bucket) SignedURL(ctx context.Context, key string, opts *driver.SignedURLOptions) (string, error) {
-	return b.Bucket.SignedURL(ctx, key, &blob.SignedURLOptions{Expiry: opts.Expiry, Method: opts.Method,
-		ContentType: opts.ContentType, EnforceAbsentContentType: opts.EnforceAbsentContentType, BeforeSign: opts.BeforeSign})
+	return b.Bucket.SignedURL(ctx, key, &blob.SignedURLOptions{
+		Expiry:                   opts.Expiry,
+		Method:                   opts.Method,
+		ContentType:              opts.ContentType,
+		EnforceAbsentContentType: opts.EnforceAbsentContentType,
+		BeforeSign:               opts.BeforeSign,
+	})
 }
 
 // sha256Upload selects S3's SHA-256 upload checksum through its documented escape hatch.

@@ -40,7 +40,16 @@ func (c *ControlService) ReserveFork(ctx context.Context, operation ForkOperatio
 		if err != nil {
 			return nil, err
 		}
-		err = execSQL(ctx, tx, "INSERT INTO conversation_fork_operations (id,user_id,source_id,block_id,metadata) VALUES (?,?,?,?,?)", operation.ID, operation.Owner, operation.Source, operation.Block, text)
+		err = execSQL(
+			ctx,
+			tx,
+			"INSERT INTO conversation_fork_operations (id,user_id,source_id,block_id,metadata) VALUES (?,?,?,?,?)",
+			operation.ID,
+			operation.Owner,
+			operation.Source,
+			operation.Block,
+			text,
+		)
 		return &operation, err
 	})
 }
@@ -48,7 +57,14 @@ func (c *ControlService) ReserveFork(ctx context.Context, operation ForkOperatio
 // PendingForks returns the attempts whose destination is not published.
 func (c *ControlService) PendingForks(ctx context.Context) ([]ForkOperation, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]ForkOperation, error) {
-		return queryRecords(ctx, tx, "conversation_fork_operations", "SELECT f.* FROM conversation_fork_operations f LEFT JOIN conversations c ON c.id=f.id WHERE c.id IS NULL ORDER BY f.rowid", forkRow)
+		return queryRecords(
+			ctx,
+			tx,
+			"conversation_fork_operations",
+			"SELECT f.* FROM conversation_fork_operations f "+
+				"LEFT JOIN conversations c ON c.id=f.id WHERE c.id IS NULL ORDER BY f.rowid",
+			forkRow,
+		)
 	})
 }
 
@@ -64,17 +80,35 @@ func (c *ControlService) PublishFork(ctx context.Context, id webapi.Conversation
 			return ConversationRecord{}, err
 		}
 		if o == nil {
-			return ConversationRecord{}, &Error{Kind: Corrupt, Table: "conversation_fork_operations", Column: "id", Reason: fmt.Sprintf("no Fork reserved %s", id)}
+			return ConversationRecord{}, &Error{
+				Kind:   Corrupt,
+				Table:  "conversation_fork_operations",
+				Column: "id",
+				Reason: fmt.Sprintf("no Fork reserved %s", id),
+			}
 		}
 		m := o.Metadata
-		inserted, err := InsertConversation(ctx, tx, NewConversation{ID: o.ID, Owner: o.Owner, Title: m.Title, Origin: TitleUser, Target: m.Target, Model: m.Model, At: m.CreatedAt})
+		inserted, err := InsertConversation(
+			ctx,
+			tx,
+			NewConversation{
+				ID:     o.ID,
+				Owner:  o.Owner,
+				Title:  m.Title,
+				Origin: TitleUser,
+				Target: m.Target,
+				Model:  m.Model,
+				At:     m.CreatedAt,
+			},
+		)
 		if err != nil {
 			return ConversationRecord{}, err
 		}
 		if inserted == 1 {
 			for _, h := range m.AttachedHosts {
 				var exists bool
-				if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM devices WHERE id = ?)", h.Device).Scan(&exists); err != nil {
+				if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM devices WHERE id = ?)", h.Device).
+					Scan(&exists); err != nil {
 					return ConversationRecord{}, err
 				}
 				if exists {
@@ -89,15 +123,34 @@ func (c *ControlService) PublishFork(ctx context.Context, id webapi.Conversation
 			return ConversationRecord{}, err
 		}
 		if r == nil || r.Owner != o.Owner {
-			return ConversationRecord{}, &Error{Kind: Corrupt, Table: "conversations", Column: "user_id", Reason: fmt.Sprintf("the Fork destination %s belongs to another user", id)}
+			return ConversationRecord{}, &Error{
+				Kind:   Corrupt,
+				Table:  "conversations",
+				Column: "user_id",
+				Reason: fmt.Sprintf("the Fork destination %s belongs to another user", id),
+			}
 		}
 		return *r, nil
 	})
 }
 
 func forkRow(r *storedRow) ForkOperation {
-	return ForkOperation{ID: checked(r, "id", webapi.ParseConversationID), Owner: checked(r, "user_id", webapi.ParseUserID), Source: checked(r, "source_id", webapi.ParseConversationID), Block: checked(r, "block_id", core.ParseBlockID), Metadata: storedJSON(r, "metadata", DecodeForkMetadata)}
+	return ForkOperation{
+		ID:       checked(r, "id", webapi.ParseConversationID),
+		Owner:    checked(r, "user_id", webapi.ParseUserID),
+		Source:   checked(r, "source_id", webapi.ParseConversationID),
+		Block:    checked(r, "block_id", core.ParseBlockID),
+		Metadata: storedJSON(r, "metadata", DecodeForkMetadata),
+	}
 }
+
 func forkByID(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (*ForkOperation, error) {
-	return queryRecord(ctx, tx, "conversation_fork_operations", "SELECT * FROM conversation_fork_operations WHERE id = ?", forkRow, id)
+	return queryRecord(
+		ctx,
+		tx,
+		"conversation_fork_operations",
+		"SELECT * FROM conversation_fork_operations WHERE id = ?",
+		forkRow,
+		id,
+	)
 }

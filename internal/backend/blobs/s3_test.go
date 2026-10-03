@@ -69,7 +69,7 @@ func TestConfiguredS3ChecksumsAndPublication(t *testing.T) {
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("AWS_CA_BUNDLE", "")
 	invalidProfile := filepath.Join(t.TempDir(), "credentials")
-	if err := os.WriteFile(invalidProfile, []byte("not an ini file ["), 0600); err != nil {
+	if err := os.WriteFile(invalidProfile, []byte("not an ini file ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", invalidProfile)
@@ -103,11 +103,23 @@ func TestConfiguredS3ChecksumsAndPublication(t *testing.T) {
 	roots.AddCert(server.Certificate())
 	transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
 	data := []byte("published archive")
-	options := &blob.WriterOptions{IfNotExist: true, ContentType: "application/octet-stream", ContentEncoding: "gzip", Metadata: map[string]string{"sha256": string(core.BlobRefOf(data))}}
+	options := &blob.WriterOptions{
+		IfNotExist:      true,
+		ContentType:     "application/octet-stream",
+		ContentEncoding: "gzip",
+		Metadata:        map[string]string{"sha256": string(core.BlobRefOf(data))},
+	}
 	if err := bucket.WriteAll(ctx, "artifacts/archive", data, options); err != nil {
 		t.Fatal(err)
 	}
-	if err := bucket.WriteAll(ctx, "artifacts/archive", []byte("different"), options); gcerrors.Code(err) != gcerrors.FailedPrecondition {
+	if err := bucket.WriteAll(
+		ctx,
+		"artifacts/archive",
+		[]byte("different"),
+		options,
+	); gcerrors.Code(
+		err,
+	) != gcerrors.FailedPrecondition {
 		t.Fatalf("conditional write = %v", err)
 	}
 	attrs, err := bucket.Attributes(ctx, "artifacts/archive")
@@ -137,7 +149,8 @@ func TestConfiguredS3ChecksumsAndPublication(t *testing.T) {
 	observed := append([]string(nil), checksums...)
 	mu.Unlock()
 	sum := sha256.Sum256(data)
-	if len(observed) != 2 || (observed[0] != base64.StdEncoding.EncodeToString(sum[:]) && observed[0] != "x-amz-checksum-sha256") {
+	if len(observed) != 2 ||
+		(observed[0] != base64.StdEncoding.EncodeToString(sum[:]) && observed[0] != "x-amz-checksum-sha256") {
 		t.Fatalf("checksums = %q", observed)
 	}
 	before := requests.Load()

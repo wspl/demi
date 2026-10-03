@@ -7,15 +7,25 @@ type Kind uint8
 
 // Parts are delivered in this order so summaries precede conversation order.
 const (
+	// Conversation marks a conversation summary change.
 	Conversation Kind = iota
+	// ConversationOrder marks a sidebar order change.
 	ConversationOrder
+	// Preferences marks a preference change.
 	Preferences
+	// User marks an account change.
 	User
+	// Workspaces marks a workspace change.
 	Workspaces
+	// Devices marks a device change.
 	Devices
+	// Providers marks a provider change.
 	Providers
+	// Cloud marks a Cloud state change.
 	Cloud
+	// Plugins marks the enabled plugin list changing.
 	Plugins
+	// Plugin marks one plugin’s state changing.
 	Plugin
 )
 

@@ -13,7 +13,13 @@ func TestProviderCredentialVersionsAndCascades(t *testing.T) {
 	c, _ := testControl(t)
 	ctx := t.Context()
 	owner := testMaster(t, c)
-	provider := NewProvider{ID: "entry-1", Owner: owner.ID, Family: "anthropic", Kind: webapi.CredentialKindSubscription, Label: "Claude"}
+	provider := NewProvider{
+		ID:     "entry-1",
+		Owner:  owner.ID,
+		Family: "anthropic",
+		Kind:   webapi.CredentialKindSubscription,
+		Label:  "Claude",
+	}
 	account := CredentialWrite{ID: "account-1", Label: "one", Source: "login", Secret: []byte{1, 2, 3}}
 	inserted, err := c.InsertProvider(ctx, provider, []CredentialWrite{account})
 	require(t, err)
@@ -49,6 +55,7 @@ func TestProviderCredentialVersionsAndCascades(t *testing.T) {
 	require(t, err)
 	equal(t, (*CredentialRow)(nil), credential)
 }
+
 func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 	c, _ := testControl(t)
 	ctx := t.Context()
@@ -71,23 +78,44 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 		t.Fatal("workspace missing")
 	}
 	target := &webapi.ConversationTargetWorkspace{WorkspaceID: workspace.ID}
-	changed, err := c.SwitchConversationTarget(ctx, source.ID, source.Target, target, TargetSwitch{From: &ExecutionCloud{Path: "/work"}, To: &ExecutionWorkspace{WorkspaceID: workspace.ID, DeviceID: device.ID, Path: "/work"}}, SwitchEnds{})
+	changed, err := c.SwitchConversationTarget(
+		ctx,
+		source.ID,
+		source.Target,
+		target,
+		TargetSwitch{
+			From: &ExecutionCloud{Path: "/work"},
+			To:   &ExecutionWorkspace{WorkspaceID: workspace.ID, DeviceID: device.ID, Path: "/work"},
+		},
+		SwitchEnds{},
+	)
 	require(t, err)
 	equal(t, true, changed)
 	deletion, err := c.DeleteWorkspace(ctx, owner.ID, workspace.ID)
 	require(t, err)
 	equal(t, &WorkspaceInUse{Count: 1}, deletion)
-	op := ForkOperation{ID: conversation(2), Owner: owner.ID, Source: source.ID, Block: "a1", Metadata: ForkMetadata{Title: "Fork", Target: target, CreatedAt: core.UnixEpoch, AttachedHosts: []AttachedHostRecord{}}}
-	reserved, err := c.ReserveFork(ctx, op)
+	operation := ForkOperation{
+		ID:     conversation(2),
+		Owner:  owner.ID,
+		Source: source.ID,
+		Block:  "a1",
+		Metadata: ForkMetadata{
+			Title:         "Fork",
+			Target:        target,
+			CreatedAt:     core.UnixEpoch,
+			AttachedHosts: []AttachedHostRecord{},
+		},
+	}
+	reserved, err := c.ReserveFork(ctx, operation)
 	require(t, err)
-	equal(t, &op, reserved)
-	again, err := c.ReserveFork(ctx, op)
+	equal(t, &operation, reserved)
+	again, err := c.ReserveFork(ctx, operation)
 	require(t, err)
 	equal(t, reserved, again)
 	pending, err := c.PendingForks(ctx)
 	require(t, err)
-	equal(t, []ForkOperation{op}, pending)
-	published, err := c.PublishFork(ctx, op.ID)
+	equal(t, []ForkOperation{operation}, pending)
+	published, err := c.PublishFork(ctx, operation.ID)
 	require(t, err)
 	equal(t, "Fork", published.Title)
 	equal(t, target, published.Target)
@@ -107,6 +135,7 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 	equal(t, 2, len(uses))
 	equal(t, false, uses[0].OnCloud)
 }
+
 func TestEmailChallengeCooldownAttemptsAndConsumption(t *testing.T) {
 	c, clock := testControl(t)
 	ctx := t.Context()
@@ -115,7 +144,13 @@ func TestEmailChallengeCooldownAttemptsAndConsumption(t *testing.T) {
 	require(t, err)
 	policy := ChallengePolicy{Lifetime: time.Hour, Cooldown: time.Minute, Attempts: 2}
 	code := HashCode([]byte("key"), "challenge", "123456")
-	issue := ChallengeIssue{User: owner.ID, ID: "challenge", Email: "changed@example.test", PasswordHash: account.PasswordHash, CodeHash: code}
+	issue := ChallengeIssue{
+		User:         owner.ID,
+		ID:           "challenge",
+		Email:        "changed@example.test",
+		PasswordHash: account.PasswordHash,
+		CodeHash:     code,
+	}
 	expires, err := c.IssueEmailChallenge(ctx, issue, policy)
 	require(t, err)
 	if expires == nil {
@@ -124,7 +159,13 @@ func TestEmailChallengeCooldownAttemptsAndConsumption(t *testing.T) {
 	denied, err := c.IssueEmailChallenge(ctx, issue, policy)
 	require(t, err)
 	equal(t, (*core.Timestamp)(nil), denied)
-	outcome, err := c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, HashCode([]byte("key"), issue.ID, "wrong"), policy.Attempts)
+	outcome, err := c.ConfirmEmailChallenge(
+		ctx,
+		owner.ID,
+		issue.ID,
+		HashCode([]byte("key"), issue.ID, "wrong"),
+		policy.Attempts,
+	)
 	require(t, err)
 	equal(t, &ChallengeInvalidCode{}, outcome)
 	outcome, err = c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, code, policy.Attempts)
@@ -139,12 +180,26 @@ func TestEmailChallengeCooldownAttemptsAndConsumption(t *testing.T) {
 }
 
 func TestPasswordHashPHCSyntax(t *testing.T) {
-	for _, text := range []string{"$argon2id", "$argon2id$v=19", "$argon2id$m=", "$argon2id$m=1,m=2", "$argon2id$v=19,m=1", "$argon2id$c2FsdA$AAAAAAAAAAAAAA"} {
+	for _, text := range []string{
+		"$argon2id",
+		"$argon2id$v=19",
+		"$argon2id$m=",
+		"$argon2id$m=1,m=2",
+		"$argon2id$v=19,m=1",
+		"$argon2id$c2FsdA$AAAAAAAAAAAAAA",
+	} {
 		hash, err := ParsePasswordHash(text)
 		require(t, err)
 		equal(t, text, hash.Text())
 	}
-	for _, text := range []string{"argon2id", "$ARGON2", "$argon2id$v=019", "$argon2id$a=b=c", "$argon2id$abc", "$argon2id$c2FsdA$AAAA\nAAAAAAAAAA"} {
+	for _, text := range []string{
+		"argon2id",
+		"$ARGON2",
+		"$argon2id$v=019",
+		"$argon2id$a=b=c",
+		"$argon2id$abc",
+		"$argon2id$c2FsdA$AAAA\nAAAAAAAAAA",
+	} {
 		if _, err := ParsePasswordHash(text); err == nil {
 			t.Errorf("accepted invalid PHC %q", text)
 		}

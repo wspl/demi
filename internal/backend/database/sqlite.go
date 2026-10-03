@@ -59,32 +59,7 @@ func openSQLite(ctx context.Context, path, schema string, readonly bool) (_ *sql
 		return db, nil
 	}
 	err = transaction(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
-		var mode string
-		if err := tx.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode); err != nil {
-			return err
-		}
-		if !strings.EqualFold(mode, "wal") {
-			return &Error{Kind: JournalMode, Reason: mode}
-		}
-		var version uint32
-		if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
-			return err
-		}
-		if version == schemaVersion(schema) {
-			return nil
-		}
-		var tables int
-		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_schema WHERE type = 'table'").Scan(&tables); err != nil {
-			return err
-		}
-		if version != 0 || tables != 0 {
-			return &Error{Kind: OtherSchema, Path: path}
-		}
-		if _, err := tx.ExecContext(ctx, schema); err != nil {
-			return err
-		}
-		_, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", schemaVersion(schema)))
-		return err
+		return initializeSchema(ctx, tx, path, schema)
 	}, nil)
 	if err != nil {
 		return nil, err
@@ -94,7 +69,12 @@ func openSQLite(ctx context.Context, path, schema string, readonly bool) (_ *sql
 
 // transaction owns an admitted SQLite operation through rollback or commit.
 // Cancellation applies to admission; once admitted, its commit is not abandoned.
-func transaction(ctx context.Context, db *sql.DB, work func(context.Context, *sql.Tx) error, commit func(context.Context, *sql.Tx) error) (err error) {
+func transaction(
+	ctx context.Context,
+	db *sql.DB,
+	work func(context.Context, *sql.Tx) error,
+	commit func(context.Context, *sql.Tx) error,
+) (err error) {
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return sqlError(err)
@@ -128,7 +108,8 @@ func sqlError(err error) error {
 		return nil
 	}
 	var storage *Error
-	if errors.As(err, &storage) || errors.Is(err, ErrClosed) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.As(err, &storage) || errors.Is(err, ErrClosed) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
 	var sqliteErr *sqlite.Error
@@ -137,4 +118,34 @@ func sqlError(err error) error {
 	}
 	// Domain refusals must remain distinguishable from a SQLite failure.
 	return fmt.Errorf("storage operation: %w", err)
+}
+
+func initializeSchema(ctx context.Context, tx *sql.Tx, path, schema string) error {
+	var mode string
+	if err := tx.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode); err != nil {
+		return err
+	}
+	if !strings.EqualFold(mode, "wal") {
+		return &Error{Kind: JournalMode, Reason: mode}
+	}
+	var version uint32
+	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+		return err
+	}
+	if version == schemaVersion(schema) {
+		return nil
+	}
+	var tables int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_schema WHERE type = 'table'").
+		Scan(&tables); err != nil {
+		return err
+	}
+	if version != 0 || tables != 0 {
+		return &Error{Kind: OtherSchema, Path: path}
+	}
+	if _, err := tx.ExecContext(ctx, schema); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", schemaVersion(schema)))
+	return err
 }

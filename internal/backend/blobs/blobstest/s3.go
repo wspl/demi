@@ -98,8 +98,13 @@ func (f *FakeS3) Config() blobs.S3Config {
 func (f *FakeS3) Client(ctx context.Context) (*blob.Bucket, error) {
 	client := &http.Client{Transport: awshttp.NewBuildableClient().GetTransport()}
 	config := f.Config()
-	service := s3.New(s3.Options{Region: config.Region, BaseEndpoint: config.Endpoint,
-		UsePathStyle: true, Credentials: credentials.NewStaticCredentialsProvider("fake", "fake", ""), HTTPClient: client})
+	service := s3.New(s3.Options{
+		Region:       config.Region,
+		BaseEndpoint: config.Endpoint,
+		UsePathStyle: true,
+		Credentials:  credentials.NewStaticCredentialsProvider("fake", "fake", ""),
+		HTTPClient:   client,
+	})
 	bucket, err := s3blob.OpenBucket(ctx, service, config.Bucket, nil)
 	if err != nil {
 		client.CloseIdleConnections()
@@ -155,24 +160,7 @@ func (f *FakeS3) serve(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ETag", objectETag(data))
 		w.WriteHeader(http.StatusOK)
 	case http.MethodHead, http.MethodGet:
-		f.mu.Lock()
-		object, found := f.objects[key]
-		f.mu.Unlock()
-		if !found {
-			s3Failure(w, http.StatusNotFound, "NoSuchKey")
-			return
-		}
-		for name, values := range object.headers {
-			w.Header()[name] = append([]string(nil), values...)
-		}
-		w.Header().Set("ETag", objectETag(object.data))
-		w.Header().Set("Last-Modified", object.written.UTC().Format(http.TimeFormat))
-		w.Header().Set("Content-Length", strconv.Itoa(len(object.data)))
-		if r.Method == http.MethodHead {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.ServeContent(w, r, key, object.written, bytes.NewReader(object.data))
+		f.readObject(w, r, key)
 	case http.MethodDelete:
 		f.mu.Lock()
 		delete(f.objects, key)
@@ -188,7 +176,10 @@ func (f *FakeS3) put(key string, data []byte, headers http.Header, conditional b
 	metadata := make(http.Header)
 	for name, values := range headers {
 		lower := strings.ToLower(name)
-		if strings.HasPrefix(lower, "x-amz-meta-") || lower == "content-encoding" || lower == "content-type" || lower == "cache-control" || lower == "content-disposition" || lower == "content-language" {
+		if strings.HasPrefix(lower, "x-amz-meta-") || lower == "content-encoding" || lower == "content-type" ||
+			lower == "cache-control" ||
+			lower == "content-disposition" ||
+			lower == "content-language" {
 			metadata[name] = append([]string(nil), values...)
 		}
 	}
@@ -268,7 +259,15 @@ func (f *FakeS3) list(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		object := f.objects[key]
-		result.Contents = append(result.Contents, item{Key: key, LastModified: object.written.Format(time.RFC3339Nano), ETag: objectETag(object.data), Size: len(object.data)})
+		result.Contents = append(
+			result.Contents,
+			item{
+				Key:          key,
+				LastModified: object.written.Format(time.RFC3339Nano),
+				ETag:         objectETag(object.data),
+				Size:         len(object.data),
+			},
+		)
 	}
 	if result.IsTruncated && len(result.Contents) > 0 {
 		result.NextContinuationToken = result.Contents[len(result.Contents)-1].Key
@@ -283,16 +282,7 @@ func (f *FakeS3) list(w http.ResponseWriter, r *http.Request) {
 func (f *FakeS3) multipart(w http.ResponseWriter, r *http.Request, key string) {
 	query := r.URL.Query()
 	if query.Has("uploads") && r.Method == http.MethodPost {
-		f.mu.Lock()
-		f.nextUpload++
-		id := strconv.FormatUint(f.nextUpload, 10)
-		f.uploads[id] = &multipartUpload{key: key, headers: r.Header.Clone(), parts: make(map[int][]byte)}
-		f.mu.Unlock()
-		// A disconnected test client needs no further response.
-		_ = xml.NewEncoder(w).Encode(struct {
-			XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
-			UploadID string   `xml:"UploadId"`
-		}{UploadID: id})
+		f.initiateMultipart(w, r, key)
 		return
 	}
 	id := query.Get("uploadId")
@@ -333,6 +323,81 @@ func (f *FakeS3) multipart(w http.ResponseWriter, r *http.Request, key string) {
 		s3Failure(w, http.StatusMethodNotAllowed, "MethodNotAllowed")
 		return
 	}
+	f.completeMultipart(w, r, key, id, upload, data)
+}
+
+// readS3Body decodes the SDK's S3 chunked checksum framing over HTTPS.
+func readS3Body(r *http.Request) ([]byte, error) {
+	encodings := strings.Split(strings.Join(r.Header.Values("Content-Encoding"), ","), ",")
+	chunked := false
+	kept := encodings[:0]
+	for _, encoding := range encodings {
+		if strings.TrimSpace(encoding) == "aws-chunked" {
+			chunked = true
+		} else {
+			kept = append(kept, encoding)
+		}
+	}
+	if !chunked {
+		return io.ReadAll(r.Body)
+	}
+	reader := bufio.NewReader(r.Body)
+	data, err := io.ReadAll(httputil.NewChunkedReader(reader))
+	if err != nil {
+		return nil, err
+	}
+	trailers, err := textproto.NewReader(reader).ReadMIMEHeader()
+	if err != nil {
+		return nil, err
+	}
+	for name, values := range trailers {
+		r.Header[name] = values
+	}
+	r.Header.Set("Content-Encoding", strings.Join(kept, ","))
+	return data, nil
+}
+
+func (f *FakeS3) readObject(w http.ResponseWriter, r *http.Request, key string) {
+	f.mu.Lock()
+	object, found := f.objects[key]
+	f.mu.Unlock()
+	if !found {
+		s3Failure(w, http.StatusNotFound, "NoSuchKey")
+		return
+	}
+	for name, values := range object.headers {
+		w.Header()[name] = append([]string(nil), values...)
+	}
+	w.Header().Set("ETag", objectETag(object.data))
+	w.Header().Set("Last-Modified", object.written.UTC().Format(http.TimeFormat))
+	w.Header().Set("Content-Length", strconv.Itoa(len(object.data)))
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.ServeContent(w, r, key, object.written, bytes.NewReader(object.data))
+}
+
+func (f *FakeS3) initiateMultipart(w http.ResponseWriter, r *http.Request, key string) {
+	f.mu.Lock()
+	f.nextUpload++
+	id := strconv.FormatUint(f.nextUpload, 10)
+	f.uploads[id] = &multipartUpload{key: key, headers: r.Header.Clone(), parts: make(map[int][]byte)}
+	f.mu.Unlock()
+	// A disconnected test client needs no further response.
+	_ = xml.NewEncoder(w).Encode(struct {
+		XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
+		UploadID string   `xml:"UploadId"`
+	}{UploadID: id})
+}
+
+func (f *FakeS3) completeMultipart(
+	w http.ResponseWriter,
+	r *http.Request,
+	key, id string,
+	upload *multipartUpload,
+	data []byte,
+) {
 	var completion struct {
 		Parts []struct {
 			Number int `xml:"PartNumber"`
@@ -369,35 +434,4 @@ func (f *FakeS3) multipart(w http.ResponseWriter, r *http.Request, key string) {
 		XMLName xml.Name `xml:"CompleteMultipartUploadResult"`
 		ETag    string
 	}{ETag: objectETag(joined)})
-}
-
-// readS3Body decodes the SDK's S3 chunked checksum framing over HTTPS.
-func readS3Body(r *http.Request) ([]byte, error) {
-	encodings := strings.Split(strings.Join(r.Header.Values("Content-Encoding"), ","), ",")
-	chunked := false
-	kept := encodings[:0]
-	for _, encoding := range encodings {
-		if strings.TrimSpace(encoding) == "aws-chunked" {
-			chunked = true
-		} else {
-			kept = append(kept, encoding)
-		}
-	}
-	if !chunked {
-		return io.ReadAll(r.Body)
-	}
-	reader := bufio.NewReader(r.Body)
-	data, err := io.ReadAll(httputil.NewChunkedReader(reader))
-	if err != nil {
-		return nil, err
-	}
-	trailers, err := textproto.NewReader(reader).ReadMIMEHeader()
-	if err != nil {
-		return nil, err
-	}
-	for name, values := range trailers {
-		r.Header[name] = values
-	}
-	r.Header.Set("Content-Encoding", strings.Join(kept, ","))
-	return data, nil
 }

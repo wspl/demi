@@ -35,7 +35,8 @@ func storageCredentials(ctx context.Context, region string, client *http.Client)
 			return nil, fmt.Errorf("Missing AccessKeyId") //nolint:staticcheck // Preserve the Rust object-store error.
 		}
 		if os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
-			return nil, fmt.Errorf("Missing SecretAccessKey") //nolint:staticcheck // Preserve the Rust object-store error.
+			//nolint:staticcheck // Preserve the Rust object-store error.
+			return nil, fmt.Errorf("Missing SecretAccessKey")
 		}
 		provider = credentials.StaticCredentialsProvider{Value: env.Credentials}
 	case env.WebIdentityTokenFilePath != "" && env.RoleARN != "":
@@ -44,8 +45,14 @@ func storageCredentials(ctx context.Context, region string, client *http.Client)
 		if session == "" {
 			session = "WebIdentitySession"
 		}
-		provider = stscreds.NewWebIdentityRoleProvider(service, env.RoleARN, stscreds.IdentityTokenFile(env.WebIdentityTokenFilePath), func(o *stscreds.WebIdentityRoleOptions) { o.RoleSessionName = session })
-	case env.ContainerCredentialsRelativePath != "" || (env.ContainerCredentialsEndpoint != "" && os.Getenv("AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE") != ""):
+		provider = stscreds.NewWebIdentityRoleProvider(
+			service,
+			env.RoleARN,
+			stscreds.IdentityTokenFile(env.WebIdentityTokenFilePath),
+			func(o *stscreds.WebIdentityRoleOptions) { o.RoleSessionName = session },
+		)
+	case env.ContainerCredentialsRelativePath != "" ||
+		(env.ContainerCredentialsEndpoint != "" && os.Getenv("AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE") != ""):
 		endpoint := env.ContainerCredentialsEndpoint
 		if env.ContainerCredentialsRelativePath != "" {
 			endpoint = "http://169.254.170.2" + env.ContainerCredentialsRelativePath

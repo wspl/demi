@@ -15,8 +15,10 @@ import (
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
-const window = time.Hour
-const poll = 30 * time.Second
+const (
+	window = time.Hour
+	poll   = 30 * time.Second
+)
 
 // These in-process scenarios cost less than one second each, use virtual
 // time only, and join every watch before auditing its reservation.

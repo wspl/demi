@@ -50,6 +50,7 @@ func commandValue(raw json.RawMessage) (any, error) {
 	}
 	return commandNumbers(value)
 }
+
 func commandNumbers(value any) (any, error) {
 	switch v := value.(type) {
 	case json.Number:

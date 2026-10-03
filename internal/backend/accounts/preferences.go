@@ -26,7 +26,11 @@ func (p *Preferences) Read(ctx context.Context, caller webapi.UserID) (webapi.Pr
 }
 
 // Patch validates the locale and delegates one atomic patch to storage.
-func (p *Preferences) Patch(ctx context.Context, caller webapi.UserID, patch webapi.PreferencesPatch) (webapi.Preferences, error) {
+func (p *Preferences) Patch(
+	ctx context.Context,
+	caller webapi.UserID,
+	patch webapi.PreferencesPatch,
+) (webapi.Preferences, error) {
 	checked, err := Check(patch)
 	if err != nil {
 		return webapi.Preferences{}, err

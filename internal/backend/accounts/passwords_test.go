@@ -82,13 +82,13 @@ func TestPasswordHashSurvivesStorage(t *testing.T) {
 	if err != nil || account == nil {
 		t.Fatalf("stored account: %v", err)
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		password webapi.Password
 		want     bool
 	}{{"new password", true}, {"wrong password", false}} {
-		got, err := h.Verify(t.Context(), tc.password, &account.PasswordHash)
-		if err != nil || got != tc.want {
-			t.Fatalf("stored password verification: %v, %v; want %v", got, err, tc.want)
+		got, err := h.Verify(t.Context(), scenario.password, &account.PasswordHash)
+		if err != nil || got != scenario.want {
+			t.Fatalf("stored password verification: %v, %v; want %v", got, err, scenario.want)
 		}
 	}
 }

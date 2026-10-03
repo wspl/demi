@@ -18,32 +18,42 @@ func Summary(ctx context.Context, tx *sql.Tx) (SummaryFacts, error) {
 		count    int64
 		revision uint64
 	}
-	root, err := queryRecord(ctx, tx, "nodes", "SELECT id,state,block_count,output_revision FROM nodes WHERE parent_id IS NULL", func(r *storedRow) rootRow {
-		return rootRow{id: r.text("id"), state: storedJSON(r, "state", store.DecodeCheckpointState), count: r.integer("block_count"), revision: r.count("output_revision")}
-	})
+	root, err := queryRecord(
+		ctx,
+		tx,
+		"nodes",
+		"SELECT id,state,block_count,output_revision FROM nodes WHERE parent_id IS NULL",
+		func(r *storedRow) rootRow {
+			return rootRow{
+				id:       r.text("id"),
+				state:    storedJSON(r, "state", store.DecodeCheckpointState),
+				count:    r.integer("block_count"),
+				revision: r.count("output_revision"),
+			}
+		},
+	)
 	if err != nil {
 		return SummaryFacts{}, err
 	}
 	if root == nil {
 		return EmptySummary(), nil
 	}
-	terminal, err := queryRecord(ctx, tx, "blocks", `SELECT block FROM blocks WHERE node_id=? AND idx<? AND json_extract(block,'$.type') IN ('response','error','abort') ORDER BY idx DESC LIMIT 1`, func(r *storedRow) core.Block { return storedJSON(r, "block", core.DecodeBlock) }, root.id, root.count)
+	terminal, err := queryRecord(
+		ctx,
+		tx,
+		"blocks",
+		`SELECT block FROM blocks WHERE node_id=? AND idx<? `+
+			`AND json_extract(block,'$.type') IN ('response','error','abort') `+
+			`ORDER BY idx DESC LIMIT 1`,
+		func(r *storedRow) core.Block { return storedJSON(r, "block", core.DecodeBlock) },
+		root.id,
+		root.count,
+	)
 	if err != nil {
 		return SummaryFacts{}, err
 	}
 	facts := SummaryFacts{Phase: root.state.Phase, Revision: root.revision}
-	if terminal != nil {
-		switch (*terminal).(type) {
-		case *core.ResponseBlock:
-			facts.Last = new(TerminalResponse)
-		case *core.ErrorBlock:
-			facts.Last = new(TerminalError)
-		case *core.AbortBlock:
-			facts.Last = new(TerminalAbort)
-		case *core.AgentMessageBlock, *core.CompactionBoundaryBlock, *core.CompactionMarkerBlock, *core.ContextBlock, *core.RedactedThinkingBlock, *core.ResumeBlock, *core.SteerBlock, *core.TextBlock, *core.ThinkingBlock, *core.ToolCallBlock, *core.UserBlock, *core.WakeupBlock:
-			// The SQL predicate excludes nonterminal blocks.
-		}
-	}
+	facts.Last = summaryTerminal(terminal)
 	return facts, nil
 }
 
@@ -60,9 +70,15 @@ func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 		id    core.NodeID
 		count int64
 	}
-	root, err := queryRecord(ctx, tx, "nodes", "SELECT id,block_count FROM nodes WHERE parent_id IS NULL", func(r *storedRow) rootRow {
-		return rootRow{id: checked(r, "id", core.ParseNodeID), count: r.integer("block_count")}
-	})
+	root, err := queryRecord(
+		ctx,
+		tx,
+		"nodes",
+		"SELECT id,block_count FROM nodes WHERE parent_id IS NULL",
+		func(r *storedRow) rootRow {
+			return rootRow{id: checked(r, "id", core.ParseNodeID), count: r.integer("block_count")}
+		},
+	)
 	history := History{Blocks: []core.Block{}, Subagents: []NodeHistory{}}
 	if err != nil || root == nil {
 		return history, err
@@ -71,7 +87,13 @@ func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 	if err != nil {
 		return History{}, err
 	}
-	nodes, err := queryRecords(ctx, tx, "nodes", "SELECT * FROM nodes WHERE parent_id IS NOT NULL ORDER BY number", nodeRow)
+	nodes, err := queryRecords(
+		ctx,
+		tx,
+		"nodes",
+		"SELECT * FROM nodes WHERE parent_id IS NOT NULL ORDER BY number",
+		nodeRow,
+	)
 	if err != nil {
 		return History{}, err
 	}
@@ -86,7 +108,8 @@ func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 		node := pending[len(pending)-1]
 		pending = pending[:len(pending)-1]
 		var count int64
-		if err := tx.QueryRowContext(ctx, "SELECT block_count FROM nodes WHERE id=?", node.ID).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT block_count FROM nodes WHERE id=?", node.ID).
+			Scan(&count); err != nil {
 			return History{}, err
 		}
 		blocks, err := blocksOf(ctx, tx, node.ID, count)
@@ -100,4 +123,34 @@ func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 		history.Subagents = append(history.Subagents, NodeHistory{Record: node, Blocks: blocks})
 	}
 	return history, nil
+}
+
+// summaryTerminal classifies only terminal blocks selected by the summary query.
+func summaryTerminal(terminal *core.Block) *Terminal {
+	var last *Terminal
+	if terminal == nil {
+		return nil
+	}
+	switch (*terminal).(type) {
+	case *core.ResponseBlock:
+		last = new(TerminalResponse)
+	case *core.ErrorBlock:
+		last = new(TerminalError)
+	case *core.AbortBlock:
+		last = new(TerminalAbort)
+	case *core.AgentMessageBlock,
+		*core.CompactionBoundaryBlock,
+		*core.CompactionMarkerBlock,
+		*core.ContextBlock,
+		*core.RedactedThinkingBlock,
+		*core.ResumeBlock,
+		*core.SteerBlock,
+		*core.TextBlock,
+		*core.ThinkingBlock,
+		*core.ToolCallBlock,
+		*core.UserBlock,
+		*core.WakeupBlock:
+		// The SQL predicate excludes nonterminal blocks.
+	}
+	return last
 }

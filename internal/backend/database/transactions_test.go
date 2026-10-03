@@ -26,7 +26,11 @@ func TestDraftConflictsRestoreDismissAndRefusals(t *testing.T) {
 	require(t, err)
 	second, err := c.SaveDraft(ctx, id, owner.ID, 0, "second", nil)
 	require(t, err)
-	equal(t, &webapi.ReplacedDraft{Revision: first.Revision, Text: "first", Files: []webapi.DraftFile{}}, second.Replaced)
+	equal(
+		t,
+		&webapi.ReplacedDraft{Revision: first.Revision, Text: "first", Files: []webapi.DraftFile{}},
+		second.Replaced,
+	)
 	restored, err := c.ChangeReplacedDraft(ctx, id, webapi.ReplacedActionRestore, first.Revision)
 	require(t, err)
 	equal(t, "first", restored.Text)
@@ -45,11 +49,24 @@ func TestDraftConflictsRestoreDismissAndRefusals(t *testing.T) {
 	}
 	upload, err := c.CreateAttachment(ctx, owner.ID, "text/plain", 3, blob(1), new("abc"))
 	require(t, err)
-	files := []StagedFile{&StagedUpload{ID: upload.ID, FileName: "a.txt"}, &StagedRemote{DeviceID: "laptop", Path: "/work/file"}}
+	files := []StagedFile{
+		&StagedUpload{ID: upload.ID, FileName: "a.txt"},
+		&StagedRemote{DeviceID: "laptop", Path: "/work/file"},
+	}
 	saved, err = c.SaveDraft(ctx, id, owner.ID, saved.Revision, "file", files)
 	require(t, err)
 	equal(t, 2, len(saved.Files))
-	equal(t, &webapi.DraftFileUpload{Ref: upload.ID, FileName: "a.txt", MediaType: "text/plain", Sha256: blob(1), Snippet: new("abc")}, saved.Files[0])
+	equal(
+		t,
+		&webapi.DraftFileUpload{
+			Ref:       upload.ID,
+			FileName:  "a.txt",
+			MediaType: "text/plain",
+			Sha256:    blob(1),
+			Snippet:   new("abc"),
+		},
+		saved.Files[0],
+	)
 	_, err = c.SaveDraft(ctx, id, "someone-else", saved.Revision, "bad", files)
 	if !errors.As(err, &refusal) || refusal.Reason != DraftUploadNotFound {
 		t.Fatalf("foreign upload: %v", err)
@@ -64,12 +81,19 @@ func TestDraftConflictsRestoreDismissAndRefusals(t *testing.T) {
 	require(t, err)
 	equal(t, saved, read)
 }
+
 func TestPluginWritesCompareRevisionAndRollbackBlobRefusal(t *testing.T) {
 	c, _ := testControl(t)
 	owner := testMaster(t, c)
 	ctx := t.Context()
 	_, _, blobs := testTree(t)
-	write := ValueWrite{User: owner.ID, Plugin: "notes", Key: "note", Document: json.RawMessage(`{"z":"<&>","a":1}`), Blobs: []core.BlobRef{blob(1)}}
+	write := ValueWrite{
+		User:     owner.ID,
+		Plugin:   "notes",
+		Key:      "note",
+		Document: json.RawMessage(`{"z":"<&>","a":1}`),
+		Blobs:    []core.BlobRef{blob(1)},
+	}
 	result, err := c.WritePluginValue(ctx, write, blobs)
 	require(t, err)
 	equal(t, &WrittenRevision{Revision: 1}, result)
@@ -116,6 +140,7 @@ func TestPluginWritesCompareRevisionAndRollbackBlobRefusal(t *testing.T) {
 	require(t, err)
 	equal(t, map[string]bool{"notes": false}, choices)
 }
+
 func TestAdmissionCancellationAndCommittedCheckpoint(t *testing.T) {
 	tree, db, _ := testTree(t)
 	ctx := t.Context()
@@ -126,7 +151,11 @@ func TestAdmissionCancellationAndCommittedCheckpoint(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- tree.SessionStore("root").Save(saveCtx, update(1, store.ChangedBlock{Index: 0, Block: reply("a1")}), store.CommitGuard{})
+		done <- tree.SessionStore("root").Save(
+			saveCtx,
+			update(1, store.ChangedBlock{Index: 0, Block: reply("a1")}),
+			store.CommitGuard{},
+		)
 	}()
 	// Always release and join even if an assertion fails.
 	joined := false
@@ -153,6 +182,7 @@ func TestAdmissionCancellationAndCommittedCheckpoint(t *testing.T) {
 	require(t, err)
 	equal(t, uint64(1), facts(t, db).Revision)
 }
+
 func TestCommandOutputsRetentionAndBlobRefusal(t *testing.T) {
 	_, db, blobs := testTree(t)
 	ctx := t.Context()
@@ -161,7 +191,12 @@ func TestCommandOutputsRetentionAndBlobRefusal(t *testing.T) {
 		return InsertCommandOutputs(ctx, tx, blobs, []CommandOutput{row})
 	}))
 	require(t, db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		return InsertCommandOutputs(ctx, tx, blobs, []CommandOutput{{Command: row.Command, Ended: row.Ended, Output: &OutputNotStored{Reason: "late"}}})
+		return InsertCommandOutputs(
+			ctx,
+			tx,
+			blobs,
+			[]CommandOutput{{Command: row.Command, Ended: row.Ended, Output: &OutputNotStored{Reason: "late"}}},
+		)
 	}))
 	after, err := later(core.UnixEpoch, time.Hour)
 	require(t, err)
@@ -202,10 +237,20 @@ func TestImmutableCommandVersionsPreserveJSONNumberKinds(t *testing.T) {
 			tree, _, _ := testTree(t)
 			ctx := t.Context()
 			seed := update(0)
-			seed.CommandState = &store.CommandStateSnapshot{Versions: []store.CommandVersion{{Values: map[store.CommandStorageKey]json.RawMessage{"value": json.RawMessage(pair[0])}}}, Boundaries: []store.SessionBoundary{}}
+			seed.CommandState = &store.CommandStateSnapshot{
+				Versions: []store.CommandVersion{
+					{Values: map[store.CommandStorageKey]json.RawMessage{"value": json.RawMessage(pair[0])}},
+				},
+				Boundaries: []store.SessionBoundary{},
+			}
 			require(t, tree.CreateNode(ctx, node("root", nil, 0), seed))
 			change := update(0)
-			change.CommandState = &store.CommandStateSnapshot{Versions: []store.CommandVersion{{Values: map[store.CommandStorageKey]json.RawMessage{"value": json.RawMessage(pair[1])}}}, Boundaries: []store.SessionBoundary{}}
+			change.CommandState = &store.CommandStateSnapshot{
+				Versions: []store.CommandVersion{
+					{Values: map[store.CommandStorageKey]json.RawMessage{"value": json.RawMessage(pair[1])}},
+				},
+				Boundaries: []store.SessionBoundary{},
+			}
 			err := tree.SessionStore("root").Save(ctx, change, store.CommitGuard{})
 			var refusal *store.Error
 			if !errors.As(err, &refusal) || refusal.Kind != store.OperationFailed {

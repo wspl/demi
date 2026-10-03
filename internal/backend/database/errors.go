@@ -43,7 +43,11 @@ func (e *Error) Error() string {
 	case SQLiteFailure:
 		return fmt.Sprintf("SQLite failed: %v", e.Err)
 	case OtherSchema:
-		return fmt.Sprintf("%s was made by another version of Demi; move the data directory away and start with a new one (storage.md § Schemas)", e.Path)
+		return fmt.Sprintf(
+			"%s was made by another version of Demi; "+
+				"move the data directory away and start with a new one (storage.md § Schemas)",
+			e.Path,
+		)
 	case JournalMode:
 		return "the database stays in journal mode " + e.Reason + ", not WAL"
 	case Corrupt:

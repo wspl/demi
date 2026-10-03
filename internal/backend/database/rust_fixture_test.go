@@ -17,7 +17,7 @@ func TestRustDatabasesReadUnchanged(t *testing.T) {
 		t.Helper()
 		data, err := os.ReadFile(source)
 		require(t, err)
-		require(t, os.WriteFile(destination, data, 0600))
+		require(t, os.WriteFile(destination, data, 0o600))
 		return sha256.Sum256(data)
 	}
 	directory := t.TempDir()

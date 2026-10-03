@@ -7,8 +7,10 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-const lockAfter = 5
-const loginWindow = time.Minute
+const (
+	lockAfter   = 5
+	loginWindow = time.Minute
+)
 
 type failures struct {
 	count       uint32
