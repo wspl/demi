@@ -96,6 +96,8 @@ type ExitReason struct {
 	Kind ExitKind
 	// State preserves the process owner’s exit record for a natural exit.
 	State process.Exit
+	// WaitErr is the process owner's wait failure, shown when no OS status was recorded.
+	WaitErr error
 	// Detail is the protocol diagnostic or startup phase for a forced stop.
 	Detail string
 }
@@ -116,7 +118,7 @@ const (
 func (r ExitReason) String() string {
 	switch r.Kind {
 	case ProcessExited:
-		return "exited with " + serviceExitStatus(r.State)
+		return "exited with " + serviceExitStatus(r.State, r.WaitErr)
 	case ProtocolBroken:
 		return fmt.Sprintf("broke the protocol (%s) and was stopped", r.Detail)
 	case StartupDeadline:

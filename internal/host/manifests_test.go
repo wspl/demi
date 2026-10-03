@@ -14,9 +14,9 @@ import (
 	"github.com/wspl/demi/internal/host"
 )
 
-// These Rust-generated trees pin declaration-builder fidelity against actual plugin manifests.
+// These golden declaration trees pin declaration-builder fidelity against actual plugin manifests.
 // They are extracted without changes from gomig-ref/plugin-manifests/manifests.json.
-func TestBuildersPreserveRustPluginDeclarations(t *testing.T) {
+func TestBuildersPreservePluginDeclarations(t *testing.T) {
 	paths, err := filepath.Glob("testdata/*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestBuildersPreserveRustPluginDeclarations(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("builder changed Rust manifest\n%s", actual)
+				t.Fatalf("builder changed golden manifest\n%s", actual)
 			}
 		})
 	}
@@ -78,7 +78,7 @@ func rebuildDeclaration(t *testing.T, node declare.Node[declare.NativeOperation]
 		}
 		declared := host.Leaf(*node, handler)
 		if node.Input != nil {
-			// The Rust browser adds a leaf-specific default to this field's type documentation.
+			// The browser plugin adds a leaf-specific default to this field's type documentation.
 			properties := node.Properties()
 			if timeout, ok := properties["timeout"].(map[string]any); ok {
 				if description, ok := timeout["description"].(string); ok &&

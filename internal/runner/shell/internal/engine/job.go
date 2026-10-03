@@ -22,6 +22,7 @@ type job struct {
 	done   chan struct{}
 	mu     sync.Mutex // Protects the first requested signal.
 	signal string
+	err    error
 	exit   process.Exit
 	cwd    *string
 }
@@ -131,8 +132,7 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 	j.finish(result, err)
 	if j.ctx.Err() == nil {
 		if failure := errors.Join(err, inputError, outputErrors[0], outputErrors[1]); failure != nil {
-			message := failure.Error()
-			j.exit.Error = &message
+			j.err = failure
 		}
 	}
 }
@@ -177,14 +177,14 @@ func (j *job) Signal(signal runnerwire.Signal) error {
 }
 
 // Wait joins all job work, cancelling it if the waiting context ends.
-func (j *job) Wait(ctx context.Context) (process.Exit, *string) {
+func (j *job) Wait(ctx context.Context) (process.Exit, *string, error) {
 	select {
 	case <-j.done:
 	case <-ctx.Done():
 		j.cancel()
 		<-j.done
 	}
-	return j.exit, j.cwd
+	return j.exit, j.cwd, j.err
 }
 
 func (j *job) writeInput(ctx context.Context, file *os.File) error {
@@ -238,8 +238,7 @@ func (j *job) finish(result Result, err error) {
 		}
 		j.exit.Signal = &signal
 	} else if err != nil {
-		message := err.Error()
-		j.exit.Error = &message
+		j.err = err
 	} else {
 		code := int32(result.Code)
 		j.exit.Code = &code

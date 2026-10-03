@@ -8,7 +8,7 @@ import (
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
-// fixtureArgs retains arbitrary fixture arguments, as Rust's JSON value does.
+// fixtureArgs keeps each fixture argument as raw JSON.
 // +demi:root
 type fixtureArgs map[string]json.RawMessage
 

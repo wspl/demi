@@ -16,7 +16,7 @@ import (
 )
 
 // extraDescriptors forwards writable numbered outputs through the recorder.
-// Read/write descriptors retain their native file semantics, as in the Rust host.
+// Read/write descriptors keep their native file semantics.
 func extraDescriptors(
 	ctx context.Context,
 	launchesDone <-chan struct{},

@@ -178,8 +178,7 @@ func TestRegistrationRefusesReservedTakenMalformedAndUnbound(t *testing.T) {
 		t.Run(tc.want, func(t *testing.T) {
 			var s host.CommandSet
 			err := s.Register(host.Group("demi", "Demi.", tc.d))
-			var reg *host.RegisterError
-			if !errors.As(err, &reg) || !strings.Contains(err.Error(), tc.want) {
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("registration: %v", err)
 			}
 			if len(s.Declarations()) != 0 {

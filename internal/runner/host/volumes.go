@@ -76,7 +76,7 @@ func GrowthWanted(total, available uint64) (*uint64, error) {
 // Sync flushes the managed filesystems and emits sync_done. At most four flushes
 // run concurrently; later requests wait with ctx. An admitted filesystem flush
 // is joined even if the request is canceled. Paired Unix devices sync all
-// filesystems; Windows answers an unsupported-operation error, matching Rust.
+// filesystems; on Windows, Sync answers an error, since whole-filesystem sync is unavailable there.
 func (v *Volumes) Sync(ctx context.Context, request runnerwire.Sync) error {
 	ctx, leave, err := v.life.enter(ctx)
 	if err != nil {

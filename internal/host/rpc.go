@@ -1,7 +1,7 @@
 package host
 
 //revive:disable:exported
-// Contract descriptions below are verbatim Rust product text.
+// Contract doc comments below are product text, which does not start with the declared name.
 
 import (
 	"context"
@@ -153,7 +153,7 @@ func (*PortReadStdin) portRequest()     {}
 func (*PortReadLiveStdin) portRequest() {}
 func (*PortStorage) portRequest()       {}
 
-// The reply to a [`PortRequest`].
+// The reply to a [PortRequest].
 // +demi:union tag=type
 // +demi:root
 //
@@ -214,7 +214,7 @@ func (*StorageRead) storageOp()    {}
 func (*StorageList) storageOp()    {}
 func (*StorageWriteIf) storageOp() {}
 
-// The answer to a [`StorageOp`].
+// The answer to a [StorageOp].
 // +demi:union tag=outcome
 // +demi:root
 //

@@ -22,7 +22,7 @@ type Dispatcher struct {
 	// Contexts resolves live execution authority.
 	Contexts *Contexts
 	// Services acquires native command services.
-	Services *cmdpkgs.ServiceHandle
+	Services *cmdpkgs.ServiceRegistry
 	// Pipes transfers callback input and output.
 	Pipes *process.PipeClient
 }

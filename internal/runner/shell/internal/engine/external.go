@@ -55,14 +55,14 @@ func (e *execution) external(ctx context.Context, args []string) error {
 	defer release()
 	state.Waiting(1)
 	defer state.Waiting(-1)
-	status := child.Wait(ctx)
+	status, waitErr := child.Wait(ctx)
 	if err := finishDescriptors(); err != nil {
 		return err
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	return externalStatus(status)
+	return externalStatus(status, waitErr)
 }
 
 // exported supplies only variables marked for child inheritance.
@@ -96,9 +96,9 @@ func externalCommand(ctx context.Context, path string, args []string) *exec.Cmd 
 	return cmd
 }
 
-func externalStatus(status process.Exit) error {
-	if status.Error != nil {
-		return errors.New(*status.Error)
+func externalStatus(status process.Exit, waitErr error) error {
+	if waitErr != nil {
+		return waitErr
 	}
 	if status.Code != nil {
 		if *status.Code == 0 {

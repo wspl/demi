@@ -75,14 +75,12 @@ type OutputChunk struct {
 	Bytes []byte
 }
 
-// Exit reports the child's status and any runner failure beside that status.
+// Exit reports the child's status.
 type Exit struct {
 	// Code is the known exit status, when available.
 	Code *int32
 	// Signal is the terminating signal, when available.
 	Signal *string
-	// Error is the optional runner failure diagnostic.
-	Error *string
 }
 
 // Input is a chunk of process input. A nil Bytes slice means end of input;
@@ -106,6 +104,7 @@ type Child struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 	exit    Exit
+	err     error
 }
 
 // Spawn starts a process with piped standard IO and startup child attributes.
@@ -158,7 +157,7 @@ func Spawn(ctx context.Context, options SpawnOptions) (*Child, error) {
 	return child, nil
 }
 
-// chunkWriter forwards child output with the same four-chunk backpressure as Rust.
+// chunkWriter forwards child output in chunks of at most 64 KiB; the output channel holds four, so a slow reader blocks the child's writes.
 type chunkWriter struct {
 	cancel context.CancelFunc
 	ctx    context.Context
@@ -217,14 +216,15 @@ func (c *Child) Cancel() {
 
 // Wait returns the cached exit after reaping and draining. Cancellation cancels
 // the child and still joins it before returning.
-func (c *Child) Wait(ctx context.Context) Exit {
+// The error reports a failure of the runner's own IO, reaping or signalling; the status stays valid beside it.
+func (c *Child) Wait(ctx context.Context) (Exit, error) {
 	select {
 	case <-c.done:
 	case <-ctx.Done():
 		c.Cancel()
 		<-c.done
 	}
-	return c.exit
+	return c.exit, c.err
 }
 
 // Command owns a caller-configured exec.Cmd and its process group. The caller
@@ -243,6 +243,7 @@ type Command struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	exit          Exit
+	err           error
 	cancelledFlag bool
 	mu            sync.Mutex
 }
@@ -325,24 +326,24 @@ func (c *Command) own(streams *commandStreams) {
 	if !stop() {
 		<-interrupted
 	}
-	c.exit = commandExit(c.cmd.ProcessState, err)
+	c.exit, c.err = commandExit(c.cmd.ProcessState, err)
 	if failure := streams.failure(); failure != nil {
-		message := failure.Error()
-		c.exit.Error = &message
+		c.err = failure
 	}
 	c.platform.close()
 }
 
 // Wait reaps the command and joins its owned work. Context cancellation kills
 // it and its group before joining. The result includes nonzero exit status.
-func (c *Command) Wait(ctx context.Context) Exit {
+// The error reports a failure of the runner's own IO, reaping or signalling; the status stays valid beside it.
+func (c *Command) Wait(ctx context.Context) (Exit, error) {
 	select {
 	case <-c.done:
 	case <-ctx.Done():
 		c.requestCancel() // The owner kills, interrupts IO and joins all work.
 		<-c.done
 	}
-	return c.exit
+	return c.exit, c.err
 }
 
 // Kill terminates the command and its owned group; an already gone group succeeds.
@@ -388,7 +389,7 @@ func (c *Command) cancelled() bool {
 }
 
 // Start retries a single spawn attempt on descriptor exhaustion and briefly
-// on a busy executable. Both async and blocking Rust callers use this function.
+// on a busy executable.
 func Start[T any](ctx context.Context, attempt func() (T, error)) (T, error) {
 	var backoff cmdsdk.Backoff
 	var busy time.Duration
@@ -437,7 +438,7 @@ func classifyFailure(err error, options SpawnOptions) *SpawnFailure {
 }
 
 // commandExit retains a known exit status even when runner IO also failed.
-func commandExit(state *os.ProcessState, err error) Exit {
+func commandExit(state *os.ProcessState, err error) (Exit, error) {
 	var result Exit
 	if state != nil {
 		if code := state.ExitCode(); code >= 0 {
@@ -449,10 +450,9 @@ func commandExit(state *os.ProcessState, err error) Exit {
 	}
 	var exitError *exec.ExitError
 	if err != nil && !errors.As(err, &exitError) {
-		message := err.Error()
-		result.Error = &message
+		return result, err
 	}
-	return result
+	return result, nil
 }
 
 func writeChildInput(ctx context.Context, input <-chan Input, writer *io.PipeWriter) (err error) {
@@ -497,17 +497,16 @@ awaitExit:
 		}
 	}
 	c.exit = c.command.exit
+	c.err = c.command.err
 	if signalFailure != nil {
-		message := signalFailure.Error()
-		c.exit.Error = &message
+		c.err = signalFailure
 	}
 	_ = stdin.Close() // Unblock a writer after the child no longer accepts input.
 	_ = writer.Close()
 	cancel()
 	<-written
 	if *writeErr != nil && !errors.Is(*writeErr, io.ErrClosedPipe) && !errors.Is(*writeErr, syscall.EPIPE) {
-		message := (*writeErr).Error()
-		c.exit.Error = &message
+		c.err = *writeErr
 	}
 	close(output)
 }
