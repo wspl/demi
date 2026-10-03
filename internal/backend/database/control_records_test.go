@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -23,17 +24,15 @@ func TestProviderCredentialVersionsAndCascades(t *testing.T) {
 	account := CredentialWrite{ID: "account-1", Label: "one", Source: "login", Secret: []byte{1, 2, 3}}
 	inserted, err := c.InsertProvider(ctx, provider, []CredentialWrite{account})
 	require(t, err)
-	if inserted == nil {
-		t.Fatal("provider missing")
-	}
 	provider.ID = "entry-2"
-	duplicate, err := c.InsertProvider(ctx, provider, nil)
-	require(t, err)
-	equal(t, (*ProviderRow)(nil), duplicate)
-	read, err := c.Provider(ctx, inserted.ID)
+	_, err = c.InsertProvider(ctx, provider, nil)
+	if !errors.Is(err, ErrSubscriptionExists) {
+		t.Fatalf("duplicate subscription: %v", err)
+	}
+	read, _, err := c.Provider(ctx, inserted.ID)
 	require(t, err)
 	equal(t, &account.ID, read.Active)
-	credential, err := c.Credential(ctx, inserted.ID, account.ID)
+	credential, _, err := c.Credential(ctx, inserted.ID, account.ID)
 	require(t, err)
 	equal(t, uint64(1), credential.Version)
 	equal(t, account.Secret, credential.Secret)
@@ -44,16 +43,16 @@ func TestProviderCredentialVersionsAndCascades(t *testing.T) {
 	require(t, err)
 	equal(t, false, changed)
 	require(t, c.RemoveCredential(ctx, inserted.ID, account.ID))
-	read, err = c.Provider(ctx, inserted.ID)
+	read, _, err = c.Provider(ctx, inserted.ID)
 	require(t, err)
 	equal(t, (*webapi.CredentialID)(nil), read.Active)
 	changed, err = c.WriteCredential(ctx, inserted.ID, account)
 	require(t, err)
 	equal(t, true, changed)
 	require(t, c.DeleteProvider(ctx, inserted.ID))
-	credential, err = c.Credential(ctx, inserted.ID, account.ID)
+	_, found, err := c.Credential(ctx, inserted.ID, account.ID)
 	require(t, err)
-	equal(t, (*CredentialRow)(nil), credential)
+	equal(t, false, found)
 }
 
 func TestWorkspaceForkAndCloudRecords(t *testing.T) {
@@ -67,9 +66,9 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 	require(t, err)
 	equal(t, cloud, same)
 	require(t, c.RotateDeviceToken(ctx, cloud.ID, HashToken("boot")))
-	read, err := c.DeviceByToken(ctx, HashToken("boot"))
+	read, _, err := c.DeviceByToken(ctx, HashToken("boot"))
 	require(t, err)
-	equal(t, &cloud, read)
+	equal(t, cloud, read)
 	device, err := c.CreateDevice(ctx, owner.ID, "laptop", runnerwire.RunnerPlatformLinux, HashToken("paired"))
 	require(t, err)
 	workspace, err := c.CreateWorkspace(ctx, NewWorkspaceID(), owner.ID, device.ID, "/work", "Work")
@@ -91,9 +90,11 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 	)
 	require(t, err)
 	equal(t, true, changed)
-	deletion, err := c.DeleteWorkspace(ctx, owner.ID, workspace.ID)
-	require(t, err)
-	equal(t, &WorkspaceInUse{Count: 1}, deletion)
+	err = c.DeleteWorkspace(ctx, owner.ID, workspace.ID)
+	var inUse *WorkspaceInUseError
+	if !errors.As(err, &inUse) || inUse.Count != 1 {
+		t.Fatalf("deletion: %v", err)
+	}
 	operation := ForkOperation{
 		ID:     conversation(2),
 		Owner:  owner.ID,
@@ -108,7 +109,7 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 	}
 	reserved, err := c.ReserveFork(ctx, operation)
 	require(t, err)
-	equal(t, &operation, reserved)
+	equal(t, operation, reserved)
 	again, err := c.ReserveFork(ctx, operation)
 	require(t, err)
 	equal(t, reserved, again)
@@ -127,7 +128,7 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 	reset, err := c.AnnouncedCloudReset(ctx, source.ID)
 	require(t, err)
 	equal(t, new(webapi.OperationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a04")), reset)
-	record, err := c.Conversation(ctx, source.ID)
+	record, _, err := c.Conversation(ctx, source.ID)
 	require(t, err)
 	equal(t, uint64(2), record.ContextVersion)
 	uses, err := c.CloudUses(ctx, owner.ID, &cloud.ID)
@@ -140,7 +141,7 @@ func TestEmailChallengeCooldownAttemptsAndConsumption(t *testing.T) {
 	c, clock := testControl(t)
 	ctx := t.Context()
 	owner := testMaster(t, c)
-	account, err := c.Account(ctx, owner.ID)
+	account, _, err := c.Account(ctx, owner.ID)
 	require(t, err)
 	policy := ChallengePolicy{Lifetime: time.Hour, Cooldown: time.Minute, Attempts: 2}
 	code := HashCode([]byte("key"), "challenge", "123456")
@@ -153,30 +154,30 @@ func TestEmailChallengeCooldownAttemptsAndConsumption(t *testing.T) {
 	}
 	expires, err := c.IssueEmailChallenge(ctx, issue, policy)
 	require(t, err)
-	if expires == nil {
-		t.Fatal("challenge not issued")
+	_, err = c.IssueEmailChallenge(ctx, issue, policy)
+	if !errors.Is(err, ErrCoolingDown) {
+		t.Fatalf("cooldown: %v", err)
 	}
-	denied, err := c.IssueEmailChallenge(ctx, issue, policy)
-	require(t, err)
-	equal(t, (*core.Timestamp)(nil), denied)
-	outcome, err := c.ConfirmEmailChallenge(
+	_, err = c.ConfirmEmailChallenge(
 		ctx,
 		owner.ID,
 		issue.ID,
 		HashCode([]byte("key"), issue.ID, "wrong"),
 		policy.Attempts,
 	)
-	require(t, err)
-	equal(t, &ChallengeInvalidCode{}, outcome)
-	outcome, err = c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, code, policy.Attempts)
+	if !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("wrong code: %v", err)
+	}
+	changed, err := c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, code, policy.Attempts)
 	require(t, err)
 	expected := owner
 	expected.Email = issue.Email
-	equal(t, &ChallengeChanged{User: expected}, outcome)
-	outcome, err = c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, code, policy.Attempts)
-	require(t, err)
-	equal(t, &ChallengeInvalidCode{}, outcome)
-	clock.at = *expires
+	equal(t, expected, changed)
+	_, err = c.ConfirmEmailChallenge(ctx, owner.ID, issue.ID, code, policy.Attempts)
+	if !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("reused code: %v", err)
+	}
+	clock.at = expires
 }
 
 func TestPasswordHashPHCSyntax(t *testing.T) {

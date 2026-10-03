@@ -77,15 +77,15 @@ type memoryStore struct {
 	failure error
 }
 
-func (m *memoryStore) Device(_ context.Context, id webapi.DeviceID) (*database.DeviceRecord, error) {
+func (m *memoryStore) Device(_ context.Context, id webapi.DeviceID) (database.DeviceRecord, bool, error) {
 	if id == "missing" {
-		return nil, nil
+		return database.DeviceRecord{}, false, nil
 	}
 	user := webapi.UserID("owner")
 	if id == "foreign" {
 		user = "other"
 	}
-	return &database.DeviceRecord{ID: id, User: user}, m.failure
+	return database.DeviceRecord{ID: id, User: user}, m.failure == nil, m.failure
 }
 
 func (m *memoryStore) CreateExpose(
@@ -117,22 +117,22 @@ func (m *memoryStore) CreateExpose(
 	return record, nil
 }
 
-func (m *memoryStore) Expose(ctx context.Context, id webapi.ExposeID) (*database.ExposeRecord, error) {
+func (m *memoryStore) Expose(ctx context.Context, id webapi.ExposeID) (database.ExposeRecord, bool, error) {
 	if m.read != nil {
 		if err := m.read(ctx); err != nil {
-			return nil, err
+			return database.ExposeRecord{}, false, err
 		}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failure != nil {
-		return nil, m.failure
+		return database.ExposeRecord{}, false, m.failure
 	}
 	record, ok := m.records[id]
 	if !ok {
-		return nil, nil
+		return database.ExposeRecord{}, false, nil
 	}
-	return &record, nil
+	return record, true, nil
 }
 
 func (m *memoryStore) UserExposes(_ context.Context, user webapi.UserID) (database.UserExposes, error) {
@@ -162,23 +162,23 @@ func (m *memoryStore) RenewExpose(
 	id webapi.ExposeID,
 	user webapi.UserID,
 	lifetime time.Duration,
-) (*database.ExposeRecord, error) {
+) (database.ExposeRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failure != nil {
-		return nil, m.failure
+		return database.ExposeRecord{}, m.failure
 	}
 	record, ok := m.records[id]
 	if !ok || record.User != user || record.ExpiresAt <= (core.SystemClock{}).Now() {
-		return nil, nil
+		return database.ExposeRecord{}, database.ErrExposeNotFound
 	}
 	expiry, err := core.TimestampFromTime(time.Now().Add(lifetime))
 	if err != nil {
-		return nil, err
+		return database.ExposeRecord{}, err
 	}
 	record.ExpiresAt = expiry
 	m.records[id] = record
-	return &record, nil
+	return record, nil
 }
 
 func (m *memoryStore) DeleteExpose(_ context.Context, id webapi.ExposeID) error {
@@ -339,8 +339,7 @@ func TestRecordLifecycleAndOwnership(t *testing.T) {
 			t.Fatal(err)
 		}
 		<-admission.Ending()
-		var missing *expose.NotFoundError
-		if err := expose.Remove(t.Context(), s, first.Record.ID); !errors.As(err, &missing) {
+		if err := expose.Remove(t.Context(), s, first.Record.ID); !errors.Is(err, expose.ErrNotFound) {
 			t.Fatalf("remove again = %v", err)
 		}
 		s.store.mu.Lock()
@@ -348,10 +347,10 @@ func TestRecordLifecycleAndOwnership(t *testing.T) {
 		record.User = "other"
 		s.store.records[record.ID] = record
 		s.store.mu.Unlock()
-		if _, err := expose.Renew(t.Context(), s, record.ID, time.Hour); !errors.As(err, &missing) {
+		if _, err := expose.Renew(t.Context(), s, record.ID, time.Hour); !errors.Is(err, expose.ErrNotFound) {
 			t.Fatalf("foreign renewal = %v", err)
 		}
-		if err := expose.Remove(t.Context(), s, record.ID); !errors.As(err, &missing) {
+		if err := expose.Remove(t.Context(), s, record.ID); !errors.Is(err, expose.ErrNotFound) {
 			t.Fatalf("foreign remove = %v", err)
 		}
 		if _, err := expose.AdmitRelay(t.Context(), s, record.ID); !errors.Is(err, expose.ErrRelayNotFound) {
@@ -375,8 +374,7 @@ func TestCreationRefusalsAndDisabledInstance(t *testing.T) {
 		}
 	}
 	s.connected = false
-	var offline *expose.DeviceOfflineError
-	if _, err := expose.Add(t.Context(), s, "device", "80", time.Hour); !errors.As(err, &offline) {
+	if _, err := expose.Add(t.Context(), s, "device", "80", time.Hour); !errors.Is(err, expose.ErrDeviceOffline) {
 		t.Fatalf("offline: %v", err)
 	}
 	s.domain = nil
@@ -387,11 +385,10 @@ func TestCreationRefusalsAndDisabledInstance(t *testing.T) {
 	if err != nil || len(list) != 0 {
 		t.Fatalf("disabled list: %v, %v", list, err)
 	}
-	var missing *expose.NotFoundError
-	if _, err := expose.Renew(t.Context(), s, testID, time.Hour); !errors.As(err, &missing) {
+	if _, err := expose.Renew(t.Context(), s, testID, time.Hour); !errors.Is(err, expose.ErrNotFound) {
 		t.Fatal(err)
 	}
-	if err := expose.Remove(t.Context(), s, testID); !errors.As(err, &missing) {
+	if err := expose.Remove(t.Context(), s, testID); !errors.Is(err, expose.ErrNotFound) {
 		t.Fatal(err)
 	}
 }
@@ -487,8 +484,8 @@ func TestExpiryFollowsRenewalAndEndsRelay(t *testing.T) {
 		if !ended || time.Since(start) != 90*time.Minute {
 			t.Fatalf("relay ended=%v at %v", ended, time.Since(start))
 		}
-		record, err := s.store.Expose(t.Context(), value.Record.ID)
-		if err != nil || record != nil {
+		record, found, err := s.store.Expose(t.Context(), value.Record.ID)
+		if err != nil || found {
 			t.Fatalf("expired record: %v, %v", record, err)
 		}
 		if s.exposes.Active() != 0 {
@@ -513,8 +510,8 @@ func TestLastReleaseStopsExpiryWatch(t *testing.T) {
 		<-done
 		synctest.Wait()
 		time.Sleep(2 * time.Hour)
-		record, err := s.store.Expose(t.Context(), value.Record.ID)
-		if err != nil || record == nil {
+		record, found, err := s.store.Expose(t.Context(), value.Record.ID)
+		if err != nil || !found {
 			t.Fatalf("unobserved record should expire on next read: %v, %v", record, err)
 		}
 		if _, err := expose.AdmitRelay(t.Context(), s, value.Record.ID); !errors.Is(err, expose.ErrRelayNotFound) {
@@ -531,7 +528,6 @@ func TestExpiredReadsAndDeviceDestruction(t *testing.T) {
 				value := add(t, s, time.Hour)
 				a := admit(t, s, value.Record.ID)
 				time.Sleep(time.Hour)
-				var missing *expose.NotFoundError
 				switch operation {
 				case "list":
 					list, err := expose.List(t.Context(), s)
@@ -540,19 +536,19 @@ func TestExpiredReadsAndDeviceDestruction(t *testing.T) {
 					}
 				case "renew":
 					_, err := expose.Renew(t.Context(), s, value.Record.ID, time.Hour)
-					if !errors.As(err, &missing) {
+					if !errors.Is(err, expose.ErrNotFound) {
 						t.Fatal(err)
 					}
 				case "remove":
-					if err := expose.Remove(t.Context(), s, value.Record.ID); !errors.As(err, &missing) {
+					if err := expose.Remove(t.Context(), s, value.Record.ID); !errors.Is(err, expose.ErrNotFound) {
 						t.Fatal(err)
 					}
 				case "device":
 					expose.DestroyOn(t.Context(), s, value.Record.Device)
 				}
 				<-a.Ending()
-				record, err := s.store.Expose(t.Context(), value.Record.ID)
-				if err != nil || record != nil {
+				record, found, err := s.store.Expose(t.Context(), value.Record.ID)
+				if err != nil || found {
 					t.Fatalf("record: %v, %v", record, err)
 				}
 			})
@@ -602,7 +598,7 @@ func TestFirstExpiryWaitsOrCancels(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := expose.FirstExpiry(t.Context(), core.SystemClock{}, &at); err != nil {
+		if err := expose.FirstExpiry(t.Context(), core.SystemClock{}, at); err != nil {
 			t.Fatal(err)
 		}
 		if time.Since(start) != time.Hour {
@@ -610,7 +606,11 @@ func TestFirstExpiryWaitsOrCancels(t *testing.T) {
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { done <- expose.FirstExpiry(ctx, core.SystemClock{}, nil) }()
+		later, err := core.TimestampFromTime(time.Now().Add(time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() { done <- expose.FirstExpiry(ctx, core.SystemClock{}, later) }()
 		synctest.Wait()
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {

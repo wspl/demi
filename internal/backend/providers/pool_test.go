@@ -162,7 +162,7 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 	if _, ok, err := pool.Active(ctx); err != nil || ok {
 		t.Fatalf("removed active: %v %v", ok, err)
 	}
-	if err := vault.Delete(ctx, *entry); err != nil {
+	if err := vault.Delete(ctx, entry); err != nil {
 		t.Fatal(err)
 	}
 	if rows, err := vault.Accounts(ctx, entry.ID); err != nil || len(rows) != 0 {

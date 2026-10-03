@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/webapi"
@@ -49,13 +50,14 @@ func ImportSetupToken(
 		return ProviderEntry{}, err
 	}
 	e, err := assembly.vault.CreateSubscription(ctx, owner, SetupTokenFamily, label, staged)
+	if errors.Is(err, database.ErrSubscriptionExists) {
+		return ProviderEntry{}, &AccountRefusal{Kind: AccountExists}
+	}
 	if err != nil {
 		return ProviderEntry{}, accountAssembly(err)
 	}
-	if e == nil {
-		return ProviderEntry{}, &AccountRefusal{Kind: AccountExists}
-	}
-	return *e, nil
+
+	return e, nil
 }
 
 // AddToken adds a setup token account to an entry.
@@ -146,11 +148,11 @@ func RemoveAccount(
 	if active := entry.Active(); active != nil && *active == account {
 		return &AccountRefusal{Kind: AccountActive}
 	}
-	row, err := assembly.vault.Account(ctx, entry.ID, account)
+	_, found, err := assembly.vault.Account(ctx, entry.ID, account)
 	if err != nil {
 		return accountAssembly(err)
 	}
-	if row == nil {
+	if !found {
 		return &AccountRefusal{Kind: AccountNotFound}
 	}
 	ctx = context.WithoutCancel(ctx)

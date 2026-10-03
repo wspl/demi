@@ -158,7 +158,7 @@ func TestJobRunsWithinHostAccessAndRejectsChangedHost(t *testing.T) {
 	if err := hostaccess.RunJob(t.Context(), f.shard, conversationID, remote.Key(), job); err != nil {
 		t.Fatal(err)
 	}
-	record, err := f.services.Control.Conversation(t.Context(), conversationID)
+	record, _, err := f.services.Control.Conversation(t.Context(), conversationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestJobRunsWithinHostAccessAndRejectsChangedHost(t *testing.T) {
 
 func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T) {
 	f := shardFixture(t, "build")
-	account, err := f.services.Control.Account(t.Context(), f.owner)
+	account, _, err := f.services.Control.Account(t.Context(), f.owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 	if len(attached) != 1 || attached[0].Device != build {
 		t.Fatalf("attachments = %+v", attached)
 	}
-	record, err := f.services.Control.Conversation(t.Context(), conversationID)
+	record, _, err := f.services.Control.Conversation(t.Context(), conversationID)
 	if err != nil {
 		t.Fatal(err)
 	}

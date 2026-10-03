@@ -90,22 +90,6 @@ func (p requestPort) conversationID() (webapi.ConversationID, error) {
 	return *p.conversation, nil
 }
 
-// writtenAnswer preserves database compare-and-set conflicts as plugin refusals.
-func writtenAnswer(written database.Written, removed bool) (plugin.PortAnswer, error) {
-	switch w := written.(type) {
-	case *database.WrittenRevision:
-		if removed {
-			return &plugin.PortAnswerDone{}, nil
-		}
-		return &plugin.PortAnswerWritten{Revision: w.Revision}, nil
-	case *database.WrittenConflict:
-		return nil, &plugin.PortRefusalConflict{}
-	case *database.WrittenRefused:
-		return nil, storageError(w.Err)
-	}
-	return nil, &host.PortError{Kind: host.PortFailed, Message: "no plugin write result"}
-}
-
 // storageError preserves the storage failure behind the plugin port's error.
 func storageError(err error) error {
 	return &host.PortError{Kind: host.PortFailed, Message: err.Error(), Err: err}
@@ -118,12 +102,12 @@ func (p requestPort) readValue(
 ) (plugin.PortAnswer, error) {
 	u := p.user
 	id := string(u.registry.plugins[p.index].manifest.ID)
-	value, err := u.control.PluginValue(ctx, u.id, id, m.Key)
+	value, found, err := u.control.PluginValue(ctx, u.id, id, m.Key)
 	if err != nil {
 		return nil, storageError(err)
 	}
 	var stored *plugin.StoredValue
-	if value != nil {
+	if found {
 		stored = &plugin.StoredValue{Value: value.Document, Revision: value.Revision}
 	}
 	return &plugin.PortAnswerValue{Value: stored}, nil
@@ -151,7 +135,7 @@ func (p requestPort) writeValue(
 ) (plugin.PortAnswer, error) {
 	u := p.user
 	id := string(u.registry.plugins[p.index].manifest.ID)
-	written, err := u.control.WritePluginValue(
+	revision, err := u.control.WritePluginValue(
 		context.WithoutCancel(ctx),
 		database.ValueWrite{
 			User:     u.id,
@@ -163,10 +147,13 @@ func (p requestPort) writeValue(
 		},
 		u.shard.BlobUses(),
 	)
+	if errors.Is(err, database.ErrRevisionConflict) {
+		return nil, &plugin.PortRefusalConflict{}
+	}
 	if err != nil {
 		return nil, storageError(err)
 	}
-	return writtenAnswer(written, false)
+	return &plugin.PortAnswerWritten{Revision: revision}, nil
 }
 
 // removeValue serves the plugin’s RemoveValue storage request.
@@ -176,7 +163,7 @@ func (p requestPort) removeValue(
 ) (plugin.PortAnswer, error) {
 	u := p.user
 	id := string(u.registry.plugins[p.index].manifest.ID)
-	written, err := u.control.RemovePluginValue(
+	err := u.control.RemovePluginValue(
 		context.WithoutCancel(ctx),
 		u.id,
 		id,
@@ -184,10 +171,13 @@ func (p requestPort) removeValue(
 		m.Revision,
 		u.shard.BlobUses(),
 	)
+	if errors.Is(err, database.ErrRevisionConflict) {
+		return nil, &plugin.PortRefusalConflict{}
+	}
 	if err != nil {
 		return nil, storageError(err)
 	}
-	return writtenAnswer(written, true)
+	return &plugin.PortAnswerDone{}, nil
 }
 
 // setDirectories serves the plugin’s SetDirectories storage request.

@@ -72,15 +72,20 @@ func (s exposeStore) CreateExpose(
 		return database.ExposeRecord{}, err
 	}
 	defer permit.Release()
-	record, err := s.Device(ctx, device)
+	record, found, err := s.Device(ctx, device)
 	if err != nil {
 		return database.ExposeRecord{}, err
 	}
-	if record == nil || record.User != user {
+	if !found || record.User != user {
 		return database.ExposeRecord{}, expose.ErrDeviceNotFound
 	}
-	if !(exposeView{s.shard}).DeviceConnected(*record) {
-		return database.ExposeRecord{}, &expose.DeviceOfflineError{Device: device}
+	if !(exposeView{s.shard}).DeviceConnected(record) {
+		//nolint:staticcheck // ST1005: user-visible text.
+		return database.ExposeRecord{}, fmt.Errorf(
+			"The device %s %w",
+			device,
+			expose.ErrDeviceOffline,
+		)
 	}
 	return s.Store.CreateExpose(ctx, id, user, device, address, lifetime)
 }
@@ -119,11 +124,11 @@ var _ expose.ExposeShard = exposeView{}
 func (s *Shard) portExpose(ctx context.Context, value expose.Expose) (plugin.ExposeRecord, error) {
 	record := exposeRecord(value)
 	record.DeviceName = string(value.Record.Device)
-	device, err := s.services.Control.Device(ctx, value.Record.Device)
+	device, found, err := s.services.Control.Device(ctx, value.Record.Device)
 	if err != nil {
 		return plugin.ExposeRecord{}, err
 	}
-	if device != nil {
+	if found {
 		record.DeviceName = device.Name
 	}
 	return record, nil

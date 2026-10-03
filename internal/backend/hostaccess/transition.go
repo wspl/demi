@@ -2,6 +2,7 @@ package hostaccess
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 
@@ -72,23 +73,20 @@ func HoldForTransition(
 // Commit applies a held record change. Once commit starts it finishes with
 // shard-owned bookkeeping even if the requester leaves.
 func Commit(ctx context.Context, shard HostShard, id webapi.ConversationID, change database.RecordChange) error {
-	outcome, err := shard.Control().ChangeConversation(context.WithoutCancel(ctx), id, change)
-	if err != nil {
-		return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
-	}
-	switch outcome {
-	case database.ChangeApplied:
+	err := shard.Control().ChangeConversation(context.WithoutCancel(ctx), id, change)
+	switch {
+	case err == nil:
 		return nil
-	case database.ChangeMissing:
+	case errors.Is(err, database.ErrConversationNotFound):
 		return &ChangeRefusal{Kind: ChangeNotFound}
-	case database.ChangeArchived:
+	case errors.Is(err, database.ErrArchived):
 		return &ChangeRefusal{Kind: ChangeArchived}
-	case database.ChangeNotAttached:
+	case errors.Is(err, database.ErrNotAttached):
 		return &ChangeRefusal{Kind: ChangeNotAttached}
-	case database.ChangeNameTaken:
+	case errors.Is(err, database.ErrNameTaken):
 		return &ChangeRefusal{Kind: ChangeNameTaken}
 	}
-	return nil
+	return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
 }
 
 // CheckDestination checks ownership of the workspace or paired destination.
@@ -100,19 +98,19 @@ func CheckDestination(
 ) error {
 	switch target := to.(type) {
 	case *webapi.ConversationTargetWorkspace:
-		workspace, err := shard.Control().Workspace(ctx, target.WorkspaceID)
+		workspace, found, err := shard.Control().Workspace(ctx, target.WorkspaceID)
 		if err != nil {
 			return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
 		}
-		if workspace == nil || workspace.User != record.Owner {
+		if !found || workspace.User != record.Owner {
 			return &ChangeRefusal{Kind: ChangeWorkspaceNotFound}
 		}
 	case *webapi.ConversationTargetDevice:
-		device, err := shard.Control().Device(ctx, target.DeviceID)
+		device, ok, err := shard.Control().Device(ctx, target.DeviceID)
 		if err != nil {
 			return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
 		}
-		if device == nil || device.User != record.Owner || device.Kind != webapi.DeviceKindUser {
+		if !ok || device.User != record.Owner || device.Kind != webapi.DeviceKindUser {
 			return &ChangeRefusal{Kind: ChangeDeviceNotFound}
 		}
 	case *webapi.ConversationTargetCloud:
@@ -130,11 +128,11 @@ func SwitchTarget(
 	to webapi.ConversationTarget,
 ) error {
 	ctx = context.WithoutCancel(ctx)
-	current, err := shard.Control().Conversation(ctx, expected.ID)
+	current, found, err := shard.Control().Conversation(ctx, expected.ID)
 	if err != nil {
 		return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
 	}
-	if current == nil {
+	if !found {
 		return &ChangeRefusal{Kind: ChangeNotFound}
 	}
 	if current.Archived {
@@ -150,13 +148,16 @@ func SwitchTarget(
 	if err != nil {
 		return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
 	}
-	departed := database.ExecutionDeviceID(from)
-	arriving := database.ExecutionDeviceID(destination)
-	ends := database.SwitchEnds{Arriving: arriving}
-	if departed != nil {
-		ends.Departed = &database.DepartedHost{Device: *departed, Path: database.ExecutionPath(from)}
-		if arriving == nil || *departed != *arriving {
-			releaseOn(ctx, shard, expected.ID, *departed)
+	departed, departs := database.ExecutionDeviceID(from)
+	arriving, arrives := database.ExecutionDeviceID(destination)
+	ends := database.SwitchEnds{}
+	if arrives {
+		ends.Arriving = &arriving
+	}
+	if departs {
+		ends.Departed = &database.DepartedHost{Device: departed, Path: database.ExecutionPath(from)}
+		if !arrives || departed != arriving {
+			releaseOn(ctx, shard, expected.ID, departed)
 		}
 	}
 	won, err := shard.Control().

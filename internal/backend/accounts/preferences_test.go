@@ -2,7 +2,6 @@ package accounts
 
 import (
 	"context"
-	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -14,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func TestRustLocaleFixtures(t *testing.T) {
+func TestLocaleFixtures(t *testing.T) {
 	data, err := os.ReadFile("testdata/locales.tsv")
 	if err != nil {
 		t.Fatal(err)
@@ -25,10 +24,10 @@ func TestRustLocaleFixtures(t *testing.T) {
 			got, err := canonicalLanguage(fields[0])
 			if fields[1] == "ERROR" {
 				if err == nil {
-					t.Fatalf("Rust refused %q, Go accepted %q", fields[0], got)
+					t.Fatalf("the fixture refuses %q, canonicalLanguage accepted it as %q", fields[0], got)
 				}
 			} else if err != nil || got != fields[1] {
-				t.Fatalf("got %q (%v), Rust wrote %q", got, err, fields[1])
+				t.Fatalf("got %q (%v), the fixture wants %q", got, err, fields[1])
 			}
 		})
 	}
@@ -130,8 +129,7 @@ func TestInvalidLocaleDoesNotReachStorage(t *testing.T) {
 			Locale: &commandwire.CommandLocale{TimeZone: "wrong", Languages: []commandwire.LanguageTag{"en"}},
 		},
 	)
-	var zoneErr *UnknownTimeZone
-	if !errors.As(err, &zoneErr) {
+	if err == nil || err.Error() != "locale.timeZone: \"wrong\" is not a time zone the backend knows" {
 		t.Fatalf("wrong error: %v", err)
 	}
 }

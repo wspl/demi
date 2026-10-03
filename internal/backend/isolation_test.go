@@ -207,7 +207,7 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	if len(s.hosts()) != 0 {
 		t.Fatal("revoked attachment remains")
 	}
-	// Rust requires natural termination, irrespective of the child's exit status.
+	// The runner must end on its own; its exit status does not matter.
 	if err := laptop.Runner.Exited(s.ctx); err != nil && s.ctx.Err() != nil {
 		t.Fatal(err)
 	}

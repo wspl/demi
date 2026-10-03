@@ -37,11 +37,11 @@ func shardFixture(t *testing.T, names ...string) *fixture {
 	t.Helper()
 	services := usershardtest.StartServices(t)
 	owner := databasetest.Master(t.Context(), t, services.Control).ID
-	created, err := services.Control.CreateConversation(t.Context(), owner, conversationID)
+	_, created, err := services.Control.CreateConversation(t.Context(), owner, conversationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := created.(*database.ConversationCreated); !ok {
+	if !created {
 		t.Fatalf("conversation creation = %T", created)
 	}
 	shards := usershardtest.StartShards(t, services)
@@ -273,7 +273,7 @@ func TestTransitionRefusesWorkAndFieldUpdateWaits(t *testing.T) {
 			t.Fatalf("rename completed while held: %v", err)
 		default:
 		}
-		record, err := f.services.Control.Conversation(t.Context(), conversationID)
+		record, _, err := f.services.Control.Conversation(t.Context(), conversationID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -284,7 +284,7 @@ func TestTransitionRefusesWorkAndFieldUpdateWaits(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Fatal(err)
 		}
-		record, err = f.services.Control.Conversation(t.Context(), conversationID)
+		record, _, err = f.services.Control.Conversation(t.Context(), conversationID)
 		if err != nil || record.Title != "Renamed" {
 			t.Fatalf("rename = %+v, %v", record, err)
 		}
@@ -439,7 +439,7 @@ func (r *releaseRunner) recordRelease(ctx context.Context, message *runnerwire.C
 	if err != nil {
 		return err
 	}
-	record, err := r.f.services.Control.Conversation(ctx, id)
+	record, _, err := r.f.services.Control.Conversation(ctx, id)
 	if err != nil {
 		return err
 	}

@@ -61,7 +61,7 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 	main := s.paired(t, "main")
 	record := s.target(t, s.conversation(t), main, "/work")
 	device := s.paired(t, "attached")
-	if _, err := s.control.ChangeConversation(
+	if err := s.control.ChangeConversation(
 		t.Context(),
 		record.ID,
 		&database.RecordAttach{Host: database.AttachedHostRecord{Device: device.ID, Name: "remote"}},

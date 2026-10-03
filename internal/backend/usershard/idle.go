@@ -33,12 +33,12 @@ func (p conversationIdle) Changed() <-chan struct{} {
 }
 
 // Reserve holds a quiescent conversation for idle retirement.
-func (p conversationIdle) Reserve(context.Context) (idlewatch.Retirement, error) {
+func (p conversationIdle) Reserve(context.Context) (idlewatch.Retirement, bool, error) {
 	hold := p.shard.HoldForIdle(p.id)
 	if hold == nil {
-		return nil, nil
+		return nil, false, nil
 	}
-	return &idleRetirement{conversationIdle: p, hold: hold}, nil
+	return &idleRetirement{conversationIdle: p, hold: hold}, true, nil
 }
 
 type idleRetirement struct {

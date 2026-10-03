@@ -40,14 +40,14 @@ type heldExposeRead struct {
 	resume  chan struct{}
 }
 
-func (h *heldExposeRead) Expose(ctx context.Context, id webapi.ExposeID) (*database.ExposeRecord, error) {
-	record, err := h.Store.Expose(ctx, id)
+func (h *heldExposeRead) Expose(ctx context.Context, id webapi.ExposeID) (database.ExposeRecord, bool, error) {
+	record, found, err := h.Store.Expose(ctx, id)
 	close(h.arrived)
 	select {
 	case <-h.resume:
-		return record, err
+		return record, found, err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return database.ExposeRecord{}, false, ctx.Err()
 	}
 }
 
@@ -94,11 +94,11 @@ func TestExpiredSnapshotCannotDeleteRenewal(t *testing.T) {
 	if admissionErr != nil {
 		t.Errorf("relay refused renewed expose: %v", admissionErr)
 	}
-	record, err := control.Expose(t.Context(), value.Record.ID)
+	record, found, err := control.Expose(t.Context(), value.Record.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record == nil || record.ExpiresAt != renewed.Record.ExpiresAt {
+	if !found || record.ExpiresAt != renewed.Record.ExpiresAt {
 		t.Fatalf("renewal lost: %#v", record)
 	}
 	select {

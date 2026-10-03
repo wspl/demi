@@ -81,12 +81,12 @@ func (e *Edge) relay(
 		notFound()
 		return
 	}
-	record, err := e.state.Services.Control.Expose(ctx, id)
+	record, found, err := e.state.Services.Control.Expose(ctx, id)
 	if err != nil {
 		unavailable()
 		return
 	}
-	if record == nil {
+	if !found {
 		notFound()
 		return
 	}

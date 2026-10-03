@@ -33,16 +33,17 @@ func TestCommandOutputStoredWithRetentionRecordAndFailureReason(t *testing.T) {
 	}
 	read := func(command core.CommandID) *database.CommandOutput {
 		t.Helper()
-		var row *database.CommandOutput
+		var row database.CommandOutput
+		var found bool
 		exists, err := s.ConversationDB(record.ID).Read(t.Context(), func(ctx context.Context, tx *sql.Tx) error {
 			var err error
-			row, err = database.ReadCommandOutput(ctx, tx, command)
+			row, found, err = database.ReadCommandOutput(ctx, tx, command)
 			return err
 		})
-		if err != nil || !exists || row == nil {
+		if err != nil || !exists || !found {
 			t.Fatalf("output row: %v, exists=%t, %v", row, exists, err)
 		}
-		return row
+		return &row
 	}
 	row := read("1")
 	stored, ok := row.Output.(*database.OutputStored)

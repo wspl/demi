@@ -14,13 +14,13 @@ func (e *Edge) panel(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if r.Method == "GET" || r.Method == "HEAD" {
-		panel, err := e.state.Services.Control.Panel(r.Context(), record.ID)
+		panel, found, err := e.state.Services.Control.Panel(r.Context(), record.ID)
 		if err != nil {
 			return err
 		}
-		if panel == nil {
+		if !found {
 			empty := webapi.EmptyWorkPanel()
-			panel = &empty
+			panel = empty
 		}
 		writeJSON(w, 200, panel)
 		return nil

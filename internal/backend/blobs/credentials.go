@@ -32,10 +32,13 @@ func storageCredentials(ctx context.Context, region string, client *http.Client)
 	switch {
 	case os.Getenv("AWS_ACCESS_KEY_ID") != "" || os.Getenv("AWS_SECRET_ACCESS_KEY") != "":
 		if os.Getenv("AWS_ACCESS_KEY_ID") == "" {
-			return nil, fmt.Errorf("Missing AccessKeyId") //nolint:staticcheck // Preserve the Rust object-store error.
+			//nolint:staticcheck // ST1005: the diagnostic names the missing AWS field.
+			return nil, fmt.Errorf(
+				"Missing AccessKeyId",
+			)
 		}
 		if os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
-			//nolint:staticcheck // Preserve the Rust object-store error.
+			//nolint:staticcheck // ST1005: the diagnostic names the missing AWS field.
 			return nil, fmt.Errorf("Missing SecretAccessKey")
 		}
 		provider = credentials.StaticCredentialsProvider{Value: env.Credentials}

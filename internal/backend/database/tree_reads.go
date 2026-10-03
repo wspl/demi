@@ -18,7 +18,7 @@ func Summary(ctx context.Context, tx *sql.Tx) (SummaryFacts, error) {
 		count    int64
 		revision uint64
 	}
-	root, err := queryRecord(
+	root, found, err := queryRecord(
 		ctx,
 		tx,
 		"nodes",
@@ -35,10 +35,10 @@ func Summary(ctx context.Context, tx *sql.Tx) (SummaryFacts, error) {
 	if err != nil {
 		return SummaryFacts{}, err
 	}
-	if root == nil {
+	if !found {
 		return EmptySummary(), nil
 	}
-	terminal, err := queryRecord(
+	terminal, ok, err := queryRecord(
 		ctx,
 		tx,
 		"blocks",
@@ -55,7 +55,9 @@ LIMIT 1`,
 		return SummaryFacts{}, err
 	}
 	facts := SummaryFacts{Phase: root.state.Phase, Revision: root.revision}
-	facts.Last = summaryTerminal(terminal)
+	if ok {
+		facts.Last = summaryTerminal(&terminal)
+	}
 	return facts, nil
 }
 
@@ -72,7 +74,7 @@ func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 		id    core.NodeID
 		count int64
 	}
-	root, err := queryRecord(
+	root, found, err := queryRecord(
 		ctx,
 		tx,
 		"nodes",
@@ -82,7 +84,7 @@ func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 		},
 	)
 	history := History{Blocks: []core.Block{}, Subagents: []NodeHistory{}}
-	if err != nil || root == nil {
+	if err != nil || !found {
 		return history, err
 	}
 	history.Blocks, err = blocksOf(ctx, tx, root.id, root.count)

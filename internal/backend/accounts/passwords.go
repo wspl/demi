@@ -18,15 +18,6 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
-// HashError is why hashing or verifying failed.
-type HashError struct{ Err error }
-
-// Error describes the failed Argon2 operation.
-func (e *HashError) Error() string { return "argon2 failed: " + e.Err.Error() }
-
-// Unwrap exposes the underlying hashing or verification error.
-func (e *HashError) Unwrap() error { return e.Err }
-
 // PasswordHasher bounds concurrent password hashes to the runtime's available CPU parallelism.
 // An admitted hash runs in its caller's goroutine and retains its permit until
 // completion, even if the request is canceled while Argon2 runs.
@@ -55,7 +46,8 @@ func newPasswordHasher(ctx context.Context, permits int) (*PasswordHasher, error
 	return h, nil
 }
 
-// Hash hashes a password with Rust Argon2's default parameters and PHC spelling.
+// Hash hashes a password with Argon2id (version 19, m=19456, t=2, p=1, a random
+// 16-byte salt, a 32-byte key) and returns it as a PHC string.
 func (h *PasswordHasher) Hash(ctx context.Context, password webapi.Password) (database.PasswordHash, error) {
 	text, err := h.hash(ctx, password)
 	if err != nil {
@@ -63,7 +55,7 @@ func (h *PasswordHasher) Hash(ctx context.Context, password webapi.Password) (da
 	}
 	stored, err := database.ParsePasswordHash(text)
 	if err != nil {
-		return database.PasswordHash{}, &HashError{Err: err}
+		return database.PasswordHash{}, fmt.Errorf("argon2 failed: %w", err)
 	}
 	return stored, nil
 }
@@ -101,7 +93,8 @@ func (h *PasswordHasher) verify(ctx context.Context, password webapi.Password, s
 	return verifyPassword(password, stored)
 }
 
-// hashPassword writes the PHC representation used by Rust's default Argon2.
+// hashPassword writes $argon2id$v=19$m=19456,t=2,p=1$<salt>$<key>, with salt and
+// key in unpadded standard base64.
 func hashPassword(password webapi.Password, salt []byte) string {
 	key := argon2.IDKey([]byte(password), salt, 2, 19456, 1, 32)
 	return "$argon2id$v=19$m=19456,t=2,p=1$" + base64.RawStdEncoding.EncodeToString(
@@ -115,7 +108,7 @@ func hashPassword(password webapi.Password, salt []byte) string {
 func verifyPassword(password webapi.Password, stored string) (bool, error) {
 	parsed, err := parsePHC(stored)
 	if err != nil {
-		return false, &HashError{Err: err}
+		return false, fmt.Errorf("argon2 failed: %w", err)
 	}
 	var key []byte
 	switch parsed.algorithm {

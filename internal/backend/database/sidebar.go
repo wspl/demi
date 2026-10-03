@@ -26,7 +26,7 @@ func (c *ControlService) ReorderConversations(
 			archived, pinned bool
 			workspace        *string
 		}
-		p, err := queryRecord(
+		p, found, err := queryRecord(
 			ctx,
 			tx,
 			"conversations",
@@ -37,7 +37,7 @@ func (c *ControlService) ReorderConversations(
 			moved,
 			user,
 		)
-		if err != nil || p == nil {
+		if err != nil || !found {
 			return false, err
 		}
 		if p.archived {

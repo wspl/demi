@@ -158,7 +158,8 @@ func watchRunner(ctx context.Context, socket *runners.Socket, work func(context.
 }
 
 func (e *Edge) adoptRunner(ctx context.Context, socket *runners.Socket, hello *runnerwire.Hello) error {
-	var device *database.DeviceRecord
+	var device database.DeviceRecord
+	var found bool
 	err := watchRunner(ctx, socket, func(ctx context.Context) error {
 		if e.state.Services.Hooks != nil {
 			if err := e.state.Services.Hooks.Hello(ctx, usershard.HelloTokenLookup); err != nil {
@@ -166,7 +167,7 @@ func (e *Edge) adoptRunner(ctx context.Context, socket *runners.Socket, hello *r
 			}
 		}
 		var err error
-		device, err = e.state.Services.Control.DeviceByToken(ctx, database.HashToken(hello.DeviceToken.Expose()))
+		device, found, err = e.state.Services.Control.DeviceByToken(ctx, database.HashToken(hello.DeviceToken.Expose()))
 		return err
 	})
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -175,12 +176,12 @@ func (e *Edge) adoptRunner(ctx context.Context, socket *runners.Socket, hello *r
 	if err != nil {
 		return refuseRunner(ctx, socket, runnerwire.HelloErrorCodeInternal, "the device could not be read")
 	}
-	if device == nil {
+	if !found {
 		return refuseRunner(ctx, socket, runnerwire.HelloErrorCodeUnknownDevice, "unknown device")
 	}
 	shard, err := e.state.Shards.Of(ctx, device.User)
 	if err != nil {
 		return nil
 	}
-	return shard.AdoptRunner(ctx, *device, hello.Runner, socket)
+	return shard.AdoptRunner(ctx, device, hello.Runner, socket)
 }

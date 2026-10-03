@@ -336,8 +336,7 @@ func TestExposeConnectionsEndWithRecordAndOfflineDeviceKeepsRecords(t *testing.T
 	filesContains(t, string(answer.Body), "device_offline")
 	conversationEqual(t, filesExposeState(ctx, t, b, &s).Exposes, []exposeplugin.ExposeEntry{kept})
 	_, err = backendtest.CreateExpose(ctx, b.Backend, s.User.ID, laptop.ID(), port)
-	var offline *expose.DeviceOfflineError
-	if !errors.As(err, &offline) {
+	if !errors.Is(err, expose.ErrDeviceOffline) {
 		t.Fatalf("offline expose: %v", err)
 	}
 	wireMust(t, laptop.Runner.StartAgain(ctx))

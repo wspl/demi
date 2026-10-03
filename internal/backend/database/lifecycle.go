@@ -100,7 +100,7 @@ func OpenConversations(ctx context.Context, directory string, maxWriters int) (*
 		return nil, fmt.Errorf("writer count must be between 1 and %d", MaxWriters)
 	}
 	if err := os.MkdirAll(directory, 0o755); err != nil {
-		return nil, &Error{Kind: IOFailure, Err: err}
+		return nil, fmt.Errorf("%w: %w", errFileSystem, err)
 	}
 	return &ConversationStores{
 		directory: directory,
@@ -272,7 +272,7 @@ func (d *ConversationDB) Read(ctx context.Context, work func(context.Context, *s
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
-		return false, &Error{Kind: IOFailure, Err: err}
+		return false, fmt.Errorf("%w: %w", errFileSystem, err)
 	}
 	db, err := openSQLite(ctx, path, "", true)
 	if err != nil {
@@ -288,7 +288,7 @@ func (d *ConversationDB) Read(ctx context.Context, work func(context.Context, *s
 			return nil
 		}
 		if version != schemaVersion(conversationSchema) {
-			return &Error{Kind: OtherSchema, Path: path}
+			return fmt.Errorf("%s %w", path, errOtherSchema)
 		}
 		found = true
 		return work(ctx, tx)

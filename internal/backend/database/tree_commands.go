@@ -97,7 +97,7 @@ func readCommandState(
 }
 
 func writeCommandVersion(ctx context.Context, tx *sql.Tx, node core.NodeID, version store.CommandVersion) error {
-	before, err := queryRecord(
+	before, found, err := queryRecord(
 		ctx,
 		tx,
 		"command_snapshots",
@@ -109,7 +109,7 @@ func writeCommandVersion(ctx context.Context, tx *sql.Tx, node core.NodeID, vers
 	if err != nil {
 		return err
 	}
-	if before == nil {
+	if !found {
 		document, err := encoded(commandValues(version.Values))
 		if err != nil {
 			return err
@@ -126,7 +126,7 @@ func writeCommandVersion(ctx context.Context, tx *sql.Tx, node core.NodeID, vers
 		}
 		return nil
 	}
-	same, err := equalCommandValues(*before, version.Values)
+	same, err := equalCommandValues(before, version.Values)
 	if err != nil {
 		return err
 	}

@@ -11,17 +11,28 @@ import (
 // Panel returns the conversation's saved panel; nil when it never saved one. A
 // stored document that no longer matches the panel's shape is corrupt,
 // not repaired.
-func (c *ControlService) Panel(ctx context.Context, conversation webapi.ConversationID) (*webapi.WorkPanel, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*webapi.WorkPanel, error) {
-		return queryRecord(
-			ctx,
-			tx,
-			"conversation_panels",
-			"SELECT document FROM conversation_panels WHERE conversation_id = ?",
-			func(r *storedRow) webapi.WorkPanel { return storedJSON(r, "document", webapi.DecodeWorkPanel) },
-			conversation,
-		)
-	})
+func (c *ControlService) Panel(
+	ctx context.Context,
+	conversation webapi.ConversationID,
+) (webapi.WorkPanel, bool, error) {
+	var found bool
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (webapi.WorkPanel, error) {
+			r, ok, err := queryRecord(
+				ctx,
+				tx,
+				"conversation_panels",
+				"SELECT document FROM conversation_panels WHERE conversation_id = ?",
+				func(r *storedRow) webapi.WorkPanel { return storedJSON(r, "document", webapi.DecodeWorkPanel) },
+				conversation,
+			)
+			found = ok
+			return r, err
+		},
+	)
+	return record, found && err == nil, err
 }
 
 // SavePanel replaces the conversation's panel with `document`, the panel's JSON.

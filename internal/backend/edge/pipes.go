@@ -24,12 +24,12 @@ func (e *Edge) pipe(w http.ResponseWriter, r *http.Request) error {
 		plain(w, 401, "device token required")
 		return nil
 	}
-	device, err := e.state.Services.Control.DeviceByToken(r.Context(), database.HashToken(token))
+	device, found, err := e.state.Services.Control.DeviceByToken(r.Context(), database.HashToken(token))
 	if err != nil {
 		w.WriteHeader(500)
 		return nil
 	}
-	if device == nil {
+	if !found {
 		plain(w, 401, "device token required")
 		return nil
 	}

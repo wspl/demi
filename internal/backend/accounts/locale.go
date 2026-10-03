@@ -16,25 +16,6 @@ import (
 // CheckedPatch has a known IANA time zone and unique canonical language tags.
 type CheckedPatch struct{ patch webapi.PreferencesPatch }
 
-// UnknownTimeZone identifies an unrecognized reported time zone.
-type UnknownTimeZone struct{ Zone string }
-
-// Error identifies the rejected time zone in the preference patch.
-func (e *UnknownTimeZone) Error() string {
-	return fmt.Sprintf("locale.timeZone: %q is not a time zone the backend knows", e.Zone)
-}
-
-// MalformedTag identifies a malformed language in the reported preference order.
-type MalformedTag struct {
-	Index int
-	Tag   string
-}
-
-// Error identifies the rejected language at its preference index.
-func (e *MalformedTag) Error() string {
-	return fmt.Sprintf("locale.languages[%d]: %q is not a BCP 47 language tag", e.Index, e.Tag)
-}
-
 // Check validates a preference patch and canonicalizes its reported locale.
 func Check(patch webapi.PreferencesPatch) (CheckedPatch, error) {
 	if err := patch.Validate(); err != nil {
@@ -67,13 +48,20 @@ var normalizedZones = func() map[string]string {
 func canonicalLocale(locale commandwire.CommandLocale) (commandwire.CommandLocale, error) {
 	zone, ok := normalizedZones[strings.ToLower(locale.TimeZone)]
 	if !ok || strings.ContainsFunc(locale.TimeZone, func(r rune) bool { return r > 127 }) {
-		return commandwire.CommandLocale{}, &UnknownTimeZone{Zone: locale.TimeZone}
+		return commandwire.CommandLocale{}, fmt.Errorf(
+			"locale.timeZone: %q is not a time zone the backend knows",
+			locale.TimeZone,
+		)
 	}
 	languages := make([]commandwire.LanguageTag, 0, len(locale.Languages))
 	for i, tag := range locale.Languages {
 		canonical, err := canonicalLanguage(string(tag))
 		if err != nil {
-			return commandwire.CommandLocale{}, &MalformedTag{Index: i, Tag: string(tag)}
+			return commandwire.CommandLocale{}, fmt.Errorf(
+				"locale.languages[%d]: %q is not a BCP 47 language tag",
+				i,
+				string(tag),
+			)
 		}
 		if !slices.Contains(languages, commandwire.LanguageTag(canonical)) {
 			languages = append(languages, commandwire.LanguageTag(canonical))
@@ -82,8 +70,9 @@ func canonicalLocale(locale commandwire.CommandLocale) (commandwire.CommandLocal
 	return commandwire.CommandLocale{TimeZone: zone, Languages: languages}, nil
 }
 
-// x/text accepts underscore separators, grandfathered tags and private-only
-// tags that ICU Locale rejects. This guard keeps the Rust input grammar.
+// x/text accepts underscore separators, grandfathered tags and private-use-only
+// tags. localeSyntax refuses them: a tag starts with a 2- or 3-letter language
+// and separates its subtags with hyphens.
 var (
 	localeSyntax = regexp.MustCompile(
 		`(?i)^[a-z]{2,3}(-[a-z]{4})?(-([a-z]{2}|[0-9]{3}))?` +

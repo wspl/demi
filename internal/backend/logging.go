@@ -10,12 +10,15 @@ import (
 )
 
 type logTarget struct {
-	target *string
-	fields []string
-	level  slog.Level
+	target   string
+	targeted bool
+	fields   []string
+	level    slog.Level
 }
 
-// parseLogTargets reads the backend's tracing-subscriber Targets syntax.
+// parseLogTargets reads DEMI_LOG: comma-separated directives, each a level or
+// target[{field,...}]=level, where a level is off, error, warn, info, debug,
+// trace or 0 to 5.
 func parseLogTargets(text string) ([]logTarget, error) {
 	result := []logTarget{}
 	levels := map[string]slog.Level{
@@ -42,7 +45,8 @@ func parseLogTargets(text string) ([]logTarget, error) {
 			if ok {
 				rule.level = parsed
 			} else {
-				rule.target = &entry
+				rule.target = entry
+				rule.targeted = true
 			}
 			result = append(result, rule)
 			continue
@@ -72,13 +76,14 @@ func (*targetHandler) Enabled(context.Context, slog.Level) bool { return true }
 
 // Handle filters a record using its target and fields before forwarding it.
 func (h *targetHandler) Handle(ctx context.Context, record slog.Record) error {
-	var target *string
+	var target string
+	targeted := false
 	fields := make(map[string]bool)
 	visit := func(a slog.Attr) bool {
 		fields[a.Key] = true
 		if a.Key == "target" {
-			name := a.Value.String()
-			target = &name
+			target = a.Value.String()
+			targeted = true
 		}
 		return true
 	}
@@ -90,7 +95,7 @@ func (h *targetHandler) Handle(ctx context.Context, record slog.Record) error {
 	var selected *logTarget
 	for i := range h.targets {
 		rule := &h.targets[i]
-		if rule.target != nil && (target == nil || !strings.HasPrefix(*target, *rule.target)) {
+		if rule.targeted && (!targeted || !strings.HasPrefix(target, rule.target)) {
 			continue
 		}
 		matches := true
@@ -101,11 +106,11 @@ func (h *targetHandler) Handle(ctx context.Context, record slog.Record) error {
 			continue
 		}
 		rank, previous := -1, -1
-		if rule.target != nil {
-			rank = len(*rule.target)
+		if rule.targeted {
+			rank = len(rule.target)
 		}
-		if selected != nil && selected.target != nil {
-			previous = len(*selected.target)
+		if selected != nil && selected.targeted {
+			previous = len(selected.target)
 		}
 		if selected == nil || rank > previous ||
 			rank == previous && (len(rule.fields) > len(selected.fields) ||
@@ -134,13 +139,14 @@ func (h *targetHandler) WithGroup(name string) slog.Handler {
 	return &targetHandler{next: h.next.WithGroup(name), targets: h.targets, attrs: h.attrs}
 }
 
-// parseLogTargetFields reads the optional tracing field filter for one target.
+// parseLogTargetFields reads one directive's target and its optional [{field,...}] filter.
 func parseLogTargetFields(rule *logTarget, text string) error {
 	target := strings.Split(text, "[{")
 	if len(target) > 2 {
 		return errors.New("invalid filter directive: too many '[{' in filter directive, expected 0 or 1")
 	}
-	rule.target = &target[0]
+	rule.target = target[0]
+	rule.targeted = true
 	if len(target) == 2 {
 		if !strings.HasSuffix(target[1], "}]") {
 			return errors.New("invalid filter directive: expected fields list to end with '}]'")

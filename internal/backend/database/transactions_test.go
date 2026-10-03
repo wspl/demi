@@ -44,8 +44,7 @@ func TestDraftConflictsRestoreDismissAndRefusals(t *testing.T) {
 	require(t, err)
 	equal(t, (*webapi.ReplacedDraft)(nil), saved.Replaced)
 	_, err = c.ChangeReplacedDraft(ctx, id, webapi.ReplacedActionRestore, second.Revision)
-	var refusal *DraftRefusal
-	if !errors.As(err, &refusal) || refusal.Reason != DraftChanged {
+	if !errors.Is(err, ErrDraftChanged) {
 		t.Fatalf("stale restore: %v", err)
 	}
 	upload, err := c.CreateAttachment(ctx, owner.ID, "text/plain", 3, blob(1), new("abc"))
@@ -69,13 +68,14 @@ func TestDraftConflictsRestoreDismissAndRefusals(t *testing.T) {
 		saved.Files[0],
 	)
 	_, err = c.SaveDraft(ctx, id, "someone-else", saved.Revision, "bad", files)
-	if !errors.As(err, &refusal) || refusal.Reason != DraftUploadNotFound {
+	var missing *UploadNotFoundError
+	if !errors.As(err, &missing) {
 		t.Fatalf("foreign upload: %v", err)
 	}
-	_, err = c.ChangeConversation(ctx, id, &RecordArchived{Archived: true})
+	err = c.ChangeConversation(ctx, id, &RecordArchived{Archived: true})
 	require(t, err)
 	_, err = c.SaveDraft(ctx, id, owner.ID, saved.Revision, "archived", nil)
-	if !errors.As(err, &refusal) || refusal.Reason != DraftArchived {
+	if !errors.Is(err, ErrArchived) {
 		t.Fatalf("archived: %v", err)
 	}
 	read, err := c.Draft(ctx, id)
@@ -97,24 +97,24 @@ func TestPluginWritesCompareRevisionAndRollbackBlobRefusal(t *testing.T) {
 	}
 	result, err := c.WritePluginValue(ctx, write, blobs)
 	require(t, err)
-	equal(t, &WrittenRevision{Revision: 1}, result)
-	got, err := c.PluginValue(ctx, owner.ID, "notes", "note")
+	equal(t, uint64(1), result)
+	got, _, err := c.PluginValue(ctx, owner.ID, "notes", "note")
 	require(t, err)
 	equal(t, write.Document, got.Document)
-	result, err = c.WritePluginValue(ctx, write, blobs)
-	require(t, err)
-	equal(t, &WrittenConflict{}, result)
+	_, err = c.WritePluginValue(ctx, write, blobs)
+	if !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("conflict: %v", err)
+	}
 	write.Revision = new(uint64(1))
 	write.Document = json.RawMessage(`{"b":2}`)
 	write.Blobs = []core.BlobRef{blob(2)}
 	refused := errors.New("being deleted")
 	blobs.refuse = refused
-	result, err = c.WritePluginValue(ctx, write, blobs)
-	require(t, err)
-	if r, ok := result.(*WrittenRefused); !ok || !errors.Is(r.Err, refused) {
-		t.Fatalf("refusal %v", result)
+	_, err = c.WritePluginValue(ctx, write, blobs)
+	if !errors.Is(err, refused) {
+		t.Fatalf("refusal %v", err)
 	}
-	after, err := c.PluginValue(ctx, owner.ID, "notes", "note")
+	after, _, err := c.PluginValue(ctx, owner.ID, "notes", "note")
 	require(t, err)
 	equal(t, got, after)
 	directory := plugin.HostDirectory{Name: "files", Files: []plugin.DirectoryFile{{Path: "a.txt", Blob: blob(3)}}}
@@ -133,9 +133,7 @@ func TestPluginWritesCompareRevisionAndRollbackBlobRefusal(t *testing.T) {
 	refs, err := c.PluginBlobs(ctx, owner.ID)
 	require(t, err)
 	equal(t, []core.BlobRef{blob(1), blob(3)}, refs)
-	result, err = c.RemovePluginValue(ctx, owner.ID, "notes", "note", 1, blobs)
-	require(t, err)
-	equal(t, &WrittenRevision{Revision: 1}, result)
+	require(t, c.RemovePluginValue(ctx, owner.ID, "notes", "note", 1, blobs))
 	require(t, c.SetUserPlugin(ctx, owner.ID, "notes", false))
 	choices, err := c.UserPlugins(ctx, owner.ID)
 	require(t, err)
@@ -210,8 +208,8 @@ func TestCommandOutputsRetentionAndBlobRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	require(t, db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		read, err := ReadCommandOutput(ctx, tx, row.Command)
-		equal(t, &row, read)
+		read, _, err := ReadCommandOutput(ctx, tx, row.Command)
+		equal(t, row, read)
 		return err
 	}))
 	blobs.refuse = nil
@@ -221,7 +219,7 @@ func TestCommandOutputsRetentionAndBlobRefusal(t *testing.T) {
 		return err
 	}))
 	require(t, db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		read, err := ReadCommandOutput(ctx, tx, row.Command)
+		read, _, err := ReadCommandOutput(ctx, tx, row.Command)
 		if err != nil {
 			return err
 		}

@@ -39,9 +39,9 @@ type Retirement interface {
 // Policy reads, reserves and retires a resource without exposing its identity.
 type Policy interface {
 	Check(ctx context.Context) (Activity, error)
-	// Reserve returns nil while work or maintenance holds the resource.
+	// Reserve returns false while work or maintenance holds the resource.
 	// An error returns no retirement; the policy releases partial acquisitions.
-	Reserve(ctx context.Context) (Retirement, error)
+	Reserve(ctx context.Context) (Retirement, bool, error)
 	// Changed subscribes to changes that may let a reservation succeed. The
 	// watch subscribes before reserving so a concurrent release is not missed.
 	Changed() <-chan struct{}
@@ -53,7 +53,7 @@ type Policy interface {
 // are supplied by the owner, which shares one idle-window setting.
 // Once retirement starts, cancellation cannot interrupt it: Watch waits for
 // it to finish and release its reservation before returning. A retirement
-// panic ends this watch, as a failed Rust retirement task does.
+// panic is logged and ends this watch.
 func Watch(ctx context.Context, policy Policy, window, poll time.Duration) {
 	var since time.Time
 	for ctx.Err() == nil {
@@ -74,13 +74,13 @@ func Watch(ctx context.Context, policy Policy, window, poll time.Duration) {
 			continue
 		}
 		changed := policy.Changed()
-		retirement, err := policy.Reserve(ctx)
+		retirement, ok, err := policy.Reserve(ctx)
 		if err != nil {
 			slog.WarnContext(ctx, "an idle watch could not reserve its resource", "error", err)
 			wait(ctx, poll, nil)
 			continue
 		}
-		if retirement == nil {
+		if !ok {
 			wait(ctx, poll, changed)
 			continue
 		}

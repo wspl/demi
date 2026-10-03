@@ -10,6 +10,6 @@ the Rust database crate, kept outside the repository in the migration's
 reference directory (`gomig-ref/oracles/database/rust-fixture`), since the
 repository holds no Rust.
 
-`TestRustDatabasesReadUnchanged` copies both fixtures, opens them with Go,
+`TestFixtureDatabasesReadUnchanged` copies both fixtures, opens them with Go,
 checks their records and schema versions, and compares the complete file
 hashes after closing. Tests do not build or run Rust.

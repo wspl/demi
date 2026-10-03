@@ -3,6 +3,7 @@ package edge
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -19,14 +20,14 @@ func (e *Edge) owned(r *http.Request) (*database.ConversationRecord, error) {
 	if err != nil {
 		return nil, missing
 	}
-	record, err := e.state.Services.Control.Conversation(r.Context(), id)
+	record, found, err := e.state.Services.Control.Conversation(r.Context(), id)
 	if err != nil {
 		return nil, err
 	}
-	if record == nil || record.Owner != caller(r).ID {
+	if !found || record.Owner != caller(r).ID {
 		return nil, missing
 	}
-	return record, nil
+	return &record, nil
 }
 
 func (e *Edge) conversations(w http.ResponseWriter, r *http.Request) error {
@@ -51,22 +52,18 @@ func (e *Edge) createConversation(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	result, err := e.state.Services.Control.CreateConversation(r.Context(), caller(r).ID, request.ID)
+	record, created, err := e.state.Services.Control.CreateConversation(r.Context(), caller(r).ID, request.ID)
+	if errors.Is(err, database.ErrIDUnavailable) {
+		return apiFailure(409, "id_unavailable", "Conversation id is unavailable")
+	}
 	if err != nil {
 		return err
 	}
-	var record database.ConversationRecord
 	status := 200
-	switch result := result.(type) {
-	case *database.ConversationCreated:
-		record = result.Record
+	if created {
 		status = 201
 		e.state.Services.Sync.Mark(caller(r).ID, pagesync.Part{Kind: pagesync.Conversation, ConversationID: record.ID})
 		e.state.Services.Sync.Mark(caller(r).ID, pagesync.Part{Kind: pagesync.ConversationOrder})
-	case *database.ConversationExisting:
-		record = result.Record
-	case *database.ConversationUnavailable:
-		return apiFailure(409, "id_unavailable", "Conversation id is unavailable")
 	}
 	shard, err := e.state.Shards.Of(r.Context(), caller(r).ID)
 	if err != nil {

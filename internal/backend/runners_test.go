@@ -297,7 +297,7 @@ func TestDisconnectedRunnerCancelsHeldTokenLookup(t *testing.T) {
 	if err := hold.UntilArrived(s.ctx, 1); err != nil {
 		t.Fatal(err)
 	}
-	// Close sends the close frame and waits for the peer, as Rust next() does.
+	// Close sends the close frame and waits for the peer's.
 	// EOF is an ended peer; a close-handshake timeout is not.
 	if err := r.socket.Close(websocket.StatusNormalClosure, ""); errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
@@ -762,7 +762,7 @@ func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
 		t.Fatalf("devices: %+v, %v", listed, err)
 	}
 	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+string(device.ID), "", 204)
-	// Rust observes termination, without requiring a particular exit status.
+	// The runner must end; its exit status does not matter.
 	err = runner.Exited(s.ctx)
 	if err != nil && s.ctx.Err() != nil {
 		t.Fatal(err)

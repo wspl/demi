@@ -49,19 +49,19 @@ func ReferenceRemoteFiles(
 		if err != nil {
 			return nil, ErrDeviceNotAccessible
 		}
-		device, err := shard.Control().Device(ctx, deviceID)
+		device, found, err := shard.Control().Device(ctx, deviceID)
 		if err != nil {
 			return nil, err
 		}
-		if device == nil || device.User != record.Owner {
+		if !found || device.User != record.Owner {
 			return nil, ErrDeviceNotAccessible
 		}
 		if !shard.Devices().Online(device.ID) {
 			//nolint:staticcheck // ST1005: product text, shown to the user as it is.
 			return nil, fmt.Errorf("Referenced device %s is offline", device.Name)
 		}
-		devices[file.Device] = *device
-		ordered = append(ordered, *device)
+		devices[file.Device] = device
+		ordered = append(ordered, device)
 	}
 	references := make([]core.UserContentBlock, 0, len(files))
 	for _, file := range files {
@@ -93,11 +93,11 @@ func ResolveUpload(
 	if err != nil {
 		return unavailable, store.HeldMedia{}, nil
 	}
-	record, err := shard.Control().Attachment(ctx, idUpload)
+	record, found, err := shard.Control().Attachment(ctx, idUpload)
 	if err != nil {
 		return nil, store.HeldMedia{}, &Error{Kind: AccessStorage, Cause: err}
 	}
-	if record == nil || record.Owner != shard.User() {
+	if !found || record.Owner != shard.User() {
 		return unavailable, store.HeldMedia{}, nil
 	}
 	bytes, exists, err := shard.Blobs().Read(ctx, record.SHA256)
@@ -180,21 +180,21 @@ func attachRemoteDevices(
 	if err != nil {
 		return err
 	}
-	main := database.ExecutionDeviceID(target)
+	main, hasMain := database.ExecutionDeviceID(target)
 	for _, device := range ordered {
-		if main != nil && device.ID == *main {
+		if hasMain && device.ID == main {
 			continue
 		}
-		outcome, err := shard.Control().
+		err := shard.Control().
 			ChangeConversation(
 				ctx, record.ID,
 				&database.RecordAttach{Host: database.AttachedHostRecord{Device: device.ID, Name: device.Name}},
 			)
+		if errors.Is(err, database.ErrConversationNotFound) || errors.Is(err, database.ErrArchived) {
+			return ErrDeviceNotAccessible
+		}
 		if err != nil {
 			return err
-		}
-		if outcome != database.ChangeApplied {
-			return ErrDeviceNotAccessible
 		}
 	}
 	return nil

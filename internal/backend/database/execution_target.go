@@ -4,17 +4,20 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// ExecutionDeviceID returns the target's device, nil before a Cloud's first use.
-func ExecutionDeviceID(target ExecutionTarget) *webapi.DeviceID {
+// ExecutionDeviceID returns the target's device; false before a Cloud's first use.
+func ExecutionDeviceID(target ExecutionTarget) (webapi.DeviceID, bool) {
 	switch target := target.(type) {
 	case *ExecutionCloud:
-		return target.DeviceID
+		if target.DeviceID == nil {
+			return "", false
+		}
+		return *target.DeviceID, true
 	case *ExecutionDevice:
-		return &target.DeviceID
+		return target.DeviceID, true
 	case *ExecutionWorkspace:
-		return &target.DeviceID
+		return target.DeviceID, true
 	}
-	return nil
+	return "", false
 }
 
 // ExecutionPath returns the directory work starts in on the target.

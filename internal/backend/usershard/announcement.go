@@ -23,8 +23,8 @@ func (s *Shard) executionContext(
 	seen []string,
 ) (*string, error) {
 	control := s.Control()
-	record, err := control.Conversation(ctx, id)
-	if err != nil || record == nil {
+	record, found, err := control.Conversation(ctx, id)
+	if err != nil || !found {
 		return nil, err
 	}
 	if record.ContextVersion == 0 {
@@ -71,30 +71,30 @@ func (s *Shard) executionContext(
 }
 
 func (s *Shard) describeTarget(ctx context.Context, target database.ExecutionTarget) (string, error) {
-	device := database.ExecutionDeviceID(target)
-	if device == nil {
+	device, ok := database.ExecutionDeviceID(target)
+	if !ok {
 		return "Cloud (not allocated)", nil
 	}
-	name := string(*device)
-	record, err := s.Control().Device(ctx, *device)
+	name := string(device)
+	record, found, err := s.Control().Device(ctx, device)
 	if err != nil {
 		return "", err
 	}
-	if record != nil {
+	if found {
 		name = "\"" + record.Name + "\""
 	}
 	if target, ok := target.(*database.ExecutionWorkspace); ok {
 		workspace := string(target.WorkspaceID)
-		record, err := s.Control().Workspace(ctx, target.WorkspaceID)
+		record, found, err := s.Control().Workspace(ctx, target.WorkspaceID)
 		if err != nil {
 			return "", err
 		}
-		if record != nil {
+		if found {
 			workspace = record.Name
 		}
 		return fmt.Sprintf("workspace \"%s\" — directory %s on device %s", workspace, target.Path, name), nil
 	}
-	return fmt.Sprintf("the machine %s (host %s)", name, *device), nil
+	return fmt.Sprintf("the machine %s (host %s)", name, device), nil
 }
 
 func (s *Shard) attachedHostsLine(attached []database.AttachedHostRecord) string {
@@ -134,9 +134,9 @@ func switchLines(
 			"target, and file paths from before the switch — including the full outputs " +
 			"of earlier commands — are stale here.",
 	}
-	if device := database.ExecutionDeviceID(change.From); device != nil {
+	if device, ok := database.ExecutionDeviceID(change.From); ok {
 		for _, departed := range attached {
-			if departed.Device == *device {
+			if departed.Device == device {
 				name, from := departed.Name, database.ExecutionPath(change.From)
 				lines = append(
 					lines,

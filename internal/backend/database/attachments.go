@@ -49,10 +49,18 @@ func (c *ControlService) CreateAttachment(
 }
 
 // Attachment returns the upload `id` names, whoever's it is.
-func (c *ControlService) Attachment(ctx context.Context, id webapi.AttachmentID) (*AttachmentRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*AttachmentRecord, error) {
-		return attachmentByID(ctx, tx, id)
-	})
+func (c *ControlService) Attachment(ctx context.Context, id webapi.AttachmentID) (AttachmentRecord, bool, error) {
+	var found bool
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (AttachmentRecord, error) {
+			r, ok, err := attachmentByID(ctx, tx, id)
+			found = ok
+			return r, err
+		},
+	)
+	return record, found && err == nil, err
 }
 
 // UploadBlobs returns the blob of each of `owner`'s uploads, which stay for as long as the
@@ -82,6 +90,6 @@ func attachmentRow(r *storedRow) AttachmentRecord {
 	}
 }
 
-func attachmentByID(ctx context.Context, tx *sql.Tx, id webapi.AttachmentID) (*AttachmentRecord, error) {
+func attachmentByID(ctx context.Context, tx *sql.Tx, id webapi.AttachmentID) (AttachmentRecord, bool, error) {
 	return queryRecord(ctx, tx, "attachments", "SELECT * FROM attachments WHERE id = ?", attachmentRow, id)
 }

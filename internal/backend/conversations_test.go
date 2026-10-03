@@ -84,7 +84,7 @@ func conversationEqual[T any](t *testing.T, got, want T) {
 	}
 }
 
-// conversationJSON encodes scenario input with serde-compatible escaping.
+// conversationJSON encodes scenario input with the wire contract's escaping (no HTML escaping).
 func conversationJSON(t *testing.T, v any) string {
 	t.Helper()
 	b, err := contract.EncodeJSON(v)
@@ -746,7 +746,8 @@ func conversationShell(t *testing.T, id, script string, timeout int) providertes
 	)
 }
 
-// conversationOnDevice seeds the same paired target used by Rust's on_device.
+// conversationOnDevice pairs a laptop and points the conversation's target at a
+// work directory on it, writing the control database directly.
 func conversationOnDevice(
 	ctx context.Context,
 	t *testing.T,
@@ -1149,8 +1150,8 @@ func TestLaggingSocketClosesAndReopenAdoptsRunningTree(t *testing.T) {
 		return false
 	})
 	wireMust(t, err)
-	// Rust's single-threaded shard overflowed before its relay ran. Go drains
-	// concurrently, so this page must really stop reading inside a large reset.
+	// The shard drains pages concurrently, so this page must really stop
+	// reading inside a large reset to overflow.
 	slow, err := backend.StallConversationReset(ctx, t, &session, conversationFirst)
 	wireMust(t, err)
 	// Each acknowledged delta lets the healthy page drain while the slow
@@ -1795,9 +1796,9 @@ func TestDeepSeekToolContinuationReplaysReasoning(t *testing.T) {
 // TestStalledPageDoesNotHoldShutdown checks that a stalled page cannot block shutdown.
 // An 8-MiB transcript fills a deliberately stalled TCP receiver; shutdown must
 // cancel the blocked write. Under -race this scenario costs about 22 seconds, mostly
-// preparing and transferring the reply. As in Rust, separate 20-second hang
-// guards cover the reset header and shutdown, not preparation; the package
-// deadline still bounds it.
+// preparing and transferring the reply. Separate 20-second hang guards cover
+// the reset header and shutdown, not preparation; the package deadline still
+// bounds it.
 func TestStalledPageDoesNotHoldShutdown(t *testing.T) {
 	t.Parallel()
 	started := time.Now()
