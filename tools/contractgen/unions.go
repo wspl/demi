@@ -41,42 +41,7 @@ func (g *generator) normalizeVariants() {
 		if !has(d.marks, "variant") {
 			continue
 		}
-		parts := strings.Fields(d.marks["variant"])
-		if len(parts) > 2 {
-			continue
-		}
-		value := ""
-		if len(parts) > 0 {
-			value = parts[len(parts)-1]
-		}
-		for _, other := range g.order {
-			u := g.defs[other]
-			if !has(u.marks, "union") || u.typ.Obj().Pkg() != d.typ.Obj().Pkg() {
-				continue
-			}
-			iface, ok := u.typ.Underlying().(*types.Interface)
-			if !ok {
-				continue
-			}
-			explicit := len(parts) == 2 && parts[0] == u.name
-			if explicit || len(parts) < 2 && types.Implements(types.NewPointer(d.typ), iface) {
-				d.unions = append(d.unions, other)
-			}
-		}
-		if len(d.unions) == 0 && len(parts) == 1 {
-			for _, other := range g.order {
-				u := g.defs[other]
-				if has(u.marks, "union") && u.typ.Obj().Pkg() == d.typ.Obj().Pkg() {
-					d.unions = append(d.unions, other)
-				}
-			}
-			if len(d.unions) != 1 {
-				d.unions = nil
-			}
-		}
-		if len(d.unions) > 0 {
-			d.marks["variant"] = d.unions[0] + " " + value
-		}
+		g.normalizeVariant(d)
 	}
 }
 
@@ -117,7 +82,7 @@ func tagLiteral(value string) string {
 	if value == "true" || value == "false" {
 		return value
 	}
-	return q(value)
+	return quote(value)
 }
 
 func (g *generator) unionKind(d *definition) string {
@@ -169,7 +134,9 @@ func (g *generator) retainContracts() error {
 		}
 		for _, union := range d.unions {
 			u := g.defs[union]
-			if bounds(u.marks["union"])["content"] != bounds(g.defs[d.unions[0]].marks["union"])["content"] || bounds(u.marks["union"])["tag"] != bounds(g.defs[d.unions[0]].marks["union"])["tag"] || u.marks["msgpack"] != g.defs[d.unions[0]].marks["msgpack"] {
+			if bounds(u.marks["union"])["content"] != bounds(g.defs[d.unions[0]].marks["union"])["content"] ||
+				bounds(u.marks["union"])["tag"] != bounds(g.defs[d.unions[0]].marks["union"])["tag"] ||
+				u.marks["msgpack"] != g.defs[d.unions[0]].marks["msgpack"] {
 				return fmt.Errorf("%s: %s: shared variant requires the same wire representation", d.position, d.name)
 			}
 		}
@@ -183,4 +150,43 @@ func emptyCollection(t types.Type) bool {
 		return true
 	}
 	return false
+}
+
+func (g *generator) normalizeVariant(d *definition) {
+	parts := strings.Fields(d.marks["variant"])
+	if len(parts) > 2 {
+		return
+	}
+	value := ""
+	if len(parts) > 0 {
+		value = parts[len(parts)-1]
+	}
+	for _, other := range g.order {
+		u := g.defs[other]
+		if !has(u.marks, "union") || u.typ.Obj().Pkg() != d.typ.Obj().Pkg() {
+			continue
+		}
+		iface, ok := u.typ.Underlying().(*types.Interface)
+		if !ok {
+			continue
+		}
+		explicit := len(parts) == 2 && parts[0] == u.name
+		if explicit || len(parts) < 2 && types.Implements(types.NewPointer(d.typ), iface) {
+			d.unions = append(d.unions, other)
+		}
+	}
+	if len(d.unions) == 0 && len(parts) == 1 {
+		for _, other := range g.order {
+			u := g.defs[other]
+			if has(u.marks, "union") && u.typ.Obj().Pkg() == d.typ.Obj().Pkg() {
+				d.unions = append(d.unions, other)
+			}
+		}
+		if len(d.unions) != 1 {
+			d.unions = nil
+		}
+	}
+	if len(d.unions) > 0 {
+		d.marks["variant"] = d.unions[0] + " " + value
+	}
 }

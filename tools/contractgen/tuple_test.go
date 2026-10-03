@@ -47,7 +47,12 @@ func TestKeptTuple(t *testing.T) {
 			if !bytes.Equal(input, output) {
 				t.Fatalf("kept bytes differ: %x", output)
 			}
-			want := []kept.Record{&kept.Output{Stream: "stdout", Data: []byte("first\n")}, &kept.Output{Stream: "stderr", Data: []byte{0, 255, 10}}, &kept.LeftOut{Bytes: 734003200}, &kept.Output{Stream: "stdout", Data: []byte("last\n")}}
+			want := []kept.Record{
+				&kept.Output{Stream: "stdout", Data: []byte("first\n")},
+				&kept.Output{Stream: "stderr", Data: []byte{0, 255, 10}},
+				&kept.LeftOut{Bytes: 734003200},
+				&kept.Output{Stream: "stdout", Data: []byte("last\n")},
+			}
 			if !reflect.DeepEqual(records, want) {
 				t.Fatalf("decoded records: %#v", records)
 			}

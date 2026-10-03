@@ -69,25 +69,8 @@ func readGraph(document []byte) (graph, error) {
 		if line == "" {
 			continue
 		}
-		source, targets, ok := strings.Cut(line, "->")
-		source = strings.TrimSpace(source)
-		targets = strings.TrimSpace(targets)
-		if !ok || !validPath(source) || targets == "" {
-			return nil, fmt.Errorf("invalid graph line %q", line)
-		}
-		if _, exists := result[source]; exists {
-			return nil, fmt.Errorf("duplicate graph package %s", source)
-		}
-		result[source] = map[string]bool{}
-		if targets == "none" {
-			continue
-		}
-		for _, target := range strings.Split(targets, ",") {
-			target = strings.TrimSpace(target)
-			if !validPath(target) || result[source][target] {
-				return nil, fmt.Errorf("invalid dependency in %q", line)
-			}
-			result[source][target] = true
+		if err := addGraphLine(result, line); err != nil {
+			return nil, err
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -99,19 +82,16 @@ func readGraph(document []byte) (graph, error) {
 	if phase != "closed" || len(result) == 0 {
 		return nil, errors.New("empty or unclosed Go package graph")
 	}
-	for source, targets := range result {
-		for target := range targets {
-			if _, ok := result[target]; !ok {
-				return nil, fmt.Errorf("%s names unlisted dependency %s", source, target)
-			}
-		}
+	if err := checkGraphTargets(result); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
 
 // isTestdata reports whether a package lies in a testdata directory.
 func isTestdata(name string) bool {
-	return name == "testdata" || strings.HasPrefix(name, "testdata/") || strings.Contains(name, "/testdata/") || strings.HasSuffix(name, "/testdata")
+	return name == "testdata" || strings.HasPrefix(name, "testdata/") || strings.Contains(name, "/testdata/") ||
+		strings.HasSuffix(name, "/testdata")
 }
 
 // supportOwner returns the package a test-support package supports: the
@@ -159,9 +139,19 @@ func run(ctx context.Context, dir, document string) error {
 // checkTarget checks Demi imports, including both forms of test package.
 func checkTarget(ctx context.Context, dir string, rules graph, seen map[string]bool, goos, goarch string) error {
 	loaded, err := packages.Load(&packages.Config{
-		Context: ctx, Dir: dir, Tests: true,
-		Env:  append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0", "GOFLAGS=-mod=readonly", "GOWORK=off"),
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps | packages.NeedModule | packages.NeedForTest,
+		Context: ctx,
+		Dir:     dir,
+		Tests:   true,
+		Env: append(
+			os.Environ(),
+			"GOOS="+goos,
+			"GOARCH="+goarch,
+			"CGO_ENABLED=0",
+			"GOFLAGS=-mod=readonly",
+			"GOWORK=off",
+		),
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps |
+			packages.NeedModule | packages.NeedForTest,
 	}, "./...")
 	if err != nil {
 		return fmt.Errorf("load packages: %w", err)
@@ -178,63 +168,111 @@ func checkTarget(ctx context.Context, dir string, rules graph, seen map[string]b
 		if pkg.Name == "main" && strings.HasSuffix(pkg.PkgPath, ".test") {
 			return true
 		}
-		relative, err := filepath.Rel(pkg.Module.Dir, pkg.Dir)
-		if err != nil {
-			problems = append(problems, err.Error())
-			return true
-		}
-		name := filepath.ToSlash(relative)
-		// Fixture packages under testdata belong to the tests that load them,
-		// not to the architecture.
-		if isTestdata(name) {
-			return true
-		}
-		seen[name] = true
-		allowed, exists := rules[name]
-		if !exists {
-			problems = append(problems, "unlisted package: "+name)
-			return true
-		}
-		for _, imported := range pkg.Imports {
-			prefix := pkg.Module.Path + "/"
-			if imported.PkgPath != pkg.Module.Path && !strings.HasPrefix(imported.PkgPath, prefix) {
-				continue
-			}
-			target := strings.TrimPrefix(imported.PkgPath, prefix)
-			if imported.PkgPath == pkg.Module.Path {
-				target = "."
-			}
-			if isTestdata(target) && pkg.ForTest != "" {
-				continue
-			}
-			// External tests may import their own package without an architectural edge.
-			if target == name && pkg.ForTest == imported.PkgPath {
-				continue
-			}
-			// A test may import the support package of its own package or of
-			// a listed dependency (crates-and-packages.md § Go packages).
-			if owner, ok := supportOwner(target); ok && pkg.ForTest != "" && (owner == name || allowed[owner]) {
-				continue
-			}
-			// Any test may get the repository's programs from programtest
-			// (testing.md); production code may not.
-			if target == programTest && pkg.ForTest != "" {
-				continue
-			}
-			// Generated contract code imports its runtime from any package
-			// (crates-and-packages.md § Go packages).
-			if target == contractRuntime {
-				continue
-			}
-			if !allowed[target] {
-				problems = append(problems, "forbidden import: "+name+" -> "+target)
-			}
-		}
+		checkPackage(pkg, rules, seen, &problems)
 		return true
 	}, nil)
 	if len(problems) != 0 {
 		slices.Sort(problems)
 		return errors.New(strings.Join(slices.Compact(problems), "\n"))
 	}
+	return nil
+}
+
+func addGraphLine(result graph, line string) error {
+	source, targets, ok := strings.Cut(line, "->")
+	source = strings.TrimSpace(source)
+	targets = strings.TrimSpace(targets)
+	if !ok || !validPath(source) || targets == "" {
+		return fmt.Errorf("invalid graph line %q", line)
+	}
+	if _, exists := result[source]; exists {
+		return fmt.Errorf("duplicate graph package %s", source)
+	}
+	result[source] = map[string]bool{}
+	if targets == "none" {
+		return nil
+	}
+	for _, target := range strings.Split(targets, ",") {
+		target = strings.TrimSpace(target)
+		if !validPath(target) || result[source][target] {
+			return fmt.Errorf("invalid dependency in %q", line)
+		}
+		result[source][target] = true
+	}
+	return nil
+}
+
+func checkPackage(pkg *packages.Package, rules graph, seen map[string]bool, problems *[]string) {
+	relative, err := filepath.Rel(pkg.Module.Dir, pkg.Dir)
+	if err != nil {
+		*problems = append(*problems, err.Error())
+		return
+	}
+	name := filepath.ToSlash(relative)
+	// Fixture packages under testdata belong to the tests that load them,
+	// not to the architecture.
+	if isTestdata(name) {
+		return
+	}
+	seen[name] = true
+	allowed, exists := rules[name]
+	if !exists {
+		*problems = append(*problems, "unlisted package: "+name)
+		return
+	}
+	for _, imported := range pkg.Imports {
+		target, ok := allowedImport(pkg, imported, name, allowed)
+		if !ok {
+			*problems = append(*problems, "forbidden import: "+name+" -> "+target)
+		}
+	}
+}
+
+func allowedImport(pkg, imported *packages.Package, name string, allowed map[string]bool) (string, bool) {
+	prefix := pkg.Module.Path + "/"
+	if imported.PkgPath != pkg.Module.Path && !strings.HasPrefix(imported.PkgPath, prefix) {
+		return "", true
+	}
+	target := strings.TrimPrefix(imported.PkgPath, prefix)
+	if imported.PkgPath == pkg.Module.Path {
+		target = "."
+	}
+	if isTestdata(target) && pkg.ForTest != "" {
+		return "", true
+	}
+	// External tests may import their own package without an architectural edge.
+	if target == name && pkg.ForTest == imported.PkgPath {
+		return "", true
+	}
+	// A test may import the support package of its own package or of
+	// a listed dependency (crates-and-packages.md § Go packages).
+	if owner, ok := supportOwner(target); ok && pkg.ForTest != "" && (owner == name || allowed[owner]) {
+		return "", true
+	}
+	// Any test may get the repository's programs from programtest
+	// (testing.md); production code may not.
+	if target == programTest && pkg.ForTest != "" {
+		return "", true
+	}
+	// Generated contract code imports its runtime from any package
+	// (crates-and-packages.md § Go packages).
+	if target == contractRuntime {
+		return "", true
+	}
+	if !allowed[target] {
+		return target, false
+	}
+	return target, true
+}
+
+func checkGraphTargets(result graph) error {
+	for source, targets := range result {
+		for target := range targets {
+			if _, ok := result[target]; !ok {
+				return fmt.Errorf("%s names unlisted dependency %s", source, target)
+			}
+		}
+	}
+
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,7 @@ func startDevProcess(ctx context.Context, command *exec.Cmd) (*devProcess, error
 	}()
 	return process, nil
 }
+
 func (p *devProcess) stop(ctx context.Context, terminate bool, patience time.Duration) error {
 	select {
 	case <-p.done:
@@ -60,6 +62,7 @@ func (p *devProcess) stop(ctx context.Context, terminate bool, patience time.Dur
 		return p.kill(context.WithoutCancel(ctx))
 	}
 }
+
 func (p *devProcess) kill(_ context.Context) error {
 	err := syscall.Kill(-p.command.Process.Pid, syscall.SIGKILL)
 	if errors.Is(err, syscall.ESRCH) {
@@ -68,13 +71,18 @@ func (p *devProcess) kill(_ context.Context) error {
 	<-p.done
 	return err
 }
+
 func (a *application) serveDev(ctx context.Context, o devOptions, root, programs string) (err error) {
 	echo, err := startEcho(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, echo.close(context.WithoutCancel(ctx))) }()
-	managerCmd := exec.Command(filepath.Join(programs, "scripted-machines"), "--artifacts", filepath.Join(a.Root, ".cache/dev-artifacts"))
+	managerCmd := exec.Command(
+		filepath.Join(programs, "scripted-machines"),
+		"--artifacts",
+		filepath.Join(a.Root, ".cache/dev-artifacts"),
+	)
 	managerCmd.Dir = a.Root
 	managerCmd.Env = append(devEnvironment(), "DEMI_TEST_PROGRAMS="+programs)
 	managerCmd.Stderr = a.Err
@@ -99,32 +107,24 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 	// The pipe reader belongs to the session; closing it wakes both its initial
 	// line read and its forwarding copy, and the session joins it on every exit.
 	socket := make(chan string, 1)
-	forwarded := make(chan struct{})
-	go func() {
-		defer close(forwarded)
-		reader := bufio.NewReader(output)
-		line, readErr := reader.ReadString('\n')
-		if readErr == nil {
-			socket <- line
-		}
-		_, _ = io.Copy(a.Out, reader)
-	}()
+	forwarded := a.forwardDevOutput(output, socket)
 	defer func() {
 		_ = output.Close() // Closing the pipe wakes the owned reader during cleanup.
 		<-forwarded
 	}()
 	timer := time.NewTimer(30 * time.Second)
 	defer timer.Stop()
-	var address string
-	select {
-	case address = <-socket:
-	case <-manager.done:
-		return processExit("the machine manager exited before it printed its socket", manager.err)
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return errors.New("the machine manager printed no socket within 30 s")
+	address, err := devManagerAddress(ctx, socket, manager, timer.C)
+	if err != nil {
+		return err
 	}
+	if err := a.publishDevCommands(ctx, root, programs); err != nil {
+		return err
+	}
+	return a.serveDevBackend(ctx, o, root, programs, address, echo, manager)
+}
+
+func (a *application) publishDevCommands(ctx context.Context, root, programs string) error {
 	target, err := commandwire.HostTarget()
 	if err != nil {
 		return err
@@ -134,10 +134,26 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 		return err
 	}
 	for _, name := range commandPrograms {
-		if err := a.publishNative(ctx, packageOptions{Package: name, Output: filepath.Join(root, "releases", name)}, map[string]string{string(target): filepath.Join(programs, name)}, chrome); err != nil {
+		if err := a.publishNative(
+			ctx,
+			packageOptions{Package: name, Output: filepath.Join(root, "releases", name)},
+			map[string]string{string(target): filepath.Join(programs, name)},
+			chrome,
+		); err != nil {
 			return err
 		}
 	}
+
+	return nil
+}
+
+func (a *application) serveDevBackend(
+	ctx context.Context,
+	o devOptions,
+	root, programs, address string,
+	echo *echoServer,
+	manager *devProcess,
+) (err error) {
 	native, err := writeDevConfig(ctx, root)
 	if err != nil {
 		return err
@@ -147,7 +163,15 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 	backendCmd.Dir = a.Root
 	backendCmd.Stdout = a.Out
 	backendCmd.Stderr = a.Err
-	backendCmd.Env = append(devEnvironment(), "DEMI_BACKEND_DATA="+filepath.Join(root, "backend"), fmt.Sprintf("DEMI_BACKEND_PORT=%d", o.Port), "DEMI_INSTANCE_MODE=isolated", "DEMI_BACKEND_PUBLIC_URL="+origin, "DEMI_MACHINE_MANAGER_SOCKET="+strings.TrimRight(address, "\r\n"), "DEMI_NATIVE_CONFIG="+native)
+	backendCmd.Env = append(
+		devEnvironment(),
+		"DEMI_BACKEND_DATA="+filepath.Join(root, "backend"),
+		fmt.Sprintf("DEMI_BACKEND_PORT=%d", o.Port),
+		"DEMI_INSTANCE_MODE=isolated",
+		"DEMI_BACKEND_PUBLIC_URL="+origin,
+		"DEMI_MACHINE_MANAGER_SOCKET="+strings.TrimRight(address, "\r\n"),
+		"DEMI_NATIVE_CONFIG="+native,
+	)
 	backend, err := startDevProcess(ctx, backendCmd)
 	if err != nil {
 		return err
@@ -158,14 +182,7 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 		return err
 	}
 	defer client.CloseIdleConnections()
-	if err := answeringDev(ctx, client, origin, backend); err != nil {
-		return err
-	}
-	provider, err := seedDev(ctx, client, origin, echo.url)
-	if err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(a.Out, "\nThe development backend serves at %s\n  Account: %s, password %s\n  Model:   echo of the provider entry %s, which answers \"Echo: <your message>\"\n  Data:    %s\nStart the page in another terminal:\n  DEMI_BACKEND_URL=%s DEMI_DEV_EMAIL=%s DEMI_DEV_PASSWORD=%s bun run web:dev\nCtrl-C stops the backend.\n", origin, devEmail, devPassword, provider, root, origin, devEmail, devPassword); err != nil {
+	if err := a.seedDevBackend(ctx, origin, root, echo, backend, client); err != nil {
 		return err
 	}
 	select {
@@ -176,4 +193,76 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 	case <-manager.done:
 		return processExit("the machine manager exited", manager.err)
 	}
+}
+
+func (a *application) seedDevBackend(
+	ctx context.Context,
+	origin, root string,
+	echo *echoServer,
+	backend *devProcess,
+	client *http.Client,
+) error {
+	if err := answeringDev(ctx, client, origin, backend); err != nil {
+		return err
+	}
+	provider, err := seedDev(ctx, client, origin, echo.url)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(
+		a.Out,
+		"\nThe development backend serves at %s\n  Account: %s, password %s\n  "+
+			"Model:   echo of the provider entry %s, which answers \"Echo: <your "+
+			"message>\"\n  Data:    %s\nStart the page in another terminal:\n  "+
+			"DEMI_BACKEND_URL=%s DEMI_DEV_EMAIL=%s DEMI_DEV_PASSWORD=%s bun run "+
+			"web:dev\nCtrl-C stops the backend.\n",
+		origin,
+		devEmail,
+		devPassword,
+		provider,
+		root,
+		origin,
+		devEmail,
+		devPassword,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func devManagerAddress(
+	ctx context.Context,
+	socket <-chan string,
+	manager *devProcess,
+	timeout <-chan time.Time,
+) (string, error) {
+	var address string
+	select {
+	case address = <-socket:
+	case <-manager.done:
+		return "", processExit("the machine manager exited before it printed its socket", manager.err)
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-timeout:
+		return "", errors.New("the machine manager printed no socket within 30 s")
+	}
+
+	return address, nil
+}
+
+// forwardDevOutput returns the join channel; serveDev owns the pipe and closes it before joining.
+func (a *application) forwardDevOutput(output io.Reader, socket chan<- string) <-chan struct{} {
+	forwarded := make(chan struct{})
+	go func() {
+		defer close(forwarded)
+		reader := bufio.NewReader(output)
+		line, readErr := reader.ReadString('\n')
+		if readErr == nil {
+			socket <- line
+		}
+		_, _ = io.Copy(a.Out, reader)
+	}()
+
+	return forwarded
 }

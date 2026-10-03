@@ -16,7 +16,8 @@
 // Structs use explicit JSON field names and are strict unless marked tolerant.
 // Optional fields are pointers with omitzero or omitempty; default-false bools
 // and non-pointer maps and slices with omitempty may also be optional.
-// Absent collections decode empty; encoding omits empty collections. A nullable pointer or union instead has +demi:nullable
+// Absent collections decode empty; encoding omits empty collections.
+// A nullable pointer or union instead has +demi:nullable
 // and must be present unless a pointer also has omitempty. With nullable and
 // omitempty, *T collapses absent/null to nil, while **T retains explicit null
 // as a non-nil pointer to nil. Nil required arrays and records are invalid; construct

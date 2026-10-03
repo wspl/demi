@@ -37,11 +37,43 @@ func TestGenerationRefusals(t *testing.T) {
 // This verifies bootstrap and determinism through the CLI's loader.
 // Local package loads cost roughly one second; no network or services are used.
 func TestRegeneration(t *testing.T) {
-	if err := generate(t.Context(), []string{"./testdata/integers", "./testdata/private", "./testdata/presence", "./testdata/codecs", "./testdata/blocks", "./testdata/runner", "./testdata/features", "./testdata/text", "./testdata/tables", "./testdata/kept", "./testdata/schemas", "./testdata/generics", "./testdata/remaining", "./testdata/keyed", "./testdata/browser", "./testdata/reachability", "./testdata/packedonly", "./testdata/schemacheck", "./testdata/todo"}, false, "", true); err != nil {
+	if err := generate(
+		t.Context(),
+		[]string{
+			"./testdata/integers",
+			"./testdata/private",
+			"./testdata/presence",
+			"./testdata/codecs",
+			"./testdata/blocks",
+			"./testdata/runner",
+			"./testdata/features",
+			"./testdata/text",
+			"./testdata/tables",
+			"./testdata/kept",
+			"./testdata/schemas",
+			"./testdata/generics",
+			"./testdata/remaining",
+			"./testdata/keyed",
+			"./testdata/browser",
+			"./testdata/reachability",
+			"./testdata/packedonly",
+			"./testdata/schemacheck",
+			"./testdata/todo",
+		},
+		false,
+		"",
+		true,
+	); err != nil {
 		t.Fatal(err)
 	}
 	dest := t.TempDir()
-	if err := generate(t.Context(), []string{"./testdata/blocks", "./testdata/features"}, true, dest, false); err != nil {
+	if err := generate(
+		t.Context(),
+		[]string{"./testdata/blocks", "./testdata/features"},
+		true,
+		dest,
+		false,
+	); err != nil {
 		t.Fatal(err)
 	}
 	web, err := os.ReadFile(filepath.Join(dest, "web", "web-api.ts"))
@@ -72,7 +104,7 @@ func TestGenerationDependencies(t *testing.T) {
 		}
 	})
 	for _, pkg := range []string{"dependency", "consumer"} {
-		if err := os.Mkdir(filepath.Join(dir, pkg), 0755); err != nil {
+		if err := os.Mkdir(filepath.Join(dir, pkg), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		for _, name := range []string{"types.go", "contract_gen.go"} {
@@ -80,8 +112,14 @@ func TestGenerationDependencies(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			data = []byte(strings.ReplaceAll(string(data), "testdata/loading/dependency", "testdata/"+filepath.Base(dir)+"/dependency"))
-			if err := os.WriteFile(filepath.Join(dir, pkg, name), data, 0644); err != nil {
+			data = []byte(
+				strings.ReplaceAll(
+					string(data),
+					"testdata/loading/dependency",
+					"testdata/"+filepath.Base(dir)+"/dependency",
+				),
+			)
+			if err := os.WriteFile(filepath.Join(dir, pkg, name), data, 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -106,7 +144,11 @@ func TestGenerationDependencies(t *testing.T) {
 					}
 				}
 				if scenario.output == "stale" {
-					if err := os.WriteFile(path, []byte("package "+pkg+"\nfunc (v Removed) Validate() error { return nil }\n"), 0644); err != nil {
+					if err := os.WriteFile(
+						path,
+						[]byte("package "+pkg+"\nfunc (v Removed) Validate() error { return nil }\n"),
+						0o644,
+					); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -116,7 +158,8 @@ func TestGenerationDependencies(t *testing.T) {
 				if scenario.output == "missing" && !errors.Is(err, os.ErrNotExist) {
 					t.Fatalf("check did not report missing output: %v", err)
 				}
-				if scenario.output == "stale" && (err == nil || !strings.Contains(err.Error(), "generated file is stale")) {
+				if scenario.output == "stale" &&
+					(err == nil || !strings.Contains(err.Error(), "generated file is stale")) {
 					t.Fatalf("check did not report stale output: %v", err)
 				}
 				for _, pkg := range []string{"dependency", "consumer"} {
@@ -151,10 +194,21 @@ func TestGenerationDependencies(t *testing.T) {
 		})
 	}
 	// A declaration error must still fail even beside valid contract markers.
-	if err := os.WriteFile("consumer/broken.go", []byte("package consumer\nvar Broken int = \"invalid\"\n"), 0644); err != nil {
+	if err := os.WriteFile(
+		"consumer/broken.go",
+		[]byte("package consumer\nvar Broken int = \"invalid\"\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := generate(t.Context(), []string{"./consumer"}, false, "", false); err == nil || !strings.Contains(err.Error(), "broken.go:") {
+	if err := generate(
+		t.Context(),
+		[]string{"./consumer"},
+		false,
+		"",
+		false,
+	); err == nil ||
+		!strings.Contains(err.Error(), "broken.go:") {
 		t.Fatalf("declaration error was lost: %v", err)
 	}
 }

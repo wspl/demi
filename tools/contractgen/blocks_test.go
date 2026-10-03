@@ -98,7 +98,13 @@ func TestRustCorpus(t *testing.T) {
 			}
 		})
 	}
-	t.Logf("blocks=%d semantic_equal=%d raw_byte_equal=%d refused=%d", len(fixtures), len(fixtures), byteEqual, len(cases.Refused))
+	t.Logf(
+		"blocks=%d semantic_equal=%d raw_byte_equal=%d refused=%d",
+		len(fixtures),
+		len(fixtures),
+		byteEqual,
+		len(cases.Refused),
+	)
 }
 
 // fixtureByID selects the same starting block as the Rust mutation consumer.

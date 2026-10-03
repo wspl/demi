@@ -70,7 +70,7 @@ func run(ctx context.Context, args []string, output io.Writer) (err error) {
 		return fmt.Errorf("create acceptance directory: %w", err)
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(directory)) }()
-	if err := os.WriteFile(filepath.Join(directory, ".cargo-lock"), nil, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, ".cargo-lock"), nil, 0o600); err != nil {
 		return err
 	}
 	if err := linkPrograms(*ref, directory, false); err != nil {
@@ -121,29 +121,11 @@ func linkPrograms(source, destination string, replace bool) error {
 		if err != nil {
 			return err
 		}
-		if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
 			continue
 		}
-		file, err := os.Open(path)
-		if err != nil {
+		if err := checkNativeExecutable(path); err != nil {
 			return err
-		}
-		var magic [4]byte
-		_, readErr := io.ReadFull(file, magic[:])
-		closeErr := file.Close()
-		if readErr != nil {
-			return fmt.Errorf("read executable %s: %w", path, readErr)
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		// ELF, Mach-O (both byte orders and fat binaries), or PE.
-		native := bytes.Equal(magic[:], []byte{0x7f, 'E', 'L', 'F'}) ||
-			bytes.Equal(magic[:], []byte{0xcf, 0xfa, 0xed, 0xfe}) || bytes.Equal(magic[:], []byte{0xce, 0xfa, 0xed, 0xfe}) ||
-			bytes.Equal(magic[:], []byte{0xfe, 0xed, 0xfa, 0xcf}) || bytes.Equal(magic[:], []byte{0xfe, 0xed, 0xfa, 0xce}) ||
-			bytes.Equal(magic[:], []byte{0xca, 0xfe, 0xba, 0xbe}) || bytes.Equal(magic[:], []byte{0xca, 0xfe, 0xba, 0xbf}) || string(magic[:2]) == "MZ"
-		if !native {
-			return fmt.Errorf("%s is not a native executable (script wrappers change argv[0])", path)
 		}
 		target := filepath.Join(destination, entry.Name())
 		if replace {
@@ -182,7 +164,8 @@ func findSuite(ref, suite string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0 && (newest == "" || info.ModTime().After(modified)) {
+		if info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 &&
+			(newest == "" || info.ModTime().After(modified)) {
 			newest, modified = path, info.ModTime()
 		}
 	}
@@ -199,7 +182,7 @@ func copySuite(source, destination string) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, input.Close()) }()
-	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0700)
+	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700)
 	if err != nil {
 		return err
 	}
@@ -223,7 +206,9 @@ func webArgs() ([]string, error) {
 	const prefix = "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts "
 	script := manifest.Scripts["test"]
 	if !strings.HasPrefix(script, prefix) || strings.ContainsAny(strings.TrimPrefix(script, prefix), "\"'`$;&|<>\\\n") {
-		return nil, errors.New("package.json test script changed: expected contracts step followed by plain bun scripts/test.ts arguments")
+		return nil, errors.New(
+			"package.json test script changed: expected contracts step followed by plain bun scripts/test.ts arguments",
+		)
 	}
 	return append([]string{"scripts/test.ts"}, strings.Fields(strings.TrimPrefix(script, prefix))...), nil
 }
@@ -238,20 +223,11 @@ func runSuite(ctx context.Context, ref, directory, suite string, args []string, 
 		command = exec.CommandContext(ctx, "bun", append(defaults, args...)...)
 		command.Env = append(os.Environ(), "DEMI_TEST_PROGRAMS="+directory, "NO_COLOR=1")
 	} else {
-		source, err := findSuite(ref, suite)
+		var err error
+		command, err = suiteCommand(ctx, ref, directory, suite, args)
 		if err != nil {
 			return err
 		}
-		// Separate directories also allow the same suite to be requested twice.
-		suiteDir, err := os.MkdirTemp(directory, suite+"-")
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(suiteDir, filepath.Base(source))
-		if err := copySuite(source, target); err != nil {
-			return err
-		}
-		command = exec.CommandContext(ctx, target, args...)
 	}
 	var captured bytes.Buffer
 	command.Stdout = io.MultiWriter(output, &captured)
@@ -267,11 +243,13 @@ func runSuite(ctx context.Context, ref, directory, suite string, args []string, 
 	return errors.Join(runErr, cleanupErr, summaryErr)
 }
 
-var rustSummary = regexp.MustCompile(`test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;`)
-var rustFailure = regexp.MustCompile(`(?m)^test (.+) \.\.\. FAILED$`)
-var rustFailureList = regexp.MustCompile(`(?m)^    ([A-Za-z_][A-Za-z0-9_:]*)$`)
-var bunCount = regexp.MustCompile(`(?m)^\s*(\d+) (pass|fail|skip|todo)\s*$`)
-var bunFailure = regexp.MustCompile(`(?m)^\(fail\) (.+)$`)
+var (
+	rustSummary     = regexp.MustCompile(`test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;`)
+	rustFailure     = regexp.MustCompile(`(?m)^test (.+) \.\.\. FAILED$`)
+	rustFailureList = regexp.MustCompile(`(?m)^    ([A-Za-z_][A-Za-z0-9_:]*)$`)
+	bunCount        = regexp.MustCompile(`(?m)^\s*(\d+) (pass|fail|skip|todo)\s*$`)
+	bunFailure      = regexp.MustCompile(`(?m)^\(fail\) (.+)$`)
+)
 
 // summarize reports runner totals and names while refusing an unrecognized result.
 func summarize(suite, output string) (string, error) {
@@ -326,4 +304,58 @@ func summarize(suite, output string) (string, error) {
 		return summary, fmt.Errorf("%d tests failed", failed)
 	}
 	return summary, nil
+}
+
+func checkNativeExecutable(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	var magic [4]byte
+	_, readErr := io.ReadFull(file, magic[:])
+	closeErr := file.Close()
+	if readErr != nil {
+		return fmt.Errorf("read executable %s: %w", path, readErr)
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	// ELF, Mach-O (both byte orders and fat binaries), or PE.
+	native := bytes.Equal(magic[:], []byte{0x7f, 'E', 'L', 'F'}) ||
+		bytes.Equal(
+			magic[:],
+			[]byte{0xcf, 0xfa, 0xed, 0xfe},
+		) || bytes.Equal(magic[:], []byte{0xce, 0xfa, 0xed, 0xfe}) ||
+		bytes.Equal(
+			magic[:],
+			[]byte{0xfe, 0xed, 0xfa, 0xcf},
+		) || bytes.Equal(magic[:], []byte{0xfe, 0xed, 0xfa, 0xce}) ||
+		bytes.Equal(
+			magic[:],
+			[]byte{0xca, 0xfe, 0xba, 0xbe},
+		) || bytes.Equal(magic[:], []byte{0xca, 0xfe, 0xba, 0xbf}) || string(magic[:2]) == "MZ"
+	if !native {
+		return fmt.Errorf("%s is not a native executable (script wrappers change argv[0])", path)
+	}
+
+	return nil
+}
+
+func suiteCommand(ctx context.Context, ref, directory, suite string, args []string) (*exec.Cmd, error) {
+	var command *exec.Cmd
+	source, err := findSuite(ref, suite)
+	if err != nil {
+		return nil, err
+	}
+	// Separate directories also allow the same suite to be requested twice.
+	suiteDir, err := os.MkdirTemp(directory, suite+"-")
+	if err != nil {
+		return nil, err
+	}
+	target := filepath.Join(suiteDir, filepath.Base(source))
+	if err := copySuite(source, target); err != nil {
+		return nil, err
+	}
+	command = exec.CommandContext(ctx, target, args...)
+	return command, nil
 }

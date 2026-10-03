@@ -16,29 +16,18 @@ import (
 // of the current batch. An overlay makes regenerated dependencies available to
 // later batches even during checks, without changing files on disk.
 func generate(ctx context.Context, patterns []string, ts bool, tsDir string, verify bool) error {
-	pkgs, err := packages.Load(&packages.Config{Context: ctx, Mode: packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps}, patterns...)
+	pkgs, err := packages.Load(
+		&packages.Config{
+			Context: ctx,
+			Mode:    packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps,
+		},
+		patterns...)
 	if err != nil {
 		return err
 	}
-	selected := map[string]bool{}
-	for _, p := range pkgs {
-		for _, problem := range p.Errors {
-			return fmt.Errorf("%s", problem)
-		}
-		for _, filename := range p.GoFiles {
-			if filepath.Base(filename) == "contract_gen.go" {
-				continue
-			}
-			file, err := parser.ParseFile(token.NewFileSet(), filename, nil, parser.ParseComments|parser.SkipObjectResolution)
-			if err != nil {
-				return err
-			}
-			for _, comment := range file.Comments {
-				if strings.Contains(comment.Text(), "+demi:") {
-					selected[p.ID] = true
-				}
-			}
-		}
+	selected, err := selectContractPackages(pkgs)
+	if err != nil {
+		return err
 	}
 	levels := map[string]int{}
 	var batches [][]*packages.Package
@@ -84,6 +73,40 @@ func generate(ctx context.Context, patterns []string, ts bool, tsDir string, ver
 	if ts {
 		return generateBatch(ctx, patterns, true, tsDir, verify, nil, overlay, nil)
 	}
+	return writeContractOverlay(overlay, verify)
+}
+
+func selectContractPackages(pkgs []*packages.Package) (map[string]bool, error) {
+	selected := map[string]bool{}
+	for _, p := range pkgs {
+		for _, problem := range p.Errors {
+			return nil, fmt.Errorf("%s", problem)
+		}
+		for _, filename := range p.GoFiles {
+			if filepath.Base(filename) == "contract_gen.go" {
+				continue
+			}
+			file, err := parser.ParseFile(
+				token.NewFileSet(),
+				filename,
+				nil,
+				parser.ParseComments|parser.SkipObjectResolution,
+			)
+			if err != nil {
+				return nil, err
+			}
+			for _, comment := range file.Comments {
+				if strings.Contains(comment.Text(), "+demi:") {
+					selected[p.ID] = true
+				}
+			}
+		}
+	}
+
+	return selected, nil
+}
+
+func writeContractOverlay(overlay map[string][]byte, verify bool) error {
 	paths := make([]string, 0, len(overlay))
 	for path := range overlay {
 		paths = append(paths, path)

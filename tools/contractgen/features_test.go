@@ -113,7 +113,33 @@ func TestTimestampExtensions(t *testing.T) {
 
 // Sorting records and timestamp extensions fill gaps in library defaults.
 func TestRecordEncoding(t *testing.T) {
-	input := []byte{0x82, 0xa6, 'v', 'a', 'l', 'u', 'e', 's', 0x82, 0xa1, 'a', 0xc0, 0xa1, 'z', 0xa1, 'x', 0xa2, 'a', 't', 0xd6, 0xff, 0, 0, 0, 0}
+	input := []byte{
+		0x82,
+		0xa6,
+		'v',
+		'a',
+		'l',
+		'u',
+		'e',
+		's',
+		0x82,
+		0xa1,
+		'a',
+		0xc0,
+		0xa1,
+		'z',
+		0xa1,
+		'x',
+		0xa2,
+		'a',
+		't',
+		0xd6,
+		0xff,
+		0,
+		0,
+		0,
+		0,
+	}
 	value, err := features.DecodeRecordsMsgpack(input)
 	if err != nil {
 		t.Fatal(err)
@@ -215,8 +241,59 @@ func TestOpaqueWireCodecs(t *testing.T) {
 		want   []byte
 		bad    []byte
 	}{
-		{"JSON", codecs.DecodeEnvelope, contract.EncodeJSON, []byte(`{"value":"UPPER"}`), []byte(`{"value":"upper"}`), []byte(`{"value":""}`)},
-		{"MessagePack", codecs.DecodeEnvelopeMsgpack, contract.EncodeMsgpack, []byte{0x81, 0xa5, 'v', 'a', 'l', 'u', 'e', 0xa5, 'U', 'P', 'P', 'E', 'R'}, []byte{0x81, 0xa5, 'v', 'a', 'l', 'u', 'e', 0xa5, 'u', 'p', 'p', 'e', 'r'}, []byte{0x81, 0xa5, 'v', 'a', 'l', 'u', 'e', 0xa0}},
+		{
+			"JSON",
+			codecs.DecodeEnvelope,
+			contract.EncodeJSON,
+			[]byte(`{"value":"UPPER"}`),
+			[]byte(`{"value":"upper"}`),
+			[]byte(`{"value":""}`),
+		},
+		{
+			"MessagePack",
+			codecs.DecodeEnvelopeMsgpack,
+			contract.EncodeMsgpack,
+			[]byte{
+				0x81,
+				0xa5,
+				'v',
+				'a',
+				'l',
+				'u',
+				'e',
+				0xa5,
+				'U',
+				'P',
+				'P',
+				'E',
+				'R',
+			},
+			[]byte{
+				0x81,
+				0xa5,
+				'v',
+				'a',
+				'l',
+				'u',
+				'e',
+				0xa5,
+				'u',
+				'p',
+				'p',
+				'e',
+				'r',
+			},
+			[]byte{
+				0x81,
+				0xa5,
+				'v',
+				'a',
+				'l',
+				'u',
+				'e',
+				0xa0,
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			value, err := tc.decode(tc.input)
@@ -269,11 +346,13 @@ func TestNullableOptionalPresence(t *testing.T) {
 						t.Fatal("absence created pointers")
 					}
 				case "null":
-					if value.Option != nil || value.Double == nil || *value.Double != nil || value.Items == nil || *value.Items != nil {
+					if value.Option != nil || value.Double == nil || *value.Double != nil || value.Items == nil ||
+						*value.Items != nil {
 						t.Fatal("null lost its option state")
 					}
 				default:
-					if value.Option == nil || value.Double == nil || *value.Double == nil || value.Items == nil || *value.Items == nil {
+					if value.Option == nil || value.Double == nil || *value.Double == nil || value.Items == nil ||
+						*value.Items == nil {
 						t.Fatal("value lost its option state")
 					}
 				}

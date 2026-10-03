@@ -27,7 +27,7 @@ func TestPrograms(t *testing.T) {
 	}
 	t.Run("unknown program", func(t *testing.T) {
 		dir := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(dir, "cmd", "unexpected"), 0700); err != nil {
+		if err := os.MkdirAll(filepath.Join(dir, "cmd", "unexpected"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		err := run(t.Context(), dir)
@@ -37,7 +37,7 @@ func TestPrograms(t *testing.T) {
 	})
 	t.Run("no programs", func(t *testing.T) {
 		dir := t.TempDir()
-		if err := os.Mkdir(filepath.Join(dir, "cmd"), 0700); err != nil {
+		if err := os.Mkdir(filepath.Join(dir, "cmd"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		err := run(t.Context(), dir)

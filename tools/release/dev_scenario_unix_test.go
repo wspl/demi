@@ -46,6 +46,7 @@ func (o *devOutput) Write(p []byte) (int, error) {
 	}
 	return n, err
 }
+
 func (o *devOutput) text() string {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -88,7 +89,18 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	}
 	output := &devOutput{ready: make(chan string, 1)}
 	app := application{Root: root, Out: output, Err: output, chromeRelease: func() (browserop.BrowserRelease, error) {
-		return browserop.BrowserRelease{Version: "153.0.8010.36", Platforms: []browserop.ReleasePlatform{{Target: string(target), URL: "https://unused.invalid/chrome.zip", Size: digest.Size, SHA256: digest.SHA256, Executable: "chrome"}}}, nil
+		return browserop.BrowserRelease{
+			Version: "153.0.8010.36",
+			Platforms: []browserop.ReleasePlatform{
+				{
+					Target:     string(target),
+					URL:        "https://unused.invalid/chrome.zip",
+					Size:       digest.Size,
+					SHA256:     digest.SHA256,
+					Executable: "chrome",
+				},
+			},
+		}, nil
 	}}
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
@@ -151,7 +163,9 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	if _, err := webapi.DecodeConversationAnswer(answer.Body); err != nil {
 		t.Fatal(err)
 	}
-	body, err = contract.EncodeJSON(webapi.ConversationPatch{Model: &webapi.ModelChoice{ProviderID: webapi.ProviderID(provider), ModelID: "echo"}})
+	body, err = contract.EncodeJSON(
+		webapi.ConversationPatch{Model: &webapi.ModelChoice{ProviderID: webapi.ProviderID(provider), ModelID: "echo"}},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +180,14 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	if _, err := webapi.DecodeConversationUpdate(answer.Body); err != nil {
 		t.Fatal(err)
 	}
-	socket, response, err := websocket.Dial(ctx, b.WSURL(path+"/stream"), &websocket.DialOptions{HTTPClient: client, HTTPHeader: http.Header{"Origin": {origin}, "Cookie": {session.Cookie}}})
+	socket, response, err := websocket.Dial(
+		ctx,
+		b.WSURL(path+"/stream"),
+		&websocket.DialOptions{
+			HTTPClient: client,
+			HTTPHeader: http.Header{"Origin": {origin}, "Cookie": {session.Cookie}},
+		},
+	)
 	if err != nil {
 		if response != nil {
 			_ = response.Body.Close()
@@ -208,7 +229,12 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 			break
 		}
 	}
-	send(&framewire.SendFrame{MessageID: "dev-hello", Content: []framewire.ClientContent{&framewire.TextContent{Text: "hello"}}})
+	send(
+		&framewire.SendFrame{
+			MessageID: "dev-hello",
+			Content:   []framewire.ClientContent{&framewire.TextContent{Text: "hello"}},
+		},
+	)
 	running := false
 	for {
 		if phase, ok := next().(*framewire.PhaseFrame); ok {

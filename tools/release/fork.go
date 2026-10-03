@@ -39,6 +39,7 @@ func (o *checksumOps) ReadRemote(path string) ([]byte, error) {
 	_, err := artifacts.DownloadMeasured(o.ctx, o.client, o.url+path, 64*1024*1024, &b)
 	return b.Bytes(), err
 }
+
 func (o *checksumOps) ReadConfig(name string) ([]byte, error) {
 	if name == "key" {
 		return []byte(o.key), nil
@@ -47,6 +48,7 @@ func (o *checksumOps) ReadConfig(name string) ([]byte, error) {
 	defer o.mu.Unlock()
 	return bytes.Clone(o.latest), nil
 }
+
 func (o *checksumOps) WriteConfig(_ string, old, next []byte) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -89,7 +91,14 @@ func (a *application) fork(ctx context.Context, patch bool) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(scratch)) }()
-	upstream, err := moduleUpstream(ctx, client, selected, scratch, "https://proxy.golang.org", sumdb.NewClient(&checksumOps{ctx: ctx, client: client, url: "https://sum.golang.org", key: checksumKey}))
+	upstream, err := moduleUpstream(
+		ctx,
+		client,
+		selected,
+		scratch,
+		"https://proxy.golang.org",
+		sumdb.NewClient(&checksumOps{ctx: ctx, client: client, url: "https://sum.golang.org", key: checksumKey}),
+	)
 	if err != nil {
 		return err
 	}
@@ -115,7 +124,14 @@ func (a *application) fork(ctx context.Context, patch bool) (err error) {
 	}
 	return nil
 }
-func moduleUpstream(ctx context.Context, client *artifacts.Client, selected module.Version, scratch, proxy string, checksums *sumdb.Client) (string, error) {
+
+func moduleUpstream(
+	ctx context.Context,
+	client *artifacts.Client,
+	selected module.Version,
+	scratch, proxy string,
+	checksums *sumdb.Client,
+) (string, error) {
 	path, err := module.EscapePath(selected.Path)
 	if err != nil {
 		return "", err
@@ -129,7 +145,13 @@ func moduleUpstream(ctx context.Context, client *artifacts.Client, selected modu
 	if err != nil {
 		return "", err
 	}
-	_, downloadErr := artifacts.DownloadMeasured(ctx, client, strings.TrimRight(proxy, "/")+"/"+path+"/@v/"+version+".zip", 64*1024*1024, file)
+	_, downloadErr := artifacts.DownloadMeasured(
+		ctx,
+		client,
+		strings.TrimRight(proxy, "/")+"/"+path+"/@v/"+version+".zip",
+		64*1024*1024,
+		file,
+	)
 	if err := errors.Join(downloadErr, file.Close()); err != nil {
 		return "", err
 	}
@@ -142,7 +164,11 @@ func moduleUpstream(ctx context.Context, client *artifacts.Client, selected modu
 		return "", err
 	}
 	if !slices.Contains(lines, selected.Path+" "+selected.Version+" "+hash) {
-		return "", fmt.Errorf("%s %s does not match the hash the Go checksum database records", selected.Path, selected.Version)
+		return "", fmt.Errorf(
+			"%s %s does not match the hash the Go checksum database records",
+			selected.Path,
+			selected.Version,
+		)
 	}
 	destination := filepath.Join(scratch, "upstream")
 	if err := modzip.Unzip(destination, selected, archive); err != nil {
@@ -150,6 +176,7 @@ func moduleUpstream(ctx context.Context, client *artifacts.Client, selected modu
 	}
 	return destination, nil
 }
+
 func forkFiles(ctx context.Context, root string) (map[string][]byte, error) {
 	files := make(map[string][]byte)
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -179,6 +206,7 @@ func forkFiles(ctx context.Context, root string) (map[string][]byte, error) {
 	})
 	return files, err
 }
+
 func compareFork(ctx context.Context, upstream, fork string) (string, string, error) {
 	theirs, err := forkFiles(ctx, upstream)
 	if err != nil {
@@ -225,24 +253,18 @@ func compareFork(ctx context.Context, upstream, fork string) (string, string, er
 		dmp.DiffTimeout = 0
 		left, right, lines := dmp.DiffLinesToRunes(string(before), string(after))
 		differences := dmp.DiffCharsToLines(dmp.DiffMainRunes(left, right, false), lines)
-		inserted, deleted := 0, 0
-		for _, d := range differences {
-			count := len(strings.SplitAfter(d.Text, "\n"))
-			if strings.HasSuffix(d.Text, "\n") {
-				count--
-			}
-			switch d.Type {
-			case diffmatchpatch.DiffInsert:
-				inserted += count
-			case diffmatchpatch.DiffDelete:
-				deleted += count
-			case diffmatchpatch.DiffEqual:
-			}
-		}
+		inserted, deleted := countDiffLines(differences)
 		fmt.Fprintf(&summary, "  %s %s (+%d -%d)\n", kind, name, inserted, deleted)
 		patch.WriteString(unifiedFile(name, string(before), string(after), differences))
 	}
-	return fmt.Sprintf("%d changed, %d added, %d removed, %d left out\n%s", changed, added, removed, leftOut, summary.String()), patch.String(), nil
+	return fmt.Sprintf(
+		"%d changed, %d added, %d removed, %d left out\n%s",
+		changed,
+		added,
+		removed,
+		leftOut,
+		summary.String(),
+	), patch.String(), nil
 }
 
 // unifiedFile renders go-diff's line edits in the POSIX unified format. go-diff's
@@ -250,19 +272,14 @@ func compareFork(ctx context.Context, upstream, fork string) (string, string, er
 // by patch. This adapter only groups the library's edits into three-line context
 // hunks; go-diff remains the sole owner of deciding which lines changed.
 func unifiedFile(name, before, after string, differences []diffmatchpatch.Diff) string {
-	type line struct {
-		kind      diffmatchpatch.Operation
-		text      string
-		old, next int
-	}
-	var lines []line
+	var lines []diffLine
 	old, next := 1, 1
 	for _, difference := range differences {
 		for _, text := range strings.SplitAfter(difference.Text, "\n") {
 			if text == "" {
 				continue
 			}
-			lines = append(lines, line{difference.Type, text, old, next})
+			lines = append(lines, diffLine{difference.Type, text, old, next})
 			if difference.Type != diffmatchpatch.DiffInsert {
 				old++
 			}
@@ -298,39 +315,67 @@ func unifiedFile(name, before, after string, differences []diffmatchpatch.Diff) 
 			}
 		}
 		end = min(len(lines), end+3)
-		oldCount, newCount := 0, 0
-		for _, line := range lines[start:end] {
-			if line.kind != diffmatchpatch.DiffInsert {
-				oldCount++
-			}
-			if line.kind != diffmatchpatch.DiffDelete {
-				newCount++
-			}
-		}
-		oldStart, newStart := lines[start].old, lines[start].next
-		if oldCount == 0 {
-			oldStart--
-		}
-		if newCount == 0 {
-			newStart--
-		}
-		fmt.Fprintf(&out, "@@ -%d,%d +%d,%d @@\n", oldStart, oldCount, newStart, newCount)
-		for _, line := range lines[start:end] {
-			prefix := " "
-			switch line.kind {
-			case diffmatchpatch.DiffInsert:
-				prefix = "+"
-			case diffmatchpatch.DiffDelete:
-				prefix = "-"
-			case diffmatchpatch.DiffEqual:
-			}
-			out.WriteString(prefix)
-			out.WriteString(line.text)
-			if !strings.HasSuffix(line.text, "\n") {
-				out.WriteString("\n\\ No newline at end of file\n")
-			}
-		}
+		writeDiffHunk(&out, lines[start:end])
 		cursor = end
 	}
 	return out.String()
+}
+
+func countDiffLines(differences []diffmatchpatch.Diff) (inserted, deleted int) {
+	for _, d := range differences {
+		count := len(strings.SplitAfter(d.Text, "\n"))
+		if strings.HasSuffix(d.Text, "\n") {
+			count--
+		}
+		switch d.Type {
+		case diffmatchpatch.DiffInsert:
+			inserted += count
+		case diffmatchpatch.DiffDelete:
+			deleted += count
+		case diffmatchpatch.DiffEqual:
+		}
+	}
+
+	return inserted, deleted
+}
+
+type diffLine struct {
+	kind      diffmatchpatch.Operation
+	text      string
+	old, next int
+}
+
+func writeDiffHunk(out *strings.Builder, lines []diffLine) {
+	oldCount, newCount := 0, 0
+	for _, line := range lines {
+		if line.kind != diffmatchpatch.DiffInsert {
+			oldCount++
+		}
+		if line.kind != diffmatchpatch.DiffDelete {
+			newCount++
+		}
+	}
+	oldStart, newStart := lines[0].old, lines[0].next
+	if oldCount == 0 {
+		oldStart--
+	}
+	if newCount == 0 {
+		newStart--
+	}
+	fmt.Fprintf(out, "@@ -%d,%d +%d,%d @@\n", oldStart, oldCount, newStart, newCount)
+	for _, line := range lines {
+		prefix := " "
+		switch line.kind {
+		case diffmatchpatch.DiffInsert:
+			prefix = "+"
+		case diffmatchpatch.DiffDelete:
+			prefix = "-"
+		case diffmatchpatch.DiffEqual:
+		}
+		out.WriteString(prefix)
+		out.WriteString(line.text)
+		if !strings.HasSuffix(line.text, "\n") {
+			out.WriteString("\n\\ No newline at end of file\n")
+		}
+	}
 }

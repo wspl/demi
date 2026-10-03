@@ -15,8 +15,21 @@ func (g *generator) tupleUnion(d *definition) bool {
 // emitTupleVariant reads and writes a kept-record variant in declaration order.
 func (g *generator) emitTupleVariant(d *definition, st *types.Struct) {
 	_, tag, _ := strings.Cut(d.marks["variant"], " ")
-	g.line("func %sMsgpack(data []byte)(%s,error){return contract.DecodeMsgpack[%s](data)}", goName("Decode", d.name), d.name, d.name)
-	g.line("func(v *%s) UnmarshalMsgpack(data []byte)error{fields,err:=contract.MsgpackTuple(data,%s,%d);if err!=nil{return err};var next %s", d.name, q(tag), st.NumFields(), d.name)
+	g.line(
+		"func %sMsgpack(data []byte)(%s,error){return contract.DecodeMsgpack[%s](data)}",
+		goName("Decode", d.name),
+		d.name,
+		d.name,
+	)
+	g.line(
+		"func(v *%s) UnmarshalMsgpack(data []byte)error{fields,"+
+			"err:=contract.MsgpackTuple(data,%s,%d);if err!=nil{return err};var "+
+			"next %s",
+		d.name,
+		quote(tag),
+		st.NumFields(),
+		d.name,
+	)
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
 		m := d.fields[f.Name()]
@@ -25,20 +38,28 @@ func (g *generator) emitTupleVariant(d *definition, st *types.Struct) {
 		if has(m, "nullable") {
 			g.line("if !contract.MsgpackNull(raw){")
 		}
-		g.line("value,err:=%s(raw);if err!=nil{return contract.At(%s,err)};next.%s=value", g.msgFieldDecoder(f.Type(), m), q(key), f.Name())
+		g.line(
+			"value,err:=%s(raw);if err!=nil{return contract.At(%s,err)};next.%s=value",
+			g.msgFieldDecoder(f.Type(), m),
+			quote(key),
+			f.Name(),
+		)
 		if has(m, "nullable") {
 			g.line("}")
 		}
 		g.line("}")
 	}
 	g.line("if err:=next.Validate();err!=nil{return err};*v=next;return nil}")
-	g.line("func(v %s) MarshalMsgpack()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};fields:=[]any{}", d.name)
+	g.line(
+		"func(v %s) MarshalMsgpack()([]byte,error){if err:=v.Validate();err!=nil{return nil,err};fields:=[]any{}",
+		d.name,
+	)
 	for i := 0; i < st.NumFields(); i++ {
 		f := st.Field(i)
 		value := g.msgValue(f, d.fields[f.Name()])
 		g.line("fields=append(fields,%s)", value)
 	}
-	g.line("return contract.EncodeMsgpackTuple(%s,fields)}", q(tag))
+	g.line("return contract.EncodeMsgpackTuple(%s,fields)}", quote(tag))
 }
 
 // msgValue applies the wire adapter for a timestamp field when encoding it.

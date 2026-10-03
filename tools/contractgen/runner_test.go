@@ -23,7 +23,25 @@ func TestRunnerCorpus(t *testing.T) {
 		for _, path := range paths {
 			kind := strings.Split(filepath.Base(path), ".")[0]
 			switch kind {
-			case "ping", "hello_ok", "claim_pending", "hello_error", "sync", "volume_grown", "spawn", "spawn_stdin", "spawn_kill", "job_follow", "rpc_pipes", "rpc_exit", "fs_utimes", "pong", "sync_done", "job_output", "job_running_hint", "volume_grow", "spawn_output":
+			case "ping",
+				"hello_ok",
+				"claim_pending",
+				"hello_error",
+				"sync",
+				"volume_grown",
+				"spawn",
+				"spawn_stdin",
+				"spawn_kill",
+				"job_follow",
+				"rpc_pipes",
+				"rpc_exit",
+				"fs_utimes",
+				"pong",
+				"sync_done",
+				"job_output",
+				"job_running_hint",
+				"volume_grow",
+				"spawn_output":
 			default:
 				continue
 			}
@@ -51,6 +69,7 @@ func TestRunnerCorpus(t *testing.T) {
 		t.Fatalf("got %d fixtures, want 25", count)
 	}
 }
+
 func TestRunnerRefusals(t *testing.T) {
 	cases := map[string]map[string]any{
 		"unknown tag":          {"type": "future"},
@@ -89,6 +108,7 @@ func TestRunnerRefusals(t *testing.T) {
 		})
 	}
 }
+
 func TestRunnerLargeInteger(t *testing.T) {
 	original := &runner.VolumeGrown{ID: "x", Volume: "home", Bytes: 9007199254740993}
 	data, err := runner.EncodeMessageMsgpack(original)

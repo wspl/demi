@@ -10,7 +10,9 @@ import (
 // The command interface must fail closed on incomplete or incompatible output.
 // Cost: small in-memory JSON documents; no processes or waits.
 func TestDecodeMetadata(t *testing.T) {
-	valid := `[{"id":"test","package":"@demicodes/plugin-test","schemas":[{"direction":"receive","value":{"type":"null"}}],"constants":[{"name":"VALUE","description":"","value":null}]}]`
+	valid := `[{"id":"test","package":"@demicodes/plugin-test",` +
+		`"schemas":[{"direction":"receive","value":{"type":"null"}}],` +
+		`"constants":[{"name":"VALUE","description":"","value":null}]}]`
 	if _, err := pagemeta.Decode([]byte(valid)); err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +25,12 @@ func TestDecodeMetadata(t *testing.T) {
 		"invalid direction":      strings.Replace(valid, "receive", "both", 1),
 		"null pages":             "null",
 		"null element":           "[null]",
-		"null list":              strings.Replace(valid, `"constants":[{"name":"VALUE","description":"","value":null}]`, `"constants":null`, 1),
+		"null list": strings.Replace(
+			valid,
+			`"constants":[{"name":"VALUE","description":"","value":null}]`,
+			`"constants":null`,
+			1,
+		),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := pagemeta.Decode([]byte(data)); err == nil {

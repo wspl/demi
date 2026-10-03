@@ -24,13 +24,14 @@ import (
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 func writeFixture(t *testing.T, path string, data []byte) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, data, 0755); err != nil {
+	if err := os.WriteFile(path, data, 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func readFixture(t *testing.T, path string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -39,16 +40,23 @@ func readFixture(t *testing.T, path string) []byte {
 	}
 	return data
 }
+
 func nativeFixture(t *testing.T, root, program string, targets []string, contents string) {
 	t.Helper()
 	for _, target := range targets {
-		writeFixture(t, filepath.Join(root, ".cache/native-target", target, "release", executableName(program, target)), []byte(contents+" "+target))
+		writeFixture(
+			t,
+			filepath.Join(root, ".cache/native-target", target, "release", executableName(program, target)),
+			[]byte(contents+" "+target),
+		)
 	}
 }
+
 func appFixture(t *testing.T) *application {
 	t.Helper()
 	return &application{Root: t.TempDir(), Out: io.Discard, Err: io.Discard, chromeRelease: browserop.PinnedRelease}
 }
+
 func readRunner(t *testing.T, root string) runnerwire.RunnerRelease {
 	t.Helper()
 	release, err := runnerwire.DecodeRunnerRelease(readFixture(t, filepath.Join(root, "manifest.json")))
@@ -57,6 +65,7 @@ func readRunner(t *testing.T, root string) runnerwire.RunnerRelease {
 	}
 	return release
 }
+
 func requireConflict(t *testing.T, err error, paths ...string) {
 	t.Helper()
 	var conflict *artifacts.ConflictError
@@ -88,13 +97,18 @@ func TestNamedTargetsMustBeEachExecutablesAndUnnamedAreAllOfTheirs(t *testing.T)
 		}
 	}
 	a := appFixture(t)
-	if err := a.run(t.Context(), []string{"native", "build", "--package", "demi-machine-manager", "--target", commandwire.Targets[0]}); err == nil || err.Error() != "demi-machine-manager is not built for aarch64-apple-darwin" {
+	if err := a.run(
+		t.Context(),
+		[]string{"native", "build", "--package", "demi-machine-manager", "--target", commandwire.Targets[0]},
+	); err == nil ||
+		err.Error() != "demi-machine-manager is not built for aarch64-apple-darwin" {
 		t.Fatal("unsupported build accepted")
 	}
 	if _, err := os.Stat(filepath.Join(a.Root, ".cache")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("invalid selection started building: %v", err)
 	}
 }
+
 func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.T) {
 	a := appFixture(t)
 	output := filepath.Join(a.Root, "runners")
@@ -107,7 +121,10 @@ func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.
 	if len(first.Targets) != 6 {
 		t.Fatal(first)
 	}
-	if !bytes.Equal(readFixture(t, filepath.Join(output, "manifest.json")), readFixture(t, filepath.Join(output, first.Release, "manifest.json"))) {
+	if !bytes.Equal(
+		readFixture(t, filepath.Join(output, "manifest.json")),
+		readFixture(t, filepath.Join(output, first.Release, "manifest.json")),
+	) {
 		t.Fatal("pointer differs")
 	}
 	windows := filepath.Join(output, first.Release, "x86_64-pc-windows-msvc/demi-runner.exe")
@@ -131,12 +148,17 @@ func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.
 	requireReleaseEntries(t, output, first.Release, second.Release, "manifest.json")
 	writeFixture(t, filepath.Join(output, first.Release, commandwire.Targets[2], "demi-runner"), []byte("corrupt"))
 	nativeFixture(t, a.Root, "demi-runner", commandwire.Targets, "first")
-	requireConflict(t, a.run(t.Context(), args), filepath.Join(output, first.Release, commandwire.Targets[2], "demi-runner"))
+	requireConflict(
+		t,
+		a.run(t.Context(), args),
+		filepath.Join(output, first.Release, commandwire.Targets[2], "demi-runner"),
+	)
 	if !reflect.DeepEqual(readRunner(t, output), second) {
 		t.Fatal("failed publication moved pointer")
 	}
 	requireReleaseEntries(t, output, first.Release, second.Release, "manifest.json")
 }
+
 func TestBackendOrManagerReleaseRecordsVersionAndIsImmutable(t *testing.T) {
 	for _, program := range []string{"demi-backend", "demi-machine-manager"} {
 		t.Run(program, func(t *testing.T) {
@@ -155,15 +177,22 @@ func TestBackendOrManagerReleaseRecordsVersionAndIsImmutable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if release.Executable != program || release.Version != version.Release || len(release.Targets) != len(targets) {
+			if release.Executable != program || release.Version != version.Release ||
+				len(release.Targets) != len(targets) {
 				t.Fatal(release)
 			}
 			for _, target := range targets {
-				got, err := measureExecutable(t.Context(), filepath.Join(a.Root, ".cache/native-target", target, "release", executableName(program, target)))
+				got, err := measureExecutable(
+					t.Context(),
+					filepath.Join(a.Root, ".cache/native-target", target, "release", executableName(program, target)),
+				)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !bytes.Equal(readFixture(t, filepath.Join(output, target, executableName(program, target))), []byte("server "+target)) {
+				if !bytes.Equal(
+					readFixture(t, filepath.Join(output, target, executableName(program, target))),
+					[]byte("server "+target),
+				) {
 					t.Fatal("published executable differs from build")
 				}
 				if got != release.Targets[target] {
@@ -176,6 +205,7 @@ func TestBackendOrManagerReleaseRecordsVersionAndIsImmutable(t *testing.T) {
 		})
 	}
 }
+
 func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T) {
 	a := appFixture(t)
 	targets := []string{commandwire.Targets[0], commandwire.Targets[3]}
@@ -189,7 +219,11 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 	t.Run("missing build message", func(t *testing.T) {
 		t.Skip("fidelity 9: missing-build message changes the build instruction and adds an OS error")
 		source := filepath.Join(a.Root, ".cache/native-target", commandwire.Targets[1], "release", "demi-file")
-		want := fmt.Sprintf("no build of demi-file for %s at %s: run cargo xtask native build first", commandwire.Targets[1], source)
+		want := fmt.Sprintf(
+			"no build of demi-file for %s at %s: run cargo xtask native build first",
+			commandwire.Targets[1],
+			source,
+		)
 		if missingBuild.Error() != want {
 			t.Fatalf("missing build: %v, want %q", missingBuild, want)
 		}
@@ -207,19 +241,26 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.ID != fileop.Package || descriptor.Version != version.Release || !reflect.DeepEqual(descriptor.Operations, fileop.Operations()) || len(descriptor.Resources) != 0 || !slices.Equal(slices.Sorted(maps.Keys(descriptor.Targets)), targets) {
+	if descriptor.ID != fileop.Package || descriptor.Version != version.Release ||
+		!reflect.DeepEqual(descriptor.Operations, fileop.Operations()) ||
+		len(descriptor.Resources) != 0 ||
+		!slices.Equal(slices.Sorted(maps.Keys(descriptor.Targets)), targets) {
 		t.Fatal(descriptor)
 	}
 	requireReleaseEntries(t, output, append(slices.Clone(targets), "descriptor.json")...)
 	nativeFixture(t, a.Root, "demi-runner", targets, "runner")
 	runnerOutput := filepath.Join(a.Root, "runners")
-	if err := a.packageNative(t.Context(), packageOptions{Package: "demi-runner", Output: runnerOutput, Targets: targets}); err != nil {
+	if err := a.packageNative(
+		t.Context(),
+		packageOptions{Package: "demi-runner", Output: runnerOutput, Targets: targets},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(slices.Sorted(maps.Keys(readRunner(t, runnerOutput).Targets)), targets) {
 		t.Fatal("wrong development runner targets")
 	}
 }
+
 func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	// Accepted R5 removal: Chrome is the only resource a command package carries.
 	// Rust's entirely uncarried second resource has no Go counterpart; uncarried Chrome targets remain covered.
@@ -239,14 +280,25 @@ func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	writeFixture(t, cached, archive)
 	chrome := browserop.BrowserRelease{Version: "153.0.8010.36"}
 	for _, target := range []string{target, commandwire.Targets[0]} {
-		chrome.Platforms = append(chrome.Platforms, browserop.ReleasePlatform{Target: target, URL: "https://example.test/chrome.zip", Size: digest.Size, SHA256: digest.SHA256, Executable: "chrome-linux64/chrome"})
+		chrome.Platforms = append(
+			chrome.Platforms,
+			browserop.ReleasePlatform{
+				Target:     target,
+				URL:        "https://example.test/chrome.zip",
+				Size:       digest.Size,
+				SHA256:     digest.SHA256,
+				Executable: "chrome-linux64/chrome",
+			},
+		)
 	}
 	options := packageOptions{Package: "demi-browser", Output: filepath.Join(a.Root, "release")}
 	sources := map[string]string{target: program}
 	if err := a.publishNative(t.Context(), options, sources, chrome); err != nil {
 		t.Fatal(err)
 	}
-	descriptor, err := commandwire.DecodePackageDescriptor(readFixture(t, filepath.Join(options.Output, "descriptor.json")))
+	descriptor, err := commandwire.DecodePackageDescriptor(
+		readFixture(t, filepath.Join(options.Output, "descriptor.json")),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +306,10 @@ func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 		t.Fatalf("resources: %v", descriptor.Resources)
 	}
 	resource := descriptor.Resources["chrome"]
-	if resource.Title != chrome.Title() || len(resource.Targets) != 1 || resource.Targets[target].SHA256 != digest.SHA256 || resource.Targets[target].Size != digest.Size || resource.Targets[target].Entry != "chrome-linux64/chrome" {
+	if resource.Title != chrome.Title() || len(resource.Targets) != 1 ||
+		resource.Targets[target].SHA256 != digest.SHA256 ||
+		resource.Targets[target].Size != digest.Size ||
+		resource.Targets[target].Entry != "chrome-linux64/chrome" {
 		t.Fatal(resource)
 	}
 	requireReleaseEntries(t, options.Output, "descriptor.json", "resources", target)

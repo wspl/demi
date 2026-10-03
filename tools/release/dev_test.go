@@ -56,12 +56,23 @@ func TestEchoStreamsLastUserTextAndCloses(t *testing.T) {
 		status     int
 	}{
 		{`{"messages":[{"role":"user","content":"hello"}]}`, "Echo: hello", 200},
-		{`{"messages":[{"role":"user","content":"old"},{"role":"assistant","content":"answer"},{"role":"user","content":[{"type":"image"},{"type":"text","text":"one"},{"type":"text","text":"two"}]}]}`, "Echo: one\ntwo", 200},
+		{
+			`{"messages":[{"role":"user","content":"old"},{"role":"assistant",` +
+				`"content":"answer"},{"role":"user","content":[{"type":"image"},` +
+				`{"type":"text","text":"one"},{"type":"text","text":"two"}]}]}`,
+			"Echo: one\ntwo",
+			200,
+		},
 		{`{"messages":[]}`, "Echo: ", 200},
 		{`{"messages":[{"role":"user","content":[{"type":"text"}]}]}`, "", 422},
 		{`{"messages":[{"role":"other","content":"bad"}]}`, "", 422},
 	} {
-		request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, echo.url+"/messages", strings.NewReader(scenario.body))
+		request, err := http.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			echo.url+"/messages",
+			strings.NewReader(scenario.body),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -101,7 +112,8 @@ func TestEchoStreamsLastUserTextAndCloses(t *testing.T) {
 				}
 			}
 		}
-		if text.String() != scenario.want || len(events) < 6 || events[0] != "message_start" || events[len(events)-1] != "message_stop" {
+		if text.String() != scenario.want || len(events) < 6 || events[0] != "message_start" ||
+			events[len(events)-1] != "message_stop" {
 			t.Fatalf("stream = %q, events = %v", text.String(), events)
 		}
 	}

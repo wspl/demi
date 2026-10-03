@@ -34,12 +34,21 @@ func (g *generator) emitOptionalObjectDecode(f *types.Var, child *definition, ms
 	if msg {
 		fields, encode, decoder = "MsgpackFields", "EncodeMsgpackObject", g.msgDecoder(child.typ)
 	}
-	g.line("{parts:=[]contract.Field{};source,err:=contract.%s(data);if err!=nil{return err};for _,field:=range source{switch field.Name{", fields)
+	g.line(
+		"{parts:=[]contract.Field{};source,err:=contract.%s(data);if "+
+			"err!=nil{return err};for _,field:=range source{switch field.Name{",
+		fields,
+	)
 	for _, key := range g.propertyNames(child, st) {
-		g.line("case %s:parts=append(parts,field)", q(key))
+		g.line("case %s:parts=append(parts,field)", quote(key))
 		if msg {
 			g.line("delete(obj,field.Name)")
 		}
 	}
-	g.line("}};raw,err:=contract.%s(parts);if err!=nil{return err};if value,err:=%s(raw);err==nil{next.%s=&value}}", encode, decoder, f.Name())
+	g.line(
+		"}};raw,err:=contract.%s(parts);if err!=nil{return err};if value,err:=%s(raw);err==nil{next.%s=&value}}",
+		encode,
+		decoder,
+		f.Name(),
+	)
 }

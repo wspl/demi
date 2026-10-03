@@ -62,7 +62,9 @@ func TestBrowserPluginSchemas(t *testing.T) {
 			}
 			for _, decl := range file.Decls {
 				fn, ok := decl.(*ast.FuncDecl)
-				if !ok || fn.Name.Name != "LiveModuleMessagePluginJSONSchema" && fn.Name.Name != "LiveViewerMessagePluginJSONSchema" {
+				if !ok ||
+					fn.Name.Name != "LiveModuleMessagePluginJSONSchema" &&
+						fn.Name.Name != "LiveViewerMessagePluginJSONSchema" {
 					continue
 				}
 				ret := fn.Body.List[0].(*ast.ReturnStmt)
