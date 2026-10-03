@@ -241,7 +241,11 @@ func serve[M commandwire.Metadata](ctx context.Context, conn net.Conn, h Handler
 		if err := rc.Flush(); err != nil {
 			return
 		}
-		result := runInvocation(r.Context(), r, w, invoke)
+		remaining := r.ContentLength
+		if remaining >= 0 {
+			remaining -= int64(4 + len(b))
+		}
+		result := runInvocation(r.Context(), r, w, remaining, invoke)
 		if release && result.cleanup != nil {
 			fail(&ConversationCleanupError{Cause: result.cleanup})
 		}
@@ -330,11 +334,11 @@ type handlerResult struct {
 	panicked   bool
 }
 
-func runInvocation(ctx context.Context, r *http.Request, w http.ResponseWriter, invoke func(context.Context, *Input, *Output) (commandwire.Completion, error)) invocationResult {
+func runInvocation(ctx context.Context, r *http.Request, w http.ResponseWriter, remaining int64, invoke func(context.Context, *Input, *Output) (commandwire.Completion, error)) invocationResult {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	o, records := OutputChannel(ctx)
-	i := NewInput(&httpInput{body: r.Body, output: o})
+	i := NewInput(&httpInput{body: r.Body, output: o, remaining: remaining})
 	done := make(chan handlerResult, 1)
 	go func() {
 		result := handlerResult{}
