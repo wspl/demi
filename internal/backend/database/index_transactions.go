@@ -96,7 +96,7 @@ func InsertConversation(ctx context.Context, tx *sql.Tx, record NewConversation)
 }
 
 // ConversationByID reads a conversation in any spelling of its ID.
-func ConversationByID(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (*ConversationRecord, error) {
+func ConversationByID(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (ConversationRecord, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,

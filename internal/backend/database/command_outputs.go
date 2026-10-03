@@ -58,7 +58,7 @@ ON CONFLICT (command_id) DO NOTHING`,
 }
 
 // ReadCommandOutput reads a command's row; nil means it has no row.
-func ReadCommandOutput(ctx context.Context, tx *sql.Tx, command core.CommandID) (*CommandOutput, error) {
+func ReadCommandOutput(ctx context.Context, tx *sql.Tx, command core.CommandID) (CommandOutput, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,
@@ -73,12 +73,12 @@ func ReadCommandOutput(ctx context.Context, tx *sql.Tx, command core.CommandID) 
 func CommandOutputRows(ctx context.Context, tx *sql.Tx, commands []core.CommandID) ([]CommandOutput, error) {
 	rows := make([]CommandOutput, 0)
 	for _, command := range commands {
-		row, err := ReadCommandOutput(ctx, tx, command)
+		row, found, err := ReadCommandOutput(ctx, tx, command)
 		if err != nil {
 			return nil, err
 		}
-		if row != nil {
-			rows = append(rows, *row)
+		if found {
+			rows = append(rows, row)
 		}
 	}
 	return rows, nil

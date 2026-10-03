@@ -17,8 +17,11 @@ type emailStore struct {
 	taken   bool
 }
 
-func (s *emailStore) Account(context.Context, webapi.UserID) (*database.Account, error) {
-	return s.account, nil
+func (s *emailStore) Account(context.Context, webapi.UserID) (database.Account, bool, error) {
+	if s.account == nil {
+		return database.Account{}, false, nil
+	}
+	return *s.account, true, nil
 }
 
 func (s *emailStore) EmailInUse(context.Context, webapi.EmailAddress) (bool, error) {
@@ -122,12 +125,12 @@ func TestEmailDeliveryConfirmationAndFailureCleanup(t *testing.T) {
 	if err != nil || changed.Email != delivered.Email {
 		t.Fatalf("confirm: %#v, %v", changed, err)
 	}
-	stored, err := control.AccountByEmail(t.Context(), delivered.Email)
-	if err != nil || stored == nil || stored.User.ID != signed.User.ID {
+	stored, found, err := control.AccountByEmail(t.Context(), delivered.Email)
+	if err != nil || !found || stored.User.ID != signed.User.ID {
 		t.Fatalf("new address not persisted: %v", err)
 	}
-	old, err := control.AccountByEmail(t.Context(), "old@example.test")
-	if err != nil || old != nil {
+	_, ok, err := control.AccountByEmail(t.Context(), "old@example.test")
+	if err != nil || ok {
 		t.Fatalf("old address still resolves: %v", err)
 	}
 	_, err = changes.Confirm(t.Context(), signed.User.ID, challenge.ID, delivered.Code)

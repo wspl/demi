@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/wspl/demi/internal/core"
@@ -48,23 +49,39 @@ VALUES (?,?,'user',?,?,?,?,NULL)`,
 }
 
 // Device returns the device with id, or nil when absent.
-func (c *ControlService) Device(ctx context.Context, id webapi.DeviceID) (*DeviceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*DeviceRecord, error) {
-		return queryRecord(ctx, tx, "devices", "SELECT * FROM devices WHERE id = ?", deviceRow, id)
+func (c *ControlService) Device(ctx context.Context, id webapi.DeviceID) (DeviceRecord, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (DeviceRecord, error) {
+		r, ok, err := queryRecord(ctx, tx, "devices", "SELECT * FROM devices WHERE id = ?", deviceRow, id)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // DeviceByToken returns the device whose current token has this hash.
-func (c *ControlService) DeviceByToken(ctx context.Context, token TokenHash) (*DeviceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*DeviceRecord, error) {
-		return queryRecord(ctx, tx, "devices", "SELECT * FROM devices WHERE token_hash = ?", deviceRow, token.Text())
+func (c *ControlService) DeviceByToken(ctx context.Context, token TokenHash) (DeviceRecord, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (DeviceRecord, error) {
+		r, ok, err := queryRecord(
+			ctx,
+			tx,
+			"devices",
+			"SELECT * FROM devices WHERE token_hash = ?",
+			deviceRow,
+			token.Text(),
+		)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // ManagedDevice returns the user's Cloud device, when its first use made it.
-func (c *ControlService) ManagedDevice(ctx context.Context, user webapi.UserID) (*DeviceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*DeviceRecord, error) {
-		return queryRecord(
+func (c *ControlService) ManagedDevice(ctx context.Context, user webapi.UserID) (DeviceRecord, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (DeviceRecord, error) {
+		r, ok, err := queryRecord(
 			ctx,
 			tx,
 			"devices",
@@ -72,7 +89,10 @@ func (c *ControlService) ManagedDevice(ctx context.Context, user webapi.UserID) 
 			deviceRow,
 			user,
 		)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // ManagedDeviceOrCreate returns the user's Cloud device, made on its first use. The partial unique
@@ -96,7 +116,7 @@ ON CONFLICT DO NOTHING`,
 		); err != nil {
 			return DeviceRecord{}, err
 		}
-		d, err := queryRecord(
+		d, found, err := queryRecord(
 			ctx,
 			tx,
 			"devices",
@@ -107,15 +127,14 @@ ON CONFLICT DO NOTHING`,
 		if err != nil {
 			return DeviceRecord{}, err
 		}
-		if d == nil {
-			return DeviceRecord{}, &Error{
-				Kind:   Corrupt,
-				Table:  "devices",
-				Column: "kind",
-				Reason: "the user's Cloud device was neither found nor made",
-			}
+		if !found {
+			return DeviceRecord{}, CorruptValue(
+				"devices",
+				"kind",
+				errors.New("the user's Cloud device was neither found nor made"),
+			)
 		}
-		return *d, nil
+		return d, nil
 	})
 }
 

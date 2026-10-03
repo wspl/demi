@@ -173,12 +173,12 @@ func (d *Devices) DeviceList(
 	if err != nil {
 		return nil, err
 	}
-	cloud, err := control.ManagedDevice(ctx, user)
+	cloud, found, err := control.ManagedDevice(ctx, user)
 	if err != nil {
 		return nil, err
 	}
-	if cloud != nil {
-		devices = append(devices, *cloud)
+	if found {
+		devices = append(devices, cloud)
 	}
 	result := make([]webapi.DeviceDTO, 0, len(devices))
 	for _, device := range devices {

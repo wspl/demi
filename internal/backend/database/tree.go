@@ -29,8 +29,10 @@ var _ store.TreeStore = (*TreeStore)(nil)
 func (s *TreeStore) Node(ctx context.Context, id core.NodeID) (*store.NodeRecord, error) {
 	var result *store.NodeRecord
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		var err error
-		result, err = nodeByID(ctx, tx, id)
+		record, found, err := nodeByID(ctx, tx, id)
+		if found {
+			result = &record
+		}
 		return err
 	})
 	return result, agentError(err)
@@ -55,11 +57,11 @@ func (s *TreeStore) CreateNode(ctx context.Context, record store.NodeRecord, ini
 	}
 	var due WakeupDue
 	err = s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		existing, err := nodeByID(ctx, tx, record.ID)
+		_, found, err := nodeByID(ctx, tx, record.ID)
 		if err != nil {
 			return err
 		}
-		if existing != nil {
+		if found {
 			return &store.Error{Kind: store.OperationFailed, Message: fmt.Sprintf("node %s already exists", record.ID)}
 		}
 		if err := insertNode(ctx, tx, record, initial.State); err != nil {
@@ -124,15 +126,15 @@ func (s *TreeStore) ReopenNode(
 	message core.QueuedMessage,
 ) error {
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		state, err := nodeState(ctx, tx, id)
+		state, found, err := nodeState(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		if state == nil {
+		if !found {
 			return missingNode(id)
 		}
 		state.Queue = []core.QueuedMessage{message}
-		document, err := encoded(*state)
+		document, err := encoded(state)
 		if err != nil {
 			return err
 		}
@@ -158,11 +160,11 @@ WHERE id=?`,
 // MarkDelivered marks only the named current round delivered.
 func (s *TreeStore) MarkDelivered(ctx context.Context, id core.NodeID, round uint64) error {
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		node, err := nodeByID(ctx, tx, id)
+		_, found, err := nodeByID(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		if node == nil {
+		if !found {
 			return missingNode(id)
 		}
 		return execSQL(ctx, tx, "UPDATE nodes SET delivered=1 WHERE id=? AND round=?", id, round)
@@ -207,16 +209,17 @@ func (s *TreeStore) NextNumber(ctx context.Context, sequence core.Sequence) (uin
 
 // CommandOutput returns an ended command's output record, or nil if unknown.
 func (s *TreeStore) CommandOutput(ctx context.Context, command core.CommandID) (store.StoredOutput, error) {
-	var row *CommandOutput
+	var row CommandOutput
+	var found bool
 	_, err := s.db.Read(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
-		row, err = ReadCommandOutput(ctx, tx, command)
+		row, found, err = ReadCommandOutput(ctx, tx, command)
 		return err
 	})
 	if err != nil {
 		return nil, agentError(err)
 	}
-	if row == nil {
+	if !found {
 		return nil, nil
 	}
 	switch output := row.Output.(type) {
@@ -257,8 +260,7 @@ func agentError(err error) error {
 		return err
 	}
 	kind := store.OperationFailed
-	var storage *Error
-	if errors.As(err, &storage) && storage.Kind == Corrupt {
+	if errors.Is(err, ErrCorrupt) {
 		kind = store.Corrupt
 	}
 	return &store.Error{Kind: kind, Message: err.Error(), Cause: err}
@@ -275,7 +277,7 @@ func (s *TreeStore) notify(id core.NodeID, due WakeupDue) {
 }
 
 func earliestWakeup(ctx context.Context, tx *sql.Tx) (WakeupDue, error) {
-	row, err := queryRecord(
+	row, _, err := queryRecord(
 		ctx,
 		tx,
 		"nodes",
@@ -285,7 +287,7 @@ func earliestWakeup(ctx context.Context, tx *sql.Tx) (WakeupDue, error) {
 	if err != nil {
 		return nil, err
 	}
-	return *row, nil
+	return row, nil
 }
 
 func stateWakeup(state store.CheckpointState) WakeupDue {

@@ -33,7 +33,7 @@ func schemaVersion(schema string) uint32 {
 func openSQLite(ctx context.Context, path, schema string, readonly bool) (_ *sql.DB, err error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
-		return nil, &Error{Kind: IOFailure, Err: err}
+		return nil, fmt.Errorf("%w: %w", errFileSystem, err)
 	}
 	u := url.URL{Scheme: "file", Path: filepath.ToSlash(absolute)}
 	q := url.Values{}
@@ -108,14 +108,18 @@ func sqlError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var storage *Error
-	if errors.As(err, &storage) || errors.Is(err, ErrClosed) || errors.Is(err, context.Canceled) ||
+	if errors.Is(err, ErrCorrupt) || errors.Is(err, ErrTimeRange) || errors.Is(err, errSQLite) ||
+		errors.Is(err, errOtherSchema) ||
+		errors.Is(err, errJournalMode) ||
+		errors.Is(err, errFileSystem) ||
+		errors.Is(err, ErrClosed) ||
+		errors.Is(err, context.Canceled) ||
 		errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
 	var sqliteErr *sqlite.Error
 	if errors.As(err, &sqliteErr) {
-		return &Error{Kind: SQLiteFailure, Err: err}
+		return fmt.Errorf("%w: %w", errSQLite, err)
 	}
 	// Domain refusals must remain distinguishable from a SQLite failure.
 	return fmt.Errorf("storage operation: %w", err)
@@ -127,7 +131,7 @@ func initializeSchema(ctx context.Context, tx *sql.Tx, path, schema string) erro
 		return err
 	}
 	if !strings.EqualFold(mode, "wal") {
-		return &Error{Kind: JournalMode, Reason: mode}
+		return fmt.Errorf("%w %s, not WAL", errJournalMode, mode)
 	}
 	var version uint32
 	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
@@ -142,7 +146,7 @@ func initializeSchema(ctx context.Context, tx *sql.Tx, path, schema string) erro
 		return err
 	}
 	if version != 0 || tables != 0 {
-		return &Error{Kind: OtherSchema, Path: path}
+		return fmt.Errorf("%s %w", path, errOtherSchema)
 	}
 	if _, err := tx.ExecContext(ctx, schema); err != nil {
 		return err

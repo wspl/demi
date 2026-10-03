@@ -61,10 +61,7 @@ func testMaster(t *testing.T, c *ControlService) webapi.UserDTO {
 	require(t, err)
 	u, err := c.CreateMaster(t.Context(), "master@example.test", hash)
 	require(t, err)
-	if u == nil {
-		t.Fatal("master missing")
-	}
-	return *u
+	return u
 }
 
 func conversation(n int) webapi.ConversationID {
@@ -101,8 +98,7 @@ func TestOtherSchemaRefusedAndCurrentReopens(t *testing.T) {
 		require(t, err)
 		require(t, db.Close())
 		_, err = OpenControl(t.Context(), path, core.SystemClock{})
-		var storage *Error
-		if !errors.As(err, &storage) || storage.Kind != OtherSchema {
+		if !errors.Is(err, errOtherSchema) {
 			t.Fatalf("schema refusal: %v", err)
 		}
 	}
@@ -137,7 +133,7 @@ func TestExpiredWebSessionsSweptOnOpen(t *testing.T) {
 		return tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM web_sessions").Scan(&count)
 	}))
 	equal(t, 1, count)
-	live, err := c.ResolveWebSession(t.Context(), HashToken("third"), policy)
+	live, _, err := c.ResolveWebSession(t.Context(), HashToken("third"), policy)
 	require(t, err)
 	equal(t, user, live.User)
 }
@@ -167,8 +163,7 @@ func TestPreferencesAreUserOwnedAndCorruptionRefused(t *testing.T) {
 
 func assertCorrupt(t *testing.T, err error, table, column string) {
 	t.Helper()
-	var e *Error
-	if !errors.As(err, &e) || e.Kind != Corrupt || e.Table != table || e.Column != column {
+	if !errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), table+"."+column+" ") {
 		t.Fatalf("corruption %s.%s: %v", table, column, err)
 	}
 }
@@ -184,9 +179,9 @@ func TestConversationSpellingOrderingAndCorruption(t *testing.T) {
 		t.Fatal("initial metadata")
 	}
 	upper := webapi.ConversationID(strings.ToUpper(string(first.ID)))
-	read, err := c.Conversation(t.Context(), upper)
+	read, _, err := c.Conversation(t.Context(), upper)
 	require(t, err)
-	equal(t, &first, read)
+	equal(t, first, read)
 	record, isNew, err := c.CreateConversation(t.Context(), user.ID, upper)
 	require(t, err)
 	equal(t, false, isNew)
@@ -202,7 +197,7 @@ func TestConversationSpellingOrderingAndCorruption(t *testing.T) {
 	model := storetest.TestModel()
 	require(t, c.ChangeConversation(t.Context(), first.ID, &RecordModel{Model: model}))
 	require(t, c.TouchConversation(t.Context(), first.ID))
-	read, err = c.Conversation(t.Context(), first.ID)
+	read, _, err = c.Conversation(t.Context(), first.ID)
 	require(t, err)
 	equal(t, uint64(5), read.ReadRevision)
 	equal(t, &model, read.Model)
@@ -212,7 +207,7 @@ func TestConversationSpellingOrderingAndCorruption(t *testing.T) {
 	require(t, controlDo(t.Context(), c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
 		return execSQL(ctx, tx, `UPDATE conversations SET model='{"providerId":""}' WHERE id=?`, first.ID)
 	}))
-	_, err = c.Conversation(t.Context(), first.ID)
+	_, _, err = c.Conversation(t.Context(), first.ID)
 	assertCorrupt(t, err, "conversations", "model")
 }
 
@@ -327,7 +322,7 @@ func TestConcurrentTargetSwitchKeepsWinnerAnnouncement(t *testing.T) {
 	if winner == "" {
 		t.Fatal("no winner")
 	}
-	record, err := c.Conversation(t.Context(), id)
+	record, _, err := c.Conversation(t.Context(), id)
 	require(t, err)
 	equal(t, uint64(1), record.ContextVersion)
 	equal(t, &webapi.ConversationTargetDevice{DeviceID: laptop.ID, Path: winner}, record.Target)

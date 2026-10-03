@@ -247,7 +247,7 @@ func loadMachine(ctx context.Context, s CloudShard, device database.DeviceRecord
 	if m != nil {
 		return m, nil
 	}
-	operation, err := cloudRecords(s).LatestManagedOperation(ctx, device.ID)
+	operation, found, err := cloudRecords(s).LatestManagedOperation(ctx, device.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -256,11 +256,13 @@ func loadMachine(ctx context.Context, s CloudShard, device database.DeviceRecord
 	defer c.mu.Unlock()
 	if c.machine == nil {
 		c.machine = &machine{
-			device:    device,
-			gate:      gates.NewActivity(nil),
-			phase:     webapi.CloudStateOff,
-			operation: operation,
-			marks:     marks,
+			device: device,
+			gate:   gates.NewActivity(nil),
+			phase:  webapi.CloudStateOff,
+			marks:  marks,
+		}
+		if found {
+			c.machine.operation = &operation
 		}
 	}
 	return c.machine, nil

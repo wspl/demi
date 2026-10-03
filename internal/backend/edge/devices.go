@@ -86,14 +86,14 @@ func (e *Edge) ownedDevice(r *http.Request, paired bool) (*database.DeviceRecord
 	if err != nil {
 		return nil, missing
 	}
-	device, err := e.state.Services.Control.Device(r.Context(), id)
+	device, found, err := e.state.Services.Control.Device(r.Context(), id)
 	if err != nil {
 		return nil, err
 	}
-	if device == nil || device.User != caller(r).ID || paired && device.Kind != webapi.DeviceKindUser {
+	if !found || device.User != caller(r).ID || paired && device.Kind != webapi.DeviceKindUser {
 		return nil, missing
 	}
-	return device, nil
+	return &device, nil
 }
 
 func (e *Edge) revoke(w http.ResponseWriter, r *http.Request) error {

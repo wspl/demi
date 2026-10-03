@@ -184,13 +184,13 @@ func AdmitRelay(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (*Re
 	if err != nil {
 		return nil, err
 	}
-	record, err := owned(ctx, shard, id)
-	if err == nil && record == nil {
+	record, found, err := owned(ctx, shard, id)
+	if err == nil && !found {
 		err = ErrRelayNotFound
 	}
 	if err == nil {
 		var expired bool
-		expired, err = destroyIfExpired(ctx, shard, *record)
+		expired, err = destroyIfExpired(ctx, shard, record)
 		if err == nil && expired {
 			err = ErrRelayNotFound
 		}
@@ -202,7 +202,7 @@ func AdmitRelay(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (*Re
 		admission.Release()
 		return nil, err
 	}
-	admission.record = *record
+	admission.record = record
 	return admission, nil
 }
 
@@ -257,13 +257,13 @@ func expireWhenDue(ctx context.Context, shard ExposeShard, record database.Expos
 			}
 			return
 		}
-		next, err := owned(ctx, shard, record.ID)
-		if err == nil && next == nil {
+		next, found, err := owned(ctx, shard, record.ID)
+		if err == nil && !found {
 			return
 		}
 		if err == nil {
 			var expired bool
-			expired, err = destroyIfExpired(ctx, shard, *next)
+			expired, err = destroyIfExpired(ctx, shard, next)
 			if err == nil && expired {
 				return
 			}
@@ -274,7 +274,7 @@ func expireWhenDue(ctx context.Context, shard ExposeShard, record database.Expos
 			}
 			return
 		}
-		record = *next
+		record = next
 	}
 }
 

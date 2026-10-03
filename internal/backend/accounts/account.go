@@ -37,12 +37,12 @@ var (
 // AccountStore is the control database's account boundary.
 type AccountStore interface {
 	HasUsers(context.Context) (bool, error)
-	CreateMaster(context.Context, webapi.EmailAddress, database.PasswordHash) (*webapi.UserDTO, error)
-	AccountByEmail(context.Context, webapi.EmailAddress) (*database.Account, error)
-	Account(context.Context, webapi.UserID) (*database.Account, error)
+	CreateMaster(context.Context, webapi.EmailAddress, database.PasswordHash) (webapi.UserDTO, error)
+	AccountByEmail(context.Context, webapi.EmailAddress) (database.Account, bool, error)
+	Account(context.Context, webapi.UserID) (database.Account, bool, error)
 	Users(context.Context) ([]webapi.UserDTO, error)
-	CreateUser(context.Context, webapi.EmailAddress, database.PasswordHash, webapi.Role) (*webapi.UserDTO, error)
-	SetNickname(context.Context, webapi.UserID, string) (*webapi.UserDTO, error)
+	CreateUser(context.Context, webapi.EmailAddress, database.PasswordHash, webapi.Role) (webapi.UserDTO, error)
+	SetNickname(context.Context, webapi.UserID, string) (webapi.UserDTO, error)
 	SetPassword(context.Context, webapi.UserID, database.PasswordHash) error
 }
 
@@ -93,13 +93,14 @@ func (a *Accounts) Setup(ctx context.Context, request webapi.SetupRequest) (Sign
 		return SignedIn{}, err
 	}
 	user, err := a.control.CreateMaster(ctx, request.Email, hash)
+	if errors.Is(err, database.ErrAlreadySetUp) {
+		return SignedIn{}, ErrAlreadySetUp
+	}
 	if err != nil {
 		return SignedIn{}, err
 	}
-	if user == nil {
-		return SignedIn{}, ErrAlreadySetUp
-	}
-	return a.signIn(ctx, *user)
+
+	return a.signIn(ctx, user)
 }
 
 // Login authenticates an address, applying lockout before password verification.
@@ -110,19 +111,19 @@ func (a *Accounts) Login(ctx context.Context, credentials webapi.Credentials) (S
 	if a.limiter.Locked(credentials.Email) {
 		return SignedIn{}, ErrTooManyAttempts
 	}
-	account, err := a.control.AccountByEmail(ctx, credentials.Email)
+	account, found, err := a.control.AccountByEmail(ctx, credentials.Email)
 	if err != nil {
 		return SignedIn{}, err
 	}
 	var stored *database.PasswordHash
-	if account != nil {
+	if found {
 		stored = &account.PasswordHash
 	}
 	verified, err := a.passwords.Verify(ctx, credentials.Password, stored)
 	if err != nil {
 		return SignedIn{}, err
 	}
-	if account == nil || !verified {
+	if !found || !verified {
 		a.limiter.Failed(credentials.Email)
 		return SignedIn{}, ErrInvalidCredentials
 	}
@@ -148,13 +149,14 @@ func (a *Accounts) SetNickname(
 		return webapi.UserDTO{}, err
 	}
 	user, err := a.control.SetNickname(ctx, caller, string(patch.Nickname))
+	if errors.Is(err, database.ErrUserNotFound) {
+		return webapi.UserDTO{}, ErrUnauthenticated
+	}
 	if err != nil {
 		return webapi.UserDTO{}, err
 	}
-	if user == nil {
-		return webapi.UserDTO{}, ErrUnauthenticated
-	}
-	return *user, nil
+
+	return user, nil
 }
 
 // ChangePassword requires the authenticated caller's current password.
@@ -162,12 +164,12 @@ func (a *Accounts) ChangePassword(ctx context.Context, caller webapi.UserID, cha
 	if err := change.Validate(); err != nil {
 		return err
 	}
-	account, err := a.control.Account(ctx, caller)
+	account, found, err := a.control.Account(ctx, caller)
 	if err != nil {
 		return err
 	}
 	var stored *database.PasswordHash
-	if account != nil {
+	if found {
 		stored = &account.PasswordHash
 	}
 	verified, err := a.passwords.Verify(ctx, change.Current, stored)
@@ -216,13 +218,14 @@ func (a *Accounts) Create(
 		return webapi.UserDTO{}, err
 	}
 	user, err := a.control.CreateUser(ctx, request.Email, hash, role)
+	if errors.Is(err, database.ErrEmailTaken) {
+		return webapi.UserDTO{}, ErrEmailTaken
+	}
 	if err != nil {
 		return webapi.UserDTO{}, err
 	}
-	if user == nil {
-		return webapi.UserDTO{}, ErrEmailTaken
-	}
-	return *user, nil
+
+	return user, nil
 }
 
 // ResetPassword resets a lower-role account's password, checking the target
@@ -239,11 +242,11 @@ func (a *Accounts) ResetPassword(
 	if err := target.Validate(); err != nil {
 		return ErrUserNotFound
 	}
-	account, err := a.control.Account(ctx, target)
+	account, found, err := a.control.Account(ctx, target)
 	if err != nil {
 		return err
 	}
-	if account == nil {
+	if !found {
 		return ErrUserNotFound
 	}
 	if !caller.Role.Outranks(account.User.Role) {

@@ -55,9 +55,10 @@ func (c *ControlService) PluginValue(
 	user webapi.UserID,
 	plugin string,
 	key string,
-) (*PluginValue, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*PluginValue, error) {
-		return queryRecord(
+) (PluginValue, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (PluginValue, error) {
+		r, ok, err := queryRecord(
 			ctx,
 			tx,
 			"plugin_values",
@@ -67,7 +68,10 @@ func (c *ControlService) PluginValue(
 			plugin,
 			key,
 		)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // PluginValues returns every value of `plugin`'s for `user`, by key.
@@ -99,68 +103,91 @@ func (c *ControlService) PluginValues(
 // transaction, so two writes never build on the same revision. The
 // value names `blobs`; the blobs it named before and names now are
 // used before it commits (`storage.md` § Collecting blobs).
-func (c *ControlService) WritePluginValue(ctx context.Context, write ValueWrite, uses OwnerBlobs) (Written, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (Written, error) {
-		text, err := encoded(write.Document)
-		if err != nil {
-			return nil, err
-		}
-		named, err := encoded(blobNames(write.Blobs))
-		if err != nil {
-			return nil, err
-		}
-		before, err := queryRecord(
-			ctx,
-			tx,
-			"plugin_values",
-			"SELECT revision,blobs FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?",
-			valueBlobRow,
-			write.User,
-			write.Plugin,
-			write.Key,
-		)
-		if err != nil {
-			return nil, err
-		}
-		var stored *uint64
-		if before != nil {
-			stored = &before.revision
-		}
-		if !reflect.DeepEqual(stored, write.Revision) {
-			return &WrittenConflict{}, nil
-		}
-		touched := append([]core.BlobRef{}, write.Blobs...)
-		if before != nil {
-			touched = append(touched, before.blobs...)
-		}
-		if err := uses.CommitUses(ctx, touched); err != nil {
-			return &WrittenRefused{Err: err}, nil
-		}
-		revision := uint64(1)
-		if write.Revision != nil {
-			revision = *write.Revision + 1
-		}
-		err = execSQL(
-			ctx,
-			tx,
-			`INSERT INTO plugin_values (user_id,plugin,key,document,revision,blobs)
+func (c *ControlService) WritePluginValue(ctx context.Context, write ValueWrite, uses OwnerBlobs) (uint64, error) {
+	var refused error
+	revision, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (uint64, error) {
+		var revision uint64
+		var err error
+		revision, refused, err = writePluginValueTx(ctx, tx, write, uses)
+		return revision, err
+	})
+	if err != nil {
+		return 0, err
+	}
+	if refused != nil {
+		return 0, refused
+	}
+	return revision, nil
+}
+
+// writePluginValueTx performs one plugin value write inside tx. refused
+// is why nothing was written (the plugin sees its text unprefixed);
+// err fails the transaction.
+func writePluginValueTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	write ValueWrite,
+	uses OwnerBlobs,
+) (revision uint64, refused, err error) {
+	text, err := encoded(write.Document)
+	if err != nil {
+		return 0, nil, err
+	}
+	named, err := encoded(blobNames(write.Blobs))
+	if err != nil {
+		return 0, nil, err
+	}
+	before, found, err := queryRecord(
+		ctx,
+		tx,
+		"plugin_values",
+		"SELECT revision,blobs FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?",
+		valueBlobRow,
+		write.User,
+		write.Plugin,
+		write.Key,
+	)
+	if err != nil {
+		return 0, nil, err
+	}
+	var stored *uint64
+	if found {
+		stored = &before.revision
+	}
+	if !reflect.DeepEqual(stored, write.Revision) {
+		return 0, nil, ErrRevisionConflict
+	}
+	touched := append([]core.BlobRef{}, write.Blobs...)
+	if found {
+		touched = append(touched, before.blobs...)
+	}
+	if err := uses.CommitUses(ctx, touched); err != nil {
+		return 0, err, nil
+	}
+	revision = uint64(1)
+	if write.Revision != nil {
+		revision = *write.Revision + 1
+	}
+	err = execSQL(
+		ctx,
+		tx,
+		`INSERT INTO plugin_values (user_id,plugin,key,document,revision,blobs)
 VALUES (?,?,?,?,?,?)
 ON CONFLICT (user_id,plugin,key) DO UPDATE
 SET document=excluded.document,revision=excluded.revision,blobs=excluded.blobs`,
-			write.User,
-			write.Plugin,
-			write.Key,
-			text,
-			integer(revision),
-			named,
-		)
-		return &WrittenRevision{Revision: revision}, err
-	})
+		write.User,
+		write.Plugin,
+		write.Key,
+		text,
+		integer(revision),
+		named,
+	)
+	return revision, nil, err
 }
 
 // RemovePluginValue removes `plugin`'s value `key` for `user` if it is still at
 // `revision`, in one transaction; the blobs it named are used before
-// it commits. Answers WrittenRevision with the removed revision.
+// it commits.
 func (c *ControlService) RemovePluginValue(
 	ctx context.Context,
 	user webapi.UserID,
@@ -168,9 +195,10 @@ func (c *ControlService) RemovePluginValue(
 	key string,
 	revision uint64,
 	uses OwnerBlobs,
-) (Written, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (Written, error) {
-		before, err := queryRecord(
+) error {
+	var refused error
+	err := controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+		before, found, err := queryRecord(
 			ctx,
 			tx,
 			"plugin_values",
@@ -181,15 +209,16 @@ func (c *ControlService) RemovePluginValue(
 			key,
 		)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if before == nil || before.revision != revision {
-			return &WrittenConflict{}, nil
+		if !found || before.revision != revision {
+			return ErrRevisionConflict
 		}
 		if err := uses.CommitUses(ctx, before.blobs); err != nil {
-			return &WrittenRefused{Err: err}, nil
+			refused = err
+			return nil
 		}
-		err = execSQL(
+		return execSQL(
 			ctx,
 			tx,
 			"DELETE FROM plugin_values WHERE user_id = ? AND plugin = ? AND key = ?",
@@ -197,8 +226,11 @@ func (c *ControlService) RemovePluginValue(
 			plugin,
 			key,
 		)
-		return &WrittenRevision{Revision: revision}, err
 	})
+	if err != nil {
+		return err
+	}
+	return refused
 }
 
 // PluginDirectories returns every Host directory of each of `user`'s plugins, by plugin id, each

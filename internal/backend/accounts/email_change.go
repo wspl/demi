@@ -43,7 +43,7 @@ var (
 
 // EmailStore is the control database's email-change boundary.
 type EmailStore interface {
-	Account(context.Context, webapi.UserID) (*database.Account, error)
+	Account(context.Context, webapi.UserID) (database.Account, bool, error)
 	EmailInUse(context.Context, webapi.EmailAddress) (bool, error)
 	IssueEmailChallenge(context.Context, database.ChallengeIssue, database.ChallengePolicy) (core.Timestamp, error)
 	DeleteEmailChallenge(context.Context, webapi.UserID, string) error
@@ -88,11 +88,11 @@ func (e *EmailChanges) Start(
 	if e.mail == nil {
 		return webapi.EmailChallengeDTO{}, ErrMailUnavailable
 	}
-	account, err := e.control.Account(ctx, user)
+	account, found, err := e.control.Account(ctx, user)
 	if err != nil {
 		return webapi.EmailChallengeDTO{}, err
 	}
-	if account == nil {
+	if !found {
 		return webapi.EmailChallengeDTO{}, ErrCurrentPassword
 	}
 	verified, err := e.hasher.Verify(ctx, password, &account.PasswordHash)

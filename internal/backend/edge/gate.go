@@ -97,18 +97,18 @@ func (e *Edge) gate(next http.Handler) http.Handler {
 			writeError(w, unauthenticated())
 			return
 		}
-		session, err := e.state.Services.Sessions.Resolve(r.Context(), cookie.Value)
+		session, found, err := e.state.Services.Sessions.Resolve(r.Context(), cookie.Value)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		if session == nil {
+		if !found {
 			removeCookie(w, r)
 			writeError(w, unauthenticated())
 			return
 		}
 		// Defer renewal until headers are committed so logout can replace the cookie.
-		wrapped := &renewResponse{ResponseWriter: w, session: session, token: cookie.Value, secure: overHTTPS(r)}
+		wrapped := &renewResponse{ResponseWriter: w, session: &session, token: cookie.Value, secure: overHTTPS(r)}
 		next.ServeHTTP(wrapped, r.WithContext(context.WithValue(r.Context(), userKey{}, session.User)))
 	})
 }

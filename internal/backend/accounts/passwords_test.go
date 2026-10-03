@@ -49,8 +49,8 @@ func TestPasswordFixtures(t *testing.T) {
 		if err := control.SetPassword(t.Context(), user.ID, hash); err != nil {
 			t.Fatal(err)
 		}
-		account, err := control.Account(t.Context(), user.ID)
-		if err != nil || account == nil {
+		account, found, err := control.Account(t.Context(), user.ID)
+		if err != nil || !found {
 			t.Fatalf("stored account: %v", err)
 		}
 		valid, err := h.Verify(t.Context(), password, &account.PasswordHash)
@@ -78,8 +78,8 @@ func TestPasswordHashSurvivesStorage(t *testing.T) {
 	if err := control.SetPassword(t.Context(), user.ID, hash); err != nil {
 		t.Fatal(err)
 	}
-	account, err := control.Account(t.Context(), user.ID)
-	if err != nil || account == nil {
+	account, found, err := control.Account(t.Context(), user.ID)
+	if err != nil || !found {
 		t.Fatalf("stored account: %v", err)
 	}
 	for _, scenario := range []struct {

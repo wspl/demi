@@ -54,24 +54,24 @@ func (p *VaultCredentialPool) Meta(ctx context.Context, id string) (*provider.Ac
 	if err != nil {
 		return nil, nil
 	}
-	row, err := p.vault.Account(ctx, p.id, account)
+	row, found, err := p.vault.Account(ctx, p.id, account)
 	if err != nil {
 		return nil, &provider.PoolError{Err: err}
 	}
-	if row == nil {
+	if !found {
 		return nil, nil
 	}
-	meta := AccountMeta(*row)
+	meta := AccountMeta(row)
 	return &meta, nil
 }
 
 // Active returns the selected account ID.
 func (p *VaultCredentialPool) Active(ctx context.Context) (*string, error) {
-	row, err := p.vault.control.Provider(ctx, p.id)
+	row, found, err := p.vault.control.Provider(ctx, p.id)
 	if err != nil {
 		return nil, &provider.PoolError{Err: err}
 	}
-	if row == nil || row.Active == nil {
+	if !found || row.Active == nil {
 		return nil, nil
 	}
 	id := string(*row.Active)
@@ -164,11 +164,11 @@ func (d *vaultDocument) Read(ctx context.Context) (*provider.Revision, error) {
 	if err != nil {
 		return nil, nil
 	}
-	row, err := d.pool.vault.Account(ctx, d.pool.id, id)
+	row, found, err := d.pool.vault.Account(ctx, d.pool.id, id)
 	if err != nil {
 		return nil, &provider.PoolError{Err: err}
 	}
-	if row == nil {
+	if !found {
 		return nil, nil
 	}
 	plain, err := d.pool.vault.key.Open(SecretRow{Provider: d.pool.id, Account: id}, row.Secret)

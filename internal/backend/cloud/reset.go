@@ -38,15 +38,15 @@ func Reset(ctx context.Context, s CloudShard, id webapi.OperationID) (database.M
 	if err != nil {
 		return database.ManagedOperation{}, err
 	}
-	stored, err := cloudRecords(s).ManagedOperation(ctx, device.ID, id)
+	stored, found, err := cloudRecords(s).ManagedOperation(ctx, device.ID, id)
 	if err != nil {
 		return database.ManagedOperation{}, storageFailed(err)
 	}
-	if stored != nil && stored.Phase == webapi.ResetPhaseReady {
-		return *stored, nil
+	if found && stored.Phase == webapi.ResetPhaseReady {
+		return stored, nil
 	}
 	var base machinewire.BaseVersion
-	if stored != nil {
+	if found {
 		base = stored.BaseVersion
 	} else {
 		base, err = Call(ctx, s.CloudServices().Machines, machinewire.CurrentBaseVersionParams{})
@@ -193,7 +193,7 @@ func RecoverResets(ctx context.Context, control *database.ControlService, servic
 type resetRecords interface {
 	DeleteCloudExposes(context.Context) error
 	UnfinishedManagedOperations(context.Context) ([]database.DeviceOperation, error)
-	Device(context.Context, webapi.DeviceID) (*database.DeviceRecord, error)
+	Device(context.Context, webapi.DeviceID) (database.DeviceRecord, bool, error)
 	AnnounceCloudReset(context.Context, webapi.UserID, webapi.OperationID) error
 	PutManagedOperation(context.Context, webapi.DeviceID, database.ManagedOperation) error
 }
@@ -211,11 +211,11 @@ func recoverResets(ctx context.Context, control resetRecords, services *Services
 		return &RecoveryError{Kind: RecoveryStorage, Err: err}
 	}
 	for _, pair := range operations {
-		device, err := control.Device(ctx, pair.Device)
+		device, found, err := control.Device(ctx, pair.Device)
 		if err != nil {
 			return &RecoveryError{Kind: RecoveryStorage, Err: err}
 		}
-		if device == nil {
+		if !found {
 			return &RecoveryError{Kind: RecoveryMissingDevice, Device: pair.Device}
 		}
 		op := pair.Operation

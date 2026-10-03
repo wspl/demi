@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/providers"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
@@ -208,12 +209,13 @@ func (e *Edge) patchProvider(w http.ResponseWriter, r *http.Request) error {
 		label = &value
 	}
 	updated, err := e.state.Services.Vault.Update(r.Context(), entry.ID, label, config)
+	if errors.Is(err, database.ErrProviderNotFound) {
+		return apiFailure(404, "provider_not_found", "No such provider")
+	}
 	if err != nil {
 		return err
 	}
-	if updated == nil {
-		return apiFailure(404, "provider_not_found", "No such provider")
-	}
+
 	if config != nil {
 		if err := e.state.Services.Assembly.Invalidate(r.Context(), entry.ID); err != nil {
 			return err

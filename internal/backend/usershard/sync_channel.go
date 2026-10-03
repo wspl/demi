@@ -183,12 +183,12 @@ func (s *Shard) exchangeSync(ctx context.Context, exchange syncExchange) error {
 			heartbeat = true
 		}
 		if s.Clock().Now() >= exchange.session.ExpiresAt {
-			current, err := s.services.Sessions.Check(ctx, exchange.session.Token)
+			current, found, err := s.services.Sessions.Check(ctx, exchange.session.Token)
 			if err != nil {
 				slog.ErrorContext(ctx, "a page's session could not be read", "error", err)
 				return err
 			}
-			if current == nil {
+			if !found {
 				*exchange.closeCode, *exchange.reason = websocket.StatusCode(4002), "session_ended"
 				return nil
 			}

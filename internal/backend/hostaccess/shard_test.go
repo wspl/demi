@@ -114,11 +114,11 @@ func (s *testShard) conversation(t *testing.T) database.ConversationRecord {
 	if _, _, err := s.control.CreateConversation(t.Context(), s.owner, id); err != nil {
 		t.Fatal(err)
 	}
-	record, err := s.control.Conversation(t.Context(), id)
+	record, _, err := s.control.Conversation(t.Context(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return *record
+	return record
 }
 
 func (s *testShard) paired(t *testing.T, name string) database.DeviceRecord {

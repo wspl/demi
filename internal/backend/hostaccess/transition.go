@@ -98,19 +98,19 @@ func CheckDestination(
 ) error {
 	switch target := to.(type) {
 	case *webapi.ConversationTargetWorkspace:
-		workspace, err := shard.Control().Workspace(ctx, target.WorkspaceID)
+		workspace, found, err := shard.Control().Workspace(ctx, target.WorkspaceID)
 		if err != nil {
 			return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
 		}
-		if workspace == nil || workspace.User != record.Owner {
+		if !found || workspace.User != record.Owner {
 			return &ChangeRefusal{Kind: ChangeWorkspaceNotFound}
 		}
 	case *webapi.ConversationTargetDevice:
-		device, err := shard.Control().Device(ctx, target.DeviceID)
+		device, ok, err := shard.Control().Device(ctx, target.DeviceID)
 		if err != nil {
 			return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
 		}
-		if device == nil || device.User != record.Owner || device.Kind != webapi.DeviceKindUser {
+		if !ok || device.User != record.Owner || device.Kind != webapi.DeviceKindUser {
 			return &ChangeRefusal{Kind: ChangeDeviceNotFound}
 		}
 	case *webapi.ConversationTargetCloud:
@@ -128,11 +128,11 @@ func SwitchTarget(
 	to webapi.ConversationTarget,
 ) error {
 	ctx = context.WithoutCancel(ctx)
-	current, err := shard.Control().Conversation(ctx, expected.ID)
+	current, found, err := shard.Control().Conversation(ctx, expected.ID)
 	if err != nil {
 		return &ChangeRefusal{Kind: ChangeStorage, Cause: err}
 	}
-	if current == nil {
+	if !found {
 		return &ChangeRefusal{Kind: ChangeNotFound}
 	}
 	if current.Archived {

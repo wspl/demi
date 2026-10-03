@@ -85,8 +85,8 @@ func (s *Shard) readPart(
 		preferences, err := s.Control().Preferences(ctx, s.user)
 		return &webapi.SyncEventPreferences{Preferences: preferences}, err
 	case pagesync.User:
-		account, err := s.Control().Account(ctx, s.user)
-		if err != nil || account == nil {
+		account, found, err := s.Control().Account(ctx, s.user)
+		if err != nil || !found {
 			return nil, err
 		}
 		return &webapi.SyncEventUser{User: account.User}, nil
@@ -145,13 +145,13 @@ func (s *Shard) providerStates(ctx context.Context, user webapi.UserDTO) ([]weba
 
 // conversationEvent presents a changed conversation only when it belongs to this user.
 func (s *Shard) conversationEvent(ctx context.Context, id webapi.ConversationID) (webapi.SyncEvent, error) {
-	record, err := s.Control().Conversation(ctx, id)
-	if err != nil || record == nil {
+	record, found, err := s.Control().Conversation(ctx, id)
+	if err != nil || !found {
 		return nil, err
 	}
 	if record.Owner != s.user {
 		return nil, nil
 	}
-	summary, err := s.ConversationSummary(ctx, *record)
+	summary, err := s.ConversationSummary(ctx, record)
 	return &webapi.SyncEventConversation{Conversation: summary}, err
 }

@@ -220,8 +220,8 @@ func TestNoWakeOperationsRefuseStoppedCloudAndOfflineDevice(t *testing.T) {
 			if after != before || s.conversations.Slot(record.ID).Transfers().AnyOpen() {
 				t.Fatal("refused admission retained activity or registration")
 			}
-			managed, err := s.control.ManagedDevice(t.Context(), s.owner)
-			if err != nil || managed != nil {
+			managed, found, err := s.control.ManagedDevice(t.Context(), s.owner)
+			if err != nil || found {
 				t.Fatalf("no-wake allocated Cloud: %v, %v", managed, err)
 			}
 		})

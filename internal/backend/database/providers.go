@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"math"
 
 	"github.com/wspl/demi/internal/core"
@@ -10,32 +11,36 @@ import (
 )
 
 // Master returns the master account, which a shared instance's entries belong to.
-func (c *ControlService) Master(ctx context.Context) (*webapi.UserID, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*webapi.UserID, error) {
-		return queryRecord(
+func (c *ControlService) Master(ctx context.Context) (webapi.UserID, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (webapi.UserID, error) {
+		r, ok, err := queryRecord(
 			ctx,
 			tx,
 			"users",
 			"SELECT id FROM users WHERE role = 'master'",
 			func(r *storedRow) webapi.UserID { return checked(r, "id", webapi.ParseUserID) },
 		)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
-// InsertProvider stores a new entry with its first accounts in one transaction. nil
-// when the owner already holds the family's subscription entry: then
+// InsertProvider stores a new entry with its first accounts in one transaction.
+// ErrSubscriptionExists when the owner already holds the family's subscription entry: then
 // nothing is stored.
 func (c *ControlService) InsertProvider(
 	ctx context.Context,
 	provider NewProvider,
 	accounts []CredentialWrite,
-) (*ProviderRow, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (*ProviderRow, error) {
+) (ProviderRow, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ProviderRow, error) {
 		at, err := now.Millisecond()
 		if err != nil {
-			return nil, err
+			return ProviderRow{}, err
 		}
-		r, err := queryRecord(
+		r, found, err := queryRecord(
 			ctx,
 			tx,
 			"providers",
@@ -63,12 +68,15 @@ RETURNING *`,
 			provider.Active,
 			at,
 		)
-		if err != nil || r == nil {
-			return nil, err
+		if err != nil {
+			return ProviderRow{}, err
+		}
+		if !found {
+			return ProviderRow{}, ErrSubscriptionExists
 		}
 		for _, account := range accounts {
 			if err := writeCredential(ctx, tx, r.ID, account, now); err != nil {
-				return nil, err
+				return ProviderRow{}, err
 			}
 		}
 		return r, nil
@@ -76,10 +84,14 @@ RETURNING *`,
 }
 
 // Provider returns the entry with id, or nil when absent.
-func (c *ControlService) Provider(ctx context.Context, id webapi.ProviderID) (*ProviderRow, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*ProviderRow, error) {
-		return queryRecord(ctx, tx, "providers", "SELECT * FROM providers WHERE id = ?", providerRow, id)
+func (c *ControlService) Provider(ctx context.Context, id webapi.ProviderID) (ProviderRow, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ProviderRow, error) {
+		r, ok, err := queryRecord(ctx, tx, "providers", "SELECT * FROM providers WHERE id = ?", providerRow, id)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // Providers returns the owner's entries, oldest first.
@@ -97,25 +109,32 @@ func (c *ControlService) Providers(ctx context.Context, owner webapi.UserID) ([]
 }
 
 // UpdateProvider replaces the entry's label or sealed configuration, and answers the
-// entry as it now is; nil for an entry that no longer exists.
+// entry as it now is; ErrProviderNotFound for an entry that no longer exists.
 func (c *ControlService) UpdateProvider(
 	ctx context.Context,
 	id webapi.ProviderID,
 	label *string,
 	config *[]byte,
-) (*ProviderRow, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*ProviderRow, error) {
+) (ProviderRow, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ProviderRow, error) {
 		if label != nil {
 			if err := execSQL(ctx, tx, "UPDATE providers SET label = ? WHERE id = ?", *label, id); err != nil {
-				return nil, err
+				return ProviderRow{}, err
 			}
 		}
 		if config != nil {
 			if err := execSQL(ctx, tx, "UPDATE providers SET config = ? WHERE id = ?", *config, id); err != nil {
-				return nil, err
+				return ProviderRow{}, err
 			}
 		}
-		return queryRecord(ctx, tx, "providers", "SELECT * FROM providers WHERE id = ?", providerRow, id)
+		r, found, err := queryRecord(ctx, tx, "providers", "SELECT * FROM providers WHERE id = ?", providerRow, id)
+		if err != nil {
+			return ProviderRow{}, err
+		}
+		if !found {
+			return ProviderRow{}, ErrProviderNotFound
+		}
+		return r, nil
 	})
 }
 
@@ -145,9 +164,10 @@ func (c *ControlService) Credential(
 	ctx context.Context,
 	provider webapi.ProviderID,
 	id webapi.CredentialID,
-) (*CredentialRow, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*CredentialRow, error) {
-		return queryRecord(
+) (CredentialRow, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (CredentialRow, error) {
+		r, ok, err := queryRecord(
 			ctx,
 			tx,
 			"provider_credentials",
@@ -156,7 +176,10 @@ func (c *ControlService) Credential(
 			provider,
 			id,
 		)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // WriteCredential inserts the account, or replaces the one with its id and advances its
@@ -283,9 +306,10 @@ WHERE id = ?1 AND EXISTS (SELECT 1 FROM provider_credentials WHERE provider_id =
 }
 
 // CatalogRecord returns the entry's catalog record, validated.
-func (c *ControlService) CatalogRecord(ctx context.Context, provider webapi.ProviderID) (*CatalogRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*CatalogRecord, error) {
-		return queryRecord(
+func (c *ControlService) CatalogRecord(ctx context.Context, provider webapi.ProviderID) (CatalogRecord, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (CatalogRecord, error) {
+		r, ok, err := queryRecord(
 			ctx,
 			tx,
 			"model_catalogs",
@@ -293,7 +317,10 @@ func (c *ControlService) CatalogRecord(ctx context.Context, provider webapi.Prov
 			func(r *storedRow) CatalogRecord { return storedJSON(r, "record", DecodeCatalogRecord) },
 			provider,
 		)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // PutCatalogRecord stores the entry's catalog record in place of the last one; an entry
@@ -401,3 +428,9 @@ SET
 		provider,
 	)
 }
+
+// ErrSubscriptionExists means the owner already holds the family's subscription entry; nothing is stored.
+var ErrSubscriptionExists = errors.New("the owner already has this family's subscription entry")
+
+// ErrProviderNotFound means no entry has the ID.
+var ErrProviderNotFound = errors.New("no such provider entry")

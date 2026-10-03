@@ -21,11 +21,11 @@ func (c *ControlService) Draft(
 		ctx,
 		c,
 		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (webapi.ConversationDraft, error) {
-			d, err := readDraft(ctx, tx, conversation)
+			d, found, err := readDraft(ctx, tx, conversation)
 			if err != nil {
 				return webapi.ConversationDraft{}, err
 			}
-			if d == nil {
+			if !found {
 				return webapi.EmptyConversationDraft(), nil
 			}
 			return d.present(), nil
@@ -65,12 +65,12 @@ func (c *ControlService) SaveDraft(
 			if len(document) > webapi.DraftBytesMax {
 				return webapi.ConversationDraft{}, ErrDraftTooLarge
 			}
-			current, err := readDraft(ctx, tx, conversation)
+			current, found, err := readDraft(ctx, tx, conversation)
 			if err != nil {
 				return webapi.ConversationDraft{}, err
 			}
 			next := storedDraft{revision: 1, version: version, written: 1}
-			if current != nil {
+			if found {
 				next.revision = current.revision + 1
 				next.written = next.revision
 				next.replaced = current.replaced
@@ -110,11 +110,11 @@ func (c *ControlService) ChangeReplacedDraft(
 			if err := draftWritable(ctx, tx, conversation); err != nil {
 				return webapi.ConversationDraft{}, err
 			}
-			current, err := readDraft(ctx, tx, conversation)
+			current, found, err := readDraft(ctx, tx, conversation)
 			if err != nil {
 				return webapi.ConversationDraft{}, err
 			}
-			if current == nil || current.replaced == nil || current.replaced.Revision != revision {
+			if !found || current.replaced == nil || current.replaced.Revision != revision {
 				return webapi.ConversationDraft{}, ErrDraftChanged
 			}
 			next := storedDraft{revision: current.revision + 1, written: current.written, version: current.version}
@@ -179,7 +179,7 @@ func draftRow(r *storedRow) storedDraft {
 	return d
 }
 
-func readDraft(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (*storedDraft, error) {
+func readDraft(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (storedDraft, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,
@@ -262,11 +262,11 @@ func presentDraftFiles(
 	for _, file := range files {
 		switch f := file.(type) {
 		case *StagedUpload:
-			upload, err := attachmentByID(ctx, tx, f.ID)
+			upload, found, err := attachmentByID(ctx, tx, f.ID)
 			if err != nil {
 				return nil, err
 			}
-			if upload == nil || upload.Owner != owner {
+			if !found || upload.Owner != owner {
 				return nil, &UploadNotFoundError{Upload: f.ID}
 			}
 			presented = append(

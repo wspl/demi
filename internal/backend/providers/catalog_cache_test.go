@@ -158,11 +158,11 @@ func TestFreshCatalogServesMemoryAndStorageAndExpiredRefreshesOnce(t *testing.T)
 		if got.Stale || catalogName(got) != "Updated" || reads.Load() != 2 {
 			t.Fatal(got, reads.Load())
 		}
-		record, err := store.CatalogRecord(t.Context(), "provider")
+		record, found, err := store.CatalogRecord(t.Context(), "provider")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if record == nil || record.CheckedAt != cache.clock.Now() || catalogName(record.Catalog) != "Updated" {
+		if !found || record.CheckedAt != cache.clock.Now() || catalogName(record.Catalog) != "Updated" {
 			t.Fatal(record)
 		}
 	})
@@ -174,7 +174,7 @@ func TestFailedRefreshKeepsRecordAndHoldsOffUnlessForced(t *testing.T) {
 		cache := storedCache(t, store)
 		var reads, failures atomic.Int32
 		readCatalog(t, cache, "key", answering(&reads, catalog("First"), nil), false)
-		kept, err := store.CatalogRecord(t.Context(), "provider")
+		kept, _, err := store.CatalogRecord(t.Context(), "provider")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -184,7 +184,7 @@ func TestFailedRefreshKeepsRecordAndHoldsOffUnlessForced(t *testing.T) {
 		if !got.Stale || catalogName(got) != "First" || len(got.Warnings) != 1 || got.Warnings[0] != "offline" {
 			t.Fatal(got)
 		}
-		stored, err := store.CatalogRecord(t.Context(), "provider")
+		stored, _, err := store.CatalogRecord(t.Context(), "provider")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -249,7 +249,7 @@ func TestChangedKeyAndInvalidationCancelRefreshWithoutWriting(t *testing.T) {
 		if err := <-result; err == nil {
 			t.Fatal("invalidated read succeeded")
 		}
-		if record, err := store.CatalogRecord(t.Context(), "provider"); err != nil || record != nil {
+		if record, found, err := store.CatalogRecord(t.Context(), "provider"); err != nil || found {
 			t.Fatalf("canceled refresh stored: %v, %v", record, err)
 		}
 		got := readCatalog(t, cache, "new-account", answering(&reads, catalog("New"), nil), false)
@@ -260,11 +260,11 @@ func TestChangedKeyAndInvalidationCancelRefreshWithoutWriting(t *testing.T) {
 		if catalogName(got) != "Changed" || reads.Load() != 3 {
 			t.Fatal(got, reads.Load())
 		}
-		stored, err := store.CatalogRecord(t.Context(), "provider")
+		stored, ok, err := store.CatalogRecord(t.Context(), "provider")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if stored == nil || stored.Key != "changed-config" || catalogName(stored.Catalog) != "Changed" {
+		if !ok || stored.Key != "changed-config" || catalogName(stored.Catalog) != "Changed" {
 			t.Fatal(stored)
 		}
 		// A changed key also cancels an in-flight generation, not only a cached one.
@@ -297,16 +297,16 @@ func TestChangedKeyAndInvalidationCancelRefreshWithoutWriting(t *testing.T) {
 		if err := cache.Invalidate(t.Context(), "provider"); err != nil {
 			t.Fatal(err)
 		}
-		stored, err = store.CatalogRecord(t.Context(), "provider")
-		if err != nil || stored != nil {
+		stored, ok, err = store.CatalogRecord(t.Context(), "provider")
+		if err != nil || ok {
 			t.Fatalf("invalidation kept record: %v, %v", stored, err)
 		}
 		readCatalog(t, cache, "after-invalidation", answering(&reads, catalog("To delete"), nil), false)
 		if err := store.DeleteProvider(t.Context(), "provider"); err != nil {
 			t.Fatal(err)
 		}
-		stored, err = store.CatalogRecord(t.Context(), "provider")
-		if err != nil || stored != nil {
+		stored, ok, err = store.CatalogRecord(t.Context(), "provider")
+		if err != nil || ok {
 			t.Fatalf("provider deletion kept catalog: %v, %v", stored, err)
 		}
 	})
@@ -339,7 +339,7 @@ func TestColdFailuresInvalidAnswersTimeoutAndClose(t *testing.T) {
 				t.Fatalf("%v, want %s", err, c.want)
 			}
 		}
-		if record, err := store.CatalogRecord(t.Context(), "provider"); err != nil || record != nil {
+		if record, found, err := store.CatalogRecord(t.Context(), "provider"); err != nil || found {
 			t.Fatalf("unusable answer stored: %v, %v", record, err)
 		}
 		stopped := make(chan struct{})

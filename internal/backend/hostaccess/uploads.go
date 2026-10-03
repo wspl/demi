@@ -49,18 +49,18 @@ func ReferenceRemoteFiles(
 		if err != nil {
 			return nil, &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
 		}
-		device, err := shard.Control().Device(ctx, deviceID)
+		device, found, err := shard.Control().Device(ctx, deviceID)
 		if err != nil {
 			return nil, &RemoteFileRefusal{Kind: RemoteFileStorage, Cause: err}
 		}
-		if device == nil || device.User != record.Owner {
+		if !found || device.User != record.Owner {
 			return nil, &RemoteFileRefusal{Kind: RemoteFileNotAccessible}
 		}
 		if !shard.Devices().Online(device.ID) {
 			return nil, &RemoteFileRefusal{Kind: RemoteFileOffline, Message: device.Name}
 		}
-		devices[file.Device] = *device
-		ordered = append(ordered, *device)
+		devices[file.Device] = device
+		ordered = append(ordered, device)
 	}
 	references := make([]core.UserContentBlock, 0, len(files))
 	for _, file := range files {
@@ -92,11 +92,11 @@ func ResolveUpload(
 	if err != nil {
 		return unavailable, store.HeldMedia{}, nil
 	}
-	record, err := shard.Control().Attachment(ctx, idUpload)
+	record, found, err := shard.Control().Attachment(ctx, idUpload)
 	if err != nil {
 		return nil, store.HeldMedia{}, &Error{Kind: AccessStorage, Cause: err}
 	}
-	if record == nil || record.Owner != shard.User() {
+	if !found || record.Owner != shard.User() {
 		return unavailable, store.HeldMedia{}, nil
 	}
 	bytes, exists, err := shard.Blobs().Read(ctx, record.SHA256)

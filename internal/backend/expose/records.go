@@ -47,18 +47,18 @@ func Add(
 	address webapi.ExposeAddress,
 	lifetime time.Duration,
 ) (Expose, error) {
-	record, err := shard.Control().Device(ctx, device)
+	record, found, err := shard.Control().Device(ctx, device)
 	if err != nil {
 		return Expose{}, fmt.Errorf("read expose device: %w", err)
 	}
-	if record == nil || record.User != shard.User() {
+	if !found || record.User != shard.User() {
 		return Expose{}, ErrDeviceNotFound
 	}
 	domain := shard.Domain()
 	if domain == nil {
 		return Expose{}, ErrUnavailable
 	}
-	if !shard.DeviceConnected(*record) {
+	if !shard.DeviceConnected(record) {
 		//nolint:staticcheck // ST1005: user-visible text.
 		return Expose{}, fmt.Errorf(
 			"The device %s %w",
@@ -109,14 +109,14 @@ func Renew(ctx context.Context, shard ExposeShard, id webapi.ExposeID, lifetime 
 	if domain == nil {
 		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
 	}
-	record, err := owned(ctx, shard, id)
+	record, found, err := owned(ctx, shard, id)
 	if err != nil {
 		return Expose{}, err
 	}
-	if record == nil {
+	if !found {
 		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
 	}
-	expired, err := destroyIfExpired(ctx, shard, *record)
+	expired, err := destroyIfExpired(ctx, shard, record)
 	if err != nil {
 		return Expose{}, err
 	}
@@ -124,14 +124,15 @@ func Renew(ctx context.Context, shard ExposeShard, id webapi.ExposeID, lifetime 
 		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
 	}
 	renewed, err := shard.Control().RenewExpose(context.WithoutCancel(ctx), id, shard.User(), lifetime)
+	if errors.Is(err, database.ErrExposeNotFound) {
+		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
+	}
 	if err != nil {
 		return Expose{}, fmt.Errorf("renew expose: %w", err)
 	}
-	if renewed == nil {
-		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
-	}
+
 	shard.ExposesChanged()
-	return Expose{Record: *renewed, URL: URL(renewed.ID, *domain, shard.PublicURL())}, nil
+	return Expose{Record: renewed, URL: URL(renewed.ID, *domain, shard.PublicURL())}, nil
 }
 
 // Remove destroys an owned expose, answering not found if it already expired.
@@ -139,14 +140,14 @@ func Remove(ctx context.Context, shard ExposeShard, id webapi.ExposeID) error {
 	if shard.Domain() == nil {
 		return fmt.Errorf("%w %s", ErrNotFound, id)
 	}
-	record, err := owned(ctx, shard, id)
+	record, found, err := owned(ctx, shard, id)
 	if err != nil {
 		return err
 	}
-	if record == nil {
+	if !found {
 		return fmt.Errorf("%w %s", ErrNotFound, id)
 	}
-	expired, err := destroyIfExpired(ctx, shard, *record)
+	expired, err := destroyIfExpired(ctx, shard, record)
 	if err != nil {
 		return err
 	}
@@ -156,15 +157,15 @@ func Remove(ctx context.Context, shard ExposeShard, id webapi.ExposeID) error {
 	return destroy(ctx, shard, id)
 }
 
-func owned(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (*database.ExposeRecord, error) {
-	record, err := shard.Control().Expose(ctx, id)
+func owned(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (database.ExposeRecord, bool, error) {
+	record, found, err := shard.Control().Expose(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("read expose: %w", err)
+		return database.ExposeRecord{}, false, fmt.Errorf("read expose: %w", err)
 	}
-	if record != nil && record.User != shard.User() {
-		return nil, nil
+	if found && record.User != shard.User() {
+		return database.ExposeRecord{}, false, nil
 	}
-	return record, nil
+	return record, found, nil
 }
 
 func destroyIfExpired(ctx context.Context, shard ExposeShard, record database.ExposeRecord) (bool, error) {

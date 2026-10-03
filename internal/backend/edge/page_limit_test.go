@@ -42,7 +42,7 @@ func TestPageMessageLimitForEverySocketKind(t *testing.T) {
 					if _, _, err := services.Control.CreateConversation(t.Context(), user.ID, id); err != nil {
 						t.Fatal(err)
 					}
-					record, err := services.Control.Conversation(t.Context(), id)
+					record, _, err := services.Control.Conversation(t.Context(), id)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -88,7 +88,7 @@ func TestPageMessageLimitForEverySocketKind(t *testing.T) {
 							// below is the assertion at the socket boundary.
 							switch kind {
 							case "conversation":
-								_ = shard.ServeConversationSocket(r.Context(), *record, socket)
+								_ = shard.ServeConversationSocket(r.Context(), record, socket)
 							case "sync":
 								_ = shard.ServeSyncChannel(
 									r.Context(),

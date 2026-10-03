@@ -21,8 +21,10 @@ func (s *sessionStore) Blobs() store.BlobStore { return s.tree.blobs.Media() }
 func (s *sessionStore) Load(ctx context.Context) (*store.Checkpoint, error) {
 	var checkpoint *store.Checkpoint
 	err := s.tree.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		var err error
-		checkpoint, err = readCheckpoint(ctx, tx, s.node)
+		record, found, err := readCheckpoint(ctx, tx, s.node)
+		if found {
+			checkpoint = &record
+		}
 		return err
 	})
 	return checkpoint, agentError(err)

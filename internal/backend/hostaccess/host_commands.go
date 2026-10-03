@@ -177,22 +177,22 @@ func currentHost(
 		return 0, port.Stdout(ctx, []byte(fmt.Sprintf("host: Cloud (not allocated), directory %s\n", path)))
 	}
 	name := string(device)
-	found, err := shard.Control().Device(ctx, device)
+	found, ok, err := shard.Control().Device(ctx, device)
 	if err != nil {
 		return 0, err
 	}
-	if found != nil {
+	if ok {
 		name = found.Name
 	}
 	var line string
 	switch selected := target.(type) {
 	case *database.ExecutionWorkspace:
 		workspace := string(selected.WorkspaceID)
-		found, err := shard.Control().Workspace(ctx, selected.WorkspaceID)
+		found, ok, err := shard.Control().Workspace(ctx, selected.WorkspaceID)
 		if err != nil {
 			return 0, err
 		}
-		if found != nil {
+		if ok {
 			workspace = found.Name
 		}
 		line = fmt.Sprintf(

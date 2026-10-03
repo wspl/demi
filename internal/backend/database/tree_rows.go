@@ -73,7 +73,7 @@ func closeColumns(closed *store.NodeClose) (phase *string, at *int64, result *st
 	return
 }
 
-func nodeByID(ctx context.Context, tx *sql.Tx, id core.NodeID) (*store.NodeRecord, error) {
+func nodeByID(ctx context.Context, tx *sql.Tx, id core.NodeID) (store.NodeRecord, bool, error) {
 	return queryRecord(ctx, tx, "nodes", "SELECT * FROM nodes WHERE id=?", nodeRow, id)
 }
 
@@ -81,7 +81,7 @@ func childrenOf(ctx context.Context, tx *sql.Tx, parent core.NodeID) ([]store.No
 	return queryRecords(ctx, tx, "nodes", "SELECT * FROM nodes WHERE parent_id=? ORDER BY number", nodeRow, parent)
 }
 
-func nodeState(ctx context.Context, tx *sql.Tx, id core.NodeID) (*store.CheckpointState, error) {
+func nodeState(ctx context.Context, tx *sql.Tx, id core.NodeID) (store.CheckpointState, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,
@@ -113,23 +113,18 @@ func blocksOf(ctx context.Context, tx *sql.Tx, node core.NodeID, count int64) ([
 		return nil, err
 	}
 	if int64(len(blocks)) != count {
-		return nil, &Error{
-			Kind:   Corrupt,
-			Table:  "blocks",
-			Column: "idx",
-			Reason: fmt.Sprintf("node %s has no block row %d", node, len(blocks)),
-		}
+		return nil, CorruptValue("blocks", "idx", fmt.Errorf("node %s has no block row %d", node, len(blocks)))
 	}
 	return blocks, nil
 }
 
-func readCheckpoint(ctx context.Context, tx *sql.Tx, node core.NodeID) (*store.Checkpoint, error) {
+func readCheckpoint(ctx context.Context, tx *sql.Tx, node core.NodeID) (store.Checkpoint, bool, error) {
 	type stateRow struct {
 		state    store.CheckpointState
 		count    int64
 		revision uint64
 	}
-	row, err := queryRecord(
+	row, found, err := queryRecord(
 		ctx,
 		tx,
 		"nodes",
@@ -143,16 +138,16 @@ func readCheckpoint(ctx context.Context, tx *sql.Tx, node core.NodeID) (*store.C
 		},
 		node,
 	)
-	if err != nil || row == nil {
-		return nil, err
+	if err != nil || !found {
+		return store.Checkpoint{}, false, err
 	}
 	blocks, err := blocksOf(ctx, tx, node, row.count)
 	if err != nil {
-		return nil, err
+		return store.Checkpoint{}, false, err
 	}
 	commands, err := readCommandState(ctx, tx, node, row.revision)
 	if err != nil {
-		return nil, err
+		return store.Checkpoint{}, false, err
 	}
-	return &store.Checkpoint{State: row.state, Transcript: blocks, CommandState: commands}, nil
+	return store.Checkpoint{State: row.state, Transcript: blocks, CommandState: commands}, true, nil
 }

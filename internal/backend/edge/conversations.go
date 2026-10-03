@@ -20,14 +20,14 @@ func (e *Edge) owned(r *http.Request) (*database.ConversationRecord, error) {
 	if err != nil {
 		return nil, missing
 	}
-	record, err := e.state.Services.Control.Conversation(r.Context(), id)
+	record, found, err := e.state.Services.Control.Conversation(r.Context(), id)
 	if err != nil {
 		return nil, err
 	}
-	if record == nil || record.Owner != caller(r).ID {
+	if !found || record.Owner != caller(r).ID {
 		return nil, missing
 	}
-	return record, nil
+	return &record, nil
 }
 
 func (e *Edge) conversations(w http.ResponseWriter, r *http.Request) error {

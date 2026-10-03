@@ -71,12 +71,12 @@ func TestStoragePortsKeepValuesBlobsAndDirectories(t *testing.T) {
 		t.Fatalf("%+v %v", values, err)
 	}
 	// The same key is isolated from another plugin and another user.
-	other, err := shard.control.PluginValue(ctx, shard.user, "other", "key")
-	if err != nil || other != nil {
+	other, found, err := shard.control.PluginValue(ctx, shard.user, "other", "key")
+	if err != nil || found {
 		t.Fatalf("cross-plugin read: %v %v", other, err)
 	}
-	other, err = shard.control.PluginValue(ctx, "another-user", "storage", "key")
-	if err != nil || other != nil {
+	other, found, err = shard.control.PluginValue(ctx, "another-user", "storage", "key")
+	if err != nil || found {
 		t.Fatalf("cross-user read: %v %v", other, err)
 	}
 	if _, err := port.WriteValue(ctx, "key", []byte(`null`), nil); err == nil {

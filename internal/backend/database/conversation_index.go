@@ -47,23 +47,22 @@ func (c *ControlService) CreateConversation(
 			if err != nil {
 				return ConversationRecord{}, err
 			}
-			r, err := ConversationByID(ctx, tx, id)
+			r, found, err := ConversationByID(ctx, tx, id)
 			if err != nil {
 				return ConversationRecord{}, err
 			}
-			if r == nil {
-				return ConversationRecord{}, &Error{
-					Kind:   Corrupt,
-					Table:  "conversations",
-					Column: "id",
-					Reason: "a conversation just created or found is missing",
-				}
+			if !found {
+				return ConversationRecord{}, CorruptValue(
+					"conversations",
+					"id",
+					errors.New("a conversation just created or found is missing"),
+				)
 			}
 			if r.Owner != owner {
 				return ConversationRecord{}, ErrIDUnavailable
 			}
 			created = count == 1
-			return *r, nil
+			return r, nil
 		},
 	)
 	if err != nil {
@@ -73,17 +72,25 @@ func (c *ControlService) CreateConversation(
 }
 
 // Conversation returns the conversation of `id`, in whichever case it is spelled.
-func (c *ControlService) Conversation(ctx context.Context, id webapi.ConversationID) (*ConversationRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*ConversationRecord, error) {
-		return ConversationByID(ctx, tx, id)
-	})
+func (c *ControlService) Conversation(ctx context.Context, id webapi.ConversationID) (ConversationRecord, bool, error) {
+	var found bool
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ConversationRecord, error) {
+			r, ok, err := ConversationByID(ctx, tx, id)
+			found = ok
+			return r, err
+		},
+	)
+	return record, found && err == nil, err
 }
 
 // LastSwitch returns the conversation's latest target switch, which every node's next
 // context block describes; none before its first.
 func (c *ControlService) LastSwitch(ctx context.Context, id webapi.ConversationID) (*TargetSwitch, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*TargetSwitch, error) {
-		r, err := queryRecord(
+		r, found, err := queryRecord(
 			ctx,
 			tx,
 			"conversations",
@@ -91,10 +98,10 @@ func (c *ControlService) LastSwitch(ctx context.Context, id webapi.ConversationI
 			func(r *storedRow) *TargetSwitch { return optionalJSON(r, "last_switch", DecodeTargetSwitch) },
 			id,
 		)
-		if r == nil {
+		if !found {
 			return nil, err
 		}
-		return *r, err
+		return r, err
 	})
 }
 
@@ -299,9 +306,10 @@ func (c *ControlService) MarkLive(ctx context.Context, id webapi.ConversationID,
 
 // LiveAt returns when the conversation's agent tree was last seen live; none when there
 // is no such conversation.
-func (c *ControlService) LiveAt(ctx context.Context, id webapi.ConversationID) (*core.Timestamp, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*core.Timestamp, error) {
-		return queryRecord(
+func (c *ControlService) LiveAt(ctx context.Context, id webapi.ConversationID) (core.Timestamp, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (core.Timestamp, error) {
+		r, ok, err := queryRecord(
 			ctx,
 			tx,
 			"conversations",
@@ -309,7 +317,10 @@ func (c *ControlService) LiveAt(ctx context.Context, id webapi.ConversationID) (
 			func(r *storedRow) core.Timestamp { return r.instant("live_at") },
 			id,
 		)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // SetWakeup records when the earliest wakeup the conversation's tree saved is due,

@@ -65,10 +65,7 @@ func callFailure(err error) error {
 func exposeLifetime(seconds uint64) (time.Duration, error) {
 	const maximum = uint64(math.MaxInt64 / int64(time.Second))
 	if seconds > maximum {
-		err := &database.Error{
-			Kind: database.TimeRange,
-			Err:  fmt.Errorf("expose lifetime exceeds %d seconds", maximum),
-		}
+		err := fmt.Errorf("%w: expose lifetime exceeds %d seconds", database.ErrTimeRange, maximum)
 		return 0, &host.PortError{Kind: host.PortFailed, Message: err.Error(), Err: err}
 	}
 	return time.Duration(seconds) * time.Second, nil

@@ -29,9 +29,9 @@ func TestFixtureDatabasesReadUnchanged(t *testing.T) {
 	require(t, err)
 	equal(t, 1, len(users))
 	equal(t, "master@example.test", string(users[0].Email))
-	account, err := control.Account(t.Context(), users[0].ID)
+	account, ok, err := control.Account(t.Context(), users[0].ID)
 	require(t, err)
-	if account == nil || account.PasswordHash.Text() == "" {
+	if !ok || account.PasswordHash.Text() == "" {
 		t.Fatal("fixture account missing")
 	}
 	conversations, err := control.Conversations(t.Context(), users[0].ID, false)

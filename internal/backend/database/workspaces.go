@@ -9,10 +9,18 @@ import (
 )
 
 // Workspace returns the workspace with id, or nil when absent.
-func (c *ControlService) Workspace(ctx context.Context, id webapi.WorkspaceID) (*WorkspaceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*WorkspaceRecord, error) {
-		return queryRecord(ctx, tx, "workspaces", "SELECT * FROM workspaces WHERE id = ?", workspaceRow, id)
-	})
+func (c *ControlService) Workspace(ctx context.Context, id webapi.WorkspaceID) (WorkspaceRecord, bool, error) {
+	var found bool
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (WorkspaceRecord, error) {
+			r, ok, err := queryRecord(ctx, tx, "workspaces", "SELECT * FROM workspaces WHERE id = ?", workspaceRow, id)
+			found = ok
+			return r, err
+		},
+	)
+	return record, found && err == nil, err
 }
 
 // Workspaces returns the user's workspaces, in their order.
@@ -46,7 +54,7 @@ func (c *ControlService) CreateWorkspace(
 		if err != nil {
 			return nil, err
 		}
-		return queryRecord(
+		record, found, err := queryRecord(
 			ctx,
 			tx,
 			"workspaces",
@@ -62,6 +70,10 @@ RETURNING *`,
 			name,
 			at,
 		)
+		if err != nil || !found {
+			return nil, err
+		}
+		return &record, nil
 	})
 }
 
@@ -74,7 +86,7 @@ func (c *ControlService) RenameWorkspace(
 	name string,
 ) (*WorkspaceRecord, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*WorkspaceRecord, error) {
-		return queryRecord(
+		record, found, err := queryRecord(
 			ctx,
 			tx,
 			"workspaces",
@@ -84,6 +96,10 @@ func (c *ControlService) RenameWorkspace(
 			id,
 			user,
 		)
+		if err != nil || !found {
+			return nil, err
+		}
+		return &record, nil
 	})
 }
 
