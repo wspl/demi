@@ -466,6 +466,11 @@ Go types + JSON tags + markers
   `typecheck:web`, `test`, `web:dev`, `web:gallery` and `web:build`) run
   generation first. Ordinary Go builds use committed generated Go and need
   no JavaScript tooling; neither builds nor generation require JSON v2.
+  The page modules and the plugin page registries also need the backend's
+  plugin manifests, which only running code holds; `-ts` gets them from
+  `tools/contractgen/manifests`, a program that prints them, because the
+  generator cannot link the packages whose Go it generates
+  ([Plugin pages](plugin-pages.md#types)).
 - **Roots and destinations.** Root markers declare direction from the web
   app's perspective. Every referenced type is emitted transitively; receive
   and send reachability propagate through nested and cross-package types.
