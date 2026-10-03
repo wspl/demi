@@ -763,26 +763,93 @@ func TestOversizedVendorRequestCompactsAndReplaysSummary(t *testing.T) {
 	conversationEqual(t, conversationKinds(t, live), []string{"user", "compaction_boundary", "text", "response", "user", "compaction_marker", "text", "response"})
 }
 
+// The large reset exercises TCP backpressure; its transfer costs several seconds.
 func TestLaggingSocketClosesAndReopenAdoptsRunningTree(t *testing.T) {
-	t.Skip("finding 2: 200 deltas with a 16-frame outbox do not close the socket as lagging")
 	ctx, h := conversationHarness(t)
 	h.Config.Conversations.OutboxFrames = 16
-	vendor := providertest.StartVendor(t)
+	advance := make(chan struct{})
+	vendor := providertest.NewScriptedRuntime(t, func(ctx context.Context, _ provider.InferenceRequest) provider.Run {
+		return func(yield func(provider.Event) bool) {
+			if !yield(providertest.Thinking(strings.Repeat("x", 8<<20))) {
+				return
+			}
+			for i := range 200 {
+				select {
+				case <-advance:
+				case <-ctx.Done():
+					return
+				}
+				if !yield(providertest.Text(fmt.Sprintf("%d ", i))) {
+					return
+				}
+			}
+			yield(providertest.Response(5, 200))
+		}
+	})
+	h.Config.Families.Register("lag", conversationFamily{build: func(providers.FamilyArgs) provider.Runtime { return vendor }})
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
-	entry := conversationAnthropic(ctx, t, b, &s, vendor)
+	body := `{"source":"custom","providerType":"lag","label":"Lag","apiKey":"fixture","models":[` + conversationConfigured(4000) + `]}`
+	entry := conversationDecode(t, conversationRequest(ctx, t, b, &s, "POST", "/api/providers", body, 201), webapi.DecodeProviderAnswer).Provider.ID
 	conversationCreate(ctx, t, b, &s, conversationFirst)
-	conversationChoose(ctx, t, b, &s, conversationFirst, entry, "claude-opus-4-8")
-	deltas := make([]string, 200)
-	for i := range deltas {
-		deltas[i] = fmt.Sprintf("%d ", i)
+	conversationChoose(ctx, t, b, &s, conversationFirst, string(entry), "m")
+	progress, _ := conversationPage(ctx, t, b, &s)
+	reading := conversationOpen(ctx, t, b, &s, conversationFirst)
+	wireMust(t, reading.Send(ctx, backendtest.ConversationText("m1", "Count")))
+	_, err = reading.Until(ctx, func(f framewire.ServerFrame) bool {
+		patch, ok := f.(*framewire.TranscriptPatchFrame)
+		if !ok {
+			return false
+		}
+		for _, p := range patch.Patches {
+			if add, ok := p.(*framewire.AddPatch); ok {
+				thinking, ok := add.Value.(*core.ThinkingBlock)
+				if ok && len(thinking.Text) == 8<<20 {
+					return true
+				}
+			}
+		}
+		return false
+	})
+	wireMust(t, err)
+	// Rust's single-threaded shard overflowed before its relay ran. Go drains
+	// concurrently, so this page must really stop reading inside a large reset.
+	slow, err := b.StallConversationReset(ctx, t, &s, conversationFirst)
+	wireMust(t, err)
+	// Each acknowledged delta lets the healthy page drain while the slow
+	// page keeps its reset unread. This does not depend on goroutine scheduling.
+	for i := range 200 {
+		select {
+		case advance <- struct{}{}:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		_, err = reading.Until(ctx, func(f framewire.ServerFrame) bool {
+			patch, ok := f.(*framewire.TranscriptPatchFrame)
+			if !ok {
+				return false
+			}
+			want := fmt.Sprintf("%d ", i)
+			for _, p := range patch.Patches {
+				if delta, ok := p.(*framewire.AppendTextPatch); ok && delta.Delta == want {
+					return true
+				}
+				if add, ok := p.(*framewire.AddPatch); ok {
+					text, ok := add.Value.(*core.TextBlock)
+					if ok && text.Text == want {
+						return true
+					}
+				}
+			}
+			return false
+		})
+		wireMust(t, err)
 	}
-	vendor.Respond(conversationAnswer(t, deltas, 5, 200))
-	slow := conversationOpen(ctx, t, b, &s, conversationFirst)
-	wireMust(t, slow.Send(ctx, backendtest.ConversationText("m1", "Count")))
-	code, _, err := slow.Closed(ctx)
+	titleUntil(ctx, t, progress, func(c webapi.ConversationSummary) bool { return c.Status == webapi.ConversationStatusCompleted })
+	code, reason, err := slow.Closed(ctx)
 	wireMust(t, err)
 	conversationEqual(t, int(code), 4001)
+	conversationEqual(t, reason, "lagged")
 	again := conversationOpen(ctx, t, b, &s, conversationFirst)
 	page, state := conversationPage(ctx, t, b, &s)
 	if state.Conversations[0].Status != webapi.ConversationStatusCompleted {
@@ -1174,10 +1241,10 @@ func TestStalledPageDoesNotHoldShutdown(t *testing.T) {
 	vendor.Respond(conversationAnswer(t, []string{strings.Repeat("x", 8<<20)}, 1, 1))
 	_, err = socket.Chat(ctx, "m1", "Write at length.")
 	wireMust(t, err)
-	size, err := b.StallConversationReset(ctx, t, &s, conversationFirst)
+	stalled, err := b.StallConversationReset(ctx, t, &s, conversationFirst)
 	wireMust(t, err)
-	if size <= 8<<20 {
-		t.Fatalf("reset too small: %d", size)
+	if stalled.ResetBytes <= 8<<20 {
+		t.Fatalf("reset too small: %d", stalled.ResetBytes)
 	}
 	wireMust(t, b.Close(ctx))
 }
