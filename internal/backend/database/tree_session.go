@@ -147,9 +147,14 @@ func writeCheckpointState(
 	changed, err := affected(
 		ctx,
 		tx,
-		`UPDATE nodes SET state=?,block_count=?,command_revision=COALESCE(?,command_revision),`+
-			`output_revision=output_revision+(CASE WHEN block_count>? OR ? THEN 1 ELSE 0 END),`+
-			`wakeup_at=(CASE WHEN parent_id IS NULL AND ? THEN NULL ELSE ? END) WHERE id=?`,
+		`UPDATE nodes
+SET
+    state=?,
+    block_count=?,
+    command_revision=COALESCE(?,command_revision),
+    output_revision=output_revision+(CASE WHEN block_count>? OR ? THEN 1 ELSE 0 END),
+    wakeup_at=(CASE WHEN parent_id IS NULL AND ? THEN NULL ELSE ? END)
+WHERE id=?`,
 		document,
 		update.BlockCount,
 		revision,

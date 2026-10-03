@@ -127,9 +127,16 @@ func SubtreeBlobs(ctx context.Context, tx *sql.Tx, node core.NodeID) ([]core.Blo
 		ctx,
 		tx,
 		"blob_refs",
-		`WITH RECURSIVE subtree (id) AS (SELECT ? UNION SELECT nodes.id FROM nodes `+
-			`JOIN subtree ON nodes.parent_id=subtree.id) SELECT blob FROM blob_refs `+
-			`WHERE node_id IN subtree`,
+		`WITH RECURSIVE subtree (id) AS (
+    SELECT ?
+    UNION
+    SELECT nodes.id
+    FROM nodes
+    JOIN subtree ON nodes.parent_id=subtree.id
+)
+SELECT blob
+FROM blob_refs
+WHERE node_id IN subtree`,
 		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
 		node,
 	)
@@ -153,8 +160,10 @@ func Retirable(ctx context.Context, tx *sql.Tx, retirement transcript.Retirement
 		ctx,
 		tx,
 		"nodes",
-		"SELECT id,block_count FROM nodes WHERE id IN (SELECT node_id FROM blob_refs "+
-			"WHERE holder = ? AND at < ?) ORDER BY id",
+		`SELECT id,block_count
+FROM nodes
+WHERE id IN (SELECT node_id FROM blob_refs WHERE holder = ? AND at < ?)
+ORDER BY id`,
 		func(r *storedRow) nodeCount {
 			return nodeCount{id: checked(r, "id", core.ParseNodeID), count: r.integer("block_count")}
 		},

@@ -40,8 +40,9 @@ func InsertCommandOutputs(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, row
 		if err := execSQL(
 			ctx,
 			tx,
-			"INSERT INTO command_outputs (command_id,ended_at,blob,missing_bytes,missing_reason,"+
-				"not_stored,removed_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (command_id) DO NOTHING",
+			`INSERT INTO command_outputs (command_id,ended_at,blob,missing_bytes,missing_reason,not_stored,removed_at)
+VALUES (?,?,?,?,?,?,?)
+ON CONFLICT (command_id) DO NOTHING`,
 			row.Command,
 			ended,
 			blob,
@@ -136,9 +137,9 @@ func RemoveExpiredOutputs(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, exp
 	}
 	result, err := tx.ExecContext(
 		ctx,
-		"UPDATE command_outputs "+
-			"SET blob=NULL,missing_bytes=NULL,missing_reason=NULL,removed_at=? "+
-			"WHERE blob IS NOT NULL AND ended_at < ?",
+		`UPDATE command_outputs
+SET blob=NULL,missing_bytes=NULL,missing_reason=NULL,removed_at=?
+WHERE blob IS NOT NULL AND ended_at < ?`,
 		at,
 		before,
 	)

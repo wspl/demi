@@ -38,8 +38,10 @@ func (c *ControlService) SetUserPlugin(ctx context.Context, user webapi.UserID, 
 		return execSQL(
 			ctx,
 			tx,
-			"INSERT INTO user_plugins (user_id,plugin,enabled) VALUES (?,?,?) "+
-				"ON CONFLICT (user_id,plugin) DO UPDATE SET enabled=excluded.enabled",
+			`INSERT INTO user_plugins (user_id,plugin,enabled)
+VALUES (?,?,?)
+ON CONFLICT (user_id,plugin) DO UPDATE
+SET enabled=excluded.enabled`,
 			user,
 			plugin,
 			enabled,
@@ -141,9 +143,10 @@ func (c *ControlService) WritePluginValue(ctx context.Context, write ValueWrite,
 		err = execSQL(
 			ctx,
 			tx,
-			"INSERT INTO plugin_values (user_id,plugin,key,document,revision,blobs) "+
-				"VALUES (?,?,?,?,?,?) ON CONFLICT (user_id,plugin,key) DO UPDATE "+
-				"SET document=excluded.document,revision=excluded.revision,blobs=excluded.blobs",
+			`INSERT INTO plugin_values (user_id,plugin,key,document,revision,blobs)
+VALUES (?,?,?,?,?,?)
+ON CONFLICT (user_id,plugin,key) DO UPDATE
+SET document=excluded.document,revision=excluded.revision,blobs=excluded.blobs`,
 			write.User,
 			write.Plugin,
 			write.Key,

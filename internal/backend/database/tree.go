@@ -143,8 +143,9 @@ func (s *TreeStore) ReopenNode(
 		return execSQL(
 			ctx,
 			tx,
-			"UPDATE nodes SET round=?,started_at=?,closed_phase=NULL,closed_at=NULL,result=NULL,"+
-				"failure=NULL,delivered=0,state=? WHERE id=?",
+			`UPDATE nodes
+SET round=?,started_at=?,closed_phase=NULL,closed_at=NULL,result=NULL,failure=NULL,delivered=0,state=?
+WHERE id=?`,
 			round,
 			at,
 			document,
@@ -319,9 +320,26 @@ func insertNode(ctx context.Context, tx *sql.Tx, record store.NodeRecord, state 
 	if err := execSQL(
 		ctx,
 		tx,
-		`INSERT INTO nodes (id,number,parent_id,description,profile,round,started_at,can_spawn,`+
-			`closed_phase,closed_at,result,failure,delivered,state,block_count,command_revision,`+
-			`output_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,0)`,
+		`INSERT INTO nodes (
+    id,
+    number,
+    parent_id,
+    description,
+    profile,
+    round,
+    started_at,
+    can_spawn,
+    closed_phase,
+    closed_at,
+    result,
+    failure,
+    delivered,
+    state,
+    block_count,
+    command_revision,
+    output_revision
+)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,0)`,
 		record.ID,
 		record.Number,
 		record.Parent,

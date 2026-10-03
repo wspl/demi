@@ -61,8 +61,11 @@ func (c *ControlService) PendingForks(ctx context.Context) ([]ForkOperation, err
 			ctx,
 			tx,
 			"conversation_fork_operations",
-			"SELECT f.* FROM conversation_fork_operations f "+
-				"LEFT JOIN conversations c ON c.id=f.id WHERE c.id IS NULL ORDER BY f.rowid",
+			`SELECT f.*
+FROM conversation_fork_operations f
+LEFT JOIN conversations c ON c.id=f.id
+WHERE c.id IS NULL
+ORDER BY f.rowid`,
 			forkRow,
 		)
 	})

@@ -343,10 +343,24 @@ func writeRoot(ctx context.Context, db *ConversationDB, id webapi.ConversationID
 		return execSQL(
 			ctx,
 			tx,
-			`INSERT INTO nodes (id,number,parent_id,description,profile,round,started_at,can_spawn,`+
-				`delivered,state,block_count,command_revision,output_revision) `+
-				`VALUES (?,0,NULL,'',NULL,1,0,1,0,?,0,0,0) ON CONFLICT(id) DO UPDATE `+
-				`SET state=excluded.state`,
+			`INSERT INTO nodes (
+    id,
+    number,
+    parent_id,
+    description,
+    profile,
+    round,
+    started_at,
+    can_spawn,
+    delivered,
+    state,
+    block_count,
+    command_revision,
+    output_revision
+)
+VALUES (?,0,NULL,'',NULL,1,0,1,0,?,0,0,0)
+ON CONFLICT(id) DO UPDATE
+SET state=excluded.state`,
 			id,
 			state,
 		)

@@ -34,9 +34,10 @@ func (c *ControlService) SavePanel(ctx context.Context, conversation webapi.Conv
 		return execSQL(
 			ctx,
 			tx,
-			"INSERT INTO conversation_panels (conversation_id,document,updated_at) "+
-				"VALUES (?,?,?) ON CONFLICT (conversation_id) DO UPDATE "+
-				"SET document=excluded.document,updated_at=excluded.updated_at",
+			`INSERT INTO conversation_panels (conversation_id,document,updated_at)
+VALUES (?,?,?)
+ON CONFLICT (conversation_id) DO UPDATE
+SET document=excluded.document,updated_at=excluded.updated_at`,
 			conversation,
 			document,
 			at,

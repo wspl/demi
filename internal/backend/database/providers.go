@@ -39,10 +39,20 @@ func (c *ControlService) InsertProvider(
 			ctx,
 			tx,
 			"providers",
-			`INSERT INTO providers (id,owner_user_id,provider_type,credential_kind,label,config,`+
-				`active_credential_id,created_at) VALUES (?,?,?,?,?,?,?,?) `+
-				`ON CONFLICT (owner_user_id,provider_type) `+
-				`WHERE credential_kind = 'subscription' DO NOTHING RETURNING *`,
+			`INSERT INTO providers (
+    id,
+    owner_user_id,
+    provider_type,
+    credential_kind,
+    label,
+    config,
+    active_credential_id,
+    created_at
+)
+VALUES (?,?,?,?,?,?,?,?)
+ON CONFLICT (owner_user_id,provider_type)
+WHERE credential_kind = 'subscription' DO NOTHING
+RETURNING *`,
 			providerRow,
 			provider.ID,
 			provider.Owner,
@@ -190,8 +200,9 @@ func (c *ControlService) ReplaceCredentialSecret(
 		return affected(
 			ctx,
 			tx,
-			"UPDATE provider_credentials SET secret = ?,version = version + 1,updated_at = ? "+
-				"WHERE provider_id = ? AND id = ? AND version = ?",
+			`UPDATE provider_credentials
+SET secret = ?,version = version + 1,updated_at = ?
+WHERE provider_id = ? AND id = ? AND version = ?`,
 			secret,
 			at,
 			provider,
@@ -262,8 +273,9 @@ func (c *ControlService) SetActiveCredential(
 		return affected(
 			ctx,
 			tx,
-			"UPDATE providers SET active_credential_id = ?2 WHERE id = ?1 AND EXISTS (SELECT 1 "+
-				"FROM provider_credentials WHERE provider_id = ?1 AND id = ?2)",
+			`UPDATE providers
+SET active_credential_id = ?2
+WHERE id = ?1 AND EXISTS (SELECT 1 FROM provider_credentials WHERE provider_id = ?1 AND id = ?2)`,
 			provider,
 			id,
 		)
@@ -295,9 +307,11 @@ func (c *ControlService) PutCatalogRecord(ctx context.Context, provider webapi.P
 		return execSQL(
 			ctx,
 			tx,
-			"INSERT INTO model_catalogs (provider_id,record) SELECT ?1,?2 WHERE EXISTS (SELECT 1 "+
-				"FROM providers WHERE id = ?1) ON CONFLICT (provider_id) DO UPDATE "+
-				"SET record = excluded.record",
+			`INSERT INTO model_catalogs (provider_id,record)
+SELECT ?1,?2
+WHERE EXISTS (SELECT 1 FROM providers WHERE id = ?1)
+ON CONFLICT (provider_id) DO UPDATE
+SET record = excluded.record`,
 			provider,
 			text,
 		)
@@ -357,12 +371,17 @@ func writeCredential(
 	if err := execSQL(
 		ctx,
 		tx,
-		`INSERT INTO provider_credentials (provider_id,id,identity_key,label,detail,source,`+
-			`secret,version,updated_at) VALUES (?,?,?,?,?,?,?,1,?) `+
-			`ON CONFLICT (provider_id,id) DO UPDATE `+
-			`SET identity_key=excluded.identity_key,label=excluded.label,detail=excluded.detail,`+
-			`source=excluded.source,secret=excluded.secret,version=version+1,`+
-			`updated_at=excluded.updated_at`,
+		`INSERT INTO provider_credentials (provider_id,id,identity_key,label,detail,source,secret,version,updated_at)
+VALUES (?,?,?,?,?,?,?,1,?)
+ON CONFLICT (provider_id,id) DO UPDATE
+SET
+    identity_key=excluded.identity_key,
+    label=excluded.label,
+    detail=excluded.detail,
+    source=excluded.source,
+    secret=excluded.secret,
+    version=version+1,
+    updated_at=excluded.updated_at`,
 		provider,
 		account.ID,
 		account.IdentityKey,

@@ -224,12 +224,24 @@ func writeDraft(ctx context.Context, tx *sql.Tx, id webapi.ConversationID, d sto
 	return execSQL(
 		ctx,
 		tx,
-		`INSERT INTO conversation_drafts (conversation_id,revision,document,written,`+
-			`replaced_revision,replaced,updated_at) VALUES (?,?,?,?,?,?,?) `+
-			`ON CONFLICT (conversation_id) DO UPDATE `+
-			`SET revision=excluded.revision,document=excluded.document,written=excluded.written,`+
-			`replaced_revision=excluded.replaced_revision,replaced=excluded.replaced,`+
-			`updated_at=excluded.updated_at`,
+		`INSERT INTO conversation_drafts (
+    conversation_id,
+    revision,
+    document,
+    written,
+    replaced_revision,
+    replaced,
+    updated_at
+)
+VALUES (?,?,?,?,?,?,?)
+ON CONFLICT (conversation_id) DO UPDATE
+SET
+    revision=excluded.revision,
+    document=excluded.document,
+    written=excluded.written,
+    replaced_revision=excluded.replaced_revision,
+    replaced=excluded.replaced,
+    updated_at=excluded.updated_at`,
 		id,
 		d.revision,
 		document,

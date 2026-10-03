@@ -10,6 +10,50 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
+const insertConversationSQL = `INSERT INTO conversations (
+    id,
+    user_id,
+    title,
+    title_origin,
+    archived,
+    pinned,
+    sort_order,
+    read_revision,
+    target_kind,
+    target_device_id,
+    target_path,
+    target_workspace_id,
+    context_version,
+    model,
+    user_messages,
+    titled_messages,
+    created_at,
+    updated_at,
+    live_at
+)
+VALUES (
+    ?1,
+    ?2,
+    ?3,
+    ?4,
+    0,
+    0,
+    (SELECT COALESCE(MIN(sort_order),0)-1 FROM conversations WHERE user_id=?2),
+    0,
+    ?5,
+    ?6,
+    ?7,
+    ?8,
+    0,
+    ?9,
+    0,
+    0,
+    ?10,
+    ?10,
+    ?10
+)
+ON CONFLICT (id) DO NOTHING`
+
 // InsertConversation inserts new first in its owner's sidebar, unarchived and
 // unpinned, unless its ID exists in any spelling. It returns the inserted count.
 func InsertConversation(ctx context.Context, tx *sql.Tx, record NewConversation) (int, error) {
@@ -32,11 +76,7 @@ func InsertConversation(ctx context.Context, tx *sql.Tx, record NewConversation)
 	}
 	result, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO conversations (id,user_id,title,title_origin,archived,pinned,sort_order,`+
-			`read_revision,target_kind,target_device_id,target_path,target_workspace_id,`+
-			`context_version,model,user_messages,titled_messages,created_at,updated_at,live_at) `+
-			`VALUES (?1,?2,?3,?4,0,0,(SELECT COALESCE(MIN(sort_order),0)-1 FROM conversations `+
-			`WHERE user_id=?2),0,?5,?6,?7,?8,0,?9,0,0,?10,?10,?10) ON CONFLICT (id) DO NOTHING`,
+		insertConversationSQL,
 		record.ID,
 		record.Owner,
 		record.Title,
@@ -107,8 +147,9 @@ func InsertAttachedHost(
 	return affected(
 		ctx,
 		tx,
-		"INSERT INTO conversation_hosts (conversation_id,device_id,name,cwd,attached_at) "+
-			"VALUES (?,?,?,?,?) ON CONFLICT (conversation_id,device_id) DO NOTHING",
+		`INSERT INTO conversation_hosts (conversation_id,device_id,name,cwd,attached_at)
+VALUES (?,?,?,?,?)
+ON CONFLICT (conversation_id,device_id) DO NOTHING`,
 		conversation,
 		host.Device,
 		candidate,

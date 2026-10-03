@@ -50,10 +50,10 @@ func (c *ControlService) CreateWorkspace(
 			ctx,
 			tx,
 			"workspaces",
-			`INSERT INTO workspaces (id,user_id,device_id,path,name,sort_order,created_at) `+
-				`SELECT ?1,?2,?3,?4,?5,(SELECT COALESCE(MAX(sort_order),-1)+1 FROM workspaces `+
-				`WHERE user_id=?2),?6 WHERE EXISTS (SELECT 1 FROM devices WHERE id=?3 `+
-				`AND user_id=?2) RETURNING *`,
+			`INSERT INTO workspaces (id,user_id,device_id,path,name,sort_order,created_at)
+SELECT ?1,?2,?3,?4,?5,(SELECT COALESCE(MAX(sort_order),-1)+1 FROM workspaces WHERE user_id=?2),?6
+WHERE EXISTS (SELECT 1 FROM devices WHERE id=?3 AND user_id=?2)
+RETURNING *`,
 			workspaceRow,
 			id,
 			user,

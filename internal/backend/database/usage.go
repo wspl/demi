@@ -19,9 +19,19 @@ func (c *ControlService) AppendUsage(ctx context.Context, row UsageRow) error {
 		return execSQL(
 			ctx,
 			tx,
-			"INSERT INTO usage_ledger (id,user_id,conversation_id,provider_id,model_id,input_tokens,"+
-				"output_tokens,cache_read_tokens,cache_write_tokens,created_at) "+
-				"VALUES (?,?,?,?,?,?,?,?,?,?)",
+			`INSERT INTO usage_ledger (
+    id,
+    user_id,
+    conversation_id,
+    provider_id,
+    model_id,
+    input_tokens,
+    output_tokens,
+    cache_read_tokens,
+    cache_write_tokens,
+    created_at
+)
+VALUES (?,?,?,?,?,?,?,?,?,?)`,
 			uuid.NewString(),
 			row.User,
 			row.Conversation,
@@ -77,10 +87,18 @@ func usageTotals(ctx context.Context, tx *sql.Tx, user webapi.UserID) ([]webapi.
 		ctx,
 		tx,
 		"usage_ledger",
-		`SELECT provider_id,model_id,COUNT(*) AS requests,SUM(input_tokens) AS input_tokens,`+
-			`SUM(output_tokens) AS output_tokens,SUM(cache_read_tokens) AS cache_read_tokens,`+
-			`SUM(cache_write_tokens) AS cache_write_tokens FROM usage_ledger `+
-			`WHERE user_id = ? GROUP BY provider_id,model_id ORDER BY MIN(created_at),MIN(rowid)`,
+		`SELECT
+    provider_id,
+    model_id,
+    COUNT(*) AS requests,
+    SUM(input_tokens) AS input_tokens,
+    SUM(output_tokens) AS output_tokens,
+    SUM(cache_read_tokens) AS cache_read_tokens,
+    SUM(cache_write_tokens) AS cache_write_tokens
+FROM usage_ledger
+WHERE user_id = ?
+GROUP BY provider_id,model_id
+ORDER BY MIN(created_at),MIN(rowid)`,
 		func(r *storedRow) webapi.UsageGroup {
 			return webapi.UsageGroup{
 				ProviderID:       r.text("provider_id"),

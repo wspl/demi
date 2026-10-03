@@ -35,8 +35,8 @@ func (c *ControlService) CreateDevice(
 		return d, execSQL(
 			ctx,
 			tx,
-			"INSERT INTO devices (id,user_id,kind,name,platform,token_hash,claimed_at,"+
-				"last_seen_at) VALUES (?,?,'user',?,?,?,?,NULL)",
+			`INSERT INTO devices (id,user_id,kind,name,platform,token_hash,claimed_at,last_seen_at)
+VALUES (?,?,'user',?,?,?,?,NULL)`,
 			d.ID,
 			user,
 			name,
@@ -87,8 +87,9 @@ func (c *ControlService) ManagedDeviceOrCreate(ctx context.Context, user webapi.
 		if err := execSQL(
 			ctx,
 			tx,
-			"INSERT INTO devices (id,user_id,kind,name,platform,token_hash,claimed_at,"+
-				"last_seen_at) VALUES (?,?,'managed','Cloud','linux',NULL,?,NULL) ON CONFLICT DO NOTHING",
+			`INSERT INTO devices (id,user_id,kind,name,platform,token_hash,claimed_at,last_seen_at)
+VALUES (?,?,'managed','Cloud','linux',NULL,?,NULL)
+ON CONFLICT DO NOTHING`,
 			uuid.NewString(),
 			user,
 			at,

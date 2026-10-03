@@ -47,8 +47,10 @@ func (c *ControlService) ReorderConversations(
 			ctx,
 			tx,
 			"conversations",
-			"SELECT id FROM conversations WHERE user_id = ? AND archived = 0 AND pinned = ? "+
-				"AND target_workspace_id IS ? ORDER BY sort_order,id",
+			`SELECT id
+FROM conversations
+WHERE user_id = ? AND archived = 0 AND pinned = ? AND target_workspace_id IS ?
+ORDER BY sort_order,id`,
 			func(r *storedRow) string { return r.text("id") },
 			user,
 			p.pinned,

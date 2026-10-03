@@ -61,9 +61,10 @@ func (c *ControlService) PutManagedOperation(
 		return execSQL(
 			ctx,
 			tx,
-			`INSERT INTO managed_operations (device_id,operation_id,base_version,phase,error,`+
-				`updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT (device_id,operation_id) DO UPDATE `+
-				`SET phase=excluded.phase,error=excluded.error,updated_at=excluded.updated_at`,
+			`INSERT INTO managed_operations (device_id,operation_id,base_version,phase,error,updated_at)
+VALUES (?,?,?,?,?,?)
+ON CONFLICT (device_id,operation_id) DO UPDATE
+SET phase=excluded.phase,error=excluded.error,updated_at=excluded.updated_at`,
 			device,
 			operation.ID,
 			operation.BaseVersion,
@@ -132,8 +133,9 @@ func (c *ControlService) AnnounceCloudReset(
 		return execSQL(
 			ctx,
 			tx,
-			"UPDATE conversations SET context_version=context_version+1,cloud_reset_id=?2 "+
-				"WHERE user_id=?1 AND (cloud_reset_id IS NULL OR cloud_reset_id<>?2)",
+			`UPDATE conversations
+SET context_version=context_version+1,cloud_reset_id=?2
+WHERE user_id=?1 AND (cloud_reset_id IS NULL OR cloud_reset_id<>?2)`,
 			user,
 			operation,
 		)
@@ -176,11 +178,21 @@ func (c *ControlService) CloudUses(
 			ctx,
 			tx,
 			"conversations",
-			`SELECT c.id,c.target_kind,c.target_device_id,w.device_id AS workspace_device,c.model,`+
-				`EXISTS (SELECT 1 FROM conversation_hosts h WHERE h.conversation_id=c.id `+
-				`AND h.device_id=?2) AS attached FROM conversations c `+
-				`LEFT JOIN workspaces w ON w.id=c.target_workspace_id WHERE c.user_id=?1 `+
-				`AND c.archived=0 ORDER BY c.id`,
+			`SELECT
+    c.id,
+    c.target_kind,
+    c.target_device_id,
+    w.device_id AS workspace_device,
+    c.model,
+    EXISTS (
+        SELECT 1
+        FROM conversation_hosts h
+        WHERE h.conversation_id=c.id AND h.device_id=?2
+    ) AS attached
+FROM conversations c
+LEFT JOIN workspaces w ON w.id=c.target_workspace_id
+WHERE c.user_id=?1 AND c.archived=0
+ORDER BY c.id`,
 			func(r *storedRow) CloudUseRecord {
 				device := r.optionalText("target_device_id")
 				if device == nil {

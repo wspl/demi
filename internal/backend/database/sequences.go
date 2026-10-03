@@ -24,8 +24,11 @@ func ReserveNumbers(ctx context.Context, tx *sql.Tx, sequence core.Sequence, cou
 		ctx,
 		tx,
 		"sequences",
-		"INSERT INTO sequences (name,next) VALUES (?,1 + ?) ON CONFLICT (name) DO UPDATE "+
-			"SET next=next + ? RETURNING next - ? AS next",
+		`INSERT INTO sequences (name,next)
+VALUES (?,1 + ?)
+ON CONFLICT (name) DO UPDATE
+SET next=next + ?
+RETURNING next - ? AS next`,
 		func(r *storedRow) uint64 { return r.count("next") },
 		sequence,
 		count,

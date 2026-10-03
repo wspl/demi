@@ -42,9 +42,11 @@ func Summary(ctx context.Context, tx *sql.Tx) (SummaryFacts, error) {
 		ctx,
 		tx,
 		"blocks",
-		`SELECT block FROM blocks WHERE node_id=? AND idx<? `+
-			`AND json_extract(block,'$.type') IN ('response','error','abort') `+
-			`ORDER BY idx DESC LIMIT 1`,
+		`SELECT block
+FROM blocks
+WHERE node_id=? AND idx<? AND json_extract(block,'$.type') IN ('response','error','abort')
+ORDER BY idx DESC
+LIMIT 1`,
 		func(r *storedRow) core.Block { return storedJSON(r, "block", core.DecodeBlock) },
 		root.id,
 		root.count,

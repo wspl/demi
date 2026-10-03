@@ -60,8 +60,9 @@ func (c *ControlService) CreateMaster(
 		}
 		result, err := tx.ExecContext(
 			ctx,
-			"INSERT INTO users (id,email,nickname,password_hash,role,created_at) "+
-				"VALUES (?,?,'',?,?,?) ON CONFLICT (email) DO NOTHING",
+			`INSERT INTO users (id,email,nickname,password_hash,role,created_at)
+VALUES (?,?,'',?,?,?)
+ON CONFLICT (email) DO NOTHING`,
 			u.ID,
 			email,
 			passwordHash.Text(),
@@ -130,8 +131,9 @@ func (c *ControlService) CreateUser(
 		}
 		result, err := tx.ExecContext(
 			ctx,
-			"INSERT INTO users (id,email,nickname,password_hash,role,created_at) "+
-				"VALUES (?,?,'',?,?,?) ON CONFLICT (email) DO NOTHING",
+			`INSERT INTO users (id,email,nickname,password_hash,role,created_at)
+VALUES (?,?,'',?,?,?)
+ON CONFLICT (email) DO NOTHING`,
 			u.ID,
 			email,
 			passwordHash.Text(),
@@ -211,8 +213,10 @@ func (c *ControlService) PatchPreferences(
 		return p, execSQL(
 			ctx,
 			tx,
-			"INSERT INTO user_preferences (user_id,preferences) VALUES (?,?) "+
-				"ON CONFLICT (user_id) DO UPDATE SET preferences = excluded.preferences",
+			`INSERT INTO user_preferences (user_id,preferences)
+VALUES (?,?)
+ON CONFLICT (user_id) DO UPDATE
+SET preferences = excluded.preferences`,
 			user,
 			text,
 		)
@@ -267,8 +271,10 @@ func (c *ControlService) ResolveWebSession(
 			ctx,
 			tx,
 			"web_sessions",
-			"SELECT s.expires_at,u.id,u.email,u.nickname,u.role,u.created_at FROM web_sessions s "+
-				"JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
+			`SELECT s.expires_at,u.id,u.email,u.nickname,u.role,u.created_at
+FROM web_sessions s
+JOIN users u ON u.id = s.user_id
+WHERE s.token_hash = ?`,
 			func(r *storedRow) ResolvedSession {
 				return ResolvedSession{User: userRow(r), ExpiresAt: r.instant("expires_at")}
 			},
@@ -358,11 +364,17 @@ func (c *ControlService) IssueEmailChallenge(
 		err = execSQL(
 			ctx,
 			tx,
-			`INSERT INTO email_challenges (user_id,id,email,password_hash,code_hash,expires_at,`+
-				`sent_at,attempts) VALUES (?,?,?,?,?,?,?,0) ON CONFLICT (user_id) DO UPDATE `+
-				`SET id=excluded.id,email=excluded.email,password_hash=excluded.password_hash,`+
-				`code_hash=excluded.code_hash,expires_at=excluded.expires_at,sent_at=excluded.sent_at,`+
-				`attempts=0`,
+			`INSERT INTO email_challenges (user_id,id,email,password_hash,code_hash,expires_at,sent_at,attempts)
+VALUES (?,?,?,?,?,?,?,0)
+ON CONFLICT (user_id) DO UPDATE
+SET
+    id=excluded.id,
+    email=excluded.email,
+    password_hash=excluded.password_hash,
+    code_hash=excluded.code_hash,
+    expires_at=excluded.expires_at,
+    sent_at=excluded.sent_at,
+    attempts=0`,
 			issue.User,
 			issue.ID,
 			issue.Email,

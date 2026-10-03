@@ -103,8 +103,10 @@ func (c *ControlService) Conversations(
 			ctx,
 			tx,
 			"conversations",
-			"SELECT "+conversationColumns+" FROM conversations WHERE user_id = ? AND archived = ? "+
-				"ORDER BY pinned DESC,sort_order,id",
+			"SELECT "+conversationColumns+`
+FROM conversations
+WHERE user_id = ? AND archived = ?
+ORDER BY pinned DESC,sort_order,id`,
 			conversationRow,
 			owner,
 			archived,
@@ -214,8 +216,10 @@ func (c *ControlService) ChangeConversation(
 func (c *ControlService) CountUserMessage(ctx context.Context, id webapi.ConversationID) (uint64, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (uint64, error) {
 		var count uint64
-		err := tx.QueryRowContext(ctx, "UPDATE conversations SET user_messages = user_messages + 1 WHERE id = ? "+
-			"RETURNING user_messages", id).
+		err := tx.QueryRowContext(ctx, `UPDATE conversations
+SET user_messages = user_messages + 1
+WHERE id = ?
+RETURNING user_messages`, id).
 			Scan(&count)
 		return count, err
 	})
@@ -399,10 +403,20 @@ func (c *ControlService) SwitchConversationTarget(
 		won, err := affected(
 			ctx,
 			tx,
-			`UPDATE conversations SET target_kind=?2,target_device_id=?3,target_path=?4,`+
-				`target_workspace_id=?5,last_switch=?6,context_version=context_version+1,`+
-				`updated_at=?7 WHERE id=?1 AND target_kind=?8 AND target_device_id IS ?9 `+
-				`AND target_path IS ?10 AND target_workspace_id IS ?11`,
+			`UPDATE conversations
+SET
+    target_kind=?2,
+    target_device_id=?3,
+    target_path=?4,
+    target_workspace_id=?5,
+    last_switch=?6,
+    context_version=context_version+1,
+    updated_at=?7
+WHERE id=?1
+AND target_kind=?8
+AND target_device_id IS ?9
+AND target_path IS ?10
+AND target_workspace_id IS ?11`,
 			id,
 			target.Kind,
 			target.Device,
@@ -445,8 +459,11 @@ func (c *ControlService) SetAttachedCWD(
 	})
 }
 
-const conversationColumns = "conversations.*, COALESCE((SELECT revision FROM conversation_drafts " +
-	"WHERE conversation_id = conversations.id), 0) AS draft_revision"
+const conversationColumns = `conversations.*, COALESCE((
+    SELECT revision
+    FROM conversation_drafts
+    WHERE conversation_id = conversations.id
+), 0) AS draft_revision`
 
 func conversationRow(r *storedRow) ConversationRecord {
 	var target webapi.ConversationTarget
