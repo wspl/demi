@@ -26,38 +26,38 @@ type response struct {
 }
 
 // Header returns the headers to commit for this response.
-func (r *response) Header() http.Header { return r.header }
+func (w *response) Header() http.Header { return w.header }
 
 // WriteHeader starts the encoder after deciding whether the connection can be reused.
-func (r *response) WriteHeader(status int) {
-	if r.status != 0 || r.hijacked {
+func (w *response) WriteHeader(status int) {
+	if w.status != 0 || w.hijacked {
 		return
 	}
-	r.status = status
+	w.status = status
 	// Decide before publishing headers: an unread body cannot be reused without
 	// draining, which could wait forever for a refused upload. The connection
 	// loop honors this same decision even if the handler later finishes reading.
 	if status != http.StatusSwitchingProtocols {
-		r.closeAfterReply = r.request.Close || !r.requestBody.complete ||
-			websocketToken(r.header, "Connection", "close")
-		if r.closeAfterReply {
-			r.header.Set("Connection", "close")
+		w.closeAfterReply = w.request.Close || !w.requestBody.complete ||
+			websocketToken(w.header, "Connection", "close")
+		if w.closeAfterReply {
+			w.header.Set("Connection", "close")
 		}
 	}
 	reader, writer := io.Pipe()
-	r.body = writer
-	r.done = make(chan error, 1)
+	w.body = writer
+	w.done = make(chan error, 1)
 	answer := &http.Response{
 		StatusCode:    status,
 		ProtoMajor:    1,
 		ProtoMinor:    1,
-		Header:        r.header.Clone(),
+		Header:        w.header.Clone(),
 		Body:          reader,
 		ContentLength: -1,
-		Request:       r.request,
-		Close:         r.closeAfterReply,
+		Request:       w.request,
+		Close:         w.closeAfterReply,
 	}
-	if length := r.header.Get("Content-Length"); length != "" {
+	if length := w.header.Get("Content-Length"); length != "" {
 		if size, err := strconv.ParseInt(length, 10, 64); err == nil {
 			answer.ContentLength = size
 		}
@@ -65,7 +65,7 @@ func (r *response) WriteHeader(status int) {
 	if answer.ContentLength < 0 {
 		answer.TransferEncoding = []string{"chunked"}
 	}
-	if r.request.Method == http.MethodHead || status < 200 || status == 204 || status == 304 {
+	if w.request.Method == http.MethodHead || status < 200 || status == 204 || status == 304 {
 		answer.TransferEncoding = nil
 		if answer.ContentLength < 0 {
 			answer.ContentLength = 0
@@ -73,62 +73,62 @@ func (r *response) WriteHeader(status int) {
 		answer.Body = http.NoBody
 	}
 	go func() {
-		err := answer.Write(r.conn)
+		err := answer.Write(w.conn)
 		// Wake a producer if the visitor leaves or this status has no body.
 		_ = reader.CloseWithError(err)
-		r.done <- err
+		w.done <- err
 	}()
 }
 
 // Write streams response bytes, respecting statuses and methods with no body.
-func (r *response) Write(p []byte) (int, error) {
-	if r.hijacked {
+func (w *response) Write(p []byte) (int, error) {
+	if w.hijacked {
 		return 0, http.ErrHijacked
 	}
-	if r.status == 0 {
-		r.WriteHeader(200)
+	if w.status == 0 {
+		w.WriteHeader(200)
 	}
-	if r.request.Method == http.MethodHead {
+	if w.request.Method == http.MethodHead {
 		return len(p), nil
 	}
-	return r.body.Write(p)
+	return w.body.Write(p)
 }
 
 // Flush commits headers if no response has started.
-func (r *response) Flush() {
-	if r.status == 0 {
-		r.WriteHeader(200)
+func (w *response) Flush() {
+	if w.status == 0 {
+		w.WriteHeader(200)
 	}
 }
 
-func (r *response) finish() error {
-	if r.hijacked {
+func (w *response) finish() error {
+	if w.hijacked {
 		return nil
 	}
-	if r.status == 0 {
-		r.WriteHeader(200)
+	if w.status == 0 {
+		w.WriteHeader(200)
 	}
 	// Closing a pipe writer is infallible here; the encoder reports wire errors.
-	_ = r.body.Close()
-	return <-r.done
+	_ = w.body.Close()
+	return <-w.done
 }
 
 // Hijack finishes an upgrade response before handing the connection to its new owner.
-func (r *response) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	if r.status != 0 && r.status != 101 || r.hijacked {
+func (w *response) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if w.status != 0 && w.status != 101 || w.hijacked {
 		return nil, nil, errors.New("response already started")
 	}
-	if r.status == 101 {
-		if err := r.finish(); err != nil {
+	if w.status == 101 {
+		if err := w.finish(); err != nil {
 			return nil, nil, err
 		}
 	}
-	r.hijacked = true
-	return r.conn, bufio.NewReadWriter(r.input, bufio.NewWriter(r.conn)), nil
+	w.hijacked = true
+	return w.conn, bufio.NewReadWriter(w.input, bufio.NewWriter(w.conn)), nil
 }
 
 // SetReadDeadline forwards the HTTP controller deadline to the connection.
-func (r *response) SetReadDeadline(t time.Time) error { return r.conn.SetReadDeadline(t) }
+func (w *response) SetReadDeadline(t time.Time) error { return w.conn.SetReadDeadline(t) }
 
 // SetWriteDeadline forwards the HTTP controller deadline to the connection.
-func (r *response) SetWriteDeadline(t time.Time) error { return r.conn.SetWriteDeadline(t) }
+func (w *response) SetWriteDeadline(t time.Time) error { return w.conn.SetWriteDeadline(t) }

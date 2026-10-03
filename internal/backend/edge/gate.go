@@ -122,31 +122,31 @@ type renewResponse struct {
 }
 
 // Unwrap exposes the response writer to HTTP controllers.
-func (r *renewResponse) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+func (w *renewResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // WriteHeader defers session renewal until a handler can replace the cookie.
-func (r *renewResponse) WriteHeader(status int) {
-	if !r.sent {
-		r.sent = true
+func (w *renewResponse) WriteHeader(status int) {
+	if !w.sent {
+		w.sent = true
 		own := false
-		for _, value := range r.Header().Values("Set-Cookie") {
+		for _, value := range w.Header().Values("Set-Cookie") {
 			if strings.HasPrefix(value, "demi_session=") {
 				own = true
 			}
 		}
-		if r.session.Renewed && !own {
-			http.SetCookie(r.ResponseWriter, sessionCookie(r.token, r.session.ExpiresAt, r.secure))
+		if w.session.Renewed && !own {
+			http.SetCookie(w.ResponseWriter, sessionCookie(w.token, w.session.ExpiresAt, w.secure))
 		}
 	}
-	r.ResponseWriter.WriteHeader(status)
+	w.ResponseWriter.WriteHeader(status)
 }
 
 // Write commits headers before the first response bytes.
-func (r *renewResponse) Write(p []byte) (int, error) {
-	if !r.sent {
-		r.WriteHeader(200)
+func (w *renewResponse) Write(p []byte) (int, error) {
+	if !w.sent {
+		w.WriteHeader(200)
 	}
-	return r.ResponseWriter.Write(p)
+	return w.ResponseWriter.Write(p)
 }
 
 func (e *Edge) checkOrigin(r *http.Request) error {
