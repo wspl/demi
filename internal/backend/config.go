@@ -1,8 +1,5 @@
 package backend
 
-//revive:disable:unused-parameter
-// API checkpoint: bodies follow after the public boundary is merged.
-
 import (
 	"net/netip"
 	"net/url"
@@ -16,6 +13,7 @@ import (
 	"github.com/wspl/demi/internal/backend/usershard"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/plugin"
+	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/webapi"
 )
 
@@ -23,6 +21,8 @@ import (
 // test replaces. It is immutable after Start; shared registries and factories
 // retain their own synchronization and lifecycle contracts.
 type Config struct {
+	// objectStoreSet preserves an explicitly empty CLI path.
+	objectStoreSet bool
 	// The data directory (`storage.md` § Ownership and layout).
 	DataDir string
 	// The machine manager's Unix socket (`managed-hosts.md` § Control and
@@ -92,5 +92,24 @@ type Config struct {
 // and no mail sender, whose Clouds the manager at machinesSocket runs.
 // Plugin declaration failures are returned instead of panicking.
 func NewConfig(dataDir string, address netip.AddrPort, mode webapi.InstanceMode, machinesSocket string) (Config, error) {
-	panic("not written: b-backend")
+	plugins, err := BuiltinPlugins()
+	if err != nil {
+		return Config{}, err
+	}
+	models, err := url.Parse(provider.ModelsDevURL)
+	if err != nil {
+		return Config{}, err
+	}
+	releases, err := url.Parse(providers.DefaultReleasesURL)
+	if err != nil {
+		return Config{}, err
+	}
+	return Config{
+		DataDir: dataDir, Address: address, Mode: mode, MachinesSocket: machinesSocket,
+		Clock: core.SystemClock{}, Families: BuiltinFamilies(), Plugins: plugins,
+		ModelsDevURL: models, ClaudeReleases: releases, Logins: providers.DefaultLoginTiming(),
+		Runners: usershard.DefaultRunnerTuning(), Conversations: usershard.DefaultConversationTuning(),
+		Pages: usershard.DefaultPageTuning(), Native: runners.UnpublishedCatalog(),
+		Lifecycle: usershard.DefaultLifecycleTuning(), Cloud: cloud.DefaultTuning(), Exposes: usershard.DefaultExposeTuning(),
+	}, nil
 }
