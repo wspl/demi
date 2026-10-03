@@ -18,7 +18,6 @@ import (
 )
 
 func TestAJSONBodyOverItsLimitIsRefusedBeforeItIsRead(t *testing.T) {
-	t.Skip("finding 1: oversized authenticated HTTP body loses its JSON refusal to a connection reset")
 	ctx := t.Context()
 	b, master := accountStart(ctx, t, accountHarness(ctx, t))
 	body := accountJSON(t, contract.Field{Name: "nickname", Value: strings.Repeat("x", 1024*1024)})
