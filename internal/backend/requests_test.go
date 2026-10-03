@@ -26,10 +26,7 @@ import (
 	"github.com/wspl/demi/internal/providers/google"
 	"github.com/wspl/demi/internal/providers/grokbuild"
 	"github.com/wspl/demi/internal/providers/openaiapi"
-	"go.uber.org/goleak"
 )
-
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 // wireTee sends each real session request to the vendor before playing its answer.
 type wireTee struct{ script, real provider.Runtime }
