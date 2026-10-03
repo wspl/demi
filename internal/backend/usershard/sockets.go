@@ -1,11 +1,11 @@
 package usershard
 
-//revive:disable:unused-parameter
-
 import (
 	"context"
+	"log/slog"
 
 	"github.com/coder/websocket"
+
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/expose"
 	"github.com/wspl/demi/internal/backend/pagesync"
@@ -25,40 +25,48 @@ type ChannelSession struct {
 // ServeSyncChannel takes ownership of socket and serves initial product state
 // and changes until the page, session or shard closes. It always closes socket.
 func (s *Shard) ServeSyncChannel(ctx context.Context, socket *websocket.Conn, session ChannelSession) error {
-	panic("not written: b-usershard")
+	return s.serveSync(ctx, socket, session)
 }
 
 // ServeConversationSocket takes ownership of socket. An admitted agent frame
 // finishes even during shutdown, with outbox delivery continuing until then.
 // Socket ownership is registered before any wait and ends with its close.
 func (s *Shard) ServeConversationSocket(ctx context.Context, conversation database.ConversationRecord, socket *websocket.Conn) error {
-	panic("not written: b-usershard")
+	return s.serveConversation(ctx, conversation, socket)
 }
 
 // Mark marks part changed on this user's open synchronization channels.
-func (s *Shard) Mark(part pagesync.Part) { panic("not written: b-usershard") }
+func (s *Shard) Mark(part pagesync.Part) { s.services.Sync.Mark(s.user, part) }
 
 // AdoptRunner takes and closes the socket of a runner presenting device's token.
 func (s *Shard) AdoptRunner(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *websocket.Conn) error {
-	panic("not written: b-usershard")
+	return s.adopt(ctx, device, runner, socket, nil)
 }
 
 // AdoptClaimed takes a newly paired runner's socket. It reports its bound DTO
 // through bound before serving, or closes bound without a value if refused.
 // The caller supplies a buffered channel of capacity one; adoption owns close.
 func (s *Shard) AdoptClaimed(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *websocket.Conn, bound chan<- webapi.DeviceDTO) error {
-	panic("not written: b-usershard")
+	return s.adopt(ctx, device, runner, socket, bound)
 }
 
 // RevokeDevice ends exposes, removes the device and attachments, and tells its
 // runner it was revoked and must stop permanently.
 func (s *Shard) RevokeDevice(ctx context.Context, device webapi.DeviceID) error {
-	panic("not written: b-usershard")
+	if err := s.stopExposes(ctx, device); err != nil {
+		slog.ErrorContext(ctx, "the exposes of a device could not be destroyed: "+err.Error(), "device", device)
+	}
+	if err := s.Control().DeleteDevice(ctx, device); err != nil {
+		return err
+	}
+	s.Mark(pagesync.Part{Kind: pagesync.Devices})
+	s.devices.Revoke(device)
+	return nil
 }
 
 // DeviceList lists the user's devices as the page sees them.
 func (s *Shard) DeviceList(ctx context.Context) ([]webapi.DeviceDTO, error) {
-	panic("not written: b-usershard")
+	return s.devices.DeviceList(ctx, s.Control(), s.user)
 }
 
 // ExposeConnection is the network stream admitted for a relayed expose.

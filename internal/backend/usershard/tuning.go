@@ -1,9 +1,12 @@
 package usershard
 
-//revive:disable:unused-parameter
-// API checkpoint: bodies follow after the public boundary is merged.
+import (
+	"time"
 
-import "time"
+	"github.com/wspl/demi/internal/agent/server"
+	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/remotehost"
+)
 
 // LifecycleTuning configures idle release and retention.
 type LifecycleTuning struct {
@@ -20,7 +23,10 @@ type LifecycleTuning struct {
 }
 
 // DefaultLifecycleTuning returns the production timing and bounds.
-func DefaultLifecycleTuning() LifecycleTuning { panic("not written: b-usershard") }
+func DefaultLifecycleTuning() LifecycleTuning {
+	interval := 24 * time.Hour
+	return LifecycleTuning{IdleWindow: time.Hour, IdlePoll: 30 * time.Second, RetentionInterval: &interval}
+}
 
 // ExposeTuning configures relay connection idle time.
 type ExposeTuning struct {
@@ -29,7 +35,7 @@ type ExposeTuning struct {
 }
 
 // DefaultExposeTuning returns the production timing and bounds.
-func DefaultExposeTuning() ExposeTuning { panic("not written: b-usershard") }
+func DefaultExposeTuning() ExposeTuning { return ExposeTuning{Idle: 10 * time.Minute} }
 
 // ConversationTuning configures conversation delivery and rate limits.
 type ConversationTuning struct {
@@ -46,7 +52,9 @@ type ConversationTuning struct {
 }
 
 // DefaultConversationTuning returns the production timing and bounds.
-func DefaultConversationTuning() ConversationTuning { panic("not written: b-usershard") }
+func DefaultConversationTuning() ConversationTuning {
+	return ConversationTuning{OutboxFrames: server.DefaultConfig().OutboxFrames, RequestsPerMinute: providers.RequestsPerWindow, Titles: true}
+}
 
 // PageTuning configures page socket timing.
 type PageTuning struct {
@@ -60,7 +68,9 @@ type PageTuning struct {
 }
 
 // DefaultPageTuning returns the production timing and bounds.
-func DefaultPageTuning() PageTuning { panic("not written: b-usershard") }
+func DefaultPageTuning() PageTuning {
+	return PageTuning{Heartbeat: 30 * time.Second, CloseWait: time.Second}
+}
 
 // RunnerTuning configures runner handshakes and liveness.
 type RunnerTuning struct {
@@ -76,4 +86,7 @@ type RunnerTuning struct {
 }
 
 // DefaultRunnerTuning returns the production timing and bounds.
-func DefaultRunnerTuning() RunnerTuning { panic("not written: b-usershard") }
+func DefaultRunnerTuning() RunnerTuning {
+	ping := remotehost.PingInterval
+	return RunnerTuning{HelloDeadline: 30 * time.Second, ClaimLifetime: 10 * time.Minute, ClaimsPerMinute: 10, Ping: &ping}
+}
