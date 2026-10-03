@@ -23,7 +23,7 @@ func registryProbe(id string, commands ...plugin.Commands) *backendtest.CommandP
 
 // Local backend and command RPCs; no vendor or runner.
 func TestPluginGroupsComposeAndCallsReceiveOwnPath(t *testing.T) {
-	ctx, h := filesHarness(t)
+	ctx, h := conversationHarness(t)
 	h.Config.Plugins = []plugin.Factory{registryProbe("notes", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)), registryProbe("lint", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil))}
 	b, s, err := h.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -85,7 +85,7 @@ func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.prefix, func(t *testing.T) {
-			ctx, h := filesHarness(t)
+			ctx, h := conversationHarness(t)
 			h.Config.Plugins = tc.factories
 			b, err := h.Start(ctx, t)
 			if err == nil {
@@ -105,7 +105,7 @@ func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 
 // Publishes the file package, but executes no command or model.
 func TestPluginUnservedNativeTreeIsOmittedWhole(t *testing.T) {
-	ctx, h := filesHarness(t)
+	ctx, h := conversationHarness(t)
 	built, err := backendtest.BuildPackage(ctx, t, "demi-file")
 	wireMust(t, err)
 	wireMust(t, h.UsePackage(ctx, built))

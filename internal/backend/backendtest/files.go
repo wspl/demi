@@ -2,9 +2,13 @@ package backendtest
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/plugin"
 )
@@ -39,4 +43,33 @@ func ProbeCommand(name string, placement plugin.Placement, operation *declare.Na
 		summary = "A native group."
 	}
 	return plugin.Commands{Placement: placement, Tree: plugin.Declaration{Node: &declare.Group[declare.NativeOperation]{Name: name, Summary: summary, Subcommands: []declare.Node[declare.NativeOperation]{&declare.Leaf[declare.NativeOperation]{Name: "run", Summary: "Run.", Kind: kind}}}}}
+}
+
+// WaitFile waits for a Host's fixture file to have the observed bytes, using
+// filesystem events. The watch is installed before reading to avoid missed writes.
+func WaitFile(ctx context.Context, path string, ready func([]byte) bool) (err error) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, watcher.Close()) }()
+	if err = watcher.Add(filepath.Dir(path)); err != nil {
+		return err
+	}
+	for {
+		data, readErr := os.ReadFile(path)
+		if readErr == nil && ready(data) {
+			return nil
+		}
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			return readErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-watcher.Errors:
+			return err
+		case <-watcher.Events:
+		}
+	}
 }

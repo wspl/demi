@@ -2,7 +2,6 @@ package backend_test
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"net/http"
@@ -10,32 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/webapi"
 )
-
-// filesBackend starts an assembled backend with its owned scripted manager.
-func filesBackend(t *testing.T) (context.Context, *backendtest.Harness, *backendtest.TestBackend, backendtest.Session) {
-	t.Helper()
-	ctx, harness := filesHarness(t)
-	backend, master, err := harness.StartSetUp(ctx, t)
-	wireMust(t, err)
-	return ctx, harness, backend, master
-}
-
-// filesHarness creates fixture configuration before the backend starts.
-func filesHarness(t *testing.T) (context.Context, *backendtest.Harness) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
-	t.Cleanup(cancel)
-	manager, err := backendtest.StartScriptedManager(ctx, t)
-	wireMust(t, err)
-	harness, err := backendtest.NewHarness(ctx, t, manager.Socket())
-	wireMust(t, err)
-	return ctx, harness
-}
 
 // filesBlob places a fixture in the user's durable blob namespace.
 func filesBlob(t *testing.T, harness *backendtest.Harness, user string, data []byte) string {
@@ -59,18 +36,11 @@ func filesHeader(t *testing.T, answer backendtest.Answer, name, want string) {
 		t.Fatalf("%s = %q, want %q", name, got, want)
 	}
 }
-func filesRefusal(t *testing.T, answer backendtest.Answer, status int, code webapi.ErrorCode) {
-	t.Helper()
-	gotStatus, gotCode, err := answer.Refusal()
-	wireMust(t, err)
-	if gotStatus != status || gotCode != code {
-		t.Fatalf("refusal (%d, %s), want (%d, %s)", gotStatus, gotCode, status, code)
-	}
-}
 
 // Local HTTP and disk only; no vendor calls or runner, normally under one second.
 func TestBlobNamespaceInertAndImmutable(t *testing.T) {
-	ctx, harness, backend, master := filesBackend(t)
+	ctx, harness := conversationHarness(t)
+	backend, master := accountStart(ctx, t, harness)
 	data := []byte("\x89PNG\r\n\x1a\n not really an image")
 	name := filesBlob(t, harness, string(master.User.ID), data)
 	read := func(path string, session *backendtest.Session) backendtest.Answer {
@@ -101,15 +71,16 @@ func TestBlobNamespaceInertAndImmutable(t *testing.T) {
 	filesHeader(t, page, "content-disposition", "attachment")
 	theirs := filesBlob(t, harness, "someone-else", []byte("their bytes"))
 	for _, missing := range []string{theirs, strings.ToUpper(name), "not-a-hash", strings.Repeat("0", 64)} {
-		filesRefusal(t, read("/api/blobs/"+missing, &master), 404, webapi.ErrorCodeNotFound)
+		accountRefusal(t, read("/api/blobs/"+missing, &master), 404, webapi.ErrorCodeNotFound)
 	}
-	filesRefusal(t, read(path, nil), 401, webapi.ErrorCodeUnauthenticated)
+	accountRefusal(t, read(path, nil), 401, webapi.ErrorCodeUnauthenticated)
 	wireMust(t, backend.Close(ctx))
 }
 
 // Local HTTP and disk only; checks the byte positions used by video players.
 func TestBlobByteRangesForVideo(t *testing.T) {
-	ctx, harness, backend, master := filesBackend(t)
+	ctx, harness := conversationHarness(t)
+	backend, master := accountStart(ctx, t, harness)
 	data := make([]byte, 1000)
 	for i := range data {
 		data[i] = byte(i % 251)
