@@ -80,15 +80,15 @@ func TestClientMutations(t *testing.T) {
 	}
 	fixtures := readFixtures(t, "client-frames.json")
 	for category, cases := range table {
-		for _, tc := range cases {
-			t.Run(category+"/"+tc.Why, func(t *testing.T) {
-				raw := tc.Value
+		for _, scenario := range cases {
+			t.Run(category+"/"+scenario.Why, func(t *testing.T) {
+				raw := scenario.Value
 				if raw == nil {
-					value := fixture(t, fixtures, tc.Fixture)
-					for _, pointer := range tc.Remove {
+					value := fixture(t, fixtures, scenario.Fixture)
+					for _, pointer := range scenario.Remove {
 						mutate(t, value, pointer, nil, true)
 					}
-					for pointer, replacement := range tc.Set {
+					for pointer, replacement := range scenario.Set {
 						mutate(t, value, pointer, replacement, false)
 					}
 					raw, err = contract.EncodeJSON(value)
@@ -110,7 +110,13 @@ func TestClientMutations(t *testing.T) {
 }
 
 func TestFrameErrorClassification(t *testing.T) {
-	for _, text := range []string{"not json", `{"type":`, "", `{"type":"open"} {}`, `{"type":"shell_write","commandId":"cmd-1","stdin":"\ud800"}`} {
+	for _, text := range []string{
+		"not json",
+		`{"type":`,
+		"",
+		`{"type":"open"} {}`,
+		`{"type":"shell_write","commandId":"cmd-1","stdin":"\ud800"}`,
+	} {
 		_, err := framewire.DecodeClientFrame([]byte(text))
 		if !errors.Is(err, framewire.ErrNotJSON) {
 			t.Fatalf("%q: %v", text, err)
@@ -122,7 +128,7 @@ func TestFrameErrorClassification(t *testing.T) {
 			t.Fatalf("%q: %v", text, err)
 		}
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		pointer string
 		value   any
 		path    string
@@ -131,21 +137,23 @@ func TestFrameErrorClassification(t *testing.T) {
 		{"/content/0", map[string]any{"type": "attachment", "path": "/a"}, "content[0]"},
 	} {
 		value := fixture(t, readFixtures(t, "client-frames.json"), "send")
-		mutate(t, value, tc.pointer, tc.value, false)
+		mutate(t, value, scenario.pointer, scenario.value, false)
 		raw, err := contract.EncodeJSON(value)
 		if err != nil {
 			t.Fatal(err)
 		}
 		_, err = framewire.DecodeClientFrame(raw)
 		var field *contract.Error
-		if !errors.As(err, &field) || field.Path != tc.path {
-			t.Fatalf("wanted path %s: %v", tc.path, err)
+		if !errors.As(err, &field) || field.Path != scenario.path {
+			t.Fatalf("wanted path %s: %v", scenario.path, err)
 		}
 	}
 }
 
 func TestServerUnknownFields(t *testing.T) {
-	frame, err := framewire.DecodeServerFrame([]byte(`{"type":"phase","phase":"idle","since":"2026-09-21T14:13:20.000Z"}`))
+	frame, err := framewire.DecodeServerFrame(
+		[]byte(`{"type":"phase","phase":"idle","since":"2026-09-21T14:13:20.000Z"}`),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

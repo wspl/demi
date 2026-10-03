@@ -67,7 +67,23 @@ func TestRustCorpus(t *testing.T) {
 			t.Fatalf("roundtrip mismatch\n%s\n%s", fixture, encoded)
 		}
 	}
-	for _, kind := range []string{"user", "context", "wakeup", "steer", "agent_message", "resume", "abort", "thinking", "redacted_thinking", "text", "tool_call", "response", "error", "compaction_boundary", "compaction_marker"} {
+	for _, kind := range []string{
+		"user",
+		"context",
+		"wakeup",
+		"steer",
+		"agent_message",
+		"resume",
+		"abort",
+		"thinking",
+		"redacted_thinking",
+		"text",
+		"tool_call",
+		"response",
+		"error",
+		"compaction_boundary",
+		"compaction_marker",
+	} {
 		if !kinds[kind] {
 			t.Fatalf("missing %s fixture", kind)
 		}
@@ -88,13 +104,13 @@ func TestRustCorpus(t *testing.T) {
 	if err := json.Unmarshal(table, &cases); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range cases.Refused {
-		t.Run(tc.Why, func(t *testing.T) {
-			value := fixtureByID(t, fixtures, tc.Fixture)
-			for _, pointer := range tc.Remove {
+	for _, scenario := range cases.Refused {
+		t.Run(scenario.Why, func(t *testing.T) {
+			value := fixtureByID(t, fixtures, scenario.Fixture)
+			for _, pointer := range scenario.Remove {
 				mutate(t, value, pointer, nil, true)
 			}
-			for pointer, replacement := range tc.Set {
+			for pointer, replacement := range scenario.Set {
 				mutate(t, value, pointer, replacement, false)
 			}
 			encoded, err := contract.EncodeJSON(value)

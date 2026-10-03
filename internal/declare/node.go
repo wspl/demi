@@ -15,8 +15,10 @@ const MaxDepth = 32
 // DeclarationError describes a broken command declaration.
 type DeclarationError struct{ err error }
 
+// Error describes the broken declaration.
 func (e *DeclarationError) Error() string { return e.err.Error() }
 
+// Unwrap returns the cause of the declaration refusal.
 func (e *DeclarationError) Unwrap() error { return e.err }
 
 // declarationError constructs a refusal of a command's declaration rules.
@@ -30,36 +32,55 @@ func declarationError(message string) *DeclarationError {
 //sumtype:decl
 type Node[B any] interface {
 	node()
+	// Validate checks the declaration tree.
 	Validate() error
+	// Select finds the command named by argv.
 	Select([]string) (*Selected[B], error)
+	// Help renders the command documentation.
 	Help(string) string
+	// Leaves lists all commands below this node.
 	Leaves() []*Leaf[B]
 }
 
 // Group selects one of its subcommands.
 type Group[B any] struct {
-	Name        string    `json:"name"`
-	Summary     string    `json:"summary"`
+	// Name is the command token.
+	Name string `json:"name"`
+	// Summary describes the command.
+	Summary string `json:"summary"`
+	// Subcommands lists the commands below this group.
 	Subcommands []Node[B] `json:"subcommands"`
 }
 
 // Leaf declares a command's input sources, documentation, schemas, and operation.
 type Leaf[B any] struct {
-	Name          string      `json:"name"`
-	Summary       string      `json:"summary"`
-	SuccessOutput *string     `json:"successOutput,omitempty"`
-	FailureOutput *string     `json:"failureOutput,omitempty"`
-	RunningHint   *string     `json:"runningHint,omitempty"`
-	Input         *Schema     `json:"input,omitempty"`
-	Positionals   *[]string   `json:"positionals,omitempty"`
-	StdinField    *string     `json:"stdinField,omitempty"`
-	RestField     *string     `json:"restField,omitempty"`
-	Output        *LeafOutput `json:"output,omitempty"`
-	Kind          LeafKind[B] `json:"kind"`
+	// Name is the command token.
+	Name string `json:"name"`
+	// Summary describes the command.
+	Summary string `json:"summary"`
+	// SuccessOutput describes successful output.
+	SuccessOutput *string `json:"successOutput,omitempty"`
+	// FailureOutput describes failed output.
+	FailureOutput *string `json:"failureOutput,omitempty"`
+	// RunningHint describes progress while the command runs.
+	RunningHint *string `json:"runningHint,omitempty"`
+	// Input validates command arguments.
+	Input *Schema `json:"input,omitempty"`
+	// Positionals lists positional input fields in order.
+	Positionals *[]string `json:"positionals,omitempty"`
+	// StdinField names the input supplied by stdin.
+	StdinField *string `json:"stdinField,omitempty"`
+	// RestField names the input supplied after --.
+	RestField *string `json:"restField,omitempty"`
+	// Output declares available output schemas.
+	Output *LeafOutput `json:"output,omitempty"`
+	// Kind identifies how the command runs.
+	Kind LeafKind[B] `json:"kind"`
 }
 
 // LeafOutput declares the schema enabling --json.
 type LeafOutput struct {
+	// JSON enables machine-readable output with its schema.
 	JSON *Schema `json:"json,omitempty"`
 }
 
@@ -75,6 +96,7 @@ func (*RPC[B]) leafKind() {}
 
 // Native runs the bound command-package operation.
 type Native[B any] struct {
+	// Binding identifies the native operation.
 	Binding B `json:"binding"`
 }
 
@@ -296,7 +318,11 @@ func IsCommandName(name string) bool {
 func Pin(node Node[NativeOperation], descriptorHash func(NativeOperation) (string, error)) (Node[Binding], error) {
 	switch node := node.(type) {
 	case *Group[NativeOperation]:
-		group := &Group[Binding]{Name: node.Name, Summary: node.Summary, Subcommands: make([]Node[Binding], 0, len(node.Subcommands))}
+		group := &Group[Binding]{
+			Name:        node.Name,
+			Summary:     node.Summary,
+			Subcommands: make([]Node[Binding], 0, len(node.Subcommands)),
+		}
 		for _, child := range node.Subcommands {
 			pinned, err := Pin(child, descriptorHash)
 			if err != nil {
@@ -315,9 +341,25 @@ func Pin(node Node[NativeOperation], descriptorHash func(NativeOperation) (strin
 			if err != nil {
 				return nil, err
 			}
-			kind = &Native[Binding]{Binding: Binding{Package: original.Binding.Package, Operation: original.Binding.Operation, DescriptorHash: hash}}
+			kind = &Native[Binding]{
+				Binding: Binding{
+					Package:        original.Binding.Package,
+					Operation:      original.Binding.Operation,
+					DescriptorHash: hash,
+				},
+			}
 		}
-		leaf := &Leaf[Binding]{Name: node.Name, Summary: node.Summary, SuccessOutput: clonePointer(node.SuccessOutput), FailureOutput: clonePointer(node.FailureOutput), RunningHint: clonePointer(node.RunningHint), Input: node.Input, StdinField: clonePointer(node.StdinField), RestField: clonePointer(node.RestField), Kind: kind}
+		leaf := &Leaf[Binding]{
+			Name:          node.Name,
+			Summary:       node.Summary,
+			SuccessOutput: clonePointer(node.SuccessOutput),
+			FailureOutput: clonePointer(node.FailureOutput),
+			RunningHint:   clonePointer(node.RunningHint),
+			Input:         node.Input,
+			StdinField:    clonePointer(node.StdinField),
+			RestField:     clonePointer(node.RestField),
+			Kind:          kind,
+		}
 		if node.Positionals != nil {
 			fields := slices.Clone(*node.Positionals)
 			leaf.Positionals = &fields

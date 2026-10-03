@@ -55,7 +55,15 @@ func TestTimes(t *testing.T) {
 	if err != nil || ms != 1790000000000 {
 		t.Fatalf("%d: %v", ms, err)
 	}
-	for _, raw := range []string{`"2026-09-21T14:13:20Z"`, `"2026-09-21T16:13:20+02:00"`, `"2026-09-21T14:13:20.0001Z"`, `"2026-09-21"`, `"yesterday"`, `1790000000000`, `"2026-02-30T14:13:20.000Z"`} {
+	for _, raw := range []string{
+		`"2026-09-21T14:13:20Z"`,
+		`"2026-09-21T16:13:20+02:00"`,
+		`"2026-09-21T14:13:20.0001Z"`,
+		`"2026-09-21"`,
+		`"yesterday"`,
+		`1790000000000`,
+		`"2026-02-30T14:13:20.000Z"`,
+	} {
 		if _, err := core.DecodeTimestamp([]byte(raw)); err == nil {
 			t.Errorf("accepted %s", raw)
 		}
@@ -114,7 +122,15 @@ func TestCompletionIDs(t *testing.T) {
 	if err != nil || string(block) != text {
 		t.Fatalf("%s: %v", block, err)
 	}
-	for _, text := range []string{"subagent:child", "subagent::5", "subagent:child:", "subagent:child:x5", "subagent:child:+5", "agent:child:5", "subagent:child:9007199254740992"} {
+	for _, text := range []string{
+		"subagent:child",
+		"subagent::5",
+		"subagent:child:",
+		"subagent:child:x5",
+		"subagent:child:+5",
+		"agent:child:5",
+		"subagent:child:9007199254740992",
+	} {
 		if _, err := core.ParseCompletionID(text); err == nil {
 			t.Errorf("accepted %s", text)
 		}
@@ -124,7 +140,11 @@ func TestCompletionIDs(t *testing.T) {
 // go-migration.md, "A timestamp's spelling is the documented one":
 // accept canonical UTC milliseconds and refuse Rust's alternate spellings.
 func TestRustTimestampSpellings(t *testing.T) {
-	for _, text := range []string{"2026-09-21T14:13:20Z", "2026-09-21T16:13:20+02:00", "2026-09-21T14:13:20.000Z"} {
+	for _, text := range []string{
+		"2026-09-21T14:13:20Z",
+		"2026-09-21T16:13:20+02:00",
+		"2026-09-21T14:13:20.000Z",
+	} {
 		t.Run(text, func(t *testing.T) {
 			value, err := core.DecodeTimestamp([]byte(`"` + text + `"`))
 			if text == "2026-09-21T14:13:20.000Z" {

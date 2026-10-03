@@ -122,5 +122,4 @@ type SyncEventCloud struct {
 // Nothing else was sent for 30 seconds.
 // +demi:variant SyncEvent heartbeat
 // +demi:tolerant
-type SyncEventHeartbeat struct {
-}
+type SyncEventHeartbeat struct{}

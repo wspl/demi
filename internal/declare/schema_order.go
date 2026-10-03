@@ -82,61 +82,61 @@ func exhaustiveSchemas(root *jsonschema.Schema) {
 			s.ContentMediaType = nil
 			s.ContentSchema = nil
 		}
-		children := []*jsonschema.Schema{s.Ref, s.RecursiveRef, s.Not, s.If, s.Then, s.Else, s.PropertyNames, s.UnevaluatedProperties, s.Contains, s.Items2020, s.UnevaluatedItems, s.ContentSchema}
-		if s.DynamicRef != nil {
-			children = append(children, s.DynamicRef.Ref)
-		}
-		for _, list := range [][]*jsonschema.Schema{s.AllOf, s.AnyOf, s.OneOf, s.PrefixItems} {
-			children = append(children, list...)
-		}
-		for _, child := range s.Properties {
-			children = append(children, child)
-		}
-		for _, child := range s.PatternProperties {
-			children = append(children, child)
-		}
-		for _, child := range s.DependentSchemas {
-			children = append(children, child)
-		}
-		for _, child := range s.Dependencies {
-			if sub, ok := child.(*jsonschema.Schema); ok {
-				children = append(children, sub)
-			}
-		}
-		for _, child := range []any{s.Items, s.AdditionalItems, s.AdditionalProperties} {
-			switch child := child.(type) {
-			case *jsonschema.Schema:
-				children = append(children, child)
-			case []*jsonschema.Schema:
-				children = append(children, child...)
-			}
-		}
+		children := schemaChildren(s)
 		for _, child := range children {
 			visit(child)
 		}
-		if s.Types != nil {
-			s.AllOf = append(s.AllOf, &jsonschema.Schema{Location: s.Location, Types: s.Types, DraftVersion: s.DraftVersion})
-			s.Types = nil
-		}
-		if s.Const != nil {
-			s.AllOf = append(s.AllOf, &jsonschema.Schema{Location: s.Location, Const: s.Const, DraftVersion: s.DraftVersion})
-			s.Const = nil
-		}
-		if s.Enum != nil {
-			s.AllOf = append(s.AllOf, &jsonschema.Schema{Location: s.Location, Enum: s.Enum, DraftVersion: s.DraftVersion})
-			s.Enum = nil
-		}
-		if s.Format != nil {
-			s.AllOf = append(s.AllOf, &jsonschema.Schema{Location: s.Location, Format: s.Format, DraftVersion: s.DraftVersion})
-			s.Format = nil
-		}
+		separateSchemaAssertions(s)
 	}
 	visit(root)
 }
 
 // keywordPriority mirrors jsonschema 0.56's diagnostic traversal order.
 func keywordPriority(keyword string) int {
-	keywords := []string{"type", "const", "enum", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties", "required", "dependentRequired", "pattern", "format", "contentEncoding", "contentMediaType", "contentSchema", "uniqueItems", "properties", "patternProperties", "additionalProperties", "propertyNames", "items", "prefixItems", "additionalItems", "contains", "dependencies", "dependentSchemas", "allOf", "anyOf", "oneOf", "not", "if", "unevaluatedProperties", "unevaluatedItems", "$ref", "$recursiveRef", "$dynamicRef"}
+	keywords := []string{
+		"type",
+		"const",
+		"enum",
+		"minimum",
+		"maximum",
+		"exclusiveMinimum",
+		"exclusiveMaximum",
+		"multipleOf",
+		"minLength",
+		"maxLength",
+		"minItems",
+		"maxItems",
+		"minProperties",
+		"maxProperties",
+		"required",
+		"dependentRequired",
+		"pattern",
+		"format",
+		"contentEncoding",
+		"contentMediaType",
+		"contentSchema",
+		"uniqueItems",
+		"properties",
+		"patternProperties",
+		"additionalProperties",
+		"propertyNames",
+		"items",
+		"prefixItems",
+		"additionalItems",
+		"contains",
+		"dependencies",
+		"dependentSchemas",
+		"allOf",
+		"anyOf",
+		"oneOf",
+		"not",
+		"if",
+		"unevaluatedProperties",
+		"unevaluatedItems",
+		"$ref",
+		"$recursiveRef",
+		"$dynamicRef",
+	}
 	index := slices.Index(keywords, keyword)
 	if index < 0 {
 		return len(keywords)
@@ -184,97 +184,28 @@ func (s *Schema) diagnosticRank(failure *jsonschema.ValidationError, order map[s
 	if reason, ok := failure.ErrorKind.(*kind.Dependency); ok {
 		path = append(schemaPath(failure.SchemaURL), "dependencies", reason.Prop)
 	}
-	var rank strings.Builder
-	schemaPrefix := ""
-	instancePrefix := ""
-	instanceIndex := 0
+	traversal := diagnosticTraversal{failure: failure, order: order}
 	for i := 0; i < len(path); i++ {
 		keyword := path[i]
-		priority := keywordPriority(keyword)
 		parent, _ := s.schemaAt(path[:i]).(map[string]any)
-		additional, hasAdditional := parent["additionalProperties"]
-		fused := hasAdditional && additional != true
-		required, _ := parent["required"].([]any)
-		properties, hasProperties := parent["properties"].(map[string]any)
-		_, additionalSchema := additional.(map[string]any)
-		fusedRequired1 := len(required) == 1 && additional == false && parent["patternProperties"] == nil && hasProperties
-		fusedRequired2 := len(required) == 2 && hasProperties && len(properties) < 15 && additional != false && !additionalSchema && parent["patternProperties"] == nil
-		if fused && (keyword == "properties" || keyword == "patternProperties") || keyword == "required" && fusedRequired1 {
-			priority = keywordPriority("additionalProperties")
-		}
-		if keyword == "required" && fusedRequired2 {
-			priority = keywordPriority("properties")
-		}
-		fmt.Fprintf(&rank, "%03d/", priority)
-		if keyword == "required" && fusedRequired1 {
-			rank.WriteString("999999999/")
-		}
-		if keyword == "required" && fusedRequired2 {
-			rank.WriteString("-/")
-		}
-		if keyword == "additionalProperties" && len(path) == i+1 {
-			if _, ok := failure.ErrorKind.(*kind.AdditionalProperties); ok {
-				rank.WriteString("999999998/")
-			} else if instanceIndex < len(failure.InstanceLocation) {
-				fmt.Fprintf(&rank, "%09d/", slices.Index(order[instancePrefix], failure.InstanceLocation[instanceIndex]))
-				instancePrefix += "/" + pointerEscape(failure.InstanceLocation[instanceIndex])
-				instanceIndex++
-			}
-		}
-		if keyword == "additionalProperties" && len(path) > i+1 && instanceIndex < len(failure.InstanceLocation) {
-			fmt.Fprintf(&rank, "%09d/", slices.Index(order[instancePrefix], failure.InstanceLocation[instanceIndex]))
-			instancePrefix += "/" + pointerEscape(failure.InstanceLocation[instanceIndex])
-			instanceIndex++
-		}
-		if keyword == "propertyNames" {
-			if reason, ok := failure.ErrorKind.(*kind.PropertyNames); ok {
-				fmt.Fprintf(&rank, "%09d/", slices.Index(order[instancePrefix], reason.Property))
-			}
-		}
-		schemaPrefix += "/" + pointerEscape(keyword)
-		if (keyword == "properties" || keyword == "patternProperties" || keyword == "dependentSchemas" || keyword == "dependentRequired" || keyword == "dependencies" || keyword == "allOf" || keyword == "anyOf" || keyword == "oneOf" || keyword == "prefixItems") && i+1 < len(path) {
+		fused := writeKeywordRank(&traversal.rank, keyword, parent)
+		traversal.writeAdditionalRank(keyword, path, i)
+		traversal.schemaPrefix += "/" + pointerEscape(keyword)
+		if (keyword == "properties" || keyword == "patternProperties" ||
+			keyword == "dependentSchemas" || keyword == "dependentRequired" || keyword == "dependencies" ||
+			keyword == "allOf" || keyword == "anyOf" || keyword == "oneOf" || keyword == "prefixItems") &&
+			i+1 < len(path) {
 			i++
-			member := path[i]
-			if keyword == "prefixItems" && instanceIndex < len(failure.InstanceLocation) {
-				instancePrefix += "/" + failure.InstanceLocation[instanceIndex]
-				instanceIndex++
-			}
-			index := slices.Index(s.order[schemaPrefix], member)
-			if keyword == "properties" && instanceIndex < len(failure.InstanceLocation) {
-				// Small Rust property tables iterate the smaller side; fused tables iterate the instance.
-				if fused || len(s.order[schemaPrefix]) >= 15 || len(order[instancePrefix]) <= len(s.order[schemaPrefix]) {
-					index = slices.Index(order[instancePrefix], failure.InstanceLocation[instanceIndex])
-				}
-				instancePrefix += "/" + pointerEscape(failure.InstanceLocation[instanceIndex])
-				instanceIndex++
-			}
-			if index < 0 {
-				index, _ = strconv.Atoi(member)
-			}
-			if keyword == "patternProperties" && instanceIndex < len(failure.InstanceLocation) {
-				fieldIndex := slices.Index(order[instancePrefix], failure.InstanceLocation[instanceIndex])
-				if fused {
-					fmt.Fprintf(&rank, "%09d/000000001/%09d/", fieldIndex, index)
-				} else {
-					fmt.Fprintf(&rank, "%09d/%09d/", index, fieldIndex)
-				}
-				instancePrefix += "/" + pointerEscape(failure.InstanceLocation[instanceIndex])
-				instanceIndex++
-			} else {
-				fmt.Fprintf(&rank, "%09d/", index)
-				if keyword == "properties" && fused {
-					rank.WriteString("000000000/")
-				}
-			}
-			schemaPrefix += "/" + pointerEscape(member)
-		} else if keyword == "items" && instanceIndex < len(failure.InstanceLocation) {
-			index, _ := strconv.Atoi(failure.InstanceLocation[instanceIndex])
-			fmt.Fprintf(&rank, "%09d/", index)
-			instancePrefix += "/" + failure.InstanceLocation[instanceIndex]
-			instanceIndex++
+			traversal.writeMemberRank(s, keyword, path[i], fused)
+		} else if keyword == "items" &&
+			traversal.instanceIndex < len(failure.InstanceLocation) {
+			index, _ := strconv.Atoi(failure.InstanceLocation[traversal.instanceIndex])
+			fmt.Fprintf(&traversal.rank, "%09d/", index)
+			traversal.instancePrefix += "/" + failure.InstanceLocation[traversal.instanceIndex]
+			traversal.instanceIndex++
 		}
 	}
-	return rank.String()
+	return traversal.rank.String()
 }
 
 // unevaluatedFailure combines library element errors into Rust's one diagnostic.
@@ -283,12 +214,15 @@ type unevaluatedFailure struct {
 	names []string
 }
 
+// KeywordPath identifies the aggregated unevaluated keyword.
 func (e *unevaluatedFailure) KeywordPath() []string {
 	if e.items {
 		return []string{"unevaluatedItems"}
 	}
 	return []string{"unevaluatedProperties"}
 }
+
+// LocalizedString is empty because command diagnostics render this aggregate themselves.
 func (*unevaluatedFailure) LocalizedString(*message.Printer) string { return "" }
 
 // aggregateFailures preserves Rust keywords' aggregate failure boundaries.
@@ -316,25 +250,19 @@ func aggregateFailures(failures []*jsonschema.ValidationError) []*jsonschema.Val
 			result = append(result, failure)
 			continue
 		}
-		descents := 0
-		for j := index + 1; j < len(path); j++ {
-			switch path[j] {
-			case "properties", "patternProperties", "prefixItems":
-				descents++
-				j++
-			case "items", "additionalProperties", "additionalItems", "unevaluatedProperties", "unevaluatedItems":
-				descents++
-			}
-		}
-		nameIndex := len(failure.InstanceLocation) - 1 - descents
-		if nameIndex < 0 {
-			nameIndex = 0
-		}
+		nameIndex := unevaluatedNameIndex(path, index, failure.InstanceLocation)
 		parent := failure.InstanceLocation[:nameIndex]
 		key := fmt.Sprintf("%q/%q", path[:index+1], parent)
 		group := groups[key]
 		if group == nil {
-			group = &jsonschema.ValidationError{SchemaURL: strings.Split(failure.SchemaURL, "#")[0] + "#" + strings.TrimSuffix("/"+strings.Join(path[:index], "/"), "/"), InstanceLocation: slices.Clone(parent), ErrorKind: &unevaluatedFailure{items: items}}
+			group = &jsonschema.ValidationError{
+				SchemaURL: strings.Split(failure.SchemaURL, "#")[0] + "#" + strings.TrimSuffix(
+					"/"+strings.Join(path[:index], "/"),
+					"/",
+				),
+				InstanceLocation: slices.Clone(parent),
+				ErrorKind:        &unevaluatedFailure{items: items},
+			}
 			groups[key] = group
 			result = append(result, group)
 		}
@@ -398,4 +326,208 @@ func (s *Schema) literal(path []string) string {
 		encoded, _ := contract.EncodeJSON(value)
 		return string(encoded)
 	}
+}
+
+// schemaChildren enumerates the compiled subschemas before assertions are separated.
+func schemaChildren(s *jsonschema.Schema) []*jsonschema.Schema {
+	children := []*jsonschema.Schema{
+		s.Ref,
+		s.RecursiveRef,
+		s.Not,
+		s.If,
+		s.Then,
+		s.Else,
+		s.PropertyNames,
+		s.UnevaluatedProperties,
+		s.Contains,
+		s.Items2020,
+		s.UnevaluatedItems,
+		s.ContentSchema,
+	}
+	if s.DynamicRef != nil {
+		children = append(children, s.DynamicRef.Ref)
+	}
+	for _, list := range [][]*jsonschema.Schema{s.AllOf, s.AnyOf, s.OneOf, s.PrefixItems} {
+		children = append(children, list...)
+	}
+	for _, child := range s.Properties {
+		children = append(children, child)
+	}
+	for _, child := range s.PatternProperties {
+		children = append(children, child)
+	}
+	for _, child := range s.DependentSchemas {
+		children = append(children, child)
+	}
+	for _, child := range s.Dependencies {
+		if sub, ok := child.(*jsonschema.Schema); ok {
+			children = append(children, sub)
+		}
+	}
+	for _, child := range []any{s.Items, s.AdditionalItems, s.AdditionalProperties} {
+		switch child := child.(type) {
+		case *jsonschema.Schema:
+			children = append(children, child)
+		case []*jsonschema.Schema:
+			children = append(children, child...)
+		}
+	}
+	return children
+}
+
+// separateSchemaAssertions lets every Rust-compatible diagnostic be collected.
+func separateSchemaAssertions(s *jsonschema.Schema) {
+	if s.Types != nil {
+		s.AllOf = append(
+			s.AllOf,
+			&jsonschema.Schema{Location: s.Location, Types: s.Types, DraftVersion: s.DraftVersion},
+		)
+		s.Types = nil
+	}
+	if s.Const != nil {
+		s.AllOf = append(
+			s.AllOf,
+			&jsonschema.Schema{Location: s.Location, Const: s.Const, DraftVersion: s.DraftVersion},
+		)
+		s.Const = nil
+	}
+	if s.Enum != nil {
+		s.AllOf = append(
+			s.AllOf,
+			&jsonschema.Schema{Location: s.Location, Enum: s.Enum, DraftVersion: s.DraftVersion},
+		)
+		s.Enum = nil
+	}
+	if s.Format != nil {
+		s.AllOf = append(
+			s.AllOf,
+			&jsonschema.Schema{Location: s.Location, Format: s.Format, DraftVersion: s.DraftVersion},
+		)
+		s.Format = nil
+	}
+}
+
+// unevaluatedNameIndex locates the member owned by the unevaluated keyword.
+func unevaluatedNameIndex(path []string, index int, location []string) int {
+	descents := 0
+	for j := index + 1; j < len(path); j++ {
+		switch path[j] {
+		case "properties", "patternProperties", "prefixItems":
+			descents++
+			j++
+		case "items", "additionalProperties", "additionalItems", "unevaluatedProperties", "unevaluatedItems":
+			descents++
+		}
+	}
+	nameIndex := len(location) - 1 - descents
+	if nameIndex < 0 {
+		nameIndex = 0
+	}
+	return nameIndex
+}
+
+// writeKeywordRank retains Rust fused-property and required-field priorities.
+func writeKeywordRank(rank *strings.Builder, keyword string, parent map[string]any) bool {
+	priority := keywordPriority(keyword)
+	additional, hasAdditional := parent["additionalProperties"]
+	fused := hasAdditional && additional != true
+	required, _ := parent["required"].([]any)
+	properties, hasProperties := parent["properties"].(map[string]any)
+	_, additionalSchema := additional.(map[string]any)
+	fusedRequired1 := len(required) == 1 && additional == false && parent["patternProperties"] == nil &&
+		hasProperties
+	fusedRequired2 := len(required) == 2 && hasProperties && len(properties) < 15 && additional != false &&
+		!additionalSchema &&
+		parent["patternProperties"] == nil
+	if fused && (keyword == "properties" || keyword == "patternProperties") ||
+		keyword == "required" && fusedRequired1 {
+		priority = keywordPriority("additionalProperties")
+	}
+	if keyword == "required" && fusedRequired2 {
+		priority = keywordPriority("properties")
+	}
+	fmt.Fprintf(rank, "%03d/", priority)
+	if keyword == "required" && fusedRequired1 {
+		rank.WriteString("999999999/")
+	}
+	if keyword == "required" && fusedRequired2 {
+		rank.WriteString("-/")
+	}
+	return fused
+}
+
+// diagnosticTraversal bundles the shared arguments and position of diagnostic ordering steps.
+type diagnosticTraversal struct {
+	failure        *jsonschema.ValidationError
+	order          map[string][]string
+	rank           strings.Builder
+	schemaPrefix   string
+	instancePrefix string
+	instanceIndex  int
+}
+
+func (t *diagnosticTraversal) writeAdditionalRank(keyword string, path []string, i int) {
+	if keyword == "additionalProperties" && len(path) == i+1 {
+		if _, ok := t.failure.ErrorKind.(*kind.AdditionalProperties); ok {
+			t.rank.WriteString("999999998/")
+		} else if t.instanceIndex < len(t.failure.InstanceLocation) {
+			fmt.Fprintf(
+				&t.rank,
+				"%09d/",
+				slices.Index(t.order[t.instancePrefix], t.failure.InstanceLocation[t.instanceIndex]),
+			)
+			t.instancePrefix += "/" + pointerEscape(t.failure.InstanceLocation[t.instanceIndex])
+			t.instanceIndex++
+		}
+	}
+	if keyword == "additionalProperties" && len(path) > i+1 && t.instanceIndex < len(t.failure.InstanceLocation) {
+		fmt.Fprintf(
+			&t.rank,
+			"%09d/",
+			slices.Index(t.order[t.instancePrefix], t.failure.InstanceLocation[t.instanceIndex]),
+		)
+		t.instancePrefix += "/" + pointerEscape(t.failure.InstanceLocation[t.instanceIndex])
+		t.instanceIndex++
+	}
+	if keyword == "propertyNames" {
+		if reason, ok := t.failure.ErrorKind.(*kind.PropertyNames); ok {
+			fmt.Fprintf(&t.rank, "%09d/", slices.Index(t.order[t.instancePrefix], reason.Property))
+		}
+	}
+}
+
+func (t *diagnosticTraversal) writeMemberRank(s *Schema, keyword, member string, fused bool) {
+	if keyword == "prefixItems" && t.instanceIndex < len(t.failure.InstanceLocation) {
+		t.instancePrefix += "/" + t.failure.InstanceLocation[t.instanceIndex]
+		t.instanceIndex++
+	}
+	index := slices.Index(s.order[t.schemaPrefix], member)
+	if keyword == "properties" && t.instanceIndex < len(t.failure.InstanceLocation) {
+		// Small Rust property tables iterate the smaller side; fused tables iterate the instance.
+		if fused || len(s.order[t.schemaPrefix]) >= 15 ||
+			len(t.order[t.instancePrefix]) <= len(s.order[t.schemaPrefix]) {
+			index = slices.Index(t.order[t.instancePrefix], t.failure.InstanceLocation[t.instanceIndex])
+		}
+		t.instancePrefix += "/" + pointerEscape(t.failure.InstanceLocation[t.instanceIndex])
+		t.instanceIndex++
+	}
+	if index < 0 {
+		index, _ = strconv.Atoi(member)
+	}
+	if keyword == "patternProperties" && t.instanceIndex < len(t.failure.InstanceLocation) {
+		fieldIndex := slices.Index(t.order[t.instancePrefix], t.failure.InstanceLocation[t.instanceIndex])
+		if fused {
+			fmt.Fprintf(&t.rank, "%09d/000000001/%09d/", fieldIndex, index)
+		} else {
+			fmt.Fprintf(&t.rank, "%09d/%09d/", index, fieldIndex)
+		}
+		t.instancePrefix += "/" + pointerEscape(t.failure.InstanceLocation[t.instanceIndex])
+		t.instanceIndex++
+	} else {
+		fmt.Fprintf(&t.rank, "%09d/", index)
+		if keyword == "properties" && fused {
+			t.rank.WriteString("000000000/")
+		}
+	}
+	t.schemaPrefix += "/" + pointerEscape(member)
 }
