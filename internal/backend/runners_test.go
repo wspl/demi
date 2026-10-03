@@ -153,7 +153,6 @@ func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
 }
 
 func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "")
 	laptop, token := s.stoppedPair()
 	one, other := connectHostRunner(t, s.b), connectHostRunner(t, s.b)
@@ -200,7 +199,6 @@ func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
 }
 
 func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	token, err := laptop.Token(s.ctx)
@@ -253,7 +251,6 @@ func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
 }
 
 func TestDisconnectedRunnerCancelsHeldTokenLookup(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "")
 	_, token := s.stoppedPair()
 	hold := backendtest.HoldHellos(t, s.b.Backend, backendtest.HelloTokenLookup)
@@ -295,7 +292,6 @@ func TestClaimOfDisconnectedRunnerCreatesNoDevice(t *testing.T) {
 }
 
 func TestPipesRequireDeviceToken(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	token, err := laptop.Token(s.ctx)
@@ -328,7 +324,6 @@ func TestPipesRequireDeviceToken(t *testing.T) {
 }
 
 func TestDevicesAndRunnersReturnAfterBackendRestart(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	if err := s.h.Clock.Advance(time.Second); err != nil {
@@ -364,7 +359,6 @@ func TestDevicesAndRunnersReturnAfterBackendRestart(t *testing.T) {
 }
 
 func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "")
 	_, token := s.stoppedPair()
 	s.create(hostsConversation)
@@ -419,7 +413,6 @@ func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
 
 // A code expiry wakes the runner's output wait; no test sleep polls the code.
 func TestPairingCodeExpiresAndClaimAttemptsAreLimited(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -477,7 +470,6 @@ func (s *hostScenario) deviceLog(path string) webapi.DeviceLog {
 	return log
 }
 func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	home := laptop.Runner.Home()
@@ -555,4 +547,110 @@ func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
 	}
 	s.refusal("GET", path, "", 409, webapi.ErrorCodeDeviceOffline)
 	s.refusal("GET", fs, "", 409, webapi.ErrorCodeDeviceOffline)
+}
+
+// A real runner persists its token across restart and exits when revoked.
+func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
+	s := newHostScenario(t, "")
+	runner, err := remotehosttest.StartRunnerProcess(s.ctx, t, s.b.URL, remotehosttest.RunnerProcessOptions{Name: "laptop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := runner.PairingCode(s.ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.refusal("POST", "/api/devices/claim", `{"code":"AAAA-BBBB"}`, 404, webapi.ErrorCodeInvalidCode)
+	answer := s.request("POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, " "+strings.ToLower(code)+" "), 201)
+	claimed, err := webapi.DecodeClaimedDevice(answer.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device := claimed.Device
+	if device.Name != "laptop" || device.Kind != webapi.DeviceKindUser || !device.Online || device.Home == nil || *device.Home != runner.Home() {
+		t.Fatalf("device: %+v", device)
+	}
+	s.refusal("POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, code), 404, webapi.ErrorCodeInvalidCode)
+	listed, err := s.b.Devices(s.ctx, &s.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].ID != device.ID || !listed[0].Online {
+		t.Fatalf("devices: %+v", listed)
+	}
+	if _, err := backendtest.StoredToken(s.ctx, runner); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.Stop(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, device.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.StartAgain(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, device.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = s.b.Devices(s.ctx, &s.user)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("devices: %+v, %v", listed, err)
+	}
+	s.request("DELETE", "/api/devices/"+string(device.ID), "", 204)
+	// Rust observes termination, without requiring a particular exit status.
+	err = runner.Exited(s.ctx)
+	if err != nil && s.ctx.Err() != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(runner.Output(), "revoked") {
+		t.Fatal(runner.Output())
+	}
+	listed, err = s.b.Devices(s.ctx, &s.user)
+	if err != nil || len(listed) != 0 {
+		t.Fatalf("devices: %+v, %v", listed, err)
+	}
+	s.refusal("DELETE", "/api/devices/"+string(device.ID), "", 404, webapi.ErrorCodeDeviceNotFound)
+	if err := s.b.Close(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The twin's real reconnect backoff makes this scenario take several seconds.
+func TestRunnerTwinIsAdoptedAfterFirstDisconnects(t *testing.T) {
+	s := newHostScenario(t, "")
+	first := s.pair("laptop")
+	token, err := first.Token(s.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	twin, err := remotehosttest.StartRunnerProcess(s.ctx, t, s.b.URL, remotehosttest.RunnerProcessOptions{Name: "laptop", Token: &token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := twin.UntilOutput(s.ctx, "already_connected"); err != nil {
+		t.Fatal(err)
+	}
+	online, err := s.b.Online(s.ctx, &s.user, first.ID())
+	if err != nil || !online || !twin.Running() {
+		t.Fatalf("online: %v, twin running: %v, %v", online, twin.Running(), err)
+	}
+	if err := first.Runner.Stop(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, first.ID(), true); err != nil {
+		t.Fatal(err)
+	}
+	if !twin.Running() {
+		t.Fatal(twin.Output())
+	}
+	if err := twin.Stop(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, first.ID(), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.Close(s.ctx); err != nil {
+		t.Fatal(err)
+	}
 }

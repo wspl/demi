@@ -965,8 +965,9 @@ func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 	}
 }
 
+// Several seconds: two real runners install packages and Cloud wakes three times.
 func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
+	t.Skip("finding 2: cross-host shell from Cloud stalls before returning alpha output")
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -1043,7 +1044,6 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 }
 
 func TestResetHoldsCloudConversationButNotAttachedCloudTarget(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "demi-file")
 	alpha := s.pair("alpha")
 	work := s.work(cloudFirst)
@@ -1198,7 +1198,6 @@ func TestIdleConversationReleasesNativeResourcesOnRunningCloud(t *testing.T) {
 // Two idle windows of actual file requests prove activity on a paired target
 // holds its attached Cloud; requests are event waits, without polling sleeps.
 func TestPairedTargetActivityKeepsAttachedCloudAwake(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	const window = 600 * time.Millisecond
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
@@ -1234,7 +1233,6 @@ func TestPairedTargetActivityKeepsAttachedCloudAwake(t *testing.T) {
 }
 
 func TestResetHoldsPairedConversationWhoseProviderUsesCloud(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)

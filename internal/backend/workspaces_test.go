@@ -142,7 +142,6 @@ func (s *hostScenario) reorder(kind, id string, before *string, status int) {
 
 // A real paired runner establishes device identity; file and sidebar observations stay on the API.
 func TestWorkspaceKeepsDeviceDirectoryWhileTargeted(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "")
 	laptop := s.pair("laptop")
 	home := laptop.Runner.Home()
@@ -201,7 +200,6 @@ func TestWorkspaceKeepsDeviceDirectoryWhileTargeted(t *testing.T) {
 }
 
 func TestSidebarOrderSurvivesPatchesAndRestart(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	s := newHostScenario(t, "")
 	a, b, c := "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a02", "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a03"
 	for _, id := range []string{a, b, c} {

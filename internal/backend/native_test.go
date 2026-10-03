@@ -16,7 +16,6 @@ import (
 
 // A real native stream installs the built fixture through the backend's development store.
 func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	h, manager, err := backendtest.HostsHarness(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)

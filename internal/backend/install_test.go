@@ -292,7 +292,6 @@ func TestInstallerSeparatesBackendsReusesReleaseAndUpgradesOwnRunner(t *testing.
 
 // The real installer and a scripted model prove a user's shell mask reaches the installed runner's jobs.
 func TestInstalledRunnerPreservesInvokingShellMask(t *testing.T) {
-	t.Skip("finding 1: device claim cannot encode the nil installs array")
 	program, err := programtest.Path(t.Context(), "demi-runner")
 	if err != nil {
 		t.Fatal(err)
