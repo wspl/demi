@@ -56,6 +56,7 @@ func NewClient() *Client { return newClient(false) }
 
 // NewClientAllowingHTTP permits HTTP when the digest came from a trusted peer.
 func NewClientAllowingHTTP() *Client { return newClient(true) }
+
 func newClient(allowHTTP bool) *Client {
 	dialer := &net.Dialer{Timeout: 15 * time.Second}
 	transport := &http.Transport{
@@ -72,7 +73,13 @@ func newClient(allowHTTP bool) *Client {
 		ResponseHeaderTimeout: 60 * time.Second,
 		IdleConnTimeout:       90 * time.Second,
 	}
-	return &Client{http: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, allowHTTP: allowHTTP}
+	return &Client{
+		http: &http.Client{
+			Transport:     transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+		allowHTTP: allowHTTP,
+	}
 }
 
 // Close releases connections retained by the client. Active downloads must end first.
@@ -81,6 +88,7 @@ func (c *Client) Close() { c.http.CloseIdleConnections() }
 // progressConn enforces the artifact's idle-read timeout, not an overall deadline.
 type progressConn struct{ net.Conn }
 
+// Read applies the artifact idle timeout before reading.
 func (c *progressConn) Read(b []byte) (int, error) {
 	if err := c.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
 		return 0, err
@@ -89,13 +97,21 @@ func (c *progressConn) Read(b []byte) (int, error) {
 }
 
 // RejectedError reports a non-success HTTP status, including redirects.
-type RejectedError struct{ Status int }
+type RejectedError struct {
+	// Status is the rejected HTTP response status code.
+	Status int
+}
 
+// Error reports the rejected HTTP status.
 func (e *RejectedError) Error() string { return fmt.Sprintf("the server answered %d", e.Status) }
 
 // CodingError reports a content coding the artifact client cannot decode.
-type CodingError struct{ Coding string }
+type CodingError struct {
+	// Coding is the unsupported Content-Encoding header value.
+	Coding string
+}
 
+// Error reports the unsupported content coding.
 func (e *CodingError) Error() string {
 	return fmt.Sprintf("unsupported artifact content coding %q", e.Coding)
 }
@@ -103,7 +119,10 @@ func (e *CodingError) Error() string {
 // downloadError hides potentially signed URLs while retaining error identity.
 type downloadError struct{ cause error }
 
+// Error reports a download failure without exposing its URL.
 func (e *downloadError) Error() string { return "artifact download failed" }
+
+// Unwrap returns the download failure.
 func (e *downloadError) Unwrap() error { return e.cause }
 
 func (c *Client) get(ctx context.Context, location string) (*http.Response, error) {
@@ -152,7 +171,10 @@ type decodedBody struct {
 	body    io.ReadCloser
 }
 
+// Read returns decoded artifact bytes.
 func (b *decodedBody) Read(p []byte) (int, error) { return b.decoder.Read(p) }
+
+// Close releases the decoder and its response body.
 func (b *decodedBody) Close() error {
 	b.decoder.Close()
 	return b.body.Close()
@@ -173,7 +195,13 @@ func Download(ctx context.Context, client *Client, location string, expected Dig
 }
 
 // DownloadMeasured establishes a digest for a release within limit bytes.
-func DownloadMeasured(ctx context.Context, client *Client, location string, limit uint64, output io.Writer) (Digest, error) {
+func DownloadMeasured(
+	ctx context.Context,
+	client *Client,
+	location string,
+	limit uint64,
+	output io.Writer,
+) (Digest, error) {
 	response, err := client.get(ctx, location)
 	if err != nil {
 		return Digest{}, err

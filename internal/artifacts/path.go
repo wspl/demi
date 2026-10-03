@@ -53,7 +53,9 @@ func Parent(path string) (parent string, ok bool) {
 // artifactPath appends a relative artifact name without changing its parent's
 // filesystem meaning. Artifact callers supply validated relative names.
 func artifactPath(directory, name string) string {
-	if directory == "" || strings.HasSuffix(directory, string(os.PathSeparator)) || (os.PathSeparator == '\\' && strings.HasSuffix(directory, "/")) || (len(directory) == 2 && directory[1] == ':' && os.PathSeparator == '\\') {
+	if directory == "" || strings.HasSuffix(directory, string(os.PathSeparator)) ||
+		(os.PathSeparator == '\\' && strings.HasSuffix(directory, "/")) ||
+		(len(directory) == 2 && directory[1] == ':' && os.PathSeparator == '\\') {
 		return directory + name
 	}
 	return directory + string(os.PathSeparator) + name

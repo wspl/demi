@@ -20,6 +20,7 @@ type operationError struct {
 	cause error
 }
 
+// Error describes the installation operation failure.
 func (e *operationError) Error() string {
 	switch e.code {
 	case claudecodeop.InvalidRelease:
@@ -29,6 +30,8 @@ func (e *operationError) Error() string {
 	}
 	return e.cause.Error()
 }
+
+// Unwrap returns the operation failure.
 func (e *operationError) Unwrap() error { return e.cause }
 
 func parseRelease(input []byte) (claudecodeop.Release, error) {
@@ -43,7 +46,10 @@ func parseRelease(input []byte) (claudecodeop.Release, error) {
 			return release, &operationError{claudecodeop.InvalidRelease, fmt.Errorf("platform %s: url: %w", key, err)}
 		}
 		if parsed.Scheme() != "https" {
-			return release, &operationError{claudecodeop.InvalidRelease, fmt.Errorf("platform %s: url must be https", key)}
+			return release, &operationError{
+				claudecodeop.InvalidRelease,
+				fmt.Errorf("platform %s: url must be https", key),
+			}
 		}
 	}
 	return release, nil
@@ -52,22 +58,40 @@ func parseRelease(input []byte) (claudecodeop.Release, error) {
 func supportedPlatform() (string, error) {
 	platform := currentPlatform()
 	if platform == "" {
-		return "", &operationError{claudecodeop.UnsupportedPlatform, fmt.Errorf("Claude Code has no build for this machine (%s %s)", runtime.GOOS, runtime.GOARCH)} //nolint:staticcheck // Claude Code is a product name; preserve the Rust diagnostic.
+		//nolint:staticcheck // Claude Code is a product name; preserve the Rust diagnostic.
+		return "", &operationError{
+			claudecodeop.UnsupportedPlatform,
+			fmt.Errorf("Claude Code has no build for this machine (%s %s)", runtime.GOOS, runtime.GOARCH),
+		}
 	}
 	return platform, nil
 }
 
-func ensure(ctx context.Context, artifacts *cmdsdk.Artifacts, invocation string, release claudecodeop.Release) (claudecodeop.Installed, error) {
+func ensure(
+	ctx context.Context,
+	artifacts *cmdsdk.Artifacts,
+	invocation string,
+	release claudecodeop.Release,
+) (claudecodeop.Installed, error) {
 	platform, err := supportedPlatform()
 	if err != nil {
 		return claudecodeop.Installed{}, err
 	}
 	artifact, ok := release.Platforms[platform]
 	if !ok {
-		return claudecodeop.Installed{}, &operationError{claudecodeop.UnsupportedPlatform, fmt.Errorf("Claude Code %s has no build for %s", release.Version, platform)} //nolint:staticcheck // Claude Code is a product name; preserve the Rust diagnostic.
+		//nolint:staticcheck // Claude Code is a product name; preserve the Rust diagnostic.
+		return claudecodeop.Installed{}, &operationError{
+			claudecodeop.UnsupportedPlatform,
+			fmt.Errorf("Claude Code %s has no build for %s", release.Version, platform),
+		}
 	}
 	path, err := artifacts.Install(ctx, commandwire.ArtifactInstall{
-		Invocation: invocation, Name: artifactName, Version: string(release.Version), SHA256: artifact.SHA256, Size: artifact.Size, Form: &commandwire.ArtifactFile{},
+		Invocation: invocation,
+		Name:       artifactName,
+		Version:    string(release.Version),
+		SHA256:     artifact.SHA256,
+		Size:       artifact.Size,
+		Form:       &commandwire.ArtifactFile{},
 	})
 	if err != nil {
 		return claudecodeop.Installed{}, &operationError{claudecodeop.InstallFailed, err}

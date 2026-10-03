@@ -47,81 +47,27 @@ func applyPatch(ctx context.Context, cwd, diff string, recording *cmdsdk.Recordi
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		var oldPath, newPath string
-		if patch.old != nil {
-			oldPath, err = cmdsdk.Resolve(cwd, *patch.old)
-			if err != nil {
-				return "", err
-			}
-		}
-		if patch.new != nil {
-			newPath, err = cmdsdk.Resolve(cwd, *patch.new)
-			if err != nil {
-				return "", err
-			}
-		}
-		var before []byte
-		if oldPath != "" {
-			before, err = os.ReadFile(oldPath)
-			if err != nil {
-				return "", err
-			}
-		}
-		if err := contract.CheckUTF8(before); err != nil {
+		planned, err := planFilePatch(ctx, cwd, patch)
+		if err != nil {
 			return "", err
 		}
-		updated, err := applyHunks(ctx, string(before), patch.hunks)
-		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return "", err
-			}
-			label := patch.old
-			if label == nil {
-				label = patch.new
-			}
-			return "", fmt.Errorf("Patch does not apply to %s: %w", *label, err)
-		}
-		if newPath == "" && updated != "" {
-			return "", errors.New("Delete patch leaves file content")
-		}
-		samePath := patchPathKey(newPath) == patchPathKey(oldPath)
-		if !samePath && newPath != "" {
-			if _, err := os.Lstat(newPath); err == nil {
-				return "", errors.New("Patch destination already exists")
-			}
-		}
-		if newPath != "" {
-			c := change{path: newPath, after: []byte(updated)}
-			if samePath {
-				c.before = before
-				info, err := os.Stat(newPath)
-				if err != nil {
-					return "", err
-				}
-				c.permissions = info.Mode()
-			}
-			changes = append(changes, c)
-		}
-		if !samePath && oldPath != "" {
-			info, err := os.Stat(oldPath)
-			if err != nil {
-				return "", err
-			}
-			changes = append(changes, change{path: oldPath, before: before, permissions: info.Mode()})
-		}
+		changes = append(changes, planned...)
 	}
 	touched := make(map[string]bool)
-	for _, c := range changes {
-		key := patchPathKey(c.path)
+	for _, change := range changes {
+		key := patchPathKey(change.path)
 		if touched[key] {
 			return "", errors.New("Patch changes the same path more than once")
 		}
 		touched[key] = true
 	}
-	changes = slices.DeleteFunc(changes, func(c change) bool { return (c.before == nil) == (c.after == nil) && bytes.Equal(c.before, c.after) })
+	changes = slices.DeleteFunc(
+		changes,
+		func(c change) bool { return (c.before == nil) == (c.after == nil) && bytes.Equal(c.before, c.after) },
+	)
 	if recording != nil {
-		for _, c := range changes {
-			recording.Track(ctx, c.path)
+		for _, change := range changes {
+			recording.Track(ctx, change.path)
 		}
 	}
 	if err := commitChanges(ctx, changes, recording); err != nil {
@@ -175,6 +121,7 @@ type rollbackError struct {
 	failures []error
 }
 
+// Error reports the original mutation failure and each rollback failure.
 func (e *rollbackError) Error() string {
 	message := e.cause.Error()
 	for _, err := range e.failures {
@@ -183,7 +130,8 @@ func (e *rollbackError) Error() string {
 	return message
 }
 
-// A failed rollback is a command failure even if cancellation triggered it.
+// Unwrap exposes only rollback failures: a failed rollback is a command failure
+// even if cancellation triggered it.
 func (e *rollbackError) Unwrap() []error { return e.failures }
 
 func applyHunks(ctx context.Context, original string, hunks []hunk) (string, error) {
@@ -210,23 +158,12 @@ func applyHunks(ctx context.Context, original string, hunks []hunk) (string, err
 		if start < 0 {
 			return "", errors.New("Patch hunk starts before file")
 		}
-		var old, updated []string
-		for _, line := range h.lines {
-			text := line.text
-			if line.newline {
-				text += "\n"
-			}
-			if line.kind != '+' {
-				old = append(old, text)
-			}
-			if line.kind != '-' {
-				updated = append(updated, text)
-			}
-		}
+		old, updated := hunkLines(h)
 		if uint64(len(old)) != h.oldCount || uint64(len(updated)) != h.newCount {
 			return "", errors.New("Patch hunk line counts do not match header")
 		}
-		if start > int64(len(lines)) || int64(len(old)) > int64(len(lines))-start || !slices.Equal(lines[int(start):int(start)+len(old)], old) {
+		if start > int64(len(lines)) || int64(len(old)) > int64(len(lines))-start ||
+			!slices.Equal(lines[int(start):int(start)+len(old)], old) {
 			return "", fmt.Errorf("Patch does not apply at line %d", h.start)
 		}
 		lines = slices.Replace(lines, int(start), int(start)+len(old), updated...)
@@ -235,8 +172,13 @@ func applyHunks(ctx context.Context, original string, hunks []hunk) (string, err
 	return strings.Join(lines, ""), nil
 }
 
-var hunkHeader = regexp.MustCompile(`^@@ -(\p{Nd}+)(?:,(\p{Nd}+))? \+\p{Nd}+(?:,(\p{Nd}+))? @@`)
-var dateSuffix = regexp.MustCompile(`[\p{Z}\t\n\v\f\r\x{0085}]+\p{Nd}{4}-\p{Nd}{2}-\p{Nd}{2}(?:[ T]\p{Nd}{2}:\p{Nd}{2}:\p{Nd}{2}(?:\.\p{Nd}+)?(?:[\p{Z}\t\n\v\f\r\x{0085}]+[+-]\p{Nd}{4})?)?$`)
+var (
+	hunkHeader = regexp.MustCompile(`^@@ -(\p{Nd}+)(?:,(\p{Nd}+))? \+\p{Nd}+(?:,(\p{Nd}+))? @@`)
+	dateSuffix = regexp.MustCompile(
+		`[\p{Z}\t\n\v\f\r\x{0085}]+\p{Nd}{4}-\p{Nd}{2}-\p{Nd}{2}` +
+			`(?:[ T]\p{Nd}{2}:\p{Nd}{2}:\p{Nd}{2}(?:\.\p{Nd}+)?(?:[\p{Z}\t\n\v\f\r\x{0085}]+[+-]\p{Nd}{4})?)?$`,
+	)
+)
 
 func parsePatch(ctx context.Context, diff string) ([]filePatch, error) {
 	var patches []filePatch
@@ -245,24 +187,9 @@ func parsePatch(ctx context.Context, diff string) ([]filePatch, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		var current *hunk
-		if len(patches) != 0 {
-			hunks := patches[len(patches)-1].hunks
-			if len(hunks) != 0 {
-				current = &hunks[len(hunks)-1]
-			}
-		}
+		current := lastPatchHunk(patches)
 		if pending == nil && current != nil && (strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "+++ ")) {
-			var old, newCount uint64
-			for _, l := range current.lines {
-				if l.kind != '+' {
-					old++
-				}
-				if l.kind != '-' {
-					newCount++
-				}
-			}
-			if old < current.oldCount || newCount < current.newCount {
+			if hunkNeedsLines(current) {
 				current.lines = append(current.lines, patchLine{line[0], line[1:], true})
 				continue
 			}
@@ -278,48 +205,23 @@ func parsePatch(ctx context.Context, diff string) ([]filePatch, error) {
 			patches = append(patches, *pending)
 			pending = nil
 		case strings.HasPrefix(line, "@@ "):
-			header := hunkHeader.FindStringSubmatch(line)
-			if header == nil {
-				return nil, errors.New("Invalid patch hunk header")
-			}
-			if len(patches) == 0 {
-				return nil, errors.New("Hunk before file header")
-			}
-			start, err := strconv.ParseUint(header[1], 10, 64)
+			parsed, err := parseHunkHeader(line, len(patches) != 0)
 			if err != nil {
-				return nil, errors.New("Invalid hunk start")
+				return nil, err
 			}
-			counts := [2]uint64{1, 1}
-			for i := range counts {
-				if header[i+2] != "" {
-					counts[i], err = strconv.ParseUint(header[i+2], 10, 64)
-					if err != nil {
-						return nil, errors.New("Invalid hunk count")
-					}
-				}
-			}
-			p := &patches[len(patches)-1]
-			p.hunks = append(p.hunks, hunk{start: start, oldCount: counts[0], newCount: counts[1]})
+			patch := &patches[len(patches)-1]
+			patch.hunks = append(patch.hunks, parsed)
 		case current != nil:
-			switch {
-			case len(line) > 0 && strings.ContainsRune(" -+", rune(line[0])):
-				current.lines = append(current.lines, patchLine{line[0], line[1:], true})
-			case line == `\ No newline at end of file`:
-				if len(current.lines) == 0 {
-					return nil, errors.New("Newline marker without patch line")
-				}
-				current.lines[len(current.lines)-1].newline = false
-			case line == "" || strings.HasPrefix(line, "diff ") || strings.HasPrefix(line, "index "):
-			default:
-				return nil, fmt.Errorf("Invalid patch line: %s", line)
+			if err := appendPatchLine(current, line); err != nil {
+				return nil, err
 			}
 		}
 	}
 	if len(patches) == 0 || pending != nil {
 		return nil, errors.New("Invalid patch: missing file headers or hunks")
 	}
-	for _, p := range patches {
-		if len(p.hunks) == 0 || (p.old == nil && p.new == nil) {
+	for _, patch := range patches {
+		if len(patch.hunks) == 0 || (patch.old == nil && patch.new == nil) {
 			return nil, errors.New("Invalid patch: missing file headers or hunks")
 		}
 	}
@@ -352,4 +254,161 @@ func patchPathKey(path string) string {
 	components := strings.FieldsFunc(rest, func(r rune) bool { return r < 128 && os.IsPathSeparator(uint8(r)) })
 	components = slices.DeleteFunc(components, func(component string) bool { return component == "." })
 	return prefix + strings.Join(components, "/")
+}
+
+// planFilePatch resolves and applies one file patch before any file is published.
+func planFilePatch(ctx context.Context, cwd string, patch filePatch) ([]change, error) {
+	var oldPath, newPath string
+	var err error
+	if patch.old != nil {
+		oldPath, err = cmdsdk.Resolve(cwd, *patch.old)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if patch.new != nil {
+		newPath, err = cmdsdk.Resolve(cwd, *patch.new)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var before []byte
+	if oldPath != "" {
+		before, err = os.ReadFile(oldPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := contract.CheckUTF8(before); err != nil {
+		return nil, err
+	}
+	updated, err := applyHunks(ctx, string(before), patch.hunks)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		label := patch.old
+		if label == nil {
+			label = patch.new
+		}
+		return nil, fmt.Errorf("Patch does not apply to %s: %w", *label, err)
+	}
+	if newPath == "" && updated != "" {
+		return nil, errors.New("Delete patch leaves file content")
+	}
+	return patchChanges(oldPath, newPath, before, updated)
+}
+
+// patchChanges retains the original contents and permissions needed for rollback.
+func patchChanges(oldPath, newPath string, before []byte, updated string) ([]change, error) {
+	var changes []change
+	samePath := patchPathKey(newPath) == patchPathKey(oldPath)
+	if !samePath && newPath != "" {
+		if _, err := os.Lstat(newPath); err == nil {
+			return nil, errors.New("Patch destination already exists")
+		}
+	}
+	if newPath != "" {
+		c := change{path: newPath, after: []byte(updated)}
+		if samePath {
+			c.before = before
+			info, err := os.Stat(newPath)
+			if err != nil {
+				return nil, err
+			}
+			c.permissions = info.Mode()
+		}
+		changes = append(changes, c)
+	}
+	if !samePath && oldPath != "" {
+		info, err := os.Stat(oldPath)
+		if err != nil {
+			return nil, err
+		}
+		changes = append(changes, change{path: oldPath, before: before, permissions: info.Mode()})
+	}
+	return changes, nil
+}
+
+func hunkLines(h hunk) ([]string, []string) {
+	var old, updated []string
+	for _, line := range h.lines {
+		text := line.text
+		if line.newline {
+			text += "\n"
+		}
+		if line.kind != '+' {
+			old = append(old, text)
+		}
+		if line.kind != '-' {
+			updated = append(updated, text)
+		}
+	}
+	return old, updated
+}
+
+// parseHunkHeader checks the hunk header before requiring its file header.
+func parseHunkHeader(line string, hasPatch bool) (hunk, error) {
+	header := hunkHeader.FindStringSubmatch(line)
+	if header == nil {
+		return hunk{}, errors.New("Invalid patch hunk header")
+	}
+	if !hasPatch {
+		return hunk{}, errors.New("Hunk before file header")
+	}
+	start, err := strconv.ParseUint(header[1], 10, 64)
+	if err != nil {
+		return hunk{}, errors.New("Invalid hunk start")
+	}
+	counts := [2]uint64{1, 1}
+	for i := range counts {
+		if header[i+2] != "" {
+			counts[i], err = strconv.ParseUint(header[i+2], 10, 64)
+			if err != nil {
+				return hunk{}, errors.New("Invalid hunk count")
+			}
+		}
+	}
+	return hunk{start: start, oldCount: counts[0], newCount: counts[1]}, nil
+}
+
+func appendPatchLine(current *hunk, line string) error {
+	switch {
+	case len(line) > 0 && strings.ContainsRune(" -+", rune(line[0])):
+		current.lines = append(current.lines, patchLine{line[0], line[1:], true})
+	case line == `\ No newline at end of file`:
+		if len(current.lines) == 0 {
+			return errors.New("Newline marker without patch line")
+		}
+		current.lines[len(current.lines)-1].newline = false
+	case line == "" || strings.HasPrefix(line, "diff ") || strings.HasPrefix(line, "index "):
+	default:
+		return fmt.Errorf("Invalid patch line: %s", line)
+	}
+	return nil
+}
+
+// hunkNeedsLines distinguishes header-looking content from the next file header.
+func hunkNeedsLines(current *hunk) bool {
+	var old, newCount uint64
+	for _, line := range current.lines {
+		if line.kind != '+' {
+			old++
+		}
+		if line.kind != '-' {
+			newCount++
+		}
+	}
+	return old < current.oldCount || newCount < current.newCount
+}
+
+func lastPatchHunk(patches []filePatch) *hunk {
+	if len(patches) == 0 {
+		return nil
+	}
+	hunks := patches[len(patches)-1].hunks
+	if len(hunks) == 0 {
+		return nil
+	}
+	return &hunks[len(hunks)-1]
 }

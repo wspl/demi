@@ -27,7 +27,10 @@ type service struct {
 	artifacts atomic.Pointer[cmdsdk.Artifacts]
 }
 
+// SetArtifacts supplies the runner-owned artifact source.
 func (s *service) SetArtifacts(a *cmdsdk.Artifacts) { s.artifacts.Store(a) }
+
+// Operations lists the resident service operations.
 func (*service) Operations() []string {
 	operations := claudecodeop.Operations()
 	result := make([]string, len(operations))
@@ -37,7 +40,11 @@ func (*service) Operations() []string {
 	return result
 }
 
-func (s *service) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+// Invoke runs an operation and writes its completion document.
+func (s *service) Invoke(
+	ctx context.Context,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	operation, err := claudecodeop.ParseOperation(invocation.Request.Operation)
 	if err != nil {
 		return commandwire.Completion{}, fmt.Errorf("unknown operation: %s", invocation.Request.Operation)
@@ -58,12 +65,19 @@ func (s *service) Invoke(ctx context.Context, invocation cmdsdk.InvocationContex
 		if err != nil {
 			return completion, err
 		}
-		completion = commandwire.Completion{ExitCode: 1, Error: &commandwire.CommandError{Code: string(code), Message: message}}
+		completion = commandwire.Completion{
+			ExitCode: 1,
+			Error:    &commandwire.CommandError{Code: string(code), Message: message},
+		}
 	}
 	return completion, invocation.Output.Stdout(ctx, append(body, '\n'))
 }
 
-func (s *service) document(ctx context.Context, operation claudecodeop.Operation, invocation cmdsdk.InvocationContext[commandwire.Invocation]) ([]byte, error) {
+func (s *service) document(
+	ctx context.Context,
+	operation claudecodeop.Operation,
+	invocation cmdsdk.InvocationContext[commandwire.Invocation],
+) ([]byte, error) {
 	artifacts := s.artifacts.Load()
 	if artifacts == nil {
 		return nil, &operationError{claudecodeop.InstallFailed, errors.New("demi-claude-code has no artifacts source")}
@@ -107,7 +121,10 @@ func readInput(ctx context.Context, input *cmdsdk.Input) ([]byte, error) {
 			return nil, &operationError{claudecodeop.InvalidRelease, err}
 		}
 		if len(chunk) > maxInputBytes-len(body) {
-			return nil, &operationError{claudecodeop.InvalidRelease, fmt.Errorf("input exceeds %d bytes", maxInputBytes)}
+			return nil, &operationError{
+				claudecodeop.InvalidRelease,
+				fmt.Errorf("input exceeds %d bytes", maxInputBytes),
+			}
 		}
 		body = append(body, chunk...)
 	}
