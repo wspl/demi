@@ -27,32 +27,32 @@ import (
 // name in --help and every error is its variable, so an unusable value stops
 // startup naming the variable. Config is the composition boundary for tests.
 type CLIConfig struct {
-	// The data directory [default: ~/.demi/backend]
+	// Data is the data directory [default: ~/.demi/backend].
 	Data *string
-	// The TCP port the backend listens on, 1 to 65535
+	// Port is the TCP port the backend listens on, 1 to 65535.
 	Port uint16
-	// `shared` or `isolated`: who configures providers
+	// Mode selects `shared` or `isolated`: who configures providers.
 	Mode webapi.InstanceMode
-	// The URL runners and Cloud guests connect to
+	// PublicURL is the URL runners and Cloud guests connect to.
 	PublicURL *url.URL
-	// The machine manager's Unix socket
+	// MachinesSocket is the machine manager's Unix socket.
 	MachinesSocket string
-	// The native command releases and the object storage they are published to
+	// NativeConfig is the native command releases and the object storage they are published to.
 	NativeConfig string
-	// A JSON file that puts the object store in an S3 bucket
+	// ObjectStoreConfig is a JSON file that puts the object store in an S3 bucket.
 	ObjectStoreConfig *string
-	// The instance secret as 64 hexadecimal digits [default: generated into the data directory]
+	// InstanceSecret is the instance secret as 64 hexadecimal digits [default: generated into the data directory].
 	InstanceSecret *string
-	// The domain of expose hostnames; without it, exposes are unavailable
+	// ExposeDomain is the domain of expose hostnames; without it, exposes are unavailable.
 	ExposeDomain *expose.Domain
-	// The web app build's directory, to serve beside the API
+	// WebDirectory is the web app build's directory, to serve beside the API.
 	WebDirectory *string
-	// The runner releases the installer routes serve
+	// RunnerReleaseDir is the runner releases the installer routes serve.
 	RunnerReleaseDir *string
-	// The Claude Code distribution whose newest release the CLI on each Cloud follows
+	// ClaudeReleasesURL is the Claude Code distribution whose newest release the CLI on each Cloud follows.
 	ClaudeReleasesURL *url.URL
-	// What the backend logs: a level, and a level per target, comma-separated,
-	// such as `info,demi::provider::claude_code::wire=trace`
+	// Log selects what the backend logs: a level, and a level per target, comma-separated,
+	// such as `info,demi::provider::claude_code::wire=trace`.
 	Log string
 }
 
@@ -60,38 +60,9 @@ type CLIConfig struct {
 // environment entries. Unknown DEMI_* names are refused using cli's rule.
 // All input is validated before returning. Help and version are handled by Main.
 func ParseConfig(args, environ []string) (CLIConfig, error) {
-	flags := flag.NewFlagSet("demi-backend", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	values := make(map[string]*string)
-	present := make(map[string]bool)
-	env := make(map[string]string)
-	for _, entry := range environ {
-		name, value, ok := strings.Cut(entry, "=")
-		if ok {
-			env[name] = value
-		}
-	}
-	names := make([]string, 0, len(settings))
-	for _, setting := range settings {
-		value := setting.initial
-		if fromEnv, found := env[setting.variable]; found {
-			value = fromEnv
-			present[setting.flag] = true
-		}
-		values[setting.flag] = flags.String(setting.flag, value, setting.help)
-		names = append(names, setting.variable)
-	}
-	if err := flags.Parse(args); err != nil {
-		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Err: err}
-	}
-	if flags.NArg() != 0 {
-		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Err: fmt.Errorf("unexpected argument '%s' found", flags.Arg(0))}
-	}
-	flags.Visit(func(f *flag.Flag) { present[f.Name] = true })
-	for _, setting := range settings {
-		if setting.required && !present[setting.flag] {
-			return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: setting.variable, Err: errors.New("a value is required")}
-		}
+	values, present, names, err := parseCLIFlags(args, environ)
+	if err != nil {
+		return CLIConfig{}, err
 	}
 	optional := func(name string) *string {
 		if present[name] {
@@ -99,40 +70,20 @@ func ParseConfig(args, environ []string) (CLIConfig, error) {
 		}
 		return nil
 	}
-	c := CLIConfig{Data: optional("data"), Mode: webapi.InstanceMode(*values["mode"]), MachinesSocket: *values["machines-socket"], NativeConfig: *values["native-config"], ObjectStoreConfig: optional("object-store-config"), InstanceSecret: optional("instance-secret"), WebDirectory: optional("web-directory"), RunnerReleaseDir: optional("runner-release-dir"), Log: *values["log"]}
-	port, err := strconv.ParseUint(*values["port"], 10, 16)
-	if err != nil || port == 0 {
-		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_BACKEND_PORT", Err: errors.New("must be an integer from 1 to 65535")}
+	c := CLIConfig{
+		Data:              optional("data"),
+		Mode:              webapi.InstanceMode(*values["mode"]),
+		MachinesSocket:    *values["machines-socket"],
+		NativeConfig:      *values["native-config"],
+		ObjectStoreConfig: optional("object-store-config"),
+		InstanceSecret:    optional("instance-secret"),
+		WebDirectory:      optional("web-directory"),
+		RunnerReleaseDir:  optional("runner-release-dir"),
+		Log:               *values["log"],
 	}
-	c.Port = uint16(port)
-	if err := c.Mode.Validate(); err != nil {
-		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_INSTANCE_MODE", Err: err}
-	}
-	c.PublicURL, err = url.Parse(*values["public-url"])
-	if err != nil || c.PublicURL.Scheme == "" {
-		return CLIConfig{}, &ConfigError{Kind: ConfigPublicURL}
-	}
-	if _, err = runners.BackendURL(c.PublicURL); err != nil {
-		return CLIConfig{}, &ConfigError{Kind: ConfigPublicURL}
-	}
-	c.ClaudeReleasesURL, err = url.Parse(*values["claude-releases-url"])
-	if err != nil || c.ClaudeReleasesURL.Scheme == "" {
-		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_CLAUDE_RELEASES_URL", Err: errors.New("relative URL without a base")}
-	}
-	if value := optional("expose-domain"); value != nil {
-		domain, err := expose.ParseDomain(*value)
-		if err != nil {
-			return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_EXPOSE_DOMAIN", Err: err}
-		}
-		c.ExposeDomain = &domain
-	}
-	if c.InstanceSecret != nil {
-		if _, err := ParseInstanceSecret(*c.InstanceSecret); err != nil {
-			return CLIConfig{}, &ConfigError{Kind: ConfigInstanceSecret}
-		}
-	}
-	if _, err := parseLogTargets(c.Log); err != nil {
-		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_LOG", Err: err}
+	c, err = validateCLIConfig(c, values, optional)
+	if err != nil {
+		return CLIConfig{}, err
 	}
 	if name, found := cli.UnknownVariable("DEMI_", names, environ); found {
 		return CLIConfig{}, &ConfigError{Kind: ConfigUnknownVariable, Variable: name}
@@ -199,11 +150,24 @@ func (c CLIConfig) Backend() (Config, error) {
 // WriteHelp lists the backend's flags and environment variables without
 // revealing environment values.
 func WriteHelp(w io.Writer) error {
-	if _, err := fmt.Fprintln(w, "The Demi product server\n\nUsage: demi-backend [OPTIONS] --mode <DEMI_INSTANCE_MODE> --public-url <DEMI_BACKEND_PUBLIC_URL> --machines-socket <DEMI_MACHINE_MANAGER_SOCKET> --native-config <DEMI_NATIVE_CONFIG>\n\nOptions:"); err != nil {
+	if _, err := fmt.Fprintln(
+		w,
+		"The Demi product server\n\n"+
+			"Usage: demi-backend [OPTIONS] --mode <DEMI_INSTANCE_MODE> "+
+			"--public-url <DEMI_BACKEND_PUBLIC_URL> --machines-socket <DEMI_MACHINE_MANAGER_SOCKET> "+
+			"--native-config <DEMI_NATIVE_CONFIG>\n\nOptions:",
+	); err != nil {
 		return err
 	}
 	for _, setting := range settings {
-		if _, err := fmt.Fprintf(w, "      --%s <%s>\n          %s [env: %s]\n", setting.flag, setting.variable, setting.help, setting.variable); err != nil {
+		if _, err := fmt.Fprintf(
+			w,
+			"      --%s <%s>\n          %s [env: %s]\n",
+			setting.flag,
+			setting.variable,
+			setting.help,
+			setting.variable,
+		); err != nil {
 			return err
 		}
 	}
@@ -223,19 +187,11 @@ func Main(ctx context.Context, release string) (status int) {
 		_, _ = fmt.Fprintln(os.Stderr, "demi-backend: "+err.Error())
 		return 1
 	}
-	for _, arg := range os.Args[1:] {
-		if arg == "--help" || arg == "-h" {
-			if err := WriteHelp(os.Stdout); err != nil {
-				return fail(err)
-			}
-			return 0
+	if displayed, err := displayCLIInfo(release); displayed {
+		if err != nil {
+			return fail(err)
 		}
-		if arg == "--version" || arg == "-V" {
-			if _, err := fmt.Fprintln(os.Stdout, "demi-backend "+release); err != nil {
-				return fail(err)
-			}
-			return 0
-		}
+		return 0
 	}
 	config, err := ParseConfig(os.Args[1:], os.Environ())
 	if err != nil {
@@ -245,8 +201,7 @@ func Main(ctx context.Context, release string) (status int) {
 	if err != nil {
 		return fail(err)
 	}
-	previous := slog.Default()
-	slog.SetDefault(slog.New(&targetHandler{next: slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.Level(-8)}), targets: filter}))
+	previous := installLogTargets(filter)
 	defer slog.SetDefault(previous)
 	settings, err := config.Backend()
 	if err != nil {
@@ -268,7 +223,15 @@ func Main(ctx context.Context, release string) (status int) {
 	if err != nil {
 		return fail(err)
 	}
-	slog.Info("demi-backend is listening", "address", b.LocalAddr().String(), "data", settings.DataDir, "mode", config.Mode)
+	slog.Info(
+		"demi-backend is listening",
+		"address",
+		b.LocalAddr().String(),
+		"data",
+		settings.DataDir,
+		"mode",
+		config.Mode,
+	)
 	<-stopCtx.Done()
 	if err := b.Close(context.WithoutCancel(ctx)); err != nil {
 		return fail(err)
@@ -294,9 +257,12 @@ const (
 
 // ConfigError names an unusable configuration setting without exposing secrets.
 type ConfigError struct {
-	Kind     ConfigErrorKind
+	// Kind identifies the failed operation.
+	Kind ConfigErrorKind
+	// Variable names the unusable configuration variable.
 	Variable string
-	Err      error
+	// Err is the underlying failure, when present.
+	Err error
 }
 
 // Error describes the configuration failure.
@@ -331,12 +297,174 @@ var settings = []struct {
 	{"mode", "DEMI_INSTANCE_MODE", "", "`shared` or `isolated`: who configures providers", true},
 	{"public-url", "DEMI_BACKEND_PUBLIC_URL", "", "The URL runners and Cloud guests connect to", true},
 	{"machines-socket", "DEMI_MACHINE_MANAGER_SOCKET", "", "The machine manager's Unix socket", true},
-	{"native-config", "DEMI_NATIVE_CONFIG", "", "The native command releases and the object storage they are published to", true},
-	{"object-store-config", "DEMI_OBJECT_STORE_CONFIG", "", "A JSON file that puts the object store in an S3 bucket", false},
-	{"instance-secret", "DEMI_INSTANCE_SECRET", "", "The instance secret as 64 hexadecimal digits [default: generated into the data directory]", false},
-	{"expose-domain", "DEMI_EXPOSE_DOMAIN", "", "The domain of expose hostnames; without it, exposes are unavailable", false},
+	{
+		"native-config",
+		"DEMI_NATIVE_CONFIG",
+		"",
+		"The native command releases and the object storage they are published to",
+		true,
+	},
+	{
+		"object-store-config",
+		"DEMI_OBJECT_STORE_CONFIG",
+		"",
+		"A JSON file that puts the object store in an S3 bucket",
+		false,
+	},
+	{
+		"instance-secret",
+		"DEMI_INSTANCE_SECRET",
+		"",
+		"The instance secret as 64 hexadecimal digits [default: generated into the data directory]",
+		false,
+	},
+	{
+		"expose-domain",
+		"DEMI_EXPOSE_DOMAIN",
+		"",
+		"The domain of expose hostnames; without it, exposes are unavailable",
+		false,
+	},
 	{"web-directory", "DEMI_WEB_DIRECTORY", "", "The web app build's directory, to serve beside the API", false},
 	{"runner-release-dir", "DEMI_RUNNER_RELEASE_DIR", "", "The runner releases the installer routes serve", false},
-	{"claude-releases-url", "DEMI_CLAUDE_RELEASES_URL", providers.DefaultReleasesURL, "The Claude Code distribution whose newest release the CLI on each Cloud follows", false},
-	{"log", "DEMI_LOG", "info", "What the backend logs: a level, and a level per target, comma-separated, such as `info,demi::provider::claude_code::wire=trace`", false},
+	{
+		"claude-releases-url",
+		"DEMI_CLAUDE_RELEASES_URL",
+		providers.DefaultReleasesURL,
+		"The Claude Code distribution whose newest release the CLI on each Cloud follows",
+		false,
+	},
+	{
+		"log",
+		"DEMI_LOG",
+		"info",
+		"What the backend logs: a level, and a level per target, comma-separated, " +
+			"such as `info,demi::provider::claude_code::wire=trace`",
+		false,
+	},
+}
+
+// validateCLIConfig checks typed flag values in their diagnostic order.
+func validateCLIConfig(c CLIConfig, values map[string]*string, optional func(string) *string) (CLIConfig, error) {
+	port, err := strconv.ParseUint(*values["port"], 10, 16)
+	if err != nil || port == 0 {
+		return CLIConfig{}, &ConfigError{
+			Kind:     ConfigArgument,
+			Variable: "DEMI_BACKEND_PORT",
+			Err:      errors.New("must be an integer from 1 to 65535"),
+		}
+	}
+	c.Port = uint16(port)
+	if err := c.Mode.Validate(); err != nil {
+		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_INSTANCE_MODE", Err: err}
+	}
+	c.PublicURL, err = url.Parse(*values["public-url"])
+	if err != nil || c.PublicURL.Scheme == "" {
+		return CLIConfig{}, &ConfigError{Kind: ConfigPublicURL}
+	}
+	if _, err = runners.BackendURL(c.PublicURL); err != nil {
+		return CLIConfig{}, &ConfigError{Kind: ConfigPublicURL}
+	}
+	c.ClaudeReleasesURL, err = url.Parse(*values["claude-releases-url"])
+	if err != nil || c.ClaudeReleasesURL.Scheme == "" {
+		return CLIConfig{}, &ConfigError{
+			Kind:     ConfigArgument,
+			Variable: "DEMI_CLAUDE_RELEASES_URL",
+			Err:      errors.New("relative URL without a base"),
+		}
+	}
+	if value := optional("expose-domain"); value != nil {
+		domain, err := expose.ParseDomain(*value)
+		if err != nil {
+			return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_EXPOSE_DOMAIN", Err: err}
+		}
+		c.ExposeDomain = &domain
+	}
+	if c.InstanceSecret != nil {
+		if _, err := ParseInstanceSecret(*c.InstanceSecret); err != nil {
+			return CLIConfig{}, &ConfigError{Kind: ConfigInstanceSecret}
+		}
+	}
+	if _, err := parseLogTargets(c.Log); err != nil {
+		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_LOG", Err: err}
+	}
+	return c, nil
+}
+
+// displayCLIInfo handles help and version before parsing configuration.
+func displayCLIInfo(release string) (bool, error) {
+	for _, arg := range os.Args[1:] {
+		if arg == "--help" || arg == "-h" {
+			if err := WriteHelp(os.Stdout); err != nil {
+				return true, err
+			}
+			return true, nil
+		}
+		if arg == "--version" || arg == "-V" {
+			if _, err := fmt.Fprintln(os.Stdout, "demi-backend "+release); err != nil {
+				return true, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// parseCLIFlags applies environment defaults and checks required backend flags.
+func parseCLIFlags(args, environ []string) (map[string]*string, map[string]bool, []string, error) {
+	flags := flag.NewFlagSet("demi-backend", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	values := make(map[string]*string)
+	present := make(map[string]bool)
+	env := make(map[string]string)
+	for _, entry := range environ {
+		name, value, ok := strings.Cut(entry, "=")
+		if ok {
+			env[name] = value
+		}
+	}
+	names := make([]string, 0, len(settings))
+	for _, setting := range settings {
+		value := setting.initial
+		if fromEnv, found := env[setting.variable]; found {
+			value = fromEnv
+			present[setting.flag] = true
+		}
+		values[setting.flag] = flags.String(setting.flag, value, setting.help)
+		names = append(names, setting.variable)
+	}
+	if err := flags.Parse(args); err != nil {
+		return nil, nil, nil, &ConfigError{Kind: ConfigArgument, Err: err}
+	}
+	if flags.NArg() != 0 {
+		return nil, nil, nil, &ConfigError{
+			Kind: ConfigArgument,
+			Err:  fmt.Errorf("unexpected argument '%s' found", flags.Arg(0)),
+		}
+	}
+	flags.Visit(func(f *flag.Flag) { present[f.Name] = true })
+	for _, setting := range settings {
+		if setting.required && !present[setting.flag] {
+			return nil, nil, nil, &ConfigError{
+				Kind:     ConfigArgument,
+				Variable: setting.variable,
+				Err:      errors.New("a value is required"),
+			}
+		}
+	}
+	return values, present, names, nil
+}
+
+// installLogTargets configures process logging and returns the previous logger for restoration.
+func installLogTargets(filter []logTarget) *slog.Logger {
+	previous := slog.Default()
+	slog.SetDefault(
+		slog.New(
+			&targetHandler{
+				next:    slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.Level(-8)}),
+				targets: filter,
+			},
+		),
+	)
+	return previous
 }

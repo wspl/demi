@@ -19,23 +19,31 @@ import (
 // TestBackend is a running fixture and its HTTP client. Harness.Start owns
 // its cleanup; Close also permits restart over the same durable data.
 type TestBackend struct {
-	URL     string
+	// URL is the HTTP origin of the running backend.
+	URL string
+	// Backend owns the running backend services and storage.
 	Backend *backend.Backend
-	HTTP    *http.Client
+	// HTTP is the fixture client whose idle connections are closed at cleanup.
+	HTTP *http.Client
 }
 
 // Session is a signed-in user's session, as their browser holds it: its cookie
 // on every request.
 type Session struct {
+	// Cookie is the session cookie sent with browser requests.
 	Cookie string
-	User   webapi.UserDTO
+	// User is the validated signed-in user.
+	User webapi.UserDTO
 }
 
 // Answer is an HTTP answer, read whole.
 type Answer struct {
-	Status  int
+	// Status is the HTTP response status code.
+	Status int
+	// Headers contains the response headers.
 	Headers http.Header
-	Body    []byte
+	// Body contains the complete response body.
+	Body []byte
 }
 
 // DecodeAnswer decodes an answer using its contract's generated decoder.
@@ -104,7 +112,12 @@ func (b *TestBackend) WSURL(path string) string {
 
 // Send sends a request with an optional cookie and pre-encoded JSON body.
 // A nil body sends no JSON. Callers use generated encoders or contract.EncodeJSON.
-func (b *TestBackend) Send(ctx context.Context, method, path string, cookie *string, body json.RawMessage) (Answer, error) {
+func (b *TestBackend) Send(
+	ctx context.Context,
+	method, path string,
+	cookie *string,
+	body json.RawMessage,
+) (Answer, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -152,7 +165,12 @@ func (b *TestBackend) Delete(ctx context.Context, path string, session *Session)
 }
 
 // ReadWith sends GET with the session cookie and extra headers.
-func (b *TestBackend) ReadWith(ctx context.Context, path string, session *Session, headers http.Header) (Answer, error) {
+func (b *TestBackend) ReadWith(
+	ctx context.Context,
+	path string,
+	session *Session,
+	headers http.Header,
+) (Answer, error) {
 	response, err := b.Response(ctx, http.MethodGet, path, session, headers, nil)
 	if err != nil {
 		return Answer{}, err
@@ -162,7 +180,13 @@ func (b *TestBackend) ReadWith(ctx context.Context, path string, session *Sessio
 
 // Response sends a raw request and transfers the response body to the caller,
 // who must close it. A request-body ReadCloser is closed by the HTTP client.
-func (b *TestBackend) Response(ctx context.Context, method, path string, session *Session, headers http.Header, body io.Reader) (*http.Response, error) {
+func (b *TestBackend) Response(
+	ctx context.Context,
+	method, path string,
+	session *Session,
+	headers http.Header,
+	body io.Reader,
+) (*http.Response, error) {
 	request, err := http.NewRequestWithContext(ctx, method, b.URL+path, body)
 	if err != nil {
 		return nil, err
@@ -213,7 +237,9 @@ func (b *TestBackend) Login(ctx context.Context, email, password string) (Sessio
 func (b *TestBackend) LoginAnswer(ctx context.Context, email, password string) (Answer, error) {
 	// Deliberately invalid credentials must reach the server in refusal tests,
 	// just as Rust's serde_json::Value fixture does; do not validate or normalize.
-	body, err := contract.EncodeObject([]contract.Field{{Name: "email", Value: email}, {Name: "password", Value: password}})
+	body, err := contract.EncodeObject(
+		[]contract.Field{{Name: "email", Value: email}, {Name: "password", Value: password}},
+	)
 	if err != nil {
 		return Answer{}, err
 	}
@@ -249,7 +275,7 @@ func (b *TestBackend) Online(ctx context.Context, session *Session, device webap
 
 // UntilOnline waits for the device's online state through page change events.
 func (b *TestBackend) UntilOnline(ctx context.Context, session *Session, device webapi.DeviceID, online bool) error {
-	channel, err := b.openSync(ctx, session)
+	channel, err := b.sync(ctx, session)
 	if err != nil {
 		return err
 	}
@@ -268,7 +294,16 @@ func (b *TestBackend) UntilOnline(ctx context.Context, session *Session, device 
 			devices = event.State.Devices
 		case *webapi.SyncEventDevices:
 			devices = event.Devices
-		case *webapi.SyncEventCloud, *webapi.SyncEventConversation, *webapi.SyncEventConversationOrder, *webapi.SyncEventHeartbeat, *webapi.SyncEventPlugin, *webapi.SyncEventPlugins, *webapi.SyncEventPreferences, *webapi.SyncEventProviders, *webapi.SyncEventUser, *webapi.SyncEventWorkspaces:
+		case *webapi.SyncEventCloud,
+			*webapi.SyncEventConversation,
+			*webapi.SyncEventConversationOrder,
+			*webapi.SyncEventHeartbeat,
+			*webapi.SyncEventPlugin,
+			*webapi.SyncEventPlugins,
+			*webapi.SyncEventPreferences,
+			*webapi.SyncEventProviders,
+			*webapi.SyncEventUser,
+			*webapi.SyncEventWorkspaces:
 			continue
 		}
 		found := false
@@ -284,7 +319,12 @@ func (b *TestBackend) UntilOnline(ctx context.Context, session *Session, device 
 }
 
 // sendSession supplies the optional browser cookie to the fixture request.
-func (b *TestBackend) sendSession(ctx context.Context, method, path string, session *Session, body json.RawMessage) (Answer, error) {
+func (b *TestBackend) sendSession(
+	ctx context.Context,
+	method, path string,
+	session *Session,
+	body json.RawMessage,
+) (Answer, error) {
 	var cookie *string
 	if session != nil {
 		cookie = &session.Cookie

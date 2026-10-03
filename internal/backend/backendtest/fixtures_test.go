@@ -13,6 +13,7 @@ import (
 	"go.uber.org/goleak"
 )
 
+// TestMain checks that fixture tests release their goroutines and shared program builds.
 func TestMain(m *testing.M) { goleak.VerifyTestMain(programTests{m}) }
 
 // Validates all native fixture releases through the product's publisher. The
@@ -105,4 +106,5 @@ func TestScriptedManagerProtocolAndClose(t *testing.T) {
 // programTests releases the backend scenarios' shared program builds before leak checking.
 type programTests struct{ m *testing.M }
 
+// Run releases shared program builds before leak checking.
 func (p programTests) Run() int { return programtest.Run(p.m) }

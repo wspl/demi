@@ -26,17 +26,31 @@ import (
 type ConversationSocket struct{ socket *websocket.Conn }
 
 // Conversation opens a conversation stream from a product origin.
-func (b *TestBackend) Conversation(ctx context.Context, t testing.TB, s *Session, id string) (*ConversationSocket, error) {
+func (b *TestBackend) Conversation(
+	ctx context.Context,
+	t testing.TB,
+	s *Session,
+	id string,
+) (*ConversationSocket, error) {
 	t.Helper()
 	socket, _, err := b.ConversationFrom(ctx, t, s, id, b.URL)
 	return socket, err
 }
 
 // ConversationFrom opens a stream with an explicit origin, or returns its refusal.
-func (b *TestBackend) ConversationFrom(ctx context.Context, t testing.TB, s *Session, id, origin string) (*ConversationSocket, Answer, error) {
+func (b *TestBackend) ConversationFrom(
+	ctx context.Context,
+	t testing.TB,
+	s *Session,
+	id, origin string,
+) (*ConversationSocket, Answer, error) {
 	t.Helper()
 	headers := http.Header{"Origin": {origin}, "Cookie": {s.Cookie}}
-	socket, response, err := websocket.Dial(ctx, b.WSURL("/api/conversations/"+id+"/stream"), &websocket.DialOptions{HTTPClient: b.HTTP, HTTPHeader: headers})
+	socket, response, err := websocket.Dial(
+		ctx,
+		b.WSURL("/api/conversations/"+id+"/stream"),
+		&websocket.DialOptions{HTTPClient: b.HTTP, HTTPHeader: headers},
+	)
 	if err != nil {
 		if response != nil && response.Body != nil {
 			answer, readErr := ReadAnswer(ctx, response)
@@ -82,7 +96,10 @@ func (s *ConversationSocket) Next(ctx context.Context) (framewire.ServerFrame, e
 }
 
 // Until reads through the frame accepted by done.
-func (s *ConversationSocket) Until(ctx context.Context, done func(framewire.ServerFrame) bool) ([]framewire.ServerFrame, error) {
+func (s *ConversationSocket) Until(
+	ctx context.Context,
+	done func(framewire.ServerFrame) bool,
+) ([]framewire.ServerFrame, error) {
 	var frames []framewire.ServerFrame
 	for {
 		frame, err := s.Next(ctx)
@@ -230,7 +247,12 @@ func WaitRunnerJobsRemoved(ctx context.Context, stateDir string) (err error) {
 // StallConversationReset opens a page with a tiny receive buffer and stops at
 // the reset's frame header. Reading below the WebSocket API is necessary here:
 // Read would consume the entire reset.
-func (b *TestBackend) StallConversationReset(ctx context.Context, t testing.TB, s *Session, id string) (*StalledConversation, error) {
+func (b *TestBackend) StallConversationReset(
+	ctx context.Context,
+	t testing.TB,
+	s *Session,
+	id string,
+) (*StalledConversation, error) {
 	t.Helper()
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", b.Address().String())
 	if err != nil {
@@ -264,60 +286,13 @@ func (b *TestBackend) StallConversationReset(ctx context.Context, t testing.TB, 
 			return nil, err
 		}
 	}
-	path := "/api/conversations/" + id + "/stream"
-	request, err := http.NewRequestWithContext(ctx, "GET", b.URL+path, nil)
+	reader, err := b.openStalledConversation(ctx, conn, s, id)
 	if err != nil {
 		return nil, err
 	}
-	request.Header = http.Header{"Cookie": {s.Cookie}, "Origin": {b.URL}, "Connection": {"Upgrade"}, "Upgrade": {"websocket"}, "Sec-Websocket-Version": {"13"}, "Sec-Websocket-Key": {"MDEyMzQ1Njc4OWFiY2RlZg=="}}
-	if err := request.Write(conn); err != nil {
-		return nil, err
-	}
-	reader := bufio.NewReader(conn)
-	response, err := http.ReadResponse(reader, request)
+	size, err := readStalledResetHeader(reader)
 	if err != nil {
 		return nil, err
-	}
-	if response.StatusCode != 101 {
-		answer, readErr := ReadAnswer(ctx, response)
-		return nil, errors.Join(fmt.Errorf("upgrade: %d: %s", answer.Status, answer.Body), readErr)
-	}
-	// The upgraded response body is the connection, which test cleanup owns.
-	payload, err := contract.EncodeJSON(&framewire.OpenFrame{})
-	if err != nil {
-		return nil, err
-	}
-	frame := append([]byte{0x81, 0x80 | byte(len(payload)), 0, 0, 0, 0}, payload...)
-	if _, err := conn.Write(frame); err != nil {
-		return nil, err
-	}
-	header := make([]byte, 2)
-	if _, err := io.ReadFull(reader, header); err != nil {
-		return nil, err
-	}
-	if header[0] != 0x81 || header[1] != 17 {
-		return nil, fmt.Errorf("opened frame header: %x", header)
-	}
-	opened := make([]byte, 17)
-	if _, err := io.ReadFull(reader, opened); err != nil {
-		return nil, err
-	}
-	if string(opened) != `{"type":"opened"}` {
-		return nil, fmt.Errorf("opened: %s", opened)
-	}
-	if _, err := io.ReadFull(reader, header); err != nil {
-		return nil, err
-	}
-	if header[0] != 0x81 || header[1] != 127 {
-		return nil, fmt.Errorf("reset frame header: %x", header)
-	}
-	length := make([]byte, 8)
-	if _, err := io.ReadFull(reader, length); err != nil {
-		return nil, err
-	}
-	size := binary.BigEndian.Uint64(length)
-	if size > 64<<20 {
-		return nil, fmt.Errorf("reset frame too large: %d", size)
 	}
 	// The read guard ends here; only the test owns the stalled socket now.
 	// Its expired deadline must not release a later blocked shutdown.
@@ -362,30 +337,9 @@ func (s *StalledConversation) Closed(ctx context.Context) (websocket.StatusCode,
 		return 0, "", err
 	}
 	for {
-		var header [2]byte
-		if _, err := io.ReadFull(s.reader, header[:]); err != nil {
+		header, length, err := s.readFrameHeader()
+		if err != nil {
 			return 0, "", err
-		}
-		if header[0]&0x70 != 0 || header[1]&0x80 != 0 {
-			return 0, "", fmt.Errorf("invalid server frame header: %x", header)
-		}
-		length := uint64(header[1] & 0x7f)
-		switch length {
-		case 126:
-			var extended [2]byte
-			if _, err := io.ReadFull(s.reader, extended[:]); err != nil {
-				return 0, "", err
-			}
-			length = uint64(binary.BigEndian.Uint16(extended[:]))
-		case 127:
-			var extended [8]byte
-			if _, err := io.ReadFull(s.reader, extended[:]); err != nil {
-				return 0, "", err
-			}
-			length = binary.BigEndian.Uint64(extended[:])
-		}
-		if length > 64<<20 {
-			return 0, "", fmt.Errorf("server frame too large: %d", length)
 		}
 		if header[0]&0x0f != 8 {
 			if _, err := io.CopyN(io.Discard, s.reader, int64(length)); err != nil {
@@ -411,5 +365,115 @@ func (s *StalledConversation) Closed(ctx context.Context) (websocket.StatusCode,
 
 // ConversationText constructs the text frame a page sends for one user message.
 func ConversationText(id, text string) *framewire.SendFrame {
-	return &framewire.SendFrame{MessageID: core.TurnID(id), Content: []framewire.ClientContent{&framewire.TextContent{Text: text}}}
+	return &framewire.SendFrame{
+		MessageID: core.TurnID(id),
+		Content:   []framewire.ClientContent{&framewire.TextContent{Text: text}},
+	}
+}
+
+// openStalledConversation upgrades the fixture transport and sends its open frame.
+func (b *TestBackend) openStalledConversation(
+	ctx context.Context,
+	conn net.Conn,
+	s *Session,
+	id string,
+) (*bufio.Reader, error) {
+	path := "/api/conversations/" + id + "/stream"
+	request, err := http.NewRequestWithContext(ctx, "GET", b.URL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header = http.Header{
+		"Cookie":                {s.Cookie},
+		"Origin":                {b.URL},
+		"Connection":            {"Upgrade"},
+		"Upgrade":               {"websocket"},
+		"Sec-Websocket-Version": {"13"},
+		"Sec-Websocket-Key":     {"MDEyMzQ1Njc4OWFiY2RlZg=="},
+	}
+	if err := request.Write(conn); err != nil {
+		return nil, err
+	}
+	reader := bufio.NewReader(conn)
+	response, err := http.ReadResponse(reader, request)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != 101 {
+		answer, readErr := ReadAnswer(ctx, response)
+		return nil, errors.Join(fmt.Errorf("upgrade: %d: %s", answer.Status, answer.Body), readErr)
+	}
+	// The upgraded response body is the connection, which test cleanup owns.
+	payload, err := contract.EncodeJSON(&framewire.OpenFrame{})
+	if err != nil {
+		return nil, err
+	}
+	frame := append([]byte{0x81, 0x80 | byte(len(payload)), 0, 0, 0, 0}, payload...)
+	if _, err := conn.Write(frame); err != nil {
+		return nil, err
+	}
+	return reader, nil
+}
+
+// readFrameHeader checks an unmasked server frame and reads its extended length.
+func (s *StalledConversation) readFrameHeader() ([2]byte, uint64, error) {
+	var header [2]byte
+	if _, err := io.ReadFull(s.reader, header[:]); err != nil {
+		return header, 0, err
+	}
+	if header[0]&0x70 != 0 || header[1]&0x80 != 0 {
+		return header, 0, fmt.Errorf("invalid server frame header: %x", header)
+	}
+	length := uint64(header[1] & 0x7f)
+	switch length {
+	case 126:
+		var extended [2]byte
+		if _, err := io.ReadFull(s.reader, extended[:]); err != nil {
+			return header, 0, err
+		}
+		length = uint64(binary.BigEndian.Uint16(extended[:]))
+	case 127:
+		var extended [8]byte
+		if _, err := io.ReadFull(s.reader, extended[:]); err != nil {
+			return header, 0, err
+		}
+		length = binary.BigEndian.Uint64(extended[:])
+	}
+	if length > 64<<20 {
+		return header, 0, fmt.Errorf("server frame too large: %d", length)
+	}
+	return header, length, nil
+}
+
+// readStalledResetHeader consumes the opened frame and stops before the reset payload.
+func readStalledResetHeader(reader *bufio.Reader) (uint64, error) {
+	header := make([]byte, 2)
+	if _, err := io.ReadFull(reader, header); err != nil {
+		return 0, err
+	}
+	if header[0] != 0x81 || header[1] != 17 {
+		return 0, fmt.Errorf("opened frame header: %x", header)
+	}
+	opened := make([]byte, 17)
+	if _, err := io.ReadFull(reader, opened); err != nil {
+		return 0, err
+	}
+	if string(opened) != `{"type":"opened"}` {
+		return 0, fmt.Errorf("opened: %s", opened)
+	}
+	if _, err := io.ReadFull(reader, header); err != nil {
+		return 0, err
+	}
+	if header[0] != 0x81 || header[1] != 127 {
+		return 0, fmt.Errorf("reset frame header: %x", header)
+	}
+	length := make([]byte, 8)
+	if _, err := io.ReadFull(reader, length); err != nil {
+		return 0, err
+	}
+	size := binary.BigEndian.Uint64(length)
+	if size > 64<<20 {
+		return 0, fmt.Errorf("reset frame too large: %d", size)
+	}
+	return size, nil
 }

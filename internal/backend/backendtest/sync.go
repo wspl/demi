@@ -19,7 +19,7 @@ type SyncChannel struct{ socket *websocket.Conn }
 // the snapshot. Test cleanup closes the socket, including on assertion failure.
 func (b *TestBackend) Sync(ctx context.Context, t testing.TB, session *Session) (*SyncChannel, error) {
 	t.Helper()
-	channel, err := b.openSync(ctx, session)
+	channel, err := b.sync(ctx, session)
 	if err != nil {
 		return nil, err
 	}
@@ -31,10 +31,14 @@ func (b *TestBackend) Sync(ctx context.Context, t testing.TB, session *Session) 
 	return channel, nil
 }
 
-// openSync opens a fixture socket whose caller assumes cleanup ownership.
-func (b *TestBackend) openSync(ctx context.Context, session *Session) (*SyncChannel, error) {
+// sync opens a fixture socket whose caller assumes cleanup ownership.
+func (b *TestBackend) sync(ctx context.Context, session *Session) (*SyncChannel, error) {
 	headers := http.Header{"Origin": []string{b.URL}, "Cookie": []string{session.Cookie}}
-	socket, response, err := websocket.Dial(ctx, b.WSURL("/api/sync"), &websocket.DialOptions{HTTPClient: b.HTTP, HTTPHeader: headers})
+	socket, response, err := websocket.Dial(
+		ctx,
+		b.WSURL("/api/sync"),
+		&websocket.DialOptions{HTTPClient: b.HTTP, HTTPHeader: headers},
+	)
 	if err != nil {
 		if response != nil && response.Body != nil {
 			err = errors.Join(err, response.Body.Close())

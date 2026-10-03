@@ -38,13 +38,18 @@ func BuiltinFamilies() *providers.FamilyRegistry {
 
 type apiFamily struct{ name string }
 
+// Credential identifies the credentials this provider family accepts.
 func (apiFamily) Credential() webapi.CredentialKind { return webapi.CredentialKindAPIKey }
+
+// Wires lists the selectable wire protocols for this family.
 func (f apiFamily) Wires() []core.WireAPI {
 	if f.name == "openai" {
 		return []core.WireAPI{core.WireAPIResponses, core.WireAPIChatCompletions}
 	}
 	return nil
 }
+
+// Provider constructs the provider for the supplied family credentials.
 func (f apiFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
 	settings, ok := args.Credential.(*providers.APIKeyArgs)
 	if !ok {
@@ -52,7 +57,10 @@ func (f apiFamily) Provider(args providers.FamilyArgs) (provider.Provider, error
 	}
 	switch f.name {
 	case "anthropic":
-		return anthropicapi.New(anthropicapi.Config{APIKey: settings.APIKey, BaseURL: settings.BaseURL, Policy: settings.Vendor}, args.Clock), nil
+		return anthropicapi.New(
+			anthropicapi.Config{APIKey: settings.APIKey, BaseURL: settings.BaseURL, Policy: settings.Vendor},
+			args.Clock,
+		), nil
 	case "google":
 		return google.New(google.Config{APIKey: settings.APIKey, BaseURL: settings.BaseURL}, args.Clock), nil
 	default:
@@ -60,16 +68,24 @@ func (f apiFamily) Provider(args providers.FamilyArgs) (provider.Provider, error
 		if settings.WireAPI != nil {
 			wire = *settings.WireAPI
 		}
-		return openaiapi.New(openaiapi.Config{APIKey: settings.APIKey, BaseURL: settings.BaseURL, Wire: wire, Policy: settings.Vendor}, args.Clock), nil
+		return openaiapi.New(
+			openaiapi.Config{APIKey: settings.APIKey, BaseURL: settings.BaseURL, Wire: wire, Policy: settings.Vendor},
+			args.Clock,
+		), nil
 	}
 }
 
 type subscriptionFamily struct{ name string }
 
+// Credential identifies the credentials this provider family accepts.
 func (subscriptionFamily) Credential() webapi.CredentialKind {
 	return webapi.CredentialKindSubscription
 }
+
+// Wires lists the selectable wire protocols for this family.
 func (subscriptionFamily) Wires() []core.WireAPI { return nil }
+
+// Provider constructs the provider for the supplied family credentials.
 func (f subscriptionFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
 	subscription, ok := args.Credential.(*providers.SubscriptionArgs)
 	if !ok {
@@ -84,25 +100,44 @@ func (f subscriptionFamily) Provider(args providers.FamilyArgs) (provider.Provid
 
 type claudeFamily struct{}
 
+// Credential identifies the credentials this provider family accepts.
 func (claudeFamily) Credential() webapi.CredentialKind { return webapi.CredentialKindSubscription }
-func (claudeFamily) Wires() []core.WireAPI             { return nil }
+
+// Wires lists the selectable wire protocols for this family.
+func (claudeFamily) Wires() []core.WireAPI { return nil }
+
+// Provider constructs the provider for the supplied family credentials.
 func (f claudeFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
-	return f.build(args)
+	return f.provider(args)
 }
-func (f claudeFamily) ProcessRuntime(_ context.Context, args providers.FamilyArgs, placement claudecode.Placement) (provider.Runtime, error) {
-	p, err := f.build(args)
+
+// ProcessRuntime constructs a Claude Code runtime for the supplied placement.
+func (f claudeFamily) ProcessRuntime(
+	_ context.Context,
+	args providers.FamilyArgs,
+	placement claudecode.Placement,
+) (provider.Runtime, error) {
+	p, err := f.provider(args)
 	if err != nil {
 		return nil, err
 	}
 	return p.ProcessRuntime(placement), nil
 }
-func (claudeFamily) build(args providers.FamilyArgs) (*claudecode.Provider, error) {
+
+func (claudeFamily) provider(args providers.FamilyArgs) (*claudecode.Provider, error) {
 	subscription, ok := args.Credential.(*providers.SubscriptionArgs)
 	if !ok {
 		return nil, &providers.FamilyError{Kind: providers.FamilyWrongCredential}
 	}
 	account, quota := boundAccount(subscription.Account)
-	return claudecode.New(claudecode.NewConfig(args.EntryID, args.Label, account), subscription.Pool, quota, args.ModelsDev, args.HTTP, args.Clock), nil
+	return claudecode.New(
+		claudecode.NewConfig(args.EntryID, args.Label, account),
+		subscription.Pool,
+		quota,
+		args.ModelsDev,
+		args.HTTP,
+		args.Clock,
+	), nil
 }
 
 // boundAccount supplies the account's quota, or an unwritten store for login.

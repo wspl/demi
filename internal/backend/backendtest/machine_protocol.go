@@ -62,27 +62,7 @@ func (m *ScriptedManager) connection(connection *machineConnection) {
 			// Unblocks the reader; an already closed socket needs no further cleanup.
 			_ = socket.Close()
 		}()
-		for {
-			var message machinewire.MachineResponse
-			select {
-			case <-ctx.Done():
-				return
-			case device := <-connection.deaths:
-				message = &machinewire.Death{DeviceID: device}
-			case reply, ok := <-outgoing:
-				if !ok {
-					return
-				}
-				message = reply
-			}
-			line, err := machinewire.EncodeLine(message)
-			if err != nil {
-				return
-			}
-			if _, err := socket.Write(line); err != nil {
-				return
-			}
-		}
+		m.writeResponses(ctx, connection, outgoing)
 	}()
 	var requests sync.WaitGroup
 	reader := bufio.NewReader(socket)
@@ -159,6 +139,15 @@ func (m *ScriptedManager) handle(ctx context.Context, call machinewire.MachineCa
 		return nil, err
 	}
 	defer permit.Release()
+	return m.handleDevice(ctx, device, call)
+}
+
+// handleDevice executes a manager request while its caller owns device admission.
+func (m *ScriptedManager) handleDevice(
+	ctx context.Context,
+	device string,
+	call machinewire.MachineCall,
+) (json.RawMessage, error) {
 	switch call := call.(type) {
 	case *machinewire.Reconcile, *machinewire.CurrentBaseVersion, *machinewire.ImageState:
 		return nil, errors.New("manager operation reached device admission unexpectedly")
@@ -198,36 +187,9 @@ func (m *ScriptedManager) handle(ctx context.Context, call machinewire.MachineCa
 			guest.image.HomeBytes = max(guest.image.HomeBytes, p.Bytes)
 		}
 	case *machinewire.Reset:
-		p := call.Params
-		m.record(fmt.Sprintf("reset:%s:%s:%s", device, p.OperationID, p.BaseVersion))
-		if err := m.resets.Pass(ctx, "reset"); err != nil {
+		if err := m.reset(ctx, device, call.Params); err != nil {
 			return nil, err
 		}
-		m.mu.Lock()
-		failure := m.script.FailReset
-		m.script.FailReset = nil
-		m.mu.Unlock()
-		if failure != nil {
-			return nil, errors.New(*failure)
-		}
-		if err := m.stopRunner(ctx, device); err != nil {
-			return nil, err
-		}
-		runner := m.takeRunner(device)
-		if runner != nil {
-			err := runner.ClearState(ctx)
-			m.putRunner(device, runner)
-			if err != nil {
-				return nil, err
-			}
-		}
-		m.mu.Lock()
-		if guest := m.guests[device]; guest != nil {
-			guest.generation++
-			guest.image.Generation = machinewire.GenerationID(fmt.Sprintf("gen-%d", guest.generation))
-			guest.image.ResetID = &p.OperationID
-		}
-		m.mu.Unlock()
 	}
 	return json.RawMessage("null"), nil
 }
@@ -237,7 +199,15 @@ func (m *ScriptedManager) wake(ctx context.Context, device string, params machin
 	m.mu.Lock()
 	script := m.script
 	if m.guests[device] == nil {
-		m.guests[device] = &machineGuest{generation: 1, image: machinewire.MachineImageState{Generation: "gen-1", BaseVersion: Base, SystemBytes: 1 << 30, HomeBytes: 1 << 30}}
+		m.guests[device] = &machineGuest{
+			generation: 1,
+			image: machinewire.MachineImageState{
+				Generation:  "gen-1",
+				BaseVersion: Base,
+				SystemBytes: 1 << 30,
+				HomeBytes:   1 << 30,
+			},
+		}
 	}
 	m.mu.Unlock()
 	runner := m.takeRunner(device)
@@ -267,6 +237,73 @@ func (m *ScriptedManager) wake(ctx context.Context, device string, params machin
 		env.Values["DEMI_ARTIFACTS"] = script.Artifacts
 	}
 	var err error
-	runner, err = m.startRunner(ctx, backend, remotehosttest.RunnerProcessOptions{Name: "cloud", Env: env, Token: &token, Managed: true})
+	runner, err = m.startRunner(
+		ctx,
+		backend,
+		remotehosttest.RunnerProcessOptions{Name: "cloud", Env: env, Token: &token, Managed: true},
+	)
 	return err
+}
+
+// writeResponses serializes replies and death events onto one manager connection.
+func (m *ScriptedManager) writeResponses(
+	ctx context.Context,
+	connection *machineConnection,
+	outgoing <-chan machinewire.MachineResponse,
+) {
+	for {
+		var message machinewire.MachineResponse
+		select {
+		case <-ctx.Done():
+			return
+		case device := <-connection.deaths:
+			message = &machinewire.Death{DeviceID: device}
+		case reply, ok := <-outgoing:
+			if !ok {
+				return
+			}
+			message = reply
+		}
+		line, err := machinewire.EncodeLine(message)
+		if err != nil {
+			return
+		}
+		if _, err := connection.socket.Write(line); err != nil {
+			return
+		}
+	}
+}
+
+// reset clears transient runner state and advances the scripted disk generation.
+func (m *ScriptedManager) reset(ctx context.Context, device string, params machinewire.ResetParams) error {
+	m.record(fmt.Sprintf("reset:%s:%s:%s", device, params.OperationID, params.BaseVersion))
+	if err := m.resets.Pass(ctx, "reset"); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	failure := m.script.FailReset
+	m.script.FailReset = nil
+	m.mu.Unlock()
+	if failure != nil {
+		return errors.New(*failure)
+	}
+	if err := m.stopRunner(ctx, device); err != nil {
+		return err
+	}
+	runner := m.takeRunner(device)
+	if runner != nil {
+		err := runner.ClearState(ctx)
+		m.putRunner(device, runner)
+		if err != nil {
+			return err
+		}
+	}
+	m.mu.Lock()
+	if guest := m.guests[device]; guest != nil {
+		guest.generation++
+		guest.image.Generation = machinewire.GenerationID(fmt.Sprintf("gen-%d", guest.generation))
+		guest.image.ResetID = &params.OperationID
+	}
+	m.mu.Unlock()
+	return nil
 }
