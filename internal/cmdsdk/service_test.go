@@ -184,6 +184,7 @@ func TestUnreadOutputsNeverHoldBackIndependentCall(t *testing.T) {
 	})
 }
 func TestAbandoningBurstKeepsConnection(t *testing.T) {
+	t.Skip("known issue K1: Go's HTTP/2 server refunds a reset stream's buffered bytes twice and panics; reproduction in testdata/http2-reset")
 	c, _ := connected(t, fixture{})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
