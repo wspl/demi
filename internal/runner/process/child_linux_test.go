@@ -61,9 +61,11 @@ func TestStartBusyExecutable(t *testing.T) {
 			}
 			t.Cleanup(func() {
 				_ = command.Kill()
-				command.Wait(context.Background())
+				_, _ = command.Wait(context.Background())
 			})
-			requireSuccess(t, command.Wait(ctx))
+			if err := unsuccessfulExit(command.Wait(ctx)); err != nil {
+				t.Fatal(err)
+			}
 			if stdout.String() != "started\n" {
 				t.Fatalf("stdout = %q", stdout.String())
 			}

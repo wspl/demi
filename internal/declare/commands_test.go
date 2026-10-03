@@ -47,7 +47,7 @@ func commandLeaf(
 	return leaf
 }
 
-// filer declares the same commands as the Rust scenario tree.
+// filer declares the files command group that the parse scenarios run against.
 func filer(t *testing.T) *declare.Group[declare.Binding] {
 	t.Helper()
 	create := commandLeaf(
@@ -147,7 +147,7 @@ func readCommand(tree declare.Node[declare.Binding], argv []string, stdin *strin
 	if err != nil {
 		return nil, err
 	}
-	if leaf := declare.AsLeaf(selected.Node); leaf != nil && !parsed.Help {
+	if leaf, ok := selected.Node.(*declare.Leaf[declare.Binding]); ok && !parsed.Help {
 		return parsed.Validate(leaf, stdin)
 	}
 	return parsed, nil
@@ -164,8 +164,7 @@ func assertCommand(
 	t.Helper()
 	result, err := readCommand(tree, argv, stdin)
 	if wantError != "" {
-		var usage *declare.UsageError
-		if !errors.As(err, &usage) || err.Error() != wantError {
+		if err == nil || err.Error() != wantError {
 			t.Fatalf("%v: got %v, want %s", argv, err, wantError)
 		}
 		return
@@ -450,7 +449,7 @@ func TestGroupsNameDistinctSubcommands(t *testing.T) {
 	}
 }
 
-// TestHelpAndCommandLinesMatchRecordedCases executes the Rust fixture with a
+// TestHelpAndCommandLinesMatchRecordedCases runs the recorded cases in testdata/cli.json with a
 // tree decoded through the generated manifest boundary.
 func TestHelpAndCommandLinesMatchRecordedCases(t *testing.T) {
 	data, err := os.ReadFile("testdata/cli.json")
@@ -592,14 +591,17 @@ func TestPinningPreservesDeclarationsAndPropagatesResolutionFailures(t *testing.
 		t.Fatal(err)
 	}
 	leaves := pinned.Leaves()
-	if len(calls) != 1 || calls[0].Operation != "file.read" || len(leaves) != 2 ||
-		leaves[0].Binding().DescriptorHash != "digest" ||
-		leaves[1].Binding() != nil {
+	if len(calls) != 1 || calls[0].Operation != "file.read" || len(leaves) != 2 {
 		t.Fatalf("calls=%v, leaves=%v", calls, leaves)
 	}
+	first, firstNative := leaves[0].Binding()
+	_, secondNative := leaves[1].Binding()
+	if !firstNative || first.DescriptorHash != "digest" || secondNative {
+		t.Fatalf("calls=%v, leaves=%v", calls, leaves)
+	}
+	_, pinnedIsLeaf := pinned.(*declare.Leaf[declare.Binding])
 	if pinned.Help("files") != root.Help("files") || declare.Name(pinned) != "files" ||
-		declare.Summary(pinned) != "Files" ||
-		declare.AsLeaf(pinned) != nil {
+		declare.Summary(pinned) != "Files" || pinnedIsLeaf {
 		t.Fatal("pin changed declaration")
 	}
 	*leaves[0].RunningHint = "changed"
@@ -650,8 +652,7 @@ func TestDeclarationSourceRulesAndDepth(t *testing.T) {
 			`"required":["b"]}`, []string{"a", "b"}, "", "", "required positional follows optional positional"},
 	} {
 		leaf := commandLeaf(t, test.name, test.schema, test.positionals, test.stdin, test.rest)
-		var declaration *declare.DeclarationError
-		if err := leaf.Validate(); !errors.As(err, &declaration) || err.Error() != test.want {
+		if err := leaf.Validate(); err == nil || err.Error() != test.want {
 			t.Errorf("got %v, want %s", err, test.want)
 		}
 	}

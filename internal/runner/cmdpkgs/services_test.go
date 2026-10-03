@@ -71,14 +71,14 @@ func acquire(
 	resolver cmdpkgs.ArtifactResolver,
 ) *cmdpkgs.Resident {
 	t.Helper()
-	resident, err := r.Handle().Acquire(t.Context(), d, resolver, cmdpkgstest.NoNumbers{})
+	resident, err := r.Acquire(t.Context(), d, resolver, cmdpkgstest.NoNumbers{})
 	must(t, err)
 	return resident
 }
 
 func lease(t *testing.T, r *cmdpkgs.ServiceRegistry, d commandwire.PackageDescriptor) *cmdpkgs.ServiceLease {
 	t.Helper()
-	l, err := r.Handle().Lease(t.Context(), digest(d))
+	l, err := r.Lease(t.Context(), digest(d))
 	must(t, err)
 	t.Cleanup(l.Release)
 	return l
@@ -142,7 +142,12 @@ func invoke(t *testing.T, resident *cmdpkgs.Resident, operation, conversation st
 	return text
 }
 
-func decided(t *testing.T, receiver *cmdpkgs.DecisionReceiver, d commandwire.PackageDescriptor, want cmdpkgs.Decision) {
+func decided(
+	t *testing.T,
+	receiver *cmdpkgs.DecisionSubscription,
+	d commandwire.PackageDescriptor,
+	want cmdpkgs.Decision,
+) {
 	t.Helper()
 	event, err := receiver.Next(t.Context())
 	must(t, err)
@@ -176,18 +181,18 @@ func TestServiceWithoutLeasesStaysWhileHoldingConversation(t *testing.T) {
 	l.Release()
 	for _, conversation := range []string{"", "unknown", "one"} {
 		if conversation != "" {
-			must(t, r.Handle().ReleaseConversation(t.Context(), conversation))
+			must(t, r.ReleaseConversation(t.Context(), conversation))
 		}
 		decided(t, events, d, cmdpkgs.Asks)
 		decided(t, events, d, cmdpkgs.HoldsConversations)
 	}
 	_, err := resident.Client().Info(t.Context())
 	must(t, err)
-	must(t, r.Handle().ReleaseConversation(t.Context(), "two"))
+	must(t, r.ReleaseConversation(t.Context(), "two"))
 	decided(t, events, d, cmdpkgs.Asks)
 	decided(t, events, d, cmdpkgs.Stops)
 	stopped(t, resident)
-	must(t, r.Handle().ReleaseConversation(t.Context(), "two"))
+	must(t, r.ReleaseConversation(t.Context(), "two"))
 }
 
 func TestLeaseKeepsServiceHoldingNothing(t *testing.T) {
@@ -205,7 +210,7 @@ func TestLeaseKeepsServiceHoldingNothing(t *testing.T) {
 		t.Fatal("did not reuse client")
 	}
 	invoke(t, again, "retain", "shared")
-	must(t, r.Handle().ReleaseConversation(t.Context(), "shared"))
+	must(t, r.ReleaseConversation(t.Context(), "shared"))
 	_, err := resident.Client().Info(t.Context())
 	must(t, err)
 	if resolver.calls.Load() != 1 {
@@ -229,7 +234,7 @@ func TestUnanswerableServiceStays(t *testing.T) {
 	decided(t, events, d, cmdpkgs.Unanswered)
 	_, err := resident.Client().Info(t.Context())
 	must(t, err)
-	must(t, r.Handle().ReleaseConversation(t.Context(), "unanswerable"))
+	must(t, r.ReleaseConversation(t.Context(), "unanswerable"))
 	decided(t, events, d, cmdpkgs.Asks)
 	decided(t, events, d, cmdpkgs.Stops)
 	stopped(t, resident)
@@ -247,7 +252,7 @@ func TestAnswerBeforeReleaseIsAskedAgain(t *testing.T) {
 	l.Release()
 	decided(t, events, d, cmdpkgs.Asks)
 	invoke(t, resident, "stalled", "test")
-	must(t, r.Handle().ReleaseConversation(t.Context(), "stall"))
+	must(t, r.ReleaseConversation(t.Context(), "stall"))
 	invoke(t, resident, "proceed", "test")
 	decided(t, events, d, cmdpkgs.Asks)
 	decided(t, events, d, cmdpkgs.Stops)
@@ -260,7 +265,7 @@ func TestFailedReleaseRetiresBeforeAnswerAndNextCallerStartsAgain(t *testing.T) 
 	d, resolver := fixture(t, root, 0)
 	lease(t, r, d)
 	resident := acquire(t, r, d, resolver)
-	if err := r.Handle().ReleaseConversation(t.Context(), "fail"); err == nil {
+	if err := r.ReleaseConversation(t.Context(), "fail"); err == nil {
 		t.Fatal("failed release succeeded")
 	}
 	if _, err := resident.Client().Info(t.Context()); err == nil {
@@ -312,7 +317,7 @@ func TestStartNobodyWaitsForStops(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := r.Handle().Acquire(ctx, d, resolver, cmdpkgstest.NoNumbers{})
+		_, err := r.Acquire(ctx, d, resolver, cmdpkgstest.NoNumbers{})
 		done <- err
 	}()
 	<-resolver.entered
@@ -325,7 +330,7 @@ func TestStartNobodyWaitsForStops(t *testing.T) {
 	second := make(chan error, 1)
 	l := lease(t, r, d)
 	go func() {
-		resident, err := r.Handle().Acquire(t.Context(), d, resolver, cmdpkgstest.NoNumbers{})
+		resident, err := r.Acquire(t.Context(), d, resolver, cmdpkgstest.NoNumbers{})
 		if err == nil {
 			_, err = resident.Client().Info(t.Context())
 		}
@@ -351,7 +356,7 @@ func TestStopAllAndCloseEndServices(t *testing.T) {
 		invoke(t, resident, "retain", "held")
 		residents = append(residents, resident)
 	}
-	must(t, r.Handle().StopAll(t.Context()))
+	must(t, r.StopAll(t.Context()))
 	for _, resident := range residents {
 		if _, err := resident.Client().Info(t.Context()); err == nil {
 			t.Fatal("stopped service still answers")
@@ -360,7 +365,7 @@ func TestStopAllAndCloseEndServices(t *testing.T) {
 	}
 	must(t, r.Close(t.Context()))
 	d, resolver := fixture(t, root, 0)
-	if _, err := r.Handle().Acquire(t.Context(), d, resolver, cmdpkgstest.NoNumbers{}); err == nil {
+	if _, err := r.Acquire(t.Context(), d, resolver, cmdpkgstest.NoNumbers{}); err == nil {
 		t.Fatal("closed registry acquired")
 	}
 }
@@ -486,7 +491,7 @@ func TestNativeCallsAreNeverTurnedAway(t *testing.T) {
 	for attempt := range 40 {
 		held[0].input.Cancel()
 		held = held[1:]
-		must(t, r.Handle().ReleaseConversation(t.Context(), fmt.Sprintf("archived-%d", attempt)))
+		must(t, r.ReleaseConversation(t.Context(), fmt.Sprintf("archived-%d", attempt)))
 		held = append(held, open())
 	}
 	for _, p := range held {

@@ -54,8 +54,8 @@ func RemoveTree(ctx context.Context, path string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// RemoveAll also removes a non-directory, unlike Rust's remove_dir_all.
-	// Require a directory (or symlink, which is removed without following it).
+	// RemoveAll also removes a non-directory, so require a directory first
+	// (or a symlink, which is removed without following it).
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil

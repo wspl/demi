@@ -166,7 +166,7 @@ func (w *deviceWorker) stop(ctx context.Context) error {
 
 func (w *deviceWorker) save(ctx context.Context) error {
 	if w.runtime != nil {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("Cannot publish working disks with an active writer")
 	}
 	return w.working.Save(ctx, w.manager.core.Tools, w.manager.core.Store, w.id)
@@ -197,11 +197,11 @@ func (w *deviceWorker) wake(ctx context.Context, boot runnerwire.ManagedBoot) er
 		return err
 	}
 	core := w.manager.core
-	state, err := core.Store.Read(ctx, w.id)
+	state, found, err := core.Store.Read(ctx, w.id)
 	if err != nil {
 		return err
 	}
-	if state == nil {
+	if !found {
 		state, err = w.initialize(ctx, w.manager.base)
 		if err != nil {
 			return err
@@ -212,7 +212,7 @@ func (w *deviceWorker) wake(ctx context.Context, boot runnerwire.ManagedBoot) er
 		return err
 	}
 	defer remove()
-	if err = w.stageWorking(ctx, *state, stage); err != nil {
+	if err = w.stageWorking(ctx, state, stage); err != nil {
 		return err
 	}
 	system.FaultPoint("working-staged")
@@ -274,37 +274,37 @@ func (w *deviceWorker) stageWorking(ctx context.Context, state machinewire.Machi
 func (w *deviceWorker) initialize(
 	ctx context.Context,
 	base machinewire.BaseVersion,
-) (*machinewire.MachineImageState, error) {
+) (machinewire.MachineImageState, error) {
 	stage, remove, err := w.stage(ctx, "initial")
 	if err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, err
 	}
 	defer remove()
 	core := w.manager.core
 	root := filepath.Join(stage, "mkhome")
 	if err = os.Mkdir(root, 0o755); err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, err
 	}
 	if err = os.Chmod(root, 0o755); err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, err
 	}
 	if err = storage.CopySkeleton(
 		ctx,
 		filepath.Join(core.Store.Bases(), string(base), "rootfs/etc/skel"),
 		filepath.Join(root, "demi"),
 	); err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, err
 	}
 	images := storage.ImagesInDirectory(stage)
 	if err = storage.MakeHome(ctx, core.Tools, root, images.Home, core.Config.HomeBytes()); err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, err
 	}
 	if err = storage.MakeSystem(ctx, core.Tools, images.System, core.Config.SystemBytes()); err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, err
 	}
 	generation, err := storage.NewGeneration()
 	if err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, err
 	}
 	state := machinewire.MachineImageState{
 		Generation:  generation,
@@ -314,25 +314,25 @@ func (w *deviceWorker) initialize(
 	}
 	for _, path := range []string{images.System, images.Home} {
 		if err = storage.Sync(ctx, path); err != nil {
-			return nil, err
+			return machinewire.MachineImageState{}, err
 		}
 	}
 	if err = core.Store.Publish(ctx, w.id, state, images); err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, err
 	}
-	return &state, nil
+	return state, nil
 }
 
 func (w *deviceWorker) checkpoint(ctx context.Context) error {
 	if w.runtime == nil {
 		return nil
 	}
-	state, err := w.working.Manifest(ctx)
+	state, found, err := w.working.Manifest(ctx)
 	if err != nil {
 		return err
 	}
-	if state == nil {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+	if !found {
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("Cloud working manifest is missing")
 	}
 	stage, remove, err := w.stage(ctx, "checkpoint")
@@ -344,9 +344,9 @@ func (w *deviceWorker) checkpoint(ctx context.Context) error {
 	captured := w.runtime.Pause(ctx)
 	var cleanup []error
 	if captured == nil {
-		capture := w.runtime.Capture(ctx, w.working, copies)
-		captured = capture.Copied
-		cleanup = capture.ThawErrors
+		thawFailures, err := w.runtime.Capture(ctx, w.working, copies)
+		captured = err
+		cleanup = thawFailures
 	}
 	if err = w.runtime.Resume(ctx); err != nil {
 		cleanup = append(cleanup, err)
@@ -368,20 +368,20 @@ func (w *deviceWorker) checkpoint(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return w.manager.core.Store.Publish(ctx, w.id, *state, copies.ImagePair)
+	return w.manager.core.Store.Publish(ctx, w.id, state, copies.ImagePair)
 }
 
 func (w *deviceWorker) grow(ctx context.Context, volume machinewire.Volume, bytes uint64) error {
 	if w.runtime == nil {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("Cloud is not running")
 	}
-	state, err := w.working.Manifest(ctx)
+	state, found, err := w.working.Manifest(ctx)
 	if err != nil {
 		return err
 	}
-	if state == nil {
-		//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+	if !found {
+		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("Cloud working manifest is missing")
 	}
 	current := state.HomeBytes
@@ -400,14 +400,14 @@ func (w *deviceWorker) grow(ctx context.Context, volume machinewire.Volume, byte
 	} else {
 		state.HomeBytes = capacity
 	}
-	return w.working.WriteManifest(ctx, *state)
+	return w.working.WriteManifest(ctx, state)
 }
 
 func (w *deviceWorker) reset(ctx context.Context, operation string, base machinewire.BaseVersion) error {
 	core := w.manager.core
 	if _, err := os.Stat(filepath.Join(core.Store.Bases(), string(base), "manifest.json")); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			//nolint:staticcheck // User-visible text is copied verbatim from Rust.
+			//nolint:staticcheck // User-visible text, kept byte for byte.
 			return fmt.Errorf("Cloud base %s is not imported", base)
 		}
 		return err
@@ -418,11 +418,11 @@ func (w *deviceWorker) reset(ctx context.Context, operation string, base machine
 	if err := w.save(ctx); err != nil {
 		return err
 	}
-	state, err := core.Store.Read(ctx, w.id)
+	state, found, err := core.Store.Read(ctx, w.id)
 	if err != nil {
 		return err
 	}
-	if state == nil {
+	if !found {
 		state, err = w.initialize(ctx, base)
 		if err != nil {
 			return err
@@ -452,5 +452,5 @@ func (w *deviceWorker) reset(ctx context.Context, operation string, base machine
 	if err = storage.Sync(ctx, systemImage); err != nil {
 		return err
 	}
-	return core.Store.Publish(ctx, w.id, *state, storage.ImagePair[string]{System: systemImage, Home: home})
+	return core.Store.Publish(ctx, w.id, state, storage.ImagePair[string]{System: systemImage, Home: home})
 }

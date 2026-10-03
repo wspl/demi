@@ -476,8 +476,8 @@ func contractDescription(doc *ast.CommentGroup) string {
 		}
 		lines = append(lines, text)
 	}
-	// Schemars strips the comment delimiter and one leading space per line,
-	// then trims the outer ASCII whitespace. CommentGroup.Text also collapses
+	// A description is the comment without its delimiter and one leading space per
+	// line, trimmed of outer ASCII whitespace. CommentGroup.Text also collapses
 	// blank lines and indentation, which would change the help/model text.
 	return strings.Trim(strings.Join(lines, "\n"), " \t\n\r\v\f")
 }

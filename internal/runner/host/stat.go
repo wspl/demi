@@ -7,8 +7,8 @@ import (
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
-// fileStat translates Host metadata, truncating pre-epoch fractional
-// milliseconds toward zero just as Rust's signed SystemTime duration does.
+// fileStat translates Host metadata. A pre-epoch modification time with a
+// fractional millisecond is truncated toward zero (-1.5 ms becomes -1 ms).
 func fileStat(info os.FileInfo) runnerwire.FileStat {
 	modified := info.ModTime()
 	millis := modified.UnixMilli()

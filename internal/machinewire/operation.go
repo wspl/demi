@@ -18,7 +18,7 @@ type Operation[T any] interface {
 // +demi:codec
 type Unit struct{}
 
-// MarshalJSON encodes Rust's unit result as null.
+// MarshalJSON encodes the result of an operation that returns nothing as null.
 func (Unit) MarshalJSON() ([]byte, error) { return []byte("null"), nil }
 
 // UnmarshalJSON checks the same unit result contract as a reconcile reply.

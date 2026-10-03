@@ -10,7 +10,7 @@ import (
 
 // validateInstall prevents reported progress from passing the artifact size.
 func validateInstall(install Install) error {
-	// Rust's unqualified garde length counts UTF-8 bytes, not characters.
+	// These limits count UTF-8 bytes, not characters.
 	for _, field := range []struct {
 		name, value string
 		max         int

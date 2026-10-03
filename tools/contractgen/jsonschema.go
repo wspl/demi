@@ -38,8 +38,8 @@ func (g *generator) jsonSchemas(references bool) (map[string][]byte, error) {
 		if len(emitter.definitions.fields) > 0 {
 			object.set("$defs", emitter.definitions)
 		}
-		// Rust's command declaration stores root keywords in a BTreeMap while
-		// keeping every nested serde_json object in schemars' insertion order.
+		// A command schema's root keywords are sorted by name; nested objects keep
+		// their insertion order.
 		slices.SortFunc(object.fields, func(a, b contract.Field) int { return cmp.Compare(a.Name, b.Name) })
 		data, err := contract.EncodeJSON(object)
 		if err != nil {
@@ -151,8 +151,8 @@ func schemaRules(s *schemaObject, marks map[string]string) error {
 	return nil
 }
 
-// nullableSchema follows schemars' allow_null: ordinary typed schemas retain
-// their keywords; references and applicators need an alternative null branch.
+// nullableSchema admits null: a typed schema adds "null" to its type and null to its
+// const or enum; a schema with if, allOf, anyOf, oneOf or $ref becomes anyOf it or {"type":"null"}.
 func nullableSchema(value any) any {
 	s, ok := value.(*schemaObject)
 	if !ok {
@@ -272,8 +272,8 @@ func (e *schemaEmitter) objectSchema(d *definition, st *types.Struct) (*schemaOb
 			return nil, err
 		}
 	}
-	// Schemars inserts an internal tag after the payload properties, but
-	// prepends it to required. Adjacent tags are created before content.
+	// An internal tag comes after the payload properties but first in required.
+	// Adjacent tags are created before content.
 	if name, _, _ := g.variantWire(d); name != "" && g.adjacentUnion(d) == nil {
 		value := properties.get(name)
 		properties.remove(name)
@@ -399,7 +399,7 @@ func (e *schemaEmitter) flattenedProperties(
 	return nil
 }
 
-// fieldDefaults preserves Rust’s default annotations, including optional numbered pointers.
+// fieldDefaults writes a field's default: null for an optional numbered pointer, the empty value for +demi:default.
 func (e *schemaEmitter) fieldDefaults(f *types.Var, opts []string, m map[string]string, child any) {
 	g := e.g
 	if pointer, ok := f.Type().(*types.Pointer); ok && len(opts) > 1 {
@@ -408,8 +408,8 @@ func (e *schemaEmitter) fieldDefaults(f *types.Var, opts []string, m map[string]
 			numbered = numbered || has(g.defs[typeKey(named)].marks, "integer")
 		}
 		if numbered {
-			// Rust's default + some_numbered emits this annotation,
-			// even though an explicit null is refused by the decoder.
+			// An optional numbered pointer is annotated "default": null,
+			// even though the decoder refuses an explicit null.
 			child.(*schemaObject).set("default", nil)
 		}
 	}

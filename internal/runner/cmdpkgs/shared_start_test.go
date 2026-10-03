@@ -34,7 +34,7 @@ func (r *startingResolver) Resolve(ctx context.Context, _ commandwire.PackageArt
 }
 
 // This test reads the registry admission count to wait for the second caller's
-// lease rather than Rust's fixed 100 ms sleep. IO and assertions use the public API.
+// lease instead of sleeping. IO and assertions use the public API.
 func TestCallerGivingUpLeavesSharedStartToOthers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
@@ -74,7 +74,7 @@ func TestCallerGivingUpLeavesSharedStartToOthers(t *testing.T) {
 	defer giveUp()
 	first := make(chan error, 1)
 	go func() {
-		_, err := registry.Handle().Acquire(impatient, descriptor, resolver, cmdpkgstest.NoNumbers{})
+		_, err := registry.Acquire(impatient, descriptor, resolver, cmdpkgstest.NoNumbers{})
 		first <- err
 	}()
 	<-resolver.entered
@@ -84,7 +84,7 @@ func TestCallerGivingUpLeavesSharedStartToOthers(t *testing.T) {
 	}
 	second := make(chan result, 1)
 	go func() {
-		resident, err := registry.Handle().Acquire(ctx, descriptor, resolver, cmdpkgstest.NoNumbers{})
+		resident, err := registry.Acquire(ctx, descriptor, resolver, cmdpkgstest.NoNumbers{})
 		second <- result{resident, err}
 	}()
 	for {
@@ -106,7 +106,7 @@ func TestCallerGivingUpLeavesSharedStartToOthers(t *testing.T) {
 	}
 	// A manifest lease keeps the successfully started service after its caller's
 	// temporary startup lease ends.
-	lease, err := registry.Handle().Lease(ctx, digest.SHA256)
+	lease, err := registry.Lease(ctx, digest.SHA256)
 	if err != nil {
 		t.Fatal(err)
 	}

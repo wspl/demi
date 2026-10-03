@@ -10,7 +10,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-// compilePattern uses RE2 for ordinary schema patterns, as fancy-regex does.
+// compilePattern compiles an ordinary schema pattern with RE2 (package regexp).
 // Only lookaround and backreference syntax requires the backtracking engine.
 func compilePattern(pattern string) (jsonschema.Regexp, error) {
 	re, err := regexp.Compile(pattern)

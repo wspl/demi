@@ -24,7 +24,7 @@ var expectedRules string
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
-// TestSlotAttachesAndDetachesUnderInstalledPolicy ports the root Rust scenario.
+// TestSlotAttachesAndDetachesUnderInstalledPolicy is the root attach and detach scenario.
 // It uses real kernel namespaces and readback tools; it normally costs <1 s.
 func TestSlotAttachesAndDetachesUnderInstalledPolicy(t *testing.T) {
 	if os.Geteuid() != 0 {
@@ -144,8 +144,8 @@ func TestSlotAttachesAndDetachesUnderInstalledPolicy(t *testing.T) {
 	}
 }
 
-// TestOverlappingRouteAndLoopbackBackendRefused ports the root Rust refusal
-// scenario. Kernel route setup requires an isolated root namespace (<1 s).
+// TestOverlappingRouteAndLoopbackBackendRefused is the root refusal scenario.
+// Kernel route setup requires an isolated root namespace (<1 s).
 func TestOverlappingRouteAndLoopbackBackendRefused(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("needs explicit root invocation")
@@ -168,9 +168,7 @@ func TestOverlappingRouteAndLoopbackBackendRefused(t *testing.T) {
 		}
 		n := network.New(netip.MustParsePrefix("172.30.0.0/16"), dns, *backend)
 		err = n.Prepare(ctx)
-		var overlap *network.OverlapError
-		if !errors.As(err, &overlap) || overlap.Route != netip.MustParsePrefix("172.30.5.0/24") ||
-			err.Error() != "DEMI_MANAGED_SUBNET overlaps host route 172.30.5.0/24" {
+		if err == nil || err.Error() != "DEMI_MANAGED_SUBNET overlaps host route 172.30.5.0/24" {
 			return fmt.Errorf("overlap refusal: %v", err)
 		}
 		for _, text := range []string{"http://127.0.0.1:3271", "http://0.1.2.3:3271"} {
@@ -235,8 +233,8 @@ func TestFailedAttachCanBeCleanedAndReused(t *testing.T) {
 		defer func() { result = errors.Join(result, n.Detach(context.WithoutCancel(ctx), slot)) }()
 		// No policy exists yet: the final admission step must fail.
 		err = n.Attach(ctx, slot)
-		var firewall *network.FirewallError
-		if !errors.As(err, &firewall) || errors.Unwrap(firewall) == nil {
+		if err == nil || !strings.HasPrefix(err.Error(), "Cannot apply the Cloud firewall: ") ||
+			errors.Unwrap(err) == nil {
 			return fmt.Errorf("missing firewall refusal: %v", err)
 		}
 		if err := n.Detach(ctx, slot); err != nil {

@@ -27,8 +27,8 @@ func TestFrozenThawsEveryPath(t *testing.T) {
 			defer unmount(ctx, t, target)
 			mounts = append(mounts, target)
 		}
-		if result, err := system.Thaw(ctx, mounts[0]); err != nil || result != system.NotFrozen {
-			t.Fatalf("initial thaw = %v, %v", result, err)
+		if thawed, err := system.Thaw(ctx, mounts[0]); err != nil || thawed {
+			t.Fatalf("initial thaw = %v, %v", thawed, err)
 		}
 		for _, path := range []string{"success", "panic", "failed-freeze"} {
 			func() {
@@ -44,7 +44,7 @@ func TestFrozenThawsEveryPath(t *testing.T) {
 						t.Errorf("panic path = %v, scenario %s", panicked, path)
 					}
 				}()
-				frozen := system.NewFrozen()
+				var frozen system.Frozen
 				defer func() {
 					if failures := frozen.ThawAll(context.WithoutCancel(ctx)); len(failures) != 0 {
 						t.Errorf("deferred thaw: %v", failures)
@@ -79,8 +79,8 @@ func TestFrozenThawsEveryPath(t *testing.T) {
 				}
 			}()
 			for _, mount := range mounts {
-				if result, err := system.Thaw(ctx, mount); err != nil || result != system.NotFrozen {
-					t.Fatalf("after %s: thaw = %v, %v", path, result, err)
+				if thawed, err := system.Thaw(ctx, mount); err != nil || thawed {
+					t.Fatalf("after %s: thaw = %v, %v", path, thawed, err)
 				}
 				if err := os.WriteFile(filepath.Join(mount, "written"), []byte("after"), 0o600); err != nil {
 					t.Fatal(err)

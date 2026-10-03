@@ -262,7 +262,7 @@ func TestScalarTables(t *testing.T) {
 	}
 }
 
-// Rust's shape refusal names the unsafe field, not just its containing type.
+// The shape refusal names the unsafe field, not just its containing type.
 // Cost: one local package load per direction, below one second total.
 func TestUnsafeIntegerDiagnosticNamesField(t *testing.T) {
 	for _, tc := range []struct {

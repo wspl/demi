@@ -69,7 +69,9 @@ func TestLaunchLimits(t *testing.T) {
 			if err := wrapped.Start(childContext(t)); err != nil {
 				t.Fatal(err)
 			}
-			requireSuccess(t, wrapped.Wait(childContext(t)))
+			if err := unsuccessfulExit(wrapped.Wait(childContext(t))); err != nil {
+				t.Fatal(err)
+			}
 			if output.String() != tc.want {
 				t.Fatalf("limit = %q, want %q", output.String(), tc.want)
 			}

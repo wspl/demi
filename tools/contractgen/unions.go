@@ -45,7 +45,7 @@ func (g *generator) normalizeVariants() {
 	}
 }
 
-// variants preserves declaration order for serde's first-matching untagged rule.
+// variants returns a union's variants in declaration order, the order an untagged union tries them.
 func (g *generator) variants(name string) []*definition {
 	var out []*definition
 	for _, key := range g.order {

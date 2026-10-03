@@ -18,7 +18,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// The Rust SDK suite also exercises commandwire at the consumer boundary.
+// This suite also exercises commandwire at the consumer boundary.
 func TestDecodesEveryFragmentationBoundaryAndPreservesBinary(t *testing.T) {
 	expected := []commandwire.Record{
 		commandwire.InputPull{},
@@ -154,12 +154,11 @@ func TestDescriptorRetryAndPathResolution(t *testing.T) {
 		t.Fatal(got)
 	}
 	for _, args := range [][]string{nil, {"--help"}, {CommandService, "extra"}} {
-		if _, err := ParseLaunch(args); err == nil {
+		if err := CheckLaunch(args); err == nil {
 			t.Fatal(args)
 		}
 	}
-	_, err = ParseLaunch([]string{CommandService})
-	must(t, err)
+	must(t, CheckLaunch([]string{CommandService}))
 }
 
 func TestExchangeStopsInputWhenServiceCompletes(t *testing.T) {
@@ -296,8 +295,7 @@ func TestInvocationDecodingChecksNestedValuesAndOptionalNulls(t *testing.T) {
 		binary.BigEndian.PutUint32(b, uint32(len(body)))
 		b = append(b, body...)
 		_, _, err := c.invokeAt(t.Context(), commandwire.InvokePath, b, true)
-		var rejected *RejectedError
-		if !errors.As(err, &rejected) || rejected.Status != 400 {
+		if err == nil || !strings.Contains(err.Error(), "service rejected HTTP request with status 400") {
 			t.Fatalf("accepted %s: %v", body, err)
 		}
 	}

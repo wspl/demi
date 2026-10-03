@@ -3,7 +3,6 @@
 package system_test
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -13,14 +12,13 @@ import (
 func TestFaultPointAbortsOnlyMatchingPoint(t *testing.T) {
 	tools := childTools(t)
 	t.Setenv("DEMI_MACHINE_MANAGER_FAULT", "elsewhere")
-	if _, err := tools.Run(t.Context(), system.Runsc, childArgs("fault"), nil); err != nil {
+	if _, err := tools.Run(t.Context(), system.Runsc, childArgs("fault"), 0); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("DEMI_MACHINE_MANAGER_FAULT", "fixture")
-	_, err := tools.Run(t.Context(), system.Runsc, childArgs("fault"), nil)
-	var failed *system.FailedError
-	if !errors.As(err, &failed) ||
-		!strings.Contains(failed.Output.Stderr, "demi-machine-manager: injected fault at fixture\n") {
-		t.Fatalf("fault = %v", err)
+	output, err := tools.Output(t.Context(), system.Runsc, childArgs("fault"), 0)
+	if _, rejected := system.Accept(system.Runsc, output, []int{0}); err != nil || rejected == nil ||
+		!strings.Contains(output.Stderr, "demi-machine-manager: injected fault at fixture\n") {
+		t.Fatalf("fault = %+v, %v", output, err)
 	}
 }

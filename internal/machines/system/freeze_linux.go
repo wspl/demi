@@ -17,16 +17,6 @@ const (
 	fiThaw   = 0xc0045878
 )
 
-// ThawResult describes what a thaw found.
-type ThawResult uint8
-
-const (
-	// Thawed means the filesystem was thawed.
-	Thawed ThawResult = iota
-	// NotFrozen means the filesystem was not frozen, as after a failed freeze or an earlier thaw.
-	NotFrozen
-)
-
 // Freeze freezes the filesystem mounted at mount.
 // Once issued, the syscall completes even if ctx is canceled.
 func Freeze(ctx context.Context, mount string) error {
@@ -42,35 +32,32 @@ func Freeze(ctx context.Context, mount string) error {
 	return Failed("freezing", mount, unix.IoctlSetInt(int(directory.Fd()), fiFreeze, 0))
 }
 
-// Thaw thaws the filesystem mounted at mount.
+// Thaw thaws the filesystem mounted at mount and reports whether it was frozen.
 // Cleanup callers use a context without cancellation so every recorded mount is thawed.
-func Thaw(ctx context.Context, mount string) (ThawResult, error) {
+func Thaw(ctx context.Context, mount string) (thawed bool, err error) {
 	if err := ctx.Err(); err != nil {
-		return NotFrozen, err
+		return false, err
 	}
 	directory, err := os.Open(mount)
 	if err != nil {
-		return NotFrozen, err
+		return false, err
 	}
 	// Closing this read-only descriptor has no buffered writes to report.
 	defer func() { _ = directory.Close() }()
 	err = unix.IoctlSetInt(int(directory.Fd()), fiThaw, 0)
 	if errors.Is(err, unix.EINVAL) {
-		return NotFrozen, nil
+		return false, nil
 	}
 	if err != nil {
-		return NotFrozen, Failed("thawing", mount, err)
+		return false, Failed("thawing", mount, err)
 	}
-	return Thawed, nil
+	return true, nil
 }
 
 // Frozen records filesystems frozen for one checkpoint. The zero value is ready
 // to use. Its owner defers ThawAll before the first Freeze, using a context
 // without cancellation, and handles the returned failures. It is not concurrent.
 type Frozen struct{ mounts []string }
-
-// NewFrozen creates an empty checkpoint freeze guard.
-func NewFrozen() *Frozen { return &Frozen{} }
 
 // Freeze records mount before issuing the freeze, since a failed freeze may
 // still have frozen the filesystem. The frozen window must not be canceled.

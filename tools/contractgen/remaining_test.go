@@ -15,7 +15,7 @@ import (
 	wire "github.com/wspl/demi/tools/contractgen/testdata/remaining"
 )
 
-// Independent Rust frames prove all three runner shapes through generated codecs.
+// Independently recorded frames prove all three runner shapes through generated codecs.
 // Local files only; budget one second, with no processes or timed waits.
 func TestRemainingRunnerCorpus(t *testing.T) {
 	paths, err := filepath.Glob("testdata/remaining/fixtures/*.msgpack")
@@ -91,7 +91,7 @@ func TestAdjacentReplyRefusals(t *testing.T) {
 			}
 		})
 	}
-	// IDs can come after content; only op-before-result is required by Rust.
+	// IDs can come after content; only op must come before result.
 	text := `{"type":"fs_ok","op":"exists","result":true,"id":"fs"}`
 	value, err := wire.DecodeMessage([]byte(text))
 	if err != nil {

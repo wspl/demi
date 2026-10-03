@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -33,11 +32,11 @@ func TestCgroupControllersCheckedBeforeChanges(t *testing.T) {
 				t.Error(err)
 			}
 		}()
-		var missing *MissingControllersError
 		if err := PrepareCgroups(
 			ctx,
-		); !errors.As(err, &missing) ||
-			!reflect.DeepEqual(missing.Missing, []string{"cpu", "memory", "pids"}) {
+		); err == nil ||
+			err.Error() != "Cloud resource limits need the cgroup v2 cpu, memory and pids controllers "+
+				"at /sys/fs/cgroup; missing: cpu, memory, pids. DEMI_MANAGED_LIMITS=off runs Clouds without limits" {
 			t.Fatalf("absent hierarchy = %v", err)
 		}
 		if err := os.WriteFile(filepath.Join(cgroupRoot, "cgroup.controllers"), []byte("cpu pids"), 0o600); err != nil {
@@ -45,8 +44,9 @@ func TestCgroupControllersCheckedBeforeChanges(t *testing.T) {
 		}
 		if err := PrepareCgroups(
 			ctx,
-		); !errors.As(err, &missing) ||
-			!reflect.DeepEqual(missing.Missing, []string{"memory"}) {
+		); err == nil ||
+			err.Error() != "Cloud resource limits need the cgroup v2 cpu, memory and pids controllers "+
+				"at /sys/fs/cgroup; missing: memory. DEMI_MANAGED_LIMITS=off runs Clouds without limits" {
 			t.Fatalf("missing controllers = %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(cgroupRoot, "cgroup.subtree_control")); !errors.Is(err, os.ErrNotExist) {

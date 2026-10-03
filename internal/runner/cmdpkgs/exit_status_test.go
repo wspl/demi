@@ -8,7 +8,7 @@ import (
 	"github.com/wspl/demi/internal/runner/process"
 )
 
-func TestServiceExitStatusRustDisplay(t *testing.T) {
+func TestServiceExitStatusSpelling(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
 		platform string
@@ -37,7 +37,7 @@ func TestServiceExitStatusRustDisplay(t *testing.T) {
 			if tt.signal != "" {
 				exit = process.Exit{Signal: &tt.signal}
 			}
-			if got := serviceExitStatus(exit); got != tt.want {
+			if got := serviceExitStatus(exit, nil); got != tt.want {
 				t.Fatalf("status = %q; want %q", got, tt.want)
 			}
 		})
@@ -47,7 +47,7 @@ func TestServiceExitStatusRustDisplay(t *testing.T) {
 func TestMalformedSignalRecordIsReported(t *testing.T) {
 	for _, signal := range []string{"KILL", "SIGbogus", "SIG", "SIG999999999999999999999999999999999999"} {
 		t.Run(signal, func(t *testing.T) {
-			got := serviceExitStatus(process.Exit{Signal: &signal})
+			got := serviceExitStatus(process.Exit{Signal: &signal}, nil)
 			if !strings.HasPrefix(got, "invalid signal record: ") || !strings.Contains(got, signal) {
 				t.Fatalf("malformed signal was not reported: %q", got)
 			}

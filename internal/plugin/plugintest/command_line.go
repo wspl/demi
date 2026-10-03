@@ -55,7 +55,7 @@ func Parse(root declare.Node[declare.Binding], line []string, stdin *string) (*d
 	if err != nil {
 		return nil, err
 	}
-	if leaf := declare.AsLeaf(selected.Node); leaf != nil && !parsed.Help {
+	if leaf, ok := selected.Node.(*declare.Leaf[declare.Binding]); ok && !parsed.Help {
 		return parsed.Validate(leaf, stdin)
 	}
 	return parsed, nil

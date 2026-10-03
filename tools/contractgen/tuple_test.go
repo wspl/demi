@@ -11,7 +11,7 @@ import (
 	"github.com/wspl/demi/tools/contractgen/testdata/kept"
 )
 
-// Every stored Rust kept fixture is a stream, so the library only splits records;
+// Every stored kept fixture is a stream, so the library only splits records;
 // the generated decoder owns every shape check. Budget below one second.
 func TestKeptTuple(t *testing.T) {
 	fixtures, err := filepath.Glob("../../crates/runner-protocol/tests/fixtures/kept/*")

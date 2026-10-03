@@ -38,7 +38,7 @@ func MsgpackObject(data []byte) (map[string][]byte, error) {
 }
 
 // DecodeMsgpack checks scalar kinds and integer narrowing before library decoding.
-// Like serde, floating-point targets also accept integer tokens.
+// Floating-point targets also accept integer tokens.
 // Generated object methods own schema-dependent checks.
 func DecodeMsgpack[T any](data []byte) (T, error) {
 	var value T

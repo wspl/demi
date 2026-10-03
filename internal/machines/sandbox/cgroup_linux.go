@@ -5,6 +5,7 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,7 +31,12 @@ func PrepareCgroups(ctx context.Context) error {
 		}
 	}
 	if len(missing) != 0 {
-		return &MissingControllersError{Missing: missing}
+		//nolint:staticcheck // User-visible text, kept byte for byte.
+		return fmt.Errorf(
+			"Cloud resource limits need the cgroup v2 cpu, memory and pids controllers "+
+				"at /sys/fs/cgroup; missing: %s. DEMI_MANAGED_LIMITS=off runs Clouds without limits",
+			strings.Join(missing, ", "),
+		)
 	}
 	enable := []byte("+cpu +memory +pids")
 	if err := os.WriteFile(filepath.Join(cgroupRoot, "cgroup.subtree_control"), enable, 0o666); err != nil {

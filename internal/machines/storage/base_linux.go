@@ -103,7 +103,8 @@ func copyBaseArchive(ctx context.Context, source, destination string, expected a
 		var tooLarge *artifacts.TooLargeError
 		var size *artifacts.SizeError
 		if errors.Is(err, artifacts.ErrDigest) || errors.As(err, &tooLarge) || errors.As(err, &size) {
-			return &ArchiveIntegrityError{Source: err}
+			//nolint:staticcheck // User-visible text, kept byte for byte.
+			return fmt.Errorf("Cloud root archive integrity mismatch: %w", err)
 		}
 		return err
 	}
@@ -122,7 +123,7 @@ func publishBase(
 		return err
 	}
 	defer func() { _ = root.Close() }() // Read-only directory handle.
-	// Rust's executable map is a BTreeMap; preserve its check order.
+	// Check executables in path order, so the first failure reported is stable.
 	for _, path := range slices.Sorted(maps.Keys(manifest.Executables)) {
 		artifact := manifest.Executables[path]
 		if err := verifyExecutable(
@@ -167,7 +168,8 @@ func verifyExecutable(ctx context.Context, root *os.File, path string, expected 
 		},
 	)
 	if errors.Is(err, unix.EXDEV) || errors.Is(err, unix.ELOOP) {
-		return &ExecutablePathError{Path: path}
+		//nolint:staticcheck // User-visible text, kept byte for byte.
+		return fmt.Errorf("Invalid image executable path: %s", path)
 	}
 	if err != nil {
 		return system.Failed("opening", path, err)
@@ -179,13 +181,15 @@ func verifyExecutable(ctx context.Context, root *os.File, path string, expected 
 		return err
 	}
 	if !info.Mode().IsRegular() {
-		return &ExecutableIntegrityError{Path: path}
+		//nolint:staticcheck // User-visible text, kept byte for byte.
+		return fmt.Errorf("Cloud executable integrity mismatch: %s", path)
 	}
 	if err := artifacts.Copy(ctx, file, expected, io.Discard); err != nil {
 		var tooLarge *artifacts.TooLargeError
 		var size *artifacts.SizeError
 		if errors.Is(err, artifacts.ErrDigest) || errors.As(err, &tooLarge) || errors.As(err, &size) {
-			return &ExecutableIntegrityError{Path: path}
+			//nolint:staticcheck // User-visible text, kept byte for byte.
+			return fmt.Errorf("Cloud executable integrity mismatch: %s", path)
 		}
 		return err
 	}
@@ -220,7 +224,7 @@ func importBaseArchive(
 		ctx,
 		system.Bsdtar,
 		[]string{"-xpf", archive, "--xattrs", "-C", filepath.Join(stage, "rootfs")},
-		&deadline,
+		deadline,
 	); err != nil {
 		return err
 	}
@@ -237,7 +241,8 @@ func checkBaseManifest(manifest machinewire.CloudImageManifest) error {
 	}
 	for _, required := range []string{machinewire.RunnerPath, machinewire.InitPath} {
 		if _, ok := manifest.Executables[required]; !ok {
-			return &MissingExecutableError{Path: required}
+			//nolint:staticcheck // User-visible text, kept byte for byte.
+			return fmt.Errorf("Cloud image manifest lacks %s", required)
 		}
 	}
 	return nil

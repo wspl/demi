@@ -11,7 +11,7 @@ package webapi
 type EmailAddress string
 
 // Text whose surrounding white space is removed when it arrives, as a name
-// a user types; the field's garde rule bounds what remains. Its schema's
+// a user types; the field's +demi:length marker bounds what remains. Its schema's
 // `trimmed` format tells the web app's schema to trim before it checks the
 // bounds.
 // +demi:id

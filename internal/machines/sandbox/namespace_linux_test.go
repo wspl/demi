@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -75,13 +76,21 @@ func TestSavedNamespaceRecoveryInheritsMountsAndLock(t *testing.T) {
 		t.Fatalf("saved mount leaked into caller: %v", err)
 	}
 	wrong := NewSavedNamespace(runtime, root+"-other")
-	var owner *OtherOwnerError
-	if err := wrong.Recover(t.Context(), lock, nil); !errors.As(err, &owner) {
+	if err := wrong.Recover(
+		t.Context(),
+		lock,
+		nil,
+	); err == nil ||
+		!strings.Contains(err.Error(), "Recover the previous Cloud manager with its original state directory: ") {
 		t.Fatalf("other owner = %v", err)
 	}
 	args := []string{"--probe", marker, lockPath, "true", "--recover"}
-	var failed *RecoveryError
-	if err := namespace.Recover(t.Context(), lock, args); !errors.As(err, &failed) {
+	if err := namespace.Recover(
+		t.Context(),
+		lock,
+		args,
+	); err == nil ||
+		!strings.Contains(err.Error(), "Cloud namespace recovery failed: ") {
 		t.Fatalf("failed child = %v", err)
 	}
 	// A successful retry proves failure retained both the pin and its mount data.
