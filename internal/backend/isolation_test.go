@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/webapi"
 )
@@ -42,7 +41,7 @@ func isolationLists(s *hostScenario) [3]int {
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	answer := s.request("GET", "/api/workspaces", "", 200)
+	answer := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/workspaces", "", 200)
 	workspaces, err := webapi.DecodeWorkspaces(answer.Body)
 	if err != nil {
 		s.t.Fatal(err)
@@ -52,13 +51,12 @@ func isolationLists(s *hostScenario) [3]int {
 
 // Real runners make revocation and a new owner's pairing observable at the API.
 func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
-	t.Skip("finding 3: cross-user requests intermittently receive EOF instead of HTTP 404")
 	s := newHostScenario(t, "")
 	master := s.user
 	users := make([]backendtest.Session, 0, 2)
 	for _, name := range []string{"alice", "bob"} {
 		email, password := name+"@example.test", name+"-pass-1"
-		s.request("POST", "/api/users", fmt.Sprintf(`{"email":%q,"password":%q,"role":"user"}`, email, password), 201)
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/users", fmt.Sprintf(`{"email":%q,"password":%q,"role":"user"}`, email, password), 201)
 		user, err := s.b.Login(s.ctx, email, password)
 		if err != nil {
 			t.Fatal(err)
@@ -71,9 +69,9 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	device, home := string(laptop.ID()), laptop.Runner.Home()
 	workspace := s.workspace(laptop, home, "proj")
 	c, bobs := hostsConversation, "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a02"
-	s.create(c)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, c)
 	base := "/api/conversations/" + c
-	s.request("POST", base+"/hosts", fmt.Sprintf(`{"deviceId":%q}`, device), 201)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", base+"/hosts", fmt.Sprintf(`{"deviceId":%q}`, device), 201)
 	png := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0xff, 0xfe, 1}
 	image := isolationUpload(s, "image/png", png)
 	private := []byte("alice private file")
@@ -81,15 +79,15 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	if string(fileUpload.Sha256) != fmt.Sprintf("%x", sha256.Sum256(private)) {
 		t.Fatal(fileUpload.Sha256)
 	}
-	socket, err := backendtest.HostsSocket(s.ctx, t, s.b, &alice, c)
+	socket, err := s.b.Conversation(s.ctx, t, &alice, c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := socket.CloseNow(); err != nil {
+	if err := socket.Close(s.ctx); err != nil {
 		t.Fatal(err)
 	}
 	s.user = bob
-	s.create(bobs)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, bobs)
 	made, file := home+"/made", url.QueryEscape(home)
 	other := "/api/conversations/" + bobs
 	denied := []struct{ method, path, body string }{
@@ -130,17 +128,11 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	for i, actor := range []backendtest.Session{bob, master} {
 		s.user = actor
 		for _, route := range denied {
-			s.request(route.method, route.path, route.body, 404)
+			conversationRequest(s.ctx, s.t, s.b, &s.user, route.method, route.path, route.body, 404)
 		}
-		conn, response, err := websocket.Dial(s.ctx, s.b.WSURL(base+"/stream"), &websocket.DialOptions{HTTPHeader: http.Header{"Cookie": {actor.Cookie}, "Origin": {s.b.URL}}})
-		if conn != nil {
-			_ = conn.CloseNow()
-		}
-		if response != nil && response.Body != nil {
-			_ = response.Body.Close()
-		}
-		if err == nil || response == nil || response.StatusCode != 404 {
-			t.Fatalf("foreign socket: %v %v", response, err)
+		_, refused, err := s.b.ConversationFrom(s.ctx, t, &actor, c, s.b.URL)
+		if err == nil || refused.Status != 404 {
+			t.Fatalf("foreign socket: %v %v", refused, err)
 		}
 		want := [3]int{1 - i, 0, 0}
 		if got := isolationLists(s); got != want {
@@ -155,7 +147,7 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 		hash string
 		data []byte
 	}{{string(image.Sha256), png}, {string(fileUpload.Sha256), private}} {
-		if got := s.request("GET", "/api/blobs/"+blob.hash, "", 200).Body; !bytes.Equal(got, blob.data) {
+		if got := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/blobs/"+blob.hash, "", 200).Body; !bytes.Equal(got, blob.data) {
 			t.Fatal("blob changed")
 		}
 	}
@@ -163,14 +155,14 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	if isolationUpload(s, "image/png", png).Sha256 != image.Sha256 {
 		t.Fatal("same bytes changed hash")
 	}
-	if !bytes.Equal(s.request("GET", "/api/blobs/"+string(image.Sha256), "", 200).Body, png) {
+	if !bytes.Equal(conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/blobs/"+string(image.Sha256), "", 200).Body, png) {
 		t.Fatal("Bob's image differs")
 	}
-	s.request("GET", "/api/blobs/"+string(fileUpload.Sha256), "", 404)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/blobs/"+string(fileUpload.Sha256), "", 404)
 	s.user = alice
-	s.request("DELETE", "/api/devices/"+device, "", 409)
-	s.request("DELETE", "/api/workspaces/"+string(workspace.ID), "", 204)
-	s.request("DELETE", "/api/devices/"+device, "", 204)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+device, "", 409)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/workspaces/"+string(workspace.ID), "", 204)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+device, "", 204)
 	if len(s.hosts()) != 0 {
 		t.Fatal("revoked attachment remains")
 	}
@@ -191,7 +183,7 @@ func TestIsolationHidesEveryOtherUsersObjectAndRevokedDevice(t *testing.T) {
 	if got := isolationLists(s); got != [3]int{1, 0, 0} {
 		t.Fatal(got)
 	}
-	s.request("DELETE", "/api/devices/"+string(again.ID()), "", 404)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+string(again.ID()), "", 404)
 	if err := s.b.Close(s.ctx); err != nil {
 		t.Fatal(err)
 	}

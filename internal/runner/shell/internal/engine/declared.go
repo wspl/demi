@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/google/uuid"
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
 	"github.com/wspl/demi/internal/runner/process"
@@ -44,21 +44,12 @@ func (e *execution) declared(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	var id [16]byte
-	_, _ = rand.Read(id[:]) // crypto/rand.Read fills the buffer or terminates the process.
-	id[6] = id[6]&0x0f | 0x40
-	id[8] = id[8]&0x3f | 0x80
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	reader := hc.Stdin
-	if file, ok := reader.(*os.File); ok && file != nil {
-		borrowed, err := borrowFile(ctx, file)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = borrowed.Close() }()
-		reader = borrowed
-	}
 	output, records := cmdsdk.OutputChannel(ctx)
 	type result struct {
 		completion commandwire.Completion
@@ -73,7 +64,7 @@ func (e *execution) declared(ctx context.Context, args []string) error {
 			}
 			done <- finished
 		}()
-		completion, err := commands.Handler.Invoke(ctx, cmdsdk.InvocationContext[commandwire.LocalInvocation]{Request: commandwire.LocalInvocation{Operation: process.Raw, InvocationID: hex.EncodeToString(id[:]), Args: encoded, Cwd: hc.Dir, Env: env}, Input: cmdsdk.NewInput(&invocationInput{reader: reader, state: hc.Scope().(*interpreterScope)}), Output: output})
+		completion, err := commands.Handler.Invoke(ctx, cmdsdk.InvocationContext[commandwire.LocalInvocation]{Request: commandwire.LocalInvocation{Operation: process.Raw, InvocationID: hex.EncodeToString(id[:]), Args: encoded, Cwd: hc.Dir, Env: env}, Input: cmdsdk.NewInput(&invocationInput{reader: hc.Stdin, state: hc.Scope().(*interpreterScope)}), Output: output})
 		finished = result{completion, err}
 	}()
 	drain := func(record commandwire.Record) error {
@@ -134,14 +125,39 @@ type invocationInput struct {
 }
 
 func (i *invocationInput) Next(ctx context.Context) ([]byte, error) {
-	i.state.Waiting(1)
-	defer i.state.Waiting(-1)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if i.reader == nil {
 		return nil, io.EOF
 	}
 
+	reader := i.reader
+	if file, ok := reader.(*os.File); ok && file != nil {
+		// Each pull owns its duplicate and cancellation. The shell keeps its
+		// original descriptor and any input this pull has not consumed.
+		borrowed, err := borrowFile(ctx, file)
+		if err != nil {
+			return nil, err
+		}
+		closed := make(chan struct{})
+		stop := context.AfterFunc(ctx, func() {
+			_ = borrowed.Close()
+			close(closed)
+		})
+		defer func() {
+			if !stop() {
+				<-closed
+			} else {
+				_ = borrowed.Close()
+			}
+		}() // Only the duplicate is closed; a canceled pull never owns stdin.
+		reader = borrowed
+	}
+	i.state.Waiting(1)
+	defer i.state.Waiting(-1)
 	b := make([]byte, 64*1024)
-	n, err := i.reader.Read(b)
+	n, err := reader.Read(b)
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
