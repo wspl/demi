@@ -38,6 +38,9 @@ type definition struct {
 }
 
 type generator struct {
+	pageNames map[string]bool
+	tsOutput  string
+	tsExports map[string]map[string]bool
 	jsonReach map[string]bool
 	msgReach  map[string]bool
 	tables    []*table
@@ -258,12 +261,11 @@ func generateBatch(ctx context.Context, patterns []string, ts bool, tsDir string
 	if err != nil {
 		return err
 	}
-	sources, err := g.tsSources()
-	if err != nil {
-		return err
-	}
 	if ts {
-		return g.writeTS(collected[0], sources, verify)
+		return g.writeTS(ctx, collected[0], verify)
+	}
+	if _, err := g.tsSources(); err != nil {
+		return err
 	}
 	for _, p := range pkgs {
 		g.current = p.Types

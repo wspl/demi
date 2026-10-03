@@ -18,6 +18,7 @@ type Store interface {
 	UserExposes(context.Context, webapi.UserID) (database.UserExposes, error)
 	RenewExpose(context.Context, webapi.ExposeID, webapi.UserID, time.Duration) (*database.ExposeRecord, error)
 	DeleteExpose(context.Context, webapi.ExposeID) error
+	DeleteExpiredExpose(context.Context, webapi.ExposeID, core.Timestamp) (bool, error)
 	DeleteDeviceExposes(context.Context, webapi.DeviceID) ([]webapi.ExposeID, error)
 }
 

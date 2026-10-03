@@ -1,40 +1,215 @@
 package backend
 
-//revive:disable:unused-parameter
-// API checkpoint: bodies follow after the public boundary is merged.
-
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
 	"net/netip"
+	"os"
+	"sync"
 
+	"github.com/wspl/demi/internal/backend/blobs"
+	"github.com/wspl/demi/internal/backend/cloud"
+	"github.com/wspl/demi/internal/backend/edge"
 	"github.com/wspl/demi/internal/backend/usershard"
 )
 
 // Backend is a running backend. Its owner must call Close and wait for all
 // services, shards, connections and storage to end, including after ctx ends.
-type Backend struct{}
+type Backend struct {
+	storage       *usershard.Storage
+	services      *usershard.Services
+	shards        *usershard.Shards
+	edge          *edge.Edge
+	machines      *cloud.Client
+	closeObjects  func() error
+	cancel        context.CancelFunc
+	stopDeaths    context.CancelFunc
+	stopRetention context.CancelFunc
+	retention     sync.WaitGroup
+	deaths        sync.WaitGroup
+	request       chan struct{}
+	done          chan struct{}
+	closeOnce     sync.Once
+	closeErr      error
+}
 
 // Start starts the backend. It serves once this returns: the data directory
 // and the instance secret, then the databases and the object store, the
 // shared services and the shards, and the listener last. A failed start
 // releases everything acquired by that attempt. ctx owns the backend lifetime.
-func Start(ctx context.Context, config Config) (*Backend, error) {
-	panic("not written: b-backend")
+func Start(ctx context.Context, config Config) (_ *Backend, err error) {
+	// Empty paths in Rust's create_dir_all are a successful no-op; subsequent
+	// relative paths still address this directory, rather than a default directory.
+	if config.DataDir != "" {
+		if err := os.MkdirAll(config.DataDir, 0755); err != nil {
+			return nil, &StartError{Kind: StartDataDirectory, Path: config.DataDir, Err: err}
+		}
+	}
+	secret := config.InstanceSecret
+	if secret == nil {
+		value, err := loadSecret(ctx, config.DataDir)
+		if err != nil {
+			return nil, &StartError{Kind: StartSecret, Err: err}
+		}
+		secret = &value
+	}
+	var s3 *blobs.S3Config
+	if config.ObjectStore != "" || config.objectStoreSet {
+		value, err := blobs.ReadS3Config(ctx, config.ObjectStore)
+		if err != nil {
+			return nil, &StartError{Kind: StartObjectStore, Err: err}
+		}
+		s3 = &value
+	}
+	objects, err := blobs.Open(ctx, config.DataDir, s3)
+	if err != nil {
+		return nil, &StartError{Kind: StartObjects, Err: err}
+	}
+	// Parent cancellation requests ordered shutdown; it must not kill runner
+	// connections before the shards have saved their Clouds.
+	life, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	b := &Backend{closeObjects: objects.Close, cancel: cancel, request: make(chan struct{}), done: make(chan struct{})}
+	defer func() {
+		if err != nil {
+			if failure := b.shutdown(context.WithoutCancel(ctx)); failure != nil {
+				slog.Error("storage did not close after a failed start", "error", failure)
+			}
+		}
+	}()
+	var observed blobs.Objects = objects
+	if config.ObserveObjects != nil {
+		observed = config.ObserveObjects(objects)
+	}
+	b.storage, err = usershard.OpenStorage(ctx, config.DataDir, config.Clock, observed)
+	if err != nil {
+		return nil, &StartError{Kind: StartStorage, Err: err}
+	}
+	keys, err := secret.serviceKeys()
+	if err != nil {
+		return nil, &StartError{Kind: StartSecret, Err: err}
+	}
+	machines, deaths := cloud.NewClient(life, config.MachinesSocket)
+	b.machines = machines
+	setup := usershard.ProviderSetup{Families: config.Families, ModelsDevURL: config.ModelsDevURL, ClaudeReleases: config.ClaudeReleases, Logins: config.Logins, Clock: config.Clock}
+	settings := usershard.ServiceSettings{Mode: config.Mode, Mail: config.AccountMail, Runners: config.Runners, Conversations: config.Conversations, Pages: config.Pages, Native: config.Native, Plugins: config.Plugins, Cloud: cloud.NewServices(machines, config.Cloud), Lifecycle: config.Lifecycle, ExposeDomain: config.ExposeDomain, Exposes: config.Exposes}
+	b.services, err = usershard.StartServices(life, b.storage, keys, setup, settings)
+	if err != nil {
+		return nil, &StartError{Kind: StartServices, Err: err}
+	}
+	b.services.Hooks = config.Hooks
+	b.shards, err = usershard.NewShards(life, b.services)
+	if err != nil {
+		return nil, &StartError{Kind: StartShards, Err: err}
+	}
+	deathCtx, stopDeaths := context.WithCancel(life)
+	b.stopDeaths = stopDeaths
+	b.deaths.Go(func() {
+		// Cancellation is the expected termination of this owner task.
+		if err := usershard.RouteDeaths(deathCtx, deaths, b.services, b.shards); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error(fmt.Sprintf("the death of a Cloud could not be routed: %v", err))
+		}
+	})
+	if err := cloud.RecoverResets(ctx, b.services.Control, b.services.Cloud); err != nil {
+		return nil, &StartError{Kind: StartCloud, Err: err}
+	}
+	if err := usershard.RecoverForks(ctx, b.services.Control, b.services.Conversations); err != nil {
+		return nil, &StartError{Kind: StartStorage, Err: err}
+	}
+	if err := usershard.RearmWakeups(ctx, b.services.Control, b.shards); err != nil {
+		slog.Error("the saved wakeups cannot be listed", "error", err)
+	}
+	state := edge.AppState{Services: b.services, Shards: b.shards, Site: &edge.Site{PublicURL: config.PublicURL, RunnerReleases: config.RunnerReleases}}
+	b.edge, err = edge.Start(life, config.Address, state, config.WebDirectory)
+	if err != nil {
+		return nil, &StartError{Kind: StartListen, Address: config.Address, Err: err}
+	}
+	if config.Lifecycle.RetentionInterval != nil {
+		retentionCtx, stop := context.WithCancel(life)
+		b.stopRetention = stop
+		b.retention.Go(func() {
+			// The scheduler owns its per-pass diagnostics; cancellation ends scheduling.
+			_ = usershard.ScheduleRetention(retentionCtx, b.services, b.shards)
+		})
+	}
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-b.request:
+		}
+		b.closeErr = b.shutdown(context.WithoutCancel(ctx))
+		close(b.done)
+	}()
+	return b, nil
 }
 
 // LocalAddr is the address the listener is bound to.
-func (b *Backend) LocalAddr() netip.AddrPort { panic("not written: b-backend") }
+func (b *Backend) LocalAddr() netip.AddrPort { return b.edge.LocalAddr() }
 
-// Close shuts the backend down. The listener closes first, so no new work
-// starts and a new request on an open connection answers 503 backend_closing;
-// every step runs even when an earlier one fails. Failures are returned as
-// ShutdownErrors. Cleanup uses a context that outlives the canceled lifetime.
-func (b *Backend) Close(ctx context.Context) error { panic("not written: b-backend") }
+// Close requests ordered shutdown and joins it. A canceled cleanup context
+// ends only this wait; a later Close with a live context joins the same shutdown.
+func (b *Backend) Close(ctx context.Context) error {
+	b.closeOnce.Do(func() { close(b.request) })
+	select {
+	case <-b.done:
+		return b.closeErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
-// Services borrows the shared service handles for backendtest's commit holds.
-// Callers must not replace handles or close services independently of Backend.
-func (b *Backend) Services() *usershard.Services { panic("not written: b-backend") }
+// Services borrows shared handles for test support; ownership stays with Backend.
+func (b *Backend) Services() *usershard.Services { return b.services }
 
-// Shards borrows user routing for backendtest's file gates, exposes and
-// retention passes. Callers must not close it independently of Backend.
-func (b *Backend) Shards() *usershard.Shards { panic("not written: b-backend") }
+// Shards borrows user routing for test support; ownership stays with Backend.
+func (b *Backend) Shards() *usershard.Shards { return b.shards }
+
+// shutdown drains the backend in dependency order, also after partial startup.
+func (b *Backend) shutdown(ctx context.Context) error {
+	failures := &ShutdownErrors{}
+	record := func(kind ShutdownErrorKind, err error) {
+		if err != nil {
+			failures.Failures = append(failures.Failures, &ShutdownError{Kind: kind, Err: err})
+		}
+	}
+	if b.edge != nil {
+		b.edge.StopAccepting()
+	}
+	if b.stopRetention != nil {
+		b.stopRetention()
+	}
+	if b.services != nil {
+		record(ShutdownStorage, b.services.Logins.Close(ctx))
+	}
+	if b.shards != nil {
+		record(ShutdownCloud, b.shards.Close(ctx))
+	}
+	b.retention.Wait()
+	if b.services != nil {
+		b.services.Claims.Close()
+	}
+	// Shards no longer need runner connections or death routing.
+	if b.stopDeaths != nil {
+		b.stopDeaths()
+	}
+	b.deaths.Wait()
+	if b.machines != nil {
+		record(ShutdownMachines, b.machines.Close(ctx))
+	}
+	if b.edge != nil {
+		record(ShutdownEdge, b.edge.Close(ctx))
+	}
+	if b.services != nil {
+		record(ShutdownStorage, b.services.Close(ctx))
+	}
+	if b.storage != nil {
+		record(ShutdownStorage, b.storage.Close(ctx))
+	}
+	record(ShutdownStorage, b.closeObjects())
+	b.cancel()
+	if len(failures.Failures) != 0 {
+		return failures
+	}
+	return nil
+}

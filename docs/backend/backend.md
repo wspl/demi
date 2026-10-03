@@ -522,7 +522,7 @@ flags.
 | `DEMI_WEB_DIRECTORY` | A built web app directory to serve beside the API. Optional. | [Web API](../product/web-api.md#serving-the-web-app-build) |
 | `DEMI_RUNNER_RELEASE_DIR` | The runner releases the installer routes serve. Optional: without it, those routes answer 503. | [Builds and releases](../delivery/builds-and-releases.md) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
-| `DEMI_LOG` | What the backend writes to its standard error, in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
+| `DEMI_LOG` | What the backend writes to its standard error, in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. A target is a name a log record carries in its `target` attribute; a record without one falls under the default level. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
 
 ## Development backend
 
@@ -542,14 +542,14 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    program again, remove its directory first.
 
    ```sh
-   cargo xtask native build --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-runner --output .cache/releases/runners \
+   go run ./tools/release native build --target x86_64-unknown-linux-musl
+   go run ./tools/release native package --package demi-runner --output .cache/releases/runners \
      --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-file --output .cache/releases/demi-file \
+   go run ./tools/release native package --package demi-file --output .cache/releases/demi-file \
      --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-browser --output .cache/releases/demi-browser \
+   go run ./tools/release native package --package demi-browser --output .cache/releases/demi-browser \
      --target x86_64-unknown-linux-musl
-   cargo xtask native package --package demi-claude-code --output .cache/releases/demi-claude-code \
+   go run ./tools/release native package --package demi-claude-code --output .cache/releases/demi-claude-code \
      --target x86_64-unknown-linux-musl
    ```
 
@@ -617,8 +617,8 @@ differences.
 
 ### One-command development backend
 
-`cargo xtask dev` builds the one Cargo selection and runs, until Ctrl-C or a
-termination, a backend for the page to talk to. For example, a developer runs
+`go run ./tools/release dev` builds the programs it starts and runs, until
+Ctrl-C or a termination, a backend for the page to talk to. For example, a developer runs
 it, then starts the page with the command it prints, signs in with the
 account it prints, picks the model **Echo**, sends `hello`, and the answer
 `Echo: hello` streams in. It starts the backend with the scripted manager
@@ -628,18 +628,18 @@ uses:
 
 - A fresh temporary data directory, removed when the command ends, unless
   `--keep` keeps it.
-- The backend scenarios' scripted machine manager, the backend crate's
-  example program `scripted_machines`. A conversation's Cloud is a runner it
+- The backend scenarios' scripted machine manager, the program
+  `internal/backend/backendtest/testdata/scripted-machines`. A conversation's Cloud is a runner it
   starts on this machine, with a temporary home and the artifact cache the
   command names with `--artifacts`.
-- `target/debug/demi-backend` in isolated mode on port 3271 (`--port`
+- The `demi-backend` it built, in isolated mode on port 3271 (`--port`
   changes it), with the public URL `http://127.0.0.1:<port>`, the manager's
   socket, and a native configuration with the development store that names
   a development release of each command program the build made, `demi-file`,
   `demi-browser` and `demi-claude-code`, under the data directory and for
   this machine's target only. The command passes on none of its own
   `DEMI_*` variables.
-- An Anthropic-compatible Messages endpoint inside `xtask`, on a free port of
+- An Anthropic-compatible Messages endpoint inside the command, on a free port of
   the loopback interface, that answers each request with
   `Echo: <the last user message's text>` as a stream.
 
@@ -657,12 +657,12 @@ DEMI_BACKEND_URL=http://127.0.0.1:3271 DEMI_DEV_EMAIL=developer@example.test \
 ```
 
 The backend, the manager and the runners run in process groups of their
-own, so the terminal's interrupt reaches only `xtask`, which stops them in
+own, so the terminal's interrupt reaches only the command, which stops them in
 order on every exit, the failure of a start included: the backend first,
 since it hibernates the Cloud through the manager as it shuts down, then the
 manager, whose input it closes and which ends its runners with it; then it
 removes the data directory. A process that does not stop in time, 10 seconds
-for the backend and 5 for the manager, is killed. Only a kill of `xtask`
+for the backend and 5 for the manager, is killed. Only a kill of the command
 itself leaves the backend running.
 
 It does not cover what needs the real services: the Cloud isolates nothing

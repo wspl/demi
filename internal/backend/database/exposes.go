@@ -87,6 +87,24 @@ func (c *ControlService) DeleteExpose(ctx context.Context, id webapi.ExposeID) e
 	})
 }
 
+// DeleteExpiredExpose deletes id only if its current expiry is at or before
+// observedAt. A renewal committed after the caller read the row survives.
+// The result reports whether this transaction removed the row.
+func (c *ControlService) DeleteExpiredExpose(ctx context.Context, id webapi.ExposeID, observedAt core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
+		at, err := observedAt.Millisecond()
+		if err != nil {
+			return false, err
+		}
+		result, err := tx.ExecContext(ctx, "DELETE FROM exposes WHERE id = ? AND expires_at <= ?", id, at)
+		if err != nil {
+			return false, err
+		}
+		rows, err := result.RowsAffected()
+		return rows != 0, err
+	})
+}
+
 // DeleteDeviceExposes deletes every expose on `device`; answers their ids.
 func (c *ControlService) DeleteDeviceExposes(ctx context.Context, device webapi.DeviceID) ([]webapi.ExposeID, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]webapi.ExposeID, error) {

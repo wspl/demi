@@ -19,7 +19,7 @@ type verifiedRelease struct {
 }
 
 // verifyReleases checks every native release before any bytes can be published.
-func verifyReleases(ctx context.Context, releases []nativeRelease, allTargets bool) ([]verifiedRelease, error) {
+func verifyReleases(ctx context.Context, releases []NativeRelease, allTargets bool) ([]verifiedRelease, error) {
 	verified := make([]verifiedRelease, 0, len(releases))
 	ids := make(map[string]bool)
 	for _, release := range releases {
@@ -37,7 +37,7 @@ func verifyReleases(ctx context.Context, releases []nativeRelease, allTargets bo
 }
 
 // verifyRelease checks each declared executable and resource archive by size and hash.
-func verifyRelease(ctx context.Context, release nativeRelease, allTargets bool) (verifiedRelease, error) {
+func verifyRelease(ctx context.Context, release NativeRelease, allTargets bool) (verifiedRelease, error) {
 	refused := func(reason string, cause error) (verifiedRelease, error) {
 		return verifiedRelease{}, &PublicationError{Kind: PublicationRelease, Directory: release.Directory, Reason: reason, Err: cause}
 	}

@@ -73,7 +73,7 @@ func PublishNative(ctx context.Context, path string) (*NativeCatalog, error) {
 	}
 	var catalog *NativeCatalog
 	switch store := config.Store.(type) {
-	case *s3NativeStore:
+	case *S3NativeStore:
 		bucket, err := store.Open(ctx)
 		if err != nil {
 			return nil, publicationStoreError(err)
@@ -83,7 +83,7 @@ func PublishNative(ctx context.Context, path string) (*NativeCatalog, error) {
 			return nil, errors.Join(err, bucket.Close())
 		}
 		catalog.closeStore = bucket.Close
-	case *localNativeStore:
+	case *LocalNativeStore:
 		verified, err := verifyReleases(ctx, config.Releases, false)
 		if err != nil {
 			return nil, err

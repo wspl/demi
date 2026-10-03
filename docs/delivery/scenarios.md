@@ -220,7 +220,7 @@ manager. The program prints the manager's socket path as its first line,
 which the suite passes as `DEMI_MACHINE_MANAGER_SOCKET`, and serves until its
 standard input closes or it is terminated; the runners it started end with
 it.
-`cargo xtask dev` starts the backend with the same program, in the same
+`go run ./tools/release dev` starts the backend with the same program, in the same
 order, for a developer
 ([One-command development backend](../backend/backend.md#one-command-development-backend)),
 so the program's contract, its socket on the first line and its end when its

@@ -45,7 +45,7 @@ func DefaultRunnerProcessOptions() RunnerProcessOptions {
 }
 
 // RunnerProcess owns a runner, private home and state, and joined output readers.
-// Its constructor registers test cleanup; Stop also permits a subsequent restart.
+// Its owner calls Stop before removing its directory; Stop permits a restart.
 type RunnerProcess struct {
 	binary, home, state, backend, temporary string
 	options                                 RunnerProcessOptions
@@ -60,16 +60,12 @@ type RunnerProcess struct {
 
 // StartRunnerProcess starts a runner for backend and registers cleanup with t.
 func StartRunnerProcess(ctx context.Context, t testing.TB, backend string, options RunnerProcessOptions) (*RunnerProcess, error) {
-	binary, err := RunnerBinary(ctx)
+	t.Helper()
+	directory, err := runnerTempDir(t)
 	if err != nil {
 		return nil, err
 	}
-	home, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		return nil, err
-	}
-	p := &RunnerProcess{binary: binary, home: home, state: t.TempDir(), backend: backend, options: options, changed: make(chan struct{})}
-	p.temporary, err = runnerTempDir(t)
+	p, err := StartOwnedRunnerProcess(ctx, directory, backend, options)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +74,33 @@ func StartRunnerProcess(ctx context.Context, t testing.TB, backend string, optio
 			t.Error(err)
 		}
 	})
+	return p, nil
+}
+
+// StartOwnedRunnerProcess starts a runner in a caller-owned directory, creating
+// home, state and temporary subdirectories. The caller must Stop it, joining the
+// process and output readers, before removing that directory. Stop leaves the
+// directories available for restart. Use a short directory path on Unix to leave
+// room for the runner's local command socket. A failed start leaves no process.
+func StartOwnedRunnerProcess(ctx context.Context, directory, backend string, options RunnerProcessOptions) (*RunnerProcess, error) {
+	directory, err := filepath.Abs(directory)
+	if err != nil {
+		return nil, err
+	}
+	binary, err := RunnerBinary(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range []string{"home", "state", "tmp"} {
+		if err := os.MkdirAll(filepath.Join(directory, name), 0700); err != nil {
+			return nil, err
+		}
+	}
+	home, err := filepath.EvalSymlinks(filepath.Join(directory, "home"))
+	if err != nil {
+		return nil, err
+	}
+	p := &RunnerProcess{binary: binary, home: home, state: filepath.Join(directory, "state"), temporary: filepath.Join(directory, "tmp"), backend: backend, options: options, changed: make(chan struct{})}
 	if options.Token != nil {
 		if err := p.writeToken(*options.Token); err != nil {
 			return nil, err
@@ -161,6 +184,39 @@ func (p *RunnerProcess) PairingCode(ctx context.Context, index int) (string, err
 		case <-waitCtx.Done():
 			return "", fmt.Errorf("the runner printed no pairing code %d:\n%s: %w", index, p.Output(), waitCtx.Err())
 		}
+	}
+}
+
+// UntilOutput waits until the runner's captured output contains text, such as
+// a diagnostic it prints when the backend refuses it.
+func (p *RunnerProcess) UntilOutput(ctx context.Context, text string) error {
+	for {
+		p.mu.Lock()
+		found := strings.Contains(p.output.String(), text)
+		changed := p.changed
+		p.mu.Unlock()
+		if found {
+			return nil
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return fmt.Errorf("the runner never printed %q:\n%s: %w", text, p.Output(), ctx.Err())
+		}
+	}
+}
+
+// Exited waits for the child to end on its own, without signalling it, and
+// answers how it ended. The owner still calls Stop to release the fixture.
+func (p *RunnerProcess) Exited(ctx context.Context) error {
+	if p.command == nil {
+		return errors.New("the runner is not running")
+	}
+	select {
+	case <-p.done:
+		return p.waitErr
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

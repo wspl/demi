@@ -1,6 +1,19 @@
 // Command scripted-machines runs the backend scenarios' machine manager.
 package main
 
-// The implementation checkpoint installs signals and invokes
-// backendtest.ScriptedMachines with the process arguments and streams.
-func main() { panic("not written: b-backend") }
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/wspl/demi/internal/backend/backendtest"
+)
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	status := backendtest.ScriptedMachines(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	stop()
+	os.Exit(status)
+}
