@@ -16,13 +16,12 @@ import (
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
-// What an HTTP failure keeps as its `upstream`: the status, every response
-// header as a `[name, value]` pair with the name in lowercase, sorted by
-// name with a repeated header kept as separate pairs in arrival order, and
-// the body text as received. Nothing in it is parsed, filtered or redacted.
+// HTTPFailureRecord is what an HTTP failure keeps as its upstream: the
+// status, every response header as a [name, value] pair with the name in
+// lowercase, sorted by name with a repeated header kept as separate pairs
+// in arrival order, and the body text as received. Nothing in it is parsed,
+// filtered or redacted.
 // +demi:root
-//
-//nolint:revive // Contract documentation is product text copied verbatim from Rust.
 type HTTPFailureRecord struct {
 	Status  uint16       `json:"status"`
 	Headers []HeaderPair `json:"headers"`
@@ -45,27 +44,26 @@ func NewHTTPFailureRecord(status uint16, headers http.Header, body string) HTTPF
 	return HTTPFailureRecord{Status: status, Headers: pairs, Body: body}
 }
 
-// Header returns the first value of a header, or nil when absent.
-func (r HTTPFailureRecord) Header(name string) *string {
+// Header returns the first value of a header; ok is false when it is absent.
+func (r HTTPFailureRecord) Header(name string) (string, bool) {
 	for _, pair := range r.Headers {
 		if len(pair) == 2 && strings.EqualFold(pair[0], name) {
-			value := pair[1]
-			return &value
+			return pair[1], true
 		}
 	}
-	return nil
+	return "", false
 }
 
 // ReadHTTPRecord reads only HTTP diagnostics containing a valid failure record.
-func ReadHTTPRecord(d *core.ProviderErrorDiagnostics) *HTTPFailureRecord {
+func ReadHTTPRecord(d *core.ProviderErrorDiagnostics) (HTTPFailureRecord, bool) {
 	if d.Source != "http" || d.Upstream == nil {
-		return nil
+		return HTTPFailureRecord{}, false
 	}
 	record, err := DecodeHTTPFailureRecord([]byte(*d.Upstream))
 	if err != nil {
-		return nil
+		return HTTPFailureRecord{}, false
 	}
-	return &record
+	return record, true
 }
 
 // HTTPFailure reads and closes a refused response; an unreadable body counts as empty.
@@ -118,15 +116,15 @@ func Refused(
 
 // ReadHTTPFailure is the standard Retry-After reading of a failure record.
 func ReadHTTPFailure(d *core.ProviderErrorDiagnostics, receivedAt core.Timestamp) core.ProviderFailureFacts {
-	record := ReadHTTPRecord(d)
-	if record == nil {
+	record, ok := ReadHTTPRecord(d)
+	if !ok {
 		return core.ProviderFailureFacts{}
 	}
-	header := record.Header("retry-after")
-	if header == nil {
+	header, ok := record.Header("retry-after")
+	if !ok {
 		return core.ProviderFailureFacts{}
 	}
-	return core.ProviderFailureFacts{RetryAt: RetryAt(*header, receivedAt)}
+	return core.ProviderFailureFacts{RetryAt: RetryAt(header, receivedAt)}
 }
 
 // RetryAt reads decimal seconds after receipt or an RFC 9110 HTTP date.
@@ -165,8 +163,8 @@ func RetryAt(value string, receivedAt core.Timestamp) *core.Timestamp {
 	return &at
 }
 
-// vendorResponseText preserves a refused response as Rust's from_utf8_lossy
-// does: each malformed sequence is one replacement character.
+// vendorResponseText keeps a refused response's text, replacing each
+// malformed UTF-8 sequence with one U+FFFD.
 func vendorResponseText(data []byte) string {
 	if utf8.Valid(data) {
 		return string(data)

@@ -2,13 +2,13 @@ package codex
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
@@ -17,7 +17,8 @@ import (
 
 var userAgent = codexUserAgent()
 
-// codexUserAgent retains the reference provider's release and platform spelling.
+// codexUserAgent is demi-codex-provider/<release> (<os>; <arch>), with Go's darwin, amd64 and arm64 spelled macos,
+// x86_64 and aarch64.
 func codexUserAgent() string {
 	osName := runtime.GOOS
 	if osName == "darwin" {
@@ -58,6 +59,18 @@ func New(
 	client *http.Client,
 	clock core.Clock,
 ) (*Provider, error) {
+	if config.BackendURL == "" {
+		config.BackendURL = "https://chatgpt.com/backend-api"
+	}
+	if config.AuthURL == "" {
+		config.AuthURL = "https://auth.openai.com"
+	}
+	if config.HeaderTimeout == 0 {
+		config.HeaderTimeout = 20 * time.Second
+	}
+	if config.ConnectTimeout == 0 {
+		config.ConnectTimeout = 10 * time.Second
+	}
 	backend, err := url.Parse(config.BackendURL)
 	if err != nil {
 		return nil, fmt.Errorf("codex backend URL: %w", err)
@@ -69,10 +82,6 @@ func New(
 	if config.Account != nil {
 		account := *config.Account
 		config.Account = &account
-	}
-	if config.StreamIdleTimeout != nil {
-		idle := *config.StreamIdleTimeout
-		config.StreamIdleTimeout = &idle
 	}
 	models := codexURL(backend, "/models")
 	query := models.Query()
@@ -111,7 +120,7 @@ func (*Provider) Capabilities() provider.Capabilities { return provider.Capabili
 func (p *Provider) AuthStatus(ctx context.Context) core.AuthState {
 	s, err := p.stored(ctx)
 	if err != nil {
-		return authFailure(err).State()
+		return provider.AccountAuthFailure("Codex", err).State()
 	}
 	label := s.label().Label
 	return &core.Authenticated{AccountLabel: &label}
@@ -153,22 +162,6 @@ func (*session) Close(context.Context) error { return nil }
 // RequestLimits returns the request limits for the model.
 func (*session) RequestLimits(core.Model) provider.RequestLimits {
 	return provider.OpenAIRequestLimits()
-}
-
-func authFailure(err error) provider.AuthFailure {
-	var failure provider.AuthFailure
-	if errors.As(err, &failure) {
-		return failure
-	}
-	return provider.AccountAuthFailure("Codex", err)
-}
-
-func withoutURL(err error) error {
-	var e *url.Error
-	if errors.As(err, &e) {
-		return e.Err
-	}
-	return err
 }
 
 var _ provider.Provider = (*Provider)(nil)

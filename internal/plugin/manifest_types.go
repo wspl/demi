@@ -8,7 +8,7 @@ import (
 )
 
 //revive:disable:exported
-// Contract descriptions are verbatim Rust product text.
+// Contract doc comments describe the wire value; they do not start with the type's name.
 
 // A plugin's declarations.
 // +demi:root
@@ -160,6 +160,6 @@ const (
 	PlacementRoot Placement = "root"
 )
 
-// manifests is the manifest-list contract used by the Rust fidelity corpus.
+// manifests is every built-in plugin's manifest, the shape of testdata/manifests.json.
 // +demi:root
 type manifests []Manifest

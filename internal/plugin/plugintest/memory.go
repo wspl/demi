@@ -96,16 +96,16 @@ func (d *TestDemi) Until(ctx context.Context, check func(*TestDemi) bool) error 
 	}
 }
 
-// Value returns an independent copy of a stored value, or nil.
-func (d *TestDemi) Value(key string) *plugin.StoredValue {
+// Value returns an independent copy of the value stored under key; ok is false when there is none.
+func (d *TestDemi) Value(key string) (plugin.StoredValue, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	v, ok := d.values[key]
 	if !ok {
-		return nil
+		return plugin.StoredValue{}, false
 	}
 	v.Value = bytes.Clone(v.Value)
-	return &v
+	return v, true
 }
 
 // ValueBlobs returns the blobs retained by a value.
@@ -115,16 +115,15 @@ func (d *TestDemi) ValueBlobs(key string) []core.BlobRef {
 	return slices.Clone(d.valueBlobs[key])
 }
 
-// BlobBytes returns a copy of the blob, or nil if it is unknown.
-func (d *TestDemi) BlobBytes(blob core.BlobRef) *core.B64Bytes {
+// BlobBytes returns a copy of the blob's bytes; ok is false when the blob is unknown.
+func (d *TestDemi) BlobBytes(blob core.BlobRef) (core.B64Bytes, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	value, ok := d.blobs[blob]
 	if !ok {
-		return nil
+		return nil, false
 	}
-	value = slices.Clone(value)
-	return &value
+	return slices.Clone(value), true
 }
 
 // Directories returns the plugin's current directory set.

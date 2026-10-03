@@ -270,7 +270,7 @@ func TestADirectoryCatalogIsCachedRefreshedOnDemandAndKeptAfterAFailedRefresh(t 
 	conversationEqual(t, len(ids(accountModels(ctx, t, server, &master, "?refresh=true"))), 3)
 	directory.Answer(
 		core.ProviderModelList{},
-		&provider.CatalogError{Kind: provider.CatalogUnavailable, Message: "the directory is down"},
+		errors.New("the directory is down"),
 	)
 	failed := accountModels(ctx, t, server, &master, "?refresh=true")
 	conversationEqual(t, len(ids(failed)), 3)

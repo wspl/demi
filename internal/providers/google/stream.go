@@ -81,7 +81,8 @@ type functionCall struct {
 	ID   *string           `json:"id"`
 }
 
-// callArguments uses the shared serde-compatible value reading for Gemini's tool input.
+// callArguments holds Gemini's tool input as JSON: an object is kept as the vendor sent it, and a string argument is
+// re-encoded as a JSON string.
 type callArguments json.RawMessage
 
 // UnmarshalJSON reads the vendor value used by this provider.

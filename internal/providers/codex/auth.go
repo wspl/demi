@@ -72,24 +72,24 @@ func tokenClaims(token provider.Secret) claims {
 	return *c
 }
 
-func (c claims) email() *string {
+func (c claims) email() (string, bool) {
 	if c.Email.Value != nil {
-		return c.Email.Value
+		return *c.Email.Value, true
 	}
-	if c.Profile.Value != nil {
-		return c.Profile.Value.Email.Value
+	if c.Profile.Value != nil && c.Profile.Value.Email.Value != nil {
+		return *c.Profile.Value.Email.Value, true
 	}
-	return nil
+	return "", false
 }
 
 func (s secret) label() provider.AccountLabel {
 	label := string(s.AccountID)
-	email := tokenClaims(s.IDToken).email()
-	if email == nil {
-		email = tokenClaims(s.AccessToken).email()
+	email, ok := tokenClaims(s.IDToken).email()
+	if !ok {
+		email, ok = tokenClaims(s.AccessToken).email()
 	}
-	if email != nil {
-		label = *email
+	if ok {
+		label = email
 	}
 	detail, identity := "chatgpt", string(s.AccountID)
 	return provider.AccountLabel{Label: label, Detail: &detail, IdentityKey: &identity}
@@ -153,7 +153,7 @@ type refreshedTokens struct {
 	ID      *provider.Secret `json:"id_token"`
 }
 
-//nolint:staticcheck // User-facing error text is copied verbatim from Rust.
+//nolint:staticcheck // ST1005: user-facing error text starts with the product name Codex.
 func (p *Provider) refresh(ctx context.Context, client *http.Client, s secret) (secret, error) {
 	response, err := postJSON(
 		ctx,
@@ -166,7 +166,7 @@ func (p *Provider) refresh(ctx context.Context, client *http.Client, s secret) (
 		},
 	)
 	if err != nil {
-		return secret{}, fmt.Errorf("Codex token refresh failed: %w", withoutURL(err))
+		return secret{}, fmt.Errorf("Codex token refresh failed: %w", provider.WithoutURL(err))
 	}
 	defer func() { _ = response.Body.Close() }() // The reader reports IO failures; close releases the response.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {

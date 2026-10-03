@@ -28,23 +28,12 @@ type ID string
 
 //revive:enable:exported
 
-// IDError explains an invalid plugin identifier.
-type IDError struct {
-	// Text is the invalid identifier spelling.
-	Text string
-}
-
-// Error describes the invalid plugin identifier.
-func (e *IDError) Error() string {
-	return fmt.Sprintf(
-		"\"%s\" is not a plugin id: 1 to 32 lowercase letters, digits and hyphens, not \"execution\"",
-		e.Text,
-	)
-}
-
 func validateID(id ID) error {
 	if !validName(string(id), 32) || id == ExecutionSource {
-		return &IDError{Text: string(id)}
+		return fmt.Errorf(
+			"\"%s\" is not a plugin id: 1 to 32 lowercase letters, digits and hyphens, not \"execution\"",
+			id,
+		)
 	}
 	return nil
 }

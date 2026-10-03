@@ -18,7 +18,13 @@ type quotaSource struct {
 	observations [][]core.QuotaWindow
 }
 
-func (s *quotaSource) ProbeCost() *provider.ProbeCost { return s.cost }
+func (s *quotaSource) ProbeCost() (provider.ProbeCost, bool) {
+	if s.cost == nil {
+		return 0, false
+	}
+	return *s.cost, true
+}
+
 func (s *quotaSource) Probe(context.Context) (provider.ProbeReading, error) {
 	next := s.probes[0]
 	s.probes = s.probes[1:]
@@ -108,16 +114,15 @@ func TestQuotaNeverSpendsInference(t *testing.T) {
 	inference := provider.ProbeInference
 	for _, tc := range []struct {
 		cost *provider.ProbeCost
-		kind provider.QuotaErrorKind
-	}{{nil, provider.QuotaUnsupported}, {&inference, provider.QuotaRequiresInference}} {
+		want error
+	}{{nil, provider.ErrQuotaUnsupported}, {&inference, provider.ErrQuotaRequiresInference}} {
 		quota := provider.NewQuota(
 			&quotaSource{cost: tc.cost},
 			&provider.MemorySnapshots{},
 			providertest.FixedClock(now),
 		)
 		_, err := quota.Probe(t.Context())
-		var failure *provider.QuotaError
-		if !errors.As(err, &failure) || failure.Kind != tc.kind {
+		if !errors.Is(err, tc.want) {
 			t.Fatalf("%v", err)
 		}
 		if quota.Latest() != nil {

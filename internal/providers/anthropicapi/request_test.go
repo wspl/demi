@@ -409,9 +409,8 @@ func TestInlineMediaAndPlaceholders(t *testing.T) {
 }
 
 // TestRequestWireOrder pins the bytes used by the vendor's prompt cache. Each
-// case costs one local scripted request; the expected field order follows
-// Body, Message, Content, Block, ResultBlock, Base64, Tool and Thinking in
-// crates/provider-anthropic-api/src/request.rs.
+// case costs one local scripted request; the expected field order is the
+// declaration order of the request types in request_types.go.
 func TestRequestWireOrder(t *testing.T) {
 	const messages = `"model":"model-1","messages":[{"role":"user",` +
 		`"content":[{"type":"text","text":"hello <>&\u2028\u2029"},` +
@@ -438,7 +437,7 @@ func TestRequestWireOrder(t *testing.T) {
 		`"properties":{"y":{"type":"number"},"b":{"type":"number"}}}}}`
 	const system = `"system":[{"type":"text","text":"system",` +
 		`"cache_control":{"type":"ephemeral","ttl":"1h"}}],`
-	// Rust emits these Unicode separators literally, not as JSON escapes.
+	// The request writes these Unicode separators literally, not as JSON escapes.
 	prefix := strings.ReplaceAll(strings.ReplaceAll(messages, `\u2028`, "\u2028"), `\u2029`, "\u2029")
 	for _, c := range []struct {
 		name, system string

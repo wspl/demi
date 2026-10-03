@@ -8,7 +8,7 @@ import (
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
 //revive:disable:exported
-// Contract descriptions are verbatim Rust product text.
+// Contract doc comments are product text: contractgen emits them as schema descriptions.
 
 // The input of `demi expose add`.
 // +demi:root

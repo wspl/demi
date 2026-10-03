@@ -106,7 +106,7 @@ func bodyOf(
 	return value
 }
 
-// assertJSON compares a vendor-visible value with the Rust scenario's JSON.
+// assertJSON compares a vendor-visible value with the expected JSON.
 func assertJSON(t *testing.T, got any, want string) {
 	t.Helper()
 	var expected any
@@ -264,8 +264,8 @@ func TestHTTPFailureRecordAndWait(t *testing.T) {
 			*failure.Diagnostics.HTTPStatus != 429 {
 			t.Fatalf("diagnostic status: %+v", failure.Diagnostics)
 		}
-		record := provider.ReadHTTPRecord(failure.Diagnostics)
-		if record == nil || record.Status != 429 || record.Body != body {
+		record, ok := provider.ReadHTTPRecord(failure.Diagnostics)
+		if !ok || record.Status != 429 || record.Body != body {
 			t.Fatalf("record: %+v", record)
 		}
 		facts := providerAt(t, vendor, "/v1", wire, provider.VendorPolicy{}).ReadFailure(failure.Diagnostics, now)

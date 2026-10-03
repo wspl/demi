@@ -221,7 +221,7 @@ func TestReplayRoleAndSignatureBoundaries(t *testing.T) {
 	)
 }
 
-// TestGeminiSchemaWireOrder pins Rust's insertion order after schema reduction,
+// TestGeminiSchemaWireOrder pins the key order after schema reduction (read order),
 // including objects in keywords whose values are retained without reduction.
 func TestGeminiSchemaWireOrder(t *testing.T) {
 	request := providertest.InferenceRequest()
@@ -257,8 +257,8 @@ func TestGeminiSchemaWireOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Rust iterates serde_json::Map in read order and inserts each retained key
-	// in that same order, recursively for properties, items and anyOf.
+	// Each retained key keeps its read order, recursively for properties, items
+	// and anyOf.
 	want := `{"type":"object","required":["zeta"],` +
 		`"properties":{"zeta":{"description":"first","type":"array",` +
 		`"items":{"title":"item","type":"object",` +

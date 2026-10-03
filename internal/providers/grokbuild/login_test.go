@@ -50,8 +50,8 @@ func confirmed(t *testing.T, access string, id *string) providertest.MockRespons
 
 func loginStored(t *testing.T, pool *provider.MemoryCredentialPool, id string) secret {
 	t.Helper()
-	entry, err := pool.Document(id).Read(context.Background())
-	if err != nil || entry == nil {
+	entry, ok, err := pool.Document(id).Read(context.Background())
+	if err != nil || !ok {
 		t.Fatalf("missing account: %v", err)
 	}
 	s, err := decodeSecret([]byte(entry.Text))
@@ -86,12 +86,12 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		equal(t, "GROK-1234", *shown[0].UserCode)
 		equal(t, core.Timestamp("2026-09-18T14:10:00.000Z"), *shown[0].ExpiresAt)
 		equal(t, "g@example.com", account.Label)
-		active, err := pool.Active(context.Background())
+		active, _, err := pool.Active(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
-		equal(t, account.ID, *active)
-		entry, err := pool.Document(account.ID).Read(t.Context())
+		equal(t, account.ID, active)
+		entry, _, err := pool.Document(account.ID).Read(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -147,10 +147,9 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		equal(t, "interactive", requests[3].Header("x-grok-client-mode"))
 	})
 	requests := v.Requests()
-	// Rust wrote the fields in insertion order; Go's url.Values.Encode sorts
-	// them. Field order means nothing to an OAuth server (RFC 6749 § 4.1.3,
-	// RFC 8628 § 3.4), so the tech lead accepted the order as a normalization:
-	// the bodies must hold exactly Rust's fields, each once, with its values.
+	// url.Values.Encode writes form fields in key order. Field order means
+	// nothing to an OAuth server (RFC 6749 § 4.1.3, RFC 8628 § 3.4), so each
+	// body must hold exactly these fields, each once, with these values.
 	t.Run("form fields", func(t *testing.T) {
 		const id = "b1a00492-073a-47ea-816f-4c329264a828"
 		const scopes = `openid profile email offline_access grok-cli:access api:access ` +
@@ -194,7 +193,7 @@ func TestTeamLoginIdentity(t *testing.T) {
 			t.Fatal(err)
 		}
 		equal(t, "team-123", account.Label)
-		entry, err := pool.Document(account.ID).Read(t.Context())
+		entry, _, err := pool.Document(account.ID).Read(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -242,11 +241,7 @@ func TestLoginTenMinuteDeadline(t *testing.T) {
 		if err == nil {
 			t.Fatal("unconfirmed login succeeded")
 		}
-		var failure *provider.LoginError
-		if !errors.As(err, &failure) || failure.Unavailable {
-			t.Fatalf("expected failed login: %v", err)
-		}
-		equal(t, "Grok device login timed out before the user confirmed", failure.Error())
+		equal(t, "Grok device login timed out before the user confirmed", err.Error())
 		equal(t, 600*time.Second, time.Since(started))
 		equal(t, 1, len(shown))
 		equal(t, core.Timestamp("2026-09-18T14:10:00.000Z"), *shown[0].ExpiresAt)
@@ -282,11 +277,7 @@ func TestRefusedAndUnsafeLogin(t *testing.T) {
 			if err == nil {
 				t.Fatal("login succeeded")
 			}
-			var failure *provider.LoginError
-			if !errors.As(err, &failure) || failure.Unavailable {
-				t.Fatalf("expected failed login: %v", err)
-			}
-			equal(t, want, failure.Error())
+			equal(t, want, err.Error())
 		}
 		equal(t, 0, len(pool.Entries()))
 	})
@@ -351,11 +342,7 @@ func TestLoginLongPollIntervalDeadline(t *testing.T) {
 		if err == nil {
 			t.Fatal("unconfirmed login succeeded")
 		}
-		var failure *provider.LoginError
-		if !errors.As(err, &failure) || failure.Unavailable {
-			t.Fatalf("expected failed login: %v", err)
-		}
-		equal(t, "Grok device login timed out before the user confirmed", failure.Error())
+		equal(t, "Grok device login timed out before the user confirmed", err.Error())
 		equal(t, 600*time.Second, time.Since(started))
 		equal(t, 1, len(v.Requests()))
 		equal(t, "/oauth2/device/code", v.Requests()[0].URI)

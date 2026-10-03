@@ -10,9 +10,10 @@ import (
 	"github.com/goccy/go-yaml/token"
 )
 
-// skillScalar preserves serde_saphyr's schema-directed scalar spelling.
+// skillScalar returns a scalar node as written, with its tag, for the skill's own decoders:
 // go-yaml's ordinary string decoder normalizes numbers (001 becomes 1), and
-// its bool decoder omits serde_saphyr's YAML 1.1 and quoted boolean forms.
+// its bool decoder refuses the YAML 1.1 forms (yes, no, y, n, on, off) and quoted booleans, which decodeSkillBool
+// accepts.
 // Its custom-decoder API supplies alias-resolved YAML; its parser and AST
 // remain responsible for all YAML syntax, tags, escaping and block scalars.
 func skillScalar(data []byte) (ast.Node, string, error) {

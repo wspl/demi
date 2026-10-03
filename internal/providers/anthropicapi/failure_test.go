@@ -40,9 +40,9 @@ func TestRefusedRequestRecordAndWait(t *testing.T) {
 	if d.Source != "http" || *d.HTTPStatus != 429 {
 		t.Fatal(d)
 	}
-	record := provider.ReadHTTPRecord(d)
-	if record == nil || record.Body != body || record.Header("request-id") == nil ||
-		*record.Header("request-id") != "req_1" {
+	record, ok := provider.ReadHTTPRecord(d)
+	requestID, found := record.Header("request-id")
+	if !ok || record.Body != body || !found || requestID != "req_1" {
 		t.Fatal(record)
 	}
 }

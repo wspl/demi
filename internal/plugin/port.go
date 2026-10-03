@@ -110,16 +110,20 @@ func (p Port) PutBlob(ctx context.Context, bytes core.B64Bytes) (core.BlobRef, e
 	return "", unexpected("put_blob", answer)
 }
 
-// Blob performs the get_blob port operation.
-func (p Port) Blob(ctx context.Context, blob core.BlobRef) (*core.B64Bytes, error) {
+// Blob performs the get_blob port operation; ok is false when the user's namespace lacks the blob.
+func (p Port) Blob(ctx context.Context, blob core.BlobRef) (core.B64Bytes, bool, error) {
 	answer, err := p.ask(ctx, &PortMessageGetBlob{Blob: blob})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	if a, ok := answer.(*PortAnswerBytes); ok {
-		return a.Bytes, nil
+	a, ok := answer.(*PortAnswerBytes)
+	if !ok {
+		return nil, false, unexpected("get_blob", answer)
 	}
-	return nil, unexpected("get_blob", answer)
+	if a.Bytes == nil {
+		return nil, false, nil
+	}
+	return *a.Bytes, true, nil
 }
 
 // SetDirectories performs the set_directories port operation.

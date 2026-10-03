@@ -80,7 +80,7 @@ func configured(
 ) *codex.Provider {
 	t.Helper()
 	id := account
-	config := codex.NewConfig(&id)
+	config := codex.Config{Account: &id}
 	config.BackendURL = v.URL("/backend-api")
 	config.AuthURL = v.URL("")
 	config.Transport = codex.SSE

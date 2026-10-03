@@ -312,14 +312,10 @@ func (e *Edge) quota(w http.ResponseWriter, r *http.Request) error {
 	}
 	snapshot, err := quota.Probe(r.Context())
 	if err != nil {
-		var failed *provider.QuotaError
-		if !errors.As(err, &failed) {
-			return apiFailure(502, "quota_unavailable", err.Error())
-		}
-		switch failed.Kind {
-		case provider.QuotaUnsupported:
+		switch {
+		case errors.Is(err, provider.ErrQuotaUnsupported):
 			snapshot = quota.Latest()
-		case provider.QuotaRequiresInference:
+		case errors.Is(err, provider.ErrQuotaRequiresInference):
 			return apiFailure(
 				409,
 				"quota_requires_inference",

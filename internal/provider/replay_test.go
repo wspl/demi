@@ -334,7 +334,8 @@ func TestEndpointAndBodyBuild(t *testing.T) {
 		provider.ReadHTTPFailure,
 		providertest.FixedClock(now),
 	)
-	requireEqual(t, provider.ReadHTTPRecord(refused.Diagnostics).Body, "")
+	record, _ := provider.ReadHTTPRecord(refused.Diagnostics)
+	requireEqual(t, record.Body, "")
 }
 
 func TestToolArgumentsReadVendorJSONWithoutLosingObjectOrder(t *testing.T) {

@@ -40,30 +40,31 @@ func DecodeUntagged[T any](text string) (T, error) {
 	return value, err
 }
 
-// DecodeTagged reads the type first; an unregistered type returns nil.
+// DecodeTagged reads the type first; ok is false for an unregistered type.
 // Payload decoders are shared with nested tagged values.
-func DecodeTagged[T any](text string, payloads map[string]func(string) (T, error)) (*T, error) {
-	// Rust's tagged decoder reads one value and leaves trailing input alone.
+func DecodeTagged[T any](text string, payloads map[string]func(string) (T, error)) (T, bool, error) {
+	// Only the first JSON value is read; any input after it is ignored.
+	var zero T
 	var first json.RawMessage
 	if err := json.NewDecoder(strings.NewReader(text)).Decode(&first); err != nil {
-		return nil, &WireError{Field: ".", Err: err}
+		return zero, false, &WireError{Field: ".", Err: err}
 	}
 	text = string(first)
 	tag, err := DecodeUntagged[struct {
 		Type string `json:"type"`
 	}](text)
 	if err != nil {
-		return nil, err
+		return zero, false, err
 	}
 	decode, ok := payloads[tag.Type]
 	if !ok {
-		return nil, nil
+		return zero, false, nil
 	}
 	value, err := decode(text)
 	if err != nil {
-		return nil, err
+		return zero, false, err
 	}
-	return &value, nil
+	return value, true, nil
 }
 
 // Reported reads a field used only to label or report: other shapes mean absent.
@@ -190,8 +191,8 @@ func toolInput(text string) json.RawMessage {
 	return encoded
 }
 
-// canonicalVendorJSON keeps JSON object order for replay while applying serde's
-// last-value rule for repeated keys and refusing malformed strings and nesting.
+// canonicalVendorJSON keeps JSON object order for replay; a repeated key keeps
+// its first position and its last value; malformed strings and nesting are refused.
 func canonicalVendorJSON(data []byte, depth int) (json.RawMessage, error) {
 	data = bytes.TrimSpace(data)
 	if len(data) == 0 {
@@ -229,8 +230,8 @@ func canonicalVendorJSON(data []byte, depth int) (json.RawMessage, error) {
 		if !json.Valid(data) {
 			return nil, errors.New("invalid JSON value")
 		}
-		// JSON booleans and null are already canonical. serde stores integers
-		// in 64 bits and other JSON numbers as finite f64 values.
+		// JSON booleans and null are already canonical. A number is an integer when
+		// it fits in 64 bits and otherwise a finite float64.
 		if data[0] == 't' || data[0] == 'f' || data[0] == 'n' {
 			return data, nil
 		}
@@ -332,8 +333,8 @@ func canonicalVendorNumber(data []byte) (json.RawMessage, error) {
 	if err != nil || math.IsInf(value, 0) {
 		return nil, errors.New("number out of range")
 	}
-	// serde's f64 formatter uses fixed notation for decimal exponents
-	// -5 through 15, and retains .0 on whole floating-point numbers.
+	// A float is written in fixed notation for decimal exponents -5 through 15,
+	// with ".0" on a whole number, and in exponent notation otherwise.
 	mantissa, exp, _ := strings.Cut(strconv.FormatFloat(value, 'e', -1, 64), "e")
 	exponent, err := strconv.Atoi(exp)
 	if err != nil {

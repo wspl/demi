@@ -54,15 +54,15 @@ func TestStorageThroughLoopback(t *testing.T) {
 		if !slices.Equal(blobs, []core.BlobRef{blob}) {
 			t.Fatalf("retained = %v", blobs)
 		}
-		content, err := p.Blob(ctx, blob)
+		content, found, err := p.Blob(ctx, blob)
 		if err != nil {
 			return nil, err
 		}
-		if content == nil || string(*content) != "payload" {
+		if !found || string(content) != "payload" {
 			t.Fatalf("blob = %v", content)
 		}
-		(*content)[0] = 'X'
-		if string(*d.BlobBytes(blob)) != "payload" {
+		content[0] = 'X'
+		if stored, _ := d.BlobBytes(blob); string(stored) != "payload" {
 			t.Fatal("read mutated stored blob")
 		}
 		revision, err = p.WriteValue(ctx, "key", json.RawMessage(`null`), &revision)

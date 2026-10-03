@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -144,8 +145,8 @@ func (l *live) control(ctx context.Context, line controlLine) (*provider.ToolCal
 	if len(message.Result) > 0 && (len(message.ID) == 0 || string(message.ID) == "null") {
 		return refuse("The SDK MCP message cannot be read: response id is missing")
 	}
-	if failure := normalizeMCPID(&message); failure != "" {
-		return refuse(failure)
+	if err := normalizeMCPID(&message); err != nil {
+		return refuse(err.Error())
 	}
 	pending := mcpRequest{control: line.ID, id: message.ID}
 	if len(message.ID) == 0 || message.Method == nil {
@@ -197,8 +198,9 @@ func (l *live) dispatchMCP(ctx context.Context, message mcpMessage, pending mcpR
 	case "discover":
 		result = &discoverResult{"complete", mcpVersions, mcpCapabilities{}, 0, "private", serverMetadata{mcpIdentity}}
 	case "tools/list":
-		result = l.listMCPTools(message.Params)
-		if result == nil {
+		var ok bool
+		result, ok = l.listMCPTools(message.Params)
+		if !ok {
 			return unknown()
 		}
 	case "tools/call":
@@ -239,7 +241,7 @@ func (l *live) callMCP(
 	if len(args) == 0 || contract.IsNull(args) {
 		args = json.RawMessage(`{}`)
 	}
-	canonical, e := serdeValue(args).MarshalJSON()
+	canonical, e := canonicalJSON(args).MarshalJSON()
 	if e != nil {
 		return unknown()
 	}
@@ -310,42 +312,45 @@ func (l *live) acknowledgeMCP(ctx context.Context, message mcpMessage, pending m
 	return nil, l.reply(ctx, mcpReply{request: pending, result: &emptyResult{}})
 }
 
-// normalizeMCPID canonicalizes reply routing IDs or returns the control protocol refusal text.
-func normalizeMCPID(message *mcpMessage) string {
+// normalizeMCPID canonicalizes the id that routes a reply, so equivalent escaped spellings share one reply queue; it
+// refuses an id that is neither a string nor a 64-bit integer.
+//
+//nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
+func normalizeMCPID(message *mcpMessage) error {
 	if len(message.ID) > 0 && string(message.ID) != "null" {
 		id, err := provider.DecodeUntagged[any](string(message.ID))
 		if err != nil {
-			return "The SDK MCP message cannot be read: " + err.Error()
+			return fmt.Errorf("The SDK MCP message cannot be read: %w", err)
 		}
 		switch id := id.(type) {
 		case string:
 		case json.Number:
 			if _, err := strconv.ParseInt(string(id), 10, 64); err != nil {
-				return "The SDK MCP message cannot be read: Expected an integer"
+				return errors.New("The SDK MCP message cannot be read: Expected an integer")
 			}
 		default:
-			return "The SDK MCP message cannot be read: invalid request id"
+			return errors.New("The SDK MCP message cannot be read: invalid request id")
 		}
 		// Validated strings and integers always encode. Equivalent escaped
 		// spellings of an id must route through the same reply queue.
 		message.ID, _ = provider.JSONBody(id)
 	}
-	return ""
+	return nil
 }
 
-func (l *live) listMCPTools(raw json.RawMessage) setModerner {
+func (l *live) listMCPTools(raw json.RawMessage) (setModerner, bool) {
 	if len(raw) > 0 && string(raw) != "null" {
 		if _, err := provider.DecodeUntagged[struct {
 			Cursor *string `json:"cursor"`
 		}](string(raw)); err != nil {
-			return nil
+			return nil, false
 		}
 	}
 	tools := make([]mcpTool, 0, len(l.mcp.tools))
 	for _, tool := range l.mcp.tools {
-		tools = append(tools, mcpTool{tool.Name, tool.Description, serdeValue(tool.InputSchema)})
+		tools = append(tools, mcpTool{tool.Name, tool.Description, canonicalJSON(tool.InputSchema)})
 	}
-	return &toolsResult{Tools: tools}
+	return &toolsResult{Tools: tools}, true
 }
 
 func (m *mcpServer) initialize(params initializeParams) setModerner {

@@ -148,16 +148,16 @@ type Received struct {
 	Text  string
 }
 
-// DecodeResponsesFrame skips DONE and unknown tags, but refuses malformed known payloads.
-func DecodeResponsesFrame(data string) (*Received, error) {
+// DecodeResponsesFrame skips DONE and unknown tags (ok is false), but refuses malformed known payloads.
+func DecodeResponsesFrame(data string) (Received, bool, error) {
 	if strings.TrimSpace(data) == "[DONE]" {
-		return nil, nil
+		return Received{}, false, nil
 	}
-	event, err := DecodeTagged(data, responsePayloads)
-	if err != nil || event == nil {
-		return nil, err
+	event, ok, err := DecodeTagged(data, responsePayloads)
+	if err != nil || !ok {
+		return Received{}, false, err
 	}
-	return &Received{Event: *event, Text: data}, nil
+	return Received{Event: event, Text: data}, true, nil
 }
 
 // CompletedResponse holds the final API usage.
@@ -227,11 +227,8 @@ func (r *ResponsesItemJSON) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	value, err := DecodeTagged(string(canonical), itemPayloads)
-	r.Value = nil
-	if value != nil {
-		r.Value = *value
-	}
+	value, _, err := DecodeTagged(string(canonical), itemPayloads)
+	r.Value = value
 	return err
 }
 
@@ -395,11 +392,8 @@ func (p *MessagePartJSON) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	value, err := DecodeTagged(string(canonical), messagePayloads)
-	p.Value = nil
-	if value != nil {
-		p.Value = *value
-	}
+	value, _, err := DecodeTagged(string(canonical), messagePayloads)
+	p.Value = value
 	return err
 }
 
