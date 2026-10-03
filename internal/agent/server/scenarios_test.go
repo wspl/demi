@@ -155,6 +155,7 @@ func TestOpenHandshakeAndPatchRevisions(t *testing.T) {
 		c.Send(t.Context(), &framewire.OpenFrame{})
 		h := c.Received()
 		equal(t, 5, len(h))
+		equal(t, "*framewire.OpenedFrame", fmt.Sprintf("%T", h[0]))
 		reset, ok := h[1].(*framewire.TranscriptResetFrame)
 		if !ok {
 			t.Fatal(h)
@@ -194,6 +195,11 @@ func TestConcurrentOpensBuildOneTree(t *testing.T) {
 		for _, c := range []*servertest.TestClient[*toolstest.NoHost]{a, b} {
 			frames := c.Received()
 			equal(t, 5, len(frames))
+			for _, frame := range frames {
+				if fmt.Sprintf("%T", frame) == "*framewire.ClosedFrame" {
+					t.Fatal("open closed the other connection")
+				}
+			}
 			if _, ok := frames[0].(*framewire.OpenedFrame); !ok {
 				t.Fatal(frames)
 			}
@@ -205,12 +211,28 @@ func TestConnectionsShareEventsAndOwnReplies(t *testing.T) {
 		f := newFixture(t, said("ab"))
 		a, b := f.opened(), f.opened()
 		a.Send(t.Context(), send("m1", "hi"))
-		equal(t, untilIdle(t, a), untilIdle(t, b))
+		seen := untilIdle(t, a)
+		equal(t, seen, untilIdle(t, b))
+		patched := false
+		for _, frame := range seen {
+			patched = patched || fmt.Sprintf("%T", frame) == "*framewire.TranscriptPatchFrame"
+		}
+		if !patched {
+			t.Fatal("no transcript patch reached the clients")
+		}
 		b.Send(t.Context(), &framewire.SteerFrame{SteerID: blockID("s1"), Content: servertest.ClientText("too late")})
 		b.Send(t.Context(), &framewire.AbortFrame{})
 		b.Send(t.Context(), &framewire.SyncTranscriptFrame{})
+		command, err := core.ParseCommandID("no-such-command")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.Send(t.Context(), &framewire.ShellWriteFrame{CommandID: command, Stdin: "y\n"})
 		replies := b.Received()
-		equal(t, 3, len(replies))
+		equal(t, 4, len(replies))
+		for i, kind := range []string{"*framewire.SteerResultFrame", "*framewire.AbortResultFrame", "*framewire.TranscriptResetFrame", "*framewire.ErrorFrame"} {
+			equal(t, kind, fmt.Sprintf("%T", replies[i]))
+		}
 		if _, ok := replies[0].(*framewire.SteerResultFrame); !ok {
 			t.Fatal(replies)
 		}
@@ -218,6 +240,13 @@ func TestConnectionsShareEventsAndOwnReplies(t *testing.T) {
 		a.Send(t.Context(), &framewire.CloseFrame{})
 		for _, c := range []*servertest.TestClient[*toolstest.NoHost]{a, b} {
 			frames := c.Received()
+			closed := 0
+			for _, frame := range frames {
+				if fmt.Sprintf("%T", frame) == "*framewire.ClosedFrame" {
+					closed++
+				}
+			}
+			equal(t, 1, closed)
 			if _, ok := frames[len(frames)-1].(*framewire.ClosedFrame); !ok {
 				t.Fatal(frames)
 			}
@@ -240,7 +269,8 @@ func TestUnknownProviderLeavesConnectionUnattached(t *testing.T) {
 		if !ok {
 			t.Fatal(frames)
 		}
-		equal(t, `Provider "missing" is not available`, e.Message)
+		equal(t, &framewire.ErrorFrame{Message: `Provider "missing" is not available`}, e)
+		equal(t, framewire.ServerFrame(&framewire.RejectedFrame{Command: "send", Reason: "No session is open"}), frames[1])
 		if f.server.Tree(rootID()) != nil || f.store.Record(rootID()) != nil {
 			t.Fatal("unknown provider created tree")
 		}
@@ -259,14 +289,16 @@ func TestDetachDrainsAndClosesOutbox(t *testing.T) {
 		if tree.IsAttached() {
 			t.Fatal("still attached")
 		}
-		for range 5 {
+		for _, kind := range []string{"*framewire.OpenedFrame", "*framewire.TranscriptResetFrame", "*framewire.PhaseFrame", "*framewire.QueueFrame", "*framewire.PendingSteersFrame"} {
 			v, err := out.Receive(t.Context())
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, ok := v.(*server.Frame); !ok {
+			frame, ok := v.(*server.Frame)
+			if !ok {
 				t.Fatal(v)
 			}
+			equal(t, kind, fmt.Sprintf("%T", frame.Frame))
 		}
 		v, err := out.Receive(t.Context())
 		if err != nil {
@@ -320,13 +352,19 @@ func TestShutdownSavesEveryLiveTree(t *testing.T) {
 		cp := f.store.Checkpoint(rootID())
 		equal(t, core.SessionPhaseRunning, cp.State.Phase)
 		equal(t, 2, len(cp.Transcript))
+		if _, ok := cp.Transcript[0].(*core.UserBlock); !ok {
+			t.Fatal(cp.Transcript)
+		}
+		if _, ok := cp.Transcript[1].(*core.ErrorBlock); !ok {
+			t.Fatal(cp.Transcript)
+		}
 		equal(t, 1, f.script.Closes())
 		found := false
 		for _, frame := range c.Received() {
 			if patch, ok := frame.(*framewire.TranscriptPatchFrame); ok {
 				for _, p := range patch.Patches {
 					if add, ok := p.(*framewire.AddPatch); ok {
-						if _, ok := add.Value.(*core.ErrorBlock); ok {
+						if block, ok := add.Value.(*core.ErrorBlock); ok && block.Code != nil && *block.Code == "interrupted" {
 							found = true
 						}
 					}
@@ -407,26 +445,26 @@ func TestFramesRefusedWithoutSessionAndWhileBusy(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, providertest.Pending())
 		c := f.client()
-		for _, frame := range []framewire.ClientFrame{send("m1", "hi"), &framewire.AbortFrame{}, &framewire.SyncTranscriptFrame{}, &framewire.DequeueMessageFrame{MessageID: turnID("m1")}, &framewire.SteerFrame{SteerID: blockID("s1"), Content: servertest.ClientText("steer")}, &framewire.CancelPendingSteerFrame{SteerID: blockID("s1")}, &framewire.AbortSubagentsFrame{}} {
+		for _, frame := range []framewire.ClientFrame{send("m1", "hi"), &framewire.AbortFrame{}, &framewire.SyncTranscriptFrame{}, &framewire.DequeueMessageFrame{MessageID: turnID("m1")}, &framewire.SteerFrame{SteerID: blockID("s1"), Content: servertest.ClientText("steer")}, &framewire.CancelPendingSteerFrame{SteerID: blockID("s1")}, &framewire.AbortSubagentsFrame{}, &framewire.AbortSubagentFrame{SubagentID: core.NodeID("child")}} {
 			c.Send(t.Context(), frame)
 		}
 		frames := c.Received()
 		equal(t, 5, len(frames))
-		for _, frame := range frames[:4] {
+		for i, frame := range frames[:4] {
 			r, ok := frame.(*framewire.RejectedFrame)
 			if !ok {
 				t.Fatal(frame)
 			}
+			equal(t, []framewire.ClientFrameKind{"send", "abort", "sync_transcript", "dequeue_message"}[i], r.Command)
 			equal(t, "No session is open", r.Reason)
 		}
+		equal(t, framewire.ServerFrame(&framewire.SteerResultFrame{SteerID: blockID("s1"), Outcome: &framewire.RejectedSteer{Reason: "No session is open on this connection"}}), frames[4])
 		c.Send(t.Context(), &framewire.CloseFrame{})
-		if _, ok := c.Received()[0].(*framewire.ClosedFrame); !ok {
-			t.Fatal("close not answered")
-		}
+		equal(t, []framewire.ServerFrame{&framewire.ClosedFrame{}}, c.Received())
 		c.Send(t.Context(), &framewire.OpenFrame{})
 		c.Received()
 		c.Send(t.Context(), &framewire.OpenFrame{})
-		equal(t, "A session is already open on this connection", c.Received()[0].(*framewire.RejectedFrame).Reason)
+		equal(t, []framewire.ServerFrame{&framewire.RejectedFrame{Command: "open", Reason: "A session is already open on this connection"}}, c.Received())
 		c.Send(t.Context(), send("m1", "hang"))
 		synctest.Wait()
 		c.Received()
@@ -443,7 +481,8 @@ func TestFramesRefusedWithoutSessionAndWhileBusy(t *testing.T) {
 func TestConnectionsUseOneEditAndQueueAdmission(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		gate := make(chan struct{})
-		f := newFixture(t, held(gate, providertest.Text("one"), providertest.Response(1, 1)), said("two"), said("three"), said("one again"), providertest.Pending())
+		busy := make(chan struct{})
+		f := newFixture(t, held(gate, providertest.Text("one"), providertest.Response(1, 1)), said("two"), said("three"), said("one again"), held(busy, providertest.Text("busy"), providertest.Response(1, 1)))
 		a, b := f.opened(), f.opened()
 		a.Send(t.Context(), send("m1", "one"))
 		synctest.Wait()
@@ -451,7 +490,17 @@ func TestConnectionsUseOneEditAndQueueAdmission(t *testing.T) {
 		a.Send(t.Context(), send("m3", "three"))
 		close(gate)
 		synctest.Wait()
-		equal(t, a.Received(), b.Received())
+		seen := a.Received()
+		equal(t, seen, b.Received())
+		queued := false
+		for _, frame := range seen {
+			if q, ok := frame.(*framewire.QueueFrame); ok && len(q.Queue) == 2 && q.Queue[0].ID == turnID("m2") && q.Queue[1].ID == turnID("m3") {
+				queued = true
+			}
+		}
+		if !queued {
+			t.Fatal("clients did not see the ordered queue")
+		}
 		users := []core.TurnID{}
 		for _, block := range f.server.Tree(rootID()).Root().Session().Transcript().Blocks {
 			if user, ok := block.(*core.UserBlock); ok {
@@ -477,6 +526,7 @@ func TestConnectionsUseOneEditAndQueueAdmission(t *testing.T) {
 		refused := false
 		for _, frame := range b.Received() {
 			if r, ok := frame.(*framewire.RejectedFrame); ok {
+				equal(t, framewire.ClientFrameKind("send"), r.Command)
 				equal(t, "A message edit is being prepared", r.Reason)
 				refused = true
 			}
@@ -488,8 +538,11 @@ func TestConnectionsUseOneEditAndQueueAdmission(t *testing.T) {
 		target := userBlock(t, f, string(accepted.TurnID))
 		b.Send(t.Context(), send("m5", "busy"))
 		synctest.Wait()
+		equal(t, 5, len(f.script.Requests()))
 		a.Send(t.Context(), edit("op2", target, f.server.Tree(rootID()).Root().Session().Transcript().Version, "not now"))
 		rejectedEdit(t, editOutcome(t, a.Received()), "Message editing requires a settled session with no pending work")
+		close(busy)
+		untilIdle(t, b)
 	})
 }
 
