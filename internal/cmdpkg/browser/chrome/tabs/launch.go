@@ -19,7 +19,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-//go:embed extension/*
+//go:embed extension/background.js extension/manifest.json extension/offscreen.html extension/offscreen.js
 var captureExtension embed.FS
 
 const captureExtensionID = "ekadkclcinpnbbdeloemlmaimcklplko"

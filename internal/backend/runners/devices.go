@@ -2,7 +2,6 @@ package runners
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -198,37 +197,10 @@ type Serving struct {
 // Serve owns socket until either end closes, joins connection work, marks the
 // device offline and records last seen. It sends a revoked refusal when needed.
 // The socket is closed on every exit. The result describes why the link ended.
-func (s *Serving) Serve(ctx context.Context, socket *websocket.Conn) remotehost.LinkEnd {
+func (s *Serving) Serve(ctx context.Context, socket *Socket) remotehost.LinkEnd {
 	defer s.finished(context.WithoutCancel(ctx))
-	socket.SetReadLimit(runnerwire.MaxMessageBytes)
-	readCtx, cancel := context.WithCancel(ctx)
-	frames := &socketFrames{socket: socket, incoming: make(chan socketFrame)}
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		defer close(frames.incoming)
-		for {
-			kind, data, err := socket.Read(readCtx)
-			if err == nil && kind != websocket.MessageBinary {
-				err = errors.New("the runner sent a text frame")
-			}
-			select {
-			case frames.incoming <- socketFrame{data: data, err: err}:
-			case <-readCtx.Done():
-				return
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	defer func() {
-		// The link has already ended; a failed close cannot lose live work.
-		_ = socket.CloseNow()
-		cancel()
-		<-done
-	}()
-	end := s.run(ctx, frames, frames)
+	defer socket.Release()
+	end := s.run(ctx, socket, socket)
 	if end.Kind == remotehost.LinkDisconnected && end.Reason == "device revoked" {
 		// A runner that went away needs no refusal.
 		_ = Send(ctx, socket, &runnerwire.HelloError{Code: runnerwire.HelloErrorCodeRevoked, Reason: "device revoked"})
@@ -256,12 +228,12 @@ func (s *Serving) TestingServe(ctx context.Context, incoming remotehost.FrameSou
 
 // Send writes one message on a runner socket that nothing else writes to yet,
 // such as the answer to its hello. The caller retains socket ownership.
-func Send(ctx context.Context, socket *websocket.Conn, message runnerwire.Inbound) error {
+func Send(ctx context.Context, socket *Socket, message runnerwire.Inbound) error {
 	frame, err := runnerwire.Encode(message)
 	if err != nil {
 		return err
 	}
-	return socket.Write(ctx, websocket.MessageBinary, frame)
+	return socket.Send(ctx, frame)
 }
 
 // LastSeen records when a runner was connected and marks the owner's device pages.
@@ -370,32 +342,6 @@ func (s *Serving) run(ctx context.Context, incoming remotehost.FrameSource, outg
 		slog.Info("runner connection ended: "+end.Reason, "device", s.device)
 	}
 	return end
-}
-
-// socketFrames lets driver cancellation stop its read without closing the socket
-// before a revoked-device refusal can be written. Serve owns and joins the reader.
-type socketFrames struct {
-	socket   *websocket.Conn
-	incoming chan socketFrame
-}
-type socketFrame struct {
-	data []byte
-	err  error
-}
-
-func (f *socketFrames) Receive(ctx context.Context) ([]byte, error) {
-	select {
-	case frame, ok := <-f.incoming:
-		if !ok {
-			return nil, io.EOF
-		}
-		return frame.data, frame.err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-func (f *socketFrames) Send(ctx context.Context, frame []byte) error {
-	return f.socket.Write(ctx, websocket.MessageBinary, frame)
 }
 
 // stoppedFrames ends an adopted runner that never acquired its socket.

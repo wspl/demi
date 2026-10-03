@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"sync"
 	"time"
 	"weak"
@@ -149,7 +148,11 @@ func (l *Link) Installs() []runnerwire.Install {
 func (l *Link) WatchInstalls() ([]runnerwire.Install, <-chan struct{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return slices.Clone(l.installs), l.installsChanged
+	// A runner with no installs reports an empty list, never none: the device
+	// answers carry it as a required array.
+	installs := make([]runnerwire.Install, len(l.installs))
+	copy(installs, l.installs)
+	return installs, l.installsChanged
 }
 
 // IsClosed reports whether the connection ended.

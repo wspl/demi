@@ -102,3 +102,63 @@ func TestDeclaredBrokenPipeExits141(t *testing.T) {
 		t.Fatalf("result %+v output %q diagnostic %q", result, output, diagnostic)
 	}
 }
+
+// stoppedInputHandler joins its input worker before returning, like an RPC whose
+// remote command finishes without needing stdin.
+type stoppedInputHandler struct {
+	waiting chan struct{}
+	writer  *os.File
+}
+
+func (*stoppedInputHandler) Operations() []string { return []string{process.Raw} }
+func (*stoppedInputHandler) Check()               {}
+func (h *stoppedInputHandler) Waiting(delta int) {
+	if delta == 1 {
+		h.waiting <- struct{}{}
+	}
+}
+func (h *stoppedInputHandler) Invoke(ctx context.Context, invocation cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error) {
+	inputCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := invocation.Input.Next(inputCtx)
+		done <- err
+	}()
+	select {
+	case <-h.waiting:
+	case <-ctx.Done():
+	}
+	cancel()
+	err := <-done
+	if !errors.Is(err, context.Canceled) {
+		return commandwire.Completion{}, errors.New("input read did not return cancellation")
+	}
+	if ctx.Err() != nil {
+		return commandwire.Completion{}, errors.New("input read waited for outer command cancellation")
+	}
+	// Only supply bytes after the canceled read has ended. The next shell
+	// command must receive them, with no abandoned reader consuming them.
+	_, err = h.writer.WriteString("still readable\n")
+	return commandwire.Completion{}, err
+}
+
+// One in-process shell and pipe; normally finishes in milliseconds. The outer
+// context is only a deadlock watchdog, including when run against the old code.
+func TestDeclaredInputCancellationPreservesShellInput(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reader.Close() }() // Execute may close canceled job streams.
+	defer func() { _ = writer.Close() }()
+	handler := &stoppedInputHandler{waiting: make(chan struct{}, 1), writer: writer}
+	result, output, diagnostic := shellFiles(t, t.TempDir(), `fixture; read -r line; printf '%s' "$line"`, func(o *Options) {
+		o.Stdin = reader
+		o.Observe = handler
+		o.Commands = &process.JobCommands{Context: "0123456789abcdef0123456789abcdef", Roots: []string{"fixture"}, Handler: handler}
+	})
+	if result.Code != 0 || output != "still readable" || diagnostic != "" {
+		t.Fatalf("result %+v output %q diagnostic %q", result, output, diagnostic)
+	}
+}
