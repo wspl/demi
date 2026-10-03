@@ -98,6 +98,7 @@ func titleAsked(ctx context.Context, t *testing.T, r *titleRuntime) provider.Inf
 	t.Helper()
 	select {
 	case request := <-r.asked:
+		conversationEqual(t, len(r.asked), 0)
 		return request
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
@@ -152,6 +153,7 @@ func TestGeneratedTitleLosesToRenameAndArchive(t *testing.T) {
 	script.answers <- struct{}{}
 	titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return c.Title == generated })
 	titled := conversationSummary(ctx, t, b, &s, conversationFirst)
+	conversationEqual(t, titled.Title, generated)
 	conversationEqual(t, titled.TitleGenerating, false)
 	conversationEqual(t, titled.TitleCurrent, true)
 	conversationEqual(t, titleInput(t, asked), "1. "+message)
@@ -171,11 +173,17 @@ func TestGeneratedTitleLosesToRenameAndArchive(t *testing.T) {
 	script.answers <- struct{}{}
 	titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return c.Title == "Kept" && !c.TitleGenerating })
 	kept := conversationSummary(ctx, t, b, &s, conversationFirst)
+	conversationEqual(t, kept.Title, "Kept")
+	conversationEqual(t, kept.TitleGenerating, false)
 	conversationEqual(t, kept.TitleCurrent, true)
 	conversationRequest(ctx, t, b, &s, "POST", path+"/title", `{}`, 202)
 	titleAsked(ctx, t, script)
 	conversationRequest(ctx, t, b, &s, "PATCH", path, `{"archived":true}`, 200)
 	titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return c.Archived && !c.TitleGenerating })
+	archived := conversationDecode(t, conversationRequest(ctx, t, b, &s, "GET", "/api/conversations?archived=true", "", 200), webapi.DecodeConversations)
+	if len(archived.Conversations) == 0 || archived.Conversations[0].TitleGenerating {
+		t.Fatal("archived title request still generating")
+	}
 	conversationEqual(t, len(script.answers), 0)
 	conversationRefusal(t, conversationRequest(ctx, t, b, &s, "POST", path+"/title", `{}`, 409), webapi.ErrorCodeConversationArchived)
 	conversationCreate(ctx, t, b, &s, conversationSecond)
@@ -200,6 +208,7 @@ func TestEmptyGeneratedTitleKeepsMessageTitleAndAllowsRetry(t *testing.T) {
 	script.answers <- struct{}{}
 	titleUntil(ctx, t, page, func(c webapi.ConversationSummary) bool { return !c.TitleGenerating })
 	left := conversationSummary(ctx, t, b, &s, conversationFirst)
+	conversationEqual(t, left.TitleGenerating, false)
 	conversationEqual(t, left.Title, "hello there")
 	conversationEqual(t, left.TitleCurrent, false)
 }
