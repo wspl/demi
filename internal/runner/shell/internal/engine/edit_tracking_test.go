@@ -30,7 +30,7 @@ func editJournal(t *testing.T, recorder *cmdsdk.Recorder) commandwire.EditJourna
 	return journal
 }
 func TestRedirectionsDescriptorsAndUtilitiesRecordActualContents(t *testing.T) {
-	t.Skip("fidelity 1: system utility writes are absent from the edit report")
+	t.Skip("decision 4: system utility writes are absent from the edit report")
 	root := t.TempDir()
 	recorder := editRecorder(t, root, "job")
 	for name, contents := range map[string]string{"sorted": "pear\napple\n", "restored": "same\n"} {

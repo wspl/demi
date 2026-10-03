@@ -72,7 +72,7 @@ func TestShellHandlesRedirectsFunctionsSubshellCwdAndFreshState(t *testing.T) {
 
 func TestTeeAndOdUsePipelineStreams(t *testing.T) {
 	if runtime.GOOS == "darwin" {
-		t.Skip("fidelity 2: BSD od inserts extra spaces between hex bytes")
+		t.Skip("decision 4: BSD od inserts extra spaces between hex bytes")
 	}
 	root := t.TempDir()
 	result, output, stderr := shellFiles(t, root, `printf hello | tee made.txt | grep hello | od -An -tx1`, nil)

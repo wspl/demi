@@ -130,7 +130,7 @@ func TestJobsShareTheRunnerProcessAndCancellationIsIsolated(t *testing.T) {
 				t.Parallel()
 				if script == "jq -n 'def spin: spin; spin'" {
 					if _, err := exec.LookPath("jq"); err != nil {
-						t.Skip("fidelity 3: system jq unavailable; utility provisioning is deferred")
+						t.Skip("decision 4: system jq unavailable; utility provisioning is deferred")
 					}
 				}
 				// Gate the additional output-pressure case so its ready marker is a

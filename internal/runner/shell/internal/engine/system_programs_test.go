@@ -16,7 +16,7 @@ import (
 func utility(t *testing.T, root, name string, args ...string) (Result, string, string) {
 	t.Helper()
 	if _, err := exec.LookPath(name); err != nil {
-		t.Skipf("fidelity 3: system utility %s is unavailable; provisioning is deferred: %v", name, err)
+		t.Skipf("decision 4: system utility %s is unavailable; provisioning is deferred: %v", name, err)
 	}
 	words := []string{name}
 	for _, arg := range args {
@@ -50,7 +50,7 @@ func TestUtilitiesCwdAndExitStateArePerInvocation(t *testing.T) {
 	}
 	t.Run("help", func(t *testing.T) {
 		if runtime.GOOS == "darwin" {
-			t.Skip("fidelity 3: BSD cat refuses --help instead of printing help to stdout")
+			t.Skip("decision 4: BSD cat refuses --help instead of printing help to stdout")
 		}
 		result, output, stderr := utility(t, second, "cat", "--help")
 		if result.Code != 0 || !strings.Contains(strings.ToLower(output), "usage:") {
@@ -64,7 +64,7 @@ func TestEveryUtilityRoutesHelpToTheInvocationStream(t *testing.T) {
 	for _, name := range []string{"cat", "head", "tail", "wc", "ls", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "tee", "sort", "uniq", "cut", "tr", "paste", "nl", "tac", "basename", "dirname", "realpath", "env", "seq", "date", "sleep", "mktemp", "stat", "du", "df", "od", "chmod", "chown", "grep", "sed", "find", "xargs", "diff", "cmp", "jq", "rg"} {
 		t.Run(name, func(t *testing.T) {
 			if runtime.GOOS == "darwin" && name != "sort" && name != "tac" && name != "diff" && name != "jq" && name != "rg" {
-				t.Skip("fidelity 3: BSD utility does not provide Rust's --help stdout interface")
+				t.Skip("decision 4: BSD utility does not provide Rust's --help stdout interface")
 			}
 			result, output, stderr := utility(t, t.TempDir(), name, "--help")
 			if result.Code != 0 || !strings.Contains(strings.ToLower(output), "usage:") {
@@ -202,7 +202,7 @@ func TestRelativeSymlinksAndExplicitDirectoryModesArePreserved(t *testing.T) {
 
 func TestSearchEditAndCompareUtilitiesKeepTheirCLIAndLocalPaths(t *testing.T) {
 	if runtime.GOOS == "darwin" {
-		t.Skip("fidelity 4: BSD sed requires an extension after -i")
+		t.Skip("decision 4: BSD sed requires an extension after -i")
 	}
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "tree"), 0700); err != nil {
