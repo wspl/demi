@@ -346,7 +346,15 @@ func (g *generator) checkType(t types.Type) error {
 }
 
 // tsSources renders each output once and imports shared protocol schemas.
-func (g *generator) tsSources() (map[string][]byte, error) {
+func (g *generator) tsSources(pages ...pagemeta.Page) (map[string][]byte, error) {
+	pageNames := map[string]map[string]bool{}
+	for _, page := range pages {
+		names, err := pageTypes(page, nil)
+		if err != nil {
+			return nil, err
+		}
+		pageNames[strings.TrimPrefix(page.Package, pageScope)] = names
+	}
 	g.tsExports = map[string]map[string]bool{}
 	outputs := map[string][]string{}
 	for _, key := range g.order {
@@ -386,6 +394,8 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 	}
 	sort.Strings(names)
 	for _, out := range names {
+		g.pageNames = pageNames[out]
+		g.tsOutput = out
 		g.received = received
 		if strings.HasPrefix(out, "plugin-") {
 			// Rust derives each page's tolerance from that page's uses, not
@@ -428,7 +438,7 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 		g.tsExports[out] = map[string]bool{}
 		for key := range g.emitted {
 			d := g.defs[key]
-			if isTSExport(d) {
+			if g.exportsTS(d) {
 				g.tsExports[out][tsName(d.name)] = g.received[key]
 			}
 		}
@@ -437,7 +447,7 @@ func (g *generator) tsSources() (map[string][]byte, error) {
 }
 
 // writeTS maps root output names to the frontend's established destinations.
-func (g *generator) writeTS(ctx context.Context, p *packages.Package, sources map[string][]byte, verify bool) error {
+func (g *generator) writeTS(ctx context.Context, p *packages.Package, verify bool) error {
 	dir := filepath.Dir(p.GoFiles[0])
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
@@ -456,6 +466,12 @@ func (g *generator) writeTS(ctx context.Context, p *packages.Package, sources ma
 		if err != nil {
 			return err
 		}
+	}
+	sources, err := g.tsSources(pages...)
+	if err != nil {
+		return err
+	}
+	if g.tsDir == "" {
 		if err := g.pageSources(pages, sources); err != nil {
 			return err
 		}

@@ -1,0 +1,9 @@
+[{
+  "id": "scalar",
+  "package": "@demicodes/plugin-scalar",
+  "schemas": [{
+    "direction": "receive",
+    "value": {"title":"State","type":"object","$defs":{"Address":{"type":"string"}}}
+  }],
+  "constants": []
+}]
