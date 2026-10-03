@@ -31,7 +31,10 @@ func (f *browserFixture) eventually(t *testing.T, tab browserop.TabID, expressio
 
 func TestPagesSeeOrdinaryChromeInUsersTimeZoneAndLanguages(t *testing.T) {
 	f := chromeFixture(t)
-	f.locale = &commandwire.CommandLocale{TimeZone: "America/Sao_Paulo", Languages: []commandwire.LanguageTag{"pt-BR", "en"}}
+	f.locale = &commandwire.CommandLocale{
+		TimeZone:  "America/Sao_Paulo",
+		Languages: []commandwire.LanguageTag{"pt-BR", "en"},
+	}
 	tab := f.open(t, "fidelity.html")
 	f.eventually(t, tab, "!!window.report")
 	report := f.eval(t, tab, "window.report")
@@ -44,7 +47,15 @@ func TestPagesSeeOrdinaryChromeInUsersTimeZoneAndLanguages(t *testing.T) {
 		t.Fatal(string(agent))
 	}
 	expectValue(t, observedField(t, report, "worker", "userAgent"), agent)
-	expectValue(t, f.eval(t, tab, `report.brands.includes('Chromium')&&report.outer[0]>=report.inner[0]&&report.outer[1]>report.inner[1]&&report.hover&&report.finePointer`), true)
+	expectValue(
+		t,
+		f.eval(
+			t,
+			tab,
+			`report.brands.includes('Chromium')&&report.outer[0]>=report.inner[0]&&report.outer[1]>report.inner[1]&&report.hover&&report.finePointer`,
+		),
+		true,
+	)
 	if runtime.GOOS != "darwin" {
 		expectValue(t, f.eval(t, tab, "report.scrollbar>0"), true)
 	}
@@ -55,7 +66,8 @@ func TestPagesSeeOrdinaryChromeInUsersTimeZoneAndLanguages(t *testing.T) {
 		expectValue(t, observedField(t, report, path...), "pt-BR")
 	}
 	header := <-f.headers
-	if !strings.HasPrefix(header.Get("Accept-Language"), "pt-BR") || strings.Contains(header.Get("User-Agent"), "Headless") {
+	if !strings.HasPrefix(header.Get("Accept-Language"), "pt-BR") ||
+		strings.Contains(header.Get("User-Agent"), "Headless") {
 		t.Fatal(header)
 	}
 	f.locale = &commandwire.CommandLocale{TimeZone: "Asia/Tokyo", Languages: []commandwire.LanguageTag{"ja"}}
@@ -78,7 +90,11 @@ func TestAgentViewportSetsPixelRatioAndScreenshotsStayInCSSPixels(t *testing.T) 
 	set := observedField(t, f.command(t, tab, "viewport.set", `{"width":800,"height":600,"scale":2}`), "viewport")
 	expectValue(t, set, browserop.BrowserViewport{Width: 800, Height: 600, DevicePixelRatio: 2, Mode: "custom"})
 	expectValue(t, observedField(t, f.command(t, tab, "info", `{}`), "viewport"), set)
-	expectValue(t, f.eval(t, tab, "[devicePixelRatio,innerWidth,innerHeight,outerHeight>innerHeight]"), []any{2, 800, 600, true})
+	expectValue(
+		t,
+		f.eval(t, tab, "[devicePixelRatio,innerWidth,innerHeight,outerHeight>innerHeight]"),
+		[]any{2, 800, 600, true},
+	)
 	f.command(t, tab, "scroll", `{"xy":"400,300","dy":500}`)
 	for _, test := range []struct {
 		args          string
@@ -93,7 +109,11 @@ func TestAgentViewportSetsPixelRatioAndScreenshotsStayInCSSPixels(t *testing.T) 
 	shot := f.command(t, tab, "screenshot", `{"output":"back.png"}`)
 	expectValue(t, observedField(t, shot, "width"), 1280)
 	expectValue(t, observedField(t, shot, "height"), 720)
-	completion, _, stderr := f.result(t, "viewport.set", browserArgs(t, `{"tab":$0,"width":800,"height":600,"scale":8}`, tab))
+	completion, _, stderr := f.result(
+		t,
+		"viewport.set",
+		browserArgs(t, `{"tab":$0,"width":800,"height":600,"scale":8}`, tab),
+	)
 	if completion.ExitCode != 2 {
 		t.Fatalf("%+v %s", completion, stderr)
 	}

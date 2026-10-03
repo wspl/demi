@@ -24,7 +24,11 @@ func TestBrowserContractAndCleanup(t *testing.T) {
 	expectValue(t, f.eval(t, tab, "document.title"), "Native browser test")
 	f.command(t, tab, "fill", `{"css":"#email","text":"hello@example.test"}`)
 	f.click(t, tab, "#normal")
-	expectValue(t, f.eval(t, tab, `[document.querySelector('#email').value,normalClicks]`), []any{"hello@example.test", 1})
+	expectValue(
+		t,
+		f.eval(t, tab, `[document.querySelector('#email').value,normalClicks]`),
+		[]any{"hello@example.test", 1},
+	)
 	for _, css := range []string{"#covered", "#disabled", "#missing"} {
 		code := "not_actionable"
 		if css == "#missing" {
@@ -48,7 +52,11 @@ func TestBrowserContractAndCleanup(t *testing.T) {
 		X int `json:"x"`
 	}{{1}, {1}})
 	f.click(t, tab, "#check-storage")
-	expectValue(t, f.eval(t, tab, `[document.body.hasAttribute('data-mutated'),window.storageValue,sideEffects]`), []any{false, nil, 0})
+	expectValue(
+		t,
+		f.eval(t, tab, `[document.body.hasAttribute('data-mutated'),window.storageValue,sideEffects]`),
+		[]any{false, nil, 0},
+	)
 	expectValue(t, f.get(t, "/effects-count"), 0)
 	f.click(t, tab, "#arm")
 	f.click(t, tab, "#late")

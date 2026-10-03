@@ -14,9 +14,17 @@ import (
 	"github.com/wspl/demi/internal/commandwire"
 )
 
-func screenshot(ctx context.Context, tab *tabs.Tab, invocation *cmdsdk.InvocationContext[commandwire.Invocation], input *browserop.ScreenshotInput) (commandOutput, error) {
+func screenshot(
+	ctx context.Context,
+	tab *tabs.Tab,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	input *browserop.ScreenshotInput,
+) (commandOutput, error) {
 	if input.Output == nil && invocation.Request.JSON != nil && *invocation.Request.JSON {
-		return commandOutput{}, &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "screenshot --json requires --output"}
+		return commandOutput{}, &cdp.BrowserError{
+			Kind:    cdp.KindConfiguration,
+			Message: "screenshot --json requires --output",
+		}
 	}
 	overwrite := input.Overwrite != nil && *input.Overwrite
 	if input.Output != nil {
@@ -40,10 +48,25 @@ func screenshot(ctx context.Context, tab *tabs.Tab, invocation *cmdsdk.Invocatio
 		return commandOutput{}, err
 	}
 	path, err := cdp.SaveWithOverwrite(ctx, invocation.Request.Cwd, *input.Output, data, overwrite)
-	return resultOutput(browserop.ScreenshotResult{Path: path, MIMEType: "image/png", Width: uint32(config.Width), Height: uint32(config.Height), Viewport: metadata.Viewport}, err)
+	return resultOutput(
+		browserop.ScreenshotResult{
+			Path:     path,
+			MIMEType: "image/png",
+			Width:    uint32(config.Width),
+			Height:   uint32(config.Height),
+			Viewport: metadata.Viewport,
+		},
+		err,
+	)
 }
 
-func probe(ctx context.Context, tab *tabs.Tab, invocation *cmdsdk.InvocationContext[commandwire.Invocation], input *browserop.ProbeInput, deadline time.Time) (commandOutput, error) {
+func probe(
+	ctx context.Context,
+	tab *tabs.Tab,
+	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
+	input *browserop.ProbeInput,
+	deadline time.Time,
+) (commandOutput, error) {
 	overwrite := input.Overwrite != nil && *input.Overwrite
 	if _, err := cdp.Preflight(ctx, invocation.Request.Cwd, *input.Output, overwrite); err != nil {
 		return commandOutput{}, err
