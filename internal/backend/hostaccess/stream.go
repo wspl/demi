@@ -274,16 +274,17 @@ func serviceRequest(
 	return request, nil
 }
 
-// watchUserStream transfers admission to the completion worker; revoking its lease also ends Done.
+// watchUserStream retains admission until the edge releases it or the shard revokes it.
 func watchUserStream(access *streamAccess, service *remotehost.ServiceStream, input, output *remotehost.Pipe) *Lease {
 	lease := NewLease(access.open.Context())
 	go func() {
-		// Done also ends when the lease context is revoked, so no second watcher is needed.
-		_, _ = service.Done(lease.Context()) // Completion is represented by the stream's pipe outcome.
+		select {
+		case <-lease.Released():
+		case <-lease.Context().Done():
+		}
 		input.Fail("the user stream ended")
 		output.Fail("the user stream ended")
 		service.Close()
-		lease.Release()
 		access.release()
 	}()
 	return lease

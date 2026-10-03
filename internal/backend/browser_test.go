@@ -253,33 +253,23 @@ func TestBrowserListingRunningCloudDoesNotKeepItAwake(t *testing.T) {
 	conversationEqual(t, len(devices), 1)
 	rested := time.Now()
 	working.Release()
-	stopped := make(chan time.Time, 1)
-	finished := make(chan struct{})
-	go func() {
-		defer close(finished)
-		at, err := manager.Arrival(ctx, "hibernate:"+string(devices[0]))
-		if err == nil {
-			stopped <- at
-		}
-	}()
-	defer func() {
-		cancel()
-		<-finished
-	}()
+	hibernate := "hibernate:" + string(devices[0])
 	for {
-		select {
-		case at := <-stopped:
-			if at.Before(rested.Add(window)) {
-				t.Fatalf("stopped after %s", at.Sub(rested))
-			}
-			wireMust(t, b.Close(ctx))
-			return
-		default:
-		}
 		answer, err := b.Read(ctx, "/api/conversations/"+filesConversation+"/plugins/browser/state", &s)
+		// Hibernation ends this scenario. A request it overtakes may lose its
+		// pipe after admission, so only validate replies before that event.
+		if manager.Count(hibernate) != 0 {
+			break
+		}
 		wireMust(t, err)
 		if answer.Status != 200 {
 			filesRefusal(t, answer, 409, webapi.ErrorCodeDeviceOffline)
 		}
 	}
+	at, err := manager.Arrival(ctx, hibernate)
+	wireMust(t, err)
+	if at.Before(rested.Add(window)) {
+		t.Fatalf("stopped after %s", at.Sub(rested))
+	}
+	wireMust(t, b.Close(ctx))
 }

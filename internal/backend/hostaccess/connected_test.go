@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"testing/synctest"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/commandwire"
@@ -142,7 +143,11 @@ func TestConnectedDownloadRevocationLeavesReaderWithEdge(t *testing.T) {
 			case "edge":
 				download.Lease.Release()
 			}
-			<-download.Lease.Context().Done()
+			if end == "transition" || end == "shutdown" {
+				<-download.Lease.Context().Done()
+			} else if err := download.Lease.Context().Err(); err != nil {
+				t.Fatalf("edge release revoked download: %v", err)
+			}
 			// Closing drains the owned admission; it does not require the edge to close
 			// its reader or call Release after transition/shutdown revocation.
 			closed, err := s.conversations.Slot(record.ID).Transfers().Close(t.Context())
@@ -245,17 +250,25 @@ func TestConnectedStreamRetainsActivityWithoutFilesAndEnds(t *testing.T) {
 				if err := r.connection.Close(t.Context()); err != nil {
 					t.Fatal(err)
 				}
+				if _, err := stream.FromHost.Next(t.Context()); err == nil {
+					t.Fatal("device loss did not fail edge read")
+				}
+				stream.Lease.Release()
 			case "edge":
 				stream.Lease.Release()
 			}
-			<-stream.Lease.Context().Done()
+			if end == "transition" || end == "shutdown" {
+				<-stream.Lease.Context().Done()
+			} else if err := stream.Lease.Context().Err(); err != nil {
+				t.Fatalf("edge release revoked stream: %v", err)
+			}
 			closed, err := slot.Transfers().Close(t.Context())
 			if err != nil {
 				t.Fatal(err)
 			}
 			closed.Release()
-			if stream.Lease.Context().Err() == nil || slot.Streams().State().Demand != 0 {
-				t.Fatal("transition did not end stream activity and lease")
+			if slot.Streams().State().Demand != 0 {
+				t.Fatal("ended stream retained activity")
 			}
 			if _, err := stream.FromHost.Next(t.Context()); err == nil {
 				t.Fatal("ended stream pipe stayed open")
@@ -376,4 +389,43 @@ func requireFileRefused(t *testing.T, r *boundRunner, target *remotehost.Host) {
 	case <-r.outgoing:
 		t.Fatal("unadmitted file operation reached runner")
 	}
+}
+
+// Cost: in-process runner frames and local storage, with virtual scheduling.
+func TestCompletedUserStreamRetainsActivityUntilEdgeRelease(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestShard(t)
+		device := s.paired(t, "laptop")
+		record := s.target(t, s.conversation(t), device, "/work")
+		r := connectHost(t, s, device)
+		result := startHostOperation(t, func(ctx context.Context) (*UserStream, error) {
+			return OpenUserStream(ctx, s, record.ID, testServiceBinding())
+		})
+		request, ok := r.next(t).(*runnerwire.ServiceOpen)
+		if !ok {
+			t.Fatal("expected service open")
+		}
+		r.send(t, &runnerwire.ServiceOpened{StreamID: request.StreamID})
+		opened := <-result
+		if opened.err != nil {
+			t.Fatal(opened.err)
+		}
+		stream := opened.value
+		defer stream.Lease.Release()
+		defer func() { _ = stream.FromHost.Close(context.Background()) }()
+		r.send(t, &runnerwire.ServiceDone{StreamID: request.StreamID})
+		synctest.Wait()
+		slot := s.conversations.Slot(record.ID)
+		if got := slot.Streams().State().Demand; got != 1 {
+			t.Fatalf("activity before edge release = %d, want 1", got)
+		}
+		stream.Lease.Release()
+		synctest.Wait()
+		if got := slot.Streams().State().Demand; got != 0 {
+			t.Fatalf("activity after edge release = %d, want 0", got)
+		}
+		if slot.Transfers().AnyOpen() {
+			t.Fatal("released stream retained registration")
+		}
+	})
 }

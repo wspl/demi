@@ -112,7 +112,7 @@ func TestConnectedUploadCompletionKeepsEdgeLeaseLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	upload.Lease.Release()
-	if upload.Lease.Context().Err() == nil {
-		t.Fatal("edge release left upload lease live")
+	if err := upload.Lease.Context().Err(); err != nil {
+		t.Fatalf("edge release revoked upload: %v", err)
 	}
 }

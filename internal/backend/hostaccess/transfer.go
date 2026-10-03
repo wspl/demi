@@ -18,18 +18,17 @@ import (
 // Revocation cancels Context and releases shard admission without waiting for
 // the edge; Release is idempotent and does not wait.
 type Lease struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	once   sync.Once
+	ctx      context.Context
+	released chan struct{}
+	once     sync.Once
 }
 
-// NewLease makes an edge lease that ctx or Release ends.
+// NewLease makes an edge lease that the shard revokes through ctx.
 func NewLease(ctx context.Context) *Lease {
-	lifetime, cancel := context.WithCancel(ctx)
-	return &Lease{ctx: lifetime, cancel: cancel}
+	return &Lease{ctx: ctx, released: make(chan struct{})}
 }
 
-// Context ends when the lease is revoked or released; the edge stops copying.
+// Context ends only when the shard revokes the operation; the edge stops copying.
 func (l *Lease) Context() context.Context {
 	return l.ctx
 }
@@ -37,8 +36,13 @@ func (l *Lease) Context() context.Context {
 // Release ends this edge's hold exactly once.
 func (l *Lease) Release() {
 	l.once.Do(func() {
-		l.cancel()
+		close(l.released)
 	})
+}
+
+// Released closes when the edge releases its hold, independently of revocation.
+func (l *Lease) Released() <-chan struct{} {
+	return l.released
 }
 
 // TransferSet atomically checks admission and registers transfers under the
@@ -116,9 +120,9 @@ func (o *OpenTransfer) Context() context.Context {
 }
 
 // Release unregisters the work once its admission has been released.
+// Normal completion leaves Context live: only a closing transition revokes it.
 func (o *OpenTransfer) Release() {
 	o.once.Do(func() {
-		o.cancel()
 		o.set.mu.Lock()
 		delete(o.set.open, o)
 		o.set.mu.Unlock()
@@ -264,9 +268,11 @@ func OpenDownload(
 	lease := NewLease(open.Context())
 	// AdmitHost's owner registration moves to this worker and ends on release.
 	go func() {
-		<-lease.Context().Done()
-		// The edge owns and closes its reader when this lease is cancelled.
-		lease.Release()
+		select {
+		case <-lease.Released():
+		case <-lease.Context().Done():
+		}
+		// The edge owns and closes its reader when this lease is revoked.
 		admitted.Release()
 		open.Release()
 	}()
@@ -493,7 +499,8 @@ func hostCode(err error, code string) bool {
 	return errors.As(err, &failure) && failure.Code == code
 }
 
-// writeUpload forwards cancellation only while the write is running.
+// writeUpload holds admission until the write finishes, the edge releases it,
+// or the shard revokes it.
 func writeUpload(
 	admitted *Admitted,
 	open *OpenTransfer,
@@ -501,26 +508,29 @@ func writeUpload(
 	pipe *remotehost.Pipe,
 	writer *remotehost.PipeWriter,
 ) *OpenUpload {
-	// Normal write completion unregisters the transfer without revoking the
-	// edge's lease. Forward cancellation only while the write is running.
-	lease := NewLease(context.Background())
-	revoked := make(chan struct{})
-	stopRevocation := context.AfterFunc(open.Context(), func() {
-		defer close(revoked)
-		lease.Release()
-	})
+	lease := NewLease(open.Context())
 	result := &OpenUpload{Writer: writer, Lease: lease, written: make(chan struct{})}
 	go func() {
-		result.outcome = admitted.Host.Host.WriteFrom(lease.Context(), path, pipe, host.WriteOptions{})
-		if !stopRevocation() {
-			<-revoked
-		}
+		defer open.Release()
+		defer admitted.Release()
+		writing, cancel := context.WithCancel(lease.Context())
+		defer cancel()
+		watched := make(chan struct{})
+		go func() {
+			defer close(watched)
+			select {
+			case <-lease.Released():
+				cancel()
+			case <-writing.Done():
+			}
+		}()
+		result.outcome = admitted.Host.Host.WriteFrom(writing, path, pipe, host.WriteOptions{})
+		cancel()
+		<-watched
 		if result.outcome != nil {
 			pipe.Fail("the upload ended before its last byte")
 		}
 		close(result.written)
-		admitted.Release()
-		open.Release()
 	}()
 	return result
 }
