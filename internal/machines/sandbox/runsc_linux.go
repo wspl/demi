@@ -20,7 +20,15 @@ import (
 // ProfileFlags returns the fixed systrap, sandbox network, shared filesystem,
 // setuid and Directfs profile. Each call returns an independent array.
 func ProfileFlags() [7]string {
-	return [7]string{"--platform=systrap", "--network=sandbox", "--overlay2=none", "--file-access=shared", "--file-access-mounts=shared", "--allow-suid=true", "--directfs=true"}
+	return [7]string{
+		"--platform=systrap",
+		"--network=sandbox",
+		"--overlay2=none",
+		"--file-access=shared",
+		"--file-access-mounts=shared",
+		"--allow-suid=true",
+		"--directfs=true",
+	}
 }
 
 // PinnedRelease returns the runtime release built into the manager.

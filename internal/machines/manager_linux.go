@@ -26,8 +26,15 @@ type Manager struct {
 
 // NewManager starts with no device workers; workers are created on first use.
 func NewManager(core *Core, base machinewire.BaseVersion, deaths chan<- machinewire.DeviceID) *Manager {
-	return &Manager{core: core, base: base, devices: make(map[machinewire.DeviceID]*deviceWorker), deaths: deaths, stopping: make(chan struct{})}
+	return &Manager{
+		core:     core,
+		base:     base,
+		devices:  make(map[machinewire.DeviceID]*deviceWorker),
+		deaths:   deaths,
+		stopping: make(chan struct{}),
+	}
 }
+
 func (m *Manager) worker(id machinewire.DeviceID) *deviceWorker {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -77,6 +84,7 @@ func (m *Manager) Close(ctx context.Context) error {
 	m.workers.Wait()
 	return err
 }
+
 func (m *Manager) drain(ctx context.Context) error {
 	m.mu.Lock()
 	workers := make([]*deviceWorker, 0, len(m.devices))
@@ -147,9 +155,14 @@ func (m *Manager) Handle(ctx context.Context, call machinewire.MachineCall) (jso
 
 // OperationError carries an operation's summary and all underlying failures.
 type OperationError struct {
+	// Message is the operation summary carried on the wire.
 	Message string
-	Cause   error
+	// Cause preserves the underlying failures.
+	Cause error
 }
 
+// Error returns the failure message.
 func (e *OperationError) Error() string { return e.Message }
+
+// Unwrap returns the underlying failure.
 func (e *OperationError) Unwrap() error { return e.Cause }

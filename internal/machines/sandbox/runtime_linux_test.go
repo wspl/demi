@@ -35,7 +35,7 @@ func guestProbe() error {
 	if _, err := runnerwire.DecodeManagedBoot(data); err != nil {
 		return err
 	}
-	if err := os.WriteFile("/home/demi/ready.tmp", []byte("guest running"), 0600); err != nil {
+	if err := os.WriteFile("/home/demi/ready.tmp", []byte("guest running"), 0o600); err != nil {
 		return err
 	}
 	// Publish only the complete record; existence is the parent's readiness event.
@@ -52,12 +52,18 @@ func guestProbe() error {
 func TestRealRunscLifecycle(t *testing.T) {
 	path, err := exec.LookPath("runsc")
 	if err != nil {
-		t.Skip("runsc absent: pinned arm64 gVisor build runs in Phase 3 x-machines; real runtime lifecycle awaits x-machines")
+		t.Skip(
+			"runsc absent: pinned arm64 gVisor build runs in Phase 3 x-machines; real runtime lifecycle awaits x-machines",
+		)
 	}
 	isolatedSandbox(t, func(ctx context.Context) {
 		network := &networkFixture{}
 		sandbox, working, base, boot, lease := bootFixture(ctx, t, network)
-		sandbox.dependencies.Runsc = NewRunsc(system.NewTools(map[system.Tool]string{system.Runsc: path}), sandbox.config.Runtime, false)
+		sandbox.dependencies.Runsc = NewRunsc(
+			system.NewTools(map[system.Tool]string{system.Runsc: path}),
+			sandbox.config.Runtime,
+			false,
+		)
 		defer cleanupBoot(ctx, t, sandbox, working, network)
 		version, err := sandbox.dependencies.Runsc.Version(ctx)
 		if err != nil {
@@ -67,12 +73,12 @@ func TestRealRunscLifecycle(t *testing.T) {
 			t.Fatalf("runtime is not pinned: %s", version)
 		}
 		for _, directory := range []string{"usr/bin", "etc", "proc", "dev", "dev/pts", "dev/shm", "run", "tmp", "home"} {
-			if err := os.MkdirAll(filepath.Join(base, directory), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Join(base, directory), 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}
 		for _, file := range []string{"etc/hosts", "etc/resolv.conf", "run/demi-boot.json"} {
-			if err := os.WriteFile(filepath.Join(base, file), nil, 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(base, file), nil, 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -84,11 +90,11 @@ func TestRealRunscLifecycle(t *testing.T) {
 		if err := fixtureCopy(ctx, executable, init); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Chmod(init, 0755); err != nil {
+		if err := os.Chmod(init, 0o755); err != nil {
 			t.Fatal(err)
 		}
 		home := filepath.Join(t.TempDir(), "home")
-		if err := os.Mkdir(home, 0700); err != nil {
+		if err := os.Mkdir(home, 0o700); err != nil {
 			t.Fatal(err)
 		}
 		device, err := system.Attach(ctx, working.Image(machinewire.VolumeHome))
@@ -102,7 +108,7 @@ func TestRealRunscLifecycle(t *testing.T) {
 		prepareErr := func() (err error) {
 			defer func() { err = errors.Join(err, system.Unmount(context.WithoutCancel(ctx), home)) }()
 			userHome := filepath.Join(home, "demi")
-			if err := os.Mkdir(userHome, 0755); err != nil {
+			if err := os.Mkdir(userHome, 0o755); err != nil {
 				return err
 			}
 			return os.Chown(userHome, int(system.UserID), int(system.UserID))
@@ -110,11 +116,11 @@ func TestRealRunscLifecycle(t *testing.T) {
 		if prepareErr != nil {
 			t.Fatal(prepareErr)
 		}
-		if err := os.MkdirAll("/run/netns", 0755); err != nil {
+		if err := os.MkdirAll("/run/netns", 0o755); err != nil {
 			t.Fatal(err)
 		}
 		netns := "/run/netns/" + sandbox.slot.Namespace
-		if err := os.WriteFile(netns, nil, 0600); err != nil {
+		if err := os.WriteFile(netns, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := system.Bind(ctx, "/proc/thread-self/ns/net", netns); err != nil {

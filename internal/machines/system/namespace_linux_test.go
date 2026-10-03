@@ -79,16 +79,20 @@ func TestNamespaceJobsStayIsolated(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = system.RunNamespace(ctx, system.Network(filepath.Join("/proc", link, "ns/net")), func(context.Context) (struct{}, error) {
-			actual, err := os.Stat("/proc/thread-self/ns/net")
-			if err != nil {
-				return struct{}{}, err
-			}
-			if !os.SameFile(expected, actual) {
-				return struct{}{}, errors.New("entered wrong named namespace")
-			}
-			return struct{}{}, nil
-		})
+		_, err = system.RunNamespace(
+			ctx,
+			system.Network(filepath.Join("/proc", link, "ns/net")),
+			func(context.Context) (struct{}, error) {
+				actual, err := os.Stat("/proc/thread-self/ns/net")
+				if err != nil {
+					return struct{}{}, err
+				}
+				if !os.SameFile(expected, actual) {
+					return struct{}{}, errors.New("entered wrong named namespace")
+				}
+				return struct{}{}, nil
+			},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -186,7 +190,7 @@ func TestSavedMountNamespaceUsesBorrowedDescriptor(t *testing.T) {
 	}()
 	const marker = "/run/demi-system-descriptor-marker"
 	if err := systemtest.Isolate(t.Context(), func(context.Context) error {
-		if err := os.WriteFile(marker, []byte("saved namespace"), 0600); err != nil {
+		if err := os.WriteFile(marker, []byte("saved namespace"), 0o600); err != nil {
 			return err
 		}
 		const path = "/run/demi-system-saved-mount"

@@ -107,14 +107,14 @@ func (d RuntimeDirectory) Create(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := os.Mkdir(d.root, 0777); err != nil {
+	if err := os.Mkdir(d.root, 0o777); err != nil {
 		return err
 	}
-	if err := os.Chmod(d.root, 0700); err != nil {
+	if err := os.Chmod(d.root, 0o700); err != nil {
 		return err
 	}
 	for _, name := range MountPoints() {
-		if err := os.Mkdir(filepath.Join(d.root, name), 0777); err != nil {
+		if err := os.Mkdir(filepath.Join(d.root, name), 0o777); err != nil {
 			return err
 		}
 	}
@@ -154,17 +154,22 @@ func (d RuntimeDirectory) WriteCredentials(ctx context.Context, boot runnerwire.
 		// strings.Builder writes cannot fail.
 		fmt.Fprintf(&resolver, "nameserver %s\n", address)
 	}
-	if err := createCredential(ctx, d.Resolver(), []byte(resolver.String()), 0444); err != nil {
+	if err := createCredential(ctx, d.Resolver(), []byte(resolver.String()), 0o444); err != nil {
 		return err
 	}
-	if err := createCredential(ctx, d.Hosts(), []byte("127.0.0.1 localhost\n127.0.1.1 demi-cloud\n"), 0444); err != nil {
+	if err := createCredential(
+		ctx,
+		d.Hosts(),
+		[]byte("127.0.0.1 localhost\n127.0.1.1 demi-cloud\n"),
+		0o444,
+	); err != nil {
 		return err
 	}
 	data, err := contract.EncodeJSON(boot)
 	if err != nil {
 		return err
 	}
-	if err := createCredential(ctx, d.Boot(), data, 0400); err != nil {
+	if err := createCredential(ctx, d.Boot(), data, 0o400); err != nil {
 		return err
 	}
 	return os.Chown(d.Boot(), int(system.UserID), int(system.UserID))
@@ -175,7 +180,7 @@ func createCredential(ctx context.Context, path string, data []byte, mode os.Fil
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}

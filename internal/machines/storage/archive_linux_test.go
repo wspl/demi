@@ -29,7 +29,10 @@ func TestArchiveSafeEntriesAndUnsafeEntries(t *testing.T) {
 		{storagetest.Entry{Kind: tar.TypeFifo, Path: "./run/pipe"}, storage.ErrUnsafeEntry},
 		{storagetest.Entry{Kind: tar.TypeChar, Path: "./dev/null"}, storage.ErrUnsafeEntry},
 		{storagetest.Entry{Kind: tar.TypeBlock, Path: "./dev/sda"}, storage.ErrUnsafeEntry},
-		{storagetest.Entry{Kind: tar.TypeLink, Path: "./etc/shadow", Link: "../../etc/shadow"}, storage.ErrUnsafeHardlink},
+		{
+			storagetest.Entry{Kind: tar.TypeLink, Path: "./etc/shadow", Link: "../../etc/shadow"},
+			storage.ErrUnsafeHardlink,
+		},
 		{storagetest.Entry{Kind: tar.TypeLink, Path: "./etc/shadow", Link: "/etc/shadow"}, storage.ErrUnsafeHardlink},
 	}
 	for _, test := range cases {

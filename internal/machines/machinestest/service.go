@@ -11,6 +11,7 @@ import (
 // Service records calls and delegates their replies to a test script.
 // Script must be safe for simultaneous calls and must join any work it starts.
 type Service struct {
+	// Script supplies the test reply after a call is recorded.
 	Script func(context.Context, machinewire.MachineCall) (json.RawMessage, error)
 	mu     sync.Mutex
 	calls  []machinewire.MachineCall

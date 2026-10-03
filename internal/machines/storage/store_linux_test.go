@@ -37,11 +37,11 @@ func generationNames(t *testing.T, root string) []string {
 func TestPublicationKeepsCommittedPairAndTwoGenerations(t *testing.T) {
 	ctx := t.Context()
 	root := filepath.Join(t.TempDir(), "images")
-	requireStorage(t, os.Mkdir(root, 0700))
+	requireStorage(t, os.Mkdir(root, 0o700))
 	store := storage.NewStore(root)
 	source := storage.ImagesInDirectory(t.TempDir())
-	requireStorage(t, os.WriteFile(source.System, []byte("system"), 0600))
-	requireStorage(t, os.WriteFile(source.Home, []byte("home"), 0600))
+	requireStorage(t, os.WriteFile(source.System, []byte("system"), 0o600))
+	requireStorage(t, os.WriteFile(source.Home, []byte("home"), 0o600))
 	state, err := store.Read(ctx, "device")
 	requireStorage(t, err)
 	if state != nil {
@@ -69,12 +69,12 @@ func TestPublicationKeepsCommittedPairAndTwoGenerations(t *testing.T) {
 		}
 		// Replace sources rather than modifying an image still linked in a generation.
 		requireStorage(t, os.RemoveAll(source.ForVolume(volume)))
-		requireStorage(t, os.WriteFile(source.ForVolume(volume), data, 0600))
+		requireStorage(t, os.WriteFile(source.ForVolume(volume), data, 0o600))
 	}
 	requireStorage(t, store.Publish(ctx, "device", generationState(t, "second"), source))
 	requireStorage(t, os.Remove(source.System))
 	requireStorage(t, os.Remove(source.Home))
-	requireStorage(t, os.Mkdir(filepath.Join(root, "device/generations/.publish-stale"), 0700))
+	requireStorage(t, os.Mkdir(filepath.Join(root, "device/generations/.publish-stale"), 0o700))
 	requireStorage(t, store.Publish(ctx, "device", generationState(t, "third"), store.Images("device", "second")))
 	if got := generationNames(t, root); !reflect.DeepEqual(got, []string{"second", "third"}) {
 		t.Fatal(got)
@@ -91,8 +91,8 @@ func TestPublicationLinksSources(t *testing.T) {
 	ctx := t.Context()
 	store := storage.NewStore(t.TempDir())
 	sources := storage.ImagesInDirectory(t.TempDir())
-	requireStorage(t, os.WriteFile(sources.System, []byte("system"), 0600))
-	requireStorage(t, os.WriteFile(sources.Home, []byte("home"), 0600))
+	requireStorage(t, os.WriteFile(sources.System, []byte("system"), 0o600))
+	requireStorage(t, os.WriteFile(sources.Home, []byte("home"), 0o600))
 	requireStorage(t, store.Publish(ctx, "device", generationState(t, "first"), sources))
 	committed := store.Images("device", "first")
 	for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
@@ -110,10 +110,10 @@ func TestPublicationLinksSources(t *testing.T) {
 func TestCorruptRecordIsError(t *testing.T) {
 	root := t.TempDir()
 	store := storage.NewStore(root)
-	requireStorage(t, os.Mkdir(filepath.Join(root, "device"), 0700))
+	requireStorage(t, os.Mkdir(filepath.Join(root, "device"), 0o700))
 	path := filepath.Join(root, "device", "current.json")
 	data := []byte(`{"generation":"g"}`)
-	requireStorage(t, os.WriteFile(path, data, 0600))
+	requireStorage(t, os.WriteFile(path, data, 0o600))
 	_, err := store.Read(t.Context(), "device")
 	var corrupt *storage.CorruptRecordError
 	if !errors.As(err, &corrupt) || corrupt.Path != path {

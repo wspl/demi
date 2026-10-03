@@ -49,7 +49,10 @@ func TestListingContainerStatus(t *testing.T) {
 			t.Fatalf("empty status = %v, %v", found, err)
 		}
 	}
-	status, found, err := StatusIn([]byte(`[{"id":"demi-b","pid":7,"status":"running"},{"id":"demi-a","pid":9,"status":"paused","bundle":"/x"}]`), "demi-a")
+	status, found, err := StatusIn(
+		[]byte(`[{"id":"demi-b","pid":7,"status":"running"},{"id":"demi-a","pid":9,"status":"paused","bundle":"/x"}]`),
+		"demi-a",
+	)
 	if err != nil || !found || status != Paused {
 		t.Fatalf("listing status = %v, %v, %v", status, found, err)
 	}
@@ -62,7 +65,18 @@ func TestListingContainerStatus(t *testing.T) {
 
 func TestCommandIncludesRootAndProfile(t *testing.T) {
 	runsc := NewRunsc(systemtest.Placeholder(), "/run/demi-machine-manager", true)
-	expected := []string{"--root=/run/demi-machine-manager/runsc", "--platform=systrap", "--network=sandbox", "--overlay2=none", "--file-access=shared", "--file-access-mounts=shared", "--allow-suid=true", "--directfs=true", "pause", "demi-a"}
+	expected := []string{
+		"--root=/run/demi-machine-manager/runsc",
+		"--platform=systrap",
+		"--network=sandbox",
+		"--overlay2=none",
+		"--file-access=shared",
+		"--file-access-mounts=shared",
+		"--allow-suid=true",
+		"--directfs=true",
+		"pause",
+		"demi-a",
+	}
 	if got := runsc.Args([]string{"pause", "demi-a"}); !reflect.DeepEqual(got, expected) {
 		t.Fatalf("args = %q", got)
 	}
@@ -87,7 +101,7 @@ func fixtureRuntime(t *testing.T, runtime string) *Runsc {
 		t.Fatal(err)
 	}
 	runsc := NewRunsc(system.NewTools(map[system.Tool]string{system.Runsc: executable}), runtime, false)
-	if err := os.MkdirAll(runsc.Root(), 0700); err != nil {
+	if err := os.MkdirAll(runsc.Root(), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	return runsc
@@ -161,7 +175,7 @@ func TestWaitCancellationKeepsOwnedWaiter(t *testing.T) {
 
 func TestRuntimeStartFailureReportsLog(t *testing.T) {
 	runsc := fixtureRuntime(t, t.TempDir())
-	if err := os.WriteFile(filepath.Join(runsc.Root(), "fail-start"), []byte("failure"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(runsc.Root(), "fail-start"), []byte("failure"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	log, err := os.CreateTemp(t.TempDir(), "runtime-log")
