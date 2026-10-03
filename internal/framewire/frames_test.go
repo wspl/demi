@@ -245,3 +245,18 @@ func TestNestingLimitClosesConnection(t *testing.T) {
 		t.Fatalf("expected wrapped syntax error that closes the connection, got %v", err)
 	}
 }
+
+// Rust's diagnostic named the Rust field; retain that observation for review.
+func TestRustAttachmentFieldDiagnostic(t *testing.T) {
+	t.Skip("fidelity 6: frame diagnostics use wire fileName instead of Rust file_name")
+	value := fixture(t, readFixtures(t, "client-frames.json"), "send")
+	mutate(t, value, "/content/2/fileName", "..", false)
+	raw, err := contract.EncodeJSON(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = framewire.DecodeClientFrame(raw)
+	if err == nil || !strings.Contains(err.Error(), "content[2].file_name") {
+		t.Fatalf("attachment diagnostic: %v", err)
+	}
+}

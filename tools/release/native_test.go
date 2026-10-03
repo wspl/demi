@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/wspl/demi/internal/artifacts"
@@ -54,11 +56,14 @@ func readRunner(t *testing.T, root string) runnerwire.RunnerRelease {
 	}
 	return release
 }
-func requireConflict(t *testing.T, err error) {
+func requireConflict(t *testing.T, err error, paths ...string) {
 	t.Helper()
 	var conflict *artifacts.ConflictError
 	if !errors.As(err, &conflict) {
 		t.Fatalf("wanted immutable publication conflict, got %v", err)
+	}
+	if len(paths) != 0 && conflict.Path != paths[0] {
+		t.Fatalf("conflict path %s, want %s", conflict.Path, paths[0])
 	}
 }
 
@@ -119,19 +124,14 @@ func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.
 	if second.Release == first.Release {
 		t.Fatal("build changed without new identity")
 	}
+	requireReleaseEntries(t, output, first.Release, second.Release, "manifest.json")
 	writeFixture(t, filepath.Join(output, first.Release, commandwire.Targets[2], "demi-runner"), []byte("corrupt"))
 	nativeFixture(t, a.Root, "demi-runner", commandwire.Targets, "first")
-	requireConflict(t, a.run(t.Context(), args))
+	requireConflict(t, a.run(t.Context(), args), filepath.Join(output, first.Release, commandwire.Targets[2], "demi-runner"))
 	if !reflect.DeepEqual(readRunner(t, output), second) {
 		t.Fatal("failed publication moved pointer")
 	}
-	entries, err := os.ReadDir(output)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 3 {
-		t.Fatalf("staging left behind: %v", entries)
-	}
+	requireReleaseEntries(t, output, first.Release, second.Release, "manifest.json")
 }
 func TestBackendOrManagerReleaseRecordsVersionAndIsImmutable(t *testing.T) {
 	for _, program := range []string{"demi-backend", "demi-machine-manager"} {
@@ -155,14 +155,18 @@ func TestBackendOrManagerReleaseRecordsVersionAndIsImmutable(t *testing.T) {
 				t.Fatal(release)
 			}
 			for _, target := range targets {
-				got, err := measureExecutable(t.Context(), filepath.Join(output, target, program))
+				got, err := measureExecutable(t.Context(), filepath.Join(a.Root, ".cache/native-target", target, "release", executableName(program, target)))
 				if err != nil {
 					t.Fatal(err)
+				}
+				if !bytes.Equal(readFixture(t, filepath.Join(output, target, executableName(program, target))), []byte("server "+target)) {
+					t.Fatal("published executable differs from build")
 				}
 				if got != release.Targets[target] {
 					t.Fatal("release hash differs")
 				}
 			}
+			requireReleaseEntries(t, output, append(slices.Clone(targets), "release.json")...)
 			nativeFixture(t, a.Root, program, targets, "rebuilt")
 			requireConflict(t, a.run(t.Context(), args))
 		})
@@ -190,15 +194,16 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.ID != fileop.Package || descriptor.Version != version.Release || !reflect.DeepEqual(descriptor.Operations, fileop.Operations()) || len(descriptor.Resources) != 0 || len(descriptor.Targets) != 2 {
+	if descriptor.ID != fileop.Package || descriptor.Version != version.Release || !reflect.DeepEqual(descriptor.Operations, fileop.Operations()) || len(descriptor.Resources) != 0 || !slices.Equal(slices.Sorted(maps.Keys(descriptor.Targets)), targets) {
 		t.Fatal(descriptor)
 	}
+	requireReleaseEntries(t, output, append(slices.Clone(targets), "descriptor.json")...)
 	nativeFixture(t, a.Root, "demi-runner", targets, "runner")
 	runnerOutput := filepath.Join(a.Root, "runners")
 	if err := a.packageNative(t.Context(), packageOptions{Package: "demi-runner", Output: runnerOutput, Targets: targets}); err != nil {
 		t.Fatal(err)
 	}
-	if len(readRunner(t, runnerOutput).Targets) != 2 {
+	if !slices.Equal(slices.Sorted(maps.Keys(readRunner(t, runnerOutput).Targets)), targets) {
 		t.Fatal("wrong development runner targets")
 	}
 }
@@ -230,10 +235,14 @@ func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(descriptor.Resources) != 1 {
+		t.Fatalf("resources: %v", descriptor.Resources)
+	}
 	resource := descriptor.Resources["chrome"]
-	if resource.Title != chrome.Title() || len(resource.Targets) != 1 || resource.Targets[target].SHA256 != digest.SHA256 {
+	if resource.Title != chrome.Title() || len(resource.Targets) != 1 || resource.Targets[target].SHA256 != digest.SHA256 || resource.Targets[target].Size != digest.Size || resource.Targets[target].Entry != "chrome-linux64/chrome" {
 		t.Fatal(resource)
 	}
+	requireReleaseEntries(t, options.Output, "descriptor.json", "resources", target)
 	if !bytes.Equal(archive, readFixture(t, filepath.Join(options.Output, "resources", digest.SHA256))) {
 		t.Fatal("wrong resource bytes")
 	}
@@ -247,5 +256,22 @@ func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	}
 	if _, err := os.Stat(options.Output); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("corrupt release published")
+	}
+}
+
+// requireReleaseEntries checks the complete published directory, including absence of stages.
+func requireReleaseEntries(t *testing.T, path string, want ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, len(entries))
+	for i, entry := range entries {
+		names[i] = entry.Name()
+	}
+	slices.Sort(want)
+	if !slices.Equal(names, want) {
+		t.Fatalf("%s entries: %v, want %v", path, names, want)
 	}
 }

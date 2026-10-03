@@ -207,3 +207,13 @@ func TestScalarTables(t *testing.T) {
 		}
 	}
 }
+
+// Rust's shape refusal names the unsafe field, not just its containing type.
+// Cost: one local package load, below one second.
+func TestUnsafeIntegerDiagnosticNamesField(t *testing.T) {
+	t.Skip("fidelity 7: unsafe integer diagnostic names its type but omits the field")
+	err := generate(t.Context(), []string{"./testdata/invalid/unsafe_integer"}, false, "", false)
+	if err == nil || !strings.Contains(err.Error(), "Broken.Value") {
+		t.Fatalf("unsafe integer diagnostic: %v", err)
+	}
+}
