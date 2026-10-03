@@ -14,6 +14,8 @@ import (
 	"github.com/wspl/demi/internal/backend/providers"
 )
 
+// TestInstanceSecretPersistenceAndKeys
+// checks secret persistence, corruption refusal and key derivation.
 // Local files only; checks first-use publication, restart identity, corruption
 // refusal and independent key labels without starting the backend or a vendor.
 func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
@@ -35,7 +37,7 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("secret permissions: %o", info.Mode().Perm())
 	}
 	secret, err := ParseInstanceSecret("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
@@ -70,7 +72,7 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 			t.Fatalf("secret formatting exposed data with %s", format)
 		}
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		name, value string
 		kind        SecretErrorKind
 	}{
@@ -79,25 +81,25 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 		{"leading space", " " + strings.Repeat("0", 64), SecretCorrupt},
 	} {
 		// Serial subtests corrupt and reread the same instance-secret fixture.
-		t.Run(tc.name, func(t *testing.T) {
-			if err := os.WriteFile(path, []byte(tc.value), 0600); err != nil {
+		t.Run(scenario.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(scenario.value), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			_, err := loadSecret(t.Context(), directory)
 			var failure *SecretError
-			if !errors.As(err, &failure) || failure.Kind != tc.kind {
+			if !errors.As(err, &failure) || failure.Kind != scenario.kind {
 				t.Fatalf("wrong secret error: %v", err)
 			}
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(data) != tc.value {
+			if string(data) != scenario.value {
 				t.Fatal("corrupt secret was repaired")
 			}
 		})
 	}
-	if err := os.WriteFile(path, []byte(strings.Repeat("AB", 32)+"\n\u2003"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Repeat("AB", 32)+"\n\u2003"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := loadSecret(t.Context(), directory); err != nil {
@@ -105,10 +107,17 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 	}
 }
 
+// TestCLIExplicitEmptyValues
+// checks the difference between absent and explicitly empty CLI values.
 // Parsing alone costs no IO and verifies absence never swallows explicit emptiness.
 func TestCLIExplicitEmptyValues(t *testing.T) {
 	t.Parallel()
-	required := []string{"--mode=shared", "--public-url=http://localhost:3271", "--machines-socket=", "--native-config="}
+	required := []string{
+		"--mode=shared",
+		"--public-url=http://localhost:3271",
+		"--machines-socket=",
+		"--native-config=",
+	}
 	c, err := ParseConfig(required, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -122,12 +131,23 @@ func TestCLIExplicitEmptyValues(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		values := map[string]*string{"data": c.Data, "object-store-config": c.ObjectStoreConfig, "web-directory": c.WebDirectory, "runner-release-dir": c.RunnerReleaseDir}
+		values := map[string]*string{
+			"data":                c.Data,
+			"object-store-config": c.ObjectStoreConfig,
+			"web-directory":       c.WebDirectory,
+			"runner-release-dir":  c.RunnerReleaseDir,
+		}
 		if values[flag] == nil || *values[flag] != "" {
 			t.Fatalf("explicit empty --%s was lost", flag)
 		}
 	}
-	for _, env := range []string{"DEMI_INSTANCE_SECRET=", "DEMI_BACKEND_PUBLIC_URL=", "DEMI_EXPOSE_DOMAIN=", "DEMI_BACKEND_PORT=", "DEMI_CLAUDE_RELEASES_URL="} {
+	for _, env := range []string{
+		"DEMI_INSTANCE_SECRET=",
+		"DEMI_BACKEND_PUBLIC_URL=",
+		"DEMI_EXPOSE_DOMAIN=",
+		"DEMI_BACKEND_PORT=",
+		"DEMI_CLAUDE_RELEASES_URL=",
+	} {
 		args := []string{"--mode=shared", "--machines-socket=", "--native-config="}
 		if !strings.HasPrefix(env, "DEMI_BACKEND_PUBLIC_URL=") {
 			args = append(args, "--public-url=http://localhost:3271")
