@@ -2,6 +2,7 @@ package usershard
 
 import (
 	"context"
+	"io"
 	"sync"
 	"time"
 
@@ -23,7 +24,6 @@ type pageSocket struct {
 }
 
 func newPageSocket(socket *websocket.Conn, tuning PageTuning) *pageSocket {
-	socket.SetReadLimit(webapi.MaxPageMessageBytes)
 	return &pageSocket{socket: socket, tuning: tuning, heartbeat: time.NewTimer(tuning.Heartbeat)}
 }
 func (p *pageSocket) send(ctx context.Context, value any) error {
@@ -60,7 +60,7 @@ func readPage(ctx context.Context, socket *websocket.Conn, workers *sync.WaitGro
 		defer workers.Done()
 		defer close(incoming)
 		for {
-			kind, data, err := socket.Read(ctx)
+			kind, data, err := ReadPageMessage(ctx, socket)
 			select {
 			case incoming <- pageMessage{kind: kind, data: data, err: err}:
 			case <-ctx.Done():
@@ -72,4 +72,23 @@ func readPage(ctx context.Context, socket *websocket.Conn, workers *sync.WaitGro
 		}
 	}()
 	return incoming
+}
+
+// ReadPageMessage reads one bounded conversation, sync or user-stream message.
+// An oversized message ends the transport without sending a WebSocket close code.
+func ReadPageMessage(ctx context.Context, socket *websocket.Conn) (websocket.MessageType, []byte, error) {
+	// coder/websocket's own limit sends 1009 and cannot meet web-api.md's
+	// no-close-code rule. Keep its framing reader, but bound the message here.
+	socket.SetReadLimit(-1)
+	kind, reader, err := socket.Reader(ctx)
+	if err != nil {
+		return kind, nil, err
+	}
+	data, err := io.ReadAll(io.LimitReader(reader, webapi.MaxPageMessageBytes+1))
+	if len(data) > webapi.MaxPageMessageBytes {
+		// Overflow already failed the message; a close error needs no recovery.
+		_ = socket.CloseNow()
+		return kind, nil, websocket.ErrMessageTooBig
+	}
+	return kind, data, err
 }

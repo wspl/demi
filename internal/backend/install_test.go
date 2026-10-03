@@ -326,7 +326,7 @@ func TestInstalledRunnerPreservesInvokingShellMask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimed := s.request("POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, code), 201)
+	claimed := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", fmt.Sprintf(`{"code":%q}`, code), 201)
 	device, err := webapi.DecodeClaimedDevice(claimed.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +335,7 @@ func TestInstalledRunnerPreservesInvokingShellMask(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := s.work(cloudFirst)
-	s.request("PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, device.Device.ID, installs.home), 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+cloudFirst, fmt.Sprintf(`{"target":{"kind":"device","deviceId":%q,"path":%q}}`, device.Device.ID, installs.home), 200)
 	result := w.turn("mask", "umask; echo made > made.txt", "done", 60000)
 	if !strings.Contains(result, "0002") {
 		t.Fatal(result)

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/coder/websocket"
 	"github.com/fsnotify/fsnotify"
 	"github.com/wspl/demi/internal/backend"
 	"github.com/wspl/demi/internal/backend/providers"
@@ -30,57 +29,6 @@ func HostsHarness(ctx context.Context, t testing.TB) (*Harness, *ScriptedManager
 	}
 	harness, err := NewHarness(ctx, t, manager.Socket())
 	return harness, manager, err
-}
-
-// HostsSocket opens a conversation's page connection and owns its cleanup.
-func HostsSocket(ctx context.Context, t testing.TB, b *TestBackend, session *Session, conversation string) (*websocket.Conn, error) {
-	socket, response, err := websocket.Dial(ctx, b.WSURL("/api/conversations/"+conversation+"/stream"), &websocket.DialOptions{HTTPHeader: http.Header{"Cookie": {session.Cookie}, "Origin": {b.URL}}})
-	if response != nil && response.Body != nil {
-		_ = response.Body.Close()
-	}
-	if err != nil {
-		return nil, err
-	}
-	t.Cleanup(func() { _ = socket.CloseNow() }) // A read owns errors from an already closed connection.
-	return socket, nil
-}
-
-// HostsWaitNoJobs waits for a runner to release every completed job directory.
-func HostsWaitNoJobs(ctx context.Context, state string) (err error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, watcher.Close()) }()
-	jobs := filepath.Join(state, "jobs")
-	if err := watcher.Add(state); err != nil {
-		return err
-	}
-	if err := watcher.Add(jobs); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	for {
-		entries, err := os.ReadDir(jobs)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		held := false
-		for _, entry := range entries {
-			if entry.IsDir() {
-				held = true
-			}
-		}
-		if !held {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err := <-watcher.Errors:
-			return err
-		case <-watcher.Events:
-		}
-	}
 }
 
 // HostsReportingStart lets a shutdown-failure scenario observe Close's error once;

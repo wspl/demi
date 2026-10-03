@@ -17,32 +17,30 @@ import (
 )
 
 func TestASetupTokenBecomesASealedAccountThatNoAnswerReturns(t *testing.T) {
-	ctx := t.Context()
-	h := accountHarness(ctx, t)
+	ctx, h := conversationHarness(t)
 	cost := provider.ProbeFree
 	h.Config.Families, _ = backendtest.AccountFamilies(t, &cost)
-	b, master := accountStart(ctx, t, h)
-	created := accountRequest(ctx, t, b, "POST", "/api/providers/setup-token", &master, `{"token":" fixture-token-a ","label":"Claude"}`)
-	accountEqual(t, created.Status, 201)
-	entry := accountDecode(t, created, webapi.DecodeProviderAnswer).Provider
-	accountEqual(t, entry.Kind, webapi.CredentialKindSubscription)
-	accountEqual(t, entry.ProviderType, "claude-code")
-	accountRefusal(t, accountRequest(ctx, t, b, "POST", "/api/providers/setup-token", &master, `{"token":"fixture-token-c","label":"Again"}`), 409, webapi.ErrorCodeProviderExists)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
+	created := conversationRequest(ctx, t, b, &master, "POST", "/api/providers/setup-token", `{"token":" fixture-token-a ","label":"Claude"}`, 201)
+	entry := conversationDecode(t, created, webapi.DecodeProviderAnswer).Provider
+	conversationEqual(t, entry.Kind, webapi.CredentialKindSubscription)
+	conversationEqual(t, entry.ProviderType, "claude-code")
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "POST", "/api/providers/setup-token", `{"token":"fixture-token-c","label":"Again"}`, 409), webapi.ErrorCodeProviderExists)
 	path := "/api/providers/" + string(entry.ID) + "/accounts"
-	added := accountRequest(ctx, t, b, "POST", path, &master, `{"token":"fixture-token-b"}`)
-	accountEqual(t, added.Status, 201)
-	second := accountDecode(t, added, webapi.DecodeAddedAccount).Account
-	refused := accountRequest(ctx, t, b, "POST", path, &master, `{"token":"bad-token-1"}`)
-	accountRefusal(t, refused, 400, webapi.ErrorCodeTokenImportFailed)
+	added := conversationRequest(ctx, t, b, &master, "POST", path, `{"token":"fixture-token-b"}`, 201)
+	second := conversationDecode(t, added, webapi.DecodeAddedAccount).Account
+	refused := conversationRequest(ctx, t, b, &master, "POST", path, `{"token":"bad-token-1"}`, 400)
+	conversationRefusal(t, refused, webapi.ErrorCodeTokenImportFailed)
 	if bytes.Contains(refused.Body, []byte("bad-token-1")) {
 		t.Fatal("refusal leaks token")
 	}
-	listed := accountRequest(ctx, t, b, "GET", path, &master, "")
+	listed := conversationRequest(ctx, t, b, &master, "GET", path, "", 200)
 	if bytes.Contains(listed.Body, []byte("fixture-token")) {
 		t.Fatal("accounts leak token")
 	}
-	accounts := accountDecode(t, listed, webapi.DecodeAccounts)
-	accountEqual(t, len(accounts.Accounts), 2)
+	accounts := conversationDecode(t, listed, webapi.DecodeAccounts)
+	conversationEqual(t, len(accounts.Accounts), 2)
 	if accounts.Active == nil {
 		t.Fatal("no active account")
 	}
@@ -77,42 +75,43 @@ func TestASetupTokenBecomesASealedAccountThatNoAnswerReturns(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	accountEqual(t, count, 2)
+	conversationEqual(t, count, 2)
 	if err := rows.Close(); err != nil {
 		t.Fatal(err)
 	}
 	active := path + "/" + string(first)
-	accountRefusal(t, accountRequest(ctx, t, b, "DELETE", active, &master, ""), 409, webapi.ErrorCodeActiveAccount)
-	switched := accountRequest(ctx, t, b, "PUT", path+"/active", &master, accountJSON(t, contract.Field{Name: "credentialId", Value: second.ID}))
-	accountEqual(t, string(accountDecode(t, switched, webapi.DecodeActiveAccount).Active), second.ID)
-	accountEqual(t, accountRequest(ctx, t, b, "DELETE", active, &master, "").Status, 204)
-	accountRefusal(t, accountRequest(ctx, t, b, "PUT", path+"/active", &master, `{"credentialId":"cred-missing"}`), 404, webapi.ErrorCodeAccountNotFound)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "DELETE", active, "", 409), webapi.ErrorCodeActiveAccount)
+	switched := conversationRequest(ctx, t, b, &master, "PUT", path+"/active", accountJSON(t, contract.Field{Name: "credentialId", Value: second.ID}), 200)
+	conversationEqual(t, string(conversationDecode(t, switched, webapi.DecodeActiveAccount).Active), second.ID)
+	conversationRequest(ctx, t, b, &master, "DELETE", active, "", 204)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "PUT", path+"/active", `{"credentialId":"cred-missing"}`, 404), webapi.ErrorCodeAccountNotFound)
 	statusPath := "/api/providers/" + string(entry.ID) + "/status"
-	status := accountRequest(ctx, t, b, "GET", statusPath, &master, "")
+	status := conversationRequest(ctx, t, b, &master, "GET", statusPath, "", 200)
 	if bytes.Contains(status.Body, []byte("fixture-token")) {
 		t.Fatal("status leaks token")
 	}
-	details := accountDecode(t, status, webapi.DecodeProviderDetails)
-	accountEqual(t, len(details.Accounts), 1)
+	details := conversationDecode(t, status, webapi.DecodeProviderDetails)
+	conversationEqual(t, len(details.Accounts), 1)
 	if details.Active == nil || string(*details.Active) != second.ID {
 		t.Fatal(details.Active)
 	}
 	if err := h.AddUser(ctx, "reader@example.test", "reader-pass-1", webapi.RoleUser); err != nil {
 		t.Fatal(err)
 	}
-	reader := accountLogin(ctx, t, b, "reader@example.test", "reader-pass-1")
-	accountRefusal(t, accountRequest(ctx, t, b, "POST", path, &reader, `{"token":"not-allowed"}`), 403, webapi.ErrorCodeForbidden)
-	hidden := accountDecode(t, accountRequest(ctx, t, b, "GET", path, &reader, ""), webapi.DecodeAccounts)
-	accountEqual(t, len(hidden.Accounts), 0)
+	reader, err := b.Login(ctx, "reader@example.test", "reader-pass-1")
+	wireMust(t, err)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &reader, "POST", path, `{"token":"not-allowed"}`, 403), webapi.ErrorCodeForbidden)
+	hidden := conversationDecode(t, conversationRequest(ctx, t, b, &reader, "GET", path, "", 200), webapi.DecodeAccounts)
+	conversationEqual(t, len(hidden.Accounts), 0)
 	if hidden.Active != nil {
 		t.Fatal(hidden.Active)
 	}
-	seen := accountDecode(t, accountRequest(ctx, t, b, "GET", statusPath, &reader, ""), webapi.DecodeProviderDetails)
-	accountEqual(t, len(seen.Accounts), 0)
+	seen := conversationDecode(t, conversationRequest(ctx, t, b, &reader, "GET", statusPath, "", 200), webapi.DecodeProviderDetails)
+	conversationEqual(t, len(seen.Accounts), 0)
 	if seen.Active != nil || seen.Quota != nil {
 		t.Fatal("account detail disclosed")
 	}
-	accountEqual[core.AuthState](t, seen.Auth, &core.Authenticated{})
+	conversationEqual[core.AuthState](t, seen.Auth, &core.Authenticated{})
 }
 
 // accountAwait observes login transitions through requests with a hang deadline, without timed sleeps.
@@ -124,7 +123,7 @@ func accountAwait(ctx context.Context, t *testing.T, b *backendtest.TestBackend,
 		if err := ctx.Err(); err != nil {
 			t.Fatal(err)
 		}
-		state := accountDecode(t, accountRequest(ctx, t, b, "GET", "/api/providers/subscription-login/"+id, s, ""), webapi.DecodeLoginAnswer).Login
+		state := conversationDecode(t, conversationRequest(ctx, t, b, s, "GET", "/api/providers/subscription-login/"+id, "", 200), webapi.DecodeLoginAnswer).Login
 		if done(state) {
 			return state
 		}
@@ -134,9 +133,8 @@ func accountAwait(ctx context.Context, t *testing.T, b *backendtest.TestBackend,
 // accountStartLogin begins a device flow through its public route.
 func accountStartLogin(ctx context.Context, t *testing.T, b *backendtest.TestBackend, s *backendtest.Session, path, body string) string {
 	t.Helper()
-	a := accountRequest(ctx, t, b, "POST", path, s, body)
-	accountEqual(t, a.Status, 202)
-	started := accountDecode(t, a, webapi.DecodeLoginStarted)
+	a := conversationRequest(ctx, t, b, s, "POST", path, body, 202)
+	started := conversationDecode(t, a, webapi.DecodeLoginStarted)
 	return string(started.Login.ID)
 }
 
@@ -155,73 +153,71 @@ func accountDeviceEntry(ctx context.Context, t *testing.T, b *backendtest.TestBa
 	if _, ok := state.(*webapi.LoginStateCompleted); !ok {
 		t.Fatalf("login: %#v", state)
 	}
-	return accountDecode(t, accountRequest(ctx, t, b, "GET", "/api/providers", s, ""), webapi.DecodeProviders).Providers[0]
+	return conversationDecode(t, conversationRequest(ctx, t, b, s, "GET", "/api/providers", "", 200), webapi.DecodeProviders).Providers[0]
 }
 
 func TestAFreeProbeFillsTheAccountsSnapshotWhichOutlivesARestart(t *testing.T) {
-	ctx := t.Context()
-	h := accountHarness(ctx, t)
+	ctx, h := conversationHarness(t)
 	cost := provider.ProbeFree
 	families, script := backendtest.AccountFamilies(t, &cost)
 	h.Config.Families = families
-	b, master := accountStart(ctx, t, h)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	entry := accountDeviceEntry(ctx, t, b, &master, script)
 	path := "/api/providers/" + string(entry.ID)
-	status := accountDecode(t, accountRequest(ctx, t, b, "GET", path+"/status", &master, ""), webapi.DecodeProviderDetails)
+	status := conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", path+"/status", "", 200), webapi.DecodeProviderDetails)
 	if status.Quota != nil {
 		t.Fatal(status.Quota)
 	}
 	probe := webapi.ProbeCostFree
-	accountEqual[webapi.QuotaCapability](t, status.QuotaCapability, &webapi.QuotaCapabilitySupported{Probe: &probe})
-	snapshot := accountDecode(t, accountRequest(ctx, t, b, "POST", path+"/quota", &master, ""), webapi.DecodeQuotaAnswer).Quota
+	conversationEqual[webapi.QuotaCapability](t, status.QuotaCapability, &webapi.QuotaCapabilitySupported{Probe: &probe})
+	snapshot := conversationDecode(t, conversationRequest(ctx, t, b, &master, "POST", path+"/quota", "", 200), webapi.DecodeQuotaAnswer).Quota
 	if snapshot == nil {
 		t.Fatal("no snapshot")
 	}
-	accountEqual(t, snapshot.Source, core.SnapshotSourceProbe)
+	conversationEqual(t, snapshot.Source, core.SnapshotSourceProbe)
 	if snapshot.AccountLabel == nil {
 		t.Fatal("no account label")
 	}
-	accountEqual(t, *snapshot.AccountLabel, "device@example.test")
-	accountEqual(t, *snapshot.Windows[0].UsedPercent, float64(40))
-	status = accountDecode(t, accountRequest(ctx, t, b, "GET", path+"/status", &master, ""), webapi.DecodeProviderDetails)
-	accountEqual(t, status.Quota, snapshot)
-	accountEqual(t, status.Accounts[0].Quota, snapshot)
-	accountRefusal(t, accountRequest(ctx, t, b, "POST", path+"/quota", &master, `{"credentialId":"cred-missing"}`), 404, webapi.ErrorCodeAccountNotFound)
+	conversationEqual(t, *snapshot.AccountLabel, "device@example.test")
+	conversationEqual(t, *snapshot.Windows[0].UsedPercent, float64(40))
+	status = conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", path+"/status", "", 200), webapi.DecodeProviderDetails)
+	conversationEqual(t, status.Quota, snapshot)
+	conversationEqual(t, status.Accounts[0].Quota, snapshot)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "POST", path+"/quota", `{"credentialId":"cred-missing"}`, 404), webapi.ErrorCodeAccountNotFound)
 	if err := b.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var err error
 	b, err = h.Start(ctx, t)
 	if err != nil {
 		t.Fatal(err)
 	}
-	accountEqual(t, accountDecode(t, accountRequest(ctx, t, b, "GET", path+"/status", &master, ""), webapi.DecodeProviderDetails).Quota, snapshot)
+	conversationEqual(t, conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", path+"/status", "", 200), webapi.DecodeProviderDetails).Quota, snapshot)
 }
 
 func TestAProbeThatWouldSpendInferenceIsRefusedAndAnAPIKeyEntryHasNoQuota(t *testing.T) {
-	ctx := t.Context()
-	h := accountHarness(ctx, t)
+	ctx, h := conversationHarness(t)
 	cost := provider.ProbeInference
 	families, script := backendtest.AccountFamilies(t, &cost)
 	h.Config.Families = families
 	h.Config.Mode = webapi.InstanceModeIsolated
-	b, master := accountStart(ctx, t, h)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	entry := accountDeviceEntry(ctx, t, b, &master, script)
-	accountRefusal(t, accountRequest(ctx, t, b, "POST", "/api/providers/"+string(entry.ID)+"/quota", &master, "{}"), 409, webapi.ErrorCodeQuotaRequiresInference)
-	keyed := accountDecode(t, accountRequest(ctx, t, b, "POST", "/api/providers", &master, `{"source":"custom","providerType":"anthropic","label":"Work","apiKey":"k"}`), webapi.DecodeProviderAnswer).Provider
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "POST", "/api/providers/"+string(entry.ID)+"/quota", "{}", 409), webapi.ErrorCodeQuotaRequiresInference)
+	keyed := conversationDecode(t, conversationRequest(ctx, t, b, &master, "POST", "/api/providers", `{"source":"custom","providerType":"anthropic","label":"Work","apiKey":"k"}`, 201), webapi.DecodeProviderAnswer).Provider
 	path := "/api/providers/" + string(keyed.ID)
-	quota := accountDecode(t, accountRequest(ctx, t, b, "POST", path+"/quota", &master, "{}"), webapi.DecodeQuotaAnswer)
+	quota := conversationDecode(t, conversationRequest(ctx, t, b, &master, "POST", path+"/quota", "{}", 200), webapi.DecodeQuotaAnswer)
 	if quota.Quota != nil {
 		t.Fatal(quota.Quota)
 	}
-	status := accountDecode(t, accountRequest(ctx, t, b, "GET", path+"/status", &master, ""), webapi.DecodeProviderDetails)
-	accountEqual[webapi.QuotaCapability](t, status.QuotaCapability, &webapi.QuotaCapabilityNone{})
-	accountEqual(t, len(status.Accounts), 0)
+	status := conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", path+"/status", "", 200), webapi.DecodeProviderDetails)
+	conversationEqual[webapi.QuotaCapability](t, status.QuotaCapability, &webapi.QuotaCapabilityNone{})
+	conversationEqual(t, len(status.Accounts), 0)
 }
 
 func TestConcurrentDeviceLoginsPublishOneEntryAndTheOtherStoresNothing(t *testing.T) {
-	ctx := t.Context()
-	h := accountHarness(ctx, t)
+	ctx, h := conversationHarness(t)
 	cost := provider.ProbeFree
 	families, script := backendtest.AccountFamilies(t, &cost)
 	h.Config.Families = families
@@ -232,13 +228,14 @@ func TestConcurrentDeviceLoginsPublishOneEntryAndTheOtherStoresNothing(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, master := accountStart(ctx, t, h)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	path := "/api/providers/subscription-login"
 	for _, row := range []struct {
 		body string
 		code webapi.ErrorCode
 	}{{`{"providerType":"nope"}`, webapi.ErrorCodeUnknownProviderType}, {`{"providerType":"anthropic"}`, webapi.ErrorCodeNoLoginFlow}, {`{"type":"device"}`, webapi.ErrorCodeInvalidBody}} {
-		accountRefusal(t, accountRequest(ctx, t, b, "POST", path, &master, row.body), 400, row.code)
+		conversationRefusal(t, conversationRequest(ctx, t, b, &master, "POST", path, row.body, 400), row.code)
 	}
 	first := accountStartLogin(ctx, t, b, &master, path, `{"providerType":"device","label":"Work"}`)
 	second := accountStartLogin(ctx, t, b, &master, path, `{"providerType":"device","label":"Competing"}`)
@@ -247,7 +244,7 @@ func TestConcurrentDeviceLoginsPublishOneEntryAndTheOtherStoresNothing(t *testin
 		return ok && p.VerificationURL != nil
 	})
 	verification, code := "https://verify.example/device", "ABCD-1234"
-	accountEqual[webapi.LoginState](t, pending, &webapi.LoginStatePending{VerificationURL: &verification, UserCode: &code})
+	conversationEqual[webapi.LoginState](t, pending, &webapi.LoginStatePending{VerificationURL: &verification, UserCode: &code})
 	script.Approve(true)
 	outcomes := []webapi.LoginState{accountAwait(ctx, t, b, &master, first, accountEnded), accountAwait(ctx, t, b, &master, second, accountEnded)}
 	var completed *webapi.LoginStateCompleted
@@ -264,15 +261,15 @@ func TestConcurrentDeviceLoginsPublishOneEntryAndTheOtherStoresNothing(t *testin
 			t.Fatal("pending")
 		}
 	}
-	accountEqual(t, successes, 1)
-	accountEqual(t, failed, true)
-	entries := accountDecode(t, accountRequest(ctx, t, b, "GET", "/api/providers", &master, ""), webapi.DecodeProviders).Providers
-	accountEqual(t, len(entries), 1)
-	accountEqual(t, entries[0].ID, completed.ProviderID)
-	accounts := accountDecode(t, accountRequest(ctx, t, b, "GET", "/api/providers/"+string(completed.ProviderID)+"/accounts", &master, ""), webapi.DecodeAccounts)
-	accountEqual(t, len(accounts.Accounts), 1)
-	accountEqual(t, accounts.Accounts[0].ID, string(completed.CredentialID))
-	accountEqual(t, *accounts.Active, completed.CredentialID)
+	conversationEqual(t, successes, 1)
+	conversationEqual(t, failed, true)
+	entries := conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", "/api/providers", "", 200), webapi.DecodeProviders).Providers
+	conversationEqual(t, len(entries), 1)
+	conversationEqual(t, entries[0].ID, completed.ProviderID)
+	accounts := conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", "/api/providers/"+string(completed.ProviderID)+"/accounts", "", 200), webapi.DecodeAccounts)
+	conversationEqual(t, len(accounts.Accounts), 1)
+	conversationEqual(t, accounts.Accounts[0].ID, string(completed.CredentialID))
+	conversationEqual(t, *accounts.Active, completed.CredentialID)
 	db, err := h.ControlDatabase(ctx, t)
 	if err != nil {
 		t.Fatal(err)
@@ -282,67 +279,69 @@ func TestConcurrentDeviceLoginsPublishOneEntryAndTheOtherStoresNothing(t *testin
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*), MAX(secret) FROM provider_credentials").Scan(&count, &secret); err != nil {
 		t.Fatal(err)
 	}
-	accountEqual(t, count, 1)
+	conversationEqual(t, count, 1)
 	if bytes.Contains(secret, []byte("login-secret")) {
 		t.Fatal("unsealed login")
 	}
-	offered := accountDecode(t, accountRequest(ctx, t, b, "GET", "/api/providers/catalog", &master, ""), webapi.DecodeVendorCatalog)
+	offered := conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", "/api/providers/catalog", "", 200), webapi.DecodeVendorCatalog)
 	configured := false
 	for _, family := range offered.Subscriptions {
 		if family.ProviderType == "device" && family.Configured {
 			configured = true
 		}
 	}
-	accountEqual(t, configured, true)
-	accountRefusal(t, accountRequest(ctx, t, b, "POST", path, &master, `{"providerType":"device"}`), 409, webapi.ErrorCodeProviderExists)
+	conversationEqual(t, configured, true)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "POST", path, `{"providerType":"device"}`, 409), webapi.ErrorCodeProviderExists)
 	path = "/api/providers/" + string(completed.ProviderID)
-	accountEqual(t, accountDecode(t, accountRequest(ctx, t, b, "PATCH", path, &master, `{"label":"Personal"}`), webapi.DecodeProviderAnswer).Provider.Label, "Personal")
-	accountRefusal(t, accountRequest(ctx, t, b, "PATCH", path, &master, `{"apiKey":"k"}`), 400, webapi.ErrorCodeSubscriptionOnly)
-	accountEqual(t, accountRequest(ctx, t, b, "DELETE", path, &master, "").Status, 204)
+	conversationEqual(t, conversationDecode(t, conversationRequest(ctx, t, b, &master, "PATCH", path, `{"label":"Personal"}`, 200), webapi.DecodeProviderAnswer).Provider.Label, "Personal")
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "PATCH", path, `{"apiKey":"k"}`, 400), webapi.ErrorCodeSubscriptionOnly)
+	conversationRequest(ctx, t, b, &master, "DELETE", path, "", 204)
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM provider_credentials").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	accountEqual(t, count, 0)
+	conversationEqual(t, count, 0)
 }
 
 func TestALoginIntoAnEntryHoldsItUntilItEndsAndCancellingStopsItAtOnce(t *testing.T) {
-	ctx := t.Context()
-	h := accountHarness(ctx, t)
+	ctx, h := conversationHarness(t)
 	cost := provider.ProbeFree
 	families, script := backendtest.AccountFamilies(t, &cost)
 	h.Config.Families = families
-	b, master := accountStart(ctx, t, h)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	entry := accountDeviceEntry(ctx, t, b, &master, script)
 	script.Approve(false)
 	path := "/api/providers/" + string(entry.ID)
 	id := accountStartLogin(ctx, t, b, &master, path+"/accounts/login", "{}")
-	accountRefusal(t, accountRequest(ctx, t, b, "PATCH", path, &master, `{"label":"Busy"}`), 409, webapi.ErrorCodeProviderBusy)
-	accountRefusal(t, accountRequest(ctx, t, b, "DELETE", path, &master, ""), 409, webapi.ErrorCodeProviderBusy)
-	accountEqual(t, accountRequest(ctx, t, b, "DELETE", "/api/providers/subscription-login/"+id, &master, "").Status, 204)
-	accountEqual(t, script.Cancelled.Load(), int64(1))
-	accountEqual[webapi.LoginState](t, accountDecode(t, accountRequest(ctx, t, b, "GET", "/api/providers/subscription-login/"+id, &master, ""), webapi.DecodeLoginAnswer).Login, &webapi.LoginStateFailed{Message: "The login was cancelled"})
-	accountEqual(t, accountRequest(ctx, t, b, "PATCH", path, &master, `{"label":"Ready"}`).Status, 200)
-	accountRefusal(t, accountRequest(ctx, t, b, "DELETE", "/api/providers/subscription-login/no-such-login", &master, ""), 404, webapi.ErrorCodeLoginNotFound)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "PATCH", path, `{"label":"Busy"}`, 409), webapi.ErrorCodeProviderBusy)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "DELETE", path, "", 409), webapi.ErrorCodeProviderBusy)
+	conversationRequest(ctx, t, b, &master, "DELETE", "/api/providers/subscription-login/"+id, "", 204)
+	conversationEqual(t, script.Cancelled.Load(), int64(1))
+	conversationEqual[webapi.LoginState](t, conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", "/api/providers/subscription-login/"+id, "", 200), webapi.DecodeLoginAnswer).Login, &webapi.LoginStateFailed{Message: "The login was cancelled"})
+	conversationRequest(ctx, t, b, &master, "PATCH", path, `{"label":"Ready"}`, 200)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "DELETE", "/api/providers/subscription-login/no-such-login", "", 404), webapi.ErrorCodeLoginNotFound)
 }
 
 func TestALoginExpiresAndItsResultGoesAfterTheRetention(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	ctx, h := conversationHarness(t)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	h := accountHarness(ctx, t)
 	cost := provider.ProbeFree
 	families, script := backendtest.AccountFamilies(t, &cost)
 	h.Config.Families = families
 	timing := providers.LoginTiming{Lifetime: 100 * time.Millisecond, Retention: 300 * time.Millisecond}
 	h.Config.Logins = timing
-	b, master := accountStart(ctx, t, h)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	started := time.Now()
 	id := accountStartLogin(ctx, t, b, &master, "/api/providers/subscription-login", `{"providerType":"device"}`)
-	accountEqual[webapi.LoginState](t, accountAwait(ctx, t, b, &master, id, accountEnded), &webapi.LoginStateFailed{Message: "The login expired"})
-	accountEqual(t, script.Cancelled.Load(), int64(1))
-	accountEqual(t, len(accountDecode(t, accountRequest(ctx, t, b, "GET", "/api/providers", &master, ""), webapi.DecodeProviders).Providers), 0)
+	conversationEqual[webapi.LoginState](t, accountAwait(ctx, t, b, &master, id, accountEnded), &webapi.LoginStateFailed{Message: "The login expired"})
+	conversationEqual(t, script.Cancelled.Load(), int64(1))
+	conversationEqual(t, len(conversationDecode(t, conversationRequest(ctx, t, b, &master, "GET", "/api/providers", "", 200), webapi.DecodeProviders).Providers), 0)
 	path := "/api/providers/subscription-login/" + id
 	for {
-		a := accountRequest(ctx, t, b, "GET", path, &master, "")
+		a, err := b.Read(ctx, path, &master)
+		wireMust(t, err)
 		if a.Status == 404 {
 			break
 		}
@@ -353,5 +352,5 @@ func TestALoginExpiresAndItsResultGoesAfterTheRetention(t *testing.T) {
 	if time.Since(started) < timing.Lifetime+timing.Retention {
 		t.Fatal("login result removed before retention")
 	}
-	accountRefusal(t, accountRequest(ctx, t, b, "GET", path, &master, ""), 404, webapi.ErrorCodeLoginNotFound)
+	conversationRefusal(t, conversationRequest(ctx, t, b, &master, "GET", path, "", 404), webapi.ErrorCodeLoginNotFound)
 }

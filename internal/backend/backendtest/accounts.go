@@ -2,20 +2,15 @@ package backendtest
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend"
 	"github.com/wspl/demi/internal/backend/providers"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
 	"github.com/wspl/demi/internal/webapi"
@@ -210,100 +205,4 @@ func (p *accountProvider) Quota() *provider.Quota                  { return p.qu
 func (p *accountProvider) Accounts() provider.SubscriptionAccounts { return p.accounts }
 func (p *accountProvider) Runtime(provider.RuntimeEnv) (provider.Runtime, error) {
 	return providertest.NewScriptedRuntime(p.family.T, providertest.Events(providertest.Text("ok"), providertest.Response(1, 1))), nil
-}
-
-// AccountSocket reads conversation frames for provider-account scenarios.
-type AccountSocket struct{ Conn *websocket.Conn }
-
-// OpenAccountSocket connects the authenticated product page and registers cleanup.
-func OpenAccountSocket(ctx context.Context, t testing.TB, b *TestBackend, s *Session, id string) (*AccountSocket, error) {
-	conn, response, err := websocket.Dial(ctx, b.WSURL("/api/conversations/"+id+"/stream"), &websocket.DialOptions{HTTPClient: b.HTTP, HTTPHeader: http.Header{"Cookie": []string{s.Cookie}, "Origin": []string{b.URL}}})
-	if err != nil {
-		if response != nil {
-			return nil, fmt.Errorf("conversation upgrade HTTP %d: %w", response.StatusCode, err)
-		}
-		return nil, err
-	}
-	conn.SetReadLimit(-1)
-	t.Cleanup(func() {
-		// Closing an already failed or closed socket is normal teardown.
-		_ = conn.CloseNow()
-	})
-	return &AccountSocket{Conn: conn}, nil
-}
-
-// Send writes a generated client frame.
-func (s *AccountSocket) Send(ctx context.Context, frame framewire.ClientFrame) error {
-	data, err := contract.EncodeJSON(frame)
-	if err != nil {
-		return err
-	}
-	return s.Conn.Write(ctx, websocket.MessageText, data)
-}
-
-// Next validates the next frame and uses a deadline only as a hang guard.
-func (s *AccountSocket) Next(ctx context.Context) (framewire.ServerFrame, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	_, data, err := s.Conn.Read(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return framewire.DecodeServerFrame(data)
-}
-
-// Open reads the handshake through pending steers.
-func (s *AccountSocket) Open(ctx context.Context) error {
-	if err := s.Send(ctx, &framewire.OpenFrame{}); err != nil {
-		return err
-	}
-	first, err := s.Next(ctx)
-	if err != nil {
-		return err
-	}
-	if _, ok := first.(*framewire.OpenedFrame); !ok {
-		return fmt.Errorf("conversation opening: %#v", first)
-	}
-	for {
-		frame, err := s.Next(ctx)
-		if err != nil {
-			return err
-		}
-		if _, ok := frame.(*framewire.PendingSteersFrame); ok {
-			return nil
-		}
-	}
-}
-
-// Chat sends a user message and reads through the running-to-idle transition.
-func (s *AccountSocket) Chat(ctx context.Context, id, text string) ([]framewire.ServerFrame, error) {
-	turn, err := core.ParseTurnID(id)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.Send(ctx, &framewire.SendFrame{MessageID: turn, Content: []framewire.ClientContent{&framewire.TextContent{Text: text}}}); err != nil {
-		return nil, err
-	}
-	return s.UntilIdle(ctx)
-}
-
-// UntilIdle reads frames through the idle phase following running.
-func (s *AccountSocket) UntilIdle(ctx context.Context) ([]framewire.ServerFrame, error) {
-	running := false
-	var frames []framewire.ServerFrame
-	for {
-		frame, err := s.Next(ctx)
-		if err != nil {
-			return nil, err
-		}
-		frames = append(frames, frame)
-		if phase, ok := frame.(*framewire.PhaseFrame); ok {
-			if phase.Phase == core.SessionPhaseRunning {
-				running = true
-			}
-			if phase.Phase == core.SessionPhaseIdle && running {
-				return frames, nil
-			}
-		}
-	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -107,6 +108,7 @@ func TestDeclaredBrokenPipeExits141(t *testing.T) {
 // remote command finishes without needing stdin.
 type stoppedInputHandler struct {
 	waiting chan struct{}
+	waits   int
 	writer  *os.File
 }
 
@@ -125,9 +127,11 @@ func (h *stoppedInputHandler) Invoke(ctx context.Context, invocation cmdsdk.Invo
 		_, err := invocation.Input.Next(inputCtx)
 		done <- err
 	}()
-	select {
-	case <-h.waiting:
-	case <-ctx.Done():
+	for range h.waits {
+		select {
+		case <-h.waiting:
+		case <-ctx.Done():
+		}
 	}
 	cancel()
 	err := <-done
@@ -146,19 +150,36 @@ func (h *stoppedInputHandler) Invoke(ctx context.Context, invocation cmdsdk.Invo
 // One in-process shell and pipe; normally finishes in milliseconds. The outer
 // context is only a deadlock watchdog, including when run against the old code.
 func TestDeclaredInputCancellationPreservesShellInput(t *testing.T) {
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = reader.Close() }() // Execute may close canceled job streams.
-	defer func() { _ = writer.Close() }()
-	handler := &stoppedInputHandler{waiting: make(chan struct{}, 1), writer: writer}
-	result, output, diagnostic := shellFiles(t, t.TempDir(), `fixture; read -r line; printf '%s' "$line"`, func(o *Options) {
-		o.Stdin = reader
-		o.Observe = handler
-		o.Commands = &process.JobCommands{Context: "0123456789abcdef0123456789abcdef", Roots: []string{"fixture"}, Handler: handler}
-	})
-	if result.Code != 0 || output != "still readable" || diagnostic != "" {
-		t.Fatalf("result %+v output %q diagnostic %q", result, output, diagnostic)
+	for _, test := range []struct {
+		name   string
+		script string
+		waits  int
+	}{
+		{"pipe", `fixture; read -r line; printf '%s' "$line"`, 1},
+		// The producer cannot write until the handler has canceled and joined
+		// its input pull. Wait for both that pull and the producer's read.
+		// The following read uses the same substitution input.
+		{"process substitution", `{ fixture; read -r line; printf '%s' "$line"; } < <(read -r produced; printf '%s\n' "$produced")`, 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.name == "process substitution" && runtime.GOOS == "windows" {
+				t.Skip("process substitution requires Unix FIFOs")
+			}
+			reader, writer, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = reader.Close() }() // Execute may close canceled job streams.
+			defer func() { _ = writer.Close() }()
+			handler := &stoppedInputHandler{waiting: make(chan struct{}, test.waits), waits: test.waits, writer: writer}
+			result, output, diagnostic := shellFiles(t, t.TempDir(), test.script, func(o *Options) {
+				o.Stdin = reader
+				o.Observe = handler
+				o.Commands = &process.JobCommands{Context: "0123456789abcdef0123456789abcdef", Roots: []string{"fixture"}, Handler: handler}
+			})
+			if result.Code != 0 || output != "still readable" || diagnostic != "" {
+				t.Fatalf("result %+v output %q diagnostic %q", result, output, diagnostic)
+			}
+		})
 	}
 }

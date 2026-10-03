@@ -2,7 +2,6 @@ package backend_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -46,36 +45,6 @@ func newHostScenario(t *testing.T, program string) *hostScenario {
 	}
 	return &hostScenario{t, t.Context(), h, b, user, manager}
 }
-func (s *hostScenario) request(method, path, body string, status int) backendtest.Answer {
-	s.t.Helper()
-	var data []byte
-	if body != "" {
-		var err error
-		data, err = contract.EncodeJSON(json.RawMessage(body))
-		if err != nil {
-			s.t.Fatal(err)
-		}
-	}
-	a, err := s.b.Send(s.ctx, method, path, &s.user.Cookie, data)
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	if a.Status != status {
-		s.t.Fatalf("%s %s: HTTP %d, want %d: %s", method, path, a.Status, status, a.Body)
-	}
-	return a
-}
-func (s *hostScenario) refusal(method, path, body string, status int, code webapi.ErrorCode) {
-	s.t.Helper()
-	a := s.request(method, path, body, status)
-	e, err := a.ErrorBody()
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	if e.Code != code {
-		s.t.Fatalf("%s: code %s, want %s", path, e.Code, code)
-	}
-}
 func (s *hostScenario) pair(name string) *backendtest.Paired {
 	s.t.Helper()
 	p, err := s.b.Pair(s.ctx, s.t, &s.user, name)
@@ -84,12 +53,9 @@ func (s *hostScenario) pair(name string) *backendtest.Paired {
 	}
 	return p
 }
-func (s *hostScenario) create(id string) {
-	s.request("POST", "/api/conversations", fmt.Sprintf(`{"id":%q}`, id), 201)
-}
 func (s *hostScenario) workspace(device *backendtest.Paired, path, name string) webapi.WorkspaceDTO {
 	s.t.Helper()
-	a := s.request("POST", "/api/workspaces", fmt.Sprintf(`{"kind":"device","deviceId":%q,"path":%q,"name":%q}`, device.ID(), path, name), 201)
+	a := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/workspaces", fmt.Sprintf(`{"kind":"device","deviceId":%q,"path":%q,"name":%q}`, device.ID(), path, name), 201)
 	w, err := webapi.DecodeWorkspaceAnswer(a.Body)
 	if err != nil {
 		s.t.Fatal(err)
@@ -98,7 +64,7 @@ func (s *hostScenario) workspace(device *backendtest.Paired, path, name string) 
 }
 func (s *hostScenario) workspaceNames(want ...string) {
 	s.t.Helper()
-	a := s.request("GET", "/api/workspaces", "", 200)
+	a := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/workspaces", "", 200)
 	list, err := webapi.DecodeWorkspaces(a.Body)
 	if err != nil {
 		s.t.Fatal(err)
@@ -113,7 +79,7 @@ func (s *hostScenario) workspaceNames(want ...string) {
 }
 func (s *hostScenario) conversations(query string) []webapi.ConversationSummary {
 	s.t.Helper()
-	a := s.request("GET", "/api/conversations"+query, "", 200)
+	a := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/conversations"+query, "", 200)
 	list, err := webapi.DecodeConversations(a.Body)
 	if err != nil {
 		s.t.Fatal(err)
@@ -137,7 +103,7 @@ func (s *hostScenario) reorder(kind, id string, before *string, status int) {
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	s.request("POST", "/api/sidebar/reorder", string(data), status)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/sidebar/reorder", string(data), status)
 }
 
 // A real paired runner establishes device identity; file and sidebar observations stay on the API.
@@ -169,10 +135,10 @@ func TestWorkspaceKeepsDeviceDirectoryWhileTargeted(t *testing.T) {
 		{fmt.Sprintf(`{"kind":"device","deviceId":%q,"path":%q,"name":"   "}`, laptop.ID(), home), 400, webapi.ErrorCodeInvalidBody},
 		{fmt.Sprintf(`{"deviceId":%q,"path":%q,"name":"untagged"}`, laptop.ID(), home), 400, webapi.ErrorCodeInvalidBody},
 	} {
-		s.refusal("POST", "/api/workspaces", tc.body, tc.status, tc.code)
+		conversationRefusal(t, conversationRequest(s.ctx, t, s.b, &s.user, "POST", "/api/workspaces", tc.body, tc.status), tc.code)
 	}
 	route := "/api/workspaces/" + string(notes.ID)
-	renamed := s.request("PATCH", route, `{"name":"journal"}`, 200)
+	renamed := conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", route, `{"name":"journal"}`, 200)
 	w, err := webapi.DecodeWorkspaceAnswer(renamed.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -180,48 +146,48 @@ func TestWorkspaceKeepsDeviceDirectoryWhileTargeted(t *testing.T) {
 	if w.Workspace.Name != "journal" {
 		t.Fatal(w.Workspace.Name)
 	}
-	s.refusal("PATCH", "/api/workspaces/nothing", `{"name":"x"}`, 404, webapi.ErrorCodeWorkspaceNotFound)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/workspaces/nothing", `{"name":"x"}`, 404), webapi.ErrorCodeWorkspaceNotFound)
 	const id = "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a01"
-	s.create(id)
-	s.request("PATCH", "/api/conversations/"+id, fmt.Sprintf(`{"target":{"kind":"workspace","workspaceId":%q}}`, notes.ID), 200)
+	conversationCreate(s.ctx, s.t, s.b, &s.user, id)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+id, fmt.Sprintf(`{"target":{"kind":"workspace","workspaceId":%q}}`, notes.ID), 200)
 	if got := s.conversations("")[0].Cwd; got != home {
 		t.Fatalf("cwd %s", got)
 	}
-	s.refusal("DELETE", route, "", 409, webapi.ErrorCodeWorkspaceInUse)
-	s.refusal("DELETE", "/api/devices/"+string(laptop.ID()), "", 409, webapi.ErrorCodeDeviceInUse)
-	s.request("PATCH", "/api/conversations/"+id, `{"target":{"kind":"cloud"}}`, 200)
-	s.request("DELETE", route, "", 204)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route, "", 409), webapi.ErrorCodeWorkspaceInUse)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+string(laptop.ID()), "", 409), webapi.ErrorCodeDeviceInUse)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+id, `{"target":{"kind":"cloud"}}`, 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route, "", 204)
 	s.workspaceNames("site")
 	info, err := os.Stat(home)
 	if err != nil || !info.IsDir() {
 		t.Fatalf("home: %v", err)
 	}
-	s.refusal("DELETE", route, "", 404, webapi.ErrorCodeWorkspaceNotFound)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", route, "", 404), webapi.ErrorCodeWorkspaceNotFound)
 }
 
 func TestSidebarOrderSurvivesPatchesAndRestart(t *testing.T) {
 	s := newHostScenario(t, "")
 	a, b, c := "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a02", "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a03"
 	for _, id := range []string{a, b, c} {
-		s.create(id)
+		conversationCreate(s.ctx, s.t, s.b, &s.user, id)
 	}
 	s.order("", c, b, a)
 	s.reorder("conversation", a, &c, 204)
 	s.order("", a, c, b)
-	s.request("PATCH", "/api/conversations/"+a, `{"title":"kept title"}`, 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+a, `{"title":"kept title"}`, 200)
 	s.reorder("conversation", c, nil, 204)
 	s.order("", a, b, c)
-	s.request("PATCH", "/api/conversations/"+b, `{"pinned":true}`, 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+b, `{"pinned":true}`, 200)
 	s.order("", b, a, c)
 	s.reorder("conversation", a, &b, 409)
 	laptop := s.pair("laptop")
 	home := laptop.Runner.Home()
 	notes := s.workspace(laptop, home, "notes")
-	s.request("PATCH", "/api/conversations/"+c, fmt.Sprintf(`{"target":{"kind":"workspace","workspaceId":%q}}`, notes.ID), 200)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+c, fmt.Sprintf(`{"target":{"kind":"workspace","workspaceId":%q}}`, notes.ID), 200)
 	s.reorder("conversation", a, &c, 409)
-	s.request("PATCH", "/api/conversations/"+a, `{"archived":true}`, 200)
-	s.refusal("POST", "/api/sidebar/reorder", fmt.Sprintf(`{"kind":"conversation","id":%q,"beforeId":null}`, a), 409, webapi.ErrorCodeInvalidOrder)
-	s.refusal("POST", "/api/sidebar/reorder", fmt.Sprintf(`{"kind":"project","id":%q,"beforeId":null}`, a), 400, webapi.ErrorCodeInvalidBody)
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "PATCH", "/api/conversations/"+a, `{"archived":true}`, 200)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/sidebar/reorder", fmt.Sprintf(`{"kind":"conversation","id":%q,"beforeId":null}`, a), 409), webapi.ErrorCodeInvalidOrder)
+	conversationRefusal(s.t, conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/sidebar/reorder", fmt.Sprintf(`{"kind":"project","id":%q,"beforeId":null}`, a), 400), webapi.ErrorCodeInvalidBody)
 	site := s.workspace(laptop, filepath.Join(home, "site"), "site")
 	s.workspaceNames("notes", "site")
 	before := string(notes.ID)
