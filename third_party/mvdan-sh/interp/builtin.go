@@ -169,6 +169,20 @@ func (r *Runner) nativeBuiltin(ctx context.Context, pos syntax.Pos, name string,
 		return exit
 	}
 	switch name {
+	case "local":
+		// A dynamically named local (as used by cloud-init's login profiles)
+		// reaches builtin dispatch instead of the parser's declaration node.
+		// Its arguments are already expanded; quote them so declaration handling
+		// splits assignments without expanding or splitting their values again.
+		decl := &syntax.DeclClause{Variant: &syntax.Lit{Value: name}}
+		for _, arg := range args {
+			decl.Args = append(decl.Args, &syntax.Assign{Value: &syntax.Word{
+				Parts: []syntax.WordPart{&syntax.SglQuoted{Value: arg}},
+			}})
+		}
+		r.exit = exitStatus{}
+		r.cmd(ctx, decl)
+		return r.exit
 	case ":", "true":
 	case "false":
 		exit.code = 1

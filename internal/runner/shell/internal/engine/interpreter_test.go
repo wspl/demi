@@ -149,3 +149,37 @@ func TestRunnerShellRegressionStatusesAndRetainedInput(t *testing.T) {
 		})
 	}
 }
+
+// Ubuntu's cloud-init profiles select local through a variable. These scripts
+// exercise their assignment and bare-name forms without machine profile state.
+func TestCloudInitDynamicLocalDeclarations(t *testing.T) {
+	for _, scenario := range []struct {
+		name, script, want string
+	}{
+		{"warnings", `warning=outside; f() {
+command -v local >/dev/null && local _local="local" || typeset _local="typeset"
+$_local warning="" idir="/var/lib/cloud/instance" n=0
+$_local warndir="$idir/warnings"
+$_local ufile="$HOME/.cloud-warnings.skip" sfile="$warndir/.skip"
+printf '%s|%s|%s\n' "$warning" "$n" "$sfile"
+}; f; printf '%s\n' "$warning"`, "|0|/var/lib/cloud/instance/warnings/.skip\noutside\n"},
+		{"locale", `w1=outside; f() {
+command -v local >/dev/null && local _local="local" || typeset _local="typeset"
+$_local bad_names="" bad_lcs="" key="" val="" var="" vars="" bad_kv=""
+$_local w1 w2 w3 w4 remain
+read -r w1 w2 w3 w4 remain <<< 'LANG = en_US rest remaining words'
+$_local bad invalid="" to_gen="" sfile="/usr/share/i18n/SUPPORTED"
+$_local local pkgs=""
+$_local pkgs=""
+printf '%s|%s|%s|%s\n' "$bad_names" "$w1" "$remain" "$sfile"
+}; f; printf '%s\n' "$w1"`, "|LANG|remaining words|/usr/share/i18n/SUPPORTED\noutside\n"},
+		{"literal value", `f() { local cmd=local; "$cmd" 'value=$HOME $(echo wrong) *'; printf '%s\n' "$value"; }; f`, "$HOME $(echo wrong) *\n"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			result, output, stderr := shellFiles(t, t.TempDir(), scenario.script, nil)
+			if result.Code != 0 || output != scenario.want || stderr != "" {
+				t.Fatalf("result %+v output %q want %q stderr %q", result, output, scenario.want, stderr)
+			}
+		})
+	}
+}
