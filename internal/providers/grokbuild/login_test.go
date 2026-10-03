@@ -18,7 +18,13 @@ import (
 
 func device(t *testing.T, fields map[string]any) providertest.MockResponse {
 	t.Helper()
-	data := map[string]any{"device_code": "dev_code_1", "user_code": "GROK-1234", "verification_uri": "https://auth.x.ai/activate", "interval": 0, "expires_in": 600}
+	data := map[string]any{
+		"device_code":      "dev_code_1",
+		"user_code":        "GROK-1234",
+		"verification_uri": "https://auth.x.ai/activate",
+		"interval":         0,
+		"expires_in":       600,
+	}
 	for k, v := range fields {
 		data[k] = v
 	}
@@ -28,6 +34,7 @@ func device(t *testing.T, fields map[string]any) providertest.MockResponse {
 	}
 	return answer(200, string(encoded))
 }
+
 func confirmed(t *testing.T, access string, id *string) providertest.MockResponse {
 	t.Helper()
 	data := map[string]any{"access_token": access, "refresh_token": "rt_1", "expires_in": 3600}
@@ -40,6 +47,7 @@ func confirmed(t *testing.T, access string, id *string) providertest.MockRespons
 	}
 	return answer(200, string(encoded))
 }
+
 func loginStored(t *testing.T, pool *provider.MemoryCredentialPool, id string) secret {
 	t.Helper()
 	entry, err := pool.Document(id).Read(context.Background())
@@ -52,10 +60,14 @@ func loginStored(t *testing.T, pool *provider.MemoryCredentialPool, id string) s
 	}
 	return s
 }
+
 func TestDeviceLoginCLIContract(t *testing.T) {
 	v := providertest.StartVendor(t)
 	client := loginClient(t, v)
-	v.RespondAt("/oauth2/device/code", device(t, map[string]any{"verification_uri_complete": "https://auth.x.ai/activate?user_code=GROK-1234"}))
+	v.RespondAt(
+		"/oauth2/device/code",
+		device(t, map[string]any{"verification_uri_complete": "https://auth.x.ai/activate?user_code=GROK-1234"}),
+	)
 	v.RespondAt("/oauth2/token", answer(400, `{"error":"authorization_pending"}`))
 	id := providertest.JWT(t, map[string]any{"sub": "user_1", "email": "id@example.com"})
 	v.RespondAt("/oauth2/token", confirmed(t, "at_1", &id))
@@ -83,7 +95,20 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		equal(t, jsonValue(t, fmt.Sprintf(`{"accessToken":"at_1","refreshToken":"rt_1","expiresAt":"2026-09-18T15:00:00.000Z","issuer":%q,"clientId":"b1a00492-073a-47ea-816f-4c329264a828","userId":"user_1","email":"g@example.com"}`, v.URL("/"))), jsonValue(t, entry.Text))
+		equal(
+			t,
+			jsonValue(
+				t,
+				fmt.Sprintf(
+					`{"accessToken":"at_1","refreshToken":"rt_1",`+
+						`"expiresAt":"2026-09-18T15:00:00.000Z","issuer":%q,`+
+						`"clientId":"b1a00492-073a-47ea-816f-4c329264a828",`+
+						`"userId":"user_1","email":"g@example.com"}`,
+					v.URL("/"),
+				),
+			),
+			jsonValue(t, entry.Text),
+		)
 		listed, err := pool.List(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -104,7 +129,15 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		equal(t, url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "device_code": {"dev_code_1"}, "client_id": {clientID}}, form)
+		equal(
+			t,
+			url.Values{
+				"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
+				"device_code": {"dev_code_1"},
+				"client_id":   {clientID},
+			},
+			form,
+		)
 		for _, r := range requests[:3] {
 			equal(t, "ui", r.Header("x-grok-client-surface"))
 			equal(t, "1.0.5", r.Header("x-grok-client-version"))
@@ -120,10 +153,15 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 	// the bodies must hold exactly Rust's fields, each once, with its values.
 	t.Run("form fields", func(t *testing.T) {
 		const id = "b1a00492-073a-47ea-816f-4c329264a828"
-		const scopes = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write workspaces:read workspaces:write"
+		const scopes = `openid profile email offline_access grok-cli:access api:access ` +
+			`conversations:read conversations:write workspaces:read workspaces:write`
 		forms := []url.Values{
 			{"client_id": {id}, "scope": {scopes}, "referrer": {"grok-build"}},
-			{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "device_code": {"dev_code_1"}, "client_id": {id}},
+			{
+				"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
+				"device_code": {"dev_code_1"},
+				"client_id":   {id},
+			},
 		}
 		for i, want := range forms {
 			got, err := url.ParseQuery(string(requests[i].Body))
@@ -136,11 +174,15 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		}
 	})
 }
+
 func TestTeamLoginIdentity(t *testing.T) {
 	v := providertest.StartVendor(t)
 	client := loginClient(t, v)
 	v.RespondAt("/oauth2/device/code", device(t, nil))
-	access := providertest.JWT(t, map[string]any{"sub": "user-42", "principal_type": "Team", "principal_id": "team-123"})
+	access := providertest.JWT(
+		t,
+		map[string]any{"sub": "user-42", "principal_type": "Team", "principal_id": "team-123"},
+	)
 	id := providertest.JWT(t, map[string]any{"sub": "user-42", "email": "member@example.com"})
 	v.RespondAt("/oauth2/token", confirmed(t, access, &id))
 	v.RespondAt("/v1/user", answer(404, `{}`))
@@ -164,6 +206,7 @@ func TestTeamLoginIdentity(t *testing.T) {
 		}
 	})
 }
+
 func TestLoginSlowDown(t *testing.T) {
 	v := providertest.StartVendor(t)
 	client := loginClient(t, v)
@@ -182,6 +225,7 @@ func TestLoginSlowDown(t *testing.T) {
 		equal(t, 16*time.Second, time.Since(started))
 	})
 }
+
 func TestLoginTenMinuteDeadline(t *testing.T) {
 	v := providertest.StartVendor(t)
 	client := loginClient(t, v)
@@ -210,17 +254,26 @@ func TestLoginTenMinuteDeadline(t *testing.T) {
 		equal(t, 0, len(pool.Entries()))
 	})
 }
+
 func TestRefusedAndUnsafeLogin(t *testing.T) {
 	v := providertest.StartVendor(t)
 	client := loginClient(t, v)
 	v.RespondAt("/oauth2/device/code", device(t, nil))
 	v.RespondAt("/oauth2/token", answer(400, `{"error":"access_denied"}`))
-	v.RespondAt("/oauth2/device/code", device(t, map[string]any{"verification_uri": "http://auth.example.com/activate"}))
+	v.RespondAt(
+		"/oauth2/device/code",
+		device(t, map[string]any{"verification_uri": "http://auth.example.com/activate"}),
+	)
 	v.RespondAt("/oauth2/device/code", device(t, map[string]any{"verification_uri": nil}))
 	pool := provider.NewMemoryCredentialPool()
 	p := testProvider(v, pool, nil, client)
 	synctest.Test(t, func(t *testing.T) {
-		for i, want := range []string{"Grok device login failed: access_denied", "Grok device code failed: the response is malformed at verification_uri: a field is missing, unknown or of the wrong type", "Grok device code failed: the response names no verification_uri"} {
+		for i, want := range []string{
+			"Grok device login failed: access_denied",
+			`Grok device code failed: the response is malformed at ` +
+				`verification_uri: a field is missing, unknown or of the wrong type`,
+			"Grok device code failed: the response names no verification_uri",
+		} {
 			_, err := p.Accounts().Login(context.Background(), func(core.LoginPending) {
 				if i != 0 {
 					t.Fatal("unsafe login showed code")
@@ -238,6 +291,7 @@ func TestRefusedAndUnsafeLogin(t *testing.T) {
 		equal(t, 0, len(pool.Entries()))
 	})
 }
+
 func TestCancelPendingLogin(t *testing.T) {
 	v := providertest.StartVendor(t)
 	client := loginClient(t, v)
@@ -264,7 +318,11 @@ func TestTeamUserDetailsCannotReplacePrincipal(t *testing.T) {
 	v.RespondAt("/oauth2/device/code", device(t, nil))
 	access := providertest.JWT(t, map[string]any{"principalType": "Organization", "principalId": "org-123"})
 	v.RespondAt("/oauth2/token", confirmed(t, access, nil))
-	v.RespondAt("/v1/user", answer(200, `{"userId":"member","email":"member@example.com","principalType":"User","principalId":"member"}`))
+	v.RespondAt(
+		"/v1/user",
+		answer(200, `{"userId":"member","email":"member@example.com",`+
+			`"principalType":"User","principalId":"member"}`),
+	)
 	pool := provider.NewMemoryCredentialPool()
 	p := testProvider(v, pool, nil, client)
 	synctest.Test(t, func(t *testing.T) {

@@ -63,7 +63,12 @@ func ResponsesSSEEvents(ctx context.Context, body io.ReadCloser, label string) i
 
 // MapResponsesEvents maps an SSE or WebSocket event iterator to a run. A clean
 // end without a completion event produces zero usage; cancellation produces none.
-func MapResponsesEvents(ctx context.Context, events iter.Seq2[Received, error], vendor Vendor, signatureTag string) Run {
+func MapResponsesEvents(
+	ctx context.Context,
+	events iter.Seq2[Received, error],
+	vendor Vendor,
+	signatureTag string,
+) Run {
 	return func(yield func(Event) bool) {
 		mapper := responsesMapper{vendor: vendor, signatureTag: signatureTag, arguments: make(map[string]string)}
 		for received, err := range events {
@@ -108,22 +113,7 @@ func (m *responsesMapper) event(received Received) ([]Event, bool) {
 	var out []Event
 	switch event := received.Event.(type) {
 	case *ResponsesItemAdded:
-		if event.Item != nil {
-			switch item := event.Item.Value.(type) {
-			case *ReasoningItem:
-				out = append(out, &ThinkingStart{})
-			case *FunctionCallItem:
-				if item.ID != nil {
-					arguments := ""
-					if item.Arguments != nil {
-						arguments = *item.Arguments
-					}
-					m.arguments[*item.ID] = arguments
-					m.currentCall = item.ID
-				}
-			case *MessageItem:
-			}
-		}
+		out = append(out, m.itemAdded(event)...)
 	case *ResponsesReasoningTextDelta:
 		m.reasoningStreamed = true
 		if event.Delta != "" {
@@ -140,29 +130,13 @@ func (m *responsesMapper) event(received Received) ([]Event, bool) {
 			out = append(out, &TextDelta{Text: event.Delta})
 		}
 	case *ResponsesArgumentsDelta:
-		id := event.ItemID
-		if id == nil {
-			id = m.currentCall
-		}
-		if id != nil {
-			m.arguments[*id] += event.Delta
-		}
+		m.argumentsDelta(event)
 	case *ResponsesArgumentsDone:
-		id := event.ItemID
-		if id == nil {
-			id = m.currentCall
-		}
-		if id != nil {
-			m.arguments[*id] = event.Arguments
-		}
+		m.argumentsDone(event)
 	case *ResponsesItemDone:
 		out = append(out, m.itemDone(event)...)
 	case *ResponsesCompleted:
-		var usage core.TokenUsage
-		if event.Response != nil && event.Response.Usage != nil {
-			usage = event.Response.Usage.TokenUsage()
-		}
-		return []Event{&Response{Usage: usage}}, true
+		return completedResponse(event)
 	case *ResponsesFailed:
 		var responseID *string
 		var vendorError *VendorError
@@ -173,22 +147,22 @@ func (m *responsesMapper) event(received Received) ([]Event, bool) {
 		failure := m.failure(vendorError, nil, nil, m.vendor.Label+" response failed", responseID, received.Text)
 		return []Event{&Error{Failure: failure}}, true
 	case *ResponsesIncomplete:
-		reason := "unknown"
-		if response := event.Response; response != nil && response.IncompleteDetails != nil && response.IncompleteDetails.Reason.Value != nil {
-			reason = *response.IncompleteDetails.Reason.Value
-		}
-		code := Incomplete
-		if reason == "max_output_tokens" {
-			code = ContextLengthExceeded
-		}
-		failure := Failure{Message: "Incomplete " + m.vendor.Label + " response returned, reason: " + reason, Code: &code, Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", Upstream: &received.Text}}
-		return []Event{&Error{Failure: failure}}, true
+		return m.incomplete(event, received)
 	case *ResponsesError:
-		failure := m.failure(event.Error, event.Message.Value, event.Code.Value, m.vendor.Label+" stream error", nil, received.Text)
+		failure := m.failure(
+			event.Error,
+			event.Message.Value,
+			event.Code.Value,
+			m.vendor.Label+
+				" stream error",
+			nil,
+			received.Text,
+		)
 		return []Event{&Error{Failure: failure}}, true
 	}
 	return out, false
 }
+
 func (m *responsesMapper) itemDone(done *ResponsesItemDone) []Event {
 	var out []Event
 	if done.Item == nil {
@@ -215,37 +189,20 @@ func (m *responsesMapper) itemDone(done *ResponsesItemDone) []Event {
 		}
 		m.textStreamed = false
 	case *FunctionCallItem:
-		itemID := item.ID
-		if itemID == nil {
-			itemID = done.ItemID
-		}
-		callID := item.CallID
-		if callID == nil {
-			callID = done.CallID
-		}
-		if itemID != nil && callID != nil && item.Name != nil {
-			arguments, ok := m.arguments[*itemID]
-			if !ok {
-				arguments = "{}"
-				if item.Arguments != nil {
-					arguments = *item.Arguments
-				}
-			}
-			out = append(out, &ToolCall{ToolUseID: ToolUseID(*callID, *itemID), ToolName: *item.Name, Input: toolInput(arguments)})
-		}
-		if itemID != nil {
-			delete(m.arguments, *itemID)
-			if m.currentCall != nil && *m.currentCall == *itemID {
-				m.currentCall = nil
-			}
-		}
+		out = append(out, m.callDone(item, done)...)
 	}
 	return out
 }
 
 var requestIDPattern = regexp.MustCompile(`(?i)request ID ([A-Za-z0-9-]+)`)
 
-func (m *responsesMapper) failure(vendorError *VendorError, message, code *string, fallback string, responseID *string, text string) Failure {
+func (m *responsesMapper) failure(
+	vendorError *VendorError,
+	message, code *string,
+	fallback string,
+	responseID *string,
+	text string,
+) Failure {
 	var requestID *string
 	if vendorError != nil {
 		if message == nil {
@@ -270,6 +227,118 @@ func (m *responsesMapper) failure(vendorError *VendorError, message, code *strin
 			requestID = &match[1]
 		}
 	}
-	failure := Failure{Message: *message, Code: ClassifyError(code, *message), Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", ProviderCode: code, ProviderRequestID: requestID, ProviderResponseID: responseID, Upstream: &text}}
+	failure := Failure{
+		Message: *message,
+		Code:    ClassifyError(code, *message),
+		Diagnostics: &core.ProviderErrorDiagnostics{
+			Source:             "stream",
+			ProviderCode:       code,
+			ProviderRequestID:  requestID,
+			ProviderResponseID: responseID,
+			Upstream:           &text,
+		},
+	}
 	return failure.WithRetryWait(m.vendor.Reader, m.vendor.Clock.Now())
+}
+
+func (m *responsesMapper) itemAdded(event *ResponsesItemAdded) []Event {
+	var out []Event
+	if event.Item != nil {
+		switch item := event.Item.Value.(type) {
+		case *ReasoningItem:
+			out = append(out, &ThinkingStart{})
+		case *FunctionCallItem:
+			if item.ID != nil {
+				arguments := ""
+				if item.Arguments != nil {
+					arguments = *item.Arguments
+				}
+				m.arguments[*item.ID] = arguments
+				m.currentCall = item.ID
+			}
+		case *MessageItem:
+		}
+	}
+	return out
+}
+
+func (m *responsesMapper) incomplete(event *ResponsesIncomplete, received Received) ([]Event, bool) {
+	reason := "unknown"
+	if response := event.Response; response != nil && response.IncompleteDetails != nil &&
+		response.IncompleteDetails.Reason.Value != nil {
+		reason = *response.IncompleteDetails.Reason.Value
+	}
+	code := Incomplete
+	if reason == "max_output_tokens" {
+		code = ContextLengthExceeded
+	}
+	failure := Failure{
+		Message: "Incomplete " +
+			m.vendor.Label +
+			" response returned, reason: " +
+			reason,
+		Code:        &code,
+		Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", Upstream: &received.Text},
+	}
+	return []Event{&Error{Failure: failure}}, true
+}
+
+func (m *responsesMapper) callDone(item *FunctionCallItem, done *ResponsesItemDone) []Event {
+	var out []Event
+	itemID := item.ID
+	if itemID == nil {
+		itemID = done.ItemID
+	}
+	callID := item.CallID
+	if callID == nil {
+		callID = done.CallID
+	}
+	if itemID != nil && callID != nil && item.Name != nil {
+		arguments, ok := m.arguments[*itemID]
+		if !ok {
+			arguments = "{}"
+			if item.Arguments != nil {
+				arguments = *item.Arguments
+			}
+		}
+		out = append(
+			out,
+			&ToolCall{ToolUseID: ToolUseID(*callID, *itemID), ToolName: *item.Name, Input: toolInput(arguments)},
+		)
+	}
+	if itemID != nil {
+		delete(m.arguments, *itemID)
+		if m.currentCall != nil && *m.currentCall == *itemID {
+			m.currentCall = nil
+		}
+	}
+	return out
+}
+
+func (m *responsesMapper) argumentsDelta(event *ResponsesArgumentsDelta) {
+	id := event.ItemID
+	if id == nil {
+		id = m.currentCall
+	}
+	if id != nil {
+		m.arguments[*id] += event.Delta
+	}
+}
+
+func (m *responsesMapper) argumentsDone(event *ResponsesArgumentsDone) {
+	id := event.ItemID
+	if id == nil {
+		id = m.currentCall
+	}
+	if id != nil {
+		m.arguments[*id] = event.Arguments
+	}
+}
+
+func completedResponse(event *ResponsesCompleted) ([]Event, bool) {
+	var usage core.TokenUsage
+	if event.Response != nil && event.Response.Usage != nil {
+		usage = event.Response.Usage.TokenUsage()
+	}
+	return []Event{&Response{Usage: usage}}, true
 }

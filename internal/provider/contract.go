@@ -42,7 +42,10 @@ type Run = iter.Seq[Event]
 // RuntimeError explains why a runtime could not be built.
 type RuntimeError struct{ Provider string }
 
-func (e *RuntimeError) Error() string { return e.Provider + " needs a Host that runs processes" }
+// Error returns the diagnostic for this failure.
+func (e *RuntimeError) Error() string {
+	return e.Provider + " needs a Host that runs processes"
+}
 
 // CatalogError explains why the model directory could not be read.
 type CatalogError struct {
@@ -50,6 +53,7 @@ type CatalogError struct {
 	Message string
 }
 
+// Error returns the diagnostic for this failure.
 func (e *CatalogError) Error() string { return e.Message }
 
 // CatalogErrorKind distinguishes authentication, availability and invalid input.
@@ -57,8 +61,11 @@ type CatalogErrorKind uint8
 
 // Catalog failure categories exposed to callers.
 const (
+	// CatalogUnauthenticated indicates that authentication prevented catalog retrieval.
 	CatalogUnauthenticated CatalogErrorKind = iota
+	// CatalogUnavailable indicates that the catalog could not be retrieved.
 	CatalogUnavailable
+	// CatalogInvalid indicates that the catalog answer could not be decoded.
 	CatalogInvalid
 )
 

@@ -28,12 +28,17 @@ func (s secretDocument) label() provider.AccountLabel {
 
 type accountKit struct{}
 
+// Capability reports the supported account operations.
 func (accountKit) Capability() provider.AccountsCapability {
 	return provider.AccountsCapability{Add: true}
 }
+
+// Login reports that device authorization is unsupported.
 func (accountKit) Login(context.Context, func(core.LoginPending)) (provider.NewAccount, error) {
 	return provider.NewAccount{}, provider.ErrLoginUnsupported
 }
+
+// Add stores the setup token in a new account document.
 func (accountKit) Add(input provider.AddAccount) (provider.NewAccount, error) {
 	secret := secretDocument{AccessToken: input.SetupToken}
 	data, err := secret.MarshalJSON()

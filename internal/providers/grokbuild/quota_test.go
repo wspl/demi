@@ -20,8 +20,14 @@ func probe(t *testing.T, user, billing string) (*core.QuotaSnapshot, *providerte
 	}
 	return reading, v
 }
+
 func TestSubscriptionAndBillingProbe(t *testing.T) {
-	s, v := probe(t, `{"subscriptionTier":"XPremiumPlus","email":"a@b.com","hasGrokCodeAccess":true}`, `{"config":{"monthlyLimit":{"val":20000},"used":{"val":5000},"onDemandCap":{"val":0},"billingPeriodEnd":"2026-08-01T00:00:00+00:00"}}`)
+	s, v := probe(
+		t,
+		`{"subscriptionTier":"XPremiumPlus","email":"a@b.com","hasGrokCodeAccess":true}`,
+		`{"config":{"monthlyLimit":{"val":20000},"used":{"val":5000},`+
+			`"onDemandCap":{"val":0},"billingPeriodEnd":"2026-08-01T00:00:00+00:00"}}`,
+	)
 	requests := v.Requests()
 	equal(t, 2, len(requests))
 	paths := []string{requests[0].URI, requests[1].URI}
@@ -43,8 +49,17 @@ func TestSubscriptionAndBillingProbe(t *testing.T) {
 		t.Fatal("monthly window has a scope", w.Scope)
 	}
 }
+
 func TestWeeklyCreditsAndCap(t *testing.T) {
-	s, _ := probe(t, `{"subscriptionTier":"XPremiumPlus"}`, `{"config":{"creditUsagePercent":2,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-08-14T10:45:24.951512+00:00","end":"2026-08-21T10:45:24.951512+00:00"},"onDemandCap":50,"billingPeriodEnd":"2026-08-30T00:00:00+00:00"}}`)
+	s, _ := probe(
+		t,
+		`{"subscriptionTier":"XPremiumPlus"}`,
+		`{"config":{"creditUsagePercent":2,`+
+			`"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY",`+
+			`"start":"2026-08-14T10:45:24.951512+00:00",`+
+			`"end":"2026-08-21T10:45:24.951512+00:00"},"onDemandCap":50,`+
+			`"billingPeriodEnd":"2026-08-30T00:00:00+00:00"}}`,
+	)
 	equal(t, 2, len(s.Windows))
 	weekly, capWindow := s.Windows[0], s.Windows[1]
 	equal(t, "weekly", weekly.ID)
@@ -61,11 +76,20 @@ func TestWeeklyCreditsAndCap(t *testing.T) {
 		t.Fatal("invented cap percentage")
 	}
 }
+
 func TestUnmeteredAndOddQuotaFields(t *testing.T) {
-	s, _ := probe(t, `{"subscriptionTier":"XPremium","email":"u@example.com"}`, `{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-09-18T00:00:00Z","end":"2026-09-25T00:00:00Z"},"onDemandUsed":{"val":0},"prepaidBalance":{"val":0},"monthlyLimit":"lots","billingPeriodEnd":"2026-10-01T00:00:00Z"}}`)
+	s, _ := probe(
+		t,
+		`{"subscriptionTier":"XPremium","email":"u@example.com"}`,
+		`{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY",`+
+			`"start":"2026-09-18T00:00:00Z","end":"2026-09-25T00:00:00Z"},`+
+			`"onDemandUsed":{"val":0},"prepaidBalance":{"val":0},`+
+			`"monthlyLimit":"lots","billingPeriodEnd":"2026-10-01T00:00:00Z"}}`,
+	)
 	equal(t, "XPremium", s.Plan.Label)
 	equal(t, 0, len(s.Windows))
 }
+
 func TestEveryChatObservesLimits(t *testing.T) {
 	v := providertest.StartVendor(t)
 	for i, remaining := range []string{"100", "0"} {

@@ -53,7 +53,14 @@ func mapped(t *testing.T, chat bool, frames ...string) []provider.Event {
 	t.Helper()
 	return mappedWith(t.Context(), t, chat, provider.ReadHTTPFailure, frames...)
 }
-func mappedWith(ctx context.Context, t *testing.T, chat bool, reader provider.FailureReader, frames ...string) []provider.Event {
+
+func mappedWith(
+	ctx context.Context,
+	t *testing.T,
+	chat bool,
+	reader provider.FailureReader,
+	frames ...string,
+) []provider.Event {
 	t.Helper()
 	return providertest.AllEvents(ctx, t, func(ctx context.Context) provider.Run {
 		label := "Codex"
@@ -64,7 +71,12 @@ func mappedWith(ctx context.Context, t *testing.T, chat bool, reader provider.Fa
 		if chat {
 			return provider.MapChatSSE(ctx, streamBody(frames...), vendor)
 		}
-		return provider.MapResponsesEvents(ctx, provider.ResponsesSSEEvents(ctx, streamBody(frames...), label), vendor, "codex:")
+		return provider.MapResponsesEvents(
+			ctx,
+			provider.ResponsesSSEEvents(ctx, streamBody(frames...), label),
+			vendor,
+			"codex:",
+		)
 	})
 }
 

@@ -14,10 +14,15 @@ import (
 
 const label = "Anthropic"
 
+// Run streams inference events for the request.
 func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
 	return func(yield func(provider.Event) bool) {
 		emit := func(event provider.Event) bool { return ctx.Err() == nil && yield(event) }
-		body, err := provider.EncodeBody(ctx, label, func() ([]byte, error) { return encodeRequest(request, r.shared.policy) })
+		body, err := provider.EncodeBody(
+			ctx,
+			label,
+			func() ([]byte, error) { return encodeRequest(request, r.shared.policy) },
+		)
 		if ctx.Err() != nil {
 			return
 		}
@@ -44,31 +49,14 @@ func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) pr
 		}
 		// HTTPFailure and SSEData own and close the body, including cancellation.
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			emit(&provider.Error{Failure: provider.HTTPFailure(ctx, response, label, provider.ReadHTTPFailure, r.shared.clock)})
+			emit(
+				&provider.Error{
+					Failure: provider.HTTPFailure(ctx, response, label, provider.ReadHTTPFailure, r.shared.clock),
+				},
+			)
 			return
 		}
-		mapper := streamMapper{tools: make(map[uint32]*toolBlock), clock: r.shared.clock}
-		for data, err := range provider.SSEData(ctx, response.Body) {
-			if ctx.Err() != nil {
-				return
-			}
-			if err != nil {
-				emit(&provider.Error{Failure: provider.EventStreamFailure(label, err)})
-				return
-			}
-			next, err := mapper.frame(data)
-			if err != nil {
-				emit(&provider.Error{Failure: provider.Undecodable(label, err, data)})
-				return
-			}
-			if next.event != nil && !emit(next.event) {
-				return
-			}
-			if next.last {
-				return
-			}
-		}
-		emit(&provider.Response{Usage: mapper.usage})
+		r.stream(ctx, response, emit)
 	}
 }
 
@@ -308,6 +296,38 @@ func (m *streamMapper) failure(text, original string) (mapped, error) {
 	if code != nil {
 		classify = *code
 	}
-	failure := provider.Failure{Message: *message, Code: provider.ClassifyError(&classify, *message), Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", ProviderCode: code, Upstream: &original}}
-	return mapped{event: &provider.Error{Failure: failure.WithRetryWait(provider.ReadHTTPFailure, m.clock.Now())}, last: true}, nil
+	failure := provider.Failure{
+		Message:     *message,
+		Code:        provider.ClassifyError(&classify, *message),
+		Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", ProviderCode: code, Upstream: &original},
+	}
+	return mapped{
+		event: &provider.Error{Failure: failure.WithRetryWait(provider.ReadHTTPFailure, m.clock.Now())},
+		last:  true,
+	}, nil
+}
+
+func (r *runtime) stream(ctx context.Context, response *http.Response, emit func(provider.Event) bool) {
+	mapper := streamMapper{tools: make(map[uint32]*toolBlock), clock: r.shared.clock}
+	for data, err := range provider.SSEData(ctx, response.Body) {
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			emit(&provider.Error{Failure: provider.EventStreamFailure(label, err)})
+			return
+		}
+		next, err := mapper.frame(data)
+		if err != nil {
+			emit(&provider.Error{Failure: provider.Undecodable(label, err, data)})
+			return
+		}
+		if next.event != nil && !emit(next.event) {
+			return
+		}
+		if next.last {
+			return
+		}
+	}
+	emit(&provider.Response{Usage: mapper.usage})
 }

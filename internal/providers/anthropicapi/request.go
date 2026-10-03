@@ -13,7 +13,13 @@ const signatureTag = "anthropic:"
 
 // encodeRequest maps the transcript and cache boundaries onto a Messages request.
 func encodeRequest(request provider.InferenceRequest, policy provider.VendorPolicy) ([]byte, error) {
-	body := requestBody{Model: request.ModelID, Messages: []message{}, MaxTokens: 32000, Stream: true, ServiceTier: request.ServiceTierID}
+	body := requestBody{
+		Model:       request.ModelID,
+		Messages:    []message{},
+		MaxTokens:   32000,
+		Stream:      true,
+		ServiceTier: request.ServiceTierID,
+	}
 	if limit := request.MaxOutputTokens(); limit != nil {
 		body.MaxTokens = *limit
 	}
@@ -22,7 +28,10 @@ func encodeRequest(request provider.InferenceRequest, policy provider.VendorPoli
 		body.System = []*content{{block: newTextBlock(request.SystemPrompt)}}
 	}
 	for _, definition := range request.Tools {
-		body.Tools = append(body.Tools, tool{Name: definition.Name, Description: definition.Description, InputSchema: definition.InputSchema})
+		body.Tools = append(
+			body.Tools,
+			tool{Name: definition.Name, Description: definition.Description, InputSchema: definition.InputSchema},
+		)
 	}
 	var answered *content
 	var lastMarkable *content
@@ -50,17 +59,7 @@ func encodeRequest(request provider.InferenceRequest, policy provider.VendorPoli
 		}
 	}
 	if request.PromptCache.AnsweredItems != nil {
-		if len(body.System) > 0 {
-			mark(body.System[len(body.System)-1])
-		} else if len(body.Tools) > 0 {
-			body.Tools[len(body.Tools)-1].CacheControl = &cacheControl{Type: "ephemeral", TTL: "1h"}
-		}
-		if answered != nil {
-			mark(answered)
-		}
-		if lastMarkable != nil {
-			mark(lastMarkable)
-		}
+		markRequestCache(&body, answered, lastMarkable)
 	}
 	return provider.JSONBody(body)
 }
@@ -69,7 +68,11 @@ func encodeRequest(request provider.InferenceRequest, policy provider.VendorPoli
 func mark(c *content) { c.cache = &cacheControl{Type: "ephemeral", TTL: "1h"} }
 
 // thinking converts configured reasoning into the vendor's budget or effort.
-func thinking(config core.ThinkingConfig, maxTokens uint32, policy provider.VendorPolicy) (thinkingConfig, *outputConfig) {
+func thinking(
+	config core.ThinkingConfig,
+	maxTokens uint32,
+	policy provider.VendorPolicy,
+) (thinkingConfig, *outputConfig) {
 	var budget uint32
 	var effort string
 	isBudget := false
@@ -130,9 +133,16 @@ func itemContent(item provider.InferenceItem) (string, []block) {
 		if len(input) == 0 || strings.TrimSpace(string(input)) == "null" {
 			input = json.RawMessage(`{}`)
 		}
-		return "assistant", []block{&toolUseBlock{Type: "tool_use", ID: item.ToolUseID, Name: item.ToolName, Input: input}}
+		return "assistant", []block{
+			&toolUseBlock{Type: "tool_use", ID: item.ToolUseID, Name: item.ToolName, Input: input},
+		}
 	case *provider.ToolResult:
-		b := &toolResultBlock{Type: "tool_result", ToolUseID: item.ToolUseID, Content: resultContent(item.Output), IsError: item.IsError}
+		b := &toolResultBlock{
+			Type:      "tool_result",
+			ToolUseID: item.ToolUseID,
+			Content:   resultContent(item.Output),
+			IsError:   item.IsError,
+		}
 		return "user", []block{b}
 	}
 	return "", nil
@@ -183,4 +193,18 @@ func resultContent(parts []provider.ResultPart) []resultBlock {
 		}
 	}
 	return out
+}
+
+func markRequestCache(body *requestBody, answered, lastMarkable *content) {
+	if len(body.System) > 0 {
+		mark(body.System[len(body.System)-1])
+	} else if len(body.Tools) > 0 {
+		body.Tools[len(body.Tools)-1].CacheControl = &cacheControl{Type: "ephemeral", TTL: "1h"}
+	}
+	if answered != nil {
+		mark(answered)
+	}
+	if lastMarkable != nil {
+		mark(lastMarkable)
+	}
 }

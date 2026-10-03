@@ -25,7 +25,13 @@ func model(id, name string, contextWindow uint32, attachments, fast bool) core.P
 		tiers = append(tiers, core.ServiceTier{ID: "priority", Label: "Fast", Description: &description, Fast: true})
 	}
 	return core.ProviderModel{
-		ID: id, DisplayName: name, ContextWindow: &contextWindow, SupportsTools: &supported,
-		SupportsAttachments: &attachments, SupportsReasoning: &supported, SupportedThinkingEfforts: &efforts, ServiceTiers: tiers,
+		ID:                       id,
+		DisplayName:              name,
+		ContextWindow:            &contextWindow,
+		SupportsTools:            &supported,
+		SupportsAttachments:      &attachments,
+		SupportsReasoning:        &supported,
+		SupportedThinkingEfforts: &efforts,
+		ServiceTiers:             tiers,
 	}
 }

@@ -14,10 +14,21 @@ import (
 func Test401RefreshPrincipal(t *testing.T) {
 	v := providertest.StartVendor(t)
 	v.RespondAt(chatPath, answer(401, "unauthorized"))
-	v.RespondAt("/oauth2/token", answer(200, `{"access_token":"refreshed-token","refresh_token":"refresh-2","expires_in":3600,"token_type":"Bearer"}`))
+	v.RespondAt(
+		"/oauth2/token",
+		answer(
+			200,
+			`{"access_token":"refreshed-token","refresh_token":"refresh-2",`+
+				`"expires_in":3600,"token_type":"Bearer"}`,
+		),
+	)
 	v.RespondAt(chatPath, chat(`{"choices":[{"delta":{"content":"ok"}}]}`))
 	p, pool := fixture(t, v, map[string]any{"principal": map[string]any{"kind": "User", "id": "user-1"}})
-	equal(t, []provider.Event{&provider.TextDelta{Text: "ok"}, &provider.Response{}}, run(t, p, providertest.InferenceRequest()))
+	equal(
+		t,
+		[]provider.Event{&provider.TextDelta{Text: "ok"}, &provider.Response{}},
+		run(t, p, providertest.InferenceRequest()),
+	)
 	requests := v.Requests()
 	equal(t, 3, len(requests))
 	equal(t, chatPath, requests[0].URI)
@@ -27,7 +38,17 @@ func Test401RefreshPrincipal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	equal(t, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {"refresh-1"}, "client_id": {"client-1"}, "principal_type": {"User"}, "principal_id": {"user-1"}}, form)
+	equal(
+		t,
+		url.Values{
+			"grant_type":     {"refresh_token"},
+			"refresh_token":  {"refresh-1"},
+			"client_id":      {"client-1"},
+			"principal_type": {"User"},
+			"principal_id":   {"user-1"},
+		},
+		form,
+	)
 	equal(t, "Bearer refreshed-token", requests[2].Header("authorization"))
 	equal(t, string(requests[0].Body), string(requests[2].Body))
 	s := stored(t, pool)
@@ -36,6 +57,7 @@ func Test401RefreshPrincipal(t *testing.T) {
 	equal(t, core.Timestamp("2026-09-18T15:00:00.000Z"), *s.ExpiresAt)
 	equal(t, "user@example.com", *s.Email)
 }
+
 func TestConcurrentReplacementAvoidsRefresh(t *testing.T) {
 	v := providertest.StartVendor(t)
 	v.RespondAt(chatPath, answer(401, ""))
@@ -74,6 +96,7 @@ func TestConcurrentReplacementAvoidsRefresh(t *testing.T) {
 	}
 	equal(t, "Bearer rotated-token", v.Requests()[1].Header("authorization"))
 }
+
 func TestExpiringAndUnrefreshableTokens(t *testing.T) {
 	for _, refresh := range []bool{true, false} {
 		t.Run(map[bool]string{true: "refresh", false: "no refresh token"}[refresh], func(t *testing.T) {
@@ -99,6 +122,7 @@ func TestExpiringAndUnrefreshableTokens(t *testing.T) {
 		})
 	}
 }
+
 func TestConcurrentRequestsRefreshOnce(t *testing.T) {
 	v := providertest.StartVendor(t)
 	v.RespondAt("/oauth2/token", answer(200, `{"access_token":"fresh","expires_in":3600}`))
@@ -122,12 +146,23 @@ func TestConcurrentRequestsRefreshOnce(t *testing.T) {
 	}
 	equal(t, 1, refreshes)
 }
+
 func TestFailedRefresh(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		status        int
 		body, message string
-	}{{"refused", 400, `{"error":"invalid_grant"}`, "Grok token refresh failed with HTTP 400"}, {"missing access", 200, `{"token_type":"Bearer","expires_in":3600}`, "Grok token refresh failed: the response is malformed"}} {
+	}{{
+		"refused",
+		400,
+		`{"error":"invalid_grant"}`,
+		"Grok token refresh failed with HTTP 400",
+	}, {
+		"missing access",
+		200,
+		`{"token_type":"Bearer","expires_in":3600}`,
+		"Grok token refresh failed: the response is malformed",
+	}} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := providertest.StartVendor(t)
 			v.RespondAt("/oauth2/token", answer(tc.status, tc.body))
@@ -146,13 +181,18 @@ func TestFailedRefresh(t *testing.T) {
 		})
 	}
 }
+
 func TestAccountStatus(t *testing.T) {
 	v := providertest.StartVendor(t)
 	p, pool := fixture(t, v, nil)
 	name := "user@example.com"
 	want := &core.Authenticated{AccountLabel: &name}
 	equal(t, core.AuthState(want), p.AuthStatus(t.Context()))
-	if err := pool.Write(t.Context(), provider.AccountMeta{ID: "other", Label: "other", UpdatedAt: now}, "{}"); err != nil {
+	if err := pool.Write(
+		t.Context(),
+		provider.AccountMeta{ID: "other", Label: "other", UpdatedAt: now},
+		"{}",
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.SetActive(t.Context(), "other"); err != nil {

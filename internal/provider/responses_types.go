@@ -89,7 +89,7 @@ func (*ResponsesIncomplete) responsesEvent() {}
 // ResponsesError is the payload of error.
 type ResponsesError struct {
 	Message ReportedString `json:"message" wire:"optional"`
-	Code    ReportedString `json:"code" wire:"optional"`
+	Code    ReportedString `json:"code"    wire:"optional"`
 	Error   *VendorError   `json:"error"`
 }
 
@@ -190,7 +190,7 @@ func (u ResponsesUsage) TokenUsage() core.TokenUsage {
 
 // FailedResponse reports a response ID and error when the vendor supplies them.
 type FailedResponse struct {
-	ID    ReportedString `json:"id" wire:"optional"`
+	ID    ReportedString `json:"id"    wire:"optional"`
 	Error *VendorError   `json:"error"`
 }
 
@@ -206,11 +206,11 @@ type IncompleteDetails struct {
 
 // VendorError is the failure object shared by Responses errors and failed responses.
 type VendorError struct {
-	Code           ReportedString `json:"code" wire:"optional"`
-	Kind           ReportedString `json:"type" wire:"optional"`
-	Message        ReportedString `json:"message" wire:"optional"`
+	Code           ReportedString `json:"code"       wire:"optional"`
+	Kind           ReportedString `json:"type"       wire:"optional"`
+	Message        ReportedString `json:"message"    wire:"optional"`
 	RequestID      ReportedString `json:"request_id" wire:"optional"`
-	RequestIDCamel ReportedString `json:"requestId" wire:"optional"`
+	RequestIDCamel ReportedString `json:"requestId"  wire:"optional"`
 }
 
 // ResponsesItem is a registered output item; unknown kinds are skipped.
@@ -425,7 +425,9 @@ type FunctionCallItem struct {
 func (*FunctionCallItem) responsesItem() {}
 
 // ToolUseID combines the call and item identifiers needed for replay.
-func ToolUseID(callID, itemID string) string { return callID + "|" + itemID }
+func ToolUseID(callID, itemID string) string {
+	return callID + "|" + itemID
+}
 
 // SplitToolUseID separates a call ID from its optional item ID.
 func SplitToolUseID(id string) (string, *string) {

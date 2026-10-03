@@ -31,7 +31,14 @@ func TestMCPListsToolsAndSingleUnstreamedCall(t *testing.T) {
 			case "ping":
 				checkJSON(t, reply["result"], `{}`)
 			case "list":
-				checkJSON(t, reply["result"], `{"tools":[{"name":"shell_exec","description":"Execute a shell script","inputSchema":{"type":"object","properties":{"script":{"type":"string"}},"required":["script"],"additionalProperties":false}}]}`)
+				checkJSON(
+					t,
+					reply["result"],
+					`{"tools":[{"name":"shell_exec","description":"Execute a shell `+
+						`script","inputSchema":{"type":"object",`+
+						`"properties":{"script":{"type":"string"}},"required":["script"],`+
+						`"additionalProperties":false}}]}`,
+				)
 			default:
 				t.Fatalf("unexpected reply %s", id)
 			}
@@ -39,7 +46,17 @@ func TestMCPListsToolsAndSingleUnstreamedCall(t *testing.T) {
 	})
 	req := withTools(request(user("hi")))
 	events := collect(t.Context(), r, req)
-	equal(t, events, []provider.Event{&provider.ToolCall{ToolUseID: "toolu_1", ToolName: "shell_exec", Input: json.RawMessage(`{"script":"pwd"}`)}})
+	equal(
+		t,
+		events,
+		[]provider.Event{
+			&provider.ToolCall{
+				ToolUseID: "toolu_1",
+				ToolName:  "shell_exec",
+				Input:     json.RawMessage(`{"script":"pwd"}`),
+			},
+		},
+	)
 	c := p.starts[0]
 	equal(t, len(c.input), 6)
 	c.onWrite = func(v map[string]json.RawMessage) {
@@ -56,6 +73,7 @@ func TestMCPListsToolsAndSingleUnstreamedCall(t *testing.T) {
 	equal(t, collect(t.Context(), r, req), []provider.Event{textEvent("after the tool"), response(2, 4)})
 	equal(t, len(c.signals), 0)
 }
+
 func TestWholeBatchBeforeAnswersAndStoredLaterResult(t *testing.T) {
 	r, p := fixture(t, func(c *scriptedCLI) {
 		c.onWrite = func(v map[string]json.RawMessage) {
@@ -75,7 +93,23 @@ func TestWholeBatchBeforeAnswersAndStoredLaterResult(t *testing.T) {
 	})
 	req := withTools(request(user("run both")))
 	events := collect(t.Context(), r, req)
-	equal(t, events, []provider.Event{textEvent("running both"), &provider.ToolCall{ToolUseID: "toolu_alpha", ToolName: "shell_exec", Input: json.RawMessage(`{"script":"printf alpha"}`)}, &provider.ToolCall{ToolUseID: "toolu_beta", ToolName: "shell_exec", Input: json.RawMessage(`{"script":"printf beta"}`)}})
+	equal(
+		t,
+		events,
+		[]provider.Event{
+			textEvent("running both"),
+			&provider.ToolCall{
+				ToolUseID: "toolu_alpha",
+				ToolName:  "shell_exec",
+				Input:     json.RawMessage(`{"script":"printf alpha"}`),
+			},
+			&provider.ToolCall{
+				ToolUseID: "toolu_beta",
+				ToolName:  "shell_exec",
+				Input:     json.RawMessage(`{"script":"printf beta"}`),
+			},
+		},
+	)
 	c := p.starts[0]
 	equal(t, len(c.input), 4)
 	var replies []string
@@ -93,11 +127,18 @@ func TestWholeBatchBeforeAnswersAndStoredLaterResult(t *testing.T) {
 			t.Fatalf("unexpected reply %s", id)
 		}
 	}
-	req.Items = append(req.Items, toolUse("toolu_alpha", "printf alpha"), toolUse("toolu_beta", "printf beta"), toolOutput("toolu_alpha", "alpha done"), toolOutput("toolu_beta", "beta done"))
+	req.Items = append(
+		req.Items,
+		toolUse("toolu_alpha", "printf alpha"),
+		toolUse("toolu_beta", "printf beta"),
+		toolOutput("toolu_alpha", "alpha done"),
+		toolOutput("toolu_beta", "beta done"),
+	)
 	equal(t, collect(t.Context(), r, req), []provider.Event{response(3, 5)})
 	equal(t, replies, []string{"call-alpha", "call-beta"})
 	equal(t, len(p.starts), 1)
 }
+
 func TestMCPResultImagesAndErrors(t *testing.T) {
 	r, p := fixture(t, func(c *scriptedCLI) {
 		c.onWrite = func(v map[string]json.RawMessage) {
@@ -106,7 +147,15 @@ func TestMCPResultImagesAndErrors(t *testing.T) {
 			}
 			if string(v["type"]) == `"user"` {
 				c.handshake()
-				c.mcp("call-1", map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "shell_exec", "arguments": map[string]any{"script": "shot"}}})
+				c.mcp(
+					"call-1",
+					map[string]any{
+						"jsonrpc": "2.0",
+						"id":      2,
+						"method":  "tools/call",
+						"params":  map[string]any{"name": "shell_exec", "arguments": map[string]any{"script": "shot"}},
+					},
+				)
 			}
 		}
 	})
@@ -125,12 +174,36 @@ func TestMCPResultImagesAndErrors(t *testing.T) {
 	c.onWrite = func(v map[string]json.RawMessage) {
 		id, reply := mcpResponse(t, v)
 		equal(t, id, "call-1")
-		checkJSON(t, reply["result"], `{"content":[{"type":"text","text":"captured"},{"type":"image","data":"AQID","mimeType":"image/png"},{"type":"text","text":"[video:video/mp4]"}],"isError":true}`)
+		checkJSON(
+			t,
+			reply["result"],
+			`{"content":[{"type":"text","text":"captured"},{"type":"image",`+
+				`"data":"AQID","mimeType":"image/png"},{"type":"text",`+
+				`"text":"[video:video/mp4]"}],"isError":true}`,
+		)
 		c.result(1, 1)
 	}
-	req.Items = append(req.Items, &provider.ToolUse{ModelID: "claude-test", ToolUseID: call.ToolUseID, ToolName: call.ToolName, Input: call.Input}, &provider.ToolResult{ToolUseID: call.ToolUseID, IsError: true, Output: []provider.ResultPart{&provider.TextPart{Text: "captured"}, &provider.ResultImage{Bytes: provider.MediaBytes{Data: []byte{1, 2, 3}, MediaType: "image/png"}}, &provider.ResultVideo{Bytes: provider.MediaBytes{MediaType: "video/mp4"}}}})
+	req.Items = append(
+		req.Items,
+		&provider.ToolUse{
+			ModelID:   "claude-test",
+			ToolUseID: call.ToolUseID,
+			ToolName:  call.ToolName,
+			Input:     call.Input,
+		},
+		&provider.ToolResult{
+			ToolUseID: call.ToolUseID,
+			IsError:   true,
+			Output: []provider.ResultPart{
+				&provider.TextPart{Text: "captured"},
+				&provider.ResultImage{Bytes: provider.MediaBytes{Data: []byte{1, 2, 3}, MediaType: "image/png"}},
+				&provider.ResultVideo{Bytes: provider.MediaBytes{MediaType: "video/mp4"}},
+			},
+		},
+	)
 	equal(t, collect(t.Context(), r, req), []provider.Event{response(1, 1)})
 }
+
 func TestMalformedCallAndUnknownControlRefused(t *testing.T) {
 	r, p := fixture(t, func(c *scriptedCLI) {
 		c.onWrite = func(v map[string]json.RawMessage) {
@@ -139,7 +212,15 @@ func TestMalformedCallAndUnknownControlRefused(t *testing.T) {
 			}
 			if string(v["type"]) == `"user"` {
 				c.handshake()
-				c.mcp("call-1", map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"arguments": map[string]any{}}})
+				c.mcp(
+					"call-1",
+					map[string]any{
+						"jsonrpc": "2.0",
+						"id":      2,
+						"method":  "tools/call",
+						"params":  map[string]any{"arguments": map[string]any{}},
+					},
+				)
 				return
 			}
 			var outer struct {
@@ -164,13 +245,21 @@ func TestMalformedCallAndUnknownControlRefused(t *testing.T) {
 					t.Fatal(err)
 				}
 				equal(t, e.Code, -32601)
-				c.say(`{"type":"control_request","request_id":"hook-1","request":{"subtype":"hook_callback","callback_id":"x"}}`)
+				c.say(
+					`{"type":"control_request","request_id":"hook-1",` +
+						`"request":{"subtype":"hook_callback","callback_id":"x"}}`,
+				)
 			}
 		}
 	})
-	equal(t, collect(t.Context(), r, withTools(request(user("hi")))), []provider.Event{textEvent("went on"), response(1, 1)})
+	equal(
+		t,
+		collect(t.Context(), r, withTools(request(user("hi")))),
+		[]provider.Event{textEvent("went on"), response(1, 1)},
+	)
 	equal(t, len(p.starts[0].signals), 0)
 }
+
 func TestMissingAndUnaskedBatchResults(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r, p := fixture(t, func(c *scriptedCLI) {
@@ -194,15 +283,19 @@ func TestMissingAndUnaskedBatchResults(t *testing.T) {
 		equal(t, len(collect(t.Context(), r, first)), 2)
 		equal(t, len(p.starts), 2)
 		c := p.starts[1]
-		both := withTools(request(user("run both"), toolOutput("toolu_alpha", "alpha done"), toolOutput("toolu_beta", "beta done")))
+		both := withTools(
+			request(user("run both"), toolOutput("toolu_alpha", "alpha done"), toolOutput("toolu_beta", "beta done")),
+		)
 		ended := make(chan []provider.Event, 1)
 		go func() { ended <- collect(t.Context(), r, both) }()
 		synctest.Wait()
 		c.finish(host.ProcessEnd{Kind: host.ProcessExited})
 		f = failure(t, <-ended)
-		equal(t, f.Message, "Claude Code exited before requesting SDK MCP tool result for toolu_alpha, toolu_beta")
+		equal(t, f.Message, `Claude Code exited before requesting SDK MCP tool result for `+
+			`toolu_alpha, toolu_beta`)
 	})
 }
+
 func TestLeftoverOutputBelongsToNoRequest(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r, p := fixture(t, func(c *scriptedCLI) {
@@ -236,7 +329,12 @@ func TestLeftoverOutputBelongsToNoRequest(t *testing.T) {
 			c.text("listed it")
 			c.result(2, 2)
 		}
-		req.Items = append(req.Items, toolUse("toolu_1", "pwd"), toolOutput("toolu_1", "/tmp"), &provider.UserSteer{Content: []provider.UserPart{&provider.TextPart{Text: "also list it"}}})
+		req.Items = append(
+			req.Items,
+			toolUse("toolu_1", "pwd"),
+			toolOutput("toolu_1", "/tmp"),
+			&provider.UserSteer{Content: []provider.UserPart{&provider.TextPart{Text: "also list it"}}},
+		)
 		equal(t, collect(t.Context(), r, req), []provider.Event{textEvent("done"), response(1, 1)})
 		equal(t, inputOrder, []string{"steer", "call-1"})
 		synctest.Wait()
@@ -261,7 +359,19 @@ func TestMCPProtocolNegotiationAndDefaults(t *testing.T) {
 						return
 					}
 					if string(v["type"]) == `"user"` {
-						c.mcp("init", map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocolVersion": version, "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "test", "version": "1"}}})
+						c.mcp(
+							"init",
+							map[string]any{
+								"jsonrpc": "2.0",
+								"id":      1,
+								"method":  "initialize",
+								"params": map[string]any{
+									"protocolVersion": version,
+									"capabilities":    map[string]any{},
+									"clientInfo":      map[string]any{"name": "test", "version": "1"},
+								},
+							},
+						)
 						return
 					}
 					id, reply := mcpResponse(t, v)
@@ -280,7 +390,18 @@ func TestMCPProtocolNegotiationAndDefaults(t *testing.T) {
 						for i, method := range []string{"resources/list", "resources/templates/list", "prompts/list"} {
 							c.mcp(method, map[string]any{"jsonrpc": "2.0", "id": i + 2, "method": method})
 						}
-						c.mcp("complete", map[string]any{"jsonrpc": "2.0", "id": 5, "method": "completion/complete", "params": map[string]any{"ref": map[string]any{"type": "ref/prompt", "name": "x"}, "argument": map[string]any{"name": "x", "value": ""}}})
+						c.mcp(
+							"complete",
+							map[string]any{
+								"jsonrpc": "2.0",
+								"id":      5,
+								"method":  "completion/complete",
+								"params": map[string]any{
+									"ref":      map[string]any{"type": "ref/prompt", "name": "x"},
+									"argument": map[string]any{"name": "x", "value": ""},
+								},
+							},
+						)
 						return
 					}
 					switch id {
@@ -314,9 +435,15 @@ func TestMCPInlineMetadataAndFailedHandshake(t *testing.T) {
 					if string(v["type"]) == `"user"` {
 						params := map[string]any{}
 						if valid {
-							params["_meta"] = map[string]any{"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": map[string]any{}}
+							params["_meta"] = map[string]any{
+								"io.modelcontextprotocol/protocolVersion":    "2026-07-28",
+								"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+							}
 						}
-						c.mcp("discover", map[string]any{"jsonrpc": "2.0", "id": 1, "method": "discover", "params": params})
+						c.mcp(
+							"discover",
+							map[string]any{"jsonrpc": "2.0", "id": 1, "method": "discover", "params": params},
+						)
 						return
 					}
 					_, reply := mcpResponse(t, v)
@@ -331,7 +458,11 @@ func TestMCPInlineMetadataAndFailedHandshake(t *testing.T) {
 						}
 						equal(t, result.Type, "complete")
 						equal(t, result.Scope, "private")
-						equal(t, result.Versions, []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"})
+						equal(
+							t,
+							result.Versions,
+							[]string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"},
+						)
 					} else {
 						var errReply struct {
 							Code    int    `json:"code"`
@@ -371,7 +502,14 @@ func TestMCPPingWhileToolWaitsAndCancellation(t *testing.T) {
 			case "mcp-init", "mcp-initialized":
 			case "ping":
 				checkJSON(t, reply["result"], `{}`)
-				c.mcp("cancel", map[string]any{"jsonrpc": "2.0", "method": "notifications/cancelled", "params": map[string]any{"requestId": 9}})
+				c.mcp(
+					"cancel",
+					map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "notifications/cancelled",
+						"params":  map[string]any{"requestId": 9},
+					},
+				)
 			case "cancel":
 				checkJSON(t, reply["result"], `{}`)
 			case "call":
@@ -386,7 +524,12 @@ func TestMCPPingWhileToolWaitsAndCancellation(t *testing.T) {
 }
 
 func TestMCPMalformedEnvelopeIsControlError(t *testing.T) {
-	for _, payload := range []string{`{"jsonrpc":"2.0"}`, `{"jsonrpc":"2.0","id":true,"method":"ping"}`, `{"jsonrpc":"2.0","id":1.5,"method":"ping"}`, `{"jsonrpc":"2.0","result":{}}`} {
+	for _, payload := range []string{
+		`{"jsonrpc":"2.0"}`,
+		`{"jsonrpc":"2.0","id":true,"method":"ping"}`,
+		`{"jsonrpc":"2.0","id":1.5,"method":"ping"}`,
+		`{"jsonrpc":"2.0","result":{}}`,
+	} {
 		t.Run(payload, func(t *testing.T) {
 			r, _ := fixture(t, func(c *scriptedCLI) {
 				c.onWrite = func(v map[string]json.RawMessage) {

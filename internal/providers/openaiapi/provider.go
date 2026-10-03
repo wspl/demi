@@ -42,7 +42,13 @@ func New(config Config, clock core.Clock) *Provider {
 	if config.Wire == core.WireAPIChatCompletions {
 		path = "/chat/completions"
 	}
-	return &Provider{authorization: config.APIKey.Bearer(), url: provider.EndpointURL(base, path), wire: config.Wire, policy: config.Policy, clock: clock}
+	return &Provider{
+		authorization: config.APIKey.Bearer(),
+		url:           provider.EndpointURL(base, path),
+		wire:          config.Wire,
+		policy:        config.Policy,
+		clock:         clock,
+	}
 }
 
 // Capabilities describes the entry's Host requirements.

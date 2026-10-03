@@ -34,6 +34,7 @@ func NewSecret(text string) (Secret, error) {
 	}
 	return secret, nil
 }
+
 func validateSecret(secret Secret) error {
 	if secret == "" {
 		return ErrSecretEmpty
@@ -59,4 +60,6 @@ func (s Secret) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte("Secret(..)"
 func (s Secret) HeaderValue() Secret { return s }
 
 // Bearer returns a redacted bearer authorization value.
-func (s Secret) Bearer() Secret { return Secret("Bearer " + string(s)) }
+func (s Secret) Bearer() Secret {
+	return Secret("Bearer " + string(s))
+}

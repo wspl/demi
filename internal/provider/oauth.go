@@ -103,7 +103,9 @@ type SecretFault uint8
 
 // Secret decoder failure categories, without credential values.
 const (
+	// SecretSyntax identifies malformed JSON in a secret document.
 	SecretSyntax SecretFault = iota
+	// SecretShape identifies an invalid secret document shape.
 	SecretShape
 )
 
@@ -113,6 +115,7 @@ type SecretDecodeError struct {
 	Fault SecretFault
 }
 
+// Error returns the diagnostic for this failure.
 func (e *SecretDecodeError) Error() string {
 	reason := "not JSON"
 	if e.Fault == SecretShape {
@@ -156,16 +159,23 @@ func DecodeSecretDocument[T any](text string, decode func([]byte) (T, error)) (T
 // ResponseError reports an unreadable OAuth reply without quoting tokens.
 type ResponseError struct{ Malformed error }
 
+// Error returns the diagnostic for this failure.
 func (e *ResponseError) Error() string {
 	if e.Malformed == nil {
 		return "the response body could not be read"
 	}
 	return "the response is " + e.Malformed.Error()
 }
+
+// Unwrap returns the underlying cause.
 func (e *ResponseError) Unwrap() error { return e.Malformed }
 
 // DecodeJSONResponse decodes and closes a token response using its schema decoder.
-func DecodeJSONResponse[T any](ctx context.Context, response *http.Response, decode func([]byte) (T, error)) (T, error) {
+func DecodeJSONResponse[T any](
+	ctx context.Context,
+	response *http.Response,
+	decode func([]byte) (T, error),
+) (T, error) {
 	var zero T
 	stop := closeOnCancel(ctx, response.Body)
 	defer stop()

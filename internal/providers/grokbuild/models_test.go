@@ -11,7 +11,18 @@ import (
 
 func TestCatalogEnvelopeAndList(t *testing.T) {
 	v := providertest.StartVendor(t)
-	v.RespondAt("/v1/models", answer(200, `{"object":"list","data":[{"id":"frontier","name":"Frontier","description":"frontier","context_window":500000,"supports_reasoning_effort":true,"reasoning_effort":"medium","reasoning_efforts":[{"id":"high","value":"high","default":true},{"id":"medium","default":false},{"value":"low"}]},{"model":"fast","context_window":200000},{"name":"no id"}]}`))
+	v.RespondAt(
+		"/v1/models",
+		answer(
+			200,
+			`{"object":"list","data":[{"id":"frontier","name":"Frontier",`+
+				`"description":"frontier","context_window":500000,`+
+				`"supports_reasoning_effort":true,"reasoning_effort":"medium",`+
+				`"reasoning_efforts":[{"id":"high","value":"high","default":true},`+
+				`{"id":"medium","default":false},{"value":"low"}]},`+
+				`{"model":"fast","context_window":200000},{"name":"no id"}]}`,
+		),
+	)
 	v.RespondAt("/v1/models", answer(200, `[{"id":"grok-test"}]`))
 	p, _ := fixture(t, v, nil)
 	list, err := p.ListModels(t.Context())
@@ -46,6 +57,7 @@ func TestCatalogEnvelopeAndList(t *testing.T) {
 	equal(t, "grok-test", second.Models[0].ID)
 	equal(t, 2, len(v.Requests()))
 }
+
 func TestCatalogFailures(t *testing.T) {
 	v := providertest.StartVendor(t)
 	p, _ := fixture(t, v, nil)
@@ -54,7 +66,22 @@ func TestCatalogFailures(t *testing.T) {
 		body    string
 		kind    provider.CatalogErrorKind
 		message string
-	}{{200, `{"data":[{"id":"frontier","context_window":"wide"}]}`, provider.CatalogInvalid, "context_window"}, {200, `{"data":[]}`, provider.CatalogInvalid, "Grok Build models answer lists no model"}, {503, "down", provider.CatalogUnavailable, "Grok Build models request failed with HTTP 503"}} {
+	}{{
+		200,
+		`{"data":[{"id":"frontier","context_window":"wide"}]}`,
+		provider.CatalogInvalid,
+		"context_window",
+	}, {
+		200,
+		`{"data":[]}`,
+		provider.CatalogInvalid,
+		"Grok Build models answer lists no model",
+	}, {
+		503,
+		"down",
+		provider.CatalogUnavailable,
+		"Grok Build models request failed with HTTP 503",
+	}} {
 		v.RespondAt("/v1/models", answer(tc.status, tc.body))
 		_, err := p.ListModels(t.Context())
 		var failure *provider.CatalogError

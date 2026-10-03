@@ -48,11 +48,26 @@ func TestModelsRevalidationAndSharedRequest(t *testing.T) {
 				case <-request.Context().Done():
 					return nil, request.Context().Err()
 				}
-				return &http.Response{StatusCode: 200, Header: http.Header{"Etag": []string{`"v1"`}, "Last-Modified": []string{"Mon, 07 Sep 2026 12:00:00 GMT"}}, Body: io.NopCloser(strings.NewReader(document))}, nil
+				return &http.Response{
+					StatusCode: 200,
+					Header: http.Header{
+						"Etag":          []string{`"v1"`},
+						"Last-Modified": []string{"Mon, 07 Sep 2026 12:00:00 GMT"},
+					},
+					Body: io.NopCloser(strings.NewReader(document)),
+				}, nil
 			}
-			return &http.Response{StatusCode: 304, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}, nil
+			return &http.Response{
+				StatusCode: 304,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader("")),
+			}, nil
 		})
-		client := provider.NewModelsDevClient(&http.Client{Transport: transport}, "https://fixture.invalid/api.json", providertest.FixedClock(now))
+		client := provider.NewModelsDevClient(
+			&http.Client{Transport: transport},
+			"https://fixture.invalid/api.json",
+			providertest.FixedClock(now),
+		)
 		result := make(chan provider.ModelsDevSnapshot, 3)
 		var workers sync.WaitGroup
 		for i := range 3 {
@@ -106,6 +121,7 @@ func TestModelsRevalidationAndSharedRequest(t *testing.T) {
 		requireEqual(t, len(requests), 3)
 	})
 }
+
 func TestModelsStaleFallbackAndInitialFailure(t *testing.T) {
 	vendor := providertest.StartVendor(t)
 	client := provider.NewModelsDevClient(vendor.Client(), vendor.URL("/api.json"), providertest.FixedClock(now))
@@ -114,7 +130,12 @@ func TestModelsStaleFallbackAndInitialFailure(t *testing.T) {
 	if err == nil || err.Error() != "models.dev catalog request failed with HTTP 500" {
 		t.Fatalf("%v", err)
 	}
-	vendor.Respond(providertest.MockResponse{Status: 200, Chunks: [][]byte{[]byte(`{"vendor":{"id":"vendor","name":"Vendor","models":[]}}`)}})
+	vendor.Respond(
+		providertest.MockResponse{
+			Status: 200,
+			Chunks: [][]byte{[]byte(`{"vendor":{"id":"vendor","name":"Vendor","models":[]}}`)},
+		},
+	)
 	_, err = client.Refreshed(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "vendor.models") {
 		t.Fatalf("%v", err)
@@ -131,7 +152,11 @@ func TestModelsStaleFallbackAndInitialFailure(t *testing.T) {
 	}
 	requireEqual(t, stale.FetchedAt, good.FetchedAt)
 	requireEqual(t, stale.Stale, true)
-	requireEqual(t, stale.Warnings, []string{"Using stale models.dev catalog: models.dev catalog request failed with HTTP 503"})
+	requireEqual(
+		t,
+		stale.Warnings,
+		[]string{"Using stale models.dev catalog: models.dev catalog request failed with HTTP 503"},
+	)
 	list := stale.VendorModels("deepseek")
 	requireEqual(t, list.Stale, true)
 	requireEqual(t, list.Warnings, stale.Warnings)
@@ -142,6 +167,7 @@ func TestModelsStaleFallbackAndInitialFailure(t *testing.T) {
 	}
 	requireEqual(t, stale.Stale, true)
 }
+
 func TestModelsCatalogMapping(t *testing.T) {
 	vendor := providertest.StartVendor(t)
 	vendor.Respond(providertest.MockResponse{Status: 200, Chunks: [][]byte{[]byte(modelDocument(t))}})
@@ -172,20 +198,45 @@ func TestModelsCatalogMapping(t *testing.T) {
 	yes, no := true, false
 	efforts := []string{"low", "high"}
 	input, output, cache := 0.3, 1.2, 0.03
-	want := core.ProviderModel{ID: "deepseek-v4", DisplayName: "DeepSeek V4", Description: &description, ContextWindow: &contextWindow, OutputLimit: &outputLimit, SupportsTools: &yes, SupportsAttachments: &no, SupportsReasoning: &yes, SupportedThinkingEfforts: &efforts, ServiceTiers: []core.ServiceTier{}, Cost: &core.ModelCost{Input: &input, Output: &output, CacheRead: &cache}}
+	want := core.ProviderModel{
+		ID:                       "deepseek-v4",
+		DisplayName:              "DeepSeek V4",
+		Description:              &description,
+		ContextWindow:            &contextWindow,
+		OutputLimit:              &outputLimit,
+		SupportsTools:            &yes,
+		SupportsAttachments:      &no,
+		SupportsReasoning:        &yes,
+		SupportedThinkingEfforts: &efforts,
+		ServiceTiers:             []core.ServiceTier{},
+		Cost:                     &core.ModelCost{Input: &input, Output: &output, CacheRead: &cache},
+	}
 	requireEqual(t, list.Models[0], want)
-	requireEqual(t, list.Models[1], core.ProviderModel{ID: "deepseek-v4-flash", DisplayName: "deepseek-v4-flash", ServiceTiers: []core.ServiceTier{}})
+	requireEqual(
+		t,
+		list.Models[1],
+		core.ProviderModel{
+			ID:           "deepseek-v4-flash",
+			DisplayName:  "deepseek-v4-flash",
+			ServiceTiers: []core.ServiceTier{},
+		},
+	)
 }
+
 func TestModelsLastReaderCancelsAndJoins(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		started := make(chan struct{})
 		ended := make(chan struct{})
-		client := provider.NewModelsDevClient(&http.Client{Transport: roundTripper(func(request *http.Request) (*http.Response, error) {
-			close(started)
-			<-request.Context().Done()
-			close(ended)
-			return nil, request.Context().Err()
-		})}, "https://fixture.invalid/api.json", providertest.FixedClock(now))
+		client := provider.NewModelsDevClient(
+			&http.Client{Transport: roundTripper(func(request *http.Request) (*http.Response, error) {
+				close(started)
+				<-request.Context().Done()
+				close(ended)
+				return nil, request.Context().Err()
+			})},
+			"https://fixture.invalid/api.json",
+			providertest.FixedClock(now),
+		)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		results := make(chan error, 1)
@@ -209,7 +260,19 @@ func TestModelsLastReaderCancelsAndJoins(t *testing.T) {
 
 func TestModelsDuplicateKeysKeepFirstPositionAndLastValue(t *testing.T) {
 	vendor := providertest.StartVendor(t)
-	vendor.Respond(providertest.MockResponse{Status: 200, Chunks: [][]byte{[]byte(`{"first":{"id":"old","name":"Old","models":{}},"second":{"id":"second","name":"Second","models":{}},"first":{"id":"first","name":"First","models":{"a":{"name":"old"},"b":{},"a":{"name":"new"}}}}`)}})
+	vendor.Respond(
+		providertest.MockResponse{
+			Status: 200,
+			Chunks: [][]byte{
+				[]byte(
+					`{"first":{"id":"old","name":"Old","models":{}},` +
+						`"second":{"id":"second","name":"Second","models":{}},` +
+						`"first":{"id":"first","name":"First","models":{"a":{"name":"old"}` +
+						`,"b":{},"a":{"name":"new"}}}}`,
+				),
+			},
+		},
+	)
 	client := provider.NewModelsDevClient(vendor.Client(), vendor.URL("/api.json"), providertest.FixedClock(now))
 	snapshot, err := client.Refreshed(t.Context())
 	if err != nil {

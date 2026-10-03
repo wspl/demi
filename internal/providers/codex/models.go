@@ -27,8 +27,8 @@ type catalogModel struct {
 	DefaultTier  *provider.NonEmpty `json:"default_service_tier"`
 	ToolMode     *string            `json:"tool_mode"`
 	Tools        *[]string          `json:"experimental_supported_tools"`
-	Patch        json.RawMessage    `json:"apply_patch_tool_type" wire:"optional"`
-	Search       json.RawMessage    `json:"web_search_tool_type" wire:"optional"`
+	Patch        json.RawMessage    `json:"apply_patch_tool_type"        wire:"optional"`
+	Search       json.RawMessage    `json:"web_search_tool_type"         wire:"optional"`
 }
 type reasoningLevel struct {
 	Effort provider.NonEmpty `json:"effort"`
@@ -55,7 +55,10 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 		request.Header.Set("Accept", "application/json")
 		response, err := p.http.Do(request)
 		if err != nil {
-			return core.ProviderModelList{}, &provider.CatalogError{Kind: provider.CatalogUnavailable, Message: fmt.Sprintf("Codex models request failed: %v", withoutURL(err))}
+			return core.ProviderModelList{}, &provider.CatalogError{
+				Kind:    provider.CatalogUnavailable,
+				Message: fmt.Sprintf("Codex models request failed: %v", withoutURL(err)),
+			}
 		}
 		if response.StatusCode == 401 && refused == nil {
 			_ = response.Body.Close() // A refused catalog contributes only its status.
@@ -64,20 +67,30 @@ func (p *Provider) ListModels(ctx context.Context) (core.ProviderModelList, erro
 		}
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
 			_ = response.Body.Close() // A refused catalog contributes only its status.
-			return core.ProviderModelList{}, &provider.CatalogError{Kind: provider.CatalogUnavailable, Message: fmt.Sprintf("Codex models request failed with HTTP %d", response.StatusCode)}
+			return core.ProviderModelList{}, &provider.CatalogError{
+				Kind:    provider.CatalogUnavailable,
+				Message: fmt.Sprintf("Codex models request failed with HTTP %d", response.StatusCode),
+			}
 		}
 		data, readErr := io.ReadAll(response.Body)
 		_ = response.Body.Close() // Read reports transfer failures; close releases the body.
 		if readErr != nil {
-			return core.ProviderModelList{}, &provider.CatalogError{Kind: provider.CatalogUnavailable, Message: fmt.Sprintf("Codex models request failed: %v", readErr)}
+			return core.ProviderModelList{}, &provider.CatalogError{
+				Kind:    provider.CatalogUnavailable,
+				Message: fmt.Sprintf("Codex models request failed: %v", readErr),
+			}
 		}
 		result, err := p.catalog(string(data))
 		if err != nil {
-			return core.ProviderModelList{}, &provider.CatalogError{Kind: provider.CatalogInvalid, Message: fmt.Sprintf("Codex models answer cannot be read: %v", err)}
+			return core.ProviderModelList{}, &provider.CatalogError{
+				Kind:    provider.CatalogInvalid,
+				Message: fmt.Sprintf("Codex models answer cannot be read: %v", err),
+			}
 		}
 		return result, nil
 	}
 }
+
 func (p *Provider) catalog(text string) (core.ProviderModelList, error) {
 	answer, err := provider.DecodeUntagged[struct {
 		Models []catalogModel `json:"models"`
@@ -103,53 +116,79 @@ func (p *Provider) catalog(text string) (core.ProviderModelList, error) {
 	slices.SortStableFunc(answer.Models, func(a, b catalogModel) int {
 		return cmp.Compare(a.Priority, b.Priority)
 	})
-	result := core.ProviderModelList{Models: []core.ProviderModel{}, Warnings: []string{}, SourceFetchedAt: p.clock.Now()}
+	result := core.ProviderModelList{
+		Models:          []core.ProviderModel{},
+		Warnings:        []string{},
+		SourceFetchedAt: p.clock.Now(),
+	}
 	for _, m := range answer.Models {
 		if m.Visibility != "list" {
 			continue
 		}
-		efforts := make([]string, 0, len(m.Levels))
-		for _, level := range m.Levels {
-			efforts = append(efforts, string(level.Effort))
-		}
-		reasoning, disable := len(efforts) > 0, false
-		model := core.ProviderModel{ID: string(m.Slug), DisplayName: string(m.Name), Description: m.Description, ContextWindow: m.Context, SupportsReasoning: &reasoning, SupportedThinkingEfforts: &efforts, CanDisableThinking: &disable, ServiceTiers: []core.ServiceTier{}}
-		if m.Modalities != nil {
-			v := slices.Contains(*m.Modalities, "image")
-			model.SupportsAttachments = &v
-		}
-		switch {
-		case m.ToolMode != nil && *m.ToolMode != "":
-			v := true
-			model.SupportsTools = &v
-		case m.Tools != nil:
-			v := len(*m.Tools) > 0
-			model.SupportsTools = &v
-		case len(m.Patch) != 0 || len(m.Search) != 0:
-			v := true
-			model.SupportsTools = &v
-		}
-		if m.DefaultLevel != nil {
-			value := string(*m.DefaultLevel)
-			model.DefaultThinkingEffort = &value
-		}
-		if m.DefaultTier != nil {
-			value := string(*m.DefaultTier)
-			model.DefaultServiceTierID = &value
-		}
-		if m.Tiers != nil {
-			for _, tier := range *m.Tiers {
-				description := tier.Description
-				if description != nil && *description == "" {
-					description = nil
-				}
-				model.ServiceTiers = append(model.ServiceTiers, core.ServiceTier{ID: string(tier.ID), Label: string(tier.Name), Description: description, Fast: tier.ID == "priority"})
-			}
-		}
+		model := m.model()
 		result.Models = append(result.Models, model)
 	}
 	if len(result.Models) > 0 {
 		result.DefaultModelID = &result.Models[0].ID
 	}
 	return result, nil
+}
+
+func (m catalogModel) model() core.ProviderModel {
+	efforts := make([]string, 0, len(m.Levels))
+	for _, level := range m.Levels {
+		efforts = append(efforts, string(level.Effort))
+	}
+	reasoning, disable := len(efforts) > 0, false
+	model := core.ProviderModel{
+		ID:                       string(m.Slug),
+		DisplayName:              string(m.Name),
+		Description:              m.Description,
+		ContextWindow:            m.Context,
+		SupportsReasoning:        &reasoning,
+		SupportedThinkingEfforts: &efforts,
+		CanDisableThinking:       &disable,
+		ServiceTiers:             []core.ServiceTier{},
+	}
+	if m.Modalities != nil {
+		v := slices.Contains(*m.Modalities, "image")
+		model.SupportsAttachments = &v
+	}
+	switch {
+	case m.ToolMode != nil && *m.ToolMode != "":
+		v := true
+		model.SupportsTools = &v
+	case m.Tools != nil:
+		v := len(*m.Tools) > 0
+		model.SupportsTools = &v
+	case len(m.Patch) != 0 || len(m.Search) != 0:
+		v := true
+		model.SupportsTools = &v
+	}
+	if m.DefaultLevel != nil {
+		value := string(*m.DefaultLevel)
+		model.DefaultThinkingEffort = &value
+	}
+	if m.DefaultTier != nil {
+		value := string(*m.DefaultTier)
+		model.DefaultServiceTierID = &value
+	}
+	if m.Tiers != nil {
+		for _, tier := range *m.Tiers {
+			description := tier.Description
+			if description != nil && *description == "" {
+				description = nil
+			}
+			model.ServiceTiers = append(
+				model.ServiceTiers,
+				core.ServiceTier{
+					ID:          string(tier.ID),
+					Label:       string(tier.Name),
+					Description: description,
+					Fast:        tier.ID == "priority",
+				},
+			)
+		}
+	}
+	return model
 }

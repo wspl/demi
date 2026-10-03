@@ -24,11 +24,19 @@ const testToken = "sk-ant-oat01-test-token"
 func testClock() core.Clock {
 	return providertest.FixedClock(core.Timestamp("2026-09-24T08:00:00.000Z"))
 }
+
 func testProvider(t *testing.T, catalog, usage string) (*Provider, *provider.MemoryCredentialPool) {
 	t.Helper()
 	pool := provider.NewMemoryCredentialPool()
 	models := provider.NewModelsDevClient(http.DefaultClient, catalog, testClock())
-	staged := New(NewConfig("entry-1", "Claude", nil), pool, &provider.MemorySnapshots{}, models, http.DefaultClient, testClock())
+	staged := New(
+		NewConfig("entry-1", "Claude", nil),
+		pool,
+		&provider.MemorySnapshots{},
+		models,
+		http.DefaultClient,
+		testClock(),
+	)
 	token, err := provider.NewSecret(testToken)
 	if err != nil {
 		t.Fatal(err)
@@ -41,22 +49,49 @@ func testProvider(t *testing.T, catalog, usage string) (*Provider, *provider.Mem
 	config.UsageURL = usage
 	return New(config, pool, &provider.MemorySnapshots{}, models, http.DefaultClient, testClock()), pool
 }
+
 func user(text string) provider.InferenceItem {
 	return &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: text}}}
 }
+
 func request(items ...provider.InferenceItem) provider.InferenceRequest {
-	return provider.InferenceRequest{SessionID: "session-1", ModelID: "claude-test", SystemPrompt: "system", Items: items}
+	return provider.InferenceRequest{
+		SessionID:    "session-1",
+		ModelID:      "claude-test",
+		SystemPrompt: "system",
+		Items:        items,
+	}
 }
+
 func withTools(r provider.InferenceRequest) provider.InferenceRequest {
-	r.Tools = []provider.ToolDefinition{{Name: "shell_exec", Description: "Execute a shell script", InputSchema: json.RawMessage(`{"type":"object","properties":{"script":{"type":"string"}},"required":["script"],"additionalProperties":false}`)}}
+	r.Tools = []provider.ToolDefinition{
+		{
+			Name:        "shell_exec",
+			Description: "Execute a shell script",
+			InputSchema: json.RawMessage(
+				`{"type":"object","properties":{"script":{"type":"string"}},` +
+					`"required":["script"],"additionalProperties":false}`,
+			),
+		},
+	}
 	return r
 }
+
 func toolUse(id, script string) provider.InferenceItem {
-	return &provider.ToolUse{ModelID: "claude-test", ToolUseID: id, ToolName: "shell_exec", Input: json.RawMessage(`{"script":"` + script + `"}`)}
+	return &provider.ToolUse{
+		ModelID:   "claude-test",
+		ToolUseID: id,
+		ToolName:  "shell_exec",
+		Input: json.RawMessage(`{"script":"` +
+			script +
+			`"}`),
+	}
 }
+
 func toolOutput(id, text string) provider.InferenceItem {
 	return &provider.ToolResult{ToolUseID: id, Output: []provider.ResultPart{&provider.TextPart{Text: text}}}
 }
+
 func response(input, output uint64) provider.Event {
 	return &provider.Response{Usage: core.TokenUsage{InputTokens: input, OutputTokens: output}}
 }
@@ -67,6 +102,7 @@ func equal(t *testing.T, got, want any) {
 		t.Fatalf("got %#v; want %#v", got, want)
 	}
 }
+
 func failure(t *testing.T, events []provider.Event) provider.Failure {
 	t.Helper()
 	if len(events) != 1 {
@@ -78,6 +114,7 @@ func failure(t *testing.T, events []provider.Event) provider.Failure {
 	}
 	return e.Failure
 }
+
 func collect(ctx context.Context, r provider.Runtime, req provider.InferenceRequest) []provider.Event {
 	return slices.Collect(r.Run(ctx, req))
 }
@@ -103,6 +140,7 @@ type scriptedCLI struct {
 func (c *scriptedCLI) say(raw string) {
 	c.output <- host.ProcessOutput{Stream: core.StreamKind("stdout"), Bytes: []byte(raw + "\n")}
 }
+
 func (c *scriptedCLI) sayValue(value any) {
 	data, err := provider.JSONBody(value)
 	if err != nil {
@@ -110,12 +148,25 @@ func (c *scriptedCLI) sayValue(value any) {
 	}
 	c.say(string(data))
 }
+
 func (c *scriptedCLI) text(text string) {
-	c.sayValue(map[string]any{"type": "stream_event", "event": map[string]any{"type": "content_block_delta", "delta": map[string]any{"type": "text_delta", "text": text}}})
+	c.sayValue(
+		map[string]any{
+			"type": "stream_event",
+			"event": map[string]any{
+				"type":  "content_block_delta",
+				"delta": map[string]any{"type": "text_delta", "text": text},
+			},
+		},
+	)
 }
+
 func (c *scriptedCLI) result(input, output int) {
-	c.sayValue(map[string]any{"type": "result", "usage": map[string]int{"input_tokens": input, "output_tokens": output}})
+	c.sayValue(
+		map[string]any{"type": "result", "usage": map[string]int{"input_tokens": input, "output_tokens": output}},
+	)
 }
+
 func (c *scriptedCLI) finish(end host.ProcessEnd) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -126,6 +177,7 @@ func (c *scriptedCLI) finish(end host.ProcessEnd) {
 		close(c.output)
 	}
 }
+
 func (c *scriptedCLI) Next(ctx context.Context) (host.ProcessOutput, error) {
 	select {
 	case output, ok := <-c.output:
@@ -137,6 +189,7 @@ func (c *scriptedCLI) Next(ctx context.Context) (host.ProcessOutput, error) {
 		return host.ProcessOutput{}, ctx.Err()
 	}
 }
+
 func (c *scriptedCLI) wait(ctx context.Context) (host.ProcessEnd, error) {
 	select {
 	case <-c.ended:
@@ -147,6 +200,7 @@ func (c *scriptedCLI) wait(ctx context.Context) (host.ProcessEnd, error) {
 		return host.ProcessEnd{}, ctx.Err()
 	}
 }
+
 func (c *scriptedCLI) WriteStdin(_ context.Context, data []byte) error {
 	var value map[string]json.RawMessage
 	if err := json.Unmarshal(data, &value); err != nil {
@@ -193,6 +247,7 @@ func (c *scriptedCLI) Kill(_ context.Context, signal host.Signal) error {
 	}
 	return nil
 }
+
 func (c *scriptedCLI) Close(context.Context) error {
 	c.mu.Lock()
 	c.closedWhileRunning = !c.finished
@@ -201,6 +256,7 @@ func (c *scriptedCLI) Close(context.Context) error {
 	c.finish(host.ProcessEnd{Kind: host.ProcessSignalled, Signal: "SIGKILL"})
 	return nil
 }
+
 func (c *scriptedCLI) initialized(v map[string]json.RawMessage) bool {
 	if string(v["type"]) != `"control_request"` {
 		return false
@@ -212,7 +268,12 @@ func (c *scriptedCLI) initialized(v map[string]json.RawMessage) bool {
 		c.t.Fatal(err)
 	}
 	equal(c.t, request.Subtype, "initialize")
-	c.sayValue(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": v["request_id"]}})
+	c.sayValue(
+		map[string]any{
+			"type":     "control_response",
+			"response": map[string]any{"subtype": "success", "request_id": v["request_id"]},
+		},
+	)
 	return true
 }
 
@@ -227,13 +288,19 @@ func (p *scriptedPlacement) Start(_ context.Context, spawn func(Site) host.Spawn
 	if p.fail != nil {
 		return nil, p.fail
 	}
-	c := &scriptedCLI{t: p.t, spawn: spawn(Site{Executable: "/demi/claude", RunDir: "/demi/run", ConfigDir: "/demi/config"}), output: make(chan host.ProcessOutput, 128), ended: make(chan struct{})}
+	c := &scriptedCLI{
+		t:      p.t,
+		spawn:  spawn(Site{Executable: "/demi/claude", RunDir: "/demi/run", ConfigDir: "/demi/config"}),
+		output: make(chan host.ProcessOutput, 128),
+		ended:  make(chan struct{}),
+	}
 	p.starts = append(p.starts, c)
 	if p.setup != nil {
 		p.setup(c)
 	}
 	return &host.StartedProcess{Output: c, Control: c, Wait: c.wait}, nil
 }
+
 func fixture(t *testing.T, setup func(*scriptedCLI)) (provider.Runtime, *scriptedPlacement) {
 	t.Helper()
 	p, _ := testProvider(t, "http://127.0.0.1:9/catalog", "http://127.0.0.1:9/usage")
@@ -246,6 +313,7 @@ func fixture(t *testing.T, setup func(*scriptedCLI)) (provider.Runtime, *scripte
 	})
 	return r, placement
 }
+
 func answer(t *testing.T, lines ...string) ([]provider.Event, *scriptedCLI) {
 	t.Helper()
 	r, p := fixture(t, func(c *scriptedCLI) {
@@ -258,24 +326,74 @@ func answer(t *testing.T, lines ...string) ([]provider.Event, *scriptedCLI) {
 	return collect(t.Context(), r, request(user("hi"))), p.starts[0]
 }
 
-const doneLine = `{"type":"result","usage":{"input_tokens":1,"output_tokens":1}}`
-const startLine = `{"type":"stream_event","event":{"type":"message_start","message":{}}}`
-const stopLine = `{"type":"stream_event","event":{"type":"message_stop"}}`
+const (
+	doneLine  = `{"type":"result","usage":{"input_tokens":1,"output_tokens":1}}`
+	startLine = `{"type":"stream_event","event":{"type":"message_start","message":{}}}`
+	stopLine  = `{"type":"stream_event","event":{"type":"message_stop"}}`
+)
 
 func toolLine(id, script string) string {
-	data, _ := provider.JSONBody(map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": id, "name": "mcp__main__shell_exec", "input": map[string]any{"script": script}}}}})
+	data, _ := provider.JSONBody(
+		map[string]any{
+			"type": "assistant",
+			"message": map[string]any{
+				"content": []any{
+					map[string]any{
+						"type":  "tool_use",
+						"id":    id,
+						"name":  "mcp__main__shell_exec",
+						"input": map[string]any{"script": script},
+					},
+				},
+			},
+		},
+	)
 	return string(data)
 }
+
 func (c *scriptedCLI) mcp(control string, value any) {
-	c.sayValue(map[string]any{"type": "control_request", "request_id": control, "request": map[string]any{"subtype": "mcp_message", "server_name": "main", "message": value}})
+	c.sayValue(
+		map[string]any{
+			"type":       "control_request",
+			"request_id": control,
+			"request":    map[string]any{"subtype": "mcp_message", "server_name": "main", "message": value},
+		},
+	)
 }
+
 func (c *scriptedCLI) call(control string, id int, toolID, script string) {
-	c.mcp(control, map[string]any{"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": map[string]any{"name": "shell_exec", "arguments": map[string]any{"script": script}, "_meta": map[string]any{"claudecode/toolUseId": toolID}}})
+	c.mcp(
+		control,
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id":      id,
+			"method":  "tools/call",
+			"params": map[string]any{
+				"name":      "shell_exec",
+				"arguments": map[string]any{"script": script},
+				"_meta":     map[string]any{"claudecode/toolUseId": toolID},
+			},
+		},
+	)
 }
+
 func (c *scriptedCLI) handshake() {
-	c.mcp("mcp-init", map[string]any{"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "claude-code", "version": "2.1.3"}}})
+	c.mcp(
+		"mcp-init",
+		map[string]any{
+			"jsonrpc": "2.0",
+			"id":      0,
+			"method":  "initialize",
+			"params": map[string]any{
+				"protocolVersion": "2025-06-18",
+				"capabilities":    map[string]any{},
+				"clientInfo":      map[string]any{"name": "claude-code", "version": "2.1.3"},
+			},
+		},
+	)
 	c.mcp("mcp-initialized", map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
 }
+
 func decoded(t *testing.T, raw []byte) any {
 	t.Helper()
 	var value any
@@ -284,10 +402,12 @@ func decoded(t *testing.T, raw []byte) any {
 	}
 	return value
 }
+
 func checkJSON(t *testing.T, raw []byte, want string) {
 	t.Helper()
 	equal(t, decoded(t, raw), decoded(t, []byte(want)))
 }
+
 func mcpResponse(t *testing.T, v map[string]json.RawMessage) (string, map[string]json.RawMessage) {
 	t.Helper()
 	equal(t, decoded(t, v["type"]), "control_response")

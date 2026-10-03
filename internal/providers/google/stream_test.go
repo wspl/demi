@@ -44,11 +44,15 @@ func onlyFailure(t *testing.T, events []provider.Event) provider.Failure {
 }
 
 func TestThoughtsAndCallSignature(t *testing.T) {
-	events := streamEvents(t,
+	events := streamEvents(
+		t,
 		`{"candidates":[{"content":{"parts":[{"text":"weighing options","thought":true}]}}]}`,
-		`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"shell_exec","args":{"command":"ls"},"id":"c1"},"thoughtSignature":"sig-1"}]}}]}`,
+		`{"candidates":[{"content":{"parts":[{`+
+			`"functionCall":{"name":"shell_exec","args":{"command":"ls"},"id":"c1"},`+
+			`"thoughtSignature":"sig-1"}]}}]}`,
 		`{"candidates":[{"content":{"parts":[{"text":"done"}]}}]}`,
-		`{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4,"thoughtsTokenCount":20,"cachedContentTokenCount":3}}`,
+		`{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4,`+
+			`"thoughtsTokenCount":20,"cachedContentTokenCount":3}}`,
 	)
 	want := []provider.Event{
 		&provider.ThinkingStart{}, &provider.ThinkingDelta{Text: "weighing options"},
@@ -61,21 +65,31 @@ func TestThoughtsAndCallSignature(t *testing.T) {
 		t.Fatalf("got %#v; want %#v", events, want)
 	}
 }
+
 func TestSignedCallOpensThinking(t *testing.T) {
-	events := streamEvents(t,
-		`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"look","id":"c1"},"thoughtSignature":"sig-1"}]}}]}`,
-		`{"candidates":[{"content":{"parts":[{"text":"plan","thought":true},{"text":"","thoughtSignature":"sig-2"},{"text":"answer"}]}}]}`,
+	events := streamEvents(
+		t,
+		`{"candidates":[{"content":{"parts":[{`+
+			`"functionCall":{"name":"look","id":"c1"},"thoughtSignature":"sig-1"}]}}]}`,
+		`{"candidates":[{"content":{"parts":[{"text":"plan",`+
+			`"thought":true},{"text":"","thoughtSignature":"sig-2"},`+
+			`{"text":"answer"}]}}]}`,
 	)
 	want := []provider.Event{
-		&provider.ThinkingStart{}, &provider.ThinkingSignature{Signature: "google:sig-1"},
+		&provider.ThinkingStart{},
+		&provider.ThinkingSignature{Signature: "google:sig-1"},
 		&provider.ToolCall{ToolUseID: "c1", ToolName: "look", Input: json.RawMessage(`{}`)},
-		&provider.ThinkingStart{}, &provider.ThinkingDelta{Text: "plan"}, &provider.ThinkingSignature{Signature: "google:sig-2"},
-		&provider.TextDelta{Text: "answer"}, &provider.Response{},
+		&provider.ThinkingStart{},
+		&provider.ThinkingDelta{Text: "plan"},
+		&provider.ThinkingSignature{Signature: "google:sig-2"},
+		&provider.TextDelta{Text: "answer"},
+		&provider.Response{},
 	}
 	if !reflect.DeepEqual(want, events) {
 		t.Fatalf("got %#v; want %#v", events, want)
 	}
 }
+
 func TestMissingCallIDsAreUnique(t *testing.T) {
 	call := `{"candidates":[{"content":{"parts":[{"functionCall":{"name":"shell_exec","args":{}}}]}}]}`
 	all := append(streamEvents(t, call, call), streamEvents(t, call)...)
@@ -92,6 +106,7 @@ func TestMissingCallIDsAreUnique(t *testing.T) {
 		t.Fatalf("got %d unique calls", len(ids))
 	}
 }
+
 func TestStreamErrorRecord(t *testing.T) {
 	chunk := `{"error":{"status":"RESOURCE_EXHAUSTED","message":"quota exceeded"}}`
 	failure := onlyFailure(t, streamEvents(t, chunk, `{"candidates":[{"content":{"parts":[{"text":"never read"}]}}]}`))
@@ -99,10 +114,13 @@ func TestStreamErrorRecord(t *testing.T) {
 		t.Fatalf("failure: %+v", failure)
 	}
 	d := failure.Diagnostics
-	if d == nil || d.Source != "stream" || d.ProviderCode == nil || *d.ProviderCode != "RESOURCE_EXHAUSTED" || d.Upstream == nil || *d.Upstream != chunk {
+	if d == nil || d.Source != "stream" || d.ProviderCode == nil || *d.ProviderCode != "RESOURCE_EXHAUSTED" ||
+		d.Upstream == nil ||
+		*d.Upstream != chunk {
 		t.Fatalf("diagnostics: %+v", d)
 	}
 }
+
 func TestMalformedChunkNamesField(t *testing.T) {
 	for _, tc := range []struct{ chunk, field string }{
 		{`{"candidates":{"content":{"parts":[{"text":"hello"}]}}}`, "candidates"},
@@ -111,16 +129,22 @@ func TestMalformedChunkNamesField(t *testing.T) {
 	} {
 		t.Run(tc.field, func(t *testing.T) {
 			failure := onlyFailure(t, streamEvents(t, tc.chunk))
-			if failure.Code != nil || !strings.Contains(failure.Message, tc.field) || failure.Diagnostics == nil || failure.Diagnostics.Upstream == nil || *failure.Diagnostics.Upstream != tc.chunk {
+			if failure.Code != nil || !strings.Contains(failure.Message, tc.field) || failure.Diagnostics == nil ||
+				failure.Diagnostics.Upstream == nil ||
+				*failure.Diagnostics.Upstream != tc.chunk {
 				t.Fatalf("failure: %+v", failure)
 			}
 		})
 	}
 }
+
 func TestRefusedRequestRecord(t *testing.T) {
-	body := `{"error":{"code":429,"message":"Resource has been exhausted","status":"RESOURCE_EXHAUSTED"}}`
+	body := `{"error":{"code":429,"message":"Resource has been exhausted",` +
+		`"status":"RESOURCE_EXHAUSTED"}}`
 	failure := onlyFailure(t, responseEvents(t, providertest.MockResponse{Status: 429, Chunks: [][]byte{[]byte(body)}}))
-	if failure.Message != "Google API request failed with HTTP 429: "+body || failure.Code == nil || *failure.Code != provider.RateLimit {
+	if failure.Message != "Google API request failed with HTTP 429: "+
+		body || failure.Code == nil ||
+		*failure.Code != provider.RateLimit {
 		t.Fatalf("failure: %+v", failure)
 	}
 	record := provider.ReadHTTPRecord(failure.Diagnostics)
@@ -128,6 +152,7 @@ func TestRefusedRequestRecord(t *testing.T) {
 		t.Fatalf("record: %+v", record)
 	}
 }
+
 func TestCancellationClosesStream(t *testing.T) {
 	v := providertest.StartVendor(t)
 	response := providertest.EventStream("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hel\"}]}}]}\n\n")
@@ -136,7 +161,11 @@ func TestCancellationClosesStream(t *testing.T) {
 	r := runtimeAt(t, v, "/v1beta")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	reader := providertest.NewEventReader(ctx, t, func(ctx context.Context) provider.Run { return r.Run(ctx, providertest.InferenceRequest()) })
+	reader := providertest.NewEventReader(
+		ctx,
+		t,
+		func(ctx context.Context) provider.Run { return r.Run(ctx, providertest.InferenceRequest()) },
+	)
 	event, ok := reader.NextEvent()
 	if !ok || !reflect.DeepEqual(event, &provider.TextDelta{Text: "hel"}) {
 		t.Fatalf("first event: %#v", event)
@@ -148,7 +177,14 @@ func TestCancellationClosesStream(t *testing.T) {
 	v.Disconnected(t.Context())
 
 	untouched := providertest.StartVendor(t)
-	if events := providertest.Run(ctx, t, runtimeAt(t, untouched, "/v1beta"), providertest.InferenceRequest()); len(events) != 0 {
+	if events := providertest.Run(
+		ctx,
+		t,
+		runtimeAt(t, untouched, "/v1beta"),
+		providertest.InferenceRequest(),
+	); len(
+		events,
+	) != 0 {
 		t.Fatalf("pre-cancelled events: %#v", events)
 	}
 	if len(untouched.Requests()) != 0 {
@@ -160,11 +196,17 @@ func TestToolArgumentsKeepVendorJSONMeaning(t *testing.T) {
 	for _, tc := range []struct{ name, args, want string }{
 		{"object order and duplicate", `{"z":1,"a":2,"z":3}`, `{"z":3,"a":2}`},
 		{"string", `"not an object"`, `"not an object"`},
-		{"null", `null`, `{}`},
+		{"null", "null", `{}`},
 		{"float", `{"value":1.0}`, `{"value":1.0}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			events := streamEvents(t, `{"candidates":[{"content":{"parts":[{"functionCall":{"name":"tool","id":"c","args":`+tc.args+`}}]}}]}`)
+			events := streamEvents(
+				t,
+				`{"candidates":[{"content":{"parts":[{`+
+					`"functionCall":{"name":"tool","id":"c","args":`+
+					tc.args+
+					`}}]}}]}`,
+			)
 			if len(events) != 2 {
 				t.Fatalf("events: %#v", events)
 			}
@@ -174,16 +216,27 @@ func TestToolArgumentsKeepVendorJSONMeaning(t *testing.T) {
 			}
 		})
 	}
-	failure := onlyFailure(t, streamEvents(t, `{"candidates":[{"content":{"parts":[{"functionCall":{"name":"tool","args":{"bad":"\ud800"}}}]}}]}`))
+	failure := onlyFailure(
+		t,
+		streamEvents(
+			t,
+			`{"candidates":[{"content":{"parts":[{`+
+				`"functionCall":{"name":"tool","args":{"bad":"\ud800"}}}]}}]}`,
+		),
+	)
 	if failure.Code != nil || !strings.Contains(failure.Message, "args") {
 		t.Fatalf("malformed arguments: %+v", failure)
 	}
 }
 
 func TestStreamToleranceAndLatestUsage(t *testing.T) {
-	events := streamEvents(t,
-		`{"unknown":{"future":true},"candidates":null,"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":50}}`,
-		`{"candidates":[{}, {"content":{"parts":[{"futurePart":true},{"text":"","thought":false},{"thoughtSignature":"ignored"}]}}],"usageMetadata":{"promptTokenCount":2,"cachedContentTokenCount":5}}`,
+	events := streamEvents(
+		t,
+		`{"unknown":{"future":true},"candidates":null,`+
+			`"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":50}}`,
+		`{"candidates":[{}, {"content":{"parts":[{"futurePart":true},`+
+			`{"text":"","thought":false},{"thoughtSignature":"ignored"}]}}],`+
+			`"usageMetadata":{"promptTokenCount":2,"cachedContentTokenCount":5}}`,
 	)
 	want := []provider.Event{&provider.Response{Usage: core.TokenUsage{CacheReadTokens: 5}}}
 	if !reflect.DeepEqual(events, want) {
@@ -197,7 +250,9 @@ func TestStreamToleranceAndLatestUsage(t *testing.T) {
 
 func TestEarlyConsumerExitClosesConnection(t *testing.T) {
 	v := providertest.StartVendor(t)
-	response := providertest.EventStream("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hello\"}]}}]}\n\n")
+	response := providertest.EventStream(
+		"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hello\"}]}}]}\n\n",
+	)
 	response.Ending = providertest.Open
 	v.Respond(response)
 	for event := range runtimeAt(t, v, "/v1beta").Run(t.Context(), providertest.InferenceRequest()) {

@@ -20,7 +20,12 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 const now = "2026-09-18T14:00:00.000Z"
 
 // providerAt builds an entry pointed at the scripted vendor.
-func providerAt(t *testing.T, v *providertest.MockVendor, base string, policy provider.VendorPolicy) *anthropicapi.Provider {
+func providerAt(
+	t *testing.T,
+	v *providertest.MockVendor,
+	base string,
+	policy provider.VendorPolicy,
+) *anthropicapi.Provider {
 	t.Helper()
 	endpoint, err := url.Parse(v.URL(base))
 	if err != nil {
@@ -30,7 +35,10 @@ func providerAt(t *testing.T, v *providertest.MockVendor, base string, policy pr
 	if err != nil {
 		t.Fatal(err)
 	}
-	return anthropicapi.New(anthropicapi.Config{APIKey: key, BaseURL: endpoint, Policy: policy}, providertest.FixedClock(now))
+	return anthropicapi.New(
+		anthropicapi.Config{APIKey: key, BaseURL: endpoint, Policy: policy},
+		providertest.FixedClock(now),
+	)
 }
 
 // testRuntime opens a Messages runtime owned by this test.
@@ -106,11 +114,16 @@ func TestBuiltInDirectory(t *testing.T) {
 	ids := []string{}
 	for _, m := range list.Models {
 		ids = append(ids, m.ID)
-		if *m.ContextWindow != 1000000 || !*m.SupportsTools || !*m.SupportsAttachments || *m.SupportsVideo || !*m.SupportsReasoning || *m.CanDisableThinking {
+		if *m.ContextWindow != 1000000 || !*m.SupportsTools || !*m.SupportsAttachments || *m.SupportsVideo ||
+			!*m.SupportsReasoning ||
+			*m.CanDisableThinking {
 			t.Fatalf("incorrect model: %+v", m)
 		}
 	}
-	if !reflect.DeepEqual([]string{"claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-fable-5"}, ids) {
+	if !reflect.DeepEqual(
+		[]string{"claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-fable-5"},
+		ids,
+	) {
 		t.Fatal(ids)
 	}
 	if p.Quota() != nil || p.Accounts() != nil {
@@ -132,6 +145,7 @@ func TestBuiltInDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestStandardFailureReading(t *testing.T) {
 	v := providertest.StartVendor(t)
 	record := provider.NewHTTPFailureRecord(429, map[string][]string{"Retry-After": {"90"}}, "")
@@ -140,7 +154,12 @@ func TestStandardFailureReading(t *testing.T) {
 		t.Fatal(err)
 	}
 	upstream := string(raw)
-	facts := providerAt(t, v, "/v1", provider.VendorPolicy{}).ReadFailure(&core.ProviderErrorDiagnostics{Source: "http", HTTPStatus: new(uint16(429)), Upstream: &upstream}, now)
+	facts := providerAt(
+		t,
+		v,
+		"/v1",
+		provider.VendorPolicy{},
+	).ReadFailure(&core.ProviderErrorDiagnostics{Source: "http", HTTPStatus: new(uint16(429)), Upstream: &upstream}, now)
 	if facts.RetryAt == nil || *facts.RetryAt != "2026-09-18T14:01:30.000Z" {
 		t.Fatal(facts)
 	}

@@ -38,7 +38,16 @@ func Error(message string, code *provider.ErrorCode) provider.Event {
 
 // InferenceRequest returns a minimal hello request for tests to customize.
 func InferenceRequest() provider.InferenceRequest {
-	return provider.InferenceRequest{SessionID: "session-1", TurnID: "turn-1", RequestID: "request-1", ModelID: "model-1", Items: []provider.InferenceItem{&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: "hello"}}}}, Tools: []provider.ToolDefinition{}}
+	return provider.InferenceRequest{
+		SessionID: "session-1",
+		TurnID:    "turn-1",
+		RequestID: "request-1",
+		ModelID:   "model-1",
+		Items: []provider.InferenceItem{
+			&provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: "hello"}}},
+		},
+		Tools: []provider.ToolDefinition{},
+	}
 }
 
 // Turn opens a scripted run. A custom stream must honor ctx when waiting.
@@ -72,15 +81,17 @@ func Pending() Turn {
 }
 
 // ScriptedRuntime and its fresh copies share one ordered script.
-type ScriptedRuntime struct{ script *script }
-type script struct {
-	mu       sync.Mutex
-	t        testing.TB
-	turns    []Turn
-	requests []provider.InferenceRequest
-	closes   int
-	limits   provider.RequestLimits
-}
+type (
+	ScriptedRuntime struct{ script *script }
+	script          struct {
+		mu       sync.Mutex
+		t        testing.TB
+		turns    []Turn
+		requests []provider.InferenceRequest
+		closes   int
+		limits   provider.RequestLimits
+	}
+)
 
 // NewScriptedRuntime returns a runtime and registers no background work.
 func NewScriptedRuntime(t testing.TB, turns ...Turn) *ScriptedRuntime {
@@ -181,7 +192,12 @@ func AllEvents(ctx context.Context, t testing.TB, open func(context.Context) pro
 }
 
 // Run executes a request and collects every event with a hang guard.
-func Run(ctx context.Context, t testing.TB, runtime provider.Runtime, request provider.InferenceRequest) []provider.Event {
+func Run(
+	ctx context.Context,
+	t testing.TB,
+	runtime provider.Runtime,
+	request provider.InferenceRequest,
+) []provider.Event {
 	t.Helper()
 	return AllEvents(ctx, t, func(ctx context.Context) provider.Run { return runtime.Run(ctx, request) })
 }
@@ -284,7 +300,14 @@ func JWT(t testing.TB, claims any) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`)) + "." + base64.RawURLEncoding.EncodeToString(encoded) + ".signature"
+	return base64.RawURLEncoding.EncodeToString(
+		[]byte(`{"alg":"none","typ":"JWT"}`),
+	) +
+		"." +
+		base64.RawURLEncoding.EncodeToString(
+			encoded,
+		) +
+		".signature"
 }
 
 // SSEBody creates one data frame per JSON payload.

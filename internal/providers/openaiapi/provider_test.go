@@ -24,7 +24,13 @@ const now core.Timestamp = "2026-09-18T14:00:00.000Z"
 var wires = []core.WireAPI{core.WireAPIResponses, core.WireAPIChatCompletions}
 
 // providerAt configures an OpenAI entry against the scripted vendor.
-func providerAt(t *testing.T, vendor *providertest.MockVendor, base string, wire core.WireAPI, policy provider.VendorPolicy) *openaiapi.Provider {
+func providerAt(
+	t *testing.T,
+	vendor *providertest.MockVendor,
+	base string,
+	wire core.WireAPI,
+	policy provider.VendorPolicy,
+) *openaiapi.Provider {
 	t.Helper()
 	endpoint, err := url.Parse(vendor.URL(base))
 	if err != nil {
@@ -34,11 +40,20 @@ func providerAt(t *testing.T, vendor *providertest.MockVendor, base string, wire
 	if err != nil {
 		t.Fatal(err)
 	}
-	return openaiapi.New(openaiapi.Config{APIKey: key, BaseURL: endpoint, Wire: wire, Policy: policy}, providertest.FixedClock(now))
+	return openaiapi.New(
+		openaiapi.Config{APIKey: key, BaseURL: endpoint, Wire: wire, Policy: policy},
+		providertest.FixedClock(now),
+	)
 }
 
 // runtimeAt creates and owns a session runtime for a scripted vendor.
-func runtimeAt(t *testing.T, vendor *providertest.MockVendor, base string, wire core.WireAPI, policy provider.VendorPolicy) provider.Runtime {
+func runtimeAt(
+	t *testing.T,
+	vendor *providertest.MockVendor,
+	base string,
+	wire core.WireAPI,
+	policy provider.VendorPolicy,
+) provider.Runtime {
 	t.Helper()
 	runtime, err := providerAt(t, vendor, base, wire, policy).Runtime(provider.RuntimeEnv{HTTP: vendor.Client()})
 	if err != nil {
@@ -54,7 +69,13 @@ func runtimeAt(t *testing.T, vendor *providertest.MockVendor, base string, wire 
 
 // requestWith creates the transcript sent in a provider scenario.
 func requestWith(items ...provider.InferenceItem) provider.InferenceRequest {
-	return provider.InferenceRequest{SessionID: "session-1", TurnID: "turn-1", RequestID: "request-1", ModelID: "gpt-test", Items: items}
+	return provider.InferenceRequest{
+		SessionID: "session-1",
+		TurnID:    "turn-1",
+		RequestID: "request-1",
+		ModelID:   "gpt-test",
+		Items:     items,
+	}
 }
 
 // user creates a text message in a provider transcript.
@@ -63,7 +84,13 @@ func user(text string) provider.InferenceItem {
 }
 
 // bodyOf observes the actual request sent to the vendor.
-func bodyOf(ctx context.Context, t *testing.T, wire core.WireAPI, policy provider.VendorPolicy, request provider.InferenceRequest) map[string]any {
+func bodyOf(
+	ctx context.Context,
+	t *testing.T,
+	wire core.WireAPI,
+	policy provider.VendorPolicy,
+	request provider.InferenceRequest,
+) map[string]any {
 	t.Helper()
 	vendor := providertest.StartVendor(t)
 	vendor.Respond(providertest.EventStream("data: [DONE]\n\n"))
@@ -117,7 +144,9 @@ func TestEndpointsAndAnswers(t *testing.T) {
 		text := "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n"
 		usage := core.TokenUsage{}
 		if tc.wire == core.WireAPIResponses {
-			text = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n\n"
+			text = `data: {"type":"response.output_text.delta","delta":"hi"}` +
+				"\n\ndata: {\"type\":\"response.completed\"," +
+				"\"response\":{\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n\n"
 			usage.InputTokens = 3
 			usage.OutputTokens = 1
 		}
@@ -140,7 +169,11 @@ func TestEndpointsAndAnswers(t *testing.T) {
 		if request.Method != "POST" || request.URI != cases[i].path {
 			t.Fatalf("request: %+v", request)
 		}
-		for name, value := range map[string]string{"authorization": "Bearer sk-test", "content-type": "application/json", "accept": "text/event-stream"} {
+		for name, value := range map[string]string{
+			"authorization": "Bearer sk-test",
+			"content-type":  "application/json",
+			"accept":        "text/event-stream",
+		} {
 			if request.Header(name) != value {
 				t.Errorf("%s = %q", name, request.Header(name))
 			}
@@ -152,7 +185,12 @@ func TestCancelledBeforeRun(t *testing.T) {
 	vendor := providertest.StartVendor(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	events := providertest.Run(ctx, t, runtimeAt(t, vendor, "/v1", core.WireAPIResponses, provider.VendorPolicy{}), requestWith(user("hello")))
+	events := providertest.Run(
+		ctx,
+		t,
+		runtimeAt(t, vendor, "/v1", core.WireAPIResponses, provider.VendorPolicy{}),
+		requestWith(user("hello")),
+	)
 	if len(events) != 0 || len(vendor.Requests()) != 0 {
 		t.Fatal("cancelled run emitted or sent")
 	}
@@ -172,7 +210,11 @@ func TestCancelledMidStream(t *testing.T) {
 			runtime := runtimeAt(t, vendor, "/v1", wire, provider.VendorPolicy{})
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			reader := providertest.NewEventReader(ctx, t, func(ctx context.Context) provider.Run { return runtime.Run(ctx, requestWith(user("hello"))) })
+			reader := providertest.NewEventReader(
+				ctx,
+				t,
+				func(ctx context.Context) provider.Run { return runtime.Run(ctx, requestWith(user("hello"))) },
+			)
 			event, ok := reader.NextEvent()
 			if !ok || !reflect.DeepEqual(event, &provider.TextDelta{Text: "hel"}) {
 				t.Fatalf("first event: %#v", event)
@@ -190,8 +232,19 @@ func TestHTTPFailureRecordAndWait(t *testing.T) {
 	body := `{"error":{"message":"Rate limit reached","type":"requests","code":"rate_limit_exceeded"}}`
 	for _, wire := range wires {
 		vendor := providertest.StartVendor(t)
-		vendor.Respond(providertest.MockResponse{Status: 429, Headers: http.Header{"Retry-After": []string{"20"}}, Chunks: [][]byte{[]byte(body)}})
-		events := providertest.Run(t.Context(), t, runtimeAt(t, vendor, "/v1", wire, provider.VendorPolicy{}), requestWith(user("hello")))
+		vendor.Respond(
+			providertest.MockResponse{
+				Status:  429,
+				Headers: http.Header{"Retry-After": []string{"20"}},
+				Chunks:  [][]byte{[]byte(body)},
+			},
+		)
+		events := providertest.Run(
+			t.Context(),
+			t,
+			runtimeAt(t, vendor, "/v1", wire, provider.VendorPolicy{}),
+			requestWith(user("hello")),
+		)
 		if len(events) != 1 {
 			t.Fatalf("events: %#v", events)
 		}
@@ -200,10 +253,15 @@ func TestHTTPFailureRecordAndWait(t *testing.T) {
 			t.Fatalf("event: %#v", events[0])
 		}
 		failure := event.Failure
-		if failure.Message != "OpenAI API request failed with HTTP 429: "+body || failure.Code == nil || *failure.Code != provider.RateLimit || failure.RetryAfter == nil || *failure.RetryAfter != 20*time.Second {
+		if failure.Message != "OpenAI API request failed with HTTP 429: "+
+			body || failure.Code == nil ||
+			*failure.Code != provider.RateLimit ||
+			failure.RetryAfter == nil ||
+			*failure.RetryAfter != 20*time.Second {
 			t.Fatalf("failure: %+v", failure)
 		}
-		if failure.Diagnostics == nil || failure.Diagnostics.HTTPStatus == nil || *failure.Diagnostics.HTTPStatus != 429 {
+		if failure.Diagnostics == nil || failure.Diagnostics.HTTPStatus == nil ||
+			*failure.Diagnostics.HTTPStatus != 429 {
 			t.Fatalf("diagnostic status: %+v", failure.Diagnostics)
 		}
 		record := provider.ReadHTTPRecord(failure.Diagnostics)
@@ -230,7 +288,8 @@ func TestNoAnswerIsOverloaded(t *testing.T) {
 		t.Fatalf("event: %#v", events[0])
 	}
 	failure := event.Failure
-	if failure.Code == nil || *failure.Code != provider.Overloaded || failure.Diagnostics.Source != "transport" || strings.Contains(failure.Message, strings.TrimPrefix(vendor.URL(""), "http://")) {
+	if failure.Code == nil || *failure.Code != provider.Overloaded || failure.Diagnostics.Source != "transport" ||
+		strings.Contains(failure.Message, strings.TrimPrefix(vendor.URL(""), "http://")) {
 		t.Fatalf("failure: %+v", failure)
 	}
 }

@@ -20,7 +20,11 @@ func TestScriptedRuntimeSharesTurnsAndOwnsCancellation(t *testing.T) {
 			providertest.Pending(),
 		)
 		request := providertest.InferenceRequest()
-		reader := providertest.NewEventReader(t.Context(), t, func(ctx context.Context) provider.Run { return runtime.Run(ctx, request) })
+		reader := providertest.NewEventReader(
+			t.Context(),
+			t,
+			func(ctx context.Context) provider.Run { return runtime.Run(ctx, request) },
+		)
 		event, ok := reader.NextEvent()
 		requireEqual(t, ok, true)
 		requireEqual(t, event, providertest.Text("first"))
@@ -30,7 +34,11 @@ func TestScriptedRuntimeSharesTurnsAndOwnsCancellation(t *testing.T) {
 		requireEqual(t, event, providertest.Response(2, 3))
 		reader.Close()
 		fresh := runtime.Fresh()
-		requireEqual(t, providertest.Run(t.Context(), t, fresh, request), []provider.Event{providertest.Text(request.RequestID)})
+		requireEqual(
+			t,
+			providertest.Run(t.Context(), t, fresh, request),
+			[]provider.Event{providertest.Text(request.RequestID)},
+		)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		stopped := make(chan []provider.Event, 1)

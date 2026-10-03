@@ -26,7 +26,13 @@ func TestResponseQuotaIncludingRefusals(t *testing.T) {
 		if used == "100" {
 			a = answer(429, "{}")
 		}
-		a.Headers = http.Header{"X-Codex-Primary-Used-Percent": {used}, "X-Codex-Primary-Window-Minutes": {"300"}, "X-Codex-Primary-Reset-At": {"1700000000"}, "X-Codex-Secondary-Used-Percent": {"10"}, "X-Codex-Secondary-Window-Minutes": {"10080"}}
+		a.Headers = http.Header{
+			"X-Codex-Primary-Used-Percent":     {used},
+			"X-Codex-Primary-Window-Minutes":   {"300"},
+			"X-Codex-Primary-Reset-At":         {"1700000000"},
+			"X-Codex-Secondary-Used-Percent":   {"10"},
+			"X-Codex-Secondary-Window-Minutes": {"10080"},
+		}
 		v.RespondAt(responses, a)
 		providertest.Run(t.Context(), t, runtime, providertest.InferenceRequest())
 		snapshot := p.Quota().Latest()
@@ -47,9 +53,22 @@ func TestResponseQuotaIncludingRefusals(t *testing.T) {
 		equal(t, snapshot.Source, core.SnapshotSource("observation"))
 	}
 }
+
 func TestFreeUsageProbe(t *testing.T) {
 	v, _, p := setup(t)
-	v.RespondAt("/backend-api/wham/usage", answer(200, `{"plan_type":"self_serve_business_usage_based","rate_limit":{"allowed":false,"limit_reached":true,"primary_window":{"used_percent":100,"limit_window_seconds":18000,"reset_after_seconds":60,"reset_at":1700000000},"secondary_window":{"used_percent":41,"limit_window_seconds":172800,"reset_after_seconds":900,"reset_at":1700500000}}}`))
+	v.RespondAt(
+		"/backend-api/wham/usage",
+		answer(
+			200,
+			`{"plan_type":"self_serve_business_usage_based",`+
+				`"rate_limit":{"allowed":false,"limit_reached":true,`+
+				`"primary_window":{"used_percent":100,`+
+				`"limit_window_seconds":18000,"reset_after_seconds":60,`+
+				`"reset_at":1700000000},"secondary_window":{"used_percent":41,`+
+				`"limit_window_seconds":172800,"reset_after_seconds":900,`+
+				`"reset_at":1700500000}}}`,
+		),
+	)
 	equal(t, *p.Quota().ProbeCost(), provider.ProbeFree)
 	snapshot, err := p.Quota().Probe(t.Context())
 	if err != nil {
@@ -74,6 +93,7 @@ func TestFreeUsageProbe(t *testing.T) {
 	equal(t, v.Requests()[0].Header("Authorization"), "Bearer "+freshToken(t))
 	equal(t, v.Requests()[0].Header("Chatgpt-Account-Id"), "acct-1")
 }
+
 func TestUsageProbeRefusal(t *testing.T) {
 	v, _, p := setup(t)
 	v.RespondAt("/backend-api/wham/usage", answer(403, `{"error":"forbidden"}`))

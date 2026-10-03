@@ -14,8 +14,11 @@ import (
 	"github.com/wspl/demi/internal/provider"
 )
 
-const clientID = "b1a00492-073a-47ea-816f-4c329264a828"
-const scope = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write workspaces:read workspaces:write"
+const (
+	clientID = "b1a00492-073a-47ea-816f-4c329264a828"
+	scope    = `openid profile email offline_access grok-cli:access api:access ` +
+		`conversations:read conversations:write workspaces:read workspaces:write`
+)
 
 type loginKit struct {
 	http            *http.Client
@@ -23,9 +26,12 @@ type loginKit struct {
 	clock           core.Clock
 }
 
+// Capability reports the supported account operations.
 func (*loginKit) Capability() provider.AccountsCapability {
 	return provider.AccountsCapability{Login: true}
 }
+
+// Add reports that adding an account directly is unsupported.
 func (*loginKit) Add(provider.AddAccount) (provider.NewAccount, error) {
 	return provider.NewAccount{}, provider.ErrAccountsUnsupported
 }
@@ -35,10 +41,11 @@ type deviceAnswer struct {
 	Code     userCode              `json:"user_code"`
 	URI      *verificationURI      `json:"verification_uri"`
 	Complete *verificationURI      `json:"verification_uri_complete"`
-	Interval provider.PollInterval `json:"interval" wire:"optional"`
+	Interval provider.PollInterval `json:"interval"                  wire:"optional"`
 }
 type userCode string
 
+// UnmarshalJSON reads the vendor value used by this provider.
 func (c *userCode) UnmarshalJSON(data []byte) error {
 	s, err := provider.DecodeUntagged[string](string(data))
 	if err != nil {
@@ -59,6 +66,7 @@ func (c *userCode) UnmarshalJSON(data []byte) error {
 
 type verificationURI string
 
+// UnmarshalJSON reads the vendor value used by this provider.
 func (v *verificationURI) UnmarshalJSON(data []byte) error {
 	s, err := provider.DecodeUntagged[string](string(data))
 	if err != nil {
@@ -72,7 +80,8 @@ func (v *verificationURI) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return errors.New("a verification address is https, or http on localhost")
 	}
-	browsable := u.Scheme == "https" || u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1")
+	browsable := u.Scheme == "https" ||
+		u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1")
 	if u.Host == "" || strings.ContainsFunc(s, unicode.IsControl) || !browsable {
 		return errors.New("a verification address is https, or http on localhost")
 	}
@@ -82,7 +91,12 @@ func (v *verificationURI) UnmarshalJSON(data []byte) error {
 
 //nolint:staticcheck // ST1005: user-facing messages are copied verbatim from Rust.
 func (k *loginKit) post(ctx context.Context, path string, form url.Values) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, provider.EndpointURL(k.issuer, path).String(), strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		provider.EndpointURL(k.issuer, path).String(),
+		strings.NewReader(form.Encode()),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +109,8 @@ func (k *loginKit) post(ctx context.Context, path string, form url.Values) (*htt
 	}
 	return response, nil
 }
+
+// Login completes device authorization and returns the new account.
 func (k *loginKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
 	result, err := k.login(ctx, pending)
 	if err != nil {
@@ -105,15 +121,24 @@ func (k *loginKit) Login(ctx context.Context, pending func(core.LoginPending)) (
 
 //nolint:staticcheck // ST1005: user-facing messages are copied verbatim from Rust.
 func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
-	response, err := k.post(ctx, "/oauth2/device/code", url.Values{"client_id": {clientID}, "scope": {scope}, "referrer": {"grok-build"}})
+	response, err := k.post(
+		ctx,
+		"/oauth2/device/code",
+		url.Values{"client_id": {clientID}, "scope": {scope}, "referrer": {"grok-build"}},
+	)
 	if err != nil {
 		return provider.NewAccount{}, err
 	}
-	defer func() { _ = response.Body.Close() }() // The response is consumed or abandoned; close errors cannot change its result.
+	// The response is consumed or abandoned; close errors cannot change its result.
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return provider.NewAccount{}, fmt.Errorf("Grok device code request failed with HTTP %d", response.StatusCode)
 	}
-	device, err := provider.DecodeJSONResponse(ctx, response, func(b []byte) (deviceAnswer, error) { return provider.DecodeUntagged[deviceAnswer](string(b)) })
+	device, err := provider.DecodeJSONResponse(
+		ctx,
+		response,
+		func(b []byte) (deviceAnswer, error) { return provider.DecodeUntagged[deviceAnswer](string(b)) },
+	)
 	if err != nil {
 		return provider.NewAccount{}, fmt.Errorf("Grok device code failed: %w", err)
 	}
@@ -127,7 +152,13 @@ func (k *loginKit) login(ctx context.Context, pending func(core.LoginPending)) (
 	pollCtx, cancel := context.WithTimeout(ctx, provider.DeviceLoginLifetime)
 	defer cancel()
 	code := string(device.Code)
-	pending(core.LoginPending{VerificationURL: string(*verification), UserCode: &code, ExpiresAt: tokenExpiry(k.clock.Now(), provider.DeviceLoginLifetime)})
+	pending(
+		core.LoginPending{
+			VerificationURL: string(*verification),
+			UserCode:        &code,
+			ExpiresAt:       tokenExpiry(k.clock.Now(), provider.DeviceLoginLifetime),
+		},
+	)
 	answer, err := k.poll(pollCtx, device)
 	pollErr := pollCtx.Err()
 	cancel() // Confirmation has ended; enrichment uses the caller's context.
@@ -167,7 +198,15 @@ func (k *loginKit) poll(ctx context.Context, device deviceAnswer) (tokens, error
 		if !time.Now().Before(deadline) {
 			return tokens{}, errors.New("Grok device login timed out before the user confirmed")
 		}
-		response, err := k.post(ctx, "/oauth2/token", url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "device_code": {device.Device.Expose()}, "client_id": {clientID}})
+		response, err := k.post(
+			ctx,
+			"/oauth2/token",
+			url.Values{
+				"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
+				"device_code": {device.Device.Expose()},
+				"client_id":   {clientID},
+			},
+		)
 		if err != nil {
 			return tokens{}, err
 		}
@@ -200,13 +239,13 @@ type tokenRefusal struct {
 }
 
 type userAnswer struct {
-	User      provider.Reported[provider.NonEmpty] `json:"userId" wire:"optional"`
-	UserSnake provider.Reported[provider.NonEmpty] `json:"user_id" wire:"optional"`
-	Kind      provider.Reported[provider.NonEmpty] `json:"principalType" wire:"optional"`
+	User      provider.Reported[provider.NonEmpty] `json:"userId"         wire:"optional"`
+	UserSnake provider.Reported[provider.NonEmpty] `json:"user_id"        wire:"optional"`
+	Kind      provider.Reported[provider.NonEmpty] `json:"principalType"  wire:"optional"`
 	KindSnake provider.Reported[provider.NonEmpty] `json:"principal_type" wire:"optional"`
-	ID        provider.Reported[provider.NonEmpty] `json:"principalId" wire:"optional"`
-	IDSnake   provider.Reported[provider.NonEmpty] `json:"principal_id" wire:"optional"`
-	Email     provider.Reported[provider.NonEmpty] `json:"email" wire:"optional"`
+	ID        provider.Reported[provider.NonEmpty] `json:"principalId"    wire:"optional"`
+	IDSnake   provider.Reported[provider.NonEmpty] `json:"principal_id"   wire:"optional"`
+	Email     provider.Reported[provider.NonEmpty] `json:"email"          wire:"optional"`
 }
 
 func (k *loginKit) secret(ctx context.Context, t tokens, storedIssuer issuer) (s secret) {
@@ -215,7 +254,15 @@ func (k *loginKit) secret(ctx context.Context, t tokens, storedIssuer issuer) (s
 		id = tokenClaims(*t.ID)
 	}
 	acting := tokenClaims(t.Access).principal()
-	s = secret{AccessToken: t.Access, RefreshToken: t.Refresh, Issuer: storedIssuer, ClientID: clientID, UserID: id.Sub.Value, Email: id.Email.Value, Principal: acting}
+	s = secret{
+		AccessToken:  t.Access,
+		RefreshToken: t.Refresh,
+		Issuer:       storedIssuer,
+		ClientID:     clientID,
+		UserID:       id.Sub.Value,
+		Email:        id.Email.Value,
+		Principal:    acting,
+	}
 	// A token's team or organization remains authoritative after user enrichment.
 	defer func() {
 		if acting != nil && (acting.Kind == "Team" || acting.Kind == "Organization") {
@@ -233,6 +280,10 @@ func (k *loginKit) secret(ctx context.Context, t tokens, storedIssuer issuer) (s
 	if t.Lifetime.Duration != nil {
 		s.ExpiresAt = tokenExpiry(k.clock.Now(), *t.Lifetime.Duration)
 	}
+	return k.enrichUser(ctx, s)
+}
+
+func (k *loginKit) enrichUser(ctx context.Context, s secret) secret {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, k.userURL.String(), nil)
 	if err != nil {
 		return s
@@ -245,11 +296,16 @@ func (k *loginKit) secret(ctx context.Context, t tokens, storedIssuer issuer) (s
 	if err != nil {
 		return s
 	}
-	defer func() { _ = response.Body.Close() }() // The response is consumed or abandoned; close errors cannot change its result.
+	// The response is consumed or abandoned; close errors cannot change its result.
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return s
 	}
-	user, err := provider.DecodeJSONResponse(ctx, response, func(b []byte) (userAnswer, error) { return provider.DecodeUntagged[userAnswer](string(b)) })
+	user, err := provider.DecodeJSONResponse(
+		ctx,
+		response,
+		func(b []byte) (userAnswer, error) { return provider.DecodeUntagged[userAnswer](string(b)) },
+	)
 	if err != nil {
 		return s
 	}

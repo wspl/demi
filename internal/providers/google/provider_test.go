@@ -117,7 +117,10 @@ func TestModelsEndpointAndKey(t *testing.T) {
 		}
 	}
 	for _, sent := range v.Requests() {
-		if sent.URI != "/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse" || sent.Method != "POST" || sent.Header("x-goog-api-key") != "google-key" || sent.Header("accept") != "text/event-stream" || sent.Header("content-type") != "application/json" {
+		if sent.URI != "/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse" || sent.Method != "POST" ||
+			sent.Header("x-goog-api-key") != "google-key" ||
+			sent.Header("accept") != "text/event-stream" ||
+			sent.Header("content-type") != "application/json" {
 			t.Fatalf("unexpected request: method=%s URI=%s", sent.Method, sent.URI)
 		}
 	}

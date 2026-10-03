@@ -15,7 +15,10 @@ type testText struct {
 type testBlock struct{ Text *testText }
 
 func (b *testBlock) UnmarshalJSON(data []byte) error {
-	value, err := provider.DecodeTagged(string(data), map[string]func(string) (testText, error){"text": provider.DecodeUntagged[testText]})
+	value, err := provider.DecodeTagged(
+		string(data),
+		map[string]func(string) (testText, error){"text": provider.DecodeUntagged[testText]},
+	)
 	b.Text = value
 	return err
 }
@@ -51,6 +54,7 @@ func TestWireUnknownAndRegisteredTags(t *testing.T) {
 	}
 	requireEqual(t, *value, testStart{})
 }
+
 func TestWireMalformedRegisteredPayload(t *testing.T) {
 	_, err := provider.DecodeTagged(`{"type":"start","block":{"type":"text","text":"hi"}}`, testPayloads)
 	if err == nil || !strings.Contains(err.Error(), "index") {
@@ -63,6 +67,7 @@ func TestWireMalformedRegisteredPayload(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
 func TestWireMissingTagOrInvalidJSON(t *testing.T) {
 	for _, text := range []string{`{}`, `{"type":5}`, "not json", "", `{"type":"start","index":0,"block":{"text":"hi"}}`} {
 		if _, err := provider.DecodeTagged(text, testPayloads); err == nil {
@@ -70,6 +75,7 @@ func TestWireMissingTagOrInvalidJSON(t *testing.T) {
 		}
 	}
 }
+
 func TestWireReportedFieldsAndWholeTokens(t *testing.T) {
 	type report struct {
 		Message provider.ReportedString `json:"message" wire:"optional"`
@@ -80,7 +86,8 @@ func TestWireReportedFieldsAndWholeTokens(t *testing.T) {
 		t.Fatalf("%+v %v", value, err)
 	}
 	value, err = provider.DecodeUntagged[report](`{"message":"slow down","tokens":12}`)
-	if err != nil || value.Message.Value == nil || *value.Message.Value != "slow down" || value.Tokens == nil || *value.Tokens != 12 {
+	if err != nil || value.Message.Value == nil || *value.Message.Value != "slow down" || value.Tokens == nil ||
+		*value.Tokens != 12 {
 		t.Fatalf("%+v %v", value, err)
 	}
 	for _, text := range []string{`{"tokens":12.5}`, `{"tokens":"10"}`, `{"tokens":-1}`} {
@@ -89,6 +96,7 @@ func TestWireReportedFieldsAndWholeTokens(t *testing.T) {
 		}
 	}
 }
+
 func TestSecretSingleLineAndRedaction(t *testing.T) {
 	for _, tc := range []struct {
 		text string

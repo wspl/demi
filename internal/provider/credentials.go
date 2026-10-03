@@ -34,12 +34,15 @@ type PoolError struct {
 	Err error
 }
 
+// Error returns the diagnostic for this failure.
 func (e *PoolError) Error() string {
 	if e.Err != nil {
 		return e.Err.Error()
 	}
 	return "no account " + e.ID
 }
+
+// Unwrap returns the underlying cause.
 func (e *PoolError) Unwrap() error { return e.Err }
 
 // Revision is a secret document and its equality-only version.
@@ -240,7 +243,12 @@ type memoryDocument struct {
 	id   string
 }
 
-func (d *memoryDocument) Name() string { return "account " + d.id }
+// Name returns the credential identity.
+func (d *memoryDocument) Name() string {
+	return "account " + d.id
+}
+
+// Read returns the stored credential snapshot.
 func (d *memoryDocument) Read(ctx context.Context) (*Revision, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -253,6 +261,8 @@ func (d *memoryDocument) Read(ctx context.Context) (*Revision, error) {
 	}
 	return &Revision{Text: entry.text, Version: entry.version}, nil
 }
+
+// Replace writes credentials when the expected revision still matches.
 func (d *memoryDocument) Replace(ctx context.Context, text string, version uint64) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
@@ -268,6 +278,8 @@ func (d *memoryDocument) Replace(ctx context.Context, text string, version uint6
 	d.pool.accounts[d.id] = entry
 	return true, nil
 }
+
+// RefreshTurn acquires exclusive ownership of a credential refresh.
 func (d *memoryDocument) RefreshTurn(ctx context.Context) (*gates.Permit, error) {
 	return d.pool.gates.Turn(ctx, d.id)
 }
@@ -277,8 +289,11 @@ type AccountErrorKind uint8
 
 // Account read failure categories.
 const (
+	// AccountStore indicates that a credential store operation failed.
 	AccountStore AccountErrorKind = iota
+	// AccountMissing indicates that the account has no secret document.
 	AccountMissing
+	// AccountInvalid indicates that the secret document cannot be decoded.
 	AccountInvalid
 )
 
@@ -288,6 +303,7 @@ type AccountError struct {
 	Err  error
 }
 
+// Error returns the diagnostic for this failure.
 func (e *AccountError) Error() string {
 	switch e.Kind {
 	case AccountMissing:
@@ -298,12 +314,17 @@ func (e *AccountError) Error() string {
 		return e.Err.Error()
 	}
 }
+
+// Unwrap returns the underlying cause.
 func (e *AccountError) Unwrap() error { return e.Err }
 
 // RenewError distinguishes a refused refresh from a failed account operation.
 type RenewError struct{ Err error }
 
+// Error returns the diagnostic for this failure.
 func (e *RenewError) Error() string { return e.Err.Error() }
+
+// Unwrap returns the underlying cause.
 func (e *RenewError) Unwrap() error { return e.Err }
 
 // Stored is a decoded secret and the version it was read at.
@@ -331,7 +352,13 @@ func ReadSecret[S any](ctx context.Context, doc AccountDocument, decode func([]b
 
 // Renew follows the single refresh protocol: reread under the account's turn,
 // refresh only if still due, CAS the result, and adopt a competing writer's tokens.
-func Renew[S any](ctx context.Context, doc AccountDocument, decode func([]byte) (S, error), due func(S) bool, refresh func(context.Context, S) (S, error)) (S, error) {
+func Renew[S any](
+	ctx context.Context,
+	doc AccountDocument,
+	decode func([]byte) (S, error),
+	due func(S) bool,
+	refresh func(context.Context, S) (S, error),
+) (S, error) {
 	var zero S
 	stored, err := ReadSecret(ctx, doc, decode)
 	if err != nil {

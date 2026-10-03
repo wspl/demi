@@ -33,12 +33,15 @@ type AccountsError struct {
 	Err     error
 }
 
+// Error returns the diagnostic for this failure.
 func (e *AccountsError) Error() string {
 	if e.Message != "" {
 		return e.Message
 	}
 	return e.Err.Error()
 }
+
+// Unwrap returns the underlying cause.
 func (e *AccountsError) Unwrap() error { return e.Err }
 
 // LoginError reports a failed or unavailable device login.
@@ -48,12 +51,15 @@ type LoginError struct {
 	Err         error
 }
 
+// Error returns the diagnostic for this failure.
 func (e *LoginError) Error() string {
 	if e.Message != "" {
 		return e.Message
 	}
 	return e.Err.Error()
 }
+
+// Unwrap returns the underlying cause.
 func (e *LoginError) Unwrap() error { return e.Err }
 
 // AccountLabel names an account and its stable identity.
@@ -169,7 +175,14 @@ func (a *Accounts) importAccount(ctx context.Context, account NewAccount, source
 	if existing != nil {
 		id = existing.ID
 	}
-	meta := AccountMeta{ID: id, Label: account.Label.Label, Detail: account.Label.Detail, UpdatedAt: a.clock.Now(), Source: source, IdentityKey: account.Label.IdentityKey}
+	meta := AccountMeta{
+		ID:          id,
+		Label:       account.Label.Label,
+		Detail:      account.Label.Detail,
+		UpdatedAt:   a.clock.Now(),
+		Source:      source,
+		IdentityKey: account.Label.IdentityKey,
+	}
 	if err := a.pool.Write(ctx, meta, account.Secret); err != nil {
 		return core.AccountInfo{}, err
 	}
@@ -190,9 +203,13 @@ type AuthReason uint8
 
 // Authentication failure reasons shared by provider operations.
 const (
+	// AuthReasonMissing indicates that the configured account has no readable credentials.
 	AuthReasonMissing AuthReason = iota
+	// AuthReasonInvalid indicates that the secret document cannot be decoded.
 	AuthReasonInvalid
+	// AuthReasonStore indicates that the credential store operation failed.
 	AuthReasonStore
+	// AuthReasonRefresh indicates that the token refresh failed.
 	AuthReasonRefresh
 )
 
@@ -223,6 +240,8 @@ func AccountAuthFailure(family string, err error) AuthFailure {
 	}
 	return result
 }
+
+// Error returns the diagnostic for this failure.
 func (f AuthFailure) Error() string {
 	switch f.Reason {
 	case AuthReasonMissing:

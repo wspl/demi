@@ -69,7 +69,13 @@ func ReadHTTPRecord(d *core.ProviderErrorDiagnostics) *HTTPFailureRecord {
 }
 
 // HTTPFailure reads and closes a refused response; an unreadable body counts as empty.
-func HTTPFailure(ctx context.Context, response *http.Response, label string, reader FailureReader, clock core.Clock) Failure {
+func HTTPFailure(
+	ctx context.Context,
+	response *http.Response,
+	label string,
+	reader FailureReader,
+	clock core.Clock,
+) Failure {
 	stop := closeOnCancel(ctx, response.Body)
 	defer stop()
 	body, err := io.ReadAll(response.Body)
@@ -80,7 +86,14 @@ func HTTPFailure(ctx context.Context, response *http.Response, label string, rea
 }
 
 // Refused records an HTTP failure that has already been read.
-func Refused(label string, status uint16, headers http.Header, body string, reader FailureReader, receivedAt core.Timestamp) Failure {
+func Refused(
+	label string,
+	status uint16,
+	headers http.Header,
+	body string,
+	reader FailureReader,
+	receivedAt core.Timestamp,
+) Failure {
 	message := label + " API request failed with HTTP " + strconv.Itoa(int(status))
 	if body != "" {
 		message += ": " + body
@@ -91,9 +104,16 @@ func Refused(label string, status uint16, headers http.Header, body string, read
 		return Failure{Message: "could not encode HTTP failure record"}
 	}
 	upstream := string(encoded)
-	return (Failure{Message: message, Code: HTTPErrorCode(int(status), message), Diagnostics: &core.ProviderErrorDiagnostics{
-		Source: "http", HTTPStatus: &status, Upstream: &upstream,
-	}}).WithRetryWait(reader, receivedAt)
+	return (Failure{
+		Message: message,
+		Code:    HTTPErrorCode(int(status), message),
+		Diagnostics: &core.ProviderErrorDiagnostics{
+			Source: "http", HTTPStatus: &status, Upstream: &upstream,
+		},
+	}).WithRetryWait(
+		reader,
+		receivedAt,
+	)
 }
 
 // ReadHTTPFailure is the standard Retry-After reading of a failure record.

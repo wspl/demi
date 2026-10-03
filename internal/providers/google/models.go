@@ -19,8 +19,10 @@ func model(id, name string) core.ProviderModel {
 	context, output := uint32(1_048_576), uint32(65_536)
 	tools, attachments, video, reasoning := true, true, true, true
 	efforts, effort := []string{"low", "medium", "high", "xhigh", "max"}, "medium"
-	return core.ProviderModel{ID: id, DisplayName: name, ContextWindow: &context, OutputLimit: &output,
+	return core.ProviderModel{
+		ID: id, DisplayName: name, ContextWindow: &context, OutputLimit: &output,
 		SupportsTools: &tools, SupportsAttachments: &attachments, SupportsVideo: &video,
 		SupportsReasoning: &reasoning, SupportedThinkingEfforts: &efforts, DefaultThinkingEffort: &effort,
-		ServiceTiers: []core.ServiceTier{}}
+		ServiceTiers: []core.ServiceTier{},
+	}
 }

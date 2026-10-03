@@ -17,7 +17,12 @@ import (
 	"github.com/wspl/demi/internal/provider"
 )
 
-func (p *Provider) open(ctx context.Context, client *http.Client, headers http.Header, body []byte) (events, func(), error) {
+func (p *Provider) open(
+	ctx context.Context,
+	client *http.Client,
+	headers http.Header,
+	body []byte,
+) (events, func(), error) {
 	if p.config.Transport == SSE {
 		return p.sse(ctx, client, headers, body)
 	}
@@ -33,37 +38,11 @@ func (p *Provider) open(ctx context.Context, client *http.Client, headers http.H
 		return stream, cleanup, err
 	}
 	if err == nil {
-		next, stop := iter.Pull2(stream)
-		first, firstErr, ok := next()
-		if ok && firstErr == nil {
-			return func(yield func(provider.Received, error) bool) {
-					if !yield(first, nil) {
-						return
-					}
-					for {
-						value, err, ok := next()
-						if !ok || !yield(value, err) {
-							return
-						}
-					}
-				}, func() {
-					stop()
-					cleanup()
-				}, nil
+		if stream, cleanup, ok := firstWebSocketEvent(stream, cleanup); ok {
+			return stream, cleanup, nil
 		}
-		stop()
-		cleanup()
 	} else {
-		var rejection *refusal
-		if !errors.As(err, &rejection) {
-			ms, _ := p.clock.Now().Millisecond()
-			until := provider.UnixSeconds(float64(ms)/1000 + 600)
-			if until != nil {
-				p.mu.Lock()
-				p.unreachableUntil = *until
-				p.mu.Unlock()
-			}
-		}
+		p.markWebSocketUnreachable(err)
 	}
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
@@ -71,7 +50,12 @@ func (p *Provider) open(ctx context.Context, client *http.Client, headers http.H
 	return p.sse(ctx, client, headers, body)
 }
 
-func (p *Provider) sse(ctx context.Context, client *http.Client, headers http.Header, body []byte) (events, func(), error) {
+func (p *Provider) sse(
+	ctx context.Context,
+	client *http.Client,
+	headers http.Header,
+	body []byte,
+) (events, func(), error) {
 	requestCtx, cancel := context.WithCancel(ctx)
 	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, p.responsesURL, bytes.NewReader(body))
 	if err != nil {
@@ -93,7 +77,9 @@ func (p *Provider) sse(ctx context.Context, client *http.Client, headers http.He
 		if response != nil {
 			_ = response.Body.Close()
 		} // The header deadline already ended the request.
-		f := provider.NoAnswer(fmt.Sprintf("Codex SSE response headers timed out after %dms", p.config.HeaderTimeout.Milliseconds()))
+		f := provider.NoAnswer(
+			fmt.Sprintf("Codex SSE response headers timed out after %dms", p.config.HeaderTimeout.Milliseconds()),
+		)
 		return nil, nil, &f
 	}
 	if err != nil {
@@ -112,12 +98,21 @@ func (p *Provider) sse(ctx context.Context, client *http.Client, headers http.He
 			data = nil
 		} // Status and headers remain usable when a refusal's body cannot be read.
 		cleanup()
-		return nil, nil, &refusal{status: response.StatusCode, headers: response.Header, body: strings.ToValidUTF8(string(data), "�")}
+		return nil, nil, &refusalError{
+			status:  response.StatusCode,
+			headers: response.Header,
+			body:    strings.ToValidUTF8(string(data), "�"),
+		}
 	}
 	return provider.ResponsesSSEEvents(ctx, response.Body, "Codex"), cleanup, nil
 }
 
-func (p *Provider) websocket(ctx context.Context, client *http.Client, headers http.Header, body []byte) (events, func(), error) {
+func (p *Provider) websocket(
+	ctx context.Context,
+	client *http.Client,
+	headers http.Header,
+	body []byte,
+) (events, func(), error) {
 	headers = headers.Clone()
 	headers.Del("Accept")
 	headers.Del("Content-Type")
@@ -160,7 +155,10 @@ func (p *Provider) websocket(ctx context.Context, client *http.Client, headers h
 		}
 		message := fmt.Sprintf("Codex WebSocket connect failed: %v", withoutURL(err))
 		if expired {
-			message = fmt.Sprintf("Codex WebSocket connect timed out after %dms", p.config.ConnectTimeout.Milliseconds())
+			message = fmt.Sprintf(
+				"Codex WebSocket connect timed out after %dms",
+				p.config.ConnectTimeout.Milliseconds(),
+			)
 		}
 		f := provider.NoAnswer(message)
 		return nil, nil, &f
@@ -203,80 +201,23 @@ func (p *Provider) websocketEvents(ctx context.Context, socket *websocket.Conn, 
 				timer = time.NewTimer(*p.config.StreamIdleTimeout)
 				idle = timer.C
 			}
-		waiting:
-			for {
-				select {
-				case <-activity:
-					if timer != nil {
-						timer.Reset(*p.config.StreamIdleTimeout)
-					}
-				case <-ctx.Done():
-					_ = socket.Close(websocket.StatusNormalClosure, "aborted") // Best effort; the stream ends even if the peer already closed.
-					<-received
-					if timer != nil {
-						timer.Stop()
-					}
-					return
-				case <-idle:
-					_ = socket.Close(websocket.StatusNormalClosure, "idle_timeout") // Best effort; the stream ends even if the peer already closed.
-					<-received
-					f := provider.NoAnswer(fmt.Sprintf("Codex WebSocket stream idled for %dms", p.config.StreamIdleTimeout.Milliseconds()))
-					yield(provider.Received{}, &f)
-					return
-				case <-received:
-					if timer != nil {
-						timer.Stop()
-					}
-					break waiting
-				}
+			if p.waitSocket(ctx, socket, activity, received, timer, idle, yield) {
+				return
 			}
 			if ctx.Err() != nil {
-				_ = socket.Close(websocket.StatusNormalClosure, "aborted") // Best effort; the stream ends even if the peer already closed.
+				_ = socket.Close(
+					websocket.StatusNormalClosure,
+					"aborted",
+				) // Best effort; the stream ends even if the peer already closed.
 				return
 			}
-			if message.err != nil {
-				if websocket.CloseStatus(message.err) >= 0 {
-					return
-				}
-				f := provider.NoAnswer(fmt.Sprintf("Codex WebSocket failed: %v", message.err))
-				yield(provider.Received{}, &f)
-				return
-			}
-			text := string(message.data)
-			if !utf8.Valid(message.data) {
-				if message.kind == websocket.MessageText {
-					f := provider.NoAnswer("Codex WebSocket failed: UTF-8 encoding error")
-					yield(provider.Received{}, &f)
-					return
-				}
-				f := provider.ProtocolFailure("Codex API stream sent a binary message that is not UTF-8 text", strings.ToValidUTF8(text, "�"))
-				yield(provider.Received{}, &f)
-				return
-			}
-			event, err := decodeMessage(text)
-			if err != nil {
-				f := provider.Undecodable("Codex", err, text)
-				yield(provider.Received{}, &f)
-				return
-			}
-			if event == nil {
-				continue
-			}
-			terminal := false
-			switch event.Event.(type) {
-			case *provider.ResponsesCompleted, *provider.ResponsesFailed, *provider.ResponsesIncomplete, *provider.ResponsesError:
-				terminal = true
-			case *provider.ResponsesItemAdded, *provider.ResponsesItemDone, *provider.ResponsesTextDelta, *provider.ResponsesReasoningTextDelta, *provider.ResponsesReasoningSummaryDelta, *provider.ResponsesArgumentsDelta, *provider.ResponsesArgumentsDone:
-			}
-			if terminal {
-				_ = socket.Close(websocket.StatusNormalClosure, "response_done") // Best effort; the stream ends even if the peer already closed.
-			}
-			if !yield(*event, nil) || terminal {
+			if dispatchSocketMessage(socket, message, yield) {
 				return
 			}
 		}
 	}
 }
+
 func decodeMessage(text string) (*provider.Received, error) {
 	envelope, err := provider.DecodeUntagged[struct {
 		Type     *string          `json:"type"`
@@ -316,4 +257,151 @@ func decodeMessage(text string) (*provider.Received, error) {
 		event.Text = text
 	}
 	return event, err
+}
+
+// firstWebSocketEvent retains the pulled iterator until its returned cleanup stops it.
+func firstWebSocketEvent(stream events, cleanup func()) (events, func(), bool) {
+	next, stop := iter.Pull2(stream)
+	first, firstErr, ok := next()
+	if ok && firstErr == nil {
+		return func(yield func(provider.Received, error) bool) {
+				if !yield(first, nil) {
+					return
+				}
+				for {
+					value, err, ok := next()
+					if !ok || !yield(value, err) {
+						return
+					}
+				}
+			}, func() {
+				stop()
+				cleanup()
+			}, true
+	}
+	stop()
+	cleanup()
+	return nil, nil, false
+}
+
+// dispatchSocketMessage returns true after a terminal event or stream failure.
+func dispatchSocketMessage(
+	socket *websocket.Conn,
+	message socketMessage,
+	yield func(provider.Received, error) bool,
+) bool {
+	if message.err != nil {
+		if websocket.CloseStatus(message.err) >= 0 {
+			return true
+		}
+		f := provider.NoAnswer(fmt.Sprintf("Codex WebSocket failed: %v", message.err))
+		yield(provider.Received{}, &f)
+		return true
+	}
+	text := string(message.data)
+	if !utf8.Valid(message.data) {
+		if message.kind == websocket.MessageText {
+			f := provider.NoAnswer("Codex WebSocket failed: UTF-8 encoding error")
+			yield(provider.Received{}, &f)
+			return true
+		}
+		f := provider.ProtocolFailure(
+			"Codex API stream sent a binary message that is not UTF-8 text",
+			strings.ToValidUTF8(text, "�"),
+		)
+		yield(provider.Received{}, &f)
+		return true
+	}
+	event, err := decodeMessage(text)
+	if err != nil {
+		f := provider.Undecodable("Codex", err, text)
+		yield(provider.Received{}, &f)
+		return true
+	}
+	if event == nil {
+		return false
+	}
+	terminal := false
+	switch event.Event.(type) {
+	case *provider.ResponsesCompleted,
+		*provider.ResponsesFailed,
+		*provider.ResponsesIncomplete,
+		*provider.ResponsesError:
+		terminal = true
+	case *provider.ResponsesItemAdded,
+		*provider.ResponsesItemDone,
+		*provider.ResponsesTextDelta,
+		*provider.ResponsesReasoningTextDelta,
+		*provider.ResponsesReasoningSummaryDelta,
+		*provider.ResponsesArgumentsDelta,
+		*provider.ResponsesArgumentsDone:
+	}
+	if terminal {
+		_ = socket.Close(
+			websocket.StatusNormalClosure,
+			"response_done",
+		) // Best effort; the stream ends even if the peer already closed.
+	}
+	if !yield(*event, nil) || terminal {
+		return true
+	}
+	return false
+}
+
+func (p *Provider) markWebSocketUnreachable(err error) {
+	var rejection *refusalError
+	if !errors.As(err, &rejection) {
+		ms, _ := p.clock.Now().Millisecond()
+		until := provider.UnixSeconds(float64(ms)/1000 + 600)
+		if until != nil {
+			p.mu.Lock()
+			p.unreachableUntil = *until
+			p.mu.Unlock()
+		}
+	}
+}
+
+// waitSocket returns true when cancellation or the idle deadline ends the stream and joins its reader.
+func (p *Provider) waitSocket(
+	ctx context.Context,
+	socket *websocket.Conn,
+	activity, received <-chan struct{},
+	timer *time.Timer,
+	idle <-chan time.Time,
+	yield func(provider.Received, error) bool,
+) bool {
+	for {
+		select {
+		case <-activity:
+			if timer != nil {
+				timer.Reset(*p.config.StreamIdleTimeout)
+			}
+		case <-ctx.Done():
+			_ = socket.Close(
+				websocket.StatusNormalClosure,
+				"aborted",
+			) // Best effort; the stream ends even if the peer already closed.
+			<-received
+			if timer != nil {
+				timer.Stop()
+			}
+			return true
+		case <-idle:
+			_ = socket.Close(
+				websocket.StatusNormalClosure,
+				"idle_timeout",
+			) // Best effort; the stream ends even if the peer already closed.
+			<-received
+			f := provider.NoAnswer(
+				fmt.Sprintf("Codex WebSocket stream idled for %dms", p.config.StreamIdleTimeout.Milliseconds()),
+			)
+			yield(provider.Received{}, &f)
+			return true
+		case <-received:
+			if timer != nil {
+				timer.Stop()
+			}
+			return false
+		}
+	}
 }

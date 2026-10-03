@@ -18,10 +18,13 @@ type quotaSource struct {
 	userURL, billingURL *url.URL
 }
 
+// ProbeCost reports the cost of a quota probe.
 func (*quotaSource) ProbeCost() *provider.ProbeCost {
 	cost := provider.ProbeFree
 	return &cost
 }
+
+// Probe fetches the account quota windows.
 func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) {
 	s, failure := q.auth.credentials(ctx, q.http, nil)
 	if failure != nil {
@@ -62,9 +65,13 @@ func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) 
 	}
 	return quotaReading(user, billing, s.Email), nil
 }
+
 func (q *quotaSource) fetch(ctx context.Context, u *url.URL, s secret) (string, error) {
 	failed := func(err error) error {
-		return &provider.QuotaError{Kind: provider.QuotaUnavailable, Message: fmt.Sprintf("Grok quota request failed: %v", withoutURL(err))}
+		return &provider.QuotaError{
+			Kind:    provider.QuotaUnavailable,
+			Message: fmt.Sprintf("Grok quota request failed: %v", withoutURL(err)),
+		}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -76,7 +83,8 @@ func (q *quotaSource) fetch(ctx context.Context, u *url.URL, s secret) (string, 
 	if err != nil {
 		return "", failed(err)
 	}
-	defer func() { _ = response.Body.Close() }() // The response is consumed or abandoned; close errors cannot change its result.
+	// The response is consumed or abandoned; close errors cannot change its result.
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return "", failed(err)
@@ -86,32 +94,36 @@ func (q *quotaSource) fetch(ctx context.Context, u *url.URL, s secret) (string, 
 		if len(text) > 200 {
 			text = text[:200]
 		}
-		return "", &provider.QuotaError{Kind: provider.QuotaUnavailable, Message: fmt.Sprintf("Grok quota request failed (%d): %s", response.StatusCode, string(text))}
+		return "", &provider.QuotaError{
+			Kind:    provider.QuotaUnavailable,
+			Message: fmt.Sprintf("Grok quota request failed (%d): %s", response.StatusCode, string(text)),
+		}
 	}
 	return string(body), nil
 }
 
 type quotaUser struct {
 	Tier  provider.ReportedString `json:"subscriptionTier" wire:"optional"`
-	Email provider.ReportedString `json:"email" wire:"optional"`
+	Email provider.ReportedString `json:"email"            wire:"optional"`
 }
 type billingAnswer struct {
 	Config provider.Reported[billingConfig] `json:"config" wire:"optional"`
 }
 type billingConfig struct {
 	Percent provider.Reported[float64]       `json:"creditUsagePercent" wire:"optional"`
-	Period  provider.Reported[billingPeriod] `json:"currentPeriod" wire:"optional"`
-	End     provider.ReportedString          `json:"billingPeriodEnd" wire:"optional"`
-	Limit   provider.Reported[amount]        `json:"monthlyLimit" wire:"optional"`
-	Used    provider.Reported[amount]        `json:"used" wire:"optional"`
-	Cap     provider.Reported[amount]        `json:"onDemandCap" wire:"optional"`
+	Period  provider.Reported[billingPeriod] `json:"currentPeriod"      wire:"optional"`
+	End     provider.ReportedString          `json:"billingPeriodEnd"   wire:"optional"`
+	Limit   provider.Reported[amount]        `json:"monthlyLimit"       wire:"optional"`
+	Used    provider.Reported[amount]        `json:"used"               wire:"optional"`
+	Cap     provider.Reported[amount]        `json:"onDemandCap"        wire:"optional"`
 }
 type billingPeriod struct {
 	Kind provider.ReportedString `json:"type" wire:"optional"`
-	End  provider.ReportedString `json:"end" wire:"optional"`
+	End  provider.ReportedString `json:"end"  wire:"optional"`
 }
 type amount float64
 
+// UnmarshalJSON reads the vendor value used by this provider.
 func (a *amount) UnmarshalJSON(data []byte) error {
 	n, err := provider.DecodeUntagged[float64](string(data))
 	if err != nil {
@@ -126,6 +138,7 @@ func (a *amount) UnmarshalJSON(data []byte) error {
 	*a = amount(n)
 	return nil
 }
+
 func quotaReading(userText, billingText string, email *string) provider.ProbeReading {
 	user, _ := provider.DecodeUntagged[quotaUser](userText)
 	billing, _ := provider.DecodeUntagged[billingAnswer](billingText)
@@ -167,20 +180,11 @@ func quotaReading(userText, billingText string, email *string) provider.ProbeRea
 	if user.Tier.Value != nil && *user.Tier.Value != "" {
 		reading.Plan = &core.QuotaPlan{ID: *user.Tier.Value, Label: *user.Tier.Value}
 	}
-	credits := core.QuotaUnit("credits")
-	if used != nil || limit != nil || percent != nil {
-		id, name := "monthly", "Monthly credits"
-		if period.Kind.Value != nil && *period.Kind.Value == "USAGE_PERIOD_TYPE_WEEKLY" {
-			id, name = "weekly", "Weekly credits"
-		}
-		reading.Windows = append(reading.Windows, core.QuotaWindow{ID: id, Label: name, Used: used, Limit: limit, UsedPercent: percent, Unit: &credits, ResetsAt: resets, Severity: provider.Severity(percent)})
-	}
-	if config.Cap.Value != nil && *config.Cap.Value > 0 {
-		capWindow := float64(*config.Cap.Value)
-		reading.Windows = append(reading.Windows, core.QuotaWindow{ID: "on_demand_cap", Label: "On-demand cap", Limit: &capWindow, Unit: &credits, ResetsAt: resets})
-	}
+	reading.Windows = quotaWindows(config, period, resets, used, limit, percent)
 	return reading
 }
+
+// Observe reads quota windows from a provider observation.
 func (*quotaSource) Observe(observation provider.Observation) []core.QuotaWindow {
 	switch o := observation.(type) {
 	case *provider.CLIObservation:
@@ -202,9 +206,63 @@ func (*quotaSource) Observe(observation provider.Observation) []core.QuotaWindow
 				used = &v
 				percent = provider.UsedPercentFromRatio(v, *limit)
 			}
-			windows = append(windows, core.QuotaWindow{ID: w.id, Label: w.label, Limit: limit, Used: used, UsedPercent: percent, Unit: &w.unit, Severity: provider.Severity(percent)})
+			windows = append(
+				windows,
+				core.QuotaWindow{
+					ID:          w.id,
+					Label:       w.label,
+					Limit:       limit,
+					Used:        used,
+					UsedPercent: percent,
+					Unit:        &w.unit,
+					Severity:    provider.Severity(percent),
+				},
+			)
 		}
 		return windows
 	}
 	return nil
+}
+
+func quotaWindows(
+	config billingConfig,
+	period billingPeriod,
+	resets *core.Timestamp,
+	used, limit, percent *float64,
+) []core.QuotaWindow {
+	windows := []core.QuotaWindow{}
+	credits := core.QuotaUnit("credits")
+	if used != nil || limit != nil || percent != nil {
+		id, name := "monthly", "Monthly credits"
+		if period.Kind.Value != nil && *period.Kind.Value == "USAGE_PERIOD_TYPE_WEEKLY" {
+			id, name = "weekly", "Weekly credits"
+		}
+		windows = append(
+			windows,
+			core.QuotaWindow{
+				ID:          id,
+				Label:       name,
+				Used:        used,
+				Limit:       limit,
+				UsedPercent: percent,
+				Unit:        &credits,
+				ResetsAt:    resets,
+				Severity:    provider.Severity(percent),
+			},
+		)
+	}
+	if config.Cap.Value != nil && *config.Cap.Value > 0 {
+		capWindow := float64(*config.Cap.Value)
+		windows = append(
+			windows,
+			core.QuotaWindow{
+				ID:       "on_demand_cap",
+				Label:    "On-demand cap",
+				Limit:    &capWindow,
+				Unit:     &credits,
+				ResetsAt: resets,
+			},
+		)
+	}
+	return windows
 }

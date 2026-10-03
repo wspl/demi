@@ -22,7 +22,7 @@ type assistantLine struct {
 	Message *struct {
 		Content *[]contentBlock `json:"content"`
 	} `json:"message"`
-	Error provider.ReportedString `json:"error" wire:"optional"`
+	Error provider.ReportedString `json:"error"   wire:"optional"`
 }
 type contentBlock struct {
 	Type      string
@@ -36,6 +36,7 @@ type contentBlock struct {
 	Input     json.RawMessage
 }
 
+// UnmarshalJSON reads the vendor value used by this provider.
 func (b *contentBlock) UnmarshalJSON(data []byte) error {
 	decoders := map[string]func(string) (contentBlock, error){
 		"text": func(s string) (contentBlock, error) {
@@ -82,6 +83,7 @@ func (b *contentBlock) UnmarshalJSON(data []byte) error {
 	}
 	return err
 }
+
 func (b contentBlock) events() []provider.Event {
 	switch b.Type {
 	case "text":
@@ -106,8 +108,10 @@ func (b contentBlock) events() []provider.Event {
 	}
 	return nil
 }
+
 func (b contentBlock) call() (*provider.ToolCall, error) {
-	invalid := errors.New("Invalid tool_use block from Claude Code") //nolint:staticcheck // Product text copied verbatim from Rust.
+	//nolint:staticcheck // Product text copied verbatim from Rust.
+	invalid := errors.New("Invalid tool_use block from Claude Code")
 	if len(b.ID) == 0 || string(b.ID) == "null" || b.Name == nil || *b.Name == "" {
 		return nil, invalid
 	}
@@ -137,6 +141,7 @@ func (b contentBlock) call() (*provider.ToolCall, error) {
 	}
 	return &provider.ToolCall{ToolUseID: text, ToolName: toolName(*b.Name), Input: canonical}, nil
 }
+
 func toolName(name string) string {
 	if rest, ok := strings.CutPrefix(name, "mcp__"); ok {
 		server, tool, found := strings.Cut(rest, "__")
@@ -157,9 +162,14 @@ type streamEvent struct {
 }
 type delta struct{ Type, Text string }
 
+// UnmarshalJSON reads the vendor value used by this provider.
 func (d *delta) UnmarshalJSON(data []byte) error {
 	decoders := make(map[string]func(string) (delta, error))
-	for tag, field := range map[string]string{"text_delta": "text", "thinking_delta": "thinking", "signature_delta": "signature"} {
+	for tag, field := range map[string]string{
+		"text_delta":      "text",
+		"thinking_delta":  "thinking",
+		"signature_delta": "signature",
+	} {
 		decoders[tag] = func(s string) (delta, error) {
 			// Each variant reads only its own declared field.
 			var text string
@@ -190,6 +200,8 @@ func (d *delta) UnmarshalJSON(data []byte) error {
 	}
 	return err
 }
+
+// UnmarshalJSON reads the vendor value used by this provider.
 func (s *streamEvent) UnmarshalJSON(data []byte) error {
 	v, err := provider.DecodeTagged(string(data), map[string]func(string) (streamEvent, error){
 		"content_block_start": func(text string) (streamEvent, error) {
@@ -211,6 +223,7 @@ func (s *streamEvent) UnmarshalJSON(data []byte) error {
 	}
 	return err
 }
+
 func (s streamEvent) events() []provider.Event {
 	if s.Block != nil {
 		if s.Block.Type == "thinking" {
@@ -255,8 +268,8 @@ type controlAnswer struct {
 }
 type resultLine struct {
 	IsError *bool                                        `json:"is_error"`
-	Result  provider.ReportedString                      `json:"result" wire:"optional"`
-	Errors  provider.Reported[[]provider.ReportedString] `json:"errors" wire:"optional"`
+	Result  provider.ReportedString                      `json:"result"           wire:"optional"`
+	Errors  provider.Reported[[]provider.ReportedString] `json:"errors"           wire:"optional"`
 	Status  *uint16                                      `json:"api_error_status"`
 	Usage   *resultUsage                                 `json:"usage"`
 }
@@ -275,6 +288,7 @@ type resultUsage struct {
 	iterations []usageCounts
 }
 
+// UnmarshalJSON reads the vendor value used by this provider.
 func (r *resultUsage) UnmarshalJSON(data []byte) error {
 	counts, err := provider.DecodeUntagged[usageCounts](string(data))
 	if err != nil {
@@ -292,6 +306,7 @@ func (r *resultUsage) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
+
 func (r resultUsage) usage() core.TokenUsage {
 	u := r.total
 	if len(r.iterations) > 0 {
@@ -306,8 +321,14 @@ func (r resultUsage) usage() core.TokenUsage {
 		}
 		return 0
 	}
-	return core.TokenUsage{InputTokens: count(u.Input, u.InputCamel), OutputTokens: count(u.Output, u.OutputCamel), CacheReadTokens: count(u.Read, u.ReadCamel), CacheWriteTokens: count(u.Write, u.WriteCamel)}
+	return core.TokenUsage{
+		InputTokens:      count(u.Input, u.InputCamel),
+		OutputTokens:     count(u.Output, u.OutputCamel),
+		CacheReadTokens:  count(u.Read, u.ReadCamel),
+		CacheWriteTokens: count(u.Write, u.WriteCamel),
+	}
 }
+
 func (r resultLine) end(raw string) provider.Event {
 	if r.IsError == nil || !*r.IsError {
 		var usage core.TokenUsage
@@ -343,7 +364,7 @@ func (r resultLine) end(raw string) provider.Event {
 
 type errorLine struct {
 	Message provider.ReportedString `json:"message" wire:"optional"`
-	Code    provider.ReportedString `json:"code" wire:"optional"`
+	Code    provider.ReportedString `json:"code"    wire:"optional"`
 }
 
 func decodeLine(text string) (*outputLine, error) {

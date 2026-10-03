@@ -51,7 +51,13 @@ type Provider struct {
 }
 
 // New builds an account's provider over the entry's pool and quota snapshots.
-func New(config Config, pool provider.CredentialPool, snapshots provider.QuotaSnapshotStore, client *http.Client, clock core.Clock) (*Provider, error) {
+func New(
+	config Config,
+	pool provider.CredentialPool,
+	snapshots provider.QuotaSnapshotStore,
+	client *http.Client,
+	clock core.Clock,
+) (*Provider, error) {
 	backend, err := url.Parse(config.BackendURL)
 	if err != nil {
 		return nil, fmt.Errorf("codex backend URL: %w", err)
@@ -72,11 +78,21 @@ func New(config Config, pool provider.CredentialPool, snapshots provider.QuotaSn
 	query := models.Query()
 	query.Add("client_version", "0.153.4")
 	models.RawQuery = query.Encode()
-	p := &Provider{config: config, pool: pool, http: client, clock: clock, responsesURL: codexURL(backend, "/responses").String(), modelsURL: models.String(), usageURL: provider.EndpointURL(backend, "/wham/usage").String(), authURL: auth}
+	p := &Provider{
+		config:       config,
+		pool:         pool,
+		http:         client,
+		clock:        clock,
+		responsesURL: codexURL(backend, "/responses").String(),
+		modelsURL:    models.String(),
+		usageURL:     provider.EndpointURL(backend, "/wham/usage").String(),
+		authURL:      auth,
+	}
 	p.quota = provider.NewQuota(&quotaSource{p: p}, snapshots, clock)
 	p.accounts = provider.NewAccounts(pool, &loginKit{p: p}, clock)
 	return p, nil
 }
+
 func codexURL(base *url.URL, path string) *url.URL {
 	trimmed := strings.TrimRight(base.Path, "/")
 	if strings.HasSuffix(trimmed, path) {
@@ -128,8 +144,13 @@ type session struct {
 	http *http.Client
 }
 
-func (s *session) Fresh() provider.Runtime   { return &session{p: s.p, http: s.http} }
+// Fresh returns an independent runtime for another session.
+func (s *session) Fresh() provider.Runtime { return &session{p: s.p, http: s.http} }
+
+// Close releases the runtime resources.
 func (*session) Close(context.Context) error { return nil }
+
+// RequestLimits returns the request limits for the model.
 func (*session) RequestLimits(core.Model) provider.RequestLimits {
 	return provider.OpenAIRequestLimits()
 }
@@ -141,6 +162,7 @@ func authFailure(err error) provider.AuthFailure {
 	}
 	return provider.AccountAuthFailure("Codex", err)
 }
+
 func withoutURL(err error) error {
 	var e *url.Error
 	if errors.As(err, &e) {

@@ -63,9 +63,16 @@ func setIdentity(h http.Header, name, value string) {
 	}
 	h.Set(name, value)
 }
+
 func inferenceHeaders(s secret, r provider.InferenceRequest) http.Header {
 	h := identityHeaders(s)
-	for name, value := range map[string]string{"x-grok-model-override": r.ModelID, "x-grok-session-id": r.SessionID, "x-grok-conv-id": r.SessionID, "x-grok-req-id": r.RequestID, "x-grok-turn-idx": r.TurnID} {
+	for name, value := range map[string]string{
+		"x-grok-model-override": r.ModelID,
+		"x-grok-session-id":     r.SessionID,
+		"x-grok-conv-id":        r.SessionID,
+		"x-grok-req-id":         r.RequestID,
+		"x-grok-turn-idx":       r.TurnID,
+	} {
 		setIdentity(h, name, value)
 	}
 	h.Set("Accept", "text/event-stream")

@@ -27,7 +27,12 @@ type Config struct {
 
 // NewConfig returns the product's configuration of an entry's provider for account.
 func NewConfig(id, displayName string, account *string) Config {
-	return Config{ID: id, DisplayName: displayName, Account: account, UsageURL: "https://api.anthropic.com/api/oauth/usage"}
+	return Config{
+		ID:          id,
+		DisplayName: displayName,
+		Account:     account,
+		UsageURL:    "https://api.anthropic.com/api/oauth/usage",
+	}
 }
 
 // Provider connects one account to runtimes whose placement chooses the machine.
@@ -40,8 +45,20 @@ type Provider struct {
 }
 
 // New builds a provider over the entry's pool and account's quota snapshots.
-func New(config Config, pool provider.CredentialPool, snapshots provider.QuotaSnapshotStore, models *provider.ModelsDevClient, httpClient *http.Client, clock core.Clock) *Provider {
-	p := &Provider{config: config, pool: pool, models: models, accounts: provider.NewAccounts(pool, accountKit{}, clock)}
+func New(
+	config Config,
+	pool provider.CredentialPool,
+	snapshots provider.QuotaSnapshotStore,
+	models *provider.ModelsDevClient,
+	httpClient *http.Client,
+	clock core.Clock,
+) *Provider {
+	p := &Provider{
+		config:   config,
+		pool:     pool,
+		models:   models,
+		accounts: provider.NewAccounts(pool, accountKit{}, clock),
+	}
 	p.quota = provider.NewQuota(&quotaSource{owner: p, http: httpClient}, snapshots, clock)
 	return p
 }

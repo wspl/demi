@@ -9,6 +9,7 @@ import (
 	"github.com/wspl/demi/internal/provider"
 )
 
+// Run streams inference events for the request.
 func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
 	return func(yield func(provider.Event) bool) {
 		emitFailure := func(f provider.Failure) {
@@ -31,7 +32,12 @@ func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) pr
 				emitFailure(failure.Failure())
 				return
 			}
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.shared.chatURL.String(), bytes.NewReader(body))
+			req, err := http.NewRequestWithContext(
+				ctx,
+				http.MethodPost,
+				r.shared.chatURL.String(),
+				bytes.NewReader(body),
+			)
 			if err != nil {
 				emitFailure(provider.RequestBuildFailure(label, err))
 				return
@@ -48,16 +54,30 @@ func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) pr
 				refused = &s.AccessToken
 				continue
 			}
-			defer func() { _ = response.Body.Close() }() // The response is consumed or abandoned; close errors cannot change its result.
-			if response.StatusCode < 200 || response.StatusCode >= 300 {
-				emitFailure(provider.HTTPFailure(ctx, response, label, provider.ReadHTTPFailure, r.shared.clock))
-				return
-			}
-			for event := range provider.MapChatSSE(ctx, response.Body, provider.Vendor{Label: label, Reader: provider.ReadHTTPFailure, Clock: r.shared.clock}) {
-				if ctx.Err() != nil || !yield(event) {
-					return
-				}
-			}
+			r.stream(ctx, response, emitFailure, yield)
+			return
+		}
+	}
+}
+
+func (r *runtime) stream(
+	ctx context.Context,
+	response *http.Response,
+	emitFailure func(provider.Failure),
+	yield func(provider.Event) bool,
+) {
+	// The response is consumed or abandoned; close errors cannot change its result.
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		emitFailure(provider.HTTPFailure(ctx, response, label, provider.ReadHTTPFailure, r.shared.clock))
+		return
+	}
+	for event := range provider.MapChatSSE(ctx, response.Body, provider.Vendor{
+		Label:  label,
+		Reader: provider.ReadHTTPFailure,
+		Clock:  r.shared.clock,
+	}) {
+		if ctx.Err() != nil || !yield(event) {
 			return
 		}
 	}

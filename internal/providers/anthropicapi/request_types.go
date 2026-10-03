@@ -124,6 +124,7 @@ type tool struct {
 
 //sumtype:decl
 type thinkingConfig interface{ isThinkingConfig() }
+
 type enabledThinking struct {
 	Type         string `json:"type"`
 	BudgetTokens uint32 `json:"budget_tokens"`

@@ -1,11 +1,13 @@
 package claudecode
 
 // inputLine is the sealed stream-json input union.
-type inputLine interface{ inputLine() }
-type userInput struct {
-	Type    string       `json:"type"`
-	Message inputMessage `json:"message"`
-}
+type (
+	inputLine interface{ inputLine() }
+	userInput struct {
+		Type    string       `json:"type"`
+		Message inputMessage `json:"message"`
+	}
+)
 
 func (userInput) inputLine() {}
 
@@ -33,12 +35,14 @@ type responseInput struct {
 
 func (responseInput) inputLine() {}
 
-type controlResponse interface{ controlResponse() }
-type controlSuccess struct {
-	Subtype  string       `json:"subtype"`
-	ID       string       `json:"request_id"`
-	Response mcpReplyBody `json:"response"`
-}
+type (
+	controlResponse interface{ controlResponse() }
+	controlSuccess  struct {
+		Subtype  string       `json:"subtype"`
+		ID       string       `json:"request_id"`
+		Response mcpReplyBody `json:"response"`
+	}
+)
 
 func (controlSuccess) controlResponse() {}
 
@@ -54,11 +58,13 @@ type mcpReplyBody struct {
 	Message rpcMessage `json:"mcp_response"`
 }
 
-type inputContent interface{ inputContent() }
-type inputText struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
+type (
+	inputContent interface{ inputContent() }
+	inputText    struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+)
 
 func (inputText) inputContent() {}
 
@@ -77,12 +83,14 @@ type inputDocument struct {
 
 func (inputDocument) inputContent() {}
 
-type imageSource interface{ imageSource() }
-type base64Source struct {
-	Type      string `json:"type"`
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
-}
+type (
+	imageSource  interface{ imageSource() }
+	base64Source struct {
+		Type      string `json:"type"`
+		MediaType string `json:"media_type"`
+		Data      string `json:"data"`
+	}
+)
 
 func (base64Source) imageSource() {}
 
