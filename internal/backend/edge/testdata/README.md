@@ -1,0 +1,1 @@
+`rust-routes.txt` transcribes the method/path pairs in `crates/backend-http/src/lib.rs::router`, with the `/api` nest expanded and `local_store::ROUTE` resolved to `/native-artifacts`. No Rust executable or oracle was needed for this route declaration fixture.
