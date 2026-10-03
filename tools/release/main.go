@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -28,8 +29,11 @@ dev [--port 3271] [--keep]
 
 type stringsFlag []string
 
-func (s *stringsFlag) String() string     { return fmt.Sprint([]string(*s)) }
-func (s *stringsFlag) Set(v string) error { *s = append(*s, v); return nil }
+func (s *stringsFlag) String() string { return fmt.Sprint([]string(*s)) }
+func (s *stringsFlag) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
 
 type buildOptions struct {
 	Packages, Targets stringsFlag
@@ -55,18 +59,33 @@ type application struct {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer stop()
-	root, err := repository()
-	if err == nil {
-		err = (&application{root, os.Stdout, os.Stderr}).run(ctx, os.Args[1:])
+	args := os.Args[1:]
+	var root string
+	var err error
+	// Image assembly uses only its explicit directories and embedded pin; the
+	// cross-built tool runs on a Linux builder without a source checkout.
+	needsRepository := len(args) > 0 && args[0] != "cloud-image" && args[0] != "--help" && args[0] != "-h"
+	if needsRepository {
+		root, err = repository()
 	}
+	if err == nil {
+		err = (&application{Root: root, Out: os.Stdout, Err: os.Stderr}).run(ctx, args)
+	}
+	if errors.Is(err, flag.ErrHelp) {
+		err = nil
+	}
+	stop()
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "release:", err)
 		os.Exit(1)
 	}
 }
-func repository() (string, error) { panic("not written: t-release") }
 func (a *application) run(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+		_, err := io.WriteString(a.Out, help)
+		return err
+	}
+	if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
 		_, err := io.WriteString(a.Out, help)
 		return err
 	}
