@@ -567,7 +567,6 @@ func TestExposeCloudDeathResetRediscoveryAndBackendStartupEndRecords(t *testing.
 
 // A local WebSocket service echoes messages and records the visitor's close.
 func TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays(t *testing.T) {
-	t.Skip("finding 3: upgraded relay shutdown races pipe reads and concurrent closes")
 	ctx, h := conversationHarness(t)
 	filesExposeConfig(t, h)
 	b, s, err := h.StartSetUp(ctx, t)
