@@ -26,7 +26,7 @@ const repositoryRoot = resolve(import.meta.dir, '../../../../..')
 function testProgram(name: string): string {
   const directory = process.env.DEMI_TEST_PROGRAMS
   if (!directory) {
-    throw new Error('Set DEMI_TEST_PROGRAMS to the built test programs: cargo build --workspace --all-targets --features demi-runner/test-fixtures, then DEMI_TEST_PROGRAMS=target/debug (bun run test does both)')
+    throw new Error('Set DEMI_TEST_PROGRAMS to .cache/test-programs after bun run test builds the Go test programs, or run bun run test to build and test them together')
   }
   return join(resolve(repositoryRoot, directory), name)
 }
@@ -121,13 +121,13 @@ interface MachineManager {
 }
 
 /**
- * Starts the scripted machine manager, which the backend crate builds as its
- * example program `scripted_machines`. It prints its socket as its first
+ * Starts the scripted machine manager, built from the Go backend's testdata
+ * program `scripted-machines`. It prints its socket as its first
  * line. Its input stays open while this process runs, so it also ends when
  * the tests end without stopping it.
  */
 async function startMachineManager(): Promise<MachineManager> {
-  const child = Bun.spawn([testProgram('examples/scripted_machines')], {
+  const child = Bun.spawn([testProgram('scripted-machines')], {
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'pipe',

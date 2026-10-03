@@ -186,7 +186,7 @@ func TestServingRevocationAndProtocolLogging(t *testing.T) {
 					t.Error(err)
 					return
 				}
-				done <- serving.Serve(lifetime, socket)
+				done <- serving.Serve(lifetime, runners.NewSocket(lifetime, socket))
 			}))
 			defer server.Close()
 			socket, _, err := websocket.Dial(t.Context(), strings.Replace(server.URL, "http://", "ws://", 1), nil)

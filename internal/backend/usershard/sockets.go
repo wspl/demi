@@ -10,6 +10,7 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/backend/remotehost"
+	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/runnerwire"
 	"github.com/wspl/demi/internal/webapi"
@@ -39,14 +40,14 @@ func (s *Shard) ServeConversationSocket(ctx context.Context, conversation databa
 func (s *Shard) Mark(part pagesync.Part) { s.services.Sync.Mark(s.user, part) }
 
 // AdoptRunner takes and closes the socket of a runner presenting device's token.
-func (s *Shard) AdoptRunner(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *websocket.Conn) error {
+func (s *Shard) AdoptRunner(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *runners.Socket) error {
 	return s.adopt(ctx, device, runner, socket, nil)
 }
 
 // AdoptClaimed takes a newly paired runner's socket. It reports its bound DTO
 // through bound before serving, or closes bound without a value if refused.
 // The caller supplies a buffered channel of capacity one; adoption owns close.
-func (s *Shard) AdoptClaimed(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *websocket.Conn, bound chan<- webapi.DeviceDTO) error {
+func (s *Shard) AdoptClaimed(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *runners.Socket, bound chan<- webapi.DeviceDTO) error {
 	return s.adopt(ctx, device, runner, socket, bound)
 }
 

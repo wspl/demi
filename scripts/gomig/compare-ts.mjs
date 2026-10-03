@@ -85,19 +85,40 @@ function generatedFiles(root) {
   });
   return visit(join(root, 'packages')).sort();
 }
+// Collect all export differences so the G2 report does not stop at the first
+// schema in a module. Assertions retain their full value/schema diagnostics.
+function compareExport(check) {
+  try {
+    check();
+  } catch (error) {
+    failures.push(error);
+    console.error(error.message);
+  }
+}
+
 function compareModules(path, left, right) {
-  assert.deepEqual(exportsAt(join(generated, path)), exportsAt(join(reference, path)), `${path}: exported names`);
+  compareExport(() => assert.deepEqual(
+    exportsAt(join(generated, path)), exportsAt(join(reference, path)),
+    `${path}: exported names`,
+  ));
   for (const name of Object.keys(right)) {
-    assert.ok(name in left, `${path}: missing ${name}`);
-    if (right[name] instanceof z.ZodType) {
-      assert.deepEqual(normalize(z.toJSONSchema(left[name], { io: 'input', reused: 'inline' })), normalize(z.toJSONSchema(right[name], { io: 'input', reused: 'inline' })), `${path}: ${name} validation differs`);
-    }
-    else if (typeof right[name] === 'function') {
-      assert.ok(['previewMediaType', 'showsInPlace'].includes(name), `Unprobed function ${path}: ${name}`);
-    }
-    else {
-      assert.deepEqual(JSON.parse(JSON.stringify(left[name])), JSON.parse(JSON.stringify(right[name])), `${path}: ${name} value differs`);
-    }
+    compareExport(() => {
+      assert.ok(name in left, `${path}: missing ${name}`);
+      if (right[name] instanceof z.ZodType) {
+        assert.deepEqual(
+          normalize(z.toJSONSchema(left[name], {io: 'input', reused: 'inline'})),
+          normalize(z.toJSONSchema(right[name], {io: 'input', reused: 'inline'})),
+          `${path}: ${name} validation differs`,
+        );
+      } else if (typeof right[name] === 'function') {
+        assert.ok(['previewMediaType', 'showsInPlace'].includes(name), `Unprobed function ${path}: ${name}`);
+      } else {
+        assert.deepEqual(
+          JSON.parse(JSON.stringify(left[name])), JSON.parse(JSON.stringify(right[name])),
+          `${path}: ${name} value differs`,
+        );
+      }
+    });
   }
 }
 // Type aliases must still infer the corresponding validated value. Comparing
@@ -133,9 +154,11 @@ function compareTypes(paths) {
     const left = symbols(generated);
     const right = symbols(reference);
     for (const [name, expected] of right) {
-      const actual = left.get(name);
-      assert.ok(actual && checker.isTypeAssignableTo(actual, expected) && checker.isTypeAssignableTo(expected, actual), `${path}: type ${name} differs`);
-      assert.equal(actual.flags & ts.TypeFlags.Any, expected.flags & ts.TypeFlags.Any, `${path}: type ${name} became any`);
+      compareExport(() => {
+        const actual = left.get(name);
+        assert.ok(actual && checker.isTypeAssignableTo(actual, expected) && checker.isTypeAssignableTo(expected, actual), `${path}: type ${name} differs`);
+        assert.equal(actual.flags & ts.TypeFlags.Any, expected.flags & ts.TypeFlags.Any, `${path}: type ${name} became any`);
+      });
     }
   }
 }

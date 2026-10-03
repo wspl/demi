@@ -38,7 +38,13 @@ type Edge struct {
 // ctx owns the edge's lifetime; cancellation closes its connections and listener.
 // The caller must still call Close to join its work.
 func Start(ctx context.Context, address netip.AddrPort, state AppState, webDirectory string) (*Edge, error) {
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", address.String())
+	// "tcp" would make an unspecified IPv4 address a dual-stack socket that
+	// also accepts IPv6; the backend listens on exactly the address's family.
+	network := "tcp6"
+	if address.Addr().Unmap().Is4() {
+		network = "tcp4"
+	}
+	listener, err := (&net.ListenConfig{}).Listen(ctx, network, address.String())
 	if err != nil {
 		return nil, err
 	}
