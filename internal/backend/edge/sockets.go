@@ -2,6 +2,7 @@ package edge
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net/http"
@@ -15,37 +16,47 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// upgradeResponse lets coder/websocket own upgrade validation while mapping
-// its HTTP rejection to the product's JSON 426. Successful upgrade headers
-// and hijacking go straight to the listener.
-type upgradeResponse struct {
-	http.ResponseWriter
-	accepted bool
+// pageHandshake refuses an invalid page upgrade before admission can wake a
+// Host. coder/websocket lacks a validate-only entry point, so this mirrors
+// Accept's server request checks (verifyClientRequest in v1.8.15). Origin is
+// already checked by the session gate; Accept uses InsecureSkipVerify.
+func pageHandshake(r *http.Request, description string) error {
+	if !r.ProtoAtLeast(1, 1) || r.Method != http.MethodGet ||
+		!websocketToken(r.Header, "Connection", "upgrade") ||
+		!websocketToken(r.Header, "Upgrade", "websocket") ||
+		r.Header.Get("Sec-WebSocket-Version") != "13" {
+		return apiFailure(426, "upgrade_required", description)
+	}
+	keys := r.Header.Values("Sec-WebSocket-Key")
+	if len(keys) != 1 {
+		return apiFailure(426, "upgrade_required", description)
+	}
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(keys[0]))
+	if err != nil || len(key) != 16 {
+		return apiFailure(426, "upgrade_required", description)
+	}
+	return nil
 }
 
-func (w *upgradeResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
-func (w *upgradeResponse) WriteHeader(status int) {
-	if status == 101 {
-		w.accepted = true
-		w.ResponseWriter.WriteHeader(status)
-	}
-}
-func (w *upgradeResponse) Write(p []byte) (int, error) {
-	if w.accepted {
-		return w.ResponseWriter.Write(p)
-	}
-	return len(p), nil
-}
-func pageUpgrade(w http.ResponseWriter, r *http.Request, description string) (*websocket.Conn, error) {
-	original := w.Header().Clone()
-	response := &upgradeResponse{ResponseWriter: w}
-	socket, err := websocket.Accept(response, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
-	if err != nil {
-		if !response.accepted {
-			clear(w.Header())
-			addHeaders(w.Header(), original)
-			return nil, apiFailure(426, "upgrade_required", description)
+// websocketToken recognizes a handshake token across comma lists and repeated
+// header lines, with the same case and whitespace rules as coder/websocket.
+func websocketToken(header http.Header, name, token string) bool {
+	for _, value := range header.Values(name) {
+		for part := range strings.SplitSeq(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), token) {
+				return true
+			}
 		}
+	}
+	return false
+}
+
+func pageUpgrade(w http.ResponseWriter, r *http.Request, description string) (*websocket.Conn, error) {
+	if err := pageHandshake(r, description); err != nil {
+		return nil, err
+	}
+	socket, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	if err != nil {
 		return nil, err
 	}
 	socket.SetReadLimit(webapi.MaxPageMessageBytes)
@@ -108,8 +119,8 @@ func (e *Edge) userStream(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
-		return apiFailure(426, "upgrade_required", "A user stream is a WebSocket")
+	if err := pageHandshake(r, "A user stream is a WebSocket"); err != nil {
+		return err
 	}
 	shard, err := e.state.Shards.Of(r.Context(), caller(r).ID)
 	if err != nil {
