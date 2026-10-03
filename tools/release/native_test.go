@@ -263,7 +263,6 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 
 func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	// Accepted R5 removal: Chrome is the only resource a command package carries.
-	// Rust's entirely uncarried second resource has no Go counterpart; uncarried Chrome targets remain covered.
 	a := appFixture(t)
 	target := commandwire.Targets[3]
 	program := filepath.Join(a.Root, "browser")

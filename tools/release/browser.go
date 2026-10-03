@@ -92,7 +92,7 @@ func (a *application) prepareBrowser(
 			}
 		}
 		if !found {
-			//nolint:staticcheck // Preserve the Rust diagnostic verbatim.
+			//nolint:staticcheck // ST1005: product text, shown to the user as written.
 			return nil, fmt.Errorf("Chrome for Testing %s has no %s archive", version, platform.Name)
 		}
 		if !strings.HasPrefix(location, official) {

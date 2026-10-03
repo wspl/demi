@@ -32,7 +32,7 @@ func Control(ctx context.Context, t testing.TB, clock core.Clock) *database.Cont
 	return control
 }
 
-// Master creates the fixture's master@example.test account with the Rust test PHC hash.
+// Master creates the fixture's master@example.test account with the fixture's fixed PHC hash.
 func Master(ctx context.Context, t testing.TB, control *database.ControlService) webapi.UserDTO {
 	t.Helper()
 	hash, err := database.ParsePasswordHash(

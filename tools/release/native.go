@@ -177,7 +177,7 @@ type runnerContents struct {
 	Targets         map[string]commandwire.PackageArtifact `json:"targets"`
 }
 
-// record writes the release file format without changing serde-compatible escaping.
+// record writes the release file format with contract.EncodeJSON, keeping its escaping.
 func record(value any) ([]byte, error) {
 	data, err := contract.EncodeJSON(value)
 	if err != nil {
