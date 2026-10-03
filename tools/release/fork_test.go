@@ -20,7 +20,7 @@ func TestComparisonNamesEachChangeAndCountsWhatIsLeftOut(t *testing.T) {
 	root := t.TempDir()
 	selected := module.Version{Path: "example.test/shell", Version: "v1.0.0"}
 	prefix := selected.Path + "@" + selected.Version + "/"
-	upstream := map[string][]byte{prefix + "go.mod": []byte("module example.test/shell\n"), prefix + "same.go": []byte("same\n"), prefix + "change.go": []byte("first\nold\nlast\n"), prefix + "gone.go": []byte("gone\n"), prefix + ".github/test.yml": []byte("CI\n")}
+	upstream := map[string][]byte{prefix + "go.mod": []byte("module example.test/shell\n"), prefix + "same.go": []byte("same\n"), prefix + "change.go": []byte("first\nold\nlast\n"), prefix + "gone.go": []byte("gone\n"), prefix + ".github/test.yml": []byte("CI\n"), prefix + "testdata/upstream.txt": []byte("fixture\n")}
 	archive := artifactstest.Zip(t, upstream)
 	path := filepath.Join(root, "module.zip")
 	writeFixture(t, path, archive)
@@ -64,11 +64,11 @@ func TestComparisonNamesEachChangeAndCountsWhatIsLeftOut(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, part := range []string{"1 changed, 1 added, 1 removed, 1 left out", "changed change.go (+1 -1)", "added added.go (+1 -0)", "removed gone.go (+0 -1)"} {
-				if !strings.Contains(summary, part) {
-					t.Fatalf("summary misses %q:\n%s", part, summary)
-				}
+			want := "1 changed, 1 added, 1 removed, 2 left out\n  added added.go (+1 -0)\n  changed change.go (+1 -1)\n  removed gone.go (+0 -1)\n"
+			if summary != want {
+				t.Fatalf("summary: %q, want %q", summary, want)
 			}
+
 			if strings.Contains(patch, "same.go") || strings.Contains(patch, "demi.patch") || !strings.Contains(patch, "-old\n+new\n") {
 				t.Fatal(patch)
 			}

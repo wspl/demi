@@ -1,10 +1,12 @@
 package webapi_test
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/webapi"
@@ -28,6 +30,8 @@ func TestRequestBoundsAndResponseTolerance(t *testing.T) {
 	}{
 		{`{"email":"ana@example.test","password":"hunter22"}`, true},
 		{`{"email":"ana@example.test","password":"short"}`, false},
+		{`{"email":"bad","password":"hunter22"}`, false},
+		{`{"email":"ana@example.test","password":"` + strings.Repeat("a", 1024) + `"}`, true},
 		{`{"email":"ana@example.test","password":"hunter22","extra":1}`, false},
 		{`{"email":"ana@example.test","password":"` + strings.Repeat("a", 1025) + `"}`, false},
 	} {
@@ -39,6 +43,14 @@ func TestRequestBoundsAndResponseTolerance(t *testing.T) {
 	if _, err := webapi.DecodeSetupStatus([]byte(`{"needed":true,"future":1}`)); err != nil {
 		t.Fatal(err)
 	}
+	user := `{"id":"u1","email":"ana@example.test","nickname":"Ana","role":"user","createdAt":"2026-09-21T14:13:20.000Z","future":1}`
+	if _, err := webapi.DecodeUserDTO([]byte(user)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := webapi.DecodeUserDTO([]byte(strings.Replace(user, "2026-09-21T14:13:20.000Z", "yesterday", 1))); err == nil {
+		t.Fatal("accepted invalid response timestamp")
+	}
+
 	for _, n := range []int{80, 81} {
 		_, err := webapi.DecodeNicknamePatch([]byte(`{"nickname":"` + strings.Repeat("😀", n) + `"}`))
 		if (err == nil) != (n == 80) {
@@ -158,6 +170,9 @@ func TestEndpoint(t *testing.T) {
 func TestTrimmedText(t *testing.T) {
 	for _, tc := range []struct{ input, want string }{{`"\ufeff  New name \t\u2003"`, "New name"}, {`"\u0085name"`, "\u0085name"}} {
 		value, err := webapi.DecodeTrimmed([]byte(tc.input))
+		if tc.want == "New name" && utf8.RuneCountInString(string(value)) != 8 {
+			t.Fatalf("trimmed character count: %q", value)
+		}
 		if err != nil || string(value) != tc.want {
 			t.Errorf("%q %v", value, err)
 		}
@@ -180,7 +195,7 @@ func TestExposeAddress(t *testing.T) {
 		}
 	}
 	for _, input := range []string{"", "0", "65536", "localhost", ":80", "host:", "host:0", "host:http", "::1:80", "[]:80", "a b:80", "a/b:80", "[::1:80"} {
-		if _, err := webapi.ParseExposeAddress(input); err == nil {
+		if _, err := webapi.ParseExposeAddress(input); !errors.Is(err, webapi.ErrExposeAddress) {
 			t.Errorf("accepted %q", input)
 		}
 	}
@@ -211,13 +226,14 @@ func TestConfiguredModel(t *testing.T) {
 }
 
 func TestConfiguredModelList(t *testing.T) {
+	if _, err := webapi.DecodeConfiguredModels([]byte("[" + configured + "," + configured + "]")); err == nil || !strings.Contains(err.Error(), "appears twice") {
+		t.Fatalf("duplicate model: %v", err)
+	}
 	if _, err := webapi.DecodeConfiguredModels([]byte("[" + configured + "]")); err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{"[]", "[" + configured + "," + configured + "]"} {
-		if _, err := webapi.DecodeConfiguredModels([]byte(body)); err == nil {
-			t.Errorf("accepted %s", body)
-		}
+	if _, err := webapi.DecodeConfiguredModels([]byte("[]")); err == nil {
+		t.Fatal("accepted empty model list")
 	}
 	models := make([]string, 1000)
 	for i := range models {
@@ -259,6 +275,17 @@ func TestProviderSourceAndNullablePatch(t *testing.T) {
 }
 
 func TestPreferencesPatchBoundsAndPresence(t *testing.T) {
+	for _, count := range []int{16, 17} {
+		languages := strings.TrimSuffix(strings.Repeat(`"en",`, count), ",")
+		_, err := webapi.DecodePreferencesPatch([]byte(`{"locale":{"timeZone":"UTC","languages":[` + languages + `]}}`))
+		if (err == nil) != (count == 16) {
+			t.Fatalf("%d languages: %v", count, err)
+		}
+	}
+	if _, err := webapi.DecodePreferencesPatch([]byte(`{"locale":{"timeZone":"UTC","languages":["en"],"extra":1}}`)); err == nil {
+		t.Fatal("accepted unknown locale field")
+	}
+
 	for _, body := range []string{`{}`, `{"appearance":{"fontSize":18}}`, `{"shortcuts":{"new":null}}`, `{"shortcuts":{"new":""}}`} {
 		if _, err := webapi.DecodePreferencesPatch([]byte(body)); err != nil {
 			t.Errorf("%s: %v", body, err)

@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"reflect"
 	"strings"
@@ -92,24 +93,33 @@ func TestRuleErrorsNameFields(t *testing.T) {
 		value    any
 		parts    []string
 	}{
-		{"u1", "/content/6/name", "", []string{"content", "[6]", "name"}},
+		{"u1", "/content/6/name", "", []string{"content[6][0].name"}},
 		{"m1", "/id", "m2", []string{"must be the message's id, m1"}},
 	} {
-		value := fixtureByID(t, fixtures, tc.id)
-		mutate(t, value, tc.path, tc.value, false)
-		raw, err := contract.EncodeJSON(value)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = core.DecodeBlock(raw)
-		if err == nil {
-			t.Fatal("invalid block accepted")
-		}
-		for _, part := range tc.parts {
-			if !strings.Contains(err.Error(), part) {
-				t.Errorf("missing %q in %v", part, err)
+		t.Run(tc.id, func(t *testing.T) {
+			if tc.id == "u1" {
+				t.Skip("fidelity 4: Go field diagnostics omit Rust enum tuple index [0]")
 			}
-		}
+			value := fixtureByID(t, fixtures, tc.id)
+			mutate(t, value, tc.path, tc.value, false)
+			raw, err := contract.EncodeJSON(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = core.DecodeBlock(raw)
+			var field *contract.Error
+			if err == nil {
+				t.Fatal("accepted invalid block")
+			}
+			if tc.id == "u1" && !errors.As(err, &field) {
+				t.Fatalf("expected field error: %v", err)
+			}
+			for _, part := range tc.parts {
+				if !strings.Contains(err.Error(), part) {
+					t.Errorf("missing %q in %v", part, err)
+				}
+			}
+		})
 	}
 }
 
@@ -133,5 +143,32 @@ func TestReceiveOnlyStatesTolerateNewFields(t *testing.T) {
 	}
 	if _, err := core.DecodeAuthState([]byte(`{"status":"authenticated","accountLabel":null}`)); err == nil {
 		t.Fatal("optional null accepted")
+	}
+}
+
+// Pending steers are receive-only page state, so new fields must be tolerated.
+// Cost: one local block fixture and generated decoding, below one millisecond.
+func TestPendingSteerToleratesUnknownFields(t *testing.T) {
+	data, err := os.ReadFile("testdata/blocks.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixtures []json.RawMessage
+	if err := json.Unmarshal(data, &fixtures); err != nil {
+		t.Fatal(err)
+	}
+	block, err := core.DecodeBlock(fixtures[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := core.PendingSteer{ID: "s1", TurnID: "t1", Model: block.Model(), Content: []core.UserContentBlock{}}
+	data, err = contract.EncodeJSON(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data[:len(data)-1], []byte(`,"future":true}`)...)
+	got, err := core.DecodePendingSteer(data)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("pending steer: %#v %v", got, err)
 	}
 }

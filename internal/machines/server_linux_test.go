@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -137,7 +138,7 @@ func TestEveryCallReachesService(t *testing.T) {
 	}
 	for i, line := range lines {
 		request, _ := machinewire.DecodeRequest([]byte(line))
-		if request.Call.Name() != calls[i].Name() {
+		if !reflect.DeepEqual(request.Call, calls[i]) {
 			t.Fatal(calls)
 		}
 	}
@@ -152,7 +153,7 @@ func TestFailureLeavesConnectionUsable(t *testing.T) {
 	c := f.connect(t)
 	c.send(t, "{\"id\":\"1\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"dev-9\"}}\n")
 	response, ok := c.receive(t).(*machinewire.ErrorResponse)
-	if !ok || response.Message != "no such machine" {
+	if !ok || response.ID != "1" || response.Message != "no such machine" {
 		t.Fatalf("%+v", response)
 	}
 	c.send(t, "\n{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n")

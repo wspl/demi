@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/contract"
 )
 
 // The Rust SDK suite also exercises commandwire at the consumer boundary.
@@ -102,7 +103,7 @@ func TestDescriptorValidatesAndHashesToRecordedDigest(t *testing.T) {
 		t.Fatalf("%s != %s", digest, want)
 	}
 	p.Operations = []string{"same", "same"}
-	if p.Validate() == nil {
+	if decodeDescriptor(t, p) == nil {
 		t.Fatal("duplicate operations")
 	}
 }
@@ -215,9 +216,9 @@ func TestPackageDecodingEnforcesValueConstraints(t *testing.T) {
 	must(t, err)
 	artifact := p.Targets["aarch64-apple-darwin"]
 	delete(p.Targets, "aarch64-apple-darwin")
-	must(t, p.Validate())
+	must(t, decodeDescriptor(t, p))
 	p.Targets["riscv64-unknown-linux-musl"] = artifact
-	if p.Validate() == nil {
+	if decodeDescriptor(t, p) == nil {
 		t.Fatal("unknown target")
 	}
 }
@@ -236,9 +237,10 @@ func TestArtifactURLIsHTTPOrHTTPSWithoutCredentials(t *testing.T) {
 }
 func TestInvocationDecodingChecksNestedValuesAndOptionalNulls(t *testing.T) {
 	c, _ := connected(t, fixture{})
-	valid, err := json.Marshal(invocation("short"))
+	valid, err := contract.EncodeJSON(invocation("short"))
 	must(t, err)
 	for _, tc := range []struct{ old, new string }{
+		{`"context":{"conversation":"one","caller":{"kind":"agent","number":1},"locale":{"timeZone":"UTC","languages":["en-US"]}},`, ``},
 		{`"operation":"short"`, `"operation":""`}, {`"invocationId":"short"`, `"invocationId":""`},
 		{`"conversation":"one"`, `"conversation":""`}, {`"number":1`, `"number":-1`}, {`"kind":"agent","number":1`, `"kind":"agent"`},
 		{`"kind":"agent"`, `"kind":"user"`}, {`"kind":"agent"`, `"kind":"system"`},
@@ -268,4 +270,14 @@ func TestInvocationDecodingChecksNestedValuesAndOptionalNulls(t *testing.T) {
 	_, o, err := c.Invoke(t.Context(), user)
 	must(t, err)
 	completed(t, o)
+}
+
+// decodeDescriptor observes descriptor validation at the package input boundary.
+func decodeDescriptor(t *testing.T, p commandwire.PackageDescriptor) error {
+	t.Helper()
+	type unchecked commandwire.PackageDescriptor
+	b, err := contract.EncodeJSON(unchecked(p))
+	must(t, err)
+	_, err = commandwire.DecodePackageDescriptor(b)
+	return err
 }

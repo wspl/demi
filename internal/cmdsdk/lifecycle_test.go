@@ -5,8 +5,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -25,8 +27,15 @@ func TestConversationEndpointHasNoGrantsAndValidatesReleaseIdentity(t *testing.T
 		if _, ok := q.(*commandwire.ConversationQuery); ok {
 			want = `{"conversations":[]}`
 		}
-		if got := string(completed(t, o)); got != want {
-			t.Fatalf("got %s, want %s", got, want)
+		for _, expected := range []commandwire.Record{commandwire.Stdout(want), commandwire.Completed{Completion: commandwire.Completion{}}} {
+			got, err := o.Next(t.Context())
+			must(t, err)
+			if !reflect.DeepEqual(got, expected) {
+				t.Fatalf("record %#v, want %#v", got, expected)
+			}
+		}
+		if _, err := o.Next(t.Context()); !errors.Is(err, io.EOF) {
+			t.Fatalf("conversation end: %v", err)
 		}
 	}
 	for _, test := range []struct {
@@ -78,14 +87,16 @@ func TestConversationCancellationJoinsHookAndCleanupFailureRetiresService(t *tes
 	<-h.started
 	i.Cancel()
 	<-h.cancelled
-	_, err = c.Info(t.Context())
+	info, err := c.Info(t.Context())
 	must(t, err)
+	if !reflect.DeepEqual(info.Operations, h.Operations()) {
+		t.Fatalf("operations: %v", info.Operations)
+	}
 	_, o, err := c.Conversation(t.Context(), &commandwire.ConversationRelease{Conversation: "fail"})
-	if err == nil {
-		r, _ := o.Next(t.Context())
-		if final, ok := r.(commandwire.Completed); ok && final.Completion.ExitCode == 0 {
-			t.Fatal("cleanup reported success")
-		}
+	must(t, err)
+	r, _ := o.Next(t.Context())
+	if final, ok := r.(commandwire.Completed); ok && final.Completion.ExitCode != 1 {
+		t.Fatal("cleanup reported success")
 	}
 	err = <-done
 	var cleanup *ConversationCleanupError
@@ -107,7 +118,11 @@ func (h *drawing) Invoke(ctx context.Context, c InvocationContext[commandwire.In
 	case h.drawing <- struct{}{}:
 	default:
 	}
-	first, err := h.numbers.Draw(ctx, c.Request.Context.Conversation, commandwire.TabSequence, 4)
+	count := uint32(4)
+	if string(c.Request.Args) == `{"count":1}` {
+		count = 1
+	}
+	first, err := h.numbers.Draw(ctx, c.Request.Context.Conversation, commandwire.TabSequence, count)
 	if err != nil {
 		return commandwire.Completion{}, err
 	}
@@ -142,6 +157,7 @@ func TestDrawsWaitForNumbersStreamContinuePerConversationAndShutdownEndsIt(t *te
 	}
 	for _, test := range []struct{ conversation, want string }{{"one", "5"}, {"two", "1"}} {
 		m := invocation("draw")
+		m.Args = []byte(`{"count":1}`)
 		m.Context.Conversation = test.conversation
 		_, o, err := c.Invoke(t.Context(), m)
 		must(t, err)
@@ -365,6 +381,7 @@ func TestInfoUsesCallerDeadline(t *testing.T) {
 // Exercise AnswerNumbers through records, including an answer queued for a pull.
 type numberPeer struct {
 	duplicate <-chan struct{}
+	reuse     <-chan struct{}
 	replies   chan<- commandwire.NumbersAnswer
 }
 
@@ -384,6 +401,11 @@ func (p *numberPeer) Invoke(ctx context.Context, c InvocationContext[commandwire
 	}
 	for index := 0; index < 3; index++ {
 		if index == 2 {
+			select {
+			case <-p.reuse:
+			case <-ctx.Done():
+				return commandwire.Completion{}, ctx.Err()
+			}
 			// The original request has now been answered; its ID may be reused.
 			if err := c.Output.Stdout(ctx, request); err != nil {
 				return commandwire.Completion{}, err
@@ -411,8 +433,9 @@ func TestNumbersRejectDuplicateInFlightIDAndAllowReuse(t *testing.T) {
 		t.Run(fmt.Sprint("queued=", queued), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				duplicate := make(chan struct{})
+				reuse := make(chan struct{})
 				replies := make(chan commandwire.NumbersAnswer)
-				c, _ := connected(t, &numberPeer{duplicate: duplicate, replies: replies})
+				c, _ := connected(t, &numberPeer{duplicate: duplicate, reuse: reuse, replies: replies})
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
 				input, output, err := c.Invoke(ctx, invocation("numbers-peer"))
@@ -470,6 +493,7 @@ func TestNumbersRejectDuplicateInFlightIDAndAllowReuse(t *testing.T) {
 						t.Fatalf("original answer lost: %+v", answer)
 					}
 				}
+				close(reuse)
 				answer := <-replies
 				if answer.First == nil || *answer.First != 2 || answer.ID != 7 {
 					t.Fatalf("ID reuse failed: %+v", answer)
