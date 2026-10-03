@@ -15,7 +15,8 @@ import (
 // Local HTTP and page synchronization only; no runner or vendor is needed.
 func TestDisabledPluginLeavesPageAndRefusesCallsUntilEnabled(t *testing.T) {
 	ctx, h := conversationHarness(t)
-	b, master := accountStart(ctx, t, h)
+	b, master, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	change := func(id string, enabled bool) {
 		t.Helper()
 		body, err := contract.EncodeJSON(webapi.PluginSwitch{Enabled: enabled})
@@ -70,7 +71,7 @@ func TestDisabledPluginLeavesPageAndRefusesCallsUntilEnabled(t *testing.T) {
 	}
 	a, err := b.Put(ctx, "/api/plugins/nope", &master, []byte(`{"enabled":false}`))
 	wireMust(t, err)
-	accountRefusal(t, a, 404, webapi.ErrorCodeUnknownPlugin)
+	filesRefusal(t, a, 404, webapi.ErrorCodeUnknownPlugin)
 	wireMust(t, page.Close(ctx))
 	wireMust(t, again.Close(ctx))
 	wireMust(t, b.Close(ctx))

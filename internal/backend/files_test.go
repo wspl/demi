@@ -37,11 +37,19 @@ type filesDevice struct {
 	control *sql.DB
 }
 
+// filesRefusal checks both the status and typed code of a file scenario's refusal.
+func filesRefusal(t *testing.T, answer backendtest.Answer, status int, code webapi.ErrorCode) {
+	t.Helper()
+	filesStatus(t, answer, status)
+	conversationRefusal(t, answer, code)
+}
+
 // filesOnDevice gives the conversation a workspace in a real paired runner's home.
 func filesOnDevice(t *testing.T) *filesDevice {
 	t.Helper()
 	ctx, h := conversationHarness(t)
-	b, s := accountStart(ctx, t, h)
+	b, s, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	paired, err := b.Pair(ctx, t, &s, "laptop")
 	wireMust(t, err)
 	conversationCreate(ctx, t, b, &s, filesConversation)
@@ -87,14 +95,14 @@ func TestFileDeleteProtectsHostDirectories(t *testing.T) {
 		t.Fatalf("files left: %v", entries)
 	}
 	for _, path := range []string{d.root, d.root + "/..", d.paired.Runner.Home(), "/", strings.ToUpper(d.root)} {
-		accountRefusal(t, remove(path), 409, webapi.ErrorCodeProtectedPath)
+		filesRefusal(t, remove(path), 409, webapi.ErrorCodeProtectedPath)
 	}
 	info, err := os.Stat(d.root)
 	wireMust(t, err)
 	if !info.IsDir() {
 		t.Fatal("workspace removed")
 	}
-	accountRefusal(t, remove("photos"), 400, webapi.ErrorCodeInvalidQuery)
+	filesRefusal(t, remove("photos"), 400, webapi.ErrorCodeInvalidQuery)
 	wireMust(t, d.backend.Close(d.ctx))
 }
 
@@ -106,14 +114,14 @@ func TestFileAccessRequiresOwnedConversationAndAttachedHost(t *testing.T) {
 	wireMust(t, err)
 	foreign, err := d.backend.Read(d.ctx, "/api/conversations/"+filesConversation+"/fs", &other)
 	wireMust(t, err)
-	accountRefusal(t, foreign, 404, webapi.ErrorCodeConversationNotFound)
+	filesRefusal(t, foreign, 404, webapi.ErrorCodeConversationNotFound)
 	unknown, err := d.backend.Read(d.ctx, "/api/conversations/not-a-uuid/fs", &d.master)
 	wireMust(t, err)
-	accountRefusal(t, unknown, 404, webapi.ErrorCodeConversationNotFound)
+	filesRefusal(t, unknown, 404, webapi.ErrorCodeConversationNotFound)
 	ci, err := d.backend.Pair(d.ctx, t, &d.master, "ci")
 	wireMust(t, err)
 	route := "/hosts/" + string(ci.ID()) + "/fs"
-	accountRefusal(t, d.read(t, route), 404, webapi.ErrorCodeHostNotAttached)
+	filesRefusal(t, d.read(t, route), 404, webapi.ErrorCodeHostNotAttached)
 	_, err = d.control.ExecContext(d.ctx, "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at) VALUES (?1, ?2, 'ci', NULL, 0)", filesConversation, ci.ID())
 	wireMust(t, err)
 	listing := d.read(t, route)
@@ -146,8 +154,8 @@ func TestFileAccessRequiresOwnedConversationAndAttachedHost(t *testing.T) {
 	}
 	_, err = d.control.ExecContext(d.ctx, "UPDATE conversations SET archived = 1 WHERE id = ?1", filesConversation)
 	wireMust(t, err)
-	accountRefusal(t, d.read(t, "/fs"), 409, webapi.ErrorCodeConversationArchived)
-	accountRefusal(t, d.read(t, "/fs/raw?path="+url.QueryEscape(filepath.Join(d.root, "a.txt"))), 409, webapi.ErrorCodeConversationArchived)
+	filesRefusal(t, d.read(t, "/fs"), 409, webapi.ErrorCodeConversationArchived)
+	filesRefusal(t, d.read(t, "/fs/raw?path="+url.QueryEscape(filepath.Join(d.root, "a.txt"))), 409, webapi.ErrorCodeConversationArchived)
 	wireMust(t, d.backend.Close(d.ctx))
 }
 
@@ -219,15 +227,15 @@ func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 			t.Fatalf("%s: %+v", c.path, sides)
 		}
 	}
-	accountRefusal(t, d.read(t, "/changes/file?path=blob.bin"), 415, webapi.ErrorCodeNotText)
-	accountRefusal(t, d.read(t, "/changes/file?path=../x"), 400, webapi.ErrorCodeInvalidQuery)
+	filesRefusal(t, d.read(t, "/changes/file?path=blob.bin"), 415, webapi.ErrorCodeNotText)
+	filesRefusal(t, d.read(t, "/changes/file?path=../x"), 400, webapi.ErrorCodeInvalidQuery)
 	a := filepath.Join(d.root, "a.txt")
 	text, err := webapi.DecodeFileText(d.read(t, "/fs/file?path="+url.QueryEscape(a)).Body)
 	wireMust(t, err)
 	if text.Path != a || text.Text != "1\n2\n3\n" {
 		t.Fatalf("text: %+v", text)
 	}
-	accountRefusal(t, d.read(t, "/fs/file?path="+url.QueryEscape(filepath.Join(d.root, "nope"))), 404, webapi.ErrorCodeFsError)
+	filesRefusal(t, d.read(t, "/fs/file?path="+url.QueryEscape(filepath.Join(d.root, "nope"))), 404, webapi.ErrorCodeFsError)
 	body, err := contract.EncodeJSON(webapi.CreateDirectory{Path: filepath.Join(d.root, "made/deep")})
 	wireMust(t, err)
 	filesStatus(t, d.call(t, "POST", "/fs", http.Header{"Content-Type": []string{"application/json"}}, bytes.NewReader(body)), 201)
@@ -254,11 +262,11 @@ func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 	for i := 0; i <= runnerwire.MaxMessageBytes/200; i++ {
 		wireMust(t, os.WriteFile(filepath.Join(crowded, fmt.Sprintf("%s%d", strings.Repeat("n", 200), i)), nil, 0644))
 	}
-	accountRefusal(t, d.read(t, "/fs?path="+url.QueryEscape(crowded)), 413, webapi.ErrorCodeDirectoryTooLarge)
+	filesRefusal(t, d.read(t, "/fs?path="+url.QueryEscape(crowded)), 413, webapi.ErrorCodeDirectoryTooLarge)
 	filesStatus(t, d.read(t, "/fs/file?path="+url.QueryEscape(a)), 200)
 	wireMust(t, d.paired.Runner.Stop(d.ctx))
 	wireMust(t, d.backend.UntilOnline(d.ctx, &d.master, d.paired.ID(), false))
-	accountRefusal(t, d.read(t, "/changes"), 409, webapi.ErrorCodeDeviceOffline)
+	filesRefusal(t, d.read(t, "/changes"), 409, webapi.ErrorCodeDeviceOffline)
 	wireMust(t, d.backend.Close(d.ctx))
 }
 
@@ -304,7 +312,7 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 	version := raw("logo.svg") + "&version=" + url.QueryEscape(etag)
 	filesStatus(t, d.read(t, version), 200)
 	wireMust(t, os.WriteFile(filepath.Join(d.root, "logo.svg"), backendtest.Pattern(10, 0), 0644))
-	accountRefusal(t, d.read(t, version), 412, webapi.ErrorCodeFileChanged)
+	filesRefusal(t, d.read(t, version), 412, webapi.ErrorCodeFileChanged)
 	download := d.read(t, raw("logo.svg")+"&download=true")
 	filesHeader(t, download, "content-type", "application/octet-stream")
 	if !strings.HasPrefix(download.Headers.Get("content-disposition"), `attachment; filename="logo.svg"`) {
@@ -317,9 +325,9 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 	if !strings.HasPrefix(html.Headers.Get("content-disposition"), "attachment") {
 		t.Fatal("HTML is not a download")
 	}
-	accountRefusal(t, d.read(t, raw(".")), 404, webapi.ErrorCodeNotFound)
-	accountRefusal(t, d.read(t, raw("missing.png")), 404, webapi.ErrorCodeFsError)
-	accountRefusal(t, d.read(t, raw("logo.svg")+"&download=1"), 400, webapi.ErrorCodeInvalidQuery)
+	filesRefusal(t, d.read(t, raw(".")), 404, webapi.ErrorCodeNotFound)
+	filesRefusal(t, d.read(t, raw("missing.png")), 404, webapi.ErrorCodeFsError)
+	filesRefusal(t, d.read(t, raw("logo.svg")+"&download=1"), 400, webapi.ErrorCodeInvalidQuery)
 	video := backendtest.Pattern(3*runnerwire.MaxMessageBytes+5, 0)
 	wireMust(t, os.WriteFile(filepath.Join(d.root, "demo.mp4"), video, 0644))
 	streamed := d.read(t, raw("demo.mp4"))
@@ -353,11 +361,11 @@ func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 		t.Fatal("committed download changed")
 	}
 	filesStatus(t, d.read(t, "/changes/raw?path=new.png"), 404)
-	accountRefusal(t, d.read(t, "/changes/raw?path=../escape.png"), 400, webapi.ErrorCodeInvalidQuery)
+	filesRefusal(t, d.read(t, "/changes/raw?path=../escape.png"), 400, webapi.ErrorCodeInvalidQuery)
 	wireMust(t, os.WriteFile(filepath.Join(d.root, "poster.png"), backendtest.Pattern(8*1024*1024+1, 0), 0644))
 	filesGit(t, d, "add", "poster.png")
 	filesGit(t, d, "commit", "-q", "-m", "poster")
-	accountRefusal(t, d.read(t, "/changes/raw?path=poster.png"), 413, webapi.ErrorCodeFileTooLarge)
+	filesRefusal(t, d.read(t, "/changes/raw?path=poster.png"), 413, webapi.ErrorCodeFileTooLarge)
 	filesStatus(t, d.call(t, "HEAD", "/changes/raw?path=poster.png", nil, nil), 413)
 	wireMust(t, d.backend.Close(d.ctx))
 }
@@ -383,16 +391,16 @@ func TestFileUploadIsWholeAndRequiresOverwriteConsent(t *testing.T) {
 	}
 	filesStatus(t, put("notes.md", "", strings.NewReader("first")), 204)
 	read("notes.md", "first")
-	accountRefusal(t, put("notes.md", "", strings.NewReader("second")), 409, webapi.ErrorCodeFileExists)
+	filesRefusal(t, put("notes.md", "", strings.NewReader("second")), 409, webapi.ErrorCodeFileExists)
 	read("notes.md", "first")
 	filesStatus(t, put("notes.md", "true", strings.NewReader("second")), 204)
 	read("notes.md", "second")
 	filesStatus(t, put("empty.txt", "", strings.NewReader("")), 204)
 	read("empty.txt", "")
 	wireMust(t, os.Mkdir(filepath.Join(d.root, "docs"), 0755))
-	accountRefusal(t, put("docs", "true", strings.NewReader("x")), 409, webapi.ErrorCodeIsDirectory)
-	accountRefusal(t, put("missing/file.txt", "", strings.NewReader("x")), 404, webapi.ErrorCodeFsError)
-	accountRefusal(t, put("notes.md", "yes", strings.NewReader("x")), 400, webapi.ErrorCodeInvalidQuery)
+	filesRefusal(t, put("docs", "true", strings.NewReader("x")), 409, webapi.ErrorCodeIsDirectory)
+	filesRefusal(t, put("missing/file.txt", "", strings.NewReader("x")), 404, webapi.ErrorCodeFsError)
+	filesRefusal(t, put("notes.md", "yes", strings.NewReader("x")), 400, webapi.ErrorCodeInvalidQuery)
 	block := backendtest.Pattern(1024*1024, 0)
 	chunks := 3*runnerwire.MaxMessageBytes/len(block) + 1
 	readers := make([]io.Reader, chunks)

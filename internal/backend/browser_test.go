@@ -15,15 +15,16 @@ import (
 // No browser, runner or model; absence of a package removes its page methods.
 func TestBrowserAbsentCatalogRemovesTabsAndMethods(t *testing.T) {
 	ctx, h := conversationHarness(t)
-	b, s := accountStart(ctx, t, h)
+	b, s, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	conversationCreate(ctx, t, b, &s, filesConversation)
 	path := "/api/conversations/" + filesConversation + "/plugins/browser"
 	a, err := b.Read(ctx, path+"/state", &s)
 	wireMust(t, err)
-	accountRefusal(t, a, 404, webapi.ErrorCodeUnknownPlugin)
+	filesRefusal(t, a, 404, webapi.ErrorCodeUnknownPlugin)
 	a, err = b.Post(ctx, path+"/calls/open", &s, []byte(`{}`))
 	wireMust(t, err)
-	accountRefusal(t, a, 404, webapi.ErrorCodeUnknownPluginMethod)
+	filesRefusal(t, a, 404, webapi.ErrorCodeUnknownPluginMethod)
 	wireMust(t, b.Close(ctx))
 }
 
@@ -53,7 +54,7 @@ func TestBrowserStoppedCloudIsNotWokenByTabMethods(t *testing.T) {
 	for method, body := range map[string]string{"navigate": `{"tab":"t999999","url":"https://example.test/"}`, "history": `{"tab":"t999999","action":"forward"}`} {
 		a, err = b.Post(ctx, path+"/calls/"+method, &s, []byte(body))
 		wireMust(t, err)
-		accountRefusal(t, a, 409, webapi.ErrorCodeHostStopped)
+		filesRefusal(t, a, 409, webapi.ErrorCodeHostStopped)
 	}
 	devices, err := b.Devices(ctx, &s)
 	wireMust(t, err)
@@ -103,7 +104,7 @@ func TestBrowserTabMethodsUseConversationHost(t *testing.T) {
 	for _, call := range []struct{ method, body string }{{"navigate", `{"tab":"t999999","url":"https://example.test/"}`}, {"history", `{"tab":"t999999","action":"reload"}`}, {"history", `{"tab":"not-a-tab","action":"reload"}`}} {
 		a, err = b.Post(ctx, path+"/calls/"+call.method, &s, []byte(call.body))
 		wireMust(t, err)
-		accountRefusal(t, a, 409, webapi.ErrorCodePluginRefused)
+		filesRefusal(t, a, 409, webapi.ErrorCodePluginRefused)
 		refusal, err := a.ErrorBody()
 		wireMust(t, err)
 		if refusal.Reason == nil || *refusal.Reason != "tab_not_found" {
@@ -113,25 +114,25 @@ func TestBrowserTabMethodsUseConversationHost(t *testing.T) {
 	for _, call := range []struct{ method, body string }{{"navigate", `{"tab":"t999999"}`}, {"history", `{"tab":"t999999","action":"sideways"}`}, {"open", `{"url":""}`}} {
 		a, err = b.Post(ctx, path+"/calls/"+call.method, &s, []byte(call.body))
 		wireMust(t, err)
-		accountRefusal(t, a, 400, webapi.ErrorCodeInvalidBody)
+		filesRefusal(t, a, 400, webapi.ErrorCodeInvalidBody)
 	}
 	wireMust(t, laptop.Runner.Kill(ctx))
 	wireMust(t, b.UntilOnline(ctx, &s, laptop.ID(), false))
 	a, err = b.Read(ctx, path+"/state", &s)
 	wireMust(t, err)
-	accountRefusal(t, a, 409, webapi.ErrorCodeDeviceOffline)
+	filesRefusal(t, a, 409, webapi.ErrorCodeDeviceOffline)
 	a, err = b.Patch(ctx, "/api/conversations/"+filesConversation, &s, []byte(`{"archived":true}`))
 	wireMust(t, err)
 	filesStatus(t, a, 200)
 	a, err = b.Read(ctx, path+"/state", &s)
 	wireMust(t, err)
-	accountRefusal(t, a, 409, webapi.ErrorCodeConversationArchived)
+	filesRefusal(t, a, 409, webapi.ErrorCodeConversationArchived)
 	a, err = b.Post(ctx, path+"/calls/open", &s, []byte(`{}`))
 	wireMust(t, err)
-	accountRefusal(t, a, 409, webapi.ErrorCodeConversationArchived)
+	filesRefusal(t, a, 409, webapi.ErrorCodeConversationArchived)
 	a, err = b.Read(ctx, "/api/conversations/1e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01/plugins/browser/state", &s)
 	wireMust(t, err)
-	accountRefusal(t, a, 404, webapi.ErrorCodeConversationNotFound)
+	filesRefusal(t, a, 404, webapi.ErrorCodeConversationNotFound)
 	wireMust(t, b.Close(ctx))
 }
 
@@ -215,7 +216,7 @@ func TestBrowserListingRunningCloudDoesNotKeepItAwake(t *testing.T) {
 		answer, err := b.Read(ctx, "/api/conversations/"+filesConversation+"/plugins/browser/state", &s)
 		wireMust(t, err)
 		if answer.Status != 200 {
-			accountRefusal(t, answer, 409, webapi.ErrorCodeDeviceOffline)
+			filesRefusal(t, answer, 409, webapi.ErrorCodeDeviceOffline)
 		}
 	}
 }

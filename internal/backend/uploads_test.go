@@ -308,7 +308,7 @@ func TestUploadReachesModelHostAndPageByReference(t *testing.T) {
 		wireMust(t, err)
 		answer, err := backendtest.ReadAnswer(w.ctx, response)
 		wireMust(t, err)
-		accountRefusal(t, answer, r.status, r.code)
+		filesRefusal(t, answer, r.status, r.code)
 	}
 	w.vendor.Respond(conversationAnswer(t, []string{"Seen."}, 1, 1))
 	wireMust(t, w.socket.Send(w.ctx, filesUploadMessage("m1", "Look", image, notes, hers)))

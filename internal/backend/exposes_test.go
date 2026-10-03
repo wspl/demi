@@ -31,7 +31,8 @@ import (
 // One paired runner; no service or model is needed to observe configuration refusal.
 func TestExposeUnavailableWithoutDomain(t *testing.T) {
 	ctx, h := conversationHarness(t)
-	b, s := accountStart(ctx, t, h)
+	b, s, err := h.StartSetUp(ctx, t)
+	wireMust(t, err)
 	laptop, err := b.Pair(ctx, t, &s, "laptop")
 	wireMust(t, err)
 	_, err = backendtest.CreateExpose(ctx, b.Backend, s.User.ID, laptop.ID(), "1234")

@@ -40,7 +40,8 @@ func filesHeader(t *testing.T, answer backendtest.Answer, name, want string) {
 // Local HTTP and disk only; no vendor calls or runner, normally under one second.
 func TestBlobNamespaceInertAndImmutable(t *testing.T) {
 	ctx, harness := conversationHarness(t)
-	backend, master := accountStart(ctx, t, harness)
+	backend, master, err := harness.StartSetUp(ctx, t)
+	wireMust(t, err)
 	data := []byte("\x89PNG\r\n\x1a\n not really an image")
 	name := filesBlob(t, harness, string(master.User.ID), data)
 	read := func(path string, session *backendtest.Session) backendtest.Answer {
@@ -71,16 +72,17 @@ func TestBlobNamespaceInertAndImmutable(t *testing.T) {
 	filesHeader(t, page, "content-disposition", "attachment")
 	theirs := filesBlob(t, harness, "someone-else", []byte("their bytes"))
 	for _, missing := range []string{theirs, strings.ToUpper(name), "not-a-hash", strings.Repeat("0", 64)} {
-		accountRefusal(t, read("/api/blobs/"+missing, &master), 404, webapi.ErrorCodeNotFound)
+		filesRefusal(t, read("/api/blobs/"+missing, &master), 404, webapi.ErrorCodeNotFound)
 	}
-	accountRefusal(t, read(path, nil), 401, webapi.ErrorCodeUnauthenticated)
+	filesRefusal(t, read(path, nil), 401, webapi.ErrorCodeUnauthenticated)
 	wireMust(t, backend.Close(ctx))
 }
 
 // Local HTTP and disk only; checks the byte positions used by video players.
 func TestBlobByteRangesForVideo(t *testing.T) {
 	ctx, harness := conversationHarness(t)
-	backend, master := accountStart(ctx, t, harness)
+	backend, master, err := harness.StartSetUp(ctx, t)
+	wireMust(t, err)
 	data := make([]byte, 1000)
 	for i := range data {
 		data[i] = byte(i % 251)
