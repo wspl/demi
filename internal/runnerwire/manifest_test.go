@@ -76,9 +76,22 @@ func unpin(node declare.Node[declare.Binding]) declare.Node[declare.NativeOperat
 		}
 		return &declare.Group[declare.NativeOperation]{Name: node.Name, Summary: node.Summary, Subcommands: children}
 	case *declare.Leaf[declare.Binding]:
-		leaf := &declare.Leaf[declare.NativeOperation]{Name: node.Name, Summary: node.Summary, SuccessOutput: node.SuccessOutput, FailureOutput: node.FailureOutput, RunningHint: node.RunningHint, Input: node.Input, Positionals: node.Positionals, StdinField: node.StdinField, RestField: node.RestField, Output: node.Output}
+		leaf := &declare.Leaf[declare.NativeOperation]{
+			Name:          node.Name,
+			Summary:       node.Summary,
+			SuccessOutput: node.SuccessOutput,
+			FailureOutput: node.FailureOutput,
+			RunningHint:   node.RunningHint,
+			Input:         node.Input,
+			Positionals:   node.Positionals,
+			StdinField:    node.StdinField,
+			RestField:     node.RestField,
+			Output:        node.Output,
+		}
 		if binding := node.Binding(); binding != nil {
-			leaf.Kind = &declare.Native[declare.NativeOperation]{Binding: declare.NativeOperation{Package: binding.Package, Operation: binding.Operation}}
+			leaf.Kind = &declare.Native[declare.NativeOperation]{
+				Binding: declare.NativeOperation{Package: binding.Package, Operation: binding.Operation},
+			}
 		} else {
 			leaf.Kind = &declare.RPC[declare.NativeOperation]{}
 		}
@@ -121,10 +134,25 @@ func TestManifestBuild(t *testing.T) {
 		t.Fatal("built manifest differs from Rust fixture")
 	}
 	native := func(pkg, op string) declare.Node[declare.NativeOperation] {
-		return &declare.Leaf[declare.NativeOperation]{Name: "native", Summary: "Native", Kind: &declare.Native[declare.NativeOperation]{Binding: declare.NativeOperation{Package: pkg, Operation: op}}}
+		return &declare.Leaf[declare.NativeOperation]{
+			Name:    "native",
+			Summary: "Native",
+			Kind: &declare.Native[declare.NativeOperation]{
+				Binding: declare.NativeOperation{Package: pkg, Operation: op},
+			},
+		}
 	}
-	rpc := &declare.Leaf[declare.NativeOperation]{Name: "rpc", Summary: "Rpc", Kind: &declare.RPC[declare.NativeOperation]{}}
-	contradictory, err := declare.DecodeDeclaration([]byte(`{"name":"note","summary":"Note","kind":"rpc","input":{"type":"object","properties":{"text":{"type":"string"}}},"positionals":["text"],"stdinField":"text"}`))
+	rpc := &declare.Leaf[declare.NativeOperation]{
+		Name:    "rpc",
+		Summary: "Rpc",
+		Kind:    &declare.RPC[declare.NativeOperation]{},
+	}
+	contradictory, err := declare.DecodeDeclaration(
+		[]byte(
+			`{"name":"note","summary":"Note","kind":"rpc","input":{"type":"object",` +
+				`"properties":{"text":{"type":"string"}}},"positionals":["text"],"stdinField":"text"}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,11 +162,37 @@ func TestManifestBuild(t *testing.T) {
 		packages []commandwire.PackageDescriptor
 		reason   string
 	}{
-		{"missing package", []declare.Node[declare.NativeOperation]{native("demicodes.other", "file.read")}, packages, "not configured"},
-		{"missing operation", []declare.Node[declare.NativeOperation]{native("demicodes.fixture", "file.gone")}, packages, "no operation"},
+		{
+			"missing package",
+			[]declare.Node[declare.NativeOperation]{
+				native("demicodes.other", "file.read"),
+			},
+			packages,
+			"not configured",
+		},
+		{
+			"missing operation",
+			[]declare.Node[declare.NativeOperation]{
+				native("demicodes.fixture", "file.gone"),
+			},
+			packages,
+			"no operation",
+		},
 		{"duplicate root", []declare.Node[declare.NativeOperation]{rpc, rpc}, nil, "duplicate root"},
-		{"duplicate package", nil, append(append([]commandwire.PackageDescriptor{}, packages...), packages...), "duplicate command package"},
-		{"contradictory input", []declare.Node[declare.NativeOperation]{contradictory}, nil, "multiple input sources for text"},
+		{
+			"duplicate package",
+			nil,
+			append(append([]commandwire.PackageDescriptor{}, packages...), packages...),
+			"duplicate command package",
+		},
+		{
+			"contradictory input",
+			[]declare.Node[declare.NativeOperation]{
+				contradictory,
+			},
+			nil,
+			"multiple input sources for text",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := runnerwire.BuildManifest(tc.roots, tc.packages)
@@ -200,7 +254,9 @@ func TestManifestBindingAndRootRefusals(t *testing.T) {
 			}
 			changed := original
 			changed.Roots = map[string]runnerwire.Root{"fixture": {Tree: raw}}
-			changed.Hash, err = commandwire.CanonicalDigest(map[string]any{"roots": changed.Roots, "packages": changed.Packages})
+			changed.Hash, err = commandwire.CanonicalDigest(
+				map[string]any{"roots": changed.Roots, "packages": changed.Packages},
+			)
 			if err != nil {
 				t.Fatal(err)
 			}

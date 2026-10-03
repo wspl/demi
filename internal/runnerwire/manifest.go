@@ -27,7 +27,10 @@ type Root struct {
 
 // BuildManifest files package descriptors under their digests, pins native
 // declarations to them, validates the trees, and hashes the manifest.
-func BuildManifest(roots []declare.Node[declare.NativeOperation], packages []commandwire.PackageDescriptor) (Manifest, error) {
+func BuildManifest(
+	roots []declare.Node[declare.NativeOperation],
+	packages []commandwire.PackageDescriptor,
+) (Manifest, error) {
 	manifest := Manifest{Roots: make(map[string]Root), Packages: make(map[string]commandwire.PackageDescriptor)}
 	digests := make(map[string]string)
 	for _, descriptor := range packages {

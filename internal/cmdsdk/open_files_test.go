@@ -18,7 +18,12 @@ import (
 // Cost: one test-binary launch, no build, a 30-second failure budget from the parent suite.
 func TestRecordingEditWaitsForOpenFile(t *testing.T) {
 	if os.Getenv("DEMI_CMDSDK_EXHAUST_CHILD") != "1" {
-		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestRecordingEditWaitsForOpenFile$", "-test.timeout=30s")
+		cmd := exec.CommandContext(
+			t.Context(),
+			os.Args[0],
+			"-test.run=^TestRecordingEditWaitsForOpenFile$",
+			"-test.timeout=30s",
+		)
 		cmd.Env = append(os.Environ(), "DEMI_CMDSDK_EXHAUST_CHILD=1")
 		b, err := cmd.CombinedOutput()
 		if err != nil {
@@ -29,7 +34,7 @@ func TestRecordingEditWaitsForOpenFile(t *testing.T) {
 	root := t.TempDir()
 	r := recorder(t, root)
 	path := filepath.Join(root, "file")
-	must(t, os.WriteFile(path, []byte("before"), 0600))
+	must(t, os.WriteFile(path, []byte("before"), 0o600))
 	var limit unix.Rlimit
 	must(t, unix.Getrlimit(unix.RLIMIT_NOFILE, &limit))
 	old := limit
@@ -54,7 +59,9 @@ func TestRecordingEditWaitsForOpenFile(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- r.Record(t.Context(), path, func() error {
-			_, err := Retry(t.Context(), func() (struct{}, error) { return struct{}{}, os.WriteFile(path, []byte("after"), 0600) })
+			_, err := Retry(t.Context(), func() (struct{}, error) {
+				return struct{}{}, os.WriteFile(path, []byte("after"), 0o600)
+			})
 			return err
 		})
 	}()

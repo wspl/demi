@@ -20,7 +20,12 @@ import (
 
 // The Rust SDK suite also exercises commandwire at the consumer boundary.
 func TestDecodesEveryFragmentationBoundaryAndPreservesBinary(t *testing.T) {
-	expected := []commandwire.Record{commandwire.InputPull{}, commandwire.Stdout{0, 255, 13, 10}, commandwire.Stderr("diagnostic"), commandwire.Completed{Completion: commandwire.Completion{ExitCode: 7}}}
+	expected := []commandwire.Record{
+		commandwire.InputPull{},
+		commandwire.Stdout{0, 255, 13, 10},
+		commandwire.Stderr("diagnostic"),
+		commandwire.Completed{Completion: commandwire.Completion{ExitCode: 7}},
+	}
 	var wire []byte
 	for _, r := range expected {
 		b, err := commandwire.EncodeRecord(r)
@@ -47,6 +52,7 @@ func TestDecodesEveryFragmentationBoundaryAndPreservesBinary(t *testing.T) {
 		}
 	}
 }
+
 func TestRejectsOversizedHeaderBeforePayloadArrives(t *testing.T) {
 	b := []byte{1, 0, 0, 0, 0}
 	binary.BigEndian.PutUint32(b[1:], commandwire.MaxRecordBytes+1)
@@ -56,6 +62,7 @@ func TestRejectsOversizedHeaderBeforePayloadArrives(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestRequiresCompletionAndRejectsTrailingRecords(t *testing.T) {
 	var d commandwire.RecordDecoder
 	b, err := commandwire.EncodeRecord(commandwire.Stdout("partial"))
@@ -75,6 +82,7 @@ func TestRequiresCompletionAndRejectsTrailingRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestRejectsInvalidCompletionExitCodesAtWireBoundary(t *testing.T) {
 	for _, s := range []string{`{"exitCode":-1}`, `{"exitCode":256}`, `{"exitCode":0,"error":null}`} {
 		b := make([]byte, 5)
@@ -87,6 +95,7 @@ func TestRejectsInvalidCompletionExitCodesAtWireBoundary(t *testing.T) {
 		}
 	}
 }
+
 func TestDescriptorValidatesAndHashesToRecordedDigest(t *testing.T) {
 	b, err := os.ReadFile("testdata/package.json")
 	must(t, err)
@@ -107,6 +116,7 @@ func TestDescriptorValidatesAndHashesToRecordedDigest(t *testing.T) {
 		t.Fatal("duplicate operations")
 	}
 }
+
 func TestConversationStatusChecksConversationIdentity(t *testing.T) {
 	for _, s := range []string{`{"conversations":[]}`, `{"conversations":["conversation"]}`} {
 		_, err := commandwire.DecodeConversationStatus([]byte(s))
@@ -116,6 +126,7 @@ func TestConversationStatusChecksConversationIdentity(t *testing.T) {
 		t.Fatal("empty identity")
 	}
 }
+
 func TestDescriptorRetryAndPathResolution(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
@@ -150,6 +161,7 @@ func TestDescriptorRetryAndPathResolution(t *testing.T) {
 	_, err = ParseLaunch([]string{CommandService})
 	must(t, err)
 }
+
 func TestExchangeStopsInputWhenServiceCompletes(t *testing.T) {
 	c, _ := connected(t, fixture{})
 	i, o, err := c.Invoke(t.Context(), invocation("short"))
@@ -170,6 +182,7 @@ func (s *waitingSource) Next(ctx context.Context) ([]byte, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
+
 func TestMetadataAndInputSizeRejectBeforeAllocation(t *testing.T) {
 	for _, limit := range []uint32{commandwire.MaxRecordBytes, commandwire.MaxMetadataBytes} {
 		var b [4]byte
@@ -194,10 +207,16 @@ func TestPackageDecodingEnforcesValueConstraints(t *testing.T) {
 		path  []string
 		value any
 	}{
-		{[]string{"id"}, "Invalid package"}, {[]string{"version"}, ""}, {[]string{"protocolVersion"}, 2},
-		{[]string{"operations"}, []string{}}, {[]string{"operations"}, []string{""}}, {[]string{"operations"}, []string{"same", "same"}},
+		{[]string{"id"}, "Invalid package"},
+		{[]string{"version"}, ""},
+		{[]string{"protocolVersion"}, 2},
+		{[]string{"operations"}, []string{}},
+		{[]string{"operations"}, []string{""}},
+		{[]string{"operations"}, []string{"same", "same"}},
 		{[]string{"targets", "aarch64-apple-darwin", "sha256"}, strings.Repeat("g", 64)},
-		{[]string{"targets", "aarch64-apple-darwin", "size"}, 0}, {[]string{"targets", "aarch64-apple-darwin", "size"}, 1.5}, {[]string{"targets", "aarch64-apple-darwin", "size"}, uint64(9007199254740992)},
+		{[]string{"targets", "aarch64-apple-darwin", "size"}, 0},
+		{[]string{"targets", "aarch64-apple-darwin", "size"}, 1.5},
+		{[]string{"targets", "aarch64-apple-darwin", "size"}, uint64(9007199254740992)},
 	} {
 		var value map[string]any
 		must(t, json.Unmarshal(envelope["descriptor"], &value))
@@ -222,33 +241,50 @@ func TestPackageDecodingEnforcesValueConstraints(t *testing.T) {
 		t.Fatal("unknown target")
 	}
 }
+
 func TestArtifactURLIsHTTPOrHTTPSWithoutCredentials(t *testing.T) {
 	for _, tc := range []struct {
 		url   string
 		valid bool
 	}{
-		{"https://demi-native.s3.amazonaws.com/native/blobs/a", true}, {"http://192.168.5.2:3271/native-artifacts/a", true},
-		{"https://user:secret@demi-native.s3.amazonaws.com/native/blobs/a", false}, {"ftp://192.168.5.2/native-artifacts/a", false}, {"file:///native-artifacts/a", false}, {"native-artifacts/a", false},
+		{"https://demi-native.s3.amazonaws.com/native/blobs/a", true},
+		{"http://192.168.5.2:3271/native-artifacts/a", true},
+		{"https://user:secret@demi-native.s3.amazonaws.com/native/blobs/a", false},
+		{"ftp://192.168.5.2/native-artifacts/a", false},
+		{"file:///native-artifacts/a", false},
+		{"native-artifacts/a", false},
 	} {
 		if err := (&commandwire.ArtifactURL{URL: tc.url}).Validate(); (err == nil) != tc.valid {
 			t.Fatalf("%s: %v", tc.url, err)
 		}
 	}
 }
+
 func TestInvocationDecodingChecksNestedValuesAndOptionalNulls(t *testing.T) {
 	c, _ := connected(t, fixture{})
 	valid, err := contract.EncodeJSON(invocation("short"))
 	must(t, err)
 	for _, tc := range []struct{ old, new string }{
-		{`"context":{"conversation":"one","caller":{"kind":"agent","number":1},"locale":{"timeZone":"UTC","languages":["en-US"]}},`, ``},
-		{`"operation":"short"`, `"operation":""`}, {`"invocationId":"short"`, `"invocationId":""`},
-		{`"conversation":"one"`, `"conversation":""`}, {`"number":1`, `"number":-1`}, {`"kind":"agent","number":1`, `"kind":"agent"`},
-		{`"kind":"agent"`, `"kind":"user"`}, {`"kind":"agent"`, `"kind":"system"`},
-		{`"languages":["en-US"]`, `"languages":[]`}, {`"timeZone":"UTC"`, `"timeZone":""`},
+		{
+			`"context":{"conversation":"one","caller":{"kind":"agent","number":1},` +
+				`"locale":{"timeZone":"UTC","languages":["en-US"]}},`,
+			``,
+		},
+		{`"operation":"short"`, `"operation":""`},
+		{`"invocationId":"short"`, `"invocationId":""`},
+		{`"conversation":"one"`, `"conversation":""`},
+		{`"number":1`, `"number":-1`},
+		{`"kind":"agent","number":1`, `"kind":"agent"`},
+		{`"kind":"agent"`, `"kind":"user"`},
+		{`"kind":"agent"`, `"kind":"system"`},
+		{`"languages":["en-US"]`, `"languages":[]`},
+		{`"timeZone":"UTC"`, `"timeZone":""`},
 		{`"languages":["en-US"]`, `"languages":[` + strings.TrimSuffix(strings.Repeat(`"en",`, 17), ",") + `]`},
 		{`"locale":{"timeZone":"UTC","languages":["en-US"]}`, `"ignored":{}`},
-		{`"args":{}`, `"args":[]`}, {`"cwd":"/tmp"`, `"cwd":"bad\u0000path"`},
-		{`"env":{}`, `"env":{"A=B":"value"}`}, {`"env":{}`, `"env":{"A":"bad\u0000value"}`},
+		{`"args":{}`, `"args":[]`},
+		{`"cwd":"/tmp"`, `"cwd":"bad\u0000path"`},
+		{`"env":{}`, `"env":{"A=B":"value"}`},
+		{`"env":{}`, `"env":{"A":"bad\u0000value"}`},
 		{`"args":{}`, `"args":{},"resource":{"id":"old","kind":"browser"}`},
 		{`"args":{}`, `"args":{},"json":null`},
 	} {

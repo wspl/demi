@@ -15,12 +15,22 @@ func TestBackendURL(t *testing.T) {
 			t.Errorf("%s: %v", value, err)
 		}
 	}
-	for _, value := range []string{"https://user:pass@demi.example.com", "https://user@demi.example.com", "https://demi.example.com/#runner", "https://demi.example.com/#", "ftp://demi.example.com", "file:///tmp/backend", "not a url"} {
+	for _, value := range []string{
+		"https://user:pass@demi.example.com",
+		"https://user@demi.example.com",
+		"https://demi.example.com/#runner",
+		"https://demi.example.com/#",
+		"ftp://demi.example.com",
+		"file:///tmp/backend",
+		"not a url",
+	} {
 		if _, err := runnerwire.ParseBackendURL(value); err == nil {
 			t.Errorf("accepted %s", value)
 		}
 	}
-	boot, err := runnerwire.DecodeManagedBoot([]byte(`{"backendUrl":"HTTPS://DEMI.EXAMPLE.COM:443/a/../","deviceToken":"secret"}`))
+	boot, err := runnerwire.DecodeManagedBoot(
+		[]byte(`{"backendUrl":"HTTPS://DEMI.EXAMPLE.COM:443/a/../","deviceToken":"secret"}`),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +62,34 @@ func TestDeviceToken(t *testing.T) {
 		value string
 		valid bool
 	}{
-		{"", false}, {"secret", true}, {strings.Repeat("😀", 2048), true}, {strings.Repeat("😀", 2049), false}, {strings.Repeat("x", 4096), true}, {strings.Repeat("x", 4097), false}, {"a\u0085b", false}, {"a\u2003b", false}, {"a\ufeffb", true},
+		{
+			"",
+			false,
+		}, {
+			"secret",
+			true,
+		}, {
+			strings.Repeat("😀", 2048),
+			true,
+		}, {
+			strings.Repeat("😀", 2049),
+			false,
+		}, {
+			strings.Repeat("x", 4096),
+			true,
+		}, {
+			strings.Repeat("x", 4097),
+			false,
+		}, {
+			"a\u0085b",
+			false,
+		}, {
+			"a\u2003b",
+			false,
+		}, {
+			"a\ufeffb",
+			true,
+		},
 	} {
 		token, err := runnerwire.ParseDeviceToken(tc.value)
 		if (err == nil) != tc.valid {

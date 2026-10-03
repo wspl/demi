@@ -80,14 +80,16 @@ func TestBinaryTimesAndContexts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if message, ok := stdin.(*runnerwire.SpawnStdin); !ok || message.SpawnID != "spawn-1" || !bytes.Equal(message.Bytes, []byte{0, 255, 13, 10}) {
+	if message, ok := stdin.(*runnerwire.SpawnStdin); !ok || message.SpawnID != "spawn-1" ||
+		!bytes.Equal(message.Bytes, []byte{0, 255, 13, 10}) {
 		t.Fatalf("stdin=%#v", stdin)
 	}
 	times, err := runnerwire.DecodeInbound(frame(t, "backend-to-runner", "fs_utimes"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if message, ok := times.(*runnerwire.FSUtimes); !ok || message.Atime != -123456789 || message.Mtime != 1790146800123 {
+	if message, ok := times.(*runnerwire.FSUtimes); !ok || message.Atime != -123456789 ||
+		message.Mtime != 1790146800123 {
 		t.Fatalf("times=%#v", times)
 	}
 	start, err := runnerwire.DecodeInbound(frame(t, "backend-to-runner", "job_start"))
@@ -99,7 +101,9 @@ func TestBinaryTimesAndContexts(t *testing.T) {
 		t.Fatalf("job=%T", start)
 	}
 	agent, ok := job.Context.Caller.(*commandwire.AgentCaller)
-	if !ok || agent.Number != 1 || job.Context.Conversation != "conversation-1" || job.Context.Locale.TimeZone != "Asia/Shanghai" || !reflect.DeepEqual(job.Context.Locale.Languages, []commandwire.LanguageTag{"zh-CN", "en"}) {
+	if !ok || agent.Number != 1 || job.Context.Conversation != "conversation-1" ||
+		job.Context.Locale.TimeZone != "Asia/Shanghai" ||
+		!reflect.DeepEqual(job.Context.Locale.Languages, []commandwire.LanguageTag{"zh-CN", "en"}) {
 		t.Fatalf("context=%#v", job.Context)
 	}
 	spawn, err := runnerwire.DecodeInbound(frame(t, "backend-to-runner", "spawn"))
@@ -127,7 +131,8 @@ func TestInboundRefusals(t *testing.T) {
 		`{"type":"fs_stat","id":"file","path":"/work","cwd":null}`,
 		`{"type":"hello_error","code":"unknown","reason":"no"}`,
 		`{"type":"rpc_exit","callId":"call","exitCode":1.5}`,
-		`{"type":"net_open","streamId":"net","host":"h","port":0,"input":{"id":"i","url":"/i"},"output":{"id":"o","url":"/o"}}`,
+		`{"type":"net_open","streamId":"net","host":"h","port":0,"input":{"id":"i",` +
+			`"url":"/i"},"output":{"id":"o","url":"/o"}}`,
 	} {
 		if _, err := runnerwire.DecodeInbound(wireJSON(t, value)); err == nil {
 			t.Errorf("accepted %s", value)
@@ -152,7 +157,13 @@ func TestNestedValidation(t *testing.T) {
 		{"conversation", `{"kind":"user","number":1}`, "", false},
 		{"c", `{"kind":"user"}`, `,"manifestHash":"not a digest"`, false},
 	} {
-		value := fmt.Sprintf(`{"type":"job_start","jobId":"job","context":{"conversation":%q,"caller":%s,"locale":{"timeZone":"UTC","languages":["en"]}},"script":"true","cwd":"/","env":{}%s}`, tc.conversation, tc.caller, tc.hash)
+		value := fmt.Sprintf(
+			`{"type":"job_start","jobId":"job","context":{"conversation":%q,"caller":%s,`+
+				`"locale":{"timeZone":"UTC","languages":["en"]}},"script":"true","cwd":"/","env":{}%s}`,
+			tc.conversation,
+			tc.caller,
+			tc.hash,
+		)
 		_, err := runnerwire.DecodeInbound(wireJSON(t, value))
 		if (err == nil) != tc.valid {
 			t.Errorf("%s: %v", value, err)
@@ -165,12 +176,20 @@ func TestConversationNames(t *testing.T) {
 		name  string
 		valid bool
 	}{
-		{"0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01", true}, {"provider_entry-1", true}, {strings.Repeat("a", 64), true},
-		{"..", false}, {"../jobs", false}, {"a/b", false}, {"", false}, {strings.Repeat("a", 65), false},
+		{"0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01", true},
+		{"provider_entry-1", true},
+		{strings.Repeat("a", 64), true},
+		{"..", false},
+		{"../jobs", false},
+		{"a/b", false},
+		{"", false},
+		{strings.Repeat("a", 65), false},
 	} {
 		for _, value := range []string{
 			fmt.Sprintf(`{"type":"conversation_release","id":"release","conversationId":%q}`, tc.name),
-			fmt.Sprintf(`{"type":"job_start","jobId":"job","context":{"conversation":%q,"caller":{"kind":"user"},"locale":{"timeZone":"UTC","languages":["en"]}},"script":"true","cwd":"/","env":{}}`, tc.name),
+			fmt.Sprintf(`{"type":"job_start","jobId":"job","context":{"conversation":%q,`+
+				`"caller":{"kind":"user"},"locale":{"timeZone":"UTC","languages":["en"]}},`+
+				`"script":"true","cwd":"/","env":{}}`, tc.name),
 		} {
 			_, err := runnerwire.DecodeInbound(wireJSON(t, value))
 			if (err == nil) != tc.valid {
@@ -187,7 +206,13 @@ func TestLogBounds(t *testing.T) {
 			t.Errorf("accepted limit %d", limit)
 		}
 	}
-	_, err := runnerwire.Encode(&runnerwire.LogLines{ID: "log", Lines: []runnerwire.LogLine{{At: 1700000000123, Source: "", Text: "could not list tabs"}}, Next: 42})
+	_, err := runnerwire.Encode(
+		&runnerwire.LogLines{
+			ID:    "log",
+			Lines: []runnerwire.LogLine{{At: 1700000000123, Source: "", Text: "could not list tabs"}},
+			Next:  42,
+		},
+	)
 	if err == nil {
 		t.Fatal("encoded unnamed log source")
 	}
@@ -199,13 +224,24 @@ func TestNumberReservations(t *testing.T) {
 		sequence string
 		valid    bool
 	}{{1, "tab", true}, {16, "tab", true}, {0, "tab", false}, {17, "tab", false}, {1, "command", false}} {
-		_, err := runnerwire.DecodeOutbound(wireJSON(t, fmt.Sprintf(`{"type":"numbers_reserve","id":"numbers","conversationId":"c","sequence":%q,"count":%d}`, tc.sequence, tc.count)))
+		_, err := runnerwire.DecodeOutbound(
+			wireJSON(
+				t,
+				fmt.Sprintf(
+					`{"type":"numbers_reserve","id":"numbers","conversationId":"c","sequence":%q,"count":%d}`,
+					tc.sequence,
+					tc.count,
+				),
+			),
+		)
 		if (err == nil) != tc.valid {
 			t.Errorf("%+v: %v", tc, err)
 		}
 	}
 	for _, first := range []int{0, 1} {
-		_, err := runnerwire.DecodeInbound(wireJSON(t, fmt.Sprintf(`{"type":"numbers_reserved","id":"numbers","first":%d}`, first)))
+		_, err := runnerwire.DecodeInbound(
+			wireJSON(t, fmt.Sprintf(`{"type":"numbers_reserved","id":"numbers","first":%d}`, first)),
+		)
 		if (err == nil) != (first == 1) {
 			t.Errorf("first %d: %v", first, err)
 		}
@@ -232,8 +268,50 @@ func TestGitStatusPairs(t *testing.T) {
 	for _, tc := range []struct {
 		status string
 		valid  bool
-	}{{"M ", true}, {" M", true}, {"??", true}, {"UU", true}, {"R ", true}, {"XY", false}, {"M", false}, {"  ", false}, {"???", false}} {
-		value := fmt.Sprintf(`{"type":"git_ok","id":"git","op":"changes","result":{"repository":true,"head":null,"truncated":false,"watched":false,"files":[{"path":"a","status":%q,"kind":"modified","added":0,"removed":0}]}}`, tc.status)
+	}{
+		{
+			"M ",
+			true,
+		},
+		{
+			" M",
+			true,
+		},
+		{
+			"??",
+			true,
+		},
+		{
+			"UU",
+			true,
+		},
+		{
+			"R ",
+			true,
+		},
+		{
+			"XY",
+			false,
+		},
+		{
+			"M",
+			false,
+		},
+		{
+			"  ",
+			false,
+		},
+		{
+			"???",
+			false,
+		},
+	} {
+		value := fmt.Sprintf(
+			`{"type":"git_ok","id":"git","op":"changes","result":{"repository":true,"head":null,`+
+				`"truncated":false,"watched":false,"files":[{"path":"a","status":%q,"kind":"modified",`+
+				`"added":0,"removed":0}]}}`,
+			tc.status,
+		)
 		_, err := runnerwire.DecodeOutbound(wireJSON(t, value))
 		if (err == nil) != tc.valid {
 			t.Errorf("status %q: %v", tc.status, err)
@@ -243,7 +321,11 @@ func TestGitStatusPairs(t *testing.T) {
 
 func TestRunnerPlatforms(t *testing.T) {
 	data := frame(t, "runner-to-backend", "hello")
-	for name, platform := range map[string]runnerwire.RunnerPlatform{"darwin": runnerwire.RunnerPlatformDarwin, "win32": runnerwire.RunnerPlatformWin32, "linux": runnerwire.RunnerPlatformLinux} {
+	for name, platform := range map[string]runnerwire.RunnerPlatform{
+		"darwin": runnerwire.RunnerPlatformDarwin,
+		"win32":  runnerwire.RunnerPlatformWin32,
+		"linux":  runnerwire.RunnerPlatformLinux,
+	} {
 		if string(platform) != name {
 			t.Fatalf("platform %q, want %q", platform, name)
 		}
@@ -287,7 +369,14 @@ func TestRunnerPlatforms(t *testing.T) {
 }
 
 func TestInstallAndServiceBounds(t *testing.T) {
-	install := runnerwire.Install{Package: "demi.browser", Name: "Chrome for Testing", Version: "153.0.8010.36", Phase: runnerwire.InstallPhaseDownload, Done: 1, Total: 2}
+	install := runnerwire.Install{
+		Package: "demi.browser",
+		Name:    "Chrome for Testing",
+		Version: "153.0.8010.36",
+		Phase:   runnerwire.InstallPhaseDownload,
+		Done:    1,
+		Total:   2,
+	}
 	if _, err := runnerwire.Encode(&runnerwire.Installs{Installs: []runnerwire.Install{install}}); err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +409,9 @@ func TestInstallAndServiceBounds(t *testing.T) {
 }
 
 func TestOversizedReplyFailsItsRequest(t *testing.T) {
-	raw, err := runnerwire.Encode(&runnerwire.FSError{ID: "request-1", Message: strings.Repeat("x", runnerwire.MaxMessageBytes)})
+	raw, err := runnerwire.Encode(
+		&runnerwire.FSError{ID: "request-1", Message: strings.Repeat("x", runnerwire.MaxMessageBytes)},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +429,10 @@ func TestOversizedReplyFailsItsRequest(t *testing.T) {
 	if !ok || refusal.ID != "request-1" || !strings.Contains(refusal.Message, "message limit") {
 		t.Fatalf("reply=%#v", decoded)
 	}
-	same, err := runnerwire.WithinLimit(reply, func(string) ([]byte, error) { t.Fatal("refused a small reply"); return nil, nil })
+	same, err := runnerwire.WithinLimit(
+		reply,
+		func(string) ([]byte, error) { t.Fatal("refused a small reply"); return nil, nil },
+	)
 	if err != nil || !bytes.Equal(same, reply) {
 		t.Fatal("small reply changed")
 	}
@@ -387,7 +481,16 @@ func TestOpaqueManifestDefersVerification(t *testing.T) {
 }
 
 func TestMessagePackOnlyTypesHaveNoJSONCodec(t *testing.T) {
-	for _, value := range []any{&runnerwire.Ping{}, &runnerwire.FSOK{}, &runnerwire.GitOK{}, &runnerwire.KeptOutput{}, &runnerwire.KeptLeftOut{}, new(runnerwire.WireBytes), new(runnerwire.Timestamp), new(runnerwire.Signal)} {
+	for _, value := range []any{
+		&runnerwire.Ping{},
+		&runnerwire.FSOK{},
+		&runnerwire.GitOK{},
+		&runnerwire.KeptOutput{},
+		&runnerwire.KeptLeftOut{},
+		new(runnerwire.WireBytes),
+		new(runnerwire.Timestamp),
+		new(runnerwire.Signal),
+	} {
 		if _, ok := value.(json.Marshaler); ok {
 			t.Errorf("%T acquired an auxiliary JSON encoder", value)
 		}
@@ -398,7 +501,11 @@ func TestMessagePackOnlyTypesHaveNoJSONCodec(t *testing.T) {
 }
 
 func TestGitChangesJSON(t *testing.T) {
-	data := []byte(`{"repository":true,"head":null,"files":[{"path":"a<&>","status":" M","kind":"modified","from":"old","added":2,"removed":1}],"truncated":false,"watched":true}`)
+	data := []byte(
+		`{"repository":true,"head":null,"files":[{"path":"a<&>","status":" M",` +
+			`"kind":"modified","from":"old","added":2,"removed":1}],"truncated":false,` +
+			`"watched":true}`,
+	)
 	changes, err := runnerwire.DecodeGitChanges(data)
 	if err != nil {
 		t.Fatal(err)

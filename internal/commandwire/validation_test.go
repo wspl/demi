@@ -9,7 +9,9 @@ import (
 )
 
 func TestCommandInputValidation(t *testing.T) {
-	valid := `{"operation":"echo","invocationId":"i","context":{"conversation":"c-1","caller":{"kind":"agent","number":18446744073709551615},"locale":{"timeZone":"UTC","languages":["en"]}},"args":{},"cwd":"/tmp","env":{}}`
+	valid := `{"operation":"echo","invocationId":"i","context":{"conversation":"c-1",` +
+		`"caller":{"kind":"agent","number":18446744073709551615},"locale":{"timeZone":"UTC",` +
+		`"languages":["en"]}},"args":{},"cwd":"/tmp","env":{}}`
 	if _, err := commandwire.DecodeInvocation([]byte(valid)); err != nil {
 		t.Fatal(err)
 	}
@@ -39,9 +41,12 @@ func TestStreamOutcomes(t *testing.T) {
 		data  string
 		valid bool
 	}{
-		{`{"id":1,"first":1}`, true}, {`{"id":1,"error":"failed"}`, true},
-		{`{"id":1}`, false}, {`{"id":1,"first":1,"error":"failed"}`, false},
-		{`{"id":1,"first":0}`, false}, {`{"id":1,"error":""}`, false},
+		{`{"id":1,"first":1}`, true},
+		{`{"id":1,"error":"failed"}`, true},
+		{`{"id":1}`, false},
+		{`{"id":1,"first":1,"error":"failed"}`, false},
+		{`{"id":1,"first":0}`, false},
+		{`{"id":1,"error":""}`, false},
 	} {
 		_, err := commandwire.DecodeNumbersAnswer([]byte(tc.data))
 		if (err == nil) != tc.valid {
@@ -52,8 +57,10 @@ func TestStreamOutcomes(t *testing.T) {
 		data  string
 		valid bool
 	}{
-		{`{"id":1,"installed":[]}`, true}, {`{"id":1,"path":"/tmp/x"}`, true},
-		{`{"id":1,"error":"failed"}`, true}, {`{"id":1}`, false},
+		{`{"id":1,"installed":[]}`, true},
+		{`{"id":1,"path":"/tmp/x"}`, true},
+		{`{"id":1,"error":"failed"}`, true},
+		{`{"id":1}`, false},
 		{`{"id":1,"installed":[],"path":"/tmp/x"}`, false},
 	} {
 		_, err := commandwire.DecodeArtifactAnswer([]byte(tc.data))
@@ -73,8 +80,11 @@ func TestPackageValidation(t *testing.T) {
 		url   string
 		valid bool
 	}{
-		{"https://example.com/a?signature=abc", true}, {"http://localhost/a", true},
-		{"file:///tmp/a", false}, {"https://user:pass@example.com/a", false}, {"https://user@example.com", false},
+		{"https://example.com/a?signature=abc", true},
+		{"http://localhost/a", true},
+		{"file:///tmp/a", false},
+		{"https://user:pass@example.com/a", false},
+		{"https://user@example.com", false},
 	} {
 		value := commandwire.ArtifactURL{URL: tc.url}
 		_, err := contract.EncodeJSON(&value)
@@ -93,7 +103,8 @@ func TestPackageValidation(t *testing.T) {
 }
 
 func TestEditJournalBoundary(t *testing.T) {
-	valid := `{"files":[{"path":"file.txt","kind":"modified","edits":[{"original":"0.before","modified":"0.after"}]}],"bytesCopied":10,"nextSegment":1,"filesTruncated":false}`
+	valid := `{"files":[{"path":"file.txt","kind":"modified","edits":[{"original":"0.before",` +
+		`"modified":"0.after"}]}],"bytesCopied":10,"nextSegment":1,"filesTruncated":false}`
 	if _, err := commandwire.DecodeEditJournal([]byte(valid)); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +137,10 @@ func TestConversationAndEditContext(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, invalid := range []string{`{"operation":"release","conversation":".."}`, `{"operation":"status","conversation":"conv_1"}`} {
+	for _, invalid := range []string{
+		`{"operation":"release","conversation":".."}`,
+		`{"operation":"status","conversation":"conv_1"}`,
+	} {
 		if _, err := commandwire.DecodeConversationRequest([]byte(invalid)); err == nil {
 			t.Fatal("accepted invalid lifecycle request")
 		}

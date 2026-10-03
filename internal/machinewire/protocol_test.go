@@ -87,7 +87,11 @@ func output[T any](t *testing.T, name string, op machinewire.Operation[T]) T {
 
 func TestOperationResults(t *testing.T) {
 	state := output(t, "image_state", machinewire.ImageStateParams{})
-	if state == nil || state.Generation != "7d2c9b1a-5e4f-4a3b-8c2d-1e0f9a8b7c6d" || string(state.BaseVersion) != strings.Repeat("b", 64) || state.ResetID != nil || state.SystemBytes != 1<<30 || state.HomeBytes != 2<<30 {
+	if state == nil || state.Generation != "7d2c9b1a-5e4f-4a3b-8c2d-1e0f9a8b7c6d" ||
+		string(state.BaseVersion) != strings.Repeat("b", 64) ||
+		state.ResetID != nil ||
+		state.SystemBytes != 1<<30 ||
+		state.HomeBytes != 2<<30 {
 		t.Fatalf("unexpected state: %+v", state)
 	}
 	reset := output(t, "image_state.reset", machinewire.ImageStateParams{})
@@ -107,7 +111,14 @@ func TestOperationResults(t *testing.T) {
 		t.Fatal("base version")
 	}
 	output(t, "reconcile", machinewire.ReconcileParams{})
-	for _, op := range []machinewire.Operation[machinewire.Unit]{machinewire.ReconcileParams{}, machinewire.WakeParams{}, machinewire.HibernateParams{}, machinewire.CheckpointParams{}, machinewire.GrowVolumeParams{}, machinewire.ResetParams{}} {
+	for _, op := range []machinewire.Operation[machinewire.Unit]{
+		machinewire.ReconcileParams{},
+		machinewire.WakeParams{},
+		machinewire.HibernateParams{},
+		machinewire.CheckpointParams{},
+		machinewire.GrowVolumeParams{},
+		machinewire.ResetParams{},
+	} {
 		if _, err := op.DecodeOutput([]byte("null")); err != nil {
 			t.Fatal(err)
 		}
@@ -140,14 +151,19 @@ func TestRequestValidation(t *testing.T) {
 		`{"id":"1","op":"hibernate","params":{"deviceId":""}}`,
 		`{"id":"1","op":"hibernate","params":{"deviceId":7}}`,
 		`{"id":"1","op":"wake","params":{"deviceId":"dev-1"}}`,
-		`{"id":"1","op":"wake","params":{"deviceId":"dev-1","boot":{"backendUrl":"http://backend","deviceToken":"opaque","command":"x"}}}`,
+		`{"id":"1","op":"wake","params":{"deviceId":"dev-1",` +
+			`"boot":{"backendUrl":"http://backend","deviceToken":"opaque","command":"x"}}}`,
 		`{"id":"1","op":"wake","params":{"deviceId":"dev-1","boot":{"backendUrl":"ftp://backend","deviceToken":"opaque"}}}`,
-		`{"id":"1","op":"wake","params":{"deviceId":"dev-1","boot":{"backendUrl":"http://backend","deviceToken":"two words"}}}`,
+		`{"id":"1","op":"wake","params":{"deviceId":"dev-1",` +
+			`"boot":{"backendUrl":"http://backend","deviceToken":"two words"}}}`,
 		`{"id":"1","op":"reset","params":{"deviceId":"dev-1","operationId":"","baseVersion":"b"}}`,
 		`{"id":"1","op":"reset","params":{"deviceId":"dev-1","operationId":"o"}}`,
 	}
 	for _, size := range []string{"0", "-1", "1.5"} {
-		refused = append(refused, `{"id":"1","op":"grow_volume","params":{"deviceId":"dev-1","volume":"home","bytes":`+size+`}}`)
+		refused = append(
+			refused,
+			`{"id":"1","op":"grow_volume","params":{"deviceId":"dev-1","volume":"home","bytes":`+size+`}}`,
+		)
 	}
 	refused = append(refused, `{"id":"1","op":"grow_volume","params":{"deviceId":"dev-1","volume":"swap","bytes":1}}`)
 	for _, line := range refused {
@@ -158,7 +174,12 @@ func TestRequestValidation(t *testing.T) {
 }
 
 func TestResponseValidation(t *testing.T) {
-	for _, line := range []string{`{"type":"done","id":"1"}`, `{"type":"ok","result":null}`, `{"type":"error","id":"1"}`, `{"type":"death","deviceId":""}`} {
+	for _, line := range []string{
+		`{"type":"done","id":"1"}`,
+		`{"type":"ok","result":null}`,
+		`{"type":"error","id":"1"}`,
+		`{"type":"death","deviceId":""}`,
+	} {
 		if _, err := machinewire.DecodeResponse([]byte(line)); err == nil {
 			t.Errorf("accepted %s", line)
 		}
@@ -220,7 +241,10 @@ func TestBootCredentialRedaction(t *testing.T) {
 
 // The wake boundary delegates URL normalization to the runner's boot codec.
 func TestBootURLNormalization(t *testing.T) {
-	input := []byte(`{"id":"1","op":"wake","params":{"deviceId":"dev-1","boot":{"backendUrl":"HTTP://BACKEND.EXAMPLE.COM:80","deviceToken":"opaque"}}}`)
+	input := []byte(
+		`{"id":"1","op":"wake","params":{"deviceId":"dev-1",` +
+			`"boot":{"backendUrl":"HTTP://BACKEND.EXAMPLE.COM:80","deviceToken":"opaque"}}}`,
+	)
 	request, err := machinewire.DecodeRequest(input)
 	if err != nil {
 		t.Fatal(err)
@@ -240,13 +264,37 @@ func manifest() machinewire.CloudImageManifest {
 	runner := commandwire.PackageArtifact{SHA256: strings.Repeat("a", 64), Size: 38710848}
 	file := commandwire.PackageArtifact{SHA256: strings.Repeat("c", 64), Size: 2048}
 	return machinewire.CloudImageManifest{
-		FormatVersion: 1, OS: machinewire.OSLinux, Architecture: machinewire.ArchitectureARM64,
-		Rootfs: machinewire.RootfsArchive{SHA256: strings.Repeat("d", 64), Size: 733308752, File: machinewire.RootfsTarZst}, Ubuntu: "26.04",
-		Packages:    []machinewire.InstalledPackage{{Name: "adduser", Version: "3.153ubuntu1"}},
-		Executables: map[string]commandwire.PackageArtifact{machinewire.RunnerPath: runner, machinewire.InitPath: {SHA256: strings.Repeat("e", 64), Size: 10}, runnerwire.ArtifactsPath + "/" + file.SHA256 + "/demi-file": file},
-		Releases:    []commandwire.PackageDescriptor{{ID: "demi.file", Version: "0.1.3", ProtocolVersion: 1, Operations: []string{"file.read"}, Targets: map[string]commandwire.PackageArtifact{"aarch64-unknown-linux-musl": file}}},
-		Runner:      runnerwire.RunnerRelease{Release: strings.Repeat("f", 64), Wire: 24, CommandProtocol: 1, Targets: map[string]commandwire.PackageArtifact{"aarch64-unknown-linux-musl": runner}},
-		Tools:       []machinewire.StandaloneTool{{Name: "uv", Version: "0.12.13", SHA256: strings.Repeat("9", 64)}},
+		FormatVersion: 1,
+		OS:            machinewire.OSLinux,
+		Architecture:  machinewire.ArchitectureARM64,
+		Rootfs: machinewire.RootfsArchive{
+			SHA256: strings.Repeat("d", 64),
+			Size:   733308752,
+			File:   machinewire.RootfsTarZst,
+		},
+		Ubuntu:   "26.04",
+		Packages: []machinewire.InstalledPackage{{Name: "adduser", Version: "3.153ubuntu1"}},
+		Executables: map[string]commandwire.PackageArtifact{
+			machinewire.RunnerPath: runner,
+			machinewire.InitPath:   {SHA256: strings.Repeat("e", 64), Size: 10},
+			runnerwire.ArtifactsPath + "/" + file.SHA256 + "/demi-file": file,
+		},
+		Releases: []commandwire.PackageDescriptor{
+			{
+				ID:              "demi.file",
+				Version:         "0.1.3",
+				ProtocolVersion: 1,
+				Operations:      []string{"file.read"},
+				Targets:         map[string]commandwire.PackageArtifact{"aarch64-unknown-linux-musl": file},
+			},
+		},
+		Runner: runnerwire.RunnerRelease{
+			Release:         strings.Repeat("f", 64),
+			Wire:            24,
+			CommandProtocol: 1,
+			Targets:         map[string]commandwire.PackageArtifact{"aarch64-unknown-linux-musl": runner},
+		},
+		Tools: []machinewire.StandaloneTool{{Name: "uv", Version: "0.12.13", SHA256: strings.Repeat("9", 64)}},
 	}
 }
 
@@ -259,7 +307,8 @@ func TestManifestEmbeddedReleases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Architecture != machinewire.ArchitectureARM64 || decoded.Architecture.Target() != "aarch64-unknown-linux-musl" {
+	if decoded.Architecture != machinewire.ArchitectureARM64 ||
+		decoded.Architecture.Target() != "aarch64-unknown-linux-musl" {
 		t.Fatal("image target")
 	}
 	changed := manifest()
@@ -285,9 +334,26 @@ func TestManifestEmbeddedReleases(t *testing.T) {
 		t.Fatal("missing release not identified")
 	}
 	for _, mutation := range []struct{ old, new string }{
-		{`"formatVersion":1`, `"formatVersion":2`}, {`"os":"linux"`, `"os":"darwin"`}, {`"ubuntu":"26.04"`, `"ubuntu":""`}, {`"formatVersion":1`, `"extra":true,"formatVersion":1`}, {`rootfs.tar.zst`, `rootfs.tar`},
+		{
+			`"formatVersion":1`,
+			`"formatVersion":2`,
+		}, {
+			`"os":"linux"`,
+			`"os":"darwin"`,
+		}, {
+			`"ubuntu":"26.04"`,
+			`"ubuntu":""`,
+		}, {
+			`"formatVersion":1`,
+			`"extra":true,"formatVersion":1`,
+		}, {
+			`rootfs.tar.zst`,
+			`rootfs.tar`,
+		},
 	} {
-		if _, err := machinewire.DecodeCloudImageManifest(bytes.Replace(data, []byte(mutation.old), []byte(mutation.new), 1)); err == nil {
+		if _, err := machinewire.DecodeCloudImageManifest(
+			bytes.Replace(data, []byte(mutation.old), []byte(mutation.new), 1),
+		); err == nil {
 			t.Errorf("accepted %s", mutation.new)
 		}
 	}
@@ -322,7 +388,10 @@ func TestLineLimitAndEscaping(t *testing.T) {
 	if err != nil || !bytes.Contains(data, []byte(special)) {
 		t.Fatalf("escaping: %s %v", data, err)
 	}
-	for _, bad := range [][]byte{[]byte(`{"type":"death","deviceId":"a","deviceId":"b"}`), []byte("{\"type\":\"death\",\"deviceId\":\"\xff\"}")} {
+	for _, bad := range [][]byte{
+		[]byte(`{"type":"death","deviceId":"a","deviceId":"b"}`),
+		[]byte("{\"type\":\"death\",\"deviceId\":\"\xff\"}"),
+	} {
 		if _, err := machinewire.DecodeResponse(bad); err == nil {
 			t.Fatal("accepted malformed JSON")
 		}
@@ -331,7 +400,12 @@ func TestLineLimitAndEscaping(t *testing.T) {
 
 // Retain the opaque result's exact integer range until its operation decodes it.
 func TestResultIntegerPrecision(t *testing.T) {
-	response, err := machinewire.DecodeResponse([]byte(`{"type":"ok","id":"1","result":{"generation":"g","baseVersion":"b","resetId":null,"systemBytes":18446744073709551615,"homeBytes":1}}`))
+	response, err := machinewire.DecodeResponse(
+		[]byte(
+			`{"type":"ok","id":"1","result":{"generation":"g","baseVersion":"b","resetId":null,` +
+				`"systemBytes":18446744073709551615,"homeBytes":1}}`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

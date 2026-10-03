@@ -168,7 +168,14 @@ func (n *CountingNumbers) Next(_ context.Context, sequence core.Sequence) (uint6
 
 // CommandContext is the test context, with locale different from the backend default.
 func CommandContext() commandwire.CommandContext {
-	return commandwire.CommandContext{Conversation: "test-conversation", Caller: &commandwire.AgentCaller{Number: 1}, Locale: commandwire.CommandLocale{TimeZone: "Asia/Shanghai", Languages: []commandwire.LanguageTag{"zh-CN", "en"}}}
+	return commandwire.CommandContext{
+		Conversation: "test-conversation",
+		Caller:       &commandwire.AgentCaller{Number: 1},
+		Locale: commandwire.CommandLocale{
+			TimeZone:  "Asia/Shanghai",
+			Languages: []commandwire.LanguageTag{"zh-CN", "en"},
+		},
+	}
 }
 
 // Pages captures every reported page view and exposes watching changes without goroutines.

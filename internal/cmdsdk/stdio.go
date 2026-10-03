@@ -20,7 +20,10 @@ func ServeStdio(ctx context.Context, h Handler[commandwire.Invocation]) error {
 // Close releases both files; callers must not use them afterward.
 type PipeConn struct{ Reader, Writer *os.File }
 
-func (c *PipeConn) Read(b []byte) (int, error)  { return c.Reader.Read(b) }
+// Read reads from the owned input.
+func (c *PipeConn) Read(b []byte) (int, error) { return c.Reader.Read(b) }
+
+// Write writes to the owned output.
 func (c *PipeConn) Write(b []byte) (int, error) { return c.Writer.Write(b) }
 
 // Close releases both pipe ends.

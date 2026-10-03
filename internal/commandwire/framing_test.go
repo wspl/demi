@@ -11,7 +11,17 @@ import (
 )
 
 func TestFragmentedResponse(t *testing.T) {
-	records := []commandwire.Record{commandwire.Stdout("hello"), commandwire.Stderr{0, 255}, commandwire.InputPull{}, commandwire.Completed{Completion: commandwire.Completion{ExitCode: 7, Error: &commandwire.CommandError{Code: "failed", Message: "why"}}}}
+	records := []commandwire.Record{
+		commandwire.Stdout("hello"),
+		commandwire.Stderr{0, 255},
+		commandwire.InputPull{},
+		commandwire.Completed{
+			Completion: commandwire.Completion{
+				ExitCode: 7,
+				Error:    &commandwire.CommandError{Code: "failed", Message: "why"},
+			},
+		},
+	}
 	var wire []byte
 	for _, r := range records {
 		data, err := commandwire.EncodeRecord(r)
@@ -111,7 +121,13 @@ func TestBoundedFrames(t *testing.T) {
 	if _, err := commandwire.EncodeRecord(commandwire.Stdout(data)); !errors.Is(err, commandwire.ErrTooLarge) {
 		t.Fatal(err)
 	}
-	metadata := commandwire.LocalInvocation{Operation: "echo", InvocationID: "1", Args: []byte(`{}`), Cwd: "/tmp", Env: map[string]string{}}
+	metadata := commandwire.LocalInvocation{
+		Operation:    "echo",
+		InvocationID: "1",
+		Args:         []byte(`{}`),
+		Cwd:          "/tmp",
+		Env:          map[string]string{},
+	}
 	framed, err := commandwire.EncodeMetadata(metadata)
 	if err != nil {
 		t.Fatal(err)
@@ -171,19 +187,28 @@ func TestLifecycleMetadataFraming(t *testing.T) {
 		{"release", func() ([]byte, error) {
 			return commandwire.EncodeConversationRequest(&commandwire.ConversationRelease{Conversation: "conv_1"})
 		}, `{"operation":"release","conversation":"conv_1"}`},
-		{"status", func() ([]byte, error) { return commandwire.EncodeConversationRequest(&commandwire.ConversationQuery{}) }, `{"operation":"status"}`},
+		{
+			"status",
+			func() ([]byte, error) {
+				return commandwire.EncodeConversationRequest(&commandwire.ConversationQuery{})
+			},
+			`{"operation":"status"}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			frame, err := tc.encode()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(frame) < 4 || int(binary.BigEndian.Uint32(frame[:4])) != len(frame)-4 || string(frame[4:]) != tc.want {
+			if len(frame) < 4 || int(binary.BigEndian.Uint32(frame[:4])) != len(frame)-4 ||
+				string(frame[4:]) != tc.want {
 				t.Fatalf("metadata frame = %q; want length-prefixed %s", frame, tc.want)
 			}
 		})
 	}
-	if _, err := commandwire.EncodeConversationRequest(&commandwire.ConversationRelease{Conversation: "../invalid"}); err == nil {
+	if _, err := commandwire.EncodeConversationRequest(
+		&commandwire.ConversationRelease{Conversation: "../invalid"},
+	); err == nil {
 		t.Fatal("invalid conversation release was framed")
 	}
 }
@@ -197,10 +222,24 @@ func TestFramedJSONMatchesSerdeEscaping(t *testing.T) {
 		want   string
 	}{
 		{"completion", func() ([]byte, error) {
-			return commandwire.EncodeRecord(commandwire.Completed{Completion: commandwire.Completion{ExitCode: 1, Error: &commandwire.CommandError{Code: "failed", Message: text}}})
+			return commandwire.EncodeRecord(commandwire.Completed{
+				Completion: commandwire.Completion{
+					ExitCode: 1,
+					Error: &commandwire.CommandError{
+						Code:    "failed",
+						Message: text,
+					},
+				},
+			})
 		}, 5, `{"exitCode":1,"error":{"code":"failed","message":"` + text + `"}}`},
 		{"metadata", func() ([]byte, error) {
-			return commandwire.EncodeMetadata(commandwire.LocalInvocation{Operation: text, InvocationID: "i", Args: []byte(`{}`), Cwd: "/tmp", Env: map[string]string{}})
+			return commandwire.EncodeMetadata(commandwire.LocalInvocation{
+				Operation:    text,
+				InvocationID: "i",
+				Args:         []byte(`{}`),
+				Cwd:          "/tmp",
+				Env:          map[string]string{},
+			})
 		}, 4, `{"operation":"` + text + `","invocationId":"i","args":{},"cwd":"/tmp","env":{}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

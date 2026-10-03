@@ -40,6 +40,7 @@ func OutputChannel(ctx context.Context) (*Output, <-chan commandwire.Record) {
 	o := &Output{ctx: ctx, records: make(chan commandwire.Record, 4)}
 	return o, o.records
 }
+
 func (o *Output) send(ctx context.Context, r commandwire.Record) error {
 	if err := o.ctx.Err(); err != nil {
 		return err
@@ -59,6 +60,7 @@ func (o *Output) Stdout(ctx context.Context, b []byte) error { return o.write(ct
 
 // Stderr writes bytes as bounded standard error records.
 func (o *Output) Stderr(ctx context.Context, b []byte) error { return o.write(ctx, b, true) }
+
 func (o *Output) write(ctx context.Context, b []byte, stderr bool) error {
 	for len(b) > 0 {
 		n := min(len(b), commandwire.MaxRecordBytes)
@@ -82,6 +84,7 @@ type httpInput struct {
 	ended     bool
 }
 
+// Next requests and reads one bounded invocation input chunk.
 func (i *httpInput) Next(ctx context.Context) ([]byte, error) {
 	if i.ended {
 		return nil, io.EOF

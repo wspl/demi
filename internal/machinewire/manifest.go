@@ -3,17 +3,16 @@ package machinewire
 import (
 	"errors"
 	"fmt"
-
 	"runtime"
 	"strings"
 
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
-// Where the runner executable lives in every image.
+// RunnerPath is where the runner executable lives in every image.
 const RunnerPath = "/usr/bin/demi-runner"
 
-// The image's init, which runs the runner and reaps orphaned processes.
+// InitPath names the image's init, which runs the runner and reaps orphaned processes.
 const InitPath = "/usr/bin/tini"
 
 // Supported image architectures, operating system and archive file.
@@ -29,15 +28,15 @@ const (
 //nolint:staticcheck // Preserve the Rust manifest diagnostic verbatim.
 var ErrManifestRunner = errors.New("Runner release must identify the embedded executable")
 
-// A manifest the manager or the packaging command refuses.
+// ManifestError reports a manifest the manager or the packaging command refuses.
 type ManifestError struct{ Release string }
 
+// Error returns the failure message.
 func (e *ManifestError) Error() string {
 	return fmt.Sprintf("Missing embedded artifact for %s", e.Release)
 }
 
-// The architecture this program was built for, if Cloud images exist
-// for it.
+// HostArchitecture returns the build architecture if Cloud images exist for it.
 func HostArchitecture() (Architecture, bool) {
 	switch runtime.GOARCH {
 	case "amd64":
@@ -49,7 +48,7 @@ func HostArchitecture() (Architecture, bool) {
 	}
 }
 
-// The native target of the image's executables.
+// Target returns the native target of the image's executables.
 func (a Architecture) Target() string {
 	switch a {
 	case ArchitectureAMD64:

@@ -67,9 +67,22 @@ func TestKeptRecordRefusals(t *testing.T) {
 		t.Fatalf("round trip = %v, %v", decoded, err)
 	}
 	gap := encodeRecords(t, []runnerwire.KeptRecord{&runnerwire.KeptLeftOut{Bytes: 1}})
-	empty := encodeRecords(t, []runnerwire.KeptRecord{&runnerwire.KeptOutput{Stream: runnerwire.Stdout, Bytes: []byte{}}})
-	oversized := encodeRecords(t, []runnerwire.KeptRecord{&runnerwire.KeptOutput{Stream: runnerwire.Stdout, Bytes: make([]byte, runnerwire.JobKeptBytes)}})
-	for name, invalid := range map[string][]byte{"second gap": append(bytes.Clone(data), gap...), "truncated": data[:len(data)-1], "empty read": empty, "size": oversized} {
+	empty := encodeRecords(
+		t,
+		[]runnerwire.KeptRecord{&runnerwire.KeptOutput{Stream: runnerwire.Stdout, Bytes: []byte{}}},
+	)
+	oversized := encodeRecords(
+		t,
+		[]runnerwire.KeptRecord{
+			&runnerwire.KeptOutput{Stream: runnerwire.Stdout, Bytes: make([]byte, runnerwire.JobKeptBytes)},
+		},
+	)
+	for name, invalid := range map[string][]byte{
+		"second gap": append(bytes.Clone(data), gap...),
+		"truncated":  data[:len(data)-1],
+		"empty read": empty,
+		"size":       oversized,
+	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := runnerwire.DecodeRecords(invalid); err == nil {
 				t.Fatal("accepted invalid kept output")
@@ -79,7 +92,12 @@ func TestKeptRecordRefusals(t *testing.T) {
 }
 
 func TestReleaseRecord(t *testing.T) {
-	record := `{"release":"317dd84e2ce0846a1bea4bc5959959c04af7ba8e4de32b3752fdd6b409f7b1a5","wire":24,"commandProtocol":1,"targets":{"aarch64-apple-darwin":{"sha256":"dbf18cb3af50a3348a834ea9cee7981f7354f84aa89764f4d68812c81ebe045b","size":38772096},"aarch64-unknown-linux-musl":{"sha256":"5d4219232ad6a95b2a0e72097011e91ae3773e8523e8032788904fa0e9164197","size":38710848}}}`
+	record := `{"release":"317dd84e2ce0846a1bea4bc5959959c04af7ba8e4de32b3752fdd6b409f7b1a5",` +
+		`"wire":24,"commandProtocol":1,` +
+		`"targets":{"aarch64-apple-darwin":` +
+		`{"sha256":"dbf18cb3af50a3348a834ea9cee7981f7354f84aa89764f4d68812c81ebe045b","size":38772096},` +
+		`"aarch64-unknown-linux-musl":` +
+		`{"sha256":"5d4219232ad6a95b2a0e72097011e91ae3773e8523e8032788904fa0e9164197","size":38710848}}}`
 	if _, err := runnerwire.DecodeRunnerRelease([]byte(record)); err != nil {
 		t.Fatal(err)
 	}

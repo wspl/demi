@@ -134,7 +134,10 @@ func describeSchema(document []byte, path []string, description string) (json.Ra
 // RegisterError describes a refused declaration.
 type RegisterError struct{ err error }
 
+// Error returns the failure message.
 func (e *RegisterError) Error() string { return e.err.Error() }
+
+// Unwrap returns the underlying failure.
 func (e *RegisterError) Unwrap() error { return e.err }
 
 // CommandSet holds roots in registration order and their RPC handlers.
@@ -190,7 +193,10 @@ func (s *CommandSet) Graft(parent []string, d Declared) error {
 		return &RegisterError{fmt.Errorf("%q is not a group", strings.Join(parent, " "))}
 	}
 	name := declare.Name(d.tree)
-	childIndex := slices.IndexFunc(group.Subcommands, func(n declare.Node[declare.NativeOperation]) bool { return declare.Name(n) == name })
+	childIndex := slices.IndexFunc(
+		group.Subcommands,
+		func(n declare.Node[declare.NativeOperation]) bool { return declare.Name(n) == name },
+	)
 	if childIndex < 0 {
 		group.Subcommands = append(group.Subcommands, cloneNode(d.tree))
 	} else {
@@ -348,7 +354,11 @@ func checkDeclared(d Declared) error {
 }
 
 // walkLeaves visits command leaves in declaration order with their root-relative paths.
-func walkLeaves(node declare.Node[declare.NativeOperation], path []string, visit func([]string, *declare.Leaf[declare.NativeOperation])) {
+func walkLeaves(
+	node declare.Node[declare.NativeOperation],
+	path []string,
+	visit func([]string, *declare.Leaf[declare.NativeOperation]),
+) {
 	path = append(slices.Clone(path), declare.Name(node))
 	switch node := node.(type) {
 	case *declare.Leaf[declare.NativeOperation]:
@@ -382,7 +392,11 @@ func findNode(node declare.Node[declare.NativeOperation], path []string) declare
 }
 
 // keepLeaves copies the command subtree accepted by a leaf predicate.
-func keepLeaves(node declare.Node[declare.NativeOperation], path []string, keep func([]string) bool) declare.Node[declare.NativeOperation] {
+func keepLeaves(
+	node declare.Node[declare.NativeOperation],
+	path []string,
+	keep func([]string) bool,
+) declare.Node[declare.NativeOperation] {
 	path = append(slices.Clone(path), declare.Name(node))
 	switch n := node.(type) {
 	case *declare.Leaf[declare.NativeOperation]:

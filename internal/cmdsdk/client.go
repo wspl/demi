@@ -15,12 +15,15 @@ import (
 	"github.com/wspl/demi/internal/commandwire"
 )
 
-const phaseTimeout = 10 * time.Second
-const cancelTimeout = 5 * time.Second
+const (
+	phaseTimeout  = 10 * time.Second
+	cancelTimeout = 5 * time.Second
+)
 
 // RejectedError is an HTTP rejection before a handler starts.
 type RejectedError struct{ Status int }
 
+// Error returns the failure message.
 func (e *RejectedError) Error() string {
 	return fmt.Sprintf("service rejected HTTP request with status %d", e.Status)
 }
@@ -30,6 +33,7 @@ func protocols() *http.Protocols {
 	p.SetUnencryptedHTTP2(true)
 	return p
 }
+
 func h2Config(client bool) *http.HTTP2Config {
 	window := int(1<<31 - 1)
 	if client {
@@ -37,7 +41,11 @@ func h2Config(client bool) *http.HTTP2Config {
 	}
 	// The handler limit exceeds the number of stream IDs on a connection, so
 	// neither admission nor its early-reset queue guard can bind.
-	return &http.HTTP2Config{MaxConcurrentStreams: 1<<31 - 1, MaxReceiveBufferPerConnection: window, MaxReceiveBufferPerStream: commandwire.MaxRecordBytes}
+	return &http.HTTP2Config{
+		MaxConcurrentStreams:          1<<31 - 1,
+		MaxReceiveBufferPerConnection: window,
+		MaxReceiveBufferPerStream:     commandwire.MaxRecordBytes,
+	}
 }
 
 // Client owns exactly one HTTP/2 connection. Close releases it.
@@ -60,12 +68,17 @@ func Connect(ctx context.Context, conn net.Conn) (*Client, error) {
 	})
 	defer stopInterrupt()
 	var dialed atomic.Bool
-	t := &http.Transport{Protocols: protocols(), HTTP2: h2Config(true), MaxResponseHeaderBytes: 16 * 1024, DialContext: func(context.Context, string, string) (net.Conn, error) {
-		if dialed.Swap(true) {
-			return nil, errors.New("command connection already taken")
-		}
-		return conn, nil
-	}}
+	t := &http.Transport{
+		Protocols:              protocols(),
+		HTTP2:                  h2Config(true),
+		MaxResponseHeaderBytes: 16 * 1024,
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			if dialed.Swap(true) {
+				return nil, errors.New("command connection already taken")
+			}
+			return conn, nil
+		},
+	}
 	cc, err := t.NewClientConn(ctx, "http", "demi:80")
 	if err != nil {
 		return nil, errors.Join(err, conn.Close())
@@ -79,6 +92,7 @@ func Connect(ctx context.Context, conn net.Conn) (*Client, error) {
 
 // Close closes the service connection and cancels its streams.
 func (c *Client) Close() error { return c.connection.Close() }
+
 func (c *Client) request(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, "http://demi"+path, body)
 	if err != nil {
@@ -121,14 +135,23 @@ func (c *Client) Invoke(ctx context.Context, m commandwire.Metadata) (*CommandIn
 }
 
 // Conversation sends the complete metadata-only lifecycle request with EOF.
-func (c *Client) Conversation(ctx context.Context, m commandwire.ConversationRequest) (*CommandInput, *CommandOutput, error) {
+func (c *Client) Conversation(
+	ctx context.Context,
+	m commandwire.ConversationRequest,
+) (*CommandInput, *CommandOutput, error) {
 	b, err := commandwire.EncodeConversationRequest(m)
 	if err != nil {
 		return nil, nil, err
 	}
 	return c.invokeAt(ctx, commandwire.ConversationPath, b, true)
 }
-func (c *Client) invokeAt(ctx context.Context, path string, b []byte, finite bool) (*CommandInput, *CommandOutput, error) {
+
+func (c *Client) invokeAt(
+	ctx context.Context,
+	path string,
+	b []byte,
+	finite bool,
+) (*CommandInput, *CommandOutput, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	reader, writer := io.Pipe()
 	var body io.Reader = &requestBody{Reader: io.MultiReader(bytes.NewReader(b), reader), closer: reader}
@@ -252,4 +275,5 @@ type requestBody struct {
 	closer io.Closer
 }
 
+// Close releases the owned transport.
 func (b *requestBody) Close() error { return b.closer.Close() }

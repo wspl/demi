@@ -98,11 +98,11 @@ func (r *CommandRecord) AppendOutput(stream core.StreamKind, text string) bool {
 	defer r.mu.Unlock()
 	r.streams[streamIndex(stream)].text += text
 	if text != "" {
-		offset := r.mergedLength()
+		offset := r.mergedLengthLocked()
 		r.chunks = append(r.chunks, recordChunk{stream, text, offset})
 	}
 	r.lastOutput = time.Now()
-	return r.appendPage(text)
+	return r.appendPageLocked(text)
 }
 
 // AppendPageOutput appends output held only by the page view.
@@ -110,7 +110,7 @@ func (r *CommandRecord) AppendPageOutput(text string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.lastOutput = time.Now()
-	return r.appendPage(text)
+	return r.appendPageLocked(text)
 }
 
 // Grew reports Host-side stream growth and refreshes idle time.
@@ -145,7 +145,7 @@ func (r *CommandRecord) Settle(ending Ending, whole *WholeOutput, binary *Binary
 	defer r.mu.Unlock()
 	running := r.state.Phase == Running
 	if running {
-		r.pushPage(page)
+		r.pushPageLocked(page)
 	}
 	r.whole = whole
 	r.lastOutput = time.Now()
@@ -172,22 +172,15 @@ func (r *CommandRecord) MarkAborted() bool {
 func (r *CommandRecord) Status(limit int, hint *string) CommandStatus {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	status := CommandStatus{ShellID: r.shellID, CommandID: r.commandID, State: r.state, Files: cloneEditedFiles(r.files)}
+	status := CommandStatus{
+		ShellID:   r.shellID,
+		CommandID: r.commandID,
+		State:     r.state,
+		Files:     cloneEditedFiles(r.files),
+	}
 	status.State.BinaryStdout = cloneBinaryOutput(r.state.BinaryStdout)
 	if r.whole != nil {
-		seen := Seen{}
-		if r.wholeSeen {
-			seen = Seen{math.MaxUint64, math.MaxUint64}
-		} else {
-			for _, chunk := range r.chunks {
-				n := uint64(min(max(r.positions[2]-chunk.offset, 0), len(chunk.text)))
-				if chunk.stream == core.StreamKind("stdout") {
-					seen.Stdout += n
-				} else {
-					seen.Stderr += n
-				}
-			}
-		}
+		seen := r.seenLocked()
 		r.wholeSeen = true
 		status.Whole = &WholeView{r.whole, seen}
 	} else {
@@ -209,7 +202,7 @@ func (r *CommandRecord) Status(limit int, hint *string) CommandStatus {
 	}
 	status.Stdout = streamView(r.streams[0], &r.positions[0], limit)
 	status.Stderr = streamView(r.streams[1], &r.positions[1], limit)
-	status.Output = r.mergedView(limit)
+	status.Output = r.mergedViewLocked(limit)
 	now := time.Now()
 	status.RunningMs = uint64(now.Sub(r.started).Milliseconds())
 	status.IdleMs = uint64(now.Sub(r.lastOutput).Milliseconds())
@@ -220,26 +213,34 @@ func (r *CommandRecord) Status(limit int, hint *string) CommandStatus {
 func (r *CommandRecord) PageView() PageView {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return PageView{ShellID: r.shellID, CommandID: r.commandID, ToolUseID: r.toolUseID, State: PageState{r.state.Phase, r.state.ExitCode}, Tail: r.pageTail, Chars: r.pageChars, RunningMs: uint64(time.Since(r.started).Milliseconds())}
+	return PageView{
+		ShellID:   r.shellID,
+		CommandID: r.commandID,
+		ToolUseID: r.toolUseID,
+		State:     PageState{r.state.Phase, r.state.ExitCode},
+		Tail:      r.pageTail,
+		Chars:     r.pageChars,
+		RunningMs: uint64(time.Since(r.started).Milliseconds()),
+	}
 }
 
-// appendPage adds page text only while a command runs.
-func (r *CommandRecord) appendPage(text string) bool {
+// appendPageLocked adds page text only while a command runs.
+func (r *CommandRecord) appendPageLocked(text string) bool {
 	if r.state.Phase != Running || text == "" {
 		return false
 	}
-	r.pushPage(text)
+	r.pushPageLocked(text)
 	return true
 }
 
-// pushPage advances the pages' character count and bounded tail.
-func (r *CommandRecord) pushPage(text string) {
+// pushPageLocked advances the pages' character count and bounded tail.
+func (r *CommandRecord) pushPageLocked(text string) {
 	r.pageChars += uint64(utf8.RuneCountInString(text))
 	r.pageTail = tailChars(r.pageTail + text)
 }
 
-// mergedLength returns the byte length of the ordered command output.
-func (r *CommandRecord) mergedLength() int {
+// mergedLengthLocked returns the byte length of the ordered command output.
+func (r *CommandRecord) mergedLengthLocked() int {
 	if len(r.chunks) == 0 {
 		return 0
 	}
@@ -247,9 +248,9 @@ func (r *CommandRecord) mergedLength() int {
 	return c.offset + len(c.text)
 }
 
-// mergedView projects a model byte budget onto complete-line positions and stream chunks.
-func (r *CommandRecord) mergedView(limit int) core.OutputView {
-	total := r.mergedLength()
+// mergedViewLocked projects a model byte budget onto complete-line positions and stream chunks.
+func (r *CommandRecord) mergedViewLocked(limit int) core.OutputView {
+	total := r.mergedLengthLocked()
 	start := min(r.positions[2], total)
 	remaining := outputBudget(total-start, limit)
 	delivered := 0
@@ -290,7 +291,15 @@ func (r *CommandRecord) mergedView(limit int) core.OutputView {
 	for i := len(r.chunks) - 1; i >= 0 && utf8.RuneCountInString(tail) < TailChars; i-- {
 		tail = r.chunks[i].text + tail
 	}
-	return core.OutputView{Offset: uint64(r.positions[2]), Line: line, Text: text, Tail: tailChars(tail), Chunks: views, Bytes: uint64(total), Truncated: next < total}
+	return core.OutputView{
+		Offset:    uint64(r.positions[2]),
+		Line:      line,
+		Text:      text,
+		Tail:      tailChars(tail),
+		Chunks:    views,
+		Bytes:     uint64(total),
+		Truncated: next < total,
+	}
 }
 
 // streamView consumes each received stream byte once, cutting between characters.
@@ -307,7 +316,13 @@ func streamView(stream recordStream, position *int, limit int) core.StreamView {
 	if stream.hostBytes != nil {
 		count = *stream.hostBytes
 	}
-	return core.StreamView{Offset: uint64(next), Delta: delta, Tail: tailChars(stream.text), Bytes: count, Truncated: next < total}
+	return core.StreamView{
+		Offset:    uint64(next),
+		Delta:     delta,
+		Tail:      tailChars(stream.text),
+		Bytes:     count,
+		Truncated: next < total,
+	}
 }
 
 // outputBudget applies the status output limit, where zero means all available bytes.
@@ -381,4 +396,22 @@ func cloneEditedFiles(files *EditedFiles) *EditedFiles {
 		}
 	}
 	return &cloned
+}
+
+// seenLocked projects the model position onto each stream; the caller holds mu.
+func (r *CommandRecord) seenLocked() Seen {
+	seen := Seen{}
+	if r.wholeSeen {
+		seen = Seen{math.MaxUint64, math.MaxUint64}
+	} else {
+		for _, chunk := range r.chunks {
+			n := uint64(min(max(r.positions[2]-chunk.offset, 0), len(chunk.text)))
+			if chunk.stream == core.StreamKind("stdout") {
+				seen.Stdout += n
+			} else {
+				seen.Stderr += n
+			}
+		}
+	}
+	return seen
 }

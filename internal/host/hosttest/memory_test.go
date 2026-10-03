@@ -22,7 +22,12 @@ func TestStorageRevisionsSortedKeysAndDeletion(t *testing.T) {
 		t.Fatalf("read %+v", read)
 	}
 	zero := host.Revision(0)
-	if conflict, ok := storage.Apply(&host.StorageWriteIf{Key: "aa", Value: nil, Expected: &zero}).(*host.StorageConflict); !ok || conflict.Revision != 3 {
+	if conflict, ok := storage.Apply(&host.StorageWriteIf{
+		Key:      "aa",
+		Value:    nil,
+		Expected: &zero,
+	}).(*host.StorageConflict); !ok ||
+		conflict.Revision != 3 {
 		t.Fatalf("conflict %+v", conflict)
 	}
 	keys := storage.Apply(&host.StorageList{Prefix: "a"}).(*host.StorageKeys)
@@ -33,10 +38,12 @@ func TestStorageRevisionsSortedKeysAndDeletion(t *testing.T) {
 	if storage.Value("aa") != nil {
 		t.Fatal("delete retained key")
 	}
-	if got := storage.Apply(&host.StorageRead{Key: "missing"}).(*host.StorageValue); got.Revision != 4 || string(got.Value) != "null" {
+	if got := storage.Apply(&host.StorageRead{Key: "missing"}).(*host.StorageValue); got.Revision != 4 ||
+		string(got.Value) != "null" {
 		t.Fatalf("missing %+v", got)
 	}
 }
+
 func TestPagesAndConversationNumbers(t *testing.T) {
 	pages := hosttest.NewPages(false)
 	watching, changed := pages.Watching()

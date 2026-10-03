@@ -54,7 +54,8 @@ func TestRPCPortMessagesAndUnexpectedResponses(t *testing.T) {
 	wrong := host.NewRPCPort(answerTransport{response: &host.PortInput{}})
 	err := wrong.Stdout(t.Context(), nil)
 	var portErr *host.PortError
-	if !errors.As(err, &portErr) || portErr.Kind != host.UnexpectedReply || portErr.Asked != "stdout" || portErr.Answered != "input" {
+	if !errors.As(err, &portErr) || portErr.Kind != host.UnexpectedReply || portErr.Asked != "stdout" ||
+		portErr.Answered != "input" {
 		t.Fatalf("unexpected: %v", err)
 	}
 	wrong = host.NewRPCPort(answerTransport{response: &host.PortWritten{}})
@@ -69,6 +70,7 @@ func TestRPCPortMessagesAndUnexpectedResponses(t *testing.T) {
 		t.Fatalf("lost transport error: %v", err)
 	}
 }
+
 func TestRPCWirePreservesStrictnessNullableValuesAndBytes(t *testing.T) {
 	cases := []struct {
 		wire   string
@@ -76,8 +78,14 @@ func TestRPCWirePreservesStrictnessNullableValuesAndBytes(t *testing.T) {
 	}{
 		{`{"type":"stdout","bytes":"AP8="}`, func(b []byte) (any, error) { return host.DecodePortRequest(b) }},
 		{`{"type":"input","bytes":null}`, func(b []byte) (any, error) { return host.DecodePortResponse(b) }},
-		{`{"op":"write_if","key":"<>&\u2028","value":null}`, func(b []byte) (any, error) { return host.DecodeStorageOp(b) }},
-		{`{"outcome":"value","value":{"x":9007199254740993},"revision":18446744073709551615}`, func(b []byte) (any, error) { return host.DecodeStorageReply(b) }},
+		{
+			`{"op":"write_if","key":"<>&\u2028","value":null}`,
+			func(b []byte) (any, error) { return host.DecodeStorageOp(b) },
+		},
+		{
+			`{"outcome":"value","value":{"x":9007199254740993},"revision":18446744073709551615}`,
+			func(b []byte) (any, error) { return host.DecodeStorageReply(b) },
+		},
 	}
 	for _, tc := range cases {
 		value, err := tc.decode([]byte(tc.wire))
@@ -93,12 +101,20 @@ func TestRPCWirePreservesStrictnessNullableValuesAndBytes(t *testing.T) {
 			t.Fatalf("roundtrip %s: %v", encoded, err)
 		}
 	}
-	for _, wire := range []string{`{"type":"input"}`, `{"type":"input","bytes":"" ,"extra":1}`, `{"type":"input","bytes":null,"bytes":null}`} {
+	for _, wire := range []string{
+		`{"type":"input"}`,
+		`{"type":"input","bytes":"" ,"extra":1}`,
+		`{"type":"input","bytes":null,"bytes":null}`,
+	} {
 		if _, err := host.DecodePortResponse([]byte(wire)); err == nil {
 			t.Fatalf("accepted %s", wire)
 		}
 	}
-	for _, wire := range []string{`{"op":"write_if","key":"x"}`, `{"op":"write_if","key":"x","value":null,"expected":null}`, `{"op":"read","key":"x","extra":1}`} {
+	for _, wire := range []string{
+		`{"op":"write_if","key":"x"}`,
+		`{"op":"write_if","key":"x","value":null,"expected":null}`,
+		`{"op":"read","key":"x","extra":1}`,
+	} {
 		if _, err := host.DecodeStorageOp([]byte(wire)); err == nil {
 			t.Fatalf("accepted %s", wire)
 		}

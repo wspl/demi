@@ -24,53 +24,31 @@ type ConformanceCase struct {
 // which must also be the Host's default directory. PATH must locate sh, printf,
 // sleep, printenv, cat and echo. No real model or network is used.
 func ConformanceCases(h host.Host, root, path string) []ConformanceCase {
-	c := conformance{h: h, root: root, env: host.SpawnEnv{Mode: host.Exactly, Values: map[string]*string{"PATH": &path}}}
+	c := conformance{
+		h:    h,
+		root: root,
+		env:  host.SpawnEnv{Mode: host.Exactly, Values: map[string]*string{"PATH": &path}},
+	}
 	return []ConformanceCase{
-		{"host: the default working directory is absolute; the identity names a host", func(context.Context) error {
-			if !strings.HasPrefix(h.DefaultCWD(), "/") || h.DefaultCWD() != root || h.Identity().Hostname == "" {
-				return fmt.Errorf("default directory or identity differs: %q, %+v", h.DefaultCWD(), h.Identity())
-			}
-			return nil
-		}},
-		{"process: spawn captures stdout and the exit code", func(ctx context.Context) error {
-			o, err := c.run(ctx, "printf", []string{"hello\\n"}, nil)
-			if err != nil {
-				return err
-			}
-			return expect(o, processOutput{stdout: "hello\n", end: host.ProcessEnd{Kind: host.ProcessExited}}, "stdout and end")
-		}},
-		{"process: stdout and stderr are apart; a nonzero exit is reported", func(ctx context.Context) error {
-			o, err := c.run(ctx, "sh", []string{"-c", "echo out; echo err >&2; exit 3"}, nil)
-			if err != nil {
-				return err
-			}
-			return expect(o, processOutput{stdout: "out\n", stderr: "err\n", end: host.ProcessEnd{Kind: host.ProcessExited, ExitCode: 3}}, "output and end")
-		}},
+		{"host: the default working directory is absolute; the identity names a host", c.identity},
+		{"process: spawn captures stdout and the exit code", c.stdout},
+		{"process: stdout and stderr are apart; a nonzero exit is reported", c.stdoutStderr},
 		{"process: stdin reaches the child and ends when closed", c.stdin},
 		{"process: terminating a process ends it with SIGTERM", c.terminate},
-		{"process: a child receives exactly the environment it was given", func(ctx context.Context) error {
-			o, err := c.run(ctx, "printenv", []string{"HOME"}, nil)
-			if err != nil {
-				return err
-			}
-			return expect(o, processOutput{end: host.ProcessEnd{Kind: host.ProcessExited, ExitCode: 1}}, "unset HOME")
-		}},
+		{"process: a child receives exactly the environment it was given", c.environment},
 		{"process: the working directory is honoured", c.cwd},
-		{"process: a missing program never starts: executable_not_found", func(ctx context.Context) error {
-			o, err := c.run(ctx, "definitely-not-a-host-binary", nil, nil)
-			if err != nil {
-				return err
-			}
-			return expectSpawn(o.end, host.ExecutableNotFound)
-		}},
-		{"process: a missing working directory is cwd_unusable, not a missing program", func(ctx context.Context) error {
-			missing := root + "/never-created"
-			o, err := c.run(ctx, "echo", []string{"ok"}, &missing)
-			if err != nil {
-				return err
-			}
-			return expectSpawn(o.end, host.CWDUnusable)
-		}},
+		{"process: a missing program never starts: executable_not_found", c.missingProgram},
+		{
+			"process: a missing working directory is cwd_unusable, not a missing program",
+			func(ctx context.Context) error {
+				missing := root + "/never-created"
+				o, err := c.run(ctx, "echo", []string{"ok"}, &missing)
+				if err != nil {
+					return err
+				}
+				return expectSpawn(o.end, host.CWDUnusable)
+			},
+		},
 		{"fs: write, replace, read, list, stat, exists, remove; relative paths", c.basic},
 		{"fs: parents, recursive copy, move, recursive remove, force", c.tree},
 		{"fs: symlink, readlink, lstat, realpath, link, chmod, utimes", c.links},
@@ -92,12 +70,22 @@ type processOutput struct {
 }
 
 // spawn starts a conformance program with its exact environment.
-func (c conformance) spawn(ctx context.Context, command string, args []string, cwd *string) (*host.StartedProcess, error) {
+func (c conformance) spawn(
+	ctx context.Context,
+	command string,
+	args []string,
+	cwd *string,
+) (*host.StartedProcess, error) {
 	return c.h.Process().Spawn(ctx, host.SpawnRequest{Command: command, Args: args, CWD: cwd, Env: c.env})
 }
 
 // run owns, collects and joins one conformance program.
-func (c conformance) run(ctx context.Context, command string, args []string, cwd *string) (out processOutput, err error) {
+func (c conformance) run(
+	ctx context.Context,
+	command string,
+	args []string,
+	cwd *string,
+) (out processOutput, err error) {
 	p, err := c.spawn(ctx, command, args, cwd)
 	if err != nil {
 		return out, err
@@ -132,7 +120,11 @@ func collect(ctx context.Context, p *host.StartedProcess) (processOutput, error)
 		}
 	}
 	end, err := p.Wait(ctx)
-	return processOutput{stdout: strings.ToValidUTF8(stdout.String(), "�"), stderr: strings.ToValidUTF8(stderr.String(), "�"), end: end}, err
+	return processOutput{
+		stdout: strings.ToValidUTF8(stdout.String(), "�"),
+		stderr: strings.ToValidUTF8(stderr.String(), "�"),
+		end:    end,
+	}, err
 }
 
 // stdin proves delivery and explicit closure of the input stream.
@@ -152,7 +144,11 @@ func (c conformance) stdin(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	return expect(out, processOutput{stdout: "from stdin", end: host.ProcessEnd{Kind: host.ProcessExited}}, "stdin and end")
+	return expect(
+		out,
+		processOutput{stdout: "from stdin", end: host.ProcessEnd{Kind: host.ProcessExited}},
+		"stdin and end",
+	)
 }
 
 // terminate proves named signal delivery.
@@ -247,7 +243,12 @@ func (c conformance) tree(ctx context.Context) error {
 	if err := fs.WriteFile(ctx, root+"/a/b/f.txt", fileBytes("x"), host.WriteOptions{}); err != nil {
 		return err
 	}
-	if err := fs.WriteFile(ctx, root+"/a/new/dir/g.txt", fileBytes("y"), host.WriteOptions{CreateParents: true}); err != nil {
+	if err := fs.WriteFile(
+		ctx,
+		root+"/a/new/dir/g.txt",
+		fileBytes("y"),
+		host.WriteOptions{CreateParents: true},
+	); err != nil {
 		return err
 	}
 	if err := c.readEquals(ctx, root+"/a/new/dir/g.txt", "y"); err != nil {
@@ -336,34 +337,7 @@ func (c conformance) links(ctx context.Context) error {
 	if !found {
 		return fmt.Errorf("listing does not mark link: %+v", entries)
 	}
-	if err = fs.Link(ctx, root+"/target.txt", root+"/hard"); err != nil {
-		return err
-	}
-	if err = c.readEquals(ctx, root+"/hard", "t"); err != nil {
-		return err
-	}
-	if err = fs.Chmod(ctx, root+"/target.txt", 0600); err != nil {
-		return err
-	}
-	stat, err = fs.Stat(ctx, root+"/target.txt")
-	if err != nil {
-		return err
-	}
-	if err = expect(stat.Mode&0777, uint32(0600), "chmod"); err != nil {
-		return err
-	}
-	when, err := core.TimestampFromMillisecond(1600000000000)
-	if err != nil {
-		return err
-	}
-	if err = fs.Utimes(ctx, root+"/target.txt", when, when); err != nil {
-		return err
-	}
-	stat, err = fs.Stat(ctx, root+"/target.txt")
-	if err != nil {
-		return err
-	}
-	return expect(stat.Modified, when, "utimes")
+	return c.hardLink(ctx, fs, root)
 }
 
 // stream proves ranged reads and failure before any bytes for a missing file.
@@ -377,7 +351,25 @@ func (c conformance) stream(ctx context.Context) error {
 	for _, test := range []struct {
 		r    host.ByteRange
 		want string
-	}{{host.ByteRange{}, "0123456789"}, {host.ByteRange{Offset: 3, Length: &length}, "3456"}, {host.ByteRange{Offset: 7}, "789"}} {
+	}{
+		{
+			host.ByteRange{},
+			"0123456789",
+		},
+		{
+			host.ByteRange{
+				Offset: 3,
+				Length: &length,
+			},
+			"3456",
+		},
+		{
+			host.ByteRange{
+				Offset: 7,
+			},
+			"789",
+		},
+	} {
 		got, err := readRange(ctx, fs, file, test.r)
 		if err != nil {
 			return err
@@ -417,6 +409,7 @@ func readRange(ctx context.Context, fs host.FS, file string, r host.ByteRange) (
 
 type failedReader struct{ err error }
 
+// Read returns the configured failure without bytes.
 func (r failedReader) Read([]byte) (int, error) { return 0, r.err }
 
 // writeStream proves streamed writes are atomic and return the stream's own failure.
@@ -427,14 +420,30 @@ func (c conformance) writeStream(ctx context.Context) error {
 		return err
 	}
 	file := root + "/joined.txt"
-	if err := fs.WriteFile(ctx, file, host.FileContents{Stream: &readerStream{reader: io.MultiReader(strings.NewReader("ab"), strings.NewReader("cd"), strings.NewReader("ef"))}}, host.WriteOptions{}); err != nil {
+	if err := fs.WriteFile(
+		ctx,
+		file,
+		host.FileContents{
+			Stream: &readerStream{
+				reader: io.MultiReader(strings.NewReader("ab"), strings.NewReader("cd"), strings.NewReader("ef")),
+			},
+		},
+		host.WriteOptions{},
+	); err != nil {
 		return err
 	}
 	if err := c.readEquals(ctx, file, "abcdef"); err != nil {
 		return err
 	}
 	broken := &host.Error{Kind: host.Interrupted, Message: "the stream broke"}
-	err := fs.WriteFile(ctx, file, host.FileContents{Stream: &readerStream{reader: io.MultiReader(strings.NewReader("partial"), failedReader{broken})}}, host.WriteOptions{})
+	err := fs.WriteFile(
+		ctx,
+		file,
+		host.FileContents{
+			Stream: &readerStream{reader: io.MultiReader(strings.NewReader("partial"), failedReader{broken})},
+		},
+		host.WriteOptions{},
+	)
 	if !errors.Is(err, broken) {
 		return fmt.Errorf("write did not return stream failure: %w", err)
 	}
@@ -550,10 +559,106 @@ func fileBytes(text string) host.FileContents { return host.FileContents{Bytes: 
 // None of these readers block; real Host streams must support context cancellation.
 type readerStream struct{ reader io.Reader }
 
+// Read reads finite conformance contents unless canceled.
 func (s *readerStream) Read(ctx context.Context, data []byte) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
 	return s.reader.Read(data)
 }
+
+// Close completes the resource-free in-memory stream.
 func (*readerStream) Close(context.Context) error { return nil }
+
+// identity checks the named Host conformance behavior.
+func (c conformance) identity(context.Context) error {
+	if !strings.HasPrefix(c.h.DefaultCWD(), "/") || c.h.DefaultCWD() != c.root || c.h.Identity().Hostname == "" {
+		return fmt.Errorf("default directory or identity differs: %q, %+v", c.h.DefaultCWD(), c.h.Identity())
+	}
+	return nil
+}
+
+// stdout checks the named Host conformance behavior.
+func (c conformance) stdout(ctx context.Context) error {
+	o, err := c.run(ctx, "printf", []string{"hello\\n"}, nil)
+	if err != nil {
+		return err
+	}
+	return expect(
+		o,
+		processOutput{stdout: "hello\n", end: host.ProcessEnd{Kind: host.ProcessExited}},
+		"stdout and end",
+	)
+}
+
+// stdoutStderr checks the named Host conformance behavior.
+func (c conformance) stdoutStderr(ctx context.Context) error {
+	o, err := c.run(ctx, "sh", []string{"-c", "echo out; echo err >&2; exit 3"}, nil)
+	if err != nil {
+		return err
+	}
+	return expect(
+		o,
+		processOutput{
+			stdout: "out\n",
+			stderr: "err\n",
+			end:    host.ProcessEnd{Kind: host.ProcessExited, ExitCode: 3},
+		},
+		"output and end",
+	)
+}
+
+// environment checks the named Host conformance behavior.
+func (c conformance) environment(ctx context.Context) error {
+	o, err := c.run(ctx, "printenv", []string{"HOME"}, nil)
+	if err != nil {
+		return err
+	}
+	return expect(o, processOutput{end: host.ProcessEnd{Kind: host.ProcessExited, ExitCode: 1}}, "unset HOME")
+}
+
+// missingProgram checks the named Host conformance behavior.
+func (c conformance) missingProgram(ctx context.Context) error {
+	o, err := c.run(ctx, "definitely-not-a-host-binary", nil, nil)
+	if err != nil {
+		return err
+	}
+	return expectSpawn(o.end, host.ExecutableNotFound)
+}
+
+// linkMetadata checks modes and timestamps after link identity is established.
+func (c conformance) linkMetadata(ctx context.Context, fs host.FS, root string) error {
+	if err := fs.Chmod(ctx, root+"/target.txt", 0o600); err != nil {
+		return err
+	}
+	stat, err := fs.Stat(ctx, root+"/target.txt")
+	if err != nil {
+		return err
+	}
+	if err := expect(stat.Mode&0o777, uint32(0o600), "chmod"); err != nil {
+		return err
+	}
+	when, err := core.TimestampFromMillisecond(1600000000000)
+	if err != nil {
+		return err
+	}
+	if err := fs.Utimes(ctx, root+"/target.txt", when, when); err != nil {
+		return err
+	}
+	stat, err = fs.Stat(ctx, root+"/target.txt")
+	if err != nil {
+		return err
+	}
+	return expect(stat.Modified, when, "utimes")
+}
+
+// hardLink checks that a second name reads the original contents, then checks metadata.
+func (c conformance) hardLink(ctx context.Context, fs host.FS, root string) error {
+	if err := fs.Link(ctx, root+"/target.txt", root+"/hard"); err != nil {
+		return err
+	}
+	if err := c.readEquals(ctx, root+"/hard", "t"); err != nil {
+		return err
+	}
+	return c.linkMetadata(ctx, fs, root)
+}

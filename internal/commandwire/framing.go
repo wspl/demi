@@ -119,11 +119,11 @@ func EncodeConversationRequest(value ConversationRequest) ([]byte, error) {
 }
 
 // Encode frames the metadata opening a numbers or artifacts stream.
-func (value StreamOpen) Encode() ([]byte, error) {
-	if err := value.Validate(); err != nil {
+func (o StreamOpen) Encode() ([]byte, error) {
+	if err := o.Validate(); err != nil {
 		return nil, fmt.Errorf("metadata: %w", err)
 	}
-	return encodeMetadata(value)
+	return encodeMetadata(o)
 }
 
 // encodeMetadata applies the shared command metadata length prefix and limit.

@@ -13,10 +13,14 @@ import (
 
 func recorder(t *testing.T, root string) *Recorder {
 	t.Helper()
-	r, err := NewRecorder(t.Context(), commandwire.EditContext{Directory: filepath.Join(root, "job"), Lock: filepath.Join(root, "edits.lock")})
+	r, err := NewRecorder(
+		t.Context(),
+		commandwire.EditContext{Directory: filepath.Join(root, "job"), Lock: filepath.Join(root, "edits.lock")},
+	)
 	must(t, err)
 	return r
 }
+
 func snapshot(t *testing.T, path *string) string {
 	t.Helper()
 	if path == nil {
@@ -26,19 +30,21 @@ func snapshot(t *testing.T, path *string) string {
 	must(t, err)
 	return string(b)
 }
+
 func report(t *testing.T, r *Recorder) commandwire.EditJournal {
 	t.Helper()
 	j, err := r.Report(t.Context())
 	must(t, err)
 	return j
 }
+
 func TestSeparateRecorderHandlesShareJobJournal(t *testing.T) {
 	root := t.TempDir()
 	first := recorder(t, root)
 	native := recorder(t, root)
 	path := filepath.Join(root, "file")
-	must(t, first.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("one"), 0600) }))
-	must(t, native.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("two"), 0600) }))
+	must(t, first.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("one"), 0o600) }))
+	must(t, native.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("two"), 0o600) }))
 	j := report(t, first)
 	if len(j.Files) != 1 || j.Files[0].Kind != commandwire.EditAdded || len(j.Files[0].Edits) != 1 {
 		t.Fatalf("journal: %+v", j)
@@ -48,13 +54,14 @@ func TestSeparateRecorderHandlesShareJobJournal(t *testing.T) {
 		t.Fatal("wrong snapshots")
 	}
 }
+
 func TestErrorCanLeaveRealEdit(t *testing.T) {
 	root := t.TempDir()
 	r := recorder(t, root)
 	path := filepath.Join(root, "file")
 	failed := errors.New("failed after writing")
 	err := r.Record(t.Context(), path, func() error {
-		if err := os.WriteFile(path, []byte("partial"), 0600); err != nil {
+		if err := os.WriteFile(path, []byte("partial"), 0o600); err != nil {
 			return err
 		}
 		return failed
@@ -66,6 +73,7 @@ func TestErrorCanLeaveRealEdit(t *testing.T) {
 		t.Fatal("partial edit lost")
 	}
 }
+
 func TestFailedOpenOfLargeFileIsNotEdit(t *testing.T) {
 	root := t.TempDir()
 	r := recorder(t, root)
@@ -75,7 +83,7 @@ func TestFailedOpenOfLargeFileIsNotEdit(t *testing.T) {
 	must(t, f.Truncate(commandwire.EditFileBytes+1))
 	must(t, f.Close())
 	err = r.Record(t.Context(), path, func() error {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
 			return f.Close()
 		}
@@ -88,7 +96,7 @@ func TestFailedOpenOfLargeFileIsNotEdit(t *testing.T) {
 		t.Fatal("failed open invented edit")
 	}
 	must(t, r.Record(t.Context(), path, func() error {
-		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			return err
 		}
@@ -100,45 +108,52 @@ func TestFailedOpenOfLargeFileIsNotEdit(t *testing.T) {
 		t.Fatalf("journal: %+v", j)
 	}
 }
+
 func TestFailedWriteBelowFileIsNotEdit(t *testing.T) {
 	root := t.TempDir()
 	r := recorder(t, root)
 	path := filepath.Join(root, "file")
-	must(t, os.WriteFile(path, []byte("plain"), 0600))
+	must(t, os.WriteFile(path, []byte("plain"), 0o600))
 	below := filepath.Join(path, "child")
-	if err := r.Record(t.Context(), below, func() error { return os.WriteFile(below, []byte("never"), 0600) }); err == nil {
+	if err := r.Record(
+		t.Context(),
+		below,
+		func() error { return os.WriteFile(below, []byte("never"), 0o600) },
+	); err == nil {
 		t.Fatal("write succeeded")
 	}
 	if len(report(t, r).Files) != 0 {
 		t.Fatal("invented edit")
 	}
 }
+
 func TestBinaryEditsHaveNoContents(t *testing.T) {
 	root := t.TempDir()
 	r := recorder(t, root)
 	path := filepath.Join(root, "binary")
-	must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte{0, 1, 2}, 0600) }))
+	must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte{0, 1, 2}, 0o600) }))
 	j := report(t, r)
 	if len(j.Files) != 1 || j.Files[0].Kind != commandwire.EditAdded || j.Files[0].Edits[0].Modified != nil {
 		t.Fatalf("journal: %+v", j)
 	}
 }
+
 func TestEditContinuityAndRestoration(t *testing.T) {
 	root := t.TempDir()
 	r := recorder(t, root)
 	path := filepath.Join(root, "file")
 	write := func(value string) {
 		t.Helper()
-		must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte(value), 0600) }))
+		must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte(value), 0o600) }))
 	}
-	must(t, os.WriteFile(path, []byte("original"), 0600))
+	must(t, os.WriteFile(path, []byte("original"), 0o600))
 	write("one")
 	write("original")
 	if len(report(t, r).Files) != 0 {
 		t.Fatal("restored bytes retained a diff")
 	}
 	write("two")
-	must(t, os.WriteFile(path, []byte("external"), 0600))
+	must(t, os.WriteFile(path, []byte("external"), 0o600))
 	write("three")
 	j := report(t, r)
 	if len(j.Files[0].Edits) != 2 {
@@ -166,7 +181,7 @@ func TestJournalPreservesSerdeStringBytes(t *testing.T) {
 		name += "<>"
 	}
 	path := filepath.Join(root, name)
-	must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("one"), 0600) }))
+	must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("one"), 0o600) }))
 	data, err := os.ReadFile(filepath.Join(r.Context().Directory, "journal.json"))
 	must(t, err)
 	if !strings.Contains(string(data), name) {

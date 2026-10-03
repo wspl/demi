@@ -16,6 +16,7 @@ import (
 
 // validateInvocation checks process inputs that require domain rules.
 func validateInvocation(v Invocation) error { return validateProcessInputs(v.Args, v.Cwd, v.Env) }
+
 func validateLocalInvocation(v LocalInvocation) error {
 	return validateProcessInputs(v.Args, v.Cwd, v.Env)
 }
@@ -47,18 +48,21 @@ func validateConversationStatus(v ConversationStatus) error {
 	}
 	return nil
 }
+
 func validateNumbersAnswer(v NumbersAnswer) error {
 	if (v.First == nil) == (v.Error == nil) {
 		return errors.New("numbers answer requires exactly one of first or error")
 	}
 	return nil
 }
+
 func validateArtifactRequest(v ArtifactRequest) error {
 	if (v.Install == nil) == (v.Installed == nil) {
 		return errors.New("artifact request requires exactly one of install or installed")
 	}
 	return nil
 }
+
 func validateArtifactAnswer(v ArtifactAnswer) error {
 	n := 0
 	if v.Path != nil {
@@ -75,6 +79,7 @@ func validateArtifactAnswer(v ArtifactAnswer) error {
 	}
 	return nil
 }
+
 func validateEditContext(v EditContext) error {
 	for _, path := range []string{v.Directory, v.Lock} {
 		if strings.ContainsRune(path, 0) || !filepath.IsAbs(path) {
@@ -83,6 +88,7 @@ func validateEditContext(v EditContext) error {
 	}
 	return nil
 }
+
 func validateEditCopies(v EditCopies) error {
 	for _, path := range []*string{v.Original, v.Modified} {
 		if path != nil && strings.ContainsRune(*path, 0) {
@@ -91,6 +97,7 @@ func validateEditCopies(v EditCopies) error {
 	}
 	return nil
 }
+
 func validateEditFile(v EditFile) error {
 	if strings.ContainsRune(v.Path, 0) {
 		return errors.New("edit file path contains NUL")
@@ -155,6 +162,7 @@ func validateOperations(operations []string) error {
 	}
 	return nil
 }
+
 func validateArtifactURL(v ArtifactURL) error {
 	canonical, err := contract.HTTPURL(v.URL)
 	if err != nil {

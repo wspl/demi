@@ -24,14 +24,30 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
 func invocation(op string) commandwire.Invocation {
-	return commandwire.Invocation{Operation: op, InvocationID: op, Args: []byte(`{}`), Cwd: "/tmp", Env: map[string]string{}, Context: commandwire.CommandContext{Conversation: "one", Caller: &commandwire.AgentCaller{Number: 1}, Locale: commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}}}
+	return commandwire.Invocation{
+		Operation:    op,
+		InvocationID: op,
+		Args:         []byte(`{}`),
+		Cwd:          "/tmp",
+		Env:          map[string]string{},
+		Context: commandwire.CommandContext{
+			Conversation: "one",
+			Caller:       &commandwire.AgentCaller{Number: 1},
+			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		},
+	}
 }
 
 type fixture struct{}
 
 func (fixture) Operations() []string { return []string{"echo", "hold", "short", "flood"} }
-func (fixture) Invoke(ctx context.Context, c InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+
+func (fixture) Invoke(
+	ctx context.Context,
+	c InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	switch c.Request.Operation {
 	case "echo", "hold":
 		for {
@@ -61,6 +77,7 @@ func (fixture) Invoke(ctx context.Context, c InvocationContext[commandwire.Invoc
 		return commandwire.Completion{}, c.Output.Stdout(ctx, []byte("ok"))
 	}
 }
+
 func connected(t *testing.T, h Handler[commandwire.Invocation]) (*Client, <-chan error) {
 	t.Helper()
 	left, right := net.Pipe()
@@ -86,6 +103,7 @@ func connected(t *testing.T, h Handler[commandwire.Invocation]) (*Client, <-chan
 	})
 	return client, done
 }
+
 func completed(t *testing.T, o *CommandOutput) []byte {
 	t.Helper()
 	var out []byte
@@ -115,6 +133,7 @@ func completed(t *testing.T, o *CommandOutput) []byte {
 	}
 	return out
 }
+
 func short(t *testing.T, c *Client) {
 	t.Helper()
 	_, o, err := c.Invoke(t.Context(), invocation("short"))
@@ -149,6 +168,7 @@ func TestHeldCallsBeyondAnyCountAllStartAndFinish(t *testing.T) {
 	finished.Wait()
 	short(t, c)
 }
+
 func TestCancellingCallNeverTurnsAwayNext(t *testing.T) {
 	c, _ := connected(t, fixture{})
 	held := make([]*CommandInput, 64)
@@ -167,6 +187,7 @@ func TestCancellingCallNeverTurnsAwayNext(t *testing.T) {
 	}
 	short(t, c)
 }
+
 func TestUnreadOutputsNeverHoldBackIndependentCall(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c, _ := connected(t, fixture{})
@@ -183,8 +204,12 @@ func TestUnreadOutputsNeverHoldBackIndependentCall(t *testing.T) {
 		short(t, c)
 	})
 }
+
 func TestAbandoningBurstKeepsConnection(t *testing.T) {
-	t.Skip("known issue K1: Go's HTTP/2 server refunds a reset stream's buffered bytes twice and panics; reproduction in testdata/http2-reset")
+	t.Skip(
+		"known issue K1: Go's HTTP/2 server refunds a reset stream's buffered bytes twice and panics; " +
+			"reproduction in testdata/http2-reset",
+	)
 	c, _ := connected(t, fixture{})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -216,13 +241,17 @@ type observedCancellation struct {
 	cancelled chan struct{}
 }
 
-func (h *observedCancellation) Invoke(ctx context.Context, c InvocationContext[commandwire.Invocation]) (commandwire.Completion, error) {
+func (h *observedCancellation) Invoke(
+	ctx context.Context,
+	c InvocationContext[commandwire.Invocation],
+) (commandwire.Completion, error) {
 	completion, err := h.fixture.Invoke(ctx, c)
 	if c.Request.Operation == h.operation && ctx.Err() != nil {
 		close(h.cancelled)
 	}
 	return completion, err
 }
+
 func TestConcurrentBinaryEchoAndCancelPreserveConnection(t *testing.T) {
 	h := &observedCancellation{operation: "hold", cancelled: make(chan struct{})}
 	c, _ := connected(t, h)
@@ -260,6 +289,7 @@ func TestConcurrentBinaryEchoAndCancelPreserveConnection(t *testing.T) {
 	<-h.cancelled
 	short(t, c)
 }
+
 func TestResetInterruptsFlowControlBlockedOutput(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := &observedCancellation{operation: "flood", cancelled: make(chan struct{})}
@@ -280,30 +310,39 @@ func TestResetInterruptsFlowControlBlockedOutput(t *testing.T) {
 func TestInputAfterEarlyAnswerIsNotFailure(t *testing.T) {
 	left, right := net.Pipe()
 	listener := &oneListener{conn: right, closed: make(chan struct{})}
-	server := &http.Server{Protocols: protocols(), HTTP2: &http.HTTP2Config{MaxReceiveBufferPerStream: 16}, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == commandwire.InvokePath {
-			metadata, err := readChunk(r.Body, commandwire.MaxMetadataBytes)
-			if err != nil {
-				t.Error(err)
-				return
+	server := &http.Server{
+		Protocols: protocols(),
+		HTTP2:     &http.HTTP2Config{MaxReceiveBufferPerStream: 16},
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == commandwire.InvokePath {
+				metadata, err := readChunk(r.Body, commandwire.MaxMetadataBytes)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if _, err := commandwire.DecodeInvocation(metadata); err != nil {
+					t.Error(err)
+					return
+				}
 			}
-			if _, err := commandwire.DecodeInvocation(metadata); err != nil {
-				t.Error(err)
-				return
+			for _, record := range []commandwire.Record{
+				commandwire.Stdout("{}"),
+				commandwire.Completed{
+					Completion: commandwire.Completion{},
+				},
+			} {
+				data, err := commandwire.EncodeRecord(record)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if _, err := w.Write(data); err != nil {
+					t.Error(err)
+					return
+				}
 			}
-		}
-		for _, record := range []commandwire.Record{commandwire.Stdout("{}"), commandwire.Completed{Completion: commandwire.Completion{}}} {
-			data, err := commandwire.EncodeRecord(record)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			if _, err := w.Write(data); err != nil {
-				t.Error(err)
-				return
-			}
-		}
-	})}
+		}),
+	}
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()
 	defer func() {
@@ -318,7 +357,12 @@ func TestInputAfterEarlyAnswerIsNotFailure(t *testing.T) {
 	for _, conversation := range []string{"first", "second"} {
 		_, output, err := c.Conversation(t.Context(), &commandwire.ConversationRelease{Conversation: conversation})
 		must(t, err)
-		for _, want := range []commandwire.Record{commandwire.Stdout("{}"), commandwire.Completed{Completion: commandwire.Completion{}}} {
+		for _, want := range []commandwire.Record{
+			commandwire.Stdout("{}"),
+			commandwire.Completed{
+				Completion: commandwire.Completion{},
+			},
+		} {
 			got, err := output.Next(t.Context())
 			must(t, err)
 			if !reflect.DeepEqual(got, want) {
@@ -355,6 +399,7 @@ func (c *capture) Stdout(_ context.Context, b []byte) error {
 	c.stdout = append(c.stdout, b...)
 	return nil
 }
+
 func (c *capture) Stderr(_ context.Context, b []byte) error {
 	c.stderr = append(c.stderr, b...)
 	return nil
@@ -378,7 +423,12 @@ func TestMetadataAndBinaryInputInOneBody(t *testing.T) {
 		must(t, err)
 		records = append(records, record)
 	}
-	want := []commandwire.Record{commandwire.InputPull{}, commandwire.Stdout(binary), commandwire.Stderr("done"), commandwire.Completed{Completion: commandwire.Completion{ExitCode: 7}}}
+	want := []commandwire.Record{
+		commandwire.InputPull{},
+		commandwire.Stdout(binary),
+		commandwire.Stderr("done"),
+		commandwire.Completed{Completion: commandwire.Completion{ExitCode: 7}},
+	}
 	if !reflect.DeepEqual(records, want) {
 		t.Fatalf("records: %#v, want %#v", records, want)
 	}

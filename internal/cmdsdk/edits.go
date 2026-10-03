@@ -29,7 +29,7 @@ func NewRecorder(ctx context.Context, c commandwire.EditContext) (*Recorder, err
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	err := os.MkdirAll(c.Directory, 0777)
+	err := os.MkdirAll(c.Directory, 0o777)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (r *Recorder) Context() commandwire.EditContext { return r.context }
 // Begin takes the job's OS lock. Failure to record must not prevent the filesystem operation.
 // Defer Close on a non-nil result so partial writes are captured on failure as well.
 func (r *Recorder) Begin(ctx context.Context) *Recording {
-	recording, err := r.locked(ctx)
+	recording, err := r.lockRecording(ctx)
 	if err != nil {
 		slog.Warn("edit recording failed", "error", err)
 		return nil
@@ -66,7 +66,7 @@ func (r *Recorder) Record(ctx context.Context, path string, operation func() err
 
 // Report reads snapshots after writers have stopped; absent and nonregular paths are omitted.
 func (r *Recorder) Report(ctx context.Context) (commandwire.EditJournal, error) {
-	recording, err := r.locked(ctx)
+	recording, err := r.lockRecording(ctx)
 	if err != nil {
 		return commandwire.EditJournal{}, err
 	}
@@ -83,30 +83,25 @@ func (r *Recorder) Report(ctx context.Context) (commandwire.EditJournal, error) 
 	})
 	return recording.journal, nil
 }
-func (r *Recorder) locked(ctx context.Context) (*Recording, error) {
-	lock, err := Retry(ctx, func() (*artifacts.InstallLock, error) { return artifacts.AcquireInstallLock(ctx, r.context.Lock) })
+
+// lockRecording acquires the job lock and validates its stored journal.
+func (r *Recorder) lockRecording(ctx context.Context) (*Recording, error) {
+	lock, err := Retry(
+		ctx,
+		func() (*artifacts.InstallLock, error) { return artifacts.AcquireInstallLock(ctx, r.context.Lock) },
+	)
 	if err != nil {
 		return nil, err
 	}
 	journal := commandwire.EditJournal{Files: []commandwire.EditFile{}}
-	b, err := Retry(ctx, func() ([]byte, error) { return os.ReadFile(filepath.Join(r.context.Directory, "journal.json")) })
+	b, err := Retry(
+		ctx,
+		func() ([]byte, error) { return os.ReadFile(filepath.Join(r.context.Directory, "journal.json")) },
+	)
 	if err == nil {
 		journal, err = commandwire.DecodeEditJournal(b)
 		if err == nil {
-			for _, file := range journal.Files {
-				for _, edit := range file.Edits {
-					if edit.Original != nil && edit.Modified == nil {
-						err = errors.New("original snapshot has no modified side")
-						break
-					}
-					for _, path := range []*string{edit.Original, edit.Modified} {
-						if path != nil && filepath.Dir(*path) != r.context.Directory {
-							err = errors.New("snapshot is outside its job directory")
-							break
-						}
-					}
-				}
-			}
+			err = checkJournalSnapshots(journal, r.context.Directory)
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
 		err = nil
@@ -193,28 +188,19 @@ func (r *Recording) Close(ctx context.Context) {
 		slog.Warn("edit recording failed", "error", err)
 	}
 }
+
 func (r *Recording) unavailable(index int) {
 	r.journal.Files[index].Edits = []commandwire.EditCopies{{}}
 }
+
+// publish updates a changed file's snapshots and journal entry.
 func (r *Recording) publish(ctx context.Context, path string, before, after contents) error {
 	if before.same(after) || after.kind == notFile {
 		return nil
 	}
-	index := slices.IndexFunc(r.journal.Files, func(f commandwire.EditFile) bool { return f.Path == path })
+	index := r.editFile(path, before, after)
 	if index < 0 {
-		if after.kind == missing {
-			return nil
-		}
-		if len(r.journal.Files) >= commandwire.EditJobFiles {
-			r.journal.FilesTruncated = true
-			return nil
-		}
-		kind := commandwire.EditModified
-		if before.kind == missing {
-			kind = commandwire.EditAdded
-		}
-		r.journal.Files = append(r.journal.Files, commandwire.EditFile{Path: path, Kind: kind, Edits: []commandwire.EditCopies{}})
-		index = len(r.journal.Files) - 1
+		return nil
 	}
 	edits := r.journal.Files[index].Edits
 	var previous commandwire.EditCopies
@@ -254,28 +240,9 @@ func (r *Recording) publish(ctx context.Context, path string, before, after cont
 		r.unavailable(index)
 		return nil
 	}
-	copies := previous
-	if !merge {
-		segment := r.journal.NextSegment
-		r.journal.NextSegment++
-		modified := filepath.Join(r.directory, fmt.Sprintf("%d.modified", segment))
-		copies = commandwire.EditCopies{Modified: &modified}
-		if original.kind != missing {
-			p := filepath.Join(r.directory, fmt.Sprintf("%d.original", segment))
-			copies.Original = &p
-		}
-	}
-	if !merge && copies.Original != nil && original.kind == contentBytes {
-		if err := publishSnapshot(ctx, *copies.Original, original.data); err != nil {
-			return err
-		}
-		r.journal.BytesCopied += uint64(len(original.data))
-	}
-	if copies.Modified != nil && after.kind == contentBytes {
-		if err := publishSnapshot(ctx, *copies.Modified, after.data); err != nil {
-			return err
-		}
-		r.journal.BytesCopied += uint64(len(after.data))
+	copies, err := r.publishCopies(ctx, previous, original, after, merge)
+	if err != nil {
+		return err
 	}
 	if merge {
 		r.journal.Files[index].Edits[len(edits)-1] = copies
@@ -302,6 +269,7 @@ type contents struct {
 }
 
 func absent(err error) bool { return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) }
+
 func readContents(ctx context.Context, path string, metadataOnly bool) contents {
 	info, err := os.Stat(path)
 	if absent(err) {
@@ -329,6 +297,7 @@ func readContents(ctx context.Context, path string, metadataOnly bool) contents 
 	}
 	return result
 }
+
 func (c contents) same(other contents) bool {
 	if c.kind == missing && other.kind == missing {
 		return true
@@ -336,17 +305,27 @@ func (c contents) same(other contents) bool {
 	if c.kind == contentBytes && other.kind == contentBytes {
 		return bytes.Equal(c.data, other.data)
 	}
-	if (c.kind == unavailable && (other.kind == unavailable || other.kind == contentBytes)) || (other.kind == unavailable && c.kind == contentBytes) {
-		return c.info != nil && other.info != nil && c.info.Size() == other.info.Size() && c.info.ModTime().Equal(other.info.ModTime()) && c.created.Equal(other.created)
+	if (c.kind == unavailable && (other.kind == unavailable || other.kind == contentBytes)) ||
+		(other.kind == unavailable && c.kind == contentBytes) {
+		return c.info != nil && other.info != nil && c.info.Size() == other.info.Size() &&
+			c.info.ModTime().Equal(other.info.ModTime()) &&
+			c.created.Equal(other.created)
 	}
 	return false
 }
+
 func (c contents) text() bool {
 	return c.kind == missing || (c.kind == contentBytes && commandwire.IsText(c.data))
 }
+
 func publishSnapshot(ctx context.Context, path string, b []byte) error {
 	_, err := Retry(ctx, func() (struct{}, error) {
-		return struct{}{}, artifacts.PublishBytes(ctx, path, b, artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Private})
+		return struct{}{}, artifacts.PublishBytes(
+			ctx,
+			path,
+			b,
+			artifacts.Publication{Mode: artifacts.Replace, Permissions: artifacts.Private},
+		)
 	})
 	return err
 }
@@ -366,7 +345,87 @@ func normalize(path string) string {
 		path = absolute
 	}
 	volume := filepath.VolumeName(path)
-	parts := strings.FieldsFunc(path[len(volume):], func(c rune) bool { return c == rune(os.PathSeparator) || (os.PathSeparator == '\\' && c == '/') })
+	parts := strings.FieldsFunc(
+		path[len(volume):],
+		func(c rune) bool { return c == rune(os.PathSeparator) || (os.PathSeparator == '\\' && c == '/') },
+	)
 	parts = slices.DeleteFunc(parts, func(part string) bool { return part == "." })
 	return volume + string(os.PathSeparator) + strings.Join(parts, string(os.PathSeparator))
+}
+
+// checkJournalSnapshots checks that journal snapshots belong to this job.
+func checkJournalSnapshots(journal commandwire.EditJournal, directory string) error {
+	var err error
+	for _, file := range journal.Files {
+		for _, edit := range file.Edits {
+			if edit.Original != nil && edit.Modified == nil {
+				err = errors.New("original snapshot has no modified side")
+				break
+			}
+			for _, path := range []*string{edit.Original, edit.Modified} {
+				if path != nil && filepath.Dir(*path) != directory {
+					err = errors.New("snapshot is outside its job directory")
+					break
+				}
+			}
+		}
+	}
+	return err
+}
+
+// editFile locates or registers a changed file within the job limit.
+func (r *Recording) editFile(path string, before, after contents) int {
+	index := slices.IndexFunc(r.journal.Files, func(f commandwire.EditFile) bool { return f.Path == path })
+	if index < 0 {
+		if after.kind == missing {
+			return -1
+		}
+		if len(r.journal.Files) >= commandwire.EditJobFiles {
+			r.journal.FilesTruncated = true
+			return -1
+		}
+		kind := commandwire.EditModified
+		if before.kind == missing {
+			kind = commandwire.EditAdded
+		}
+		r.journal.Files = append(
+			r.journal.Files,
+			commandwire.EditFile{Path: path, Kind: kind, Edits: []commandwire.EditCopies{}},
+		)
+		index = len(r.journal.Files) - 1
+	}
+	return index
+}
+
+// publishCopies writes the snapshot sides and accounts for copied bytes.
+func (r *Recording) publishCopies(
+	ctx context.Context,
+	previous commandwire.EditCopies,
+	original, after contents,
+	merge bool,
+) (commandwire.EditCopies, error) {
+	copies := previous
+	if !merge {
+		segment := r.journal.NextSegment
+		r.journal.NextSegment++
+		modified := filepath.Join(r.directory, fmt.Sprintf("%d.modified", segment))
+		copies = commandwire.EditCopies{Modified: &modified}
+		if original.kind != missing {
+			p := filepath.Join(r.directory, fmt.Sprintf("%d.original", segment))
+			copies.Original = &p
+		}
+	}
+	if !merge && copies.Original != nil && original.kind == contentBytes {
+		if err := publishSnapshot(ctx, *copies.Original, original.data); err != nil {
+			return commandwire.EditCopies{}, err
+		}
+		r.journal.BytesCopied += uint64(len(original.data))
+	}
+	if copies.Modified != nil && after.kind == contentBytes {
+		if err := publishSnapshot(ctx, *copies.Modified, after.data); err != nil {
+			return commandwire.EditCopies{}, err
+		}
+		r.journal.BytesCopied += uint64(len(after.data))
+	}
+	return copies, nil
 }

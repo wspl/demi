@@ -66,7 +66,10 @@ func (w WholeOutput) BinaryStdout(length uint64, limit int) *BinaryOutput {
 	if whole {
 		data = first
 	}
-	return &BinaryOutput{Bytes: data, Info: core.BinaryStdout{Truncated: !whole, TotalBytes: length, LimitBytes: uint64(limit)}}
+	return &BinaryOutput{
+		Bytes: data,
+		Info:  core.BinaryStdout{Truncated: !whole, TotalBytes: length, LimitBytes: uint64(limit)},
+	}
 }
 
 // isOutputText permits a UTF-8 character cut only next to the kept-output gap.
@@ -105,11 +108,14 @@ const (
 )
 
 // Seen records how many bytes of each stream the reader saw.
-type Seen struct{ Stdout, Stderr uint64 }
-type outputSpan struct {
-	at     int
-	stream core.StreamKind
-}
+type (
+	Seen       struct{ Stdout, Stderr uint64 }
+	outputSpan struct {
+		at     int
+		stream core.StreamKind
+	}
+)
+
 type outputGap struct {
 	at    int
 	bytes uint64
@@ -159,7 +165,8 @@ func (w WholeOutput) Text(streams Streams, binaryStdout *uint64, seen Seen) Outp
 		if known {
 			positions[index] += uint64(len(record.Bytes))
 		}
-		if streams == OnlyStdout && record.Stream != core.StreamKind("stdout") || streams == OnlyStderr && record.Stream != core.StreamKind("stderr") {
+		if streams == OnlyStdout && record.Stream != core.StreamKind("stdout") ||
+			streams == OnlyStderr && record.Stream != core.StreamKind("stderr") {
 			continue
 		}
 		if record.Stream == core.StreamKind("stdout") && binaryStdout != nil {
@@ -171,21 +178,7 @@ func (w WholeOutput) Text(streams Streams, binaryStdout *uint64, seen Seen) Outp
 			}
 			continue
 		}
-		if t.unseen == nil {
-			count := seen.Stdout
-			if record.Stream == core.StreamKind("stderr") {
-				count = seen.Stderr
-			}
-			if !known {
-				unseen(len(t.data))
-			} else if position+uint64(len(record.Bytes)) > count {
-				skip := uint64(0)
-				if count > position {
-					skip = count - position
-				}
-				unseen(len(t.data) + int(skip))
-			}
-		}
+		t.markUnseen(record, seen, known, position)
 		span(record.Stream)
 		t.data = append(t.data, record.Bytes...)
 	}
@@ -197,7 +190,11 @@ func (w WholeOutput) Text(streams Streams, binaryStdout *uint64, seen Seen) Outp
 
 // ReceivedOutput creates unseen text whose first line has the supplied number.
 func ReceivedOutput(text string, firstLine uint64) OutputText {
-	t := OutputText{firstLine: max(firstLine, 1), data: []byte(text), spans: []outputSpan{{0, core.StreamKind("stdout")}}}
+	t := OutputText{
+		firstLine: max(firstLine, 1),
+		data:      []byte(text),
+		spans:     []outputSpan{{0, core.StreamKind("stdout")}},
+	}
 	if text != "" {
 		n := 0
 		t.unseen = &n
@@ -309,93 +306,14 @@ func (p Piece) Text() string {
 // Forward iterates pieces from a line onward, including notes.
 func (t OutputText) Forward(from uint64) iter.Seq[Piece] {
 	return func(yield func(Piece) bool) {
-		number := max(from, t.firstLine)
-		offset := t.LineOffset(number)
-		gap := t.gap
-		if offset == len(t.data) || gap != nil && gap.at < offset {
-			gap = nil
-		}
-		for {
-			if gap != nil && gap.at == offset {
-				if !yield(Piece{Note: gapNote(gap.bytes)}) {
-					return
-				}
-				gap = nil
-			}
-			if offset >= len(t.data) {
-				break
-			}
-			end := len(t.data)
-			if at := bytes.IndexByte(t.data[offset:], '\n'); at >= 0 {
-				end = offset + at
-			}
-			start := offset
-			if gap != nil && start < gap.at && gap.at <= end {
-				offset = gap.at
-				if !yield(Piece{Number: number, Offset: start, Bytes: t.data[start:offset]}) {
-					return
-				}
-				continue
-			}
-			offset = min(end+1, len(t.data))
-			if !yield(Piece{Number: number, Offset: start, Bytes: t.data[start:end]}) {
-				return
-			}
-			if end < len(t.data) {
-				number++
-			}
-		}
-		if t.missing != nil {
-			yield(Piece{Note: t.missing.Line()})
-		}
+		t.forward(from, yield)
 	}
 }
 
 // Backward iterates pieces from the end without allocating a second copy of the output.
 func (t OutputText) Backward() iter.Seq[Piece] {
 	return func(yield func(Piece) bool) {
-		if t.missing != nil && !yield(Piece{Note: t.missing.Line()}) {
-			return
-		}
-		end := len(t.data)
-		lineStart := end > 0 && t.data[end-1] == '\n'
-		number := t.LastLine()
-		if lineStart {
-			number++
-		}
-		gap := t.gap
-		for {
-			if gap != nil && gap.at == end {
-				if !yield(Piece{Note: gapNote(gap.bytes)}) {
-					return
-				}
-				gap = nil
-			}
-			if len(t.data) == 0 {
-				return
-			}
-			if lineStart {
-				if end == 0 {
-					return
-				}
-				end--
-				number--
-				lineStart = false
-			}
-			start := bytes.LastIndexByte(t.data[:end], '\n') + 1
-			if gap != nil && start < gap.at && gap.at < end {
-				if !yield(Piece{Number: number, Offset: gap.at, Bytes: t.data[gap.at:end]}) {
-					return
-				}
-				end = gap.at
-				continue
-			}
-			if !yield(Piece{Number: number, Offset: start, Bytes: t.data[start:end]}) {
-				return
-			}
-			end = start
-			lineStart = true
-		}
+		t.backward(yield)
 	}
 }
 
@@ -476,4 +394,113 @@ func lossy(data []byte) string {
 		data = data[n:]
 	}
 	return b.String()
+}
+
+// markUnseen locates the first selected byte beyond the reader position.
+func (t *OutputText) markUnseen(record OutputRecord, seen Seen, known bool, position uint64) {
+	if t.unseen != nil {
+		return
+	}
+	count := seen.Stdout
+	if record.Stream == core.StreamKind("stderr") {
+		count = seen.Stderr
+	}
+	if !known {
+		t.unseen = new(len(t.data))
+	} else if position+uint64(len(record.Bytes)) > count {
+		skip := uint64(0)
+		if count > position {
+			skip = count - position
+		}
+		t.unseen = new(len(t.data) + int(skip))
+	}
+}
+
+// forward yields kept line fragments and notes in forward order.
+func (t OutputText) forward(from uint64, yield func(Piece) bool) {
+	number := max(from, t.firstLine)
+	offset := t.LineOffset(number)
+	gap := t.gap
+	if offset == len(t.data) || gap != nil && gap.at < offset {
+		gap = nil
+	}
+	for {
+		if gap != nil && gap.at == offset {
+			if !yield(Piece{Note: gapNote(gap.bytes)}) {
+				return
+			}
+			gap = nil
+		}
+		if offset >= len(t.data) {
+			break
+		}
+		end := len(t.data)
+		if at := bytes.IndexByte(t.data[offset:], '\n'); at >= 0 {
+			end = offset + at
+		}
+		start := offset
+		if gap != nil && start < gap.at && gap.at <= end {
+			offset = gap.at
+			if !yield(Piece{Number: number, Offset: start, Bytes: t.data[start:offset]}) {
+				return
+			}
+			continue
+		}
+		offset = min(end+1, len(t.data))
+		if !yield(Piece{Number: number, Offset: start, Bytes: t.data[start:end]}) {
+			return
+		}
+		if end < len(t.data) {
+			number++
+		}
+	}
+	if t.missing != nil {
+		yield(Piece{Note: t.missing.Line()})
+	}
+}
+
+// backward yields kept line fragments and notes in backward order.
+func (t OutputText) backward(yield func(Piece) bool) {
+	if t.missing != nil && !yield(Piece{Note: t.missing.Line()}) {
+		return
+	}
+	end := len(t.data)
+	lineStart := end > 0 && t.data[end-1] == '\n'
+	number := t.LastLine()
+	if lineStart {
+		number++
+	}
+	gap := t.gap
+	for {
+		if gap != nil && gap.at == end {
+			if !yield(Piece{Note: gapNote(gap.bytes)}) {
+				return
+			}
+			gap = nil
+		}
+		if len(t.data) == 0 {
+			return
+		}
+		if lineStart {
+			if end == 0 {
+				return
+			}
+			end--
+			number--
+			lineStart = false
+		}
+		start := bytes.LastIndexByte(t.data[:end], '\n') + 1
+		if gap != nil && start < gap.at && gap.at < end {
+			if !yield(Piece{Number: number, Offset: gap.at, Bytes: t.data[gap.at:end]}) {
+				return
+			}
+			end = gap.at
+			continue
+		}
+		if !yield(Piece{Number: number, Offset: start, Bytes: t.data[start:end]}) {
+			return
+		}
+		end = start
+		lineStart = true
+	}
 }

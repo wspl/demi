@@ -101,7 +101,14 @@ func TestResourceSelectionAndDescriptorValidation(t *testing.T) {
 			"aarch64-apple-darwin": {SHA256: resourceHash, Size: 456, Entry: "bin/chrome"},
 		}},
 	}
-	p := commandwire.PackageDescriptor{ID: "demi.browser", Version: "1", ProtocolVersion: 1, Operations: []string{"open"}, Targets: map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: hash, Size: 123}}, Resources: resources}
+	p := commandwire.PackageDescriptor{
+		ID:              "demi.browser",
+		Version:         "1",
+		ProtocolVersion: 1,
+		Operations:      []string{"open"},
+		Targets:         map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: hash, Size: 123}},
+		Resources:       resources,
+	}
 	if err := p.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +131,12 @@ func TestResourceSelectionAndDescriptorValidation(t *testing.T) {
 			p.Resources = map[string]commandwire.PackageResource{"Bad Name": resources["chrome"]}
 		},
 		func(p *commandwire.PackageDescriptor) {
-			p.Resources = map[string]commandwire.PackageResource{"chrome": {Title: "Chrome", Targets: map[string]commandwire.ResourceArtifact{}}}
+			p.Resources = map[string]commandwire.PackageResource{
+				"chrome": {
+					Title:   "Chrome",
+					Targets: map[string]commandwire.ResourceArtifact{},
+				},
+			}
 		},
 	} {
 		bad := p
@@ -143,7 +155,14 @@ func TestArtifactLocationRustWire(t *testing.T) {
 	}{
 		{"path", `{"path":"/tmp/program"}`, &commandwire.ArtifactPath{Path: "/tmp/program"}},
 		{"url", `{"url":"https://example.com/program"}`, &commandwire.ArtifactURL{URL: "https://example.com/program"}},
-		{"expiring URL", `{"url":"https://example.com/program","expiresAt":123}`, &commandwire.ArtifactURL{URL: "https://example.com/program", ExpiresAt: new(int64(123))}},
+		{
+			"expiring URL",
+			`{"url":"https://example.com/program","expiresAt":123}`,
+			&commandwire.ArtifactURL{
+				URL:       "https://example.com/program",
+				ExpiresAt: new(int64(123)),
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := commandwire.DecodeArtifactLocation([]byte(tc.wire))
@@ -164,7 +183,14 @@ func TestArtifactLocationRustWire(t *testing.T) {
 			}
 		})
 	}
-	for _, wire := range []string{`{}`, `{"path":"/tmp/program","url":"https://example.com/program"}`, `{"kind":"path","path":"/tmp/program"}`, `{"url":"https://example.com/program","expiresAt":null}`, `{"path":""}`, `{"url":"file:///tmp/program"}`} {
+	for _, wire := range []string{
+		`{}`,
+		`{"path":"/tmp/program","url":"https://example.com/program"}`,
+		`{"kind":"path","path":"/tmp/program"}`,
+		`{"url":"https://example.com/program","expiresAt":null}`,
+		`{"path":""}`,
+		`{"url":"file:///tmp/program"}`,
+	} {
 		if _, err := commandwire.DecodeArtifactLocation([]byte(wire)); err == nil {
 			t.Fatalf("accepted invalid location %s", wire)
 		}
@@ -269,7 +295,13 @@ func TestArtifactIdentityChecks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, target := range []string{"", "amd64", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin\n", "AARCH64-APPLE-DARWIN"} {
+	for _, target := range []string{
+		"",
+		"amd64",
+		"x86_64-unknown-linux-gnu",
+		"aarch64-apple-darwin\n",
+		"AARCH64-APPLE-DARWIN",
+	} {
 		if commandwire.IsTarget(target) {
 			t.Fatalf("invalid target %q accepted", target)
 		}
@@ -290,10 +322,37 @@ func TestReleaseTargetArtifacts(t *testing.T) {
 		{"empty development release", map[string]commandwire.PackageArtifact{}, true},
 		{"known target", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": valid}, true},
 		{"unknown target", map[string]commandwire.PackageArtifact{"unknown": valid}, false},
-		{"invalid digest", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: "invalid", Size: 1}}, false},
+		{
+			"invalid digest",
+			map[string]commandwire.PackageArtifact{
+				"aarch64-apple-darwin": {
+					SHA256: "invalid",
+					Size:   1,
+				},
+			},
+			false,
+		},
 		{"zero size", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: valid.SHA256, Size: 0}}, false},
-		{"maximum size", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: valid.SHA256, Size: 9007199254740991}}, true},
-		{"oversized artifact", map[string]commandwire.PackageArtifact{"aarch64-apple-darwin": {SHA256: valid.SHA256, Size: 9007199254740992}}, false},
+		{
+			"maximum size",
+			map[string]commandwire.PackageArtifact{
+				"aarch64-apple-darwin": {
+					SHA256: valid.SHA256,
+					Size:   9007199254740991,
+				},
+			},
+			true,
+		},
+		{
+			"oversized artifact",
+			map[string]commandwire.PackageArtifact{
+				"aarch64-apple-darwin": {
+					SHA256: valid.SHA256,
+					Size:   9007199254740992,
+				},
+			},
+			false,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := commandwire.TargetArtifacts(tc.targets)

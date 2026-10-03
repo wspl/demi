@@ -62,5 +62,8 @@ func AnswerNumbers(ctx context.Context, client *cmdsdk.Client) error {
 		return err
 	}
 	var c counters
-	return s.AnswerNumbers(ctx, func(_ context.Context, q commandwire.NumbersRequest) (uint64, error) { return c.take(q), nil })
+	return s.AnswerNumbers(
+		ctx,
+		func(_ context.Context, q commandwire.NumbersRequest) (uint64, error) { return c.take(q), nil },
+	)
 }

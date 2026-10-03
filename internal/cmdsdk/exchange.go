@@ -15,7 +15,10 @@ type ExchangeError struct {
 	Cause error
 }
 
+// Error returns the failure message.
 func (e *ExchangeError) Error() string { return fmt.Sprintf("command %s: %v", e.Side, e.Cause) }
+
+// Unwrap returns the underlying failure.
 func (e *ExchangeError) Unwrap() error { return e.Cause }
 
 // Exchange drives one invocation's pull-driven input and output to completion.
@@ -32,25 +35,7 @@ func (e Exchange) Run(ctx context.Context, source InputSource, sink OutputSink) 
 	sent := make(chan struct{})
 	var inputErr error
 	go func() {
-		inputErr = func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-pulls:
-				}
-				b, err := source.Next(ctx)
-				if errors.Is(err, io.EOF) {
-					return e.Input.End()
-				}
-				if err != nil {
-					return &ExchangeError{Side: "input", Cause: err}
-				}
-				if err = e.Input.Write(ctx, b); err != nil {
-					return &ExchangeError{Side: "service", Cause: err}
-				}
-			}
-		}()
+		inputErr = e.forwardInput(ctx, source, pulls)
 		close(sent)
 		if inputErr != nil {
 			cancel()
@@ -94,6 +79,27 @@ func (e Exchange) Run(ctx context.Context, source InputSource, sink OutputSink) 
 		}
 		if err != nil {
 			return completion, &ExchangeError{Side: "output", Cause: err}
+		}
+	}
+}
+
+// forwardInput sends one input chunk for each service demand.
+func (e Exchange) forwardInput(ctx context.Context, source InputSource, pulls <-chan struct{}) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-pulls:
+		}
+		b, err := source.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			return e.Input.End()
+		}
+		if err != nil {
+			return &ExchangeError{Side: "input", Cause: err}
+		}
+		if err = e.Input.Write(ctx, b); err != nil {
+			return &ExchangeError{Side: "service", Cause: err}
 		}
 	}
 }

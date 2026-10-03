@@ -79,7 +79,12 @@ func NumbersChannel() (*Numbers, <-chan Draw) {
 func (n *Numbers) Close() { n.source.close() }
 
 // Draw reserves count consecutive numbers and returns the first.
-func (n *Numbers) Draw(ctx context.Context, conversation string, sequence commandwire.ServiceSequence, count uint32) (uint64, error) {
+func (n *Numbers) Draw(
+	ctx context.Context,
+	conversation string,
+	sequence commandwire.ServiceSequence,
+	count uint32,
+) (uint64, error) {
 	q := commandwire.NumbersRequest{Conversation: conversation, Sequence: sequence, Count: count}
 	if err := q.Validate(); err != nil {
 		return 0, err
@@ -107,6 +112,7 @@ func ArtifactsChannel() (*Artifacts, <-chan ArtifactPending) {
 
 // Close ends the source and wakes callers.
 func (a *Artifacts) Close() { a.source.close() }
+
 func (a *Artifacts) ask(ctx context.Context, q commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
 	if err := q.Validate(); err != nil {
 		return commandwire.ArtifactAnswer{}, err
@@ -186,6 +192,7 @@ var numberCodec = askCodec[commandwire.NumbersRequest, uint64, commandwire.Numbe
 		return a.ID, *a.First, nil
 	},
 }
+
 var artifactCodec = askCodec[commandwire.ArtifactRequest, commandwire.ArtifactAnswer, commandwire.ArtifactAnswer]{
 	name: "artifacts", request: commandwire.DecodeArtifactRequest,
 	identify: func(q commandwire.ArtifactRequest, id uint64) commandwire.ArtifactRequest {
@@ -210,15 +217,35 @@ var artifactCodec = askCodec[commandwire.ArtifactRequest, commandwire.ArtifactAn
 	},
 }
 
-func relayNumbers(ctx, finish context.Context, i *Input, o *Output, n *Numbers, q <-chan Draw) (commandwire.Completion, error) {
+func relayNumbers(
+	ctx, finish context.Context,
+	i *Input,
+	o *Output,
+	n *Numbers,
+	q <-chan Draw,
+) (commandwire.Completion, error) {
 	return relay(ctx, finish, i, o, n.source, q, numberCodec)
 }
-func relayArtifacts(ctx, finish context.Context, i *Input, o *Output, a *Artifacts, q <-chan ArtifactPending) (commandwire.Completion, error) {
+
+func relayArtifacts(
+	ctx, finish context.Context,
+	i *Input,
+	o *Output,
+	a *Artifacts,
+	q <-chan ArtifactPending,
+) (commandwire.Completion, error) {
 	return relay(ctx, finish, i, o, a.source, q, artifactCodec)
 }
 
 // relay correlates requests on one service side stream with their answers.
-func relay[Q json.Marshaler, R any, A json.Marshaler](ctx, finish context.Context, i *Input, o *Output, source *asker[Q, R], requests <-chan Pending[Q, R], codec askCodec[Q, R, A]) (commandwire.Completion, error) {
+func relay[Q json.Marshaler, R any, A json.Marshaler](
+	ctx, finish context.Context,
+	i *Input,
+	o *Output,
+	source *asker[Q, R],
+	requests <-chan Pending[Q, R],
+	codec askCodec[Q, R, A],
+) (commandwire.Completion, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer source.close()
@@ -227,55 +254,8 @@ func relay[Q json.Marshaler, R any, A json.Marshaler](ctx, finish context.Contex
 	var mu sync.Mutex
 	waiting := map[uint64]Pending[Q, R]{}
 	done := make(chan error, 2)
-	go func() {
-		var next uint64
-		for {
-			select {
-			case <-ctx.Done():
-				done <- ctx.Err()
-				return
-			case <-source.done:
-				done <- nil
-				return
-			case p := <-requests:
-				id := next
-				next++
-				mu.Lock()
-				waiting[id] = p
-				mu.Unlock()
-				b, err := codec.identify(p.Request, id).MarshalJSON()
-				if err == nil {
-					err = o.Stdout(ctx, b)
-				}
-				if err != nil {
-					done <- err
-					return
-				}
-			}
-		}
-	}()
-	go func() {
-		for {
-			b, err := i.Next(ctx)
-			if err != nil {
-				done <- err
-				return
-			}
-			a, err := codec.decode(b)
-			if err != nil {
-				done <- err
-				return
-			}
-			id, value, outcome := codec.outcome(a)
-			mu.Lock()
-			p, ok := waiting[id]
-			delete(waiting, id)
-			mu.Unlock()
-			if ok {
-				p.Reply(value, outcome)
-			}
-		}
-	}()
+	go func() { done <- sendRequests(ctx, source, requests, codec, o, &mu, waiting) }()
+	go func() { done <- receiveAnswers(ctx, codec, i, &mu, waiting) }()
 	err := <-done
 	cancel()
 	<-done
@@ -314,15 +294,28 @@ func (c *Client) Artifacts(ctx context.Context) (*RequestStream, error) {
 }
 
 // AnswerNumbers answers at most 32 requests concurrently, refusing excess requests.
-func (s *RequestStream) AnswerNumbers(ctx context.Context, f func(context.Context, commandwire.NumbersRequest) (uint64, error)) error {
+func (s *RequestStream) AnswerNumbers(
+	ctx context.Context,
+	f func(context.Context, commandwire.NumbersRequest) (uint64, error),
+) error {
 	return answerStream(ctx, s, numberCodec, f)
 }
 
 // AnswerArtifacts answers the artifact stream with runner-owned installations.
-func (s *RequestStream) AnswerArtifacts(ctx context.Context, f func(context.Context, commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error)) error {
+func (s *RequestStream) AnswerArtifacts(
+	ctx context.Context,
+	f func(context.Context, commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error),
+) error {
 	return answerStream(ctx, s, artifactCodec, f)
 }
-func answerStream[Q json.Marshaler, R any, A json.Marshaler](ctx context.Context, s *RequestStream, codec askCodec[Q, R, A], f func(context.Context, Q) (R, error)) error {
+
+// answerStream correlates runner callbacks with the service's input demands.
+func answerStream[Q json.Marshaler, R any, A json.Marshaler](
+	ctx context.Context,
+	s *RequestStream,
+	codec askCodec[Q, R, A],
+	f func(context.Context, Q) (R, error),
+) error {
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	defer func() {
@@ -335,45 +328,12 @@ func answerStream[Q json.Marshaler, R any, A json.Marshaler](ctx context.Context
 	workers.Add(1)
 	go func() {
 		defer workers.Done()
-		for {
-			r, err := s.output.Next(ctx)
-			if err != nil {
-				failures <- err
-				return
-			}
-			select {
-			case records <- r:
-			case <-ctx.Done():
-				return
-			}
-		}
+		s.readRequests(ctx, records, failures)
 	}()
-	type response struct {
-		id         uint64
-		value      A
-		releasesID bool
-	}
-	answers := make(chan response, 32)
-	// IDs remain in flight until their original answer is sent, even after
-	// its callback finishes. A duplicate refusal does not release that ID.
-	inFlight := make(map[uint64]struct{})
-	active := 0
-	pulls := 0
-	var queued []response
+	state := streamAnswers[A]{answers: make(chan streamResponse[A], 32), inFlight: make(map[uint64]struct{})}
 	for {
-		for pulls > 0 && len(queued) > 0 {
-			b, err := queued[0].value.MarshalJSON()
-			if err != nil {
-				return err
-			}
-			if err = s.input.Write(ctx, b); err != nil {
-				return err
-			}
-			if queued[0].releasesID {
-				delete(inFlight, queued[0].id)
-			}
-			queued = queued[1:]
-			pulls--
+		if err := state.writeQueued(ctx, s.input); err != nil {
+			return err
 		}
 		select {
 		case <-ctx.Done():
@@ -383,47 +343,190 @@ func answerStream[Q json.Marshaler, R any, A json.Marshaler](ctx context.Context
 				return nil
 			}
 			return err
-		case a := <-answers:
-			active--
-			queued = append(queued, a)
+		case a := <-state.answers:
+			state.active--
+			state.queued = append(state.queued, a)
 		case r := <-records:
 			switch r := r.(type) {
 			case commandwire.Stdout:
-				q, err := codec.request(r)
-				if err != nil {
+				if err := answerRequest(ctx, r, codec, f, &state, &workers); err != nil {
 					return err
 				}
-				id := codec.id(q)
-				if _, exists := inFlight[id]; codec.rejectDuplicates && exists {
-					var zero R
-					queued = append(queued, response{value: codec.answer(id, zero, fmt.Errorf("duplicate %s request id %d", codec.name, id))})
-					continue
-				}
-				if active == 32 {
-					var zero R
-					queued = append(queued, response{value: codec.answer(id, zero, fmt.Errorf("too many %s requests in flight", codec.name))})
-					continue
-				}
-				if codec.rejectDuplicates {
-					inFlight[id] = struct{}{}
-				}
-				active++
-				workers.Add(1)
-				go func() {
-					defer workers.Done()
-					value, err := f(ctx, q)
-					select {
-					case answers <- response{id: id, value: codec.answer(id, value, err), releasesID: codec.rejectDuplicates}:
-					case <-ctx.Done():
-					}
-				}()
 			case commandwire.InputPull:
-				pulls++
+				state.pulls++
 			case commandwire.Stderr:
 				slog.Info("command service stream", "stream", codec.name, "message", string(r))
 			case commandwire.Completed:
 				return nil
 			}
+		}
+	}
+}
+
+// sendRequests correlates service-stream requests with emitted IDs.
+func sendRequests[Q json.Marshaler, R any, A json.Marshaler](
+	ctx context.Context,
+	source *asker[Q, R],
+	requests <-chan Pending[Q, R],
+	codec askCodec[Q, R, A],
+	o *Output,
+	mu *sync.Mutex,
+	waiting map[uint64]Pending[Q, R],
+) error {
+	var next uint64
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-source.done:
+			return nil
+		case p := <-requests:
+			id := next
+			next++
+			mu.Lock()
+			waiting[id] = p
+			mu.Unlock()
+			b, err := codec.identify(p.Request, id).MarshalJSON()
+			if err == nil {
+				err = o.Stdout(ctx, b)
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// receiveAnswers correlates service-stream answers with pending callers.
+func receiveAnswers[Q json.Marshaler, R any, A json.Marshaler](
+	ctx context.Context,
+	codec askCodec[Q, R, A],
+	i *Input,
+	mu *sync.Mutex,
+	waiting map[uint64]Pending[Q, R],
+) error {
+	for {
+		b, err := i.Next(ctx)
+		if err != nil {
+			return err
+		}
+		a, err := codec.decode(b)
+		if err != nil {
+			return err
+		}
+		id, value, outcome := codec.outcome(a)
+		mu.Lock()
+		p, ok := waiting[id]
+		delete(waiting, id)
+		mu.Unlock()
+		if ok {
+			p.Reply(value, outcome)
+		}
+	}
+}
+
+// streamResponse retains the ID until its original answer has been sent.
+type streamResponse[A json.Marshaler] struct {
+	id         uint64
+	value      A
+	releasesID bool
+}
+
+// streamAnswers bundles answer queue and admission state for one runner stream.
+type streamAnswers[A json.Marshaler] struct {
+	answers chan streamResponse[A]
+	// IDs remain in flight until their original answer is sent, even after
+	// its callback finishes. A duplicate refusal does not release that ID.
+	inFlight      map[uint64]struct{}
+	active, pulls int
+	queued        []streamResponse[A]
+}
+
+// writeQueued sends queued answers only when the service requests input.
+func (sa *streamAnswers[A]) writeQueued(ctx context.Context, input *CommandInput) error {
+	for sa.pulls > 0 && len(sa.queued) > 0 {
+		b, err := sa.queued[0].value.MarshalJSON()
+		if err != nil {
+			return err
+		}
+		if err = input.Write(ctx, b); err != nil {
+			return err
+		}
+		if sa.queued[0].releasesID {
+			delete(sa.inFlight, sa.queued[0].id)
+		}
+		sa.queued = sa.queued[1:]
+		sa.pulls--
+	}
+	return nil
+}
+
+// answerRequest validates, admits or refuses one request before starting its callback.
+func answerRequest[Q json.Marshaler, R any, A json.Marshaler](
+	ctx context.Context,
+	r commandwire.Stdout,
+	codec askCodec[Q, R, A],
+	f func(context.Context, Q) (R, error),
+	state *streamAnswers[A],
+	workers *sync.WaitGroup,
+) error {
+	q, err := codec.request(r)
+	if err != nil {
+		return err
+	}
+	id := codec.id(q)
+	if _, exists := state.inFlight[id]; codec.rejectDuplicates && exists {
+		var zero R
+		state.queued = append(
+			state.queued,
+			streamResponse[A]{
+				value: codec.answer(id, zero, fmt.Errorf("duplicate %s request id %d", codec.name, id)),
+			},
+		)
+		return nil
+	}
+	if state.active == 32 {
+		var zero R
+		state.queued = append(
+			state.queued,
+			streamResponse[A]{
+				value: codec.answer(id, zero, fmt.Errorf("too many %s requests in flight", codec.name)),
+			},
+		)
+		return nil
+	}
+	if codec.rejectDuplicates {
+		state.inFlight[id] = struct{}{}
+	}
+	state.active++
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		value, err := f(ctx, q)
+		select {
+		case state.answers <- streamResponse[A]{
+			id:         id,
+			value:      codec.answer(id, value, err),
+			releasesID: codec.rejectDuplicates,
+		}:
+		case <-ctx.Done():
+		}
+	}()
+	return nil
+}
+
+// readRequests forwards service records until the stream ends or its owner cancels.
+func (s *RequestStream) readRequests(ctx context.Context, records chan<- commandwire.Record, failures chan<- error) {
+	for {
+		r, err := s.output.Next(ctx)
+		if err != nil {
+			failures <- err
+			return
+		}
+		select {
+		case records <- r:
+		case <-ctx.Done():
+			return
 		}
 	}
 }
