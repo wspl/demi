@@ -14,7 +14,7 @@ import (
 )
 
 // send publishes a runner frame while the call and connection remain alive.
-func (h *ConnectionHandle) send(ctx context.Context, message runnerwire.Outbound) error {
+func (h *Connection) send(ctx context.Context, message runnerwire.Outbound) error {
 	frame, err := runnerwire.Encode(message)
 	if err != nil {
 		return err
@@ -30,7 +30,7 @@ func (h *ConnectionHandle) send(ctx context.Context, message runnerwire.Outbound
 }
 
 // retire sends cleanup without allowing a stalled backend to retain RPC work.
-func (h *ConnectionHandle) retire(message runnerwire.Outbound) {
+func (h *Connection) retire(message runnerwire.Outbound) {
 	frame, err := runnerwire.Encode(message)
 	if err == nil {
 		select {
@@ -43,7 +43,7 @@ func (h *ConnectionHandle) retire(message runnerwire.Outbound) {
 }
 
 // runningHint pairs a displayed invocation hint with its unconditional clearing.
-func runningHint(ctx context.Context, h *ConnectionHandle, job string, hint *string) (func(), error) {
+func runningHint(ctx context.Context, h *Connection, job string, hint *string) (func(), error) {
 	if hint == nil {
 		return func() {}, nil
 	}
@@ -97,7 +97,7 @@ func invokeRPC(
 func rpcInput(
 	ctx context.Context,
 	pipes *process.PipeClient,
-	h *ConnectionHandle,
+	h *Connection,
 	id string,
 	live bool,
 	reference *runnerwire.PipeRef,
@@ -205,7 +205,7 @@ type rpcUploadOptions struct {
 func rpcUpload(
 	ctx context.Context,
 	pipes *process.PipeClient,
-	connection *ConnectionHandle,
+	connection *Connection,
 	transfer rpcUploadOptions,
 ) {
 	var reference *runnerwire.PipeRef
@@ -223,7 +223,7 @@ func rpcUpload(
 func rpcOutput(
 	ctx context.Context,
 	pipes *process.PipeClient,
-	connection *ConnectionHandle,
+	connection *Connection,
 	outputRef <-chan *runnerwire.PipeRef,
 	output *commandOutput,
 	outputDone chan<- error,
@@ -252,7 +252,7 @@ type rpcEventState struct {
 // rpcEvent updates callback state only after validating the received control event.
 func rpcEvent(
 	ctx context.Context,
-	connection *ConnectionHandle,
+	connection *Connection,
 	id string,
 	event CallEvent,
 	options rpcExchangeOptions,
@@ -303,7 +303,7 @@ func rpcEvent(
 
 func sendRPCCall(
 	ctx context.Context,
-	connection *ConnectionHandle,
+	connection *Connection,
 	id, job string,
 	raw process.RawCommand,
 	parsed *declare.Parsed,
@@ -360,7 +360,7 @@ func exchangeRPC(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	pipes *process.PipeClient,
-	connection *ConnectionHandle,
+	connection *Connection,
 	id string,
 	options rpcExchangeOptions,
 ) (uint8, error) {
@@ -414,7 +414,7 @@ type rpcWaitOptions struct {
 
 func waitRPC(
 	ctx context.Context,
-	connection *ConnectionHandle,
+	connection *Connection,
 	id string,
 	options rpcExchangeOptions,
 	wait rpcWaitOptions,

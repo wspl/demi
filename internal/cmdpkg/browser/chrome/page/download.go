@@ -150,7 +150,8 @@ func spoolPath(environment *tabs.Environment, guid string) (string, error) {
 	return filepath.Join(environment.DownloadDirectory(), guid), nil
 }
 
-// downloadMedia saves the resource of an image, video or audio hit at coordinates.
+// downloadMedia saves the resource of an image, video or audio hit at coordinates;
+// the bool is false when the hit is not such an element with a source.
 func downloadMedia(
 	ctx context.Context,
 	tab *tabs.Tab,
@@ -158,10 +159,10 @@ func downloadMedia(
 	p point,
 	cwd, output string,
 	overwrite bool,
-) (*browserop.DownloadResult, error) {
+) (browserop.DownloadResult, bool, error) {
 	backend, frame, _, err := dom.GetNodeForLocation(int64(p.x), int64(p.y)).Do(protocol.WithExecutor(ctx, tab.Page()))
 	if err != nil {
-		return nil, err
+		return browserop.DownloadResult{}, false, err
 	}
 	var renderer cdp.FrameTarget
 	for _, document := range snapshot.Frames {
@@ -171,11 +172,11 @@ func downloadMedia(
 		}
 	}
 	if renderer == nil {
-		return nil, &cdp.BrowserError{Kind: cdp.KindTargetNotFound}
+		return browserop.DownloadResult{}, false, &cdp.BrowserError{Kind: cdp.KindTargetNotFound}
 	}
 	media, err := resolveElement(ctx, renderer, backend)
 	if err != nil {
-		return nil, err
+		return browserop.DownloadResult{}, false, err
 	}
 	source, err := decodeElement[*string](
 		ctx,
@@ -185,31 +186,31 @@ func downloadMedia(
 		false,
 	)
 	if err != nil || source == nil {
-		return nil, err
+		return browserop.DownloadResult{}, false, err
 	}
 	if err := prepareMedia(ctx, media); err != nil {
-		return nil, err
+		return browserop.DownloadResult{}, false, err
 	}
 	tree, err := chrome.GetResourceTree().Do(protocol.WithExecutor(ctx, renderer))
 	if err != nil {
-		return nil, err
+		return browserop.DownloadResult{}, false, err
 	}
 	mime := mediaMIME(tree, frame, source)
 	data, err := resourceBytes(ctx, renderer, frame, *source)
 	if err != nil {
-		return nil, err
+		return browserop.DownloadResult{}, false, err
 	}
 	suggested := mediaFilename(source)
 	path, err := cdp.SaveWithOverwrite(ctx, cwd, output, data, overwrite)
 	if err != nil {
-		return nil, err
+		return browserop.DownloadResult{}, false, err
 	}
-	return &browserop.DownloadResult{
+	return browserop.DownloadResult{
 		Path:              path,
 		SuggestedFilename: suggested,
 		Bytes:             uint64(len(data)),
 		MIMEType:          mime,
-	}, nil
+	}, true, nil
 }
 
 func downloadMIME(
@@ -219,7 +220,7 @@ func downloadMIME(
 ) (string, error) {
 	mime := "application/octet-stream"
 	// Next drains queued events before honoring cancellation, so this context
-	// implements Rust's now_or_never without a timer or a background reader.
+	// reads only the events already queued, without a timer or a background reader.
 	drain, cancel := context.WithCancel(work)
 	cancel()
 	for {
@@ -451,13 +452,12 @@ func (d downloadRun) perform(
 		return result, download, phase, err
 	}
 	if d.request.XY != nil {
-		media, mediaErr := downloadMedia(ctx, d.tab, d.snapshot, p, d.invocation.Request.Cwd, output, overwrite)
+		media, saved, mediaErr := downloadMedia(ctx, d.tab, d.snapshot, p, d.invocation.Request.Cwd, output, overwrite)
 		if mediaErr != nil {
 			return result, download, phase, mediaErr
 		}
-		if media != nil {
-			result = *media
-			return result, download, phase, nil
+		if saved {
+			return media, download, phase, nil
 		}
 	}
 	download, err = triggerDownload(ctx, d.tab, p, d.operation, d.beginnings, d.progress, d.snapshot, &phase)

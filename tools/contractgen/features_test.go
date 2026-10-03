@@ -189,7 +189,7 @@ func TestEmptyTolerantObject(t *testing.T) {
 }
 
 // An outside package must delegate boot validation and URL normalization to the
-// owning codec. The values mirror the Rust URL boundary; CPU budget <1 second.
+// owning codec. The values pin the URL normalization; CPU budget <1 second.
 func TestOpaqueBootCodec(t *testing.T) {
 	input := `{"boot":{"backendUrl":"HTTPS://DEMI.EXAMPLE.COM:443/a/../","deviceToken":"secret"}}`
 	value, err := codecs.DecodeWake([]byte(input))

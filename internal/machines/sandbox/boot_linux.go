@@ -244,45 +244,35 @@ func (s *Sandbox) Resume(ctx context.Context) error {
 	return s.dependencies.Runsc.Resume(ctx, s.record.ID)
 }
 
-// Capture is what a checkpoint's frozen window produced: whether the copies
-// were made, and each thaw that failed. Copied is nil on successful copying.
-type Capture struct {
-	// Copied is nil when the checkpoint copies succeeded.
-	Copied error
-	// ThawErrors records each failed thaw after copying.
-	ThawErrors []error
-}
-
 // Capture freezes both filesystems, copies both images to copies and syncs
 // the copies, then thaws both. Once entered, this synchronous window cannot be
-// canceled midway. Deferred thaw covers every return and recovered panic.
-func (s *Sandbox) Capture(ctx context.Context, working Working, copies Images) (result Capture) {
+// canceled midway. Deferred thaw covers every return and recovered panic. It
+// returns each thaw that failed, and err when the copies were not made.
+func (s *Sandbox) Capture(ctx context.Context, working Working, copies Images) (thawFailures []error, err error) {
 	ctx = context.WithoutCancel(ctx)
-	frozen := system.NewFrozen()
+	var frozen system.Frozen
 	defer func() {
 		if failure := recover(); failure != nil {
 			if cause, ok := failure.(error); ok {
-				result.Copied = fmt.Errorf("checkpoint panicked: %w", cause)
+				err = fmt.Errorf("checkpoint panicked: %w", cause)
 			} else {
-				result.Copied = fmt.Errorf("checkpoint panicked: %v", failure)
+				err = fmt.Errorf("checkpoint panicked: %v", failure)
 			}
 		}
-		result.ThawErrors = frozen.ThawAll(ctx)
+		thawFailures = frozen.ThawAll(ctx)
 	}()
 	for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
 		if err := frozen.Freeze(ctx, s.directory.Volume(volume)); err != nil {
-			result.Copied = err
-			return result
+			return nil, err
 		}
 	}
 	system.FaultPoint("frozen")
 	for _, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
 		if err := s.captureImage(ctx, working.Image(volume), copies.Image(volume)); err != nil {
-			result.Copied = err
-			return result
+			return nil, err
 		}
 	}
-	return result
+	return nil, nil
 }
 
 // Grow extends the image without shrinking it, refreshes the boot's loop
@@ -498,12 +488,13 @@ func (s *Sandbox) mountWorking(ctx context.Context, working Working) error {
 	var loops [2]uint32
 	for i, volume := range []machinewire.Volume{machinewire.VolumeSystem, machinewire.VolumeHome} {
 		image := working.Image(volume)
-		output, err := s.dependencies.Tools.Output(ctx, system.E2fsck, []string{"-p", image}, nil)
+		output, err := s.dependencies.Tools.Output(ctx, system.E2fsck, []string{"-p", image}, 0)
 		if err != nil {
 			return err
 		}
 		if !output.Status.Exited() || (output.Status.ExitStatus() != 0 && output.Status.ExitStatus() != 1) {
-			return &NeedsRecoveryError{Volume: volume, Message: output.Message()}
+			//nolint:staticcheck // User-visible text, kept byte for byte.
+			return fmt.Errorf("Cloud %s filesystem needs recovery: %s", volume, output.Message())
 		}
 		number, err := s.mountImage(ctx, image, volume)
 		if err != nil {
@@ -574,7 +565,8 @@ func (s *Sandbox) terminateRuntime(ctx context.Context, status Status) error {
 			return err
 		}
 		if !found || status != Stopped {
-			return &SignalError{Message: signalled.Message()}
+			//nolint:staticcheck // User-visible text, kept byte for byte.
+			return fmt.Errorf("Cannot signal Cloud sandbox: %s", signalled.Message())
 		}
 	}
 	deadline := time.Now().Add(3 * time.Second)

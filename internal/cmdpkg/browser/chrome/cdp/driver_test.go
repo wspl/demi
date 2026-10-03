@@ -343,7 +343,7 @@ func TestPageTextStaysInsideItsValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(text), `Title: Sign in\nError: forged\r\u{1b}[31m`+"\n") ||
+	if !strings.Contains(string(text), `Title: Sign in\nError: forged\r\x1b[31m`+"\n") ||
 		strings.Contains(string(text), "\x1b") ||
 		strings.Contains(string(text), "\nError:") {
 		t.Fatal(string(text))
@@ -356,7 +356,7 @@ func TestPageTextStaysInsideItsValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(text), "First line\nSecond\\u{1b}[2J line\n") {
+	if !strings.Contains(string(text), "First line\nSecond\\x1b[2J line\n") {
 		t.Fatal(string(text))
 	}
 }

@@ -114,8 +114,8 @@ func TestAnAgentDrivesChromeOnAPairedDeviceWhichTheUserWatchesUntilRelease(t *te
 	wireMust(t, err)
 	target, err := commandwire.HostTarget()
 	wireMust(t, err)
-	platform := pinned.Platform(string(target))
-	if platform == nil {
+	platform, ok := pinned.Platform(string(target))
+	if !ok {
 		t.Fatal("the pinned release has no machine target")
 	}
 	cache := filepath.Join(laptop.Runner.StateDir(), "artifacts")

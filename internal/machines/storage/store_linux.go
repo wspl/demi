@@ -5,6 +5,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -50,28 +51,28 @@ func NewStore(root string) *Store { return &Store{root: root} }
 // Bases returns the imported bases directory, <data>/images/bases.
 func (s *Store) Bases() string { return filepath.Join(s.root, "bases") }
 
-// ReadState reads a generation record; nil means the file does not exist.
+// ReadState reads a generation record; found is false when the file does not exist.
 // A record that does not decode is an error; nothing repairs it.
-func ReadState(ctx context.Context, path string) (*machinewire.MachineImageState, error) {
+func ReadState(ctx context.Context, path string) (state machinewire.MachineImageState, found bool, err error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, false, err
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return machinewire.MachineImageState{}, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return machinewire.MachineImageState{}, false, err
 	}
-	state, err := machinewire.DecodeMachineImageState(data)
+	state, err = machinewire.DecodeMachineImageState(data)
 	if err != nil {
-		return nil, &CorruptRecordError{Path: path, Source: err}
+		return machinewire.MachineImageState{}, false, fmt.Errorf("%s is not a valid generation record: %w", path, err)
 	}
-	return &state, nil
+	return state, true, nil
 }
 
-// Read returns a device's committed generation, or nil before its first.
-func (s *Store) Read(ctx context.Context, device machinewire.DeviceID) (*machinewire.MachineImageState, error) {
+// Read returns a device's committed generation; found is false before its first.
+func (s *Store) Read(ctx context.Context, device machinewire.DeviceID) (machinewire.MachineImageState, bool, error) {
 	return ReadState(ctx, filepath.Join(s.root, string(device), "current.json"))
 }
 
@@ -91,7 +92,7 @@ func (s *Store) Publish(
 	state machinewire.MachineImageState,
 	sources ImagePair[string],
 ) error {
-	previous, err := s.Read(ctx, device)
+	previous, hadPrevious, err := s.Read(ctx, device)
 	if err != nil {
 		return err
 	}
@@ -138,7 +139,7 @@ func (s *Store) Publish(
 	if err := Sync(ctx, directory); err != nil {
 		return err
 	}
-	return pruneGenerations(ctx, generations, state, previous)
+	return pruneGenerations(ctx, generations, state, previous, hadPrevious)
 }
 
 // stageGeneration links immutable images and records their paired generation.
@@ -163,7 +164,8 @@ func pruneGenerations(
 	ctx context.Context,
 	generations string,
 	state machinewire.MachineImageState,
-	previous *machinewire.MachineImageState,
+	previous machinewire.MachineImageState,
+	hadPrevious bool,
 ) error {
 	entries, err := os.ReadDir(generations)
 	if err != nil {
@@ -171,7 +173,7 @@ func pruneGenerations(
 	}
 	for _, entry := range entries {
 		keep := entry.Name() == string(state.Generation) ||
-			previous != nil && entry.Name() == string(previous.Generation)
+			hadPrevious && entry.Name() == string(previous.Generation)
 		if !keep && entry.IsDir() {
 			if err := RemoveTree(ctx, filepath.Join(generations, entry.Name())); err != nil {
 				return err

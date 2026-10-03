@@ -267,8 +267,7 @@ func (o *observed) runObserver(owner context.Context, events *cdp.Subscription) 
 	for {
 		event, err := events.Next(owner)
 		if err != nil {
-			var loss *cdp.EventLoss
-			if errors.As(err, &loss) {
+			if errors.Is(err, cdp.ErrEventsLost) {
 				continue
 			}
 			return
@@ -324,7 +323,7 @@ func (o *observed) publishReport(report observerReport) {
 		}
 		o.mu.Unlock()
 		for _, copies := range subscribers {
-			// Match broadcast lag: retain the newest four copies for each subscriber.
+			// Keep the newest four copies for each subscriber: a full channel drops its oldest copy.
 			select {
 			case copies <- report.Text:
 			default:

@@ -188,8 +188,7 @@ func TestRuntimeStartFailureReportsLog(t *testing.T) {
 		}
 	}()
 	err = runsc.Start(t.Context(), "demi-a", "/bundle", log, log.Name())
-	var failed *StartError
-	if !errors.As(err, &failed) || failed.Message != "fixture failed start\n" {
+	if err == nil || err.Error() != "Cloud start failed: fixture failed start\n" {
 		t.Fatalf("start error = %v", err)
 	}
 }

@@ -4,33 +4,7 @@ package storage
 
 import (
 	"errors"
-	"fmt"
 )
-
-// CorruptRecordError reports a generation record that cannot be decoded.
-type CorruptRecordError struct {
-	// Path is the record's filename.
-	Path string
-	// Source is the decoding failure.
-	Source error
-}
-
-// Error describes the invalid generation record.
-func (e *CorruptRecordError) Error() string {
-	return fmt.Sprintf("%s is not a valid generation record: %v", e.Path, e.Source)
-}
-
-// Unwrap returns the decoding failure.
-func (e *CorruptRecordError) Unwrap() error { return e.Source }
-
-// NotExt4Error reports an invalid ext4 superblock.
-type NotExt4Error struct {
-	// Path is the image filename.
-	Path string
-}
-
-// Error describes the invalid image.
-func (e *NotExt4Error) Error() string { return e.Path + " is not an ext4 image" }
 
 // GrowthCapabilityError reports a resize failure when the manager's bounding
 // capability set lacks CAP_SYS_RESOURCE.
@@ -49,59 +23,15 @@ func (e *GrowthCapabilityError) Unwrap() error { return e.Source }
 
 var (
 	// ErrUnsafeEntry reports an unsafe archive member.
-	//nolint:staticcheck // Preserve the Rust user-facing diagnostic verbatim.
+	//nolint:staticcheck // User-visible text, kept byte for byte.
 	ErrUnsafeEntry = errors.New("Cloud archive contains an unsafe path or entry type")
 	// ErrUnsafeHardlink reports an unsafe hard-link target.
-	//nolint:staticcheck // Preserve the Rust user-facing diagnostic verbatim.
+	//nolint:staticcheck // User-visible text, kept byte for byte.
 	ErrUnsafeHardlink = errors.New("Cloud archive contains an unsafe hardlink")
 	// ErrArchitecture reports an incompatible base architecture.
-	//nolint:staticcheck // Preserve the Rust user-facing diagnostic verbatim.
+	//nolint:staticcheck // User-visible text, kept byte for byte.
 	ErrArchitecture = errors.New("Cloud image architecture differs from execution host")
 	// ErrPinnedManifest reports different manifest bytes at the pinned version.
-	//nolint:staticcheck // Preserve the Rust user-facing diagnostic verbatim.
+	//nolint:staticcheck // User-visible text, kept byte for byte.
 	ErrPinnedManifest = errors.New("Pinned Cloud image manifest differs")
 )
-
-// MissingExecutableError reports a required executable absent from the manifest.
-type MissingExecutableError struct {
-	// Path is the executable path.
-	Path string
-}
-
-// Error describes the executable failure.
-func (e *MissingExecutableError) Error() string { return "Cloud image manifest lacks " + e.Path }
-
-// ExecutablePathError reports an executable path that escapes the extracted root.
-type ExecutablePathError struct {
-	// Path is the executable path.
-	Path string
-}
-
-// Error describes the executable failure.
-func (e *ExecutablePathError) Error() string { return "Invalid image executable path: " + e.Path }
-
-// ExecutableIntegrityError reports an executable with the wrong kind, size, or digest.
-type ExecutableIntegrityError struct {
-	// Path is the executable path.
-	Path string
-}
-
-// Error describes the executable failure.
-func (e *ExecutableIntegrityError) Error() string {
-	return "Cloud executable integrity mismatch: " + e.Path
-}
-
-// ArchiveIntegrityError reports a base archive whose size or digest differs
-// from the release manifest.
-type ArchiveIntegrityError struct {
-	// Source is the artifact verification failure.
-	Source error
-}
-
-// Error describes the archive integrity mismatch.
-func (e *ArchiveIntegrityError) Error() string {
-	return fmt.Sprintf("Cloud root archive integrity mismatch: %v", e.Source)
-}
-
-// Unwrap returns the artifact verification failure.
-func (e *ArchiveIntegrityError) Unwrap() error { return e.Source }

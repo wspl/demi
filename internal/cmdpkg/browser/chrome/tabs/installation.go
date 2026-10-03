@@ -49,8 +49,8 @@ func (c *Chrome) Executable(ctx context.Context, invocation string) (string, err
 	if err != nil {
 		return "", err
 	}
-	platform := release.Platform(string(host))
-	if platform == nil {
+	platform, ok := release.Platform(string(host))
+	if !ok {
 		return "", &cdp.BrowserError{
 			Kind:    cdp.KindInstallation,
 			Message: fmt.Sprintf("%s is unavailable on %s", release.Title(), host),
@@ -80,7 +80,7 @@ func (c *Chrome) Executable(ctx context.Context, invocation string) (string, err
 }
 
 // Roots waits for the artifacts source and lists Chrome installation roots.
-// Listing failures are logged and yield an empty list, as in Rust; context
+// Listing failures are logged and yield an empty list; context
 // cancellation is returned so service shutdown can join the orphan sweep.
 func (c *Chrome) Roots(ctx context.Context) ([]string, error) {
 	for {

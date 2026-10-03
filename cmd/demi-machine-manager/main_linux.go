@@ -16,21 +16,19 @@ import (
 
 func main() { os.Exit(run()) }
 func run() int {
-	config, err := machines.ConfigFromEnv()
+	config, display, err := machines.ConfigFromEnv()
 	if err != nil {
-		var display *machines.ConfigDisplay
-		if errors.As(err, &display) {
-			if _, err := fmt.Fprint(os.Stdout, display.Text); err != nil {
-				return 1
-			}
-			return 0
-		}
 		fmt.Fprintln(os.Stderr, "demi-machine-manager:", err)
-		var invalid *machines.InvalidConfigError
-		if errors.As(err, &invalid) {
-			return 2
+		if errors.Is(err, machines.ErrConfigRejected) {
+			return 1
 		}
-		return 1
+		return 2
+	}
+	if display != "" {
+		if _, err := fmt.Fprint(os.Stdout, display); err != nil {
+			return 1
+		}
+		return 0
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()

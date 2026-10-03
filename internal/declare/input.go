@@ -9,12 +9,7 @@ import (
 
 // CheckInputSubset checks the schema forms registration permits as command input.
 // It does not apply to output schemas, which may use the full JSON Schema language.
-func CheckInputSubset(schema *Schema) (err error) {
-	defer func() {
-		if err != nil {
-			err = &DeclarationError{err: err}
-		}
-	}()
+func CheckInputSubset(schema *Schema) error {
 	if schema == nil || schema.validator == nil {
 		return errors.New("uninitialized schema")
 	}

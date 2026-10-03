@@ -1,4 +1,4 @@
-//nolint:staticcheck // Command error messages are copied verbatim from the Rust service.
+//nolint:staticcheck // Command error messages are user-visible sentences, kept byte for byte.
 package file
 
 import (

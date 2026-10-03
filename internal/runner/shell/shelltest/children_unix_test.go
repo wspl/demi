@@ -24,7 +24,7 @@ func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T)
 	scripts = append(scripts, `printf line | sed -n 'e /bin/sh -c "echo $$; exec /bin/sleep 60"'`)
 	for _, script := range scripts {
 		t.Run(script, func(t *testing.T) {
-			// Rust's embedded sed streamed the e command's output as it ran.
+			// The test needs a sed whose e command streams its output as it runs.
 			// BSD sed has no e command, and GNU sed prints its output only
 			// after the command ends, so the child's ready line never comes.
 			if strings.Contains(script, "sed -n") {
@@ -51,8 +51,8 @@ func TestCancellationReapsExternalProgramsStartedByNativeUtilities(t *testing.T)
 				t.Fatal(err)
 			}
 			job.Cancel()
-			exit, _ := job.Wait(ctx)
-			if exit.Signal == nil || *exit.Signal != "SIGKILL" || exit.Error != nil {
+			exit, _, err := job.Wait(ctx)
+			if exit.Signal == nil || *exit.Signal != "SIGKILL" || err != nil {
 				t.Fatalf("exit %+v", exit)
 			}
 			if err := unix.Kill(pid, 0); !errors.Is(err, unix.ESRCH) {

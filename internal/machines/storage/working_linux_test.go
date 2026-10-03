@@ -40,14 +40,14 @@ func TestWorkingSaveRetainsFailureAndPublishesRecoveredPair(t *testing.T) {
 	if err := pair.Save(ctx, tools, store, "device"); err == nil {
 		t.Fatal("published corrupt home")
 	}
-	kept, err := pair.Manifest(ctx)
+	kept, found, err := pair.Manifest(ctx)
 	requireStorage(t, err)
-	if kept == nil || kept.Generation != state.Generation {
+	if !found || kept.Generation != state.Generation {
 		t.Fatal("lost working record")
 	}
-	committed, err := store.Read(ctx, "device")
+	committed, found, err := store.Read(ctx, "device")
 	requireStorage(t, err)
-	if committed != nil {
+	if found {
 		t.Fatal("published a partial pair")
 	}
 	requireStorage(t, os.Remove(images.Home))
@@ -56,9 +56,9 @@ func TestWorkingSaveRetainsFailureAndPublishesRecoveredPair(t *testing.T) {
 	requireStorage(t, storage.MakeHome(ctx, tools, home, images.Home, 32<<20))
 	requireStorage(t, os.Truncate(images.System, 64<<20))
 	requireStorage(t, pair.Save(ctx, tools, store, "device"))
-	committed, err = store.Read(ctx, "device")
+	committed, found, err = store.Read(ctx, "device")
 	requireStorage(t, err)
-	if committed == nil || committed.Generation == state.Generation || committed.SystemBytes != 64<<20 ||
+	if !found || committed.Generation == state.Generation || committed.SystemBytes != 64<<20 ||
 		committed.HomeBytes != 32<<20 ||
 		committed.BaseVersion != state.BaseVersion ||
 		committed.ResetID == nil ||
@@ -90,9 +90,9 @@ func TestCancelledRecordWritePreservesPreviousState(t *testing.T) {
 	if err := pair.WriteManifest(ctx, generationState(t, "second")); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	state, err := pair.Manifest(t.Context())
+	state, found, err := pair.Manifest(t.Context())
 	requireStorage(t, err)
-	if state == nil || state.Generation != "first" {
+	if !found || state.Generation != "first" {
 		t.Fatal(state)
 	}
 }

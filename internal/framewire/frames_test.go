@@ -14,7 +14,7 @@ import (
 	"github.com/wspl/demi/internal/framewire"
 )
 
-// The Rust boundary corpus protects the frames consumed by the web app and
+// The wire corpus in testdata protects the frames consumed by the web app and
 // backend. These tests use local files only, with a one-second suite budget.
 func TestClientFrames(t *testing.T) {
 	fixtures := readFixtures(t, "client-frames.json")
@@ -162,7 +162,7 @@ func TestServerUnknownFields(t *testing.T) {
 	}
 }
 
-// readFixtures reads the shared Rust wire corpus without interpreting its frames.
+// readFixtures reads the shared wire corpus without interpreting its frames.
 func readFixtures(t *testing.T, name string) []json.RawMessage {
 	t.Helper()
 	data, err := os.ReadFile("testdata/" + name)
@@ -211,7 +211,7 @@ func fixture(t *testing.T, fixtures []json.RawMessage, kind string) map[string]a
 	return nil
 }
 
-// mutate applies the Rust corpus's JSON pointers to a conversation frame.
+// mutate applies the corpus's JSON pointers to a conversation frame.
 func mutate(t *testing.T, value any, pointer string, replacement any, remove bool) {
 	t.Helper()
 	parts := strings.Split(strings.TrimPrefix(pointer, "/"), "/")
@@ -255,7 +255,7 @@ func TestNestingLimitClosesConnection(t *testing.T) {
 }
 
 // Accepted normalization F6: diagnostics name the field as spelled on the wire.
-func TestRustAttachmentFieldDiagnostic(t *testing.T) {
+func TestAttachmentFieldDiagnostic(t *testing.T) {
 	value := fixture(t, readFixtures(t, "client-frames.json"), "send")
 	mutate(t, value, "/content/2/fileName", "..", false)
 	raw, err := contract.EncodeJSON(value)

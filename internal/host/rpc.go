@@ -1,7 +1,7 @@
 package host
 
 //revive:disable:exported
-// Contract descriptions below are verbatim Rust product text.
+// Contract doc comments below are product text, which does not start with the declared name.
 
 import (
 	"context"
@@ -153,7 +153,7 @@ func (*PortReadStdin) portRequest()     {}
 func (*PortReadLiveStdin) portRequest() {}
 func (*PortStorage) portRequest()       {}
 
-// The reply to a [`PortRequest`].
+// The reply to a [PortRequest].
 // +demi:union tag=type
 // +demi:root
 //
@@ -214,7 +214,7 @@ func (*StorageRead) storageOp()    {}
 func (*StorageList) storageOp()    {}
 func (*StorageWriteIf) storageOp() {}
 
-// The answer to a [`StorageOp`].
+// The answer to a [StorageOp].
 // +demi:union tag=outcome
 // +demi:root
 //
@@ -340,7 +340,7 @@ func Update[T any](
 	key string,
 	decode func([]byte) (T, error),
 	encode func(T) ([]byte, error),
-	change func(*T) (T, error),
+	change func(current T, found bool) (T, error),
 ) (T, error) {
 	var zero T
 	for {
@@ -352,7 +352,8 @@ func Update[T any](
 		if !ok {
 			return zero, unexpectedStorage("read", stored)
 		}
-		var current *T
+		var current T
+		found := false
 		if len(value.Value) != 0 && !contract.IsNull(value.Value) {
 			decoded, err := decode(value.Value)
 			if err != nil {
@@ -362,9 +363,10 @@ func Update[T any](
 					Err:     err,
 				}
 			}
-			current = &decoded
+			current = decoded
+			found = true
 		}
-		next, err := change(current)
+		next, err := change(current, found)
 		if err != nil {
 			return zero, err
 		}

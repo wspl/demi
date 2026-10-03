@@ -228,7 +228,7 @@ func (d *DialogInput) run(ctx context.Context, opening <-chan dialogOpening) {
 			if request.reply != nil {
 				request.reply <- err
 			}
-			// Deferred release failures are diagnostic only, matching the tab owner in Rust.
+			// Deferred release failures are only logged: no caller waits for them.
 			if err != nil && request.reply == nil && !errors.Is(err, context.Canceled) {
 				slog.Warn("a dialog's held input was not delivered", "error", err)
 			}

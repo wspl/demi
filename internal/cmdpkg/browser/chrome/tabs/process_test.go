@@ -33,7 +33,7 @@ func TestDetachedHelperFixture(t *testing.T) {
 
 // Process retirement must find a marked helper that escaped Chrome's process
 // group, but must not inspect/kill an unrelated executable with the same marker.
-// The child readiness pipe replaces the Rust fixture's 60-second sleep.
+// The child reports readiness through a pipe, so the test never sleeps.
 func TestRetirementIncludesMarkedHelpersInAnotherSessionOnly(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {

@@ -247,7 +247,7 @@ func (n *Network) checkRoutes(_ context.Context, handle *netlink.Handle) error {
 		}
 		prefix := netip.PrefixFrom(address.Unmap(), bits).Masked()
 		if n.pool.Overlaps(prefix) {
-			return &OverlapError{Route: prefix}
+			return fmt.Errorf("DEMI_MANAGED_SUBNET overlaps host route %s", prefix)
 		}
 	}
 	return nil

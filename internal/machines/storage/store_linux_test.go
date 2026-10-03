@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/machines/storage"
@@ -42,9 +43,9 @@ func TestPublicationKeepsCommittedPairAndTwoGenerations(t *testing.T) {
 	source := storage.ImagesInDirectory(t.TempDir())
 	requireStorage(t, os.WriteFile(source.System, []byte("system"), 0o600))
 	requireStorage(t, os.WriteFile(source.Home, []byte("home"), 0o600))
-	state, err := store.Read(ctx, "device")
+	_, found, err := store.Read(ctx, "device")
 	requireStorage(t, err)
-	if state != nil {
+	if found {
 		t.Fatal("new device has a generation")
 	}
 	requireStorage(t, store.Publish(ctx, "device", generationState(t, "first"), source))
@@ -52,9 +53,9 @@ func TestPublicationKeepsCommittedPairAndTwoGenerations(t *testing.T) {
 	if err := store.Publish(ctx, "device", generationState(t, "partial"), source); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing home: %v", err)
 	}
-	state, err = store.Read(ctx, "device")
+	state, _, err := store.Read(ctx, "device")
 	requireStorage(t, err)
-	if !reflect.DeepEqual(*state, generationState(t, "first")) {
+	if !reflect.DeepEqual(state, generationState(t, "first")) {
 		t.Fatalf("changed committed state: %+v", state)
 	}
 	if got := generationNames(t, root); !reflect.DeepEqual(got, []string{"first"}) {
@@ -79,9 +80,9 @@ func TestPublicationKeepsCommittedPairAndTwoGenerations(t *testing.T) {
 	if got := generationNames(t, root); !reflect.DeepEqual(got, []string{"second", "third"}) {
 		t.Fatal(got)
 	}
-	state, err = store.Read(ctx, "device")
+	state, _, err = store.Read(ctx, "device")
 	requireStorage(t, err)
-	if !reflect.DeepEqual(*state, generationState(t, "third")) {
+	if !reflect.DeepEqual(state, generationState(t, "third")) {
 		t.Fatal(state)
 	}
 }
@@ -114,9 +115,8 @@ func TestCorruptRecordIsError(t *testing.T) {
 	path := filepath.Join(root, "device", "current.json")
 	data := []byte(`{"generation":"g"}`)
 	requireStorage(t, os.WriteFile(path, data, 0o600))
-	_, err := store.Read(t.Context(), "device")
-	var corrupt *storage.CorruptRecordError
-	if !errors.As(err, &corrupt) || corrupt.Path != path {
+	_, _, err := store.Read(t.Context(), "device")
+	if err == nil || !strings.HasPrefix(err.Error(), path+" is not a valid generation record: ") {
 		t.Fatalf("corrupt record: %v", err)
 	}
 	kept, err := os.ReadFile(path)

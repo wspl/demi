@@ -5,7 +5,7 @@
 by every built-in Rust plugin. The test reads that committed fixture; it does
 not require a Rust build, another worktree or a network connection.
 
-`TestRustManifestSchemas` compares complete schemas as compact JSON bytes (including every nested keyword and property position). It covers
+`TestManifestSchemas` compares complete schemas as compact JSON bytes (including every nested keyword and property position). It covers
 both input and output wherever present:
 
 - Every todo leaf: `list`, `add`, `update`, `done` (three inputs and four outputs).

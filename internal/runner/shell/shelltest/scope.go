@@ -70,7 +70,7 @@ func (s *Scope) Start(
 	}
 	go func() {
 		defer finish()
-		job.Wait(context.Background())
+		_, _, _ = job.Wait(context.Background())
 	}()
 	return job, nil
 }

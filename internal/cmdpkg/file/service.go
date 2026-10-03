@@ -1,4 +1,4 @@
-//nolint:staticcheck // Command error messages are copied verbatim from the Rust service.
+//nolint:staticcheck // Command error messages are user-visible sentences, kept byte for byte.
 package file
 
 import (
@@ -22,7 +22,7 @@ import (
 // Serve validates the launch argument and serves the resident file service.
 // The executable must exit when Serve returns.
 func Serve(ctx context.Context, args []string) error {
-	if _, err := cmdsdk.ParseLaunch(args); err != nil {
+	if err := cmdsdk.CheckLaunch(args); err != nil {
 		return err
 	}
 	return cmdsdk.ServeStdio(ctx, &service{})
@@ -47,8 +47,7 @@ func (s *service) Invoke(
 ) (commandwire.Completion, error) {
 	op, err := fileop.Parse(invocation.Request.Operation, invocation.Request.Args)
 	if err != nil {
-		var opErr *fileop.OperationError
-		if errors.As(err, &opErr) && opErr.Err == nil {
+		if errors.Is(err, fileop.ErrUnknownOperation) {
 			return commandwire.Completion{}, err
 		}
 		return failure(err), nil

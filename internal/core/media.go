@@ -41,10 +41,11 @@ var ModelMediaTypes = []ModelMediaType{
 	{MediaType: "video/webm", Kind: ModelMediaKindVideo, Extension: FileExtensionWebM},
 }
 
-// FileExtensionSupport distinguishes unknown support from known absence; JPEG aliases agree.
-func FileExtensionSupport(accepted *[]FileExtension, extension FileExtension) *bool {
+// AcceptsFileExtension reports known support for an extension; JPEG aliases
+// agree, and unknown support (no accepted list) accepts nothing.
+func AcceptsFileExtension(accepted *[]FileExtension, extension FileExtension) bool {
 	if accepted == nil {
-		return nil
+		return false
 	}
 	alias := extension
 	switch extension {
@@ -53,14 +54,13 @@ func FileExtensionSupport(accepted *[]FileExtension, extension FileExtension) *b
 	case FileExtensionJPEG:
 		alias = FileExtensionJPG
 	}
-	supported := slices.Contains(*accepted, extension) || slices.Contains(*accepted, alias)
-	return &supported
+	return slices.Contains(*accepted, extension) || slices.Contains(*accepted, alias)
 }
 
 // ModelAcceptsVideo reports known support for at least one video type.
 func ModelAcceptsVideo(model Model) bool {
 	for _, extension := range VideoFileExtensions {
-		if support := FileExtensionSupport(model.AcceptedExtensions, extension); support != nil && *support {
+		if AcceptsFileExtension(model.AcceptedExtensions, extension) {
 			return true
 		}
 	}
@@ -68,29 +68,28 @@ func ModelAcceptsVideo(model Model) bool {
 }
 
 // ModelMediaTypeFor looks up a medium in the closed native-media table.
-func ModelMediaTypeFor(mediaType string) *ModelMediaType {
+func ModelMediaTypeFor(mediaType string) (ModelMediaType, bool) {
 	for _, entry := range ModelMediaTypes {
 		if entry.MediaType == mediaType {
-			return &entry
+			return entry, true
 		}
 	}
-	return nil
+	return ModelMediaType{}, false
 }
 
 // ModelAcceptsMediaType treats unknown catalog support as no.
 func ModelAcceptsMediaType(model Model, mediaType string) bool {
-	entry := ModelMediaTypeFor(mediaType)
-	if entry == nil {
+	entry, ok := ModelMediaTypeFor(mediaType)
+	if !ok {
 		return false
 	}
-	support := FileExtensionSupport(model.AcceptedExtensions, entry.Extension)
-	return support != nil && *support
+	return AcceptsFileExtension(model.AcceptedExtensions, entry.Extension)
 }
 
 // SniffModelMediaType recognizes only known magic numbers, with at least 12 bytes.
-func SniffModelMediaType(data []byte) *ModelMediaType {
+func SniffModelMediaType(data []byte) (ModelMediaType, bool) {
 	if len(data) < 12 {
-		return nil
+		return ModelMediaType{}, false
 	}
 	var mediaType string
 	switch {
@@ -114,17 +113,17 @@ func SniffModelMediaType(data []byte) *ModelMediaType {
 			mediaType = "video/mp4"
 		}
 	default:
-		return nil
+		return ModelMediaType{}, false
 	}
 	return ModelMediaTypeFor(mediaType)
 }
 
 // PreviewMediaType recognizes a filename's extension with ASCII case folding.
-func PreviewMediaType(path string) *string {
+func PreviewMediaType(path string) (string, bool) {
 	name := path[strings.LastIndexAny(path, "/\\")+1:]
 	dot := strings.LastIndexByte(name, '.')
 	if dot <= 0 {
-		return nil
+		return "", false
 	}
 	extension := strings.Map(func(r rune) rune {
 		if r >= 'A' && r <= 'Z' {
@@ -134,10 +133,10 @@ func PreviewMediaType(path string) *string {
 	}, name[dot+1:])
 	for _, entry := range PreviewTypes {
 		if slices.Contains(entry.Extensions, extension) {
-			return &entry.MediaType
+			return entry.MediaType, true
 		}
 	}
-	return nil
+	return "", false
 }
 
 // ShowsInPlace reports whether the page can render this exact media type directly.

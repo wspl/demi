@@ -54,14 +54,14 @@ func reserveStart(ctx context.Context, port host.RPCPort, request string, fresh 
 		"agent.start."+request,
 		decodeStartReceipt,
 		func(v startReceipt) ([]byte, error) { return v.MarshalJSON() },
-		func(current *startReceipt) (startReceipt, error) {
-			if current == nil {
+		func(current startReceipt, found bool) (startReceipt, error) {
+			if !found {
 				return fresh, nil
 			}
 			if !reflect.DeepEqual(current.Input, fresh.Input) {
 				return startReceipt{}, errors.New("request-id already belongs to different agent arguments")
 			}
-			return *current, nil
+			return current, nil
 		},
 	)
 }

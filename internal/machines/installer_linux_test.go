@@ -125,7 +125,7 @@ func TestInstallerWritesValidUnitAndSettings(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		config, err := ParseConfig(nil, strings.Split(strings.TrimSpace(string(settings)), "\n"))
+		config, _, err := ParseConfig(nil, strings.Split(strings.TrimSpace(string(settings)), "\n"))
 		if err != nil {
 			return err
 		}

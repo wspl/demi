@@ -88,7 +88,7 @@ func unpin(node declare.Node[declare.Binding]) declare.Node[declare.NativeOperat
 			RestField:     node.RestField,
 			Output:        node.Output,
 		}
-		if binding := node.Binding(); binding != nil {
+		if binding, native := node.Binding(); native {
 			leaf.Kind = &declare.Native[declare.NativeOperation]{
 				Binding: declare.NativeOperation{Package: binding.Package, Operation: binding.Operation},
 			}
@@ -116,7 +116,7 @@ func TestManifestBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	if built.Hash != recorded.Hash {
-		t.Fatalf("hash=%s, want Rust %s", built.Hash, recorded.Hash)
+		t.Fatalf("hash=%s, want fixture %s", built.Hash, recorded.Hash)
 	}
 	encoded, err := contract.EncodeJSON(built)
 	if err != nil {
@@ -131,7 +131,7 @@ func TestManifestBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatal("built manifest differs from Rust fixture")
+		t.Fatal("built manifest differs from fixture")
 	}
 	native := func(pkg, op string) declare.Node[declare.NativeOperation] {
 		return &declare.Leaf[declare.NativeOperation]{
@@ -239,7 +239,7 @@ func TestManifestBindingAndRootRefusals(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			binding := tree.Leaves()[0].Binding()
+			binding := &tree.Leaves()[0].Kind.(*declare.Native[declare.Binding]).Binding
 			switch field {
 			case "package":
 				binding.Package = "demicodes.other"
@@ -302,6 +302,6 @@ func TestManifestJSONThroughWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	if verified.Hash != "0cf18d78aae679a7d2e1af76e21e2f1d4c27a7e3a56ad6394a87b5b6229b0235" {
-		t.Fatalf("Rust hash changed: %s", verified.Hash)
+		t.Fatalf("fixture hash changed: %s", verified.Hash)
 	}
 }

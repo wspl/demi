@@ -269,9 +269,15 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 			}
 		}()
 		for {
-			event, err := capture.Next(ctx)
-			if err != nil {
-				t.Fatal(err)
+			var event tabs.CaptureEvent
+			select {
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			case next, ok := <-capture.Events():
+				if !ok {
+					t.Fatal("capture ended")
+				}
+				event = next
 			}
 			switch event := event.(type) {
 			case *tabs.CaptureStarted:

@@ -10,7 +10,7 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
-// Rust serde_json pins number kind and spelling independently of Go's formatter.
+// The golden corpus pins each number's kind and spelling independently of Go's formatter.
 // The local corpus costs less than a second and starts no processes.
 func TestOpaqueNumberCorpus(t *testing.T) {
 	data, err := os.ReadFile("testdata/numbers.jsonl")
@@ -36,7 +36,7 @@ func TestOpaqueNumberCorpus(t *testing.T) {
 				t.Fatal(err)
 			}
 			if string(got) != row.Encoded {
-				t.Fatalf("got %s, want Rust %s", got, row.Encoded)
+				t.Fatalf("got %s, want %s", got, row.Encoded)
 			}
 		})
 	}

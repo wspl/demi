@@ -123,10 +123,10 @@ func TestLiveStreamBindingAndFrameConstants(t *testing.T) {
 	}
 }
 
-// TestRustManifest compares the factory's complete wire declaration with the
-// Rust registration fixture, including schema member order. It uses only memory
+// TestManifestMatchesFixture compares the factory's complete wire declaration with the
+// fixture testdata/manifest.json, including schema member order. It uses only memory
 // and one local fixture read.
-func TestRustManifest(t *testing.T) {
+func TestManifestMatchesFixture(t *testing.T) {
 	factory, err := browser.New()
 	if err != nil {
 		t.Fatal(err)
@@ -148,6 +148,11 @@ func TestRustManifest(t *testing.T) {
 		for offset < min(len(got), want.Len()) && got[offset] == want.Bytes()[offset] {
 			offset++
 		}
-		t.Fatalf("manifest differs from Rust (%d bytes, want %d); first difference at %d", len(got), want.Len(), offset)
+		t.Fatalf(
+			"manifest differs from fixture (%d bytes, want %d); first difference at %d",
+			len(got),
+			want.Len(),
+			offset,
+		)
 	}
 }

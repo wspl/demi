@@ -79,14 +79,14 @@ func TestCaptureReplacementAndCloseOwnership(t *testing.T) {
 	if err := first.Write(ctx, websocket.MessageText, data); err != nil {
 		t.Fatal(err)
 	}
-	event, err := old.Next(ctx)
-	if _, ok := event.(*CaptureStarted); !ok || err != nil {
-		t.Fatalf("started: %#v %v", event, err)
+	event, ok := <-old.Events()
+	if _, started := event.(*CaptureStarted); !started || !ok {
+		t.Fatalf("started: %#v %v", event, ok)
 	}
 	second := dial()
-	event, err = old.Next(ctx)
-	if _, ok := event.(*CaptureFailed); !ok || err != nil {
-		t.Fatalf("replacement: %#v %v", event, err)
+	event, ok = <-old.Events()
+	if _, failed := event.(*CaptureFailed); !failed || !ok {
+		t.Fatalf("replacement: %#v %v", event, ok)
 	}
 	current, err := channel.Start(ctx, "new", 700, 500, 30, 2_000_000)
 	if err != nil {
@@ -113,7 +113,7 @@ func TestCaptureReplacementAndCloseOwnership(t *testing.T) {
 	if !ok || stop.Capture != replacement.Capture {
 		t.Fatalf("stop: %#v", stop)
 	}
-	if _, err := current.Next(ctx); err == nil {
+	if _, ok := <-current.Events(); ok {
 		t.Fatal("Close returned without releasing its event queue")
 	}
 	if err := current.Close(ctx); err != nil {

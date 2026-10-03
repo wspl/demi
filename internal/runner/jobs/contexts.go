@@ -37,7 +37,7 @@ type ExecutionContext struct {
 	// Edits is where the job records the files its commands change.
 	Edits commandwire.EditContext
 	// Connection carries callbacks and artifact locations for this job.
-	Connection *ConnectionHandle
+	Connection *Connection
 	lifetime   context.Context
 	cancel     context.CancelFunc
 	aliases    string
@@ -53,7 +53,7 @@ func NewExecutionContext(
 	command commandwire.CommandContext,
 	manifest *runnerwire.Manifest,
 	edits commandwire.EditContext,
-	connection *ConnectionHandle,
+	connection *Connection,
 	paths ContextPaths,
 ) (*ExecutionContext, error) {
 	if err := ctx.Err(); err != nil {
@@ -352,7 +352,7 @@ func Install(
 	ctx context.Context,
 	value json.RawMessage,
 	paths ContextPaths,
-	services *cmdpkgs.ServiceHandle,
+	services *cmdpkgs.ServiceRegistry,
 	reserved map[string]struct{},
 ) (*Installed, error) {
 	manifest, err := runnerwire.DecodeManifest(value)
@@ -398,7 +398,7 @@ func Install(
 func Leases(
 	ctx context.Context,
 	manifest *runnerwire.Manifest,
-	services *cmdpkgs.ServiceHandle,
+	services *cmdpkgs.ServiceRegistry,
 ) ([]*cmdpkgs.ServiceLease, error) {
 	var leases []*cmdpkgs.ServiceLease
 	target, err := commandwire.HostTarget()

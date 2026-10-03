@@ -20,14 +20,6 @@ const (
 	cancelTimeout = 5 * time.Second
 )
 
-// RejectedError is an HTTP rejection before a handler starts.
-type RejectedError struct{ Status int }
-
-// Error returns the failure message.
-func (e *RejectedError) Error() string {
-	return fmt.Sprintf("service rejected HTTP request with status %d", e.Status)
-}
-
 func protocols() *http.Protocols {
 	p := new(http.Protocols)
 	p.SetUnencryptedHTTP2(true)
@@ -103,7 +95,10 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 		return nil, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, errors.Join(&RejectedError{Status: response.StatusCode}, response.Body.Close())
+		return nil, errors.Join(
+			fmt.Errorf("service rejected HTTP request with status %d", response.StatusCode),
+			response.Body.Close(),
+		)
 	}
 	return response, nil
 }

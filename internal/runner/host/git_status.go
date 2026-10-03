@@ -171,7 +171,7 @@ func diskStatus(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	// The untracked walk may replace a staged deletion with ??, exactly as Rust.
+	// An untracked file at a staged deletion's path reports ?? in place of the deletion.
 	if err := walkUntracked(ctx, location, base, scope, signals, maxFiles); err != nil {
 		return nil, err
 	}

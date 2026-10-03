@@ -72,7 +72,7 @@ func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 	}
 	defer func() {
 		job.Cancel()
-		job.Wait(context.Background())
+		_, _, _ = job.Wait(context.Background())
 	}()
 	var output strings.Builder
 	for chunk := range job.Output() {
@@ -80,7 +80,7 @@ func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 			output.Write(chunk.Bytes)
 		}
 	}
-	status, _ := job.Wait(t.Context())
+	status, _, _ := job.Wait(t.Context())
 	if status.Code == nil || *status.Code != 0 ||
 		!strings.Contains(output.String(), "DEMI_CONTEXT_ID="+contextID+"\n") ||
 		!strings.HasSuffix(output.String(), "body 7\n") {

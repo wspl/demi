@@ -222,7 +222,7 @@ type LogRead struct {
 }
 
 // The command manifest for the runner's cache, carried opaque; the
-// runner verifies it as a [`crate::manifest::Manifest`].
+// runner verifies it as a [Manifest].
 // +demi:variant Inbound manifest
 type ManifestMessage struct {
 	Manifest json.RawMessage `json:"manifest"`

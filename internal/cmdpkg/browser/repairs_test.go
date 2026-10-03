@@ -305,7 +305,7 @@ func TestInspectKeepsFalseValuesAndProtectsPasswordsAndHandlesExpire(t *testing.
 	f.failure(t, "info", browserArgs(t, `{"tab":$0}`, tab), "tab_not_found")
 }
 
-// This scenario retains Rust's five-second actionability budgets; total budget 45 s.
+// This scenario uses five-second actionability budgets; total budget 45 s.
 func TestActionConditionsShadowHitsAndSharedWaitStates(t *testing.T) {
 	f := chromeFixture(t)
 	tab := f.open(t, "repairs.html")

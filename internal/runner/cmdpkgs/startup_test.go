@@ -135,7 +135,7 @@ func TestStartupFailureRequestsShutdownBeforeTermination(t *testing.T) {
 			must(t, err)
 			defer func() { must(t, r.Close(context.Background())) }()
 			start := time.Now()
-			_, err = r.Handle().
+			_, err = r.
 				Acquire(t.Context(), descriptor, &localResolver{path: executable}, cmdpkgstest.NoNumbers{})
 			elapsed := time.Since(start)
 			var failure *cmdpkgs.RuntimeError

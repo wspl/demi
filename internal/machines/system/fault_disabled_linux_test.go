@@ -11,7 +11,7 @@ import (
 func TestFaultPointsIgnoredInNormalBuild(t *testing.T) {
 	tools := childTools(t)
 	t.Setenv("DEMI_MACHINE_MANAGER_FAULT", "fixture")
-	if _, err := tools.Run(t.Context(), system.Runsc, childArgs("fault"), nil); err != nil {
+	if _, err := tools.Run(t.Context(), system.Runsc, childArgs("fault"), 0); err != nil {
 		t.Fatal(err)
 	}
 }
