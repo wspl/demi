@@ -87,9 +87,10 @@ func (g *generator) emitTS(name string) {
 		g.tsImports[schema(d.name)] = true
 		return
 	}
+	diagnosticName := d.name
 	defer func() {
 		if g.err != nil {
-			g.err = fmt.Errorf("%s: %s: %w", d.position, d.name, g.err)
+			g.err = fmt.Errorf("%s: %s: %w", d.position, diagnosticName, g.err)
 		}
 	}()
 	if g.emitted[name] || g.active[name] {
@@ -143,6 +144,10 @@ func (g *generator) emitTS(name string) {
 			}
 			opts := strings.Split(reflect.StructTag(st.Tag(i)).Get("json"), ",")
 			value, forward := g.tsType(f.Type(), d.fields[f.Name()])
+			if g.err != nil {
+				diagnosticName += "." + f.Name()
+				return
+			}
 			if has(d.fields[f.Name()], "nullable") {
 				value += ".nullable()"
 			}

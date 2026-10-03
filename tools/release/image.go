@@ -265,7 +265,7 @@ func installExecutable(ctx context.Context, source, destination string, artifact
 	}
 	defer func() { err = errors.Join(err, stage.Close()) }()
 	if err := artifacts.Copy(ctx, input, artifacts.Digest{Size: artifact.Size, SHA256: artifact.SHA256}, stage.File()); err != nil {
-		return err
+		return fmt.Errorf("%s: %w", source, err)
 	}
 	return stage.Publish(ctx)
 }
