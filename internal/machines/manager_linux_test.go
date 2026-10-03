@@ -3,14 +3,17 @@
 package machines
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/wspl/demi/internal/machines/network"
 	"github.com/wspl/demi/internal/machines/storage"
@@ -264,4 +267,43 @@ func TestShutdownUnblocksDeathBeforeWaitingForAdmission(t *testing.T) {
 		}
 		<-done
 	})
+}
+
+// Cost: one local socket exchange and an idle device worker, under one second.
+func TestManagerUnitReplyIsNull(t *testing.T) {
+	m := managerFixture(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	path := filepath.Join(t.TempDir(), "sock")
+	socket, err := BindSocket(ctx, path)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		Serve(ctx, socket, m, nil).Wait(context.Background())
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Write([]byte(`{"id":"7","op":"hibernate","params":{"deviceId":"dev-1"}}` + "\n")); err != nil {
+		t.Fatal(err)
+	}
+	line, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"type":"ok","id":"7","result":null}` + "\n"; line != want {
+		t.Fatalf("reply: %s, want %s", line, want)
+	}
 }

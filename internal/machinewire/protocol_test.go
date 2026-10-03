@@ -75,15 +75,12 @@ func output[T any](t *testing.T, name string, op machinewire.Operation[T]) T {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Unit has no public null encoder; that missing API is reported in R6.
-	if _, unit := any(value).(machinewire.Unit); !unit {
-		encoded, err := contract.EncodeJSON(value)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(encoded, ok.Result) {
-			t.Fatalf("result round trip: %s, want %s", encoded, ok.Result)
-		}
+	encoded, err := contract.EncodeJSON(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encoded, ok.Result) {
+		t.Fatalf("result round trip: %s, want %s", encoded, ok.Result)
 	}
 	return value
 }
