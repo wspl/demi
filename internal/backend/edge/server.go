@@ -180,6 +180,9 @@ func (e *Edge) serveConnection(ctx context.Context, conn net.Conn) {
 			return
 		}
 		if writer.closeAfterReply {
+			if !body.complete {
+				closeWriteAndWait(ctx, conn)
+			}
 			// A handler may refuse before reading a declared body. Closing first
 			// prevents Body.Close from waiting for an upload the caller never sends.
 			_ = conn.Close()

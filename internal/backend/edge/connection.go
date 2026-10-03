@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"time"
 )
 
 // incoming owns read-ahead on a visitor connection. A transport EOF cancels
@@ -35,4 +36,32 @@ func (c *incoming) Close() error {
 	err := c.Conn.Close()
 	<-c.done
 	return err
+}
+
+// CloseWrite forwards TCP's half-close through the read-ahead owner.
+func (c *incoming) CloseWrite() error {
+	if writer, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return writer.CloseWrite()
+	}
+	return nil
+}
+
+// closeWriteAndWait lets an uploading visitor read the already-flushed refusal
+// before a full close can reset TCP. net/http's closeWriteAndWait uses a 500 ms
+// rstAvoidanceDelay; use that same grace, discarding input until EOF or expiry.
+func closeWriteAndWait(ctx context.Context, conn net.Conn) {
+	if ctx.Err() != nil {
+		return
+	}
+	if writer, ok := conn.(interface{ CloseWrite() error }); ok {
+		if err := writer.CloseWrite(); err != nil {
+			return
+		}
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
+		return
+	}
+	// EOF, deadline and transport errors all end this best-effort grace. The
+	// connection owner closes the transport and joins its read-ahead worker next.
+	_, _ = io.Copy(io.Discard, conn)
 }
