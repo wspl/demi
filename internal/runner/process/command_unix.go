@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/wspl/demi/internal/runnerwire"
 	"golang.org/x/sys/unix"
@@ -94,6 +95,39 @@ func startPlatform(ctx context.Context, template *exec.Cmd, group bool, attribut
 		return nil, fmt.Errorf("child bootstrap: %w", readErr)
 	}
 	return nil, &os.PathError{Op: "fork/exec", Path: template.Path, Err: syscall.Errno(binary.LittleEndian.Uint32(code[:]))}
+}
+
+// wait joins the owned group after exec.Cmd has reaped its leader. On Linux a
+// subreaper can adopt grandchildren, so drain only this group's children; a
+// process-wide wait could steal another command's exit status. ECHILD alone
+// does not mean completion: another parent (including init on macOS) may still
+// be reaping a member. Signal 0 keeps zombies in the completion predicate.
+func (*platformGroup) wait(ctx context.Context, process *os.Process) error {
+	for {
+		pid, err := unix.Wait4(-process.Pid, nil, unix.WNOHANG, nil)
+		if errors.Is(err, unix.EINTR) || pid > 0 {
+			continue
+		}
+		if err != nil && !errors.Is(err, unix.ECHILD) {
+			return fmt.Errorf("reap process group: %w", err)
+		}
+		err = unix.Kill(-process.Pid, 0)
+		if errors.Is(err, unix.ESRCH) {
+			return nil
+		}
+		if err != nil && !errors.Is(err, unix.EPERM) {
+			return fmt.Errorf("inspect process group: %w", err)
+		}
+		// There is no waitable child event for members still owned by another
+		// parent. Poll their group without a termination deadline.
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func (*platformGroup) close() {}

@@ -144,3 +144,6 @@ func (p *platformGroup) signal(process *os.Process, group bool, signal runnerwir
 }
 func exitSignal(_ *os.ProcessState) *string { return nil }
 func runBootstrap() (bool, error)           { return false, nil }
+
+// wait preserves Windows Job Object cleanup; Unix additionally reaps adopted children.
+func (*platformGroup) wait(_ context.Context, _ *os.Process) error { return nil }
