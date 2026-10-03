@@ -18,36 +18,60 @@ import (
 
 // ChannelSession identifies the authenticated session opening a page channel.
 type ChannelSession struct {
-	Token     database.TokenHash
-	User      webapi.UserDTO
+	// Token identifies the authenticated browser session.
+	Token database.TokenHash
+	// User is the authenticated user’s page representation.
+	User webapi.UserDTO
+	// ExpiresAt records the session’s current expiry.
 	ExpiresAt core.Timestamp
 }
 
 // ServeSyncChannel takes ownership of socket and serves initial product state
 // and changes until the page, session or shard closes. It always closes socket.
-func (s *Shard) ServeSyncChannel(ctx context.Context, socket *websocket.Conn, session ChannelSession) error {
-	return s.serveSync(ctx, socket, session)
+func (s *Shard) ServeSyncChannel(
+	ctx context.Context,
+	socket *websocket.Conn,
+	session ChannelSession,
+) error {
+	return s.serveSyncChannel(ctx, socket, session)
 }
 
 // ServeConversationSocket takes ownership of socket. An admitted agent frame
 // finishes even during shutdown, with outbox delivery continuing until then.
 // Socket ownership is registered before any wait and ends with its close.
-func (s *Shard) ServeConversationSocket(ctx context.Context, conversation database.ConversationRecord, socket *websocket.Conn) error {
-	return s.serveConversation(ctx, conversation, socket)
+func (s *Shard) ServeConversationSocket(
+	ctx context.Context,
+	conversation database.ConversationRecord,
+	socket *websocket.Conn,
+) error {
+	return s.serveConversationSocket(ctx, conversation, socket)
 }
 
 // Mark marks part changed on this user's open synchronization channels.
-func (s *Shard) Mark(part pagesync.Part) { s.services.Sync.Mark(s.user, part) }
+func (s *Shard) Mark(part pagesync.Part) {
+	s.services.Sync.Mark(s.user, part)
+}
 
 // AdoptRunner takes and closes the socket of a runner presenting device's token.
-func (s *Shard) AdoptRunner(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *runners.Socket) error {
+func (s *Shard) AdoptRunner(
+	ctx context.Context,
+	device database.DeviceRecord,
+	runner runnerwire.RunnerInfo,
+	socket *runners.Socket,
+) error {
 	return s.adopt(ctx, device, runner, socket, nil)
 }
 
 // AdoptClaimed takes a newly paired runner's socket. It reports its bound DTO
 // through bound before serving, or closes bound without a value if refused.
 // The caller supplies a buffered channel of capacity one; adoption owns close.
-func (s *Shard) AdoptClaimed(ctx context.Context, device database.DeviceRecord, runner runnerwire.RunnerInfo, socket *runners.Socket, bound chan<- webapi.DeviceDTO) error {
+func (s *Shard) AdoptClaimed(
+	ctx context.Context,
+	device database.DeviceRecord,
+	runner runnerwire.RunnerInfo,
+	socket *runners.Socket,
+	bound chan<- webapi.DeviceDTO,
+) error {
 	return s.adopt(ctx, device, runner, socket, bound)
 }
 

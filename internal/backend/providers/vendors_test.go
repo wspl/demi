@@ -14,7 +14,19 @@ func TestVendorCatalogMapsOnlySupportedProtocolsAndDoesNotFallback(t *testing.T)
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests.Add(1)
-		_, err := w.Write([]byte(`{"anthropic":{"id":"anthropic","name":"Anthropic","npm":"@ai-sdk/anthropic","models":{}},"deepseek":{"id":"deepseek","name":"DeepSeek","npm":"@ai-sdk/openai-compatible","models":{}},"openai":{"id":"openai","name":"OpenAI","npm":"@ai-sdk/openai","models":{}},"google":{"id":"google","name":"Google","npm":"@ai-sdk/google","models":{}},"github-copilot":{"id":"github-copilot","name":"Copilot","npm":"@ai-sdk/openai","models":{}},"unsupported":{"id":"unsupported","name":"Unsupported","npm":"no-client","models":{}}}`))
+		_, err := w.Write(
+			[]byte(
+				`{"anthropic":{"id":"anthropic","name":"Anthropic",` +
+					`"npm":"@ai-sdk/anthropic","models":{}},"deepseek":{"id":"deepseek",` +
+					`"name":"DeepSeek","npm":"@ai-sdk/openai-compatible","models":{}},` +
+					`"openai":{"id":"openai","name":"OpenAI","npm":"@ai-sdk/openai",` +
+					`"models":{}},"google":{"id":"google","name":"Google",` +
+					`"npm":"@ai-sdk/google","models":{}},` +
+					`"github-copilot":{"id":"github-copilot","name":"Copilot",` +
+					`"npm":"@ai-sdk/openai","models":{}},"unsupported":{"id":"unsupported",` +
+					`"name":"Unsupported","npm":"no-client","models":{}}}`,
+			),
+		)
 		if err != nil {
 			t.Error(err)
 		}

@@ -35,14 +35,20 @@ func exposeFailure(err error) error {
 	}
 	return &plugin.PortRefusalExpose{Reason: reason, Message: err.Error()}
 }
+
 func accessFailure(err error) error {
 	var access *hostaccess.Error
 	if errors.As(err, &access) {
 		code, status := access.Code()
-		return &plugin.PortRefusalHost{Code: code, Status: uint16(status), Message: access.Error()}
+		return &plugin.PortRefusalHost{
+			Code:    code,
+			Status:  uint16(status),
+			Message: access.Error(),
+		}
 	}
 	return err
 }
+
 func callFailure(err error) error {
 	var call *remotehost.ServiceCallError
 	if errors.As(err, &call) {
@@ -61,7 +67,10 @@ func callFailure(err error) error {
 func exposeLifetime(seconds uint64) (time.Duration, error) {
 	const maximum = uint64(math.MaxInt64 / int64(time.Second))
 	if seconds > maximum {
-		err := &database.Error{Kind: database.TimeRange, Err: fmt.Errorf("expose lifetime exceeds %d seconds", maximum)}
+		err := &database.Error{
+			Kind: database.TimeRange,
+			Err:  fmt.Errorf("expose lifetime exceeds %d seconds", maximum),
+		}
 		return 0, &host.PortError{Kind: host.PortFailed, Message: err.Error(), Err: err}
 	}
 	return time.Duration(seconds) * time.Second, nil

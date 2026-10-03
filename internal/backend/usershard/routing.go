@@ -82,7 +82,12 @@ const (
 // NewShards creates routing over services. ctx is the backend lifetime, not a
 // request lifetime. The owner must Close before disposing services.
 func NewShards(ctx context.Context, services *Services) (*Shards, error) {
-	return &Shards{services: services, ctx: ctx, users: make(map[webapi.UserID]*Shard), closeDone: make(chan struct{})}, nil
+	return &Shards{
+		services:  services,
+		ctx:       ctx,
+		users:     make(map[webapi.UserID]*Shard),
+		closeDone: make(chan struct{}),
+	}, nil
 }
 
 // Of returns the user's stable shard, creating it on first use. Routing refuses
@@ -113,7 +118,8 @@ func (s *Shards) Close(ctx context.Context) error {
 		}
 		var failures []error
 		for _, shard := range users {
-			failures = append(failures, shard.close(context.WithoutCancel(ctx)))
+			err := shard.close(context.WithoutCancel(ctx))
+			failures = append(failures, err)
 		}
 		s.mu.Lock()
 		s.phase = routingClosed
@@ -146,7 +152,12 @@ func (s *Shard) ExposeShard() expose.ExposeShard { return exposeView{s} }
 
 // RouteDeaths routes manager death events to the owning user's Cloud until
 // deaths closes or ctx ends. Its caller owns and joins the call.
-func RouteDeaths(ctx context.Context, deaths <-chan webapi.DeviceID, services *Services, shards *Shards) error {
+func RouteDeaths(
+	ctx context.Context,
+	deaths <-chan webapi.DeviceID,
+	services *Services,
+	shards *Shards,
+) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -207,13 +218,21 @@ func ScheduleRetention(ctx context.Context, services *Services, shards *Shards) 
 
 // RetentionPass collects this user's retained conversation and blob data.
 func (s *Shard) RetentionPass(ctx context.Context) error {
-	_, err := shardCall(ctx, s, func(ctx context.Context) (struct{}, error) { return struct{}{}, s.retentionPass(ctx) })
+	_, err := shardCall(
+		ctx,
+		s,
+		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.retentionPass(ctx) },
+	)
 	return err
 }
 
 // RecoverForks publishes reserved destinations whose roots committed; other
 // destinations remain hidden for retry. Call before serving requests.
-func RecoverForks(ctx context.Context, control *database.ControlService, conversations *database.ConversationStores) error {
+func RecoverForks(
+	ctx context.Context,
+	control *database.ControlService,
+	conversations *database.ConversationStores,
+) error {
 	pending, err := control.PendingForks(ctx)
 	if err != nil {
 		return err
@@ -243,7 +262,9 @@ func RearmWakeups(ctx context.Context, control *database.ControlService, shards 
 		if err != nil {
 			return nil
 		}
-		shard.startWorker(func(ctx context.Context) { shard.restoreWhenDue(ctx, wakeup.Conversation, wakeup.Due) })
+		shard.startWorker(func(ctx context.Context) {
+			shard.restoreWhenDue(ctx, wakeup.Conversation, wakeup.Due)
+		})
 	}
 	return nil
 }
@@ -255,7 +276,8 @@ func (s *Shards) of(ctx context.Context, user webapi.UserID, draining bool) (*Sh
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.phase == routingClosed || (s.phase == routingDraining && !draining) {
+	drainingRefused := s.phase == routingDraining && !draining
+	if s.phase == routingClosed || drainingRefused {
 		return nil, &ShardUnavailable{Kind: ShardClosing}
 	}
 	if shard := s.users[user]; shard != nil {
@@ -272,7 +294,14 @@ func (s *Shards) of(ctx context.Context, user webapi.UserID, draining bool) (*Sh
 // newShard composes the services of one user; its components load data on demand.
 func newShard(ctx context.Context, user webapi.UserID, services *Services) *Shard {
 	ctx, cancel := context.WithCancel(ctx)
-	s := &Shard{user: user, services: services, http: &http.Client{}, ctx: ctx, cancel: cancel, jobsEnded: make(map[webapi.ConversationID]uint64)}
+	s := &Shard{
+		user:      user,
+		services:  services,
+		http:      &http.Client{},
+		ctx:       ctx,
+		cancel:    cancel,
+		jobsEnded: make(map[webapi.ConversationID]uint64),
+	}
 	s.runnerCtx, s.runnerCancel = context.WithCancel(context.WithoutCancel(ctx))
 	s.cloud = cloud.New(ctx, &s.mu)
 	s.conversations = hostaccess.NewConversations(ctx, &s.mu)
@@ -285,7 +314,11 @@ func newShard(ctx context.Context, user webapi.UserID, services *Services) *Shar
 
 // shardCall owns a product operation until it finishes, including commit
 // bookkeeping after request cancellation, and contains panics at the boundary.
-func shardCall[T any](ctx context.Context, s *Shard, operation func(context.Context) (T, error)) (result T, err error) {
+func shardCall[T any](
+	ctx context.Context,
+	s *Shard,
+	operation func(context.Context) (T, error),
+) (result T, err error) {
 	s.mu.Lock()
 	if s.closing {
 		s.mu.Unlock()

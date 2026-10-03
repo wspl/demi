@@ -39,14 +39,22 @@ func NewAccountQuotas(vault *Vault) *AccountQuotas {
 }
 
 // Store returns the snapshot store for an account.
-func (q *AccountQuotas) Store(id webapi.ProviderID, record database.CredentialRow) provider.QuotaSnapshotStore {
+func (q *AccountQuotas) Store(
+	id webapi.ProviderID,
+	record database.CredentialRow,
+) provider.QuotaSnapshotStore {
 	key := quotaAccount{id, record.ID}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if existing := q.held[key]; existing != nil {
 		return existing
 	}
-	s := &accountQuota{owner: q, key: key, wake: make(chan struct{}, 1), stop: make(chan struct{})}
+	s := &accountQuota{
+		owner: q,
+		key:   key,
+		wake:  make(chan struct{}, 1),
+		stop:  make(chan struct{}),
+	}
 	if record.Quota != nil {
 		s.snapshots.Update(func(*core.QuotaSnapshot) core.QuotaSnapshot { return *record.Quota })
 	}
@@ -60,6 +68,7 @@ func (q *AccountQuotas) Store(id webapi.ProviderID, record database.CredentialRo
 }
 
 // Latest returns the latest account snapshot, if any.
+// Latest returns an independent copy of the account’s latest quota snapshot.
 func (q *AccountQuotas) Latest(id webapi.ProviderID, record database.CredentialRow) *core.QuotaSnapshot {
 	q.mu.Lock()
 	held := q.held[quotaAccount{id, record.ID}]
@@ -116,7 +125,10 @@ func (q *AccountQuotas) Close(_ context.Context) error {
 	return nil
 }
 
+// Latest returns an independent copy of the account’s latest quota snapshot.
 func (s *accountQuota) Latest() *core.QuotaSnapshot { return s.snapshots.Latest() }
+
+// Update publishes the account snapshot and wakes its storage worker.
 func (s *accountQuota) Update(next func(*core.QuotaSnapshot) core.QuotaSnapshot) *core.QuotaSnapshot {
 	result := s.snapshots.Update(next)
 	select {
@@ -125,6 +137,7 @@ func (s *accountQuota) Update(next func(*core.QuotaSnapshot) core.QuotaSnapshot)
 	}
 	return result
 }
+
 func (s *accountQuota) run() {
 	for {
 		select {
@@ -140,6 +153,7 @@ func (s *accountQuota) run() {
 		}
 	}
 }
+
 func (s *accountQuota) write() {
 	s.owner.mu.Lock()
 	current := s.owner.held[s.key] == s

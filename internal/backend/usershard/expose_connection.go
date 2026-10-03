@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 
+	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/expose"
 	"github.com/wspl/demi/internal/backend/hostaccess"
+	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/webapi"
 )
@@ -25,6 +27,107 @@ func (s *Shard) openExposeConnection(ctx context.Context, id webapi.ExposeID) (*
 			admission.Release()
 		}
 	}()
+	connection, err := s.connectAdmittedExpose(ctx, admission)
+	if err == nil {
+		relaying = true
+	}
+	return connection, err
+}
+
+// exposeOpenError translates host opening failures into expose refusals.
+func exposeOpenError(err error) error {
+	var failure *host.Error
+	if errors.As(err, &failure) {
+		if failure.Kind == host.Offline {
+			return expose.ErrRelayDeviceOffline
+		}
+		if failure.Code != "" {
+			return &expose.UnreachableError{Code: failure.Code}
+		}
+	}
+	return &expose.UnreachableError{Code: "unreachable"}
+}
+
+// exposeDestination resolves the exposed address and connected device.
+func (s *Shard) exposeDestination(record database.ExposeRecord) (*remotehost.Host, string, uint16, error) {
+	hostname, err := record.Address.Host()
+	if err != nil {
+		return nil, "", 0, err
+	}
+	port, err := record.Address.Port()
+	if err != nil {
+		return nil, "", 0, err
+	}
+	device := s.devices.DeviceAccess(record.Device)
+	if device == nil {
+		return nil, "", 0, expose.ErrRelayDeviceOffline
+	}
+	return device, hostname, port, nil
+}
+
+// openExposedNetwork opens the stream while observing requester and expose cancellation.
+func openExposedNetwork(ctx context.Context, opening exposeOpening) error {
+	stopped := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		opening.cancel()
+		close(stopped)
+	})
+	err := opening.device.OpenNet(
+		opening.lifetime,
+		opening.hostname,
+		opening.port,
+		opening.input.WireRef(),
+		opening.output.WireRef(),
+	)
+	if !stop() {
+		<-stopped
+	}
+	if ctx.Err() != nil || opening.lifetime.Err() != nil {
+		return expose.ErrRemoved
+	}
+	select {
+	case <-opening.admission.Ending():
+		return expose.ErrRemoved
+	default:
+	}
+	if err != nil {
+		return exposeOpenError(err)
+	}
+	return nil
+}
+
+type exposeOpening struct {
+	lifetime  context.Context
+	cancel    context.CancelFunc
+	admission *expose.RelayAdmission
+	device    *remotehost.Host
+	hostname  string
+	port      uint16
+	input     *remotehost.Pipe
+	output    *remotehost.Pipe
+}
+
+// watchExpose ends the network lifetime when its expose is removed.
+func watchExpose(
+	ctx context.Context,
+	admission *expose.RelayAdmission,
+	cancel context.CancelFunc,
+	watched chan<- struct{},
+) {
+	defer close(watched)
+	select {
+	case <-admission.Ending():
+		cancel()
+	case <-ctx.Done():
+	}
+}
+
+// connectAdmittedExpose owns the opening pipes and watcher until a relay worker takes them.
+func (s *Shard) connectAdmittedExpose(
+	ctx context.Context,
+	admission *expose.RelayAdmission,
+) (*ExposeConnection, error) {
+	relaying := false
 	if ctx.Err() != nil || s.ctx.Err() != nil {
 		return nil, expose.ErrRemoved
 	}
@@ -34,17 +137,9 @@ func (s *Shard) openExposeConnection(ctx context.Context, id webapi.ExposeID) (*
 	default:
 	}
 	record := admission.Record()
-	hostname, err := record.Address.Host()
+	device, hostname, port, err := s.exposeDestination(record)
 	if err != nil {
 		return nil, err
-	}
-	port, err := record.Address.Port()
-	if err != nil {
-		return nil, err
-	}
-	device := s.devices.DeviceAccess(record.Device)
-	if device == nil {
-		return nil, expose.ErrRelayDeviceOffline
 	}
 	input := s.pipes.ToDevice(string(record.Device))
 	output := s.pipes.FromDevice(string(record.Device))
@@ -54,24 +149,13 @@ func (s *Shard) openExposeConnection(ctx context.Context, id webapi.ExposeID) (*
 			output.Fail("the relayed connection never opened")
 		}
 	}()
-	writer, err := input.Writer()
-	if err != nil {
-		return nil, err
-	}
-	reader, err := output.Reader()
+	writer, reader, err := exposeStreams(input, output)
 	if err != nil {
 		return nil, err
 	}
 	lifetime, cancel := context.WithCancel(s.ctx)
 	watched := make(chan struct{})
-	go func() {
-		defer close(watched)
-		select {
-		case <-admission.Ending():
-			cancel()
-		case <-lifetime.Done():
-		}
-	}()
+	go watchExpose(lifetime, admission, cancel, watched)
 	// The opening call owns the watcher until the registered relay takes it.
 	defer func() {
 		if !relaying {
@@ -79,50 +163,56 @@ func (s *Shard) openExposeConnection(ctx context.Context, id webapi.ExposeID) (*
 			<-watched
 		}
 	}()
-	stopped := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() {
-		cancel()
-		close(stopped)
-	})
-	err = device.OpenNet(lifetime, hostname, port, input.WireRef(), output.WireRef())
-	if !stop() {
-		<-stopped
+	opening := exposeOpening{
+		lifetime:  lifetime,
+		cancel:    cancel,
+		admission: admission,
+		device:    device,
+		hostname:  hostname,
+		port:      port,
+		input:     input,
+		output:    output,
 	}
-	if ctx.Err() != nil || lifetime.Err() != nil {
-		return nil, expose.ErrRemoved
+	if err := openExposedNetwork(ctx, opening); err != nil {
+		return nil, err
 	}
-	select {
-	case <-admission.Ending():
-		return nil, expose.ErrRemoved
-	default:
-	}
+	lease, err := s.startExposeRelay(opening, watched)
 	if err != nil {
-		var failure *host.Error
-		if errors.As(err, &failure) {
-			if failure.Kind == host.Offline {
-				return nil, expose.ErrRelayDeviceOffline
-			}
-			if failure.Code != "" {
-				return nil, &expose.UnreachableError{Code: failure.Code}
-			}
-		}
-		return nil, &expose.UnreachableError{Code: "unreachable"}
+		return nil, err
 	}
-	lease, _ := hostaccess.NewLease(lifetime)
+	relaying = true
+	return &ExposeConnection{ToService: writer, FromService: reader, Lease: lease}, nil
+}
+
+// startExposeRelay transfers the watcher and pipe ownership to a shard worker.
+func (s *Shard) startExposeRelay(opening exposeOpening, watched <-chan struct{}) (*hostaccess.Lease, error) {
+	lease, _ := hostaccess.NewLease(opening.lifetime)
 	if !s.startWorker(func(context.Context) {
 		defer func() {
 			lease.Release()
-			cancel()
+			opening.cancel()
 			<-watched
 		}()
-		admission.Relay(lease.Context(), s.ExposeShard(), nil, func() {
-			input.Fail("the relayed connection ended")
-			output.Fail("the relayed connection ended")
+		opening.admission.Relay(lease.Context(), s.ExposeShard(), nil, func() {
+			opening.input.Fail("the relayed connection ended")
+			opening.output.Fail("the relayed connection ended")
 		})
 	}) {
 		lease.Release()
 		return nil, expose.ErrRemoved
 	}
-	relaying = true
-	return &ExposeConnection{ToService: writer, FromService: reader, Lease: lease}, nil
+	return lease, nil
+}
+
+// exposeStreams obtains the visitor writer before the service reader, preserving opening failure order.
+func exposeStreams(input, output *remotehost.Pipe) (*remotehost.PipeWriter, *remotehost.PipeReader, error) {
+	writer, err := input.Writer()
+	if err != nil {
+		return nil, nil, err
+	}
+	reader, err := output.Reader()
+	if err != nil {
+		return nil, nil, err
+	}
+	return writer, reader, nil
 }

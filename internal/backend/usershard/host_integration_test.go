@@ -25,43 +25,115 @@ import (
 
 func inertRunner(t *testing.T, f *fixture, device webapi.DeviceID) {
 	t.Helper()
-	link, driver := remotehost.NewLink(remotehost.LinkOptions{Device: string(device), Identity: host.Identity{UID: 501, GID: 20, Hostname: "test", HomeDir: "/home/ana"}, Pipes: f.shard.Pipes()})
+	link, driver := remotehost.NewLink(
+		remotehost.LinkOptions{
+			Device: string(device),
+			Identity: host.Identity{
+				UID:      501,
+				GID:      20,
+				Hostname: "test",
+				HomeDir:  "/home/ana",
+			},
+			Pipes: f.shard.Pipes(),
+		},
+	)
 	serving := f.shard.Devices().Bind(device, link, driver, runners.NewLastSeen(f.services.Control, f.shard.Marks()))
-	t.Cleanup(func() { serving.Close(context.Background()) })
+	t.Cleanup(func() {
+		serving.Close(context.Background())
+	})
 }
+
 func TestHostGroupNamesReachableHostsAndRefusesOthers(t *testing.T) {
 	f := shardFixture(t, "laptop", "ci")
 	laptop, ci := f.devices[0].ID, f.devices[1].ID
 	change(t, f, on(laptop))
-	change(t, f, &database.ConversationRecordChange{Change: &database.RecordAttach{Host: database.AttachedHostRecord{Device: ci, Name: "ci"}}})
+	change(
+		t,
+		f,
+		&database.ConversationRecordChange{
+			Change: &database.RecordAttach{Host: database.AttachedHostRecord{Device: ci, Name: "ci"}},
+		},
+	)
 	inertRunner(t, f, laptop)
 	commands := &host.CommandSet{}
 	if err := commands.Register(host.Group("demi", "Demi.", hostaccess.HostGroup(f.shard))); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
-		leaf, args string
-		code       uint8
-		out, err   string
+		leaf, args  string
+		code        uint8
+		output, err string
 	}{
-		{"list", `{}`, 0, fmt.Sprintf("laptop  %s  online  /work  (main)\nci  %s  offline  ?  (attached)\n", laptop, ci), ""},
-		{"current", `{}`, 0, fmt.Sprintf("host: machine \"laptop\" (%s, online) — /work\n", laptop), ""},
-		{"shell", `{"host":"elsewhere","script":"pwd"}`, 1, "", "host shell: host elsewhere is not reachable from this conversation (see `demi host list`)\n"},
-		{"shell", `{"host":"ci","script":"  "}`, 2, "", "usage: demi host shell --host <name|id> <script>\n"},
-		{"shell", `{"host":"ci","script":"pwd"}`, 1, "", "host shell: cross-host execution requires a machine job\n"},
+		{
+			"list",
+			`{}`,
+			0,
+			fmt.Sprintf("laptop  %s  online  /work  (main)\nci  %s  offline  ?  (attached)\n", laptop, ci),
+			"",
+		},
+		{
+			"current",
+			`{}`,
+			0,
+			fmt.Sprintf("host: machine \"laptop\" (%s, online) — /work\n", laptop),
+			"",
+		},
+		{
+			"shell",
+			`{"host":"elsewhere","script":"pwd"}`,
+			1,
+			"",
+			"host shell: host elsewhere is not reachable from this conversation (see `demi host list`)\n",
+		},
+		{
+			"shell",
+			`{"host":"ci","script":"  "}`,
+			2,
+			"",
+			"usage: demi host shell --host <name|id> <script>\n",
+		},
+		{
+			"shell",
+			`{"host":"ci","script":"pwd"}`,
+			1,
+			"",
+			"host shell: cross-host execution requires a machine job\n",
+		},
 	}
 	for _, test := range cases {
 		port := hosttest.NewMemoryPort(nil)
-		invocation := host.RPCInvocation{Path: []string{"demi", "host", test.leaf}, Args: []byte(test.args), CWD: "/work", Env: map[string]string{}, Context: commandwire.CommandContext{Conversation: string(conversationID), Caller: &commandwire.AgentCaller{Number: 1}, Locale: runners.DefaultLocale()}, Caller: &host.JobCaller{Node: "node-1"}}
+		invocation := host.RPCInvocation{
+			Path: []string{"demi", "host", test.leaf},
+			Args: []byte(test.args),
+			CWD:  "/work",
+			Env:  map[string]string{},
+			Context: commandwire.CommandContext{
+				Conversation: string(conversationID),
+				Caller:       &commandwire.AgentCaller{Number: 1},
+				Locale:       runners.DefaultLocale(),
+			},
+			Caller: &host.JobCaller{Node: "node-1"},
+		}
 		code, err := commands.Dispatch(t.Context(), invocation, port.Port())
 		if err != nil {
 			t.Fatal(err)
 		}
-		if code != test.code || string(port.Stdout()) != test.out || string(port.Stderr()) != test.err {
-			t.Errorf("%s %s = (%d,%q,%q), want (%d,%q,%q)", test.leaf, test.args, code, port.Stdout(), port.Stderr(), test.code, test.out, test.err)
+		if code != test.code || string(port.Stdout()) != test.output || string(port.Stderr()) != test.err {
+			t.Errorf(
+				"%s %s = (%d,%q,%q), want (%d,%q,%q)",
+				test.leaf,
+				test.args,
+				code,
+				port.Stdout(),
+				port.Stderr(),
+				test.code,
+				test.output,
+				test.err,
+			)
 		}
 	}
 }
+
 func TestJobRunsWithinHostAccessAndRejectsChangedHost(t *testing.T) {
 	f := shardFixture(t, "laptop")
 	laptop := f.devices[0].ID
@@ -89,7 +161,17 @@ func TestJobRunsWithinHostAccessAndRejectsChangedHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	changed, err := f.services.Control.SwitchConversationTarget(t.Context(), conversationID, record.Target, &webapi.ConversationTargetDevice{DeviceID: laptop, Path: "/elsewhere"}, database.TargetSwitch{From: &database.ExecutionDevice{DeviceID: laptop, Path: "/work"}, To: &database.ExecutionDevice{DeviceID: laptop, Path: "/elsewhere"}}, database.SwitchEnds{})
+	changed, err := f.services.Control.SwitchConversationTarget(
+		t.Context(),
+		conversationID,
+		record.Target,
+		&webapi.ConversationTargetDevice{DeviceID: laptop, Path: "/elsewhere"},
+		database.TargetSwitch{
+			From: &database.ExecutionDevice{DeviceID: laptop, Path: "/work"},
+			To:   &database.ExecutionDevice{DeviceID: laptop, Path: "/elsewhere"},
+		},
+		database.SwitchEnds{},
+	)
 	if err != nil || !changed {
 		t.Fatalf("change binding = %v, %v", changed, err)
 	}
@@ -102,17 +184,29 @@ func TestJobRunsWithinHostAccessAndRejectsChangedHost(t *testing.T) {
 		t.Fatalf("job ran %d times", ran)
 	}
 }
+
 func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T) {
 	f := shardFixture(t, "build")
 	account, err := f.services.Control.Account(t.Context(), f.owner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := f.services.Control.CreateUser(t.Context(), webapi.EmailAddress("other@example.test"), account.PasswordHash, webapi.RoleUser)
+	other, err := f.services.Control.CreateUser(
+		t.Context(),
+		webapi.EmailAddress("other@example.test"),
+		account.PasswordHash,
+		webapi.RoleUser,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, err := f.services.Control.CreateDevice(t.Context(), other.ID, "foreign", runnerwire.RunnerPlatformLinux, database.HashToken("foreign"))
+	foreign, err := f.services.Control.CreateDevice(
+		t.Context(),
+		other.ID,
+		"foreign",
+		runnerwire.RunnerPlatformLinux,
+		database.HashToken("foreign"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +221,12 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 		t.Fatalf("offline reference = %v", err)
 	}
 	inertRunner(t, f, build)
-	_, err = hostaccess.ReferenceRemoteFiles(t.Context(), f.shard, conversationID, []hostaccess.RemoteFile{file(build), file(foreign.ID)})
+	_, err = hostaccess.ReferenceRemoteFiles(
+		t.Context(),
+		f.shard,
+		conversationID,
+		[]hostaccess.RemoteFile{file(build), file(foreign.ID)},
+	)
 	if !errors.As(err, &refusal) || refusal.Kind != hostaccess.RemoteFileNotAccessible {
 		t.Fatalf("foreign batch = %v", err)
 	}
@@ -138,7 +237,12 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 	if len(before) != 0 {
 		t.Fatal("refused batch attached a device")
 	}
-	blocks, err := hostaccess.ReferenceRemoteFiles(t.Context(), f.shard, conversationID, []hostaccess.RemoteFile{file(build)})
+	blocks, err := hostaccess.ReferenceRemoteFiles(
+		t.Context(),
+		f.shard,
+		conversationID,
+		[]hostaccess.RemoteFile{file(build)},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +268,13 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 	if len(command) != 6 {
 		t.Fatalf("read command words = %q", command)
 	}
-	if diff := cmp.Diff([]string{"demi", "host", "shell", "--host", string(build)}, command[:5]); diff != "" {
+	if diff := cmp.Diff([]string{
+		"demi",
+		"host",
+		"shell",
+		"--host",
+		string(build),
+	}, command[:5]); diff != "" {
 		t.Fatal(diff)
 	}
 	read, err := shell.Fields(command[5], func(string) string { return "" })
@@ -190,6 +300,7 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 		t.Fatalf("context revision = %d", record.ContextVersion)
 	}
 }
+
 func TestCloudGrowthRequiresPositiveBoundedCloudVolume(t *testing.T) {
 	f := shardFixture(t, "laptop")
 	managed, err := f.services.Control.ManagedDeviceOrCreate(t.Context(), f.owner)
@@ -203,10 +314,30 @@ func TestCloudGrowthRequiresPositiveBoundedCloudVolume(t *testing.T) {
 		bytes   uint64
 		message string
 	}{
-		{managed.ID, runnerwire.VolumeNameSystem, 0, "system volume quota exceeded"},
-		{managed.ID, runnerwire.VolumeNameSystem, tuning.SystemQuota + 1, "system volume quota exceeded"},
-		{managed.ID, runnerwire.VolumeNameHome, tuning.HomeQuota + 1, "home volume quota exceeded"},
-		{f.devices[0].ID, runnerwire.VolumeNameHome, 1 << 30, "Only the Cloud grows its volumes"},
+		{
+			managed.ID,
+			runnerwire.VolumeNameSystem,
+			0,
+			"system volume quota exceeded",
+		},
+		{
+			managed.ID,
+			runnerwire.VolumeNameSystem,
+			tuning.SystemQuota + 1,
+			"system volume quota exceeded",
+		},
+		{
+			managed.ID,
+			runnerwire.VolumeNameHome,
+			tuning.HomeQuota + 1,
+			"home volume quota exceeded",
+		},
+		{
+			f.devices[0].ID,
+			runnerwire.VolumeNameHome,
+			1 << 30,
+			"Only the Cloud grows its volumes",
+		},
 	}
 	for _, test := range cases {
 		err := cloud.GrowVolume(t.Context(), f.shard, test.device, test.volume, test.bytes)

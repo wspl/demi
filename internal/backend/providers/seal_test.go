@@ -11,7 +11,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // This test pins ciphertext written by the unchanged Rust implementation, as
 // well as row/key binding and fresh nonces. It needs no external resources.
@@ -75,11 +77,36 @@ func TestSealedValueOpensOnlyForItsRowUnderItsKey(t *testing.T) {
 		row   Row
 		bytes []byte
 	}{
-		{"entry", key, ConfigRow{Provider: "entry-2"}, sealed},
-		{"kind", key, SecretRow{Provider: "entry-1", Account: "cred-1"}, sealed},
-		{"key", NewVaultKey(otherKey), row, sealed},
-		{"altered", key, row, tampered},
-		{"short", key, row, sealed[:8]},
+		{
+			"entry",
+			key,
+			ConfigRow{Provider: "entry-2"},
+			sealed,
+		},
+		{
+			"kind",
+			key,
+			SecretRow{Provider: "entry-1", Account: "cred-1"},
+			sealed,
+		},
+		{
+			"key",
+			NewVaultKey(otherKey),
+			row,
+			sealed,
+		},
+		{
+			"altered",
+			key,
+			row,
+			tampered,
+		},
+		{
+			"short",
+			key,
+			row,
+			sealed[:8],
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -25,7 +25,14 @@ func NewVaultCredentialPool(vault *Vault, id webapi.ProviderID) *VaultCredential
 
 // AccountMeta returns public metadata from an account record.
 func AccountMeta(row database.CredentialRow) provider.AccountMeta {
-	return provider.AccountMeta{ID: string(row.ID), Label: row.Label, Detail: row.Detail, UpdatedAt: row.UpdatedAt, Source: row.Source, IdentityKey: row.IdentityKey}
+	return provider.AccountMeta{
+		ID:          string(row.ID),
+		Label:       row.Label,
+		Detail:      row.Detail,
+		UpdatedAt:   row.UpdatedAt,
+		Source:      row.Source,
+		IdentityKey: row.IdentityKey,
+	}
 }
 
 // List returns public account metadata.
@@ -100,7 +107,18 @@ func (p *VaultCredentialPool) Write(ctx context.Context, meta provider.AccountMe
 		return &provider.PoolError{Err: err}
 	}
 	ctx = context.WithoutCancel(ctx)
-	ok, err := p.vault.control.WriteCredential(ctx, p.id, database.CredentialWrite{ID: id, IdentityKey: meta.IdentityKey, Label: meta.Label, Detail: meta.Detail, Source: meta.Source, Secret: sealed})
+	ok, err := p.vault.control.WriteCredential(
+		ctx,
+		p.id,
+		database.CredentialWrite{
+			ID:          id,
+			IdentityKey: meta.IdentityKey,
+			Label:       meta.Label,
+			Detail:      meta.Detail,
+			Source:      meta.Source,
+			Secret:      sealed,
+		},
+	)
 	if err != nil {
 		return &provider.PoolError{Err: err}
 	}
@@ -137,7 +155,10 @@ type vaultDocument struct {
 	id   string
 }
 
+// Name identifies the account whose sealed document is read.
 func (d *vaultDocument) Name() string { return "account " + d.id }
+
+// Read opens the account’s sealed secret with its stored version.
 func (d *vaultDocument) Read(ctx context.Context) (*provider.Revision, error) {
 	id, err := webapi.ParseCredentialID(d.id)
 	if err != nil {
@@ -152,13 +173,17 @@ func (d *vaultDocument) Read(ctx context.Context) (*provider.Revision, error) {
 	}
 	plain, err := d.pool.vault.key.Open(SecretRow{Provider: d.pool.id, Account: id}, row.Secret)
 	if err != nil {
-		return nil, &provider.PoolError{Err: fmt.Errorf("the secret of %s does not open", d.Name())}
+		return nil, &provider.PoolError{
+			Err: fmt.Errorf("the secret of %s does not open", d.Name()),
+		}
 	}
 	if !utf8.Valid(plain) {
 		return nil, &provider.PoolError{Err: fmt.Errorf("the secret of %s is not UTF-8", d.Name())}
 	}
 	return &provider.Revision{Text: string(plain), Version: row.Version}, nil
 }
+
+// Replace commits a sealed secret only when its version still matches.
 func (d *vaultDocument) Replace(ctx context.Context, text string, version uint64) (bool, error) {
 	id, err := webapi.ParseCredentialID(d.id)
 	if err != nil {
@@ -179,10 +204,12 @@ func (d *vaultDocument) Replace(ctx context.Context, text string, version uint64
 	return ok, nil
 }
 
+// RefreshTurn serializes refreshes of the account’s secret.
 func (d *vaultDocument) RefreshTurn(ctx context.Context) (*gates.Permit, error) {
 	id, err := webapi.ParseCredentialID(d.id)
 	if err != nil {
 		id = ""
 	}
-	return d.pool.vault.gates.Turn(ctx, string(d.pool.id)+"/"+string(id))
+	key := string(d.pool.id) + "/" + string(id)
+	return d.pool.vault.gates.Turn(ctx, key)
 }

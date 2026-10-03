@@ -52,101 +52,81 @@ type catalogRefresh struct {
 // NewModelCatalogCache creates a cache whose refreshes are owned until Close.
 func NewModelCatalogCache(control *database.ControlService, clock core.Clock) *ModelCatalogCache {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &ModelCatalogCache{control: control, clock: clock, entries: make(map[webapi.ProviderID]*catalogEntry), ctx: ctx, cancel: cancel}
+	return &ModelCatalogCache{
+		control: control,
+		clock:   clock,
+		entries: make(map[webapi.ProviderID]*catalogEntry),
+		ctx:     ctx,
+		cancel:  cancel,
+	}
 }
 
 // Read returns a fresh record, a stale record while refreshing, or waits when cold or forced.
-func (c *ModelCatalogCache) Read(ctx context.Context, id webapi.ProviderID, key string, fetch CatalogFetch, force bool) (core.ProviderModelList, error) {
+func (c *ModelCatalogCache) Read(
+	ctx context.Context,
+	id webapi.ProviderID,
+	key string,
+	fetch CatalogFetch,
+	force bool,
+) (core.ProviderModelList, error) {
 	c.mu.Lock()
 	if c.ctx.Err() != nil {
 		c.mu.Unlock()
 		//nolint:staticcheck // Product error text is copied verbatim from Rust.
 		return core.ProviderModelList{}, errors.New("The model catalog cache is closed")
 	}
-	e := c.entries[id]
-	if e == nil || e.key != key {
-		next := &catalogEntry{key: key}
-		next.ctx, next.cancel = context.WithCancel(c.ctx)
-		if e != nil {
-			e.cancel()
-			next.predecessor = e.refresh
-			if next.predecessor == nil {
-				next.predecessor = e.predecessor
-			}
-		}
-		e = next
-		c.entries[id] = e
-	}
-	loaded := e.loaded
+	entry := c.entryLocked(id, key)
+	loaded := entry.loaded
 	c.mu.Unlock()
 	if !loaded {
-		record, err := c.control.CatalogRecord(ctx, id)
-		if err != nil {
+		if err := c.loadEntry(ctx, id, key, entry); err != nil {
 			return core.ProviderModelList{}, err
 		}
-		if record != nil && record.Key != key {
-			record = nil
-		}
-		c.mu.Lock()
-		if !e.loaded {
-			e.record = record
-			e.loaded = true
-		}
-		c.mu.Unlock()
 	}
 	c.mu.Lock()
-	if e.ctx.Err() != nil {
+	if entry.ctx.Err() != nil {
 		c.mu.Unlock()
 		//nolint:staticcheck // Product error text is copied verbatim from Rust.
 		return core.ProviderModelList{}, errors.New("The catalog refresh was cancelled")
 	}
-	record := e.record
-	if !force && e.failure == nil && catalogFresh(record, c.clock.Now()) {
+	record := entry.record
+	if !force && entry.failure == nil && catalogFresh(record, c.clock.Now()) {
 		c.mu.Unlock()
 		return catalogAnswer(record, false, nil)
 	}
-	if !force && e.failure != nil && time.Now().Before(e.retry) {
-		failure := e.failure
+	if !force && entry.failure != nil && time.Now().Before(entry.retry) {
+		failure := entry.failure
 		c.mu.Unlock()
 		return catalogAnswer(record, true, failure)
 	}
-	r := e.refresh
-	if r == nil {
-		r = &catalogRefresh{done: make(chan struct{})}
-		e.refresh = r
-		c.workers.Go(func() { c.refresh(id, e, r, fetch) })
+	refresh := entry.refresh
+	if refresh == nil {
+		refresh = &catalogRefresh{done: make(chan struct{})}
+		entry.refresh = refresh
+		c.workers.Go(func() {
+			c.refresh(id, entry, refresh, fetch)
+		})
 	}
 	if !force && record != nil {
-		failure := e.failure
+		failure := entry.failure
 		c.mu.Unlock()
 		return catalogAnswer(record, true, failure)
 	}
 	c.mu.Unlock()
-	select {
-	case <-ctx.Done():
-		return core.ProviderModelList{}, ctx.Err()
-	case <-r.done:
-	}
-	if r.err == nil {
-		return catalogAnswer(r.record, false, nil)
-	}
-	c.mu.Lock()
-	record = e.record
-	c.mu.Unlock()
-	return catalogAnswer(record, true, r.err)
+	return c.waitCatalogRefresh(ctx, entry, refresh)
 }
 
 // Invalidate cancels the entry refresh and removes its cached record.
 func (c *ModelCatalogCache) Invalidate(ctx context.Context, id webapi.ProviderID) error {
 	c.mu.Lock()
-	e := c.entries[id]
+	entry := c.entries[id]
 	delete(c.entries, id)
 	var pending *catalogRefresh
-	if e != nil {
-		e.cancel()
-		pending = e.refresh
+	if entry != nil {
+		entry.cancel()
+		pending = entry.refresh
 		if pending == nil {
-			pending = e.predecessor
+			pending = entry.predecessor
 		}
 	}
 	c.mu.Unlock()
@@ -179,7 +159,11 @@ func catalogFresh(record *database.CatalogRecord, now core.Timestamp) bool {
 }
 
 // catalogAnswer gives the caller an independent catalog, retaining stale warnings.
-func catalogAnswer(record *database.CatalogRecord, stale bool, failure error) (core.ProviderModelList, error) {
+func catalogAnswer(
+	record *database.CatalogRecord,
+	stale bool,
+	failure error,
+) (core.ProviderModelList, error) {
 	if record == nil {
 		return core.ProviderModelList{}, failure
 	}
@@ -199,11 +183,17 @@ func catalogAnswer(record *database.CatalogRecord, stale bool, failure error) (c
 	}
 	return list, nil
 }
-func (c *ModelCatalogCache) refresh(id webapi.ProviderID, e *catalogEntry, r *catalogRefresh, fetch CatalogFetch) {
-	if e.predecessor != nil {
-		<-e.predecessor.done
+
+func (c *ModelCatalogCache) refresh(
+	id webapi.ProviderID,
+	entry *catalogEntry,
+	refresh *catalogRefresh,
+	fetch CatalogFetch,
+) {
+	if entry.predecessor != nil {
+		<-entry.predecessor.done
 	}
-	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(entry.ctx, 10*time.Second)
 	defer cancel()
 	var list core.ProviderModelList
 	var err error
@@ -212,7 +202,7 @@ func (c *ModelCatalogCache) refresh(id webapi.ProviderID, e *catalogEntry, r *ca
 	} else {
 		list, err = fetch(ctx)
 	}
-	if e.ctx.Err() != nil {
+	if entry.ctx.Err() != nil {
 		//nolint:staticcheck // Product error text is copied verbatim from Rust.
 		err = errors.New("The catalog refresh was cancelled")
 	} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -220,24 +210,15 @@ func (c *ModelCatalogCache) refresh(id webapi.ProviderID, e *catalogEntry, r *ca
 		err = errors.New("Model catalog request timed out")
 	}
 	if err == nil {
-		if validation := list.Validate(); validation != nil {
-			//nolint:staticcheck // Product error text is copied verbatim from Rust.
-			err = fmt.Errorf("The catalog cannot be read: %w", validation)
-		} else if list.Stale {
-			message := strings.Join(list.Warnings, "; ")
-			if message == "" {
-				message = "The provider answered a stale model catalog"
-			}
-			err = errors.New(message)
-		}
+		err = checkFetchedCatalog(list)
 	}
 	var record *database.CatalogRecord
 	if err == nil {
-		record = &database.CatalogRecord{Key: e.key, CheckedAt: c.clock.Now(), Catalog: list}
+		record = &database.CatalogRecord{Key: entry.key, CheckedAt: c.clock.Now(), Catalog: list}
 		// Freeze the source's mutable slices before publishing the cached record.
 		record.Catalog, err = catalogAnswer(record, false, nil)
 		if err == nil {
-			err = c.control.PutCatalogRecord(e.ctx, id, *record)
+			err = c.control.PutCatalogRecord(entry.ctx, id, *record)
 			if err != nil {
 				//nolint:staticcheck // Product error text is copied verbatim from Rust.
 				err = fmt.Errorf("The catalog could not be stored: %w", err)
@@ -245,18 +226,97 @@ func (c *ModelCatalogCache) refresh(id webapi.ProviderID, e *catalogEntry, r *ca
 		}
 	}
 	c.mu.Lock()
-	e.refresh = nil
-	if e.ctx.Err() == nil {
+	entry.refresh = nil
+	if entry.ctx.Err() == nil {
 		if err == nil {
-			e.record = record
-			e.failure = nil
+			entry.record = record
+			entry.failure = nil
 		} else {
-			e.failure = err
-			e.retry = time.Now().Add(time.Minute)
+			entry.failure = err
+			entry.retry = time.Now().Add(time.Minute)
 		}
 	}
-	r.record = record
-	r.err = err
-	close(r.done)
+	refresh.record = record
+	refresh.err = err
+	close(refresh.done)
 	c.mu.Unlock()
+}
+
+// entryLocked replaces a catalog generation while ordering its predecessor’s writes.
+func (c *ModelCatalogCache) entryLocked(id webapi.ProviderID, key string) *catalogEntry {
+	entry := c.entries[id]
+	if entry == nil || entry.key != key {
+		next := &catalogEntry{key: key}
+		next.ctx, next.cancel = context.WithCancel(c.ctx)
+		if entry != nil {
+			entry.cancel()
+			next.predecessor = entry.refresh
+			if next.predecessor == nil {
+				next.predecessor = entry.predecessor
+			}
+		}
+		entry = next
+		c.entries[id] = entry
+	}
+	return entry
+}
+
+// checkFetchedCatalog refuses invalid or stale provider catalogs.
+func checkFetchedCatalog(list core.ProviderModelList) error {
+	var err error
+
+	if validation := list.Validate(); validation != nil {
+		//nolint:staticcheck // Product error text is copied verbatim from Rust.
+		err = fmt.Errorf("The catalog cannot be read: %w", validation)
+	} else if list.Stale {
+		message := strings.Join(list.Warnings, "; ")
+		if message == "" {
+			message = "The provider answered a stale model catalog"
+		}
+		err = errors.New(message)
+	}
+	return err
+}
+
+// loadEntry reads a catalog record before publishing it under the cache mutex.
+func (c *ModelCatalogCache) loadEntry(
+	ctx context.Context,
+	id webapi.ProviderID,
+	key string,
+	entry *catalogEntry,
+) error {
+	record, err := c.control.CatalogRecord(ctx, id)
+	if err != nil {
+		return err
+	}
+	if record != nil && record.Key != key {
+		record = nil
+	}
+	c.mu.Lock()
+	if !entry.loaded {
+		entry.record = record
+		entry.loaded = true
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// waitCatalogRefresh waits for a refresh and returns the current stale record if it fails.
+func (c *ModelCatalogCache) waitCatalogRefresh(
+	ctx context.Context,
+	entry *catalogEntry,
+	refresh *catalogRefresh,
+) (core.ProviderModelList, error) {
+	select {
+	case <-ctx.Done():
+		return core.ProviderModelList{}, ctx.Err()
+	case <-refresh.done:
+	}
+	if refresh.err == nil {
+		return catalogAnswer(refresh.record, false, nil)
+	}
+	c.mu.Lock()
+	record := entry.record
+	c.mu.Unlock()
+	return catalogAnswer(record, true, refresh.err)
 }

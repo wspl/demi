@@ -20,7 +20,18 @@ import (
 func catalogStoreFixture(t *testing.T) *database.ControlService {
 	t.Helper()
 	vault, owner := vaultFixture(t)
-	_, err := vault.control.InsertProvider(t.Context(), database.NewProvider{ID: "provider", Owner: owner.ID, Family: "scripted", Kind: "api_key", Label: "Scripted", Config: new([]byte("sealed"))}, nil)
+	_, err := vault.control.InsertProvider(
+		t.Context(),
+		database.NewProvider{
+			ID:     "provider",
+			Owner:  owner.ID,
+			Family: "scripted",
+			Kind:   "api_key",
+			Label:  "Scripted",
+			Config: new([]byte("sealed")),
+		},
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,13 +49,39 @@ func storedCache(t *testing.T, store *database.ControlService) *ModelCatalogCach
 	})
 	return cache
 }
+
 func catalog(name string) core.ProviderModelList {
-	return core.ProviderModelList{Models: []core.ProviderModel{{ID: "model", DisplayName: name, ContextWindow: new(uint32(1000)), SupportsTools: new(true), SupportsAttachments: new(false), SupportsReasoning: new(false), ServiceTiers: []core.ServiceTier{}}}, Warnings: []string{}, SourceFetchedAt: "2026-09-13T00:00:00.000Z"}
+	return core.ProviderModelList{
+		Models: []core.ProviderModel{
+			{
+				ID:                  "model",
+				DisplayName:         name,
+				ContextWindow:       new(uint32(1000)),
+				SupportsTools:       new(true),
+				SupportsAttachments: new(false),
+				SupportsReasoning:   new(false),
+				ServiceTiers:        []core.ServiceTier{},
+			},
+		},
+		Warnings:        []string{},
+		SourceFetchedAt: "2026-09-13T00:00:00.000Z",
+	}
 }
+
 func answering(reads *atomic.Int32, list core.ProviderModelList, err error) CatalogFetch {
-	return func(context.Context) (core.ProviderModelList, error) { reads.Add(1); return list, err }
+	return func(context.Context) (core.ProviderModelList, error) {
+		reads.Add(1)
+		return list, err
+	}
 }
-func readCatalog(t *testing.T, c *ModelCatalogCache, key string, fetch CatalogFetch, force bool) core.ProviderModelList {
+
+func readCatalog(
+	t *testing.T,
+	c *ModelCatalogCache,
+	key string,
+	fetch CatalogFetch,
+	force bool,
+) core.ProviderModelList {
 	t.Helper()
 	list, err := c.Read(t.Context(), "provider", key, fetch, force)
 	if err != nil {
@@ -77,7 +114,14 @@ func TestFreshCatalogServesMemoryAndStorageAndExpiredRefreshesOnce(t *testing.T)
 			t.Fatal(err)
 		}
 		cache = storedCache(t, store)
-		if got := readCatalog(t, cache, "key", answering(&reads, catalog("Other"), nil), false); catalogName(got) != "First" || reads.Load() != 1 {
+		if got := readCatalog(
+			t,
+			cache,
+			"key",
+			answering(&reads, catalog("Other"), nil),
+			false,
+		); catalogName(got) != "First" ||
+			reads.Load() != 1 {
 			t.Fatal("restart refetched", got)
 		}
 		time.Sleep(15 * time.Minute)
@@ -105,7 +149,9 @@ func TestFreshCatalogServesMemoryAndStorageAndExpiredRefreshesOnce(t *testing.T)
 		}
 		<-started
 		forced := make(chan core.ProviderModelList, 1)
-		go func() { forced <- readCatalog(t, cache, "key", answering(&reads, catalog("Never"), nil), true) }()
+		go func() {
+			forced <- readCatalog(t, cache, "key", answering(&reads, catalog("Never"), nil), true)
+		}()
 		synctest.Wait()
 		close(answer)
 		got := <-forced
@@ -180,13 +226,19 @@ func TestChangedKeyAndInvalidationCancelRefreshWithoutWriting(t *testing.T) {
 		stopped := make(chan struct{})
 		result := make(chan error, 1)
 		go func() {
-			_, err := cache.Read(t.Context(), "provider", "old-account", func(ctx context.Context) (core.ProviderModelList, error) {
-				reads.Add(1)
-				close(started)
-				<-ctx.Done()
-				close(stopped)
-				return catalog("Old"), nil
-			}, false)
+			_, err := cache.Read(
+				t.Context(),
+				"provider",
+				"old-account",
+				func(ctx context.Context) (core.ProviderModelList, error) {
+					reads.Add(1)
+					close(started)
+					<-ctx.Done()
+					close(stopped)
+					return catalog("Old"), nil
+				},
+				false,
+			)
 			result <- err
 		}()
 		<-started
@@ -219,12 +271,18 @@ func TestChangedKeyAndInvalidationCancelRefreshWithoutWriting(t *testing.T) {
 		started = make(chan struct{})
 		stopped = make(chan struct{})
 		go func() {
-			_, err := cache.Read(t.Context(), "provider", "pending", func(ctx context.Context) (core.ProviderModelList, error) {
-				close(started)
-				<-ctx.Done()
-				close(stopped)
-				return catalog("Late"), nil
-			}, true)
+			_, err := cache.Read(
+				t.Context(),
+				"provider",
+				"pending",
+				func(ctx context.Context) (core.ProviderModelList, error) {
+					close(started)
+					<-ctx.Done()
+					close(stopped)
+					return catalog("Late"), nil
+				},
+				true,
+			)
 			result <- err
 		}()
 		<-started
@@ -269,10 +327,15 @@ func TestColdFailuresInvalidAnswersTimeoutAndClose(t *testing.T) {
 			list core.ProviderModelList
 			err  error
 			want string
-		}{{core.ProviderModelList{}, errors.New("offline"), "offline"}, {invalid, nil, "cannot be read"}, {stale, nil, stale.Warnings[0]}}
+		}{
+			{core.ProviderModelList{}, errors.New("offline"), "offline"},
+			{invalid, nil, "cannot be read"},
+			{stale, nil, stale.Warnings[0]},
+		}
 		for _, c := range cases {
 			_, err := cache.Read(t.Context(), "provider", "key", answering(&reads, c.list, c.err), true)
-			if err == nil || (c.want == "cannot be read" && !strings.Contains(err.Error(), c.want)) || (c.want != "cannot be read" && err.Error() != c.want) {
+			if err == nil || (c.want == "cannot be read" && !strings.Contains(err.Error(), c.want)) ||
+				(c.want != "cannot be read" && err.Error() != c.want) {
 				t.Fatalf("%v, want %s", err, c.want)
 			}
 		}
@@ -281,7 +344,9 @@ func TestColdFailuresInvalidAnswersTimeoutAndClose(t *testing.T) {
 		}
 		stopped := make(chan struct{})
 		before := time.Now()
-		_, err := cache.Read(t.Context(), "provider", "key", func(ctx context.Context) (core.ProviderModelList, error) {
+		_, err := cache.Read(t.Context(), "provider", "key", func(
+			ctx context.Context,
+		) (core.ProviderModelList, error) {
 			<-ctx.Done()
 			close(stopped)
 			return core.ProviderModelList{}, ctx.Err()
@@ -293,11 +358,17 @@ func TestColdFailuresInvalidAnswersTimeoutAndClose(t *testing.T) {
 		started := make(chan struct{})
 		result := make(chan error, 1)
 		go func() {
-			_, err := cache.Read(t.Context(), "provider", "key", func(ctx context.Context) (core.ProviderModelList, error) {
-				close(started)
-				<-ctx.Done()
-				return core.ProviderModelList{}, ctx.Err()
-			}, true)
+			_, err := cache.Read(
+				t.Context(),
+				"provider",
+				"key",
+				func(ctx context.Context) (core.ProviderModelList, error) {
+					close(started)
+					<-ctx.Done()
+					return core.ProviderModelList{}, ctx.Err()
+				},
+				true,
+			)
 			result <- err
 		}()
 		<-started
@@ -343,7 +414,9 @@ func TestCatalogRefreshOutlivesCanceledReader(t *testing.T) {
 		}
 		// A second reader joins the existing owner task instead of starting another.
 		joined := make(chan core.ProviderModelList, 1)
-		go func() { joined <- readCatalog(t, cache, "key", answering(&reads, catalog("Wrong"), nil), false) }()
+		go func() {
+			joined <- readCatalog(t, cache, "key", answering(&reads, catalog("Wrong"), nil), false)
+		}()
 		synctest.Wait()
 		close(answer)
 		if got := <-joined; catalogName(got) != "Finished" || reads.Load() != 1 {

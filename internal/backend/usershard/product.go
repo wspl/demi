@@ -23,25 +23,43 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-const instructions = "You are a coding agent. Use shell session tools to inspect, edit, test, and verify the workspace.\n\nTreat cwd as the task workspace. Create, edit, and verify task files there by default; do not create a separate project directory under /tmp or another absolute path unless the user asks for it or the workspace is unusable."
+const instructions = "You are a coding agent. Use shell session tools to inspect, edit, test, " +
+	"and verify the workspace.\n\nTreat cwd as the task workspace. Create, edit," +
+	" and verify task files there by default; do not create a separate project " +
+	"directory under /tmp or another absolute path unless the user asks for it " +
+	"or the workspace is unusable."
 
 type shardToolsets struct{ shard *Shard }
 
+// Current returns the enabled plugin commands, profiles and revision.
 func (t shardToolsets) Current(ctx context.Context) (tools.Toolset, error) {
 	set, err := t.shard.plugins.Toolset(ctx, []host.Declared{hostaccess.HostGroup(t.shard)})
-	return tools.Toolset{Commands: set.Commands, Profiles: set.Profiles, Revision: set.Revision}, err
+	return tools.Toolset{
+		Commands: set.Commands,
+		Profiles: set.Profiles,
+		Revision: set.Revision,
+	}, err
 }
 
 type shardHosts struct{ shard *Shard }
 
+// Host resolves the node’s host through conversation host access.
 func (h shardHosts) Host(ctx context.Context, node tools.NodeContext) (*remotehost.Host, error) {
 	return hostaccess.ConversationHostForNode(ctx, h.shard, hostaccess.ConversationOf(node.Root))
 }
 
 type executionContext struct{ shard *Shard }
 
+// Name identifies this context source’s transcript blocks.
 func (executionContext) Name() string { return plugin.ExecutionSource }
-func (e executionContext) Context(ctx context.Context, node tools.NodeContext, _ core.TurnID, seen []string) (*string, error) {
+
+// Context returns source text the node has not yet observed.
+func (e executionContext) Context(
+	ctx context.Context,
+	node tools.NodeContext,
+	_ core.TurnID,
+	seen []string,
+) (*string, error) {
 	text, err := e.shard.executionContext(ctx, hostaccess.ConversationOf(node.Root), seen)
 	if err != nil {
 		return nil, fmt.Errorf("the execution context cannot be read: %w", err)
@@ -54,9 +72,27 @@ type pluginContext struct {
 	plugin plugin.ID
 }
 
+// Name identifies this context source’s transcript blocks.
 func (p pluginContext) Name() string { return string(p.plugin) }
-func (p pluginContext) Context(ctx context.Context, node tools.NodeContext, turn core.TurnID, seen []string) (*string, error) {
-	text, err := p.shard.plugins.Context(ctx, p.plugin, plugins.ContextAsk{Conversation: hostaccess.ConversationOf(node.Root), Node: node.Node, Cwd: node.CWD, Turn: turn, Seen: seen})
+
+// Context returns source text the node has not yet observed.
+func (p pluginContext) Context(
+	ctx context.Context,
+	node tools.NodeContext,
+	turn core.TurnID,
+	seen []string,
+) (*string, error) {
+	text, err := p.shard.plugins.Context(
+		ctx,
+		p.plugin,
+		plugins.ContextAsk{
+			Conversation: hostaccess.ConversationOf(node.Root),
+			Node:         node.Node,
+			Cwd:          node.CWD,
+			Turn:         turn,
+			Seen:         seen,
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("the plugin %s gave no context: %w", p.plugin, err)
 	}
@@ -64,7 +100,10 @@ func (p pluginContext) Context(ctx context.Context, node tools.NodeContext, turn
 }
 
 func (s *Shard) composeAgent() {
-	s.providers = &conversationProviders{shard: s, rate: providers.NewRequestRateLimit(s.services.ConversationTuning.RequestsPerMinute)}
+	s.providers = &conversationProviders{
+		shard: s,
+		rate:  providers.NewRequestRateLimit(s.services.ConversationTuning.RequestsPerMinute),
+	}
 	sources := []tools.ContextSource{executionContext{shard: s}}
 	for _, id := range s.services.Plugins.ContextSources() {
 		sources = append(sources, pluginContext{shard: s, plugin: id})
@@ -72,18 +111,31 @@ func (s *Shard) composeAgent() {
 	config := server.DefaultConfig()
 	config.OutboxFrames = s.services.ConversationTuning.OutboxFrames
 	s.agent = server.New(server.Deps[*remotehost.Host]{
-		Toolsets: shardToolsets{shard: s}, Instructions: instructions, Hosts: shardHosts{shard: s}, Context: sources, Providers: s.providers,
-		Shells: hostaccess.NewShardShellEnvironments(s, s.services.Native.Catalog(s.services.PublicURL)),
+		Toolsets: shardToolsets{
+			shard: s,
+		},
+		Instructions: instructions,
+		Hosts:        shardHosts{shard: s},
+		Context:      sources,
+		Providers:    s.providers,
+		Shells:       hostaccess.NewShardShellEnvironments(s, s.services.Native.Catalog(s.services.PublicURL)),
 		Stores: func(root core.NodeID) store.TreeStore {
 			id := hostaccess.ConversationOf(root)
 			indexed := &indexedWakeup{shard: s, conversation: id}
-			return database.NewTreeStore(s.services.Conversations.DB(id), s.BlobUses(), func(node core.NodeID, due database.WakeupDue) {
-				if node == root {
-					s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
-				}
-				indexed.committed(due)
-			})
-		}, Clock: s.Clock(), IDs: transcript.RandomIDs{}, Config: config,
+			return database.NewTreeStore(
+				s.services.Conversations.DB(id),
+				s.BlobUses(),
+				func(node core.NodeID, due database.WakeupDue) {
+					if node == root {
+						s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
+					}
+					indexed.committed(due)
+				},
+			)
+		},
+		Clock:  s.Clock(),
+		IDs:    transcript.RandomIDs{},
+		Config: config,
 		StatusChanged: func(root core.NodeID) {
 			id := hostaccess.ConversationOf(root)
 			s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
@@ -139,7 +191,11 @@ func (w *indexedWakeup) committed(due database.WakeupDue) {
 	s := w.shard
 	s.mu.Lock()
 	w.latest = due
-	if w.writing || w.known && reflect.DeepEqual(w.indexed, due) {
+	alreadyIndexed := false
+	if !w.writing {
+		alreadyIndexed = w.known && reflect.DeepEqual(w.indexed, due)
+	}
+	if w.writing || alreadyIndexed {
 		s.mu.Unlock()
 		return
 	}
@@ -162,7 +218,13 @@ func (w *indexedWakeup) committed(due database.WakeupDue) {
 			if err != nil {
 				w.writing = false
 				s.mu.Unlock()
-				slog.Warn("the conversation's saved wakeup was not indexed", "conversation", w.conversation, "error", err)
+				slog.Warn(
+					"the conversation's saved wakeup was not indexed",
+					"conversation",
+					w.conversation,
+					"error",
+					err,
+				)
 				return
 			}
 			w.known = true
@@ -172,7 +234,11 @@ func (w *indexedWakeup) committed(due database.WakeupDue) {
 	}()
 }
 
-func (s *Shard) restoreWhenDue(ctx context.Context, id webapi.ConversationID, due database.WakeupDue) {
+func (s *Shard) restoreWhenDue(
+	ctx context.Context,
+	id webapi.ConversationID,
+	due database.WakeupDue,
+) {
 	if at, ok := due.(*database.WakeupAt); ok {
 		when, err := at.At.Time()
 		if err != nil {
@@ -184,7 +250,8 @@ func (s *Shard) restoreWhenDue(ctx context.Context, id webapi.ConversationID, du
 			slog.Warn("the clock cannot be read", "error", err)
 			return
 		}
-		timer := time.NewTimer(max(0, when.Sub(now)))
+		delay := max(0, when.Sub(now))
+		timer := time.NewTimer(delay)
 		defer timer.Stop()
 		select {
 		case <-ctx.Done():

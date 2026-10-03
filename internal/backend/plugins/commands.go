@@ -19,14 +19,23 @@ type forward struct {
 // Call forwards an RPC command with its path relative to the plugin's tree.
 func (f forward) Call(ctx context.Context, invocation host.RPCInvocation, port host.RPCPort) (uint8, error) {
 	if f.user == nil {
-		return 0, &host.RPCError{Kind: host.HandlerFailed, Message: "no plugin instance serves the startup check"}
+		return 0, &host.RPCError{
+			Kind:    host.HandlerFailed,
+			Message: "no plugin instance serves the startup check",
+		}
 	}
 	invocation.Path = slices.Clone(invocation.Path[f.strip:])
 	var conversation *webapi.ConversationID
 	if id, err := webapi.ParseConversationID(string(invocation.Context.Conversation)); err == nil {
 		conversation = &id
 	}
-	reply, err := f.user.request(ctx, f.index, &plugin.RequestCommand{User: f.user.id, Invocation: invocation}, conversation, &port)
+	reply, err := f.user.request(
+		ctx,
+		f.index,
+		&plugin.RequestCommand{User: f.user.id, Invocation: invocation},
+		conversation,
+		&port,
+	)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return 0, &host.PortError{Kind: host.PortEnded, Message: err.Error(), Err: err}
@@ -44,5 +53,6 @@ func (f forward) Call(ctx context.Context, invocation host.RPCInvocation, port h
 	if exit, ok := reply.(*plugin.ReplyExit); ok {
 		return exit.Code, nil
 	}
-	return 0, plugin.RPCError(plugin.RequestError(wrongReply("a command", reply)))
+	failure := wrongReply("a command", reply)
+	return 0, plugin.RPCError(plugin.RequestError(failure))
 }

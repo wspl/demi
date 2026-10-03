@@ -49,9 +49,20 @@ func shardFixture(t *testing.T, names ...string) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{services: services, shards: shards, shard: shard, owner: owner}
+	f := &fixture{
+		services: services,
+		shards:   shards,
+		shard:    shard,
+		owner:    owner,
+	}
 	for _, name := range names {
-		device, err := services.Control.CreateDevice(t.Context(), owner, name, runnerwire.RunnerPlatformLinux, database.HashToken(name))
+		device, err := services.Control.CreateDevice(
+			t.Context(),
+			owner,
+			name,
+			runnerwire.RunnerPlatformLinux,
+			database.HashToken(name),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,9 +70,13 @@ func shardFixture(t *testing.T, names ...string) *fixture {
 	}
 	return f
 }
+
 func on(device webapi.DeviceID) database.ConversationChange {
-	return &database.ConversationTargetChange{Target: &webapi.ConversationTargetDevice{DeviceID: device, Path: "/work"}}
+	return &database.ConversationTargetChange{
+		Target: &webapi.ConversationTargetDevice{DeviceID: device, Path: "/work"},
+	}
 }
+
 func change(t *testing.T, f *fixture, c database.ConversationChange) {
 	t.Helper()
 	if err := f.shard.Transition(t.Context(), conversationID, c); err != nil {
@@ -90,11 +105,13 @@ func (l *releaseLog) append(record releaseRecord) {
 	l.mu.Unlock()
 	close(old)
 }
+
 func (l *releaseLog) snapshot() []releaseRecord {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return append([]releaseRecord(nil), l.records...)
 }
+
 func (l *releaseLog) until(ctx context.Context, count int) error {
 	for {
 		l.mu.Lock()
@@ -126,6 +143,7 @@ func (r *releaseRunner) Receive(ctx context.Context) ([]byte, error) {
 		return nil, ctx.Err()
 	}
 }
+
 func (r *releaseRunner) Send(ctx context.Context, data []byte) error {
 	message, err := runnerwire.DecodeInbound(data)
 	if err != nil {
@@ -135,23 +153,9 @@ func (r *releaseRunner) Send(ctx context.Context, data []byte) error {
 	if _, ok := message.(*runnerwire.Ping); ok {
 		answer = &runnerwire.Pong{}
 	} else if message, ok := message.(*runnerwire.ConversationRelease); ok {
-		id, err := webapi.ParseConversationID(message.ConversationID)
-		if err != nil {
+		if err := r.recordRelease(ctx, message); err != nil {
 			return err
 		}
-		record, err := r.f.services.Control.Conversation(ctx, id)
-		if err != nil {
-			return err
-		}
-		attached, err := r.f.services.Control.AttachedHosts(ctx, id)
-		if err != nil {
-			return err
-		}
-		hosts := make([]webapi.DeviceID, 0, len(attached))
-		for _, host := range attached {
-			hosts = append(hosts, host.Device)
-		}
-		r.log.append(releaseRecord{Device: r.device, Target: record.Target, Attached: hosts, Archived: record.Archived, At: time.Now()})
 		answer = &runnerwire.ConversationReleased{ID: message.ID}
 	} else {
 		return nil
@@ -167,13 +171,31 @@ func (r *releaseRunner) Send(ctx context.Context, data []byte) error {
 		return ctx.Err()
 	}
 }
+
 func playRunners(t *testing.T, f *fixture) *releaseLog {
 	t.Helper()
 	log := &releaseLog{changed: make(chan struct{})}
 	for _, device := range f.devices {
-		link, driver := remotehost.NewLink(remotehost.LinkOptions{Device: string(device.ID), Identity: host.Identity{UID: 501, GID: 20, Hostname: "test", HomeDir: "/home/ana"}, Pipes: f.shard.Pipes()})
-		serving := f.shard.Devices().Bind(device.ID, link, driver, runners.NewLastSeen(f.services.Control, f.shard.Marks()))
-		runner := &releaseRunner{f: f, device: device.ID, log: log, answers: make(chan []byte, 8)}
+		link, driver := remotehost.NewLink(
+			remotehost.LinkOptions{
+				Device: string(device.ID),
+				Identity: host.Identity{
+					UID:      501,
+					GID:      20,
+					Hostname: "test",
+					HomeDir:  "/home/ana",
+				},
+				Pipes: f.shard.Pipes(),
+			},
+		)
+		serving := f.shard.Devices().
+			Bind(device.ID, link, driver, runners.NewLastSeen(f.services.Control, f.shard.Marks()))
+		runner := &releaseRunner{
+			f:       f,
+			device:  device.ID,
+			log:     log,
+			answers: make(chan []byte, 8),
+		}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		go func() {
@@ -212,6 +234,7 @@ func TestUserAlwaysReachesSameShard(t *testing.T) {
 	}
 	workers.Wait()
 }
+
 func TestTransitionRefusesWorkAndFieldUpdateWaits(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := shardFixture(t, "laptop")
@@ -220,7 +243,11 @@ func TestTransitionRefusesWorkAndFieldUpdateWaits(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, c := range []database.ConversationChange{on(f.devices[0].ID), &database.ConversationRecordChange{Change: &database.RecordArchived{Archived: true}}, &database.ConversationRecordChange{Change: &database.RecordDetach{Device: f.devices[0].ID}}} {
+		for _, c := range []database.ConversationChange{
+			on(f.devices[0].ID),
+			&database.ConversationRecordChange{Change: &database.RecordArchived{Archived: true}},
+			&database.ConversationRecordChange{Change: &database.RecordDetach{Device: f.devices[0].ID}},
+		} {
 			err := f.shard.Transition(t.Context(), conversationID, c)
 			var refusal *hostaccess.ChangeRefusal
 			if !errors.As(err, &refusal) || refusal.Kind != hostaccess.ChangeTurnInFlight {
@@ -234,7 +261,11 @@ func TestTransitionRefusesWorkAndFieldUpdateWaits(t *testing.T) {
 		}
 		done := make(chan error, 1)
 		go func() {
-			done <- f.shard.Transition(t.Context(), conversationID, &database.ConversationRecordChange{Change: &database.RecordTitle{Title: "Renamed"}})
+			done <- f.shard.Transition(
+				t.Context(),
+				conversationID,
+				&database.ConversationRecordChange{Change: &database.RecordTitle{Title: "Renamed"}},
+			)
 		}()
 		synctest.Wait()
 		select {
@@ -259,6 +290,7 @@ func TestTransitionRefusesWorkAndFieldUpdateWaits(t *testing.T) {
 		}
 	})
 }
+
 func TestSwitchDetachArchiveReleaseBeforeBindingChanges(t *testing.T) {
 	f := shardFixture(t, "one", "two")
 	log := playRunners(t, f)
@@ -275,7 +307,15 @@ func TestSwitchDetachArchiveReleaseBeforeBindingChanges(t *testing.T) {
 	if got := log.snapshot(); len(got) != 2 {
 		t.Fatalf("detach releases = %+v", got)
 	}
-	change(t, f, &database.ConversationRecordChange{Change: &database.RecordAttach{Host: database.AttachedHostRecord{Device: one, Name: "one"}}})
+	change(
+		t,
+		f,
+		&database.ConversationRecordChange{
+			Change: &database.RecordAttach{
+				Host: database.AttachedHostRecord{Device: one, Name: "one"},
+			},
+		},
+	)
 	change(t, f, &database.ConversationRecordChange{Change: &database.RecordArchived{Archived: true}})
 	got := log.snapshot()
 	for i := range got {
@@ -284,24 +324,61 @@ func TestSwitchDetachArchiveReleaseBeforeBindingChanges(t *testing.T) {
 	target := func(id webapi.DeviceID) webapi.ConversationTarget {
 		return &webapi.ConversationTargetDevice{DeviceID: id, Path: "/work"}
 	}
-	want := []releaseRecord{{Device: one, Target: target(one), Attached: []webapi.DeviceID{}}, {Device: one, Target: target(two), Attached: []webapi.DeviceID{one}}, {Device: two, Target: target(two), Attached: []webapi.DeviceID{one}}, {Device: one, Target: target(two), Attached: []webapi.DeviceID{one}}}
+	want := []releaseRecord{
+		{
+			Device:   one,
+			Target:   target(one),
+			Attached: []webapi.DeviceID{},
+		},
+		{
+			Device:   one,
+			Target:   target(two),
+			Attached: []webapi.DeviceID{one},
+		},
+		{
+			Device:   two,
+			Target:   target(two),
+			Attached: []webapi.DeviceID{one},
+		},
+		{
+			Device:   one,
+			Target:   target(two),
+			Attached: []webapi.DeviceID{one},
+		},
+	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatal(diff)
 	}
 }
+
 func operate(t *testing.T, f *fixture) {
 	t.Helper()
-	_, err := hostaccess.WithHost(t.Context(), f.shard, conversationID, nil, func(context.Context, *hostaccess.ConversationHost) (struct{}, error) { return struct{}{}, nil })
+	_, err := hostaccess.WithHost(
+		t.Context(),
+		f.shard,
+		conversationID,
+		nil,
+		func(context.Context, *hostaccess.ConversationHost) (struct{}, error) { return struct{}{}, nil },
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
+
 func TestIdleHourReleasesMainAndAttachedAfterLatestActivity(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := shardFixture(t, "main", "attached")
 		log := playRunners(t, f)
 		change(t, f, on(f.devices[0].ID))
-		change(t, f, &database.ConversationRecordChange{Change: &database.RecordAttach{Host: database.AttachedHostRecord{Device: f.devices[1].ID, Name: "attached"}}})
+		change(
+			t,
+			f,
+			&database.ConversationRecordChange{
+				Change: &database.RecordAttach{
+					Host: database.AttachedHostRecord{Device: f.devices[1].ID, Name: "attached"},
+				},
+			},
+		)
 		operate(t, f)
 		time.Sleep(30 * time.Minute)
 		active := time.Now()
@@ -321,6 +398,7 @@ func TestIdleHourReleasesMainAndAttachedAfterLatestActivity(t *testing.T) {
 		operate(t, f)
 	})
 }
+
 func TestSwitchRestartsIdleWindowAndArchiveEndsIt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := shardFixture(t, "old", "new")
@@ -353,4 +431,34 @@ func TestSwitchRestartsIdleWindowAndArchiveEndsIt(t *testing.T) {
 			t.Fatalf("archive releases = %d, want 5", len(got))
 		}
 	})
+}
+
+// recordRelease records the target and attached hosts observed by the test runner.
+func (r *releaseRunner) recordRelease(ctx context.Context, message *runnerwire.ConversationRelease) error {
+	id, err := webapi.ParseConversationID(message.ConversationID)
+	if err != nil {
+		return err
+	}
+	record, err := r.f.services.Control.Conversation(ctx, id)
+	if err != nil {
+		return err
+	}
+	attached, err := r.f.services.Control.AttachedHosts(ctx, id)
+	if err != nil {
+		return err
+	}
+	hosts := make([]webapi.DeviceID, 0, len(attached))
+	for _, host := range attached {
+		hosts = append(hosts, host.Device)
+	}
+	r.log.append(
+		releaseRecord{
+			Device:   r.device,
+			Target:   record.Target,
+			Attached: hosts,
+			Archived: record.Archived,
+			At:       time.Now(),
+		},
+	)
+	return nil
 }

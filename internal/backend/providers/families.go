@@ -32,12 +32,18 @@ type ProcessFamily interface {
 
 // FamilyArgs is what a family builds a provider from.
 type FamilyArgs struct {
-	EntryID    string
-	Label      string
+	// EntryID identifies the provider entry being assembled.
+	EntryID string
+	// Label is the provider entry’s display name.
+	Label string
+	// Credential supplies credentials for this provider instance.
 	Credential FamilyCredential
-	HTTP       *http.Client
-	Clock      core.Clock
-	ModelsDev  *provider.ModelsDevClient
+	// HTTP is the HTTP client used for provider requests.
+	HTTP *http.Client
+	// Clock supplies timestamps to the provider.
+	Clock core.Clock
+	// ModelsDev supplies vendor and model facts.
+	ModelsDev *provider.ModelsDevClient
 }
 
 // FamilyCredential is the credential a provider stands for.
@@ -45,17 +51,23 @@ type FamilyCredential interface{ familyCredential() }
 
 // APIKeyArgs is an API-key entry's settings, read only from the entry.
 type APIKeyArgs struct {
-	APIKey  provider.Secret
+	// APIKey holds the configured secret used to authenticate requests.
+	APIKey provider.Secret
+	// BaseURL overrides the vendor endpoint when supplied.
 	BaseURL *url.URL
+	// WireAPI selects the vendor’s configured wire protocol.
 	WireAPI *core.WireAPI
-	Vendor  provider.VendorPolicy
+	// Vendor identifies the model catalog vendor.
+	Vendor provider.VendorPolicy
 }
 
 func (*APIKeyArgs) familyCredential() {}
 
 // SubscriptionArgs is an entry's pool and the account its provider stands for.
 type SubscriptionArgs struct {
-	Pool    provider.CredentialPool
+	// Pool provides the entry’s subscription credentials.
+	Pool provider.CredentialPool
+	// Account identifies the subscription account bound to this provider.
 	Account *AccountBinding
 }
 
@@ -63,8 +75,10 @@ func (*SubscriptionArgs) familyCredential() {}
 
 // AccountBinding is the account a subscription provider stands for, with its quota snapshot.
 type AccountBinding struct {
+	// CredentialID identifies the account used by the bound provider.
 	CredentialID string
-	Quota        provider.QuotaSnapshotStore
+	// Quota provides the bound account’s quota snapshots.
+	Quota provider.QuotaSnapshotStore
 }
 
 // FamilyRegistry is the families of a backend by name. Its zero value is ready to use.

@@ -57,6 +57,7 @@ func (s *Shard) productState(ctx context.Context, user webapi.UserDTO) (webapi.P
 	state.PublicURL = url.String()
 	return state, nil
 }
+
 func (s *Shard) workspaceDTOs(ctx context.Context) ([]webapi.WorkspaceDTO, error) {
 	records, err := s.Control().Workspaces(ctx, s.user)
 	if err != nil {
@@ -68,18 +69,15 @@ func (s *Shard) workspaceDTOs(ctx context.Context) ([]webapi.WorkspaceDTO, error
 	}
 	return result, nil
 }
-func (s *Shard) readPart(ctx context.Context, part pagesync.Part, user webapi.UserDTO) (webapi.SyncEvent, error) {
+
+func (s *Shard) readPart(
+	ctx context.Context,
+	part pagesync.Part,
+	user webapi.UserDTO,
+) (webapi.SyncEvent, error) {
 	switch part.Kind {
 	case pagesync.Conversation:
-		record, err := s.Control().Conversation(ctx, part.ConversationID)
-		if err != nil || record == nil {
-			return nil, err
-		}
-		if record.Owner != s.user {
-			return nil, nil
-		}
-		summary, err := s.ConversationSummary(ctx, *record)
-		return &webapi.SyncEventConversation{Conversation: summary}, err
+		return s.conversationEvent(ctx, part.ConversationID)
 	case pagesync.ConversationOrder:
 		ids, err := s.Control().ConversationOrder(ctx, s.user)
 		return &webapi.SyncEventConversationOrder{IDs: ids}, err
@@ -116,6 +114,7 @@ func (s *Shard) readPart(ctx context.Context, part pagesync.Part, user webapi.Us
 	}
 	return nil, nil
 }
+
 func (s *Shard) providerStates(ctx context.Context, user webapi.UserDTO) ([]webapi.ProviderState, error) {
 	owner, err := s.services.Vault.OwnerFor(ctx, user.ID)
 	if err != nil {
@@ -142,4 +141,17 @@ func (s *Shard) providerStates(ctx context.Context, user webapi.UserDTO) ([]weba
 	}
 	workers.Wait()
 	return result, nil
+}
+
+// conversationEvent presents a changed conversation only when it belongs to this user.
+func (s *Shard) conversationEvent(ctx context.Context, id webapi.ConversationID) (webapi.SyncEvent, error) {
+	record, err := s.Control().Conversation(ctx, id)
+	if err != nil || record == nil {
+		return nil, err
+	}
+	if record.Owner != s.user {
+		return nil, nil
+	}
+	summary, err := s.ConversationSummary(ctx, *record)
+	return &webapi.SyncEventConversation{Conversation: summary}, err
 }

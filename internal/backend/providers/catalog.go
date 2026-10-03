@@ -39,7 +39,10 @@ func (v *VendorCatalog) Policy(id *string) provider.VendorPolicy {
 	if id == nil {
 		return provider.VendorPolicy{}
 	}
-	return provider.VendorPolicy{PassBackReasoningContent: *id == "deepseek", EffortAsBudget: *id != "anthropic"}
+	return provider.VendorPolicy{
+		PassBackReasoningContent: *id == "deepseek",
+		EffortAsBudget:           *id != "anthropic",
+	}
 }
 
 // Vendors lists supported vendors.
@@ -55,7 +58,10 @@ func (v *VendorCatalog) Vendors(ctx context.Context) ([]webapi.Vendor, error) {
 		}
 	}
 	collator := collate.New(language.Und)
-	sort.SliceStable(vendors, func(i, j int) bool { return collator.CompareString(vendors[i].Name, vendors[j].Name) < 0 })
+	sort.SliceStable(
+		vendors,
+		func(i, j int) bool { return collator.CompareString(vendors[i].Name, vendors[j].Name) < 0 },
+	)
 	return vendors, nil
 }
 
@@ -83,7 +89,12 @@ func (v *VendorCatalog) Models(ctx context.Context, id string) (core.ProviderMod
 			return *list, nil
 		}
 	}
-	return core.ProviderModelList{Models: []core.ProviderModel{}, Warnings: snapshot.Warnings, SourceFetchedAt: core.UnixEpoch, Stale: snapshot.Stale}, nil
+	return core.ProviderModelList{
+		Models:          []core.ProviderModel{},
+		Warnings:        snapshot.Warnings,
+		SourceFetchedAt: core.UnixEpoch,
+		Stale:           snapshot.Stale,
+	}, nil
 }
 
 // ConfiguredModel converts configured facts to a catalog model.
@@ -107,7 +118,19 @@ func ConfiguredModel(model webapi.ConfiguredModel) core.ProviderModel {
 	if model.FastTier != nil {
 		tiers = append(tiers, core.ServiceTier{ID: *model.FastTier, Label: "Fast", Fast: true})
 	}
-	return core.ProviderModel{ID: string(model.ID), DisplayName: string(model.DisplayName), ContextWindow: &model.ContextWindow, OutputLimit: model.OutputLimit, SupportsTools: &tools, SupportsAttachments: attachments, AcceptedExtensions: model.AcceptedExtensions, SupportsReasoning: &reasoning, SupportedThinkingEfforts: &efforts, DefaultThinkingEffort: first, ServiceTiers: tiers}
+	return core.ProviderModel{
+		ID:                       string(model.ID),
+		DisplayName:              string(model.DisplayName),
+		ContextWindow:            &model.ContextWindow,
+		OutputLimit:              model.OutputLimit,
+		SupportsTools:            &tools,
+		SupportsAttachments:      attachments,
+		AcceptedExtensions:       model.AcceptedExtensions,
+		SupportsReasoning:        &reasoning,
+		SupportedThinkingEfforts: &efforts,
+		DefaultThinkingEffort:    first,
+		ServiceTiers:             tiers,
+	}
 }
 
 // ConfiguredSelection reapplies configured facts while keeping user thinking and tier choices.
@@ -128,14 +151,23 @@ func ConfiguredSelection(entry ProviderEntry, selection core.ModelSelection) (co
 func Availability(auth core.AuthState, runtime core.RuntimeState) webapi.Availability {
 	switch auth.(type) {
 	case *core.Unauthenticated, *core.AuthError:
-		return &webapi.AvailabilityUnavailable{Reason: webapi.UnavailableReasonAuthentication, Message: "Provider login is unavailable"}
+		return &webapi.AvailabilityUnavailable{
+			Reason:  webapi.UnavailableReasonAuthentication,
+			Message: "Provider login is unavailable",
+		}
 	case *core.AuthUnknown, *core.Authenticated:
 	}
 	switch r := runtime.(type) {
 	case *core.RuntimeUnavailable:
-		return &webapi.AvailabilityUnavailable{Reason: webapi.UnavailableReasonRuntime, Message: r.Message}
+		return &webapi.AvailabilityUnavailable{
+			Reason:  webapi.UnavailableReasonRuntime,
+			Message: r.Message,
+		}
 	case *core.RuntimeError:
-		return &webapi.AvailabilityUnavailable{Reason: webapi.UnavailableReasonRuntime, Message: r.Message}
+		return &webapi.AvailabilityUnavailable{
+			Reason:  webapi.UnavailableReasonRuntime,
+			Message: r.Message,
+		}
 	case *core.RuntimeUnknown, *core.RuntimeReady:
 	}
 	return &webapi.AvailabilityAvailable{}
@@ -176,7 +208,14 @@ func offeredVendor(v provider.ModelsDevVendor) *webapi.Vendor {
 			base = &value
 		}
 	}
-	return &webapi.Vendor{ID: v.ID, Name: v.Name, ProviderType: family, WireAPI: wire, BaseURL: base, Doc: v.Doc}
+	return &webapi.Vendor{
+		ID:           v.ID,
+		Name:         v.Name,
+		ProviderType: family,
+		WireAPI:      wire,
+		BaseURL:      base,
+		Doc:          v.Doc,
+	}
 }
 
 // catalogKey hashes the RFC 8785 identity Rust uses for persisted catalogs.

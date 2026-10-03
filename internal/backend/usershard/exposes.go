@@ -16,11 +16,18 @@ import (
 // exposeView resolves the method-name conflicts between the consumer interfaces.
 type exposeView struct{ *Shard }
 
+// Control returns expose storage ordered with device shutdown.
 func (v exposeView) Control() expose.Store {
 	return exposeStore{Store: v.services.Control, shard: v.Shard}
 }
+
+// Exposes returns the shard’s live expose registry.
 func (v exposeView) Exposes() *expose.Exposes { return &v.exposes }
-func (v exposeView) Domain() *expose.Domain   { return v.services.ExposeDomain }
+
+// Domain returns the configured public expose domain.
+func (v exposeView) Domain() *expose.Domain { return v.services.ExposeDomain }
+
+// PublicURL returns the backend URL already validated at entry.
 func (v exposeView) PublicURL() *url.Url {
 	backend, ok := v.services.PublicURL.URL()
 	if !ok {
@@ -32,9 +39,13 @@ func (v exposeView) PublicURL() *url.Url {
 	} // PublicURL already validated this URL at entry.
 	return parsed
 }
+
+// DeviceConnected reports whether the device can serve an expose.
 func (v exposeView) DeviceConnected(record database.DeviceRecord) bool {
 	return v.devices.Online(record.ID) && (record.Kind != webapi.DeviceKindManaged || v.cloud.Runs(record.ID))
 }
+
+// ExposesChanged invalidates the page states following exposes.
 func (v exposeView) ExposesChanged() {
 	v.plugins.Fire(plugin.TopicExposes, nil)
 }
@@ -47,7 +58,15 @@ type exposeStore struct {
 	shard *Shard
 }
 
-func (s exposeStore) CreateExpose(ctx context.Context, id webapi.ExposeID, user webapi.UserID, device webapi.DeviceID, address webapi.ExposeAddress, lifetime time.Duration) (database.ExposeRecord, error) {
+// CreateExpose commits the expose while holding device admission.
+func (s exposeStore) CreateExpose(
+	ctx context.Context,
+	id webapi.ExposeID,
+	user webapi.UserID,
+	device webapi.DeviceID,
+	address webapi.ExposeAddress,
+	lifetime time.Duration,
+) (database.ExposeRecord, error) {
 	permit, err := s.shard.deviceOrder.Acquire(ctx, device)
 	if err != nil {
 		return database.ExposeRecord{}, err
@@ -84,7 +103,14 @@ func (s *Shard) stopExposes(ctx context.Context, device webapi.DeviceID) error {
 }
 
 func exposeRecord(value expose.Expose) plugin.ExposeRecord {
-	return plugin.ExposeRecord{ID: value.Record.ID, Device: value.Record.Device, Address: value.Record.Address, URL: value.URL, CreatedAt: value.Record.CreatedAt, ExpiresAt: value.Record.ExpiresAt}
+	return plugin.ExposeRecord{
+		ID:        value.Record.ID,
+		Device:    value.Record.Device,
+		Address:   value.Record.Address,
+		URL:       value.URL,
+		CreatedAt: value.Record.CreatedAt,
+		ExpiresAt: value.Record.ExpiresAt,
+	}
 }
 
 var _ expose.ExposeShard = exposeView{}

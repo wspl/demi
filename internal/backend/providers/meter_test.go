@@ -51,7 +51,16 @@ func TestResponsesReachLedgerBeforeAgentAndLimitRefusesRest(t *testing.T) {
 		providertest.Events(providertest.Response(102, 10)),
 		providertest.Events(providertest.Response(103, 10)),
 	)
-	first := NewMeteredRuntime(script, NewRequestRateLimit(3), Ledger{Control: vault.control, User: owner.ID, Conversation: "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b", Provider: "entry-1"})
+	first := NewMeteredRuntime(
+		script,
+		NewRequestRateLimit(3),
+		Ledger{
+			Control:      vault.control,
+			User:         owner.ID,
+			Conversation: "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b",
+			Provider:     "entry-1",
+		},
+	)
 	defer func() {
 		if err := first.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -72,7 +81,13 @@ func TestResponsesReachLedgerBeforeAgentAndLimitRefusesRest(t *testing.T) {
 			t.Fatal("ledger before response", totals)
 		}
 	}
-	if want := []provider.Event{providertest.Text("a"), providertest.Response(100, 10)}; !reflect.DeepEqual(firstEvents, want) {
+	if want := []provider.Event{
+		providertest.Text("a"),
+		providertest.Response(100, 10),
+	}; !reflect.DeepEqual(
+		firstEvents,
+		want,
+	) {
 		t.Fatalf("first run: %#v; want %#v", firstEvents, want)
 	}
 	var workers sync.WaitGroup
@@ -94,7 +109,8 @@ func TestResponsesReachLedgerBeforeAgentAndLimitRefusesRest(t *testing.T) {
 	refused := 0
 	for _, events := range outcomes {
 		if len(events) == 1 {
-			if e, ok := events[0].(*provider.Error); ok && e.Failure.Code != nil && *e.Failure.Code == provider.ErrorCode("rate_limited") {
+			if e, ok := events[0].(*provider.Error); ok && e.Failure.Code != nil &&
+				*e.Failure.Code == provider.ErrorCode("rate_limited") {
 				refused++
 			}
 		}
@@ -106,7 +122,9 @@ func TestResponsesReachLedgerBeforeAgentAndLimitRefusesRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(totals) != 1 || totals[0].Requests != 3 || totals[0].InputTokens != 303 || totals[0].OutputTokens != 30 || totals[0].ProviderID != "entry-1" || totals[0].ModelID != "model-1" {
+	if len(totals) != 1 || totals[0].Requests != 3 || totals[0].InputTokens != 303 || totals[0].OutputTokens != 30 ||
+		totals[0].ProviderID != "entry-1" ||
+		totals[0].ModelID != "model-1" {
 		t.Fatalf("totals: %+v", totals)
 	}
 }

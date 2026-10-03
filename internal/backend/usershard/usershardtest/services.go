@@ -30,35 +30,13 @@ func StartServices(t testing.TB) *usershard.Services {
 // the same ownership and cleanup as StartServices.
 func StartServicesWithLifecycle(t testing.TB, lifecycle usershard.LifecycleTuning) *usershard.Services {
 	t.Helper()
-	life, cancel := context.WithCancel(context.WithoutCancel(t.Context()))
+	cleanupCtx := context.WithoutCancel(t.Context())
+	lifetime, cancel := context.WithCancel(cleanupCtx)
 	t.Cleanup(cancel)
 	data := t.TempDir()
 	clock := core.SystemClock{}
-	objects, err := blobs.Open(t.Context(), data, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := objects.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	storage, err := usershard.OpenStorage(t.Context(), data, clock, objects)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := storage.Close(context.Background()); err != nil {
-			t.Error(err)
-		}
-	})
-	var vaultKey, codeKey [32]byte
-	if _, err := rand.Read(vaultKey[:]); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := rand.Read(codeKey[:]); err != nil {
-		t.Fatal(err)
-	}
+	storage := openTestStorage(t, data, clock)
+	vaultKey, codeKey := randomServiceKeys(t)
 	models, err := url.Parse(provider.ModelsDevURL)
 	if err != nil {
 		t.Fatal(err)
@@ -67,9 +45,33 @@ func StartServicesWithLifecycle(t testing.TB, lifecycle usershard.LifecycleTunin
 	if err != nil {
 		t.Fatal(err)
 	}
-	machines, _ := cloud.NewClient(life, filepath.Join(data, "machines.sock"))
+	machines, _ := cloud.NewClient(lifetime, filepath.Join(data, "machines.sock"))
 
-	services, err := usershard.StartServices(t.Context(), storage, usershard.ServiceKeys{Vault: *providers.NewVaultKey(vaultKey), EmailCodes: accounts.NewCodeKey(codeKey)}, usershard.ProviderSetup{Families: &providers.FamilyRegistry{}, ModelsDevURL: models, ClaudeReleases: releases, Logins: providers.DefaultLoginTiming(), Clock: clock}, usershard.ServiceSettings{Mode: webapi.InstanceModeShared, Runners: usershard.DefaultRunnerTuning(), Conversations: usershard.DefaultConversationTuning(), Pages: usershard.DefaultPageTuning(), Native: runners.UnpublishedCatalog(), Cloud: cloud.NewServices(machines, cloud.DefaultTuning()), Lifecycle: lifecycle, Exposes: usershard.DefaultExposeTuning()})
+	services, err := usershard.StartServices(
+		t.Context(),
+		storage,
+		usershard.ServiceKeys{
+			Vault:      *providers.NewVaultKey(vaultKey),
+			EmailCodes: accounts.NewCodeKey(codeKey),
+		},
+		usershard.ProviderSetup{
+			Families:       &providers.FamilyRegistry{},
+			ModelsDevURL:   models,
+			ClaudeReleases: releases,
+			Logins:         providers.DefaultLoginTiming(),
+			Clock:          clock,
+		},
+		usershard.ServiceSettings{
+			Mode:          webapi.InstanceModeShared,
+			Runners:       usershard.DefaultRunnerTuning(),
+			Conversations: usershard.DefaultConversationTuning(),
+			Pages:         usershard.DefaultPageTuning(),
+			Native:        runners.UnpublishedCatalog(),
+			Cloud:         cloud.NewServices(machines, cloud.DefaultTuning()),
+			Lifecycle:     lifecycle,
+			Exposes:       usershard.DefaultExposeTuning(),
+		},
+	)
 	if err != nil {
 		if closeErr := machines.Close(context.Background()); closeErr != nil {
 			t.Error(closeErr)
@@ -97,4 +99,38 @@ func StartShards(t testing.TB, services *usershard.Services) *usershard.Shards {
 		}
 	})
 	return shards
+}
+
+// openTestStorage registers blob and database cleanup in their ownership order.
+func openTestStorage(t testing.TB, data string, clock core.Clock) *usershard.Storage {
+	objects, err := blobs.Open(t.Context(), data, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := objects.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	storage, err := usershard.OpenStorage(t.Context(), data, clock, objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := storage.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	return storage
+}
+
+// randomServiceKeys supplies independent vault and email-code keys for the service fixture.
+func randomServiceKeys(t testing.TB) (vaultKey, codeKey [32]byte) {
+	if _, err := rand.Read(vaultKey[:]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rand.Read(codeKey[:]); err != nil {
+		t.Fatal(err)
+	}
+	return vaultKey, codeKey
 }

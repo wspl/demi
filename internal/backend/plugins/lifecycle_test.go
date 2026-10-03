@@ -20,8 +20,14 @@ func TestDisableCancelsCallsAndJoinsInstanceWork(t *testing.T) {
 	workerStopped := make(chan struct{})
 	owner, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() { <-owner.Done(); close(workerStopped) }()
-	t.Cleanup(func() { cancel(); <-workerStopped })
+	go func() {
+		<-owner.Done()
+		close(workerStopped)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-workerStopped
+	})
 	var closes atomic.Int32
 	p := &fakePlugin{call: func(ctx context.Context, _ plugin.Request, _ plugin.Port) (plugin.Reply, error) {
 		close(started)
@@ -32,7 +38,13 @@ func TestDisableCancelsCallsAndJoinsInstanceWork(t *testing.T) {
 		<-workerStopped
 		closes.Add(1)
 	}}
-	u, _ := userFixture(t, registry(t, &fakeFactory{manifest: manifest(t, "worker"), make: func() plugin.Plugin { return p }}))
+	u, _ := userFixture(
+		t,
+		registry(t, &fakeFactory{
+			manifest: manifest(t, "worker"),
+			make:     func() plugin.Plugin { return p },
+		}),
+	)
 	answered := make(chan error, 1)
 	go func() {
 		_, err := u.PageCall(t.Context(), plugins.PageCall{Plugin: "worker", Method: "user", Params: []byte(`{}`)})
@@ -65,14 +77,26 @@ func TestCloseCancelsEveryInstanceAndRetainedPort(t *testing.T) {
 					<-otherEntered
 					<-ctx.Done()
 					return nil, ctx.Err()
-				}, close: func() { closes.Add(1) },
+				}, close: func() {
+					closes.Add(1)
+				},
 			}
 		}}
 	}
-	u, _ := userFixture(t, registry(t, makeFactory("first", firstEntered, secondEntered), makeFactory("second", secondEntered, firstEntered)))
+	u, _ := userFixture(
+		t,
+		registry(
+			t,
+			makeFactory("first", firstEntered, secondEntered),
+			makeFactory("second", secondEntered, firstEntered),
+		),
+	)
 	done := make(chan error, 2)
 	for _, id := range []string{"first", "second"} {
-		go func() { _, err := u.PageState(t.Context(), id); done <- err }()
+		go func() {
+			_, err := u.PageState(t.Context(), id)
+			done <- err
+		}()
 	}
 	<-firstEntered
 	<-secondEntered
@@ -109,7 +133,20 @@ func TestCloseCancelsEveryInstanceAndRetainedPort(t *testing.T) {
 func TestConcurrentSwitchAndStorageFailure(t *testing.T) {
 	var closes atomic.Int32
 	m := manifest(t, "switch")
-	u, shard := userFixture(t, registry(t, &fakeFactory{manifest: m, make: func() plugin.Plugin { return &fakePlugin{close: func() { closes.Add(1) }} }}))
+	u, shard := userFixture(
+		t,
+		registry(
+			t,
+			&fakeFactory{
+				manifest: m,
+				make: func() plugin.Plugin {
+					return &fakePlugin{close: func() {
+						closes.Add(1)
+					}}
+				},
+			},
+		),
+	)
 	type outcome struct {
 		changed bool
 		err     error
@@ -117,7 +154,11 @@ func TestConcurrentSwitchAndStorageFailure(t *testing.T) {
 	start := make(chan struct{})
 	done := make(chan outcome, 2)
 	for range 2 {
-		go func() { <-start; changed, err := u.Switch(t.Context(), "switch", false); done <- outcome{changed, err} }()
+		go func() {
+			<-start
+			changed, err := u.Switch(t.Context(), "switch", false)
+			done <- outcome{changed, err}
+		}()
 	}
 	close(start)
 	changes := 0

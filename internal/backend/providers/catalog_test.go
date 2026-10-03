@@ -10,14 +10,30 @@ import (
 )
 
 func TestEveryRequestTakesConfiguredFactsAndKeepsUserChoices(t *testing.T) {
-	models, err := webapi.DecodeConfiguredModels([]byte(`[{"id":"gpt-5.5","displayName":"GPT-5.5","contextWindow":272000,"outputLimit":4000,"thinkingEfforts":["low","high"],"acceptedExtensions":["png","pdf"],"fastTier":"priority"}]`))
+	models, err := webapi.DecodeConfiguredModels(
+		[]byte(
+			`[{"id":"gpt-5.5","displayName":"GPT-5.5","contextWindow":272000,` +
+				`"outputLimit":4000,"thinkingEfforts":["low","high"],` +
+				`"acceptedExtensions":["png","pdf"],"fastTier":"priority"}]`,
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	entry := ProviderEntry{ID: "entry-1", Credential: &APIKeyConfig{Models: &models}}
 	output := uint32(100)
 	tier := "priority"
-	chosen := core.ModelSelection{ProviderID: "entry-1", Model: core.Model{ID: "gpt-5.5", Name: "stale", ContextWindow: 1000, OutputLimit: &output}, Thinking: &core.EffortConfig{Effort: "high"}, ServiceTierID: &tier}
+	chosen := core.ModelSelection{
+		ProviderID: "entry-1",
+		Model: core.Model{
+			ID:            "gpt-5.5",
+			Name:          "stale",
+			ContextWindow: 1000,
+			OutputLimit:   &output,
+		},
+		Thinking:      &core.EffortConfig{Effort: "high"},
+		ServiceTierID: &tier,
+	}
 	applied, err := ConfiguredSelection(entry, chosen)
 	if err != nil {
 		t.Fatal(err)

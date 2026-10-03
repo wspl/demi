@@ -29,7 +29,11 @@ type cliTarget struct {
 	context commandwire.CommandContext
 }
 
-func (p cloudPlacement) Start(ctx context.Context, spawn func(claudecode.Site) host.SpawnRequest) (*host.StartedProcess, error) {
+// Start wakes the Cloud and starts the provider process with its resolved site.
+func (p cloudPlacement) Start(
+	ctx context.Context,
+	spawn func(claudecode.Site) host.SpawnRequest,
+) (*host.StartedProcess, error) {
 	access, err := cloud.Access(ctx, p.shard)
 	if err != nil {
 		return nil, err
@@ -41,7 +45,11 @@ func (p cloudPlacement) Start(ctx context.Context, spawn func(claudecode.Site) h
 	}
 	process, err := access.Host.Process().Spawn(ctx, spawn(site))
 	if err != nil {
-		return nil, fmt.Errorf("Claude Code could not be started on the Cloud: %w", err) //nolint:staticcheck // Product text is copied verbatim from Rust.
+		//nolint:staticcheck // Product text is copied verbatim from Rust.
+		return nil, fmt.Errorf(
+			"Claude Code could not be started on the Cloud: %w",
+			err,
+		)
 	}
 	return process, nil
 }
@@ -50,22 +58,41 @@ func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (
 	var command commandwire.CommandContext
 	var err error
 	if p.conversation != nil {
-		command, err = runners.CommandContext(ctx, p.shard.Control(), p.shard.user, *p.conversation, &commandwire.UserCaller{})
+		command, err = runners.CommandContext(
+			ctx,
+			p.shard.Control(),
+			p.shard.user,
+			*p.conversation,
+			&commandwire.UserCaller{},
+		)
 	} else {
 		command, err = runners.ProviderContext(ctx, p.shard.Control(), p.shard.user, p.entry)
 	}
 	if err != nil {
-		return claudecode.Site{}, fmt.Errorf("The command context could not be read: %w", err) //nolint:staticcheck // Product text is copied verbatim from Rust.
+		//nolint:staticcheck // Product text is copied verbatim from Rust.
+		return claudecode.Site{}, fmt.Errorf(
+			"The command context could not be read: %w",
+			err,
+		)
 	}
 	target := cliTarget{host: access.Host, home: access.Home, context: command}
 	executable, err := p.shard.cliExecutable(ctx, target)
 	if err != nil {
 		return claudecode.Site{}, err
 	}
-	site := claudecode.Site{Executable: executable, RunDir: access.Home + "/.demi/claude/run", ConfigDir: access.Home + "/.demi/claude/config"}
+	site := claudecode.Site{
+		Executable: executable,
+		RunDir:     access.Home + "/.demi/claude/run",
+		ConfigDir:  access.Home + "/.demi/claude/config",
+	}
 	for _, directory := range []string{site.RunDir, site.ConfigDir} {
 		if err := access.Host.FS().Mkdir(ctx, directory, host.MkdirOptions{Recursive: true}); err != nil {
-			return site, fmt.Errorf("Claude Code's directory %s could not be made on the Cloud: %w", directory, err) //nolint:staticcheck // Product text is copied verbatim from Rust.
+			//nolint:staticcheck // Product text is copied verbatim from Rust.
+			return site, fmt.Errorf(
+				"Claude Code's directory %s could not be made on the Cloud: %w",
+				directory,
+				err,
+			)
 		}
 	}
 	return site, nil
@@ -74,7 +101,11 @@ func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (
 func (s *Shard) cliExecutable(ctx context.Context, target cliTarget) (string, error) {
 	wanted, err := s.services.ClaudeReleases.Latest(ctx, false)
 	if err != nil {
-		return "", fmt.Errorf("Claude Code could not be installed: %w", err) //nolint:staticcheck // Product text is copied verbatim from Rust.
+		//nolint:staticcheck // Product text is copied verbatim from Rust.
+		return "", fmt.Errorf(
+			"Claude Code could not be installed: %w",
+			err,
+		)
 	}
 	installed, err := cliInstalled(ctx, s.services, target)
 	if err != nil {
@@ -119,10 +150,18 @@ func (s *Shard) upgradeCLI(target cliTarget, release claudecodeop.Release) {
 	}()
 }
 
-func cliInstalled(ctx context.Context, services *Services, target cliTarget) (installed []claudecodeop.Installed, err error) {
+func cliInstalled(
+	ctx context.Context,
+	services *Services,
+	target cliTarget,
+) (installed []claudecodeop.Installed, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("Claude Code could not be installed: %w", err) //nolint:staticcheck // Product text is copied verbatim from Rust.
+			//nolint:staticcheck // Product text is copied verbatim from Rust.
+			err = fmt.Errorf(
+				"Claude Code could not be installed: %w",
+				err,
+			)
 		}
 	}()
 	output, exited, err := cliCall(ctx, services, target, claudecodeop.OperationStatus, nil, nil)
@@ -145,10 +184,20 @@ func cliInstalled(ctx context.Context, services *Services, target cliTarget) (in
 	return nil, errors.New("the installer gave no answer")
 }
 
-func cliEnsure(ctx context.Context, services *Services, target cliTarget, release claudecodeop.Release) (path string, err error) {
+func cliEnsure(
+	ctx context.Context,
+	services *Services,
+	target cliTarget,
+	release claudecodeop.Release,
+) (path string, err error) {
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("Claude Code %s could not be installed: %w", release.Version, err) //nolint:staticcheck // Product text is copied verbatim from Rust.
+			//nolint:staticcheck // Product text is copied verbatim from Rust.
+			err = fmt.Errorf(
+				"Claude Code %s could not be installed: %w",
+				release.Version,
+				err,
+			)
 		}
 	}()
 	input, err := contract.EncodeJSON(release)
@@ -157,7 +206,13 @@ func cliEnsure(ctx context.Context, services *Services, target cliTarget, releas
 	}
 	var attached []remotehost.AttachedArtifact
 	for _, artifact := range release.Platforms {
-		attached = append(attached, remotehost.AttachedArtifact{Artifact: commandwire.PackageArtifact{SHA256: artifact.SHA256, Size: artifact.Size}, Location: &commandwire.ArtifactURL{URL: artifact.URL}})
+		attached = append(
+			attached,
+			remotehost.AttachedArtifact{
+				Artifact: commandwire.PackageArtifact{SHA256: artifact.SHA256, Size: artifact.Size},
+				Location: &commandwire.ArtifactURL{URL: artifact.URL},
+			},
+		)
 	}
 	output, exited, err := cliCall(ctx, services, target, claudecodeop.OperationEnsure, input, attached)
 	if err != nil {
@@ -179,12 +234,33 @@ func cliEnsure(ctx context.Context, services *Services, target cliTarget, releas
 	return "", errors.New("the installer gave no answer")
 }
 
-func cliCall(ctx context.Context, services *Services, target cliTarget, operation claudecodeop.Operation, input []byte, attached []remotehost.AttachedArtifact) ([]byte, *remotehost.ServiceCallError, error) {
-	pkg := services.Native.Package(claudecodeop.Package)
-	if pkg == nil || !services.Native.Serves(claudecodeop.Package, []string{string(claudecodeop.OperationEnsure), string(claudecodeop.OperationStatus)}) {
+func cliCall(
+	ctx context.Context,
+	services *Services,
+	target cliTarget,
+	operation claudecodeop.Operation,
+	input []byte,
+	attached []remotehost.AttachedArtifact,
+) ([]byte, *remotehost.ServiceCallError, error) {
+	packageDefinition := services.Native.Package(claudecodeop.Package)
+	if packageDefinition == nil ||
+		!services.Native.Serves(
+			claudecodeop.Package,
+			[]string{
+				string(claudecodeop.OperationEnsure),
+				string(claudecodeop.OperationStatus),
+			},
+		) {
 		return nil, nil, errors.New("this deployment does not carry the demi.claude-code package, which installs it")
 	}
-	request := remotehost.ServiceRequest{Context: target.context, Package: *pkg, Operation: string(operation), CWD: target.home, Resolver: services.Native.Resolver(services.PublicURL), Attached: attached}
+	request := remotehost.ServiceRequest{
+		Context:   target.context,
+		Package:   *packageDefinition,
+		Operation: string(operation),
+		CWD:       target.home,
+		Resolver:  services.Native.Resolver(services.PublicURL),
+		Attached:  attached,
+	}
 	output, err := target.host.CallService(ctx, request, input, 1024*1024)
 	var exited *remotehost.ServiceCallError
 	if err != nil {
@@ -193,16 +269,24 @@ func cliCall(ctx context.Context, services *Services, target cliTarget, operatio
 		}
 		output = exited.Stdout
 	}
-	if len(strings.TrimSpace(string(output))) == 0 {
+	text := strings.TrimSpace(string(output))
+	if len(text) == 0 {
 		if exited != nil {
-			return nil, nil, fmt.Errorf("the installer exited with %d: %s", exited.ExitCode, strings.TrimSpace(exited.Stderr))
+			return nil, nil, fmt.Errorf(
+				"the installer exited with %d: %s",
+				exited.ExitCode,
+				strings.TrimSpace(exited.Stderr),
+			)
 		}
 		return nil, nil, errors.New("the installer gave no answer")
 	}
 	return output, exited, nil
 }
 
-func (s *Shard) cliMachines(ctx context.Context, entry webapi.ProviderID) ([]webapi.CLIMachine, error) {
+func (s *Shard) cliMachines(
+	ctx context.Context,
+	entry webapi.ProviderID,
+) ([]webapi.CLIMachine, error) {
 	device, err := s.Control().ManagedDevice(ctx, s.user)
 	if err != nil {
 		return nil, err
@@ -232,7 +316,13 @@ func (s *Shard) cliMachines(ctx context.Context, entry webapi.ProviderID) ([]web
 	return append(result, webapi.CLIMachine{DeviceID: device.ID, Name: device.Name, Versions: versions}), nil
 }
 
-func startInstall(ctx context.Context, services *Services, shards *Shards, user webapi.UserID, entry webapi.ProviderID) (webapi.CLIInstall, error) {
+func startInstall(
+	ctx context.Context,
+	services *Services,
+	shards *Shards,
+	user webapi.UserID,
+	entry webapi.ProviderID,
+) (webapi.CLIInstall, error) {
 	installs := services.CLIInstalls
 	key := installKey{user, entry}
 	installs.mu.Lock()

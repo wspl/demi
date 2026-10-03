@@ -41,6 +41,7 @@ type loginKit struct {
 func (*loginKit) Capability() provider.AccountsCapability {
 	return provider.AccountsCapability{Login: true, Add: true}
 }
+
 func (k *loginKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
 	pending(core.LoginPending{VerificationURL: "https://example.test/login"})
 	if k.started != nil {
@@ -51,18 +52,34 @@ func (k *loginKit) Login(ctx context.Context, pending func(core.LoginPending)) (
 		return provider.NewAccount{}, ctx.Err()
 	case <-k.finish:
 	}
-	return provider.NewAccount{Secret: `{"token":"private-login-token"}`, Label: provider.AccountLabel{Label: "Signed in"}}, nil
+	return provider.NewAccount{
+		Secret: `{"token":"private-login-token"}`,
+		Label:  provider.AccountLabel{Label: "Signed in"},
+	}, nil
 }
+
 func (*loginKit) Add(input provider.AddAccount) (provider.NewAccount, error) {
 	if strings.HasPrefix(input.SetupToken.Expose(), "bad-") {
 		return provider.NewAccount{}, errors.New(input.SetupToken.Expose())
 	}
-	return provider.NewAccount{Secret: `{"token":"private-setup-token"}`, Label: provider.AccountLabel{Label: input.SetupToken.Expose()[0:1]}}, nil
+	return provider.NewAccount{
+		Secret: `{"token":"private-setup-token"}`,
+		Label:  provider.AccountLabel{Label: input.SetupToken.Expose()[0:1]},
+	}, nil
 }
+
 func assemblyFixture(t *testing.T, vault *Vault) *Assembly {
 	t.Helper()
 	clock := core.SystemClock{}
-	a := NewAssembly(vault, &FamilyRegistry{}, NewAccountQuotas(vault), NewModelCatalogCache(vault.control, clock), NewVendorCatalog(provider.NewModelsDevClient(http.DefaultClient, "http://unused.invalid", clock)), http.DefaultClient, clock)
+	a := NewAssembly(
+		vault,
+		&FamilyRegistry{},
+		NewAccountQuotas(vault),
+		NewModelCatalogCache(vault.control, clock),
+		NewVendorCatalog(provider.NewModelsDevClient(http.DefaultClient, "http://unused.invalid", clock)),
+		http.DefaultClient,
+		clock,
+	)
 	t.Cleanup(func() {
 		if err := a.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -70,25 +87,38 @@ func assemblyFixture(t *testing.T, vault *Vault) *Assembly {
 	})
 	return a
 }
+
 func registerLogin(a *Assembly, name string, kit *loginKit) {
-	a.families.Register(name, testFamily{kind: webapi.CredentialKindSubscription, build: func(args FamilyArgs) (provider.Provider, error) {
-		c, ok := args.Credential.(*SubscriptionArgs)
-		if !ok {
-			return nil, &FamilyError{Kind: FamilyWrongCredential}
-		}
-		return &accountProvider{Provider: openaiapi.New(openaiapi.Config{APIKey: "test"}, args.Clock), accounts: provider.NewAccounts(c.Pool, kit, args.Clock)}, nil
-	}})
+	a.families.Register(
+		name,
+		testFamily{kind: webapi.CredentialKindSubscription, build: func(
+			args FamilyArgs,
+		) (provider.Provider, error) {
+			c, ok := args.Credential.(*SubscriptionArgs)
+			if !ok {
+				return nil, &FamilyError{Kind: FamilyWrongCredential}
+			}
+			return &accountProvider{
+				Provider: openaiapi.New(openaiapi.Config{APIKey: "test"}, args.Clock),
+				accounts: provider.NewAccounts(c.Pool, kit, args.Clock),
+			}, nil
+		}},
+	)
 }
+
 func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	vault, owner := vaultFixture(t)
 	a := assemblyFixture(t, vault)
 	ctx := t.Context()
 	var keys []string
-	a.families.Register("openai", testFamily{kind: webapi.CredentialKindAPIKey, build: func(args FamilyArgs) (provider.Provider, error) {
-		c := args.Credential.(*APIKeyArgs)
-		keys = append(keys, c.APIKey.Expose())
-		return openaiapi.New(openaiapi.Config{APIKey: c.APIKey}, args.Clock), nil
-	}})
+	a.families.Register(
+		"openai",
+		testFamily{kind: webapi.CredentialKindAPIKey, build: func(args FamilyArgs) (provider.Provider, error) {
+			c := args.Credential.(*APIKeyArgs)
+			keys = append(keys, c.APIKey.Expose())
+			return openaiapi.New(openaiapi.Config{APIKey: c.APIKey}, args.Clock), nil
+		}},
+	)
 	entry, err := vault.CreateAPIKey(ctx, owner.ID, "openai", "Work", APIKeyConfig{APIKey: "private-first"})
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +146,15 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	if _, err := a.ProviderFor(ctx, *changed); err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff([]string{"private-first", "private-second", "private-first", "private-second"}, keys); diff != "" {
+	if diff := cmp.Diff(
+		[]string{
+			"private-first",
+			"private-second",
+			"private-first",
+			"private-second",
+		},
+		keys,
+	); diff != "" {
 		t.Fatal(diff)
 	}
 	details, err := a.Details(ctx, *changed, false)
@@ -130,7 +168,18 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	if strings.Contains(string(encoded), "private-") {
 		t.Fatal("secret in provider details")
 	}
-	catalogs := a.ModelCatalog(ctx, []ProviderEntry{*changed, {ID: "missing", Family: "unknown", Credential: &APIKeyConfig{APIKey: "test"}}}, false)
+	catalogs := a.ModelCatalog(
+		ctx,
+		[]ProviderEntry{
+			*changed,
+			{
+				ID:         "missing",
+				Family:     "unknown",
+				Credential: &APIKeyConfig{APIKey: "test"},
+			},
+		},
+		false,
+	)
 	if len(catalogs) != 2 || len(catalogs[0].Models) == 0 || len(catalogs[1].Warnings) == 0 {
 		t.Fatal(catalogs)
 	}
@@ -142,7 +191,13 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := AddToken(ctx, a, subscription, "bad-private-value"); err == nil || strings.Contains(err.Error(), "bad-private-value") {
+	if _, err := AddToken(
+		ctx,
+		a,
+		subscription,
+		"bad-private-value",
+	); err == nil ||
+		strings.Contains(err.Error(), "bad-private-value") {
 		t.Fatal("token import leaked", err)
 	}
 	secondAccount, err := AddToken(ctx, a, subscription, "next-secret")
@@ -181,7 +236,10 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 func TestLoginPublishesAtomicallyAndCancelReleasesEntry(t *testing.T) {
 	vault, owner := vaultFixture(t)
 	a := assemblyFixture(t, vault)
-	kit := &loginKit{started: make(chan struct{}, 1), finish: make(chan struct{})}
+	kit := &loginKit{
+		started: make(chan struct{}, 1),
+		finish:  make(chan struct{}),
+	}
 	registerLogin(a, "device", kit)
 	operations := &Operations{}
 	flows := NewLoginFlows(a, operations, DefaultLoginTiming())
@@ -221,7 +279,10 @@ func TestLoginPublishesAtomicallyAndCancelReleasesEntry(t *testing.T) {
 	if _, err := flows.Start(t.Context(), owner.ID, owner.ID, "device", "Duplicate", nil); err == nil {
 		t.Fatal("duplicate subscription")
 	}
-	kit = &loginKit{started: make(chan struct{}, 1), finish: make(chan struct{})}
+	kit = &loginKit{
+		started: make(chan struct{}, 1),
+		finish:  make(chan struct{}),
+	}
 	registerLogin(a, "device", kit)
 	if err := a.Invalidate(t.Context(), entry.ID); err != nil {
 		t.Fatal(err)
@@ -263,7 +324,11 @@ func TestLoginExpiresAndResultRetentionEnds(t *testing.T) {
 				t.Error(err)
 			}
 		}()
-		entry := ProviderEntry{ID: "entry", Family: "device", Credential: &SubscriptionCredential{}}
+		entry := ProviderEntry{
+			ID:         "entry",
+			Family:     "device",
+			Credential: &SubscriptionCredential{},
+		}
 		id, err := flows.Start(t.Context(), "owner", "starter", "device", "Device", &entry)
 		if err != nil {
 			t.Fatal(err)

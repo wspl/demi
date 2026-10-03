@@ -19,7 +19,10 @@ type StepHolds[S comparable] struct {
 // owner responsible for releasing it; cleanup also releases failed tests' holds.
 func (h *StepHolds[S]) Hold(t testing.TB, step S) *StepHold {
 	t.Helper()
-	hold := &StepHold{released: make(chan struct{}), changed: make(chan struct{})}
+	hold := &StepHold{
+		released: make(chan struct{}),
+		changed:  make(chan struct{}),
+	}
 	t.Cleanup(hold.Release)
 	h.mu.Lock()
 	h.step = step
@@ -80,13 +83,19 @@ func (h *StepHold) UntilArrived(ctx context.Context, count int) error {
 }
 
 // Release lets waiting and future passes through. It is idempotent.
-func (h *StepHold) Release() { h.once.Do(func() { close(h.released) }) }
+func (h *StepHold) Release() {
+	h.once.Do(func() {
+		close(h.released)
+	})
+}
 
 // Hooks connects independently held runner and page flows to shared services.
 // Set Services.Hooks before starting routing or accepting any sockets.
 type Hooks struct {
+	// Hellos holds runner handshake steps independently.
 	Hellos StepHolds[usershard.HelloStep]
-	Syncs  StepHolds[usershard.SyncStep]
+	// Syncs holds page synchronization steps independently.
+	Syncs StepHolds[usershard.SyncStep]
 }
 
 // Hello passes the runner flow's step.

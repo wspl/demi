@@ -25,10 +25,14 @@ type RequestRateLimit struct {
 
 // Ledger identifies the user, conversation and entry of a runtime's requests.
 type Ledger struct {
-	Control      *database.ControlService
-	User         webapi.UserID
+	// Control persists the request ledger.
+	Control *database.ControlService
+	// User identifies the user whose request is accounted for.
+	User webapi.UserID
+	// Conversation identifies the conversation whose request is accounted for.
 	Conversation webapi.ConversationID
-	Provider     webapi.ProviderID
+	// Provider identifies the provider entry bound to this record.
+	Provider webapi.ProviderID
 }
 
 // MeteredRuntime wraps a session runtime with the user's rate limit and ledger.
@@ -71,14 +75,22 @@ func (r *MeteredRuntime) Run(ctx context.Context, request provider.InferenceRequ
 	if err := r.limit.Take(); err != nil {
 		return func(yield func(provider.Event) bool) {
 			code := provider.RateLimited
-			yield(&provider.Error{Failure: provider.Failure{Message: err.Error(), Code: &code}})
+			yield(&provider.Error{
+				Failure: provider.Failure{Message: err.Error(), Code: &code},
+			})
 		}
 	}
 	run := r.inner.Run(ctx, request)
 	return func(yield func(provider.Event) bool) {
 		for event := range run {
 			if response, ok := event.(*provider.Response); ok {
-				row := database.UsageRow{User: r.ledger.User, Conversation: r.ledger.Conversation, Provider: r.ledger.Provider, Model: request.ModelID, Usage: response.Usage}
+				row := database.UsageRow{
+					User:         r.ledger.User,
+					Conversation: r.ledger.Conversation,
+					Provider:     r.ledger.Provider,
+					Model:        request.ModelID,
+					Usage:        response.Usage,
+				}
 				if err := r.ledger.Control.AppendUsage(context.WithoutCancel(ctx), row); err != nil {
 					slog.Warn("a usage ledger row was not written", "error", err)
 				}

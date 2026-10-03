@@ -9,7 +9,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // Channel-only fixture checks; synctest proves the held pass cannot complete.
 func TestHoldCountsCancelledArrivalsAndReleasesWaiters(t *testing.T) {
@@ -18,7 +20,9 @@ func TestHoldCountsCancelledArrivalsAndReleasesWaiters(t *testing.T) {
 		held := holds.Hold(t, "commit")
 		ctx, cancel := context.WithCancel(t.Context())
 		first := make(chan error, 1)
-		go func() { first <- holds.Pass(ctx, "commit") }()
+		go func() {
+			first <- holds.Pass(ctx, "commit")
+		}()
 		if err := held.UntilArrived(t.Context(), 1); err != nil {
 			t.Fatal(err)
 		}
@@ -27,7 +31,9 @@ func TestHoldCountsCancelledArrivalsAndReleasesWaiters(t *testing.T) {
 			t.Fatalf("cancelled pass = %v", err)
 		}
 		second := make(chan error, 1)
-		go func() { second <- holds.Pass(t.Context(), "commit") }()
+		go func() {
+			second <- holds.Pass(t.Context(), "commit")
+		}()
 		if err := held.UntilArrived(t.Context(), 2); err != nil {
 			t.Fatal(err)
 		}

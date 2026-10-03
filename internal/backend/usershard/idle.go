@@ -22,12 +22,17 @@ type conversationIdle struct {
 	id    webapi.ConversationID
 }
 
+// Check returns the conversation’s current idle activity.
 func (p conversationIdle) Check(context.Context) (idlewatch.Activity, error) {
 	return p.shard.Activity(p.id), nil
 }
+
+// Changed signals a change in the conversation’s file gate.
 func (p conversationIdle) Changed() <-chan struct{} {
 	return p.shard.conversations.Slot(p.id).FileGate().State().Changed()
 }
+
+// Reserve holds a quiescent conversation for idle retirement.
 func (p conversationIdle) Reserve(context.Context) (idlewatch.Retirement, error) {
 	hold := p.shard.HoldForIdle(p.id)
 	if hold == nil {
@@ -41,7 +46,12 @@ type idleRetirement struct {
 	hold cloud.ConversationHold
 }
 
-func (r *idleRetirement) Release() { r.hold.Release() }
+// Release releases the owned conversation retirement reservations.
+func (r *idleRetirement) Release() {
+	r.hold.Release()
+}
+
+// Retire releases the conversation on all reachable hosts.
 func (r *idleRetirement) Retire(ctx context.Context) error {
 	ctx = context.WithoutCancel(ctx)
 	record, err := hostaccess.OwnedConversation(ctx, r.shard, r.id)
@@ -59,6 +69,7 @@ type conversationHold struct {
 	reset     bool
 }
 
+// Release releases the owned conversation retirement reservations.
 func (h *conversationHold) Release() {
 	h.once.Do(func() {
 		if !h.reset && h.tree != nil {
@@ -76,7 +87,12 @@ func (h *conversationHold) Release() {
 	})
 }
 
-func (s *Shard) holdReset(ctx context.Context, id webapi.ConversationID, filesOnCloud bool, wait time.Duration) (cloud.ConversationHold, error) {
+func (s *Shard) holdReset(
+	ctx context.Context,
+	id webapi.ConversationID,
+	filesOnCloud bool,
+	wait time.Duration,
+) (cloud.ConversationHold, error) {
 	hold := &conversationHold{reset: true}
 	succeeded := false
 	defer func() {
@@ -89,13 +105,7 @@ func (s *Shard) holdReset(ctx context.Context, id webapi.ConversationID, filesOn
 		reserved, err := tree.Interrupt(timed)
 		cancel()
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				return nil, nil
-			}
-			return nil, err
+			return nil, resetWaitError(ctx, err)
 		}
 		hold.tree = reserved
 	}
@@ -134,4 +144,15 @@ func (s *Shard) stopIdle(id webapi.ConversationID) {
 	if watch != nil {
 		watch.cancel()
 	}
+}
+
+// resetWaitError distinguishes caller cancellation from a reset wait timeout.
+func resetWaitError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return nil
+	}
+	return err
 }

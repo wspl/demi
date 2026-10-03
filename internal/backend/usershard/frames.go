@@ -18,76 +18,64 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-type frameRefusal struct {
+type frameRefusalError struct {
 	code    webapi.ErrorCode
 	message string
 }
 
-func (r *frameRefusal) Error() string { return r.message }
-func (s *Shard) prepareFrame(ctx context.Context, id webapi.ConversationID, frame framewire.ClientFrame) error {
+// Error returns the frame refusal text shown to the client.
+func (r *frameRefusalError) Error() string { return r.message }
+
+func (s *Shard) prepareFrame(
+	ctx context.Context,
+	id webapi.ConversationID,
+	frame framewire.ClientFrame,
+) error {
 	record, err := s.Control().Conversation(ctx, id)
 	if err != nil {
 		return err
 	}
 	if record == nil || record.Owner != s.user {
-		return &frameRefusal{webapi.ErrorCodeConversationNotFound, "No such conversation"}
+		return &frameRefusalError{
+			webapi.ErrorCodeConversationNotFound,
+			"No such conversation",
+		}
 	}
 	if record.Archived && frame.Kind() != framewire.ClientFrameKindClose {
-		return &frameRefusal{webapi.ErrorCodeConversationArchived, "Restore the conversation before writing to it"}
+		return &frameRefusalError{
+			webapi.ErrorCodeConversationArchived,
+			"Restore the conversation before writing to it",
+		}
 	}
 	switch frame := frame.(type) {
 	case *framewire.OpenFrame:
-		if record.Model == nil {
-			return &frameRefusal{webapi.ErrorCodeModelNotSelected, "Choose a model for the conversation before opening it"}
-		}
-		id, err := webapi.ParseProviderID(record.Model.ProviderID)
-		visible := false
-		if err == nil {
-			entry, err := s.services.Vault.Visible(ctx, s.user, id)
-			if err != nil {
-				return err
-			}
-			visible = entry != nil
-		}
-		if !visible {
-			return &frameRefusal{webapi.ErrorCodeProviderNotFound, "No such provider"}
-		}
-		return s.Control().MarkLive(ctx, record.ID, s.Clock().Now())
+		return s.prepareOpen(ctx, *record)
 	case *framewire.SendFrame:
-		seen, err := s.Control().CountUserMessage(ctx, record.ID)
-		if err != nil {
-			return err
-		}
-		var text string
-		for _, part := range frame.Content {
-			if part, ok := part.(*framewire.TextContent); ok {
-				text = part.Text
-				break
-			}
-		}
-		title := server.TitleFromMessage(text)
-		if title != "" {
-			titled, err := s.Control().TitleFromFirstMessage(ctx, id, title)
-			if err != nil {
-				return err
-			}
-			if titled && record.Model != nil {
-				s.startTitle(id, *record.Model, titleRequest{messages: []string{text}, from: title, seen: seen})
-			}
-		}
-		if err := s.Control().TouchConversation(ctx, id); err != nil {
-			return err
-		}
-		s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
+		return s.prepareSend(ctx, *record, frame)
 	case *framewire.SteerFrame, *framewire.EditAndSendFrame:
 		if _, err := s.Control().CountUserMessage(ctx, id); err != nil {
 			return err
 		}
 		s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
-	case *framewire.AbortFrame, *framewire.AbortSubagentFrame, *framewire.AbortSubagentsFrame, *framewire.CancelPendingSteerFrame, *framewire.ClearMessageQueueFrame, *framewire.CloseFrame, *framewire.CompactFrame, *framewire.DequeueMessageFrame, *framewire.ResumeFrame, *framewire.RetryFrame, *framewire.SendQueuedMessageFrame, *framewire.ShellAbortFrame, *framewire.ShellWriteFrame, *framewire.SteerQueuedMessageFrame, *framewire.SyncTranscriptFrame:
+	case *framewire.AbortFrame,
+		*framewire.AbortSubagentFrame,
+		*framewire.AbortSubagentsFrame,
+		*framewire.CancelPendingSteerFrame,
+		*framewire.ClearMessageQueueFrame,
+		*framewire.CloseFrame,
+		*framewire.CompactFrame,
+		*framewire.DequeueMessageFrame,
+		*framewire.ResumeFrame,
+		*framewire.RetryFrame,
+		*framewire.SendQueuedMessageFrame,
+		*framewire.ShellAbortFrame,
+		*framewire.ShellWriteFrame,
+		*framewire.SteerQueuedMessageFrame,
+		*framewire.SyncTranscriptFrame:
 	}
 	return nil
 }
+
 func (s *Shard) restoreTree(ctx context.Context, id webapi.ConversationID) error {
 	record, err := hostaccess.OwnedConversation(ctx, s, id)
 	if err != nil {
@@ -113,13 +101,18 @@ func (s *Shard) restoreTree(ctx context.Context, id webapi.ConversationID) error
 	}
 	return s.agent.Restore(ctx, hostaccess.RootOf(id), database.ExecutionPath(target))
 }
+
 func refusedFrame(frame framewire.ClientFrame, code webapi.ErrorCode, message string) framewire.ServerFrame {
 	if edit, ok := frame.(*framewire.EditAndSendFrame); ok {
-		return &framewire.EditResultFrame{OperationID: edit.Request.OperationID, Outcome: &framewire.RejectedEdit{Reason: message}}
+		return &framewire.EditResultFrame{
+			OperationID: edit.Request.OperationID,
+			Outcome:     &framewire.RejectedEdit{Reason: message},
+		}
 	}
 	name := string(code)
 	return &framewire.ErrorFrame{Message: message, Code: &name}
 }
+
 func carriesUploads(frame framewire.ClientFrame) bool {
 	var content []framewire.ClientContent
 	switch frame := frame.(type) {
@@ -129,7 +122,22 @@ func carriesUploads(frame framewire.ClientFrame) bool {
 		content = frame.Content
 	case *framewire.EditAndSendFrame:
 		content = frame.Request.Content
-	case *framewire.AbortFrame, *framewire.AbortSubagentFrame, *framewire.AbortSubagentsFrame, *framewire.CancelPendingSteerFrame, *framewire.ClearMessageQueueFrame, *framewire.CloseFrame, *framewire.CompactFrame, *framewire.DequeueMessageFrame, *framewire.OpenFrame, *framewire.ResumeFrame, *framewire.RetryFrame, *framewire.SendQueuedMessageFrame, *framewire.ShellAbortFrame, *framewire.ShellWriteFrame, *framewire.SteerQueuedMessageFrame, *framewire.SyncTranscriptFrame:
+	case *framewire.AbortFrame,
+		*framewire.AbortSubagentFrame,
+		*framewire.AbortSubagentsFrame,
+		*framewire.CancelPendingSteerFrame,
+		*framewire.ClearMessageQueueFrame,
+		*framewire.CloseFrame,
+		*framewire.CompactFrame,
+		*framewire.DequeueMessageFrame,
+		*framewire.OpenFrame,
+		*framewire.ResumeFrame,
+		*framewire.RetryFrame,
+		*framewire.SendQueuedMessageFrame,
+		*framewire.ShellAbortFrame,
+		*framewire.ShellWriteFrame,
+		*framewire.SteerQueuedMessageFrame,
+		*framewire.SyncTranscriptFrame:
 	}
 	for _, part := range content {
 		if _, ok := part.(*framewire.UploadContent); ok {
@@ -138,7 +146,14 @@ func carriesUploads(frame framewire.ClientFrame) bool {
 	}
 	return false
 }
-func (s *Shard) handleMessage(ctx context.Context, id webapi.ConversationID, connection *server.Connection[*remotehost.Host], files *conversationFiles, text []byte) (framewire.ServerFrame, error) {
+
+func (s *Shard) handleMessage(
+	ctx context.Context,
+	id webapi.ConversationID,
+	connection *server.Connection[*remotehost.Host],
+	files *conversationFiles,
+	text []byte,
+) (framewire.ServerFrame, error) {
 	frame, err := framewire.DecodeClientFrame(text)
 	if errors.Is(err, framewire.ErrNotJSON) {
 		return nil, err
@@ -149,16 +164,14 @@ func (s *Shard) handleMessage(ctx context.Context, id webapi.ConversationID, con
 	if carriesUploads(frame) {
 		admitted, err := hostaccess.AdmitHost(ctx, s, id, nil)
 		if err != nil {
-			code := webapi.ErrorCodeFrameDeliveryFailed
-			var access *hostaccess.Error
-			if errors.As(err, &access) {
-				code, _ = access.Code()
-			}
+			code := uploadFailureCode(err)
 			return refusedFrame(frame, code, err.Error()), nil
 		}
 		defer admitted.Release()
 		files.host = &admitted.Host
-		defer func() { files.host = nil }()
+		defer func() {
+			files.host = nil
+		}()
 	} else {
 		admitted, err := s.conversations.Slot(id).FileGate().Enter(ctx, gates.Demand)
 		if err != nil {
@@ -175,7 +188,7 @@ func (s *Shard) handleMessage(ctx context.Context, id webapi.ConversationID, con
 	}
 	if err := s.prepareFrame(ctx, id, frame); err != nil {
 		code := webapi.ErrorCodeFrameDeliveryFailed
-		var refused *frameRefusal
+		var refused *frameRefusalError
 		if errors.As(err, &refused) {
 			code = refused.code
 		} else {
@@ -193,7 +206,11 @@ type conversationFiles struct {
 	host         *hostaccess.ConversationHost
 }
 
-func (f *conversationFiles) Resolve(ctx context.Context, files []server.FileReference) (server.ResolvedFiles, error) {
+// Resolve admits uploaded and remote files as conversation content.
+func (f *conversationFiles) Resolve(
+	ctx context.Context,
+	files []server.FileReference,
+) (server.ResolvedFiles, error) {
 	refused := func(err error) (server.ResolvedFiles, error) {
 		code := string(webapi.ErrorCodeFrameDeliveryFailed)
 		return server.ResolvedFiles{}, &server.ContentError{Message: err.Error(), Code: &code, Cause: err}
@@ -206,7 +223,8 @@ func (f *conversationFiles) Resolve(ctx context.Context, files []server.FileRefe
 		switch file := file.(type) {
 		case *server.Upload:
 			if f.host == nil {
-				return refused(errors.New("The frame's Host was not admitted")) //nolint:staticcheck // Product text is copied verbatim from Rust.
+				//nolint:staticcheck // Product text is copied verbatim from Rust.
+				return refused(errors.New("The frame's Host was not admitted"))
 			}
 			blocks, held, err := hostaccess.ResolveUpload(ctx, f.shard, f.conversation, f.host, file.Ref, file.FileName)
 			if err != nil {
@@ -230,6 +248,7 @@ func (f *conversationFiles) Resolve(ctx context.Context, files []server.FileRefe
 	}
 	return server.ResolvedFiles{Blocks: resolved, Media: media}, nil
 }
+
 func addedBlocks(patches []framewire.TranscriptPatch) []core.Block {
 	var blocks []core.Block
 	for _, patch := range patches {
@@ -245,6 +264,7 @@ func addedBlocks(patches []framewire.TranscriptPatch) []core.Block {
 	}
 	return blocks
 }
+
 func (s *Shard) present(ctx context.Context, frame framewire.ServerFrame) (framewire.ServerFrame, error) {
 	var blocks []core.Block
 	var destination **framewire.Failures
@@ -269,7 +289,21 @@ func (s *Shard) present(ctx context.Context, frame framewire.ServerFrame) (frame
 		frame = &presented
 		blocks = addedBlocks(presented.Patches)
 		destination = &presented.Failures
-	case *framewire.AbortResultFrame, *framewire.ClosedFrame, *framewire.EditResultFrame, *framewire.ErrorFrame, *framewire.HeartbeatFrame, *framewire.OpenedFrame, *framewire.PendingSteersFrame, *framewire.PhaseFrame, *framewire.QueueFrame, *framewire.RejectedFrame, *framewire.RetryScheduledFrame, *framewire.ShellOutputFrame, *framewire.ShellWriteResultFrame, *framewire.SteerResultFrame, *framewire.SubagentFrame:
+	case *framewire.AbortResultFrame,
+		*framewire.ClosedFrame,
+		*framewire.EditResultFrame,
+		*framewire.ErrorFrame,
+		*framewire.HeartbeatFrame,
+		*framewire.OpenedFrame,
+		*framewire.PendingSteersFrame,
+		*framewire.PhaseFrame,
+		*framewire.QueueFrame,
+		*framewire.RejectedFrame,
+		*framewire.RetryScheduledFrame,
+		*framewire.ShellOutputFrame,
+		*framewire.ShellWriteResultFrame,
+		*framewire.SteerResultFrame,
+		*framewire.SubagentFrame:
 		return frame, nil
 	}
 	facts, err := FailureFacts(ctx, s.services.Assembly, blocks)
@@ -279,4 +313,73 @@ func (s *Shard) present(ctx context.Context, frame framewire.ServerFrame) (frame
 		*destination = nil
 	}
 	return frame, err
+}
+
+// prepareOpen checks that a visible model is selected before marking the conversation live.
+func (s *Shard) prepareOpen(ctx context.Context, record database.ConversationRecord) error {
+	if record.Model == nil {
+		return &frameRefusalError{
+			webapi.ErrorCodeModelNotSelected,
+			"Choose a model for the conversation before opening it",
+		}
+	}
+	id, err := webapi.ParseProviderID(record.Model.ProviderID)
+	visible := false
+	if err == nil {
+		entry, err := s.services.Vault.Visible(ctx, s.user, id)
+		if err != nil {
+			return err
+		}
+		visible = entry != nil
+	}
+	if !visible {
+		return &frameRefusalError{webapi.ErrorCodeProviderNotFound, "No such provider"}
+	}
+	now := s.Clock().Now()
+	return s.Control().MarkLive(ctx, record.ID, now)
+}
+
+// prepareSend records a user message and starts its first-message title request.
+func (s *Shard) prepareSend(
+	ctx context.Context,
+	record database.ConversationRecord,
+	frame *framewire.SendFrame,
+) error {
+	id := record.ID
+	seen, err := s.Control().CountUserMessage(ctx, record.ID)
+	if err != nil {
+		return err
+	}
+	var text string
+	for _, part := range frame.Content {
+		if part, ok := part.(*framewire.TextContent); ok {
+			text = part.Text
+			break
+		}
+	}
+	title := server.TitleFromMessage(text)
+	if title != "" {
+		titled, err := s.Control().TitleFromFirstMessage(ctx, id, title)
+		if err != nil {
+			return err
+		}
+		if titled && record.Model != nil {
+			s.startTitle(id, *record.Model, titleRequest{messages: []string{text}, from: title, seen: seen})
+		}
+	}
+	if err := s.Control().TouchConversation(ctx, id); err != nil {
+		return err
+	}
+	s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
+	return nil
+}
+
+// uploadFailureCode preserves host access refusal codes for upload frames.
+func uploadFailureCode(err error) webapi.ErrorCode {
+	code := webapi.ErrorCodeFrameDeliveryFailed
+	var access *hostaccess.Error
+	if errors.As(err, &access) {
+		code, _ = access.Code()
+	}
+	return code
 }

@@ -71,9 +71,18 @@ func relayFixture(t *testing.T) (*fixture, *netRunner, webapi.ExposeID) {
 	f.services.ExposeDomain = &domain
 	f.services.PublicURL.Listening(nil, netip.MustParseAddrPort("127.0.0.1:3271"))
 	device := f.devices[0]
-	link, driver := remotehost.NewLink(remotehost.LinkOptions{Device: string(device.ID), Identity: host.Identity{HomeDir: "/home/test"}, Pipes: f.shard.Pipes()})
+	link, driver := remotehost.NewLink(
+		remotehost.LinkOptions{
+			Device:   string(device.ID),
+			Identity: host.Identity{HomeDir: "/home/test"},
+			Pipes:    f.shard.Pipes(),
+		},
+	)
 	serving := f.shard.Devices().Bind(device.ID, link, driver, runners.NewLastSeen(f.services.Control, f.shard.Marks()))
-	runner := &netRunner{opens: make(chan *runnerwire.NetOpen, 2), answers: make(chan []byte, 2)}
+	runner := &netRunner{
+		opens:   make(chan *runnerwire.NetOpen, 2),
+		answers: make(chan []byte, 2),
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() {
@@ -96,7 +105,13 @@ type openedRelay struct {
 	err        error
 }
 
-func requestRelay(ctx context.Context, t *testing.T, f *fixture, runner *netRunner, id webapi.ExposeID) (<-chan openedRelay, *runnerwire.NetOpen, []*remotehost.Pipe) {
+func requestRelay(
+	ctx context.Context,
+	t *testing.T,
+	f *fixture,
+	runner *netRunner,
+	id webapi.ExposeID,
+) (<-chan openedRelay, *runnerwire.NetOpen, []*remotehost.Pipe) {
 	t.Helper()
 	result := make(chan openedRelay, 1)
 	go func() {
@@ -146,7 +161,10 @@ func TestExposeRelayEndsBothPipesAndReleasesAdmission(t *testing.T) {
 				case "edge":
 					// Releasing one of two admissions must neither end nor leak the other.
 					otherResult, otherRequest, _ := requestRelay(t.Context(), t, f, runner, id)
-					if err := runner.answer(t.Context(), &runnerwire.NetOpened{StreamID: otherRequest.StreamID}); err != nil {
+					if err := runner.answer(
+						t.Context(),
+						&runnerwire.NetOpened{StreamID: otherRequest.StreamID},
+					); err != nil {
 						t.Fatal(err)
 					}
 					other := <-otherResult
@@ -175,7 +193,10 @@ func TestExposeRelayEndsBothPipesAndReleasesAdmission(t *testing.T) {
 				<-lease.Context().Done()
 				for _, pipe := range pipes {
 					var failure *remotehost.PipeFailure
-					if err := pipe.Done(t.Context()); !errors.As(err, &failure) || failure.Message != "pipe failed: the relayed connection ended" {
+					if err := pipe.Done(
+						t.Context(),
+					); !errors.As(err, &failure) ||
+						failure.Message != "pipe failed: the relayed connection ended" {
 						t.Fatalf("relay pipe end = %v", err)
 					}
 				}
@@ -189,7 +210,12 @@ func TestExposeRelayEndsBothPipesAndReleasesAdmission(t *testing.T) {
 }
 
 func TestExposeOpenRefusalsReleaseAdmissionAndFailPipes(t *testing.T) {
-	for _, refusal := range []string{"cancel", "removed", "offline", "unreachable"} {
+	for _, refusal := range []string{
+		"cancel",
+		"removed",
+		"offline",
+		"unreachable",
+	} {
 		t.Run(refusal, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				f, runner, id := relayFixture(t)
@@ -206,7 +232,14 @@ func TestExposeOpenRefusalsReleaseAdmissionAndFailPipes(t *testing.T) {
 				case "offline":
 					f.shard.Devices().DisconnectAll("test disconnected")
 				case "unreachable":
-					if err := runner.answer(t.Context(), &runnerwire.NetError{StreamID: request.StreamID, Code: runnerwire.NetErrorCodeRefused, Message: "connection refused"}); err != nil {
+					if err := runner.answer(
+						t.Context(),
+						&runnerwire.NetError{
+							StreamID: request.StreamID,
+							Code:     runnerwire.NetErrorCodeRefused,
+							Message:  "connection refused",
+						},
+					); err != nil {
 						t.Fatal(err)
 					}
 				}
