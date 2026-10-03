@@ -113,7 +113,8 @@ func TestModelsRevalidationAndSharedRequest(t *testing.T) {
 		requireEqual(t, requests[1].Header.Get("If-Modified-Since"), "Mon, 07 Sep 2026 12:00:00 GMT")
 		requireEqual(t, confirmed.FetchedAt, first.FetchedAt)
 		requireEqual(t, confirmed.Stale, false)
-		requireEqual(t, len(confirmed.VendorModels("deepseek").Models), 2)
+		list, _ := confirmed.VendorModels("deepseek")
+		requireEqual(t, len(list.Models), 2)
 		time.Sleep(24 * time.Hour) // Synctest advances the catalog's freshness boundary, not wall time.
 		if _, err := client.Current(t.Context()); err != nil {
 			t.Fatal(err)
@@ -157,7 +158,7 @@ func TestModelsStaleFallbackAndInitialFailure(t *testing.T) {
 		stale.Warnings,
 		[]string{"Using stale models.dev catalog: models.dev catalog request failed with HTTP 503"},
 	)
-	list := stale.VendorModels("deepseek")
+	list, _ := stale.VendorModels("deepseek")
 	requireEqual(t, list.Stale, true)
 	requireEqual(t, list.Warnings, stale.Warnings)
 	vendor.Respond(providertest.MockResponse{Status: 200, Chunks: [][]byte{[]byte(`[]`)}})
@@ -184,11 +185,12 @@ func TestModelsCatalogMapping(t *testing.T) {
 	if vendors[1].NPM != nil {
 		t.Fatal("unknown npm became known")
 	}
-	requireEqual(t, *snapshot.Vendor("deepseek").API, "https://api.deepseek.com")
-	if snapshot.VendorModels("amazon-bedrock") != nil {
+	listed, _ := snapshot.Vendor("deepseek")
+	requireEqual(t, *listed.API, "https://api.deepseek.com")
+	if _, ok := snapshot.VendorModels("amazon-bedrock"); ok {
 		t.Fatal("unknown vendor became known")
 	}
-	list := snapshot.VendorModels("deepseek")
+	list, _ := snapshot.VendorModels("deepseek")
 	if list.DefaultModelID != nil || list.Stale {
 		t.Fatalf("%+v", list)
 	}
@@ -286,5 +288,6 @@ func TestModelsDuplicateKeysKeepFirstPositionAndLastValue(t *testing.T) {
 	requireEqual(t, []string{models[0].ID, models[1].ID}, []string{"a", "b"})
 	requireEqual(t, models[0].DisplayName, "new")
 	models[0].DisplayName = "caller change"
-	requireEqual(t, snapshot.VendorModels("first").Models[0].DisplayName, "new")
+	list, _ := snapshot.VendorModels("first")
+	requireEqual(t, list.Models[0].DisplayName, "new")
 }

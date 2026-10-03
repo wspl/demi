@@ -23,14 +23,11 @@ type claims struct {
 }
 
 func tokenClaims(token provider.Secret) claims {
-	value := provider.JWTClaims(
+	value, _ := provider.JWTClaims(
 		token.Expose(),
 		func(b []byte) (claims, error) { return provider.DecodeUntagged[claims](string(b)) },
 	)
-	if value == nil {
-		return claims{}
-	}
-	return *value
+	return value
 }
 
 func (c claims) principal() *principal {

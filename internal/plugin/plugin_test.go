@@ -161,7 +161,7 @@ func (a answerTransport) Request(context.Context, PortMessage) (PortAnswer, erro
 // transport and an answer to the wrong operation, including the nested rpc port.
 func TestPortFailureRouting(t *testing.T) {
 	p := NewPort(answerTransport{answer: &PortAnswerDone{}})
-	_, err := p.Value(t.Context(), "x")
+	_, _, err := p.Value(t.Context(), "x")
 	var wrong *host.PortError
 	if !errors.As(err, &wrong) || wrong.Kind != host.UnexpectedReply || wrong.Asked != "read_value" ||
 		wrong.Answered != "done" {
@@ -169,7 +169,7 @@ func TestPortFailureRouting(t *testing.T) {
 	}
 	refusal := &PortRefusalNotRunning{}
 	p = NewPort(answerTransport{answer: &PortAnswerRefused{Refusal: refusal}})
-	_, err = p.Value(t.Context(), "x")
+	_, _, err = p.Value(t.Context(), "x")
 	if !errors.Is(err, refusal) {
 		t.Fatalf("refusal = %v", err)
 	}

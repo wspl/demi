@@ -292,14 +292,13 @@ func (s ModelsDevSnapshot) Vendors() []ModelsDevVendor {
 }
 
 // Vendor returns the vendor with the given document key.
-func (s ModelsDevSnapshot) Vendor(id string) *ModelsDevVendor {
+func (s ModelsDevSnapshot) Vendor(id string) (ModelsDevVendor, bool) {
 	for _, vendor := range s.vendors {
 		if vendor.key == id {
-			value := vendor.clone()
-			return &value
+			return vendor.clone(), true
 		}
 	}
-	return nil
+	return ModelsDevVendor{}, false
 }
 
 // clone isolates the public vendor metadata from cached state.
@@ -320,17 +319,17 @@ func (v ModelsDevVendor) clone() ModelsDevVendor {
 }
 
 // VendorModels maps a vendor's entire directory onto a catalog with this read's metadata.
-func (s ModelsDevSnapshot) VendorModels(id string) *core.ProviderModelList {
-	vendor := s.Vendor(id)
-	if vendor == nil {
-		return nil
+func (s ModelsDevSnapshot) VendorModels(id string) (core.ProviderModelList, bool) {
+	vendor, ok := s.Vendor(id)
+	if !ok {
+		return core.ProviderModelList{}, false
 	}
-	return &core.ProviderModelList{
+	return core.ProviderModelList{
 		Models:          vendor.Models(),
 		Warnings:        append([]string{}, s.Warnings...),
 		SourceFetchedAt: s.FetchedAt,
 		Stale:           s.Stale,
-	}
+	}, true
 }
 
 // Models returns the vendor's models in document order with unknown facts kept absent.

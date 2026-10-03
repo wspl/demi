@@ -43,11 +43,11 @@ func TestStorageThroughLoopback(t *testing.T) {
 		if !errors.As(err, &conflict) {
 			t.Fatalf("duplicate create = %v", err)
 		}
-		v, err := p.Value(ctx, "key")
+		v, found, err := p.Value(ctx, "key")
 		if err != nil {
 			return nil, err
 		}
-		if v == nil || v.Revision != 1 {
+		if !found || v.Revision != 1 {
 			t.Fatalf("stored = %#v", v)
 		}
 		blobs := d.ValueBlobs("key")
@@ -85,11 +85,11 @@ func TestStorageThroughLoopback(t *testing.T) {
 		if err := p.RemoveValue(ctx, "key", revision); err != nil {
 			return nil, err
 		}
-		v, err = p.Value(ctx, "key")
+		v, found, err = p.Value(ctx, "key")
 		if err != nil {
 			return nil, err
 		}
-		if v != nil {
+		if found {
 			t.Fatal("removed value remains")
 		}
 		return &plugin.ReplyResult{Result: json.RawMessage(`{"done":true}`)}, nil

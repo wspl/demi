@@ -65,11 +65,8 @@ type profileClaims struct {
 }
 
 func tokenClaims(token provider.Secret) claims {
-	c := provider.JWTClaims(token.Expose(), vendorDecode[claims])
-	if c == nil {
-		return claims{}
-	}
-	return *c
+	c, _ := provider.JWTClaims(token.Expose(), vendorDecode[claims])
+	return c
 }
 
 func (c claims) email() (string, bool) {
