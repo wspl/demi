@@ -40,24 +40,20 @@ type environmentSlot struct {
 const disposedShells = "The node's shells are closed"
 
 // resolve shares creation for one Host and checks a handle against every owner.
-func (e *Environments) resolve(ctx context.Context, key host.Key, shell *core.ShellID, command *core.CommandID, create func(context.Context) (host.ShellEnvironment, error)) (*environmentSlot, host.ShellEnvironment, error) {
+func (e *Environments) resolve(
+	ctx context.Context,
+	key host.Key,
+	shell *core.ShellID,
+	command *core.CommandID,
+	create func(context.Context) (host.ShellEnvironment, error),
+) (*environmentSlot, host.ShellEnvironment, error) {
 	for {
 		e.mu.Lock()
 		if e.disposed {
 			e.mu.Unlock()
 			return nil, nil, &CallError{Kind: Failed, Message: disposedShells}
 		}
-		var slot *environmentSlot
-		for _, candidate := range e.slots {
-			if candidate.key == key && !candidate.retired {
-				slot = candidate
-				break
-			}
-		}
-		if slot == nil {
-			slot = &environmentSlot{key: key}
-			e.slots = append(e.slots, slot)
-		}
+		slot := e.slotLocked(key)
 		if ready := slot.creating; ready != nil {
 			e.mu.Unlock()
 			select {
@@ -69,55 +65,16 @@ func (e *Environments) resolve(ctx context.Context, key host.Key, shell *core.Sh
 		}
 		environment := slot.environment
 		if environment == nil {
-			ready := make(chan struct{})
-			slot.creating = ready
-			e.mu.Unlock()
-			made, err := create(ctx)
-			e.mu.Lock()
-			retired := slot.retired || e.disposed
-			slot.environment = made
-			e.mu.Unlock()
-			if retired && made != nil {
-				// Creation remains owned until its late environment is closed.
-				err = errors.Join(err, slot.close(context.WithoutCancel(ctx)))
-			}
-			e.mu.Lock()
-			slot.creating = nil
-			close(ready)
-			e.mu.Unlock()
-			if retired {
-				return nil, nil, errors.Join(&CallError{Kind: Failed, Message: disposedShells}, err)
-			}
+			var err error
+			environment, err = e.createEnvironmentLocked(ctx, slot, create)
 			if err != nil {
 				return nil, nil, err
 			}
-			environment = made
 		} else {
 			e.mu.Unlock()
 		}
-		owners := e.snapshot()
-		var owner *environmentSlot
-		for _, candidate := range owners {
-			owns := shell != nil && candidate.environment.OwnsShell(*shell) || command != nil && candidate.environment.OwnsCommand(*command)
-			if !owns {
-				continue
-			}
-			if owner != nil {
-				if shell != nil {
-					return nil, nil, &CallError{Kind: Failed, Message: fmt.Sprintf("Shell id \"%s\" is not unique in this session", *shell)}
-				}
-				return nil, nil, &CallError{Kind: Failed, Message: fmt.Sprintf("Command id \"%s\" is not unique in this session", *command)}
-			}
-			owner = candidate.slot
-		}
-		if owner != nil && owner.key != key {
-			id := ""
-			if shell != nil {
-				id = string(*shell)
-			} else if command != nil {
-				id = string(*command)
-			}
-			return nil, nil, &CallError{Kind: Failed, Message: fmt.Sprintf("Shell handle \"%s\" belongs to a different Host", id)}
+		if err := e.checkHandleOwner(key, shell, command); err != nil {
+			return nil, nil, err
 		}
 		e.mu.Lock()
 		retired := slot.retired || e.disposed
@@ -241,6 +198,101 @@ func (s *environmentSlot) repeated(script string) *session.ToolOutcome {
 	if s.count <= 6 {
 		return nil
 	}
-	text := fmt.Sprintf("Repeated identical shell_exec suppressed.\nThe same script has been run %d consecutive times in this agent session.\nInspect the previous output, use a different command, or provide the final answer instead of repeating it.", s.count)
-	return &session.ToolOutcome{Output: []provider.ResultPart{&provider.TextPart{Text: text}}, IsError: true, View: &core.RepeatedShellExec{Script: script, Count: s.count}}
+	text := fmt.Sprintf(
+		"Repeated identical shell_exec suppressed.\n"+
+			"The same script has been run %d consecutive times in this agent session.\n"+
+			"Inspect the previous output, use a different command, "+
+			"or provide the final answer instead of repeating it.",
+		s.count,
+	)
+	return &session.ToolOutcome{
+		Output:  []provider.ResultPart{&provider.TextPart{Text: text}},
+		IsError: true,
+		View:    &core.RepeatedShellExec{Script: script, Count: s.count},
+	}
+}
+
+// slotLocked finds or adds the current Host slot while the caller holds e.mu.
+func (e *Environments) slotLocked(key host.Key) *environmentSlot {
+	var slot *environmentSlot
+	for _, candidate := range e.slots {
+		if candidate.key == key && !candidate.retired {
+			slot = candidate
+			break
+		}
+	}
+	if slot == nil {
+		slot = &environmentSlot{key: key}
+		e.slots = append(e.slots, slot)
+	}
+	return slot
+}
+
+// createEnvironmentLocked enters with e.mu held and returns with it released.
+// Creation stays owned until a late environment is closed after retirement.
+func (e *Environments) createEnvironmentLocked(
+	ctx context.Context, slot *environmentSlot, create func(context.Context) (host.ShellEnvironment, error),
+) (host.ShellEnvironment, error) {
+	ready := make(chan struct{})
+	slot.creating = ready
+	e.mu.Unlock()
+	made, err := create(ctx)
+	e.mu.Lock()
+	retired := slot.retired || e.disposed
+	slot.environment = made
+	e.mu.Unlock()
+	if retired && made != nil {
+		// Creation remains owned until its late environment is closed.
+		err = errors.Join(err, slot.close(context.WithoutCancel(ctx)))
+	}
+	e.mu.Lock()
+	slot.creating = nil
+	close(ready)
+	e.mu.Unlock()
+	if retired {
+		return nil, errors.Join(&CallError{Kind: Failed, Message: disposedShells}, err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return made, nil
+}
+
+// checkHandleOwner rejects duplicate handles and handles held by another Host.
+func (e *Environments) checkHandleOwner(key host.Key, shell *core.ShellID, command *core.CommandID) error {
+	owners := e.snapshot()
+	var owner *environmentSlot
+	for _, candidate := range owners {
+		owns := shell != nil && candidate.environment.OwnsShell(*shell) ||
+			command != nil && candidate.environment.OwnsCommand(*command)
+		if !owns {
+			continue
+		}
+		if owner != nil {
+			if shell != nil {
+				return &CallError{
+					Kind:    Failed,
+					Message: fmt.Sprintf("Shell id \"%s\" is not unique in this session", *shell),
+				}
+			}
+			return &CallError{
+				Kind:    Failed,
+				Message: fmt.Sprintf("Command id \"%s\" is not unique in this session", *command),
+			}
+		}
+		owner = candidate.slot
+	}
+	if owner != nil && owner.key != key {
+		id := ""
+		if shell != nil {
+			id = string(*shell)
+		} else if command != nil {
+			id = string(*command)
+		}
+		return &CallError{
+			Kind:    Failed,
+			Message: fmt.Sprintf("Shell handle \"%s\" belongs to a different Host", id),
+		}
+	}
+	return nil
 }

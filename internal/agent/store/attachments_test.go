@@ -14,24 +14,40 @@ import (
 var brokenPNG = []byte{0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 255, 254, 1}
 
 func TestUploadTypeAndOpening(t *testing.T) {
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		sent string
 		data []byte
 		want string
-	}{{"application/octet-stream", brokenPNG, "image/png"}, {"application/octet-stream", []byte("%PDF-1.7 ..."), "application/pdf"}, {"text/csv", []byte("a,b\n1,2"), "text/csv"}} {
-		if got := store.UploadMediaType(tc.sent, tc.data); got != tc.want {
+	}{
+		{
+			"application/octet-stream",
+			brokenPNG,
+			"image/png",
+		},
+		{
+			"application/octet-stream",
+			[]byte("%PDF-1.7 ..."),
+			"application/pdf",
+		},
+		{
+			"text/csv",
+			[]byte("a,b\n1,2"),
+			"text/csv",
+		},
+	} {
+		if got := store.UploadMediaType(scenario.sent, scenario.data); got != scenario.want {
 			t.Fatalf("media type: %q", got)
 		}
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		name, media string
 		want        bool
 	}{{"notes.MD", "application/octet-stream", true}, {"data", "text/plain", true}, {"photo.png", "image/png", false}} {
-		if got := store.IsText(tc.name, tc.media); got != tc.want {
-			t.Fatalf("text classification: %s", tc.name)
+		if got := store.IsText(scenario.name, scenario.media); got != scenario.want {
+			t.Fatalf("text classification: %s", scenario.name)
 		}
 	}
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		data []byte
 		want string
 	}{
@@ -40,8 +56,8 @@ func TestUploadTypeAndOpening(t *testing.T) {
 		{[]byte{' ', 0xe2, 0x82}, "\ufffd"},
 		{append(bytes.Repeat([]byte(" "), 4095), 0xe2, 0x82, 0xac), "\ufffd"},
 	} {
-		if got := store.Snippet(tc.data); got != tc.want {
-			t.Fatalf("snippet: %q, want %q", got, tc.want)
+		if got := store.Snippet(scenario.data); got != scenario.want {
+			t.Fatalf("snippet: %q, want %q", got, scenario.want)
 		}
 	}
 }
@@ -54,7 +70,13 @@ func testUpload(t *testing.T, name, media string, data []byte) store.Upload {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return store.Upload{Name: name, Path: "/home/demi/.demi/attachments/c1/file", MediaType: media, SHA256: blob, Bytes: data}
+	return store.Upload{
+		Name:      name,
+		Path:      "/home/demi/.demi/attachments/c1/file",
+		MediaType: media,
+		SHA256:    blob,
+		Bytes:     data,
+	}
 }
 
 func TestUploadNativeMediumThenRecord(t *testing.T) {
@@ -88,7 +110,11 @@ func TestUploadNativeMediumThenRecord(t *testing.T) {
 	if !reflect.DeepEqual(held, expected) {
 		t.Fatal("image bytes not held")
 	}
-	pdf, _, err := store.UploadBlocks(t.Context(), testUpload(t, "paper.pdf", "application/pdf", []byte("%PDF-1.7")), blobs)
+	pdf, _, err := store.UploadBlocks(
+		t.Context(),
+		testUpload(t, "paper.pdf", "application/pdf", []byte("%PDF-1.7")),
+		blobs,
+	)
 	if err != nil || len(pdf) != 2 {
 		t.Fatalf("PDF blocks: %v %v", pdf, err)
 	}
@@ -98,7 +124,11 @@ func TestUploadNativeMediumThenRecord(t *testing.T) {
 	if _, ok := pdf[1].(*core.UserAttachment); !ok {
 		t.Fatalf("PDF record: %T", pdf[1])
 	}
-	text, held, err := store.UploadBlocks(t.Context(), testUpload(t, "notes.txt", "text/plain", []byte("\n hello")), blobs)
+	text, held, err := store.UploadBlocks(
+		t.Context(),
+		testUpload(t, "notes.txt", "text/plain", []byte("\n hello")),
+		blobs,
+	)
 	if err != nil || len(text) != 1 {
 		t.Fatalf("text blocks: %v %v", text, err)
 	}

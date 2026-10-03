@@ -33,7 +33,12 @@ func (p *dispatchProduct) Host(_ context.Context, _ NodeContext) (*dispatchHost,
 	p.resolutions++
 	return &dispatchHost{}, p.failure
 }
-func (p *dispatchProduct) Create(_ context.Context, scope EnvironmentScope, _ *dispatchHost) (host.ShellEnvironment, error) {
+
+func (p *dispatchProduct) Create(
+	_ context.Context,
+	scope EnvironmentScope,
+	_ *dispatchHost,
+) (host.ShellEnvironment, error) {
 	p.creations++
 	p.scope = scope
 	return p.environment, nil
@@ -53,18 +58,22 @@ func (e *dispatchEnvironment) Exec(_ context.Context, request host.ExecRequest) 
 	e.request = request
 	return e.status, e.failure
 }
+
 func (e *dispatchEnvironment) Status(_ core.CommandID) (host.CommandStatus, error) {
 	return e.status, e.failure
 }
+
 func (e *dispatchEnvironment) Write(_ context.Context, _ core.CommandID, stdin []byte) error {
 	e.stdin = string(stdin)
 	return e.failure
 }
+
 func (e *dispatchEnvironment) Abort(_ context.Context, _ core.CommandID) error {
 	e.aborted = true
 	e.status.State.Phase = host.Aborted
 	return e.failure
 }
+
 func (e *dispatchEnvironment) ReleaseCommand(_ context.Context, command core.CommandID) bool {
 	e.released = append(e.released, command)
 	return true
@@ -79,8 +88,20 @@ func TestDispatchUsesCurrentHostAndReleasesEndedHandles(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	access := ShellAccess[*dispatchHost]{Hosts: product, Shells: product, Environments: environments, Context: NodeContext{Root: "root", Node: "child", CWD: "/work"}, Agent: 2}
-	call := session.ToolInvocation{ToolName: "shell_exec", ToolUseID: "call", Input: []byte(`{"script":"echo hello","shellId":3,"timeoutMs":7}`), Generation: 4, Model: storetest.TestModel()}
+	access := ShellAccess[*dispatchHost]{
+		Hosts:        product,
+		Shells:       product,
+		Environments: environments,
+		Context:      NodeContext{Root: "root", Node: "child", CWD: "/work"},
+		Agent:        2,
+	}
+	call := session.ToolInvocation{
+		ToolName:   "shell_exec",
+		ToolUseID:  "call",
+		Input:      []byte(`{"script":"echo hello","shellId":3,"timeoutMs":7}`),
+		Generation: 4,
+		Model:      storetest.TestModel(),
+	}
 	outcome, err := access.Invoke(t.Context(), call)
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +109,11 @@ func TestDispatchUsesCurrentHostAndReleasesEndedHandles(t *testing.T) {
 	if outcome.IsError || len(environment.released) != 1 || environment.released[0] != "17" {
 		t.Fatal("ended command was not reported and released")
 	}
-	if environment.request.Script != "echo hello" || environment.request.Shell.ID != "3" || environment.request.Caller.Node != "child" || environment.request.Caller.Generation != 4 || environment.request.ToolUseID != "call" || environment.request.Window.Duration().Milliseconds() != 7 {
+	if environment.request.Script != "echo hello" || environment.request.Shell.ID != "3" ||
+		environment.request.Caller.Node != "child" ||
+		environment.request.Caller.Generation != 4 ||
+		environment.request.ToolUseID != "call" ||
+		environment.request.Window.Duration().Milliseconds() != 7 {
 		t.Fatalf("wrong exec request: %+v", environment.request)
 	}
 	if product.scope.Agent != 2 || product.scope.Root != "root" || product.scope.Node != "child" {
@@ -107,7 +132,8 @@ func TestDispatchUsesCurrentHostAndReleasesEndedHandles(t *testing.T) {
 			t.Fatalf("%s failed", tool)
 		}
 	}
-	if product.resolutions != 4 || product.creations != 1 || environment.stdin != "yes\n" || !environment.aborted || len(environment.released) != 2 {
+	if product.resolutions != 4 || product.creations != 1 || environment.stdin != "yes\n" || !environment.aborted ||
+		len(environment.released) != 2 {
 		t.Fatal("dispatch did not resolve each call and share the environment")
 	}
 	call.ToolName = "yield"
@@ -143,11 +169,20 @@ func TestPromptAndPageHistory(t *testing.T) {
 	if got != string(expected) {
 		t.Fatal(cmp.Diff(string(expected), got))
 	}
-	if strings.HasPrefix(SystemPrompt(" \n", "\t"), "\n") || strings.Contains(SystemPrompt("", ""), "Registered commands:") {
+	if strings.HasPrefix(SystemPrompt(" \n", "\t"), "\n") ||
+		strings.Contains(SystemPrompt("", ""), "Registered commands:") {
 		t.Fatal("blank prompt sections retained")
 	}
 	for _, phase := range []host.Phase{host.Running, host.Exited, host.Aborted} {
-		view := host.PageView{ShellID: "3", CommandID: "17", ToolUseID: "call", Tail: "tail", Chars: 8, RunningMs: 2, State: host.PageState{Phase: phase, ExitCode: 7}}
+		view := host.PageView{
+			ShellID:   "3",
+			CommandID: "17",
+			ToolUseID: "call",
+			Tail:      "tail",
+			Chars:     8,
+			RunningMs: 2,
+			State:     host.PageState{Phase: phase, ExitCode: 7},
+		}
 		frame := ShellOutput(nil, view).(*framewire.ShellOutputFrame)
 		if frame.Status.Command().CommandID != "17" || frame.Status.Command().Tail != "tail" {
 			t.Fatal("page view lost")
@@ -168,9 +203,21 @@ func TestPromptAndPageHistory(t *testing.T) {
 		}
 	}
 	blocks := []core.Block{
-		&core.ToolCallBlock{View: &core.ShellView{ShellToolView: core.ShellToolView{CommandID: "17", Status: core.ShellViewStatusRunning}}},
-		&core.ToolCallBlock{View: &core.ShellView{ShellToolView: core.ShellToolView{CommandID: "18", Status: core.ShellViewStatusRunning}}},
-		&core.ToolCallBlock{View: &core.ShellView{ShellToolView: core.ShellToolView{CommandID: "17", Status: core.ShellViewStatusExited}}},
+		&core.ToolCallBlock{
+			View: &core.ShellView{
+				ShellToolView: core.ShellToolView{CommandID: "17", Status: core.ShellViewStatusRunning},
+			},
+		},
+		&core.ToolCallBlock{
+			View: &core.ShellView{
+				ShellToolView: core.ShellToolView{CommandID: "18", Status: core.ShellViewStatusRunning},
+			},
+		},
+		&core.ToolCallBlock{
+			View: &core.ShellView{
+				ShellToolView: core.ShellToolView{CommandID: "17", Status: core.ShellViewStatusExited},
+			},
+		},
 	}
 	if diff := cmp.Diff([]core.CommandID{"18"}, StoredRunningCommands(blocks)); diff != "" {
 		t.Fatal(diff)
@@ -190,7 +237,8 @@ func TestStoreNumbersPreservesHostFailureAndCause(t *testing.T) {
 	cause := errors.New("store unavailable")
 	_, err := (StoreNumbers{Store: failedNumbers{failure: cause}}).Next(t.Context(), core.SequenceCommand)
 	var failure *host.Error
-	if !errors.Is(err, cause) || !errors.As(err, &failure) || failure.Kind != host.Failed || err.Error() != cause.Error() {
+	if !errors.Is(err, cause) || !errors.As(err, &failure) || failure.Kind != host.Failed ||
+		err.Error() != cause.Error() {
 		t.Fatalf("lost failure classification or cause: %v", err)
 	}
 }

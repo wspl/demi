@@ -16,13 +16,17 @@ const CacheLifetime = 24 * time.Hour
 // Retirement identifies when the rule is applied and whether the conversation
 // has been idle for Kept, permitting every expired tool medium to retire.
 type Retirement struct {
-	Now  core.Timestamp
+	// Now is the time against which retention is checked.
+	Now core.Timestamp
+	// Idle reports whether the conversation is idle.
 	Idle bool
 }
 
 // RetiredBlock replaces the transcript block at Index with Value.
 type RetiredBlock struct {
+	// Index is the transcript row to replace.
 	Index int
+	// Value contains the block with retired media records.
 	Value core.Block
 }
 
@@ -65,7 +69,11 @@ func Retire(blocks []core.Block, retirement Retirement) []RetiredBlock {
 			}
 			switch s := source.(type) {
 			case *core.ToolMediaRef:
-				next.Output[j] = &core.ToolGone{Kind: kind, MediaType: s.MediaType, Cause: &core.Retired{At: retirement.Now}}
+				next.Output[j] = &core.ToolGone{
+					Kind:      kind,
+					MediaType: s.MediaType,
+					Cause:     &core.Retired{At: retirement.Now},
+				}
 				retired = true
 			}
 		}

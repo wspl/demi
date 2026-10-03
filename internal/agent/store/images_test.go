@@ -51,28 +51,63 @@ func TestImageKeepsOriginalOrFitsDimensions(t *testing.T) {
 		came, entered          store.Dimensions
 		reencoded              bool
 	}{
-		{"small", "image/png", "image/png", small, store.Dimensions{Width: 60, Height: 40}, store.Dimensions{Width: 60, Height: 40}, false},
-		{"wide", "image/png", "image/png", storetest.PNG(3000, 30, 2), store.Dimensions{Width: 3000, Height: 30}, store.Dimensions{Width: 2000, Height: 20}, true},
-		{"tall", "image/jpeg", "image/jpeg", jpg.Bytes(), store.Dimensions{Width: 30, Height: 2400}, store.Dimensions{Width: 25, Height: 2000}, true},
-		{"gif", "image/gif", "image/png", animated.Bytes(), store.Dimensions{Width: 40, Height: 30}, store.Dimensions{Width: 40, Height: 30}, true},
+		{
+			"small",
+			"image/png",
+			"image/png",
+			small,
+			store.Dimensions{Width: 60, Height: 40},
+			store.Dimensions{Width: 60, Height: 40},
+			false,
+		},
+		{
+			"wide",
+			"image/png",
+			"image/png",
+			storetest.PNG(3000, 30, 2),
+			store.Dimensions{Width: 3000, Height: 30},
+			store.Dimensions{Width: 2000, Height: 20},
+			true,
+		},
+		{
+			"tall",
+			"image/jpeg",
+			"image/jpeg",
+			jpg.Bytes(),
+			store.Dimensions{Width: 30, Height: 2400},
+			store.Dimensions{Width: 25, Height: 2000},
+			true,
+		},
+		{
+			"gif",
+			"image/gif",
+			"image/png",
+			animated.Bytes(),
+			store.Dimensions{Width: 40, Height: 30},
+			store.Dimensions{Width: 40, Height: 30},
+			true,
+		},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			fitted, err := store.Fit(t.Context(), tc.data, tc.media)
+	for _, scenario := range cases {
+		t.Run(scenario.name, func(t *testing.T) {
+			fitted, err := store.Fit(t.Context(), scenario.data, scenario.media)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if fitted.MediaType != tc.wantMedia || fitted.Came != tc.came || fitted.Entered != tc.entered || fitted.Reencoded != tc.reencoded {
+			if fitted.MediaType != scenario.wantMedia || fitted.Came != scenario.came ||
+				fitted.Entered != scenario.entered ||
+				fitted.Reencoded != scenario.reencoded {
 				t.Fatalf("fit metadata: %#v", fitted)
 			}
-			if !tc.reencoded && !bytes.Equal(fitted.Data, tc.data) {
+			if !scenario.reencoded && !bytes.Equal(fitted.Data, scenario.data) {
 				t.Fatal("original bytes changed")
 			}
 			config, format, err := image.DecodeConfig(bytes.NewReader(fitted.Data))
-			if err != nil || "image/"+format != tc.wantMedia || config.Width != int(tc.entered.Width) || config.Height != int(tc.entered.Height) {
+			if err != nil || "image/"+format != scenario.wantMedia || config.Width != int(scenario.entered.Width) ||
+				config.Height != int(scenario.entered.Height) {
 				t.Fatalf("encoded image: %#v %s %v", config, format, err)
 			}
-			again, err := store.Fit(t.Context(), tc.data, tc.media)
+			again, err := store.Fit(t.Context(), scenario.data, scenario.media)
 			if err != nil || !reflect.DeepEqual(again, fitted) {
 				t.Fatal("fitting is not deterministic")
 			}
@@ -106,7 +141,10 @@ func TestLargeImageUsesJPEGAndBrokenImageIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fitted.MediaType != "image/jpeg" || !fitted.Reencoded || fitted.Came != (store.Dimensions{Width: 700, Height: 700}) || fitted.Entered != fitted.Came || len(fitted.Data) > 3750000 {
+	if fitted.MediaType != "image/jpeg" || !fitted.Reencoded ||
+		fitted.Came != (store.Dimensions{Width: 700, Height: 700}) ||
+		fitted.Entered != fitted.Came ||
+		len(fitted.Data) > 3750000 {
 		t.Fatalf("byte-limited fit: %s %v %v %d", fitted.MediaType, fitted.Came, fitted.Entered, len(fitted.Data))
 	}
 	_, err = store.Fit(t.Context(), []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x01broken"), "image/png")
@@ -147,7 +185,8 @@ func orientedPNG(data []byte, orientation uint16) []byte {
 func TestOrientationOnlyAppliedWhenReencoded(t *testing.T) {
 	data := orientedPNG(storetest.PNG(6, 4, 1), 6)
 	fitted, err := store.Fit(t.Context(), data, "image/png")
-	if err != nil || !bytes.Equal(data, fitted.Data) || fitted.Reencoded || fitted.Entered != (store.Dimensions{Width: 6, Height: 4}) {
+	if err != nil || !bytes.Equal(data, fitted.Data) || fitted.Reencoded ||
+		fitted.Entered != (store.Dimensions{Width: 6, Height: 4}) {
 		t.Fatalf("original orientation changed: %v", err)
 	}
 	for _, orientation := range []uint16{2, 3, 4, 5, 6, 7, 8} {
@@ -211,7 +250,8 @@ func TestAnimatedWebPUsesFirstCanvas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fitted.Came.Width != 2400 || fitted.Entered.Width != 2000 || fitted.MediaType != "image/png" || !fitted.Reencoded {
+	if fitted.Came.Width != 2400 || fitted.Entered.Width != 2000 || fitted.MediaType != "image/png" ||
+		!fitted.Reencoded {
 		t.Fatalf("animated fit: %s %v %v", fitted.MediaType, fitted.Came, fitted.Entered)
 	}
 }
@@ -235,7 +275,15 @@ func TestMirroredOrientationsMovePixels(t *testing.T) {
 	if err := png.Encode(&encoded, source); err != nil {
 		t.Fatal(err)
 	}
-	corners := map[uint16][]int{2: {1, 0, 3, 2}, 3: {3, 2, 1, 0}, 4: {2, 3, 0, 1}, 5: {0, 2, 1, 3}, 6: {2, 0, 3, 1}, 7: {3, 1, 2, 0}, 8: {1, 3, 0, 2}}
+	corners := map[uint16][]int{
+		2: {1, 0, 3, 2},
+		3: {3, 2, 1, 0},
+		4: {2, 3, 0, 1},
+		5: {0, 2, 1, 3},
+		6: {2, 0, 3, 1},
+		7: {3, 1, 2, 0},
+		8: {1, 3, 0, 2},
+	}
 	for orientation, want := range corners {
 		t.Run(fmt.Sprint(orientation), func(t *testing.T) {
 			fitted, err := store.Fit(t.Context(), orientedPNG(encoded.Bytes(), orientation), "image/png")
@@ -247,7 +295,12 @@ func TestMirroredOrientationsMovePixels(t *testing.T) {
 				t.Fatal(err)
 			}
 			width, height := decoded.Bounds().Dx(), decoded.Bounds().Dy()
-			positions := []image.Point{{X: 0, Y: 0}, {X: width - 1, Y: 0}, {X: 0, Y: height - 1}, {X: width - 1, Y: height - 1}}
+			positions := []image.Point{
+				{X: 0, Y: 0},
+				{X: width - 1, Y: 0},
+				{X: 0, Y: height - 1},
+				{X: width - 1, Y: height - 1},
+			}
 			for index, point := range positions {
 				if got := color.NRGBAModel.Convert(decoded.At(point.X, point.Y)); got != colors[want[index]] {
 					t.Fatalf("orientation %d corner %d: %v, want %v", orientation, index, got, colors[want[index]])

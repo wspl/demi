@@ -9,8 +9,10 @@ import (
 
 // PatchBatch contains one commit's patches, advancing the revision by one.
 type PatchBatch struct {
+	// Revision is the transcript revision after this commit.
 	Revision uint64
-	Patches  []framewire.TranscriptPatch
+	// Patches contains the changes in commit order.
+	Patches []framewire.TranscriptPatch
 	// Touched names added or changed blocks in change order, independent of index moves.
 	Touched []core.BlockID
 	// Rows names the transcript rows moved or changed.

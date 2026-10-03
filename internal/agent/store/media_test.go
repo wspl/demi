@@ -18,7 +18,15 @@ import (
 
 func TestMediaHeldOnceUntilReleased(t *testing.T) {
 	blobs := storetest.NewMemoryBlobs()
-	parts, held := store.PersistResult(t.Context(), []provider.ResultPart{&provider.TextPart{Text: "hello"}, &provider.ResultImage{Bytes: provider.MediaBytes{Data: []byte("image"), MediaType: "image/png"}}, &provider.ResultVideo{Bytes: provider.MediaBytes{Data: []byte("video"), MediaType: "video/webm"}}}, blobs)
+	parts, held := store.PersistResult(
+		t.Context(),
+		[]provider.ResultPart{
+			&provider.TextPart{Text: "hello"},
+			&provider.ResultImage{Bytes: provider.MediaBytes{Data: []byte("image"), MediaType: "image/png"}},
+			&provider.ResultVideo{Bytes: provider.MediaBytes{Data: []byte("video"), MediaType: "video/webm"}},
+		},
+		blobs,
+	)
 	block := &core.ToolCallBlock{Output: parts}
 	refs := store.References(block)
 	if len(parts) != 3 || len(refs) != 2 {
@@ -76,9 +84,16 @@ func (b failedBlobs) Read(context.Context, core.BlobRef) (core.B64Bytes, bool, e
 
 func TestFailedMediaPutBecomesGoneAndReadFails(t *testing.T) {
 	failure := errors.New("disk refused")
-	parts, held := store.PersistResult(t.Context(), []provider.ResultPart{&provider.ResultImage{Bytes: provider.MediaBytes{Data: []byte("image"), MediaType: "image/png"}}}, failedBlobs{failure})
+	parts, held := store.PersistResult(
+		t.Context(),
+		[]provider.ResultPart{
+			&provider.ResultImage{Bytes: provider.MediaBytes{Data: []byte("image"), MediaType: "image/png"}},
+		},
+		failedBlobs{failure},
+	)
 	gone, ok := parts[0].(*core.ToolGone)
-	if !ok || gone.Kind != "image" || gone.MediaType != "image/png" || gone.Cause.(*core.NotStored).Error != "disk refused" {
+	if !ok || gone.Kind != "image" || gone.MediaType != "image/png" ||
+		gone.Cause.(*core.NotStored).Error != "disk refused" {
 		t.Fatalf("gone result: %#v", parts)
 	}
 	if _, missing := store.NewModelView(0, []core.Block{&core.ToolCallBlock{Output: parts}}, held); len(missing) != 0 {
@@ -94,17 +109,40 @@ func TestFailedMediaPutBecomesGoneAndReadFails(t *testing.T) {
 }
 
 func TestRetentionReferencesIncludeMediaThenEditCopies(t *testing.T) {
-	files := []core.EditedFile{{Edits: []core.EditSegment{{Copies: &core.EditCopies{Original: "old", Modified: "new"}}, {Copies: nil}}}}
-	block := &core.ToolCallBlock{Output: []core.ToolResultContentBlock{&core.ToolImage{Source: &core.ToolMediaRef{Ref: "image"}}, &core.ToolVideo{Source: &core.ToolMediaRef{Ref: "video"}}, &core.ToolText{Text: "plain"}}, View: &core.ShellView{ShellToolView: core.ShellToolView{Files: &files}}}
-	want := []store.BlockReference{{Blob: "image", Holder: store.ToolResult}, {Blob: "video", Holder: store.ToolResult}, {Blob: "old", Holder: store.EditCopy}, {Blob: "new", Holder: store.EditCopy}}
+	files := []core.EditedFile{
+		{Edits: []core.EditSegment{{Copies: &core.EditCopies{Original: "old", Modified: "new"}}, {Copies: nil}}},
+	}
+	block := &core.ToolCallBlock{
+		Output: []core.ToolResultContentBlock{
+			&core.ToolImage{Source: &core.ToolMediaRef{Ref: "image"}},
+			&core.ToolVideo{Source: &core.ToolMediaRef{Ref: "video"}},
+			&core.ToolText{Text: "plain"},
+		},
+		View: &core.ShellView{ShellToolView: core.ShellToolView{Files: &files}},
+	}
+	want := []store.BlockReference{
+		{Blob: "image", Holder: store.ToolResult},
+		{Blob: "video", Holder: store.ToolResult},
+		{Blob: "old", Holder: store.EditCopy},
+		{Blob: "new", Holder: store.EditCopy},
+	}
 	if got := store.BlockReferences(block); !reflect.DeepEqual(got, want) {
 		t.Fatalf("retention refs: %v", got)
 	}
-	content := []core.UserContentBlock{&core.UserImage{Source: &core.MediaURL{URL: "https://example.test/image"}}, &core.UserDocument{Source: &core.DocumentRef{Ref: "pdf"}}, &core.UserVideo{Source: &core.MediaSourceRef{Ref: "clip"}}}
+	content := []core.UserContentBlock{
+		&core.UserImage{Source: &core.MediaURL{URL: "https://example.test/image"}},
+		&core.UserDocument{Source: &core.DocumentRef{Ref: "pdf"}},
+		&core.UserVideo{Source: &core.MediaSourceRef{Ref: "clip"}},
+	}
 	if got := store.ContentReferences(content); !reflect.DeepEqual(got, []core.BlobRef{"pdf", "clip"}) {
 		t.Fatalf("content refs: %v", got)
 	}
-	if got := store.BlockReferences(&core.SteerBlock{Content: content}); !reflect.DeepEqual(got, []store.BlockReference{{Blob: "pdf", Holder: store.Message}, {Blob: "clip", Holder: store.Message}}) {
+	if got := store.BlockReferences(
+		&core.SteerBlock{Content: content},
+	); !reflect.DeepEqual(
+		got,
+		[]store.BlockReference{{Blob: "pdf", Holder: store.Message}, {Blob: "clip", Holder: store.Message}},
+	) {
 		t.Fatalf("steer refs: %v", got)
 	}
 }
@@ -119,6 +157,7 @@ type heldReads struct {
 func (*heldReads) Put(context.Context, core.B64Bytes) (core.BlobRef, error) {
 	return "", errors.New("unused put")
 }
+
 func (b *heldReads) Read(ctx context.Context, _ core.BlobRef) (core.B64Bytes, bool, error) {
 	b.mu.Lock()
 	b.active++
@@ -137,6 +176,7 @@ func (b *heldReads) Read(ctx context.Context, _ core.BlobRef) (core.B64Bytes, bo
 		return []byte("medium"), true, nil
 	}
 }
+
 func TestMediaReadsAreBoundedAndJoinedOnCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		blobs := &heldReads{entered: make(chan struct{}), release: make(chan struct{})}
@@ -181,7 +221,8 @@ func TestModelViewOwnsItsTranscriptSnapshot(t *testing.T) {
 	text.Text = "changed"
 	(*selection.Model.AcceptedExtensions)[0] = "pdf"
 	snapshot := view.Blocks[0].(*core.UserBlock)
-	if snapshot.Content[0].(*core.UserText).Text != "original" || (*snapshot.Selection.Model.AcceptedExtensions)[0] != "png" {
+	if snapshot.Content[0].(*core.UserText).Text != "original" ||
+		(*snapshot.Selection.Model.AcceptedExtensions)[0] != "png" {
 		t.Fatal("view changed with live transcript")
 	}
 }

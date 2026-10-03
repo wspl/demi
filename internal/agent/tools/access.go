@@ -12,23 +12,28 @@ import (
 )
 
 // StoreNumbers adapts the conversation's durable command and shell sequences.
-type StoreNumbers struct{ Store store.TreeStore }
+type StoreNumbers struct {
+	// Store owns the conversation's durable sequences.
+	Store store.TreeStore
+}
 
 // Next records the next sequence value before returning the assigned number.
 func (n StoreNumbers) Next(ctx context.Context, sequence core.Sequence) (uint64, error) {
 	number, err := n.Store.NextNumber(ctx, sequence)
 	if err != nil {
-		return 0, &numberFailure{cause: err}
+		return 0, &numberError{cause: err}
 	}
 	return number, nil
 }
 
-// numberFailure retains both the Host failure classification and the store cause.
-type numberFailure struct{ cause error }
+// numberError retains both the Host failure classification and the store cause.
+type numberError struct{ cause error }
 
-func (e *numberFailure) Error() string { return e.cause.Error() }
+// Error returns the underlying store failure text.
+func (e *numberError) Error() string { return e.cause.Error() }
 
-func (e *numberFailure) Unwrap() []error {
+// Unwrap exposes both the Host classification and store cause.
+func (e *numberError) Unwrap() []error {
 	return []error{&host.Error{Kind: host.Failed, Message: e.cause.Error()}, e.cause}
 }
 
@@ -58,14 +63,22 @@ type ShellEnvironmentFactory[H host.Host] interface {
 // environment factory and the environments already made for that node.
 // Its configuration is immutable while calls run; Environments owns cleanup.
 type ShellAccess[H host.Host] struct {
-	Hosts        HostResolver[H]
-	Shells       ShellEnvironmentFactory[H]
+	// Hosts resolves the node's current execution target.
+	Hosts HostResolver[H]
+	// Shells creates environments on resolved Hosts.
+	Shells ShellEnvironmentFactory[H]
+	// Environments owns the node's environments and their cleanup.
 	Environments *Environments
-	Context      NodeContext
-	Agent        uint64
-	Commands     *host.CommandSet
-	Feed         host.PageFeed
-	Numbers      host.Numbers
+	// Context identifies the node and its conversation root.
+	Context NodeContext
+	// Agent is the node's model-facing agent number.
+	Agent uint64
+	// Commands contains the commands offered by its shells.
+	Commands *host.CommandSet
+	// Feed reports command pages and their watches.
+	Feed host.PageFeed
+	// Numbers assigns durable command and shell numbers.
+	Numbers host.Numbers
 }
 
 // Invoke runs one standard tool call. Refused input returns an error outcome;
@@ -88,7 +101,11 @@ func (s *ShellAccess[H]) Invoke(ctx context.Context, call session.ToolInvocation
 
 // Write writes stdin to a running command of the current Host and returns
 // its environment. A refusal or Host failure returns *CallError.
-func (s *ShellAccess[H]) Write(ctx context.Context, command core.CommandID, stdin string) (host.ShellEnvironment, error) {
+func (s *ShellAccess[H]) Write(
+	ctx context.Context,
+	command core.CommandID,
+	stdin string,
+) (host.ShellEnvironment, error) {
 	_, environment, err := s.environment(ctx, nil, &command)
 	if err != nil {
 		return nil, err
@@ -125,9 +142,12 @@ const (
 // CallError explains why a shell operation produced no tool result.
 // Cause preserves an underlying error for errors.Is and errors.As.
 type CallError struct {
-	Kind    CallErrorKind
+	// Kind classifies the refusal or failure.
+	Kind CallErrorKind
+	// Message holds the model-facing failure text.
 	Message string
-	Cause   error
+	// Cause retains the underlying failure, when present.
+	Cause error
 }
 
 // Error returns the refusal or failure message.
@@ -137,13 +157,30 @@ func (e *CallError) Error() string { return e.Message }
 func (e *CallError) Unwrap() error { return e.Cause }
 
 // environment resolves the current target and its node-owned shell environment.
-func (s *ShellAccess[H]) environment(ctx context.Context, shell *core.ShellID, command *core.CommandID) (*environmentSlot, host.ShellEnvironment, error) {
+func (s *ShellAccess[H]) environment(
+	ctx context.Context,
+	shell *core.ShellID,
+	command *core.CommandID,
+) (*environmentSlot, host.ShellEnvironment, error) {
 	target, err := s.Hosts.Host(ctx, s.Context)
 	if err != nil {
 		return nil, nil, &CallError{Kind: Failed, Message: err.Error(), Cause: err}
 	}
-	scope := EnvironmentScope{Root: s.Context.Root, Node: s.Context.Node, Agent: s.Agent, Commands: s.Commands, Feed: s.Feed, Numbers: s.Numbers}
-	slot, environment, err := s.Environments.resolve(ctx, target.Key(), shell, command, func(ctx context.Context) (host.ShellEnvironment, error) { return s.Shells.Create(ctx, scope, target) })
+	scope := EnvironmentScope{
+		Root:     s.Context.Root,
+		Node:     s.Context.Node,
+		Agent:    s.Agent,
+		Commands: s.Commands,
+		Feed:     s.Feed,
+		Numbers:  s.Numbers,
+	}
+	slot, environment, err := s.Environments.resolve(
+		ctx,
+		target.Key(),
+		shell,
+		command,
+		func(ctx context.Context) (host.ShellEnvironment, error) { return s.Shells.Create(ctx, scope, target) },
+	)
 	if err != nil {
 		return nil, nil, &CallError{Kind: Failed, Message: err.Error(), Cause: err}
 	}
@@ -158,7 +195,12 @@ type shellOperations interface {
 }
 
 // runTool validates one tool's generated input and dispatches it to its Host.
-func runTool(ctx context.Context, call session.ToolInvocation, node core.NodeID, s shellOperations) (session.ToolOutcome, error) {
+func runTool(
+	ctx context.Context,
+	call session.ToolInvocation,
+	node core.NodeID,
+	s shellOperations,
+) (session.ToolOutcome, error) {
 	var environment host.ShellEnvironment
 	var status host.CommandStatus
 	var err error
@@ -170,27 +212,11 @@ func runTool(ctx context.Context, call session.ToolInvocation, node core.NodeID,
 		}
 		return session.ToolOutcome{Effect: &session.ScheduleYield{DurationMS: uint32(input.DurationMS)}}, nil
 	case ShellExec:
-		input, decodeErr := decodeShellExecInput(call.Input)
-		if decodeErr != nil {
-			return session.ToolOutcome{}, inputRefusal(call.ToolName, decodeErr)
-		}
-		var shell *core.ShellID
-		target := host.ShellTarget{Kind: host.DefaultShell}
-		if input.ShellID != nil {
-			id := core.ShellID(strconv.FormatUint(*input.ShellID, 10))
-			shell = &id
-			target = host.ShellTarget{Kind: host.ExistingShell, ID: id}
-		}
-		var slot *environmentSlot
-		slot, environment, err = s.environment(ctx, shell, nil)
-		if err != nil {
-			return session.ToolOutcome{}, err
-		}
-		if repeated := slot.repeated(input.Script); repeated != nil {
+		var repeated *session.ToolOutcome
+		environment, status, repeated, err = execTool(ctx, call, node, s)
+		if repeated != nil {
 			return *repeated, nil
 		}
-		window, _ := host.NewObservationWindow(uint64(input.TimeoutMS)) // Generated validation guarantees the window's bounds.
-		status, err = environment.Exec(ctx, host.ExecRequest{Script: input.Script, Shell: target, Window: window, Caller: host.JobCaller{Node: node, Generation: call.Generation}, ToolUseID: call.ToolUseID})
 	case ShellStatus, ShellAbort:
 		input, decodeErr := decodeCommandInput(call.Input)
 		if decodeErr != nil {
@@ -232,4 +258,41 @@ func runTool(ctx context.Context, call session.ToolInvocation, node core.NodeID,
 // inputRefusal names the tool and the generated decoder's offending field.
 func inputRefusal(tool string, err error) error {
 	return &CallError{Kind: Refused, Message: tool + " input is invalid:\n" + err.Error(), Cause: err}
+}
+
+func execTool(
+	ctx context.Context, call session.ToolInvocation, node core.NodeID, s shellOperations,
+) (host.ShellEnvironment, host.CommandStatus, *session.ToolOutcome, error) {
+	input, decodeErr := decodeShellExecInput(call.Input)
+	if decodeErr != nil {
+		return nil, host.CommandStatus{}, nil, inputRefusal(call.ToolName, decodeErr)
+	}
+	var shell *core.ShellID
+	target := host.ShellTarget{Kind: host.DefaultShell}
+	if input.ShellID != nil {
+		id := core.ShellID(strconv.FormatUint(*input.ShellID, 10))
+		shell = &id
+		target = host.ShellTarget{Kind: host.ExistingShell, ID: id}
+	}
+	slot, environment, err := s.environment(ctx, shell, nil)
+	if err != nil {
+		return nil, host.CommandStatus{}, nil, err
+	}
+	if repeated := slot.repeated(input.Script); repeated != nil {
+		return nil, host.CommandStatus{}, repeated, nil
+	}
+	window, _ := host.NewObservationWindow(
+		uint64(input.TimeoutMS),
+	) // Generated validation guarantees the window's bounds.
+	status, err := environment.Exec(
+		ctx,
+		host.ExecRequest{
+			Script:    input.Script,
+			Shell:     target,
+			Window:    window,
+			Caller:    host.JobCaller{Node: node, Generation: call.Generation},
+			ToolUseID: call.ToolUseID,
+		},
+	)
+	return environment, status, nil, err
 }

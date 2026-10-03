@@ -15,7 +15,10 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 func TestStoredHistoryIsRefusedRatherThanRepaired(t *testing.T) {
 	duplicate := store.InitialCommandState()
-	duplicate.Boundaries = []store.SessionBoundary{{BlockID: "b1", Edge: store.AfterBlock}, {BlockID: "b1", Edge: store.AfterBlock}}
+	duplicate.Boundaries = []store.SessionBoundary{
+		{BlockID: "b1", Edge: store.AfterBlock},
+		{BlockID: "b1", Edge: store.AfterBlock},
+	}
 	dangling := store.InitialCommandState()
 	dangling.Boundaries = []store.SessionBoundary{{BlockID: "b1", Edge: store.BeforeUser, CommandRevision: 3}}
 	current := store.InitialCommandState()
@@ -24,12 +27,37 @@ func TestStoredHistoryIsRefusedRatherThanRepaired(t *testing.T) {
 	noEmpty.Versions[0].Values["todos.json"] = json.RawMessage(`null`)
 	repeated := store.InitialCommandState()
 	repeated.Versions = append(repeated.Versions, repeated.Versions[0])
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		name     string
 		snapshot store.CommandStateSnapshot
-	}{{"duplicate boundary", duplicate}, {"dangling boundary", dangling}, {"current version missing", current}, {"nonempty zero", noEmpty}, {"repeated version", repeated}, {"missing zero", store.CommandStateSnapshot{}}} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := store.RestoreCommandStateHistory(tc.snapshot)
+	}{
+		{
+			"duplicate boundary",
+			duplicate,
+		},
+		{
+			"dangling boundary",
+			dangling,
+		},
+		{
+			"current version missing",
+			current,
+		},
+		{
+			"nonempty zero",
+			noEmpty,
+		},
+		{
+			"repeated version",
+			repeated,
+		},
+		{
+			"missing zero",
+			store.CommandStateSnapshot{},
+		},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			_, err := store.RestoreCommandStateHistory(scenario.snapshot)
 			var stateError *store.CommandStateError
 			if !errors.As(err, &stateError) {
 				t.Fatalf("invalid history: %v", err)
@@ -65,11 +93,15 @@ func TestCommandHistoryVersionsFollowCutsAndFailedSaves(t *testing.T) {
 	values["todos.json"][0] = '['
 	owned := history.Values()
 	owned["todos.json"][0] = '['
-	same, err := history.Prepare(map[store.CommandStorageKey]json.RawMessage{"todos.json": json.RawMessage(`{"b":2.0,"a":1e0}`)})
+	same, err := history.Prepare(
+		map[store.CommandStorageKey]json.RawMessage{"todos.json": json.RawMessage(`{"b":2.0,"a":1e0}`)},
+	)
 	if err != nil || same != nil {
 		t.Fatalf("canonical equality or ownership: %v %v", same, err)
 	}
-	if _, err := history.Prepare(map[store.CommandStorageKey]json.RawMessage{"todos.json": json.RawMessage(`{broken`)}); err == nil {
+	if _, err := history.Prepare(
+		map[store.CommandStorageKey]json.RawMessage{"todos.json": json.RawMessage(`{broken`)},
+	); err == nil {
 		t.Fatal("invalid JSON accepted")
 	}
 	history.Capture("b1", store.BeforeUser, 0)
