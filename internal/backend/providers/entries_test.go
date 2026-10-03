@@ -67,8 +67,7 @@ func TestVaultScopeAndSecretDisclosure(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = vault.Entry(ctx, entry.ID)
-		var corrupt *database.Error
-		if !errors.As(err, &corrupt) || corrupt.Kind != database.Corrupt {
+		if !errors.Is(err, database.ErrCorrupt) {
 			t.Fatalf("corrupt configuration accepted: %v", err)
 		}
 		if strings.Contains(err.Error(), secret) {
@@ -128,7 +127,7 @@ func TestCatalogRestartsFromSQLiteAndRefusesCorruptStoredRecord(t *testing.T) {
 	if err := vault.Delete(ctx, entry); err != nil {
 		t.Fatal(err)
 	}
-	if record, err := vault.control.CatalogRecord(ctx, entry.ID); err != nil || record != nil {
+	if record, found, err := vault.control.CatalogRecord(ctx, entry.ID); err != nil || found {
 		t.Fatalf("deleted catalog survived: %v %v", record, err)
 	}
 }

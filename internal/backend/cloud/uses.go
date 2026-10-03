@@ -25,12 +25,12 @@ type cloudUse struct {
 // cloudUses derives the strongest Cloud role of every unarchived conversation.
 func cloudUses(ctx context.Context, s CloudShard) ([]cloudUse, error) {
 	control := cloudRecords(s)
-	device, err := control.ManagedDevice(ctx, s.User())
+	device, found, err := control.ManagedDevice(ctx, s.User())
 	if err != nil {
 		return nil, err
 	}
 	var id *webapi.DeviceID
-	if device != nil {
+	if found {
 		id = &device.ID
 	}
 	conversations, err := control.CloudUses(ctx, s.User(), id)

@@ -17,8 +17,11 @@ type emailStore struct {
 	taken   bool
 }
 
-func (s *emailStore) Account(context.Context, webapi.UserID) (*database.Account, error) {
-	return s.account, nil
+func (s *emailStore) Account(context.Context, webapi.UserID) (database.Account, bool, error) {
+	if s.account == nil {
+		return database.Account{}, false, nil
+	}
+	return *s.account, true, nil
 }
 
 func (s *emailStore) EmailInUse(context.Context, webapi.EmailAddress) (bool, error) {
@@ -39,12 +42,12 @@ func TestEmailStartRefusalsDoNotIssueChallenges(t *testing.T) {
 		account bool
 		valid   bool
 		taken   bool
-		want    StartRefusal
+		want    error
 	}{
-		{name: "delivery disabled", want: MailUnavailable},
-		{name: "account absent", mail: true, want: InvalidCredentials},
-		{name: "wrong password", mail: true, account: true, want: InvalidCredentials},
-		{name: "address taken", mail: true, account: true, valid: true, taken: true, want: EmailTaken},
+		{name: "delivery disabled", want: ErrMailUnavailable},
+		{name: "account absent", mail: true, want: ErrCurrentPassword},
+		{name: "wrong password", mail: true, account: true, want: ErrCurrentPassword},
+		{name: "address taken", mail: true, account: true, valid: true, taken: true, want: database.ErrEmailTaken},
 	}
 	for _, scenario := range cases {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -57,18 +60,14 @@ func TestEmailStartRefusalsDoNotIssueChallenges(t *testing.T) {
 			if scenario.mail {
 				mail = unexpectedMail{t: t}
 			}
-			outcome, err := NewEmailChanges(
+			_, err := NewEmailChanges(
 				store,
 				passwords,
 				mail,
 				CodeKey{},
 			).Start(t.Context(), "caller", "new@example.test", "password")
-			if err != nil {
-				t.Fatal(err)
-			}
-			refused, ok := outcome.(*StartRefused)
-			if !ok || refused.Reason != scenario.want {
-				t.Fatalf("got %#v", outcome)
+			if !errors.Is(err, scenario.want) {
+				t.Fatalf("got %v", err)
 			}
 			if !scenario.account && passwords.verified != 0 {
 				t.Fatal("absent account verified password")
@@ -106,43 +105,37 @@ func TestEmailDeliveryConfirmationAndFailureCleanup(t *testing.T) {
 	}
 	mail := &capturedMail{}
 	changes := NewEmailChanges(control, h, mail, NewCodeKey(databasetest.Key()))
-	outcome, err := changes.Start(t.Context(), signed.User.ID, "new@example.test", "password123")
-	if err != nil {
-		t.Fatal(err)
-	}
-	issued, ok := outcome.(*StartIssued)
-	if !ok || len(mail.messages) != 1 {
-		t.Fatalf("issue and delivery: %#v, %d messages", outcome, len(mail.messages))
+	challenge, err := changes.Start(t.Context(), signed.User.ID, "new@example.test", "password123")
+	if err != nil || len(mail.messages) != 1 {
+		t.Fatalf("issue and delivery: %v, %d messages", err, len(mail.messages))
 	}
 	delivered := mail.messages[0]
-	if delivered.Email != issued.Challenge.Email || delivered.ExpiresAt != issued.Challenge.ExpiresAt {
+	if delivered.Email != challenge.Email || delivered.ExpiresAt != challenge.ExpiresAt {
 		t.Fatal("delivered challenge differs from response")
 	}
-	outcome, err = changes.Start(t.Context(), signed.User.ID, "new@example.test", "password123")
-	refused, ok := outcome.(*StartRefused)
-	if err != nil || !ok || refused.Reason != CoolingDown || len(mail.messages) != 1 {
-		t.Fatalf("cooldown: %#v, %v", outcome, err)
+	_, err = changes.Start(t.Context(), signed.User.ID, "new@example.test", "password123")
+	if !errors.Is(err, database.ErrCoolingDown) || len(mail.messages) != 1 {
+		t.Fatalf("cooldown: %v", err)
 	}
-	confirmation, err := changes.Confirm(t.Context(), signed.User.ID, issued.Challenge.ID, delivered.Code+"x")
-	if _, ok := confirmation.(*database.ChallengeInvalidCode); err != nil || !ok {
-		t.Fatalf("wrong code: %#v, %v", confirmation, err)
+	_, err = changes.Confirm(t.Context(), signed.User.ID, challenge.ID, delivered.Code+"x")
+	if !errors.Is(err, database.ErrInvalidCode) {
+		t.Fatalf("wrong code: %v", err)
 	}
-	confirmation, err = changes.Confirm(t.Context(), signed.User.ID, issued.Challenge.ID, delivered.Code)
-	changed, ok := confirmation.(*database.ChallengeChanged)
-	if err != nil || !ok || changed.User.Email != delivered.Email {
-		t.Fatalf("confirm: %#v, %v", confirmation, err)
+	changed, err := changes.Confirm(t.Context(), signed.User.ID, challenge.ID, delivered.Code)
+	if err != nil || changed.Email != delivered.Email {
+		t.Fatalf("confirm: %#v, %v", changed, err)
 	}
-	stored, err := control.AccountByEmail(t.Context(), delivered.Email)
-	if err != nil || stored == nil || stored.User.ID != signed.User.ID {
+	stored, found, err := control.AccountByEmail(t.Context(), delivered.Email)
+	if err != nil || !found || stored.User.ID != signed.User.ID {
 		t.Fatalf("new address not persisted: %v", err)
 	}
-	old, err := control.AccountByEmail(t.Context(), "old@example.test")
-	if err != nil || old != nil {
+	_, ok, err := control.AccountByEmail(t.Context(), "old@example.test")
+	if err != nil || ok {
 		t.Fatalf("old address still resolves: %v", err)
 	}
-	confirmation, err = changes.Confirm(t.Context(), signed.User.ID, issued.Challenge.ID, delivered.Code)
-	if _, ok := confirmation.(*database.ChallengeInvalidCode); err != nil || !ok {
-		t.Fatalf("consumed code reused: %#v, %v", confirmation, err)
+	_, err = changes.Confirm(t.Context(), signed.User.ID, challenge.ID, delivered.Code)
+	if !errors.Is(err, database.ErrInvalidCode) {
+		t.Fatalf("consumed code reused: %v", err)
 	}
 
 	for _, canceled := range []bool{false, true} {
@@ -159,24 +152,21 @@ func TestEmailDeliveryConfirmationAndFailureCleanup(t *testing.T) {
 			if canceled {
 				mail.cancel = cancel
 			}
-			outcome, err := changes.Start(ctx, signed.User.ID, email, "password123")
-			refused, ok := outcome.(*StartRefused)
-			if err != nil || !ok || refused.Reason != MailFailed {
-				t.Fatalf("failed delivery: %#v, %v", outcome, err)
+			_, err := changes.Start(ctx, signed.User.ID, email, "password123")
+			if !errors.Is(err, ErrMailFailed) {
+				t.Fatalf("failed delivery: %v", err)
 			}
 			mail.failure = nil
 			mail.cancel = nil
 			// Retry immediately, without advancing the clock: failed delivery must
 			// delete the challenge and release its one-minute cooldown.
-			outcome, err = changes.Start(t.Context(), signed.User.ID, email, "password123")
-			retried, ok := outcome.(*StartIssued)
-			if err != nil || !ok {
-				t.Fatalf("failure retained cooldown: %#v, %v", outcome, err)
+			retried, err := changes.Start(t.Context(), signed.User.ID, email, "password123")
+			if err != nil {
+				t.Fatalf("failure retained cooldown: %v", err)
 			}
 			latest := mail.messages[len(mail.messages)-1]
-			confirmation, err := changes.Confirm(t.Context(), signed.User.ID, retried.Challenge.ID, latest.Code)
-			if _, ok := confirmation.(*database.ChallengeChanged); err != nil || !ok {
-				t.Fatalf("retry confirmation: %#v, %v", confirmation, err)
+			if _, err := changes.Confirm(t.Context(), signed.User.ID, retried.ID, latest.Code); err != nil {
+				t.Fatalf("retry confirmation: %v", err)
 			}
 		})
 	}

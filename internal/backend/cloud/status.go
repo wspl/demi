@@ -17,11 +17,11 @@ func Status(ctx context.Context, shard CloudShard) (webapi.CloudStatus, error) {
 		State:  webapi.CloudStateUnallocated,
 		Limits: webapi.CloudVolumes{SystemBytes: tuning.SystemQuota, HomeBytes: tuning.HomeQuota},
 	}
-	device, err := cloudRecords(shard).ManagedDevice(ctx, shard.User())
-	if err != nil || device == nil {
+	device, found, err := cloudRecords(shard).ManagedDevice(ctx, shard.User())
+	if err != nil || !found {
 		return status, err
 	}
-	m, err := loadMachine(ctx, shard, *device)
+	m, err := loadMachine(ctx, shard, device)
 	if err != nil {
 		return status, err
 	}

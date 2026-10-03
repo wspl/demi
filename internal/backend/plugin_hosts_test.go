@@ -54,7 +54,7 @@ func TestPluginHostsKeepShellsAndRefuseHandlesOnOtherHost(t *testing.T) {
 	id := core.CommandID(toolstest.Field(conversationToolResult(t, requests[len(requests)-1], "reader"), "commandId"))
 	db, err := w.harness.ControlDatabase(w.ctx, t)
 	wireMust(t, err)
-	// Rust changes the fixture Host directly while the job lives; the public route forbids it.
+	// Change the conversation's Host in the database while the job lives; the public route forbids it.
 	_, err = db.ExecContext(w.ctx, "UPDATE conversations SET target_path=? WHERE id=?", bob, filesConversation)
 	wireMust(t, err)
 	wireMust(t, w.socket.Send(w.ctx, &framewire.ShellWriteFrame{CommandID: id, Stdin: "wrong\n"}))

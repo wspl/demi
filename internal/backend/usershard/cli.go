@@ -287,12 +287,12 @@ func (s *Shard) cliMachines(
 	ctx context.Context,
 	entry webapi.ProviderID,
 ) ([]webapi.CLIMachine, error) {
-	device, err := s.Control().ManagedDevice(ctx, s.user)
+	device, found, err := s.Control().ManagedDevice(ctx, s.user)
 	if err != nil {
 		return nil, err
 	}
 	result := []webapi.CLIMachine{}
-	if device == nil {
+	if !found {
 		return result, nil
 	}
 	remote := s.devices.DeviceAccess(device.ID)

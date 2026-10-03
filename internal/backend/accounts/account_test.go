@@ -19,13 +19,19 @@ type accountStore struct {
 	createdRole    webapi.Role
 }
 
-func (s *accountStore) AccountByEmail(context.Context, webapi.EmailAddress) (*database.Account, error) {
+func (s *accountStore) AccountByEmail(context.Context, webapi.EmailAddress) (database.Account, bool, error) {
 	s.lookups++
-	return s.account, nil
+	if s.account == nil {
+		return database.Account{}, false, nil
+	}
+	return *s.account, true, nil
 }
 
-func (s *accountStore) Account(context.Context, webapi.UserID) (*database.Account, error) {
-	return s.account, nil
+func (s *accountStore) Account(context.Context, webapi.UserID) (database.Account, bool, error) {
+	if s.account == nil {
+		return database.Account{}, false, nil
+	}
+	return *s.account, true, nil
 }
 
 func (s *accountStore) SetPassword(context.Context, webapi.UserID, database.PasswordHash) error {
@@ -38,21 +44,21 @@ func (s *accountStore) CreateUser(
 	email webapi.EmailAddress,
 	_ database.PasswordHash,
 	role webapi.Role,
-) (*webapi.UserDTO, error) {
+) (webapi.UserDTO, error) {
 	s.createdRole = role
-	return &webapi.UserDTO{ID: "new", Email: email, Role: role}, nil
+	return webapi.UserDTO{ID: "new", Email: email, Role: role}, nil
 }
 
 func (s *accountStore) CreateMaster(
 	context.Context,
 	webapi.EmailAddress,
 	database.PasswordHash,
-) (*webapi.UserDTO, error) {
+) (webapi.UserDTO, error) {
 	if s.account != nil {
-		return nil, nil
+		return webapi.UserDTO{}, database.ErrAlreadySetUp
 	}
 	s.account = &database.Account{User: webapi.UserDTO{ID: "master", Role: webapi.RoleMaster}}
-	return &s.account.User, nil
+	return s.account.User, nil
 }
 
 type testPasswords struct {

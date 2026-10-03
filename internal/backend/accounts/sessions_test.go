@@ -27,25 +27,25 @@ func TestWebSessionLifecycle(t *testing.T) {
 	}
 	// Exactly fifteen days remaining does not renew; less than fifteen does.
 	clock.at = "2026-01-16T00:00:00.000Z"
-	resolved, err := sessions.Resolve(t.Context(), opened.Token)
-	if err != nil || resolved == nil || resolved.User.ID != user.ID || resolved.Renewed ||
+	resolved, found, err := sessions.Resolve(t.Context(), opened.Token)
+	if err != nil || !found || resolved.User.ID != user.ID || resolved.Renewed ||
 		resolved.ExpiresAt != opened.ExpiresAt {
 		t.Fatalf("resolve at renewal boundary: %+v, %v", resolved, err)
 	}
 	clock.at = "2026-01-17T00:00:00.000Z"
-	checked, err := sessions.Check(t.Context(), database.HashToken(opened.Token))
-	if err != nil || checked == nil || checked.Renewed || checked.ExpiresAt != opened.ExpiresAt {
+	checked, ok, err := sessions.Check(t.Context(), database.HashToken(opened.Token))
+	if err != nil || !ok || checked.Renewed || checked.ExpiresAt != opened.ExpiresAt {
 		t.Fatalf("synchronization check renewed: %+v, %v", checked, err)
 	}
-	resolved, err = sessions.Resolve(t.Context(), opened.Token)
-	if err != nil || resolved == nil || !resolved.Renewed || resolved.ExpiresAt != "2026-02-16T00:00:00.000Z" {
+	resolved, found, err = sessions.Resolve(t.Context(), opened.Token)
+	if err != nil || !found || !resolved.Renewed || resolved.ExpiresAt != "2026-02-16T00:00:00.000Z" {
 		t.Fatalf("request renewal: %+v, %v", resolved, err)
 	}
 	if err := sessions.Close(t.Context(), opened.Token); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err = sessions.Resolve(t.Context(), opened.Token)
-	if err != nil || resolved != nil {
+	resolved, found, err = sessions.Resolve(t.Context(), opened.Token)
+	if err != nil || found {
 		t.Fatalf("closed session resolved: %+v, %v", resolved, err)
 	}
 	opened, err = sessions.Open(t.Context(), user.ID)
@@ -53,8 +53,8 @@ func TestWebSessionLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	clock.at = opened.ExpiresAt
-	resolved, err = sessions.Resolve(t.Context(), opened.Token)
-	if err != nil || resolved != nil {
+	resolved, found, err = sessions.Resolve(t.Context(), opened.Token)
+	if err != nil || found {
 		t.Fatalf("expired session resolved: %+v, %v", resolved, err)
 	}
 }

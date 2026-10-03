@@ -30,7 +30,7 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 	source := webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b")
 	committed := webapi.ConversationID("7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a")
 	uncommitted := webapi.ConversationID("5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d")
-	if _, err := control.CreateConversation(ctx, owner, source); err != nil {
+	if _, _, err := control.CreateConversation(ctx, owner, source); err != nil {
 		t.Fatal(err)
 	}
 	var attached []database.AttachedHostRecord
@@ -42,7 +42,7 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 		cwd := "/" + name
 		entry := database.AttachedHostRecord{Device: device.ID, Name: name, CWD: &cwd}
 		attached = append(attached, entry)
-		if _, err := control.ChangeConversation(ctx, source, &database.RecordAttach{Host: entry}); err != nil {
+		if err := control.ChangeConversation(ctx, source, &database.RecordAttach{Host: entry}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -64,7 +64,7 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 		AttachedHosts: attached,
 	}
 	for _, id := range []webapi.ConversationID{committed, uncommitted} {
-		reserved, err := control.ReserveFork(
+		_, err := control.ReserveFork(
 			ctx,
 			database.ForkOperation{
 				ID:       id,
@@ -74,8 +74,8 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 				Metadata: metadata,
 			},
 		)
-		if err != nil || reserved == nil {
-			t.Fatalf("reserve = %v, %v", reserved, err)
+		if err != nil {
+			t.Fatalf("reserve = %v", err)
 		}
 	}
 	tree := database.NewTreeStore(stores.DB(committed), forkBlobs{storetest.NewMemoryBlobs()}, nil)
@@ -101,8 +101,8 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	published, err := control.Conversation(ctx, committed)
-	if err != nil || published == nil {
+	published, found, err := control.Conversation(ctx, committed)
+	if err != nil || !found {
 		t.Fatalf("published = %v, %v", published, err)
 	}
 	if published.Title != metadata.Title || published.Pinned || published.Archived || published.CreatedAt != at {
@@ -132,8 +132,8 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 	if !slices.Equal(listed, []webapi.ConversationID{committed, source}) {
 		t.Fatalf("sidebar = %v", listed)
 	}
-	hidden, err := control.Conversation(ctx, uncommitted)
-	if err != nil || hidden != nil {
+	hidden, ok, err := control.Conversation(ctx, uncommitted)
+	if err != nil || ok {
 		t.Fatalf("uncommitted = %v, %v", hidden, err)
 	}
 	pending, err := control.PendingForks(ctx)

@@ -1,6 +1,8 @@
 package database
 
 import (
+	"errors"
+
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/webapi"
 )
@@ -68,40 +70,18 @@ type RecordDetach struct{ Device webapi.DeviceID }
 
 func (*RecordDetach) recordChange() {}
 
-// Creation describes what creating a conversation ID found.
-//
-//sumtype:decl
-type Creation interface{ creation() }
+// ErrIDUnavailable means another owner or a Fork holds the conversation ID.
+var ErrIDUnavailable = errors.New("conversation id is unavailable")
 
-// ConversationCreated holds the new indexed conversation.
-type ConversationCreated struct{ Record ConversationRecord }
-
-func (*ConversationCreated) creation() {}
-
-// ConversationExisting holds the owner's existing conversation found by a retry.
-type ConversationExisting struct{ Record ConversationRecord }
-
-func (*ConversationExisting) creation() {}
-
-// ConversationUnavailable means another owner or a Fork holds the ID.
-type ConversationUnavailable struct{}
-
-func (*ConversationUnavailable) creation() {}
-
-// ChangeOutcome describes what a record change found.
-type ChangeOutcome uint8
-
-const (
-	// ChangeApplied means the change was applied.
-	ChangeApplied ChangeOutcome = iota
-	// ChangeMissing means no conversation has the ID.
-	ChangeMissing
-	// ChangeArchived means an archived conversation refused a change other than restore.
-	ChangeArchived
-	// ChangeNotAttached means the renamed device is not attached.
-	ChangeNotAttached
-	// ChangeNameTaken means another attached host has the name.
-	ChangeNameTaken
+var (
+	// ErrConversationNotFound means no conversation has the ID.
+	ErrConversationNotFound = errors.New("no such conversation")
+	// ErrArchived means the conversation is archived and takes nothing but its restore.
+	ErrArchived = errors.New("conversation is archived")
+	// ErrNotAttached means the renamed device is not attached.
+	ErrNotAttached = errors.New("the device is not attached")
+	// ErrNameTaken means another attached host has the name.
+	ErrNameTaken = errors.New("another attached host has the name")
 )
 
 // TitleOrigin records where a title came from.

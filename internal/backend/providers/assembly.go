@@ -112,11 +112,11 @@ func (a *Assembly) ForAccount(
 	if active := entry.Active(); active != nil && *active == account {
 		return a.ProviderFor(ctx, entry)
 	}
-	record, err := a.vault.Account(ctx, entry.ID, account)
+	_, found, err := a.vault.Account(ctx, entry.ID, account)
 	if err != nil {
 		return nil, &AssemblyError{Kind: AssemblyStorage, Err: err}
 	}
-	if record == nil {
+	if !found {
 		return nil, nil
 	}
 	return a.build(ctx, entry, &account)
@@ -399,14 +399,14 @@ func (a *Assembly) entryArgs(
 	case *SubscriptionCredential:
 		var binding *AccountBinding
 		if account != nil {
-			record, err := a.vault.Account(ctx, entry.ID, *account)
+			record, found, err := a.vault.Account(ctx, entry.ID, *account)
 			if err != nil {
 				return FamilyArgs{}, &AssemblyError{Kind: AssemblyStorage, Err: err}
 			}
-			if record != nil {
+			if found {
 				binding = &AccountBinding{
 					CredentialID: string(record.ID),
-					Quota:        a.quotas.Store(entry.ID, *record),
+					Quota:        a.quotas.Store(entry.ID, record),
 				}
 			}
 		}

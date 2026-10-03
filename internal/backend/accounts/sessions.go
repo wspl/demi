@@ -14,7 +14,11 @@ import (
 // SessionStore is the control database's session boundary.
 type SessionStore interface {
 	OpenWebSession(context.Context, database.TokenHash, webapi.UserID, database.SessionPolicy) (core.Timestamp, error)
-	ResolveWebSession(context.Context, database.TokenHash, database.SessionPolicy) (*database.ResolvedSession, error)
+	ResolveWebSession(
+		context.Context,
+		database.TokenHash,
+		database.SessionPolicy,
+	) (database.ResolvedSession, bool, error)
 	CloseWebSession(context.Context, database.TokenHash) error
 }
 
@@ -47,12 +51,12 @@ func (s *WebSessions) Open(ctx context.Context, user webapi.UserID) (OpenedSessi
 }
 
 // Resolve finds a live session and renews it when less than 15 days remain.
-func (s *WebSessions) Resolve(ctx context.Context, token string) (*database.ResolvedSession, error) {
+func (s *WebSessions) Resolve(ctx context.Context, token string) (database.ResolvedSession, bool, error) {
 	return s.control.ResolveWebSession(ctx, database.HashToken(token), sessionPolicy())
 }
 
 // Check finds the live session a token hash names without renewing it.
-func (s *WebSessions) Check(ctx context.Context, token database.TokenHash) (*database.ResolvedSession, error) {
+func (s *WebSessions) Check(ctx context.Context, token database.TokenHash) (database.ResolvedSession, bool, error) {
 	policy := sessionPolicy()
 	policy.RenewBelow = 0
 	return s.control.ResolveWebSession(ctx, token, policy)

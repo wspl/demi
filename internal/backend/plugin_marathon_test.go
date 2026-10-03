@@ -18,7 +18,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// filesScripted selects the Rust scenario's in-process provider on the shared page driver.
+// filesScripted runs a files scenario with an in-process scripted provider on the shared page driver.
 func filesScripted(t *testing.T, script *providertest.ScriptedRuntime) filesWork {
 	t.Helper()
 	w := filesWorking(t, "demi-file", func(h *backendtest.Harness) {

@@ -166,12 +166,12 @@ func RouteDeaths(
 			if !ok {
 				return nil
 			}
-			record, err := services.Control.Device(ctx, device)
+			record, found, err := services.Control.Device(ctx, device)
 			if err != nil {
 				slog.ErrorContext(ctx, "the death of a Cloud could not be routed", "device", device, "error", err)
 				continue
 			}
-			if record == nil {
+			if !found {
 				continue
 			}
 			shard, err := shards.Of(ctx, record.User)

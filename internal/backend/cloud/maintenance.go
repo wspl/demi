@@ -173,23 +173,23 @@ func (p *cloudIdle) Check(ctx context.Context) (idlewatch.Activity, error) {
 }
 
 // Reserve holds the machine and all required conversations, or releases everything.
-func (p *cloudIdle) Reserve(ctx context.Context) (idlewatch.Retirement, error) {
+func (p *cloudIdle) Reserve(ctx context.Context) (idlewatch.Retirement, bool, error) {
 	// Hold conversations first. Acquiring then releasing the machine gate on a
 	// failed conversation hold would wake our own Changed subscription forever.
 	uses, err := cloudUses(ctx, p.s)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	held, ok := holdIdle(p.s, uses)
 	if !ok {
-		return nil, nil
+		return nil, false, nil
 	}
 	reserved := p.m.gate.TryReserve()
 	if reserved == nil {
 		releaseHolds(held)
-		return nil, nil
+		return nil, false, nil
 	}
-	return &idleRetirement{policy: p, reserved: reserved, held: held}, nil
+	return &idleRetirement{policy: p, reserved: reserved, held: held}, true, nil
 }
 
 // Changed subscribes before the idle watch tries reservation again.

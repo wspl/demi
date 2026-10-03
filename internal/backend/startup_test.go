@@ -150,8 +150,7 @@ func TestInstanceSecretPersistsWithPrivatePermissions(t *testing.T) {
 		_ = started.Close(context.Background())
 		t.Fatal("corrupt secret accepted")
 	}
-	var secret *backend.SecretError
-	if !errors.As(err, &secret) || secret.Kind != backend.SecretCorrupt {
+	if err == nil || !strings.HasSuffix(err.Error(), " is not 64 hexadecimal digits") {
 		t.Fatalf("corrupt secret: %v", err)
 	}
 }

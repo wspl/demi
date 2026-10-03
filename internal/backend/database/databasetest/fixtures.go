@@ -46,13 +46,14 @@ func Master(ctx context.Context, t testing.TB, control *database.ControlService)
 		t.Fatal(err)
 	}
 	master, err := control.CreateMaster(ctx, email, hash)
+	if errors.Is(err, database.ErrAlreadySetUp) {
+		t.Fatal("fixture master already exists")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	if master == nil {
-		t.Fatal("fixture master already exists")
-	}
-	return *master
+
+	return master
 }
 
 // Execute runs SQL with text parameters behind the control service's back, for

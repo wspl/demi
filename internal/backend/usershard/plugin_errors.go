@@ -18,17 +18,15 @@ func exposeFailure(err error) error {
 	if err == nil {
 		return nil
 	}
-	var offline *expose.DeviceOfflineError
-	var missing *expose.NotFoundError
 	var reason plugin.ExposeRefusal
 	switch {
 	case errors.Is(err, expose.ErrUnavailable):
 		reason = plugin.ExposeRefusalUnavailable
 	case errors.Is(err, expose.ErrDeviceNotFound):
 		reason = plugin.ExposeRefusalDeviceNotFound
-	case errors.As(err, &offline):
+	case errors.Is(err, expose.ErrDeviceOffline):
 		reason = plugin.ExposeRefusalDeviceOffline
-	case errors.As(err, &missing):
+	case errors.Is(err, expose.ErrNotFound):
 		reason = plugin.ExposeRefusalNotFound
 	default:
 		return err
@@ -67,10 +65,7 @@ func callFailure(err error) error {
 func exposeLifetime(seconds uint64) (time.Duration, error) {
 	const maximum = uint64(math.MaxInt64 / int64(time.Second))
 	if seconds > maximum {
-		err := &database.Error{
-			Kind: database.TimeRange,
-			Err:  fmt.Errorf("expose lifetime exceeds %d seconds", maximum),
-		}
+		err := fmt.Errorf("%w: expose lifetime exceeds %d seconds", database.ErrTimeRange, maximum)
 		return 0, &host.PortError{Kind: host.PortFailed, Message: err.Error(), Err: err}
 	}
 	return time.Duration(seconds) * time.Second, nil

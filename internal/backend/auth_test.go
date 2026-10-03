@@ -17,7 +17,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// accountJSON preserves fixture object order and serde-compatible escaping.
+// accountJSON encodes fields in their given order, escaping strings as the wire contract does (no HTML escaping).
 func accountJSON(t *testing.T, fields ...contract.Field) string {
 	t.Helper()
 	data, err := contract.EncodeObject(fields)

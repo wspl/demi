@@ -2,6 +2,7 @@ package blobs
 
 import (
 	"context"
+	"fmt"
 
 	"gocloud.dev/blob"
 	"gocloud.dev/blob/fileblob"
@@ -28,14 +29,14 @@ type Objects interface {
 // is nil. The caller must close the returned bucket at shutdown.
 func Open(ctx context.Context, dataDir string, s3 *S3Config) (*blob.Bucket, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, &Error{Err: err}
+		return nil, fmt.Errorf("the object store failed: %w", err)
 	}
 	if s3 != nil {
 		return s3.Open(ctx)
 	}
 	bucket, err := fileblob.OpenBucket(dataDir, nil)
 	if err != nil {
-		return nil, &Error{Err: err}
+		return nil, fmt.Errorf("the object store failed: %w", err)
 	}
 	return bucket, nil
 }

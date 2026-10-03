@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/wspl/demi/internal/core"
@@ -48,10 +49,14 @@ func (c *ControlService) CreateExpose(
 }
 
 // Expose returns the expose `id`, expired or not.
-func (c *ControlService) Expose(ctx context.Context, id webapi.ExposeID) (*ExposeRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*ExposeRecord, error) {
-		return queryRecord(ctx, tx, "exposes", "SELECT * FROM exposes WHERE id = ?", exposeRow, id)
+func (c *ControlService) Expose(ctx context.Context, id webapi.ExposeID) (ExposeRecord, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ExposeRecord, error) {
+		r, ok, err := queryRecord(ctx, tx, "exposes", "SELECT * FROM exposes WHERE id = ?", exposeRow, id)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // UserExposes returns the exposes of `user`, after deleting the expired ones. A listing
@@ -85,27 +90,27 @@ func (c *ControlService) UserExposes(ctx context.Context, user webapi.UserID) (U
 }
 
 // RenewExpose moves the expiry of the live expose `id` of `user` to `lifetime` from
-// now; none when `user` has no such live expose.
+// now; ErrExposeNotFound when `user` has no such live expose.
 func (c *ControlService) RenewExpose(
 	ctx context.Context,
 	id webapi.ExposeID,
 	user webapi.UserID,
 	lifetime time.Duration,
-) (*ExposeRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (*ExposeRecord, error) {
+) (ExposeRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ExposeRecord, error) {
 		expiry, err := later(now, lifetime)
 		if err != nil {
-			return nil, err
+			return ExposeRecord{}, err
 		}
 		at, err := now.Millisecond()
 		if err != nil {
-			return nil, err
+			return ExposeRecord{}, err
 		}
 		end, err := expiry.Millisecond()
 		if err != nil {
-			return nil, err
+			return ExposeRecord{}, err
 		}
-		return queryRecord(
+		r, found, err := queryRecord(
 			ctx,
 			tx,
 			"exposes",
@@ -116,6 +121,13 @@ func (c *ControlService) RenewExpose(
 			user,
 			at,
 		)
+		if err != nil {
+			return ExposeRecord{}, err
+		}
+		if !found {
+			return ExposeRecord{}, ErrExposeNotFound
+		}
+		return r, nil
 	})
 }
 
@@ -184,3 +196,6 @@ func exposeRow(r *storedRow) ExposeRecord {
 		ExpiresAt: r.instant("expires_at"),
 	}
 }
+
+// ErrExposeNotFound means the user has no live expose of the ID.
+var ErrExposeNotFound = errors.New("no live expose of the user has the id")

@@ -18,7 +18,7 @@ normalized spelling, not the canonical zone they refer to.
 
 `go-password.tsv` contains a password, raw salt and PHC written by Go's
 `hashPassword`. The Rust fixture writer verifies it with `Argon2::default()`;
-`TestGoPasswordFixtureVerifiedByRust` checks that Go still writes those bytes.
+`TestPasswordWriterMatchesVerifiedFixture` checks that Go still writes those bytes.
 `TestRustPasswordFixtures` verifies the Rust hashes in Go and checks that Go
 writes identical PHC bytes for their salts. All passwords here are public
 fixture text, not credentials.

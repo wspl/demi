@@ -110,7 +110,7 @@ func TestUserChoicesCommandsAndInstances(t *testing.T) {
 	if _, code, err := runCommand(t.Context(), set, "demi", "host", "list"); err != nil || code != 9 {
 		t.Fatalf("product: %d %v", code, err)
 	}
-	account, err := shard.control.Account(t.Context(), shard.user)
+	account, _, err := shard.control.Account(t.Context(), shard.user)
 	if err != nil {
 		t.Fatal(err)
 	}
