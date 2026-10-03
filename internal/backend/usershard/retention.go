@@ -81,11 +81,11 @@ func (s *Shard) removeOutputs(ctx context.Context, id webapi.ConversationID) err
 
 func (s *Shard) retirement(ctx context.Context, id webapi.ConversationID) (transcript.Retirement, error) {
 	now := s.Clock().Now()
-	live, err := s.services.Control.LiveAt(ctx, id)
+	live, found, err := s.services.Control.LiveAt(ctx, id)
 	if err != nil {
 		return transcript.Retirement{}, err
 	}
-	if live == nil {
+	if !found {
 		return transcript.Retirement{}, fmt.Errorf("the conversation is gone")
 	}
 	at, err := now.Time()

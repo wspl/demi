@@ -31,11 +31,11 @@ func (s *Shard) prepareFrame(
 	id webapi.ConversationID,
 	frame framewire.ClientFrame,
 ) error {
-	record, err := s.Control().Conversation(ctx, id)
+	record, found, err := s.Control().Conversation(ctx, id)
 	if err != nil {
 		return err
 	}
-	if record == nil || record.Owner != s.user {
+	if !found || record.Owner != s.user {
 		return &frameRefusalError{
 			webapi.ErrorCodeConversationNotFound,
 			"No such conversation",
@@ -49,9 +49,9 @@ func (s *Shard) prepareFrame(
 	}
 	switch frame := frame.(type) {
 	case *framewire.OpenFrame:
-		return s.prepareOpen(ctx, *record)
+		return s.prepareOpen(ctx, record)
 	case *framewire.SendFrame:
-		return s.prepareSend(ctx, *record, frame)
+		return s.prepareSend(ctx, record, frame)
 	case *framewire.SteerFrame, *framewire.EditAndSendFrame:
 		if _, err := s.Control().CountUserMessage(ctx, id); err != nil {
 			return err

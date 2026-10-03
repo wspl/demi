@@ -33,16 +33,17 @@ func TestCommandOutputStoredWithRetentionRecordAndFailureReason(t *testing.T) {
 	}
 	read := func(command core.CommandID) *database.CommandOutput {
 		t.Helper()
-		var row *database.CommandOutput
+		var row database.CommandOutput
+		var found bool
 		exists, err := s.ConversationDB(record.ID).Read(t.Context(), func(ctx context.Context, tx *sql.Tx) error {
 			var err error
-			row, err = database.ReadCommandOutput(ctx, tx, command)
+			row, found, err = database.ReadCommandOutput(ctx, tx, command)
 			return err
 		})
-		if err != nil || !exists || row == nil {
+		if err != nil || !exists || !found {
 			t.Fatalf("output row: %v, exists=%t, %v", row, exists, err)
 		}
-		return row
+		return &row
 	}
 	row := read("1")
 	stored, ok := row.Output.(*database.OutputStored)
@@ -89,8 +90,7 @@ func TestUnavailableUploadsAndRemoteReferencesGrantNothing(t *testing.T) {
 		record.ID,
 		[]RemoteFile{{Device: string(device.ID), Path: "/notes.txt"}},
 	)
-	var refused *RemoteFileRefusal
-	if !errors.As(err, &refused) || refused.Kind != RemoteFileOffline {
+	if err == nil || err.Error() != "Referenced device offline is offline" {
 		t.Fatal(err)
 	}
 	attached, err := s.control.AttachedHosts(t.Context(), record.ID)
@@ -178,8 +178,7 @@ func TestRemoteReferenceReadsExactPathWithoutShellInjection(t *testing.T) {
 		}
 	}
 	_, err := remoteReference(device, "/nul\x00file")
-	var refused *RemoteFileRefusal
-	if !errors.As(err, &refused) || refused.Kind != RemoteFileUnquotable {
+	if !errors.Is(err, ErrPathUnquotable) {
 		t.Fatalf("NUL path: %v", err)
 	}
 }

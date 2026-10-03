@@ -15,7 +15,7 @@ import (
 	"github.com/wspl/demi/internal/plugin"
 )
 
-// registryProbe gives the registry scenario its Rust probe's declaration.
+// registryProbe declares the registry scenario's probe plugin.
 func registryProbe(id string, commands ...plugin.Commands) *backendtest.CommandProbe {
 	return &backendtest.CommandProbe{
 		Declaration: plugin.Manifest{ID: plugin.ID(id), Name: id, Description: "A probe.", Commands: commands},

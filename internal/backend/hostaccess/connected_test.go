@@ -164,7 +164,7 @@ func TestConnectedUploadRevocationFailsPipeAndDrains(t *testing.T) {
 	device := s.paired(t, "laptop")
 	record := s.target(t, s.conversation(t), device, "/work")
 	r := connectHost(t, s, device)
-	result := startHostOperation(t, func(ctx context.Context) (Upload, error) {
+	result := startHostOperation(t, func(ctx context.Context) (*OpenUpload, error) {
 		return UploadFile(ctx, s, record.ID, "/file", true)
 	})
 	r.stat(t, 5)
@@ -176,7 +176,7 @@ func TestConnectedUploadRevocationFailsPipeAndDrains(t *testing.T) {
 	if opened.err != nil {
 		t.Fatal(opened.err)
 	}
-	upload := opened.value.(*OpenUpload)
+	upload := opened.value
 	defer upload.Lease.Release()
 	pipe, ok := s.pipes.Pipe(write.Input.ID)
 	if !ok {
@@ -190,7 +190,7 @@ func TestConnectedUploadRevocationFailsPipeAndDrains(t *testing.T) {
 	if err := upload.Written(t.Context()); err == nil {
 		t.Fatal("revoked upload reported success")
 	}
-	if pipe.Failure() == nil || upload.Lease.Context().Err() == nil {
+	if pipe.Err() == nil || upload.Lease.Context().Err() == nil {
 		t.Fatal("revocation did not fail pipe and edge lease")
 	}
 	if err := upload.Writer.Write(t.Context(), []byte("late")); err == nil {

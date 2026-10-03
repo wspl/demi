@@ -98,7 +98,7 @@ type ShellEnvironment struct {
 	shells                   map[core.ShellID]*shellState
 	records                  map[core.CommandID]*host.CommandRecord
 	running                  map[core.CommandID]*runningCommand
-	defaultShell, spareShell *core.ShellID
+	defaultShell, spareShell core.ShellID // Empty when there is none.
 }
 
 // NewShellEnvironment constructs a node's environment.
@@ -263,23 +263,23 @@ func (e *ShellEnvironment) ReleaseCommand(ctx context.Context, id core.CommandID
 func (e *ShellEnvironment) DisposeShell(ctx context.Context, id core.ShellID) bool {
 	e.mu.Lock()
 	shell := e.shells[id]
-	var foreground *core.CommandID
-	if shell != nil && shell.foreground != nil {
-		foreground = new(*shell.foreground)
+	var foreground core.CommandID
+	if shell != nil {
+		foreground = shell.foreground
 	}
 	e.mu.Unlock()
 	if shell == nil {
 		return false
 	}
-	if foreground != nil {
-		if err := e.Abort(ctx, *foreground); err != nil {
-			slog.Debug("could not abort the shell's command: "+err.Error(), "command", *foreground)
+	if foreground != "" {
+		if err := e.Abort(ctx, foreground); err != nil {
+			slog.Debug("could not abort the shell's command: "+err.Error(), "command", foreground)
 		}
 	}
 	e.mu.Lock()
 	delete(e.shells, id)
-	if e.defaultShell != nil && *e.defaultShell == id {
-		e.defaultShell = nil
+	if e.defaultShell == id {
+		e.defaultShell = ""
 	}
 	e.mu.Unlock()
 	return true

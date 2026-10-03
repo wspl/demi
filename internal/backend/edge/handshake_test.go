@@ -38,11 +38,11 @@ func TestBadUserStreamHandshakeNeverReachesAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	user, err := control.CreateMaster(t.Context(), "owner@example.test", hash)
-	if err != nil || user == nil {
+	if err != nil {
 		t.Fatal(user, err)
 	}
 	id := webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a00")
-	if _, err := control.CreateConversation(t.Context(), user.ID, id); err != nil {
+	if _, _, err := control.CreateConversation(t.Context(), user.ID, id); err != nil {
 		t.Fatal(err)
 	}
 	native, err := runners.NewNativeCatalog(
@@ -94,7 +94,7 @@ func TestBadUserStreamHandshakeNeverReachesAdmission(t *testing.T) {
 			request := handshakeRequest()
 			request.SetPathValue("id", string(id))
 			request.SetPathValue("name", "fixture")
-			request = request.WithContext(context.WithValue(t.Context(), userKey{}, *user))
+			request = request.WithContext(context.WithValue(t.Context(), userKey{}, user))
 			test.change(request)
 			answer := httptest.NewRecorder()
 			serveEndpoint(edge.userStream)(answer, request)

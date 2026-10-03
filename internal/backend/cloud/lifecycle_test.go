@@ -524,8 +524,6 @@ func TestCloseLeavesHeldMachineForManagerReconcile(t *testing.T) {
 		_, err := Access(t.Context(), f)
 		requireCloudError(t, err, Closed)
 		a.Release()
-		// Rust leaves the capacity with the still-running machine until its owner
-		// goes away. Explicit Go shutdown must relinquish this process-local permit.
 	})
 }
 
@@ -620,8 +618,7 @@ func TestStartupReconcilesAndRecoversWithoutBooting(t *testing.T) {
 		}
 		// The public entry point reaches that same control boundary and preserves its error.
 		err = RecoverResets(t.Context(), f.control, f.services)
-		var recovery *RecoveryError
-		if !errors.As(err, &recovery) || recovery.Kind != RecoveryStorage {
+		if !errors.Is(err, database.ErrClosed) {
 			t.Fatalf("closed storage: %v", err)
 		}
 	})

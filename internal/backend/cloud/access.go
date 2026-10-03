@@ -28,12 +28,12 @@ func (a *MachineAccess) Release() { a.admission.Release() }
 // user's pages then show among the devices and as the Cloud.
 func Device(ctx context.Context, shard CloudShard) (database.DeviceRecord, error) {
 	control := cloudRecords(shard)
-	device, err := control.ManagedDevice(ctx, shard.User())
+	device, found, err := control.ManagedDevice(ctx, shard.User())
 	if err != nil {
 		return database.DeviceRecord{}, err
 	}
-	if device != nil {
-		return *device, nil
+	if found {
+		return device, nil
 	}
 	created, err := control.ManagedDeviceOrCreate(ctx, shard.User())
 	if err != nil {
@@ -61,7 +61,7 @@ func Access(ctx context.Context, shard CloudShard) (*MachineAccess, error) {
 	home, ok := shard.Devices().Home(device.ID)
 	if !ok {
 		admission.Release()
-		//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+		//nolint:staticcheck // Product text, shown to the user as it is.
 		return nil, failed(errors.New("The Cloud did not report its home directory"))
 	}
 	return &MachineAccess{

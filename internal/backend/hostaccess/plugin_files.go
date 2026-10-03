@@ -74,9 +74,9 @@ func readFilesError(err error) error {
 	var failure *host.Error
 	if errors.As(err, &refusal) && refusal == Stopped ||
 		errors.As(err, &failure) && (failure.Kind == host.Offline || failure.Kind == host.Unavailable) {
-		return &ReadFilesError{Kind: ReadFilesNotRunning}
+		return ErrNotRunning
 	}
-	return &ReadFilesError{Kind: ReadFilesAccess, Cause: err}
+	return err
 }
 
 // look reads one plugin path, distinguishing path failures from transport failure.
@@ -166,7 +166,7 @@ func installDirectories(
 		revision.WriteByte('\n')
 	}
 	installs := shard.PluginInstalls()
-	wanted := installedDirectories{link: link.Downgrade(), revision: revision.String()}
+	wanted := installedDirectories{link: link.Weak(), revision: revision.String()}
 	installs.mu.Lock()
 	previous := installs.synced[device]
 	ready := previous.revision == wanted.revision && previous.link.Is(link)

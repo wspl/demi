@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -25,12 +26,12 @@ type cloudUse struct {
 // cloudUses derives the strongest Cloud role of every unarchived conversation.
 func cloudUses(ctx context.Context, s CloudShard) ([]cloudUse, error) {
 	control := cloudRecords(s)
-	device, err := control.ManagedDevice(ctx, s.User())
+	device, found, err := control.ManagedDevice(ctx, s.User())
 	if err != nil {
 		return nil, err
 	}
 	var id *webapi.DeviceID
-	if device != nil {
+	if found {
 		id = &device.ID
 	}
 	conversations, err := control.CloudUses(ctx, s.User(), id)
@@ -98,13 +99,13 @@ func holdReset(ctx context.Context, s CloudShard, uses []cloudUse, timeout time.
 			continue
 		}
 		hold, err := s.HoldForReset(ctx, use.id, use.role == targetRole, timeout)
-		if err != nil || hold == nil {
+		if err != nil {
 			releaseHolds(held)
-			if err != nil {
-				return nil, failed(err)
+			if errors.Is(err, ErrNotLetGo) {
+				//nolint:staticcheck // Product text, shown to the user as it is.
+				return nil, failed(fmt.Errorf("The conversation %s did not stop for the reset", use.id))
 			}
-			//nolint:staticcheck // Preserve Rust user-facing text verbatim.
-			return nil, failed(fmt.Errorf("The conversation %s did not stop for the reset", use.id))
+			return nil, failed(err)
 		}
 		held = append(held, hold)
 	}

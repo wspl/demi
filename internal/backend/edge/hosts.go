@@ -49,11 +49,11 @@ func (e *Edge) changeHost(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		device, err := e.state.Services.Control.Device(r.Context(), request.DeviceID)
+		device, found, err := e.state.Services.Control.Device(r.Context(), request.DeviceID)
 		if err != nil {
 			return err
 		}
-		if device == nil || device.User != caller(r).ID {
+		if !found || device.User != caller(r).ID {
 			return apiFailure(404, "device_not_found", "No such device")
 		}
 		change = &database.RecordAttach{Host: database.AttachedHostRecord{Device: device.ID, Name: device.Name}}

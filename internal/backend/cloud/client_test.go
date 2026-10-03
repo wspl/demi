@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -152,9 +153,7 @@ func TestClientFailureKeepsConnectionUsable(t *testing.T) {
 		peer := newPeer(t, <-connections)
 		request := peer.request()
 		peer.write(&machinewire.ErrorResponse{ID: request.ID, Message: "no such machine"})
-		var failure *ManagerError
-		if err := (<-failing).err; !errors.As(err, &failure) || failure.Kind != ManagerFailed ||
-			err.Error() != "no such machine" {
+		if err := (<-failing).err; err == nil || err.Error() != "no such machine" {
 			t.Fatalf("failure: %v", err)
 		}
 		if _, err := peer.conn.Write(
@@ -170,7 +169,11 @@ func TestClientFailureKeepsConnectionUsable(t *testing.T) {
 		}
 		odd := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
 		peer.ok(peer.request().ID, "7")
-		if err := (<-odd).err; !errors.As(err, &failure) || failure.Kind != ManagerResult {
+		if err := (<-odd).err; err == nil ||
+			!strings.HasPrefix(
+				err.Error(),
+				"the machine manager answered current_base_version with an unexpected result: ",
+			) {
 			t.Fatalf("wrong result: %v", err)
 		}
 	})
@@ -230,7 +233,12 @@ func TestClientDeathAndDisconnect(t *testing.T) {
 		if err := c.Close(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Call(t.Context(), c, machinewire.CurrentBaseVersionParams{}); !errors.As(err, new(*ManagerError)) {
+		if _, err := Call(
+			t.Context(),
+			c,
+			machinewire.CurrentBaseVersionParams{},
+		); err == nil ||
+			!strings.HasPrefix(err.Error(), "Machine manager unavailable during current_base_version: ") {
 			t.Fatalf("call after close: %v", err)
 		}
 	})
@@ -248,22 +256,20 @@ func TestClientDropFailsPendingAndReconnects(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, result := range []managerResult[machinewire.BaseVersion]{<-first, <-second} {
-			var unavailable *ManagerError
-			if !errors.As(result.err, &unavailable) || unavailable.Kind != ManagerUnavailable ||
-				unavailable.Operation != "current_base_version" {
+			if result.err == nil ||
+				!strings.HasPrefix(result.err.Error(), "Machine manager unavailable during current_base_version: ") {
 				t.Fatalf("drop: %v", result.err)
 			}
 		}
 		// The next dial can fail; neither an old call nor this refusal is replayed.
 		dial := c.dial
 		c.dial = func(context.Context, string, string) (net.Conn, error) { return nil, io.ErrClosedPipe }
-		var unavailable *ManagerError
 		if _, err := Call(
 			t.Context(),
 			c,
 			machinewire.CurrentBaseVersionParams{},
-		); !errors.Is(err, io.ErrClosedPipe) || !errors.As(err, &unavailable) ||
-			unavailable.Kind != ManagerUnavailable {
+		); !errors.Is(err, io.ErrClosedPipe) ||
+			!strings.HasPrefix(err.Error(), "Machine manager unavailable during current_base_version: ") {
 			t.Fatalf("dial failure: %v", err)
 		}
 		c.dial = dial

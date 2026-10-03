@@ -67,11 +67,11 @@ func (e *Edge) syncChannel(w http.ResponseWriter, r *http.Request) error {
 		return unauthenticated()
 	}
 	token := database.HashToken(cookie.Value)
-	session, err := e.state.Services.Sessions.Check(r.Context(), token)
+	session, found, err := e.state.Services.Sessions.Check(r.Context(), token)
 	if err != nil {
 		return err
 	}
-	if session == nil {
+	if !found {
 		return unauthenticated()
 	}
 	socket, err := pageUpgrade(w, r, "The synchronization channel is a WebSocket")

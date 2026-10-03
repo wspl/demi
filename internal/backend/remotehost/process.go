@@ -100,7 +100,7 @@ func (p *runnerProcess) Next(ctx context.Context) (host.ProcessOutput, error) {
 
 // WriteStdin sends bytes to the runner process input.
 func (p *runnerProcess) WriteStdin(ctx context.Context, data []byte) error {
-	if p.link == nil || p.state.ended() != nil {
+	if p.link == nil || p.state.hasEnded() {
 		return nil
 	}
 	return sendStdin(
@@ -113,7 +113,7 @@ func (p *runnerProcess) WriteStdin(ctx context.Context, data []byte) error {
 
 // CloseStdin ends the runner process input.
 func (p *runnerProcess) CloseStdin(ctx context.Context) error {
-	if p.link == nil || p.state.ended() != nil {
+	if p.link == nil || p.state.hasEnded() {
 		return nil
 	}
 	return p.link.send(ctx, &runnerwire.SpawnStdinEnd{SpawnID: p.id})
@@ -121,7 +121,7 @@ func (p *runnerProcess) CloseStdin(ctx context.Context) error {
 
 // Kill signals the runner process.
 func (p *runnerProcess) Kill(ctx context.Context, signal host.Signal) error {
-	if p.link == nil || p.state.ended() != nil {
+	if p.link == nil || p.state.hasEnded() {
 		return nil
 	}
 	return p.link.send(ctx, &runnerwire.SpawnKill{SpawnID: p.id, Signal: new(runnerwire.Signal(signal))})

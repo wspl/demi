@@ -150,27 +150,22 @@ func (v *Vault) OwnerFor(ctx context.Context, user webapi.UserID) (webapi.UserID
 		return user, nil
 	}
 	v.mu.Lock()
-	master := v.master
+	cached := v.master
 	v.mu.Unlock()
-	if master != nil {
-		return *master, nil
+	if cached != nil {
+		return *cached, nil
 	}
-	master, err := v.control.Master(ctx)
+	master, found, err := v.control.Master(ctx)
 	if err != nil {
 		return "", err
 	}
-	if master == nil {
-		return "", &database.Error{
-			Kind:   database.Corrupt,
-			Table:  "users",
-			Column: "role",
-			Reason: "a shared instance has no master account",
-		}
+	if !found {
+		return "", database.CorruptValue("users", "role", errors.New("a shared instance has no master account"))
 	}
 	v.mu.Lock()
-	v.master = master
+	v.master = &master
 	v.mu.Unlock()
-	return *master, nil
+	return master, nil
 }
 
 // MarkChanged marks providers changed for every user who infers with owner entries.
@@ -188,12 +183,12 @@ func (v *Vault) MarkEntryChanged(ctx context.Context, id webapi.ProviderID) {
 		v.sync.MarkEveryone(pagesync.Part{Kind: pagesync.Providers})
 		return
 	}
-	row, err := v.control.Provider(ctx, id)
+	row, found, err := v.control.Provider(ctx, id)
 	if err != nil {
 		slog.Warn("a change of an entry was not marked on its owner's pages", "provider", id, "error", err)
 		return
 	}
-	if row != nil {
+	if found {
 		v.sync.Mark(row.Owner, pagesync.Part{Kind: pagesync.Providers})
 	}
 }
@@ -237,11 +232,11 @@ func (v *Vault) Entries(ctx context.Context, owner webapi.UserID) ([]ProviderEnt
 
 // Entry reads and decodes an entry, or returns nil.
 func (v *Vault) Entry(ctx context.Context, id webapi.ProviderID) (*ProviderEntry, error) {
-	row, err := v.control.Provider(ctx, id)
-	if err != nil || row == nil {
+	row, found, err := v.control.Provider(ctx, id)
+	if err != nil || !found {
 		return nil, err
 	}
-	e, err := v.decode(*row)
+	e, err := v.decode(row)
 	if err != nil {
 		return nil, err
 	}
@@ -284,31 +279,32 @@ func (v *Vault) CreateAPIKey(
 		return ProviderEntry{}, err
 	}
 	v.MarkChanged(row.Owner)
-	return v.decode(*row)
+	return v.decode(row)
 }
 
-// CreateSubscription publishes the entry and staged accounts atomically; nil means it already exists.
+// CreateSubscription publishes the entry and staged accounts atomically;
+// database.ErrSubscriptionExists means it already exists.
 func (v *Vault) CreateSubscription(
 	ctx context.Context,
 	owner webapi.UserID,
 	family, label string,
 	staged *provider.MemoryCredentialPool,
-) (*ProviderEntry, error) {
+) (ProviderEntry, error) {
 	randomID, err := uuid.NewRandom()
 	if err != nil {
-		return nil, fmt.Errorf("create provider identity: %w", err)
+		return ProviderEntry{}, fmt.Errorf("create provider identity: %w", err)
 	}
 	id, err := webapi.ParseProviderID(randomID.String())
 	if err != nil {
-		return nil, err
+		return ProviderEntry{}, err
 	}
 	accounts, err := v.sealStagedAccounts(id, staged)
 	if err != nil {
-		return nil, err
+		return ProviderEntry{}, err
 	}
 	selected, ok, err := staged.Active(ctx)
 	if err != nil {
-		return nil, err
+		return ProviderEntry{}, err
 	}
 	var active *webapi.CredentialID
 	for i := range accounts {
@@ -333,43 +329,35 @@ func (v *Vault) CreateSubscription(
 		},
 		accounts,
 	)
-	if err != nil || row == nil {
-		return nil, err
+	if err != nil {
+		return ProviderEntry{}, err
 	}
 	v.MarkChanged(row.Owner)
-	e, err := v.decode(*row)
-	if err != nil {
-		return nil, err
-	}
-	return &e, nil
+	return v.decode(row)
 }
 
-// Update replaces label or configuration; nil means the entry no longer exists.
+// Update replaces label or configuration; database.ErrProviderNotFound means the entry no longer exists.
 func (v *Vault) Update(
 	ctx context.Context,
 	id webapi.ProviderID,
 	label *string,
 	config *APIKeyConfig,
-) (*ProviderEntry, error) {
+) (ProviderEntry, error) {
 	var sealed *[]byte
 	if config != nil {
 		b, err := v.sealConfig(id, *config)
 		if err != nil {
-			return nil, err
+			return ProviderEntry{}, err
 		}
 		sealed = &b
 	}
 	ctx = context.WithoutCancel(ctx)
 	row, err := v.control.UpdateProvider(ctx, id, label, sealed)
-	if err != nil || row == nil {
-		return nil, err
+	if err != nil {
+		return ProviderEntry{}, err
 	}
 	v.MarkChanged(row.Owner)
-	e, err := v.decode(*row)
-	if err != nil {
-		return nil, err
-	}
-	return &e, nil
+	return v.decode(row)
 }
 
 // Delete deletes the entry and its accounts.
@@ -397,7 +385,7 @@ func (v *Vault) Account(
 	ctx context.Context,
 	id webapi.ProviderID,
 	account webapi.CredentialID,
-) (*database.CredentialRow, error) {
+) (database.CredentialRow, bool, error) {
 	return v.control.Credential(ctx, id, account)
 }
 
@@ -448,12 +436,7 @@ func (v *Vault) decode(row database.ProviderRow) (ProviderEntry, error) {
 }
 
 func corruptConfig(reason string) error {
-	return &database.Error{
-		Kind:   database.Corrupt,
-		Table:  "providers",
-		Column: "config",
-		Reason: reason,
-	}
+	return database.CorruptValue("providers", "config", errors.New(reason))
 }
 
 // configFault only discloses field names declared by the vault contract. Unknown
@@ -491,12 +474,11 @@ func (v *Vault) sealStagedAccounts(
 	for _, a := range staged.Entries() {
 		account, err := webapi.ParseCredentialID(a.Meta.ID)
 		if err != nil {
-			return nil, &database.Error{
-				Kind:   database.Corrupt,
-				Table:  "provider_credentials",
-				Column: "id",
-				Reason: "a login staged an account whose id is invalid",
-			}
+			return nil, database.CorruptValue(
+				"provider_credentials",
+				"id",
+				errors.New("a login staged an account whose id is invalid"),
+			)
 		}
 		sealed, err := v.SealSecret(id, account, a.Secret)
 		if err != nil {

@@ -20,11 +20,11 @@ func (s *Shard) applyChange(
 	id webapi.ConversationID,
 	change database.ConversationChange,
 ) error {
-	record, err := s.services.Control.Conversation(ctx, id)
+	record, found, err := s.services.Control.Conversation(ctx, id)
 	if err != nil {
 		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeStorage, Cause: err}
 	}
-	if record == nil || record.Owner != s.user {
+	if !found || record.Owner != s.user {
 		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeNotFound}
 	}
 	var field database.RecordChange
@@ -39,7 +39,7 @@ func (s *Shard) applyChange(
 		if reflect.DeepEqual(record.Target, target.Target) {
 			return nil
 		}
-		if err := hostaccess.CheckDestination(ctx, s, *record, target.Target); err != nil {
+		if err := hostaccess.CheckDestination(ctx, s, record, target.Target); err != nil {
 			return err
 		}
 	}
@@ -55,7 +55,7 @@ func (s *Shard) applyChange(
 			return err
 		}
 		defer admitted.Release()
-		return s.commitRecordField(ctx, *record, field)
+		return s.commitRecordField(ctx, record, field)
 	}
 	reserved, err := s.reserveConversationChange(id)
 	if err != nil {
@@ -67,7 +67,7 @@ func (s *Shard) applyChange(
 	}
 	defer hold.Release()
 	ctx = context.WithoutCancel(ctx)
-	return s.commitReservedChange(ctx, *record, change)
+	return s.commitReservedChange(ctx, record, change)
 }
 
 func (s *Shard) changeSettings(
@@ -75,11 +75,11 @@ func (s *Shard) changeSettings(
 	id webapi.ConversationID,
 	change database.SettingsChange,
 ) error {
-	record, err := s.services.Control.Conversation(ctx, id)
+	record, found, err := s.services.Control.Conversation(ctx, id)
 	if err != nil {
 		return err
 	}
-	if record == nil {
+	if !found {
 		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeNotFound}
 	}
 	if record.Archived {
@@ -96,9 +96,8 @@ func (s *Shard) changeSettings(
 			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeProviderNotFound}
 		}
 		return &hostaccess.ChangeRefusal{
-			Kind:    hostaccess.ChangeRuntime,
-			Message: err.Error(),
-			Cause:   err,
+			Kind:  hostaccess.ChangeRuntime,
+			Cause: err,
 		}
 	}
 	ctx = context.WithoutCancel(ctx)
@@ -150,9 +149,8 @@ func (s *Shard) settingsSelection(
 		selection.Thinking, err = listed.ThinkingFor(effort)
 		if err != nil {
 			return selection, &hostaccess.ChangeRefusal{
-				Kind:    hostaccess.ChangeSettingUnavailable,
-				Message: err.Error(),
-				Cause:   err,
+				Kind:  hostaccess.ChangeSettingUnavailable,
+				Cause: err,
 			}
 		}
 	}
@@ -160,9 +158,8 @@ func (s *Shard) settingsSelection(
 		selection.ServiceTierID, err = listed.TierFor(tier)
 		if err != nil {
 			return selection, &hostaccess.ChangeRefusal{
-				Kind:    hostaccess.ChangeSettingUnavailable,
-				Message: err.Error(),
-				Cause:   err,
+				Kind:  hostaccess.ChangeSettingUnavailable,
+				Cause: err,
 			}
 		}
 	}
@@ -209,8 +206,8 @@ func (s *Shard) applyPatch(
 	id webapi.ConversationID,
 	patch webapi.ConversationPatch,
 ) (*webapi.ConversationUpdate, error) {
-	record, err := s.services.Control.Conversation(ctx, id)
-	if err != nil || record == nil {
+	record, found, err := s.services.Control.Conversation(ctx, id)
+	if err != nil || !found {
 		return nil, err
 	}
 	if record.Owner != s.user {
@@ -242,11 +239,11 @@ func (s *Shard) applyPatch(
 			)
 		}
 	}
-	record, err = s.services.Control.Conversation(ctx, id)
-	if err != nil || record == nil {
+	record, found, err = s.services.Control.Conversation(ctx, id)
+	if err != nil || !found {
 		return nil, err
 	}
-	summary, err := s.ConversationSummary(ctx, *record)
+	summary, err := s.ConversationSummary(ctx, record)
 	if err != nil {
 		return nil, err
 	}
@@ -291,8 +288,8 @@ func (s *Shard) commitRecordField(
 		if err != nil {
 			return err
 		}
-		device := database.ExecutionDeviceID(target)
-		if device != nil && *device == attach.Host.Device {
+		device, ok := database.ExecutionDeviceID(target)
+		if ok && device == attach.Host.Device {
 			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeHostIsMain}
 		}
 	}

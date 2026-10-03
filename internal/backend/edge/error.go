@@ -208,22 +208,16 @@ func contentError(err error) *apiError {
 	if errors.Is(err, runners.TextNotText) {
 		return apiFailure(415, "not_text", err.Error())
 	}
-	var draft *database.DraftRefusal
-	if errors.As(err, &draft) {
-		switch draft.Reason {
-		case database.DraftArchived:
-			return apiFailure(409, "conversation_archived", "The conversation is archived")
-		case database.DraftUploadNotFound:
-			return apiFailure(404, "upload_not_found", "No upload "+string(draft.Upload))
-		case database.DraftTooLarge:
-			return apiFailure(
-				413,
-				"too_large",
-				fmt.Sprintf("The draft is over its %d-byte limit", webapi.DraftBytesMax),
-			)
-		case database.DraftChanged:
-			return apiFailure(409, "draft_changed", "The draft's replaced version is not that one any more")
-		}
+	var missing *database.UploadNotFoundError
+	switch {
+	case errors.Is(err, database.ErrArchived):
+		return apiFailure(409, "conversation_archived", "The conversation is archived")
+	case errors.As(err, &missing):
+		return apiFailure(404, "upload_not_found", "No upload "+string(missing.Upload))
+	case errors.Is(err, database.ErrDraftTooLarge):
+		return apiFailure(413, "too_large", fmt.Sprintf("The draft is over its %d-byte limit", webapi.DraftBytesMax))
+	case errors.Is(err, database.ErrDraftChanged):
+		return apiFailure(409, "draft_changed", "The draft's replaced version is not that one any more")
 	}
 	return pluginError(err)
 }

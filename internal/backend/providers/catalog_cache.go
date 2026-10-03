@@ -27,7 +27,7 @@ type ModelCatalogCache struct {
 	workers sync.WaitGroup
 }
 type catalogStore interface {
-	CatalogRecord(context.Context, webapi.ProviderID) (*database.CatalogRecord, error)
+	CatalogRecord(context.Context, webapi.ProviderID) (database.CatalogRecord, bool, error)
 	PutCatalogRecord(context.Context, webapi.ProviderID, database.CatalogRecord) error
 	DeleteCatalogRecord(context.Context, webapi.ProviderID) error
 }
@@ -285,16 +285,18 @@ func (c *ModelCatalogCache) loadEntry(
 	key string,
 	entry *catalogEntry,
 ) error {
-	record, err := c.control.CatalogRecord(ctx, id)
+	record, found, err := c.control.CatalogRecord(ctx, id)
 	if err != nil {
 		return err
 	}
-	if record != nil && record.Key != key {
-		record = nil
+	if found && record.Key != key {
+		found = false
 	}
 	c.mu.Lock()
 	if !entry.loaded {
-		entry.record = record
+		if found {
+			entry.record = &record
+		}
 		entry.loaded = true
 	}
 	c.mu.Unlock()

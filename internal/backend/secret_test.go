@@ -3,7 +3,6 @@ package backend
 import (
 	"bytes"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,8 +47,9 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Independent HMAC-SHA256 extract/expand vectors, with a zero salt and
-	// the Rust labels (one block, suffixed with byte 1).
+	// Independent HMAC-SHA256 extract/expand vectors, with a zero salt and the
+	// labels "demi email-change code" and "demi provider vault" (one block,
+	// suffixed with byte 1).
 	if hex.EncodeToString(keys.EmailCodes[:]) != "d02e61f8c078484c43cdfbf10bb81f1742a335a7871526b189ce947e202103ca" {
 		t.Fatal("email key differs from HKDF vector")
 	}
@@ -74,11 +74,19 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 	}
 	for _, scenario := range []struct {
 		name, value string
-		kind        SecretErrorKind
+		want        string
 	}{
-		{"malformed", "not-a-secret", SecretCorrupt},
-		{"invalid UTF8", string([]byte{0xff}), SecretRead},
-		{"leading space", " " + strings.Repeat("0", 64), SecretCorrupt},
+		{"malformed", "not-a-secret", "the instance secret file " + path + " is not 64 hexadecimal digits"},
+		{
+			"invalid UTF8",
+			string([]byte{0xff}),
+			"the instance secret file " + path + " cannot be read: stream did not contain valid UTF-8",
+		},
+		{
+			"leading space",
+			" " + strings.Repeat("0", 64),
+			"the instance secret file " + path + " is not 64 hexadecimal digits",
+		},
 	} {
 		// Serial subtests corrupt and reread the same instance-secret fixture.
 		t.Run(scenario.name, func(t *testing.T) {
@@ -86,8 +94,7 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err := loadSecret(t.Context(), directory)
-			var failure *SecretError
-			if !errors.As(err, &failure) || failure.Kind != scenario.kind {
+			if err == nil || err.Error() != scenario.want {
 				t.Fatalf("wrong secret error: %v", err)
 			}
 			data, err := os.ReadFile(path)
@@ -103,7 +110,7 @@ func TestInstanceSecretPersistenceAndKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := loadSecret(t.Context(), directory); err != nil {
-		t.Fatalf("Rust trim_end whitespace: %v", err)
+		t.Fatalf("trailing Unicode whitespace refused: %v", err)
 	}
 }
 

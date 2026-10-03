@@ -15,12 +15,14 @@ import (
 )
 
 // errShellAborted preserves the shell cancellation text shown to callers.
-var errShellAborted = errors.New("Shell command aborted") //nolint:staticcheck // ST1005: verbatim Rust product text.
+//
+//nolint:staticcheck // ST1005: product text, shown to the user as it is.
+var errShellAborted = errors.New("Shell command aborted")
 
 type shellState struct {
 	cwd        string
 	env        map[string]string
-	foreground *core.CommandID
+	foreground core.CommandID // Empty while the shell is idle.
 }
 
 // runningCommand owns the task between Host admission and final output publication.
@@ -83,8 +85,8 @@ func (e *ShellEnvironment) checkFreeLocked(id core.ShellID) error {
 	if shell == nil {
 		return &host.ShellError{Kind: host.UnknownShell, Shell: id}
 	}
-	if shell.foreground != nil {
-		return &host.ShellError{Kind: host.ShellBusy, Shell: id, Command: *shell.foreground}
+	if shell.foreground != "" {
+		return &host.ShellError{Kind: host.ShellBusy, Shell: id, Command: shell.foreground}
 	}
 	return nil
 }
@@ -99,8 +101,8 @@ func (e *ShellEnvironment) reserve(target host.ShellTarget, command core.Command
 			return "", false, err
 		}
 		id = target.ID
-	} else if target.Kind == host.DefaultShell && e.defaultShell != nil && e.shells[*e.defaultShell].foreground == nil {
-		id = *e.defaultShell
+	} else if target.Kind == host.DefaultShell && e.defaultShell != "" && e.shells[e.defaultShell].foreground == "" {
+		id = e.defaultShell
 	} else {
 		var ok bool
 		id, ok = e.reserveNewShellLocked(target)
@@ -108,7 +110,7 @@ func (e *ShellEnvironment) reserve(target host.ShellTarget, command core.Command
 			return "", false, nil
 		}
 	}
-	e.shells[id].foreground = new(command)
+	e.shells[id].foreground = command
 	return id, true, nil
 }
 
@@ -146,7 +148,7 @@ func (e *ShellEnvironment) start(
 		}
 		spare := core.ShellID(strconv.FormatUint(number, 10))
 		e.mu.Lock()
-		e.spareShell = new(spare)
+		e.spareShell = spare
 		e.mu.Unlock()
 	}
 	record := host.NewCommandRecord(shell, command, request.ToolUseID)
@@ -208,8 +210,8 @@ func (e *ShellEnvironment) run(
 		)
 	}
 	e.mu.Lock()
-	if state := e.shells[shell]; state != nil && state.foreground != nil && *state.foreground == command {
-		state.foreground = nil
+	if state := e.shells[shell]; state != nil && state.foreground == command {
+		state.foreground = ""
 	}
 	running.cancel()
 	close(running.settled)
@@ -276,18 +278,18 @@ func (e *ShellEnvironment) execute(
 
 // reserveNewShellLocked consumes a spare number and initializes a shell under the environment mutex.
 func (e *ShellEnvironment) reserveNewShellLocked(target host.ShellTarget) (core.ShellID, bool) {
-	if e.spareShell == nil {
+	if e.spareShell == "" {
 		return "", false
 	}
-	id := *e.spareShell
-	e.spareShell = nil
+	id := e.spareShell
+	e.spareShell = ""
 	cwd := e.options.Host.DefaultCWD()
 	if target.Kind == host.EphemeralShell && target.CWD != nil {
 		cwd = *target.CWD
 	}
 	e.shells[id] = &shellState{cwd: cwd, env: maps.Clone(e.options.InitialEnv)}
-	if target.Kind == host.DefaultShell && e.defaultShell == nil {
-		e.defaultShell = new(id)
+	if target.Kind == host.DefaultShell && e.defaultShell == "" {
+		e.defaultShell = id
 	}
 	return id, true
 }

@@ -86,7 +86,7 @@ func ParseConfig(args, environ []string) (CLIConfig, error) {
 		return CLIConfig{}, err
 	}
 	if name, found := cli.UnknownVariable("DEMI_", names, environ); found {
-		return CLIConfig{}, &ConfigError{Kind: ConfigUnknownVariable, Variable: name}
+		return CLIConfig{}, errors.New(name + " is not a backend setting; `demi-backend --help` lists them")
 	}
 	return c, nil
 }
@@ -101,7 +101,7 @@ func (c CLIConfig) Backend() (Config, error) {
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return Config{}, &ConfigError{Kind: ConfigNoDataDirectory}
+			return Config{}, errors.New("DEMI_BACKEND_DATA is not set and the home directory is unknown")
 		}
 		data = filepath.Join(home, ".demi", "backend")
 	}
@@ -109,16 +109,16 @@ func (c CLIConfig) Backend() (Config, error) {
 	if c.InstanceSecret != nil {
 		value, err := ParseInstanceSecret(*c.InstanceSecret)
 		if err != nil {
-			return Config{}, &ConfigError{Kind: ConfigInstanceSecret}
+			return Config{}, errInstanceSecretSetting
 		}
 		secret = &value
 	}
 	if c.PublicURL == nil {
-		return Config{}, &ConfigError{Kind: ConfigPublicURL}
+		return Config{}, errPublicURLSetting
 	}
 	public, err := runners.BackendURL(c.PublicURL)
 	if err != nil {
-		return Config{}, &ConfigError{Kind: ConfigPublicURL}
+		return Config{}, errPublicURLSetting
 	}
 	config, err := NewConfig(data, netip.AddrPortFrom(netip.IPv4Unspecified(), c.Port), c.Mode, c.MachinesSocket)
 	if err != nil {
@@ -239,53 +239,12 @@ func Main(ctx context.Context, release string) (status int) {
 	return 0
 }
 
-// ConfigErrorKind identifies a configuration value that prevents startup.
-type ConfigErrorKind uint8
-
-const (
-	// ConfigNoDataDirectory means neither a data path nor a home is known.
-	ConfigNoDataDirectory ConfigErrorKind = iota
-	// ConfigInstanceSecret means the supplied secret is malformed.
-	ConfigInstanceSecret
-	// ConfigPublicURL means the backend URL is not an installation URL.
-	ConfigPublicURL
-	// ConfigArgument means a flag or variable failed typed parsing.
-	ConfigArgument
-	// ConfigUnknownVariable means a DEMI_* name is not a backend setting.
-	ConfigUnknownVariable
+var (
+	errInstanceSecretSetting = errors.New("DEMI_INSTANCE_SECRET must be 64 hexadecimal digits")
+	errPublicURLSetting      = errors.New(
+		"DEMI_BACKEND_PUBLIC_URL must be an HTTP or HTTPS URL without a user, a password, a query or a fragment",
+	)
 )
-
-// ConfigError names an unusable configuration setting without exposing secrets.
-type ConfigError struct {
-	// Kind identifies the failed operation.
-	Kind ConfigErrorKind
-	// Variable names the unusable configuration variable.
-	Variable string
-	// Err is the underlying failure, when present.
-	Err error
-}
-
-// Error describes the configuration failure.
-func (e *ConfigError) Error() string {
-	switch e.Kind {
-	case ConfigNoDataDirectory:
-		return "DEMI_BACKEND_DATA is not set and the home directory is unknown"
-	case ConfigInstanceSecret:
-		return "DEMI_INSTANCE_SECRET must be 64 hexadecimal digits"
-	case ConfigPublicURL:
-		return "DEMI_BACKEND_PUBLIC_URL must be an HTTP or HTTPS URL without a user, a password, a query or a fragment"
-	case ConfigUnknownVariable:
-		return e.Variable + " is not a backend setting; `demi-backend --help` lists them"
-	default:
-		if e.Variable != "" {
-			return e.Variable + ": " + e.Err.Error()
-		}
-		return e.Err.Error()
-	}
-}
-
-// Unwrap returns the underlying parsing failure, if any.
-func (e *ConfigError) Unwrap() error { return e.Err }
 
 // settings is the one declaration of flags, environment names and help text.
 var settings = []struct {
@@ -348,45 +307,37 @@ var settings = []struct {
 func validateCLIConfig(c CLIConfig, values map[string]*string, optional func(string) *string) (CLIConfig, error) {
 	port, err := strconv.ParseUint(*values["port"], 10, 16)
 	if err != nil || port == 0 {
-		return CLIConfig{}, &ConfigError{
-			Kind:     ConfigArgument,
-			Variable: "DEMI_BACKEND_PORT",
-			Err:      errors.New("must be an integer from 1 to 65535"),
-		}
+		return CLIConfig{}, errors.New("DEMI_BACKEND_PORT: must be an integer from 1 to 65535")
 	}
 	c.Port = uint16(port)
 	if err := c.Mode.Validate(); err != nil {
-		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_INSTANCE_MODE", Err: err}
+		return CLIConfig{}, fmt.Errorf("DEMI_INSTANCE_MODE: %w", err)
 	}
 	c.PublicURL, err = url.Parse(*values["public-url"])
 	if err != nil || c.PublicURL.Scheme == "" {
-		return CLIConfig{}, &ConfigError{Kind: ConfigPublicURL}
+		return CLIConfig{}, errPublicURLSetting
 	}
 	if _, err = runners.BackendURL(c.PublicURL); err != nil {
-		return CLIConfig{}, &ConfigError{Kind: ConfigPublicURL}
+		return CLIConfig{}, errPublicURLSetting
 	}
 	c.ClaudeReleasesURL, err = url.Parse(*values["claude-releases-url"])
 	if err != nil || c.ClaudeReleasesURL.Scheme == "" {
-		return CLIConfig{}, &ConfigError{
-			Kind:     ConfigArgument,
-			Variable: "DEMI_CLAUDE_RELEASES_URL",
-			Err:      errors.New("relative URL without a base"),
-		}
+		return CLIConfig{}, errors.New("DEMI_CLAUDE_RELEASES_URL: relative URL without a base")
 	}
 	if value := optional("expose-domain"); value != nil {
 		domain, err := expose.ParseDomain(*value)
 		if err != nil {
-			return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_EXPOSE_DOMAIN", Err: err}
+			return CLIConfig{}, fmt.Errorf("DEMI_EXPOSE_DOMAIN: %w", err)
 		}
 		c.ExposeDomain = &domain
 	}
 	if c.InstanceSecret != nil {
 		if _, err := ParseInstanceSecret(*c.InstanceSecret); err != nil {
-			return CLIConfig{}, &ConfigError{Kind: ConfigInstanceSecret}
+			return CLIConfig{}, errInstanceSecretSetting
 		}
 	}
 	if _, err := parseLogTargets(c.Log); err != nil {
-		return CLIConfig{}, &ConfigError{Kind: ConfigArgument, Variable: "DEMI_LOG", Err: err}
+		return CLIConfig{}, fmt.Errorf("DEMI_LOG: %w", err)
 	}
 	return c, nil
 }
@@ -434,22 +385,15 @@ func parseCLIFlags(args, environ []string) (map[string]*string, map[string]bool,
 		names = append(names, setting.variable)
 	}
 	if err := flags.Parse(args); err != nil {
-		return nil, nil, nil, &ConfigError{Kind: ConfigArgument, Err: err}
+		return nil, nil, nil, err
 	}
 	if flags.NArg() != 0 {
-		return nil, nil, nil, &ConfigError{
-			Kind: ConfigArgument,
-			Err:  fmt.Errorf("unexpected argument '%s' found", flags.Arg(0)),
-		}
+		return nil, nil, nil, fmt.Errorf("unexpected argument '%s' found", flags.Arg(0))
 	}
 	flags.Visit(func(f *flag.Flag) { present[f.Name] = true })
 	for _, setting := range settings {
 		if setting.required && !present[setting.flag] {
-			return nil, nil, nil, &ConfigError{
-				Kind:     ConfigArgument,
-				Variable: setting.variable,
-				Err:      errors.New("a value is required"),
-			}
+			return nil, nil, nil, fmt.Errorf("%s: a value is required", setting.variable)
 		}
 	}
 	return values, present, names, nil

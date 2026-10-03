@@ -20,12 +20,12 @@ func TestQuotaUpdatesMergeAndClosePersistsNewestWithoutSharingMutableData(t *tes
 	if err := pool.Write(ctx, testAccount("a"), "{}"); err != nil {
 		t.Fatal(err)
 	}
-	row, err := vault.Account(ctx, entry.ID, "a")
+	row, _, err := vault.Account(ctx, entry.ID, "a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	quotas := NewAccountQuotas(vault)
-	store := quotas.Store(entry.ID, *row)
+	store := quotas.Store(entry.ID, row)
 	var workers sync.WaitGroup
 	for _, id := range []string{"probe", "observation"} {
 		workers.Go(func() {
@@ -55,7 +55,7 @@ func TestQuotaUpdatesMergeAndClosePersistsNewestWithoutSharingMutableData(t *tes
 	if err := quotas.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	row, err = vault.Account(ctx, entry.ID, "a")
+	row, _, err = vault.Account(ctx, entry.ID, "a")
 	if err != nil || row.Quota == nil || len(row.Quota.Windows) != 2 {
 		t.Fatal(row, err)
 	}
@@ -65,10 +65,10 @@ func TestQuotaUpdatesMergeAndClosePersistsNewestWithoutSharingMutableData(t *tes
 			t.Error(err)
 		}
 	}()
-	if got := restarted.Latest(entry.ID, *row); got == nil || len(got.Windows) != 2 {
+	if got := restarted.Latest(entry.ID, row); got == nil || len(got.Windows) != 2 {
 		t.Fatal(got)
 	}
-	held := restarted.Store(entry.ID, *row)
+	held := restarted.Store(entry.ID, row)
 	if got := held.Latest(); got == nil || len(got.Windows) != 2 {
 		t.Fatal(got)
 	}

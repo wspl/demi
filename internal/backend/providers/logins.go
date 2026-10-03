@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/webapi"
@@ -263,12 +264,12 @@ func (f *LoginFlows) publish(
 		id = target.existing.ID
 		err = f.assembly.Invalidate(ctx, id)
 	} else {
-		var entry *ProviderEntry
+		var entry ProviderEntry
 		entry, err = f.assembly.vault.CreateSubscription(ctx, owner, target.family, target.label, target.staged)
-		if err == nil && entry == nil {
+		if errors.Is(err, database.ErrSubscriptionExists) {
 			err = &LoginError{Kind: LoginExists, Family: target.family}
 		}
-		if entry != nil {
+		if err == nil {
 			id = entry.ID
 		}
 	}

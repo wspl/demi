@@ -20,7 +20,7 @@ func NextNumber(ctx context.Context, tx *sql.Tx, sequence core.Sequence) (uint64
 
 // ReserveNumbers advances sequence by count and returns the first reserved number.
 func ReserveNumbers(ctx context.Context, tx *sql.Tx, sequence core.Sequence, count uint32) (uint64, error) {
-	row, err := queryRecord(
+	row, _, err := queryRecord(
 		ctx,
 		tx,
 		"sequences",
@@ -38,7 +38,7 @@ RETURNING next - ? AS next`,
 	if err != nil {
 		return 0, err
 	}
-	return *row, nil
+	return row, nil
 }
 
 // Sequences returns each used sequence with its next number.

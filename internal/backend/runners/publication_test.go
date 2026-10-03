@@ -101,7 +101,7 @@ func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.Package("example.commands") == nil {
+	if _, ok := catalog.Package("example.commands"); !ok {
 		t.Fatal("package unavailable after publication")
 	}
 	written := fake.Written()
@@ -154,8 +154,7 @@ func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 	descriptor.Operations = append(descriptor.Operations, "changed")
 	writeDescriptor(t, release.Directory, descriptor)
 	_, err = publish(t.Context(), []NativeRelease{release}, "native", bucket)
-	var failure *PublicationError
-	if !errors.As(err, &failure) || failure.Kind != PublicationConflict {
+	if !errors.Is(err, ErrArtifactConflict) {
 		t.Fatalf("version conflict: %v", err)
 	}
 	original, ok := fake.Object(claim)
@@ -216,8 +215,7 @@ func TestInvalidReleasePublishesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = publish(t.Context(), []NativeRelease{release}, "native", bucket)
-	var conflict *PublicationError
-	if !errors.As(err, &conflict) || conflict.Kind != PublicationConflict {
+	if !errors.Is(err, ErrArtifactConflict) {
 		t.Fatalf("squatted artifact: %v", err)
 	}
 	for _, key := range fake.Written() {
@@ -351,7 +349,7 @@ func TestEmptyNativeCatalog(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if catalog.Package("demi.browser") != nil || catalog.Serves("demi.browser", nil) {
+	if _, ok := catalog.Package("demi.browser"); ok || catalog.Serves("demi.browser", nil) {
 		t.Fatal("empty release serves a package")
 	}
 }
@@ -395,10 +393,17 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	}()
 	var address PublicURL
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		artifact, err := catalog.LocalArtifact(r.Context(), strings.TrimPrefix(r.URL.Path, NativeArtifactsRoute+"/"))
+		artifact, ok, err := catalog.LocalArtifact(
+			r.Context(),
+			strings.TrimPrefix(r.URL.Path, NativeArtifactsRoute+"/"),
+		)
 		if err != nil {
 			t.Error(err)
 			http.Error(w, err.Error(), 500)
+			return
+		}
+		if !ok {
+			http.NotFound(w, r)
 			return
 		}
 		switch artifact := artifact.(type) {
@@ -409,8 +414,6 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 			}
 		case *PlainArtifact:
 			http.ServeFile(w, r, artifact.Path)
-		case nil:
-			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -464,7 +467,7 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 8 {
 		workers.Go(func() {
-			if _, err := fresh.Artifact(t.Context(), descriptor.Targets[commandwire.Targets[0]].SHA256); err != nil {
+			if _, _, err := fresh.Artifact(t.Context(), descriptor.Targets[commandwire.Targets[0]].SHA256); err != nil {
 				t.Error(err)
 			}
 		})
@@ -473,10 +476,11 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	if !catalog.Serves(descriptor.ID, []string{"fixture"}) || catalog.Serves(descriptor.ID, []string{"missing"}) {
 		t.Fatal("catalog operation selection changed")
 	}
-	owned := catalog.Package(descriptor.ID)
+	owned, _ := catalog.Package(descriptor.ID)
 	owned.Operations[0] = "mutated"
 	delete(owned.Targets, commandwire.Targets[0])
-	if !catalog.Serves(descriptor.ID, []string{"fixture"}) || len(catalog.Package(descriptor.ID).Targets) != 1 {
+	current, _ := catalog.Package(descriptor.ID)
+	if !catalog.Serves(descriptor.ID, []string{"fixture"}) || len(current.Targets) != 1 {
 		t.Fatal("caller mutated catalog")
 	}
 }

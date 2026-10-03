@@ -45,7 +45,7 @@ func (c *relayCall) stop(reason string, cancelled bool) {
 		return
 	}
 	for _, pipe := range c.pipes {
-		if failure := pipe.Failure(); failure != nil {
+		if failure := pipe.Err(); failure != nil {
 			reason = failure.Error()
 			cancelled = false
 			break
@@ -62,13 +62,13 @@ func (c *relayCall) stop(reason string, cancelled bool) {
 }
 
 // stopped returns the immutable first terminal cause.
-func (c *relayCall) stopped() *callStop {
+func (c *relayCall) stopped() (callStop, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.cause == nil {
-		return nil
+		return callStop{}, false
 	}
-	return new(*c.cause)
+	return *c.cause, true
 }
 
 // liveInput accepts only the single chunk explicitly requested by the handler.
@@ -103,12 +103,12 @@ func (c *relayCall) endInput() {
 	}
 }
 
-// nextInput requests one live-input chunk while the call remains alive.
+// nextInput requests one live-input chunk; it returns io.EOF once input ended.
 func (c *relayCall) nextInput(ctx context.Context) ([]byte, error) {
 	c.mu.Lock()
 	if c.live == liveClosed {
 		c.mu.Unlock()
-		return nil, nil
+		return nil, io.EOF
 	}
 	if c.live == liveWaiting {
 		c.mu.Unlock()
@@ -123,9 +123,12 @@ func (c *relayCall) nextInput(ctx context.Context) ([]byte, error) {
 	}
 	select {
 	case data := <-next:
+		if data == nil {
+			return nil, io.EOF
+		}
 		return data, nil
 	case <-c.ctx.Done():
-		return nil, nil
+		return nil, io.EOF
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -158,7 +161,7 @@ func (l *Link) startCall(request *runnerwire.RPCCall) {
 				slog.Debug("rpc error not sent: "+sendErr.Error(), "call", call.id)
 			}
 			code = 1
-			if cause := call.stopped(); cause != nil && cause.cancelled {
+			if cause, ok := call.stopped(); ok && cause.cancelled {
 				code = 130
 			}
 		}
@@ -194,7 +197,7 @@ func (c *relayCall) run(request *runnerwire.RPCCall, job *Job) (uint8, error) {
 		c.pipes = append(c.pipes, stdin)
 	}
 	c.mu.Unlock()
-	if cause := c.stopped(); cause != nil {
+	if cause, ok := c.stopped(); ok {
 		return 0, errors.New(cause.text)
 	}
 	relayed, err := c.announcePipes(c.ctx, stdout, stdin)
@@ -216,7 +219,7 @@ func (c *relayCall) run(request *runnerwire.RPCCall, job *Job) (uint8, error) {
 		Pipes:   relayed,
 	}
 	code, err := c.dispatch(c.ctx, job.origin, invocation, port)
-	if cause := c.stopped(); cause != nil {
+	if cause, ok := c.stopped(); ok {
 		return 0, errors.New(cause.text)
 	}
 	if err != nil {
@@ -224,7 +227,7 @@ func (c *relayCall) run(request *runnerwire.RPCCall, job *Job) (uint8, error) {
 	}
 	port.finishStdout()
 	if err := stdout.Done(c.ctx); err != nil {
-		if cause := c.stopped(); cause != nil {
+		if cause, ok := c.stopped(); ok {
 			return 0, errors.New(cause.text)
 		}
 		return 0, err
@@ -299,11 +302,11 @@ func (p *relayPort) Request(ctx context.Context, request host.PortRequest) (host
 		return p.readStdin(ctx)
 	case *host.PortReadLiveStdin:
 		chunk, err := p.call.nextInput(ctx)
+		if errors.Is(err, io.EOF) {
+			return &host.PortInput{}, nil
+		}
 		if err != nil {
 			return nil, err
-		}
-		if chunk == nil {
-			return &host.PortInput{}, nil
 		}
 		return &host.PortInput{Bytes: new(core.B64Bytes(chunk))}, nil
 	case *host.PortStorage:
@@ -377,9 +380,9 @@ func (c *relayCall) dispatch(
 		watches.Add(1)
 		go func() {
 			defer watches.Done()
-			failure, err := pipe.Failed(watching)
-			if err == nil {
-				c.stop(failure.Error(), false)
+			err := pipe.Failed(watching)
+			if errors.Is(err, ErrPipeFailed) {
+				c.stop(err.Error(), false)
 			} else if !errors.Is(err, context.Canceled) {
 				slog.Debug("rpc pipe watch ended: "+err.Error(), "call", c.id)
 			}

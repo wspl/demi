@@ -21,9 +21,7 @@ func TestExposeLifetimeRangeIsPortFailure(t *testing.T) {
 	for _, seconds := range []uint64{maximum + 1, math.MaxUint64} {
 		_, err := exposeLifetime(seconds)
 		var port *host.PortError
-		var storage *database.Error
-		if !errors.As(err, &port) || port.Kind != host.PortFailed || !errors.As(err, &storage) ||
-			storage.Kind != database.TimeRange {
+		if !errors.As(err, &port) || port.Kind != host.PortFailed || !errors.Is(err, database.ErrTimeRange) {
 			t.Fatalf("overflow classification = %v", err)
 		}
 		if port.Message != "a time is out of range: expose lifetime exceeds 9223372036 seconds" {

@@ -56,33 +56,33 @@ func NewLocalArtifacts(executables, archives []ArtifactFile) *LocalArtifacts {
 	return &LocalArtifacts{files: files}
 }
 
-// Artifact returns a loaded artifact, or nil when no release carries sha256.
+// Artifact returns a loaded artifact, and false when no release carries sha256.
 // Executables are encoded lazily; files are verified when releases are loaded.
-func (a *LocalArtifacts) Artifact(ctx context.Context, sha256 string) (LocalArtifact, error) {
+func (a *LocalArtifacts) Artifact(ctx context.Context, sha256 string) (LocalArtifact, bool, error) {
 	file := a.files[sha256]
 	if file == nil {
-		return nil, nil
+		return nil, false, nil
 	}
 	if !file.encode {
-		return &PlainArtifact{Path: file.path}, nil
+		return &PlainArtifact{Path: file.path}, true, nil
 	}
 	permit, err := file.gate.Acquire(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer permit.Release()
 	if file.encoded == nil {
 		bytes, err := os.ReadFile(file.path)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", file.path, err)
+			return nil, false, fmt.Errorf("%s: %w", file.path, err)
 		}
 		encoded, err := artifacts.Encode(ctx, bytes, artifacts.Development)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		file.encoded = encoded
 	}
-	return &EncodedArtifact{Bytes: file.encoded}, nil
+	return &EncodedArtifact{Bytes: file.encoded}, true, nil
 }
 
 // LocalArtifact is how the development store serves an artifact.

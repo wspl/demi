@@ -1,7 +1,7 @@
 package edge
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 
 	"github.com/wspl/demi/internal/backend/database"
@@ -84,22 +84,18 @@ func (e *Edge) deleteWorkspace(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return apiFailure(404, "workspace_not_found", "No such workspace")
 	}
-	result, err := e.state.Services.Control.DeleteWorkspace(r.Context(), caller(r).ID, id)
+	err = e.state.Services.Control.DeleteWorkspace(r.Context(), caller(r).ID, id)
+	var inUse *database.WorkspaceInUseError
+	if errors.Is(err, database.ErrWorkspaceNotFound) {
+		return apiFailure(404, "workspace_not_found", "No such workspace")
+	}
+	if errors.As(err, &inUse) {
+		return apiFailure(409, "workspace_in_use", inUse.Error())
+	}
 	if err != nil {
 		return err
 	}
-	switch result := result.(type) {
-	case *database.WorkspaceDeleted:
-		e.state.Services.Sync.Mark(caller(r).ID, pagesync.Part{Kind: pagesync.Workspaces})
-		w.WriteHeader(204)
-	case *database.WorkspaceMissing:
-		return apiFailure(404, "workspace_not_found", "No such workspace")
-	case *database.WorkspaceInUse:
-		return apiFailure(
-			409,
-			"workspace_in_use",
-			fmt.Sprintf("%d conversation(s) still target this workspace", result.Count),
-		)
-	}
+	e.state.Services.Sync.Mark(caller(r).ID, pagesync.Part{Kind: pagesync.Workspaces})
+	w.WriteHeader(204)
 	return nil
 }

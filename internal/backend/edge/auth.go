@@ -127,11 +127,11 @@ func (e *Edge) resetPassword(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return accounts.ErrUserNotFound
 	}
-	account, err := e.state.Services.Control.Account(r.Context(), id)
+	account, found, err := e.state.Services.Control.Account(r.Context(), id)
 	if err != nil {
 		return err
 	}
-	if account == nil {
+	if !found {
 		return accounts.ErrUserNotFound
 	}
 	if !caller(r).Role.Outranks(account.User.Role) {

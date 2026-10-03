@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/wspl/demi/internal/core"
@@ -11,34 +12,41 @@ import (
 
 // ForkOperation returns the creation attempt that reserved `id`, in whichever case it is
 // spelled.
-func (c *ControlService) ForkOperation(ctx context.Context, id webapi.ConversationID) (*ForkOperation, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*ForkOperation, error) {
-		return forkByID(ctx, tx, id)
+func (c *ControlService) ForkOperation(ctx context.Context, id webapi.ConversationID) (ForkOperation, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ForkOperation, error) {
+		r, ok, err := forkByID(ctx, tx, id)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // ReserveFork reserves `operation`'s destination: the attempt that already holds
-// it when it is this one, none when another attempt or a conversation
+// it when it is this one; ErrForkTaken when another attempt or a conversation
 // holds the id.
-func (c *ControlService) ReserveFork(ctx context.Context, operation ForkOperation) (*ForkOperation, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*ForkOperation, error) {
-		existing, err := forkByID(ctx, tx, operation.ID)
+func (c *ControlService) ReserveFork(ctx context.Context, operation ForkOperation) (ForkOperation, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ForkOperation, error) {
+		existing, found, err := forkByID(ctx, tx, operation.ID)
 		if err != nil {
-			return nil, err
+			return ForkOperation{}, err
 		}
-		if existing != nil {
+		if found {
 			if existing.SameAttempt(operation.Owner, operation.Source, operation.Block) {
 				return existing, nil
 			}
-			return nil, nil
+			return ForkOperation{}, ErrForkTaken
 		}
-		record, err := ConversationByID(ctx, tx, operation.ID)
-		if err != nil || record != nil {
-			return nil, err
+		_, taken, err := ConversationByID(ctx, tx, operation.ID)
+		if err != nil {
+			return ForkOperation{}, err
+		}
+		if taken {
+			return ForkOperation{}, ErrForkTaken
 		}
 		text, err := encoded(operation.Metadata)
 		if err != nil {
-			return nil, err
+			return ForkOperation{}, err
 		}
 		err = execSQL(
 			ctx,
@@ -50,7 +58,7 @@ func (c *ControlService) ReserveFork(ctx context.Context, operation ForkOperatio
 			operation.Block,
 			text,
 		)
-		return &operation, err
+		return operation, err
 	})
 }
 
@@ -78,17 +86,16 @@ ORDER BY f.rowid`,
 // left out, as its revocation left the source.
 func (c *ControlService) PublishFork(ctx context.Context, id webapi.ConversationID) (ConversationRecord, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ConversationRecord, error) {
-		o, err := forkByID(ctx, tx, id)
+		o, found, err := forkByID(ctx, tx, id)
 		if err != nil {
 			return ConversationRecord{}, err
 		}
-		if o == nil {
-			return ConversationRecord{}, &Error{
-				Kind:   Corrupt,
-				Table:  "conversation_fork_operations",
-				Column: "id",
-				Reason: fmt.Sprintf("no Fork reserved %s", id),
-			}
+		if !found {
+			return ConversationRecord{}, CorruptValue(
+				"conversation_fork_operations",
+				"id",
+				fmt.Errorf("no Fork reserved %s", id),
+			)
 		}
 		m := o.Metadata
 		inserted, err := InsertConversation(
@@ -121,19 +128,18 @@ func (c *ControlService) PublishFork(ctx context.Context, id webapi.Conversation
 				}
 			}
 		}
-		r, err := ConversationByID(ctx, tx, o.ID)
+		r, ok, err := ConversationByID(ctx, tx, o.ID)
 		if err != nil {
 			return ConversationRecord{}, err
 		}
-		if r == nil || r.Owner != o.Owner {
-			return ConversationRecord{}, &Error{
-				Kind:   Corrupt,
-				Table:  "conversations",
-				Column: "user_id",
-				Reason: fmt.Sprintf("the Fork destination %s belongs to another user", id),
-			}
+		if !ok || r.Owner != o.Owner {
+			return ConversationRecord{}, CorruptValue(
+				"conversations",
+				"user_id",
+				fmt.Errorf("the Fork destination %s belongs to another user", id),
+			)
 		}
-		return *r, nil
+		return r, nil
 	})
 }
 
@@ -147,7 +153,7 @@ func forkRow(r *storedRow) ForkOperation {
 	}
 }
 
-func forkByID(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (*ForkOperation, error) {
+func forkByID(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (ForkOperation, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,
@@ -157,3 +163,6 @@ func forkByID(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (*ForkO
 		id,
 	)
 }
+
+// ErrForkTaken means another attempt or a conversation holds the ID.
+var ErrForkTaken = errors.New("another attempt or a conversation holds the id")

@@ -13,6 +13,7 @@ import (
 	"github.com/wspl/demi/internal/backend/usershard"
 	"github.com/wspl/demi/internal/backend/usershard/usershardtest"
 	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/webapi"
 )
 
 // lookupHooks observes the held lookup ending, so the test need not release it
@@ -153,16 +154,23 @@ func TestRunnerRepeatedHelloBeforeAcceptanceIsDropped(t *testing.T) {
 					t.Fatalf("hello answer: %#v", message)
 				}
 			} else {
-				grant := pending.Grant(device, token)
-				defer grant.Release()
+				type grantResult struct {
+					device webapi.DeviceDTO
+					err    error
+				}
+				granted := make(chan grantResult, 1)
+				go func() {
+					bound, err := pending.Grant(t.Context(), device, token)
+					granted <- grantResult{bound, err}
+				}()
 				message := <-answer
 				claimed, ok := message.(*runnerwire.Claimed)
 				if !ok || claimed.DeviceToken != token {
 					t.Fatal("runner did not receive its claimed token")
 				}
-				bound, err := grant.Wait(t.Context())
-				if err != nil || bound == nil || !bound.Online {
-					t.Fatalf("claim did not bind: %#v, %v", bound, err)
+				result := <-granted
+				if result.err != nil || !result.device.Online {
+					t.Fatalf("claim did not bind: %#v, %v", result.device, result.err)
 				}
 			}
 			shard, err := shards.Of(t.Context(), device.User)

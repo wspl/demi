@@ -137,13 +137,13 @@ func (s *Shard) reserveConversationFork(
 			},
 		},
 	)
+	if errors.Is(err, database.ErrForkTaken) {
+		return nil, ErrIDUnavailable
+	}
 	if err != nil {
 		return nil, err
 	}
-	if reserved == nil {
-		return nil, ErrIDUnavailable
-	}
-	return reserved, nil
+	return &reserved, nil
 }
 
 // copyForkCommands copies command outputs and continues the source’s sequence counters.
@@ -206,14 +206,14 @@ func (s *Shard) forkSource(
 	ctx context.Context,
 	source webapi.ConversationID,
 ) (*database.ConversationRecord, error) {
-	record, err := s.services.Control.Conversation(ctx, source)
+	record, found, err := s.services.Control.Conversation(ctx, source)
 	if err != nil {
 		return nil, err
 	}
-	if record == nil || record.Owner != s.user {
+	if !found || record.Owner != s.user {
 		return nil, ErrConversationNotFound
 	}
-	return record, nil
+	return &record, nil
 }
 
 // forkDestination checks that the destination belongs to this exact fork attempt.
@@ -222,22 +222,26 @@ func (s *Shard) forkDestination(
 	destination, source webapi.ConversationID,
 	block core.BlockID,
 ) (*database.ForkOperation, *database.ConversationRecord, error) {
-	reserved, err := s.services.Control.ForkOperation(ctx, destination)
+	reserved, found, err := s.services.Control.ForkOperation(ctx, destination)
 	if err != nil {
 		return nil, nil, err
 	}
-	if reserved != nil && !reserved.SameAttempt(s.user, source, block) {
+	if found && !reserved.SameAttempt(s.user, source, block) {
 		return nil, nil, ErrForkConflict
 	}
-	existing, err := s.services.Control.Conversation(ctx, destination)
+	existing, ok, err := s.services.Control.Conversation(ctx, destination)
 	if err != nil {
 		return nil, nil, err
 	}
-	if existing != nil {
-		if reserved == nil {
+	if ok {
+		if !found {
 			return nil, nil, ErrIDUnavailable
 		}
-		return reserved, existing, nil
+		return &reserved, &existing, nil
 	}
-	return reserved, existing, nil
+	var operation *database.ForkOperation
+	if found {
+		operation = &reserved
+	}
+	return operation, nil, nil
 }

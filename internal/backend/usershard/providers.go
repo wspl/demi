@@ -36,11 +36,11 @@ func (p *conversationProviders) Selection(
 	ctx context.Context,
 	root core.NodeID,
 ) (core.ModelSelection, error) {
-	record, err := p.shard.Control().Conversation(ctx, hostaccess.ConversationOf(root))
+	record, found, err := p.shard.Control().Conversation(ctx, hostaccess.ConversationOf(root))
 	if err != nil {
 		return core.ModelSelection{}, err
 	}
-	if record == nil || record.Model == nil {
+	if !found || record.Model == nil {
 		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
 		return core.ModelSelection{}, errors.New("The conversation has no model yet")
 	}

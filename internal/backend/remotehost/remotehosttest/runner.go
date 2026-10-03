@@ -71,7 +71,7 @@ func StartRunnerFixture(ctx context.Context, t testing.TB, options FixtureOption
 	mux.HandleFunc("GET /api/pipes/{id}", f.pipeSink)
 	f.server = httptest.NewServer(mux)
 	processOptions := DefaultRunnerProcessOptions()
-	processOptions.Token = new(fixtureToken)
+	processOptions.Token = fixtureToken
 	processOptions.Env = host.SpawnEnv{Mode: host.Overlay, Values: make(map[string]*string)}
 	for key, value := range options.Env {
 		processOptions.Env.Values[key] = new(value)

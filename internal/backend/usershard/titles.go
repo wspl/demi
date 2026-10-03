@@ -24,11 +24,11 @@ type titleRequest struct {
 }
 
 func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
-	record, err := s.Control().Conversation(ctx, id)
+	record, found, err := s.Control().Conversation(ctx, id)
 	if err != nil {
 		return err
 	}
-	if record == nil || record.Owner != s.user {
+	if !found || record.Owner != s.user {
 		return ErrConversationNotFound
 	}
 	if record.Archived {

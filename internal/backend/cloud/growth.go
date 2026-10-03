@@ -27,12 +27,12 @@ func GrowVolume(
 	if bytes == 0 || bytes > quota {
 		return fmt.Errorf("%s volume quota exceeded", volume)
 	}
-	record, err := cloudRecords(shard).Device(ctx, device)
+	record, found, err := cloudRecords(shard).Device(ctx, device)
 	if err != nil {
 		return err
 	}
-	if record == nil || record.Kind != webapi.DeviceKindManaged || record.User != shard.User() {
-		//nolint:staticcheck // Preserve Rust user-facing text verbatim.
+	if !found || record.Kind != webapi.DeviceKindManaged || record.User != shard.User() {
+		//nolint:staticcheck // Product text, shown to the user as it is.
 		return errors.New("Only the Cloud grows its volumes")
 	}
 	_, err = Call(

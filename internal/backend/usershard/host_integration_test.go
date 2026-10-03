@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -157,7 +158,7 @@ func TestJobRunsWithinHostAccessAndRejectsChangedHost(t *testing.T) {
 	if err := hostaccess.RunJob(t.Context(), f.shard, conversationID, remote.Key(), job); err != nil {
 		t.Fatal(err)
 	}
-	record, err := f.services.Control.Conversation(t.Context(), conversationID)
+	record, _, err := f.services.Control.Conversation(t.Context(), conversationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +188,7 @@ func TestJobRunsWithinHostAccessAndRejectsChangedHost(t *testing.T) {
 
 func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T) {
 	f := shardFixture(t, "build")
-	account, err := f.services.Control.Account(t.Context(), f.owner)
+	account, _, err := f.services.Control.Account(t.Context(), f.owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,8 +217,7 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 		return hostaccess.RemoteFile{Device: string(id), Path: path}
 	}
 	_, err = hostaccess.ReferenceRemoteFiles(t.Context(), f.shard, conversationID, []hostaccess.RemoteFile{file(build)})
-	var refusal *hostaccess.RemoteFileRefusal
-	if !errors.As(err, &refusal) || refusal.Kind != hostaccess.RemoteFileOffline {
+	if err == nil || err.Error() != "Referenced device "+f.devices[0].Name+" is offline" {
 		t.Fatalf("offline reference = %v", err)
 	}
 	inertRunner(t, f, build)
@@ -227,7 +227,7 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 		conversationID,
 		[]hostaccess.RemoteFile{file(build), file(foreign.ID)},
 	)
-	if !errors.As(err, &refusal) || refusal.Kind != hostaccess.RemoteFileNotAccessible {
+	if !errors.Is(err, hostaccess.ErrDeviceNotAccessible) {
 		t.Fatalf("foreign batch = %v", err)
 	}
 	before, err := f.services.Control.AttachedHosts(t.Context(), conversationID)
@@ -292,7 +292,7 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 	if len(attached) != 1 || attached[0].Device != build {
 		t.Fatalf("attachments = %+v", attached)
 	}
-	record, err := f.services.Control.Conversation(t.Context(), conversationID)
+	record, _, err := f.services.Control.Conversation(t.Context(), conversationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,8 +346,7 @@ func TestCloudGrowthRequiresPositiveBoundedCloudVolume(t *testing.T) {
 		}
 	}
 	err = cloud.GrowVolume(t.Context(), f.shard, managed.ID, runnerwire.VolumeNameHome, tuning.HomeQuota)
-	var manager *cloud.ManagerError
-	if !errors.As(err, &manager) || manager.Kind != cloud.ManagerUnavailable || manager.Operation != "grow_volume" {
+	if err == nil || !strings.HasPrefix(err.Error(), "Machine manager unavailable during grow_volume: ") {
 		t.Fatalf("bounded growth did not reach manager: %v", err)
 	}
 }

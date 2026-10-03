@@ -294,8 +294,8 @@ func TestTheCloudsVerifiedCLIStreamsReasoningAndTextAndRunsAToolBatchThroughDemi
 	devices := w.manager.Devices()
 	conversationEqual(t, len(devices), 1)
 	cli := accountCLISettled(ctx, t, w.server, &w.master, w.provider)
-	// The ignored Rust scenario predates 700143f3a: ensure now returns the
-	// verified artifact cache entry, not a versioned executable under home.
+	// Ensure returns the verified artifact cache entry, not a versioned
+	// executable under home.
 	path := filepath.Join(w.manager.State(devices[0]), "artifacts", w.digest)
 	conversationEqual[webapi.CLIInstall](t, cli.Install, &webapi.CLIInstallInstalled{Path: path})
 	conversationEqual[webapi.NewestVersion](t, cli.Newest, &webapi.NewestVersionRead{Version: w.version})
@@ -395,7 +395,7 @@ func TestTheCloudsVerifiedCLIStreamsReasoningAndTextAndRunsAToolBatchThroughDemi
 	if !ok {
 		t.Fatal(sentMessages)
 	}
-	// Unlike the Rust assertion, exclude the CLI's own leading context blocks:
+	// Exclude the CLI's own leading context blocks:
 	// this CLI adds a date reminder, while the scenario protects Demi's message.
 	// Stop at the first other block and require the entire remainder exactly.
 	for len(texts) > 0 && strings.HasPrefix(texts[0], "<system-reminder>") &&

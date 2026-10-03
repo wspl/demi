@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/wspl/demi/internal/backend/blobs"
@@ -47,7 +48,7 @@ func Start(ctx context.Context, config Config) (_ *Backend, err error) {
 	}
 	objects, err := blobs.Open(ctx, config.DataDir, s3)
 	if err != nil {
-		return nil, &StartError{Kind: StartObjects, Err: err}
+		return nil, fmt.Errorf("the object store cannot be opened: %w", err)
 	}
 	// Parent cancellation requests ordered shutdown; it must not kill runner
 	// connections before the shards have saved their Clouds.
@@ -66,7 +67,7 @@ func Start(ctx context.Context, config Config) (_ *Backend, err error) {
 	}
 	b.storage, err = usershard.OpenStorage(ctx, config.DataDir, config.Clock, observed)
 	if err != nil {
-		return nil, &StartError{Kind: StartStorage, Err: err}
+		return nil, fmt.Errorf("storage cannot be opened: %w", err)
 	}
 	deaths, err := b.startServices(life, config, secret)
 	if err != nil {
@@ -82,7 +83,7 @@ func Start(ctx context.Context, config Config) (_ *Backend, err error) {
 	}
 	b.edge, err = edge.Start(life, config.Address, state, config.WebDirectory)
 	if err != nil {
-		return nil, &StartError{Kind: StartListen, Address: config.Address, Err: err}
+		return nil, fmt.Errorf("the backend cannot listen on %s: %w", config.Address, err)
 	}
 	if config.Lifecycle.RetentionInterval != 0 {
 		retentionCtx, stop := context.WithCancel(life)
@@ -126,10 +127,10 @@ func (b *Backend) Shards() *usershard.Shards { return b.shards }
 
 // shutdown drains the backend in dependency order, also after partial startup.
 func (b *Backend) shutdown(ctx context.Context) error {
-	failures := &ShutdownErrors{}
-	record := func(kind ShutdownErrorKind, err error) {
+	var failures []any
+	record := func(err error) {
 		if err != nil {
-			failures.Failures = append(failures.Failures, &ShutdownError{Kind: kind, Err: err})
+			failures = append(failures, err)
 		}
 	}
 	if b.edge != nil {
@@ -139,10 +140,12 @@ func (b *Backend) shutdown(ctx context.Context) error {
 		b.stopRetention()
 	}
 	if b.services != nil {
-		record(ShutdownStorage, b.services.Logins.Close(ctx))
+		record(b.services.Logins.Close(ctx))
 	}
 	if b.shards != nil {
-		record(ShutdownCloud, b.shards.Close(ctx))
+		if err := b.shards.Close(ctx); err != nil {
+			record(fmt.Errorf("a Cloud was not saved: %w", err))
+		}
 	}
 	b.retention.Wait()
 	if b.services != nil {
@@ -154,39 +157,44 @@ func (b *Backend) shutdown(ctx context.Context) error {
 	}
 	b.deaths.Wait()
 	if b.machines != nil {
-		record(ShutdownMachines, b.machines.Close(ctx))
+		if err := b.machines.Close(ctx); err != nil {
+			record(fmt.Errorf("the machine manager did not reconcile: %w", err))
+		}
 	}
 	if b.edge != nil {
-		record(ShutdownEdge, b.edge.Close(ctx))
+		if err := b.edge.Close(ctx); err != nil {
+			record(fmt.Errorf("the listener did not stop cleanly: %w", err))
+		}
 	}
 	if b.services != nil {
-		record(ShutdownStorage, b.services.Close(ctx))
+		record(b.services.Close(ctx))
 	}
 	if b.storage != nil {
-		record(ShutdownStorage, b.storage.Close(ctx))
+		record(b.storage.Close(ctx))
 	}
-	record(ShutdownStorage, b.closeObjects())
+	record(b.closeObjects())
 	b.cancel()
-	if len(failures.Failures) != 0 {
-		return failures
+	if len(failures) == 0 {
+		return nil
 	}
-	return nil
+	// Every failure stays visible to errors.Is and errors.As, in shutdown order.
+	return fmt.Errorf("shutdown failed: %w"+strings.Repeat("; %w", len(failures)-1), failures...)
 }
 
 // startupStorageConfig resolves the secret and object store before opening storage.
 func startupStorageConfig(ctx context.Context, config Config) (*InstanceSecret, *blobs.S3Config, error) {
-	// Empty paths in Rust's create_dir_all are a successful no-op; subsequent
-	// relative paths still address this directory, rather than a default directory.
+	// An empty data directory is the working directory: nothing is created, and
+	// the relative paths below address it.
 	if config.DataDir != "" {
 		if err := os.MkdirAll(config.DataDir, 0o755); err != nil {
-			return nil, nil, &StartError{Kind: StartDataDirectory, Path: config.DataDir, Err: err}
+			return nil, nil, fmt.Errorf("the data directory %s cannot be created: %w", config.DataDir, err)
 		}
 	}
 	secret := config.InstanceSecret
 	if secret == nil {
 		value, err := loadSecret(ctx, config.DataDir)
 		if err != nil {
-			return nil, nil, &StartError{Kind: StartSecret, Err: err}
+			return nil, nil, err
 		}
 		secret = &value
 	}
@@ -194,7 +202,7 @@ func startupStorageConfig(ctx context.Context, config Config) (*InstanceSecret, 
 	if config.ObjectStore != "" || config.objectStoreSet {
 		value, err := blobs.ReadS3Config(ctx, config.ObjectStore)
 		if err != nil {
-			return nil, nil, &StartError{Kind: StartObjectStore, Err: err}
+			return nil, nil, fmt.Errorf("DEMI_OBJECT_STORE_CONFIG cannot be used: %w", err)
 		}
 		s3 = &value
 	}
@@ -209,7 +217,7 @@ func (b *Backend) startServices(
 ) (<-chan webapi.DeviceID, error) {
 	keys, err := secret.serviceKeys()
 	if err != nil {
-		return nil, &StartError{Kind: StartSecret, Err: err}
+		return nil, err
 	}
 	machines, deaths := cloud.NewClient(life, config.MachinesSocket)
 	b.machines = machines
@@ -235,12 +243,12 @@ func (b *Backend) startServices(
 	}
 	b.services, err = usershard.StartServices(life, b.storage, keys, setup, settings)
 	if err != nil {
-		return nil, &StartError{Kind: StartServices, Err: err}
+		return nil, err
 	}
 	b.services.Hooks = config.Hooks
 	b.shards, err = usershard.NewShards(life, b.services)
 	if err != nil {
-		return nil, &StartError{Kind: StartShards, Err: err}
+		return nil, fmt.Errorf("the shard threads cannot start: %w", err)
 	}
 	return deaths, nil
 }
@@ -262,10 +270,10 @@ func (b *Backend) recover(ctx, life context.Context, deaths <-chan webapi.Device
 		}
 	})
 	if err := cloud.RecoverResets(ctx, b.services.Control, b.services.Cloud); err != nil {
-		return &StartError{Kind: StartCloud, Err: err}
+		return fmt.Errorf("the Clouds cannot be recovered: %w", err)
 	}
 	if err := usershard.RecoverForks(ctx, b.services.Control, b.services.Conversations); err != nil {
-		return &StartError{Kind: StartStorage, Err: err}
+		return fmt.Errorf("storage cannot be opened: %w", err)
 	}
 	if err := usershard.RearmWakeups(ctx, b.services.Control, b.shards); err != nil {
 		slog.Error("the saved wakeups cannot be listed", "error", err)

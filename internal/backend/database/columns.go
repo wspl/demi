@@ -21,7 +21,7 @@ type storedRow struct {
 
 func (r *storedRow) bad(column string, err error) {
 	if r.err == nil && err != nil {
-		r.err = &Error{Kind: Corrupt, Table: r.table, Column: column, Reason: err.Error(), Err: err}
+		r.err = CorruptValue(r.table, column, err)
 	}
 }
 
@@ -154,12 +154,13 @@ func queryRecord[T any](
 	table, query string,
 	decode func(*storedRow) T,
 	args ...any,
-) (*T, error) {
+) (T, bool, error) {
+	var zero T
 	rows, err := queryRecords(ctx, tx, table, query, decode, args...)
 	if err != nil || len(rows) == 0 {
-		return nil, err
+		return zero, false, err
 	}
-	return &rows[0], nil
+	return rows[0], true, nil
 }
 
 func execSQL(ctx context.Context, tx *sql.Tx, query string, args ...any) error {
@@ -175,11 +176,11 @@ func encoded(value any) (string, error) {
 func later(now core.Timestamp, by time.Duration) (core.Timestamp, error) {
 	t, err := now.Time()
 	if err != nil {
-		return "", &Error{Kind: TimeRange, Err: err}
+		return "", fmt.Errorf("%w: %w", ErrTimeRange, err)
 	}
 	result, err := core.TimestampFromTime(t.Add(by))
 	if err != nil {
-		return "", &Error{Kind: TimeRange, Err: err}
+		return "", fmt.Errorf("%w: %w", ErrTimeRange, err)
 	}
 	return result, nil
 }

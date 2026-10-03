@@ -42,14 +42,14 @@ type memoryRecords struct {
 	panicRotate  bool
 }
 
-func (r *memoryRecords) ManagedDevice(context.Context, webapi.UserID) (*database.DeviceRecord, error) {
+func (r *memoryRecords) ManagedDevice(context.Context, webapi.UserID) (database.DeviceRecord, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.device == nil {
-		return nil, nil
+		return database.DeviceRecord{}, false, nil
 	}
 	v := *r.device
-	return &v, nil
+	return v, true, nil
 }
 
 func (r *memoryRecords) ManagedDeviceOrCreate(_ context.Context, user webapi.UserID) (database.DeviceRecord, error) {
@@ -61,28 +61,31 @@ func (r *memoryRecords) ManagedDeviceOrCreate(_ context.Context, user webapi.Use
 	return *r.device, nil
 }
 
-func (r *memoryRecords) LatestManagedOperation(context.Context, webapi.DeviceID) (*database.ManagedOperation, error) {
+func (r *memoryRecords) LatestManagedOperation(
+	context.Context,
+	webapi.DeviceID,
+) (database.ManagedOperation, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.latest == nil {
-		return nil, nil
+		return database.ManagedOperation{}, false, nil
 	}
 	v := *r.latest
-	return &v, nil
+	return v, true, nil
 }
 
 func (r *memoryRecords) ManagedOperation(
 	_ context.Context,
 	_ webapi.DeviceID,
 	id webapi.OperationID,
-) (*database.ManagedOperation, error) {
+) (database.ManagedOperation, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	v, ok := r.operations[id]
 	if !ok {
-		return nil, nil
+		return database.ManagedOperation{}, false, nil
 	}
-	return &v, nil
+	return v, true, nil
 }
 
 func (r *memoryRecords) PutManagedOperation(_ context.Context, _ webapi.DeviceID, op database.ManagedOperation) error {
@@ -120,12 +123,12 @@ func (r *memoryRecords) CloudUses(context.Context, webapi.UserID, *webapi.Device
 	return append([]database.CloudUseRecord(nil), r.uses...), nil
 }
 
-func (r *memoryRecords) Device(ctx context.Context, id webapi.DeviceID) (*database.DeviceRecord, error) {
-	v, err := r.ManagedDevice(ctx, "")
-	if v != nil && v.ID != id {
-		return nil, nil
+func (r *memoryRecords) Device(ctx context.Context, id webapi.DeviceID) (database.DeviceRecord, bool, error) {
+	v, found, err := r.ManagedDevice(ctx, "")
+	if found && v.ID != id {
+		return database.DeviceRecord{}, false, nil
 	}
-	return v, err
+	return v, found, err
 }
 
 type cloudFixture struct {
@@ -202,7 +205,7 @@ func (f *cloudFixture) HoldForReset(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.holdFailure == id {
-		return nil, nil
+		return nil, ErrNotLetGo
 	}
 	f.holds++
 	f.heldIDs = append(f.heldIDs, id)

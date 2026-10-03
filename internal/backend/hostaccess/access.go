@@ -198,14 +198,14 @@ func OwnedConversation(
 	shard HostShard,
 	id webapi.ConversationID,
 ) (database.ConversationRecord, error) {
-	record, err := shard.Control().Conversation(ctx, id)
+	record, found, err := shard.Control().Conversation(ctx, id)
 	if err != nil {
 		return database.ConversationRecord{}, &Error{Kind: AccessStorage, Cause: err}
 	}
-	if record == nil || record.Owner != shard.User() {
+	if !found || record.Owner != shard.User() {
 		return database.ConversationRecord{}, &Error{Kind: AccessMissing}
 	}
-	return *record, nil
+	return record, nil
 }
 
 // WithHost runs operation once on the main Host or named bound device, holding
@@ -279,17 +279,16 @@ func ResolveTarget(
 ) (database.ExecutionTarget, error) {
 	switch target := record.Target.(type) {
 	case *webapi.ConversationTargetWorkspace:
-		workspace, err := shard.Control().Workspace(ctx, target.WorkspaceID)
+		workspace, found, err := shard.Control().Workspace(ctx, target.WorkspaceID)
 		if err != nil {
 			return nil, err
 		}
-		if workspace == nil || workspace.User != record.Owner {
-			return nil, &database.Error{
-				Kind:   database.Corrupt,
-				Table:  "conversations",
-				Column: "target_workspace_id",
-				Reason: fmt.Sprintf("workspace %s is not one of the owner's", target.WorkspaceID),
-			}
+		if !found || workspace.User != record.Owner {
+			return nil, database.CorruptValue(
+				"conversations",
+				"target_workspace_id",
+				fmt.Errorf("workspace %s is not one of the owner's", target.WorkspaceID),
+			)
 		}
 		return &database.ExecutionWorkspace{
 			WorkspaceID: workspace.ID,
@@ -299,13 +298,13 @@ func ResolveTarget(
 	case *webapi.ConversationTargetDevice:
 		return &database.ExecutionDevice{DeviceID: target.DeviceID, Path: target.Path}, nil
 	case *webapi.ConversationTargetCloud:
-		device, err := shard.Control().ManagedDevice(ctx, record.Owner)
+		device, found, err := shard.Control().ManagedDevice(ctx, record.Owner)
 		if err != nil {
 			return nil, err
 		}
 		var id *webapi.DeviceID
 		home := "/home/demi"
-		if device != nil {
+		if found {
 			id = &device.ID
 			if reported, ok := shard.Devices().Home(device.ID); ok {
 				home = reported
@@ -317,12 +316,7 @@ func ResolveTarget(
 		}
 		return &database.ExecutionCloud{DeviceID: id, Path: path}, nil
 	}
-	return nil, &database.Error{
-		Kind:   database.Corrupt,
-		Table:  "conversations",
-		Column: "target",
-		Reason: "missing target",
-	}
+	return nil, database.CorruptValue("conversations", "target", errors.New("missing target"))
 }
 
 // ConversationHosts lists the main Host followed by the attached Hosts.
@@ -411,7 +405,7 @@ func selectHost(
 	if err != nil {
 		return selectedHost{}, &Error{Kind: AccessStorage, Cause: err}
 	}
-	deviceID := database.ExecutionDeviceID(target)
+	deviceID, known := database.ExecutionDeviceID(target)
 	root := database.ExecutionPath(target)
 	_, prepare := target.(*database.ExecutionCloud)
 	if named != nil {
@@ -423,15 +417,17 @@ func selectHost(
 		if err != nil {
 			return selectedHost{}, err
 		}
-		deviceID = &bound.Device
+		deviceID = bound.Device
+		known = true
 		if bound.Role == Attached {
 			root = bound.Path
 			prepare = false
 		}
 
 	}
-	var device *database.DeviceRecord
-	if deviceID == nil {
+	var device database.DeviceRecord
+	var found bool
+	if !known {
 		if !allocate {
 			return selectedHost{}, &Error{Kind: AccessRefused, Cause: Stopped}
 		}
@@ -439,17 +435,18 @@ func selectHost(
 		if err != nil {
 			return selectedHost{}, &Error{Kind: AccessCloud, Cause: err}
 		}
-		device = &made
+		device = made
+		found = true
 	} else {
-		device, err = shard.Control().Device(ctx, *deviceID)
+		device, found, err = shard.Control().Device(ctx, deviceID)
 		if err != nil {
 			return selectedHost{}, &Error{Kind: AccessStorage, Cause: err}
 		}
 	}
-	if device == nil || device.User != record.Owner {
+	if !found || device.User != record.Owner {
 		return selectedHost{}, &Error{Kind: AccessRefused, Cause: DeviceGone}
 	}
-	return selectedHost{device: *device, root: root, prepare: prepare}, nil
+	return selectedHost{device: device, root: root, prepare: prepare}, nil
 }
 
 // makeHost binds the private runner file lease to a checked target.
@@ -478,19 +475,19 @@ func reachableHosts(
 	target database.ExecutionTarget,
 ) ([]ReachableHost, error) {
 	var result []ReachableHost
-	main := database.ExecutionDeviceID(target)
-	if main != nil {
-		name := string(*main)
-		device, err := shard.Control().Device(ctx, *main)
+	main, hasMain := database.ExecutionDeviceID(target)
+	if hasMain {
+		name := string(main)
+		device, found, err := shard.Control().Device(ctx, main)
 		if err != nil {
 			return nil, &Error{Kind: AccessStorage, Cause: err}
 		}
-		if device != nil {
+		if found {
 			name = device.Name
 		}
 		result = append(
 			result,
-			ReachableHost{Name: name, Device: *main, Path: database.ExecutionPath(target), Role: Main},
+			ReachableHost{Name: name, Device: main, Path: database.ExecutionPath(target), Role: Main},
 		)
 	}
 	attached, err := shard.Control().AttachedHosts(ctx, record.ID)
@@ -498,7 +495,7 @@ func reachableHosts(
 		return nil, &Error{Kind: AccessStorage, Cause: err}
 	}
 	for _, bound := range attached {
-		if main != nil && bound.Device == *main {
+		if hasMain && bound.Device == main {
 			continue
 		}
 		path, _ := shard.Devices().Home(bound.Device)

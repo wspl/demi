@@ -135,7 +135,7 @@ func TestJobsShareSelectedManifestOnlyWithinOneConnection(t *testing.T) {
 	barrier(t, l)
 	_, err = l.Close(t.Context())
 	requirePipe(t, err)
-	l = d.Connect(nil)
+	l = d.Connect(0)
 	request := startRequest("true")
 	request.Commands = first
 	_, err = h.StartJob(t.Context(), request)
@@ -238,8 +238,8 @@ func TestEndingJobCancelsPendingArtifactsWithoutAnswer(t *testing.T) {
 	sendFrame(t, l, &runnerwire.JobExit{JobID: job.ID(), ExitCode: new(int32(0)), Files: []runnerwire.JobFileChange{}})
 	<-resolver.done
 	barrier(t, l)
-	if _, ok, err := l.TryNext(); ok || err != nil {
-		t.Fatal("stale artifact answer", err)
+	if l.Queued() != 0 {
+		t.Fatal("stale artifact answer")
 	}
 }
 
@@ -270,7 +270,7 @@ func TestRunnerInstallsAreConnectionsLastList(t *testing.T) {
 	}
 	_, err := l.Close(t.Context())
 	requirePipe(t, err)
-	if len(d.Connect(nil).Link().Installs()) != 0 {
+	if len(d.Connect(0).Link().Installs()) != 0 {
 		t.Fatal("installs crossed connections")
 	}
 }

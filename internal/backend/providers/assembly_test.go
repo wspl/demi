@@ -135,7 +135,7 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := a.ProviderFor(ctx, *changed)
+	second, err := a.ProviderFor(ctx, changed)
 	if err != nil || second == first {
 		t.Fatal("changed entry reused", err)
 	}
@@ -143,7 +143,7 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	if _, err := a.ProviderFor(ctx, entry); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.ProviderFor(ctx, *changed); err != nil {
+	if _, err := a.ProviderFor(ctx, changed); err != nil {
 		t.Fatal(err)
 	}
 	if diff := cmp.Diff(
@@ -157,7 +157,7 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	); diff != "" {
 		t.Fatal(diff)
 	}
-	details, err := a.Details(ctx, *changed, false)
+	details, err := a.Details(ctx, changed, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	catalogs := a.ModelCatalog(
 		ctx,
 		[]ProviderEntry{
-			*changed,
+			changed,
 			{
 				ID:         "missing",
 				Family:     "unknown",
@@ -183,7 +183,7 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	if len(catalogs) != 2 || len(catalogs[0].Models) == 0 || len(catalogs[1].Warnings) == 0 {
 		t.Fatal(catalogs)
 	}
-	if _, err := a.ProcessRuntime(ctx, *changed, nil, nil); err == nil {
+	if _, err := a.ProcessRuntime(ctx, changed, nil, nil); err == nil {
 		t.Fatal("HTTP family accepted process runtime")
 	}
 	registerLogin(a, SetupTokenFamily, &loginKit{})

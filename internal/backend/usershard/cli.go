@@ -241,9 +241,9 @@ func cliCall(
 	operation claudecodeop.Operation,
 	input []byte,
 	attached []remotehost.AttachedArtifact,
-) ([]byte, *remotehost.ServiceCallError, error) {
-	packageDefinition := services.Native.Package(claudecodeop.Package)
-	if packageDefinition == nil ||
+) ([]byte, *remotehost.ServiceExitError, error) {
+	packageDefinition, ok := services.Native.Package(claudecodeop.Package)
+	if !ok ||
 		!services.Native.Serves(
 			claudecodeop.Package,
 			[]string{
@@ -255,16 +255,16 @@ func cliCall(
 	}
 	request := remotehost.ServiceRequest{
 		Context:   target.context,
-		Package:   *packageDefinition,
+		Package:   packageDefinition,
 		Operation: string(operation),
 		CWD:       target.home,
 		Resolver:  services.Native.Resolver(services.PublicURL),
 		Attached:  attached,
 	}
 	output, err := target.host.CallService(ctx, request, input, 1024*1024)
-	var exited *remotehost.ServiceCallError
+	var exited *remotehost.ServiceExitError
 	if err != nil {
-		if !errors.As(err, &exited) || exited.Kind != remotehost.ServiceExited {
+		if !errors.As(err, &exited) {
 			return nil, nil, fmt.Errorf("the installer failed: %w", err)
 		}
 		output = exited.Stdout
@@ -287,12 +287,12 @@ func (s *Shard) cliMachines(
 	ctx context.Context,
 	entry webapi.ProviderID,
 ) ([]webapi.CLIMachine, error) {
-	device, err := s.Control().ManagedDevice(ctx, s.user)
+	device, found, err := s.Control().ManagedDevice(ctx, s.user)
 	if err != nil {
 		return nil, err
 	}
 	result := []webapi.CLIMachine{}
-	if device == nil {
+	if !found {
 		return result, nil
 	}
 	remote := s.devices.DeviceAccess(device.ID)

@@ -240,7 +240,7 @@ func (m *ScriptedManager) wake(ctx context.Context, device string, params machin
 	runner, err = m.startRunner(
 		ctx,
 		backend,
-		remotehosttest.RunnerProcessOptions{Name: "cloud", Env: env, Token: &token, Managed: true},
+		remotehosttest.RunnerProcessOptions{Name: "cloud", Env: env, Token: token, Managed: true},
 	)
 	return err
 }

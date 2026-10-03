@@ -18,65 +18,79 @@ func (c *ControlService) CreateConversation(
 	ctx context.Context,
 	owner webapi.UserID,
 	id webapi.ConversationID,
-) (Creation, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (Creation, error) {
-		var reserved bool
-		if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM conversation_fork_operations WHERE id = ?)", id).
-			Scan(&reserved); err != nil {
-			return nil, err
-		}
-		if reserved {
-			return &ConversationUnavailable{}, nil
-		}
-		count, err := InsertConversation(
-			ctx,
-			tx,
-			NewConversation{
-				ID:     id,
-				Owner:  owner,
-				Title:  "New conversation",
-				Origin: TitlePlaceholder,
-				Target: &webapi.ConversationTargetCloud{},
-				At:     now,
-			},
-		)
-		if err != nil {
-			return nil, err
-		}
-		r, err := ConversationByID(ctx, tx, id)
-		if err != nil {
-			return nil, err
-		}
-		if r == nil {
-			return nil, &Error{
-				Kind:   Corrupt,
-				Table:  "conversations",
-				Column: "id",
-				Reason: "a conversation just created or found is missing",
+) (ConversationRecord, bool, error) {
+	var created bool
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ConversationRecord, error) {
+			var reserved bool
+			if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM conversation_fork_operations WHERE id = ?)", id).
+				Scan(&reserved); err != nil {
+				return ConversationRecord{}, err
 			}
-		}
-		if r.Owner != owner {
-			return &ConversationUnavailable{}, nil
-		}
-		if count == 1 {
-			return &ConversationCreated{Record: *r}, nil
-		}
-		return &ConversationExisting{Record: *r}, nil
-	})
+			if reserved {
+				return ConversationRecord{}, ErrIDUnavailable
+			}
+			count, err := InsertConversation(
+				ctx,
+				tx,
+				NewConversation{
+					ID:     id,
+					Owner:  owner,
+					Title:  "New conversation",
+					Origin: TitlePlaceholder,
+					Target: &webapi.ConversationTargetCloud{},
+					At:     now,
+				},
+			)
+			if err != nil {
+				return ConversationRecord{}, err
+			}
+			r, found, err := ConversationByID(ctx, tx, id)
+			if err != nil {
+				return ConversationRecord{}, err
+			}
+			if !found {
+				return ConversationRecord{}, CorruptValue(
+					"conversations",
+					"id",
+					errors.New("a conversation just created or found is missing"),
+				)
+			}
+			if r.Owner != owner {
+				return ConversationRecord{}, ErrIDUnavailable
+			}
+			created = count == 1
+			return r, nil
+		},
+	)
+	if err != nil {
+		return ConversationRecord{}, false, err
+	}
+	return record, created, nil
 }
 
 // Conversation returns the conversation of `id`, in whichever case it is spelled.
-func (c *ControlService) Conversation(ctx context.Context, id webapi.ConversationID) (*ConversationRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*ConversationRecord, error) {
-		return ConversationByID(ctx, tx, id)
-	})
+func (c *ControlService) Conversation(ctx context.Context, id webapi.ConversationID) (ConversationRecord, bool, error) {
+	var found bool
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ConversationRecord, error) {
+			r, ok, err := ConversationByID(ctx, tx, id)
+			found = ok
+			return r, err
+		},
+	)
+	return record, found && err == nil, err
 }
 
 // LastSwitch returns the conversation's latest target switch, which every node's next
 // context block describes; none before its first.
 func (c *ControlService) LastSwitch(ctx context.Context, id webapi.ConversationID) (*TargetSwitch, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*TargetSwitch, error) {
-		r, err := queryRecord(
+		r, found, err := queryRecord(
 			ctx,
 			tx,
 			"conversations",
@@ -84,10 +98,10 @@ func (c *ControlService) LastSwitch(ctx context.Context, id webapi.ConversationI
 			func(r *storedRow) *TargetSwitch { return optionalJSON(r, "last_switch", DecodeTargetSwitch) },
 			id,
 		)
-		if r == nil {
+		if !found {
 			return nil, err
 		}
-		return *r, err
+		return r, err
 	})
 }
 
@@ -154,18 +168,18 @@ func (c *ControlService) ChangeConversation(
 	ctx context.Context,
 	id webapi.ConversationID,
 	change RecordChange,
-) (ChangeOutcome, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ChangeOutcome, error) {
+) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) error {
 		var archived bool
 		err := tx.QueryRowContext(ctx, "SELECT archived FROM conversations WHERE id = ?", id).Scan(&archived)
 		if errors.Is(err, sql.ErrNoRows) {
-			return ChangeMissing, nil
+			return ErrConversationNotFound
 		}
 		if err != nil {
-			return 0, err
+			return err
 		}
 		if _, restoring := change.(*RecordArchived); archived && !restoring {
-			return ChangeArchived, nil
+			return ErrArchived
 		}
 		switch ch := change.(type) {
 		case *RecordArchived:
@@ -207,7 +221,7 @@ func (c *ControlService) ChangeConversation(
 				err = advanceContext(ctx, tx, id)
 			}
 		}
-		return ChangeApplied, err
+		return err
 	})
 }
 
@@ -292,9 +306,10 @@ func (c *ControlService) MarkLive(ctx context.Context, id webapi.ConversationID,
 
 // LiveAt returns when the conversation's agent tree was last seen live; none when there
 // is no such conversation.
-func (c *ControlService) LiveAt(ctx context.Context, id webapi.ConversationID) (*core.Timestamp, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*core.Timestamp, error) {
-		return queryRecord(
+func (c *ControlService) LiveAt(ctx context.Context, id webapi.ConversationID) (core.Timestamp, bool, error) {
+	var found bool
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (core.Timestamp, error) {
+		r, ok, err := queryRecord(
 			ctx,
 			tx,
 			"conversations",
@@ -302,7 +317,10 @@ func (c *ControlService) LiveAt(ctx context.Context, id webapi.ConversationID) (
 			func(r *storedRow) core.Timestamp { return r.instant("live_at") },
 			id,
 		)
+		found = ok
+		return r, err
 	})
+	return record, found && err == nil, err
 }
 
 // SetWakeup records when the earliest wakeup the conversation's tree saved is due,
@@ -566,7 +584,7 @@ func renameAttachedHost(
 	tx *sql.Tx,
 	id webapi.ConversationID,
 	change *RecordRename,
-) (ChangeOutcome, error) {
+) error {
 	holders, err := queryRecords(
 		ctx,
 		tx,
@@ -578,7 +596,7 @@ func renameAttachedHost(
 		change.Name,
 	)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	found, taken := false, false
 	for _, holder := range holders {
@@ -589,10 +607,10 @@ func renameAttachedHost(
 		}
 	}
 	if !found {
-		return ChangeNotAttached, nil
+		return ErrNotAttached
 	}
 	if taken {
-		return ChangeNameTaken, nil
+		return ErrNameTaken
 	}
 	err = execSQL(
 		ctx,
@@ -605,7 +623,7 @@ func renameAttachedHost(
 	if err == nil {
 		err = advanceContext(ctx, tx, id)
 	}
-	return ChangeApplied, err
+	return err
 }
 
 func switchAttachedHosts(

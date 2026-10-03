@@ -17,7 +17,8 @@ import (
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
-// Contract documentation is copied verbatim from Rust.
+// Contract doc comments describe the configuration file's JSON, in the form
+// contractgen uses for schema descriptions.
 //revive:disable:exported
 
 // Where `DEMI_OBJECT_STORE_CONFIG` puts the object store: an S3 bucket.
@@ -40,20 +41,20 @@ type S3Config struct {
 // ReadS3Config reads and checks the configuration in the JSON file at path.
 func ReadS3Config(ctx context.Context, path string) (S3Config, error) {
 	if err := ctx.Err(); err != nil {
-		return S3Config{}, &ConfigError{Err: err}
+		return S3Config{}, err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return S3Config{}, &ConfigError{Err: err}
+		return S3Config{}, err
 	}
 	value, err := DecodeS3Config(data)
 	if err != nil {
-		return S3Config{}, &ConfigError{Err: err}
+		return S3Config{}, err
 	}
 	if value.Endpoint != nil {
 		endpoint, err := s3Endpoint(*value.Endpoint)
 		if err != nil {
-			return S3Config{}, &ConfigError{Err: err}
+			return S3Config{}, err
 		}
 		value.Endpoint = &endpoint
 	}
@@ -67,7 +68,7 @@ func ReadS3Config(ctx context.Context, path string) (S3Config, error) {
 // must close the returned bucket.
 func (c S3Config) Open(ctx context.Context) (*blob.Bucket, error) {
 	if err := c.Validate(); err != nil {
-		return nil, &ConfigError{Err: err}
+		return nil, err
 	}
 	client := &http.Client{
 		Transport:     awshttp.NewBuildableClient().GetTransport(),
@@ -76,14 +77,14 @@ func (c S3Config) Open(ctx context.Context) (*blob.Bucket, error) {
 	provider, err := storageCredentials(ctx, c.Region, client)
 	if err != nil {
 		client.CloseIdleConnections()
-		return nil, &Error{Err: err}
+		return nil, fmt.Errorf("the object store failed: %w", err)
 	}
 	endpoint := c.Endpoint
 	if endpoint != nil {
 		normalized, err := s3Endpoint(*endpoint)
 		if err != nil {
 			client.CloseIdleConnections()
-			return nil, &ConfigError{Err: err}
+			return nil, err
 		}
 		normalized = strings.TrimRight(normalized, "/")
 		endpoint = &normalized
@@ -98,7 +99,7 @@ func (c S3Config) Open(ctx context.Context) (*blob.Bucket, error) {
 	if err != nil {
 		owner.close()
 		client.CloseIdleConnections()
-		return nil, &Error{Err: err}
+		return nil, fmt.Errorf("the object store failed: %w", err)
 	}
 	return blob.NewBucket(&s3Bucket{Bucket: bucket, closeTransport: func() {
 		owner.close()
@@ -118,7 +119,7 @@ func checkS3Config(c S3Config) error {
 	return nil
 }
 
-// s3Endpoint preserves Rust URL parsing and restricts object-store endpoints to HTTPS.
+// s3Endpoint parses value as a WHATWG HTTP(S) URL and accepts only HTTPS endpoints.
 func s3Endpoint(value string) (string, error) {
 	endpoint, err := contract.HTTPURL(value)
 	if err != nil {

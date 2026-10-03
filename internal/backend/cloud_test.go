@@ -38,7 +38,7 @@ func (s *hostScenario) cloudStatus() webapi.CloudStatus {
 	return state
 }
 
-// cloudUntil reads the same status route as Rust, woken by product state changes.
+// cloudUntil reads the Cloud status route, woken by product state changes.
 func (s *hostScenario) cloudUntil(check func(webapi.CloudStatus) bool) webapi.CloudStatus {
 	s.t.Helper()
 	changes := s.b.Backend.Services().Sync.Register(s.user.User.ID, database.TokenHash{})
@@ -313,7 +313,7 @@ func TestStartupRecoversResetDisksWithoutBooting(t *testing.T) {
 	}
 }
 
-// cloudWork drives a conversation with the same scripted Anthropic endpoint as Rust.
+// cloudWork drives a conversation against a scripted Anthropic endpoint.
 type cloudWork struct {
 	s            *hostScenario
 	vendor       *providertest.MockVendor

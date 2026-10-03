@@ -86,18 +86,17 @@ type RunnerTuning struct {
 	ClaimLifetime time.Duration
 	// How many pairing codes one user may try within a minute.
 	ClaimsPerMinute int
-	// How often a connected runner is asked whether it is there; none turns
+	// How often a connected runner is asked whether it is there; zero turns
 	// liveness off.
-	Ping *time.Duration
+	Ping time.Duration
 }
 
 // DefaultRunnerTuning returns the production timing and bounds.
 func DefaultRunnerTuning() RunnerTuning {
-	ping := remotehost.PingInterval
 	return RunnerTuning{
 		HelloDeadline:   30 * time.Second,
 		ClaimLifetime:   10 * time.Minute,
 		ClaimsPerMinute: 10,
-		Ping:            &ping,
+		Ping:            remotehost.PingInterval,
 	}
 }

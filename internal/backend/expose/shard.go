@@ -12,7 +12,7 @@ import (
 
 // Store is the control storage used by exposes. ControlService implements it.
 type Store interface {
-	Device(context.Context, webapi.DeviceID) (*database.DeviceRecord, error)
+	Device(context.Context, webapi.DeviceID) (database.DeviceRecord, bool, error)
 	CreateExpose(
 		context.Context,
 		webapi.ExposeID,
@@ -21,9 +21,9 @@ type Store interface {
 		webapi.ExposeAddress,
 		time.Duration,
 	) (database.ExposeRecord, error)
-	Expose(context.Context, webapi.ExposeID) (*database.ExposeRecord, error)
+	Expose(context.Context, webapi.ExposeID) (database.ExposeRecord, bool, error)
 	UserExposes(context.Context, webapi.UserID) (database.UserExposes, error)
-	RenewExpose(context.Context, webapi.ExposeID, webapi.UserID, time.Duration) (*database.ExposeRecord, error)
+	RenewExpose(context.Context, webapi.ExposeID, webapi.UserID, time.Duration) (database.ExposeRecord, error)
 	DeleteExpose(context.Context, webapi.ExposeID) error
 	DeleteExpiredExpose(context.Context, webapi.ExposeID, core.Timestamp) (bool, error)
 	DeleteDeviceExposes(context.Context, webapi.DeviceID) ([]webapi.ExposeID, error)

@@ -184,13 +184,13 @@ func AdmitRelay(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (*Re
 	if err != nil {
 		return nil, err
 	}
-	record, err := owned(ctx, shard, id)
-	if err == nil && record == nil {
+	record, found, err := owned(ctx, shard, id)
+	if err == nil && !found {
 		err = ErrRelayNotFound
 	}
 	if err == nil {
 		var expired bool
-		expired, err = destroyIfExpired(ctx, shard, *record)
+		expired, err = destroyIfExpired(ctx, shard, record)
 		if err == nil && expired {
 			err = ErrRelayNotFound
 		}
@@ -202,7 +202,7 @@ func AdmitRelay(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (*Re
 		admission.Release()
 		return nil, err
 	}
-	admission.record = *record
+	admission.record = record
 	return admission, nil
 }
 
@@ -251,19 +251,19 @@ func (a *RelayAdmission) watch(shard ExposeShard) {
 
 func expireWhenDue(ctx context.Context, shard ExposeShard, record database.ExposeRecord) {
 	for {
-		if err := FirstExpiry(ctx, shard.Clock(), &record.ExpiresAt); err != nil {
+		if err := FirstExpiry(ctx, shard.Clock(), record.ExpiresAt); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				slog.ErrorContext(ctx, "an expired expose could not be destroyed: "+err.Error(), "expose", record.ID)
 			}
 			return
 		}
-		next, err := owned(ctx, shard, record.ID)
-		if err == nil && next == nil {
+		next, found, err := owned(ctx, shard, record.ID)
+		if err == nil && !found {
 			return
 		}
 		if err == nil {
 			var expired bool
-			expired, err = destroyIfExpired(ctx, shard, *next)
+			expired, err = destroyIfExpired(ctx, shard, next)
 			if err == nil && expired {
 				return
 			}
@@ -274,17 +274,12 @@ func expireWhenDue(ctx context.Context, shard ExposeShard, record database.Expos
 			}
 			return
 		}
-		record = *next
+		record = next
 	}
 }
 
-// FirstExpiry waits until the earliest expiry, or until ctx is canceled. A nil
-// expiry waits only for cancellation, as a page with no exposes must do.
-func FirstExpiry(ctx context.Context, clock core.Clock, first *core.Timestamp) error {
-	if first == nil {
-		<-ctx.Done()
-		return ctx.Err()
-	}
+// FirstExpiry waits until the earliest expiry, or until ctx is canceled.
+func FirstExpiry(ctx context.Context, clock core.Clock, first core.Timestamp) error {
 	now, err := clock.Now().Time()
 	if err != nil {
 		return fmt.Errorf("expose clock: %w", err)

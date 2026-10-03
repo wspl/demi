@@ -1,36 +1,20 @@
 package database
 
 import (
-	"github.com/google/uuid"
-	"github.com/wspl/demi/internal/webapi"
+	"errors"
+	"fmt"
 )
 
-// WorkspaceDeletion describes what deleting a workspace found.
-//
-//sumtype:decl
-type WorkspaceDeletion interface{ workspaceDeletion() }
+// ErrWorkspaceNotFound means the user has no workspace of this ID.
+var ErrWorkspaceNotFound = errors.New("no such workspace")
 
-// WorkspaceDeleted means the workspace was deleted.
-type WorkspaceDeleted struct{}
-
-func (*WorkspaceDeleted) workspaceDeletion() {}
-
-// WorkspaceMissing means the user has no workspace of this ID.
-type WorkspaceMissing struct{}
-
-func (*WorkspaceMissing) workspaceDeletion() {}
-
-// WorkspaceInUse counts conversations still targeting the workspace.
-type WorkspaceInUse struct{ Count uint64 }
-
-func (*WorkspaceInUse) workspaceDeletion() {}
-
-// NewWorkspaceID returns a new workspace ID assigned by the backend.
-func NewWorkspaceID() webapi.WorkspaceID {
-	return webapi.WorkspaceID(uuid.NewString())
+// WorkspaceInUseError means conversations still target the workspace.
+type WorkspaceInUseError struct {
+	// Count is how many conversations target it.
+	Count uint64
 }
 
-// DTO returns the workspace as the page lists it.
-func (w WorkspaceRecord) DTO() webapi.WorkspaceDTO {
-	return webapi.WorkspaceDTO{ID: w.ID, DeviceID: w.Device, Path: w.Path, Name: w.Name, CreatedAt: w.CreatedAt}
+// Error says how many conversations still target the workspace.
+func (e *WorkspaceInUseError) Error() string {
+	return fmt.Sprintf("%d conversation(s) still target this workspace", e.Count)
 }

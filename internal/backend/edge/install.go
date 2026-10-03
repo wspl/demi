@@ -108,11 +108,11 @@ func (e *Edge) runnerArtifact(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (e *Edge) nativeArtifact(w http.ResponseWriter, r *http.Request) error {
-	artifact, err := e.state.Services.Native.LocalArtifact(r.Context(), r.PathValue("sha256"))
+	artifact, ok, err := e.state.Services.Native.LocalArtifact(r.Context(), r.PathValue("sha256"))
 	if err != nil {
 		return err
 	}
-	if artifact == nil {
+	if !ok {
 		return apiFailure(404, "not_found", "No such native artifact")
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")

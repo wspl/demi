@@ -15,35 +15,51 @@ func (c *ControlService) ManagedOperation(
 	ctx context.Context,
 	device webapi.DeviceID,
 	id webapi.OperationID,
-) (*ManagedOperation, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*ManagedOperation, error) {
-		return queryRecord(
-			ctx,
-			tx,
-			"managed_operations",
-			"SELECT * FROM managed_operations WHERE device_id = ? AND operation_id = ?",
-			operationRow,
-			device,
-			id,
-		)
-	})
+) (ManagedOperation, bool, error) {
+	var found bool
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ManagedOperation, error) {
+			r, ok, err := queryRecord(
+				ctx,
+				tx,
+				"managed_operations",
+				"SELECT * FROM managed_operations WHERE device_id = ? AND operation_id = ?",
+				operationRow,
+				device,
+				id,
+			)
+			found = ok
+			return r, err
+		},
+	)
+	return record, found && err == nil, err
 }
 
 // LatestManagedOperation returns the device's reset written last: the one its status shows.
 func (c *ControlService) LatestManagedOperation(
 	ctx context.Context,
 	device webapi.DeviceID,
-) (*ManagedOperation, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*ManagedOperation, error) {
-		return queryRecord(
-			ctx,
-			tx,
-			"managed_operations",
-			"SELECT * FROM managed_operations WHERE device_id = ? ORDER BY updated_at DESC,rowid DESC LIMIT 1",
-			operationRow,
-			device,
-		)
-	})
+) (ManagedOperation, bool, error) {
+	var found bool
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ManagedOperation, error) {
+			r, ok, err := queryRecord(
+				ctx,
+				tx,
+				"managed_operations",
+				"SELECT * FROM managed_operations WHERE device_id = ? ORDER BY updated_at DESC,rowid DESC LIMIT 1",
+				operationRow,
+				device,
+			)
+			found = ok
+			return r, err
+		},
+	)
+	return record, found && err == nil, err
 }
 
 // PutManagedOperation writes the operation's phase and error, creating its row on its
@@ -110,12 +126,7 @@ func (c *ControlService) RotateDeviceToken(ctx context.Context, device webapi.De
 			return err
 		}
 		if !changed {
-			return &Error{
-				Kind:   Corrupt,
-				Table:  "devices",
-				Column: "id",
-				Reason: fmt.Sprintf("device %s is not a Cloud device", device),
-			}
+			return CorruptValue("devices", "id", fmt.Errorf("device %s is not a Cloud device", device))
 		}
 		return nil
 	})
@@ -148,7 +159,7 @@ func (c *ControlService) AnnouncedCloudReset(
 	id webapi.ConversationID,
 ) (*webapi.OperationID, error) {
 	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*webapi.OperationID, error) {
-		r, err := queryRecord(
+		r, found, err := queryRecord(
 			ctx,
 			tx,
 			"conversations",
@@ -158,10 +169,10 @@ func (c *ControlService) AnnouncedCloudReset(
 			},
 			id,
 		)
-		if r == nil {
+		if !found {
 			return nil, err
 		}
-		return *r, err
+		return r, err
 	})
 }
 
