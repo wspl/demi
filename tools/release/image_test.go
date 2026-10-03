@@ -384,7 +384,7 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 			if scenario == "command" && (!errors.Is(err, artifacts.ErrDigest) || !strings.Contains(err.Error(), "demi-browser")) {
 				t.Fatalf("command corruption: %v", err)
 			}
-			if scenario == "dpkg" && !strings.Contains(err.Error(), "tini") {
+			if scenario == "dpkg" && err.Error() != `dpkg lists tini as "install ok half-configured": its installation did not finish` {
 				t.Fatalf("unfinished package unnamed: %v", err)
 			}
 

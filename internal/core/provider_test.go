@@ -93,13 +93,10 @@ func TestRuleErrorsNameFields(t *testing.T) {
 		value    any
 		parts    []string
 	}{
-		{"u1", "/content/6/name", "", []string{"content[6][0].name"}},
+		{"u1", "/content/6/name", "", []string{"content[6].name"}},
 		{"m1", "/id", "m2", []string{"must be the message's id, m1"}},
 	} {
 		t.Run(tc.id, func(t *testing.T) {
-			if tc.id == "u1" {
-				t.Skip("fidelity 4: Go field diagnostics omit Rust enum tuple index [0]")
-			}
 			value := fixtureByID(t, fixtures, tc.id)
 			mutate(t, value, tc.path, tc.value, false)
 			raw, err := contract.EncodeJSON(value)
@@ -111,7 +108,8 @@ func TestRuleErrorsNameFields(t *testing.T) {
 			if err == nil {
 				t.Fatal("accepted invalid block")
 			}
-			if tc.id == "u1" && !errors.As(err, &field) {
+			// Accepted normalization F4: paths use wire fields without Rust enum wrappers.
+			if tc.id == "u1" && (!errors.As(err, &field) || field.Path != "content[6].name") {
 				t.Fatalf("expected field error: %v", err)
 			}
 			for _, part := range tc.parts {

@@ -121,14 +121,18 @@ func TestCompletionIDs(t *testing.T) {
 	}
 }
 
-// Rust accepted alternate RFC3339 spellings; this pins the accepted migration normalization.
+// go-migration.md, "A timestamp's spelling is the documented one":
+// accept canonical UTC milliseconds and refuse Rust's alternate spellings.
 func TestRustTimestampSpellings(t *testing.T) {
-	t.Skip("fidelity 2: Go accepts only canonical UTC timestamps with three fractional digits")
-	for _, text := range []string{"2026-09-21T14:13:20Z", "2026-09-21T16:13:20+02:00"} {
+	for _, text := range []string{"2026-09-21T14:13:20Z", "2026-09-21T16:13:20+02:00", "2026-09-21T14:13:20.000Z"} {
 		t.Run(text, func(t *testing.T) {
 			value, err := core.DecodeTimestamp([]byte(`"` + text + `"`))
-			if err != nil || value != "2026-09-21T14:13:20.000Z" {
-				t.Fatalf("timestamp: %s %v", value, err)
+			if text == "2026-09-21T14:13:20.000Z" {
+				if err != nil || string(value) != text {
+					t.Fatalf("canonical timestamp: %s %v", value, err)
+				}
+			} else if err == nil {
+				t.Fatalf("accepted alternate timestamp %s", text)
 			}
 		})
 	}

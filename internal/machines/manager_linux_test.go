@@ -138,6 +138,12 @@ func TestResetPublishesFreshSystemWithSavedHomeOnce(t *testing.T) {
 	if err == nil {
 		t.Fatal("invalid base accepted")
 	}
+	t.Run("invalid base message", func(t *testing.T) {
+		t.Skip("fidelity 10: manager name errors omit the kind and offending value")
+		if err.Error() != `invalid base version: "../b"` {
+			t.Fatalf("invalid base: %v", err)
+		}
+	})
 }
 
 // Cost: sparse 32 MiB images and filesystem recovery, normally <1 s in the VM.
@@ -177,16 +183,23 @@ func TestRecoveryPublishesWorkingPairAndRemovesStages(t *testing.T) {
 			t.Fatalf("retained %s: %v", path, err)
 		}
 	}
-	invalid := filepath.Join(m.core.Config.Working(), "-not a device")
+	invalid := filepath.Join(m.core.Config.Working(), "not a device")
 	if err := os.Mkdir(invalid, 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(stage, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := recoverWorking(t.Context(), m.core); err == nil {
+	nameErr := recoverWorking(t.Context(), m.core)
+	if nameErr == nil {
 		t.Fatal("invalid device silently skipped")
 	}
+	t.Run("invalid recovery name message", func(t *testing.T) {
+		t.Skip("fidelity 10: recovery name error omits the kind and offending value")
+		if nameErr.Error() != `a working pair is not named by a device id: invalid device id: "not a device"` {
+			t.Fatalf("recovery name: %v", nameErr)
+		}
+	})
 	if _, err := os.Stat(stage); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("stage must be removed before any invalid device stops recovery: %v", err)
 	}
@@ -219,6 +232,12 @@ func TestStoppedDeviceOperationsAndShutdown(t *testing.T) {
 	if _, err = m.Handle(t.Context(), &machinewire.Hibernate{Params: machinewire.HibernateParams{DeviceID: "dev/1"}}); err == nil {
 		t.Fatal("invalid device accepted")
 	}
+	t.Run("invalid device message", func(t *testing.T) {
+		t.Skip("fidelity 10: manager name errors omit the kind and offending value")
+		if err.Error() != `invalid device id: "dev/1"` {
+			t.Fatalf("invalid device: %v", err)
+		}
+	})
 
 	t.Run("reconcile", func(t *testing.T) {
 		if !*rootTests {
