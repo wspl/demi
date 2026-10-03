@@ -15,13 +15,12 @@ import (
 )
 
 func (e *Edge) runnerSocket(w http.ResponseWriter, r *http.Request) error {
-	socket, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
 		return nil
 	} // Accept has already written the upgrade refusal.
-	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = socket.CloseNow() }()
-	socket.SetReadLimit(runnerwire.MaxMessageBytes)
+	socket := runners.NewSocket(r.Context(), conn)
+	defer socket.Release()
 	ctx, cancel := context.WithTimeout(r.Context(), e.state.Services.Runners.HelloDeadline)
 	kind, bytes, err := socket.Read(ctx)
 	cancel()
@@ -45,16 +44,20 @@ func (e *Edge) runnerSocket(w http.ResponseWriter, r *http.Request) error {
 		}
 		return e.awaitClaim(r.Context(), socket, hello.Runner)
 	}
-	// Transport closure cancels the connection context during this lookup.
-	// The concrete websocket handoff API cannot transfer a pending frame read;
-	// immediate Close-frame observation and discarding repeated hellos require
-	// a shard API that accepts an edge-owned reader (see b-edge's report).
-	if e.state.Services.Hooks != nil {
-		if err := e.state.Services.Hooks.Hello(r.Context(), usershard.HelloTokenLookup); err != nil {
-			return nil
+	var device *database.DeviceRecord
+	err = watchRunner(r.Context(), socket, func(ctx context.Context) error {
+		if e.state.Services.Hooks != nil {
+			if err := e.state.Services.Hooks.Hello(ctx, usershard.HelloTokenLookup); err != nil {
+				return err
+			}
 		}
+		var err error
+		device, err = e.state.Services.Control.DeviceByToken(ctx, database.HashToken(hello.DeviceToken.Expose()))
+		return err
+	})
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil
 	}
-	device, err := e.state.Services.Control.DeviceByToken(r.Context(), database.HashToken(hello.DeviceToken.Expose()))
 	if err != nil {
 		return refuseRunner(r.Context(), socket, runnerwire.HelloErrorCodeInternal, "the device could not be read")
 	}
@@ -67,7 +70,7 @@ func (e *Edge) runnerSocket(w http.ResponseWriter, r *http.Request) error {
 	}
 	return shard.AdoptRunner(r.Context(), *device, hello.Runner, socket)
 }
-func refuseRunner(ctx context.Context, socket *websocket.Conn, code runnerwire.HelloErrorCode, reason string) error {
+func refuseRunner(ctx context.Context, socket *runners.Socket, code runnerwire.HelloErrorCode, reason string) error {
 	if err := runners.Send(ctx, socket, &runnerwire.HelloError{Code: code, Reason: reason}); err != nil {
 		return nil
 	}
@@ -75,7 +78,7 @@ func refuseRunner(ctx context.Context, socket *websocket.Conn, code runnerwire.H
 	_ = socket.Close(websocket.StatusNormalClosure, "")
 	return nil
 }
-func (e *Edge) awaitClaim(ctx context.Context, socket *websocket.Conn, runner runnerwire.RunnerInfo) error {
+func (e *Edge) awaitClaim(ctx context.Context, socket *runners.Socket, runner runnerwire.RunnerInfo) error {
 	for {
 		code := runners.GenerateClaimCode()
 		wait := e.state.Services.Claims.Register(code, runner)
@@ -90,7 +93,17 @@ func (e *Edge) awaitClaim(ctx context.Context, socket *websocket.Conn, runner ru
 			}
 			expiry, cancel := context.WithTimeout(ctx, e.state.Services.Runners.ClaimLifetime)
 			defer cancel()
-			return wait.Wait(expiry)
+			var grant *runners.ClaimGrant
+			err := watchRunner(expiry, socket, func(ctx context.Context) error {
+				var err error
+				grant, err = wait.Wait(ctx)
+				return err
+			})
+			if err != nil && grant != nil {
+				grant.Release()
+				grant = nil
+			}
+			return grant, err
 		}()
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 			continue
@@ -101,7 +114,7 @@ func (e *Edge) awaitClaim(ctx context.Context, socket *websocket.Conn, runner ru
 		return e.handOver(ctx, socket, runner, grant)
 	}
 }
-func (e *Edge) handOver(ctx context.Context, socket *websocket.Conn, runner runnerwire.RunnerInfo, grant *runners.ClaimGrant) error {
+func (e *Edge) handOver(ctx context.Context, socket *runners.Socket, runner runnerwire.RunnerInfo, grant *runners.ClaimGrant) error {
 	defer grant.Release()
 	if err := runners.Send(ctx, socket, &runnerwire.Claimed{DeviceToken: grant.Token}); err != nil {
 		return nil
@@ -120,5 +133,32 @@ func (e *Edge) handOver(ctx context.Context, socket *websocket.Conn, runner runn
 	}()
 	err = shard.AdoptClaimed(ctx, grant.Device, runner, socket, bound)
 	<-done
+	return err
+}
+
+// watchRunner drops pre-acceptance frames while work waits, canceling that work
+// on Close or read failure. It joins the consumer before the Socket is handed on.
+func watchRunner(ctx context.Context, socket *runners.Socket, work func(context.Context) error) error {
+	workCtx, cancelWork := context.WithCancel(ctx)
+	defer cancelWork()
+	readCtx, cancelRead := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			if _, _, err := socket.Read(readCtx); err != nil {
+				if readCtx.Err() == nil {
+					cancelWork()
+				}
+				return
+			}
+		}
+	}()
+	err := work(workCtx)
+	cancelRead()
+	<-done
+	if workCtx.Err() != nil {
+		return workCtx.Err()
+	}
 	return err
 }
