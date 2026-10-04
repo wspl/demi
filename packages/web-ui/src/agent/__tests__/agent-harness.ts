@@ -7,7 +7,6 @@ export const model: ModelSelection = {
     id: 'stub',
     name: 'Stub',
     contextWindow: 1000,
-    inputLimit: null,
     outputLimit: null,
     thinking: [],
     acceptedExtensions: [],

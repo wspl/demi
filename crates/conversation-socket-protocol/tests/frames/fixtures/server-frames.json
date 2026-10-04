@@ -36,7 +36,6 @@
             "id": "stub-model",
             "name": "Stub",
             "contextWindow": 1000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []
@@ -56,7 +55,6 @@
             "id": "stub-model",
             "name": "Stub",
             "contextWindow": 1000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []
@@ -106,7 +104,6 @@
               "id": "stub-model",
               "name": "Stub",
               "contextWindow": 1000,
-              "inputLimit": null,
               "outputLimit": null,
               "thinking": [],
               "acceptedExtensions": []
@@ -135,7 +132,6 @@
               "id": "stub-model",
               "name": "Stub",
               "contextWindow": 1000,
-              "inputLimit": null,
               "outputLimit": null,
               "thinking": [],
               "acceptedExtensions": []
@@ -159,7 +155,6 @@
                 "id": "stub-model",
                 "name": "Stub",
                 "contextWindow": 1000,
-                "inputLimit": null,
                 "outputLimit": null,
                 "thinking": [],
                 "acceptedExtensions": []
@@ -190,7 +185,6 @@
               "id": "stub-model",
               "name": "Stub",
               "contextWindow": 1000,
-              "inputLimit": null,
               "outputLimit": null,
               "thinking": [],
               "acceptedExtensions": []
@@ -252,7 +246,6 @@
             "id": "stub-model",
             "name": "Stub",
             "contextWindow": 1000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []
@@ -406,7 +399,6 @@
             "id": "stub-model",
             "name": "Stub",
             "contextWindow": 1000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []

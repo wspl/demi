@@ -24,7 +24,7 @@ const SECOND = '00000000-0000-4000-8000-000000000002'
 const SHA = 'a'.repeat(64)
 const model = {
   providerId: 'stub', thinking: null, serviceTierId: null,
-  model: { id: 'stub', name: 'Stub', contextWindow: 1000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
+  model: { id: 'stub', name: 'Stub', contextWindow: 1000, outputLimit: null, thinking: [], acceptedExtensions: [] },
 }
 /** The provider entry a conversation infers with, as the product state lists it. */
 const stubProvider = {
