@@ -600,7 +600,7 @@ manifest, and each marked changed on its own, through the port or by a
 
 The plugin host answers a read of either scope with a `page_state` request
 for that scope, and counts the revision of each conversation's state in
-memory. A page
+memory ([Revisions counted in memory](../product/web-api.md#revisions-counted-in-memory)). A page
 call is `POST /api/plugins/:plugin/calls/:method` for a method of the user
 scope, or `POST /api/conversations/:id/plugins/:plugin/calls/:method` for one
 of the conversation scope, with the parameters as its JSON body
