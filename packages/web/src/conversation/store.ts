@@ -675,7 +675,10 @@ export const useConversations = defineStore('conversations', () => {
     if (!conversation) {
       return
     }
-    if (!cache.get(conversation.id)) {
+    // A conversation the page shows already stays shown while it opens: the
+    // first send opens the record it just created, and the composer the user
+    // sent from must stay where it is, with the focus in it.
+    if (!cache.get(conversation.id) && conversation.load !== 'ready') {
       conversation.load = conversation.persistence === 'synced' ? 'loading' : 'ready'
     }
     try {

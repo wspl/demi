@@ -4,7 +4,7 @@ import type { ClientContent } from '@demicodes/protocol'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { toasts } from '@demicodes/web-ui/infra/toast'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { nextTick, toRaw } from 'vue'
+import { nextTick, toRaw, watch } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
@@ -573,6 +573,46 @@ test('first send failure preserves the conversation and retries its UUID and mes
   ])
 })
 
+// The page hides the composer while a conversation loads: had the first send
+// shown the new conversation as loading, the composer the user sent from
+// would have gone, and the focus with it.
+test('the first send keeps the new conversation shown while its record opens', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  useProduct().snapshot!.providers.push(stubProvider)
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
+    if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
+      return Response.json({ conversation: records.find((item) => item.id === id), results: [] })
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  const shown: string[] = []
+  const stop = watch(() => conversation.load, (load) => shown.push(load), { flush: 'sync' })
+  try {
+    await useProduct().loadModels(true)
+    await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
+    conversation.draft = 'First message'
+    await store.send(conversation)
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(conversation.persistence).toBe('synced')
+    expect(shown).toEqual([])
+  } finally {
+    stop()
+    submit.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('a draft keeps its files; the conversation itself is created on first send', async () => {
   const store = useConversations()
   store.create()
@@ -746,7 +786,6 @@ test('history remains readable during its own connection after navigation', asyn
   const store = useConversations()
   const current = store.items[0]!
   current.blocks = [{ type: 'text', id: 'cached', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'cached' }]
-  current.load = 'ready'
   current.draft = 'Keep the draft'
   useProduct().snapshot!.providers.push(stubProvider)
   const historyRequested = deferred<void>()

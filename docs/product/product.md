@@ -367,9 +367,13 @@ line and ⌘/Ctrl+Enter sends. An input method's Enter never sends. Enter on a
 message that cannot go yet does not send in silence: the send button says why
 it cannot, in the words it says when it is pointed at — an upload still
 running, one that failed, a model that cannot send — and the answer goes by
-itself. The composer and the conversation render a user message with one editor,
-read-only in the conversation, so a sent message cannot look different from
-what was written.
+itself. A message sent or queued, by Enter or by the send button, leaves the
+focus in the composer, so the next one is typed at once. An edit sent with
+Save and resend takes no typing while it is saved; once it ends, the
+composer's draft takes the focus, unless the user has put it elsewhere
+meanwhile. The composer and the conversation render a user message with one
+editor, read-only in the conversation, so a sent message cannot look
+different from what was written.
 
 The composer stands one line high while the message fits that line. As soon
 as the message needs more — a line break, a code block, an image, or text
