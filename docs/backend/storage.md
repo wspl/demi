@@ -291,11 +291,12 @@ command's id. The row holds when the command ended and one of three states:
 
 | State | Holds | `demi shell output` prints |
 |---|---|---|
-| Stored | The blob, and the bytes at the output's end that the backend does not have with why, when there are some: lost with the Host's connection, or not read from the Host | The output |
+| Stored | The blob, and the bytes at the output's end that the backend does not have with why, when there are some: lost with the Host's connection, or not read from the Host; and the command's media ([Media a command returns](../agent/runtime.md#media-a-command-returns)), each with its number, media type and size, and its blob or why the backend does not have it: lost with the Host's connection, not read from the Host, or not stored | The output, and with `--medium` one medium |
 | Not stored | Why the put failed | The reason |
 | Removed | When the retention pass removed it | That it was removed, and on which day |
 
-The put comes first and the row after it, as for every blob
+The puts come first, the output's and each medium's, and the row after
+them, as for every blob
 ([Attachment and transcript media](#attachment-and-transcript-media)): a
 stored row never names an unpublished blob, and a crash between the two leaves
 an unreferenced blob that the collector deletes. A row is written once when
@@ -374,7 +375,7 @@ retention pass does the rest:
 | A tool result's image or video | 30 days, and longer while a request could still send it | Retired: a part that says it was removed takes its place ([Retired tool media](../agent/runtime.md#retired-tool-media)); then its blob is collected |
 | Any other blob, such as an edit copy, or a tool's screenshot in history an edit removed | While a block, a queued message or a pending steer references it, and 24 hours after its last use | Collected ([Collecting blobs](#collecting-blobs)) |
 | A conversation and its rows | For as long as the account exists | Removed with the account |
-| A command's whole output | 30 days after the command ended | Removed: its record says on which day ([Removing command outputs](#removing-command-outputs)); then its blob is collected |
+| A command's whole output and its media | 30 days after the command ended | Removed: its record says on which day ([Removing command outputs](#removing-command-outputs)); then their blobs are collected |
 | A running command's output on its Host | Until the backend has read the command's end | Removed with the job's directory ([Pipes and output](../execution/runner.md#pipes-and-output)) |
 
 ### The retention pass
@@ -471,7 +472,7 @@ request at the earliest, still far beyond any vendor's cache.
 
 For each conversation of the user, archived ones included, the pass marks
 the stored outputs whose command ended more than 30 days ago removed, with the
-day, in one transaction on the conversation's writer connection. It needs
+day, and their media with them, in one transaction on the conversation's writer connection. It needs
 neither the conversation's file gate nor a stored tree: no session holds these
 rows, and no request carries a command's output
 ([The whole output](../agent/runtime.md#the-whole-output)). The commit records
@@ -491,7 +492,8 @@ kinds of evidence:
   the destination of each of the user's Forks that is not published yet, its
   `blob_refs` rows, which cover the media and edit copies of every block of
   every node; the media of each node's queued messages; and its
-  `command_outputs` rows that hold a blob; and the blobs the user's
+  `command_outputs` rows that hold a blob, the output's and its media's; and
+  the blobs the user's
   `plugin_values` and `plugin_directories` rows name.
 - **Uses:** what no row shows yet, such as a medium that was put but whose
   block is not saved, a file a plugin put before the value that names it, or a
@@ -577,6 +579,7 @@ time on the test clock; none waits for a day to pass.
 | One of the user's conversation databases does not open | The collection deletes nothing for that user and logs which database failed |
 | A command's output whose command ended 31 days ago, in a conversation a page has open | The pass marks it removed with the day; its blob goes at a later pass; `demi shell output` says when it was removed |
 | A command's output whose command ended 29 days ago | It stays, and so does its blob |
+| A command's media whose command ended 31 days ago, one of them also attached to the transcript | The pass removes them with the output; the blob the transcript references stays until that medium is retired |
 | A Fork of a conversation whose commands edited files | No object is copied; the destination's change view reads the same blobs |
 | After a save, a history rewrite, an edit, a Fork's seed and a retirement | Each conversation's `blob_refs` rows equal the rows derived from its blocks; the check fails when any of these paths skips the one function |
 

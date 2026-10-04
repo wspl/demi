@@ -128,6 +128,7 @@ Each input field has one source:
 | `restField` | An array receiving raw tokens after `--`. It has no named-option form. |
 | Remaining input fields | Named options such as `--path notes.txt`. Their schemas define values, optionality, boolean flags, enums, and repeated array options. |
 | `output.json` | A schema enabling validated structured output through `--json`. |
+| `media` | The leaf may return media, images and videos sent where its stdout goes ([Return media](#return-media)). Help marks it, and the dispatcher fails a call of a leaf without it that returns one. |
 
 Unknown options, unknown fields, missing required values, duplicate scalar
 values, and schema failures reject execution, and one rejection names every
@@ -200,8 +201,11 @@ command follows unless its own help says otherwise: success prints raw text on
 stdout; failure writes an error message to stderr and exits non-zero; `--help`
 works at any level; usage writes `<placeholders>` for values and `[brackets]`
 for optional arguments; values containing spaces are quoted; stdin bodies use a
-quoted heredoc, pipe, or input redirection and have no option; and
-`--name=value` and `--` pass values that begin with `--`. Each root's help
+quoted heredoc, pipe, or input redirection and have no option;
+`--name=value` and `--` pass values that begin with `--`; and a command
+marked as returning media attaches its images and videos to the result when
+its stdout is the job's output, and otherwise writes a single one's bytes as
+its stdout. Each root's help
 follows. An empty command set renders no help.
 
 Help displays a complete usage template, value placeholders, required and
@@ -315,6 +319,7 @@ The invocation carries:
 | Command context | The [command context](native-runtime.md#command-context) from the backend's record of the job: conversation, caller, and locale. |
 | Caller | The agent node the job runs for, from the same record; none for a job no agent started. A job the handler starts on another Host carries it on. |
 | Stdin | Whether the calling process has a pipe on its stdin. |
+| Stdout | Where the calling process's stdout goes: `job`, the job's output, or `elsewhere` ([Where a command's stdout goes](runner.md#where-a-commands-stdout-goes)). |
 | Relayed pipes | The ids of the pipes relayed for the call's stdin and stdout. |
 
 The port is the handler's side of the call. Each of its operations is one
@@ -323,6 +328,7 @@ request and one reply:
 | Operation | Meaning |
 | --- | --- |
 | Write stdout, write stderr | Output. Stdout flows through the call's relayed pipe, so a write waits until the calling process has read enough; stderr goes to the runner as messages ([Deliver IO](#deliver-io-and-release-an-invocation)). |
+| Return a medium | One image or video, named as a blob of the conversation owner's namespace that the handler put first ([Return media](#return-media)). |
 | Read stdin | The next chunk of a finite stdin, on demand. |
 | Read live stdin | The next interactive write to the job, until the job ends. |
 | Cancellation | Whether, and when, the call was cancelled. |
@@ -352,6 +358,9 @@ reported.
 An external program such as `xargs` calls a declared root through an alias to
 `demi-runner`. The alias basename selects the root. The client forwards raw argv,
 cwd, environment, and its live execution context, then streams command IO. It
+compares its own stdin and stdout with the job's, as a builtin does, and
+forwards the answers
+([Where a command's stdout goes](runner.md#where-a-commands-stdout-goes)). It
 contains no native command algorithms. Brush builtins call the dispatcher directly
 and do not need this extra process or connection.
 
@@ -421,6 +430,57 @@ failure, and cancellation. Ordinary native cancellation preserves other calls;
 a faulty handler that cannot stop follows the
 [service failure contract](native-runtime.md#invoke-and-retire-a-service).
 
+## Return media
+
+Beside stdout and stderr, a declared command may return media: images and
+videos, which [Media a command returns](../agent/runtime.md#media-a-command-returns)
+sends where the command's stdout goes. That section owns the rule and what
+the model receives; this one says how a command returns a medium. For
+example, `demi browser screenshot t1` returns its PNG. Run on its own, its
+stdout is the job's output, so the runner keeps the PNG with the job and the
+job's result attaches it; with `> shot.png`, the runner writes the PNG's
+bytes into the file.
+
+- **The handler returns, the dispatcher routes.** A `native` handler returns
+  a medium through its output writer, as medium records
+  ([Response records and completion](native-runtime.md#response-records-and-completion));
+  an `rpc` handler through its port, naming a blob it put, which the backend
+  streams to the runner as `rpc_medium { callId, after, size, pipe }`. No
+  handler writes a medium to stdout itself: the dispatcher in the runner
+  routes every medium by the invocation's `stdout`, so the rule is the same
+  for every command, a builtin or an alias, `native` or `rpc`.
+- **Stdout is the job's output (`job`).** The dispatcher hands the medium to
+  the job, which numbers and keeps it
+  ([Pipes and output](runner.md#pipes-and-output)), and writes the medium's
+  line into the command's stdout where the handler returned it: after the
+  stdout records before it, for a `native` call, and after the first `after`
+  bytes of the call's stdout, for an `rpc` call, whose stdout and media arrive
+  on different paths. Under `--json`, the lines follow the JSON value once the
+  dispatcher has released it, so the value stays one JSON value.
+- **Stdout goes elsewhere (`elsewhere`).** The dispatcher holds the medium in
+  the job's directory and, when the command completes with status 0, writes
+  its bytes as the command's stdout. A second medium, or stdout bytes beside
+  the medium, the `--json` value included, fail the command with status 1,
+  and the held medium is not written: a second medium with the message
+  [Where a medium goes](../agent/runtime.md#where-a-medium-goes) gives, and
+  stdout beside it with
+  `<command>: a medium must be all of its stdout when its stdout is not the job's output`.
+  Stdout a command wrote before its medium has passed already; a handler
+  that follows the next point writes none. A command that fails writes none
+  of its medium, as it releases no captured `--json` output.
+- **What the handler knows.** The invocation's `stdout` tells the handler
+  where its stdout goes, so a command that prints text about its medium,
+  such as a screenshot's size, prints it only when its stdout is the job's
+  output. It needs to know nothing else: the numbers, the lines and the
+  bounds are the runner's.
+- **Checks.** A medium from a leaf that does not declare `media`, a medium
+  whose bytes are not an image or video type of the model-media table
+  ([Accepted attachment types](../providers/models.md#accepted-attachment-types)),
+  and a medium over 16 MiB fail the command: each is a defect of its handler,
+  which the dispatcher reports rather than repairs. Only an invocation a job's
+  command makes can return media; a user stream's or a package call's writer
+  refuses them.
+
 ## File commands
 
 `demi file read`, `create`, `edit`, and `patch` run in the native `demi.file`
@@ -432,6 +492,13 @@ name says it is Demi's ([File contents](runner.md#file-contents)), and a patch
 that changes several files restores the files it already changed when a later
 write fails. Create, edit, and patch record their writes for
 [edit tracking](edit-tracking.md).
+
+`demi file read` prints a file's bytes, and declares `media`: a file of at
+most 16 MiB whose bytes are an image or video type of the model-media table it
+returns as a medium instead ([Return media](#return-media)). So
+`demi file read shot.png` shows the image to the model, several such reads in
+one script show it each image in order, and `demi file read shot.png > copy.png`
+still copies the bytes.
 
 ## Acceptance
 
@@ -445,3 +512,10 @@ Verify with a real runner and without calling a model:
 | `"7"` for an integer field in an `rpc` call's JSON arguments | A usage error; the handler does not run |
 | `--json` output that does not match the output schema | The command fails with nothing on stdout |
 | An `rpc` call cancelled while its handler runs | Exit status 130, the cause on stderr |
+| A `native` and an `rpc` command of one job, their stdout the job's, each print a line, return an image and print another line | The job's media 1 and 2, in the order they reached the runner; each medium's line lies between its command's two lines |
+| `xargs -n 1 demi file read` over two PNG files, its stdout the job's | Both are returned as media of the job: the alias makes the same comparison as a builtin |
+| `demi file read shot.png \| wc -c` | The file's size; the job has no medium |
+| `demi browser screenshot t1 --json --output x.png \| jq .path` | The path: a leaf that declares `media` but returns none writes its stdout as any command does |
+| A leaf without `media` returns a medium, and a handler returns a medium that is not an image or video | The command fails, and nothing is kept or written for it |
+| A command whose stdout goes elsewhere returns a medium and then prints a line | Status 1, nothing on stdout, the message on stderr |
+| A command whose stdout goes elsewhere returns two media | Status 1, nothing on stdout, the message naming both ways out on stderr |

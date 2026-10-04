@@ -515,6 +515,57 @@ on the shell alone already: `cd` and the directory stack, `trap`, which
 installs no signal handler in the runner, `set` and `shopt`, `exit`, `wait`,
 `jobs` and `bg`. `times` shows the runner's processor time, not the job's.
 
+### Where a command's stdout goes
+
+A declared command must know whether its stdout is the job's output, the pipe
+whose other end the runner reads as the job's stdout, or goes elsewhere:
+[Media a command returns](../agent/runtime.md#where-a-medium-goes) sends a
+medium to the job in the first case and writes its bytes as stdout in the
+second. For example, in `demi browser screenshot t1 | convert - png:-` the
+screenshot's stdout is a pipe brush made for the pipeline; in
+`for t in t1 t2; do demi browser screenshot "$t"; done` each screenshot's
+stdout is the job's pipe, which the loop's body inherits.
+
+Brush gives a builtin its descriptors as the shell has set them up for that
+call, after redirections, pipelines, command and process substitutions,
+`exec` redirections and subshells: `ExecutionContext::try_fd(1)` is the file
+the command writes to. Its kind does not answer the question: under the
+runner's execution host every descriptor, the job's own pipes, a pipeline's
+pipe and a redirected file alike, is an `OpenFile::Controlled` that wraps its
+system file. The system file does answer it, so brush needs no change:
+
+- **The reference.** The runner keeps a copy of the writing end of the job's
+  stdout pipe open for the job's life and names it in the job's environment
+  as `DEMI_JOB_OUTPUT`: on Unix the pipe's device and inode, which every copy
+  of either end shares and no other open file has while the copy is open; on
+  Windows the runner's process id and the copy's handle, which a command
+  compares with its own handle through `CompareObjectHandles`. The runner
+  names the job's stdin as `DEMI_LIVE_INPUT` in the same way, so that a
+  command tells the job's live input from a finite one.
+- **The comparison.** A declared command compares its fd 1 with the
+  reference: a builtin in the runner before it dispatches, an alias in its own
+  process before it forwards
+  ([External command clients](commands.md#external-command-clients)). One
+  function makes both comparisons, and the invocation carries the answer,
+  `job` or `elsewhere`, to the dispatcher and to the handler
+  ([Return media](commands.md#return-media)). A builtin's fd 1 that is the
+  job's stdout pipe in any copy, through `exec 3>&1` and `>&3` for example,
+  is the job's output.
+- **What no shell tells.** Where a pipe's other end leads is unknown to the
+  writer, and the rule needs no answer: a medium written into a pipe is
+  bytes, and what the reader makes of them reaches the job's output as the
+  reader's own stdout.
+- **A relayed stdout.** A job whose stdout the backend relays elsewhere,
+  as `demi host shell` starts one, gets no `DEMI_JOB_OUTPUT`: its stdout is
+  the invoking command's, so every command of it writes elsewhere.
+- **The environment is the script's.** A script that changes
+  `DEMI_JOB_OUTPUT` makes only its own commands take the other case: their
+  media then go to the job with their lines into the file, or as bytes into
+  the job's stdout. Neither reaches anything but that job's result, so the
+  variable needs no protection; the command context, which does, never
+  travels in the environment
+  ([Command context](native-runtime.md#command-context)).
+
 ### Cancellation and completion
 
 Completion means the job has released its local work and IO, not merely that its
@@ -612,6 +663,34 @@ The backend reads it when the job ends and a stream went beyond its first
 8 KiB, and while the job runs, for `demi shell output`
 ([The whole output](../agent/runtime.md#the-whole-output)).
 
+A job's **media** ([Media a command returns](../agent/runtime.md#media-a-command-returns))
+are kept beside its output. A `native` command's arrive as its invocation's
+medium records
+([Response records and completion](native-runtime.md#response-records-and-completion)),
+an `rpc` command's as `rpc_medium`, whose bytes come through a pipe from the
+backend ([Return media](commands.md#return-media)). For each medium a
+command whose stdout is the job's output returns, the runner:
+
+1. Checks it: bytes of an image or video type of the model-media table, at
+   most 16 MiB. A medium that fails the check fails its command.
+2. Keeps it within the job's bounds, 32 media and 64 MiB, numbering the job's
+   media from 1 in the order they arrive, and writes it to `media/<n>` in the
+   job's directory. A medium beyond the bounds is read to its end and
+   dropped, and the line in its place says it was not kept.
+3. Writes the medium's line into the command's stdout at its place.
+4. Sends `job_medium { jobId, number, mediaType, size, sha256 }` once the
+   medium is written, so the backend knows each medium even when the
+   connection is lost before the job ends. Every `job_medium` of a job
+   precedes its `job_exit`.
+
+`job_media_read { jobId, number, output }` streams one kept medium through a
+pipe. The backend reads, when the job ends, each medium whose blob its
+owner's namespace does not hold yet, and, while the job runs, a medium
+`demi shell output --medium` asks for
+([The whole output](../agent/runtime.md#the-whole-output)). A medium the
+dispatcher holds for a command whose stdout goes elsewhere lies in the job's
+directory too, until the command ends.
+
 The runner makes the job's directory when the job starts, private to its
 user:
 
@@ -622,14 +701,16 @@ jobs/                               the job root
     output/                         the kept output
       head                          its first part
       end-<n>                       the segments of its last part
+    media/<n>                       each medium of the job, numbered from 1
     changes/                        what the job's edits recorded
     .work-<random>/                 the scratch directory TMPDIR names; goes when the job ends
 ```
 
 A job's directory lasts until the backend has what it needs of the job:
 
-- Once it has read the job's end, the kept output when it needed it and the
-  edit copies ([Edit tracking](edit-tracking.md)), the backend sends
+- Once it has read the job's end, the kept output when it needed it, the
+  media it did not hold and the edit copies
+  ([Edit tracking](edit-tracking.md)), the backend sends
   `job_release { jobId }`, and the runner removes the directory.
 - A connection loss cancels every job ([Command lifetime](#command-lifetime)),
   and the backend reads nothing of them afterwards, so the runner removes
@@ -697,3 +778,9 @@ Acceptance on a paired device and on a Cloud observes these outcomes:
 - A connection that never sends its `hello` is closed after 30 seconds.
 - A resident service that exits reports its exit status and standard-error
   tail both in the Host log and in the calls it failed.
+- A declared command's stdout is `job` when it is the job's stdout pipe,
+  directly, through a loop, a group, a subshell, a background list or
+  `exec 3>&1` with `>&3`, as a builtin and as an alias that `xargs` starts;
+  it is `elsewhere` in a pipeline, under a redirection to a file or
+  `/dev/null`, in a command or process substitution, and in a job that
+  `demi host shell` started; on Linux, macOS and Windows.
