@@ -77,7 +77,6 @@ user, conversation or time arrives through requests.
 | Packages | Nothing: they are the [command packages](../execution/native-runtime.md) whose operations its commands, streams, page states and methods bind | Never: the page shows their installs ([Installation progress](../execution/native-runtime.md#installation-progress)) |
 | [Commands](#commands) | Their declarations, as data | Each time the model runs an `rpc` leaf of them |
 | [Context](#prompt-text-and-context) | That the plugin is a context source | Before each provider request of every node |
-| [Profiles](#profiles) | The profiles, as data | Never: they are fixed |
 | [Host directories](#host-directories) | Nothing | The plugin sets them through its port when its user's needs change |
 | [Host files](#reading-a-conversations-files) | Nothing | The plugin reads them through its port when it needs them |
 | [Package calls and user streams](#calling-its-command-package) | Each user stream's name, the operation it binds, the schemas of its messages both ways and the constants its two ends share | A call: when the plugin makes it. A stream: when a page opens it |
@@ -126,8 +125,7 @@ The set is the commands of the plugins the user has on, the same for every
 conversation tree that opened with that set ([A user's
 plugins](#a-users-plugins)). A node's set differs from it only by the agent
 runtime's `demi agent` group, which depends on the node
-([Subagents](../agent/subagents.md#model-facing-surface)), and by a
-profile's narrowing ([Profiles](#profiles)).
+([Subagents](../agent/subagents.md#model-facing-surface)).
 
 ### Prompt text and context
 
@@ -172,17 +170,6 @@ summary, still has it.
 A source that fails, such as a plugin whose stored value does not read, adds
 no block, and the backend logs the failure. That is safe to ignore because
 nothing is lost: the source is asked again before the next request.
-
-### Profiles
-
-A plugin may declare [subagent profiles](../agent/subagents.md#profiles) as
-data: a name, a description, optional instructions that replace the
-product's in a child's system prompt, an optional list
-of the command paths a child keeps of its parent's commands, whether its
-children may spawn, and an optional model. Two plugins that declare the same
-profile name are refused when they are registered, as a name taken twice
-among their commands is. A tree offers the profiles of the plugins its user
-had on when it opened. No plugin of this repository declares a profile.
 
 ### Host directories
 
@@ -471,18 +458,18 @@ The plugin host, in `backend-plugins`, runs every plugin of the backend:
   its directories on a Host and its page route; `execution` is the product's
   context source and is taken. Its manifest also carries a name and a
   one-sentence description, which settings show.
-- **Startup.** The host reads every manifest and checks the commands, the
-  profiles and the streams ([Commands](#commands), [Profiles](#profiles)). A
-  manifest that breaks a rule stops the backend; its error names the plugin.
+- **Startup.** The host reads every manifest and checks the commands and the
+  streams ([Commands](#commands)). A manifest that breaks a rule stops the
+  backend; its error names the plugin.
 - **Shards.** When a user's shard starts, the host asks each factory for that
   user's instance, and wraps each `rpc` leaf of the plugin's commands in a
   handler that forwards the call to the instance. While the user has a
   plugin off, the instance receives no page call and no context request,
   and is asked for no page state; only the commands of a tree that opened
   with it on still reach it, until that tree opens again.
-- **The user's plugin set.** The host gives the agent server the commands and
-  the profiles of the plugins the user has on, which a tree takes when it
-  opens, and the context sources, which are asked while their plugin is on.
+- **The user's plugin set.** The host gives the agent server the commands of
+  the plugins the user has on, which a tree takes when it opens, and the
+  context sources, which are asked while their plugin is on.
 - **User streams.** The host holds every plugin's stream declarations, which
   the user stream route opens by name while the plugin is on.
 - **Topics.** When a [topic](#topics) fires, for a user or for one of the
@@ -525,28 +512,30 @@ moment that does not change something the model already relies on:
 | Context | Before the next request of every node |
 | Host directories | Before the next job of each conversation: a plugin turned off has its directories removed then |
 | User streams | When a page opens one; an open stream of a plugin turned off ends |
-| Commands and profiles | When a conversation's tree opens: a new conversation, a tree restored after it was disposed, or a reload |
+| Commands | When a conversation's tree opens: a new conversation, a tree restored after it was disposed, or a reload |
 
-Commands and profiles wait for a tree to open because a tree takes them once:
-a node's command help is part of its system prompt, which is rendered once
-([Prompt text and context](#prompt-text-and-context)), and a child's profile
-is chosen when it is spawned. A change in the middle of a conversation
-would change what the model was told it may run.
+Commands wait for a tree to open because a tree takes them once: a node's
+command help is part of its system prompt, which is rendered once
+([Prompt text and context](#prompt-text-and-context)). A change in the middle
+of a conversation would change what the model was told it may run. A tree
+takes the user's [subagent profiles](../agent/subagents.md#profiles) at the
+same moment, for the same reason: the `demi agent spawn` help lists them.
 
 **The plugin set.** The plugins a user has on, at one moment, are the user's
-**plugin set**, with a revision that changes whenever the set's commands or
-profiles change. Turning on a plugin that declares neither, such as one
-that contributes only a context source and a settings section, changes the
-set without changing its revision. A tree records the revision it opened
-with.
+**plugin set**, with a revision that changes whenever the set's commands
+change. Turning on a plugin that declares none, such as one that contributes
+only a context source and a settings section, changes the set without
+changing its revision. A tree records the revision it opened with, and the
+profiles it took.
 
-**Reload.** While a conversation's tree is open with a revision that is not
-the user's current one, the conversation's summary says so, and the page
+**Reload.** While a conversation's tree is open with a plugin set revision
+that is not the user's current one, or with profiles that differ from the
+user's current ones, the conversation's summary says which, and the page
 offers to reload it. A reload closes the tree and opens it again, as a
 backend restart would; it waits for nothing and is refused while the tree
 works, as an archive is. The conversation's history, queue and children
-are kept; the model's next request is the first with the new commands, and
-the new help reaches it as a changed system prompt, once. A tree that is
+are kept; the model's next request is the first with the new commands and
+profiles, and the new help reaches it as a changed system prompt, once. A tree that is
 disposed after it has been idle opens with the current set the next time
 anyone opens it, so a reload is never needed for a conversation nobody
 looks at.
@@ -576,9 +565,9 @@ Besides the plugins, the components that carry them are:
 | Component | Holds |
 | --- | --- |
 | `plugin-interface` | The contract: factory and instance traits, manifest, requests and replies, the port, the JSON loopback transport for tests |
-| `backend-plugins` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
+| `backend-plugins` | The plugin host: registration and its checks, the command set and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
 | `backend-user-shard`, `backend-host-access`, `backend-expose`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
-| `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns, profiles as data |
+| `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns |
 | `plugin-sdk`, `web-ui`, `web`, `web-gallery` | The page API: `definePage`, `usePage`, intents, the conversation files service and the plugin kit ([Plugin pages](plugin-pages.md)); the shell and the primitives; the page context over HTTP, the sync channel and the user stream route, and the generated registry; the page context over each specimen's fixtures |
 
 ## The page
