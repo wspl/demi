@@ -6,7 +6,9 @@ import { ICON_PX } from './icon-metrics'
 /**
  * `default` is a button; `ghost` a quiet inline chip; `field` a form control
  * that fills its row and shows a value (an icon and a name) the way an input
- * shows text.
+ * shows text. Each is as wide as what it holds unless it is made wider; then
+ * the value stays at the start and the chevron moves to the end, so a
+ * stretched button still reads as a picker, not as an action.
  */
 export type DropdownVariant = 'default' | 'ghost' | 'field'
 export type DropdownSize = 'sm' | 'md'
@@ -32,9 +34,10 @@ withDefaults(defineProps<{
     :disabled="disabled"
   >
     <slot />
+    <!-- The auto margin takes the width beyond the content, and only that. -->
     <ChevronDown
       :size="size === 'sm' ? ICON_PX.in24 : ICON_PX.in28"
-      class="transition-transform duration-200 ease-out"
+      class="ml-auto transition-transform duration-200 ease-out"
       :class="isOpen ? 'rotate-180' : ''"
     />
   </Button>
@@ -70,9 +73,10 @@ withDefaults(defineProps<{
     ]"
   >
     <slot />
+    <!-- The auto margin takes the width beyond the content, and only that. -->
     <ChevronDown
       :size="size === 'sm' ? ICON_PX.in24 : ICON_PX.in28"
-      class="transition-transform duration-200 ease-out"
+      class="ml-auto transition-transform duration-200 ease-out"
       :class="isOpen ? 'rotate-180' : ''"
     />
   </span>

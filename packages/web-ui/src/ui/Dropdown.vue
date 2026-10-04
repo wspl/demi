@@ -15,7 +15,10 @@ import type { SentenceText } from './ui-text'
  * when it has not. `fill`: the row's full width, and narrower as the row
  * narrows. A dropdown that gives way does so at every wrapper around the
  * trigger alike; the trigger keeps within it (`max-w-full`, or `w-full` to
- * fill) and truncates what it holds.
+ * fill) and truncates what it holds. Inside the outer wrapper the others
+ * grow to it, and a built-in trigger fills them: a dropdown a parent makes
+ * wider than its trigger (a settings row that has dropped its control under
+ * the label) is that wide throughout.
  */
 export type DropdownWidth = 'content' | 'shrink' | 'fill'
 
@@ -92,18 +95,21 @@ defineExpose({ open, close })
 </script>
 
 <template>
+  <!-- A button-style dropdown is a field (`data-field`): a settings row that has
+       dropped it under the label stretches it across the row. -->
   <Tooltip
     :content="tooltipContent"
     :disabled="!tooltipContent"
     tag="div"
+    :data-field="props.variant === 'default' || undefined"
     class="relative"
     :class="widthClasses.wrapper"
     :open-delay-ms="80"
   >
-    <div class="relative" :class="widthClasses.wrapper">
+    <div class="relative grow" :class="widthClasses.wrapper">
       <div
         ref="triggerRef"
-        class="cursor-default"
+        class="grow cursor-default"
         :class="widthClasses.trigger"
         @click="handleClick"
       >
@@ -114,6 +120,7 @@ defineExpose({ open, close })
           :size="props.size"
           :aria-label="props.triggerLabel"
           :disabled="props.disabled"
+          class="w-full"
         >
           <slot name="trigger" :is-open="isOpen" />
         </DropdownTrigger>
