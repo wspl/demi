@@ -39,6 +39,7 @@
 - Build and test with one Cargo selection everywhere: `cargo check --workspace --all-targets --features demi-runner/test-fixtures` and `cargo test --workspace --features demi-runner/test-fixtures`, adding `--test <name>` for one target. Never `-p <crate>` for a test build: each selection keeps its own copy of the dependencies, and switching has cost 140 s a time.
 - Keep test binaries few: each crate has one (`crates-and-packages.md` § Module layout), such as `crates/runner/tests/runner/` and `crates/command-package-browser/tests/browser/`, and the crate boundary check enforces it; a test gets a binary of its own only when it changes or saturates process-wide state. Each binary costs a link and, when newly built, a first-launch check of about three seconds here. TypeScript tests never build a program: `bun run test` builds them and runs the suite in parallel; to run some tests, build first and set `DEMI_TEST_PROGRAMS=target/debug`.
 - Do not run `cargo fmt` or `cargo clippy`, and do not add them to any check: neither is part of this project's validation.
+- The compiler is the only hard constraint on how code and text are written. A convention (naming, capitalization, layout, style) is written down in the docs or the gallery and followed; never enforce one with a lint, a script or a test. Tests protect behavior.
 - Work in large steps: read what a step needs in one call, write the whole step, then compile once. Start long builds and tests in the background and keep working meanwhile.
 - zsh does not split an unquoted variable into words; pass argument lists as arrays, or run scripts with bash.
 
@@ -58,7 +59,7 @@ Only when the user says to enter parallel development mode:
 - Prefer diagrams for structures, relationships, and flows when they clarify the explanation; use ASCII diagrams when practical. Labels must be understandable from the accompanying explanation.
 - Explain responsibilities, boundaries, observable behavior, and design rationale. Leave implementation details that code can express clearly to code.
 - Distinguish verified facts, suspected problems, proposals, and open decisions.
-- UI text follows macOS capitalization: the gallery's Writing page (`packages/web-gallery/src/sections/WritingSection.vue`) is the rule, and the UI text check in `bun run test` applies it.
+- UI text follows macOS capitalization: the gallery's Writing page (`packages/web-gallery/src/sections/WritingSection.vue`) is the rule.
 - Follow the [Google Developer Documentation Style Guide](https://developers.google.com/style). Use Diátaxis, arc42, and C4 as optional aids to clarity and completeness, not as mandatory directories, sections, or deliverables.
 
 # Design Documentation
