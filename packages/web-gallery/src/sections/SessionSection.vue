@@ -980,7 +980,7 @@ onBeforeUnmount(() => {
             </GallerySpecimen>
           </GalleryOverlayWell>
           <GallerySpecimen variant="context · limited to 300K, with its usage">
-            <GalleryContextLimit provider-id="google" model-id="gemini-pro" :usage-ratio="0.5" />
+            <GalleryContextLimit provider-id="google" model-id="gemini-pro" :used-tokens="150000" />
           </GallerySpecimen>
         </div>
       </GallerySection>
@@ -1468,7 +1468,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Compaction"
-        note="The user compacted after the second answer. The divider shows there, where the compaction was triggered, though the summary goes in before that answer. While the pass runs the divider says so, before a steer that arrived meanwhile; a failed pass leaves its error record there, with Resume in the dock as for any failed request."
+        note="The user compacted after the second answer. The divider shows there, where the compaction was triggered, though the summary goes in before that answer. While the pass runs the divider says so, before a steer that arrived meanwhile; a failed pass leaves its error record there. A Compact the user asked for ended no turn, so the dock offers no Resume for it (Session failures shows both cases)."
       >
         <div class="specimen-stack">
           <GallerySpecimen

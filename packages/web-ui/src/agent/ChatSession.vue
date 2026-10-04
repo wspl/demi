@@ -158,7 +158,7 @@ const failureNotice = computed(() => {
 // One control in the dock: Resume after an error, Continue after the user's Stop.
 const recovery = computed(() =>
   canRecover.value
-    ? turnRecovery(props.conversation.phase, getVisibleBlocks(props.conversation.blocks).at(-1))
+    ? turnRecovery(props.conversation.phase, getVisibleBlocks(props.conversation.blocks))
     : null,
 )
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit

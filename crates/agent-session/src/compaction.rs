@@ -6,7 +6,7 @@ use std::{future::Future, rc::Rc, sync::Arc};
 
 use demi_agent_store::{
     Checkpoint, CheckpointUpdate, SessionStore, StoreError,
-    media::{BlobStore, HeldMedia, ModelView},
+    media::{BlobStore, HeldMedia},
 };
 use demi_agent_transcript::{
     RequestView, TranscriptLog, compaction_window,
@@ -16,8 +16,7 @@ use demi_agent_transcript::{
 use demi_provider_common::{ErrorCode, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
-    B64Bytes, BlobRef, Block, ContextUsage, Model, ModelSelection, TokenUsage, TurnId,
-    UserContentBlock,
+    B64Bytes, BlobRef, Block, ContextUsage, ModelSelection, TokenUsage, TurnId, UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -27,7 +26,7 @@ use super::{
     cancel::TurnCancel,
     core::{CoreParts, SessionCore, TurnStage},
     input::{InputQueue, Wakeups},
-    media::model_view,
+    media::{held, model_view},
     persist,
     runtime::{NewContext, SeenContext, SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome},
 };
@@ -39,20 +38,24 @@ pub const COMPACTION_SUMMARY_INSTRUCTION: &str = "Summarize the conversation abo
 /// How many passes a model switch runs to fit the new model's window.
 const MAX_FIT_PASSES: usize = 8;
 
-/// The share of the threshold window, in percent, from which the user may
+/// The share of the window in use, in percent, from which the user may
 /// compact (`compaction.md` § When compaction runs).
 const MANUAL_COMPACTION_PERCENT: u8 = 50;
 
-/// The window a conversation's thresholds use, in tokens: the model's
-/// context window, or none for a model that reports none. Every threshold
-/// and the usage the page shows are shares of it.
-pub(crate) fn threshold_window(model: &Model) -> Option<u64> {
-    (model.context_window > 0).then(|| u64::from(model.context_window))
+/// The window in use for `model`, in tokens: the model's context window, or
+/// the limit the user set on it, as the node answers it (`models.md`
+/// § Context limit); none for a model that reports no window. Every token
+/// threshold, the share from which the user may compact and the usage the
+/// page shows are shares of it. It is asked at each use, so a changed
+/// limit counts from the next one.
+pub(super) async fn window_in_use(s: &SessionShared, model: &ModelSelection) -> Option<u64> {
+    let window = s.runtime.context_window(model).await;
+    (window > 0).then(|| u64::from(window))
 }
 
-/// `percent` of `window`, rounded down.
-fn share(window: u64, percent: u8) -> u64 {
-    window * u64::from(percent) / 100
+/// `percent` of `limit`, rounded down.
+fn share(limit: u64, percent: u8) -> u64 {
+    limit * u64::from(percent) / 100
 }
 
 /// When a session compacts.
@@ -80,16 +83,15 @@ impl CompactionConfig {
         self.threshold_percent.is_some()
     }
 
-    /// The threshold of a model whose window in use is `window`, rounded
-    /// down; none for a model that reports no window.
-    pub(crate) fn threshold(&self, window: u32) -> Option<u64> {
-        let percent = self.threshold_percent?;
-        (window > 0).then(|| u64::from(window) * u64::from(percent) / 100)
+    /// The token threshold of a model whose window in use is `window`,
+    /// rounded down; none for a model that reports no window.
+    pub(crate) fn threshold(&self, window: Option<u64>) -> Option<u64> {
+        Some(share(window?, self.threshold_percent?))
     }
 
     /// Whether one request's usage reached the threshold of a model whose
     /// window in use is `window`.
-    pub(crate) fn reached(&self, window: u32, usage: &TokenUsage) -> bool {
+    pub(crate) fn reached(&self, window: Option<u64>, usage: &TokenUsage) -> bool {
         let used = usage.input_tokens
             + usage.output_tokens
             + usage.cache_read_tokens
@@ -105,30 +107,19 @@ impl CompactionConfig {
         let Some(percent) = self.threshold_percent else {
             return false;
         };
-        let reached = |limit: Option<u64>, value: u64| {
-            limit.is_some_and(|limit| value >= limit * u64::from(percent) / 100)
-        };
+        let reached =
+            |limit: Option<u64>, value: u64| limit.is_some_and(|limit| value >= share(limit, percent));
         reached(limits.body_bytes, size.bytes) || reached(limits.images.map(u64::from), size.images)
     }
 }
 
 /// Whether the estimate of `request` is at or over the token threshold of
 /// its model, whose window in use is `window`.
-fn over_token_threshold(s: &SessionShared, request: &RequestView, window: u32) -> bool {
+fn over_token_threshold(s: &SessionShared, request: &RequestView, window: Option<u64>) -> bool {
     s.config
         .compaction
         .threshold(window)
         .is_some_and(|threshold| context_tokens(request) >= threshold)
-}
-
-/// The window the token thresholds use for `model`, as the node answers it
-/// (`models.md` § Context limit).
-pub(super) async fn window_in_use(
-    s: &SessionShared,
-    model: &ModelSelection,
-    cancel: &TurnCancel,
-) -> Result<u32, TurnError> {
-    cancel.guard(s.runtime.context_window(model)).await
 }
 
 /// Whether the history is at or over a threshold of `model`, whose vendor
@@ -140,7 +131,7 @@ async fn over_a_threshold(
     limits: RequestLimits,
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
-    let window = window_in_use(s, model, cancel).await?;
+    let window = cancel.guard(window_in_use(s, model)).await?;
     let view = model_view(s, cancel).await?;
     let request = RequestView::new(&view, &model.model, limits);
     if over_token_threshold(s, &request, window) {
@@ -168,31 +159,36 @@ pub(super) async fn compacting<T>(
 }
 
 /// The usage the page shows: the estimate of the next request of the
-/// current model, with the window its thresholds use and the estimate from
-/// which the user may compact. A model without a window has no such
-/// estimate: no threshold relieves it, so the user may always compact.
+/// current model, with the window in use and the estimate from which the
+/// user may compact. It reads the media of the blocks the estimate weighs
+/// when the session holds nothing for them, as after a restore.
 pub(super) async fn context_usage(
     s: &SessionShared,
     cancel: &TurnCancel,
 ) -> Result<ContextUsage, TurnError> {
-    let view = model_view(s, cancel).await?;
-    Ok(s.read(|core| usage_of(core, &view)))
+    let model = s.read(|core| core.model.clone());
+    let window = cancel.guard(window_in_use(s, &model)).await?;
+    let tokens = held(s, cancel, SessionCore::context_estimate).await?;
+    Ok(usage_at(tokens, window))
 }
 
-/// The usage as [`context_usage`] says it, without reading a blob: none
-/// while the session holds nothing for a replayed medium, as after a
-/// restore, since opening a conversation reads no blob (`runtime.md`
-/// § Media).
-pub(super) fn held_context_usage(core: &SessionCore) -> Option<ContextUsage> {
-    let view = core.model_view().ok()?;
-    Some(usage_of(core, &view))
+/// The usage as [`context_usage`] says it, without reading a blob, as
+/// opening a conversation reads none (`runtime.md` § Media): none while a
+/// block the estimate weighs references a medium the session holds nothing
+/// for (`compaction.md` § Context estimate).
+pub(super) async fn held_context_usage(s: &SessionShared) -> Option<ContextUsage> {
+    let model = s.read(|core| core.model.clone());
+    let window = window_in_use(s, &model).await;
+    let tokens = s.read(|core| core.context_estimate().ok())?;
+    Some(usage_at(tokens, window))
 }
 
-fn usage_of(core: &SessionCore, view: &ModelView) -> ContextUsage {
-    let request = core.request_view(view);
-    let window = threshold_window(request.model());
+/// The usage at an estimate of `tokens` in `window`, the window in use. A
+/// model without a window has no share from which the user may compact: no
+/// threshold relieves it, so the user may always compact.
+fn usage_at(tokens: u64, window: Option<u64>) -> ContextUsage {
     ContextUsage {
-        tokens: context_tokens(&request),
+        tokens,
         window,
         compact_from: window.map(|window| share(window, MANUAL_COMPACTION_PERCENT)),
     }
@@ -224,7 +220,7 @@ pub fn compaction_refusal(usage: &ContextUsage) -> Option<String> {
 /// token threshold; a request's size is checked before each request.
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let model = s.read(|core| core.model.clone());
-    let window = window_in_use(s, &model, cancel).await?;
+    let window = cancel.guard(window_in_use(s, &model)).await?;
     let view = model_view(s, cancel).await?;
     let over = s.read(|core| over_token_threshold(s, &core.request_view(&view), window));
     if over {

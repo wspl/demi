@@ -11,7 +11,6 @@ const base: ModelInfo = {
   name: 'M',
   contextWindow: 200000,
   contextLimit: null,
-  inputLimit: null,
   acceptedExtensions: [],
   reasoning: {
     efforts: ['low', 'medium', 'high'],

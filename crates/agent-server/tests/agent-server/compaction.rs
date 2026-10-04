@@ -43,8 +43,10 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     let mut client = fixture.client();
 
     client.send(open()).await;
-    let handshake = client.next_until(is_pending_steers).await;
-    assert_eq!(last_usage(&handshake), Some(&usage(0)));
+    client.next_until(is_pending_steers).await;
+    // The usage follows the handshake.
+    let opened = client.next_until(is_context_usage).await;
+    assert_eq!(opened.last(), Some(&usage(0)));
 
     client.send(send("m1", "first")).await;
     let turn = client.next_until(is_idle).await;
@@ -107,6 +109,8 @@ async fn a_failed_compaction_is_a_failure_record_that_survives_a_reload_and_its_
         panic!("the transcript does not end with the failure: {blocks:?}");
     };
     assert_eq!(error.message, "The summary request failed");
+    // The pass ran inside the turn, which the failure ended.
+    assert!(!error.outside_turn);
 
     reopened.send(ClientFrame::Resume {}).await;
     reopened.next_until(is_idle).await;
