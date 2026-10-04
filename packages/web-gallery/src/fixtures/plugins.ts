@@ -13,6 +13,7 @@ import { bindTabSchema, navigateTabSchema, syncTabsSchema, tabHistorySchema } fr
 import { exposeCallSchema, type ExposeState } from '@demicodes/plugin-expose'
 import {
   addSourceSchema,
+  checkUpdatesSchema,
   setEnabledSchema,
   setSourceEnabledSchema,
   sourceCallSchema,
@@ -185,18 +186,35 @@ export function exposePlugin(state: ExposeState): GalleryPlugin {
   }
 }
 
-/** The skills a fetch of `origin` finds in the gallery: three, named after the repository. */
-function fetchedSkills(origin: string): SourceState['skills'] {
+/** The skills a fetch of `origin` finds in the gallery: three, named after the repository, and `review`. */
+function fetchedSkills(origin: string): Omit<SourceState['skills'][number], 'enabled'>[] {
   const name = origin.replace(/\/+$/, '').replace(/\.git$/, '').split('/').at(-1) ?? 'skills'
   return [
-    { name: `${name}-review`, description: 'Review a change before it lands.', warnings: [], enabled: false, disableModelInvocation: false },
-    { name: `${name}-release`, description: 'Cut a release: bump, tag and publish the changelog.', warnings: [], enabled: false, disableModelInvocation: false },
-    { name: `${name}-notes`, description: 'Write release notes the user asks for.', warnings: [], enabled: false, disableModelInvocation: true },
+    { name: `${name}-review`, description: 'Review a change before it lands.', warnings: [], disableModelInvocation: false },
+    { name: `${name}-release`, description: 'Cut a release: bump, tag and publish the changelog.', warnings: [], disableModelInvocation: false },
+    { name: `${name}-notes`, description: 'Write release notes the user asks for.', warnings: [], disableModelInvocation: true },
+    { name: 'review', description: 'Review a change, the way this repository reviews.', warnings: [], disableModelInvocation: false },
   ]
 }
 
-/** A commit id for the gallery's fetches. */
-function commitOf(seed: string): string {
+/** `state` as the backend's plugin sends it: each skill that is off names the source whose skill of its name is on. */
+function withTakenNames(state: SkillsState): SkillsState {
+  const on = new Map<string, string>()
+  for (const source of state.sources) {
+    for (const skill of source.skills.filter((candidate) => candidate.enabled)) {
+      on.set(skill.name, source.origin)
+    }
+  }
+  return {
+    sources: state.sources.map((source) => ({
+      ...source,
+      skills: source.skills.map((skill) => ({ ...skill, takenBy: skill.enabled ? undefined : on.get(skill.name) })),
+    })),
+  }
+}
+
+/** A commit id for the gallery's fetches and skill sources. */
+export function commitOf(seed: string): string {
   let hash = 0x811c9dc5
   for (const character of seed) {
     hash = Math.imul(hash ^ character.charCodeAt(0), 0x01000193) >>> 0
@@ -207,7 +225,10 @@ function commitOf(seed: string): string {
 /**
  * The skills plugin over `state`: adding a source fetches it after a beat,
  * updating fetches it again, and a skill turns on unless another on has its
- * name, as the backend's plugin refuses it.
+ * name, as the backend's plugin refuses it. A fetch keeps each known skill
+ * on or off and starts a new one on, unless another skill on has its name or
+ * it is never offered to the agent. Checking for updates finds none: the
+ * fixture's repositories never move.
  */
 export function skillsPlugin(state: SkillsState): GalleryPlugin {
   const source = (id: string): SourceState => {
@@ -225,11 +246,24 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
     if (!fetched) {
       return
     }
-    const on = new Set(fetched.skills.filter((skill) => skill.enabled).map((skill) => skill.name))
-    fetched.skills = fetchedSkills(fetched.origin).map((skill) => ({ ...skill, enabled: on.has(skill.name) }))
+    const known = new Map(fetched.skills.map((skill) => [skill.name, skill.enabled]))
+    const taken = new Set(
+      state.sources
+        .filter((other) => other.id !== id)
+        .flatMap((other) => other.skills.filter((skill) => skill.enabled).map((skill) => skill.name)),
+    )
+    fetched.skills = fetchedSkills(fetched.origin).map((skill) => {
+      const wanted = known.get(skill.name) ?? !skill.disableModelInvocation
+      const enabled = wanted && !taken.has(skill.name)
+      if (enabled) {
+        taken.add(skill.name)
+      }
+      return { ...skill, enabled }
+    })
     fetched.commit = commitOf(`${fetched.origin}${Date.now()}`)
     fetched.fetchedAt = new Date().toISOString()
     fetched.failure = null
+    fetched.updateAvailable = false
     fetched.fetching = false
   }
   function taken(id: string, names: readonly string[]): void {
@@ -242,9 +276,12 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
     }
   }
   return {
-    state: () => state,
+    state: () => withTakenNames(state),
     call: async (method, params) => {
       switch (method) {
+        case 'check_updates':
+          checkUpdatesSchema.parse(params)
+          return null
         case 'add_source': {
           const { origin } = addSourceSchema.parse(params)
           if (!/^(https:\/\/\S+\/\S+|[\w.-]+\/[\w.-]+)$/.test(origin.trim())) {
@@ -254,7 +291,7 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
             throw new PluginCallError('source_exists', `${origin} is added already`)
           }
           const id = commitOf(origin).slice(0, 12)
-          state.sources.push({ id, origin: origin.trim(), fetching: true, skills: [], skipped: [] })
+          state.sources.push({ id, origin: origin.trim(), fetching: true, updateAvailable: false, skills: [], skipped: [] })
           void fetch(id)
           return { source: id }
         }

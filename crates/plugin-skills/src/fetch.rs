@@ -1,7 +1,8 @@
 //! A source's fetch (`skills.md` § User skills): a shallow fetch of the
 //! repository's default branch into a temporary directory, which stops as
-//! soon as it has received 64 MiB, and the skills of the commit it pins.
-//! It blocks, so it runs on the blocking pool.
+//! soon as it has received 64 MiB, and the skills of the commit it pins;
+//! and the check of the commit that branch points to now. Both block, so
+//! they run on the blocking pool.
 
 use std::collections::BTreeSet;
 use std::num::NonZeroU32;
@@ -122,6 +123,49 @@ pub(crate) fn fetch(
         skills: fetched.0,
         skipped: fetched.1,
     })
+}
+
+/// The commit `url`'s default branch points to now, read from the remote's
+/// ref advertisement without fetching any object (`skills.md` § Updates
+/// available). It blocks, so it runs on the blocking pool.
+pub(crate) fn remote_head(url: &str) -> Result<String, String> {
+    // A remote needs a repository; an empty one, isolated as a fetch's is.
+    let directory =
+        tempfile::tempdir().map_err(|error| format!("no temporary directory: {error}"))?;
+    let repository = gix::ThreadSafeRepository::init_opts(
+        directory.path(),
+        gix::create::Kind::Bare,
+        gix::create::Options::default(),
+        gix::open::Options::isolated(),
+    )
+    .map_err(|error| error.to_string())?
+    .to_thread_local();
+    let remote = repository
+        .remote_at(url)
+        .map_err(|error| error.to_string())?
+        .with_fetch_tags(gix::remote::fetch::Tags::None);
+    let head = gix::refspec::parse("HEAD".into(), gix::refspec::parse::Operation::Fetch)
+        .expect("HEAD is a refspec")
+        .to_owned();
+    let (refs, _) = remote
+        .connect(gix::remote::Direction::Fetch)
+        .map_err(|error| error.to_string())?
+        .ref_map(
+            gix::progress::Discard,
+            gix::remote::ref_map::Options {
+                extra_refspecs: vec![head],
+                ..Default::default()
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    refs.remote_refs
+        .iter()
+        .find_map(|advertised| {
+            let (name, target, peeled) = advertised.unpack();
+            (name == "HEAD").then(|| peeled.or(target)).flatten()
+        })
+        .map(|commit| commit.to_string())
+        .ok_or_else(|| "the repository holds no commit".to_owned())
 }
 
 /// The skills among `entries`, the commit's whole tree, and the `SKILL.md`

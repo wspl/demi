@@ -69,6 +69,15 @@ impl Source {
     }
 }
 
+/// What the instance knows of the commit a source's default branch points
+/// to: when it last asked, and what it last heard, if any check or fetch
+/// answered (`skills.md` § Updates available).
+#[derive(Debug, Clone)]
+pub(crate) struct Head {
+    pub(crate) checked_at: Timestamp,
+    pub(crate) commit: Option<String>,
+}
+
 /// The user's sources, by id, each with the revision its write names.
 pub(crate) type Sources = BTreeMap<String, (Source, u64)>;
 
@@ -186,41 +195,55 @@ pub(crate) fn switch(
     Ok(changed)
 }
 
-/// `source` after a fetch: the new commit's skills, each on only if a
-/// skill of its name was on, and no failure. `blobs` names each file's
-/// bytes, which the fetch put.
+/// Source `id` of `sources` after a fetch: the new commit's skills and no
+/// failure. `blobs` names each file's bytes, which the fetch put. A skill
+/// whose name the source had stays on or off as it was; a new one starts on
+/// unless it sets `disable-model-invocation`. Either is on only while no
+/// other skill that is on, in another source or earlier in the commit, has
+/// its name.
 pub(crate) fn fetched(
-    source: &Source,
+    sources: &Sources,
+    id: &str,
     fetched: &Fetched,
     blobs: &[Vec<BlobRef>],
     at: Timestamp,
 ) -> Source {
-    let skills = fetched
-        .skills
+    let (source, _) = &sources[id];
+    let mut taken: BTreeSet<String> = sources
         .iter()
-        .zip(blobs)
-        .map(|(skill, blobs)| UserSkill {
-            name: skill.parsed.name.clone(),
+        .filter(|(other, _)| *other != id)
+        .flat_map(|(_, (other, _))| other.skills.iter())
+        .filter(|skill| skill.enabled)
+        .map(|skill| directory_name(&skill.name))
+        .collect();
+    let mut skills = Vec::with_capacity(fetched.skills.len());
+    for (skill, blobs) in fetched.skills.iter().zip(blobs) {
+        let name = &skill.parsed.name;
+        let wanted = match source.skills.iter().find(|old| old.name == *name) {
+            Some(old) => old.enabled,
+            None => !skill.parsed.disable_model_invocation,
+        };
+        let enabled = wanted && taken.insert(directory_name(name));
+        let files = skill
+            .files
+            .iter()
+            .zip(blobs)
+            .map(|(file, blob)| DirectoryFile {
+                path: file.path.clone(),
+                executable: file.executable,
+                blob: blob.clone(),
+            })
+            .collect();
+        skills.push(UserSkill {
+            name: name.clone(),
             description: skill.parsed.description.clone(),
             directory: skill.directory.clone(),
-            files: skill
-                .files
-                .iter()
-                .zip(blobs)
-                .map(|(file, blob)| DirectoryFile {
-                    path: file.path.clone(),
-                    executable: file.executable,
-                    blob: blob.clone(),
-                })
-                .collect(),
+            files,
             warnings: skill.parsed.warnings.clone(),
             disable_model_invocation: skill.parsed.disable_model_invocation,
-            enabled: source
-                .skills
-                .iter()
-                .any(|old| old.enabled && old.name == skill.parsed.name),
-        })
-        .collect();
+            enabled,
+        });
+    }
     Source {
         origin: source.origin.clone(),
         added: source.added,
@@ -316,6 +339,9 @@ pub struct SourceState {
     pub fetching: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<Failure>,
+    /// The repository's default branch points to another commit than the
+    /// pinned one, as the last check found.
+    pub update_available: bool,
     pub skills: Vec<SkillState>,
     pub skipped: Vec<Skipped>,
 }
@@ -330,15 +356,30 @@ pub struct SkillState {
     pub enabled: bool,
     /// The skill is never offered to the agent.
     pub disable_model_invocation: bool,
+    /// While it is off, the origin of the source whose skill that is on
+    /// has its name: turning it on would be refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taken_by: Option<String>,
 }
 
-/// The page state of `sources`, `fetching` naming those being fetched.
-pub(crate) fn state(sources: &Sources, fetching: &BTreeSet<String>) -> Value {
+/// The page state of `sources`, `fetching` naming those being fetched and
+/// `heads` what is known of each one's default branch.
+pub(crate) fn state(
+    sources: &Sources,
+    fetching: &BTreeSet<String>,
+    heads: &BTreeMap<String, Head>,
+) -> Value {
     let mut ordered: Vec<(&String, &Source)> = sources
         .iter()
         .map(|(id, (source, _))| (id, source))
         .collect();
     ordered.sort_by_key(|(_, source)| source.added);
+    let mut on: BTreeMap<String, &str> = BTreeMap::new();
+    for (_, source) in &ordered {
+        for skill in source.skills.iter().filter(|skill| skill.enabled) {
+            on.insert(directory_name(&skill.name), &source.origin);
+        }
+    }
     let state = SkillsState {
         sources: ordered
             .into_iter()
@@ -349,6 +390,11 @@ pub(crate) fn state(sources: &Sources, fetching: &BTreeSet<String>) -> Value {
                 fetched_at: source.fetched_at,
                 fetching: fetching.contains(id),
                 failure: source.failure.clone(),
+                update_available: source
+                    .commit
+                    .as_ref()
+                    .zip(heads.get(id).and_then(|head| head.commit.as_ref()))
+                    .is_some_and(|(pinned, newest)| pinned != newest),
                 skills: source
                     .skills
                     .iter()
@@ -358,6 +404,10 @@ pub(crate) fn state(sources: &Sources, fetching: &BTreeSet<String>) -> Value {
                         warnings: skill.warnings.clone(),
                         enabled: skill.enabled,
                         disable_model_invocation: skill.disable_model_invocation,
+                        taken_by: (!skill.enabled)
+                            .then(|| on.get(&directory_name(&skill.name)))
+                            .flatten()
+                            .map(|origin| (*origin).to_owned()),
                     })
                     .collect(),
                 skipped: source.skipped.clone(),
