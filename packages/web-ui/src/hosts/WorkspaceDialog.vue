@@ -17,9 +17,11 @@ import TextInput from '../ui/TextInput.vue'
 import InlineError from '../ui/InlineError.vue'
 import FileBrowser from '../files/FileBrowser.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
-import type {
-  WorkspaceDevice,
-  WorkspaceDraft,
+import {
+  openingChoice,
+  type WorkspaceDevice,
+  type WorkspaceDraft,
+  type WorkspaceHostChoice,
 } from './workspace'
 
 /**
@@ -27,9 +29,11 @@ import type {
  * lives: on the Cloud the workspace is managed and only needs a name; on a
  * device it is a directory there, and takes the directory's name. The folder
  * browser is a page of the same dialog, opened by Browse…. Every opening
- * starts from a clean form on Device, on the first device that is online.
- * Switching between existing projects is the sidebar's Move to and the
- * conversation header's workspace control, not this dialog.
+ * starts from a clean form on the user's last choice of kind and device,
+ * the Cloud the first time (`product.md` § Conversations and projects); the
+ * host remembers it from `choose`. Switching between existing projects is the
+ * sidebar's Move to and the conversation header's workspace control, not this
+ * dialog.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -37,6 +41,8 @@ const props = defineProps<{
   pending?: boolean
   load?: 'loading' | 'ready' | 'failed'
   devices: WorkspaceDevice[]
+  /** The user's last choice, which the form opens on; absent the first time. */
+  lastHost?: WorkspaceHostChoice
   /** What went wrong with the last Create, shown under the form. */
   message?: string
   /** The file browser's tree for a device. */
@@ -48,6 +54,8 @@ const emit = defineEmits<{
   retry: []
   close: []
   create: [draft: WorkspaceDraft]
+  /** The user chose a kind or a device: the choice the next opening starts on. */
+  choose: [choice: WorkspaceHostChoice]
   /** The Add device button beside the device menu: the host starts pairing. */
   connectDevice: []
 }>()
@@ -55,16 +63,16 @@ const emit = defineEmits<{
 type Kind = 'cloud' | 'device'
 const kindOptions = [
   {
-    value: 'device',
-    label: 'Device',
-    description: 'A directory on one of your devices.',
-    icon: Monitor,
-  },
-  {
     value: 'cloud',
     label: 'Cloud',
     description: 'A managed workspace, ready at once.',
     icon: Cloud,
+  },
+  {
+    value: 'device',
+    label: 'Device',
+    description: 'A directory on one of your devices.',
+    icon: Monitor,
   },
 ] as const satisfies readonly {
   value: Kind
@@ -73,10 +81,11 @@ const kindOptions = [
   icon: typeof Cloud
 }[]
 
-const kind = ref<Kind>('device')
+const opening = openingChoice(props.lastHost, props.devices)
+const kind = ref<Kind>(opening.kind)
 const name = ref('')
 const path = ref('')
-const deviceId = ref('')
+const deviceId = ref(opening.deviceId ?? '')
 const browsing = ref(false)
 
 const device = computed(
@@ -103,39 +112,36 @@ const canCreate = computed(
       : online.value && path.value.startsWith('/') && !!projectName.value),
 )
 
+// The form starts again each time it shows, after the devices have loaded,
+// so a remembered device is found among them.
 watch(
-  () => props.isOpen,
-  (open) => {
-    if (!open) {
-      return
-    }
-    const defaultDeviceId =
-      props.devices.find((entry) => entry.online)?.id ??
-      props.devices[0]?.id ??
-      ''
-    if (!deviceId.value) {
-      deviceId.value = defaultDeviceId
-    }
+  () => props.isOpen && (props.load ?? 'ready') === 'ready',
+  (shown) => {
     // A request in flight or its failure keeps the form's input.
-    if (props.pending || props.message) {
+    if (!shown || props.pending || props.message) {
       return
     }
-    kind.value = 'device'
+    const choice = openingChoice(props.lastHost, props.devices)
+    kind.value = choice.kind
+    deviceId.value = choice.deviceId ?? ''
+    path.value = homeOf(deviceId.value)
     name.value = ''
-    deviceId.value = defaultDeviceId
     browsing.value = false
   },
-  { immediate: true },
 )
 
 // The directory starts at the chosen device's home; picking another device starts over there.
 watch(
   deviceId,
   (id) => {
-    path.value = id ? props.sourceFor(id).home : ''
+    path.value = homeOf(id)
   },
   { immediate: true },
 )
+
+function homeOf(id: string): string {
+  return id ? props.sourceFor(id).home : ''
+}
 
 function pickDirectory(chosen: string) {
   path.value = chosen
@@ -159,8 +165,22 @@ function create() {
     })
   }
 }
-function selectDevice(id: string, close: () => void): void {
+function choose(): void {
+  emit('choose', {
+    kind: kind.value,
+    ...(deviceId.value ? { deviceId: deviceId.value } : {}),
+  })
+}
+function chooseKind(chosen: Kind): void {
+  kind.value = chosen
+  choose()
+}
+function chooseDevice(id: string): void {
   deviceId.value = id
+  choose()
+}
+function selectDevice(id: string, close: () => void): void {
+  chooseDevice(id)
   close()
 }
 </script>
@@ -197,7 +217,7 @@ function selectDevice(id: string, close: () => void): void {
         :host-id="deviceId"
         @select="pickDirectory"
         @cancel="browsing = false"
-        @update:host-id="deviceId = $event"
+        @update:host-id="chooseDevice"
       />
     </div>
     <template v-else>
@@ -219,7 +239,11 @@ function selectDevice(id: string, close: () => void): void {
       >
         <div class="flex flex-col gap-4 p-4">
           <form class="flex flex-col gap-4" @submit.prevent="create">
-            <ChoiceCards v-model="kind" :options="kindOptions" />
+            <ChoiceCards
+              :model-value="kind"
+              :options="kindOptions"
+              @update:model-value="chooseKind"
+            />
             <label
               v-if="kind === 'cloud'"
               class="flex flex-col gap-1.5 text-chrome text-fg-muted"

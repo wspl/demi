@@ -5,7 +5,7 @@ import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
 import FileBrowserAddressBar from '@demicodes/web-ui/files/FileBrowserAddressBar.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
-import type { WorkspaceDraft, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
+import type { WorkspaceDraft, WorkspaceHostChoice, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
 import UploadConflictDialog from '@demicodes/web-ui/files/UploadConflictDialog.vue'
@@ -55,7 +55,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'New project',
-    'The working-environment dialog: Device or Cloud as two cards, Device first; a device asks which one, with Add device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the sidebar\'s Move to and the header\'s workspace control, not a dialog.'
+    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the sidebar\'s Move to and the header\'s workspace control, not a dialog.'
   ],
   [
     'New folder',
@@ -104,6 +104,8 @@ const workspaceProjects = ref<WorkspaceProject[]>([
   },
 ])
 const workspaceMessage = ref('')
+/** The kind and device chosen last, which the product keeps as a preference. */
+const workspaceLastHost = ref<WorkspaceHostChoice>()
 const workspaceKey = ref(0)
 const cloudSource = createMemoryFileSource(
   {
@@ -649,7 +651,7 @@ onMounted(() => {
 
       <GallerySection
         title="New project"
-        note="The working-environment dialog on its form: Device or Cloud. A device asks which one (Add device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
+        note="The working-environment dialog on its form: Cloud or Device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one (Add device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
       >
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <WorkspaceDialog
@@ -657,10 +659,12 @@ onMounted(() => {
             :is-open="open"
             :overlay-store="appOverlayStore"
             :devices="workspaceDevices"
+            :last-host="workspaceLastHost"
             :message="workspaceMessage"
             :source-for="sourceFor"
             :places-for="placesFor"
             @create="createWorkspace"
+            @choose="workspaceLastHost = $event"
             @connect-device="connectWorkspaceDevice"
             @close="close"
           />

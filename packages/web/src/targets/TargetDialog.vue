@@ -5,11 +5,13 @@ import type { WorkspaceDraft } from '@demicodes/web-ui/hosts/workspace'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
+import { usePreferences } from '../state/preferences'
 import { baseName } from '@demicodes/web-ui/files/paths'
 import { fileSourceFor, placesFor } from '../devices/files'
 
 const resources = useResources()
 const product = useProduct()
+const preferences = usePreferences()
 const message = ref('')
 const pending = ref(false)
 const deviceById = (id: string) =>
@@ -57,11 +59,13 @@ async function create(draft: WorkspaceDraft) {
     :load="product.load"
     @retry="product.reconnect"
     :devices="resources.devices"
+    :last-host="preferences.lastProjectHost"
     :message="message"
     :source-for="(id) => fileSourceFor(deviceById(id))"
     :places-for="(id) => placesFor(deviceById(id), resources.projects)"
     @close="close"
     @create="create"
+    @choose="(choice) => preferences.update({ lastProjectHost: choice }, true)"
     @connect-device="resources.pairingOpen = true"
   />
 </template>

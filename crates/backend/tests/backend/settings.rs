@@ -53,7 +53,8 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
         "thinkingEffort": "high",
         "serviceTierId": null,
     });
-    let (theme, shortcut, font, model) = tokio::join!(
+    let project_host = json!({ "kind": "device", "deviceId": "laptop" });
+    let (theme, shortcut, font, model, host) = tokio::join!(
         backend.patch(
             PREFERENCES,
             &master,
@@ -70,14 +71,20 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
             json!({ "appearance": { "fontSize": 17 } })
         ),
         backend.patch(PREFERENCES, &device, json!({ "lastModel": last_model })),
+        backend.patch(
+            PREFERENCES,
+            &master,
+            json!({ "lastProjectHost": project_host })
+        ),
     );
-    for answer in [theme, shortcut, font, model] {
+    for answer in [theme, shortcut, font, model, host] {
         assert_eq!(answer.status, StatusCode::OK);
     }
     let expected = json!({ "preferences": {
         "appearance": { "theme": "dark", "fontSize": 17 },
         "shortcuts": { "new": "⌘⇧N" },
         "lastModel": last_model,
+        "lastProjectHost": project_host,
     } });
     assert_eq!(saved(&backend, &device).await, expected);
 
@@ -89,6 +96,7 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
         json!({ "shortcuts": { "new": "x".repeat(65) } }),
         json!({ "lastModel": { "providerId": "", "modelId": "chosen-model", "thinkingEffort": null, "serviceTierId": null } }),
         json!({ "lastModel": { "providerId": "codex-account", "modelId": "chosen-model" } }),
+        json!({ "lastProjectHost": { "kind": "laptop" } }),
         json!({ "remember": true }),
     ] {
         let answer = backend.patch(PREFERENCES, &device, refused.clone()).await;
@@ -116,6 +124,7 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
             "appearance": { "theme": "dark", "fontSize": 17 },
             "shortcuts": {},
             "lastModel": last_model,
+            "lastProjectHost": project_host,
         } })
     );
     backend.close().await;
