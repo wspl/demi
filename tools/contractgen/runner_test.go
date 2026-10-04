@@ -16,7 +16,7 @@ import (
 func TestRunnerCorpus(t *testing.T) {
 	count := 0
 	for _, direction := range []string{"backend-to-runner", "runner-to-backend"} {
-		paths, err := filepath.Glob("../../crates/runner-protocol/tests/fixtures/" + direction + "/*.msgpack")
+		paths, err := filepath.Glob("testdata/runner-protocol/" + direction + "/*.msgpack")
 		if err != nil {
 			t.Fatal(err)
 		}

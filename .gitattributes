@@ -6,7 +6,7 @@
 bun.lock linguist-generated=true -diff
 
 # Unified patches preserve upstream context, including its leading diff space.
-crates/machines/runtime/*.patch -whitespace
+internal/machines/sandbox/runtime/*.patch -whitespace
 
 # Binary assets — never normalize or attempt to diff.
 *.png binary

@@ -14,7 +14,7 @@ import (
 // Every stored kept fixture is a stream, so the library only splits records;
 // the generated decoder owns every shape check. Budget below one second.
 func TestKeptTuple(t *testing.T) {
-	fixtures, err := filepath.Glob("../../crates/runner-protocol/tests/fixtures/kept/*")
+	fixtures, err := filepath.Glob("testdata/runner-protocol/kept/*")
 	if err != nil || len(fixtures) == 0 {
 		t.Fatalf("fixtures: %v", err)
 	}
