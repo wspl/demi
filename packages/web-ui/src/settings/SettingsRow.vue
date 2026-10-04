@@ -9,7 +9,11 @@ import type { SentenceText } from '../ui/ui-text'
 /**
  * Label and explanation on the left, the control on the right. Icons align with
  * the title. Controls center, or align with the title when detail is present.
- * In a narrow card the control drops under the text and keeps its right alignment.
+ * In a narrow card the control drops under the text. There a field (an element
+ * marked `data-field`: a text input, a text area, a slider) stretches across the
+ * row; every other control (a switch, a button, a segmented control, a menu
+ * button) keeps its size and its right alignment. The same container width
+ * decides both, so a control fills exactly when it has dropped.
  * An inset row belongs to the row above it (an agent's models). A compact row is
  * for lists of like items (models, accounts); an interactive one opens on click
  * without a hover wash. `muted` fades the label side only, so actions stay at
@@ -96,13 +100,14 @@ const emit = defineEmits<{
         </div>
       </div>
     <!-- Beside the text the controls may take up to two thirds; inputs shrink, buttons never wrap.
-         The container spans the row's content box so a bare input can stretch to it. -->
+         The container spans the row's content box so a bare input can stretch to it.
+         Under the text (below @sm) a field takes the width its siblings leave; an inset row never drops. -->
       <div
         v-if="$slots.default"
         @click="isolateControls && $event.stopPropagation()"
         class="flex min-w-0 items-center justify-end gap-2 self-stretch @sm:basis-auto @sm:max-w-[66%]"
         :class="[
-        inset ? 'shrink-0' : 'basis-full',
+        inset ? 'shrink-0' : 'basis-full @max-sm:*:data-field:flex-1',
         $slots.detail ? '@sm:h-5 @sm:self-start' : '',
         disabled ? 'pointer-events-none' : '',
       ]"

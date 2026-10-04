@@ -7,6 +7,7 @@ import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
+import GallerySettingsRows from '../components/GallerySettingsRows.vue'
 import GallerySkillsShowcase from '../components/GallerySkillsShowcase.vue'
 import GallerySkillsCalls from '../components/GallerySkillsCalls.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
@@ -144,6 +145,22 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             <dd class="text-fg-muted">{{ detail }}</dd>
           </template>
         </dl>
+      </GallerySection>
+
+      <GallerySection
+        title="Rows"
+        note="Label and explanation on the left, the control on the right. In a card narrower than 24rem the control drops under the label: a text field or a slider then fills the row, while a menu button, a segmented control, a switch and a button keep their size at the right edge."
+      >
+        <GallerySpecimen variant="Wide" wide>
+          <div class="w-full max-w-xl">
+            <GallerySettingsRows />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Narrow · 320px">
+          <div class="w-[320px] max-w-full">
+            <GallerySettingsRows />
+          </div>
+        </GallerySpecimen>
       </GallerySection>
 
       <GallerySection
