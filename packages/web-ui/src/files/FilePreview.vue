@@ -132,7 +132,7 @@ onBeforeUnmount(() => {
       v-else-if="state.phase === 'changed'"
       class="h-full"
       label="The file changed."
-      action="Show the new version"
+      action="Show the New Version"
       @action="open"
     />
     <RegionStatus

@@ -501,7 +501,7 @@ model no longer offers replaced by the model's first effort and a tier it no
 longer offers by the vendor's default. Its effort is null only for a model
 that lists no efforts. From then on the
 conversation has its own settings, which a later change of the preference does
-not touch. `lastProjectHost` stores where New project starts,
+not touch. `lastProjectHost` stores where New Project starts,
 `{ kind: "cloud" | "device", deviceId? }`: the kind and the device the user
 last chose in it ([Conversations and projects](product.md#conversations-and-projects)).
 A patch replaces it whole; a `deviceId` the user no longer has is kept and

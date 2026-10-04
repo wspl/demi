@@ -55,7 +55,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'New project',
-    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the sidebar\'s Move to and the header\'s workspace control, not a dialog.'
+    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add Device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the sidebar\'s Move To and the header\'s workspace control, not a dialog.'
   ],
   [
     'New folder',
@@ -79,7 +79,7 @@ const { view } = useGalleryView()
 
 // New project: the working-environment dialog over the same hosts; a created project joins the list.
 const workspaceDevices = ref(pairedHosts.map(({ id, label, online }) => ({ id, name: label, online })))
-/** Add device stands in for the pairing flow: a new online device joins the list. */
+/** Add Device stands in for the pairing flow: a new online device joins the list. */
 function connectWorkspaceDevice() {
   workspaceDevices.value.push(
     {
@@ -651,7 +651,7 @@ onMounted(() => {
 
       <GallerySection
         title="New project"
-        note="The working-environment dialog on its form: Cloud or Device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one (Add device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
+        note="The working-environment dialog on its form: Cloud or Device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one (Add Device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
       >
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <WorkspaceDialog

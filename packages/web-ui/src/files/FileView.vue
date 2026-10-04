@@ -182,7 +182,7 @@ async function go(target: string): Promise<void> {
   }
   const root = normalizePath(props.root)
   if (target !== root && !target.startsWith(`${root}/`)) {
-    showToast({ title: 'Not in this workspace', message: `The tree shows ${props.rootName ?? root} only.`, tone: 'neutral' })
+    showToast({ title: 'Not in This Workspace', message: `The tree shows ${props.rootName ?? root} only.`, tone: 'neutral' })
     return
   }
   located.value = target

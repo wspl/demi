@@ -51,7 +51,7 @@ defineExpose({ open })
     :is-open="isOpen"
     :overlay-store="overlayStore"
     mode="file"
-    title="Attach remote file"
+    title="Attach Remote File"
     :source="host.source"
     :initial-path="host.cwd"
     :places="host.places"

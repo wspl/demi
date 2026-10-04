@@ -463,7 +463,7 @@ async function receive(directory: string, entries: readonly (DroppedEntry | File
     items = await droppedItems(entries)
   } catch (error) {
     showToast({
-      title: 'Could not read what was dropped',
+      title: 'Could Not Read What Was Dropped',
       message: error instanceof Error ? error.message : String(error),
       tone: 'danger',
     })
@@ -552,7 +552,7 @@ defineExpose({
         side="end"
         :min="UPLOADS_MIN_PX"
         :max="uploadsRoom"
-        label="uploads"
+        label="Uploads"
       />
       <FileUploadList
         ref="uploadsList"
@@ -574,7 +574,7 @@ defineExpose({
   >
     <Menu>
       <MenuItem v-if="menuTarget?.kind === 'file'" :icon="Download" label="Download" @select="download(menuTarget.path)" />
-      <MenuItem v-else-if="menuTarget" :icon="Upload" label="Upload files…" @select="chooseFiles(menuTarget.path)" />
+      <MenuItem v-else-if="menuTarget" :icon="Upload" label="Upload Files…" @select="chooseFiles(menuTarget.path)" />
     </Menu>
   </Popover>
   <input ref="picker" type="file" multiple class="hidden" @change="onPicked">

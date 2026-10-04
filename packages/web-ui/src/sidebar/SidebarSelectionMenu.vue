@@ -36,7 +36,7 @@ const sharedProjectId = computed(() => {
 })
 const many = computed(
   () => (props.targets.length > 1
-    ? ` ${props.targets.length} conversations`
+    ? ` ${props.targets.length} Conversations`
     : '')
 )
 </script>
@@ -58,7 +58,7 @@ const many = computed(
       />
       <MenuItem
         :icon="Copy"
-        label="Copy conversation ID"
+        label="Copy Conversation ID"
         @select="emit('copyId', single.id)"
       />
     </template>
@@ -68,12 +68,11 @@ const many = computed(
       shortcut="⌘⇧P"
       @select="emit('pin', ids, !allPinned)"
     />
-    <MenuItem :icon="FolderInput">
-      <span class="min-w-0 flex-1 truncate">Move to</span>
+    <MenuItem :icon="FolderInput" label="Move To">
       <template #submenu>
         <Menu iconless>
           <MenuItem
-            label="No project"
+            label="No Project"
             choice
             :is-selected="sharedProjectId === null"
             @select="emit('moveTo', ids, null)"
