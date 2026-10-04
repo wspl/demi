@@ -145,17 +145,18 @@ input, which the multi-worker control service also relies on
   stays when the draft is emptied, so a revision is never used twice, and it
   is deleted with its conversation; the conversation index reads the revision
   into each conversation's summary.
-  `permission_requests` stores each conversation's waiting
+  `permission_requests` stores each conversation's
   [permission requests](../agent/permissions.md#requests): id, conversation,
-  category, the operation's details as JSON, the agent that asked (its number
-  and description, or none for the root) and when it was raised.
-  `permission_grants` stores each grant: conversation, category and when it
-  was granted, one row per conversation and category. Allow writes the grant
-  and deletes the category's requests of the conversation in one transaction,
-  so a request and the grant that answers it never both exist; a new request
-  is written with the removal of the requests it replaces; Deny deletes
-  one request, a revocation one grant, and an archive the conversation's
-  requests. The conversation index counts the requests into each
+  category, the command line, the agent that ran it (its node, number and
+  description, or the root), when it was raised, and, once decided, the
+  decision. `permission_grants` stores each grant: conversation, category and
+  when it was granted, one row per conversation and category. Allow writes
+  the grant and decides the category's requests of the conversation in one
+  transaction; a new request is written with the removal of the request it
+  replaces; a decided request is deleted once its message is in the agent's
+  checkpoint, and the requests still decided at start are delivered then; an
+  archive deletes the conversation's requests, and a revocation one grant.
+  The conversation index counts the undecided requests into each
   conversation's summary.
 - **Operations:** `conversation_fork_operations` reserves a destination ID and
   records source boundary, owner, target, full model selection, title,

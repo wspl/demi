@@ -114,7 +114,8 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - tool views (`ToolView`, `ShellToolView`, `OutputChunk`, `EditedFile`) and
     a command's output views, which the shell status frame and the shell
     contract are built from (`StreamView`, `OutputView`, `BinaryStdout`);
-  - agent messages (`AgentMessage`, `CompletionId`);
+  - agent messages (`AgentMessage`, `CompletionId`), among them the user's
+    decision on a [permission request](../agent/permissions.md#the-decisions-message);
   - the session phase, queued messages and pending steers;
   - provider failure facts (`ProviderFailureFacts`, `ProviderErrorDiagnostics`);
   - what the product shows of a provider entry: its model catalog
@@ -203,10 +204,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   (`Schema::check`); the command input subset (`check_input_subset`, which
   registration runs); argv parsing (`Node::select`, `Selected::parse`,
   `Parsed::validate`), which reads each field's schema to convert its tokens;
-  the argument check both ends run (`Leaf::check_arguments`); a leaf's
-  [permission category](../agent/permissions.md#an-operation-that-needs-a-category)
-  and the help line it adds; help rendering
-  (`Node::help`, `HELP_DEFAULTS`); and the settings every declaration's JSON
+  the argument check both ends run (`Leaf::check_arguments`); a group's
+  [permission categories](../agent/permissions.md#categories) and a leaf's
+  `permission`, with their registration checks and the help line; help
+  rendering (`Node::help`, `HELP_DEFAULTS`); and the settings every declaration's JSON
   Schema is generated with (`command_schema_settings`).
 - **Public boundary:** the items above. This crate is the single
   implementation of argv parsing, help and the input subset: the runner parses
@@ -527,10 +528,8 @@ Each crate implements the provider contract for one vendor family.
   implements it: the factory and instance traits (`PluginFactory`,
   `Plugin`); the manifest (`Manifest`): a plugin's id, its command groups and
   roots as declarations with their placement, whether it is a context
-  source, its
-  [permission categories](../agent/permissions.md#categories), and its page
-  state and page methods with their schemas; the operation details a
-  permission request carries; the requests and replies; the port
+  source, and its page state and page
+  methods with their schemas; the requests and replies; the port
   (`PluginPort`) with its messages and the transport they travel through
   (`PluginTransport`), whose command operations are the rpc port's; and the
   plugin's errors.
@@ -636,7 +635,10 @@ Each crate implements the provider contract for one vendor family.
     disposed (`ServerDeps::status_changed`), the resolution of the files a
     frame's content refers to, which the backend answers
     (`ContentResolver`), and the conversation title request and its rules
-    (`title`).
+    (`title`);
+  - the admission of a message from the user into a node of an open tree,
+    or into its nearest live ancestor when the node is closed, for the
+    decision on a [permission request](../agent/permissions.md#the-decisions-message).
 - **Public boundary:** the items above; `agent_server::testing` supplies provider
   runtimes that play scripts (`ScriptedProviders`), uploads a frame's files
   resolve to (`TestFiles`) and a test client that drives a connection
@@ -670,9 +672,7 @@ Each crate implements the provider contract for one vendor family.
   - `RemoteShellEnvironment`, the production `ShellEnvironment` over real
     runner jobs, and its factory: at a job's end it reads what the backend
     does not hold of the command's output and its edit copies, hands them to
-    the product's keeper, and releases the job's directory; its observation
-    window stops while a call of the command's job waits for the user
-    ([The wait](../agent/permissions.md#the-wait));
+    the product's keeper, and releases the job's directory;
   - a whole output as the runner wire's kept-output records, in which the
     backend stores it (`encode_output`, `decode_output`);
   - building manifests from a command set.
@@ -751,7 +751,7 @@ or on another plugin.
   and blobs it keeps of them; the Host directories of the skills that are on;
   its context blocks with the catalog of the skills that are on; the project
   skills it finds in a conversation's repository; the `demi skills` group
-  with its category Manage skills; and its page state and page methods.
+  with its category, Manage skills; and its page state and page methods.
 - **Public boundary:** its factory, whose manifest names its page package,
   `@demicodes/plugin-skills`, which `xtask contracts` generates the page's
   types into.
@@ -873,7 +873,7 @@ demi-runner (executable: connection, registration, Host log, composition)
 The backend is one executable built from layered crates. Each layer knows
 only the layers beneath it. A domain whose operations need another domain's
 state does not reach for the user's shard: it defines the narrow trait of what
-it needs (`CloudShard`, `ExposeShard`, `HostShard`, `PluginShard`), writes its operations as
+it needs (`CloudShard`, `ExposeShard`, `HostShard`, `PermissionShard`, `PluginShard`), writes its operations as
 methods of that trait object, and `backend-user-shard` implements the trait for
 `Shard` ([Composition](concurrency.md#the-user-shard)). No crate below
 `backend-user-shard` sees `Shard` or `Services`; each receives the handles it uses,
@@ -885,6 +885,7 @@ demi-backend (executable: configuration, composition)
   `-- backend-http (HTTP)
         `-- backend-user-shard (the user's shard, conversations)
               |-- backend-plugins (the plugin host)
+              |-- backend-permissions (conversation permissions)
               |-- backend-host-access --> backend-cloud, backend-expose, backend-runners
               |-- backend-cloud --------> backend-runners, backend-providers, backend-idle-watch
               |-- backend-accounts
@@ -1056,9 +1057,6 @@ demi-backend (executable: configuration, composition)
   handlers that forward a command to its plugin; the port's operations over
   the user's plugin values, blobs, Host directory sets, Host file reads,
   package calls, conversation hosts, exposes and page-state marks; the
-  [conversation permissions](../agent/permissions.md): the registered
-  categories, each conversation's requests and grants, the decisions and
-  revocations, and the calls that wait, with their bound; the
   plugins' user stream declarations; the marks of a plugin's page state when
   a product change it follows happens;
   and page state and page calls, with the validation of a call's parameters
@@ -1072,6 +1070,26 @@ demi-backend (executable: configuration, composition)
 - **Must not:** see `Shard`, reach a Host, know an agent's session, or hold
   the logic of one plugin.
 
+#### `backend-permissions`
+
+- **Owns:** [conversation permissions](../agent/permissions.md): the check
+  every `rpc` call passes before its handler, against the leaf's declared
+  category and the conversation's grants; the requests a refused call raises,
+  with their replacement, queue and withdrawal at archive; the decisions, the
+  grants they record, their messages to the asking agent and the delivery of
+  the decided requests left at start; and revocation; and `PermissionShard`,
+  what it needs of its user's shard: the control service, the user's change
+  marks, the categories of the user's command set, and the admission of a
+  decision's message into the conversation's tree, opening it when it is
+  closed.
+- **Public boundary:** the check, the decision and revocation operations, the
+  reads the routes and the summaries make, all on `dyn PermissionShard`.
+- **Must not:** see `Shard`, know a plugin, reach a Host or an agent's
+  session, or run a handler: it decides whether a call is dispatched, and
+  the shard dispatches it. It is its own crate because every command source
+  passes through it, a plugin's, the product's and the agent runtime's alike,
+  so it belongs to none of them.
+
 #### `backend-user-shard`
 
 - **Owns:** the user shard ([The user shard](concurrency.md#the-user-shard)):
@@ -1082,7 +1100,9 @@ demi-backend (executable: configuration, composition)
   socket; conversations as the agent sees them: agent-tree hosting
   with the agent server's dependencies composed from the plugin host, the
   user's subagent settings, the product's instructions and the execution
-  context source, the conversation socket, history and fork,
+  context source, the conversation socket, history and fork, the
+  [permission check](../agent/permissions.md#the-check) in the rpc dispatch
+  with the delivery of a decision's message,
   summaries and titles, the providers a session resolves, with a child's
   model selection built from its profile and checked against the catalog,
   and its failure facts; the conversations' idle watches, release and the daily retention
@@ -1090,7 +1110,7 @@ demi-backend (executable: configuration, composition)
   CLI's work on the user's Cloud; runner adoption and the runner link's
   policy; the network stream of a relayed expose connection, opened through
   device access; and the implementations of `CloudShard`, `ExposeShard`,
-  `HostShard` and `PluginShard` for `Shard`.
+  `HostShard`, `PermissionShard` and `PluginShard` for `Shard`.
 - **Public boundary:** the shard pool, the shared services, the times and
   bounds, and the calls the edge makes into a shard. Its `testing` feature
   starts shared services for tests (`Services::start_for_tests`), on which a
@@ -1104,7 +1124,7 @@ demi-backend (executable: configuration, composition)
 - **Owns:** the HTTP edge: the listener and router, the session gate, request
   extractors and body limits, the mapping of errors to `ErrorCode`, the
   installer, native artifact and web app asset routes, the plugins' page call
-  routes, runner acceptance, and
+  routes, the conversation permissions routes, runner acceptance, and
   the byte copies of file transfers, pipes, user streams and the expose relay
   ([Web API](../product/web-api.md)).
 - **Public boundary:** the edge the executable starts (`Edge`), with the
@@ -1380,7 +1400,8 @@ under `packages/`.
   tiptap editor a user message is written and shown in); the user Markdown
   dialect; sidebar layout and list interaction; the
   [permission](../agent/permissions.md#what-the-user-sees) card, the
-  needs-you mark and the Permissions dialog; workspace and remote-file
+  needs-you mark, the decision's receipt row and the Permissions dialog;
+  workspace and remote-file
   selection; file previews and the file tree as primitives; the work panel
   frame; the settings surface as presentation over host-mapped models; the
   device pairing dialog over a host-provided claim adapter; the sign-in page;
@@ -1558,9 +1579,10 @@ backend-idle-watch -> shared-gates
 backend-cloud -> backend-idle-watch, backend-providers, backend-runners, backend-database, backend-page-sync, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol
 backend-expose -> backend-database, shared-types, web-api-protocol
 backend-plugins -> plugin-interface, command-declarations, shared-types, host-interface, backend-database, backend-page-sync, web-api-protocol
+backend-permissions -> command-declarations, shared-types, host-interface, backend-database, backend-page-sync, web-api-protocol
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
-backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle-watch, backend-blobs, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
-backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-plugins, plugin-interface
+backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
+backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
 backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell
