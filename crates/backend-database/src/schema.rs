@@ -384,6 +384,8 @@ CREATE TABLE nodes (
   result           TEXT,
   failure          TEXT,
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
+  -- The session's checkpoint state as JSON, with whether a Stop holds its
+  -- waiting input until the user's next action.
   state            TEXT NOT NULL,
   block_count      INTEGER NOT NULL CHECK (block_count >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
