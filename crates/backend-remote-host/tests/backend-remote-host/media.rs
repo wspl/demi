@@ -224,12 +224,12 @@ async fn a_commands_stdout_is_the_jobs_output_only_where_it_reaches_the_jobs_pip
     fixture.stop().await;
 }
 
-/// About 1.5 s here: three jobs.
+/// About 1 s here: four jobs, one of them returning 80 MiB of media.
 ///
 /// Planted defects this catches: an rpc medium placed where it arrives
 /// rather than after the stdout bytes it followed; a medium the runner keeps
-/// past its bounds; and a check that lets a leaf without `media`, or bytes
-/// that are no image or video, return one.
+/// past its count or its bytes; and a check that lets a leaf without
+/// `media`, or bytes that are no image or video, return one.
 #[tokio::test(flavor = "local")]
 async fn media_keep_their_place_their_order_their_bounds_and_their_checks() {
     let (fixture, shell) = media_runner().await;
@@ -259,6 +259,27 @@ async fn media_keep_their_place_their_order_their_bounds_and_their_checks() {
         "{}",
         many.stdout.delta
     );
+
+    // Four media of 16 MiB fill the job's 64 MiB: the fifth is not kept, and
+    // the command goes on.
+    let large = run(&shell, "demi medium --count 5 --size 16777216 --after done").await;
+    assert_eq!(exited(&large), 0, "{}", large.stderr.tail);
+    let line = |number| format!("[medium {number}: image/png, 16777216 bytes]\n");
+    assert_eq!(
+        large.stdout.delta,
+        format!(
+            "{}{}{}{}[medium not kept: a job keeps at most 32 media and 64 MiB]\ndone",
+            line(1),
+            line(2),
+            line(3),
+            line(4)
+        )
+    );
+    let sizes: Vec<_> = media(&large)
+        .into_iter()
+        .map(|(number, _, bytes)| (number, bytes.len()))
+        .collect();
+    assert_eq!(sizes, [1, 2, 3, 4].map(|number| (number, 16 * 1024 * 1024)));
 
     // A leaf that does not declare media, and bytes that are no medium,
     // fail their command; nothing is kept.
