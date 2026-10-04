@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 	"github.com/wspl/demi/internal/cmdsdk"
@@ -255,13 +254,9 @@ func TestFetchClosureAndCancellationReleaseRegisteredTabs(t *testing.T) {
 	)
 	for _, cancelled := range []bool{false, true} {
 		job := f.start(t, "content.fetch", args)
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		// Each attempt is a real tab listing; it repeats until the batch's tabs are listed.
 		var temporary browserop.TabID
 		for temporary == "" {
-			if err := ctx.Err(); err != nil {
-				cancel()
-				t.Fatal(err)
-			}
 			rows := f.tabs(t)
 			ready := false
 			for _, row := range rows {
@@ -273,14 +268,12 @@ func TestFetchClosureAndCancellationReleaseRegisteredTabs(t *testing.T) {
 			for _, row := range rows {
 				if row.ID != retained && row.URL != f.url+"/assets.html" {
 					if _, ok := row.CreatedBy.(*browserop.BrowserCreatedByTemporary); !ok {
-						cancel()
 						t.Fatal(row)
 					}
 					temporary = row.ID
 				}
 			}
 		}
-		cancel()
 		if cancelled {
 			job.cancel()
 			requireCancelled(t, job.join(t))

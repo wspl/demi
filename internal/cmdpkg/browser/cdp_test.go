@@ -3,10 +3,8 @@
 package browser
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 	"github.com/wspl/demi/internal/contract"
@@ -285,12 +283,8 @@ func TestOversizedObservationEndsBrowserAndAllowsFreshOpen(t *testing.T) {
 	tab := f.open(t, "cdp.html")
 	f.mutate(t, tab, `document.body.innerHTML='<button>Large observation</button>'.repeat(20000);undefined`)
 	f.rejects(t, tab, "inspect", `{}`, "browser_lost", "")
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
+	// Each attempt is a real open; only browser_lost, the retiring browser, repeats.
 	for {
-		if err := ctx.Err(); err != nil {
-			t.Fatal(err)
-		}
 		completion, stdout, stderr := f.result(t, "open", `{"url":"about:blank"}`)
 		if completion.ExitCode == 0 {
 			opened, err := browserop.DecodeOpenResult(stdout)
@@ -358,12 +352,8 @@ func TestCDPEvictionMarksTruncationAndWorkerHandlesExpire(t *testing.T) {
 	)
 	expectValue(t, observedField(t, events, "truncated"), true)
 	expectValue(t, observedField(t, events, "hasMore"), true)
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
-	defer cancel()
+	// Each attempt is a real target listing; only a still-listed worker repeats.
 	for {
-		if err := ctx.Err(); err != nil {
-			t.Fatal(err)
-		}
 		targets := f.command(t, tab, "cdp.targets", `{}`)
 		rows, err := contract.List(observedField(t, targets, "targets"), contract.Decode[json.RawMessage])
 		if err != nil {

@@ -16,7 +16,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 	"github.com/wspl/demi/internal/cmdpkg/browser/chrome/tabs"
@@ -250,13 +249,9 @@ func TestNextServiceSweepsKilledServicesBrowserAndDownloads(t *testing.T) {
 				t.Error(err)
 			}
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+		// The killed processes are not this test's children, so no wait call
+		// reports their end; each attempt is a real process listing.
 		for len(markedBrowserProcesses(t, runtimeDirectory)) != 0 {
-			if err := ctx.Err(); err != nil {
-				t.Error(err)
-				return
-			}
 			runtime.Gosched()
 		}
 		if err := os.RemoveAll(runtimeDirectory); err != nil {

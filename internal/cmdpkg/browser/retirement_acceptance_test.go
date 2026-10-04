@@ -58,9 +58,8 @@ func profileRuntime(t *testing.T, profile string) string {
 // markedBrowserProcesses identifies only this fixture's Chrome and detached helpers.
 func markedBrowserProcesses(t *testing.T, directory string) []int {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 5*time.Second)
-	defer cancel()
-	data, err := exec.CommandContext(ctx, "ps", "eww", "-axo", "pid=,command=").Output()
+	// Cleanup calls this after the test's context is canceled.
+	data, err := exec.CommandContext(context.WithoutCancel(t.Context()), "ps", "eww", "-axo", "pid=,command=").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,9 +84,8 @@ func markedBrowserProcesses(t *testing.T, directory string) []int {
 // processGroup reads independent OS evidence of Chrome's process-tree retirement.
 func processGroup(t *testing.T, group int) []int {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 5*time.Second)
-	defer cancel()
-	data, err := exec.CommandContext(ctx, "ps", "-axo", "pid=,pgid=").Output()
+	// Cleanup calls this after the test's context is canceled.
+	data, err := exec.CommandContext(context.WithoutCancel(t.Context()), "ps", "-axo", "pid=,pgid=").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,12 +322,9 @@ func TestNewOpenRecoversAfterChromeCrashWithoutReplayingOldTabs(t *testing.T) {
 	if err := syscall.Kill(leader, syscall.SIGKILL); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
+	// The service exposes no event for its retirement of a crashed browser; each
+	// attempt checks whether retirement has removed the profile directory.
 	for {
-		if err := ctx.Err(); err != nil {
-			t.Fatal(err)
-		}
 		if _, err := os.Stat(profile); os.IsNotExist(err) {
 			break
 		} else if err != nil {

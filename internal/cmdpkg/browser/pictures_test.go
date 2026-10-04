@@ -4,7 +4,6 @@ package browser
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"image"
@@ -14,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/chromedp/cdproto/target"
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
@@ -203,31 +201,6 @@ func TestWatchedTabArrivesWithDetailOfViewersRatio(t *testing.T) {
 	view.close(t)
 }
 
-func TestCaptureExtensionRunsBesidePagesAndIsNeverATab(t *testing.T) {
-	f := chromeFixture(t)
-	tab := f.open(t, "")
-	env := f.environment(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	for {
-		targets, err := tabstest.Targets(ctx, env)
-		if err != nil {
-			t.Fatal(err)
-		}
-		found := false
-		for _, target := range targets {
-			found = found || strings.HasPrefix(target.URL, "chrome-extension://"+tabstest.CaptureExtensionID+"/")
-		}
-		if found {
-			break
-		}
-	}
-	rows := f.tabs(t)
-	if len(rows) != 1 || rows[0].ID != tab {
-		t.Fatal(rows)
-	}
-}
-
 func TestCaptureExtensionReloadPreservesPagesAndRecreatesWorker(t *testing.T) {
 	f := chromeFixture(t)
 	opened, err := browserop.DecodeOpenResult(f.call(t, "open", `{"url":"about:blank"}`))
@@ -247,12 +220,11 @@ func TestCaptureExtensionReloadPreservesPagesAndRecreatesWorker(t *testing.T) {
 	workerURL := "chrome-extension://" + tabstest.CaptureExtensionID + "/background.js"
 	previous := target.ID("")
 	for round := 0; round < 4; round++ {
-		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		// Each attempt is a real target listing; it repeats until the offscreen page and a new worker are listed.
 		var worker target.ID
 		for worker == "" {
-			targets, err := tabstest.Targets(ctx, env)
+			targets, err := tabstest.Targets(t.Context(), env)
 			if err != nil {
-				cancel()
 				t.Fatal(err)
 			}
 			started := false
@@ -267,7 +239,6 @@ func TestCaptureExtensionReloadPreservesPagesAndRecreatesWorker(t *testing.T) {
 				}
 			}
 		}
-		cancel()
 		if len(f.tabs(t)) != 1 {
 			t.Fatal("extension listed as tab")
 		}

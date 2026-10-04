@@ -1,4 +1,4 @@
-package browser
+package browser_test
 
 import (
 	"context"
