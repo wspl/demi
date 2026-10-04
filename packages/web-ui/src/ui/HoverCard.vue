@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, useSlots } from 'vue'
 import type { Placement } from '@floating-ui/vue'
 import Popover from './Popover.vue'
+import { useLayerElevation } from '../overlay/layerElevation'
 import { appOverlayStore } from '../overlay/appOverlay'
 import type { OverlayStore } from '../overlay/overlayStore'
 
@@ -34,6 +35,7 @@ const props = withDefaults(defineProps<{
 const slots = useSlots()
 const triggerRef = ref<HTMLElement | null>(null)
 const cardRef = ref<HTMLElement | null>(null)
+const elevation = useLayerElevation()
 /** Opened by the pointer or the focus. */
 const shown = ref(false)
 const isOpen = computed(() => props.pinned || shown.value)
@@ -115,6 +117,7 @@ onBeforeUnmount(clearTimers)
     <div
       ref="cardRef"
       class="hover-card overlay-shell rounded-md text-xs text-fg"
+      :style="{ '--elevation': elevation }"
       @mouseenter="clearTimers"
       @mouseleave="scheduleClose"
       @focusout="onFocusOut"
