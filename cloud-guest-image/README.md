@@ -51,10 +51,21 @@ after a successful build. `--mirror` names an Ubuntu mirror other than the
 official one, such as `https://archive.ubuntu.com/ubuntu` on a builder whose
 only way out is HTTPS. apt inside the tree runs with a cleared environment, so
 the build hands it two things of the builder's network. A builder that
-reaches the mirror only through an HTTPS proxy sets `https_proxy`, which apt
-inside the tree then uses as well. A builder whose proxy re-signs TLS names
+reaches the mirror through a proxy sets `http_proxy` or `https_proxy`, which
+apt inside the tree then uses as well; the tree's `sources.list` still names
+the mirror itself. A builder whose proxy re-signs TLS names
 the bundle that holds the proxy's authority with `--ca FILE`, which apt inside
 the tree then trusts; the build removes the file from the tree. The last line the build prints is the release's base version.
+
+Most of a build's time is apt downloading the toolchain, about 380 MB for
+arm64. A builder that builds often runs a local package cache and points
+`http_proxy` at it; a second build then downloads nothing from the mirror:
+
+```sh
+sudo apt-get install -y apt-cacher-ng
+sudo http_proxy=http://127.0.0.1:3142 bash cloud-guest-image/rootfs/build.sh ...
+```
+
 The build neither starts nor resets a Cloud device; see
 [Acceptance and local refresh](../docs/cloud/images.md#acceptance-and-local-refresh).
 
