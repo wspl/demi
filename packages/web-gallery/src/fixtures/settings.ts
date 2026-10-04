@@ -379,6 +379,24 @@ export function mockProviders(): MockProvider[] {
             { id: 'tokens', label: 'Tokens (short window)', used: 3, max: 100, resets: 'in 40 s' },
           ],
         },
+        // Long text everywhere: the name truncates before its tags, and the window names and
+        // reset times wrap inside the text column instead of running under the buttons.
+        {
+          id: 'a4',
+          label: 'release-automation@platform-infrastructure.example.com',
+          plan: 'Max 20×',
+          active: false,
+          quota: [
+            {
+              id: 'week-all',
+              label: 'Weekly (all models, including Opus)',
+              used: 100,
+              max: 100,
+              resets: 'on Thursday, October 9 at 2:00 PM',
+            },
+            { id: 'week-sonnet', label: 'Weekly (Sonnet only)', used: 47, max: 100, resets: 'in 6 days 23 h' },
+          ],
+        },
       ],
       catalogFetched: '2 min ago',
       models: [
