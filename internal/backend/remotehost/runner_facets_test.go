@@ -11,7 +11,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
@@ -19,7 +18,8 @@ import (
 )
 
 // logMatching reads across the log writer's publication until the scenario's event appears.
-// Every retry waits for a runner reply; the timeout is only a hang guard.
+// The runner publishes no event for a written log line, so each retry is a real
+// read that waits for the runner's reply.
 func logMatching(
 	t *testing.T,
 	h *remotehost.Host,
@@ -28,10 +28,8 @@ func logMatching(
 	match func(remotehost.LogPage) bool,
 ) remotehost.LogPage {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-	defer cancel()
 	for {
-		page, err := h.ReadLog(ctx, after, 1000, source)
+		page, err := h.ReadLog(t.Context(), after, 1000, source)
 		requirePipe(t, err)
 		if match(page) {
 			return page

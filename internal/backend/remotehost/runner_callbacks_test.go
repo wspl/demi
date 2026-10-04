@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
@@ -114,17 +113,13 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 	)
 	holdHandler := host.TypedRPC(
 		fixture.DecodeHoldArgs,
-		func(ctx context.Context, call host.Call[fixture.HoldArgs], _ host.RPCPort) (uint8, error) {
+		// The callback holds until the command's abort cancels it; its
+		// duration argument only exercises positional input.
+		func(ctx context.Context, _ host.Call[fixture.HoldArgs], _ host.RPCPort) (uint8, error) {
 			close(started)
-			timer := time.NewTimer(time.Duration(call.Args.Ms) * time.Millisecond)
-			defer timer.Stop()
-			select {
-			case <-timer.C:
-				return 0, nil
-			case <-ctx.Done():
-				close(stopped)
-				return 130, nil
-			}
+			<-ctx.Done()
+			close(stopped)
+			return 130, nil
 		},
 	)
 	spew := host.RPCHandlerFunc(func(ctx context.Context, _ host.RPCInvocation, p host.RPCPort) (uint8, error) {
@@ -153,7 +148,7 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 	)
 	f := runnerFixture(t, remotehosttest.FixtureOptions{Commands: commands})
 	s, p := runnerShell(t, f, nil, callbackSelection(t, commands))
-	added := runnerExec(t, s, "todo add first && todo add second && todo list", 10000)
+	added := runnerExec(t, s, "todo add first && todo add second && todo list", untilExit)
 	if added.State.ExitCode != 0 || added.Stdout.Delta != "added 1\nadded 2\nfirst,second\n" {
 		t.Fatal(added)
 	}
@@ -162,16 +157,16 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 	if len(stored) != 2 || stored[0] != "first" || stored[1] != "second" {
 		t.Fatal(stored)
 	}
-	if runnerExec(t, s, "printf 'from stdin' | todo note", 10000).Stdout.Delta != "noted: from stdin" {
+	if runnerExec(t, s, "printf 'from stdin' | todo note", untilExit).Stdout.Delta != "noted: from stdin" {
 		t.Fatal("finite stdin missing")
 	}
 	script := `probe spew | head -n 1; echo "status=${PIPESTATUS[0]}"`
-	headed := runnerExec(t, s, script+"; bash -c '"+script+"'", 10000)
+	headed := runnerExec(t, s, script+"; bash -c '"+script+"'", untilExit)
 	if headed.State.ExitCode != 0 || headed.Stdout.Delta != "line 1\nstatus=141\nline 1\nstatus=141\n" ||
 		headed.Stderr.Delta != "" {
 		t.Fatal(headed)
 	}
-	typing := runnerExec(t, s, "probe line", 300)
+	typing := runnerExec(t, s, "probe line", glance)
 	if typing.State.Phase != host.Running {
 		t.Fatal(typing)
 	}
@@ -180,11 +175,11 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 	if typed.State.ExitCode != 0 || typed.Output.Tail != "typed|test-conversation" {
 		t.Fatal(typed)
 	}
-	usage := runnerExec(t, s, "todo add", 10000)
+	usage := runnerExec(t, s, "todo add", untilExit)
 	if usage.State.ExitCode == 0 || usage.Stderr.Tail == "" {
 		t.Fatal(usage)
 	}
-	holding := runnerExec(t, s, "probe hold 30000", 300)
+	holding := runnerExec(t, s, "probe hold 30000", glance)
 	if holding.State.Phase != host.Running {
 		t.Fatal(holding)
 	}
@@ -219,21 +214,21 @@ func TestRunnerNestedGroupHelpAndValidatedJSONOutput(t *testing.T) {
 	)
 	f := runnerFixture(t, remotehosttest.FixtureOptions{Commands: commands})
 	s, _ := runnerShell(t, f, nil, callbackSelection(t, commands))
-	help := runnerExec(t, s, "probe json --help", 10000)
+	help := runnerExec(t, s, "probe json --help", untilExit)
 	if help.State.ExitCode != 0 || !strings.HasPrefix(help.Stdout.Delta, "probe json: Output probes.\n") ||
 		!strings.Contains(help.Stdout.Delta, "  probe json emit <text> [--json]\n") {
 		t.Fatal(help)
 	}
-	raw := runnerExec(t, s, "probe json emit 'not json'", 10000)
+	raw := runnerExec(t, s, "probe json emit 'not json'", untilExit)
 	if raw.State.ExitCode != 0 || raw.Stdout.Delta != "not json" {
 		t.Fatal(raw)
 	}
-	valid := runnerExec(t, s, `probe json emit '{"ok":true}' --json`, 10000)
+	valid := runnerExec(t, s, `probe json emit '{"ok":true}' --json`, untilExit)
 	if valid.State.ExitCode != 0 || valid.Stdout.Delta != `{"ok":true}` {
 		t.Fatal(valid)
 	}
-	invalid := runnerExec(t, s, "probe json emit 'not json' --json", 10000)
-	mismatch := runnerExec(t, s, `probe json emit '{"ok":1}' --json`, 10000)
+	invalid := runnerExec(t, s, "probe json emit 'not json' --json", untilExit)
+	mismatch := runnerExec(t, s, `probe json emit '{"ok":1}' --json`, untilExit)
 	for _, refused := range []host.CommandStatus{invalid, mismatch} {
 		if refused.State.ExitCode != 1 || refused.Stdout.Delta != "" {
 			t.Fatal(refused)
@@ -246,7 +241,7 @@ func TestRunnerNestedGroupHelpAndValidatedJSONOutput(t *testing.T) {
 		"\"ok\" is not of type \"boolean\"\n" {
 		t.Fatal(mismatch.Stderr)
 	}
-	usage := runnerExec(t, s, "probe json emit", 10000)
+	usage := runnerExec(t, s, "probe json emit", untilExit)
 	if usage.State.ExitCode != 1 || !strings.Contains(usage.Stderr.Delta, `"text" is a required property`) {
 		t.Fatal(usage)
 	}
