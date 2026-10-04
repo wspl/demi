@@ -4,6 +4,8 @@ interface ImportMetaEnv {
   /** The local development account, from the repository's `.env`; development builds only. */
   readonly DEMI_DEV_EMAIL?: string
   readonly DEMI_DEV_PASSWORD?: string
+  /** This page's build, which `vite build` writes in (`vite.config.ts`); none in development. */
+  readonly DEMI_WEB_BUILD?: string
 }
 
 declare module '*.vue' {

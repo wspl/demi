@@ -2,6 +2,7 @@
 import { Copy, Folder, Pencil, Plus, Settings, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
+import { OUTDATED_PROMPT, showOutdated } from '@demicodes/web-ui/infra/outdated'
 import { productWould } from '../product-would'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
@@ -119,6 +120,13 @@ const pinDangerToast = ref(true)
 const pinRejectedToast = ref(true)
 const pinNeutralToast = ref(true)
 const pinCopiedToast = ref(true)
+const pinOutdatedToast = ref(true)
+
+/** The pinned reload prompt's Reload: it closes, as the toast host closes it, and says what the product would do. */
+function reloadFromPinnedPrompt(): void {
+  pinOutdatedToast.value = false
+  productWould('Reload the Page')
+}
 
 const paradigmSelected = ref('hairline')
 const densitySelected = ref('compact')
@@ -798,7 +806,7 @@ function itemLabel(id: string, list: {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Toast"
-        note="The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. Danger, a rejected action whose title wraps, a fact, Copied, and live host."
+        note="The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it: the reload prompt of a page older than the backend's build stays until the user reloads or closes it. Danger, a rejected action whose title wraps, a fact, Copied, the reload prompt, and live host."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="danger">
@@ -865,6 +873,25 @@ function itemLabel(id: string, list: {
               >Show</Button>
             </div>
           </GallerySpecimen>
+          <GallerySpecimen variant="reload prompt">
+            <div class="w-80">
+              <Toast
+                v-if="pinOutdatedToast"
+                :title="OUTDATED_PROMPT.title"
+                :message="OUTDATED_PROMPT.message"
+                :tone="OUTDATED_PROMPT.tone"
+                :action="OUTDATED_PROMPT.action"
+                @dismiss="pinOutdatedToast = false"
+                @act="reloadFromPinnedPrompt"
+              />
+              <Button
+                v-else
+                size="md"
+                variant="ghost"
+                @click="pinOutdatedToast = true"
+              >Show</Button>
+            </div>
+          </GallerySpecimen>
           <GallerySpecimen variant="live">
             <div class="flex flex-wrap gap-2">
               <Button
@@ -876,6 +903,11 @@ function itemLabel(id: string, list: {
                 variant="ghost"
                 @click="showToast({ title: 'Copied', tone: 'success' })"
               >Copy id</Button>
+              <Button
+                size="md"
+                variant="ghost"
+                @click="showOutdated(() => productWould('Reload the Page'))"
+              >Backend Updated</Button>
             </div>
           </GallerySpecimen>
         </div>

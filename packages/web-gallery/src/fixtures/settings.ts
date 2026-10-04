@@ -85,6 +85,32 @@ function showcaseSource(id: string, change: Partial<SourceState> & Pick<SourceSt
 }
 
 /**
+ * Two packs whose `review` skills share a name: the first's is on, so
+ * turning the second's on is refused, as the backend's plugin refuses it.
+ */
+export function skillsCalls(): SkillsState {
+  return {
+    sources: [
+      showcaseSource('review-kit', {
+        skills: [
+          showcaseSkill('review', 'Review a change before it lands.'),
+          showcaseSkill('commit-message', 'A conventional commit from the staged diff.'),
+        ],
+      }),
+      showcaseSource('web-kit', {
+        skills: [
+          showcaseSkill('design-review', 'Review UI against the web interface guidelines.'),
+          showcaseSkill('review', 'Review a component and its specimens.', { enabled: false }),
+        ],
+      }),
+    ],
+  }
+}
+
+/** The packs of `skillsCalls` shown open. */
+export const SKILLS_CALLS_OPEN = ['web-kit'] as const
+
+/**
  * Every state of a skill source and of a skill, pinned at once: sources all
  * on, some on, all off, updating, with an update, failed after a good fetch,
  * failed at the first fetch, and with skipped files; skills on, off, with a

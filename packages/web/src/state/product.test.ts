@@ -101,6 +101,22 @@ test('a plugin turned off leaves the page with its state, and one turned on agai
   expect(product.snapshot?.pluginStates).toEqual({ expose: { available: true, exposes: [] } })
 })
 
+test('a page of another build than the backend serves is out of date, as soon as a snapshot says so', () => {
+  process.env.DEMI_WEB_BUILD = 'b1'
+  try {
+    const product = started(productState({ webBuild: 'b1' }))
+    expect(product.outdated).toBe(false)
+    // The backend restarted with a new release; the channel connects again.
+    channels.last().send({ type: 'snapshot', state: productState({ webBuild: 'b2' }) })
+    expect(product.outdated).toBe(true)
+    // A backend that serves no web app, as in development, says nothing.
+    channels.last().send({ type: 'snapshot', state: productState({ webBuild: null }) })
+    expect(product.outdated).toBe(false)
+  } finally {
+    delete process.env.DEMI_WEB_BUILD
+  }
+})
+
 test('a write\'s answer shows at once, unless the channel brought its part since the write was sent', () => {
   const product = started(productState({ conversations: [summary(FIRST, 'First'), summary(SECOND, 'Second')] }))
   const channel = channels.last()

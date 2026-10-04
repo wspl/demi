@@ -239,6 +239,40 @@ it changed; no page polls, and no page guesses when to read again.
   user may have changed files outside Demi meanwhile. A page that shows the
   files reads the service, and never decides when to read again.
 
+## Calls and states
+
+A page reads its plugin's states and answers with the schemas generated from
+the plugin's manifest ([Types](#types)), and the page context checks each one
+where it enters the page. For example, the Skills page's schema says that
+every source has `updateAvailable`. A backend of an older build sends the
+skills state without it: the page context does not hand that state to the
+Skills page, which keeps showing the last state that read, and a toast says
+"Could not read the skills plugin's state" with the field that is missing.
+
+- **A state that does not read is reported, never thrown.** Reading a state
+  never throws into a component. A component that throws while it renders
+  stops updating: in development Vue keeps the DOM of its last render, so a
+  switch that showed its call pending stays pending; in a production build
+  the component shows nothing. So the page context keeps the last state that
+  read, or none before the first, and says why the latest did not read until
+  one does. A conversation state has a place on its page, so its error is
+  the state's `error`, which the page shows where the state shows, with its
+  retry. The user state has no such place, so a toast says it once, when the
+  page stops reading it.
+- **An answer that does not read fails its call**, as a refusal does, with
+  what did not read as its message.
+- **A control waits for its own call, and only for it.** A control that
+  starts a call, such as a skill's switch, is pending from the user's action
+  until that call is answered, whether it succeeds or fails, and takes no
+  input meanwhile; it never waits for the state the call causes. On success
+  the control shows the state the plugin sends; on failure the page reports
+  the call's error, as `errors.report` reports any failed call, in a toast,
+  and the control shows the plugin's last state again. When the component
+  that showed the control goes, the calls it still waits for are aborted and
+  nothing reports them. The SDK's `pendingCalls` is that rule, by the key of
+  what each control acts on: the Skills page's switches by their source and
+  the expose menu's rows by their expose.
+
 ## The conversation files service
 
 A conversation's files are a product service, not a plugin's: the runner
@@ -268,7 +302,7 @@ happened to use, and the SDK's entry exports them by these groups:
 | Navigation | `AddressBar` |
 | Files | `FileIcon`, `FileView`, `ChangeView`, and the shapes and paths the conversation files service gives |
 | Icons | `ICON_PX`, the icon sizes, and Demi's own icons, such as `GlobePlus` |
-| Composables | `useTimeRemaining` and its formatter |
+| Composables | `useTimeRemaining` and its formatter; `pendingCalls`, the calls a page's controls wait for ([Calls and states](#calls-and-states)) |
 | Streams | The liveness helpers a stream's protocol uses to tell a silent stream, and the waits before opening one again |
 
 A primitive joins the kit when a page needs it and another page could use it;

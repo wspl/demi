@@ -227,7 +227,8 @@ export function commitOf(seed: string): string {
  * updating fetches it again, and a skill turns on unless another on has its
  * name, as the backend's plugin refuses it. A fetch keeps each known skill
  * on or off and starts a new one on, unless another skill on has its name or
- * it is never offered to the agent. Checking for updates finds none: the
+ * it is never offered to the agent. A switch is answered after a beat, as
+ * the backend writes the change first. Checking for updates finds none: the
  * fixture's repositories never move.
  */
 export function skillsPlugin(state: SkillsState): GalleryPlugin {
@@ -310,6 +311,7 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
         }
         case 'set_enabled': {
           const { source: id, skill: name, enabled } = setEnabledSchema.parse(params)
+          await beat(400)
           const skill = source(id).skills.find((candidate) => candidate.name === name)
           if (!skill) {
             throw new PluginCallError('skill_not_found', `The source has no skill "${name}"`)
@@ -322,6 +324,7 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
         }
         case 'set_source_enabled': {
           const { source: id, enabled } = setSourceEnabledSchema.parse(params)
+          await beat(400)
           const skills = source(id).skills
           if (enabled) {
             taken(id, skills.map((skill) => skill.name))

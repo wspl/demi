@@ -4,6 +4,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { showOutdated } from '@demicodes/web-ui/infra/outdated'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
@@ -29,6 +30,16 @@ import { useProduct } from './state/product'
 provideBlobUrl(blobUrl)
 const product = useProduct()
 providePageHost(productPageHost())
+// A page of another build than the backend serves asks once to be reloaded.
+watch(
+  () => product.outdated,
+  (outdated, was) => {
+    if (outdated && !was) {
+      showOutdated(() => window.location.reload())
+    }
+  },
+  { immediate: true },
+)
 const imageViewer = provideImageViewer()
 const session = useSession()
 const conversations = useConversations()

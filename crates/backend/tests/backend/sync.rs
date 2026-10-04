@@ -170,6 +170,8 @@ async fn the_snapshot_is_the_users_product_state() {
                 ("skills".to_owned(), json!({ "sources": [] })),
             ]
             .into(),
+            // The backend serves no web app.
+            web_build: None,
         }
     );
     // Every plugin of the backend is listed in its order, each on.

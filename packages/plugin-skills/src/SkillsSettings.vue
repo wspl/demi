@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
 import type { SettingsSkillDraft, SettingsSkillSource } from './types'
-import { usePage } from '@demicodes/plugin-sdk'
+import { pendingCalls, usePage } from '@demicodes/plugin-sdk'
 import {
   addedSourceSchema,
   skillsStateSchema,
@@ -52,26 +52,16 @@ onMounted(() => {
 })
 
 /** The sources with a call in flight, whose controls wait for it. */
-const pending = ref<string[]>([])
+const calls = pendingCalls(page.errors)
 
 /** Calls `method` for `source`, which answers nothing; a refusal says why in a toast. */
-async function change(
+function change(
   source: string,
   method: string,
   params: SourceCall | SetEnabled | SetSourceEnabled,
   couldNot: string,
-): Promise<void> {
-  if (pending.value.includes(source)) {
-    return
-  }
-  pending.value = [...pending.value, source]
-  try {
-    await plugin.call(method, params, z.null())
-  } catch (error) {
-    page.errors.report(couldNot, error)
-  } finally {
-    pending.value = pending.value.filter((id) => id !== source)
-  }
+): void {
+  void calls.run(source, couldNot, () => plugin.call(method, params, z.null()))
 }
 
 async function add(draft: SettingsSkillDraft): Promise<void> {
@@ -87,7 +77,7 @@ async function add(draft: SettingsSkillDraft): Promise<void> {
   <SettingsSkills
     v-model:open="openIds"
     :sources="sources"
-    :pending="pending"
+    :pending="calls.pending.value"
     :overlay-store="page.overlays"
     @add="add"
     @update="(source) => change(source, 'update_source', { source }, 'Could not update the source')"

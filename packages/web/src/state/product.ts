@@ -1,5 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
+import { z } from 'zod'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse } from '../api/client'
 import {
@@ -94,6 +96,11 @@ function withPart(state: ProductState, event: PartEvent): ProductState {
   }
 }
 
+/** This page's web app build, which `vite build` writes in; none in development, where Vite serves the sources. */
+function pageBuild(): string | null {
+  return import.meta.env.DEMI_WEB_BUILD ?? null
+}
+
 function parse(data: unknown): unknown {
   try {
     return JSON.parse(String(data))
@@ -123,6 +130,15 @@ export const useProduct = defineStore('product', () => {
   const catalogLoad = computed(() => modelSnapshot.value?.key === catalogKey.value
     ? 'ready' : modelError.value?.key === catalogKey.value ? 'failed' : 'loading')
   const activeConversationId = ref<string | null>(null)
+  /**
+   * The backend serves another build of the web app than this page's, so a
+   * reload loads it (`web-application.md` § A page of another build).
+   */
+  const outdated = computed(() => {
+    const page = pageBuild()
+    const served = snapshot.value?.webBuild ?? null
+    return page !== null && served !== null && served !== page
+  })
   const catalogKey = computed(() => JSON.stringify((snapshot.value?.providers ?? []).map(provider => {
     const { details, ...config } = provider
     return { ...config, account: details.type === 'read' ? details.active : null }
@@ -205,7 +221,8 @@ export const useProduct = defineStore('product', () => {
       const parsed = syncEventSchema.safeParse(parse(message.data))
       if (!parsed.success) {
         // A message outside the contract changes nothing; a new connection
-        // starts again from a snapshot.
+        // starts again from a snapshot. The console says what did not read.
+        reportError('Could not read a message of the synchronization channel.', z.prettifyError(parsed.error))
         replace()
         return
       }
@@ -445,6 +462,7 @@ export const useProduct = defineStore('product', () => {
   return {
     snapshot,
     load,
+    outdated,
     catalog,
     vendors,
     vendorLoad,

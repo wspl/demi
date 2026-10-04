@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed } from 'vue'
 import { z } from 'zod'
-import { usePage } from '@demicodes/plugin-sdk'
+import { pendingCalls, usePage } from '@demicodes/plugin-sdk'
 import SessionToolsMenu from './SessionToolsMenu.vue'
 import type { ExposeMenuEntry } from './types'
 import { pageTabKind } from './page/page'
@@ -21,25 +21,13 @@ const page = usePage()
 const state = page.plugin.state(exposeStateSchema)
 const entries = computed(() => menuEntries(state.value?.exposes ?? []))
 
-/** The exposes with a call in flight. */
-const pending = ref<string[]>([])
-const lifetime = new AbortController()
-onBeforeUnmount(() => lifetime.abort())
+/** The exposes with a call in flight; one still running when the menu goes is aborted. */
+const calls = pendingCalls(page.errors)
 
-async function call(method: 'renew' | 'remove', id: string, couldNot: string): Promise<void> {
-  if (pending.value.includes(id)) {
-    return
-  }
-  pending.value = [...pending.value, id]
-  try {
-    await page.plugin.call(method, { expose: id } satisfies ExposeCall, z.null(), { signal: lifetime.signal })
-  } catch (error) {
-    if (!lifetime.signal.aborted) {
-      page.errors.report(couldNot, error)
-    }
-  } finally {
-    pending.value = pending.value.filter((value) => value !== id)
-  }
+function call(method: 'renew' | 'remove', id: string, couldNot: string): void {
+  void calls.run(id, couldNot, (signal) =>
+    page.plugin.call(method, { expose: id } satisfies ExposeCall, z.null(), { signal }),
+  )
 }
 
 function open(expose: ExposeMenuEntry): void {
@@ -51,7 +39,7 @@ function open(expose: ExposeMenuEntry): void {
   <SessionToolsMenu
     :overlay-store="page.overlays"
     :exposes="entries"
-    :pending-ids="pending"
+    :pending-ids="calls.pending.value"
     @open="open"
     @renew="(id) => call('renew', id, 'Could not renew expose')"
     @remove="(id) => call('remove', id, 'Could not remove expose')"

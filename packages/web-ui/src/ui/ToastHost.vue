@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { dismissToast, toasts } from '../infra/toast'
+import { dismissToast, toasts, type Toast as ShownToast } from '../infra/toast'
 import Toast from './Toast.vue'
+
+/** Runs the toast's action, which closes it. */
+function act(toast: ShownToast) {
+  dismissToast(toast.id)
+  toast.action?.run()
+}
 
 const overlayMotion = {
   enterActiveClass: 'transition-[opacity,transform] duration-150 ease-out',
@@ -41,7 +47,9 @@ function pinLeavingToast(el: Element) {
           :title="toast.title"
           :message="toast.message"
           :tone="toast.tone"
+          :action="toast.action?.label"
           @dismiss="dismissToast(toast.id)"
+          @act="act(toast)"
         />
       </div>
     </TransitionGroup>

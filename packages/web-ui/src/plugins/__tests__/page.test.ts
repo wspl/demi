@@ -1,9 +1,11 @@
 import { expect, test } from 'bun:test'
-import { defineComponent, ref, watch } from 'vue'
+import { defineComponent, effectScope, ref, shallowRef, watch } from 'vue'
 import { z } from 'zod'
 import type { SettingsNavGroup } from '../../settings/types'
 import { createOverlayStore } from '../../overlay/overlayStore'
+import { dismissToast, toasts } from '../../infra/toast'
 import {
+  PluginCallError,
   bindPages,
   definePage,
   pageContext,
@@ -111,4 +113,53 @@ test('a page adds tabs only of its own kinds', () => {
 test('a page that declares one kind twice is refused', () => {
   const kind = { kind: 'note', schema: z.string(), title: (data: string) => data, mark: nothing, content: nothing }
   expect(() => definePage({ plugin: 'notes', kinds: [kind, kind] })).toThrow('declares the kind note twice')
+})
+
+/** The Skills state as one build of the page reads it, which another build of the backend may not send. */
+const skillsState = z.object({
+  sources: z.array(z.object({ id: z.string(), updateAvailable: z.boolean() })),
+})
+
+test('a user state the page cannot read is reported once, and the page goes on with the last one it read', () => {
+  for (const toast of [...toasts]) dismissToast(toast.id)
+  const sent = shallowRef<unknown>({ sources: [{ id: 'src_1', updateAvailable: false }] })
+  const context = pageContext(host({ userState: () => sent.value }), definePage({ plugin: 'skills' }))
+  const scope = effectScope()
+  const state = scope.run(() => context.plugin.state(skillsState))!
+  expect(state.value?.sources.map((source) => source.id)).toEqual(['src_1'])
+
+  // A backend of an older build sends the state without `updateAvailable`,
+  // and again after each change: reading it never throws into the page.
+  sent.value = { sources: [{ id: 'src_2' }] }
+  expect(state.value?.sources.map((source) => source.id)).toEqual(['src_1'])
+  sent.value = { sources: [{ id: 'src_3' }] }
+  expect(state.value?.sources.map((source) => source.id)).toEqual(['src_1'])
+  expect(toasts.map((toast) => [toast.title, toast.tone])).toEqual([['Could not read the state of the skills plugin.', 'danger']])
+  expect(toasts[0]!.message).toContain('updateAvailable')
+
+  sent.value = { sources: [{ id: 'src_2', updateAvailable: true }] }
+  expect(state.value?.sources.map((source) => source.id)).toEqual(['src_2'])
+  expect(toasts).toHaveLength(1)
+  scope.stop()
+  for (const toast of [...toasts]) dismissToast(toast.id)
+})
+
+test("a conversation state the page cannot read is the state's error until one reads, and the last one stays", () => {
+  const sent = shallowRef<unknown>({ sources: [{ id: 'src_1', updateAvailable: false }] })
+  const context = pageContext(
+    host({
+      followState: () => ({ value: () => sent.value, error: () => null, read: () => {}, stop: () => {} }),
+    }),
+    definePage({ plugin: 'notes' }),
+  )
+  const scope = effectScope()
+  const state = scope.run(() => context.plugin.conversation('c1').state(skillsState))!
+  sent.value = { sources: [{ id: 'src_2' }] }
+  expect(state.value.value?.sources.map((source) => source.id)).toEqual(['src_1'])
+  expect(state.error.value).toBeInstanceOf(PluginCallError)
+  expect(state.error.value?.reason).toBe('unreadable_state')
+  sent.value = { sources: [{ id: 'src_2', updateAvailable: false }] }
+  expect(state.value.value?.sources.map((source) => source.id)).toEqual(['src_2'])
+  expect(state.error.value).toBeNull()
+  scope.stop()
 })

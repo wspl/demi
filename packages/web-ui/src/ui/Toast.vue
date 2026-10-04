@@ -3,13 +3,16 @@ import type { Component } from 'vue'
 import { CircleCheck, CircleX, Info, X } from '@lucide/vue'
 import type { ToastTone } from '../infra/toast'
 import { ICON_PX } from './icon-metrics'
+import Button from './Button.vue'
 import IconButton from './IconButton.vue'
-import type { HeadlineText, SentenceText } from './ui-text'
+import type { HeadlineText, SentenceText, TitleText } from './ui-text'
 
 defineProps<{
   title: HeadlineText
   message?: SentenceText
   tone: ToastTone
+  /** The label of its one action, which emits `act`. */
+  action?: TitleText
 }>()
 
 /** Each tone's mark: a check for success, an i for a fact, a cross for a failure. */
@@ -21,6 +24,7 @@ const MARKS: Record<ToastTone, { icon: Component; color: string }> = {
 
 const emit = defineEmits<{
   dismiss: []
+  act: []
 }>()
 </script>
 
@@ -42,6 +46,12 @@ const emit = defineEmits<{
         v-if="message"
         class="text-[12px] leading-4 text-fg-muted"
       >{{ message }}</div>
+      <Button
+        v-if="action"
+        class="mt-2"
+        size="sm"
+        @click="emit('act')"
+      >{{ action }}</Button>
     </div>
     <IconButton
       :icon="X"
