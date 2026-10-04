@@ -4,27 +4,30 @@
 use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::Duration;
 
 use demi_shared_types::{Clock, Timestamp};
 
 use crate::Skills;
 
-/// The time every fetch ends at.
+/// The time every fetch ends at, until the test lets time pass.
 pub const FETCHED_AT: i64 = 1_790_000_000_000;
 
-/// The clock every fetch ends by.
-struct Fixed;
+/// The plugin's clock, which stands still until the test moves it.
+struct Still(AtomicI64);
 
-impl Clock for Fixed {
+impl Clock for Still {
     fn now(&self) -> Timestamp {
-        Timestamp::from_millisecond(FETCHED_AT).unwrap()
+        Timestamp::from_millisecond(self.0.load(Ordering::Relaxed)).unwrap()
     }
 }
 
 /// Repositories at `<root>/<owner>/<repo>`, which the factory fetches for
-/// the origin `owner/repo`.
+/// the origin `owner/repo`, and the clock of the plugins it makes.
 pub struct Repos {
     root: tempfile::TempDir,
+    clock: Arc<Still>,
 }
 
 /// A file of a commit: its path, its text, and whether it is executable.
@@ -34,6 +37,7 @@ impl Default for Repos {
     fn default() -> Self {
         Self {
             root: tempfile::tempdir().unwrap(),
+            clock: Arc::new(Still(AtomicI64::new(FETCHED_AT))),
         }
     }
 }
@@ -76,6 +80,12 @@ impl Repos {
         git(&repo, &["commit", "-q", "-m", "bytes"]);
     }
 
+    /// Moves the plugins' clock `duration` on.
+    pub fn pass(&self, duration: Duration) {
+        let milliseconds = i64::try_from(duration.as_millis()).unwrap();
+        self.clock.0.fetch_add(milliseconds, Ordering::Relaxed);
+    }
+
     /// The plugin, fetching these repositories.
     pub fn skills(&self) -> Skills {
         let root = self.root.path().to_owned();
@@ -83,7 +93,7 @@ impl Repos {
             let name = url.strip_prefix("https://github.com/").unwrap_or(url);
             format!("file://{}", root.join(name).display())
         };
-        Skills::resolving(Arc::new(resolve), Arc::new(Fixed))
+        Skills::resolving(Arc::new(resolve), self.clock.clone())
     }
 }
 

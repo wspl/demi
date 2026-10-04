@@ -7,6 +7,8 @@ import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
+import GallerySkillsShowcase from '../components/GallerySkillsShowcase.vue'
+import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { createSettingsState } from '../fixtures/settings'
 import { galleryPageHost, skillsPlugin } from '../fixtures/plugins'
@@ -19,7 +21,7 @@ const { view } = useGalleryView()
 const anatomy: [string, string][] = [
   [
     'Shell',
-    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, MCP servers, Data & privacy. Below a phone width the rail becomes a row.'
+    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, MCP servers, Data & privacy. A plugin\'s section is on the rail while its plugin is on. Below a phone width the rail becomes a row.'
   ],
   [
     'Page',
@@ -55,7 +57,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Skills',
-    'A plugin\'s section: the rail lists it under Agent, and the sidebar has an entry that opens it, both only while the Skills plugin is on. It shows git sources as packs of SKILL.md files.'
+    'A plugin\'s section: the rail lists it under Agent, and the sidebar has an entry that opens it, both only while the Skills plugin is on. Git sources are packs of SKILL.md files; a source\'s state is one status label after its name, and a skill\'s labels say why it is off or never offered. The showcase below pins every state at once.'
   ],
   [
     'Data',
@@ -139,6 +141,22 @@ const fullNarrowOpen = ref(true)
             <GallerySettingsFull :tab="fullNarrowTab" :state="full" />
           </SettingsDialog>
         </GalleryOverlayWell>
+      </GallerySection>
+
+      <GallerySection
+        title="Skills · every state"
+        note="Every source state and every skill state, pinned. Sources: all on, some on, all off, updating, update available, failed after a good fetch (keeps its skills), first fetch failed (no commit, no skills), skipped files. Skills, in web-kit: on, off, a warning, a taken name, never offered to the agent. Every control acts on the showcase's own state."
+      >
+        <GallerySpecimen variant="Wide" wide>
+          <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
+            <GallerySkillsShowcase />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Narrow · 360px">
+          <div class="w-[360px] max-w-full rounded-xl border border-line bg-surface-dialog p-4">
+            <GallerySkillsShowcase />
+          </div>
+        </GallerySpecimen>
       </GallerySection>
     </template>
 

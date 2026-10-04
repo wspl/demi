@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /** A short status word: connected, beta, error. Never a control. */
+export type TagTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
+
 withDefaults(defineProps<{
-  tone?: 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
+  tone?: TagTone
 }>(), {
   tone: 'neutral',
 })

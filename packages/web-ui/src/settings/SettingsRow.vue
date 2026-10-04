@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { disabledTooltip } from '../ui/disabled'
+import Tag from '../ui/Tag.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import type { SettingsRowStatus } from './types'
 
 /**
  * Label and explanation on the left, the control on the right. Icons align with
@@ -11,7 +13,9 @@ import Tooltip from '../ui/Tooltip.vue'
  * for lists of like items (models, accounts); an interactive one opens on click
  * without a hover wash. `muted` fades the label side only, so actions stay at
  * full strength. `disabled` mutes the row, blocks its click, and shows
- * `disabledReason` on hover.
+ * `disabledReason` on hover. `statuses` are the row's state, each a label
+ * right after the name, after the `tags`: the name truncates before them, so
+ * they never cover the name or the line under it at any width.
  */
 const props = defineProps<{
   label: string
@@ -24,6 +28,7 @@ const props = defineProps<{
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: string
+  statuses?: readonly SettingsRowStatus[]
 }>()
 
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
@@ -67,8 +72,16 @@ const emit = defineEmits<{
           :class="inset ? 'text-[12px] text-fg-body' : 'text-chrome text-fg'"
         >
           <span class="min-w-0 truncate">{{ label }}</span>
-          <div v-if="$slots.tags" class="flex h-5 shrink-0 items-center gap-1">
+          <div v-if="$slots.tags || statuses?.length" class="flex h-5 shrink-0 items-center gap-1">
             <slot name="tags" />
+            <Tooltip
+              v-for="status in statuses"
+              :key="status.label"
+              :content="status.detail"
+              :disabled="!status.detail"
+            >
+              <Tag :tone="status.tone">{{ status.label }}</Tag>
+            </Tooltip>
           </div>
         </div>
         <div

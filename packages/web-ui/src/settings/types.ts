@@ -2,9 +2,20 @@
 import { VIDEO_FILE_EXTENSIONS } from '@demicodes/protocol'
 import type { Component } from 'vue'
 import type { HostInstall } from '../devices/installs'
+import type { TagTone } from '../ui/Tag.vue'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
+
+/**
+ * A row's state, as one status label right after its name: Updating, Failed,
+ * Update available. `detail` says more on hover, such as a failure's message.
+ */
+export interface SettingsRowStatus {
+  label: string
+  tone?: TagTone
+  detail?: string
+}
 
 export interface SettingsNavItem {
   id: SettingsTab

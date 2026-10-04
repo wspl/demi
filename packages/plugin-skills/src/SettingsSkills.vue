@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { GitBranch, RefreshCw, Trash2 } from '@lucide/vue'
-import type { OverlayStore } from '@demicodes/plugin-sdk'
+import type { OverlayStore, SettingsRowStatus } from '@demicodes/plugin-sdk'
 import { Fold } from '@demicodes/plugin-sdk'
 import { FoldChevron } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
@@ -13,14 +13,16 @@ import AddSkillSourceDialog from './AddSkillSourceDialog.vue'
 import { SettingsGroup } from '@demicodes/plugin-sdk'
 import { SettingsPage } from '@demicodes/plugin-sdk'
 import { SettingsRow } from '@demicodes/plugin-sdk'
-import type { SettingsSkillDraft, SettingsSkillSource } from './types'
+import type { SettingsSkill, SettingsSkillDraft, SettingsSkillSource } from './types'
 
 /**
  * Skill sources (`skills.md` § The page): one git repository is a pack,
- * pinned to a commit. Packs start folded. Opening a pack of more than six
- * skills scrolls inside the pack. Each skill is a row you can turn on; the
- * SKILL.md files that are not skills follow, with why. The pack's switch is
- * on when any skill is on; flipping it sets every skill in the pack.
+ * pinned to a commit, whose state is a status label after its name. Packs
+ * start folded unless `open` names them. Opening a pack of more than six
+ * skills scrolls inside the pack. Each skill is a row you can turn on, with
+ * its own status labels; the SKILL.md files that are not skills follow, with
+ * why. The pack's switch is on when any skill is on; flipping it sets every
+ * skill in the pack.
  */
 const SKILL_LIST_CAP = 6
 
@@ -40,7 +42,8 @@ const emit = defineEmits<{
 }>()
 
 const addOpen = ref(false)
-const openIds = ref<string[]>([])
+/** The packs shown open. */
+const openIds = defineModel<string[]>('open', { default: () => [] })
 
 /** The pack's name: its repository, the origin's last part. */
 function name(source: SettingsSkillSource): string {
@@ -48,15 +51,39 @@ function name(source: SettingsSkillSource): string {
   return path.slice(path.lastIndexOf('/') + 1) || source.origin
 }
 
-/** The fetch that runs, or the last one's failure, beside the name. */
-function status(source: SettingsSkillSource): { word: string; dot: string; detail?: string } | null {
+/** The source's state: the fetch that runs, the last one's failure, or an update to fetch. */
+function sourceStatuses(source: SettingsSkillSource): SettingsRowStatus[] {
   if (source.fetching) {
-    return { word: 'Updating', dot: 'bg-on-warning' }
+    return [{ label: 'Updating' }]
   }
   if (source.failure) {
-    return { word: 'Error', dot: 'bg-on-danger', detail: source.failure.message }
+    return [{ label: 'Failed', tone: 'danger', detail: source.failure.message }]
   }
-  return null
+  if (source.updateAvailable) {
+    return [{ label: 'Update available', tone: 'accent' }]
+  }
+  return []
+}
+
+/** What the skill's row says of it beside its switch. */
+function skillStatuses(skill: SettingsSkill): SettingsRowStatus[] {
+  const statuses: SettingsRowStatus[] = []
+  if (skill.warnings.length) {
+    statuses.push({ label: 'Warning', tone: 'warning', detail: skill.warnings.join('\n') })
+  }
+  if (skill.takenBy) {
+    statuses.push({
+      label: 'Name taken',
+      detail: `A skill named "${skill.name}" from ${skill.takenBy} is on. Turn it off to turn this one on.`,
+    })
+  }
+  if (skill.disableModelInvocation) {
+    statuses.push({
+      label: 'Never offered',
+      detail: 'It sets disable-model-invocation, so the agent is never offered it.',
+    })
+  }
+  return statuses
 }
 
 function pack(source: SettingsSkillSource) {
@@ -110,37 +137,12 @@ const empty = computed(() => props.sources.length === 0)
         <SettingsRow
           :label="name(source)"
           :interactive="foldable(source)"
-          :muted="!!source.failure && !source.fetching"
+          :statuses="sourceStatuses(source)"
           :aria-expanded="foldable(source) ? isOpen(source.id) : undefined"
           @click="toggle(source.id)"
         >
           <template #leading>
             <GitBranch :size="ICON_PX.in28" />
-          </template>
-          <template #tags>
-            <span
-              class="inline-grid h-5 grid-cols-1 grid-rows-1 items-center text-[12px] leading-5 text-fg-muted"
-            >
-              <span
-                class="invisible col-start-1 row-start-1 inline-flex items-center gap-1.5"
-                aria-hidden="true"
-              >
-                <span class="size-1.5 rounded-full" />
-                Updating
-              </span>
-              <span
-                v-if="status(source)"
-                class="col-start-1 row-start-1 inline-flex items-center gap-1.5"
-              >
-                <span
-                  class="size-1.5 shrink-0 rounded-full"
-                  :class="status(source)!.dot"
-                />
-                <Tooltip :content="status(source)!.detail" :disabled="!status(source)!.detail">
-                  <span>{{ status(source)!.word }}</span>
-                </Tooltip>
-              </span>
-            </span>
           </template>
           <template #description>
             <span class="block truncate font-mono">{{ source.origin }}<template v-if="source.commit"> · {{ source.commit.slice(0, 7) }}</template></span>
@@ -207,13 +209,8 @@ const empty = computed(() => props.sources.length === 0)
               inset
               :label="skill.name"
               :muted="!skill.enabled"
+              :statuses="skillStatuses(skill)"
             >
-              <template v-if="skill.warnings.length || skill.disableModelInvocation" #tags>
-                <Tooltip v-if="skill.warnings.length" :content="skill.warnings.join('\n')">
-                  <span class="text-[11px] text-on-warning">Warning</span>
-                </Tooltip>
-                <span v-if="skill.disableModelInvocation" class="text-[11px] text-fg-subtle">Never offered to the agent</span>
-              </template>
               <template #description>
                 <span class="block truncate">{{ skill.description }}</span>
               </template>

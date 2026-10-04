@@ -3,12 +3,15 @@
 //! of the skills that are on, the project skills it reads on the Host, and
 //! its catalog.
 
+use std::time::Duration;
+
 use demi_plugin_interface::PluginFactory;
 use demi_plugin_interface::testing::loopback;
 use demi_plugin_interface::{DirectoryFile, HostDirectory, PluginError, PluginId};
 use demi_shared_types::{BlobRef, Timestamp};
 use serde_json::json;
 
+use demi_plugin_skills::SkillsState;
 use demi_plugin_skills::testing::{FETCHED_AT, Repos, skill_md};
 
 use crate::support::{Plugged, local};
@@ -64,7 +67,7 @@ fn location(name: &str, files: Vec<DirectoryFile>) -> String {
 }
 
 #[tokio::test]
-async fn adding_a_source_lists_its_skills_off_with_their_warnings_and_its_skipped_files() {
+async fn adding_a_source_lists_its_skills_with_their_warnings_and_its_skipped_files() {
     local(async {
         let repos = Repos::new();
         tools(&repos);
@@ -84,24 +87,14 @@ async fn adding_a_source_lists_its_skills_off_with_their_warnings_and_its_skippe
         );
         assert!(!listed.fetching);
         assert_eq!(listed.failure, None);
-        let skills: Vec<(&str, bool, bool)> = listed
+        let skills: Vec<(&str, bool)> = listed
             .skills
             .iter()
-            .map(|skill| {
-                (
-                    skill.name.as_str(),
-                    skill.enabled,
-                    skill.disable_model_invocation,
-                )
-            })
+            .map(|skill| (skill.name.as_str(), skill.disable_model_invocation))
             .collect();
         assert_eq!(
             skills,
-            [
-                ("Bad_Name", false, false),
-                ("hidden", false, true),
-                ("review", false, false)
-            ]
+            [("Bad_Name", false), ("hidden", true), ("review", false)]
         );
         assert!(
             listed.skills[0].warnings[0].contains("not 1 to 64 lowercase"),
@@ -132,6 +125,66 @@ async fn adding_a_source_lists_its_skills_off_with_their_warnings_and_its_skippe
             .await
             .unwrap_err();
         assert_eq!(refusal(invalid).0, "invalid_origin");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn an_added_sources_skills_start_on_but_one_of_a_taken_name_and_one_never_offered() {
+    local(async {
+        let repos = Repos::new();
+        tools(&repos);
+        repos.commit(
+            "acme/more",
+            &[
+                (
+                    "review/SKILL.md",
+                    &skill_md("name: review\ndescription: Another review."),
+                    false,
+                ),
+                (
+                    "lint/SKILL.md",
+                    &skill_md("name: lint\ndescription: Lint it."),
+                    false,
+                ),
+            ],
+        );
+        let plugged = Plugged::new(&repos.skills());
+        plugged.add("acme/tools").await;
+        plugged.add("acme/more").await;
+
+        let state = plugged.state().await;
+        let skills: Vec<(&str, &str, bool, Option<&str>)> = state
+            .sources
+            .iter()
+            .flat_map(|source| source.skills.iter().map(move |skill| (source, skill)))
+            .map(|(source, skill)| {
+                (
+                    source.origin.as_str(),
+                    skill.name.as_str(),
+                    skill.enabled,
+                    skill.taken_by.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            skills,
+            [
+                ("acme/tools", "Bad_Name", true, None),
+                ("acme/tools", "hidden", false, None),
+                ("acme/tools", "review", true, None),
+                ("acme/more", "lint", true, None),
+                ("acme/more", "review", false, Some("acme/tools")),
+            ]
+        );
+        let mut names: Vec<String> = plugged
+            .demi
+            .directories()
+            .into_iter()
+            .map(|directory| directory.name)
+            .collect();
+        names.sort();
+        assert_eq!(names, ["bad-name", "lint", "review"]);
     })
     .await;
 }
@@ -195,9 +248,9 @@ async fn a_skill_turned_on_has_a_host_directory_and_reaches_the_catalog_at_its_p
         let repos = Repos::new();
         tools(&repos);
         let plugged = Plugged::new(&repos.skills());
+        // Added, `review` is on; `hidden` is never offered to the agent,
+        // even turned on.
         let source = plugged.add("acme/tools").await;
-        plugged.enable(&source, "review").await.unwrap();
-        // Never offered to the agent, even on.
         plugged.enable(&source, "hidden").await.unwrap();
 
         let directories = plugged.demi.directories();
@@ -233,11 +286,9 @@ async fn a_skill_turned_on_has_a_host_directory_and_reaches_the_catalog_at_its_p
             Some(block.clone())
         );
 
-        // Off again, the directory goes, and the model learns none is left.
-        let params = json!({ "source": source, "skill": "review", "enabled": false });
-        plugged.call("set_enabled", params).await.unwrap();
-        let params = json!({ "source": source, "skill": "hidden", "enabled": false });
-        plugged.call("set_enabled", params).await.unwrap();
+        // Off again, the directories go, and the model learns none is left.
+        let params = json!({ "source": source, "enabled": false });
+        plugged.call("set_source_enabled", params).await.unwrap();
         assert!(plugged.demi.directories().is_empty());
         assert_eq!(
             plugged
@@ -281,7 +332,8 @@ async fn turning_on_a_second_skill_of_a_taken_name_is_refused_with_the_other_sou
 }
 
 #[tokio::test]
-async fn an_update_keeps_the_skills_on_by_name_and_drops_those_the_new_commit_lacks() {
+async fn an_update_keeps_each_skill_on_or_off_by_name_drops_those_the_new_commit_lacks_and_starts_new_ones_on()
+{
     local(async {
         let repos = Repos::new();
         repos.commit(
@@ -297,12 +349,17 @@ async fn an_update_keeps_the_skills_on_by_name_and_drops_those_the_new_commit_la
                     &skill_md("name: lint\ndescription: Lint it."),
                     false,
                 ),
+                (
+                    "docs/SKILL.md",
+                    &skill_md("name: docs\ndescription: Write the docs."),
+                    false,
+                ),
             ],
         );
         let plugged = Plugged::new(&repos.skills());
         let source = plugged.add("acme/tools").await;
-        plugged.enable(&source, "review").await.unwrap();
-        plugged.enable(&source, "lint").await.unwrap();
+        let params = json!({ "source": source, "skill": "lint", "enabled": false });
+        plugged.call("set_enabled", params).await.unwrap();
         let first = plugged.state().await.sources[0].commit.clone();
 
         repos.commit(
@@ -311,6 +368,11 @@ async fn an_update_keeps_the_skills_on_by_name_and_drops_those_the_new_commit_la
                 (
                     "review/SKILL.md",
                     &skill_md("name: review\ndescription: Review a change, carefully."),
+                    false,
+                ),
+                (
+                    "lint/SKILL.md",
+                    &skill_md("name: lint\ndescription: Lint it."),
                     false,
                 ),
                 (
@@ -329,14 +391,17 @@ async fn an_update_keeps_the_skills_on_by_name_and_drops_those_the_new_commit_la
             .iter()
             .map(|skill| (skill.name.as_str(), skill.enabled))
             .collect();
-        assert_eq!(skills, [("format", false), ("review", true)]);
+        assert_eq!(
+            skills,
+            [("format", true), ("lint", false), ("review", true)]
+        );
         let names: Vec<String> = plugged
             .demi
             .directories()
             .into_iter()
             .map(|directory| directory.name)
             .collect();
-        assert_eq!(names, ["review"]);
+        assert_eq!(names, ["format", "review"]);
 
         // A failed update leaves the source as it was and shows why.
         repos.commit("acme/tools", &[("README.md", "no skills now", false)]);
@@ -541,6 +606,58 @@ fn a_shutdown_during_a_fetch_leaves_the_source_as_it_was() {
         assert_eq!(stored.value.get("commit"), None);
         assert_eq!(stored.value.get("failure"), None);
     }));
+}
+
+#[tokio::test]
+async fn opening_the_page_shows_an_update_where_the_default_branch_moved_and_nowhere_else() {
+    local(async {
+        let repos = Repos::new();
+        tools(&repos);
+        repos.commit(
+            "acme/more",
+            &[(
+                "lint/SKILL.md",
+                &skill_md("name: lint\ndescription: Lint it."),
+                false,
+            )],
+        );
+        let plugged = Plugged::new(&repos.skills());
+        let tools = plugged.add("acme/tools").await;
+        let more = plugged.add("acme/more").await;
+        repos.commit(
+            "acme/more",
+            &[(
+                "lint/SKILL.md",
+                &skill_md("name: lint\ndescription: Lint it, strictly."),
+                false,
+            )],
+        );
+        // The fetches count as checks for five minutes.
+        repos.pass(Duration::from_secs(5 * 60));
+
+        let before = plugged.demi.changes();
+        plugged.call("check_updates", json!({})).await.unwrap();
+        plugged.demi.until(|demi| demi.changes() > before).await;
+        let available = |state: &SkillsState| -> Vec<(String, bool)> {
+            state
+                .sources
+                .iter()
+                .map(|source| (source.id.clone(), source.update_available))
+                .collect()
+        };
+        assert_eq!(
+            available(&plugged.state().await),
+            [(tools.clone(), false), (more.clone(), true)]
+        );
+
+        // Updated, the source is at the newest commit again.
+        plugged.update(&more).await;
+        assert_eq!(
+            available(&plugged.state().await),
+            [(tools, false), (more, false)]
+        );
+    })
+    .await;
 }
 
 /// `length` bytes that do not compress.

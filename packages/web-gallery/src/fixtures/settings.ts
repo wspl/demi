@@ -10,7 +10,8 @@ import type {
   SettingsVendor
 } from '@demicodes/web-ui/settings/types'
 import type { ExposeState } from '@demicodes/plugin-expose'
-import type { SkillsState } from '@demicodes/plugin-skills'
+import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
+import { commitOf } from './plugins'
 import { ahead } from './time'
 
 /**
@@ -63,6 +64,90 @@ export function demoExposeState(): ExposeState {
     })),
   }
 }
+
+/** A skill of the Skills showcase: on unless `enabled` says otherwise, offered to the agent, no warning. */
+function showcaseSkill(name: string, description: string, change: Partial<SourceState['skills'][number]> = {}): SourceState['skills'][number] {
+  return { name, description, warnings: [], enabled: true, disableModelInvocation: false, ...change }
+}
+
+/** A source of the Skills showcase, idle at a fetched commit unless `change` says otherwise. */
+function showcaseSource(id: string, change: Partial<SourceState> & Pick<SourceState, 'skills'>): SourceState {
+  return {
+    id,
+    origin: `acme/${id}`,
+    commit: commitOf(id),
+    fetchedAt: ahead(-3 * 60 * 60_000),
+    fetching: false,
+    updateAvailable: false,
+    skipped: [],
+    ...change,
+  }
+}
+
+/**
+ * Every state of a skill source and of a skill, pinned at once: sources all
+ * on, some on, all off, updating, with an update, failed after a good fetch,
+ * failed at the first fetch, and with skipped files; skills on, off, with a
+ * warning, of a taken name, and never offered to the agent.
+ */
+export function skillsShowcase(): SkillsState {
+  return {
+    sources: [
+      showcaseSource('review-kit', {
+        skills: [
+          showcaseSkill('review', 'Review a change before it lands.'),
+          showcaseSkill('commit-message', 'A conventional commit from the staged diff.'),
+        ],
+      }),
+      showcaseSource('web-kit', {
+        skills: [
+          showcaseSkill('design-review', 'Review UI against the web interface guidelines.'),
+          showcaseSkill('perf-audit', 'Find the slow paths of a page load.', { enabled: false }),
+          showcaseSkill('copy-edit', 'Tighten interface copy.', { warnings: ['the name "Copy_Edit" breaks the name rule'] }),
+          showcaseSkill('review', 'Review a component and its specimens.', { enabled: false }),
+          showcaseSkill('release-notes', 'Write the release notes the user asks for.', { enabled: false, disableModelInvocation: true }),
+        ],
+      }),
+      showcaseSource('archive', {
+        skills: [
+          showcaseSkill('legacy-deploy', 'Deploy with the old pipeline.', { enabled: false }),
+          showcaseSkill('legacy-lint', 'Lint with the old rules.', { enabled: false }),
+        ],
+      }),
+      showcaseSource('agent-skills', {
+        fetching: true,
+        skills: [
+          showcaseSkill('tdd', 'Write the failing test before the change.'),
+          showcaseSkill('debug', 'Narrow a failure down to its cause.', { enabled: false }),
+        ],
+      }),
+      showcaseSource('platform-infrastructure-skills', {
+        updateAvailable: true,
+        skills: [showcaseSkill('terraform-plan', 'Read a plan before it applies.')],
+      }),
+      showcaseSource('flaky-skills', {
+        failure: { at: ahead(-20 * 60_000), message: 'Could not connect to github.com: the connection timed out' },
+        skills: [showcaseSkill('triage', 'Sort new issues by area and urgency.')],
+      }),
+      showcaseSource('missing', {
+        commit: undefined,
+        fetchedAt: undefined,
+        failure: { at: ahead(-5 * 60_000), message: 'Repository not found' },
+        skills: [],
+      }),
+      showcaseSource('drafts', {
+        skills: [showcaseSkill('outline', 'Outline a document before writing it.')],
+        skipped: [
+          { path: 'skills/draft/SKILL.md', reason: 'the front matter has no description' },
+          { path: 'skills/huge/SKILL.md', reason: 'the file is larger than 256 KiB' },
+        ],
+      }),
+    ],
+  }
+}
+
+/** The showcase's sources shown open: the one with every skill state, and the one with skipped files. */
+export const SKILLS_SHOWCASE_OPEN = ['web-kit', 'drafts'] as const
 
 /** The shared model plus what the mock knows but the page does not show. */
 export interface MockModel extends SettingsProviderModel {
@@ -654,6 +739,7 @@ export function createSettingsState() {
           commit: '9f2c1a7b9f2c1a7b9f2c1a7b9f2c1a7b9f2c1a7b',
           fetchedAt: ahead(-2 * 24 * 60 * 60_000),
           fetching: false,
+          updateAvailable: false,
           skills: [
             { name: 'web-design-guidelines', description: 'Review UI against Vercel’s web interface guidelines.', warnings: [], enabled: true, disableModelInvocation: false },
             { name: 'vercel-react-best-practices', description: 'React composition and data-fetching patterns.', warnings: [], enabled: true, disableModelInvocation: false },
@@ -672,6 +758,7 @@ export function createSettingsState() {
           commit: '9f2c1a7c9f2c1a7c9f2c1a7c9f2c1a7c9f2c1a7c',
           fetchedAt: ahead(-2 * 24 * 60 * 60_000),
           fetching: false,
+          updateAvailable: true,
           skills: [
             { name: 'pptx', description: 'Create and edit PowerPoint decks.', warnings: [], enabled: true, disableModelInvocation: false },
             { name: 'pdf', description: 'Read and fill PDF forms.', warnings: [], enabled: true, disableModelInvocation: false },
@@ -687,6 +774,7 @@ export function createSettingsState() {
           commit: '9f2c1a7d9f2c1a7d9f2c1a7d9f2c1a7d9f2c1a7d',
           fetchedAt: ahead(-2 * 24 * 60 * 60_000),
           fetching: false,
+          updateAvailable: false,
           skills: [
             { name: 'commit', description: 'Conventional commit from the staged diff.', warnings: [], enabled: true, disableModelInvocation: false },
           ],
@@ -696,6 +784,7 @@ export function createSettingsState() {
           id: 'broken',
           origin: 'https://github.com/example/broken-skills',
           fetching: false,
+          updateAvailable: false,
           failure: { at: ahead(-60 * 60_000), message: 'Repository not found' },
           skills: [
           ],

@@ -35,6 +35,7 @@ export type {
 } from '@demicodes/web-ui/plugins/streams'
 export type { HostInstall } from '@demicodes/web-ui/devices/installs'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
+export type { SettingsRowStatus } from '@demicodes/web-ui/settings/types'
 
 // The plugin kit (`plugin-pages.md` § The plugin kit).
 // Streams: the liveness a stream's protocol uses.
