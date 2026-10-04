@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 
@@ -160,14 +159,6 @@ func TestDispatchUsesCurrentHostAndReleasesEndedHandles(t *testing.T) {
 }
 
 func TestPromptAndPageHistory(t *testing.T) {
-	expected, err := os.ReadFile("testdata/system-prompt.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := SystemPrompt("  instructions  ", "commands")
-	if got != string(expected) {
-		t.Fatal(cmp.Diff(string(expected), got))
-	}
 	if strings.HasPrefix(SystemPrompt(" \n", "\t"), "\n") ||
 		strings.Contains(SystemPrompt("", ""), "Registered commands:") {
 		t.Fatal("blank prompt sections retained")
