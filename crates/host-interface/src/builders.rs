@@ -108,6 +108,7 @@ impl LeafBuilder {
                 stdin_field: None,
                 rest_field: None,
                 output: None,
+                media: false,
                 kind,
             },
             handler: None,
@@ -183,6 +184,12 @@ impl LeafBuilder {
 
     /// The guidance the model sees in place of the generic running hint
     /// while this command runs.
+    /// The command may return media (`commands.md` § Return media).
+    pub fn media(mut self) -> Self {
+        self.leaf.media = true;
+        self
+    }
+
     pub fn running_hint(mut self, text: impl Into<String>) -> Self {
         self.leaf.running_hint = Some(text.into());
         self

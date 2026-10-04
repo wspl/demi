@@ -14,13 +14,14 @@ pub(crate) fn file_group() -> GroupBuilder {
     .leaf(
         leaf(
             "read",
-            "Read a file. Text files print as text; image and video files are shown to you as viewable media. Output is the raw file bytes, so it also pipes cleanly into other commands (e.g. ffmpeg).",
+            "Read a file. Text files print as text; an image or video file is shown to you as viewable media, and several reads in one script show each in order. Into a file or a pipe it writes the raw file bytes, so it also pipes cleanly into other commands (e.g. ffmpeg).",
         )
         .input::<ReadArgs>()
         .positionals(["path"])
         .success_output(
-            "writes the raw file bytes to stdout; an image or video result is presented to you as viewable media",
+            "writes the raw file bytes to stdout; an image or video file of at most 16 MiB is returned as a medium",
         )
+        .media()
         .failure_output(
             "writes the reason to stderr and exits non-zero if the path is missing or unreadable",
         ),

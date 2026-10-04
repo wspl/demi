@@ -1,8 +1,10 @@
 //! The local API validates declarations before routing native and callback work.
 
 use crate::{
-    commands::artifacts::JobArtifacts, commands::command_output::CommandOutput,
-    commands::contexts::Contexts, commands::rpc,
+    commands::artifacts::JobArtifacts,
+    commands::command_output::{CommandFailure, CommandOutput, Media},
+    commands::contexts::Contexts,
+    commands::rpc,
 };
 use bytes::Bytes;
 use demi_command_protocol::{Completion, Invocation, LocalInvocation};
@@ -14,6 +16,7 @@ use demi_runner_process::{
     command_client::{RAW, RawCommand},
     pipes::PipeClient,
 };
+use futures_util::FutureExt;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 /// The most a command's body read from its standard input may hold.
@@ -52,13 +55,18 @@ impl Handler for Dispatcher {
 }
 
 /// A local invocation's end as its caller sees it: a failure other than a
-/// cancellation is told on its standard error and ends it with 1.
+/// cancellation is told on its standard error and ends it with 1. A failure
+/// that names its command is told as it is; any other as the runner's.
 pub async fn reported(
     result: Result<Completion, ServiceError>,
     output: &Output,
 ) -> Result<Completion, ServiceError> {
     match result {
         Err(ServiceError::Cancelled) => Err(ServiceError::Cancelled),
+        Err(ServiceError::Failed(cause)) if cause.is::<CommandFailure>() => {
+            output.stderr(format!("{cause}\n").into()).await?;
+            Ok(completed(1))
+        }
         Err(error) => {
             output
                 .stderr(format!("demi-runner: {error}\n").into())
@@ -117,6 +125,8 @@ impl Dispatcher {
             let mut output = CommandOutput::new(
                 invocation.output,
                 leaf.json_output().filter(|_| parsed.json),
+                selected.path.join(" "),
+                Media::new(leaf.media, raw.stdout, context.media.clone()),
             );
             let _hint = rpc::running_hint(
                 &context.connection,
@@ -152,6 +162,7 @@ impl Dispatcher {
                     context: context.command.clone(),
                     json: Some(parsed.json),
                     edits: Some(context.edits.clone()),
+                    stdout: Some(raw.stdout),
                     operation: binding.operation.clone(),
                     invocation_id: invocation.request.invocation_id,
                     args: parsed.values.into(),
@@ -182,7 +193,10 @@ impl Dispatcher {
             } else {
                 let mut argv = vec![raw.root.clone()];
                 argv.extend(raw.argv);
-                rpc::invoke(
+                // Boxed as a `dyn` future: the call's future nests deep
+                // enough that checking it is `Send` within this one would
+                // exceed the compiler's recursion limit.
+                FutureExt::boxed(rpc::invoke(
                     &self.pipes,
                     rpc::Request {
                         context: context.clone(),
@@ -197,7 +211,7 @@ impl Dispatcher {
                     invocation.input,
                     &mut output,
                     invocation.cancellation.clone(),
-                )
+                ))
                 .await?
             };
             output.finish(code).await?;

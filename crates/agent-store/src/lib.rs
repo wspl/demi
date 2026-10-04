@@ -22,7 +22,7 @@ pub mod testing;
 use std::rc::Rc;
 
 use demi_conversation_socket_protocol::{JobPhase, SubagentJob};
-use demi_host_interface::WholeOutput;
+use demi_host_interface::{StoredMedium, WholeOutput};
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, CommandId, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, WakeupId,
@@ -128,7 +128,11 @@ pub const COMMAND_OUTPUT_DAYS: i64 = 30;
 /// What a conversation holds of an ended command's output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoredOutput {
-    Stored(WholeOutput),
+    /// The output, and the media its commands returned, by number.
+    Stored {
+        output: WholeOutput,
+        media: Vec<StoredMedium>,
+    },
     /// Why the backend could not store it.
     NotStored(String),
     /// When the retention pass removed it.

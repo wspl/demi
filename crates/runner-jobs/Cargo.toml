@@ -26,6 +26,7 @@ demi-runner-command-packages = { path = "../runner-command-packages" }
 bytes.workspace = true
 futures-util.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
 tempfile = "3"
 thiserror.workspace = true
 tokio.workspace = true

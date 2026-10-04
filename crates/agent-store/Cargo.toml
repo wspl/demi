@@ -17,6 +17,7 @@ bench = false
 testing = ["dep:sha2"]
 
 [dependencies]
+demi-command-protocol = { path = "../command-protocol" }
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }

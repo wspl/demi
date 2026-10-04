@@ -1,17 +1,19 @@
 //! A shell tool's result (`runtime.md` § Results and previews): the text the
-//! model reads, the media a binary stdout may attach, and the bounded view
-//! the user sees, all from one command status.
+//! model reads, the media it attaches, the command's returned media and its
+//! binary stdout (`runtime.md` § What a result attaches), and the bounded
+//! view the user sees, all from one command status.
 
 use demi_agent_session::ToolOutcome;
 use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
+use demi_command_protocol::sniff_media_type;
 use demi_host_interface::{
-    BinaryOutput, CommandState, CommandStatus, Newest, OutputText, Piece, Streams,
+    BinaryOutput, CommandMedium, CommandState, CommandStatus, Newest, OutputText, Piece, Streams,
 };
 use demi_provider_common::{MediaBytes, RequestLimits, ResultPart};
 use demi_shared_types::{
     B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, ShellToolView, ShellViewStatus,
-    ToolView, model_accepts_media_type, sniff_model_media_type,
+    ToolView, model_accepts_media_type, model_media_type_for,
 };
 
 use super::PAGE_CHARS;
@@ -27,8 +29,8 @@ const NEWEST_LINES: u64 = 50;
 
 const RUNNING_NEXT: &str = "next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it.";
 
-/// A shell tool's outcome for `status`: its text, a binary stdout's media or
-/// the reason there is none, and its view. `model` is the call's, and its
+/// A shell tool's outcome for `status`: its text, the media it attaches and
+/// the lines about them, and its view. `model` is the call's, and its
 /// vendor takes requests within `limits`.
 pub(super) async fn shell_outcome(
     status: &CommandStatus,
@@ -38,13 +40,23 @@ pub(super) async fn shell_outcome(
     let text = unseen_output(status);
     let mut output = vec![ResultPart::Text(result_text(status, &text))];
     if let CommandState::Exited {
-        binary_stdout: Some(binary),
+        binary_stdout,
+        media,
         ..
     } = &status.state
     {
-        let (medium, note) = binary_verdict(binary, &status.command_id, model, limits).await;
-        output.extend(medium);
-        output.push(ResultPart::Text(note));
+        let (parts, lines) = attached_media(
+            media,
+            binary_stdout.as_ref(),
+            &status.command_id,
+            model,
+            limits,
+        )
+        .await;
+        output.extend(parts);
+        if !lines.is_empty() {
+            output.push(ResultPart::Text(lines.join("\n")));
+        }
     }
     ToolOutcome {
         output,
@@ -333,19 +345,155 @@ fn chars_marker(command: &CommandId, line: u64, from: usize, to: usize) -> Strin
     )
 }
 
-/// What a binary final stdout becomes (`runtime.md` § Results and previews):
-/// attached as an image or a video only when the output kept all of it, its
-/// bytes are a type of the model-media table and the model accepts that
-/// type; an image as it is fitted, and a video within its cap and when its
-/// base64 takes at most half of the body `limits` allow. Otherwise a note
-/// says why not and how to save the bytes.
+/// The most media one result attaches (`runtime.md` § What a result
+/// attaches).
+const RESULT_MEDIA: usize = 20;
+
+/// What a result has attached so far, against its bounds: at most
+/// [`RESULT_MEDIA`] media, whose base64 takes at most half of the body the
+/// model's requests may carry.
+struct Budget {
+    attached: usize,
+    base64: u64,
+    half_body: Option<u64>,
+}
+
+impl Budget {
+    fn new(limits: RequestLimits) -> Self {
+        Self {
+            attached: 0,
+            base64: 0,
+            half_body: limits.body_bytes.map(|bytes| bytes / 2),
+        }
+    }
+
+    /// Why one more medium may not be attached; none when it may.
+    fn full(&self) -> Option<String> {
+        (self.attached >= RESULT_MEDIA)
+            .then(|| format!("a result attaches at most {RESULT_MEDIA} media"))
+    }
+
+    /// Takes a medium whose base64 is `base64` bytes long, or says why it
+    /// does not fit.
+    fn take(&mut self, base64: u64) -> Result<(), String> {
+        if let Some(half) = self.half_body
+            && self.base64 + base64 > half
+        {
+            return Err(format!(
+                "its base64 would take the result's media past {half} bytes, half of what this model's requests may carry"
+            ));
+        }
+        self.attached += 1;
+        self.base64 += base64;
+        Ok(())
+    }
+}
+
+/// What a result that reports a command's end attaches (`runtime.md`
+/// § What a result attaches): the media its declared commands returned, by
+/// number, then a binary stdout, each while the model accepts it and it
+/// fits the result's bounds; and the lines that tell of each one not
+/// attached or attached in another form than it came, and of the binary
+/// stdout.
+async fn attached_media(
+    media: &[CommandMedium],
+    binary: Option<&BinaryOutput>,
+    command: &CommandId,
+    model: &Model,
+    limits: RequestLimits,
+) -> (Vec<ResultPart>, Vec<String>) {
+    let mut budget = Budget::new(limits);
+    let mut parts = Vec::new();
+    let mut lines = Vec::new();
+    for medium in media {
+        let (part, line) = returned_medium(medium, command, model, &mut budget).await;
+        parts.extend(part);
+        lines.extend(line);
+    }
+    if let Some(binary) = binary {
+        let (part, line) = binary_verdict(binary, command, model, &mut budget).await;
+        parts.extend(part);
+        lines.push(line);
+    }
+    (parts, lines)
+}
+
+/// What one returned medium becomes: attached, as it came or fitted, and
+/// its line when it was not attached or was fitted.
+async fn returned_medium(
+    medium: &CommandMedium,
+    command: &CommandId,
+    model: &Model,
+    budget: &mut Budget,
+) -> (Option<ResultPart>, Option<String>) {
+    let number = medium.number;
+    let media_type = medium.media_type.as_str();
+    let not_attached = |reason: &str| {
+        Some(format!(
+            "[medium {number}: not attached: {reason}; save it: demi shell output {command} --medium {number} > <file>]"
+        ))
+    };
+    let bytes = match &medium.bytes {
+        Ok(bytes) => bytes,
+        Err(reason) => return (None, Some(format!("[medium {number}: not attached: {reason}]"))),
+    };
+    let Some(entry) = model_media_type_for(media_type) else {
+        return (None, not_attached(&format!("{media_type} is no medium a model reads")));
+    };
+    if !model_accepts_media_type(model, media_type) {
+        return (None, not_attached(&format!("the model does not accept {media_type}")));
+    }
+    if let Some(reason) = budget.full() {
+        return (None, not_attached(&reason));
+    }
+    let data = B64Bytes::new(bytes.clone());
+    if entry.kind == ModelMediaKind::Video {
+        if let Err(reason) = budget.take(data.base64_len()) {
+            return (None, not_attached(&reason));
+        }
+        let video = ResultPart::Video(MediaBytes {
+            data,
+            media_type: media_type.to_owned(),
+        });
+        return (Some(video), None);
+    }
+    let fitted = match images::fit(data, media_type).await {
+        Ok(fitted) => fitted,
+        Err(unfit) => return (None, not_attached(&unfit.to_string())),
+    };
+    if let Err(reason) = budget.take(fitted.data.base64_len()) {
+        return (None, not_attached(&reason));
+    }
+    let line = fitted.reencoded.then(|| {
+        format!(
+            "[medium {number}: attached as {} of {} × {} px, fitted from {media_type} of {} × {} px; the original: demi shell output {command} --medium {number} > <file>]",
+            fitted.media_type,
+            fitted.entered.0,
+            fitted.entered.1,
+            fitted.came.0,
+            fitted.came.1
+        )
+    });
+    let image = ResultPart::Image(MediaBytes {
+        data: fitted.data,
+        media_type: fitted.media_type.to_owned(),
+    });
+    (Some(image), line)
+}
+
+/// What a binary final stdout becomes (`runtime.md` § What a result
+/// attaches): attached as an image or a video only when the output kept all
+/// of it, its bytes are a type of the model-media table, the model accepts
+/// that type and it fits the result's bounds; an image as it is fitted, and
+/// a video within its cap. Otherwise a note says why not and how to save
+/// the bytes.
 async fn binary_verdict(
     binary: &BinaryOutput,
     command: &CommandId,
     model: &Model,
-    limits: RequestLimits,
+    budget: &mut Budget,
 ) -> (Option<ResultPart>, String) {
-    let media = sniff_model_media_type(&binary.bytes);
+    let media = sniff_media_type(&binary.bytes).and_then(model_media_type_for);
     let total = binary.info.total_bytes;
     let save = format!("save it: demi shell output {command} --raw --stdout > <file>");
     if binary.info.truncated {
@@ -372,38 +520,43 @@ async fn binary_verdict(
             ),
         );
     }
+    let not_attached = |reason: &str| {
+        format!(
+            "Binary stdout is {} ({total} bytes), which was not attached because {reason}; {save}.",
+            media.media_type
+        )
+    };
+    if let Some(reason) = budget.full() {
+        return (None, not_attached(&reason));
+    }
     let data = B64Bytes::new(binary.bytes.clone());
     if media.kind == ModelMediaKind::Image {
-        return match images::fit(data, media.media_type).await {
-            Ok(fitted) => {
-                let note = if fitted.reencoded {
-                    format!(
-                        "Attached stdout, {} of {}x{} px ({total} bytes), as {} of {}x{} px ({} bytes), fitted to what every model accepts; to keep the original, {save}.",
-                        media.media_type,
-                        fitted.came.0,
-                        fitted.came.1,
-                        fitted.media_type,
-                        fitted.entered.0,
-                        fitted.entered.1,
-                        fitted.data.len()
-                    )
-                } else {
-                    format!("Attached stdout as {} ({total} bytes).", media.media_type)
-                };
-                let image = ResultPart::Image(MediaBytes {
-                    data: fitted.data,
-                    media_type: fitted.media_type.to_owned(),
-                });
-                (Some(image), note)
-            }
-            Err(unfit) => (
-                None,
-                format!(
-                    "Binary stdout is {} ({total} bytes), which was not attached because {unfit}; {save}.",
-                    media.media_type
-                ),
-            ),
+        let fitted = match images::fit(data, media.media_type).await {
+            Ok(fitted) => fitted,
+            Err(unfit) => return (None, not_attached(&unfit.to_string())),
         };
+        if let Err(reason) = budget.take(fitted.data.base64_len()) {
+            return (None, not_attached(&reason));
+        }
+        let note = if fitted.reencoded {
+            format!(
+                "Attached stdout, {} of {}x{} px ({total} bytes), as {} of {}x{} px ({} bytes), fitted to what every model accepts; to keep the original, {save}.",
+                media.media_type,
+                fitted.came.0,
+                fitted.came.1,
+                fitted.media_type,
+                fitted.entered.0,
+                fitted.entered.1,
+                fitted.data.len()
+            )
+        } else {
+            format!("Attached stdout as {} ({total} bytes).", media.media_type)
+        };
+        let image = ResultPart::Image(MediaBytes {
+            data: fitted.data,
+            media_type: fitted.media_type.to_owned(),
+        });
+        return (Some(image), note);
     }
     if total > VIDEO_CAP_BYTES {
         return (
@@ -414,12 +567,11 @@ async fn binary_verdict(
             ),
         );
     }
-    let half_body = limits.body_bytes.map(|bytes| bytes / 2);
-    if let Some(half) = half_body.filter(|half| data.base64_len() > *half) {
+    if let Err(reason) = budget.take(data.base64_len()) {
         return (
             None,
             format!(
-                "Binary stdout is {} ({total} bytes), whose base64 takes more than {half} bytes, half of what this model's requests may carry, so it was not attached; {save}, or produce a smaller version, with fewer frames or a lower resolution, and run it again.",
+                "Binary stdout is {} ({total} bytes), which was not attached because {reason}; {save}, or produce a smaller version, with fewer frames or a lower resolution, and run it again.",
                 media.media_type
             ),
         );
@@ -568,6 +720,7 @@ mod tests {
             state: CommandState::Exited {
                 exit_code: 1,
                 binary_stdout: None,
+                media: Vec::new(),
             },
             files: None,
         }
@@ -632,7 +785,7 @@ mod tests {
             ],
             None,
         );
-        record.settle(Ending::Exited(0), Arc::new(whole), None, "");
+        record.settle(Ending::Exited(0), Arc::new(whole), None, Vec::new(), "");
         let final_look = result(&record.status(0, None)).await;
         assert!(final_look.ends_with("\noutput:\nprompt"), "{final_look}");
         let read_again = result(&record.status(0, None)).await;
@@ -795,6 +948,7 @@ mod tests {
                     limit_bytes: 16 * 1024 * 1024,
                 },
             }),
+            media: Vec::new(),
         };
         let outcome = shell_outcome(&status, model, limits).await;
         text_of(&outcome)[1..].join(" | ")
@@ -859,7 +1013,7 @@ mod tests {
         assert_eq!(
             verdict(&video_model, body(39), &mp4, false, 14).await,
             format!(
-                "Binary stdout is video/mp4 (14 bytes), whose base64 takes more than 19 bytes, half of what this model's requests may carry, so it was not attached; {save}, or produce a smaller version, with fewer frames or a lower resolution, and run it again."
+                "Binary stdout is video/mp4 (14 bytes), which was not attached because its base64 would take the result's media past 19 bytes, half of what this model's requests may carry; {save}, or produce a smaller version, with fewer frames or a lower resolution, and run it again."
             )
         );
         assert_eq!(
@@ -875,6 +1029,133 @@ mod tests {
         assert_eq!(
             verdict(&model, limits, &png, true, 20_000_000).await,
             "Binary stdout (20000000 bytes) is more than the 16777216 bytes a command's output keeps whole, so it was not attached and is kept whole nowhere; write it to a file instead and run the command again."
+        );
+    }
+
+    /// The test model, reading PNG images.
+    fn png_model() -> Model {
+        let mut model = test_model().model;
+        model.accepted_extensions = Some(vec![FileExtension::Png]);
+        model
+    }
+
+    /// Medium `number` of command 17, of `media_type`, with `bytes`.
+    fn returned(number: u32, media_type: &str, bytes: &Bytes) -> CommandMedium {
+        CommandMedium {
+            number,
+            media_type: media_type.to_owned(),
+            size: bytes.len() as u64,
+            bytes: Ok(bytes.clone()),
+        }
+    }
+
+    /// What the result of command 17 attaches and says after its output,
+    /// one placeholder per attached medium, when its commands returned
+    /// `media` and its stdout is `binary`.
+    async fn attached(
+        media: Vec<CommandMedium>,
+        binary: Option<&Bytes>,
+        model: &Model,
+        limits: RequestLimits,
+    ) -> Vec<String> {
+        let mut status = exited("");
+        status.state = CommandState::Exited {
+            exit_code: 0,
+            binary_stdout: binary.map(|bytes| BinaryOutput {
+                bytes: bytes.clone(),
+                info: BinaryStdout {
+                    truncated: false,
+                    total_bytes: bytes.len() as u64,
+                    limit_bytes: 16 * 1024 * 1024,
+                },
+            }),
+            media,
+        };
+        let outcome = shell_outcome(&status, model, limits).await;
+        text_of(&outcome)[1..]
+            .iter()
+            .flat_map(|part| part.lines())
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Planted defects this catches: a count bound that is not 20, or one
+    /// that the binary stdout escapes; a binary stdout attached before the
+    /// returned media; and lines out of the media's order.
+    #[tokio::test]
+    async fn a_result_attaches_at_most_20_media_in_order_then_names_the_others() {
+        let png = demi_agent_store::testing::png(4, 3, 1).into_bytes();
+        let media = (1..=25)
+            .map(|number| returned(number, "image/png", &png))
+            .collect();
+        let shown = attached(media, Some(&png), &png_model(), RequestLimits::default()).await;
+        assert!(shown[..20].iter().all(|part| part == "<image>"), "{shown:?}");
+        let mut lines: Vec<String> = (21..=25)
+            .map(|number| format!("[medium {number}: not attached: a result attaches at most 20 media; save it: demi shell output 17 --medium {number} > <file>]"))
+            .collect();
+        lines.push(format!("Binary stdout is image/png ({} bytes), which was not attached because a result attaches at most 20 media; save it: demi shell output 17 --raw --stdout > <file>.", png.len()));
+        assert_eq!(shown[20..], lines);
+    }
+
+    /// Planted defects this catches: a budget that counts each medium alone
+    /// rather than all of the result's (the fourth would be attached), and
+    /// one that stops at the first medium that breaks it rather than
+    /// skipping it (the third would not).
+    #[tokio::test]
+    async fn a_medium_past_half_the_body_limit_is_skipped_and_a_later_smaller_one_attached() {
+        let small = demi_agent_store::testing::png(4, 3, 1);
+        let large = demi_agent_store::testing::png(64, 64, 2);
+        let half = 2 * small.base64_len();
+        let limits = RequestLimits {
+            body_bytes: Some(2 * half),
+            images: None,
+        };
+        let (small, large) = (small.into_bytes(), large.into_bytes());
+        let media = vec![
+            returned(1, "image/png", &small),
+            returned(2, "image/png", &large),
+            returned(3, "image/png", &small),
+            returned(4, "image/png", &small),
+        ];
+        let shown = attached(media, None, &png_model(), limits).await;
+        let past = |number: u32| {
+            format!("[medium {number}: not attached: its base64 would take the result's media past {half} bytes, half of what this model's requests may carry; save it: demi shell output 17 --medium {number} > <file>]")
+        };
+        assert_eq!(
+            shown,
+            ["<image>".to_owned(), "<image>".to_owned(), past(2), past(4)]
+        );
+    }
+
+    /// Planted defects this catches: a medium attached in a type the model
+    /// does not read, a fitted image attached without its line, and a
+    /// medium the backend does not have given a way to read it.
+    #[tokio::test]
+    async fn each_medium_not_attached_or_fitted_has_its_line() {
+        let wide = demi_agent_store::testing::png(2_400, 10, 1).into_bytes();
+        let webp = Bytes::from_static(b"RIFFWEBPVP8 ");
+        let mut model = test_model().model;
+        model.accepted_extensions = Some(vec![FileExtension::Png]);
+        let lost = CommandMedium {
+            number: 3,
+            media_type: "image/png".into(),
+            size: 412_000,
+            bytes: Err("lost with the Host's connection".into()),
+        };
+        let media = vec![
+            returned(1, "image/png", &wide),
+            returned(2, "image/webp", &webp),
+            lost,
+        ];
+        let shown = attached(media, None, &model, RequestLimits::default()).await;
+        assert_eq!(
+            shown,
+            [
+                "<image>",
+                "[medium 1: attached as image/png of 2000 × 8 px, fitted from image/png of 2400 × 10 px; the original: demi shell output 17 --medium 1 > <file>]",
+                "[medium 2: not attached: the model does not accept image/webp; save it: demi shell output 17 --medium 2 > <file>]",
+                "[medium 3: not attached: lost with the Host's connection]",
+            ]
         );
     }
 

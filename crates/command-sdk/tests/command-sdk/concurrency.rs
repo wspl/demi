@@ -54,6 +54,7 @@ fn request(operation: &str) -> Invocation {
         args: serde_json::json!({}),
         cwd: "/tmp".into(),
         env: BTreeMap::new(),
+        stdout: None,
     }
 }
 

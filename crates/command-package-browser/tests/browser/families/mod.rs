@@ -75,6 +75,7 @@ impl BrowserFixture {
                 args,
                 cwd: self.root.path().to_str().unwrap().into(),
                 env: self.env.clone(),
+                stdout: None,
             },
             input,
             output,

@@ -25,6 +25,7 @@ use crate::{
         local::Server,
     },
     connection::{ConnectionHandle, Relay, Request},
+    job_media::{JobMedia, MEDIA_DIRECTORY},
 };
 
 /// A dispatcher, its local endpoint and a connection owner for callbacks,
@@ -116,12 +117,19 @@ impl Dispatch {
                 .to_string_lossy()
                 .into_owned(),
         };
+        // The job's media go out where its connection's frames do.
+        let media = Arc::new(JobMedia::new(
+            job_id.into(),
+            self.paths.directory.join(job_id).join(MEDIA_DIRECTORY),
+            self.handle.control.clone(),
+        ));
         let context = Arc::new(
             ExecutionContext::create(
                 job_id.into(),
                 command,
                 self.manifest.clone(),
                 edits,
+                media,
                 self.handle.clone(),
                 &self.paths,
             )

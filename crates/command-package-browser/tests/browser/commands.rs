@@ -35,6 +35,9 @@ pub(crate) async fn exchange(
             Record::Stderr(bytes) => stderr.extend_from_slice(&bytes),
             Record::Completion(value) => completion = Some(value),
             Record::InputPull => panic!("file operation must not read raw stdin"),
+            Record::Medium { .. } | Record::MediumBytes(_) => {
+                panic!("an invocation that is no job command's returns no media")
+            }
         }
     }
     (completion.unwrap(), stdout, stderr)
@@ -96,6 +99,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
                     languages: vec!["en-US".into()],
                 },
             },
+            stdout: None,
         };
         let (completion, stdout, stderr) =
             exchange(&client, &request("browser.tabs", json!({})), false).await;

@@ -8,7 +8,7 @@ use demi_command_protocol::{LocalInvocation, Record};
 use demi_command_sdk::{Input, InvocationContext, Output, ServiceError};
 use demi_runner_process::{
     command_client::{RAW, RawCommand},
-    stdio::is_live,
+    stdio::{is_live, stdout_target},
 };
 use std::{collections::BTreeMap, io, sync::Arc};
 
@@ -45,6 +45,7 @@ pub(super) fn execute(
                 .map(|arg| arg.to_string())
                 .collect(),
             is_live(&stdin, &env)?,
+            stdout_target(&stdout, &env)?,
         )?;
         let cancellation = scope.cancellation.child_token();
         let _cancel_on_return = cancellation.drop_guard_ref();

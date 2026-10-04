@@ -182,6 +182,10 @@ impl RequestStream {
                         A::NAME,
                         String::from_utf8_lossy(&bytes).trim_end()
                     ),
+                    // A stream's writer refuses media.
+                    Some(Record::Medium { .. } | Record::MediumBytes(_)) => {
+                        return Err(ProtocolError::Invalid(format!("a medium on the {} stream", A::NAME)).into());
+                    }
                     // The service ended the stream, as its shutdown does.
                     Some(Record::Completion(_)) | None => return Ok(()),
                 },

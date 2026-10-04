@@ -22,6 +22,7 @@ mod builders;
 mod commands;
 mod environment;
 mod host;
+mod media;
 mod output;
 mod record;
 mod reserved;
@@ -42,6 +43,7 @@ pub use host::{
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnError,
     SpawnErrorKind, SpawnRequest, WriteOptions,
 };
+pub use media::{CommandMedium, MediumKept, StoredMedium};
 pub use output::{
     Backward, Forward, Missing, OutputRecord, OutputText, Piece, Seen, Streams, WholeOutput,
     binary_line,
