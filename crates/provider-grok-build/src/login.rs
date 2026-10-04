@@ -204,18 +204,29 @@ impl GrokKit {
         }
     }
 
-    /// The account's secret document: the tokens, the user the id token
-    /// names, the team or organization the access token acts for, which
-    /// then is the account's user, and the proxy's details of the user when
-    /// it names one.
+    /// The account's secret document: the tokens and the user they sign in.
+    /// The proxy's details of the user, when it answers, win over the id
+    /// token's, and its principal over the access token's. When the tokens
+    /// act for a team or organization, that principal is the account's user
+    /// and the account has no email, whoever signed in.
     async fn secret(&self, tokens: Tokens) -> GrokSecret {
         let id = tokens
             .id_token
             .as_ref()
             .map(|token| Claims::of(token.expose()))
             .unwrap_or_default();
-        let principal = Claims::of(tokens.access_token.expose()).principal();
-        let (mut user_id, mut email) = (id.sub.into_inner(), id.email.into_inner());
+        let mut principal = Claims::of(tokens.access_token.expose()).principal();
+        let mut user_id = id.sub.into_inner();
+        let mut email = id.email.into_inner();
+        if let Some(user) = self.user(&tokens.access_token).await {
+            user_id = Some(user.id);
+            if user.principal.is_some() {
+                principal = user.principal;
+            }
+            if user.email.is_some() {
+                email = user.email;
+            }
+        }
         if let Some(principal) = &principal
             && (principal.kind == "Team" || principal.kind == "Organization")
         {
@@ -227,7 +238,7 @@ impl GrokKit {
             Timestamp::from_millisecond(self.clock.now().as_millisecond().saturating_add(lifetime))
                 .ok()
         });
-        let mut secret = GrokSecret {
+        GrokSecret {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
             expires_at,
@@ -236,17 +247,7 @@ impl GrokKit {
             principal,
             user_id: user_id.filter(|user| !user.is_empty()),
             email: email.filter(|email| !email.is_empty()),
-        };
-        if let Some(user) = self.user(&secret.access_token).await {
-            secret.user_id = Some(user.id);
-            if let Some(principal) = user.principal {
-                secret.principal = Some(principal);
-            }
-            if let Some(email) = user.email {
-                secret.email = Some(email);
-            }
         }
-        secret
     }
 
     /// The proxy's details of the signed-in user. They only fill in an
