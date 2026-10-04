@@ -12,10 +12,10 @@ use demi_provider_common::{
         AccountKit, AccountsCapability, AccountsError, AddAccount, LoginError, NewAccount,
         SecretDocument,
     },
-    oauth::{DEVICE_LOGIN_LIFETIME, PollInterval, ResponseError, decode_json_response},
+    oauth::{PollInterval, ResponseError, decode_json_response},
     wire::NonEmpty,
 };
-use demi_shared_types::{Clock, LoginPending, Timestamp};
+use demi_shared_types::{Clock, LoginPending};
 use futures_util::future::BoxFuture;
 use reqwest::{StatusCode, Url, header::CONTENT_TYPE};
 use serde::Deserialize;
@@ -59,16 +59,12 @@ impl CodexKit {
         &self,
         pending: &(dyn Fn(LoginPending) + Send + Sync),
     ) -> Result<NewAccount, LoginError> {
-        let started = tokio::time::Instant::now();
         let code = self.user_code().await?;
-        let lifetime = i64::try_from(DEVICE_LOGIN_LIFETIME.as_millis()).unwrap_or(i64::MAX);
-        let expires_at = self.clock.now().as_millisecond().saturating_add(lifetime);
         pending(LoginPending {
             verification_url: self.url("/codex/device").to_string(),
             user_code: Some(code.user_code.clone()),
-            expires_at: Timestamp::from_millisecond(expires_at).ok(),
         });
-        let authorization = self.authorization(&code, started).await?;
+        let authorization = self.authorization(&code).await?;
         let tokens = self.exchange(&authorization).await?;
         let account_id = token_account(&tokens.access_token)
             .account_id
@@ -120,14 +116,11 @@ impl CodexKit {
         })
     }
 
-    /// Polls until the user confirms: 403 and 404 mean not yet, any other
-    /// failure ends the login, and so does its lifetime. Dropping the future
-    /// cancels the login at once, even between polls.
-    async fn authorization(
-        &self,
-        code: &UserCode,
-        started: tokio::time::Instant,
-    ) -> Result<Authorization, LoginError> {
+    /// Polls until the user confirms: 403 and 404 mean not yet, and any
+    /// other failure ends the login. Dropping the future, which the vault
+    /// does when the login's lifetime ends, cancels the login at once, even
+    /// between polls.
+    async fn authorization(&self, code: &UserCode) -> Result<Authorization, LoginError> {
         let body = serde_json::json!({ "device_auth_id": code.device_auth_id, "user_code": code.user_code });
         loop {
             let response = self
@@ -147,12 +140,6 @@ impl CodexKit {
                 return Err(LoginError::Failed(format!(
                     "Device authorization failed with HTTP {}",
                     status.as_u16()
-                )));
-            }
-            if started.elapsed() >= DEVICE_LOGIN_LIFETIME {
-                let minutes = DEVICE_LOGIN_LIFETIME.as_secs() / 60;
-                return Err(LoginError::Failed(format!(
-                    "Device-code login timed out after {minutes} minutes"
                 )));
             }
             tokio::time::sleep(code.interval).await;

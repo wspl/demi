@@ -3,9 +3,11 @@
 //! user must do while it waits, and publishes the account when it
 //! completes. A login into a new entry authenticates against a pool held in
 //! memory and publishes the entry with its account in one transaction; a
-//! login into an existing entry holds the entry until it ends. A login
-//! expires after ten minutes, cancelling it stops it at once, and its result
-//! is kept for ten minutes after it ends.
+//! login into an existing entry holds the entry until it ends. The vault
+//! alone ends a login the user does not finish: it drops the family's flow
+//! once the login's lifetime from its start has passed, and that moment is
+//! the expiry the user is shown. Cancelling a login stops it at once, and its
+//! result is kept for ten minutes after it ends.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -13,7 +15,7 @@ use std::time::Duration;
 
 use demi_provider_common::Provider;
 use demi_provider_common::credentials::MemoryCredentialPool;
-use demi_shared_types::LoginPending;
+use demi_shared_types::{Clock, LoginPending, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, LoginId, UserId};
 use demi_web_api_protocol::providers::{CredentialKind, LoginState};
 use tokio::sync::watch;
@@ -28,6 +30,8 @@ use crate::llm::assembly::{AssemblyError, ProviderAssembly};
 /// How long a login waits for its user, and how long its result is kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoginTiming {
+    /// From the login's start to its end, whatever the vendor's code allows
+    /// (`providers.md` § Login and publication).
     pub lifetime: Duration,
     pub retention: Duration,
 }
@@ -62,6 +66,8 @@ pub struct LoginFlows {
     assembly: Arc<ProviderAssembly>,
     operations: Arc<ProviderOperations>,
     timing: LoginTiming,
+    /// The wall clock the expiry a login shows is read from.
+    clock: Arc<dyn Clock>,
     tasks: TaskTracker,
     closing: CancellationToken,
     /// A `std` mutex: the edge's requests and the login tasks update the
@@ -77,6 +83,14 @@ struct Flow {
     ended_at: Option<Instant>,
     /// Turns true when the login's task has recorded how it ended.
     ended: watch::Receiver<bool>,
+}
+
+/// How a login's task ends: at `deadline`, when `cancel` fires, or when
+/// the flow finishes, whereupon it turns `ended` true.
+struct Ending {
+    deadline: Instant,
+    cancel: CancellationToken,
+    ended: watch::Sender<bool>,
 }
 
 /// Where a login publishes its account.
@@ -99,11 +113,13 @@ impl LoginFlows {
         assembly: Arc<ProviderAssembly>,
         operations: Arc<ProviderOperations>,
         timing: LoginTiming,
+        clock: Arc<dyn Clock>,
     ) -> Arc<Self> {
         Arc::new(Self {
             assembly,
             operations,
             timing,
+            clock,
             tasks: TaskTracker::new(),
             closing: CancellationToken::new(),
             flows: Mutex::default(),
@@ -178,6 +194,16 @@ impl LoginFlows {
         {
             return Err(LoginRefusal::NoLoginFlow(family));
         }
+        // The login's end, read on both clocks at its start: the task drops
+        // the flow at `deadline`, and the user is shown `expires_at`.
+        let deadline = Instant::now() + self.timing.lifetime;
+        let expires_at = self
+            .clock
+            .now()
+            .to_jiff()
+            .saturating_add(self.timing.lifetime)
+            .map(Timestamp::truncate)
+            .expect("adding a duration, unlike a calendar span, never fails");
         let cancel = self.closing.child_token();
         let (ended, ending) = watch::channel(false);
         let flow = Flow {
@@ -185,20 +211,22 @@ impl LoginFlows {
             state: LoginState::Pending {
                 verification_url: None,
                 user_code: None,
-                expires_at: None,
+                expires_at,
             },
             cancel: cancel.clone(),
             ended_at: None,
             ended: ending,
         };
         self.lock().insert(id.clone(), flow);
+        let ending = Ending {
+            deadline,
+            cancel,
+            ended,
+        };
         let flows = self.clone();
         let login = id.clone();
-        self.tasks.spawn(async move {
-            flows
-                .run(login, owner, provider, target, cancel, ended)
-                .await
-        });
+        self.tasks
+            .spawn(async move { flows.run(login, owner, provider, target, ending).await });
         Ok(id)
     }
 
@@ -252,8 +280,7 @@ impl LoginFlows {
         owner: UserId,
         provider: Arc<dyn Provider>,
         target: Target,
-        cancel: CancellationToken,
-        ended: watch::Sender<bool>,
+        ending: Ending,
     ) {
         let pending = {
             let flows = self.clone();
@@ -264,8 +291,8 @@ impl LoginFlows {
             .accounts()
             .expect("a login's provider has account operations");
         let outcome = tokio::select! {
-            () = cancel.cancelled() => Err("The login was cancelled".to_owned()),
-            outcome = tokio::time::timeout(self.timing.lifetime, accounts.login(&pending)) => match outcome {
+            () = ending.cancel.cancelled() => Err("The login was cancelled".to_owned()),
+            outcome = tokio::time::timeout_at(ending.deadline, accounts.login(&pending)) => match outcome {
                 Err(_) => Err("The login expired".to_owned()),
                 Ok(Err(error)) => Err(error.to_string()),
                 Ok(Ok(account)) => Ok(account),
@@ -279,22 +306,26 @@ impl LoginFlows {
             flow.state = state;
             flow.ended_at = Some(Instant::now());
         }
-        ended.send_replace(true);
+        ending.ended.send_replace(true);
     }
 
-    /// Stores what the vendor asked the user to do, while the login waits.
+    /// Stores what the vendor asked the user to do, while the login waits;
+    /// the login still ends when it started to.
     fn pending(&self, id: &LoginId, pending: LoginPending) {
         let mut flows = self.lock();
         let Some(flow) = flows.get_mut(id) else {
             return;
         };
-        if flow.cancel.is_cancelled() || !matches!(flow.state, LoginState::Pending { .. }) {
+        let LoginState::Pending { expires_at, .. } = flow.state else {
+            return;
+        };
+        if flow.cancel.is_cancelled() {
             return;
         }
         flow.state = LoginState::Pending {
             verification_url: Some(pending.verification_url),
             user_code: pending.user_code,
-            expires_at: pending.expires_at,
+            expires_at,
         };
     }
 
@@ -339,5 +370,262 @@ impl LoginFlows {
             },
             Err(message) => LoginState::Failed { message },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use demi_backend_database::control::{ControlService, testing};
+    use demi_backend_page_sync::SyncRegistry;
+    use demi_provider_common::credentials::{
+        AccountKit, AccountLabel, Accounts, AccountsCapability, AccountsError, AddAccount,
+        LoginError, NewAccount, SubscriptionAccounts,
+    };
+    use demi_provider_common::models_dev::ModelsDevClient;
+    use demi_provider_common::testing::TokioClock;
+    use demi_provider_common::{
+        Capabilities, CatalogError, ProviderRuntime, RuntimeEnv, RuntimeError,
+    };
+    use demi_shared_types::{
+        AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
+    };
+    use demi_web_api_protocol::settings::InstanceMode;
+    use futures_util::future::BoxFuture;
+
+    use super::*;
+    use crate::llm::catalog_cache::ModelCatalogCache;
+    use crate::llm::families::{
+        FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
+    };
+    use crate::llm::vendors::VendorCatalog;
+    use crate::vault::entries::Vault;
+    use crate::vault::quotas::AccountQuotas;
+    use crate::vault::seal::VaultKey;
+
+    /// How long the vendor takes to name the code, after the login started.
+    const VENDOR_ANSWERS_AFTER: Duration = Duration::from_secs(30);
+
+    /// A device family whose user never confirms: its flow names a code a
+    /// while after it starts, then waits, and counts the flows dropped.
+    struct Unconfirmed {
+        dropped: Arc<AtomicUsize>,
+    }
+
+    impl ProviderFamily for Unconfirmed {
+        fn credential(&self) -> CredentialKind {
+            CredentialKind::Subscription
+        }
+
+        fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+            let FamilyCredential::Subscription(subscription) = args.credential else {
+                return Err(FamilyError::WrongCredential);
+            };
+            let kit = Kit {
+                dropped: self.dropped.clone(),
+            };
+            Ok(Arc::new(Waiting(Accounts::new(
+                subscription.pool,
+                kit,
+                args.clock,
+            ))))
+        }
+    }
+
+    struct Kit {
+        dropped: Arc<AtomicUsize>,
+    }
+
+    /// Counts a flow dropped before it ended.
+    struct Dropped(Arc<AtomicUsize>);
+
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    impl AccountKit for Kit {
+        fn capability(&self) -> AccountsCapability {
+            AccountsCapability {
+                login: true,
+                add: false,
+            }
+        }
+
+        fn login<'a>(
+            &'a self,
+            pending: &'a (dyn Fn(LoginPending) + Send + Sync),
+        ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>> {
+            let dropped = Dropped(self.dropped.clone());
+            Some(Box::pin(async move {
+                let _dropped = dropped;
+                tokio::time::sleep(VENDOR_ANSWERS_AFTER).await;
+                pending(LoginPending {
+                    verification_url: "https://verify.example/device".into(),
+                    user_code: Some("ABCD-1234".into()),
+                });
+                std::future::pending::<()>().await;
+                Ok(NewAccount {
+                    secret: "{}".into(),
+                    label: AccountLabel {
+                        label: "never".into(),
+                        detail: None,
+                        identity_key: None,
+                    },
+                })
+            }))
+        }
+
+        fn add(&self, _input: AddAccount) -> Option<Result<NewAccount, AccountsError>> {
+            None
+        }
+    }
+
+    /// A provider that only logs in.
+    struct Waiting(Accounts<Kit>);
+
+    impl Provider for Waiting {
+        fn capabilities(&self) -> Capabilities {
+            Capabilities::default()
+        }
+
+        fn auth_status(&self) -> BoxFuture<'_, AuthState> {
+            unreachable!("a login reads no status")
+        }
+
+        fn runtime_state(&self) -> RuntimeState {
+            unreachable!("a login reads no runtime state")
+        }
+
+        fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
+            unreachable!("a login reads no models")
+        }
+
+        fn read_failure(
+            &self,
+            _diagnostics: &ProviderErrorDiagnostics,
+            _received_at: Timestamp,
+        ) -> ProviderFailureFacts {
+            unreachable!("a login reads no failure")
+        }
+
+        fn accounts(&self) -> Option<&dyn SubscriptionAccounts> {
+            Some(&self.0)
+        }
+
+        fn runtime(&self, _env: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
+            unreachable!("a login builds no runtime")
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_login_ends_at_the_expiry_it_shows_from_its_start_and_its_result_goes_later() {
+        let data = tempfile::tempdir().unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
+        let master = testing::master(&control).await.id;
+        let clock = Arc::new(TokioClock::new("2026-09-24T08:00:00.000Z".parse().unwrap()));
+        let vault = Vault::new(
+            control.clone(),
+            VaultKey::new([3; 32]),
+            InstanceMode::Shared,
+            SyncRegistry::default(),
+        );
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let families = FamilyRegistry::default().with(
+            "device",
+            Unconfirmed {
+                dropped: dropped.clone(),
+            },
+        );
+        let edge = tokio::runtime::Handle::current();
+        let models_dev = ModelsDevClient::new(
+            reqwest::Client::new(),
+            ModelsDevClient::DEFAULT_URL.parse().unwrap(),
+            clock.clone(),
+        );
+        let assembly = Arc::new(ProviderAssembly::new(
+            vault.clone(),
+            families,
+            AccountQuotas::new(vault.clone(), edge.clone()),
+            ModelCatalogCache::new(control.clone(), clock.clone(), edge),
+            VendorCatalog::new(models_dev),
+            reqwest::Client::new(),
+            clock.clone(),
+        ));
+        let timing = LoginTiming::default();
+        assert_eq!(timing.lifetime, Duration::from_secs(10 * 60));
+        let flows = LoginFlows::new(
+            assembly,
+            Arc::new(ProviderOperations::default()),
+            timing,
+            clock.clone(),
+        );
+
+        let id = flows
+            .start(
+                master.clone(),
+                master.clone(),
+                "device".into(),
+                "Device".into(),
+                None,
+            )
+            .await
+            .unwrap();
+        // Nothing awaits between the start's last step and these reads.
+        let started = Instant::now();
+        let started_at = clock.now();
+        let mut ended = flows.lock()[&id].ended.clone();
+
+        // The vendor names its code later; the expiry shown still counts
+        // from the start.
+        tokio::time::sleep_until(started + timing.lifetime - Duration::from_millis(1)).await;
+        let LoginState::Pending {
+            verification_url,
+            user_code,
+            expires_at,
+        } = flows.state(&id, &master).unwrap()
+        else {
+            panic!("the login ended before its expiry");
+        };
+        assert_eq!(
+            (verification_url.as_deref(), user_code.as_deref()),
+            (Some("https://verify.example/device"), Some("ABCD-1234"))
+        );
+        assert_eq!(
+            expires_at.to_jiff().duration_since(started_at.to_jiff()),
+            jiff::SignedDuration::from_mins(10)
+        );
+        assert_eq!(dropped.load(Ordering::SeqCst), 0);
+
+        // The login ends at the moment it showed, and drops its flow.
+        tokio::time::timeout(timing.lifetime, ended.wait_for(|ended| *ended))
+            .await
+            .expect("the login ends at its expiry")
+            .unwrap();
+        assert_eq!(Instant::now(), started + timing.lifetime);
+        assert_eq!(clock.now(), expires_at);
+        assert_eq!(
+            flows.state(&id, &master),
+            Some(LoginState::Failed {
+                message: "The login expired".into()
+            })
+        );
+        assert_eq!(dropped.load(Ordering::SeqCst), 1);
+
+        // Its result stays for the retention, and then goes.
+        let ended_at = Instant::now();
+        tokio::time::sleep_until(ended_at + timing.retention - Duration::from_millis(1)).await;
+        assert!(flows.state(&id, &master).is_some());
+        tokio::time::sleep_until(ended_at + timing.retention).await;
+        assert_eq!(flows.state(&id, &master), None);
+        // An expired login stored nothing.
+        assert!(vault.entries(master).await.unwrap().is_empty());
     }
 }
