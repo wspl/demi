@@ -356,7 +356,7 @@ func TestExposeConnectionsEndWithRecordAndOfflineDeviceKeepsRecords(t *testing.T
 }
 
 // TestExposeShedsSixtyFifthConnectionAndReusesClosedPlace fills admission with sixty-four held real relays; the
-// service's close event frees a place.
+// next admitted request proves that the closed connection's place is free.
 func TestExposeShedsSixtyFifthConnectionAndReusesClosedPlace(t *testing.T) {
 	t.Parallel()
 	ctx, h := conversationHarness(t)
@@ -375,6 +375,7 @@ func TestExposeShedsSixtyFifthConnectionAndReusesClosedPlace(t *testing.T) {
 	wireMust(t, err)
 	filesStatus(t, answer, 503)
 	filesContains(t, string(answer.Body), "connection limit")
+	busy := string(answer.Body)
 	wireMust(t, held[len(held)-1].Close())
 	held = held[:len(held)-1]
 	select {
@@ -382,8 +383,15 @@ func TestExposeShedsSixtyFifthConnectionAndReusesClosedPlace(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	answer, err = backendtest.ReadAnswer(ctx, filesExposeFetch(ctx, t, b, entry, "/hello"))
-	wireMust(t, err)
+	// Service closure precedes backend admission release; only an admitted request proves reuse.
+	for {
+		answer, err = backendtest.ReadAnswer(ctx, filesExposeFetch(ctx, t, b, entry, "/hello"))
+		wireMust(t, err)
+		if answer.Status != 503 {
+			break
+		}
+		conversationEqual(t, string(answer.Body), busy)
+	}
 	filesStatus(t, answer, 200)
 	for _, body := range held {
 		wireMust(t, body.Close())
