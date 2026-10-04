@@ -120,7 +120,8 @@ inference.
 - `default_reasoning_level`, every `supported_reasoning_levels` entry and
   `default_service_tier` are kept. The default level becomes the model's
   default thinking effort, and the web app's model selector offers the full
-  effort list with that default. An explicit effort, including `max` or
+  effort list; a conversation that names no effort takes the first
+  ([A conversation's model settings](#a-conversations-model-settings)). An explicit effort, including `max` or
   `ultra` when advertised, reaches Codex's `reasoning.effort` unchanged.
 - There is no Off option: omitting reasoning gets Codex's default instead of
   turning reasoning off. An advertised `none` effort stays a selectable level.
@@ -270,16 +271,23 @@ chooses:
 | Part | Values |
 |---|---|
 | Model | A provider entry and one model of its catalog |
-| Thinking effort | An effort the model lists; `disabled`, thinking off, when the model can turn thinking off; or null, the model's default, which sends no thinking setting |
+| Thinking effort | An effort the model lists, or `disabled`, thinking off, when the model can turn thinking off. A model that lists no efforts has no effort to choose, and its value is null |
 | Service tier | A tier the model lists, or null for the vendor's default |
 
 The backend turns an effort into the thinking setting `effort` with the
-model's default summary, and `disabled` into thinking off. A model that cannot
-turn thinking off has no null effort: when a change names none, the backend
-chooses the model's default effort, else the first effort it lists, and the
-catalog tells the page that effort, so the effort the page shows is the one the
-request sends. For example, a switch to a model that lists `low` to `max`,
-names no default and cannot turn thinking off records `low`.
+model's default summary, and `disabled` into thinking off. The effort is
+always one the user can read in the model menu, which offers Off when the
+model can turn thinking off and the efforts the model lists, and nothing else:
+no choice leaves thinking to the vendor, whose effect the user could not know.
+When a change names no effort, the backend chooses the first effort the model
+lists, never thinking off: for a new conversation, a switch to a model that
+does not list the conversation's effort, and any other change that names
+none. The page reads the same first effort from the catalog, so the effort the
+page shows is the one the request sends, and every request of a model that
+lists efforts carries a thinking setting. For example, a switch to a model
+that lists `low` to `max` records `low`, whether or not it can turn thinking
+off. A model that lists no efforts has no reasoning choice, and its requests
+carry no thinking setting.
 
 A change names the parts it changes, and the value keeps the others. For
 example, one tab turns Fast on while another raises the effort: the value ends
@@ -288,13 +296,14 @@ applies the change and refuses a model the catalog does not list, or an effort
 or tier the model does not offer, so the value holds only what its model
 offered when it was chosen.
 
-A switch to another model takes the effort and the tier the switch names, and
-the new model's defaults for a part it does not name. The model menu names the
-conversation's effort when the new model lists it, thinking off when the new
-model can turn thinking off, and Fast when the new model has a Fast tier of its
-own. So a switch from a model at `high` with Fast to one that lists `high` and
-has a Fast tier keeps both, and a switch to a model with neither takes its
-defaults.
+A switch to another model takes the effort and the tier the switch names; for
+a part it does not name, the new model's first effort and the vendor's default
+tier. The model menu names the conversation's effort when the new model offers
+it, thinking off included, else the new model's first effort, and Fast when
+the new model has a Fast tier of its own. So a switch from a model at `high`
+with Fast to one that lists `high` and has a Fast tier keeps both, and a switch
+to a model with neither takes the new model's first effort and the vendor's
+default tier.
 
 ### Output limit
 
