@@ -13,8 +13,8 @@ import { uploadsOf, type FileUploads, type UploadClash, type UploadItem, type Up
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
-import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
-import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import type { FileBrowserMode, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
+import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
 import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import { productWould } from '../product-would'
 import GallerySection from '../components/GallerySection.vue'
@@ -122,9 +122,9 @@ const sourceFor = (id: string) =>
   (id === 'cloud'
   ? cloudSource
   : (hosts.find((host) => host.id === id) ?? hosts[0]!).source)
-const placesFor = (id: string) => (id === 'cloud' ? [
+const placesFor = (id: string): FileBrowserPlaceGroup[] => (id === 'cloud' ? [
   {
-    label: 'Quick access',
+    label: 'Quick Access',
     places: [{ path: '/home/demi', label: 'Home' }]
   }
 ] : (hosts.find((host) => host.id === id) ?? hosts[0]!).places)
@@ -177,13 +177,13 @@ const fileKey = ref(0)
 
 // One file browser, inline, switched between the states a folder can be in.
 const stateOptions = [
-  { value: 'slow', label: 'Slow device' },
+  { value: 'slow', label: 'Slow Device' },
   { value: 'empty', label: 'Empty' },
   { value: 'locked', label: 'Locked' },
   { value: 'missing', label: 'Missing' },
   { value: 'offline', label: 'Offline' },
-  { value: 'readonly', label: 'Read-only' },
-] as const
+  { value: 'readonly', label: 'Read-Only' },
+] as const satisfies readonly SegmentedOption<string>[]
 type StateOption = (typeof stateOptions)[number]['value']
 const state = ref<StateOption>('empty')
 const laptop = laptopTree()
@@ -251,7 +251,7 @@ const stateMode = ref<FileBrowserMode>('directory')
 const modeOptions = [
   { value: 'directory', label: 'Folder' },
   { value: 'file', label: 'File' },
-] as const
+] as const satisfies readonly SegmentedOption<FileBrowserMode>[]
 
 function selectHost(target: 'folder' | 'file', id: string) {
   if (target === 'folder') {
@@ -455,7 +455,7 @@ onMounted(() => {
         </GallerySpecimen>
       </GallerySection>
       <GallerySection
-        title="Loading and failures"
+        title="Loading and Failures"
         note="A workspace still listing shows a spinner in place of rows; a directory still listing keeps its chevron and spins at the row's end. A directory that could not be listed wears a red dot on its icon, the reason as tooltip. A workspace that cannot be listed says so."
       >
         <div class="flex flex-wrap gap-6">
@@ -482,7 +482,7 @@ onMounted(() => {
         </div>
       </GallerySection>
       <GallerySection
-        title="Pinned path"
+        title="Pinned Path"
         note="The workspace name always heads the tree. Its lower fade is absent at scroll position zero and appears only when rows scroll underneath the pinned stack. Under it pin the directories the rows at the top sit in, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. A closed directory never pins. Scroll each tree to move through the states."
       >
         <div class="flex flex-wrap gap-6">
@@ -509,8 +509,8 @@ onMounted(() => {
         </div>
       </GallerySection>
       <GallerySection
-        title="Drag and drop"
-        note="Files and folders dragged in from the desktop upload where they drop, and that place lights under a dashed line while the drag is over it: a folder with the rows it holds, the folder a file sits in, or the whole workspace over the empty space and over a file at the top. A folder whose row has scrolled under the pinned path lights there too. A drag resting on a closed folder opens it after a moment, to drop deeper. Only a host that takes uploads takes drops. These trees hold each state still and take no drops; the workspace under Upload and download takes real ones."
+        title="Drag and Drop"
+        note="Files and folders dragged in from the desktop upload where they drop, and that place lights under a dashed line while the drag is over it: a folder with the rows it holds, the folder a file sits in, or the whole workspace over the empty space and over a file at the top. A folder whose row has scrolled under the pinned path lights there too. A drag resting on a closed folder opens it after a moment, to drop deeper. Only a host that takes uploads takes drops. These trees hold each state still and take no drops; the workspace under Upload and Download takes real ones."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="over the empty space: the workspace">
@@ -547,8 +547,8 @@ onMounted(() => {
         </div>
       </GallerySection>
       <GallerySection
-        title="Upload and download"
-        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, fitting its rows until the divider above it sets its height, one on its way at a time and the rest waiting, a folder as one row. Each row is its name and one line of facts, the one on its way with a bar between them: how much has gone and how fast, and of a folder how many files; Completed once one has landed; why one failed, or of a folder how many of its files did. A line too long for the list is cut and its tooltip shows it whole; the name's shows where it goes, and a folder's failures list in theirs. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A folder an upload changes is listed again. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
+        title="Upload and Download"
+        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, fitting its rows until the divider above it sets its height, one on its way at a time and the rest waiting, a folder as one row. Each row is its name and one line of facts, the one on its way with a bar between them: how much has gone and how fast, and of a folder how many files; “Completed” once one has landed; why one failed, or of a folder how many of its files did. A line too long for the list is cut and its tooltip shows it whole; the name's shows where it goes, and a folder's failures list in theirs. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A folder an upload changes is listed again. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
       >
         <div class="flex flex-wrap items-start gap-6">
           <GallerySpecimen variant="uploads · every state, live">
@@ -564,8 +564,8 @@ onMounted(() => {
               </div>
               <div class="flex flex-wrap gap-1">
                 <Button size="sm" variant="ghost" @click="resetPinnedUploads">Reset</Button>
-                <Button size="sm" variant="ghost" @click="dropPhotos">Drop photos/ on docs</Button>
-                <Button size="sm" variant="ghost" @click="dropOnWorkspace">Drop src/ + 2 files on the workspace</Button>
+                <Button size="sm" variant="ghost" @click="dropPhotos">Drop photos/ on docs/</Button>
+                <Button size="sm" variant="ghost" @click="dropOnWorkspace">Drop src/ + 2 Files on the Workspace</Button>
               </div>
             </div>
           </GallerySpecimen>
@@ -598,7 +598,7 @@ onMounted(() => {
 
     <template v-if="view === 'dialogs'">
       <GallerySection
-        title="Select folder"
+        title="Select Folder"
         note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline device is listed but cannot be chosen."
       >
         <GalleryDialogFrame v-slot="{ open, close }">
@@ -607,7 +607,7 @@ onMounted(() => {
             :is-open="open"
             :overlay-store="appOverlayStore"
             mode="directory"
-            title="Select folder"
+            title="Select Folder"
             :source="folderHost.source"
             :initial-path="folderHostId === 'mac' ? '/Users/zan/Projects' : undefined"
             :places="folderHost.places"
@@ -624,7 +624,7 @@ onMounted(() => {
       </GallerySection>
 
       <GallerySection
-        title="Open file"
+        title="Open File"
         note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer. Cloud shows no status and remains selectable while asleep; its source wakes it when browsing."
       >
         <GalleryDialogFrame v-slot="{ open, close }">
@@ -633,7 +633,7 @@ onMounted(() => {
             :is-open="open"
             :overlay-store="appOverlayStore"
             mode="file"
-            title="Open file"
+            title="Open File"
             :source="fileHost.source"
             :initial-path="fileHostId === 'mac' ? '/Users/zan/Projects/demi' : undefined"
             :places="fileHost.places"
@@ -650,8 +650,8 @@ onMounted(() => {
       </GallerySection>
 
       <GallerySection
-        title="New project"
-        note="The working-environment dialog on its form: Cloud or Device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one (Add Device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
+        title="New Project"
+        note="The working-environment dialog on its form: the Cloud or a device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one (Add Device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
       >
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <WorkspaceDialog
@@ -699,7 +699,7 @@ onMounted(() => {
       </GallerySection>
 
       <GallerySection
-        title="Address bar"
+        title="Address Bar"
         note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the file's crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner."
       >
         <GallerySpecimen v-for="entry in addressWidths" :key="entry.variant" :variant="entry.variant" wide>
@@ -743,7 +743,7 @@ onMounted(() => {
             :hosts="hosts"
             :host-id="narrowHostId"
             @update:host-id="narrowHostId = $event"
-            @select="productWould(`Use ${$event} as the project's folder`)"
+            @select="productWould(`Use ${$event} as the Project's Folder`)"
             @close="close"
           />
         </GalleryDialogFrame>

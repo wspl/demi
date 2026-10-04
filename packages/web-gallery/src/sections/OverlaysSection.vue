@@ -30,6 +30,7 @@ import { demoExposes } from '../fixtures/settings'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
+import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 
 const { view } = useGalleryView()
 
@@ -103,14 +104,20 @@ function removeSessionExpose(id: string) {
   })
 }
 
-const items = [
+/** A menu row a specimen offers: its id and its label. */
+interface MenuChoice {
+  id: string
+  label: TitleText
+}
+
+const items: MenuChoice[] = [
   { id: 'neutral', label: 'Neutral' },
   { id: 'hairline', label: 'Hairline' },
   { id: 'carved', label: 'Carved' },
   { id: 'overlay', label: 'Overlay' },
 ]
-const tallActions = Array.from({ length: 24 }, (_, i) => `Action ${String(i + 1).padStart(2, '0')}`)
-const tallOptions = Array.from({ length: 24 }, (_, i) => ({
+const tallActions: TitleText[] = Array.from({ length: 24 }, (_, i) => `Action ${String(i + 1).padStart(2, '0')}`)
+const tallOptions = Array.from({ length: 24 }, (_, i): MenuChoice => ({
   id: `opt-${i + 1}`,
   label: `Option ${String(i + 1).padStart(2, '0')}`,
 }))
@@ -159,21 +166,18 @@ const triggerGhostClosed = ref(false)
 const triggerGhostOpen = ref(true)
 const triggerSmClosed = ref(false)
 
-const effortItems = [
+const effortItems: MenuChoice[] = [
   { id: 'low', label: 'Low' },
   { id: 'medium', label: 'Medium' },
   { id: 'high', label: 'High' },
 ]
-const submenuModels = [
+const submenuModels: MenuChoice[] = [
   { id: 'sonnet', label: 'Claude Sonnet' },
   { id: 'opus', label: 'Claude Opus' },
   { id: 'gpt', label: 'GPT-5' },
 ]
 
-function itemLabel(id: string, list: {
-  id: string;
-  label: string
-}[] = items) {
+function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
   return list.find(item => item.id === id)?.label ?? id
 }
 </script>
@@ -188,22 +192,22 @@ function itemLabel(id: string, list: {
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="hover">
             <Tooltip content="Send the current turn">
-              <Button size="md" @click="productWould('Send the current turn')">Hover me</Button>
+              <Button size="md" @click="productWould('Send the Current Turn')">Hover Me</Button>
             </Tooltip>
           </GallerySpecimen>
           <GallerySpecimen variant="top">
             <Tooltip content="Send the current turn">
-              <Button size="md" @click="productWould('Send the current turn')">Top</Button>
+              <Button size="md" @click="productWould('Send the Current Turn')">Top</Button>
             </Tooltip>
           </GallerySpecimen>
           <GallerySpecimen variant="bottom">
             <Tooltip content="Model and reasoning" placement="bottom">
-              <Button size="md" @click="productWould('Open the model and reasoning menu')">Below</Button>
+              <Button size="md" @click="productWould('Open the Model and Reasoning Menu')">Below</Button>
             </Tooltip>
           </GallerySpecimen>
           <GallerySpecimen variant="overlay">
             <Tooltip placement="right">
-              <Button size="md" @click="productWould('Open the model menu')">Rich</Button>
+              <Button size="md" @click="productWould('Open the Model Menu')">Rich</Button>
               <template #overlay>
                 <div class="text-[12px] leading-4">
                   <div class="text-fg">Claude Sonnet <span class="text-fg-subtle">(200K context)</span></div>
@@ -419,7 +423,7 @@ function itemLabel(id: string, list: {
             :primary-host="{ id: 'cloud', name: 'Cloud', kind: 'cloud', online: false }"
             :attached-hosts="[]"
             :devices="hostDevices"
-            @switch-primary="productWould(`Move the conversation to ${deviceName($event)}`)"
+            @switch-primary="productWould(`Move the Conversation to ${deviceName($event)}`)"
             @attach="productWould(`Attach ${deviceName($event)}`)"
             @detach="productWould(`Detach ${deviceName($event)}`)"
             @connect="productWould('Connect New Device')"
@@ -430,10 +434,10 @@ function itemLabel(id: string, list: {
             :overlay-store="appOverlayStore"
             :exposes="sessionExposes"
             :pending-ids="sessionExposePending"
-            @open="productWould(`Open ${$event.address} in a work panel browser tab`)"
+            @open="productWould(`Open ${$event.address} in a Work Panel Browser Tab`)"
             @renew="renewSessionExpose"
             @remove="removeSessionExpose"
-            @manage-devices="productWould('Open devices settings')"
+            @manage-devices="productWould('Open Devices Settings')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · label/value and status">
@@ -485,14 +489,14 @@ function itemLabel(id: string, list: {
                 </template>
               </MenuItem>
               <MenuItem
-                label="A much longer label"
+                label="A Much Longer Label"
                 :value="columnsLonger ? 'On' : 'Off'"
                 @select="columnsLonger = !columnsLonger"
               />
               <MenuItem
                 label="Provider"
                 value="Anthropic"
-                @select="productWould('Open the provider settings')"
+                @select="productWould('Open the Provider Settings')"
               />
             </Menu>
           </GallerySpecimen>
@@ -500,9 +504,9 @@ function itemLabel(id: string, list: {
             <Menu iconless>
               <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
               <MenuItem
-                label="Duplicate conversation"
+                label="Duplicate Conversation"
                 shortcut="⌘D"
-                @select="productWould('Duplicate conversation')"
+                @select="productWould('Duplicate Conversation')"
               />
               <MenuItem label="Pin" shortcut="⌘⇧P" @select="productWould('Pin')" />
               <MenuItem label="Archive" @select="productWould('Archive')" />
@@ -556,7 +560,7 @@ function itemLabel(id: string, list: {
               filterable
               :autofocus="false"
               filter-placeholder="Search conversations"
-              empty-text="No conversations"
+              empty-text="No Conversations"
               :items="[]"
             />
           </GallerySpecimen>
@@ -733,8 +737,8 @@ function itemLabel(id: string, list: {
       </GallerySection>
 
       <GallerySection
-        title="Dropdown width"
-        note="How wide a dropdown is. content keeps its trigger's width whatever the row, so in a row too narrow for it what follows is pushed out. shrink keeps it while the row has room and gives way when it has not, its label truncating. fill spans the row and gives way the same. Every wrapper around the trigger gives way alike. Each frame resizes from its corner."
+        title="Dropdown Width"
+        note="How wide a dropdown is, one of three widths: content keeps its trigger's width whatever the row, so in a row too narrow for it what follows is pushed out; shrink keeps it while the row has room and gives way when it has not, its label truncating; fill spans the row and gives way the same. Every wrapper around the trigger gives way alike. Each frame resizes from its corner."
       >
         <GallerySpecimen v-for="width in (['content', 'shrink', 'fill'] as const)" :key="width" :variant="width" wide>
           <div class="flex max-w-full resize-x items-center gap-1 overflow-hidden pb-3" style="width: 20rem; min-width: 4rem">
@@ -766,7 +770,7 @@ function itemLabel(id: string, list: {
               :icon="Settings"
               variant="ghost"
               aria-label="Settings"
-              @click="productWould('Open settings')"
+              @click="productWould('Open Settings')"
             />
           </div>
         </GallerySpecimen>
@@ -789,7 +793,7 @@ function itemLabel(id: string, list: {
                 shortcut="↵"
                 @select="productWould('Rename')"
               />
-              <MenuItem label="New tab" @select="productWould('New tab')" />
+              <MenuItem label="New Tab" @select="productWould('New Tab')" />
               <MenuDivider />
               <MenuItem
                 :icon="Trash2"
@@ -813,7 +817,7 @@ function itemLabel(id: string, list: {
             <div class="w-80">
               <Toast
                 v-if="pinDangerToast"
-                title="Failed to send message"
+                title="Failed to Send Message"
                 message="WebSocket is closed"
                 tone="danger"
                 @dismiss="pinDangerToast = false"
@@ -896,13 +900,13 @@ function itemLabel(id: string, list: {
             <div class="flex flex-wrap gap-2">
               <Button
                 size="md"
-                @click="showToast({ title: 'Failed to send message', message: 'WebSocket is closed', tone: 'danger' })"
-              >Fail send</Button>
+                @click="showToast({ title: 'Failed to Send Message', message: 'WebSocket is closed', tone: 'danger' })"
+              >Fail Send</Button>
               <Button
                 size="md"
                 variant="ghost"
                 @click="showToast({ title: 'Copied', tone: 'success' })"
-              >Copy id</Button>
+              >Copy ID</Button>
               <Button
                 size="md"
                 variant="ghost"
@@ -915,7 +919,7 @@ function itemLabel(id: string, list: {
 
       <GallerySection
         title="Dialog"
-        note="Modal confirm. The pinned one starts open. Show toast keeps the live dialog open: the notification stays above its scrim and can be dismissed without closing the dialog."
+        note="Modal confirm. The pinned one starts open. Show Toast keeps the live dialog open: the notification stays above its scrim and can be dismissed without closing the dialog."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="open">
@@ -968,8 +972,8 @@ function itemLabel(id: string, list: {
             <Button
               size="md"
               variant="ghost"
-              @click="showToast({ title: 'Could not refresh usage', message: 'The provider is temporarily unavailable.', tone: 'danger' })"
-            >Show toast</Button>
+              @click="showToast({ title: 'Could Not Refresh Usage', message: 'The provider is temporarily unavailable.', tone: 'danger' })"
+            >Show Toast</Button>
             <div class="flex justify-end gap-2">
               <Button
                 size="md"

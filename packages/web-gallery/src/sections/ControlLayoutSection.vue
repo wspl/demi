@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { Code, Eye, Globe, RefreshCw, Search, X } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
-import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -17,23 +17,23 @@ const widths = [240, 400] as const
 const variants = ['plain', 'prefix', 'suffix', 'secret', 'disabled', 'bare'] as const
 const value = ref('Example value')
 const selected = ref('first')
-const segmentOptions = [
+const segmentOptions: readonly SegmentedOption<string>[] = [
   { value: 'first', label: 'First' },
   { value: 'second', label: 'Second' },
   { value: 'third', label: 'Third' },
 ]
 // More segments than a narrow container holds, as the sign-in page's states on a phone.
 const step = ref('ended')
-const stepOptions = [
+const stepOptions: readonly SegmentedOption<string>[] = [
   { value: 'form', label: 'Form' },
-  { value: 'busy', label: 'Signing in' },
-  { value: 'wrong', label: 'Wrong password' },
+  { value: 'busy', label: 'Signing In' },
+  { value: 'wrong', label: 'Wrong Password' },
   { value: 'locked', label: 'Locked' },
-  { value: 'ended', label: 'Session ended' },
+  { value: 'ended', label: 'Session Ended' },
 ]
 // Icons alone, as the File view switches a document between Preview and Source.
 const view = ref('preview')
-const viewOptions = [
+const viewOptions: readonly SegmentedOption<string>[] = [
   { value: 'preview', label: 'Preview', icon: Eye },
   { value: 'source', label: 'Source', icon: Code },
 ]
@@ -48,7 +48,7 @@ const surfaces = [
 
 <template>
   <GallerySection
-    title="Control layout"
+    title="Control Layout"
     note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. In a container narrower than its segments, it keeps every label whole and scrolls in its own box, with the chosen segment in view. Command text and copy controls share a vertical center."
   >
     <div class="mb-6 flex flex-wrap gap-4">
@@ -151,7 +151,7 @@ const surfaces = [
               <IconButton :icon="X" size="xs" variant="ghost" aria-label="Remove" />
             </template>
           </MenuItem>
-          <MenuItem :icon="Globe" label="A row without actions" value="text keeps the row padding" />
+          <MenuItem :icon="Globe" label="A Row Without Actions" value="text keeps the row padding" />
         </Menu>
       </GallerySpecimen>
     </div>

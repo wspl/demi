@@ -55,7 +55,7 @@ const allEntries = sidebarEntries(PLUGIN_PAGES, () => true)
 const entriesWithoutSkills = sidebarEntries(PLUGIN_PAGES, (plugin) => plugin !== 'skills')
 /** What the product does with a pinned specimen's entry: settings, on the section the entry names. */
 function wouldOpenSettings(section?: string): void {
-  productWould(section ? `Open ${section} settings` : 'Open settings')
+  productWould(section ? `Open ${section} Settings` : 'Open Settings')
 }
 
 const anatomy: [string, string][] = [
@@ -264,7 +264,7 @@ onBeforeUnmount(() => listRestore.stop())
             @move-to-project="(ids, projectId) => patchMany(ids, (c) => ({ ...c, projectId }))"
             @archive="dropMany"
             @open-settings="openSettings"
-            @sign-out="productWould('Sign out')"
+            @sign-out="productWould('Sign Out')"
           />
           </template>
           <div
@@ -292,7 +292,7 @@ onBeforeUnmount(() => listRestore.stop())
     </GallerySection>
 
     <GallerySection
-      title="Plugin entries"
+      title="Plugin Entries"
       note="A plugin's entry shows while the user has the plugin on: Skills on, then off. Each entry, like Archived and Settings, says what the product would open."
     >
       <div class="specimen-row specimen-row-wide items-start">
@@ -311,10 +311,10 @@ onBeforeUnmount(() => listRestore.stop())
               :conversations="[]"
               :active-id="null"
               :section-entries="specimen.entries"
-              @create="productWould('Start a new conversation')"
-              @add-project="productWould('Add a project')"
+              @create="productWould('Start a New Conversation')"
+              @add-project="productWould('Add a Project')"
               @open-settings="wouldOpenSettings"
-              @sign-out="productWould('Sign out')"
+              @sign-out="productWould('Sign Out')"
             />
           </div>
         </GallerySpecimen>
