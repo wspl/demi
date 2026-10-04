@@ -530,6 +530,60 @@ async fn a_compact_stopped_after_a_finished_answer_leaves_no_stop_to_continue() 
     );
 }
 
+// One session, two scripted requests and a restore: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn agent_messages_held_by_a_stopped_compact_still_wait_for_the_user_after_a_restart() {
+    let provider = ScriptedRuntime::new([answer("first"), Turn::pending()]);
+    let store = MemoryTreeStore::new();
+    let session = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
+    session
+        .send(long_message(), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    let compacting = session.compact().unwrap();
+    until(|| provider.requests().len() == 2).await;
+    // Saved as it arrives, before the stop holds it.
+    session
+        .accept_agent_message(agent_message("news"))
+        .await
+        .unwrap();
+    session.abort().await;
+    assert_eq!(compacting.await, Ok(ActionEnd::Aborted));
+    session.dispose().await.unwrap();
+    drop(session);
+
+    let later = ScriptedRuntime::new([answer("caught up")]);
+    let copy = store.copy();
+    let (restored, continuation) = restore_configured(
+        copy.checkpoint(&root()).unwrap(),
+        &copy,
+        &later,
+        test_runtime(Vec::new()),
+        Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
+        SessionConfig {
+            compaction: only_when_asked(),
+            ..SessionConfig::default()
+        },
+    );
+    assert!(!continuation.interrupted);
+    // The node's policy wakes a root whose last turn was not interrupted.
+    restored.wake();
+    restored.settled().await;
+
+    // The stop was the user's: the message waits for the user's next action.
+    assert!(later.requests().is_empty());
+    restored
+        .send(text("what happened?"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(
+        kinds(&restored.transcript().blocks[3..]),
+        ["user", "agent_message", "text", "response"]
+    );
+}
+
 // One session and four scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_failed_turn_compacted_afterwards_is_resumed_after_the_summary_and_keeps_the_divider() {

@@ -195,7 +195,11 @@ queued message, and the page still holds it as an unconfirmed submission
 ([Persistence and adapters](../product/web-application.md#persistence-and-adapters)).
 Agent messages keep waiting, with or without a marker: the stop is the
 user's, and the user's next action reads them
-([Delivery and scheduling](subagents.md#delivery-and-scheduling)).
+([Delivery and scheduling](subagents.md#delivery-and-scheduling)). Without a
+marker, nothing in the transcript says the user stopped, so the session
+holds them, together with its due yield wakeups, until that action; its
+checkpoint keeps the hold, so after a restart they still wait
+([Tree store](#tree-store)).
 If the action was saving a history rewrite, it records the stop after the
 rewrite is published, so a rewrite never loses a stop. `abort_result` is sent
 only once the record is in the transcript. A provider run that is cancelled
@@ -228,7 +232,10 @@ marked executing completes as an error
 its outcome is unknown, and it never runs again
 ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
 The restored session is idle, with its saved wakeups armed
-([Yield wakeups](#yield-wakeups)). It hands back its queued messages and
+([Yield wakeups](#yield-wakeups)). A session saved holding its waiting input
+([Stop](#stop)) holds it again, and a session restored from an interrupted
+turn holds its own the same way until the node's next action, so a later
+restart keeps that hold too. It hands back its queued messages and
 whether a turn was interrupted; the node's lifecycle policy decides what
 happens next ([Persistence](subagents.md#persistence)). A root leaves its interrupted turn to
 its client, which the product offers as Resume
@@ -422,7 +429,8 @@ with `shell_status`.
   ended at once, since the restore starts that wakeup's wait. A tree that
   is live by then is left as it is. A root saved under a turn is left out of
   the index: it restores interrupted and holds its wakeups until the user
-  resumes it, so restoring it with no page would fire nothing. A child's
+  resumes it, so restoring it with no page would fire nothing. So is a root
+  saved holding its input after a Stop ([Stop](#stop)). A child's
   wakeups count, since a restored child resumes its interrupted turn.
 - A scheduled wakeup is not conversation activity: it keeps no Cloud awake
   ([Activity](../execution/resource-lifecycle.md#activity)). A subagent with a
@@ -1630,7 +1638,7 @@ A node's checkpoint has two parts:
 | Part | Holds |
 | --- | --- |
 | Transcript rows | One row per block, by index |
-| State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the yield wakeups not yet in the transcript, each with its id, its duration and its due time once its action ended; the working directory; the model selection; the accepted edit receipts |
+| State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the yield wakeups not yet in the transcript, each with its id, its duration and its due time once its action ended; the working directory; the model selection; the accepted edit receipts; whether the session holds its waiting input for the user's next action ([Stop](#stop)) |
 
 Human pending steers are not part of it. Creating,
 closing, reopening and deleting nodes, and delivering subagent completions, are
@@ -1655,8 +1663,8 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
   running is one the process died in; clients see the phase go idle only once
   that save has committed ([A turn](#a-turn)).
 - A save is due when the transcript, edit receipts, the queue,
-  the waiting agent messages or the model selection changed. The phase alone
-  never makes a save due.
+  the waiting agent messages, the model selection or the hold on waiting
+  input changed. The phase alone never makes a save due.
 - A scheduled save that fails is reported as an `error` frame, and its rows are
   saved with the next change. When the save at the end of an action fails, the
   action fails.
