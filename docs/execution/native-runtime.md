@@ -793,8 +793,10 @@ that tail.
 The invocation request begins with a four-byte big-endian JSON byte length,
 followed by JSON containing `operation`, `invocationId`, parsed `args`, whether
 the caller asked for `json`, `cwd`, `env`, the
-[command context](#command-context), and, for a job that records edits, its
-`edits` context. Each subsequent stdin chunk has a four-byte big-endian length
+[command context](#command-context), for a job that records edits, its
+`edits` context, and, for an invocation a job's command makes, where its
+stdout goes, `stdout`: `job` or `elsewhere`
+([Where a command's stdout goes](runner.md#where-a-commands-stdout-goes)). Each subsequent stdin chunk has a four-byte big-endian length
 and at most 64 KiB of binary payload.
 
 The service sends response headers before waiting for input. Input then follows
@@ -830,6 +832,20 @@ length, and payload. DATA frame boundaries are unrelated to record boundaries.
 | 2: stderr | Raw bytes. |
 | 3: completion | JSON: `exitCode` from 0 to 255, optionally `error: { code, message }`. |
 | 4: input pull | Empty; requests one input chunk or EOF. |
+| 5: medium | JSON: `size`, at most 16 MiB. A [returned medium](commands.md#return-media) begins, and its bytes follow. |
+| 6: medium bytes | Raw bytes of the medium that began last. |
+
+A handler returns a medium through its output writer, which writes one
+medium record and then the medium's bytes in medium-bytes records, with no
+other record of the invocation between them, so a medium is never
+interleaved with output or with another medium, and its place among the
+stdout records is where the handler returned it. Bytes that do not add up to
+the medium's size, medium bytes without a medium, and a size over 16 MiB
+break the protocol. The service neither routes nor keeps media: the runner
+does, by the invocation's `stdout`
+([Return media](commands.md#return-media)). An invocation without `stdout`, a
+[user stream](#user-streams) or a package call, cannot return media: its
+writer refuses them, and the handler learns so from the write.
 
 A normally handled invocation ends with exactly one completion record. Missing
 completion is failure even after HTTP 200. Bytes after completion are invalid.
@@ -859,6 +875,7 @@ These limits apply:
 | Response record payload | 64 KiB |
 | HTTP/2 header list | 16 KiB |
 | Queued output records per invocation | 4 |
+| A returned medium | 16 MiB |
 | HTTP/2 handshake, service info, and invocation metadata timeout | 10 seconds per phase |
 | Cooperative cancellation grace | 5 seconds |
 
@@ -1064,6 +1081,8 @@ These outcomes are observed on a paired device and on the Cloud:
 | Situation | Required result |
 | --- | --- |
 | A service with no lease left answers its status check slowly or not at all | The service stays resident with every conversation it holds, and the connection keeps answering other requests meanwhile |
+| A handler returns a medium whose bytes do not add up to its size, or one over 16 MiB | The call fails as a protocol break does ([Invoke and retire a service](#invoke-and-retire-a-service)); the runner keeps nothing of the medium |
+| A handler of a user stream or a package call returns a medium | Its writer refuses it, and the handler goes on |
 | A resident service exits while calls are running | Each call fails with the service's exit status and the tail of its standard error; the Host log shows the same |
 | A service holding several conversations' browsers shuts down | Every conversation is released within the shutdown deadline |
 | A request for an artifact location names a job that has exited | The request is refused or gets no answer; no location is sent |

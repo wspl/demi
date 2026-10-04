@@ -68,7 +68,7 @@ viewer the page chose; and the user's browser must not guess a type on its
 own (`nosniff`).
 
 The table also names every type a model reads natively
-([Results and previews](../agent/runtime.md#results-and-previews)), and shows
+([Media a command returns](../agent/runtime.md#media-a-command-returns)), and shows
 each in place: a tool's images and videos, and a message's, are served from
 their blobs by the same table
 ([Media a tool returned](#media-a-tool-returned)), and one it did not show in
@@ -155,15 +155,15 @@ so it wakes a stopped Cloud like any other
 
 ## Media a tool returned
 
-For example, the agent runs `demi browser screenshot 1`. The command prints a
-PNG, and the call's result attaches it as an image the model reads
-([Results and previews](../agent/runtime.md#results-and-previews)). The page
+For example, the agent runs `demi browser screenshot t1`. The command returns
+a PNG, and the call's result attaches it as an image the model reads
+([Media a command returns](../agent/runtime.md#media-a-command-returns)). The page
 shows the same picture under the call's row, whether the call is folded or
 open, and a click opens it large:
 
 ```text
 ▸ Take a screenshot of the login page    the call's row; its fold holds the
-                                         script and <binary stdout: ...>
+                                         script and [medium 1: ...]
   ┌──────────────────────┐
   │    the screenshot    │               what the model read; a click
   │                      │               opens it large
@@ -172,16 +172,18 @@ open, and a click opens it large:
 
 - **Which calls.** A call shows the images and videos its own result carries,
   so a picture shows where the model saw it. A `shell_exec` whose command
-  exits within the call's window with an image or a video on stdout carries
-  it. When the command exits after the call returned, the `shell_status`,
+  exits within the call's window carries the command's media, several of
+  them when its commands returned several. When the command exits after the
+  call returned, the `shell_status`,
   `shell_write` or `shell_abort` that reports the exit carries it instead. A
   `yield` carries none. The generic tool card shows its result's media the
   same way.
 - **Where.** Under the call's row, in the order of the result and above the
   files the call changed. Every medium takes the preview's height before its
   bytes arrive, so the transcript does not move when they load. The fold
-  still shows the command's own output, whose line
-  `<binary stdout: 412000 bytes>` stands for the original bytes.
+  still shows the command's own output, whose lines
+  `[medium 1: image/png, 412000 bytes]` and `<binary stdout: 412000 bytes>`
+  stand for the original bytes.
 - **An image** is scaled down to fit the preview's height, its proportions
   kept, and never enlarged or cropped. It is smaller than a message's image:
   it is a step of the work, not something the agent chose to show. A click
