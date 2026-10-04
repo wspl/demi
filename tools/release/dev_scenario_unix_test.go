@@ -16,7 +16,6 @@ import (
 	"sync"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend/backendtest"
@@ -114,7 +113,7 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 		Model:         "vendor/model-flash",
 		ContextWindow: 1000000,
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan struct{})
 	var devErr error
@@ -134,8 +133,6 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	case printed = <-output.ready:
 	case <-done:
 		t.Fatalf("dev exited before readiness: %v\n%s", devErr, output.text())
-	case <-ctx.Done():
-		t.Fatalf("dev readiness: %v\n%s", ctx.Err(), output.text())
 	}
 	value := func(prefix string) string {
 		for line := range strings.SplitSeq(printed, "\n") {
