@@ -46,6 +46,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
 | Work panel | `GET /conversations/:id/panel` reads the [work panel's tabs](#work-panel-state); `POST /conversations/:id/panel/tabs`, `PATCH` and `DELETE /conversations/:id/panel/tabs/:tab` and `POST /conversations/:id/panel/tabs/:tab/move` change them |
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
+| Conversation permissions | `GET /conversations/:id/permissions` reads the conversation's [permission requests and grants](#conversation-permissions); `POST /conversations/:id/permissions/requests/:request { decision }` decides a request; `DELETE /conversations/:id/permissions/grants/:category` revokes a grant |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Plugins | `PUT /plugins/:plugin { enabled }` turns a plugin on or off for the caller ([A user's plugins](#a-users-plugins)); `GET /conversations/:id/plugins/:plugin/state` reads a plugin's [state for one conversation](#conversation-state-of-plugins); `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](#plugin-calls), for the user or for one conversation; `POST /conversations/:id/reload` reopens the conversation's tree with the user's current plugins |
@@ -421,6 +422,48 @@ archived conversation reads its draft and refuses the other operations with
 409 `conversation_archived`; after a restore it has the draft it had. A draft
 lasts as long as its conversation, and a Fork starts with an empty one
 ([Conversation Fork](../agent/conversation-fork.md)).
+
+## Conversation permissions
+
+A conversation's [permission requests and grants](../agent/permissions.md)
+reach a page by revision, as a draft does. For example, an agent of `c_81`
+runs `demi skills add`. Every page of the user receives the conversation's
+summary with `permissionRequests: 1` and a higher `permissionsRevision`, and
+a page that shows `c_81` reads:
+
+```text
+GET /api/conversations/c_81/permissions
+
+200 { "revision": 12,
+      "requests": [ { "id": "pr_3k9", "category": { "id": "skills.manage",
+                      "action": "manage skills", "description": "..." },
+                      "operation": { "summary": "Add vercel-labs/agent-skills and turn on 1 of its 5 skills",
+                                     "fields": [ { "label": "Commit", "value": "41ab07c2d9e5" }, ... ],
+                                     "items": [ { "name": "web-design-guidelines", "detail": "..." } ] },
+                      "agent": null, "createdAt": "...", "waiting": true } ],
+      "grants": [] }
+
+POST /api/conversations/c_81/permissions/requests/pr_3k9
+{ "decision": "allow" }
+
+204
+```
+
+| Route | Body | Does |
+| --- | --- | --- |
+| `GET /api/conversations/:id/permissions` | None | Returns `{ revision, requests, grants }`: the waiting requests, oldest first, and the grants, each `{ category, grantedAt }` with the category as a request carries it |
+| `POST /api/conversations/:id/permissions/requests/:request` | `{ decision: "allow" \| "deny" }` | Decides the request ([Requests](../agent/permissions.md#requests)) and answers 204 |
+| `DELETE /api/conversations/:id/permissions/grants/:category` | None | Revokes the grant and answers 204; a category without a grant changes nothing |
+
+A request that is no longer waiting for a decision, because another page
+decided it, an Allow of its category answered it, or a newer request replaced
+it, answers 404 `permission_request_not_found`; the page shows the outcome
+from the conversation's summary. A grant lists only categories that a plugin
+of the backend declares. An archived conversation reads its grants, has no
+requests, and refuses a decision or a revocation with 409
+`conversation_archived`. The page takes an answer only when its revision is
+higher than the one it holds, since a read and the summary can reach it in
+either order.
 
 ## Device log
 
@@ -859,6 +902,12 @@ rises each time a job of the conversation ends, since any job may change the
 working tree; it is counted in memory from the backend's start, as
 `pluginRevisions` is, and the page lists the working tree again when it rises
 ([File text and working tree changes](#file-text-and-working-tree-changes)).
+`permissionRequests` counts the conversation's waiting
+[permission requests](#conversation-permissions), which the sidebar shows as
+the needs-you mark, and `permissionsRevision` rises with each change of its
+requests or grants, counted in memory as `pluginRevisions` is; a page that
+shows the conversation reads them when it is higher than the revision it
+holds.
 
 `POST /api/conversations/:id/title`, without a body, asks the conversation's
 model selection for a new title from every message the user sent and answers
@@ -912,7 +961,7 @@ later one is the current value of one part of it that changed:
 | Message | Carries | Sent when |
 | --- | --- | --- |
 | `snapshot` | `state`, the product state below | First, on every connection |
-| `conversation` | `conversation`, the conversation's summary as the conversation lists carry it | Its record changes: a patch or a batch item, an archive, a restore or a target switch once it completes, a read acknowledgement, a draft saved, restored or dismissed, a message sent, a title requested or written. It is created or forked. Its tree saves a checkpoint, starts or stops working, or is disposed |
+| `conversation` | `conversation`, the conversation's summary as the conversation lists carry it | Its record changes: a patch or a batch item, an archive, a restore or a target switch once it completes, a read acknowledgement, a draft saved, restored or dismissed, a message sent, a title requested or written. It is created or forked. Its tree saves a checkpoint, starts or stops working, or is disposed. A permission request is raised, decided, replaced or withdrawn, or its command stops waiting; a grant is revoked |
 | `conversation_order` | `ids`, the id of every conversation, in the product state's order | A conversation is created, forked, moved, pinned or unpinned, archived or restored |
 | `preferences` | `preferences` | A preferences patch |
 | `user` | `user` | The nickname or the email address changes |
