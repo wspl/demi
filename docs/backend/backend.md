@@ -646,17 +646,20 @@ uses:
   the loopback interface, that answers each request with
   `Echo: <the last user message's text>` as a stream.
 
-Through the web API it seeds the master account
-`developer@example.test` with the password `development` and one provider
-entry of the `anthropic` family that points at the echo endpoint, with the one
-configured model `echo`; it selects nothing else. It prints the backend's URL,
-the account and the page's command, which names the backend in
-`DEMI_BACKEND_URL` and the account in `DEMI_DEV_EMAIL` and
-`DEMI_DEV_PASSWORD` for the sign-in page:
+Through the web API it seeds the master account and one provider entry of
+the `anthropic` family that points at the echo endpoint, with the one
+configured model `echo`; it selects nothing else. The account is the one
+`DEMI_DEV_EMAIL` and `DEMI_DEV_PASSWORD` name in the repository's ignored
+`.env`, which the web app's sign-in page fills in during development; with
+neither set it is `developer@example.test` with the password `development`,
+and setting only one stops the command before it builds anything. Since every
+run starts on a fresh data directory, that account is the first user of the
+database each time. It prints the backend's URL, the account and the page's
+command, which names the backend in `DEMI_BACKEND_URL`, and the account too
+when `.env` does not:
 
 ```sh
-DEMI_BACKEND_URL=http://127.0.0.1:3271 DEMI_DEV_EMAIL=developer@example.test \
-  DEMI_DEV_PASSWORD=development bun run web:dev
+DEMI_BACKEND_URL=http://127.0.0.1:3271 bun run web:dev
 ```
 
 The backend, the manager and the runners run in process groups of their
