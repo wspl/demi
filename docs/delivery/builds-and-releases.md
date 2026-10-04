@@ -59,7 +59,7 @@ for image assembly, cross-build it for the Linux builder's architecture and
 run it there ([guest image build](../../cloud-guest-image/README.md)):
 
 ```sh
-CGO_ENABLED=0 GOFLAGS=-mod=readonly GOOS=linux GOARCH=arm64 \
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
   go build -trimpath -ldflags='-s -w' \
   -o .cache/release-linux-arm64 ./tools/release
 ```
@@ -83,18 +83,10 @@ The tree watch's macOS FSEvents file uses purego; that narrow native API call
 does not enable cgo. The Linux race-test exception is described in
 [Testing](testing.md#race-detection).
 
-During the migration, set these for every command below, including `go run`,
-`go generate`, and the Go commands launched by scripts:
-
-```sh
-export CGO_ENABLED=0
-export GOFLAGS=-mod=readonly
-```
-
-`GOFLAGS=-mod=readonly` prevents the reference code's root `vendor/` directory
-from selecting Go vendor mode. Remove that temporary requirement when the
-migration removes the directory. Module and checksum changes are reviewed,
-not silently made by a build.
+Set `CGO_ENABLED=0` for every command below, including `go run`,
+`go generate`, and the Go commands that scripts launch. A build never changes
+`go.mod` or `go.sum`; module and checksum changes are reviewed changes of
+their own.
 
 Generated Go contracts are committed. `go generate` invokes
 `tools/contractgen` to regenerate decoders, encoders, validation, and Zod from
@@ -292,13 +284,13 @@ acceptance runs the shared Go suites on each platform that ships a feature.
 | Command | What it checks |
 | --- | --- |
 | `go vet ./...` | Static checks of host-buildable packages and tests |
-| `gofmt -l cmd internal tools` | Formatting; output must be empty (`gofmt -w` applies it) |
+| `scripts/fmt.sh <file>...` | Formats with `gofumpt`, `golines` (120 columns) and `goimports`; `golangci-lint run` reports a file it would change |
 | `go test ./...` | Package tests, including repository-program scenarios; `go test ./internal/gates -run <pattern>` selects one behavior while editing |
 | `golangci-lint run ./...` | Pinned v2.14.0, with `staticcheck`, `errcheck`, `govet`, and `revive`; no warnings; a local suppression names its reason |
 | `go run ./tools/archcheck` | Declared package dependency direction, including test imports and otherwise unused packages |
 | `go run ./tools/cgocheck` | No selected cgo dependencies and no failed package loads on every shipping target, always with `CGO_ENABLED=0` |
 | `go-check-sumtype -default-signifies-exhaustive=false ./...` | Exhaustive switches over annotated sealed interfaces; a default does not excuse a missing variant |
-| `bash scripts/gomig/check.sh <package>...` | During migration: builds on shipping targets, vet, lint, cgo, imports, exhaustiveness, and race tests of the packages and their importers |
+| `scripts/check.sh <package>...` | All of the above in one run, the check before a commit: builds on the six shipping targets, generated code, file names, no Rust files, vet and lint for darwin, linux and windows, exhaustiveness, package dependencies, cgo, and race tests; with `./...` also the shell fork's tests. It passes when its last line ends in `PASS` |
 | `bun run test` | TypeScript tests, package boundaries, web app contract scenarios, and capture-extension JavaScript tests |
 
 The release target table drives builds and checks. Run lint, import and

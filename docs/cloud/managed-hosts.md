@@ -68,10 +68,13 @@ own interfaces rather than administration tools, so it handles results and
 errors as values instead of parsing command output:
 
 - mounts, loop devices, filesystem freezes, namespaces, and locks through system
-  calls and ioctls (`rustix`);
-- network interfaces, addresses, and routes through netlink (`rtnetlink`);
+  calls and ioctls (`golang.org/x/sys/unix`);
+- network interfaces, addresses, and routes through netlink
+  (`github.com/vishvananda/netlink`), and the firewall through nftables
+  (`github.com/google/nftables`);
 - cgroups and network settings through files under `/sys` and `/proc`;
-- each boot's OCI bundle as typed OCI specification structures (`oci-spec`).
+- each boot's OCI bundle as typed OCI specification structures, contract types
+  of `internal/machines/sandbox`.
 
 It runs a program only where no library does the job:
 

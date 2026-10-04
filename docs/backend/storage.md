@@ -677,8 +677,9 @@ Sealing protects credentials when the database leaks alone; it is not key
 management, and whoever holds both the database and the secret can open every
 credential. A deployment sets `DEMI_INSTANCE_SECRET` when several workers must
 share the secret, or to keep the secret apart from the data it protects. The
-backend uses the RustCrypto implementations of these standard formats
-(`argon2`, `aes-gcm`, `hkdf`, `sha2`, `hmac`).
+backend uses the Go standard library's implementations of these standard
+formats (`crypto/aes` with `crypto/cipher` GCM, `crypto/hkdf`, `crypto/sha256`,
+`crypto/hmac`) and `golang.org/x/crypto/argon2`.
 
 ## Multi-worker storage placement
 

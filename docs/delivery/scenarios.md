@@ -319,7 +319,7 @@ DEMI_TEST_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
 DEMI_TEST_CLOUD_URL=http://<address>:<port> \
 DEMI_TEST_MACHINES_DATA=/var/lib/demi-machine-manager \
 DEMI_TEST_CLOUD_NATIVE=<native configuration> \
-  CGO_ENABLED=0 GOFLAGS=-mod=readonly go test -tags acceptance ./internal/backend \
+  CGO_ENABLED=0 go test -tags acceptance ./internal/backend \
   -run '^Test(ACloud|AResetBringsBackACloud|ACheckpointWithChrome|TwoUsersClouds)' -p 1 -count=1 -v
 ```
 
@@ -335,7 +335,7 @@ sudo bash scripts/machines/cloud-suite.sh --image <release> \
 Build the programs first:
 
 ```sh
-CGO_ENABLED=0 GOFLAGS=-mod=readonly go build -o target/debug/ ./cmd/...
+CGO_ENABLED=0 go build -o .cache/programs/ ./cmd/...
 ```
 
 The script starts that manager with its
