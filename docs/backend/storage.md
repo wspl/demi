@@ -201,18 +201,16 @@ Host. The node lifecycle and its commits are defined in
 
 | Table | Meaning |
 |---|---|
-| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description and profile, whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, command and output revisions, and when the earliest wakeup the checkpoint state saves is due (`wakeup_at`, encoded as the index of conversations encodes it), which each save writes with the state, so the conversation's earliest wakeup is the least over its nodes; a root saved under a turn has none, since its wakeups wait for the user to resume it ([Yield wakeups](../agent/runtime.md#yield-wakeups)) |
+| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description and profile, whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision, and when the earliest wakeup the checkpoint state saves is due (`wakeup_at`, encoded as the index of conversations encodes it), which each save writes with the state, so the conversation's earliest wakeup is the least over its nodes; a root saved under a turn has none, since its wakeups wait for the user to resume it ([Yield wakeups](../agent/runtime.md#yield-wakeups)) |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, shells, agents and conversation browser tabs. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index |
 | `blob_refs` | An index of the blobs the blocks reference, for the [retention pass](#retention): one row per reference, with the node, the block index, the reference's place in the block, the blob, what refers to it (a message's medium, a tool result's medium or an edit copy), and the block's time. The rows are derived from the blocks, never written on their own: one function derives a block's rows, and every path of the tree store that writes a block, a save, a history rewrite, an edit, a Fork's seed and a retirement, replaces that block's rows with it in the same transaction. It indexes what SQLite cannot index inside a block's JSON |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
-| `command_snapshots` | Immutable complete command-state maps indexed by node and revision ([Command state history](../agent/command-state-history.md)) |
-| `session_boundaries` | History cutoffs linked to a command revision |
 
 For example, saving a streamed assistant block updates that block's row and
 the node checkpoint together. It does not serialize the whole transcript into
-the node's state. Rewinding history deletes rows beyond the new block count
-and restores the corresponding command state. The journal is therefore a
+the node's state. Rewinding history deletes rows beyond the new block count.
+The journal is therefore a
 sequence of indexed blocks, not an append-only database.
 
 Each atomic commit of the tree store, such as creating, saving or closing a
@@ -223,10 +221,9 @@ descendants and their dependent rows.
 A save writes its rows as they are: a block holds its media by reference,
 and each blob was stored when its medium entered the transcript
 ([Attachment and transcript media](#attachment-and-transcript-media)). The
-transaction commits the block rows, the state and the command state together
-or rolls all three back, so a crash at any moment leaves one complete
-checkpoint. What a save carries, its order, and the guard it checks right
-before its transaction belong to the tree store contract
+transaction commits the block rows and the state together or rolls both
+back, so a crash at any moment leaves one complete checkpoint. What a save
+carries and its order belong to the tree store contract
 ([Saving](../agent/runtime.md#saving)).
 
 Changed output advances `output_revision` in the checkpoint transaction; input
@@ -601,8 +598,7 @@ Every stored value has one encoding, fixed by its column or by its type:
   example, a conversation forked at 14:13:20 UTC on 21 September 2026 has
   `created_at` 1790000000000 in its `conversations` row, while the Fork
   operation that created it records `"createdAt": "2026-09-21T14:13:20.000Z"`
-  in its JSON metadata. Command storage values are the JSON values the command
-  wrote; the store does not interpret them.
+  in its JSON metadata.
 - **Credentials are sealed BLOBs**
   ([Passwords and credentials at rest](#passwords-and-credentials-at-rest)).
 
@@ -616,7 +612,7 @@ column value outside its set, a JSON value that does not match its type, or a
 sealed value that does not open is corrupt: the read fails with an error that
 names the table and column, and nothing repairs, replaces or defaults the
 value. The tree store reads a checkpoint the same way: its model selection,
-transcript blocks, command state, queued input, scheduled wakeups and edit
+transcript blocks, queued input, scheduled wakeups and edit
 receipts are decoded into their types, and corrupt data stops the restore.
 
 A digest of a JSON value is SHA-256 over its RFC 8785 canonical form, which

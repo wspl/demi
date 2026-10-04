@@ -1,7 +1,7 @@
 # Conversation execution targets and coordination
 
 A conversation owns one backend agent tree and one execution-target selection.
-Each node keeps its own transcript and command storage. The target determines
+Each node keeps its own transcript. The target determines
 where an action runs; changing it does not relocate conversation state or files.
 This document owns target selection, job identity, switching, admission, and
 every way the backend reaches a Host.
@@ -50,12 +50,12 @@ the agent node. These identities remain fixed for that job even when another
 shell starts or another conversation uses the same device.
 
 For example, node `a1` can run jobs on both the main laptop and attached device
-`ci`. The table shows which state a callback accesses:
+`ci`. The table shows which node a callback acts for:
 
-| Job | Execution device | Callback command state | Invoking Host |
+| Job | Execution device | Callback node | Invoking Host |
 | --- | --- | --- | --- |
-| `j1` from `a1` | laptop | `a1`'s tree and storage | laptop |
-| `j2` from `a1` | ci | `a1`'s tree and storage | ci |
+| `j1` from `a1` | laptop | `a1` | laptop |
+| `j2` from `a1` | ci | `a1` | ci |
 
 A callback supplies only its job reference. The backend checks the
 authenticated device connection and the live job record, gives the handler the
@@ -424,7 +424,7 @@ Runner connection loss and subsequent reconnection follow the
 [runner lifetime contract](runner.md#command-lifetime). New connections do not
 resurrect old jobs.
 
-Conversation trees and command state remain in backend storage. Working files
+Conversation trees remain in backend storage. Working files
 remain on their devices. Cloud system and home volumes persist across ordinary
 shutdown; reset preserves home. Archiving a conversation does not delete its
 session directory or Cloud machine. Workspace deletion requires no referencing
@@ -459,7 +459,7 @@ storage and execution authority
 
 Backend scenarios and agent tests use scripted providers. They cover child
 activity during switches, concurrent admission, file uploads, cross-user
-refusal, expired jobs, cross-host command storage, per-node context updates,
+refusal, expired jobs, cross-host callbacks, per-node context updates,
 and shared-device reset and recovery, and they show that:
 
 - an archive during a Cloud wake refuses the waiting operation once the wake

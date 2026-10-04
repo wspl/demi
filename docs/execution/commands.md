@@ -66,21 +66,23 @@ declaration and its handler cannot describe different arguments
 ([Contract crates](../architecture/contracts.md#contract-crates)).
 
 An `rpc` leaf runs a handler in the backend instead.
-`demi todo add "Write tests"` declares its arguments the same way:
+`demi expose add 3000` declares its arguments the same way:
 
 ```rust
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct AddArgs {
-    /// Todo text
-    text: String,
+    /// host:port, or a bare port meaning 127.0.0.1
+    address: String,
+    /// Host name or device id from demi host list; the main host by default
+    host: Option<String>,
 }
 ```
 
-Its leaf has `kind: "rpc"`, `positionals: ["text"]`, and an `output.json`
+Its leaf has `kind: "rpc"`, `positionals: ["address"]`, and an `output.json`
 schema derived from the type it prints with `--json`. Its handler receives the
-validated arguments as an `AddArgs`, adds the todo to the invoking agent node's
-command storage, and prints the new todo ([Handle an rpc call](#handle-an-rpc-call)).
+validated arguments as an `AddArgs`, creates the expose, and prints its URL
+([Handle an rpc call](#handle-an-rpc-call)).
 
 Declarations are separate from handlers. The command set pairs the declaration
 tree with one handler per `rpc` leaf, and everything that reads the tree sees
@@ -132,7 +134,7 @@ values, and schema failures reject execution, and one rejection names every
 field that failed. It names the field rather than repeating its value, which
 may be a whole stdin body: `"count" is not of type "integer"; "path" is a
 required property`. An unknown option's rejection also names the command, such
-as `Unknown option "--bogus" for "demi todo add"`, since a script may run
+as `Unknown option "--bogus" for "demi expose add"`, since a script may run
 several commands. The parser reports a missing option value before it
 consumes the next option. `--name=value` supplies an option value that begins
 with `--`. Without `restField`, a standalone `--` ends option parsing and the
@@ -227,10 +229,6 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 | `file create` | path | none | file content |
 | `file edit` | path | old, new, occurrence, context | unused |
 | `file patch` | none | none | unified diff |
-| `todo add` | text | JSON output | unused |
-| `todo update` | id | text, status, JSON output | unused |
-| `todo done` | id | JSON output | unused |
-| `todo list` | none | JSON output | unused |
 | `agent spawn` | none | profile, description, no-subagents, JSON output | task brief |
 | `agent send`, `resume` | id | JSON output | message |
 | `agent abort`, `show` | id | JSON output | unused |
@@ -299,7 +297,7 @@ composition, immutable releases, installation, and service lifetime.
 
 An `rpc` handler receives its call as data and acts only through messages;
 [The TypeScript boundary](../architecture/contracts.md#the-typescript-boundary)
-says why. For example, `demi todo add "Write tests"` in a job reaches the
+says why. For example, `demi expose add 3000` in a job reaches the
 backend as an `rpc_call`. The backend builds an invocation from the call and its
 record of the job, and gives the handler that invocation and a port. The
 handler of a plugin's leaf forwards both to its plugin as a command request,
@@ -315,7 +313,7 @@ The invocation carries:
 | `json` | Whether the caller passed `--json`. |
 | cwd and environment | The invoking shell's directory and environment. |
 | Command context | The [command context](native-runtime.md#command-context) from the backend's record of the job: conversation, caller, and locale. |
-| Storage binding | Whose command storage the job reaches: its agent node and that node's generation, from the same record. A job the handler starts on another Host carries it on. |
+| Caller | The agent node the job runs for, from the same record; none for a job no agent started. A job the handler starts on another Host carries it on. |
 | Stdin | Whether the calling process has a pipe on its stdin. |
 | Relayed pipes | The ids of the pipes relayed for the call's stdin and stdout. |
 
@@ -327,7 +325,6 @@ request and one reply:
 | Write stdout, write stderr | Output. Stdout flows through the call's relayed pipe, so a write waits until the calling process has read enough; stderr goes to the runner as messages ([Deliver IO](#deliver-io-and-release-an-invocation)). |
 | Read stdin | The next chunk of a finite stdin, on demand. |
 | Read live stdin | The next interactive write to the job, until the job ends. |
-| Storage | Read, list, and conditional write of the invoking agent node's command storage. |
 | Cancellation | Whether, and when, the call was cancelled. |
 
 A handler resolves what it acts on from the invocation's context: the
@@ -339,12 +336,6 @@ access with the conversation the context names
 ids let it hand the call's stdin and stdout to a job it starts on another
 device, so those bytes flow between the two devices through the backend's pipes
 without passing through the handler.
-
-Command storage changes by versioned compare-and-set: a write names the
-revision it read and fails when another write came first, and the handler then
-reads again, so two `demi todo add` calls at once keep both todos.
-[Command state history](../agent/command-state-history.md#mutation-api-and-concurrency)
-defines the storage messages, their revisions, and the versions they create.
 
 A handler ends with an exit status. A handler error writes `<root>: <message>`
 to stderr and exits 1. A call the runner cancels ends with 130. A call whose

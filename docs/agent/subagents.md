@@ -76,9 +76,9 @@ declares an `agent` group of its own, since the plugin host refuses the name
 `demi` root, "Demi agent runtime commands.", that contains only `agent`.
 
 ```text
-demi agent spawn [--request-id <id>] [--profile <name>] [--description <title>] [--no-subagents] < task-brief.txt
+demi agent spawn [--profile <name>] [--description <title>] [--no-subagents] < task-brief.txt
 demi agent abort <id>
-demi agent resume <id> [--request-id <id>] < message.txt
+demi agent resume <id> < message.txt
 demi agent send <id|parent> < message.txt
 demi agent show <id>
 demi agent list
@@ -102,26 +102,9 @@ start several children one after another and continue its work; ending its turn
 lets completion receipts wake the parent when the results are available. No
 polling or timed yields are required.
 
-Both start commands accept `--request-id <id>`. A caller that may retry an
-uncertain response supplies this ID on the first attempt and reuses it with
-identical arguments. The owning node's command storage keeps an immutable
-reservation at `agent.start.<id>`: the normalized arguments, the child's node
-ID, and the round it starts. The reservation is committed before the child is
-created or reopened; a spawn takes the child's number when it creates the
-child, so a retry answers the number the first attempt gave.
-
-- A retry finishes an uncommitted start, or returns the existing child without
-  starting another round.
-- Different arguments for the same request ID fail.
-- A request without an explicit ID gets a new one.
-- A resume reservation superseded by a later round fails instead of replaying
-  an older message.
-
 Starts are serialized within the owning supervisor, including concurrent
 command calls. Resume requires the previous completion to be saved in the
-parent's checkpoint before it replaces the archived round. The parent's command
-state history retains these reservations
-([Command state history](command-state-history.md)).
+parent's checkpoint before it replaces the archived round.
 
 Prompts and `send` and `resume` messages are read only from stdin: a quoted
 heredoc, a pipe, or input redirection. They have no positional or option form.
@@ -554,7 +537,7 @@ row carries identity and relationship: the ID, the agent's number, the parent
 ID (none for the root), the description, the profile, the current round and
 when it started, the spawn restriction, and, once closed, its phase, time,
 bounded result or failure text, and whether its completion was delivered. Beside it is the node's checkpoint:
-its transcript rows, its state row, and its command state
+its transcript rows and its state row
 ([Tree store](runtime.md#tree-store)). Parent and child are related by a
 column, never by a key path. Nothing about a node depends on a Host: a Host
 executes, the store remembers, and a node is readable while its target is
@@ -662,10 +645,10 @@ root leaves both to its client. The role is a node option, not a depth.
 
 `spawn` and `resume` are short `rpc` commands. The shell owns only the creation
 request and its response. The supervisor owns the persisted child and its
-completion delivery. Once the start reservation is committed, creating or
-reopening the child runs to completion even if the invoking call is cancelled:
-the child survives an abort of the shell job, and a retry with the same request
-ID returns it. A start under way counts as a live child of its owner: the owner
+completion delivery. A start runs in a task of the supervisor, so once the
+command reached it, creating or reopening the child runs to completion even if
+the invoking call is cancelled: the child survives an abort of the shell job.
+A start under way counts as a live child of its owner: the owner
 does not close under it, and an abort of the owner waits for it and then closes
 the new child with the rest of the subtree. File and process work that the child performs uses its own
 runner-backed shell environments.
@@ -783,7 +766,7 @@ returned, a child's as well as the root's
 
 | Part | Responsibility |
 | --- | --- |
-| Command system | Declarations, `rpc` dispatch through the serializable handler interface, and command storage as messages |
+| Command system | Declarations and `rpc` dispatch through the serializable handler interface |
 | Agent runtime | The node assembly, supervision and the agent directory, the `demi agent` group, agent messages, the subagent frames, and the tree store contract |
 | Backend | The tree store over the conversation's database, the conversation's host access for every node, and the plugin host, which supplies the commands, instructions, profiles and context sources |
 | Plugins | No profiles; children inherit by default |
@@ -858,11 +841,8 @@ The tree and its commands:
    reopen, and resume.
 9. Descendants inherit the prompt and the model after command narrowing, and
    a descendant reads the whole output of a command its ancestor ran.
-10. `resume` continues the preserved transcript. A request ID retried with the
-    same arguments returns the same child without a new round; different
-    arguments and a superseded round are refused.
-11. A spawn whose reservation is committed survives cancellation of its
-    invoking call.
+10. `resume` continues the preserved transcript.
+11. A spawn under way survives cancellation of its invoking call.
 12. `list` renders the tree with the caller's marker; `show` stays within its
     bounds.
 13. Disposing a parent detaches its live children instead of aborting them.
@@ -880,7 +860,7 @@ Persistence:
    round delivered.
 3. A tree detached and quiescent for 10 minutes is disposed; a detached tree
    with a live child, a running command or a scheduled wakeup is not. An evicted tree
-   reopens with the same transcripts, command state, model selection, and
+   reopens with the same transcripts, model selection, and
    archived children as before eviction.
 
 Product:
