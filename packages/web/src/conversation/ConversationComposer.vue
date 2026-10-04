@@ -90,14 +90,14 @@ const hold = computed(() =>
     : null,
 )
 const remoteHosts = computed(() => {
-  const main = execution.value
+  const primary = execution.value
   const hosts = [
-    ...(main.deviceId
+    ...(primary.deviceId
       ? [
           {
-            id: main.deviceId,
-            label: main.name,
-            online: main.online,
+            id: primary.deviceId,
+            label: primary.name,
+            online: primary.online,
           },
         ]
       : []),
@@ -114,8 +114,8 @@ const remoteHosts = computed(() => {
   return hosts.map((host) => {
     const device = resources.deviceById(host.id)
     const cwd =
-      host.id === main.deviceId
-        ? main.path
+      host.id === primary.deviceId
+        ? primary.path
         : props.conversation.attachedHosts.find(
             (attached) => attached.deviceId === host.id,
           )?.cwd

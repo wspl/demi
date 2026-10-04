@@ -16,15 +16,15 @@ import HostPicker from './HostPicker.vue'
 import type { HostDeviceOption, HostMenuHost } from './types'
 
 const props = defineProps<{
-  mainHost: HostMenuHost
+  primaryHost: HostMenuHost
   attachedHosts: HostMenuHost[]
   devices: HostDeviceOption[]
   pending?: boolean
-  mainLocked?: boolean
+  primaryLocked?: boolean
   attachmentsLocked?: boolean
 }>()
 const emit = defineEmits<{
-  switchMain: [id: string]
+  switchPrimary: [id: string]
   attach: [id: string]
   detach: [id: string]
   connect: []
@@ -33,18 +33,18 @@ const emit = defineEmits<{
 const open = ref(false)
 // Where the header's title needs the width, the host is its icon and its name a tooltip.
 const hostLabel = ref<HTMLElement | null>(null)
-const hostCompact = useRoomLabel(hostLabel, () => props.mainHost.name, 0)
+const hostCompact = useRoomLabel(hostLabel, () => props.primaryHost.name, 0)
 const boundIds = computed(() => [
-  props.mainHost.id,
+  props.primaryHost.id,
   ...props.attachedHosts.map((host) => host.id),
 ])
 
-function selectMain(id: string) {
-  if (props.mainLocked) {
+function selectPrimary(id: string) {
+  if (props.primaryLocked) {
     return
   }
   open.value = false
-  emit('switchMain', id)
+  emit('switchPrimary', id)
 }
 
 function attach(id: string) {
@@ -71,7 +71,7 @@ function connect() {
     width="shrink"
   >
     <template #trigger>
-      <Tooltip :content="mainHost.name" :disabled="!hostCompact">
+      <Tooltip :content="primaryHost.name" :disabled="!hostCompact">
         <Button
           variant="ghost"
           class="max-w-full"
@@ -80,21 +80,21 @@ function connect() {
         >
           <span class="relative flex shrink-0">
             <component
-              :is="mainHost.kind === 'cloud' ? Cloud : Monitor"
+              :is="primaryHost.kind === 'cloud' ? Cloud : Monitor"
               :size="ICON_PX.in28"
             />
             <CornerDot
-              v-if="mainHost.kind === 'device'"
-              :tone="mainHost.online ? 'success' : 'muted'"
+              v-if="primaryHost.kind === 'device'"
+              :tone="primaryHost.online ? 'success' : 'muted'"
               ring="button"
-              :label="mainHost.online ? 'Online' : 'Offline'"
+              :label="primaryHost.online ? 'Online' : 'Offline'"
             />
           </span>
           <span
             ref="hostLabel"
             class="max-w-28 truncate"
             :class="hostCompact ? COMPACT_LABEL_CLASS : ''"
-          >{{ mainHost.name }}</span>
+          >{{ primaryHost.name }}</span>
           <span v-if="attachedHosts.length" class="text-[11px] text-fg-subtle">
             +{{ attachedHosts.length }}
           </span>
@@ -104,20 +104,20 @@ function connect() {
     <template #content>
       <Menu>
         <MenuItem
-          :icon="mainHost.kind === 'cloud' ? Cloud : Monitor"
-          label="Main host"
-          :indicator="mainHost.kind === 'cloud' ? undefined : mainHost.online ? 'success' : 'muted'"
-          :indicator-label="mainHost.online ? 'Online' : 'Offline'"
-          :value="mainHost.name"
-          :disabled="mainLocked"
+          :icon="primaryHost.kind === 'cloud' ? Cloud : Monitor"
+          label="Primary host"
+          :indicator="primaryHost.kind === 'cloud' ? undefined : primaryHost.online ? 'success' : 'muted'"
+          :indicator-label="primaryHost.online ? 'Online' : 'Offline'"
+          :value="primaryHost.name"
+          :disabled="primaryLocked"
           has-submenu
         >
           <template #submenu>
             <HostPicker
               :devices="devices"
               include-cloud
-              :selected-id="mainHost.id"
-              @select="selectMain"
+              :selected-id="primaryHost.id"
+              @select="selectPrimary"
               @connect="connect"
             />
           </template>
@@ -136,10 +136,10 @@ function connect() {
             <template #submenu>
               <Menu>
                 <MenuItem
-                  label="Use as main environment…"
+                  label="Use as primary environment…"
                   :icon="host.kind === 'cloud' ? Cloud : Monitor"
-                  :disabled="mainLocked || (host.kind === 'device' && !host.online)"
-                  @select="selectMain(host.id)"
+                  :disabled="primaryLocked || (host.kind === 'device' && !host.online)"
+                  @select="selectPrimary(host.id)"
                 />
 
                 <MenuItem

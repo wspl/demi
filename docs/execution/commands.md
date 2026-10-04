@@ -74,7 +74,7 @@ An `rpc` leaf runs a handler in the backend instead.
 struct AddArgs {
     /// host:port, or a bare port meaning 127.0.0.1
     address: String,
-    /// Host name or device id from demi host list; the main host by default
+    /// Host name or device id from demi host list; the primary host by default
     host: Option<String>,
 }
 ```

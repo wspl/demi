@@ -137,7 +137,7 @@ mod host_commands {
             (
                 0,
                 format!(
-                    "laptop  {laptop}  online  /work  (main)\nci  {ci}  offline  ?  (attached)\n"
+                    "laptop  {laptop}  online  /work  (primary)\nci  {ci}  offline  ?  (attached)\n"
                 ),
                 String::new()
             )

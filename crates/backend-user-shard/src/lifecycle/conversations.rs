@@ -1,6 +1,6 @@
 //! The conversation idle clock (`resource-lifecycle.md` § Idle window): a
 //! conversation that has not been active for the idle window hears the
-//! conversation release on every Host it reaches, main or attached, whose
+//! conversation release on every Host it reaches, primary or attached, whose
 //! runner is connected: a paired device or a running Cloud. Its watch starts
 //! with the conversation's first Host admission and ends once it released;
 //! a won target switch starts it again, so a deadline of the old binding
@@ -278,9 +278,9 @@ mod tests {
     // A window and a half of real time: the second activity comes half a
     // window after the first, to show that it restarts a full window.
     #[tokio::test(flavor = "local")]
-    async fn an_hour_without_activity_releases_the_conversation_on_its_main_and_attached_devices() {
+    async fn an_hour_without_activity_releases_the_conversation_on_its_primary_and_attached_devices() {
         let data = tempfile::tempdir().unwrap();
-        let (services, owner, devices) = fixture(data.path(), &["main", "attached"]).await;
+        let (services, owner, devices) = fixture(data.path(), &["primary", "attached"]).await;
         let pool = ShardPool::start(ShardPlacement::Inline, services)
             .await
             .unwrap();
@@ -289,8 +289,8 @@ mod tests {
             .call(move |shard, _| async move {
                 let id = ConversationId::try_from(ID).unwrap();
                 let released = runners(&shard, &devices);
-                let [main, attached] = [devices[0].clone(), devices[1].clone()];
-                shard.transition(&id, on(&main)).await.unwrap();
+                let [primary, attached] = [devices[0].clone(), devices[1].clone()];
+                shard.transition(&id, on(&primary)).await.unwrap();
                 let attach = RecordChange::Attach(AttachedHostRecord {
                     device: attached.clone(),
                     name: "attached".into(),
@@ -313,7 +313,7 @@ mod tests {
                 let mut released = released.borrow().clone();
                 released.sort();
                 let devices: Vec<&DeviceId> = released.iter().map(|(device, _)| device).collect();
-                let mut expected = vec![&main, &attached];
+                let mut expected = vec![&primary, &attached];
                 expected.sort();
                 assert_eq!(devices, expected);
                 // Never before a full window after the last activity: the

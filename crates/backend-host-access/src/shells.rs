@@ -1,6 +1,6 @@
 //! Each agent node's Host and shell environments (`sessions-and-targets.md`
 //! § Host operations, `commands.md` § Handle an rpc call). A node's Host is
-//! the conversation's current main Host, which the host access admits and
+//! the conversation's current primary Host, which the host access admits and
 //! lets go at once. A node's environment on it is backend-remote-host's: each of its
 //! jobs runs inside the conversation's host access and is refused once the
 //! conversation's Host is another, each job's command context names the
@@ -39,7 +39,7 @@ use crate::blobs::ConversationBlobs;
 use crate::{HostShard, conversation_of};
 
 impl dyn HostShard + '_ {
-    /// A node's Host: the conversation's current main Host. The host access
+    /// A node's Host: the conversation's current primary Host. The host access
     /// admits it and lets it go at once; its later operations take only a
     /// Cloud's per-operation admission.
     pub async fn conversation_host(

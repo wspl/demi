@@ -230,7 +230,7 @@ talks never wakes its Cloud for a plugin's files.
 
 ### Reading a conversation's files
 
-A plugin can read the files of a conversation on its main Host while that
+A plugin can read the files of a conversation on its primary Host while that
 Host is running, but never wakes it, writes to it or keeps it awake. For
 example, `plugin-skills` looks for the skills a repository holds in its
 `.agents/skills` directory ([Project skills](../agent/skills.md#project-skills)).
@@ -385,8 +385,8 @@ conversation's operations need a request about a conversation: a `command`, a
 | Storage | Values: read, list, conditional write, conditional removal | Every request | The plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
 | | Blobs: put, get | Every request | Bytes in the user's blob namespace, by SHA-256 |
 | Hosts | Set directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
-| | List the conversation's Hosts | A conversation's | Its main and attached Hosts: each one's name, device, role and whether it is online ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
-| | Read files | A conversation's | Several paths on the conversation's main Host, if it is running ([Reading a conversation's files](#reading-a-conversations-files)) |
+| | List the conversation's Hosts | A conversation's | Its primary and attached Hosts: each one's name, device, role and whether it is online ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
+| | Read files | A conversation's | Several paths on the conversation's primary Host, if it is running ([Reading a conversation's files](#reading-a-conversations-files)) |
 | | Call a package | A conversation's | One operation of a package the manifest names, waking the Host or not ([Calling its command package](#calling-its-command-package)) |
 | Exposes | List, create, renew, remove | Every request | The user's [exposes](../execution/expose.md#the-expose-record), the backend's public relays to a device's address |
 | Pages | Changed | Every request | Mark one scope of the plugin's page state, the user's or one conversation's, as changed, so the pages that show it read it again ([The page](#the-page)) |
@@ -611,7 +611,7 @@ declared schema, as a command's arguments are validated
 ([Contracts](contracts.md#validation-at-entry)), and the user's instance
 handles the call on the user's shard. A page also reaches the plugin's user
 streams of a conversation, and the installs of the plugin's packages on the
-conversation's main Host, from that device's `installs` in the product state,
+conversation's primary Host, from that device's `installs` in the product state,
 which a component that waits for a call shows with the kit's installs
 component ([Installation progress](../execution/native-runtime.md#installation-progress)).
 No plugin declares or starts an install: it follows from the call.

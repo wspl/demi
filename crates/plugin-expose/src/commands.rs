@@ -1,6 +1,6 @@
 //! `demi expose` (`expose.md` § Commands): the plugin's `rpc` leaves over
 //! the user's exposes. `add` exposes a service on the calling
-//! conversation's main Host, or on the Host `--host` names as `demi host
+//! conversation's primary Host, or on the Host `--host` names as `demi host
 //! list` shows it; the other leaves reach every expose of the user,
 //! whichever conversation created it, by its number.
 
@@ -37,7 +37,7 @@ const NOT_FOUND_OUTPUT: &str = "\"no expose <number>\" when the number names non
 struct AddArgs {
     /// host:port, or a bare port meaning 127.0.0.1
     address: String,
-    /// Host name or device id from demi host list; the main host by default
+    /// Host name or device id from demi host list; the primary host by default
     host: Option<String>,
 }
 
@@ -159,10 +159,10 @@ async fn add(
             .iter()
             .find(|host| host.name == *wanted)
             .or_else(|| hosts.iter().find(|host| host.device.as_str() == wanted)),
-        None => hosts.iter().find(|host| host.role == HostRole::Main),
+        None => hosts.iter().find(|host| host.role == HostRole::Primary),
     };
     let Some(target) = target else {
-        let wanted = args.host.as_deref().unwrap_or("(main)");
+        let wanted = args.host.as_deref().unwrap_or("(primary)");
         return Ok(Err(format!(
             "host {wanted} is not reachable from this conversation (see `demi host list`)"
         )));

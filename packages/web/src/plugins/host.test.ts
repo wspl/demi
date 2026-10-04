@@ -99,7 +99,7 @@ test("a refusal rejects with the plugin's own reason", async () => {
   await expect(refused).rejects.toMatchObject({ reason: 'expose_not_found', message: 'No expose k7x2' })
 })
 
-test("a conversation's installs are its main Host's installs of the plugin's packages", () => {
+test("a conversation's installs are its primary Host's installs of the plugin's packages", () => {
   const laptop = 'b5c6d7e8-0000-4000-8000-000000000001'
   const chrome = {
     package: 'demi.browser',

@@ -1,6 +1,6 @@
 //! The product's `demi host` group (`sessions-and-targets.md` § Attached
 //! hosts, `commands.md` § Demi command inputs): `list` names the Hosts the
-//! calling conversation reaches, `current` its main Host, and `shell
+//! calling conversation reaches, `current` its primary Host, and `shell
 //! --host` runs a script on one of them as one job there. A `shell`
 //! job carries its invoking job's command context, caller and commands, and its standard input and output are the calling command's:
 //! the relayed pipes' far ends become the job's device, so the bytes flow
@@ -35,11 +35,11 @@ use crate::access::{HostRole, ReachableHost};
 const ABORT_GRACE: Duration = Duration::from_secs(5);
 
 const SUMMARY: &str =
-    "The hosts this conversation reaches: list them, show the main one, run a command on another.";
+    "The hosts this conversation reaches: list them, show the primary one, run a command on another.";
 
-const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory shells start in; the main one marked.";
+const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory shells start in; the primary one marked.";
 
-const CURRENT_SUMMARY: &str = "The main host: where shell_exec runs.";
+const CURRENT_SUMMARY: &str = "The primary host: where shell_exec runs.";
 
 const SHELL_SUMMARY: &str = "Run a shell string in another host's bash: `demi host shell --host <name|id> <script>`. The script starts where the last shell on that host ended (its home before one ran) with this command's stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`). stderr and the exit code pass through.";
 
@@ -155,7 +155,7 @@ async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Re
                 &host.path
             };
             let role = match host.role {
-                HostRole::Main => "main",
+                HostRole::Primary => "primary",
                 HostRole::Attached => "attached",
             };
             format!(

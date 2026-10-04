@@ -137,7 +137,7 @@ pub enum UserCallError {
 }
 
 impl dyn HostShard + '_ {
-    /// Opens the user stream `binding` names on the conversation's main
+    /// Opens the user stream `binding` names on the conversation's primary
     /// Host: admitted without waking a stopped Cloud, and open until the
     /// edge drops its lease, the invocation completes, or a transition ends
     /// it. Nothing moves before the runner opened it.
@@ -190,7 +190,7 @@ impl dyn HostShard + '_ {
         Err(refused)
     }
 
-    /// Runs a one-shot user call on the conversation's main Host and returns
+    /// Runs a one-shot user call on the conversation's primary Host and returns
     /// its JSON answer. Work the user starts is an ordinary operation of the
     /// conversation's host access; any other call is admitted as a user
     /// stream is, and a transition ends it instead of waiting for it.

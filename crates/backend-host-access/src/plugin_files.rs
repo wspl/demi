@@ -1,6 +1,6 @@
 //! What the user's plugins reach on a Host (`plugins.md` § Host
 //! directories, § Reading a conversation's files): reads of a
-//! conversation's main Host in the form that never wakes it, and the
+//! conversation's primary Host in the form that never wakes it, and the
 //! plugins' directories, which each job of the user's installs before it
 //! starts, once per runner connection.
 
@@ -68,7 +68,7 @@ impl From<HostAccessError> for ReadFilesError {
 }
 
 impl dyn HostShard + '_ {
-    /// Reads `reads` on the conversation's main Host, admitted as a look:
+    /// Reads `reads` on the conversation's primary Host, admitted as a look:
     /// a stopped Cloud or an offline device is not running and is not
     /// woken, the read is no activity, and a transition ends it instead of
     /// waiting for it. A path the Host cannot read answers as unreadable;

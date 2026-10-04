@@ -43,7 +43,7 @@ const hostStatusItems = hostDevices.map((device) => ({
   indicator: device.online ? 'success' as const : 'muted' as const,
   indicatorLabel: device.online ? 'Online' : 'Offline',
 }))
-const mainHost = ref<HostMenuHost>({
+const primaryHost = ref<HostMenuHost>({
   id: 'mac',
   name: 'zan-mbp',
   kind: 'device',
@@ -54,9 +54,9 @@ const attachedHosts = ref<HostMenuHost[]>([
   { id: 'managed-device', name: 'Cloud', kind: 'cloud', online: false },
 ])
 
-function switchMainHost(id: string) {
+function switchPrimaryHost(id: string) {
   const device = hostDevices.find(device => device.id === id)
-  mainHost.value = device
+  primaryHost.value = device
     ? { id: device.id, name: device.name, kind: 'device', online: device.online }
     : { id: 'cloud', name: 'Cloud', kind: 'cloud', online: true }
 }
@@ -408,10 +408,10 @@ function itemLabel(id: string, list: {
         </GallerySpecimen>
         <GallerySpecimen variant="cloud host · no status dot">
           <HostMenu
-            :main-host="{ id: 'cloud', name: 'Cloud', kind: 'cloud', online: false }"
+            :primary-host="{ id: 'cloud', name: 'Cloud', kind: 'cloud', online: false }"
             :attached-hosts="[]"
             :devices="hostDevices"
-            @switch-main="productWould(`Move the conversation to ${deviceName($event)}`)"
+            @switch-primary="productWould(`Move the conversation to ${deviceName($event)}`)"
             @attach="productWould(`Attach ${deviceName($event)}`)"
             @detach="productWould(`Detach ${deviceName($event)}`)"
             @connect="productWould('Connect new device')"
@@ -430,10 +430,10 @@ function itemLabel(id: string, list: {
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · label/value and status">
           <HostMenu
-            :main-host="mainHost"
+            :primary-host="primaryHost"
             :attached-hosts="attachedHosts"
             :devices="hostDevices"
-            @switch-main="switchMainHost"
+            @switch-primary="switchPrimaryHost"
             @attach="attachHost"
             @detach="detachHost"
             @connect="productWould('Connect new device')"

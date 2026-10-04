@@ -77,7 +77,7 @@ the URL has no port, and a local backend on `3271` prints
 `http://<id>.expose.localhost:3271/`.
 
 A conversation names the device when it creates the expose: the conversation's
-main Host, or an attached Host through `--host`. After that the conversation
+primary Host, or an attached Host through `--host`. After that the conversation
 plays no part. A target switch, archive, or Fork changes nothing about an
 expose; a conversation release does not reach it, because it holds nothing on
 the device.
@@ -250,7 +250,7 @@ Removed expose 1; its URL no longer works.
 
 | Leaf | Input | Behavior |
 | --- | --- | --- |
-| `add <address> [--host <name\|id>]` | `address` is `host:port` or a port; `--host` names a main or attached Host as `demi host list` shows it | Creates the record for that device. The device must be connected, and a Cloud running: an expose for a stopped Cloud would already be destroyed. Prints the URL, the device, and the expiry, `--json` available. |
+| `add <address> [--host <name\|id>]` | `address` is `host:port` or a port; `--host` names a primary or attached Host as `demi host list` shows it | Creates the record for that device. The device must be connected, and a Cloud running: an expose for a stopped Cloud would already be destroyed. Prints the URL, the device, and the expiry, `--json` available. |
 | `list` | none | Every expose of the user across devices, soonest expiry first, `--json` available. A Cloud that has stopped has none. |
 | `renew <number>` | an expose's number | Sets the expiry to one hour from now, `--json` available. |
 | `remove <number>` | an expose's number | Destroys it. |

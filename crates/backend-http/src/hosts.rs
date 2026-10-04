@@ -29,7 +29,7 @@ pub(super) async fn list(
     Ok(Json(hosts(&state, &user.id, id).await?))
 }
 
-/// Attaches one of the user's devices other than the main Host; attached
+/// Attaches one of the user's devices other than the primary Host; attached
 /// already, it stays as it is.
 pub(super) async fn attach(
     State(state): State<AppState>,

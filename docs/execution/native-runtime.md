@@ -711,7 +711,7 @@ Service                        Runner                          Backend
   now belong to the service, or `{id, error}`. It keeps at most 32 requests of
   a service in flight and refuses one beyond that at once.
 - The backend answers only for a conversation of the device's user that
-  reaches the device, as its main Host or an attached one
+  reaches the device, as its primary Host or an attached one
   ([Attached hosts](sessions-and-targets.md#attached-hosts)). It advances the
   sequence by `count` in its own transaction before it answers, so a number it
   gave out is never given again, whether or not the service uses it. A

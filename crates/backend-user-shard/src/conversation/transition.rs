@@ -1,5 +1,5 @@
 //! Changes of a conversation (`web-api.md` § Sidebar mutations, read state
-//! and page synchronization; `sessions-and-targets.md` § Switch the main
+//! and page synchronization; `sessions-and-targets.md` § Switch the primary
 //! target, § Lifecycle access). Every change goes through one entry,
 //! `Shard::transition`. A rename, a pin or a change of the model settings
 //! waits while a transition holds the conversation, and is then applied as if
@@ -104,7 +104,7 @@ impl Shard {
                 if let RecordChange::Attach(attached) = &change {
                     let target = host.resolve_target(&record).await?;
                     if target.device() == Some(&attached.device) {
-                        return Err(ChangeRefusal::HostIsMain);
+                        return Err(ChangeRefusal::HostIsPrimary);
                     }
                 }
                 return host.commit(&record.id, change).await;
@@ -483,7 +483,7 @@ mod tests {
                     log.borrow()[1],
                     released(&one, on(&two), std::slice::from_ref(&one), false)
                 );
-                // An archive releases it on the main Host and the attached
+                // An archive releases it on the primary Host and the attached
                 // ones.
                 let attach = RecordChange::Attach(AttachedHostRecord {
                     device: one.clone(),

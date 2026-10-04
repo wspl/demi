@@ -1,5 +1,5 @@
 //! The conversation's host access (`sessions-and-targets.md` § Host
-//! operations): the one way to a conversation's main or attached Host. An
+//! operations): the one way to a conversation's primary or attached Host. An
 //! operation takes the conversation's file gate, so it excludes an archive
 //! or a target switch; the target is resolved, and an archived conversation
 //! or a device that is not bound is refused; a Cloud's admission is taken,
@@ -163,7 +163,7 @@ pub fn host_error_code(error: &HostError) -> (ErrorCode, u16) {
 pub enum Refusal {
     #[error("Conversation is archived")]
     Archived,
-    /// The device is neither the main Host nor attached.
+    /// The device is neither the primary Host nor attached.
     #[error("No such host in this conversation")]
     NotAttached,
     /// A transition is ending the conversation's transfers and streams.
@@ -212,7 +212,7 @@ pub(crate) enum Attention {
     Looks,
 }
 
-/// A user stream's hold on the conversation's main Host: registered with
+/// A user stream's hold on the conversation's primary Host: registered with
 /// the conversation's open transfers, it holds no file gate, and a stream
 /// holds its lease of the conversation's stream gate.
 pub(crate) struct StreamAccess {
@@ -280,7 +280,7 @@ pub struct ReachableHost {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostRole {
-    Main,
+    Primary,
     Attached,
 }
 
@@ -299,7 +299,7 @@ impl dyn HostShard + '_ {
             .ok_or(HostAccessError::Missing)
     }
 
-    /// Runs `operation` once on the conversation's Host: its main Host, or
+    /// Runs `operation` once on the conversation's Host: its primary Host, or
     /// the bound device `device` names. The operation holds the
     /// conversation's file gate, and a Cloud's admission, until it returns.
     /// An admission that waits ends when `cancel` does.
@@ -505,11 +505,11 @@ impl dyn HostShard + '_ {
     }
 
     /// The Hosts the web app's host routes and `demi host shell --host` accept
-    /// (§ Attached hosts): the main Host, and the attached ones. A shell on
-    /// the main Host starts in the conversation's directory there; one on an
+    /// (§ Attached hosts): the primary Host, and the attached ones. A shell on
+    /// the primary Host starts in the conversation's directory there; one on an
     /// attached Host where the last shell there ended, or in its home before
     /// one ran.
-    /// The Hosts the user's conversation `id` reaches: its main Host, then
+    /// The Hosts the user's conversation `id` reaches: its primary Host, then
     /// its attached ones.
     pub async fn conversation_hosts(
         &self,
@@ -526,9 +526,9 @@ impl dyn HostShard + '_ {
         target: &ExecutionTarget,
     ) -> Result<Vec<ReachableHost>, StorageError> {
         let control = self.control();
-        let main = target.device();
+        let primary = target.device();
         let mut hosts = Vec::new();
-        if let Some(device) = main {
+        if let Some(device) = primary {
             let name = control
                 .device(device.clone())
                 .await?
@@ -537,11 +537,11 @@ impl dyn HostShard + '_ {
                 name,
                 device: device.clone(),
                 path: target.path().to_owned(),
-                role: HostRole::Main,
+                role: HostRole::Primary,
             });
         }
         for attached in control.attached_hosts(record.id.clone()).await? {
-            if Some(&attached.device) == main {
+            if Some(&attached.device) == primary {
                 continue;
             }
             let path = attached

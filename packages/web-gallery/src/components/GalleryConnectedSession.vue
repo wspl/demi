@@ -71,7 +71,7 @@ const recentDirectories = computed(() => {
   }))
 })
 const workspaceName = computed(() => folder.value.path.split('/').filter(Boolean).at(-1) ?? null)
-const mainHost = computed<HostMenuHost>(() => {
+const primaryHost = computed<HostMenuHost>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
   return device
     ? { id: device.id, name: device.name, kind: 'device', online: device.online }
@@ -96,7 +96,7 @@ function selectRecent(id: string): void {
     folder.value = { deviceId: folder.value.deviceId, path: recent.path }
   }
 }
-function switchMain(id: string): void {
+function switchPrimary(id: string): void {
   const host = hosts.find((candidate) => candidate.id === id)
   if (host) {
     folder.value = { deviceId: host.id, path: host.source.home }
@@ -154,12 +154,12 @@ function detach(id: string): void {
             @select-recent="selectRecent"
           >
             <HostMenu
-              :main-host="mainHost"
+              :primary-host="primaryHost"
               :attached-hosts="attachedHosts"
               :devices="devices"
-              :main-locked="locked"
+              :primary-locked="locked"
               :attachments-locked="session.archived"
-              @switch-main="switchMain"
+              @switch-primary="switchPrimary"
               @attach="attach"
               @detach="detach"
               @connect="productWould('Connect new device')"

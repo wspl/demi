@@ -383,7 +383,7 @@ pub(super) async fn committed(
 }
 
 /// Runs `operation` on the conversation's Host through its host access: the
-/// main Host, or the bound device `device` names.
+/// primary Host, or the bound device `device` names.
 async fn on_host<T, F>(
     state: &AppState,
     user: &UserId,

@@ -110,7 +110,7 @@ impl ProductPort for ShardPort {
                     name: host.name,
                     device: host.device,
                     role: match host.role {
-                        access::HostRole::Main => HostRole::Main,
+                        access::HostRole::Primary => HostRole::Primary,
                         access::HostRole::Attached => HostRole::Attached,
                     },
                 })

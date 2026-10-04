@@ -104,7 +104,7 @@ Admission is decided when an action arrives:
 
 A running action holds a lease on its tree's admission. A target switch or an
 archive reserves the idle tree through the same admission
-([Switch the main target](../execution/sessions-and-targets.md#switch-the-main-target)),
+([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)),
 and a running turn is conversation activity
 ([Activity](../execution/resource-lifecycle.md#activity)).
 
@@ -837,7 +837,7 @@ the product supplies, in the product's order:
   the model again what the summary may have left out.
 - Each answer becomes one `context` block that names its source: `execution`
   for the conversation's execution context
-  ([Switch the main target](../execution/sessions-and-targets.md#switch-the-main-target)),
+  ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)),
   or the id of the plugin that answered
   ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)).
 - The blocks are appended before the request and saved at once, so a request

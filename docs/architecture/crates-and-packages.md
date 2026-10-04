@@ -1038,7 +1038,7 @@ demi-backend (executable: configuration, composition)
 - **Public boundary:** the registry, the user's plugins as the shard holds
   them, and the operations on `dyn PluginShard`, what the host needs of its
   user's shard: the control service, the user's blobs, the user's change
-  marks, the reads of a conversation's files on its running main Host and
+  marks, the reads of a conversation's files on its running primary Host and
   the package calls, which the shard makes through host access, the
   conversation's Hosts, and the user's exposes.
 - **Must not:** see `Shard`, reach a Host, know an agent's session, or hold

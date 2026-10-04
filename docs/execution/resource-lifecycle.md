@@ -73,7 +73,7 @@ Host while that Host's runner is connected: a paired device, or a Cloud that
 runs. The backend sends it to:
 
 - every connected Host of the conversation when its idle window expires;
-- a Host the conversation stops using: the old main device on a target
+- a Host the conversation stops using: the old primary device on a target
   switch, an attached device when it is detached;
 - every connected Host of the conversation when it is archived.
 

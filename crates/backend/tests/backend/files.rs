@@ -810,12 +810,12 @@ async fn the_host_access_reaches_only_the_callers_conversation_and_the_hosts_bou
     );
     let listing: Value = device.get(&on_ci).await.json();
     assert_eq!(listing["path"], json!(made_on_ci.to_str().unwrap()));
-    // Named, the main device is the main Host.
-    let main: Value = device
+    // Named, the paired device is the primary Host.
+    let primary: Value = device
         .get(&format!("/hosts/{}/fs", device.paired.id()))
         .await
         .json();
-    assert_eq!(main["path"], json!(device.root.to_str().unwrap()));
+    assert_eq!(primary["path"], json!(device.root.to_str().unwrap()));
 
     // An archived conversation refuses every Host operation, transfers too.
     device.execute(

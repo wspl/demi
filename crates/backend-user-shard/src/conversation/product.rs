@@ -1,7 +1,7 @@
 //! What the backend's conversations are assembled from (`runtime.md`
 //! § Sessions and turns): the product's instructions, the toolset of the
 //! plugins the user has on with the product's `demi host` group, the Host each
-//! node reaches, the conversation's current main Host, the execution
+//! node reaches, the conversation's current primary Host, the execution
 //! context source, which tells a node that the conversation's execution
 //! context changed, and the plugins that are context sources.
 
@@ -52,7 +52,7 @@ impl ToolsetSource for ShardToolsets {
     }
 }
 
-/// Where a shard's conversations run: each conversation's current main Host.
+/// Where a shard's conversations run: each conversation's current primary Host.
 pub(crate) struct ShardHosts {
     /// Weak: the shard owns the agent server that holds the resolver.
     pub(crate) shard: Weak<Shard>,

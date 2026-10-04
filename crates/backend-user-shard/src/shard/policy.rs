@@ -87,7 +87,7 @@ impl LinkPolicy for ShardPolicy {
     }
 
     /// Reserves the numbers in the conversation's sequence, for a
-    /// conversation of the user that reaches this device as its main Host or
+    /// conversation of the user that reaches this device as its primary Host or
     /// an attached one.
     fn reserve_numbers(
         &self,

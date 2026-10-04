@@ -79,7 +79,7 @@ and debugging connections. It is not an agent-selectable session.
 
 ```text
 Conversation
-  +-- Current main Host
+  +-- Current primary Host
   |     +-- Managed browser environment
   |           +-- tab-a
   |           +-- tab-b
@@ -98,7 +98,7 @@ argument.
 the browser has not started; listing alone does not launch it. A command with
 an expired tab ID fails rather than opening a replacement page.
 
-A shell on the main Host and a shell on an attached Host therefore use two
+A shell on the primary Host and a shell on an attached Host therefore use two
 environments with separate tabs, cookies, and handles; a handle from one is
 `tab_not_found` on the other. The browser does not know which role its Host
 plays in the conversation and does not need to: the conversation release
@@ -211,7 +211,7 @@ Its lifecycle uses one state, kept by the owner of the conversation's browser
 | `close <tab>` | Close that tab and release its commands, references, and debugging state |
 | Last tab closes | Stop Chrome for Testing and remove its profile before acknowledging closure; the next `open` starts fresh |
 | Conversation release arrives | Retire the environment the same way; the backend sends it when the conversation has been idle for the idle window, moves to another Host, or is archived |
-| Main Host or main directory changes | The old device receives the conversation release; nothing is copied to the new Host |
+| Primary Host or its directory changes | The old device receives the conversation release; nothing is copied to the new Host |
 | Conversation is archived | The device receives the conversation release; restoring the conversation starts fresh on demand |
 | Conversation is forked | Do not inherit the live browser or handles; IDs in copied history are historical text |
 | Chrome for Testing crashes, runner connection ends, backend restarts, or Cloud stops/resets | Invalidate the environment and fail affected calls; never replay page actions |
@@ -2000,7 +2000,7 @@ part of every acceptance that touches the browser, not an optional run.
 2. Retain tabs and login state across shell jobs, agent turns, and user Web
    disconnect while the environment is live.
 3. Reject cross-conversation tab/ref use, including a script that sets
-   environment variables naming another conversation. Isolate browser storage. A main-Host shell and an
+   environment variables naming another conversation. Isolate browser storage. A primary-Host shell and an
    attached-Host shell of one conversation use separate environments.
 4. Verify target changes, archive, Fork, sleep/reset, disconnect, and crashes.
    Old handles never identify replacement pages.
