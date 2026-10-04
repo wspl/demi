@@ -31,10 +31,10 @@ type UnreachableError struct{ Code string }
 // Error returns the service connection failure.
 func (e *UnreachableError) Error() string { return "the service is unreachable (" + e.Code + ")" }
 
-// Exposes tracks a user's live connections. Its zero value is ready to use.
+// Connections tracks a user's live connections. Its zero value is ready to use.
 // The shard stops admission, closes this component, and joins its Relay callers
 // before discarding it. Each admitted lease must be released even after EndAll.
-type Exposes struct {
+type Connections struct {
 	// mu protects admission counts, lifecycle and worker registration only.
 	mu      sync.Mutex
 	live    map[webapi.ExposeID]*liveExpose
@@ -57,14 +57,14 @@ type expiryWorker struct {
 // RelayAdmission holds one connection's place until Release or Relay returns.
 // A caller defers Release immediately, including on device connect failure.
 type RelayAdmission struct {
-	exposes *Exposes
+	exposes *Connections
 	id      webapi.ExposeID
 	live    *liveExpose
 	record  database.ExposeRecord
 	once    sync.Once
 }
 
-func (e *Exposes) register(id webapi.ExposeID) (*RelayAdmission, error) {
+func (e *Connections) register(id webapi.ExposeID) (*RelayAdmission, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.closed {
@@ -87,7 +87,7 @@ func (e *Exposes) register(id webapi.ExposeID) (*RelayAdmission, error) {
 }
 
 // End interrupts all connections for the destroyed exposes.
-func (e *Exposes) End(ids []webapi.ExposeID) {
+func (e *Connections) End(ids []webapi.ExposeID) {
 	e.mu.Lock()
 	var ends []context.CancelFunc
 	for _, id := range ids {
@@ -102,7 +102,7 @@ func (e *Exposes) End(ids []webapi.ExposeID) {
 }
 
 // EndAll interrupts every connection, including admissions waiting on storage.
-func (e *Exposes) EndAll() {
+func (e *Connections) EndAll() {
 	e.mu.Lock()
 	ends := make([]context.CancelFunc, 0, len(e.live))
 	for _, live := range e.live {
@@ -116,7 +116,7 @@ func (e *Exposes) EndAll() {
 
 // Close stops admission, cancels expiry workers and waits for them. Relay
 // callers are owned and joined by the shard; Close interrupts them via Ending.
-func (e *Exposes) Close(ctx context.Context) error {
+func (e *Connections) Close(ctx context.Context) error {
 	e.mu.Lock()
 	e.closed = true
 	workers := make([]*expiryWorker, 0, len(e.workers))
@@ -139,7 +139,7 @@ func (e *Exposes) Close(ctx context.Context) error {
 }
 
 // Active returns outstanding admissions, including revoked but unreleased leases.
-func (e *Exposes) Active() int {
+func (e *Connections) Active() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	count := 0
@@ -179,7 +179,7 @@ func (a *RelayAdmission) Release() {
 
 // AdmitRelay admits a connection up to its device. The shard opens the device
 // stream next, and releases admission on every failure to do so.
-func AdmitRelay(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (*RelayAdmission, error) {
+func AdmitRelay(ctx context.Context, shard Shard, id webapi.ExposeID) (*RelayAdmission, error) {
 	admission, err := shard.Exposes().register(id)
 	if err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func AdmitRelay(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (*Re
 // Its caller owns this blocking call (and joins it if run in a goroutine).
 // end closes the network stream and runs exactly once before admission is freed.
 // The caller must not Release concurrently with Relay.
-func (a *RelayAdmission) Relay(ctx context.Context, shard ExposeShard, released <-chan struct{}, end func()) {
+func (a *RelayAdmission) Relay(ctx context.Context, shard Shard, released <-chan struct{}, end func()) {
 	defer a.Release()
 	defer end()
 	a.watch(shard)
@@ -221,7 +221,7 @@ func (a *RelayAdmission) Relay(ctx context.Context, shard ExposeShard, released 
 	}
 }
 
-func (a *RelayAdmission) watch(shard ExposeShard) {
+func (a *RelayAdmission) watch(shard Shard) {
 	e := a.exposes
 	e.mu.Lock()
 	if e.closed || a.live.expiry != nil || a.live.connections == 0 {
@@ -249,7 +249,7 @@ func (a *RelayAdmission) watch(shard ExposeShard) {
 	}()
 }
 
-func expireWhenDue(ctx context.Context, shard ExposeShard, record database.ExposeRecord) {
+func expireWhenDue(ctx context.Context, shard Shard, record database.ExposeRecord) {
 	for {
 		if err := FirstExpiry(ctx, shard.Clock(), record.ExpiresAt); err != nil {
 			if !errors.Is(err, context.Canceled) {

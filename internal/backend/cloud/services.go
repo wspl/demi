@@ -9,11 +9,11 @@ type Services struct {
 	// Capacity counts machines across all users.
 	Capacity *Capacity
 	// Tuning supplies lifecycle times and policy limits.
-	Tuning CloudTuning
+	Tuning Tuning
 }
 
 // NewServices creates shared services with tuning.Capacity permits. The caller
 // owns machines and closes it after every shard has closed its Cloud.
-func NewServices(machines *Client, tuning CloudTuning) *Services {
+func NewServices(machines *Client, tuning Tuning) *Services {
 	return &Services{Machines: machines, Capacity: NewCapacity(tuning.Capacity), Tuning: tuning}
 }

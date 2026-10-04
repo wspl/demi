@@ -22,7 +22,7 @@ func (v exposeView) Control() expose.Store {
 }
 
 // Exposes returns the shard’s live expose registry.
-func (v exposeView) Exposes() *expose.Exposes { return &v.exposes }
+func (v exposeView) Exposes() *expose.Connections { return &v.exposes }
 
 // Domain returns the configured public expose domain.
 func (v exposeView) Domain() *expose.Domain { return v.services.ExposeDomain }
@@ -118,7 +118,7 @@ func exposeRecord(value expose.Expose) plugin.ExposeRecord {
 	}
 }
 
-var _ expose.ExposeShard = exposeView{}
+var _ expose.Shard = exposeView{}
 
 // portExpose adds the current device name to the plugin's expose record.
 func (s *Shard) portExpose(ctx context.Context, value expose.Expose) (plugin.ExposeRecord, error) {

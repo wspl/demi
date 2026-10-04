@@ -18,7 +18,7 @@ import (
 
 type forkBlobs struct{ *storetest.MemoryBlobs }
 
-func (b forkBlobs) Media() store.BlobStore                         { return b.MemoryBlobs }
+func (b forkBlobs) Media() store.Blobs                             { return b.MemoryBlobs }
 func (forkBlobs) CommitUses(context.Context, []core.BlobRef) error { return nil }
 
 // Temporary SQLite databases, no vendor, runner or wall-clock wait.

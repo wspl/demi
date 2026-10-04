@@ -39,7 +39,7 @@ func callFile(
 		t.Fatal(err)
 	}
 	input, output, err := client.Invoke(t.Context(), commandwire.Invocation{
-		Context: commandwire.CommandContext{
+		Context: commandwire.Context{
 			Conversation: "file-test-conversation",
 			Caller:       &commandwire.AgentCaller{Number: 1},
 			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},

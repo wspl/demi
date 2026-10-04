@@ -17,7 +17,7 @@ import (
 )
 
 // TreeStores supplies the tree store of each conversation, by its root.
-type TreeStores func(root core.NodeID) store.TreeStore
+type TreeStores func(root core.NodeID) store.Tree
 
 // Config controls how the server's trees and connections behave.
 // Use DefaultConfig for production defaults; zero values are explicit.
@@ -199,7 +199,7 @@ func (s *Server[H]) PrepareFork(
 	if !found || record.Parent != nil {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkNotRoot}
 	}
-	checkpoint, saved, err := treeStore.SessionStore(source).Load(ctx)
+	checkpoint, saved, err := treeStore.Session(source).Load(ctx)
 	if err != nil {
 		return store.Checkpoint{}, &session.ForkError{Kind: session.ForkStore, Detail: err.Error(), Cause: err}
 	}

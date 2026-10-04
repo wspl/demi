@@ -11,9 +11,9 @@ import (
 	"github.com/wspl/demi/internal/provider"
 )
 
-// BlobStore is the conversation owner's blob namespace as reached by a session.
+// Blobs is the conversation owner's blob namespace as reached by a session.
 // Implementations support concurrent calls.
-type BlobStore interface {
+type Blobs interface {
 	// Put stores bytes under their SHA-256 unless already present, returning that name.
 	Put(ctx context.Context, data core.B64Bytes) (core.BlobRef, error)
 	// Read returns a blob's bytes and whether it exists; missing is not an error.
@@ -253,7 +253,7 @@ func ContentReferences(content []core.UserContentBlock) []core.BlobRef {
 func PersistResult(
 	ctx context.Context,
 	output []provider.ResultPart,
-	blobs BlobStore,
+	blobs Blobs,
 ) ([]core.ToolResultContentBlock, HeldMedia) {
 	held := HeldMedia{}
 	stored := make([]core.ToolResultContentBlock, 0, len(output))
@@ -291,7 +291,7 @@ func PersistResult(
 }
 
 // ReadMedia reads blobs at most eight at a time, holding bytes or known absence.
-func ReadMedia(ctx context.Context, blobs BlobStore, refs []core.BlobRef) (HeldMedia, error) {
+func ReadMedia(ctx context.Context, blobs Blobs, refs []core.BlobRef) (HeldMedia, error) {
 	found := make([]heldMedium, len(refs))
 	var next atomic.Uint64
 	group, readCtx := errgroup.WithContext(ctx)

@@ -24,14 +24,14 @@ type MemoryTreeStore struct {
 	failingSaves  int
 	saveHold      *StoreGate
 	childrenHolds map[core.NodeID]*StoreGate
-	blobs         store.BlobStore
+	blobs         store.Blobs
 }
 
 // NewMemoryTreeStore creates a store with its own in-memory blob namespace.
 func NewMemoryTreeStore() *MemoryTreeStore { return NewMemoryTreeStoreWithBlobs(NewMemoryBlobs()) }
 
 // NewMemoryTreeStoreWithBlobs creates a store using the supplied namespace.
-func NewMemoryTreeStoreWithBlobs(blobs store.BlobStore) *MemoryTreeStore {
+func NewMemoryTreeStoreWithBlobs(blobs store.Blobs) *MemoryTreeStore {
 	return &MemoryTreeStore{
 		nodes:         map[core.NodeID]storedNode{},
 		sequences:     map[core.Sequence]uint64{},
@@ -237,9 +237,9 @@ func (s *MemoryTreeStore) CreateNode(
 	return nil
 }
 
-// SessionStore returns the node's checkpoint store. Saves also mark carried
+// Session returns the node's checkpoint store. Saves also mark carried
 // child completions delivered in the same commit.
-func (s *MemoryTreeStore) SessionStore(id core.NodeID) store.SessionStore {
+func (s *MemoryTreeStore) Session(id core.NodeID) store.Session {
 	return &memorySession{tree: s, id: id}
 }
 
@@ -359,7 +359,7 @@ func (s *MemoryTreeStore) CommandOutput(ctx context.Context, command core.Comman
 	return copyOutput(output), nil
 }
 
-var _ store.TreeStore = (*MemoryTreeStore)(nil)
+var _ store.Tree = (*MemoryTreeStore)(nil)
 
 // copyOutput detaches kept command bytes and optional missing-output records.
 func copyOutput(output store.StoredOutput) store.StoredOutput {

@@ -13,7 +13,7 @@ import (
 // StoreNumbers adapts the conversation's durable command and shell sequences.
 type StoreNumbers struct {
 	// Store owns the conversation's durable sequences.
-	Store store.TreeStore
+	Store store.Tree
 }
 
 // Next records the next sequence value before returning the assigned number.
@@ -170,7 +170,7 @@ func runTool(
 	var environment host.ShellEnvironment
 	var status host.CommandStatus
 	var err error
-	switch StandardTool(call.ToolName) {
+	switch Standard(call.ToolName) {
 	case Yield:
 		input, decodeErr := decodeYieldInput(call.Input)
 		if decodeErr != nil {
@@ -185,7 +185,7 @@ func runTool(
 			return session.ErrorOutcome(inputRefusal(call.ToolName, decodeErr)), nil
 		}
 		command := core.CommandID(strconv.FormatUint(input.CommandID, 10))
-		if StandardTool(call.ToolName) == ShellAbort {
+		if Standard(call.ToolName) == ShellAbort {
 			environment, err = s.Abort(ctx, command)
 		} else {
 			_, environment, err = s.environment(ctx, nil, &command)

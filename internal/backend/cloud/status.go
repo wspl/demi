@@ -11,7 +11,7 @@ import (
 
 // Status reads the Cloud's device, lifecycle, latest reset, last error and disk
 // capacities and limits without waking it. A manager read failure omits volumes.
-func Status(ctx context.Context, shard CloudShard) (webapi.CloudStatus, error) {
+func Status(ctx context.Context, shard Shard) (webapi.CloudStatus, error) {
 	tuning := shard.CloudServices().Tuning
 	status := webapi.CloudStatus{
 		State:  webapi.CloudStateUnallocated,

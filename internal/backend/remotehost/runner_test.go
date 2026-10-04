@@ -66,7 +66,7 @@ func runnerShell(
 	pages := hosttest.NewPages(false)
 	options := remotehost.NewEnvironmentOptions(
 		f.Host(),
-		func(context.Context) (commandwire.CommandContext, error) { return hosttest.CommandContext(), nil },
+		func(context.Context) (commandwire.Context, error) { return hosttest.CommandContext(), nil },
 		pages,
 		&hosttest.CountingNumbers{},
 	)

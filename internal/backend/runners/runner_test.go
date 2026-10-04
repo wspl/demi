@@ -57,7 +57,7 @@ func TestRunnerFileListingsAndText(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runners.ReadTextFile(t.Context(), fs, path); !errors.Is(err, runners.TextNotText) {
+	if _, err := runners.ReadTextFile(t.Context(), fs, path); !errors.Is(err, runners.ErrTextNotText) {
 		t.Fatalf("binary file: %v", err)
 	}
 	// A sparse file exercises the metadata limit without transferring its bytes.
@@ -78,7 +78,7 @@ func TestRunnerFileListingsAndText(t *testing.T) {
 		filepath.Join(fixture.Home(), "large"),
 	); !errors.Is(
 		err,
-		runners.TextTooLarge,
+		runners.ErrTextTooLarge,
 	) {
 		t.Fatalf("large file: %v", err)
 	}

@@ -15,7 +15,7 @@ type MachineRequest struct {
 	// +demi:length chars min=1
 	ID string `json:"id"`
 	// +demi:flatten
-	Call MachineCall
+	Call Call
 }
 
 // An operation and its parameters. Keys a message does not declare are
@@ -26,7 +26,7 @@ type MachineRequest struct {
 // +demi:union tag=op content=params
 //
 //sumtype:decl
-type MachineCall interface {
+type Call interface {
 	machineCall()
 	Name() string
 }
@@ -37,7 +37,7 @@ type MachineCall interface {
 // +demi:tolerant
 type ReconcileParams struct{}
 
-// +demi:variant MachineCall reconcile
+// +demi:variant Call reconcile
 // +demi:tolerant
 type Reconcile struct {
 	Params ReconcileParams `json:"params"`
@@ -53,7 +53,7 @@ func (*Reconcile) Name() string { return "reconcile" }
 // +demi:tolerant
 type CurrentBaseVersionParams struct{}
 
-// +demi:variant MachineCall current_base_version
+// +demi:variant Call current_base_version
 // +demi:tolerant
 type CurrentBaseVersion struct {
 	Params CurrentBaseVersionParams `json:"params"`
@@ -72,7 +72,7 @@ type ImageStateParams struct {
 	DeviceID string `json:"deviceId"`
 }
 
-// +demi:variant MachineCall image_state
+// +demi:variant Call image_state
 // +demi:tolerant
 type ImageState struct {
 	Params ImageStateParams `json:"params"`
@@ -92,7 +92,7 @@ type RuntimeStateParams struct {
 	DeviceID string `json:"deviceId"`
 }
 
-// +demi:variant MachineCall runtime_state
+// +demi:variant Call runtime_state
 // +demi:tolerant
 type RuntimeStateCall struct {
 	Params RuntimeStateParams `json:"params"`
@@ -114,7 +114,7 @@ type WakeParams struct {
 	Boot runnerwire.ManagedBoot `json:"boot"`
 }
 
-// +demi:variant MachineCall wake
+// +demi:variant Call wake
 // +demi:tolerant
 type Wake struct {
 	Params WakeParams `json:"params"`
@@ -133,7 +133,7 @@ type HibernateParams struct {
 	DeviceID string `json:"deviceId"`
 }
 
-// +demi:variant MachineCall hibernate
+// +demi:variant Call hibernate
 // +demi:tolerant
 type Hibernate struct {
 	Params HibernateParams `json:"params"`
@@ -152,7 +152,7 @@ type CheckpointParams struct {
 	DeviceID string `json:"deviceId"`
 }
 
-// +demi:variant MachineCall checkpoint
+// +demi:variant Call checkpoint
 // +demi:tolerant
 type Checkpoint struct {
 	Params CheckpointParams `json:"params"`
@@ -174,7 +174,7 @@ type GrowVolumeParams struct {
 	Bytes uint64 `json:"bytes"`
 }
 
-// +demi:variant MachineCall grow_volume
+// +demi:variant Call grow_volume
 // +demi:tolerant
 type GrowVolume struct {
 	Params GrowVolumeParams `json:"params"`
@@ -198,7 +198,7 @@ type ResetParams struct {
 	BaseVersion string `json:"baseVersion"`
 }
 
-// +demi:variant MachineCall reset
+// +demi:variant Call reset
 // +demi:tolerant
 type Reset struct {
 	Params ResetParams `json:"params"`

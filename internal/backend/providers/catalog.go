@@ -134,7 +134,7 @@ func ConfiguredModel(model webapi.ConfiguredModel) core.ProviderModel {
 }
 
 // ConfiguredSelection reapplies configured facts while keeping user thinking and tier choices.
-func ConfiguredSelection(entry ProviderEntry, selection core.ModelSelection) (core.ModelSelection, error) {
+func ConfiguredSelection(entry Entry, selection core.ModelSelection) (core.ModelSelection, error) {
 	config, ok := entry.Credential.(*APIKeyConfig)
 	if !ok || config.Models == nil {
 		return selection, nil
@@ -223,7 +223,7 @@ func offeredVendor(v provider.ModelsDevVendor) *webapi.Vendor {
 
 // catalogKey is the hex SHA-256 of the RFC 8785 canonical JSON of the entry's
 // family, API-key configuration and active account; stored catalogs are keyed by it.
-func catalogKey(entry ProviderEntry) (string, error) {
+func catalogKey(entry Entry) (string, error) {
 	var config *APIKeyConfig
 	if c, ok := entry.Credential.(*APIKeyConfig); ok {
 		config = c

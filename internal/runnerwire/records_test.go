@@ -98,7 +98,7 @@ func TestReleaseRecord(t *testing.T) {
 		`{"sha256":"dbf18cb3af50a3348a834ea9cee7981f7354f84aa89764f4d68812c81ebe045b","size":38772096},` +
 		`"aarch64-unknown-linux-musl":` +
 		`{"sha256":"5d4219232ad6a95b2a0e72097011e91ae3773e8523e8032788904fa0e9164197","size":38710848}}}`
-	if _, err := runnerwire.DecodeRunnerRelease([]byte(record)); err != nil {
+	if _, err := runnerwire.DecodeRelease([]byte(record)); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range [][2]string{
@@ -111,7 +111,7 @@ func TestReleaseRecord(t *testing.T) {
 	} {
 		t.Run(change[1], func(t *testing.T) {
 			invalid := strings.Replace(record, change[0], change[1], 1)
-			if _, err := runnerwire.DecodeRunnerRelease([]byte(invalid)); err == nil {
+			if _, err := runnerwire.DecodeRelease([]byte(invalid)); err == nil {
 				t.Fatal("accepted invalid release")
 			}
 		})

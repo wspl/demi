@@ -14,7 +14,7 @@ import (
 // StoreContract runs the eight shared tree-store scenarios. Each subtest gets
 // a fresh, empty store from newStore; the factory registers resource cleanup
 // on that subtest. Cases use t.Context and wait for events, never wall time.
-func StoreContract(t *testing.T, newStore func(t *testing.T) store.TreeStore) {
+func StoreContract(t *testing.T, newStore func(t *testing.T) store.Tree) {
 	cases := []struct {
 		name string
 		run  func(context.Context, contractTree)
@@ -165,7 +165,7 @@ func sequenceNumbers(ctx context.Context, c contractTree) {
 }
 
 func blobNames(ctx context.Context, c contractTree) {
-	blobs := c.store.SessionStore("root").Blobs()
+	blobs := c.store.Session("root").Blobs()
 	data := core.B64Bytes{0x89, 'P', 'N', 'G', 0, 1, 2, 3}
 	blob, err := blobs.Put(ctx, data)
 	if err != nil || string(blob) != fmt.Sprintf("%x", sha256.Sum256(data)) {
@@ -297,7 +297,7 @@ func contractCompleted(result string) store.NodeClose {
 
 type contractTree struct {
 	t     *testing.T
-	store store.TreeStore
+	store store.Tree
 }
 
 func (c contractTree) create(ctx context.Context, node store.NodeRecord, update store.CheckpointUpdate) {
@@ -309,7 +309,7 @@ func (c contractTree) create(ctx context.Context, node store.NodeRecord, update 
 
 func (c contractTree) save(ctx context.Context, id core.NodeID, update store.CheckpointUpdate) {
 	c.t.Helper()
-	if err := c.store.SessionStore(id).Save(ctx, update, store.CommitGuard{}); err != nil {
+	if err := c.store.Session(id).Save(ctx, update, store.CommitGuard{}); err != nil {
 		c.t.Fatal(err)
 	}
 }
@@ -332,7 +332,7 @@ func (c contractTree) node(ctx context.Context, id core.NodeID) *store.NodeRecor
 
 func (c contractTree) load(ctx context.Context, id core.NodeID) *store.Checkpoint {
 	c.t.Helper()
-	checkpoint, found, err := c.store.SessionStore(id).Load(ctx)
+	checkpoint, found, err := c.store.Session(id).Load(ctx)
 	if err != nil || !found {
 		c.t.Fatalf("checkpoint %s: %v %v", id, found, err)
 	}

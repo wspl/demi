@@ -38,7 +38,7 @@ func invocation(operation, args, conversation string) cmdsdk.InvocationContext[c
 		Cwd:          "/",
 		Env:          map[string]string{},
 		JSON:         &asJSON,
-		Context: commandwire.CommandContext{
+		Context: commandwire.Context{
 			Conversation: conversation,
 			Caller:       &commandwire.AgentCaller{Number: 1},
 			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},

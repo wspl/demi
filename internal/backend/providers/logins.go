@@ -42,7 +42,7 @@ type loginFlow struct {
 	done   chan struct{}
 }
 type loginTarget struct {
-	existing      *ProviderEntry
+	existing      *Entry
 	staged        *provider.MemoryCredentialPool
 	family, label string
 	held          *Reservation
@@ -85,7 +85,7 @@ func (f *LoginFlows) Start(
 	ctx context.Context,
 	owner, starter webapi.UserID,
 	family, label string,
-	existing *ProviderEntry,
+	existing *Entry,
 ) (webapi.LoginID, error) {
 	f.mu.Lock()
 	closed := f.ctx.Err() != nil
@@ -264,7 +264,7 @@ func (f *LoginFlows) publish(
 		id = target.existing.ID
 		err = f.assembly.Invalidate(ctx, id)
 	} else {
-		var entry ProviderEntry
+		var entry Entry
 		entry, err = f.assembly.vault.CreateSubscription(ctx, owner, target.family, target.label, target.staged)
 		if errors.Is(err, database.ErrSubscriptionExists) {
 			err = &LoginError{Kind: LoginExists, Family: target.family}
@@ -307,7 +307,7 @@ func copyLoginState(state webapi.LoginState) webapi.LoginState {
 }
 
 // hasLoginFamily checks whether the user already configured the requested login family.
-func hasLoginFamily(entries []ProviderEntry, family string) bool {
+func hasLoginFamily(entries []Entry, family string) bool {
 	for _, entry := range entries {
 		if entry.Family == family {
 			return true

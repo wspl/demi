@@ -1229,7 +1229,7 @@ func contractValidateHello(v Hello, depth int) error {
 			return contract.At("deviceToken", err)
 		}
 	}
-	if err := contractValidateRunnerInfo(v.Runner, depth+1); err != nil {
+	if err := contractValidateInfo(v.Runner, depth+1); err != nil {
 		return contract.At("runner", err)
 	}
 	return nil
@@ -1534,6 +1534,38 @@ func contractValidateInbound(value Inbound, depth int) error {
 	default:
 		return fmt.Errorf("nil or unsupported Inbound")
 	}
+}
+func (v Info) Validate() error { return contractValidateInfo(v, 0) }
+func contractValidateInfo(v Info, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Name), 0, -1, ""); err != nil {
+		return contract.At("name", err)
+	}
+	if err := contractValidateRunnerPlatform(v.Platform, depth+1); err != nil {
+		return contract.At("platform", err)
+	}
+	if err := contract.Text(string(v.Platform), 0, -1, ""); err != nil {
+		return contract.At("platform", err)
+	}
+	if err := contract.Text(string(v.Version), 0, -1, ""); err != nil {
+		return contract.At("version", err)
+	}
+	if v.NativeTarget != nil {
+		if err := contract.Text(string((*v.NativeTarget)), 0, -1, ""); err != nil {
+			return contract.At("nativeTarget", err)
+		}
+	}
+	if err := contractValidateHostIdentity(v.Identity, depth+1); err != nil {
+		return contract.At("identity", err)
+	}
+	if v.Managed != nil {
+	}
+	if err := validateRunnerInfo(v); err != nil {
+		return err
+	}
+	return nil
 }
 func DecodeInstall(data []byte) (Install, error) { return contract.Decode[Install](data) }
 func (v Install) Validate() error                { return contractValidateInstall(v, 0) }
@@ -2752,137 +2784,9 @@ func contractValidateRPCStdinPull(v RPCStdinPull, depth int) error {
 	}
 	return nil
 }
-func DecodeRoot(data []byte) (Root, error) { return contract.Decode[Root](data) }
-func (v Root) Validate() error             { return contractValidateRoot(v, 0) }
-func contractValidateRoot(v Root, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.CheckJSON(v.Tree); err != nil {
-		return contract.At("tree", err)
-	}
-	return nil
-}
-func (v *Root) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next Root
-	for key := range obj {
-		switch key {
-		case "tree":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["tree"]
-		if !ok {
-			return contract.At("tree", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.JSON(raw)
-			if err != nil {
-				return contract.At("tree", err)
-			}
-			next.Tree = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v Root) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "tree", Value: v.Tree})
-	return contract.EncodeObject(fields)
-}
-func (v RunnerInfo) Validate() error { return contractValidateRunnerInfo(v, 0) }
-func contractValidateRunnerInfo(v RunnerInfo, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v.Name), 0, -1, ""); err != nil {
-		return contract.At("name", err)
-	}
-	if err := contractValidateRunnerPlatform(v.Platform, depth+1); err != nil {
-		return contract.At("platform", err)
-	}
-	if err := contract.Text(string(v.Platform), 0, -1, ""); err != nil {
-		return contract.At("platform", err)
-	}
-	if err := contract.Text(string(v.Version), 0, -1, ""); err != nil {
-		return contract.At("version", err)
-	}
-	if v.NativeTarget != nil {
-		if err := contract.Text(string((*v.NativeTarget)), 0, -1, ""); err != nil {
-			return contract.At("nativeTarget", err)
-		}
-	}
-	if err := contractValidateHostIdentity(v.Identity, depth+1); err != nil {
-		return contract.At("identity", err)
-	}
-	if v.Managed != nil {
-	}
-	if err := validateRunnerInfo(v); err != nil {
-		return err
-	}
-	return nil
-}
-func ParseRunnerPlatform(value string) (RunnerPlatform, error) {
-	v := RunnerPlatform(value)
-	if err := v.Validate(); err != nil {
-		return "", err
-	}
-	return v, nil
-}
-func DecodeRunnerPlatform(data []byte) (RunnerPlatform, error) {
-	return contract.Decode[RunnerPlatform](data)
-}
-func (v RunnerPlatform) Validate() error { return contractValidateRunnerPlatform(v, 0) }
-func contractValidateRunnerPlatform(v RunnerPlatform, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	switch string(v) {
-	case "darwin", "win32", "linux":
-	default:
-		return contract.At("", fmt.Errorf("unknown value"))
-	}
-	if err := contract.Text(string(v), 0, -1, ""); err != nil {
-		return contract.At("", err)
-	}
-	return nil
-}
-func (v *RunnerPlatform) UnmarshalJSON(data []byte) error {
-	value, err := contract.Decode[string](data)
-	if err != nil {
-		return err
-	}
-	next := RunnerPlatform(value)
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v RunnerPlatform) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	return contract.EncodeJSON(string(v))
-}
-func DecodeRunnerRelease(data []byte) (RunnerRelease, error) {
-	return contract.Decode[RunnerRelease](data)
-}
-func (v RunnerRelease) Validate() error { return contractValidateRunnerRelease(v, 0) }
-func contractValidateRunnerRelease(v RunnerRelease, depth int) error {
+func DecodeRelease(data []byte) (Release, error) { return contract.Decode[Release](data) }
+func (v Release) Validate() error                { return contractValidateRelease(v, 0) }
+func contractValidateRelease(v Release, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -2918,12 +2822,12 @@ func contractValidateRunnerRelease(v RunnerRelease, depth int) error {
 	}
 	return nil
 }
-func (v *RunnerRelease) UnmarshalJSON(data []byte) error {
+func (v *Release) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next RunnerRelease
+	var next Release
 	for key := range obj {
 		switch key {
 		case "release", "wire", "commandProtocol", "targets":
@@ -2991,7 +2895,7 @@ func (v *RunnerRelease) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v RunnerRelease) MarshalJSON() ([]byte, error) {
+func (v Release) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -3001,6 +2905,100 @@ func (v RunnerRelease) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "commandProtocol", Value: v.CommandProtocol})
 	fields = append(fields, contract.Field{Name: "targets", Value: v.Targets})
 	return contract.EncodeObject(fields)
+}
+func DecodeRoot(data []byte) (Root, error) { return contract.Decode[Root](data) }
+func (v Root) Validate() error             { return contractValidateRoot(v, 0) }
+func contractValidateRoot(v Root, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.CheckJSON(v.Tree); err != nil {
+		return contract.At("tree", err)
+	}
+	return nil
+}
+func (v *Root) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next Root
+	for key := range obj {
+		switch key {
+		case "tree":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["tree"]
+		if !ok {
+			return contract.At("tree", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.JSON(raw)
+			if err != nil {
+				return contract.At("tree", err)
+			}
+			next.Tree = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Root) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "tree", Value: v.Tree})
+	return contract.EncodeObject(fields)
+}
+func ParseRunnerPlatform(value string) (RunnerPlatform, error) {
+	v := RunnerPlatform(value)
+	if err := v.Validate(); err != nil {
+		return "", err
+	}
+	return v, nil
+}
+func DecodeRunnerPlatform(data []byte) (RunnerPlatform, error) {
+	return contract.Decode[RunnerPlatform](data)
+}
+func (v RunnerPlatform) Validate() error { return contractValidateRunnerPlatform(v, 0) }
+func contractValidateRunnerPlatform(v RunnerPlatform, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	switch string(v) {
+	case "darwin", "win32", "linux":
+	default:
+		return contract.At("", fmt.Errorf("unknown value"))
+	}
+	if err := contract.Text(string(v), 0, -1, ""); err != nil {
+		return contract.At("", err)
+	}
+	return nil
+}
+func (v *RunnerPlatform) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[string](data)
+	if err != nil {
+		return err
+	}
+	next := RunnerPlatform(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v RunnerPlatform) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(string(v))
 }
 func (*ServiceDone) outbound()        {}
 func (v ServiceDone) Validate() error { return contractValidateServiceDone(v, 0) }
@@ -7301,7 +7299,7 @@ func (v *Hello) UnmarshalMsgpack(data []byte) error {
 			return contract.At("runner", fmt.Errorf("required field is absent"))
 		}
 		if present {
-			value, err := contract.DecodeMsgpack[RunnerInfo](raw)
+			value, err := contract.DecodeMsgpack[Info](raw)
 			if err != nil {
 				return contract.At("runner", err)
 			}
@@ -7706,6 +7704,117 @@ func EncodeInboundMsgpack(v Inbound) ([]byte, error) {
 		return nil, err
 	}
 	return contract.EncodeMsgpack(v)
+}
+func DecodeInfoMsgpack(data []byte) (Info, error) { return contract.DecodeMsgpack[Info](data) }
+func (v *Info) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next Info
+	{
+		raw, present := obj["name"]
+		delete(obj, "name")
+		if !present {
+			return contract.At("name", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("name", err)
+			}
+			next.Name = value
+		}
+	}
+	{
+		raw, present := obj["platform"]
+		delete(obj, "platform")
+		if !present {
+			return contract.At("platform", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[RunnerPlatform](raw)
+			if err != nil {
+				return contract.At("platform", err)
+			}
+			next.Platform = value
+		}
+	}
+	{
+		raw, present := obj["version"]
+		delete(obj, "version")
+		if !present {
+			return contract.At("version", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("version", err)
+			}
+			next.Version = value
+		}
+	}
+	{
+		raw, present := obj["nativeTarget"]
+		delete(obj, "nativeTarget")
+		if present {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.DecodeMsgpack[string]) }(raw)
+			if err != nil {
+				return contract.At("nativeTarget", err)
+			}
+			next.NativeTarget = value
+		}
+	}
+	{
+		raw, present := obj["identity"]
+		delete(obj, "identity")
+		if !present {
+			return contract.At("identity", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[HostIdentity](raw)
+			if err != nil {
+				return contract.At("identity", err)
+			}
+			next.Identity = value
+		}
+	}
+	{
+		raw, present := obj["managed"]
+		delete(obj, "managed")
+		if present {
+			value, err := func(b []byte) (*bool, error) { return contract.Pointer(b, contract.DecodeMsgpack[bool]) }(raw)
+			if err != nil {
+				return contract.At("managed", err)
+			}
+			next.Managed = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Info) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "name", Value: v.Name})
+	fields = append(fields, contract.Field{Name: "platform", Value: v.Platform})
+	fields = append(fields, contract.Field{Name: "version", Value: v.Version})
+	if v.NativeTarget != nil {
+		fields = append(fields, contract.Field{Name: "nativeTarget", Value: v.NativeTarget})
+	}
+	fields = append(fields, contract.Field{Name: "identity", Value: v.Identity})
+	if v.Managed != nil {
+		fields = append(fields, contract.Field{Name: "managed", Value: v.Managed})
+	}
+	return contract.EncodeMsgpackObject(fields)
 }
 func DecodeInstallMsgpack(data []byte) (Install, error) { return contract.DecodeMsgpack[Install](data) }
 func (v *Install) UnmarshalMsgpack(data []byte) error {
@@ -8739,7 +8848,7 @@ func (v *JobStart) UnmarshalMsgpack(data []byte) error {
 			return contract.At("context", fmt.Errorf("required field is absent"))
 		}
 		if present {
-			value, err := contract.DecodeMsgpack[commandwire.CommandContext](raw)
+			value, err := contract.DecodeMsgpack[commandwire.Context](raw)
 			if err != nil {
 				return contract.At("context", err)
 			}
@@ -10840,119 +10949,6 @@ func (v RPCStdinPull) MarshalMsgpack() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "callId", Value: v.CallID})
 	return contract.EncodeMsgpackObject(fields)
 }
-func DecodeRunnerInfoMsgpack(data []byte) (RunnerInfo, error) {
-	return contract.DecodeMsgpack[RunnerInfo](data)
-}
-func (v *RunnerInfo) UnmarshalMsgpack(data []byte) error {
-	obj, err := contract.MsgpackObject(data)
-	if err != nil {
-		return err
-	}
-	var next RunnerInfo
-	{
-		raw, present := obj["name"]
-		delete(obj, "name")
-		if !present {
-			return contract.At("name", fmt.Errorf("required field is absent"))
-		}
-		if present {
-			value, err := contract.DecodeMsgpack[string](raw)
-			if err != nil {
-				return contract.At("name", err)
-			}
-			next.Name = value
-		}
-	}
-	{
-		raw, present := obj["platform"]
-		delete(obj, "platform")
-		if !present {
-			return contract.At("platform", fmt.Errorf("required field is absent"))
-		}
-		if present {
-			value, err := contract.DecodeMsgpack[RunnerPlatform](raw)
-			if err != nil {
-				return contract.At("platform", err)
-			}
-			next.Platform = value
-		}
-	}
-	{
-		raw, present := obj["version"]
-		delete(obj, "version")
-		if !present {
-			return contract.At("version", fmt.Errorf("required field is absent"))
-		}
-		if present {
-			value, err := contract.DecodeMsgpack[string](raw)
-			if err != nil {
-				return contract.At("version", err)
-			}
-			next.Version = value
-		}
-	}
-	{
-		raw, present := obj["nativeTarget"]
-		delete(obj, "nativeTarget")
-		if present {
-			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.DecodeMsgpack[string]) }(raw)
-			if err != nil {
-				return contract.At("nativeTarget", err)
-			}
-			next.NativeTarget = value
-		}
-	}
-	{
-		raw, present := obj["identity"]
-		delete(obj, "identity")
-		if !present {
-			return contract.At("identity", fmt.Errorf("required field is absent"))
-		}
-		if present {
-			value, err := contract.DecodeMsgpack[HostIdentity](raw)
-			if err != nil {
-				return contract.At("identity", err)
-			}
-			next.Identity = value
-		}
-	}
-	{
-		raw, present := obj["managed"]
-		delete(obj, "managed")
-		if present {
-			value, err := func(b []byte) (*bool, error) { return contract.Pointer(b, contract.DecodeMsgpack[bool]) }(raw)
-			if err != nil {
-				return contract.At("managed", err)
-			}
-			next.Managed = value
-		}
-	}
-	for key := range obj {
-		return contract.At(key, fmt.Errorf("unknown field"))
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v RunnerInfo) MarshalMsgpack() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "name", Value: v.Name})
-	fields = append(fields, contract.Field{Name: "platform", Value: v.Platform})
-	fields = append(fields, contract.Field{Name: "version", Value: v.Version})
-	if v.NativeTarget != nil {
-		fields = append(fields, contract.Field{Name: "nativeTarget", Value: v.NativeTarget})
-	}
-	fields = append(fields, contract.Field{Name: "identity", Value: v.Identity})
-	if v.Managed != nil {
-		fields = append(fields, contract.Field{Name: "managed", Value: v.Managed})
-	}
-	return contract.EncodeMsgpackObject(fields)
-}
 func DecodeRunnerPlatformMsgpack(data []byte) (RunnerPlatform, error) {
 	return contract.DecodeMsgpack[RunnerPlatform](data)
 }
@@ -11191,7 +11187,7 @@ func (v *ServiceOpen) UnmarshalMsgpack(data []byte) error {
 			return contract.At("context", fmt.Errorf("required field is absent"))
 		}
 		if present {
-			value, err := contract.DecodeMsgpack[commandwire.CommandContext](raw)
+			value, err := contract.DecodeMsgpack[commandwire.Context](raw)
 			if err != nil {
 				return contract.At("context", err)
 			}

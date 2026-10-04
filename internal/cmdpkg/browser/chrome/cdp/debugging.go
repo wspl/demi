@@ -24,7 +24,7 @@ type DebugOwner struct {
 	target      target.ID
 	mu          sync.Mutex
 	connections map[uint64]*DebugConnection
-	buffer      *Buffer[browserop.CdpEvent]
+	buffer      *Buffer[browserop.CDPEvent]
 	recorded    chan struct{}
 	cleanup     error
 }
@@ -155,7 +155,7 @@ func (d *DebugOwner) record(event Event, c *Connection) error {
 	if d.buffer == nil {
 		return nil
 	}
-	if err := d.buffer.Push(browserop.CdpEvent{Method: event.Method, Params: event.Params, Target: name}); err != nil {
+	if err := d.buffer.Push(browserop.CDPEvent{Method: event.Method, Params: event.Params, Target: name}); err != nil {
 		if gap := d.buffer.MarkGap(); gap != nil {
 			return AfterCleanup(err, gap)
 		}
@@ -217,7 +217,7 @@ func (d *DebugOwner) Events(ctx context.Context, query EventQuery) (EventPage, e
 	if b == nil {
 		return EventPage{}, &BrowserError{Kind: KindConnection, Message: "tab debugging connection ended"}
 	}
-	result := browserop.CdpEventsResult{Events: []browserop.CdpEvent{}, Cursor: b.Cursor(b.Next())}
+	result := browserop.CDPEventsResult{Events: []browserop.CDPEvent{}, Cursor: b.Cursor(b.Next())}
 	if query.After == nil {
 		return EventPage{Result: result}, nil
 	}
@@ -272,7 +272,7 @@ type EventQuery struct {
 // EventPage indicates when an empty read after a cursor can wait for new events.
 type EventPage struct {
 	// Result holds the bounded event page.
-	Result browserop.CdpEventsResult
+	Result browserop.CDPEventsResult
 	// Wait reports whether the caller can wait for more events.
 	Wait bool
 }
@@ -366,10 +366,10 @@ func ExecuteCommand(
 	tab browserop.TabID,
 	command browserop.Operation,
 ) (json.RawMessage, error) {
-	if _, ok := command.(*browserop.CdpDetachInput); ok {
-		return commandValue(browserop.CdpDetachResult{Detached: tab}, debug.Detach(ctx, caller))
+	if _, ok := command.(*browserop.CDPDetachInput); ok {
+		return commandValue(browserop.CDPDetachResult{Detached: tab}, debug.Detach(ctx, caller))
 	}
-	if input, ok := command.(*browserop.CdpSendInput); ok {
+	if input, ok := command.(*browserop.CDPSendInput); ok {
 		if err := admit(input.Method); err != nil {
 			return nil, err
 		}
@@ -385,13 +385,13 @@ func ExecuteCommand(
 	}); err != nil {
 		return nil, err
 	}
-	if input, ok := command.(*browserop.CdpTargetsInput); ok {
+	if input, ok := command.(*browserop.CDPTargetsInput); ok {
 		return debugTargets(ctx, operation, connection, input)
 	}
-	if input, ok := command.(*browserop.CdpSendInput); ok {
+	if input, ok := command.(*browserop.CDPSendInput); ok {
 		return debugSend(ctx, operation, connection, debug, caller, input)
 	}
-	if input, ok := command.(*browserop.CdpEventsInput); ok {
+	if input, ok := command.(*browserop.CDPEventsInput); ok {
 		return debugEvents(ctx, operation, connection, debug, caller, input)
 	}
 	return nil, &BrowserError{Kind: KindConfiguration, Message: "CDP dispatch accepts only targets/send/events/detach"}
@@ -428,9 +428,9 @@ func debugTargets(
 	ctx context.Context,
 	operation *Operation,
 	connection *DebugConnection,
-	input *browserop.CdpTargetsInput,
+	input *browserop.CDPTargetsInput,
 ) (json.RawMessage, error) {
-	var rows []browserop.CdpTarget
+	var rows []browserop.CDPTarget
 	err := operation.Run(ctx, func(work context.Context) error {
 		if _, err := connection.Send(work, "Runtime.getIsolateId", json.RawMessage(`{}`), "main"); err != nil {
 			return err
@@ -439,7 +439,7 @@ func debugTargets(
 		if err != nil {
 			return err
 		}
-		rows = []browserop.CdpTarget{}
+		rows = []browserop.CDPTarget{}
 		for _, id := range ids {
 			raw, err := connection.Send(work, "Target.getTargetInfo", json.RawMessage(`{}`), id)
 			if ErrorCode(err) == "target_not_found" {
@@ -452,7 +452,7 @@ func debugTargets(
 			if err := jsonv2.Unmarshal(raw, &info); err != nil {
 				return err
 			}
-			rows = append(rows, browserop.CdpTarget{ID: id, Kind: info.TargetInfo.Type, URL: info.TargetInfo.URL})
+			rows = append(rows, browserop.CDPTarget{ID: id, Kind: info.TargetInfo.Type, URL: info.TargetInfo.URL})
 		}
 		return nil
 	})
@@ -468,7 +468,7 @@ func debugTargets(
 	}
 	start := min(offset, uint(len(rows)))
 	end := start + min(limit, uint(len(rows))-start)
-	return Value(browserop.CdpTargetsResult{Targets: rows[start:end], Truncated: end < uint(len(rows))})
+	return Value(browserop.CDPTargetsResult{Targets: rows[start:end], Truncated: end < uint(len(rows))})
 }
 
 func debugSend(
@@ -477,7 +477,7 @@ func debugSend(
 	connection *DebugConnection,
 	debug *DebugOwner,
 	caller uint64,
-	input *browserop.CdpSendInput,
+	input *browserop.CDPSendInput,
 ) (json.RawMessage, error) {
 	selected := "main"
 	if input.Target != nil {
@@ -492,7 +492,7 @@ func debugSend(
 	if ErrorCode(err) == "timeout" || ErrorCode(err) == "cancelled" {
 		err = AfterCleanup(err, debug.Detach(context.WithoutCancel(ctx), caller))
 	}
-	return commandValue(browserop.CdpSendResult{Method: input.Method, Result: result}, err)
+	return commandValue(browserop.CDPSendResult{Method: input.Method, Result: result}, err)
 }
 
 func debugEvents(
@@ -501,7 +501,7 @@ func debugEvents(
 	connection *DebugConnection,
 	debug *DebugOwner,
 	caller uint64,
-	input *browserop.CdpEventsInput,
+	input *browserop.CDPEventsInput,
 ) (json.RawMessage, error) {
 	query := EventQuery{After: input.After, Limit: browserop.DefaultNodes, Target: "main"}
 	if input.Method != nil {
@@ -558,9 +558,9 @@ func (d *DebugOwner) existingConnection(caller uint64) (*DebugConnection, error)
 	d.mu.Lock()
 	existing := d.connections[caller]
 	if existing == nil && d.buffer == nil {
-		buffer, err := NewBuffer("cdp", browserop.CDPEvents, browserop.CDPBytes, func(e browserop.CdpEvent) uint64 {
+		buffer, err := NewBuffer("cdp", browserop.CDPEvents, browserop.CDPBytes, func(e browserop.CDPEvent) uint64 {
 			return e.Sequence
-		}, func(e browserop.CdpEvent, n uint64) browserop.CdpEvent {
+		}, func(e browserop.CDPEvent, n uint64) browserop.CDPEvent {
 			e.Sequence = n
 			return e
 		})

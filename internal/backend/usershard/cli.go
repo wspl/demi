@@ -26,7 +26,7 @@ type cloudPlacement struct {
 type cliTarget struct {
 	host    *remotehost.Host
 	home    string
-	context commandwire.CommandContext
+	context commandwire.Context
 }
 
 // Start wakes the Cloud and starts the provider process with its resolved site.
@@ -55,7 +55,7 @@ func (p cloudPlacement) Start(
 }
 
 func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (claudecode.Site, error) {
-	var command commandwire.CommandContext
+	var command commandwire.Context
 	var err error
 	if p.conversation != nil {
 		command, err = runners.CommandContext(

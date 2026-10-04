@@ -94,7 +94,7 @@ func (a *Admission) Release() { a.held.Release() }
 
 // Admit wakes a stopped Cloud or joins boot, recovery or reset. Request
 // cancellation ends the wait, not an owned transition. The caller owns device.
-func Admit(ctx context.Context, shard CloudShard, device database.DeviceRecord) (*Admission, error) {
+func Admit(ctx context.Context, shard Shard, device database.DeviceRecord) (*Admission, error) {
 	m, err := loadMachine(ctx, shard, device)
 	if err != nil {
 		return nil, storageFailed(err)
@@ -164,7 +164,7 @@ func (c *Cloud) admitOperation(m *machine) (*gates.Lease, error) {
 }
 
 // Died records an unsolicited runtime loss. Saving and resetting ignore it.
-func Died(ctx context.Context, shard CloudShard, device webapi.DeviceID) error {
+func Died(ctx context.Context, shard Shard, device webapi.DeviceID) error {
 	c := shard.Cloud()
 	tuning := shard.CloudServices().Tuning
 	c.mu.Lock()
@@ -201,7 +201,7 @@ func Died(ctx context.Context, shard CloudShard, device webapi.DeviceID) error {
 
 // Close stops admission, joins work, then saves a running machine if its gate
 // is free. A still-held machine is left to the manager's final reconciliation.
-func Close(ctx context.Context, shard CloudShard) error {
+func Close(ctx context.Context, shard Shard) error {
 	c := shard.Cloud()
 	c.Stop()
 	c.mu.Lock()
@@ -241,7 +241,7 @@ func Close(ctx context.Context, shard CloudShard) error {
 }
 
 // loadMachine publishes the first Cloud machine after its durable reset read.
-func loadMachine(ctx context.Context, s CloudShard, device database.DeviceRecord) (*machine, error) {
+func loadMachine(ctx context.Context, s Shard, device database.DeviceRecord) (*machine, error) {
 	c := s.Cloud()
 	c.mu.Lock()
 	m := c.machine
@@ -284,7 +284,7 @@ func (t *transition) wait(ctx context.Context) error {
 func (m *machine) mark() { m.marks.Mark(pagesync.Part{Kind: pagesync.Cloud}) }
 
 // ensureRunning atomically chooses or joins the machine transition.
-func ensureRunning(ctx context.Context, s CloudShard, m *machine) (bool, error) {
+func ensureRunning(ctx context.Context, s Shard, m *machine) (bool, error) {
 	c := s.Cloud()
 	services := s.CloudServices()
 	for {
@@ -374,7 +374,7 @@ func prepareBootLocked(c *Cloud, m *machine, services *Services) error {
 }
 
 // completeBootTransition publishes readiness before waking callers waiting on the transition.
-func completeBootTransition(ctx context.Context, s CloudShard, c *Cloud, m *machine, t *transition, recovering bool) {
+func completeBootTransition(ctx context.Context, s Shard, c *Cloud, m *machine, t *transition, recovering bool) {
 	err := runTransition(context.WithoutCancel(ctx), func(ctx context.Context) error {
 		if recovering {
 			return recoverMachine(ctx, s, m)

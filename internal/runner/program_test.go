@@ -210,8 +210,8 @@ func (f *runnerFixture) frame() runnerwire.Outbound {
 	return message
 }
 
-func runnerCommandContext() commandwire.CommandContext {
-	return commandwire.CommandContext{
+func runnerCommandContext() commandwire.Context {
+	return commandwire.Context{
 		Conversation: "conversation",
 		Caller:       &commandwire.AgentCaller{Number: 1},
 		Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},

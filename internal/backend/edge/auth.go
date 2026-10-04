@@ -11,7 +11,7 @@ import (
 
 func (e *Edge) accounts() *accounts.Accounts {
 	s := e.state.Services
-	return accounts.NewAccounts(s.Control, s.Hasher, s.Sessions, s.Limiter)
+	return accounts.New(s.Control, s.Hasher, s.Sessions, s.Limiter)
 }
 
 func (e *Edge) setupStatus(w http.ResponseWriter, r *http.Request) error {

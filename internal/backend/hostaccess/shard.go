@@ -41,7 +41,7 @@ type HostShard interface {
 	// PublicURL is where runners fetch the packages' executables from.
 	PublicURL() *runners.PublicURL
 	// CloudShard is the shard as the user's Cloud sees it.
-	CloudShard() cloud.CloudShard
+	CloudShard() cloud.Shard
 	// TrackIdle starts the conversation's idle watch unless one runs.
 	TrackIdle(conversation webapi.ConversationID)
 	// DirectorySets is the Host directories of the user's plugins.

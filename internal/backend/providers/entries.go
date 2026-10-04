@@ -24,15 +24,15 @@ type Vault struct {
 	control *database.ControlService
 	key     *VaultKey
 	mode    webapi.InstanceMode
-	sync    *pagesync.SyncRegistry
+	sync    *pagesync.Registry
 	gates   provider.RefreshGates
 	// mu protects the cached master identity only, never database reads.
 	mu     sync.Mutex
 	master *webapi.UserID
 }
 
-// ProviderEntry is a provider entry, read and decoded.
-type ProviderEntry struct {
+// Entry is a provider entry, read and decoded.
+type Entry struct {
 	// ID identifies the provider entry.
 	ID webapi.ProviderID
 	// Owner identifies the user whose scope owns the entry.
@@ -76,7 +76,7 @@ type APIKeyConfig struct {
 }
 
 // Kind returns the entry credential kind.
-func (e ProviderEntry) Kind() webapi.CredentialKind {
+func (e Entry) Kind() webapi.CredentialKind {
 	if _, ok := e.Credential.(*APIKeyConfig); ok {
 		return webapi.CredentialKindAPIKey
 	}
@@ -84,7 +84,7 @@ func (e ProviderEntry) Kind() webapi.CredentialKind {
 }
 
 // Active returns a subscription entry's active account.
-func (e ProviderEntry) Active() *webapi.CredentialID {
+func (e Entry) Active() *webapi.CredentialID {
 	if c, ok := e.Credential.(*SubscriptionCredential); ok {
 		return c.Active
 	}
@@ -92,7 +92,7 @@ func (e ProviderEntry) Active() *webapi.CredentialID {
 }
 
 // DTO returns the entry as the web app sees it: never its key.
-func (e ProviderEntry) DTO() webapi.ProviderDTO {
+func (e Entry) DTO() webapi.ProviderDTO {
 	dto := webapi.ProviderDTO{
 		ID:           e.ID,
 		Kind:         e.Kind(),
@@ -114,7 +114,7 @@ func NewVault(
 	control *database.ControlService,
 	key *VaultKey,
 	mode webapi.InstanceMode,
-	sync *pagesync.SyncRegistry,
+	sync *pagesync.Registry,
 ) *Vault {
 	return &Vault{
 		control: control,
@@ -198,7 +198,7 @@ func (v *Vault) Visible(
 	ctx context.Context,
 	user webapi.UserID,
 	id webapi.ProviderID,
-) (*ProviderEntry, error) {
+) (*Entry, error) {
 	owner, err := v.OwnerFor(ctx, user)
 	if err != nil {
 		return nil, err
@@ -214,12 +214,12 @@ func (v *Vault) Visible(
 }
 
 // Entries returns owner entries, oldest first.
-func (v *Vault) Entries(ctx context.Context, owner webapi.UserID) ([]ProviderEntry, error) {
+func (v *Vault) Entries(ctx context.Context, owner webapi.UserID) ([]Entry, error) {
 	rows, err := v.control.Providers(ctx, owner)
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]ProviderEntry, 0, len(rows))
+	entries := make([]Entry, 0, len(rows))
 	for _, row := range rows {
 		e, err := v.decode(row)
 		if err != nil {
@@ -231,7 +231,7 @@ func (v *Vault) Entries(ctx context.Context, owner webapi.UserID) ([]ProviderEnt
 }
 
 // Entry reads and decodes an entry, or returns nil.
-func (v *Vault) Entry(ctx context.Context, id webapi.ProviderID) (*ProviderEntry, error) {
+func (v *Vault) Entry(ctx context.Context, id webapi.ProviderID) (*Entry, error) {
 	row, found, err := v.control.Provider(ctx, id)
 	if err != nil || !found {
 		return nil, err
@@ -249,18 +249,18 @@ func (v *Vault) CreateAPIKey(
 	owner webapi.UserID,
 	family, label string,
 	config APIKeyConfig,
-) (ProviderEntry, error) {
+) (Entry, error) {
 	randomID, err := uuid.NewRandom()
 	if err != nil {
-		return ProviderEntry{}, fmt.Errorf("create provider identity: %w", err)
+		return Entry{}, fmt.Errorf("create provider identity: %w", err)
 	}
 	id, err := webapi.ParseProviderID(randomID.String())
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	sealed, err := v.sealConfig(id, config)
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	ctx = context.WithoutCancel(ctx)
 	row, err := v.control.InsertProvider(
@@ -276,7 +276,7 @@ func (v *Vault) CreateAPIKey(
 		nil,
 	)
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	v.MarkChanged(row.Owner)
 	return v.decode(row)
@@ -289,22 +289,22 @@ func (v *Vault) CreateSubscription(
 	owner webapi.UserID,
 	family, label string,
 	staged *provider.MemoryCredentialPool,
-) (ProviderEntry, error) {
+) (Entry, error) {
 	randomID, err := uuid.NewRandom()
 	if err != nil {
-		return ProviderEntry{}, fmt.Errorf("create provider identity: %w", err)
+		return Entry{}, fmt.Errorf("create provider identity: %w", err)
 	}
 	id, err := webapi.ParseProviderID(randomID.String())
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	accounts, err := v.sealStagedAccounts(id, staged)
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	selected, ok, err := staged.Active(ctx)
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	var active *webapi.CredentialID
 	for i := range accounts {
@@ -330,7 +330,7 @@ func (v *Vault) CreateSubscription(
 		accounts,
 	)
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	v.MarkChanged(row.Owner)
 	return v.decode(row)
@@ -342,26 +342,26 @@ func (v *Vault) Update(
 	id webapi.ProviderID,
 	label *string,
 	config *APIKeyConfig,
-) (ProviderEntry, error) {
+) (Entry, error) {
 	var sealed *[]byte
 	if config != nil {
 		b, err := v.sealConfig(id, *config)
 		if err != nil {
-			return ProviderEntry{}, err
+			return Entry{}, err
 		}
 		sealed = &b
 	}
 	ctx = context.WithoutCancel(ctx)
 	row, err := v.control.UpdateProvider(ctx, id, label, sealed)
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	v.MarkChanged(row.Owner)
 	return v.decode(row)
 }
 
 // Delete deletes the entry and its accounts.
-func (v *Vault) Delete(ctx context.Context, entry ProviderEntry) error {
+func (v *Vault) Delete(ctx context.Context, entry Entry) error {
 	ctx = context.WithoutCancel(ctx)
 	if err := v.control.DeleteProvider(ctx, entry.ID); err != nil {
 		return err
@@ -404,28 +404,28 @@ func (v *Vault) sealConfig(id webapi.ProviderID, config APIKeyConfig) ([]byte, e
 }
 
 // decode opens a stored provider configuration without exposing secret values in errors.
-func (v *Vault) decode(row database.ProviderRow) (ProviderEntry, error) {
+func (v *Vault) decode(row database.ProviderRow) (Entry, error) {
 	var credential EntryCredential
 	switch {
 	case row.Kind == webapi.CredentialKindAPIKey && row.Config != nil:
 		document, err := v.key.Open(ConfigRow{Provider: row.ID}, *row.Config)
 		if err != nil {
-			return ProviderEntry{}, corruptConfig(err.Error())
+			return Entry{}, corruptConfig(err.Error())
 		}
 		if !utf8.Valid(document) {
-			return ProviderEntry{}, corruptConfig("the configuration is not UTF-8")
+			return Entry{}, corruptConfig("the configuration is not UTF-8")
 		}
 		config, err := provider.DecodeSecretDocument(string(document), DecodeAPIKeyConfig)
 		if err != nil {
-			return ProviderEntry{}, corruptConfig(configFault(err))
+			return Entry{}, corruptConfig(configFault(err))
 		}
 		credential = &config
 	case row.Kind == webapi.CredentialKindSubscription && row.Config == nil:
 		credential = &SubscriptionCredential{Active: row.Active}
 	default:
-		return ProviderEntry{}, corruptConfig("the configuration does not match the entry's kind")
+		return Entry{}, corruptConfig("the configuration does not match the entry's kind")
 	}
-	return ProviderEntry{
+	return Entry{
 		ID:         row.ID,
 		Owner:      row.Owner,
 		Family:     row.Family,

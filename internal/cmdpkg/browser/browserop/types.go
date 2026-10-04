@@ -433,7 +433,7 @@ type DownloadInput struct {
 type ClipboardWriteInput struct {
 	// Browser tab ID returned by open or tabs
 	Tab  TabID          `json:"tab"`
-	MIME *ClipboardMime `json:"mime,omitempty"`
+	MIME *ClipboardMIME `json:"mime,omitempty"`
 	// Whole operation deadline in milliseconds
 	// +demi:range min=1 max=300000
 	TimeoutMS *uint64 `json:"timeout,omitempty"`
@@ -558,7 +558,7 @@ type DialogDismissInput struct {
 // `cdp.targets`: lists the CDP targets of a tab: its page, frames and workers.
 // +demi:root
 // +demi:schema
-type CdpTargetsInput struct {
+type CDPTargetsInput struct {
 	// Browser tab ID returned by open or tabs
 	Tab    TabID `json:"tab"`
 	Offset *uint `json:"offset,omitempty"`
@@ -572,7 +572,7 @@ type CdpTargetsInput struct {
 // `cdp.detach`: ends this caller's debugging connection to a tab.
 // +demi:root
 // +demi:schema
-type CdpDetachInput struct {
+type CDPDetachInput struct {
 	// Browser tab ID returned by open or tabs
 	Tab TabID `json:"tab"`
 	// Whole operation deadline in milliseconds
@@ -583,7 +583,7 @@ type CdpDetachInput struct {
 // `cdp.send`: sends one CDP command with JSON parameters.
 // +demi:root
 // +demi:schema
-type CdpSendInput struct {
+type CDPSendInput struct {
 	// Browser tab ID returned by open or tabs
 	Tab TabID `json:"tab"`
 	// +demi:length chars min=1 max=4096
@@ -602,7 +602,7 @@ type CdpSendInput struct {
 // +demi:root
 // +demi:schema
 // +demi:check validateCdpEventsInput
-type CdpEventsInput struct {
+type CDPEventsInput struct {
 	// Browser tab ID returned by open or tabs
 	Tab    TabID     `json:"tab"`
 	Method *[]string `json:"method,omitempty"`
@@ -693,7 +693,7 @@ type CapabilitiesInput struct {
 // `webmcp.list`: lists the WebMCP tools the page declares.
 // +demi:root
 // +demi:schema
-type WebmcpListInput struct {
+type WebMCPListInput struct {
 	// Browser tab ID returned by open or tabs
 	Tab TabID `json:"tab"`
 	// Whole operation deadline in milliseconds
@@ -704,7 +704,7 @@ type WebmcpListInput struct {
 // `webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.
 // +demi:root
 // +demi:schema
-type WebmcpCallInput struct {
+type WebMCPCallInput struct {
 	// Browser tab ID returned by open or tabs
 	Tab TabID `json:"tab"`
 	// +demi:length chars min=1 max=4096
@@ -727,7 +727,7 @@ type Load string
 // Wire values for Load.
 const (
 	LoadCommit           Load = "commit"
-	LoadDomContentLoaded Load = "domcontentloaded"
+	LoadDOMContentLoaded Load = "domcontentloaded"
 	LoadLoad             Load = "load"
 )
 
@@ -739,7 +739,7 @@ type InspectView string
 // Wire values for InspectView.
 const (
 	InspectViewAccessibility InspectView = "accessibility"
-	InspectViewDom           InspectView = "dom"
+	InspectViewDOM           InspectView = "dom"
 )
 
 // What `read` reads from each element; `--attribute` reads an attribute instead.
@@ -813,13 +813,13 @@ const (
 // A clipboard item's media type.
 // +demi:root
 // +demi:enum text/plain text/html image/png
-type ClipboardMime string
+type ClipboardMIME string
 
-// Wire values for ClipboardMime.
+// Wire values for ClipboardMIME.
 const (
-	ClipboardMimeTextPlain ClipboardMime = "text/plain"
-	ClipboardMimeTextHTML  ClipboardMime = "text/html"
-	ClipboardMimeImagePng  ClipboardMime = "image/png"
+	ClipboardMIMETextPlain ClipboardMIME = "text/plain"
+	ClipboardMIMETextHTML  ClipboardMIME = "text/html"
+	ClipboardMIMEImagePNG  ClipboardMIME = "image/png"
 )
 
 // What `clipboard.read` returns inline: the text; without it, every item
@@ -857,7 +857,7 @@ type ContentFormat string
 const (
 	ContentFormatText ContentFormat = "text"
 	ContentFormatHTML ContentFormat = "html"
-	ContentFormatDom  ContentFormat = "dom"
+	ContentFormatDOM  ContentFormat = "dom"
 )
 
 // +demi:root
@@ -1109,11 +1109,11 @@ func (*ReadResultAll) readResult() {}
 // The media type of a screenshot.
 // +demi:root
 // +demi:enum image/png
-type ImageMime string
+type ImageMIME string
 
-// Wire values for ImageMime.
+// Wire values for ImageMIME.
 const (
-	ImageMimePng ImageMime = "image/png"
+	ImageMIMEPNG ImageMIME = "image/png"
 )
 
 // What `screenshot` answers when it writes a file; `width` and `height` are
@@ -1122,7 +1122,7 @@ const (
 // +demi:schema
 type ScreenshotResult struct {
 	Path     string          `json:"path"`
-	MIMEType ImageMime       `json:"mimeType"`
+	MIMEType ImageMIME       `json:"mimeType"`
 	Width    uint32          `json:"width"`
 	Height   uint32          `json:"height"`
 	Viewport BrowserViewport `json:"viewport"`
@@ -1177,14 +1177,14 @@ type DownloadResult struct {
 // +demi:root
 // +demi:schema
 type ClipboardWriteResult struct {
-	MIMEType ClipboardMime `json:"mimeType"`
+	MIMEType ClipboardMIME `json:"mimeType"`
 	Bytes    uint          `json:"bytes"`
 }
 
 // A clipboard item `clipboard.read` wrote to a file.
 // +demi:root
 type ClipboardItem struct {
-	MIMEType ClipboardMime `json:"mimeType"`
+	MIMEType ClipboardMIME `json:"mimeType"`
 	Path     string        `json:"path"`
 	Bytes    uint          `json:"bytes"`
 }
@@ -1258,7 +1258,7 @@ type DialogResult struct {
 }
 
 // +demi:root
-type CdpTarget struct {
+type CDPTarget struct {
 	ID   string `json:"id"`
 	Kind string `json:"kind"`
 	URL  string `json:"url"`
@@ -1266,26 +1266,26 @@ type CdpTarget struct {
 
 // +demi:root
 // +demi:schema
-type CdpTargetsResult struct {
-	Targets   []CdpTarget `json:"targets"`
+type CDPTargetsResult struct {
+	Targets   []CDPTarget `json:"targets"`
 	Truncated bool        `json:"truncated"`
 }
 
 // +demi:root
 // +demi:schema
-type CdpDetachResult struct {
+type CDPDetachResult struct {
 	Detached TabID `json:"detached"`
 }
 
 // +demi:root
 // +demi:schema
-type CdpSendResult struct {
+type CDPSendResult struct {
 	Method string          `json:"method"`
 	Result json.RawMessage `json:"result"`
 }
 
 // +demi:root
-type CdpEvent struct {
+type CDPEvent struct {
 	Sequence uint64          `json:"sequence"`
 	Method   string          `json:"method"`
 	Params   json.RawMessage `json:"params"`
@@ -1294,8 +1294,8 @@ type CdpEvent struct {
 
 // +demi:root
 // +demi:schema
-type CdpEventsResult struct {
-	Events    []CdpEvent `json:"events"`
+type CDPEventsResult struct {
+	Events    []CDPEvent `json:"events"`
 	Cursor    string     `json:"cursor"`
 	HasMore   bool       `json:"hasMore"`
 	Truncated bool       `json:"truncated"`
@@ -1338,7 +1338,7 @@ type Asset struct {
 }
 
 // +demi:root
-type InlineSvg struct {
+type InlineSVG struct {
 	ID   string `json:"id"`
 	HTML string `json:"html"`
 }
@@ -1348,7 +1348,7 @@ type InlineSvg struct {
 type AssetsListResult struct {
 	Inventory  string      `json:"inventory"`
 	Assets     []Asset     `json:"assets"`
-	InlineSvgs []InlineSvg `json:"inlineSvgs"`
+	InlineSVGs []InlineSVG `json:"inlineSvgs"`
 	Truncated  bool        `json:"truncated"`
 }
 
@@ -1384,7 +1384,7 @@ type CapabilitiesResult struct {
 }
 
 // +demi:root
-type WebmcpTool struct {
+type WebMCPTool struct {
 	Name         string           `json:"name"`
 	Description  string           `json:"description"`
 	InputSchema  json.RawMessage  `json:"inputSchema"`
@@ -1395,15 +1395,15 @@ type WebmcpTool struct {
 // `webmcp.call` names, and the tools.
 // +demi:root
 // +demi:schema
-type WebmcpListResult struct {
+type WebMCPListResult struct {
 	Tools     string       `json:"tools"`
-	Entries   []WebmcpTool `json:"entries"`
+	Entries   []WebMCPTool `json:"entries"`
 	Truncated bool         `json:"truncated"`
 }
 
 // +demi:root
 // +demi:schema
-type WebmcpCallResult struct {
+type WebMCPCallResult struct {
 	Name   string          `json:"name"`
 	Result json.RawMessage `json:"result"`
 }
@@ -1435,7 +1435,7 @@ const (
 	BrowserErrorCodeSideEffectRejected    BrowserErrorCode = "side_effect_rejected"
 	BrowserErrorCodeUnsupportedResult     BrowserErrorCode = "unsupported_result"
 	BrowserErrorCodeUnsupportedCapability BrowserErrorCode = "unsupported_capability"
-	BrowserErrorCodeCdpMethodDenied       BrowserErrorCode = "cdp_method_denied"
+	BrowserErrorCodeCDPMethodDenied       BrowserErrorCode = "cdp_method_denied"
 	BrowserErrorCodeOutputExists          BrowserErrorCode = "output_exists"
 	BrowserErrorCodeIOError               BrowserErrorCode = "io_error"
 	BrowserErrorCodeResultTooLarge        BrowserErrorCode = "result_too_large"

@@ -21,7 +21,7 @@ type ToolSet struct {
 	// Handle binds the declarations to their document version.
 	Handle string
 	// Entries holds the page's validated tool declarations.
-	Entries []browserop.WebmcpTool
+	Entries []browserop.WebMCPTool
 }
 
 // WebMCPState belongs to the calling tab and is held under its operation gate.
@@ -109,10 +109,10 @@ func ExecuteWebMCP(
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := command.(*browserop.WebmcpListInput); ok {
+	if _, ok := command.(*browserop.WebMCPListInput); ok {
 		return listWebMCP(ctx, operation, executor, state, key)
 	}
-	input, ok := command.(*browserop.WebmcpCallInput)
+	input, ok := command.(*browserop.WebMCPCallInput)
 	if !ok {
 		return nil, &BrowserError{Kind: KindConfiguration, Message: "WebMCP dispatch accepts only list/call"}
 	}
@@ -209,11 +209,11 @@ func listWebMCP(
 	return retainWebMCPTools(state, raw)
 }
 
-func webMCPCallEntry(state *WebMCPState, input *browserop.WebmcpCallInput) (*browserop.WebmcpTool, error) {
+func webMCPCallEntry(state *WebMCPState, input *browserop.WebMCPCallInput) (*browserop.WebMCPTool, error) {
 	if state.Tools == nil || state.Tools.Handle != input.Tools {
 		return nil, &BrowserError{Kind: KindStaleTools}
 	}
-	var entry *browserop.WebmcpTool
+	var entry *browserop.WebMCPTool
 	count := uint(0)
 	for i := range state.Tools.Entries {
 		if state.Tools.Entries[i].Name == input.Tool {
@@ -242,10 +242,10 @@ func webMCPCallEntry(state *WebMCPState, input *browserop.WebmcpCallInput) (*bro
 	return entry, nil
 }
 
-func webMCPEntries(rawEntries []jsontext.Value) ([]browserop.WebmcpTool, error) {
-	entries := make([]browserop.WebmcpTool, 0, len(rawEntries))
+func webMCPEntries(rawEntries []jsontext.Value) ([]browserop.WebMCPTool, error) {
+	entries := make([]browserop.WebMCPTool, 0, len(rawEntries))
 	for _, raw := range rawEntries {
-		entry, err := browserop.DecodeWebmcpTool(raw)
+		entry, err := browserop.DecodeWebMCPTool(raw)
 		if err != nil {
 			return nil, &BrowserError{Kind: KindInvalidResult, Message: err.Error(), Cause: err}
 		}
@@ -271,7 +271,7 @@ func webMCPEntries(rawEntries []jsontext.Value) ([]browserop.WebmcpTool, error) 
 	return entries, nil
 }
 
-func validateToolOutput(entry *browserop.WebmcpTool, result jsontext.Value) error {
+func validateToolOutput(entry *browserop.WebMCPTool, result jsontext.Value) error {
 	if entry.OutputSchema != nil {
 		schema, err := pageSchema(*entry.OutputSchema)
 		if err != nil {
@@ -295,7 +295,7 @@ func callWebMCP(
 	executor Executor,
 	state *WebMCPState,
 	tab browserop.TabID,
-	input *browserop.WebmcpCallInput,
+	input *browserop.WebMCPCallInput,
 	key string,
 ) (json.RawMessage, error) {
 	entry, err := webMCPCallEntry(state, input)
@@ -340,8 +340,8 @@ func completeToolCall(
 	operation *Operation,
 	executor Executor,
 	script string,
-	entry *browserop.WebmcpTool,
-	input *browserop.WebmcpCallInput,
+	entry *browserop.WebMCPTool,
+	input *browserop.WebMCPCallInput,
 ) (json.RawMessage, error) {
 	operation.BeginInput()
 	raw, err := evaluatePage(work, executor, script, true)
@@ -366,7 +366,7 @@ func completeToolCall(
 	if err := validateToolOutput(entry, reply.Result); err != nil {
 		return nil, err
 	}
-	return Value(browserop.WebmcpCallResult{Name: input.Tool, Result: json.RawMessage(reply.Result)})
+	return Value(browserop.WebMCPCallResult{Name: input.Tool, Result: json.RawMessage(reply.Result)})
 }
 
 func retainWebMCPTools(state *WebMCPState, raw json.RawMessage) (json.RawMessage, error) {
@@ -388,7 +388,7 @@ func retainWebMCPTools(state *WebMCPState, raw json.RawMessage) (json.RawMessage
 	if err != nil {
 		return nil, err
 	}
-	result, err := Value(browserop.WebmcpListResult{Tools: *snapshot.Handle, Entries: entries})
+	result, err := Value(browserop.WebMCPListResult{Tools: *snapshot.Handle, Entries: entries})
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +399,7 @@ func retainWebMCPTools(state *WebMCPState, raw json.RawMessage) (json.RawMessage
 	return result, nil
 }
 
-func webMCPCallScript(input *browserop.WebmcpCallInput, key string) (string, string, error) {
+func webMCPCallScript(input *browserop.WebMCPCallInput, key string) (string, string, error) {
 	call, err := Fresh("toolcall")
 	if err != nil {
 		return "", "", err

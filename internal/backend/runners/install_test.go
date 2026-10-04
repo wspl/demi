@@ -49,7 +49,7 @@ func TestInstallersNameReleaseAndBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	release := runnerwire.RunnerRelease{
+	release := runnerwire.Release{
 		Release: strings.Repeat("a", 64),
 		Targets: map[string]commandwire.PackageArtifact{
 			"aarch64-apple-darwin":   {SHA256: strings.Repeat("b", 64), Size: 42},

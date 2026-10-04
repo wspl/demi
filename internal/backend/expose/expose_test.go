@@ -27,7 +27,7 @@ const testID webapi.ExposeID = "k7x2maqw4p3s6tavaw2y4z6aab"
 // controlled to interleave operations without external resources.
 type shard struct {
 	store     *memoryStore
-	exposes   expose.Exposes
+	exposes   expose.Connections
 	domain    *expose.Domain
 	backend   *url.Url
 	connected bool
@@ -38,7 +38,7 @@ func (s *shard) User() webapi.UserID                        { return "owner" }
 func (s *shard) Control() expose.Store                      { return s.store }
 func (s *shard) Clock() core.Clock                          { return core.SystemClock{} }
 func (s *shard) ExposesChanged()                            { s.changes.Add(1) }
-func (s *shard) Exposes() *expose.Exposes                   { return &s.exposes }
+func (s *shard) Exposes() *expose.Connections               { return &s.exposes }
 func (s *shard) Domain() *expose.Domain                     { return s.domain }
 func (s *shard) PublicURL() *url.Url                        { return s.backend }
 func (s *shard) DeviceConnected(database.DeviceRecord) bool { return s.connected }

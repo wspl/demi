@@ -108,7 +108,7 @@ func TestHostGroupNamesReachableHostsAndRefusesOthers(t *testing.T) {
 			Args: []byte(test.args),
 			CWD:  "/work",
 			Env:  map[string]string{},
-			Context: commandwire.CommandContext{
+			Context: commandwire.Context{
 				Conversation: string(conversationID),
 				Caller:       &commandwire.AgentCaller{Number: 1},
 				Locale:       runners.DefaultLocale(),

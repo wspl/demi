@@ -447,7 +447,7 @@ func TestSummaryOverflowToOneBlockLeavesHistory(t *testing.T) {
 		)
 		f.done(f.send(strings.Repeat("x", 3000), "t1"))
 		f.done(f.send(strings.Repeat("y", 400), "t2"))
-		reports := []session.ErrorReport{}
+		reports := []session.ReportError{}
 		sub := f.s.Subscribe(func(e session.Event) {
 			if e, ok := e.(*session.ErrorEvent); ok {
 				reports = append(reports, e.Report)
@@ -458,12 +458,12 @@ func TestSummaryOverflowToOneBlockLeavesHistory(t *testing.T) {
 		a, err := f.s.Compact()
 		must(t, err)
 		_, failure := a.Wait(t.Context())
-		var report *session.ErrorReport
+		var report *session.ReportError
 		if !errors.As(failure, &report) {
 			t.Fatal(failure)
 		}
 		equal(t, report.Code, new("context_length_exceeded"))
-		equal(t, reports, []session.ErrorReport{*report})
+		equal(t, reports, []session.ReportError{*report})
 		equal(t, f.s.Transcript(), before)
 		equal(t, summarySizes(f.p), []int{4, 3, 2})
 		f.done(f.send("recover", "t3"))

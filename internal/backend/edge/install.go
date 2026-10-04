@@ -19,7 +19,7 @@ import (
 
 const immutable = "public, max-age=31536000, immutable"
 
-func readRelease(path string) (*runnerwire.RunnerRelease, error) {
+func readRelease(path string) (*runnerwire.Release, error) {
 	bytes, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -27,7 +27,7 @@ func readRelease(path string) (*runnerwire.RunnerRelease, error) {
 	if err != nil {
 		return nil, err
 	}
-	release, err := runnerwire.DecodeRunnerRelease(bytes)
+	release, err := runnerwire.DecodeRelease(bytes)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}

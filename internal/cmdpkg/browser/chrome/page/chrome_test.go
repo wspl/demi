@@ -208,7 +208,7 @@ func TestChromePage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(inventory.InlineSvgs) != 1 {
+	if len(inventory.InlineSVGs) != 1 {
 		t.Fatalf("SVG inventory=%+v", inventory)
 	}
 }

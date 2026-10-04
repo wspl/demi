@@ -24,7 +24,7 @@ type registrationOptions struct {
 	backend                                        runnerwire.BackendURL
 	directory, artifacts, jobRoot, executable, cwd string
 	env                                            map[string]string
-	runner                                         runnerwire.RunnerInfo
+	runner                                         runnerwire.Info
 	token                                          *runnerwire.DeviceToken
 	volumes                                        []host.ManagedVolume
 	shell                                          process.JobShell

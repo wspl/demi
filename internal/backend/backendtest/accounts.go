@@ -94,8 +94,8 @@ type AccountLoginScript struct {
 	Cancelled atomic.Int64
 }
 
-// Approve changes whether pending and future logins can complete.
-func (s *AccountLoginScript) Approve(value bool) {
+// SetApproved changes whether pending and future logins can complete.
+func (s *AccountLoginScript) SetApproved(value bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.approved = value

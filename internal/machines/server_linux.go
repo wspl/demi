@@ -20,7 +20,7 @@ import (
 
 // Service runs one call and returns the JSON value carried in its ok reply.
 type Service interface {
-	Handle(context.Context, machinewire.MachineCall) (json.RawMessage, error)
+	Handle(context.Context, machinewire.Call) (json.RawMessage, error)
 }
 
 // Socket owns a bound Unix socket. Serve consumes it.

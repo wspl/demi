@@ -30,7 +30,7 @@ type serverFixture struct {
 
 func server(
 	t *testing.T,
-	script func(context.Context, machinewire.MachineCall) (json.RawMessage, error),
+	script func(context.Context, machinewire.Call) (json.RawMessage, error),
 ) *serverFixture {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -93,7 +93,7 @@ func (c *socketClient) receive(t *testing.T) machinewire.MachineResponse {
 }
 
 func TestEveryCallReachesService(t *testing.T) {
-	f := server(t, func(_ context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
+	f := server(t, func(_ context.Context, call machinewire.Call) (json.RawMessage, error) {
 		switch call.(type) {
 		case *machinewire.CurrentBaseVersion:
 			return machinewire.BaseVersion("base").MarshalJSON()
@@ -157,7 +157,7 @@ func TestEveryCallReachesService(t *testing.T) {
 }
 
 func TestFailureLeavesConnectionUsable(t *testing.T) {
-	f := server(t, func(_ context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
+	f := server(t, func(_ context.Context, call machinewire.Call) (json.RawMessage, error) {
 		if call.Name() == "hibernate" {
 			return nil, errors.New("no such machine")
 		}
@@ -179,7 +179,7 @@ func TestConcurrentRepliesCompleteInOrder(t *testing.T) {
 	release := make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
-	f := server(t, func(_ context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
+	f := server(t, func(_ context.Context, call machinewire.Call) (json.RawMessage, error) {
 		if call.Name() == "current_base_version" {
 			<-release
 		}
@@ -248,7 +248,7 @@ func TestDisconnectedRequestCompletes(t *testing.T) {
 	finished := make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
-	f := server(t, func(_ context.Context, _ machinewire.MachineCall) (json.RawMessage, error) {
+	f := server(t, func(_ context.Context, _ machinewire.Call) (json.RawMessage, error) {
 		close(entered)
 		<-release
 		close(finished)

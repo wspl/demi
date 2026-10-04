@@ -22,7 +22,7 @@ type Tree[H host.Host] struct {
 	server          *Server[H]
 	id              core.NodeID
 	root            *Node[H]
-	store           store.TreeStore
+	store           store.Tree
 	admission       *gates.Activity
 	actionAdmission gates.Serial
 	profiles        []core.Profile
@@ -176,7 +176,7 @@ func (s *Server[H]) openTree(
 }
 
 // newTree makes conversation root's unpublished tree with its own lifetime.
-func (s *Server[H]) newTree(root core.NodeID, toolset tools.Toolset) *Tree[H] {
+func (s *Server[H]) newTree(root core.NodeID, toolset tools.Set) *Tree[H] {
 	lifetime, cancel := context.WithCancel(context.Background())
 	return &Tree[H]{
 		server:      s,

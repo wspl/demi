@@ -342,25 +342,25 @@ func parsePageInput(name string, args []byte) (Input, error) {
 func parseDebuggingInput(name string, args []byte) (Input, error) {
 	switch name {
 	case "cdp.targets":
-		v, err := DecodeCdpTargetsInput(args)
+		v, err := DecodeCDPTargetsInput(args)
 		if err != nil {
 			return nil, err
 		}
 		return &v, nil
 	case "cdp.detach":
-		v, err := DecodeCdpDetachInput(args)
+		v, err := DecodeCDPDetachInput(args)
 		if err != nil {
 			return nil, err
 		}
 		return &v, nil
 	case "cdp.send":
-		v, err := DecodeCdpSendInput(args)
+		v, err := DecodeCDPSendInput(args)
 		if err != nil {
 			return nil, err
 		}
 		return &v, nil
 	case "cdp.events":
-		v, err := DecodeCdpEventsInput(args)
+		v, err := DecodeCDPEventsInput(args)
 		if err != nil {
 			return nil, err
 		}
@@ -403,13 +403,13 @@ func parseContentInput(name string, args []byte) (Input, error) {
 		}
 		return &v, nil
 	case "webmcp.list":
-		v, err := DecodeWebmcpListInput(args)
+		v, err := DecodeWebMCPListInput(args)
 		if err != nil {
 			return nil, err
 		}
 		return &v, nil
 	case "webmcp.call":
-		v, err := DecodeWebmcpCallInput(args)
+		v, err := DecodeWebMCPCallInput(args)
 		if err != nil {
 			return nil, err
 		}
@@ -1461,16 +1461,16 @@ func (ddi *DialogDismissInput) WaitURLPattern() (string, bool) { return "", fals
 // ElementTarget is the element target the input carries.
 func (*DialogDismissInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
 
-func (*CdpTargetsInput) operation() {}
+func (*CDPTargetsInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CdpTargetsInput) OperationName() string { return "cdp.targets" }
+func (*CDPTargetsInput) OperationName() string { return "cdp.targets" }
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CdpTargetsInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CDPTargetsInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
 
 // Timeout is the whole operation's deadline.
-func (cti *CdpTargetsInput) Timeout() time.Duration {
+func (cti *CDPTargetsInput) Timeout() time.Duration {
 	ms := cti.DefaultTimeoutMS()
 	if cti.TimeoutMS != nil {
 		ms = *cti.TimeoutMS
@@ -1479,24 +1479,24 @@ func (cti *CdpTargetsInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cti *CdpTargetsInput) TabID() (TabID, bool) { return cti.Tab, true }
+func (cti *CDPTargetsInput) TabID() (TabID, bool) { return cti.Tab, true }
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cti *CdpTargetsInput) WaitURLPattern() (string, bool) { return "", false }
+func (cti *CDPTargetsInput) WaitURLPattern() (string, bool) { return "", false }
 
 // ElementTarget is the element target the input carries.
-func (*CdpTargetsInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CDPTargetsInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
 
-func (*CdpDetachInput) operation() {}
+func (*CDPDetachInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CdpDetachInput) OperationName() string { return "cdp.detach" }
+func (*CDPDetachInput) OperationName() string { return "cdp.detach" }
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CdpDetachInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CDPDetachInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
 
 // Timeout is the whole operation's deadline.
-func (cdi *CdpDetachInput) Timeout() time.Duration {
+func (cdi *CDPDetachInput) Timeout() time.Duration {
 	ms := cdi.DefaultTimeoutMS()
 	if cdi.TimeoutMS != nil {
 		ms = *cdi.TimeoutMS
@@ -1505,24 +1505,24 @@ func (cdi *CdpDetachInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cdi *CdpDetachInput) TabID() (TabID, bool) { return cdi.Tab, true }
+func (cdi *CDPDetachInput) TabID() (TabID, bool) { return cdi.Tab, true }
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cdi *CdpDetachInput) WaitURLPattern() (string, bool) { return "", false }
+func (cdi *CDPDetachInput) WaitURLPattern() (string, bool) { return "", false }
 
 // ElementTarget is the element target the input carries.
-func (*CdpDetachInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CDPDetachInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
 
-func (*CdpSendInput) operation() {}
+func (*CDPSendInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CdpSendInput) OperationName() string { return "cdp.send" }
+func (*CDPSendInput) OperationName() string { return "cdp.send" }
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CdpSendInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CDPSendInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
 
 // Timeout is the whole operation's deadline.
-func (csi *CdpSendInput) Timeout() time.Duration {
+func (csi *CDPSendInput) Timeout() time.Duration {
 	ms := csi.DefaultTimeoutMS()
 	if csi.TimeoutMS != nil {
 		ms = *csi.TimeoutMS
@@ -1531,24 +1531,24 @@ func (csi *CdpSendInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (csi *CdpSendInput) TabID() (TabID, bool) { return csi.Tab, true }
+func (csi *CDPSendInput) TabID() (TabID, bool) { return csi.Tab, true }
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (csi *CdpSendInput) WaitURLPattern() (string, bool) { return "", false }
+func (csi *CDPSendInput) WaitURLPattern() (string, bool) { return "", false }
 
 // ElementTarget is the element target the input carries.
-func (*CdpSendInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CDPSendInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
 
-func (*CdpEventsInput) operation() {}
+func (*CDPEventsInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CdpEventsInput) OperationName() string { return "cdp.events" }
+func (*CDPEventsInput) OperationName() string { return "cdp.events" }
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CdpEventsInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CDPEventsInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
 
 // Timeout is the whole operation's deadline.
-func (cei *CdpEventsInput) Timeout() time.Duration {
+func (cei *CDPEventsInput) Timeout() time.Duration {
 	ms := cei.DefaultTimeoutMS()
 	if cei.TimeoutMS != nil {
 		ms = *cei.TimeoutMS
@@ -1557,13 +1557,13 @@ func (cei *CdpEventsInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cei *CdpEventsInput) TabID() (TabID, bool) { return cei.Tab, true }
+func (cei *CDPEventsInput) TabID() (TabID, bool) { return cei.Tab, true }
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cei *CdpEventsInput) WaitURLPattern() (string, bool) { return "", false }
+func (cei *CDPEventsInput) WaitURLPattern() (string, bool) { return "", false }
 
 // ElementTarget is the element target the input carries.
-func (*CdpEventsInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CDPEventsInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
 
 func (*ContentReadInput) operation() {}
 
@@ -1695,16 +1695,16 @@ func (ci *CapabilitiesInput) WaitURLPattern() (string, bool) { return "", false 
 // ElementTarget is the element target the input carries.
 func (*CapabilitiesInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
 
-func (*WebmcpListInput) operation() {}
+func (*WebMCPListInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*WebmcpListInput) OperationName() string { return "webmcp.list" }
+func (*WebMCPListInput) OperationName() string { return "webmcp.list" }
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*WebmcpListInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*WebMCPListInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
 
 // Timeout is the whole operation's deadline.
-func (wli *WebmcpListInput) Timeout() time.Duration {
+func (wli *WebMCPListInput) Timeout() time.Duration {
 	ms := wli.DefaultTimeoutMS()
 	if wli.TimeoutMS != nil {
 		ms = *wli.TimeoutMS
@@ -1713,24 +1713,24 @@ func (wli *WebmcpListInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (wli *WebmcpListInput) TabID() (TabID, bool) { return wli.Tab, true }
+func (wli *WebMCPListInput) TabID() (TabID, bool) { return wli.Tab, true }
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (wli *WebmcpListInput) WaitURLPattern() (string, bool) { return "", false }
+func (wli *WebMCPListInput) WaitURLPattern() (string, bool) { return "", false }
 
 // ElementTarget is the element target the input carries.
-func (*WebmcpListInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*WebMCPListInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
 
-func (*WebmcpCallInput) operation() {}
+func (*WebMCPCallInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*WebmcpCallInput) OperationName() string { return "webmcp.call" }
+func (*WebMCPCallInput) OperationName() string { return "webmcp.call" }
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*WebmcpCallInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*WebMCPCallInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
 
 // Timeout is the whole operation's deadline.
-func (wci *WebmcpCallInput) Timeout() time.Duration {
+func (wci *WebMCPCallInput) Timeout() time.Duration {
 	ms := wci.DefaultTimeoutMS()
 	if wci.TimeoutMS != nil {
 		ms = *wci.TimeoutMS
@@ -1739,13 +1739,13 @@ func (wci *WebmcpCallInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (wci *WebmcpCallInput) TabID() (TabID, bool) { return wci.Tab, true }
+func (wci *WebMCPCallInput) TabID() (TabID, bool) { return wci.Tab, true }
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (wci *WebmcpCallInput) WaitURLPattern() (string, bool) { return "", false }
+func (wci *WebMCPCallInput) WaitURLPattern() (string, bool) { return "", false }
 
 // ElementTarget is the element target the input carries.
-func (*WebmcpCallInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*WebMCPCallInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
 
 // ParseQuery decodes the tree find --query reads from stdin and checks every base.
 func ParseQuery(body []byte) (BrowserQuery, error) {

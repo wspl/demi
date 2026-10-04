@@ -152,7 +152,7 @@ func TestInputsAnswerTabTargetWaitAndDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if open.(*browserop.OpenInput).Load != nil || browserop.DefaultLoad != browserop.LoadDomContentLoaded {
+	if open.(*browserop.OpenInput).Load != nil || browserop.DefaultLoad != browserop.LoadDOMContentLoaded {
 		t.Fatal("open without load does not use DOMContentLoaded")
 	}
 	if open.Timeout() != 300*time.Second {

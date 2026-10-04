@@ -126,7 +126,7 @@ func (p shardPolicy) ReserveNumbers(
 func (s *Shard) adopt(
 	ctx context.Context,
 	device database.DeviceRecord,
-	runner runnerwire.RunnerInfo,
+	runner runnerwire.Info,
 	socket *runners.Socket,
 	bound chan<- webapi.DeviceDTO,
 ) error {
@@ -187,7 +187,7 @@ func (s *Shard) adopt(
 func (s *Shard) bindRunner(
 	ctx context.Context,
 	device database.DeviceRecord,
-	runner runnerwire.RunnerInfo,
+	runner runnerwire.Info,
 	socket *runners.Socket,
 ) (*runners.Serving, *runners.LastSeen, error) {
 	order, err := s.runnerOrder.Acquire(ctx, device.ID)

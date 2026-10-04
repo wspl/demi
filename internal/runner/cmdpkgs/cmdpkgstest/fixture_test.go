@@ -71,7 +71,7 @@ func TestFixtureIOContextAndNumbers(t *testing.T) {
 				Args:         []byte(tc.args),
 				Cwd:          os.TempDir(),
 				Env:          map[string]string{"PROBE": "value"},
-				Context: commandwire.CommandContext{
+				Context: commandwire.Context{
 					Conversation: "c",
 					Caller:       &commandwire.AgentCaller{Number: 1},
 					Locale: commandwire.CommandLocale{

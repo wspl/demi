@@ -5303,7 +5303,7 @@
                     "required": [
                       "tab"
                     ],
-                    "title": "CdpTargetsInput",
+                    "title": "CDPTargetsInput",
                     "type": "object"
                   },
                   "positionals": [
@@ -5344,7 +5344,7 @@
                         "targets",
                         "truncated"
                       ],
-                      "title": "CdpTargetsResult",
+                      "title": "CDPTargetsResult",
                       "type": "object"
                     }
                   },
@@ -5379,7 +5379,7 @@
                     "required": [
                       "tab"
                     ],
-                    "title": "CdpDetachInput",
+                    "title": "CDPDetachInput",
                     "type": "object"
                   },
                   "positionals": [
@@ -5398,7 +5398,7 @@
                       "required": [
                         "detached"
                       ],
-                      "title": "CdpDetachResult",
+                      "title": "CDPDetachResult",
                       "type": "object"
                     }
                   },
@@ -5449,7 +5449,7 @@
                       "method",
                       "params"
                     ],
-                    "title": "CdpSendInput",
+                    "title": "CDPSendInput",
                     "type": "object"
                   },
                   "positionals": [
@@ -5470,7 +5470,7 @@
                         "method",
                         "result"
                       ],
-                      "title": "CdpSendResult",
+                      "title": "CDPSendResult",
                       "type": "object"
                     }
                   },
@@ -5528,7 +5528,7 @@
                     "required": [
                       "tab"
                     ],
-                    "title": "CdpEventsInput",
+                    "title": "CDPEventsInput",
                     "type": "object"
                   },
                   "positionals": [
@@ -5581,7 +5581,7 @@
                         "hasMore",
                         "truncated"
                       ],
-                      "title": "CdpEventsResult",
+                      "title": "CDPEventsResult",
                       "type": "object"
                     }
                   },
@@ -6292,7 +6292,7 @@
                     "required": [
                       "tab"
                     ],
-                    "title": "WebmcpListInput",
+                    "title": "WebMCPListInput",
                     "type": "object"
                   },
                   "positionals": [
@@ -6337,7 +6337,7 @@
                         "entries",
                         "truncated"
                       ],
-                      "title": "WebmcpListResult",
+                      "title": "WebMCPListResult",
                       "type": "object"
                     }
                   },
@@ -6390,7 +6390,7 @@
                       "tools",
                       "arguments"
                     ],
-                    "title": "WebmcpCallInput",
+                    "title": "WebMCPCallInput",
                     "type": "object"
                   },
                   "positionals": [
@@ -6411,7 +6411,7 @@
                         "name",
                         "result"
                       ],
-                      "title": "WebmcpCallResult",
+                      "title": "WebMCPCallResult",
                       "type": "object"
                     }
                   },

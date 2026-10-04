@@ -78,7 +78,7 @@ func (r *rawHostRunner) next() runnerwire.Inbound {
 func runnerHello(protocol uint32, token string, managed *bool) *runnerwire.Hello {
 	h := &runnerwire.Hello{
 		Protocol: protocol,
-		Runner: runnerwire.RunnerInfo{
+		Runner: runnerwire.Info{
 			Name:     "raw",
 			Platform: runnerwire.RunnerPlatformLinux,
 			Version:  "0",

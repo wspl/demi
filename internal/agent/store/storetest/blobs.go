@@ -63,4 +63,4 @@ func (b *MemoryBlobs) Read(ctx context.Context, blob core.BlobRef) (core.B64Byte
 	return bytes.Clone(data), exists, nil
 }
 
-var _ store.BlobStore = (*MemoryBlobs)(nil)
+var _ store.Blobs = (*MemoryBlobs)(nil)

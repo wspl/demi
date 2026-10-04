@@ -12,13 +12,13 @@ import (
 // Script must be safe for simultaneous calls and must join any work it starts.
 type Service struct {
 	// Script supplies the test reply after a call is recorded.
-	Script func(context.Context, machinewire.MachineCall) (json.RawMessage, error)
+	Script func(context.Context, machinewire.Call) (json.RawMessage, error)
 	mu     sync.Mutex
-	calls  []machinewire.MachineCall
+	calls  []machinewire.Call
 }
 
 // Handle records the call before invoking Script; a nil Script returns null.
-func (s *Service) Handle(ctx context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
+func (s *Service) Handle(ctx context.Context, call machinewire.Call) (json.RawMessage, error) {
 	s.mu.Lock()
 	s.calls = append(s.calls, call)
 	s.mu.Unlock()
@@ -29,8 +29,8 @@ func (s *Service) Handle(ctx context.Context, call machinewire.MachineCall) (jso
 }
 
 // Calls returns a snapshot of the calls received.
-func (s *Service) Calls() []machinewire.MachineCall {
+func (s *Service) Calls() []machinewire.Call {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]machinewire.MachineCall(nil), s.calls...)
+	return append([]machinewire.Call(nil), s.calls...)
 }

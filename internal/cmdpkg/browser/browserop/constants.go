@@ -116,15 +116,15 @@ func NumberedNodeRef(number uint64) (NodeRef, error) {
 // DefaultLoad and the other default choices are used when an operation omits an optional choice.
 const (
 	// DefaultLoad is the load milestone used when none is requested.
-	DefaultLoad = LoadDomContentLoaded
+	DefaultLoad = LoadDOMContentLoaded
 	// DefaultInspectView is the inspection view used when none is requested.
 	DefaultInspectView = InspectViewAccessibility
 	// DefaultMouseButton is the mouse button used when none is requested.
 	DefaultMouseButton = MouseButtonLeft
 	// DefaultElementState is the element state used when none is requested.
 	DefaultElementState = ElementStateVisible
-	// DefaultClipboardMime is the clipboard MIME type used when none is requested.
-	DefaultClipboardMime = ClipboardMimeTextPlain
+	// DefaultClipboardMIME is the clipboard MIME type used when none is requested.
+	DefaultClipboardMIME = ClipboardMIMETextPlain
 	// DefaultContentFormat is the content format used when none is requested.
 	DefaultContentFormat = ContentFormatText
 	// DefaultViewportMode is the viewport mode used when none is requested.

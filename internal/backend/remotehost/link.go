@@ -43,7 +43,7 @@ type JobOrigin struct {
 	// Host identifies the admitted Host.
 	Host host.Key
 	// Context identifies the conversation and command locale.
-	Context commandwire.CommandContext
+	Context commandwire.Context
 	// Caller identifies the node that owns command callbacks.
 	Caller *host.JobCaller
 }

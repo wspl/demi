@@ -53,14 +53,14 @@ func (s *Stores) ForUser(user webapi.UserID) *Namespace {
 	return &Namespace{stores: s, user: user}
 }
 
-// Namespace holds one user's blobs and implements the session's store.BlobStore.
+// Namespace holds one user's blobs and implements the session's store.Blobs.
 // It borrows its store and supports concurrent calls.
 type Namespace struct {
 	stores *Stores
 	user   webapi.UserID
 }
 
-var _ store.BlobStore = (*Namespace)(nil)
+var _ store.Blobs = (*Namespace)(nil)
 
 // Stored is a blob of a namespace, as its listing finds it.
 type Stored struct {

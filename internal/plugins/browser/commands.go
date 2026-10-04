@@ -407,27 +407,27 @@ func dialogCommands() []command {
 func debuggingCommands() []command {
 	return []command{
 		{
-			&browserop.CdpTargetsInput{},
-			browserop.CdpTargetsResultJSONSchema(),
-			browserop.CdpTargetsInputJSONSchema(),
+			&browserop.CDPTargetsInput{},
+			browserop.CDPTargetsResultJSONSchema(),
+			browserop.CDPTargetsInputJSONSchema(),
 			"List this tab and its debuggable child targets.",
 		},
 		{
-			&browserop.CdpDetachInput{},
-			browserop.CdpDetachResultJSONSchema(),
-			browserop.CdpDetachInputJSONSchema(),
+			&browserop.CDPDetachInput{},
+			browserop.CDPDetachResultJSONSchema(),
+			browserop.CDPDetachInputJSONSchema(),
 			"Close your debugging connection to this tab, releasing its pauses, breakpoints and interceptions.",
 		},
 		{
-			&browserop.CdpSendInput{},
-			browserop.CdpSendResultJSONSchema(),
-			browserop.CdpSendInputJSONSchema(),
+			&browserop.CDPSendInput{},
+			browserop.CDPSendResultJSONSchema(),
+			browserop.CDPSendInputJSONSchema(),
 			"Send a scoped CDP method with a JSON parameter object from stdin.",
 		},
 		{
-			&browserop.CdpEventsInput{},
-			browserop.CdpEventsResultJSONSchema(),
-			browserop.CdpEventsInputJSONSchema(),
+			&browserop.CDPEventsInput{},
+			browserop.CDPEventsResultJSONSchema(),
+			browserop.CDPEventsInputJSONSchema(),
 			"Read buffered CDP events or wait for events after a cursor.",
 		},
 	}
@@ -471,15 +471,15 @@ func pageToolCommands() []command {
 			"Report the browser’s available observation and evaluation capabilities.",
 		},
 		{
-			&browserop.WebmcpListInput{},
-			browserop.WebmcpListResultJSONSchema(),
-			browserop.WebmcpListInputJSONSchema(),
+			&browserop.WebMCPListInput{},
+			browserop.WebMCPListResultJSONSchema(),
+			browserop.WebMCPListInputJSONSchema(),
 			"List tools registered by this page and their input schemas.",
 		},
 		{
-			&browserop.WebmcpCallInput{},
-			browserop.WebmcpCallResultJSONSchema(),
-			browserop.WebmcpCallInputJSONSchema(),
+			&browserop.WebMCPCallInput{},
+			browserop.WebMCPCallResultJSONSchema(),
+			browserop.WebMCPCallInputJSONSchema(),
 			"Call a registered page tool with JSON arguments from stdin.",
 		},
 	}

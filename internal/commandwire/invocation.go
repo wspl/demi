@@ -11,10 +11,10 @@ import "encoding/json"
 // +demi:union tag=kind
 //
 //sumtype:decl
-type CommandCaller interface{ commandCaller() }
+type Caller interface{ commandCaller() }
 
 // AgentCaller identifies an agent by its conversation number.
-// +demi:variant CommandCaller agent
+// +demi:variant Caller agent
 type AgentCaller struct {
 	Number uint64 `json:"number"`
 }
@@ -22,7 +22,7 @@ type AgentCaller struct {
 func (*AgentCaller) commandCaller() {}
 
 // UserCaller identifies the conversation's user.
-// +demi:variant CommandCaller user
+// +demi:variant Caller user
 type UserCaller struct{}
 
 func (*UserCaller) commandCaller() {}
@@ -45,10 +45,10 @@ type LanguageTag string
 // What a declared command knows beyond its arguments. The backend is its
 // only source; nothing reads it from the environment.
 // +demi:msgpack
-type CommandContext struct {
+type Context struct {
 	// +demi:pattern ^[A-Za-z0-9_-]{1,64}$
 	Conversation string        `json:"conversation"`
-	Caller       CommandCaller `json:"caller"`
+	Caller       Caller        `json:"caller"`
 	Locale       CommandLocale `json:"locale"`
 }
 
@@ -59,8 +59,8 @@ type Invocation struct {
 	// +demi:length chars min=1
 	Operation string `json:"operation"`
 	// +demi:length chars min=1
-	InvocationID string         `json:"invocationId"`
-	Context      CommandContext `json:"context"`
+	InvocationID string  `json:"invocationId"`
+	Context      Context `json:"context"`
 	// The operation's arguments, a JSON object.
 	Args json.RawMessage `json:"args"`
 	// +demi:length chars min=1

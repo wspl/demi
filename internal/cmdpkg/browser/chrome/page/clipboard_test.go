@@ -13,7 +13,7 @@ import (
 func TestClipboardUTF8Diagnostic(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		mime  browserop.ClipboardMime
+		mime  browserop.ClipboardMIME
 		input string
 		want  string
 	}{

@@ -157,7 +157,7 @@ func (e *Environment) Changes() (uint64, <-chan struct{}) {
 
 // Open opens a URL as the root agent, waiting for DOMContentLoaded.
 func (e *Environment) Open(ctx context.Context, url string, timeout time.Duration) (*Tab, error) {
-	tab, _, err := e.OpenFor(ctx, url, 0, browserop.LoadDomContentLoaded, time.Now().Add(timeout))
+	tab, _, err := e.OpenFor(ctx, url, 0, browserop.LoadDOMContentLoaded, time.Now().Add(timeout))
 	return tab, err
 }
 

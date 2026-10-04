@@ -122,59 +122,9 @@ func DoneArgsJSONSchema() json.RawMessage {
 func DoneArgsPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo done`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Todo id\"}},\"required\":[\"id\"],\"title\":\"DoneArgs\",\"type\":\"object\"}")
 }
-func DecodeOneTodo(data []byte) (OneTodo, error) { return contract.Decode[OneTodo](data) }
-func (v OneTodo) Validate() error                { return contractValidateOneTodo(v, 0) }
-func contractValidateOneTodo(v OneTodo, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contractValidateTodoItem(v.Todo, depth+1); err != nil {
-		return contract.At("todo", err)
-	}
-	return nil
-}
-func (v *OneTodo) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next OneTodo
-	{
-		raw, ok := obj["todo"]
-		if !ok {
-			return contract.At("todo", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[TodoItem](raw)
-			if err != nil {
-				return contract.At("todo", err)
-			}
-			next.Todo = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v OneTodo) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "todo", Value: v.Todo})
-	return contract.EncodeObject(fields)
-}
-func OneTodoJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"description\":\"What the other commands print with `--json`: the todo they changed.\",\"properties\":{\"todo\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"required\":[\"id\",\"text\",\"status\"]}},\"required\":[\"todo\"],\"title\":\"OneTodo\",\"type\":\"object\"}")
-}
-func OneTodoPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TodoItem\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"$ref\":\"#/$defs/TodoStatus\"}},\"required\":[\"id\",\"text\",\"status\"]},\"TodoStatus\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"description\":\"What the other commands print with `--json`: the todo they changed.\",\"properties\":{\"todo\":{\"$ref\":\"#/$defs/TodoItem\"}},\"required\":[\"todo\"],\"title\":\"OneTodo\",\"type\":\"object\"}")
-}
-func DecodeTodoItem(data []byte) (TodoItem, error) { return contract.Decode[TodoItem](data) }
-func (v TodoItem) Validate() error                 { return contractValidateTodoItem(v, 0) }
-func contractValidateTodoItem(v TodoItem, depth int) error {
+func DecodeItem(data []byte) (Item, error) { return contract.Decode[Item](data) }
+func (v Item) Validate() error             { return contractValidateItem(v, 0) }
+func contractValidateItem(v Item, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -184,7 +134,7 @@ func contractValidateTodoItem(v TodoItem, depth int) error {
 	if err := contract.Text(string(v.Text), 0, -1, ""); err != nil {
 		return contract.At("text", err)
 	}
-	if err := contractValidateTodoStatus(v.Status, depth+1); err != nil {
+	if err := contractValidateStatus(v.Status, depth+1); err != nil {
 		return contract.At("status", err)
 	}
 	if err := contract.Text(string(v.Status), 0, -1, ""); err != nil {
@@ -192,12 +142,12 @@ func contractValidateTodoItem(v TodoItem, depth int) error {
 	}
 	return nil
 }
-func (v *TodoItem) UnmarshalJSON(data []byte) error {
+func (v *Item) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next TodoItem
+	var next Item
 	for key := range obj {
 		switch key {
 		case "id", "text", "status":
@@ -237,7 +187,7 @@ func (v *TodoItem) UnmarshalJSON(data []byte) error {
 			return contract.At("status", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[TodoStatus](raw)
+			value, err := contract.Decode[Status](raw)
 			if err != nil {
 				return contract.At("status", err)
 			}
@@ -250,7 +200,7 @@ func (v *TodoItem) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v TodoItem) MarshalJSON() ([]byte, error) {
+func (v Item) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -260,9 +210,9 @@ func (v TodoItem) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "status", Value: v.Status})
 	return contract.EncodeObject(fields)
 }
-func DecodeTodoList(data []byte) (TodoList, error) { return contract.Decode[TodoList](data) }
-func (v TodoList) Validate() error                 { return contractValidateTodoList(v, 0) }
-func contractValidateTodoList(v TodoList, depth int) error {
+func DecodeList(data []byte) (List, error) { return contract.Decode[List](data) }
+func (v List) Validate() error             { return contractValidateList(v, 0) }
+func contractValidateList(v List, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -272,25 +222,25 @@ func contractValidateTodoList(v TodoList, depth int) error {
 	for i, item := range v.Todos {
 		_ = i
 		_ = item
-		if err := contractValidateTodoItem(item, depth+1); err != nil {
+		if err := contractValidateItem(item, depth+1); err != nil {
 			return contract.At(fmt.Sprintf("%s[%d]", "todos", i), err)
 		}
 	}
 	return nil
 }
-func (v *TodoList) UnmarshalJSON(data []byte) error {
+func (v *List) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next TodoList
+	var next List
 	{
 		raw, ok := obj["todos"]
 		if !ok {
 			return contract.At("todos", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) ([]TodoItem, error) { return contract.List(b, contract.Decode[TodoItem]) }(raw)
+			value, err := func(b []byte) ([]Item, error) { return contract.List(b, contract.Decode[Item]) }(raw)
 			if err != nil {
 				return contract.At("todos", err)
 			}
@@ -303,7 +253,7 @@ func (v *TodoList) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v TodoList) MarshalJSON() ([]byte, error) {
+func (v List) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -311,15 +261,65 @@ func (v TodoList) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "todos", Value: v.Todos})
 	return contract.EncodeObject(fields)
 }
-func TodoListJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"description\":\"What `demi todo list --json` prints.\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"additionalProperties\":false,\"required\":[\"id\",\"text\",\"status\"]}}},\"required\":[\"todos\"],\"title\":\"TodoList\",\"type\":\"object\"}")
+func ListJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"description\":\"What `demi todo list --json` prints.\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"additionalProperties\":false,\"required\":[\"id\",\"text\",\"status\"]}}},\"required\":[\"todos\"],\"title\":\"List\",\"type\":\"object\"}")
 }
-func TodoListPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TodoItem\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"$ref\":\"#/$defs/TodoStatus\"}},\"required\":[\"id\",\"text\",\"status\"]},\"TodoStatus\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"description\":\"What `demi todo list --json` prints.\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/TodoItem\"}}},\"required\":[\"todos\"],\"title\":\"TodoList\",\"type\":\"object\"}")
+func ListPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Item\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"$ref\":\"#/$defs/Status\"}},\"required\":[\"id\",\"text\",\"status\"]},\"Status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"description\":\"What `demi todo list --json` prints.\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Item\"}}},\"required\":[\"todos\"],\"title\":\"List\",\"type\":\"object\"}")
 }
-func DecodeTodoStatus(data []byte) (TodoStatus, error) { return contract.Decode[TodoStatus](data) }
-func (v TodoStatus) Validate() error                   { return contractValidateTodoStatus(v, 0) }
-func contractValidateTodoStatus(v TodoStatus, depth int) error {
+func DecodeOneTodo(data []byte) (OneTodo, error) { return contract.Decode[OneTodo](data) }
+func (v OneTodo) Validate() error                { return contractValidateOneTodo(v, 0) }
+func contractValidateOneTodo(v OneTodo, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateItem(v.Todo, depth+1); err != nil {
+		return contract.At("todo", err)
+	}
+	return nil
+}
+func (v *OneTodo) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next OneTodo
+	{
+		raw, ok := obj["todo"]
+		if !ok {
+			return contract.At("todo", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[Item](raw)
+			if err != nil {
+				return contract.At("todo", err)
+			}
+			next.Todo = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v OneTodo) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "todo", Value: v.Todo})
+	return contract.EncodeObject(fields)
+}
+func OneTodoJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"description\":\"What the other commands print with `--json`: the todo they changed.\",\"properties\":{\"todo\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"required\":[\"id\",\"text\",\"status\"]}},\"required\":[\"todo\"],\"title\":\"OneTodo\",\"type\":\"object\"}")
+}
+func OneTodoPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"Item\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"status\":{\"$ref\":\"#/$defs/Status\"}},\"required\":[\"id\",\"text\",\"status\"]},\"Status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"description\":\"What the other commands print with `--json`: the todo they changed.\",\"properties\":{\"todo\":{\"$ref\":\"#/$defs/Item\"}},\"required\":[\"todo\"],\"title\":\"OneTodo\",\"type\":\"object\"}")
+}
+func DecodeStatus(data []byte) (Status, error) { return contract.Decode[Status](data) }
+func (v Status) Validate() error               { return contractValidateStatus(v, 0) }
+func contractValidateStatus(v Status, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -333,19 +333,19 @@ func contractValidateTodoStatus(v TodoStatus, depth int) error {
 	}
 	return nil
 }
-func (v *TodoStatus) UnmarshalJSON(data []byte) error {
+func (v *Status) UnmarshalJSON(data []byte) error {
 	value, err := contract.Decode[string](data)
 	if err != nil {
 		return err
 	}
-	next := TodoStatus(value)
+	next := Status(value)
 	if err := next.Validate(); err != nil {
 		return err
 	}
 	*v = next
 	return nil
 }
-func (v TodoStatus) MarshalJSON() ([]byte, error) {
+func (v Status) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -366,7 +366,7 @@ func contractValidateUpdateArgs(v UpdateArgs, depth int) error {
 		}
 	}
 	if v.Status != nil {
-		if err := contractValidateTodoStatus((*v.Status), depth+1); err != nil {
+		if err := contractValidateStatus((*v.Status), depth+1); err != nil {
 			return contract.At("status", err)
 		}
 		if err := contract.Text(string((*v.Status)), 0, -1, ""); err != nil {
@@ -414,7 +414,7 @@ func (v *UpdateArgs) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["status"]
 		if ok {
-			value, err := func(b []byte) (*TodoStatus, error) { return contract.Pointer(b, contract.Decode[TodoStatus]) }(raw)
+			value, err := func(b []byte) (*Status, error) { return contract.Pointer(b, contract.Decode[Status]) }(raw)
 			if err != nil {
 				return contract.At("status", err)
 			}
@@ -445,7 +445,7 @@ func UpdateArgsJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"The input of `demi todo update`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Todo id\"},\"text\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"],\"description\":\"Replacement status\"}},\"required\":[\"id\"],\"title\":\"UpdateArgs\",\"type\":\"object\"}")
 }
 func UpdateArgsPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TodoStatus\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"additionalProperties\":false,\"description\":\"The input of `demi todo update`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Todo id\"},\"text\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"status\":{\"$ref\":\"#/$defs/TodoStatus\",\"description\":\"Replacement status\"}},\"required\":[\"id\"],\"title\":\"UpdateArgs\",\"type\":\"object\"}")
+	return json.RawMessage("{\"$defs\":{\"Status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"done\"]}},\"additionalProperties\":false,\"description\":\"The input of `demi todo update`.\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Todo id\"},\"text\":{\"type\":\"string\",\"description\":\"Replacement text\"},\"status\":{\"$ref\":\"#/$defs/Status\",\"description\":\"Replacement status\"}},\"required\":[\"id\"],\"title\":\"UpdateArgs\",\"type\":\"object\"}")
 }
 func decodeStoredTodos(data []byte) (storedTodos, error) { return contract.Decode[storedTodos](data) }
 func (v storedTodos) Validate() error                    { return contractValidateStoredTodos(v, 0) }
@@ -459,14 +459,14 @@ func contractValidateStoredTodos(v storedTodos, depth int) error {
 	for i, item := range v {
 		_ = i
 		_ = item
-		if err := contractValidateTodoItem(item, depth+1); err != nil {
+		if err := contractValidateItem(item, depth+1); err != nil {
 			return contract.At(fmt.Sprintf("%s[%d]", "", i), err)
 		}
 	}
 	return nil
 }
 func (v *storedTodos) UnmarshalJSON(data []byte) error {
-	value, err := func(b []byte) ([]TodoItem, error) { return contract.List(b, contract.Decode[TodoItem]) }(data)
+	value, err := func(b []byte) ([]Item, error) { return contract.List(b, contract.Decode[Item]) }(data)
 	if err != nil {
 		return err
 	}
@@ -481,5 +481,5 @@ func (v storedTodos) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return contract.EncodeJSON([]TodoItem(v))
+	return contract.EncodeJSON([]Item(v))
 }

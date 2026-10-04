@@ -12,7 +12,7 @@ import (
 )
 
 // startSchedules registers a running phase's workers before shutdown can join them.
-func startSchedules(s CloudShard, m *machine) {
+func startSchedules(s Shard, m *machine) {
 	c := s.Cloud()
 	window, tuning := s.IdleWindow(), s.CloudServices().Tuning
 	ctx, cancel := context.WithCancel(c.ctx)
@@ -36,7 +36,7 @@ func startSchedules(s CloudShard, m *machine) {
 }
 
 // maintain runs rounds on the Cloud sweep, with delayed ticks after a slow round.
-func maintain(ctx context.Context, s CloudShard, m *machine, sweep time.Duration) {
+func maintain(ctx context.Context, s Shard, m *machine, sweep time.Duration) {
 	timer := time.NewTimer(sweep)
 	defer timer.Stop()
 	next := time.Now().Add(sweep)
@@ -56,7 +56,7 @@ func maintain(ctx context.Context, s CloudShard, m *machine, sweep time.Duration
 }
 
 // maintenanceRound retires a Cloud past its lifetime cap before it considers a checkpoint.
-func maintenanceRound(ctx context.Context, s CloudShard, m *machine) {
+func maintenanceRound(ctx context.Context, s Shard, m *machine) {
 	c := s.Cloud()
 	tuning := s.CloudServices().Tuning
 	c.mu.Lock()
@@ -113,7 +113,7 @@ func maintenanceRound(ctx context.Context, s CloudShard, m *machine) {
 
 // stopAtCap fences new admissions before disconnecting unattended jobs, then
 // drains their leases. The fence and the eventual reservation have one owner.
-func stopAtCap(ctx context.Context, s CloudShard, m *machine) {
+func stopAtCap(ctx context.Context, s Shard, m *machine) {
 	uses, err := cloudUses(ctx, s)
 	if err != nil {
 		slog.Warn("the Cloud's lifetime cap could not read its conversations", "error", err)
@@ -147,7 +147,7 @@ func stopAtCap(ctx context.Context, s CloudShard, m *machine) {
 }
 
 type cloudIdle struct {
-	s CloudShard
+	s Shard
 	m *machine
 }
 
@@ -213,7 +213,7 @@ func (r *idleRetirement) Release() {
 }
 
 // retireAtCap drains jobs and rechecks attendance under conversation holds.
-func retireAtCap(ctx context.Context, s CloudShard, m *machine) {
+func retireAtCap(ctx context.Context, s Shard, m *machine) {
 	reserved := m.gate.TryReserve()
 	if reserved == nil {
 		s.Devices().Disconnect(m.device.ID, "Cloud reached its lifetime cap")

@@ -9,7 +9,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func (e *Edge) installForAccount(r *http.Request, entry providers.ProviderEntry) {
+func (e *Edge) installForAccount(r *http.Request, entry providers.Entry) {
 	process, err := e.state.Services.Assembly.RunsAProcess(r.Context(), entry)
 	if err == nil && process {
 		_, err = usershard.StartInstall(r.Context(), e.state.Services, e.state.Shards, caller(r).ID, entry.ID)

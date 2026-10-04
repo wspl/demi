@@ -312,7 +312,7 @@ func TestStopDuringResumeSave(t *testing.T) {
 func assertActionCode(t *testing.T, action *session.ActionAnswer, code string) {
 	t.Helper()
 	_, err := action.Wait(t.Context())
-	var report *session.ErrorReport
+	var report *session.ReportError
 	if !errors.As(err, &report) {
 		t.Fatalf("action failure: %v", err)
 	}

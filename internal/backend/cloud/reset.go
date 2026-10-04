@@ -14,7 +14,7 @@ import (
 
 // Reset returns a running or ready id, resumes a failed id on its original base,
 // or admits a new reset. Accepted work belongs to Cloud, not the caller.
-func Reset(ctx context.Context, s CloudShard, id webapi.OperationID) (database.ManagedOperation, error) {
+func Reset(ctx context.Context, s Shard, id webapi.OperationID) (database.ManagedOperation, error) {
 	c := s.Cloud()
 	c.mu.Lock()
 	stopped := c.stopped || c.ctx.Err() != nil
@@ -72,7 +72,7 @@ func runningResetLocked(m *machine, id webapi.OperationID) (database.ManagedOper
 // resetSteps writes intent before each disk step and holds affected conversations.
 func resetSteps(
 	ctx context.Context,
-	s CloudShard,
+	s Shard,
 	m *machine,
 	op database.ManagedOperation,
 	previous, retirement *transition,
@@ -116,7 +116,7 @@ func resetSteps(
 // finishReset records the result then atomically publishes the final reset and lifecycle state.
 func finishReset(
 	ctx context.Context,
-	s CloudShard,
+	s Shard,
 	m *machine,
 	op database.ManagedOperation,
 	t *transition,
@@ -166,7 +166,7 @@ func finishReset(
 // recordPhase commits a reset phase before publishing it, including a failed write.
 func recordPhase(
 	ctx context.Context,
-	s CloudShard,
+	s Shard,
 	m *machine,
 	op database.ManagedOperation,
 	phase webapi.ResetPhase,
@@ -246,7 +246,7 @@ func recoverResets(ctx context.Context, control resetRecords, services *Services
 // admitReset transfers the machine permit and previous work to an owned reset.
 func admitReset(
 	c *Cloud,
-	s CloudShard,
+	s Shard,
 	m *machine,
 	id webapi.OperationID,
 	base machinewire.BaseVersion,
@@ -297,7 +297,7 @@ func admitReset(
 }
 
 // rebuildReset persists saving, rebuilding and booting intent before each disk step.
-func rebuildReset(ctx context.Context, s CloudShard, m *machine, op database.ManagedOperation) error {
+func rebuildReset(ctx context.Context, s Shard, m *machine, op database.ManagedOperation) error {
 	if err := recordPhase(ctx, s, m, op, webapi.ResetPhaseSaving, nil); err != nil {
 		return err
 	}

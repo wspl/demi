@@ -17,7 +17,7 @@ import (
 // Clock calls with its state. The caller supplies every dependency explicitly.
 type Deps struct {
 	Runtime Runtime
-	Store   store.SessionStore
+	Store   store.Session
 	IDs     transcript.IDs
 	Clock   core.Clock
 	Config  Config

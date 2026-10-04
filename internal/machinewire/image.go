@@ -70,6 +70,6 @@ type CloudImageManifest struct {
 	// The command package releases whose artifacts the image embeds.
 	Releases []commandwire.PackageDescriptor `json:"releases"`
 	// The runner release of `/usr/bin/demi-runner`.
-	Runner runnerwire.RunnerRelease `json:"runner"`
-	Tools  []StandaloneTool         `json:"tools"`
+	Runner runnerwire.Release `json:"runner"`
+	Tools  []StandaloneTool   `json:"tools"`
 }

@@ -270,7 +270,7 @@ func TestAssetsExportObservedContentAndKeepPartialSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(inventory.Assets) == 0 || len(inventory.InlineSvgs) != 1 {
+	if len(inventory.Assets) == 0 || len(inventory.InlineSVGs) != 1 {
 		t.Fatalf("%+v", inventory)
 	}
 	result, err := browserop.DecodeAssetsExportResult(

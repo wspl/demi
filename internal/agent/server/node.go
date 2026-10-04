@@ -196,7 +196,7 @@ func (t *Tree[H]) assemble(
 	r := t.nodeRuntime(record, cwd, instructions, preamble, inherited, commands)
 	deps := session.Deps{
 		Runtime: r,
-		Store:   t.store.SessionStore(record.ID),
+		Store:   t.store.Session(record.ID),
 		IDs:     t.server.deps.IDs,
 		Clock:   t.server.deps.Clock,
 		Config:  t.server.deps.Config.Session,
@@ -228,7 +228,7 @@ func (t *Tree[H]) storedNode(ctx context.Context, id core.NodeID) (store.NodeRec
 	if err != nil || !found {
 		return store.NodeRecord{}, store.Checkpoint{}, false, err
 	}
-	checkpoint, saved, err := t.store.SessionStore(stored.ID).Load(ctx)
+	checkpoint, saved, err := t.store.Session(stored.ID).Load(ctx)
 	if err != nil {
 		return store.NodeRecord{}, store.Checkpoint{}, false, err
 	}

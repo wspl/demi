@@ -30,7 +30,7 @@ type Assembly struct {
 	built map[webapi.ProviderID]builtProvider
 }
 type builtProvider struct {
-	entry    ProviderEntry
+	entry    Entry
 	provider provider.Provider
 }
 
@@ -82,7 +82,7 @@ func (a *Assembly) Vendors() *VendorCatalog {
 }
 
 // ProviderFor reuses a provider only while the fresh entry read is unchanged.
-func (a *Assembly) ProviderFor(ctx context.Context, entry ProviderEntry) (provider.Provider, error) {
+func (a *Assembly) ProviderFor(ctx context.Context, entry Entry) (provider.Provider, error) {
 	a.mu.Lock()
 	cached, ok := a.built[entry.ID]
 	a.mu.Unlock()
@@ -107,7 +107,7 @@ func (a *Assembly) ProviderFor(ctx context.Context, entry ProviderEntry) (provid
 // ForAccount builds the provider for an account, or nil when absent.
 func (a *Assembly) ForAccount(
 	ctx context.Context,
-	entry ProviderEntry,
+	entry Entry,
 	account webapi.CredentialID,
 ) (provider.Provider, error) {
 	if active := entry.Active(); active != nil && *active == account {
@@ -140,7 +140,7 @@ func (a *Assembly) Detached(
 }
 
 // RunsAProcess reports whether the entry requires a process on a Host.
-func (a *Assembly) RunsAProcess(ctx context.Context, entry ProviderEntry) (bool, error) {
+func (a *Assembly) RunsAProcess(ctx context.Context, entry Entry) (bool, error) {
 	p, err := a.ProviderFor(ctx, entry)
 	if err != nil {
 		return false, err
@@ -151,7 +151,7 @@ func (a *Assembly) RunsAProcess(ctx context.Context, entry ProviderEntry) (bool,
 // ProcessRuntime builds a session runtime over the supplied process placement.
 func (a *Assembly) ProcessRuntime(
 	ctx context.Context,
-	entry ProviderEntry,
+	entry Entry,
 	account *webapi.CredentialID,
 	placement claudecode.Placement,
 ) (provider.Runtime, error) {
@@ -196,7 +196,7 @@ func (a *Assembly) Close(ctx context.Context) error {
 }
 
 // Family returns the registered family or an unknown-family error.
-func (a *Assembly) Family(name string) (ProviderFamily, error) {
+func (a *Assembly) Family(name string) (Family, error) {
 	family := a.families.Family(name)
 	if family == nil {
 		return nil, &AssemblyError{Kind: AssemblyUnknownFamily, Family: name}
@@ -207,7 +207,7 @@ func (a *Assembly) Family(name string) (ProviderFamily, error) {
 // EntryCatalog reads the first available source; source failures become warnings.
 func (a *Assembly) EntryCatalog(
 	ctx context.Context,
-	entry ProviderEntry,
+	entry Entry,
 	built provider.Provider,
 	buildError error,
 	refresh bool,
@@ -246,7 +246,7 @@ func (a *Assembly) EntryCatalog(
 // ModelCatalog returns each entry catalog and health independently.
 func (a *Assembly) ModelCatalog(
 	ctx context.Context,
-	entries []ProviderEntry,
+	entries []Entry,
 	refresh bool,
 ) []webapi.CatalogProvider {
 	result := make([]webapi.CatalogProvider, len(entries))
@@ -292,7 +292,7 @@ func (a *Assembly) ModelCatalog(
 // Health returns authentication and runtime state; an accountless subscription is unauthenticated.
 func (a *Assembly) Health(
 	ctx context.Context,
-	entry ProviderEntry,
+	entry Entry,
 	built provider.Provider,
 	buildError error,
 ) (core.AuthState, core.RuntimeState) {
@@ -309,7 +309,7 @@ func (a *Assembly) Health(
 // Details discloses accounts and quotas only to a configuring user.
 func (a *Assembly) Details(
 	ctx context.Context,
-	entry ProviderEntry,
+	entry Entry,
 	disclose bool,
 ) (webapi.ProviderDetails, error) {
 	p, err := a.ProviderFor(ctx, entry)
@@ -374,7 +374,7 @@ func (a *Assembly) args(id, label string, credential FamilyCredential) FamilyArg
 
 func (a *Assembly) entryArgs(
 	ctx context.Context,
-	entry ProviderEntry,
+	entry Entry,
 	account *webapi.CredentialID,
 ) (FamilyArgs, error) {
 	var credential FamilyCredential
@@ -415,7 +415,7 @@ func (a *Assembly) entryArgs(
 
 func (a *Assembly) build(
 	ctx context.Context,
-	entry ProviderEntry,
+	entry Entry,
 	account *webapi.CredentialID,
 ) (provider.Provider, error) {
 	family, err := a.Family(entry.Family)
@@ -434,16 +434,16 @@ func (a *Assembly) build(
 }
 
 // cloneEntry freezes the configuration used as a provider reuse key.
-func cloneEntry(entry ProviderEntry) (ProviderEntry, error) {
+func cloneEntry(entry Entry) (Entry, error) {
 	switch c := entry.Credential.(type) {
 	case *APIKeyConfig:
 		b, err := contract.EncodeJSON(c)
 		if err != nil {
-			return ProviderEntry{}, err
+			return Entry{}, err
 		}
 		value, err := DecodeAPIKeyConfig(b)
 		if err != nil {
-			return ProviderEntry{}, err
+			return Entry{}, err
 		}
 		entry.Credential = &value
 	case *SubscriptionCredential:

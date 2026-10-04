@@ -25,7 +25,7 @@ import (
 type ConversationBlobs struct{ Namespace *blobs.Namespace }
 
 // Media is the namespace as the conversation's sessions reach it.
-func (b ConversationBlobs) Media() store.BlobStore {
+func (b ConversationBlobs) Media() store.Blobs {
 	return b.Namespace
 }
 
@@ -114,7 +114,7 @@ func (s *ShardShellEnvironments) Create(
 	private := remotehost.NewHost(target.Key(), target.DefaultCWD(), func() remotehost.DeviceLink {
 		return remotehost.DeviceLink{Link: s.shard.Devices().Link(device)}
 	}, bridge.admit)
-	source := func(ctx context.Context) (commandwire.CommandContext, error) {
+	source := func(ctx context.Context) (commandwire.Context, error) {
 		return runners.CommandContext(
 			ctx,
 			s.shard.Control(),

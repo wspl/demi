@@ -91,7 +91,7 @@ func (s *Session) persister() {
 			if s.ctx.Err() != nil {
 				return
 			}
-			s.emit(&ErrorEvent{Report: ErrorReport{Message: err.Error()}})
+			s.emit(&ErrorEvent{Report: ReportError{Message: err.Error()}})
 			s.mu.Lock()
 			changed = s.core.changed
 			s.mu.Unlock()

@@ -31,17 +31,15 @@ type Store interface {
 
 var _ Store = (*database.ControlService)(nil)
 
-// ExposeShard provides an expose's owner, configuration and synchronized shard operations.
+// Shard provides an expose's owner, configuration and synchronized shard operations.
 // Configuration remains immutable for the shard's lifetime. Callbacks must be
 // safe for concurrent calls; no caller holds a shard mutex across these operations.
-//
-//nolint:revive // The architecture explicitly names this cross-package boundary ExposeShard.
-type ExposeShard interface {
+type Shard interface {
 	User() webapi.UserID
 	Control() Store
 	Clock() core.Clock
 	ExposesChanged()
-	Exposes() *Exposes
+	Exposes() *Connections
 	Domain() *Domain
 	PublicURL() *url.Url
 	DeviceConnected(database.DeviceRecord) bool

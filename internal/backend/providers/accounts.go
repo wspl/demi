@@ -21,37 +21,37 @@ func ImportSetupToken(
 	assembly *Assembly,
 	owner webapi.UserID,
 	label, token string,
-) (ProviderEntry, error) {
+) (Entry, error) {
 	if assembly.families.Family(SetupTokenFamily) == nil {
-		return ProviderEntry{}, ErrSetupTokenUnavailable
+		return Entry{}, ErrSetupTokenUnavailable
 	}
 	entries, err := assembly.vault.Entries(ctx, owner)
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	for _, entry := range entries {
 		if entry.Family == SetupTokenFamily {
-			return ProviderEntry{}, ErrSetupTokenProviderExists
+			return Entry{}, ErrSetupTokenProviderExists
 		}
 	}
 	staged := provider.NewMemoryCredentialPool()
 	id, err := uuid.NewRandom()
 	if err != nil {
-		return ProviderEntry{}, fmt.Errorf("create provider identity: %w", err)
+		return Entry{}, fmt.Errorf("create provider identity: %w", err)
 	}
 	p, err := assembly.Detached(SetupTokenFamily, id.String(), label, staged)
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	if _, err := addSetupToken(ctx, p, token); err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	e, err := assembly.vault.CreateSubscription(ctx, owner, SetupTokenFamily, label, staged)
 	if errors.Is(err, database.ErrSubscriptionExists) {
-		return ProviderEntry{}, ErrSetupTokenProviderExists
+		return Entry{}, ErrSetupTokenProviderExists
 	}
 	if err != nil {
-		return ProviderEntry{}, err
+		return Entry{}, err
 	}
 	return e, nil
 }
@@ -60,7 +60,7 @@ func ImportSetupToken(
 func AddToken(
 	ctx context.Context,
 	assembly *Assembly,
-	entry ProviderEntry,
+	entry Entry,
 	token string,
 ) (core.AccountInfo, error) {
 	if err := subscription(entry); err != nil {
@@ -84,7 +84,7 @@ func AddToken(
 func ListAccounts(
 	ctx context.Context,
 	assembly *Assembly,
-	entry ProviderEntry,
+	entry Entry,
 	disclose bool,
 ) (webapi.Accounts, error) {
 	if err := subscription(entry); err != nil {
@@ -110,7 +110,7 @@ func ListAccounts(
 func ActivateAccount(
 	ctx context.Context,
 	assembly *Assembly,
-	entry ProviderEntry,
+	entry Entry,
 	account webapi.CredentialID,
 ) (webapi.CredentialID, error) {
 	if err := subscription(entry); err != nil {
@@ -135,7 +135,7 @@ func ActivateAccount(
 func RemoveAccount(
 	ctx context.Context,
 	assembly *Assembly,
-	entry ProviderEntry,
+	entry Entry,
 	account webapi.CredentialID,
 ) error {
 	if err := subscription(entry); err != nil {
@@ -187,7 +187,7 @@ func addSetupToken(ctx context.Context, p provider.Provider, token string) (core
 	return core.AccountInfo{}, ErrTokenImportFailed
 }
 
-func subscription(entry ProviderEntry) error {
+func subscription(entry Entry) error {
 	if _, ok := entry.Credential.(*SubscriptionCredential); !ok {
 		return ErrNotSubscription
 	}

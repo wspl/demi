@@ -50,7 +50,7 @@ func (accountKit) Add(input provider.AddAccount) (provider.NewAccount, error) {
 
 func (p *Provider) stored(ctx context.Context) (secretDocument, error) {
 	if p.config.Account == nil {
-		return secretDocument{}, provider.AuthFailure{Family: family, Reason: provider.AuthReasonMissing}
+		return secretDocument{}, provider.AuthError{Family: family, Reason: provider.AuthReasonMissing}
 	}
 	stored, err := provider.ReadSecret(ctx, p.pool.Document(*p.config.Account), decodeSecretDocument)
 	if err != nil {

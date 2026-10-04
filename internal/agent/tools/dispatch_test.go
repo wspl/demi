@@ -224,7 +224,7 @@ func TestPromptAndPageHistory(t *testing.T) {
 }
 
 type failedNumbers struct {
-	store.TreeStore
+	store.Tree
 	failure error
 }
 

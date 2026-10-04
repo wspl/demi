@@ -202,10 +202,10 @@ func contentError(err error) *apiError {
 		code, status := hostaccess.HostErrorCode(hostError)
 		return apiFailure(status, code, hostError.Message)
 	}
-	if errors.Is(err, runners.TextTooLarge) {
+	if errors.Is(err, runners.ErrTextTooLarge) {
 		return apiFailure(413, "file_too_large", err.Error())
 	}
-	if errors.Is(err, runners.TextNotText) {
+	if errors.Is(err, runners.ErrTextNotText) {
 		return apiFailure(415, "not_text", err.Error())
 	}
 	var missing *database.UploadNotFoundError

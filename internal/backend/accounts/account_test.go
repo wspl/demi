@@ -12,7 +12,7 @@ import (
 )
 
 type accountStore struct {
-	AccountStore
+	Store
 	account        *database.Account
 	lookups        int
 	passwordWrites int
@@ -102,7 +102,7 @@ func TestLoginLocksKnownAndUnknownAddresses(t *testing.T) {
 				}
 				passwords := &testPasswords{}
 				sessions := &sessionOpener{}
-				service := NewAccounts(store, passwords, sessions, NewLoginLimiter())
+				service := New(store, passwords, sessions, NewLoginLimiter())
 				credentials := webapi.Credentials{Email: "ana@example.test", Password: "incorrect"}
 				for range 5 {
 					if _, err := service.Login(t.Context(), credentials); !errors.Is(err, ErrInvalidCredentials) {
@@ -136,7 +136,7 @@ func TestLoginLocksKnownAndUnknownAddresses(t *testing.T) {
 func TestAccountAdministrationChecksRolesBeforeHashing(t *testing.T) {
 	store := &accountStore{account: &database.Account{User: webapi.UserDTO{ID: "target", Role: webapi.RoleAdmin}}}
 	passwords := &testPasswords{}
-	service := NewAccounts(store, passwords, &sessionOpener{}, NewLoginLimiter())
+	service := New(store, passwords, &sessionOpener{}, NewLoginLimiter())
 	admin := webapi.UserDTO{Role: webapi.RoleAdmin}
 	create := webapi.CreateUser{Email: "new@example.test", Password: "password123", Role: webapi.NewRoleAdmin}
 	if _, err := service.Create(t.Context(), admin, create); !errors.Is(err, ErrOnlyMaster) {
@@ -180,7 +180,7 @@ func TestSetupAndPasswordChange(t *testing.T) {
 	store := &accountStore{}
 	passwords := &testPasswords{}
 	sessions := &sessionOpener{}
-	service := NewAccounts(store, passwords, sessions, NewLoginLimiter())
+	service := New(store, passwords, sessions, NewLoginLimiter())
 	request := webapi.SetupRequest{Email: "master@example.test", Password: "password123"}
 	signed, err := service.Setup(t.Context(), request)
 	if err != nil || signed.User.Role != webapi.RoleMaster || len(sessions.users) != 1 {

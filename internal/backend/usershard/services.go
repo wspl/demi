@@ -84,7 +84,7 @@ type Services struct {
 	// ExposeTuning configures expose admission and lifetimes.
 	ExposeTuning ExposeTuning
 	// Sync publishes page state change marks.
-	Sync *pagesync.SyncRegistry
+	Sync *pagesync.Registry
 	// Hooks are optional synchronization points supplied by test support.
 	Hooks FlowHooks
 }
@@ -207,7 +207,7 @@ func StartServices(
 	if err != nil {
 		return nil, fmt.Errorf("the HTTP client cannot start: %w", err)
 	}
-	syncs := &pagesync.SyncRegistry{}
+	syncs := &pagesync.Registry{}
 	vault := providers.NewVault(storage.Control, &keys.Vault, settings.Mode, syncs)
 	httpClient := &http.Client{}
 	assembly := assembleProviders(vault, storage, setup, httpClient)

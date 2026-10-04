@@ -870,13 +870,13 @@ func treeNodeHeading(node textObject) string {
 func decodeExtendedTextResult(name string, raw []byte) (textObject, error) {
 	switch name {
 	case "cdp.targets":
-		return resultObject(raw, browserop.DecodeCdpTargetsResult)
+		return resultObject(raw, browserop.DecodeCDPTargetsResult)
 	case "cdp.detach":
-		return resultObject(raw, browserop.DecodeCdpDetachResult)
+		return resultObject(raw, browserop.DecodeCDPDetachResult)
 	case "cdp.send":
-		return resultObject(raw, browserop.DecodeCdpSendResult)
+		return resultObject(raw, browserop.DecodeCDPSendResult)
 	case "cdp.events":
-		return resultObject(raw, browserop.DecodeCdpEventsResult)
+		return resultObject(raw, browserop.DecodeCDPEventsResult)
 	case "content.read":
 		return resultObject(raw, browserop.DecodeContentReadResult)
 	case "content.fetch":
@@ -888,9 +888,9 @@ func decodeExtendedTextResult(name string, raw []byte) (textObject, error) {
 	case "capabilities":
 		return resultObject(raw, browserop.DecodeCapabilitiesResult)
 	case "webmcp.list":
-		return resultObject(raw, browserop.DecodeWebmcpListResult)
+		return resultObject(raw, browserop.DecodeWebMCPListResult)
 	case "webmcp.call":
-		return resultObject(raw, browserop.DecodeWebmcpCallResult)
+		return resultObject(raw, browserop.DecodeWebMCPCallResult)
 	case "click", "move", "drag", "scroll", "fill", "type", "key", "check", "select", "select-text":
 		return resultObject(raw, browserop.DecodeActionResult)
 	default:

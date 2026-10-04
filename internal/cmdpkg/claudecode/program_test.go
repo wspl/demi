@@ -61,7 +61,7 @@ func invokeProgram(
 	writer, output, err := client.Invoke(t.Context(), commandwire.Invocation{
 		Operation:    operation,
 		InvocationID: "invocation",
-		Context: commandwire.CommandContext{
+		Context: commandwire.Context{
 			Conversation: "conversation",
 			Caller:       &commandwire.AgentCaller{Number: 1},
 			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},

@@ -288,7 +288,7 @@ func manifest() machinewire.CloudImageManifest {
 				Targets:         map[string]commandwire.PackageArtifact{"aarch64-unknown-linux-musl": file},
 			},
 		},
-		Runner: runnerwire.RunnerRelease{
+		Runner: runnerwire.Release{
 			Release:         strings.Repeat("f", 64),
 			Wire:            24,
 			CommandProtocol: 1,

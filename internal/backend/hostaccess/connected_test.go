@@ -317,7 +317,7 @@ func TestConnectedUserCallActivityAndTransitionCancellation(t *testing.T) {
 			}
 			transition, err := HoldForTransition(t.Context(), s, record.ID, nil)
 			if kind == Starts {
-				var refused *ChangeRefusal
+				var refused *ChangeError
 				if !errors.As(err, &refused) || refused.Kind != ChangeTurnInFlight {
 					if transition != nil {
 						transition.Release()

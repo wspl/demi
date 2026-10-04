@@ -94,20 +94,20 @@ func TestDevicePutStreamsIntoDeviceGetAndAnswersOnceDrained(t *testing.T) {
 		t.Fatal("stream changed")
 	}
 	requirePipe(t, pipe.Done(t.Context()))
-	if _, err = p.ClaimSink(pipe.ID(), "b"); !errors.Is(err, remotehost.PipeNotFound) {
+	if _, err = p.ClaimSink(pipe.ID(), "b"); !errors.Is(err, remotehost.ErrPipeNotFound) {
 		t.Fatal(err)
 	}
 	second := p.Mint("a", "b")
-	if _, err = p.ClaimSink(second.ID(), "a"); !errors.Is(err, remotehost.PipeNotFound) {
+	if _, err = p.ClaimSink(second.ID(), "a"); !errors.Is(err, remotehost.ErrPipeNotFound) {
 		t.Fatal(err)
 	}
-	if _, err = p.ClaimSource(second.ID(), "b"); !errors.Is(err, remotehost.PipeNotFound) {
+	if _, err = p.ClaimSource(second.ID(), "b"); !errors.Is(err, remotehost.ErrPipeNotFound) {
 		t.Fatal(err)
 	}
 	claimed, err := p.ClaimSink(second.ID(), "b")
 	requirePipe(t, err)
 	defer func() { requirePipe(t, claimed.Close(context.Background())) }()
-	if _, err = p.ClaimSink(second.ID(), "b"); !errors.Is(err, remotehost.PipeAlreadyConnected) {
+	if _, err = p.ClaimSink(second.ID(), "b"); !errors.Is(err, remotehost.ErrPipeAlreadyConnected) {
 		t.Fatal(err)
 	}
 	p.Fail(second.ID(), "test over")
@@ -190,7 +190,7 @@ func TestMissingEndTimesOutLostDeviceFailsAndEarlyReaderDrains(t *testing.T) {
 			time.Since(start) != 200*time.Millisecond {
 			t.Fatal(err, time.Since(start))
 		}
-		if _, err := p.ClaimSource(lonely.ID(), "a"); !errors.Is(err, remotehost.PipeNotFound) {
+		if _, err := p.ClaimSource(lonely.ID(), "a"); !errors.Is(err, remotehost.ErrPipeNotFound) {
 			t.Fatal(err)
 		}
 		dropped := p.Mint("a", "b")
@@ -242,10 +242,10 @@ func TestArrivalWindowEndsOnceBothEndsArriveHoweverQuiet(t *testing.T) {
 		requirePipe(t, err)
 		sink, err := p.ClaimSink(device.ID(), "b")
 		requirePipe(t, err)
-		if _, err = p.ClaimSource(device.ID(), "a"); !errors.Is(err, remotehost.PipeAlreadyConnected) {
+		if _, err = p.ClaimSource(device.ID(), "a"); !errors.Is(err, remotehost.ErrPipeAlreadyConnected) {
 			t.Fatal(err)
 		}
-		if _, err = p.ClaimSink(device.ID(), "b"); !errors.Is(err, remotehost.PipeAlreadyConnected) {
+		if _, err = p.ClaimSink(device.ID(), "b"); !errors.Is(err, remotehost.ErrPipeAlreadyConnected) {
 			t.Fatal(err)
 		}
 		body := &gatedPipeBody{

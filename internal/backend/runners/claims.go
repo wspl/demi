@@ -61,7 +61,7 @@ func (p *PendingClaims) Take(code ClaimCode) *PendingRunner {
 
 // Register puts runner up for claiming under code; nil means shutdown has begun.
 // The caller defers the wait's Release and Withdraw(code) when its socket leaves.
-func (p *PendingClaims) Register(code ClaimCode, runner runnerwire.RunnerInfo) *ClaimWait {
+func (p *PendingClaims) Register(code ClaimCode, runner runnerwire.Info) *ClaimWait {
 	wait := &ClaimWait{done: make(chan struct{})}
 	p.mu.Lock()
 	if p.closed {
@@ -137,7 +137,7 @@ type PendingRunner struct {
 	once sync.Once
 	wait *ClaimWait
 	// Runner is the information reported by the waiting runner.
-	Runner runnerwire.RunnerInfo
+	Runner runnerwire.Info
 }
 
 // ErrRunnerLeft means the runner went away before it bound its socket.

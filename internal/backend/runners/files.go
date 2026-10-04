@@ -14,10 +14,10 @@ import (
 type TextRefusal string
 
 const (
-	// TextTooLarge means the file exceeds the edit snapshot byte limit.
-	TextTooLarge TextRefusal = "The file is too large to show"
-	// TextNotText means the file is not UTF-8 without NUL bytes.
-	TextNotText TextRefusal = "The file is not UTF-8 text"
+	// ErrTextTooLarge means the file exceeds the edit snapshot byte limit.
+	ErrTextTooLarge TextRefusal = "The file is too large to show"
+	// ErrTextNotText means the file is not UTF-8 without NUL bytes.
+	ErrTextNotText TextRefusal = "The file is not UTF-8 text"
 )
 
 // Error returns the refusal shown to the user.
@@ -28,10 +28,10 @@ func (r TextRefusal) Error() string {
 // TextOf interprets bytes as UTF-8 without NUL bytes, within the edit snapshot limit.
 func TextOf(bytes []byte) (string, error) {
 	if len(bytes) > commandwire.EditFileBytes {
-		return "", TextTooLarge
+		return "", ErrTextTooLarge
 	}
 	if !commandwire.IsText(bytes) {
-		return "", TextNotText
+		return "", ErrTextNotText
 	}
 	return string(bytes), nil
 }
@@ -44,7 +44,7 @@ func ReadTextFile(ctx context.Context, fs host.FS, path string) (string, error) 
 		return "", err
 	}
 	if stat.Size > commandwire.EditFileBytes {
-		return "", TextTooLarge
+		return "", ErrTextTooLarge
 	}
 	bytes, err := fs.ReadFile(ctx, path)
 	if err != nil {

@@ -96,7 +96,7 @@ func TestRunnerProtocolRefusalUsesUpgradedListener(t *testing.T) {
 	defer func() { _ = socket.CloseNow() }()
 	hello := &runnerwire.Hello{
 		Protocol: 0,
-		Runner: runnerwire.RunnerInfo{
+		Runner: runnerwire.Info{
 			Name:     "fixture",
 			Platform: "linux",
 			Version:  "fixture",

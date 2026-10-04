@@ -82,6 +82,144 @@ func (v BaseVersion) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeJSON(string(v))
 }
+func DecodeCall(data []byte) (Call, error) {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return nil, err
+	}
+	tag, err := contract.Decode[string](obj["op"])
+	if err != nil {
+		return nil, fmt.Errorf("op: %w", err)
+	}
+	switch tag {
+	case "checkpoint":
+		value, err := contract.Decode[Checkpoint](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "current_base_version":
+		value, err := contract.Decode[CurrentBaseVersion](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "grow_volume":
+		value, err := contract.Decode[GrowVolume](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "hibernate":
+		value, err := contract.Decode[Hibernate](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "image_state":
+		value, err := contract.Decode[ImageState](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "reconcile":
+		value, err := contract.Decode[Reconcile](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "reset":
+		value, err := contract.Decode[Reset](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "runtime_state":
+		value, err := contract.Decode[RuntimeStateCall](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "wake":
+		value, err := contract.Decode[Wake](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	}
+	return nil, fmt.Errorf("unknown Call tag %q", tag)
+}
+
+type CallJSON struct{ Value Call }
+
+func (v *CallJSON) UnmarshalJSON(data []byte) error {
+	value, err := DecodeCall(data)
+	if err == nil {
+		v.Value = value
+	}
+	return err
+}
+func (v CallJSON) MarshalJSON() ([]byte, error) {
+	if err := ValidateCall(v.Value); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(v.Value)
+}
+func ValidateCall(value Call) error { return contractValidateCall(value, 0) }
+func contractValidateCall(value Call, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	switch v := value.(type) {
+	case *Checkpoint:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateCheckpoint(*v, depth+1)
+	case *CurrentBaseVersion:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateCurrentBaseVersion(*v, depth+1)
+	case *GrowVolume:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateGrowVolume(*v, depth+1)
+	case *Hibernate:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateHibernate(*v, depth+1)
+	case *ImageState:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateImageState(*v, depth+1)
+	case *Reconcile:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateReconcile(*v, depth+1)
+	case *Reset:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateReset(*v, depth+1)
+	case *RuntimeStateCall:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateRuntimeStateCall(*v, depth+1)
+	case *Wake:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateWake(*v, depth+1)
+	default:
+		return fmt.Errorf("nil or unsupported Call")
+	}
+}
 func DecodeCheckpoint(data []byte) (Checkpoint, error) { return contract.Decode[Checkpoint](data) }
 func (v Checkpoint) Validate() error                   { return contractValidateCheckpoint(v, 0) }
 func contractValidateCheckpoint(v Checkpoint, depth int) error {
@@ -382,7 +520,7 @@ func (v *CloudImageManifest) UnmarshalJSON(data []byte) error {
 			return contract.At("runner", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[runnerwire.RunnerRelease](raw)
+			value, err := contract.Decode[runnerwire.Release](raw)
 			if err != nil {
 				return contract.At("runner", err)
 			}
@@ -1128,144 +1266,6 @@ func (v InstalledPackage) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "version", Value: v.Version})
 	return contract.EncodeObject(fields)
 }
-func DecodeMachineCall(data []byte) (MachineCall, error) {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return nil, err
-	}
-	tag, err := contract.Decode[string](obj["op"])
-	if err != nil {
-		return nil, fmt.Errorf("op: %w", err)
-	}
-	switch tag {
-	case "checkpoint":
-		value, err := contract.Decode[Checkpoint](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "current_base_version":
-		value, err := contract.Decode[CurrentBaseVersion](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "grow_volume":
-		value, err := contract.Decode[GrowVolume](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "hibernate":
-		value, err := contract.Decode[Hibernate](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "image_state":
-		value, err := contract.Decode[ImageState](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "reconcile":
-		value, err := contract.Decode[Reconcile](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "reset":
-		value, err := contract.Decode[Reset](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "runtime_state":
-		value, err := contract.Decode[RuntimeStateCall](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	case "wake":
-		value, err := contract.Decode[Wake](data)
-		if err != nil {
-			return nil, err
-		}
-		return &value, nil
-	}
-	return nil, fmt.Errorf("unknown MachineCall tag %q", tag)
-}
-
-type MachineCallJSON struct{ Value MachineCall }
-
-func (v *MachineCallJSON) UnmarshalJSON(data []byte) error {
-	value, err := DecodeMachineCall(data)
-	if err == nil {
-		v.Value = value
-	}
-	return err
-}
-func (v MachineCallJSON) MarshalJSON() ([]byte, error) {
-	if err := ValidateMachineCall(v.Value); err != nil {
-		return nil, err
-	}
-	return contract.EncodeJSON(v.Value)
-}
-func ValidateMachineCall(value MachineCall) error { return contractValidateMachineCall(value, 0) }
-func contractValidateMachineCall(value MachineCall, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	switch v := value.(type) {
-	case *Checkpoint:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateCheckpoint(*v, depth+1)
-	case *CurrentBaseVersion:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateCurrentBaseVersion(*v, depth+1)
-	case *GrowVolume:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateGrowVolume(*v, depth+1)
-	case *Hibernate:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateHibernate(*v, depth+1)
-	case *ImageState:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateImageState(*v, depth+1)
-	case *Reconcile:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateReconcile(*v, depth+1)
-	case *Reset:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateReset(*v, depth+1)
-	case *RuntimeStateCall:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateRuntimeStateCall(*v, depth+1)
-	case *Wake:
-		if v == nil {
-			return fmt.Errorf("nil variant")
-		}
-		return contractValidateWake(*v, depth+1)
-	default:
-		return fmt.Errorf("nil or unsupported MachineCall")
-	}
-}
 func DecodeMachineImageState(data []byte) (MachineImageState, error) {
 	return contract.Decode[MachineImageState](data)
 }
@@ -1408,7 +1408,7 @@ func contractValidateMachineRequest(v MachineRequest, depth int) error {
 	if err := contract.Text(string(v.ID), 1, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contractValidateMachineCall(v.Call, depth+1); err != nil {
+	if err := contractValidateCall(v.Call, depth+1); err != nil {
 		return contract.At("", err)
 	}
 	return nil
@@ -1445,7 +1445,7 @@ func (v *MachineRequest) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return err
 		}
-		value, err := DecodeMachineCall(raw)
+		value, err := DecodeCall(raw)
 		if err != nil {
 			return err
 		}

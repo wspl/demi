@@ -249,7 +249,7 @@ func TestTransitionRefusesWorkAndFieldUpdateWaits(t *testing.T) {
 			&database.ConversationRecordChange{Change: &database.RecordDetach{Device: f.devices[0].ID}},
 		} {
 			err := f.shard.Transition(t.Context(), conversationID, c)
-			var refusal *hostaccess.ChangeRefusal
+			var refusal *hostaccess.ChangeError
 			if !errors.As(err, &refusal) || refusal.Kind != hostaccess.ChangeTurnInFlight {
 				t.Errorf("busy transition = %v", err)
 			}

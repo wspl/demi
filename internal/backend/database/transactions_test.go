@@ -150,7 +150,7 @@ func TestAdmissionCancellationAndCommittedCheckpoint(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- tree.SessionStore("root").Save(
+		done <- tree.Session("root").Save(
 			saveCtx,
 			update(1, store.ChangedBlock{Index: 0, Block: reply("a1")}),
 			store.CommitGuard{},
@@ -250,11 +250,11 @@ func TestImmutableCommandVersionsPreserveJSONNumberKinds(t *testing.T) {
 				},
 				Boundaries: []store.SessionBoundary{},
 			}
-			err := tree.SessionStore("root").Save(ctx, change, store.CommitGuard{})
+			err := tree.Session("root").Save(ctx, change, store.CommitGuard{})
 			if err == nil || !strings.HasSuffix(err.Error(), " is immutable") {
 				t.Fatalf("immutable number changed: %v", err)
 			}
-			loaded, _, err := tree.SessionStore("root").Load(ctx)
+			loaded, _, err := tree.Session("root").Load(ctx)
 			require(t, err)
 			equal(t, json.RawMessage(pair[0]), loaded.CommandState.Versions[0].Values["value"])
 		})

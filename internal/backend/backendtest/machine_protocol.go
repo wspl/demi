@@ -97,7 +97,7 @@ func (m *ScriptedManager) connection(connection *machineConnection) {
 }
 
 // handle implements the scripted manager's device operations with per-device admission.
-func (m *ScriptedManager) handle(ctx context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
+func (m *ScriptedManager) handle(ctx context.Context, call machinewire.Call) (json.RawMessage, error) {
 	if _, ok := call.(*machinewire.Reconcile); ok {
 		m.record("reconcile")
 		for _, device := range m.Devices() {
@@ -146,7 +146,7 @@ func (m *ScriptedManager) handle(ctx context.Context, call machinewire.MachineCa
 func (m *ScriptedManager) handleDevice(
 	ctx context.Context,
 	device string,
-	call machinewire.MachineCall,
+	call machinewire.Call,
 ) (json.RawMessage, error) {
 	switch call := call.(type) {
 	case *machinewire.Reconcile, *machinewire.CurrentBaseVersion, *machinewire.ImageState:

@@ -180,17 +180,17 @@ const (
 	AuthReasonRefresh
 )
 
-// AuthFailure describes why a family's account could not be used, without tokens.
-type AuthFailure struct {
+// AuthError describes why a family's account could not be used, without tokens.
+type AuthError struct {
 	Family string
 	Reason AuthReason
 	Detail string
 }
 
 // AccountAuthFailure classifies a failed account read or renewal; an error
-// that already holds an AuthFailure returns it unchanged.
-func AccountAuthFailure(family string, err error) AuthFailure {
-	var failure AuthFailure
+// that already holds an AuthError returns it unchanged.
+func AccountAuthFailure(family string, err error) AuthError {
+	var failure AuthError
 	if errors.As(err, &failure) {
 		return failure
 	}
@@ -198,22 +198,22 @@ func AccountAuthFailure(family string, err error) AuthFailure {
 	var decode *SecretDecodeError
 	switch {
 	case errors.As(err, &renewal):
-		return AuthFailure{Family: family, Reason: AuthReasonRefresh, Detail: err.Error()}
+		return AuthError{Family: family, Reason: AuthReasonRefresh, Detail: err.Error()}
 	case errors.Is(err, ErrNoSecretDocument):
-		return AuthFailure{Family: family, Reason: AuthReasonMissing, Detail: err.Error()}
+		return AuthError{Family: family, Reason: AuthReasonMissing, Detail: err.Error()}
 	case errors.As(err, &decode):
-		return AuthFailure{
+		return AuthError{
 			Family: family,
 			Reason: AuthReasonInvalid,
 			Detail: "its secret document is " + decode.Error(),
 		}
 	default:
-		return AuthFailure{Family: family, Reason: AuthReasonStore, Detail: err.Error()}
+		return AuthError{Family: family, Reason: AuthReasonStore, Detail: err.Error()}
 	}
 }
 
 // Error returns the diagnostic for this failure.
-func (f AuthFailure) Error() string {
+func (f AuthError) Error() string {
 	switch f.Reason {
 	case AuthReasonMissing:
 		return "No " + f.Family + " account is signed in"
@@ -227,7 +227,7 @@ func (f AuthFailure) Error() string {
 }
 
 // Failure returns the run's authentication failure, with no code for store errors.
-func (f AuthFailure) Failure() Failure {
+func (f AuthError) Failure() Failure {
 	result := Failure{Message: f.Error()}
 	var code ErrorCode
 	switch f.Reason {
@@ -245,7 +245,7 @@ func (f AuthFailure) Failure() Failure {
 }
 
 // State returns unauthenticated when missing, or an error for other failures.
-func (f AuthFailure) State() core.AuthState {
+func (f AuthError) State() core.AuthState {
 	message := f.Error()
 	if f.Reason == AuthReasonMissing {
 		return &core.Unauthenticated{Message: &message}

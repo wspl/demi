@@ -28,7 +28,7 @@ type Conversations struct {
 	work           sync.WaitGroup
 	closeOnce      sync.Once
 	closed         chan struct{}
-	cloudAdmission func(context.Context, cloud.CloudShard, database.DeviceRecord) (*cloudHold, error)
+	cloudAdmission func(context.Context, cloud.Shard, database.DeviceRecord) (*cloudHold, error)
 }
 
 // NewConversations creates slots and a worker owner under the shard's lifetime
@@ -353,7 +353,7 @@ type cloudHold struct {
 // admitCloud takes Cloud admission without a conversation file lease.
 func (c *Conversations) admitCloud(
 	ctx context.Context,
-	shard cloud.CloudShard,
+	shard cloud.Shard,
 	device database.DeviceRecord,
 ) (*cloudHold, error) {
 	if c.cloudAdmission != nil {

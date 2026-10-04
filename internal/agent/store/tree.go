@@ -7,32 +7,32 @@ import (
 	"github.com/wspl/demi/internal/host"
 )
 
-// SessionStore holds one node's checkpoint and its media's blob namespace.
+// Session holds one node's checkpoint and its media's blob namespace.
 // Save checks the guard immediately before committing. Once a commit starts,
 // cancellation does not abandon it; success means the entire update committed.
-type SessionStore interface {
+type Session interface {
 	// Save commits an update and its carried completion receipts atomically.
 	Save(ctx context.Context, update CheckpointUpdate, guard CommitGuard) error
 	// Load returns a decoded, checked checkpoint, and false when none exists.
 	// Corrupt data stops the load.
 	Load(ctx context.Context) (Checkpoint, bool, error)
 	// Blobs returns the conversation owner's blob namespace.
-	Blobs() BlobStore
+	Blobs() Blobs
 }
 
-// TreeStore holds a conversation's node records and checkpoints.
+// Tree holds a conversation's node records and checkpoints.
 // Each mutation is one atomic commit. Cancellation cancels admission waits,
 // never a transaction that has begun. Implementations support concurrent calls.
-type TreeStore interface {
+type Tree interface {
 	// Node returns a node's record, and false when it does not exist.
 	Node(ctx context.Context, id core.NodeID) (NodeRecord, bool, error)
 	// Children returns direct children in number order, live and archived alike.
 	Children(ctx context.Context, parent core.NodeID) ([]NodeRecord, error)
 	// CreateNode commits the record and first checkpoint; an existing node is refused.
 	CreateNode(ctx context.Context, record NodeRecord, initial CheckpointUpdate) error
-	// SessionStore returns the node's checkpoint store. Saves also mark carried
+	// Session returns the node's checkpoint store. Saves also mark carried
 	// child completions delivered in the same commit.
-	SessionStore(id core.NodeID) SessionStore
+	Session(id core.NodeID) Session
 	// CloseNode closes a node after its final checkpoint, initially undelivered.
 	CloseNode(ctx context.Context, id core.NodeID, closed NodeClose) error
 	// ReopenNode starts a new round and queues its reviving message atomically.

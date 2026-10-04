@@ -31,7 +31,7 @@ func shellFixture(
 	pages := hosttest.NewPages(false)
 	options := remotehost.NewEnvironmentOptions(
 		h,
-		func(context.Context) (commandwire.CommandContext, error) { return hosttest.CommandContext(), nil },
+		func(context.Context) (commandwire.Context, error) { return hosttest.CommandContext(), nil },
 		pages,
 		&hosttest.CountingNumbers{},
 	)
@@ -256,12 +256,12 @@ func TestInputWrittenWhileAcquiringHostReachesStartedJob(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		acquired := make(chan struct{})
 		_, l, s, p := shellFixture(t, func(o *remotehost.EnvironmentOptions) {
-			o.Context = func(ctx context.Context) (commandwire.CommandContext, error) {
+			o.Context = func(ctx context.Context) (commandwire.Context, error) {
 				select {
 				case <-acquired:
 					return hosttest.CommandContext(), nil
 				case <-ctx.Done():
-					return commandwire.CommandContext{}, ctx.Err()
+					return commandwire.Context{}, ctx.Err()
 				}
 			}
 		})

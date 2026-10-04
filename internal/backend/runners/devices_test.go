@@ -57,7 +57,7 @@ func unavailableSeen(t *testing.T) (*runners.LastSeen, *pagesync.Registration) {
 	if err := control.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	registry := &pagesync.SyncRegistry{}
+	registry := &pagesync.Registry{}
 	registration := registry.Register("user", database.HashToken("session"))
 	t.Cleanup(registration.Release)
 	return runners.NewLastSeen(control, registry.Of("user")), registration

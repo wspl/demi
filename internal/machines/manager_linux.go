@@ -105,7 +105,7 @@ func (m *Manager) drain(ctx context.Context) error {
 }
 
 // Handle runs a decoded machine request. Once admitted, its work completes despite cancellation.
-func (m *Manager) Handle(ctx context.Context, call machinewire.MachineCall) (json.RawMessage, error) {
+func (m *Manager) Handle(ctx context.Context, call machinewire.Call) (json.RawMessage, error) {
 	var id string
 	switch op := call.(type) {
 	case *machinewire.Reconcile:

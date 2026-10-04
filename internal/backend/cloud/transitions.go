@@ -14,7 +14,7 @@ import (
 )
 
 // boot rotates the Cloud credential and starts a sandbox, saving on failure.
-func boot(ctx context.Context, s CloudShard, m *machine) error {
+func boot(ctx context.Context, s Shard, m *machine) error {
 	err := startSandbox(ctx, s, m)
 	if err != nil {
 		if _, saved := Call(
@@ -30,7 +30,7 @@ func boot(ctx context.Context, s CloudShard, m *machine) error {
 }
 
 // startSandbox waits for authenticated runner readiness after the manager's wake.
-func startSandbox(ctx context.Context, s CloudShard, m *machine) error {
+func startSandbox(ctx context.Context, s Shard, m *machine) error {
 	token := runners.NewDeviceToken()
 	if err := cloudRecords(s).RotateDeviceToken(ctx, m.device.ID, database.HashToken(token.Expose())); err != nil {
 		return storageFailed(err)
@@ -65,7 +65,7 @@ func startSandbox(ctx context.Context, s CloudShard, m *machine) error {
 }
 
 // finishBoot publishes boot's outcome unless a reset has taken its permit.
-func finishBoot(s CloudShard, m *machine, err error) {
+func finishBoot(s Shard, m *machine, err error) {
 	c := s.Cloud()
 	c.mu.Lock()
 	if m.phase != webapi.CloudStateBooting {
@@ -96,7 +96,7 @@ func finishBoot(s CloudShard, m *machine, err error) {
 }
 
 // recoverMachine preserves a running sandbox's token and work while its runner reconnects.
-func recoverMachine(ctx context.Context, s CloudShard, m *machine) error {
+func recoverMachine(ctx context.Context, s Shard, m *machine) error {
 	state, err := Call(ctx, s.CloudServices().Machines, machinewire.RuntimeStateParams{DeviceID: string(m.device.ID)})
 	if err != nil {
 		return failed(err)
@@ -133,7 +133,7 @@ func recoverMachine(ctx context.Context, s CloudShard, m *machine) error {
 }
 
 // hibernate saves under a reservation held by its caller, joining an earlier boot.
-func hibernate(ctx context.Context, s CloudShard, m *machine) error {
+func hibernate(ctx context.Context, s Shard, m *machine) error {
 	c := s.Cloud()
 	c.mu.Lock()
 	previous := m.transition
@@ -189,7 +189,7 @@ func hibernate(ctx context.Context, s CloudShard, m *machine) error {
 }
 
 // save flushes best effort, asks the manager to persist storage, and disconnects the runner.
-func save(ctx context.Context, s CloudShard, m *machine) error {
+func save(ctx context.Context, s Shard, m *machine) error {
 	flush(ctx, s, m.device.ID)
 	_, err := Call(ctx, s.CloudServices().Machines, machinewire.HibernateParams{DeviceID: string(m.device.ID)})
 	s.Devices().Disconnect(m.device.ID, "Cloud stopped")
@@ -197,7 +197,7 @@ func save(ctx context.Context, s CloudShard, m *machine) error {
 }
 
 // flush bounds a live runner's filesystem sync without preventing manager-side saves.
-func flush(ctx context.Context, s CloudShard, device webapi.DeviceID) {
+func flush(ctx context.Context, s Shard, device webapi.DeviceID) {
 	link := s.Devices().Link(device)
 	if link == nil {
 		return

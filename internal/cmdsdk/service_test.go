@@ -32,7 +32,7 @@ func invocation(op string) commandwire.Invocation {
 		Args:         []byte(`{}`),
 		Cwd:          "/tmp",
 		Env:          map[string]string{},
-		Context: commandwire.CommandContext{
+		Context: commandwire.Context{
 			Conversation: "one",
 			Caller:       &commandwire.AgentCaller{Number: 1},
 			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},

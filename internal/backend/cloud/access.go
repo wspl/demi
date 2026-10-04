@@ -26,7 +26,7 @@ func (a *MachineAccess) Release() { a.admission.Release() }
 
 // Device returns the user's Cloud device, made on its first use, which the
 // user's pages then show among the devices and as the Cloud.
-func Device(ctx context.Context, shard CloudShard) (database.DeviceRecord, error) {
+func Device(ctx context.Context, shard Shard) (database.DeviceRecord, error) {
 	control := cloudRecords(shard)
 	device, found, err := control.ManagedDevice(ctx, shard.User())
 	if err != nil {
@@ -49,7 +49,7 @@ func Device(ctx context.Context, shard CloudShard) (database.DeviceRecord, error
 // takes Cloud admission and no conversation file gate; it is for machine work
 // such as project creation and provider placement. Conversation files must use
 // conversation host access. The caller defers the returned access's Release.
-func Access(ctx context.Context, shard CloudShard) (*MachineAccess, error) {
+func Access(ctx context.Context, shard Shard) (*MachineAccess, error) {
 	device, err := Device(ctx, shard)
 	if err != nil {
 		return nil, storageFailed(err)

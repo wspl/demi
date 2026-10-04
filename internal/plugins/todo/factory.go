@@ -87,7 +87,7 @@ func (f *Factory) Manifest() plugin.Manifest {
 func (f *Factory) Instance() plugin.Plugin { return f.commands }
 
 func listCommand() (host.Declared, error) {
-	listOutput, err := declare.NewSchema(TodoListJSONSchema())
+	listOutput, err := declare.NewSchema(ListJSONSchema())
 	if err != nil {
 		return host.Declared{}, err
 	}

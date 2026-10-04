@@ -100,13 +100,13 @@ type SpawnKill struct {
 type JobStart struct {
 	JobID string `json:"jobId"`
 	// +demi:pattern ^[0-9a-f]{64}$
-	ManifestHash *string                    `json:"manifestHash,omitempty"`
-	Context      commandwire.CommandContext `json:"context"`
-	Script       string                     `json:"script"`
-	CWD          string                     `json:"cwd"`
-	Env          map[string]string          `json:"env"`
-	Stdin        *PipeRef                   `json:"stdin,omitempty"`
-	Stdout       *PipeRef                   `json:"stdout,omitempty"`
+	ManifestHash *string             `json:"manifestHash,omitempty"`
+	Context      commandwire.Context `json:"context"`
+	Script       string              `json:"script"`
+	CWD          string              `json:"cwd"`
+	Env          map[string]string   `json:"env"`
+	Stdin        *PipeRef            `json:"stdin,omitempty"`
+	Stdout       *PipeRef            `json:"stdout,omitempty"`
 }
 
 // +demi:variant Inbound job_stdin
@@ -197,7 +197,7 @@ type NetOpen struct {
 // +demi:variant Inbound service_open
 type ServiceOpen struct {
 	StreamID string                        `json:"streamId"`
-	Context  commandwire.CommandContext    `json:"context"`
+	Context  commandwire.Context           `json:"context"`
 	Package  commandwire.PackageDescriptor `json:"package"`
 	// +demi:length chars min=1
 	Operation string           `json:"operation"`
@@ -435,7 +435,7 @@ type Hello struct {
 	Protocol uint32 `json:"protocol"`
 	// Absent on an unclaimed first start.
 	DeviceToken *DeviceToken `json:"deviceToken,omitempty"`
-	Runner      RunnerInfo   `json:"runner"`
+	Runner      Info         `json:"runner"`
 }
 
 // Liveness, with the count of running jobs the idle rule reads.
@@ -747,7 +747,7 @@ type StreamArtifactOwner struct {
 
 // What a runner says about itself in its hello.
 // +demi:check validateRunnerInfo
-type RunnerInfo struct {
+type Info struct {
 	Name         string         `json:"name"`
 	Platform     RunnerPlatform `json:"platform"`
 	Version      string         `json:"version"`

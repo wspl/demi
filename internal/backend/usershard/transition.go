@@ -22,10 +22,10 @@ func (s *Shard) applyChange(
 ) error {
 	record, found, err := s.services.Control.Conversation(ctx, id)
 	if err != nil {
-		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeStorage, Cause: err}
+		return &hostaccess.ChangeError{Kind: hostaccess.ChangeStorage, Cause: err}
 	}
 	if !found || record.Owner != s.user {
-		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeNotFound}
+		return &hostaccess.ChangeError{Kind: hostaccess.ChangeNotFound}
 	}
 	var field database.RecordChange
 	if c, ok := change.(*database.ConversationRecordChange); ok {
@@ -33,7 +33,7 @@ func (s *Shard) applyChange(
 	}
 	_, archive := field.(*database.RecordArchived)
 	if record.Archived && !archive {
-		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeArchived}
+		return &hostaccess.ChangeError{Kind: hostaccess.ChangeArchived}
 	}
 	if target, ok := change.(*database.ConversationTargetChange); ok {
 		if reflect.DeepEqual(record.Target, target.Target) {
@@ -80,10 +80,10 @@ func (s *Shard) changeSettings(
 		return err
 	}
 	if !found {
-		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeNotFound}
+		return &hostaccess.ChangeError{Kind: hostaccess.ChangeNotFound}
 	}
 	if record.Archived {
-		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeArchived}
+		return &hostaccess.ChangeError{Kind: hostaccess.ChangeArchived}
 	}
 	selection, err := s.settingsSelection(ctx, record.Model, change)
 	if err != nil {
@@ -93,9 +93,9 @@ func (s *Shard) changeSettings(
 	prepared, err := s.agent.PrepareSwitch(ctx, root, selection)
 	if err != nil {
 		if errors.Is(err, server.ErrProviderUnavailable) {
-			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeProviderNotFound}
+			return &hostaccess.ChangeError{Kind: hostaccess.ChangeProviderNotFound}
 		}
-		return &hostaccess.ChangeRefusal{
+		return &hostaccess.ChangeError{
 			Kind:  hostaccess.ChangeRuntime,
 			Cause: err,
 		}
@@ -124,13 +124,13 @@ func (s *Shard) settingsSelection(
 		model = change.Model.ModelID
 	} else {
 		if current == nil {
-			return selection, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeModelNotSelected}
+			return selection, &hostaccess.ChangeError{Kind: hostaccess.ChangeModelNotSelected}
 		}
 		selection = *current
 		var err error
 		entry, err = webapi.ParseProviderID(current.ProviderID)
 		if err != nil {
-			return selection, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeProviderNotFound}
+			return selection, &hostaccess.ChangeError{Kind: hostaccess.ChangeProviderNotFound}
 		}
 		model = current.Model.ID
 	}
@@ -148,7 +148,7 @@ func (s *Shard) settingsSelection(
 	if change.Model != nil || change.ThinkingEffort != nil {
 		selection.Thinking, err = listed.ThinkingFor(effort)
 		if err != nil {
-			return selection, &hostaccess.ChangeRefusal{
+			return selection, &hostaccess.ChangeError{
 				Kind:  hostaccess.ChangeSettingUnavailable,
 				Cause: err,
 			}
@@ -157,7 +157,7 @@ func (s *Shard) settingsSelection(
 	if change.Model != nil || change.ServiceTierID != nil {
 		selection.ServiceTierID, err = listed.TierFor(tier)
 		if err != nil {
-			return selection, &hostaccess.ChangeRefusal{
+			return selection, &hostaccess.ChangeError{
 				Kind:  hostaccess.ChangeSettingUnavailable,
 				Cause: err,
 			}
@@ -179,7 +179,7 @@ func (s *Shard) listedModel(
 		return core.ProviderModel{}, err
 	}
 	if entry == nil {
-		return core.ProviderModel{}, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeProviderNotFound}
+		return core.ProviderModel{}, &hostaccess.ChangeError{Kind: hostaccess.ChangeProviderNotFound}
 	}
 	built, buildErr := s.services.Assembly.ProviderFor(ctx, *entry)
 	catalog := s.services.Assembly.EntryCatalog(ctx, *entry, built, buildErr, false)
@@ -188,7 +188,7 @@ func (s *Shard) listedModel(
 			return listed, nil
 		}
 	}
-	return core.ProviderModel{}, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeModelNotFound}
+	return core.ProviderModel{}, &hostaccess.ChangeError{Kind: hostaccess.ChangeModelNotFound}
 }
 
 func (s *Shard) stopTitle(id webapi.ConversationID) {
@@ -222,7 +222,7 @@ func (s *Shard) applyPatch(
 				results = append(results, &webapi.FieldResultApplied{Field: field})
 				continue
 			}
-			refusal := &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeStorage, Cause: err}
+			refusal := &hostaccess.ChangeError{Kind: hostaccess.ChangeStorage, Cause: err}
 			errors.As(err, &refusal)
 			if refusal.Kind == hostaccess.ChangeStorage {
 				slog.ErrorContext(ctx, "a conversation change failed", "field", field, "error", err)
@@ -256,11 +256,11 @@ func (s *Shard) transition(
 	change database.ConversationChange,
 ) error {
 	if err := s.applyChange(ctx, id, change); err != nil {
-		var refused *hostaccess.ChangeRefusal
+		var refused *hostaccess.ChangeError
 		if errors.As(err, &refused) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
-		return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeStorage, Cause: err}
+		return &hostaccess.ChangeError{Kind: hostaccess.ChangeStorage, Cause: err}
 	}
 	s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
 	if c, ok := change.(*database.ConversationRecordChange); ok {
@@ -290,7 +290,7 @@ func (s *Shard) commitRecordField(
 		}
 		device, ok := database.ExecutionDeviceID(target)
 		if ok && device == attach.Host.Device {
-			return &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeHostIsMain}
+			return &hostaccess.ChangeError{Kind: hostaccess.ChangeHostIsMain}
 		}
 	}
 	return hostaccess.Commit(context.WithoutCancel(ctx), s, record.ID, field)
@@ -453,11 +453,11 @@ func (s *Shard) reserveConversationChange(id webapi.ConversationID) (*gates.Rese
 	if tree := s.agent.Tree(hostaccess.RootOf(id)); tree != nil {
 		reserved = tree.Admission().TryReserve()
 		if reserved == nil {
-			return nil, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeTurnInFlight}
+			return nil, &hostaccess.ChangeError{Kind: hostaccess.ChangeTurnInFlight}
 		}
 		if !tree.IsQuiescent() {
 			reserved.Release()
-			return nil, &hostaccess.ChangeRefusal{Kind: hostaccess.ChangeTurnInFlight}
+			return nil, &hostaccess.ChangeError{Kind: hostaccess.ChangeTurnInFlight}
 		}
 	}
 	return reserved, nil

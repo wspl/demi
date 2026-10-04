@@ -44,7 +44,7 @@ const (
 // cancelling a wait does not stop the action; Abort stops it explicitly.
 type ActionAnswer struct{ result *actionResult }
 
-// Wait waits for the action's result. An action failure returns *ErrorReport;
+// Wait waits for the action's result. An action failure returns *ReportError;
 // a cancelled wait returns the context error. Multiple waiters share the result.
 func (a *ActionAnswer) Wait(ctx context.Context) (ActionEnd, error) { return a.wait(ctx) }
 
@@ -86,10 +86,10 @@ type RetryScheduled struct {
 }
 
 // ErrorEvent reports a failed turn or a failed save.
-type ErrorEvent struct{ Report ErrorReport }
+type ErrorEvent struct{ Report ReportError }
 
 // ActionFailed reports an action that failed for good, after its checkpoint save.
-type ActionFailed struct{ Report ErrorReport }
+type ActionFailed struct{ Report ReportError }
 
 func (*TranscriptChanged) sessionEvent()    {}
 func (*PhaseChanged) sessionEvent()         {}

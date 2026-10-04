@@ -14,7 +14,7 @@ import (
 // and at most its quota. Only the shard owner's managed device can grow.
 func GrowVolume(
 	ctx context.Context,
-	shard CloudShard,
+	shard Shard,
 	device webapi.DeviceID,
 	volume runnerwire.VolumeName,
 	bytes uint64,

@@ -109,7 +109,7 @@ func NewDispatch(
 func (d *Dispatch) Context(
 	ctx context.Context,
 	jobID string,
-	command commandwire.CommandContext,
+	command commandwire.Context,
 ) (*jobs.ExecutionContext, *ContextRegistration, error) {
 	edits := commandwire.EditContext{
 		Directory: filepath.Join(d.paths.Directory, jobID),

@@ -445,7 +445,7 @@ func runnerReleaseRecord(output string, targets map[string]commandwire.PackageAr
 	if err != nil {
 		return nil, "", "", err
 	}
-	release := runnerwire.RunnerRelease{
+	release := runnerwire.Release{
 		Release:         hash,
 		Wire:            contents.Wire,
 		CommandProtocol: contents.CommandProtocol,
