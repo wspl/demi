@@ -1589,9 +1589,12 @@ impl StalledPage {
 /// shutdown no longer than the close frame's bound (`backend.md` § Startup
 /// and shutdown): the backend is in the middle of sending a transcript
 /// larger than any socket buffer when it shuts down. The 8 MiB answer that
-/// makes the transcript so large costs most of the test's 2 s: a smaller
+/// makes the transcript so large costs most of the test's second: a smaller
 /// one can fit the send buffer, whose limit is 4 MiB on Linux and macOS. The
-/// answer is the model's, since a page sends no message over 1 MiB.
+/// answer is the model's, since a page sends no message over 1 MiB. It comes
+/// in 128 KiB deltas, as a vendor streams it: the stream's parser reads a
+/// line again from its start each time more of it arrives, so one 8 MiB line
+/// cost seconds, and up to 12 under a full test run.
 #[tokio::test]
 async fn a_page_that_stopped_reading_does_not_hold_up_shutdown() {
     let vendor = MockVendor::start().await;
@@ -1603,8 +1606,8 @@ async fn a_page_that_stopped_reading_does_not_hold_up_shutdown() {
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    let long = "x".repeat(8 << 20);
-    vendor.respond(answer(&[&long], 1, 1));
+    let piece = "x".repeat(128 << 10);
+    vendor.respond(answer(&[piece.as_str(); 64], 1, 1));
     socket.chat("m1", "Write at length.").await;
 
     let mut stalled = StalledPage::connect(&backend, &master, FIRST).await;
