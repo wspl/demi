@@ -185,23 +185,52 @@ screenshots away, and the request goes through.
 
 When the agent does not retry, the failure is written as an `error` block and
 the action fails with it. The turn is unfinished, and `resume` can continue
-it. Compaction's summary requests follow the same policy, except that one
-refused as too large is asked again for half its window
+it, unless the action had begun no turn
+([The unfinished turn](#the-unfinished-turn)). Compaction's summary requests
+follow the same policy, except that one refused as too large is asked again
+for half its window
 ([One pass](compaction.md#one-pass)): a summary request that fails for good
 is written as the session's `error` block, whether the user's `compact` or a
 turn ran the pass, and a turn it ended is unfinished like any other.
 
-A failure ends a turn only when its action began one, that is, wrote into
-the transcript before it failed. One that wrote nothing ended no turn, and
-its `error` block says so with `outsideTurn`. For example, the user presses
-Compact after a finished answer and the summary request fails: the record
-stays in the transcript, but no turn is unfinished, and the product offers
-no Resume for it; `resume` would make the model continue an answer it had
-finished. Behind such a record, the turn before it is as it was: when that
-turn had failed or been stopped, it still offers its Resume or Continue
+## The unfinished turn
+
+The last turn is unfinished when the record that ended it is an `error`
+block (something broke) or an `abort` block (the user stopped it); any other
+end means it finished. The product offers recovery from that record
 ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
-A send whose model switch fails to compact, before its message is written,
-ends no turn either.
+Only an action that began a turn, that is, wrote into the transcript, can
+leave such a record, and a compaction leaves none:
+
+- **A failure of an action that wrote nothing** ended no turn. Its `error`
+  block stays in the transcript, and says so with `outsideTurn`. For
+  example, the user presses Compact after a finished answer and the summary
+  request fails: no turn is unfinished, and `resume` would make the model
+  continue an answer it had finished.
+- **A Stop of an action that wrote nothing** records no `abort` block. For
+  example, the user presses Compact after a finished answer and stops it
+  while the summary is written: the transcript is as it was, and nothing is
+  left to continue. Input the stop itself writes counts: a pending steer is
+  written, and the `abort` block after it lets Continue answer it
+  ([Stop](runtime.md#stop)).
+- **A compaction** is not a turn's end. Its boundary and marker are kept
+  history, but they say nothing about the turn before them. For example, a
+  turn fails, and the user then compacts: the divider is the last block,
+  and the failed turn still offers Resume, which continues it after the
+  summary ([Recovery is one mechanism](#recovery-is-one-mechanism)).
+
+Behind a record that ended no turn, or behind a compaction, the turn before
+is as it was: when that turn had failed or been stopped, it still offers its
+Resume or Continue.
+
+A message is never left outside a turn. A send writes its `user` block as
+soon as its action starts, before its model switch lands
+([Model switch](runtime.md#model-switch)), so the message's turn has begun
+before anything of it can fail or be stopped. For example, the user picks a
+model with a smaller window and sends a message, and the compaction the
+switch needs fails: the message stays in the transcript, the turn ends with
+the `error` block, and Resume runs the switch and the turn again. A
+continuation writes its wakeup or agent messages first in the same way.
 
 ## Recovery is one mechanism
 
@@ -231,14 +260,21 @@ rendering them, posting them to a chat, running the tool they describe.
 - An `abort` block stops it: it is history the user created, not a leftover.
 - Steers and agent messages stop it: they are input, not leftovers.
 
+A compaction's `compaction_boundary` and `compaction_marker` neither stop the
+scan nor go: the scan passes over them, and the unwind keeps them where they
+are. For example, a turn's request fails before any output, and the user
+then compacts: the transcript ends with the turn's `user` block, its `error`
+block and the marker. `resume` drops the `error` block, keeps the marker,
+and reruns the turn from its `user` block, after the summary.
+
 For example, a turn holds a `user` block, some `text` and a completed
 `tool_call`, then `thinking` and an `error` from the next request. The scan
 drops the error and the thinking and stops at the tool call; `resume` appends a
 `resume` block, and the model continues after the tool's result.
 
 If the scan reaches the block that opened the turn without stopping, the whole
-turn was discardable, and `resume` reruns it the way `retry` does; a turn is
-opened by a `user`, `context` or new-turn `wakeup` block
+turn was discardable, and `resume` reruns it from that block the way `retry`
+does; a turn is opened by a `user`, `context` or new-turn `wakeup` block
 ([Block types](runtime.md#block-types)). A rerun spares the model a
 continuation attached to a stub of its own aborted output.
 
@@ -280,4 +316,7 @@ injected clock; no test calls a real model.
 | A vendor wait longer than 30 seconds | The failure is terminal at once |
 | A failure after a completed tool call, then `resume` | The tool does not run again; the model continues after its result |
 | `resume` after a failure before any output | The turn reruns from its input, with no `resume` block |
+| The user's Compact after a finished answer, stopped during its summary | The transcript is as it was, with no `abort` block; the dock offers no Continue |
+| A send whose model switch fails to compact, or is stopped while it compacts | The message's `user` block is in the transcript, followed by the `error` or `abort` block; the dock offers Resume or Continue |
+| A failed turn, then the user's Compact, then `resume` | The dock still offers Resume behind the divider; `resume` drops the `error` block, keeps the boundary and marker, and the turn goes on after the summary |
 | An HTTP 413, or a 400 that says a request has too many images or too large ones | The code is `context_length_exceeded`; the turn compacts once and sends the request again, and a second refusal is terminal |

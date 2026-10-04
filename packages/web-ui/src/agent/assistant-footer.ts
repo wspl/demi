@@ -1,4 +1,5 @@
 import type { Block, SessionPhase } from '@demicodes/protocol'
+import { isCompactionDivider } from './visible-blocks'
 
 /**
  * Visible transcript order distinguishes intermediate updates from final
@@ -22,8 +23,4 @@ export function assistantFooterIds(
     }
   }
   return ids
-}
-
-function isCompactionDivider(block: Pick<Block, 'type'>): boolean {
-  return block.type === 'compaction_marker' || block.type === 'compaction_boundary'
 }

@@ -74,3 +74,12 @@ test('a failure that ended no turn offers no Resume and keeps the recovery of th
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'error' }, failedCompact])).toBe('resume')
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'abort' }, failedCompact])).toBe('continue')
 })
+
+// The user compacted after a turn ended: the divider is the last block, and
+// the turn behind it is as it was.
+test('a compaction keeps the recovery of the turn before it and offers none of its own', () => {
+  const compacted = [{ type: 'compaction_boundary' }, { type: 'compaction_marker' }]
+  expect(turnRecovery('idle', [{ type: 'user' }, { type: 'error' }, ...compacted])).toBe('resume')
+  expect(turnRecovery('idle', [{ type: 'user' }, { type: 'abort' }, ...compacted])).toBe('continue')
+  expect(turnRecovery('idle', [{ type: 'user' }, { type: 'text' }, ...compacted])).toBeNull()
+})

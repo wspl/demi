@@ -1,4 +1,5 @@
 import type { SentenceText } from '../ui/ui-text'
+import { isCompactionDivider } from './visible-blocks'
 
 /** Sidebar conversation list, or a session that is not reconnecting. */
 export type ListLoad = 'ready' | 'loading' | 'failed'
@@ -117,9 +118,10 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
  * § Recovering an unfinished turn), from the record that ended the last
  * turn among the visible `blocks`: an error resumes, the user's own Stop
  * continues, and anything else is finished or still running. An error that
- * ended no turn, such as a Compact whose summary request failed, leaves the
- * turn before it as it was (`failures-and-recovery.md` § Retries). Both are
- * the session's `resume`; the word tells the cause.
+ * ended no turn, such as a Compact whose summary request failed, and a
+ * compaction's boundary and marker leave the turn before them as it was
+ * (`failures-and-recovery.md` § The unfinished turn). Both are the
+ * session's `resume`; the word tells the cause.
  */
 export function turnRecovery(
   phase: 'idle' | string,
@@ -128,7 +130,9 @@ export function turnRecovery(
   if (phase !== 'idle') {
     return null
   }
-  const end = blocks.findLast((block) => !(block.type === 'error' && block.outsideTurn))
+  const end = blocks.findLast(
+    (block) => !isCompactionDivider(block) && !(block.type === 'error' && block.outsideTurn),
+  )
   if (end?.type === 'error') {
     return 'resume'
   }
