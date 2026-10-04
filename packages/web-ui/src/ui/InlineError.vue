@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CircleX, X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
+import type { SentenceText } from './ui-text'
 
 /**
  * A form's own failure: a rejected sign-in, a wrong code, a value the server
@@ -14,7 +15,7 @@ import IconButton from './IconButton.vue'
  */
 withDefaults(
   defineProps<{
-    message: string
+    message: SentenceText
     dismissible?: boolean
   }>(),
   {

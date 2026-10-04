@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import { disabledTooltip } from './disabled'
 import { ICON_PX } from './icon-metrics'
 import Tooltip from './Tooltip.vue'
+import type { SentenceText, TitleText } from './ui-text'
 
 /**
  * One of a few exclusive choices, all visible. Segments share one width so the
@@ -17,7 +18,7 @@ import Tooltip from './Tooltip.vue'
  */
 export interface SegmentedOption<T extends string> {
   value: T
-  label: string
+  label: TitleText
   icon?: Component
 }
 
@@ -28,7 +29,7 @@ const props = withDefaults(defineProps<{
   iconOnly?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
 }>(), {
   size: 'md',
 })

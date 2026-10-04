@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Button from '../ui/Button.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
+import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
  * A state of the whole session that the reader chose or can leave (archived,
@@ -10,8 +11,8 @@ import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
  * Failures are not notices; they are `ErrorNotice` records in the transcript.
  */
 defineProps<{
-  label: string
-  action?: string
+  label: SentenceText
+  action?: TitleText
   /** The state is in progress and ends by itself. */
   busy?: boolean
 }>()

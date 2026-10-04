@@ -13,6 +13,7 @@ import { useAutofocus } from '../../ui/autofocus'
 import { dataTransferFiles, pastedTextFile, pastedTextIsLong } from '../message-input/attachments'
 import { useTransfers, type MessageCapsule } from './capsules'
 import { composerExtensions, readOnlyExtensions, redrawDecorations } from './extensions'
+import type { PlaceholderText } from '../../ui/ui-text'
 
 /**
  * A user message, written or shown in one editor (`product.md` § Writing a
@@ -32,7 +33,7 @@ const props = withDefaults(
     disabled?: boolean
     /** Escape ends something, such as an edit. */
     cancelable?: boolean
-    placeholder?: string
+    placeholder?: PlaceholderText
     /** What assistive technology calls the field. */
     label?: string
     /**

@@ -6,11 +6,12 @@ import Dialog from './Dialog.vue'
 import ScrollArea from './ScrollArea.vue'
 import TextInput from './TextInput.vue'
 import { ICON_PX } from './icon-metrics'
+import type { HeadlineText } from './ui-text'
 
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
-  label: string
+  label: HeadlineText
 }>()
 const emit = defineEmits<{ close: [] }>()
 const query = defineModel<string>('query', { default: '' })

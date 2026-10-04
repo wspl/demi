@@ -1,9 +1,10 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 
 export type GalleryViewOption = {
   value: string
-  label: string
+  label: TitleText
 }
 
 export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
@@ -44,6 +45,12 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
     {
       value: 'marks',
       label: 'Marks',
+    },
+  ],
+  '/writing': [
+    {
+      value: 'writing',
+      label: 'Writing',
     },
   ],
   '/motion': [

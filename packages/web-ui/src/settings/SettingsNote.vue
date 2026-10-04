@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import type { SentenceText } from '../ui/ui-text'
 /** The outcome of the last action, under the group it belongs to. */
 defineProps<{
-  text: string
+  text: SentenceText
 }>()
 </script>
 

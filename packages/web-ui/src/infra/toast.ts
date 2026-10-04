@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import { createId } from '@demicodes/utils'
+import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
 /**
  * A toast is only for an outcome that has nowhere else to go: the menu already
@@ -15,8 +16,8 @@ export type ToastTone = 'success' | 'neutral' | 'danger'
 
 export interface Toast {
   id: string
-  title: string
-  message?: string
+  title: HeadlineText
+  message?: SentenceText
   tone: ToastTone
 }
 
@@ -27,8 +28,8 @@ export const toasts = reactive<Toast[]>([])
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
 export function showToast(input: {
-  title: string
-  message?: string
+  title: HeadlineText
+  message?: SentenceText
   tone: ToastTone
   durationMs?: number
 }): string {

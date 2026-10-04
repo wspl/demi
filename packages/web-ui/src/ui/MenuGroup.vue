@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import MenuDivider from './MenuDivider.vue'
+import type { TitleText } from './ui-text'
 
 defineProps<{
-  label: string
+  label: TitleText
 }>()
 </script>
 

@@ -4,10 +4,11 @@ import { CircleCheck, CircleX, Info, X } from '@lucide/vue'
 import type { ToastTone } from '../infra/toast'
 import { ICON_PX } from './icon-metrics'
 import IconButton from './IconButton.vue'
+import type { HeadlineText, SentenceText } from './ui-text'
 
 defineProps<{
-  title: string
-  message?: string
+  title: HeadlineText
+  message?: SentenceText
   tone: ToastTone
 }>()
 

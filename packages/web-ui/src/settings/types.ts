@@ -3,6 +3,7 @@ import { VIDEO_FILE_EXTENSIONS } from '@demicodes/protocol'
 import type { Component } from 'vue'
 import type { HostInstall } from '../devices/installs'
 import type { TagTone } from '../ui/Tag.vue'
+import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -12,25 +13,25 @@ export type SettingsTab = string
  * Update available. `detail` says more on hover, such as a failure's message.
  */
 export interface SettingsRowStatus {
-  label: string
+  label: SentenceText
   tone?: TagTone
-  detail?: string
+  detail?: SentenceText
 }
 
 export interface SettingsNavItem {
   id: SettingsTab
-  label: string
+  label: TitleText
   icon: Component
   /** What the rail filter also matches: names of settings the section holds. */
   keywords?: string[]
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
 }
 
 /** Sections grouped under a small caption, the way a long rail is read. */
 export interface SettingsNavGroup {
-  label?: string
+  label?: TitleText
   items: SettingsNavItem[]
 }
 

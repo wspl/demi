@@ -31,10 +31,11 @@ import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import type { PlaceholderText } from '../ui/ui-text'
 
 const props = withDefaults(
   defineProps<{
-    placeholder: string
+    placeholder: PlaceholderText
     running?: boolean
     compacting?: boolean
     disabled?: boolean

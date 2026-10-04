@@ -5,6 +5,7 @@ import Tooltip from '../ui/Tooltip.vue'
 import FileIcon from './FileIcon.vue'
 import { isHiddenName } from './paths'
 import type { TreeRow } from './tree'
+import type { SentenceText } from '../ui/ui-text'
 
 /**
  * One row of a `Tree`, in the tree or pinned in its sticky stack: a chevron
@@ -18,7 +19,7 @@ defineProps<{
   row: TreeRow
   selected: boolean
   menuOpen?: boolean
-  tooltip?: string
+  tooltip?: SentenceText
 }>()
 
 defineEmits<{

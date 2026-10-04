@@ -5,6 +5,7 @@ import { useButtonIconSpin } from './button-icon-spin'
 import { disabledTooltip } from './disabled'
 import Tooltip from './Tooltip.vue'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
+import type { SentenceText } from './ui-text'
 
 defineOptions({ inheritAttrs: false })
 const attrs = useAttrs()
@@ -25,7 +26,7 @@ const props = withDefaults(
     disabled?: boolean
     loading?: boolean
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
-    disabledReason?: string
+    disabledReason?: SentenceText
     pressed?: boolean
     /** Turns the icon while true, a whole revolution at a time; the turn it is in always finishes. */
     spinning?: boolean

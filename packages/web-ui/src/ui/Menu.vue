@@ -6,14 +6,15 @@ import HighlightText from './HighlightText.vue'
 import MenuItem from './MenuItem.vue'
 import { createSubmenuController, menuIconlessKey, menuSubmenuKey } from './menu-context'
 import { ICON_PX } from './icon-metrics'
+import type { HeadlineText, PlaceholderText } from './ui-text'
 
 const props = withDefaults(defineProps<{
   items?: T[]
   selectedId?: string
   isItemDisabled?: (item: T) => boolean
   filterable?: boolean
-  filterPlaceholder?: string
-  emptyText?: string
+  filterPlaceholder?: PlaceholderText
+  emptyText?: HeadlineText
   itemHeight?: number
   filterFn?: (item: T, query: string) => boolean
   autofocus?: boolean

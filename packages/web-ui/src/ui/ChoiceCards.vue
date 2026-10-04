@@ -1,6 +1,7 @@
 <script setup lang="ts" generic="T extends string">
 import type { Component } from 'vue'
 import { ICON_PX } from './icon-metrics'
+import type { SentenceText } from './ui-text'
 
 /**
  * One of a few exclusive choices, each a card with an icon, a title and a line of
@@ -10,8 +11,8 @@ import { ICON_PX } from './icon-metrics'
  */
 export interface ChoiceCardOption<T extends string> {
   value: T
-  label: string
-  description: string
+  label: SentenceText
+  description: SentenceText
   icon: Component
 }
 

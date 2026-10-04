@@ -36,6 +36,7 @@
     "@types/bun": "^1.4.2",
     "@typescript/native-preview": "^7.0.0-dev.20260618.1",
     "@volar/typescript": "^2.4.28",
+    "@vue/compiler-dom": "^3.5.42",
     "@vue/language-core": "^3.3.11",
     "oxc-parser": "^0.137.0",
     "tsdown": "^0.22.3",

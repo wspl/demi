@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import TextInput from './TextInput.vue'
+import type { PlaceholderText } from './ui-text'
 
 /**
  * A token count typed in thousands or millions. The unit sits inside the field and
@@ -8,7 +9,7 @@ import TextInput from './TextInput.vue'
  */
 const props = defineProps<{
   modelValue: number | null
-  placeholder?: string
+  placeholder?: PlaceholderText
   size?: 'sm' | 'md'
 }>()
 

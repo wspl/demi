@@ -3,6 +3,7 @@ import type { Component } from 'vue'
 import { CircleX } from '@lucide/vue'
 import Button from './Button.vue'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
+import type { SentenceText, TitleText } from './ui-text'
 
 /**
  * The pane that stands in for a region whose content cannot be shown yet:
@@ -23,11 +24,11 @@ withDefaults(
     failed?: boolean
     /** The glyph above the sentence; a failure defaults to the error mark. */
     icon?: Component
-    label: string
+    label: SentenceText
     /** The reason under the label, in the caller's words (an upstream message). */
     detail?: string | null
     /** The single action's label; omitted regions offer nothing. */
-    action?: string
+    action?: TitleText
   }>(),
   {
     busy: false,

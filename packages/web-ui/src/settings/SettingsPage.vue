@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import type { SentenceText, TitleText } from '../ui/ui-text'
 /** One settings section: a title, an optional line under it, then groups. */
 defineProps<{
-  title: string
-  description?: string
+  title: TitleText
+  description?: SentenceText
   /** Use the whole column: for a list beside its detail. */
   wide?: boolean
   /** Fill the host's height so a child can scroll on its own instead of the page. */

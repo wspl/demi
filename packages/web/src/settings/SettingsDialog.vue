@@ -10,6 +10,7 @@ import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { PageScope, settingsPage, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
@@ -72,7 +73,7 @@ watch(
   { immediate: true },
 )
 
-function report(title: string, error: unknown): void {
+function report(title: HeadlineText, error: unknown): void {
   if (lifetime.signal.aborted) {
     return
   }

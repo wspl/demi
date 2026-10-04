@@ -1,5 +1,6 @@
 import type { ClientContent } from '@demicodes/protocol'
 import { SerialQueue } from '@demicodes/utils'
+import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { isComposerFile } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { ApiError } from '../api/client'
@@ -102,7 +103,7 @@ function needsSave(conversation: Conversation): boolean {
 export function createDraftSync(options: {
   /** Shows `draft` in the conversation's composer, with its files. */
   apply: (conversation: Conversation, draft: ConversationDraft) => void
-  report: (title: string, error: unknown) => void
+  report: (title: HeadlineText, error: unknown) => void
 }) {
   let lifetime = new AbortController()
   const timers = new Map<string, ReturnType<typeof setTimeout>>()

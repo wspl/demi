@@ -4,6 +4,7 @@ import { disabledTooltip } from '../ui/disabled'
 import Tag from '../ui/Tag.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import type { SettingsRowStatus } from './types'
+import type { SentenceText } from '../ui/ui-text'
 
 /**
  * Label and explanation on the left, the control on the right. Icons align with
@@ -18,8 +19,8 @@ import type { SettingsRowStatus } from './types'
  * they never cover the name or the line under it at any width.
  */
 const props = defineProps<{
-  label: string
-  description?: string
+  label: SentenceText
+  description?: SentenceText
   inset?: boolean
   compact?: boolean
   interactive?: boolean
@@ -27,7 +28,7 @@ const props = defineProps<{
   muted?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
   statuses?: readonly SettingsRowStatus[]
 }>()
 

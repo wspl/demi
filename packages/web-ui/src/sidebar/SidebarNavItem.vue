@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import { disabledTooltip } from '@demicodes/web-ui/ui/disabled'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
  * One entry outside the list: a primary action or a settings section it opens, or a place in
@@ -11,13 +12,13 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
  */
 const props = defineProps<{
   icon?: Component
-  label: string
+  label: TitleText
   shortcut?: string
   pressed?: boolean
   emphasis?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
 }>()
 
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))

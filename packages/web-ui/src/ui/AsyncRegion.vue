@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import RegionStatus from './RegionStatus.vue'
+import type { SentenceText } from './ui-text'
 
 /**
  * A region whose content arrives later. While loading or failed it shows the
@@ -8,7 +9,7 @@ import RegionStatus from './RegionStatus.vue'
 withDefaults(
   defineProps<{
     state?: 'loading' | 'ready' | 'failed'
-    label?: string
+    label?: SentenceText
     error?: string
     /** The failure reason under the error line, in the caller's words. */
     detail?: string | null

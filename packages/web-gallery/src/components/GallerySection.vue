@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { HeadlineText, SentenceText } from '@demicodes/web-ui/ui/ui-text'
+
 defineProps<{
-  title: string
-  note?: string
+  title: HeadlineText
+  note?: SentenceText
 }>()
 </script>
 

@@ -8,6 +8,7 @@ import FoldChevron from './FoldChevron.vue'
 import IconButton from './IconButton.vue'
 import { ICON_PX } from './icon-metrics'
 import Tooltip from './Tooltip.vue'
+import type { SentenceText, TitleText } from './ui-text'
 
 /**
  * A failure told in the flow of the conversation: a turn that failed, a
@@ -20,15 +21,15 @@ import Tooltip from './Tooltip.vue'
  */
 const props = withDefaults(
   defineProps<{
-    label: string
+    label: SentenceText
     /** The upstream message or reason, in the caller's words. */
     detail?: string | null
     /** Short facts under the message, in the UI font: what the reader does next, such as when a limit lifts. */
-    facts?: readonly string[]
+    facts?: readonly SentenceText[]
     /** What the source sent, in full, behind a disclosure: the vendor's own payload. */
     raw?: string | null
     /** The single action's label; the caller decides what it does. */
-    action?: string
+    action?: TitleText
     /** What the copy control puts on the clipboard; no control without it. */
     copyText?: string | null
   }>(),

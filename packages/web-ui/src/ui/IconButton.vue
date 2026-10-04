@@ -8,6 +8,7 @@ import { ICON_PX } from './icon-metrics'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import CornerDot, { type CornerDotTone } from './CornerDot.vue'
 import Tooltip from './Tooltip.vue'
+import type { SentenceText } from './ui-text'
 
 defineOptions({ inheritAttrs: false })
 const attrs = useAttrs()
@@ -31,7 +32,7 @@ const props = withDefaults(
     disabled?: boolean
     loading?: boolean
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
-    disabledReason?: string
+    disabledReason?: SentenceText
     pressed?: boolean
     /** Turns the icon while true, a whole revolution at a time; the turn it is in always finishes. */
     spinning?: boolean

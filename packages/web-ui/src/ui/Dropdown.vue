@@ -7,6 +7,7 @@ import DropdownTrigger from './DropdownTrigger.vue'
 import type { DropdownSize, DropdownVariant } from './DropdownTrigger.vue'
 import { menuRootKey } from './menu-context'
 import Tooltip from './Tooltip.vue'
+import type { SentenceText } from './ui-text'
 
 /**
  * How wide a dropdown is. `content`: as wide as its trigger, whatever the
@@ -37,7 +38,7 @@ const props = withDefaults(defineProps<{
   size?: DropdownSize
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
   /** A `field` trigger wants `fill`. */
   width?: DropdownWidth
 }>(), {

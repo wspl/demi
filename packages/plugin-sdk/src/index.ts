@@ -36,6 +36,8 @@ export type {
 export type { HostInstall } from '@demicodes/web-ui/devices/installs'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 export type { SettingsRowStatus } from '@demicodes/web-ui/settings/types'
+// The style a plugin's own prop of UI text declares (the gallery's Writing page).
+export type { HeadlineText, PlaceholderText, SentenceText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 
 // The plugin kit (`plugin-pages.md` § The plugin kit).
 // Streams: the liveness a stream's protocol uses.
