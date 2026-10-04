@@ -20,7 +20,7 @@ import { createGalleryWorkspace } from '../fixtures/workspace'
 const props = withDefaults(defineProps<{ width?: string }>(), { width: '100%' })
 
 const TITLES = [
-  '127.0.0.1:5173', 'Pull request #42', 'Build log', 'API reference', 'Staging',
+  '127.0.0.1:5173', 'Pull request #42: Keep the session cookie on sign-out', 'Build log', 'API reference', 'Staging',
   'Design review', 'Error dashboard', 'Release notes', 'Issue tracker',
 ]
 
