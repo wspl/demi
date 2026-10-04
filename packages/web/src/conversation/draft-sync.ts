@@ -179,7 +179,7 @@ export function createDraftSync(options: {
       }
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         refused.set(conversation.id, JSON.stringify(content))
-        options.report('Could not save the draft', error)
+        options.report('Could Not Save the Draft', error)
         return
       }
       // The save did not reach the backend, or the backend failed it.

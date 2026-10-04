@@ -189,7 +189,7 @@ test('automatic quota failures stay quiet; manual retries explain the error', as
   expect(requests).toBe(1)
   await settings.refreshUsage(provider, 'first')
   expect(requests).toBe(2)
-  expect(toasts.at(-1)).toMatchObject({ title: 'Could not refresh usage', message: 'Billing unavailable' })
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Refresh Usage', message: 'Billing unavailable' })
 })
 
 test('a manual refresh joins an automatic request and shows its pending state and failure', async () => {
@@ -211,7 +211,7 @@ test('a manual refresh joins an automatic request and shows its pending state an
   deferred.resolve(Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 502 }))
   await automatic
   expect(settings.refreshingUsage).toEqual({})
-  expect(toasts.at(-1)).toMatchObject({ title: 'Could not refresh usage', message: 'Billing unavailable' })
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Refresh Usage', message: 'Billing unavailable' })
 })
 
 test('disposing provider settings cancels quota requests without a toast', async () => {
@@ -264,7 +264,7 @@ test('a failed save is a toast; the input stays and the next change resends it',
   )
   await idle()
   expect(toasts.at(-1)).toMatchObject({
-    title: 'Provider operation failed',
+    title: 'Provider Operation Failed',
     message: 'offline',
     tone: 'danger',
   })

@@ -84,7 +84,7 @@ function manageDevices() {
           />
         </MenuGroup>
         <MenuDivider />
-        <MenuItem label="Manage devices…" :icon="Monitor" @select="manageDevices" />
+        <MenuItem label="Manage Devices…" :icon="Monitor" @select="manageDevices" />
       </Menu>
     </template>
   </Dropdown>

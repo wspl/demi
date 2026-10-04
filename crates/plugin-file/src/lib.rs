@@ -17,7 +17,7 @@ impl File {
     pub fn new() -> Self {
         let mut manifest = Manifest::new(
             PluginId::try_from("file").expect("a valid plugin id"),
-            "File commands",
+            "File Commands",
             "Reads, writes, edits and searches the conversation's files with `demi file`.",
         );
         manifest.commands = commands().manifest_commands();

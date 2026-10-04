@@ -58,7 +58,7 @@ export function uploadBytes(
     const abort = () => stop(signal.reason)
     const moved = () => {
       clearTimeout(stall)
-      stall = setTimeout(() => stop(new Error('Upload stalled')), UPLOAD_STALL_MS)
+      stall = setTimeout(() => stop(new Error('Upload stalled.')), UPLOAD_STALL_MS)
     }
     xhr.open(options.method ?? 'POST', apiUrl(path))
     xhr.withCredentials = true
@@ -67,8 +67,8 @@ export function uploadBytes(
       moved()
       options.progress(event.loaded)
     }
-    xhr.onerror = () => fail(new Error('Upload connection failed'))
-    xhr.onabort = () => fail(new Error('Upload cancelled'))
+    xhr.onerror = () => fail(new Error('Upload connection failed.'))
+    xhr.onabort = () => fail(new Error('Upload cancelled.'))
     xhr.onload = () => {
       if (xhr.status < 200 || xhr.status >= 300) {
         fail(apiError(xhr.status, xhr.responseText))

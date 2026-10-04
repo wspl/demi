@@ -105,7 +105,7 @@ function reorder(request: SidebarReorder) {
     void resources
       .reorderProject(request.id, request.beforeId)
       .catch((error) => {
-        reportError('Could not reorder projects', error, { userVisible: true })
+        reportError('Could Not Reorder Projects', error, { userVisible: true })
       })
   } else {
     conversations.reorder(request.id, request.beforeId)
@@ -128,7 +128,7 @@ async function removeProject(id: string) {
   try {
     await resources.removeProject(id)
   } catch (error) {
-    reportError('Could not remove the project', error, { userVisible: true })
+    reportError('Could Not Remove the Project', error, { userVisible: true })
   }
 }
 async function signOut(): Promise<void> {
@@ -137,7 +137,7 @@ async function signOut(): Promise<void> {
     // A new document releases account-scoped stores, sockets and draft data.
     window.location.replace('/login')
   } catch (error) {
-    reportError('Could not sign out', error, { userVisible: true })
+    reportError('Could Not Sign Out', error, { userVisible: true })
   }
 }
 /** The bindings from the keyboard settings, by the action each one names. */
