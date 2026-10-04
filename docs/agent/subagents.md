@@ -454,6 +454,7 @@ prompt, on the conversation's Host with the root's commands, and its
 | Model | Inherit, the parent's model selection; or model settings of the user's own: a provider entry of the user's scope, one model of its catalog, an effort the model lists or thinking off, and a service tier, with the meanings of a conversation's ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)). The effort is always explicit: a profile saved without one takes the first effort the model lists. The entry may be the parent's or any other. |
 | System prompt | Inherit, the parent's instructions; or replace, text of 1 to 65,536 characters that takes the place of the instructions in the child's system prompt ([Sessions and turns](runtime.md#sessions-and-turns)). The runtime's rules for its tools, the command help and the subagent preamble are still supplied. |
 | Spawning | Whether children of this profile may spawn children of their own. |
+| Enabled | Whether the profile can be used now. A new profile starts enabled; the user turns it off to keep its configuration without letting agents use it. |
 
 A profile does not change the child's commands: every child has its parent's,
 with the `demi agent` group grafted per node
@@ -462,9 +463,18 @@ with the `demi agent` group grafted per node
 Profiles are the user's own. One list serves all of the user's conversations,
 in both instance modes; it is stored in the control store with the user's
 other settings ([Control records](../backend/storage.md#control-records)), and
-the settings page creates, edits and deletes its profiles
-([Subagent profiles](../product/web-api.md#subagent-profiles)). No plugin
-declares a profile, and with no profile configured, every child inherits.
+the settings page's Subagent section creates, edits, enables, disables and
+deletes its profiles ([Subagents](../product/web-api.md#subagents)). No
+plugin declares a profile, and with no profile configured, every child
+inherits.
+
+**The Subagent switch.** Beside the profiles, the same section has one switch
+that turns subagents on or off for the user, in all of their conversations.
+It starts on for a new user. While it is off, no agent of any conversation
+may spawn, whatever profile it names; children already running go on, and
+`send`, `abort`, `resume`, `list` and `show` keep working, because they act
+on agents that exist. A resume is not a spawn: it continues a child the
+parent already has, such as one that ended with a question.
 
 Omitting `--profile` always selects the unnamed inherit profile: the parent's
 prompt and preamble, model, Host, and commands, which are its profile's when the
@@ -473,23 +483,41 @@ the user has profiles, and it cannot be configured or replaced. Profiles apply
 to a session's own children; a subagent spawning grandchildren resolves names
 against the same list.
 
-**Each spawn reads the current profiles.** A spawn resolves `--profile`
-against the user's profiles as they are at that moment, not as they were
-when the tree opened. So a profile that the user creates, changes or deletes
-in settings applies to the next spawn of every conversation, an open one
-included, with no reload. A child already spawned keeps what it was spawned
-with, across restore and resume ([Persistence](#persistence)).
+**Each spawn reads the current settings.** A spawn reads the Subagent switch
+and the user's profiles as they are at that moment, not as they were when
+the tree opened. So a change in settings, to the switch or to a profile,
+applies to the next spawn of every conversation, an open one included, with
+no reload. A child already spawned keeps what it was spawned with, across
+restore and resume ([Persistence](#persistence)), whatever later happens to
+the switch or to its profile.
 
-An unknown name fails, creates no child, and answers the names the user has
-now, so a model that guessed or remembered an old name learns the current
-ones from the failure:
+A spawn checks, in this order, and the first check that fails ends it before
+any child is created, with a message that says which:
 
-```text
-unknown profile "explorer"; the user's profiles are explore, reviewer. Run `demi agent profiles` for when to use each, or omit --profile to inherit the parent.
-```
+1. **Subagents are on.** Otherwise:
 
-With no profile, the answer says that the user has none and that omitting
-`--profile` inherits the parent.
+   ```text
+   subagents are turned off in settings; do this work in this session, or ask the user to turn subagents on in Settings > Subagent.
+   ```
+
+2. **The name is known.** `--profile` names one of the user's profiles, or is
+   omitted for the inherit profile. An unknown name answers the names of the
+   enabled profiles, so a model that guessed or remembered an old name
+   learns the current ones; with none enabled, it says so and that omitting
+   `--profile` inherits the parent:
+
+   ```text
+   unknown profile "explorer"; the user's profiles are explore, reviewer. Run `demi agent profiles` for when to use each, or omit --profile to inherit the parent.
+   ```
+
+3. **The profile is enabled.** A disabled profile is the user's choice, not a
+   fault, and the message says so:
+
+   ```text
+   profile "reviewer" is disabled in settings; omit --profile to inherit the parent, or ask the user to enable it in Settings > Subagent.
+   ```
+
+4. **The profile is available**, as below.
 
 **An unavailable profile.** At spawn, the backend builds the child's model
 selection from the profile's model settings and the entry's current catalog,
@@ -498,9 +526,8 @@ as it builds a conversation's on a model switch
 is unavailable while any part of its model settings is missing: its provider
 entry is gone or no longer in the user's scope, its catalog no longer lists
 the model, or the model no longer offers the profile's effort or service
-tier. Spawning with an unavailable profile fails before any child is
-created, with a message that names the profile and what is missing, for
-example:
+tier. Spawning with an unavailable profile fails, with a message that names
+the profile and what is missing, for example:
 
 ```text
 profile "explore" is unavailable: model "claude-haiku-4-5" no longer offers the effort "minimal"; choose another effort for the profile in settings
@@ -511,8 +538,12 @@ tier of the profile's model. The profile stays unavailable until the user
 changes it in settings. `demi agent profiles` lists an unavailable profile
 with what is missing, so the model can tell the user instead of trying it.
 
-The settings page shows an unavailable profile as unavailable, with the part
-that is missing, until the user fixes it. It reads that from the catalog the
+Disabled and unavailable are different states: disabled is the user's
+choice and says nothing about the configuration, while unavailable means the
+model settings are broken. A disabled profile whose model is also gone is
+reported as disabled. The settings page shows each profile's switch, and
+shows an unavailable profile as unavailable, with the part that is missing,
+until the user fixes it. It reads that from the catalog the
 page already holds for the model menu
 ([In the web app](../providers/models.md#in-the-web-app)), so the mark is
 derived on the page and never stored.
@@ -529,26 +560,41 @@ runtime, made for the child's model selection
 
 ### What the model sees
 
-The model reads the profiles when it runs `demi agent profiles`, which the
-agent server answers at call time from the user's current profiles: each
-profile's name and description, in name order, with what is missing for an
-unavailable one, or a line saying that the user has none and that children
-inherit. `--json` returns
-`{ profiles: [{ name, description, unavailable }] }`, where `unavailable` is
-null or the message a spawn would fail with. It shows neither the model nor the
-prompt of a profile; the description says what the user wants the model to
-know. Like `list` and `show`, it is a read that every node's group has,
-spawn-restricted or not.
+The model reads the settings when it runs `demi agent profiles`, which the
+agent server answers at call time from the user's current settings:
+
+- While subagents are on: each enabled profile's name and description, in
+  name order, with what is missing for an unavailable one, or a line saying
+  that the user has no enabled profile and that children inherit. A disabled
+  profile is not listed.
+- While subagents are off: one line saying that subagents are turned off in
+  settings and that `demi agent spawn` fails until the user turns them on.
+  No profile is listed, since none can be used.
+
+The command succeeds in both cases: it reports the settings, and off is a
+setting, not a failure. `--json` returns `{ enabled, profiles }`: `enabled`
+is the Subagent switch, and `profiles` is
+`[{ name, description, unavailable }]`, empty while subagents are off, where
+`unavailable` is null or the message a spawn would fail with. It shows
+neither the model nor the prompt of a profile; the description says what the
+user wants the model to know. Like `list` and `show`, it is a read that every
+node's group has, spawn-restricted or not.
 
 ```text
 $ demi agent profiles
 explore   Use for finding code, call sites and documentation; it reports and changes nothing.
 reviewer  Use to review a finished change before reporting it.
+
+$ demi agent profiles      # after the user turns subagents off
+Subagents are turned off in settings; demi agent spawn fails until the user turns them on.
 ```
 
-The list is not in the system prompt or in a context block: the prompt is
-rendered once and could not follow an edit, and a block would put every
-edit into every conversation's transcript whether or not it spawns. A user
+Neither the list nor the switch is in the system prompt or in a context
+block: the prompt is rendered once per tree and could not follow an edit,
+and a block would put every edit into every conversation's transcript
+whether or not it spawns. The `demi agent spawn` help, which is part of the
+prompt, therefore says nothing about the switch; the model learns it from
+`demi agent profiles` and from a spawn's failure. A user
 who names a profile in a message, such as "ask explore to find the call
 sites", gives the model the name directly.
 
@@ -882,7 +928,7 @@ returned, a child's as well as the root's
 | Command system | Declarations and `rpc` dispatch through the serializable handler interface |
 | Agent runtime | The node assembly, supervision and the agent directory, the `demi agent` group, agent messages, the subagent frames, and the tree store contract |
 | Backend | The tree store over the conversation's database, the conversation's host access for every node, the plugin host, which supplies the commands and context sources, the product's instructions, the user's profiles with their checks, and each child's model selection and provider runtime |
-| `web-ui` | Nested subagent views, receipts, the agents chip over `ConversationClient`, and the settings section that edits the user's profiles |
+| `web-ui` | Nested subagent views, receipts, the agents chip over `ConversationClient`, and the Subagent settings section with the user's switch and profiles |
 
 [Crates](../architecture/crates-and-packages.md#crates) names the crate that owns
 each part.
@@ -970,6 +1016,15 @@ The tree and its commands:
     across restore and resume. A profile created, changed or deleted while a
     tree is open applies to that tree's next spawn, and `demi agent profiles`
     answers the new list at once.
+16. With subagents turned off, a spawn of any profile, the inherit profile
+    included, fails with the switch's message and creates nothing, at any
+    depth and in an open tree without a reload; running children go on, and
+    `resume`, `send` and `abort` still work. `demi agent profiles` succeeds,
+    says that subagents are off and lists no profile.
+17. A disabled profile is not listed by `demi agent profiles`, is left out of
+    an unknown name's answer, and fails a spawn with the disabled message,
+    also when its model is gone; a child spawned before it was disabled is
+    unaffected.
 
 Persistence:
 
@@ -994,7 +1049,8 @@ Product:
    sender IDs, and reconnect.
 2. With no profile configured, children inherit, the model sees the spawn
    prompt field's help, and `demi agent profiles` says that the user has none.
-3. The settings page creates, edits and deletes profiles, refuses a reserved
-   or taken name, and shows a profile whose entry, model, effort or tier is
-   gone as unavailable with the missing part; the product and the gallery
-   show the same section.
+3. The settings page's Subagent section turns subagents on and off, creates,
+   edits, enables, disables and deletes profiles, refuses a reserved or taken
+   name, and shows a profile whose entry, model, effort or tier is gone as
+   unavailable with the missing part; the product and the gallery show the
+   same section.

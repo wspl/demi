@@ -496,11 +496,13 @@ backend APIs; their dedicated pages in the web app are deferred. Settings
 list the backend's plugins, each with a switch that turns it on or off for
 the user, and an open conversation whose commands a switch changed offers a
 reload ([A user's plugins](../architecture/plugins.md#a-users-plugins)).
-Settings also list the user's [subagent profiles](../agent/subagents.md#profiles),
-where the user creates, edits and deletes them; the next spawn of every
-conversation uses the change. A profile whose provider entry, model, effort
-or tier is gone is marked as unavailable, with the part that is missing,
-until the user fixes it.
+Settings have a Subagent section ([Profiles](../agent/subagents.md#profiles)):
+a switch that turns subagents on or off for the user, on for a new user, and
+the user's subagent profiles, which the user creates, edits and deletes
+there, each with a switch of its own that enables or disables it; a new
+profile starts enabled. The next spawn of every conversation uses a change.
+A profile whose provider entry, model, effort or tier is gone is marked as
+unavailable, with the part that is missing, until the user fixes it.
 Skills have a settings section of their own, which the sidebar also opens
 ([Skills](../agent/skills.md#the-page)).
 Notifications, MCP, data/privacy actions, language switching, and account
