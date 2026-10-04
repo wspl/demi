@@ -247,7 +247,9 @@ where it enters the page. For example, the Skills page's schema says that
 every source has `updateAvailable`. A backend of an older build sends the
 skills state without it: the page context does not hand that state to the
 Skills page, which keeps showing the last state that read, and a toast says
-"Could not read the skills plugin's state" with the field that is missing.
+in plain words that the page cannot read the plugin's data and that reloading
+the page may help. What did not read, here the missing field, is for a
+developer: the page writes it to the browser console, never into the toast.
 
 - **A state that does not read is reported, never thrown.** Reading a state
   never throws into a component. A component that throws while it renders
