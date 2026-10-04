@@ -1,21 +1,15 @@
 # Browser plugin schema modes
 
-`manifest.json` is a copy of g-browser's `TestManifestMatchesFixture` fixture
-(`internal/plugins/browser/testdata/manifest.json`), originally captured from
-the Rust plugin. Its `BrowserTab` and `LiveTab` definitions include the required
-`loading` boolean and its verbatim doc description from
-`crates/command-package-browser-protocol/src/browser/mod.rs` and `src/live.rs`.
-These additions repair the older fixture after that contract change; no
-Go-produced expected schema is stored here.
+`manifest.json` is a copy of the browser plugin's manifest fixture
+(`internal/plugins/browser/testdata/manifest.json`). Its `BrowserTab` and
+`LiveTab` definitions include the required `loading` boolean and its doc
+description.
 
-`types.go` copies g-browser's page contract declarations and imports the actual
-browserop contracts. `TestBrowserPluginSchemas` compares all eight non-null
-page and stream schemas as compact bytes, including definition discovery
-order and nullable references. The three null method results are not generated
-Go contract types; their declarations remain the page owner's responsibility.
+`types.go` copies the browser plugin's page contract declarations and imports
+the real `browserop` contracts. `TestBrowserPluginSchemas` compares all eight
+non-null page and stream schemas as compact bytes, including definition
+discovery order and nullable references. The three null method results are not
+generated contract types; their declarations remain the page owner's.
 
-The test adds g-browser's two live-message schema markers through an in-memory
-loader overlay because those markers are not present on this base branch. It
-checks the generated literals without writing either browserop or g-browser.
-The production owner calls `*PluginJSONSchema()` for page/stream uses and keeps
-`*JSONSchema()` for commands. Both forms are generated from the same type.
+A page or stream use calls `*PluginJSONSchema()`; a command keeps
+`*JSONSchema()`. Both forms are generated from the same type.

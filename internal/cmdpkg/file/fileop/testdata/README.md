@@ -1,4 +1,4 @@
-These four input schemas are extracted without modification from the `file`
-plugin's leaves in `gomig-ref/plugin-manifests/manifests.json`, the Rust
-reference supplied for c-fileop. No property descriptions are excluded from
-comparison. These commands have no structured result schemas.
+These four input schemas are the `file` plugin's leaves from the built-in
+plugins' captured manifests (`tools/contractgen/testdata/schemas/manifests.json`),
+unchanged. No property description is excluded from comparison. These commands
+have no structured result schemas.

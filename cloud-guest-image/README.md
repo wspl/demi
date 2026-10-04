@@ -17,7 +17,6 @@ the [Go cross builds](../docs/delivery/builds-and-releases.md), and build
 
 ```sh
 export CGO_ENABLED=0
-export GOFLAGS=-mod=readonly
 
 go run ./tools/release native build --target aarch64-unknown-linux-musl
 go run ./tools/release native package --package demi-runner \
@@ -62,6 +61,6 @@ The build neither starts nor resets a Cloud device; see
 `rootfs/uv.json` pins uv: its version and, for each architecture, the
 archive's URL, size, SHA-256, and executables. To change the pin, download each
 archive, check its SHA-256 against the uv release's published digest, record
-it, run `CGO_ENABLED=0 GOFLAGS=-mod=readonly go generate ./tools/release`
+it, run `CGO_ENABLED=0 go generate ./tools/release`
 from the repository root to refresh the generated embedded copy, and rebuild
 the release tool, which carries the pin it was built with.

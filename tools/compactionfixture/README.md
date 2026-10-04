@@ -25,7 +25,7 @@ step with the agent's API. The recorded fixture is embedded in the program.
 Run from the repository root:
 
 ```sh
-export CGO_ENABLED=0 GOFLAGS=-mod=readonly
+export CGO_ENABLED=0
 export DEEPSEEK_API_KEY=...
 go run ./tools/compactionfixture recall
 go run ./tools/compactionfixture switch

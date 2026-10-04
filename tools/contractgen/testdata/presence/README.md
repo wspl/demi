@@ -1,22 +1,18 @@
 # Field presence fixtures
 
-`Defaults` covers Rust `#[serde(default)]` without `skip_serializing_if`:
-absence supplies empty collections, false, zero or empty text; serialization
-still writes the field. `crates/plugin-interface/src/manifest.rs` uses this
-for Manifest's commands, profiles, context and streams and for the lists in
-Stream, Page, State and Method. Present null is not a default.
+`Defaults` covers a field that has a default when absent but is always
+written: absence supplies an empty collection, false, zero or empty text, and
+encoding still writes the field. Present null is not a default. The plugin
+manifest uses this for its commands, profiles, context and streams, and for the
+lists in Stream, Page, State and Method.
 
-Schemars 1.2.2 `schemars_derive/src/schema_exprs.rs::expr_for_struct` inserts
-`Default::default()` as the property's `default` and excludes the property
-from `required` for the deserialize contract. The schema assertion in
-`TestDefaultFields` checks those exact annotations, and compiles the schema
-against the same absent, empty, populated and invalid inputs as the codecs.
-`crates/xtask/src/contracts/zod.rs::fields` renders non-required properties
-with `.optional()`, without inserting defaults; `verify.mjs` checks this with
-actual Zod. The captured Rust files in gomig-ref/generated use that same
-optional-property convention. Those production outputs are unaffected by
-this fixture.
+In the JSON Schema such a field carries its default as `default` and is left
+out of `required`. `TestDefaultFields` checks those exact annotations and
+compiles the schema against the same absent, empty, populated and invalid
+inputs as the codecs. The generated Zod renders a non-required property with
+`.optional()` and inserts no default; `verify.mjs` checks this with Zod
+(`TestNullableOptionalTypeScript`, `acceptance` build tag).
 
-`Labels` is named to exercise default collection handling through generated
-methods as well as the plain Items slice. Encoding a zero Go value writes
-empty collections without changing the caller's nil fields.
+`Labels` exercises default collection handling through generated methods as
+well as the plain Items slice. Encoding a zero Go value writes empty
+collections without changing the caller's nil fields.

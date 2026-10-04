@@ -1,20 +1,19 @@
-# serde_json reference bytes
+# JSON wire bytes
 
-`escaping.jsonl` was captured from serde_json 1.0.151, the Cargo.lock version,
-by a small Rust oracle run once during the migration (stdout); the oracle is
-kept outside the repository, in the migration's reference directory
-(`gomig-ref/oracles/contract/oracle`), since the repository holds no Rust. Go
-tests only read the captured fixture. It covers HTML characters, JavaScript
-line separators, quotes/backslashes, every ASCII control, non-ASCII text,
-and literal backslash escapes.
+These fixtures pin the exact JSON spelling Demi's wire contracts use. They are
+recorded once; nothing in the repository regenerates them, and the tests only
+read them.
 
-The oracle also reports on stderr that 126 and 127 nested arrays decode,
-while 128 and 129 do not. In `src/de.rs`, `remaining_depth` starts at 128;
-`check_recursion!` decrements before entering an object or array and refuses
-zero. Scalars consume no recursion budget. This differs from the brief's
-example that 128 containers decode; the runtime follows the Rust source.
+`escaping.jsonl` covers string escaping: HTML characters, the JavaScript line
+separators U+2028 and U+2029, quotes and backslashes, every ASCII control,
+non-ASCII text, and literal backslash escapes. `contract.EncodeJSON` writes
+these bytes; `encoding/json` would escape `<`, `>`, `&`, U+2028 and U+2029.
 
-`numbers.jsonl` comes from the same command with `-- --numbers`. It pins
-serde_json's integer limits, overflow-to-float behavior, negative zero, float
-notation thresholds, subnormal values and the largest finite double. Go tests
-convert these JSON values to MessagePack and back without running Rust.
+`numbers.jsonl` pins integer limits, overflow to floating point, negative zero,
+the thresholds between plain and exponent notation, subnormal values and the
+largest finite double. The tests convert these JSON values to MessagePack and
+back.
+
+Nesting depth: 126 and 127 nested arrays decode, while 128 and 129 do not. The
+decoder starts with a depth budget of 128, takes one before entering an object
+or array, and refuses at zero; scalars take none.

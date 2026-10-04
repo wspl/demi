@@ -1,26 +1,23 @@
-# Accounts reference fixtures
+# Accounts fixtures
 
-The standalone Rust fixture writer lives outside the repository at
-`/Users/zan/Projects/demi-worktrees/gomig-ref/oracles/b-accounts/reference`.
-It uses the reference backend's Argon2 and ICU versions and is not part of a
-Go test or build.
-Run from the repository root:
+These fixtures pin the bytes stored account data already holds. They are
+recorded once; nothing in the repository regenerates them. All passwords here
+are public fixture text, not credentials.
 
-```sh
-cargo run --offline --manifest-path /Users/zan/Projects/demi-worktrees/gomig-ref/oracles/b-accounts/reference/Cargo.toml -- "$PWD/internal/backend/accounts/testdata"
-```
+- `passwords.tsv`: password, base64 salt and Argon2id PHC string, as stored
+  accounts hold them. `TestPasswordFixtures` verifies each hash and checks that
+  `hashPassword` writes the same PHC bytes for the same salt.
+- `go-password.tsv`: a password, raw salt and PHC string written by
+  `hashPassword` and verified with a second, independent Argon2
+  implementation. `TestPasswordWriterMatchesVerifiedFixture` checks that
+  `hashPassword` still writes those bytes.
+- `locales.tsv`: an input language tag and its ICU canonical form, or `ERROR`
+  for a tag ICU refuses. `TestLocaleFixtures` checks the locale normalization
+  against it.
 
-It writes `passwords.tsv` (password, base64 salt, PHC) and `locales.tsv`
-(input tag, ICU canonical tag or `ERROR`). It also writes the production
-`../iana_names.txt`, every accepted normalized zone spelling from ICU's
-`IanaParserExtended::iter_all`, excluding unknown zones. Aliases retain their
-normalized spelling, not the canonical zone they refer to.
-
-`go-password.tsv` contains a password, raw salt and PHC written by Go's
-`hashPassword`. The Rust fixture writer verifies it with `Argon2::default()`;
-`TestPasswordWriterMatchesVerifiedFixture` checks that Go still writes those bytes.
-`TestRustPasswordFixtures` verifies the Rust hashes in Go and checks that Go
-writes identical PHC bytes for their salts. All passwords here are public
-fixture text, not credentials.
+`../iana_names.txt`, embedded by `locale.go`, lists every accepted normalized
+time zone spelling from ICU's IANA parser, excluding unknown zones. An alias
+keeps its own normalized spelling, not the canonical zone it refers to. It was
+recorded once from ICU; nothing in the repository regenerates it.
 
 These TSV records are fixture transport, not application JSON contracts.

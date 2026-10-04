@@ -22,7 +22,7 @@ remaining Git edge cases listed in sp07's report.
 To reproduce on macOS, copy the Go files and `verify.py` from the sp07 `spike/`
 directory into a disposable directory. Apply [v5.patch](v5.patch) with
 `patch -p1`, and copy `v5.mod` and `v5.sum` to `go.mod` and `go.sum`.
-Run all Go commands with `CGO_ENABLED=0 GOFLAGS=-mod=readonly`:
+Run all Go commands with `CGO_ENABLED=0`:
 
 ```sh
 go test -v ./...
