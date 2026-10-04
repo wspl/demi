@@ -1,7 +1,7 @@
 //! Conversation Fork (`conversation-fork.md` § Backend creation and retries;
 //! `web-api.md` § Conversation creation and Fork): a new conversation with the
 //! source's history through one of its completed assistant texts, and the
-//! command storage, edits and command outputs of that history, created once
+//! edits and command outputs of that history, created once
 //! per destination id, while the source runs on and after the backend no
 //! longer holds the source. The edits' blobs are the source's: a Fork copies
 //! no bytes; and the destination's numbers go on from the source's. No test
@@ -334,65 +334,6 @@ async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_
     assert_eq!(counts.tally().since(&before).puts, 0);
     let copied = transcript(&backend, &master, SECOND).await.blocks;
     assert_eq!(files(&copied), Some(edited));
-    backend.close().await;
-}
-
-// Several seconds: three turns each run a `demi todo` job on a real device.
-#[tokio::test]
-async fn a_fork_keeps_the_todos_its_history_had() {
-    let vendor = MockVendor::start().await;
-    let harness = Harness::new();
-    let (backend, master) = harness.start_set_up().await;
-    let provider = anthropic(&backend, &master, &vendor).await;
-    create(&backend, &master, FIRST).await;
-    let (_paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
-    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
-    let mut source = Socket::connect(&backend, &master, FIRST).await;
-    source.open().await;
-    let shell = |id: &str, script: &str| {
-        tool_use(
-            id,
-            "shell_exec",
-            &json!({ "description": id, "script": script, "timeoutMs": 60_000 }),
-        )
-    };
-    vendor.respond(shell("toolu_add", "demi todo add \"first task\""));
-    vendor.respond(answer(&["Added."], 1, 1));
-    source.chat("m1", "Plan").await;
-    vendor.respond(shell("toolu_done", "demi todo done T1"));
-    vendor.respond(answer(&["Done."], 1, 1));
-    source.chat("m2", "Finish it").await;
-    let Ok([added, done]) = <[BlockId; 2]>::try_from(texts(&source.live().await)) else {
-        panic!("two answers");
-    };
-
-    // A Fork's todos are the ones its history had, however the source went
-    // on.
-    for (destination, text, status) in [(SECOND, added, "pending"), (THIRD, done, "done")] {
-        let created = backend
-            .post(
-                &format!("/api/conversations/{FIRST}/fork"),
-                Some(&master),
-                fork(destination, &text),
-            )
-            .await;
-        assert_eq!(
-            created.status,
-            StatusCode::CREATED,
-            "{}",
-            String::from_utf8_lossy(&created.body)
-        );
-        let mut socket = Socket::connect(&backend, &master, destination).await;
-        socket.open().await;
-        let before = vendor.requests().len();
-        vendor.respond(shell("toolu_list", "demi todo list --json"));
-        vendor.respond(answer(&["Listed."], 1, 1));
-        socket.chat("m3", "What is left?").await;
-        let listed = tool_result(&vendor.requests()[before + 1].json(), "toolu_list");
-        let todos: Value = serde_json::from_str(listed.lines().last().unwrap())
-            .unwrap_or_else(|_| panic!("{listed}"));
-        assert_eq!(todos["todos"][0]["status"], status, "{listed}");
-    }
     backend.close().await;
 }
 

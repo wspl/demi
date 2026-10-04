@@ -2,27 +2,25 @@
 //! (`sessions-and-targets.md` § Bind jobs to their caller): a call runs only
 //! for a live job on the connection whose command context names the
 //! conversation of the Host that started it, and it reaches that job's agent
-//! node's commands and storage. A native service's conversation numbers come
-//! only from a conversation of the user that reaches the device
-//! (`native-runtime.md` § Conversation numbers).
+//! node's commands. A native service's conversation numbers come only from a
+//! conversation of the user that reaches the device (`native-runtime.md`
+//! § Conversation numbers).
 
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::sequences;
 use demi_backend_remote_host::{JobOrigin, LinkPolicy};
 use demi_command_protocol::ServiceSequence;
-use demi_host_interface::{PortError, RpcError, RpcInvocation, RpcPort, StorageOp, StorageReply};
+use demi_host_interface::{RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::VolumeName;
 use demi_shared_types::Sequence;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
-use tokio_util::sync::CancellationToken;
 
 use demi_backend_runners::host_key::conversation_of;
 
 use super::Shard;
 use demi_backend_host_access::host_commands::reachable;
-use demi_backend_host_access::root_of;
 
 /// The rules of one device's connection, in its user's shard.
 pub(crate) struct ShardPolicy {
@@ -65,31 +63,6 @@ impl LinkPolicy for ShardPolicy {
             Ok(shard) => shard.commands().dispatch(&job, invocation, port),
             Err(reason) => Box::pin(async move { Err(RpcError::Failed(reason)) }),
         }
-    }
-
-    /// The job's command storage is its node's in the conversation's agent
-    /// tree, at the command generation the job started in; a write commits
-    /// only while `call` lives.
-    fn storage(
-        &self,
-        job: Rc<JobOrigin>,
-        op: StorageOp,
-        call: CancellationToken,
-    ) -> LocalBoxFuture<'static, Result<StorageReply, PortError>> {
-        let shard = self.shard();
-        Box::pin(async move {
-            let shard = shard.map_err(PortError::Ended)?;
-            let caller = job
-                .caller
-                .as_ref()
-                .ok_or_else(|| PortError::Storage("the job has no command storage".into()))?;
-            let conversation = ConversationId::try_from(job.context.conversation.as_str())
-                .map_err(|_| PortError::Storage("the job belongs to no conversation".into()))?;
-            shard
-                .agent()
-                .command_storage(&root_of(&conversation), caller, op, call)
-                .await
-        })
     }
 
     /// Only the user's Cloud grows its volumes (`managed-hosts.md`

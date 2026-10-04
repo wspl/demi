@@ -26,7 +26,6 @@ members = [
   "crates/command-package-browser-protocol",
   "crates/command-package-claude-code-protocol",
   "crates/plugin-interface",
-  "crates/plugin-todo",
   "crates/plugin-changes",
   "crates/plugin-file-browser",
   "crates/plugin-file",

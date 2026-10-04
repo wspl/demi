@@ -95,8 +95,7 @@ fn is_answer(block: &Block) -> bool {
 }
 
 /// Whether a block opens an input turn (`runtime.md` § Block types): recovery
-/// treats it as the start of its turn, and its `before_user` command-state
-/// boundary is recorded.
+/// treats it as the start of its turn.
 pub fn opens_input_turn(block: &Block) -> bool {
     match block {
         Block::User(_) | Block::Context(_) => true,

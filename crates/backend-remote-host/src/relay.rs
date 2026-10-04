@@ -3,10 +3,9 @@
 //! comes from a live job on this connection, mints the call's standard
 //! output pipe (and its standard input's, when the process has one), and
 //! serves the handler's port: output through the pipe, errors as
-//! `rpc_output`, live input on demand, and storage through the connection's
-//! policy. The call exits after its standard output drained, with the
-//! handler's code, 130 when the runner cancelled it, or 1 with the first
-//! cause that stopped it.
+//! `rpc_output`, and live input on demand. The call exits after its
+//! standard output drained, with the handler's code, 130 when the runner
+//! cancelled it, or 1 with the first cause that stopped it.
 
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
@@ -260,7 +259,6 @@ async fn run(
         link: link.clone(),
         call_id: call.call_id.clone(),
         entry: entry.clone(),
-        origin: origin.clone(),
         stdout: RefCell::new(Stdout::Held(stdout.clone())),
         stdout_turn: SerialGate::new(),
         stdin: RefCell::new(stdin.clone().map(Stdin::Unread)),
@@ -315,7 +313,6 @@ struct RelayPort {
     link: Link,
     call_id: String,
     entry: Rc<CallEntry>,
-    origin: Rc<JobOrigin>,
     stdout: RefCell<Stdout>,
     /// Writes to standard output take turns.
     stdout_turn: SerialGate,
@@ -431,13 +428,6 @@ impl PortTransport for RelayPort {
                         .next_live_input(&self.link, &self.call_id)
                         .await?
                         .map(B64Bytes::new),
-                }),
-                PortRequest::Storage { op } => Ok(PortResponse::Storage {
-                    reply: self
-                        .link
-                        .policy()
-                        .storage(self.origin.clone(), op, self.entry.stopped.clone())
-                        .await?,
                 }),
             }
         })

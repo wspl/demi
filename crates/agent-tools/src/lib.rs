@@ -232,7 +232,6 @@ impl<H: HostResolver> ShellAccess<'_, H> {
             input,
             model,
             request_limits,
-            generation,
             cancel,
             ..
         } = call;
@@ -269,7 +268,6 @@ impl<H: HostResolver> ShellAccess<'_, H> {
                         .expect("the input admits only windows an environment takes"),
                     caller: JobCaller {
                         node: self.context.node.clone(),
-                        generation,
                     },
                     tool_use_id,
                 };

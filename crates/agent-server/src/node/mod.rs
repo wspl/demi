@@ -67,12 +67,10 @@ impl<H: HostResolver> Node<H> {
         &self.runtime.commands
     }
 
-    /// Whose command storage a job the node starts now reaches: this node,
-    /// at its current generation.
+    /// The caller a job the node starts records: this node.
     pub fn job_caller(&self) -> JobCaller {
         JobCaller {
             node: self.record.id.clone(),
-            generation: self.session.generation_number(),
         }
     }
 

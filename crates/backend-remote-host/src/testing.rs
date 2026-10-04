@@ -24,10 +24,7 @@ use demi_command_protocol::{
     ArtifactLocation, ArtifactPath, PackageArtifact, PackageDescriptor, ServiceSequence,
     host_target,
 };
-use demi_host_interface::{
-    CommandSet, HostIdentity, HostKey, PortError, RpcError, RpcInvocation, RpcPort, StorageOp,
-    StorageReply, testing::MemoryStorage,
-};
+use demi_host_interface::{CommandSet, HostIdentity, HostKey, RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::{self, Inbound, Outbound, VolumeName};
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
@@ -42,11 +39,9 @@ use crate::{
 /// The device a test connection serves.
 pub const TEST_DEVICE: &str = "test-device";
 
-/// A policy for tests: every call runs, in one command set, and each agent
-/// node's command storage is in memory.
+/// A policy for tests: every call runs, in one command set.
 pub struct CommandPolicy {
     commands: Rc<CommandSet>,
-    storage: RefCell<HashMap<String, Rc<MemoryStorage>>>,
     /// The next number of each conversation's sequence.
     sequences: RefCell<HashMap<(String, ServiceSequence), u64>>,
 }
@@ -55,18 +50,8 @@ impl CommandPolicy {
     pub fn new(commands: CommandSet) -> Rc<Self> {
         Rc::new(Self {
             commands: Rc::new(commands),
-            storage: RefCell::default(),
             sequences: RefCell::default(),
         })
-    }
-
-    /// The command storage of agent node `node`.
-    pub fn storage(&self, node: &str) -> Rc<MemoryStorage> {
-        self.storage
-            .borrow_mut()
-            .entry(node.to_owned())
-            .or_default()
-            .clone()
     }
 }
 
@@ -83,27 +68,6 @@ impl LinkPolicy for CommandPolicy {
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>> {
         let commands = self.commands.clone();
         Box::pin(async move { commands.dispatch(invocation, port).await })
-    }
-
-    fn storage(
-        &self,
-        job: Rc<JobOrigin>,
-        op: StorageOp,
-        call: CancellationToken,
-    ) -> LocalBoxFuture<'static, Result<StorageReply, PortError>> {
-        let storage = job
-            .caller
-            .as_ref()
-            .map(|caller| self.storage(caller.node.as_str()));
-        Box::pin(async move {
-            let storage = storage
-                .ok_or_else(|| PortError::Storage("the job has no command storage".into()))?;
-            // A stopped call commits nothing.
-            if call.is_cancelled() {
-                return Err(PortError::Ended("the call was stopped".into()));
-            }
-            Ok(storage.apply(op))
-        })
     }
 
     fn grow_volume(&self, _: VolumeName, _: u64) -> LocalBoxFuture<'static, Result<(), String>> {

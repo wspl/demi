@@ -6,9 +6,7 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_agent_store::BoundaryEdge;
 use demi_agent_transcript::{resume_point, rewind};
-use demi_shared_types::Block;
 use tokio::sync::Notify;
 
 use super::{
@@ -144,14 +142,11 @@ async fn execute(
 ) -> Result<(), TurnError> {
     match kind {
         ActionKind::Send { content } => {
-            // The version current when the turn started, before its hooks
-            // and commands run.
-            let revision = s.read(|core| core.commands.revision());
             turn::apply_switch(s, cancel).await?;
             let preamble = cancel.guard(s.runtime.preamble()).await?;
             s.update(|core| {
                 let turn = core.turn();
-                core.push_user(turn, content.clone(), preamble, revision);
+                core.push_user(turn, content.clone(), preamble);
             });
             compaction::preflight(s, cancel).await?;
             turn::run(s, cancel).await
@@ -190,27 +185,13 @@ async fn execute(
 
 /// Discards the last input turn and runs it again from its input: the block
 /// that opened it stays, with the turn's steers and every agent message after
-/// it, and command state returns to the version recorded before it
-/// (`failures-and-recovery.md` § Recovery is one mechanism).
+/// it (`failures-and-recovery.md` § Recovery is one mechanism).
 async fn retry(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let rewind = s
         .read(|core| rewind(core.transcript.blocks()))
         .ok_or_else(|| TurnError::refused("There is no input turn to retry"))?;
-    let input = &rewind.retained[rewind.input];
-    let edge = match input {
-        Block::AgentMessage(_) => BoundaryEdge::AfterBlock,
-        _ => BoundaryEdge::BeforeUser,
-    };
-    let revision = s
-        .read(|core| core.commands.boundary(input.id(), edge))
-        .ok_or_else(|| {
-            TurnError::refused(format!(
-                "No command-state boundary for block {}",
-                input.id()
-            ))
-        })?;
     let turn = rewind.turn.clone();
-    persist::commit_rewrite(s, rewind.retained, revision).await?;
+    persist::commit_rewrite(s, rewind.retained).await?;
     s.update(|core| core.take_over_turn(turn));
     cancel.check()?;
     turn::apply_switch(s, cancel).await?;
@@ -228,7 +209,7 @@ async fn resume(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnEr
     }
     // The unwind comes before a pending switch lands: a switch that compacts
     // would move the cut.
-    turn::restore_command_state(s, point.cut).await?;
+    turn::cut_history(s, point.cut).await?;
     // A stop that came during the save is recorded after the published
     // rewrite, and no `resume` block without a turn is left.
     cancel.check()?;

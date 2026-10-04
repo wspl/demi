@@ -20,9 +20,9 @@ use demi_command_protocol::{
 };
 use demi_host_interface::{
     Call, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
-    HostProcess, JobCaller, LeafBuilder, ObservationWindow, OutputRecord, PageState, PortError,
-    Process, ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, ShellTarget,
-    SpawnEnv, SpawnRequest, StorageOp, StorageReply, Streams, TypedRpc, WholeOutput,
+    HostProcess, JobCaller, LeafBuilder, ObservationWindow, OutputRecord, PageState, Process,
+    ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, ShellTarget, SpawnEnv,
+    SpawnRequest, Streams, TypedRpc, WholeOutput,
     testing::{CountingNumbers, TestPages, test_command_context},
 };
 use demi_runner_protocol::wire::{
@@ -45,7 +45,6 @@ fn device() -> TestDevice {
 fn caller() -> JobCaller {
     JobCaller {
         node: NodeId::try_from("test-session").unwrap(),
-        generation: 0,
     }
 }
 
@@ -1453,7 +1452,7 @@ async fn a_call_stops_on_its_first_cause_releases_its_live_input_and_exits_after
             context.borrow().as_ref().unwrap()["conversation"],
             test_command_context().conversation.as_str()
         );
-        // The handler knows whose command storage the invoking job reaches.
+        // The handler knows the agent node the invoking job runs for.
         assert_eq!(
             context.borrow().as_ref().unwrap()["caller"],
             serde_json::to_value(caller()).unwrap()
@@ -1525,15 +1524,6 @@ impl LinkPolicy for Refusing {
         _: RpcPort,
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>> {
         panic!("a refused call reaches no handler")
-    }
-
-    fn storage(
-        &self,
-        _: Rc<JobOrigin>,
-        _: StorageOp,
-        _: CancellationToken,
-    ) -> LocalBoxFuture<'static, Result<StorageReply, PortError>> {
-        panic!("a refused call reaches no storage")
     }
 
     fn grow_volume(&self, _: VolumeName, _: u64) -> LocalBoxFuture<'static, Result<(), String>> {

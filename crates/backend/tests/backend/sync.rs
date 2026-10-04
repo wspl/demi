@@ -182,7 +182,6 @@ async fn the_snapshot_is_the_users_product_state() {
         plugins,
         [
             ("file", true),
-            ("todo", true),
             ("browser", true),
             ("expose", true),
             ("skills", true),

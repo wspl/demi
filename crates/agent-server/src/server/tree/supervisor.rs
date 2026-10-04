@@ -16,7 +16,7 @@ use demi_agent_session::{
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
-use demi_host_interface::{CommandSet, RpcError, RpcPort};
+use demi_host_interface::CommandSet;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
@@ -91,18 +91,11 @@ impl<H: HostResolver> Child<H> {
     }
 }
 
-/// What a start does, as its reservation records it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(
-    tag = "kind",
-    rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
+/// What a start does.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StartInput {
     Spawn {
         prompt: String,
-        #[serde(deserialize_with = "Option::deserialize")]
         profile_name: Option<String>,
         description: String,
         is_spawn_forbidden: bool,
@@ -111,18 +104,6 @@ pub(crate) enum StartInput {
         id: NodeId,
         message: String,
     },
-}
-
-/// A start's immutable reservation in the owner's command storage, at
-/// `agent.start.<request id>` (`subagents.md` § Model-facing surface).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct StartReceipt {
-    input: StartInput,
-    node_id: NodeId,
-    /// The round the start begins: 1 for a spawn, one more than the child's
-    /// last for a resume.
-    round: u64,
 }
 
 /// How a child closes.
@@ -216,22 +197,17 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Starts a child of `caller` for `demi agent spawn` or `resume`
-    /// (`subagents.md` § Creation command ownership): reserves the request
-    /// in the caller's command storage through `port`, then creates or
-    /// reopens the child. The start runs in a task of the tree, so once its
-    /// reservation is committed it runs to its end even when the call is
-    /// cancelled; a reservation the cancelled call could not commit starts
-    /// nothing. Starts of one owner take turns. Answers the child's number.
+    /// (`subagents.md` § Creation command ownership): creates or reopens the
+    /// child in a task of the tree, so the start runs to its end even when
+    /// the call is cancelled. Starts of one owner take turns. Answers the
+    /// child's number.
     pub(crate) async fn start(
         self: &Rc<Self>,
         caller: &NodeId,
         input: StartInput,
-        request: String,
-        port: &RpcPort,
     ) -> Result<u64, String> {
         let tree = self.clone();
         let caller = caller.clone();
-        let port = port.clone();
         let started = self.lifecycle.spawn_local(async move {
             let _turn = tree.starts.acquire(caller.clone()).await;
             let owner = tree.owner(&caller)?;
@@ -240,127 +216,70 @@ impl<H: HostResolver> Tree<H> {
                 .lifecycle()
                 .try_enter(Purpose::Maintenance)
                 .ok_or("Cannot change children while a transcript edit is being prepared")?;
-            let receipt = tree.reserve(&input, &request, &port).await?;
-            tree.finish_start(&owner, receipt).await
+            if tree.disposing.get() {
+                return Err(OWNER_CLOSING.to_owned());
+            }
+            match input {
+                StartInput::Spawn {
+                    prompt,
+                    profile_name,
+                    description,
+                    is_spawn_forbidden,
+                } => {
+                    tree.spawn(
+                        &owner,
+                        prompt,
+                        profile_name,
+                        description,
+                        is_spawn_forbidden,
+                    )
+                    .await
+                }
+                StartInput::Resume { id, message } => tree.reopen(&owner, id, message).await,
+            }
         });
         started
             .await
             .map_err(|error| format!("the start of a subagent failed: {error}"))?
     }
 
-    /// The start's reservation: the one already committed for `request`, or
-    /// a new one.
-    async fn reserve(
-        &self,
-        input: &StartInput,
-        request: &str,
-        port: &RpcPort,
-    ) -> Result<StartReceipt, String> {
-        // Computed before the read, which runs again after a conflict and
-        // does no other IO.
-        let fresh = match input {
-            StartInput::Spawn { .. } => StartReceipt {
-                input: input.clone(),
-                node_id: self.new_node_id(),
-                round: 1,
-            },
-            StartInput::Resume { id, .. } => {
-                let previous = self
-                    .store
-                    .node(id)
-                    .await
-                    .map_err(|error| error.to_string())?;
-                StartReceipt {
-                    input: input.clone(),
-                    node_id: id.clone(),
-                    round: previous.map_or(1, |record| record.round + 1),
-                }
-            }
-        };
-        let key = format!("agent.start.{request}");
-        port.update(&key, |current: Option<StartReceipt>| match current {
-            Some(existing) if &existing.input == input => Ok(existing),
-            Some(_) => Err(RpcError::Failed(
-                "request-id already belongs to different agent arguments".to_owned(),
-            )),
-            None => Ok(fresh.clone()),
-        })
-        .await
-        .map_err(|error| error.to_string())
-    }
-
-    /// Finishes a reserved start: a retry returns the child the reservation
-    /// made, restoring it when it is live in the store but not in the tree;
-    /// otherwise the child is spawned, with the next agent number, or
-    /// reopened. Answers the child's number.
-    async fn finish_start(
+    /// Spawns a child of `owner` with the next agent number and `prompt`
+    /// queued. Answers its number.
+    async fn spawn(
         self: &Rc<Self>,
         owner: &Rc<Node<H>>,
-        receipt: StartReceipt,
+        prompt: String,
+        profile_name: Option<String>,
+        description: String,
+        is_spawn_forbidden: bool,
     ) -> Result<u64, String> {
-        if self.disposing.get() {
-            return Err(OWNER_CLOSING.to_owned());
+        if !owner.record().can_spawn_subagents {
+            return Err("this session may not spawn subagents".to_owned());
         }
-        let stored = self
+        self.check_capacity(owner.id())?;
+        let profile = self.profile(profile_name.as_deref())?;
+        let can_spawn =
+            !is_spawn_forbidden && profile.is_none_or(|profile| profile.can_spawn_subagents);
+        let number = self
             .store
-            .node(&receipt.node_id)
+            .next_number(Sequence::Agent)
             .await
             .map_err(|error| error.to_string())?;
-        if let Some(record) = stored {
-            if record.parent.as_ref() != Some(owner.id()) {
-                return Err("request-id references an agent owned by another session".to_owned());
-            }
-            let spawn = matches!(receipt.input, StartInput::Spawn { .. });
-            if spawn || record.round == receipt.round {
-                let number = record.number;
-                if record.closed.is_none() && !self.is_live(&record.id) {
-                    self.start_child(owner, record, None).await?;
-                }
-                return Ok(number);
-            }
-            if record.round > receipt.round {
-                return Err("resume request has been superseded by a later round".to_owned());
-            }
-        }
-        match receipt.input {
-            StartInput::Spawn {
-                prompt,
-                profile_name,
-                description,
-                is_spawn_forbidden,
-            } => {
-                if !owner.record().can_spawn_subagents {
-                    return Err("this session may not spawn subagents".to_owned());
-                }
-                self.check_capacity(owner.id())?;
-                let profile = self.profile(profile_name.as_deref())?;
-                let can_spawn = !is_spawn_forbidden
-                    && profile.is_none_or(|profile| profile.can_spawn_subagents);
-                let number = self
-                    .store
-                    .next_number(Sequence::Agent)
-                    .await
-                    .map_err(|error| error.to_string())?;
-                let record = NodeRecord {
-                    id: receipt.node_id,
-                    number,
-                    parent: Some(owner.id().clone()),
-                    description,
-                    profile: profile_name,
-                    round: receipt.round,
-                    started_at: self.clock.now(),
-                    can_spawn_subagents: can_spawn,
-                    closed: None,
-                    delivered: false,
-                };
-                let brief = self.text_message(prompt);
-                self.start_child(owner, record, Some(brief)).await?;
-                Ok(number)
-            }
-            StartInput::Resume { id, message } => {
-                self.reopen(owner, id, message, receipt.round).await
-            }
-        }
+        let record = NodeRecord {
+            id: self.new_node_id(),
+            number,
+            parent: Some(owner.id().clone()),
+            description,
+            profile: profile_name,
+            round: 1,
+            started_at: self.clock.now(),
+            can_spawn_subagents: can_spawn,
+            closed: None,
+            delivered: false,
+        };
+        let brief = self.text_message(prompt);
+        self.start_child(owner, record, Some(brief)).await?;
+        Ok(number)
     }
 
     /// Revives an archived child of `owner` in one commit, a new round with
@@ -371,7 +290,6 @@ impl<H: HostResolver> Tree<H> {
         owner: &Rc<Node<H>>,
         id: NodeId,
         message: String,
-        round: u64,
     ) -> Result<u64, String> {
         let stored = self
             .store
@@ -400,6 +318,7 @@ impl<H: HostResolver> Tree<H> {
         // A profile no plugin declares any more leaves the archive as it
         // is.
         self.profile(record.profile.as_deref())?;
+        let round = record.round + 1;
         let started_at = self.clock.now();
         self.store
             .reopen_node(&id, round, started_at, self.text_message(message))

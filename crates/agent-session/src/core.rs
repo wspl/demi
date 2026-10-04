@@ -1,7 +1,7 @@
 //! A session's state and every decision about it (`runtime.md` § Sessions
 //! and turns): one status, the actions waiting to run, the input waiting for
-//! a boundary, the scheduled wakeups, the transcript and command state, the
-//! model selection with its provider runtime, and what the next save writes.
+//! a boundary, the scheduled wakeups, the transcript, the model selection
+//! with its provider runtime, and what the next save writes.
 //! Every method here is synchronous; the worker and the turn loop await
 //! between calls, never inside one.
 
@@ -14,13 +14,12 @@ use std::{
 };
 
 use demi_agent_store::{
-    BoundaryEdge, CheckpointState, CheckpointUpdate, CommandStateHistory, CommandStateSnapshot,
-    CommandStorageKey, CommandVersion, EditReceipt, PendingAgentInput, ScheduledWakeup,
+    CheckpointState, CheckpointUpdate, EditReceipt, PendingAgentInput, ScheduledWakeup,
     media::{self, HeldMedia, ModelView},
 };
 use demi_agent_transcript::{
-    INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, RequestView, TranscriptLog,
-    opens_input_turn, replay, replay_start,
+    DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, RequestView, TranscriptLog,
+    replay, replay_start,
 };
 use demi_conversation_socket_protocol::AbortTarget;
 use demi_provider_common::{
@@ -40,8 +39,7 @@ use super::{
     cancel::{CancelReason, TurnCancel},
     editing::{EditCheck, EditError, EditInFlight, EditSubmission},
     input::{Input, InputQueue, Take, Wakeups},
-    persist::{PersistMarks, TakenMarks},
-    storage::Generation,
+    persist::PersistMarks,
 };
 
 pub(crate) struct SessionCore {
@@ -65,11 +63,6 @@ pub(crate) struct SessionCore {
     /// What the session holds for the media its replayed blocks and its
     /// waiting input reference (`runtime.md` § Media).
     pub(super) media: HeldMedia,
-    pub(super) commands: CommandStateHistory,
-    /// The command-storage generation of the jobs started now: a history
-    /// rewrite or dispose cancels it, so that a storage message of an older
-    /// job never commits into the history that replaced its own.
-    pub(super) generation: Generation,
     /// The actions waiting, in the order they run; the queue is its sends.
     pub(super) pending: VecDeque<PendingAction>,
     pub(super) inputs: InputQueue,
@@ -231,7 +224,6 @@ pub(super) struct CoreParts {
     /// The bytes held for the transcript's media: none for a new or restored
     /// session, the window's for a session copy.
     pub(super) media: HeldMedia,
-    pub(super) commands: CommandStateHistory,
     pub(super) inputs: InputQueue,
     pub(super) wakeups: Wakeups,
     pub(super) edits: Vec<EditReceipt>,
@@ -252,8 +244,6 @@ impl SessionCore {
             retired: Vec::new(),
             transcript: parts.transcript,
             media: parts.media,
-            commands: parts.commands,
-            generation: Generation::first(),
             pending: VecDeque::new(),
             inputs: parts.inputs,
             wakeups: parts.wakeups,
@@ -382,18 +372,16 @@ impl SessionCore {
     }
 
     /// Adopts an edit its save made durable: the replacement history, the
-    /// command state before the target, the receipt, the model and the
-    /// runtime fork the replacement runs on. Returns the runtimes it
-    /// discarded, for closing.
+    /// receipt, the model and the runtime fork the replacement runs on.
+    /// Returns the runtimes it discarded, for closing.
     pub(super) fn adopt_edit(
         &mut self,
         blocks: Vec<Block>,
-        commands: CommandStateHistory,
         runtime: Box<dyn ProviderRuntime>,
         model: ModelSelection,
         receipt: EditReceipt,
     ) -> Vec<Box<dyn ProviderRuntime>> {
-        self.adopt_rewrite(blocks, commands);
+        self.adopt_rewrite(blocks);
         self.edits.push(receipt.clone());
         // The replacement was prepared with the recorded switch; the one
         // that waited for the edit is recorded now, and lands after the
@@ -419,49 +407,6 @@ impl SessionCore {
         if let Some(switch) = self.waiting_switch.take() {
             replace_switch(&mut self.switch, switch, &mut self.retired);
         }
-    }
-
-    // Command storage.
-
-    /// The current version's value of `key`, and the node's revision.
-    pub(super) fn storage_value(
-        &self,
-        key: &CommandStorageKey,
-    ) -> (Option<serde_json::Value>, u64) {
-        (
-            self.commands.values().get(key).cloned(),
-            self.commands.revision(),
-        )
-    }
-
-    /// The current version's keys that start with `prefix`, sorted.
-    pub(super) fn storage_keys(&self, prefix: &str) -> Vec<String> {
-        self.commands
-            .values()
-            .keys()
-            .map(|key| key.as_str())
-            .filter(|key| key.starts_with(prefix))
-            .map(str::to_owned)
-            .collect()
-    }
-
-    /// The version a write makes: `key` set to `value`, or removed; none
-    /// when the values would not change.
-    pub(super) fn storage_write(
-        &self,
-        key: CommandStorageKey,
-        value: Option<serde_json::Value>,
-    ) -> Option<CommandVersion> {
-        let mut values = self.commands.values().clone();
-        match value {
-            Some(value) => values.insert(key, value),
-            None => values.remove(&key),
-        };
-        self.commands.prepare(values)
-    }
-
-    pub(super) fn accept_storage_version(&mut self, version: CommandVersion) {
-        self.commands.accept(version);
     }
 
     /// Admits a message: it starts at once when nothing runs and waits in the
@@ -761,16 +706,14 @@ impl SessionCore {
         }
     }
 
-    /// Starts dispose: admissions end, command-storage handles lapse, the
-    /// running action is stopped as a shutdown, and queued messages lose
-    /// their callers but stay for the final checkpoint. Returns false when
-    /// dispose already started.
+    /// Starts dispose: admissions end, the running action is stopped as a
+    /// shutdown, and queued messages lose their callers but stay for the
+    /// final checkpoint. Returns false when dispose already started.
     pub(super) fn begin_dispose(&mut self) -> bool {
         if self.disposing {
             return false;
         }
         self.disposing = true;
-        self.generation.token.cancel();
         for action in &mut self.pending {
             action.end(ActionEnd::Detached);
         }
@@ -1119,20 +1062,15 @@ impl SessionCore {
 
     // The transcript during a turn.
 
-    /// Appends the message's `user` block, and records the command state
-    /// current when the turn started as its `before_user` boundary.
+    /// Appends the message's `user` block.
     pub(super) fn push_user(
         &mut self,
         turn: TurnId,
         content: Vec<UserContentBlock>,
         preamble: Option<String>,
-        revision: u64,
     ) {
-        let id = self
-            .transcript
+        self.transcript
             .push_user(turn, &self.model, content, preamble);
-        self.commands
-            .capture(id, BoundaryEdge::BeforeUser, revision);
         if let Activity::Running(run) = &mut self.activity {
             run.unwritten_media.clear();
         }
@@ -1213,14 +1151,9 @@ impl SessionCore {
         );
     }
 
-    /// Marks the answer text at the end complete, recording the command state
-    /// current then as its `after_assistant` boundary.
+    /// Marks the answer text at the end complete.
     pub(super) fn complete_tail_text(&mut self) {
-        if let Some(id) = self.transcript.complete_tail_text() {
-            let revision = self.commands.revision();
-            self.commands
-                .capture(id, BoundaryEdge::AfterAssistant, revision);
-        }
+        self.transcript.complete_tail_text();
         self.commit();
     }
 
@@ -1331,9 +1264,8 @@ impl SessionCore {
         ModelView::of(start, &blocks[start..], &self.media)
     }
 
-    /// Drains the transcript's patches into one event, marks their rows for
-    /// the next save, and records each changed block's command-state
-    /// boundaries.
+    /// Drains the transcript's patches into one event and marks their rows
+    /// for the next save.
     pub(super) fn commit(&mut self) {
         let Some(batch) = self.transcript.take_patches() else {
             return;
@@ -1341,19 +1273,6 @@ impl SessionCore {
         self.persist.rows.merge(batch.rows);
         self.persist.dirty = true;
         self.requests.save = true;
-        let revision = self.commands.revision();
-        for id in batch.touched {
-            let Some(block) = self.transcript.find(&id) else {
-                continue;
-            };
-            if opens_input_turn(block) && !self.commands.has_boundary(&id, BoundaryEdge::BeforeUser)
-            {
-                self.commands
-                    .capture(id.clone(), BoundaryEdge::BeforeUser, revision);
-            }
-            self.commands
-                .capture(id, BoundaryEdge::AfterBlock, revision);
-        }
         self.outbox.push(SessionEvent::TranscriptChanged {
             patches: batch.patches,
             revision: batch.revision,
@@ -1362,28 +1281,20 @@ impl SessionCore {
 
     // History rewrites.
 
-    /// The whole checkpoint of a rewritten history: every row of `blocks`,
-    /// the state row, and `commands`.
-    pub(super) fn rewrite_update(
-        &self,
-        blocks: &[Block],
-        commands: CommandStateSnapshot,
-    ) -> CheckpointUpdate {
+    /// The whole checkpoint of a rewritten history: every row of `blocks`
+    /// and the state row.
+    pub(super) fn rewrite_update(&self, blocks: &[Block]) -> CheckpointUpdate {
         CheckpointUpdate {
             state: self.checkpoint_state(),
-            command_state: Some(commands),
             changed_blocks: blocks.iter().cloned().enumerate().collect(),
             block_count: blocks.len(),
         }
     }
 
-    /// Adopts a rewritten history its save made durable: the transcript and
-    /// command state are replaced and published as one `replace` patch,
-    /// command-storage handles of the replaced history lapse, and the rows
-    /// the save wrote are current.
-    pub(super) fn adopt_rewrite(&mut self, blocks: Vec<Block>, commands: CommandStateHistory) {
-        self.commands = commands;
-        self.generation = self.generation.next();
+    /// Adopts a rewritten history its save made durable: the transcript is
+    /// replaced and published as one `replace` patch, and the rows the save
+    /// wrote are current.
+    pub(super) fn adopt_rewrite(&mut self, blocks: Vec<Block>) {
         let batch = self.transcript.replace_all(blocks);
         self.persist.rows = Default::default();
         self.outbox.push(SessionEvent::TranscriptChanged {
@@ -1394,19 +1305,14 @@ impl SessionCore {
 
     // Saving.
 
-    /// The next save, when one is due: the changed rows, the state row, and
-    /// the command state when it changed or `pending`, a command-storage
-    /// version, makes it current.
-    pub(super) fn prepare_checkpoint(
-        &mut self,
-        pending: Option<&CommandVersion>,
-    ) -> Option<(CheckpointUpdate, TakenMarks)> {
+    /// The next save, when one is due: the changed rows and the state row,
+    /// with the rows it took, for putting back when it fails.
+    pub(super) fn prepare_checkpoint(&mut self) -> Option<(CheckpointUpdate, DirtyRows)> {
         self.commit();
-        if !self.persist.dirty && pending.is_none() {
+        if !self.persist.dirty {
             return None;
         }
         self.persist.dirty = false;
-        let command_state = self.commands.take_update(pending);
         let rows = mem::take(&mut self.persist.rows);
         let blocks = self.transcript.blocks();
         let changed_blocks = rows
@@ -1414,26 +1320,18 @@ impl SessionCore {
             .into_iter()
             .map(|index| (index, blocks[index].clone()))
             .collect();
-        let taken = TakenMarks {
-            rows,
-            command_state: command_state.is_some(),
-        };
         let update = CheckpointUpdate {
             state: self.checkpoint_state(),
-            command_state,
             changed_blocks,
             block_count: blocks.len(),
         };
-        Some((update, taken))
+        Some((update, rows))
     }
 
-    /// Puts back what a failed save took.
-    pub(super) fn restore_marks(&mut self, taken: TakenMarks) {
+    /// Puts back the rows a failed save took.
+    pub(super) fn restore_marks(&mut self, rows: DirtyRows) {
         self.persist.dirty = true;
-        self.persist.rows.merge(taken.rows);
-        if taken.command_state {
-            self.commands.mark_dirty();
-        }
+        self.persist.rows.merge(rows);
     }
 
     pub(super) fn checkpoint_state(&self) -> CheckpointState {

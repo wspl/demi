@@ -378,8 +378,8 @@ mod tests {
             let transaction = connection.transaction()?;
             transaction.execute(
                 "INSERT INTO nodes (id, number, parent_id, description, profile, round, started_at, can_spawn,
-                                    delivered, state, block_count, command_revision, output_revision)
-                 VALUES (?1, 0, NULL, '', NULL, 1, 0, 1, 0, ?2, 0, 0, 0)
+                                    delivered, state, block_count, output_revision)
+                 VALUES (?1, 0, NULL, '', NULL, 1, 0, 1, 0, ?2, 0, 0)
                  ON CONFLICT (id) DO UPDATE SET state = excluded.state",
                 params![id, state],
             )?;

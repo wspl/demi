@@ -4,18 +4,18 @@ use demi_command_declarations::NativeOperation;
 use demi_host_interface::{
     Call, CommandSet, GroupBuilder, LeafBuilder, RESERVED_NAMES, RpcError, RpcInvocation, RpcPort,
     TypedRpc,
-    testing::{MemoryPort, MemoryStorage, test_command_context},
+    testing::{MemoryPort, test_command_context},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
-/// The input of `demi todo add`.
+/// The input of `demi note add`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct AddArgs {
-    /// Todo text
+    /// Note text
     #[schemars(length(max = 1))]
     text: String,
     /// How many copies
@@ -29,23 +29,16 @@ struct Reply {
 
 async fn add(call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let copies = call.args.count.unwrap_or(1);
-    let text = call.args.text;
-    let added = port
-        .update("todos", |current: Option<Vec<String>>| {
-            let mut items = current.unwrap_or_default();
-            items.extend((0..copies).map(|_| text.clone()));
-            Ok(items)
-        })
-        .await?;
-    port.stdout(format!("{}\n", added.len())).await?;
+    let text = call.args.text.repeat(copies as usize);
+    port.stdout(format!("{text}\n")).await?;
     Ok(0)
 }
 
-fn todo() -> GroupBuilder {
+fn notes() -> GroupBuilder {
     GroupBuilder::new("demi", "Demi commands.").group(
-        GroupBuilder::new("todo", "Manage the todo list.")
+        GroupBuilder::new("note", "Manage notes.")
             .leaf(
-                LeafBuilder::rpc("add", "Add a new todo.")
+                LeafBuilder::rpc("add", "Add a note.")
                     .input::<AddArgs>()
                     .positionals(["text"])
                     .json_output::<Reply>()
@@ -86,9 +79,9 @@ fn invocation(path: &[&str], args: Value) -> RpcInvocation {
 #[test]
 fn registration_refuses_reserved_taken_malformed_and_unbound_commands() {
     let mut set = CommandSet::new();
-    set.register(todo()).unwrap();
+    set.register(notes()).unwrap();
     assert!(
-        set.register(todo())
+        set.register(notes())
             .unwrap_err()
             .to_string()
             .contains("already registered")
@@ -222,7 +215,7 @@ fn registration_refuses_inputs_outside_the_subset_naming_the_field() {
 fn help_opens_with_the_defaults_and_lists_every_root() {
     assert_eq!(CommandSet::new().render_help(), "");
     let mut set = CommandSet::new();
-    set.register(todo()).unwrap();
+    set.register(notes()).unwrap();
     let help = set.render_help();
     assert!(
         help.starts_with(demi_command_declarations::HELP_DEFAULTS),
@@ -234,7 +227,7 @@ fn help_opens_with_the_defaults_and_lists_every_root() {
         format!("{}\n\n{root}", demi_command_declarations::HELP_DEFAULTS)
     );
     assert!(
-        root.contains("demi todo add <text> [--count <count>] [--json]"),
+        root.contains("demi note add <text> [--count <count>] [--json]"),
         "{root}"
     );
     assert!(root.contains("How many copies"), "{root}");
@@ -243,12 +236,12 @@ fn help_opens_with_the_defaults_and_lists_every_root() {
 #[tokio::test(flavor = "current_thread")]
 async fn dispatch_validates_wire_arguments_as_they_are_and_runs_the_handler() {
     let mut set = CommandSet::new();
-    set.register(todo()).unwrap();
+    set.register(notes()).unwrap();
     let memory = MemoryPort::new();
     let cancel = CancellationToken::new();
     let call = |args: Value| {
         set.dispatch(
-            invocation(&["demi", "todo", "add"], args),
+            invocation(&["demi", "note", "add"], args),
             memory.port(cancel.clone()),
         )
     };
@@ -263,9 +256,9 @@ async fn dispatch_validates_wire_arguments_as_they_are_and_runs_the_handler() {
     // UTF-16 units.
     assert_eq!(call(json!({"text": "𝄞", "count": 2})).await.unwrap(), 0);
     assert!(call(json!({"text": "ab"})).await.is_err());
-    assert_eq!(memory.stdout(), b"2\n");
+    assert_eq!(memory.stdout(), "𝄞𝄞\n".as_bytes());
     let native = set.dispatch(
-        invocation(&["demi", "todo", "read"], json!({"text": "a"})),
+        invocation(&["demi", "note", "read"], json!({"text": "a"})),
         memory.port(cancel.clone()),
     );
     assert!(
@@ -274,55 +267,9 @@ async fn dispatch_validates_wire_arguments_as_they_are_and_runs_the_handler() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn concurrent_updates_keep_both_writes() {
-    let storage = MemoryStorage::new();
-    let first = MemoryPort::with_storage(storage.clone());
-    let second = MemoryPort::with_storage(storage.clone());
-    let append = |port: RpcPort, item: &'static str| async move {
-        port.update("todos", |current: Option<Vec<String>>| {
-            let mut items = current.unwrap_or_default();
-            items.push(item.into());
-            Ok(items)
-        })
-        .await
-    };
-    let cancel = CancellationToken::new();
-    let (a, b) = tokio::join!(
-        append(first.port(cancel.clone()), "A"),
-        append(second.port(cancel), "B")
-    );
-    a.unwrap();
-    b.unwrap();
-    let stored = storage.value("todos").unwrap();
-    let mut items: Vec<String> = serde_json::from_value(stored).unwrap();
-    items.sort();
-    assert_eq!(items, ["A", "B"]);
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn a_stored_value_the_handler_cannot_read_is_refused_not_replaced() {
-    let storage = MemoryStorage::new();
-    let port = MemoryPort::with_storage(storage.clone()).port(CancellationToken::new());
-    port.storage(demi_host_interface::StorageOp::WriteIf {
-        key: "todos".into(),
-        value: Some(json!({"not": "a list"})),
-        expected: None,
-    })
-    .await
-    .unwrap();
-    let result = port
-        .update("todos", |current: Option<Vec<String>>| {
-            Ok(current.unwrap_or_default())
-        })
-        .await;
-    assert!(matches!(result, Err(RpcError::Failed(text)) if text.contains("unreadable")));
-    assert_eq!(storage.value("todos"), Some(json!({"not": "a list"})));
-}
-
-#[tokio::test(flavor = "current_thread")]
 async fn grafting_replaces_or_appends_and_filtering_drops_emptied_groups() {
     let mut set = CommandSet::new();
-    set.register(todo()).unwrap();
+    set.register(notes()).unwrap();
     let calls = Rc::new(RefCell::new(0));
     let counted = calls.clone();
     let agent =
@@ -341,7 +288,7 @@ async fn grafting_replaces_or_appends_and_filtering_drops_emptied_groups() {
             .collect::<Vec<_>>(),
         demi_command_declarations::Node::Leaf(_) => panic!("demi is a group"),
     };
-    assert_eq!(names(&set), ["todo", "agent"]);
+    assert_eq!(names(&set), ["note", "agent"]);
     let port = MemoryPort::new().port(CancellationToken::new());
     set.dispatch(
         invocation(&["demi", "agent", "list"], json!({})),
@@ -359,11 +306,11 @@ async fn grafting_replaces_or_appends_and_filtering_drops_emptied_groups() {
         .await
         .unwrap();
     assert!(
-        set.graft(&["demi", "todo", "add"], LeafBuilder::rpc("x", "X."))
+        set.graft(&["demi", "note", "add"], LeafBuilder::rpc("x", "X."))
             .is_err()
     );
 
-    let narrowed = set.filter(|path| path.get(1).map(String::as_str) != Some("todo"));
+    let narrowed = set.filter(|path| path.get(1).map(String::as_str) != Some("note"));
     assert_eq!(names(&narrowed), ["agent"]);
     let nothing = set.filter(|_| false);
     assert_eq!(nothing.declarations().count(), 0);

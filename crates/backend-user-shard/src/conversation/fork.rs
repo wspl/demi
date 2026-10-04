@@ -275,7 +275,6 @@ mod tests {
         };
         let initial = CheckpointUpdate {
             state,
-            command_state: None,
             changed_blocks: Vec::new(),
             block_count: 0,
         };

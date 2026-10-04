@@ -1010,11 +1010,10 @@ struct SlowStore {
 }
 
 impl SessionStore for SlowStore {
-    fn save<'a>(
-        &'a self,
+    fn save(
+        &self,
         update: demi_agent_store::CheckpointUpdate,
-        guard: &'a demi_agent_store::CommitGuard,
-    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+    ) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
             *self.in_flight.borrow_mut() += 1;
             let now = *self.in_flight.borrow();
@@ -1022,7 +1021,7 @@ impl SessionStore for SlowStore {
             *self.most.borrow_mut() = most;
             tokio::time::sleep(Duration::from_millis(20)).await;
             *self.in_flight.borrow_mut() -= 1;
-            self.inner.save(update, guard).await
+            self.inner.save(update).await
         })
     }
 

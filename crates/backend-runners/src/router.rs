@@ -3,8 +3,7 @@
 //! while one of its shell environments lives; a job's call names its node,
 //! and the relay dispatches the call to that node's commands, provided the
 //! node belongs to the job's conversation. The registration is removed with
-//! the last environment that holds it. A job's command storage is its node's
-//! in the agent, which the connection's policy reaches.
+//! the last environment that holds it.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

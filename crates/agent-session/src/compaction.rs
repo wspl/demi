@@ -5,7 +5,7 @@
 use std::{future::Future, rc::Rc, sync::Arc};
 
 use demi_agent_store::{
-    Checkpoint, CheckpointUpdate, CommandStateHistory, CommitGuard, SessionStore, StoreError,
+    Checkpoint, CheckpointUpdate, SessionStore, StoreError,
     media::{BlobStore, HeldMedia},
 };
 use demi_agent_transcript::{
@@ -336,35 +336,27 @@ async fn summarize(
 /// session's id, which its requests carry so that the vendor keeps them with
 /// the session's, the session's model, working directory, retry policy,
 /// system prompt and tools, a fresh runtime of the same provider, the bytes
-/// the session holds for the window's media, and the command versions the
-/// window refers to with the session's current one. It never compacts, saves
-/// nowhere, and runs inside the session's action without an admission of its
-/// own.
+/// the session holds for the window's media. It never compacts, saves
+/// nowhere, and runs inside the session's action without an admission of
+/// its own.
 fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>, media: HeldMedia) -> AgentSession {
-    let parts = s.read(|core| {
-        let commands = core
-            .commands
-            .select(&window, core.commands.revision(), false);
-        CoreParts {
-            id: core.id.clone(),
-            cwd: core.cwd.clone(),
-            model: core.model.clone(),
-            provider: core
-                .provider
-                .as_ref()
-                .expect("the provider runtime is in its slot between runs")
-                .fresh(),
-            transcript: TranscriptLog::new(window, s.ids.clone(), core.clock()),
-            media,
-            commands: CommandStateHistory::restore(commands)
-                .expect("a cut of a valid command state is valid"),
-            inputs: InputQueue::default(),
-            wakeups: Wakeups::default(),
-            edits: Vec::new(),
-            held: false,
-            ids: s.ids.clone(),
-            clock: core.clock(),
-        }
+    let parts = s.read(|core| CoreParts {
+        id: core.id.clone(),
+        cwd: core.cwd.clone(),
+        model: core.model.clone(),
+        provider: core
+            .provider
+            .as_ref()
+            .expect("the provider runtime is in its slot between runs")
+            .fresh(),
+        transcript: TranscriptLog::new(window, s.ids.clone(), core.clock()),
+        media,
+        inputs: InputQueue::default(),
+        wakeups: Wakeups::default(),
+        edits: Vec::new(),
+        held: false,
+        ids: s.ids.clone(),
+        clock: core.clock(),
     });
     let deps = SessionDeps {
         runtime: Rc::new(CopyRuntime {
@@ -456,11 +448,7 @@ impl BlobStore for Unstored {
 }
 
 impl SessionStore for NoStore {
-    fn save<'a>(
-        &'a self,
-        _update: CheckpointUpdate,
-        _guard: &'a CommitGuard,
-    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+    fn save(&self, _update: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async { Ok(()) })
     }
 

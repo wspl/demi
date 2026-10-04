@@ -1,7 +1,7 @@
 //! Subagents through a conversation (`subagents.md`, `sessions-and-targets.md`
 //! § Host operations, `conversation-fork.md`): a child works on the
-//! conversation's Host in its parent's files, keeps its own command storage
-//! even for a command it runs through `demi host shell`, and runs on after
+//! conversation's Host in its parent's files, keeps its own identity even
+//! for a command it runs through `demi host shell`, and runs on after
 //! its spawn command has exited; a Fork taken while a child runs leaves the
 //! child with its source. The model is a scripted family that answers each
 //! node of a tree from a script of its own; the device is a real runner. No
@@ -249,7 +249,7 @@ const WAIT: &str = "until [ -f go ]; do sleep 0.05; done";
 // Several seconds: a parent and its child run five shell jobs on a real device,
 // the child's across its parent's turns.
 #[tokio::test]
-async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_after_its_spawn() {
+async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after_its_spawn() {
     let scripts = Arc::new(Scripts::default());
     let (_harness, backend, master, _paired, root) = tree(&scripts).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
@@ -258,10 +258,7 @@ async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_afte
     scripts.root(
         FIRST,
         vec![
-            shell(
-                "t1",
-                "printf 'the answer is 42\\n' > notes.md && demi todo add root-only",
-            ),
+            shell("t1", "printf 'the answer is 42\\n' > notes.md"),
             say("written"),
         ],
     );
@@ -269,10 +266,11 @@ async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_afte
 
     // The child waits until the test lets it go, long after the spawn
     // command exited; then it reads the parent's file, writes one of its
-    // own, and adds a todo through a shell on the conversation's device.
+    // own, and lists the agents through a shell on the conversation's
+    // device, which knows it as the caller.
     let child = format!(
         "{WAIT}; cat notes.md && printf 'from the child\\n' > reply.md && \
-         demi host shell --host laptop \"demi todo add child-only\" && demi todo list"
+         demi host shell --host laptop \"demi agent list\""
     );
     scripts.child(vec![shell("c1", &child), say("the file says 42")]);
     scripts.root(
@@ -293,13 +291,14 @@ async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_afte
 
     let children = scripts.asked(|session| session != FIRST);
     let read = children.last().unwrap();
+    // The tree is the root and the child: the caller is the child.
     assert!(
-        read.contains("the answer is 42") && read.contains("child-only"),
+        read.contains("the answer is 42") && read.contains("← you"),
         "{read}"
     );
     assert!(
-        !read.contains("root-only"),
-        "the child's todos are its own: {read}"
+        !read.contains("(root session) ← you"),
+        "the child is the caller: {read}"
     );
     assert_eq!(
         std::fs::read_to_string(format!("{root}/reply.md")).unwrap(),
@@ -309,21 +308,14 @@ async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_afte
     scripts.root(
         FIRST,
         vec![
-            shell("t3", "cat reply.md && demi todo list"),
+            shell("t3", "cat reply.md"),
             say("checked"),
         ],
     );
     socket.chat("m3", "Check").await;
     let checked = scripts.asked(|session| session == FIRST);
     let checked = &checked[checked.len() - 1];
-    assert!(
-        checked.contains("from the child") && checked.contains("root-only"),
-        "{checked}"
-    );
-    assert!(
-        !checked.contains("child-only"),
-        "the parent's todos are its own: {checked}"
-    );
+    assert!(checked.contains("from the child"), "{checked}");
 
     let history = transcript(&backend, &master, FIRST).await;
     let jobs: Vec<(&str, JobPhase)> = history

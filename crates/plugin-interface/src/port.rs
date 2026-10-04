@@ -30,8 +30,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
     deny_unknown_fields
 )]
 pub enum PortMessage {
-    /// An operation of a command request's rpc port: its IO and the
-    /// invoking node's command storage.
+    /// An operation of a command request's rpc port: its IO.
     Rpc {
         request: PortRequest,
     },

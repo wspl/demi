@@ -84,17 +84,16 @@ impl TranscriptLog {
         model: &ModelSelection,
         content: Vec<UserContentBlock>,
         preamble: Option<String>,
-    ) -> BlockId {
+    ) {
         let (id, created_at) = self.stamp();
         self.append(Block::User(UserBlock {
-            id: id.clone(),
+            id,
             turn_id,
             created_at,
             model: model.clone(),
             content,
             preamble,
         }));
-        id
     }
 
     pub fn push_context(
@@ -208,7 +207,6 @@ impl TranscriptLog {
         PatchBatch {
             revision: self.revision,
             patches,
-            touched: Vec::new(),
             rows: DirtyRows::default(),
         }
     }
@@ -318,8 +316,7 @@ impl TranscriptLog {
             && open.signature.is_none()
         {
             open.text.push_str(text);
-            let id = open.id.clone();
-            self.journal.append_text(index, &id, text);
+            self.journal.append_text(index, text);
             return;
         }
         self.open_thinking(model, text.to_owned());
@@ -359,8 +356,7 @@ impl TranscriptLog {
             && !open.forkable
         {
             open.text.push_str(text);
-            let id = open.id.clone();
-            self.journal.append_text(index, &id, text);
+            self.journal.append_text(index, text);
             return;
         }
         let (id, created_at) = self.stamp();
@@ -373,30 +369,25 @@ impl TranscriptLog {
         }));
     }
 
-    /// Whether the last block is answer text that is not yet complete.
-    pub fn ends_with_open_text(&self) -> bool {
-        matches!(self.blocks.last(), Some(Block::Text(text)) if !text.forkable)
-    }
-
-    /// Marks the last block's text complete, so a Fork may start after it,
-    /// and returns its id. Text that follows a call still executing cannot be
-    /// a Fork's end, so it stays as it is.
-    pub fn complete_tail_text(&mut self) -> Option<BlockId> {
-        let index = self.blocks.len().checked_sub(1)?;
+    /// Marks the last block's text complete, so a Fork may end at it
+    /// (`conversation-fork.md` § Eligibility). Text that follows a call still
+    /// executing cannot be a Fork's end, so it stays as it is.
+    pub fn complete_tail_text(&mut self) {
+        let Some(index) = self.blocks.len().checked_sub(1) else {
+            return;
+        };
         let (earlier, tail) = self.blocks.split_at_mut(index);
         let Block::Text(text) = &mut tail[0] else {
-            return None;
+            return;
         };
         let executing = earlier.iter().any(
             |block| matches!(block, Block::ToolCall(call) if call.status == ToolCallStatus::Executing),
         );
         if text.forkable || executing {
-            return None;
+            return;
         }
         text.forkable = true;
-        let id = text.id.clone();
         self.record_replace(index);
-        Some(id)
     }
 
     /// A requested call, saved as executing until the session completes it.

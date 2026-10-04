@@ -16,8 +16,8 @@ use demi_agent_tools::{
 use demi_agent_transcript::testing::SequentialIds;
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_host_interface::{
-    CommandSet, GroupBuilder, JobCaller, LeafBuilder, PortError, PortRequest, PortResponse,
-    PortTransport, RpcError, RpcHandler, RpcInvocation, RpcPort, StorageOp, StorageReply,
+    CommandSet, GroupBuilder, LeafBuilder, PortError, PortRequest, PortResponse, PortTransport,
+    RpcError, RpcHandler, RpcInvocation, RpcPort,
 };
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits, UserPart,
@@ -287,12 +287,8 @@ pub fn named_node(store: &MemoryTreeStore, run: &CommandRun) -> NodeId {
         .unwrap_or_else(|| panic!("no agent {number} in the store"))
 }
 
-/// A job's port: its output kept, and its command storage the node's at
-/// the generation the job recorded, while its call lives.
+/// A job's port: its output kept.
 struct NodePort {
-    server: Rc<AgentServer<TestProduct>>,
-    caller: JobCaller,
-    call: CancellationToken,
     stdout: RefCell<Vec<u8>>,
     stderr: RefCell<Vec<u8>>,
 }
@@ -312,21 +308,13 @@ impl PortTransport for NodePort {
                 PortRequest::ReadStdin {} | PortRequest::ReadLiveStdin {} => {
                     Ok(PortResponse::Input { bytes: None })
                 }
-                PortRequest::Storage { op } => {
-                    let reply = self
-                        .server
-                        .command_storage(&conversation(), &self.caller, op, self.call.clone())
-                        .await?;
-                    Ok(PortResponse::Storage { reply })
-                }
             }
         })
     }
 }
 
 /// Runs `demi agent <verb>` with `args` as a job of `node` would, through
-/// the node's commands and its command storage; `cancel` is the call's
-/// cancellation.
+/// the node's commands; `cancel` is the call's cancellation.
 pub async fn agent_call(
     server: &Rc<AgentServer<TestProduct>>,
     node: &NodeId,
@@ -356,9 +344,6 @@ pub async fn agent_call(
     // The backend's record of the job names the node that started it.
     invocation.caller = Some(live.job_caller());
     let port = Rc::new(NodePort {
-        server: server.clone(),
-        caller: live.job_caller(),
-        call: cancel.clone(),
         stdout: RefCell::new(Vec::new()),
         stderr: RefCell::new(Vec::new()),
     });
@@ -373,22 +358,6 @@ pub async fn agent_call(
         stdout,
         stderr,
     })
-}
-
-/// `op` on the command storage of the root `root`, as a job that starts now
-/// would send it.
-pub async fn command_storage(
-    server: &Rc<AgentServer<TestProduct>>,
-    root: &NodeId,
-    op: StorageOp,
-) -> Result<StorageReply, PortError> {
-    let caller = server
-        .node(root, root)
-        .expect("the conversation is open")
-        .job_caller();
-    server
-        .command_storage(root, &caller, op, CancellationToken::new())
-        .await
 }
 
 /// `demi agent <verb>` run to its end as a job of `node`.
@@ -528,14 +497,8 @@ impl Fixture {
 /// Lets the other tasks run until `done` holds, such as a worker reaching
 /// its provider request.
 pub async fn until(done: impl Fn() -> bool) {
-    until_answered(|| std::future::ready(done())).await;
-}
-
-/// [`until`] for a condition that is read by asking, such as a value in the
-/// command storage.
-pub async fn until_answered<F: Future<Output = bool>>(done: impl Fn() -> F) {
     for _ in 0..1_000 {
-        if done().await {
+        if done() {
             return;
         }
         tokio::task::yield_now().await;

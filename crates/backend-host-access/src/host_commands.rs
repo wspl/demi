@@ -2,8 +2,7 @@
 //! hosts, `commands.md` § Demi command inputs): `list` names the Hosts the
 //! calling conversation reaches, `current` its main Host, and `shell
 //! --host` runs a script on one of them as one job there. A `shell`
-//! job carries its invoking job's command context, command storage and
-//! commands, and its standard input and output are the calling command's:
+//! job carries its invoking job's command context, caller and commands, and its standard input and output are the calling command's:
 //! the relayed pipes' far ends become the job's device, so the bytes flow
 //! between the two devices through the backend's pipes, never through a
 //! runner socket. Like the agent's own jobs, its admission installs the

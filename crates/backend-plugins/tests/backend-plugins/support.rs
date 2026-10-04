@@ -1,8 +1,7 @@
 //! What the scenarios share: a real runner for one device, the `demi.file`
 //! package the workspace built, and an agent server whose conversations run
 //! on that device with the command set the plugin host composes from the
-//! `file` and `todo` plugins, their shells real runner jobs and their model a
-//! script.
+//! `file` plugin, their shells real runner jobs and their model a script.
 
 use std::{
     cell::RefCell, collections::BTreeMap, future::Future, rc::Rc, sync::Arc, time::Duration,
@@ -38,7 +37,6 @@ use demi_plugin_interface::PluginFactory;
 use demi_plugin_interface::{
     CallKind, ConversationHost, ExposeList, ExposeRecord, HostFile, HostRead, PortFailure,
 };
-use demi_plugin_todo::Todo;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart,
     testing::{ScriptedRuntime, TokioClock, Turn, event},
@@ -139,7 +137,7 @@ impl Fixture {
             toolsets: Rc::new(Toolset {
                 commands: Rc::new(commands),
                 profiles: Rc::new([]),
-                revision: Rc::from("file,todo"),
+                revision: Rc::from("file"),
             }),
             instructions: Rc::from("You are a coding agent."),
             hosts: Rc::new(DeviceHost(host.clone())),
@@ -238,10 +236,10 @@ impl Fixture {
     }
 }
 
-/// The `demi` commands the plugin host composes from the `file` and `todo`
-/// plugins, which the device's jobs call back into.
+/// The `demi` commands the plugin host composes from the `file` plugin,
+/// which the device's jobs call back into.
 async fn demi_commands() -> (CommandSet, TempDir) {
-    let plugins: Vec<Box<dyn PluginFactory>> = vec![Box::new(File::new()), Box::new(Todo::new())];
+    let plugins: Vec<Box<dyn PluginFactory>> = vec![Box::new(File::new())];
     let (plugins, data) = user_plugins(Registry::new(plugins, |_| true).unwrap()).await;
     let toolset = plugins.toolset(Vec::new()).await.unwrap();
     (toolset.commands, data)

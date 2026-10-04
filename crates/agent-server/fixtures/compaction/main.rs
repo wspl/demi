@@ -20,7 +20,7 @@ use demi_agent_server::{
 };
 use demi_agent_session::{CompactionConfig, SessionConfig};
 use demi_agent_store::{
-    AgentTreeStore, CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord,
+    AgentTreeStore, CheckpointState, CheckpointUpdate, NodeRecord,
     media::{HeldMedia, ModelView},
     testing::MemoryTreeStore,
 };
@@ -216,7 +216,6 @@ impl Conversation {
                 model: model.clone(),
                 edits: Vec::new(),
             },
-            command_state: Some(CommandStateSnapshot::initial()),
             changed_blocks: fixture.blocks.into_iter().enumerate().collect(),
             block_count,
         };

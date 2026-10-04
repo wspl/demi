@@ -18,9 +18,9 @@ pub const DEMI_ROOT: &str = "demi";
 
 /// The `demi` root's summary in the model's command help.
 pub const DEMI_SUMMARY: &str =
-    "The Demi platform command: every subcommand is a platform domain (file, todo, …).";
+    "The Demi platform command: every subcommand is a platform domain (file, browser, …).";
 
-/// A plugin's id, such as `todo`: 1 to 32 lowercase letters, digits and
+/// A plugin's id, such as `browser`: 1 to 32 lowercase letters, digits and
 /// hyphens. It names the plugin's context blocks, values, part of the
 /// product state, directories on a Host and page route.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -82,7 +82,7 @@ impl fmt::Display for PluginId {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Manifest {
     pub id: PluginId,
-    /// Its name in settings, such as `Todo list`.
+    /// Its name in settings, such as `Conversation browser`.
     pub name: String,
     /// What it does, in one sentence, which settings show.
     pub description: String,

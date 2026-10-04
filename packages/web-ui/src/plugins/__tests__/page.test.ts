@@ -88,7 +88,7 @@ test('a panel session runs for its conversation until the panel lets it go, and 
     },
   })
   const bound = bindPages([page], host(), 'c1')
-  expect(bound.kinds[0]!.title('todo')).toBe('todo in c1')
+  expect(bound.kinds[0]!.title('draft')).toBe('draft in c1')
   shown.value = 1
   bound.dispose()
   shown.value = 2
@@ -103,7 +103,7 @@ test('a page adds tabs only of its own kinds', () => {
     kinds: [{ kind: 'note', schema: z.string(), title: (data: string) => data, mark: nothing, content: nothing }],
   })
   const context = pageContext(host({ panel: { tabs: () => [], add: (_conversation, kind) => void added.push(kind) } }), page)
-  context.panel.add('c1', 'note', 'todo')
+  context.panel.add('c1', 'note', 'draft')
   expect(() => context.panel.add('c1', 'browser', { url: 'about:blank' })).toThrow('has no kind browser')
   expect(added).toEqual(['note'])
 })
