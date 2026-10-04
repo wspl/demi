@@ -5,7 +5,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 	"go.uber.org/goleak"
 )
 
@@ -14,7 +14,7 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 func TestLimiterForgetsAddressAfterLockWindow(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		limiter := NewLoginLimiter()
-		for _, address := range []webapi.EmailAddress{"a@example.test", "b@example.test", "c@example.test"} {
+		for _, address := range []webapiproto.EmailAddress{"a@example.test", "b@example.test", "c@example.test"} {
 			limiter.Failed(address)
 		}
 		for range 4 {

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	whatwg "github.com/nlnwa/whatwg-url/url"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -28,7 +28,7 @@ func BackendURL(value *url.URL) (*url.URL, error) {
 }
 
 // ShellScript renders the macOS and Linux shell installer for backend and release.
-func ShellScript(backend *url.URL, release runnerwire.Release) string {
+func ShellScript(backend *url.URL, release runnerproto.Release) string {
 	cases := make([]string, 0, len(release.Targets))
 	for _, target := range slices.Sorted(maps.Keys(release.Targets)) {
 		cases = append(
@@ -46,7 +46,7 @@ func ShellScript(backend *url.URL, release runnerwire.Release) string {
 }
 
 // PowerShellScript renders the installer for the release's Windows targets.
-func PowerShellScript(backend *url.URL, release runnerwire.Release) string {
+func PowerShellScript(backend *url.URL, release runnerproto.Release) string {
 	values := []string{}
 	for _, target := range slices.Sorted(maps.Keys(release.Targets)) {
 		if !strings.Contains(target, "windows") {

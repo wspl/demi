@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/plugin"
 )
 
@@ -40,21 +40,21 @@ func (commandPrinter) Call(ctx context.Context, request plugin.Request, port plu
 }
 
 // ProbeCommand declares a single run leaf, RPC unless a native operation is given.
-func ProbeCommand(name string, placement plugin.Placement, operation *declare.NativeOperation) plugin.Commands {
-	var kind declare.LeafKind[declare.NativeOperation] = &declare.RPC[declare.NativeOperation]{}
+func ProbeCommand(name string, placement plugin.Placement, operation *commanddecl.NativeOperation) plugin.Commands {
+	var kind commanddecl.LeafKind[commanddecl.NativeOperation] = &commanddecl.RPC[commanddecl.NativeOperation]{}
 	summary := "A group."
 	if operation != nil {
-		kind = &declare.Native[declare.NativeOperation]{Binding: *operation}
+		kind = &commanddecl.Native[commanddecl.NativeOperation]{Binding: *operation}
 		summary = "A native group."
 	}
 	return plugin.Commands{
 		Placement: placement,
 		Tree: plugin.Declaration{
-			Node: &declare.Group[declare.NativeOperation]{
+			Node: &commanddecl.Group[commanddecl.NativeOperation]{
 				Name:    name,
 				Summary: summary,
-				Subcommands: []declare.Node[declare.NativeOperation]{
-					&declare.Leaf[declare.NativeOperation]{Name: "run", Summary: "Run.", Kind: kind},
+				Subcommands: []commanddecl.Node[commanddecl.NativeOperation]{
+					&commanddecl.Leaf[commanddecl.NativeOperation]{Name: "run", Summary: "Run.", Kind: kind},
 				},
 			},
 		},

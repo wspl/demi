@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 func TestReportPipe(t *testing.T) {
@@ -14,11 +14,11 @@ func TestReportPipe(t *testing.T) {
 	if err := process.ReportPipe(t.Context(), frames, "pipe", errors.New("write failed")); err != nil {
 		t.Fatal(err)
 	}
-	report, err := runnerwire.DecodeOutbound(<-frames)
+	report, err := runnerproto.DecodeOutbound(<-frames)
 	if err != nil {
 		t.Fatal(err)
 	}
-	done, ok := report.(*runnerwire.PipeDone)
+	done, ok := report.(*runnerproto.PipeDone)
 	if !ok || done.PipeID != "pipe" || done.Ok || done.Error == nil || *done.Error != "write failed" {
 		t.Fatalf("report %+v", report)
 	}

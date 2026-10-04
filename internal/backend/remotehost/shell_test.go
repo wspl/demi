@@ -13,12 +13,12 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // shellFixture observes commands through the same page feed the product uses.
@@ -31,7 +31,7 @@ func shellFixture(
 	pages := hosttest.NewPages(false)
 	options := remotehost.NewEnvironmentOptions(
 		h,
-		func(context.Context) (commandwire.Context, error) { return hosttest.CommandContext(), nil },
+		func(context.Context) (commandproto.Context, error) { return hosttest.CommandContext(), nil },
 		pages,
 		&hosttest.CountingNumbers{},
 	)
@@ -86,14 +86,14 @@ func terminalPage(t *testing.T, p *hosttest.Pages) host.PageView {
 // outputFrame reports one stream view and its absolute offset.
 func outputFrame(t *testing.T, l *remotehosttest.TestLink, id string, offset uint64, data []byte) {
 	t.Helper()
-	sendFrame(t, l, &runnerwire.JobOutput{JobID: id, Stream: runnerwire.Stdout, Offset: offset, Bytes: data})
+	sendFrame(t, l, &runnerproto.JobOutput{JobID: id, Stream: runnerproto.Stdout, Offset: offset, Bytes: data})
 }
 
 // answerOutput fills the runner pipe requested by the shell's kept-output read.
 func answerOutput(t *testing.T, d *remotehosttest.TestDevice, l *remotehosttest.TestLink, data []byte) {
 	t.Helper()
-	request := nextFrame(t, l).(*runnerwire.JobRead)
-	sendFrame(t, l, &runnerwire.JobReadReply{ID: request.ID})
+	request := nextFrame(t, l).(*runnerproto.JobRead)
+	sendFrame(t, l, &runnerproto.JobReadReply{ID: request.ID})
 	source, err := d.Pipes().ClaimSource(request.Output.ID, remotehosttest.TestDeviceID)
 	requirePipe(t, err)
 	requirePipe(t, source.Pump(t.Context(), pipeBody{bytes.NewReader(data)}))
@@ -105,7 +105,7 @@ func TestCharacterSplitAcrossMessagesShowsOnceWhole(t *testing.T) {
 		_, l, s, p := shellFixture(t, nil)
 		started := shellExec(t, s, "print")
 		page(t, p)
-		job := nextFrame(t, l).(*runnerwire.JobStart)
+		job := nextFrame(t, l).(*runnerproto.JobStart)
 		data := []byte("aé€😀")
 		for i, b := range data {
 			outputFrame(t, l, job.JobID, uint64(i), []byte{b})
@@ -131,8 +131,8 @@ func TestGrowthBeyondViewKeepsCommandFromIdling(t *testing.T) {
 		_, l, s, p := shellFixture(t, nil)
 		started := shellExec(t, s, "build")
 		page(t, p)
-		job := nextFrame(t, l).(*runnerwire.JobStart)
-		outputFrame(t, l, job.JobID, 0, bytes.Repeat([]byte{'x'}, runnerwire.JobViewBytes))
+		job := nextFrame(t, l).(*runnerproto.JobStart)
+		outputFrame(t, l, job.JobID, 0, bytes.Repeat([]byte{'x'}, runnerproto.JobViewBytes))
 		page(t, p)
 		time.Sleep(5 * time.Second)
 		status, err := s.Status(started.CommandID)
@@ -140,12 +140,12 @@ func TestGrowthBeyondViewKeepsCommandFromIdling(t *testing.T) {
 		if status.IdleMs != 5000 {
 			t.Fatal(status.IdleMs)
 		}
-		outputFrame(t, l, job.JobID, runnerwire.JobViewBytes+100, []byte{})
+		outputFrame(t, l, job.JobID, runnerproto.JobViewBytes+100, []byte{})
 		synctest.Wait()
 		status, err = s.Status(started.CommandID)
 		requirePipe(t, err)
 		if status.IdleMs != 0 || len(status.Stdout.Tail) != 4096 ||
-			status.Stdout.Bytes != runnerwire.JobViewBytes+100 ||
+			status.Stdout.Bytes != runnerproto.JobViewBytes+100 ||
 			status.Unreceived != 100 {
 			t.Fatal(status)
 		}
@@ -157,8 +157,8 @@ func TestRunningCommandHoldsStreamsNewestBytesBeyondView(t *testing.T) {
 		_, l, s, p := shellFixture(t, nil)
 		started := shellExec(t, s, "build")
 		page(t, p)
-		job := nextFrame(t, l).(*runnerwire.JobStart)
-		outputFrame(t, l, job.JobID, 0, bytes.Repeat([]byte{'x'}, runnerwire.JobViewBytes))
+		job := nextFrame(t, l).(*runnerproto.JobStart)
+		outputFrame(t, l, job.JobID, 0, bytes.Repeat([]byte{'x'}, runnerproto.JobViewBytes))
 		page(t, p)
 		check := func(offset uint64, data []byte, wantOffset, wantLeft uint64, want string) {
 			outputFrame(t, l, job.JobID, offset, data)
@@ -171,11 +171,11 @@ func TestRunningCommandHoldsStreamsNewestBytesBeyondView(t *testing.T) {
 				t.Fatal(status.Newest)
 			}
 		}
-		view := uint64(runnerwire.JobViewBytes)
+		view := uint64(runnerproto.JobViewBytes)
 		check(view+100, []byte("one\ntw"), view+100, 100, "one\ntw")
 		check(view+104, []byte("two\nthree\n"), view+100, 100, "one\ntwo\nthree\n")
 		far := view * 10
-		data := append(bytes.Repeat([]byte{'y'}, runnerwire.JobViewBytes), []byte("end\n")...)
+		data := append(bytes.Repeat([]byte{'y'}, runnerproto.JobViewBytes), []byte("end\n")...)
 		check(far, data, far+4, far+4-view, string(data[4:]))
 	})
 }
@@ -185,15 +185,15 @@ func TestUnstartedJobEnds127WithRunnerReason(t *testing.T) {
 		_, l, s, p := shellFixture(t, nil)
 		started := shellExec(t, s, "true")
 		page(t, p)
-		job := nextFrame(t, l).(*runnerwire.JobStart)
+		job := nextFrame(t, l).(*runnerproto.JobStart)
 		reason := "the job was cancelled before it started"
 		sendFrame(
 			t,
 			l,
-			&runnerwire.JobExit{
+			&runnerproto.JobExit{
 				JobID:      job.JobID,
-				SpawnError: &runnerwire.SpawnError{Kind: runnerwire.SpawnErrorKindOther, Detail: &reason},
-				Files:      []runnerwire.JobFileChange{},
+				SpawnError: &runnerproto.SpawnError{Kind: runnerproto.SpawnErrorKindOther, Detail: &reason},
+				Files:      []runnerproto.JobFileChange{},
 			},
 		)
 		terminalPage(t, p)
@@ -204,7 +204,7 @@ func TestUnstartedJobEnds127WithRunnerReason(t *testing.T) {
 		}
 		var stderr []byte
 		for _, record := range status.Whole.Output.Records {
-			if record.Stream == core.StreamKindStderr {
+			if record.Stream == types.StreamKindStderr {
 				stderr = append(stderr, record.Bytes...)
 			}
 		}
@@ -219,31 +219,31 @@ func TestUnreadOutputEndsWithNewestRunnerBytes(t *testing.T) {
 		_, l, s, p := shellFixture(t, nil)
 		started := shellExec(t, s, "build")
 		page(t, p)
-		job := nextFrame(t, l).(*runnerwire.JobStart)
-		head := bytes.Repeat([]byte{'x'}, runnerwire.JobViewBytes)
-		length := uint64(runnerwire.JobViewBytes * 4)
+		job := nextFrame(t, l).(*runnerproto.JobStart)
+		head := bytes.Repeat([]byte{'x'}, runnerproto.JobViewBytes)
+		length := uint64(runnerproto.JobViewBytes * 4)
 		newest := []byte("error: the build failed\n")
 		outputFrame(t, l, job.JobID, 0, head)
 		outputFrame(t, l, job.JobID, length-uint64(len(newest)), newest)
 		sendFrame(
 			t,
 			l,
-			&runnerwire.JobExit{
+			&runnerproto.JobExit{
 				JobID:    job.JobID,
 				ExitCode: new(int32(1)),
-				Output:   &runnerwire.OutputLengths{StdoutBytes: length},
-				Files:    []runnerwire.JobFileChange{},
+				Output:   &runnerproto.OutputLengths{StdoutBytes: length},
+				Files:    []runnerproto.JobFileChange{},
 			},
 		)
-		request := nextFrame(t, l).(*runnerwire.JobRead)
-		sendFrame(t, l, &runnerwire.JobReadReply{ID: request.ID, Error: new("the job's output is gone")})
+		request := nextFrame(t, l).(*runnerproto.JobRead)
+		sendFrame(t, l, &runnerproto.JobReadReply{ID: request.ID, Error: new("the job's output is gone")})
 		terminalPage(t, p)
 		status, err := s.Status(started.CommandID)
 		requirePipe(t, err)
 		want := []host.OutputRecord{
-			{Stream: core.StreamKindStdout, Bytes: head},
-			{LeftOut: new(length - runnerwire.JobViewBytes - uint64(len(newest)))},
-			{Stream: core.StreamKindStdout, Bytes: newest},
+			{Stream: types.StreamKindStdout, Bytes: head},
+			{LeftOut: new(length - runnerproto.JobViewBytes - uint64(len(newest)))},
+			{Stream: types.StreamKindStdout, Bytes: newest},
 		}
 		if status.Whole == nil || !reflect.DeepEqual(status.Whole.Output.Records, want) ||
 			status.Whole.Output.Missing != nil {
@@ -256,12 +256,12 @@ func TestInputWrittenWhileAcquiringHostReachesStartedJob(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		acquired := make(chan struct{})
 		_, l, s, p := shellFixture(t, func(o *remotehost.EnvironmentOptions) {
-			o.Context = func(ctx context.Context) (commandwire.Context, error) {
+			o.Context = func(ctx context.Context) (commandproto.Context, error) {
 				select {
 				case <-acquired:
 					return hosttest.CommandContext(), nil
 				case <-ctx.Done():
-					return commandwire.Context{}, ctx.Err()
+					return commandproto.Context{}, ctx.Err()
 				}
 			}
 		})
@@ -278,9 +278,9 @@ func TestInputWrittenWhileAcquiringHostReachesStartedJob(t *testing.T) {
 		default:
 		}
 		close(acquired)
-		_ = nextFrame(t, l).(*runnerwire.JobStart)
+		_ = nextFrame(t, l).(*runnerproto.JobStart)
 		requirePipe(t, <-done)
-		frame := nextFrame(t, l).(*runnerwire.JobStdin)
+		frame := nextFrame(t, l).(*runnerproto.JobStdin)
 		if string(frame.Bytes) != "Ana\n" {
 			t.Fatal(frame)
 		}
@@ -298,7 +298,7 @@ func TestConversationReleaseWaitsAndAdmitsNoWork(t *testing.T) {
 	done := make(chan error, 1)
 	for _, failure := range []*string{nil, new("cleanup failed"), new("")} {
 		go func() { done <- h.ReleaseConversation(t.Context(), "conversation") }()
-		request := nextFrame(t, l).(*runnerwire.ConversationRelease)
+		request := nextFrame(t, l).(*runnerproto.ConversationRelease)
 		if request.ConversationID != "conversation" {
 			t.Fatal(request)
 		}
@@ -307,7 +307,7 @@ func TestConversationReleaseWaitsAndAdmitsNoWork(t *testing.T) {
 			t.Fatal("release finished early", err)
 		default:
 		}
-		sendFrame(t, l, &runnerwire.ConversationReleased{ID: request.ID, Error: failure})
+		sendFrame(t, l, &runnerproto.ConversationReleased{ID: request.ID, Error: failure})
 		err := <-done
 		if failure == nil {
 			requirePipe(t, err)
@@ -333,9 +333,9 @@ func TestStatusShowsLatestFirstRegisteredHintUntilEnd(t *testing.T) {
 		d, l, s, p := shellFixture(t, nil)
 		started := shellExec(t, s, "attend first | attend second")
 		page(t, p)
-		job := nextFrame(t, l).(*runnerwire.JobStart)
+		job := nextFrame(t, l).(*runnerproto.JobStart)
 		hint := func(id string, value *string, jobID string) {
-			sendFrame(t, l, &runnerwire.JobRunningHint{JobID: jobID, InvocationID: id, Hint: value})
+			sendFrame(t, l, &runnerproto.JobRunningHint{JobID: jobID, InvocationID: id, Hint: value})
 			synctest.Wait()
 		}
 		shown := func(want *string) {
@@ -356,17 +356,17 @@ func TestStatusShowsLatestFirstRegisteredHintUntilEnd(t *testing.T) {
 		hint("third", new("hint before abort"), job.JobID)
 		aborted := make(chan error, 1)
 		go func() { aborted <- s.Abort(t.Context(), started.CommandID) }()
-		kill := nextFrame(t, l).(*runnerwire.JobKill)
-		if kill.Signal == nil || *kill.Signal != runnerwire.SignalTerminate {
+		kill := nextFrame(t, l).(*runnerproto.JobKill)
+		if kill.Signal == nil || *kill.Signal != runnerproto.SignalTerminate {
 			t.Fatal(kill)
 		}
 		sendFrame(
 			t,
 			l,
-			&runnerwire.JobExit{JobID: job.JobID, Signal: new("SIGTERM"), Files: []runnerwire.JobFileChange{}},
+			&runnerproto.JobExit{JobID: job.JobID, Signal: new("SIGTERM"), Files: []runnerproto.JobFileChange{}},
 		)
 		requirePipe(t, <-aborted)
-		_ = nextFrame(t, l).(*runnerwire.JobRelease)
+		_ = nextFrame(t, l).(*runnerproto.JobRelease)
 		beforeLate, err := s.Status(started.CommandID)
 		requirePipe(t, err)
 		if beforeLate.State.Phase != host.Aborted {
@@ -406,47 +406,47 @@ func TestWatchedCommandIsFollowedAndPageHoldsRunnerOutput(t *testing.T) {
 			initial.Chars != 0 {
 			t.Fatal(initial)
 		}
-		job := nextFrame(t, l).(*runnerwire.JobStart)
+		job := nextFrame(t, l).(*runnerproto.JobStart)
 		p.Watch(true)
-		if !nextFrame(t, l).(*runnerwire.JobFollow).Follow {
+		if !nextFrame(t, l).(*runnerproto.JobFollow).Follow {
 			t.Fatal("not followed")
 		}
 		outputFrame(t, l, job.JobID, 0, []byte("first\n"))
 		if page(t, p).Tail != "first\n" {
 			t.Fatal("missing first view")
 		}
-		outputFrame(t, l, job.JobID, 6, bytes.Repeat([]byte{'x'}, runnerwire.JobViewBytes-6))
+		outputFrame(t, l, job.JobID, 6, bytes.Repeat([]byte{'x'}, runnerproto.JobViewBytes-6))
 		page(t, p)
-		outputFrame(t, l, job.JobID, runnerwire.JobViewBytes+10, []byte("newest\n"))
+		outputFrame(t, l, job.JobID, runnerproto.JobViewBytes+10, []byte("newest\n"))
 		view := page(t, p)
 		note := "\n[... 10 bytes of stdout not shown ...]\n"
 		if !strings.HasSuffix(view.Tail, "x"+note+"newest\n") ||
-			view.Chars != uint64(runnerwire.JobViewBytes+len(note)+7) {
+			view.Chars != uint64(runnerproto.JobViewBytes+len(note)+7) {
 			t.Fatal(view)
 		}
 		status, err := s.Status(started.CommandID)
 		requirePipe(t, err)
-		if !strings.HasSuffix(status.Stdout.Tail, "x") || status.Stdout.Bytes != runnerwire.JobViewBytes+17 ||
+		if !strings.HasSuffix(status.Stdout.Tail, "x") || status.Stdout.Bytes != runnerproto.JobViewBytes+17 ||
 			status.Unreceived != 17 {
 			t.Fatal(status)
 		}
 		p.Watch(false)
-		if nextFrame(t, l).(*runnerwire.JobFollow).Follow {
+		if nextFrame(t, l).(*runnerproto.JobFollow).Follow {
 			t.Fatal("still followed")
 		}
-		stream := append([]byte("first\n"), bytes.Repeat([]byte{'x'}, runnerwire.JobViewBytes-6)...)
+		stream := append([]byte("first\n"), bytes.Repeat([]byte{'x'}, runnerproto.JobViewBytes-6)...)
 		stream = append(stream, []byte("yyyyyyyyyynewest\nlast\n")...)
 		sendFrame(
 			t,
 			l,
-			&runnerwire.JobExit{
+			&runnerproto.JobExit{
 				JobID:    job.JobID,
 				ExitCode: new(int32(0)),
-				Output:   &runnerwire.OutputLengths{StdoutBytes: uint64(len(stream))},
-				Files:    []runnerwire.JobFileChange{},
+				Output:   &runnerproto.OutputLengths{StdoutBytes: uint64(len(stream))},
+				Files:    []runnerproto.JobFileChange{},
 			},
 		)
-		records := []host.OutputRecord{{Stream: core.StreamKindStdout, Bytes: stream}}
+		records := []host.OutputRecord{{Stream: types.StreamKindStdout, Bytes: stream}}
 		data, err := remotehost.EncodeOutput(host.WholeOutput{Records: records})
 		requirePipe(t, err)
 		answerOutput(t, d, l, data)
@@ -459,7 +459,7 @@ func TestWatchedCommandIsFollowedAndPageHoldsRunnerOutput(t *testing.T) {
 		if status.Whole == nil || !reflect.DeepEqual(status.Whole.Output.Records, records) {
 			t.Fatal(status.Whole)
 		}
-		if nextFrame(t, l).(*runnerwire.JobRelease).JobID != job.JobID {
+		if nextFrame(t, l).(*runnerproto.JobRelease).JobID != job.JobID {
 			t.Fatal("wrong job release")
 		}
 		if len(p.Drain()) != 0 {
@@ -467,8 +467,8 @@ func TestWatchedCommandIsFollowedAndPageHoldsRunnerOutput(t *testing.T) {
 		}
 		p.Watch(true)
 		shellExec(t, s, "again")
-		_ = nextFrame(t, l).(*runnerwire.JobStart)
-		if !nextFrame(t, l).(*runnerwire.JobFollow).Follow {
+		_ = nextFrame(t, l).(*runnerproto.JobStart)
+		if !nextFrame(t, l).(*runnerproto.JobFollow).Follow {
 			t.Fatal("watched start not followed")
 		}
 	})
@@ -477,37 +477,39 @@ func TestWatchedCommandIsFollowedAndPageHoldsRunnerOutput(t *testing.T) {
 // editPublisher holds publication until the test has inspected the running command.
 type editPublisher struct {
 	entered, release chan struct{}
-	file             core.EditedFile
+	file             types.EditedFile
 }
 
 func (p *editPublisher) Retain(
 	ctx context.Context,
-	_ core.CommandID,
-	_ []runnerwire.JobFileChange,
-) ([]core.EditedFile, error) {
+	_ types.CommandID,
+	_ []runnerproto.JobFileChange,
+) ([]types.EditedFile, error) {
 	close(p.entered)
 	select {
 	case <-p.release:
-		return []core.EditedFile{p.file}, nil
+		return []types.EditedFile{p.file}, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
 
-func (*editPublisher) KeepOutput(context.Context, core.CommandID, host.WholeOutput) error { return nil }
+func (*editPublisher) KeepOutput(context.Context, types.CommandID, host.WholeOutput) error {
+	return nil
+}
 
 func TestCommandEndsOnceEditsPublishedAndKeepsThem(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		file := core.EditedFile{
+		file := types.EditedFile{
 			Path:    "/work/file",
-			Kind:    core.EditKindModified,
+			Kind:    types.EditKindModified,
 			Added:   1,
 			Removed: 1,
-			Edits: []core.EditSegment{
+			Edits: []types.EditSegment{
 				{
-					Copies: &core.EditCopies{
-						Original: core.BlobRefOf([]byte("before\n")),
-						Modified: core.BlobRefOf([]byte("after\n")),
+					Copies: &types.EditCopies{
+						Original: types.BlobRefOf([]byte("before\n")),
+						Modified: types.BlobRefOf([]byte("after\n")),
 					},
 				},
 			},
@@ -516,20 +518,20 @@ func TestCommandEndsOnceEditsPublishedAndKeepsThem(t *testing.T) {
 		_, l, s, p := shellFixture(t, func(o *remotehost.EnvironmentOptions) { o.Keeper = keeper })
 		started := shellExec(t, s, "echo new > file")
 		page(t, p)
-		job := nextFrame(t, l).(*runnerwire.JobStart)
+		job := nextFrame(t, l).(*runnerproto.JobStart)
 		sendFrame(
 			t,
 			l,
-			&runnerwire.JobExit{
+			&runnerproto.JobExit{
 				JobID:    job.JobID,
 				ExitCode: new(int32(7)),
-				Files: []runnerwire.JobFileChange{
+				Files: []runnerproto.JobFileChange{
 					{
 						Path:    "/work/file",
-						Kind:    commandwire.EditKind("modified"),
+						Kind:    commandproto.EditKind("modified"),
 						Added:   1,
 						Removed: 1,
-						Edits: []commandwire.EditCopies{
+						Edits: []commandproto.EditCopies{
 							{Original: new("/copies/before"), Modified: new("/copies/after")},
 						},
 					},
@@ -550,7 +552,7 @@ func TestCommandEndsOnceEditsPublishedAndKeepsThem(t *testing.T) {
 			requirePipe(t, err)
 			if status.State.Phase != host.Exited || status.State.ExitCode != 7 || status.Files == nil ||
 				!status.Files.Truncated ||
-				!reflect.DeepEqual(status.Files.Files, []core.EditedFile{file}) {
+				!reflect.DeepEqual(status.Files.Files, []types.EditedFile{file}) {
 				t.Fatal(status)
 			}
 		}
@@ -562,9 +564,9 @@ type failingKeeper struct{ *editPublisher }
 
 func (p failingKeeper) Retain(
 	ctx context.Context,
-	id core.CommandID,
-	changes []runnerwire.JobFileChange,
-) ([]core.EditedFile, error) {
+	id types.CommandID,
+	changes []runnerproto.JobFileChange,
+) ([]types.EditedFile, error) {
 	files, err := p.editPublisher.Retain(ctx, id, changes)
 	if err != nil {
 		return nil, err
@@ -572,7 +574,7 @@ func (p failingKeeper) Retain(
 	return files, errors.New("edit storage unavailable")
 }
 
-func (failingKeeper) KeepOutput(context.Context, core.CommandID, host.WholeOutput) error {
+func (failingKeeper) KeepOutput(context.Context, types.CommandID, host.WholeOutput) error {
 	return errors.New("output storage unavailable")
 }
 
@@ -582,7 +584,12 @@ func TestKeeperAndReleaseFailuresAreLoggedWithoutChangingCompletion(t *testing.T
 		previous := slog.Default()
 		slog.SetDefault(slog.New(slog.NewTextHandler(&log, &slog.HandlerOptions{Level: slog.LevelDebug})))
 		defer slog.SetDefault(previous)
-		file := core.EditedFile{Path: "/work/file", Kind: core.EditKindModified, Added: 1, Edits: []core.EditSegment{}}
+		file := types.EditedFile{
+			Path:  "/work/file",
+			Kind:  types.EditKindModified,
+			Added: 1,
+			Edits: []types.EditSegment{},
+		}
 		publisher := &editPublisher{entered: make(chan struct{}), release: make(chan struct{}), file: file}
 		_, l, s, p := shellFixture(
 			t,
@@ -590,15 +597,15 @@ func TestKeeperAndReleaseFailuresAreLoggedWithoutChangingCompletion(t *testing.T
 		)
 		started := shellExec(t, s, "echo new > file")
 		page(t, p)
-		job := nextFrame(t, l).(*runnerwire.JobStart)
+		job := nextFrame(t, l).(*runnerproto.JobStart)
 		sendFrame(
 			t,
 			l,
-			&runnerwire.JobExit{
+			&runnerproto.JobExit{
 				JobID:    job.JobID,
 				ExitCode: new(int32(7)),
-				Files: []runnerwire.JobFileChange{
-					{Path: "/work/file", Kind: commandwire.EditModified, Added: 1, Edits: []commandwire.EditCopies{}},
+				Files: []runnerproto.JobFileChange{
+					{Path: "/work/file", Kind: commandproto.EditModified, Added: 1, Edits: []commandproto.EditCopies{}},
 				},
 			},
 		)
@@ -610,7 +617,7 @@ func TestKeeperAndReleaseFailuresAreLoggedWithoutChangingCompletion(t *testing.T
 		status, err := s.Status(started.CommandID)
 		requirePipe(t, err)
 		if status.State.Phase != host.Exited || status.State.ExitCode != 7 || status.Files == nil ||
-			!reflect.DeepEqual(status.Files.Files, []core.EditedFile{file}) ||
+			!reflect.DeepEqual(status.Files.Files, []types.EditedFile{file}) ||
 			status.Whole == nil {
 			t.Fatal(status)
 		}

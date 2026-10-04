@@ -8,16 +8,16 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/webapiproto"
 	"golang.org/x/text/language"
 )
 
 // CheckedPatch has a known IANA time zone and unique canonical language tags.
-type CheckedPatch struct{ patch webapi.PreferencesPatch }
+type CheckedPatch struct{ patch webapiproto.PreferencesPatch }
 
 // Check validates a preference patch and canonicalizes its reported locale.
-func Check(patch webapi.PreferencesPatch) (CheckedPatch, error) {
+func Check(patch webapiproto.PreferencesPatch) (CheckedPatch, error) {
 	if err := patch.Validate(); err != nil {
 		return CheckedPatch{}, err
 	}
@@ -45,29 +45,29 @@ var normalizedZones = func() map[string]string {
 	return zones
 }()
 
-func canonicalLocale(locale commandwire.CommandLocale) (commandwire.CommandLocale, error) {
+func canonicalLocale(locale commandproto.CommandLocale) (commandproto.CommandLocale, error) {
 	zone, ok := normalizedZones[strings.ToLower(locale.TimeZone)]
 	if !ok || strings.ContainsFunc(locale.TimeZone, func(r rune) bool { return r > 127 }) {
-		return commandwire.CommandLocale{}, fmt.Errorf(
+		return commandproto.CommandLocale{}, fmt.Errorf(
 			"locale.timeZone: %q is not a time zone the backend knows",
 			locale.TimeZone,
 		)
 	}
-	languages := make([]commandwire.LanguageTag, 0, len(locale.Languages))
+	languages := make([]commandproto.LanguageTag, 0, len(locale.Languages))
 	for i, tag := range locale.Languages {
 		canonical, err := canonicalLanguage(string(tag))
 		if err != nil {
-			return commandwire.CommandLocale{}, fmt.Errorf(
+			return commandproto.CommandLocale{}, fmt.Errorf(
 				"locale.languages[%d]: %q is not a BCP 47 language tag",
 				i,
 				string(tag),
 			)
 		}
-		if !slices.Contains(languages, commandwire.LanguageTag(canonical)) {
-			languages = append(languages, commandwire.LanguageTag(canonical))
+		if !slices.Contains(languages, commandproto.LanguageTag(canonical)) {
+			languages = append(languages, commandproto.LanguageTag(canonical))
 		}
 	}
-	return commandwire.CommandLocale{TimeZone: zone, Languages: languages}, nil
+	return commandproto.CommandLocale{TimeZone: zone, Languages: languages}, nil
 }
 
 // x/text accepts underscore separators, grandfathered tags and private-use-only

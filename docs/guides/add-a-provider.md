@@ -23,7 +23,7 @@ process.
 
 ## Create the package
 
-1. Create the package `internal/providers/<vendor>`.
+1. Create the package `internal/provider/<vendor>`.
 2. Import `internal/provider`, which holds the contract and the shared building
    blocks; a provider that starts a process also imports `internal/host` for the
    Host process interface. Never import what sits above a provider: the
@@ -43,11 +43,11 @@ account, and any goroutine may use it.
 // Provider is one provider entry, shared by every user and request of the entry.
 type Provider interface {
 	Capabilities() Capabilities // {ProcessHost bool}
-	AuthStatus(context.Context) core.AuthState
-	RuntimeState() core.RuntimeState
+	AuthStatus(context.Context) types.AuthState
+	RuntimeState() types.RuntimeState
 	// ListModels reads the provider's directory afresh; the backend's catalog cache is the cache.
-	ListModels(context.Context) (core.ProviderModelList, error)
-	ReadFailure(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts
+	ListModels(context.Context) (types.ProviderModelList, error)
+	ReadFailure(*types.ProviderErrorDiagnostics, types.Timestamp) types.ProviderFailureFacts
 	Quota() *Quota
 	Accounts() SubscriptionAccounts
 	// Runtime is called on the shard that will own the runtime.
@@ -82,7 +82,7 @@ type Runtime interface {
 	Run(context.Context, InferenceRequest) Run
 	Fresh() Runtime // same configuration, none of this runtime's execution state
 	Close(context.Context) error
-	RequestLimits(core.Model) RequestLimits
+	RequestLimits(types.Model) RequestLimits
 }
 
 // Run yields the events of one inference attempt.
@@ -95,7 +95,7 @@ type InferenceRequest struct {
 	SystemPrompt  string
 	Items         []InferenceItem
 	Tools         []ToolDefinition
-	Thinking      core.ThinkingConfig
+	Thinking      types.ThinkingConfig
 	ServiceTierID *string
 	PromptCache   PromptCache
 }
@@ -230,7 +230,7 @@ how probes and observations merge is defined in
 
 The backend's built-in families (`BuiltinFamilies` in
 `internal/backend/builtins.go`) register each family, a
-`providers.Family`: its credential kind, an API key or a subscription
+`providerhost.Family`: its credential kind, an API key or a subscription
 account, its wires, and how it builds a provider. `Provider` builds yours from
 the entry's configuration and the models.dev client and, for a subscription
 family, from the entry's pool, the account's ID and the account's quota
@@ -238,7 +238,7 @@ snapshot store. Add your family there. Then:
 
 - If models.dev lists vendors for your wire, add the mapping from their client
   package to your family (`offeredVendor` in
-  `internal/backend/providers/catalog.go`;
+  `internal/backend/providerhost/catalog.go`;
   [Vendors from models.dev](../providers/providers.md#vendors-from-modelsdev)).
 - The family is a value of the REST contract, so regenerate the web app's
   contracts ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
@@ -261,7 +261,7 @@ streams, and `internal/provider/providertest` supplies the fakes:
 A WebSocket vendor's tests can follow Codex's `codextest.FakeWebSocket`, which
 records the handshake headers, scripts frames and records the close reason; a
 process provider's tests can follow Claude Code's scripted CLI Host in
-`internal/providers/claudecode/cli_test.go`.
+`internal/provider/claudecode/cli_test.go`.
 
 Run timeouts, polling intervals and freshness windows in `testing/synctest`
 bubbles ([Tests and time](../architecture/concurrency.md#tests-and-time)).

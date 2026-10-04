@@ -16,7 +16,7 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"golang.org/x/net/websocket"
 )
 
@@ -27,7 +27,7 @@ type FixtureOptions struct {
 	// Commands provides commands available to callback invocations.
 	Commands *host.CommandSet
 	// Tap receives runner messages when supplied.
-	Tap chan<- runnerwire.Outbound
+	Tap chan<- runnerproto.Outbound
 }
 
 // RunnerFixture owns a real runner connected to a backend end of its own.
@@ -45,7 +45,7 @@ type RunnerFixture struct {
 	changed     chan struct{}
 	connections sync.WaitGroup
 	admission   gates.Serial
-	tap         chan<- runnerwire.Outbound
+	tap         chan<- runnerproto.Outbound
 }
 
 // StartRunnerFixture starts the backend and runner and waits until it is online.

@@ -6,8 +6,8 @@ import (
 
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // StoreNumbers adapts the conversation's durable command and shell sequences.
@@ -17,7 +17,7 @@ type StoreNumbers struct {
 }
 
 // Next records the next sequence value before returning the assigned number.
-func (n StoreNumbers) Next(ctx context.Context, sequence core.Sequence) (uint64, error) {
+func (n StoreNumbers) Next(ctx context.Context, sequence types.Sequence) (uint64, error) {
 	number, err := n.Store.NextNumber(ctx, sequence)
 	if err != nil {
 		return 0, &numberError{cause: err}
@@ -39,9 +39,9 @@ func (e *numberError) Unwrap() []error {
 // EnvironmentScope describes the node an environment is made for.
 type EnvironmentScope struct {
 	// Root is the conversation's root node.
-	Root core.NodeID
+	Root types.NodeID
 	// Node is the node whose shells the environment owns.
-	Node core.NodeID
+	Node types.NodeID
 	// Agent is the node's model-facing agent number.
 	Agent uint64
 	// Commands are the commands offered by the node's shells.
@@ -96,7 +96,7 @@ func (s *ShellAccess[H]) Invoke(ctx context.Context, call session.ToolInvocation
 // A Host failure returns its error.
 func (s *ShellAccess[H]) Write(
 	ctx context.Context,
-	command core.CommandID,
+	command types.CommandID,
 	stdin string,
 ) (host.ShellEnvironment, error) {
 	_, environment, err := s.environment(ctx, nil, &command)
@@ -111,7 +111,7 @@ func (s *ShellAccess[H]) Write(
 
 // Abort stops a running command of the current Host and returns its environment.
 // A Host failure returns its error.
-func (s *ShellAccess[H]) Abort(ctx context.Context, command core.CommandID) (host.ShellEnvironment, error) {
+func (s *ShellAccess[H]) Abort(ctx context.Context, command types.CommandID) (host.ShellEnvironment, error) {
 	_, environment, err := s.environment(ctx, nil, &command)
 	if err != nil {
 		return nil, err
@@ -125,8 +125,8 @@ func (s *ShellAccess[H]) Abort(ctx context.Context, command core.CommandID) (hos
 // environment resolves the current target and its node-owned shell environment.
 func (s *ShellAccess[H]) environment(
 	ctx context.Context,
-	shell *core.ShellID,
-	command *core.CommandID,
+	shell *types.ShellID,
+	command *types.CommandID,
 ) (*environmentSlot, host.ShellEnvironment, error) {
 	target, err := s.Hosts.Host(ctx, s.Context)
 	if err != nil {
@@ -155,16 +155,16 @@ func (s *ShellAccess[H]) environment(
 
 // shellOperations is the node access needed to dispatch a validated shell call.
 type shellOperations interface {
-	environment(context.Context, *core.ShellID, *core.CommandID) (*environmentSlot, host.ShellEnvironment, error)
-	Write(context.Context, core.CommandID, string) (host.ShellEnvironment, error)
-	Abort(context.Context, core.CommandID) (host.ShellEnvironment, error)
+	environment(context.Context, *types.ShellID, *types.CommandID) (*environmentSlot, host.ShellEnvironment, error)
+	Write(context.Context, types.CommandID, string) (host.ShellEnvironment, error)
+	Abort(context.Context, types.CommandID) (host.ShellEnvironment, error)
 }
 
 // runTool validates one tool's generated input and dispatches it to its Host.
 func runTool(
 	ctx context.Context,
 	call session.ToolInvocation,
-	node core.NodeID,
+	node types.NodeID,
 	s shellOperations,
 ) (session.ToolOutcome, error) {
 	var environment host.ShellEnvironment
@@ -184,7 +184,7 @@ func runTool(
 		if decodeErr != nil {
 			return session.ErrorOutcome(inputRefusal(call.ToolName, decodeErr)), nil
 		}
-		command := core.CommandID(strconv.FormatUint(input.CommandID, 10))
+		command := types.CommandID(strconv.FormatUint(input.CommandID, 10))
 		if Standard(call.ToolName) == ShellAbort {
 			environment, err = s.Abort(ctx, command)
 		} else {
@@ -198,7 +198,7 @@ func runTool(
 		if decodeErr != nil {
 			return session.ErrorOutcome(inputRefusal(call.ToolName, decodeErr)), nil
 		}
-		command := core.CommandID(strconv.FormatUint(input.CommandID, 10))
+		command := types.CommandID(strconv.FormatUint(input.CommandID, 10))
 		environment, err = s.Write(ctx, command, string(input.Stdin))
 		if err == nil {
 			status, err = environment.Status(command)
@@ -233,16 +233,16 @@ func inputRefusal(tool string, err error) string {
 }
 
 func execTool(
-	ctx context.Context, call session.ToolInvocation, node core.NodeID, s shellOperations,
+	ctx context.Context, call session.ToolInvocation, node types.NodeID, s shellOperations,
 ) (session.ToolOutcome, error) {
 	input, decodeErr := decodeShellExecInput(call.Input)
 	if decodeErr != nil {
 		return session.ErrorOutcome(inputRefusal(call.ToolName, decodeErr)), nil
 	}
-	var shell *core.ShellID
+	var shell *types.ShellID
 	target := host.ShellTarget{Kind: host.DefaultShell}
 	if input.ShellID != nil {
-		id := core.ShellID(strconv.FormatUint(*input.ShellID, 10))
+		id := types.ShellID(strconv.FormatUint(*input.ShellID, 10))
 		shell = &id
 		target = host.ShellTarget{Kind: host.ExistingShell, ID: id}
 	}

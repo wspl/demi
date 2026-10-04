@@ -11,7 +11,7 @@ import (
 
 	"github.com/gowebpki/jcs"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // validateCommandStorageKey checks a node's logical command storage name.
@@ -35,7 +35,7 @@ func InitialCommandState() CommandStateSnapshot {
 }
 
 type boundaryKey struct {
-	block core.BlockID
+	block types.BlockID
 	edge  BoundaryEdge
 }
 
@@ -130,15 +130,15 @@ func (h *CommandStateHistory) Accept(version CommandVersion) {
 }
 
 // Boundary returns the revision recorded at an edge, and whether it exists.
-func (h *CommandStateHistory) Boundary(block core.BlockID, edge BoundaryEdge) (uint64, bool) {
+func (h *CommandStateHistory) Boundary(block types.BlockID, edge BoundaryEdge) (uint64, bool) {
 	revision, ok := h.boundaries[boundaryKey{block, edge}]
 	return revision, ok
 }
 
 // Select keeps the retained blocks' boundaries, selecting revision as current.
 // With referencedOnly, it copies only the referenced versions, as a Fork does.
-func (h *CommandStateHistory) Select(blocks []core.Block, revision uint64, referencedOnly bool) CommandStateSnapshot {
-	retained := map[core.BlockID]bool{}
+func (h *CommandStateHistory) Select(blocks []types.Block, revision uint64, referencedOnly bool) CommandStateSnapshot {
+	retained := map[types.BlockID]bool{}
 	for _, block := range blocks {
 		retained[block.ID()] = true
 	}
@@ -163,7 +163,7 @@ func (h *CommandStateHistory) Select(blocks []core.Block, revision uint64, refer
 
 // Capture records revision at the edge. BeforeUser and AfterAssistant keep
 // their first record; AfterBlock moves forward with its block.
-func (h *CommandStateHistory) Capture(block core.BlockID, edge BoundaryEdge, revision uint64) {
+func (h *CommandStateHistory) Capture(block types.BlockID, edge BoundaryEdge, revision uint64) {
 	key := boundaryKey{block, edge}
 	if previous, exists := h.boundaries[key]; exists && (previous == revision || edge != AfterBlock) {
 		return
@@ -173,7 +173,7 @@ func (h *CommandStateHistory) Capture(block core.BlockID, edge BoundaryEdge, rev
 }
 
 // HasBoundary reports whether the edge has a recorded revision.
-func (h *CommandStateHistory) HasBoundary(block core.BlockID, edge BoundaryEdge) bool {
+func (h *CommandStateHistory) HasBoundary(block types.BlockID, edge BoundaryEdge) bool {
 	_, ok := h.Boundary(block, edge)
 	return ok
 }

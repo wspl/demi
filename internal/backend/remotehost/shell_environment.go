@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // HostAccess holds the product's file gate and admission through a job's publication.
@@ -22,12 +22,12 @@ type HostAccess interface {
 // CommandKeeper stores edit copies and whole output before publishing the command's end.
 // Failure to keep output is the keeper's to record.
 type CommandKeeper interface {
-	Retain(context.Context, core.CommandID, []runnerwire.JobFileChange) ([]core.EditedFile, error)
-	KeepOutput(context.Context, core.CommandID, host.WholeOutput) error
+	Retain(context.Context, types.CommandID, []runnerproto.JobFileChange) ([]types.EditedFile, error)
+	KeepOutput(context.Context, types.CommandID, host.WholeOutput) error
 }
 
 // ContextSource builds the command context for each job.
-type ContextSource func(context.Context) (commandwire.Context, error)
+type ContextSource func(context.Context) (commandproto.Context, error)
 
 // EnvironmentOptions supplies a node's Host, commands, page feed and lifetime services.
 type EnvironmentOptions struct {
@@ -95,19 +95,19 @@ type ShellEnvironment struct {
 	options                  EnvironmentOptions
 	tasks                    sync.WaitGroup
 	mu                       sync.Mutex // Protects shell reservations, record registration and running owners.
-	shells                   map[core.ShellID]*shellState
-	records                  map[core.CommandID]*host.CommandRecord
-	running                  map[core.CommandID]*runningCommand
-	defaultShell, spareShell core.ShellID // Empty when there is none.
+	shells                   map[types.ShellID]*shellState
+	records                  map[types.CommandID]*host.CommandRecord
+	running                  map[types.CommandID]*runningCommand
+	defaultShell, spareShell types.ShellID // Empty when there is none.
 }
 
 // NewShellEnvironment constructs a node's environment.
 func NewShellEnvironment(options EnvironmentOptions) *ShellEnvironment {
 	return &ShellEnvironment{
 		options: options,
-		shells:  make(map[core.ShellID]*shellState),
-		records: make(map[core.CommandID]*host.CommandRecord),
-		running: make(map[core.CommandID]*runningCommand),
+		shells:  make(map[types.ShellID]*shellState),
+		records: make(map[types.CommandID]*host.CommandRecord),
+		running: make(map[types.CommandID]*runningCommand),
 	}
 }
 
@@ -129,7 +129,7 @@ func (e *ShellEnvironment) Exec(ctx context.Context, request host.ExecRequest) (
 }
 
 // Status returns the command's status and output since the previous look.
-func (e *ShellEnvironment) Status(id core.CommandID) (host.CommandStatus, error) {
+func (e *ShellEnvironment) Status(id types.CommandID) (host.CommandStatus, error) {
 	e.mu.Lock()
 	record := e.records[id]
 	running := e.running[id]
@@ -150,7 +150,7 @@ func (e *ShellEnvironment) Status(id core.CommandID) (host.CommandStatus, error)
 }
 
 // ReadOutput reads a command's whole kept output.
-func (e *ShellEnvironment) ReadOutput(ctx context.Context, id core.CommandID) (host.WholeOutput, error) {
+func (e *ShellEnvironment) ReadOutput(ctx context.Context, id types.CommandID) (host.WholeOutput, error) {
 	running, err := e.active(id)
 	if err != nil {
 		return host.WholeOutput{}, err
@@ -166,7 +166,7 @@ func (e *ShellEnvironment) ReadOutput(ctx context.Context, id core.CommandID) (h
 }
 
 // Write supplies live standard input to a running command.
-func (e *ShellEnvironment) Write(ctx context.Context, id core.CommandID, bytes []byte) error {
+func (e *ShellEnvironment) Write(ctx context.Context, id types.CommandID, bytes []byte) error {
 	running, err := e.active(id)
 	if err != nil {
 		return err
@@ -185,7 +185,7 @@ func (e *ShellEnvironment) Write(ctx context.Context, id core.CommandID, bytes [
 }
 
 // Abort terminates a command and joins its output and edit publication.
-func (e *ShellEnvironment) Abort(ctx context.Context, id core.CommandID) error {
+func (e *ShellEnvironment) Abort(ctx context.Context, id types.CommandID) error {
 	e.mu.Lock()
 	record := e.records[id]
 	running := e.running[id]
@@ -211,7 +211,7 @@ func (e *ShellEnvironment) Abort(ctx context.Context, id core.CommandID) error {
 	job := running.job
 	running.mu.Unlock()
 	if job != nil {
-		if err := job.Kill(ctx, runnerwire.Signal("SIGKILL")); err != nil {
+		if err := job.Kill(ctx, runnerproto.Signal("SIGKILL")); err != nil {
 			slog.Debug("could not kill the job: "+err.Error(), "command", id)
 		}
 	}
@@ -241,7 +241,7 @@ func (e *ShellEnvironment) PageViews() []host.PageView {
 }
 
 // ReleaseCommand disposes a command handle and reports whether it existed.
-func (e *ShellEnvironment) ReleaseCommand(ctx context.Context, id core.CommandID) bool {
+func (e *ShellEnvironment) ReleaseCommand(ctx context.Context, id types.CommandID) bool {
 	e.mu.Lock()
 	record := e.records[id]
 	e.mu.Unlock()
@@ -260,10 +260,10 @@ func (e *ShellEnvironment) ReleaseCommand(ctx context.Context, id core.CommandID
 }
 
 // DisposeShell disposes a shell and its commands, reporting whether it existed.
-func (e *ShellEnvironment) DisposeShell(ctx context.Context, id core.ShellID) bool {
+func (e *ShellEnvironment) DisposeShell(ctx context.Context, id types.ShellID) bool {
 	e.mu.Lock()
 	shell := e.shells[id]
-	var foreground core.CommandID
+	var foreground types.CommandID
 	if shell != nil {
 		foreground = shell.foreground
 	}
@@ -288,7 +288,7 @@ func (e *ShellEnvironment) DisposeShell(ctx context.Context, id core.ShellID) bo
 // DisposeAll cancels and joins every owned job and releases every shell.
 func (e *ShellEnvironment) DisposeAll(ctx context.Context) error {
 	e.mu.Lock()
-	shells := make([]core.ShellID, 0, len(e.shells))
+	shells := make([]types.ShellID, 0, len(e.shells))
 	for shell := range e.shells {
 		shells = append(shells, shell)
 	}
@@ -310,7 +310,7 @@ func (e *ShellEnvironment) DisposeAll(ctx context.Context) error {
 }
 
 // OwnsShell reports whether the shell belongs to this environment.
-func (e *ShellEnvironment) OwnsShell(id core.ShellID) bool {
+func (e *ShellEnvironment) OwnsShell(id types.ShellID) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	_, ok := e.shells[id]
@@ -318,7 +318,7 @@ func (e *ShellEnvironment) OwnsShell(id core.ShellID) bool {
 }
 
 // OwnsCommand reports whether the command belongs to this environment.
-func (e *ShellEnvironment) OwnsCommand(id core.CommandID) bool {
+func (e *ShellEnvironment) OwnsCommand(id types.CommandID) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	_, ok := e.records[id]
@@ -326,13 +326,13 @@ func (e *ShellEnvironment) OwnsCommand(id core.CommandID) bool {
 }
 
 // EditedFile builds a file's page record with stored copies for each edit segment.
-func EditedFile(file runnerwire.JobFileChange, copies func(int) *core.EditCopies) core.EditedFile {
-	edited := core.EditedFile{
+func EditedFile(file runnerproto.JobFileChange, copies func(int) *types.EditCopies) types.EditedFile {
+	edited := types.EditedFile{
 		Path:    file.Path,
-		Kind:    core.EditKind(file.Kind),
+		Kind:    types.EditKind(file.Kind),
 		Added:   uint32(min(file.Added, math.MaxUint32)),
 		Removed: uint32(min(file.Removed, math.MaxUint32)),
-		Edits:   make([]core.EditSegment, len(file.Edits)),
+		Edits:   make([]types.EditSegment, len(file.Edits)),
 	}
 	for i := range edited.Edits {
 		edited.Edits[i].Copies = copies(i)

@@ -7,14 +7,14 @@ import (
 
 	"github.com/wspl/demi/internal/agent/server"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Resolution records a conversation and provider requested by a test.
 type Resolution struct {
-	Root     core.NodeID
+	Root     types.NodeID
 	Provider string
 }
 
@@ -25,12 +25,12 @@ type Resolution struct {
 type ScriptedProviders struct {
 	mu        sync.Mutex // Protects the configured runtimes, selection and call log.
 	runtimes  map[string]provider.Runtime
-	selection *core.ModelSelection
+	selection *types.ModelSelection
 	calls     []Resolution
 }
 
 // Select chooses the model every conversation's record holds from now on.
-func (p *ScriptedProviders) Select(model core.ModelSelection) {
+func (p *ScriptedProviders) Select(model types.ModelSelection) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.selection = &model
@@ -60,7 +60,7 @@ func (p *ScriptedProviders) Calls() []Resolution {
 }
 
 // Selection returns the last selected model or the test default.
-func (p *ScriptedProviders) Selection(_ context.Context, _ core.NodeID) (core.ModelSelection, error) {
+func (p *ScriptedProviders) Selection(_ context.Context, _ types.NodeID) (types.ModelSelection, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.selection != nil {
@@ -72,8 +72,8 @@ func (p *ScriptedProviders) Selection(_ context.Context, _ core.NodeID) (core.Mo
 // Runtime records the resolution and supplies a fresh runtime, or server.ProviderUnavailable.
 func (p *ScriptedProviders) Runtime(
 	_ context.Context,
-	root core.NodeID,
-	model core.ModelSelection,
+	root types.NodeID,
+	model types.ModelSelection,
 ) (provider.Runtime, error) {
 	p.mu.Lock()
 	p.calls = append(p.calls, Resolution{Root: root, Provider: model.ProviderID})

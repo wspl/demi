@@ -6,10 +6,10 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Deps supplies the node runtime, checkpoint store, identities, clock and policy.
@@ -19,15 +19,15 @@ type Deps struct {
 	Runtime Runtime
 	Store   store.Session
 	IDs     transcript.IDs
-	Clock   core.Clock
+	Clock   types.Clock
 	Config  Config
 }
 
 // Init is a new session's state. Runtime transfers to the constructed session.
 type Init struct {
-	ID      core.NodeID
+	ID      types.NodeID
 	CWD     string
-	Model   core.ModelSelection
+	Model   types.ModelSelection
 	Runtime provider.Runtime
 }
 
@@ -38,12 +38,12 @@ type Continuation struct {
 	Interrupted bool
 	// Queued holds the checkpoint's queued messages in order. The node
 	// decides when to submit them to the restored session.
-	Queued []core.QueuedMessage
+	Queued []types.QueuedMessage
 }
 
 // ModelSwitch changes the selection at the next provider request.
 type ModelSwitch struct {
-	Model core.ModelSelection
+	Model types.ModelSelection
 	// Runtime is a new runtime when the model belongs to a different
 	// provider than the selection before it; nil otherwise.
 	Runtime provider.Runtime
@@ -88,7 +88,7 @@ func New(init Init, deps Deps) *Session {
 // Success transfers runtime ownership; failure leaves it with the caller.
 func Restore(
 	checkpoint store.Checkpoint,
-	id core.NodeID,
+	id types.NodeID,
 	runtime provider.Runtime,
 	deps Deps,
 ) (*Session, Continuation, error) {
@@ -109,14 +109,14 @@ func (s *Session) FirstCheckpoint() store.CheckpointUpdate {
 }
 
 // ID returns the session's node identity.
-func (s *Session) ID() core.NodeID {
+func (s *Session) ID() types.NodeID {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.core.id
 }
 
 // Phase returns the phase clients see, including running during finalization.
-func (s *Session) Phase() core.SessionPhase {
+func (s *Session) Phase() types.SessionPhase {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.core.phaseLocked()
@@ -133,7 +133,7 @@ func (s *Session) Settled(ctx context.Context) error {
 }
 
 // Model returns the selection current now.
-func (s *Session) Model() core.ModelSelection {
+func (s *Session) Model() types.ModelSelection {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.core.model
@@ -147,14 +147,14 @@ func (s *Session) Transcript() TranscriptSnapshot {
 }
 
 // QueuedMessages returns messages in the order they will run.
-func (s *Session) QueuedMessages() []core.QueuedMessage {
+func (s *Session) QueuedMessages() []types.QueuedMessage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.core.queuedMessagesLocked()
 }
 
 // PendingSteers returns the human steers accepted and not yet written.
-func (s *Session) PendingSteers() []core.PendingSteer {
+func (s *Session) PendingSteers() []types.PendingSteer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.core.pendingSteersLocked()
@@ -173,7 +173,7 @@ func (s *Session) HoldMedia(media *store.HeldMedia) {
 
 // Send submits a message, queuing it when busy. A known id returns Duplicate
 // without creating another turn. Refusals return ErrClosed or ErrEditing.
-func (s *Session) Send(content []core.UserContentBlock, id core.TurnID) (*ActionAnswer, error) {
+func (s *Session) Send(content []types.UserContentBlock, id types.TurnID) (*ActionAnswer, error) {
 	return s.admit(sendAction, content, id)
 }
 
@@ -193,7 +193,7 @@ func (s *Session) Compact() (*ActionAnswer, error) {
 }
 
 // DequeueMessage removes the named message, returning whether it was queued.
-func (s *Session) DequeueMessage(id core.TurnID) bool {
+func (s *Session) DequeueMessage(id types.TurnID) bool {
 	removed := false
 	s.mutate(func(c *coreState) {
 		if c.disposing {
@@ -209,7 +209,7 @@ func (s *Session) DequeueMessage(id core.TurnID) bool {
 }
 
 // SendQueuedMessage moves the named message to the front of the queue.
-func (s *Session) SendQueuedMessage(id core.TurnID) bool {
+func (s *Session) SendQueuedMessage(id types.TurnID) bool {
 	moved := false
 	s.mutate(func(c *coreState) {
 		if c.disposing {
@@ -254,18 +254,18 @@ func (s *Session) ClearMessageQueue() int {
 
 // Steer adds input to the running turn at its next boundary. A refusal returns
 // ErrEditing, ErrSteerFinishing, ErrSteerNotRunning or ErrSteerStopped without changing input.
-func (s *Session) Steer(content []core.UserContentBlock, id core.BlockID) error {
+func (s *Session) Steer(content []types.UserContentBlock, id types.BlockID) error {
 	return s.steer(content, id)
 }
 
 // CancelPendingSteer withdraws a pending steer. An id not pending changes nothing.
-func (s *Session) CancelPendingSteer(id core.BlockID) bool {
+func (s *Session) CancelPendingSteer(id types.BlockID) bool {
 	return s.cancelPendingSteer(id)
 }
 
 // SteerQueuedMessage turns a queued message into a steer, preserving its queue
 // position on refusal. It returns false when no queued message has that id.
-func (s *Session) SteerQueuedMessage(message core.TurnID, steer core.BlockID) (bool, error) {
+func (s *Session) SteerQueuedMessage(message types.TurnID, steer types.BlockID) (bool, error) {
 	var err error
 	found := false
 	s.mutate(func(c *coreState) {
@@ -281,7 +281,7 @@ func (s *Session) SteerQueuedMessage(message core.TurnID, steer core.BlockID) (b
 		c.inputs = append(
 			c.inputs,
 			pendingInput{
-				steer: &core.PendingSteer{ID: steer, TurnID: c.active.turn, Model: c.model, Content: a.content},
+				steer: &types.PendingSteer{ID: steer, TurnID: c.active.turn, Model: c.model, Content: a.content},
 			},
 		)
 		c.arrivals++
@@ -292,7 +292,7 @@ func (s *Session) SteerQueuedMessage(message core.TurnID, steer core.BlockID) (b
 // AcceptAgentMessage admits another agent's message and returns once its
 // admissionLocked is saved. A closed session returns ErrClosed and an edit being prepared ErrEditing.
 // A save that starts finishes even if ctx is cancelled.
-func (s *Session) AcceptAgentMessage(ctx context.Context, message core.AgentMessage) error {
+func (s *Session) AcceptAgentMessage(ctx context.Context, message types.AgentMessage) error {
 	return s.acceptAgentMessage(ctx, message)
 }
 
@@ -303,9 +303,9 @@ func (s *Session) AcceptAgentMessage(ctx context.Context, message core.AgentMess
 // a rejected in-flight edit returns its reason.
 func (s *Session) CheckEdit(
 	ctx context.Context,
-	operation core.OperationID,
+	operation types.OperationID,
 	digest string,
-	version framewire.TranscriptVersion,
+	version conversationproto.TranscriptVersion,
 ) (EditCheck, error) {
 	s.mu.Lock()
 	check, err := s.core.checkEditLocked(operation, digest, version)
@@ -331,7 +331,7 @@ func (s *Session) EditAndSend(ctx context.Context, submission EditSubmission) (s
 
 // PrepareFork captures a seed through completed text target, with the model a
 // switch already accepted by the session would use. Failures return *ForkError.
-func (s *Session) PrepareFork(target core.BlockID) (store.Checkpoint, error) {
+func (s *Session) PrepareFork(target types.BlockID) (store.Checkpoint, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	state := s.core.checkpointStateLocked()
@@ -354,7 +354,7 @@ func (s *Session) Hold() {
 // Abort stops the running action, else the first waiting action, else the
 // oldest wakeup. It waits for the stopped action's acknowledgement. Cancelling
 // the wait does not retract the stop; the result describes the acknowledgement.
-func (s *Session) Abort(ctx context.Context) (framewire.AbortResult, error) {
+func (s *Session) Abort(ctx context.Context) (conversationproto.AbortResult, error) {
 	return s.stop(ctx, false)
 }
 
@@ -386,7 +386,7 @@ func (s *Session) UpdateModel(change ModelSwitch) error {
 
 // NeedsRuntimeFor reports whether model belongs to a different provider than
 // the selection the next request would use.
-func (s *Session) NeedsRuntimeFor(model core.ModelSelection) bool {
+func (s *Session) NeedsRuntimeFor(model types.ModelSelection) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.core.latestSelectionLocked().ProviderID != model.ProviderID
@@ -489,6 +489,6 @@ func (s *Session) IsTextAt(index int) bool {
 	if index < 0 || index >= len(snapshot.Blocks) {
 		return false
 	}
-	_, ok := snapshot.Blocks[index].(*core.TextBlock)
+	_, ok := snapshot.Blocks[index].(*types.TextBlock)
 	return ok
 }

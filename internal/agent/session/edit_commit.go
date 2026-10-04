@@ -7,15 +7,15 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 func (c *coreState) checkEditLocked(
-	operation core.OperationID,
+	operation types.OperationID,
 	digest string,
-	version framewire.TranscriptVersion,
+	version conversationproto.TranscriptVersion,
 ) (EditCheck, error) {
 	for _, receipt := range c.edits {
 		if receipt.OperationID == operation {
@@ -57,7 +57,7 @@ func (s *Session) editAndSend(ctx context.Context, submission EditSubmission) (s
 		acceptance := newAcceptance()
 		c.edit = &editFlight{submission: submission, acceptance: acceptance}
 		check = &EditInFlight{acceptance: acceptance}
-		c.queue = append(c.queue, &action{kind: editAction, turn: core.TurnID(s.deps.IDs.NextID())})
+		c.queue = append(c.queue, &action{kind: editAction, turn: types.TurnID(s.deps.IDs.NextID())})
 		s.startNextLocked()
 	})
 	if err != nil {
@@ -88,9 +88,9 @@ func (s *Session) rejectEditLocked(err error) {
 }
 
 type editCandidate struct {
-	blocks   []core.Block
+	blocks   []types.Block
 	commands *store.CommandStateHistory
-	model    core.ModelSelection
+	model    types.ModelSelection
 	receipt  store.EditReceipt
 	update   store.CheckpointUpdate
 	source   provider.Runtime
@@ -103,7 +103,7 @@ func (s *Session) prepareEditLocked(preamble *string) (editCandidate, error) {
 	if err != nil {
 		return editCandidate{}, err
 	}
-	target, ok := c.log.Find(submission.Target).(*core.UserBlock)
+	target, ok := c.log.Find(submission.Target).(*types.UserBlock)
 	if !ok {
 		return editCandidate{}, transcript.ErrNotUserMessage
 	}
@@ -200,16 +200,16 @@ func (s *Session) runEdit(ctx context.Context) error {
 }
 
 // resolveEdit resolves kept media solely against the edited user message.
-func resolveEdit(parts []EditContent, target []core.UserContentBlock) ([]core.UserContentBlock, error) {
-	result := make([]core.UserContentBlock, 0, len(parts))
+func resolveEdit(parts []EditContent, target []types.UserContentBlock) ([]types.UserContentBlock, error) {
+	result := make([]types.UserContentBlock, 0, len(parts))
 	for _, part := range parts {
 		switch part := part.(type) {
 		case *Content:
 			result = append(result, part.Block)
 		case *KeptAttachment:
-			var found core.UserContentBlock
+			var found types.UserContentBlock
 			for _, block := range target {
-				if a, ok := block.(*core.UserAttachment); ok && a.Path == part.Path {
+				if a, ok := block.(*types.UserAttachment); ok && a.Path == part.Path {
 					found = block
 					break
 				}
@@ -231,15 +231,15 @@ func resolveEdit(parts []EditContent, target []core.UserContentBlock) ([]core.Us
 }
 
 func (c *coreState) editUpdateLocked(
-	model core.ModelSelection,
+	model types.ModelSelection,
 	receipt store.EditReceipt,
 	commands *store.CommandStateHistory,
-	blocks []core.Block,
+	blocks []types.Block,
 ) store.CheckpointUpdate {
 	state := c.checkpointStateLocked()
 	state.Phase = "running"
 	state.Model = model
-	state.Queue = []core.QueuedMessage{}
+	state.Queue = []types.QueuedMessage{}
 	state.Edits = append(state.Edits, receipt)
 	snapshot := commands.Snapshot(nil)
 	update := store.CheckpointUpdate{
@@ -302,37 +302,40 @@ func (s *Session) commitEdit(ctx context.Context, candidate editCandidate) (bool
 	return true, err
 }
 
-func resolveKeptMedia(media framewire.MediaRef, target []core.UserContentBlock) (core.UserContentBlock, error) {
+func resolveKeptMedia(
+	media conversationproto.MediaRef,
+	target []types.UserContentBlock,
+) (types.UserContentBlock, error) {
 	var kind string
-	var blob core.BlobRef
+	var blob types.BlobRef
 	switch ref := media.(type) {
-	case *framewire.MediaImageRef:
+	case *conversationproto.MediaImageRef:
 		kind = "image"
 		blob = ref.Ref
-	case *framewire.MediaVideoRef:
+	case *conversationproto.MediaVideoRef:
 		kind = "video"
 		blob = ref.Ref
-	case *framewire.MediaDocumentRef:
+	case *conversationproto.MediaDocumentRef:
 		kind = "document"
 		blob = ref.Ref
 	}
-	var found core.UserContentBlock
+	var found types.UserContentBlock
 	for _, block := range target {
 		var match bool
 		switch b := block.(type) {
-		case *core.UserImage:
-			if ref, ok := b.Source.(*core.MediaSourceRef); ok {
+		case *types.UserImage:
+			if ref, ok := b.Source.(*types.MediaSourceRef); ok {
 				match = kind == "image" && ref.Ref == blob
 			}
-		case *core.UserVideo:
-			if ref, ok := b.Source.(*core.MediaSourceRef); ok {
+		case *types.UserVideo:
+			if ref, ok := b.Source.(*types.MediaSourceRef); ok {
 				match = kind == "video" && ref.Ref == blob
 			}
-		case *core.UserDocument:
-			if ref, ok := b.Source.(*core.DocumentRef); ok {
+		case *types.UserDocument:
+			if ref, ok := b.Source.(*types.DocumentRef); ok {
 				match = kind == "document" && ref.Ref == blob
 			}
-		case *core.UserText, *core.UserAttachment, *core.UserReference:
+		case *types.UserText, *types.UserAttachment, *types.UserReference:
 		}
 		if match {
 			found = block

@@ -5,11 +5,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 type gitAnswer struct {
-	changes runnerwire.GitChanges
+	changes runnerproto.GitChanges
 	err     error
 }
 type gitRequest struct {
@@ -53,20 +53,20 @@ func (o *gitOwner) close(ctx context.Context) error {
 	}
 }
 
-func (o *gitOwner) changes(ctx context.Context, root string) (runnerwire.GitChanges, error) {
+func (o *gitOwner) changes(ctx context.Context, root string) (runnerproto.GitChanges, error) {
 	request := gitRequest{root: root, ctx: ctx, answer: make(chan gitAnswer, 1)}
 	select {
 	case <-ctx.Done():
-		return runnerwire.GitChanges{}, ctx.Err()
+		return runnerproto.GitChanges{}, ctx.Err()
 	case <-o.ctx.Done():
-		return runnerwire.GitChanges{}, o.ctx.Err()
+		return runnerproto.GitChanges{}, o.ctx.Err()
 	case o.requests <- request:
 	}
 	select {
 	case <-ctx.Done():
-		return runnerwire.GitChanges{}, ctx.Err()
+		return runnerproto.GitChanges{}, ctx.Err()
 	case <-o.ctx.Done():
-		return runnerwire.GitChanges{}, o.ctx.Err()
+		return runnerproto.GitChanges{}, o.ctx.Err()
 	case answer := <-request.answer:
 		return answer.changes, answer.err
 	}

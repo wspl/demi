@@ -15,8 +15,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 type gitBaseline struct {
@@ -27,7 +27,7 @@ type gitBaseline struct {
 	indexTime    int64
 	fileMode     bool
 	patterns     []gitignore.Pattern
-	files        map[string]runnerwire.GitChange
+	files        map[string]runnerproto.GitChange
 	rules        []ruleStamp
 	truncated    bool
 }
@@ -145,7 +145,7 @@ func computeChanges(
 	root string,
 	slots chan struct{},
 	maxFiles int,
-) (result runnerwire.GitChanges, err error) {
+) (result runnerproto.GitChanges, err error) {
 	defer func() {
 		if recover() != nil {
 			err = &gitError{code: "internal", message: "working-tree work panicked"}
@@ -162,7 +162,7 @@ func computeChanges(
 	}
 	if location == nil {
 		state.reset(ctx)
-		return runnerwire.GitChanges{Files: []runnerwire.GitChange{}}, nil
+		return runnerproto.GitChanges{Files: []runnerproto.GitChange{}}, nil
 	}
 	defer func() { err = errors.Join(err, closeRepository(repo)) }()
 	state.stopBrokenWatch()
@@ -199,12 +199,12 @@ func computeChanges(
 }
 
 // baselineResult copies the public slice so one response cannot mutate another.
-func baselineResult(base *gitBaseline, watched bool) runnerwire.GitChanges {
-	files := make([]runnerwire.GitChange, 0, len(base.files))
+func baselineResult(base *gitBaseline, watched bool) runnerproto.GitChanges {
+	files := make([]runnerproto.GitChange, 0, len(base.files))
 	for _, name := range slices.Sorted(maps.Keys(base.files)) {
 		files = append(files, base.files[name])
 	}
-	return runnerwire.GitChanges{
+	return runnerproto.GitChanges{
 		Repository: true,
 		Head:       base.head,
 		Files:      files,
@@ -220,10 +220,10 @@ func retryChanges(
 	root string,
 	slots chan struct{},
 	limit int,
-) (runnerwire.GitChanges, error) {
-	return cmdsdk.Retry(
+) (runnerproto.GitChanges, error) {
+	return commandsdk.Retry(
 		ctx,
-		func() (runnerwire.GitChanges, error) { return computeChanges(ctx, state, root, slots, limit) },
+		func() (runnerproto.GitChanges, error) { return computeChanges(ctx, state, root, slots, limit) },
 	)
 }
 
@@ -334,7 +334,7 @@ func readBaseline(
 		indexTime:    idx.ModTime.UnixNano(),
 		fileMode:     cfg.Raw.Section("core").Option("filemode") != "false",
 		patterns:     patterns,
-		files:        make(map[string]runnerwire.GitChange),
+		files:        make(map[string]runnerproto.GitChange),
 		rules:        rules,
 	}
 	return base, nil

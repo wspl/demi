@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // TailChars is the number of final Unicode scalar values carried by a view.
@@ -29,8 +29,8 @@ type Ending struct {
 
 // PageView is the command's non-consuming view for every watching page.
 type PageView struct {
-	ShellID          core.ShellID
-	CommandID        core.CommandID
+	ShellID          types.ShellID
+	CommandID        types.CommandID
 	ToolUseID        string
 	State            PageState
 	Tail             string
@@ -42,7 +42,7 @@ type recordStream struct {
 	newest    *Newest
 }
 type recordChunk struct {
-	stream core.StreamKind
+	stream types.StreamKind
 	text   string
 	offset int
 }
@@ -51,8 +51,8 @@ type recordChunk struct {
 // Its methods synchronize access; WholeOutput passed to Settle is immutable thereafter.
 type CommandRecord struct {
 	mu                  sync.Mutex
-	shellID             core.ShellID
-	commandID           core.CommandID
+	shellID             types.ShellID
+	commandID           types.CommandID
 	toolUseID           string
 	started, lastOutput time.Time
 	state               CommandState
@@ -67,16 +67,16 @@ type CommandRecord struct {
 }
 
 // NewCommandRecord creates the running command started by a shell_exec call.
-func NewCommandRecord(shell core.ShellID, command core.CommandID, toolUseID string) *CommandRecord {
+func NewCommandRecord(shell types.ShellID, command types.CommandID, toolUseID string) *CommandRecord {
 	now := time.Now()
 	return &CommandRecord{shellID: shell, commandID: command, toolUseID: toolUseID, started: now, lastOutput: now}
 }
 
 // CommandID identifies this command.
-func (r *CommandRecord) CommandID() core.CommandID { return r.commandID }
+func (r *CommandRecord) CommandID() types.CommandID { return r.commandID }
 
 // ShellID identifies its shell.
-func (r *CommandRecord) ShellID() core.ShellID { return r.shellID }
+func (r *CommandRecord) ShellID() types.ShellID { return r.shellID }
 
 // IsRunning reports whether the command runs.
 func (r *CommandRecord) IsRunning() bool {
@@ -86,14 +86,14 @@ func (r *CommandRecord) IsRunning() bool {
 }
 
 // Text returns a stream's received start.
-func (r *CommandRecord) Text(stream core.StreamKind) string {
+func (r *CommandRecord) Text(stream types.StreamKind) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.streams[streamIndex(stream)].text
 }
 
 // AppendOutput appends received text and reports whether the pages' view changed.
-func (r *CommandRecord) AppendOutput(stream core.StreamKind, text string) bool {
+func (r *CommandRecord) AppendOutput(stream types.StreamKind, text string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.streams[streamIndex(stream)].text += text
@@ -114,7 +114,7 @@ func (r *CommandRecord) AppendPageOutput(text string) bool {
 }
 
 // Grew reports Host-side stream growth and refreshes idle time.
-func (r *CommandRecord) Grew(stream core.StreamKind, length uint64) {
+func (r *CommandRecord) Grew(stream types.StreamKind, length uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s := &r.streams[streamIndex(stream)]
@@ -126,7 +126,7 @@ func (r *CommandRecord) Grew(stream core.StreamKind, length uint64) {
 }
 
 // SetNewest replaces a stream's newest bytes beyond its held start.
-func (r *CommandRecord) SetNewest(stream core.StreamKind, offset, leftOut uint64, text string) {
+func (r *CommandRecord) SetNewest(stream types.StreamKind, offset, leftOut uint64, text string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.streams[streamIndex(stream)].newest = &Newest{stream, offset, leftOut, text}
@@ -249,12 +249,12 @@ func (r *CommandRecord) mergedLengthLocked() int {
 }
 
 // mergedViewLocked projects a model byte budget onto complete-line positions and stream chunks.
-func (r *CommandRecord) mergedViewLocked(limit int) core.OutputView {
+func (r *CommandRecord) mergedViewLocked(limit int) types.OutputView {
 	total := r.mergedLengthLocked()
 	start := min(r.positions[2], total)
 	remaining := outputBudget(total-start, limit)
 	delivered := 0
-	views := []core.OutputChunk{}
+	views := []types.OutputChunk{}
 	for _, chunk := range r.chunks {
 		if remaining == 0 {
 			break
@@ -267,7 +267,7 @@ func (r *CommandRecord) mergedViewLocked(limit int) core.OutputView {
 		piece := cutOutput(chunk.text, from, remaining)
 		delivered += len(piece)
 		remaining = max(remaining-len(piece), 0)
-		views = append(views, core.OutputChunk{Stream: chunk.stream, Text: piece})
+		views = append(views, types.OutputChunk{Stream: chunk.stream, Text: piece})
 		if from+len(piece) < len(chunk.text) {
 			break
 		}
@@ -291,7 +291,7 @@ func (r *CommandRecord) mergedViewLocked(limit int) core.OutputView {
 	for i := len(r.chunks) - 1; i >= 0 && utf8.RuneCountInString(tail) < TailChars; i-- {
 		tail = r.chunks[i].text + tail
 	}
-	return core.OutputView{
+	return types.OutputView{
 		Offset:    uint64(r.positions[2]),
 		Line:      line,
 		Text:      text,
@@ -303,7 +303,7 @@ func (r *CommandRecord) mergedViewLocked(limit int) core.OutputView {
 }
 
 // streamView consumes each received stream byte once, cutting between characters.
-func streamView(stream recordStream, position *int, limit int) core.StreamView {
+func streamView(stream recordStream, position *int, limit int) types.StreamView {
 	total := len(stream.text)
 	start := min(*position, total)
 	for start > 0 && start < total && !utf8.RuneStart(stream.text[start]) {
@@ -316,7 +316,7 @@ func streamView(stream recordStream, position *int, limit int) core.StreamView {
 	if stream.hostBytes != nil {
 		count = *stream.hostBytes
 	}
-	return core.StreamView{
+	return types.StreamView{
 		Offset:    uint64(next),
 		Delta:     delta,
 		Tail:      tailChars(stream.text),
@@ -364,8 +364,8 @@ func tailChars(text string) string {
 }
 
 // streamIndex locates a command's stdout or stderr state.
-func streamIndex(stream core.StreamKind) int {
-	if stream == core.StreamKind("stderr") {
+func streamIndex(stream types.StreamKind) int {
+	if stream == types.StreamKind("stderr") {
 		return 1
 	}
 	return 0
@@ -406,7 +406,7 @@ func (r *CommandRecord) seenLocked() Seen {
 	} else {
 		for _, chunk := range r.chunks {
 			n := uint64(min(max(r.positions[2]-chunk.offset, 0), len(chunk.text)))
-			if chunk.stream == core.StreamKind("stdout") {
+			if chunk.stream == types.StreamKind("stdout") {
 				seen.Stdout += n
 			} else {
 				seen.Stderr += n

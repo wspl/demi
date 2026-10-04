@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 )
 
 // blockedPipeInput represents finite command input the upload has requested but not received.
@@ -19,7 +19,7 @@ func (s *blockedPipeInput) Next(ctx context.Context) ([]byte, error) {
 
 func TestEarlyPipeResponseInterruptsPendingCommandInput(t *testing.T) {
 	source := &blockedPipeInput{reading: make(chan struct{})}
-	body := newInvocationBody(t.Context(), cmdsdk.NewInput(source))
+	body := newInvocationBody(t.Context(), commandsdk.NewInput(source))
 	done := make(chan error, 1)
 	go func() {
 		_, err := body.Read(make([]byte, 1))

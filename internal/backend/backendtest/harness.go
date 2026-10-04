@@ -15,9 +15,9 @@ import (
 	"github.com/wspl/demi/internal/backend/accounts"
 	"github.com/wspl/demi/internal/backend/blobs/blobstest"
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider/providertest"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 const (
@@ -56,13 +56,13 @@ func NewHarness(ctx context.Context, t testing.TB, machinesSocket string) (*Harn
 	config, err := backend.NewConfig(
 		filepath.Join(t.TempDir(), "backend"),
 		netip.MustParseAddrPort("127.0.0.1:0"),
-		webapi.InstanceModeShared,
+		webapiproto.InstanceModeShared,
 		machinesSocket,
 	)
 	if err != nil {
 		return nil, err
 	}
-	clock := providertest.NewManualClock(core.Timestamp("2026-09-24T08:00:00.000Z"))
+	clock := providertest.NewManualClock(types.Timestamp("2026-09-24T08:00:00.000Z"))
 	config.Clock = clock
 	config.Runners.Ping = 0
 	config.Conversations.Titles = false
@@ -103,8 +103,8 @@ func (h *Harness) ControlDatabase(ctx context.Context, t testing.TB) (*sql.DB, e
 }
 
 // AddUser inserts a fixture account not created by setup, with a hashed password.
-func (h *Harness) AddUser(ctx context.Context, email, password string, role webapi.Role) error {
-	address, err := webapi.ParseEmailAddress(email)
+func (h *Harness) AddUser(ctx context.Context, email, password string, role webapiproto.Role) error {
+	address, err := webapiproto.ParseEmailAddress(email)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func (h *Harness) AddUser(ctx context.Context, email, password string, role weba
 	if err != nil {
 		return err
 	}
-	hash, err := hasher.Hash(ctx, webapi.Password(password))
+	hash, err := hasher.Hash(ctx, webapiproto.Password(password))
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func (h *Harness) Start(ctx context.Context, t testing.TB) (*TestBackend, error)
 }
 
 // StartInMode starts over the same data with mode replacing Config.Mode.
-func (h *Harness) StartInMode(ctx context.Context, t testing.TB, mode webapi.InstanceMode) (*TestBackend, error) {
+func (h *Harness) StartInMode(ctx context.Context, t testing.TB, mode webapiproto.InstanceMode) (*TestBackend, error) {
 	config := h.Config
 	config.Mode = mode
 	return h.start(ctx, t, config)

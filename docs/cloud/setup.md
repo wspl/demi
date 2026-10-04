@@ -30,7 +30,7 @@ check the facilities instead of relying on the provider's product name.
 The installer installs the complete pinned runsc distribution and verifies its
 release checksum on amd64. On arm64 it builds the pinned source with the shipped
 seccomp ABI fix and runs the native/systrap regression probe. Build dependencies
-and pinned inputs are in `internal/machines/sandbox/runtime/README.md`. Keep `runsc` and
+and pinned inputs are in `internal/machinemanager/sandbox/runtime/README.md`. Keep `runsc` and
 its accompanying `gvisor-bin/` directory together; upstream packaging can
 include helper binaries. The runtime release manifest pins the release and
 archive hash, and startup requires the configured executable to report exactly

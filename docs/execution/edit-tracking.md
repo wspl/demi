@@ -192,13 +192,13 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 | Where | Responsibility |
 | --- | --- |
 | `third_party/mvdan-sh` | Route writable redirections in every in-process scope through the job's open handler, preserving it in nested interpreters and executable fallback. |
-| `internal/commandwire` | Define the recording context, the journal and the test of whether bytes are text. |
-| `internal/cmdsdk` | Implement the shared bounded recorder with OS locking. |
-| `internal/cmdpkg/file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
+| `internal/commandproto` | Define the recording context, the journal and the test of whether bytes are text. |
+| `internal/commandsdk` | Implement the shared bounded recorder with OS locking. |
+| `internal/commandpackage/file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
 | `internal/runner/jobs`, `internal/runner/shell` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
-| `internal/runnerwire`, `internal/host`, `internal/backend/remotehost` | Carry the report through command completion. |
+| `internal/runnerproto`, `internal/host`, `internal/backend/remotehost` | Carry the report through command completion. |
 | `internal/backend/usershard` | Store the copies as blobs before tool completion; the blob route serves them. |
-| `internal/core`, `internal/agent/tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
+| `internal/types`, `internal/agent/tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
 | `packages/web-ui` | Shared file selection, segment selection and diff behavior. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
 

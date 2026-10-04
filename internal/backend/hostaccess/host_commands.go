@@ -11,27 +11,27 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // HostGroup declares demi host list, current and shell with their help text.
 // Its handlers fail after the shard's Conversations owner has closed.
 func HostGroup(shard HostShard) host.Declared {
 	// These schemas are generated from the declarations beside this file.
-	empty, _ := declare.NewSchema(noArgsJSONSchema())
-	shell, _ := declare.NewSchema(shellArgsJSONSchema())
+	empty, _ := commanddecl.NewSchema(noArgsJSONSchema())
+	shell, _ := commanddecl.NewSchema(shellArgsJSONSchema())
 	return host.Group(
 		"host",
 		hostSummary,
 		host.Leaf(
-			declare.Leaf[declare.NativeOperation]{
+			commanddecl.Leaf[commanddecl.NativeOperation]{
 				Name:    "list",
 				Summary: listSummary,
 				Input:   empty,
-				Kind:    &declare.RPC[declare.NativeOperation]{},
+				Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
 			},
 			commandVerb(
 				shard,
@@ -42,11 +42,11 @@ func HostGroup(shard HostShard) host.Declared {
 			),
 		),
 		host.Leaf(
-			declare.Leaf[declare.NativeOperation]{
+			commanddecl.Leaf[commanddecl.NativeOperation]{
 				Name:    "current",
 				Summary: currentSummary,
 				Input:   empty,
-				Kind:    &declare.RPC[declare.NativeOperation]{},
+				Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
 			},
 			commandVerb(
 				shard,
@@ -57,7 +57,7 @@ func HostGroup(shard HostShard) host.Declared {
 			),
 		),
 		host.Leaf(
-			declare.Leaf[declare.NativeOperation]{
+			commanddecl.Leaf[commanddecl.NativeOperation]{
 				Name:        "shell",
 				Summary:     shellSummary,
 				Input:       shell,
@@ -65,7 +65,7 @@ func HostGroup(shard HostShard) host.Declared {
 				FailureOutput: new(
 					"writes the reason to stderr and exits non-zero (127 when the host cannot run bash)",
 				),
-				Kind: &declare.RPC[declare.NativeOperation]{},
+				Kind: &commanddecl.RPC[commanddecl.NativeOperation]{},
 			},
 			commandVerb(
 				shard,
@@ -79,8 +79,8 @@ func HostGroup(shard HostShard) host.Declared {
 }
 
 // InvocationConversation is the conversation the invoking job belongs to.
-func InvocationConversation(invocation host.RPCInvocation) (webapi.ConversationID, error) {
-	id, err := webapi.ParseConversationID(invocation.Context.Conversation)
+func InvocationConversation(invocation host.RPCInvocation) (webapiproto.ConversationID, error) {
+	id, err := webapiproto.ParseConversationID(invocation.Context.Conversation)
 	if err != nil {
 		return "", &host.RPCError{Kind: host.HandlerFailed, Message: "this session has no conversation", Err: err}
 	}
@@ -88,7 +88,7 @@ func InvocationConversation(invocation host.RPCInvocation) (webapi.ConversationI
 }
 
 // Reachable returns the calling conversation's Hosts, with RPC errors.
-func Reachable(ctx context.Context, shard HostShard, id webapi.ConversationID) ([]ReachableHost, error) {
+func Reachable(ctx context.Context, shard HostShard, id webapiproto.ConversationID) ([]ReachableHost, error) {
 	hosts, err := ConversationHosts(ctx, shard, id)
 	if err != nil {
 		return nil, &host.RPCError{Kind: host.HandlerFailed, Message: err.Error(), Err: err}
@@ -145,7 +145,7 @@ func listHosts(ctx context.Context, shard HostShard, invocation host.RPCInvocati
 }
 
 // connectionState is the product's connection label for a bound device.
-func connectionState(shard HostShard, id webapi.DeviceID) string {
+func connectionState(shard HostShard, id webapiproto.DeviceID) string {
 	if shard.Devices().Online(id) {
 		return "online"
 	}
@@ -261,7 +261,7 @@ func shellHost(ctx context.Context, shard HostShard, call host.Call[shellArgs], 
 func runOnHost(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	target ReachableHost,
 	script string,
 	invocation host.RPCInvocation,
@@ -335,7 +335,7 @@ func commandVerb[A any](
 
 type hostJob struct {
 	shard         HostShard
-	id            webapi.ConversationID
+	id            webapiproto.ConversationID
 	target        ReachableHost
 	script        string
 	invocation    host.RPCInvocation
@@ -439,7 +439,7 @@ func endHostJob(
 ) (remotehost.JobEnd, error) {
 	end, err := job.End(ctx)
 	if err != nil && ctx.Err() != nil {
-		_ = job.Kill(cleanup, runnerwire.Signal("SIGTERM")) // An already-ended job needs no signal.
+		_ = job.Kill(cleanup, runnerproto.Signal("SIGTERM")) // An already-ended job needs no signal.
 		stdout.Fail("command aborted")
 		if stdin != nil {
 			stdin.Fail("command aborted")
@@ -448,7 +448,7 @@ func endHostJob(
 		end, err = job.End(grace)
 		stop()
 		if err != nil {
-			_ = job.Kill(cleanup, runnerwire.Signal("SIGKILL")) // A concurrent end makes killing unnecessary.
+			_ = job.Kill(cleanup, runnerproto.Signal("SIGKILL")) // A concurrent end makes killing unnecessary.
 			end, err = job.End(cleanup)
 		}
 	}

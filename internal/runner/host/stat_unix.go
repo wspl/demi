@@ -6,10 +6,10 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
-func nativeStat(info os.FileInfo, result *runnerwire.FileStat) {
+func nativeStat(info os.FileInfo, result *runnerproto.FileStat) {
 	// os.Stat and os.Lstat on Unix document Sys as *syscall.Stat_t.
 	native := info.Sys().(*syscall.Stat_t)
 	uid, gid := native.Uid, native.Gid

@@ -4,15 +4,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // TextTokens estimates text as UTF-8 bytes divided by four, rounded up.
 func TextTokens(text string) uint64 { return (uint64(len(text)) + 3) / 4 }
 
 // BlockTokens estimates a block's text and media as request carries them.
-func BlockTokens(block core.Block, request *RequestView) uint64 {
+func BlockTokens(block types.Block, request *RequestView) uint64 {
 	text, media := blockEstimate(block, request)
 	return TextTokens(text) + media
 }
@@ -71,9 +71,9 @@ func MeasureRequest(systemPrompt string, items []provider.InferenceItem) Request
 					size.Bytes += uint64(len(p.Text))
 				case *provider.ResultImage:
 					size.Images++
-					size.Bytes += core.B64Bytes(p.Bytes.Data).Base64Len()
+					size.Bytes += types.B64Bytes(p.Bytes.Data).Base64Len()
 				case *provider.ResultVideo:
-					size.Bytes += core.B64Bytes(p.Bytes.Data).Base64Len()
+					size.Bytes += types.B64Bytes(p.Bytes.Data).Base64Len()
 				}
 			}
 		}
@@ -93,7 +93,7 @@ func (s *RequestSize) addContent(parts []provider.UserPart) {
 		case *provider.VideoPart:
 			s.addMedium(p.Medium)
 		case *provider.DocumentPart:
-			s.Bytes += core.B64Bytes(p.Bytes.Data).Base64Len()
+			s.Bytes += types.B64Bytes(p.Bytes.Data).Base64Len()
 		}
 	}
 }
@@ -102,20 +102,20 @@ func (s *RequestSize) addContent(parts []provider.UserPart) {
 func (s *RequestSize) addMedium(medium provider.Medium) {
 	switch m := medium.(type) {
 	case *provider.MediaBytes:
-		s.Bytes += core.B64Bytes(m.Data).Base64Len()
+		s.Bytes += types.B64Bytes(m.Data).Base64Len()
 	case *provider.MediaURL:
 		s.Bytes += uint64(len(m.URL))
 	}
 }
 
 // blockEstimate renders the transcript text counted by compaction, before bounds.
-func blockEstimate(block core.Block, request *RequestView) (string, uint64) {
+func blockEstimate(block types.Block, request *RequestView) (string, uint64) {
 	switch b := block.(type) {
-	case *core.UserBlock:
+	case *types.UserBlock:
 		return contentEstimate(b.Content, request)
-	case *core.SteerBlock:
+	case *types.SteerBlock:
 		return contentEstimate(b.Content, request)
-	case *core.ToolCallBlock:
+	case *types.ToolCallBlock:
 		lines := []string{b.ToolName, b.Input}
 		var media uint64
 		for _, part := range b.Output {
@@ -124,40 +124,40 @@ func blockEstimate(block core.Block, request *RequestView) (string, uint64) {
 			media += weight
 		}
 		return strings.Join(lines, "\n"), media
-	case *core.WakeupBlock:
+	case *types.WakeupBlock:
 		return WakeupText, 0
-	case *core.ContextBlock:
+	case *types.ContextBlock:
 		return b.Text, 0
-	case *core.AgentMessageBlock:
+	case *types.AgentMessageBlock:
 		// The message is already validated at entry, so its generated encoder cannot fail.
 		data, _ := b.Message.MarshalJSON()
 		return string(data), 0
-	case *core.ResumeBlock:
+	case *types.ResumeBlock:
 		return ResumeText, 0
-	case *core.ThinkingBlock:
+	case *types.ThinkingBlock:
 		return b.Text, 0
-	case *core.RedactedThinkingBlock:
+	case *types.RedactedThinkingBlock:
 		return b.Data, 0
-	case *core.TextBlock:
+	case *types.TextBlock:
 		return b.Text, 0
-	case *core.ResponseBlock:
+	case *types.ResponseBlock:
 		// Usage is validated when it enters the transcript.
 		data, _ := b.Usage.MarshalJSON()
 		return string(data), 0
-	case *core.ErrorBlock:
+	case *types.ErrorBlock:
 		return b.Message, 0
-	case *core.AbortBlock:
+	case *types.AbortBlock:
 		return "aborted", 0
-	case *core.CompactionBoundaryBlock:
+	case *types.CompactionBoundaryBlock:
 		return b.Summary, 0
-	case *core.CompactionMarkerBlock:
+	case *types.CompactionMarkerBlock:
 		return strconv.FormatUint(b.CompactedTokens, 10), 0
 	}
 	return "", 0
 }
 
 // contentEstimate counts each transcript part's text and native media weight.
-func contentEstimate(content []core.UserContentBlock, request *RequestView) (string, uint64) {
+func contentEstimate(content []types.UserContentBlock, request *RequestView) (string, uint64) {
 	lines := make([]string, 0, len(content))
 	var media uint64
 	for _, part := range content {
@@ -169,15 +169,15 @@ func contentEstimate(content []core.UserContentBlock, request *RequestView) (str
 }
 
 // contentPartEstimate uses the same media decision as replay without bounding text.
-func contentPartEstimate(part core.UserContentBlock, request *RequestView) (string, uint64) {
+func contentPartEstimate(part types.UserContentBlock, request *RequestView) (string, uint64) {
 	switch p := part.(type) {
-	case *core.UserText:
+	case *types.UserText:
 		return p.Text, 0
-	case *core.UserReference:
+	case *types.UserReference:
 		return p.Reference, 0
-	case *core.UserAttachment:
+	case *types.UserAttachment:
 		return p.Name + " " + p.Path, 0
-	case *core.UserImage:
+	case *types.UserImage:
 		medium, text := request.medium("image", p.Source)
 		switch m := medium.(type) {
 		case *provider.MediaBytes:
@@ -186,7 +186,7 @@ func contentPartEstimate(part core.UserContentBlock, request *RequestView) (stri
 			return m.URL, 1600
 		}
 		return text, 0
-	case *core.UserVideo:
+	case *types.UserVideo:
 		medium, text := request.medium("video", p.Source)
 		switch m := medium.(type) {
 		case *provider.MediaBytes:
@@ -195,9 +195,9 @@ func contentPartEstimate(part core.UserContentBlock, request *RequestView) (stri
 			return m.URL, 0
 		}
 		return text, 0
-	case *core.UserDocument:
+	case *types.UserDocument:
 		switch source := p.Source.(type) {
-		case *core.DocumentRef:
+		case *types.DocumentRef:
 			data, text := request.document(source)
 			if data == nil {
 				return text, 0
@@ -209,18 +209,18 @@ func contentPartEstimate(part core.UserContentBlock, request *RequestView) (stri
 }
 
 // resultEstimate weighs tool output without applying replay's text bound.
-func resultEstimate(part core.ToolResultContentBlock, request *RequestView) (string, uint64) {
+func resultEstimate(part types.ToolResultContentBlock, request *RequestView) (string, uint64) {
 	var kind string
-	var source core.ToolMediaSource
+	var source types.ToolMediaSource
 	switch p := part.(type) {
-	case *core.ToolText:
+	case *types.ToolText:
 		return p.Text, 0
-	case *core.ToolGone:
+	case *types.ToolGone:
 		return goneText(p), 0
-	case *core.ToolImage:
+	case *types.ToolImage:
 		kind = "image"
 		source = p.Source
-	case *core.ToolVideo:
+	case *types.ToolVideo:
 		kind = "video"
 		source = p.Source
 	}
@@ -238,13 +238,13 @@ func resultEstimate(part core.ToolResultContentBlock, request *RequestView) (str
 func imageWeight(data []byte) uint64 { return max(1600, (uint64(len(data))+999)/1000) }
 
 // canAnchorUsage requires a completed compaction before trusting reported usage.
-func canAnchorUsage(blocks []core.Block, start int) bool {
+func canAnchorUsage(blocks []types.Block, start int) bool {
 	anchor := true
 	if start < len(blocks) {
-		if boundary, ok := blocks[start].(*core.CompactionBoundaryBlock); ok {
+		if boundary, ok := blocks[start].(*types.CompactionBoundaryBlock); ok {
 			anchor = false
 			for _, block := range blocks {
-				if marker, ok := block.(*core.CompactionMarkerBlock); ok && marker.BoundaryID == boundary.BlockID {
+				if marker, ok := block.(*types.CompactionMarkerBlock); ok && marker.BoundaryID == boundary.BlockID {
 					anchor = true
 					break
 				}
@@ -255,14 +255,14 @@ func canAnchorUsage(blocks []core.Block, start int) bool {
 }
 
 // anchoredTokens adds later block estimates to the latest usable reported usage.
-func anchoredTokens(request *RequestView, blocks []core.Block) (uint64, bool) {
+func anchoredTokens(request *RequestView, blocks []types.Block) (uint64, bool) {
 	for i := len(blocks) - 1; i >= 0; i-- {
-		_, boundary := blocks[i].(*core.CompactionBoundaryBlock)
-		_, marker := blocks[i].(*core.CompactionMarkerBlock)
+		_, boundary := blocks[i].(*types.CompactionBoundaryBlock)
+		_, marker := blocks[i].(*types.CompactionMarkerBlock)
 		if boundary || marker {
 			break
 		}
-		if response, ok := blocks[i].(*core.ResponseBlock); ok {
+		if response, ok := blocks[i].(*types.ResponseBlock); ok {
 			u := response.Usage
 			tokens := u.InputTokens + u.OutputTokens + u.CacheReadTokens + u.CacheWriteTokens
 			if tokens == 0 {

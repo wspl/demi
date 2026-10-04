@@ -15,10 +15,10 @@ import (
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 	"go.uber.org/goleak"
 )
 
@@ -52,11 +52,11 @@ func start(t *testing.T, runtime *sessiontest.Runtime, config session.Config, tu
 			Runtime: runtime,
 			Store:   tree.Session("root"),
 			IDs:     transcripttest.NewSequentialIDs("id"),
-			Clock:   core.SystemClock{},
+			Clock:   types.SystemClock{},
 			Config:  config,
 		},
 	)
-	must(t, tree.CreateNode(t.Context(), store.RootRecord("root", core.SystemClock{}.Now()), s.FirstCheckpoint()))
+	must(t, tree.CreateNode(t.Context(), store.RootRecord("root", types.SystemClock{}.Now()), s.FirstCheckpoint()))
 	t.Cleanup(func() { must(t, s.Dispose(context.Background())) })
 	return &scenario{t: t, s: s, p: p, tree: tree, runtime: runtime, config: config, trace: trace}
 }
@@ -69,7 +69,7 @@ func setup(t *testing.T, turns ...providertest.Turn) *scenario {
 
 func (f *scenario) send(text, id string) *session.ActionAnswer {
 	f.t.Helper()
-	a, err := f.s.Send(storetest.Text(text), core.TurnID(id))
+	a, err := f.s.Send(storetest.Text(text), types.TurnID(id))
 	must(f.t, err)
 	return a
 }
@@ -103,14 +103,14 @@ func (f *scenario) restore(
 	cp store.Checkpoint,
 	turns ...providertest.Turn,
 ) (*session.Session, session.Continuation, *providertest.ScriptedRuntime) {
-	return f.restoreWith(cp, &sessiontest.Runtime{}, core.SystemClock{}, turns...)
+	return f.restoreWith(cp, &sessiontest.Runtime{}, types.SystemClock{}, turns...)
 }
 
 // restoreWith restores a checkpoint with explicit node hooks and clock.
 func (f *scenario) restoreWith(
 	cp store.Checkpoint,
 	runtime *sessiontest.Runtime,
-	clock core.Clock,
+	clock types.Clock,
 	turns ...providertest.Turn,
 ) (*session.Session, session.Continuation, *providertest.ScriptedRuntime) {
 	f.t.Helper()
@@ -200,51 +200,51 @@ func textOutcome(text string) session.ToolOutcome {
 	return session.ToolOutcome{Output: []provider.ResultPart{&provider.TextPart{Text: text}}}
 }
 
-func message(id string) core.AgentMessage {
-	return core.AgentMessage{
-		ID:          core.BlockID(id),
-		Sender:      core.Sender{ID: "child", Number: 1, Description: "worker", Round: 1},
+func message(id string) types.AgentMessage {
+	return types.AgentMessage{
+		ID:          types.BlockID(id),
+		Sender:      types.Sender{ID: "child", Number: 1, Description: "worker", Round: 1},
 		RecipientID: "root",
-		Timestamp:   core.UnixEpoch,
+		Timestamp:   types.UnixEpoch,
 		Content:     id,
-		Event:       &core.MessageEvent{},
+		Event:       &types.MessageEvent{},
 	}
 }
 
-func kinds(blocks []core.Block) []string {
+func kinds(blocks []types.Block) []string {
 	out := []string{}
 	for _, b := range blocks {
 		name := ""
 		switch b := b.(type) {
-		case *core.UserBlock:
+		case *types.UserBlock:
 			name = "user"
-		case *core.ContextBlock:
+		case *types.ContextBlock:
 			name = "context"
-		case *core.SteerBlock:
+		case *types.SteerBlock:
 			name = "steer"
-		case *core.AgentMessageBlock:
+		case *types.AgentMessageBlock:
 			name = "agent_message"
-		case *core.WakeupBlock:
+		case *types.WakeupBlock:
 			name = "wakeup"
-		case *core.TextBlock:
+		case *types.TextBlock:
 			name = "text"
-		case *core.ThinkingBlock:
+		case *types.ThinkingBlock:
 			name = "thinking"
-		case *core.RedactedThinkingBlock:
+		case *types.RedactedThinkingBlock:
 			name = "redacted_thinking"
-		case *core.ResponseBlock:
+		case *types.ResponseBlock:
 			name = "response"
-		case *core.ToolCallBlock:
+		case *types.ToolCallBlock:
 			name = "tool_call:" + string(b.Status)
-		case *core.ErrorBlock:
+		case *types.ErrorBlock:
 			name = "error"
-		case *core.AbortBlock:
+		case *types.AbortBlock:
 			name = "abort"
-		case *core.ResumeBlock:
+		case *types.ResumeBlock:
 			name = "resume"
-		case *core.CompactionBoundaryBlock:
+		case *types.CompactionBoundaryBlock:
 			name = "compaction_boundary"
-		case *core.CompactionMarkerBlock:
+		case *types.CompactionMarkerBlock:
 			name = "compaction_marker"
 		}
 		out = append(out, name)
@@ -277,20 +277,20 @@ func edit(t *testing.T, s *session.Session, target int, id string) session.EditS
 	t.Helper()
 	snap := s.Transcript()
 	digest, err := session.EditDigest(
-		framewire.EditRequest{
-			OperationID:   core.OperationID(id),
+		conversationproto.EditRequest{
+			OperationID:   types.OperationID(id),
 			TargetBlockID: snap.Blocks[target].ID(),
 			Version:       snap.Version,
-			Content:       []framewire.ClientContent{&framewire.TextContent{Text: "replacement"}},
+			Content:       []conversationproto.ClientContent{&conversationproto.TextContent{Text: "replacement"}},
 		},
 	)
 	must(t, err)
 	return session.EditSubmission{
-		OperationID: core.OperationID(id),
+		OperationID: types.OperationID(id),
 		Target:      snap.Blocks[target].ID(),
 		Version:     snap.Version,
 		Digest:      digest,
-		Content:     []session.EditContent{&session.Content{Block: &core.UserText{Text: "replacement"}}},
+		Content:     []session.EditContent{&session.Content{Block: &types.UserText{Text: "replacement"}}},
 	}
 }
 

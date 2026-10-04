@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Client owns the machine manager's socket, opened on first use and again by
@@ -26,7 +26,7 @@ type Client struct {
 	dial func(context.Context, string, string) (net.Conn, error)
 }
 type clientCommand struct {
-	call       machinewire.Call
+	call       machinemanagerproto.Call
 	disconnect bool
 	final      bool
 	answer     chan clientAnswer
@@ -49,7 +49,7 @@ type managerConnection struct {
 // NewClient creates a client and the sole receiver of sandbox death events.
 // ctx belongs to the backend lifetime. The bounded death queue backpressures
 // the reader. The backend drains it until Close closes the channel.
-func NewClient(ctx context.Context, socket string) (*Client, <-chan webapi.DeviceID) {
+func NewClient(ctx context.Context, socket string) (*Client, <-chan webapiproto.DeviceID) {
 	life, cancel := context.WithCancel(ctx)
 	c := &Client{
 		ctx:      life,
@@ -58,14 +58,14 @@ func NewClient(ctx context.Context, socket string) (*Client, <-chan webapi.Devic
 		done:     make(chan struct{}),
 		dial:     (&net.Dialer{}).DialContext,
 	}
-	deaths := make(chan webapi.DeviceID, 256)
+	deaths := make(chan webapiproto.DeviceID, 256)
 	go c.run(life, socket, deaths)
 	return c, deaths
 }
 
 // Call runs params and decodes the reply through its operation contract.
 // Cancellation ends the wait, never the manager's operation or a retry of it.
-func Call[T any](ctx context.Context, client *Client, params machinewire.Operation[T]) (T, error) {
+func Call[T any](ctx context.Context, client *Client, params machinemanagerproto.Operation[T]) (T, error) {
 	var zero T
 	call := params.Call()
 	answer, err := client.command(ctx, clientCommand{call: call})
@@ -82,7 +82,7 @@ func Call[T any](ctx context.Context, client *Client, params machinewire.Operati
 // Disconnect reconciles a live connection, then disconnects even on failure.
 // Nothing connects solely to disconnect; subsequent calls can reconnect.
 func (c *Client) Disconnect(ctx context.Context) error {
-	_, err := c.command(ctx, clientCommand{call: &machinewire.Reconcile{}, disconnect: true})
+	_, err := c.command(ctx, clientCommand{call: &machinemanagerproto.Reconcile{}, disconnect: true})
 	return err
 }
 
@@ -91,7 +91,7 @@ func (c *Client) Disconnect(ctx context.Context) error {
 func (c *Client) Close(ctx context.Context) error {
 	var err error
 	if c.closing.CompareAndSwap(false, true) {
-		_, err = c.command(ctx, clientCommand{call: &machinewire.Reconcile{}, disconnect: true, final: true})
+		_, err = c.command(ctx, clientCommand{call: &machinemanagerproto.Reconcile{}, disconnect: true, final: true})
 		c.cancel()
 	}
 	select {
@@ -144,7 +144,7 @@ func unavailable(operation string, err error) error {
 }
 
 // run exclusively owns connection identity, request IDs and pending calls.
-func (c *Client) run(ctx context.Context, socket string, deaths chan<- webapi.DeviceID) {
+func (c *Client) run(ctx context.Context, socket string, deaths chan<- webapiproto.DeviceID) {
 	defer close(c.done)
 	defer close(deaths)
 	var connection *managerConnection
@@ -206,10 +206,10 @@ func readManager(ctx context.Context, conn net.Conn) *managerConnection {
 			}
 		}()
 		scanner := bufio.NewScanner(conn)
-		scanner.Buffer(make([]byte, 4096), machinewire.MaxLineBytes+2)
+		scanner.Buffer(make([]byte, 4096), machinemanagerproto.MaxLineBytes+2)
 		for scanner.Scan() {
 			data := append([]byte(nil), scanner.Bytes()...)
-			if len(data) > machinewire.MaxLineBytes {
+			if len(data) > machinemanagerproto.MaxLineBytes {
 				break
 			}
 			select {
@@ -276,7 +276,7 @@ func (c *Client) sendCommand(
 	}
 	id := strconv.FormatUint(*next, 10)
 	*next++
-	line, err := machinewire.EncodeLine(machinewire.MachineRequest{ID: id, Call: command.call})
+	line, err := machinemanagerproto.EncodeLine(machinemanagerproto.MachineRequest{ID: id, Call: command.call})
 	if err != nil {
 		command.answer <- clientAnswer{err: err}
 		return false
@@ -297,7 +297,7 @@ func receiveManagerLine(
 	ctx context.Context,
 	line receivedLine,
 	pending map[string]clientCommand,
-	deaths chan<- webapi.DeviceID,
+	deaths chan<- webapiproto.DeviceID,
 	drop func(error),
 ) bool {
 	if line.err != nil {
@@ -323,7 +323,7 @@ func receiveManagerLine(
 	delete(pending, id)
 	if p.disconnect {
 		if answer.err == nil {
-			_, answer.err = machinewire.ReconcileParams{}.DecodeOutput(answer.data)
+			_, answer.err = machinemanagerproto.ReconcileParams{}.DecodeOutput(answer.data)
 			if answer.err != nil {
 				answer.err = fmt.Errorf(
 					"the machine manager answered %s with an unexpected result: %w",
@@ -339,8 +339,12 @@ func receiveManagerLine(
 }
 
 // managerAnswer decodes one response and forwards death events before any reply delivery.
-func managerAnswer(ctx context.Context, data []byte, deaths chan<- webapi.DeviceID) (string, clientAnswer, bool, bool) {
-	response, err := machinewire.DecodeResponse(data)
+func managerAnswer(
+	ctx context.Context,
+	data []byte,
+	deaths chan<- webapiproto.DeviceID,
+) (string, clientAnswer, bool, bool) {
+	response, err := machinemanagerproto.DecodeResponse(data)
 	if err != nil {
 		slog.Warn("an unreadable line from the machine manager was dropped", "error", err)
 		return "", clientAnswer{}, false, false
@@ -348,8 +352,8 @@ func managerAnswer(ctx context.Context, data []byte, deaths chan<- webapi.Device
 	var id string
 	var answer clientAnswer
 	switch response := response.(type) {
-	case *machinewire.Death:
-		device, err := webapi.ParseDeviceID(response.DeviceID)
+	case *machinemanagerproto.Death:
+		device, err := webapiproto.ParseDeviceID(response.DeviceID)
 		if err != nil {
 			slog.Warn("the machine manager reported an invalid device death", "error", err)
 			return "", clientAnswer{}, false, false
@@ -360,10 +364,10 @@ func managerAnswer(ctx context.Context, data []byte, deaths chan<- webapi.Device
 			return "", clientAnswer{}, false, true
 		}
 		return "", clientAnswer{}, false, false
-	case *machinewire.OK:
+	case *machinemanagerproto.OK:
 		id = response.ID
 		answer.data = response.Result
-	case *machinewire.ErrorResponse:
+	case *machinemanagerproto.ErrorResponse:
 		id = response.ID
 		answer.err = errors.New(response.Message)
 	}

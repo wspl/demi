@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ReorderConversations moves the user's conversation `moved` before `before`, or to the end,
@@ -17,11 +17,11 @@ import (
 // that partition, an archived one included.
 func (c *ControlService) ReorderConversations(
 	ctx context.Context,
-	user webapi.UserID,
-	moved webapi.ConversationID,
-	before *webapi.ConversationID,
+	user webapiproto.UserID,
+	moved webapiproto.ConversationID,
+	before *webapiproto.ConversationID,
 ) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (bool, error) {
 		type partition struct {
 			archived, pinned bool
 			workspace        *string
@@ -72,11 +72,11 @@ ORDER BY sort_order,id`,
 // false when either is not one of the user's workspaces.
 func (c *ControlService) ReorderWorkspaces(
 	ctx context.Context,
-	user webapi.UserID,
-	moved webapi.WorkspaceID,
-	before *webapi.WorkspaceID,
+	user webapiproto.UserID,
+	moved webapiproto.WorkspaceID,
+	before *webapiproto.WorkspaceID,
 ) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (bool, error) {
 		peers, err := queryRecords(
 			ctx,
 			tx,

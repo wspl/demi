@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // A private temporary directory is the only resource these checks use.
@@ -49,11 +49,11 @@ func TestInstallationLockReleasedWithActiveRecord(t *testing.T) {
 }
 
 func TestInstallationIdentityUsesNormalizedBackend(t *testing.T) {
-	first, err := runnerwire.ParseBackendURL("HTTP://LOCALHOST:80")
+	first, err := runnerproto.ParseBackendURL("HTTP://LOCALHOST:80")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := runnerwire.ParseBackendURL("http://localhost/")
+	second, err := runnerproto.ParseBackendURL("http://localhost/")
 	if err != nil {
 		t.Fatal(err)
 	}

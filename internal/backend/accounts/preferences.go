@@ -3,14 +3,14 @@ package accounts
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // PreferenceStore reads preferences and atomically applies serializable patches.
 // The database owns the only merge; concurrent changes to other fields survive.
 type PreferenceStore interface {
-	Preferences(context.Context, webapi.UserID) (webapi.Preferences, error)
-	PatchPreferences(context.Context, webapi.UserID, webapi.PreferencesPatch) (webapi.Preferences, error)
+	Preferences(context.Context, webapiproto.UserID) (webapiproto.Preferences, error)
+	PatchPreferences(context.Context, webapiproto.UserID, webapiproto.PreferencesPatch) (webapiproto.Preferences, error)
 }
 
 // Preferences reads and changes only the authenticated caller's preferences.
@@ -21,19 +21,19 @@ type Preferences struct{ control PreferenceStore }
 func NewPreferences(control PreferenceStore) *Preferences { return &Preferences{control: control} }
 
 // Read returns the authenticated user's saved overrides.
-func (p *Preferences) Read(ctx context.Context, caller webapi.UserID) (webapi.Preferences, error) {
+func (p *Preferences) Read(ctx context.Context, caller webapiproto.UserID) (webapiproto.Preferences, error) {
 	return p.control.Preferences(ctx, caller)
 }
 
 // Patch validates the locale and delegates one atomic patch to storage.
 func (p *Preferences) Patch(
 	ctx context.Context,
-	caller webapi.UserID,
-	patch webapi.PreferencesPatch,
-) (webapi.Preferences, error) {
+	caller webapiproto.UserID,
+	patch webapiproto.PreferencesPatch,
+) (webapiproto.Preferences, error) {
 	checked, err := Check(patch)
 	if err != nil {
-		return webapi.Preferences{}, err
+		return webapiproto.Preferences{}, err
 	}
 	return p.control.PatchPreferences(ctx, caller, checked.patch)
 }

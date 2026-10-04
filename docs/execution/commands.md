@@ -64,7 +64,7 @@ The dispatcher validates `{ "path": "notes.txt" }` against `input` before
 invoking `file.read`, and the native service decodes the same value into
 `ReadArgs`, together with the invocation's cwd and IO. The arguments and
 results of every `demi.file` operation are types of one contract package,
-`internal/cmdpkg/file/fileop`, that the declarations and the native program both import, so a
+`internal/commandpackage/file/fileproto`, that the declarations and the native program both import, so a
 declaration and its handler cannot describe different arguments
 ([Contract packages](../architecture/contracts.md#contract-packages)).
 
@@ -113,7 +113,7 @@ happens when the command set is built, before any call.
 ## Parse input and render help
 
 One implementation of everything this section describes, the command-tree
-package `internal/declare`
+package `internal/commanddecl`
 ([Packages](../architecture/packages.md#go-package-boundaries)), serves both
 the runner and the backend. The runner parses argv and answers `--help` with it;
 the backend renders the model's command help and checks registrations with it.
@@ -279,7 +279,7 @@ one connection take turns. A failed send makes the selection
 uncertain; the next job sends its manifest again, even if it was selected before
 the failed send.
 
-The manifest's envelope belongs to the runner wire's contract package (`internal/runnerwire`) and its
+The manifest's envelope belongs to the runner wire's contract package (`internal/runnerproto`) and its
 nodes are the declarations themselves, so the adapter that builds a manifest
 and the runner that checks it share one definition and one hash. Before
 installing a manifest, the runner verifies that every descriptor matches its

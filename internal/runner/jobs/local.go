@@ -6,8 +6,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
 )
 
 // Server owns the private local endpoint and every command client it accepts.
@@ -25,7 +25,7 @@ type Server struct {
 }
 
 // StartServer binds the endpoint and serves handler until ctx ends or Close runs.
-func StartServer(ctx context.Context, handler cmdsdk.Handler[commandwire.LocalInvocation]) (*Server, error) {
+func StartServer(ctx context.Context, handler commandsdk.Handler[commandproto.LocalInvocation]) (*Server, error) {
 	listener, err := BindListener(ctx)
 	if err != nil {
 		return nil, err
@@ -108,19 +108,19 @@ func (l *Listener) Close() error {
 }
 
 // serve owns the endpoint's accepted command connections and joins them on exit.
-func (s *Server) serve(handler cmdsdk.Handler[commandwire.LocalInvocation]) {
+func (s *Server) serve(handler commandsdk.Handler[commandproto.LocalInvocation]) {
 	defer close(s.done)
 	var clients sync.WaitGroup
 	var failureMu sync.Mutex
 	var fatal error
-	var backoff cmdsdk.Backoff
+	var backoff commandsdk.Backoff
 	for {
 		conn, err := s.listener.Accept(s.lifetime)
 		if err != nil {
 			if s.lifetime.Err() != nil {
 				break
 			}
-			if cmdsdk.Exhausted(err) {
+			if commandsdk.Exhausted(err) {
 				if backoff.Wait(s.lifetime) == nil {
 					continue
 				}
@@ -129,7 +129,7 @@ func (s *Server) serve(handler cmdsdk.Handler[commandwire.LocalInvocation]) {
 			s.err = err
 			break
 		}
-		backoff = cmdsdk.Backoff{}
+		backoff = commandsdk.Backoff{}
 		s.changeActive(1)
 		clients.Add(1)
 		go func() {
@@ -140,11 +140,11 @@ func (s *Server) serve(handler cmdsdk.Handler[commandwire.LocalInvocation]) {
 				_ = conn.Close()
 				close(interrupted)
 			})
-			err := cmdsdk.ServeLocal(s.lifetime, conn, handler)
+			err := commandsdk.ServeLocal(s.lifetime, conn, handler)
 			if !stop() {
 				<-interrupted
 			}
-			if errors.Is(err, cmdsdk.ErrConversationCleanup) || errors.Is(err, cmdsdk.ErrCancellationDeadline) {
+			if errors.Is(err, commandsdk.ErrConversationCleanup) || errors.Is(err, commandsdk.ErrCancellationDeadline) {
 				failureMu.Lock()
 				fatal = errors.Join(fatal, err)
 				failureMu.Unlock()

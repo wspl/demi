@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/agent/tools"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Cost: in-process runner and local storage; completion is a runner event.
@@ -55,23 +55,23 @@ func TestConnectedNodeJobKeepsAdmissionThroughEditRetention(t *testing.T) {
 			host.ExecRequest{Script: "edit file", Caller: host.JobCaller{Node: RootOf(record.ID)}, ToolUseID: "call"},
 		)
 	})
-	_ = nextHostMessage[*runnerwire.ManifestMessage](t, r)
-	job := nextHostMessage[*runnerwire.JobStart](t, r)
+	_ = nextHostMessage[*runnerproto.ManifestMessage](t, r)
+	job := nextHostMessage[*runnerproto.JobStart](t, r)
 	if job.CWD != "/work" {
 		t.Fatal(job.CWD)
 	}
 	r.send(
 		t,
-		&runnerwire.JobExit{
+		&runnerproto.JobExit{
 			JobID:    job.JobID,
 			ExitCode: new(int32(7)),
-			Files: []runnerwire.JobFileChange{
+			Files: []runnerproto.JobFileChange{
 				{
 					Path:    "/work/file",
-					Kind:    commandwire.EditModified,
+					Kind:    commandproto.EditModified,
 					Added:   1,
 					Removed: 1,
-					Edits: []commandwire.EditCopies{
+					Edits: []commandproto.EditCopies{
 						{Original: new("/copies/before"), Modified: new("/copies/after")},
 					},
 				},
@@ -88,7 +88,7 @@ func TestConnectedNodeJobKeepsAdmissionThroughEditRetention(t *testing.T) {
 	if path := sendHostRead(t, s, r, device, "after\n"); path != "/copies/after" {
 		t.Fatal(path)
 	}
-	release := nextHostMessage[*runnerwire.JobRelease](t, r)
+	release := nextHostMessage[*runnerproto.JobRelease](t, r)
 	if release.JobID != job.JobID {
 		t.Fatal(release)
 	}
@@ -105,7 +105,7 @@ func TestConnectedNodeJobKeepsAdmissionThroughEditRetention(t *testing.T) {
 	if copies == nil {
 		t.Fatal("edit copies not retained")
 	}
-	for blob, expected := range map[core.BlobRef]string{copies.Original: "before\n", copies.Modified: "after\n"} {
+	for blob, expected := range map[types.BlobRef]string{copies.Original: "before\n", copies.Modified: "after\n"} {
 		data, exists, err := s.blobs.Read(t.Context(), blob)
 		if err != nil || !exists || string(data) != expected {
 			t.Fatal(string(data), exists, err)

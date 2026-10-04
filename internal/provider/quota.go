@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ProbeCost describes whether a quota probe spends inference.
@@ -44,9 +44,9 @@ func (*CLIObservation) quotaObservation()  {}
 
 // ProbeReading is what a vendor usage endpoint reports about an account.
 type ProbeReading struct {
-	Plan         *core.QuotaPlan
+	Plan         *types.QuotaPlan
 	AccountLabel *string
-	Windows      []core.QuotaWindow
+	Windows      []types.QuotaWindow
 }
 
 // ErrQuotaUnsupported means the provider cannot read its usage.
@@ -60,36 +60,36 @@ type QuotaSource interface {
 	// ProbeCost reports the cost of a quota probe; ok is false when the family cannot probe.
 	ProbeCost() (cost ProbeCost, ok bool)
 	Probe(context.Context) (ProbeReading, error)
-	Observe(Observation) []core.QuotaWindow
+	Observe(Observation) []types.QuotaWindow
 }
 
 // QuotaSnapshotStore merges each update exactly once, atomically with storing it.
 // Returned snapshots are independent values, owned by the caller.
 type QuotaSnapshotStore interface {
-	Latest() *core.QuotaSnapshot
-	Update(func(*core.QuotaSnapshot) core.QuotaSnapshot) *core.QuotaSnapshot
+	Latest() *types.QuotaSnapshot
+	Update(func(*types.QuotaSnapshot) types.QuotaSnapshot) *types.QuotaSnapshot
 }
 
 // Quota is the quota of the particular account a provider stands for.
 type Quota struct {
 	source QuotaSource
 	store  QuotaSnapshotStore
-	clock  core.Clock
+	clock  types.Clock
 }
 
 // NewQuota connects a family source to its account's store.
-func NewQuota(source QuotaSource, store QuotaSnapshotStore, clock core.Clock) *Quota {
+func NewQuota(source QuotaSource, store QuotaSnapshotStore, clock types.Clock) *Quota {
 	return &Quota{source: source, store: store, clock: clock}
 }
 
 // Latest reads the kept snapshot without probing.
-func (q *Quota) Latest() *core.QuotaSnapshot { return q.store.Latest() }
+func (q *Quota) Latest() *types.QuotaSnapshot { return q.store.Latest() }
 
 // ProbeCost reports the probe cost; ok is false when the family cannot probe.
 func (q *Quota) ProbeCost() (ProbeCost, bool) { return q.source.ProbeCost() }
 
 // Probe reads a free usage endpoint and merges its plan, label and windows.
-func (q *Quota) Probe(ctx context.Context) (*core.QuotaSnapshot, error) {
+func (q *Quota) Probe(ctx context.Context) (*types.QuotaSnapshot, error) {
 	cost, ok := q.source.ProbeCost()
 	if !ok {
 		return nil, ErrQuotaUnsupported
@@ -102,7 +102,7 @@ func (q *Quota) Probe(ctx context.Context) (*core.QuotaSnapshot, error) {
 		return nil, err
 	}
 	now := q.clock.Now()
-	return q.store.Update(func(previous *core.QuotaSnapshot) core.QuotaSnapshot {
+	return q.store.Update(func(previous *types.QuotaSnapshot) types.QuotaSnapshot {
 		return mergeQuota(previous, reading, "probe", now)
 	}), nil
 }
@@ -114,7 +114,7 @@ func (q *Quota) Observe(observation Observation) {
 		return
 	}
 	now := q.clock.Now()
-	q.store.Update(func(previous *core.QuotaSnapshot) core.QuotaSnapshot {
+	q.store.Update(func(previous *types.QuotaSnapshot) types.QuotaSnapshot {
 		reading := ProbeReading{Windows: windows}
 		if previous != nil {
 			reading.Plan = previous.Plan
@@ -126,12 +126,12 @@ func (q *Quota) Observe(observation Observation) {
 
 // mergeQuota preserves unnamed windows and replaces named windows in place.
 func mergeQuota(
-	previous *core.QuotaSnapshot,
+	previous *types.QuotaSnapshot,
 	reading ProbeReading,
-	source core.SnapshotSource,
-	now core.Timestamp,
-) core.QuotaSnapshot {
-	windows := make([]core.QuotaWindow, 0)
+	source types.SnapshotSource,
+	now types.Timestamp,
+) types.QuotaSnapshot {
+	windows := make([]types.QuotaWindow, 0)
 	if previous != nil {
 		windows = append(windows, previous.Windows...)
 	}
@@ -148,7 +148,7 @@ func mergeQuota(
 			windows = append(windows, window)
 		}
 	}
-	return core.QuotaSnapshot{
+	return types.QuotaSnapshot{
 		ObservedAt:   now,
 		Source:       source,
 		Plan:         reading.Plan,
@@ -160,11 +160,11 @@ func mergeQuota(
 // MemorySnapshots is an in-memory account snapshot store. Zero is ready to use.
 type MemorySnapshots struct {
 	mu     sync.Mutex
-	latest *core.QuotaSnapshot
+	latest *types.QuotaSnapshot
 }
 
 // Latest returns an independent snapshot without IO.
-func (s *MemorySnapshots) Latest() *core.QuotaSnapshot {
+func (s *MemorySnapshots) Latest() *types.QuotaSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return cloneSnapshot(s.latest)
@@ -172,7 +172,7 @@ func (s *MemorySnapshots) Latest() *core.QuotaSnapshot {
 
 // Update atomically calls next once and stores the result. The callback must
 // neither block nor call back into the store.
-func (s *MemorySnapshots) Update(next func(*core.QuotaSnapshot) core.QuotaSnapshot) *core.QuotaSnapshot {
+func (s *MemorySnapshots) Update(next func(*types.QuotaSnapshot) types.QuotaSnapshot) *types.QuotaSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	value := next(cloneSnapshot(s.latest))
@@ -181,7 +181,7 @@ func (s *MemorySnapshots) Update(next func(*core.QuotaSnapshot) core.QuotaSnapsh
 }
 
 // cloneSnapshot prevents caller mutations from changing a kept account snapshot.
-func cloneSnapshot(s *core.QuotaSnapshot) *core.QuotaSnapshot {
+func cloneSnapshot(s *types.QuotaSnapshot) *types.QuotaSnapshot {
 	if s == nil {
 		return nil
 	}
@@ -194,7 +194,7 @@ func cloneSnapshot(s *core.QuotaSnapshot) *core.QuotaSnapshot {
 		p := *s.AccountLabel
 		value.AccountLabel = &p
 	}
-	value.Windows = append([]core.QuotaWindow{}, s.Windows...)
+	value.Windows = append([]types.QuotaWindow{}, s.Windows...)
 	for i := range value.Windows {
 		w := &value.Windows[i]
 		if w.UsedPercent != nil {
@@ -251,11 +251,11 @@ func UsedPercentFromRatio(used, limit float64) *float64 {
 }
 
 // Severity reads critical from 95 percent and warning from 80 percent.
-func Severity(used *float64) *core.QuotaSeverity {
+func Severity(used *float64) *types.QuotaSeverity {
 	if used == nil {
 		return nil
 	}
-	result := core.QuotaSeverity("normal")
+	result := types.QuotaSeverity("normal")
 	if *used >= 95 {
 		result = "critical"
 	} else if *used >= 80 {
@@ -265,12 +265,12 @@ func Severity(used *float64) *core.QuotaSeverity {
 }
 
 // UnixSeconds reads a reset time, flooring fractional seconds to milliseconds.
-func UnixSeconds(seconds float64) *core.Timestamp {
+func UnixSeconds(seconds float64) *types.Timestamp {
 	ms := math.Floor(seconds * 1000)
 	if math.IsNaN(ms) || math.IsInf(ms, 0) || math.Abs(ms) >= 9e15 {
 		return nil
 	}
-	result, err := core.TimestampFromMillisecond(int64(ms))
+	result, err := types.TimestampFromMillisecond(int64(ms))
 	if err != nil {
 		return nil
 	}
@@ -278,12 +278,12 @@ func UnixSeconds(seconds float64) *core.Timestamp {
 }
 
 // RFC3339 reads a vendor's reset time at millisecond precision.
-func RFC3339(text string) *core.Timestamp {
+func RFC3339(text string) *types.Timestamp {
 	parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(text))
 	if err != nil {
 		return nil
 	}
-	result, err := core.TimestampFromTime(parsed)
+	result, err := types.TimestampFromTime(parsed)
 	if err != nil {
 		return nil
 	}

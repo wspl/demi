@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/wspl/demi/internal/agent/session"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // connections snapshots the sockets attached to this conversation.
@@ -44,7 +44,7 @@ func (t *Tree[H]) observeConnection(c *Connection[H], node *Node[H]) session.Sna
 	state := c.stateObservation
 	if attached {
 		if c.observations == nil {
-			c.observations = make(map[core.NodeID]*session.Subscription)
+			c.observations = make(map[types.NodeID]*session.Subscription)
 		}
 		c.observations[node.ID()] = subscription
 	}
@@ -101,7 +101,7 @@ func (t *Tree[H]) connectionEventLocked(
 	if node.ID() != t.id {
 		if e, ok := event.(*session.TranscriptChanged); ok {
 			c.send(
-				&framewire.SubagentTranscriptPatchFrame{
+				&conversationproto.SubagentTranscriptPatchFrame{
 					SubagentID: node.ID(),
 					Patches:    e.Patches,
 					Revision:   e.Revision,
@@ -115,9 +115,9 @@ func (t *Tree[H]) connectionEventLocked(
 		if reply != nil && reply.operation == e.Receipt.OperationID && reply.digest == e.Receipt.Digest {
 			c.editReply = nil
 			c.send(
-				&framewire.EditResultFrame{
+				&conversationproto.EditResultFrame{
 					OperationID: e.Receipt.OperationID,
-					Outcome:     &framewire.AcceptedEdit{TurnID: e.Receipt.TurnID},
+					Outcome:     &conversationproto.AcceptedEdit{TurnID: e.Receipt.TurnID},
 				},
 			)
 		}

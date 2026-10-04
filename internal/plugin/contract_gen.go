@@ -5,11 +5,11 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	commanddecl "github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/contract"
-	core "github.com/wspl/demi/internal/core"
-	declare "github.com/wspl/demi/internal/declare"
 	host "github.com/wspl/demi/internal/host"
-	webapi "github.com/wspl/demi/internal/webapi"
+	types "github.com/wspl/demi/internal/types"
+	webapiproto "github.com/wspl/demi/internal/webapiproto"
 )
 
 func DecodeCallKind(data []byte) (CallKind, error) { return contract.Decode[CallKind](data) }
@@ -256,7 +256,7 @@ func (v *ConversationHost) UnmarshalJSON(data []byte) error {
 			return contract.At("device", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.DeviceID](raw)
+			value, err := contract.Decode[webapiproto.DeviceID](raw)
 			if err != nil {
 				return contract.At("device", err)
 			}
@@ -370,7 +370,7 @@ func (v *DirectoryFile) UnmarshalJSON(data []byte) error {
 			return contract.At("blob", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.BlobRef](raw)
+			value, err := contract.Decode[types.BlobRef](raw)
 			if err != nil {
 				return contract.At("blob", err)
 			}
@@ -966,7 +966,7 @@ func (v *ExposeList) UnmarshalJSON(data []byte) error {
 			return contract.At("listedAt", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.Timestamp](raw)
+			value, err := contract.Decode[types.Timestamp](raw)
 			if err != nil {
 				return contract.At("listedAt", err)
 			}
@@ -1061,7 +1061,7 @@ func (v *ExposeRecord) UnmarshalJSON(data []byte) error {
 			return contract.At("id", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.ExposeID](raw)
+			value, err := contract.Decode[webapiproto.ExposeID](raw)
 			if err != nil {
 				return contract.At("id", err)
 			}
@@ -1074,7 +1074,7 @@ func (v *ExposeRecord) UnmarshalJSON(data []byte) error {
 			return contract.At("device", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.DeviceID](raw)
+			value, err := contract.Decode[webapiproto.DeviceID](raw)
 			if err != nil {
 				return contract.At("device", err)
 			}
@@ -1100,7 +1100,7 @@ func (v *ExposeRecord) UnmarshalJSON(data []byte) error {
 			return contract.At("address", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.ExposeAddress](raw)
+			value, err := contract.Decode[webapiproto.ExposeAddress](raw)
 			if err != nil {
 				return contract.At("address", err)
 			}
@@ -1126,7 +1126,7 @@ func (v *ExposeRecord) UnmarshalJSON(data []byte) error {
 			return contract.At("createdAt", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.Timestamp](raw)
+			value, err := contract.Decode[types.Timestamp](raw)
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
@@ -1139,7 +1139,7 @@ func (v *ExposeRecord) UnmarshalJSON(data []byte) error {
 			return contract.At("expiresAt", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.Timestamp](raw)
+			value, err := contract.Decode[types.Timestamp](raw)
 			if err != nil {
 				return contract.At("expiresAt", err)
 			}
@@ -1553,7 +1553,7 @@ func (v *HostFileFile) UnmarshalJSON(data []byte) error {
 			return contract.At("bytes", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.B64Bytes](raw)
+			value, err := contract.Decode[types.B64Bytes](raw)
 			if err != nil {
 				return contract.At("bytes", err)
 			}
@@ -1988,11 +1988,11 @@ func (v *Manifest) UnmarshalJSON(data []byte) error {
 			next.Commands = value
 		}
 	}
-	next.Profiles = make([]core.Profile, 0)
+	next.Profiles = make([]types.Profile, 0)
 	{
 		raw, ok := obj["profiles"]
 		if ok {
-			value, err := func(b []byte) ([]core.Profile, error) { return contract.List(b, contract.Decode[core.Profile]) }(raw)
+			value, err := func(b []byte) ([]types.Profile, error) { return contract.List(b, contract.Decode[types.Profile]) }(raw)
 			if err != nil {
 				return contract.At("profiles", err)
 			}
@@ -2043,7 +2043,7 @@ func (v Manifest) MarshalJSON() ([]byte, error) {
 		v.Commands = make([]Commands, 0)
 	}
 	if v.Profiles == nil {
-		v.Profiles = make([]core.Profile, 0)
+		v.Profiles = make([]types.Profile, 0)
 	}
 	if v.Streams == nil {
 		v.Streams = make([]Stream, 0)
@@ -2153,12 +2153,12 @@ func (v *Method) UnmarshalJSON(data []byte) error {
 			next.Result = value
 		}
 	}
-	next.Operations = make([]declare.NativeOperation, 0)
+	next.Operations = make([]commanddecl.NativeOperation, 0)
 	{
 		raw, ok := obj["operations"]
 		if ok {
-			value, err := func(b []byte) ([]declare.NativeOperation, error) {
-				return contract.List(b, contract.Decode[declare.NativeOperation])
+			value, err := func(b []byte) ([]commanddecl.NativeOperation, error) {
+				return contract.List(b, contract.Decode[commanddecl.NativeOperation])
 			}(raw)
 			if err != nil {
 				return contract.At("operations", err)
@@ -2174,7 +2174,7 @@ func (v *Method) UnmarshalJSON(data []byte) error {
 }
 func (v Method) MarshalJSON() ([]byte, error) {
 	if v.Operations == nil {
-		v.Operations = make([]declare.NativeOperation, 0)
+		v.Operations = make([]commanddecl.NativeOperation, 0)
 	}
 	if err := v.Validate(); err != nil {
 		return nil, err
@@ -2673,7 +2673,7 @@ func (v *PortAnswerBlob) UnmarshalJSON(data []byte) error {
 			return contract.At("blob", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.BlobRef](raw)
+			value, err := contract.Decode[types.BlobRef](raw)
 			if err != nil {
 				return contract.At("blob", err)
 			}
@@ -2735,7 +2735,7 @@ func (v *PortAnswerBytes) UnmarshalJSON(data []byte) error {
 		raw, ok := obj["bytes"]
 		if ok {
 			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*core.B64Bytes, error) { return contract.Pointer(b, contract.Decode[core.B64Bytes]) }(raw)
+				value, err := func(b []byte) (*types.B64Bytes, error) { return contract.Pointer(b, contract.Decode[types.B64Bytes]) }(raw)
 				if err != nil {
 					return contract.At("bytes", err)
 				}
@@ -3238,7 +3238,7 @@ func (v *PortAnswerPanel) UnmarshalJSON(data []byte) error {
 			return contract.At("panel", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.WorkPanel](raw)
+			value, err := contract.Decode[webapiproto.WorkPanel](raw)
 			if err != nil {
 				return contract.At("panel", err)
 			}
@@ -4061,7 +4061,7 @@ func (v *PortMessageCreateExpose) UnmarshalJSON(data []byte) error {
 			return contract.At("device", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.DeviceID](raw)
+			value, err := contract.Decode[webapiproto.DeviceID](raw)
 			if err != nil {
 				return contract.At("device", err)
 			}
@@ -4153,7 +4153,7 @@ func (v *PortMessageCreatePanelTab) UnmarshalJSON(data []byte) error {
 			return contract.At("tab", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.CreatePanelTab](raw)
+			value, err := contract.Decode[webapiproto.CreatePanelTab](raw)
 			if err != nil {
 				return contract.At("tab", err)
 			}
@@ -4218,7 +4218,7 @@ func (v *PortMessageGetBlob) UnmarshalJSON(data []byte) error {
 			return contract.At("blob", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.BlobRef](raw)
+			value, err := contract.Decode[types.BlobRef](raw)
 			if err != nil {
 				return contract.At("blob", err)
 			}
@@ -4382,7 +4382,7 @@ func (v *PortMessagePackageCall) UnmarshalJSON(data []byte) error {
 			return contract.At("operation", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[declare.NativeOperation](raw)
+			value, err := contract.Decode[commanddecl.NativeOperation](raw)
 			if err != nil {
 				return contract.At("operation", err)
 			}
@@ -4517,7 +4517,7 @@ func (v *PortMessagePutBlob) UnmarshalJSON(data []byte) error {
 			return contract.At("bytes", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.B64Bytes](raw)
+			value, err := contract.Decode[types.B64Bytes](raw)
 			if err != nil {
 				return contract.At("bytes", err)
 			}
@@ -4779,7 +4779,7 @@ func (v *PortMessageRemoveExpose) UnmarshalJSON(data []byte) error {
 			return contract.At("expose", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.ExposeID](raw)
+			value, err := contract.Decode[webapiproto.ExposeID](raw)
 			if err != nil {
 				return contract.At("expose", err)
 			}
@@ -4984,7 +4984,7 @@ func (v *PortMessageRenewExpose) UnmarshalJSON(data []byte) error {
 			return contract.At("expose", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.ExposeID](raw)
+			value, err := contract.Decode[webapiproto.ExposeID](raw)
 			if err != nil {
 				return contract.At("expose", err)
 			}
@@ -5259,11 +5259,11 @@ func (v *PortMessageWriteValue) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	next.Blobs = make([]core.BlobRef, 0)
+	next.Blobs = make([]types.BlobRef, 0)
 	{
 		raw, ok := obj["blobs"]
 		if ok {
-			value, err := func(b []byte) ([]core.BlobRef, error) { return contract.List(b, contract.Decode[core.BlobRef]) }(raw)
+			value, err := func(b []byte) ([]types.BlobRef, error) { return contract.List(b, contract.Decode[types.BlobRef]) }(raw)
 			if err != nil {
 				return contract.At("blobs", err)
 			}
@@ -5581,7 +5581,7 @@ func (v *PortRefusalHost) UnmarshalJSON(data []byte) error {
 			return contract.At("code", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.ErrorCode](raw)
+			value, err := contract.Decode[webapiproto.ErrorCode](raw)
 			if err != nil {
 				return contract.At("code", err)
 			}
@@ -5831,7 +5831,7 @@ func (v *PortRefusalPanel) UnmarshalJSON(data []byte) error {
 			return contract.At("code", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.ErrorCode](raw)
+			value, err := contract.Decode[webapiproto.ErrorCode](raw)
 			if err != nil {
 				return contract.At("code", err)
 			}
@@ -6397,7 +6397,7 @@ func (v *RequestCommand) UnmarshalJSON(data []byte) error {
 			return contract.At("user", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.UserID](raw)
+			value, err := contract.Decode[webapiproto.UserID](raw)
 			if err != nil {
 				return contract.At("user", err)
 			}
@@ -6507,7 +6507,7 @@ func (v *RequestContext) UnmarshalJSON(data []byte) error {
 			return contract.At("user", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.UserID](raw)
+			value, err := contract.Decode[webapiproto.UserID](raw)
 			if err != nil {
 				return contract.At("user", err)
 			}
@@ -6520,7 +6520,7 @@ func (v *RequestContext) UnmarshalJSON(data []byte) error {
 			return contract.At("conversation", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.ConversationID](raw)
+			value, err := contract.Decode[webapiproto.ConversationID](raw)
 			if err != nil {
 				return contract.At("conversation", err)
 			}
@@ -6533,7 +6533,7 @@ func (v *RequestContext) UnmarshalJSON(data []byte) error {
 			return contract.At("node", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.NodeID](raw)
+			value, err := contract.Decode[types.NodeID](raw)
 			if err != nil {
 				return contract.At("node", err)
 			}
@@ -6559,7 +6559,7 @@ func (v *RequestContext) UnmarshalJSON(data []byte) error {
 			return contract.At("turn", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.TurnID](raw)
+			value, err := contract.Decode[types.TurnID](raw)
 			if err != nil {
 				return contract.At("turn", err)
 			}
@@ -6659,7 +6659,7 @@ func (v *RequestPageCall) UnmarshalJSON(data []byte) error {
 			return contract.At("user", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.UserID](raw)
+			value, err := contract.Decode[webapiproto.UserID](raw)
 			if err != nil {
 				return contract.At("user", err)
 			}
@@ -6696,8 +6696,8 @@ func (v *RequestPageCall) UnmarshalJSON(data []byte) error {
 		raw, ok := obj["conversation"]
 		if ok {
 			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*webapi.ConversationID, error) {
-					return contract.Pointer(b, contract.Decode[webapi.ConversationID])
+				value, err := func(b []byte) (*webapiproto.ConversationID, error) {
+					return contract.Pointer(b, contract.Decode[webapiproto.ConversationID])
 				}(raw)
 				if err != nil {
 					return contract.At("conversation", err)
@@ -6777,7 +6777,7 @@ func (v *RequestPageState) UnmarshalJSON(data []byte) error {
 			return contract.At("user", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.UserID](raw)
+			value, err := contract.Decode[webapiproto.UserID](raw)
 			if err != nil {
 				return contract.At("user", err)
 			}
@@ -6788,8 +6788,8 @@ func (v *RequestPageState) UnmarshalJSON(data []byte) error {
 		raw, ok := obj["conversation"]
 		if ok {
 			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*webapi.ConversationID, error) {
-					return contract.Pointer(b, contract.Decode[webapi.ConversationID])
+				value, err := func(b []byte) (*webapiproto.ConversationID, error) {
+					return contract.Pointer(b, contract.Decode[webapiproto.ConversationID])
 				}(raw)
 				if err != nil {
 					return contract.At("conversation", err)
@@ -6874,7 +6874,7 @@ func (v *RequestPanelTab) UnmarshalJSON(data []byte) error {
 			return contract.At("user", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.UserID](raw)
+			value, err := contract.Decode[webapiproto.UserID](raw)
 			if err != nil {
 				return contract.At("user", err)
 			}
@@ -6887,7 +6887,7 @@ func (v *RequestPanelTab) UnmarshalJSON(data []byte) error {
 			return contract.At("conversation", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.ConversationID](raw)
+			value, err := contract.Decode[webapiproto.ConversationID](raw)
 			if err != nil {
 				return contract.At("conversation", err)
 			}
@@ -6913,7 +6913,7 @@ func (v *RequestPanelTab) UnmarshalJSON(data []byte) error {
 			return contract.At("tab", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.PanelTab](raw)
+			value, err := contract.Decode[webapiproto.PanelTab](raw)
 			if err != nil {
 				return contract.At("tab", err)
 			}
@@ -6995,7 +6995,7 @@ func (v *RequestTopic) UnmarshalJSON(data []byte) error {
 			return contract.At("user", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.UserID](raw)
+			value, err := contract.Decode[webapiproto.UserID](raw)
 			if err != nil {
 				return contract.At("user", err)
 			}
@@ -7019,8 +7019,8 @@ func (v *RequestTopic) UnmarshalJSON(data []byte) error {
 		raw, ok := obj["conversation"]
 		if ok {
 			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*webapi.ConversationID, error) {
-					return contract.Pointer(b, contract.Decode[webapi.ConversationID])
+				value, err := func(b []byte) (*webapiproto.ConversationID, error) {
+					return contract.Pointer(b, contract.Decode[webapiproto.ConversationID])
 				}(raw)
 				if err != nil {
 					return contract.At("conversation", err)
@@ -7144,12 +7144,12 @@ func (v *State) UnmarshalJSON(data []byte) error {
 			next.Topics = value
 		}
 	}
-	next.Operations = make([]declare.NativeOperation, 0)
+	next.Operations = make([]commanddecl.NativeOperation, 0)
 	{
 		raw, ok := obj["operations"]
 		if ok {
-			value, err := func(b []byte) ([]declare.NativeOperation, error) {
-				return contract.List(b, contract.Decode[declare.NativeOperation])
+			value, err := func(b []byte) ([]commanddecl.NativeOperation, error) {
+				return contract.List(b, contract.Decode[commanddecl.NativeOperation])
 			}(raw)
 			if err != nil {
 				return contract.At("operations", err)
@@ -7168,7 +7168,7 @@ func (v State) MarshalJSON() ([]byte, error) {
 		v.Topics = make([]Topic, 0)
 	}
 	if v.Operations == nil {
-		v.Operations = make([]declare.NativeOperation, 0)
+		v.Operations = make([]commanddecl.NativeOperation, 0)
 	}
 	if err := v.Validate(); err != nil {
 		return nil, err
@@ -7297,7 +7297,7 @@ func (v *Stream) UnmarshalJSON(data []byte) error {
 			return contract.At("operation", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[declare.NativeOperation](raw)
+			value, err := contract.Decode[commanddecl.NativeOperation](raw)
 			if err != nil {
 				return contract.At("operation", err)
 			}

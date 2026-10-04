@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
+	"github.com/wspl/demi/internal/types"
 )
 
 // AccountMeta is an account's public metadata, never token material.
@@ -18,14 +18,14 @@ type AccountMeta struct {
 	ID          string
 	Label       string
 	Detail      *string
-	UpdatedAt   core.Timestamp
+	UpdatedAt   types.Timestamp
 	Source      string
 	IdentityKey *string
 }
 
 // Info returns the metadata the web app sees.
-func (m AccountMeta) Info() core.AccountInfo {
-	return core.AccountInfo{ID: m.ID, Label: m.Label, Detail: m.Detail, UpdatedAt: &m.UpdatedAt}
+func (m AccountMeta) Info() types.AccountInfo {
+	return types.AccountInfo{ID: m.ID, Label: m.Label, Detail: m.Detail, UpdatedAt: &m.UpdatedAt}
 }
 
 // ErrNoAccount means the pool has no account with the given ID.

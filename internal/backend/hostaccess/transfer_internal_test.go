@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // A file's version derives from its size and modification time, and
@@ -13,9 +13,9 @@ import (
 // The version's spelling is the backend's own and is not pinned here.
 // Cost: no IO, processes, or wall-clock waits.
 func TestFileVersionsAndWeakConditions(t *testing.T) {
-	at := func(millis int64) core.Timestamp {
+	at := func(millis int64) types.Timestamp {
 		t.Helper()
-		stamp, err := core.TimestampFromMillisecond(millis)
+		stamp, err := types.TimestampFromMillisecond(millis)
 		if err != nil {
 			t.Fatal(err)
 		}

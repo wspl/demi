@@ -8,7 +8,7 @@ network access.
 Two owners share it. The backend owns the mechanism: the expose record, its
 lifetime and the public relay (`internal/backend/expose`), which know nothing of
 commands, numbers or pages. The `expose` [plugin](../architecture/plugins.md)
-(`internal/plugins/expose`) owns the feature on top of it: the `demi expose` commands
+(`internal/plugin/expose`) owns the feature on top of it: the `demi expose` commands
 and their numbers, the one-hour policy, and the product surface, through its
 port's exposes operations. This document owns both. The runner's network stream
 belongs to [Runner](runner.md#network-streams); device access, the way the

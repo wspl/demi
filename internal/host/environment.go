@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Observation limits and output budgets match the shell tools' defaults.
@@ -22,21 +22,21 @@ const (
 // ShellEnvironment owns one node's shells and command handles on one Host.
 type ShellEnvironment interface {
 	Exec(context.Context, ExecRequest) (CommandStatus, error)
-	Status(core.CommandID) (CommandStatus, error)
-	ReadOutput(context.Context, core.CommandID) (WholeOutput, error)
-	Write(context.Context, core.CommandID, []byte) error
-	Abort(context.Context, core.CommandID) error
+	Status(types.CommandID) (CommandStatus, error)
+	ReadOutput(context.Context, types.CommandID) (WholeOutput, error)
+	Write(context.Context, types.CommandID, []byte) error
+	Abort(context.Context, types.CommandID) error
 	PageViews() []PageView
-	ReleaseCommand(context.Context, core.CommandID) bool
-	DisposeShell(context.Context, core.ShellID) bool
+	ReleaseCommand(context.Context, types.CommandID) bool
+	DisposeShell(context.Context, types.ShellID) bool
 	DisposeAll(context.Context) error
-	OwnsShell(core.ShellID) bool
-	OwnsCommand(core.CommandID) bool
+	OwnsShell(types.ShellID) bool
+	OwnsCommand(types.CommandID) bool
 }
 
 // Numbers assigns conversation sequence numbers once, in order.
 type Numbers interface {
-	Next(context.Context, core.Sequence) (uint64, error)
+	Next(context.Context, types.Sequence) (uint64, error)
 }
 
 // PageFeed receives command changes and reports whether a page watches.
@@ -68,7 +68,7 @@ const (
 // ShellTarget selects a shell; a nil ephemeral CWD uses the Host default.
 type ShellTarget struct {
 	Kind ShellTargetKind
-	ID   core.ShellID
+	ID   types.ShellID
 	CWD  *string
 }
 
@@ -96,16 +96,16 @@ func (w ObservationWindow) Duration() time.Duration {
 // (`command-state-history.md` § Mutation API and concurrency).
 // +demi:root
 type JobCaller struct {
-	Node       core.NodeID `json:"node"`
-	Generation uint64      `json:"generation"`
+	Node       types.NodeID `json:"node"`
+	Generation uint64       `json:"generation"`
 }
 
 // CommandStatus holds the model's status and output since its last look.
 type CommandStatus struct {
-	ShellID           core.ShellID
-	CommandID         core.CommandID
-	Stdout, Stderr    core.StreamView
-	Output            core.OutputView
+	ShellID           types.ShellID
+	CommandID         types.CommandID
+	Stdout, Stderr    types.StreamView
+	Output            types.OutputView
 	Unreceived        uint64
 	Newest            []Newest
 	Whole             *WholeView
@@ -116,7 +116,7 @@ type CommandStatus struct {
 
 // Newest holds a stream's newest bytes beyond its received start.
 type Newest struct {
-	Stream          core.StreamKind
+	Stream          types.StreamKind
 	Offset, LeftOut uint64
 	Text            string
 }
@@ -147,12 +147,12 @@ type WholeView struct {
 // BinaryOutput holds final non-text stdout if complete and within its limit.
 type BinaryOutput struct {
 	Bytes []byte
-	Info  core.BinaryStdout
+	Info  types.BinaryStdout
 }
 
 // EditedFiles reports files changed for the user, never the model.
 type EditedFiles struct {
-	Files     []core.EditedFile
+	Files     []types.EditedFile
 	Truncated bool
 }
 
@@ -170,8 +170,8 @@ const (
 // ShellError carries the shell tool's model-facing refusal.
 type ShellError struct {
 	Kind    ShellErrorKind
-	Shell   core.ShellID
-	Command core.CommandID
+	Shell   types.ShellID
+	Command types.CommandID
 }
 
 // Error returns the failure message.

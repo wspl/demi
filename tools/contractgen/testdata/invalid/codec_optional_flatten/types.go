@@ -1,6 +1,6 @@
 package invalid
 
-import "github.com/wspl/demi/internal/runnerwire"
+import "github.com/wspl/demi/internal/runnerproto"
 
 // +demi:root
-type Broken struct{ *runnerwire.BackendURL }
+type Broken struct{ *runnerproto.BackendURL }

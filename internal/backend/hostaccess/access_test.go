@@ -10,7 +10,7 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/gates/gatestest"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
@@ -23,7 +23,7 @@ func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 				t.Fatal(err)
 			}
 			laptop := s.paired(t, "laptop")
-			var named *webapi.DeviceID
+			var named *webapiproto.DeviceID
 			if change == "detach" {
 				record = s.target(t, record, laptop, "/laptop")
 				if err := s.control.ChangeConversation(
@@ -82,7 +82,7 @@ func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 					t.Context(),
 					s,
 					record,
-					&webapi.ConversationTargetDevice{DeviceID: laptop.ID, Path: "/laptop"},
+					&webapiproto.ConversationTargetDevice{DeviceID: laptop.ID, Path: "/laptop"},
 				)
 			case "archive":
 				err = Archive(t.Context(), s, record)
@@ -122,11 +122,11 @@ func TestAdmissionRefusalsAndDispatchedWorkRunsOnce(t *testing.T) {
 	record := s.target(t, s.conversation(t), device, "/work")
 	cases := []struct {
 		name  string
-		id    webapi.ConversationID
-		named *webapi.DeviceID
+		id    webapiproto.ConversationID
+		named *webapiproto.DeviceID
 		want  Refusal
 	}{
-		{"not attached", record.ID, new(webapi.DeviceID("00000000-0000-4000-8000-000000000099")), NotAttached},
+		{"not attached", record.ID, new(webapiproto.DeviceID("00000000-0000-4000-8000-000000000099")), NotAttached},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -238,7 +238,7 @@ func TestTransitionCommitIgnoresDepartedRequesterAndKeepsConflict(t *testing.T) 
 	defer hold.Release()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	target := &webapi.ConversationTargetDevice{DeviceID: device.ID, Path: "/work"}
+	target := &webapiproto.ConversationTargetDevice{DeviceID: device.ID, Path: "/work"}
 	if err := SwitchTarget(ctx, s, record, target); err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestTransitionCommitIgnoresDepartedRequesterAndKeepsConflict(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if selected, ok := current.Target.(*webapi.ConversationTargetDevice); !ok || selected.Path != "/work" {
+	if selected, ok := current.Target.(*webapiproto.ConversationTargetDevice); !ok || selected.Path != "/work" {
 		t.Fatalf("commit abandoned: %#v", current.Target)
 	}
 	s.mu.Lock()
@@ -276,7 +276,7 @@ func TestTransitionCommitIgnoresDepartedRequesterAndKeepsConflict(t *testing.T) 
 
 func TestOwnershipCanonicalIDsAndRevokedTargets(t *testing.T) {
 	s := newTestShard(t)
-	id := webapi.ConversationID("abcdef00-0000-4000-8000-000000000001")
+	id := webapiproto.ConversationID("abcdef00-0000-4000-8000-000000000001")
 	if _, _, err := s.control.CreateConversation(t.Context(), s.owner, id); err != nil {
 		t.Fatal(err)
 	}

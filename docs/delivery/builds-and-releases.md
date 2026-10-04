@@ -176,9 +176,9 @@ Each executable has its own kind of release:
 - **Command packages.** Each command program is released on its own. Its
   release directory holds `descriptor.json` and one subdirectory per target
   with the executable. The descriptor's id and operations are the ones the
-  package's contract declares (`internal/cmdpkg/file/fileop` for `demi-file`,
-  `internal/cmdpkg/browser/browserop` for `demi-browser`, and
-  `internal/cmdpkg/claudecode/claudecodeop` for `demi-claude-code`), the operation
+  package's contract declares (`internal/commandpackage/file/fileproto` for `demi-file`,
+  `internal/commandpackage/browser/browserproto` for `demi-browser`, and
+  `internal/commandpackage/claudecode/claudecodeproto` for `demi-claude-code`), the operation
   list the program routes by, so a release
   cannot advertise an operation the program does not serve; its version is
   the release version (`version.Release`). A package that needs resources gets them from the
@@ -267,7 +267,7 @@ It reads that version's official download metadata and, for each platform
 Demi supports, downloads the `chrome` archive from Chrome for Testing's
 download host through the artifact library, measures its size and SHA-256, and
 checks that it holds the executable the record names. It then writes the
-release record, `internal/cmdpkg/browser/browserop/chrome.json`, from which
+release record, `internal/commandpackage/browser/browserproto/chrome.json`, from which
 packaging writes the `chrome` resource of `demi-browser`'s releases; commit it
 with the change that adopts the version. Chrome for Testing publishes no
 Windows arm64 build, so the record carries five of the six targets. The
@@ -348,7 +348,7 @@ directory above; their test names select each resource suite:
 ```sh
 DEMI_TEST_CHROME=<chrome> \
   go test -tags acceptance -count=1 -p=1 -parallel=1 \
-  ./internal/cmdpkg/browser/... -run Chrome
+  ./internal/commandpackage/browser/... -run Chrome
 DEMI_TEST_CHROME=<chrome> \
   go test -tags acceptance -count=1 ./internal/backend/... -run RealBrowser
 DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=<suite-distribution-ca.pem> \
@@ -415,7 +415,7 @@ Release acceptance also checks the artifacts and installers on each platform:
   out, including the Cloud conversation browser's live view.
 
 Synthetic service/client benchmarks belong to the command SDK's Go benchmarks.
-Run them explicitly with `go test -run '^$' -bench . ./internal/cmdsdk`; they
+Run them explicitly with `go test -run '^$' -bench . ./internal/commandsdk`; they
 measure the current machine and build and never call a model. They are outside
 the regular suite.
 

@@ -10,10 +10,10 @@ import (
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestTransientFailuresBeforeOutput(t *testing.T) {
@@ -217,7 +217,7 @@ func TestRetryKeepsTurnSteers(t *testing.T) {
 		must(t, f.s.Steer(storetest.Text("be brief"), "s1"))
 		close(release)
 		f.done(a)
-		patches := []framewire.TranscriptPatch{}
+		patches := []conversationproto.TranscriptPatch{}
 		sub := f.s.Subscribe(func(e session.Event) {
 			if e, ok := e.(*session.TranscriptChanged); ok {
 				patches = append(patches, e.Patches...)
@@ -229,7 +229,7 @@ func TestRetryKeepsTurnSteers(t *testing.T) {
 		f.done(a)
 		f.history("user", "steer", "text", "response")
 		equal(t, f.p.Requests()[2].TurnID, "t1")
-		equal(t, f.s.Transcript().Blocks[1].(*core.SteerBlock).TurnID, core.TurnID("t1"))
+		equal(t, f.s.Transcript().Blocks[1].(*types.SteerBlock).TurnID, types.TurnID("t1"))
 		items := f.p.Requests()[2].Items
 		equal(t, len(items), 2)
 		if _, ok := items[0].(*provider.UserMessage); !ok {
@@ -238,7 +238,7 @@ func TestRetryKeepsTurnSteers(t *testing.T) {
 		if _, ok := items[1].(*provider.UserSteer); !ok {
 			t.Fatalf("second item: %T", items[1])
 		}
-		replace, ok := patches[0].(*framewire.ReplacePatch)
+		replace, ok := patches[0].(*conversationproto.ReplacePatch)
 		if !ok {
 			t.Fatalf("first patch %T", patches[0])
 		}
@@ -263,7 +263,7 @@ func TestResumeMarksStopAndContinues(t *testing.T) {
 		f.done(a)
 		f.history("user", "text", "steer", "abort", "resume", "text", "response")
 		blocks := f.s.Transcript().Blocks
-		abort := blocks[3].(*core.AbortBlock)
+		abort := blocks[3].(*types.AbortBlock)
 		equal(t, abort.IsResumed, true)
 		equal(t, f.p.Requests()[1].Items, []provider.InferenceItem{
 			&provider.UserMessage{Content: storetest.SentText("go")},
@@ -283,7 +283,7 @@ func TestStopDuringResumeSave(t *testing.T) {
 		a, err := f.s.Resume()
 		must(t, err)
 		must(t, gate.Wait(t.Context(), 1))
-		result := make(chan framewire.AbortResult, 1)
+		result := make(chan conversationproto.AbortResult, 1)
 		go func() {
 			r, err := f.s.Abort(t.Context())
 			if err != nil {
@@ -299,7 +299,7 @@ func TestStopDuringResumeSave(t *testing.T) {
 		}
 		gate.Release()
 		r := <-result
-		equal(t, *r.Target, framewire.AbortTargetActiveTurn)
+		equal(t, *r.Target, conversationproto.AbortTargetActiveTurn)
 		end, err := a.Wait(t.Context())
 		must(t, err)
 		equal(t, end, session.Aborted)

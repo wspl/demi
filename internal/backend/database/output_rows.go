@@ -1,8 +1,8 @@
 package database
 
 import (
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // OutputRow is what a conversation holds of an ended command's output.
@@ -12,7 +12,7 @@ type OutputRow interface{ outputRow() }
 
 // OutputStored holds its blob and trailing bytes the backend does not have.
 type OutputStored struct {
-	Blob    core.BlobRef
+	Blob    types.BlobRef
 	Missing *host.Missing
 }
 
@@ -24,6 +24,6 @@ type OutputNotStored struct{ Reason string }
 func (*OutputNotStored) outputRow() {}
 
 // OutputRemoved records when retention removed the output.
-type OutputRemoved struct{ At core.Timestamp }
+type OutputRemoved struct{ At types.Timestamp }
 
 func (*OutputRemoved) outputRow() {}

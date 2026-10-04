@@ -3,7 +3,7 @@ package store
 import (
 	"fmt"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Checkpoint is a node's checkpoint as the store gives it back.
@@ -11,7 +11,7 @@ type Checkpoint struct {
 	// State holds the saved session state.
 	State CheckpointState
 	// Transcript contains the saved blocks in row order.
-	Transcript []core.Block
+	Transcript []types.Block
 	// CommandState holds the saved command versions and boundaries.
 	CommandState CommandStateSnapshot
 }
@@ -21,7 +21,7 @@ type ChangedBlock struct {
 	// Index is the transcript row to replace.
 	Index int
 	// Block is the replacement transcript block.
-	Block core.Block
+	Block types.Block
 }
 
 // CheckpointUpdate carries only what changed since the last save.
@@ -38,23 +38,23 @@ type CheckpointUpdate struct {
 
 // CarriedCompletions returns the distinct child rounds carried by waiting
 // input or changed agent-message blocks, which this save marks delivered.
-func (u CheckpointUpdate) CarriedCompletions() ([]core.CompletionID, error) {
-	messages := make([]core.AgentMessage, 0, len(u.State.AgentInputs))
+func (u CheckpointUpdate) CarriedCompletions() ([]types.CompletionID, error) {
+	messages := make([]types.AgentMessage, 0, len(u.State.AgentInputs))
 	for _, input := range u.State.AgentInputs {
 		messages = append(messages, input.Message)
 	}
 	for _, changed := range u.ChangedBlocks {
-		if block, ok := changed.Block.(*core.AgentMessageBlock); ok {
+		if block, ok := changed.Block.(*types.AgentMessageBlock); ok {
 			messages = append(messages, block.Message)
 		}
 	}
-	rounds := []core.CompletionID{}
-	seen := map[core.CompletionID]bool{}
+	rounds := []types.CompletionID{}
+	seen := map[types.CompletionID]bool{}
 	for _, message := range messages {
-		if _, ok := message.Event.(*core.CompletionEvent); !ok {
+		if _, ok := message.Event.(*types.CompletionEvent); !ok {
 			continue
 		}
-		round, err := core.ParseCompletionID(string(message.ID))
+		round, err := types.ParseCompletionID(string(message.ID))
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrCorrupt, err)
 		}

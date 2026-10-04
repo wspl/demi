@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/gates"
 )
 
@@ -19,7 +19,7 @@ type ArtifactFile struct {
 	// Path is the artifact's local file path.
 	Path string
 	// Artifact is the declared size and SHA-256 of the file.
-	Artifact commandwire.PackageArtifact
+	Artifact commandproto.PackageArtifact
 }
 
 // LocalArtifacts holds loaded development artifacts by SHA-256. Construct it with
@@ -116,9 +116,9 @@ type ServedArtifacts struct {
 // Resolve locates artifact on the development backend without an expiry.
 func (a *ServedArtifacts) Resolve(
 	_ context.Context,
-	artifact commandwire.PackageArtifact,
+	artifact commandproto.PackageArtifact,
 	_ string,
-) (commandwire.ArtifactLocation, error) {
+) (commandproto.ArtifactLocation, error) {
 	file := a.Artifacts.files[artifact.SHA256]
 	if file == nil || file.size != artifact.Size {
 		return nil, errors.New("the artifact is not in a loaded development release")
@@ -131,7 +131,7 @@ func (a *ServedArtifacts) Resolve(
 	if err != nil {
 		return nil, err
 	}
-	return &commandwire.ArtifactURL{
+	return &commandproto.ArtifactURL{
 		URL: parsed.Scheme() + "://" + parsed.Host() + NativeArtifactsRoute + "/" + artifact.SHA256,
 	}, nil
 }

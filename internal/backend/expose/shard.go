@@ -6,27 +6,27 @@ import (
 
 	"github.com/nlnwa/whatwg-url/url"
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Store is the control storage used by exposes. ControlService implements it.
 type Store interface {
-	Device(context.Context, webapi.DeviceID) (database.DeviceRecord, bool, error)
+	Device(context.Context, webapiproto.DeviceID) (database.DeviceRecord, bool, error)
 	CreateExpose(
 		context.Context,
-		webapi.ExposeID,
-		webapi.UserID,
-		webapi.DeviceID,
-		webapi.ExposeAddress,
+		webapiproto.ExposeID,
+		webapiproto.UserID,
+		webapiproto.DeviceID,
+		webapiproto.ExposeAddress,
 		time.Duration,
 	) (database.ExposeRecord, error)
-	Expose(context.Context, webapi.ExposeID) (database.ExposeRecord, bool, error)
-	UserExposes(context.Context, webapi.UserID) (database.UserExposes, error)
-	RenewExpose(context.Context, webapi.ExposeID, webapi.UserID, time.Duration) (database.ExposeRecord, error)
-	DeleteExpose(context.Context, webapi.ExposeID) error
-	DeleteExpiredExpose(context.Context, webapi.ExposeID, core.Timestamp) (bool, error)
-	DeleteDeviceExposes(context.Context, webapi.DeviceID) ([]webapi.ExposeID, error)
+	Expose(context.Context, webapiproto.ExposeID) (database.ExposeRecord, bool, error)
+	UserExposes(context.Context, webapiproto.UserID) (database.UserExposes, error)
+	RenewExpose(context.Context, webapiproto.ExposeID, webapiproto.UserID, time.Duration) (database.ExposeRecord, error)
+	DeleteExpose(context.Context, webapiproto.ExposeID) error
+	DeleteExpiredExpose(context.Context, webapiproto.ExposeID, types.Timestamp) (bool, error)
+	DeleteDeviceExposes(context.Context, webapiproto.DeviceID) ([]webapiproto.ExposeID, error)
 }
 
 var _ Store = (*database.ControlService)(nil)
@@ -35,9 +35,9 @@ var _ Store = (*database.ControlService)(nil)
 // Configuration remains immutable for the shard's lifetime. Callbacks must be
 // safe for concurrent calls; no caller holds a shard mutex across these operations.
 type Shard interface {
-	User() webapi.UserID
+	User() webapiproto.UserID
 	Control() Store
-	Clock() core.Clock
+	Clock() types.Clock
 	ExposesChanged()
 	Exposes() *Connections
 	Domain() *Domain

@@ -5,34 +5,34 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // userPart renders a message part using the request's single media policy.
-func (r *RequestView) userPart(part core.UserContentBlock) provider.UserPart {
+func (r *RequestView) userPart(part types.UserContentBlock) provider.UserPart {
 	switch p := part.(type) {
-	case *core.UserText:
+	case *types.UserText:
 		return &provider.TextPart{Text: boundText(p.Text)}
-	case *core.UserReference:
+	case *types.UserReference:
 		return &provider.TextPart{Text: p.Reference}
-	case *core.UserAttachment:
-		return &provider.TextPart{Text: core.AttachmentTag(p.Attachment)}
-	case *core.UserImage:
+	case *types.UserAttachment:
+		return &provider.TextPart{Text: types.AttachmentTag(p.Attachment)}
+	case *types.UserImage:
 		medium, text := r.medium("image", p.Source)
 		if medium == nil {
 			return &provider.TextPart{Text: text}
 		}
 		return &provider.ImagePart{Medium: medium}
-	case *core.UserVideo:
+	case *types.UserVideo:
 		medium, text := r.medium("video", p.Source)
 		if medium == nil {
 			return &provider.TextPart{Text: text}
 		}
 		return &provider.VideoPart{Medium: medium}
-	case *core.UserDocument:
+	case *types.UserDocument:
 		switch source := p.Source.(type) {
-		case *core.DocumentRef:
+		case *types.DocumentRef:
 			data, text := r.document(source)
 			if data == nil {
 				return &provider.TextPart{Text: text}
@@ -44,17 +44,17 @@ func (r *RequestView) userPart(part core.UserContentBlock) provider.UserPart {
 }
 
 // medium renders a message's image or video, retaining URLs for the vendor.
-func (r *RequestView) medium(kind string, source core.MediaSource) (provider.Medium, string) {
+func (r *RequestView) medium(kind string, source types.MediaSource) (provider.Medium, string) {
 	switch s := source.(type) {
-	case *core.MediaURL:
+	case *types.MediaURL:
 		return &provider.MediaURL{URL: s.URL}, ""
-	case *core.MediaSourceRef:
+	case *types.MediaSourceRef:
 		data, text := r.mediaBytes(
 			kind,
 			s.Ref,
 			s.MediaType,
 			s.MediaType,
-			core.ModelAcceptsMediaType(r.model, s.MediaType),
+			types.ModelAcceptsMediaType(r.model, s.MediaType),
 		)
 		if data == nil {
 			return nil, text
@@ -65,18 +65,18 @@ func (r *RequestView) medium(kind string, source core.MediaSource) (provider.Med
 }
 
 // document resolves a document using the model's native PDF support.
-func (r *RequestView) document(source *core.DocumentRef) (*provider.MediaBytes, string) {
+func (r *RequestView) document(source *types.DocumentRef) (*provider.MediaBytes, string) {
 	mediaType, _, _ := strings.Cut(source.MediaType, ";")
 	accepted := strings.TrimSpace(mediaType) == "application/pdf" &&
-		core.AcceptsFileExtension(r.model.AcceptedExtensions, core.FileExtensionPDF)
+		types.AcceptsFileExtension(r.model.AcceptedExtensions, types.FileExtensionPDF)
 	return r.mediaBytes("document", source.Ref, source.MediaType, source.FileName, accepted)
 }
 
 // toolMedium resolves a stored tool medium through the same request policy.
-func (r *RequestView) toolMedium(kind string, source core.ToolMediaSource) (*provider.MediaBytes, string) {
+func (r *RequestView) toolMedium(kind string, source types.ToolMediaSource) (*provider.MediaBytes, string) {
 	switch s := source.(type) {
-	case *core.ToolMediaRef:
-		return r.mediaBytes(kind, s.Ref, s.MediaType, s.MediaType, core.ModelAcceptsMediaType(r.model, s.MediaType))
+	case *types.ToolMediaRef:
+		return r.mediaBytes(kind, s.Ref, s.MediaType, s.MediaType, types.ModelAcceptsMediaType(r.model, s.MediaType))
 	}
 	return nil, ""
 }
@@ -84,7 +84,7 @@ func (r *RequestView) toolMedium(kind string, source core.ToolMediaSource) (*pro
 // mediaBytes resolves held media or its stable model-facing refusal text.
 func (r *RequestView) mediaBytes(
 	kind string,
-	blob core.BlobRef,
+	blob types.BlobRef,
 	mediaType, name string,
 	accepted bool,
 ) (*provider.MediaBytes, string) {
@@ -105,19 +105,19 @@ func (r *RequestView) mediaBytes(
 }
 
 // result renders one tool output part, including the text of retired media.
-func (r *RequestView) result(part core.ToolResultContentBlock) provider.ResultPart {
+func (r *RequestView) result(part types.ToolResultContentBlock) provider.ResultPart {
 	switch p := part.(type) {
-	case *core.ToolText:
+	case *types.ToolText:
 		return &provider.TextPart{Text: boundText(p.Text)}
-	case *core.ToolGone:
+	case *types.ToolGone:
 		return &provider.TextPart{Text: boundText(goneText(p))}
-	case *core.ToolImage:
+	case *types.ToolImage:
 		data, text := r.toolMedium("image", p.Source)
 		if data == nil {
 			return &provider.TextPart{Text: text}
 		}
 		return &provider.ResultImage{Bytes: *data}
-	case *core.ToolVideo:
+	case *types.ToolVideo:
 		data, text := r.toolMedium("video", p.Source)
 		if data == nil {
 			return &provider.TextPart{Text: text}
@@ -128,11 +128,11 @@ func (r *RequestView) result(part core.ToolResultContentBlock) provider.ResultPa
 }
 
 // goneText names a tool medium that could not be stored or was retired.
-func goneText(part *core.ToolGone) string {
+func goneText(part *types.ToolGone) string {
 	switch cause := part.Cause.(type) {
-	case *core.NotStored:
+	case *types.NotStored:
 		return fmt.Sprintf("[%s not stored: %s]", part.Kind, cause.Error)
-	case *core.Retired:
+	case *types.Retired:
 		// Timestamps were validated at the transcript's entry boundary.
 		day, _, _ := strings.Cut(string(cause.At), "T")
 		return fmt.Sprintf(

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // TextRefusal says why a file is not shown as text. Use errors.Is to compare it.
@@ -27,10 +27,10 @@ func (r TextRefusal) Error() string {
 
 // TextOf interprets bytes as UTF-8 without NUL bytes, within the edit snapshot limit.
 func TextOf(bytes []byte) (string, error) {
-	if len(bytes) > commandwire.EditFileBytes {
+	if len(bytes) > commandproto.EditFileBytes {
 		return "", ErrTextTooLarge
 	}
-	if !commandwire.IsText(bytes) {
+	if !commandproto.IsText(bytes) {
 		return "", ErrTextNotText
 	}
 	return string(bytes), nil
@@ -43,7 +43,7 @@ func ReadTextFile(ctx context.Context, fs host.FS, path string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	if stat.Size > commandwire.EditFileBytes {
+	if stat.Size > commandproto.EditFileBytes {
 		return "", ErrTextTooLarge
 	}
 	bytes, err := fs.ReadFile(ctx, path)
@@ -55,12 +55,12 @@ func ReadTextFile(ctx context.Context, fs host.FS, path string) (string, error) 
 
 // BrowseDirectory reads entries and metadata sequentially so one listing cannot
 // flood the runner queue. Entries that disappear meanwhile are omitted.
-func BrowseDirectory(ctx context.Context, fs host.FS, path string) ([]webapi.DirectoryEntry, error) {
+func BrowseDirectory(ctx context.Context, fs host.FS, path string) ([]webapiproto.DirectoryEntry, error) {
 	names, err := fs.ReadDir(ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]webapi.DirectoryEntry, 0, len(names))
+	entries := make([]webapiproto.DirectoryEntry, 0, len(names))
 	for _, entry := range names {
 		stat, err := fs.Lstat(ctx, strings.TrimRight(path, "/")+"/"+entry.Name)
 		if err != nil {
@@ -72,7 +72,7 @@ func BrowseDirectory(ctx context.Context, fs host.FS, path string) ([]webapi.Dir
 		}
 		entries = append(
 			entries,
-			webapi.DirectoryEntry{
+			webapiproto.DirectoryEntry{
 				Name:           entry.Name,
 				IsDirectory:    entry.Kind == host.Directory,
 				IsSymbolicLink: stat.Kind == host.Symlink,

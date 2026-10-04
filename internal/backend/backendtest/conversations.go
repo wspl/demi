@@ -17,8 +17,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/fsnotify/fsnotify"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ConversationSocket is the page's typed conversation connection.
@@ -69,7 +69,7 @@ func (b *TestBackend) ConversationFrom(
 }
 
 // Send writes a typed frame using the shared wire encoder.
-func (s *ConversationSocket) Send(ctx context.Context, frame framewire.ClientFrame) error {
+func (s *ConversationSocket) Send(ctx context.Context, frame conversationproto.ClientFrame) error {
 	data, err := contract.EncodeJSON(frame)
 	if err != nil {
 		return err
@@ -83,14 +83,14 @@ func (s *ConversationSocket) Text(ctx context.Context, text string) error {
 }
 
 // Next reads and validates the next text frame.
-func (s *ConversationSocket) Next(ctx context.Context) (framewire.ServerFrame, error) {
+func (s *ConversationSocket) Next(ctx context.Context) (conversationproto.ServerFrame, error) {
 	for {
 		kind, data, err := s.socket.Read(ctx)
 		if err != nil {
 			return nil, err
 		}
 		if kind == websocket.MessageText {
-			return framewire.DecodeServerFrame(data)
+			return conversationproto.DecodeServerFrame(data)
 		}
 	}
 }
@@ -98,9 +98,9 @@ func (s *ConversationSocket) Next(ctx context.Context) (framewire.ServerFrame, e
 // Until reads through the frame accepted by done.
 func (s *ConversationSocket) Until(
 	ctx context.Context,
-	done func(framewire.ServerFrame) bool,
-) ([]framewire.ServerFrame, error) {
-	var frames []framewire.ServerFrame
+	done func(conversationproto.ServerFrame) bool,
+) ([]conversationproto.ServerFrame, error) {
+	var frames []conversationproto.ServerFrame
 	for {
 		frame, err := s.Next(ctx)
 		if err != nil {
@@ -114,40 +114,40 @@ func (s *ConversationSocket) Until(
 }
 
 // Open attaches to the persisted model and reads the complete handshake.
-func (s *ConversationSocket) Open(ctx context.Context) ([]framewire.ServerFrame, error) {
-	if err := s.Send(ctx, &framewire.OpenFrame{}); err != nil {
+func (s *ConversationSocket) Open(ctx context.Context) ([]conversationproto.ServerFrame, error) {
+	if err := s.Send(ctx, &conversationproto.OpenFrame{}); err != nil {
 		return nil, err
 	}
-	frames, err := s.Until(ctx, func(f framewire.ServerFrame) bool {
-		_, ok := f.(*framewire.PendingSteersFrame)
+	frames, err := s.Until(ctx, func(f conversationproto.ServerFrame) bool {
+		_, ok := f.(*conversationproto.PendingSteersFrame)
 		return ok
 	})
 	if err != nil {
 		return frames, err
 	}
-	if _, ok := frames[0].(*framewire.OpenedFrame); !ok {
+	if _, ok := frames[0].(*conversationproto.OpenedFrame); !ok {
 		return frames, fmt.Errorf("handshake starts with %T", frames[0])
 	}
 	return frames, nil
 }
 
 // UntilIdle reads a running phase followed by an idle phase.
-func (s *ConversationSocket) UntilIdle(ctx context.Context) ([]framewire.ServerFrame, error) {
+func (s *ConversationSocket) UntilIdle(ctx context.Context) ([]conversationproto.ServerFrame, error) {
 	ran := false
-	return s.Until(ctx, func(f framewire.ServerFrame) bool {
-		phase, ok := f.(*framewire.PhaseFrame)
+	return s.Until(ctx, func(f conversationproto.ServerFrame) bool {
+		phase, ok := f.(*conversationproto.PhaseFrame)
 		if !ok {
 			return false
 		}
-		if phase.Phase == core.SessionPhaseRunning {
+		if phase.Phase == types.SessionPhaseRunning {
 			ran = true
 		}
-		return ran && phase.Phase == core.SessionPhaseIdle
+		return ran && phase.Phase == types.SessionPhaseIdle
 	})
 }
 
 // Chat sends a text message and follows its turn to idle.
-func (s *ConversationSocket) Chat(ctx context.Context, id, text string) ([]framewire.ServerFrame, error) {
+func (s *ConversationSocket) Chat(ctx context.Context, id, text string) ([]conversationproto.ServerFrame, error) {
 	if err := s.Send(ctx, ConversationText(id, text)); err != nil {
 		return nil, err
 	}
@@ -155,31 +155,31 @@ func (s *ConversationSocket) Chat(ctx context.Context, id, text string) ([]frame
 }
 
 // Live requests the current transcript without implementing a patch applier.
-func (s *ConversationSocket) Live(ctx context.Context) ([]core.Block, error) {
-	if err := s.Send(ctx, &framewire.SyncTranscriptFrame{}); err != nil {
+func (s *ConversationSocket) Live(ctx context.Context) ([]types.Block, error) {
+	if err := s.Send(ctx, &conversationproto.SyncTranscriptFrame{}); err != nil {
 		return nil, err
 	}
-	frames, err := s.Until(ctx, func(f framewire.ServerFrame) bool {
-		_, ok := f.(*framewire.TranscriptResetFrame)
+	frames, err := s.Until(ctx, func(f conversationproto.ServerFrame) bool {
+		_, ok := f.(*conversationproto.TranscriptResetFrame)
 		return ok
 	})
 	if err != nil {
 		return nil, err
 	}
-	return frames[len(frames)-1].(*framewire.TranscriptResetFrame).Blocks, nil
+	return frames[len(frames)-1].(*conversationproto.TranscriptResetFrame).Blocks, nil
 }
 
 // Stop waits for both the abort answer and idle, in either order.
 func (s *ConversationSocket) Stop(ctx context.Context) error {
-	if err := s.Send(ctx, &framewire.AbortFrame{}); err != nil {
+	if err := s.Send(ctx, &conversationproto.AbortFrame{}); err != nil {
 		return err
 	}
 	answered, idle := false, false
-	_, err := s.Until(ctx, func(f framewire.ServerFrame) bool {
-		if _, ok := f.(*framewire.AbortResultFrame); ok {
+	_, err := s.Until(ctx, func(f conversationproto.ServerFrame) bool {
+		if _, ok := f.(*conversationproto.AbortResultFrame); ok {
 			answered = true
 		}
-		if p, ok := f.(*framewire.PhaseFrame); ok && p.Phase == core.SessionPhaseIdle {
+		if p, ok := f.(*conversationproto.PhaseFrame); ok && p.Phase == types.SessionPhaseIdle {
 			idle = true
 		}
 		return answered && idle
@@ -364,10 +364,10 @@ func (s *StalledConversation) Closed(ctx context.Context) (websocket.StatusCode,
 }
 
 // ConversationText constructs the text frame a page sends for one user message.
-func ConversationText(id, text string) *framewire.SendFrame {
-	return &framewire.SendFrame{
-		MessageID: core.TurnID(id),
-		Content:   []framewire.ClientContent{&framewire.TextContent{Text: text}},
+func ConversationText(id, text string) *conversationproto.SendFrame {
+	return &conversationproto.SendFrame{
+		MessageID: types.TurnID(id),
+		Content:   []conversationproto.ClientContent{&conversationproto.TextContent{Text: text}},
 	}
 }
 
@@ -404,7 +404,7 @@ func (b *TestBackend) openStalledConversation(
 		return nil, errors.Join(fmt.Errorf("upgrade: %d: %s", answer.Status, answer.Body), readErr)
 	}
 	// The upgraded response body is the connection, which test cleanup owns.
-	payload, err := contract.EncodeJSON(&framewire.OpenFrame{})
+	payload, err := contract.EncodeJSON(&conversationproto.OpenFrame{})
 	if err != nil {
 		return nil, err
 	}

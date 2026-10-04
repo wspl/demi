@@ -6,15 +6,18 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ForkOperation returns the creation attempt that reserved `id`, in whichever case it is
 // spelled.
-func (c *ControlService) ForkOperation(ctx context.Context, id webapi.ConversationID) (ForkOperation, bool, error) {
+func (c *ControlService) ForkOperation(
+	ctx context.Context,
+	id webapiproto.ConversationID,
+) (ForkOperation, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ForkOperation, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (ForkOperation, error) {
 		r, ok, err := forkByID(ctx, tx, id)
 		found = ok
 		return r, err
@@ -26,7 +29,7 @@ func (c *ControlService) ForkOperation(ctx context.Context, id webapi.Conversati
 // it when it is this one; ErrForkTaken when another attempt or a conversation
 // holds the id.
 func (c *ControlService) ReserveFork(ctx context.Context, operation ForkOperation) (ForkOperation, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ForkOperation, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (ForkOperation, error) {
 		existing, found, err := forkByID(ctx, tx, operation.ID)
 		if err != nil {
 			return ForkOperation{}, err
@@ -64,7 +67,7 @@ func (c *ControlService) ReserveFork(ctx context.Context, operation ForkOperatio
 
 // PendingForks returns the attempts whose destination is not published.
 func (c *ControlService) PendingForks(ctx context.Context) ([]ForkOperation, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]ForkOperation, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]ForkOperation, error) {
 		return queryRecords(
 			ctx,
 			tx,
@@ -84,8 +87,8 @@ ORDER BY f.rowid`,
 // of the attempt, the title the user's. A destination published already
 // is answered as it is. An attached host whose device is gone since is
 // left out, as its revocation left the source.
-func (c *ControlService) PublishFork(ctx context.Context, id webapi.ConversationID) (ConversationRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ConversationRecord, error) {
+func (c *ControlService) PublishFork(ctx context.Context, id webapiproto.ConversationID) (ConversationRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (ConversationRecord, error) {
 		o, found, err := forkByID(ctx, tx, id)
 		if err != nil {
 			return ConversationRecord{}, err
@@ -145,15 +148,15 @@ func (c *ControlService) PublishFork(ctx context.Context, id webapi.Conversation
 
 func forkRow(r *storedRow) ForkOperation {
 	return ForkOperation{
-		ID:       checked(r, "id", webapi.ParseConversationID),
-		Owner:    checked(r, "user_id", webapi.ParseUserID),
-		Source:   checked(r, "source_id", webapi.ParseConversationID),
-		Block:    checked(r, "block_id", core.ParseBlockID),
+		ID:       checked(r, "id", webapiproto.ParseConversationID),
+		Owner:    checked(r, "user_id", webapiproto.ParseUserID),
+		Source:   checked(r, "source_id", webapiproto.ParseConversationID),
+		Block:    checked(r, "block_id", types.ParseBlockID),
 		Metadata: storedJSON(r, "metadata", DecodeForkMetadata),
 	}
 }
 
-func forkByID(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (ForkOperation, bool, error) {
+func forkByID(ctx context.Context, tx *sql.Tx, id webapiproto.ConversationID) (ForkOperation, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,

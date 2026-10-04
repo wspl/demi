@@ -4,24 +4,24 @@ import (
 	"context"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // TranscriptSnapshot is the transcript at one moment, with its version.
 // The blocks are detached from mutable session state.
 type TranscriptSnapshot struct {
-	Blocks  []core.Block
-	Version framewire.TranscriptVersion
+	Blocks  []types.Block
+	Version conversationproto.TranscriptVersion
 }
 
 // Snapshot is the client-visible state at one session decision. Its values
 // are detached or immutable, like the corresponding individual reads.
 type Snapshot struct {
 	Transcript    TranscriptSnapshot
-	Phase         core.SessionPhase
-	Queue         []core.QueuedMessage
-	PendingSteers []core.PendingSteer
+	Phase         types.SessionPhase
+	Queue         []types.QueuedMessage
+	PendingSteers []types.PendingSteer
 }
 
 // ActionEnd says how an action ended when it did not fail.
@@ -56,7 +56,7 @@ type Event interface{ sessionEvent() }
 
 // TranscriptChanged carries the patches of one committed transcript change.
 type TranscriptChanged struct {
-	Patches  []framewire.TranscriptPatch
+	Patches  []conversationproto.TranscriptPatch
 	Revision uint64
 }
 
@@ -69,20 +69,20 @@ type EditCommitted struct{ Receipt store.EditReceipt }
 func (*EditCommitted) sessionEvent() {}
 
 // PhaseChanged reports the client-visible session phase.
-type PhaseChanged struct{ Phase core.SessionPhase }
+type PhaseChanged struct{ Phase types.SessionPhase }
 
 // QueueChanged reports the complete visible message queue.
-type QueueChanged struct{ Queue []core.QueuedMessage }
+type QueueChanged struct{ Queue []types.QueuedMessage }
 
 // PendingSteersChanged reports the human steers waiting for a boundary.
-type PendingSteersChanged struct{ PendingSteers []core.PendingSteer }
+type PendingSteersChanged struct{ PendingSteers []types.PendingSteer }
 
 // RetryScheduled reports a transient provider failure retried after DelayMS.
 type RetryScheduled struct {
 	Attempt     uint32
 	DelayMS     uint64
 	Code        *string
-	Diagnostics *core.ProviderErrorDiagnostics
+	Diagnostics *types.ProviderErrorDiagnostics
 }
 
 // ErrorEvent reports a failed turn or a failed save.

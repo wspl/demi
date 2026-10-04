@@ -14,7 +14,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // logMatching reads across the log writer's publication until the scenario's event appears.
@@ -128,9 +128,9 @@ func TestRunnerWorkingTreeChangesAndLastCommit(t *testing.T) {
 			t.Fatal(*changes.Head)
 		}
 	}
-	want := []runnerwire.GitChange{
-		{Path: "a.txt", Status: " M", Kind: runnerwire.ChangeKindModified, Added: 1},
-		{Path: "b.txt", Status: "??", Kind: runnerwire.ChangeKindAdded, Added: 1},
+	want := []runnerproto.GitChange{
+		{Path: "a.txt", Status: " M", Kind: runnerproto.ChangeKindModified, Added: 1},
+		{Path: "b.txt", Status: "??", Kind: runnerproto.ChangeKindAdded, Added: 1},
 	}
 	if !reflect.DeepEqual(changes.Files, want) {
 		t.Fatal(changes.Files)

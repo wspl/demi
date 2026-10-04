@@ -14,14 +14,14 @@ import (
 	"github.com/nlnwa/whatwg-url/url"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/expose"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
-const testID webapi.ExposeID = "k7x2maqw4p3s6tavaw2y4z6aab"
+const testID webapiproto.ExposeID = "k7x2maqw4p3s6tavaw2y4z6aab"
 
 // These in-process scenarios cost no network or wall-clock waits. Storage is
 // controlled to interleave operations without external resources.
@@ -34,9 +34,9 @@ type shard struct {
 	changes   atomic.Int32
 }
 
-func (s *shard) User() webapi.UserID                        { return "owner" }
+func (s *shard) User() webapiproto.UserID                   { return "owner" }
 func (s *shard) Control() expose.Store                      { return s.store }
-func (s *shard) Clock() core.Clock                          { return core.SystemClock{} }
+func (s *shard) Clock() types.Clock                         { return types.SystemClock{} }
 func (s *shard) ExposesChanged()                            { s.changes.Add(1) }
 func (s *shard) Exposes() *expose.Connections               { return &s.exposes }
 func (s *shard) Domain() *expose.Domain                     { return s.domain }
@@ -57,7 +57,7 @@ func newShard(t *testing.T) *shard {
 		domain:    &domain,
 		backend:   backend,
 		connected: true,
-		store:     &memoryStore{records: make(map[webapi.ExposeID]database.ExposeRecord)},
+		store:     &memoryStore{records: make(map[webapiproto.ExposeID]database.ExposeRecord)},
 	}
 	t.Cleanup(func() {
 		if err := s.exposes.Close(context.Background()); err != nil {
@@ -72,16 +72,16 @@ func newShard(t *testing.T) *shard {
 
 type memoryStore struct {
 	mu      sync.Mutex
-	records map[webapi.ExposeID]database.ExposeRecord
+	records map[webapiproto.ExposeID]database.ExposeRecord
 	read    func(context.Context) error
 	failure error
 }
 
-func (m *memoryStore) Device(_ context.Context, id webapi.DeviceID) (database.DeviceRecord, bool, error) {
+func (m *memoryStore) Device(_ context.Context, id webapiproto.DeviceID) (database.DeviceRecord, bool, error) {
 	if id == "missing" {
 		return database.DeviceRecord{}, false, nil
 	}
-	user := webapi.UserID("owner")
+	user := webapiproto.UserID("owner")
 	if id == "foreign" {
 		user = "other"
 	}
@@ -90,10 +90,10 @@ func (m *memoryStore) Device(_ context.Context, id webapi.DeviceID) (database.De
 
 func (m *memoryStore) CreateExpose(
 	_ context.Context,
-	id webapi.ExposeID,
-	user webapi.UserID,
-	device webapi.DeviceID,
-	address webapi.ExposeAddress,
+	id webapiproto.ExposeID,
+	user webapiproto.UserID,
+	device webapiproto.DeviceID,
+	address webapiproto.ExposeAddress,
 	lifetime time.Duration,
 ) (database.ExposeRecord, error) {
 	m.mu.Lock()
@@ -101,7 +101,7 @@ func (m *memoryStore) CreateExpose(
 	if m.failure != nil {
 		return database.ExposeRecord{}, m.failure
 	}
-	expiry, err := core.TimestampFromTime(time.Now().Add(lifetime))
+	expiry, err := types.TimestampFromTime(time.Now().Add(lifetime))
 	if err != nil {
 		return database.ExposeRecord{}, err
 	}
@@ -110,14 +110,14 @@ func (m *memoryStore) CreateExpose(
 		User:      user,
 		Device:    device,
 		Address:   address,
-		CreatedAt: core.SystemClock{}.Now(),
+		CreatedAt: types.SystemClock{}.Now(),
 		ExpiresAt: expiry,
 	}
 	m.records[id] = record
 	return record, nil
 }
 
-func (m *memoryStore) Expose(ctx context.Context, id webapi.ExposeID) (database.ExposeRecord, bool, error) {
+func (m *memoryStore) Expose(ctx context.Context, id webapiproto.ExposeID) (database.ExposeRecord, bool, error) {
 	if m.read != nil {
 		if err := m.read(ctx); err != nil {
 			return database.ExposeRecord{}, false, err
@@ -135,7 +135,7 @@ func (m *memoryStore) Expose(ctx context.Context, id webapi.ExposeID) (database.
 	return record, true, nil
 }
 
-func (m *memoryStore) UserExposes(_ context.Context, user webapi.UserID) (database.UserExposes, error) {
+func (m *memoryStore) UserExposes(_ context.Context, user webapiproto.UserID) (database.UserExposes, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failure != nil {
@@ -146,7 +146,7 @@ func (m *memoryStore) UserExposes(_ context.Context, user webapi.UserID) (databa
 		if record.User != user {
 			continue
 		}
-		if record.ExpiresAt <= (core.SystemClock{}).Now() {
+		if record.ExpiresAt <= (types.SystemClock{}).Now() {
 			delete(m.records, id)
 			result.Expired = append(result.Expired, id)
 		} else {
@@ -159,8 +159,8 @@ func (m *memoryStore) UserExposes(_ context.Context, user webapi.UserID) (databa
 
 func (m *memoryStore) RenewExpose(
 	_ context.Context,
-	id webapi.ExposeID,
-	user webapi.UserID,
+	id webapiproto.ExposeID,
+	user webapiproto.UserID,
 	lifetime time.Duration,
 ) (database.ExposeRecord, error) {
 	m.mu.Lock()
@@ -169,10 +169,10 @@ func (m *memoryStore) RenewExpose(
 		return database.ExposeRecord{}, m.failure
 	}
 	record, ok := m.records[id]
-	if !ok || record.User != user || record.ExpiresAt <= (core.SystemClock{}).Now() {
+	if !ok || record.User != user || record.ExpiresAt <= (types.SystemClock{}).Now() {
 		return database.ExposeRecord{}, database.ErrExposeNotFound
 	}
-	expiry, err := core.TimestampFromTime(time.Now().Add(lifetime))
+	expiry, err := types.TimestampFromTime(time.Now().Add(lifetime))
 	if err != nil {
 		return database.ExposeRecord{}, err
 	}
@@ -181,7 +181,7 @@ func (m *memoryStore) RenewExpose(
 	return record, nil
 }
 
-func (m *memoryStore) DeleteExpose(_ context.Context, id webapi.ExposeID) error {
+func (m *memoryStore) DeleteExpose(_ context.Context, id webapiproto.ExposeID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failure != nil {
@@ -191,7 +191,11 @@ func (m *memoryStore) DeleteExpose(_ context.Context, id webapi.ExposeID) error 
 	return nil
 }
 
-func (m *memoryStore) DeleteExpiredExpose(_ context.Context, id webapi.ExposeID, at core.Timestamp) (bool, error) {
+func (m *memoryStore) DeleteExpiredExpose(
+	_ context.Context,
+	id webapiproto.ExposeID,
+	at types.Timestamp,
+) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failure != nil {
@@ -205,13 +209,16 @@ func (m *memoryStore) DeleteExpiredExpose(_ context.Context, id webapi.ExposeID,
 	return true, nil
 }
 
-func (m *memoryStore) DeleteDeviceExposes(_ context.Context, device webapi.DeviceID) ([]webapi.ExposeID, error) {
+func (m *memoryStore) DeleteDeviceExposes(
+	_ context.Context,
+	device webapiproto.DeviceID,
+) ([]webapiproto.ExposeID, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failure != nil {
 		return nil, m.failure
 	}
-	var ids []webapi.ExposeID
+	var ids []webapiproto.ExposeID
 	for id, record := range m.records {
 		if record.Device == device {
 			ids = append(ids, id)
@@ -230,7 +237,7 @@ func add(t *testing.T, s *shard, duration time.Duration) expose.Expose {
 	return value
 }
 
-func admit(t *testing.T, s *shard, id webapi.ExposeID) *expose.RelayAdmission {
+func admit(t *testing.T, s *shard, id webapiproto.ExposeID) *expose.RelayAdmission {
 	t.Helper()
 	admission, err := expose.AdmitRelay(t.Context(), s, id)
 	if err != nil {
@@ -323,7 +330,7 @@ func TestRecordLifecycleAndOwnership(t *testing.T) {
 		if first.Record.ID == second.Record.ID {
 			t.Fatal("duplicate credentials")
 		}
-		if _, err := webapi.ParseExposeID(string(first.Record.ID)); err != nil {
+		if _, err := webapiproto.ParseExposeID(string(first.Record.ID)); err != nil {
 			t.Fatal(err)
 		}
 		listed, err := expose.List(t.Context(), s)
@@ -368,7 +375,7 @@ func TestRecordLifecycleAndOwnership(t *testing.T) {
 
 func TestCreationRefusalsAndDisabledInstance(t *testing.T) {
 	s := newShard(t)
-	for _, device := range []webapi.DeviceID{"missing", "foreign"} {
+	for _, device := range []webapiproto.DeviceID{"missing", "foreign"} {
 		if _, err := expose.Add(t.Context(), s, device, "80", time.Hour); !errors.Is(err, expose.ErrDeviceNotFound) {
 			t.Fatalf("device %s: %v", device, err)
 		}
@@ -456,7 +463,7 @@ func TestRemovalDuringAdmission(t *testing.T) {
 		result <- err
 	}()
 	<-entered
-	s.exposes.End([]webapi.ExposeID{value.Record.ID})
+	s.exposes.End([]webapiproto.ExposeID{value.Record.ID})
 	close(resume)
 	if err := <-result; !errors.Is(err, expose.ErrRemoved) {
 		t.Fatalf("admission after destruction: %v", err)

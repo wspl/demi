@@ -15,22 +15,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/cmdsdk/cmdsdktest"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/commandsdk/commandsdktest"
 	"golang.org/x/sys/unix"
 )
 
 type localHandler struct {
-	invoke func(context.Context, cmdsdk.InvocationContext[commandwire.LocalInvocation]) (commandwire.Completion, error)
+	invoke func(
+		context.Context,
+		commandsdk.InvocationContext[commandproto.LocalInvocation],
+	) (commandproto.Completion, error)
 }
 
 func (localHandler) Operations() []string { return []string{Raw} }
 
 func (h localHandler) Invoke(
 	ctx context.Context,
-	call cmdsdk.InvocationContext[commandwire.LocalInvocation],
-) (commandwire.Completion, error) {
+	call commandsdk.InvocationContext[commandproto.LocalInvocation],
+) (commandproto.Completion, error) {
 	return h.invoke(ctx, call)
 }
 
@@ -67,29 +70,29 @@ func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 			completed <- err
 			return
 		}
-		completed <- cmdsdk.ServeLocal(ctx, connection, localHandler{invoke: func(
+		completed <- commandsdk.ServeLocal(ctx, connection, localHandler{invoke: func(
 			ctx context.Context,
-			call cmdsdk.InvocationContext[commandwire.LocalInvocation],
-		) (commandwire.Completion, error) {
+			call commandsdk.InvocationContext[commandproto.LocalInvocation],
+		) (commandproto.Completion, error) {
 			if call.Request.Cwd != directory || call.Request.Env["VALUE"] != "<>&" {
 				t.Errorf("metadata %+v", call.Request)
 			}
 			if err := call.Output.Stdout(ctx, []byte("before input")); err != nil {
-				return commandwire.Completion{}, err
+				return commandproto.Completion{}, err
 			}
 			close(readRequested)
 			data, err := call.Input.Next(ctx)
 			if err != nil {
-				return commandwire.Completion{}, err
+				return commandproto.Completion{}, err
 			}
 			if err := call.Output.Stdout(ctx, data); err != nil {
-				return commandwire.Completion{}, err
+				return commandproto.Completion{}, err
 			}
 			if err := call.Output.Stderr(ctx, []byte("error stream")); err != nil {
-				return commandwire.Completion{}, err
+				return commandproto.Completion{}, err
 			}
 			// Return without pulling EOF; forwarding must join its blocked input work.
-			return commandwire.Completion{ExitCode: 7}, nil
+			return commandproto.Completion{ExitCode: 7}, nil
 		}})
 	}()
 	sent := make(chan struct{})
@@ -101,7 +104,7 @@ func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 	completion, err := Forward(
 		ctx,
 		endpoint,
-		commandwire.LocalInvocation{
+		commandproto.LocalInvocation{
 			Operation:    Raw,
 			InvocationID: "test",
 			Args:         json.RawMessage(`{}`),
@@ -152,7 +155,7 @@ func TestConnectWaitsForLiveRunnerAndFailsWhenGone(t *testing.T) {
 	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		t.Fatal(err)
 	}
-	baseline := cmdsdktest.Pauses()
+	baseline := commandsdktest.Pauses()
 	done := make(chan error, 1)
 	ctx := t.Context()
 	go func() {
@@ -163,7 +166,7 @@ func TestConnectWaitsForLiveRunnerAndFailsWhenGone(t *testing.T) {
 		done <- err
 	}()
 	// The pause counter offers no event, so the loop yields between checks.
-	for cmdsdktest.Pauses() == baseline {
+	for commandsdktest.Pauses() == baseline {
 		select {
 		case err := <-done:
 			t.Fatalf("live runner refused without waiting: %v", err)
@@ -312,10 +315,10 @@ func TestForwardConnectionLossInterruptsBlockedOutput(t *testing.T) {
 					return
 				}
 				accepted <- conn
-				served <- cmdsdk.ServeLocal(t.Context(), conn, localHandler{invoke: func(
+				served <- commandsdk.ServeLocal(t.Context(), conn, localHandler{invoke: func(
 					ctx context.Context,
-					call cmdsdk.InvocationContext[commandwire.LocalInvocation],
-				) (commandwire.Completion, error) {
+					call commandsdk.InvocationContext[commandproto.LocalInvocation],
+				) (commandproto.Completion, error) {
 					var err error
 					if stderr {
 						err = call.Output.Stderr(ctx, []byte("blocked"))
@@ -323,10 +326,10 @@ func TestForwardConnectionLossInterruptsBlockedOutput(t *testing.T) {
 						err = call.Output.Stdout(ctx, []byte("blocked"))
 					}
 					if err != nil {
-						return commandwire.Completion{}, err
+						return commandproto.Completion{}, err
 					}
 					<-ctx.Done()
-					return commandwire.Completion{}, ctx.Err()
+					return commandproto.Completion{}, ctx.Err()
 				}})
 			}()
 			forwarded := make(chan error, 1)
@@ -334,7 +337,7 @@ func TestForwardConnectionLossInterruptsBlockedOutput(t *testing.T) {
 				_, err := Forward(
 					t.Context(),
 					endpoint,
-					commandwire.LocalInvocation{
+					commandproto.LocalInvocation{
 						Operation:    Raw,
 						InvocationID: "lost",
 						Args:         json.RawMessage(`{}`),

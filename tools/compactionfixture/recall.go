@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 )
 
 const (
@@ -62,7 +62,7 @@ func forceCompaction(ctx context.Context, c *conversation, extra int) (bool, err
 	if err := c.grow(ctx, fmt.Sprintf("VERIFY-%d", extra), 6000); err != nil {
 		return false, err
 	}
-	if err := c.act(ctx, &framewire.CompactFrame{}); err != nil {
+	if err := c.act(ctx, &conversationproto.CompactFrame{}); err != nil {
 		return false, err
 	}
 	if c.generations() <= before {
@@ -70,7 +70,7 @@ func forceCompaction(ctx context.Context, c *conversation, extra int) (bool, err
 		if err := c.grow(ctx, fmt.Sprintf("FORCE-%d", extra), 20000); err != nil {
 			return false, err
 		}
-		if err := c.act(ctx, &framewire.CompactFrame{}); err != nil {
+		if err := c.act(ctx, &conversationproto.CompactFrame{}); err != nil {
 			return false, err
 		}
 	}

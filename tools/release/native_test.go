@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
-	"github.com/wspl/demi/internal/cmdpkg/file/fileop"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/commandpackage/file/fileproto"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/version"
 	"go.uber.org/goleak"
 )
@@ -54,12 +54,12 @@ func nativeFixture(t *testing.T, root, program string, targets []string, content
 
 func appFixture(t *testing.T) *application {
 	t.Helper()
-	return &application{Root: t.TempDir(), Out: io.Discard, Err: io.Discard, chromeRelease: browserop.PinnedRelease}
+	return &application{Root: t.TempDir(), Out: io.Discard, Err: io.Discard, chromeRelease: browserproto.PinnedRelease}
 }
 
-func readRunner(t *testing.T, root string) runnerwire.Release {
+func readRunner(t *testing.T, root string) runnerproto.Release {
 	t.Helper()
-	release, err := runnerwire.DecodeRelease(readFixture(t, filepath.Join(root, "manifest.json")))
+	release, err := runnerproto.DecodeRelease(readFixture(t, filepath.Join(root, "manifest.json")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,10 +83,10 @@ func TestNamedTargetsMustBeEachExecutablesAndUnnamedAreAllOfTheirs(t *testing.T)
 		programs, named, want []string
 		refused               bool
 	}{
-		{[]string{"demi-runner", "demi-machine-manager"}, []string{commandwire.Targets[0]}, nil, true},
+		{[]string{"demi-runner", "demi-machine-manager"}, []string{commandproto.Targets[0]}, nil, true},
 		{[]string{"demi-runner", "demi-machine-manager"}, []string{linux[1], linux[0]}, linux, false},
 		{[]string{"demi-machine-manager"}, nil, linux, false},
-		{defaultPrograms, nil, commandwire.Targets, false},
+		{defaultPrograms, nil, commandproto.Targets, false},
 	} {
 		got, err := selectTargets(test.programs, test.named)
 		if test.refused && (err == nil || err.Error() != "demi-machine-manager is not built for aarch64-apple-darwin") {
@@ -99,7 +99,7 @@ func TestNamedTargetsMustBeEachExecutablesAndUnnamedAreAllOfTheirs(t *testing.T)
 	a := appFixture(t)
 	if err := a.run(
 		t.Context(),
-		[]string{"native", "build", "--package", "demi-machine-manager", "--target", commandwire.Targets[0]},
+		[]string{"native", "build", "--package", "demi-machine-manager", "--target", commandproto.Targets[0]},
 	); err == nil ||
 		err.Error() != "demi-machine-manager is not built for aarch64-apple-darwin" {
 		t.Fatal("unsupported build accepted")
@@ -113,7 +113,7 @@ func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.
 	a := appFixture(t)
 	output := filepath.Join(a.Root, "runners")
 	args := []string{"native", "package", "--package", "demi-runner", "--output", output}
-	nativeFixture(t, a.Root, "demi-runner", commandwire.Targets, "first")
+	nativeFixture(t, a.Root, "demi-runner", commandproto.Targets, "first")
 	if err := a.run(t.Context(), args); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.
 	if !reflect.DeepEqual(readRunner(t, output), first) {
 		t.Fatal("repeat changed identity")
 	}
-	nativeFixture(t, a.Root, "demi-runner", commandwire.Targets, "second")
+	nativeFixture(t, a.Root, "demi-runner", commandproto.Targets, "second")
 	if err := a.run(t.Context(), args); err != nil {
 		t.Fatal(err)
 	}
@@ -146,12 +146,12 @@ func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.
 		t.Fatal("build changed without new identity")
 	}
 	requireReleaseEntries(t, output, first.Release, second.Release, "manifest.json")
-	writeFixture(t, filepath.Join(output, first.Release, commandwire.Targets[2], "demi-runner"), []byte("corrupt"))
-	nativeFixture(t, a.Root, "demi-runner", commandwire.Targets, "first")
+	writeFixture(t, filepath.Join(output, first.Release, commandproto.Targets[2], "demi-runner"), []byte("corrupt"))
+	nativeFixture(t, a.Root, "demi-runner", commandproto.Targets, "first")
 	requireConflict(
 		t,
 		a.run(t.Context(), args),
-		filepath.Join(output, first.Release, commandwire.Targets[2], "demi-runner"),
+		filepath.Join(output, first.Release, commandproto.Targets[2], "demi-runner"),
 	)
 	if !reflect.DeepEqual(readRunner(t, output), second) {
 		t.Fatal("failed publication moved pointer")
@@ -208,16 +208,16 @@ func TestBackendOrManagerReleaseRecordsVersionAndIsImmutable(t *testing.T) {
 
 func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T) {
 	a := appFixture(t)
-	targets := []string{commandwire.Targets[0], commandwire.Targets[3]}
+	targets := []string{commandproto.Targets[0], commandproto.Targets[3]}
 	nativeFixture(t, a.Root, "demi-file", targets, "file")
 	output := filepath.Join(a.Root, "file")
 	args := []string{"native", "package", "--package", "demi-file", "--output", output}
 	missingBuild := a.run(t.Context(), args)
 	// The message names the first missing build and how to make it.
-	source := filepath.Join(a.Root, ".cache/native-target", commandwire.Targets[1], "release", "demi-file")
+	source := filepath.Join(a.Root, ".cache/native-target", commandproto.Targets[1], "release", "demi-file")
 	want := fmt.Sprintf(
 		"no build of demi-file for %s at %s: run go run ./tools/release native build first: ",
-		commandwire.Targets[1],
+		commandproto.Targets[1],
 		source,
 	)
 	if !errors.Is(missingBuild, os.ErrNotExist) || !strings.HasPrefix(missingBuild.Error(), want) {
@@ -232,12 +232,12 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 	if err := a.run(t.Context(), args); err != nil {
 		t.Fatal(err)
 	}
-	descriptor, err := commandwire.DecodePackageDescriptor(readFixture(t, filepath.Join(output, "descriptor.json")))
+	descriptor, err := commandproto.DecodePackageDescriptor(readFixture(t, filepath.Join(output, "descriptor.json")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.ID != fileop.Package || descriptor.Version != version.Release ||
-		!reflect.DeepEqual(descriptor.Operations, fileop.Operations()) ||
+	if descriptor.ID != fileproto.Package || descriptor.Version != version.Release ||
+		!reflect.DeepEqual(descriptor.Operations, fileproto.Operations()) ||
 		len(descriptor.Resources) != 0 ||
 		!slices.Equal(slices.Sorted(maps.Keys(descriptor.Targets)), targets) {
 		t.Fatal(descriptor)
@@ -259,7 +259,7 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	// Accepted R5 removal: Chrome is the only resource a command package carries.
 	a := appFixture(t)
-	target := commandwire.Targets[3]
+	target := commandproto.Targets[3]
 	program := filepath.Join(a.Root, "browser")
 	writeFixture(t, program, []byte("browser"))
 	cache := filepath.Join(a.Root, ".cache/resources")
@@ -272,11 +272,11 @@ func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	}
 	cached := filepath.Join(cache, digest.SHA256)
 	writeFixture(t, cached, archive)
-	chrome := browserop.BrowserRelease{Version: "153.0.8010.36"}
-	for _, target := range []string{target, commandwire.Targets[0]} {
+	chrome := browserproto.BrowserRelease{Version: "153.0.8010.36"}
+	for _, target := range []string{target, commandproto.Targets[0]} {
 		chrome.Platforms = append(
 			chrome.Platforms,
-			browserop.ReleasePlatform{
+			browserproto.ReleasePlatform{
 				Target:     target,
 				URL:        "https://example.test/chrome.zip",
 				Size:       digest.Size,
@@ -290,7 +290,7 @@ func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	if err := a.publishNative(t.Context(), options, sources, chrome); err != nil {
 		t.Fatal(err)
 	}
-	descriptor, err := commandwire.DecodePackageDescriptor(
+	descriptor, err := commandproto.DecodePackageDescriptor(
 		readFixture(t, filepath.Join(options.Output, "descriptor.json")),
 	)
 	if err != nil {

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
 )
 
 // EndpointEnv names the runner's local command endpoint.
@@ -42,9 +42,9 @@ type Stdio struct {
 func Forward(
 	ctx context.Context,
 	endpoint string,
-	request commandwire.LocalInvocation,
+	request commandproto.LocalInvocation,
 	stdio Stdio,
-) (completion commandwire.Completion, err error) {
+) (completion commandproto.Completion, err error) {
 	defer func() {
 		if err != nil && ctx.Err() != nil {
 			err = &operationError{message: "command cancelled", cause: ctx.Err()}
@@ -68,7 +68,7 @@ func Forward(
 	}
 	invocation, cancel := context.WithCancel(ctx)
 	defer cancel()
-	client, err := cmdsdk.Connect(invocation, &commandConnection{Conn: connection, cancel: cancel})
+	client, err := commandsdk.Connect(invocation, &commandConnection{Conn: connection, cancel: cancel})
 	if err != nil {
 		return completion, err
 	}
@@ -87,7 +87,7 @@ func Forward(
 	if err != nil {
 		return completion, fmt.Errorf("local invocation: %w", err)
 	}
-	completion, err = (cmdsdk.Exchange{Input: input, Output: output}).Run(invocation, source, terminal)
+	completion, err = (commandsdk.Exchange{Input: input, Output: output}).Run(invocation, source, terminal)
 	if err != nil {
 		return completion, err
 	}
@@ -143,7 +143,7 @@ type commandReader struct{ commandStream[io.ReadCloser] }
 func (r *commandReader) Next(ctx context.Context) ([]byte, error) {
 	stop := interruptCommandIO(ctx, r)
 	defer stop()
-	buffer := make([]byte, commandwire.MaxRecordBytes)
+	buffer := make([]byte, commandproto.MaxRecordBytes)
 	n, err := r.stream.Read(buffer)
 	if n > 0 {
 		return buffer[:n], nil

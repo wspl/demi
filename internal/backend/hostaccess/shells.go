@@ -13,12 +13,12 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ConversationBlobs adapts the owner's namespace and use records for storage.
@@ -30,14 +30,18 @@ func (b ConversationBlobs) Media() store.Blobs {
 }
 
 // CommitUses records references inside a database commit without network IO.
-func (b ConversationBlobs) CommitUses(_ context.Context, refs []core.BlobRef) error {
+func (b ConversationBlobs) CommitUses(_ context.Context, refs []types.BlobRef) error {
 	return b.Namespace.CommitUses(refs)
 }
 
 // ConversationHostForNode resolves the current main Host for an agent node.
 // The returned handle is for shell environment identity; its jobs must use
 // RunJob, and other file operations must use WithHost for their whole lifetime.
-func ConversationHostForNode(ctx context.Context, shard HostShard, id webapi.ConversationID) (*remotehost.Host, error) {
+func ConversationHostForNode(
+	ctx context.Context,
+	shard HostShard,
+	id webapiproto.ConversationID,
+) (*remotehost.Host, error) {
 	identity, err := WithHost(
 		ctx,
 		shard,
@@ -67,7 +71,7 @@ func ConversationHostForNode(ctx context.Context, shard HostShard, id webapi.Con
 func RunJob(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	key host.Key,
 	job func(context.Context) error,
 ) error {
@@ -102,7 +106,7 @@ func (s *ShardShellEnvironments) Create(
 	if !ok {
 		return nil, &host.Error{Kind: host.Protocol, Message: "the job's Host is no conversation's"}
 	}
-	device, err := webapi.ParseDeviceID(deviceText)
+	device, err := webapiproto.ParseDeviceID(deviceText)
 	if err != nil {
 		return nil, &host.Error{Kind: host.Protocol, Message: "the job's Host is no conversation's"}
 	}
@@ -114,13 +118,13 @@ func (s *ShardShellEnvironments) Create(
 	private := remotehost.NewHost(target.Key(), target.DefaultCWD(), func() remotehost.DeviceLink {
 		return remotehost.DeviceLink{Link: s.shard.Devices().Link(device)}
 	}, bridge.admit)
-	source := func(ctx context.Context) (commandwire.Context, error) {
+	source := func(ctx context.Context) (commandproto.Context, error) {
 		return runners.CommandContext(
 			ctx,
 			s.shard.Control(),
 			s.shard.User(),
 			id,
-			&commandwire.AgentCaller{Number: scope.Agent},
+			&commandproto.AgentCaller{Number: scope.Agent},
 		)
 	}
 	options := remotehost.NewEnvironmentOptions(private, source, scope.Feed, scope.Numbers)
@@ -141,7 +145,7 @@ var (
 func runJob(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	key host.Key,
 	job func(context.Context, *Admitted) error,
 ) error {
@@ -149,7 +153,7 @@ func runJob(
 	if !ok {
 		return &host.Error{Kind: host.Protocol, Message: "the job's Host is no conversation's"}
 	}
-	device, err := webapi.ParseDeviceID(text)
+	device, err := webapiproto.ParseDeviceID(text)
 	if err != nil {
 		return &host.Error{Kind: host.Protocol, Message: "the job's Host is no conversation's"}
 	}
@@ -194,7 +198,7 @@ func asHostError(err error) error {
 // escapes to the node, and only jobs holding an admission can use it.
 type shellAdmission struct {
 	shard  HostShard
-	id     webapi.ConversationID
+	id     webapiproto.ConversationID
 	mu     sync.Mutex // Protects active job admissions, never IO or callbacks.
 	active map[*Admitted]struct{}
 }
@@ -253,19 +257,19 @@ func (e *registeredEnvironment) DisposeAll(ctx context.Context) error {
 
 type commandKeeper struct {
 	shard HostShard
-	id    webapi.ConversationID
+	id    webapiproto.ConversationID
 	host  *remotehost.Host
 }
 
 // Retain keeps each readable edit pair without losing records for missing copies.
 func (k *commandKeeper) Retain(
 	ctx context.Context,
-	command core.CommandID,
-	files []runnerwire.JobFileChange,
-) ([]core.EditedFile, error) {
-	retained := make([]core.EditedFile, 0, len(files))
+	command types.CommandID,
+	files []runnerproto.JobFileChange,
+) ([]types.EditedFile, error) {
+	retained := make([]types.EditedFile, 0, len(files))
 	for _, file := range files {
-		copies := make([]*core.EditCopies, len(file.Edits))
+		copies := make([]*types.EditCopies, len(file.Edits))
 		for index, segment := range file.Edits {
 			if segment.Modified == nil {
 				continue
@@ -289,14 +293,14 @@ func (k *commandKeeper) Retain(
 		}
 		retained = append(
 			retained,
-			remotehost.EditedFile(file, func(index int) *core.EditCopies { return copies[index] }),
+			remotehost.EditedFile(file, func(index int) *types.EditCopies { return copies[index] }),
 		)
 	}
 	return retained, nil
 }
 
 // storeCopies stores before and after as text, including an empty original for creation.
-func (k *commandKeeper) storeCopies(ctx context.Context, original *string, modified string) (*core.EditCopies, error) {
+func (k *commandKeeper) storeCopies(ctx context.Context, original *string, modified string) (*types.EditCopies, error) {
 	before := ""
 	if original != nil {
 		data, err := k.host.FS().ReadFile(ctx, *original)
@@ -324,15 +328,15 @@ func (k *commandKeeper) storeCopies(ctx context.Context, original *string, modif
 	if err != nil {
 		return nil, err
 	}
-	return &core.EditCopies{Original: first, Modified: second}, nil
+	return &types.EditCopies{Original: first, Modified: second}, nil
 }
 
 // KeepOutput records either the kept blob or why it was not stored; storage
 // failures are logged and never prevent a command from ending.
-func (k *commandKeeper) KeepOutput(ctx context.Context, command core.CommandID, output host.WholeOutput) error {
+func (k *commandKeeper) KeepOutput(ctx context.Context, command types.CommandID, output host.WholeOutput) error {
 	ended := k.shard.Clock().Now()
 	encoded, err := remotehost.EncodeOutput(output)
-	var blob core.BlobRef
+	var blob types.BlobRef
 	if err == nil {
 		blob, err = k.shard.Blobs().Put(ctx, encoded)
 	}

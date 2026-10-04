@@ -3,7 +3,7 @@ package store
 import (
 	"reflect"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // cloneModelBlocks freezes transcript records, including nested model selections
@@ -11,11 +11,11 @@ import (
 // deep copier. Reflection preserves the sealed contract variant without a second
 // declaration or per-variant copy implementation that can omit a new field.
 // This copies typed in-process contract data, never decodes outside input.
-func cloneModelBlocks(blocks []core.Block) []core.Block {
+func cloneModelBlocks(blocks []types.Block) []types.Block {
 	if blocks == nil {
 		return nil
 	}
-	cloned := make([]core.Block, len(blocks))
+	cloned := make([]types.Block, len(blocks))
 	for index, block := range blocks {
 		if block != nil {
 			reflect.ValueOf(&cloned[index]).Elem().Set(cloneTranscriptValue(reflect.ValueOf(block)))

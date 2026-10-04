@@ -16,40 +16,40 @@ import (
 	"gocloud.dev/gcerrors"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Stores holds every user's blob namespace, with the backend's record of blob uses.
 // Its namespaces share the use record and support concurrent calls.
 type Stores struct {
 	objects Objects
-	clock   core.Clock
+	clock   types.Clock
 	// mu protects last and deleting; no IO or notification happens under it.
 	mu       sync.Mutex
-	last     map[webapi.UserID]map[core.BlobRef]core.Timestamp
+	last     map[webapiproto.UserID]map[types.BlobRef]types.Timestamp
 	deleting map[blobKey]chan struct{}
 }
 
 type blobKey struct {
-	user webapi.UserID
-	ref  core.BlobRef
+	user webapiproto.UserID
+	ref  types.BlobRef
 }
 
 // New returns the namespaces in objects, whose uses are timed by clock.
 // It borrows objects; its caller retains responsibility for closing the bucket.
-func New(objects Objects, clock core.Clock) *Stores {
+func New(objects Objects, clock types.Clock) *Stores {
 	return &Stores{
 		objects:  objects,
 		clock:    clock,
-		last:     make(map[webapi.UserID]map[core.BlobRef]core.Timestamp),
+		last:     make(map[webapiproto.UserID]map[types.BlobRef]types.Timestamp),
 		deleting: make(map[blobKey]chan struct{}),
 	}
 }
 
 // ForUser returns user's namespace: the signed-in user's for uploads and
 // downloads, the conversation owner's for transcript media.
-func (s *Stores) ForUser(user webapi.UserID) *Namespace {
+func (s *Stores) ForUser(user webapiproto.UserID) *Namespace {
 	return &Namespace{stores: s, user: user}
 }
 
@@ -57,23 +57,23 @@ func (s *Stores) ForUser(user webapi.UserID) *Namespace {
 // It borrows its store and supports concurrent calls.
 type Namespace struct {
 	stores *Stores
-	user   webapi.UserID
+	user   webapiproto.UserID
 }
 
 var _ store.Blobs = (*Namespace)(nil)
 
 // Stored is a blob of a namespace, as its listing finds it.
 type Stored struct {
-	Blob core.BlobRef
+	Blob types.BlobRef
 	// Written is when its object was written.
-	Written core.Timestamp
+	Written types.Timestamp
 }
 
 // Put stores data and answers its SHA-256 name. A name already present is
 // success without sending bytes. It records a use before checking existence;
 // a put that meets a deletion waits for it to end and then stores the bytes again.
-func (n *Namespace) Put(ctx context.Context, data core.B64Bytes) (core.BlobRef, error) {
-	ref := core.BlobRefOf(data)
+func (n *Namespace) Put(ctx context.Context, data types.B64Bytes) (types.BlobRef, error) {
+	ref := types.BlobRefOf(data)
 	if err := n.recordPut(ctx, ref); err != nil {
 		return "", fmt.Errorf("the object store failed: %w", err)
 	}
@@ -107,7 +107,7 @@ func (n *Namespace) Put(ctx context.Context, data core.B64Bytes) (core.BlobRef, 
 
 // Read returns the bytes named by ref and whether this namespace holds them.
 // A malformed reference or missing blob returns absent, not an error.
-func (n *Namespace) Read(ctx context.Context, ref core.BlobRef) (core.B64Bytes, bool, error) {
+func (n *Namespace) Read(ctx context.Context, ref types.BlobRef) (types.B64Bytes, bool, error) {
 	if err := ref.Validate(); err != nil {
 		return nil, false, nil
 	}
@@ -118,7 +118,7 @@ func (n *Namespace) Read(ctx context.Context, ref core.BlobRef) (core.B64Bytes, 
 	if err != nil {
 		return nil, false, fmt.Errorf("the object store failed: %w", err)
 	}
-	return core.B64Bytes(data), true, nil
+	return types.B64Bytes(data), true, nil
 }
 
 // List returns every blob in the namespace with its write time in one listing
@@ -134,12 +134,12 @@ func (n *Namespace) List(ctx context.Context) ([]Stored, error) {
 		if err != nil {
 			return nil, fmt.Errorf("the object store failed: %w", err)
 		}
-		ref, err := core.ParseBlobRef(path.Base(object.Key))
+		ref, err := types.ParseBlobRef(path.Base(object.Key))
 		if err != nil {
 			slog.Warn("an object in a blob namespace is not a blob", "object", object.Key)
 			continue
 		}
-		written, err := core.TimestampFromTime(object.ModTime)
+		written, err := types.TimestampFromTime(object.ModTime)
 		if err != nil {
 			return nil, fmt.Errorf("the object %s holds an invalid last modified time: %w", object.Key, err)
 		}
@@ -150,7 +150,7 @@ func (n *Namespace) List(ctx context.Context) ([]Stored, error) {
 // DeleteUnused deletes ref unless something used it within grace, answering
 // whether it was deleted. Checking uses and marking deletion are atomic: until
 // deletion ends, a put waits and a commit that references the blob fails.
-func (n *Namespace) DeleteUnused(ctx context.Context, ref core.BlobRef, grace time.Duration) (bool, error) {
+func (n *Namespace) DeleteUnused(ctx context.Context, ref types.BlobRef, grace time.Duration) (bool, error) {
 	s := n.stores
 	now := s.clock.Now()
 	key := blobKey{n.user, ref}
@@ -179,7 +179,7 @@ func (n *Namespace) DeleteUnused(ctx context.Context, ref core.BlobRef, grace ti
 // CommitUses records that a commit writes or removes references to refs, inside
 // its transaction and before committing. If any blob is being deleted, it
 // returns an error and the transaction must not commit.
-func (n *Namespace) CommitUses(refs []core.BlobRef) error {
+func (n *Namespace) CommitUses(refs []types.BlobRef) error {
 	if len(refs) == 0 {
 		return nil
 	}
@@ -215,7 +215,7 @@ func (n *Namespace) ForgetUses(grace time.Duration) {
 }
 
 // recordPut registers this blob's use once any deletion has finished.
-func (n *Namespace) recordPut(ctx context.Context, ref core.BlobRef) error {
+func (n *Namespace) recordPut(ctx context.Context, ref types.BlobRef) error {
 	s := n.stores
 	for {
 		if err := ctx.Err(); err != nil {
@@ -238,15 +238,15 @@ func (n *Namespace) recordPut(ctx context.Context, ref core.BlobRef) error {
 }
 
 // recordUseLocked updates a user's blob-use record while its store's mutex is held.
-func (n *Namespace) recordUseLocked(ref core.BlobRef, now core.Timestamp) {
+func (n *Namespace) recordUseLocked(ref types.BlobRef, now types.Timestamp) {
 	if n.stores.last[n.user] == nil {
-		n.stores.last[n.user] = make(map[core.BlobRef]core.Timestamp)
+		n.stores.last[n.user] = make(map[types.BlobRef]types.Timestamp)
 	}
 	n.stores.last[n.user][ref] = now
 }
 
 // recentUse tests the blob retention grace, conservatively keeping invalid clock values.
-func recentUse(now, used core.Timestamp, grace time.Duration) bool {
+func recentUse(now, used types.Timestamp, grace time.Duration) bool {
 	current, err := now.Time()
 	if err != nil {
 		return true

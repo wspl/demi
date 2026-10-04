@@ -15,9 +15,9 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/remotehost/testdata/fixture"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // nativeFixture loads the programtest-built package after runner availability was checked.
@@ -36,7 +36,7 @@ func serviceRequest(
 	args json.RawMessage,
 ) remotehost.ServiceRequest {
 	context := hosttest.CommandContext()
-	context.Caller = &commandwire.UserCaller{}
+	context.Caller = &commandproto.UserCaller{}
 	request := remotehost.ServiceRequest{
 		Context:   context,
 		Package:   n.Descriptor,
@@ -97,12 +97,12 @@ func TestRunnerServiceStreamCarriesBytesAndEndsWithInvocation(t *testing.T) {
 		t.Fatal(end)
 	}
 	stream.Close()
-	tap.find(t, func(message runnerwire.Outbound) bool {
-		request, ok := message.(*runnerwire.ArtifactResolve)
+	tap.find(t, func(message runnerproto.Outbound) bool {
+		request, ok := message.(*runnerproto.ArtifactResolve)
 		if !ok {
 			return false
 		}
-		_, ok = request.Owner.(*runnerwire.StreamArtifactOwner)
+		_, ok = request.Owner.(*runnerproto.StreamArtifactOwner)
 		return ok
 	})
 	input, output, stream, err = openService(t, f, serviceRequest(f, native, "echo", nil))
@@ -172,7 +172,7 @@ func TestRunnerOneShotCompletionAndLoggedStreamWords(t *testing.T) {
 	if report.Label == nil || *report.Label != "from the user" {
 		t.Fatal(report)
 	}
-	if _, ok := report.Context.Caller.(*commandwire.UserCaller); !ok {
+	if _, ok := report.Context.Caller.(*commandproto.UserCaller); !ok {
 		t.Fatal(report.Context)
 	}
 	_, err = call("result", nil)

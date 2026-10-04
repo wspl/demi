@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 func transportPair(t *testing.T) (*transport, *websocket.Conn) {
@@ -22,7 +22,7 @@ func transportPair(t *testing.T) (*transport, *websocket.Conn) {
 		accepted <- socket
 	}))
 	t.Cleanup(server.Close)
-	backend, err := runnerwire.ParseBackendURL(server.URL)
+	backend, err := runnerproto.ParseBackendURL(server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func transportPair(t *testing.T) (*transport, *websocket.Conn) {
 func TestTransportDrainFlushesBeforeGoingAway(t *testing.T) {
 	client, peer := transportPair(t)
 	for i := range 16 {
-		frame, err := runnerwire.Encode(&runnerwire.Pong{Jobs: uint64(i)})
+		frame, err := runnerproto.Encode(&runnerproto.Pong{Jobs: uint64(i)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,11 +61,11 @@ func TestTransportDrainFlushesBeforeGoingAway(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		message, err := runnerwire.DecodeOutbound(data)
+		message, err := runnerproto.DecodeOutbound(data)
 		if err != nil {
 			t.Fatal(err)
 		}
-		pong, ok := message.(*runnerwire.Pong)
+		pong, ok := message.(*runnerproto.Pong)
 		if !ok || pong.Jobs != uint64(i) {
 			t.Fatalf("frame %d: %#v", i, message)
 		}

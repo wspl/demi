@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // storedRow checks SQL column types before a record reaches its caller.
@@ -58,8 +58,8 @@ func (r *storedRow) bytes(column string) []byte {
 	return v
 }
 
-func (r *storedRow) instant(column string) core.Timestamp {
-	t, err := core.TimestampFromMillisecond(r.integer(column))
+func (r *storedRow) instant(column string) types.Timestamp {
+	t, err := types.TimestampFromMillisecond(r.integer(column))
 	r.bad(column, err)
 	return t
 }
@@ -72,7 +72,7 @@ func (r *storedRow) optionalText(column string) *string {
 	return &v
 }
 
-func (r *storedRow) optionalInstant(column string) *core.Timestamp {
+func (r *storedRow) optionalInstant(column string) *types.Timestamp {
 	if r.values[column] == nil {
 		return nil
 	}
@@ -173,12 +173,12 @@ func encoded(value any) (string, error) {
 	return string(data), err
 }
 
-func later(now core.Timestamp, by time.Duration) (core.Timestamp, error) {
+func later(now types.Timestamp, by time.Duration) (types.Timestamp, error) {
 	t, err := now.Time()
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrTimeRange, err)
 	}
-	result, err := core.TimestampFromTime(t.Add(by))
+	result, err := types.TimestampFromTime(t.Add(by))
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrTimeRange, err)
 	}

@@ -10,12 +10,12 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/backend/providers"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/backend/providerhost"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Forked describes a Fork's destination and whether this request created it.
@@ -29,8 +29,8 @@ type Forked struct {
 // Fork forks source after its completed assistant text block into destination.
 func (s *Shard) Fork(
 	ctx context.Context,
-	source, destination webapi.ConversationID,
-	block core.BlockID,
+	source, destination webapiproto.ConversationID,
+	block types.BlockID,
 ) (Forked, error) {
 	return shardCall(
 		ctx,
@@ -44,7 +44,7 @@ func (s *Shard) Fork(
 // bookkeeping finish in shard-owned work even if the requester leaves.
 func (s *Shard) Transition(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	change database.ConversationChange,
 ) error {
 	_, err := shardCall(
@@ -61,13 +61,13 @@ func (s *Shard) Transition(
 // applied when others fail. Nil means the user has no such conversation.
 func (s *Shard) ApplyPatch(
 	ctx context.Context,
-	id webapi.ConversationID,
-	patch webapi.ConversationPatch,
-) (*webapi.ConversationUpdate, error) {
+	id webapiproto.ConversationID,
+	patch webapiproto.ConversationPatch,
+) (*webapiproto.ConversationUpdate, error) {
 	return shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (*webapi.ConversationUpdate, error) {
+		func(ctx context.Context) (*webapiproto.ConversationUpdate, error) {
 			return s.applyPatch(ctx, id, patch)
 		},
 	)
@@ -77,12 +77,12 @@ func (s *Shard) ApplyPatch(
 func (s *Shard) ConversationSummaries(
 	ctx context.Context,
 	archived bool,
-) ([]webapi.ConversationSummary, error) {
+) ([]webapiproto.ConversationSummary, error) {
 	records, err := s.services.Control.Conversations(ctx, s.user, archived)
 	if err != nil {
 		return nil, err
 	}
-	summaries := make([]webapi.ConversationSummary, 0, len(records))
+	summaries := make([]webapiproto.ConversationSummary, 0, len(records))
 	for _, record := range records {
 		summary, err := s.ConversationSummary(ctx, record)
 		if err != nil {
@@ -98,10 +98,10 @@ func (s *Shard) ConversationSummaries(
 func (s *Shard) ConversationSummary(
 	ctx context.Context,
 	record database.ConversationRecord,
-) (webapi.ConversationSummary, error) {
+) (webapiproto.ConversationSummary, error) {
 	tree := s.agent.Tree(hostaccess.RootOf(record.ID))
 	quiet := true
-	phase := core.SessionPhaseIdle
+	phase := types.SessionPhaseIdle
 	if tree != nil {
 		quiet = tree.IsQuiescent()
 		phase = tree.Root().Session().Phase()
@@ -113,26 +113,26 @@ func (s *Shard) ConversationSummary(
 		return err
 	})
 	if err != nil {
-		return webapi.ConversationSummary{}, err
+		return webapiproto.ConversationSummary{}, err
 	}
 	status := summaryStatus(facts, tree != nil, quiet, phase)
 	target, err := hostaccess.ResolveTarget(ctx, s, record)
 	if err != nil {
-		return webapi.ConversationSummary{}, err
+		return webapiproto.ConversationSummary{}, err
 	}
 	model, err := summaryModel(record.Model)
 	if err != nil {
-		return webapi.ConversationSummary{}, err
+		return webapiproto.ConversationSummary{}, err
 	}
 	changed, err := s.pluginsChanged(ctx, record.ID)
 	if err != nil {
-		return webapi.ConversationSummary{}, err
+		return webapiproto.ConversationSummary{}, err
 	}
 	s.mu.Lock()
 	jobs := s.jobsEnded[record.ID]
 	generating := s.titles[record.ID] != nil
 	s.mu.Unlock()
-	return webapi.ConversationSummary{
+	return webapiproto.ConversationSummary{
 		ID:                  record.ID,
 		Title:               record.Title,
 		Archived:            record.Archived,
@@ -158,7 +158,7 @@ func (s *Shard) ConversationSummary(
 }
 
 // AskTitle asks the selected model to title the conversation from its messages.
-func (s *Shard) AskTitle(ctx context.Context, id webapi.ConversationID) error {
+func (s *Shard) AskTitle(ctx context.Context, id webapiproto.ConversationID) error {
 	_, err := shardCall(
 		ctx,
 		s,
@@ -202,12 +202,12 @@ func (s *Shard) createCloudWorkspace(ctx context.Context, name string) (database
 // A provider request that fails is represented by TestResultFailed.
 func (s *Shard) TestProvider(
 	ctx context.Context,
-	entry providers.Entry,
+	entry providerhost.Entry,
 	builtProvider provider.Provider,
-	account *webapi.CredentialID,
+	account *webapiproto.CredentialID,
 	modelID string,
-) (webapi.TestResult, error) {
-	return shardCall(ctx, s, func(ctx context.Context) (webapi.TestResult, error) {
+) (webapiproto.TestResult, error) {
+	return shardCall(ctx, s, func(ctx context.Context) (webapiproto.TestResult, error) {
 		return s.testProvider(ctx, entry, builtProvider, account, modelID)
 	})
 }
@@ -216,13 +216,13 @@ func (s *Shard) TestProvider(
 // unreadable provider yields no facts; nil means no block yielded any facts.
 func FailureFacts(
 	ctx context.Context,
-	assembly *providers.Assembly,
-	blocks []core.Block,
-) (framewire.Failures, error) {
-	facts := framewire.Failures{}
+	assembly *providerhost.Assembly,
+	blocks []types.Block,
+) (conversationproto.Failures, error) {
+	facts := conversationproto.Failures{}
 	readers := map[string]provider.Provider{}
 	for _, block := range blocks {
-		failure, ok := block.(*core.ErrorBlock)
+		failure, ok := block.(*types.ErrorBlock)
 		if !ok || failure.Diagnostics == nil || failure.Diagnostics.Upstream == nil {
 			continue
 		}
@@ -271,7 +271,7 @@ func (s *Shard) switchPlugin(ctx context.Context, id string, enabled bool) error
 
 // ReloadConversation closes an idle, unarchived tree so it reopens with the
 // current plugins. A working or archived conversation refuses the request.
-func (s *Shard) ReloadConversation(ctx context.Context, id webapi.ConversationID) error {
+func (s *Shard) ReloadConversation(ctx context.Context, id webapiproto.ConversationID) error {
 	_, err := shardCall(
 		ctx,
 		s,
@@ -280,7 +280,7 @@ func (s *Shard) ReloadConversation(ctx context.Context, id webapi.ConversationID
 	return err
 }
 
-func (s *Shard) reloadConversation(ctx context.Context, id webapi.ConversationID) error {
+func (s *Shard) reloadConversation(ctx context.Context, id webapiproto.ConversationID) error {
 	record, err := hostaccess.OwnedConversation(ctx, s, id)
 	if err != nil {
 		return err
@@ -297,30 +297,30 @@ func (s *Shard) reloadConversation(ctx context.Context, id webapi.ConversationID
 // CLIInstalls remembers installs requested outside conversations, by user and entry.
 type CLIInstalls struct {
 	mu     sync.Mutex
-	states map[installKey]webapi.CLIInstall
+	states map[installKey]webapiproto.CLIInstall
 }
 type installKey struct {
-	user  webapi.UserID
-	entry webapi.ProviderID
+	user  webapiproto.UserID
+	entry webapiproto.ProviderID
 }
 
 // State returns the last install of entry's CLI on user's Cloud, or nil.
-func (i *CLIInstalls) State(user webapi.UserID, entry webapi.ProviderID) webapi.CLIInstall {
+func (i *CLIInstalls) State(user webapiproto.UserID, entry webapiproto.ProviderID) webapiproto.CLIInstall {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	switch state := i.states[installKey{user, entry}].(type) {
-	case *webapi.CLIInstallInstalling:
-		return &webapi.CLIInstallInstalling{}
-	case *webapi.CLIInstallInstalled:
-		return &webapi.CLIInstallInstalled{Path: state.Path}
-	case *webapi.CLIInstallFailed:
-		return &webapi.CLIInstallFailed{Message: state.Message}
+	case *webapiproto.CLIInstallInstalling:
+		return &webapiproto.CLIInstallInstalling{}
+	case *webapiproto.CLIInstallInstalled:
+		return &webapiproto.CLIInstallInstalled{Path: state.Path}
+	case *webapiproto.CLIInstallFailed:
+		return &webapiproto.CLIInstallFailed{Message: state.Message}
 	}
 	return nil
 }
 
 // Forget removes the outcomes for a deleted provider entry.
-func (i *CLIInstalls) Forget(entry webapi.ProviderID) {
+func (i *CLIInstalls) Forget(entry webapiproto.ProviderID) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	for key := range i.states {
@@ -331,11 +331,11 @@ func (i *CLIInstalls) Forget(entry webapi.ProviderID) {
 }
 
 // CLIMachines reads connected Cloud CLI versions without waking it.
-func (s *Shard) CLIMachines(ctx context.Context, entry webapi.ProviderID) ([]webapi.CLIMachine, error) {
+func (s *Shard) CLIMachines(ctx context.Context, entry webapiproto.ProviderID) ([]webapiproto.CLIMachine, error) {
 	return shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) ([]webapi.CLIMachine, error) { return s.cliMachines(ctx, entry) },
+		func(ctx context.Context) ([]webapiproto.CLIMachine, error) { return s.cliMachines(ctx, entry) },
 	)
 }
 
@@ -345,21 +345,21 @@ func StartInstall(
 	ctx context.Context,
 	services *Services,
 	shards *Shards,
-	user webapi.UserID,
-	entry webapi.ProviderID,
-) (webapi.CLIInstall, error) {
+	user webapiproto.UserID,
+	entry webapiproto.ProviderID,
+) (webapiproto.CLIInstall, error) {
 	return startInstall(ctx, services, shards, user, entry)
 }
 
 // summaryModel presents the selected model and thinking effort for the sidebar.
-func summaryModel(selection *core.ModelSelection) (*webapi.ModelSettings, error) {
-	var model *webapi.ModelSettings
+func summaryModel(selection *types.ModelSelection) (*webapiproto.ModelSettings, error) {
+	var model *webapiproto.ModelSettings
 	if selection != nil {
-		id, err := webapi.ParseProviderID(selection.ProviderID)
+		id, err := webapiproto.ParseProviderID(selection.ProviderID)
 		if err != nil {
 			return nil, err
 		}
-		model = &webapi.ModelSettings{
+		model = &webapiproto.ModelSettings{
 			ProviderID:    id,
 			ModelID:       selection.Model.ID,
 			ServiceTierID: selection.ServiceTierID,
@@ -372,8 +372,8 @@ func summaryModel(selection *core.ModelSelection) (*webapi.ModelSettings, error)
 }
 
 // failureProvider reads an error block’s provider and logs storage or construction failures.
-func failureProvider(ctx context.Context, assembly *providers.Assembly, name string) provider.Provider {
-	id, err := webapi.ParseProviderID(name)
+func failureProvider(ctx context.Context, assembly *providerhost.Assembly, name string) provider.Provider {
+	id, err := webapiproto.ParseProviderID(name)
 	if err != nil {
 		return nil
 	}
@@ -395,33 +395,33 @@ func failureProvider(ctx context.Context, assembly *providers.Assembly, name str
 func summaryStatus(
 	facts database.SummaryFacts,
 	live, quiet bool,
-	phase core.SessionPhase,
-) webapi.ConversationStatus {
-	status := webapi.ConversationStatusIdle
+	phase types.SessionPhase,
+) webapiproto.ConversationStatus {
+	status := webapiproto.ConversationStatusIdle
 	if facts.Last != nil {
 		switch *facts.Last {
 		case database.TerminalResponse:
-			status = webapi.ConversationStatusCompleted
+			status = webapiproto.ConversationStatusCompleted
 		case database.TerminalError:
-			status = webapi.ConversationStatusError
+			status = webapiproto.ConversationStatusError
 		case database.TerminalAbort:
-			status = webapi.ConversationStatusStopped
+			status = webapiproto.ConversationStatusStopped
 		}
 	}
-	if !live && facts.Phase != core.SessionPhaseIdle {
-		status = webapi.ConversationStatusInterrupted
+	if !live && facts.Phase != types.SessionPhaseIdle {
+		status = webapiproto.ConversationStatusInterrupted
 	}
 	if live && !quiet {
-		status = webapi.ConversationStatusRunning
-		if phase == core.SessionPhaseCompacting {
-			status = webapi.ConversationStatusCompacting
+		status = webapiproto.ConversationStatusRunning
+		if phase == types.SessionPhaseCompacting {
+			status = webapiproto.ConversationStatusCompacting
 		}
 	}
 	return status
 }
 
 // pluginsChanged compares a live conversation’s command tree with the current plugin revision.
-func (s *Shard) pluginsChanged(ctx context.Context, id webapi.ConversationID) (bool, error) {
+func (s *Shard) pluginsChanged(ctx context.Context, id webapiproto.ConversationID) (bool, error) {
 	changed := false
 	if current := s.agent.Tree(hostaccess.RootOf(id)); current != nil {
 		revision, err := s.plugins.Revision(ctx)

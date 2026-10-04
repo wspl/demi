@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"golang.org/x/sys/unix"
 )
 
@@ -111,7 +111,7 @@ func (p *platformGroup) kill(process *os.Process, group bool) error {
 	return err
 }
 
-func (*platformGroup) signal(process *os.Process, group bool, signal runnerwire.Signal) error {
+func (*platformGroup) signal(process *os.Process, group bool, signal runnerproto.Signal) error {
 	number, ok := signalNumber(signal)
 	if !ok {
 		return fmt.Errorf("unsupported process signal: %s", signal)
@@ -135,25 +135,25 @@ func groupSignal(pid int, signal syscall.Signal) error {
 	return err
 }
 
-func signalNumber(signal runnerwire.Signal) (syscall.Signal, bool) {
+func signalNumber(signal runnerproto.Signal) (syscall.Signal, bool) {
 	switch signal {
-	case runnerwire.SignalTerminate:
+	case runnerproto.SignalTerminate:
 		return unix.SIGTERM, true
-	case runnerwire.SignalKill:
+	case runnerproto.SignalKill:
 		return unix.SIGKILL, true
-	case runnerwire.SignalInterrupt:
+	case runnerproto.SignalInterrupt:
 		return unix.SIGINT, true
-	case runnerwire.SignalHangup:
+	case runnerproto.SignalHangup:
 		return unix.SIGHUP, true
-	case runnerwire.SignalQuit:
+	case runnerproto.SignalQuit:
 		return unix.SIGQUIT, true
-	case runnerwire.SignalUser1:
+	case runnerproto.SignalUser1:
 		return unix.SIGUSR1, true
-	case runnerwire.SignalUser2:
+	case runnerproto.SignalUser2:
 		return unix.SIGUSR2, true
-	case runnerwire.SignalStop:
+	case runnerproto.SignalStop:
 		return unix.SIGSTOP, true
-	case runnerwire.SignalContinue:
+	case runnerproto.SignalContinue:
 		return unix.SIGCONT, true
 	}
 	return 0, false
@@ -165,16 +165,16 @@ func exitSignal(state *os.ProcessState) *string {
 		return nil
 	}
 	signal := status.Signal()
-	for _, candidate := range []runnerwire.Signal{
-		runnerwire.SignalTerminate,
-		runnerwire.SignalKill,
-		runnerwire.SignalInterrupt,
-		runnerwire.SignalHangup,
-		runnerwire.SignalQuit,
-		runnerwire.SignalUser1,
-		runnerwire.SignalUser2,
-		runnerwire.SignalStop,
-		runnerwire.SignalContinue,
+	for _, candidate := range []runnerproto.Signal{
+		runnerproto.SignalTerminate,
+		runnerproto.SignalKill,
+		runnerproto.SignalInterrupt,
+		runnerproto.SignalHangup,
+		runnerproto.SignalQuit,
+		runnerproto.SignalUser1,
+		runnerproto.SignalUser2,
+		runnerproto.SignalStop,
+		runnerproto.SignalContinue,
 	} {
 		if number, _ := signalNumber(candidate); signal == number {
 			name := string(candidate)

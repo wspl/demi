@@ -8,7 +8,7 @@ import (
 	"io"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
@@ -18,10 +18,10 @@ import (
 // +demi:root
 // +demi:strict
 type fixture struct {
-	CWD         string       `json:"cwd"`
-	BuiltTokens uint64       `json:"builtTokens"`
-	Generations uint32       `json:"generations"`
-	Blocks      []core.Block `json:"blocks"`
+	CWD         string        `json:"cwd"`
+	BuiltTokens uint64        `json:"builtTokens"`
+	Generations uint32        `json:"generations"`
+	Blocks      []types.Block `json:"blocks"`
 }
 
 //go:embed testdata/large-context-fixture.json.gz
@@ -45,11 +45,11 @@ func loadFixture() (fixture, error) {
 }
 
 // initialCheckpoint opens the recorded transcript with no queued work or command state.
-func initialCheckpoint(f fixture, model core.ModelSelection) store.CheckpointUpdate {
+func initialCheckpoint(f fixture, model types.ModelSelection) store.CheckpointUpdate {
 	initial := store.CheckpointUpdate{
 		State: store.CheckpointState{
-			Phase: core.SessionPhaseIdle, CWD: f.CWD, Model: model,
-			Queue: []core.QueuedMessage{}, AgentInputs: []store.PendingAgentInput{},
+			Phase: types.SessionPhaseIdle, CWD: f.CWD, Model: model,
+			Queue: []types.QueuedMessage{}, AgentInputs: []store.PendingAgentInput{},
 			Wakeups: []store.ScheduledWakeup{}, Edits: []store.EditReceipt{},
 		},
 		CommandState: new(store.InitialCommandState()), BlockCount: len(f.Blocks),

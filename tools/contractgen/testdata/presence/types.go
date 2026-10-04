@@ -1,7 +1,7 @@
 // Package presence exercises nullable optional fields at both wire boundaries.
 package presence
 
-import "github.com/wspl/demi/internal/runnerwire"
+import "github.com/wspl/demi/internal/runnerproto"
 
 //go:generate go run ../..
 
@@ -30,7 +30,7 @@ type TimestampPatch struct {
 // +demi:root direction=receive output=plugin-presence
 // +demi:schema
 type InstallEnvelope struct {
-	Install runnerwire.Install `json:"install"`
+	Install runnerproto.Install `json:"install"`
 }
 
 // +demi:root direction=send output=plugin-presence

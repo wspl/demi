@@ -11,23 +11,23 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/tools"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 func (t *Tree[H]) shellGroup() (host.Declared, error) {
 	shape := shellOutputContract()
-	input, err := declare.NewSchema(shape.input)
+	input, err := commanddecl.NewSchema(shape.input)
 	if err != nil {
 		return host.Declared{}, err
 	}
-	leaf := declare.Leaf[declare.NativeOperation]{
+	leaf := commanddecl.Leaf[commanddecl.NativeOperation]{
 		Name:        "output",
 		Summary:     shellOutputSummary,
 		Input:       input,
 		Positionals: new([]string{"id"}),
-		Kind:        &declare.RPC[declare.NativeOperation]{},
+		Kind:        &commanddecl.RPC[commanddecl.NativeOperation]{},
 		SuccessOutput: new(
 			"the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out",
 		),
@@ -39,7 +39,7 @@ func (t *Tree[H]) shellGroup() (host.Declared, error) {
 			if call.Invocation.Caller == nil {
 				return 0, &host.RPCError{Kind: host.HandlerFailed, Message: "the command runs only in an agent's job"}
 			}
-			root, err := core.ParseNodeID(call.Invocation.Context.Conversation)
+			root, err := types.ParseNodeID(call.Invocation.Context.Conversation)
 			if err != nil {
 				return 0, err
 			}
@@ -115,7 +115,7 @@ func (t *Tree[H]) output(ctx context.Context, args outputArgs, port host.RPCPort
 
 func (t *Tree[H]) commandOutput(ctx context.Context, id string) (host.WholeOutput, bool, error) {
 	unknown := fmt.Errorf("no command %s in this conversation", id)
-	command, err := core.ParseCommandID(id)
+	command, err := types.ParseCommandID(id)
 	if err != nil {
 		return host.WholeOutput{}, false, unknown
 	}
@@ -212,7 +212,7 @@ func (p outputPage) render(piece host.Piece) []string {
 		return []string{fmt.Sprintf("%6d\t%s", piece.Number, text)}
 	}
 	return []string{
-		fmt.Sprintf("%6d\t%s", piece.Number, text[:core.CharOffset(text, 2000)]),
+		fmt.Sprintf("%6d\t%s", piece.Number, text[:types.CharOffset(text, 2000)]),
 		fmt.Sprintf(
 			"[line %d is %d characters; whole: demi shell output %s --raw%s | sed -n %dp]",
 			piece.Number,

@@ -9,14 +9,14 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/database/databasetest"
 	"github.com/wspl/demi/internal/backend/expose"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type expiryClock struct{ millis atomic.Int64 }
 
-func (c *expiryClock) Now() core.Timestamp {
-	at, err := core.TimestampFromTime(time.UnixMilli(c.millis.Load()))
+func (c *expiryClock) Now() types.Timestamp {
+	at, err := types.TimestampFromTime(time.UnixMilli(c.millis.Load()))
 	if err != nil {
 		panic(err)
 	}
@@ -26,13 +26,13 @@ func (c *expiryClock) Now() core.Timestamp {
 type storedShard struct {
 	*shard
 	control expose.Store
-	clock   core.Clock
-	user    webapi.UserID
+	clock   types.Clock
+	user    webapiproto.UserID
 }
 
-func (s *storedShard) Control() expose.Store { return s.control }
-func (s *storedShard) Clock() core.Clock     { return s.clock }
-func (s *storedShard) User() webapi.UserID   { return s.user }
+func (s *storedShard) Control() expose.Store    { return s.control }
+func (s *storedShard) Clock() types.Clock       { return s.clock }
+func (s *storedShard) User() webapiproto.UserID { return s.user }
 
 type heldExposeRead struct {
 	expose.Store
@@ -40,7 +40,7 @@ type heldExposeRead struct {
 	resume  chan struct{}
 }
 
-func (h *heldExposeRead) Expose(ctx context.Context, id webapi.ExposeID) (database.ExposeRecord, bool, error) {
+func (h *heldExposeRead) Expose(ctx context.Context, id webapiproto.ExposeID) (database.ExposeRecord, bool, error) {
 	record, found, err := h.Store.Expose(ctx, id)
 	close(h.arrived)
 	select {

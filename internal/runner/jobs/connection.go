@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runner/cmdpkgs"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // Connection lets work reach the backend and the connection's owner.
@@ -54,20 +54,24 @@ func (h *Connection) RegisterCall(
 // 15-second answer window and the connection's lifetime.
 func (h *Connection) Locate(
 	ctx context.Context,
-	owner runnerwire.ArtifactOwner,
+	owner runnerproto.ArtifactOwner,
 	sha256 string,
-) (commandwire.ArtifactLocation, error) {
+) (commandproto.ArtifactLocation, error) {
 	wait, cancel := context.WithCancel(ctx)
 	defer cancel()
 	q := &LocateQuestion{Owner: owner, SHA256: sha256, ready: make(chan struct{})}
 	if err := h.request(wait, &AskRequest{Question: q, Abandoned: wait}); err != nil {
-		return nil, &cmdpkgs.RuntimeError{Kind: cmdpkgs.Cancelled, Cause: err}
+		return nil, &commandpackages.RuntimeError{Kind: commandpackages.Cancelled, Cause: err}
 	}
 	if err := h.waitAnswer(wait, q.ready, "artifact location"); err != nil {
 		return nil, err
 	}
 	if q.err != nil {
-		return nil, &cmdpkgs.RuntimeError{Kind: cmdpkgs.LocationFailure, Detail: q.err.Error(), Cause: q.err}
+		return nil, &commandpackages.RuntimeError{
+			Kind:   commandpackages.LocationFailure,
+			Detail: q.err.Error(),
+			Cause:  q.err,
+		}
 	}
 	return q.location, nil
 }
@@ -78,7 +82,7 @@ func (h *Connection) Locate(
 func (h *Connection) RegisterContext(
 	ctx context.Context,
 	execution *ExecutionContext,
-	leases []*cmdpkgs.ServiceLease,
+	leases []*commandpackages.ServiceLease,
 ) error {
 	r := &ContextRequest{
 		ctx:        ctx,
@@ -107,14 +111,14 @@ func (h *Connection) RegisterContext(
 func (h *Connection) Reserve(
 	ctx context.Context,
 	conversation string,
-	sequence commandwire.ServiceSequence,
+	sequence commandproto.ServiceSequence,
 	count uint32,
 ) (uint64, error) {
 	wait, cancel := context.WithCancel(ctx)
 	defer cancel()
 	q := &ReserveQuestion{Conversation: conversation, Sequence: sequence, Count: count, ready: make(chan struct{})}
 	if err := h.request(wait, &AskRequest{Question: q, Abandoned: wait}); err != nil {
-		return 0, &cmdpkgs.RuntimeError{Kind: cmdpkgs.Cancelled, Cause: err}
+		return 0, &commandpackages.RuntimeError{Kind: commandpackages.Cancelled, Cause: err}
 	}
 	if err := h.waitAnswer(wait, q.ready, "conversation numbers"); err != nil {
 		return 0, err
@@ -130,15 +134,19 @@ func (h *Connection) waitAnswer(ctx context.Context, ready <-chan struct{}, what
 	case <-ready:
 		return nil
 	case <-h.Done():
-		return &cmdpkgs.RuntimeError{Kind: cmdpkgs.Cancelled, Cause: context.Canceled}
+		return &commandpackages.RuntimeError{Kind: commandpackages.Cancelled, Cause: context.Canceled}
 	case <-ctx.Done():
-		return &cmdpkgs.RuntimeError{Kind: cmdpkgs.Cancelled, Cause: ctx.Err()}
+		return &commandpackages.RuntimeError{Kind: commandpackages.Cancelled, Cause: ctx.Err()}
 	case <-timer.C:
-		return &cmdpkgs.RuntimeError{Kind: cmdpkgs.Deadline, Detail: what, Cause: context.DeadlineExceeded}
+		return &commandpackages.RuntimeError{
+			Kind:   commandpackages.Deadline,
+			Detail: what,
+			Cause:  context.DeadlineExceeded,
+		}
 	}
 }
 
-var _ cmdpkgs.NumberSource = (*Connection)(nil)
+var _ commandpackages.NumberSource = (*Connection)(nil)
 
 // Request is work waiting for the composition's connection owner.
 // The owner handles queued registrations before routing backend replies.
@@ -180,7 +188,7 @@ type ContextRequest struct {
 	ctx        context.Context
 	connection context.Context
 	execution  *ExecutionContext
-	leases     []*cmdpkgs.ServiceLease
+	leases     []*commandpackages.ServiceLease
 	ready      chan struct{}
 	finished   bool
 	err        error
@@ -219,12 +227,12 @@ type Question interface{ backendQuestion() }
 // Only Connection creates questions; consumers read their public fields.
 type LocateQuestion struct {
 	// Owner identifies the authority requesting the artifact.
-	Owner runnerwire.ArtifactOwner
+	Owner runnerproto.ArtifactOwner
 	// SHA256 identifies the artifact bytes.
 	SHA256   string
 	once     sync.Once
 	ready    chan struct{}
-	location commandwire.ArtifactLocation
+	location commandproto.ArtifactLocation
 	err      error
 }
 
@@ -232,7 +240,7 @@ func (*LocateQuestion) backendQuestion() {}
 
 // Answer delivers the location or failure once without blocking; a departed
 // asker needs no answer. Repeated answers are ignored.
-func (q *LocateQuestion) Answer(location commandwire.ArtifactLocation, err error) {
+func (q *LocateQuestion) Answer(location commandproto.ArtifactLocation, err error) {
 	q.once.Do(func() {
 		q.location = location
 		q.err = err
@@ -245,7 +253,7 @@ type ReserveQuestion struct {
 	// Conversation identifies the conversation requesting numbers.
 	Conversation string
 	// Sequence selects the conversation number sequence.
-	Sequence commandwire.ServiceSequence
+	Sequence commandproto.ServiceSequence
 	// Count is the number of consecutive values requested.
 	Count uint32
 	once  sync.Once
@@ -273,9 +281,9 @@ type CallEvent interface{ callEvent() }
 // CallPipes supplies the callback's independently flowing IO pipes.
 type CallPipes struct {
 	// Stdin is the optional callback input pipe.
-	Stdin *runnerwire.PipeRef
+	Stdin *runnerproto.PipeRef
 	// Stdout is the callback output pipe.
-	Stdout runnerwire.PipeRef
+	Stdout runnerproto.PipeRef
 }
 
 func (*CallPipes) callEvent() {}
@@ -363,23 +371,23 @@ func (r *Relay) Call(request *CallRequest) {
 // failure leaves no registration; the owner answers Question with that error.
 func (r *Relay) Ask(request *AskRequest) ([]byte, error) {
 	id := executionID()
-	var message runnerwire.Outbound
+	var message runnerproto.Outbound
 	switch q := request.Question.(type) {
 	case *LocateQuestion:
-		target, err := commandwire.HostTarget()
+		target, err := commandproto.HostTarget()
 		if err != nil {
 			return nil, err
 		}
-		message = &runnerwire.ArtifactResolve{ID: id, Owner: q.Owner, SHA256: q.SHA256, Target: string(target)}
+		message = &runnerproto.ArtifactResolve{ID: id, Owner: q.Owner, SHA256: q.SHA256, Target: string(target)}
 	case *ReserveQuestion:
-		message = &runnerwire.NumbersReserve{
+		message = &runnerproto.NumbersReserve{
 			ID:             id,
 			ConversationID: q.Conversation,
 			Sequence:       q.Sequence,
 			Count:          q.Count,
 		}
 	}
-	frame, err := runnerwire.Encode(message)
+	frame, err := runnerproto.Encode(message)
 	if err != nil {
 		return nil, err
 	}
@@ -410,27 +418,27 @@ func (r *Relay) Ask(request *AskRequest) ([]byte, error) {
 
 // Route delivers messages answering calls or questions, returning false for
 // unrelated messages. Delivery never waits for a callback to consume its events.
-func (r *Relay) Route(message runnerwire.Inbound) bool {
+func (r *Relay) Route(message runnerproto.Inbound) bool {
 	var id string
 	var event CallEvent
 	// This router deliberately handles only callback and question replies.
 	switch m := any(message).(type) {
-	case *runnerwire.RPCPipes:
+	case *runnerproto.RPCPipes:
 		id = m.CallID
 		event = &CallPipes{Stdin: m.Stdin, Stdout: m.Stdout}
-	case *runnerwire.RPCOutput:
+	case *runnerproto.RPCOutput:
 		id = m.CallID
 		event = &CallStderr{Bytes: append([]byte(nil), m.Bytes...)}
-	case *runnerwire.RPCStdinPull:
+	case *runnerproto.RPCStdinPull:
 		id = m.CallID
 		event = &CallPull{}
-	case *runnerwire.RPCExit:
+	case *runnerproto.RPCExit:
 		id = m.CallID
 		event = &CallExit{ExitCode: m.ExitCode}
-	case *runnerwire.ArtifactLocation:
+	case *runnerproto.ArtifactLocation:
 		r.locateAnswer(m)
 		return true
-	case *runnerwire.NumbersReserved:
+	case *runnerproto.NumbersReserved:
 		if q, ok := r.answer(m.ID).(*ReserveQuestion); ok {
 			var err error
 			var first uint64
@@ -520,10 +528,10 @@ func (r *Relay) answer(id string) Question {
 	return entry.question
 }
 
-func (r *Relay) locateAnswer(m *runnerwire.ArtifactLocation) {
+func (r *Relay) locateAnswer(m *runnerproto.ArtifactLocation) {
 	if q, ok := r.answer(m.ID).(*LocateQuestion); ok {
 		var err error
-		var location commandwire.ArtifactLocation
+		var location commandproto.ArtifactLocation
 		if m.Location != nil && m.Error == nil {
 			location = *m.Location
 		} else if m.Location == nil && m.Error != nil {

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/runner/jobs"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // This file-only scenario writes 32 MiB and uses no external programs.
@@ -26,7 +26,7 @@ func TestKeptSnapshotSurvivesTailRotation(t *testing.T) {
 	})
 	chunk := bytes.Repeat([]byte("a"), 64*1024)
 	for range 192 {
-		if err := output.Write(ctx, runnerwire.Stdout, chunk); err != nil {
+		if err := output.Write(ctx, runnerproto.Stdout, chunk); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -51,7 +51,7 @@ func TestKeptSnapshotSurvivesTailRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 320 {
-		if err := output.Write(ctx, runnerwire.Stdout, chunk); err != nil {
+		if err := output.Write(ctx, runnerproto.Stdout, chunk); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -77,7 +77,7 @@ func TestKeptSnapshotSurvivesTailRotation(t *testing.T) {
 		}
 		size += info.Size()
 	}
-	if size > 2*runnerwire.JobKeptPartBytes {
+	if size > 2*runnerproto.JobKeptPartBytes {
 		t.Fatalf("open snapshot left %d retained bytes, beyond the bound", size)
 	}
 }

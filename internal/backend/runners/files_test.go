@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
 )
 
@@ -20,7 +20,7 @@ func TestTextRefusals(t *testing.T) {
 		{[]byte("1\n2\n"), "1\n2\n", nil},
 		{[]byte{0, 255, 1}, "", runners.ErrTextNotText},
 		{[]byte("nul \x00 inside"), "", runners.ErrTextNotText},
-		{bytes.Repeat([]byte("a"), commandwire.EditFileBytes+1), "", runners.ErrTextTooLarge},
+		{bytes.Repeat([]byte("a"), commandproto.EditFileBytes+1), "", runners.ErrTextTooLarge},
 	} {
 		got, err := runners.TextOf(tc.data)
 		if got != tc.text || !errors.Is(err, tc.err) {
@@ -65,7 +65,7 @@ func (f *listedFS) ReadFile(context.Context, string) ([]byte, error) {
 }
 
 func TestHostFileListingAndEarlySizeRefusal(t *testing.T) {
-	fs := &listedFS{size: commandwire.EditFileBytes + 1}
+	fs := &listedFS{size: commandproto.EditFileBytes + 1}
 	if _, err := runners.ReadTextFile(
 		t.Context(),
 		fs,

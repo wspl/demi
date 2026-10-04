@@ -16,15 +16,15 @@ import (
 	"github.com/wspl/demi/internal/backend/database/databasetest"
 	"github.com/wspl/demi/internal/backend/idlewatch"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/backend/runners/runnerstest"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // memoryRecords is a synchronized Cloud storage fixture, not a wire decoder.
@@ -32,17 +32,17 @@ import (
 type memoryRecords struct {
 	mu           sync.Mutex
 	device       *database.DeviceRecord
-	operations   map[webapi.OperationID]database.ManagedOperation
+	operations   map[webapiproto.OperationID]database.ManagedOperation
 	latest       *database.ManagedOperation
 	uses         []database.CloudUseRecord
-	phases       []webapi.ResetPhase
+	phases       []webapiproto.ResetPhase
 	tokens       []database.TokenHash
-	announced    []webapi.OperationID
-	writeFailure webapi.ResetPhase
+	announced    []webapiproto.OperationID
+	writeFailure webapiproto.ResetPhase
 	panicRotate  bool
 }
 
-func (r *memoryRecords) ManagedDevice(context.Context, webapi.UserID) (database.DeviceRecord, bool, error) {
+func (r *memoryRecords) ManagedDevice(context.Context, webapiproto.UserID) (database.DeviceRecord, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.device == nil {
@@ -52,18 +52,26 @@ func (r *memoryRecords) ManagedDevice(context.Context, webapi.UserID) (database.
 	return v, true, nil
 }
 
-func (r *memoryRecords) ManagedDeviceOrCreate(_ context.Context, user webapi.UserID) (database.DeviceRecord, error) {
+func (r *memoryRecords) ManagedDeviceOrCreate(
+	_ context.Context,
+	user webapiproto.UserID,
+) (database.DeviceRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.device == nil {
-		r.device = &database.DeviceRecord{ID: "cloud-device", User: user, Kind: webapi.DeviceKindManaged, Name: "Cloud"}
+		r.device = &database.DeviceRecord{
+			ID:   "cloud-device",
+			User: user,
+			Kind: webapiproto.DeviceKindManaged,
+			Name: "Cloud",
+		}
 	}
 	return *r.device, nil
 }
 
 func (r *memoryRecords) LatestManagedOperation(
 	context.Context,
-	webapi.DeviceID,
+	webapiproto.DeviceID,
 ) (database.ManagedOperation, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -76,8 +84,8 @@ func (r *memoryRecords) LatestManagedOperation(
 
 func (r *memoryRecords) ManagedOperation(
 	_ context.Context,
-	_ webapi.DeviceID,
-	id webapi.OperationID,
+	_ webapiproto.DeviceID,
+	id webapiproto.OperationID,
 ) (database.ManagedOperation, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -88,7 +96,11 @@ func (r *memoryRecords) ManagedOperation(
 	return v, true, nil
 }
 
-func (r *memoryRecords) PutManagedOperation(_ context.Context, _ webapi.DeviceID, op database.ManagedOperation) error {
+func (r *memoryRecords) PutManagedOperation(
+	_ context.Context,
+	_ webapiproto.DeviceID,
+	op database.ManagedOperation,
+) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if op.Phase == r.writeFailure {
@@ -100,7 +112,7 @@ func (r *memoryRecords) PutManagedOperation(_ context.Context, _ webapi.DeviceID
 	return nil
 }
 
-func (r *memoryRecords) RotateDeviceToken(_ context.Context, _ webapi.DeviceID, token database.TokenHash) error {
+func (r *memoryRecords) RotateDeviceToken(_ context.Context, _ webapiproto.DeviceID, token database.TokenHash) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.panicRotate {
@@ -110,20 +122,24 @@ func (r *memoryRecords) RotateDeviceToken(_ context.Context, _ webapi.DeviceID, 
 	return nil
 }
 
-func (r *memoryRecords) AnnounceCloudReset(_ context.Context, _ webapi.UserID, id webapi.OperationID) error {
+func (r *memoryRecords) AnnounceCloudReset(_ context.Context, _ webapiproto.UserID, id webapiproto.OperationID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.announced = append(r.announced, id)
 	return nil
 }
 
-func (r *memoryRecords) CloudUses(context.Context, webapi.UserID, *webapi.DeviceID) ([]database.CloudUseRecord, error) {
+func (r *memoryRecords) CloudUses(
+	context.Context,
+	webapiproto.UserID,
+	*webapiproto.DeviceID,
+) ([]database.CloudUseRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]database.CloudUseRecord(nil), r.uses...), nil
 }
 
-func (r *memoryRecords) Device(ctx context.Context, id webapi.DeviceID) (database.DeviceRecord, bool, error) {
+func (r *memoryRecords) Device(ctx context.Context, id webapiproto.DeviceID) (database.DeviceRecord, bool, error) {
 	v, found, err := r.ManagedDevice(ctx, "")
 	if found && v.ID != id {
 		return database.DeviceRecord{}, false, nil
@@ -141,18 +157,18 @@ type cloudFixture struct {
 	records  *memoryRecords
 	// mu protects scripted observations; scripts change only when workers are quiescent.
 	mu                sync.Mutex
-	calls             []machinewire.Call
+	calls             []machinemanagerproto.Call
 	changed           chan struct{}
-	hook              func(machinewire.Call) (string, error)
-	runtime           machinewire.RuntimeState
+	hook              func(machinemanagerproto.Call) (string, error)
+	runtime           machinemanagerproto.RuntimeState
 	connect           bool
 	flush             bool
-	activity          map[webapi.ConversationID]idlewatch.Activity
-	attended          map[webapi.ConversationID]bool
+	activity          map[webapiproto.ConversationID]idlewatch.Activity
+	attended          map[webapiproto.ConversationID]bool
 	holds             int
-	heldIDs           []webapi.ConversationID
+	heldIDs           []webapiproto.ConversationID
 	resetFiles        []bool
-	holdFailure       webapi.ConversationID
+	holdFailure       webapiproto.ConversationID
 	stops             int
 	panicStop         bool
 	pipes             *remotehost.Pipes
@@ -163,7 +179,7 @@ type cloudFixture struct {
 	workers           sync.WaitGroup
 }
 
-func (f *cloudFixture) User() webapi.UserID               { return "owner" }
+func (f *cloudFixture) User() webapiproto.UserID          { return "owner" }
 func (f *cloudFixture) Cloud() *Cloud                     { return f.cloud }
 func (f *cloudFixture) CloudServices() *Services          { return f.services }
 func (f *cloudFixture) Devices() *runners.Devices         { return &f.devices }
@@ -171,21 +187,21 @@ func (f *cloudFixture) Control() *database.ControlService { return f.control }
 func (f *cloudFixture) PublicURL() *runners.PublicURL     { return &f.public }
 func (f *cloudFixture) IdleWindow() time.Duration         { return 10 * time.Second }
 func (f *cloudFixture) Marks() pagesync.UserMarks         { return f.marks }
-func (f *cloudFixture) Vault() *providers.Vault           { return nil }
-func (f *cloudFixture) Assembly() *providers.Assembly     { return nil }
-func (f *cloudFixture) Activity(id webapi.ConversationID) idlewatch.Activity {
+func (f *cloudFixture) Vault() *providerhost.Vault        { return nil }
+func (f *cloudFixture) Assembly() *providerhost.Assembly  { return nil }
+func (f *cloudFixture) Activity(id webapiproto.ConversationID) idlewatch.Activity {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.activity[id]
 }
 
-func (f *cloudFixture) Attended(id webapi.ConversationID) bool {
+func (f *cloudFixture) Attended(id webapiproto.ConversationID) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.attended[id]
 }
 
-func (f *cloudFixture) HoldForIdle(id webapi.ConversationID) ConversationHold {
+func (f *cloudFixture) HoldForIdle(id webapiproto.ConversationID) ConversationHold {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.activity[id].Busy || f.holdFailure == id {
@@ -198,7 +214,7 @@ func (f *cloudFixture) HoldForIdle(id webapi.ConversationID) ConversationHold {
 
 func (f *cloudFixture) HoldForReset(
 	_ context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	files bool,
 	_ time.Duration,
 ) (ConversationHold, error) {
@@ -213,7 +229,7 @@ func (f *cloudFixture) HoldForReset(
 	return &fixtureHold{f: f}, nil
 }
 
-func (f *cloudFixture) CloudStopped(context.Context, webapi.DeviceID) error {
+func (f *cloudFixture) CloudStopped(context.Context, webapiproto.DeviceID) error {
 	if f.panicStop {
 		panic("scripted stop task failure")
 	}
@@ -248,11 +264,11 @@ func newCloudFixture(t *testing.T) *cloudFixture {
 		cancel:   cancel,
 		changed:  make(chan struct{}),
 		connect:  true,
-		runtime:  machinewire.RuntimeStateRunning,
-		activity: make(map[webapi.ConversationID]idlewatch.Activity),
-		attended: make(map[webapi.ConversationID]bool),
+		runtime:  machinemanagerproto.RuntimeStateRunning,
+		activity: make(map[webapiproto.ConversationID]idlewatch.Activity),
+		attended: make(map[webapiproto.ConversationID]bool),
 	}
-	f.records = &memoryRecords{operations: make(map[webapi.OperationID]database.ManagedOperation)}
+	f.records = &memoryRecords{operations: make(map[webapiproto.OperationID]database.ManagedOperation)}
 	f.cloud = New(ctx, &sync.Mutex{})
 	f.cloud.records = f.records
 	f.marks = (&pagesync.Registry{}).Of(f.User())
@@ -340,13 +356,13 @@ func (f *cloudFixture) connectRunner() {
 			case <-f.ctx.Done():
 				return
 			case frame := <-outgoing:
-				message, err := runnerwire.DecodeInbound(frame)
+				message, err := runnerproto.DecodeInbound(frame)
 				if err != nil {
 					f.t.Error(err)
 					return
 				}
-				if request, ok := message.(*runnerwire.Sync); ok && f.flush {
-					data, err := runnerwire.Encode(&runnerwire.SyncDone{ID: request.ID})
+				if request, ok := message.(*runnerproto.Sync); ok && f.flush {
+					data, err := runnerproto.Encode(&runnerproto.SyncDone{ID: request.ID})
 					if err != nil {
 						f.t.Error(err)
 						return
@@ -399,7 +415,7 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 			<-closed
 		}
 	}()
-	responses := make(chan machinewire.MachineResponse, 64)
+	responses := make(chan machinemanagerproto.MachineResponse, 64)
 	var replies sync.WaitGroup
 	writerDone := make(chan struct{})
 	go func() {
@@ -409,7 +425,7 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 			case <-ctx.Done():
 				return
 			case response := <-responses:
-				data, err := machinewire.EncodeLine(response)
+				data, err := machinemanagerproto.EncodeLine(response)
 				if err != nil {
 					f.t.Error(err)
 					return
@@ -427,7 +443,7 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 	}()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
-		request, err := machinewire.DecodeRequest(scanner.Bytes())
+		request, err := machinemanagerproto.DecodeRequest(scanner.Bytes())
 		if err != nil {
 			f.t.Error(err)
 			return
@@ -440,9 +456,9 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 		close(changed)
 		replies.Go(func() {
 			result, err := f.answer(request.Call)
-			var response machinewire.MachineResponse = &machinewire.OK{ID: request.ID, Result: []byte(result)}
+			var response machinemanagerproto.MachineResponse = &machinemanagerproto.OK{ID: request.ID, Result: []byte(result)}
 			if err != nil {
-				response = &machinewire.ErrorResponse{ID: request.ID, Message: err.Error()}
+				response = &machinemanagerproto.ErrorResponse{ID: request.ID, Message: err.Error()}
 			}
 			select {
 			case responses <- response:
@@ -452,7 +468,7 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 	}
 }
 
-func (f *cloudFixture) answer(call machinewire.Call) (string, error) {
+func (f *cloudFixture) answer(call machinemanagerproto.Call) (string, error) {
 	if f.hook != nil {
 		result, err := f.hook(call)
 		if result != "" || err != nil {
@@ -512,11 +528,11 @@ func (f *cloudFixture) access() *MachineAccess {
 	return a
 }
 
-func (f *cloudFixture) phase() webapi.CloudState {
+func (f *cloudFixture) phase() webapiproto.CloudState {
 	f.cloud.mu.Lock()
 	defer f.cloud.mu.Unlock()
 	if f.cloud.machine == nil {
-		return webapi.CloudStateUnallocated
+		return webapiproto.CloudStateUnallocated
 	}
 	return f.cloud.machine.phase
 }

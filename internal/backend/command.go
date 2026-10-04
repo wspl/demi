@@ -17,10 +17,10 @@ import (
 	"syscall"
 
 	"github.com/wspl/demi/internal/backend/expose"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/cli"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // CLIConfig is the configuration as flags or DEMI_* variables. Each value's
@@ -32,7 +32,7 @@ type CLIConfig struct {
 	// Port is the TCP port the backend listens on, 1 to 65535.
 	Port uint16
 	// Mode selects `shared` or `isolated`: who configures providers.
-	Mode webapi.InstanceMode
+	Mode webapiproto.InstanceMode
 	// PublicURL is the URL runners and Cloud guests connect to.
 	PublicURL *url.URL
 	// MachinesSocket is the machine manager's Unix socket.
@@ -72,7 +72,7 @@ func ParseConfig(args, environ []string) (CLIConfig, error) {
 	}
 	c := CLIConfig{
 		Data:              optional("data"),
-		Mode:              webapi.InstanceMode(*values["mode"]),
+		Mode:              webapiproto.InstanceMode(*values["mode"]),
 		MachinesSocket:    *values["machines-socket"],
 		NativeConfig:      *values["native-config"],
 		ObjectStoreConfig: optional("object-store-config"),
@@ -289,7 +289,7 @@ var settings = []struct {
 	{
 		"claude-releases-url",
 		"DEMI_CLAUDE_RELEASES_URL",
-		providers.DefaultReleasesURL,
+		providerhost.DefaultReleasesURL,
 		"The Claude Code distribution whose newest release the CLI on each Cloud follows",
 		false,
 	},

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	session "github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/contract"
-	core "github.com/wspl/demi/internal/core"
-	framewire "github.com/wspl/demi/internal/framewire"
+	conversationproto "github.com/wspl/demi/internal/conversationproto"
+	types "github.com/wspl/demi/internal/types"
 )
 
 func decodeAbortArgs(data []byte) (abortArgs, error) { return contract.Decode[abortArgs](data) }
@@ -254,7 +254,7 @@ func (v *agentSnapshot) UnmarshalJSON(data []byte) error {
 			return contract.At("phase", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[framewire.JobPhase](raw)
+			value, err := contract.Decode[conversationproto.JobPhase](raw)
 			if err != nil {
 				return contract.At("phase", err)
 			}
@@ -801,7 +801,7 @@ func (v *resumeInput) UnmarshalJSON(data []byte) error {
 			return contract.At("id", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.NodeID](raw)
+			value, err := contract.Decode[types.NodeID](raw)
 			if err != nil {
 				return contract.At("id", err)
 			}
@@ -1440,7 +1440,7 @@ func (v *startReceipt) UnmarshalJSON(data []byte) error {
 			return contract.At("nodeId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.NodeID](raw)
+			value, err := contract.Decode[types.NodeID](raw)
 			if err != nil {
 				return contract.At("nodeId", err)
 			}
@@ -1833,7 +1833,7 @@ func (v *treeEntry) UnmarshalJSON(data []byte) error {
 			return contract.At("phase", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[framewire.JobPhase](raw)
+			value, err := contract.Decode[conversationproto.JobPhase](raw)
 			if err != nil {
 				return contract.At("phase", err)
 			}

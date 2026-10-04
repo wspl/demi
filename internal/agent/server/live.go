@@ -5,21 +5,21 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/agent/tools"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 const outputInterval = 250 * time.Millisecond
 
 type waitingOutput struct {
-	command core.CommandID
-	child   *core.NodeID
+	command types.CommandID
+	child   *types.NodeID
 	record  *host.CommandRecord
 }
 
 type nodeFeed[H host.Host] struct {
 	tree  *Tree[H]
-	child *core.NodeID
+	child *types.NodeID
 }
 
 // Watching reports whether shell output has an attached client to receive it.

@@ -13,19 +13,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wspl/demi/internal/runner/cmdpkgs"
+	"github.com/wspl/demi/internal/runner/commandpackages"
 	"github.com/wspl/demi/internal/runner/host"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 type registrationOptions struct {
-	backend                                        runnerwire.BackendURL
+	backend                                        runnerproto.BackendURL
 	directory, artifacts, jobRoot, executable, cwd string
 	env                                            map[string]string
-	runner                                         runnerwire.Info
-	token                                          *runnerwire.DeviceToken
+	runner                                         runnerproto.Info
+	token                                          *runnerproto.DeviceToken
 	volumes                                        []host.ManagedVolume
 	shell                                          process.JobShell
 	log                                            *hostLog
@@ -35,10 +35,10 @@ type registrationOptions struct {
 type registration struct {
 	options    registrationOptions
 	state      runnerState
-	token      atomic.Pointer[runnerwire.DeviceToken]
+	token      atomic.Pointer[runnerproto.DeviceToken]
 	management *management
-	services   *cmdpkgs.ServiceRegistry
-	installs   *cmdpkgs.InstallsSubscription
+	services   *commandpackages.ServiceRegistry
+	installs   *commandpackages.InstallsSubscription
 	dispatcher *jobs.Dispatcher
 	contexts   *jobs.Contexts
 	paths      jobs.ContextPaths
@@ -64,12 +64,12 @@ func runRegistration(ctx context.Context, options registrationOptions) (err erro
 	slog.Info("runner " + options.runner.Version + " started")
 	image := ""
 	if runtime.GOOS != "windows" {
-		image = runnerwire.ArtifactsPath
+		image = runnerproto.ArtifactsPath
 	}
 	// Shutdown is explicit: cancellation must not kill services before connection work joins.
 	lifetime, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	registry, err := cmdpkgs.NewServiceRegistry(lifetime, options.artifacts, image, options.cwd, options.env)
+	registry, err := commandpackages.NewServiceRegistry(lifetime, options.artifacts, image, options.cwd, options.env)
 	if err != nil {
 		return err
 	}
@@ -157,7 +157,7 @@ func registrationToken(
 	ctx context.Context,
 	options registrationOptions,
 	state runnerState,
-) (*runnerwire.DeviceToken, error) {
+) (*runnerproto.DeviceToken, error) {
 	saved, found, err := state.config()
 	if err != nil {
 		return nil, err
@@ -188,9 +188,9 @@ func registrationToken(
 func newRegistration(
 	options registrationOptions,
 	state runnerState,
-	registry *cmdpkgs.ServiceRegistry,
+	registry *commandpackages.ServiceRegistry,
 	paths jobs.ContextPaths,
-	token *runnerwire.DeviceToken,
+	token *runnerproto.DeviceToken,
 ) (*registration, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
@@ -207,7 +207,7 @@ func newRegistration(
 		paths:      paths,
 	}
 	r.token.Store(token)
-	r.pipes, err = process.NewPipeClient(options.backend, func() (runnerwire.DeviceToken, bool) {
+	r.pipes, err = process.NewPipeClient(options.backend, func() (runnerproto.DeviceToken, bool) {
 		token := r.token.Load()
 		if token == nil {
 			return "", false
@@ -224,8 +224,8 @@ func prepareRegistration(
 	ctx context.Context,
 	options registrationOptions,
 	state runnerState,
-	registry *cmdpkgs.ServiceRegistry,
-	token *runnerwire.DeviceToken,
+	registry *commandpackages.ServiceRegistry,
+	token *runnerproto.DeviceToken,
 ) (*registration, error) {
 	paths, err := jobs.NewContextPaths(ctx, filepath.Join(state.root, "commands"), options.executable)
 	if err != nil {
@@ -250,7 +250,7 @@ func (r *registration) startServer(ctx context.Context) (*jobs.Server, error) {
 	return server, nil
 }
 
-func (r *registration) run(ctx context.Context, server *jobs.Server, registry *cmdpkgs.ServiceRegistry) error {
+func (r *registration) run(ctx context.Context, server *jobs.Server, registry *commandpackages.ServiceRegistry) error {
 	err := r.reconnect(ctx)
 	if r.management.snapshot().Draining && ctx.Err() == nil {
 		err = errors.Join(err, server.WaitIdle(ctx))

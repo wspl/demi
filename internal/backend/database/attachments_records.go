@@ -1,18 +1,18 @@
 package database
 
 import (
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // AttachmentRecord is an upload as its record holds it.
 type AttachmentRecord struct {
-	ID        webapi.AttachmentID
-	Owner     webapi.UserID
+	ID        webapiproto.AttachmentID
+	Owner     webapiproto.UserID
 	MediaType string
 	SizeBytes uint64
-	SHA256    core.BlobRef
+	SHA256    types.BlobRef
 	// A text file's opening, as the upload's answer carried it.
 	Snippet   *string
-	CreatedAt core.Timestamp
+	CreatedAt types.Timestamp
 }

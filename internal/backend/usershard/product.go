@@ -14,13 +14,13 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/backend/plugins"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/pluginhost"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 const instructions = "You are a coding agent. Use shell session tools to inspect, edit, test, " +
@@ -57,7 +57,7 @@ func (executionContext) Name() string { return plugin.ExecutionSource }
 func (e executionContext) Context(
 	ctx context.Context,
 	node tools.NodeContext,
-	_ core.TurnID,
+	_ types.TurnID,
 	seen []string,
 ) (*string, error) {
 	text, err := e.shard.executionContext(ctx, hostaccess.ConversationOf(node.Root), seen)
@@ -79,13 +79,13 @@ func (p pluginContext) Name() string { return string(p.plugin) }
 func (p pluginContext) Context(
 	ctx context.Context,
 	node tools.NodeContext,
-	turn core.TurnID,
+	turn types.TurnID,
 	seen []string,
 ) (*string, error) {
 	text, err := p.shard.plugins.Context(
 		ctx,
 		p.plugin,
-		plugins.ContextAsk{
+		pluginhost.ContextAsk{
 			Conversation: hostaccess.ConversationOf(node.Root),
 			Node:         node.Node,
 			Cwd:          node.CWD,
@@ -102,7 +102,7 @@ func (p pluginContext) Context(
 func (s *Shard) composeAgent() {
 	s.providers = &conversationProviders{
 		shard: s,
-		rate:  providers.NewRequestRateLimit(s.services.ConversationTuning.RequestsPerMinute),
+		rate:  providerhost.NewRequestRateLimit(s.services.ConversationTuning.RequestsPerMinute),
 	}
 	sources := []tools.ContextSource{executionContext{shard: s}}
 	for _, id := range s.services.Plugins.ContextSources() {
@@ -119,13 +119,13 @@ func (s *Shard) composeAgent() {
 		Context:      sources,
 		Providers:    s.providers,
 		Shells:       hostaccess.NewShardShellEnvironments(s, s.services.Native.Catalog(s.services.PublicURL)),
-		Stores: func(root core.NodeID) store.Tree {
+		Stores: func(root types.NodeID) store.Tree {
 			id := hostaccess.ConversationOf(root)
 			indexed := &indexedWakeup{shard: s, conversation: id}
 			return database.NewTreeStore(
 				s.services.Conversations.DB(id),
 				s.BlobUses(),
-				func(node core.NodeID, due database.WakeupDue) {
+				func(node types.NodeID, due database.WakeupDue) {
 					if node == root {
 						s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
 					}
@@ -136,7 +136,7 @@ func (s *Shard) composeAgent() {
 		Clock:  s.Clock(),
 		IDs:    transcript.RandomIDs{},
 		Config: config,
-		StatusChanged: func(root core.NodeID) {
+		StatusChanged: func(root types.NodeID) {
 			id := hostaccess.ConversationOf(root)
 			s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
 			if s.agent.Tree(root) == nil {
@@ -180,7 +180,7 @@ func (s *Shard) startWorker(run func(context.Context)) bool {
 // Its state shares the shard mutex; its database writes run outside it.
 type indexedWakeup struct {
 	shard        *Shard
-	conversation webapi.ConversationID
+	conversation webapiproto.ConversationID
 	latest       database.WakeupDue
 	indexed      database.WakeupDue
 	known        bool
@@ -236,7 +236,7 @@ func (w *indexedWakeup) committed(due database.WakeupDue) {
 
 func (s *Shard) restoreWhenDue(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	due database.WakeupDue,
 ) {
 	if at, ok := due.(*database.WakeupAt); ok {

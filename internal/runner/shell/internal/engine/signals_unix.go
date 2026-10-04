@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"golang.org/x/sys/unix"
 	"mvdan.cc/sh/v3/interp"
 )
@@ -58,7 +58,7 @@ func signalExitCode(name string) uint8 { return uint8(128 + unix.SignalNum(name)
 
 // signal sends to active processes descended from this shell scope. The job
 // retains only active commands, not every scope ever made by a long-running loop.
-func (s *interpreterScope) signal(signal runnerwire.Signal) error {
+func (s *interpreterScope) signal(signal runnerproto.Signal) error {
 	s.owner.mu.Lock()
 	var commands []*process.Command
 	for command, scope := range s.owner.commands {
@@ -114,7 +114,7 @@ func killBackground(ctx context.Context, arg string, signal unix.Signal) error {
 	if signal == 0 {
 		return nil
 	}
-	if err := scope.(*interpreterScope).signal(runnerwire.Signal(unix.SignalName(signal))); err != nil {
+	if err := scope.(*interpreterScope).signal(runnerproto.Signal(unix.SignalName(signal))); err != nil {
 		return diagnostic(ctx, 1, "kill: %v\n", err)
 	}
 	switch signal {

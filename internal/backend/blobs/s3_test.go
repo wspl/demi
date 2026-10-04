@@ -24,7 +24,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/blobs"
 	"github.com/wspl/demi/internal/backend/blobs/blobstest"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Verify the real configuration path, transport ownership, checksum policy and
@@ -107,7 +107,7 @@ func TestConfiguredS3ChecksumsAndPublication(t *testing.T) {
 		IfNotExist:      true,
 		ContentType:     "application/octet-stream",
 		ContentEncoding: "gzip",
-		Metadata:        map[string]string{"sha256": string(core.BlobRefOf(data))},
+		Metadata:        map[string]string{"sha256": string(types.BlobRefOf(data))},
 	}
 	if err := bucket.WriteAll(ctx, "artifacts/archive", data, options); err != nil {
 		t.Fatal(err)
@@ -126,7 +126,7 @@ func TestConfiguredS3ChecksumsAndPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if attrs.ContentEncoding != "gzip" || attrs.Metadata["sha256"] != string(core.BlobRefOf(data)) {
+	if attrs.ContentEncoding != "gzip" || attrs.Metadata["sha256"] != string(types.BlobRefOf(data)) {
 		t.Fatalf("attributes = %+v", attrs)
 	}
 	reader, err := bucket.NewRangeReader(ctx, "artifacts/archive", 1, 4, nil)
@@ -155,7 +155,7 @@ func TestConfiguredS3ChecksumsAndPublication(t *testing.T) {
 	}
 	before := requests.Load()
 	large := bytes.Repeat([]byte("x"), 25<<20)
-	namespace := blobs.New(bucket, core.SystemClock{}).ForUser("ana")
+	namespace := blobs.New(bucket, types.SystemClock{}).ForUser("ana")
 	ref, err := namespace.Put(ctx, large)
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestS3FakeMultipartMedia(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	namespace := blobs.New(bucket, core.SystemClock{}).ForUser("ana")
+	namespace := blobs.New(bucket, types.SystemClock{}).ForUser("ana")
 	data := bytes.Repeat([]byte("x"), 25<<20)
 	ref, err := namespace.Put(ctx, data)
 	if err != nil {
@@ -248,10 +248,10 @@ func TestS3ListingReadsAllPages(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	namespace := blobs.New(onePerPage{bucket}, core.SystemClock{}).ForUser("ana")
-	want := make(map[core.BlobRef]bool)
+	namespace := blobs.New(onePerPage{bucket}, types.SystemClock{}).ForUser("ana")
+	want := make(map[types.BlobRef]bool)
 	for _, data := range []string{"first", "second", "third"} {
-		ref, err := namespace.Put(ctx, core.B64Bytes(data))
+		ref, err := namespace.Put(ctx, types.B64Bytes(data))
 		if err != nil {
 			t.Fatal(err)
 		}

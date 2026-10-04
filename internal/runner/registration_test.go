@@ -9,14 +9,14 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // About a second: real runner, a declared shell builtin and two management clients.
 func TestDeclaredBuiltinAndDrainReleaseInstallation(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
-	if f.hello.Protocol != runnerwire.Version {
+	if f.hello.Protocol != runnerproto.Version {
 		t.Fatal("wrong runner protocol")
 	}
 	page := f.readLog(nil, 10, new("runner"))
@@ -37,7 +37,7 @@ func TestDeclaredBuiltinAndDrainReleaseInstallation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := runnerwire.DecodeManifest(fixture)
+	manifest, err := runnerproto.DecodeManifest(fixture)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,9 +45,9 @@ func TestDeclaredBuiltinAndDrainReleaseInstallation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.send(&runnerwire.ManifestMessage{Manifest: data})
+	f.send(&runnerproto.ManifestMessage{Manifest: data})
 	f.send(
-		&runnerwire.JobStart{
+		&runnerproto.JobStart{
 			JobID:        "job",
 			ManifestHash: &manifest.Hash,
 			Context:      runnerCommandContext(),

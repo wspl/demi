@@ -5,7 +5,7 @@ package store
 // Contract comments are product text: contractgen emits them as schema descriptions.
 //revive:disable:exported
 
-import "github.com/wspl/demi/internal/core"
+import "github.com/wspl/demi/internal/types"
 
 // The state row of a node's checkpoint: everything the session saves
 // beside its transcript rows and command state.
@@ -13,17 +13,17 @@ import "github.com/wspl/demi/internal/core"
 type CheckpointState struct {
 	// `running` in a checkpoint the process died in, or that dispose wrote
 	// under a running turn.
-	Phase core.SessionPhase `json:"phase"`
+	Phase types.SessionPhase `json:"phase"`
 	// The queued messages, in the order they run.
-	Queue []core.QueuedMessage `json:"queue"`
+	Queue []types.QueuedMessage `json:"queue"`
 	// The agent messages waiting for a continuation boundary, in admission
 	// order.
 	AgentInputs []PendingAgentInput `json:"agentInputs"`
 	// The yield wakeups not yet written into the transcript, fired or not.
 	Wakeups []ScheduledWakeup `json:"wakeups"`
 	// +demi:length chars min=1
-	CWD   string              `json:"cwd"`
-	Model core.ModelSelection `json:"model"`
+	CWD   string               `json:"cwd"`
+	Model types.ModelSelection `json:"model"`
 	// The receipts of the accepted edits.
 	Edits []EditReceipt `json:"edits"`
 }
@@ -34,34 +34,34 @@ type CheckpointState struct {
 // +demi:root
 type PendingAgentInput struct {
 	// The turn it was admitted for; a continuation writes it into its own.
-	TurnID core.TurnID `json:"turnId"`
+	TurnID types.TurnID `json:"turnId"`
 	// The model selection current at admission, which its block records.
-	Model   core.ModelSelection `json:"model"`
-	Message core.AgentMessage   `json:"message"`
+	Model   types.ModelSelection `json:"model"`
+	Message types.AgentMessage   `json:"message"`
 }
 
 // A yield wakeup (`runtime.md` § Yield wakeups).
 // +demi:root
 type ScheduledWakeup struct {
-	ID core.WakeupID `json:"id"`
+	ID types.WakeupID `json:"id"`
 	// How long after the scheduling action ended it fires.
 	// +demi:range min=1
 	DurationMS uint32 `json:"durationMs"`
 	// When it is due, in wall-clock time; null until the action that
 	// scheduled it ended.
 	// +demi:nullable
-	DueAt *core.Timestamp `json:"dueAt"`
+	DueAt *types.Timestamp `json:"dueAt"`
 }
 
 // The receipt of an accepted edit (`message-editing.md` § Commit and
 // idempotency).
 // +demi:root
 type EditReceipt struct {
-	OperationID core.OperationID `json:"operationId"`
+	OperationID types.OperationID `json:"operationId"`
 	// The SHA-256 of the request's RFC 8785 canonical JSON, as the web app
 	// sent it, in lowercase hexadecimal.
 	// +demi:pattern ^[0-9a-f]{64}$
 	Digest string `json:"digest"`
 	// The replacement's turn.
-	TurnID core.TurnID `json:"turnId"`
+	TurnID types.TurnID `json:"turnId"`
 }

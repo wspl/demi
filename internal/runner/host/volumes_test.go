@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 func TestGrowthReserveFractionFloorAndSmallCap(t *testing.T) {
@@ -38,7 +38,7 @@ func TestGrowthReserveFractionFloorAndSmallCap(t *testing.T) {
 
 func TestVolumeGrowthHasOneRequestUntilMatchingReply(t *testing.T) {
 	out := make(chan []byte, 4)
-	v := NewVolumes(t.Context(), []ManagedVolume{{Name: runnerwire.VolumeNameHome, Mount: t.TempDir()}}, out)
+	v := NewVolumes(t.Context(), []ManagedVolume{{Name: runnerproto.VolumeNameHome, Mount: t.TempDir()}}, out)
 	t.Cleanup(func() {
 		if err := v.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -47,8 +47,8 @@ func TestVolumeGrowthHasOneRequestUntilMatchingReply(t *testing.T) {
 	// Supply one completed capacity observation. The state machine is tested
 	// without filling the developer's real filesystem to its growth threshold.
 	wanted := uint64(512 * 1024 * 1024)
-	v.pending[runnerwire.VolumeNameHome] = ""
-	v.checks <- volumeCheck{name: runnerwire.VolumeNameHome, wanted: wanted, grow: true}
+	v.pending[runnerproto.VolumeNameHome] = ""
+	v.checks <- volumeCheck{name: runnerproto.VolumeNameHome, wanted: wanted, grow: true}
 	var jobs sync.WaitGroup
 	results := make(chan bool, 2)
 	for range 2 {
@@ -65,8 +65,8 @@ func TestVolumeGrowthHasOneRequestUntilMatchingReply(t *testing.T) {
 	if first == second {
 		t.Fatalf("one observation consumed twice or not at all: %v %v", first, second)
 	}
-	frame, ok := receiveFrame(t, out).(*runnerwire.VolumeGrow)
-	if !ok || frame.Bytes != wanted || frame.Volume != runnerwire.VolumeNameHome || len(frame.ID) != 32 {
+	frame, ok := receiveFrame(t, out).(*runnerproto.VolumeGrow)
+	if !ok || frame.Bytes != wanted || frame.Volume != runnerproto.VolumeNameHome || len(frame.ID) != 32 {
 		t.Fatal(frame)
 	}
 	v.Poll()
@@ -74,14 +74,14 @@ func TestVolumeGrowthHasOneRequestUntilMatchingReply(t *testing.T) {
 		t.Fatalf("duplicate growth: %v %v", checked, err)
 	}
 	if err := v.Grown(
-		runnerwire.VolumeGrown{ID: "wrong", Volume: runnerwire.VolumeNameHome, Bytes: wanted},
+		runnerproto.VolumeGrown{ID: "wrong", Volume: runnerproto.VolumeNameHome, Bytes: wanted},
 	); err == nil {
 		t.Fatal("wrong reply accepted")
 	}
-	if err := v.Grown(runnerwire.VolumeGrown{ID: frame.ID, Volume: frame.Volume, Bytes: frame.Bytes}); err != nil {
+	if err := v.Grown(runnerproto.VolumeGrown{ID: frame.ID, Volume: frame.Volume, Bytes: frame.Bytes}); err != nil {
 		t.Fatal(err)
 	}
-	if err := v.Grown(runnerwire.VolumeGrown{ID: frame.ID, Volume: frame.Volume, Bytes: frame.Bytes}); err == nil {
+	if err := v.Grown(runnerproto.VolumeGrown{ID: frame.ID, Volume: frame.Volume, Bytes: frame.Bytes}); err == nil {
 		t.Fatal("duplicate reply accepted")
 	}
 }

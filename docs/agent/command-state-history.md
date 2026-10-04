@@ -9,7 +9,7 @@ Fork and transcript rewrites restore that version without executing historical
 commands.
 
 The agent runtime owns versioning for every command storage key.
-`internal/plugins/todo` owns todo validation and operations; it does not implement its
+`internal/plugin/todo` owns todo validation and operations; it does not implement its
 own history. `todos.json` is a logical key, not a file. Files, processes,
 credentials, caches, and other external effects do not become versioned
 conversation state.

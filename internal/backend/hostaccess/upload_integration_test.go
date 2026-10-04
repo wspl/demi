@@ -6,8 +6,8 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Cost: local database/blob IO and in-process frames. A queued reservation makes
@@ -42,21 +42,21 @@ func TestConnectedUploadUsesExistingAdmissionWithTransitionQueued(t *testing.T) 
 			return struct{}{}, nil
 		})
 		synctest.Wait()
-		result := startHostOperation(t, func(ctx context.Context) ([]core.UserContentBlock, error) {
+		result := startHostOperation(t, func(ctx context.Context) ([]types.UserContentBlock, error) {
 			content, _, err := ResolveUpload(ctx, s, record.ID, &admitted.Host, string(upload.ID), "notes.txt")
 			return content, err
 		})
-		first := nextHostMessage[*runnerwire.FSExists](t, r)
+		first := nextHostMessage[*runnerproto.FSExists](t, r)
 		if !strings.HasSuffix(first.Path, "/notes.txt") {
 			t.Fatal(first.Path)
 		}
-		r.send(t, &runnerwire.FSOK{ID: first.ID, Result: &runnerwire.FSExistsResult{Value: true}})
-		second := nextHostMessage[*runnerwire.FSExists](t, r)
+		r.send(t, &runnerproto.FSOK{ID: first.ID, Result: &runnerproto.FSExistsResult{Value: true}})
+		second := nextHostMessage[*runnerproto.FSExists](t, r)
 		expected := "/home/test/.demi/attachments/" + string(record.ID) + "/notes-2.txt"
 		if second.Path != expected {
 			t.Fatal(second.Path)
 		}
-		r.send(t, &runnerwire.FSOK{ID: second.ID, Result: &runnerwire.FSExistsResult{Value: false}})
+		r.send(t, &runnerproto.FSOK{ID: second.ID, Result: &runnerproto.FSExistsResult{Value: false}})
 		path, data := receiveHostWrite(t, s, r, device)
 		if path != expected || string(data) != "attachment text" {
 			t.Fatal(path, string(data))

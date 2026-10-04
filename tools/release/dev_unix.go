@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 )
 
 type devProcess struct {
@@ -125,7 +125,7 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 }
 
 func (a *application) publishDevCommands(ctx context.Context, root, programs string) error {
-	target, err := commandwire.HostTarget()
+	target, err := commandproto.HostTarget()
 	if err != nil {
 		return err
 	}

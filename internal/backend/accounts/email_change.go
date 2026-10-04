@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // AccountMail delivers verification codes. A deployment supplies it; tests
@@ -23,9 +23,9 @@ type AccountMail interface {
 
 // VerificationMail is a verification code on its way to the address it proves.
 type VerificationMail struct {
-	Email     webapi.EmailAddress
+	Email     webapiproto.EmailAddress
 	Code      string
-	ExpiresAt core.Timestamp
+	ExpiresAt types.Timestamp
 }
 
 // CodeKey is the key email-change codes are hashed under, supplied by assembly.
@@ -43,22 +43,22 @@ var (
 
 // EmailStore is the control database's email-change boundary.
 type EmailStore interface {
-	Account(context.Context, webapi.UserID) (database.Account, bool, error)
-	EmailInUse(context.Context, webapi.EmailAddress) (bool, error)
-	IssueEmailChallenge(context.Context, database.ChallengeIssue, database.ChallengePolicy) (core.Timestamp, error)
-	DeleteEmailChallenge(context.Context, webapi.UserID, string) error
+	Account(context.Context, webapiproto.UserID) (database.Account, bool, error)
+	EmailInUse(context.Context, webapiproto.EmailAddress) (bool, error)
+	IssueEmailChallenge(context.Context, database.ChallengeIssue, database.ChallengePolicy) (types.Timestamp, error)
+	DeleteEmailChallenge(context.Context, webapiproto.UserID, string) error
 	ConfirmEmailChallenge(
 		context.Context,
-		webapi.UserID,
+		webapiproto.UserID,
 		string,
 		database.CodeHash,
 		uint32,
-	) (webapi.UserDTO, error)
+	) (webapiproto.UserDTO, error)
 }
 
 // PasswordVerifier checks current account credentials.
 type PasswordVerifier interface {
-	Verify(context.Context, webapi.Password, *database.PasswordHash) (bool, error)
+	Verify(context.Context, webapiproto.Password, *database.PasswordHash) (bool, error)
 }
 
 // EmailChanges authenticates and delivers challenges; storage consumes them.
@@ -81,33 +81,33 @@ func challengePolicy() database.ChallengePolicy {
 // Start checks the current password and sends a code to email.
 func (e *EmailChanges) Start(
 	ctx context.Context,
-	user webapi.UserID,
-	email webapi.EmailAddress,
-	password webapi.Password,
-) (webapi.EmailChallengeDTO, error) {
+	user webapiproto.UserID,
+	email webapiproto.EmailAddress,
+	password webapiproto.Password,
+) (webapiproto.EmailChallengeDTO, error) {
 	if e.mail == nil {
-		return webapi.EmailChallengeDTO{}, ErrMailUnavailable
+		return webapiproto.EmailChallengeDTO{}, ErrMailUnavailable
 	}
 	account, found, err := e.control.Account(ctx, user)
 	if err != nil {
-		return webapi.EmailChallengeDTO{}, err
+		return webapiproto.EmailChallengeDTO{}, err
 	}
 	if !found {
-		return webapi.EmailChallengeDTO{}, ErrCurrentPassword
+		return webapiproto.EmailChallengeDTO{}, ErrCurrentPassword
 	}
 	verified, err := e.hasher.Verify(ctx, password, &account.PasswordHash)
 	if err != nil {
-		return webapi.EmailChallengeDTO{}, err
+		return webapiproto.EmailChallengeDTO{}, err
 	}
 	if !verified {
-		return webapi.EmailChallengeDTO{}, ErrCurrentPassword
+		return webapiproto.EmailChallengeDTO{}, ErrCurrentPassword
 	}
 	taken, err := e.control.EmailInUse(ctx, email)
 	if err != nil {
-		return webapi.EmailChallengeDTO{}, err
+		return webapiproto.EmailChallengeDTO{}, err
 	}
 	if taken {
-		return webapi.EmailChallengeDTO{}, database.ErrEmailTaken
+		return webapiproto.EmailChallengeDTO{}, database.ErrEmailTaken
 	}
 	return e.issueChallenge(ctx, user, email, account.PasswordHash)
 }
@@ -115,9 +115,9 @@ func (e *EmailChanges) Start(
 // Confirm changes the address when code is the one the challenge sent.
 func (e *EmailChanges) Confirm(
 	ctx context.Context,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	challenge, code string,
-) (webapi.UserDTO, error) {
+) (webapiproto.UserDTO, error) {
 	return e.control.ConfirmEmailChallenge(
 		ctx,
 		user,
@@ -135,17 +135,17 @@ func (CodeKey) Format(state fmt.State, _ rune) {
 
 func (e *EmailChanges) issueChallenge(
 	ctx context.Context,
-	user webapi.UserID,
-	email webapi.EmailAddress,
+	user webapiproto.UserID,
+	email webapiproto.EmailAddress,
 	passwordHash database.PasswordHash,
-) (webapi.EmailChallengeDTO, error) {
+) (webapiproto.EmailChallengeDTO, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
-		return webapi.EmailChallengeDTO{}, fmt.Errorf("generate email challenge: %w", err)
+		return webapiproto.EmailChallengeDTO{}, fmt.Errorf("generate email challenge: %w", err)
 	}
 	number, err := rand.Int(rand.Reader, big.NewInt(1000000))
 	if err != nil {
-		return webapi.EmailChallengeDTO{}, fmt.Errorf("generate verification code: %w", err)
+		return webapiproto.EmailChallengeDTO{}, fmt.Errorf("generate verification code: %w", err)
 	}
 	code := fmt.Sprintf("%06d", number.Int64())
 	issue := database.ChallengeIssue{
@@ -157,7 +157,7 @@ func (e *EmailChanges) issueChallenge(
 	}
 	expires, err := e.control.IssueEmailChallenge(ctx, issue, challengePolicy())
 	if err != nil {
-		return webapi.EmailChallengeDTO{}, err
+		return webapiproto.EmailChallengeDTO{}, err
 	}
 	mail := VerificationMail{Email: email, Code: code, ExpiresAt: expires}
 	if err := e.mail.SendVerification(ctx, mail); err != nil {
@@ -165,9 +165,9 @@ func (e *EmailChanges) issueChallenge(
 		// Failed delivery must release the challenge and cooldown even if the
 		// requester left. The caller owns and waits for this cleanup.
 		if err := e.control.DeleteEmailChallenge(context.WithoutCancel(ctx), user, issue.ID); err != nil {
-			return webapi.EmailChallengeDTO{}, err
+			return webapiproto.EmailChallengeDTO{}, err
 		}
-		return webapi.EmailChallengeDTO{}, ErrMailFailed
+		return webapiproto.EmailChallengeDTO{}, ErrMailFailed
 	}
-	return webapi.EmailChallengeDTO{ID: issue.ID, Email: email, ExpiresAt: expires}, nil
+	return webapiproto.EmailChallengeDTO{ID: issue.ID, Email: email, ExpiresAt: expires}, nil
 }

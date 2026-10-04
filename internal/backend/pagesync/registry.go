@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Registry tracks every user's open channels. Its zero value is ready for
@@ -15,7 +15,7 @@ import (
 type Registry struct {
 	// mu protects membership and every registration's pending marks and wake.
 	mu       sync.Mutex
-	channels map[webapi.UserID]map[*Registration]struct{}
+	channels map[webapiproto.UserID]map[*Registration]struct{}
 }
 
 // Marked contains the changes since the last Take, in delivery order.
@@ -29,7 +29,7 @@ type Marked struct {
 // and cancels and joins any Marked call before releasing it.
 type Registration struct {
 	registry     *Registry
-	user         webapi.UserID
+	user         webapiproto.UserID
 	session      database.TokenHash
 	parts        map[Part]struct{}
 	sessionEnded bool
@@ -37,12 +37,12 @@ type Registration struct {
 }
 
 // Register registers a user's channel for changes marked until Release.
-func (r *Registry) Register(user webapi.UserID, session database.TokenHash) *Registration {
+func (r *Registry) Register(user webapiproto.UserID, session database.TokenHash) *Registration {
 	c := &Registration{registry: r, user: user, session: session, wake: make(chan struct{})}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.channels == nil {
-		r.channels = make(map[webapi.UserID]map[*Registration]struct{})
+		r.channels = make(map[webapiproto.UserID]map[*Registration]struct{})
 	}
 	if r.channels[user] == nil {
 		r.channels[user] = make(map[*Registration]struct{})
@@ -55,11 +55,11 @@ func (r *Registry) Register(user webapi.UserID, session database.TokenHash) *Reg
 // Copies share the same registry.
 type UserMarks struct {
 	registry *Registry
-	user     webapi.UserID
+	user     webapiproto.UserID
 }
 
 // Of returns the marks of the user's changes.
-func (r *Registry) Of(user webapi.UserID) UserMarks {
+func (r *Registry) Of(user webapiproto.UserID) UserMarks {
 	return UserMarks{registry: r, user: user}
 }
 
@@ -67,7 +67,7 @@ func (r *Registry) Of(user webapi.UserID) UserMarks {
 func (m UserMarks) Mark(part Part) { m.registry.Mark(m.user, part) }
 
 // Mark marks the part changed on each open channel of the user.
-func (r *Registry) Mark(user webapi.UserID, part Part) {
+func (r *Registry) Mark(user webapiproto.UserID, part Part) {
 	r.change(&user, nil, &part)
 }
 
@@ -75,13 +75,13 @@ func (r *Registry) Mark(user webapi.UserID, part Part) {
 func (r *Registry) MarkEveryone(part Part) { r.change(nil, nil, &part) }
 
 // EndSession marks the user's channels opened with the signed-out session.
-func (r *Registry) EndSession(user webapi.UserID, session database.TokenHash) {
+func (r *Registry) EndSession(user webapiproto.UserID, session database.TokenHash) {
 	r.change(&user, &session, nil)
 }
 
 // change records a page-visible change and collects notifications under the
 // registry lock, then delivers them outside it. Each replaced wake has one owner.
-func (r *Registry) change(user *webapi.UserID, session *database.TokenHash, part *Part) {
+func (r *Registry) change(user *webapiproto.UserID, session *database.TokenHash, part *Part) {
 	var wakes []chan struct{}
 	r.mu.Lock()
 	for id, channels := range r.channels {

@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // errShellAborted preserves the shell cancellation text shown to callers.
@@ -22,7 +22,7 @@ var errShellAborted = errors.New("Shell command aborted")
 type shellState struct {
 	cwd        string
 	env        map[string]string
-	foreground core.CommandID // Empty while the shell is idle.
+	foreground types.CommandID // Empty while the shell is idle.
 }
 
 // runningCommand owns the task between Host admission and final output publication.
@@ -65,7 +65,7 @@ func (r *runningCommand) within(ctx context.Context, duration time.Duration) (bo
 }
 
 // active rejects unknown or finished commands before their IO is attempted.
-func (e *ShellEnvironment) active(id core.CommandID) (*runningCommand, error) {
+func (e *ShellEnvironment) active(id types.CommandID) (*runningCommand, error) {
 	e.mu.Lock()
 	record := e.records[id]
 	running := e.running[id]
@@ -80,7 +80,7 @@ func (e *ShellEnvironment) active(id core.CommandID) (*runningCommand, error) {
 }
 
 // checkFreeLocked checks a shell reservation under the environment mutex.
-func (e *ShellEnvironment) checkFreeLocked(id core.ShellID) error {
+func (e *ShellEnvironment) checkFreeLocked(id types.ShellID) error {
 	shell := e.shells[id]
 	if shell == nil {
 		return &host.ShellError{Kind: host.UnknownShell, Shell: id}
@@ -92,10 +92,10 @@ func (e *ShellEnvironment) checkFreeLocked(id core.ShellID) error {
 }
 
 // reserve atomically selects an idle shell or requests a new shell number.
-func (e *ShellEnvironment) reserve(target host.ShellTarget, command core.CommandID) (core.ShellID, bool, error) {
+func (e *ShellEnvironment) reserve(target host.ShellTarget, command types.CommandID) (types.ShellID, bool, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	var id core.ShellID
+	var id types.ShellID
 	if target.Kind == host.ExistingShell {
 		if err := e.checkFreeLocked(target.ID); err != nil {
 			return "", false, err
@@ -118,7 +118,7 @@ func (e *ShellEnvironment) reserve(target host.ShellTarget, command core.Command
 func (e *ShellEnvironment) start(
 	ctx context.Context,
 	request host.ExecRequest,
-) (core.CommandID, *runningCommand, error) {
+) (types.CommandID, *runningCommand, error) {
 	if request.Shell.Kind == host.ExistingShell {
 		e.mu.Lock()
 		err := e.checkFreeLocked(request.Shell.ID)
@@ -127,12 +127,12 @@ func (e *ShellEnvironment) start(
 			return "", nil, err
 		}
 	}
-	number, err := e.options.Numbers.Next(ctx, core.SequenceCommand)
+	number, err := e.options.Numbers.Next(ctx, types.SequenceCommand)
 	if err != nil {
 		return "", nil, err
 	}
-	command := core.CommandID(strconv.FormatUint(number, 10))
-	var shell core.ShellID
+	command := types.CommandID(strconv.FormatUint(number, 10))
+	var shell types.ShellID
 	for {
 		selected, ok, err := e.reserve(request.Shell, command)
 		if err != nil {
@@ -142,11 +142,11 @@ func (e *ShellEnvironment) start(
 			shell = selected
 			break
 		}
-		number, err := e.options.Numbers.Next(ctx, core.SequenceShell)
+		number, err := e.options.Numbers.Next(ctx, types.SequenceShell)
 		if err != nil {
 			return "", nil, err
 		}
-		spare := core.ShellID(strconv.FormatUint(number, 10))
+		spare := types.ShellID(strconv.FormatUint(number, 10))
 		e.mu.Lock()
 		e.spareShell = spare
 		e.mu.Unlock()
@@ -171,8 +171,8 @@ func (e *ShellEnvironment) start(
 
 // run keeps Host admission through edits, output storage and the runner's job release.
 func (e *ShellEnvironment) run(
-	shell core.ShellID,
-	command core.CommandID,
+	shell types.ShellID,
+	command types.CommandID,
 	request host.ExecRequest,
 	running *runningCommand,
 	record *host.CommandRecord,
@@ -222,8 +222,8 @@ func (e *ShellEnvironment) run(
 // execute follows one runner job while preserving the command's cancellation and page demand.
 func (e *ShellEnvironment) execute(
 	ctx context.Context,
-	shell core.ShellID,
-	command core.CommandID,
+	shell types.ShellID,
+	command types.CommandID,
 	request host.ExecRequest,
 	running *runningCommand,
 	record *host.CommandRecord,
@@ -277,7 +277,7 @@ func (e *ShellEnvironment) execute(
 }
 
 // reserveNewShellLocked consumes a spare number and initializes a shell under the environment mutex.
-func (e *ShellEnvironment) reserveNewShellLocked(target host.ShellTarget) (core.ShellID, bool) {
+func (e *ShellEnvironment) reserveNewShellLocked(target host.ShellTarget) (types.ShellID, bool) {
 	if e.spareShell == "" {
 		return "", false
 	}
@@ -297,7 +297,7 @@ func (e *ShellEnvironment) reserveNewShellLocked(target host.ShellTarget) (core.
 // followJob receives job output and forwards following and interruption decisions until exit.
 func (e *ShellEnvironment) followJob(
 	ctx context.Context,
-	command core.CommandID,
+	command types.CommandID,
 	running *runningCommand,
 	record *host.CommandRecord,
 	job *Job,
@@ -317,7 +317,7 @@ func (e *ShellEnvironment) followJob(
 		chunk, available, ended, changed := job.state.poll()
 		if available {
 			index := 0
-			if chunk.Stream == core.StreamKind("stderr") {
+			if chunk.Stream == types.StreamKind("stderr") {
 				index = 1
 			}
 			if streams[index].receive(record, chunk, &running.received) {
@@ -333,7 +333,7 @@ func (e *ShellEnvironment) followJob(
 		case <-watch:
 		case <-stop:
 			stop = nil
-			if err := job.Kill(workCtx, runnerwire.Signal("SIGTERM")); err != nil {
+			if err := job.Kill(workCtx, runnerproto.Signal("SIGTERM")); err != nil {
 				slog.Debug("could not interrupt the job: "+err.Error(), "command", command)
 			}
 		}

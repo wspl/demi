@@ -3,15 +3,15 @@ package plugintest
 import (
 	"strings"
 
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/plugin"
 )
 
 // Roots places manifest commands as the plugin host does and pins native
 // operations to a dummy descriptor for command-line tests.
-func Roots(manifest plugin.Manifest) ([]declare.Node[declare.Binding], error) {
-	demi := []declare.Node[declare.NativeOperation]{}
-	roots := []declare.Node[declare.NativeOperation]{}
+func Roots(manifest plugin.Manifest) ([]commanddecl.Node[commanddecl.Binding], error) {
+	demi := []commanddecl.Node[commanddecl.NativeOperation]{}
+	roots := []commanddecl.Node[commanddecl.NativeOperation]{}
 	for _, commands := range manifest.Commands {
 		switch commands.Placement {
 		case plugin.PlacementDemi:
@@ -22,8 +22,8 @@ func Roots(manifest plugin.Manifest) ([]declare.Node[declare.Binding], error) {
 	}
 	if len(demi) > 0 {
 		roots = append(
-			[]declare.Node[declare.NativeOperation]{
-				&declare.Group[declare.NativeOperation]{
+			[]commanddecl.Node[commanddecl.NativeOperation]{
+				&commanddecl.Group[commanddecl.NativeOperation]{
 					Name:        plugin.DemiRoot,
 					Summary:     plugin.DemiSummary,
 					Subcommands: demi,
@@ -31,11 +31,11 @@ func Roots(manifest plugin.Manifest) ([]declare.Node[declare.Binding], error) {
 			},
 			roots...)
 	}
-	result := make([]declare.Node[declare.Binding], 0, len(roots))
+	result := make([]commanddecl.Node[commanddecl.Binding], 0, len(roots))
 	for _, root := range roots {
-		pinned, err := declare.Pin(
+		pinned, err := commanddecl.Pin(
 			root,
-			func(declare.NativeOperation) (string, error) { return strings.Repeat("0", 64), nil },
+			func(commanddecl.NativeOperation) (string, error) { return strings.Repeat("0", 64), nil },
 		)
 		if err != nil {
 			return nil, err
@@ -46,7 +46,7 @@ func Roots(manifest plugin.Manifest) ([]declare.Node[declare.Binding], error) {
 }
 
 // Parse validates command-line input, with stdin as the optional body.
-func Parse(root declare.Node[declare.Binding], line []string, stdin *string) (*declare.Parsed, error) {
+func Parse(root commanddecl.Node[commanddecl.Binding], line []string, stdin *string) (*commanddecl.Parsed, error) {
 	selected, err := root.Select(line)
 	if err != nil {
 		return nil, err
@@ -55,14 +55,14 @@ func Parse(root declare.Node[declare.Binding], line []string, stdin *string) (*d
 	if err != nil {
 		return nil, err
 	}
-	if leaf, ok := selected.Node.(*declare.Leaf[declare.Binding]); ok && !parsed.Help {
+	if leaf, ok := selected.Node.(*commanddecl.Leaf[commanddecl.Binding]); ok && !parsed.Help {
 		return parsed.Validate(leaf, stdin)
 	}
 	return parsed, nil
 }
 
 // Help renders the command selected by line.
-func Help(root declare.Node[declare.Binding], line []string) (string, error) {
+func Help(root commanddecl.Node[commanddecl.Binding], line []string) (string, error) {
 	selected, err := root.Select(line)
 	if err != nil {
 		return "", err

@@ -5,12 +5,12 @@ shell, text the model reads, files every Host of its user's conversations
 holds, reads of a conversation's files on a running Host, calls and streams
 of its own command package, and a part of the web app with the calls behind
 it. Every capability that is not the agent runtime itself or the product's
-core is a plugin: the todo list (`internal/plugins/todo`), the file commands
-(`internal/plugins/file`), the conversation browser with its live view
-(`internal/plugins/browser`), [Host expose](../execution/expose.md)
-(`internal/plugins/expose`), [skills](../agent/skills.md)
-(`internal/plugins/skills`), and the work panel's Change view
-(`internal/plugins/changes`) and File view (`internal/plugins/filebrowser`). The agent
+core is a plugin: the todo list (`internal/plugin/todo`), the file commands
+(`internal/plugin/file`), the conversation browser with its live view
+(`internal/plugin/browser`), [Host expose](../execution/expose.md)
+(`internal/plugin/expose`), [skills](../agent/skills.md)
+(`internal/plugin/skills`), and the work panel's Change view
+(`internal/plugin/changes`) and File view (`internal/plugin/filebrowser`). The agent
 runtime, the runner, the backend's conversation lifecycle and the web app's
 shell know none of them; a plugin's part of the web app is written against
 the plugin SDK ([Plugin pages](plugin-pages.md)).
@@ -476,7 +476,7 @@ An instance belongs to its user's shard, so it follows the shard's rules
 
 ## The plugin host
 
-The plugin host, in `internal/backend/plugins`, runs every plugin of the backend:
+The plugin host, in `internal/backend/pluginhost`, runs every plugin of the backend:
 
 - **Registration.** The backend's composition root registers the plugins
   linked into it, as it registers the provider families: these are the
@@ -579,21 +579,21 @@ not use.
 
 | Id | Package | Contributes | Page package | Design |
 | --- | --- | --- | --- | --- |
-| `file` | `internal/plugins/file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
-| `todo` | `internal/plugins/todo` | The `demi todo` group, its `rpc` handlers over the node's command storage | None | [Command state history](../agent/command-state-history.md) |
-| `browser` | `internal/plugins/browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
-| `expose` | `internal/plugins/expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
-| `skills` | `internal/plugins/skills` | A context source; values and blobs; Host directories; Host file reads; user state and five methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |
-| `changes` | `internal/plugins/changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
-| `file-browser` | `internal/plugins/filebrowser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
+| `file` | `internal/plugin/file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
+| `todo` | `internal/plugin/todo` | The `demi todo` group, its `rpc` handlers over the node's command storage | None | [Command state history](../agent/command-state-history.md) |
+| `browser` | `internal/plugin/browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
+| `expose` | `internal/plugin/expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
+| `skills` | `internal/plugin/skills` | A context source; values and blobs; Host directories; Host file reads; user state and five methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |
+| `changes` | `internal/plugin/changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
+| `file-browser` | `internal/plugin/filebrowser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
 
 Besides the plugins, the components that carry them are:
 
 | Component | Holds |
 | --- | --- |
 | `internal/plugin` | The contract: factory and instance interfaces, manifest, requests and replies, the port, the JSON loopback transport for tests |
-| `internal/backend/plugins` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
-| `internal/backend/usershard`, `internal/backend/hostaccess`, `internal/backend/expose`, `internal/backend/edge`, `internal/backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
+| `internal/backend/pluginhost` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
+| `internal/backend/usershard`, `internal/backend/hostaccess`, `internal/backend/expose`, `internal/backend/httpserver`, `internal/backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
 | `internal/agent/tools`, `internal/agent/server`, `internal/agent/session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns, profiles as data |
 | `plugin-sdk`, `web-ui`, `web`, `web-gallery` | The page API: `definePage`, `usePage`, intents, the conversation files service and the plugin kit ([Plugin pages](plugin-pages.md)); the shell and the primitives; the page context over HTTP, the sync channel and the user stream route, and the generated registry; the page context over each specimen's fixtures |
 

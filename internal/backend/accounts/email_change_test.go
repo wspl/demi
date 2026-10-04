@@ -8,8 +8,8 @@ import (
 	"github.com/wspl/demi/internal/backend/accounts"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/database/databasetest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type emailStore struct {
@@ -18,14 +18,14 @@ type emailStore struct {
 	taken   bool
 }
 
-func (s *emailStore) Account(context.Context, webapi.UserID) (database.Account, bool, error) {
+func (s *emailStore) Account(context.Context, webapiproto.UserID) (database.Account, bool, error) {
 	if s.account == nil {
 		return database.Account{}, false, nil
 	}
 	return *s.account, true, nil
 }
 
-func (s *emailStore) EmailInUse(context.Context, webapi.EmailAddress) (bool, error) {
+func (s *emailStore) EmailInUse(context.Context, webapiproto.EmailAddress) (bool, error) {
 	return s.taken, nil
 }
 
@@ -94,13 +94,16 @@ func (m *capturedMail) SendVerification(ctx context.Context, mail accounts.Verif
 }
 
 func TestEmailDeliveryConfirmationAndFailureCleanup(t *testing.T) {
-	control := databasetest.Control(t.Context(), t, &accountClock{at: core.UnixEpoch})
+	control := databasetest.Control(t.Context(), t, &accountClock{at: types.UnixEpoch})
 	h, err := accounts.NewPasswordHasher(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	service := accounts.New(control, h, accounts.NewWebSessions(control), accounts.NewLoginLimiter())
-	signed, err := service.Setup(t.Context(), webapi.SetupRequest{Email: "old@example.test", Password: "password123"})
+	signed, err := service.Setup(
+		t.Context(),
+		webapiproto.SetupRequest{Email: "old@example.test", Password: "password123"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +144,7 @@ func TestEmailDeliveryConfirmationAndFailureCleanup(t *testing.T) {
 
 	for _, canceled := range []bool{false, true} {
 		name := "delivery error"
-		email := webapi.EmailAddress("retry@example.test")
+		email := webapiproto.EmailAddress("retry@example.test")
 		if canceled {
 			name = "canceled delivery"
 			email = "retry-canceled@example.test"

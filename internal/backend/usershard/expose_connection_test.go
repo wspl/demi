@@ -13,12 +13,12 @@ import (
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/backend/usershard"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type netRunner struct {
-	opens   chan *runnerwire.NetOpen
+	opens   chan *runnerproto.NetOpen
 	answers chan []byte
 }
 
@@ -32,24 +32,24 @@ func (r *netRunner) Receive(ctx context.Context) ([]byte, error) {
 }
 
 func (r *netRunner) Send(ctx context.Context, data []byte) error {
-	message, err := runnerwire.DecodeInbound(data)
+	message, err := runnerproto.DecodeInbound(data)
 	if err != nil {
 		return err
 	}
-	if open, ok := message.(*runnerwire.NetOpen); ok {
+	if open, ok := message.(*runnerproto.NetOpen); ok {
 		select {
 		case r.opens <- open:
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	} else if _, ok := message.(*runnerwire.Ping); ok {
-		return r.answer(ctx, &runnerwire.Pong{})
+	} else if _, ok := message.(*runnerproto.Ping); ok {
+		return r.answer(ctx, &runnerproto.Pong{})
 	}
 	return nil
 }
 
-func (r *netRunner) answer(ctx context.Context, message runnerwire.Outbound) error {
-	data, err := runnerwire.Encode(message)
+func (r *netRunner) answer(ctx context.Context, message runnerproto.Outbound) error {
+	data, err := runnerproto.Encode(message)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (r *netRunner) answer(ctx context.Context, message runnerwire.Outbound) err
 	}
 }
 
-func relayFixture(t *testing.T) (*fixture, *netRunner, webapi.ExposeID) {
+func relayFixture(t *testing.T) (*fixture, *netRunner, webapiproto.ExposeID) {
 	t.Helper()
 	f := shardFixture(t, "relay")
 	domain, err := expose.ParseDomain("expose.localhost")
@@ -80,7 +80,7 @@ func relayFixture(t *testing.T) (*fixture, *netRunner, webapi.ExposeID) {
 	)
 	serving := f.shard.Devices().Bind(device.ID, link, driver, runners.NewLastSeen(f.services.Control, f.shard.Marks()))
 	runner := &netRunner{
-		opens:   make(chan *runnerwire.NetOpen, 2),
+		opens:   make(chan *runnerproto.NetOpen, 2),
 		answers: make(chan []byte, 2),
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -110,8 +110,8 @@ func requestRelay(
 	t *testing.T,
 	f *fixture,
 	runner *netRunner,
-	id webapi.ExposeID,
-) (<-chan openedRelay, *runnerwire.NetOpen, []*remotehost.Pipe) {
+	id webapiproto.ExposeID,
+) (<-chan openedRelay, *runnerproto.NetOpen, []*remotehost.Pipe) {
 	t.Helper()
 	result := make(chan openedRelay, 1)
 	go func() {
@@ -123,7 +123,7 @@ func requestRelay(
 		t.Fatalf("network target = %s:%d", request.Host, request.Port)
 	}
 	var pipes []*remotehost.Pipe
-	for _, ref := range []runnerwire.PipeRef{request.Input, request.Output} {
+	for _, ref := range []runnerproto.PipeRef{request.Input, request.Output} {
 		pipe, ok := f.shard.Pipes().Pipe(ref.ID)
 		if !ok {
 			t.Fatal("network pipe missing before open reply")
@@ -142,7 +142,7 @@ func TestExposeRelayEndsBothPipesAndReleasesAdmission(t *testing.T) {
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
 				result, request, pipes := requestRelay(ctx, t, f, runner, id)
-				if err := runner.answer(t.Context(), &runnerwire.NetOpened{StreamID: request.StreamID}); err != nil {
+				if err := runner.answer(t.Context(), &runnerproto.NetOpened{StreamID: request.StreamID}); err != nil {
 					t.Fatal(err)
 				}
 				opened := <-result
@@ -163,7 +163,7 @@ func TestExposeRelayEndsBothPipesAndReleasesAdmission(t *testing.T) {
 					otherResult, otherRequest, _ := requestRelay(t.Context(), t, f, runner, id)
 					if err := runner.answer(
 						t.Context(),
-						&runnerwire.NetOpened{StreamID: otherRequest.StreamID},
+						&runnerproto.NetOpened{StreamID: otherRequest.StreamID},
 					); err != nil {
 						t.Fatal(err)
 					}
@@ -238,9 +238,9 @@ func TestExposeOpenRefusalsReleaseAdmissionAndFailPipes(t *testing.T) {
 				case "unreachable":
 					if err := runner.answer(
 						t.Context(),
-						&runnerwire.NetError{
+						&runnerproto.NetError{
 							StreamID: request.StreamID,
-							Code:     runnerwire.NetErrorCodeRefused,
+							Code:     runnerproto.NetErrorCodeRefused,
 							Message:  "connection refused",
 						},
 					); err != nil {

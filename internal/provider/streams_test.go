@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestChatSplitTextToolsAndUsage(t *testing.T) {
@@ -34,7 +34,7 @@ func TestChatSplitTextToolsAndUsage(t *testing.T) {
 			&provider.TextDelta{Text: "hi "},
 			&provider.TextDelta{Text: "there"},
 			&provider.ToolCall{ToolUseID: "call-1", ToolName: "read_file", Input: []byte(`{"path":"a.ts"}`)},
-			&provider.Response{Usage: core.TokenUsage{InputTokens: 10, OutputTokens: 5, CacheReadTokens: 2}},
+			&provider.Response{Usage: types.TokenUsage{InputTokens: 10, OutputTokens: 5, CacheReadTokens: 2}},
 		},
 	)
 }
@@ -107,7 +107,7 @@ func TestChatVendorFailureRecord(t *testing.T) {
 	requireEqual(t, *failure.Code, provider.RateLimit)
 	requireEqual(t, *failure.Diagnostics.ProviderCode, "insufficient_quota")
 	requireEqual(t, *failure.Diagnostics.Upstream, frame)
-	requireEqual(t, failure.Diagnostics.Source, core.FailureSource("stream"))
+	requireEqual(t, failure.Diagnostics.Source, types.FailureSource("stream"))
 	unnamed := failureOf(t, mapped(t, true, `{"error":{}}`))
 	requireEqual(t, unnamed.Message, "Grok Build stream error")
 	if unnamed.Code != nil {
@@ -194,7 +194,7 @@ func TestResponsesThinkingTextToolsAndUsage(t *testing.T) {
 		t,
 		got[5],
 		&provider.Response{
-			Usage: core.TokenUsage{InputTokens: 15, OutputTokens: 7, CacheReadTokens: 60, CacheWriteTokens: 25},
+			Usage: types.TokenUsage{InputTokens: 15, OutputTokens: 7, CacheReadTokens: 60, CacheWriteTokens: 25},
 		},
 	)
 }
@@ -253,11 +253,11 @@ func TestResponsesFailureRecordAndReaderWait(t *testing.T) {
 	frame := `{"type":"error","error":{"type":"usage_limit_reached",` +
 		`"message":"The usage limit has been reached","resets_at":"soon"},` +
 		`"status_code":"429"}`
-	reader := func(d *core.ProviderErrorDiagnostics, received core.Timestamp) core.ProviderFailureFacts {
+	reader := func(d *types.ProviderErrorDiagnostics, received types.Timestamp) types.ProviderFailureFacts {
 		requireEqual(t, received, now)
 		requireEqual(t, *d.Upstream, frame)
-		later := core.Timestamp("2026-09-18T14:01:00.000Z")
-		return core.ProviderFailureFacts{RetryAt: &later}
+		later := types.Timestamp("2026-09-18T14:01:00.000Z")
+		return types.ProviderFailureFacts{RetryAt: &later}
 	}
 	failure := failureOf(t, mappedWith(t.Context(), t, false, reader, frame))
 	requireEqual(t, failure.Message, "The usage limit has been reached")
@@ -265,7 +265,7 @@ func TestResponsesFailureRecordAndReaderWait(t *testing.T) {
 	requireEqual(t, *failure.RetryAfter, time.Minute)
 	requireEqual(t, *failure.Diagnostics.ProviderCode, "usage_limit_reached")
 	requireEqual(t, *failure.Diagnostics.Upstream, frame)
-	requireEqual(t, failure.Diagnostics.Source, core.FailureSource("stream"))
+	requireEqual(t, failure.Diagnostics.Source, types.FailureSource("stream"))
 }
 
 func TestResponsesFailureKinds(t *testing.T) {
@@ -367,7 +367,7 @@ func TestResponsesMalformedMappedFields(t *testing.T) {
 		if failure.Code != nil || !strings.Contains(failure.Message, tc.field) {
 			t.Fatalf("%+v", failure)
 		}
-		requireEqual(t, failure.Diagnostics.Source, core.FailureSource("stream"))
+		requireEqual(t, failure.Diagnostics.Source, types.FailureSource("stream"))
 		requireEqual(t, *failure.Diagnostics.Upstream, tc.frame)
 	}
 	for _, text := range []string{`{"type":"response.queued","id":"r1"}`, " [DONE] "} {

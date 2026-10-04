@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"math"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // remoteFS implements the Host filesystem over request replies and content pipes.
@@ -20,8 +20,8 @@ type remoteFS struct{ host *Host }
 func (f remoteFS) request(
 	ctx context.Context,
 	op string,
-	build func(string) runnerwire.Inbound,
-) (runnerwire.FSResult, error) {
+	build func(string) runnerproto.Inbound,
+) (runnerproto.FSResult, error) {
 	link, err := f.host.connection()
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func (f remoteFS) request(
 	if err != nil {
 		return nil, err
 	}
-	if reply, ok := reply.(*runnerwire.FSOK); ok {
+	if reply, ok := reply.(*runnerproto.FSOK); ok {
 		return reply.Result, nil
 	}
 	return nil, mismatch()
@@ -48,7 +48,7 @@ func filled(
 	ctx context.Context,
 	link *Link,
 	expected string,
-	build func(string, runnerwire.PipeRef) runnerwire.Inbound,
+	build func(string, runnerproto.PipeRef) runnerproto.Inbound,
 ) (*PipeReader, error) {
 	pipe := link.pipes.FromDevice(link.device)
 	reader, err := pipe.Reader()
@@ -58,7 +58,7 @@ func filled(
 	if _, err = link.call(
 		ctx,
 		expected,
-		func(id string) runnerwire.Inbound { return build(id, pipe.WireRef()) },
+		func(id string) runnerproto.Inbound { return build(id, pipe.WireRef()) },
 	); err != nil {
 		reader.Fail(err.Error())
 		return nil, err
@@ -166,13 +166,13 @@ func (f remoteFS) WriteFile(
 
 // Exists asks the runner whether path exists.
 func (f remoteFS) Exists(ctx context.Context, path string) (bool, error) {
-	result, err := f.request(ctx, "exists", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSExists{ID: id, Path: path, CWD: new(f.host.cwd)}
+	result, err := f.request(ctx, "exists", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSExists{ID: id, Path: path, CWD: new(f.host.cwd)}
 	})
 	if err != nil {
 		return false, err
 	}
-	if result, ok := result.(*runnerwire.FSExistsResult); ok {
+	if result, ok := result.(*runnerproto.FSExistsResult); ok {
 		return result.Value, nil
 	}
 	return false, mismatch()
@@ -180,13 +180,13 @@ func (f remoteFS) Exists(ctx context.Context, path string) (bool, error) {
 
 // Stat reads metadata after following symbolic links.
 func (f remoteFS) Stat(ctx context.Context, path string) (host.FileStat, error) {
-	result, err := f.request(ctx, "stat", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSStat{ID: id, Path: path, CWD: new(f.host.cwd)}
+	result, err := f.request(ctx, "stat", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSStat{ID: id, Path: path, CWD: new(f.host.cwd)}
 	})
 	if err != nil {
 		return host.FileStat{}, err
 	}
-	if result, ok := result.(*runnerwire.FSStatResult); ok {
+	if result, ok := result.(*runnerproto.FSStatResult); ok {
 		return fileStat(result.Value)
 	}
 	return host.FileStat{}, mismatch()
@@ -194,13 +194,13 @@ func (f remoteFS) Stat(ctx context.Context, path string) (host.FileStat, error) 
 
 // Lstat reads metadata without following symbolic links.
 func (f remoteFS) Lstat(ctx context.Context, path string) (host.FileStat, error) {
-	result, err := f.request(ctx, "lstat", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSLstat{ID: id, Path: path, CWD: new(f.host.cwd)}
+	result, err := f.request(ctx, "lstat", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSLstat{ID: id, Path: path, CWD: new(f.host.cwd)}
 	})
 	if err != nil {
 		return host.FileStat{}, err
 	}
-	if result, ok := result.(*runnerwire.FSLstatResult); ok {
+	if result, ok := result.(*runnerproto.FSLstatResult); ok {
 		return fileStat(result.Value)
 	}
 	return host.FileStat{}, mismatch()
@@ -208,13 +208,13 @@ func (f remoteFS) Lstat(ctx context.Context, path string) (host.FileStat, error)
 
 // ReadDir lists entries in the runner directory.
 func (f remoteFS) ReadDir(ctx context.Context, path string) ([]host.DirEntry, error) {
-	result, err := f.request(ctx, "readdir", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSReaddir{ID: id, Path: path, CWD: new(f.host.cwd)}
+	result, err := f.request(ctx, "readdir", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSReaddir{ID: id, Path: path, CWD: new(f.host.cwd)}
 	})
 	if err != nil {
 		return nil, err
 	}
-	if result, ok := result.(*runnerwire.FSReaddirResult); ok {
+	if result, ok := result.(*runnerproto.FSReaddirResult); ok {
 		entries := make([]host.DirEntry, 0, len(result.Value))
 		for _, entry := range result.Value {
 			entries = append(
@@ -231,8 +231,8 @@ func (f remoteFS) ReadDir(ctx context.Context, path string) ([]host.DirEntry, er
 }
 
 // fileStat converts the runner's checked metadata to Host metadata.
-func fileStat(stat runnerwire.FileStat) (host.FileStat, error) {
-	modified, err := core.TimestampFromMillisecond(int64(stat.Mtime))
+func fileStat(stat runnerproto.FileStat) (host.FileStat, error) {
+	modified, err := types.TimestampFromMillisecond(int64(stat.Mtime))
 	if err != nil {
 		return host.FileStat{}, &host.Error{Kind: host.Protocol, Message: err.Error()}
 	}
@@ -264,8 +264,8 @@ func fileKind(file, directory, symlink bool, characterDevice, fifo *bool) host.F
 
 // Mkdir creates a runner directory with the requested recursion policy.
 func (f remoteFS) Mkdir(ctx context.Context, path string, options host.MkdirOptions) error {
-	_, err := f.request(ctx, "mkdir", func(id string) runnerwire.Inbound {
-		request := &runnerwire.FSMkdir{ID: id, CWD: new(f.host.cwd), Path: path}
+	_, err := f.request(ctx, "mkdir", func(id string) runnerproto.Inbound {
+		request := &runnerproto.FSMkdir{ID: id, CWD: new(f.host.cwd), Path: path}
 		if options.Recursive {
 			request.Recursive = new(true)
 		}
@@ -276,8 +276,8 @@ func (f remoteFS) Mkdir(ctx context.Context, path string, options host.MkdirOpti
 
 // Rm removes the runner path with the requested options.
 func (f remoteFS) Rm(ctx context.Context, path string, options host.RmOptions) error {
-	_, err := f.request(ctx, "rm", func(id string) runnerwire.Inbound {
-		request := &runnerwire.FSRm{ID: id, CWD: new(f.host.cwd), Path: path}
+	_, err := f.request(ctx, "rm", func(id string) runnerproto.Inbound {
+		request := &runnerproto.FSRm{ID: id, CWD: new(f.host.cwd), Path: path}
 		if options.Recursive {
 			request.Recursive = new(true)
 		}
@@ -291,8 +291,8 @@ func (f remoteFS) Rm(ctx context.Context, path string, options host.RmOptions) e
 
 // Cp copies a runner path to destination.
 func (f remoteFS) Cp(ctx context.Context, path, destination string, options host.CpOptions) error {
-	_, err := f.request(ctx, "cp", func(id string) runnerwire.Inbound {
-		request := &runnerwire.FSCp{ID: id, CWD: new(f.host.cwd), Path: path, Destination: destination}
+	_, err := f.request(ctx, "cp", func(id string) runnerproto.Inbound {
+		request := &runnerproto.FSCp{ID: id, CWD: new(f.host.cwd), Path: path, Destination: destination}
 		if options.Recursive {
 			request.Recursive = new(true)
 		}
@@ -303,45 +303,45 @@ func (f remoteFS) Cp(ctx context.Context, path, destination string, options host
 
 // Mv moves a runner path to destination.
 func (f remoteFS) Mv(ctx context.Context, path, destination string) error {
-	_, err := f.request(ctx, "mv", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSMv{ID: id, CWD: new(f.host.cwd), Path: path, Destination: destination}
+	_, err := f.request(ctx, "mv", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSMv{ID: id, CWD: new(f.host.cwd), Path: path, Destination: destination}
 	})
 	return err
 }
 
 // Chmod changes permission bits on the runner path.
 func (f remoteFS) Chmod(ctx context.Context, path string, mode uint32) error {
-	_, err := f.request(ctx, "chmod", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSChmod{ID: id, CWD: new(f.host.cwd), Path: path, Mode: mode}
+	_, err := f.request(ctx, "chmod", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSChmod{ID: id, CWD: new(f.host.cwd), Path: path, Mode: mode}
 	})
 	return err
 }
 
 // Symlink creates a runner symbolic link.
 func (f remoteFS) Symlink(ctx context.Context, target, path string) error {
-	_, err := f.request(ctx, "symlink", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSSymlink{ID: id, CWD: new(f.host.cwd), Path: path, Target: target}
+	_, err := f.request(ctx, "symlink", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSSymlink{ID: id, CWD: new(f.host.cwd), Path: path, Target: target}
 	})
 	return err
 }
 
 // Link creates a runner hard link.
 func (f remoteFS) Link(ctx context.Context, existing, path string) error {
-	_, err := f.request(ctx, "link", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSLink{ID: id, CWD: new(f.host.cwd), Path: path, ExistingPath: existing}
+	_, err := f.request(ctx, "link", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSLink{ID: id, CWD: new(f.host.cwd), Path: path, ExistingPath: existing}
 	})
 	return err
 }
 
 // Readlink reads the runner symbolic link target.
 func (f remoteFS) Readlink(ctx context.Context, path string) (string, error) {
-	result, err := f.request(ctx, "readlink", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSReadlink{ID: id, CWD: new(f.host.cwd), Path: path}
+	result, err := f.request(ctx, "readlink", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSReadlink{ID: id, CWD: new(f.host.cwd), Path: path}
 	})
 	if err != nil {
 		return "", err
 	}
-	if result, ok := result.(*runnerwire.FSReadlinkResult); ok {
+	if result, ok := result.(*runnerproto.FSReadlinkResult); ok {
 		return result.Value, nil
 	}
 	return "", mismatch()
@@ -349,20 +349,20 @@ func (f remoteFS) Readlink(ctx context.Context, path string) (string, error) {
 
 // Realpath resolves the runner path.
 func (f remoteFS) Realpath(ctx context.Context, path string) (string, error) {
-	result, err := f.request(ctx, "realpath", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSRealpath{ID: id, CWD: new(f.host.cwd), Path: path}
+	result, err := f.request(ctx, "realpath", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSRealpath{ID: id, CWD: new(f.host.cwd), Path: path}
 	})
 	if err != nil {
 		return "", err
 	}
-	if result, ok := result.(*runnerwire.FSRealpathResult); ok {
+	if result, ok := result.(*runnerproto.FSRealpathResult); ok {
 		return result.Value, nil
 	}
 	return "", mismatch()
 }
 
 // Utimes sets access and modification times on the runner path.
-func (f remoteFS) Utimes(ctx context.Context, path string, accessed, modified core.Timestamp) error {
+func (f remoteFS) Utimes(ctx context.Context, path string, accessed, modified types.Timestamp) error {
 	atime, err := accessed.Millisecond()
 	if err != nil {
 		return err
@@ -371,13 +371,13 @@ func (f remoteFS) Utimes(ctx context.Context, path string, accessed, modified co
 	if err != nil {
 		return err
 	}
-	_, err = f.request(ctx, "utimes", func(id string) runnerwire.Inbound {
-		return &runnerwire.FSUtimes{
+	_, err = f.request(ctx, "utimes", func(id string) runnerproto.Inbound {
+		return &runnerproto.FSUtimes{
 			ID:    id,
 			CWD:   new(f.host.cwd),
 			Path:  path,
-			Atime: runnerwire.Timestamp(atime),
-			Mtime: runnerwire.Timestamp(mtime),
+			Atime: runnerproto.Timestamp(atime),
+			Mtime: runnerproto.Timestamp(mtime),
 		}
 	})
 	return err

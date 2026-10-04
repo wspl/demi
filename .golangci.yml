@@ -39,7 +39,7 @@ linters:
       # generated JSON Schema's description, which --help and the model's tool
       # schemas show (docs/architecture/contracts.md). It need not start with
       # the name.
-      - path: ^internal/(core|declare|framewire|commandwire|runnerwire|machinewire|webapi|cmdpkg/[a-z]+/[a-z]+op|plugins/[a-z]+)/
+      - path: ^internal/(types|commanddecl|conversationproto|commandproto|runnerproto|machinemanagerproto|webapiproto|commandpackage/[a-z]+/[a-z]+proto|plugin/[a-z]+)/
         linters:
           - revive
         text: "^exported: comment on exported"

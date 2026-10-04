@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // Arrival is the time allowed for both pipe ends to arrive.
@@ -257,8 +257,8 @@ func (p *Pipe) ID() string {
 }
 
 // WireRef returns the pipe reference sent to the runner.
-func (p *Pipe) WireRef() runnerwire.PipeRef {
-	return runnerwire.PipeRef{ID: p.id, URL: "/api/pipes/" + p.id}
+func (p *Pipe) WireRef() runnerproto.PipeRef {
+	return runnerproto.PipeRef{ID: p.id, URL: "/api/pipes/" + p.id}
 }
 
 // Reader takes the backend sink. The caller must close it or consume it to EOF.

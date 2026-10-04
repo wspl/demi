@@ -10,7 +10,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 )
@@ -95,7 +95,7 @@ func TestCommandRouterLifetimeAndConversationOwnership(t *testing.T) {
 		t.Fatal("re-registration replaced owner")
 	}
 	job := remotehost.JobOrigin{
-		Context: commandwire.Context{Conversation: "conversation"},
+		Context: commandproto.Context{Conversation: "conversation"},
 		Caller:  &host.JobCaller{Node: "node"},
 	}
 	assertFailure := func(job remotehost.JobOrigin, kind host.RPCErrorKind, text string) {

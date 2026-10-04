@@ -48,20 +48,20 @@ delivered in this order, each a checkpoint of its own. The dependency graphs
 in [Packages](../architecture/packages.md#dependency-graphs),
 which the boundary checks hold the code to, list the edges the code has: each
 step adds the lines of the packages it builds, such as
-`internal/plugins/expose`, `internal/plugins/skills` and the `@demicodes/plugin-*` packages, and
-removes the edges it retires, such as `internal/webapi`'s and `internal/backend/edge`'s
+`internal/plugin/expose`, `internal/plugin/skills` and the `@demicodes/plugin-*` packages, and
+removes the edges it retires, such as `internal/webapiproto`'s and `internal/backend/httpserver`'s
 on the browser protocol and `internal/backend/hostaccess`'s on `internal/backend/expose`.
 
 1. **The contract and the command plugins.** `internal/plugin` with its
-   loopback transport, `internal/backend/plugins` with the rule that leaves out a
+   loopback transport, `internal/backend/pluginhost` with the rule that leaves out a
    group whose package the catalog does not serve, the runtime without a
    harness (the product's dependencies, context sources that name their
    source and see only their blocks since the last compaction, profiles as
-   data, no harness name in a checkpoint), and the commands of `internal/plugins/todo`,
-   `internal/plugins/file` and `internal/plugins/browser`. The coding harness is removed.
+   data, no harness name in a checkpoint), and the commands of `internal/plugin/todo`,
+   `internal/plugin/file` and `internal/plugin/browser`. The coding harness is removed.
    Done.
 2. **The page-facing plugins.** The browser plugin's `browser` user stream and
-   its tab methods over package calls; and `internal/plugins/expose` with `demi expose`, its numbers, the conversation hosts and
+   its tab methods over package calls; and `internal/plugin/expose` with `demi expose`, its numbers, the conversation hosts and
    exposes operations and a page state that follows the user's exposes. The
    plugin call routes replace the browser tab routes and `/api/exposes`, and
    `web` calls them, with the plugins' types generated into their page
@@ -74,7 +74,7 @@ on the browser protocol and `internal/backend/hostaccess`'s on `internal/backend
    with its switches and the reload offer, in `web-ui`, `web` and
    `web-gallery`. Done.
 4. **Skills on the backend.** Plugins as context sources, asked only while
-   their user has them on; `internal/plugins/skills` with its sources, its values and
+   their user has them on; `internal/plugin/skills` with its sources, its values and
    blobs, the Host directories with their installation before a job, the Host
    file reads that never wake a Host, project skills, the catalog, and the
    page call route with the `plugin` sync message. Done.

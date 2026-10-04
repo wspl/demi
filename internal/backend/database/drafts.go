@@ -7,26 +7,26 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Draft returns the conversation's draft: the empty one at revision 0 before its first
 // save.
 func (c *ControlService) Draft(
 	ctx context.Context,
-	conversation webapi.ConversationID,
-) (webapi.ConversationDraft, error) {
+	conversation webapiproto.ConversationID,
+) (webapiproto.ConversationDraft, error) {
 	return controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (webapi.ConversationDraft, error) {
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (webapiproto.ConversationDraft, error) {
 			d, found, err := readDraft(ctx, tx, conversation)
 			if err != nil {
-				return webapi.ConversationDraft{}, err
+				return webapiproto.ConversationDraft{}, err
 			}
 			if !found {
-				return webapi.EmptyConversationDraft(), nil
+				return webapiproto.EmptyConversationDraft(), nil
 			}
 			return d.present(), nil
 		},
@@ -40,34 +40,34 @@ func (c *ControlService) Draft(
 // record holds.
 func (c *ControlService) SaveDraft(
 	ctx context.Context,
-	conversation webapi.ConversationID,
-	owner webapi.UserID,
+	conversation webapiproto.ConversationID,
+	owner webapiproto.UserID,
 	base uint64,
 	text string,
 	files []StagedFile,
-) (webapi.ConversationDraft, error) {
+) (webapiproto.ConversationDraft, error) {
 	return controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (webapi.ConversationDraft, error) {
+		func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (webapiproto.ConversationDraft, error) {
 			if err := draftWritable(ctx, tx, conversation); err != nil {
-				return webapi.ConversationDraft{}, err
+				return webapiproto.ConversationDraft{}, err
 			}
 			presented, err := presentDraftFiles(ctx, tx, owner, files)
 			if err != nil {
-				return webapi.ConversationDraft{}, err
+				return webapiproto.ConversationDraft{}, err
 			}
 			version := draftVersion{Text: text, Files: presented}
 			document, err := encoded(version)
 			if err != nil {
-				return webapi.ConversationDraft{}, err
+				return webapiproto.ConversationDraft{}, err
 			}
-			if len(document) > webapi.DraftBytesMax {
-				return webapi.ConversationDraft{}, ErrDraftTooLarge
+			if len(document) > webapiproto.DraftBytesMax {
+				return webapiproto.ConversationDraft{}, ErrDraftTooLarge
 			}
 			current, found, err := readDraft(ctx, tx, conversation)
 			if err != nil {
-				return webapi.ConversationDraft{}, err
+				return webapiproto.ConversationDraft{}, err
 			}
 			next := storedDraft{revision: 1, version: version, written: 1}
 			if found {
@@ -79,7 +79,7 @@ func (c *ControlService) SaveDraft(
 					next.written = current.written
 				}
 				if base < current.written && !current.version.empty() && !same {
-					next.replaced = &webapi.ReplacedDraft{
+					next.replaced = &webapiproto.ReplacedDraft{
 						Revision: current.revision,
 						Text:     current.version.Text,
 						Files:    current.version.Files,
@@ -87,7 +87,7 @@ func (c *ControlService) SaveDraft(
 				}
 			}
 			if err := writeDraft(ctx, tx, conversation, next, now); err != nil {
-				return webapi.ConversationDraft{}, err
+				return webapiproto.ConversationDraft{}, err
 			}
 			return next.present(), nil
 		},
@@ -99,40 +99,40 @@ func (c *ControlService) SaveDraft(
 // unless it is empty.
 func (c *ControlService) ChangeReplacedDraft(
 	ctx context.Context,
-	conversation webapi.ConversationID,
-	action webapi.ReplacedAction,
+	conversation webapiproto.ConversationID,
+	action webapiproto.ReplacedAction,
 	revision uint64,
-) (webapi.ConversationDraft, error) {
+) (webapiproto.ConversationDraft, error) {
 	return controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (webapi.ConversationDraft, error) {
+		func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (webapiproto.ConversationDraft, error) {
 			if err := draftWritable(ctx, tx, conversation); err != nil {
-				return webapi.ConversationDraft{}, err
+				return webapiproto.ConversationDraft{}, err
 			}
 			current, found, err := readDraft(ctx, tx, conversation)
 			if err != nil {
-				return webapi.ConversationDraft{}, err
+				return webapiproto.ConversationDraft{}, err
 			}
 			if !found || current.replaced == nil || current.replaced.Revision != revision {
-				return webapi.ConversationDraft{}, ErrDraftChanged
+				return webapiproto.ConversationDraft{}, ErrDraftChanged
 			}
 			next := storedDraft{revision: current.revision + 1, written: current.written, version: current.version}
 			switch action {
-			case webapi.ReplacedActionRestore:
+			case webapiproto.ReplacedActionRestore:
 				next.written = next.revision
 				next.version = draftVersion{Text: current.replaced.Text, Files: current.replaced.Files}
 				if !current.version.empty() {
-					next.replaced = &webapi.ReplacedDraft{
+					next.replaced = &webapiproto.ReplacedDraft{
 						Revision: current.revision,
 						Text:     current.version.Text,
 						Files:    current.version.Files,
 					}
 				}
-			case webapi.ReplacedActionDismiss:
+			case webapiproto.ReplacedActionDismiss:
 			}
 			if err := writeDraft(ctx, tx, conversation, next, now); err != nil {
-				return webapi.ConversationDraft{}, err
+				return webapiproto.ConversationDraft{}, err
 			}
 			return next.present(), nil
 		},
@@ -143,20 +143,20 @@ func (c *ControlService) ChangeReplacedDraft(
 // version.
 // +demi:root
 type draftVersion struct {
-	Text  string             `json:"text"`
-	Files []webapi.DraftFile `json:"files"`
+	Text  string                  `json:"text"`
+	Files []webapiproto.DraftFile `json:"files"`
 }
 
 type storedDraft struct {
 	revision uint64
 	version  draftVersion
 	written  uint64
-	replaced *webapi.ReplacedDraft
+	replaced *webapiproto.ReplacedDraft
 }
 
 func (v draftVersion) empty() bool { return strings.TrimSpace(v.Text) == "" && len(v.Files) == 0 }
-func (d storedDraft) present() webapi.ConversationDraft {
-	return webapi.ConversationDraft{
+func (d storedDraft) present() webapiproto.ConversationDraft {
+	return webapiproto.ConversationDraft{
 		Revision: d.revision,
 		Text:     d.version.Text,
 		Files:    d.version.Files,
@@ -172,14 +172,14 @@ func draftRow(r *storedRow) storedDraft {
 	}
 	if r.values["replaced_revision"] != nil && r.values["replaced"] != nil {
 		v := storedJSON(r, "replaced", decodeDraftVersion)
-		d.replaced = &webapi.ReplacedDraft{Revision: r.count("replaced_revision"), Text: v.Text, Files: v.Files}
+		d.replaced = &webapiproto.ReplacedDraft{Revision: r.count("replaced_revision"), Text: v.Text, Files: v.Files}
 	} else if r.values["replaced_revision"] != nil || r.values["replaced"] != nil {
 		r.bad("replaced", fmt.Errorf("a replaced version and its revision are stored together or not at all"))
 	}
 	return d
 }
 
-func readDraft(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (storedDraft, bool, error) {
+func readDraft(ctx context.Context, tx *sql.Tx, id webapiproto.ConversationID) (storedDraft, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,
@@ -190,7 +190,7 @@ func readDraft(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (store
 	)
 }
 
-func draftWritable(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) error {
+func draftWritable(ctx context.Context, tx *sql.Tx, id webapiproto.ConversationID) error {
 	var archived bool
 	if err := tx.QueryRowContext(ctx, "SELECT archived FROM conversations WHERE id = ?", id).
 		Scan(&archived); err != nil {
@@ -202,7 +202,13 @@ func draftWritable(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) er
 	return nil
 }
 
-func writeDraft(ctx context.Context, tx *sql.Tx, id webapi.ConversationID, d storedDraft, now core.Timestamp) error {
+func writeDraft(
+	ctx context.Context,
+	tx *sql.Tx,
+	id webapiproto.ConversationID,
+	d storedDraft,
+	now types.Timestamp,
+) error {
 	document, err := encoded(d.version)
 	if err != nil {
 		return err
@@ -255,10 +261,10 @@ SET
 func presentDraftFiles(
 	ctx context.Context,
 	tx *sql.Tx,
-	owner webapi.UserID,
+	owner webapiproto.UserID,
 	files []StagedFile,
-) ([]webapi.DraftFile, error) {
-	presented := make([]webapi.DraftFile, 0, len(files))
+) ([]webapiproto.DraftFile, error) {
+	presented := make([]webapiproto.DraftFile, 0, len(files))
 	for _, file := range files {
 		switch f := file.(type) {
 		case *StagedUpload:
@@ -271,7 +277,7 @@ func presentDraftFiles(
 			}
 			presented = append(
 				presented,
-				&webapi.DraftFileUpload{
+				&webapiproto.DraftFileUpload{
 					Ref:       f.ID,
 					FileName:  f.FileName,
 					MediaType: upload.MediaType,
@@ -280,7 +286,7 @@ func presentDraftFiles(
 				},
 			)
 		case *StagedRemote:
-			presented = append(presented, &webapi.DraftFileRemoteFile{DeviceID: f.DeviceID, Path: f.Path})
+			presented = append(presented, &webapiproto.DraftFileRemoteFile{DeviceID: f.DeviceID, Path: f.Path})
 		}
 	}
 	return presented, nil

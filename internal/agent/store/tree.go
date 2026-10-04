@@ -3,8 +3,8 @@ package store
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Session holds one node's checkpoint and its media's blob namespace.
@@ -25,32 +25,32 @@ type Session interface {
 // never a transaction that has begun. Implementations support concurrent calls.
 type Tree interface {
 	// Node returns a node's record, and false when it does not exist.
-	Node(ctx context.Context, id core.NodeID) (NodeRecord, bool, error)
+	Node(ctx context.Context, id types.NodeID) (NodeRecord, bool, error)
 	// Children returns direct children in number order, live and archived alike.
-	Children(ctx context.Context, parent core.NodeID) ([]NodeRecord, error)
+	Children(ctx context.Context, parent types.NodeID) ([]NodeRecord, error)
 	// CreateNode commits the record and first checkpoint; an existing node is refused.
 	CreateNode(ctx context.Context, record NodeRecord, initial CheckpointUpdate) error
 	// Session returns the node's checkpoint store. Saves also mark carried
 	// child completions delivered in the same commit.
-	Session(id core.NodeID) Session
+	Session(id types.NodeID) Session
 	// CloseNode closes a node after its final checkpoint, initially undelivered.
-	CloseNode(ctx context.Context, id core.NodeID, closed NodeClose) error
+	CloseNode(ctx context.Context, id types.NodeID, closed NodeClose) error
 	// ReopenNode starts a new round and queues its reviving message atomically.
 	ReopenNode(
 		ctx context.Context,
-		id core.NodeID,
+		id types.NodeID,
 		round uint64,
-		startedAt core.Timestamp,
-		message core.QueuedMessage,
+		startedAt types.Timestamp,
+		message types.QueuedMessage,
 	) error
 	// MarkDelivered marks only the named current round delivered.
-	MarkDelivered(ctx context.Context, id core.NodeID, round uint64) error
+	MarkDelivered(ctx context.Context, id types.NodeID, round uint64) error
 	// DeleteNode deletes the node and all descendants with all their rows.
-	DeleteNode(ctx context.Context, id core.NodeID) error
+	DeleteNode(ctx context.Context, id types.NodeID) error
 	// NextNumber records the following number before returning this one.
-	NextNumber(ctx context.Context, sequence core.Sequence) (uint64, error)
+	NextNumber(ctx context.Context, sequence types.Sequence) (uint64, error)
 	// CommandOutput returns an ended command's output record, or nil if unknown.
-	CommandOutput(ctx context.Context, command core.CommandID) (StoredOutput, error)
+	CommandOutput(ctx context.Context, command types.CommandID) (StoredOutput, error)
 }
 
 // CommandOutputDays is how many days an ended command's output is retained.
@@ -76,7 +76,7 @@ type OutputNotStored struct {
 // OutputRemoved records when retention removed the output.
 type OutputRemoved struct {
 	// At records when retention removed the output.
-	At core.Timestamp
+	At types.Timestamp
 }
 
 func (*OutputStored) storedOutput()    {}

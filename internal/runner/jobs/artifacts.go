@@ -3,9 +3,9 @@ package jobs
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runner/cmdpkgs"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // jobArtifacts locates an artifact through any live job that authorizes it.
@@ -13,13 +13,13 @@ type jobArtifacts struct{ contexts *Contexts }
 
 func (r *jobArtifacts) Resolve(
 	ctx context.Context,
-	artifact commandwire.PackageArtifact,
-) (cmdpkgs.ArtifactSource, error) {
+	artifact commandproto.PackageArtifact,
+) (commandpackages.ArtifactSource, error) {
 	for {
 		execution, ok := r.contexts.Carrying(artifact.SHA256)
 		if !ok {
-			return cmdpkgs.ArtifactSource{}, &cmdpkgs.RuntimeError{
-				Kind:   cmdpkgs.LocationFailure,
+			return commandpackages.ArtifactSource{}, &commandpackages.RuntimeError{
+				Kind:   commandpackages.LocationFailure,
 				Detail: "no live job authorizes this artifact",
 			}
 		}
@@ -35,21 +35,21 @@ func (r *jobArtifacts) Resolve(
 		}()
 		location, err := execution.Connection.Locate(
 			wait,
-			&runnerwire.JobArtifactOwner{JobID: execution.JobID, ManifestHash: execution.Manifest.Hash},
+			&runnerproto.JobArtifactOwner{JobID: execution.JobID, ManifestHash: execution.Manifest.Hash},
 			artifact.SHA256,
 		)
 		cancel()
 		<-done
 		if ctx.Err() != nil {
-			return cmdpkgs.ArtifactSource{}, ctx.Err()
+			return commandpackages.ArtifactSource{}, ctx.Err()
 		}
 		if execution.lifetime.Err() != nil {
 			continue
 		}
 		if err != nil {
-			return cmdpkgs.ArtifactSource{}, err
+			return commandpackages.ArtifactSource{}, err
 		}
-		return cmdpkgs.SourceFromLocation(location)
+		return commandpackages.SourceFromLocation(location)
 	}
 }
 
@@ -61,11 +61,11 @@ type streamArtifacts struct {
 
 func (r *streamArtifacts) Resolve(
 	ctx context.Context,
-	artifact commandwire.PackageArtifact,
-) (cmdpkgs.ArtifactSource, error) {
-	location, err := r.connection.Locate(ctx, &runnerwire.StreamArtifactOwner{StreamID: r.stream}, artifact.SHA256)
+	artifact commandproto.PackageArtifact,
+) (commandpackages.ArtifactSource, error) {
+	location, err := r.connection.Locate(ctx, &runnerproto.StreamArtifactOwner{StreamID: r.stream}, artifact.SHA256)
 	if err != nil {
-		return cmdpkgs.ArtifactSource{}, err
+		return commandpackages.ArtifactSource{}, err
 	}
-	return cmdpkgs.SourceFromLocation(location)
+	return commandpackages.SourceFromLocation(location)
 }

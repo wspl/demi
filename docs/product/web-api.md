@@ -8,7 +8,7 @@ uses the agent WebSocket protocol.
 transport boundaries. This reference owns product endpoint contracts;
 domain rules remain in the linked topic documents.
 
-The `internal/webapi` package defines every JSON body of this reference, request and
+The `internal/webapiproto` package defines every JSON body of this reference, request and
 response, every message of the synchronization channel, and every error code;
 the conversation stream carries the agent protocol's frames
 ([Frame protocol](../agent/runtime.md#frame-protocol)). The backend decodes
@@ -24,7 +24,7 @@ its message counts, never reach the web app.
 Paths in the index are relative to `/api`, except the public installation row.
 Detailed sections use the same relative paths or spell out the `/api` prefix.
 JSON errors carry `{ code, message }`. `code` is a value of `ErrorCode`, the
-`internal/webapi`'s list of every code the web app can see, which the web
+`internal/webapiproto`'s list of every code the web app can see, which the web
 app receives as a string union. A situation has one code on every route:
 for example, an archived conversation that refuses an operation always answers
 `conversation_archived`. Validation normally returns 400, missing or

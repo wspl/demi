@@ -248,7 +248,7 @@ set +e
     DEMI_TEST_CLOUD_URL="$url" \
     DEMI_TEST_MACHINES_DATA="$state" \
     DEMI_TEST_CLOUD_NATIVE="$native" \
-    go test -tags acceptance ./internal/backend -run '^Test(ACloud|AResetBringsBackACloud|ACheckpointWithChrome|TwoUsersClouds)' -p 1 -count=1 -v "$@"
+    go test -tags acceptance ./internal/backend/scenarios -run '^Test(ACloud|AResetBringsBackACloud|ACheckpointWithChrome|TwoUsersClouds)' -p 1 -count=1 -v "$@"
 ) 2>&1 | tee "$work/suite.log"
 suite=${PIPESTATUS[0]}
 set -e

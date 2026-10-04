@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // runnerState keeps validated registration records within the locked installation.
@@ -38,7 +38,7 @@ func (s runnerState) writeConfig(ctx context.Context, config runnerConfig) error
 	return process.WritePrivate(ctx, filepath.Join(s.root, "runner.json"), data)
 }
 
-func (s runnerState) token() (*runnerwire.DeviceToken, error) {
+func (s runnerState) token() (*runnerproto.DeviceToken, error) {
 	data, err := os.ReadFile(filepath.Join(s.root, "runner-token"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -49,11 +49,11 @@ func (s runnerState) token() (*runnerwire.DeviceToken, error) {
 	if !utf8.Valid(data) {
 		return nil, errors.New("invalid UTF-8 in device token")
 	}
-	token, err := runnerwire.ParseDeviceToken(strings.TrimSpace(string(data)))
+	token, err := runnerproto.ParseDeviceToken(strings.TrimSpace(string(data)))
 	return &token, err
 }
 
-func (s runnerState) writeToken(ctx context.Context, token runnerwire.DeviceToken) error {
+func (s runnerState) writeToken(ctx context.Context, token runnerproto.DeviceToken) error {
 	return process.WritePrivate(ctx, filepath.Join(s.root, "runner-token"), []byte(token.Expose()+"\n"))
 }
 

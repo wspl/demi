@@ -10,9 +10,9 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -28,9 +28,9 @@ type RemoteFile struct {
 func ReferenceRemoteFiles(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	files []RemoteFile,
-) ([]core.UserContentBlock, error) {
+) ([]types.UserContentBlock, error) {
 	record, err := OwnedConversation(ctx, shard, id)
 	if err != nil {
 		var access *Error
@@ -45,7 +45,7 @@ func ReferenceRemoteFiles(
 		if _, ok := devices[file.Device]; ok {
 			continue
 		}
-		deviceID, err := webapi.ParseDeviceID(file.Device)
+		deviceID, err := webapiproto.ParseDeviceID(file.Device)
 		if err != nil {
 			return nil, ErrDeviceNotAccessible
 		}
@@ -63,7 +63,7 @@ func ReferenceRemoteFiles(
 		devices[file.Device] = device
 		ordered = append(ordered, device)
 	}
-	references := make([]core.UserContentBlock, 0, len(files))
+	references := make([]types.UserContentBlock, 0, len(files))
 	for _, file := range files {
 		device := devices[file.Device]
 		reference, err := remoteReference(device, file.Path)
@@ -84,12 +84,12 @@ func ReferenceRemoteFiles(
 func ResolveUpload(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	admitted *ConversationHost,
 	reference, fileName string,
-) ([]core.UserContentBlock, store.HeldMedia, error) {
-	unavailable := []core.UserContentBlock{store.Unavailable(reference)}
-	idUpload, err := webapi.ParseAttachmentID(reference)
+) ([]types.UserContentBlock, store.HeldMedia, error) {
+	unavailable := []types.UserContentBlock{store.Unavailable(reference)}
+	idUpload, err := webapiproto.ParseAttachmentID(reference)
 	if err != nil {
 		return unavailable, store.HeldMedia{}, nil
 	}
@@ -143,7 +143,7 @@ func ResolveUpload(
 }
 
 // remoteReference names a device file and a shell command that reads its exact path.
-func remoteReference(device database.DeviceRecord, path string) (core.UserContentBlock, error) {
+func remoteReference(device database.DeviceRecord, path string) (types.UserContentBlock, error) {
 	// The runner's shell accepts Bash quoting, including control characters that
 	// syntax.Quote deliberately cannot represent in its POSIX mode.
 	quotedPath, err := syntax.Quote(path, syntax.LangBash)
@@ -167,7 +167,7 @@ func remoteReference(device database.DeviceRecord, path string) (core.UserConten
 	) + "&readCommand=" + url.QueryEscape(
 		command,
 	)
-	return &core.UserReference{Reference: reference.String()}, nil
+	return &types.UserReference{Reference: reference.String()}, nil
 }
 
 func attachRemoteDevices(

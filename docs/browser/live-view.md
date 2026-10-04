@@ -77,7 +77,7 @@ User's browser (Demi web)   Backend                        Host (Cloud or paired
 The live view is the content of the work panel's `browser`
 [tab kind](../product/web-application.md#work-panel). The backend keeps the
 panel's tabs ([Work panel state](../product/web-api.md#work-panel-state)), and
-the browser plugin (`internal/plugins/browser`) takes part in its kind's tabs on the backend
+the browser plugin (`internal/plugin/browser`) takes part in its kind's tabs on the backend
 ([Panel kinds](../architecture/plugins.md#panel-kinds)). A `browser` tab's
 `data` is:
 
@@ -231,7 +231,7 @@ messages and file frames, which carry the bytes of files the user chose
 frame or for a paste's text and HTML.
 
 Control messages are JSON. Their types are defined once, in
-`internal/cmdpkg/browser/browserop`: the module decodes each message into
+`internal/commandpackage/browser/browserproto`: the module decodes each message into
 them, and the page checks each one against the schema generated from them into
 `@demicodes/plugin-browser`
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
@@ -310,7 +310,7 @@ commands, and CDP messages have a size limit.
 The extension runs outside the module's process, so the module decodes what
 arrives on that socket at entry, as it decodes the page's frames. The
 extension's events and the module's commands to the extension have their
-types in `internal/cmdpkg/browser/browserop`, and each encoded frame starts with a
+types in `internal/commandpackage/browser/browserproto`, and each encoded frame starts with a
 fixed header. A message that does not decode, such as an event of an unknown
 type or a frame shorter than its header, fails that extension connection: the
 module writes the cause to the [Host's log](../execution/runner.md#host-log),
@@ -611,12 +611,12 @@ package; for the live view:
 
 | Where | Responsibility |
 | --- | --- |
-| `internal/cmdpkg/browser/browserop` | The live protocol: its message types, the frame kinds, the frame header, the frame limit and the video codec; the capture extension's messages. The web app receives the live protocol as generated TypeScript in `@demicodes/protocol`. |
-| `internal/cmdpkg/browser/chrome/live` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, and the page observers of watched tabs with their script, served by the live hub and the capture channel. |
-| `internal/cmdpkg/browser/chrome/tabs` | The capture extension as an embedded resource, the capture channel it connects to, and launch configuration; each tab's viewport, dialog, whether it loads its top-level page, and the upload directory the viewers' files go to. |
-| `internal/cmdpkg/browser` (`demi-browser`) | Starting the live hub of each browser it runs, and the conversation browser that the live view's viewers reach. |
-| `internal/commandwire`, `internal/cmdsdk`, the runner's packages, `internal/runnerwire`, `internal/backend/remotehost` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
-| `internal/plugins/browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream and the `browser` panel kind; its conversation state, the tab list, following the `jobs` topic; the [tab methods](#the-tab-methods); and its kind's tabs: opening and closing browser tabs for the panel tabs its user creates and closes, adding the agent's tabs and marking gone ones, one conversation's work at a time. It calls the browser's own operations and holds no browser logic. |
+| `internal/commandpackage/browser/browserproto` | The live protocol: its message types, the frame kinds, the frame header, the frame limit and the video codec; the capture extension's messages. The web app receives the live protocol as generated TypeScript in `@demicodes/protocol`. |
+| `internal/commandpackage/browser/chrome/live` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, and the page observers of watched tabs with their script, served by the live hub and the capture channel. |
+| `internal/commandpackage/browser/chrome/tabs` | The capture extension as an embedded resource, the capture channel it connects to, and launch configuration; each tab's viewport, dialog, whether it loads its top-level page, and the upload directory the viewers' files go to. |
+| `internal/commandpackage/browser` (`demi-browser`) | Starting the live hub of each browser it runs, and the conversation browser that the live view's viewers reach. |
+| `internal/commandproto`, `internal/commandsdk`, the runner's packages, `internal/runnerproto`, `internal/backend/remotehost` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
+| `internal/plugin/browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream and the `browser` panel kind; its conversation state, the tab list, following the `jobs` topic; the [tab methods](#the-tab-methods); and its kind's tabs: opening and closing browser tabs for the panel tabs its user creates and closes, adding the agent's tabs and marking gone ones, one conversation's work at a time. It calls the browser's own operations and holds no browser logic. |
 | `internal/backend` | The user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the plugin call routes and the conversation state route. None names the browser. |
 | `@demicodes/plugin-browser` | The `browser` tab kind: its panel session, which follows the plugin's conversation state for the tabs' titles and keeps the page's one view; and its content, the live view over the plugin's `browser` user stream: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab opens or loads, is gone or out of reach, or in a user's browser that cannot decode the pictures. The live protocol's schemas are generated into the package. It is built from the plugin SDK's primitives ([Plugin pages](../architecture/plugin-pages.md)). |
 | `web`, `web-gallery` | The product's page context over the plugin call routes, the conversation state route and the user stream route; a gallery client that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |

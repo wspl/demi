@@ -4,23 +4,23 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // PanelTabs returns the conversation's tabs of this plugin's kinds.
-func (p Port) PanelTabs(ctx context.Context) (webapi.WorkPanel, error) {
+func (p Port) PanelTabs(ctx context.Context) (webapiproto.WorkPanel, error) {
 	answer, err := p.ask(ctx, &PortMessagePanelTabs{})
 	if err != nil {
-		return webapi.WorkPanel{}, err
+		return webapiproto.WorkPanel{}, err
 	}
 	if a, ok := answer.(*PortAnswerPanel); ok {
 		return a.Panel, nil
 	}
-	return webapi.WorkPanel{}, unexpected("panel_tabs", answer)
+	return webapiproto.WorkPanel{}, unexpected("panel_tabs", answer)
 }
 
 // CreatePanelTab creates a tab and returns the panel revision.
-func (p Port) CreatePanelTab(ctx context.Context, tab webapi.CreatePanelTab) (uint64, error) {
+func (p Port) CreatePanelTab(ctx context.Context, tab webapiproto.CreatePanelTab) (uint64, error) {
 	return p.panelChange(ctx, "create_panel_tab", &PortMessageCreatePanelTab{Tab: tab})
 }
 

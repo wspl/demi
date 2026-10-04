@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ChatChunk is a Chat Completions streamed chunk; absent or null usage is allowed.
@@ -56,7 +56,7 @@ type ChatPromptTokensDetails struct {
 }
 
 // TokenUsage separates the cached prefix from input tokens.
-func (u ChatUsage) TokenUsage() core.TokenUsage {
+func (u ChatUsage) TokenUsage() types.TokenUsage {
 	var read *uint64
 	if u.PromptTokensDetails != nil {
 		read = u.PromptTokensDetails.CachedTokens
@@ -113,7 +113,7 @@ type collectedCall struct {
 type chatMapper struct {
 	calls           map[uint32]*collectedCall
 	thinkingStarted bool
-	usage           core.TokenUsage
+	usage           types.TokenUsage
 }
 
 func (m *chatMapper) frame(data string, vendor Vendor) ([]Event, bool) {
@@ -136,7 +136,7 @@ func (m *chatMapper) frame(data string, vendor Vendor) ([]Event, bool) {
 		failure := Failure{
 			Message:     message,
 			Code:        ClassifyError(code, message),
-			Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", ProviderCode: code, Upstream: &data},
+			Diagnostics: &types.ProviderErrorDiagnostics{Source: "stream", ProviderCode: code, Upstream: &data},
 		}
 		return []Event{&Error{Failure: failure.WithRetryWait(vendor.Reader, vendor.Clock.Now())}}, true
 	}

@@ -8,9 +8,9 @@ import (
 
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 type telemetry struct {
@@ -35,7 +35,7 @@ func (t *Tree[H]) observe(c *child[H], event *session.TranscriptChanged) {
 	}
 	textIndices := map[uint32]bool{}
 	for _, patch := range event.Patches {
-		if p, ok := patch.(*framewire.AppendTextPatch); ok {
+		if p, ok := patch.(*conversationproto.AppendTextPatch); ok {
 			textIndices[p.Index] = c.node.session.IsTextAt(int(p.Index))
 		}
 	}
@@ -43,16 +43,16 @@ func (t *Tree[H]) observe(c *child[H], event *session.TranscriptChanged) {
 	defer t.server.mu.Unlock()
 	for _, patch := range event.Patches {
 		switch p := patch.(type) {
-		case *framewire.AddPatch:
+		case *conversationproto.AddPatch:
 			c.telemetry.addBlockLocked(p.Value, now)
-		case *framewire.AppendTextPatch:
+		case *conversationproto.AppendTextPatch:
 			if textIndices[p.Index] {
 				c.telemetry.lastText = new(now)
 				c.telemetry.lastEvent = now
 			}
-		case *framewire.ReplaceBlockPatch:
+		case *conversationproto.ReplaceBlockPatch:
 			c.telemetry.replaceBlockLocked(p.Value, now)
-		case *framewire.ReplacePatch:
+		case *conversationproto.ReplacePatch:
 		}
 	}
 }
@@ -86,7 +86,7 @@ func (t *Tree[H]) snapshot(c *child[H], parent uint64, now int64) (agentSnapshot
 		ParentSessionID:   parent,
 		Description:       record.Description,
 		Profile:           record.Profile,
-		Phase:             framewire.JobPhaseRunning,
+		Phase:             conversationproto.JobPhaseRunning,
 		ElapsedMS:         agentAge(now, began),
 		LastEventMS:       agentAge(now, telemetry.lastEvent),
 		Execution:         execution,
@@ -201,7 +201,7 @@ func showText(s agentSnapshot) string {
 func showCommand[H host.Host](
 	ctx context.Context,
 	t *Tree[H],
-	_ core.NodeID,
+	_ types.NodeID,
 	jsonOutput bool,
 	args showArgs,
 	port host.RPCPort,
@@ -232,7 +232,7 @@ func showCommand[H host.Host](
 
 type listNode struct {
 	entry    treeEntry
-	id       core.NodeID
+	id       types.NodeID
 	line     string
 	children []listNode
 }
@@ -242,7 +242,7 @@ func (t *Tree[H]) listNode(
 	node *Node[H],
 	c *child[H],
 	parent *uint64,
-	caller core.NodeID,
+	caller types.NodeID,
 	now int64,
 ) (listNode, error) {
 	record := node.record
@@ -254,7 +254,7 @@ func (t *Tree[H]) listNode(
 			Kind:            "root",
 			Description:     record.Description,
 			Profile:         record.Profile,
-			Phase:           framewire.JobPhaseRunning,
+			Phase:           conversationproto.JobPhaseRunning,
 			Self:            record.ID == caller,
 		},
 	}
@@ -325,7 +325,7 @@ func (n listNode) render(prefix string, last bool, lines *[]string, entries *[]t
 func listCommand[H host.Host](
 	ctx context.Context,
 	t *Tree[H],
-	caller core.NodeID,
+	caller types.NodeID,
 	jsonOutput bool,
 	_ listArgs,
 	port host.RPCPort,
@@ -349,16 +349,16 @@ func listCommand[H host.Host](
 // toolTitle uses the model's concrete description when the call carries one.
 func toolTitle(name, input string) string {
 	call, err := decodeTitledCall([]byte(input))
-	if err == nil && !core.IsBlank(call.Description) {
-		return core.Trim(call.Description)
+	if err == nil && !types.IsBlank(call.Description) {
+		return types.Trim(call.Description)
 	}
 	return name
 }
 
 // addBlockLocked updates supervisor telemetry while the server mutex is held.
-func (t *telemetry) addBlockLocked(value core.Block, now int64) {
+func (t *telemetry) addBlockLocked(value types.Block, now int64) {
 	switch block := value.(type) {
-	case *core.ToolCallBlock:
+	case *types.ToolCallBlock:
 		title := toolTitle(block.ToolName, block.Input)
 		t.tools = append(
 			t.tools,
@@ -372,34 +372,34 @@ func (t *telemetry) addBlockLocked(value core.Block, now int64) {
 			t.tools = slices.Delete(t.tools, i, i+1)
 		}
 		t.lastEvent = now
-	case *core.TextBlock:
+	case *types.TextBlock:
 		t.lastText = new(now)
 		t.lastEvent = now
-	case *core.AbortBlock,
-		*core.AgentMessageBlock,
-		*core.CompactionBoundaryBlock,
-		*core.CompactionMarkerBlock,
-		*core.ContextBlock,
-		*core.ErrorBlock,
-		*core.RedactedThinkingBlock,
-		*core.ResponseBlock,
-		*core.ResumeBlock,
-		*core.SteerBlock,
-		*core.ThinkingBlock,
-		*core.UserBlock,
-		*core.WakeupBlock:
+	case *types.AbortBlock,
+		*types.AgentMessageBlock,
+		*types.CompactionBoundaryBlock,
+		*types.CompactionMarkerBlock,
+		*types.ContextBlock,
+		*types.ErrorBlock,
+		*types.RedactedThinkingBlock,
+		*types.ResponseBlock,
+		*types.ResumeBlock,
+		*types.SteerBlock,
+		*types.ThinkingBlock,
+		*types.UserBlock,
+		*types.WakeupBlock:
 	}
 }
 
 // replaceBlockLocked records a completed tool while the server mutex is held.
-func (t *telemetry) replaceBlockLocked(value core.Block, now int64) {
-	if call, ok := value.(*core.ToolCallBlock); ok && call.Status != core.ToolCallStatusExecuting {
+func (t *telemetry) replaceBlockLocked(value types.Block, now int64) {
+	if call, ok := value.(*types.ToolCallBlock); ok && call.Status != types.ToolCallStatusExecuting {
 		for i := range t.tools {
 			record := &t.tools[i]
 			if record.id == call.ToolUseID && record.ended == nil {
 				record.ended = new(now)
 				record.status = "completed"
-				if call.Status == core.ToolCallStatusError {
+				if call.Status == types.ToolCallStatusError {
 					record.status = "error"
 				}
 				break
@@ -429,7 +429,12 @@ func liveAgentLine(record store.NodeRecord, snapshot agentSnapshot) string {
 	)
 }
 
-func (t *Tree[H]) archivedNodes(ctx context.Context, node *Node[H], caller core.NodeID, now int64) ([]listNode, error) {
+func (t *Tree[H]) archivedNodes(
+	ctx context.Context,
+	node *Node[H],
+	caller types.NodeID,
+	now int64,
+) ([]listNode, error) {
 	children := []listNode{}
 	records, err := t.store.Children(ctx, node.record.ID)
 	if err != nil {

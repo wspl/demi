@@ -12,8 +12,8 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/framewire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func (s *Shard) serveConversationSocket(
@@ -67,7 +67,7 @@ func (s *Shard) relayConversation(
 	readCtx, readCancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer readCancel()
 	incoming := readPage(readCtx, socket.Conn, &workers)
-	outgoing := make(chan framewire.ServerFrame)
+	outgoing := make(chan conversationproto.ServerFrame)
 	workers.Add(1)
 	go forwardConversationFrames(ctx, frames, outgoing, &workers)
 	return s.exchangeConversation(ctx, conversationExchange{
@@ -85,7 +85,7 @@ func (s *Shard) relayConversation(
 func forwardConversationFrames(
 	ctx context.Context,
 	frames *server.Frames,
-	outgoing chan<- framewire.ServerFrame,
+	outgoing chan<- conversationproto.ServerFrame,
 	workers *sync.WaitGroup,
 ) {
 	defer workers.Done()
@@ -100,17 +100,17 @@ func forwardConversationFrames(
 }
 
 type handled struct {
-	reply framewire.ServerFrame
+	reply conversationproto.ServerFrame
 	err   error
 }
 
 type conversationExchange struct {
-	id         webapi.ConversationID
+	id         webapiproto.ConversationID
 	connection *server.Connection[*remotehost.Host]
 	files      *conversationFiles
 	page       *pageSocket
 	incoming   <-chan pageMessage
-	outgoing   <-chan framewire.ServerFrame
+	outgoing   <-chan conversationproto.ServerFrame
 	frames     *server.Frames // Read Err only after outgoing closes.
 }
 
@@ -124,7 +124,7 @@ func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationE
 			<-handling
 		}
 	}()
-	send := func(frame framewire.ServerFrame) error {
+	send := func(frame conversationproto.ServerFrame) error {
 		frame, err := s.present(ctx, frame)
 		if err != nil {
 			return err
@@ -163,7 +163,7 @@ func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationE
 				return err
 			}
 		case <-exchange.page.heartbeat.C:
-			if err := send(&framewire.HeartbeatFrame{}); err != nil {
+			if err := send(&conversationproto.HeartbeatFrame{}); err != nil {
 				return err
 			}
 		}
@@ -176,9 +176,9 @@ func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationE
 func forwardFrame(
 	ctx context.Context,
 	exchange conversationExchange,
-	frame framewire.ServerFrame,
+	frame conversationproto.ServerFrame,
 	ok bool,
-	send func(framewire.ServerFrame) error,
+	send func(conversationproto.ServerFrame) error,
 ) (ended bool, err error) {
 	if !ok {
 		if errors.Is(exchange.frames.Err(), server.ErrLagged) {
@@ -197,9 +197,9 @@ func finishConversationMessage(
 	ctx context.Context,
 	page *pageSocket,
 	result handled,
-	send func(framewire.ServerFrame) error,
+	send func(conversationproto.ServerFrame) error,
 ) (bool, error) {
-	if errors.Is(result.err, framewire.ErrNotJSON) {
+	if errors.Is(result.err, conversationproto.ErrNotJSON) {
 		page.close(context.WithoutCancel(ctx), websocket.StatusInvalidFramePayloadData, "not_json")
 		return true, nil
 	}

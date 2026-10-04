@@ -11,7 +11,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Lease is the edge's hold on admitted work. The receiver defers Release.
@@ -219,7 +219,7 @@ func (u *OpenUpload) Written(ctx context.Context) error {
 func OpenDownload(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	request DownloadRequest,
 ) (Download, error) {
 	open, waitCtx, stop, err := registerTransfer(ctx, shard, id)
@@ -285,7 +285,7 @@ func OpenDownload(
 func UploadFile(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	path string,
 	replace bool,
 ) (*OpenUpload, error) {
@@ -440,7 +440,7 @@ func (r RangeAnswer) Headers() http.Header {
 func registerTransfer(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 ) (*OpenTransfer, context.Context, func(), error) {
 	record, err := OwnedConversation(ctx, shard, id)
 	if err != nil {

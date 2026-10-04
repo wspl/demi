@@ -17,7 +17,7 @@ func TestArchitecture(t *testing.T) {
 		graph  string
 		file   string
 		source string
-		// support adds internal/core/coretest, the test support of core.
+		// support adds internal/types/coretest, the test support of core.
 		support bool
 		want    string
 	}{

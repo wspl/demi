@@ -10,7 +10,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"golang.org/x/net/websocket"
 )
 
@@ -90,17 +90,17 @@ func (f *RunnerFixture) adopt(socket *websocket.Conn) {
 			slog.Debug("fixture socket close failed: " + err.Error())
 		}
 	}()
-	socket.MaxPayloadBytes = runnerwire.MaxMessageBytes
+	socket.MaxPayloadBytes = runnerproto.MaxMessageBytes
 	frames := socketFrames{socket}
 	frame, err := frames.Receive(f.ctx)
 	if err != nil {
 		return
 	}
-	message, err := runnerwire.DecodeOutbound(frame)
+	message, err := runnerproto.DecodeOutbound(frame)
 	if err != nil {
 		return
 	}
-	hello, ok := message.(*runnerwire.Hello)
+	hello, ok := message.(*runnerproto.Hello)
 	if !ok {
 		return
 	}
@@ -236,23 +236,23 @@ func pipeResponse(response http.ResponseWriter, status int, text string) {
 }
 
 // refuseHello checks a fixture hello while the caller holds admission.
-func (f *RunnerFixture) refuseHello(hello *runnerwire.Hello) *runnerwire.HelloError {
+func (f *RunnerFixture) refuseHello(hello *runnerproto.Hello) *runnerproto.HelloError {
 	// Admission serializes hello decisions, not the lifetime of an adopted link.
-	var refusal *runnerwire.HelloError
-	if hello.Protocol != runnerwire.Version {
-		refusal = &runnerwire.HelloError{
-			Code:   runnerwire.HelloErrorCodeUnsupportedProtocol,
+	var refusal *runnerproto.HelloError
+	if hello.Protocol != runnerproto.Version {
+		refusal = &runnerproto.HelloError{
+			Code:   runnerproto.HelloErrorCodeUnsupportedProtocol,
 			Reason: "unsupported protocol",
 		}
 	} else if hello.DeviceToken == nil || hello.DeviceToken.Expose() != fixtureToken {
-		refusal = &runnerwire.HelloError{Code: runnerwire.HelloErrorCodeUnknownDevice, Reason: "unknown device"}
+		refusal = &runnerproto.HelloError{Code: runnerproto.HelloErrorCodeUnknownDevice, Reason: "unknown device"}
 	} else {
 		f.mu.Lock()
 		current := f.device.Link
 		f.mu.Unlock()
 		if current != nil && !current.IsClosed() {
-			refusal = &runnerwire.HelloError{
-				Code:   runnerwire.HelloErrorCodeAlreadyConnected,
+			refusal = &runnerproto.HelloError{
+				Code:   runnerproto.HelloErrorCodeAlreadyConnected,
 				Reason: "already connected",
 			}
 		}
@@ -264,13 +264,13 @@ func (f *RunnerFixture) refuseHello(hello *runnerwire.Hello) *runnerwire.HelloEr
 func (f *RunnerFixture) acceptHello(
 	ctx context.Context,
 	frames socketFrames,
-	hello *runnerwire.Hello,
+	hello *runnerproto.Hello,
 	permit *gates.Permit,
 ) {
 	refusal := f.refuseHello(hello)
 	if refusal != nil {
 		permit.Release()
-		frame, err := runnerwire.Encode(refusal)
+		frame, err := runnerproto.Encode(refusal)
 		if err != nil {
 			slog.Error("fixture refusal encoding failed: " + err.Error())
 			return
@@ -280,7 +280,7 @@ func (f *RunnerFixture) acceptHello(
 		}
 		return
 	}
-	welcome, err := runnerwire.Encode(&runnerwire.HelloOK{DeviceID: TestDeviceID})
+	welcome, err := runnerproto.Encode(&runnerproto.HelloOK{DeviceID: TestDeviceID})
 	if err != nil {
 		permit.Release()
 		slog.Error("fixture welcome encoding failed: " + err.Error())

@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runner/cmdpkgs"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/runner/commandpackages"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // ExecutionContext is the live authority a job's declared commands run under.
@@ -31,11 +31,11 @@ type ExecutionContext struct {
 	// JobID identifies the job that owns this authority.
 	JobID string
 	// Command is what the backend told the job's declared commands.
-	Command commandwire.Context
+	Command commandproto.Context
 	// Manifest contains the job declarations and package catalog.
-	Manifest *runnerwire.Manifest
+	Manifest *runnerproto.Manifest
 	// Edits is where the job records the files its commands change.
-	Edits commandwire.EditContext
+	Edits commandproto.EditContext
 	// Connection carries callbacks and artifact locations for this job.
 	Connection *Connection
 	lifetime   context.Context
@@ -50,9 +50,9 @@ type ExecutionContext struct {
 func NewExecutionContext(
 	ctx context.Context,
 	jobID string,
-	command commandwire.Context,
-	manifest *runnerwire.Manifest,
-	edits commandwire.EditContext,
+	command commandproto.Context,
+	manifest *runnerproto.Manifest,
+	edits commandproto.EditContext,
 	connection *Connection,
 	paths ContextPaths,
 ) (*ExecutionContext, error) {
@@ -131,7 +131,7 @@ func (e *ExecutionContext) Environment(endpoint, home string, path *string) (map
 
 // Carries reports whether this context's manifest carries digest for this Host.
 func (e *ExecutionContext) Carries(digest string) bool {
-	target, err := commandwire.HostTarget()
+	target, err := commandproto.HostTarget()
 	if err != nil {
 		return false
 	}
@@ -218,7 +218,7 @@ func (c *Contexts) Carrying(digest string) (*ExecutionContext, bool) {
 type ContextTable struct {
 	contexts *Contexts
 	entries  contextIndex
-	leases   map[string][]*cmdpkgs.ServiceLease
+	leases   map[string][]*commandpackages.ServiceLease
 }
 
 // NewContextTable clears and publishes registrations through contexts.
@@ -226,7 +226,7 @@ func NewContextTable(contexts *Contexts) *ContextTable {
 	t := &ContextTable{
 		contexts: contexts,
 		entries:  make(contextIndex),
-		leases:   make(map[string][]*cmdpkgs.ServiceLease),
+		leases:   make(map[string][]*commandpackages.ServiceLease),
 	}
 	t.publish()
 	return t
@@ -234,7 +234,7 @@ func NewContextTable(contexts *Contexts) *ContextTable {
 
 // Insert makes execution live; a job has at most one context. Success transfers
 // leases to the table; on error the caller remains responsible for releasing them.
-func (t *ContextTable) Insert(execution *ExecutionContext, leases []*cmdpkgs.ServiceLease) error {
+func (t *ContextTable) Insert(execution *ExecutionContext, leases []*commandpackages.ServiceLease) error {
 	for _, existing := range t.entries {
 		if existing.JobID == execution.JobID {
 			return errors.New("duplicate live execution owner")
@@ -297,13 +297,13 @@ type Installation struct {
 	// mu protects the selection and its notification channel, never IO.
 	mu       sync.Mutex
 	phase    InstallationPhase
-	manifest *runnerwire.Manifest
+	manifest *runnerproto.Manifest
 	changed  chan struct{}
 }
 
 // Publish replaces the selection and wakes waiting jobs. manifest is non-nil
 // exactly when phase is ManifestReady. The connection serializes publications.
-func (i *Installation) Publish(phase InstallationPhase, manifest *runnerwire.Manifest) {
+func (i *Installation) Publish(phase InstallationPhase, manifest *runnerproto.Manifest) {
 	i.mu.Lock()
 	old := i.changed
 	i.changed = make(chan struct{})
@@ -317,7 +317,7 @@ func (i *Installation) Publish(phase InstallationPhase, manifest *runnerwire.Man
 
 // Wait waits until installation is no longer in progress and returns its selection.
 // The manifest is nil for ManifestAbsent. ctx ends with the job or connection.
-func (i *Installation) Wait(ctx context.Context) (InstallationPhase, *runnerwire.Manifest, error) {
+func (i *Installation) Wait(ctx context.Context) (InstallationPhase, *runnerproto.Manifest, error) {
 	for {
 		i.mu.Lock()
 		phase, manifest := i.phase, i.manifest
@@ -341,9 +341,9 @@ func (i *Installation) Wait(ctx context.Context) (InstallationPhase, *runnerwire
 // The connection releases Leases when replacing this installed selection.
 type Installed struct {
 	// Manifest contains the installed declarations and package catalog.
-	Manifest *runnerwire.Manifest
+	Manifest *runnerproto.Manifest
 	// Leases holds the services acquired for the installation.
-	Leases []*cmdpkgs.ServiceLease
+	Leases []*commandpackages.ServiceLease
 }
 
 // Install decodes, checks and keeps the manifest, refusing reserved root commands.
@@ -352,10 +352,10 @@ func Install(
 	ctx context.Context,
 	value json.RawMessage,
 	paths ContextPaths,
-	services *cmdpkgs.ServiceRegistry,
+	services *commandpackages.ServiceRegistry,
 	reserved map[string]struct{},
 ) (*Installed, error) {
-	manifest, err := runnerwire.DecodeManifest(value)
+	manifest, err := runnerproto.DecodeManifest(value)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func Install(
 	bytes, err := os.ReadFile(path)
 	switch {
 	case err == nil:
-		existing, err := runnerwire.DecodeManifest(bytes)
+		existing, err := runnerproto.DecodeManifest(bytes)
 		if err != nil {
 			return nil, err
 		}
@@ -397,11 +397,11 @@ func Install(
 // returned leases; failure releases acquisitions already made.
 func Leases(
 	ctx context.Context,
-	manifest *runnerwire.Manifest,
-	services *cmdpkgs.ServiceRegistry,
-) ([]*cmdpkgs.ServiceLease, error) {
-	var leases []*cmdpkgs.ServiceLease
-	target, err := commandwire.HostTarget()
+	manifest *runnerproto.Manifest,
+	services *commandpackages.ServiceRegistry,
+) ([]*commandpackages.ServiceLease, error) {
+	var leases []*commandpackages.ServiceLease
+	target, err := commandproto.HostTarget()
 	if err != nil {
 		return nil, err
 	}

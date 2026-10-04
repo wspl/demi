@@ -6,9 +6,9 @@ import (
 	"math"
 	"slices"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/plugin"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // LiveExposes removes expired exposes and returns the rest in expiry order.
@@ -29,7 +29,7 @@ func (d *TestDemi) liveExposesLocked() []plugin.ExposeRecord {
 }
 
 // EndExposesOn ends every expose of the device, as a Cloud stop does.
-func (d *TestDemi) EndExposesOn(device webapi.DeviceID) {
+func (d *TestDemi) EndExposesOn(device webapiproto.DeviceID) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.exposes = slices.DeleteFunc(d.exposes, func(e plugin.ExposeRecord) bool { return e.Device == device })
@@ -40,7 +40,7 @@ func (d *TestDemi) createExposeLocked(m *plugin.PortMessageCreateExpose) (plugin
 	if !d.ExposesAvailable {
 		return exposeRefused(plugin.ExposeRefusalUnavailable, "no expose domain"), nil
 	}
-	address, err := webapi.ParseExposeAddress(m.Address)
+	address, err := webapiproto.ParseExposeAddress(m.Address)
 	if err != nil {
 		return exposeRefused(plugin.ExposeRefusalInvalidAddress, err.Error()), nil
 	}
@@ -70,7 +70,7 @@ func (d *TestDemi) createExposeLocked(m *plugin.PortMessageCreateExpose) (plugin
 }
 
 // exposeExpiryLocked computes an expiry from the test clock while mu is held.
-func (d *TestDemi) exposeExpiryLocked(seconds uint64) (core.Timestamp, error) {
+func (d *TestDemi) exposeExpiryLocked(seconds uint64) (types.Timestamp, error) {
 	now, err := d.Now.Millisecond()
 	if err != nil {
 		return "", err
@@ -82,7 +82,7 @@ func (d *TestDemi) exposeExpiryLocked(seconds uint64) (core.Timestamp, error) {
 	if now > math.MaxInt64-millis {
 		return "", fmt.Errorf("a test expiry fits in milliseconds")
 	}
-	return core.TimestampFromMillisecond(now + millis)
+	return types.TimestampFromMillisecond(now + millis)
 }
 
 // exposeRefused puts an expose refusal on the plugin wire.
@@ -91,12 +91,12 @@ func exposeRefused(reason plugin.ExposeRefusal, message string) plugin.PortAnswe
 }
 
 // testExposeID draws the nth test expose id as 26 base32 characters.
-func testExposeID(n uint64) (webapi.ExposeID, error) {
+func testExposeID(n uint64) (webapiproto.ExposeID, error) {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz234567"
 	text := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaa")
 	for i := len(text) - 1; i >= 0; i-- {
 		text[i] = alphabet[n%32]
 		n /= 32
 	}
-	return webapi.ParseExposeID(string(text))
+	return webapiproto.ParseExposeID(string(text))
 }

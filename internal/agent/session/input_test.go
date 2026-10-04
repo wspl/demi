@@ -13,11 +13,11 @@ import (
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestSteerDuringToolAndWithdrawal(t *testing.T) {
@@ -33,10 +33,10 @@ func TestSteerDuringToolAndWithdrawal(t *testing.T) {
 			}
 		})
 		f := start(t, r, session.DefaultConfig(), tool("hold"), answer("skipping it"))
-		published := [][]core.BlockID{}
+		published := [][]types.BlockID{}
 		sub := f.s.Subscribe(func(e session.Event) {
 			if e, ok := e.(*session.PendingSteersChanged); ok {
-				ids := []core.BlockID{}
+				ids := []types.BlockID{}
 				for _, steer := range e.PendingSteers {
 					ids = append(ids, steer.ID)
 				}
@@ -53,7 +53,7 @@ func TestSteerDuringToolAndWithdrawal(t *testing.T) {
 		equal(
 			t,
 			f.s.PendingSteers(),
-			[]core.PendingSteer{
+			[]types.PendingSteer{
 				{ID: "s1", TurnID: "t1", Model: storetest.TestModel(), Content: storetest.Text("skip e2e")},
 			},
 		)
@@ -62,9 +62,9 @@ func TestSteerDuringToolAndWithdrawal(t *testing.T) {
 		equal(t, steers(t, f.p.Requests()[1]), []string{"skip e2e"})
 		equal(t, len(f.p.Requests()), 2)
 		f.history("user", "tool_call:completed", "response", "steer", "text", "response")
-		equal(t, f.s.Transcript().Blocks[3].ID(), core.BlockID("s1"))
+		equal(t, f.s.Transcript().Blocks[3].ID(), types.BlockID("s1"))
 		equal(t, steers(t, f.p.Requests()[0]), []string{})
-		equal(t, published, [][]core.BlockID{{"s1"}, {"s1", "s2"}, {"s1"}, {}})
+		equal(t, published, [][]types.BlockID{{"s1"}, {"s1", "s2"}, {"s1"}, {}})
 	})
 }
 
@@ -174,12 +174,12 @@ func TestAgentMessagesDuringToolAreDurableAndOrdered(t *testing.T) {
 		<-entered
 		one, two := message("one"), message("two")
 		two.ID = "subagent:child:1"
-		two.Event = &core.CompletionEvent{Outcome: "completed"}
+		two.Event = &types.CompletionEvent{Outcome: "completed"}
 		must(t, f.s.AcceptAgentMessage(t.Context(), one))
 		must(t, f.s.AcceptAgentMessage(t.Context(), two))
 		waiting := f.checkpoint().State.AgentInputs
 		equal(t, len(waiting), 2)
-		equal(t, []core.BlockID{waiting[0].Message.ID, waiting[1].Message.ID}, []core.BlockID{one.ID, two.ID})
+		equal(t, []types.BlockID{waiting[0].Message.ID, waiting[1].Message.ID}, []types.BlockID{one.ID, two.ID})
 		equal(t, len(f.s.QueuedMessages()), 0)
 		equal(t, len(f.s.PendingSteers()), 0)
 		equal(t, f.s.CancelPendingSteer(one.ID), false)
@@ -371,15 +371,15 @@ func TestYieldEndsTurnAndWakesOnce(t *testing.T) {
 		equal(t, len(f.p.Requests()), 1)
 		cp := f.checkpoint()
 		equal(t, len(cp.State.Wakeups), 1)
-		call := f.s.Transcript().Blocks[1].(*core.ToolCallBlock)
-		view := call.View.(*core.YieldWakeup)
+		call := f.s.Transcript().Blocks[1].(*types.ToolCallBlock)
+		view := call.View.(*types.YieldWakeup)
 		equal(t, view.DurationMs, uint32(120000))
 		equal(t, cp.State.Wakeups[0].ID, view.WakeupID)
 		equal(t, cp.State.Wakeups[0].DurationMS, uint32(120000))
 		equal(
 			t,
 			call.Output,
-			[]core.ToolResultContentBlock{&core.ToolText{Text: "yield scheduled\ndurationMs: 120000"}},
+			[]types.ToolResultContentBlock{&types.ToolText{Text: "yield scheduled\ndurationMs: 120000"}},
 		)
 		if cp.State.Wakeups[0].DueAt == nil {
 			t.Fatal("not armed")
@@ -391,7 +391,7 @@ func TestYieldEndsTurnAndWakesOnce(t *testing.T) {
 		must(t, f.s.Settled(t.Context()))
 		f.history("user", "tool_call:completed", "response", "wakeup", "text", "response")
 		equal(t, len(f.checkpoint().State.Wakeups), 0)
-		equal(t, f.s.Transcript().Blocks[3].(*core.WakeupBlock).Placement, core.WakeupPlacement("new_turn"))
+		equal(t, f.s.Transcript().Blocks[3].(*types.WakeupBlock).Placement, types.WakeupPlacement("new_turn"))
 		equal(t, len(f.p.Requests()), 2)
 		items := f.p.Requests()[1].Items
 		equal(t, items[len(items)-1], userItem(transcripttest.WakeupText))
@@ -404,7 +404,7 @@ func TestStopCancelsOldestWakeup(t *testing.T) {
 		f.done(f.send("wait", "t1"))
 		r, err := f.s.Abort(t.Context())
 		must(t, err)
-		equal(t, *r.Target, framewire.AbortTargetPendingYieldWakeup)
+		equal(t, *r.Target, conversationproto.AbortTargetPendingYieldWakeup)
 		equal(t, r.CanAbortAgain, false)
 		must(t, f.s.Flush(t.Context()))
 		equal(t, len(f.checkpoint().State.Wakeups), 0)
@@ -426,7 +426,7 @@ func TestWakeupDuringTurnBecomesSteer(t *testing.T) {
 		close(release)
 		f.done(a)
 		equal(t, kinds(f.s.Transcript().Blocks[3:]), []string{"user", "text", "response", "wakeup", "text", "response"})
-		equal(t, f.s.Transcript().Blocks[6].(*core.WakeupBlock).Placement, core.WakeupPlacement("steer"))
+		equal(t, f.s.Transcript().Blocks[6].(*types.WakeupBlock).Placement, types.WakeupPlacement("steer"))
 		equal(t, steers(t, f.p.Requests()[2]), []string{transcripttest.WakeupText})
 	})
 }

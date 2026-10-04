@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // Socket owns the runner connection's single reader, from hello through serving.
@@ -29,7 +29,7 @@ type runnerFrame struct {
 func NewSocket(ctx context.Context, conn *websocket.Conn) *Socket {
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Socket{conn: conn, cancel: cancel, frames: make(chan runnerFrame), done: make(chan struct{})}
-	conn.SetReadLimit(runnerwire.MaxMessageBytes)
+	conn.SetReadLimit(runnerproto.MaxMessageBytes)
 	go func() {
 		defer close(s.done)
 		defer close(s.frames)

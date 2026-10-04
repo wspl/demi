@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wspl/demi/internal/contract"
-	webapi "github.com/wspl/demi/internal/webapi"
+	webapiproto "github.com/wspl/demi/internal/webapiproto"
 )
 
 func DecodeExpose(data []byte) (Expose, error) { return contract.Decode[Expose](data) }
@@ -36,7 +36,7 @@ func (v *Expose) UnmarshalJSON(data []byte) error {
 			return contract.At("address", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.ExposeAddress](raw)
+			value, err := contract.Decode[webapiproto.ExposeAddress](raw)
 			if err != nil {
 				return contract.At("address", err)
 			}

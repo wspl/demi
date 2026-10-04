@@ -3,9 +3,9 @@ package process
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // JobCommands supplies the declared roots a job runs as builtins and their handler.
@@ -15,7 +15,7 @@ type JobCommands struct {
 	// Roots is the root commands the job's manifest declares.
 	Roots []string
 	// Handler runs the declared root invocations.
-	Handler cmdsdk.Handler[commandwire.LocalInvocation]
+	Handler commandsdk.Handler[commandproto.LocalInvocation]
 }
 
 // JobStart supplies what a job starts with. The context passed to JobShell.Start
@@ -32,7 +32,7 @@ type JobStart struct {
 	// Commands supplies the declared roots and invocation handler.
 	Commands *JobCommands
 	// Edits records the files the job changes.
-	Edits *cmdsdk.Recorder
+	Edits *commandsdk.Recorder
 }
 
 // JobShell runs the runner's jobs without exposing its interpreter.
@@ -51,7 +51,7 @@ type ShellJob interface {
 	// Output yields chunks until everything the job ran has finished.
 	Output() <-chan OutputChunk
 	// Signal cancels for a terminating signal and refuses other signals.
-	Signal(runnerwire.Signal) error
+	Signal(runnerproto.Signal) error
 	// Cancel ends the job and everything it runs.
 	Cancel()
 	// IsCancelled reports whether cancellation was requested.

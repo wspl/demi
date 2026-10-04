@@ -3,7 +3,7 @@ package runner
 import (
 	"errors"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
@@ -11,8 +11,8 @@ import (
 // +demi:root
 // +demi:strict
 type runnerConfig struct {
-	BackendURL runnerwire.BackendURL `json:"backendUrl"`
-	DeviceID   *deviceID             `json:"deviceId,omitempty"`
+	BackendURL runnerproto.BackendURL `json:"backendUrl"`
+	DeviceID   *deviceID              `json:"deviceId,omitempty"`
 }
 
 // The id the backend gave the device; never empty.

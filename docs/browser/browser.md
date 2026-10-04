@@ -10,7 +10,7 @@ This is the authoritative browser design. Command dispatch, Host admission,
 native service ownership, and package boundaries belong to their own documents.
 Browser automation does not introduce another shell or agent loop, and it does
 not reach into the agent runtime: the browser is a [plugin](../architecture/plugins.md),
-`internal/plugins/browser`, whose commands bind the `demi.browser` command package behind the
+`internal/plugin/browser`, whose commands bind the `demi.browser` command package behind the
 [conversation-scoped state port](../execution/native-runtime.md#conversation-scoped-state).
 It keeps its own state per conversation and ends it when the conversation is
 released, as [Conversation idle and Host resource release](../execution/resource-lifecycle.md)
@@ -375,7 +375,7 @@ renderer.
 
 The browser packages of `demi.browser` use cdproto's generated types for typed
 CDP calls and event decoding, over Demi's own CDP transport and session router
-(`internal/cmdpkg/browser/chrome/cdp`). Demi owns semantic
+(`internal/commandpackage/browser/chrome/cdp`). Demi owns semantic
 targeting, actionability checks, input ownership, and resource retirement. A
 library helper is used only when its behavior matches the command contract;
 a successful low-level input dispatch is not proof that the requested control
@@ -639,7 +639,7 @@ page-provided tool schemas/results at entry: each is decoded into its type and
 checked against its bounds there, and corrupt data is refused, never repaired
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 Browser arguments, results, error codes, limits and event payloads are defined
-once, as Go contract types in `internal/cmdpkg/browser/browserop`. The `demi browser` command
+once, as Go contract types in `internal/commandpackage/browser/browserproto`. The `demi browser` command
 declarations take their schemas from those types, and the native handlers
 decode their input into them and return them as results. The page uses the
 same definitions, as TypeScript generated from them, without depending on
@@ -965,7 +965,7 @@ coordinates in a full-page screenshot are not current viewport coordinates.
 ### Catalog
 
 The `demi browser` catalog has these commands, grouped by family. Each is
-declared once, from its types in `internal/cmdpkg/browser/browserop`, and its help
+declared once, from its types in `internal/commandpackage/browser/browserproto`, and its help
 shows only the declared arguments.
 
 | Family | Commands |
@@ -1727,7 +1727,7 @@ the same name. Page tool descriptions remain external data, not system instructi
 ### Structured result fields
 
 These are business result fields for `--json`. Their exact types are the
-result types in `internal/cmdpkg/browser/browserop`. List results report truncation. Do not reuse a
+result types in `internal/commandpackage/browser/browserproto`. List results report truncation. Do not reuse a
 field with a different meaning or type. A `viewport` value carries `width`,
 `height`, `devicePixelRatio` and `mode`.
 
@@ -1955,29 +1955,29 @@ persistent JavaScript REPL; Bash already composes their operations.
 [Packages](../architecture/packages.md) is authoritative;
 for the browser:
 
-- `internal/cmdpkg/browser/browserop`: the browser's operation arguments, results, error codes,
+- `internal/commandpackage/browser/browserproto`: the browser's operation arguments, results, error codes,
   limits and event payloads, the live view messages and frame header, and the
   capture extension's messages; the web app receives the types it uses as
   generated TypeScript in `@demicodes/protocol`.
-- `internal/plugins/browser`: the `demi browser` command declarations, built from those
+- `internal/plugin/browser`: the `demi browser` command declarations, built from those
   types, with help rendered from the declarations; the plugin host includes
   them when the command package catalog provides the browser's operations
   ([Commands](../architecture/plugins.md#commands)).
 - the backend: builds the command context of every job and sends the generic
   conversation release; no browser module, and no name of the browser.
-- `internal/plugins/browser` also declares the `browser` user stream and the tab methods
+- `internal/plugin/browser` also declares the `browser` user stream and the tab methods
   of the [live view](live-view.md#the-tab-methods).
 - the runner's packages (`internal/runner/...`) and `internal/backend/remotehost`: the command context of every
   invocation, service residency, the release forward, cancellation, and
   transport; no webpage algorithms.
-- `internal/cmdpkg/browser` and its [`chrome` packages](../architecture/packages.md#internalcmdpkgbrowserchromecdp):
-  per-conversation browsers and their owners (`internal/cmdpkg/browser`), the
+- `internal/commandpackage/browser` and its [`chrome` packages](../architecture/packages.md#internalcmdpkgbrowserchromecdp):
+  per-conversation browsers and their owners (`internal/commandpackage/browser`), the
   CDP connection, output rendering and WebMCP (`chrome/cdp`), environments,
   tabs, launch and the capture extension (`chrome/tabs`), page observation,
   actions and assets (`chrome/page`), and the live view (`chrome/live`).
 - `internal/artifacts`: the verified download and installation of the pinned Chrome for
   Testing release, used by `chrome/tabs` and by Cloud image packaging.
-- `internal/commandwire` and `internal/cmdsdk`: the generic invocation and
+- `internal/commandproto` and `internal/commandsdk`: the generic invocation and
   conversation protocol and its SDK, not page or cookie semantics.
 - `web-ui`: the [live view](live-view.md#responsibilities), with the
   generic user stream in the runner, `internal/backend/remotehost` and the backend.

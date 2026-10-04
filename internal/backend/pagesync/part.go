@@ -1,6 +1,6 @@
 package pagesync
 
-import "github.com/wspl/demi/internal/webapi"
+import "github.com/wspl/demi/internal/webapiproto"
 
 // Kind identifies a part of the product state, in delivery order.
 type Kind uint8
@@ -35,6 +35,6 @@ const (
 // These are internal change marks, not wire values.
 type Part struct {
 	Kind           Kind
-	ConversationID webapi.ConversationID
+	ConversationID webapiproto.ConversationID
 	PluginID       string
 }

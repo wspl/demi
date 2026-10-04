@@ -8,8 +8,8 @@ import (
 
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // These ordering scenarios use memory stores, scripted providers and callback
@@ -39,12 +39,12 @@ func TestObserveExcludesPendingCallbacks(t *testing.T) {
 		snapshot, subscription := f.s.Observe(func(event session.Event) { events = append(events, event) })
 		defer subscription.Release()
 		equal(t, kinds(snapshot.Transcript.Blocks), []string{"user", "error"})
-		equal(t, snapshot.Phase, core.SessionPhase("running"))
-		equal(t, snapshot.Queue, []core.QueuedMessage{{ID: "queued", Content: storetest.Text("later")}})
+		equal(t, snapshot.Phase, types.SessionPhase("running"))
+		equal(t, snapshot.Queue, []types.QueuedMessage{{ID: "queued", Content: storetest.Text("later")}})
 		equal(
 			t,
 			snapshot.PendingSteers,
-			[]core.PendingSteer{
+			[]types.PendingSteer{
 				{ID: "steer", TurnID: "turn", Model: storetest.TestModel(), Content: storetest.Text("remember")},
 			},
 		)
@@ -70,7 +70,7 @@ func TestObserveExcludesPendingCallbacks(t *testing.T) {
 				equal(t, len(event.PendingSteers), 0)
 				steers++
 			case *session.PhaseChanged:
-				equal(t, event.Phase, core.SessionPhase("idle"))
+				equal(t, event.Phase, types.SessionPhase("idle"))
 				phases++
 			case *session.EditCommitted, *session.RetryScheduled, *session.ErrorEvent, *session.ActionFailed:
 				t.Errorf("unexpected event %T", event)
@@ -94,7 +94,7 @@ func TestEditAcceptanceIsPublishedBetweenRewriteAndProgress(t *testing.T) {
 		var events []session.Event
 		blocker := f.s.Subscribe(func(event session.Event) {
 			if change, ok := event.(*session.TranscriptChanged); ok {
-				if _, ok := change.Patches[0].(*framewire.ReplacePatch); ok {
+				if _, ok := change.Patches[0].(*conversationproto.ReplacePatch); ok {
 					close(paused)
 					<-release
 				}
@@ -156,7 +156,7 @@ func TestEditAcceptanceIsPublishedBetweenRewriteAndProgress(t *testing.T) {
 		if !ok {
 			t.Fatalf("first event is %T, want rewrite", events[0])
 		}
-		if _, ok := rewrite.Patches[0].(*framewire.ReplacePatch); !ok {
+		if _, ok := rewrite.Patches[0].(*conversationproto.ReplacePatch); !ok {
 			t.Fatalf("first patch is %T, want replace", rewrite.Patches[0])
 		}
 		accepted, ok := events[1].(*session.EditCommitted)
@@ -165,7 +165,7 @@ func TestEditAcceptanceIsPublishedBetweenRewriteAndProgress(t *testing.T) {
 		}
 		equal(t, accepted.Receipt, decision.receipt)
 		equal(t, accepted.Receipt.OperationID, submission.OperationID)
-		equal(t, accepted.Receipt.TurnID, f.s.Transcript().Blocks[0].(*core.UserBlock).TurnID)
+		equal(t, accepted.Receipt.TurnID, f.s.Transcript().Blocks[0].(*types.UserBlock).TurnID)
 		for _, event := range events[2:] {
 			if _, ok := event.(*session.TranscriptChanged); !ok {
 				t.Fatalf("extra acceptance: %T", event)

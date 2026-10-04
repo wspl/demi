@@ -4,15 +4,18 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Panel returns the conversation's panel, empty before its first change.
-func (c *ControlService) Panel(ctx context.Context, conversation webapi.ConversationID) (webapi.WorkPanel, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (webapi.WorkPanel, error) {
+func (c *ControlService) Panel(
+	ctx context.Context,
+	conversation webapiproto.ConversationID,
+) (webapiproto.WorkPanel, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (webapiproto.WorkPanel, error) {
 		panel, err := readPanel(ctx, tx, conversation)
-		return webapi.WorkPanel{Revision: panel.revision, Tabs: panel.document.Tabs}, err
+		return webapiproto.WorkPanel{Revision: panel.revision, Tabs: panel.document.Tabs}, err
 	})
 }
 
@@ -21,14 +24,14 @@ type storedPanel struct {
 	document panelDocument
 }
 
-func readPanel(ctx context.Context, tx *sql.Tx, conversation webapi.ConversationID) (storedPanel, error) {
+func readPanel(ctx context.Context, tx *sql.Tx, conversation webapiproto.ConversationID) (storedPanel, error) {
 	panel, found, err := queryRecord(ctx, tx, "conversation_panels",
 		"SELECT revision, document FROM conversation_panels WHERE conversation_id = ?",
 		func(r *storedRow) storedPanel {
 			return storedPanel{revision: r.count("revision"), document: storedJSON(r, "document", decodePanelDocument)}
 		}, conversation)
 	if !found && err == nil {
-		panel.document = panelDocument{Tabs: []webapi.PanelTab{}, Retired: []string{}}
+		panel.document = panelDocument{Tabs: []webapiproto.PanelTab{}, Retired: []string{}}
 	}
 	return panel, err
 }
@@ -37,7 +40,7 @@ func readPanel(ctx context.Context, tx *sql.Tx, conversation webapi.Conversation
 // effect. Changed is false when the panel already satisfied the operation.
 func (c *ControlService) ChangePanel(
 	ctx context.Context,
-	conversation webapi.ConversationID,
+	conversation webapiproto.ConversationID,
 	change PanelChange,
 ) (uint64, PanelEffect, bool, error) {
 	return c.changePanel(ctx, conversation, change, panelScope{})
@@ -48,7 +51,7 @@ func (c *ControlService) ChangePanel(
 // same transaction that applies the change.
 func (c *ControlService) ChangePanelOfKinds(
 	ctx context.Context,
-	conversation webapi.ConversationID,
+	conversation webapiproto.ConversationID,
 	change PanelChange,
 	kinds []string,
 ) (uint64, PanelEffect, bool, error) {
@@ -57,7 +60,7 @@ func (c *ControlService) ChangePanelOfKinds(
 
 func (c *ControlService) changePanel(
 	ctx context.Context,
-	conversation webapi.ConversationID,
+	conversation webapiproto.ConversationID,
 	change PanelChange,
 	scope panelScope,
 ) (uint64, PanelEffect, bool, error) {
@@ -66,7 +69,7 @@ func (c *ControlService) changePanel(
 		effect   PanelEffect
 		changed  bool
 	}
-	result, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (outcome, error) {
+	result, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (outcome, error) {
 		if err := draftWritable(ctx, tx, conversation); err != nil {
 			return outcome{}, err
 		}

@@ -4,60 +4,60 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // receive routes checked runner messages without waiting for a consumer or a policy.
-func (l *Link) receive(message runnerwire.Outbound) {
+func (l *Link) receive(message runnerproto.Outbound) {
 	switch message := message.(type) {
-	case *runnerwire.ConversationReleased:
+	case *runnerproto.ConversationReleased:
 		l.answer(message.ID, "Release", message, replyFailure(message.Error))
-	case *runnerwire.JobReadReply:
+	case *runnerproto.JobReadReply:
 		l.answer(message.ID, "JobRead", message, replyFailure(message.Error))
-	case *runnerwire.SyncDone:
+	case *runnerproto.SyncDone:
 		l.answer(message.ID, "Sync", message, replyFailure(message.Error))
-	case *runnerwire.Hello:
-	case *runnerwire.Installs, *runnerwire.Pong, *runnerwire.VolumeGrow:
+	case *runnerproto.Hello:
+	case *runnerproto.Installs, *runnerproto.Pong, *runnerproto.VolumeGrow:
 		l.receiveStatus(message)
-	case *runnerwire.FSOK:
+	case *runnerproto.FSOK:
 		l.answer(message.ID, fmt.Sprintf("Fs(%q)", message.Result.Op()), message, nil)
-	case *runnerwire.FSError:
+	case *runnerproto.FSError:
 		l.receiveFileError(message)
-	case *runnerwire.GitOK:
+	case *runnerproto.GitOK:
 		l.answer(message.ID, fmt.Sprintf("Git(%q)", message.Result.Op()), message, nil)
-	case *runnerwire.GitError:
+	case *runnerproto.GitError:
 		l.answer(message.ID, "", nil, &host.Error{Kind: host.Failed, Code: message.Code, Message: message.Message})
-	case *runnerwire.LogLines:
+	case *runnerproto.LogLines:
 		l.answer(message.ID, "Log", message, nil)
-	case *runnerwire.LogError:
+	case *runnerproto.LogError:
 		l.answer(message.ID, "", nil, &host.Error{Kind: host.Failed, Message: message.Message})
-	case *runnerwire.NetOpened:
+	case *runnerproto.NetOpened:
 		l.answer(message.StreamID, "Net", message, nil)
-	case *runnerwire.ServiceOpened:
+	case *runnerproto.ServiceOpened:
 		l.answer(message.StreamID, "Service", message, nil)
-	case *runnerwire.NetError:
+	case *runnerproto.NetError:
 		l.answer(
 			message.StreamID,
 			"",
 			nil,
 			&host.Error{Kind: host.Failed, Code: string(message.Code), Message: message.Message},
 		)
-	case *runnerwire.ServiceError:
+	case *runnerproto.ServiceError:
 		l.answer(
 			message.StreamID,
 			"",
 			nil,
 			&host.Error{Kind: host.Failed, Code: string(message.Code), Message: message.Message},
 		)
-	case *runnerwire.ServiceDone, *runnerwire.SpawnOutput, *runnerwire.SpawnExit:
+	case *runnerproto.ServiceDone, *runnerproto.SpawnOutput, *runnerproto.SpawnExit:
 		l.receiveProcess(message)
-	case *runnerwire.JobOutput, *runnerwire.JobRunningHint, *runnerwire.JobExit:
+	case *runnerproto.JobOutput, *runnerproto.JobRunningHint, *runnerproto.JobExit:
 		l.receiveJob(message)
-	case *runnerwire.RPCCall, *runnerwire.RPCStdin, *runnerwire.RPCStdinEnd, *runnerwire.RPCCancel:
+	case *runnerproto.RPCCall, *runnerproto.RPCStdin, *runnerproto.RPCStdinEnd, *runnerproto.RPCCancel:
 		l.receiveRPC(message)
-	case *runnerwire.PipeDone, *runnerwire.ArtifactResolve, *runnerwire.NumbersReserve:
+	case *runnerproto.PipeDone, *runnerproto.ArtifactResolve, *runnerproto.NumbersReserve:
 		l.receiveTransfer(message)
 	}
 }
@@ -71,7 +71,7 @@ func replyFailure(message *string) error {
 }
 
 // endJob cancels calls and artifact requests before publishing the runner's job end.
-func (l *Link) endJob(message *runnerwire.JobExit) {
+func (l *Link) endJob(message *runnerproto.JobExit) {
 	l.mu.Lock()
 	job := l.jobs[message.JobID]
 	delete(l.jobs, message.JobID)
@@ -137,8 +137,8 @@ func (l *Link) teardown(reason string) {
 }
 
 // receiveProcess routes runner messages for service and process lifetimes.
-func (l *Link) receiveProcess(message runnerwire.Outbound) {
-	if message, ok := message.(*runnerwire.ServiceDone); ok {
+func (l *Link) receiveProcess(message runnerproto.Outbound) {
+	if message, ok := message.(*runnerproto.ServiceDone); ok {
 		l.mu.Lock()
 		service := l.services[message.StreamID]
 		l.mu.Unlock()
@@ -147,16 +147,16 @@ func (l *Link) receiveProcess(message runnerwire.Outbound) {
 		}
 		return
 	}
-	if message, ok := message.(*runnerwire.SpawnOutput); ok {
+	if message, ok := message.(*runnerproto.SpawnOutput); ok {
 		l.mu.Lock()
 		process := l.spawns[message.SpawnID]
 		l.mu.Unlock()
 		if process != nil {
-			process.state.push(host.ProcessOutput{Stream: core.StreamKind(message.Stream), Bytes: message.Bytes})
+			process.state.push(host.ProcessOutput{Stream: types.StreamKind(message.Stream), Bytes: message.Bytes})
 		}
 		return
 	}
-	if message, ok := message.(*runnerwire.SpawnExit); ok {
+	if message, ok := message.(*runnerproto.SpawnExit); ok {
 		l.mu.Lock()
 		process := l.spawns[message.SpawnID]
 		delete(l.spawns, message.SpawnID)
@@ -169,19 +169,19 @@ func (l *Link) receiveProcess(message runnerwire.Outbound) {
 }
 
 // receiveJob routes runner messages for shell job output and completion.
-func (l *Link) receiveJob(message runnerwire.Outbound) {
-	if message, ok := message.(*runnerwire.JobOutput); ok {
+func (l *Link) receiveJob(message runnerproto.Outbound) {
+	if message, ok := message.(*runnerproto.JobOutput); ok {
 		l.mu.Lock()
 		job := l.jobs[message.JobID]
 		l.mu.Unlock()
 		if job != nil {
 			job.state.push(
-				JobOutput{Stream: core.StreamKind(message.Stream), Offset: message.Offset, Bytes: message.Bytes},
+				JobOutput{Stream: types.StreamKind(message.Stream), Offset: message.Offset, Bytes: message.Bytes},
 			)
 		}
 		return
 	}
-	if message, ok := message.(*runnerwire.JobRunningHint); ok {
+	if message, ok := message.(*runnerproto.JobRunningHint); ok {
 		l.mu.Lock()
 		job := l.jobs[message.JobID]
 		l.mu.Unlock()
@@ -190,19 +190,19 @@ func (l *Link) receiveJob(message runnerwire.Outbound) {
 		}
 		return
 	}
-	if message, ok := message.(*runnerwire.JobExit); ok {
+	if message, ok := message.(*runnerproto.JobExit); ok {
 		l.endJob(message)
 		return
 	}
 }
 
 // receiveRPC routes runner messages for RPC calls and input.
-func (l *Link) receiveRPC(message runnerwire.Outbound) {
-	if message, ok := message.(*runnerwire.RPCCall); ok {
+func (l *Link) receiveRPC(message runnerproto.Outbound) {
+	if message, ok := message.(*runnerproto.RPCCall); ok {
 		l.startCall(message)
 		return
 	}
-	if message, ok := message.(*runnerwire.RPCStdin); ok {
+	if message, ok := message.(*runnerproto.RPCStdin); ok {
 		l.mu.Lock()
 		call := l.calls[message.CallID]
 		l.mu.Unlock()
@@ -211,7 +211,7 @@ func (l *Link) receiveRPC(message runnerwire.Outbound) {
 		}
 		return
 	}
-	if message, ok := message.(*runnerwire.RPCStdinEnd); ok {
+	if message, ok := message.(*runnerproto.RPCStdinEnd); ok {
 		l.mu.Lock()
 		call := l.calls[message.CallID]
 		l.mu.Unlock()
@@ -220,7 +220,7 @@ func (l *Link) receiveRPC(message runnerwire.Outbound) {
 		}
 		return
 	}
-	if message, ok := message.(*runnerwire.RPCCancel); ok {
+	if message, ok := message.(*runnerproto.RPCCancel); ok {
 		l.mu.Lock()
 		call := l.calls[message.CallID]
 		l.mu.Unlock()
@@ -232,8 +232,8 @@ func (l *Link) receiveRPC(message runnerwire.Outbound) {
 }
 
 // receiveTransfer routes runner messages for pipes, artifacts and sequence reservations.
-func (l *Link) receiveTransfer(message runnerwire.Outbound) {
-	if message, ok := message.(*runnerwire.PipeDone); ok {
+func (l *Link) receiveTransfer(message runnerproto.Outbound) {
+	if message, ok := message.(*runnerproto.PipeDone); ok {
 		reason := "device transfer failed"
 		if message.Error != nil {
 			reason = *message.Error
@@ -243,19 +243,19 @@ func (l *Link) receiveTransfer(message runnerwire.Outbound) {
 		}
 		return
 	}
-	if message, ok := message.(*runnerwire.ArtifactResolve); ok {
+	if message, ok := message.(*runnerproto.ArtifactResolve); ok {
 		l.resolveArtifact(message)
 		return
 	}
-	if message, ok := message.(*runnerwire.NumbersReserve); ok {
+	if message, ok := message.(*runnerproto.NumbersReserve); ok {
 		l.reserveNumbers(message)
 		return
 	}
 }
 
 // receiveStatus updates installation and liveness state or starts volume growth.
-func (l *Link) receiveStatus(message runnerwire.Outbound) {
-	if message, ok := message.(*runnerwire.Installs); ok {
+func (l *Link) receiveStatus(message runnerproto.Outbound) {
+	if message, ok := message.(*runnerproto.Installs); ok {
 		l.mu.Lock()
 		previous := l.installsChanged
 		l.installs = message.Installs
@@ -264,7 +264,7 @@ func (l *Link) receiveStatus(message runnerwire.Outbound) {
 		close(previous)
 		return
 	}
-	if message, ok := message.(*runnerwire.Pong); ok {
+	if message, ok := message.(*runnerproto.Pong); ok {
 		l.mu.Lock()
 		l.pongJobs = message.Jobs
 		if l.liveness == pingWaiting {
@@ -273,14 +273,14 @@ func (l *Link) receiveStatus(message runnerwire.Outbound) {
 		l.mu.Unlock()
 		return
 	}
-	if message, ok := message.(*runnerwire.VolumeGrow); ok {
+	if message, ok := message.(*runnerproto.VolumeGrow); ok {
 		l.growVolume(message)
 		return
 	}
 }
 
 // receiveFileError maps a filesystem refusal to the Host error vocabulary.
-func (l *Link) receiveFileError(message *runnerwire.FSError) {
+func (l *Link) receiveFileError(message *runnerproto.FSError) {
 	failure := &host.Error{Kind: host.Failed, Message: message.Message}
 	if message.Code != nil {
 		failure.Code = *message.Code

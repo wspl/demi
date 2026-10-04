@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wspl/demi/internal/contract"
-	core "github.com/wspl/demi/internal/core"
+	types "github.com/wspl/demi/internal/types"
 )
 
 func DecodeBoundaryEdge(data []byte) (BoundaryEdge, error) {
@@ -126,7 +126,7 @@ func (v *CheckpointState) UnmarshalJSON(data []byte) error {
 			return contract.At("phase", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.SessionPhase](raw)
+			value, err := contract.Decode[types.SessionPhase](raw)
 			if err != nil {
 				return contract.At("phase", err)
 			}
@@ -139,8 +139,8 @@ func (v *CheckpointState) UnmarshalJSON(data []byte) error {
 			return contract.At("queue", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) ([]core.QueuedMessage, error) {
-				return contract.List(b, contract.Decode[core.QueuedMessage])
+			value, err := func(b []byte) ([]types.QueuedMessage, error) {
+				return contract.List(b, contract.Decode[types.QueuedMessage])
 			}(raw)
 			if err != nil {
 				return contract.At("queue", err)
@@ -195,7 +195,7 @@ func (v *CheckpointState) UnmarshalJSON(data []byte) error {
 			return contract.At("model", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.ModelSelection](raw)
+			value, err := contract.Decode[types.ModelSelection](raw)
 			if err != nil {
 				return contract.At("model", err)
 			}
@@ -497,7 +497,7 @@ func (v *EditReceipt) UnmarshalJSON(data []byte) error {
 			return contract.At("operationId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.OperationID](raw)
+			value, err := contract.Decode[types.OperationID](raw)
 			if err != nil {
 				return contract.At("operationId", err)
 			}
@@ -523,7 +523,7 @@ func (v *EditReceipt) UnmarshalJSON(data []byte) error {
 			return contract.At("turnId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.TurnID](raw)
+			value, err := contract.Decode[types.TurnID](raw)
 			if err != nil {
 				return contract.At("turnId", err)
 			}
@@ -587,7 +587,7 @@ func (v *PendingAgentInput) UnmarshalJSON(data []byte) error {
 			return contract.At("turnId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.TurnID](raw)
+			value, err := contract.Decode[types.TurnID](raw)
 			if err != nil {
 				return contract.At("turnId", err)
 			}
@@ -600,7 +600,7 @@ func (v *PendingAgentInput) UnmarshalJSON(data []byte) error {
 			return contract.At("model", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.ModelSelection](raw)
+			value, err := contract.Decode[types.ModelSelection](raw)
 			if err != nil {
 				return contract.At("model", err)
 			}
@@ -613,7 +613,7 @@ func (v *PendingAgentInput) UnmarshalJSON(data []byte) error {
 			return contract.At("message", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.AgentMessage](raw)
+			value, err := contract.Decode[types.AgentMessage](raw)
 			if err != nil {
 				return contract.At("message", err)
 			}
@@ -682,7 +682,7 @@ func (v *ScheduledWakeup) UnmarshalJSON(data []byte) error {
 			return contract.At("id", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.WakeupID](raw)
+			value, err := contract.Decode[types.WakeupID](raw)
 			if err != nil {
 				return contract.At("id", err)
 			}
@@ -709,7 +709,7 @@ func (v *ScheduledWakeup) UnmarshalJSON(data []byte) error {
 		}
 		if ok {
 			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*core.Timestamp, error) { return contract.Pointer(b, contract.Decode[core.Timestamp]) }(raw)
+				value, err := func(b []byte) (*types.Timestamp, error) { return contract.Pointer(b, contract.Decode[types.Timestamp]) }(raw)
 				if err != nil {
 					return contract.At("dueAt", err)
 				}
@@ -774,7 +774,7 @@ func (v *SessionBoundary) UnmarshalJSON(data []byte) error {
 			return contract.At("blockId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.BlockID](raw)
+			value, err := contract.Decode[types.BlockID](raw)
 			if err != nil {
 				return contract.At("blockId", err)
 			}

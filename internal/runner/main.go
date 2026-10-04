@@ -17,11 +17,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/runner/host"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runner/shell"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 const program = "demi-runner"
@@ -61,7 +61,7 @@ func exitCode(code uint8, err error) int {
 
 type cliOptions struct {
 	action                                                          string
-	backend                                                         *runnerwire.BackendURL
+	backend                                                         *runnerproto.BackendURL
 	home, release, boot, name, managed, artifacts                   string
 	managedSet, homeSet, bootSet, nameSet, artifactsSet, releaseSet bool
 }
@@ -107,7 +107,7 @@ func parseCLI(args []string, release string) (cliOptions, error) {
 	}
 	backendSet := options.selectedFlags(flags)
 	if backendSet {
-		parsed, err := runnerwire.ParseBackendURL(*backend)
+		parsed, err := runnerproto.ParseBackendURL(*backend)
 		if err != nil {
 			return options, err
 		}
@@ -172,7 +172,7 @@ func runCLI(ctx context.Context, args []string, release string) (uint8, error) {
 	return startRunner(ctx, options, boot, directory, backend, home, info)
 }
 
-func installationDirectory(options cliOptions, boot *runnerwire.ManagedBoot) (string, error) {
+func installationDirectory(options cliOptions, boot *runnerproto.ManagedBoot) (string, error) {
 	if boot != nil {
 		return "/run/demi", nil
 	}
@@ -227,7 +227,7 @@ func manage(ctx context.Context, state runnerState, action action, release *stri
 	completion, err := process.Forward(
 		ctx,
 		active.Endpoint,
-		commandwire.LocalInvocation{
+		commandproto.LocalInvocation{
 			Operation:    manageOperation,
 			InvocationID: strings.ReplaceAll(id.String(), "-", ""),
 			Args:         args,
@@ -339,14 +339,14 @@ func (o *cliOptions) selectedFlags(flags *flag.FlagSet) (backendSet bool) {
 	return backendSet
 }
 
-func readManagedBoot(options cliOptions) (*runnerwire.ManagedBoot, error) {
-	var boot *runnerwire.ManagedBoot
+func readManagedBoot(options cliOptions) (*runnerproto.ManagedBoot, error) {
+	var boot *runnerproto.ManagedBoot
 	if options.bootSet {
 		data, err := os.ReadFile(options.boot)
 		if err != nil {
 			return nil, err
 		}
-		record, err := runnerwire.DecodeManagedBoot(data)
+		record, err := runnerproto.DecodeManagedBoot(data)
 		if err != nil {
 			return nil, err
 		}
@@ -357,9 +357,9 @@ func readManagedBoot(options cliOptions) (*runnerwire.ManagedBoot, error) {
 
 func selectedBackend(
 	options cliOptions,
-	boot *runnerwire.ManagedBoot,
+	boot *runnerproto.ManagedBoot,
 	state runnerState,
-) (*runnerwire.BackendURL, error) {
+) (*runnerproto.BackendURL, error) {
 	backend := options.backend
 	if boot != nil {
 		backend = &boot.BackendURL
@@ -377,19 +377,19 @@ func selectedBackend(
 	return backend, nil
 }
 
-func runnerInfo(options cliOptions, boot *runnerwire.ManagedBoot) (string, runnerwire.Info, error) {
+func runnerInfo(options cliOptions, boot *runnerproto.ManagedBoot) (string, runnerproto.Info, error) {
 	home, err := userHome()
 	if err != nil {
-		return "", runnerwire.Info{}, err
+		return "", runnerproto.Info{}, err
 	}
 	hostname, err := os.Hostname()
 	if err != nil {
-		return "", runnerwire.Info{}, err
+		return "", runnerproto.Info{}, err
 	}
 	if !utf8.ValidString(hostname) {
-		return "", runnerwire.Info{}, errors.New("the hostname is not UTF-8")
+		return "", runnerproto.Info{}, errors.New("the hostname is not UTF-8")
 	}
-	identity := runnerwire.HostIdentity{Hostname: hostname, HomeDir: home}
+	identity := runnerproto.HostIdentity{Hostname: hostname, HomeDir: home}
 	if runtime.GOOS != "windows" {
 		identity.UID = uint32(os.Getuid())
 		identity.GID = uint32(os.Getgid())
@@ -398,19 +398,19 @@ func runnerInfo(options cliOptions, boot *runnerwire.ManagedBoot) (string, runne
 	if !options.nameSet {
 		name = hostname
 	}
-	platform := runnerwire.RunnerPlatformLinux
+	platform := runnerproto.RunnerPlatformLinux
 	if runtime.GOOS == "darwin" {
-		platform = runnerwire.RunnerPlatformDarwin
+		platform = runnerproto.RunnerPlatformDarwin
 	}
 	if runtime.GOOS == "windows" {
-		platform = runnerwire.RunnerPlatformWin32
+		platform = runnerproto.RunnerPlatformWin32
 	}
-	target, err := commandwire.HostTarget()
+	target, err := commandproto.HostTarget()
 	if err != nil {
-		return "", runnerwire.Info{}, err
+		return "", runnerproto.Info{}, err
 	}
 	targetName := string(target)
-	info := runnerwire.Info{
+	info := runnerproto.Info{
 		Name:         name,
 		Platform:     platform,
 		Version:      options.release,
@@ -427,11 +427,11 @@ func runnerInfo(options cliOptions, boot *runnerwire.ManagedBoot) (string, runne
 func startRunner(
 	ctx context.Context,
 	options cliOptions,
-	boot *runnerwire.ManagedBoot,
+	boot *runnerproto.ManagedBoot,
 	directory string,
-	backend *runnerwire.BackendURL,
+	backend *runnerproto.BackendURL,
 	home string,
-	info runnerwire.Info,
+	info runnerproto.Info,
 ) (uint8, error) {
 	logDirectory, jobRoot, artifacts, volumes, token := startupPaths(options, boot, directory, home)
 	log, err := openHostLog(ctx, logDirectory)
@@ -498,9 +498,9 @@ func waitInstallation(ctx context.Context, root string) (uint8, error) {
 
 func startupPaths(
 	options cliOptions,
-	boot *runnerwire.ManagedBoot,
+	boot *runnerproto.ManagedBoot,
 	directory, home string,
-) (logDirectory, jobRoot, artifacts string, volumes []host.ManagedVolume, token *runnerwire.DeviceToken) {
+) (logDirectory, jobRoot, artifacts string, volumes []host.ManagedVolume, token *runnerproto.DeviceToken) {
 	logDirectory = filepath.Join(directory, "log")
 	jobRoot = filepath.Join(directory, "jobs")
 	artifacts = options.artifacts
@@ -515,8 +515,8 @@ func startupPaths(
 		}
 		token = &boot.DeviceToken
 		volumes = []host.ManagedVolume{
-			{Name: runnerwire.VolumeNameSystem, Mount: "/"},
-			{Name: runnerwire.VolumeNameHome, Mount: "/home"},
+			{Name: runnerproto.VolumeNameSystem, Mount: "/"},
+			{Name: runnerproto.VolumeNameHome, Mount: "/home"},
 		}
 	}
 	return

@@ -13,10 +13,10 @@ import (
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/tools"
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 type scriptedHost struct{ toolstest.NoHost }
@@ -52,7 +52,7 @@ func (s *scriptedShell) record() *host.CommandRecord {
 
 func (s *scriptedShell) print(text string) {
 	r := s.record()
-	r.AppendOutput(core.StreamKindStdout, text)
+	r.AppendOutput(types.StreamKindStdout, text)
 	s.feed.Changed(r)
 }
 
@@ -64,19 +64,19 @@ func (s *scriptedShell) end() {
 	}
 }
 
-func (s *scriptedShell) Status(core.CommandID) (host.CommandStatus, error) {
+func (s *scriptedShell) Status(types.CommandID) (host.CommandStatus, error) {
 	return s.record().Status(host.DefaultOutputLimitBytes, nil), nil
 }
 
-func (*scriptedShell) ReadOutput(context.Context, core.CommandID) (host.WholeOutput, error) {
+func (*scriptedShell) ReadOutput(context.Context, types.CommandID) (host.WholeOutput, error) {
 	return host.WholeOutput{}, &host.ShellError{Kind: host.UnknownCommand}
 }
 
-func (*scriptedShell) Write(context.Context, core.CommandID, []byte) error {
+func (*scriptedShell) Write(context.Context, types.CommandID, []byte) error {
 	return &host.ShellError{Kind: host.NotRunning}
 }
 
-func (*scriptedShell) Abort(context.Context, core.CommandID) error {
+func (*scriptedShell) Abort(context.Context, types.CommandID) error {
 	return &host.ShellError{Kind: host.NotRunning}
 }
 
@@ -87,16 +87,16 @@ func (s *scriptedShell) PageViews() []host.PageView {
 	}
 	return []host.PageView{r.PageView()}
 }
-func (*scriptedShell) ReleaseCommand(context.Context, core.CommandID) bool { return false }
-func (*scriptedShell) DisposeShell(context.Context, core.ShellID) bool     { return false }
+func (*scriptedShell) ReleaseCommand(context.Context, types.CommandID) bool { return false }
+func (*scriptedShell) DisposeShell(context.Context, types.ShellID) bool     { return false }
 func (s *scriptedShell) DisposeAll(context.Context) error {
 	s.end()
 	return nil
 }
 
-func (s *scriptedShell) OwnsShell(id core.ShellID) bool { return s.record() != nil && id == "1" }
+func (s *scriptedShell) OwnsShell(id types.ShellID) bool { return s.record() != nil && id == "1" }
 
-func (s *scriptedShell) OwnsCommand(id core.CommandID) bool { return s.record() != nil && id == "1" }
+func (s *scriptedShell) OwnsCommand(id types.CommandID) bool { return s.record() != nil && id == "1" }
 
 type scriptedShells struct {
 	mu    sync.Mutex
@@ -135,11 +135,11 @@ func serving(t *testing.T) (*server.Server[*scriptedHost], *scriptedShell, *serv
 			Hosts:         &scriptedHost{},
 			Shells:        shells,
 			Providers:     providers,
-			Stores:        func(core.NodeID) store.Tree { return memory },
-			Clock:         core.SystemClock{},
+			Stores:        func(types.NodeID) store.Tree { return memory },
+			Clock:         types.SystemClock{},
 			IDs:           &testIDs{},
 			Config:        server.DefaultConfig(),
-			StatusChanged: func(core.NodeID) {},
+			StatusChanged: func(types.NodeID) {},
 		},
 	)
 	t.Cleanup(func() {
@@ -148,12 +148,12 @@ func serving(t *testing.T) (*server.Server[*scriptedHost], *scriptedShell, *serv
 		}
 	})
 	c := servertest.Connect(t, s, rootID(), "/workspace")
-	c.Send(t.Context(), &framewire.OpenFrame{})
+	c.Send(t.Context(), &conversationproto.OpenFrame{})
 	c.Received()
 	c.Send(t.Context(), send("m1", "Serve."))
-	if _, err := c.NextUntil(t.Context(), func(f framewire.ServerFrame) bool {
-		p, ok := f.(*framewire.PhaseFrame)
-		return ok && p.Phase == core.SessionPhaseIdle
+	if _, err := c.NextUntil(t.Context(), func(f conversationproto.ServerFrame) bool {
+		p, ok := f.(*conversationproto.PhaseFrame)
+		return ok && p.Phase == types.SessionPhaseIdle
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -166,11 +166,11 @@ func serving(t *testing.T) (*server.Server[*scriptedHost], *scriptedShell, *serv
 	return s, shell, c
 }
 
-func tails(t *testing.T, frames []framewire.ServerFrame) []string {
+func tails(t *testing.T, frames []conversationproto.ServerFrame) []string {
 	result := []string{}
 	for _, frame := range frames {
-		if s, ok := frame.(*framewire.ShellOutputFrame); ok {
-			r, ok := s.Status.(*framewire.RunningStatus)
+		if s, ok := frame.(*conversationproto.ShellOutputFrame); ok {
+			r, ok := s.Status.(*conversationproto.RunningStatus)
 			if !ok {
 				t.Fatalf("expected running shell status, got %T", s.Status)
 			}
@@ -193,7 +193,7 @@ func TestDetachedOutputDoesNotReplayAsNewOutput(t *testing.T) {
 		synctest.Wait()
 		shell.print("three\n")
 		second := servertest.Connect(t, s, rootID(), "/workspace")
-		second.Send(t.Context(), &framewire.OpenFrame{})
+		second.Send(t.Context(), &conversationproto.OpenFrame{})
 		equal(t, []string{"one\ntwo\nthree\n"}, tails(t, second.Received()))
 		time.Sleep(500 * time.Millisecond)
 		synctest.Wait()

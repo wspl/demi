@@ -11,9 +11,9 @@ import (
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 func shellOutcome(
 	ctx context.Context,
 	status host.CommandStatus,
-	model core.Model,
+	model types.Model,
 	limits provider.RequestLimits,
 ) session.ToolOutcome {
 	var text host.OutputText
@@ -49,7 +49,7 @@ func shellOutcome(
 		}
 		output = append(output, &provider.TextPart{Text: note})
 	}
-	return session.ToolOutcome{Output: output, View: &core.ShellView{ShellToolView: shellView(status, text)}}
+	return session.ToolOutcome{Output: output, View: &types.ShellView{ShellToolView: shellView(status, text)}}
 }
 
 // resultText budgets status, output and follow-up instructions together.
@@ -104,7 +104,7 @@ func resultText(status host.CommandStatus, text host.OutputText) string {
 }
 
 // cutOutput retains all unseen output that fits, otherwise both ends and a read command.
-func cutOutput(text host.OutputText, from uint64, command core.CommandID, budget int) []string {
+func cutOutput(text host.OutputText, from uint64, command types.CommandID, budget int) []string {
 	var all []string
 	used := 0
 	for piece := range text.Forward(from) {
@@ -188,7 +188,7 @@ func takeEnd(text host.OutputText, half int) ([]string, int) {
 }
 
 // outputMarker names omitted output by whole lines or columns within one line.
-func outputMarker(text host.OutputText, command core.CommandID, start, end int) string {
+func outputMarker(text host.OutputText, command types.CommandID, start, end int) string {
 	first := text.LineOf(start)
 	last := text.LineOf(max(start, end-1))
 	if first != last || text.IsLineStart(start) && text.IsLineStart(end) {
@@ -202,7 +202,7 @@ func outputMarker(text host.OutputText, command core.CommandID, start, end int) 
 }
 
 // linesMarker points to the shell command that reads omitted whole lines.
-func linesMarker(command core.CommandID, first, last uint64, bytes int) string {
+func linesMarker(command types.CommandID, first, last uint64, bytes int) string {
 	return fmt.Sprintf(
 		"[... lines %d-%d not shown (%d bytes); read them: demi shell output %s --lines %d-%d ...]",
 		first,
@@ -215,7 +215,7 @@ func linesMarker(command core.CommandID, first, last uint64, bytes int) string {
 }
 
 // charsMarker points to a page of omitted characters of one output line.
-func charsMarker(command core.CommandID, line uint64, from, to int) string {
+func charsMarker(command types.CommandID, line uint64, from, to int) string {
 	return fmt.Sprintf(
 		"[... characters %d-%d of line %d not shown; read them: demi shell output %s --raw | sed -n %dp | cut -c %d-%d ...]",
 		from,
@@ -232,8 +232,8 @@ func charsMarker(command core.CommandID, line uint64, from, to int) string {
 func binaryVerdict(
 	ctx context.Context,
 	binary *host.BinaryOutput,
-	command core.CommandID,
-	model core.Model,
+	command types.CommandID,
+	model types.Model,
 	limits provider.RequestLimits,
 ) (provider.ResultPart, string) {
 	total := binary.Info.TotalBytes
@@ -247,39 +247,39 @@ func binaryVerdict(
 			binary.Info.LimitBytes,
 		)
 	}
-	media, ok := core.SniffModelMediaType(binary.Bytes)
+	media, ok := types.SniffModelMediaType(binary.Bytes)
 	if !ok {
 		return nil, "Binary stdout does not match any model-viewable media type; " + save + "."
 	}
-	if !core.ModelAcceptsMediaType(model, media.MediaType) {
+	if !types.ModelAcceptsMediaType(model, media.MediaType) {
 		return nil, fmt.Sprintf(
 			"Binary stdout is %s, which this model does not accept natively; %s.",
 			media.MediaType,
 			save,
 		)
 	}
-	if media.Kind == core.ModelMediaKindImage {
+	if media.Kind == types.ModelMediaKindImage {
 		return imageVerdict(ctx, binary, media.MediaType, total, save)
 	}
 	return videoVerdict(binary, media.MediaType, limits, total, save)
 }
 
 // viewStatus maps a shell environment phase to its transcript view.
-func viewStatus(phase host.Phase) core.ShellViewStatus {
+func viewStatus(phase host.Phase) types.ShellViewStatus {
 	switch phase {
 	case host.Running:
-		return core.ShellViewStatusRunning
+		return types.ShellViewStatusRunning
 	case host.Exited:
-		return core.ShellViewStatusExited
+		return types.ShellViewStatusExited
 	case host.Aborted:
-		return core.ShellViewStatusAborted
+		return types.ShellViewStatusAborted
 	}
 	return ""
 }
 
 // shellView records the end of unseen output, preserving stream tags and edited files.
-func shellView(status host.CommandStatus, text host.OutputText) core.ShellToolView {
-	var chunks []core.OutputChunk
+func shellView(status host.CommandStatus, text host.OutputText) types.ShellToolView {
+	var chunks []types.OutputChunk
 	var cut bool
 	if status.Whole != nil {
 		if from, ok := text.Unseen(); ok {
@@ -290,7 +290,7 @@ func shellView(status host.CommandStatus, text host.OutputText) core.ShellToolVi
 		chunks, cut = tailWindow(status.Output.Chunks, viewChars)
 		cut = cut || status.Output.Truncated
 	}
-	view := core.ShellToolView{
+	view := types.ShellToolView{
 		Status:        viewStatus(status.State.Phase),
 		ShellID:       status.ShellID,
 		CommandID:     status.CommandID,
@@ -303,7 +303,7 @@ func shellView(status host.CommandStatus, text host.OutputText) core.ShellToolVi
 		view.ExitCode = &status.State.ExitCode
 	}
 	if status.Files != nil {
-		files := append([]core.EditedFile{}, status.Files.Files...)
+		files := append([]types.EditedFile{}, status.Files.Files...)
 		view.Files = &files
 		truncated := status.Files.Truncated
 		view.FilesTruncated = &truncated
@@ -312,8 +312,8 @@ func shellView(status host.CommandStatus, text host.OutputText) core.ShellToolVi
 }
 
 // tailWindow keeps the newest output characters without losing their stream tags.
-func tailWindow(chunks []core.OutputChunk, limit int) ([]core.OutputChunk, bool) {
-	kept := []core.OutputChunk{}
+func tailWindow(chunks []types.OutputChunk, limit int) ([]types.OutputChunk, bool) {
+	kept := []types.OutputChunk{}
 	total := 0
 	for i := len(chunks) - 1; i >= 0; i-- {
 		chunk := chunks[i]

@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"golang.org/x/sys/unix"
 )
 
@@ -59,7 +59,7 @@ func TestChildStreamsBinaryAndReaps(t *testing.T) {
 	want := []byte{0, 255, 128, 10}
 	child.Input <- Input{Bytes: want}
 	// The output arrives before input EOF.
-	if chunk := <-child.Output; chunk.Stream != runnerwire.Stdout || !bytes.Equal(chunk.Bytes, want) {
+	if chunk := <-child.Output; chunk.Stream != runnerproto.Stdout || !bytes.Equal(chunk.Bytes, want) {
 		t.Fatalf("chunk = %+v", chunk)
 	}
 	child.Input <- Input{}
@@ -119,18 +119,18 @@ func TestChildCancellationKillsDescendants(t *testing.T) {
 func TestSpawnFailureClassification(t *testing.T) {
 	for _, tc := range []struct {
 		name, command, cwd string
-		kind               runnerwire.SpawnErrorKind
+		kind               runnerproto.SpawnErrorKind
 	}{
 		{
 			name:    "executable",
 			command: "/definitely-not-a-demi-test-program",
-			kind:    runnerwire.SpawnErrorKindExecutableNotFound,
+			kind:    runnerproto.SpawnErrorKindExecutableNotFound,
 		},
 		{
 			name:    "directory",
 			command: "/bin/true",
 			cwd:     filepath.Join(t.TempDir(), "missing"),
-			kind:    runnerwire.SpawnErrorKindCwdUnusable,
+			kind:    runnerproto.SpawnErrorKindCwdUnusable,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

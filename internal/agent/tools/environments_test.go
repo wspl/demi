@@ -8,20 +8,20 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ownedEnvironment exposes handle ownership and records cleanup for node lifecycle tests.
 type ownedEnvironment struct {
 	host.ShellEnvironment
-	commands  []core.CommandID
-	shells    []core.ShellID
+	commands  []types.CommandID
+	shells    []types.ShellID
 	disposals atomic.Int32
 	dispose   func(context.Context) error
 }
 
-func (e *ownedEnvironment) OwnsCommand(command core.CommandID) bool {
+func (e *ownedEnvironment) OwnsCommand(command types.CommandID) bool {
 	for _, id := range e.commands {
 		if id == command {
 			return true
@@ -30,7 +30,7 @@ func (e *ownedEnvironment) OwnsCommand(command core.CommandID) bool {
 	return false
 }
 
-func (e *ownedEnvironment) OwnsShell(shell core.ShellID) bool {
+func (e *ownedEnvironment) OwnsShell(shell types.ShellID) bool {
 	for _, id := range e.shells {
 		if id == shell {
 			return true
@@ -102,17 +102,17 @@ func TestHandleBelongsToItsHost(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	command := core.CommandID("cmd-a")
-	shell := core.ShellID("shell-a")
-	owner := &ownedEnvironment{commands: []core.CommandID{command}, shells: []core.ShellID{shell}}
+	command := types.CommandID("cmd-a")
+	shell := types.ShellID("shell-a")
+	owner := &ownedEnvironment{commands: []types.CommandID{command}, shells: []types.ShellID{shell}}
 	create := func(context.Context) (host.ShellEnvironment, error) { return owner, nil }
 	if _, _, err := environments.resolve(t.Context(), "a", nil, nil, create); err != nil {
 		t.Fatal(err)
 	}
 	for _, scenario := range []struct {
 		name    string
-		shell   *core.ShellID
-		command *core.CommandID
+		shell   *types.ShellID
+		command *types.CommandID
 		want    string
 	}{
 		{"command", nil, &command, `Shell handle "cmd-a" belongs to a different Host`},
@@ -154,14 +154,14 @@ func TestHandleBelongsToItsHost(t *testing.T) {
 	}()
 	for _, key := range []host.Key{"a", "b"} {
 		if _, _, err := twice.resolve(t.Context(), key, nil, nil, func(context.Context) (host.ShellEnvironment, error) {
-			return &ownedEnvironment{commands: []core.CommandID{command}, shells: []core.ShellID{shell}}, nil
+			return &ownedEnvironment{commands: []types.CommandID{command}, shells: []types.ShellID{shell}}, nil
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, scenario := range []struct {
-		shell   *core.ShellID
-		command *core.CommandID
+		shell   *types.ShellID
+		command *types.CommandID
 		want    string
 	}{
 		{nil, &command, `Command id "cmd-a" is not unique in this session`},
@@ -254,7 +254,7 @@ func TestSeventhIdenticalExecSuppressed(t *testing.T) {
 			if !suppressed || !got.IsError {
 				t.Fatal("repeat not suppressed")
 			}
-			view, ok := got.View.(*core.RepeatedShellExec)
+			view, ok := got.View.(*types.RepeatedShellExec)
 			if !ok || view.Count != count || view.Script != "make" {
 				t.Fatalf("wrong view: %+v", got.View)
 			}

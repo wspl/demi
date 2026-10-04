@@ -8,9 +8,9 @@ import (
 
 	"github.com/wspl/demi/internal/agent/server"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestTitleFromFirstMessage(t *testing.T) {
@@ -64,9 +64,9 @@ func TestTitleRequestUsesLowestThinkingAndNoTools(t *testing.T) {
 	model := storetest.TestModel()
 	model.ServiceTierID = new("priority")
 	model.Model.OutputLimit = new(uint32(32000))
-	model.Model.Thinking = []core.ThinkingCapability{
-		&core.BudgetCapability{},
-		&core.EffortCapability{Efforts: []string{"high", "minimal", "medium"}},
+	model.Model.Thinking = []types.ThinkingCapability{
+		&types.BudgetCapability{},
+		&types.EffortCapability{Efforts: []string{"high", "minimal", "medium"}},
 	}
 	script := providertest.NewScriptedRuntime(
 		t,
@@ -100,11 +100,11 @@ func TestTitleRequestUsesLowestThinkingAndNoTools(t *testing.T) {
 		request.Items,
 	)
 	equal(t, 0, len(request.Tools))
-	effort, ok := request.Thinking.(*core.EffortConfig)
+	effort, ok := request.Thinking.(*types.EffortConfig)
 	if !ok {
 		t.Fatal(request.Thinking)
 	}
-	equal(t, &core.EffortConfig{Effort: "minimal"}, effort)
+	equal(t, &types.EffortConfig{Effort: "minimal"}, effort)
 	model.Model.OutputLimit = new(uint32(256))
 	_, err = server.Title(t.Context(), script, "conversation", "r2", model, []string{"first"})
 	if err == nil || err.Error() != "quota" {

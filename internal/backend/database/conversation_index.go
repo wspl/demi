@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // CreateConversation returns the owner's conversation of `id`, which is created when no
@@ -16,14 +16,14 @@ import (
 // created, in the spelling it was created with.
 func (c *ControlService) CreateConversation(
 	ctx context.Context,
-	owner webapi.UserID,
-	id webapi.ConversationID,
+	owner webapiproto.UserID,
+	id webapiproto.ConversationID,
 ) (ConversationRecord, bool, error) {
 	var created bool
 	record, err := controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ConversationRecord, error) {
+		func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (ConversationRecord, error) {
 			var reserved bool
 			if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM conversation_fork_operations WHERE id = ?)", id).
 				Scan(&reserved); err != nil {
@@ -40,7 +40,7 @@ func (c *ControlService) CreateConversation(
 					Owner:  owner,
 					Title:  "New conversation",
 					Origin: TitlePlaceholder,
-					Target: &webapi.ConversationTargetCloud{},
+					Target: &webapiproto.ConversationTargetCloud{},
 					At:     now,
 				},
 			)
@@ -72,12 +72,15 @@ func (c *ControlService) CreateConversation(
 }
 
 // Conversation returns the conversation of `id`, in whichever case it is spelled.
-func (c *ControlService) Conversation(ctx context.Context, id webapi.ConversationID) (ConversationRecord, bool, error) {
+func (c *ControlService) Conversation(
+	ctx context.Context,
+	id webapiproto.ConversationID,
+) (ConversationRecord, bool, error) {
 	var found bool
 	record, err := controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ConversationRecord, error) {
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (ConversationRecord, error) {
 			r, ok, err := ConversationByID(ctx, tx, id)
 			found = ok
 			return r, err
@@ -88,8 +91,8 @@ func (c *ControlService) Conversation(ctx context.Context, id webapi.Conversatio
 
 // LastSwitch returns the conversation's latest target switch, which every node's next
 // context block describes; none before its first.
-func (c *ControlService) LastSwitch(ctx context.Context, id webapi.ConversationID) (*TargetSwitch, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*TargetSwitch, error) {
+func (c *ControlService) LastSwitch(ctx context.Context, id webapiproto.ConversationID) (*TargetSwitch, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (*TargetSwitch, error) {
 		r, found, err := queryRecord(
 			ctx,
 			tx,
@@ -109,10 +112,10 @@ func (c *ControlService) LastSwitch(ctx context.Context, id webapi.ConversationI
 // sidebar order.
 func (c *ControlService) Conversations(
 	ctx context.Context,
-	owner webapi.UserID,
+	owner webapiproto.UserID,
 	archived bool,
 ) ([]ConversationRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]ConversationRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]ConversationRecord, error) {
 		return queryRecords(
 			ctx,
 			tx,
@@ -130,17 +133,22 @@ ORDER BY pinned DESC,sort_order,id`,
 
 // ConversationOrder returns the ids of the owner's conversations in the order the product state
 // lists them: the active ones in sidebar order, then the archived ones.
-func (c *ControlService) ConversationOrder(ctx context.Context, owner webapi.UserID) ([]webapi.ConversationID, error) {
+func (c *ControlService) ConversationOrder(
+	ctx context.Context,
+	owner webapiproto.UserID,
+) ([]webapiproto.ConversationID, error) {
 	return controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]webapi.ConversationID, error) {
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]webapiproto.ConversationID, error) {
 			return queryRecords(
 				ctx,
 				tx,
 				"conversations",
 				"SELECT id FROM conversations WHERE user_id = ? ORDER BY archived,pinned DESC,sort_order,id",
-				func(r *storedRow) webapi.ConversationID { return checked(r, "id", webapi.ParseConversationID) },
+				func(r *storedRow) webapiproto.ConversationID {
+					return checked(r, "id", webapiproto.ParseConversationID)
+				},
 				owner,
 			)
 		},
@@ -149,8 +157,12 @@ func (c *ControlService) ConversationOrder(ctx context.Context, owner webapi.Use
 
 // MarkConversationRead acknowledges the output up to `revision`; an acknowledgement never
 // moves the read revision back.
-func (c *ControlService) MarkConversationRead(ctx context.Context, id webapi.ConversationID, revision uint64) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) MarkConversationRead(
+	ctx context.Context,
+	id webapiproto.ConversationID,
+	revision uint64,
+) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(
 			ctx,
 			tx,
@@ -166,10 +178,10 @@ func (c *ControlService) MarkConversationRead(ctx context.Context, id webapi.Con
 // changes nothing, so the title keeps its origin.
 func (c *ControlService) ChangeConversation(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	change RecordChange,
 ) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) error {
 		var archived bool
 		err := tx.QueryRowContext(ctx, "SELECT archived FROM conversations WHERE id = ?", id).Scan(&archived)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -227,8 +239,8 @@ func (c *ControlService) ChangeConversation(
 
 // CountUserMessage counts one more message the user sent, which makes a generated title
 // older than the conversation; answers how many there are now.
-func (c *ControlService) CountUserMessage(ctx context.Context, id webapi.ConversationID) (uint64, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (uint64, error) {
+func (c *ControlService) CountUserMessage(ctx context.Context, id webapiproto.ConversationID) (uint64, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (uint64, error) {
 		var count uint64
 		err := tx.QueryRowContext(ctx, `UPDATE conversations
 SET user_messages = user_messages + 1
@@ -244,10 +256,10 @@ RETURNING user_messages`, id).
 // this send the one a generated title may follow.
 func (c *ControlService) TitleFromFirstMessage(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	title string,
 ) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (bool, error) {
 		return affected(
 			ctx,
 			tx,
@@ -264,12 +276,12 @@ func (c *ControlService) TitleFromFirstMessage(
 // `seen` messages the request read. Answers whether it was written.
 func (c *ControlService) GeneratedTitle(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	title string,
 	from string,
 	seen uint64,
 ) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (bool, error) {
 		won, err := affected(
 			ctx,
 			tx,
@@ -294,8 +306,8 @@ func (c *ControlService) GeneratedTitle(
 // MarkLive records that the conversation's agent tree was live at `at`
 // (`storage.md` § Retiring tool media). A record never moves back, so
 // one written late cannot hide a later one.
-func (c *ControlService) MarkLive(ctx context.Context, id webapi.ConversationID, at core.Timestamp) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) MarkLive(ctx context.Context, id webapiproto.ConversationID, at types.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		ms, err := at.Millisecond()
 		if err != nil {
 			return err
@@ -306,27 +318,31 @@ func (c *ControlService) MarkLive(ctx context.Context, id webapi.ConversationID,
 
 // LiveAt returns when the conversation's agent tree was last seen live; none when there
 // is no such conversation.
-func (c *ControlService) LiveAt(ctx context.Context, id webapi.ConversationID) (core.Timestamp, bool, error) {
+func (c *ControlService) LiveAt(ctx context.Context, id webapiproto.ConversationID) (types.Timestamp, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (core.Timestamp, error) {
-		r, ok, err := queryRecord(
-			ctx,
-			tx,
-			"conversations",
-			"SELECT live_at FROM conversations WHERE id = ?",
-			func(r *storedRow) core.Timestamp { return r.instant("live_at") },
-			id,
-		)
-		found = ok
-		return r, err
-	})
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (types.Timestamp, error) {
+			r, ok, err := queryRecord(
+				ctx,
+				tx,
+				"conversations",
+				"SELECT live_at FROM conversations WHERE id = ?",
+				func(r *storedRow) types.Timestamp { return r.instant("live_at") },
+				id,
+			)
+			found = ok
+			return r, err
+		},
+	)
 	return record, found && err == nil, err
 }
 
 // SetWakeup records when the earliest wakeup the conversation's tree saved is due,
 // or that it saved none (`runtime.md` § Yield wakeups).
-func (c *ControlService) SetWakeup(ctx context.Context, id webapi.ConversationID, wakeup WakeupDue) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) SetWakeup(ctx context.Context, id webapiproto.ConversationID, wakeup WakeupDue) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		value, err := wakeupColumn(wakeup)
 		if err != nil {
 			return err
@@ -339,7 +355,7 @@ func (c *ControlService) SetWakeup(ctx context.Context, id webapi.ConversationID
 // wakeup, each with its owner and when its earliest wakeup is due,
 // earliest first.
 func (c *ControlService) SavedWakeups(ctx context.Context) ([]SavedWakeup, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]SavedWakeup, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]SavedWakeup, error) {
 		return queryRecords(
 			ctx,
 			tx,
@@ -347,8 +363,8 @@ func (c *ControlService) SavedWakeups(ctx context.Context) ([]SavedWakeup, error
 			"SELECT id,user_id,wakeup_at FROM conversations WHERE wakeup_at IS NOT NULL AND archived = 0 ORDER BY wakeup_at",
 			func(r *storedRow) SavedWakeup {
 				return SavedWakeup{
-					Conversation: checked(r, "id", webapi.ParseConversationID),
-					Owner:        checked(r, "user_id", webapi.ParseUserID),
+					Conversation: checked(r, "id", webapiproto.ParseConversationID),
+					Owner:        checked(r, "user_id", webapiproto.ParseUserID),
 					Due:          rowWakeup(r, "wakeup_at"),
 				}
 			},
@@ -358,8 +374,8 @@ func (c *ControlService) SavedWakeups(ctx context.Context) ([]SavedWakeup, error
 
 // TouchConversation records activity in the conversation now. Activity never reorders the
 // sidebar.
-func (c *ControlService) TouchConversation(ctx context.Context, id webapi.ConversationID) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) error {
+func (c *ControlService) TouchConversation(ctx context.Context, id webapiproto.ConversationID) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) error {
 		ms, err := now.Millisecond()
 		if err != nil {
 			return err
@@ -369,8 +385,11 @@ func (c *ControlService) TouchConversation(ctx context.Context, id webapi.Conver
 }
 
 // AttachedHosts returns the conversation's attached hosts, first attached first.
-func (c *ControlService) AttachedHosts(ctx context.Context, id webapi.ConversationID) ([]AttachedHostRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]AttachedHostRecord, error) {
+func (c *ControlService) AttachedHosts(
+	ctx context.Context,
+	id webapiproto.ConversationID,
+) ([]AttachedHostRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]AttachedHostRecord, error) {
 		rows, err := attachedRows(ctx, tx, id)
 		if err != nil {
 			return nil, err
@@ -387,9 +406,9 @@ func (c *ControlService) AttachedHosts(ctx context.Context, id webapi.Conversati
 // attached first, as the web app lists them.
 func (c *ControlService) AttachedHostListing(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 ) ([]AttachedHostListing, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]AttachedHostListing, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]AttachedHostListing, error) {
 		return attachedRows(ctx, tx, id)
 	})
 }
@@ -401,13 +420,13 @@ func (c *ControlService) AttachedHostListing(
 // advances the execution-context revision.
 func (c *ControlService) SwitchConversationTarget(
 	ctx context.Context,
-	id webapi.ConversationID,
-	expected webapi.ConversationTarget,
-	to webapi.ConversationTarget,
+	id webapiproto.ConversationID,
+	expected webapiproto.ConversationTarget,
+	to webapiproto.ConversationTarget,
 	switchValue TargetSwitch,
 	ends SwitchEnds,
 ) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (bool, error) {
 		from := ColumnsForTarget(expected)
 		target := ColumnsForTarget(to)
 		text, err := encoded(switchValue)
@@ -461,11 +480,11 @@ AND target_workspace_id IS ?11`,
 // `device` ended, which is where the next one there starts.
 func (c *ControlService) SetAttachedCWD(
 	ctx context.Context,
-	id webapi.ConversationID,
-	device webapi.DeviceID,
+	id webapiproto.ConversationID,
+	device webapiproto.DeviceID,
 	cwd string,
 ) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(
 			ctx,
 			tx,
@@ -486,35 +505,35 @@ const conversationColumns = `conversations.*, COALESCE((
 ), 0) AS panel_revision`
 
 func conversationRow(r *storedRow) ConversationRecord {
-	var target webapi.ConversationTarget
+	var target webapiproto.ConversationTarget
 	switch r.text("target_kind") {
 	case "cloud":
-		target = &webapi.ConversationTargetCloud{Path: r.optionalText("target_path")}
+		target = &webapiproto.ConversationTargetCloud{Path: r.optionalText("target_path")}
 	case "device":
-		target = &webapi.ConversationTargetDevice{
-			DeviceID: checked(r, "target_device_id", webapi.ParseDeviceID),
+		target = &webapiproto.ConversationTargetDevice{
+			DeviceID: checked(r, "target_device_id", webapiproto.ParseDeviceID),
 			Path:     r.text("target_path"),
 		}
 	case "workspace":
-		target = &webapi.ConversationTargetWorkspace{
-			WorkspaceID: checked(r, "target_workspace_id", webapi.ParseWorkspaceID),
+		target = &webapiproto.ConversationTargetWorkspace{
+			WorkspaceID: checked(r, "target_workspace_id", webapiproto.ParseWorkspaceID),
 		}
 	default:
 		r.bad("target_kind", fmt.Errorf("unknown target kind %s", r.text("target_kind")))
 	}
 	if target != nil {
-		r.bad("target_path", webapi.ValidateConversationTarget(target))
+		r.bad("target_path", webapiproto.ValidateConversationTarget(target))
 	}
 	return ConversationRecord{
-		ID:             checked(r, "id", webapi.ParseConversationID),
-		Owner:          checked(r, "user_id", webapi.ParseUserID),
+		ID:             checked(r, "id", webapiproto.ParseConversationID),
+		Owner:          checked(r, "user_id", webapiproto.ParseUserID),
 		Title:          r.text("title"),
 		Archived:       r.boolean("archived"),
 		Pinned:         r.boolean("pinned"),
 		ReadRevision:   r.count("read_revision"),
 		Target:         target,
 		ContextVersion: r.count("context_version"),
-		Model:          optionalJSON(r, "model", core.DecodeModelSelection),
+		Model:          optionalJSON(r, "model", types.DecodeModelSelection),
 		UserMessages:   r.count("user_messages"),
 		TitledMessages: r.count("titled_messages"),
 		CreatedAt:      r.instant("created_at"),
@@ -533,11 +552,11 @@ func affected(ctx context.Context, tx *sql.Tx, query string, args ...any) (bool,
 	return count > 0, err
 }
 
-func advanceContext(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) error {
+func advanceContext(ctx context.Context, tx *sql.Tx, id webapiproto.ConversationID) error {
 	return execSQL(ctx, tx, "UPDATE conversations SET context_version = context_version + 1 WHERE id = ?", id)
 }
 
-func attachedRows(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) ([]AttachedHostListing, error) {
+func attachedRows(ctx context.Context, tx *sql.Tx, id webapiproto.ConversationID) ([]AttachedHostListing, error) {
 	return queryRecords(
 		ctx,
 		tx,
@@ -546,7 +565,7 @@ func attachedRows(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) ([]
 		func(r *storedRow) AttachedHostListing {
 			return AttachedHostListing{
 				Host: AttachedHostRecord{
-					Device: checked(r, "device_id", webapi.ParseDeviceID),
+					Device: checked(r, "device_id", webapiproto.ParseDeviceID),
 					Name:   r.text("name"),
 					CWD:    r.optionalText("cwd"),
 				},
@@ -585,7 +604,7 @@ func rowWakeup(r *storedRow, column string) WakeupDue {
 func renameAttachedHost(
 	ctx context.Context,
 	tx *sql.Tx,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	change *RecordRename,
 ) error {
 	holders, err := queryRecords(
@@ -632,9 +651,9 @@ func renameAttachedHost(
 func switchAttachedHosts(
 	ctx context.Context,
 	tx *sql.Tx,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	ends SwitchEnds,
-	now core.Timestamp,
+	now types.Timestamp,
 ) error {
 	if ends.Arriving != nil {
 		if err := execSQL(

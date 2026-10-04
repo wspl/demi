@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // PendingClaims holds runners waiting to be paired and each user's recent claims.
@@ -17,7 +17,7 @@ import (
 type PendingClaims struct {
 	mu                sync.Mutex // Protects pending runners and attempt windows; no IO under it.
 	waiting           map[ClaimCode]*PendingRunner
-	attempts          map[webapi.UserID][]time.Time
+	attempts          map[webapiproto.UserID][]time.Time
 	attemptsPerMinute int
 	closed            bool
 }
@@ -26,14 +26,14 @@ type PendingClaims struct {
 func NewPendingClaims(attemptsPerMinute int) *PendingClaims {
 	return &PendingClaims{
 		waiting:           make(map[ClaimCode]*PendingRunner),
-		attempts:          make(map[webapi.UserID][]time.Time),
+		attempts:          make(map[webapiproto.UserID][]time.Time),
 		attemptsPerMinute: attemptsPerMinute,
 	}
 }
 
 // Attempt counts a claim attempt unless the user has exhausted the minute's
 // allowance; then it returns false and counts nothing.
-func (p *PendingClaims) Attempt(user webapi.UserID) bool {
+func (p *PendingClaims) Attempt(user webapiproto.UserID) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	now := time.Now()
@@ -61,7 +61,7 @@ func (p *PendingClaims) Take(code ClaimCode) *PendingRunner {
 
 // Register puts runner up for claiming under code; nil means shutdown has begun.
 // The caller defers the wait's Release and Withdraw(code) when its socket leaves.
-func (p *PendingClaims) Register(code ClaimCode, runner runnerwire.Info) *ClaimWait {
+func (p *PendingClaims) Register(code ClaimCode, runner runnerproto.Info) *ClaimWait {
 	wait := &ClaimWait{done: make(chan struct{})}
 	p.mu.Lock()
 	if p.closed {
@@ -137,7 +137,7 @@ type PendingRunner struct {
 	once sync.Once
 	wait *ClaimWait
 	// Runner is the information reported by the waiting runner.
-	Runner runnerwire.Info
+	Runner runnerproto.Info
 }
 
 // ErrRunnerLeft means the runner went away before it bound its socket.
@@ -149,8 +149,8 @@ var ErrRunnerLeft = errors.New("the runner left before it bound its socket")
 func (p *PendingRunner) Grant(
 	ctx context.Context,
 	device database.DeviceRecord,
-	token runnerwire.DeviceToken,
-) (webapi.DeviceDTO, error) {
+	token runnerproto.DeviceToken,
+) (webapiproto.DeviceDTO, error) {
 	answer := &claimAnswer{done: make(chan struct{})}
 	delivered := false
 	p.once.Do(func() {
@@ -163,11 +163,11 @@ func (p *PendingRunner) Grant(
 	defer answer.Release()
 	select {
 	case <-ctx.Done():
-		return webapi.DeviceDTO{}, ctx.Err()
+		return webapiproto.DeviceDTO{}, ctx.Err()
 	case <-answer.done:
 	}
 	if answer.device == nil {
-		return webapi.DeviceDTO{}, ErrRunnerLeft
+		return webapiproto.DeviceDTO{}, ErrRunnerLeft
 	}
 	return *answer.device, nil
 }
@@ -182,11 +182,11 @@ type ClaimGrant struct {
 	// Device is the device created by the claim.
 	Device database.DeviceRecord
 	// Token is the credential only the runner receives.
-	Token runnerwire.DeviceToken
+	Token runnerproto.DeviceToken
 }
 
 // Bound completes the claimant's answer with the bound device, without waiting.
-func (g *ClaimGrant) Bound(device webapi.DeviceDTO) {
+func (g *ClaimGrant) Bound(device webapiproto.DeviceDTO) {
 	g.answer.once.Do(func() {
 		g.answer.device = &device
 		close(g.answer.done)
@@ -200,7 +200,7 @@ func (g *ClaimGrant) Release() { g.answer.Release() }
 type claimAnswer struct {
 	once   sync.Once
 	done   chan struct{}
-	device *webapi.DeviceDTO
+	device *webapiproto.DeviceDTO
 }
 
 // Release idempotently abandons the claimant's answer without blocking the runner.

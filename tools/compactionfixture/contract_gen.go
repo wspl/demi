@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wspl/demi/internal/contract"
-	core "github.com/wspl/demi/internal/core"
+	types "github.com/wspl/demi/internal/types"
 )
 
 func decodeFixture(data []byte) (fixture, error) { return contract.Decode[fixture](data) }
@@ -24,7 +24,7 @@ func contractValidateFixture(v fixture, depth int) error {
 	for i, item := range v.Blocks {
 		_ = i
 		_ = item
-		if err := core.ValidateBlock(item); err != nil {
+		if err := types.ValidateBlock(item); err != nil {
 			return contract.At(fmt.Sprintf("%s[%d]", "blocks", i), err)
 		}
 	}
@@ -88,7 +88,7 @@ func (v *fixture) UnmarshalJSON(data []byte) error {
 			return contract.At("blocks", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) ([]core.Block, error) { return contract.List(b, core.DecodeBlock) }(raw)
+			value, err := func(b []byte) ([]types.Block, error) { return contract.List(b, types.DecodeBlock) }(raw)
 			if err != nil {
 				return contract.At("blocks", err)
 			}

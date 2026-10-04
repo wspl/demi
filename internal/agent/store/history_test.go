@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 	"go.uber.org/goleak"
 )
 
@@ -127,11 +127,11 @@ func TestCommandHistoryVersionsFollowCutsAndFailedSaves(t *testing.T) {
 		t.Fatal(err)
 	}
 	history.Accept(*second)
-	fork := history.Select([]core.Block{&core.UserBlock{BlockID: "b1"}}, 1, true)
+	fork := history.Select([]types.Block{&types.UserBlock{BlockID: "b1"}}, 1, true)
 	if fork.Revision != 1 || len(fork.Versions) != 2 || len(fork.Boundaries) != 2 {
 		t.Fatalf("fork state: %#v", fork)
 	}
-	cut := history.Select([]core.Block{}, 0, false)
+	cut := history.Select([]types.Block{}, 0, false)
 	restored, err := store.RestoreCommandStateHistory(cut)
 	if err != nil {
 		t.Fatal(err)

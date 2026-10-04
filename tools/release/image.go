@@ -19,9 +19,9 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // The authoritative pin remains cloud-guest-image/rootfs/uv.json. This generated
@@ -75,7 +75,7 @@ func validateUVArchive(archive uvArchive) error {
 }
 
 func (a *application) image(ctx context.Context, o imageOptions) error {
-	architecture, ok := machinewire.HostArchitecture()
+	architecture, ok := machinemanagerproto.HostArchitecture()
 	if runtime.GOOS != "linux" || !ok {
 		return errors.New("a Cloud image is packaged on a Linux builder of its architecture")
 	}
@@ -91,7 +91,7 @@ func (a *application) image(ctx context.Context, o imageOptions) error {
 func (a *application) packageImage(
 	ctx context.Context,
 	o imageOptions,
-	architecture machinewire.Architecture,
+	architecture machinemanagerproto.Architecture,
 	pin uvRelease,
 	client *artifacts.Client,
 	writeArchive func(context.Context, string, string) error,
@@ -117,7 +117,7 @@ func (a *application) packageImage(
 	if err != nil {
 		return err
 	}
-	executables := make(map[string]commandwire.PackageArtifact)
+	executables := make(map[string]commandproto.PackageArtifact)
 	if err := a.installImageRunner(ctx, root, o.Runners, target, runner, runnerArtifact, executables); err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func (a *application) packageImage(
 		return err
 	}
 	archive := pin.AMD64
-	if architecture == machinewire.ArchitectureARM64 {
+	if architecture == machinemanagerproto.ArchitectureARM64 {
 		archive = pin.ARM64
 	}
 	if err := installUV(ctx, root, archive, client, executables); err != nil {
@@ -134,11 +134,11 @@ func (a *application) packageImage(
 	if _, err := fmt.Fprintln(a.Err, "Cloud image: uv", pin.Version); err != nil {
 		return err
 	}
-	init, err := measureExecutable(ctx, inTree(root, machinewire.InitPath))
+	init, err := measureExecutable(ctx, inTree(root, machinemanagerproto.InitPath))
 	if err != nil {
 		return err
 	}
-	executables[machinewire.InitPath] = init
+	executables[machinemanagerproto.InitPath] = init
 	return a.publishImageArchive(
 		ctx,
 		imageArchiveOptions{root, output, architecture, ubuntu, inventory, executables, releases, runner, archive, pin},
@@ -165,7 +165,7 @@ func releaseExecutable(directory, target string) (string, error) {
 func installExecutable(
 	ctx context.Context,
 	source, destination string,
-	artifact commandwire.PackageArtifact,
+	artifact commandproto.PackageArtifact,
 ) (err error) {
 	input, err := os.Open(source)
 	if err != nil {
@@ -188,23 +188,23 @@ func installExecutable(
 	return stage.Publish(ctx)
 }
 
-func measureExecutable(ctx context.Context, path string) (commandwire.PackageArtifact, error) {
+func measureExecutable(ctx context.Context, path string) (commandproto.PackageArtifact, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return commandwire.PackageArtifact{}, err
+		return commandproto.PackageArtifact{}, err
 	}
 	if !info.Mode().IsRegular() {
-		return commandwire.PackageArtifact{}, fmt.Errorf("%s is not a regular file", path)
+		return commandproto.PackageArtifact{}, fmt.Errorf("%s is not a regular file", path)
 	}
 	digest, err := artifacts.DigestFile(ctx, path, math.MaxUint64)
-	return commandwire.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}, err
+	return commandproto.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}, err
 }
 
 func (a *application) installResources(
 	ctx context.Context,
 	root, directory, target string,
-	descriptor commandwire.PackageDescriptor,
-	executables map[string]commandwire.PackageArtifact,
+	descriptor commandproto.PackageDescriptor,
+	executables map[string]commandproto.PackageArtifact,
 ) error {
 	names := make([]string, 0, len(descriptor.Resources))
 	for name := range descriptor.Resources {
@@ -219,7 +219,7 @@ func (a *application) installResources(
 		}
 		entry, err := installResource(
 			ctx,
-			inTree(root, runnerwire.ArtifactsPath),
+			inTree(root, runnerproto.ArtifactsPath),
 			filepath.Join(directory, "resources", archive.SHA256),
 			archive,
 		)
@@ -230,7 +230,7 @@ func (a *application) installResources(
 		if err != nil {
 			return err
 		}
-		executables[runnerwire.ArtifactsPath+"/"+archive.SHA256+"/"+archive.Entry] = digest
+		executables[runnerproto.ArtifactsPath+"/"+archive.SHA256+"/"+archive.Entry] = digest
 		if _, err := fmt.Fprintf(a.Err, "Cloud image: %s for %s\n", resource.Title, descriptor.ID); err != nil {
 			return err
 		}
@@ -241,7 +241,7 @@ func (a *application) installResources(
 func installResource(
 	ctx context.Context,
 	root, source string,
-	archive commandwire.ResourceArtifact,
+	archive commandproto.ResourceArtifact,
 ) (entry string, err error) {
 	_, unpacking, err := artifacts.InstallArchive(
 		ctx,
@@ -287,7 +287,7 @@ func installUV(
 	root string,
 	archive uvArchive,
 	client *artifacts.Client,
-	executables map[string]commandwire.PackageArtifact,
+	executables map[string]commandproto.PackageArtifact,
 ) (err error) {
 	scratch, err := os.MkdirTemp("", "demi-uv-")
 	if err != nil {
@@ -317,13 +317,13 @@ func installUV(
 	return installUVExecutables(ctx, root, archive, tar.NewReader(zipped), executables)
 }
 
-func installedPackages(root string) ([]machinewire.InstalledPackage, error) {
+func installedPackages(root string) ([]machinemanagerproto.InstalledPackage, error) {
 	path := inTree(root, "/var/lib/dpkg/status")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	packages := []machinewire.InstalledPackage{}
+	packages := []machinemanagerproto.InstalledPackage{}
 	var name, status, version *string
 	for _, line := range append(strings.Split(string(data), "\n"), "") {
 		if strings.TrimSpace(line) == "" {
@@ -380,15 +380,15 @@ func (a *application) writeArchive(ctx context.Context, root, path string) (err 
 	return nil
 }
 
-func imageCommandReleases(o imageOptions, target string) ([]commandwire.PackageDescriptor, error) {
-	releases := make([]commandwire.PackageDescriptor, 0, len(o.Packages))
+func imageCommandReleases(o imageOptions, target string) ([]commandproto.PackageDescriptor, error) {
+	releases := make([]commandproto.PackageDescriptor, 0, len(o.Packages))
 	seen := map[string]bool{}
 	for _, directory := range o.Packages {
 		data, err := os.ReadFile(filepath.Join(directory, "descriptor.json"))
 		if err != nil {
 			return nil, err
 		}
-		descriptor, err := commandwire.DecodePackageDescriptor(data)
+		descriptor, err := commandproto.DecodePackageDescriptor(data)
 		if err != nil {
 			return nil, err
 		}
@@ -415,7 +415,7 @@ func installUVExecutables(
 	root string,
 	archive uvArchive,
 	reader *tar.Reader,
-	executables map[string]commandwire.PackageArtifact,
+	executables map[string]commandproto.PackageArtifact,
 ) error {
 	found := map[string]bool{}
 	for {
@@ -461,10 +461,10 @@ func installUVExecutables(
 }
 
 func appendInstalledPackage(
-	packages []machinewire.InstalledPackage,
+	packages []machinemanagerproto.InstalledPackage,
 	path string,
 	name, status, version *string,
-) ([]machinewire.InstalledPackage, error) {
+) ([]machinemanagerproto.InstalledPackage, error) {
 	if name == nil || status == nil {
 		return nil, fmt.Errorf("%s lists a package without its name or status", path)
 	}
@@ -477,7 +477,7 @@ func appendInstalledPackage(
 		if version == nil {
 			return nil, fmt.Errorf("%s lists %s without its version", path, *name)
 		}
-		packages = append(packages, machinewire.InstalledPackage{Name: *name, Version: *version})
+		packages = append(packages, machinemanagerproto.InstalledPackage{Name: *name, Version: *version})
 	}
 	return packages, nil
 }
@@ -486,8 +486,8 @@ func (a *application) installImageCommands(
 	ctx context.Context,
 	root, target string,
 	directories []string,
-	releases []commandwire.PackageDescriptor,
-	executables map[string]commandwire.PackageArtifact,
+	releases []commandproto.PackageDescriptor,
+	executables map[string]commandproto.PackageArtifact,
 ) error {
 	for i, descriptor := range releases {
 		source, err := releaseExecutable(directories[i], target)
@@ -495,7 +495,7 @@ func (a *application) installImageCommands(
 			return err
 		}
 		artifact := descriptor.Targets[target]
-		path := runnerwire.ArtifactsPath + "/" + artifact.SHA256 + "/" + filepath.Base(source)
+		path := runnerproto.ArtifactsPath + "/" + artifact.SHA256 + "/" + filepath.Base(source)
 		if err := os.MkdirAll(filepath.Dir(inTree(root, path)), 0o755); err != nil {
 			return err
 		}
@@ -548,8 +548,8 @@ func (a *application) publishImageArchive(
 		return err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(scratch)) }()
-	archivePath := filepath.Join(scratch, string(machinewire.RootfsTarZst))
-	if _, err := fmt.Fprintln(a.Err, "Cloud image: writing", machinewire.RootfsTarZst); err != nil {
+	archivePath := filepath.Join(scratch, string(machinemanagerproto.RootfsTarZst))
+	if _, err := fmt.Fprintln(a.Err, "Cloud image: writing", machinemanagerproto.RootfsTarZst); err != nil {
 		return err
 	}
 	if err := writeArchive(ctx, o.root, archivePath); err != nil {
@@ -559,38 +559,40 @@ func (a *application) publishImageArchive(
 	if err != nil {
 		return err
 	}
-	manifest := machinewire.CloudImageManifest{
+	manifest := machinemanagerproto.CloudImageManifest{
 		FormatVersion: 1,
-		OS:            machinewire.OSLinux,
+		OS:            machinemanagerproto.OSLinux,
 		Architecture:  o.architecture,
-		Rootfs: machinewire.RootfsArchive{
+		Rootfs: machinemanagerproto.RootfsArchive{
 			SHA256: digest.SHA256,
 			Size:   digest.Size,
-			File:   machinewire.RootfsTarZst,
+			File:   machinemanagerproto.RootfsTarZst,
 		},
 		Ubuntu:      o.ubuntu,
 		Packages:    o.inventory,
 		Executables: o.executables,
 		Releases:    o.releases,
 		Runner:      o.runner,
-		Tools:       []machinewire.StandaloneTool{{Name: "uv", Version: o.pin.Version, SHA256: o.archive.SHA256}},
+		Tools: []machinemanagerproto.StandaloneTool{
+			{Name: "uv", Version: o.pin.Version, SHA256: o.archive.SHA256},
+		},
 	}
 	return a.publishImageRecord(ctx, o.output, manifest, archivePath, digest)
 }
 
 type imageArchiveOptions struct {
 	root, output string
-	architecture machinewire.Architecture
+	architecture machinemanagerproto.Architecture
 	ubuntu       string
-	inventory    []machinewire.InstalledPackage
-	executables  map[string]commandwire.PackageArtifact
-	releases     []commandwire.PackageDescriptor
-	runner       runnerwire.Release
+	inventory    []machinemanagerproto.InstalledPackage
+	executables  map[string]commandproto.PackageArtifact
+	releases     []commandproto.PackageDescriptor
+	runner       runnerproto.Release
 	archive      uvArchive
 	pin          uvRelease
 }
 
-func imageSystem(root string) ([]machinewire.InstalledPackage, string, error) {
+func imageSystem(root string) ([]machinemanagerproto.InstalledPackage, string, error) {
 	inventory, err := installedPackages(root)
 	if err != nil {
 		return nil, "", err
@@ -610,21 +612,21 @@ func imageSystem(root string) ([]machinewire.InstalledPackage, string, error) {
 func (a *application) installImageRunner(
 	ctx context.Context,
 	root, runners, target string,
-	runner runnerwire.Release,
-	runnerArtifact commandwire.PackageArtifact,
-	executables map[string]commandwire.PackageArtifact,
+	runner runnerproto.Release,
+	runnerArtifact commandproto.PackageArtifact,
+	executables map[string]commandproto.PackageArtifact,
 ) error {
 	source, err := releaseExecutable(filepath.Join(runners, runner.Release), target)
 	if err != nil {
 		return err
 	}
-	if err := installExecutable(ctx, source, inTree(root, machinewire.RunnerPath), runnerArtifact); err != nil {
+	if err := installExecutable(ctx, source, inTree(root, machinemanagerproto.RunnerPath), runnerArtifact); err != nil {
 		return err
 	}
 	if err := os.Symlink("demi-runner", inTree(root, "/usr/bin/demi")); err != nil {
 		return err
 	}
-	executables[machinewire.RunnerPath] = runnerArtifact
+	executables[machinemanagerproto.RunnerPath] = runnerArtifact
 	if _, err := fmt.Fprintln(a.Err, "Cloud image: runner release", runner.Release); err != nil {
 		return err
 	}
@@ -635,7 +637,7 @@ func (a *application) installImageRunner(
 func (a *application) publishImageRecord(
 	ctx context.Context,
 	output string,
-	manifest machinewire.CloudImageManifest,
+	manifest machinemanagerproto.CloudImageManifest,
 	archivePath string,
 	digest artifacts.Digest,
 ) error {
@@ -643,14 +645,14 @@ func (a *application) publishImageRecord(
 	if err != nil {
 		return err
 	}
-	if _, err := machinewire.DecodeCloudImageManifest(data); err != nil {
+	if _, err := machinemanagerproto.DecodeCloudImageManifest(data); err != nil {
 		return err
 	}
 	if err := artifacts.PublishRelease(
 		ctx,
 		output,
 		artifacts.ReleaseRecord{Name: "manifest.json", Bytes: data},
-		[]artifacts.ReleaseFile{{Source: archivePath, Path: string(machinewire.RootfsTarZst), Digest: digest}},
+		[]artifacts.ReleaseFile{{Source: archivePath, Path: string(machinemanagerproto.RootfsTarZst), Digest: digest}},
 	); err != nil {
 		return err
 	}
@@ -665,18 +667,18 @@ func (a *application) publishImageRecord(
 	return err
 }
 
-func imageRunnerRelease(runners, target string) (runnerwire.Release, commandwire.PackageArtifact, error) {
+func imageRunnerRelease(runners, target string) (runnerproto.Release, commandproto.PackageArtifact, error) {
 	data, err := os.ReadFile(filepath.Join(runners, "manifest.json"))
 	if err != nil {
-		return runnerwire.Release{}, commandwire.PackageArtifact{}, err
+		return runnerproto.Release{}, commandproto.PackageArtifact{}, err
 	}
-	runner, err := runnerwire.DecodeRelease(data)
+	runner, err := runnerproto.DecodeRelease(data)
 	if err != nil {
-		return runnerwire.Release{}, commandwire.PackageArtifact{}, err
+		return runnerproto.Release{}, commandproto.PackageArtifact{}, err
 	}
 	runnerArtifact, ok := runner.Targets[target]
 	if !ok {
-		return runnerwire.Release{}, commandwire.PackageArtifact{}, fmt.Errorf(
+		return runnerproto.Release{}, commandproto.PackageArtifact{}, fmt.Errorf(
 			"the runner release %s carries nothing for %s",
 			runner.Release,
 			target,

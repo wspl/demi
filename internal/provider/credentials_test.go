@@ -8,10 +8,10 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 type tokens = providertest.TokenDocument
@@ -352,9 +352,9 @@ func (*accountKit) Capability() provider.AccountsCapability {
 	return provider.AccountsCapability{Login: true}
 }
 
-func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
+func (k *accountKit) Login(ctx context.Context, pending func(types.LoginPending)) (provider.NewAccount, error) {
 	code := "ABCD-1234"
-	pending(core.LoginPending{VerificationURL: "https://vendor.example/device", UserCode: &code})
+	pending(types.LoginPending{VerificationURL: "https://vendor.example/device", UserCode: &code})
 	if len(k.logins) == 0 {
 		<-ctx.Done()
 		return provider.NewAccount{}, ctx.Err()
@@ -389,7 +389,7 @@ func TestLoginImportsIdentityAndSelectsFirst(t *testing.T) {
 	accounts := provider.NewAccounts(pool, kit, providertest.FixedClock(now))
 	requireEqual(t, accounts.Capability(), provider.AccountsCapability{Login: true})
 	shown := []string{}
-	report := func(p core.LoginPending) { shown = append(shown, *p.UserCode) }
+	report := func(p types.LoginPending) { shown = append(shown, *p.UserCode) }
 	first, err := accounts.Login(t.Context(), report)
 	if err != nil {
 		t.Fatal(err)
@@ -476,7 +476,7 @@ func TestCanceledLoginStoresNothing(t *testing.T) {
 	accounts := provider.NewAccounts(pool, &accountKit{}, providertest.FixedClock(now))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	_, err := accounts.Login(ctx, func(core.LoginPending) { cancel() })
+	_, err := accounts.Login(ctx, func(types.LoginPending) { cancel() })
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("%v", err)
 	}

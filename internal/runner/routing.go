@@ -4,39 +4,39 @@ import (
 	"errors"
 
 	"github.com/wspl/demi/internal/runner/jobs"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // message routes authenticated work; every blocking operation belongs to a child.
-func (c *connection) message(message runnerwire.Inbound) error {
+func (c *connection) message(message runnerproto.Inbound) error {
 	var work func() error
 	// Relay and authentication variants have already been consumed by route.
 	switch m := any(message).(type) {
-	case *runnerwire.ConversationRelease:
+	case *runnerproto.ConversationRelease:
 		work = func() error { return c.releaseConversation(m) }
-	case *runnerwire.ManifestMessage:
+	case *runnerproto.ManifestMessage:
 		c.installManifest(m)
 		return nil
-	case *runnerwire.JobRead:
+	case *runnerproto.JobRead:
 		work = func() error { return c.readJob(m) }
-	case *runnerwire.JobRelease:
+	case *runnerproto.JobRelease:
 		work = func() error {
 			c.directories.Release(c.ctx, m.JobID)
 			return nil
 		}
-	case *runnerwire.Sync:
+	case *runnerproto.Sync:
 		work = func() error { return c.volumes.Sync(c.ctx, *m) }
-	case *runnerwire.VolumeGrown:
+	case *runnerproto.VolumeGrown:
 		return c.volumes.Grown(*m)
-	case *runnerwire.GitChangesMessage:
+	case *runnerproto.GitChangesMessage:
 		work = func() error { return c.host.GitChanges(c.ctx, *m) }
-	case *runnerwire.GitShow:
+	case *runnerproto.GitShow:
 		work = func() error { return c.host.GitShow(c.ctx, *m) }
-	case *runnerwire.NetOpen:
+	case *runnerproto.NetOpen:
 		work = func() error { return c.host.NetOpen(c.ctx, *m) }
-	case *runnerwire.ServiceOpen:
+	case *runnerproto.ServiceOpen:
 		return c.streams.HandleOpen(m)
-	case *runnerwire.LogRead:
+	case *runnerproto.LogRead:
 		work = func() error {
 			return c.readLog(m)
 		}
@@ -50,7 +50,7 @@ func (c *connection) message(message runnerwire.Inbound) error {
 	return nil
 }
 
-func (c *connection) task(message runnerwire.Inbound) error {
+func (c *connection) task(message runnerproto.Inbound) error {
 	environment := taskEnvironment{
 		values:       c.registration.options.env,
 		cwd:          c.registration.options.cwd,
@@ -61,34 +61,34 @@ func (c *connection) task(message runnerwire.Inbound) error {
 	var spec jobs.TaskSpec
 	// Task controls are the remaining subset after authenticated Host routing.
 	switch m := any(message).(type) {
-	case *runnerwire.Spawn:
+	case *runnerproto.Spawn:
 		id = jobs.WorkID{Kind: jobs.ProcessWork, ID: m.SpawnID}
 		spec = environment.processSpec(m)
-	case *runnerwire.JobStart:
+	case *runnerproto.JobStart:
 		id = jobs.WorkID{Kind: jobs.ShellWork, ID: m.JobID}
 		spec = environment.shellSpec(m)
-	case *runnerwire.SpawnStdin:
+	case *runnerproto.SpawnStdin:
 		return c.table.Input(jobs.WorkID{Kind: jobs.ProcessWork, ID: m.SpawnID}, m.Bytes)
-	case *runnerwire.JobStdin:
+	case *runnerproto.JobStdin:
 		return c.table.Input(jobs.WorkID{Kind: jobs.ShellWork, ID: m.JobID}, m.Bytes)
-	case *runnerwire.SpawnStdinEnd:
+	case *runnerproto.SpawnStdinEnd:
 		return c.table.EndInput(jobs.WorkID{Kind: jobs.ProcessWork, ID: m.SpawnID})
-	case *runnerwire.JobStdinEnd:
+	case *runnerproto.JobStdinEnd:
 		return c.table.EndInput(jobs.WorkID{Kind: jobs.ShellWork, ID: m.JobID})
-	case *runnerwire.SpawnKill:
-		signal := runnerwire.SignalTerminate
+	case *runnerproto.SpawnKill:
+		signal := runnerproto.SignalTerminate
 		if m.Signal != nil {
 			signal = *m.Signal
 		}
 		return c.table.Signal(jobs.WorkID{Kind: jobs.ProcessWork, ID: m.SpawnID}, signal)
-	case *runnerwire.JobKill:
+	case *runnerproto.JobKill:
 		c.contexts.Cancel(m.JobID)
-		signal := runnerwire.SignalTerminate
+		signal := runnerproto.SignalTerminate
 		if m.Signal != nil {
 			signal = *m.Signal
 		}
 		return c.table.Signal(jobs.WorkID{Kind: jobs.ShellWork, ID: m.JobID}, signal)
-	case *runnerwire.JobFollow:
+	case *runnerproto.JobFollow:
 		c.table.Follow(jobs.WorkID{Kind: jobs.ShellWork, ID: m.JobID}, m.Follow)
 		return nil
 	default:
@@ -97,27 +97,27 @@ func (c *connection) task(message runnerwire.Inbound) error {
 	return c.startTask(id, spec)
 }
 
-func (c *connection) filesystemWork(message runnerwire.Inbound) (work func() error) {
+func (c *connection) filesystemWork(message runnerproto.Inbound) (work func() error) {
 	switch m := any(message).(type) {
-	case *runnerwire.FSExists:
+	case *runnerproto.FSExists:
 		work = func() error { return c.host.Exists(c.ctx, *m) }
-	case *runnerwire.FSStat:
+	case *runnerproto.FSStat:
 		work = func() error { return c.host.Stat(c.ctx, *m) }
-	case *runnerwire.FSLstat:
+	case *runnerproto.FSLstat:
 		work = func() error { return c.host.Lstat(c.ctx, *m) }
-	case *runnerwire.FSReadFile:
+	case *runnerproto.FSReadFile:
 		work = func() error { return c.host.ReadFile(c.ctx, *m) }
-	case *runnerwire.FSWriteFile:
+	case *runnerproto.FSWriteFile:
 		work = func() error { return c.host.WriteFile(c.ctx, *m) }
-	case *runnerwire.FSReaddir:
+	case *runnerproto.FSReaddir:
 		work = func() error { return c.host.Readdir(c.ctx, *m) }
-	case *runnerwire.FSMkdir:
+	case *runnerproto.FSMkdir:
 		work = func() error { return c.host.Mkdir(c.ctx, *m) }
-	case *runnerwire.FSRm:
+	case *runnerproto.FSRm:
 		work = func() error { return c.host.Rm(c.ctx, *m) }
-	case *runnerwire.FSCp:
+	case *runnerproto.FSCp:
 		work = func() error { return c.host.Cp(c.ctx, *m) }
-	case *runnerwire.FSMv:
+	case *runnerproto.FSMv:
 		work = func() error { return c.host.Mv(c.ctx, *m) }
 	default:
 		return c.filesystemMetadataWork(message)
@@ -125,24 +125,24 @@ func (c *connection) filesystemWork(message runnerwire.Inbound) (work func() err
 	return work
 }
 
-func (c *connection) readLog(m *runnerwire.LogRead) error {
+func (c *connection) readLog(m *runnerproto.LogRead) error {
 	page, err := c.registration.options.log.read(c.ctx, logQuery{since: m.Since, limit: int(m.Limit), source: m.Source})
 	if err != nil {
-		return c.send(c.ctx, &runnerwire.LogError{ID: m.ID, Message: err.Error()})
+		return c.send(c.ctx, &runnerproto.LogError{ID: m.ID, Message: err.Error()})
 	}
-	lines := make([]runnerwire.LogLine, 0, len(page.lines))
+	lines := make([]runnerproto.LogLine, 0, len(page.lines))
 	for _, line := range page.lines {
 		lines = append(
 			lines,
-			runnerwire.LogLine{
-				At:             runnerwire.Timestamp(line.At),
+			runnerproto.LogLine{
+				At:             runnerproto.Timestamp(line.At),
 				Source:         line.Source,
 				ConversationID: line.ConversationID,
 				Text:           line.Text,
 			},
 		)
 	}
-	return c.send(c.ctx, &runnerwire.LogLines{ID: m.ID, Lines: lines, Next: page.next})
+	return c.send(c.ctx, &runnerproto.LogLines{ID: m.ID, Lines: lines, Next: page.next})
 }
 
 func (c *connection) startTask(id jobs.WorkID, spec jobs.TaskSpec) error {
@@ -167,9 +167,9 @@ func (c *connection) startTask(id jobs.WorkID, spec jobs.TaskSpec) error {
 	return nil
 }
 
-func (c *connection) releaseConversation(m *runnerwire.ConversationRelease) error {
+func (c *connection) releaseConversation(m *runnerproto.ConversationRelease) error {
 	err := c.registration.services.ReleaseConversation(c.ctx, m.ConversationID)
-	reply := &runnerwire.ConversationReleased{ID: m.ID}
+	reply := &runnerproto.ConversationReleased{ID: m.ID}
 	if err != nil {
 		text := err.Error()
 		reply.Error = &text
@@ -177,25 +177,25 @@ func (c *connection) releaseConversation(m *runnerwire.ConversationRelease) erro
 	return c.send(c.ctx, reply)
 }
 
-func (c *connection) filesystemMetadataWork(message runnerwire.Inbound) (work func() error) {
+func (c *connection) filesystemMetadataWork(message runnerproto.Inbound) (work func() error) {
 	switch m := any(message).(type) {
-	case *runnerwire.FSChmod:
+	case *runnerproto.FSChmod:
 		work = func() error { return c.host.Chmod(c.ctx, *m) }
-	case *runnerwire.FSSymlink:
+	case *runnerproto.FSSymlink:
 		work = func() error { return c.host.Symlink(c.ctx, *m) }
-	case *runnerwire.FSLink:
+	case *runnerproto.FSLink:
 		work = func() error { return c.host.Link(c.ctx, *m) }
-	case *runnerwire.FSReadlink:
+	case *runnerproto.FSReadlink:
 		work = func() error { return c.host.Readlink(c.ctx, *m) }
-	case *runnerwire.FSRealpath:
+	case *runnerproto.FSRealpath:
 		work = func() error { return c.host.Realpath(c.ctx, *m) }
-	case *runnerwire.FSUtimes:
+	case *runnerproto.FSUtimes:
 		work = func() error { return c.host.Utimes(c.ctx, *m) }
 	}
 	return work
 }
 
-func (c *connection) installManifest(m *runnerwire.ManifestMessage) {
+func (c *connection) installManifest(m *runnerproto.ManifestMessage) {
 	c.generation++
 	generation := c.generation
 	c.installation.Publish(jobs.ManifestInstalling, nil)

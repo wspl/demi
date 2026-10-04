@@ -11,10 +11,10 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // MaxFiles is where the change list stops and reports truncated.
@@ -29,7 +29,7 @@ const MaxBlobBytes = 8 * 1024 * 1024
 // expires them after fifteen idle minutes, and shares computations per root.
 // Computation has a thirty-second running deadline. Unavailable or failed
 // watches cause whole walks; lost events invalidate the watched baseline.
-func (s *Service) GitChanges(ctx context.Context, request runnerwire.GitChangesMessage) error {
+func (s *Service) GitChanges(ctx context.Context, request runnerproto.GitChangesMessage) error {
 	ctx, leave, err := s.life.enter(ctx)
 	if err != nil {
 		return err
@@ -46,11 +46,11 @@ func (s *Service) GitChanges(ctx context.Context, request runnerwire.GitChangesM
 	if failure == nil {
 		root, failure = filepath.Abs(root)
 	}
-	var result runnerwire.GitChanges
+	var result runnerproto.GitChanges
 	if failure == nil {
 		result, failure = s.git.changes(ctx, root)
 	}
-	return s.gitReply(s.life.ctx, request.ID, &runnerwire.GitChangesResult{Value: result}, failure)
+	return s.gitReply(s.life.ctx, request.ID, &runnerproto.GitChangesResult{Value: result}, failure)
 }
 
 // GitShow decodes a committed blob before replying and streams it whole into
@@ -58,7 +58,7 @@ func (s *Service) GitChanges(ctx context.Context, request runnerwire.GitChangesM
 // not uploading. Oversized blobs answer too_large; missing paths answer ENOENT;
 // a root outside a repository answers not_repository. Every named pipe ends
 // with pipe_done, including a pipe unused because the request failed.
-func (s *Service) GitShow(ctx context.Context, request runnerwire.GitShow) error {
+func (s *Service) GitShow(ctx context.Context, request runnerproto.GitShow) error {
 	ctx, leave, err := s.life.enter(ctx)
 	if err != nil {
 		return err
@@ -67,10 +67,13 @@ func (s *Service) GitShow(ctx context.Context, request runnerwire.GitShow) error
 	var data []byte
 	failure := admit(ctx, s.gitRequests)
 	if failure == nil {
-		data, failure = cmdsdk.Retry(ctx, func() ([]byte, error) { return s.showBlob(ctx, request.Root, request.Path) })
+		data, failure = commandsdk.Retry(
+			ctx,
+			func() ([]byte, error) { return s.showBlob(ctx, request.Root, request.Path) },
+		)
 		<-s.gitRequests
 	}
-	if err = s.gitReply(s.life.ctx, request.ID, &runnerwire.GitShowResult{}, failure); err != nil {
+	if err = s.gitReply(s.life.ctx, request.ID, &runnerproto.GitShowResult{}, failure); err != nil {
 		return err
 	}
 	if failure == nil {
@@ -80,15 +83,15 @@ func (s *Service) GitShow(ctx context.Context, request runnerwire.GitShow) error
 }
 
 // gitReply applies the runner's bounded message size to a working-tree response.
-func (s *Service) gitReply(ctx context.Context, id string, result runnerwire.GitResult, failure error) error {
+func (s *Service) gitReply(ctx context.Context, id string, result runnerproto.GitResult, failure error) error {
 	if failure != nil {
 		problem := gitProblem(failure)
-		return sendFrame(ctx, s.output, &runnerwire.GitError{ID: id, Code: problem.code, Message: problem.message})
+		return sendFrame(ctx, s.output, &runnerproto.GitError{ID: id, Code: problem.code, Message: problem.message})
 	}
-	frame, err := runnerwire.Encode(&runnerwire.GitOK{ID: id, Result: result})
+	frame, err := runnerproto.Encode(&runnerproto.GitOK{ID: id, Result: result})
 	if err == nil {
-		frame, err = runnerwire.WithinLimit(frame, func(reason string) ([]byte, error) {
-			return runnerwire.Encode(&runnerwire.GitError{ID: id, Code: "too_large", Message: reason})
+		frame, err = runnerproto.WithinLimit(frame, func(reason string) ([]byte, error) {
+			return runnerproto.Encode(&runnerproto.GitError{ID: id, Code: "too_large", Message: reason})
 		})
 	}
 	if err != nil {

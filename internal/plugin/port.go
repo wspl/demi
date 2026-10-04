@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Transport carries one plugin port operation to its answer.
@@ -91,7 +91,7 @@ func (p Port) WriteValueNaming(
 	key string,
 	value json.RawMessage,
 	revision *uint64,
-	blobs []core.BlobRef,
+	blobs []types.BlobRef,
 ) (uint64, error) {
 	answer, err := p.ask(ctx, &PortMessageWriteValue{Key: key, Value: value, Revision: revision, Blobs: blobs})
 	if err != nil {
@@ -104,7 +104,7 @@ func (p Port) WriteValueNaming(
 }
 
 // PutBlob performs the put_blob port operation.
-func (p Port) PutBlob(ctx context.Context, bytes core.B64Bytes) (core.BlobRef, error) {
+func (p Port) PutBlob(ctx context.Context, bytes types.B64Bytes) (types.BlobRef, error) {
 	answer, err := p.ask(ctx, &PortMessagePutBlob{Bytes: bytes})
 	if err != nil {
 		return "", err
@@ -116,7 +116,7 @@ func (p Port) PutBlob(ctx context.Context, bytes core.B64Bytes) (core.BlobRef, e
 }
 
 // Blob performs the get_blob port operation; ok is false when the user's namespace lacks the blob.
-func (p Port) Blob(ctx context.Context, blob core.BlobRef) (core.B64Bytes, bool, error) {
+func (p Port) Blob(ctx context.Context, blob types.BlobRef) (types.B64Bytes, bool, error) {
 	answer, err := p.ask(ctx, &PortMessageGetBlob{Blob: blob})
 	if err != nil {
 		return nil, false, err
@@ -182,7 +182,7 @@ func (p Port) Changed(ctx context.Context, scope Scope) error {
 // PackageCall performs the package_call port operation.
 func (p Port) PackageCall(
 	ctx context.Context,
-	operation declare.NativeOperation,
+	operation commanddecl.NativeOperation,
 	args json.RawMessage,
 	kind CallKind,
 ) (json.RawMessage, error) {
@@ -223,7 +223,7 @@ func (p Port) Exposes(ctx context.Context) (ExposeList, error) {
 // CreateExpose performs the create_expose port operation.
 func (p Port) CreateExpose(
 	ctx context.Context,
-	device webapi.DeviceID,
+	device webapiproto.DeviceID,
 	address string,
 	lifetime uint64,
 ) (ExposeRecord, error) {
@@ -238,7 +238,7 @@ func (p Port) CreateExpose(
 }
 
 // RenewExpose performs the renew_expose port operation.
-func (p Port) RenewExpose(ctx context.Context, expose webapi.ExposeID, lifetime uint64) (ExposeRecord, error) {
+func (p Port) RenewExpose(ctx context.Context, expose webapiproto.ExposeID, lifetime uint64) (ExposeRecord, error) {
 	answer, err := p.ask(ctx, &PortMessageRenewExpose{Expose: expose, Lifetime: lifetime})
 	if err != nil {
 		return ExposeRecord{}, err
@@ -250,7 +250,7 @@ func (p Port) RenewExpose(ctx context.Context, expose webapi.ExposeID, lifetime 
 }
 
 // RemoveExpose performs the remove_expose port operation.
-func (p Port) RemoveExpose(ctx context.Context, expose webapi.ExposeID) error {
+func (p Port) RemoveExpose(ctx context.Context, expose webapiproto.ExposeID) error {
 	answer, err := p.ask(ctx, &PortMessageRemoveExpose{Expose: expose})
 	if err != nil {
 		return err

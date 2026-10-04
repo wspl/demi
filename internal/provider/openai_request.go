@@ -9,17 +9,17 @@ import (
 	"unicode/utf16"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ReasoningEffort reads an effort-based thinking configuration.
-func ReasoningEffort(thinking core.ThinkingConfig) *string {
+func ReasoningEffort(thinking types.ThinkingConfig) *string {
 	switch config := thinking.(type) {
-	case *core.AdaptiveConfig:
+	case *types.AdaptiveConfig:
 		return &config.Effort
-	case *core.EffortConfig:
+	case *types.EffortConfig:
 		return &config.Effort
-	case *core.BudgetConfig, *core.DisabledConfig:
+	case *types.BudgetConfig, *types.DisabledConfig:
 		return nil
 	}
 	return nil
@@ -45,8 +45,8 @@ func ShortHash(text string) string {
 
 // Reasoning is the reasoning object of a Responses request.
 type Reasoning struct {
-	Effort  string                `json:"effort"`
-	Summary *core.ThinkingSummary `json:"summary,omitempty"`
+	Effort  string                 `json:"effort"`
+	Summary *types.ThinkingSummary `json:"summary,omitempty"`
 }
 
 // SummaryOff specifies how an endpoint accepts a disabled summary.
@@ -61,14 +61,14 @@ const (
 )
 
 // ResponsesReasoning maps effort and adaptive thinking to a Responses request.
-func ResponsesReasoning(thinking core.ThinkingConfig, off SummaryOff) *Reasoning {
-	auto := core.ThinkingSummary("auto")
+func ResponsesReasoning(thinking types.ThinkingConfig, off SummaryOff) *Reasoning {
+	auto := types.ThinkingSummary("auto")
 	switch config := thinking.(type) {
-	case *core.BudgetConfig, *core.DisabledConfig:
+	case *types.BudgetConfig, *types.DisabledConfig:
 		return nil
-	case *core.AdaptiveConfig:
+	case *types.AdaptiveConfig:
 		return &Reasoning{Effort: config.Effort, Summary: &auto}
-	case *core.EffortConfig:
+	case *types.EffortConfig:
 		result := &Reasoning{Effort: config.Effort}
 		if config.Effort == "none" {
 			return result
@@ -514,7 +514,7 @@ type ChatDialect struct {
 // ChatMessages replays the transcript, coalescing adjacent assistant text and calls.
 func ChatMessages(systemPrompt string, items []InferenceItem, dialect ChatDialect) ([]ChatMessage, error) {
 	messages := make([]ChatMessage, 0)
-	if !core.IsBlank(systemPrompt) {
+	if !types.IsBlank(systemPrompt) {
 		messages = append(messages, &ChatSystem{Role: "system", Content: systemPrompt})
 	}
 	turn := chatTurn{reasoningContent: dialect.ReasoningContent}

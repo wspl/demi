@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // MemoryStorage implements one node's revisioned command storage.
@@ -143,7 +143,7 @@ func takeInput(queue *[][]byte) host.PortResponse {
 	if len(*queue) == 0 {
 		return &host.PortInput{}
 	}
-	data := core.B64Bytes((*queue)[0])
+	data := types.B64Bytes((*queue)[0])
 	*queue = (*queue)[1:]
 	return &host.PortInput{Bytes: &data}
 }
@@ -151,28 +151,28 @@ func takeInput(queue *[][]byte) host.PortResponse {
 // CountingNumbers assigns each conversation sequence numbers starting at one.
 type CountingNumbers struct {
 	mu   sync.Mutex
-	next map[core.Sequence]uint64
+	next map[types.Sequence]uint64
 }
 
 // Next returns the next number of the given sequence.
-func (n *CountingNumbers) Next(_ context.Context, sequence core.Sequence) (uint64, error) {
+func (n *CountingNumbers) Next(_ context.Context, sequence types.Sequence) (uint64, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.next == nil {
-		n.next = map[core.Sequence]uint64{}
+		n.next = map[types.Sequence]uint64{}
 	}
 	n.next[sequence]++
 	return n.next[sequence], nil
 }
 
 // CommandContext is the test context, with locale different from the backend default.
-func CommandContext() commandwire.Context {
-	return commandwire.Context{
+func CommandContext() commandproto.Context {
+	return commandproto.Context{
 		Conversation: "test-conversation",
-		Caller:       &commandwire.AgentCaller{Number: 1},
-		Locale: commandwire.CommandLocale{
+		Caller:       &commandproto.AgentCaller{Number: 1},
+		Locale: commandproto.CommandLocale{
 			TimeZone:  "Asia/Shanghai",
-			Languages: []commandwire.LanguageTag{"zh-CN", "en"},
+			Languages: []commandproto.LanguageTag{"zh-CN", "en"},
 		},
 	}
 }

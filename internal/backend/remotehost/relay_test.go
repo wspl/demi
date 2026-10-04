@@ -12,10 +12,10 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // relayCommands binds the probe leaf to a scenario-owned handler.
@@ -29,10 +29,10 @@ func relayCommands(t *testing.T, handler host.RPCHandlerFunc) *host.CommandSet {
 				"probe",
 				"Probes.",
 				host.Leaf(
-					declare.Leaf[declare.NativeOperation]{
+					commanddecl.Leaf[commanddecl.NativeOperation]{
 						Name:    "live",
 						Summary: "Live input.",
-						Kind:    &declare.RPC[declare.NativeOperation]{},
+						Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
 					},
 					handler,
 				),
@@ -43,8 +43,8 @@ func relayCommands(t *testing.T, handler host.RPCHandlerFunc) *host.CommandSet {
 }
 
 // rpcRequest names the job whose context must authorize and reach the handler.
-func rpcRequest(job, id string) *runnerwire.RPCCall {
-	return &runnerwire.RPCCall{
+func rpcRequest(job, id string) *runnerproto.RPCCall {
+	return &runnerproto.RPCCall{
 		JobID:  job,
 		CallID: id,
 		Root:   "probe",
@@ -63,11 +63,11 @@ func callOutcome(t *testing.T, l *remotehosttest.TestLink) (string, uint8) {
 	var stderr strings.Builder
 	for {
 		frame := nextFrame(t, l)
-		if output, ok := frame.(*runnerwire.RPCOutput); ok {
+		if output, ok := frame.(*runnerproto.RPCOutput); ok {
 			stderr.Write(output.Bytes)
 			continue
 		}
-		if exit, ok := frame.(*runnerwire.RPCExit); ok {
+		if exit, ok := frame.(*runnerproto.RPCExit); ok {
 			return stderr.String(), exit.ExitCode
 		}
 		t.Fatalf("unexpected RPC frame %T", frame)
@@ -116,24 +116,24 @@ func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T
 				requirePipe(t, err)
 				nextFrame(t, l)
 				sendFrame(t, l, rpcRequest(job.ID(), "call"))
-				pipes := nextFrame(t, l).(*runnerwire.RPCPipes)
+				pipes := nextFrame(t, l).(*runnerproto.RPCPipes)
 				if pipes.Stdin == nil {
 					t.Fatal("missing stdin pipe")
 				}
-				_ = nextFrame(t, l).(*runnerwire.RPCStdinPull)
+				_ = nextFrame(t, l).(*runnerproto.RPCStdinPull)
 				expected := ""
 				switch event {
 				case "cancel":
-					sendFrame(t, l, &runnerwire.RPCCancel{CallID: "call"})
+					sendFrame(t, l, &runnerproto.RPCCancel{CallID: "call"})
 					expected = "command cancelled"
 				case "job":
 					sendFrame(
 						t,
 						l,
-						&runnerwire.JobExit{
+						&runnerproto.JobExit{
 							JobID:    job.ID(),
 							ExitCode: new(int32(7)),
-							Files:    []runnerwire.JobFileChange{},
+							Files:    []runnerproto.JobFileChange{},
 						},
 					)
 					expected = fmt.Sprintf("calling job %s exited before its RPC completed", job.ID())
@@ -141,7 +141,7 @@ func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T
 					sendFrame(
 						t,
 						l,
-						&runnerwire.PipeDone{PipeID: pipes.Stdout.ID, Ok: false, Error: new("upload failed")},
+						&runnerproto.PipeDone{PipeID: pipes.Stdout.ID, Ok: false, Error: new("upload failed")},
 					)
 					expected = "pipe failed: upload failed"
 				case "stdout", "stdin":
@@ -155,12 +155,12 @@ func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T
 					sendFrame(
 						t,
 						l,
-						&runnerwire.RPCStdin{CallID: "call", Bytes: make([]byte, runnerwire.StdinChunkBytes+1)},
+						&runnerproto.RPCStdin{CallID: "call", Bytes: make([]byte, runnerproto.StdinChunkBytes+1)},
 					)
 					expected = "Unrequested or oversized RPC stdin chunk"
 				case "unasked":
 					for range 2 {
-						sendFrame(t, l, &runnerwire.RPCStdin{CallID: "call", Bytes: []byte("typed")})
+						sendFrame(t, l, &runnerproto.RPCStdin{CallID: "call", Bytes: []byte("typed")})
 					}
 					expected = "Unrequested or oversized RPC stdin chunk"
 				case "disconnect":
@@ -185,7 +185,11 @@ func TestCallStopsOnFirstCauseReleasesLiveInputAndExitsAfterHandler(t *testing.T
 				sendFrame(
 					t,
 					l,
-					&runnerwire.JobExit{JobID: job.ID(), ExitCode: new(int32(7)), Files: []runnerwire.JobFileChange{}},
+					&runnerproto.JobExit{
+						JobID:    job.ID(),
+						ExitCode: new(int32(7)),
+						Files:    []runnerproto.JobFileChange{},
+					},
 				)
 				stderr, code := callOutcome(t, l)
 				select {
@@ -223,7 +227,7 @@ func TestCallExitsAfterStdoutDrained(t *testing.T) {
 		request := rpcRequest(job.ID(), "call")
 		request.Stdin = false
 		sendFrame(t, l, request)
-		pipes := nextFrame(t, l).(*runnerwire.RPCPipes)
+		pipes := nextFrame(t, l).(*runnerproto.RPCPipes)
 		if pipes.Stdin != nil {
 			t.Fatal("unexpected stdin")
 		}

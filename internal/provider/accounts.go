@@ -5,17 +5,17 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // SubscriptionAccounts is the account operations of one subscription entry.
 type SubscriptionAccounts interface {
 	Capability() AccountsCapability
-	List(context.Context) ([]core.AccountInfo, error)
+	List(context.Context) ([]types.AccountInfo, error)
 	Active(context.Context) (string, bool, error)
 	SetActive(context.Context, string) error
-	Login(context.Context, func(core.LoginPending)) (core.AccountInfo, error)
-	Add(context.Context, AddAccount) (core.AccountInfo, error)
+	Login(context.Context, func(types.LoginPending)) (types.AccountInfo, error)
+	Add(context.Context, AddAccount) (types.AccountInfo, error)
 	Remove(context.Context, string) error
 }
 
@@ -45,7 +45,7 @@ type NewAccount struct {
 // Unsupported operations return ErrLoginUnsupported or ErrAccountsUnsupported.
 type AccountKit interface {
 	Capability() AccountsCapability
-	Login(context.Context, func(core.LoginPending)) (NewAccount, error)
+	Login(context.Context, func(types.LoginPending)) (NewAccount, error)
 	Add(AddAccount) (NewAccount, error)
 }
 
@@ -53,11 +53,11 @@ type AccountKit interface {
 type Accounts struct {
 	pool  CredentialPool
 	kit   AccountKit
-	clock core.Clock
+	clock types.Clock
 }
 
 // NewAccounts connects an entry's pool to its family kit.
-func NewAccounts(pool CredentialPool, kit AccountKit, clock core.Clock) *Accounts {
+func NewAccounts(pool CredentialPool, kit AccountKit, clock types.Clock) *Accounts {
 	return &Accounts{pool: pool, kit: kit, clock: clock}
 }
 
@@ -65,12 +65,12 @@ func NewAccounts(pool CredentialPool, kit AccountKit, clock core.Clock) *Account
 func (a *Accounts) Capability() AccountsCapability { return a.kit.Capability() }
 
 // List returns accounts in ID order.
-func (a *Accounts) List(ctx context.Context) ([]core.AccountInfo, error) {
+func (a *Accounts) List(ctx context.Context) ([]types.AccountInfo, error) {
 	accounts, err := a.pool.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]core.AccountInfo, len(accounts))
+	result := make([]types.AccountInfo, len(accounts))
 	for i, account := range accounts {
 		result[i] = account.Info()
 	}
@@ -84,26 +84,26 @@ func (a *Accounts) Active(ctx context.Context) (string, bool, error) { return a.
 func (a *Accounts) SetActive(ctx context.Context, id string) error { return a.pool.SetActive(ctx, id) }
 
 // Login runs the device flow and imports the result only after it completes.
-func (a *Accounts) Login(ctx context.Context, pending func(core.LoginPending)) (core.AccountInfo, error) {
+func (a *Accounts) Login(ctx context.Context, pending func(types.LoginPending)) (types.AccountInfo, error) {
 	account, err := a.kit.Login(ctx, pending)
 	if err != nil {
-		return core.AccountInfo{}, err
+		return types.AccountInfo{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return core.AccountInfo{}, err
+		return types.AccountInfo{}, err
 	}
 	info, err := a.importAccount(ctx, account, "login:device")
 	if err != nil {
-		return core.AccountInfo{}, err
+		return types.AccountInfo{}, err
 	}
 	return info, nil
 }
 
 // Add imports material supplied by the product.
-func (a *Accounts) Add(ctx context.Context, input AddAccount) (core.AccountInfo, error) {
+func (a *Accounts) Add(ctx context.Context, input AddAccount) (types.AccountInfo, error) {
 	account, err := a.kit.Add(input)
 	if err != nil {
-		return core.AccountInfo{}, err
+		return types.AccountInfo{}, err
 	}
 	return a.importAccount(ctx, account, "add")
 }
@@ -128,14 +128,14 @@ func (a *Accounts) Remove(ctx context.Context, id string) error {
 }
 
 // importAccount replaces matching identities and selects an entry's first account.
-func (a *Accounts) importAccount(ctx context.Context, account NewAccount, source string) (core.AccountInfo, error) {
+func (a *Accounts) importAccount(ctx context.Context, account NewAccount, source string) (types.AccountInfo, error) {
 	var existing AccountMeta
 	found := false
 	var err error
 	if account.Label.IdentityKey != nil {
 		existing, found, err = FindByIdentity(ctx, a.pool, *account.Label.IdentityKey)
 		if err != nil {
-			return core.AccountInfo{}, err
+			return types.AccountInfo{}, err
 		}
 	}
 	id := CredentialIDFor(account.Label.IdentityKey, account.Label.Label)
@@ -151,15 +151,15 @@ func (a *Accounts) importAccount(ctx context.Context, account NewAccount, source
 		IdentityKey: account.Label.IdentityKey,
 	}
 	if err := a.pool.Write(ctx, meta, account.Secret); err != nil {
-		return core.AccountInfo{}, err
+		return types.AccountInfo{}, err
 	}
 	_, ok, err := a.pool.Active(ctx)
 	if err != nil {
-		return core.AccountInfo{}, err
+		return types.AccountInfo{}, err
 	}
 	if !ok {
 		if err := a.pool.SetActive(ctx, id); err != nil {
-			return core.AccountInfo{}, err
+			return types.AccountInfo{}, err
 		}
 	}
 	return meta.Info(), nil
@@ -245,10 +245,10 @@ func (f AuthError) Failure() Failure {
 }
 
 // State returns unauthenticated when missing, or an error for other failures.
-func (f AuthError) State() core.AuthState {
+func (f AuthError) State() types.AuthState {
 	message := f.Error()
 	if f.Reason == AuthReasonMissing {
-		return &core.Unauthenticated{Message: &message}
+		return &types.Unauthenticated{Message: &message}
 	}
-	return &core.AuthError{Message: message}
+	return &types.AuthError{Message: message}
 }

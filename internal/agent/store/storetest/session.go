@@ -5,12 +5,12 @@ import (
 	"errors"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 type memorySession struct {
 	tree *MemoryTreeStore
-	id   core.NodeID
+	id   types.NodeID
 }
 
 // Save waits outside the mutex, then checks the invocation guard at the commit.

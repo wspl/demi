@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // SyncChannel is a page's synchronization channel. Its test owns socket cleanup.
@@ -51,34 +51,37 @@ func (b *TestBackend) sync(ctx context.Context, session *Session) (*SyncChannel,
 }
 
 // Next returns the next validated message, including heartbeats.
-func (s *SyncChannel) Next(ctx context.Context) (webapi.SyncEvent, error) {
+func (s *SyncChannel) Next(ctx context.Context) (webapiproto.SyncEvent, error) {
 	for {
 		kind, data, err := s.socket.Read(ctx)
 		if err != nil {
 			return nil, err
 		}
 		if kind == websocket.MessageText {
-			return webapi.DecodeSyncEvent(data)
+			return webapiproto.DecodeSyncEvent(data)
 		}
 	}
 }
 
 // Snapshot reads the channel's first message as product state.
-func (s *SyncChannel) Snapshot(ctx context.Context) (webapi.ProductState, error) {
+func (s *SyncChannel) Snapshot(ctx context.Context) (webapiproto.ProductState, error) {
 	event, err := s.Next(ctx)
 	if err != nil {
-		return webapi.ProductState{}, err
+		return webapiproto.ProductState{}, err
 	}
-	snapshot, ok := event.(*webapi.SyncEventSnapshot)
+	snapshot, ok := event.(*webapiproto.SyncEventSnapshot)
 	if !ok {
-		return webapi.ProductState{}, fmt.Errorf("the channel's first message is not the snapshot: %T", event)
+		return webapiproto.ProductState{}, fmt.Errorf("the channel's first message is not the snapshot: %T", event)
 	}
 	return snapshot.State, nil
 }
 
 // Until reads up to and including the first message accepted by done.
-func (s *SyncChannel) Until(ctx context.Context, done func(webapi.SyncEvent) bool) ([]webapi.SyncEvent, error) {
-	var received []webapi.SyncEvent
+func (s *SyncChannel) Until(
+	ctx context.Context,
+	done func(webapiproto.SyncEvent) bool,
+) ([]webapiproto.SyncEvent, error) {
+	var received []webapiproto.SyncEvent
 	for {
 		event, err := s.Next(ctx)
 		if err != nil {

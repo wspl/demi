@@ -7,8 +7,8 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // modelView resolves only blobs replay needs, outside the session state lock.
@@ -56,7 +56,7 @@ func (s *Session) request(ctx context.Context) (provider.InferenceRequest, error
 	snapshot := s.Transcript()
 	seen := []SeenContext{}
 	for _, block := range snapshot.Blocks[transcript.ReplayStart(snapshot.Blocks):] {
-		if b, ok := block.(*core.ContextBlock); ok {
+		if b, ok := block.(*types.ContextBlock); ok {
 			seen = append(seen, SeenContext{Source: b.Source, Text: b.Text})
 		}
 	}

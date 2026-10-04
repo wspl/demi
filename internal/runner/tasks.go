@@ -4,7 +4,7 @@ import (
 	"maps"
 
 	"github.com/wspl/demi/internal/runner/jobs"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // taskEnvironment supplies the installation-owned defaults for backend work.
@@ -16,7 +16,7 @@ type taskEnvironment struct {
 }
 
 // shellSpec combines the device and requested environment, keeping installation authority local.
-func (e taskEnvironment) shellSpec(request *runnerwire.JobStart) jobs.TaskSpec {
+func (e taskEnvironment) shellSpec(request *runnerproto.JobStart) jobs.TaskSpec {
 	values := maps.Clone(e.values)
 	if values == nil {
 		values = make(map[string]string)
@@ -34,7 +34,7 @@ func (e taskEnvironment) shellSpec(request *runnerwire.JobStart) jobs.TaskSpec {
 }
 
 // processSpec applies raw-process environment replacement, overlays and removal.
-func (e taskEnvironment) processSpec(request *runnerwire.Spawn) jobs.TaskSpec {
+func (e taskEnvironment) processSpec(request *runnerproto.Spawn) jobs.TaskSpec {
 	values := make(map[string]string)
 	if request.Env == nil || request.InheritEnv != nil && *request.InheritEnv {
 		maps.Copy(values, e.values)

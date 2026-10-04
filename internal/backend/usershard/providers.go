@@ -8,21 +8,21 @@ import (
 
 	"github.com/wspl/demi/internal/agent/server"
 	"github.com/wspl/demi/internal/backend/hostaccess"
-	"github.com/wspl/demi/internal/backend/providers"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/provider"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type conversationProviders struct {
 	shard *Shard
-	rate  *providers.RequestRateLimit
+	rate  *providerhost.RequestRateLimit
 }
 type conversationRuntime struct {
 	source       *conversationProviders
-	conversation webapi.ConversationID
-	entry        webapi.ProviderID
-	selection    core.ModelSelection
+	conversation webapiproto.ConversationID
+	entry        webapiproto.ProviderID
+	selection    types.ModelSelection
 	current      *currentRuntime
 }
 type currentRuntime struct {
@@ -34,15 +34,15 @@ type currentRuntime struct {
 // Selection reads the conversation’s persisted model selection.
 func (p *conversationProviders) Selection(
 	ctx context.Context,
-	root core.NodeID,
-) (core.ModelSelection, error) {
+	root types.NodeID,
+) (types.ModelSelection, error) {
 	record, found, err := p.shard.Control().Conversation(ctx, hostaccess.ConversationOf(root))
 	if err != nil {
-		return core.ModelSelection{}, err
+		return types.ModelSelection{}, err
 	}
 	if !found || record.Model == nil {
 		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
-		return core.ModelSelection{}, errors.New("The conversation has no model yet")
+		return types.ModelSelection{}, errors.New("The conversation has no model yet")
 	}
 	return *record.Model, nil
 }
@@ -50,10 +50,10 @@ func (p *conversationProviders) Selection(
 // Runtime resolves a visible provider and serves the conversation’s selected model.
 func (p *conversationProviders) Runtime(
 	ctx context.Context,
-	root core.NodeID,
-	model core.ModelSelection,
+	root types.NodeID,
+	model types.ModelSelection,
 ) (provider.Runtime, error) {
-	id, err := webapi.ParseProviderID(model.ProviderID)
+	id, err := webapiproto.ParseProviderID(model.ProviderID)
 	if err != nil {
 		return nil, server.ProviderUnavailable(model.ProviderID)
 	}
@@ -78,14 +78,14 @@ func (p *conversationProviders) Runtime(
 
 func (r *conversationRuntime) serve(
 	ctx context.Context,
-	entry providers.Entry,
-	requested core.ModelSelection,
+	entry providerhost.Entry,
+	requested types.ModelSelection,
 ) *provider.Failure {
-	if credential, ok := entry.Credential.(*providers.SubscriptionCredential); ok && credential.Active == nil {
+	if credential, ok := entry.Credential.(*providerhost.SubscriptionCredential); ok && credential.Active == nil {
 		code := provider.AuthMissing
 		return &provider.Failure{Message: "No subscription account configured", Code: &code}
 	}
-	selection, err := providers.ConfiguredSelection(entry, requested)
+	selection, err := providerhost.ConfiguredSelection(entry, requested)
 	if err != nil {
 		return &provider.Failure{Message: err.Error()}
 	}
@@ -109,10 +109,10 @@ func (r *conversationRuntime) serve(
 		if err != nil {
 			return &provider.Failure{Message: err.Error()}
 		}
-		metered := providers.NewMeteredRuntime(
+		metered := providerhost.NewMeteredRuntime(
 			runtime,
 			r.source.rate,
-			providers.Ledger{
+			providerhost.Ledger{
 				Control:      shard.Control(),
 				User:         shard.user,
 				Conversation: r.conversation,
@@ -202,7 +202,7 @@ func (r *conversationRuntime) Close(ctx context.Context) error {
 }
 
 // RequestLimits returns the current provider’s model limits.
-func (r *conversationRuntime) RequestLimits(model core.Model) provider.RequestLimits {
+func (r *conversationRuntime) RequestLimits(model types.Model) provider.RequestLimits {
 	if r.current == nil {
 		return provider.RequestLimits{}
 	}

@@ -15,8 +15,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // pipeServer uses in-memory socket endpoints so HTTP timer scenarios run under
@@ -51,13 +51,13 @@ func pipeServer(t *testing.T, client *PipeClient, handler func(*http.Request, ne
 
 func testPipeClient(t *testing.T, timeout time.Duration) *PipeClient {
 	t.Helper()
-	origin, err := runnerwire.ParseBackendURL("http://backend.invalid/ignored?ignored")
+	origin, err := runnerproto.ParseBackendURL("http://backend.invalid/ignored?ignored")
 	if err != nil {
 		t.Fatal(err)
 	}
 	client, err := NewPipeClientWithConnectTimeout(
 		origin,
-		func() (runnerwire.DeviceToken, bool) { return runnerwire.DeviceToken("test-token"), true },
+		func() (runnerproto.DeviceToken, bool) { return runnerproto.DeviceToken("test-token"), true },
 		timeout,
 	)
 	if err != nil {
@@ -244,7 +244,7 @@ func TestPipeRetriesOnlyUnreadUploads(t *testing.T) {
 			client.transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 				calls++
 				if !consumed && calls == 1 {
-					return nil, cmdsdk.Exhaustion()
+					return nil, commandsdk.Exhaustion()
 				}
 				return dial(ctx, network, address)
 			}
@@ -267,7 +267,7 @@ func TestPipeRetriesOnlyUnreadUploads(t *testing.T) {
 
 type failedUpload struct{}
 
-func (failedUpload) Read([]byte) (int, error) { return 0, cmdsdk.Exhaustion() }
+func (failedUpload) Read([]byte) (int, error) { return 0, commandsdk.Exhaustion() }
 
 func TestPipeEarlyRefusalInterruptsUpload(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

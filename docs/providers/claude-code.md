@@ -212,7 +212,7 @@ backend, on the user's shard                 provider-claude-code
   --- shell's Process ---------------------------->  the run drives it
 ```
 
-`internal/providers/claudecode` defines the placement contract: `start` starts a new CLI
+`internal/provider/claudecode` defines the placement contract: `start` starts a new CLI
 process on the machine the placement chooses and answers shell's `Process`. The
 provider builds the spawn request itself, from the executable's path and the
 run and configuration directories the placement names on that machine, so the
@@ -326,7 +326,7 @@ message; Demi's answer goes back on standard input as a control response that
 wraps the MCP reply.
 
 Demi's side of the channel is a small MCP server in
-`internal/providers/claudecode` (`mcp.go`): it implements the protocol's
+`internal/provider/claudecode` (`mcp.go`): it implements the protocol's
 types, the `initialize` handshake and version negotiation over the revisions it
 accepts. The run drives it: the run passes each MCP
 message it reads from the CLI to the server through an in-memory transport and

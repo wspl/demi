@@ -14,10 +14,10 @@ import (
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestTurnPatchesRebuildTranscript(t *testing.T) {
@@ -45,22 +45,22 @@ func TestTurnPatchesRebuildTranscript(t *testing.T) {
 			},
 		)
 		c := f.client()
-		c.Send(t.Context(), &framewire.OpenFrame{})
+		c.Send(t.Context(), &conversationproto.OpenFrame{})
 		handshake := c.Received()
 		c.Send(t.Context(), send("m1", "List the files"))
 		frames := untilIdle(t, c)
-		patches := []framewire.ServerFrame{}
+		patches := []conversationproto.ServerFrame{}
 		for _, frame := range frames {
-			if _, ok := frame.(*framewire.TranscriptPatchFrame); ok {
+			if _, ok := frame.(*conversationproto.TranscriptPatchFrame); ok {
 				patches = append(patches, frame)
 			}
 		}
 		live := f.server.Tree(rootID()).Root().Session().Transcript()
 		actual, err := contract.EncodeJSON([]struct {
-			Name       string                  `json:"name"`
-			Reset      framewire.ServerFrame   `json:"reset"`
-			Patches    []framewire.ServerFrame `json:"patches"`
-			Transcript []core.Block            `json:"transcript"`
+			Name       string                          `json:"name"`
+			Reset      conversationproto.ServerFrame   `json:"reset"`
+			Patches    []conversationproto.ServerFrame `json:"patches"`
+			Transcript []types.Block                   `json:"transcript"`
 		}{{"a turn with signed thinking, streamed text and a tool call", handshake[1], patches, live.Blocks}})
 		if err != nil {
 			t.Fatal(err)
@@ -83,18 +83,18 @@ func TestTurnPatchesRebuildTranscript(t *testing.T) {
 			t.Fatal(record)
 		}
 
-		c.Send(t.Context(), &framewire.CloseFrame{})
+		c.Send(t.Context(), &conversationproto.CloseFrame{})
 		closed := c.Received()
-		if _, ok := closed[len(closed)-1].(*framewire.ClosedFrame); !ok {
+		if _, ok := closed[len(closed)-1].(*conversationproto.ClosedFrame); !ok {
 			t.Fatal(closed)
 		}
 		if f.server.Tree(rootID()) != nil {
 			t.Fatal("closed tree remains")
 		}
 		equal(t, 1, f.script.Closes())
-		c.Send(t.Context(), &framewire.OpenFrame{})
+		c.Send(t.Context(), &conversationproto.OpenFrame{})
 		h := c.Received()
-		reset := h[1].(*framewire.TranscriptResetFrame)
+		reset := h[1].(*conversationproto.TranscriptResetFrame)
 		equal(t, live.Blocks, reset.Blocks)
 		if live.Version.Epoch == reset.Version.Epoch {
 			t.Fatal("reopen reused epoch")
@@ -124,22 +124,22 @@ func TestProviderFailureIsPublishedOnceAndQueueContinues(t *testing.T) {
 				equal(t, 2, len(f.script.Requests()))
 				count := 0
 				for _, frame := range c.Received() {
-					if e, ok := frame.(*framewire.ErrorFrame); ok {
+					if e, ok := frame.(*conversationproto.ErrorFrame); ok {
 						count++
 						equal(t, "the vendor refused", e.Message)
 						equal(t, string(code), *e.Code)
 						if e.Diagnostics == nil {
 							t.Fatal("missing diagnostics")
 						}
-						equal(t, core.FailureSourceUnknown, e.Diagnostics.Source)
+						equal(t, types.FailureSourceUnknown, e.Diagnostics.Source)
 						equal(t, f.script.Requests()[0].RequestID, *e.Diagnostics.ClientRequestID)
 					}
 				}
 				equal(t, 1, count)
 				cp := f.store.Checkpoint(rootID())
 				assertBlockTypes(t, cp.Transcript, "User", "Text", "Error", "User", "Text", "Response")
-				equal(t, string(code), *cp.Transcript[2].(*core.ErrorBlock).Code)
-				equal(t, core.SessionPhaseIdle, cp.State.Phase)
+				equal(t, string(code), *cp.Transcript[2].(*types.ErrorBlock).Code)
+				equal(t, types.SessionPhaseIdle, cp.State.Phase)
 			})
 		})
 	}
@@ -153,8 +153,8 @@ func TestStopPublishesMarkerBeforeReplyAndRunsQueue(t *testing.T) {
 		observer := f.server.Tree(rootID()).Root().Session().Subscribe(func(event session.Event) {
 			if change, ok := event.(*session.TranscriptChanged); ok {
 				for _, patch := range change.Patches {
-					if added, ok := patch.(*framewire.AddPatch); ok {
-						if _, stopped := added.Value.(*core.AbortBlock); stopped {
+					if added, ok := patch.(*conversationproto.AddPatch); ok {
+						if _, stopped := added.Value.(*types.AbortBlock); stopped {
 							close(paused)
 							<-release
 						}
@@ -170,7 +170,7 @@ func TestStopPublishesMarkerBeforeReplyAndRunsQueue(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			c.Send(t.Context(), &framewire.AbortFrame{})
+			c.Send(t.Context(), &conversationproto.AbortFrame{})
 		}()
 		<-paused
 		synctest.Wait()
@@ -178,12 +178,12 @@ func TestStopPublishesMarkerBeforeReplyAndRunsQueue(t *testing.T) {
 		close(release)
 		<-done
 		for _, frame := range early {
-			if _, ok := frame.(*framewire.AbortResultFrame); ok {
+			if _, ok := frame.(*conversationproto.AbortResultFrame); ok {
 				t.Fatal("abort reply preceded marker publication")
 			}
 		}
-		frames, err := c.NextUntil(t.Context(), func(f framewire.ServerFrame) bool {
-			_, ok := f.(*framewire.AbortResultFrame)
+		frames, err := c.NextUntil(t.Context(), func(f conversationproto.ServerFrame) bool {
+			_, ok := f.(*conversationproto.AbortResultFrame)
 			return ok
 		})
 		if err != nil {
@@ -191,10 +191,10 @@ func TestStopPublishesMarkerBeforeReplyAndRunsQueue(t *testing.T) {
 		}
 		marker := false
 		for _, f := range frames {
-			if p, ok := f.(*framewire.TranscriptPatchFrame); ok {
+			if p, ok := f.(*conversationproto.TranscriptPatchFrame); ok {
 				for _, p := range p.Patches {
-					if a, ok := p.(*framewire.AddPatch); ok {
-						if _, ok := a.Value.(*core.AbortBlock); ok {
+					if a, ok := p.(*conversationproto.AddPatch); ok {
+						if _, ok := a.Value.(*types.AbortBlock); ok {
 							marker = true
 						}
 					}
@@ -204,8 +204,8 @@ func TestStopPublishesMarkerBeforeReplyAndRunsQueue(t *testing.T) {
 		if !marker {
 			t.Fatal("abort reply preceded marker")
 		}
-		reply := frames[len(frames)-1].(*framewire.AbortResultFrame)
-		equal(t, framewire.AbortTargetActiveProviderStream, *reply.Result.Target)
+		reply := frames[len(frames)-1].(*conversationproto.AbortResultFrame)
+		equal(t, conversationproto.AbortTargetActiveProviderStream, *reply.Result.Target)
 		if !reply.Result.CanAbortAgain {
 			t.Fatal(reply)
 		}
@@ -253,21 +253,21 @@ func TestCloseSavesInterruptionAndReopenRunsQueue(t *testing.T) {
 		c.Send(t.Context(), send("m1", "first"))
 		c.Send(t.Context(), send("m2", "second"))
 		synctest.Wait()
-		c.Send(t.Context(), &framewire.CloseFrame{})
+		c.Send(t.Context(), &conversationproto.CloseFrame{})
 		closed := c.Received()
-		if _, ok := closed[len(closed)-1].(*framewire.ClosedFrame); !ok {
+		if _, ok := closed[len(closed)-1].(*conversationproto.ClosedFrame); !ok {
 			t.Fatal(closed)
 		}
 		cp := f.store.Checkpoint(rootID())
-		equal(t, core.SessionPhaseRunning, cp.State.Phase)
+		equal(t, types.SessionPhaseRunning, cp.State.Phase)
 		assertBlockTypes(t, cp.Transcript, "User", "Error")
 		equal(t, 1, len(cp.State.Queue))
 		equal(t, turnID("m2"), cp.State.Queue[0].ID)
 		equal(t, 1, f.script.Closes())
-		c.Send(t.Context(), &framewire.OpenFrame{})
+		c.Send(t.Context(), &conversationproto.OpenFrame{})
 		synctest.Wait()
 		frames := c.Received()
-		assertBlockTypes(t, frames[1].(*framewire.TranscriptResetFrame).Blocks, "User", "Error")
+		assertBlockTypes(t, frames[1].(*conversationproto.TranscriptResetFrame).Blocks, "User", "Error")
 		assertBlockTypes(
 			t,
 			f.server.Tree(rootID()).Root().Session().Transcript().Blocks,
@@ -290,19 +290,19 @@ func TestCrashRecordsInterruptionOnReopen(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		synctest.Wait()
 		crashed := f.store.Copy()
-		equal(t, core.SessionPhaseRunning, crashed.Checkpoint(rootID()).State.Phase)
+		equal(t, types.SessionPhaseRunning, crashed.Checkpoint(rootID()).State.Phase)
 		after := fixtureWith(t, providertest.NewScriptedRuntime(t), crashed, server.DefaultConfig())
 		back := after.client()
-		back.Send(t.Context(), &framewire.OpenFrame{})
+		back.Send(t.Context(), &conversationproto.OpenFrame{})
 		frames := back.Received()
-		reset := frames[1].(*framewire.TranscriptResetFrame)
-		if _, ok := frames[0].(*framewire.OpenedFrame); !ok {
+		reset := frames[1].(*conversationproto.TranscriptResetFrame)
+		if _, ok := frames[0].(*conversationproto.OpenedFrame); !ok {
 			t.Fatal(frames)
 		}
 		assertBlockTypes(t, reset.Blocks, "User")
 		patched := false
 		for _, frame := range frames[5:] {
-			if _, ok := frame.(*framewire.TranscriptPatchFrame); ok {
+			if _, ok := frame.(*conversationproto.TranscriptPatchFrame); ok {
 				patched = true
 			}
 		}
@@ -311,11 +311,11 @@ func TestCrashRecordsInterruptionOnReopen(t *testing.T) {
 		}
 		cp := crashed.Checkpoint(rootID())
 		assertBlockTypes(t, cp.Transcript, "User", "Error")
-		equal(t, core.SessionPhaseIdle, cp.State.Phase)
+		equal(t, types.SessionPhaseIdle, cp.State.Phase)
 	})
 }
 
-func switchModel(t *testing.T, f *fixture, model core.ModelSelection) {
+func switchModel(t *testing.T, f *fixture, model types.ModelSelection) {
 	t.Helper()
 	change, err := f.server.PrepareSwitch(t.Context(), rootID(), model)
 	if err != nil {
@@ -342,7 +342,7 @@ func TestSwitchLandsAtNextRequestInsideTurn(t *testing.T) {
 		c.Send(t.Context(), send("m1", "first"))
 		synctest.Wait()
 		model := storetest.ModelOf("stub", "model-b")
-		model.Thinking = &core.EffortConfig{Effort: "high"}
+		model.Thinking = &types.EffortConfig{Effort: "high"}
 		model.ServiceTierID = new("priority")
 		switchModel(t, f, model)
 		close(gate)
@@ -352,7 +352,7 @@ func TestSwitchLandsAtNextRequestInsideTurn(t *testing.T) {
 		requests := f.script.Requests()
 		equal(t, 3, len(requests))
 		equal(t, "test-model", requests[0].ModelID)
-		equal(t, core.ThinkingConfig(nil), requests[0].Thinking)
+		equal(t, types.ThinkingConfig(nil), requests[0].Thinking)
 		equal(t, (*string)(nil), requests[0].ServiceTierID)
 		for _, r := range requests[1:] {
 			equal(t, "model-b", r.ModelID)
@@ -362,7 +362,7 @@ func TestSwitchLandsAtNextRequestInsideTurn(t *testing.T) {
 		equal(t, 1, len(f.resolver.Calls()))
 		blocks := f.server.Tree(rootID()).Root().Session().Transcript().Blocks
 		assertBlockTypes(t, blocks, "User", "ToolCall", "Response", "Text", "Response", "User", "Text", "Response")
-		equal(t, core.ToolCallStatus("error"), blocks[1].(*core.ToolCallBlock).Status)
+		equal(t, types.ToolCallStatus("error"), blocks[1].(*types.ToolCallBlock).Status)
 		for i, b := range blocks {
 			want := "model-b"
 			if i < 3 {
@@ -384,7 +384,7 @@ func TestSwitchProviderOwnsAndClosesRuntimes(t *testing.T) {
 		c := f.opened()
 		c.Send(t.Context(), send("m1", "first"))
 		untilIdle(t, c)
-		for _, m := range []core.ModelSelection{
+		for _, m := range []types.ModelSelection{
 			storetest.ModelOf("replaced", "replaced-model"),
 			storetest.ModelOf("other", "other-model"),
 			storetest.ModelOf("other", "other-model-2"),
@@ -426,11 +426,11 @@ func TestQueueCanBeReorderedAndEmptied(t *testing.T) {
 		for _, id := range []string{"m2", "m3", "m4", "m5"} {
 			c.Send(t.Context(), send(id, id))
 		}
-		c.Send(t.Context(), &framewire.SendQueuedMessageFrame{MessageID: turnID("m3")})
-		c.Send(t.Context(), &framewire.DequeueMessageFrame{MessageID: turnID("m4")})
+		c.Send(t.Context(), &conversationproto.SendQueuedMessageFrame{MessageID: turnID("m3")})
+		c.Send(t.Context(), &conversationproto.DequeueMessageFrame{MessageID: turnID("m4")})
 		queues := [][]string{}
 		for _, frame := range c.Received() {
-			if q, ok := frame.(*framewire.QueueFrame); ok {
+			if q, ok := frame.(*conversationproto.QueueFrame); ok {
 				ids := []string{}
 				for _, message := range q.Queue {
 					ids = append(ids, string(message.ID))
@@ -456,25 +456,25 @@ func TestQueueCanBeReorderedAndEmptied(t *testing.T) {
 		close(first)
 		synctest.Wait()
 		equal(t, 3, len(f.script.Requests()))
-		c.Send(t.Context(), &framewire.ClearMessageQueueFrame{})
+		c.Send(t.Context(), &conversationproto.ClearMessageQueueFrame{})
 		close(last)
 		synctest.Wait()
-		users := []core.TurnID{}
+		users := []types.TurnID{}
 		for _, b := range f.server.Tree(rootID()).Root().Session().Transcript().Blocks {
-			if u, ok := b.(*core.UserBlock); ok {
+			if u, ok := b.(*types.UserBlock); ok {
 				users = append(users, u.TurnID)
 			}
 		}
-		equal(t, []core.TurnID{turnID("m1"), turnID("m3"), turnID("m2")}, users)
+		equal(t, []types.TurnID{turnID("m1"), turnID("m3"), turnID("m2")}, users)
 		equal(t, 0, len(f.server.Tree(rootID()).Root().Session().QueuedMessages()))
 	})
 }
 
 // assertBlockTypes checks the complete sequence of transcript block variants.
-func assertBlockTypes(t *testing.T, blocks []core.Block, names ...string) {
+func assertBlockTypes(t *testing.T, blocks []types.Block, names ...string) {
 	t.Helper()
 	equal(t, len(names), len(blocks))
 	for i, name := range names {
-		equal(t, "*core."+name+"Block", fmt.Sprintf("%T", blocks[i]))
+		equal(t, "*types."+name+"Block", fmt.Sprintf("%T", blocks[i]))
 	}
 }

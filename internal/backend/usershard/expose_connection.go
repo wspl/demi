@@ -9,10 +9,10 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
-func (s *Shard) openExposeConnection(ctx context.Context, id webapi.ExposeID) (*ExposeConnection, error) {
+func (s *Shard) openExposeConnection(ctx context.Context, id webapiproto.ExposeID) (*ExposeConnection, error) {
 	admission, err := expose.AdmitRelay(ctx, s.ExposeShard(), id)
 	if err != nil {
 		if ctx.Err() != nil || s.ctx.Err() != nil {

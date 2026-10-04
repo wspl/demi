@@ -10,15 +10,15 @@ import (
 	"syscall"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // fsCall admits one finite filesystem request and reports its result.
 func (s *Service) fsCall(
 	ctx context.Context,
 	id string,
-	work func(context.Context) (runnerwire.FSResult, error),
+	work func(context.Context) (runnerproto.FSResult, error),
 ) error {
 	ctx, leave, err := s.life.enter(ctx)
 	if err != nil {
@@ -39,7 +39,7 @@ func (s *Service) resolve(cwd *string, path string) (string, error) {
 	if cwd != nil {
 		base = *cwd
 	}
-	target, err := cmdsdk.Resolve(base, path)
+	target, err := commandsdk.Resolve(base, path)
 	if err != nil {
 		return "", &filesystemError{message: err.Error(), cause: os.ErrInvalid}
 	}
@@ -62,7 +62,7 @@ func removePath(ctx context.Context, path string, recursive bool) error {
 				cause:   syscall.EISDIR,
 			}
 		}
-		_, err = cmdsdk.Retry(ctx, func() (struct{}, error) { return struct{}{}, os.RemoveAll(path) })
+		_, err = commandsdk.Retry(ctx, func() (struct{}, error) { return struct{}{}, os.RemoveAll(path) })
 		return err
 	}
 	return os.Remove(path)
@@ -136,7 +136,7 @@ func copyEntry(ctx context.Context, source, destination string) error {
 		return os.Symlink(target, destination)
 	}
 	if info.Mode().IsRegular() {
-		_, err = cmdsdk.Retry(
+		_, err = commandsdk.Retry(
 			ctx,
 			func() (struct{}, error) { return struct{}{}, copyRegular(ctx, source, destination, info.Mode()) },
 		)
@@ -148,7 +148,7 @@ func copyEntry(ctx context.Context, source, destination string) error {
 	if err = os.MkdirAll(destination, 0o777); err != nil {
 		return err
 	}
-	entries, err := cmdsdk.Retry(ctx, func() ([]os.DirEntry, error) { return os.ReadDir(source) })
+	entries, err := commandsdk.Retry(ctx, func() ([]os.DirEntry, error) { return os.ReadDir(source) })
 	if err != nil {
 		return err
 	}

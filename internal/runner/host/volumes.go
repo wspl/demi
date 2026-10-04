@@ -9,13 +9,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // ManagedVolume identifies a managed filesystem by its wire name and mount path.
 type ManagedVolume struct {
 	// Name identifies the volume to the manager.
-	Name runnerwire.VolumeName
+	Name runnerproto.VolumeName
 	// Mount is the filesystem's mount path on the Host.
 	Mount string
 }
@@ -32,11 +32,11 @@ type Volumes struct {
 	checked chan struct{}
 	// mu protects only the pending check/request map.
 	mu      sync.Mutex
-	pending map[runnerwire.VolumeName]string
+	pending map[runnerproto.VolumeName]string
 	checks  chan volumeCheck
 }
 type volumeCheck struct {
-	name   runnerwire.VolumeName
+	name   runnerproto.VolumeName
 	wanted uint64
 	grow   bool
 }
@@ -50,7 +50,7 @@ func NewVolumes(ctx context.Context, blocks []ManagedVolume, output chan<- []byt
 		output:  output,
 		syncs:   make(chan struct{}, 4),
 		checked: make(chan struct{}, 1),
-		pending: make(map[runnerwire.VolumeName]string),
+		pending: make(map[runnerproto.VolumeName]string),
 		checks:  make(chan volumeCheck, len(blocks)),
 	}
 }
@@ -77,7 +77,7 @@ func GrowthWanted(total, available uint64) (wanted uint64, grow bool, err error)
 // run concurrently; later requests wait with ctx. An admitted filesystem flush
 // is joined even if the request is canceled. Paired Unix devices sync all
 // filesystems; on Windows, Sync answers an error, since whole-filesystem sync is unavailable there.
-func (v *Volumes) Sync(ctx context.Context, request runnerwire.Sync) error {
+func (v *Volumes) Sync(ctx context.Context, request runnerproto.Sync) error {
 	ctx, leave, err := v.life.enter(ctx)
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func (v *Volumes) Sync(ctx context.Context, request runnerwire.Sync) error {
 		text := failure.Error()
 		message = &text
 	}
-	return sendFrame(v.life.ctx, v.output, &runnerwire.SyncDone{ID: request.ID, Error: message})
+	return sendFrame(v.life.ctx, v.output, &runnerproto.SyncDone{ID: request.ID, Error: message})
 }
 
 // Poll starts capacity checks for volumes with no outstanding check or growth
@@ -178,7 +178,7 @@ func (v *Volumes) Checked(ctx context.Context) (bool, error) {
 	v.mu.Lock()
 	v.pending[result.name] = requestID
 	v.mu.Unlock()
-	err = sendFrame(ctx, v.output, &runnerwire.VolumeGrow{ID: requestID, Volume: result.name, Bytes: result.wanted})
+	err = sendFrame(ctx, v.output, &runnerproto.VolumeGrow{ID: requestID, Volume: result.name, Bytes: result.wanted})
 	if err != nil {
 		v.mu.Lock()
 		if v.pending[result.name] == requestID {
@@ -191,7 +191,7 @@ func (v *Volumes) Checked(ctx context.Context) (bool, error) {
 
 // Grown applies the matching volume growth response and clears its pending
 // request, logging a manager failure. Unknown volumes or request IDs fail.
-func (v *Volumes) Grown(request runnerwire.VolumeGrown) error {
+func (v *Volumes) Grown(request runnerproto.VolumeGrown) error {
 	known := false
 	for _, volume := range v.blocks {
 		if volume.Name == request.Volume {

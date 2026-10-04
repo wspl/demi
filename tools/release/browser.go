@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
+	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
 	"github.com/wspl/demi/internal/contract"
 )
 
@@ -46,7 +46,7 @@ func (a *application) browser(ctx context.Context, version string) error {
 	if err != nil {
 		return err
 	}
-	destination := filepath.Join(a.Root, "internal/cmdpkg/browser/browserop/chrome.json")
+	destination := filepath.Join(a.Root, "internal/commandpackage/browser/browserproto/chrome.json")
 	if err := artifacts.PublishBytes(
 		ctx,
 		destination,
@@ -64,7 +64,7 @@ func (a *application) prepareBrowser(
 	client *artifacts.Client,
 	metadata, official, version string,
 ) (data []byte, err error) {
-	release := browserop.BrowserRelease{Version: version, Platforms: []browserop.ReleasePlatform{}}
+	release := browserproto.BrowserRelease{Version: version, Platforms: []browserproto.ReleasePlatform{}}
 	if err := release.Validate(); err != nil {
 		return nil, err
 	}
@@ -176,31 +176,31 @@ func measureChromeArchive(
 	client *artifacts.Client,
 	dir, location string,
 	platform chromePlatform,
-) (browserop.ReleasePlatform, artifacts.Digest, error) {
+) (browserproto.ReleasePlatform, artifacts.Digest, error) {
 	path := filepath.Join(dir, platform.Name+".zip")
 	file, err := os.Create(path)
 	if err != nil {
-		return browserop.ReleasePlatform{}, artifacts.Digest{}, err
+		return browserproto.ReleasePlatform{}, artifacts.Digest{}, err
 	}
 	digest, downloadErr := artifacts.DownloadMeasured(ctx, client, location, 1024*1024*1024, file)
 	if err := errors.Join(downloadErr, file.Close()); err != nil {
-		return browserop.ReleasePlatform{}, artifacts.Digest{}, err
+		return browserproto.ReleasePlatform{}, artifacts.Digest{}, err
 	}
 	holds, err := artifacts.ZipHolds(ctx, path, platform.Executable)
 	if err != nil {
-		return browserop.ReleasePlatform{}, artifacts.Digest{}, err
+		return browserproto.ReleasePlatform{}, artifacts.Digest{}, err
 	}
 	if !holds {
-		return browserop.ReleasePlatform{}, artifacts.Digest{}, fmt.Errorf(
+		return browserproto.ReleasePlatform{}, artifacts.Digest{}, fmt.Errorf(
 			"the %s archive holds no %s",
 			platform.Name,
 			platform.Executable,
 		)
 	}
 	if err := os.Remove(path); err != nil {
-		return browserop.ReleasePlatform{}, artifacts.Digest{}, err
+		return browserproto.ReleasePlatform{}, artifacts.Digest{}, err
 	}
-	entry := browserop.ReleasePlatform{
+	entry := browserproto.ReleasePlatform{
 		Target:     platform.Target,
 		URL:        location,
 		Size:       digest.Size,

@@ -12,9 +12,9 @@ import (
 	"github.com/wspl/demi/internal/agent/transcript"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 const blobGrace = 24 * time.Hour
@@ -53,14 +53,14 @@ func (s *Shard) retentionPass(ctx context.Context) error {
 	return errors.Join(failures...)
 }
 
-func (s *Shard) removeOutputs(ctx context.Context, id webapi.ConversationID) error {
+func (s *Shard) removeOutputs(ctx context.Context, id webapiproto.ConversationID) error {
 	now := s.Clock().Now()
 	at, err := now.Time()
 	if err != nil {
 		return err
 	}
 	cutoff := at.Add(-time.Duration(store.CommandOutputDays) * 24 * time.Hour)
-	expired, err := core.TimestampFromTime(cutoff)
+	expired, err := types.TimestampFromTime(cutoff)
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func (s *Shard) removeOutputs(ctx context.Context, id webapi.ConversationID) err
 	})
 }
 
-func (s *Shard) retirement(ctx context.Context, id webapi.ConversationID) (transcript.Retirement, error) {
+func (s *Shard) retirement(ctx context.Context, id webapiproto.ConversationID) (transcript.Retirement, error) {
 	now := s.Clock().Now()
 	live, found, err := s.services.Control.LiveAt(ctx, id)
 	if err != nil {
@@ -99,7 +99,7 @@ func (s *Shard) retirement(ctx context.Context, id webapi.ConversationID) (trans
 	return transcript.Retirement{Now: now, Idle: at.Sub(last) >= transcript.Kept}, nil
 }
 
-func (s *Shard) retireMedia(ctx context.Context, id webapi.ConversationID, wait bool) error {
+func (s *Shard) retireMedia(ctx context.Context, id webapiproto.ConversationID, wait bool) error {
 	retirement, err := s.retirement(ctx, id)
 	if err != nil {
 		return err
@@ -160,7 +160,7 @@ func (s *Shard) collectBlobs(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("the blob namespace cannot be listed: %w", err)
 	}
-	var old []core.BlobRef
+	var old []types.BlobRef
 	for _, blob := range stored {
 		at, err := blob.Written.Time()
 		if err != nil {
@@ -196,7 +196,7 @@ func (s *Shard) collectBlobs(ctx context.Context) error {
 	return nil
 }
 
-func (s *Shard) references(ctx context.Context) (map[core.BlobRef]bool, error) {
+func (s *Shard) references(ctx context.Context) (map[types.BlobRef]bool, error) {
 	control := s.services.Control
 	uploads, err := control.UploadBlobs(ctx, s.user)
 	if err != nil {
@@ -206,7 +206,7 @@ func (s *Shard) references(ctx context.Context) (map[core.BlobRef]bool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the plugins' records cannot be read: %w", err)
 	}
-	result := make(map[core.BlobRef]bool)
+	result := make(map[types.BlobRef]bool)
 	for _, blob := range uploads {
 		result[blob] = true
 	}

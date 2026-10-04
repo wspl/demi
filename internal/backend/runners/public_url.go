@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // PublicURL holds DEMI_BACKEND_PUBLIC_URL or the listener's address in tests.
@@ -15,7 +15,7 @@ import (
 // use it. Its zero value is ready to use. Share its pointer; do not copy it.
 type PublicURL struct {
 	once  sync.Once
-	value atomic.Pointer[runnerwire.BackendURL]
+	value atomic.Pointer[runnerproto.BackendURL]
 }
 
 // Listening sets the URL once: public, or the listener's address when public is
@@ -35,7 +35,7 @@ func (p *PublicURL) Listening(public *url.URL, address netip.AddrPort) {
 		}
 		text = "http://" + address.String()
 	}
-	value, err := runnerwire.ParseBackendURL(text)
+	value, err := runnerproto.ParseBackendURL(text)
 	if err != nil {
 		slog.Error("the URL runners connect to is not usable: " + err.Error())
 		return
@@ -44,10 +44,10 @@ func (p *PublicURL) Listening(public *url.URL, address netip.AddrPort) {
 }
 
 // URL returns the backend URL once it listens, or false before it is set.
-func (p *PublicURL) URL() (runnerwire.BackendURL, bool) {
+func (p *PublicURL) URL() (runnerproto.BackendURL, bool) {
 	value := p.value.Load()
 	if value == nil {
-		return runnerwire.BackendURL{}, false
+		return runnerproto.BackendURL{}, false
 	}
 	return *value, true
 }

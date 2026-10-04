@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // AccessErrorKind identifies the category of Error.
@@ -50,29 +50,29 @@ func (e *Error) Unwrap() error {
 }
 
 // Code returns the response error code and HTTP status.
-func (e *Error) Code() (webapi.ErrorCode, int) {
+func (e *Error) Code() (webapiproto.ErrorCode, int) {
 	switch e.Kind {
 	case AccessMissing:
-		return webapi.ErrorCodeConversationNotFound, 404
+		return webapiproto.ErrorCodeConversationNotFound, 404
 	case AccessRefused:
 		var refusal Refusal
 		if errors.As(e.Cause, &refusal) {
 			switch refusal {
 			case Archived:
-				return webapi.ErrorCodeConversationArchived, 409
+				return webapiproto.ErrorCodeConversationArchived, 409
 			case NotAttached:
-				return webapi.ErrorCodeHostNotAttached, 404
+				return webapiproto.ErrorCodeHostNotAttached, 404
 			case Busy:
-				return webapi.ErrorCodeConversationBusy, 409
+				return webapiproto.ErrorCodeConversationBusy, 409
 			case Stopped:
-				return webapi.ErrorCodeHostStopped, 409
+				return webapiproto.ErrorCodeHostStopped, 409
 			case DeviceGone:
-				return webapi.ErrorCodeDeviceNotFound, 404
+				return webapiproto.ErrorCodeDeviceNotFound, 404
 			}
 		}
 	case AccessCloud:
 		var coded interface {
-			Code() (webapi.ErrorCode, int)
+			Code() (webapiproto.ErrorCode, int)
 		}
 		if errors.As(e.Cause, &coded) {
 			return coded.Code()
@@ -83,7 +83,7 @@ func (e *Error) Code() (webapi.ErrorCode, int) {
 			return HostErrorCode(failure)
 		}
 	}
-	return webapi.ErrorCodeInternalError, 500
+	return webapiproto.ErrorCodeInternalError, 500
 }
 
 // ChangeErrorKind identifies the category of ChangeError.
@@ -169,36 +169,36 @@ func (e *ChangeError) Unwrap() error {
 }
 
 // Code returns the response error code and HTTP status.
-func (e *ChangeError) Code() (webapi.ErrorCode, int) {
+func (e *ChangeError) Code() (webapiproto.ErrorCode, int) {
 	switch e.Kind {
 	case ChangeNotFound:
-		return webapi.ErrorCodeConversationNotFound, 404
+		return webapiproto.ErrorCodeConversationNotFound, 404
 	case ChangeArchived:
-		return webapi.ErrorCodeConversationArchived, 409
+		return webapiproto.ErrorCodeConversationArchived, 409
 	case ChangeTurnInFlight:
-		return webapi.ErrorCodeTurnInFlight, 409
+		return webapiproto.ErrorCodeTurnInFlight, 409
 	case ChangeProviderNotFound:
-		return webapi.ErrorCodeProviderNotFound, 404
+		return webapiproto.ErrorCodeProviderNotFound, 404
 	case ChangeModelNotFound:
-		return webapi.ErrorCodeModelNotFound, 404
+		return webapiproto.ErrorCodeModelNotFound, 404
 	case ChangeSettingUnavailable:
-		return webapi.ErrorCodeSettingUnavailable, 409
+		return webapiproto.ErrorCodeSettingUnavailable, 409
 	case ChangeModelNotSelected:
-		return webapi.ErrorCodeModelNotSelected, 409
+		return webapiproto.ErrorCodeModelNotSelected, 409
 	case ChangeWorkspaceNotFound:
-		return webapi.ErrorCodeWorkspaceNotFound, 404
+		return webapiproto.ErrorCodeWorkspaceNotFound, 404
 	case ChangeDeviceNotFound:
-		return webapi.ErrorCodeDeviceNotFound, 404
+		return webapiproto.ErrorCodeDeviceNotFound, 404
 	case ChangeConflict:
-		return webapi.ErrorCodeTargetConflict, 409
+		return webapiproto.ErrorCodeTargetConflict, 409
 	case ChangeHostIsMain:
-		return webapi.ErrorCodeHostIsMain, 409
+		return webapiproto.ErrorCodeHostIsMain, 409
 	case ChangeNotAttached:
-		return webapi.ErrorCodeHostNotAttached, 404
+		return webapiproto.ErrorCodeHostNotAttached, 404
 	case ChangeNameTaken:
-		return webapi.ErrorCodeNameTaken, 409
+		return webapiproto.ErrorCodeNameTaken, 409
 	}
-	return webapi.ErrorCodeOperationFailed, 500
+	return webapiproto.ErrorCodeOperationFailed, 500
 }
 
 // ErrDeviceNotAccessible refuses a reference to a device that is not the user's.
@@ -221,7 +221,9 @@ func (e *StreamError) Error() string { return e.Err.Error() }
 func (e *StreamError) Unwrap() error { return e.Err }
 
 // Code returns stream_failed with status 502.
-func (e *StreamError) Code() (webapi.ErrorCode, int) { return webapi.ErrorCodeStreamFailed, 502 }
+func (e *StreamError) Code() (webapiproto.ErrorCode, int) {
+	return webapiproto.ErrorCodeStreamFailed, 502
+}
 
 // streamAccessError keeps an admission failure's own code; any other failure is a failed stream.
 func streamAccessError(err error) error {
@@ -270,24 +272,24 @@ func (r Refusal) Error() string {
 
 // HostErrorCode maps Host failures to response codes: offline 409, unavailable
 // 503, listing too large 413, missing path 404, permission 403, others 500.
-func HostErrorCode(err *host.Error) (webapi.ErrorCode, int) {
+func HostErrorCode(err *host.Error) (webapiproto.ErrorCode, int) {
 	switch err.Kind {
 	case host.Offline:
-		return webapi.ErrorCodeDeviceOffline, 409
+		return webapiproto.ErrorCodeDeviceOffline, 409
 	case host.Unavailable:
-		return webapi.ErrorCodeCloudUnavailable, 503
+		return webapiproto.ErrorCodeCloudUnavailable, 503
 	case host.TooLarge:
-		return webapi.ErrorCodeDirectoryTooLarge, 413
+		return webapiproto.ErrorCodeDirectoryTooLarge, 413
 	case host.Failed:
 		if err.Code != "" {
 			switch err.Code {
 			case "ENOENT":
-				return webapi.ErrorCodeFsError, 404
+				return webapiproto.ErrorCodeFsError, 404
 			case "EACCES", "EPERM":
-				return webapi.ErrorCodeFsError, 403
+				return webapiproto.ErrorCodeFsError, 403
 			}
 		}
 	case host.Protocol, host.Interrupted:
 	}
-	return webapi.ErrorCodeHostOperationFailed, 500
+	return webapiproto.ErrorCodeHostOperationFailed, 500
 }

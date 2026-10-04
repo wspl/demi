@@ -5,7 +5,7 @@ import (
 	"maps"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // checkpointRows keeps immutable encoded rows, so callers cannot mutate a saved
@@ -17,9 +17,9 @@ type checkpointRows struct {
 	count   int
 }
 type savedRows struct {
-	id          core.NodeID
+	id          types.NodeID
 	rows        checkpointRows
-	completions []core.CompletionID
+	completions []types.CompletionID
 }
 type storedNode struct {
 	record store.NodeRecord
@@ -27,7 +27,7 @@ type storedNode struct {
 }
 
 // encodeUpdate captures a save's owned rows before acquiring the store lock.
-func encodeUpdate(id core.NodeID, update store.CheckpointUpdate) (savedRows, error) {
+func encodeUpdate(id types.NodeID, update store.CheckpointUpdate) (savedRows, error) {
 	saved := savedRows{id: id, rows: checkpointRows{blocks: map[int][]byte{}, count: update.BlockCount}}
 	var err error
 	saved.completions, err = update.CarriedCompletions()
@@ -45,7 +45,7 @@ func encodeUpdate(id core.NodeID, update store.CheckpointUpdate) (savedRows, err
 		}
 	}
 	for _, changed := range update.ChangedBlocks {
-		encoded, err := (core.BlockJSON{Value: changed.Block}).MarshalJSON()
+		encoded, err := (types.BlockJSON{Value: changed.Block}).MarshalJSON()
 		if err != nil {
 			return savedRows{}, err
 		}
@@ -55,7 +55,7 @@ func encodeUpdate(id core.NodeID, update store.CheckpointUpdate) (savedRows, err
 }
 
 // checkpoint decodes and checks the complete saved node, refusing missing rows.
-func (r checkpointRows) checkpoint(id core.NodeID) (*store.Checkpoint, error) {
+func (r checkpointRows) checkpoint(id types.NodeID) (*store.Checkpoint, error) {
 	state, err := store.DecodeCheckpointState(r.state)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", store.ErrCorrupt, err)
@@ -67,13 +67,13 @@ func (r checkpointRows) checkpoint(id core.NodeID) (*store.Checkpoint, error) {
 	if _, err = store.RestoreCommandStateHistory(command); err != nil {
 		return nil, fmt.Errorf("%w: %w", store.ErrCorrupt, err)
 	}
-	blocks := make([]core.Block, 0, r.count)
+	blocks := make([]types.Block, 0, r.count)
 	for index := 0; index < r.count; index++ {
 		data, exists := r.blocks[index]
 		if !exists {
 			return nil, fmt.Errorf("%w: %s", store.ErrCorrupt, fmt.Sprintf("node %s has no block row %d", id, index))
 		}
-		block, err := core.DecodeBlock(data)
+		block, err := types.DecodeBlock(data)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", store.ErrCorrupt, err)
 		}
@@ -121,7 +121,7 @@ func (s *MemoryTreeStore) applySaveLocked(saved savedRows) error {
 }
 
 // missing describes an operation on an absent tree node.
-func missing(id core.NodeID) error {
+func missing(id types.NodeID) error {
 	return fmt.Errorf("no node %s", id)
 }
 

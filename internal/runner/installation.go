@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // instanceID names the private installation of one normalized backend URL.
-func instanceID(backend runnerwire.BackendURL) string {
+func instanceID(backend runnerproto.BackendURL) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(backend.String())))
 }
 

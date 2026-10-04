@@ -7,8 +7,8 @@ import (
 
 	"github.com/wspl/demi/internal/backend/idlewatch"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // startSchedules registers a running phase's workers before shutdown can join them.
@@ -17,7 +17,7 @@ func startSchedules(s Shard, m *machine) {
 	window, tuning := s.IdleWindow(), s.CloudServices().Tuning
 	ctx, cancel := context.WithCancel(c.ctx)
 	c.mu.Lock()
-	if c.stopped || m.phase != webapi.CloudStateRunning || m.schedules != nil {
+	if c.stopped || m.phase != webapiproto.CloudStateRunning || m.schedules != nil {
 		c.mu.Unlock()
 		cancel()
 		return
@@ -60,7 +60,7 @@ func maintenanceRound(ctx context.Context, s Shard, m *machine) {
 	c := s.Cloud()
 	tuning := s.CloudServices().Tuning
 	c.mu.Lock()
-	eligible := !c.stopped && m.phase == webapi.CloudStateRunning && m.transition == nil && m.retirement == nil
+	eligible := !c.stopped && m.phase == webapiproto.CloudStateRunning && m.transition == nil && m.retirement == nil
 	started, checkpoint := m.started, m.checkpoint
 	c.mu.Unlock()
 	if !eligible || m.gate.State().Maintenance > 0 {
@@ -79,7 +79,7 @@ func maintenanceRound(ctx context.Context, s Shard, m *machine) {
 		return
 	}
 	c.mu.Lock()
-	if c.stopped || m.phase != webapi.CloudStateRunning || m.transition != nil || m.retirement != nil {
+	if c.stopped || m.phase != webapiproto.CloudStateRunning || m.transition != nil || m.retirement != nil {
 		c.mu.Unlock()
 		lease.Release()
 		return
@@ -97,14 +97,14 @@ func maintenanceRound(ctx context.Context, s Shard, m *machine) {
 		_, err := Call(
 			context.WithoutCancel(ctx),
 			s.CloudServices().Machines,
-			machinewire.CheckpointParams{DeviceID: string(m.device.ID)},
+			machinemanagerproto.CheckpointParams{DeviceID: string(m.device.ID)},
 		)
 		if err != nil {
 			slog.Warn("the Cloud's checkpoint failed", "device", m.device.ID, "error", err)
 			return
 		}
 		c.mu.Lock()
-		if m.phase == webapi.CloudStateRunning {
+		if m.phase == webapiproto.CloudStateRunning {
 			m.checkpoint = now
 		}
 		c.mu.Unlock()
@@ -126,7 +126,7 @@ func stopAtCap(ctx context.Context, s Shard, m *machine) {
 	}
 	c := s.Cloud()
 	c.mu.Lock()
-	if c.stopped || m.phase != webapi.CloudStateRunning || m.transition != nil || m.retirement != nil {
+	if c.stopped || m.phase != webapiproto.CloudStateRunning || m.transition != nil || m.retirement != nil {
 		c.mu.Unlock()
 		return
 	}
@@ -156,7 +156,7 @@ func (p *cloudIdle) Check(ctx context.Context) (idlewatch.Activity, error) {
 	activity := idlewatch.Of(p.m.gate.State())
 	c := p.s.Cloud()
 	c.mu.Lock()
-	activity.Busy = activity.Busy || p.m.phase != webapi.CloudStateRunning || p.m.transition != nil ||
+	activity.Busy = activity.Busy || p.m.phase != webapiproto.CloudStateRunning || p.m.transition != nil ||
 		p.m.retirement != nil
 	c.mu.Unlock()
 	if link := p.s.Devices().Link(p.m.device.ID); link != nil {

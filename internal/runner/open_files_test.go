@@ -19,16 +19,16 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/programtest"
-	"github.com/wspl/demi/internal/runner/cmdpkgs"
-	"github.com/wspl/demi/internal/runner/cmdpkgs/cmdpkgstest"
+	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/runner/commandpackages/commandpackagestest"
 	"github.com/wspl/demi/internal/runner/host"
 	"github.com/wspl/demi/internal/runner/jobs/jobstest"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runner/shell/shelltest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"golang.org/x/sys/unix"
 )
 
@@ -93,7 +93,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	}
 	var printed strings.Builder
 	for chunk := range child.Output {
-		if chunk.Stream == runnerwire.Stdout {
+		if chunk.Stream == runnerproto.Stdout {
 			printed.Write(chunk.Bytes)
 		}
 	}
@@ -113,7 +113,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	}
 	printed.Reset()
 	for chunk := range limits.Output() {
-		if chunk.Stream == runnerwire.Stdout {
+		if chunk.Stream == runnerproto.Stdout {
 			printed.Write(chunk.Bytes)
 		}
 	}
@@ -146,11 +146,11 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer backend.Close()
-	backendURL, err := runnerwire.ParseBackendURL(backend.URL)
+	backendURL, err := runnerproto.ParseBackendURL(backend.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipes, err := process.NewPipeClient(backendURL, func() (runnerwire.DeviceToken, bool) { return "token", true })
+	pipes, err := process.NewPipeClient(backendURL, func() (runnerproto.DeviceToken, bool) { return "token", true })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		}
 	}()
 	exhaustDescriptors(ctx, t, "filesystem", func() error {
-		if err := service.Readdir(ctx, runnerwire.FSReaddir{ID: "directory", Path: root}); err != nil {
+		if err := service.Readdir(ctx, runnerproto.FSReaddir{ID: "directory", Path: root}); err != nil {
 			return err
 		}
 		return expectHostReply(ctx, output, "directory")
@@ -194,10 +194,10 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	exhaustDescriptors(ctx, t, "file transfer", func() error {
 		if err := service.ReadFile(
 			ctx,
-			runnerwire.FSReadFile{
+			runnerproto.FSReadFile{
 				ID:     "file",
 				Path:   file,
-				Output: runnerwire.PipeRef{ID: "file-out", URL: "/pipe/upload"},
+				Output: runnerproto.PipeRef{ID: "file-out", URL: "/pipe/upload"},
 			},
 		); err != nil {
 			return err
@@ -236,7 +236,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		t.Fatal(err)
 	}
 	exhaustDescriptors(ctx, t, "working tree", func() error {
-		if err := service.GitChanges(ctx, runnerwire.GitChangesMessage{ID: "git", Root: repository}); err != nil {
+		if err := service.GitChanges(ctx, runnerproto.GitChangesMessage{ID: "git", Root: repository}); err != nil {
 			return err
 		}
 		for {
@@ -244,20 +244,20 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			case <-ctx.Done():
 				return ctx.Err()
 			case bytes := <-output:
-				frame, err := runnerwire.DecodeOutbound(bytes)
+				frame, err := runnerproto.DecodeOutbound(bytes)
 				if err != nil {
 					return err
 				}
-				if reply, ok := frame.(*runnerwire.GitOK); ok && reply.ID == "git" {
-					result, ok := reply.Result.(*runnerwire.GitChangesResult)
+				if reply, ok := frame.(*runnerproto.GitOK); ok && reply.ID == "git" {
+					result, ok := reply.Result.(*runnerproto.GitChangesResult)
 					if !ok || !result.Value.Repository || len(result.Value.Files) != 1 ||
 						result.Value.Files[0].Path != "a.txt" ||
-						result.Value.Files[0].Kind != runnerwire.ChangeKindModified {
+						result.Value.Files[0].Kind != runnerproto.ChangeKindModified {
 						return fmt.Errorf("working tree changed under exhaustion: %+v", reply)
 					}
 					return nil
 				}
-				if reply, ok := frame.(*runnerwire.GitError); ok {
+				if reply, ok := frame.(*runnerproto.GitError); ok {
 					return fmt.Errorf("working tree: %s", reply.Message)
 				}
 			}
@@ -285,10 +285,10 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		operation, stop := context.WithCancel(ctx)
 		done := make(chan error, 1)
 		go func() {
-			done <- service.NetOpen(operation, runnerwire.NetOpen{
+			done <- service.NetOpen(operation, runnerproto.NetOpen{
 				StreamID: "network", Host: "127.0.0.1", Port: uint16(socket.Addr().(*net.TCPAddr).Port),
-				Input:  runnerwire.PipeRef{ID: "net-in", URL: "/pipe/download"},
-				Output: runnerwire.PipeRef{ID: "net-out", URL: "/pipe/upload"},
+				Input:  runnerproto.PipeRef{ID: "net-in", URL: "/pipe/download"},
+				Output: runnerproto.PipeRef{ID: "net-out", URL: "/pipe/upload"},
 			})
 		}()
 		defer func() {
@@ -300,14 +300,14 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			case <-ctx.Done():
 				return ctx.Err()
 			case bytes := <-output:
-				frame, err := runnerwire.DecodeOutbound(bytes)
+				frame, err := runnerproto.DecodeOutbound(bytes)
 				if err != nil {
 					return err
 				}
-				if reply, ok := frame.(*runnerwire.NetOpened); ok && reply.StreamID == "network" {
+				if reply, ok := frame.(*runnerproto.NetOpened); ok && reply.StreamID == "network" {
 					return nil
 				}
-				if reply, ok := frame.(*runnerwire.NetError); ok {
+				if reply, ok := frame.(*runnerproto.NetError); ok {
 					return fmt.Errorf("network: %s", reply.Message)
 				}
 			}
@@ -351,7 +351,13 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		return nil
 	})
 
-	registry, err := cmdpkgs.NewServiceRegistry(ctx, filepath.Join(root, "cache"), "", root, map[string]string{})
+	registry, err := commandpackages.NewServiceRegistry(
+		ctx,
+		filepath.Join(root, "cache"),
+		"",
+		root,
+		map[string]string{},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,23 +371,23 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := commandwire.HostTarget()
+	target, err := commandproto.HostTarget()
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := commandwire.PackageDescriptor{
+	descriptor := commandproto.PackageDescriptor{
 		ID:              "fixture",
 		Version:         "1.0.0",
 		ProtocolVersion: 1,
-		Operations:      (&cmdpkgstest.Fixture{}).Operations(),
-		Targets: map[string]commandwire.PackageArtifact{
+		Operations:      (&commandpackagestest.Fixture{}).Operations(),
+		Targets: map[string]commandproto.PackageArtifact{
 			string(target): {SHA256: fmt.Sprintf("%x", sha256.Sum256(bytes)), Size: uint64(len(bytes))},
 		},
-		Resources: map[string]commandwire.PackageResource{},
+		Resources: map[string]commandproto.PackageResource{},
 	}
 	exhaustDescriptors(ctx, t, "native service start", func() error {
 		resident, err := registry.
-			Acquire(ctx, descriptor, localFixtureArtifact(native), cmdpkgstest.NoNumbers{})
+			Acquire(ctx, descriptor, localFixtureArtifact(native), commandpackagestest.NoNumbers{})
 		if err != nil {
 			return err
 		}
@@ -421,16 +427,16 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			case <-routed.Done():
 				return
 			case data := <-dispatch.Outgoing:
-				message, err := runnerwire.DecodeOutbound(data)
+				message, err := runnerproto.DecodeOutbound(data)
 				if err != nil {
 					t.Error(err)
 					return
 				}
-				if call, ok := message.(*runnerwire.RPCCall); ok {
+				if call, ok := message.(*runnerproto.RPCCall); ok {
 					reached.Add(1)
 					if err := dispatch.Deliver(
 						routed,
-						&runnerwire.RPCExit{CallID: call.CallID, ExitCode: 0},
+						&runnerproto.RPCExit{CallID: call.CallID, ExitCode: 0},
 					); err != nil &&
 						routed.Err() == nil {
 						t.Error(err)
@@ -448,7 +454,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		completion, err := process.Forward(
 			ctx,
 			dispatch.Server.Endpoint(),
-			commandwire.LocalInvocation{
+			commandproto.LocalInvocation{
 				Operation:    process.Raw,
 				InvocationID: "local",
 				Args:         args,
@@ -565,7 +571,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			cancelled.Cancel()
 			<-joined
 		}()
-		before := cmdsdk.DescriptorPauses()
+		before := commandsdk.DescriptorPauses()
 		cancelled.Input() <- process.Input{Bytes: []byte("go\n")}
 		waitDescriptorPause(ctx, t, before, joined)
 		cancelled.Cancel()
@@ -601,7 +607,7 @@ func releaseDescriptors(held []int) {
 
 func waitDescriptorPause(ctx context.Context, t *testing.T, before uint64, done <-chan error) {
 	t.Helper()
-	for cmdsdk.DescriptorPauses() == before {
+	for commandsdk.DescriptorPauses() == before {
 		select {
 		case err := <-done:
 			t.Fatalf("operation ended instead of waiting for a descriptor: %v", err)
@@ -617,7 +623,7 @@ func exhaustDescriptors(ctx context.Context, t *testing.T, name string, operatio
 	t.Helper()
 	t.Log(name)
 	held := fillDescriptors(t)
-	before := cmdsdk.DescriptorPauses()
+	before := commandsdk.DescriptorPauses()
 	done := make(chan error, 1)
 	go func() {
 		defer close(done)
@@ -655,14 +661,14 @@ func expectHostReply(ctx context.Context, output <-chan []byte, id string) error
 		case <-ctx.Done():
 			return ctx.Err()
 		case data := <-output:
-			message, err := runnerwire.DecodeOutbound(data)
+			message, err := runnerproto.DecodeOutbound(data)
 			if err != nil {
 				return err
 			}
-			if reply, ok := message.(*runnerwire.FSOK); ok && reply.ID == id {
+			if reply, ok := message.(*runnerproto.FSOK); ok && reply.ID == id {
 				return nil
 			}
-			if reply, ok := message.(*runnerwire.FSError); ok && reply.ID == id {
+			if reply, ok := message.(*runnerproto.FSError); ok && reply.ID == id {
 				return errors.New(reply.Message)
 			}
 		}
@@ -678,7 +684,7 @@ func awaitReady(ctx context.Context, t *testing.T, scope *shelltest.Scope, job p
 			if !ok {
 				t.Fatal("job ended before ready")
 			}
-			if chunk.Stream == runnerwire.Stdout {
+			if chunk.Stream == runnerproto.Stdout {
 				printed.Write(chunk.Bytes)
 			}
 		case <-ctx.Done():
@@ -692,8 +698,11 @@ func awaitReady(ctx context.Context, t *testing.T, scope *shelltest.Scope, job p
 
 type localFixtureArtifact string
 
-func (p localFixtureArtifact) Resolve(context.Context, commandwire.PackageArtifact) (cmdpkgs.ArtifactSource, error) {
-	return cmdpkgs.ArtifactSource{Path: string(p)}, nil
+func (p localFixtureArtifact) Resolve(
+	context.Context,
+	commandproto.PackageArtifact,
+) (commandpackages.ArtifactSource, error) {
+	return commandpackages.ArtifactSource{Path: string(p)}, nil
 }
 
 type discardCommandOutput struct{}

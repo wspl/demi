@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestResponsesReplayDialectsPreserveHistory(t *testing.T) {
@@ -226,20 +226,20 @@ func TestRequestLimitsReasoningAndTools(t *testing.T) {
 	}} {
 		requireEqual(t, tc.request.MaxOutputTokens(), tc.want)
 	}
-	requireEqual(t, *provider.AnthropicRequestLimits(core.Model{ContextWindow: 200000}).Images, uint32(100))
-	requireEqual(t, *provider.AnthropicRequestLimits(core.Model{ContextWindow: 200001}).Images, uint32(600))
-	off := core.ThinkingSummary("off")
+	requireEqual(t, *provider.AnthropicRequestLimits(types.Model{ContextWindow: 200000}).Images, uint32(100))
+	requireEqual(t, *provider.AnthropicRequestLimits(types.Model{ContextWindow: 200001}).Images, uint32(600))
+	off := types.ThinkingSummary("off")
 	for _, tc := range []struct {
-		thinking core.ThinkingConfig
+		thinking types.ThinkingConfig
 		off      provider.SummaryOff
 		want     string
 	}{
-		{&core.EffortConfig{Effort: "high", Summary: &off}, provider.SummaryOmitted, `{"effort":"high"}`},
-		{&core.EffortConfig{Effort: "high", Summary: &off}, provider.SummaryAuto, `{"effort":"high","summary":"auto"}`},
-		{&core.EffortConfig{Effort: "none"}, provider.SummaryAuto, `{"effort":"none"}`},
-		{&core.AdaptiveConfig{Effort: "max"}, provider.SummaryOmitted, `{"effort":"max","summary":"auto"}`},
-		{&core.BudgetConfig{BudgetTokens: 1000}, provider.SummaryOmitted, `null`},
-		{&core.DisabledConfig{}, provider.SummaryOmitted, `null`},
+		{&types.EffortConfig{Effort: "high", Summary: &off}, provider.SummaryOmitted, `{"effort":"high"}`},
+		{&types.EffortConfig{Effort: "high", Summary: &off}, provider.SummaryAuto, `{"effort":"high","summary":"auto"}`},
+		{&types.EffortConfig{Effort: "none"}, provider.SummaryAuto, `{"effort":"none"}`},
+		{&types.AdaptiveConfig{Effort: "max"}, provider.SummaryOmitted, `{"effort":"max","summary":"auto"}`},
+		{&types.BudgetConfig{BudgetTokens: 1000}, provider.SummaryOmitted, `null`},
+		{&types.DisabledConfig{}, provider.SummaryOmitted, `null`},
 	} {
 		requireEqual(t, encoded(t, provider.ResponsesReasoning(tc.thinking, tc.off)), tc.want)
 	}

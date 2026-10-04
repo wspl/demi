@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Account operation refusals. Their texts are the user-visible HTTP error messages.
@@ -37,29 +37,34 @@ var (
 // Store is the control database's account boundary.
 type Store interface {
 	HasUsers(context.Context) (bool, error)
-	CreateMaster(context.Context, webapi.EmailAddress, database.PasswordHash) (webapi.UserDTO, error)
-	AccountByEmail(context.Context, webapi.EmailAddress) (database.Account, bool, error)
-	Account(context.Context, webapi.UserID) (database.Account, bool, error)
-	Users(context.Context) ([]webapi.UserDTO, error)
-	CreateUser(context.Context, webapi.EmailAddress, database.PasswordHash, webapi.Role) (webapi.UserDTO, error)
-	SetNickname(context.Context, webapi.UserID, string) (webapi.UserDTO, error)
-	SetPassword(context.Context, webapi.UserID, database.PasswordHash) error
+	CreateMaster(context.Context, webapiproto.EmailAddress, database.PasswordHash) (webapiproto.UserDTO, error)
+	AccountByEmail(context.Context, webapiproto.EmailAddress) (database.Account, bool, error)
+	Account(context.Context, webapiproto.UserID) (database.Account, bool, error)
+	Users(context.Context) ([]webapiproto.UserDTO, error)
+	CreateUser(
+		context.Context,
+		webapiproto.EmailAddress,
+		database.PasswordHash,
+		webapiproto.Role,
+	) (webapiproto.UserDTO, error)
+	SetNickname(context.Context, webapiproto.UserID, string) (webapiproto.UserDTO, error)
+	SetPassword(context.Context, webapiproto.UserID, database.PasswordHash) error
 }
 
 // Passwords hashes new credentials and verifies existing credentials.
 type Passwords interface {
 	PasswordVerifier
-	Hash(context.Context, webapi.Password) (database.PasswordHash, error)
+	Hash(context.Context, webapiproto.Password) (database.PasswordHash, error)
 }
 
 // SessionOpener creates a login session after successful authentication.
 type SessionOpener interface {
-	Open(context.Context, webapi.UserID) (OpenedSession, error)
+	Open(context.Context, webapiproto.UserID) (OpenedSession, error)
 }
 
 // SignedIn is an authenticated account with its newly opened session.
 type SignedIn struct {
-	User    webapi.UserDTO
+	User    webapiproto.UserDTO
 	Session OpenedSession
 }
 
@@ -84,7 +89,7 @@ func (a *Accounts) SetupNeeded(ctx context.Context) (bool, error) {
 }
 
 // Setup creates the first master account and signs it in.
-func (a *Accounts) Setup(ctx context.Context, request webapi.SetupRequest) (SignedIn, error) {
+func (a *Accounts) Setup(ctx context.Context, request webapiproto.SetupRequest) (SignedIn, error) {
 	if err := request.Validate(); err != nil {
 		return SignedIn{}, err
 	}
@@ -104,7 +109,7 @@ func (a *Accounts) Setup(ctx context.Context, request webapi.SetupRequest) (Sign
 }
 
 // Login authenticates an address, applying lockout before password verification.
-func (a *Accounts) Login(ctx context.Context, credentials webapi.Credentials) (SignedIn, error) {
+func (a *Accounts) Login(ctx context.Context, credentials webapiproto.Credentials) (SignedIn, error) {
 	if err := credentials.Validate(); err != nil {
 		return SignedIn{}, err
 	}
@@ -131,7 +136,7 @@ func (a *Accounts) Login(ctx context.Context, credentials webapi.Credentials) (S
 	return a.signIn(ctx, account.User)
 }
 
-func (a *Accounts) signIn(ctx context.Context, user webapi.UserDTO) (SignedIn, error) {
+func (a *Accounts) signIn(ctx context.Context, user webapiproto.UserDTO) (SignedIn, error) {
 	session, err := a.sessions.Open(ctx, user.ID)
 	if err != nil {
 		return SignedIn{}, err
@@ -142,25 +147,29 @@ func (a *Accounts) signIn(ctx context.Context, user webapi.UserDTO) (SignedIn, e
 // SetNickname changes the authenticated caller's display name.
 func (a *Accounts) SetNickname(
 	ctx context.Context,
-	caller webapi.UserID,
-	patch webapi.NicknamePatch,
-) (webapi.UserDTO, error) {
+	caller webapiproto.UserID,
+	patch webapiproto.NicknamePatch,
+) (webapiproto.UserDTO, error) {
 	if err := patch.Validate(); err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 	user, err := a.control.SetNickname(ctx, caller, string(patch.Nickname))
 	if errors.Is(err, database.ErrUserNotFound) {
-		return webapi.UserDTO{}, ErrUnauthenticated
+		return webapiproto.UserDTO{}, ErrUnauthenticated
 	}
 	if err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 
 	return user, nil
 }
 
 // ChangePassword requires the authenticated caller's current password.
-func (a *Accounts) ChangePassword(ctx context.Context, caller webapi.UserID, change webapi.PasswordChange) error {
+func (a *Accounts) ChangePassword(
+	ctx context.Context,
+	caller webapiproto.UserID,
+	change webapiproto.PasswordChange,
+) error {
 	if err := change.Validate(); err != nil {
 		return err
 	}
@@ -187,8 +196,8 @@ func (a *Accounts) ChangePassword(ctx context.Context, caller webapi.UserID, cha
 }
 
 // Users lists every account for an authenticated administrator.
-func (a *Accounts) Users(ctx context.Context, caller webapi.UserDTO) ([]webapi.UserDTO, error) {
-	if !caller.Role.Outranks(webapi.RoleUser) {
+func (a *Accounts) Users(ctx context.Context, caller webapiproto.UserDTO) ([]webapiproto.UserDTO, error) {
+	if !caller.Role.Outranks(webapiproto.RoleUser) {
 		return nil, ErrAdminRequired
 	}
 	return a.control.Users(ctx)
@@ -197,32 +206,32 @@ func (a *Accounts) Users(ctx context.Context, caller webapi.UserDTO) ([]webapi.U
 // Create creates an account of a role below the authenticated administrator.
 func (a *Accounts) Create(
 	ctx context.Context,
-	caller webapi.UserDTO,
-	request webapi.CreateUser,
-) (webapi.UserDTO, error) {
-	if !caller.Role.Outranks(webapi.RoleUser) {
-		return webapi.UserDTO{}, ErrAdminRequired
+	caller webapiproto.UserDTO,
+	request webapiproto.CreateUser,
+) (webapiproto.UserDTO, error) {
+	if !caller.Role.Outranks(webapiproto.RoleUser) {
+		return webapiproto.UserDTO{}, ErrAdminRequired
 	}
 	if err := request.Validate(); err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 	role, err := request.Role.Role()
 	if err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 	if !caller.Role.Outranks(role) {
-		return webapi.UserDTO{}, ErrOnlyMaster
+		return webapiproto.UserDTO{}, ErrOnlyMaster
 	}
 	hash, err := a.passwords.Hash(ctx, request.Password)
 	if err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 	user, err := a.control.CreateUser(ctx, request.Email, hash, role)
 	if errors.Is(err, database.ErrEmailTaken) {
-		return webapi.UserDTO{}, ErrEmailTaken
+		return webapiproto.UserDTO{}, ErrEmailTaken
 	}
 	if err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 
 	return user, nil
@@ -232,11 +241,11 @@ func (a *Accounts) Create(
 // and authorization before validating the new password.
 func (a *Accounts) ResetPassword(
 	ctx context.Context,
-	caller webapi.UserDTO,
-	target webapi.UserID,
-	reset webapi.PasswordReset,
+	caller webapiproto.UserDTO,
+	target webapiproto.UserID,
+	reset webapiproto.PasswordReset,
 ) error {
-	if !caller.Role.Outranks(webapi.RoleUser) {
+	if !caller.Role.Outranks(webapiproto.RoleUser) {
 		return ErrAdminRequired
 	}
 	if err := target.Validate(); err != nil {

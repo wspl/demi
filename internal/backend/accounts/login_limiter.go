@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 const (
@@ -24,14 +24,14 @@ type failures struct {
 type LoginLimiter struct {
 	// mu protects failures; no work outside map operations runs under it.
 	mu       sync.Mutex
-	failures map[webapi.EmailAddress]failures
+	failures map[webapiproto.EmailAddress]failures
 }
 
 // NewLoginLimiter returns an empty process-local login limiter.
 func NewLoginLimiter() *LoginLimiter { return &LoginLimiter{} }
 
 // Locked reports whether even the right password must currently be refused.
-func (l *LoginLimiter) Locked(email webapi.EmailAddress) bool {
+func (l *LoginLimiter) Locked(email webapiproto.EmailAddress) bool {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -49,12 +49,12 @@ func (l *LoginLimiter) Locked(email webapi.EmailAddress) bool {
 }
 
 // Failed records a failed login and sweeps addresses whose window expired.
-func (l *LoginLimiter) Failed(email webapi.EmailAddress) {
+func (l *LoginLimiter) Failed(email webapiproto.EmailAddress) {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.failures == nil {
-		l.failures = make(map[webapi.EmailAddress]failures)
+		l.failures = make(map[webapiproto.EmailAddress]failures)
 	}
 	for address, entry := range l.failures {
 		if !entry.forgetAt.After(now) {
@@ -72,7 +72,7 @@ func (l *LoginLimiter) Failed(email webapi.EmailAddress) {
 }
 
 // Succeeded clears an address's remembered failures.
-func (l *LoginLimiter) Succeeded(email webapi.EmailAddress) {
+func (l *LoginLimiter) Succeeded(email webapiproto.EmailAddress) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	delete(l.failures, email)

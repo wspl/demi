@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/agent/server"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/remotehost"
 )
 
@@ -57,7 +57,7 @@ type ConversationTuning struct {
 func DefaultConversationTuning() ConversationTuning {
 	return ConversationTuning{
 		OutboxFrames:      server.DefaultConfig().OutboxFrames,
-		RequestsPerMinute: providers.RequestsPerWindow,
+		RequestsPerMinute: providerhost.RequestsPerWindow,
 		Titles:            true,
 	}
 }

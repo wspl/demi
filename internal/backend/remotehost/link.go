@@ -10,11 +10,11 @@ import (
 	"time"
 	"weak"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // PingInterval is how often the backend asks a runner whether it is there.
@@ -33,9 +33,9 @@ type LinkPolicy interface {
 	// Storage operates on the job's command storage; writes commit only while the context lives.
 	Storage(context.Context, JobOrigin, host.StorageOp) (host.StorageReply, error)
 	// GrowVolume handles a managed guest's request for a larger volume.
-	GrowVolume(context.Context, runnerwire.VolumeName, uint64) error
+	GrowVolume(context.Context, runnerproto.VolumeName, uint64) error
 	// ReserveNumbers reserves count numbers of the conversation's sequence.
-	ReserveNumbers(context.Context, string, commandwire.ServiceSequence, uint32) (uint64, error)
+	ReserveNumbers(context.Context, string, commandproto.ServiceSequence, uint32) (uint64, error)
 }
 
 // JobOrigin records whose a job is when it starts.
@@ -43,7 +43,7 @@ type JobOrigin struct {
 	// Host identifies the admitted Host.
 	Host host.Key
 	// Context identifies the conversation and command locale.
-	Context commandwire.Context
+	Context commandproto.Context
 	// Caller identifies the node that owns command callbacks.
 	Caller *host.JobCaller
 }
@@ -94,7 +94,7 @@ type Link struct {
 	outbound           chan []byte
 	mu                 sync.Mutex // Protects request registrations, liveness and immutable snapshots.
 	waiting            map[string]*replyWait
-	installs           []runnerwire.Install
+	installs           []runnerproto.Install
 	installsChanged    chan struct{}
 	liveness           pingState
 	disconnect         *string
@@ -164,19 +164,19 @@ func (l *Link) Pipes() *Pipes {
 }
 
 // Installs returns an immutable snapshot of installation progress.
-func (l *Link) Installs() []runnerwire.Install {
+func (l *Link) Installs() []runnerproto.Install {
 	installs, _ := l.WatchInstalls()
 	return installs
 }
 
 // WatchInstalls returns progress and a channel closed on the next change.
 // Reload after notification; no subscription needs releasing.
-func (l *Link) WatchInstalls() ([]runnerwire.Install, <-chan struct{}) {
+func (l *Link) WatchInstalls() ([]runnerproto.Install, <-chan struct{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	// A runner with no installs reports an empty list, never none: the device
 	// answers carry it as a required array.
-	installs := make([]runnerwire.Install, len(l.installs))
+	installs := make([]runnerproto.Install, len(l.installs))
 	copy(installs, l.installs)
 	return installs, l.installsChanged
 }
@@ -225,7 +225,7 @@ func (l *Link) RunningJobs() uint64 {
 
 // Sync waits for the runner's synchronization reply.
 func (l *Link) Sync(ctx context.Context) error {
-	_, err := l.call(ctx, "Sync", func(id string) runnerwire.Inbound { return &runnerwire.Sync{ID: id} })
+	_, err := l.call(ctx, "Sync", func(id string) runnerproto.Inbound { return &runnerproto.Sync{ID: id} })
 	return err
 }
 
@@ -233,8 +233,8 @@ func (l *Link) Sync(ctx context.Context) error {
 func (l *Link) ReleaseConversation(ctx context.Context, conversation string) error {
 	releaseCtx, cancel := context.WithTimeout(ctx, 360*time.Second)
 	defer cancel()
-	_, err := l.call(releaseCtx, "Release", func(id string) runnerwire.Inbound {
-		return &runnerwire.ConversationRelease{ID: id, ConversationID: conversation}
+	_, err := l.call(releaseCtx, "Release", func(id string) runnerproto.Inbound {
+		return &runnerproto.ConversationRelease{ID: id, ConversationID: conversation}
 	})
 	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 		return &host.Error{Kind: host.Interrupted, Message: "Conversation release timed out"}
@@ -245,7 +245,7 @@ func (l *Link) ReleaseConversation(ctx context.Context, conversation string) err
 // JobOutput holds one output view and its offset in the stream.
 type JobOutput struct {
 	// Stream identifies stdout or stderr.
-	Stream core.StreamKind
+	Stream types.StreamKind
 	// Offset is the chunk start in that stream.
 	Offset uint64
 	// Bytes contains the output chunk.
@@ -259,9 +259,9 @@ type JobEnd struct {
 	// CWD is the final shell directory, when reported.
 	CWD *string
 	// Output contains the final stream lengths, when reported.
-	Output *runnerwire.OutputLengths
+	Output *runnerproto.OutputLengths
 	// Files lists tracked file changes.
-	Files []runnerwire.JobFileChange
+	Files []runnerproto.JobFileChange
 	// FilesTruncated reports whether tracking omitted additional file changes.
 	FilesTruncated bool
 }
@@ -282,12 +282,12 @@ type FrameSink interface {
 type LinkDriver struct {
 	link *Link
 	ping time.Duration
-	tap  chan<- runnerwire.Outbound
+	tap  chan<- runnerproto.Outbound
 }
 
 // Tap copies decoded runner messages for wire audits; a full channel loses the copy.
 // Set it before Serve. The caller owns the channel and closes it only after Serve.
-func (d *LinkDriver) Tap(tap chan<- runnerwire.Outbound) {
+func (d *LinkDriver) Tap(tap chan<- runnerproto.Outbound) {
 	d.tap = tap
 }
 
@@ -366,7 +366,7 @@ type replyWait struct {
 	ready    chan reply
 }
 type reply struct {
-	message runnerwire.Outbound
+	message runnerproto.Outbound
 	err     error
 }
 
@@ -385,21 +385,21 @@ func (l *Link) offline() error {
 }
 
 // send encodes and queues a runner request without holding connection state.
-func (l *Link) send(ctx context.Context, message runnerwire.Inbound) error {
+func (l *Link) send(ctx context.Context, message runnerproto.Inbound) error {
 	if l.IsClosed() {
 		return l.offline()
 	}
-	frame, err := runnerwire.Encode(message)
+	frame, err := runnerproto.Encode(message)
 	if err != nil {
 		return &host.Error{Kind: host.Protocol, Message: err.Error()}
 	}
-	if len(frame) > runnerwire.MaxMessageBytes {
+	if len(frame) > runnerproto.MaxMessageBytes {
 		return &host.Error{
 			Kind: host.TooLarge,
 			Message: fmt.Sprintf(
 				"the request is %d bytes, over the %d-byte message limit",
 				len(frame),
-				runnerwire.MaxMessageBytes,
+				runnerproto.MaxMessageBytes,
 			),
 		}
 	}
@@ -417,8 +417,8 @@ func (l *Link) send(ctx context.Context, message runnerwire.Inbound) error {
 func (l *Link) call(
 	ctx context.Context,
 	expected string,
-	build func(string) runnerwire.Inbound,
-) (runnerwire.Outbound, error) {
+	build func(string) runnerproto.Inbound,
+) (runnerproto.Outbound, error) {
 	return l.callID(ctx, rand.Text(), expected, build)
 }
 
@@ -426,8 +426,8 @@ func (l *Link) call(
 func (l *Link) callID(
 	ctx context.Context,
 	id, expected string,
-	build func(string) runnerwire.Inbound,
-) (runnerwire.Outbound, error) {
+	build func(string) runnerproto.Inbound,
+) (runnerproto.Outbound, error) {
 	waiting := &replyWait{expected: expected, ready: make(chan reply, 1)}
 	l.mu.Lock()
 	if l.IsClosed() {
@@ -455,7 +455,7 @@ func (l *Link) callID(
 }
 
 // answer delivers exactly one reply outside the connection mutex.
-func (l *Link) answer(id, expected string, message runnerwire.Outbound, err error) {
+func (l *Link) answer(id, expected string, message runnerproto.Outbound, err error) {
 	l.mu.Lock()
 	waiting := l.waiting[id]
 	delete(l.waiting, id)
@@ -483,7 +483,7 @@ func (d *LinkDriver) readFrames(ctx context.Context, incoming FrameSource) LinkE
 			}
 			return LinkEnd{Kind: LinkClosed, Reason: reason}
 		}
-		message, err := runnerwire.DecodeOutbound(frame)
+		message, err := runnerproto.DecodeOutbound(frame)
 		if err != nil {
 			return LinkEnd{Kind: LinkRefused, Reason: err.Error()}
 		}
@@ -526,7 +526,7 @@ func (l *Link) ping(ctx context.Context) (LinkEnd, bool) {
 		end := LinkEnd{Kind: LinkDisconnected, Reason: "liveness: ping unanswered"}
 		return end, true
 	}
-	if err := l.send(ctx, &runnerwire.Ping{}); err != nil {
+	if err := l.send(ctx, &runnerproto.Ping{}); err != nil {
 		end := LinkEnd{Kind: LinkClosed, Reason: "runner disconnected"}
 		return end, true
 	}

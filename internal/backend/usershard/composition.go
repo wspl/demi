@@ -14,19 +14,19 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/idlewatch"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/backend/plugins"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/pluginhost"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/plugin"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // User identifies the owner.
-func (s *Shard) User() webapi.UserID { return s.user }
+func (s *Shard) User() webapiproto.UserID { return s.user }
 
 // Cloud is the user's Cloud machine.
 func (s *Shard) Cloud() *cloud.Cloud { return s.cloud }
@@ -51,14 +51,14 @@ func (s *Shard) Marks() pagesync.UserMarks { return s.services.Sync.Of(s.user) }
 
 // Vault is the credential vault, whose entries say which providers run a
 // process on the Cloud.
-func (s *Shard) Vault() *providers.Vault { return s.services.Vault }
+func (s *Shard) Vault() *providerhost.Vault { return s.services.Vault }
 
 // Assembly resolves which providers need a process.
-func (s *Shard) Assembly() *providers.Assembly { return s.services.Assembly }
+func (s *Shard) Assembly() *providerhost.Assembly { return s.services.Assembly }
 
 // Activity is what the conversation is doing: a turn of its tree, an
 // operation holding its file gate, or a user stream someone has open.
-func (s *Shard) Activity(conversation webapi.ConversationID) idlewatch.Activity {
+func (s *Shard) Activity(conversation webapiproto.ConversationID) idlewatch.Activity {
 	slot := s.conversations.Slot(conversation)
 	fileState := slot.FileGate().State()
 	fileActivity := idlewatch.Of(fileState)
@@ -73,7 +73,7 @@ func (s *Shard) Activity(conversation webapi.ConversationID) idlewatch.Activity 
 
 // Attended reports whether someone attends the conversation: a turn of it
 // is in flight, or a file transfer or user stream of it is open.
-func (s *Shard) Attended(conversation webapi.ConversationID) bool {
+func (s *Shard) Attended(conversation webapiproto.ConversationID) bool {
 	if tree := s.agent.Tree(hostaccess.RootOf(conversation)); tree != nil && tree.Admission().State().Demand > 0 {
 		return true
 	}
@@ -82,7 +82,7 @@ func (s *Shard) Attended(conversation webapi.ConversationID) bool {
 
 // HoldForIdle holds the conversation's tree and file gate now if neither
 // works. Nil means either is held; a failed attempt releases partial holds.
-func (s *Shard) HoldForIdle(conversation webapi.ConversationID) cloud.ConversationHold {
+func (s *Shard) HoldForIdle(conversation webapiproto.ConversationID) cloud.ConversationHold {
 	hold := &conversationHold{}
 	if tree := s.agent.Tree(hostaccess.RootOf(conversation)); tree != nil {
 		hold.tree = tree.Admission().TryReserve()
@@ -105,7 +105,7 @@ func (s *Shard) HoldForIdle(conversation webapi.ConversationID) cloud.Conversati
 // Failure releases partial holds; success transfers Release to the caller.
 func (s *Shard) HoldForReset(
 	ctx context.Context,
-	conversation webapi.ConversationID,
+	conversation webapiproto.ConversationID,
 	filesOnCloud bool,
 	hold time.Duration,
 ) (cloud.ConversationHold, error) {
@@ -113,12 +113,12 @@ func (s *Shard) HoldForReset(
 }
 
 // CloudStopped ends the exposes of a Cloud that stops or stopped.
-func (s *Shard) CloudStopped(ctx context.Context, device webapi.DeviceID) error {
+func (s *Shard) CloudStopped(ctx context.Context, device webapiproto.DeviceID) error {
 	return s.stopExposes(context.WithoutCancel(ctx), device)
 }
 
 // Clock is the wall clock the backend reads times from.
-func (s *Shard) Clock() core.Clock { return s.services.Clock }
+func (s *Shard) Clock() types.Clock { return s.services.Clock }
 
 // Pipes is the pipes of the user's devices.
 func (s *Shard) Pipes() *remotehost.Pipes { return s.pipes }
@@ -133,7 +133,7 @@ func (s *Shard) Conversations() *hostaccess.Conversations { return s.conversatio
 func (s *Shard) Blobs() *blobs.Namespace { return s.services.Blobs.ForUser(s.user) }
 
 // ConversationDB is the database of the user's conversation.
-func (s *Shard) ConversationDB(conversation webapi.ConversationID) *database.ConversationDB {
+func (s *Shard) ConversationDB(conversation webapiproto.ConversationID) *database.ConversationDB {
 	return s.services.Conversations.DB(conversation)
 }
 
@@ -144,7 +144,7 @@ func (s *Shard) Native() *runners.NativeCatalog { return s.services.Native }
 func (s *Shard) CloudShard() cloud.Shard { return s }
 
 // TrackIdle starts the conversation's idle watch unless one runs.
-func (s *Shard) TrackIdle(conversation webapi.ConversationID) {
+func (s *Shard) TrackIdle(conversation webapiproto.ConversationID) {
 	s.mu.Lock()
 	if s.closing || s.idle[conversation] != nil {
 		s.mu.Unlock()
@@ -153,7 +153,7 @@ func (s *Shard) TrackIdle(conversation webapi.ConversationID) {
 	ctx, cancel := context.WithCancel(s.ctx)
 	watch := &idleWatch{cancel: cancel, done: make(chan struct{})}
 	if s.idle == nil {
-		s.idle = make(map[webapi.ConversationID]*idleWatch)
+		s.idle = make(map[webapiproto.ConversationID]*idleWatch)
 	}
 	s.idle[conversation] = watch
 	s.work.Add(1)
@@ -193,7 +193,7 @@ func (s *Shard) DirectorySets(ctx context.Context) (hostaccess.DirectorySets, er
 func (s *Shard) PluginInstalls() *hostaccess.PluginInstalls { return s.installs }
 
 // JobEnded reports a finished or stopped job, which may change plugin views.
-func (s *Shard) JobEnded(conversation webapi.ConversationID) {
+func (s *Shard) JobEnded(conversation webapiproto.ConversationID) {
 	s.mu.Lock()
 	s.jobsEnded[conversation]++
 	s.mu.Unlock()
@@ -205,8 +205,8 @@ func (s *Shard) JobEnded(conversation webapi.ConversationID) {
 // specifies. Args is a JSON object preserving its input member order.
 func (s *Shard) PackageCall(
 	ctx context.Context,
-	conversation webapi.ConversationID,
-	operation declare.NativeOperation,
+	conversation webapiproto.ConversationID,
+	operation commanddecl.NativeOperation,
 	args json.RawMessage,
 	kind plugin.CallKind,
 ) (json.RawMessage, error) {
@@ -246,7 +246,7 @@ func (s *Shard) PackageCall(
 // ConversationHosts lists the conversation's main and attached Hosts.
 func (s *Shard) ConversationHosts(
 	ctx context.Context,
-	conversation webapi.ConversationID,
+	conversation webapiproto.ConversationID,
 ) ([]plugin.ConversationHost, error) {
 	hosts, err := hostaccess.ConversationHosts(ctx, s, conversation)
 	if err != nil {
@@ -274,7 +274,7 @@ func (s *Shard) ConversationHosts(
 // ReadHostFiles never wakes a Host; a stopped Host returns plugin.PortRefusalNotRunning.
 func (s *Shard) ReadHostFiles(
 	ctx context.Context,
-	conversation webapi.ConversationID,
+	conversation webapiproto.ConversationID,
 	reads []plugin.HostRead,
 ) ([]plugin.HostFile, error) {
 	files, err := hostaccess.ReadFiles(ctx, s, conversation, reads)
@@ -285,12 +285,12 @@ func (s *Shard) ReadHostFiles(
 }
 
 // PutBlob stores bytes in the user's blob namespace.
-func (s *Shard) PutBlob(ctx context.Context, bytes core.B64Bytes) (core.BlobRef, error) {
+func (s *Shard) PutBlob(ctx context.Context, bytes types.B64Bytes) (types.BlobRef, error) {
 	return s.Blobs().Put(ctx, bytes)
 }
 
 // Blob returns the user's blob bytes, or nil when absent.
-func (s *Shard) Blob(ctx context.Context, blob core.BlobRef) (*core.B64Bytes, error) {
+func (s *Shard) Blob(ctx context.Context, blob types.BlobRef) (*types.B64Bytes, error) {
 	bytes, ok, err := s.Blobs().Read(ctx, blob)
 	if err != nil || !ok {
 		return nil, err
@@ -327,11 +327,11 @@ func (s *Shard) Exposes(ctx context.Context) (plugin.ExposeList, error) {
 // CreateExpose exposes address on device for lifetime seconds.
 func (s *Shard) CreateExpose(
 	ctx context.Context,
-	device webapi.DeviceID,
+	device webapiproto.DeviceID,
 	address string,
 	lifetime uint64,
 ) (plugin.ExposeRecord, error) {
-	parsed, err := webapi.ParseExposeAddress(address)
+	parsed, err := webapiproto.ParseExposeAddress(address)
 	if err != nil {
 		return plugin.ExposeRecord{}, &plugin.PortRefusalExpose{
 			Reason:  plugin.ExposeRefusalInvalidAddress,
@@ -352,7 +352,7 @@ func (s *Shard) CreateExpose(
 // RenewExpose moves expiry to lifetime seconds from now.
 func (s *Shard) RenewExpose(
 	ctx context.Context,
-	id webapi.ExposeID,
+	id webapiproto.ExposeID,
 	lifetime uint64,
 ) (plugin.ExposeRecord, error) {
 	duration, err := exposeLifetime(lifetime)
@@ -367,7 +367,7 @@ func (s *Shard) RenewExpose(
 }
 
 // RemoveExpose destroys the expose at once.
-func (s *Shard) RemoveExpose(ctx context.Context, id webapi.ExposeID) error {
+func (s *Shard) RemoveExpose(ctx context.Context, id webapiproto.ExposeID) error {
 	err := expose.Remove(ctx, s.ExposeShard(), id)
 	return exposeFailure(err)
 }
@@ -375,5 +375,5 @@ func (s *Shard) RemoveExpose(ctx context.Context, id webapi.ExposeID) error {
 var (
 	_ cloud.Shard          = (*Shard)(nil)
 	_ hostaccess.HostShard = (*Shard)(nil)
-	_ plugins.Shard        = (*Shard)(nil)
+	_ pluginhost.Shard     = (*Shard)(nil)
 )

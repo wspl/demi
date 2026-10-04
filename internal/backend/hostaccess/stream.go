@@ -7,35 +7,35 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ServiceBinding is the native operation a user stream or one-shot call runs.
 type ServiceBinding struct {
-	Package   commandwire.PackageDescriptor
+	Package   commandproto.PackageDescriptor
 	Operation string
 }
 
 // UserStreams is the immutable set of published streams pages may open by name.
 type UserStreams struct {
-	bindings map[string]declare.NativeOperation
+	bindings map[string]commanddecl.NativeOperation
 	native   *runners.NativeCatalog
 }
 
 // StreamDeclaration binds one page stream name to a declared native operation.
 type StreamDeclaration struct {
 	Name      string
-	Operation declare.NativeOperation
+	Operation commanddecl.NativeOperation
 }
 
 // NewUserStreams binds declarations served by native; unsupported bindings
 // declare nothing. Declaration order determines duplicate-name replacement.
 func NewUserStreams(declared []StreamDeclaration, native *runners.NativeCatalog) *UserStreams {
-	streams := &UserStreams{bindings: make(map[string]declare.NativeOperation), native: native}
+	streams := &UserStreams{bindings: make(map[string]commanddecl.NativeOperation), native: native}
 	for _, item := range declared {
 		if native.Serves(item.Operation.Package, []string{item.Operation.Operation}) {
 			streams.bindings[item.Name] = item.Operation
@@ -89,7 +89,7 @@ type ServiceCall struct {
 func OpenUserStream(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	binding ServiceBinding,
 ) (*UserStream, error) {
 	access, waitCtx, stop, err := admitStream(ctx, shard, id, true, true)
@@ -142,7 +142,7 @@ func OpenUserStream(
 func UserCall(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	kind UserCallKind,
 	call ServiceCall,
 ) ([]byte, error) {
@@ -167,8 +167,8 @@ func UserCall(
 }
 
 type streamAccess struct {
-	id       webapi.ConversationID
-	device   webapi.DeviceID
+	id       webapiproto.ConversationID
+	device   webapiproto.DeviceID
 	host     ConversationHost
 	open     *OpenTransfer
 	watching *gates.Lease
@@ -189,7 +189,7 @@ func (a *streamAccess) release() {
 func admitStream(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	watches, operates bool,
 ) (*streamAccess, context.Context, func(), error) {
 	open, waitCtx, stop, err := registerTransfer(ctx, shard, id)
@@ -251,12 +251,12 @@ func admitStream(
 func serviceRequest(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	admitted ConversationHost,
 	binding ServiceBinding,
 	args json.RawMessage,
 ) (remotehost.ServiceRequest, error) {
-	commandContext, err := runners.CommandContext(ctx, shard.Control(), shard.User(), id, &commandwire.UserCaller{})
+	commandContext, err := runners.CommandContext(ctx, shard.Control(), shard.User(), id, &commandproto.UserCaller{})
 	if err != nil {
 		return remotehost.ServiceRequest{}, &Error{Kind: AccessStorage, Cause: err}
 	}
@@ -290,7 +290,12 @@ func watchUserStream(access *streamAccess, service *remotehost.ServiceStream, in
 	return lease
 }
 
-func startUserCall(ctx context.Context, shard HostShard, id webapi.ConversationID, call ServiceCall) ([]byte, error) {
+func startUserCall(
+	ctx context.Context,
+	shard HostShard,
+	id webapiproto.ConversationID,
+	call ServiceCall,
+) ([]byte, error) {
 	return WithHost(ctx, shard, id, nil, func(ctx context.Context, admitted *ConversationHost) ([]byte, error) {
 		request, err := serviceRequest(ctx, shard, id, *admitted, call.Binding, call.Args)
 		if err != nil {
@@ -300,13 +305,13 @@ func startUserCall(ctx context.Context, shard HostShard, id webapi.ConversationI
 	})
 }
 
-func streamHost(ctx context.Context, shard HostShard, id webapi.ConversationID) (selectedHost, error) {
+func streamHost(ctx context.Context, shard HostShard, id webapiproto.ConversationID) (selectedHost, error) {
 	selected, err := selectHost(ctx, shard, id, nil, false)
 	if err != nil {
 		return selectedHost{}, err
 	}
 	if !shard.Devices().Online(selected.device.ID) {
-		if selected.device.Kind == webapi.DeviceKindManaged {
+		if selected.device.Kind == webapiproto.DeviceKindManaged {
 			return selectedHost{}, &Error{Kind: AccessRefused, Cause: Stopped}
 		}
 		return selectedHost{}, accessError(&host.Error{Kind: host.Offline, Message: "The device has no live runner"})

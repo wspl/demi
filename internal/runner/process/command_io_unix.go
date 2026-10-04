@@ -8,7 +8,7 @@ import (
 	"os"
 	"slices"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"golang.org/x/sys/unix"
 )
 
@@ -90,7 +90,7 @@ func stdioHandlesOf(files []*os.File) ([]stdioHandle, error) {
 }
 
 func duplicateStdio(ctx context.Context, fd uintptr) (int, error) {
-	duplicate, err := cmdsdk.Retry(
+	duplicate, err := commandsdk.Retry(
 		ctx,
 		func() (int, error) { return unix.FcntlInt(fd, unix.F_DUPFD_CLOEXEC, 0) },
 	)

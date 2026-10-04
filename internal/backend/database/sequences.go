@@ -4,22 +4,22 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // SequenceNext is a sequence and the next number it will issue.
 type SequenceNext struct {
-	Sequence core.Sequence
+	Sequence types.Sequence
 	Next     uint64
 }
 
 // NextNumber advances sequence and returns its next number, beginning at one.
-func NextNumber(ctx context.Context, tx *sql.Tx, sequence core.Sequence) (uint64, error) {
+func NextNumber(ctx context.Context, tx *sql.Tx, sequence types.Sequence) (uint64, error) {
 	return ReserveNumbers(ctx, tx, sequence, 1)
 }
 
 // ReserveNumbers advances sequence by count and returns the first reserved number.
-func ReserveNumbers(ctx context.Context, tx *sql.Tx, sequence core.Sequence, count uint32) (uint64, error) {
+func ReserveNumbers(ctx context.Context, tx *sql.Tx, sequence types.Sequence, count uint32) (uint64, error) {
 	row, _, err := queryRecord(
 		ctx,
 		tx,
@@ -49,7 +49,7 @@ func Sequences(ctx context.Context, tx *sql.Tx) ([]SequenceNext, error) {
 		"sequences",
 		"SELECT name,next FROM sequences ORDER BY name",
 		func(r *storedRow) SequenceNext {
-			sequence := core.Sequence(r.text("name"))
+			sequence := types.Sequence(r.text("name"))
 			r.bad("name", sequence.Validate())
 			return SequenceNext{Sequence: sequence, Next: r.count("next")}
 		},

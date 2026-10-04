@@ -14,12 +14,12 @@ import (
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/tools"
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 const cloudContext = "The conversation now runs on the Cloud."
@@ -30,7 +30,7 @@ type testContext struct {
 }
 
 func (*testContext) Name() string { return "execution" }
-func (c *testContext) Context(_ context.Context, _ tools.NodeContext, _ core.TurnID, seen []string) (*string, error) {
+func (c *testContext) Context(_ context.Context, _ tools.NodeContext, _ types.TurnID, seen []string) (*string, error) {
 	c.mu.Lock()
 	c.seen = append(c.seen, append([]string{}, seen...))
 	c.mu.Unlock()
@@ -40,7 +40,7 @@ func (c *testContext) Context(_ context.Context, _ tools.NodeContext, _ core.Tur
 	return new(cloudContext), nil
 }
 
-func product(contextSource *testContext, profiles ...core.Profile) func(*server.Deps[*toolstest.NoHost]) {
+func product(contextSource *testContext, profiles ...types.Profile) func(*server.Deps[*toolstest.NoHost]) {
 	return func(deps *server.Deps[*toolstest.NoHost]) {
 		commands := &host.CommandSet{}
 		err := commands.Register(
@@ -48,10 +48,10 @@ func product(contextSource *testContext, profiles ...core.Profile) func(*server.
 				"greet",
 				"Greets the caller.",
 				host.Leaf(
-					declare.Leaf[declare.NativeOperation]{
+					commanddecl.Leaf[commanddecl.NativeOperation]{
 						Name:    "hello",
 						Summary: "Say hello.",
-						Kind:    &declare.RPC[declare.NativeOperation]{},
+						Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
 					},
 					host.RPCHandlerFunc(
 						func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 0, nil },
@@ -120,7 +120,7 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 			held(second, providertest.Text("more done"), providertest.Response(1, 1)),
 		)
 		rootScript := providertest.NewScriptedRuntime(t, said("noted"), said("noted"), said("noted"))
-		profile := core.Profile{
+		profile := types.Profile{
 			Name:              "explorer",
 			Description:       "Reads, never edits.",
 			Instructions:      new("explorer prompt"),
@@ -181,15 +181,15 @@ func TestProfilesAndSpawnRestrictionShapeCommands(t *testing.T) {
 			providertest.NewScriptedRuntime(t),
 			storetest.NewMemoryTreeStore(),
 			server.DefaultConfig(),
-			product(nil, core.Profile{Name: "default", CanSpawnSubagents: true}),
+			product(nil, types.Profile{Name: "default", CanSpawnSubagents: true}),
 		)
 		c := reserved.client()
-		c.Send(t.Context(), &framewire.OpenFrame{})
+		c.Send(t.Context(), &conversationproto.OpenFrame{})
 		frames := c.Received()
 		equal(
 			t,
-			[]framewire.ServerFrame{
-				&framewire.ErrorFrame{
+			[]conversationproto.ServerFrame{
+				&conversationproto.ErrorFrame{
 					Message: `subagent profile name "default" is reserved: omitting --profile already inherits the parent`,
 				},
 			},
@@ -212,7 +212,7 @@ func TestGrandchildInheritsProfileAndReadsOwnContext(t *testing.T) {
 		)
 		rootScript := providertest.NewScriptedRuntime(t, said("noted"))
 		model := storetest.ModelOf("stub", "worker-model")
-		profile := core.Profile{
+		profile := types.Profile{
 			Name:              "worker",
 			Description:       "Works through a task list.",
 			Instructions:      new("worker prompt"),
@@ -237,7 +237,7 @@ func TestGrandchildInheritsProfileAndReadsOwnContext(t *testing.T) {
 		)
 		f.opened()
 		outer := spawn(t, f, rootID(), `{"prompt":"task outer","profile":"worker"}`)
-		done := make(chan core.NodeID, 1)
+		done := make(chan types.NodeID, 1)
 		go func() { done <- spawn(t, f, outer, `{"prompt":"task inner"}`) }()
 		synctest.Wait()
 		close(outerGate)
@@ -255,10 +255,10 @@ func TestGrandchildInheritsProfileAndReadsOwnContext(t *testing.T) {
 		}
 		close(innerGate)
 		synctest.Wait()
-		for _, id := range []core.NodeID{rootID(), outer, inner} {
+		for _, id := range []types.NodeID{rootID(), outer, inner} {
 			count := 0
 			for _, block := range f.store.Checkpoint(id).Transcript {
-				if _, ok := block.(*core.ContextBlock); ok {
+				if _, ok := block.(*types.ContextBlock); ok {
 					count++
 				}
 			}

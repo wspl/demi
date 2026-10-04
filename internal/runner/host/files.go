@@ -9,23 +9,23 @@ import (
 	"syscall"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // ReadFile opens and positions the file, replies, then streams the requested
 // range to its output pipe. It reports pipe_done even when opening fails.
 // Pipe failure stops the read and closes the file.
-func (s *Service) ReadFile(ctx context.Context, request runnerwire.FSReadFile) error {
+func (s *Service) ReadFile(ctx context.Context, request runnerproto.FSReadFile) error {
 	ctx, leave, err := s.life.enter(ctx)
 	if err != nil {
 		return err
 	}
 	defer leave()
 	body, failure := s.openRange(ctx, request)
-	if err = s.fsReply(s.life.ctx, request.ID, &runnerwire.FSReadFileResult{}, failure); err != nil {
+	if err = s.fsReply(s.life.ctx, request.ID, &runnerproto.FSReadFileResult{}, failure); err != nil {
 		if body != nil {
 			_ = body.Close()
 		} // The reply failure already determines the result.
@@ -41,7 +41,7 @@ func (s *Service) ReadFile(ctx context.Context, request runnerwire.FSReadFile) e
 // input pipe and publishes only after clean EOF. Failure removes the temporary
 // file and preserves the destination. It reports pipe_done before the reply.
 // Parent creation uses artifacts.Parent and occurs only when requested.
-func (s *Service) WriteFile(ctx context.Context, request runnerwire.FSWriteFile) error {
+func (s *Service) WriteFile(ctx context.Context, request runnerproto.FSWriteFile) error {
 	ctx, leave, err := s.life.enter(ctx)
 	if err != nil {
 		return err
@@ -51,11 +51,11 @@ func (s *Service) WriteFile(ctx context.Context, request runnerwire.FSWriteFile)
 	if err = process.ReportPipe(s.life.ctx, s.output, request.Input.ID, failure); err != nil {
 		return err
 	}
-	return s.fsReply(s.life.ctx, request.ID, &runnerwire.FSWriteFileResult{}, failure)
+	return s.fsReply(s.life.ctx, request.ID, &runnerproto.FSWriteFileResult{}, failure)
 }
 
 // openRange prepares a regular Host file before acknowledging its read request.
-func (s *Service) openRange(ctx context.Context, request runnerwire.FSReadFile) (io.ReadCloser, error) {
+func (s *Service) openRange(ctx context.Context, request runnerproto.FSReadFile) (io.ReadCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (s *Service) openRange(ctx context.Context, request runnerwire.FSReadFile) 
 	if err != nil {
 		return nil, err
 	}
-	file, err := cmdsdk.Retry(ctx, func() (*os.File, error) { return os.Open(path) })
+	file, err := commandsdk.Retry(ctx, func() (*os.File, error) { return os.Open(path) })
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (f *fileRange) Read(p []byte) (int, error) {
 func (f *fileRange) Close() error { return f.file.Close() }
 
 // writeFromPipe publishes only complete pipe input into the Host's destination.
-func (s *Service) writeFromPipe(ctx context.Context, request runnerwire.FSWriteFile) (err error) {
+func (s *Service) writeFromPipe(ctx context.Context, request runnerproto.FSWriteFile) (err error) {
 	if err = ctx.Err(); err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func (s *Service) writeFromPipe(ctx context.Context, request runnerwire.FSWriteF
 			return err
 		}
 	}
-	staged, err := cmdsdk.Retry(ctx, func() (*artifacts.Staged, error) {
+	staged, err := commandsdk.Retry(ctx, func() (*artifacts.Staged, error) {
 		return artifacts.NewStaged(
 			ctx,
 			target,

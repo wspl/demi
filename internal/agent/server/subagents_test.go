@@ -15,11 +15,11 @@ import (
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 // nodeScripts selects a scripted runtime by the child's first brief.
@@ -44,9 +44,11 @@ func (m *nodeScripts) Run(ctx context.Context, r provider.InferenceRequest) prov
 	}
 	return m.root.Run(ctx, r)
 }
-func (m *nodeScripts) Fresh() provider.Runtime                       { return m }
-func (*nodeScripts) Close(context.Context) error                     { return nil }
-func (*nodeScripts) RequestLimits(core.Model) provider.RequestLimits { return provider.RequestLimits{} }
+func (m *nodeScripts) Fresh() provider.Runtime   { return m }
+func (*nodeScripts) Close(context.Context) error { return nil }
+func (*nodeScripts) RequestLimits(types.Model) provider.RequestLimits {
+	return provider.RequestLimits{}
+}
 
 func requestText(r provider.InferenceRequest) string {
 	var text strings.Builder
@@ -112,7 +114,7 @@ type commandRun struct {
 	stdout, stderr string
 }
 
-func agentCall(ctx context.Context, f *fixture, node core.NodeID, verb, args string, json bool) (commandRun, error) {
+func agentCall(ctx context.Context, f *fixture, node types.NodeID, verb, args string, json bool) (commandRun, error) {
 	live := f.server.Node(rootID(), node)
 	if live == nil {
 		return commandRun{}, fmt.Errorf("caller %s is not live", node)
@@ -134,7 +136,7 @@ func agentCall(ctx context.Context, f *fixture, node core.NodeID, verb, args str
 	return commandRun{code, port.stdout.String(), port.stderr.String()}, err
 }
 
-func agent(t *testing.T, f *fixture, node core.NodeID, verb, args string) commandRun {
+func agent(t *testing.T, f *fixture, node types.NodeID, verb, args string) commandRun {
 	t.Helper()
 	run, err := agentCall(t.Context(), f, node, verb, args, false)
 	if err != nil {
@@ -143,7 +145,7 @@ func agent(t *testing.T, f *fixture, node core.NodeID, verb, args string) comman
 	return run
 }
 
-func spawn(t *testing.T, f *fixture, node core.NodeID, args string) core.NodeID {
+func spawn(t *testing.T, f *fixture, node types.NodeID, args string) types.NodeID {
 	t.Helper()
 	run := agent(t, f, node, "spawn", args)
 	if run.code != 0 {
@@ -216,49 +218,50 @@ func TestInheritedChildBriefAndCompletionWakeParent(t *testing.T) {
 		}
 		receipts := agentReceipts(f, rootID())
 		equal(t, 1, len(receipts))
-		id, err := (core.CompletionID{Child: child, Round: record.Round}).BlockID()
+		id, err := (types.CompletionID{Child: child, Round: record.Round}).BlockID()
 		if err != nil {
 			t.Fatal(err)
 		}
 		equal(t, id, receipts[0].ID)
 		equal(t, "reader", receipts[0].Sender.Description)
-		equal(t, core.AgentMessageEvent(&core.CompletionEvent{Outcome: "completed"}), receipts[0].Event)
+		equal(t, types.AgentMessageEvent(&types.CompletionEvent{Outcome: "completed"}), receipts[0].Event)
 		equal(t, 0, childScript.Remaining())
 		equal(t, 0, f.script.Remaining())
 		closed, receipt := -1, -1
 		started, reset := false, false
 		for i, frame := range c.Received() {
-			if event, ok := frame.(*framewire.SubagentFrame); ok {
+			if event, ok := frame.(*conversationproto.SubagentFrame); ok {
 				switch event.Event {
-				case framewire.SubagentEventStarted:
+				case conversationproto.SubagentEventStarted:
 					started = true
 					job := event.Job
 					equal(t, child, job.SubagentID)
 					equal(t, rootID(), job.ParentSessionID)
 					equal(t, "reader", job.Description)
 					equal(t, (*string)(nil), job.Profile)
-					equal(t, framewire.JobPhaseRunning, job.Phase)
-					equal(t, (*core.Timestamp)(nil), job.EndedAt)
+					equal(t, conversationproto.JobPhaseRunning, job.Phase)
+					equal(t, (*types.Timestamp)(nil), job.EndedAt)
 					equal(t, (*string)(nil), job.Result)
-				case framewire.SubagentEventClosed:
-					equal(t, framewire.JobPhaseCompleted, event.Job.Phase)
+				case conversationproto.SubagentEventClosed:
+					equal(t, conversationproto.JobPhaseCompleted, event.Job.Phase)
 					equal(t, "the file says 42", *event.Job.Result)
 					if event.Job.EndedAt == nil {
 						t.Fatal("no close time")
 					}
 				}
 			}
-			if event, ok := frame.(*framewire.SubagentTranscriptResetFrame); ok && event.SubagentID == child &&
+			if event, ok := frame.(*conversationproto.SubagentTranscriptResetFrame); ok && event.SubagentID == child &&
 				len(event.Blocks) == 0 {
 				reset = true
 			}
-			if s, ok := frame.(*framewire.SubagentFrame); ok && s.Event == framewire.SubagentEventClosed {
+			if s, ok := frame.(*conversationproto.SubagentFrame); ok &&
+				s.Event == conversationproto.SubagentEventClosed {
 				closed = i
 			}
-			if p, ok := frame.(*framewire.TranscriptPatchFrame); ok {
+			if p, ok := frame.(*conversationproto.TranscriptPatchFrame); ok {
 				for _, p := range p.Patches {
-					if a, ok := p.(*framewire.AddPatch); ok {
-						if _, ok := a.Value.(*core.AgentMessageBlock); ok {
+					if a, ok := p.(*conversationproto.AddPatch); ok {
+						if _, ok := a.Value.(*types.AgentMessageBlock); ok {
 							receipt = i
 						}
 					}
@@ -300,13 +303,13 @@ func TestChildFailureAndEmptyCompletion(t *testing.T) {
 		equal(t, store.ClosePhase(&store.Completed{}), f.store.Record(second).Closed.Phase)
 		receipts := agentReceipts(f, rootID())
 		equal(t, 2, len(receipts))
-		for i, child := range []core.NodeID{first, second} {
+		for i, child := range []types.NodeID{first, second} {
 			equal(t, child, receipts[i].Sender.ID)
 			equal(t, []string{"the vendor refused", ""}[i], receipts[i].Content)
 			equal(
 				t,
-				core.AgentMessageEvent(
-					&core.CompletionEvent{Outcome: []core.CompletionOutcome{"failed", "completed"}[i]},
+				types.AgentMessageEvent(
+					&types.CompletionEvent{Outcome: []types.CompletionOutcome{"failed", "completed"}[i]},
 				),
 				receipts[i].Event,
 			)
@@ -330,7 +333,7 @@ func TestChildLimitAndWebAbortAll(t *testing.T) {
 		}
 		f := modelFixture(t, rootTurns, childScriptEntry("child-task", script))
 		c := f.opened()
-		ids := []core.NodeID{}
+		ids := []types.NodeID{}
 		for range 8 {
 			ids = append(ids, spawn(t, f, rootID(), `{"prompt":"child-task"}`))
 		}
@@ -341,12 +344,13 @@ func TestChildLimitAndWebAbortAll(t *testing.T) {
 			"demi agent spawn: at most 8 running subagents per session; abort one or wait for a result\n",
 			ninth.stderr,
 		)
-		c.Send(t.Context(), &framewire.AbortSubagentsFrame{})
+		c.Send(t.Context(), &conversationproto.AbortSubagentsFrame{})
 		synctest.Wait()
 		closes := 0
 		for _, frame := range c.Received() {
-			if event, ok := frame.(*framewire.SubagentFrame); ok && event.Event == framewire.SubagentEventClosed &&
-				event.Job.Phase == framewire.JobPhaseAborted {
+			if event, ok := frame.(*conversationproto.SubagentFrame); ok &&
+				event.Event == conversationproto.SubagentEventClosed &&
+				event.Job.Phase == conversationproto.JobPhaseAborted {
 				closes++
 			}
 		}
@@ -411,7 +415,7 @@ func TestStartRetrySurvivesCancellationAndResumeRounds(t *testing.T) {
 			t.Fatal("canceled start was lost")
 		}
 		equal(t, uint64(1), f.store.Record(child).Round)
-		c.Send(t.Context(), &framewire.CloseFrame{})
+		c.Send(t.Context(), &conversationproto.CloseFrame{})
 		c.Received()
 		f.opened()
 		retried := agent(t, f, rootID(), "spawn", `{"prompt":"first task","request-id":"r1"}`)
@@ -477,7 +481,7 @@ func TestGrandchildCompletionReachesParentThenRoot(t *testing.T) {
 		parent := spawn(t, f, rootID(), `{"prompt":"task parent"}`)
 		equal(t, "sent to 0\n", agent(t, f, parent, "send", `{"id":"parent","message":"status: delegating"}`).stdout)
 		untilIdle(t, c)
-		done := make(chan core.NodeID, 1)
+		done := make(chan types.NodeID, 1)
 		go func() { done <- spawn(t, f, parent, `{"prompt":"task nested"}`) }()
 		synctest.Wait()
 		close(parentGate)
@@ -493,10 +497,11 @@ func TestGrandchildCompletionReachesParentThenRoot(t *testing.T) {
 		equal(t, 2, len(f.script.Requests()))
 		equal(t, 2, len(parentScript.Requests()))
 		frames := c.Received()
-		order := []core.NodeID{}
+		order := []types.NodeID{}
 		for _, frame := range frames {
-			if s, ok := frame.(*framewire.SubagentFrame); ok && s.Event == framewire.SubagentEventClosed {
-				equal(t, framewire.JobPhaseCompleted, s.Job.Phase)
+			if s, ok := frame.(*conversationproto.SubagentFrame); ok &&
+				s.Event == conversationproto.SubagentEventClosed {
+				equal(t, conversationproto.JobPhaseCompleted, s.Job.Phase)
 				wantParent := rootID()
 				if s.Job.SubagentID == child {
 					wantParent = parent
@@ -505,7 +510,7 @@ func TestGrandchildCompletionReachesParentThenRoot(t *testing.T) {
 				order = append(order, s.Job.SubagentID)
 			}
 		}
-		equal(t, []core.NodeID{child, parent}, order)
+		equal(t, []types.NodeID{child, parent}, order)
 		if !strings.Contains(requestText(parentScript.Requests()[1]), "child complete") {
 			t.Fatal(parentScript.Requests()[1])
 		}
@@ -514,9 +519,9 @@ func TestGrandchildCompletionReachesParentThenRoot(t *testing.T) {
 		equal(t, child, heard[0].Sender.ID)
 		received := agentReceipts(f, rootID())
 		equal(t, 2, len(received))
-		equal(t, core.AgentMessageEvent(&core.MessageEvent{}), received[0].Event)
+		equal(t, types.AgentMessageEvent(&types.MessageEvent{}), received[0].Event)
 		equal(t, "status: delegating", received[0].Content)
-		equal(t, core.AgentMessageEvent(&core.CompletionEvent{Outcome: "completed"}), received[1].Event)
+		equal(t, types.AgentMessageEvent(&types.CompletionEvent{Outcome: "completed"}), received[1].Event)
 		equal(t, "parent complete", received[1].Content)
 	})
 }
@@ -627,15 +632,15 @@ func TestRestoreReadsGrandchildrenBeforeSettlingParent(t *testing.T) {
 		)
 		c := f.opened()
 		outer := spawn(t, f, rootID(), `{"prompt":"task outer"}`)
-		done := make(chan core.NodeID, 1)
+		done := make(chan types.NodeID, 1)
 		go func() { done <- spawn(t, f, outer, `{"prompt":"task inner"}`) }()
 		synctest.Wait()
 		close(gate)
 		inner := <-done
 		synctest.Wait()
-		c.Send(t.Context(), &framewire.CloseFrame{})
+		c.Send(t.Context(), &conversationproto.CloseFrame{})
 		c.Received()
-		for _, id := range []core.NodeID{outer, inner} {
+		for _, id := range []types.NodeID{outer, inner} {
 			if f.store.Record(id).Closed != nil {
 				t.Fatal("dispose closed child")
 			}
@@ -645,7 +650,7 @@ func TestRestoreReadsGrandchildrenBeforeSettlingParent(t *testing.T) {
 		opened := make(chan struct{})
 		go func() {
 			defer close(opened)
-			c.Send(t.Context(), &framewire.OpenFrame{})
+			c.Send(t.Context(), &conversationproto.OpenFrame{})
 		}()
 		if err := reading.Wait(t.Context(), 1); err != nil {
 			t.Fatal(err)
@@ -659,17 +664,18 @@ func TestRestoreReadsGrandchildrenBeforeSettlingParent(t *testing.T) {
 		synctest.Wait()
 		equal(t, store.ClosePhase(&store.Completed{Result: "inner done"}), f.store.Record(inner).Closed.Phase)
 		equal(t, store.ClosePhase(&store.Completed{Result: "outer done"}), f.store.Record(outer).Closed.Phase)
-		closes := []core.NodeID{}
+		closes := []types.NodeID{}
 		events := []string{}
 		for _, frame := range c.Received() {
-			if event, ok := frame.(*framewire.SubagentFrame); ok {
+			if event, ok := frame.(*conversationproto.SubagentFrame); ok {
 				events = append(events, string(event.Event)+":"+string(event.Job.SubagentID))
 			}
-			if s, ok := frame.(*framewire.SubagentFrame); ok && s.Event == framewire.SubagentEventClosed {
+			if s, ok := frame.(*conversationproto.SubagentFrame); ok &&
+				s.Event == conversationproto.SubagentEventClosed {
 				closes = append(closes, s.Job.SubagentID)
 			}
 		}
-		equal(t, []core.NodeID{inner, outer}, closes)
+		equal(t, []types.NodeID{inner, outer}, closes)
 		equal(
 			t,
 			[]string{
@@ -707,7 +713,7 @@ func TestAbortClosesSubtreeAndDisposePreservesLiveChildren(t *testing.T) {
 		)
 		c := f.opened()
 		alpha := spawn(t, f, rootID(), `{"prompt":"task alpha"}`)
-		done := make(chan core.NodeID, 1)
+		done := make(chan types.NodeID, 1)
 		go func() { done <- spawn(t, f, alpha, `{"prompt":"task gamma"}`) }()
 		synctest.Wait()
 		close(gate)
@@ -716,26 +722,27 @@ func TestAbortClosesSubtreeAndDisposePreservesLiveChildren(t *testing.T) {
 		run := agent(t, f, rootID(), "abort", `{"id":1}`)
 		equal(t, "aborted 1\n", run.stdout)
 		synctest.Wait()
-		for _, id := range []core.NodeID{alpha, gamma} {
+		for _, id := range []types.NodeID{alpha, gamma} {
 			equal(t, store.ClosePhase(&store.Aborted{}), f.store.Record(id).Closed.Phase)
 		}
-		closes := []core.NodeID{}
+		closes := []types.NodeID{}
 		for _, frame := range c.Received() {
-			if event, ok := frame.(*framewire.SubagentFrame); ok && event.Event == framewire.SubagentEventClosed {
-				equal(t, framewire.JobPhaseAborted, event.Job.Phase)
+			if event, ok := frame.(*conversationproto.SubagentFrame); ok &&
+				event.Event == conversationproto.SubagentEventClosed {
+				equal(t, conversationproto.JobPhaseAborted, event.Job.Phase)
 				closes = append(closes, event.Job.SubagentID)
 			}
 		}
-		equal(t, []core.NodeID{gamma, alpha}, closes)
+		equal(t, []types.NodeID{gamma, alpha}, closes)
 		gammaBlocks := f.store.Checkpoint(gamma).Transcript
-		if _, ok := gammaBlocks[len(gammaBlocks)-1].(*core.AbortBlock); !ok {
+		if _, ok := gammaBlocks[len(gammaBlocks)-1].(*types.AbortBlock); !ok {
 			t.Fatal(gammaBlocks)
 		}
-		equal(t, core.SessionPhaseIdle, f.store.Checkpoint(alpha).State.Phase)
+		equal(t, types.SessionPhaseIdle, f.store.Checkpoint(alpha).State.Phase)
 		receipts := agentReceipts(f, rootID())
 		equal(t, 1, len(receipts))
 		equal(t, "", receipts[0].Content)
-		equal(t, core.AgentMessageEvent(&core.CompletionEvent{Outcome: "aborted"}), receipts[0].Event)
+		equal(t, types.AgentMessageEvent(&types.CompletionEvent{Outcome: "aborted"}), receipts[0].Event)
 		equal(t, 1, len(f.store.Checkpoint(alpha).State.AgentInputs))
 		equal(t, 1, len(alphaScript.Requests()))
 		if !f.store.Record(gamma).Delivered {
@@ -743,23 +750,24 @@ func TestAbortClosesSubtreeAndDisposePreservesLiveChildren(t *testing.T) {
 		}
 		beta := spawn(t, f, rootID(), `{"prompt":"task beta"}`)
 		synctest.Wait()
-		c.Send(t.Context(), &framewire.CloseFrame{})
+		c.Send(t.Context(), &conversationproto.CloseFrame{})
 		c.Received()
 		if f.store.Record(beta).Closed != nil {
 			t.Fatal("dispose archived live child")
 		}
-		equal(t, core.SessionPhaseRunning, f.store.Checkpoint(beta).State.Phase)
-		c.Send(t.Context(), &framewire.OpenFrame{})
+		equal(t, types.SessionPhaseRunning, f.store.Checkpoint(beta).State.Phase)
+		c.Send(t.Context(), &conversationproto.OpenFrame{})
 		synctest.Wait()
 		equal(t, store.ClosePhase(&store.Completed{Result: "beta after restart"}), f.store.Record(beta).Closed.Phase)
 		equal(t, 2, len(betaScript.Requests()))
-		started := []core.NodeID{}
+		started := []types.NodeID{}
 		for _, frame := range c.Received() {
-			if event, ok := frame.(*framewire.SubagentFrame); ok && event.Event == framewire.SubagentEventStarted {
+			if event, ok := frame.(*conversationproto.SubagentFrame); ok &&
+				event.Event == conversationproto.SubagentEventStarted {
 				started = append(started, event.Job.SubagentID)
 			}
 		}
-		equal(t, []core.NodeID{beta}, started)
+		equal(t, []types.NodeID{beta}, started)
 		equal(t, 0, alphaScript.Remaining())
 		equal(t, 0, betaScript.Remaining())
 		equal(t, 0, gammaScript.Remaining())
@@ -795,7 +803,7 @@ func TestMessagesCrossTreeButLifecycleBelongsToSpawner(t *testing.T) {
 		synctest.Wait()
 		alpha := spawn(t, f, rootID(), `{"prompt":"task alpha","description":"alpha"}`)
 		beta := spawn(t, f, rootID(), `{"prompt":"task beta","description":"beta"}`)
-		done := make(chan core.NodeID, 1)
+		done := make(chan types.NodeID, 1)
 		go func() { done <- spawn(t, f, alpha, `{"prompt":"task gamma","description":"gamma"}`) }()
 		synctest.Wait()
 		close(alphaGate)
@@ -805,7 +813,7 @@ func TestMessagesCrossTreeButLifecycleBelongsToSpawner(t *testing.T) {
 		equal(t, "sent to 2\n", agent(t, f, gamma, "send", `{"id":"parent","message":"gamma status"}`).stdout)
 		synctest.Wait()
 		equal(t, 2, len(alphaScript.Requests()))
-		for i, node := range []core.NodeID{delta, alpha, beta, gamma} {
+		for i, node := range []types.NodeID{delta, alpha, beta, gamma} {
 			equal(t, uint64(i+1), f.store.Record(node).Number)
 		}
 		heard := requestText(alphaScript.Requests()[1])
@@ -879,7 +887,8 @@ func TestMessagesCrossTreeButLifecycleBelongsToSpawner(t *testing.T) {
 			t.Fatal(betaScript.Requests()[1])
 		}
 		for _, frame := range c.Received() {
-			if event, ok := frame.(*framewire.SubagentFrame); ok && event.Event == framewire.SubagentEventClosed {
+			if event, ok := frame.(*conversationproto.SubagentFrame); ok &&
+				event.Event == conversationproto.SubagentEventClosed {
 				equal(t, beta, event.Job.SubagentID)
 			}
 		}
@@ -930,16 +939,16 @@ func TestShutdownJoinsStartWaitingOnParent(t *testing.T) {
 }
 
 // agentReceipts reads the messages delivered into an agent's transcript.
-func agentReceipts(f *fixture, node core.NodeID) []core.AgentMessage {
-	messages := []core.AgentMessage{}
-	var blocks []core.Block
+func agentReceipts(f *fixture, node types.NodeID) []types.AgentMessage {
+	messages := []types.AgentMessage{}
+	var blocks []types.Block
 	if node == rootID() {
 		blocks = f.server.Tree(rootID()).Root().Session().Transcript().Blocks
 	} else {
 		blocks = f.store.Checkpoint(node).Transcript
 	}
 	for _, block := range blocks {
-		if receipt, ok := block.(*core.AgentMessageBlock); ok {
+		if receipt, ok := block.(*types.AgentMessageBlock); ok {
 			messages = append(messages, receipt.Message)
 		}
 	}

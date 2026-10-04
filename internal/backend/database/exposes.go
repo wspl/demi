@@ -6,21 +6,21 @@ import (
 	"errors"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // CreateExpose returns a new expose `id` of `user` on `device`, from now until `lifetime`
 // from now.
 func (c *ControlService) CreateExpose(
 	ctx context.Context,
-	id webapi.ExposeID,
-	user webapi.UserID,
-	device webapi.DeviceID,
-	address webapi.ExposeAddress,
+	id webapiproto.ExposeID,
+	user webapiproto.UserID,
+	device webapiproto.DeviceID,
+	address webapiproto.ExposeAddress,
 	lifetime time.Duration,
 ) (ExposeRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ExposeRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (ExposeRecord, error) {
 		expiry, err := later(now, lifetime)
 		if err != nil {
 			return ExposeRecord{}, err
@@ -49,9 +49,9 @@ func (c *ControlService) CreateExpose(
 }
 
 // Expose returns the expose `id`, expired or not.
-func (c *ControlService) Expose(ctx context.Context, id webapi.ExposeID) (ExposeRecord, bool, error) {
+func (c *ControlService) Expose(ctx context.Context, id webapiproto.ExposeID) (ExposeRecord, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ExposeRecord, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (ExposeRecord, error) {
 		r, ok, err := queryRecord(ctx, tx, "exposes", "SELECT * FROM exposes WHERE id = ?", exposeRow, id)
 		found = ok
 		return r, err
@@ -61,8 +61,8 @@ func (c *ControlService) Expose(ctx context.Context, id webapi.ExposeID) (Expose
 
 // UserExposes returns the exposes of `user`, after deleting the expired ones. A listing
 // that finds none expired writes nothing.
-func (c *ControlService) UserExposes(ctx context.Context, user webapi.UserID) (UserExposes, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (UserExposes, error) {
+func (c *ControlService) UserExposes(ctx context.Context, user webapiproto.UserID) (UserExposes, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (UserExposes, error) {
 		rows, err := queryRecords(
 			ctx,
 			tx,
@@ -74,7 +74,7 @@ func (c *ControlService) UserExposes(ctx context.Context, user webapi.UserID) (U
 		if err != nil {
 			return UserExposes{}, err
 		}
-		result := UserExposes{Live: []ExposeRecord{}, Expired: []webapi.ExposeID{}}
+		result := UserExposes{Live: []ExposeRecord{}, Expired: []webapiproto.ExposeID{}}
 		for _, row := range rows {
 			if row.ExpiresAt <= now {
 				if err := execSQL(ctx, tx, "DELETE FROM exposes WHERE id = ?", row.ID); err != nil {
@@ -93,11 +93,11 @@ func (c *ControlService) UserExposes(ctx context.Context, user webapi.UserID) (U
 // now; ErrExposeNotFound when `user` has no such live expose.
 func (c *ControlService) RenewExpose(
 	ctx context.Context,
-	id webapi.ExposeID,
-	user webapi.UserID,
+	id webapiproto.ExposeID,
+	user webapiproto.UserID,
 	lifetime time.Duration,
 ) (ExposeRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ExposeRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (ExposeRecord, error) {
 		expiry, err := later(now, lifetime)
 		if err != nil {
 			return ExposeRecord{}, err
@@ -132,8 +132,8 @@ func (c *ControlService) RenewExpose(
 }
 
 // DeleteExpose deletes the expose `id`, if there is one.
-func (c *ControlService) DeleteExpose(ctx context.Context, id webapi.ExposeID) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) DeleteExpose(ctx context.Context, id webapiproto.ExposeID) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(ctx, tx, "DELETE FROM exposes WHERE id = ?", id)
 	})
 }
@@ -143,10 +143,10 @@ func (c *ControlService) DeleteExpose(ctx context.Context, id webapi.ExposeID) e
 // The result reports whether this transaction removed the row.
 func (c *ControlService) DeleteExpiredExpose(
 	ctx context.Context,
-	id webapi.ExposeID,
-	observedAt core.Timestamp,
+	id webapiproto.ExposeID,
+	observedAt types.Timestamp,
 ) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (bool, error) {
 		at, err := observedAt.Millisecond()
 		if err != nil {
 			return false, err
@@ -161,23 +161,30 @@ func (c *ControlService) DeleteExpiredExpose(
 }
 
 // DeleteDeviceExposes deletes every expose on `device`; answers their ids.
-func (c *ControlService) DeleteDeviceExposes(ctx context.Context, device webapi.DeviceID) ([]webapi.ExposeID, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]webapi.ExposeID, error) {
-		return queryRecords(
-			ctx,
-			tx,
-			"exposes",
-			"DELETE FROM exposes WHERE device_id = ? RETURNING id",
-			func(r *storedRow) webapi.ExposeID { return checked(r, "id", webapi.ParseExposeID) },
-			device,
-		)
-	})
+func (c *ControlService) DeleteDeviceExposes(
+	ctx context.Context,
+	device webapiproto.DeviceID,
+) ([]webapiproto.ExposeID, error) {
+	return controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]webapiproto.ExposeID, error) {
+			return queryRecords(
+				ctx,
+				tx,
+				"exposes",
+				"DELETE FROM exposes WHERE device_id = ? RETURNING id",
+				func(r *storedRow) webapiproto.ExposeID { return checked(r, "id", webapiproto.ParseExposeID) },
+				device,
+			)
+		},
+	)
 }
 
 // DeleteCloudExposes deletes the exposes of every user's Cloud, as a backend that starts
 // does: the machine manager has stopped every Cloud by then.
 func (c *ControlService) DeleteCloudExposes(ctx context.Context) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(
 			ctx,
 			tx,
@@ -188,10 +195,10 @@ func (c *ControlService) DeleteCloudExposes(ctx context.Context) error {
 
 func exposeRow(r *storedRow) ExposeRecord {
 	return ExposeRecord{
-		ID:        checked(r, "id", webapi.ParseExposeID),
-		User:      checked(r, "user_id", webapi.ParseUserID),
-		Device:    checked(r, "device_id", webapi.ParseDeviceID),
-		Address:   checked(r, "address", webapi.ParseExposeAddress),
+		ID:        checked(r, "id", webapiproto.ParseExposeID),
+		User:      checked(r, "user_id", webapiproto.ParseUserID),
+		Device:    checked(r, "device_id", webapiproto.ParseDeviceID),
+		Address:   checked(r, "address", webapiproto.ParseExposeAddress),
 		CreatedAt: r.instant("created_at"),
 		ExpiresAt: r.instant("expires_at"),
 	}

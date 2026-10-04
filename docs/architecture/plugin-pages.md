@@ -44,7 +44,7 @@ contributions to the shell as a plain object, its `PluginPage`, and nothing
 about the plugin itself:
 
 ```text
-internal/plugins/browser        manifest: id "browser", packages, commands,
+internal/plugin/browser        manifest: id "browser", packages, commands,
                                 streams with their messages, page package
                                 "@demicodes/plugin-browser", state schemas,
                                 methods

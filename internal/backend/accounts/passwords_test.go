@@ -11,8 +11,8 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/database/databasetest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // The fixtures come from the reference writer described in testdata/README.md.
@@ -22,7 +22,7 @@ func TestPasswordFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	control := databasetest.Control(t.Context(), t, core.SystemClock{})
+	control := databasetest.Control(t.Context(), t, types.SystemClock{})
 	user := databasetest.Master(t.Context(), t, control)
 	data, err := os.ReadFile("testdata/passwords.tsv")
 	if err != nil {
@@ -37,7 +37,7 @@ func TestPasswordFixtures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		password := webapi.Password(fields[0])
+		password := webapiproto.Password(fields[0])
 		stored := fields[2]
 		if got := hashPassword(password, salt); got != stored {
 			t.Fatal("hash differs from the fixture's PHC string")
@@ -137,7 +137,7 @@ func TestPasswordWriterMatchesVerifiedFixture(t *testing.T) {
 	if len(fields) != 3 {
 		t.Fatal("invalid Go fixture")
 	}
-	if got := hashPassword(webapi.Password(fields[0]), []byte(fields[1])); got != fields[2] {
+	if got := hashPassword(webapiproto.Password(fields[0]), []byte(fields[1])); got != fields[2] {
 		t.Fatal("hashPassword output differs from the verified fixture")
 	}
 }

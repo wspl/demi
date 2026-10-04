@@ -45,7 +45,7 @@ hello that meets the backend's shutdown gets no answer: its connection closes,
 as every runner's does at
 [shutdown](../backend/backend.md#startup-and-shutdown). Both ends decode every
 MessagePack message into the types of the runner wire's contract package
-(`internal/runnerwire`), which they both import, and validate it at entry; a message that fails closes the
+(`internal/runnerproto`), which they both import, and validate it at entry; a message that fails closes the
 connection, since its sender broke the protocol
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 Integer fields travel as MessagePack integers, and byte fields as MessagePack

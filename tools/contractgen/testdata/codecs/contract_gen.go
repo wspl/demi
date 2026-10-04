@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wspl/demi/internal/contract"
-	runnerwire "github.com/wspl/demi/internal/runnerwire"
+	runnerproto "github.com/wspl/demi/internal/runnerproto"
 )
 
 func DecodeAddress(data []byte) (Address, error) { return contract.Decode[Address](data) }
@@ -36,7 +36,7 @@ func (v *Address) UnmarshalJSON(data []byte) error {
 			return contract.At("url", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[runnerwire.BackendURL](raw)
+			value, err := contract.Decode[runnerproto.BackendURL](raw)
 			if err != nil {
 				return contract.At("url", err)
 			}
@@ -159,7 +159,7 @@ func (v *Wake) UnmarshalJSON(data []byte) error {
 			return contract.At("boot", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[runnerwire.ManagedBoot](raw)
+			value, err := contract.Decode[runnerproto.ManagedBoot](raw)
 			if err != nil {
 				return contract.At("boot", err)
 			}

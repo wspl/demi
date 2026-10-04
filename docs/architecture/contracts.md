@@ -1,7 +1,7 @@
 # Contracts
 
 Adding `durationMs` to a transcript block changes one definition: the Go
-struct for that variant in `internal/core`. The field is:
+struct for that variant in `internal/types`. The field is:
 
 ```go
 // +demi:range max=9007199254740991
@@ -30,18 +30,18 @@ ends import the same package; TypeScript ends use its generated schemas.
 
 | Wire or stored data | Contract owner | Ends |
 |---|---|---|
-| Web app HTTP requests and responses | `internal/webapi` | Backend; `web`, through generated TypeScript |
-| Conversation WebSocket frames, transcript blocks and patches, tool views | `internal/framewire`, `internal/core` | Backend; `conversation-client` and `web-ui`, through `@demicodes/protocol` |
-| Runner wire (MessagePack over a WebSocket) and command manifests | `internal/runnerwire`, with manifest nodes from `internal/declare` | Backend; runner |
-| Managed boot record | `internal/runnerwire` | Backend and machine manager; the runner in a Cloud sandbox reads it |
-| Command invocations between a runner and a command program | `internal/commandwire` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
-| `demi.file` operations | `internal/cmdpkg/file/fileop` | File plugin declarations; `demi-file` |
-| `demi.browser` operations, live view messages, capture extension events | `internal/cmdpkg/browser/browserop` | Browser plugin declarations, backend and conversation browser packages; the page through `@demicodes/plugin-browser` |
-| `demi.claude-code` operations and the Claude Code release record | `internal/cmdpkg/claudecode/claudecodeop` | Backend; `demi-claude-code` |
+| Web app HTTP requests and responses | `internal/webapiproto` | Backend; `web`, through generated TypeScript |
+| Conversation WebSocket frames, transcript blocks and patches, tool views | `internal/conversationproto`, `internal/types` | Backend; `conversation-client` and `web-ui`, through `@demicodes/protocol` |
+| Runner wire (MessagePack over a WebSocket) and command manifests | `internal/runnerproto`, with manifest nodes from `internal/commanddecl` | Backend; runner |
+| Managed boot record | `internal/runnerproto` | Backend and machine manager; the runner in a Cloud sandbox reads it |
+| Command invocations between a runner and a command program | `internal/commandproto` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
+| `demi.file` operations | `internal/commandpackage/file/fileproto` | File plugin declarations; `demi-file` |
+| `demi.browser` operations, live view messages, capture extension events | `internal/commandpackage/browser/browserproto` | Browser plugin declarations, backend and conversation browser packages; the page through `@demicodes/plugin-browser` |
+| `demi.claude-code` operations and the Claude Code release record | `internal/commandpackage/claudecode/claudecodeproto` | Backend; `demi-claude-code` |
 | Plugin manifests, requests, replies and port messages | `internal/plugin` | Plugin host; every plugin, in process and over stdio with the TypeScript SDK ([Plugins](plugins.md#the-contract)) |
-| A plugin's page state, page call parameters and results | Page contract types of `internal/plugins/<name>` | Plugin; its page package, through generated TypeScript |
-| Machine-manager socket and Cloud image manifest | `internal/machinewire` | Backend; machine manager; `tools/release` writes the image manifest |
-| JSON stored in control and conversation databases | The package owning the data, such as `internal/core` for blocks | Backend |
+| A plugin's page state, page call parameters and results | Page contract types of `internal/plugin/<name>` | Plugin; its page package, through generated TypeScript |
+| Machine-manager socket and Cloud image manifest | `internal/machinemanagerproto` | Backend; machine manager; `tools/release` writes the image manifest |
+| JSON stored in control and conversation databases | The package owning the data, such as `internal/types` for blocks | Backend |
 
 Packages that also own behavior keep their contract declarations separate
 from that behavior. Vendor APIs are not Demi contracts: each provider
@@ -105,15 +105,15 @@ for a retained type; it does not make an unreached type a boundary. Roots are
 markers on types, never a second registry in the generator.
 
 A hand-written codec must carry `codec` on its owning type, including a named
-scalar such as `webapi.ExposeAddress`. A consuming package then invokes the
+scalar such as `webapiproto.ExposeAddress`. A consuming package then invokes the
 owner's codecs rather than assuming the type has generated validation. The
 marker has the same meaning inside and outside its package. Merely having JSON
 methods does not declare a contract; generated methods also have those names.
 
-Maps may use `string` or a defined string type such as `core.BlockID` as keys.
+Maps may use `string` or a defined string type such as `types.BlockID` as keys.
 Generated JSON and MessagePack validation runs the key type's own rules on
 every key, on decode and encode, without rewriting keys. A named map declaration
-(`type Failures map[core.BlockID]core.ProviderFailureFacts`) can own generated methods;
+(`type Failures map[types.BlockID]types.ProviderFailureFacts`) can own generated methods;
 a Go type alias is not needed for this contract.
 
 Named generic instantiations can be roots. Constant tables and lookups come
@@ -185,9 +185,9 @@ from their owning Go declarations, without parallel TypeScript tables.
   full Go integer range.
 
 Identifiers are named Go strings with validating constructors. Go cannot
-prevent `core.BlockID("")`: validity is a boundary guarantee, not a guarantee
+prevent `types.BlockID("")`: validity is a boundary guarantee, not a guarantee
 of every value constructible in Go. Decoders validate identifiers; internal
-code creating one calls `core.ParseBlockID`. Parent validation checks them
+code creating one calls `types.ParseBlockID`. Parent validation checks them
 too.
 
 [Storage](../backend/storage.md) owns column types, database times, digests,
@@ -337,7 +337,7 @@ comment replaces the type description. Named subschemas acquire no title.
 
 Only the `schema-primitive` marker drops a type's description; being a
 scalar or being inlined does not. The shared identities, such as
-`core.BlockID` and `webapi.UserID`, carry it, and string `timestamp` implies
+`types.BlockID` and `webapiproto.UserID`, carry it, and string `timestamp` implies
 it: their schemas are primitive, always inline and without a description,
 even at the root, so their type comments remain documentation only. Field
 comments still supply property descriptions. `id` does not imply it: `id`
@@ -348,7 +348,7 @@ descriptions. Other documented scalars, including browser `TabId` and
 The lint requirement that an exported comment start with its name is waived
 for contract packages. Declaration builders may override a property description
 (for example, a browser leaf adds its default deadline to `timeout`);
-`internal/declare` and `internal/host` own that text, not the type generator.
+`internal/commanddecl` and `internal/host` own that text, not the type generator.
 No defaults are inferred.
 
 A `check` function is a rule only Go enforces: schemas omit it, so a
@@ -370,7 +370,7 @@ not enforce canonical UTC milliseconds: decoders retain those checks.
 ## Validation at entry
 
 When a runner sends `job_exit`, the backend passes its MessagePack bytes to
-`runnerwire.DecodeOutbound`. An unknown type, a missing field or an exit
+`runnerproto.DecodeOutbound`. An unknown type, a missing field or an exit
 code outside its integer type fails there. Generated validation checks
 bounds and custom rules. Connection code receives a typed message or a
 field-path error; malformed input closes the connection. Nothing before
@@ -423,17 +423,17 @@ These are the points where values enter, and what a failure does:
 
 | Where a value enters | Decoded by | When it fails |
 |---|---|---|
-| A web app request body or query | The edge's body and query extractors, through `webapi.Decode<Type>` | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
-| A frame on the conversation WebSocket | `framewire.DecodeClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/runtime.md#frame-protocol)) |
+| A web app request body or query | The edge's body and query extractors, through `webapiproto.Decode<Type>` | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
+| A frame on the conversation WebSocket | `conversationproto.DecodeClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/runtime.md#frame-protocol)) |
 | A frame or REST response the web app receives | The generated schemas, in `conversation-client` and `web` | `conversation-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
-| A runner message, at either end | `runnerwire.DecodeInbound` or `runnerwire.DecodeOutbound` | The connection closes ([Runner](../execution/runner.md)) |
-| Invocation metadata and records between a runner and a command program | `commandwire.Decode<Type>` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
+| A runner message, at either end | `runnerproto.DecodeInbound` or `runnerproto.DecodeOutbound` | The connection closes ([Runner](../execution/runner.md)) |
+| Invocation metadata and records between a runner and a command program | `commandproto.Decode<Type>` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
 | A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin uses its generated `Decode<Type>` | 400 `invalid_body`, naming the field ([Plugin calls](../product/web-api.md#plugin-calls)) |
 | A plugin's page state or call result, at the page | The plugin package's generated schemas | The plugin's client reports the field path and keeps the state it held |
-| A machine-manager request or response | `machinewire.DecodeRequest` or the response decoder for the outstanding operation | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
-| The managed boot file | `runnerwire.DecodeManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
-| A capture extension event | `browserop.Decode<Type>` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
+| A machine-manager request or response | `machinemanagerproto.DecodeRequest` or the response decoder for the outstanding operation | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
+| The managed boot file | `runnerproto.DecodeManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
+| A capture extension event | `browserproto.Decode<Type>` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
 | A row or JSON column read from a database | `internal/backend/database`, through the owning contract's generated decoder | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
 | A sealed credential document | The vault, through its generated document decoder | The error names the field path and the kind of failure, never the value ([Providers](../providers/providers.md)) |
 | Configuration from arguments and the environment | Each program's configuration, parsed with the `flag` package and its environment variables at startup | The program does not start, and the error names the variable |
@@ -487,9 +487,9 @@ Go types + JSON tags + markers
   (`.nullable()`, requiring presence); string lengths and patterns; integer
   and number bounds, with web integers in the safe range; timestamps with
   the one UTC spelling (`z.iso.datetime({ precision: 3 })`); email addresses;
-  HTTP and HTTPS URLs (`z.url` restricted to those protocols, `webapi.EndpointURL`);
+  HTTP and HTTPS URLs (`z.url` restricted to those protocols, `webapiproto.EndpointURL`);
   text explicitly trimmed on arrival before bounds are checked
-  (`z.string().trim()`, `webapi.Trimmed`); JSON values (`z.json()`);
+  (`z.string().trim()`, `webapiproto.Trimmed`); JSON values (`z.json()`);
   flattened plain embedded value or optional pointer structs (merged properties,
   rejecting name collisions); one named instantiation of a generic root; recursion through
   named references, emitted as getters on referring object properties so
@@ -570,7 +570,7 @@ by case:
 
 | Logic | Owner | How |
 |---|---|---|
-| The file-type table: which files the product previews, by extension, and which the page shows in place | `internal/core` | The page must choose a viewer before any byte arrives ([Choosing a view](../product/file-previews.md#choosing-a-view)), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
+| The file-type table: which files the product previews, by extension, and which the page shows in place | `internal/types` | The page must choose a viewer before any byte arrives ([Choosing a view](../product/file-previews.md#choosing-a-view)), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
 | Whether an upload is text, and its short opening snippet | Backend | The upload response carries the snippet the composer's tile shows |
 | The media type a model receives for an upload | Backend | The upload response carries the sniffed media type; the message editor uploads files the way the main composer does |
 | Whether a message can be edited | The data model | `User` is the only editable block type; hidden inputs are `Context`, `Wakeup` and `AgentMessage` blocks |

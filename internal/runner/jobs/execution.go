@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // taskExecution keeps stream handles apart from the process or shell owner.
@@ -20,7 +20,7 @@ type taskExecution struct {
 	input  chan<- process.Input
 	output <-chan process.OutputChunk
 	cancel func()
-	signal func(context.Context, runnerwire.Signal) error
+	signal func(context.Context, runnerproto.Signal) error
 	wait   func(context.Context) (process.Exit, *string, error)
 }
 
@@ -53,7 +53,7 @@ func (t *Table) run(spec TaskSpec, entry *taskEntry) (frame []byte, err error) {
 			// result; executable and cwd failures retain their classification.
 			if errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errTaskKilled) {
 				signal := "SIGKILL"
-				return runnerwire.Encode(&runnerwire.SpawnExit{SpawnID: spec.ID, Signal: &signal})
+				return runnerproto.Encode(&runnerproto.SpawnExit{SpawnID: spec.ID, Signal: &signal})
 			}
 			return rawSpawnFailure(spec.ID, err)
 		}
@@ -77,10 +77,10 @@ func (t *Table) run(spec TaskSpec, entry *taskEntry) (frame []byte, err error) {
 func rawSpawnFailure(id string, err error) ([]byte, error) {
 	var failure *process.SpawnFailure
 	if errors.As(err, &failure) {
-		return runnerwire.Encode(
-			&runnerwire.SpawnExit{
+		return runnerproto.Encode(
+			&runnerproto.SpawnExit{
 				SpawnID:    id,
-				SpawnError: &runnerwire.SpawnError{Kind: failure.Kind, Detail: &failure.Message},
+				SpawnError: &runnerproto.SpawnError{Kind: failure.Kind, Detail: &failure.Message},
 			},
 		)
 	}
@@ -92,7 +92,7 @@ func (t *Table) executionContext(
 	ctx context.Context,
 	job string,
 	declared DeclaredCommands,
-	edits commandwire.EditContext,
+	edits commandproto.EditContext,
 	env map[string]string,
 ) (*ExecutionContext, *process.JobCommands, error) {
 	commands := t.config.Commands
@@ -148,7 +148,7 @@ func (t *Table) executionContext(
 // downloadInput sends EOF even when the finite input pipe was refused.
 func (t *Table) downloadInput(
 	ctx context.Context,
-	reference *runnerwire.PipeRef,
+	reference *runnerproto.PipeRef,
 	input chan<- process.Input,
 ) (err error) {
 	defer func() {
@@ -214,11 +214,11 @@ func (t *Table) runShell(spec TaskSpec, entry *taskEntry, command *ShellCommand)
 	spec.Env["TMPDIR"] = directory.Scratch
 	spec.Env["TEMP"] = directory.Scratch
 	spec.Env["DEMI_JOB_ID"] = spec.ID
-	edits := commandwire.EditContext{
+	edits := commandproto.EditContext{
 		Directory: filepath.Join(directory.Path, "changes"),
 		Lock:      filepath.Join(t.config.Directories.Root(), "edits.lock"),
 	}
-	recorder, err := cmdsdk.NewRecorder(ctx, edits)
+	recorder, err := commandsdk.NewRecorder(ctx, edits)
 	if err != nil {
 		slog.Warn("edit recording failed", "error", err)
 		recorder = nil
@@ -254,7 +254,7 @@ func (t *Table) runShell(spec TaskSpec, entry *taskEntry, command *ShellCommand)
 		input:  shell.Input(),
 		output: shell.Output(),
 		cancel: shell.Cancel,
-		signal: func(_ context.Context, signal runnerwire.Signal) error { return shell.Signal(signal) },
+		signal: func(_ context.Context, signal runnerproto.Signal) error { return shell.Signal(signal) },
 		wait:   shell.Wait,
 	}
 	return t.executeTask(spec, entry, child, directory, recorder, command.Stdin, command.Stdout)
@@ -266,8 +266,8 @@ func (t *Table) executeTask(
 	entry *taskEntry,
 	child taskExecution,
 	directory *Directory,
-	recorder *cmdsdk.Recorder,
-	stdin, stdout *runnerwire.PipeRef,
+	recorder *commandsdk.Recorder,
+	stdin, stdout *runnerproto.PipeRef,
 ) (frame []byte, err error) {
 	ctx := entry.lifetime
 	defer child.stop(context.WithoutCancel(ctx))
@@ -284,8 +284,8 @@ func (t *Table) executeTask(
 		go t.pipeInput(inputCtx, stdin, child.input, &pipes)
 	}
 	uploads, uploadEnded := t.startOutputUpload(pipeCtx, stdout, &pipes)
-	out := &outputView{stream: runnerwire.Stdout}
-	stderr := &outputView{stream: runnerwire.Stderr}
+	out := &outputView{stream: runnerproto.Stdout}
+	stderr := &outputView{stream: runnerproto.Stderr}
 	views := []*outputView{out, stderr}
 	timer := time.NewTimer(time.Hour)
 	timer.Stop()
@@ -325,7 +325,7 @@ func (t *Table) executeTask(
 
 func (t *Table) pipeInput(
 	ctx context.Context,
-	stdin *runnerwire.PipeRef,
+	stdin *runnerproto.PipeRef,
 	input chan<- process.Input,
 	pipes *sync.WaitGroup,
 ) {
@@ -344,14 +344,14 @@ func (t *Table) pipeInput(
 
 func (t *Table) pipeOutput(
 	ctx context.Context,
-	stdout *runnerwire.PipeRef,
+	stdout *runnerproto.PipeRef,
 	uploads <-chan []byte,
 	uploadDone chan<- struct{},
 	pipes *sync.WaitGroup,
 ) {
 	defer pipes.Done()
 	source := &chunkSource{chunks: uploads}
-	body := newInvocationBody(ctx, cmdsdk.NewInput(source))
+	body := newInvocationBody(ctx, commandsdk.NewInput(source))
 	result := t.config.Pipes.Put(ctx, stdout.URL, body)
 	close(uploadDone)
 	if err := process.ReportPipe(
@@ -465,31 +465,31 @@ type taskExitOptions struct {
 	cwd         *string
 	failure     error
 	directory   *Directory
-	recorder    *cmdsdk.Recorder
+	recorder    *commandsdk.Recorder
 	out, stderr *outputView
 }
 
 // taskExit preserves the child status when a runner failure can only be logged.
 func (t *Table) taskExit(ctx context.Context, id string, options taskExitOptions) ([]byte, error) {
-	var spawnError *runnerwire.SpawnError
+	var spawnError *runnerproto.SpawnError
 	if options.failure != nil {
 		if options.exit.Code == nil && options.exit.Signal == nil {
 			reason := options.failure.Error()
-			spawnError = &runnerwire.SpawnError{Kind: runnerwire.SpawnErrorKindOther, Detail: &reason}
+			spawnError = &runnerproto.SpawnError{Kind: runnerproto.SpawnErrorKindOther, Detail: &reason}
 		} else {
 			slog.Warn("task ended with a failure of the runner's", "error", options.failure)
 		}
 	}
 	if options.directory != nil {
 		files, truncated := finishEdits(context.WithoutCancel(ctx), options.recorder)
-		return runnerwire.Encode(
-			&runnerwire.JobExit{
+		return runnerproto.Encode(
+			&runnerproto.JobExit{
 				JobID:      id,
 				ExitCode:   options.exit.Code,
 				Signal:     options.exit.Signal,
 				SpawnError: spawnError,
 				CWD:        options.cwd,
-				Output: &runnerwire.OutputLengths{
+				Output: &runnerproto.OutputLengths{
 					StdoutBytes: options.out.length,
 					StderrBytes: options.stderr.length,
 				},
@@ -498,8 +498,8 @@ func (t *Table) taskExit(ctx context.Context, id string, options taskExitOptions
 			},
 		)
 	}
-	return runnerwire.Encode(
-		&runnerwire.SpawnExit{
+	return runnerproto.Encode(
+		&runnerproto.SpawnExit{
 			SpawnID:    id,
 			ExitCode:   options.exit.Code,
 			Signal:     options.exit.Signal,
@@ -539,18 +539,18 @@ func (t *Table) taskOutputFrame(
 			return nil, writeErr
 		}
 		view := options.out
-		if chunk.Stream == runnerwire.Stderr {
+		if chunk.Stream == runnerproto.Stderr {
 			view = options.stderr
 		}
 		offset, head := view.write(chunk.Bytes)
 		if len(head) > 0 {
-			frame, err = runnerwire.Encode(
-				&runnerwire.JobOutput{JobID: options.spec.ID, Stream: chunk.Stream, Offset: offset, Bytes: head},
+			frame, err = runnerproto.Encode(
+				&runnerproto.JobOutput{JobID: options.spec.ID, Stream: chunk.Stream, Offset: offset, Bytes: head},
 			)
 		}
 	} else {
-		frame, err = runnerwire.Encode(
-			&runnerwire.SpawnOutput{SpawnID: options.spec.ID, Stream: chunk.Stream, Bytes: chunk.Bytes},
+		frame, err = runnerproto.Encode(
+			&runnerproto.SpawnOutput{SpawnID: options.spec.ID, Stream: chunk.Stream, Bytes: chunk.Bytes},
 		)
 	}
 	if err != nil {
@@ -572,7 +572,7 @@ func (t *Table) deliverTaskOutput(
 		case t.config.Output <- frame:
 		}
 	}
-	if chunk.Stream == runnerwire.Stdout && options.uploads != nil {
+	if chunk.Stream == runnerproto.Stdout && options.uploads != nil {
 		select {
 		case <-options.pipeCtx.Done():
 			options.child.cancel()
@@ -615,7 +615,7 @@ func (t *Table) flushFollowedOutput(options taskOutputOptions, failure *error) {
 	}
 }
 
-func signalTask(ctx context.Context, child taskExecution, signal runnerwire.Signal, failure *error) {
+func signalTask(ctx context.Context, child taskExecution, signal runnerproto.Signal, failure *error) {
 	if err := child.signal(ctx, signal); err != nil {
 		*failure = err
 		child.cancel()
@@ -634,7 +634,7 @@ func (t *Table) finishTaskOutput(ctx context.Context, id string, views []*output
 // startOutputUpload registers the output worker before returning its queue and completion signal.
 func (t *Table) startOutputUpload(
 	ctx context.Context,
-	stdout *runnerwire.PipeRef,
+	stdout *runnerproto.PipeRef,
 	pipes *sync.WaitGroup,
 ) (chan []byte, <-chan struct{}) {
 	if stdout == nil {

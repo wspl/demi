@@ -10,11 +10,11 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runner/cmdpkgs"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/runner/commandpackages"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // ServiceStreams owns user calls on resident services, their pipe IO and the
@@ -22,7 +22,7 @@ import (
 type ServiceStreams struct {
 	connection *Connection
 	pipes      *process.PipeClient
-	services   *cmdpkgs.ServiceRegistry
+	services   *commandpackages.ServiceRegistry
 	lifetime   context.Context
 	cancel     context.CancelFunc
 	draining   <-chan struct{}
@@ -36,7 +36,7 @@ type ServiceStreams struct {
 }
 type streamBinding struct {
 	digest string
-	lease  *cmdpkgs.ServiceLease
+	lease  *commandpackages.ServiceLease
 }
 
 // NewServiceStreams creates an owner that cancels streams with ctx. Closing
@@ -45,7 +45,7 @@ func NewServiceStreams(
 	ctx context.Context,
 	connection *Connection,
 	pipes *process.PipeClient,
-	services *cmdpkgs.ServiceRegistry,
+	services *commandpackages.ServiceRegistry,
 	draining <-chan struct{},
 ) *ServiceStreams {
 	lifetime, cancel := context.WithCancel(ctx)
@@ -63,18 +63,18 @@ func NewServiceStreams(
 
 // HandleOpen registers a service_open request and starts its owned work without
 // waiting for completion. It refuses other messages and a closed connection.
-func (s *ServiceStreams) HandleOpen(message runnerwire.Inbound) error {
-	request, ok := message.(*runnerwire.ServiceOpen)
+func (s *ServiceStreams) HandleOpen(message runnerproto.Inbound) error {
+	request, ok := message.(*runnerproto.ServiceOpen)
 	if !ok {
 		return errors.New("not a service_open request")
 	}
-	target, err := commandwire.HostTarget()
+	target, err := commandproto.HostTarget()
 	if err != nil {
 		return err
 	}
 	artifact, hasArtifact := request.Package.Targets[string(target)]
 	var moved *streamBinding
-	var oldLease *cmdpkgs.ServiceLease
+	var oldLease *commandpackages.ServiceLease
 	s.mu.Lock()
 	if s.closing || s.lifetime.Err() != nil {
 		s.mu.Unlock()
@@ -133,48 +133,48 @@ func (s *ServiceStreams) Close(ctx context.Context) error {
 }
 
 // run owns a service invocation, its binding lease and both pipe directions.
-func (s *ServiceStreams) run(request *runnerwire.ServiceOpen, moved *streamBinding) {
+func (s *ServiceStreams) run(request *runnerproto.ServiceOpen, moved *streamBinding) {
 	ctx, cancel := context.WithCancel(s.lifetime)
 	defer cancel()
 	log := func(text string) {
 		slog.Info("stream:"+request.Operation+" "+text, "conversation", request.Context.Conversation)
 	}
-	refuse := func(code runnerwire.ServiceErrorCode, message string) {
+	refuse := func(code runnerproto.ServiceErrorCode, message string) {
 		log("refused (" + string(code) + "): " + message)
 		if err := s.connection.send(
 			ctx,
-			&runnerwire.ServiceError{StreamID: request.StreamID, Code: code, Message: message},
+			&runnerproto.ServiceError{StreamID: request.StreamID, Code: code, Message: message},
 		); err != nil &&
 			ctx.Err() == nil {
 			slog.Warn("service_error encoding failed", "error", err)
 		}
 	}
 	if err := s.holdBinding(ctx, request, moved); err != nil {
-		refuse(runnerwire.ServiceErrorCodeServiceFailed, err.Error())
+		refuse(runnerproto.ServiceErrorCodeServiceFailed, err.Error())
 		return
 	}
 	select {
 	case <-s.draining:
-		refuse(runnerwire.ServiceErrorCodeRefused, "the runner is draining for an upgrade")
+		refuse(runnerproto.ServiceErrorCodeRefused, "the runner is draining for an upgrade")
 		return
 	default:
 	}
 	if !slices.Contains(request.Package.Operations, request.Operation) {
 		refuse(
-			runnerwire.ServiceErrorCodeUnknownOperation,
+			runnerproto.ServiceErrorCodeUnknownOperation,
 			fmt.Sprintf("%s has no operation %s", request.Package.ID, request.Operation),
 		)
 		return
 	}
-	target, err := commandwire.HostTarget()
+	target, err := commandproto.HostTarget()
 	if err != nil {
-		refuse(runnerwire.ServiceErrorCodeServiceFailed, err.Error())
+		refuse(runnerproto.ServiceErrorCodeServiceFailed, err.Error())
 		return
 	}
 	if artifact, ok := request.Package.Targets[string(target)]; ok {
 		lease, err := s.services.Lease(ctx, artifact.SHA256)
 		if err != nil {
-			refuse(runnerwire.ServiceErrorCodeServiceFailed, err.Error())
+			refuse(runnerproto.ServiceErrorCodeServiceFailed, err.Error())
 			return
 		}
 		defer lease.Release()
@@ -184,7 +184,7 @@ func (s *ServiceStreams) run(request *runnerwire.ServiceOpen, moved *streamBindi
 	defer registration.Release()
 	resident, err := s.services.Acquire(ctx, request.Package, resolver, s.connection)
 	if err != nil {
-		refuse(runnerwire.ServiceErrorCodeServiceFailed, err.Error())
+		refuse(runnerproto.ServiceErrorCodeServiceFailed, err.Error())
 		return
 	}
 	s.invokeStream(ctx, cancel, request, resident, log, refuse)
@@ -205,7 +205,7 @@ func (s *streamInput) Next(ctx context.Context) ([]byte, error) {
 		}
 		s.body = body
 	}
-	bytes := make([]byte, commandwire.MaxRecordBytes)
+	bytes := make([]byte, commandproto.MaxRecordBytes)
 	n, err := s.body.Read(bytes)
 	if n > 0 {
 		return bytes[:n], nil
@@ -248,7 +248,11 @@ func (s *streamOutput) log(line string) {
 	slog.Info(line, "source", "stream:"+s.operation, "conversation", s.conversation)
 }
 
-func (s *ServiceStreams) holdBinding(ctx context.Context, request *runnerwire.ServiceOpen, moved *streamBinding) error {
+func (s *ServiceStreams) holdBinding(
+	ctx context.Context,
+	request *runnerproto.ServiceOpen,
+	moved *streamBinding,
+) error {
 	if moved != nil {
 		lease, err := s.services.Lease(ctx, moved.digest)
 		if err != nil {
@@ -270,19 +274,19 @@ func (s *ServiceStreams) holdBinding(ctx context.Context, request *runnerwire.Se
 func (s *ServiceStreams) invokeStream(
 	ctx context.Context,
 	cancel context.CancelFunc,
-	request *runnerwire.ServiceOpen,
-	resident *cmdpkgs.Resident,
+	request *runnerproto.ServiceOpen,
+	resident *commandpackages.Resident,
 	log func(string),
-	refuse func(runnerwire.ServiceErrorCode, string),
+	refuse func(runnerproto.ServiceErrorCode, string),
 ) {
 	invocation := streamInvocation(request)
 	input, response, err := resident.Client().Invoke(ctx, invocation)
 	if err != nil {
-		refuse(runnerwire.ServiceErrorCodeServiceFailed, resident.Failure(ctx, err).Error())
+		refuse(runnerproto.ServiceErrorCodeServiceFailed, resident.Failure(ctx, err).Error())
 		return
 	}
 	defer input.Cancel()
-	if err = s.connection.send(ctx, &runnerwire.ServiceOpened{StreamID: request.StreamID}); err != nil {
+	if err = s.connection.send(ctx, &runnerproto.ServiceOpened{StreamID: request.StreamID}); err != nil {
 		return
 	}
 	log("opened")
@@ -296,7 +300,7 @@ func (s *ServiceStreams) invokeStream(
 		err := s.pipes.Put(
 			uploadCtx,
 			request.Output.URL,
-			newInvocationBody(uploadCtx, cmdsdk.NewInput(&chunkSource{chunks: uploads})),
+			newInvocationBody(uploadCtx, commandsdk.NewInput(&chunkSource{chunks: uploads})),
 		)
 		if err != nil {
 			cancel()
@@ -305,11 +309,11 @@ func (s *ServiceStreams) invokeStream(
 	}()
 	sink := &streamOutput{
 		uploads:      uploads,
-		tail:         process.NewTail(runnerwire.ServiceStderrChars),
+		tail:         process.NewTail(runnerproto.ServiceStderrChars),
 		conversation: request.Context.Conversation,
 		operation:    request.Operation,
 	}
-	completion, result := (cmdsdk.Exchange{Input: input, Output: response}).Run(ctx, source, sink)
+	completion, result := (commandsdk.Exchange{Input: input, Output: response}).Run(ctx, source, sink)
 	if result != nil {
 		stopUpload()
 	}
@@ -322,8 +326,8 @@ func (s *ServiceStreams) invokeStream(
 }
 
 func (s *ServiceStreams) finishStream(
-	request *runnerwire.ServiceOpen,
-	completion commandwire.Completion,
+	request *runnerproto.ServiceOpen,
+	completion commandproto.Completion,
 	result, upload error,
 	sink *streamOutput,
 	cancel context.CancelFunc,
@@ -331,7 +335,7 @@ func (s *ServiceStreams) finishStream(
 ) {
 	var inputResult error
 	if result != nil {
-		var exchange *cmdsdk.ExchangeError
+		var exchange *commandsdk.ExchangeError
 		if errors.As(result, &exchange) && exchange.Side == "input" {
 			inputResult = exchange.Cause
 		} else if errors.As(result, &exchange) && exchange.Side == "service" && !errors.Is(result, context.Canceled) {
@@ -368,7 +372,7 @@ func (s *ServiceStreams) finishStream(
 		}
 		if err := s.connection.send(
 			s.lifetime,
-			&runnerwire.ServiceDone{
+			&runnerproto.ServiceDone{
 				StreamID: request.StreamID,
 				ExitCode: completion.ExitCode,
 				Stderr:   sink.tail.Text(),
@@ -381,12 +385,12 @@ func (s *ServiceStreams) finishStream(
 	log("ended")
 }
 
-func streamInvocation(request *runnerwire.ServiceOpen) commandwire.Invocation {
+func streamInvocation(request *runnerproto.ServiceOpen) commandproto.Invocation {
 	args := json.RawMessage(`{}`)
 	if request.Args != nil {
 		args = *request.Args
 	}
-	invocation := commandwire.Invocation{
+	invocation := commandproto.Invocation{
 		Operation:    request.Operation,
 		InvocationID: request.StreamID,
 		Context:      request.Context,

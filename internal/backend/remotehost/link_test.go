@@ -13,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // linkDevice gives each scenario a joined fake runner and its real backend engine.
@@ -25,7 +25,7 @@ func linkDevice(t *testing.T) (*remotehosttest.TestDevice, *remotehosttest.TestL
 }
 
 // nextFrame observes the next request at the runner boundary.
-func nextFrame(t *testing.T, l *remotehosttest.TestLink) runnerwire.Inbound {
+func nextFrame(t *testing.T, l *remotehosttest.TestLink) runnerproto.Inbound {
 	t.Helper()
 	frame, err := l.Next(t.Context())
 	requirePipe(t, err)
@@ -33,7 +33,7 @@ func nextFrame(t *testing.T, l *remotehosttest.TestLink) runnerwire.Inbound {
 }
 
 // sendFrame supplies a validated runner response.
-func sendFrame(t *testing.T, l *remotehosttest.TestLink, message runnerwire.Outbound) {
+func sendFrame(t *testing.T, l *remotehosttest.TestLink, message runnerproto.Outbound) {
 	t.Helper()
 	requirePipe(t, l.Send(t.Context(), message))
 }
@@ -53,11 +53,11 @@ func barrier(t *testing.T, l *remotehosttest.TestLink) {
 	t.Helper()
 	done := make(chan error, 1)
 	go func() { done <- l.Link().Sync(t.Context()) }()
-	request, ok := nextFrame(t, l).(*runnerwire.Sync)
+	request, ok := nextFrame(t, l).(*runnerproto.Sync)
 	if !ok {
 		t.Fatal("expected synchronization request")
 	}
-	sendFrame(t, l, &runnerwire.SyncDone{ID: request.ID})
+	sendFrame(t, l, &runnerproto.SyncDone{ID: request.ID})
 	requirePipe(t, <-done)
 }
 
@@ -69,8 +69,8 @@ func TestFSReplyIsReadAsTheRequestedOperation(t *testing.T) {
 		_, err := h.FS().Stat(t.Context(), "/work/file")
 		done <- err
 	}()
-	request := nextFrame(t, l).(*runnerwire.FSStat)
-	sendFrame(t, l, &runnerwire.FSOK{ID: request.ID, Result: &runnerwire.FSReadlinkResult{Value: "/work/elsewhere"}})
+	request := nextFrame(t, l).(*runnerproto.FSStat)
+	sendFrame(t, l, &runnerproto.FSOK{ID: request.ID, Result: &runnerproto.FSReadlinkResult{Value: "/work/elsewhere"}})
 	var failure *host.Error
 	if !errors.As(<-done, &failure) || failure.Kind != host.Protocol {
 		t.Fatalf("wrong failure: %v", failure)
@@ -95,11 +95,11 @@ func TestAdmissionHoldsCallsAndProcessLifetimesAndRefusalSendsNothing(t *testing
 		}
 		done <- err
 	}()
-	request := nextFrame(t, l).(*runnerwire.FSExists)
+	request := nextFrame(t, l).(*runnerproto.FSExists)
 	if gate.State().Demand != 1 {
 		t.Fatal("call admission missing")
 	}
-	sendFrame(t, l, &runnerwire.FSOK{ID: request.ID, Result: &runnerwire.FSExistsResult{Value: true}})
+	sendFrame(t, l, &runnerproto.FSOK{ID: request.ID, Result: &runnerproto.FSExistsResult{Value: true}})
 	requirePipe(t, <-done)
 	if gate.State().Demand != 0 {
 		t.Fatal("call admission leaked")
@@ -147,11 +147,11 @@ func TestClosingRunningProcessKillsItAndEndedOneIsLeftAlone(t *testing.T) {
 	_, l, h := linkDevice(t)
 	running, err := h.Process().Spawn(t.Context(), host.SpawnRequest{Command: "sleep"})
 	requirePipe(t, err)
-	first := nextFrame(t, l).(*runnerwire.Spawn)
+	first := nextFrame(t, l).(*runnerproto.Spawn)
 	ended, err := h.Process().Spawn(t.Context(), host.SpawnRequest{Command: "true"})
 	requirePipe(t, err)
-	second := nextFrame(t, l).(*runnerwire.Spawn)
-	sendFrame(t, l, &runnerwire.SpawnExit{SpawnID: second.SpawnID, ExitCode: new(int32(0))})
+	second := nextFrame(t, l).(*runnerproto.Spawn)
+	sendFrame(t, l, &runnerproto.SpawnExit{SpawnID: second.SpawnID, ExitCode: new(int32(0))})
 	result, err := ended.Wait(t.Context())
 	requirePipe(t, err)
 	if result.Kind != host.ProcessExited || result.ExitCode != 0 {
@@ -159,8 +159,8 @@ func TestClosingRunningProcessKillsItAndEndedOneIsLeftAlone(t *testing.T) {
 	}
 	requirePipe(t, ended.Control.Close(t.Context()))
 	requirePipe(t, running.Control.Close(t.Context()))
-	killed := nextFrame(t, l).(*runnerwire.SpawnKill)
-	if killed.SpawnID != first.SpawnID || killed.Signal == nil || *killed.Signal != runnerwire.SignalKill {
+	killed := nextFrame(t, l).(*runnerproto.SpawnKill)
+	if killed.SpawnID != first.SpawnID || killed.Signal == nil || *killed.Signal != runnerproto.SignalKill {
 		t.Fatal(killed)
 	}
 	barrier(t, l)
@@ -201,7 +201,7 @@ func TestStdinTravelsInBoundedFramesInOrderBeforeEnd(t *testing.T) {
 	requirePipe(t, err)
 	nextFrame(t, l)
 	nextFrame(t, l)
-	for _, size := range []int{0, runnerwire.StdinChunkBytes, runnerwire.StdinChunkBytes + 1} {
+	for _, size := range []int{0, runnerproto.StdinChunkBytes, runnerproto.StdinChunkBytes + 1} {
 		data := make([]byte, size)
 		for i := range data {
 			data[i] = byte(i % 256)
@@ -209,15 +209,15 @@ func TestStdinTravelsInBoundedFramesInOrderBeforeEnd(t *testing.T) {
 		requirePipe(t, p.Control.WriteStdin(t.Context(), data))
 		requirePipe(t, j.WriteStdin(t.Context(), data))
 		var spawned, jobbed []byte
-		for range 2 * ((size + runnerwire.StdinChunkBytes - 1) / runnerwire.StdinChunkBytes) {
+		for range 2 * ((size + runnerproto.StdinChunkBytes - 1) / runnerproto.StdinChunkBytes) {
 			frame := nextFrame(t, l)
-			if spawnedFrame, ok := frame.(*runnerwire.SpawnStdin); ok {
-				if len(spawnedFrame.Bytes) > runnerwire.StdinChunkBytes {
+			if spawnedFrame, ok := frame.(*runnerproto.SpawnStdin); ok {
+				if len(spawnedFrame.Bytes) > runnerproto.StdinChunkBytes {
 					t.Fatal("oversize stdin")
 				}
 				spawned = append(spawned, spawnedFrame.Bytes...)
-			} else if jobFrame, ok := frame.(*runnerwire.JobStdin); ok {
-				if len(jobFrame.Bytes) > runnerwire.StdinChunkBytes {
+			} else if jobFrame, ok := frame.(*runnerproto.JobStdin); ok {
+				if len(jobFrame.Bytes) > runnerproto.StdinChunkBytes {
 					t.Fatal("oversize stdin")
 				}
 				jobbed = append(jobbed, jobFrame.Bytes...)
@@ -232,10 +232,10 @@ func TestStdinTravelsInBoundedFramesInOrderBeforeEnd(t *testing.T) {
 	}
 	requirePipe(t, p.Control.CloseStdin(t.Context()))
 	requirePipe(t, j.CloseStdin(t.Context()))
-	if _, ok := nextFrame(t, l).(*runnerwire.SpawnStdinEnd); !ok {
+	if _, ok := nextFrame(t, l).(*runnerproto.SpawnStdinEnd); !ok {
 		t.Fatal("missing spawn EOF")
 	}
-	if _, ok := nextFrame(t, l).(*runnerwire.JobStdinEnd); !ok {
+	if _, ok := nextFrame(t, l).(*runnerproto.JobStdinEnd); !ok {
 		t.Fatal("missing job EOF")
 	}
 	barrier(t, l)
@@ -305,8 +305,8 @@ func TestLostConnectionFailsItsWorkAndNextServesSameHost(t *testing.T) {
 		}
 		done <- err
 	}()
-	request := nextFrame(t, l).(*runnerwire.FSExists)
-	sendFrame(t, l, &runnerwire.FSOK{ID: request.ID, Result: &runnerwire.FSExistsResult{Value: true}})
+	request := nextFrame(t, l).(*runnerproto.FSExists)
+	sendFrame(t, l, &runnerproto.FSOK{ID: request.ID, Result: &runnerproto.FSExistsResult{Value: true}})
 	requirePipe(t, <-done)
 }
 
@@ -325,16 +325,16 @@ func TestUnansweredPingEndsUnlessLivenessPaused(t *testing.T) {
 		d := remotehosttest.NewTestDevice(t, remotehosttest.NewCommandPolicy(nil))
 		l := d.Connect(time.Second)
 		time.Sleep(time.Second)
-		if _, ok := nextFrame(t, l).(*runnerwire.Ping); !ok {
+		if _, ok := nextFrame(t, l).(*runnerproto.Ping); !ok {
 			t.Fatal("missing initial ping")
 		}
-		sendFrame(t, l, &runnerwire.Pong{Jobs: 2})
+		sendFrame(t, l, &runnerproto.Pong{Jobs: 2})
 		barrier(t, l)
 		if l.Link().RunningJobs() != 2 {
 			t.Fatal("pong job count lost")
 		}
 		time.Sleep(time.Second)
-		if _, ok := nextFrame(t, l).(*runnerwire.Ping); !ok {
+		if _, ok := nextFrame(t, l).(*runnerproto.Ping); !ok {
 			t.Fatal("missing second ping")
 		}
 		l.Link().PauseLiveness()
@@ -347,7 +347,7 @@ func TestUnansweredPingEndsUnlessLivenessPaused(t *testing.T) {
 		}
 		l.Link().ResumeLiveness()
 		time.Sleep(time.Second)
-		if _, ok := nextFrame(t, l).(*runnerwire.Ping); !ok {
+		if _, ok := nextFrame(t, l).(*runnerproto.Ping); !ok {
 			t.Fatal("missing ping")
 		}
 		time.Sleep(time.Second)

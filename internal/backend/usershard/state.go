@@ -7,11 +7,11 @@ import (
 
 	"github.com/wspl/demi/internal/backend/cloud"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
-func (s *Shard) productState(ctx context.Context, user webapi.UserDTO) (webapi.ProductState, error) {
-	state := webapi.ProductState{User: user, Mode: s.services.Mode}
+func (s *Shard) productState(ctx context.Context, user webapiproto.UserDTO) (webapiproto.ProductState, error) {
+	state := webapiproto.ProductState{User: user, Mode: s.services.Mode}
 	var err error
 	state.Preferences, err = s.Control().Preferences(ctx, s.user)
 	if err != nil {
@@ -58,12 +58,12 @@ func (s *Shard) productState(ctx context.Context, user webapi.UserDTO) (webapi.P
 	return state, nil
 }
 
-func (s *Shard) workspaceDTOs(ctx context.Context) ([]webapi.WorkspaceDTO, error) {
+func (s *Shard) workspaceDTOs(ctx context.Context) ([]webapiproto.WorkspaceDTO, error) {
 	records, err := s.Control().Workspaces(ctx, s.user)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]webapi.WorkspaceDTO, 0, len(records))
+	result := make([]webapiproto.WorkspaceDTO, 0, len(records))
 	for _, record := range records {
 		result = append(result, record.DTO())
 	}
@@ -73,49 +73,49 @@ func (s *Shard) workspaceDTOs(ctx context.Context) ([]webapi.WorkspaceDTO, error
 func (s *Shard) readPart(
 	ctx context.Context,
 	part pagesync.Part,
-	user webapi.UserDTO,
-) (webapi.SyncEvent, error) {
+	user webapiproto.UserDTO,
+) (webapiproto.SyncEvent, error) {
 	switch part.Kind {
 	case pagesync.Conversation:
 		return s.conversationEvent(ctx, part.ConversationID)
 	case pagesync.ConversationOrder:
 		ids, err := s.Control().ConversationOrder(ctx, s.user)
-		return &webapi.SyncEventConversationOrder{IDs: ids}, err
+		return &webapiproto.SyncEventConversationOrder{IDs: ids}, err
 	case pagesync.Preferences:
 		preferences, err := s.Control().Preferences(ctx, s.user)
-		return &webapi.SyncEventPreferences{Preferences: preferences}, err
+		return &webapiproto.SyncEventPreferences{Preferences: preferences}, err
 	case pagesync.User:
 		account, found, err := s.Control().Account(ctx, s.user)
 		if err != nil || !found {
 			return nil, err
 		}
-		return &webapi.SyncEventUser{User: account.User}, nil
+		return &webapiproto.SyncEventUser{User: account.User}, nil
 	case pagesync.Workspaces:
 		workspaces, err := s.workspaceDTOs(ctx)
-		return &webapi.SyncEventWorkspaces{Workspaces: workspaces}, err
+		return &webapiproto.SyncEventWorkspaces{Workspaces: workspaces}, err
 	case pagesync.Devices:
 		devices, err := s.DeviceList(ctx)
-		return &webapi.SyncEventDevices{Devices: devices}, err
+		return &webapiproto.SyncEventDevices{Devices: devices}, err
 	case pagesync.Plugins:
 		plugins, err := s.plugins.Entries(ctx)
-		return &webapi.SyncEventPlugins{Plugins: plugins}, err
+		return &webapiproto.SyncEventPlugins{Plugins: plugins}, err
 	case pagesync.Plugin:
 		state, err := s.plugins.PageState(ctx, part.PluginID)
 		if err != nil || state == nil {
 			return nil, err
 		}
-		return &webapi.SyncEventPlugin{Plugin: part.PluginID, State: state}, nil
+		return &webapiproto.SyncEventPlugin{Plugin: part.PluginID, State: state}, nil
 	case pagesync.Providers:
 		providers, err := s.providerStates(ctx, user)
-		return &webapi.SyncEventProviders{Providers: providers}, err
+		return &webapiproto.SyncEventProviders{Providers: providers}, err
 	case pagesync.Cloud:
 		status, err := cloud.Status(ctx, s)
-		return &webapi.SyncEventCloud{Cloud: status}, err
+		return &webapiproto.SyncEventCloud{Cloud: status}, err
 	}
 	return nil, nil
 }
 
-func (s *Shard) providerStates(ctx context.Context, user webapi.UserDTO) ([]webapi.ProviderState, error) {
+func (s *Shard) providerStates(ctx context.Context, user webapiproto.UserDTO) ([]webapiproto.ProviderState, error) {
 	owner, err := s.services.Vault.OwnerFor(ctx, user.ID)
 	if err != nil {
 		return nil, err
@@ -125,18 +125,18 @@ func (s *Shard) providerStates(ctx context.Context, user webapi.UserDTO) ([]weba
 		return nil, err
 	}
 	disclose := s.services.Vault.Configures(user)
-	result := make([]webapi.ProviderState, len(entries))
+	result := make([]webapiproto.ProviderState, len(entries))
 	var workers sync.WaitGroup
 	for i, entry := range entries {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
 			details, err := s.services.Assembly.Details(ctx, entry, disclose)
-			var reading webapi.ProviderReading = &webapi.ProviderReadingRead{ProviderDetails: details}
+			var reading webapiproto.ProviderReading = &webapiproto.ProviderReadingRead{ProviderDetails: details}
 			if err != nil {
-				reading = &webapi.ProviderReadingFailed{Message: err.Error()}
+				reading = &webapiproto.ProviderReadingFailed{Message: err.Error()}
 			}
-			result[i] = webapi.ProviderState{ProviderDTO: entry.DTO(), Details: reading}
+			result[i] = webapiproto.ProviderState{ProviderDTO: entry.DTO(), Details: reading}
 		}()
 	}
 	workers.Wait()
@@ -144,7 +144,7 @@ func (s *Shard) providerStates(ctx context.Context, user webapi.UserDTO) ([]weba
 }
 
 // conversationEvent presents a changed conversation only when it belongs to this user.
-func (s *Shard) conversationEvent(ctx context.Context, id webapi.ConversationID) (webapi.SyncEvent, error) {
+func (s *Shard) conversationEvent(ctx context.Context, id webapiproto.ConversationID) (webapiproto.SyncEvent, error) {
 	record, found, err := s.Control().Conversation(ctx, id)
 	if err != nil || !found {
 		return nil, err
@@ -153,5 +153,5 @@ func (s *Shard) conversationEvent(ctx context.Context, id webapi.ConversationID)
 		return nil, nil
 	}
 	summary, err := s.ConversationSummary(ctx, record)
-	return &webapi.SyncEventConversation{Conversation: summary}, err
+	return &webapiproto.SyncEventConversation{Conversation: summary}, err
 }

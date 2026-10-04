@@ -3,8 +3,8 @@ package database
 import (
 	"errors"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ConversationChange is a user-requested change applied by the shard.
@@ -23,7 +23,9 @@ type ConversationSettingsChange struct{ Change SettingsChange }
 func (*ConversationSettingsChange) conversationChange() {}
 
 // ConversationTargetChange switches the main target by compare-and-set.
-type ConversationTargetChange struct{ Target webapi.ConversationTarget }
+type ConversationTargetChange struct {
+	Target webapiproto.ConversationTarget
+}
 
 func (*ConversationTargetChange) conversationChange() {}
 
@@ -48,7 +50,7 @@ type RecordPinned struct{ Pinned bool }
 func (*RecordPinned) recordChange() {}
 
 // RecordModel changes the model selection.
-type RecordModel struct{ Model core.ModelSelection }
+type RecordModel struct{ Model types.ModelSelection }
 
 func (*RecordModel) recordChange() {}
 
@@ -59,14 +61,14 @@ func (*RecordAttach) recordChange() {}
 
 // RecordRename renames an attached host uniquely within the conversation.
 type RecordRename struct {
-	Device webapi.DeviceID
+	Device webapiproto.DeviceID
 	Name   string
 }
 
 func (*RecordRename) recordChange() {}
 
 // RecordDetach detaches a device, doing nothing when it was not attached.
-type RecordDetach struct{ Device webapi.DeviceID }
+type RecordDetach struct{ Device webapiproto.DeviceID }
 
 func (*RecordDetach) recordChange() {}
 
@@ -97,24 +99,24 @@ const (
 // AttachedHostListing is an attached host and when it was attached.
 type AttachedHostListing struct {
 	Host AttachedHostRecord
-	At   core.Timestamp
+	At   types.Timestamp
 }
 
 // DepartedHost is a device left by a target switch and its directory.
 type DepartedHost struct {
-	Device webapi.DeviceID
+	Device webapiproto.DeviceID
 	Path   string
 }
 
 // ColumnsForTarget returns a target as its typed SQL columns.
-func ColumnsForTarget(target webapi.ConversationTarget) TargetColumns {
+func ColumnsForTarget(target webapiproto.ConversationTarget) TargetColumns {
 	switch target := target.(type) {
-	case *webapi.ConversationTargetCloud:
+	case *webapiproto.ConversationTargetCloud:
 		return TargetColumns{Kind: "cloud", Path: target.Path}
-	case *webapi.ConversationTargetDevice:
+	case *webapiproto.ConversationTargetDevice:
 		device := string(target.DeviceID)
 		return TargetColumns{Kind: "device", Device: &device, Path: &target.Path}
-	case *webapi.ConversationTargetWorkspace:
+	case *webapiproto.ConversationTargetWorkspace:
 		workspace := string(target.WorkspaceID)
 		return TargetColumns{Kind: "workspace", Workspace: &workspace}
 	}

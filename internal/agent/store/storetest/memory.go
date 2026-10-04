@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // MemoryTreeStore realizes the tree contract with nothing durable, recording
@@ -17,13 +17,13 @@ import (
 type MemoryTreeStore struct {
 	// mu protects atomic tree commits and test controls; gates wait outside it.
 	mu            sync.Mutex
-	nodes         map[core.NodeID]storedNode
+	nodes         map[types.NodeID]storedNode
 	saves         []savedRows
-	sequences     map[core.Sequence]uint64
-	outputs       map[core.CommandID]store.StoredOutput
+	sequences     map[types.Sequence]uint64
+	outputs       map[types.CommandID]store.StoredOutput
 	failingSaves  int
 	saveHold      *StoreGate
-	childrenHolds map[core.NodeID]*StoreGate
+	childrenHolds map[types.NodeID]*StoreGate
 	blobs         store.Blobs
 }
 
@@ -33,10 +33,10 @@ func NewMemoryTreeStore() *MemoryTreeStore { return NewMemoryTreeStoreWithBlobs(
 // NewMemoryTreeStoreWithBlobs creates a store using the supplied namespace.
 func NewMemoryTreeStoreWithBlobs(blobs store.Blobs) *MemoryTreeStore {
 	return &MemoryTreeStore{
-		nodes:         map[core.NodeID]storedNode{},
-		sequences:     map[core.Sequence]uint64{},
-		outputs:       map[core.CommandID]store.StoredOutput{},
-		childrenHolds: map[core.NodeID]*StoreGate{},
+		nodes:         map[types.NodeID]storedNode{},
+		sequences:     map[types.Sequence]uint64{},
+		outputs:       map[types.CommandID]store.StoredOutput{},
+		childrenHolds: map[types.NodeID]*StoreGate{},
 		blobs:         blobs,
 	}
 }
@@ -58,7 +58,7 @@ func (s *MemoryTreeStore) Copy() *MemoryTreeStore {
 }
 
 // KeepOutput records what the conversation holds of an ended command's output.
-func (s *MemoryTreeStore) KeepOutput(command core.CommandID, output store.StoredOutput) {
+func (s *MemoryTreeStore) KeepOutput(command types.CommandID, output store.StoredOutput) {
 	copied := copyOutput(output)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -68,7 +68,7 @@ func (s *MemoryTreeStore) KeepOutput(command core.CommandID, output store.Stored
 // Save records the node and update of one successful save.
 type Save struct {
 	// Node identifies the saved node.
-	Node core.NodeID
+	Node types.NodeID
 	// Update contains the committed checkpoint changes.
 	Update store.CheckpointUpdate
 }
@@ -93,7 +93,7 @@ func (s *MemoryTreeStore) Saves() []Save {
 			update.CommandState = &command
 		}
 		for _, index := range slices.Sorted(maps.Keys(saved.rows.blocks)) {
-			block, _ := core.DecodeBlock(saved.rows.blocks[index])
+			block, _ := types.DecodeBlock(saved.rows.blocks[index])
 			update.ChangedBlocks = append(update.ChangedBlocks, store.ChangedBlock{Index: index, Block: block})
 		}
 		saves = append(saves, Save{Node: saved.id, Update: update})
@@ -102,7 +102,7 @@ func (s *MemoryTreeStore) Saves() []Save {
 }
 
 // Checkpoint returns a node's checkpoint, or nil if absent.
-func (s *MemoryTreeStore) Checkpoint(id core.NodeID) *store.Checkpoint {
+func (s *MemoryTreeStore) Checkpoint(id types.NodeID) *store.Checkpoint {
 	s.mu.Lock()
 	node, exists := s.nodes[id]
 	s.mu.Unlock()
@@ -116,7 +116,7 @@ func (s *MemoryTreeStore) Checkpoint(id core.NodeID) *store.Checkpoint {
 }
 
 // Record returns a node's record, or nil if absent.
-func (s *MemoryTreeStore) Record(id core.NodeID) *store.NodeRecord {
+func (s *MemoryTreeStore) Record(id types.NodeID) *store.NodeRecord {
 	s.mu.Lock()
 	node, exists := s.nodes[id]
 	s.mu.Unlock()
@@ -127,7 +127,7 @@ func (s *MemoryTreeStore) Record(id core.NodeID) *store.NodeRecord {
 }
 
 // Numbered returns the node known by number, and whether it exists.
-func (s *MemoryTreeStore) Numbered(number uint64) (core.NodeID, bool) {
+func (s *MemoryTreeStore) Numbered(number uint64) (types.NodeID, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, id := range slices.Sorted(maps.Keys(s.nodes)) {
@@ -157,7 +157,7 @@ func (s *MemoryTreeStore) HoldSaves() *StoreGate {
 
 // HoldChildrenOf holds subsequent children reads for parent until release.
 // The acquiring test registers Release with t.Cleanup immediately.
-func (s *MemoryTreeStore) HoldChildrenOf(parent core.NodeID) *StoreGate {
+func (s *MemoryTreeStore) HoldChildrenOf(parent types.NodeID) *StoreGate {
 	gate := &StoreGate{}
 	s.mu.Lock()
 	s.childrenHolds[parent] = gate
@@ -166,7 +166,7 @@ func (s *MemoryTreeStore) HoldChildrenOf(parent core.NodeID) *StoreGate {
 }
 
 // Node returns a node's record, and false when it does not exist.
-func (s *MemoryTreeStore) Node(ctx context.Context, id core.NodeID) (store.NodeRecord, bool, error) {
+func (s *MemoryTreeStore) Node(ctx context.Context, id types.NodeID) (store.NodeRecord, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return store.NodeRecord{}, false, err
 	}
@@ -178,7 +178,7 @@ func (s *MemoryTreeStore) Node(ctx context.Context, id core.NodeID) (store.NodeR
 }
 
 // Children returns direct children in number order, live and archived alike.
-func (s *MemoryTreeStore) Children(ctx context.Context, parent core.NodeID) ([]store.NodeRecord, error) {
+func (s *MemoryTreeStore) Children(ctx context.Context, parent types.NodeID) ([]store.NodeRecord, error) {
 	s.mu.Lock()
 	gate := s.childrenHolds[parent]
 	s.mu.Unlock()
@@ -239,12 +239,12 @@ func (s *MemoryTreeStore) CreateNode(
 
 // Session returns the node's checkpoint store. Saves also mark carried
 // child completions delivered in the same commit.
-func (s *MemoryTreeStore) Session(id core.NodeID) store.Session {
+func (s *MemoryTreeStore) Session(id types.NodeID) store.Session {
 	return &memorySession{tree: s, id: id}
 }
 
 // CloseNode closes a node after its final checkpoint, initially undelivered.
-func (s *MemoryTreeStore) CloseNode(ctx context.Context, id core.NodeID, closed store.NodeClose) error {
+func (s *MemoryTreeStore) CloseNode(ctx context.Context, id types.NodeID, closed store.NodeClose) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -264,10 +264,10 @@ func (s *MemoryTreeStore) CloseNode(ctx context.Context, id core.NodeID, closed 
 // ReopenNode starts a new round and queues its reviving message atomically.
 func (s *MemoryTreeStore) ReopenNode(
 	ctx context.Context,
-	id core.NodeID,
+	id types.NodeID,
 	round uint64,
-	startedAt core.Timestamp,
-	message core.QueuedMessage,
+	startedAt types.Timestamp,
+	message types.QueuedMessage,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -282,7 +282,7 @@ func (s *MemoryTreeStore) ReopenNode(
 	if err != nil {
 		return err
 	}
-	state.Queue = []core.QueuedMessage{message}
+	state.Queue = []types.QueuedMessage{message}
 	encoded, err := state.MarshalJSON()
 	if err != nil {
 		return err
@@ -297,7 +297,7 @@ func (s *MemoryTreeStore) ReopenNode(
 }
 
 // MarkDelivered marks only the named current round delivered.
-func (s *MemoryTreeStore) MarkDelivered(ctx context.Context, id core.NodeID, round uint64) error {
+func (s *MemoryTreeStore) MarkDelivered(ctx context.Context, id types.NodeID, round uint64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -315,13 +315,13 @@ func (s *MemoryTreeStore) MarkDelivered(ctx context.Context, id core.NodeID, rou
 }
 
 // DeleteNode deletes the node and all descendants with all their rows.
-func (s *MemoryTreeStore) DeleteNode(ctx context.Context, id core.NodeID) error {
+func (s *MemoryTreeStore) DeleteNode(ctx context.Context, id types.NodeID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	doomed := []core.NodeID{id}
+	doomed := []types.NodeID{id}
 	for index := 0; index < len(doomed); index++ {
 		for child, node := range s.nodes {
 			if node.record.Parent != nil && *node.record.Parent == doomed[index] {
@@ -334,7 +334,7 @@ func (s *MemoryTreeStore) DeleteNode(ctx context.Context, id core.NodeID) error 
 }
 
 // NextNumber records the following number before returning this one.
-func (s *MemoryTreeStore) NextNumber(ctx context.Context, sequence core.Sequence) (uint64, error) {
+func (s *MemoryTreeStore) NextNumber(ctx context.Context, sequence types.Sequence) (uint64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -349,7 +349,7 @@ func (s *MemoryTreeStore) NextNumber(ctx context.Context, sequence core.Sequence
 }
 
 // CommandOutput returns an ended command's output record, or nil if unknown.
-func (s *MemoryTreeStore) CommandOutput(ctx context.Context, command core.CommandID) (store.StoredOutput, error) {
+func (s *MemoryTreeStore) CommandOutput(ctx context.Context, command types.CommandID) (store.StoredOutput, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

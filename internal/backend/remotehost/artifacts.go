@@ -5,8 +5,8 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // task admits and joins connection-owned policy work without holding the state lock.
@@ -25,9 +25,9 @@ func (l *Link) task(run func()) {
 }
 
 // growVolume returns the policy's managed-volume decision to the runner.
-func (l *Link) growVolume(request *runnerwire.VolumeGrow) {
+func (l *Link) growVolume(request *runnerproto.VolumeGrow) {
 	l.task(func() {
-		answer := &runnerwire.VolumeGrown{ID: request.ID, Volume: request.Volume, Bytes: request.Bytes}
+		answer := &runnerproto.VolumeGrown{ID: request.ID, Volume: request.Volume, Bytes: request.Bytes}
 		if err := l.policy.GrowVolume(l.ctx, request.Volume, request.Bytes); err != nil {
 			answer.Error = new(err.Error())
 		}
@@ -38,7 +38,7 @@ func (l *Link) growVolume(request *runnerwire.VolumeGrow) {
 }
 
 // reserveNumbers bounds outstanding reservations and refuses duplicate request IDs.
-func (l *Link) reserveNumbers(request *runnerwire.NumbersReserve) {
+func (l *Link) reserveNumbers(request *runnerproto.NumbersReserve) {
 	l.mu.Lock()
 	_, duplicate := l.numbers[request.ID]
 	admitted := len(l.numbers) < 32 && !duplicate
@@ -47,7 +47,7 @@ func (l *Link) reserveNumbers(request *runnerwire.NumbersReserve) {
 	}
 	l.mu.Unlock()
 	l.task(func() {
-		answer := &runnerwire.NumbersReserved{ID: request.ID}
+		answer := &runnerproto.NumbersReserved{ID: request.ID}
 		if !admitted {
 			answer.Error = new("Numbers request limit or duplicate id")
 		} else {
@@ -71,16 +71,16 @@ func (l *Link) reserveNumbers(request *runnerwire.NumbersReserve) {
 type artifactGrant struct {
 	ctx      context.Context
 	resolver ArtifactResolver
-	packages []commandwire.PackageDescriptor
+	packages []commandproto.PackageDescriptor
 	attached []AttachedArtifact
 }
 
 // grant snapshots the packages whose artifacts live work is allowed to install.
-func (l *Link) grant(owner runnerwire.ArtifactOwner) *artifactGrant {
+func (l *Link) grant(owner runnerproto.ArtifactOwner) *artifactGrant {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	switch owner := owner.(type) {
-	case *runnerwire.JobArtifactOwner:
+	case *runnerproto.JobArtifactOwner:
 		job := l.jobs[owner.JobID]
 		if job == nil || job.commands == nil || job.commands.Hash() != owner.ManifestHash {
 			return nil
@@ -90,7 +90,7 @@ func (l *Link) grant(owner runnerwire.ArtifactOwner) *artifactGrant {
 			grant.packages = append(grant.packages, descriptor)
 		}
 		return grant
-	case *runnerwire.StreamArtifactOwner:
+	case *runnerproto.StreamArtifactOwner:
 		stream := l.services[owner.StreamID]
 		if stream == nil || stream.ctx.Err() != nil {
 			return nil
@@ -98,7 +98,7 @@ func (l *Link) grant(owner runnerwire.ArtifactOwner) *artifactGrant {
 		return &artifactGrant{
 			ctx:      stream.ctx,
 			resolver: stream.request.Resolver,
-			packages: []commandwire.PackageDescriptor{stream.request.Package},
+			packages: []commandproto.PackageDescriptor{stream.request.Package},
 			attached: stream.request.Attached,
 		}
 	}
@@ -106,7 +106,7 @@ func (l *Link) grant(owner runnerwire.ArtifactOwner) *artifactGrant {
 }
 
 // resolveArtifact limits concurrent downloads to artifacts pinned by their live owner.
-func (l *Link) resolveArtifact(request *runnerwire.ArtifactResolve) {
+func (l *Link) resolveArtifact(request *runnerproto.ArtifactResolve) {
 	grant := l.grant(request.Owner)
 	refusal := ""
 	if grant == nil {
@@ -137,22 +137,22 @@ func (l *Link) resolveArtifact(request *runnerwire.ArtifactResolve) {
 }
 
 // resolve locates only an attached artifact or one carried by the work's packages.
-func (g *artifactGrant) resolve(digest, target string) (commandwire.ArtifactLocation, error) {
+func (g *artifactGrant) resolve(digest, target string) (commandproto.ArtifactLocation, error) {
 	for _, attached := range g.attached {
 		if attached.Artifact.SHA256 == digest {
-			if err := commandwire.ValidateArtifactLocation(attached.Location); err != nil {
+			if err := commandproto.ValidateArtifactLocation(attached.Location); err != nil {
 				return nil, err
 			}
 			return attached.Location, nil
 		}
 	}
 	for _, descriptor := range g.packages {
-		if artifact, ok := descriptor.Carries(commandwire.TargetTriple(target), digest); ok {
+		if artifact, ok := descriptor.Carries(commandproto.TargetTriple(target), digest); ok {
 			location, err := g.resolver.Resolve(g.ctx, artifact, target)
 			if err != nil {
 				return nil, err
 			}
-			if err := commandwire.ValidateArtifactLocation(location); err != nil {
+			if err := commandproto.ValidateArtifactLocation(location); err != nil {
 				return nil, err
 			}
 			return location, nil
@@ -163,8 +163,8 @@ func (g *artifactGrant) resolve(digest, target string) (commandwire.ArtifactLoca
 }
 
 // answerArtifact sends a validated location or the refusal's text, and logs a send that fails.
-func (l *Link) answerArtifact(id string, location commandwire.ArtifactLocation, err error) {
-	answer := &runnerwire.ArtifactLocation{ID: id}
+func (l *Link) answerArtifact(id string, location commandproto.ArtifactLocation, err error) {
+	answer := &runnerproto.ArtifactLocation{ID: id}
 	if err != nil {
 		answer.Error = new(err.Error())
 	} else {

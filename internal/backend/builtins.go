@@ -3,32 +3,32 @@ package backend
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/backend/providers"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/plugin"
-	"github.com/wspl/demi/internal/plugins/browser"
-	"github.com/wspl/demi/internal/plugins/changes"
-	"github.com/wspl/demi/internal/plugins/expose"
-	"github.com/wspl/demi/internal/plugins/file"
-	"github.com/wspl/demi/internal/plugins/filebrowser"
-	"github.com/wspl/demi/internal/plugins/skills"
-	"github.com/wspl/demi/internal/plugins/todo"
+	"github.com/wspl/demi/internal/plugin/browser"
+	"github.com/wspl/demi/internal/plugin/changes"
+	"github.com/wspl/demi/internal/plugin/expose"
+	"github.com/wspl/demi/internal/plugin/file"
+	"github.com/wspl/demi/internal/plugin/filebrowser"
+	"github.com/wspl/demi/internal/plugin/skills"
+	"github.com/wspl/demi/internal/plugin/todo"
 	"github.com/wspl/demi/internal/provider"
-	"github.com/wspl/demi/internal/providers/anthropicapi"
-	"github.com/wspl/demi/internal/providers/claudecode"
-	"github.com/wspl/demi/internal/providers/codex"
-	"github.com/wspl/demi/internal/providers/google"
-	"github.com/wspl/demi/internal/providers/grokbuild"
-	"github.com/wspl/demi/internal/providers/openaiapi"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/provider/anthropicapi"
+	"github.com/wspl/demi/internal/provider/claudecode"
+	"github.com/wspl/demi/internal/provider/codex"
+	"github.com/wspl/demi/internal/provider/google"
+	"github.com/wspl/demi/internal/provider/grokbuild"
+	"github.com/wspl/demi/internal/provider/openaiapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // BuiltinFamilies returns the families built into the backend. Tests can
 // register additional scripted families in the returned registry.
-func BuiltinFamilies() *providers.FamilyRegistry {
-	registry := &providers.FamilyRegistry{}
+func BuiltinFamilies() *providerhost.FamilyRegistry {
+	registry := &providerhost.FamilyRegistry{}
 	registry.Register("anthropic", apiFamily{name: "anthropic"})
-	registry.Register(providers.SetupTokenFamily, claudeFamily{})
+	registry.Register(providerhost.SetupTokenFamily, claudeFamily{})
 	registry.Register("codex", subscriptionFamily{name: "codex"})
 	registry.Register("google", apiFamily{name: "google"})
 	registry.Register("grok-build", subscriptionFamily{name: "grok-build"})
@@ -39,21 +39,21 @@ func BuiltinFamilies() *providers.FamilyRegistry {
 type apiFamily struct{ name string }
 
 // Credential identifies the credentials this provider family accepts.
-func (apiFamily) Credential() webapi.CredentialKind { return webapi.CredentialKindAPIKey }
+func (apiFamily) Credential() webapiproto.CredentialKind { return webapiproto.CredentialKindAPIKey }
 
 // Wires lists the selectable wire protocols for this family.
-func (f apiFamily) Wires() []core.WireAPI {
+func (f apiFamily) Wires() []types.WireAPI {
 	if f.name == "openai" {
-		return []core.WireAPI{core.WireAPIResponses, core.WireAPIChatCompletions}
+		return []types.WireAPI{types.WireAPIResponses, types.WireAPIChatCompletions}
 	}
 	return nil
 }
 
 // Provider constructs the provider for the supplied family credentials.
-func (f apiFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
-	settings, ok := args.Credential.(*providers.APIKeyArgs)
+func (f apiFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {
+	settings, ok := args.Credential.(*providerhost.APIKeyArgs)
 	if !ok {
-		return nil, providers.ErrWrongCredential
+		return nil, providerhost.ErrWrongCredential
 	}
 	switch f.name {
 	case "anthropic":
@@ -64,7 +64,7 @@ func (f apiFamily) Provider(args providers.FamilyArgs) (provider.Provider, error
 	case "google":
 		return google.New(google.Config{APIKey: settings.APIKey, BaseURL: settings.BaseURL}, args.Clock), nil
 	default:
-		wire := core.WireAPIResponses
+		wire := types.WireAPIResponses
 		if settings.WireAPI != nil {
 			wire = *settings.WireAPI
 		}
@@ -78,18 +78,18 @@ func (f apiFamily) Provider(args providers.FamilyArgs) (provider.Provider, error
 type subscriptionFamily struct{ name string }
 
 // Credential identifies the credentials this provider family accepts.
-func (subscriptionFamily) Credential() webapi.CredentialKind {
-	return webapi.CredentialKindSubscription
+func (subscriptionFamily) Credential() webapiproto.CredentialKind {
+	return webapiproto.CredentialKindSubscription
 }
 
 // Wires lists the selectable wire protocols for this family.
-func (subscriptionFamily) Wires() []core.WireAPI { return nil }
+func (subscriptionFamily) Wires() []types.WireAPI { return nil }
 
 // Provider constructs the provider for the supplied family credentials.
-func (f subscriptionFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
-	subscription, ok := args.Credential.(*providers.SubscriptionArgs)
+func (f subscriptionFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {
+	subscription, ok := args.Credential.(*providerhost.SubscriptionArgs)
 	if !ok {
-		return nil, providers.ErrWrongCredential
+		return nil, providerhost.ErrWrongCredential
 	}
 	account, quota := boundAccount(subscription.Account)
 	if f.name == "codex" {
@@ -101,20 +101,22 @@ func (f subscriptionFamily) Provider(args providers.FamilyArgs) (provider.Provid
 type claudeFamily struct{}
 
 // Credential identifies the credentials this provider family accepts.
-func (claudeFamily) Credential() webapi.CredentialKind { return webapi.CredentialKindSubscription }
+func (claudeFamily) Credential() webapiproto.CredentialKind {
+	return webapiproto.CredentialKindSubscription
+}
 
 // Wires lists the selectable wire protocols for this family.
-func (claudeFamily) Wires() []core.WireAPI { return nil }
+func (claudeFamily) Wires() []types.WireAPI { return nil }
 
 // Provider constructs the provider for the supplied family credentials.
-func (f claudeFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
+func (f claudeFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {
 	return f.provider(args)
 }
 
 // ProcessRuntime constructs a Claude Code runtime for the supplied placement.
 func (f claudeFamily) ProcessRuntime(
 	_ context.Context,
-	args providers.FamilyArgs,
+	args providerhost.FamilyArgs,
 	placement claudecode.Placement,
 ) (provider.Runtime, error) {
 	p, err := f.provider(args)
@@ -124,10 +126,10 @@ func (f claudeFamily) ProcessRuntime(
 	return p.ProcessRuntime(placement), nil
 }
 
-func (claudeFamily) provider(args providers.FamilyArgs) (*claudecode.Provider, error) {
-	subscription, ok := args.Credential.(*providers.SubscriptionArgs)
+func (claudeFamily) provider(args providerhost.FamilyArgs) (*claudecode.Provider, error) {
+	subscription, ok := args.Credential.(*providerhost.SubscriptionArgs)
 	if !ok {
-		return nil, providers.ErrWrongCredential
+		return nil, providerhost.ErrWrongCredential
 	}
 	account, quota := boundAccount(subscription.Account)
 	return claudecode.New(
@@ -141,7 +143,7 @@ func (claudeFamily) provider(args providers.FamilyArgs) (*claudecode.Provider, e
 }
 
 // boundAccount supplies the account's quota, or an unwritten store for login.
-func boundAccount(account *providers.AccountBinding) (*string, provider.QuotaSnapshotStore) {
+func boundAccount(account *providerhost.AccountBinding) (*string, provider.QuotaSnapshotStore) {
 	if account == nil {
 		return nil, &provider.MemorySnapshots{}
 	}

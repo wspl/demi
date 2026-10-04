@@ -3,8 +3,8 @@ package plugin
 import (
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/types"
 )
 
 //revive:disable:exported
@@ -23,7 +23,7 @@ type Manifest struct {
 	Commands []Commands `json:"commands"`
 	// Its subagent profiles (`plugins.md` § Profiles).
 	// +demi:default
-	Profiles []core.Profile `json:"profiles"`
+	Profiles []types.Profile `json:"profiles"`
 	// Whether it is a context source, asked before each provider request
 	// of a node while its user has it on (`plugins.md` § Prompt text and
 	// context).
@@ -44,8 +44,8 @@ type Manifest struct {
 // +demi:root
 type Stream struct {
 	// The name the page opens it by, taken once among all plugins.
-	Name      string                  `json:"name"`
-	Operation declare.NativeOperation `json:"operation"`
+	Name      string                      `json:"name"`
+	Operation commanddecl.NativeOperation `json:"operation"`
 	// The messages the page receives.
 	Receives Schema `json:"receives"`
 	// The messages the page sends.
@@ -98,7 +98,7 @@ type State struct {
 	// of whose operations the startup catalog does not serve is left out,
 	// as a method is.
 	// +demi:default
-	Operations []declare.NativeOperation `json:"operations"`
+	Operations []commanddecl.NativeOperation `json:"operations"`
 }
 
 // A product change a page state can follow (`plugins.md` § Topics).
@@ -127,7 +127,7 @@ type Method struct {
 	// of whose operations the startup catalog does not serve is left out,
 	// as a command group is.
 	// +demi:default
-	Operations []declare.NativeOperation `json:"operations"`
+	Operations []commanddecl.NativeOperation `json:"operations"`
 }
 
 // Whom a page method is called for, which decides its route

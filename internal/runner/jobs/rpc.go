@@ -6,16 +6,16 @@ import (
 	"io"
 	"time"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // send publishes a runner frame while the call and connection remain alive.
-func (h *Connection) send(ctx context.Context, message runnerwire.Outbound) error {
-	frame, err := runnerwire.Encode(message)
+func (h *Connection) send(ctx context.Context, message runnerproto.Outbound) error {
+	frame, err := runnerproto.Encode(message)
 	if err != nil {
 		return err
 	}
@@ -30,8 +30,8 @@ func (h *Connection) send(ctx context.Context, message runnerwire.Outbound) erro
 }
 
 // retire sends cleanup without allowing a stalled backend to retain RPC work.
-func (h *Connection) retire(message runnerwire.Outbound) {
-	frame, err := runnerwire.Encode(message)
+func (h *Connection) retire(message runnerproto.Outbound) {
+	frame, err := runnerproto.Encode(message)
 	if err == nil {
 		select {
 		case h.Control <- frame:
@@ -48,8 +48,8 @@ func runningHint(ctx context.Context, h *Connection, job string, hint *string) (
 		return func() {}, nil
 	}
 	id := executionID()
-	clearHint := func() { h.retire(&runnerwire.JobRunningHint{JobID: job, InvocationID: id}) }
-	if err := h.send(ctx, &runnerwire.JobRunningHint{JobID: job, InvocationID: id, Hint: hint}); err != nil {
+	clearHint := func() { h.retire(&runnerproto.JobRunningHint{JobID: job, InvocationID: id}) }
+	if err := h.send(ctx, &runnerproto.JobRunningHint{JobID: job, InvocationID: id, Hint: hint}); err != nil {
 		clearHint()
 		return nil, err
 	}
@@ -62,8 +62,8 @@ func invokeRPC(
 	pipes *process.PipeClient,
 	execution *ExecutionContext,
 	raw process.RawCommand,
-	parsed *declare.Parsed,
-	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
+	parsed *commanddecl.Parsed,
+	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
 	output *commandOutput,
 	finite bool,
 ) (code uint8, err error) {
@@ -77,7 +77,7 @@ func invokeRPC(
 	}
 	defer func() {
 		if err != nil {
-			connection.retire(&runnerwire.RPCCancel{CallID: id})
+			connection.retire(&runnerproto.RPCCancel{CallID: id})
 		}
 	}()
 	if err = sendRPCCall(ctx, connection, id, execution.JobID, raw, parsed, invocation, finite); err != nil {
@@ -100,9 +100,9 @@ func rpcInput(
 	h *Connection,
 	id string,
 	live bool,
-	reference *runnerwire.PipeRef,
+	reference *runnerproto.PipeRef,
 	pulls <-chan struct{},
-	input *cmdsdk.Input,
+	input *commandsdk.Input,
 ) error {
 	if live {
 		for {
@@ -113,12 +113,12 @@ func rpcInput(
 			}
 			bytes, err := input.Next(ctx)
 			if errors.Is(err, io.EOF) {
-				return h.send(ctx, &runnerwire.RPCStdinEnd{CallID: id})
+				return h.send(ctx, &runnerproto.RPCStdinEnd{CallID: id})
 			}
 			if err != nil {
 				return err
 			}
-			if err = h.send(ctx, &runnerwire.RPCStdin{CallID: id, Bytes: bytes}); err != nil {
+			if err = h.send(ctx, &runnerproto.RPCStdin{CallID: id, Bytes: bytes}); err != nil {
 				return err
 			}
 		}
@@ -134,7 +134,7 @@ func rpcInput(
 // invocationBody adapts demand-driven command chunks to a pipe upload without read-ahead.
 type invocationBody struct {
 	ctx     context.Context
-	input   *cmdsdk.Input
+	input   *commandsdk.Input
 	pending []byte
 	cancel  context.CancelFunc
 }
@@ -158,7 +158,7 @@ func (b *invocationBody) Close() error {
 }
 
 // newInvocationBody gives each pipe upload an independently cancellable input read.
-func newInvocationBody(ctx context.Context, input *cmdsdk.Input) *invocationBody {
+func newInvocationBody(ctx context.Context, input *commandsdk.Input) *invocationBody {
 	lifetime, cancel := context.WithCancel(ctx)
 	return &invocationBody{ctx: lifetime, input: input, cancel: cancel}
 }
@@ -167,7 +167,7 @@ func newInvocationBody(ctx context.Context, input *cmdsdk.Input) *invocationBody
 func rpcDownload(
 	ctx context.Context,
 	pipes *process.PipeClient,
-	reference *runnerwire.PipeRef,
+	reference *runnerproto.PipeRef,
 	output *commandOutput,
 ) error {
 	body, err := pipes.Open(ctx, reference.URL)
@@ -196,9 +196,9 @@ func rpcDownload(
 type rpcUploadOptions struct {
 	id        string
 	live      bool
-	reference <-chan *runnerwire.PipeRef
+	reference <-chan *runnerproto.PipeRef
 	pulls     <-chan struct{}
-	input     *cmdsdk.Input
+	input     *commandsdk.Input
 	done      chan<- error
 }
 
@@ -208,7 +208,7 @@ func rpcUpload(
 	connection *Connection,
 	transfer rpcUploadOptions,
 ) {
-	var reference *runnerwire.PipeRef
+	var reference *runnerproto.PipeRef
 	select {
 	case <-ctx.Done():
 		transfer.done <- ctx.Err()
@@ -224,11 +224,11 @@ func rpcOutput(
 	ctx context.Context,
 	pipes *process.PipeClient,
 	connection *Connection,
-	outputRef <-chan *runnerwire.PipeRef,
+	outputRef <-chan *runnerproto.PipeRef,
 	output *commandOutput,
 	outputDone chan<- error,
 ) {
-	var reference *runnerwire.PipeRef
+	var reference *runnerproto.PipeRef
 	select {
 	case <-ctx.Done():
 		outputDone <- ctx.Err()
@@ -282,7 +282,7 @@ func rpcEvent(
 				return errors.New("overlapping RPC stdin demands")
 			}
 		} else {
-			if err := connection.send(ctx, &runnerwire.RPCStdinEnd{CallID: id}); err != nil {
+			if err := connection.send(ctx, &runnerproto.RPCStdinEnd{CallID: id}); err != nil {
 				return err
 			}
 		}
@@ -306,8 +306,8 @@ func sendRPCCall(
 	connection *Connection,
 	id, job string,
 	raw process.RawCommand,
-	parsed *declare.Parsed,
-	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
+	parsed *commanddecl.Parsed,
+	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
 	finite bool,
 ) error {
 	args, err := parsed.Values.MarshalJSON()
@@ -317,7 +317,7 @@ func sendRPCCall(
 	argv := append([]string{raw.Root}, raw.Argv...)
 	if err = connection.send(
 		ctx,
-		&runnerwire.RPCCall{
+		&runnerproto.RPCCall{
 			JobID:  job,
 			CallID: id,
 			Root:   raw.Root,
@@ -333,7 +333,7 @@ func sendRPCCall(
 		return err
 	}
 	if !raw.Live {
-		if err = connection.send(ctx, &runnerwire.RPCStdinEnd{CallID: id}); err != nil {
+		if err = connection.send(ctx, &runnerproto.RPCStdinEnd{CallID: id}); err != nil {
 			return err
 		}
 	}
@@ -351,7 +351,7 @@ func joinRPCWorkers(inputFinished, outputFinished bool, inputDone, outputDone <-
 
 type rpcExchangeOptions struct {
 	live, finite bool
-	invocation   cmdsdk.InvocationContext[commandwire.LocalInvocation]
+	invocation   commandsdk.InvocationContext[commandproto.LocalInvocation]
 	output       *commandOutput
 	events       <-chan CallEvent
 }
@@ -367,8 +367,8 @@ func exchangeRPC(
 	pulls := make(chan struct{}, 1)
 	inputDone := make(chan error, 1)
 	outputDone := make(chan error, 1)
-	inputRef := make(chan *runnerwire.PipeRef, 1)
-	outputRef := make(chan *runnerwire.PipeRef, 1)
+	inputRef := make(chan *runnerproto.PipeRef, 1)
+	outputRef := make(chan *runnerproto.PipeRef, 1)
 	go rpcUpload(
 		ctx,
 		pipes,
@@ -407,7 +407,7 @@ func exchangeRPC(
 
 type rpcWaitOptions struct {
 	pulls                         chan<- struct{}
-	inputRef, outputRef           chan<- *runnerwire.PipeRef
+	inputRef, outputRef           chan<- *runnerproto.PipeRef
 	inputDone, outputDone         <-chan error
 	inputFinished, outputFinished *bool
 }

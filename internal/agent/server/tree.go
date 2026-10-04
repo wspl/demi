@@ -10,26 +10,26 @@ import (
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/tools"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Tree is a conversation's live nodes, connection attachments and supervisor.
 // It belongs to its Server and exposes synchronized operations, not mutable state.
 type Tree[H host.Host] struct {
 	server          *Server[H]
-	id              core.NodeID
+	id              types.NodeID
 	root            *Node[H]
 	store           store.Tree
 	admission       *gates.Activity
 	actionAdmission gates.Serial
-	profiles        []core.Profile
+	profiles        []types.Profile
 	toolset         string
-	starts          gates.KeyedSerial[core.NodeID]
-	children        map[core.NodeID]*child[H]
-	changing        map[core.NodeID]int
+	starts          gates.KeyedSerial[types.NodeID]
+	children        map[types.NodeID]*child[H]
+	changing        map[types.NodeID]int
 	attachments     map[*Connection[H]]struct{}
 	attachmentEpoch uint64
 	changed         chan struct{}
@@ -42,7 +42,7 @@ type Tree[H host.Host] struct {
 	// Frame publication takes this mutex before the server mutex. Session
 	// callbacks run outside session state locks, so snapshots cannot invert it.
 	frames  sync.Mutex
-	running map[core.CommandID]bool
+	running map[types.CommandID]bool
 	waiting []waitingOutput
 	sent    time.Time
 }
@@ -54,7 +54,7 @@ func (t *Tree[H]) Toolset() string { return t.toolset }
 func (t *Tree[H]) Root() *Node[H] { return t.root }
 
 // Node returns the live node, root or child at any depth, or nil.
-func (t *Tree[H]) Node(id core.NodeID) *Node[H] {
+func (t *Tree[H]) Node(id types.NodeID) *Node[H] {
 	t.server.mu.Lock()
 	defer t.server.mu.Unlock()
 	if id == t.id {
@@ -123,7 +123,7 @@ func (t *Tree[H]) IsQuiescent() bool {
 // openTree assembles and publishes a single conversation under its opening gate.
 func (s *Server[H]) openTree(
 	ctx context.Context,
-	root core.NodeID,
+	root types.NodeID,
 	cwd string,
 ) (*Tree[H], session.Continuation, bool, error) {
 	toolset, err := s.deps.Toolsets.Current(ctx)
@@ -176,7 +176,7 @@ func (s *Server[H]) openTree(
 }
 
 // newTree makes conversation root's unpublished tree with its own lifetime.
-func (s *Server[H]) newTree(root core.NodeID, toolset tools.Set) *Tree[H] {
+func (s *Server[H]) newTree(root types.NodeID, toolset tools.Set) *Tree[H] {
 	lifetime, cancel := context.WithCancel(context.Background())
 	return &Tree[H]{
 		server:      s,
@@ -185,13 +185,13 @@ func (s *Server[H]) newTree(root core.NodeID, toolset tools.Set) *Tree[H] {
 		admission:   gates.NewActivity(nil),
 		profiles:    toolset.Profiles,
 		toolset:     toolset.Revision,
-		children:    map[core.NodeID]*child[H]{},
-		changing:    map[core.NodeID]int{},
+		children:    map[types.NodeID]*child[H]{},
+		changing:    map[types.NodeID]int{},
 		attachments: map[*Connection[H]]struct{}{},
 		changed:     make(chan struct{}),
 		ctx:         lifetime,
 		cancel:      cancel,
-		running:     map[core.CommandID]bool{},
+		running:     map[types.CommandID]bool{},
 	}
 }
 
@@ -211,13 +211,13 @@ func (t *Tree[H]) changes() <-chan struct{} {
 }
 
 // emit sends a session event in order to each attached socket.
-func (t *Tree[H]) emit(frame framewire.ServerFrame) {
+func (t *Tree[H]) emit(frame conversationproto.ServerFrame) {
 	t.frames.Lock()
 	defer t.frames.Unlock()
 	t.publish(frame)
 }
 
-func (t *Tree[H]) publish(frame framewire.ServerFrame) {
+func (t *Tree[H]) publish(frame conversationproto.ServerFrame) {
 	connections := t.connections()
 	for _, c := range connections {
 		if !c.outbox.push(frame) {
@@ -264,12 +264,15 @@ func (t *Tree[H]) attach(c *Connection[H]) {
 	t.attachmentEpoch++
 	t.server.mu.Unlock()
 	snapshot := t.observeConnection(c, t.root)
-	frames := []framewire.ServerFrame{
-		&framewire.OpenedFrame{},
-		&framewire.TranscriptResetFrame{Blocks: snapshot.Transcript.Blocks, Version: snapshot.Transcript.Version},
-		&framewire.PhaseFrame{Phase: snapshot.Phase},
-		&framewire.QueueFrame{Queue: snapshot.Queue},
-		&framewire.PendingSteersFrame{PendingSteers: snapshot.PendingSteers},
+	frames := []conversationproto.ServerFrame{
+		&conversationproto.OpenedFrame{},
+		&conversationproto.TranscriptResetFrame{
+			Blocks:  snapshot.Transcript.Blocks,
+			Version: snapshot.Transcript.Version,
+		},
+		&conversationproto.PhaseFrame{Phase: snapshot.Phase},
+		&conversationproto.QueueFrame{Queue: snapshot.Queue},
+		&conversationproto.PendingSteersFrame{PendingSteers: snapshot.PendingSteers},
 	}
 	frames = append(frames, t.replay(c)...)
 	frames = append(frames, t.liveCommands()...)
@@ -282,17 +285,17 @@ func (t *Tree[H]) attach(c *Connection[H]) {
 	t.bump()
 }
 
-func (t *Tree[H]) freshTranscripts(c *Connection[H]) []framewire.ServerFrame {
+func (t *Tree[H]) freshTranscripts(c *Connection[H]) []conversationproto.ServerFrame {
 	snapshot := t.observeConnection(c, t.root).Transcript
-	frames := []framewire.ServerFrame{
-		&framewire.TranscriptResetFrame{Blocks: snapshot.Blocks, Version: snapshot.Version},
+	frames := []conversationproto.ServerFrame{
+		&conversationproto.TranscriptResetFrame{Blocks: snapshot.Blocks, Version: snapshot.Version},
 	}
 	frames = append(frames, t.replay(c)...)
 	return append(frames, t.liveCommands()...)
 }
 
-func (t *Tree[H]) liveCommands() []framewire.ServerFrame {
-	frames := []framewire.ServerFrame{}
+func (t *Tree[H]) liveCommands() []conversationproto.ServerFrame {
+	frames := []conversationproto.ServerFrame{}
 	for _, view := range t.root.liveViews() {
 		frames = append(frames, tools.ShellOutput(nil, view))
 	}
@@ -328,7 +331,7 @@ func (t *Tree[H]) dispose(ctx context.Context) error {
 	if err != nil {
 		t.report(err)
 	}
-	t.emit(&framewire.ClosedFrame{})
+	t.emit(&conversationproto.ClosedFrame{})
 	t.server.mu.Lock()
 	connections := make([]*Connection[H], 0, len(t.attachments))
 	for c := range t.attachments {
@@ -344,7 +347,7 @@ func (t *Tree[H]) dispose(ctx context.Context) error {
 	return err
 }
 
-func (t *Tree[H]) report(err error) { t.emit(&framewire.ErrorFrame{Message: err.Error()}) }
+func (t *Tree[H]) report(err error) { t.emit(&conversationproto.ErrorFrame{Message: err.Error()}) }
 
 // monitor owns the detached-idle timer and working-state notifications.
 func (t *Tree[H]) monitor() {
@@ -396,25 +399,29 @@ func (t *Tree[H]) monitor() {
 	}
 }
 
-func frameOf(event session.Event) framewire.ServerFrame {
+func frameOf(event session.Event) conversationproto.ServerFrame {
 	switch e := event.(type) {
 	case *session.TranscriptChanged:
-		return &framewire.TranscriptPatchFrame{Patches: e.Patches, Revision: e.Revision}
+		return &conversationproto.TranscriptPatchFrame{Patches: e.Patches, Revision: e.Revision}
 	case *session.PhaseChanged:
-		return &framewire.PhaseFrame{Phase: e.Phase}
+		return &conversationproto.PhaseFrame{Phase: e.Phase}
 	case *session.QueueChanged:
-		return &framewire.QueueFrame{Queue: e.Queue}
+		return &conversationproto.QueueFrame{Queue: e.Queue}
 	case *session.PendingSteersChanged:
-		return &framewire.PendingSteersFrame{PendingSteers: e.PendingSteers}
+		return &conversationproto.PendingSteersFrame{PendingSteers: e.PendingSteers}
 	case *session.RetryScheduled:
-		return &framewire.RetryScheduledFrame{
+		return &conversationproto.RetryScheduledFrame{
 			Attempt:     e.Attempt,
 			DelayMs:     e.DelayMS,
 			Code:        e.Code,
 			Diagnostics: e.Diagnostics,
 		}
 	case *session.ErrorEvent:
-		return &framewire.ErrorFrame{Message: e.Report.Message, Code: e.Report.Code, Diagnostics: e.Report.Diagnostics}
+		return &conversationproto.ErrorFrame{
+			Message:     e.Report.Message,
+			Code:        e.Report.Code,
+			Diagnostics: e.Report.Diagnostics,
+		}
 	case *session.ActionFailed, *session.EditCommitted:
 		return nil
 	}
@@ -441,7 +448,7 @@ func (s *Server[H]) publishTree(ctx context.Context, t *Tree[H], node *Node[H], 
 	return nil
 }
 
-func checkProfiles(profiles []core.Profile) error {
+func checkProfiles(profiles []types.Profile) error {
 	for _, profile := range profiles {
 		if profile.Name == "default" {
 			return errors.New(

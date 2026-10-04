@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func TestProviderCredentialVersionsAndCascades(t *testing.T) {
@@ -18,7 +18,7 @@ func TestProviderCredentialVersionsAndCascades(t *testing.T) {
 		ID:     "entry-1",
 		Owner:  owner.ID,
 		Family: "anthropic",
-		Kind:   webapi.CredentialKindSubscription,
+		Kind:   webapiproto.CredentialKindSubscription,
 		Label:  "Claude",
 	}
 	account := CredentialWrite{ID: "account-1", Label: "one", Source: "login", Secret: []byte{1, 2, 3}}
@@ -45,7 +45,7 @@ func TestProviderCredentialVersionsAndCascades(t *testing.T) {
 	require(t, c.RemoveCredential(ctx, inserted.ID, account.ID))
 	read, _, err = c.Provider(ctx, inserted.ID)
 	require(t, err)
-	equal(t, (*webapi.CredentialID)(nil), read.Active)
+	equal(t, (*webapiproto.CredentialID)(nil), read.Active)
 	changed, err = c.WriteCredential(ctx, inserted.ID, account)
 	require(t, err)
 	equal(t, true, changed)
@@ -69,14 +69,14 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 	read, _, err := c.DeviceByToken(ctx, HashToken("boot"))
 	require(t, err)
 	equal(t, cloud, read)
-	device, err := c.CreateDevice(ctx, owner.ID, "laptop", runnerwire.RunnerPlatformLinux, HashToken("paired"))
+	device, err := c.CreateDevice(ctx, owner.ID, "laptop", runnerproto.RunnerPlatformLinux, HashToken("paired"))
 	require(t, err)
 	workspace, err := c.CreateWorkspace(ctx, NewWorkspaceID(), owner.ID, device.ID, "/work", "Work")
 	require(t, err)
 	if workspace == nil {
 		t.Fatal("workspace missing")
 	}
-	target := &webapi.ConversationTargetWorkspace{WorkspaceID: workspace.ID}
+	target := &webapiproto.ConversationTargetWorkspace{WorkspaceID: workspace.ID}
 	changed, err := c.SwitchConversationTarget(
 		ctx,
 		source.ID,
@@ -103,7 +103,7 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 		Metadata: ForkMetadata{
 			Title:         "Fork",
 			Target:        target,
-			CreatedAt:     core.UnixEpoch,
+			CreatedAt:     types.UnixEpoch,
 			AttachedHosts: []AttachedHostRecord{},
 		},
 	}
@@ -127,7 +127,7 @@ func TestWorkspaceForkAndCloudRecords(t *testing.T) {
 	require(t, c.AnnounceCloudReset(ctx, owner.ID, "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a04"))
 	reset, err := c.AnnouncedCloudReset(ctx, source.ID)
 	require(t, err)
-	equal(t, new(webapi.OperationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a04")), reset)
+	equal(t, new(webapiproto.OperationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a04")), reset)
 	record, _, err := c.Conversation(ctx, source.ID)
 	require(t, err)
 	equal(t, uint64(2), record.ContextVersion)

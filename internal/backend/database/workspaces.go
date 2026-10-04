@@ -4,17 +4,17 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Workspace returns the workspace with id, or nil when absent.
-func (c *ControlService) Workspace(ctx context.Context, id webapi.WorkspaceID) (WorkspaceRecord, bool, error) {
+func (c *ControlService) Workspace(ctx context.Context, id webapiproto.WorkspaceID) (WorkspaceRecord, bool, error) {
 	var found bool
 	record, err := controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (WorkspaceRecord, error) {
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (WorkspaceRecord, error) {
 			r, ok, err := queryRecord(ctx, tx, "workspaces", "SELECT * FROM workspaces WHERE id = ?", workspaceRow, id)
 			found = ok
 			return r, err
@@ -24,8 +24,8 @@ func (c *ControlService) Workspace(ctx context.Context, id webapi.WorkspaceID) (
 }
 
 // Workspaces returns the user's workspaces, in their order.
-func (c *ControlService) Workspaces(ctx context.Context, user webapi.UserID) ([]WorkspaceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]WorkspaceRecord, error) {
+func (c *ControlService) Workspaces(ctx context.Context, user webapiproto.UserID) ([]WorkspaceRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]WorkspaceRecord, error) {
 		return queryRecords(
 			ctx,
 			tx,
@@ -43,13 +43,13 @@ func (c *ControlService) Workspaces(ctx context.Context, user webapi.UserID) ([]
 // revocation cannot slip between the check and the write.
 func (c *ControlService) CreateWorkspace(
 	ctx context.Context,
-	id webapi.WorkspaceID,
-	user webapi.UserID,
-	device webapi.DeviceID,
+	id webapiproto.WorkspaceID,
+	user webapiproto.UserID,
+	device webapiproto.DeviceID,
 	path string,
 	name string,
 ) (*WorkspaceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (*WorkspaceRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (*WorkspaceRecord, error) {
 		at, err := now.Millisecond()
 		if err != nil {
 			return nil, err
@@ -81,11 +81,11 @@ RETURNING *`,
 // when the user has no workspace of the id.
 func (c *ControlService) RenameWorkspace(
 	ctx context.Context,
-	user webapi.UserID,
-	id webapi.WorkspaceID,
+	user webapiproto.UserID,
+	id webapiproto.WorkspaceID,
 	name string,
 ) (*WorkspaceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*WorkspaceRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (*WorkspaceRecord, error) {
 		record, found, err := queryRecord(
 			ctx,
 			tx,
@@ -107,10 +107,10 @@ func (c *ControlService) RenameWorkspace(
 // it; the count and the delete are one transaction.
 func (c *ControlService) DeleteWorkspace(
 	ctx context.Context,
-	user webapi.UserID,
-	id webapi.WorkspaceID,
+	user webapiproto.UserID,
+	id webapiproto.WorkspaceID,
 ) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		var found bool
 		if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM workspaces WHERE id = ? AND user_id = ?)", id, user).
 			Scan(&found); err != nil {
@@ -133,9 +133,9 @@ func (c *ControlService) DeleteWorkspace(
 
 func workspaceRow(r *storedRow) WorkspaceRecord {
 	return WorkspaceRecord{
-		ID:        checked(r, "id", webapi.ParseWorkspaceID),
-		User:      checked(r, "user_id", webapi.ParseUserID),
-		Device:    checked(r, "device_id", webapi.ParseDeviceID),
+		ID:        checked(r, "id", webapiproto.ParseWorkspaceID),
+		User:      checked(r, "user_id", webapiproto.ParseUserID),
+		Device:    checked(r, "device_id", webapiproto.ParseDeviceID),
 		Path:      r.text("path"),
 		Name:      r.text("name"),
 		CreatedAt: r.instant("created_at"),

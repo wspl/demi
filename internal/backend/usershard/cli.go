@@ -10,23 +10,23 @@ import (
 	"github.com/wspl/demi/internal/backend/cloud"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeop"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/providers/claudecode"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/provider/claudecode"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type cloudPlacement struct {
 	shard        *Shard
-	conversation *webapi.ConversationID
-	entry        webapi.ProviderID
+	conversation *webapiproto.ConversationID
+	entry        webapiproto.ProviderID
 }
 type cliTarget struct {
 	host    *remotehost.Host
 	home    string
-	context commandwire.Context
+	context commandproto.Context
 }
 
 // Start wakes the Cloud and starts the provider process with its resolved site.
@@ -55,7 +55,7 @@ func (p cloudPlacement) Start(
 }
 
 func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (claudecode.Site, error) {
-	var command commandwire.Context
+	var command commandproto.Context
 	var err error
 	if p.conversation != nil {
 		command, err = runners.CommandContext(
@@ -63,7 +63,7 @@ func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (
 			p.shard.Control(),
 			p.shard.user,
 			*p.conversation,
-			&commandwire.UserCaller{},
+			&commandproto.UserCaller{},
 		)
 	} else {
 		command, err = runners.ProviderContext(ctx, p.shard.Control(), p.shard.user, p.entry)
@@ -127,14 +127,14 @@ func (s *Shard) cliExecutable(ctx context.Context, target cliTarget) (string, er
 	return usable.Path, nil
 }
 
-func (s *Shard) upgradeCLI(target cliTarget, release claudecodeop.Release) {
+func (s *Shard) upgradeCLI(target cliTarget, release claudecodeproto.Release) {
 	s.mu.Lock()
 	if s.closing || s.upgrading[release.Version] {
 		s.mu.Unlock()
 		return
 	}
 	if s.upgrading == nil {
-		s.upgrading = make(map[claudecodeop.Version]bool)
+		s.upgrading = make(map[claudecodeproto.Version]bool)
 	}
 	s.upgrading[release.Version] = true
 	s.work.Add(1)
@@ -154,7 +154,7 @@ func cliInstalled(
 	ctx context.Context,
 	services *Services,
 	target cliTarget,
-) (installed []claudecodeop.Installed, err error) {
+) (installed []claudecodeproto.Installed, err error) {
 	defer func() {
 		if err != nil {
 			//nolint:staticcheck // Product text, shown to the user as it is.
@@ -164,18 +164,18 @@ func cliInstalled(
 			)
 		}
 	}()
-	output, exited, err := cliCall(ctx, services, target, claudecodeop.OperationStatus, nil, nil)
+	output, exited, err := cliCall(ctx, services, target, claudecodeproto.OperationStatus, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	reply, err := claudecodeop.DecodeStatusReply(output)
+	reply, err := claudecodeproto.DecodeStatusReply(output)
 	if err != nil {
 		return nil, fmt.Errorf("the installer's answer cannot be read: %w", err)
 	}
 	switch reply := reply.(type) {
-	case *claudecodeop.Failed:
+	case *claudecodeproto.Failed:
 		return nil, errors.New(reply.Message)
-	case *claudecodeop.StatusDone:
+	case *claudecodeproto.StatusDone:
 		if exited != nil {
 			return nil, fmt.Errorf("the installer answered and exited with %d", exited.ExitCode)
 		}
@@ -188,7 +188,7 @@ func cliEnsure(
 	ctx context.Context,
 	services *Services,
 	target cliTarget,
-	release claudecodeop.Release,
+	release claudecodeproto.Release,
 ) (path string, err error) {
 	defer func() {
 		if err != nil {
@@ -209,23 +209,23 @@ func cliEnsure(
 		attached = append(
 			attached,
 			remotehost.AttachedArtifact{
-				Artifact: commandwire.PackageArtifact{SHA256: artifact.SHA256, Size: artifact.Size},
-				Location: &commandwire.ArtifactURL{URL: artifact.URL},
+				Artifact: commandproto.PackageArtifact{SHA256: artifact.SHA256, Size: artifact.Size},
+				Location: &commandproto.ArtifactURL{URL: artifact.URL},
 			},
 		)
 	}
-	output, exited, err := cliCall(ctx, services, target, claudecodeop.OperationEnsure, input, attached)
+	output, exited, err := cliCall(ctx, services, target, claudecodeproto.OperationEnsure, input, attached)
 	if err != nil {
 		return "", err
 	}
-	reply, err := claudecodeop.DecodeEnsureReply(output)
+	reply, err := claudecodeproto.DecodeEnsureReply(output)
 	if err != nil {
 		return "", fmt.Errorf("the installer's answer cannot be read: %w", err)
 	}
 	switch reply := reply.(type) {
-	case *claudecodeop.Failed:
+	case *claudecodeproto.Failed:
 		return "", errors.New(reply.Message)
-	case *claudecodeop.Ensured:
+	case *claudecodeproto.Ensured:
 		if exited != nil {
 			return "", fmt.Errorf("the installer answered and exited with %d", exited.ExitCode)
 		}
@@ -238,17 +238,17 @@ func cliCall(
 	ctx context.Context,
 	services *Services,
 	target cliTarget,
-	operation claudecodeop.Operation,
+	operation claudecodeproto.Operation,
 	input []byte,
 	attached []remotehost.AttachedArtifact,
 ) ([]byte, *remotehost.ServiceExitError, error) {
-	packageDefinition, ok := services.Native.Package(claudecodeop.Package)
+	packageDefinition, ok := services.Native.Package(claudecodeproto.Package)
 	if !ok ||
 		!services.Native.Serves(
-			claudecodeop.Package,
+			claudecodeproto.Package,
 			[]string{
-				string(claudecodeop.OperationEnsure),
-				string(claudecodeop.OperationStatus),
+				string(claudecodeproto.OperationEnsure),
+				string(claudecodeproto.OperationStatus),
 			},
 		) {
 		return nil, nil, errors.New("this deployment does not carry the demi.claude-code package, which installs it")
@@ -285,13 +285,13 @@ func cliCall(
 
 func (s *Shard) cliMachines(
 	ctx context.Context,
-	entry webapi.ProviderID,
-) ([]webapi.CLIMachine, error) {
+	entry webapiproto.ProviderID,
+) ([]webapiproto.CLIMachine, error) {
 	device, found, err := s.Control().ManagedDevice(ctx, s.user)
 	if err != nil {
 		return nil, err
 	}
-	result := []webapi.CLIMachine{}
+	result := []webapiproto.CLIMachine{}
 	if !found {
 		return result, nil
 	}
@@ -313,27 +313,27 @@ func (s *Shard) cliMachines(
 		}
 		versions = &found
 	}
-	return append(result, webapi.CLIMachine{DeviceID: device.ID, Name: device.Name, Versions: versions}), nil
+	return append(result, webapiproto.CLIMachine{DeviceID: device.ID, Name: device.Name, Versions: versions}), nil
 }
 
 func startInstall(
 	ctx context.Context,
 	services *Services,
 	shards *Shards,
-	user webapi.UserID,
-	entry webapi.ProviderID,
-) (webapi.CLIInstall, error) {
+	user webapiproto.UserID,
+	entry webapiproto.ProviderID,
+) (webapiproto.CLIInstall, error) {
 	installs := services.CLIInstalls
 	key := installKey{user, entry}
 	installs.mu.Lock()
-	if _, running := installs.states[key].(*webapi.CLIInstallInstalling); running {
+	if _, running := installs.states[key].(*webapiproto.CLIInstallInstalling); running {
 		installs.mu.Unlock()
-		return &webapi.CLIInstallInstalling{}, nil
+		return &webapiproto.CLIInstallInstalling{}, nil
 	}
 	if installs.states == nil {
-		installs.states = make(map[installKey]webapi.CLIInstall)
+		installs.states = make(map[installKey]webapiproto.CLIInstall)
 	}
-	installs.states[key] = &webapi.CLIInstallInstalling{}
+	installs.states[key] = &webapiproto.CLIInstallInstalling{}
 	installs.mu.Unlock()
 	shard, err := shards.Of(ctx, user)
 	if err == nil {
@@ -345,7 +345,7 @@ func startInstall(
 		}
 		shard.mu.Unlock()
 	}
-	finish := func(outcome webapi.CLIInstall) {
+	finish := func(outcome webapiproto.CLIInstall) {
 		installs.mu.Lock()
 		if _, exists := installs.states[key]; exists {
 			installs.states[key] = outcome
@@ -353,7 +353,7 @@ func startInstall(
 		installs.mu.Unlock()
 	}
 	if err != nil {
-		failed := &webapi.CLIInstallFailed{Message: err.Error()}
+		failed := &webapiproto.CLIInstallFailed{Message: err.Error()}
 		finish(failed)
 		return failed, nil
 	}
@@ -369,10 +369,10 @@ func startInstall(
 			return
 		}
 		if err != nil {
-			finish(&webapi.CLIInstallFailed{Message: err.Error()})
+			finish(&webapiproto.CLIInstallFailed{Message: err.Error()})
 		} else {
-			finish(&webapi.CLIInstallInstalled{Path: site.Executable})
+			finish(&webapiproto.CLIInstallInstalled{Path: site.Executable})
 		}
 	}()
-	return &webapi.CLIInstallInstalling{}, nil
+	return &webapiproto.CLIInstallInstalling{}, nil
 }

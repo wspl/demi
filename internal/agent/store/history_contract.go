@@ -6,7 +6,7 @@ package store
 import (
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // A key of a node's command storage: a nonempty relative name with no NUL,
@@ -41,9 +41,9 @@ type CommandVersion struct {
 // The version that was current at one edge of one block.
 // +demi:root
 type SessionBoundary struct {
-	BlockID         core.BlockID `json:"blockId"`
-	Edge            BoundaryEdge `json:"edge"`
-	CommandRevision uint64       `json:"commandRevision"`
+	BlockID         types.BlockID `json:"blockId"`
+	Edge            BoundaryEdge  `json:"edge"`
+	CommandRevision uint64        `json:"commandRevision"`
 }
 
 // A node's command state as its checkpoint carries it.

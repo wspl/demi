@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ConformanceCase is one observable behavior every Host must provide.
@@ -214,7 +214,7 @@ func (c conformance) basic(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if stat.Kind != host.File || stat.Size != 11 || stat.Modified <= core.UnixEpoch {
+	if stat.Kind != host.File || stat.Size != 11 || stat.Modified <= types.UnixEpoch {
 		return fmt.Errorf("file metadata: %+v", stat)
 	}
 	stat, err = fs.Stat(ctx, "basic/src")
@@ -638,7 +638,7 @@ func (c conformance) linkMetadata(ctx context.Context, fs host.FS, root string) 
 	if err := expect(stat.Mode&0o777, uint32(0o600), "chmod"); err != nil {
 		return err
 	}
-	when, err := core.TimestampFromMillisecond(1600000000000)
+	when, err := types.TimestampFromMillisecond(1600000000000)
 	if err != nil {
 		return err
 	}

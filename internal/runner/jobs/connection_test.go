@@ -6,8 +6,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runner/cmdpkgs"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/runner/commandpackages"
 )
 
 func TestBackendAnswerDeadlineStartsAfterQueueAdmission(t *testing.T) {
@@ -20,7 +20,7 @@ func TestBackendAnswerDeadlineStartsAfterQueueAdmission(t *testing.T) {
 		}
 		returned := make(chan error, 1)
 		go func() {
-			_, err := handle.Reserve(ctx, "conversation", commandwire.TabSequence, 1)
+			_, err := handle.Reserve(ctx, "conversation", commandproto.TabSequence, 1)
 			returned <- err
 		}()
 		synctest.Wait()
@@ -35,8 +35,8 @@ func TestBackendAnswerDeadlineStartsAfterQueueAdmission(t *testing.T) {
 		synctest.Wait()
 		admitted := time.Now()
 		err := <-returned
-		failure, ok := err.(*cmdpkgs.RuntimeError)
-		if !ok || failure.Kind != cmdpkgs.Deadline || time.Since(admitted) != 15*time.Second {
+		failure, ok := err.(*commandpackages.RuntimeError)
+		if !ok || failure.Kind != commandpackages.Deadline || time.Since(admitted) != 15*time.Second {
 			t.Fatalf("deadline kind or timing differs: %T after %v", err, time.Since(admitted))
 		}
 	})

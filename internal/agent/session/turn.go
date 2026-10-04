@@ -9,8 +9,8 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 func (s *Session) runTurn(ctx context.Context, switchFirst bool) error {
@@ -262,9 +262,9 @@ func (s *Session) runTools(ctx context.Context, deferInput bool) (bool, bool, er
 		switch effect := outcome.Effect.(type) {
 		case *ScheduleYield:
 			stop = true
-			var id core.WakeupID
+			var id types.WakeupID
 			s.mutate(func(c *coreState) {
-				id = core.WakeupID(s.deps.IDs.NextID())
+				id = types.WakeupID(s.deps.IDs.NextID())
 				c.wakeups = append(c.wakeups, store.ScheduledWakeup{ID: id, DurationMS: effect.DurationMS})
 				c.dirty = true
 			})
@@ -272,7 +272,7 @@ func (s *Session) runTools(ctx context.Context, deferInput bool) (bool, bool, er
 				Output: []provider.ResultPart{
 					&provider.TextPart{Text: fmt.Sprintf("yield scheduled\ndurationMs: %d", effect.DurationMS)},
 				},
-				View: &core.YieldWakeup{WakeupID: id, DurationMs: effect.DurationMS},
+				View: &types.YieldWakeup{WakeupID: id, DurationMs: effect.DurationMS},
 			}
 		}
 		output, held := store.PersistResult(context.WithoutCancel(ctx), outcome.Output, s.deps.Store.Blobs())
@@ -447,7 +447,7 @@ func (s *Session) streamRequest(
 
 func requestFailure(failure *provider.Failure, requestID string) {
 	if failure.Diagnostics == nil {
-		failure.Diagnostics = &core.ProviderErrorDiagnostics{Source: "unknown"}
+		failure.Diagnostics = &types.ProviderErrorDiagnostics{Source: "unknown"}
 	} else {
 		failure.Diagnostics = new(*failure.Diagnostics)
 	}

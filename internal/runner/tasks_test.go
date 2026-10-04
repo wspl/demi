@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // These scenarios cost about a second each: they start a real runner and jobs.
@@ -18,19 +18,19 @@ func TestFilesystemRequestsAndKillRemainAvailableDuringJob(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
 	f.job("live", "printf ready; sleep 60")
-	if _, ok := f.frame().(*runnerwire.JobOutput); !ok {
+	if _, ok := f.frame().(*runnerproto.JobOutput); !ok {
 		t.Fatal("job did not start")
 	}
-	f.send(&runnerwire.FSExists{ID: "file", Path: "."})
-	reply, ok := f.frame().(*runnerwire.FSOK)
+	f.send(&runnerproto.FSExists{ID: "file", Path: "."})
+	reply, ok := f.frame().(*runnerproto.FSOK)
 	if !ok || reply.ID != "file" {
 		t.Fatal("filesystem request blocked by job")
 	}
-	exists, ok := reply.Result.(*runnerwire.FSExistsResult)
+	exists, ok := reply.Result.(*runnerproto.FSExistsResult)
 	if !ok || !exists.Value {
 		t.Fatalf("exists result: %#v", reply.Result)
 	}
-	f.send(&runnerwire.JobKill{JobID: "live", Signal: new(runnerwire.SignalKill)})
+	f.send(&runnerproto.JobKill{JobID: "live", Signal: new(runnerproto.SignalKill)})
 	_, _, exit := f.jobOutput("live")
 	if exit.Signal == nil || *exit.Signal != "SIGKILL" {
 		t.Fatalf("killed job: %+v", exit)
@@ -41,13 +41,13 @@ func TestAStartTheRunnerCannotBeginReportsSpawnError(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
 	f.job("twin", "printf ready; sleep 60")
-	if _, ok := f.frame().(*runnerwire.JobOutput); !ok {
+	if _, ok := f.frame().(*runnerproto.JobOutput); !ok {
 		t.Fatal("job did not start")
 	}
 	f.job("twin", "sleep 60")
-	exit, ok := f.frame().(*runnerwire.JobExit)
+	exit, ok := f.frame().(*runnerproto.JobExit)
 	if !ok || exit.JobID != "twin" || exit.ExitCode != nil || exit.Signal != nil || exit.SpawnError == nil ||
-		exit.SpawnError.Kind != runnerwire.SpawnErrorKindOther ||
+		exit.SpawnError.Kind != runnerproto.SpawnErrorKindOther ||
 		exit.SpawnError.Detail == nil ||
 		*exit.SpawnError.Detail != "duplicate live task id" {
 		t.Fatalf("duplicate start: %#v", exit)
@@ -61,7 +61,7 @@ func TestJobEnvironmentCombinesDeviceRequestAndOwnedValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.send(
-		&runnerwire.JobStart{
+		&runnerproto.JobStart{
 			JobID:   "env",
 			Context: runnerCommandContext(),
 			Script:  `printf '%s:%s:%s:%s:%s' "$DEVICE" "$OVERRIDE" "$DEMI_HOME" "$HOME" "$profile_home"`,
@@ -98,7 +98,7 @@ func TestRawSpawnInheritsEnvironmentOnlyWhenRequested(t *testing.T) {
 			args = new([]string{"/c", "set"})
 		}
 		f.send(
-			&runnerwire.Spawn{
+			&runnerproto.Spawn{
 				SpawnID:          test.name,
 				Command:          command,
 				Args:             args,
@@ -110,13 +110,13 @@ func TestRawSpawnInheritsEnvironmentOnlyWhenRequested(t *testing.T) {
 		var out strings.Builder
 		for {
 			message := f.frame()
-			if exit, ok := message.(*runnerwire.SpawnExit); ok {
+			if exit, ok := message.(*runnerproto.SpawnExit); ok {
 				if exit.ExitCode == nil || *exit.ExitCode != 0 {
 					t.Fatalf("spawn: %+v", exit)
 				}
 				break
 			}
-			if chunk, ok := message.(*runnerwire.SpawnOutput); ok && chunk.Stream == runnerwire.Stdout {
+			if chunk, ok := message.(*runnerproto.SpawnOutput); ok && chunk.Stream == runnerproto.Stdout {
 				out.Write(chunk.Bytes)
 			}
 		}
@@ -149,8 +149,8 @@ func (f *runnerFixture) directoriesBecome(count int) {
 		if found == count {
 			return
 		}
-		f.send(&runnerwire.Ping{})
-		if _, ok := f.frame().(*runnerwire.Pong); !ok {
+		f.send(&runnerproto.Ping{})
+		if _, ok := f.frame().(*runnerproto.Pong); !ok {
 			f.t.Fatal("unexpected work during cleanup")
 		}
 	}
@@ -173,12 +173,12 @@ func TestJobDirectoriesFollowReleaseConnectionAndNextStart(t *testing.T) {
 	_, stderr, exit := f.jobOutput("one")
 	requireJobSuccess(t, exit, stderr)
 	f.job("live", "printf ready; sleep 60")
-	if _, ok := f.frame().(*runnerwire.JobOutput); !ok {
+	if _, ok := f.frame().(*runnerproto.JobOutput); !ok {
 		t.Fatal("live job did not start")
 	}
 	f.directoriesBecome(2)
-	f.send(&runnerwire.JobRelease{JobID: "one"})
-	f.send(&runnerwire.JobRelease{JobID: "live"})
+	f.send(&runnerproto.JobRelease{JobID: "one"})
+	f.send(&runnerproto.JobRelease{JobID: "live"})
 	f.directoriesBecome(1)
 	f.stop()
 	entries, err := os.ReadDir(filepath.Join(f.state, "jobs"))

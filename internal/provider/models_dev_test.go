@@ -12,9 +12,9 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func modelDocument(t *testing.T) string {
@@ -200,7 +200,7 @@ func TestModelsCatalogMapping(t *testing.T) {
 	yes, no := true, false
 	efforts := []string{"low", "high"}
 	input, output, cache := 0.3, 1.2, 0.03
-	want := core.ProviderModel{
+	want := types.ProviderModel{
 		ID:                       "deepseek-v4",
 		DisplayName:              "DeepSeek V4",
 		Description:              &description,
@@ -210,17 +210,17 @@ func TestModelsCatalogMapping(t *testing.T) {
 		SupportsAttachments:      &no,
 		SupportsReasoning:        &yes,
 		SupportedThinkingEfforts: &efforts,
-		ServiceTiers:             []core.ServiceTier{},
-		Cost:                     &core.ModelCost{Input: &input, Output: &output, CacheRead: &cache},
+		ServiceTiers:             []types.ServiceTier{},
+		Cost:                     &types.ModelCost{Input: &input, Output: &output, CacheRead: &cache},
 	}
 	requireEqual(t, list.Models[0], want)
 	requireEqual(
 		t,
 		list.Models[1],
-		core.ProviderModel{
+		types.ProviderModel{
 			ID:           "deepseek-v4-flash",
 			DisplayName:  "deepseek-v4-flash",
-			ServiceTiers: []core.ServiceTier{},
+			ServiceTiers: []types.ServiceTier{},
 		},
 	)
 }

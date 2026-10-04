@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ResumeText is what the model receives for a resume block.
@@ -33,6 +33,6 @@ func (s *SequentialIDs) NextID() string {
 }
 
 // AgentMessageEnvelope returns the model-facing instruction and JSON envelope.
-func AgentMessageEnvelope(message core.AgentMessage) string {
+func AgentMessageEnvelope(message types.AgentMessage) string {
 	return transcript.AgentMessageEnvelope(message)
 }

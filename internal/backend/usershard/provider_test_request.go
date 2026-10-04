@@ -6,28 +6,28 @@ import (
 	"log/slog"
 
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/provider"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func (s *Shard) testProvider(
 	ctx context.Context,
-	entry providers.Entry,
+	entry providerhost.Entry,
 	builtProvider provider.Provider,
-	account *webapi.CredentialID,
+	account *webapiproto.CredentialID,
 	modelID string,
-) (webapi.TestResult, error) {
+) (webapiproto.TestResult, error) {
 	catalog := s.services.Assembly.EntryCatalog(ctx, entry, builtProvider, nil, false)
 	for _, model := range catalog.Models {
 		if model.ID != modelID {
 			continue
 		}
-		failed := func(message string) webapi.TestResult {
-			return &webapi.TestResultFailed{Message: message, Model: &model.DisplayName}
+		failed := func(message string) webapiproto.TestResult {
+			return &webapiproto.TestResultFailed{Message: message, Model: &model.DisplayName}
 		}
 		requested := model.Selection(string(entry.ID), nil, nil)
-		selection, err := providers.ConfiguredSelection(entry, requested)
+		selection, err := providerhost.ConfiguredSelection(entry, requested)
 		if err != nil {
 			return failed(err.Error()), nil
 		}
@@ -58,9 +58,9 @@ func (s *Shard) testProvider(
 		if failure, ok := first.(*provider.Error); ok {
 			return failed(failure.Failure.Message), nil
 		}
-		return &webapi.TestResultPassed{Model: model.DisplayName}, nil
+		return &webapiproto.TestResultPassed{Model: model.DisplayName}, nil
 	}
-	return &webapi.TestResultFailed{
+	return &webapiproto.TestResultFailed{
 		Message: fmt.Sprintf("This provider lists no model %s", modelID),
 	}, nil
 }

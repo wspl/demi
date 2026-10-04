@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // agentLeaf binds one generated command contract to the invoking live tree.
@@ -19,32 +19,32 @@ func agentLeaf[H host.Host, A any](
 	shape commandContract[A],
 	positionals []string,
 	stdin *string,
-	run func(context.Context, *Tree[H], core.NodeID, bool, A, host.RPCPort) (uint8, error),
+	run func(context.Context, *Tree[H], types.NodeID, bool, A, host.RPCPort) (uint8, error),
 ) (host.Declared, error) {
-	var input *declare.Schema
+	var input *commanddecl.Schema
 	if shape.input != nil {
 		var err error
-		input, err = declare.NewSchema(shape.input)
+		input, err = commanddecl.NewSchema(shape.input)
 		if err != nil {
 			return host.Declared{}, err
 		}
 	}
-	leaf := declare.Leaf[declare.NativeOperation]{
+	leaf := commanddecl.Leaf[commanddecl.NativeOperation]{
 		Name:       name,
 		Summary:    summary,
 		Input:      input,
 		StdinField: stdin,
-		Kind:       &declare.RPC[declare.NativeOperation]{},
+		Kind:       &commanddecl.RPC[commanddecl.NativeOperation]{},
 	}
 	if positionals != nil {
 		leaf.Positionals = &positionals
 	}
 	if shape.output != nil {
-		result, err := declare.NewSchema(shape.output)
+		result, err := commanddecl.NewSchema(shape.output)
 		if err != nil {
 			return host.Declared{}, err
 		}
-		leaf.Output = &declare.LeafOutput{JSON: result}
+		leaf.Output = &commanddecl.LeafOutput{JSON: result}
 	}
 	handler := host.TypedRPC(
 		shape.decode,
@@ -52,7 +52,7 @@ func agentLeaf[H host.Host, A any](
 			if call.Invocation.Caller == nil {
 				return 0, &host.RPCError{Kind: host.HandlerFailed, Message: "the command runs only in an agent's job"}
 			}
-			root, err := core.ParseNodeID(call.Invocation.Context.Conversation)
+			root, err := types.ParseNodeID(call.Invocation.Context.Conversation)
 			if err != nil {
 				return 0, err
 			}
@@ -138,12 +138,12 @@ func (t *Tree[H]) commands(inherited *host.CommandSet, spawning bool) (*host.Com
 func spawnCommand[H host.Host](
 	ctx context.Context,
 	t *Tree[H],
-	caller core.NodeID,
+	caller types.NodeID,
 	jsonOutput bool,
 	args spawnArgs,
 	port host.RPCPort,
 ) (uint8, error) {
-	prompt := core.Trim(args.Prompt)
+	prompt := types.Trim(args.Prompt)
 	if prompt == "" {
 		return commandFail(ctx, port, "spawn", errors.New("prompt must not be empty"))
 	}
@@ -170,12 +170,12 @@ func spawnCommand[H host.Host](
 func resumeCommand[H host.Host](
 	ctx context.Context,
 	t *Tree[H],
-	caller core.NodeID,
+	caller types.NodeID,
 	jsonOutput bool,
 	args resumeArgs,
 	port host.RPCPort,
 ) (uint8, error) {
-	message := core.Trim(args.Message)
+	message := types.Trim(args.Message)
 	if message == "" {
 		return commandFail(ctx, port, "resume", errors.New("message must not be empty"))
 	}
@@ -183,7 +183,7 @@ func resumeCommand[H host.Host](
 	if err != nil {
 		return commandFail(ctx, port, "resume", err)
 	}
-	var id core.NodeID
+	var id types.NodeID
 	for _, record := range records {
 		if record.Number == args.ID {
 			id = record.ID
@@ -209,15 +209,15 @@ func resumeCommand[H host.Host](
 func sendCommand[H host.Host](
 	ctx context.Context,
 	t *Tree[H],
-	caller core.NodeID,
+	caller types.NodeID,
 	jsonOutput bool,
 	args sendArgs,
 	port host.RPCPort,
 ) (uint8, error) {
-	if core.IsBlank(args.Message) {
+	if types.IsBlank(args.Message) {
 		return commandFail(ctx, port, "send", errors.New("message must not be empty"))
 	}
-	target, err := t.sendMessage(ctx, caller, args.ID, core.Trim(args.Message))
+	target, err := t.sendMessage(ctx, caller, args.ID, types.Trim(args.Message))
 	if err != nil {
 		return commandFail(ctx, port, "send", err)
 	}
@@ -230,12 +230,12 @@ func sendCommand[H host.Host](
 func abortCommand[H host.Host](
 	ctx context.Context,
 	t *Tree[H],
-	caller core.NodeID,
+	caller types.NodeID,
 	jsonOutput bool,
 	args abortArgs,
 	port host.RPCPort,
 ) (uint8, error) {
-	var id core.NodeID
+	var id types.NodeID
 	for _, child := range t.childrenOf(caller) {
 		if child.node.record.Number == args.ID {
 			id = child.node.ID()
@@ -281,7 +281,7 @@ func commandFail(ctx context.Context, port host.RPCPort, verb string, err error)
 func graftCommands(commands *host.CommandSet, agent, shell host.Declared) (*host.CommandSet, error) {
 	hasDemi := false
 	for _, root := range commands.Declarations() {
-		if declare.Name(root) == "demi" {
+		if commanddecl.Name(root) == "demi" {
 			hasDemi = true
 		}
 	}

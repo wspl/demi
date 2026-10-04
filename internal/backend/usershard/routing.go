@@ -13,12 +13,12 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/expose"
 	"github.com/wspl/demi/internal/backend/hostaccess"
-	"github.com/wspl/demi/internal/backend/plugins"
+	"github.com/wspl/demi/internal/backend/pluginhost"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeop"
+	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Shard owns one user's runtime state. One mutex protects short decisions;
@@ -26,7 +26,7 @@ import (
 // accept concurrent calls; returned component handles synchronize themselves.
 type Shard struct {
 	mu            sync.Mutex
-	user          webapi.UserID
+	user          webapiproto.UserID
 	services      *Services
 	http          *http.Client
 	ctx           context.Context
@@ -38,23 +38,23 @@ type Shard struct {
 	runnerCtx     context.Context
 	runnerCancel  context.CancelFunc
 	runners       sync.WaitGroup
-	runnerOrder   gates.KeyedSerial[webapi.DeviceID]
+	runnerOrder   gates.KeyedSerial[webapiproto.DeviceID]
 	cloud         *cloud.Cloud
 	devices       runners.Devices
 	pipes         *remotehost.Pipes
 	commands      runners.CommandRouter
 	conversations *hostaccess.Conversations
 	installs      *hostaccess.PluginInstalls
-	plugins       *plugins.User
+	plugins       *pluginhost.User
 	agent         *server.Server[*remotehost.Host]
 	providers     *conversationProviders
 	exposes       expose.Connections
-	deviceOrder   gates.KeyedSerial[webapi.DeviceID]
+	deviceOrder   gates.KeyedSerial[webapiproto.DeviceID]
 	forks         gates.KeyedSerial[string]
-	titles        map[webapi.ConversationID]*idleWatch
-	idle          map[webapi.ConversationID]*idleWatch
-	upgrading     map[claudecodeop.Version]bool
-	jobsEnded     map[webapi.ConversationID]uint64
+	titles        map[webapiproto.ConversationID]*idleWatch
+	idle          map[webapiproto.ConversationID]*idleWatch
+	upgrading     map[claudecodeproto.Version]bool
+	jobsEnded     map[webapiproto.ConversationID]uint64
 }
 
 // Shards routes each user to its unique in-process shard and owns every shard's
@@ -63,7 +63,7 @@ type Shards struct {
 	mu        sync.Mutex
 	services  *Services
 	ctx       context.Context
-	users     map[webapi.UserID]*Shard
+	users     map[webapiproto.UserID]*Shard
 	phase     routingPhase
 	closeOnce sync.Once
 	closeDone chan struct{}
@@ -84,21 +84,21 @@ func NewShards(ctx context.Context, services *Services) (*Shards, error) {
 	return &Shards{
 		services:  services,
 		ctx:       ctx,
-		users:     make(map[webapi.UserID]*Shard),
+		users:     make(map[webapiproto.UserID]*Shard),
 		closeDone: make(chan struct{}),
 	}, nil
 }
 
 // Of returns the user's stable shard, creating it on first use. Routing refuses
 // new requests once shutdown starts; callers invoke shard methods directly.
-func (s *Shards) Of(ctx context.Context, user webapi.UserID) (*Shard, error) {
+func (s *Shards) Of(ctx context.Context, user webapiproto.UserID) (*Shard, error) {
 	return s.of(ctx, user, false)
 }
 
 // OfWhileClosing returns the user's shard for runner pipe requests needed by
 // shutdown. It remains available during draining and refuses after routing has
 // fully closed. Ordinary product requests use Of.
-func (s *Shards) OfWhileClosing(ctx context.Context, user webapi.UserID) (*Shard, error) {
+func (s *Shards) OfWhileClosing(ctx context.Context, user webapiproto.UserID) (*Shard, error) {
 	return s.of(ctx, user, true)
 }
 
@@ -137,7 +137,7 @@ func (s *Shard) Services() *Services { return s.services }
 func (s *Shard) HTTP() *http.Client { return s.http }
 
 // Plugins returns the synchronized plugin host of this user.
-func (s *Shard) Plugins() *plugins.User { return s.plugins }
+func (s *Shard) Plugins() *pluginhost.User { return s.plugins }
 
 // Closed is closed when shutdown begins; it does not signal that draining ended.
 func (s *Shard) Closed() <-chan struct{} { return s.ctx.Done() }
@@ -153,7 +153,7 @@ func (s *Shard) ExposeShard() expose.Shard { return exposeView{s} }
 // deaths closes or ctx ends. Its caller owns and joins the call.
 func RouteDeaths(
 	ctx context.Context,
-	deaths <-chan webapi.DeviceID,
+	deaths <-chan webapiproto.DeviceID,
 	services *Services,
 	shards *Shards,
 ) error {
@@ -269,7 +269,7 @@ func RearmWakeups(ctx context.Context, control *database.ControlService, shards 
 }
 
 // of selects the user's shard without introducing a per-request mailbox.
-func (s *Shards) of(ctx context.Context, user webapi.UserID, draining bool) (*Shard, error) {
+func (s *Shards) of(ctx context.Context, user webapiproto.UserID, draining bool) (*Shard, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -291,7 +291,7 @@ func (s *Shards) of(ctx context.Context, user webapi.UserID, draining bool) (*Sh
 }
 
 // newShard composes the services of one user; its components load data on demand.
-func newShard(ctx context.Context, user webapi.UserID, services *Services) *Shard {
+func newShard(ctx context.Context, user webapiproto.UserID, services *Services) *Shard {
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Shard{
 		user:      user,
@@ -299,14 +299,14 @@ func newShard(ctx context.Context, user webapi.UserID, services *Services) *Shar
 		http:      &http.Client{},
 		ctx:       ctx,
 		cancel:    cancel,
-		jobsEnded: make(map[webapi.ConversationID]uint64),
+		jobsEnded: make(map[webapiproto.ConversationID]uint64),
 	}
 	s.runnerCtx, s.runnerCancel = context.WithCancel(context.WithoutCancel(ctx))
 	s.cloud = cloud.New(ctx, &s.mu)
 	s.conversations = hostaccess.NewConversations(ctx, &s.mu)
 	s.installs = hostaccess.NewPluginInstalls(&s.mu)
 	s.pipes = remotehost.NewPipes(remotehost.Arrival)
-	s.plugins = plugins.NewUser(services.Plugins, user, s)
+	s.plugins = pluginhost.NewUser(services.Plugins, user, s)
 	s.composeAgent()
 	return s
 }

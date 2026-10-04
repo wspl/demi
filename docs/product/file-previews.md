@@ -56,7 +56,7 @@ and image comparison modes such as swipe and onion skin are not designed yet.
 ## Choosing a view
 
 One table maps a file extension, ignoring case, to a media type, and says
-which media types the page shows in place. The `internal/core` contract package owns the
+which media types the page shows in place. The `internal/types` contract package owns the
 table and its lookup, and the web app receives both generated into
 `@demicodes/protocol`
 ([Logic the web app and backend share](../architecture/contracts.md#logic-the-web-app-and-backend-share)):
@@ -335,7 +335,7 @@ in the product's origin:
 | The runner | Moves file contents through pipes ([Runner](../execution/runner.md#file-contents)). |
 | The Host contract and the backend's remote Host | Streamed reads, whole or by range, and writes, over pipes. |
 | The backend | The raw routes, their headers and ranges, and ending transfers. |
-| The `internal/core` contract package | The file-type table and its lookup, generated for the web app into `@demicodes/protocol`. |
+| The `internal/types` contract package | The file-type table and its lookup, generated for the web app into `@demicodes/protocol`. |
 | `web-ui` | The previews as primitives: choosing and showing them, Markdown rendering and sanitizing, the side-by-side comparison, releasing transfers; resolving the files a message names and opening them through the `file` intent ([Intents](../architecture/plugin-pages.md#intents)), showing the media a tool returned and opening an image large. |
 | `@demicodes/plugin-file-browser`, `@demicodes/plugin-changes` | The File view and the Change view, composed from the previews over the conversation files service. |
 | `web`, `web-gallery` | Raw and blob URLs from the product's routes and the working directory messages resolve against; a fixture file for every kind, and fixture blobs for a tool's media. |

@@ -7,7 +7,7 @@ import (
 
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // processFacet starts runner processes independently of shell jobs.
@@ -53,7 +53,7 @@ func (f processFacet) Spawn(ctx context.Context, request host.SpawnRequest) (*ho
 	}
 	link.spawns[process.id] = process
 	link.mu.Unlock()
-	message := &runnerwire.Spawn{SpawnID: process.id, Command: request.Command, CWD: request.CWD}
+	message := &runnerproto.Spawn{SpawnID: process.id, Command: request.Command, CWD: request.CWD}
 	if message.CWD == nil {
 		message.CWD = new(f.host.cwd)
 	}
@@ -107,7 +107,7 @@ func (p *runnerProcess) WriteStdin(ctx context.Context, data []byte) error {
 		ctx,
 		p.link,
 		data,
-		func(chunk []byte) runnerwire.Inbound { return &runnerwire.SpawnStdin{SpawnID: p.id, Bytes: chunk} },
+		func(chunk []byte) runnerproto.Inbound { return &runnerproto.SpawnStdin{SpawnID: p.id, Bytes: chunk} },
 	)
 }
 
@@ -116,7 +116,7 @@ func (p *runnerProcess) CloseStdin(ctx context.Context) error {
 	if p.link == nil || p.state.hasEnded() {
 		return nil
 	}
-	return p.link.send(ctx, &runnerwire.SpawnStdinEnd{SpawnID: p.id})
+	return p.link.send(ctx, &runnerproto.SpawnStdinEnd{SpawnID: p.id})
 }
 
 // Kill signals the runner process.
@@ -124,14 +124,14 @@ func (p *runnerProcess) Kill(ctx context.Context, signal host.Signal) error {
 	if p.link == nil || p.state.hasEnded() {
 		return nil
 	}
-	return p.link.send(ctx, &runnerwire.SpawnKill{SpawnID: p.id, Signal: new(runnerwire.Signal(signal))})
+	return p.link.send(ctx, &runnerproto.SpawnKill{SpawnID: p.id, Signal: new(runnerproto.Signal(signal))})
 }
 
 // Close kills the runner process.
 func (p *runnerProcess) Close(ctx context.Context) error { return p.Kill(ctx, host.Kill) }
 
 // processEnd translates the runner's terminal status in its specified precedence.
-func processEnd(code *int32, signal *string, spawnError *runnerwire.SpawnError) host.ProcessEnd {
+func processEnd(code *int32, signal *string, spawnError *runnerproto.SpawnError) host.ProcessEnd {
 	if code != nil {
 		return host.ProcessEnd{Kind: host.ProcessExited, ExitCode: *code}
 	}

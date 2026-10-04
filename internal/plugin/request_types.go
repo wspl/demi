@@ -3,9 +3,9 @@ package plugin
 import (
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 //revive:disable:exported
@@ -22,7 +22,7 @@ type Request interface{ request() }
 // placed under `demi` arrives without the `demi` before it.
 // +demi:variant Request command
 type RequestCommand struct {
-	User       webapi.UserID      `json:"user"`
+	User       webapiproto.UserID `json:"user"`
 	Invocation host.RPCInvocation `json:"invocation"`
 }
 
@@ -34,12 +34,12 @@ func (*RequestCommand) request() {}
 // receives, oldest first, and `cwd` is the node's working directory.
 // +demi:variant Request context
 type RequestContext struct {
-	User         webapi.UserID         `json:"user"`
-	Conversation webapi.ConversationID `json:"conversation"`
-	Node         core.NodeID           `json:"node"`
-	CWD          string                `json:"cwd"`
-	Turn         core.TurnID           `json:"turn"`
-	Seen         []string              `json:"seen"`
+	User         webapiproto.UserID         `json:"user"`
+	Conversation webapiproto.ConversationID `json:"conversation"`
+	Node         types.NodeID               `json:"node"`
+	CWD          string                     `json:"cwd"`
+	Turn         types.TurnID               `json:"turn"`
+	Seen         []string                   `json:"seen"`
 }
 
 func (*RequestContext) request() {}
@@ -48,9 +48,9 @@ func (*RequestContext) request() {}
 // conversation's.
 // +demi:variant Request page_state
 type RequestPageState struct {
-	User webapi.UserID `json:"user"`
+	User webapiproto.UserID `json:"user"`
 	// +demi:nullable
-	Conversation *webapi.ConversationID `json:"conversation,omitempty"`
+	Conversation *webapiproto.ConversationID `json:"conversation,omitempty"`
 }
 
 func (*RequestPageState) request() {}
@@ -61,11 +61,11 @@ func (*RequestPageState) request() {}
 // +demi:variant Request page_call
 // +demi:check validatePageCall
 type RequestPageCall struct {
-	User   webapi.UserID   `json:"user"`
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params"`
+	User   webapiproto.UserID `json:"user"`
+	Method string             `json:"method"`
+	Params json.RawMessage    `json:"params"`
 	// +demi:nullable
-	Conversation *webapi.ConversationID `json:"conversation,omitempty"`
+	Conversation *webapiproto.ConversationID `json:"conversation,omitempty"`
 }
 
 func (*RequestPageCall) request() {}
@@ -169,10 +169,10 @@ func (*ErrorEnded) pluginError() {}
 // as it was when it was removed.
 // +demi:variant Request panel_tab
 type RequestPanelTab struct {
-	User         webapi.UserID         `json:"user"`
-	Conversation webapi.ConversationID `json:"conversation"`
-	Change       PanelTabChange        `json:"change"`
-	Tab          webapi.PanelTab       `json:"tab"`
+	User         webapiproto.UserID         `json:"user"`
+	Conversation webapiproto.ConversationID `json:"conversation"`
+	Change       PanelTabChange             `json:"change"`
+	Tab          webapiproto.PanelTab       `json:"tab"`
 }
 
 func (*RequestPanelTab) request() {}
@@ -181,10 +181,10 @@ func (*RequestPanelTab) request() {}
 // `conversation` (`plugins.md` § Topics).
 // +demi:variant Request topic
 type RequestTopic struct {
-	User  webapi.UserID `json:"user"`
-	Topic Topic         `json:"topic"`
+	User  webapiproto.UserID `json:"user"`
+	Topic Topic              `json:"topic"`
 	// +demi:nullable
-	Conversation *webapi.ConversationID `json:"conversation,omitempty"`
+	Conversation *webapiproto.ConversationID `json:"conversation,omitempty"`
 }
 
 func (*RequestTopic) request() {}

@@ -8,9 +8,9 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // boot rotates the Cloud credential and starts a sandbox, saving on failure.
@@ -20,7 +20,7 @@ func boot(ctx context.Context, s Shard, m *machine) error {
 		if _, saved := Call(
 			ctx,
 			s.CloudServices().Machines,
-			machinewire.HibernateParams{DeviceID: string(m.device.ID)},
+			machinemanagerproto.HibernateParams{DeviceID: string(m.device.ID)},
 		); saved != nil {
 			slog.Warn("a Cloud whose boot failed was not saved", "error", saved)
 		}
@@ -43,9 +43,9 @@ func startSandbox(ctx context.Context, s Shard, m *machine) error {
 	_, err := Call(
 		ctx,
 		s.CloudServices().Machines,
-		machinewire.WakeParams{
+		machinemanagerproto.WakeParams{
 			DeviceID: string(m.device.ID),
-			Boot:     runnerwire.ManagedBoot{BackendURL: backend, DeviceToken: token},
+			Boot:     runnerproto.ManagedBoot{BackendURL: backend, DeviceToken: token},
 		},
 	)
 	if err != nil {
@@ -68,19 +68,19 @@ func startSandbox(ctx context.Context, s Shard, m *machine) error {
 func finishBoot(s Shard, m *machine, err error) {
 	c := s.Cloud()
 	c.mu.Lock()
-	if m.phase != webapi.CloudStateBooting {
+	if m.phase != webapiproto.CloudStateBooting {
 		c.mu.Unlock()
 		return
 	}
 	var permit *Permit
 	if err != nil {
-		m.phase = webapi.CloudStateOff
+		m.phase = webapiproto.CloudStateOff
 		text := err.Error()
 		m.failure = &text
 		permit = m.permit
 		m.permit = nil
 	} else {
-		m.phase = webapi.CloudStateRunning
+		m.phase = webapiproto.CloudStateRunning
 		m.failure = nil
 		m.started = time.Now()
 		m.checkpoint = m.started
@@ -97,11 +97,15 @@ func finishBoot(s Shard, m *machine, err error) {
 
 // recoverMachine preserves a running sandbox's token and work while its runner reconnects.
 func recoverMachine(ctx context.Context, s Shard, m *machine) error {
-	state, err := Call(ctx, s.CloudServices().Machines, machinewire.RuntimeStateParams{DeviceID: string(m.device.ID)})
+	state, err := Call(
+		ctx,
+		s.CloudServices().Machines,
+		machinemanagerproto.RuntimeStateParams{DeviceID: string(m.device.ID)},
+	)
 	if err != nil {
 		return failed(err)
 	}
-	if state == machinewire.RuntimeStateRunning {
+	if state == machinemanagerproto.RuntimeStateRunning {
 		wait, cancel := context.WithTimeout(s.Cloud().ctx, s.CloudServices().Tuning.RunnerConnection)
 		defer cancel()
 		if err := s.Devices().UntilOnline(wait, m.device.ID); err != nil {
@@ -114,13 +118,13 @@ func recoverMachine(ctx context.Context, s Shard, m *machine) error {
 	}
 	c := s.Cloud()
 	c.mu.Lock()
-	if m.phase != webapi.CloudStateRunning {
+	if m.phase != webapiproto.CloudStateRunning {
 		c.mu.Unlock()
 		return nil
 	}
 	cancel := m.schedules
 	m.schedules = nil
-	m.phase = webapi.CloudStateBooting
+	m.phase = webapiproto.CloudStateBooting
 	c.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -143,13 +147,13 @@ func hibernate(ctx context.Context, s Shard, m *machine) error {
 		_ = previous.wait(context.WithoutCancel(ctx))
 	}
 	c.mu.Lock()
-	if m.phase != webapi.CloudStateRunning {
+	if m.phase != webapiproto.CloudStateRunning {
 		c.mu.Unlock()
 		return nil
 	}
 	cancel := m.schedules
 	m.schedules = nil
-	m.phase = webapi.CloudStateSaving
+	m.phase = webapiproto.CloudStateSaving
 	t := &transition{done: make(chan struct{})}
 	m.transition = t
 	// The caller owns and joins this synchronous transition; reset can join it too.
@@ -168,8 +172,8 @@ func hibernate(ctx context.Context, s Shard, m *machine) error {
 	})
 	c.mu.Lock()
 	var permit *Permit
-	if m.phase == webapi.CloudStateSaving {
-		m.phase = webapi.CloudStateOff
+	if m.phase == webapiproto.CloudStateSaving {
+		m.phase = webapiproto.CloudStateOff
 		permit = m.permit
 		m.permit = nil
 	}
@@ -191,13 +195,13 @@ func hibernate(ctx context.Context, s Shard, m *machine) error {
 // save flushes best effort, asks the manager to persist storage, and disconnects the runner.
 func save(ctx context.Context, s Shard, m *machine) error {
 	flush(ctx, s, m.device.ID)
-	_, err := Call(ctx, s.CloudServices().Machines, machinewire.HibernateParams{DeviceID: string(m.device.ID)})
+	_, err := Call(ctx, s.CloudServices().Machines, machinemanagerproto.HibernateParams{DeviceID: string(m.device.ID)})
 	s.Devices().Disconnect(m.device.ID, "Cloud stopped")
 	return failed(err)
 }
 
 // flush bounds a live runner's filesystem sync without preventing manager-side saves.
-func flush(ctx context.Context, s Shard, device webapi.DeviceID) {
+func flush(ctx context.Context, s Shard, device webapiproto.DeviceID) {
 	link := s.Devices().Link(device)
 	if link == nil {
 		return

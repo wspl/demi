@@ -3,8 +3,8 @@ package transcript
 import (
 	"slices"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // PatchBatch contains one commit's patches, advancing the revision by one.
@@ -12,9 +12,9 @@ type PatchBatch struct {
 	// Revision is the transcript revision after this commit.
 	Revision uint64
 	// Patches contains the changes in commit order.
-	Patches []framewire.TranscriptPatch
+	Patches []conversationproto.TranscriptPatch
 	// Touched names added or changed blocks in change order, independent of index moves.
-	Touched []core.BlockID
+	Touched []types.BlockID
 	// Rows names the transcript rows moved or changed.
 	Rows DirtyRows
 }
@@ -79,41 +79,42 @@ func (d *DirtyRows) change(index int) {
 }
 
 type journal struct {
-	patches []framewire.TranscriptPatch
-	touched []core.BlockID
+	patches []conversationproto.TranscriptPatch
+	touched []types.BlockID
 	rows    DirtyRows
 }
 
 // touch retains transcript identities in mutation order, coalescing neighbors.
-func (j *journal) touch(id core.BlockID) {
+func (j *journal) touch(id types.BlockID) {
 	if len(j.touched) == 0 || j.touched[len(j.touched)-1] != id {
 		j.touched = append(j.touched, id)
 	}
 }
 
 // add records the inserted block as it existed at insertion time.
-func (j *journal) add(index int, block core.Block) {
+func (j *journal) add(index int, block types.Block) {
 	j.touch(block.ID())
 	j.rows.moveFrom(index)
-	j.patches = append(j.patches, &framewire.AddPatch{Index: uint32(index), Value: block})
+	j.patches = append(j.patches, &conversationproto.AddPatch{Index: uint32(index), Value: block})
 }
 
 // replace records a replacement without changing any prior patch's block.
-func (j *journal) replace(index int, block core.Block) {
+func (j *journal) replace(index int, block types.Block) {
 	j.touch(block.ID())
 	j.rows.change(index)
-	j.patches = append(j.patches, &framewire.ReplaceBlockPatch{Index: uint32(index), Value: block})
+	j.patches = append(j.patches, &conversationproto.ReplaceBlockPatch{Index: uint32(index), Value: block})
 }
 
 // appendText coalesces consecutive text appends to the same transcript block.
-func (j *journal) appendText(index int, id core.BlockID, text string) {
+func (j *journal) appendText(index int, id types.BlockID, text string) {
 	j.touch(id)
 	j.rows.change(index)
 	if len(j.patches) > 0 {
-		if last, ok := j.patches[len(j.patches)-1].(*framewire.AppendTextPatch); ok && last.Index == uint32(index) {
+		if last, ok := j.patches[len(j.patches)-1].(*conversationproto.AppendTextPatch); ok &&
+			last.Index == uint32(index) {
 			last.Delta += text
 			return
 		}
 	}
-	j.patches = append(j.patches, &framewire.AppendTextPatch{Index: uint32(index), Delta: text})
+	j.patches = append(j.patches, &conversationproto.AppendTextPatch{Index: uint32(index), Delta: text})
 }

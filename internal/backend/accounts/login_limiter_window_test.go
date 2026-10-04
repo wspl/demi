@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/backend/accounts"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func TestEachFailureExtendsWindowAndSuccessClearsIt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		limiter := accounts.NewLoginLimiter()
-		email := webapi.EmailAddress("ana@example.test")
+		email := webapiproto.EmailAddress("ana@example.test")
 		for range 4 {
 			limiter.Failed(email)
 			time.Sleep(59 * time.Second)

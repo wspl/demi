@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 	"go.uber.org/goleak"
 )
 
@@ -19,7 +19,7 @@ import (
 // regular suite is budgeted at 10 seconds; time-based scenarios use synctest.
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
-const now = core.Timestamp("2026-09-18T14:00:00.000Z")
+const now = types.Timestamp("2026-09-18T14:00:00.000Z")
 
 // requireEqual compares observable provider results with a useful failure location.
 func requireEqual(t *testing.T, got, want any) {

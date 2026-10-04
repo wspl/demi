@@ -74,7 +74,7 @@ errors as values instead of parsing command output:
   (`github.com/google/nftables`);
 - cgroups and network settings through files under `/sys` and `/proc`;
 - each boot's OCI bundle as typed OCI specification structures, contract types
-  of `internal/machines/sandbox`.
+  of `internal/machinemanager/sandbox`.
 
 It runs a program only where no library does the job:
 
@@ -104,7 +104,7 @@ manager -> backend   {"type":"death","deviceId":"<other device>"}
 Each request carries an id the client chooses, an operation, and its
 parameters. The reply names the request and carries a result or an error
 message. A `death` event goes to every connection when a device's sandbox exits
-without being asked to stop. The `internal/machinewire` package defines every
+without being asked to stop. The `internal/machinemanagerproto` package defines every
 message, and both the manager and the backend import it.
 
 - A line holds one message of at most 1 MiB; the largest real message is a few
@@ -641,7 +641,7 @@ or privileged nested Docker. Unsupported operations return errors; they never
 widen isolation.
 
 The runtime inputs are pinned in the runtime release manifest,
-`internal/machines/sandbox/runtime-release.json`. The manager is built with that manifest
+`internal/machinemanager/sandbox/runtime-release.json`. The manager is built with that manifest
 and refuses to start unless the configured `runsc` reports exactly the pinned
 version. amd64 uses the verified upstream distribution. arm64 uses the same
 source with the shipped `SECCOMP_RET_TRAP` register fix: Linux preserves the

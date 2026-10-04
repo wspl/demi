@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Ending controls what a scripted response does after sending its chunks.
@@ -223,17 +223,17 @@ func AssertBuiltinCatalog(ctx context.Context, t testing.TB, p provider.Provider
 	if p.Capabilities().ProcessHost {
 		t.Error("API-key entry starts a process")
 	}
-	if _, ok := p.AuthStatus(ctx).(*core.Authenticated); !ok {
+	if _, ok := p.AuthStatus(ctx).(*types.Authenticated); !ok {
 		t.Error("provider is not authenticated")
 	}
-	if _, ok := p.RuntimeState().(*core.RuntimeReady); !ok {
+	if _, ok := p.RuntimeState().(*types.RuntimeReady); !ok {
 		t.Error("provider is not ready")
 	}
 	list, err := p.ListModels(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if list.SourceFetchedAt != core.Timestamp("1970-01-01T00:00:00.000Z") || list.Stale {
+	if list.SourceFetchedAt != types.Timestamp("1970-01-01T00:00:00.000Z") || list.Stale {
 		t.Error("built-in catalog was marked fetched or stale")
 	}
 	found := false

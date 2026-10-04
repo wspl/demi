@@ -10,15 +10,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ControlService owns the deployment's control records and single writer.
 // Each operation owns one transaction. Close drains admitted operations.
 type ControlService struct {
 	db      *sql.DB
-	clock   core.Clock
+	clock   types.Clock
 	mu      sync.Mutex
 	closed  bool
 	active  int
@@ -26,7 +26,7 @@ type ControlService struct {
 }
 
 // OpenControl opens the database, and gives a new one its schema.
-func OpenControl(ctx context.Context, path string, clock core.Clock) (*ControlService, error) {
+func OpenControl(ctx context.Context, path string, clock types.Clock) (*ControlService, error) {
 	db, err := openSQLite(ctx, path, controlSchema, false)
 	if err != nil {
 		return nil, err
@@ -38,7 +38,7 @@ func OpenControl(ctx context.Context, path string, clock core.Clock) (*ControlSe
 func controlCall[T any](
 	ctx context.Context,
 	c *ControlService,
-	work func(context.Context, *sql.Tx, core.Timestamp) (T, error),
+	work func(context.Context, *sql.Tx, types.Timestamp) (T, error),
 ) (result T, err error) {
 	c.mu.Lock()
 	if c.closed {
@@ -111,14 +111,14 @@ func OpenConversations(ctx context.Context, directory string, maxWriters int) (*
 }
 
 // DB returns a stable lazy handle, comparing conversation IDs without case.
-func (s *ConversationStores) DB(conversation webapi.ConversationID) *ConversationDB {
+func (s *ConversationStores) DB(conversation webapiproto.ConversationID) *ConversationDB {
 	return &ConversationDB{stores: s, file: strings.ToLower(string(conversation))}
 }
 
 // Read runs work in a cold read transaction; false means no database exists yet.
 func (s *ConversationStores) Read(
 	ctx context.Context,
-	conversation webapi.ConversationID,
+	conversation webapiproto.ConversationID,
 	work func(context.Context, *sql.Tx) error,
 ) (bool, error) {
 	return s.DB(conversation).Read(ctx, work)

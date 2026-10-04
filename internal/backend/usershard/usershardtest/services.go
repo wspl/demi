@@ -10,12 +10,12 @@ import (
 	"github.com/wspl/demi/internal/backend/accounts"
 	"github.com/wspl/demi/internal/backend/blobs"
 	"github.com/wspl/demi/internal/backend/cloud"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/backend/usershard"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // StartServices opens temporary storage and shared services without provider
@@ -34,14 +34,14 @@ func StartServicesWithLifecycle(t testing.TB, lifecycle usershard.LifecycleTunin
 	lifetime, cancel := context.WithCancel(cleanupCtx)
 	t.Cleanup(cancel)
 	data := t.TempDir()
-	clock := core.SystemClock{}
+	clock := types.SystemClock{}
 	storage := openTestStorage(t, data, clock)
 	vaultKey, codeKey := randomServiceKeys(t)
 	models, err := url.Parse(provider.ModelsDevURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	releases, err := url.Parse(providers.DefaultReleasesURL)
+	releases, err := url.Parse(providerhost.DefaultReleasesURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,18 +51,18 @@ func StartServicesWithLifecycle(t testing.TB, lifecycle usershard.LifecycleTunin
 		t.Context(),
 		storage,
 		usershard.ServiceKeys{
-			Vault:      *providers.NewVaultKey(vaultKey),
+			Vault:      *providerhost.NewVaultKey(vaultKey),
 			EmailCodes: accounts.NewCodeKey(codeKey),
 		},
 		usershard.ProviderSetup{
-			Families:       &providers.FamilyRegistry{},
+			Families:       &providerhost.FamilyRegistry{},
 			ModelsDevURL:   models,
 			ClaudeReleases: releases,
-			Logins:         providers.DefaultLoginTiming(),
+			Logins:         providerhost.DefaultLoginTiming(),
 			Clock:          clock,
 		},
 		usershard.ServiceSettings{
-			Mode:          webapi.InstanceModeShared,
+			Mode:          webapiproto.InstanceModeShared,
 			Runners:       usershard.DefaultRunnerTuning(),
 			Conversations: usershard.DefaultConversationTuning(),
 			Pages:         usershard.DefaultPageTuning(),
@@ -102,7 +102,7 @@ func StartShards(t testing.TB, services *usershard.Services) *usershard.Shards {
 }
 
 // openTestStorage registers blob and database cleanup in their ownership order.
-func openTestStorage(t testing.TB, data string, clock core.Clock) *usershard.Storage {
+func openTestStorage(t testing.TB, data string, clock types.Clock) *usershard.Storage {
 	objects, err := blobs.Open(t.Context(), data, nil)
 	if err != nil {
 		t.Fatal(err)

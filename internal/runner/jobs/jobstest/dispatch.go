@@ -9,18 +9,18 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runner/cmdpkgs"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/runner/commandpackages"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // Dispatch supplies a dispatcher, local endpoint and connection owner backed
 // by channels. Its cleanup joins workers and releases services and contexts.
 type Dispatch struct {
 	// Services owns the fixture service registry.
-	Services *cmdpkgs.ServiceRegistry
+	Services *commandpackages.ServiceRegistry
 	// Dispatcher runs fixture command invocations.
 	Dispatcher *jobs.Dispatcher
 	// Server serves the fixture local command endpoint.
@@ -28,17 +28,17 @@ type Dispatch struct {
 	// Outgoing carries encoded frames sent to the simulated backend.
 	Outgoing <-chan []byte
 	t        testing.TB
-	manifest *runnerwire.Manifest
+	manifest *runnerproto.Manifest
 	paths    jobs.ContextPaths
 	handle   *jobs.Connection
-	inbound  chan runnerwire.Inbound
+	inbound  chan runnerproto.Inbound
 	removals chan removal
 	cancel   context.CancelFunc
 	done     chan struct{}
 	once     sync.Once
 	closed   chan struct{}
 	err      error
-	leases   []*cmdpkgs.ServiceLease
+	leases   []*commandpackages.ServiceLease
 }
 type removal struct {
 	job  string
@@ -64,7 +64,7 @@ func NewDispatch(
 		}
 	})
 	var err error
-	d.Services, err = cmdpkgs.NewServiceRegistry(
+	d.Services, err = commandpackages.NewServiceRegistry(
 		lifetime,
 		filepath.Join(root, "artifacts"),
 		"",
@@ -97,7 +97,7 @@ func NewDispatch(
 	d.Outgoing = control
 	handle, requests := jobs.NewConnection(lifetime, control)
 	d.handle = handle
-	d.inbound = make(chan runnerwire.Inbound, 32)
+	d.inbound = make(chan runnerproto.Inbound, 32)
 	d.removals = make(chan removal, 16)
 	d.done = make(chan struct{})
 	go d.serve(lifetime, requests, contexts, control)
@@ -109,9 +109,9 @@ func NewDispatch(
 func (d *Dispatch) Context(
 	ctx context.Context,
 	jobID string,
-	command commandwire.Context,
+	command commandproto.Context,
 ) (*jobs.ExecutionContext, *ContextRegistration, error) {
-	edits := commandwire.EditContext{
+	edits := commandproto.EditContext{
 		Directory: filepath.Join(d.paths.Directory, jobID),
 		Lock:      filepath.Join(d.paths.Directory, "edits.lock"),
 	}
@@ -140,7 +140,7 @@ func (d *Dispatch) Context(
 }
 
 // Deliver hands a validated backend message to the channel-backed owner.
-func (d *Dispatch) Deliver(ctx context.Context, message runnerwire.Inbound) error {
+func (d *Dispatch) Deliver(ctx context.Context, message runnerproto.Inbound) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

@@ -8,18 +8,18 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runner/jobs/jobstest"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // dispatchFixture exposes the real dispatcher through its owned local endpoint.
 func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, *jobstest.ContextRegistration) {
 	t.Helper()
-	tree, err := declare.DecodeDeclaration(
+	tree, err := commanddecl.DecodeDeclaration(
 		[]byte(
 			`{"name":"fixture","summary":"Test callback.","kind":"rpc","runningHint":"Working",` +
 				`"input":{"type":"object","properties":{"body":{"type":"string"}},"required":["body"]},"stdinField":"body"}`,
@@ -28,7 +28,7 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := runnerwire.BuildManifest([]declare.Node[declare.NativeOperation]{tree}, nil)
+	manifest, err := runnerproto.BuildManifest([]commanddecl.Node[commanddecl.NativeOperation]{tree}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,11 +36,11 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend, err := runnerwire.ParseBackendURL("http://127.0.0.1:1")
+	backend, err := runnerproto.ParseBackendURL("http://127.0.0.1:1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipes, err := process.NewPipeClient(backend, func() (runnerwire.DeviceToken, bool) { return "", false })
+	pipes, err := process.NewPipeClient(backend, func() (runnerproto.DeviceToken, bool) { return "", false })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,10 +50,10 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 		}
 	})
 	fixture := jobstest.NewDispatch(t.Context(), t, t.TempDir(), value, pipes)
-	command := commandwire.Context{
+	command := commandproto.Context{
 		Conversation: "conversation",
-		Caller:       &commandwire.AgentCaller{Number: 1},
-		Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		Caller:       &commandproto.AgentCaller{Number: 1},
+		Locale:       commandproto.CommandLocale{TimeZone: "UTC", Languages: []commandproto.LanguageTag{"en-US"}},
 	}
 	execution, registration, err := fixture.Context(t.Context(), "job", command)
 	if err != nil {
@@ -62,7 +62,7 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 	return fixture, execution, registration
 }
 
-func dispatchRequest(t *testing.T, execution *jobs.ExecutionContext, argv ...string) commandwire.LocalInvocation {
+func dispatchRequest(t *testing.T, execution *jobs.ExecutionContext, argv ...string) commandproto.LocalInvocation {
 	t.Helper()
 	raw, err := process.NewRawCommand(execution.ID, "fixture", argv, true)
 	if err != nil {
@@ -78,9 +78,9 @@ func dispatchRequest(t *testing.T, execution *jobs.ExecutionContext, argv ...str
 	return request
 }
 
-func dispatchMessage(t *testing.T, fixture *jobstest.Dispatch) runnerwire.Outbound {
+func dispatchMessage(t *testing.T, fixture *jobstest.Dispatch) runnerproto.Outbound {
 	t.Helper()
-	message, err := runnerwire.DecodeOutbound(<-fixture.Outgoing)
+	message, err := runnerproto.DecodeOutbound(<-fixture.Outgoing)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,21 +122,21 @@ func TestCallbackExitClearsHintAndRevokedContextCannotDispatch(t *testing.T) {
 		}
 		done <- err
 	}()
-	hint, ok := dispatchMessage(t, fixture).(*runnerwire.JobRunningHint)
+	hint, ok := dispatchMessage(t, fixture).(*runnerproto.JobRunningHint)
 	if !ok || hint.Hint == nil || *hint.Hint != "Working" {
 		t.Fatal("missing hint")
 	}
-	call, ok := dispatchMessage(t, fixture).(*runnerwire.RPCCall)
+	call, ok := dispatchMessage(t, fixture).(*runnerproto.RPCCall)
 	if !ok || string(call.Args) != `{"body":""}` {
 		t.Fatalf("callback %+v", call)
 	}
-	if err := fixture.Deliver(t.Context(), &runnerwire.RPCExit{CallID: call.CallID, ExitCode: 7}); err != nil {
+	if err := fixture.Deliver(t.Context(), &runnerproto.RPCExit{CallID: call.CallID, ExitCode: 7}); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	clearHint, ok := dispatchMessage(t, fixture).(*runnerwire.JobRunningHint)
+	clearHint, ok := dispatchMessage(t, fixture).(*runnerproto.JobRunningHint)
 	if !ok || clearHint.Hint != nil || clearHint.InvocationID != hint.InvocationID {
 		t.Fatal("hint not cleared")
 	}
@@ -174,20 +174,20 @@ func TestCancellationCancelsCallbackAndClearsHint(t *testing.T) {
 		)
 		done <- err
 	}()
-	if _, ok := dispatchMessage(t, fixture).(*runnerwire.JobRunningHint); !ok {
+	if _, ok := dispatchMessage(t, fixture).(*runnerproto.JobRunningHint); !ok {
 		t.Fatal("missing hint")
 	}
-	if _, ok := dispatchMessage(t, fixture).(*runnerwire.RPCCall); !ok {
+	if _, ok := dispatchMessage(t, fixture).(*runnerproto.RPCCall); !ok {
 		t.Fatal("missing callback")
 	}
 	cancel()
 	if err := <-done; err == nil {
 		t.Fatal("cancelled call succeeded")
 	}
-	if _, ok := dispatchMessage(t, fixture).(*runnerwire.RPCCancel); !ok {
+	if _, ok := dispatchMessage(t, fixture).(*runnerproto.RPCCancel); !ok {
 		t.Fatal("missing RPC cancellation")
 	}
-	if hint, ok := dispatchMessage(t, fixture).(*runnerwire.JobRunningHint); !ok || hint.Hint != nil {
+	if hint, ok := dispatchMessage(t, fixture).(*runnerproto.JobRunningHint); !ok || hint.Hint != nil {
 		t.Fatal("hint not cleared")
 	}
 }
@@ -224,12 +224,12 @@ func TestBackendCommandsAreNeverTurnedAway(t *testing.T) {
 			case <-ctx.Done():
 				return
 			case frame := <-fixture.Outgoing:
-				message, err := runnerwire.DecodeOutbound(frame)
+				message, err := runnerproto.DecodeOutbound(frame)
 				if err != nil {
 					t.Error(err)
 					return
 				}
-				if _, ok := message.(*runnerwire.RPCCall); ok {
+				if _, ok := message.(*runnerproto.RPCCall); ok {
 					count++
 					if count == clients {
 						close(reached)

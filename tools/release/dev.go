@@ -17,10 +17,10 @@ import (
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 const (
@@ -33,7 +33,7 @@ func (a *application) dev(ctx context.Context, o devOptions) (err error) {
 	if err := os.MkdirAll(programs, 0o755); err != nil {
 		return err
 	}
-	target, err := commandwire.HostTarget()
+	target, err := commandproto.HostTarget()
 	if err != nil {
 		return err
 	}
@@ -104,18 +104,18 @@ func seedDev(ctx context.Context, client *http.Client, origin, echo string) (str
 		ctx,
 		client,
 		origin+"/api/setup",
-		webapi.SetupRequest{Email: devEmail, Password: devPassword},
+		webapiproto.SetupRequest{Email: devEmail, Password: devPassword},
 	); err != nil {
 		return "", err
 	}
-	endpoint, err := webapi.ParseEndpointURL(echo)
+	endpoint, err := webapiproto.ParseEndpointURL(echo)
 	if err != nil {
 		return "", err
 	}
-	models := webapi.ConfiguredModels{
-		{ID: "echo", DisplayName: "Echo", ContextWindow: 200000, ThinkingEfforts: []webapi.ThinkingEffort{}},
+	models := webapiproto.ConfiguredModels{
+		{ID: "echo", DisplayName: "Echo", ContextWindow: 200000, ThinkingEfforts: []webapiproto.ThinkingEffort{}},
 	}
-	entry := &webapi.CreateProviderCustom{
+	entry := &webapiproto.CreateProviderCustom{
 		ProviderType: "anthropic",
 		Label:        "Echo",
 		APIKey:       "sk-ant-echo",
@@ -126,16 +126,16 @@ func seedDev(ctx context.Context, client *http.Client, origin, echo string) (str
 }
 
 func seedDevProvider(ctx context.Context, client *http.Client, origin string, p devProvider) (string, error) {
-	wire := core.WireAPIChatCompletions
-	models := webapi.ConfiguredModels{
+	wire := types.WireAPIChatCompletions
+	models := webapiproto.ConfiguredModels{
 		{
-			ID:              webapi.Trimmed(p.Model),
-			DisplayName:     webapi.Trimmed(p.Model),
+			ID:              webapiproto.Trimmed(p.Model),
+			DisplayName:     webapiproto.Trimmed(p.Model),
 			ContextWindow:   p.ContextWindow,
-			ThinkingEfforts: []webapi.ThinkingEffort{},
+			ThinkingEfforts: []webapiproto.ThinkingEffort{},
 		},
 	}
-	return seedDevEntry(ctx, client, origin, &webapi.CreateProviderCustom{
+	return seedDevEntry(ctx, client, origin, &webapiproto.CreateProviderCustom{
 		ProviderType: "openai",
 		WireAPI:      &wire,
 		Label:        "Development",
@@ -150,13 +150,13 @@ func seedDevEntry(
 	ctx context.Context,
 	client *http.Client,
 	origin string,
-	entry *webapi.CreateProviderCustom,
+	entry *webapiproto.CreateProviderCustom,
 ) (string, error) {
 	data, err := postDev(ctx, client, origin+"/api/providers", entry)
 	if err != nil {
 		return "", err
 	}
-	answer, err := webapi.DecodeProviderAnswer(data)
+	answer, err := webapiproto.DecodeProviderAnswer(data)
 	if err != nil {
 		return "", fmt.Errorf("the provider entry's answer: %w", err)
 	}

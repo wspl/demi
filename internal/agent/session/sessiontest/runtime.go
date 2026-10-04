@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/wspl/demi/internal/agent/session"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Runtime supplies session hooks for tests. Set hooks before sharing it with a
@@ -16,7 +16,7 @@ type Runtime struct {
 	Reserve     func(context.Context) (*gates.Reservation, error)
 	Prompt      string
 	Before      func(context.Context) (*string, error)
-	News        func(context.Context, []session.SeenContext, core.TurnID) ([]session.NewContext, error)
+	News        func(context.Context, []session.SeenContext, types.TurnID) ([]session.NewContext, error)
 	Definitions []provider.ToolDefinition
 	Invoke      func(context.Context, session.ToolInvocation) (session.ToolOutcome, error)
 	Close       func(context.Context) error
@@ -53,7 +53,7 @@ func (r *Runtime) Preamble(ctx context.Context) (*string, error) {
 func (r *Runtime) Context(
 	ctx context.Context,
 	seen []session.SeenContext,
-	turn core.TurnID,
+	turn types.TurnID,
 ) ([]session.NewContext, error) {
 	if r.News != nil {
 		return r.News(ctx, seen, turn)

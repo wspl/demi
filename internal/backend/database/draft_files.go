@@ -3,7 +3,7 @@ package database
 import (
 	"errors"
 
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // StagedFile names an upload of the caller or a file on a paired device.
@@ -13,7 +13,7 @@ type StagedFile interface{ stagedFile() }
 
 // StagedUpload names an uploaded file.
 type StagedUpload struct {
-	ID       webapi.AttachmentID
+	ID       webapiproto.AttachmentID
 	FileName string
 }
 
@@ -37,7 +37,7 @@ var (
 // UploadNotFoundError means the caller has no upload of the named ID.
 type UploadNotFoundError struct {
 	// Upload is the ID the draft named.
-	Upload webapi.AttachmentID
+	Upload webapiproto.AttachmentID
 }
 
 // Error names the missing upload.

@@ -3,7 +3,7 @@
 # Uses the execution host's native compiler and Bazel, never a build container.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-runtime="$here/../../internal/machines/sandbox/runtime"
+runtime="$here/../../internal/machinemanager/sandbox/runtime"
 release="$runtime/../runtime-release.json"
 output="${1:?Usage: build-runsc-arm64.sh <new-output-directory>}"
 [ "$(uname -m)" = aarch64 ] && [ "$(uname -s)" = Linux ] || { echo 'requires native Linux arm64' >&2; exit 2; }

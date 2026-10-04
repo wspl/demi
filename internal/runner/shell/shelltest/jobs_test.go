@@ -13,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runner/shell"
 	"github.com/wspl/demi/internal/runner/shell/shelltest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"go.uber.org/goleak"
 )
 
@@ -68,7 +68,7 @@ func marker(ctx context.Context, t *testing.T, job process.ShellJob, want string
 				exit, _, _ := job.Wait(ctx)
 				t.Fatalf("job ended before %q: %+v", want, exit)
 			}
-			if chunk.Stream != runnerwire.Stdout {
+			if chunk.Stream != runnerproto.Stdout {
 				t.Fatalf("stderr before marker: %s", chunk.Bytes)
 			}
 			output = append(output, chunk.Bytes...)
@@ -80,19 +80,19 @@ func marker(ctx context.Context, t *testing.T, job process.ShellJob, want string
 }
 
 func TestShellCancellationReportsTheRequestingSignal(t *testing.T) {
-	for _, signal := range []runnerwire.Signal{
-		runnerwire.SignalTerminate,
-		runnerwire.SignalInterrupt,
-		runnerwire.SignalHangup,
-		runnerwire.SignalQuit,
-		runnerwire.SignalKill,
+	for _, signal := range []runnerproto.Signal{
+		runnerproto.SignalTerminate,
+		runnerproto.SignalInterrupt,
+		runnerproto.SignalHangup,
+		runnerproto.SignalQuit,
+		runnerproto.SignalKill,
 		"",
 	} {
 		t.Run(string(signal), func(t *testing.T) {
 			t.Parallel()
 			ctx, scope, job, _ := shellJob(t, "printf ready; sleep 60")
 			marker(ctx, t, job, "ready")
-			if err := job.Signal(runnerwire.SignalUser1); err == nil {
+			if err := job.Signal(runnerproto.SignalUser1); err == nil {
 				t.Fatal("accepted unsupported signal")
 			}
 			if job.IsCancelled() {
@@ -100,14 +100,14 @@ func TestShellCancellationReportsTheRequestingSignal(t *testing.T) {
 			}
 			if signal == "" {
 				job.Cancel()
-				if err := job.Signal(runnerwire.SignalTerminate); err != nil {
+				if err := job.Signal(runnerproto.SignalTerminate); err != nil {
 					t.Fatal(err)
 				}
 			} else {
 				if err := job.Signal(signal); err != nil {
 					t.Fatal(err)
 				}
-				if err := job.Signal(runnerwire.SignalKill); err != nil {
+				if err := job.Signal(runnerproto.SignalKill); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -174,7 +174,7 @@ func TestJobsShareTheRunnerProcessAndCancellationIsIsolated(t *testing.T) {
 	sibling.Input() <- process.Input{}
 	var output []byte
 	for chunk := range sibling.Output() {
-		if chunk.Stream != runnerwire.Stdout {
+		if chunk.Stream != runnerproto.Stdout {
 			t.Fatalf("unexpected sibling stderr: %q", chunk.Bytes)
 		}
 		output = append(output, chunk.Bytes...)

@@ -4,7 +4,7 @@
 `file`, `browser` and `expose` commands, plus shapes only the generator's
 tests need. The schemas of the real commands are pinned where they are
 produced, by each plugin's manifest golden
-(`internal/plugins/<id>/testdata/manifest.json`); the JSON files here pin
+(`internal/plugin/<id>/testdata/manifest.json`); the JSON files here pin
 generator-only shapes.
 
 ## Numbers and validation

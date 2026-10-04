@@ -11,7 +11,7 @@ Three suites drive the whole backend:
 
 | Suite | Where it lives | How it reaches the backend | Model | Hosts |
 | --- | --- | --- | --- | --- |
-| Backend scenarios | Go tests of the backend package (`internal/backend`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
+| Backend scenarios | Go tests in `internal/backend/scenarios`, a package of tests only | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
 | Web app contract suite | Tests of `packages/web` | The web application's API client and `ConversationClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
 | Real-machine suites | Go tests built with the `acceptance` tag that run only when environment variables supply their resources; of them, the Cloud and Claude Code suites and part of the browser suite exist ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
 
@@ -60,7 +60,7 @@ rebuild the live transcript from patches: the web app's patch applier is the
 only one, so the [web app contract suite](#web-app-contract-suite) compares
 live with cold.
 
-The scripted machine manager speaks the manager protocol (`internal/machinewire`) as the real one does:
+The scripted machine manager speaks the manager protocol (`internal/machinemanagerproto`) as the real one does:
 operations of one device run in arrival order, requests on a connection are
 answered as they finish, and a death reaches every connection. It starts the
 same runner as a local process with the boot record's backend URL and token,
@@ -282,7 +282,7 @@ Deployment prerequisites are in [Cloud setup](../cloud/setup.md).
 
 ### Cloud suite
 
-The Cloud suite is `internal/backend/real_cloud_test.go`, built with the
+The Cloud suite is `internal/backend/scenarios/real_cloud_test.go`, built with the
 `acceptance` tag; an ordinary run omits its tests. Its world is the backend scenarios'
 ([System under test](#system-under-test)) with the real manager in place of
 the scripted one, configured by four variables:
@@ -319,7 +319,7 @@ DEMI_TEST_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
 DEMI_TEST_CLOUD_URL=http://<address>:<port> \
 DEMI_TEST_MACHINES_DATA=/var/lib/demi-machine-manager \
 DEMI_TEST_CLOUD_NATIVE=<native configuration> \
-  CGO_ENABLED=0 go test -tags acceptance ./internal/backend \
+  CGO_ENABLED=0 go test -tags acceptance ./internal/backend/scenarios \
   -run '^Test(ACloud|AResetBringsBackACloud|ACheckpointWithChrome|TwoUsersClouds)' -p 1 -count=1 -v
 ```
 

@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type useRole uint8
@@ -19,7 +19,7 @@ const (
 )
 
 type cloudUse struct {
-	id   webapi.ConversationID
+	id   webapiproto.ConversationID
 	role useRole
 }
 
@@ -30,7 +30,7 @@ func cloudUses(ctx context.Context, s Shard) ([]cloudUse, error) {
 	if err != nil {
 		return nil, err
 	}
-	var id *webapi.DeviceID
+	var id *webapiproto.DeviceID
 	if found {
 		id = &device.ID
 	}
@@ -38,7 +38,7 @@ func cloudUses(ctx context.Context, s Shard) ([]cloudUse, error) {
 	if err != nil {
 		return nil, err
 	}
-	known := make(map[webapi.ProviderID]bool)
+	known := make(map[webapiproto.ProviderID]bool)
 	var uses []cloudUse
 	for _, conversation := range conversations {
 		process := false
@@ -113,7 +113,7 @@ func holdReset(ctx context.Context, s Shard, uses []cloudUse, timeout time.Durat
 }
 
 // providerRunsProcess reads and builds a provider for Cloud demand classification.
-func providerRunsProcess(ctx context.Context, s Shard, provider webapi.ProviderID) bool {
+func providerRunsProcess(ctx context.Context, s Shard, provider webapiproto.ProviderID) bool {
 	process := false
 	entry, err := s.Vault().Visible(ctx, s.User(), provider)
 	if err != nil {

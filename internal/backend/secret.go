@@ -16,7 +16,7 @@ import (
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/backend/accounts"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/usershard"
 )
 
@@ -92,6 +92,6 @@ func (s InstanceSecret) serviceKeys() (usershard.ServiceKeys, error) {
 	}
 	return usershard.ServiceKeys{
 		EmailCodes: accounts.NewCodeKey([32]byte(email)),
-		Vault:      *providers.NewVaultKey([32]byte(vault)),
+		Vault:      *providerhost.NewVaultKey([32]byte(vault)),
 	}, nil
 }

@@ -7,9 +7,9 @@ import (
 	"fmt"
 	store "github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/contract"
-	core "github.com/wspl/demi/internal/core"
 	plugin "github.com/wspl/demi/internal/plugin"
-	webapi "github.com/wspl/demi/internal/webapi"
+	types "github.com/wspl/demi/internal/types"
+	webapiproto "github.com/wspl/demi/internal/webapiproto"
 )
 
 func DecodeAttachedHostRecord(data []byte) (AttachedHostRecord, error) {
@@ -55,7 +55,7 @@ func (v *AttachedHostRecord) UnmarshalJSON(data []byte) error {
 			return contract.At("device", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.DeviceID](raw)
+			value, err := contract.Decode[webapiproto.DeviceID](raw)
 			if err != nil {
 				return contract.At("device", err)
 			}
@@ -160,7 +160,7 @@ func (v *CatalogRecord) UnmarshalJSON(data []byte) error {
 			return contract.At("checkedAt", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.Timestamp](raw)
+			value, err := contract.Decode[types.Timestamp](raw)
 			if err != nil {
 				return contract.At("checkedAt", err)
 			}
@@ -173,7 +173,7 @@ func (v *CatalogRecord) UnmarshalJSON(data []byte) error {
 			return contract.At("catalog", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.ProviderModelList](raw)
+			value, err := contract.Decode[types.ProviderModelList](raw)
 			if err != nil {
 				return contract.At("catalog", err)
 			}
@@ -239,7 +239,9 @@ func (v *ExecutionCloud) UnmarshalJSON(data []byte) error {
 		}
 		if ok {
 			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*webapi.DeviceID, error) { return contract.Pointer(b, contract.Decode[webapi.DeviceID]) }(raw)
+				value, err := func(b []byte) (*webapiproto.DeviceID, error) {
+					return contract.Pointer(b, contract.Decode[webapiproto.DeviceID])
+				}(raw)
 				if err != nil {
 					return contract.At("deviceId", err)
 				}
@@ -316,7 +318,7 @@ func (v *ExecutionDevice) UnmarshalJSON(data []byte) error {
 			return contract.At("deviceId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.DeviceID](raw)
+			value, err := contract.Decode[webapiproto.DeviceID](raw)
 			if err != nil {
 				return contract.At("deviceId", err)
 			}
@@ -472,7 +474,7 @@ func (v *ExecutionWorkspace) UnmarshalJSON(data []byte) error {
 			return contract.At("workspaceId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.WorkspaceID](raw)
+			value, err := contract.Decode[webapiproto.WorkspaceID](raw)
 			if err != nil {
 				return contract.At("workspaceId", err)
 			}
@@ -485,7 +487,7 @@ func (v *ExecutionWorkspace) UnmarshalJSON(data []byte) error {
 			return contract.At("deviceId", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[webapi.DeviceID](raw)
+			value, err := contract.Decode[webapiproto.DeviceID](raw)
 			if err != nil {
 				return contract.At("deviceId", err)
 			}
@@ -533,7 +535,7 @@ func contractValidateForkMetadata(v ForkMetadata, depth int) error {
 	if err := contract.Text(string(v.Title), 1, -1, ""); err != nil {
 		return contract.At("title", err)
 	}
-	if err := webapi.ValidateConversationTarget(v.Target); err != nil {
+	if err := webapiproto.ValidateConversationTarget(v.Target); err != nil {
 		return contract.At("target", err)
 	}
 	if v.Model != nil {
@@ -591,7 +593,7 @@ func (v *ForkMetadata) UnmarshalJSON(data []byte) error {
 			return contract.At("target", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := webapi.DecodeConversationTarget(raw)
+			value, err := webapiproto.DecodeConversationTarget(raw)
 			if err != nil {
 				return contract.At("target", err)
 			}
@@ -605,8 +607,8 @@ func (v *ForkMetadata) UnmarshalJSON(data []byte) error {
 		}
 		if ok {
 			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*core.ModelSelection, error) {
-					return contract.Pointer(b, contract.Decode[core.ModelSelection])
+				value, err := func(b []byte) (*types.ModelSelection, error) {
+					return contract.Pointer(b, contract.Decode[types.ModelSelection])
 				}(raw)
 				if err != nil {
 					return contract.At("model", err)
@@ -621,7 +623,7 @@ func (v *ForkMetadata) UnmarshalJSON(data []byte) error {
 			return contract.At("createdAt", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.Timestamp](raw)
+			value, err := contract.Decode[types.Timestamp](raw)
 			if err != nil {
 				return contract.At("createdAt", err)
 			}
@@ -746,7 +748,7 @@ func contractValidateBlobNames(v blobNames, depth int) error {
 	return nil
 }
 func (v *blobNames) UnmarshalJSON(data []byte) error {
-	value, err := func(b []byte) ([]core.BlobRef, error) { return contract.List(b, contract.Decode[core.BlobRef]) }(data)
+	value, err := func(b []byte) ([]types.BlobRef, error) { return contract.List(b, contract.Decode[types.BlobRef]) }(data)
 	if err != nil {
 		return err
 	}
@@ -761,7 +763,7 @@ func (v blobNames) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
-	return contract.EncodeJSON([]core.BlobRef(v))
+	return contract.EncodeJSON([]types.BlobRef(v))
 }
 func decodeCommandValues(data []byte) (commandValues, error) {
 	return contract.Decode[commandValues](data)
@@ -865,7 +867,7 @@ func contractValidateDraftVersion(v draftVersion, depth int) error {
 	for i, item := range v.Files {
 		_ = i
 		_ = item
-		if err := webapi.ValidateDraftFile(item); err != nil {
+		if err := webapiproto.ValidateDraftFile(item); err != nil {
 			return contract.At(fmt.Sprintf("%s[%d]", "files", i), err)
 		}
 	}
@@ -903,7 +905,7 @@ func (v *draftVersion) UnmarshalJSON(data []byte) error {
 			return contract.At("files", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) ([]webapi.DraftFile, error) { return contract.List(b, webapi.DecodeDraftFile) }(raw)
+			value, err := func(b []byte) ([]webapiproto.DraftFile, error) { return contract.List(b, webapiproto.DecodeDraftFile) }(raw)
 			if err != nil {
 				return contract.At("files", err)
 			}
@@ -974,7 +976,9 @@ func (v *panelDocument) UnmarshalJSON(data []byte) error {
 			return contract.At("tabs", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) ([]webapi.PanelTab, error) { return contract.List(b, contract.Decode[webapi.PanelTab]) }(raw)
+			value, err := func(b []byte) ([]webapiproto.PanelTab, error) {
+				return contract.List(b, contract.Decode[webapiproto.PanelTab])
+			}(raw)
 			if err != nil {
 				return contract.At("tabs", err)
 			}

@@ -8,33 +8,33 @@ import (
 	"github.com/wspl/demi/internal/agent/server"
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
-func storedChild(id string, number uint64, parent core.NodeID, profile *string) store.NodeRecord {
+func storedChild(id string, number uint64, parent types.NodeID, profile *string) store.NodeRecord {
 	return store.NodeRecord{
-		ID:                core.NodeID(id),
+		ID:                types.NodeID(id),
 		Number:            number,
 		Parent:            &parent,
 		Description:       id,
 		Profile:           profile,
 		Round:             1,
-		StartedAt:         core.Timestamp("1970-01-01T00:00:00.000Z"),
+		StartedAt:         types.Timestamp("1970-01-01T00:00:00.000Z"),
 		CanSpawnSubagents: true,
 	}
 }
 
-func checkpoint(queue []core.QueuedMessage, blocks []core.Block) store.CheckpointUpdate {
+func checkpoint(queue []types.QueuedMessage, blocks []types.Block) store.CheckpointUpdate {
 	rows := []store.ChangedBlock{}
 	for i, b := range blocks {
 		rows = append(rows, store.ChangedBlock{Index: i, Block: b})
 	}
 	return store.CheckpointUpdate{
 		State: store.CheckpointState{
-			Phase:       core.SessionPhaseIdle,
-			Queue:       append([]core.QueuedMessage{}, queue...),
+			Phase:       types.SessionPhaseIdle,
+			Queue:       append([]types.QueuedMessage{}, queue...),
 			AgentInputs: []store.PendingAgentInput{},
 			Wakeups:     []store.ScheduledWakeup{},
 			CWD:         "/workspace",
@@ -51,8 +51,8 @@ func createStored(
 	t *testing.T,
 	memory *storetest.MemoryTreeStore,
 	record store.NodeRecord,
-	queue []core.QueuedMessage,
-	blocks []core.Block,
+	queue []types.QueuedMessage,
+	blocks []types.Block,
 ) {
 	t.Helper()
 	if err := memory.CreateNode(t.Context(), record, checkpoint(queue, blocks)); err != nil {
@@ -60,12 +60,12 @@ func createStored(
 	}
 }
 
-func closeStored(t *testing.T, memory *storetest.MemoryTreeStore, id core.NodeID, phase store.ClosePhase) {
+func closeStored(t *testing.T, memory *storetest.MemoryTreeStore, id types.NodeID, phase store.ClosePhase) {
 	t.Helper()
 	if err := memory.CloseNode(
 		t.Context(),
 		id,
-		store.NodeClose{Phase: phase, At: core.Timestamp("1970-01-01T00:00:00.000Z")},
+		store.NodeClose{Phase: phase, At: types.Timestamp("1970-01-01T00:00:00.000Z")},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -74,13 +74,13 @@ func closeStored(t *testing.T, memory *storetest.MemoryTreeStore, id core.NodeID
 func TestRestoreLostBriefQuietChildAndMissedCompletion(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		memory := storetest.NewMemoryTreeStore()
-		at := core.Timestamp("1970-01-01T00:00:00.000Z")
+		at := types.Timestamp("1970-01-01T00:00:00.000Z")
 		createStored(t, memory, store.RootRecord(rootID(), at), nil, nil)
 		createStored(
 			t,
 			memory,
 			storedChild("lost", 1, rootID(), nil),
-			[]core.QueuedMessage{{ID: turnID("brief"), Content: storetest.Text("task lost")}},
+			[]types.QueuedMessage{{ID: turnID("brief"), Content: storetest.Text("task lost")}},
 			nil,
 		)
 		createStored(
@@ -88,15 +88,15 @@ func TestRestoreLostBriefQuietChildAndMissedCompletion(t *testing.T) {
 			memory,
 			storedChild("quiet", 2, rootID(), nil),
 			nil,
-			[]core.Block{
-				&core.UserBlock{
+			[]types.Block{
+				&types.UserBlock{
 					BlockID:   blockID("q1"),
 					TurnID:    turnID("q1"),
 					Timestamp: at,
 					Selection: storetest.TestModel(),
 					Content:   storetest.Text("task quiet"),
 				},
-				&core.TextBlock{
+				&types.TextBlock{
 					BlockID:   blockID("q2"),
 					Timestamp: at,
 					Selection: storetest.TestModel(),
@@ -119,15 +119,15 @@ func TestRestoreLostBriefQuietChildAndMissedCompletion(t *testing.T) {
 		f := fixtureWith(t, rootScript, memory, server.DefaultConfig())
 		f.resolver.ProvideRuntime("stub", &nodeScripts{root: rootScript, children: []childScript{{"task lost", lost}}})
 		c := f.client()
-		c.Send(t.Context(), &framewire.OpenFrame{})
+		c.Send(t.Context(), &conversationproto.OpenFrame{})
 		synctest.Wait()
-		senders := []core.NodeID{}
+		senders := []types.NodeID{}
 		for _, receipt := range agentReceipts(f, rootID()) {
 			senders = append(senders, receipt.Sender.ID)
 		}
 		slices.Sort(senders)
-		equal(t, []core.NodeID{"closed", "lost", "quiet"}, senders)
-		for i, id := range []core.NodeID{"lost", "quiet", "closed"} {
+		equal(t, []types.NodeID{"closed", "lost", "quiet"}, senders)
+		for i, id := range []types.NodeID{"lost", "quiet", "closed"} {
 			record := memory.Record(id)
 			if record.Closed == nil || !record.Delivered {
 				t.Fatal("restore did not close and deliver", id, record)
@@ -143,7 +143,7 @@ func TestRestoreLostBriefQuietChildAndMissedCompletion(t *testing.T) {
 		}
 		pending := false
 		for _, frame := range c.Received() {
-			if _, ok := frame.(*framewire.PendingSteersFrame); ok {
+			if _, ok := frame.(*conversationproto.PendingSteersFrame); ok {
 				pending = true
 			}
 		}
@@ -167,12 +167,12 @@ func TestUndeliveredCompletionRefusesEditUntilLaterSave(t *testing.T) {
 		c := f.opened()
 		c.Send(t.Context(), send("m1", "A"))
 		untilIdle(t, c)
-		c.Send(t.Context(), &framewire.CloseFrame{})
+		c.Send(t.Context(), &conversationproto.CloseFrame{})
 		c.Received()
 		createStored(t, f.store, storedChild("child", 1, rootID(), nil), nil, nil)
 		closeStored(t, f.store, "child", &store.Completed{Result: "notes say 42"})
 		f.store.FailSaves(int(^uint(0) >> 1))
-		c.Send(t.Context(), &framewire.OpenFrame{})
+		c.Send(t.Context(), &conversationproto.OpenFrame{})
 		synctest.Wait()
 		f.store.FailSaves(0)
 		record := f.store.Record("child")
@@ -195,7 +195,7 @@ func TestUndeliveredCompletionRefusesEditUntilLaterSave(t *testing.T) {
 		}
 		c.Send(t.Context(), edit("op2", target, f.server.Tree(rootID()).Root().Session().Transcript().Version, "A2"))
 		frames := untilIdle(t, c)
-		if _, ok := editOutcome(t, frames).(*framewire.AcceptedEdit); !ok {
+		if _, ok := editOutcome(t, frames).(*conversationproto.AcceptedEdit); !ok {
 			t.Fatal(frames)
 		}
 		equal(t, 0, f.script.Remaining())

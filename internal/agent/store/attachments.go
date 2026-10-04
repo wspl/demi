@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/text/encoding/unicode"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // SnippetMaxChars is how many Unicode scalar values a text file's opening keeps.
@@ -53,7 +53,7 @@ func Snippet(data []byte) string {
 
 // UploadMediaType returns the sniffed native media or PDF type, else sent.
 func UploadMediaType(sent string, data []byte) string {
-	if media, ok := core.SniffModelMediaType(data); ok {
+	if media, ok := types.SniffModelMediaType(data); ok {
 		return media.MediaType
 	}
 	if bytes.HasPrefix(data, []byte("%PDF-")) {
@@ -71,17 +71,17 @@ type Upload struct {
 	// MediaType is the type recorded by UploadMediaType.
 	MediaType string
 	// SHA256 identifies the uploaded bytes in the blob namespace.
-	SHA256 core.BlobRef
+	SHA256 types.BlobRef
 	// Bytes holds the uploaded file contents.
-	Bytes core.B64Bytes
+	Bytes types.B64Bytes
 }
 
 // UploadBlocks returns a native image, video or PDF followed by its attachment
 // record, plus held bytes. Fitted images are stored first when reencoded;
 // an unfit image remains only an attachment record to read by path.
-func UploadBlocks(ctx context.Context, upload Upload, blobs Blobs) ([]core.UserContentBlock, HeldMedia, error) {
-	record := &core.UserAttachment{
-		Attachment: core.Attachment{
+func UploadBlocks(ctx context.Context, upload Upload, blobs Blobs) ([]types.UserContentBlock, HeldMedia, error) {
+	record := &types.UserAttachment{
+		Attachment: types.Attachment{
 			Name:      upload.Name,
 			Path:      upload.Path,
 			MediaType: upload.MediaType,
@@ -93,8 +93,8 @@ func UploadBlocks(ctx context.Context, upload Upload, blobs Blobs) ([]core.UserC
 		record.Snippet = new(Snippet(upload.Bytes))
 	}
 	held := HeldMedia{}
-	blocks := []core.UserContentBlock{}
-	media, ok := core.SniffModelMediaType(upload.Bytes)
+	blocks := []types.UserContentBlock{}
+	media, ok := types.SniffModelMediaType(upload.Bytes)
 	switch {
 	case ok && media.Kind == "image":
 		fitted, err := Fit(ctx, upload.Bytes, media.MediaType)
@@ -109,14 +109,14 @@ func UploadBlocks(ctx context.Context, upload Upload, blobs Blobs) ([]core.UserC
 			held.Hold(blob, fitted.Data)
 			blocks = append(
 				blocks,
-				&core.UserImage{Source: &core.MediaSourceRef{Ref: blob, MediaType: fitted.MediaType}},
+				&types.UserImage{Source: &types.MediaSourceRef{Ref: blob, MediaType: fitted.MediaType}},
 			)
 		}
 	case ok:
 		held.Hold(upload.SHA256, upload.Bytes)
 		blocks = append(
 			blocks,
-			&core.UserVideo{Source: &core.MediaSourceRef{Ref: upload.SHA256, MediaType: media.MediaType}},
+			&types.UserVideo{Source: &types.MediaSourceRef{Ref: upload.SHA256, MediaType: media.MediaType}},
 		)
 	default:
 		mediaType, _, _ := strings.Cut(upload.MediaType, ";")
@@ -124,8 +124,8 @@ func UploadBlocks(ctx context.Context, upload Upload, blobs Blobs) ([]core.UserC
 			held.Hold(upload.SHA256, upload.Bytes)
 			blocks = append(
 				blocks,
-				&core.UserDocument{
-					Source: &core.DocumentRef{Ref: upload.SHA256, MediaType: "application/pdf", FileName: upload.Name},
+				&types.UserDocument{
+					Source: &types.DocumentRef{Ref: upload.SHA256, MediaType: "application/pdf", FileName: upload.Name},
 				},
 			)
 		}
@@ -134,6 +134,6 @@ func UploadBlocks(ctx context.Context, upload Upload, blobs Blobs) ([]core.UserC
 }
 
 // Unavailable returns the text for an upload that is gone or belongs to another sender.
-func Unavailable(reference string) core.UserContentBlock {
-	return &core.UserText{Text: "[attachment " + reference + " is not available]"}
+func Unavailable(reference string) types.UserContentBlock {
+	return &types.UserText{Text: "[attachment " + reference + " is not available]"}
 }

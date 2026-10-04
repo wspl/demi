@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/nlnwa/whatwg-url/url"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Domain is the domain, such as expose.demi.example: a DNS name, in lowercase.
@@ -51,7 +51,7 @@ func (d Domain) Label(host string) (string, bool) {
 }
 
 // URL returns an expose's public URL with the backend's scheme and nondefault port.
-func URL(id webapi.ExposeID, domain Domain, backend *url.Url) string {
+func URL(id webapiproto.ExposeID, domain Domain, backend *url.Url) string {
 	port := backend.Port()
 	if port != "" {
 		port = ":" + port

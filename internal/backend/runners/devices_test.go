@@ -21,7 +21,7 @@ import (
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/backend/runners/runnerstest"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // runnerFrames carries scripted runner frames without a socket. Channels are
@@ -104,17 +104,17 @@ func TestDeviceConnectionLifecycleWithUnavailableLastSeen(t *testing.T) {
 	if !h.Online() || h.Identity().HomeDir != "/first" || devices.DeviceAccess("device") == nil {
 		t.Fatal("bound host unavailable")
 	}
-	installs := []runnerwire.Install{
+	installs := []runnerproto.Install{
 		{
 			Package: "example.commands",
 			Name:    "Commands",
 			Version: "1",
-			Phase:   runnerwire.InstallPhaseDownload,
+			Phase:   runnerproto.InstallPhaseDownload,
 			Done:    1,
 			Total:   2,
 		},
 	}
-	frame, err := runnerwire.Encode(&runnerwire.Installs{Installs: installs})
+	frame, err := runnerproto.Encode(&runnerproto.Installs{Installs: installs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,12 +222,12 @@ func TestServingRevocationAndProtocolLogging(t *testing.T) {
 				if kind != websocket.MessageBinary {
 					t.Fatal("nonbinary refusal")
 				}
-				message, err := runnerwire.DecodeInbound(data)
+				message, err := runnerproto.DecodeInbound(data)
 				if err != nil {
 					t.Fatal(err)
 				}
-				refusal, ok := message.(*runnerwire.HelloError)
-				if !ok || refusal.Code != runnerwire.HelloErrorCodeRevoked || refusal.Reason != "device revoked" {
+				refusal, ok := message.(*runnerproto.HelloError)
+				if !ok || refusal.Code != runnerproto.HelloErrorCodeRevoked || refusal.Reason != "device revoked" {
 					t.Fatalf("refusal %#v", message)
 				}
 			} else {

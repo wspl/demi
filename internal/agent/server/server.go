@@ -11,13 +11,13 @@ import (
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/tools"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // TreeStores supplies the tree store of each conversation, by its root.
-type TreeStores func(root core.NodeID) store.Tree
+type TreeStores func(root types.NodeID) store.Tree
 
 // Config controls how the server's trees and connections behave.
 // Use DefaultConfig for production defaults; zero values are explicit.
@@ -53,13 +53,13 @@ type Deps[H host.Host] struct {
 	// Shells makes each node's shell environment on each Host it uses.
 	Shells tools.ShellEnvironmentFactory[H]
 	Stores TreeStores
-	Clock  core.Clock
+	Clock  types.Clock
 	IDs    transcript.IDs
 	Config Config
 	// StatusChanged is told the root of a live tree that started or stopped
 	// working, whose root's phase changed, or that was disposed. The product
 	// reads the conversation's status again.
-	StatusChanged func(core.NodeID)
+	StatusChanged func(types.NodeID)
 }
 
 // Server is the agent server of one user shard. Its methods are safe for
@@ -68,28 +68,28 @@ type Deps[H host.Host] struct {
 type Server[H host.Host] struct {
 	deps    Deps[H]
 	mu      sync.Mutex // Protects live trees, their directories and attachment decisions.
-	trees   map[core.NodeID]*Tree[H]
-	opening gates.KeyedSerial[core.NodeID]
+	trees   map[types.NodeID]*Tree[H]
+	opening gates.KeyedSerial[types.NodeID]
 	work    sync.WaitGroup
 	closing bool
 }
 
 // New constructs a server from the product's dependencies.
 func New[H host.Host](deps Deps[H]) *Server[H] {
-	return &Server[H]{deps: deps, trees: map[core.NodeID]*Tree[H]{}}
+	return &Server[H]{deps: deps, trees: map[types.NodeID]*Tree[H]{}}
 }
 
 // Connect creates a connection for root, whose tree works in cwd when created,
 // and its bounded outbox. Resolver resolves files referenced by client frames.
 // The socket owner must defer Connection.Detach, even after cancellation.
-func (s *Server[H]) Connect(root core.NodeID, cwd string, resolver ContentResolver) (*Connection[H], *Frames) {
+func (s *Server[H]) Connect(root types.NodeID, cwd string, resolver ContentResolver) (*Connection[H], *Frames) {
 	outbox := &outbox{capacity: s.deps.Config.OutboxFrames, changed: make(chan struct{})}
 	c := &Connection[H]{server: s, root: root, cwd: cwd, resolver: resolver, outbox: outbox}
 	return c, &Frames{outbox: outbox}
 }
 
 // Tree returns the conversation's live tree, or nil if it has none.
-func (s *Server[H]) Tree(root core.NodeID) *Tree[H] {
+func (s *Server[H]) Tree(root types.NodeID) *Tree[H] {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.trees[root]
@@ -98,7 +98,7 @@ func (s *Server[H]) Tree(root core.NodeID) *Tree[H] {
 // Restore opens root in cwd without a connection, continues its saved work
 // and arms its wakeups. A tree already live is left as it is.
 // Failure says whether the tree did not open or did not continue.
-func (s *Server[H]) Restore(ctx context.Context, root core.NodeID, cwd string) error {
+func (s *Server[H]) Restore(ctx context.Context, root types.NodeID, cwd string) error {
 	permit, err := s.opening.Acquire(ctx, root)
 	if err != nil {
 		return err
@@ -122,8 +122,8 @@ func (s *Server[H]) Restore(ctx context.Context, root core.NodeID, cwd string) e
 // prepared switch to SwitchModel or discard it to release its runtime.
 func (s *Server[H]) PrepareSwitch(
 	ctx context.Context,
-	root core.NodeID,
-	model core.ModelSelection,
+	root types.NodeID,
+	model types.ModelSelection,
 ) (*session.ModelSwitch, error) {
 	tree := s.Tree(root)
 	if tree == nil {
@@ -142,7 +142,7 @@ func (s *Server[H]) PrepareSwitch(
 
 // SwitchModel transfers the prepared runtime to the live root's next request.
 // With no live accepting tree, it closes the prepared runtime instead.
-func (s *Server[H]) SwitchModel(ctx context.Context, root core.NodeID, change session.ModelSwitch) error {
+func (s *Server[H]) SwitchModel(ctx context.Context, root types.NodeID, change session.ModelSwitch) error {
 	if tree := s.Tree(root); tree != nil {
 		if err := tree.root.session.UpdateModel(change); err == nil {
 			return nil
@@ -153,7 +153,7 @@ func (s *Server[H]) SwitchModel(ctx context.Context, root core.NodeID, change se
 
 // Node returns the live node whose rpc commands the backend dispatches,
 // or nil. Its command storage is reached through CommandStorage.
-func (s *Server[H]) Node(root, node core.NodeID) *Node[H] {
+func (s *Server[H]) Node(root, node types.NodeID) *Node[H] {
 	if tree := s.Tree(root); tree != nil {
 		return tree.Node(node)
 	}
@@ -165,7 +165,7 @@ func (s *Server[H]) Node(root, node core.NodeID) *Node[H] {
 // generation cannot read or write. Failure returns *host.PortError.
 func (s *Server[H]) CommandStorage(
 	ctx context.Context,
-	root core.NodeID,
+	root types.NodeID,
 	caller host.JobCaller,
 	op host.StorageOp,
 ) (host.StorageReply, error) {
@@ -185,8 +185,8 @@ func (s *Server[H]) CommandStorage(
 // Failure returns *session.ForkError.
 func (s *Server[H]) PrepareFork(
 	ctx context.Context,
-	source core.NodeID,
-	target core.BlockID,
+	source types.NodeID,
+	target types.BlockID,
 ) (store.Checkpoint, error) {
 	if tree := s.Tree(source); tree != nil {
 		return tree.root.session.PrepareFork(target)
@@ -216,9 +216,9 @@ func (s *Server[H]) PrepareFork(
 // InitializeFork stores seed as destination's first checkpoint in one create
 // commit. A seed that is not idle or holds waiting work or edit receipts is
 // refused with *session.ForkError. Opening the tree assembles its runtime.
-func (s *Server[H]) InitializeFork(ctx context.Context, destination core.NodeID, seed store.Checkpoint) error {
+func (s *Server[H]) InitializeFork(ctx context.Context, destination types.NodeID, seed store.Checkpoint) error {
 	state := seed.State
-	if state.Phase != core.SessionPhaseIdle ||
+	if state.Phase != types.SessionPhaseIdle ||
 		len(state.Queue)+len(state.AgentInputs)+len(state.Wakeups)+len(state.Edits) != 0 {
 		return &session.ForkError{Kind: session.ForkInvalidSeed}
 	}
@@ -239,10 +239,10 @@ func (s *Server[H]) InitializeFork(ctx context.Context, destination core.NodeID,
 }
 
 // LiveRoots returns an owned snapshot of the live trees' roots.
-func (s *Server[H]) LiveRoots() []core.NodeID {
+func (s *Server[H]) LiveRoots() []types.NodeID {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	roots := make([]core.NodeID, 0, len(s.trees))
+	roots := make([]types.NodeID, 0, len(s.trees))
 	for root := range s.trees {
 		roots = append(roots, root)
 	}
@@ -252,7 +252,7 @@ func (s *Server[H]) LiveRoots() []core.NodeID {
 // Reload closes a quiescent live tree so its next open takes the current
 // toolset. Attached connections receive closed; a working tree returns
 // ErrWorking and stays live. With no live tree there is nothing to do.
-func (s *Server[H]) Reload(ctx context.Context, root core.NodeID) error {
+func (s *Server[H]) Reload(ctx context.Context, root types.NodeID) error {
 	permit, err := s.opening.Acquire(ctx, root)
 	if err != nil {
 		return err
@@ -293,7 +293,7 @@ func (s *Server[H]) Shutdown(ctx context.Context) error {
 // liveOrOpen shares a tree under the conversation's opening gate.
 func (s *Server[H]) liveOrOpen(
 	ctx context.Context,
-	root core.NodeID,
+	root types.NodeID,
 	cwd string,
 ) (*Tree[H], session.Continuation, bool, error) {
 	s.mu.Lock()

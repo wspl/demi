@@ -8,8 +8,8 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // HostShard supplies the handles host access needs and the idle watch every
@@ -19,11 +19,11 @@ import (
 // use the same mutex as their owning shard.
 type HostShard interface {
 	// User identifies the owner.
-	User() webapi.UserID
+	User() webapiproto.UserID
 	// Control supplies durable control records.
 	Control() *database.ControlService
 	// Clock is the wall clock the backend reads times from.
-	Clock() core.Clock
+	Clock() types.Clock
 	// Devices is the user's devices, each with its runner connection.
 	Devices() *runners.Devices
 	// Pipes is the pipes of the user's devices.
@@ -35,7 +35,7 @@ type HostShard interface {
 	// Blobs is the user's blob namespace.
 	Blobs() *blobs.Namespace
 	// ConversationDB is the database of the user's conversation.
-	ConversationDB(conversation webapi.ConversationID) *database.ConversationDB
+	ConversationDB(conversation webapiproto.ConversationID) *database.ConversationDB
 	// Native is the command packages the conversations' commands bind to.
 	Native() *runners.NativeCatalog
 	// PublicURL is where runners fetch the packages' executables from.
@@ -43,21 +43,21 @@ type HostShard interface {
 	// CloudShard is the shard as the user's Cloud sees it.
 	CloudShard() cloud.Shard
 	// TrackIdle starts the conversation's idle watch unless one runs.
-	TrackIdle(conversation webapi.ConversationID)
+	TrackIdle(conversation webapiproto.ConversationID)
 	// DirectorySets is the Host directories of the user's plugins.
 	DirectorySets(ctx context.Context) (DirectorySets, error)
 	// PluginInstalls remembers the Hosts' installed directories.
 	PluginInstalls() *PluginInstalls
 	// JobEnded reports a finished or stopped job, which may change plugin views.
-	JobEnded(conversation webapi.ConversationID)
+	JobEnded(conversation webapiproto.ConversationID)
 }
 
 // RootOf names the root node in the spelling the conversation index keeps.
-func RootOf(conversation webapi.ConversationID) core.NodeID {
-	return core.NodeID(conversation)
+func RootOf(conversation webapiproto.ConversationID) types.NodeID {
+	return types.NodeID(conversation)
 }
 
 // ConversationOf names the conversation of a root opened by RootOf.
-func ConversationOf(root core.NodeID) webapi.ConversationID {
-	return webapi.ConversationID(root)
+func ConversationOf(root types.NodeID) webapiproto.ConversationID {
+	return webapiproto.ConversationID(root)
 }

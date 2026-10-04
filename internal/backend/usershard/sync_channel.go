@@ -12,7 +12,7 @@ import (
 	"github.com/wspl/demi/internal/backend/expose"
 	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/plugin"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func (s *Shard) serveSyncChannel(ctx context.Context, socket *PageConnection, session ChannelSession) error {
@@ -211,7 +211,7 @@ func (s *Shard) exchangeSync(ctx context.Context, exchange syncExchange) error {
 			parts = changes.Parts
 		}
 		if heartbeat {
-			if err := exchange.page.send(ctx, &webapi.SyncEventHeartbeat{}); err != nil {
+			if err := exchange.page.send(ctx, &webapiproto.SyncEventHeartbeat{}); err != nil {
 				return err
 			}
 		}
@@ -240,7 +240,7 @@ func (s *Shard) sendSyncParts(ctx context.Context, exchange syncExchange, parts 
 		if event == nil {
 			continue
 		}
-		if user, ok := event.(*webapi.SyncEventUser); ok {
+		if user, ok := event.(*webapiproto.SyncEventUser); ok {
 			exchange.session.User = user.User
 		}
 		if err := exchange.page.send(ctx, event); err != nil {
@@ -279,7 +279,7 @@ func (s *Shard) closeSyncPage(
 }
 
 // sendSyncSnapshot reads and sends initial product state after the snapshot hook.
-func (s *Shard) sendSyncSnapshot(ctx context.Context, page *pageSocket, user webapi.UserDTO) error {
+func (s *Shard) sendSyncSnapshot(ctx context.Context, page *pageSocket, user webapiproto.UserDTO) error {
 	state, err := s.productState(ctx, user)
 	if err != nil {
 		slog.ErrorContext(ctx, "a page's product state could not be read", "error", err)
@@ -290,7 +290,7 @@ func (s *Shard) sendSyncSnapshot(ctx context.Context, page *pageSocket, user web
 			return err
 		}
 	}
-	if err := page.send(ctx, &webapi.SyncEventSnapshot{State: state}); err != nil {
+	if err := page.send(ctx, &webapiproto.SyncEventSnapshot{State: state}); err != nil {
 		return err
 	}
 	return nil

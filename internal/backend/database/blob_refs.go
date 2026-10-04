@@ -8,7 +8,7 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // OwnerBlobs is the owner's namespace and blob-use record needed by commits.
@@ -19,17 +19,17 @@ type OwnerBlobs interface {
 	// CommitUses records references written or removed inside a transaction before
 	// commit. A blob being deleted refuses the transaction. This operation performs
 	// no network IO; cancellation must not abandon an admitted commit.
-	CommitUses(ctx context.Context, blobs []core.BlobRef) error
+	CommitUses(ctx context.Context, blobs []types.BlobRef) error
 }
 
 // RetiredNode holds changed blocks in one node after applying the agent's retirement rule.
 type RetiredNode struct {
-	Node   core.NodeID
+	Node   types.NodeID
 	Blocks []transcript.RetiredBlock
 }
 
 // BlobRows derives the index rows of block in reference order.
-func BlobRows(block core.Block) []BlobRefRow {
+func BlobRows(block types.Block) []BlobRefRow {
 	rows := make([]BlobRefRow, 0)
 	for part, ref := range store.BlockReferences(block) {
 		rows = append(rows, BlobRefRow{Part: part, Blob: ref.Blob, Holder: ref.Holder, At: block.CreatedAt()})
@@ -54,10 +54,10 @@ func HolderName(holder store.Holder) string {
 func WriteBlock(
 	ctx context.Context,
 	tx *sql.Tx,
-	node core.NodeID,
+	node types.NodeID,
 	index int,
-	block core.Block,
-	touched *[]core.BlobRef,
+	block types.Block,
+	touched *[]types.BlobRef,
 ) error {
 	document, err := encoded(block)
 	if err != nil {
@@ -107,7 +107,7 @@ func WriteBlock(
 }
 
 // TruncateBlocks removes blocks and index rows from index on, adding removed blobs to touched.
-func TruncateBlocks(ctx context.Context, tx *sql.Tx, node core.NodeID, index int, touched *[]core.BlobRef) error {
+func TruncateBlocks(ctx context.Context, tx *sql.Tx, node types.NodeID, index int, touched *[]types.BlobRef) error {
 	if err := removedBlobs(
 		ctx,
 		tx,
@@ -122,7 +122,7 @@ func TruncateBlocks(ctx context.Context, tx *sql.Tx, node core.NodeID, index int
 }
 
 // SubtreeBlobs returns index blobs referenced by node and its descendants.
-func SubtreeBlobs(ctx context.Context, tx *sql.Tx, node core.NodeID) ([]core.BlobRef, error) {
+func SubtreeBlobs(ctx context.Context, tx *sql.Tx, node types.NodeID) ([]types.BlobRef, error) {
 	return queryRecords(
 		ctx,
 		tx,
@@ -137,7 +137,7 @@ func SubtreeBlobs(ctx context.Context, tx *sql.Tx, node core.NodeID) ([]core.Blo
 SELECT blob
 FROM blob_refs
 WHERE node_id IN subtree`,
-		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
 		node,
 	)
 }
@@ -153,7 +153,7 @@ func Retirable(ctx context.Context, tx *sql.Tx, retirement transcript.Retirement
 		}
 	}
 	type nodeCount struct {
-		id    core.NodeID
+		id    types.NodeID
 		count int64
 	}
 	nodes, err := queryRecords(
@@ -165,7 +165,7 @@ FROM nodes
 WHERE id IN (SELECT node_id FROM blob_refs WHERE holder = ? AND at < ?)
 ORDER BY id`,
 		func(r *storedRow) nodeCount {
-			return nodeCount{id: checked(r, "id", core.ParseNodeID), count: r.integer("block_count")}
+			return nodeCount{id: checked(r, "id", types.ParseNodeID), count: r.integer("block_count")}
 		},
 		HolderName(store.ToolResult),
 		expired,
@@ -195,7 +195,7 @@ func RetireMedia(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, retirement t
 	if err != nil {
 		return 0, err
 	}
-	touched := make([]core.BlobRef, 0)
+	touched := make([]types.BlobRef, 0)
 	changed := 0
 	for _, node := range retired {
 		for _, block := range node.Blocks {
@@ -209,7 +209,7 @@ func RetireMedia(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, retirement t
 }
 
 // References returns distinct blobs held by blocks, queued messages and command outputs.
-func References(ctx context.Context, tx *sql.Tx) ([]core.BlobRef, error) {
+func References(ctx context.Context, tx *sql.Tx) ([]types.BlobRef, error) {
 	refs, err := CommandOutputReferences(ctx, tx)
 	if err != nil {
 		return nil, err
@@ -219,7 +219,7 @@ func References(ctx context.Context, tx *sql.Tx) ([]core.BlobRef, error) {
 		tx,
 		"blob_refs",
 		"SELECT DISTINCT blob FROM blob_refs",
-		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
 	)
 	if err != nil {
 		return nil, err
@@ -248,16 +248,16 @@ func removedBlobs(
 	ctx context.Context,
 	tx *sql.Tx,
 	query string,
-	node core.NodeID,
+	node types.NodeID,
 	index int,
-	touched *[]core.BlobRef,
+	touched *[]types.BlobRef,
 ) error {
 	rows, err := queryRecords(
 		ctx,
 		tx,
 		"blob_refs",
 		query,
-		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
 		node,
 		index,
 	)

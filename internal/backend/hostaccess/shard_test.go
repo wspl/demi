@@ -11,16 +11,16 @@ import (
 	"github.com/wspl/demi/internal/backend/database/databasetest"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // testShard composes real storage and runner owners, with controlled product
 // callbacks. Tests may block a callback with a channel, never with a time delay.
 type testShard struct {
 	mu            sync.Mutex
-	owner         webapi.UserID
+	owner         webapiproto.UserID
 	control       *database.ControlService
 	conversations *Conversations
 	devices       runners.Devices
@@ -33,14 +33,14 @@ type testShard struct {
 	directories   DirectorySets
 	idle          int
 	jobs          int
-	idleHook      func(webapi.ConversationID)
+	idleHook      func(webapiproto.ConversationID)
 	directoryHook func(context.Context) (DirectorySets, error)
 }
 
 func newTestShard(t *testing.T) *testShard {
 	t.Helper()
 	s := &testShard{}
-	s.control = databasetest.Control(t.Context(), t, core.SystemClock{})
+	s.control = databasetest.Control(t.Context(), t, types.SystemClock{})
 	user := databasetest.Master(t.Context(), t, s.control)
 	s.owner = user.ID
 	s.stores = databasetest.Conversations(t.Context(), t, 4)
@@ -53,7 +53,7 @@ func newTestShard(t *testing.T) *testShard {
 			t.Error(err)
 		}
 	})
-	s.blobs = blobs.New(bucket, core.SystemClock{}).ForUser(s.owner)
+	s.blobs = blobs.New(bucket, types.SystemClock{}).ForUser(s.owner)
 	s.pipes = remotehost.NewPipes(remotehost.Arrival)
 	t.Cleanup(func() {
 		if err := s.pipes.Close(context.Background()); err != nil {
@@ -70,21 +70,21 @@ func newTestShard(t *testing.T) *testShard {
 	})
 	return s
 }
-func (s *testShard) User() webapi.UserID               { return s.owner }
+func (s *testShard) User() webapiproto.UserID          { return s.owner }
 func (s *testShard) Control() *database.ControlService { return s.control }
-func (s *testShard) Clock() core.Clock                 { return core.SystemClock{} }
+func (s *testShard) Clock() types.Clock                { return types.SystemClock{} }
 func (s *testShard) Devices() *runners.Devices         { return &s.devices }
 func (s *testShard) Pipes() *remotehost.Pipes          { return s.pipes }
 func (s *testShard) Commands() *runners.CommandRouter  { return &s.commands }
 func (s *testShard) Conversations() *Conversations     { return s.conversations }
 func (s *testShard) Blobs() *blobs.Namespace           { return s.blobs }
-func (s *testShard) ConversationDB(id webapi.ConversationID) *database.ConversationDB {
+func (s *testShard) ConversationDB(id webapiproto.ConversationID) *database.ConversationDB {
 	return s.stores.DB(id)
 }
 func (s *testShard) Native() *runners.NativeCatalog { return s.native }
 func (s *testShard) PublicURL() *runners.PublicURL  { return nil }
 func (s *testShard) CloudShard() cloud.Shard        { return nil }
-func (s *testShard) TrackIdle(id webapi.ConversationID) {
+func (s *testShard) TrackIdle(id webapiproto.ConversationID) {
 	s.mu.Lock()
 	s.idle++
 	hook := s.idleHook
@@ -94,7 +94,7 @@ func (s *testShard) TrackIdle(id webapi.ConversationID) {
 	}
 }
 
-func (s *testShard) JobEnded(webapi.ConversationID) {
+func (s *testShard) JobEnded(webapiproto.ConversationID) {
 	s.mu.Lock()
 	s.jobs++
 	s.mu.Unlock()
@@ -110,7 +110,7 @@ func (s *testShard) PluginInstalls() *PluginInstalls { return s.installs }
 
 func (s *testShard) conversation(t *testing.T) database.ConversationRecord {
 	t.Helper()
-	id := webapi.ConversationID("00000000-0000-4000-8000-000000000001")
+	id := webapiproto.ConversationID("00000000-0000-4000-8000-000000000001")
 	if _, _, err := s.control.CreateConversation(t.Context(), s.owner, id); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func (s *testShard) paired(t *testing.T, name string) database.DeviceRecord {
 		t.Context(),
 		s.owner,
 		name,
-		runnerwire.RunnerPlatform("linux"),
+		runnerproto.RunnerPlatform("linux"),
 		database.HashToken(name),
 	)
 	if err != nil {
@@ -147,7 +147,7 @@ func (s *testShard) target(
 		t.Context(),
 		s,
 		record,
-		&webapi.ConversationTargetDevice{DeviceID: device.ID, Path: path},
+		&webapiproto.ConversationTargetDevice{DeviceID: device.ID, Path: path},
 	); err != nil {
 		t.Fatal(err)
 	}

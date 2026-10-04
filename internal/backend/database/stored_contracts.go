@@ -1,8 +1,8 @@
 package database
 
 import (
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 //revive:disable:exported
@@ -14,7 +14,7 @@ import (
 // A Fork keeps its source's in its operation's metadata.
 // +demi:root
 type AttachedHostRecord struct {
-	Device webapi.DeviceID `json:"device"`
+	Device webapiproto.DeviceID `json:"device"`
 	// What the model and the user call the host; unique within the
 	// conversation.
 	// +demi:length chars min=1
@@ -38,14 +38,14 @@ type TargetSwitch struct {
 // +demi:root
 type ForkMetadata struct {
 	// +demi:length chars min=1
-	Title  string                    `json:"title"`
-	Target webapi.ConversationTarget `json:"target"`
+	Title  string                         `json:"title"`
+	Target webapiproto.ConversationTarget `json:"target"`
 	// The model selection the source's record held, which the destination
 	// inherits; none when the source had none.
 	// +demi:nullable
-	Model         *core.ModelSelection `json:"model"`
-	CreatedAt     core.Timestamp       `json:"createdAt"`
-	AttachedHosts []AttachedHostRecord `json:"attachedHosts"`
+	Model         *types.ModelSelection `json:"model"`
+	CreatedAt     types.Timestamp       `json:"createdAt"`
+	AttachedHosts []AttachedHostRecord  `json:"attachedHosts"`
 }
 
 // An entry's cached catalog as the control store keeps it: model metadata
@@ -56,8 +56,8 @@ type CatalogRecord struct {
 	// +demi:length chars min=1
 	Key string `json:"key"`
 	// When the source last answered.
-	CheckedAt core.Timestamp         `json:"checkedAt"`
-	Catalog   core.ProviderModelList `json:"catalog"`
+	CheckedAt types.Timestamp         `json:"checkedAt"`
+	Catalog   types.ProviderModelList `json:"catalog"`
 }
 
 // A conversation's selection resolved: the device its work runs on, and
@@ -73,21 +73,21 @@ type ExecutionTarget interface{ executionTarget() }
 // +demi:tolerant
 type ExecutionCloud struct {
 	// +demi:nullable
-	DeviceID *webapi.DeviceID `json:"deviceId"`
-	Path     string           `json:"path"`
+	DeviceID *webapiproto.DeviceID `json:"deviceId"`
+	Path     string                `json:"path"`
 }
 
 // +demi:variant ExecutionTarget device
 // +demi:tolerant
 type ExecutionDevice struct {
-	DeviceID webapi.DeviceID `json:"deviceId"`
-	Path     string          `json:"path"`
+	DeviceID webapiproto.DeviceID `json:"deviceId"`
+	Path     string               `json:"path"`
 }
 
 // +demi:variant ExecutionTarget workspace
 // +demi:tolerant
 type ExecutionWorkspace struct {
-	WorkspaceID webapi.WorkspaceID `json:"workspaceId"`
-	DeviceID    webapi.DeviceID    `json:"deviceId"`
-	Path        string             `json:"path"`
+	WorkspaceID webapiproto.WorkspaceID `json:"workspaceId"`
+	DeviceID    webapiproto.DeviceID    `json:"deviceId"`
+	Path        string                  `json:"path"`
 }

@@ -7,37 +7,37 @@ import (
 	"image/png"
 	"slices"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ModelOf is a model selection with a 100,000-token window.
-func ModelOf(provider, model string) core.ModelSelection {
-	return core.ModelSelection{
+func ModelOf(provider, model string) types.ModelSelection {
+	return types.ModelSelection{
 		ProviderID: provider,
-		Model: core.Model{
+		Model: types.Model{
 			ID:                 model,
 			Name:               model,
 			ContextWindow:      100000,
-			Thinking:           []core.ThinkingCapability{},
-			AcceptedExtensions: new([]core.FileExtension{}),
+			Thinking:           []types.ThinkingCapability{},
+			AcceptedExtensions: new([]types.FileExtension{}),
 		},
 	}
 }
 
 // ModelReading selects a model that reads the extensions natively.
-func ModelReading(provider, model string, extensions []core.FileExtension) core.ModelSelection {
+func ModelReading(provider, model string, extensions []types.FileExtension) types.ModelSelection {
 	selection := ModelOf(provider, model)
 	selection.Model.AcceptedExtensions = new(slices.Clone(extensions))
 	return selection
 }
 
 // TestModel selects test-model from provider stub.
-func TestModel() core.ModelSelection { return ModelOf("stub", "test-model") }
+func TestModel() types.ModelSelection { return ModelOf("stub", "test-model") }
 
 // Text is a message's content of one text.
-func Text(text string) []core.UserContentBlock {
-	return []core.UserContentBlock{&core.UserText{Text: text}}
+func Text(text string) []types.UserContentBlock {
+	return []types.UserContentBlock{&types.UserText{Text: text}}
 }
 
 // SentText is the same content as a provider request carries it.
@@ -46,7 +46,7 @@ func SentText(text string) []provider.UserPart {
 }
 
 // PNG produces a real PNG whose pixels follow seed.
-func PNG(width, height uint32, seed uint8) core.B64Bytes {
+func PNG(width, height uint32, seed uint8) types.B64Bytes {
 	pixels := image.NewNRGBA(image.Rect(0, 0, int(width), int(height)))
 	for y := 0; y < int(height); y++ {
 		for x := 0; x < int(width); x++ {

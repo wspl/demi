@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestHTTPStatusCodes(t *testing.T) {
@@ -259,10 +259,10 @@ func TestStandardHTTPReading(t *testing.T) {
 		Body:    "slow down",
 	}
 	upstream := encoded(t, record)
-	diagnostics := core.ProviderErrorDiagnostics{Source: "http", Upstream: &upstream}
-	requireEqual(t, *provider.ReadHTTPFailure(&diagnostics, now).RetryAt, core.Timestamp("2026-09-18T14:01:30.000Z"))
+	diagnostics := types.ProviderErrorDiagnostics{Source: "http", Upstream: &upstream}
+	requireEqual(t, *provider.ReadHTTPFailure(&diagnostics, now).RetryAt, types.Timestamp("2026-09-18T14:01:30.000Z"))
 	for _, tc := range []struct {
-		source core.FailureSource
+		source types.FailureSource
 		record string
 	}{{
 		"http",
@@ -274,7 +274,7 @@ func TestStandardHTTPReading(t *testing.T) {
 		"http",
 		"not a record",
 	}} {
-		diagnostics := core.ProviderErrorDiagnostics{Source: tc.source, Upstream: &tc.record}
+		diagnostics := types.ProviderErrorDiagnostics{Source: tc.source, Upstream: &tc.record}
 		if provider.ReadHTTPFailure(&diagnostics, now).RetryAt != nil {
 			t.Fatalf("unexpected time: %+v", tc)
 		}
@@ -284,24 +284,24 @@ func TestStandardHTTPReading(t *testing.T) {
 func TestRetryWaitOnlyWhenNamed(t *testing.T) {
 	failure := provider.ProtocolFailure("x", "x")
 	for _, tc := range []struct {
-		at   core.Timestamp
+		at   types.Timestamp
 		wait time.Duration
 	}{{"2026-09-18T14:00:30.000Z", 30 * time.Second}, {"2026-09-18T13:00:00.000Z", 0}} {
-		got := failure.WithRetryWait(func(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts {
-			return core.ProviderFailureFacts{RetryAt: &tc.at}
+		got := failure.WithRetryWait(func(*types.ProviderErrorDiagnostics, types.Timestamp) types.ProviderFailureFacts {
+			return types.ProviderFailureFacts{RetryAt: &tc.at}
 		}, now)
 		if got.RetryAfter == nil || *got.RetryAfter != tc.wait {
 			t.Fatalf("%+v", got)
 		}
 	}
-	none := func(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts {
-		return core.ProviderFailureFacts{}
+	none := func(*types.ProviderErrorDiagnostics, types.Timestamp) types.ProviderFailureFacts {
+		return types.ProviderFailureFacts{}
 	}
 	requireEqual(t, failure.WithRetryWait(none, now), failure)
 	failure.Diagnostics = nil
-	later := func(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts {
-		at := core.Timestamp("2026-09-18T14:00:30.000Z")
-		return core.ProviderFailureFacts{RetryAt: &at}
+	later := func(*types.ProviderErrorDiagnostics, types.Timestamp) types.ProviderFailureFacts {
+		at := types.Timestamp("2026-09-18T14:00:30.000Z")
+		return types.ProviderFailureFacts{RetryAt: &at}
 	}
 	requireEqual(t, failure.WithRetryWait(later, now), failure)
 }
@@ -324,7 +324,7 @@ func TestTransportFailureOmitsEndpoint(t *testing.T) {
 		strings.Contains(failure.Message, "127.0.0.1") {
 		t.Fatalf("%+v", failure)
 	}
-	requireEqual(t, failure.Diagnostics.Source, core.FailureSource("transport"))
+	requireEqual(t, failure.Diagnostics.Source, types.FailureSource("transport"))
 	if failure.Diagnostics.Upstream != nil {
 		t.Fatal("transport has a record")
 	}

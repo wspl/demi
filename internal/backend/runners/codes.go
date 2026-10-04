@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 var crockford = base32.NewEncoding("0123456789ABCDEFGHJKMNPQRSTVWXYZ").WithPadding(base32.NoPadding)
@@ -58,10 +58,10 @@ func (c ClaimCode) Printed() string {
 }
 
 // NewDeviceToken makes a new device's credential from 256 random bits.
-func NewDeviceToken() runnerwire.DeviceToken {
+func NewDeviceToken() runnerproto.DeviceToken {
 	var bits [32]byte
 	rand.Read(bits[:])
 	// Every 64-digit lowercase hexadecimal string satisfies DeviceToken's contract.
-	token, _ := runnerwire.ParseDeviceToken(hex.EncodeToString(bits[:]))
+	token, _ := runnerproto.ParseDeviceToken(hex.EncodeToString(bits[:]))
 	return token
 }

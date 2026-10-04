@@ -15,18 +15,18 @@ import (
 	"github.com/wspl/demi/internal/agent/tools"
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 const (
-	systemPrompt             = "You are a careful coding assistant. Remember any secrets the user told you verbatim."
-	recallPrompt             = "只回答暗号值,用「ALPHA=…, BETA=…, GAMMA=…」格式:我最早让你记住的三个暗号分别是什么?"
-	fillerPrompt             = "忽略下列填充并只回复 ok。"
-	turnTimeout              = 600 * time.Second
-	root         core.NodeID = "compaction-fixture"
+	systemPrompt              = "You are a careful coding assistant. Remember any secrets the user told you verbatim."
+	recallPrompt              = "只回答暗号值,用「ALPHA=…, BETA=…, GAMMA=…」格式:我最早让你记住的三个暗号分别是什么?"
+	fillerPrompt              = "忽略下列填充并只回复 ok。"
+	turnTimeout               = 600 * time.Second
+	root         types.NodeID = "compaction-fixture"
 )
 
 type conversation struct {
@@ -36,14 +36,14 @@ type conversation struct {
 	http       *http.Client
 }
 
-func openConversation(ctx context.Context, f fixture, model core.ModelSelection) (*conversation, error) {
+func openConversation(ctx context.Context, f fixture, model types.ModelSelection) (*conversation, error) {
 	entry, err := deepseek()
 	if err != nil {
 		return nil, err
 	}
 	memory := storetest.NewMemoryTreeStore()
 	initial := initialCheckpoint(f, model)
-	if err := memory.CreateNode(ctx, store.RootRecord(root, core.SystemClock{}.Now()), initial); err != nil {
+	if err := memory.CreateNode(ctx, store.RootRecord(root, types.SystemClock{}.Now()), initial); err != nil {
 		return nil, err
 	}
 	client := &http.Client{}
@@ -53,15 +53,15 @@ func openConversation(ctx context.Context, f fixture, model core.ModelSelection)
 		Toolsets:     tools.Set{Commands: &host.CommandSet{}, Revision: "none"},
 		Instructions: systemPrompt, Hosts: &toolstest.NoHost{}, Shells: toolstest.NoShells{},
 		Providers: &deepSeek{provider: entry, http: client, selection: model},
-		Stores:    func(core.NodeID) store.Tree { return memory },
-		Clock:     core.SystemClock{}, IDs: transcript.RandomIDs{}, Config: config,
-		StatusChanged: func(core.NodeID) {},
+		Stores:    func(types.NodeID) store.Tree { return memory },
+		Clock:     types.SystemClock{}, IDs: transcript.RandomIDs{}, Config: config,
+		StatusChanged: func(types.NodeID) {},
 	})
 	connection, frames := s.Connect(root, f.CWD, nil)
 	c := &conversation{server: s, connection: connection, frames: frames, http: client}
-	connection.Handle(ctx, &framewire.OpenFrame{})
-	err = c.nextUntil(ctx, func(frame framewire.ServerFrame) bool {
-		_, ok := frame.(*framewire.PendingSteersFrame)
+	connection.Handle(ctx, &conversationproto.OpenFrame{})
+	err = c.nextUntil(ctx, func(frame conversationproto.ServerFrame) bool {
+		_, ok := frame.(*conversationproto.PendingSteersFrame)
 		return ok
 	})
 	if err != nil {
@@ -77,14 +77,14 @@ func (c *conversation) close(ctx context.Context) error {
 	return err
 }
 
-func (c *conversation) blocks() []core.Block {
+func (c *conversation) blocks() []types.Block {
 	return c.server.Tree(root).Root().Session().Transcript().Blocks
 }
 
 func (c *conversation) generations() int {
 	count := 0
 	for _, block := range c.blocks() {
-		if _, ok := block.(*core.CompactionBoundaryBlock); ok {
+		if _, ok := block.(*types.CompactionBoundaryBlock); ok {
 			count++
 		}
 	}
@@ -94,7 +94,7 @@ func (c *conversation) generations() int {
 func (c *conversation) errors() int {
 	count := 0
 	for _, block := range c.blocks() {
-		if _, ok := block.(*core.ErrorBlock); ok {
+		if _, ok := block.(*types.ErrorBlock); ok {
 			count++
 		}
 	}
@@ -111,7 +111,7 @@ func (c *conversation) context(window uint32) (uint64, error) {
 	return transcript.Estimate(transcript.NewRequestView(view, flash(window).Model, provider.RequestLimits{})), nil
 }
 
-func (c *conversation) nextUntil(ctx context.Context, until func(framewire.ServerFrame) bool) error {
+func (c *conversation) nextUntil(ctx context.Context, until func(conversationproto.ServerFrame) bool) error {
 	ctx, cancel := context.WithTimeout(ctx, turnTimeout)
 	defer cancel()
 	for c.frames.Next(ctx) {
@@ -125,36 +125,36 @@ func (c *conversation) nextUntil(ctx context.Context, until func(framewire.Serve
 	return io.EOF
 }
 
-func (c *conversation) act(ctx context.Context, frame framewire.ClientFrame) error {
+func (c *conversation) act(ctx context.Context, frame conversationproto.ClientFrame) error {
 	c.connection.Handle(ctx, frame)
-	if err := c.nextUntil(ctx, func(frame framewire.ServerFrame) bool {
-		phase, ok := frame.(*framewire.PhaseFrame)
-		return ok && phase.Phase != core.SessionPhaseIdle
+	if err := c.nextUntil(ctx, func(frame conversationproto.ServerFrame) bool {
+		phase, ok := frame.(*conversationproto.PhaseFrame)
+		return ok && phase.Phase != types.SessionPhaseIdle
 	}); err != nil {
 		return err
 	}
-	return c.nextUntil(ctx, func(frame framewire.ServerFrame) bool {
-		phase, ok := frame.(*framewire.PhaseFrame)
-		return ok && phase.Phase == core.SessionPhaseIdle
+	return c.nextUntil(ctx, func(frame conversationproto.ServerFrame) bool {
+		phase, ok := frame.(*conversationproto.PhaseFrame)
+		return ok && phase.Phase == types.SessionPhaseIdle
 	})
 }
 
 func (c *conversation) send(ctx context.Context, text string) (string, error) {
 	before := len(c.blocks())
-	id, err := core.ParseTurnID(transcript.RandomIDs{}.NextID())
+	id, err := types.ParseTurnID(transcript.RandomIDs{}.NextID())
 	if err != nil {
 		return "", err
 	}
-	err = c.act(ctx, &framewire.SendFrame{
+	err = c.act(ctx, &conversationproto.SendFrame{
 		MessageID: id,
-		Content:   []framewire.ClientContent{&framewire.TextContent{Text: text}},
+		Content:   []conversationproto.ClientContent{&conversationproto.TextContent{Text: text}},
 	})
 	if err != nil {
 		return "", err
 	}
 	var texts []string
 	for _, block := range c.blocks()[before:] {
-		if text, ok := block.(*core.TextBlock); ok {
+		if text, ok := block.(*types.TextBlock); ok {
 			texts = append(texts, text.Text)
 		}
 	}
@@ -176,7 +176,7 @@ func (c *conversation) grow(ctx context.Context, label string, chars int) error 
 	return err
 }
 
-func (c *conversation) actSwitch(ctx context.Context, model core.ModelSelection) error {
+func (c *conversation) actSwitch(ctx context.Context, model types.ModelSelection) error {
 	change, err := c.server.PrepareSwitch(ctx, root, model)
 	if err != nil {
 		return err

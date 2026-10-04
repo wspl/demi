@@ -19,12 +19,12 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // devOutput captures concurrent child output and signals the printed readiness
@@ -82,28 +82,33 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	target, err := commandwire.HostTarget()
+	target, err := commandproto.HostTarget()
 	if err != nil {
 		t.Fatal(err)
 	}
 	output := &devOutput{ready: make(chan string, 1)}
-	app := application{Root: root, Out: output, Err: output, chromeRelease: func() (browserop.BrowserRelease, error) {
-		return browserop.BrowserRelease{
-			Version: "153.0.8010.36",
-			Platforms: []browserop.ReleasePlatform{
-				{
-					Target:     string(target),
-					URL:        "https://unused.invalid/chrome.zip",
-					Size:       digest.Size,
-					SHA256:     digest.SHA256,
-					Executable: "chrome",
+	app := application{
+		Root: root,
+		Out:  output,
+		Err:  output,
+		chromeRelease: func() (browserproto.BrowserRelease, error) {
+			return browserproto.BrowserRelease{
+				Version: "153.0.8010.36",
+				Platforms: []browserproto.ReleasePlatform{
+					{
+						Target:     string(target),
+						URL:        "https://unused.invalid/chrome.zip",
+						Size:       digest.Size,
+						SHA256:     digest.SHA256,
+						Executable: "chrome",
+					},
 				},
-			},
-		}, nil
-	}}
+			}, nil
+		},
+	}
 	// The development entry is only seeded: no turn uses it, so its endpoint
 	// is never called.
-	developmentURL, err := webapi.ParseEndpointURL("https://models.example.test/v1")
+	developmentURL, err := webapiproto.ParseEndpointURL("https://models.example.test/v1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +167,7 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries, err := webapi.DecodeProviders(answer.Body)
+	entries, err := webapiproto.DecodeProviders(answer.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +175,7 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 		t.Fatalf("provider entries: %s", answer.Body)
 	}
 	seeded := entries.Providers[1]
-	wire := core.WireAPIChatCompletions
+	wire := types.WireAPIChatCompletions
 	if string(seeded.ID) != developmentID || seeded.ProviderType != "openai" || seeded.Label != "Development" ||
 		seeded.WireAPI == nil || *seeded.WireAPI != wire || seeded.BaseURL == nil ||
 		*seeded.BaseURL != developmentURL || seeded.Models == nil || len(*seeded.Models) != 1 ||
@@ -180,8 +185,8 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	if strings.Contains(printed, "sk-development") {
 		t.Fatal("the summary printed the development key")
 	}
-	id := webapi.ConversationID("b1a62b67-0182-4d89-8319-fd5be3a24894")
-	body, err := contract.EncodeJSON(webapi.CreateConversation{ID: id})
+	id := webapiproto.ConversationID("b1a62b67-0182-4d89-8319-fd5be3a24894")
+	body, err := contract.EncodeJSON(webapiproto.CreateConversation{ID: id})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,11 +197,13 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	if answer.Status != http.StatusCreated {
 		t.Fatalf("create: %d %s", answer.Status, answer.Body)
 	}
-	if _, err := webapi.DecodeConversationAnswer(answer.Body); err != nil {
+	if _, err := webapiproto.DecodeConversationAnswer(answer.Body); err != nil {
 		t.Fatal(err)
 	}
 	body, err = contract.EncodeJSON(
-		webapi.ConversationPatch{Model: &webapi.ModelChoice{ProviderID: webapi.ProviderID(provider), ModelID: "echo"}},
+		webapiproto.ConversationPatch{
+			Model: &webapiproto.ModelChoice{ProviderID: webapiproto.ProviderID(provider), ModelID: "echo"},
+		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +216,7 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	if answer.Status != http.StatusOK {
 		t.Fatalf("select Echo: %d %s", answer.Status, answer.Body)
 	}
-	if _, err := webapi.DecodeConversationUpdate(answer.Body); err != nil {
+	if _, err := webapiproto.DecodeConversationUpdate(answer.Body); err != nil {
 		t.Fatal(err)
 	}
 	socket, response, err := websocket.Dial(
@@ -227,7 +234,7 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = socket.CloseNow() }()
-	send := func(frame framewire.ClientFrame) {
+	send := func(frame conversationproto.ClientFrame) {
 		t.Helper()
 		data, err := contract.EncodeJSON(frame)
 		if err != nil {
@@ -237,43 +244,43 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	next := func() framewire.ServerFrame {
+	next := func() conversationproto.ServerFrame {
 		t.Helper()
 		_, data, err := socket.Read(ctx)
 		if err != nil {
 			t.Fatalf("conversation: %v\n%s", err, output.text())
 		}
-		frame, err := framewire.DecodeServerFrame(data)
+		frame, err := conversationproto.DecodeServerFrame(data)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if refusal, ok := frame.(*framewire.RejectedFrame); ok {
+		if refusal, ok := frame.(*conversationproto.RejectedFrame); ok {
 			t.Fatalf("rejected: %+v", refusal)
 		}
-		if failure, ok := frame.(*framewire.ErrorFrame); ok {
+		if failure, ok := frame.(*conversationproto.ErrorFrame); ok {
 			t.Fatalf("backend error: %+v", failure)
 		}
 		return frame
 	}
-	send(&framewire.OpenFrame{})
+	send(&conversationproto.OpenFrame{})
 	for {
-		if phase, ok := next().(*framewire.PhaseFrame); ok && phase.Phase == core.SessionPhaseIdle {
+		if phase, ok := next().(*conversationproto.PhaseFrame); ok && phase.Phase == types.SessionPhaseIdle {
 			break
 		}
 	}
 	send(
-		&framewire.SendFrame{
+		&conversationproto.SendFrame{
 			MessageID: "dev-hello",
-			Content:   []framewire.ClientContent{&framewire.TextContent{Text: "hello"}},
+			Content:   []conversationproto.ClientContent{&conversationproto.TextContent{Text: "hello"}},
 		},
 	)
 	running := false
 	for {
-		if phase, ok := next().(*framewire.PhaseFrame); ok {
-			if phase.Phase == core.SessionPhaseRunning {
+		if phase, ok := next().(*conversationproto.PhaseFrame); ok {
+			if phase.Phase == types.SessionPhaseRunning {
 				running = true
 			}
-			if running && phase.Phase == core.SessionPhaseIdle {
+			if running && phase.Phase == types.SessionPhaseIdle {
 				break
 			}
 		}
@@ -282,13 +289,13 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transcript, err := webapi.DecodeTranscript(answer.Body)
+	transcript, err := webapiproto.DecodeTranscript(answer.Body)
 	if err != nil {
 		t.Fatalf("transcript: %v: %s", err, answer.Body)
 	}
 	var reply strings.Builder
 	for _, block := range transcript.Blocks {
-		if text, ok := block.(*core.TextBlock); ok {
+		if text, ok := block.(*types.TextBlock); ok {
 			reply.WriteString(text.Text)
 		}
 	}

@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestNodeJobTracksItsRoundAndClose(t *testing.T) {
@@ -15,11 +15,11 @@ func TestNodeJobTracksItsRoundAndClose(t *testing.T) {
 	}
 	child := root
 	child.ID = "child"
-	child.Parent = new(core.NodeID("root"))
+	child.Parent = new(types.NodeID("root"))
 	child.Description = "find it"
 	child.Profile = new("research")
 	running, _ := child.Job()
-	if running.Phase != framewire.JobPhaseRunning || running.EndedAt != nil || running.Result != nil ||
+	if running.Phase != conversationproto.JobPhaseRunning || running.EndedAt != nil || running.Result != nil ||
 		running.SubagentID != "child" ||
 		running.ParentSessionID != "root" {
 		t.Fatalf("running job: %#v", running)
@@ -30,22 +30,22 @@ func TestNodeJobTracksItsRoundAndClose(t *testing.T) {
 	}
 	for _, scenario := range []struct {
 		phase  store.ClosePhase
-		want   framewire.JobPhase
+		want   conversationproto.JobPhase
 		result *string
 	}{
 		{
 			&store.Completed{Result: "found it"},
-			framewire.JobPhaseCompleted,
+			conversationproto.JobPhaseCompleted,
 			new("found it"),
 		},
 		{
 			&store.Aborted{},
-			framewire.JobPhaseAborted,
+			conversationproto.JobPhaseAborted,
 			nil,
 		},
 		{
 			&store.Failed{Failure: "failed"},
-			framewire.JobPhaseError,
+			conversationproto.JobPhaseError,
 			nil,
 		},
 	} {

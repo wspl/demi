@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ModelsDevURL is the published models.dev document address.
@@ -24,14 +24,14 @@ const ModelsDevURL = "https://models.dev/api.json"
 type ModelsDevClient struct {
 	http   *http.Client
 	url    string
-	clock  core.Clock
+	clock  types.Clock
 	mu     sync.Mutex
 	copy   *documentCopy
 	flight *catalogFlight
 }
 type documentCopy struct {
 	vendors     []ModelsDevVendor
-	fetchedAt   core.Timestamp
+	fetchedAt   types.Timestamp
 	confirmedAt time.Time
 	etag        string
 	modified    string
@@ -45,7 +45,7 @@ type catalogFlight struct {
 }
 
 // NewModelsDevClient returns a client with no cached document.
-func NewModelsDevClient(client *http.Client, url string, clock core.Clock) *ModelsDevClient {
+func NewModelsDevClient(client *http.Client, url string, clock types.Clock) *ModelsDevClient {
 	return &ModelsDevClient{http: client, url: url, clock: clock}
 }
 
@@ -53,7 +53,7 @@ func NewModelsDevClient(client *http.Client, url string, clock core.Clock) *Mode
 // Vendor values are returned as independent copies.
 type ModelsDevSnapshot struct {
 	vendors   []ModelsDevVendor
-	FetchedAt core.Timestamp
+	FetchedAt types.Timestamp
 	Stale     bool
 	Warnings  []string
 }
@@ -319,12 +319,12 @@ func (v ModelsDevVendor) clone() ModelsDevVendor {
 }
 
 // VendorModels maps a vendor's entire directory onto a catalog with this read's metadata.
-func (s ModelsDevSnapshot) VendorModels(id string) (core.ProviderModelList, bool) {
+func (s ModelsDevSnapshot) VendorModels(id string) (types.ProviderModelList, bool) {
 	vendor, ok := s.Vendor(id)
 	if !ok {
-		return core.ProviderModelList{}, false
+		return types.ProviderModelList{}, false
 	}
-	return core.ProviderModelList{
+	return types.ProviderModelList{
 		Models:          vendor.Models(),
 		Warnings:        append([]string{}, s.Warnings...),
 		SourceFetchedAt: s.FetchedAt,
@@ -333,8 +333,8 @@ func (s ModelsDevSnapshot) VendorModels(id string) (core.ProviderModelList, bool
 }
 
 // Models returns the vendor's models in document order with unknown facts kept absent.
-func (v ModelsDevVendor) Models() []core.ProviderModel {
-	result := make([]core.ProviderModel, 0, len(v.models))
+func (v ModelsDevVendor) Models() []types.ProviderModel {
+	result := make([]types.ProviderModel, 0, len(v.models))
 	for _, named := range v.models {
 		catalog := named.catalog()
 		result = append(result, catalog)
@@ -386,11 +386,11 @@ func (c *ModelsDevClient) waitRead(ctx context.Context, flight *catalogFlight) (
 	}
 }
 
-func (n namedModel) catalog() core.ProviderModel {
+func (n namedModel) catalog() types.ProviderModel {
 	// Return independently owned optional fields, without exposing the
 	// cached model's pointers.
 	model := n.model
-	catalog := core.ProviderModel{ID: n.id, DisplayName: n.id, ServiceTiers: []core.ServiceTier{}}
+	catalog := types.ProviderModel{ID: n.id, DisplayName: n.id, ServiceTiers: []types.ServiceTier{}}
 	if model.Name != nil {
 		catalog.DisplayName = *model.Name
 	}
@@ -415,7 +415,7 @@ func (n namedModel) catalog() core.ProviderModel {
 		catalog.OutputLimit = modelTokens(model.Limit.Output)
 	}
 	if model.Cost != nil {
-		cost := core.ModelCost{}
+		cost := types.ModelCost{}
 		if model.Cost.Input != nil {
 			value := *model.Cost.Input
 			cost.Input = &value

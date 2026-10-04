@@ -6,17 +6,17 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 )
 
 // editRecorder gives one shell job a journal while jobs share the same edit lock.
-func editRecorder(t *testing.T, root, job string) *cmdsdk.Recorder {
+func editRecorder(t *testing.T, root, job string) *commandsdk.Recorder {
 	t.Helper()
-	recorder, err := cmdsdk.NewRecorder(
+	recorder, err := commandsdk.NewRecorder(
 		t.Context(),
-		commandwire.EditContext{Directory: filepath.Join(root, job), Lock: filepath.Join(root, "edits.lock")},
+		commandproto.EditContext{Directory: filepath.Join(root, job), Lock: filepath.Join(root, "edits.lock")},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +25,7 @@ func editRecorder(t *testing.T, root, job string) *cmdsdk.Recorder {
 }
 
 // editJournal observes the job's public report after its writers have joined.
-func editJournal(t *testing.T, recorder *cmdsdk.Recorder) commandwire.EditJournal {
+func editJournal(t *testing.T, recorder *commandsdk.Recorder) commandproto.EditJournal {
 	t.Helper()
 	journal, err := recorder.Report(t.Context())
 	if err != nil {
@@ -143,7 +143,7 @@ func TestAnotherJobCannotChangeAnAlreadyCapturedAfterSide(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, step := range []struct {
-		recorder *cmdsdk.Recorder
+		recorder *commandsdk.Recorder
 		script   string
 	}{{a, "echo A > file"}, {b, "echo B > file"}, {a, "echo C > file"}} {
 		result, _, stderr := shellFiles(t, root, step.script, func(o *engine.Options) { o.Edits = step.recorder })

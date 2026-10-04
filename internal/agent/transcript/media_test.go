@@ -7,44 +7,48 @@ import (
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestReplayMediaUsesStableTextOrHeldBytes(t *testing.T) {
-	data := core.B64Bytes{1, 2, 3}
-	blob := core.BlobRefOf(data)
-	source := &core.MediaSourceRef{Ref: blob, MediaType: "video/mp4"}
-	document := &core.DocumentRef{Ref: blob, MediaType: "application/pdf; q=1", FileName: "a.pdf"}
-	user := userBlock("u", "").(*core.UserBlock)
+	data := types.B64Bytes{1, 2, 3}
+	blob := types.BlobRefOf(data)
+	source := &types.MediaSourceRef{Ref: blob, MediaType: "video/mp4"}
+	document := &types.DocumentRef{Ref: blob, MediaType: "application/pdf; q=1", FileName: "a.pdf"}
+	user := userBlock("u", "").(*types.UserBlock)
 	user.Preamble = nil
-	user.Content = []core.UserContentBlock{&core.UserVideo{Source: source}, &core.UserDocument{Source: document}}
-	call := &core.ToolCallBlock{
+	user.Content = []types.UserContentBlock{&types.UserVideo{Source: source}, &types.UserDocument{Source: document}}
+	call := &types.ToolCallBlock{
 		Status:    "error",
 		ToolUseID: "call",
 		ToolName:  "read",
 		Input:     "{}",
-		Output: []core.ToolResultContentBlock{
-			&core.ToolVideo{Source: &core.ToolMediaRef{Ref: blob, MediaType: "video/mp4"}},
-			&core.ToolGone{Kind: "image", MediaType: "image/png", Cause: &core.NotStored{Error: "no space"}},
-			&core.ToolGone{Kind: "video", MediaType: "video/mp4", Cause: &core.Retired{At: "2026-10-01T12:00:00.000Z"}},
+		Output: []types.ToolResultContentBlock{
+			&types.ToolVideo{Source: &types.ToolMediaRef{Ref: blob, MediaType: "video/mp4"}},
+			&types.ToolGone{Kind: "image", MediaType: "image/png", Cause: &types.NotStored{Error: "no space"}},
+			&types.ToolGone{
+				Kind:      "video",
+				MediaType: "video/mp4",
+				Cause:     &types.Retired{At: "2026-10-01T12:00:00.000Z"},
+			},
 		},
 	}
-	blocks := []core.Block{user, call}
+	blocks := []types.Block{user, call}
 	model := storetest.ModelReading(
 		"stub",
 		"reads",
-		[]core.FileExtension{core.FileExtensionMP4, core.FileExtensionPDF},
+		[]types.FileExtension{types.FileExtensionMP4, types.FileExtensionPDF},
 	).Model
 	var held store.HeldMedia
 	held.Hold(blob, data)
-	missing, err := store.ReadMedia(t.Context(), storetest.NewMemoryBlobs(), []core.BlobRef{blob})
+	missing, err := store.ReadMedia(t.Context(), storetest.NewMemoryBlobs(), []types.BlobRef{blob})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, scenario := range []struct {
 		name       string
-		model      core.Model
+		model      types.Model
 		held       store.HeldMedia
 		limit      *uint64
 		video, doc string

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/runner/cmdpkgs/cmdpkgstest"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/runner/commandpackages/commandpackagestest"
 )
 
 func main() {
-	if err := cmdsdk.ServeStdio(context.Background(), &cmdpkgstest.Fixture{}); err != nil {
+	if err := commandsdk.ServeStdio(context.Background(), &commandpackagestest.Fixture{}); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "fixture:", err) // Failure to report cannot change the required exit status.
 		os.Exit(1)
 	}

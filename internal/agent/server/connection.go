@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 
 	"github.com/wspl/demi/internal/agent/session"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ErrLagged means the client fell behind by a full outbox; close its socket.
@@ -20,7 +20,7 @@ var ErrLagged = errors.New("the client fell behind by a full outbox")
 // Detaching the connection ends it once its queued frames are read.
 type Frames struct {
 	outbox *outbox
-	frame  framewire.ServerFrame
+	frame  conversationproto.ServerFrame
 	err    error
 }
 
@@ -54,7 +54,7 @@ func (f *Frames) Next(ctx context.Context) bool {
 }
 
 // Frame returns the frame the last Next found.
-func (f *Frames) Frame() framewire.ServerFrame { return f.frame }
+func (f *Frames) Frame() conversationproto.ServerFrame { return f.frame }
 
 // Err returns ErrLagged after a lag, the context's error after a cancelled
 // wait, and nil at the end of the outbox.
@@ -65,13 +65,13 @@ func (f *Frames) Err() error { return f.err }
 // The socket owner must Detach it when done; the tree's turns keep running.
 type Connection[H host.Host] struct {
 	server   *Server[H]
-	root     core.NodeID
+	root     types.NodeID
 	cwd      string
 	resolver ContentResolver
 	outbox   *outbox
 	detached atomic.Bool
 	// Observations are protected by server.mu; edit replies by the tree frame lock.
-	observations      map[core.NodeID]*session.Subscription
+	observations      map[types.NodeID]*session.Subscription
 	stateObservation  *session.Subscription
 	editReply         *editReply
 	publishedRevision uint64 // Protected by the tree frame lock.
@@ -80,7 +80,7 @@ type Connection[H host.Host] struct {
 // Handle handles a decoded frame to its end. The socket owner calls it in
 // arrival order; handling that waits delays the frames behind it. Failures
 // are answered as frames, never returned.
-func (c *Connection[H]) Handle(ctx context.Context, frame framewire.ClientFrame) {
+func (c *Connection[H]) Handle(ctx context.Context, frame conversationproto.ClientFrame) {
 	c.handle(ctx, frame)
 }
 
@@ -101,12 +101,12 @@ func (c *Connection[H]) Detach() {
 type outbox struct {
 	mu       sync.Mutex
 	capacity int
-	frames   []framewire.ServerFrame
+	frames   []conversationproto.ServerFrame
 	state    uint8 // 0 open, 1 closed, 2 lagged.
 	changed  chan struct{}
 }
 
-func (o *outbox) push(frame framewire.ServerFrame) bool {
+func (o *outbox) push(frame conversationproto.ServerFrame) bool {
 	o.mu.Lock()
 	if o.state != 0 {
 		o.mu.Unlock()
@@ -142,7 +142,7 @@ func (o *outbox) close() {
 // next returns the next queued frame. With none queued it returns ErrLagged
 // after a lag, io.EOF once the outbox is closed, and otherwise the channel
 // that closes on the next change.
-func (o *outbox) next() (framewire.ServerFrame, <-chan struct{}, error) {
+func (o *outbox) next() (conversationproto.ServerFrame, <-chan struct{}, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.state == 2 {

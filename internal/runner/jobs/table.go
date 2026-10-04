@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/runner/cmdpkgs"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/runner/commandpackages"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // WorkKind distinguishes shell jobs from raw processes with independent IDs.
@@ -60,7 +60,7 @@ type Commands struct {
 	// Paths locates the command aliases and client executable.
 	Paths ContextPaths
 	// Services acquires native command services.
-	Services *cmdpkgs.ServiceRegistry
+	Services *commandpackages.ServiceRegistry
 	// Endpoint is the local endpoint command clients reach.
 	Endpoint string
 	// Home is the installation directory, DEMI_HOME.
@@ -77,9 +77,9 @@ type ShellCommand struct {
 	// Script is the shell source to execute.
 	Script string
 	// Stdin is the optional job input pipe.
-	Stdin *runnerwire.PipeRef
+	Stdin *runnerproto.PipeRef
 	// Stdout is the optional job output pipe.
-	Stdout *runnerwire.PipeRef
+	Stdout *runnerproto.PipeRef
 	// Commands pins the manifest and command context, or is nil for no declarations.
 	Commands *DeclaredCommands
 }
@@ -91,7 +91,7 @@ type DeclaredCommands struct {
 	// ManifestHash identifies the job command manifest.
 	ManifestHash string
 	// Context supplies the backend command authority.
-	Context commandwire.Context
+	Context commandproto.Context
 }
 
 // ProcessCommand runs one raw executable with its arguments.
@@ -141,7 +141,7 @@ type taskEntry struct {
 	lifetime  context.Context
 	cancel    context.CancelCauseFunc
 	input     chan process.Input
-	signals   chan runnerwire.Signal
+	signals   chan runnerproto.Signal
 	following chan struct{}
 	follow    bool
 }
@@ -210,7 +210,7 @@ func (t *Table) Start(spec TaskSpec) error {
 		lifetime:  lifetime,
 		cancel:    cancel,
 		input:     make(chan process.Input, 64),
-		signals:   make(chan runnerwire.Signal, 16),
+		signals:   make(chan runnerproto.Signal, 16),
 		following: make(chan struct{}, 1),
 	}
 	t.entries[id] = entry
@@ -223,7 +223,7 @@ func (t *Table) Start(spec TaskSpec) error {
 // Input queues live stdin without blocking the connection. An overflowing queue
 // cancels the task; bulk streams use independently flowing HTTP pipes.
 func (t *Table) Input(id WorkID, bytes []byte) error {
-	if len(bytes) > runnerwire.StdinChunkBytes {
+	if len(bytes) > runnerproto.StdinChunkBytes {
 		return errors.New("live stdin chunk exceeds 64 KiB")
 	}
 	return t.queueInput(id, process.Input{Bytes: append([]byte{}, bytes...)})
@@ -251,14 +251,14 @@ func (t *Table) Follow(id WorkID, follow bool) {
 }
 
 // Signal delivers a signal without blocking; kill cancels the task.
-func (t *Table) Signal(id WorkID, signal runnerwire.Signal) error {
+func (t *Table) Signal(id WorkID, signal runnerproto.Signal) error {
 	t.mu.Lock()
 	entry := t.entries[id]
 	t.mu.Unlock()
 	if entry == nil {
 		return nil
 	}
-	if signal == runnerwire.SignalKill {
+	if signal == runnerproto.SignalKill {
 		entry.cancel(errTaskKilled)
 		return nil
 	}
@@ -329,13 +329,13 @@ func (t *Table) Close(ctx context.Context) error {
 // FailureExit encodes the end of work that could not run, or failed before its
 // status was known: no exit status and reason as its spawn error.
 func FailureExit(work WorkID, reason string) ([]byte, error) {
-	failure := &runnerwire.SpawnError{Kind: runnerwire.SpawnErrorKindOther, Detail: &reason}
+	failure := &runnerproto.SpawnError{Kind: runnerproto.SpawnErrorKindOther, Detail: &reason}
 	if work.Kind == ShellWork {
-		return runnerwire.Encode(
-			&runnerwire.JobExit{JobID: work.ID, SpawnError: failure, Files: []runnerwire.JobFileChange{}},
+		return runnerproto.Encode(
+			&runnerproto.JobExit{JobID: work.ID, SpawnError: failure, Files: []runnerproto.JobFileChange{}},
 		)
 	}
-	return runnerwire.Encode(&runnerwire.SpawnExit{SpawnID: work.ID, SpawnError: failure})
+	return runnerproto.Encode(&runnerproto.SpawnExit{SpawnID: work.ID, SpawnError: failure})
 }
 
 // queueInput applies the connection's bounded live-input policy without waiting.

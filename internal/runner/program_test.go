@@ -14,10 +14,10 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/programtest"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"go.uber.org/goleak"
 )
 
@@ -46,7 +46,7 @@ type runnerFixture struct {
 	command                   *exec.Cmd
 	done                      chan error
 	output                    runnerDiagnostics
-	hello                     *runnerwire.Hello
+	hello                     *runnerproto.Hello
 }
 
 type runnerDiagnostics struct {
@@ -91,7 +91,7 @@ func newRunner(t *testing.T, env map[string]string, path string) *runnerFixture 
 		if err != nil {
 			return
 		}
-		socket.SetReadLimit(runnerwire.MaxMessageBytes)
+		socket.SetReadLimit(runnerproto.MaxMessageBytes)
 		select {
 		case f.requested <- r.URL.RequestURI():
 		case <-ctx.Done():
@@ -161,13 +161,13 @@ func (f *runnerFixture) accept() {
 	case <-f.ctx.Done():
 		f.t.Fatalf("runner did not connect: %v\n%s", f.ctx.Err(), f.output.text())
 	}
-	hello, ok := f.frame().(*runnerwire.Hello)
+	hello, ok := f.frame().(*runnerproto.Hello)
 	if !ok {
 		f.t.Fatal("runner sent no hello")
 	}
 	f.hello = hello
 }
-func (f *runnerFixture) online() { f.send(&runnerwire.HelloOK{DeviceID: "device"}) }
+func (f *runnerFixture) online() { f.send(&runnerproto.HelloOK{DeviceID: "device"}) }
 func (f *runnerFixture) stop() {
 	if f.command == nil {
 		return
@@ -185,9 +185,9 @@ func (f *runnerFixture) stop() {
 	f.command = nil
 }
 
-func (f *runnerFixture) send(message runnerwire.Inbound) {
+func (f *runnerFixture) send(message runnerproto.Inbound) {
 	f.t.Helper()
-	data, err := runnerwire.Encode(message)
+	data, err := runnerproto.Encode(message)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -196,30 +196,30 @@ func (f *runnerFixture) send(message runnerwire.Inbound) {
 	}
 }
 
-func (f *runnerFixture) frame() runnerwire.Outbound {
+func (f *runnerFixture) frame() runnerproto.Outbound {
 	f.t.Helper()
 	_, data, err := f.socket.Read(f.ctx)
 	if err != nil {
 		f.t.Fatalf("receive: %v\n%s", err, f.output.text())
 	}
-	message, err := runnerwire.DecodeOutbound(data)
+	message, err := runnerproto.DecodeOutbound(data)
 	if err != nil {
 		f.t.Fatal(err)
 	}
 	return message
 }
 
-func runnerCommandContext() commandwire.Context {
-	return commandwire.Context{
+func runnerCommandContext() commandproto.Context {
+	return commandproto.Context{
 		Conversation: "conversation",
-		Caller:       &commandwire.AgentCaller{Number: 1},
-		Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
+		Caller:       &commandproto.AgentCaller{Number: 1},
+		Locale:       commandproto.CommandLocale{TimeZone: "UTC", Languages: []commandproto.LanguageTag{"en-US"}},
 	}
 }
 
 func (f *runnerFixture) job(id, script string) {
 	f.send(
-		&runnerwire.JobStart{
+		&runnerproto.JobStart{
 			JobID:   id,
 			Context: runnerCommandContext(),
 			Script:  script,
@@ -229,21 +229,21 @@ func (f *runnerFixture) job(id, script string) {
 	)
 }
 
-func (f *runnerFixture) jobOutput(id string) (string, string, *runnerwire.JobExit) {
+func (f *runnerFixture) jobOutput(id string) (string, string, *runnerproto.JobExit) {
 	f.t.Helper()
 	var out, stderr strings.Builder
 	for {
 		switch message := any(f.frame()).(type) {
-		case *runnerwire.JobOutput:
+		case *runnerproto.JobOutput:
 			if message.JobID != id {
 				f.t.Fatalf("output of %s, wanted %s", message.JobID, id)
 			}
-			if message.Stream == runnerwire.Stdout {
+			if message.Stream == runnerproto.Stdout {
 				out.Write(message.Bytes)
 			} else {
 				stderr.Write(message.Bytes)
 			}
-		case *runnerwire.JobExit:
+		case *runnerproto.JobExit:
 			if message.JobID != id {
 				f.t.Fatalf("exit of %s, wanted %s", message.JobID, id)
 			}
@@ -260,7 +260,7 @@ func (f *runnerFixture) management(ctx context.Context, action string, args ...s
 	return command.CombinedOutput()
 }
 
-func requireJobSuccess(t *testing.T, exit *runnerwire.JobExit, stderr string) {
+func requireJobSuccess(t *testing.T, exit *runnerproto.JobExit, stderr string) {
 	t.Helper()
 	if exit.ExitCode == nil || *exit.ExitCode != 0 {
 		t.Fatalf("job failed: %+v, stderr=%s", exit, stderr)

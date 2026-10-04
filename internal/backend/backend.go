@@ -12,9 +12,9 @@ import (
 
 	"github.com/wspl/demi/internal/backend/blobs"
 	"github.com/wspl/demi/internal/backend/cloud"
-	"github.com/wspl/demi/internal/backend/edge"
+	"github.com/wspl/demi/internal/backend/httpserver"
 	"github.com/wspl/demi/internal/backend/usershard"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Backend is a running backend. Its owner must call Close and wait for all
@@ -23,7 +23,7 @@ type Backend struct {
 	storage       *usershard.Storage
 	services      *usershard.Services
 	shards        *usershard.Shards
-	edge          *edge.Edge
+	edge          *httpserver.Server
 	machines      *cloud.Client
 	closeObjects  func() error
 	cancel        context.CancelFunc
@@ -76,12 +76,12 @@ func Start(ctx context.Context, config Config) (_ *Backend, err error) {
 	if err := b.recover(ctx, life, deaths); err != nil {
 		return nil, err
 	}
-	state := edge.AppState{
+	state := httpserver.AppState{
 		Services: b.services,
 		Shards:   b.shards,
-		Site:     &edge.Site{PublicURL: config.PublicURL, RunnerReleases: config.RunnerReleases},
+		Site:     &httpserver.Site{PublicURL: config.PublicURL, RunnerReleases: config.RunnerReleases},
 	}
-	b.edge, err = edge.Start(life, config.Address, state, config.WebDirectory)
+	b.edge, err = httpserver.Start(life, config.Address, state, config.WebDirectory)
 	if err != nil {
 		return nil, fmt.Errorf("the backend cannot listen on %s: %w", config.Address, err)
 	}
@@ -214,7 +214,7 @@ func (b *Backend) startServices(
 	life context.Context,
 	config Config,
 	secret *InstanceSecret,
-) (<-chan webapi.DeviceID, error) {
+) (<-chan webapiproto.DeviceID, error) {
 	keys, err := secret.serviceKeys()
 	if err != nil {
 		return nil, err
@@ -254,7 +254,7 @@ func (b *Backend) startServices(
 }
 
 // recover routes Cloud deaths before recovering saved resets, forks and wakeups.
-func (b *Backend) recover(ctx, life context.Context, deaths <-chan webapi.DeviceID) error {
+func (b *Backend) recover(ctx, life context.Context, deaths <-chan webapiproto.DeviceID) error {
 	deathCtx, stopDeaths := context.WithCancel(life)
 	b.stopDeaths = stopDeaths
 	b.deaths.Go(func() {

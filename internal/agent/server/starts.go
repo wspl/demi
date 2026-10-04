@@ -6,15 +6,15 @@ import (
 	"fmt"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // start owns the whole start beyond its durable reservation, even if the job leaves.
 func (t *Tree[H]) start(
 	ctx context.Context,
-	caller core.NodeID,
+	caller types.NodeID,
 	input startInput,
 	request string,
 	port host.RPCPort,
@@ -93,7 +93,7 @@ func (t *Tree[H]) finishStart(ctx context.Context, owner *Node[H], receipt start
 		if err != nil {
 			return 0, err
 		}
-		number, err := t.store.NextNumber(ctx, core.SequenceAgent)
+		number, err := t.store.NextNumber(ctx, types.SequenceAgent)
 		if err != nil {
 			return 0, err
 		}
@@ -122,18 +122,18 @@ func (t *Tree[H]) finishStart(ctx context.Context, owner *Node[H], receipt start
 	return 0, errors.New("invalid start reservation")
 }
 
-func (t *Tree[H]) textMessage(text string) (core.QueuedMessage, error) {
-	id, err := core.ParseTurnID(t.server.deps.IDs.NextID())
+func (t *Tree[H]) textMessage(text string) (types.QueuedMessage, error) {
+	id, err := types.ParseTurnID(t.server.deps.IDs.NextID())
 	if err != nil {
-		return core.QueuedMessage{}, err
+		return types.QueuedMessage{}, err
 	}
-	return core.QueuedMessage{ID: id, Content: []core.UserContentBlock{&core.UserText{Text: text}}}, nil
+	return types.QueuedMessage{ID: id, Content: []types.UserContentBlock{&types.UserText{Text: text}}}, nil
 }
 
 func (t *Tree[H]) reopen(
 	ctx context.Context,
 	owner *Node[H],
-	id core.NodeID,
+	id types.NodeID,
 	message string,
 	round uint64,
 ) (uint64, error) {
@@ -178,7 +178,7 @@ func (t *Tree[H]) reopen(
 }
 
 // endChange lets an owner settle after a child creation or completion finishes.
-func (t *Tree[H]) endChange(owner core.NodeID) {
+func (t *Tree[H]) endChange(owner types.NodeID) {
 	t.server.mu.Lock()
 	t.changing[owner]--
 	if t.changing[owner] == 0 {
@@ -193,7 +193,7 @@ func (t *Tree[H]) startReceipt(ctx context.Context, input startInput) (startRece
 	fresh := startReceipt{Input: input, Round: 1}
 	switch v := input.(type) {
 	case *spawnInput:
-		fresh.NodeID, err = core.ParseNodeID(t.server.deps.IDs.NextID())
+		fresh.NodeID, err = types.ParseNodeID(t.server.deps.IDs.NextID())
 		if err != nil {
 			return startReceipt{}, err
 		}

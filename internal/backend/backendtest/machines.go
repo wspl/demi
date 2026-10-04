@@ -16,8 +16,8 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/usershard/usershardtest"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Base is the base every scripted device boots from.
@@ -66,7 +66,7 @@ type machineArrival struct {
 }
 type machineGuest struct {
 	runner     *remotehosttest.RunnerProcess
-	image      machinewire.MachineImageState
+	image      machinemanagerproto.MachineImageState
 	generation uint64
 }
 
@@ -215,19 +215,19 @@ func (m *ScriptedManager) SetScript(script MachineScript) {
 }
 
 // Devices returns the manager's known device IDs in lexical order.
-func (m *ScriptedManager) Devices() []webapi.DeviceID {
+func (m *ScriptedManager) Devices() []webapiproto.DeviceID {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	devices := make([]webapi.DeviceID, 0, len(m.guests))
+	devices := make([]webapiproto.DeviceID, 0, len(m.guests))
 	for device := range m.guests {
-		devices = append(devices, webapi.DeviceID(device))
+		devices = append(devices, webapiproto.DeviceID(device))
 	}
 	slices.Sort(devices)
 	return devices
 }
 
 // Running reports whether the scripted device has a running guest.
-func (m *ScriptedManager) Running(device webapi.DeviceID) bool {
+func (m *ScriptedManager) Running(device webapiproto.DeviceID) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	guest := m.guests[string(device)]
@@ -235,21 +235,21 @@ func (m *ScriptedManager) Running(device webapi.DeviceID) bool {
 }
 
 // State returns the device runner's installation-state directory.
-func (m *ScriptedManager) State(device webapi.DeviceID) string {
+func (m *ScriptedManager) State(device webapiproto.DeviceID) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.guests[string(device)].runner.StateDir()
 }
 
 // Home returns the device's preserved home directory.
-func (m *ScriptedManager) Home(device webapi.DeviceID) string {
+func (m *ScriptedManager) Home(device webapiproto.DeviceID) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.guests[string(device)].runner.Home()
 }
 
 // Artifacts returns the device runner's artifact-cache directory.
-func (m *ScriptedManager) Artifacts(device webapi.DeviceID) string {
+func (m *ScriptedManager) Artifacts(device webapiproto.DeviceID) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.script.Artifacts != nil {
@@ -259,7 +259,7 @@ func (m *ScriptedManager) Artifacts(device webapi.DeviceID) string {
 }
 
 // Kill stops a device runner and reports its death to every live connection.
-func (m *ScriptedManager) Kill(ctx context.Context, device webapi.DeviceID) error {
+func (m *ScriptedManager) Kill(ctx context.Context, device webapiproto.DeviceID) error {
 	permit, err := m.turns.Acquire(ctx, string(device))
 	if err != nil {
 		return err
@@ -289,7 +289,7 @@ func (m *ScriptedManager) Kill(ctx context.Context, device webapi.DeviceID) erro
 }
 
 // StopQuietly stops a device runner without reporting a death event.
-func (m *ScriptedManager) StopQuietly(ctx context.Context, device webapi.DeviceID) error {
+func (m *ScriptedManager) StopQuietly(ctx context.Context, device webapiproto.DeviceID) error {
 	permit, err := m.turns.Acquire(ctx, string(device))
 	if err != nil {
 		return err

@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Text builds an answer increment.
@@ -28,7 +28,7 @@ func ToolCall(id, name string, input json.RawMessage) provider.Event {
 
 // Response builds a response with input and output usage.
 func Response(input, output uint64) provider.Event {
-	return &provider.Response{Usage: core.TokenUsage{InputTokens: input, OutputTokens: output}}
+	return &provider.Response{Usage: types.TokenUsage{InputTokens: input, OutputTokens: output}}
 }
 
 // Error builds a failure with no diagnostics.
@@ -160,7 +160,7 @@ func (r *ScriptedRuntime) Close(context.Context) error {
 }
 
 // RequestLimits reads this script's configured limits.
-func (r *ScriptedRuntime) RequestLimits(core.Model) provider.RequestLimits {
+func (r *ScriptedRuntime) RequestLimits(types.Model) provider.RequestLimits {
 	r.script.mu.Lock()
 	defer r.script.mu.Unlock()
 	return r.script.limits
@@ -247,29 +247,29 @@ func (r *EventReader) Close() {
 }
 
 // FixedClock always reads the same wall-clock moment.
-type FixedClock core.Timestamp
+type FixedClock types.Timestamp
 
-// Now implements core.Clock.
-func (c FixedClock) Now() core.Timestamp { return core.Timestamp(c) }
+// Now implements types.Clock.
+func (c FixedClock) Now() types.Timestamp { return types.Timestamp(c) }
 
 // ManualClock is a settable wall clock; timer tests use testing/synctest instead.
 type ManualClock struct {
 	mu  sync.Mutex
-	now core.Timestamp
+	now types.Timestamp
 }
 
 // NewManualClock returns a clock at start.
-func NewManualClock(start core.Timestamp) *ManualClock { return &ManualClock{now: start} }
+func NewManualClock(start types.Timestamp) *ManualClock { return &ManualClock{now: start} }
 
 // Now reads the current moment.
-func (c *ManualClock) Now() core.Timestamp {
+func (c *ManualClock) Now() types.Timestamp {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.now
 }
 
 // Set moves to an explicit moment.
-func (c *ManualClock) Set(to core.Timestamp) {
+func (c *ManualClock) Set(to types.Timestamp) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.now = to
@@ -283,7 +283,7 @@ func (c *ManualClock) Advance(by time.Duration) error {
 	if err != nil {
 		return err
 	}
-	moved, err := core.TimestampFromTime(now.Add(by))
+	moved, err := types.TimestampFromTime(now.Add(by))
 	if err == nil {
 		c.now = moved
 	}
@@ -291,7 +291,7 @@ func (c *ManualClock) Advance(by time.Duration) error {
 }
 
 // FollowSystem sets the clock to the system time (or synctest time in a bubble).
-func (c *ManualClock) FollowSystem() { c.Set(core.SystemClock{}.Now()) }
+func (c *ManualClock) FollowSystem() { c.Set(types.SystemClock{}.Now()) }
 
 // JWT creates a token with an unchecked signature for vendor tests.
 func JWT(t testing.TB, claims any) string {

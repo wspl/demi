@@ -7,8 +7,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ReplayChars is the longest text replay sends unchanged, in Unicode scalars.
@@ -35,12 +35,12 @@ type Replayed struct {
 // Construct it with NewRequestView and treat its input view and model as immutable.
 type RequestView struct {
 	view     *store.ModelView
-	model    core.Model
+	model    types.Model
 	halfBody *uint64
 }
 
 // NewRequestView selects how model receives view within its vendor's limits.
-func NewRequestView(view *store.ModelView, model core.Model, limits provider.RequestLimits) *RequestView {
+func NewRequestView(view *store.ModelView, model types.Model, limits provider.RequestLimits) *RequestView {
 	request := &RequestView{view: view, model: model}
 	if limits.BodyBytes != nil {
 		request.halfBody = new(*limits.BodyBytes / 2)
@@ -49,7 +49,7 @@ func NewRequestView(view *store.ModelView, model core.Model, limits provider.Req
 }
 
 // Model returns the request's model.
-func (r *RequestView) Model() core.Model { return r.model }
+func (r *RequestView) Model() types.Model { return r.model }
 
 // Replay renders blocks from the latest compaction boundary in order, preserving
 // signed reasoning and opaque data whole and marking reasoning kept past a summary.
@@ -92,12 +92,12 @@ func ToolInput(input string) json.RawMessage {
 
 // AgentMessageEnvelope renders an agent message as its model-facing instruction
 // and JSON envelope, naming its sender by number and round, without delivery ids.
-func AgentMessageEnvelope(message core.AgentMessage) string {
+func AgentMessageEnvelope(message types.AgentMessage) string {
 	event := "message"
 	var outcome *string
 	switch e := message.Event.(type) {
-	case *core.MessageEvent:
-	case *core.CompletionEvent:
+	case *types.MessageEvent:
+	case *types.CompletionEvent:
 		event = "completion"
 		outcome = new(string(e.Outcome))
 	}
@@ -129,19 +129,19 @@ func boundText(text string) string {
 	if total <= ReplayChars {
 		return text
 	}
-	head := core.CharOffset(text, 8000)
-	tail := core.CharOffset(text, total-8000)
+	head := types.CharOffset(text, 8000)
+	tail := types.CharOffset(text, total-8000)
 	return fmt.Sprintf("%s\n\n[... truncated %d characters ...]\n\n%s", text[:head], total-ReplayChars, text[tail:])
 }
 
 // keptReasoningEnd finds the end of reasoning retained past the latest summary.
-func keptReasoningEnd(blocks []core.Block, start int) int {
+func keptReasoningEnd(blocks []types.Block, start int) int {
 	keptEnd := start
 	if start < len(blocks) {
-		if _, ok := blocks[start].(*core.CompactionBoundaryBlock); ok {
+		if _, ok := blocks[start].(*types.CompactionBoundaryBlock); ok {
 			keptEnd = len(blocks)
 			for i := start; i < len(blocks); i++ {
-				if _, ok := blocks[i].(*core.CompactionMarkerBlock); ok {
+				if _, ok := blocks[i].(*types.CompactionMarkerBlock); ok {
 					keptEnd = i
 					break
 				}
@@ -151,33 +151,33 @@ func keptReasoningEnd(blocks []core.Block, start int) int {
 	return keptEnd
 }
 
-func appendReplayBlock(request *RequestView, block core.Block, kept bool, result *Replayed) {
+func appendReplayBlock(request *RequestView, block types.Block, kept bool, result *Replayed) {
 	var item provider.InferenceItem
 	switch b := block.(type) {
-	case *core.UserBlock:
+	case *types.UserBlock:
 		item = replayUserMessage(request, b)
-	case *core.ContextBlock:
+	case *types.ContextBlock:
 		item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: boundText(b.Text)}}}
-	case *core.WakeupBlock:
+	case *types.WakeupBlock:
 		content := []provider.UserPart{&provider.TextPart{Text: WakeupText}}
 		if b.Placement == "new_turn" {
 			item = &provider.UserMessage{Content: content}
 		} else {
 			item = &provider.UserSteer{Content: content}
 		}
-	case *core.SteerBlock:
+	case *types.SteerBlock:
 		content := make([]provider.UserPart, 0, len(b.Content))
 		for _, part := range b.Content {
 			content = append(content, request.userPart(part))
 		}
 		item = &provider.UserSteer{Content: content}
-	case *core.AgentMessageBlock:
+	case *types.AgentMessageBlock:
 		item = &provider.UserSteer{
 			Content: []provider.UserPart{&provider.TextPart{Text: AgentMessageEnvelope(b.Message)}},
 		}
-	case *core.ResumeBlock:
+	case *types.ResumeBlock:
 		item = &provider.UserMessage{Content: []provider.UserPart{&provider.TextPart{Text: ResumeText}}}
-	case *core.ThinkingBlock:
+	case *types.ThinkingBlock:
 		text := b.Text
 		if b.Signature == nil {
 			text = boundText(text)
@@ -188,31 +188,31 @@ func appendReplayBlock(request *RequestView, block core.Block, kept bool, result
 			Signature:       b.Signature,
 			KeptPastSummary: kept,
 		}
-	case *core.RedactedThinkingBlock:
+	case *types.RedactedThinkingBlock:
 		item = &provider.AssistantRedactedThinking{
 			ModelID:         b.Selection.Model.ID,
 			Data:            b.Data,
 			KeptPastSummary: kept,
 		}
-	case *core.TextBlock:
+	case *types.TextBlock:
 		item = &provider.AssistantText{ModelID: b.Selection.Model.ID, Text: boundText(b.Text)}
-	case *core.ToolCallBlock:
+	case *types.ToolCallBlock:
 		appendReplayTool(request, b, result)
 		return
-	case *core.CompactionBoundaryBlock:
+	case *types.CompactionBoundaryBlock:
 		item = &provider.UserMessage{
 			Content: []provider.UserPart{
 				&provider.TextPart{Text: boundText("Previous conversation summary:\n" + b.Summary)},
 			},
 		}
-	case *core.AbortBlock, *core.ResponseBlock, *core.ErrorBlock, *core.CompactionMarkerBlock:
+	case *types.AbortBlock, *types.ResponseBlock, *types.ErrorBlock, *types.CompactionMarkerBlock:
 		return
 	}
 	result.Items = append(result.Items, item)
 }
 
 // appendReplayTool keeps the tool use before its result, omitting a result while executing.
-func appendReplayTool(request *RequestView, b *core.ToolCallBlock, result *Replayed) {
+func appendReplayTool(request *RequestView, b *types.ToolCallBlock, result *Replayed) {
 	result.Items = append(
 		result.Items,
 		&provider.ToolUse{
@@ -233,7 +233,7 @@ func appendReplayTool(request *RequestView, b *core.ToolCallBlock, result *Repla
 	result.Items = append(result.Items, item)
 }
 
-func replayUserMessage(request *RequestView, b *core.UserBlock) *provider.UserMessage {
+func replayUserMessage(request *RequestView, b *types.UserBlock) *provider.UserMessage {
 	content := []provider.UserPart{}
 	if b.Preamble != nil {
 		content = append(content, &provider.TextPart{Text: boundText(*b.Preamble)})

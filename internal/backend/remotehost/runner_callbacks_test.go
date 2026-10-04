@@ -11,22 +11,26 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/remotehost/testdata/fixture"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 )
 
 // callbackLeaf obtains command schemas from their single generated declarations.
-func callbackLeaf(t *testing.T, name, summary string, schema json.RawMessage) declare.Leaf[declare.NativeOperation] {
+func callbackLeaf(
+	t *testing.T,
+	name, summary string,
+	schema json.RawMessage,
+) commanddecl.Leaf[commanddecl.NativeOperation] {
 	t.Helper()
-	leaf := declare.Leaf[declare.NativeOperation]{
+	leaf := commanddecl.Leaf[commanddecl.NativeOperation]{
 		Name:    name,
 		Summary: summary,
-		Kind:    &declare.RPC[declare.NativeOperation]{},
+		Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
 	}
 	if schema != nil {
 		var err error
-		leaf.Input, err = declare.NewSchema(schema)
+		leaf.Input, err = commanddecl.NewSchema(schema)
 		requirePipe(t, err)
 	}
 	return leaf
@@ -196,9 +200,9 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 func TestRunnerNestedGroupHelpAndValidatedJSONOutput(t *testing.T) {
 	emit := callbackLeaf(t, "emit", "Print a text.", fixture.EmitArgsJSONSchema())
 	emit.Positionals = new([]string{"text"})
-	schema, err := declare.NewSchema(fixture.EmittedJSONSchema())
+	schema, err := commanddecl.NewSchema(fixture.EmittedJSONSchema())
 	requirePipe(t, err)
-	emit.Output = &declare.LeafOutput{JSON: schema}
+	emit.Output = &commanddecl.LeafOutput{JSON: schema}
 	handler := host.TypedRPC(
 		fixture.DecodeEmitArgs,
 		func(ctx context.Context, call host.Call[fixture.EmitArgs], p host.RPCPort) (uint8, error) {

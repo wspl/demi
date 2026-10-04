@@ -11,7 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
@@ -55,7 +55,7 @@ func (r HTTPFailureRecord) Header(name string) (string, bool) {
 }
 
 // ReadHTTPRecord reads only HTTP diagnostics containing a valid failure record.
-func ReadHTTPRecord(d *core.ProviderErrorDiagnostics) (HTTPFailureRecord, bool) {
+func ReadHTTPRecord(d *types.ProviderErrorDiagnostics) (HTTPFailureRecord, bool) {
 	if d.Source != "http" || d.Upstream == nil {
 		return HTTPFailureRecord{}, false
 	}
@@ -72,7 +72,7 @@ func HTTPFailure(
 	response *http.Response,
 	label string,
 	reader FailureReader,
-	clock core.Clock,
+	clock types.Clock,
 ) Failure {
 	stop := closeOnCancel(ctx, response.Body)
 	defer stop()
@@ -90,7 +90,7 @@ func Refused(
 	headers http.Header,
 	body string,
 	reader FailureReader,
-	receivedAt core.Timestamp,
+	receivedAt types.Timestamp,
 ) Failure {
 	message := label + " API request failed with HTTP " + strconv.Itoa(int(status))
 	if body != "" {
@@ -105,7 +105,7 @@ func Refused(
 	return (Failure{
 		Message: message,
 		Code:    HTTPErrorCode(int(status), message),
-		Diagnostics: &core.ProviderErrorDiagnostics{
+		Diagnostics: &types.ProviderErrorDiagnostics{
 			Source: "http", HTTPStatus: &status, Upstream: &upstream,
 		},
 	}).WithRetryWait(
@@ -115,20 +115,20 @@ func Refused(
 }
 
 // ReadHTTPFailure is the standard Retry-After reading of a failure record.
-func ReadHTTPFailure(d *core.ProviderErrorDiagnostics, receivedAt core.Timestamp) core.ProviderFailureFacts {
+func ReadHTTPFailure(d *types.ProviderErrorDiagnostics, receivedAt types.Timestamp) types.ProviderFailureFacts {
 	record, ok := ReadHTTPRecord(d)
 	if !ok {
-		return core.ProviderFailureFacts{}
+		return types.ProviderFailureFacts{}
 	}
 	header, ok := record.Header("retry-after")
 	if !ok {
-		return core.ProviderFailureFacts{}
+		return types.ProviderFailureFacts{}
 	}
-	return core.ProviderFailureFacts{RetryAt: RetryAt(header, receivedAt)}
+	return types.ProviderFailureFacts{RetryAt: RetryAt(header, receivedAt)}
 }
 
 // RetryAt reads decimal seconds after receipt or an RFC 9110 HTTP date.
-func RetryAt(value string, receivedAt core.Timestamp) *core.Timestamp {
+func RetryAt(value string, receivedAt types.Timestamp) *types.Timestamp {
 	value = strings.Trim(value, " \t\n\r\v\f")
 	if decimalSeconds.MatchString(value) {
 		whole, fraction, _ := strings.Cut(value, ".")
@@ -146,7 +146,7 @@ func RetryAt(value string, receivedAt core.Timestamp) *core.Timestamp {
 		if err != nil || start > math.MaxInt64-delay {
 			return nil
 		}
-		at, err := core.TimestampFromMillisecond(start + delay)
+		at, err := types.TimestampFromMillisecond(start + delay)
 		if err != nil {
 			return nil
 		}
@@ -156,7 +156,7 @@ func RetryAt(value string, receivedAt core.Timestamp) *core.Timestamp {
 	if err != nil || date.Unix() < 0 {
 		return nil
 	}
-	at, err := core.TimestampFromTime(date)
+	at, err := types.TimestampFromTime(date)
 	if err != nil {
 		return nil
 	}

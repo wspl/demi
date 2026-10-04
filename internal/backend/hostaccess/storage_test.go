@@ -11,8 +11,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -31,7 +31,7 @@ func TestCommandOutputStoredWithRetentionRecordAndFailureReason(t *testing.T) {
 	if err := keeper.KeepOutput(t.Context(), "1", output); err != nil {
 		t.Fatal(err)
 	}
-	read := func(command core.CommandID) *database.CommandOutput {
+	read := func(command types.CommandID) *database.CommandOutput {
 		t.Helper()
 		var row database.CommandOutput
 		var found bool
@@ -79,7 +79,7 @@ func TestUnavailableUploadsGrantNothing(t *testing.T) {
 		if err != nil || len(content) != 1 {
 			t.Fatalf("missing upload: %v, %v", content, err)
 		}
-		if _, ok := content[0].(*core.UserText); !ok {
+		if _, ok := content[0].(*types.UserText); !ok {
 			t.Fatalf("missing upload is not a message: %#v", content)
 		}
 	}
@@ -98,7 +98,7 @@ func TestUnavailableUploadsGrantNothing(t *testing.T) {
 	if err != nil || len(content) != 1 {
 		t.Fatalf("foreign upload: %v, %v", content, err)
 	}
-	if _, ok := content[0].(*core.UserText); !ok {
+	if _, ok := content[0].(*types.UserText); !ok {
 		t.Fatal("foreign upload leaked media")
 	}
 }
@@ -140,7 +140,7 @@ func TestRemoteReferenceReadsExactPathWithoutShellInjection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		reference, ok := block.(*core.UserReference)
+		reference, ok := block.(*types.UserReference)
 		if !ok {
 			t.Fatalf("reference shape: %T", block)
 		}

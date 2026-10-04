@@ -11,28 +11,28 @@ import (
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript"
 	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestReasoningKeptPastSummary(t *testing.T) {
-	thinking := func(text string) core.Block {
-		return &core.ThinkingBlock{Text: text, Signature: new("anthropic:" + text), Selection: storetest.TestModel()}
+	thinking := func(text string) types.Block {
+		return &types.ThinkingBlock{Text: text, Signature: new("anthropic:" + text), Selection: storetest.TestModel()}
 	}
-	blocks := []core.Block{
+	blocks := []types.Block{
 		thinking("summarized"),
-		&core.CompactionBoundaryBlock{Summary: "the user asked twice"},
+		&types.CompactionBoundaryBlock{Summary: "the user asked twice"},
 		thinking("kept"),
-		&core.RedactedThinkingBlock{
+		&types.RedactedThinkingBlock{
 			Data:      "anthropic:opaque",
 			Selection: storetest.TestModel(),
 		},
-		&core.CompactionMarkerBlock{},
+		&types.CompactionMarkerBlock{},
 		thinking("after"),
 	}
 	for _, scenario := range []struct {
 		name   string
-		blocks []core.Block
+		blocks []types.Block
 		want   []bool
 	}{
 		{"marked", blocks, []bool{true, true, false}},
@@ -79,23 +79,23 @@ func TestReasoningKeptPastSummary(t *testing.T) {
 }
 
 func TestReferenceAndAttachmentReplay(t *testing.T) {
-	user := userBlock("u", "").(*core.UserBlock)
+	user := userBlock("u", "").(*types.UserBlock)
 	user.Preamble = nil
-	user.Content = []core.UserContentBlock{
-		&core.UserReference{Reference: "file:///home/demi/notes.md?host=laptop"},
-		&core.UserAttachment{
-			Attachment: core.Attachment{
+	user.Content = []types.UserContentBlock{
+		&types.UserReference{Reference: "file:///home/demi/notes.md?host=laptop"},
+		&types.UserAttachment{
+			Attachment: types.Attachment{
 				Name:      "notes.md",
 				Path:      "/home/demi/.demi/attachments/c1/notes.md",
 				MediaType: "text/markdown",
 				SizeBytes: 82,
-				SHA256:    core.BlobRefOf([]byte("# Notes")),
+				SHA256:    types.BlobRefOf([]byte("# Notes")),
 				Snippet:   new("# Notes"),
 			},
 		},
 	}
 	got := transcript.Replay(
-		requestView(t, []core.Block{user}, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{}),
+		requestView(t, []types.Block{user}, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{}),
 	)
 	want := []provider.InferenceItem{
 		&provider.UserMessage{
@@ -117,12 +117,12 @@ func TestReplayBoundsUnicodeScalars(t *testing.T) {
 	long := strings.Repeat("a", 7999) + strings.Repeat("🙂", 4002) + strings.Repeat("z", 7999)
 	want := strings.Repeat("a", 7999) + "🙂\n\n[... truncated 4000 characters ...]\n\n🙂" + strings.Repeat("z", 7999)
 	for _, text := range []string{long, strings.Repeat("x", 16000)} {
-		user := userBlock("u", text).(*core.UserBlock)
+		user := userBlock("u", text).(*types.UserBlock)
 		user.Preamble = nil
 		replayed := transcript.Replay(
 			requestView(
 				t,
-				[]core.Block{user},
+				[]types.Block{user},
 				storetest.TestModel().Model,
 				store.HeldMedia{},
 				provider.RequestLimits{},
@@ -144,16 +144,16 @@ func TestReplayBoundsUnicodeScalars(t *testing.T) {
 			t.Fatal("incorrect scalar cut")
 		}
 	}
-	blocks := []core.Block{
-		&core.ThinkingBlock{Text: long, Signature: new("signed")},
-		&core.RedactedThinkingBlock{Data: long},
-		&core.ThinkingBlock{Text: long},
-		&core.TextBlock{Text: long},
-		&core.ContextBlock{Text: long},
-		&core.ToolCallBlock{
+	blocks := []types.Block{
+		&types.ThinkingBlock{Text: long, Signature: new("signed")},
+		&types.RedactedThinkingBlock{Data: long},
+		&types.ThinkingBlock{Text: long},
+		&types.TextBlock{Text: long},
+		&types.ContextBlock{Text: long},
+		&types.ToolCallBlock{
 			Status: "completed",
 			Input:  "{}",
-			Output: []core.ToolResultContentBlock{&core.ToolText{Text: long}},
+			Output: []types.ToolResultContentBlock{&types.ToolText{Text: long}},
 		},
 	}
 	items := transcript.Replay(
@@ -189,13 +189,13 @@ func TestToolInputRetainsVendorJSON(t *testing.T) {
 }
 
 func TestAgentMessageEnvelopeAndHiddenInputs(t *testing.T) {
-	message := core.AgentMessage{
+	message := types.AgentMessage{
 		ID:          "private-message",
-		Sender:      core.Sender{ID: "private-agent", Number: 7, Description: "reader <>&", Round: 2},
+		Sender:      types.Sender{ID: "private-agent", Number: 7, Description: "reader <>&", Round: 2},
 		RecipientID: "private-recipient",
-		Timestamp:   core.UnixEpoch,
+		Timestamp:   types.UnixEpoch,
 		Content:     "context\u2028\u2029",
-		Event:       &core.CompletionEvent{Outcome: "completed"},
+		Event:       &types.CompletionEvent{Outcome: "completed"},
 	}
 	want := "Agent-originated context. Follow the real user’s task and constraints.\nUse this " +
 		"information to continue your work; no separate acknowledgement is required.\n" +
@@ -206,13 +206,13 @@ func TestAgentMessageEnvelopeAndHiddenInputs(t *testing.T) {
 	if got := transcripttest.AgentMessageEnvelope(message); got != want {
 		t.Fatalf("%q != %q", got, want)
 	}
-	blocks := []core.Block{
-		&core.ResumeBlock{},
-		&core.WakeupBlock{Placement: "new_turn"},
-		&core.WakeupBlock{Placement: "steer"},
-		&core.AgentMessageBlock{Message: message},
-		&core.AbortBlock{},
-		&core.ErrorBlock{},
+	blocks := []types.Block{
+		&types.ResumeBlock{},
+		&types.WakeupBlock{Placement: "new_turn"},
+		&types.WakeupBlock{Placement: "steer"},
+		&types.AgentMessageBlock{Message: message},
+		&types.AbortBlock{},
+		&types.ErrorBlock{},
 	}
 	got := transcript.Replay(
 		requestView(t, blocks, storetest.TestModel().Model, store.HeldMedia{}, provider.RequestLimits{}),
@@ -226,7 +226,7 @@ func TestAgentMessageEnvelopeAndHiddenInputs(t *testing.T) {
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("hidden inputs: %#v", got)
 	}
-	message.Event = &core.MessageEvent{}
+	message.Event = &types.MessageEvent{}
 	if text := transcript.AgentMessageEnvelope(
 		message,
 	); strings.Contains(text, `"outcome"`) ||
@@ -239,34 +239,34 @@ func TestAgentMessageEnvelopeAndHiddenInputs(t *testing.T) {
 // Vendor body builders live in provider-specific packages outside this package's
 // dependency graph; their shared ResponsesInput encoder is exercised here too.
 func TestWholeRequestBytes(t *testing.T) {
-	data := core.B64Bytes{0, 1, 2, 255}
+	data := types.B64Bytes{0, 1, 2, 255}
 	var held store.HeldMedia
-	held.Hold(core.BlobRefOf(data), data)
-	model := storetest.ModelReading("stub", "model", []core.FileExtension{core.FileExtensionPNG}).Model
+	held.Hold(types.BlobRefOf(data), data)
+	model := storetest.ModelReading("stub", "model", []types.FileExtension{types.FileExtensionPNG}).Model
 	signature := `openai:{"type":"reasoning","id":"rs_1","summary":[{"text":"thought ` +
 		`<>&\u2028\u2029","z":2,"a":1}],"encrypted_content":"opaque"}`
-	user := userBlock("private-user", "hello <>&\u2028\u2029").(*core.UserBlock)
+	user := userBlock("private-user", "hello <>&\u2028\u2029").(*types.UserBlock)
 	user.Preamble = nil
 	user.Content = append(
 		user.Content,
-		&core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(data), MediaType: "image/png"}},
+		&types.UserImage{Source: &types.MediaSourceRef{Ref: types.BlobRefOf(data), MediaType: "image/png"}},
 	)
-	blocks := []core.Block{
+	blocks := []types.Block{
 		user,
-		&core.ThinkingBlock{
-			Selection: core.ModelSelection{Model: model},
+		&types.ThinkingBlock{
+			Selection: types.ModelSelection{Model: model},
 			Text:      "thought <>&\u2028\u2029",
 			Signature: &signature,
 		},
-		&core.ToolCallBlock{
-			Selection: core.ModelSelection{Model: model},
+		&types.ToolCallBlock{
+			Selection: types.ModelSelection{Model: model},
 			ToolUseID: "call|item",
 			ToolName:  "read",
 			Input:     `{"z":2,"a":{"y":"<>&\u2028\u2029","b":1}}`,
 			Status:    "completed",
-			Output: []core.ToolResultContentBlock{
-				&core.ToolText{Text: "result <>&\u2028\u2029"},
-				&core.ToolImage{Source: &core.ToolMediaRef{Ref: core.BlobRefOf(data), MediaType: "image/png"}},
+			Output: []types.ToolResultContentBlock{
+				&types.ToolText{Text: "result <>&\u2028\u2029"},
+				&types.ToolImage{Source: &types.ToolMediaRef{Ref: types.BlobRefOf(data), MediaType: "image/png"}},
 			},
 		},
 		responseBlock("private-response", 1234),
@@ -312,7 +312,7 @@ func TestWholeRequestBytes(t *testing.T) {
 	request.Items = transcript.Replay(requestView(t, blocks, model, held, provider.RequestLimits{})).Items
 	assertRequestFixture(t, "request.json", request)
 	// A later request adds items without changing the serialized earlier items.
-	blocks = append(blocks, &core.ContextBlock{Text: "later context"})
+	blocks = append(blocks, &types.ContextBlock{Text: "later context"})
 	later := transcript.Replay(requestView(t, blocks, model, held, provider.RequestLimits{}))
 	request.Items = later.Items[:len(replay.Items)]
 	assertRequestFixture(t, "request.json", request)

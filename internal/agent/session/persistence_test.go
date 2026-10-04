@@ -13,10 +13,10 @@ import (
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/session/sessiontest"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestToolsRunAfterDurableCallAndReuseID(t *testing.T) {
@@ -27,8 +27,8 @@ func TestToolsRunAfterDurableCallAndReuseID(t *testing.T) {
 		r := toolRuntime("look", func(_ context.Context, call session.ToolInvocation) (session.ToolOutcome, error) {
 			cp := f.checkpoint()
 			stored = append(stored, kinds(cp.Transcript))
-			b := cp.Transcript[len(cp.Transcript)-2].(*core.ToolCallBlock)
-			equal(t, b.Status, core.ToolCallStatus("executing"))
+			b := cp.Transcript[len(cp.Transcript)-2].(*types.ToolCallBlock)
+			equal(t, b.Status, types.ToolCallStatus("executing"))
 			equal(t, b.ToolUseID, call.ToolUseID)
 			calls++
 			return textOutcome(string(call.Input)), nil
@@ -104,7 +104,7 @@ func TestDispatchAndFinalSaveTouchOnlyChangedRows(t *testing.T) {
 			{"tool_call:completed", "text", "response"},
 		}
 		for i, s := range saves[1:] {
-			blocks := []core.Block{}
+			blocks := []types.Block{}
 			indices := []int{}
 			for _, b := range s.Update.ChangedBlocks {
 				indices = append(indices, b.Index)
@@ -113,10 +113,10 @@ func TestDispatchAndFinalSaveTouchOnlyChangedRows(t *testing.T) {
 			equal(t, indices, want[i])
 			equal(t, kinds(blocks), wantKinds[i])
 		}
-		equal(t, f.checkpoint().State.Phase, core.SessionPhase("idle"))
+		equal(t, f.checkpoint().State.Phase, types.SessionPhase("idle"))
 		equal(t, len(f.checkpoint().Transcript), 7)
 		equal(t, saves[len(saves)-1].Update.BlockCount, 7)
-		equal(t, saves[len(saves)-1].Update.State.Phase, core.SessionPhaseIdle)
+		equal(t, saves[len(saves)-1].Update.State.Phase, types.SessionPhaseIdle)
 	})
 }
 
@@ -156,7 +156,7 @@ func TestFailedScheduledSaveRetainsDirtyRows(t *testing.T) {
 		close(release)
 		f.done(a)
 		equal(t, kinds(f.checkpoint().Transcript), []string{"user", "text", "response"})
-		equal(t, f.checkpoint().Transcript[1].(*core.TextBlock).Text, "hello world")
+		equal(t, f.checkpoint().Transcript[1].(*types.TextBlock).Text, "hello world")
 		equal(t, errors, 1)
 		equal(t, f.checkpoint().Transcript, f.s.Transcript().Blocks)
 	})
@@ -180,8 +180,8 @@ func TestFailingAndUnknownToolsAreResults(t *testing.T) {
 		f.done(f.send("go", "t1"))
 		f.history("user", "tool_call:error", "tool_call:error", "text", "response")
 		for i, want := range []string{"Tool failed: it broke", "Tool not found: missing"} {
-			b := f.s.Transcript().Blocks[i+1].(*core.ToolCallBlock)
-			equal(t, b.Output, []core.ToolResultContentBlock{&core.ToolText{Text: want}})
+			b := f.s.Transcript().Blocks[i+1].(*types.ToolCallBlock)
+			equal(t, b.Output, []types.ToolResultContentBlock{&types.ToolText{Text: want}})
 		}
 	})
 }
@@ -199,18 +199,18 @@ func TestStopDuringToolAcknowledgesRecordedStop(t *testing.T) {
 		<-entered
 		result, err := f.s.Abort(t.Context())
 		must(t, err)
-		equal(t, *result.Target, framewire.AbortTargetActiveTool)
+		equal(t, *result.Target, conversationproto.AbortTargetActiveTool)
 		equal(t, result.CanAbortAgain, false)
 		equal(
 			t,
-			f.s.Transcript().Blocks[1].(*core.ToolCallBlock).Output,
-			[]core.ToolResultContentBlock{&core.ToolText{Text: "Tool call aborted: slow"}},
+			f.s.Transcript().Blocks[1].(*types.ToolCallBlock).Output,
+			[]types.ToolResultContentBlock{&types.ToolText{Text: "Tool call aborted: slow"}},
 		)
 		f.history("user", "tool_call:error", "response", "abort")
 		end, err := a.Wait(t.Context())
 		must(t, err)
 		equal(t, end, session.Aborted)
-		equal(t, f.s.Phase(), core.SessionPhaseIdle)
+		equal(t, f.s.Phase(), types.SessionPhaseIdle)
 		f.done(f.send("next", "t2"))
 		equal(
 			t,
@@ -244,7 +244,7 @@ func TestStopDuringHangingHook(t *testing.T) {
 		<-entered
 		result, err := f.s.Abort(t.Context())
 		must(t, err)
-		equal(t, *result.Target, framewire.AbortTargetActiveTurn)
+		equal(t, *result.Target, conversationproto.AbortTargetActiveTurn)
 		end, err := a.Wait(t.Context())
 		must(t, err)
 		equal(t, end, session.Aborted)
@@ -278,15 +278,15 @@ func TestDisposeDuringToolKeepsQueueAndInterruption(t *testing.T) {
 		must(t, err)
 		equal(t, end, session.Detached)
 		cp := f.checkpoint()
-		equal(t, cp.State.Phase, core.SessionPhase("running"))
+		equal(t, cp.State.Phase, types.SessionPhase("running"))
 		equal(t, len(cp.State.Queue), 1)
-		equal(t, cp.State.Queue[0].ID, core.TurnID("t2"))
+		equal(t, cp.State.Queue[0].ID, types.TurnID("t2"))
 		equal(
 			t,
-			cp.Transcript[1].(*core.ToolCallBlock).Output,
-			[]core.ToolResultContentBlock{&core.ToolText{Text: "Tool call aborted: slow"}},
+			cp.Transcript[1].(*types.ToolCallBlock).Output,
+			[]types.ToolResultContentBlock{&types.ToolText{Text: "Tool call aborted: slow"}},
 		)
-		record := cp.Transcript[3].(*core.ErrorBlock)
+		record := cp.Transcript[3].(*types.ErrorBlock)
 		equal(t, record.Code, new("interrupted"))
 		equal(t, record.Message, "The agent session was shut down while this turn was running.")
 		equal(t, kinds(cp.Transcript), []string{"user", "tool_call:error", "response", "error"})
@@ -318,16 +318,16 @@ func TestRestoreExecutingToolAsInterrupted(t *testing.T) {
 				return textOutcome("rerun"), nil
 			},
 		)
-		s, c, p := f.restoreWith(cp, restoredRuntime, core.SystemClock{}, answer("next"))
+		s, c, p := f.restoreWith(cp, restoredRuntime, types.SystemClock{}, answer("next"))
 		equal(t, c.Interrupted, true)
-		equal(t, s.Phase(), core.SessionPhase("idle"))
+		equal(t, s.Phase(), types.SessionPhase("idle"))
 		equal(t, kinds(s.Transcript().Blocks), []string{"user", "tool_call:error", "response"})
-		equal(t, cp.State.Phase, core.SessionPhaseRunning)
+		equal(t, cp.State.Phase, types.SessionPhaseRunning)
 		equal(
 			t,
-			s.Transcript().Blocks[1].(*core.ToolCallBlock).Output,
-			[]core.ToolResultContentBlock{
-				&core.ToolText{Text: "Tool call interrupted: slow (the process died before a result was recorded)"},
+			s.Transcript().Blocks[1].(*types.ToolCallBlock).Output,
+			[]types.ToolResultContentBlock{
+				&types.ToolText{Text: "Tool call interrupted: slow (the process died before a result was recorded)"},
 			},
 		)
 		a, err := s.Send(storetest.Text("next"), "t2")
@@ -359,8 +359,8 @@ func TestScheduledSaveAndFlushAreSerialized(t *testing.T) {
 		equal(t, len(f.tree.Saves()), 3)
 		last := f.tree.Saves()[2].Update
 		equal(t, last.BlockCount, len(f.s.Transcript().Blocks))
-		equal(t, last.State.Phase, core.SessionPhaseIdle)
-		equal(t, f.checkpoint().State.Phase, core.SessionPhase("idle"))
+		equal(t, last.State.Phase, types.SessionPhaseIdle)
+		equal(t, f.checkpoint().State.Phase, types.SessionPhase("idle"))
 	})
 }
 
@@ -387,7 +387,7 @@ func TestQueuedMessageSavedWithoutTranscriptChange(t *testing.T) {
 		last := saves[len(saves)-1].Update
 		equal(t, len(last.ChangedBlocks), 0)
 		equal(t, len(last.State.Queue), 1)
-		equal(t, last.State.Queue[0].ID, core.TurnID("t2"))
+		equal(t, last.State.Queue[0].ID, types.TurnID("t2"))
 		equal(t, len(saves)-before, 1)
 		close(release)
 		f.done(a)
@@ -444,7 +444,7 @@ func TestStreamBlocksAndDeltaPatches(t *testing.T) {
 		sub := f.s.Subscribe(func(e session.Event) {
 			if e, ok := e.(*session.TranscriptChanged); ok {
 				for _, p := range e.Patches {
-					if p, ok := p.(*framewire.AppendTextPatch); ok {
+					if p, ok := p.(*conversationproto.AppendTextPatch); ok {
 						deltas = append(deltas, p.Delta)
 					}
 				}
@@ -455,15 +455,15 @@ func TestStreamBlocksAndDeltaPatches(t *testing.T) {
 		f.history("user", "thinking", "redacted_thinking", "text", "tool_call:error", "response", "text", "response")
 		equal(t, deltas, []string{"notes", "world"})
 		blocks := f.s.Transcript().Blocks
-		equal(t, blocks[1].(*core.ThinkingBlock).Text, "private notes")
-		equal(t, *blocks[1].(*core.ThinkingBlock).Signature, "anthropic:sig")
-		equal(t, blocks[3].(*core.TextBlock).Forkable, true)
-		equal(t, blocks[3].(*core.TextBlock).Text, "Hello world")
-		equal(t, blocks[4].(*core.ToolCallBlock).Input, `{"broken":`)
+		equal(t, blocks[1].(*types.ThinkingBlock).Text, "private notes")
+		equal(t, *blocks[1].(*types.ThinkingBlock).Signature, "anthropic:sig")
+		equal(t, blocks[3].(*types.TextBlock).Forkable, true)
+		equal(t, blocks[3].(*types.TextBlock).Text, "Hello world")
+		equal(t, blocks[4].(*types.ToolCallBlock).Input, `{"broken":`)
 		equal(
 			t,
-			blocks[4].(*core.ToolCallBlock).Output,
-			[]core.ToolResultContentBlock{&core.ToolText{Text: "Tool not found: echo"}},
+			blocks[4].(*types.ToolCallBlock).Output,
+			[]types.ToolResultContentBlock{&types.ToolText{Text: "Tool not found: echo"}},
 		)
 		replayed := f.p.Requests()[1].Items
 		equal(
@@ -490,32 +490,32 @@ func TestLongHistoryDeltaAndSaveScope(t *testing.T) {
 		original := cp.Transcript
 		for i := range 1000 {
 			for j, b := range original {
-				id := core.BlockID(fmt.Sprintf("history-%d-%d", i, j))
+				id := types.BlockID(fmt.Sprintf("history-%d-%d", i, j))
 				switch b := b.(type) {
-				case *core.UserBlock:
+				case *types.UserBlock:
 					c := *b
 					c.BlockID = id
 					cp.Transcript = append(cp.Transcript, &c)
-				case *core.TextBlock:
+				case *types.TextBlock:
 					c := *b
 					c.BlockID = id
 					cp.Transcript = append(cp.Transcript, &c)
-				case *core.ResponseBlock:
+				case *types.ResponseBlock:
 					c := *b
 					c.BlockID = id
 					cp.Transcript = append(cp.Transcript, &c)
-				case *core.AbortBlock,
-					*core.AgentMessageBlock,
-					*core.CompactionBoundaryBlock,
-					*core.CompactionMarkerBlock,
-					*core.ContextBlock,
-					*core.ErrorBlock,
-					*core.RedactedThinkingBlock,
-					*core.ResumeBlock,
-					*core.SteerBlock,
-					*core.ThinkingBlock,
-					*core.ToolCallBlock,
-					*core.WakeupBlock:
+				case *types.AbortBlock,
+					*types.AgentMessageBlock,
+					*types.CompactionBoundaryBlock,
+					*types.CompactionMarkerBlock,
+					*types.ContextBlock,
+					*types.ErrorBlock,
+					*types.RedactedThinkingBlock,
+					*types.ResumeBlock,
+					*types.SteerBlock,
+					*types.ThinkingBlock,
+					*types.ToolCallBlock,
+					*types.WakeupBlock:
 					t.Fatalf("unexpected seed block %T", b)
 				}
 			}
@@ -526,7 +526,7 @@ func TestLongHistoryDeltaAndSaveScope(t *testing.T) {
 		}
 		events = append(events, providertest.Response(1, 1))
 		s, _, _ := f.restore(cp, providertest.Events(events...))
-		patches := []framewire.TranscriptPatch{}
+		patches := []conversationproto.TranscriptPatch{}
 		sub := s.Subscribe(func(e session.Event) {
 			if e, ok := e.(*session.TranscriptChanged); ok {
 				patches = append(patches, e.Patches...)
@@ -542,14 +542,14 @@ func TestLongHistoryDeltaAndSaveScope(t *testing.T) {
 		for _, p := range patches {
 			var index uint32
 			switch p := p.(type) {
-			case *framewire.AddPatch:
+			case *conversationproto.AddPatch:
 				index = p.Index
-			case *framewire.AppendTextPatch:
+			case *conversationproto.AppendTextPatch:
 				index = p.Index
 				appended.WriteString(p.Delta)
-			case *framewire.ReplaceBlockPatch:
+			case *conversationproto.ReplaceBlockPatch:
 				index = p.Index
-			case *framewire.ReplacePatch:
+			case *conversationproto.ReplacePatch:
 				t.Fatal("history replaced")
 			}
 			if int(index) < len(cp.Transcript) {
@@ -627,11 +627,11 @@ func TestStopRunningThenQueuedThenNothing(t *testing.T) {
 		defer gate.Release()
 		first, err := f.s.Abort(t.Context())
 		must(t, err)
-		equal(t, *first.Target, framewire.AbortTargetActiveProviderStream)
+		equal(t, *first.Target, conversationproto.AbortTargetActiveProviderStream)
 		equal(t, first.CanAbortAgain, true)
 		second, err := f.s.Abort(t.Context())
 		must(t, err)
-		equal(t, *second.Target, framewire.AbortTargetQueuedMessage)
+		equal(t, *second.Target, conversationproto.AbortTargetQueuedMessage)
 		equal(t, second.CanAbortAgain, true)
 		gate.Release()
 		end, err := a.Wait(t.Context())
@@ -644,6 +644,6 @@ func TestStopRunningThenQueuedThenNothing(t *testing.T) {
 		f.history("user", "abort", "user", "text", "response")
 		last, err := f.s.Abort(t.Context())
 		must(t, err)
-		equal(t, last, framewire.AbortResult{})
+		equal(t, last, conversationproto.AbortResult{})
 	})
 }

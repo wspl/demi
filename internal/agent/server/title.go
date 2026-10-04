@@ -8,8 +8,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // TitleMaxChars is the longest title, in Unicode scalar values.
@@ -56,7 +56,7 @@ Examples:
 // TitleFromMessage gives the first message's initial title: its start, on one line.
 func TitleFromMessage(text string) string {
 	text = strings.Join(strings.Fields(text), " ")
-	return text[:core.CharOffset(text, TitleMaxChars)]
+	return text[:types.CharOffset(text, TitleMaxChars)]
 }
 
 // TitleInput numbers user messages oldest first, cutting each to 400 scalar
@@ -66,7 +66,7 @@ func TitleInput(messages []string) string {
 	lines := []string{}
 	for _, message := range messages {
 		text := strings.Join(strings.Fields(message), " ")
-		text = text[:core.CharOffset(text, 400)]
+		text = text[:types.CharOffset(text, 400)]
 		if text != "" {
 			lines = append(lines, fmt.Sprintf("%d. %s", len(lines)+1, text))
 		}
@@ -100,7 +100,7 @@ func TitleFromResponse(text string) string {
 			continue
 		}
 		line = strings.TrimSpace(strings.TrimRight(strings.TrimLeft(line, "\"'“‘「『"), "\"'”’」』"))
-		line = strings.TrimSpace(line[:core.CharOffset(line, TitleMaxChars)])
+		line = strings.TrimSpace(line[:types.CharOffset(line, TitleMaxChars)])
 		if line == "" {
 			return ""
 		}
@@ -111,17 +111,17 @@ func TitleFromResponse(text string) string {
 
 // LowestThinking returns the model's lowest named effort; a budget model
 // thinks only when asked, so nil is its least configuration.
-func LowestThinking(model core.Model) core.ThinkingConfig {
+func LowestThinking(model types.Model) types.ThinkingConfig {
 	order := []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 	for _, capability := range model.Thinking {
 		var efforts []string
 		adaptive := false
 		switch c := capability.(type) {
-		case *core.AdaptiveCapability:
+		case *types.AdaptiveCapability:
 			efforts, adaptive = c.Efforts, true
-		case *core.EffortCapability:
+		case *types.EffortCapability:
 			efforts = c.Efforts
-		case *core.BudgetCapability, *core.DisabledCapability:
+		case *types.BudgetCapability, *types.DisabledCapability:
 			continue
 		}
 		if len(efforts) == 0 {
@@ -138,9 +138,9 @@ func LowestThinking(model core.Model) core.ThinkingConfig {
 			}
 		}
 		if adaptive {
-			return &core.AdaptiveConfig{Effort: best}
+			return &types.AdaptiveConfig{Effort: best}
 		}
-		return &core.EffortConfig{Effort: best}
+		return &types.EffortConfig{Effort: best}
 	}
 	return nil
 }
@@ -154,7 +154,7 @@ func Title(
 	ctx context.Context,
 	runtime provider.Runtime,
 	sessionID, requestID string,
-	selection core.ModelSelection,
+	selection types.ModelSelection,
 	messages []string,
 ) (string, error) {
 	input := TitleInput(messages)

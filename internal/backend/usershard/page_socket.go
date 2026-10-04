@@ -9,7 +9,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type pageMessage struct {
@@ -98,8 +98,8 @@ func ReadPageMessage(ctx context.Context, socket *websocket.Conn) (websocket.Mes
 	if err != nil {
 		return kind, nil, err
 	}
-	data, err := io.ReadAll(io.LimitReader(reader, webapi.MaxPageMessageBytes+1))
-	if len(data) > webapi.MaxPageMessageBytes {
+	data, err := io.ReadAll(io.LimitReader(reader, webapiproto.MaxPageMessageBytes+1))
+	if len(data) > webapiproto.MaxPageMessageBytes {
 		// Overflow already failed the message; a close error needs no recovery.
 		_ = socket.CloseNow()
 		return kind, nil, websocket.ErrMessageTooBig

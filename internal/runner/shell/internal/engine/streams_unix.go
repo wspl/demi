@@ -7,13 +7,13 @@ import (
 	"io"
 	"os"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"golang.org/x/sys/unix"
 	"mvdan.cc/sh/v3/interp"
 )
 
 func borrowFile(ctx context.Context, file *os.File) (io.ReadWriteCloser, error) {
-	return cmdsdk.Retry(ctx, func() (io.ReadWriteCloser, error) { return interp.BorrowFile(ctx, file) })
+	return commandsdk.Retry(ctx, func() (io.ReadWriteCloser, error) { return interp.BorrowFile(ctx, file) })
 }
 
 // restoreInputPolling reverses File.Fd's blocking mode after child inheritance.

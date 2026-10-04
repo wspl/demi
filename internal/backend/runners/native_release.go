@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 )
 
 type verifiedRelease struct {
-	descriptor            commandwire.PackageDescriptor
+	descriptor            commandproto.PackageDescriptor
 	executables, archives []ArtifactFile
 }
 
@@ -43,11 +43,11 @@ func verifyRelease(ctx context.Context, release NativeRelease, allTargets bool) 
 	if err != nil {
 		return verifiedRelease{}, releaseError(release.Directory, fmt.Errorf("descriptor.json: %w", err))
 	}
-	descriptor, err := commandwire.DecodePackageDescriptor(data)
+	descriptor, err := commandproto.DecodePackageDescriptor(data)
 	if err != nil {
 		return verifiedRelease{}, releaseError(release.Directory, fmt.Errorf("descriptor.json: %w", err))
 	}
-	carried := commandwire.Targets
+	carried := commandproto.Targets
 	if !allTargets {
 		carried = slices.Sorted(maps.Keys(descriptor.Targets))
 	}
@@ -92,7 +92,7 @@ func verifyRelease(ctx context.Context, release NativeRelease, allTargets bool) 
 func verifyResources(
 	ctx context.Context,
 	release NativeRelease,
-	descriptor commandwire.PackageDescriptor,
+	descriptor commandproto.PackageDescriptor,
 ) ([]ArtifactFile, error) {
 	var archives []ArtifactFile
 	for _, name := range slices.Sorted(maps.Keys(descriptor.Resources)) {

@@ -1,12 +1,12 @@
 package database
 
 import (
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // CommandOutput is a command's row: when it ended, and its output.
 type CommandOutput struct {
-	Command core.CommandID
-	Ended   core.Timestamp
+	Command types.CommandID
+	Ended   types.Timestamp
 	Output  OutputRow
 }

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wspl/demi/internal/contract"
-	runnerwire "github.com/wspl/demi/internal/runnerwire"
+	runnerproto "github.com/wspl/demi/internal/runnerproto"
 )
 
 func DecodeDefaults(data []byte) (Defaults, error) { return contract.Decode[Defaults](data) }
@@ -169,7 +169,7 @@ func (v *InstallEnvelope) UnmarshalJSON(data []byte) error {
 			return contract.At("install", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[runnerwire.Install](raw)
+			value, err := contract.Decode[runnerproto.Install](raw)
 			if err != nil {
 				return contract.At("install", err)
 			}

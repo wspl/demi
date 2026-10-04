@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
@@ -41,7 +41,7 @@ type Options struct {
 	// Commands supplies declared roots and their job-owned handler.
 	Commands *process.JobCommands
 	// Edits records mutations made through shell redirections.
-	Edits *cmdsdk.Recorder
+	Edits *commandsdk.Recorder
 	// Observe receives progress and interruptible IO observations for test scopes.
 	Observe Observer
 	// Interrupt closes job-owned pipes after child starts have stopped.

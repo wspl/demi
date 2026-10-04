@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ResponsesEvent is a registered event in an OpenAI-shaped Responses stream.
@@ -179,7 +179,7 @@ type InputTokensDetails struct {
 }
 
 // TokenUsage separates both cache counts from input tokens.
-func (u ResponsesUsage) TokenUsage() core.TokenUsage {
+func (u ResponsesUsage) TokenUsage() types.TokenUsage {
 	var read, written *uint64
 	if u.InputTokensDetails != nil {
 		read = u.InputTokensDetails.CachedTokens

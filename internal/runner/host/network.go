@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // NetOpen resolves the host on the device and connects with a ten-second
@@ -21,7 +21,7 @@ import (
 // pipe directions. Input EOF half-closes the socket; socket EOF ends output;
 // either pipe failing cancels both directions. It reports both pipe ends even
 // when connecting fails. Streams do not consume finite Host-work permits.
-func (s *Service) NetOpen(ctx context.Context, request runnerwire.NetOpen) error {
+func (s *Service) NetOpen(ctx context.Context, request runnerproto.NetOpen) error {
 	ctx, leave, err := s.life.enter(ctx)
 	if err != nil {
 		return err
@@ -29,7 +29,7 @@ func (s *Service) NetOpen(ctx context.Context, request runnerwire.NetOpen) error
 	defer leave()
 	socket, failure := connectTCP(ctx, request.Host, request.Port)
 	if failure != nil {
-		code := runnerwire.NetErrorCodeUnreachable
+		code := runnerproto.NetErrorCodeUnreachable
 		var problem *netError
 		if errors.As(failure, &problem) {
 			code = problem.code
@@ -37,14 +37,14 @@ func (s *Service) NetOpen(ctx context.Context, request runnerwire.NetOpen) error
 		replyErr := sendFrame(
 			s.life.ctx,
 			s.output,
-			&runnerwire.NetError{StreamID: request.StreamID, Code: code, Message: failure.Error()},
+			&runnerproto.NetError{StreamID: request.StreamID, Code: code, Message: failure.Error()},
 		)
 		inputErr := process.ReportPipe(s.life.ctx, s.output, request.Input.ID, failure)
 		outputErr := process.ReportPipe(s.life.ctx, s.output, request.Output.ID, failure)
 		return errors.Join(replyErr, inputErr, outputErr)
 	}
 	defer func() { _ = socket.Close() }() // Each direction reports its own IO failure.
-	if err = sendFrame(s.life.ctx, s.output, &runnerwire.NetOpened{StreamID: request.StreamID}); err != nil {
+	if err = sendFrame(s.life.ctx, s.output, &runnerproto.NetOpened{StreamID: request.StreamID}); err != nil {
 		return err
 	}
 	exchange, cancel := context.WithCancel(ctx)
@@ -78,7 +78,7 @@ func (s *Service) NetOpen(ctx context.Context, request runnerwire.NetOpen) error
 
 // netError retains socket error causes for descriptor retry and wire classification.
 type netError struct {
-	code    runnerwire.NetErrorCode
+	code    runnerproto.NetErrorCode
 	message string
 	cause   error
 }
@@ -88,23 +88,23 @@ func (e *netError) Unwrap() error { return e.cause }
 
 // connectTCP gives each socket attempt ten seconds, excluding descriptor backoff.
 func connectTCP(ctx context.Context, host string, port uint16) (*net.TCPConn, error) {
-	return cmdsdk.Retry(ctx, func() (*net.TCPConn, error) {
+	return commandsdk.Retry(ctx, func() (*net.TCPConn, error) {
 		attempt, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		socket, err := (&net.Dialer{}).DialContext(attempt, "tcp", net.JoinHostPort(host, strconv.Itoa(int(port))))
 		if err == nil {
 			return socket.(*net.TCPConn), nil
 		} // A successful tcp dial is a TCPConn.
-		code := runnerwire.NetErrorCodeUnreachable
+		code := runnerproto.NetErrorCodeUnreachable
 		message := err.Error()
 		var dns *net.DNSError
 		if errors.Is(attempt.Err(), context.DeadlineExceeded) {
-			code = runnerwire.NetErrorCodeTimeout
+			code = runnerproto.NetErrorCodeTimeout
 			message = fmt.Sprintf("connecting to %s:%d exceeded 10 seconds", host, port)
 		} else if errors.As(err, &dns) {
-			code = runnerwire.NetErrorCodeResolveFailed
+			code = runnerproto.NetErrorCodeResolveFailed
 		} else if errors.Is(err, syscall.ECONNREFUSED) {
-			code = runnerwire.NetErrorCodeRefused
+			code = runnerproto.NetErrorCodeRefused
 		}
 		return nil, &netError{code: code, message: message, cause: err}
 	})

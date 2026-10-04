@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/transform"
 )
@@ -39,7 +39,7 @@ func decodeOutputText(pending *[]byte, data []byte, final bool) string {
 func (s *receivedStream) receive(record *host.CommandRecord, chunk JobOutput, received *[]host.OutputRecord) bool {
 	end := chunk.Offset + uint64(len(chunk.Bytes))
 	s.length = max(s.length, end)
-	if chunk.Offset < uint64(runnerwire.JobViewBytes) {
+	if chunk.Offset < uint64(runnerproto.JobViewBytes) {
 		s.head = end
 		s.next = end
 		text := decodeOutputText(&s.pending, chunk.Bytes, false)
@@ -59,7 +59,7 @@ func (s *receivedStream) receive(record *host.CommandRecord, chunk JobOutput, re
 	} else {
 		s.newest = append(s.newest[:int(chunk.Offset-s.newestOffset)], chunk.Bytes...)
 	}
-	excess := max(0, len(s.newest)-runnerwire.JobViewBytes)
+	excess := max(0, len(s.newest)-runnerproto.JobViewBytes)
 	s.newest = s.newest[excess:]
 	s.newestOffset += uint64(excess)
 	tail := s.newest
@@ -115,15 +115,15 @@ func pushReason(records *[]host.OutputRecord, reason string) string {
 		}
 	}
 	text := separator + reason + "\n"
-	*records = append(*records, host.OutputRecord{Stream: core.StreamKind("stderr"), Bytes: []byte(text)})
+	*records = append(*records, host.OutputRecord{Stream: types.StreamKind("stderr"), Bytes: []byte(text)})
 	return text
 }
 
 // finishJob stores edits, retains whole output and updates the shell directory before settlement.
 func (e *ShellEnvironment) finishJob(
 	ctx context.Context,
-	shell core.ShellID,
-	command core.CommandID,
+	shell types.ShellID,
+	command types.CommandID,
 	running *runningCommand,
 	record *host.CommandRecord,
 	job *Job,
@@ -169,7 +169,7 @@ func (e *ShellEnvironment) finishJob(
 // settle stores output, releases the runner directory, then publishes the command's end.
 func (e *ShellEnvironment) settle(
 	ctx context.Context,
-	command core.CommandID,
+	command types.CommandID,
 	record *host.CommandRecord,
 	ending host.Ending,
 	output host.WholeOutput,
@@ -195,13 +195,13 @@ func (e *ShellEnvironment) settle(
 // keepJobFiles retains edits before updating the shell directory for settlement.
 func (e *ShellEnvironment) keepJobFiles(
 	ctx context.Context,
-	shell core.ShellID,
-	command core.CommandID,
+	shell types.ShellID,
+	command types.CommandID,
 	record *host.CommandRecord,
 	end JobEnd,
 ) {
 	if len(end.Files) > 0 {
-		var files []core.EditedFile
+		var files []types.EditedFile
 		if e.options.Keeper != nil {
 			retained, err := e.options.Keeper.Retain(ctx, command, end.Files)
 			files = retained
@@ -211,7 +211,7 @@ func (e *ShellEnvironment) keepJobFiles(
 		}
 		if e.options.Keeper == nil {
 			for _, file := range end.Files {
-				files = append(files, EditedFile(file, func(int) *core.EditCopies { return nil }))
+				files = append(files, EditedFile(file, func(int) *types.EditCopies { return nil }))
 			}
 		}
 		record.SetFiles(host.EditedFiles{Files: files, Truncated: end.FilesTruncated})
@@ -228,10 +228,10 @@ func (e *ShellEnvironment) keepJobFiles(
 // completeJobOutput reads retained output when views omit bytes, keeping received tails on failure.
 func completeJobOutput(
 	ctx context.Context,
-	command core.CommandID,
+	command types.CommandID,
 	running *runningCommand,
 	job *Job,
-	lengths runnerwire.OutputLengths,
+	lengths runnerproto.OutputLengths,
 	streams [2]receivedStream,
 ) (host.WholeOutput, string, bool) {
 	unreceived := subtract(lengths.StdoutBytes, streams[0].head) + subtract(lengths.StderrBytes, streams[1].head)
@@ -268,9 +268,9 @@ func partialJobOutput(
 		gap := subtract(stream.newestOffset, stream.head)
 		leftOut += gap
 		kept += gap + uint64(len(stream.newest))
-		kind := core.StreamKind("stdout")
+		kind := types.StreamKind("stdout")
 		if i == 1 {
-			kind = core.StreamKind("stderr")
+			kind = types.StreamKind("stderr")
 		}
 		newest = append(newest, host.OutputRecord{Stream: kind, Bytes: stream.newest})
 	}
@@ -288,7 +288,7 @@ func partialJobOutput(
 // finishJobOutput builds the final output view and settles an exited or signalled command.
 func (e *ShellEnvironment) finishJobOutput(
 	ctx context.Context,
-	command core.CommandID,
+	command types.CommandID,
 	running *runningCommand,
 	record *host.CommandRecord,
 	job *Job,
@@ -296,7 +296,7 @@ func (e *ShellEnvironment) finishJobOutput(
 	streams [2]receivedStream,
 	ending host.Ending,
 ) {
-	lengths := runnerwire.OutputLengths{StdoutBytes: streams[0].head, StderrBytes: streams[1].head}
+	lengths := runnerproto.OutputLengths{StdoutBytes: streams[0].head, StderrBytes: streams[1].head}
 	if end.Output != nil {
 		lengths = *end.Output
 	}
@@ -317,7 +317,7 @@ func (e *ShellEnvironment) finishJobOutput(
 	if aborted {
 		ending.Phase = host.Aborted
 	}
-	record.Grew(core.StreamKind("stdout"), lengths.StdoutBytes)
-	record.Grew(core.StreamKind("stderr"), lengths.StderrBytes)
+	record.Grew(types.StreamKind("stdout"), lengths.StdoutBytes)
+	record.Grew(types.StreamKind("stderr"), lengths.StderrBytes)
 	e.settle(ctx, command, record, ending, output, binary, page, job)
 }

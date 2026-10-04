@@ -20,15 +20,15 @@ import (
 
 	"github.com/wspl/demi/internal/backend/blobs"
 	"github.com/wspl/demi/internal/backend/blobs/blobstest"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 type wallClock struct{ milliseconds atomic.Int64 }
 
-func (c *wallClock) Now() core.Timestamp {
-	value, err := core.TimestampFromMillisecond(c.milliseconds.Load())
+func (c *wallClock) Now() types.Timestamp {
+	value, err := types.TimestampFromMillisecond(c.milliseconds.Load())
 	if err != nil {
 		panic(err)
 	} // Tests only assign the Unix epoch and a few days after it.
@@ -58,7 +58,7 @@ func (h *heldDeletion) Delete(ctx context.Context, key string) error {
 }
 
 type putResult struct {
-	ref core.BlobRef
+	ref types.BlobRef
 	err error
 }
 type deleteResult struct {
@@ -92,7 +92,7 @@ func TestPutWaitsForDeletionAndStoresAgain(t *testing.T) {
 				clock := &wallClock{}
 				namespaces := blobs.New(held, clock)
 				namespace := namespaces.ForUser("ana")
-				data := core.B64Bytes("a screenshot")
+				data := types.B64Bytes("a screenshot")
 				ref, err := namespace.Put(ctx, data)
 				if err != nil {
 					t.Fatal(err)
@@ -108,7 +108,7 @@ func TestPutWaitsForDeletionAndStoresAgain(t *testing.T) {
 				})
 				<-held.reached
 				if err := namespace.CommitUses(
-					[]core.BlobRef{ref},
+					[]types.BlobRef{ref},
 				); err == nil ||
 					err.Error() != fmt.Sprintf("blob %s is being deleted", ref) {
 					t.Fatalf("commit during deletion = %v", err)
@@ -157,7 +157,7 @@ func TestPutWaitsForDeletionAndStoresAgain(t *testing.T) {
 				if err != nil || !exists || !bytes.Equal(got, data) {
 					t.Fatalf("read = %q, %t, %v", got, exists, err)
 				}
-				if err := namespace.CommitUses([]core.BlobRef{ref}); err != nil {
+				if err := namespace.CommitUses([]types.BlobRef{ref}); err != nil {
 					t.Fatal(err)
 				}
 			})
@@ -206,7 +206,7 @@ func TestS3BucketHoldsEachBlobOnceUnderUserNamespace(t *testing.T) {
 			clock := &wallClock{}
 			stores := blobs.New(counts.Observe(bucket), clock)
 			ana, other := stores.ForUser("ana"), stores.ForUser("another")
-			data := core.B64Bytes("picture")
+			data := types.B64Bytes("picture")
 			ref, err := ana.Put(ctx, data)
 			if err != nil {
 				t.Fatal(err)
@@ -257,7 +257,7 @@ func TestS3BucketHoldsEachBlobOnceUnderUserNamespace(t *testing.T) {
 			if deleted, err := ana.DeleteUnused(ctx, ref, day); err != nil || deleted {
 				t.Fatalf("grace boundary = %t, %v", deleted, err)
 			}
-			if err := ana.CommitUses([]core.BlobRef{ref}); err != nil {
+			if err := ana.CommitUses([]types.BlobRef{ref}); err != nil {
 				t.Fatal(err)
 			}
 			clock.milliseconds.Store((2 * day).Milliseconds())

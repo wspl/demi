@@ -8,9 +8,9 @@ import (
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func mediaParts(r provider.InferenceRequest) []string {
@@ -59,7 +59,7 @@ func mediaParts(r provider.InferenceRequest) []string {
 func TestUnsupportedMediaUsesStableTextAcrossModels(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		png := storetest.PNG(3, 2, 1)
-		pdf := core.B64Bytes("%PDF-1.7")
+		pdf := types.B64Bytes("%PDF-1.7")
 		mp4 := make([]byte, 3000)
 		copy(mp4, []byte("\x00\x00\x00\x18ftypisom"))
 		r := toolRuntime("record", func(context.Context, session.ToolInvocation) (session.ToolOutcome, error) {
@@ -82,24 +82,28 @@ func TestUnsupportedMediaUsesStableTextAcrossModels(t *testing.T) {
 		a := storetest.ModelReading(
 			"stub",
 			"model-a",
-			[]core.FileExtension{core.FileExtensionPNG, core.FileExtensionPDF, core.FileExtensionMP4},
+			[]types.FileExtension{types.FileExtensionPNG, types.FileExtensionPDF, types.FileExtensionMP4},
 		)
-		b := storetest.ModelReading("stub", "model-b", []core.FileExtension{core.FileExtensionPNG})
+		b := storetest.ModelReading("stub", "model-b", []types.FileExtension{types.FileExtensionPNG})
 		c := storetest.ModelReading(
 			"small",
 			"model-c",
-			[]core.FileExtension{core.FileExtensionPNG, core.FileExtensionPDF, core.FileExtensionMP4},
+			[]types.FileExtension{types.FileExtensionPNG, types.FileExtensionPDF, types.FileExtensionMP4},
 		)
 		held := store.HeldMedia{}
-		held.Hold(core.BlobRefOf(png), png)
-		held.Hold(core.BlobRefOf(pdf), pdf)
+		held.Hold(types.BlobRefOf(png), png)
+		held.Hold(types.BlobRefOf(pdf), pdf)
 		f.s.HoldMedia(&held)
 		must(t, f.s.UpdateModel(session.ModelSwitch{Model: a}))
-		content := []core.UserContentBlock{
-			&core.UserText{Text: "record it"},
-			&core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(png), MediaType: "image/png"}},
-			&core.UserDocument{
-				Source: &core.DocumentRef{Ref: core.BlobRefOf(pdf), MediaType: "application/pdf", FileName: "spec.pdf"},
+		content := []types.UserContentBlock{
+			&types.UserText{Text: "record it"},
+			&types.UserImage{Source: &types.MediaSourceRef{Ref: types.BlobRefOf(png), MediaType: "image/png"}},
+			&types.UserDocument{
+				Source: &types.DocumentRef{
+					Ref:       types.BlobRefOf(pdf),
+					MediaType: "application/pdf",
+					FileName:  "spec.pdf",
+				},
 			},
 		}
 		handle, err := f.s.Send(content, "t1")

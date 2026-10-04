@@ -6,16 +6,16 @@ import (
 	"iter"
 	"net/http"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Provider is one provider entry and account, shared by every user and request.
 type Provider interface {
 	Capabilities() Capabilities
-	AuthStatus(context.Context) core.AuthState
-	RuntimeState() core.RuntimeState
-	ListModels(context.Context) (core.ProviderModelList, error)
-	ReadFailure(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts
+	AuthStatus(context.Context) types.AuthState
+	RuntimeState() types.RuntimeState
+	ListModels(context.Context) (types.ProviderModelList, error)
+	ReadFailure(*types.ProviderErrorDiagnostics, types.Timestamp) types.ProviderFailureFacts
 	Quota() *Quota
 	Accounts() SubscriptionAccounts
 	Runtime(RuntimeEnv) (Runtime, error)
@@ -32,7 +32,7 @@ type Runtime interface {
 	Run(context.Context, InferenceRequest) Run
 	Fresh() Runtime
 	Close(context.Context) error
-	RequestLimits(core.Model) RequestLimits
+	RequestLimits(types.Model) RequestLimits
 }
 
 // Run yields the events of one inference attempt. The consumer must stop the
@@ -52,7 +52,7 @@ func OpenAIRequestLimits() RequestLimits {
 }
 
 // AnthropicRequestLimits returns the Messages API limits for model.
-func AnthropicRequestLimits(model core.Model) RequestLimits {
+func AnthropicRequestLimits(model types.Model) RequestLimits {
 	body, images := uint64(32_000_000), uint32(100)
 	if model.ContextWindow > 200_000 {
 		images = 600
@@ -71,7 +71,7 @@ type InferenceRequest struct {
 	SystemPrompt  string
 	Items         []InferenceItem
 	Tools         []ToolDefinition
-	Thinking      core.ThinkingConfig
+	Thinking      types.ThinkingConfig
 	ServiceTierID *string
 	PromptCache   PromptCache
 }
@@ -238,7 +238,7 @@ type ToolCall struct {
 }
 
 // Response carries the usage of the run's final API call, not a turn total.
-type Response struct{ Usage core.TokenUsage }
+type Response struct{ Usage types.TokenUsage }
 
 // Error is the run's terminal failure.
 type Error struct{ Failure Failure }

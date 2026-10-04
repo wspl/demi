@@ -9,17 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // FailureReader reads the facts of a stored vendor failure at its receipt time.
-type FailureReader func(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts
+type FailureReader func(*types.ProviderErrorDiagnostics, types.Timestamp) types.ProviderFailureFacts
 
 // Failure is a failed run: the run's last event.
 type Failure struct {
 	Message     string
 	Code        *ErrorCode
-	Diagnostics *core.ProviderErrorDiagnostics
+	Diagnostics *types.ProviderErrorDiagnostics
 	RetryAfter  *time.Duration
 }
 
@@ -126,13 +126,16 @@ func ClassifyError(code *string, message string) *ErrorCode {
 
 // ProtocolFailure preserves an undecodable frame without a retryable code.
 func ProtocolFailure(message, received string) Failure {
-	return Failure{Message: message, Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", Upstream: &received}}
+	return Failure{
+		Message:     message,
+		Diagnostics: &types.ProviderErrorDiagnostics{Source: "stream", Upstream: &received},
+	}
 }
 
 // NoAnswer reports a transient failure without a vendor record.
 func NoAnswer(message string) Failure {
 	code := Overloaded
-	return Failure{Message: message, Code: &code, Diagnostics: &core.ProviderErrorDiagnostics{Source: "transport"}}
+	return Failure{Message: message, Code: &code, Diagnostics: &types.ProviderErrorDiagnostics{Source: "transport"}}
 }
 
 // TransportFailure reports an HTTP transport failure without exposing its endpoint.
@@ -159,7 +162,7 @@ func RequestBuildFailure(label string, err error) Failure {
 }
 
 // WithRetryWait sets the wait named by the vendor's failure reader.
-func (f Failure) WithRetryWait(reader FailureReader, now core.Timestamp) Failure {
+func (f Failure) WithRetryWait(reader FailureReader, now types.Timestamp) Failure {
 	if f.Diagnostics == nil || reader == nil {
 		return f
 	}
@@ -193,5 +196,5 @@ func EventStreamFailure(label string, err error) Failure {
 	if stream.Kind == SSEUTF8 {
 		message = label + " API stream is not UTF-8 text: " + stream.Err.Error()
 	}
-	return Failure{Message: message, Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream"}}
+	return Failure{Message: message, Diagnostics: &types.ProviderErrorDiagnostics{Source: "stream"}}
 }

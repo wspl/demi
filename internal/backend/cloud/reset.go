@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Reset returns a running or ready id, resumes a failed id on its original base,
 // or admits a new reset. Accepted work belongs to Cloud, not the caller.
-func Reset(ctx context.Context, s Shard, id webapi.OperationID) (database.ManagedOperation, error) {
+func Reset(ctx context.Context, s Shard, id webapiproto.OperationID) (database.ManagedOperation, error) {
 	c := s.Cloud()
 	c.mu.Lock()
 	stopped := c.stopped || c.ctx.Err() != nil
@@ -43,14 +43,14 @@ func Reset(ctx context.Context, s Shard, id webapi.OperationID) (database.Manage
 	if err != nil {
 		return database.ManagedOperation{}, storageFailed(err)
 	}
-	if found && stored.Phase == webapi.ResetPhaseReady {
+	if found && stored.Phase == webapiproto.ResetPhaseReady {
 		return stored, nil
 	}
-	var base machinewire.BaseVersion
+	var base machinemanagerproto.BaseVersion
 	if found {
 		base = stored.BaseVersion
 	} else {
-		base, err = Call(ctx, s.CloudServices().Machines, machinewire.CurrentBaseVersionParams{})
+		base, err = Call(ctx, s.CloudServices().Machines, machinemanagerproto.CurrentBaseVersionParams{})
 		if err != nil {
 			return database.ManagedOperation{}, failed(err)
 		}
@@ -59,7 +59,7 @@ func Reset(ctx context.Context, s Shard, id webapi.OperationID) (database.Manage
 }
 
 // runningResetLocked reads the admitted reset under the shard mutex.
-func runningResetLocked(m *machine, id webapi.OperationID) (database.ManagedOperation, bool, error) {
+func runningResetLocked(m *machine, id webapiproto.OperationID) (database.ManagedOperation, bool, error) {
 	if m.reset == nil {
 		return database.ManagedOperation{}, false, nil
 	}
@@ -80,7 +80,7 @@ func resetSteps(
 	if err := s.CloudStopped(ctx, m.device.ID); err != nil {
 		return failed(err)
 	}
-	if err := recordPhase(ctx, s, m, op, webapi.ResetPhaseStopping, nil); err != nil {
+	if err := recordPhase(ctx, s, m, op, webapiproto.ResetPhaseStopping, nil); err != nil {
 		return err
 	}
 	if previous != nil {
@@ -122,13 +122,13 @@ func finishReset(
 	t *transition,
 	result error,
 ) {
-	op.Phase = webapi.ResetPhaseReady
+	op.Phase = webapiproto.ResetPhaseReady
 	if result != nil {
 		if err := save(ctx, s, m); err != nil {
 			slog.Warn("a Cloud whose reset failed was not saved", "error", err)
 		}
 		text := result.Error()
-		op.Phase = webapi.ResetPhaseFailed
+		op.Phase = webapiproto.ResetPhaseFailed
 		op.Error = &text
 	}
 	recorded := cloudRecords(s).PutManagedOperation(ctx, m.device.ID, op)
@@ -138,12 +138,12 @@ func finishReset(
 	m.reset = nil
 	var permit *Permit
 	if result == nil {
-		m.phase = webapi.CloudStateRunning
+		m.phase = webapiproto.CloudStateRunning
 		m.failure = nil
 		m.started = time.Now()
 		m.checkpoint = m.started
 	} else {
-		m.phase = webapi.CloudStateOff
+		m.phase = webapiproto.CloudStateOff
 		m.failure = op.Error
 		permit = m.permit
 		m.permit = nil
@@ -169,7 +169,7 @@ func recordPhase(
 	s Shard,
 	m *machine,
 	op database.ManagedOperation,
-	phase webapi.ResetPhase,
+	phase webapiproto.ResetPhase,
 	failure *string,
 ) error {
 	op.Phase = phase
@@ -193,14 +193,14 @@ func RecoverResets(ctx context.Context, control *database.ControlService, servic
 type resetRecords interface {
 	DeleteCloudExposes(context.Context) error
 	UnfinishedManagedOperations(context.Context) ([]database.DeviceOperation, error)
-	Device(context.Context, webapi.DeviceID) (database.DeviceRecord, bool, error)
-	AnnounceCloudReset(context.Context, webapi.UserID, webapi.OperationID) error
-	PutManagedOperation(context.Context, webapi.DeviceID, database.ManagedOperation) error
+	Device(context.Context, webapiproto.DeviceID) (database.DeviceRecord, bool, error)
+	AnnounceCloudReset(context.Context, webapiproto.UserID, webapiproto.OperationID) error
+	PutManagedOperation(context.Context, webapiproto.DeviceID, database.ManagedOperation) error
 }
 
 // recoverResets orders manager reconciliation and durable reset recovery before serving.
 func recoverResets(ctx context.Context, control resetRecords, services *Services) error {
-	if _, err := Call(ctx, services.Machines, machinewire.ReconcileParams{}); err != nil {
+	if _, err := Call(ctx, services.Machines, machinemanagerproto.ReconcileParams{}); err != nil {
 		return err
 	}
 	if err := control.DeleteCloudExposes(ctx); err != nil {
@@ -222,7 +222,7 @@ func recoverResets(ctx context.Context, control resetRecords, services *Services
 		if _, err := Call(
 			ctx,
 			services.Machines,
-			machinewire.ResetParams{
+			machinemanagerproto.ResetParams{
 				DeviceID:    string(pair.Device),
 				OperationID: string(op.ID),
 				BaseVersion: string(op.BaseVersion),
@@ -234,7 +234,7 @@ func recoverResets(ctx context.Context, control resetRecords, services *Services
 			return err
 		}
 		text := "Reset disks recovered; retry to start Cloud"
-		op.Phase = webapi.ResetPhaseFailed
+		op.Phase = webapiproto.ResetPhaseFailed
 		op.Error = &text
 		if err := control.PutManagedOperation(ctx, pair.Device, op); err != nil {
 			return err
@@ -248,10 +248,10 @@ func admitReset(
 	c *Cloud,
 	s Shard,
 	m *machine,
-	id webapi.OperationID,
-	base machinewire.BaseVersion,
+	id webapiproto.OperationID,
+	base machinemanagerproto.BaseVersion,
 ) (database.ManagedOperation, error) {
-	operation := database.ManagedOperation{ID: id, BaseVersion: base, Phase: webapi.ResetPhaseStopping}
+	operation := database.ManagedOperation{ID: id, BaseVersion: base, Phase: webapiproto.ResetPhaseStopping}
 	capacity := s.CloudServices().Capacity
 	c.mu.Lock()
 	if c.stopped || c.ctx.Err() != nil {
@@ -275,7 +275,7 @@ func admitReset(
 	retirement := m.retirement
 	cancel := m.schedules
 	m.schedules = nil
-	m.phase = webapi.CloudStateResetting
+	m.phase = webapiproto.CloudStateResetting
 	m.operation = &operation
 	t := &transition{done: make(chan struct{})}
 	m.reset = t
@@ -298,19 +298,19 @@ func admitReset(
 
 // rebuildReset persists saving, rebuilding and booting intent before each disk step.
 func rebuildReset(ctx context.Context, s Shard, m *machine, op database.ManagedOperation) error {
-	if err := recordPhase(ctx, s, m, op, webapi.ResetPhaseSaving, nil); err != nil {
+	if err := recordPhase(ctx, s, m, op, webapiproto.ResetPhaseSaving, nil); err != nil {
 		return err
 	}
 	if err := save(ctx, s, m); err != nil {
 		return err
 	}
-	if err := recordPhase(ctx, s, m, op, webapi.ResetPhaseRebuilding, nil); err != nil {
+	if err := recordPhase(ctx, s, m, op, webapiproto.ResetPhaseRebuilding, nil); err != nil {
 		return err
 	}
 	_, err := Call(
 		ctx,
 		s.CloudServices().Machines,
-		machinewire.ResetParams{
+		machinemanagerproto.ResetParams{
 			DeviceID:    string(m.device.ID),
 			OperationID: string(op.ID),
 			BaseVersion: string(op.BaseVersion),
@@ -326,7 +326,7 @@ func rebuildReset(ctx context.Context, s Shard, m *machine, op database.ManagedO
 	c.mu.Lock()
 	m.deaths = nil
 	c.mu.Unlock()
-	if err := recordPhase(ctx, s, m, op, webapi.ResetPhaseBooting, nil); err != nil {
+	if err := recordPhase(ctx, s, m, op, webapiproto.ResetPhaseBooting, nil); err != nil {
 		return err
 	}
 	return boot(ctx, s, m)

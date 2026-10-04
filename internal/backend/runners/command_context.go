@@ -4,13 +4,13 @@ import (
 	"context"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // DefaultLocale is the locale commands receive until the user's browser reports one.
-func DefaultLocale() commandwire.CommandLocale {
-	return commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}}
+func DefaultLocale() commandproto.CommandLocale {
+	return commandproto.CommandLocale{TimeZone: "UTC", Languages: []commandproto.LanguageTag{"en-US"}}
 }
 
 // CommandContext builds the context of caller's work for conversation and its
@@ -18,10 +18,10 @@ func DefaultLocale() commandwire.CommandLocale {
 func CommandContext(
 	ctx context.Context,
 	control *database.ControlService,
-	user webapi.UserID,
-	conversation webapi.ConversationID,
-	caller commandwire.Caller,
-) (commandwire.Context, error) {
+	user webapiproto.UserID,
+	conversation webapiproto.ConversationID,
+	caller commandproto.Caller,
+) (commandproto.Context, error) {
 	return workContext(ctx, control, user, string(conversation), caller)
 }
 
@@ -30,27 +30,27 @@ func CommandContext(
 func ProviderContext(
 	ctx context.Context,
 	control *database.ControlService,
-	user webapi.UserID,
-	provider webapi.ProviderID,
-) (commandwire.Context, error) {
-	return workContext(ctx, control, user, "provider-"+string(provider), &commandwire.UserCaller{})
+	user webapiproto.UserID,
+	provider webapiproto.ProviderID,
+) (commandproto.Context, error) {
+	return workContext(ctx, control, user, "provider-"+string(provider), &commandproto.UserCaller{})
 }
 
 // workContext supplies the user's saved locale to a command's scope and caller.
 func workContext(
 	ctx context.Context,
 	control *database.ControlService,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	scope string,
-	caller commandwire.Caller,
-) (commandwire.Context, error) {
+	caller commandproto.Caller,
+) (commandproto.Context, error) {
 	preferences, err := control.Preferences(ctx, user)
 	if err != nil {
-		return commandwire.Context{}, err
+		return commandproto.Context{}, err
 	}
 	locale := DefaultLocale()
 	if preferences.Locale != nil {
 		locale = *preferences.Locale
 	}
-	return commandwire.Context{Conversation: scope, Caller: caller, Locale: locale}, nil
+	return commandproto.Context{Conversation: scope, Caller: caller, Locale: locale}, nil
 }

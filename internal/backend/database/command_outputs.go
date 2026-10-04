@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // InsertCommandOutputs writes rows while preserving each existing command row,
 // recording blob uses before commit. The caller owns tx and rolls back on error.
 func InsertCommandOutputs(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, rows []CommandOutput) error {
-	touched := make([]core.BlobRef, 0)
+	touched := make([]types.BlobRef, 0)
 	for _, row := range rows {
 		var blob, missingBytes, missingReason, notStored, removed any
 		switch output := row.Output.(type) {
@@ -58,7 +58,7 @@ ON CONFLICT (command_id) DO NOTHING`,
 }
 
 // ReadCommandOutput reads a command's row; nil means it has no row.
-func ReadCommandOutput(ctx context.Context, tx *sql.Tx, command core.CommandID) (CommandOutput, bool, error) {
+func ReadCommandOutput(ctx context.Context, tx *sql.Tx, command types.CommandID) (CommandOutput, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,
@@ -70,7 +70,7 @@ func ReadCommandOutput(ctx context.Context, tx *sql.Tx, command core.CommandID) 
 }
 
 // CommandOutputRows reads the commands' rows for a Fork to copy.
-func CommandOutputRows(ctx context.Context, tx *sql.Tx, commands []core.CommandID) ([]CommandOutput, error) {
+func CommandOutputRows(ctx context.Context, tx *sql.Tx, commands []types.CommandID) ([]CommandOutput, error) {
 	rows := make([]CommandOutput, 0)
 	for _, command := range commands {
 		row, found, err := ReadCommandOutput(ctx, tx, command)
@@ -85,11 +85,11 @@ func CommandOutputRows(ctx context.Context, tx *sql.Tx, commands []core.CommandI
 }
 
 // CommandsOf returns the commands named by blocks' shell calls, each once.
-func CommandsOf(blocks []core.Block) []core.CommandID {
-	commands := make([]core.CommandID, 0)
+func CommandsOf(blocks []types.Block) []types.CommandID {
+	commands := make([]types.CommandID, 0)
 	for _, block := range blocks {
-		if call, ok := block.(*core.ToolCallBlock); ok {
-			if view, ok := call.View.(*core.ShellView); ok && !slices.Contains(commands, view.CommandID) {
+		if call, ok := block.(*types.ToolCallBlock); ok {
+			if view, ok := call.View.(*types.ShellView); ok && !slices.Contains(commands, view.CommandID) {
 				commands = append(commands, view.CommandID)
 			}
 		}
@@ -98,7 +98,7 @@ func CommandsOf(blocks []core.Block) []core.CommandID {
 }
 
 // HasExpiredOutputs reports whether stored output ended before expired.
-func HasExpiredOutputs(ctx context.Context, tx *sql.Tx, expired core.Timestamp) (bool, error) {
+func HasExpiredOutputs(ctx context.Context, tx *sql.Tx, expired types.Timestamp) (bool, error) {
 	at, err := expired.Millisecond()
 	if err != nil {
 		return false, err
@@ -115,7 +115,12 @@ func HasExpiredOutputs(ctx context.Context, tx *sql.Tx, expired core.Timestamp) 
 
 // RemoveExpiredOutputs marks expired outputs removed at now and records released
 // blobs' uses. The caller owns tx and rolls back on error. It returns the row count.
-func RemoveExpiredOutputs(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, expired, now core.Timestamp) (int, error) {
+func RemoveExpiredOutputs(
+	ctx context.Context,
+	tx *sql.Tx,
+	blobs OwnerBlobs,
+	expired, now types.Timestamp,
+) (int, error) {
 	before, err := expired.Millisecond()
 	if err != nil {
 		return 0, err
@@ -129,7 +134,7 @@ func RemoveExpiredOutputs(ctx context.Context, tx *sql.Tx, blobs OwnerBlobs, exp
 		tx,
 		"command_outputs",
 		"SELECT blob FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?",
-		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
 		before,
 	)
 	if err != nil {
@@ -154,22 +159,22 @@ WHERE blob IS NOT NULL AND ended_at < ?`,
 }
 
 // CommandOutputReferences returns the blobs held by command-output rows.
-func CommandOutputReferences(ctx context.Context, tx *sql.Tx) ([]core.BlobRef, error) {
+func CommandOutputReferences(ctx context.Context, tx *sql.Tx) ([]types.BlobRef, error) {
 	return queryRecords(
 		ctx,
 		tx,
 		"command_outputs",
 		"SELECT blob FROM command_outputs WHERE blob IS NOT NULL",
-		func(r *storedRow) core.BlobRef { return checked(r, "blob", core.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
 	)
 }
 
 func commandOutputRow(r *storedRow) CommandOutput {
-	row := CommandOutput{Command: checked(r, "command_id", core.ParseCommandID), Ended: r.instant("ended_at")}
+	row := CommandOutput{Command: checked(r, "command_id", types.ParseCommandID), Ended: r.instant("ended_at")}
 	blob, reason, removed := r.values["blob"], r.values["not_stored"], r.values["removed_at"]
 	switch {
 	case blob != nil && reason == nil && removed == nil:
-		output := &OutputStored{Blob: checked(r, "blob", core.ParseBlobRef)}
+		output := &OutputStored{Blob: checked(r, "blob", types.ParseBlobRef)}
 		if r.values["missing_bytes"] != nil && r.values["missing_reason"] != nil {
 			output.Missing = &host.Missing{Bytes: r.count("missing_bytes"), Reason: r.text("missing_reason")}
 		} else if r.values["missing_bytes"] != nil || r.values["missing_reason"] != nil {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 )
 
 // TestInstanceSecretKeysAndCorruptFile checks key derivation, redaction and
@@ -38,8 +38,8 @@ func TestInstanceSecretKeysAndCorruptFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := providers.NewVaultKey([32]byte(vaultBytes))
-	row := providers.ConfigRow{Provider: "provider-1"}
+	expected := providerhost.NewVaultKey([32]byte(vaultBytes))
+	row := providerhost.ConfigRow{Provider: "provider-1"}
 	encrypted, err := keys.Vault.Seal(row, []byte("credential"))
 	if err != nil {
 		t.Fatal(err)

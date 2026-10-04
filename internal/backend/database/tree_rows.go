@@ -6,15 +6,15 @@ import (
 	"fmt"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // nodeRow checks a node's identity and its close-dependent columns.
 func nodeRow(r *storedRow) store.NodeRecord {
 	n := store.NodeRecord{
-		ID:                checked(r, "id", core.ParseNodeID),
+		ID:                checked(r, "id", types.ParseNodeID),
 		Number:            r.count("number"),
-		Parent:            optionalChecked(r, "parent_id", core.ParseNodeID),
+		Parent:            optionalChecked(r, "parent_id", types.ParseNodeID),
 		Description:       r.text("description"),
 		Profile:           r.optionalText("profile"),
 		Round:             r.count("round"),
@@ -73,15 +73,15 @@ func closeColumns(closed *store.NodeClose) (phase *string, at *int64, result *st
 	return
 }
 
-func nodeByID(ctx context.Context, tx *sql.Tx, id core.NodeID) (store.NodeRecord, bool, error) {
+func nodeByID(ctx context.Context, tx *sql.Tx, id types.NodeID) (store.NodeRecord, bool, error) {
 	return queryRecord(ctx, tx, "nodes", "SELECT * FROM nodes WHERE id=?", nodeRow, id)
 }
 
-func childrenOf(ctx context.Context, tx *sql.Tx, parent core.NodeID) ([]store.NodeRecord, error) {
+func childrenOf(ctx context.Context, tx *sql.Tx, parent types.NodeID) ([]store.NodeRecord, error) {
 	return queryRecords(ctx, tx, "nodes", "SELECT * FROM nodes WHERE parent_id=? ORDER BY number", nodeRow, parent)
 }
 
-func nodeState(ctx context.Context, tx *sql.Tx, id core.NodeID) (store.CheckpointState, bool, error) {
+func nodeState(ctx context.Context, tx *sql.Tx, id types.NodeID) (store.CheckpointState, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,
@@ -92,19 +92,19 @@ func nodeState(ctx context.Context, tx *sql.Tx, id core.NodeID) (store.Checkpoin
 	)
 }
 
-func blocksOf(ctx context.Context, tx *sql.Tx, node core.NodeID, count int64) ([]core.Block, error) {
+func blocksOf(ctx context.Context, tx *sql.Tx, node types.NodeID, count int64) ([]types.Block, error) {
 	expected := int64(0)
 	blocks, err := queryRecords(
 		ctx,
 		tx,
 		"blocks",
 		"SELECT idx,block FROM blocks WHERE node_id=? AND idx<? ORDER BY idx",
-		func(r *storedRow) core.Block {
+		func(r *storedRow) types.Block {
 			if r.integer("idx") != expected {
 				r.bad("idx", fmt.Errorf("node %s has no block row %d", node, expected))
 			}
 			expected++
-			return storedJSON(r, "block", core.DecodeBlock)
+			return storedJSON(r, "block", types.DecodeBlock)
 		},
 		node,
 		count,
@@ -118,7 +118,7 @@ func blocksOf(ctx context.Context, tx *sql.Tx, node core.NodeID, count int64) ([
 	return blocks, nil
 }
 
-func readCheckpoint(ctx context.Context, tx *sql.Tx, node core.NodeID) (store.Checkpoint, bool, error) {
+func readCheckpoint(ctx context.Context, tx *sql.Tx, node types.NodeID) (store.Checkpoint, bool, error) {
 	type stateRow struct {
 		state    store.CheckpointState
 		count    int64

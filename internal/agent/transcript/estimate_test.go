@@ -8,12 +8,12 @@ import (
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // estimate measures a fixture history for a model with the given context window.
-func estimate(t *testing.T, blocks []core.Block, window uint32) uint64 {
+func estimate(t *testing.T, blocks []types.Block, window uint32) uint64 {
 	t.Helper()
 	model := storetest.TestModel().Model
 	model.ContextWindow = window
@@ -21,7 +21,7 @@ func estimate(t *testing.T, blocks []core.Block, window uint32) uint64 {
 }
 
 func TestLatestUsageAnchorsWithinContextWindow(t *testing.T) {
-	blocks := []core.Block{
+	blocks := []types.Block{
 		userBlock("u1", strings.Repeat("x", 40000)),
 		textBlock("t", "reply"),
 		responseBlock("r1", 1234),
@@ -46,11 +46,11 @@ func TestLatestUsageAnchorsWithinContextWindow(t *testing.T) {
 }
 
 func TestCompactionInvalidatesUsageAnchor(t *testing.T) {
-	boundary := &core.CompactionBoundaryBlock{BlockID: "b", Summary: "short summary", SummaryTokens: 4}
-	marker := &core.CompactionMarkerBlock{BoundaryID: "b", CompactedTokens: 2000}
+	boundary := &types.CompactionBoundaryBlock{BlockID: "b", Summary: "short summary", SummaryTokens: 4}
+	marker := &types.CompactionMarkerBlock{BoundaryID: "b", CompactedTokens: 2000}
 	// Keep usage below the context window so a mistakenly retained anchor fails.
-	blocks := []core.Block{boundary, userBlock("u", strings.Repeat("x", 8000)), responseBlock("r", 900000), marker}
-	for _, history := range [][]core.Block{blocks, blocks[:3]} {
+	blocks := []types.Block{boundary, userBlock("u", strings.Repeat("x", 8000)), responseBlock("r", 900000), marker}
+	for _, history := range [][]types.Block{blocks, blocks[:3]} {
 		if got := estimate(t, history, 1000000); got >= 10000 {
 			t.Fatal(got)
 		}
@@ -58,34 +58,38 @@ func TestCompactionInvalidatesUsageAnchor(t *testing.T) {
 }
 
 func TestMediaEstimateMatchesRequest(t *testing.T) {
-	image := core.B64Bytes(make([]byte, 3000000))
-	document := core.B64Bytes(strings.Repeat("a", 40000))
-	screenshot := core.B64Bytes(strings.Repeat("b", 1800000))
+	image := types.B64Bytes(make([]byte, 3000000))
+	document := types.B64Bytes(strings.Repeat("a", 40000))
+	screenshot := types.B64Bytes(strings.Repeat("b", 1800000))
 	var held store.HeldMedia
-	for _, data := range []core.B64Bytes{image, document, screenshot} {
-		held.Hold(core.BlobRefOf(data), data)
+	for _, data := range []types.B64Bytes{image, document, screenshot} {
+		held.Hold(types.BlobRefOf(data), data)
 	}
-	user := userBlock("u", "").(*core.UserBlock)
-	user.Content = []core.UserContentBlock{
-		&core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(image), MediaType: "image/png"}},
-		&core.UserImage{Source: &core.MediaURL{URL: "https://example.com/a.png"}},
-		&core.UserDocument{
-			Source: &core.DocumentRef{Ref: core.BlobRefOf(document), MediaType: "application/pdf", FileName: "doc.pdf"},
+	user := userBlock("u", "").(*types.UserBlock)
+	user.Content = []types.UserContentBlock{
+		&types.UserImage{Source: &types.MediaSourceRef{Ref: types.BlobRefOf(image), MediaType: "image/png"}},
+		&types.UserImage{Source: &types.MediaURL{URL: "https://example.com/a.png"}},
+		&types.UserDocument{
+			Source: &types.DocumentRef{
+				Ref:       types.BlobRefOf(document),
+				MediaType: "application/pdf",
+				FileName:  "doc.pdf",
+			},
 		},
 	}
-	call := &core.ToolCallBlock{
+	call := &types.ToolCallBlock{
 		ToolName: "shoot",
 		Input:    "{}",
 		Status:   "completed",
-		Output: []core.ToolResultContentBlock{
-			&core.ToolImage{Source: &core.ToolMediaRef{Ref: core.BlobRefOf(screenshot), MediaType: "image/png"}},
+		Output: []types.ToolResultContentBlock{
+			&types.ToolImage{Source: &types.ToolMediaRef{Ref: types.BlobRefOf(screenshot), MediaType: "image/png"}},
 		},
 	}
-	blocks := []core.Block{user, call}
+	blocks := []types.Block{user, call}
 	reads := storetest.ModelReading(
 		"stub",
 		"reads",
-		[]core.FileExtension{core.FileExtensionPNG, core.FileExtensionPDF},
+		[]types.FileExtension{types.FileExtensionPNG, types.FileExtensionPDF},
 	).Model
 	blind := storetest.TestModel().Model
 	unread := func(kind, name string) string {
@@ -93,7 +97,7 @@ func TestMediaEstimateMatchesRequest(t *testing.T) {
 	}
 	for _, scenario := range []struct {
 		name   string
-		model  core.Model
+		model  types.Model
 		limits provider.RequestLimits
 		want   [2]uint64
 	}{

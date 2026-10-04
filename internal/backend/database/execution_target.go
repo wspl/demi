@@ -1,11 +1,11 @@
 package database
 
 import (
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ExecutionDeviceID returns the target's device; false before a Cloud's first use.
-func ExecutionDeviceID(target ExecutionTarget) (webapi.DeviceID, bool) {
+func ExecutionDeviceID(target ExecutionTarget) (webapiproto.DeviceID, bool) {
 	switch target := target.(type) {
 	case *ExecutionCloud:
 		if target.DeviceID == nil {

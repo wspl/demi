@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // relayCall owns one RPC's cancellation, live input demand and relayed pipes.
@@ -84,7 +84,7 @@ func (c *relayCall) liveInput(data []byte) {
 	if phase == liveClosed {
 		return
 	}
-	if phase != liveWaiting || len(data) > runnerwire.StdinChunkBytes {
+	if phase != liveWaiting || len(data) > runnerproto.StdinChunkBytes {
 		c.stop("Unrequested or oversized RPC stdin chunk", false)
 		return
 	}
@@ -118,7 +118,7 @@ func (c *relayCall) nextInput(ctx context.Context) ([]byte, error) {
 	c.live = liveWaiting
 	c.requested = next
 	c.mu.Unlock()
-	if err := c.link.send(ctx, &runnerwire.RPCStdinPull{CallID: c.id}); err != nil {
+	if err := c.link.send(ctx, &runnerproto.RPCStdinPull{CallID: c.id}); err != nil {
 		return nil, err
 	}
 	select {
@@ -135,7 +135,7 @@ func (c *relayCall) nextInput(ctx context.Context) ([]byte, error) {
 }
 
 // startCall admits a unique RPC ID and transfers its complete lifetime to the link.
-func (l *Link) startCall(request *runnerwire.RPCCall) {
+func (l *Link) startCall(request *runnerproto.RPCCall) {
 	ctx, cancel := context.WithCancel(l.ctx)
 	call := &relayCall{jobID: request.JobID, id: request.CallID, link: l, ctx: ctx, cancel: cancel}
 	l.mu.Lock()
@@ -156,7 +156,7 @@ func (l *Link) startCall(request *runnerwire.RPCCall) {
 		if err != nil {
 			if sendErr := l.send(
 				l.ctx,
-				&runnerwire.RPCOutput{CallID: call.id, Bytes: []byte(request.Root + ": " + err.Error() + "\n")},
+				&runnerproto.RPCOutput{CallID: call.id, Bytes: []byte(request.Root + ": " + err.Error() + "\n")},
 			); sendErr != nil {
 				slog.Debug("rpc error not sent: "+sendErr.Error(), "call", call.id)
 			}
@@ -169,14 +169,14 @@ func (l *Link) startCall(request *runnerwire.RPCCall) {
 		delete(l.calls, call.id)
 		l.mu.Unlock()
 		call.stop("rpc call ended", false)
-		if err := l.send(l.ctx, &runnerwire.RPCExit{CallID: call.id, ExitCode: code}); err != nil {
+		if err := l.send(l.ctx, &runnerproto.RPCExit{CallID: call.id, ExitCode: code}); err != nil {
 			slog.Debug("rpc exit not sent: "+err.Error(), "call", call.id)
 		}
 	})
 }
 
 // run executes policy code and joins it even after a pipe fails, then waits for stdout drain.
-func (c *relayCall) run(request *runnerwire.RPCCall, job *Job) (uint8, error) {
+func (c *relayCall) run(request *runnerproto.RPCCall, job *Job) (uint8, error) {
 	if job == nil {
 		return 0, errors.New("rpc requires a live job dispatched to this device")
 	}
@@ -292,7 +292,7 @@ func (p *relayPort) Request(ctx context.Context, request host.PortRequest) (host
 		if len(request.Bytes) > 0 {
 			if err := p.call.link.send(
 				ctx,
-				&runnerwire.RPCOutput{CallID: p.call.id, Bytes: runnerwire.WireBytes(request.Bytes)},
+				&runnerproto.RPCOutput{CallID: p.call.id, Bytes: runnerproto.WireBytes(request.Bytes)},
 			); err != nil {
 				return nil, &host.PortError{Kind: host.PortEnded, Message: err.Error(), Err: err}
 			}
@@ -308,7 +308,7 @@ func (p *relayPort) Request(ctx context.Context, request host.PortRequest) (host
 		if err != nil {
 			return nil, err
 		}
-		return &host.PortInput{Bytes: new(core.B64Bytes(chunk))}, nil
+		return &host.PortInput{Bytes: new(types.B64Bytes(chunk))}, nil
 	case *host.PortStorage:
 		reply, err := p.call.link.policy.Storage(p.call.ctx, p.origin, request.Op)
 		if err != nil {
@@ -364,7 +364,7 @@ func (p *relayPort) readStdin(ctx context.Context) (host.PortResponse, error) {
 	if err != nil {
 		return nil, &host.PortError{Kind: host.PortEnded, Message: err.Error(), Err: err}
 	}
-	return &host.PortInput{Bytes: new(core.B64Bytes(chunk))}, nil
+	return &host.PortInput{Bytes: new(types.B64Bytes(chunk))}, nil
 }
 
 // dispatch watches pipe failures while the policy handles a call, then joins every watcher.
@@ -396,7 +396,7 @@ func (c *relayCall) dispatch(
 
 // announcePipes sends the RPC pipe references before the policy receives their local identities.
 func (c *relayCall) announcePipes(ctx context.Context, stdout, stdin *Pipe) (*host.RelayedPipes, error) {
-	wire := &runnerwire.RPCPipes{CallID: c.id, Stdout: stdout.WireRef()}
+	wire := &runnerproto.RPCPipes{CallID: c.id, Stdout: stdout.WireRef()}
 	relayed := &host.RelayedPipes{Stdout: stdout.ID()}
 	if stdin != nil {
 		wire.Stdin = new(stdin.WireRef())

@@ -6,28 +6,28 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestResumeDropsOnlyUnactedLeftovers(t *testing.T) {
-	thinking := &core.ThinkingBlock{Text: "hmm"}
-	failure := &core.ErrorBlock{Message: "failed"}
+	thinking := &types.ThinkingBlock{Text: "hmm"}
+	failure := &types.ErrorBlock{Message: "failed"}
 	user := userBlock("u1", "")
 	for _, scenario := range []struct {
 		name   string
-		blocks []core.Block
+		blocks []types.Block
 		want   transcript.ResumePoint
 	}{
-		{"failed", []core.Block{user, thinking, failure}, transcript.ResumePoint{Cut: 1, FullRerun: true}},
-		{"blank", []core.Block{user, textBlock("text", " \n"), failure}, transcript.ResumePoint{Cut: 1, FullRerun: true}},
-		{"posted", []core.Block{user, textBlock("text", "posted"), failure}, transcript.ResumePoint{Cut: 2}},
-		{"response", []core.Block{user, responseBlock("r", 0), thinking}, transcript.ResumePoint{Cut: 2}},
-		{"stop", []core.Block{user, &core.AbortBlock{}}, transcript.ResumePoint{Cut: 2}},
+		{"failed", []types.Block{user, thinking, failure}, transcript.ResumePoint{Cut: 1, FullRerun: true}},
+		{"blank", []types.Block{user, textBlock("text", " \n"), failure}, transcript.ResumePoint{Cut: 1, FullRerun: true}},
+		{"posted", []types.Block{user, textBlock("text", "posted"), failure}, transcript.ResumePoint{Cut: 2}},
+		{"response", []types.Block{user, responseBlock("r", 0), thinking}, transcript.ResumePoint{Cut: 2}},
+		{"stop", []types.Block{user, &types.AbortBlock{}}, transcript.ResumePoint{Cut: 2}},
 		{
 			"completed call",
-			[]core.Block{
+			[]types.Block{
 				user,
-				&core.ToolCallBlock{Status: "completed"},
+				&types.ToolCallBlock{Status: "completed"},
 				thinking,
 				failure,
 			},
@@ -35,9 +35,9 @@ func TestResumeDropsOnlyUnactedLeftovers(t *testing.T) {
 		},
 		{
 			"executing call",
-			[]core.Block{
+			[]types.Block{
 				user,
-				&core.ToolCallBlock{Status: "executing"},
+				&types.ToolCallBlock{Status: "executing"},
 				thinking,
 				failure,
 			},
@@ -45,7 +45,7 @@ func TestResumeDropsOnlyUnactedLeftovers(t *testing.T) {
 		},
 		{
 			"latest turn",
-			[]core.Block{
+			[]types.Block{
 				user,
 				textBlock("a", "answer"),
 				responseBlock("r", 0),
@@ -69,21 +69,21 @@ func TestResumeDropsOnlyUnactedLeftovers(t *testing.T) {
 
 func TestRewindAndEditForkBoundaries(t *testing.T) {
 	user := userBlock("u", "hello")
-	steer := &core.SteerBlock{BlockID: "s", TurnID: "u"}
-	message := &core.AgentMessageBlock{BlockID: "m", TurnID: "u"}
-	answer := &core.TextBlock{BlockID: "a", Text: "done", Forkable: true}
-	blocks := []core.Block{user, &core.ThinkingBlock{}, steer, answer, message}
-	want := transcript.Rewound{Retained: []core.Block{user, steer, message}, Input: 0, Turn: "u"}
+	steer := &types.SteerBlock{BlockID: "s", TurnID: "u"}
+	message := &types.AgentMessageBlock{BlockID: "m", TurnID: "u"}
+	answer := &types.TextBlock{BlockID: "a", Text: "done", Forkable: true}
+	blocks := []types.Block{user, &types.ThinkingBlock{}, steer, answer, message}
+	want := transcript.Rewound{Retained: []types.Block{user, steer, message}, Input: 0, Turn: "u"}
 	if got, ok := transcript.Rewind(blocks); !ok || !reflect.DeepEqual(want, got) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
-	continuation := &core.AgentMessageBlock{BlockID: "next", TurnID: "next"}
+	continuation := &types.AgentMessageBlock{BlockID: "next", TurnID: "next"}
 	blocks = append(blocks, continuation, textBlock("later", "continued"))
 	got, _ := transcript.Rewind(blocks)
 	if got.Input != 5 || got.Turn != "next" || len(got.Retained) != 6 {
 		t.Fatalf("continuation rewind: %+v", got)
 	}
-	if _, ok := transcript.Rewind([]core.Block{answer}); ok {
+	if _, ok := transcript.Rewind([]types.Block{answer}); ok {
 		t.Fatal("rewound without input")
 	}
 	if got := transcript.LastAssistantText(blocks, 4); got != "continued" {
@@ -104,52 +104,52 @@ func TestRewindAndEditForkBoundaries(t *testing.T) {
 	if _, err := transcript.ThroughAssistant(blocks, "later"); !errors.Is(err, transcript.ErrNotCompletedText) {
 		t.Fatal(err)
 	}
-	blocks[1] = &core.ToolCallBlock{Status: "executing"}
+	blocks[1] = &types.ToolCallBlock{Status: "executing"}
 	if _, err := transcript.ThroughAssistant(blocks, "a"); !errors.Is(err, transcript.ErrUnfinishedToolCalls) {
 		t.Fatal(err)
 	}
-	for _, b := range []core.Block{&core.ContextBlock{}, &core.WakeupBlock{Placement: "new_turn"}} {
-		if !transcript.Cut([]core.Block{b, &core.RedactedThinkingBlock{}}).FullRerun {
+	for _, b := range []types.Block{&types.ContextBlock{}, &types.WakeupBlock{Placement: "new_turn"}} {
+		if !transcript.Cut([]types.Block{b, &types.RedactedThinkingBlock{}}).FullRerun {
 			t.Fatalf("not input: %T", b)
 		}
 	}
-	if transcript.OpensInputTurn(&core.WakeupBlock{Placement: "steer"}) {
+	if transcript.OpensInputTurn(&types.WakeupBlock{Placement: "steer"}) {
 		t.Fatal("steer opened turn")
 	}
 }
 
 func TestCompactionWindowKeepsUnansweredInput(t *testing.T) {
 	user := userBlock("u", "input")
-	boundary := &core.CompactionBoundaryBlock{BlockID: "b"}
-	marker := &core.CompactionMarkerBlock{BoundaryID: "b"}
+	boundary := &types.CompactionBoundaryBlock{BlockID: "b"}
+	marker := &types.CompactionMarkerBlock{BoundaryID: "b"}
 	for _, scenario := range []struct {
 		name   string
-		blocks []core.Block
+		blocks []types.Block
 		want   transcript.CompactionWindow
 	}{
 		{
 			"answered",
-			[]core.Block{
+			[]types.Block{
 				user,
 				textBlock("a", "answer"),
 				responseBlock("r", 1),
 			},
 			transcript.CompactionWindow{Cut: 1},
 		},
-		{"unanswered", []core.Block{user, textBlock("a", "partial"), &core.ResumeBlock{}}, transcript.CompactionWindow{}},
+		{"unanswered", []types.Block{user, textBlock("a", "partial"), &types.ResumeBlock{}}, transcript.CompactionWindow{}},
 		{
 			"response then input",
-			[]core.Block{
+			[]types.Block{
 				responseBlock("r", 1),
 				marker,
 				user,
-				&core.ErrorBlock{},
+				&types.ErrorBlock{},
 			},
 			transcript.CompactionWindow{Cut: 2},
 		},
 		{
 			"after compaction",
-			[]core.Block{
+			[]types.Block{
 				user,
 				boundary,
 				textBlock("a", "kept"),
@@ -163,7 +163,7 @@ func TestCompactionWindowKeepsUnansweredInput(t *testing.T) {
 		},
 		{
 			"boundary without marker",
-			[]core.Block{
+			[]types.Block{
 				user,
 				boundary,
 				textBlock("a", "kept"),
@@ -174,7 +174,7 @@ func TestCompactionWindowKeepsUnansweredInput(t *testing.T) {
 				Cut:   2,
 			},
 		},
-		{"never below boundary", []core.Block{user, boundary, marker}, transcript.CompactionWindow{Start: 1, Cut: 1}},
+		{"never below boundary", []types.Block{user, boundary, marker}, transcript.CompactionWindow{Start: 1, Cut: 1}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			if got := transcript.Window(scenario.blocks); got != scenario.want {

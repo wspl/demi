@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // KeptOutput keeps bounded output records in read order. One job owns writes;
@@ -43,7 +43,7 @@ type keptLayout struct {
 }
 type keptRequest struct {
 	ctx      context.Context
-	stream   runnerwire.OutputStream
+	stream   runnerproto.OutputStream
 	data     []byte
 	write    chan error
 	snapshot chan keptSnapshotReply
@@ -62,7 +62,7 @@ func CreateKeptOutput(ctx context.Context, directory string) (*KeptOutput, error
 		return nil, err
 	}
 	path := filepath.Join(directory, "head")
-	file, err := cmdsdk.Retry(ctx, func() (*os.File, error) { return os.Create(path) })
+	file, err := commandsdk.Retry(ctx, func() (*os.File, error) { return os.Create(path) })
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func CreateKeptOutput(ctx context.Context, directory string) (*KeptOutput, error
 
 // Write appends one stream read, preserving the first and newest records within
 // the runner wire's kept-byte bound.
-func (o *KeptOutput) Write(ctx context.Context, stream runnerwire.OutputStream, data []byte) error {
+func (o *KeptOutput) Write(ctx context.Context, stream runnerproto.OutputStream, data []byte) error {
 	reply := make(chan error, 1)
 	select {
 	case <-ctx.Done():
@@ -94,7 +94,7 @@ func (o *KeptOutput) Write(ctx context.Context, stream runnerwire.OutputStream, 
 }
 
 // writeOwned records one read while the output worker exclusively owns its layout.
-func (o *KeptOutput) writeOwned(ctx context.Context, stream runnerwire.OutputStream, bytes []byte) error {
+func (o *KeptOutput) writeOwned(ctx context.Context, stream runnerproto.OutputStream, bytes []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func (o *KeptOutput) snapshot(ctx context.Context) (io.ReadCloser, error) {
 		result.files = append(result.files, file)
 		result.parts = append(result.parts, io.NewSectionReader(file, 0, segment.length))
 		if index == 0 && leftOut > 0 {
-			record, err := runnerwire.EncodeRecord(&runnerwire.KeptLeftOut{Bytes: leftOut})
+			record, err := runnerproto.EncodeRecord(&runnerproto.KeptLeftOut{Bytes: leftOut})
 			if err != nil {
 				_ = result.Close()
 				return nil, err
@@ -212,7 +212,7 @@ func (o *KeptOutput) snapshot(ctx context.Context) (io.ReadCloser, error) {
 }
 
 // writeEnd rotates the bounded tail of the job's retained reads.
-func (o *KeptOutput) writeEnd(stream runnerwire.OutputStream, data []byte) error {
+func (o *KeptOutput) writeEnd(stream runnerproto.OutputStream, data []byte) error {
 	l := o.layout
 	full := len(l.segments) == 0 || l.segments[len(l.segments)-1].length >= 1024*1024
 	next := l.next
@@ -231,7 +231,7 @@ func (o *KeptOutput) writeEnd(stream runnerwire.OutputStream, data []byte) error
 		l.next++
 		l.segments = append(l.segments, keptSegment{path: path})
 	}
-	record, err := runnerwire.EncodeRecord(&runnerwire.KeptOutput{Stream: stream, Bytes: runnerwire.WireBytes(data)})
+	record, err := runnerproto.EncodeRecord(&runnerproto.KeptOutput{Stream: stream, Bytes: runnerproto.WireBytes(data)})
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func (o *KeptOutput) writeEnd(stream runnerwire.OutputStream, data []byte) error
 	segment.output += uint64(len(data))
 	l.endLength += int64(len(record))
 	var dropped []string
-	for l.endLength > runnerwire.JobKeptPartBytes && len(l.segments) > 1 {
+	for l.endLength > runnerproto.JobKeptPartBytes && len(l.segments) > 1 {
 		oldest := l.segments[0]
 		l.segments = l.segments[1:]
 		l.endLength -= oldest.length
@@ -276,14 +276,14 @@ func (s *keptSnapshot) Close() error {
 	return s.err
 }
 
-func (o *KeptOutput) headRecord(stream runnerwire.OutputStream, bytes []byte) (int, []byte, error) {
-	room := runnerwire.JobKeptPartBytes - o.layout.head.length
+func (o *KeptOutput) headRecord(stream runnerproto.OutputStream, bytes []byte) (int, []byte, error) {
+	room := runnerproto.JobKeptPartBytes - o.layout.head.length
 	taken := min(len(bytes), int(room))
 	var record []byte
 	for taken > 0 {
 		var err error
-		record, err = runnerwire.EncodeRecord(
-			&runnerwire.KeptOutput{Stream: stream, Bytes: runnerwire.WireBytes(bytes[:taken])},
+		record, err = runnerproto.EncodeRecord(
+			&runnerproto.KeptOutput{Stream: stream, Bytes: runnerproto.WireBytes(bytes[:taken])},
 		)
 		if err != nil {
 			return 0, nil, err

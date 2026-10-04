@@ -14,10 +14,10 @@ import (
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript"
 	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func unmeasured(text string) providertest.Turn {
@@ -28,7 +28,7 @@ func tooLong() providertest.Turn {
 	return providertest.Events(providertest.Error("prompt is too long", new(provider.ContextLengthExceeded)))
 }
 
-func smallModel() core.ModelSelection {
+func smallModel() types.ModelSelection {
 	m := storetest.ModelOf("stub", "small-model")
 	m.Model.ContextWindow = 1000
 	return m
@@ -93,7 +93,7 @@ func countKind(s *session.Session, kind string) int {
 func TestThresholdCompactionCopyRepeatsPrefix(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := small(t, true, unmeasured("first answer"), unmeasured("  summary of first\n"), unmeasured("second"))
-		phases := []core.SessionPhase{}
+		phases := []types.SessionPhase{}
 		sub := f.s.Subscribe(func(e session.Event) {
 			if e, ok := e.(*session.PhaseChanged); ok {
 				phases = append(phases, e.Phase)
@@ -120,15 +120,15 @@ func TestThresholdCompactionCopyRepeatsPrefix(t *testing.T) {
 		equal(t, f.p.Closes(), 1)
 		f.history("user", "compaction_boundary", "text", "response", "user", "compaction_marker", "text", "response")
 		blocks := f.s.Transcript().Blocks
-		boundary := blocks[1].(*core.CompactionBoundaryBlock)
-		marker := blocks[5].(*core.CompactionMarkerBlock)
+		boundary := blocks[1].(*types.CompactionBoundaryBlock)
+		marker := blocks[5].(*types.CompactionMarkerBlock)
 		equal(t, boundary.Summary, "summary of first")
 		equal(t, marker.BoundaryID, boundary.BlockID)
 		equal(t, marker.CompactedTokens, uint64(750))
 		equal(t, isCopy(r[1]) && !isCopy(r[2]), true)
-		equal(t, slices.Contains(phases, core.SessionPhaseCompacting), true)
+		equal(t, slices.Contains(phases, types.SessionPhaseCompacting), true)
 		for _, save := range f.tree.Saves() {
-			equal(t, save.Node, core.NodeID("root"))
+			equal(t, save.Node, types.NodeID("root"))
 		}
 	})
 }
@@ -201,7 +201,7 @@ func TestSummaryOverflowHalvesWindow(t *testing.T) {
 		f.done(f.send(strings.Repeat("c", 800), "t3"))
 		equal(t, summarySizes(f.p), []int{4, 3})
 		equal(t, countKind(f.s, "compaction_boundary"), 1)
-		if _, ok := f.s.Transcript().Blocks[2].(*core.CompactionBoundaryBlock); !ok {
+		if _, ok := f.s.Transcript().Blocks[2].(*types.CompactionBoundaryBlock); !ok {
 			t.Fatal("wrong cut")
 		}
 	})
@@ -230,10 +230,10 @@ func TestStopSummaryClosesCopy(t *testing.T) {
 		f.done(f.send(strings.Repeat("x", 3000), "t1"))
 		a := f.send(strings.Repeat("y", 400), "t2")
 		synctest.Wait()
-		equal(t, f.s.Phase(), core.SessionPhase("compacting"))
+		equal(t, f.s.Phase(), types.SessionPhase("compacting"))
 		r, err := f.s.Abort(t.Context())
 		must(t, err)
-		equal(t, *r.Target, framewire.AbortTargetActiveCompaction)
+		equal(t, *r.Target, conversationproto.AbortTargetActiveCompaction)
 		end, err := a.Wait(t.Context())
 		must(t, err)
 		equal(t, end, session.Aborted)
@@ -265,11 +265,11 @@ func TestCompactionToolsDoNotChangeParent(t *testing.T) {
 		f.done(f.send(strings.Repeat("y", 400), "t2"))
 		equal(t, calls, 1)
 		for _, block := range f.s.Transcript().Blocks {
-			if _, ok := block.(*core.ToolCallBlock); ok {
+			if _, ok := block.(*types.ToolCallBlock); ok {
 				t.Fatal("copy tool call leaked to parent")
 			}
 		}
-		equal(t, f.s.Transcript().Blocks[1].(*core.CompactionBoundaryBlock).Summary, "summary after tool")
+		equal(t, f.s.Transcript().Blocks[1].(*types.CompactionBoundaryBlock).Summary, "summary after tool")
 	})
 }
 
@@ -527,7 +527,7 @@ func TestRetryCompactionAndStop(t *testing.T) {
 		synctest.Wait()
 		r, err := stopped.Abort(t.Context())
 		must(t, err)
-		equal(t, *r.Target, framewire.AbortTargetActiveCompaction)
+		equal(t, *r.Target, conversationproto.AbortTargetActiveCompaction)
 		end, err := a.Wait(t.Context())
 		must(t, err)
 		equal(t, end, session.Aborted)
@@ -596,14 +596,14 @@ func TestResumeCompactionKeepsStoppedInputAndStop(t *testing.T) {
 				"response",
 			},
 		)
-		equal(t, s.Transcript().Blocks[8].(*core.AbortBlock).IsResumed, true)
+		equal(t, s.Transcript().Blocks[8].(*types.AbortBlock).IsResumed, true)
 		stopped, _, pp := f.restore(cp, providertest.Pending())
 		a, err = stopped.Resume()
 		must(t, err)
 		synctest.Wait()
 		r, err := stopped.Abort(t.Context())
 		must(t, err)
-		equal(t, *r.Target, framewire.AbortTargetActiveCompaction)
+		equal(t, *r.Target, conversationproto.AbortTargetActiveCompaction)
 		end, err := a.Wait(t.Context())
 		must(t, err)
 		equal(t, end, session.Aborted)
@@ -623,7 +623,7 @@ func TestResumeCompactionKeepsStoppedInputAndStop(t *testing.T) {
 				"abort",
 			},
 		)
-		equal(t, stopped.Transcript().Blocks[7].(*core.AbortBlock).IsResumed, true)
+		equal(t, stopped.Transcript().Blocks[7].(*types.AbortBlock).IsResumed, true)
 		equal(t, countKind(stopped, "compaction_boundary"), 1)
 		equal(t, len(pp.Requests()), 1)
 	})
@@ -727,8 +727,8 @@ func TestResumePendingSmallerSwitchCompactsOnce(t *testing.T) {
 			"response",
 		)
 		blocks := f.s.Transcript().Blocks
-		equal(t, blocks[7].(*core.CompactionMarkerBlock).BoundaryID, blocks[1].ID())
-		equal(t, blocks[6].(*core.AbortBlock).IsResumed, true)
+		equal(t, blocks[7].(*types.CompactionMarkerBlock).BoundaryID, blocks[1].ID())
+		equal(t, blocks[6].(*types.AbortBlock).IsResumed, true)
 	})
 }
 
@@ -745,7 +745,7 @@ func TestCachedUsageCompactsAfterToolWithoutRerun(t *testing.T) {
 			session.DefaultConfig(),
 			providertest.Events(
 				providertest.ToolCall("call", "work", []byte(`{}`)),
-				&provider.Response{Usage: core.TokenUsage{InputTokens: 1, OutputTokens: 1, CacheWriteTokens: 850}},
+				&provider.Response{Usage: types.TokenUsage{InputTokens: 1, OutputTokens: 1, CacheWriteTokens: 850}},
 			),
 			unmeasured("tool summary"),
 			unmeasured("done"),
@@ -770,7 +770,7 @@ func TestCachedUsageCompactsAfterToolWithoutRerun(t *testing.T) {
 			"text",
 			"response",
 		)
-		equal(t, f.s.Transcript().Blocks[3].(*core.ResponseBlock).Usage.CacheWriteTokens, uint64(850))
+		equal(t, f.s.Transcript().Blocks[3].(*types.ResponseBlock).Usage.CacheWriteTokens, uint64(850))
 	})
 }
 
@@ -787,7 +787,7 @@ func TestEmptyOrOnlySummaryCompactionDoesNotRequest(t *testing.T) {
 		compact(t, f.s)
 		equal(t, len(f.p.Requests()), 0)
 		equal(t, len(f.s.Transcript().Blocks), 0)
-		equal(t, f.s.Phase(), core.SessionPhaseIdle)
+		equal(t, f.s.Phase(), types.SessionPhaseIdle)
 		f.done(f.send("one", "t1"))
 		compact(t, f.s)
 		f.fail(f.send("two", "t2"))
@@ -814,7 +814,7 @@ func TestContextSourceReannouncesAfterBoundary(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		seen := [][]session.SeenContext{}
 		r := &sessiontest.Runtime{
-			News: func(_ context.Context, prior []session.SeenContext, _ core.TurnID) ([]session.NewContext, error) {
+			News: func(_ context.Context, prior []session.SeenContext, _ types.TurnID) ([]session.NewContext, error) {
 				seen = append(seen, slices.Clone(prior))
 				if len(prior) == 0 {
 					return []session.NewContext{{Source: "execution", Text: "environment"}}, nil
@@ -841,7 +841,7 @@ func TestContextSourceReannouncesAfterBoundary(t *testing.T) {
 		equal(t, len(seen[2]), 0)
 		equal(t, countKind(f.s, "context"), 2)
 		for _, block := range f.s.Transcript().Blocks {
-			if block, ok := block.(*core.ContextBlock); ok {
+			if block, ok := block.(*types.ContextBlock); ok {
 				equal(t, block.Source, "execution")
 				equal(t, block.Text, "environment")
 			}
@@ -932,10 +932,10 @@ func TestInputDuringCompactionStaysOutsideSummary(t *testing.T) {
 		<-entered
 		q := f.send("third", "t3")
 		must(t, f.s.Steer(storetest.Text("be brief"), "s1"))
-		equal(t, f.s.Phase(), core.SessionPhaseCompacting)
-		equal(t, f.s.QueuedMessages(), []core.QueuedMessage{{ID: "t3", Content: storetest.Text("third")}})
+		equal(t, f.s.Phase(), types.SessionPhaseCompacting)
+		equal(t, f.s.QueuedMessages(), []types.QueuedMessage{{ID: "t3", Content: storetest.Text("third")}})
 		equal(t, len(f.s.PendingSteers()), 1)
-		equal(t, f.s.PendingSteers()[0].TurnID, core.TurnID("t2"))
+		equal(t, f.s.PendingSteers()[0].TurnID, types.TurnID("t2"))
 		close(release)
 		f.done(a)
 		f.done(q)
@@ -964,7 +964,7 @@ func TestInputDuringCompactionStaysOutsideSummary(t *testing.T) {
 		<-nextEntered
 		queued := f.send("fourth", "t4")
 		equal(t, len(f.s.QueuedMessages()), 1)
-		equal(t, f.s.Phase(), core.SessionPhaseCompacting)
+		equal(t, f.s.Phase(), types.SessionPhaseCompacting)
 		close(nextRelease)
 		f.done(pass)
 		f.done(queued)
@@ -1141,7 +1141,7 @@ func TestScreenshotsCompactBeforeImageLimit(t *testing.T) {
 			t,
 			f.s.UpdateModel(
 				session.ModelSwitch{
-					Model: storetest.ModelReading("stub", "test-model", []core.FileExtension{core.FileExtensionPNG}),
+					Model: storetest.ModelReading("stub", "test-model", []types.FileExtension{types.FileExtensionPNG}),
 				},
 			),
 		)
@@ -1234,7 +1234,7 @@ func TestSwitchToFewerImagesCompactsWithOldProvider(t *testing.T) {
 			t,
 			f.s.UpdateModel(
 				session.ModelSwitch{
-					Model: storetest.ModelReading("stub", "model-a", []core.FileExtension{core.FileExtensionPNG}),
+					Model: storetest.ModelReading("stub", "model-a", []types.FileExtension{types.FileExtensionPNG}),
 				},
 			),
 		)
@@ -1245,7 +1245,7 @@ func TestSwitchToFewerImagesCompactsWithOldProvider(t *testing.T) {
 			t,
 			f.s.UpdateModel(
 				session.ModelSwitch{
-					Model:   storetest.ModelReading("other", "model-b", []core.FileExtension{core.FileExtensionPNG}),
+					Model:   storetest.ModelReading("other", "model-b", []types.FileExtension{types.FileExtensionPNG}),
 					Runtime: next,
 				},
 			),

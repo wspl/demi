@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/agent/session"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Environments owns one node's shell environments and their repeat guards.
@@ -46,8 +46,8 @@ var errDisposedShells = errors.New("The node's shells are closed")
 func (e *Environments) resolve(
 	ctx context.Context,
 	key host.Key,
-	shell *core.ShellID,
-	command *core.CommandID,
+	shell *types.ShellID,
+	command *types.CommandID,
 	create func(context.Context) (host.ShellEnvironment, error),
 ) (*environmentSlot, host.ShellEnvironment, error) {
 	for {
@@ -117,7 +117,7 @@ func (e *Environments) PageViews() []host.PageView {
 }
 
 // Owning returns the environment that owns command, or nil when none does.
-func (e *Environments) Owning(command core.CommandID) host.ShellEnvironment {
+func (e *Environments) Owning(command types.CommandID) host.ShellEnvironment {
 	for _, entry := range e.snapshot() {
 		if entry.environment.OwnsCommand(command) {
 			return entry.environment
@@ -212,7 +212,7 @@ func (s *environmentSlot) repeated(script string) (session.ToolOutcome, bool) {
 	return session.ToolOutcome{
 		Output:  []provider.ResultPart{&provider.TextPart{Text: text}},
 		IsError: true,
-		View:    &core.RepeatedShellExec{Script: script, Count: s.count},
+		View:    &types.RepeatedShellExec{Script: script, Count: s.count},
 	}, true
 }
 
@@ -263,7 +263,7 @@ func (e *Environments) createEnvironmentLocked(
 }
 
 // checkHandleOwner rejects duplicate handles and handles held by another Host.
-func (e *Environments) checkHandleOwner(key host.Key, shell *core.ShellID, command *core.CommandID) error {
+func (e *Environments) checkHandleOwner(key host.Key, shell *types.ShellID, command *types.CommandID) error {
 	owners := e.snapshot()
 	var owner *environmentSlot
 	for _, candidate := range owners {

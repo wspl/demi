@@ -2,7 +2,7 @@ package server
 
 import (
 	"github.com/wspl/demi/internal/agent/session"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 )
 
 // +demi:enum root live archived
@@ -33,8 +33,8 @@ type treeEntry struct {
 	Kind            entryKind `json:"kind"`
 	Description     string    `json:"description"`
 	// +demi:nullable
-	Profile *string            `json:"profile"`
-	Phase   framewire.JobPhase `json:"phase"`
+	Profile *string                    `json:"profile"`
+	Phase   conversationproto.JobPhase `json:"phase"`
 	// +demi:nullable
 	ClosedAgoMS *uint64 `json:"closedAgoMs"`
 	Self        bool    `json:"self"`
@@ -47,12 +47,12 @@ type agentSnapshot struct {
 	ParentSessionID uint64 `json:"parentSessionId"`
 	Description     string `json:"description"`
 	// +demi:nullable
-	Profile     *string            `json:"profile"`
-	Phase       framewire.JobPhase `json:"phase"`
-	ElapsedMS   uint64             `json:"elapsedMs"`
-	LastEventMS uint64             `json:"lastEventMs"`
-	Execution   session.Execution  `json:"execution"`
-	Activity    string             `json:"activity"`
+	Profile     *string                    `json:"profile"`
+	Phase       conversationproto.JobPhase `json:"phase"`
+	ElapsedMS   uint64                     `json:"elapsedMs"`
+	LastEventMS uint64                     `json:"lastEventMs"`
+	Execution   session.Execution          `json:"execution"`
+	Activity    string                     `json:"activity"`
 	// How long the current execution state has lasted.
 	ExecutionForMS    uint64         `json:"executionForMs"`
 	Tools             []toolSnapshot `json:"tools"`

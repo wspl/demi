@@ -3,10 +3,10 @@ package plugin
 import (
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 //revive:disable:exported
@@ -50,8 +50,8 @@ type PortMessageWriteValue struct {
 	Key   string          `json:"key"`
 	Value json.RawMessage `json:"value"`
 	// +demi:nullable
-	Revision *uint64        `json:"revision,omitempty"`
-	Blobs    []core.BlobRef `json:"blobs,omitempty"`
+	Revision *uint64         `json:"revision,omitempty"`
+	Blobs    []types.BlobRef `json:"blobs,omitempty"`
 }
 
 func (*PortMessageWriteValue) portMessage() {}
@@ -68,7 +68,7 @@ func (*PortMessageRemoveValue) portMessage() {}
 // Stores `bytes` in the user's blob namespace.
 // +demi:variant PortMessage put_blob
 type PortMessagePutBlob struct {
-	Bytes core.B64Bytes `json:"bytes"`
+	Bytes types.B64Bytes `json:"bytes"`
 }
 
 func (*PortMessagePutBlob) portMessage() {}
@@ -76,7 +76,7 @@ func (*PortMessagePutBlob) portMessage() {}
 // The bytes of the user's blob `blob`.
 // +demi:variant PortMessage get_blob
 type PortMessageGetBlob struct {
-	Blob core.BlobRef `json:"blob"`
+	Blob types.BlobRef `json:"blob"`
 }
 
 func (*PortMessageGetBlob) portMessage() {}
@@ -112,9 +112,9 @@ func (*PortMessageChanged) portMessage() {}
 // +demi:variant PortMessage package_call
 // +demi:check validatePackageCall
 type PortMessagePackageCall struct {
-	Operation declare.NativeOperation `json:"operation"`
-	Args      json.RawMessage         `json:"args"`
-	Kind      CallKind                `json:"kind"`
+	Operation commanddecl.NativeOperation `json:"operation"`
+	Args      json.RawMessage             `json:"args"`
+	Kind      CallKind                    `json:"kind"`
 }
 
 func (*PortMessagePackageCall) portMessage() {}
@@ -135,9 +135,9 @@ func (*PortMessageListExposes) portMessage() {}
 // seconds.
 // +demi:variant PortMessage create_expose
 type PortMessageCreateExpose struct {
-	Device   webapi.DeviceID `json:"device"`
-	Address  string          `json:"address"`
-	Lifetime uint64          `json:"lifetime"`
+	Device   webapiproto.DeviceID `json:"device"`
+	Address  string               `json:"address"`
+	Lifetime uint64               `json:"lifetime"`
 }
 
 func (*PortMessageCreateExpose) portMessage() {}
@@ -145,8 +145,8 @@ func (*PortMessageCreateExpose) portMessage() {}
 // Moves the expose's expiry to `lifetime` seconds from now.
 // +demi:variant PortMessage renew_expose
 type PortMessageRenewExpose struct {
-	Expose   webapi.ExposeID `json:"expose"`
-	Lifetime uint64          `json:"lifetime"`
+	Expose   webapiproto.ExposeID `json:"expose"`
+	Lifetime uint64               `json:"lifetime"`
 }
 
 func (*PortMessageRenewExpose) portMessage() {}
@@ -154,7 +154,7 @@ func (*PortMessageRenewExpose) portMessage() {}
 // Destroys the expose at once.
 // +demi:variant PortMessage remove_expose
 type PortMessageRemoveExpose struct {
-	Expose webapi.ExposeID `json:"expose"`
+	Expose webapiproto.ExposeID `json:"expose"`
 }
 
 func (*PortMessageRemoveExpose) portMessage() {}
@@ -199,7 +199,7 @@ func (*PortAnswerWritten) portAnswer() {}
 // The name of a blob the plugin put.
 // +demi:variant PortAnswer blob
 type PortAnswerBlob struct {
-	Blob core.BlobRef `json:"blob"`
+	Blob types.BlobRef `json:"blob"`
 }
 
 func (*PortAnswerBlob) portAnswer() {}
@@ -208,7 +208,7 @@ func (*PortAnswerBlob) portAnswer() {}
 // +demi:variant PortAnswer bytes
 type PortAnswerBytes struct {
 	// +demi:nullable
-	Bytes *core.B64Bytes `json:"bytes,omitempty"`
+	Bytes *types.B64Bytes `json:"bytes,omitempty"`
 }
 
 func (*PortAnswerBytes) portAnswer() {}
@@ -291,9 +291,9 @@ type HostDirectory struct {
 // +demi:root
 type DirectoryFile struct {
 	// Relative, with `/` between its parts.
-	Path       string       `json:"path"`
-	Executable bool         `json:"executable"`
-	Blob       core.BlobRef `json:"blob"`
+	Path       string        `json:"path"`
+	Executable bool          `json:"executable"`
+	Blob       types.BlobRef `json:"blob"`
 }
 
 // Where a directory of the set is on every Host.
@@ -335,8 +335,8 @@ func (*HostFileDirectory) hostFile() {}
 // A file's first bytes, at most the read's limit, and its size.
 // +demi:variant HostFile file
 type HostFileFile struct {
-	Bytes core.B64Bytes `json:"bytes"`
-	Size  uint64        `json:"size"`
+	Bytes types.B64Bytes `json:"bytes"`
+	Size  uint64         `json:"size"`
 }
 
 func (*HostFileFile) hostFile() {}
@@ -397,10 +397,10 @@ const (
 // +demi:root
 type ConversationHost struct {
 	// Its name as `demi host list` shows it.
-	Name   string          `json:"name"`
-	Device webapi.DeviceID `json:"device"`
-	Role   HostRole        `json:"role"`
-	Online bool            `json:"online"`
+	Name   string               `json:"name"`
+	Device webapiproto.DeviceID `json:"device"`
+	Role   HostRole             `json:"role"`
+	Online bool                 `json:"online"`
 }
 
 // +demi:root
@@ -419,7 +419,7 @@ type ExposeList struct {
 	// exposes.
 	Available bool `json:"available"`
 	// When Demi listed them, by the clock their expiries are read by.
-	ListedAt core.Timestamp `json:"listedAt"`
+	ListedAt types.Timestamp `json:"listedAt"`
 	// Soonest expiry first.
 	Exposes []ExposeRecord `json:"exposes"`
 }
@@ -427,14 +427,14 @@ type ExposeList struct {
 // An expose as the port shows it (`expose.md` § The expose record).
 // +demi:root
 type ExposeRecord struct {
-	ID     webapi.ExposeID `json:"id"`
-	Device webapi.DeviceID `json:"device"`
+	ID     webapiproto.ExposeID `json:"id"`
+	Device webapiproto.DeviceID `json:"device"`
 	// The device's name, the Cloud's as `Cloud`.
-	DeviceName string               `json:"deviceName"`
-	Address    webapi.ExposeAddress `json:"address"`
-	URL        string               `json:"url"`
-	CreatedAt  core.Timestamp       `json:"createdAt"`
-	ExpiresAt  core.Timestamp       `json:"expiresAt"`
+	DeviceName string                    `json:"deviceName"`
+	Address    webapiproto.ExposeAddress `json:"address"`
+	URL        string                    `json:"url"`
+	CreatedAt  types.Timestamp           `json:"createdAt"`
+	ExpiresAt  types.Timestamp           `json:"expiresAt"`
 }
 
 // Why Demi refused a port operation.
@@ -451,9 +451,9 @@ type PortRefusal interface {
 // call that passes it on answers with its code and status.
 // +demi:variant PortRefusal host
 type PortRefusalHost struct {
-	Code    webapi.ErrorCode `json:"code"`
-	Status  uint16           `json:"status"`
-	Message string           `json:"message"`
+	Code    webapiproto.ErrorCode `json:"code"`
+	Status  uint16                `json:"status"`
+	Message string                `json:"message"`
 }
 
 func (*PortRefusalHost) portRefusal() {}
@@ -522,7 +522,7 @@ func (*PortMessagePanelTabs) portMessage() {}
 // Creates a tab of one of the plugin's panel kinds.
 // +demi:variant PortMessage create_panel_tab
 type PortMessageCreatePanelTab struct {
-	Tab webapi.CreatePanelTab `json:"tab"`
+	Tab webapiproto.CreatePanelTab `json:"tab"`
 }
 
 func (*PortMessageCreatePanelTab) portMessage() {}
@@ -546,7 +546,7 @@ func (*PortMessageRemovePanelTab) portMessage() {}
 
 // +demi:variant PortAnswer panel
 type PortAnswerPanel struct {
-	Panel webapi.WorkPanel `json:"panel"`
+	Panel webapiproto.WorkPanel `json:"panel"`
 }
 
 func (*PortAnswerPanel) portAnswer() {}
@@ -563,8 +563,8 @@ func (*PortAnswerPanelRevision) portAnswer() {}
 // it, such as `panel_full` (`web-api.md` § Work panel state).
 // +demi:variant PortRefusal panel
 type PortRefusalPanel struct {
-	Code    webapi.ErrorCode `json:"code"`
-	Message string           `json:"message"`
+	Code    webapiproto.ErrorCode `json:"code"`
+	Message string                `json:"message"`
 }
 
 func (*PortRefusalPanel) portRefusal() {}

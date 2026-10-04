@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
@@ -111,16 +111,16 @@ type spawnInput struct {
 
 // +demi:variant startInput resume
 type resumeInput struct {
-	ID      core.NodeID `json:"id"`
-	Message string      `json:"message"`
+	ID      types.NodeID `json:"id"`
+	Message string       `json:"message"`
 }
 
 // A start's immutable reservation in the owner's command storage, at
 // `agent.start.<request id>` (`subagents.md` § Model-facing surface).
 // +demi:root
 type startReceipt struct {
-	Input  startInput  `json:"input"`
-	NodeID core.NodeID `json:"nodeId"`
+	Input  startInput   `json:"input"`
+	NodeID types.NodeID `json:"nodeId"`
 	// The round the start begins: 1 for a spawn, one more than the child's
 	// last for a resume.
 	Round uint64 `json:"round"`

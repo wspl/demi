@@ -13,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // DirectorySet is one plugin and its desired Host directories. An empty set
@@ -30,7 +30,7 @@ type DirectorySets []DirectorySet
 // Its opaque state uses the shard mutex; installation waits occur outside it.
 type PluginInstalls struct {
 	mu     *sync.Mutex // The shard mutex protects completed connection/revision entries.
-	synced map[webapi.DeviceID]installedDirectories
+	synced map[webapiproto.DeviceID]installedDirectories
 	turn   gates.Serial
 }
 type installedDirectories struct {
@@ -40,7 +40,7 @@ type installedDirectories struct {
 
 // NewPluginInstalls creates the installation registry for the shard mutex.
 func NewPluginInstalls(mu *sync.Mutex) *PluginInstalls {
-	return &PluginInstalls{mu: mu, synced: make(map[webapi.DeviceID]installedDirectories)}
+	return &PluginInstalls{mu: mu, synced: make(map[webapiproto.DeviceID]installedDirectories)}
 }
 
 // ReadFiles reads the main Host as a look, with no activity or wake. A transition
@@ -48,7 +48,7 @@ func NewPluginInstalls(mu *sync.Mutex) *PluginInstalls {
 func ReadFiles(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	reads []plugin.HostRead,
 ) ([]plugin.HostFile, error) {
 	access, waitCtx, stop, err := admitStream(ctx, shard, id, false, false)
@@ -145,7 +145,7 @@ func unreadable(err error) (plugin.HostFile, error) {
 func installDirectories(
 	ctx context.Context,
 	shard HostShard,
-	device webapi.DeviceID,
+	device webapiproto.DeviceID,
 	admitted *ConversationHost,
 ) error {
 	link := shard.Devices().Link(device)

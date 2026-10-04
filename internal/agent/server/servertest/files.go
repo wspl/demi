@@ -8,13 +8,13 @@ import (
 
 	"github.com/wspl/demi/internal/agent/server"
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ClientText is a message of one text, as the web app sends it.
-func ClientText(text string) []framewire.ClientContent {
-	return []framewire.ClientContent{&framewire.TextContent{Text: text}}
+func ClientText(text string) []conversationproto.ClientContent {
+	return []conversationproto.ClientContent{&conversationproto.TextContent{Text: text}}
 }
 
 // TestFiles holds uploads and the blocks and media bytes they resolve to.
@@ -29,7 +29,7 @@ type TestFiles struct {
 func NewFiles() *TestFiles { return &TestFiles{} }
 
 // Upload records the blocks and held media an upload reference resolves to.
-func (f *TestFiles) Upload(reference string, blocks []core.UserContentBlock, media store.HeldMedia) {
+func (f *TestFiles) Upload(reference string, blocks []types.UserContentBlock, media store.HeldMedia) {
 	var owned store.HeldMedia
 	owned.Absorb(media)
 	f.mu.Lock()
@@ -37,7 +37,7 @@ func (f *TestFiles) Upload(reference string, blocks []core.UserContentBlock, med
 	if f.uploads == nil {
 		f.uploads = map[string]server.ResolvedFiles{}
 	}
-	f.uploads[reference] = server.ResolvedFiles{Blocks: [][]core.UserContentBlock{slices.Clone(blocks)}, Media: owned}
+	f.uploads[reference] = server.ResolvedFiles{Blocks: [][]types.UserContentBlock{slices.Clone(blocks)}, Media: owned}
 }
 
 // Resolve returns uploads in order or refuses the entire frame.

@@ -16,15 +16,15 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
-func inertRunner(t *testing.T, f *fixture, device webapi.DeviceID) {
+func inertRunner(t *testing.T, f *fixture, device webapiproto.DeviceID) {
 	t.Helper()
 	link, driver := remotehost.NewLink(
 		remotehost.LinkOptions{
@@ -108,9 +108,9 @@ func TestHostGroupNamesReachableHostsAndRefusesOthers(t *testing.T) {
 			Args: []byte(test.args),
 			CWD:  "/work",
 			Env:  map[string]string{},
-			Context: commandwire.Context{
+			Context: commandproto.Context{
 				Conversation: string(conversationID),
-				Caller:       &commandwire.AgentCaller{Number: 1},
+				Caller:       &commandproto.AgentCaller{Number: 1},
 				Locale:       runners.DefaultLocale(),
 			},
 			Caller: &host.JobCaller{Node: "node-1"},
@@ -166,7 +166,7 @@ func TestJobRunsWithinHostAccessAndRejectsChangedHost(t *testing.T) {
 		t.Context(),
 		conversationID,
 		record.Target,
-		&webapi.ConversationTargetDevice{DeviceID: laptop, Path: "/elsewhere"},
+		&webapiproto.ConversationTargetDevice{DeviceID: laptop, Path: "/elsewhere"},
 		database.TargetSwitch{
 			From: &database.ExecutionDevice{DeviceID: laptop, Path: "/work"},
 			To:   &database.ExecutionDevice{DeviceID: laptop, Path: "/elsewhere"},
@@ -194,9 +194,9 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 	}
 	other, err := f.services.Control.CreateUser(
 		t.Context(),
-		webapi.EmailAddress("other@example.test"),
+		webapiproto.EmailAddress("other@example.test"),
 		account.PasswordHash,
-		webapi.RoleUser,
+		webapiproto.RoleUser,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 		t.Context(),
 		other.ID,
 		"foreign",
-		runnerwire.RunnerPlatformLinux,
+		runnerproto.RunnerPlatformLinux,
 		database.HashToken("foreign"),
 	)
 	if err != nil {
@@ -213,7 +213,7 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 	}
 	build := f.devices[0].ID
 	path := "/srv/it's $(literal).txt"
-	file := func(id webapi.DeviceID) hostaccess.RemoteFile {
+	file := func(id webapiproto.DeviceID) hostaccess.RemoteFile {
 		return hostaccess.RemoteFile{Device: string(id), Path: path}
 	}
 	_, err = hostaccess.ReferenceRemoteFiles(t.Context(), f.shard, conversationID, []hostaccess.RemoteFile{file(build)})
@@ -249,7 +249,7 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 	if len(blocks) != 1 {
 		t.Fatalf("references = %v", blocks)
 	}
-	reference, ok := blocks[0].(*core.UserReference)
+	reference, ok := blocks[0].(*types.UserReference)
 	if !ok {
 		t.Fatalf("reference = %T", blocks[0])
 	}
@@ -309,32 +309,32 @@ func TestCloudGrowthRequiresPositiveBoundedCloudVolume(t *testing.T) {
 	}
 	tuning := f.services.Cloud.Tuning
 	cases := []struct {
-		device  webapi.DeviceID
-		volume  runnerwire.VolumeName
+		device  webapiproto.DeviceID
+		volume  runnerproto.VolumeName
 		bytes   uint64
 		message string
 	}{
 		{
 			managed.ID,
-			runnerwire.VolumeNameSystem,
+			runnerproto.VolumeNameSystem,
 			0,
 			"system volume quota exceeded",
 		},
 		{
 			managed.ID,
-			runnerwire.VolumeNameSystem,
+			runnerproto.VolumeNameSystem,
 			tuning.SystemQuota + 1,
 			"system volume quota exceeded",
 		},
 		{
 			managed.ID,
-			runnerwire.VolumeNameHome,
+			runnerproto.VolumeNameHome,
 			tuning.HomeQuota + 1,
 			"home volume quota exceeded",
 		},
 		{
 			f.devices[0].ID,
-			runnerwire.VolumeNameHome,
+			runnerproto.VolumeNameHome,
 			1 << 30,
 			"Only the Cloud grows its volumes",
 		},
@@ -345,7 +345,7 @@ func TestCloudGrowthRequiresPositiveBoundedCloudVolume(t *testing.T) {
 			t.Errorf("grow(%s,%s,%d) = %v", test.device, test.volume, test.bytes, err)
 		}
 	}
-	err = cloud.GrowVolume(t.Context(), f.shard, managed.ID, runnerwire.VolumeNameHome, tuning.HomeQuota)
+	err = cloud.GrowVolume(t.Context(), f.shard, managed.ID, runnerproto.VolumeNameHome, tuning.HomeQuota)
 	if err == nil || !strings.HasPrefix(err.Error(), "Machine manager unavailable during grow_volume: ") {
 		t.Fatalf("bounded growth did not reach manager: %v", err)
 	}

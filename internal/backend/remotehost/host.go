@@ -12,10 +12,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // DeviceLink is a device's current connection, or its last identity while offline.
@@ -139,8 +139,8 @@ func (h *Host) ReadPipe(ctx context.Context, path string, span host.ByteRange) (
 	if lease != nil {
 		defer lease.Release()
 	}
-	return filled(ctx, link, `Fs("readFile")`, func(id string, output runnerwire.PipeRef) runnerwire.Inbound {
-		request := &runnerwire.FSReadFile{ID: id, Path: path, CWD: new(h.cwd), Length: span.Length, Output: output}
+	return filled(ctx, link, `Fs("readFile")`, func(id string, output runnerproto.PipeRef) runnerproto.Inbound {
+		request := &runnerproto.FSReadFile{ID: id, Path: path, CWD: new(h.cwd), Length: span.Length, Output: output}
 		if span.Offset > 0 {
 			request.Offset = new(span.Offset)
 		}
@@ -170,8 +170,8 @@ func (h *Host) WriteFrom(ctx context.Context, path string, input *Pipe, options 
 	if lease != nil {
 		defer lease.Release()
 	}
-	_, err = link.call(ctx, `Fs("writeFile")`, func(id string) runnerwire.Inbound {
-		request := &runnerwire.FSWriteFile{ID: id, Path: path, CWD: new(h.cwd), Input: input.WireRef()}
+	_, err = link.call(ctx, `Fs("writeFile")`, func(id string) runnerproto.Inbound {
+		request := &runnerproto.FSWriteFile{ID: id, Path: path, CWD: new(h.cwd), Input: input.WireRef()}
 		if options.CreateParents {
 			request.CreateParents = new(true)
 		}
@@ -181,14 +181,14 @@ func (h *Host) WriteFrom(ctx context.Context, path string, input *Pipe, options 
 }
 
 // GitChanges reads the working-tree changes beneath root.
-func (h *Host) GitChanges(ctx context.Context, root string) (runnerwire.GitChanges, error) {
+func (h *Host) GitChanges(ctx context.Context, root string) (runnerproto.GitChanges, error) {
 	link, err := h.connection()
 	if err != nil {
-		return runnerwire.GitChanges{}, err
+		return runnerproto.GitChanges{}, err
 	}
 	lease, err := h.admit()
 	if err != nil {
-		return runnerwire.GitChanges{}, err
+		return runnerproto.GitChanges{}, err
 	}
 	if lease != nil {
 		defer lease.Release()
@@ -196,17 +196,17 @@ func (h *Host) GitChanges(ctx context.Context, root string) (runnerwire.GitChang
 	reply, err := link.call(
 		ctx,
 		`Git("changes")`,
-		func(id string) runnerwire.Inbound { return &runnerwire.GitChangesMessage{ID: id, Root: root} },
+		func(id string) runnerproto.Inbound { return &runnerproto.GitChangesMessage{ID: id, Root: root} },
 	)
 	if err != nil {
-		return runnerwire.GitChanges{}, err
+		return runnerproto.GitChanges{}, err
 	}
-	if reply, ok := reply.(*runnerwire.GitOK); ok {
-		if result, ok := reply.Result.(*runnerwire.GitChangesResult); ok {
+	if reply, ok := reply.(*runnerproto.GitOK); ok {
+		if result, ok := reply.Result.(*runnerproto.GitChangesResult); ok {
 			return result.Value, nil
 		}
 	}
-	return runnerwire.GitChanges{}, mismatch()
+	return runnerproto.GitChanges{}, mismatch()
 }
 
 // GitShow reads a file's committed contents from root.
@@ -222,8 +222,8 @@ func (h *Host) GitShow(ctx context.Context, root, path string) ([]byte, error) {
 	if lease != nil {
 		defer lease.Release()
 	}
-	reader, err := filled(ctx, link, `Git("show")`, func(id string, output runnerwire.PipeRef) runnerwire.Inbound {
-		return &runnerwire.GitShow{ID: id, Root: root, Path: path, Output: output}
+	reader, err := filled(ctx, link, `Git("show")`, func(id string, output runnerproto.PipeRef) runnerproto.Inbound {
+		return &runnerproto.GitShow{ID: id, Root: root, Path: path, Output: output}
 	})
 	if err != nil {
 		return nil, err
@@ -237,20 +237,20 @@ func (h *Host) ReadLog(ctx context.Context, since *uint64, limit uint64, source 
 	if err != nil {
 		return LogPage{}, err
 	}
-	reply, err := link.call(ctx, "Log", func(id string) runnerwire.Inbound {
-		return &runnerwire.LogRead{ID: id, Since: since, Limit: limit, Source: source}
+	reply, err := link.call(ctx, "Log", func(id string) runnerproto.Inbound {
+		return &runnerproto.LogRead{ID: id, Since: since, Limit: limit, Source: source}
 	})
 	if err != nil {
 		return LogPage{}, err
 	}
-	if reply, ok := reply.(*runnerwire.LogLines); ok {
+	if reply, ok := reply.(*runnerproto.LogLines); ok {
 		return LogPage{Lines: reply.Lines, Next: reply.Next}, nil
 	}
 	return LogPage{}, mismatch()
 }
 
 // OpenNet connects a TCP stream between the socket and two pipes.
-func (h *Host) OpenNet(ctx context.Context, hostname string, port uint16, input, output runnerwire.PipeRef) error {
+func (h *Host) OpenNet(ctx context.Context, hostname string, port uint16, input, output runnerproto.PipeRef) error {
 	link, err := h.connection()
 	if err != nil {
 		return err
@@ -262,8 +262,8 @@ func (h *Host) OpenNet(ctx context.Context, hostname string, port uint16, input,
 	if lease != nil {
 		defer lease.Release()
 	}
-	_, err = link.call(ctx, "Net", func(id string) runnerwire.Inbound {
-		return &runnerwire.NetOpen{StreamID: id, Host: hostname, Port: port, Input: input, Output: output}
+	_, err = link.call(ctx, "Net", func(id string) runnerproto.Inbound {
+		return &runnerproto.NetOpen{StreamID: id, Host: hostname, Port: port, Input: input, Output: output}
 	})
 	return err
 }
@@ -273,7 +273,7 @@ func (h *Host) OpenNet(ctx context.Context, hostname string, port uint16, input,
 func (h *Host) OpenService(
 	ctx context.Context,
 	request ServiceRequest,
-	input, output runnerwire.PipeRef,
+	input, output runnerproto.PipeRef,
 ) (*ServiceStream, error) {
 	link, err := h.connection()
 	if err != nil {
@@ -296,8 +296,8 @@ func (h *Host) OpenService(
 	}
 	link.services[stream.id] = stream
 	link.mu.Unlock()
-	_, err = link.callID(ctx, stream.id, "Service", func(id string) runnerwire.Inbound {
-		message := &runnerwire.ServiceOpen{
+	_, err = link.callID(ctx, stream.id, "Service", func(id string) runnerproto.Inbound {
+		message := &runnerproto.ServiceOpen{
 			StreamID:  id,
 			Context:   request.Context,
 			Package:   request.Package,
@@ -379,7 +379,7 @@ func (h *Host) ReleaseConversation(ctx context.Context, conversation string) err
 }
 
 // HostIdentity converts the runner account to the Host's identity.
-func HostIdentity(identity runnerwire.HostIdentity) host.Identity {
+func HostIdentity(identity runnerproto.HostIdentity) host.Identity {
 	return host.Identity{UID: identity.UID, GID: identity.GID, Hostname: identity.Hostname, HomeDir: identity.HomeDir}
 }
 
@@ -392,15 +392,15 @@ type JobStart struct {
 	// Env is exactly the variables above the device's environment.
 	Env map[string]string
 	// Context identifies the conversation and command locale.
-	Context commandwire.Context
+	Context commandproto.Context
 	// Caller identifies the node that owns command callbacks.
 	Caller *host.JobCaller
 	// Commands pins the declared command manifest for this job.
 	Commands *CommandSelection
 	// Stdin names the optional input pipe.
-	Stdin *runnerwire.PipeRef
+	Stdin *runnerproto.PipeRef
 	// Stdout names the optional output pipe.
-	Stdout *runnerwire.PipeRef
+	Stdout *runnerproto.PipeRef
 }
 
 // Job is one shell job on the runner. The owner releases it after keeping its output and edits.
@@ -431,7 +431,7 @@ func (j *Job) Follow(ctx context.Context, follow bool) error {
 	if !j.live() {
 		return nil
 	}
-	return j.link.send(ctx, &runnerwire.JobFollow{JobID: j.id, Follow: follow})
+	return j.link.send(ctx, &runnerproto.JobFollow{JobID: j.id, Follow: follow})
 }
 
 // RunningHint returns guidance from the latest declared command that supplies it.
@@ -453,7 +453,7 @@ func (j *Job) WriteStdin(ctx context.Context, bytes []byte) error {
 		ctx,
 		j.link,
 		bytes,
-		func(chunk []byte) runnerwire.Inbound { return &runnerwire.JobStdin{JobID: j.id, Bytes: chunk} },
+		func(chunk []byte) runnerproto.Inbound { return &runnerproto.JobStdin{JobID: j.id, Bytes: chunk} },
 	)
 }
 
@@ -462,7 +462,7 @@ func (j *Job) CloseStdin(ctx context.Context) error {
 	if !j.live() {
 		return nil
 	}
-	return j.link.send(ctx, &runnerwire.JobStdinEnd{JobID: j.id})
+	return j.link.send(ctx, &runnerproto.JobStdinEnd{JobID: j.id})
 }
 
 // ReadOutput reads the kept output while running or ended, until release.
@@ -470,13 +470,13 @@ func (j *Job) ReadOutput(ctx context.Context) (host.WholeOutput, error) {
 	if j.link == nil {
 		return host.WholeOutput{}, &host.Error{Kind: host.Offline, Message: "the job's runner is not connected"}
 	}
-	reader, err := filled(ctx, j.link, "JobRead", func(id string, output runnerwire.PipeRef) runnerwire.Inbound {
-		return &runnerwire.JobRead{ID: id, JobID: j.id, Output: output}
+	reader, err := filled(ctx, j.link, "JobRead", func(id string, output runnerproto.PipeRef) runnerproto.Inbound {
+		return &runnerproto.JobRead{ID: id, JobID: j.id, Output: output}
 	})
 	if err != nil {
 		return host.WholeOutput{}, err
 	}
-	data, err := collect(ctx, reader, runnerwire.JobKeptReadBytes)
+	data, err := collect(ctx, reader, runnerproto.JobKeptReadBytes)
 	if err != nil {
 		return host.WholeOutput{}, err
 	}
@@ -495,21 +495,21 @@ func (j *Job) Release(ctx context.Context) error {
 	if j.link == nil {
 		return nil
 	}
-	return j.link.send(ctx, &runnerwire.JobRelease{JobID: j.id})
+	return j.link.send(ctx, &runnerproto.JobRelease{JobID: j.id})
 }
 
 // Kill signals the job; ended jobs do nothing.
-func (j *Job) Kill(ctx context.Context, signal runnerwire.Signal) error {
+func (j *Job) Kill(ctx context.Context, signal runnerproto.Signal) error {
 	if !j.live() {
 		return nil
 	}
-	return j.link.send(ctx, &runnerwire.JobKill{JobID: j.id, Signal: new(signal)})
+	return j.link.send(ctx, &runnerproto.JobKill{JobID: j.id, Signal: new(signal)})
 }
 
 // LogPage is a page of the Host's log with the next read's cursor.
 type LogPage struct {
 	// Lines contains the log entries returned by this read.
-	Lines []runnerwire.LogLine
+	Lines []runnerproto.LogLine
 	// Next is the cursor for the next log read.
 	Next uint64
 }
@@ -517,9 +517,9 @@ type LogPage struct {
 // ServiceRequest describes a user stream or one-shot service invocation.
 type ServiceRequest struct {
 	// Context identifies the conversation and command locale.
-	Context commandwire.Context
+	Context commandproto.Context
 	// Package is the descriptor of the invoked command package.
-	Package commandwire.PackageDescriptor
+	Package commandproto.PackageDescriptor
 	// Operation names the package operation.
 	Operation string
 	// Args is the optional invocation argument object, encoded with contract codecs.
@@ -537,9 +537,9 @@ type ServiceRequest struct {
 // AttachedArtifact allows a user stream to install an artifact beside its package's own.
 type AttachedArtifact struct {
 	// Artifact describes the artifact bytes.
-	Artifact commandwire.PackageArtifact
+	Artifact commandproto.PackageArtifact
 	// Location specifies where the runner downloads those bytes.
-	Location commandwire.ArtifactLocation
+	Location commandproto.ArtifactLocation
 }
 
 // ServiceEnd describes completion and the bounded stderr tail.
@@ -650,14 +650,14 @@ func (j *Job) start(ctx context.Context, job JobStart) (err error) {
 		hash = new(job.Commands.Hash())
 		if j.link.manifest != *hash {
 			j.link.manifest = *hash
-			if err := j.link.send(ctx, &runnerwire.ManifestMessage{Manifest: job.Commands.wire}); err != nil {
+			if err := j.link.send(ctx, &runnerproto.ManifestMessage{Manifest: job.Commands.wire}); err != nil {
 				return err
 			}
 		}
 	}
 	return j.link.send(
 		ctx,
-		&runnerwire.JobStart{
+		&runnerproto.JobStart{
 			JobID:        j.id,
 			ManifestHash: hash,
 			Context:      job.Context,
@@ -685,9 +685,9 @@ func (j *Job) finish(end JobEnd) {
 func (j *Job) live() bool { return j.link != nil && !j.state.hasEnded() }
 
 // sendStdin preserves stdin ordering while splitting writes to the runner's frame bound.
-func sendStdin(ctx context.Context, link *Link, data []byte, frame func([]byte) runnerwire.Inbound) error {
+func sendStdin(ctx context.Context, link *Link, data []byte, frame func([]byte) runnerproto.Inbound) error {
 	for len(data) > 0 {
-		n := min(len(data), runnerwire.StdinChunkBytes)
+		n := min(len(data), runnerproto.StdinChunkBytes)
 		if err := link.send(ctx, frame(data[:n])); err != nil {
 			return err
 		}

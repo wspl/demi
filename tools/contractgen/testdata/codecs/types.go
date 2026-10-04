@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 //go:generate go run ../..
@@ -18,12 +18,12 @@ type Empty struct{}
 
 // +demi:root
 type Wake struct {
-	Boot runnerwire.ManagedBoot `json:"boot"`
+	Boot runnerproto.ManagedBoot `json:"boot"`
 }
 
 // +demi:root
 type Address struct {
-	URL runnerwire.BackendURL `json:"url"`
+	URL runnerproto.BackendURL `json:"url"`
 }
 
 // +demi:root

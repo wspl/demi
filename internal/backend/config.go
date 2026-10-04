@@ -8,13 +8,13 @@ import (
 	"github.com/wspl/demi/internal/backend/blobs"
 	"github.com/wspl/demi/internal/backend/cloud"
 	"github.com/wspl/demi/internal/backend/expose"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/backend/usershard"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/provider"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Config is everything Start needs: the configured values, and the parts a
@@ -31,7 +31,7 @@ type Config struct {
 	// Address is where the listener binds; port 0 picks a free port.
 	Address netip.AddrPort
 	// Mode is who configures providers (`product.md` § Instance mode).
-	Mode webapi.InstanceMode
+	Mode webapiproto.InstanceMode
 	// WebDirectory is the web app build's directory, served beside the API.
 	WebDirectory string
 	// PublicURL is the URL runners connect to, which the installers name; without it,
@@ -53,9 +53,9 @@ type Config struct {
 	// `mail_unavailable`.
 	AccountMail accounts.AccountMail
 	// Clock supplies wall timestamps; timers use the Go runtime clock.
-	Clock core.Clock
+	Clock types.Clock
 	// Families supplies the provider families entries are assembled with.
-	Families *providers.FamilyRegistry
+	Families *providerhost.FamilyRegistry
 	// Plugins lists the plugins in their order of registration.
 	Plugins []plugin.Factory
 	// ModelsDevURL is where the models.dev document is read.
@@ -65,7 +65,7 @@ type Config struct {
 	ClaudeReleases *url.URL
 	// Logins is how long a device login waits for its user, and how long its result
 	// is kept.
-	Logins providers.LoginTiming
+	Logins providerhost.LoginTiming
 	// Runners is how runner connections are timed and pairing is limited.
 	Runners usershard.RunnerTuning
 	// Conversations is how conversations are served and their inference limited.
@@ -94,7 +94,7 @@ type Config struct {
 func NewConfig(
 	dataDir string,
 	address netip.AddrPort,
-	mode webapi.InstanceMode,
+	mode webapiproto.InstanceMode,
 	machinesSocket string,
 ) (Config, error) {
 	plugins, err := BuiltinPlugins()
@@ -105,7 +105,7 @@ func NewConfig(
 	if err != nil {
 		return Config{}, err
 	}
-	releases, err := url.Parse(providers.DefaultReleasesURL)
+	releases, err := url.Parse(providerhost.DefaultReleasesURL)
 	if err != nil {
 		return Config{}, err
 	}
@@ -114,12 +114,12 @@ func NewConfig(
 		Address:        address,
 		Mode:           mode,
 		MachinesSocket: machinesSocket,
-		Clock:          core.SystemClock{},
+		Clock:          types.SystemClock{},
 		Families:       BuiltinFamilies(),
 		Plugins:        plugins,
 		ModelsDevURL:   models,
 		ClaudeReleases: releases,
-		Logins:         providers.DefaultLoginTiming(),
+		Logins:         providerhost.DefaultLoginTiming(),
 		Runners:        usershard.DefaultRunnerTuning(),
 		Conversations:  usershard.DefaultConversationTuning(),
 		Pages:          usershard.DefaultPageTuning(),

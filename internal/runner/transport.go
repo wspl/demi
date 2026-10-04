@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // socketURL selects the backend's runner route without losing its query.
-func socketURL(backend runnerwire.BackendURL) (string, error) {
+func socketURL(backend runnerproto.BackendURL) (string, error) {
 	u, err := url.Parse(backend.String())
 	if err != nil {
 		return "", err
@@ -35,7 +35,7 @@ func socketURL(backend runnerwire.BackendURL) (string, error) {
 type transport struct {
 	output   chan []byte
 	control  chan []byte
-	input    chan runnerwire.Inbound
+	input    chan runnerproto.Inbound
 	socket   *websocket.Conn
 	cancel   context.CancelFunc
 	done     chan struct{}
@@ -44,7 +44,7 @@ type transport struct {
 	err      error
 }
 
-func connect(ctx context.Context, backend runnerwire.BackendURL) (*transport, error) {
+func connect(ctx context.Context, backend runnerproto.BackendURL) (*transport, error) {
 	address, err := socketURL(backend)
 	if err != nil {
 		return nil, err
@@ -66,13 +66,13 @@ func newTransport(socket *websocket.Conn) *transport {
 	t := &transport{
 		output:   make(chan []byte, 8),
 		control:  make(chan []byte, 128),
-		input:    make(chan runnerwire.Inbound, 8),
+		input:    make(chan runnerproto.Inbound, 8),
 		socket:   socket,
 		cancel:   cancel,
 		done:     make(chan struct{}),
 		stopping: make(chan struct{}),
 	}
-	socket.SetReadLimit(runnerwire.MaxMessageBytes)
+	socket.SetReadLimit(runnerproto.MaxMessageBytes)
 	go t.run(ctx)
 	return t
 }
@@ -135,7 +135,7 @@ func (t *transport) receive(ctx context.Context) error {
 		if kind != websocket.MessageBinary {
 			return errors.New("runner requires binary WebSocket messages")
 		}
-		message, err := runnerwire.DecodeInbound(data)
+		message, err := runnerproto.DecodeInbound(data)
 		if err != nil {
 			return err
 		}
@@ -178,8 +178,8 @@ func (t *transport) send(ctx context.Context) error {
 }
 
 func (t *transport) write(ctx context.Context, data []byte) error {
-	if len(data) > runnerwire.MaxMessageBytes {
-		return fmt.Errorf("runner outbound message exceeds %d bytes", runnerwire.MaxMessageBytes)
+	if len(data) > runnerproto.MaxMessageBytes {
+		return fmt.Errorf("runner outbound message exceeds %d bytes", runnerproto.MaxMessageBytes)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

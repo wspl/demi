@@ -10,7 +10,7 @@ import (
 	"slices"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 var errReasoningType = errors.New("expected reasoning type")
@@ -230,7 +230,7 @@ func (m *responsesMapper) failure(
 	failure := Failure{
 		Message: *message,
 		Code:    ClassifyError(code, *message),
-		Diagnostics: &core.ProviderErrorDiagnostics{
+		Diagnostics: &types.ProviderErrorDiagnostics{
 			Source:             "stream",
 			ProviderCode:       code,
 			ProviderRequestID:  requestID,
@@ -278,7 +278,7 @@ func (m *responsesMapper) incomplete(event *ResponsesIncomplete, received Receiv
 			" response returned, reason: " +
 			reason,
 		Code:        &code,
-		Diagnostics: &core.ProviderErrorDiagnostics{Source: "stream", Upstream: &received.Text},
+		Diagnostics: &types.ProviderErrorDiagnostics{Source: "stream", Upstream: &received.Text},
 	}
 	return []Event{&Error{Failure: failure}}, true
 }
@@ -336,7 +336,7 @@ func (m *responsesMapper) argumentsDone(event *ResponsesArgumentsDone) {
 }
 
 func completedResponse(event *ResponsesCompleted) ([]Event, bool) {
-	var usage core.TokenUsage
+	var usage types.TokenUsage
 	if event.Response != nil && event.Response.Usage != nil {
 		usage = event.Response.Usage.TokenUsage()
 	}

@@ -8,8 +8,8 @@ import (
 	"math"
 
 	"github.com/google/uuid"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Close closes the database; operations after it fail with ErrClosed.
@@ -31,7 +31,7 @@ func (c *ControlService) Close(ctx context.Context) error {
 
 // HasUsers reports whether the instance has any accounts.
 func (c *ControlService) HasUsers(ctx context.Context) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (bool, error) {
 		var found bool
 		err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM users)").Scan(&found)
 		return found, err
@@ -42,21 +42,26 @@ func (c *ControlService) HasUsers(ctx context.Context) (bool, error) {
 // at all; ErrAlreadySetUp once setup has run.
 func (c *ControlService) CreateMaster(
 	ctx context.Context,
-	email webapi.EmailAddress,
+	email webapiproto.EmailAddress,
 	passwordHash PasswordHash,
-) (webapi.UserDTO, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (webapi.UserDTO, error) {
+) (webapiproto.UserDTO, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (webapiproto.UserDTO, error) {
 		var exists bool
 		if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM users)").Scan(&exists); err != nil {
-			return webapi.UserDTO{}, err
+			return webapiproto.UserDTO{}, err
 		}
 		if exists {
-			return webapi.UserDTO{}, ErrAlreadySetUp
+			return webapiproto.UserDTO{}, ErrAlreadySetUp
 		}
-		u := webapi.UserDTO{ID: webapi.UserID(uuid.NewString()), Email: email, Role: webapi.RoleMaster, CreatedAt: now}
+		u := webapiproto.UserDTO{
+			ID:        webapiproto.UserID(uuid.NewString()),
+			Email:     email,
+			Role:      webapiproto.RoleMaster,
+			CreatedAt: now,
+		}
 		at, err := now.Millisecond()
 		if err != nil {
-			return webapi.UserDTO{}, err
+			return webapiproto.UserDTO{}, err
 		}
 		result, err := tx.ExecContext(
 			ctx,
@@ -70,23 +75,23 @@ ON CONFLICT (email) DO NOTHING`,
 			at,
 		)
 		if err != nil {
-			return webapi.UserDTO{}, err
+			return webapiproto.UserDTO{}, err
 		}
 		count, err := result.RowsAffected()
 		if err != nil {
-			return webapi.UserDTO{}, err
+			return webapiproto.UserDTO{}, err
 		}
 		if count == 0 {
-			return webapi.UserDTO{}, ErrAlreadySetUp
+			return webapiproto.UserDTO{}, ErrAlreadySetUp
 		}
 		return u, nil
 	})
 }
 
 // AccountByEmail returns the login lookup.
-func (c *ControlService) AccountByEmail(ctx context.Context, email webapi.EmailAddress) (Account, bool, error) {
+func (c *ControlService) AccountByEmail(ctx context.Context, email webapiproto.EmailAddress) (Account, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (Account, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (Account, error) {
 		r, ok, err := queryRecord(
 			ctx,
 			tx,
@@ -102,9 +107,9 @@ func (c *ControlService) AccountByEmail(ctx context.Context, email webapi.EmailA
 }
 
 // Account returns the account of user, or nil when absent.
-func (c *ControlService) Account(ctx context.Context, user webapi.UserID) (Account, bool, error) {
+func (c *ControlService) Account(ctx context.Context, user webapiproto.UserID) (Account, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (Account, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (Account, error) {
 		r, ok, err := queryRecord(
 			ctx,
 			tx,
@@ -120,8 +125,8 @@ func (c *ControlService) Account(ctx context.Context, user webapi.UserID) (Accou
 }
 
 // Users returns every account, in the order they were created.
-func (c *ControlService) Users(ctx context.Context) ([]webapi.UserDTO, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]webapi.UserDTO, error) {
+func (c *ControlService) Users(ctx context.Context) ([]webapiproto.UserDTO, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]webapiproto.UserDTO, error) {
 		return queryRecords(ctx, tx, "users", "SELECT "+userColumns+" FROM users ORDER BY created_at, rowid", userRow)
 	})
 }
@@ -130,15 +135,15 @@ func (c *ControlService) Users(ctx context.Context) ([]webapi.UserDTO, error) {
 // the address already.
 func (c *ControlService) CreateUser(
 	ctx context.Context,
-	email webapi.EmailAddress,
+	email webapiproto.EmailAddress,
 	passwordHash PasswordHash,
-	role webapi.Role,
-) (webapi.UserDTO, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (webapi.UserDTO, error) {
-		u := webapi.UserDTO{ID: webapi.UserID(uuid.NewString()), Email: email, Role: role, CreatedAt: now}
+	role webapiproto.Role,
+) (webapiproto.UserDTO, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (webapiproto.UserDTO, error) {
+		u := webapiproto.UserDTO{ID: webapiproto.UserID(uuid.NewString()), Email: email, Role: role, CreatedAt: now}
 		at, err := now.Millisecond()
 		if err != nil {
-			return webapi.UserDTO{}, err
+			return webapiproto.UserDTO{}, err
 		}
 		result, err := tx.ExecContext(
 			ctx,
@@ -152,22 +157,22 @@ ON CONFLICT (email) DO NOTHING`,
 			at,
 		)
 		if err != nil {
-			return webapi.UserDTO{}, err
+			return webapiproto.UserDTO{}, err
 		}
 		count, err := result.RowsAffected()
 		if err != nil {
-			return webapi.UserDTO{}, err
+			return webapiproto.UserDTO{}, err
 		}
 		if count == 0 {
-			return webapi.UserDTO{}, ErrEmailTaken
+			return webapiproto.UserDTO{}, ErrEmailTaken
 		}
 		return u, nil
 	})
 }
 
 // EmailInUse reports whether an account already has email.
-func (c *ControlService) EmailInUse(ctx context.Context, email webapi.EmailAddress) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
+func (c *ControlService) EmailInUse(ctx context.Context, email webapiproto.EmailAddress) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (bool, error) {
 		var found bool
 		err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM users WHERE email = ?)", email).Scan(&found)
 		return found, err
@@ -177,10 +182,10 @@ func (c *ControlService) EmailInUse(ctx context.Context, email webapi.EmailAddre
 // SetNickname sets the nickname and answers the account as it now is.
 func (c *ControlService) SetNickname(
 	ctx context.Context,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	nickname string,
-) (webapi.UserDTO, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (webapi.UserDTO, error) {
+) (webapiproto.UserDTO, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (webapiproto.UserDTO, error) {
 		u, found, err := queryRecord(
 			ctx,
 			tx,
@@ -191,57 +196,65 @@ func (c *ControlService) SetNickname(
 			user,
 		)
 		if err != nil {
-			return webapi.UserDTO{}, err
+			return webapiproto.UserDTO{}, err
 		}
 		if !found {
-			return webapi.UserDTO{}, ErrUserNotFound
+			return webapiproto.UserDTO{}, ErrUserNotFound
 		}
 		return u, nil
 	})
 }
 
 // SetPassword replaces the account password hash.
-func (c *ControlService) SetPassword(ctx context.Context, user webapi.UserID, passwordHash PasswordHash) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) SetPassword(ctx context.Context, user webapiproto.UserID, passwordHash PasswordHash) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(ctx, tx, "UPDATE users SET password_hash = ? WHERE id = ?", passwordHash.Text(), user)
 	})
 }
 
 // Preferences returns the user's saved preferences; a user who saved none has no overrides.
-func (c *ControlService) Preferences(ctx context.Context, user webapi.UserID) (webapi.Preferences, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (webapi.Preferences, error) {
-		return savedPreferences(ctx, tx, user)
-	})
+func (c *ControlService) Preferences(ctx context.Context, user webapiproto.UserID) (webapiproto.Preferences, error) {
+	return controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (webapiproto.Preferences, error) {
+			return savedPreferences(ctx, tx, user)
+		},
+	)
 }
 
 // PatchPreferences merges a validated patch in the transaction that reads and
 // writes the user's preferences. Absent fields stay; null shortcuts remove overrides.
 func (c *ControlService) PatchPreferences(
 	ctx context.Context,
-	user webapi.UserID,
-	patch webapi.PreferencesPatch,
-) (webapi.Preferences, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (webapi.Preferences, error) {
-		p, err := savedPreferences(ctx, tx, user)
-		if err != nil {
-			return p, err
-		}
-		mergePreferences(&p, patch)
-		text, err := encoded(p)
-		if err != nil {
-			return p, err
-		}
-		return p, execSQL(
-			ctx,
-			tx,
-			`INSERT INTO user_preferences (user_id,preferences)
+	user webapiproto.UserID,
+	patch webapiproto.PreferencesPatch,
+) (webapiproto.Preferences, error) {
+	return controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (webapiproto.Preferences, error) {
+			p, err := savedPreferences(ctx, tx, user)
+			if err != nil {
+				return p, err
+			}
+			mergePreferences(&p, patch)
+			text, err := encoded(p)
+			if err != nil {
+				return p, err
+			}
+			return p, execSQL(
+				ctx,
+				tx,
+				`INSERT INTO user_preferences (user_id,preferences)
 VALUES (?,?)
 ON CONFLICT (user_id) DO UPDATE
 SET preferences = excluded.preferences`,
-			user,
-			text,
-		)
-	})
+				user,
+				text,
+			)
+		},
+	)
 }
 
 // OpenWebSession stores a new session and answers when it expires. A login is the one
@@ -250,10 +263,10 @@ SET preferences = excluded.preferences`,
 func (c *ControlService) OpenWebSession(
 	ctx context.Context,
 	token TokenHash,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	policy SessionPolicy,
-) (core.Timestamp, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (core.Timestamp, error) {
+) (types.Timestamp, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (types.Timestamp, error) {
 		expiry, err := later(now, policy.Lifetime)
 		if err != nil {
 			return "", err
@@ -288,7 +301,7 @@ func (c *ControlService) ResolveWebSession(
 	policy SessionPolicy,
 ) (ResolvedSession, bool, error) {
 	var found bool
-	r, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ResolvedSession, error) {
+	r, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (ResolvedSession, error) {
 		session, ok, err := queryRecord(
 			ctx,
 			tx,
@@ -346,7 +359,7 @@ WHERE s.token_hash = ?`,
 
 // CloseWebSession deletes the session named by its token hash.
 func (c *ControlService) CloseWebSession(ctx context.Context, token TokenHash) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(ctx, tx, "DELETE FROM web_sessions WHERE token_hash = ?", token.Text())
 	})
 }
@@ -358,8 +371,8 @@ func (c *ControlService) IssueEmailChallenge(
 	ctx context.Context,
 	issue ChallengeIssue,
 	policy ChallengePolicy,
-) (core.Timestamp, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (core.Timestamp, error) {
+) (types.Timestamp, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (types.Timestamp, error) {
 		var sent int64
 		err := tx.QueryRowContext(ctx, "SELECT sent_at FROM email_challenges WHERE user_id = ?", issue.User).Scan(&sent)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -413,8 +426,8 @@ SET
 }
 
 // DeleteEmailChallenge deletes the user's challenge when its ID matches.
-func (c *ControlService) DeleteEmailChallenge(ctx context.Context, user webapi.UserID, id string) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) DeleteEmailChallenge(ctx context.Context, user webapiproto.UserID, id string) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(ctx, tx, "DELETE FROM email_challenges WHERE user_id = ? AND id = ?", user, id)
 	})
 }
@@ -423,16 +436,16 @@ func (c *ControlService) DeleteEmailChallenge(ctx context.Context, user webapi.U
 // the challenge, in one transaction with the uniqueness check.
 func (c *ControlService) ConfirmEmailChallenge(
 	ctx context.Context,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	id string,
 	codeHash CodeHash,
 	attempts uint32,
-) (webapi.UserDTO, error) {
+) (webapiproto.UserDTO, error) {
 	var refusal error
 	changed, err := controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (webapi.UserDTO, error) {
+		func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (webapiproto.UserDTO, error) {
 			found, ok, err := queryRecord(
 				ctx,
 				tx,
@@ -443,23 +456,23 @@ func (c *ControlService) ConfirmEmailChallenge(
 				id,
 			)
 			if err != nil {
-				return webapi.UserDTO{}, err
+				return webapiproto.UserDTO{}, err
 			}
 			if !ok {
-				return webapi.UserDTO{}, ErrInvalidCode
+				return webapiproto.UserDTO{}, ErrInvalidCode
 			}
 			var current string
 			err = tx.QueryRowContext(ctx, "SELECT password_hash FROM users WHERE id = ?", user).Scan(&current)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return webapi.UserDTO{}, err
+				return webapiproto.UserDTO{}, err
 			}
 			if errors.Is(err, sql.ErrNoRows) || found.expires <= now || found.attempts >= uint64(attempts) ||
 				current != found.password {
-				return webapi.UserDTO{}, ErrInvalidCode
+				return webapiproto.UserDTO{}, ErrInvalidCode
 			}
 			if !codeHash.Matches(found.code) {
 				refusal = ErrInvalidCode
-				return webapi.UserDTO{}, execSQL(
+				return webapiproto.UserDTO{}, execSQL(
 					ctx,
 					tx,
 					"UPDATE email_challenges SET attempts = attempts + 1 WHERE user_id = ?",
@@ -470,19 +483,19 @@ func (c *ControlService) ConfirmEmailChallenge(
 		},
 	)
 	if err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 	return changed, refusal
 }
 
 const userColumns = "id, email, nickname, role, created_at"
 
-func userRow(r *storedRow) webapi.UserDTO {
-	u := webapi.UserDTO{
-		ID:        checked(r, "id", webapi.ParseUserID),
-		Email:     checked(r, "email", webapi.ParseEmailAddress),
+func userRow(r *storedRow) webapiproto.UserDTO {
+	u := webapiproto.UserDTO{
+		ID:        checked(r, "id", webapiproto.ParseUserID),
+		Email:     checked(r, "email", webapiproto.ParseEmailAddress),
 		Nickname:  r.text("nickname"),
-		Role:      webapi.Role(r.text("role")),
+		Role:      webapiproto.Role(r.text("role")),
 		CreatedAt: r.instant("created_at"),
 	}
 	r.bad("role", u.Role.Validate())
@@ -499,31 +512,33 @@ func accountRow(r *storedRow) Account {
 func controlDo(
 	ctx context.Context,
 	c *ControlService,
-	work func(context.Context, *sql.Tx, core.Timestamp) error,
+	work func(context.Context, *sql.Tx, types.Timestamp) error,
 ) error {
-	_, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (struct{}, error) {
+	_, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (struct{}, error) {
 		return struct{}{}, work(ctx, tx, now)
 	})
 	return err
 }
 
-func savedPreferences(ctx context.Context, tx *sql.Tx, user webapi.UserID) (webapi.Preferences, error) {
+func savedPreferences(ctx context.Context, tx *sql.Tx, user webapiproto.UserID) (webapiproto.Preferences, error) {
 	row, found, err := queryRecord(
 		ctx,
 		tx,
 		"user_preferences",
 		"SELECT preferences FROM user_preferences WHERE user_id = ?",
-		func(r *storedRow) webapi.Preferences { return storedJSON(r, "preferences", webapi.DecodePreferences) },
+		func(r *storedRow) webapiproto.Preferences {
+			return storedJSON(r, "preferences", webapiproto.DecodePreferences)
+		},
 		user,
 	)
 	if !found {
-		return webapi.Preferences{}, err
+		return webapiproto.Preferences{}, err
 	}
 	return row, err
 }
 
 // mergePreferences preserves absent overrides and applies explicit shortcut nulls.
-func mergePreferences(p *webapi.Preferences, patch webapi.PreferencesPatch) {
+func mergePreferences(p *webapiproto.Preferences, patch webapiproto.PreferencesPatch) {
 	if a := patch.Appearance; a != nil {
 		if a.Theme != nil {
 			p.Appearance.Theme = a.Theme
@@ -558,9 +573,9 @@ func mergePreferences(p *webapi.Preferences, patch webapi.PreferencesPatch) {
 }
 
 type challenge struct {
-	email          webapi.EmailAddress
+	email          webapiproto.EmailAddress
 	password, code string
-	expires        core.Timestamp
+	expires        types.Timestamp
 	attempts       uint64
 }
 
@@ -571,7 +586,7 @@ func challengeRow(r *storedRow) challenge {
 		r.bad("attempts", fmt.Errorf("attempt count exceeds uint32"))
 	}
 	return challenge{
-		checked(r, "email", webapi.ParseEmailAddress),
+		checked(r, "email", webapiproto.ParseEmailAddress),
 		r.text("password_hash"),
 		r.text("code_hash"),
 		r.instant("expires_at"),
@@ -582,16 +597,16 @@ func challengeRow(r *storedRow) challenge {
 func consumeEmailChallenge(
 	ctx context.Context,
 	tx *sql.Tx,
-	user webapi.UserID,
-	email webapi.EmailAddress,
-) (webapi.UserDTO, error) {
+	user webapiproto.UserID,
+	email webapiproto.EmailAddress,
+) (webapiproto.UserDTO, error) {
 	var taken bool
 	if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM users WHERE email = ? AND id != ?)", email, user).
 		Scan(&taken); err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 	if taken {
-		return webapi.UserDTO{}, ErrEmailTaken
+		return webapiproto.UserDTO{}, ErrEmailTaken
 	}
 	changed, found, err := queryRecord(
 		ctx,
@@ -603,19 +618,19 @@ func consumeEmailChallenge(
 		user,
 	)
 	if err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 	if !found {
-		return webapi.UserDTO{}, ErrInvalidCode
+		return webapiproto.UserDTO{}, ErrInvalidCode
 	}
 	if err := execSQL(ctx, tx, "DELETE FROM email_challenges WHERE user_id = ?", user); err != nil {
-		return webapi.UserDTO{}, err
+		return webapiproto.UserDTO{}, err
 	}
 	return changed, nil
 }
 
-func emailChallengeCooling(sent int64, now core.Timestamp, policy ChallengePolicy) (bool, error) {
-	stamp, err := core.TimestampFromMillisecond(sent)
+func emailChallengeCooling(sent int64, now types.Timestamp, policy ChallengePolicy) (bool, error) {
+	stamp, err := types.TimestampFromMillisecond(sent)
 	if err != nil {
 		return false, CorruptValue("email_challenges", "sent_at", err)
 	}

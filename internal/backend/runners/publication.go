@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"gocloud.dev/blob"
 )
 
@@ -54,7 +54,7 @@ func PublishNative(ctx context.Context, path string) (*NativeCatalog, error) {
 		if err != nil {
 			return nil, err
 		}
-		packages := make([]commandwire.PackageDescriptor, 0, len(verified))
+		packages := make([]commandproto.PackageDescriptor, 0, len(verified))
 		var executables, archives []ArtifactFile
 		for _, release := range verified {
 			packages = append(packages, release.descriptor)
@@ -87,9 +87,9 @@ type urlSigner interface {
 // artifact's SHA-256 and size occur in the published catalog.
 func (a *SignedArtifacts) Resolve(
 	ctx context.Context,
-	artifact commandwire.PackageArtifact,
+	artifact commandproto.PackageArtifact,
 	_ string,
-) (commandwire.ArtifactLocation, error) {
+) (commandproto.ArtifactLocation, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("the work that asked no longer runs: %w", err)
 	}
@@ -113,5 +113,5 @@ func (a *SignedArtifacts) Resolve(
 		return nil, errors.New("a native artifact downloads over HTTPS only")
 	}
 	expires := time.Now().Add(300 * time.Second).UnixMilli()
-	return &commandwire.ArtifactURL{URL: location, ExpiresAt: &expires}, nil
+	return &commandproto.ArtifactURL{URL: location, ExpiresAt: &expires}, nil
 }

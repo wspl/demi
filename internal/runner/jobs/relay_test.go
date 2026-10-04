@@ -5,9 +5,9 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/runner/jobs"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 func TestRelayRoutesAnswersAndCancelsLaggingCalls(t *testing.T) {
@@ -26,23 +26,23 @@ func TestRelayRoutesAnswersAndCancelsLaggingCalls(t *testing.T) {
 		var result error
 		go func() {
 			defer close(returned)
-			first, result = handle.Reserve(ctx, "conversation", commandwire.TabSequence, 3)
+			first, result = handle.Reserve(ctx, "conversation", commandproto.TabSequence, 3)
 		}()
 		question := (<-requests).(*jobs.AskRequest)
 		frame, err := relay.Ask(question)
 		if err != nil {
 			t.Fatal(err)
 		}
-		message, err := runnerwire.DecodeOutbound(frame)
+		message, err := runnerproto.DecodeOutbound(frame)
 		if err != nil {
 			t.Fatal(err)
 		}
-		reservation, ok := message.(*runnerwire.NumbersReserve)
+		reservation, ok := message.(*runnerproto.NumbersReserve)
 		if !ok {
 			t.Fatalf("question %T", message)
 		}
 		answer := uint64(42)
-		if !relay.Route(&runnerwire.NumbersReserved{ID: reservation.ID, First: &answer}) {
+		if !relay.Route(&runnerproto.NumbersReserved{ID: reservation.ID, First: &answer}) {
 			t.Fatal("answer not handled")
 		}
 		<-returned
@@ -56,13 +56,13 @@ func TestRelayRoutesAnswersAndCancelsLaggingCalls(t *testing.T) {
 			t.Fatal(err)
 		}
 		relay.Call((<-requests).(*jobs.CallRequest))
-		relay.Route(&runnerwire.RPCOutput{CallID: "call", Bytes: []byte("one")})
-		relay.Route(&runnerwire.RPCExit{CallID: "call", ExitCode: 7})
+		relay.Route(&runnerproto.RPCOutput{CallID: "call", Bytes: []byte("one")})
+		relay.Route(&runnerproto.RPCExit{CallID: "call", ExitCode: 7})
 		<-call.Done()
 		if event := <-events; string(event.(*jobs.CallStderr).Bytes) != "one" {
 			t.Fatal("first event lost")
 		}
-		if relay.Route(&runnerwire.Ping{}) {
+		if relay.Route(&runnerproto.Ping{}) {
 			t.Fatal("relay claimed unrelated message")
 		}
 	})

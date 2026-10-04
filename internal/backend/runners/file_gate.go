@@ -4,18 +4,18 @@ import (
 	"context"
 
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // FileGate is the file gate of one conversation. Construct it with NewFileGate;
 // its owner is that conversation's slot in host access. Do not copy it.
 type FileGate struct {
-	conversation webapi.ConversationID
+	conversation webapiproto.ConversationID
 	gate         *gates.Activity
 }
 
 // NewFileGate makes the file gate of conversation, as its record spells the ID.
-func NewFileGate(conversation webapi.ConversationID) *FileGate {
+func NewFileGate(conversation webapiproto.ConversationID) *FileGate {
 	return &FileGate{conversation: conversation, gate: gates.NewActivity(nil)}
 }
 
@@ -38,12 +38,12 @@ func (g *FileGate) Gate() *gates.Activity {
 // FileLease is a lease of one conversation's file gate. Only FileGate.Enter
 // creates a usable lease. Do not copy it; its owner must release it.
 type FileLease struct {
-	conversation webapi.ConversationID
+	conversation webapiproto.ConversationID
 	lease        *gates.Lease
 }
 
 // Conversation returns the conversation whose file gate this lease holds.
-func (l *FileLease) Conversation() webapi.ConversationID {
+func (l *FileLease) Conversation() webapiproto.ConversationID {
 	return l.conversation
 }
 

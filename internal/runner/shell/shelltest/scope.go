@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 )
@@ -15,7 +15,7 @@ type Scope struct {
 	// Commands must be set before work starts and remain unchanged while in use.
 	Commands *process.JobCommands
 	// Edits must be set before work starts and remain unchanged while in use.
-	Edits    *cmdsdk.Recorder
+	Edits    *commandsdk.Recorder
 	ctx      context.Context
 	cancel   context.CancelFunc
 	work     sync.WaitGroup

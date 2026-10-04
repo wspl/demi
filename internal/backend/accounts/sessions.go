@@ -7,13 +7,18 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // SessionStore is the control database's session boundary.
 type SessionStore interface {
-	OpenWebSession(context.Context, database.TokenHash, webapi.UserID, database.SessionPolicy) (core.Timestamp, error)
+	OpenWebSession(
+		context.Context,
+		database.TokenHash,
+		webapiproto.UserID,
+		database.SessionPolicy,
+	) (types.Timestamp, error)
 	ResolveWebSession(
 		context.Context,
 		database.TokenHash,
@@ -25,7 +30,7 @@ type SessionStore interface {
 // OpenedSession is a new session: the cookie token and its expiry.
 type OpenedSession struct {
 	Token     string
-	ExpiresAt core.Timestamp
+	ExpiresAt types.Timestamp
 }
 
 // WebSessions opens, resolves and closes sessions in the control database.
@@ -39,7 +44,7 @@ func sessionPolicy() database.SessionPolicy {
 }
 
 // Open creates a session whose cookie contains a random 256-bit token.
-func (s *WebSessions) Open(ctx context.Context, user webapi.UserID) (OpenedSession, error) {
+func (s *WebSessions) Open(ctx context.Context, user webapiproto.UserID) (OpenedSession, error) {
 	var random [32]byte
 	rand.Read(random[:])
 	token := hex.EncodeToString(random[:])

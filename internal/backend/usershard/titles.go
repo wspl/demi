@@ -13,8 +13,8 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type titleRequest struct {
@@ -23,7 +23,7 @@ type titleRequest struct {
 	seen     uint64
 }
 
-func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
+func (s *Shard) askTitle(ctx context.Context, id webapiproto.ConversationID) error {
 	record, found, err := s.Control().Conversation(ctx, id)
 	if err != nil {
 		return err
@@ -37,7 +37,7 @@ func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
 	if record.Model == nil {
 		return ErrModelNotSelected
 	}
-	provider, err := webapi.ParseProviderID(record.Model.ProviderID)
+	provider, err := webapiproto.ParseProviderID(record.Model.ProviderID)
 	if err != nil {
 		return ErrProviderNotFound
 	}
@@ -48,7 +48,7 @@ func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
 	if entry == nil {
 		return ErrProviderNotFound
 	}
-	var blocks []core.Block
+	var blocks []types.Block
 	if tree := s.agent.Tree(hostaccess.RootOf(id)); tree != nil {
 		blocks = tree.Root().Session().Transcript().Blocks
 	} else {
@@ -74,8 +74,8 @@ func (s *Shard) askTitle(ctx context.Context, id webapi.ConversationID) error {
 }
 
 func (s *Shard) startTitle(
-	id webapi.ConversationID,
-	selection core.ModelSelection,
+	id webapiproto.ConversationID,
+	selection types.ModelSelection,
 	request titleRequest,
 ) {
 	if !s.services.ConversationTuning.Titles {
@@ -89,7 +89,7 @@ func (s *Shard) startTitle(
 	ctx, cancel := context.WithCancel(s.ctx)
 	task := &idleWatch{cancel: cancel, done: make(chan struct{})}
 	if s.titles == nil {
-		s.titles = make(map[webapi.ConversationID]*idleWatch)
+		s.titles = make(map[webapiproto.ConversationID]*idleWatch)
 	}
 	s.titles[id] = task
 	s.work.Add(1)
@@ -116,8 +116,8 @@ func (s *Shard) startTitle(
 
 func (s *Shard) generateTitle(
 	ctx context.Context,
-	id webapi.ConversationID,
-	selection core.ModelSelection,
+	id webapiproto.ConversationID,
+	selection types.ModelSelection,
 	request titleRequest,
 ) error {
 	runtime, err := s.providers.Runtime(ctx, hostaccess.RootOf(id), selection)
@@ -138,33 +138,33 @@ func (s *Shard) generateTitle(
 }
 
 // titleMessages preserves the user and steer text used to request a conversation title.
-func titleMessages(blocks []core.Block) []string {
+func titleMessages(blocks []types.Block) []string {
 	var messages []string
 	for _, block := range blocks {
-		var content []core.UserContentBlock
+		var content []types.UserContentBlock
 		switch block := block.(type) {
-		case *core.UserBlock:
+		case *types.UserBlock:
 			content = block.Content
-		case *core.SteerBlock:
+		case *types.SteerBlock:
 			content = block.Content
-		case *core.AbortBlock,
-			*core.AgentMessageBlock,
-			*core.CompactionBoundaryBlock,
-			*core.CompactionMarkerBlock,
-			*core.ContextBlock,
-			*core.ErrorBlock,
-			*core.RedactedThinkingBlock,
-			*core.ResponseBlock,
-			*core.ResumeBlock,
-			*core.TextBlock,
-			*core.ThinkingBlock,
-			*core.ToolCallBlock,
-			*core.WakeupBlock:
+		case *types.AbortBlock,
+			*types.AgentMessageBlock,
+			*types.CompactionBoundaryBlock,
+			*types.CompactionMarkerBlock,
+			*types.ContextBlock,
+			*types.ErrorBlock,
+			*types.RedactedThinkingBlock,
+			*types.ResponseBlock,
+			*types.ResumeBlock,
+			*types.TextBlock,
+			*types.ThinkingBlock,
+			*types.ToolCallBlock,
+			*types.WakeupBlock:
 			continue
 		}
 		var texts []string
 		for _, part := range content {
-			if text, ok := part.(*core.UserText); ok {
+			if text, ok := part.(*types.UserText); ok {
 				texts = append(texts, text.Text)
 			}
 		}

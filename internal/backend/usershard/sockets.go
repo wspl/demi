@@ -9,9 +9,9 @@ import (
 	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ChannelSession identifies the authenticated session opening a page channel.
@@ -19,9 +19,9 @@ type ChannelSession struct {
 	// Token identifies the authenticated browser session.
 	Token database.TokenHash
 	// User is the authenticated user’s page representation.
-	User webapi.UserDTO
+	User webapiproto.UserDTO
 	// ExpiresAt records the session’s current expiry.
-	ExpiresAt core.Timestamp
+	ExpiresAt types.Timestamp
 }
 
 // ServeSyncChannel takes ownership of socket and serves initial product state
@@ -54,7 +54,7 @@ func (s *Shard) Mark(part pagesync.Part) {
 func (s *Shard) AdoptRunner(
 	ctx context.Context,
 	device database.DeviceRecord,
-	runner runnerwire.Info,
+	runner runnerproto.Info,
 	socket *runners.Socket,
 ) error {
 	return s.adopt(ctx, device, runner, socket, nil)
@@ -66,16 +66,16 @@ func (s *Shard) AdoptRunner(
 func (s *Shard) AdoptClaimed(
 	ctx context.Context,
 	device database.DeviceRecord,
-	runner runnerwire.Info,
+	runner runnerproto.Info,
 	socket *runners.Socket,
-	bound chan<- webapi.DeviceDTO,
+	bound chan<- webapiproto.DeviceDTO,
 ) error {
 	return s.adopt(ctx, device, runner, socket, bound)
 }
 
 // RevokeDevice ends exposes, removes the device and attachments, and tells its
 // runner it was revoked and must stop permanently.
-func (s *Shard) RevokeDevice(ctx context.Context, device webapi.DeviceID) error {
+func (s *Shard) RevokeDevice(ctx context.Context, device webapiproto.DeviceID) error {
 	if err := s.stopExposes(ctx, device); err != nil {
 		slog.ErrorContext(ctx, "the exposes of a device could not be destroyed: "+err.Error(), "device", device)
 	}
@@ -88,7 +88,7 @@ func (s *Shard) RevokeDevice(ctx context.Context, device webapi.DeviceID) error 
 }
 
 // DeviceList lists the user's devices as the page sees them.
-func (s *Shard) DeviceList(ctx context.Context) ([]webapi.DeviceDTO, error) {
+func (s *Shard) DeviceList(ctx context.Context) ([]webapiproto.DeviceDTO, error) {
 	return s.devices.DeviceList(ctx, s.Control(), s.user)
 }
 
@@ -106,7 +106,7 @@ type ExposeConnection struct {
 
 // OpenExposeConnection admits a connection and opens its network stream through
 // device access, without a conversation, file gate or Cloud wake.
-func (s *Shard) OpenExposeConnection(ctx context.Context, id webapi.ExposeID) (*ExposeConnection, error) {
+func (s *Shard) OpenExposeConnection(ctx context.Context, id webapiproto.ExposeID) (*ExposeConnection, error) {
 	return shardCall(ctx, s, func(ctx context.Context) (*ExposeConnection, error) {
 		return s.openExposeConnection(ctx, id)
 	})

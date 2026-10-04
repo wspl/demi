@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // WireError identifies the field of a malformed vendor payload.
@@ -154,7 +154,7 @@ func decodeVendor(data []byte, target reflect.Value, path string) error {
 type Vendor struct {
 	Label  string
 	Reader FailureReader
-	Clock  core.Clock
+	Clock  types.Clock
 }
 
 // Undecodable reports a malformed vendor frame without a recovery code.
@@ -163,8 +163,8 @@ func Undecodable(label string, err error, text string) Failure {
 }
 
 // usageWithCachedInput separates cached tokens from the reported input count.
-func usageWithCachedInput(input, output, read, written *uint64) core.TokenUsage {
-	var usage core.TokenUsage
+func usageWithCachedInput(input, output, read, written *uint64) types.TokenUsage {
+	var usage types.TokenUsage
 	if input != nil {
 		usage.InputTokens = *input
 	}

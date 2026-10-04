@@ -10,7 +10,7 @@ import (
 
 	"github.com/wspl/demi/internal/runner/process"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 )
 
 func TestStartRetriesOnlyTransientFailures(t *testing.T) {
@@ -19,7 +19,7 @@ func TestStartRetriesOnlyTransientFailures(t *testing.T) {
 		value, err := process.Start(t.Context(), func() (int, error) {
 			calls++
 			if calls < 3 {
-				return 0, cmdsdk.Exhaustion()
+				return 0, commandsdk.Exhaustion()
 			}
 			return 42, nil
 		})
@@ -42,7 +42,7 @@ func TestStartRetriesOnlyTransientFailures(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		go func() {
-			_, err := process.Start(ctx, func() (int, error) { return 0, cmdsdk.Exhaustion() })
+			_, err := process.Start(ctx, func() (int, error) { return 0, commandsdk.Exhaustion() })
 			done <- err
 		}()
 		synctest.Wait()

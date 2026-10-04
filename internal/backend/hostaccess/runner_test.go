@@ -12,7 +12,7 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/runners/runnerstest"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // boundRunner scripts a real connection through the existing Serving owner.
@@ -59,22 +59,22 @@ func connectHost(t *testing.T, s *testShard, device database.DeviceRecord) *boun
 	return r
 }
 
-func (r *boundRunner) next(t *testing.T) runnerwire.Inbound {
+func (r *boundRunner) next(t *testing.T) runnerproto.Inbound {
 	t.Helper()
 	frame, err := r.outgoing.Receive(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := runnerwire.DecodeInbound(frame)
+	message, err := runnerproto.DecodeInbound(frame)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return message
 }
 
-func (r *boundRunner) send(t *testing.T, message runnerwire.Outbound) {
+func (r *boundRunner) send(t *testing.T, message runnerproto.Outbound) {
 	t.Helper()
-	frame, err := runnerwire.Encode(message)
+	frame, err := runnerproto.Encode(message)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,16 +85,16 @@ func (r *boundRunner) send(t *testing.T, message runnerwire.Outbound) {
 
 func (r *boundRunner) stat(t *testing.T, size uint64) {
 	t.Helper()
-	request, ok := r.next(t).(*runnerwire.FSStat)
+	request, ok := r.next(t).(*runnerproto.FSStat)
 	if !ok {
 		t.Fatal("expected stat")
 	}
 	r.send(
 		t,
-		&runnerwire.FSOK{
+		&runnerproto.FSOK{
 			ID: request.ID,
-			Result: &runnerwire.FSStatResult{
-				Value: runnerwire.FileStat{IsFile: true, Size: size, Mode: 0o644, Mtime: 1767225600000},
+			Result: &runnerproto.FSStatResult{
+				Value: runnerproto.FileStat{IsFile: true, Size: size, Mode: 0o644, Mtime: 1767225600000},
 			},
 		},
 	)
@@ -125,7 +125,7 @@ func startHostOperation[T any](t *testing.T, operation func(context.Context) (T,
 }
 
 // nextHostMessage checks the expected runner operation before a scripted reply.
-func nextHostMessage[T runnerwire.Inbound](t *testing.T, r *boundRunner) T {
+func nextHostMessage[T runnerproto.Inbound](t *testing.T, r *boundRunner) T {
 	t.Helper()
 	message := r.next(t)
 	wanted, ok := message.(T)
@@ -139,7 +139,7 @@ func nextHostMessage[T runnerwire.Inbound](t *testing.T, r *boundRunner) T {
 // atomic replacement, so tests observe exactly what would be installed.
 func receiveHostWrite(t *testing.T, s *testShard, r *boundRunner, device database.DeviceRecord) (string, []byte) {
 	t.Helper()
-	request := nextHostMessage[*runnerwire.FSWriteFile](t, r)
+	request := nextHostMessage[*runnerproto.FSWriteFile](t, r)
 	sink, err := s.pipes.ClaimSink(request.Input.ID, string(device.ID))
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func receiveHostWrite(t *testing.T, s *testShard, r *boundRunner, device databas
 			t.Fatal(err)
 		}
 	}
-	r.send(t, &runnerwire.FSOK{ID: request.ID, Result: &runnerwire.FSWriteFileResult{}})
+	r.send(t, &runnerproto.FSOK{ID: request.ID, Result: &runnerproto.FSWriteFileResult{}})
 	return request.Path, data
 }
 
@@ -164,7 +164,7 @@ func receiveHostWrite(t *testing.T, s *testShard, r *boundRunner, device databas
 // pump with the test, including cancellation when a later assertion fails.
 func sendHostRead(t *testing.T, s *testShard, r *boundRunner, device database.DeviceRecord, data string) string {
 	t.Helper()
-	request := nextHostMessage[*runnerwire.FSReadFile](t, r)
+	request := nextHostMessage[*runnerproto.FSReadFile](t, r)
 	source, err := s.pipes.ClaimSource(request.Output.ID, string(device.ID))
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +173,7 @@ func sendHostRead(t *testing.T, s *testShard, r *boundRunner, device database.De
 	startHostOperation(t, func(ctx context.Context) (struct{}, error) {
 		return struct{}{}, source.Pump(ctx, &hostBytes{Reader: strings.NewReader(data)})
 	})
-	r.send(t, &runnerwire.FSOK{ID: request.ID, Result: &runnerwire.FSReadFileResult{}})
+	r.send(t, &runnerproto.FSOK{ID: request.ID, Result: &runnerproto.FSReadFileResult{}})
 	return request.Path
 }
 

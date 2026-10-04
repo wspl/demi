@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // armLocked starts a session wakeup's duration only when its scheduling action ends.
@@ -20,7 +20,7 @@ func (s *Session) armLocked() {
 			s.eventLocked(&ErrorEvent{Report: ReportError{Message: err.Error()}})
 			continue
 		}
-		due, err := core.TimestampFromTime(now.Add(time.Duration(c.wakeups[i].DurationMS) * time.Millisecond))
+		due, err := types.TimestampFromTime(now.Add(time.Duration(c.wakeups[i].DurationMS) * time.Millisecond))
 		if err != nil {
 			s.eventLocked(&ErrorEvent{Report: ReportError{Message: err.Error()}})
 			continue

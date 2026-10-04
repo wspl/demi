@@ -3,8 +3,8 @@ package database
 import (
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // PluginValue is a stored value and its revision.
@@ -15,7 +15,7 @@ type PluginValue struct {
 
 // ValueWrite is a write of a plugin value.
 type ValueWrite struct {
-	User     webapi.UserID
+	User     webapiproto.UserID
 	Plugin   string
 	Key      string
 	Document json.RawMessage
@@ -23,5 +23,5 @@ type ValueWrite struct {
 	// yet.
 	Revision *uint64
 	// The blobs the value names.
-	Blobs []core.BlobRef
+	Blobs []types.BlobRef
 }

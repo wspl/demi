@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 const insertConversationSQL = `INSERT INTO conversations (
@@ -96,7 +96,11 @@ func InsertConversation(ctx context.Context, tx *sql.Tx, record NewConversation)
 }
 
 // ConversationByID reads a conversation in any spelling of its ID.
-func ConversationByID(ctx context.Context, tx *sql.Tx, id webapi.ConversationID) (ConversationRecord, bool, error) {
+func ConversationByID(
+	ctx context.Context,
+	tx *sql.Tx,
+	id webapiproto.ConversationID,
+) (ConversationRecord, bool, error) {
 	return queryRecord(
 		ctx,
 		tx,
@@ -113,9 +117,9 @@ func ConversationByID(ctx context.Context, tx *sql.Tx, id webapi.ConversationID)
 func InsertAttachedHost(
 	ctx context.Context,
 	tx *sql.Tx,
-	conversation webapi.ConversationID,
+	conversation webapiproto.ConversationID,
 	host AttachedHostRecord,
-	now core.Timestamp,
+	now types.Timestamp,
 ) (bool, error) {
 	base := strings.TrimSpace(host.Name)
 	if base == "" {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // CommandRouter holds the registered nodes of one user's shard. The zero value
@@ -19,7 +19,7 @@ type CommandRouter struct {
 
 type commandNode struct {
 	id           string
-	conversation webapi.ConversationID
+	conversation webapiproto.ConversationID
 	commands     *host.CommandSet
 	selection    *remotehost.CommandSelection
 	holds        int
@@ -29,7 +29,7 @@ type commandNode struct {
 // registration is shared. Each returned hold must be released by its environment.
 func (r *CommandRouter) Register(
 	node string,
-	conversation webapi.ConversationID,
+	conversation webapiproto.ConversationID,
 	commands *host.CommandSet,
 	selection *remotehost.CommandSelection,
 ) *CommandRegistration {
@@ -48,7 +48,7 @@ func (r *CommandRouter) Register(
 }
 
 // SelectionOf returns node's manifest when registered for conversation, else nil.
-func (r *CommandRouter) SelectionOf(node string, conversation webapi.ConversationID) *remotehost.CommandSelection {
+func (r *CommandRouter) SelectionOf(node string, conversation webapiproto.ConversationID) *remotehost.CommandSelection {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	registered := r.nodes[node]

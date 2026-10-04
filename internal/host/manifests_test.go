@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/host"
 )
 
@@ -30,7 +30,7 @@ func TestBuildersPreservePluginDeclarations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tree, err := declare.DecodeDeclaration(data)
+			tree, err := commanddecl.DecodeDeclaration(data)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,7 +40,7 @@ func TestBuildersPreservePluginDeclarations(t *testing.T) {
 				t.Fatal(err)
 			}
 			actual, err := contract.EncodeJSON(
-				commands.Declarations()[0].(*declare.Group[declare.NativeOperation]).Subcommands[0],
+				commands.Declarations()[0].(*commanddecl.Group[commanddecl.NativeOperation]).Subcommands[0],
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -60,18 +60,18 @@ func TestBuildersPreservePluginDeclarations(t *testing.T) {
 }
 
 // rebuildDeclaration uses Go declaration constructors and the browser's dynamic timeout description rule.
-func rebuildDeclaration(t *testing.T, node declare.Node[declare.NativeOperation]) host.Declared {
+func rebuildDeclaration(t *testing.T, node commanddecl.Node[commanddecl.NativeOperation]) host.Declared {
 	t.Helper()
 	switch node := node.(type) {
-	case *declare.Group[declare.NativeOperation]:
+	case *commanddecl.Group[commanddecl.NativeOperation]:
 		children := make([]host.Declared, 0, len(node.Subcommands))
 		for _, child := range node.Subcommands {
 			children = append(children, rebuildDeclaration(t, child))
 		}
 		return host.Group(node.Name, node.Summary, children...)
-	case *declare.Leaf[declare.NativeOperation]:
+	case *commanddecl.Leaf[commanddecl.NativeOperation]:
 		var handler host.RPCHandler
-		if _, rpc := node.Kind.(*declare.RPC[declare.NativeOperation]); rpc {
+		if _, rpc := node.Kind.(*commanddecl.RPC[commanddecl.NativeOperation]); rpc {
 			handler = host.RPCHandlerFunc(
 				func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 0, nil },
 			)

@@ -10,14 +10,14 @@ import (
 	"github.com/wspl/demi/internal/agent/session/sessiontest"
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 // TestRequestPrefixesWithThinkingAndSummary checks the requests a session
 // builds. The vendor wire forms of the seven provider families are tested in
-// internal/backend/providers.
+// internal/backend/providerhost.
 func TestRequestPrefixesWithThinkingAndSummary(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})
@@ -76,16 +76,16 @@ func TestRequestPrefixesWithThinkingAndSummary(t *testing.T) {
 			answer("After summary."),
 			answer("Thought harder."),
 		)
-		model := storetest.ModelReading("stub", "model-a", []core.FileExtension{core.FileExtensionPNG})
+		model := storetest.ModelReading("stub", "model-a", []types.FileExtension{types.FileExtensionPNG})
 		must(t, f.s.UpdateModel(session.ModelSwitch{Model: model}))
 		png := storetest.PNG(4, 3, 1)
 		held := store.HeldMedia{}
-		held.Hold(core.BlobRefOf(png), png)
+		held.Hold(types.BlobRefOf(png), png)
 		f.s.HoldMedia(&held)
 		a, err := f.s.Send(
-			[]core.UserContentBlock{
-				&core.UserText{Text: "What is on screen?"},
-				&core.UserImage{Source: &core.MediaSourceRef{Ref: core.BlobRefOf(png), MediaType: "image/png"}},
+			[]types.UserContentBlock{
+				&types.UserText{Text: "What is on screen?"},
+				&types.UserImage{Source: &types.MediaSourceRef{Ref: types.BlobRefOf(png), MediaType: "image/png"}},
 			},
 			"t1",
 		)
@@ -98,7 +98,7 @@ func TestRequestPrefixesWithThinkingAndSummary(t *testing.T) {
 		f.done(f.send("And the rest?", "t2"))
 		compact(t, f.s)
 		f.done(f.send("Go on.", "t3"))
-		model.Thinking = &core.AdaptiveConfig{Effort: "high"}
+		model.Thinking = &types.AdaptiveConfig{Effort: "high"}
 		must(t, f.s.UpdateModel(session.ModelSwitch{Model: model}))
 		f.done(f.send("Think harder.", "t4"))
 		req := f.p.Requests()
@@ -109,7 +109,7 @@ func TestRequestPrefixesWithThinkingAndSummary(t *testing.T) {
 		equal(t, req[3].Items, append(slices.Clone(req[2].Items), userItem(sessiontest.CompactionSummaryInstruction)))
 		equal(t, req[4].Items[0], summaryItem("The user showed a screenshot and asked twice."))
 		equal(t, req[5].Items[:len(req[4].Items)], req[4].Items)
-		equal(t, req[4].Thinking, core.ThinkingConfig(nil))
+		equal(t, req[4].Thinking, types.ThinkingConfig(nil))
 		equal(t, req[5].Thinking, model.Thinking)
 		for _, request := range req {
 			equal(t, request.SystemPrompt, "system")

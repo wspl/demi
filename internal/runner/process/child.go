@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // SpawnOptions supplies a child's executable, arguments, directory, environment and group ownership.
@@ -54,7 +54,7 @@ type ResourceLimit struct {
 // SpawnFailure classifies a process that could not start.
 type SpawnFailure struct {
 	// Kind classifies the startup failure for the wire response.
-	Kind runnerwire.SpawnErrorKind
+	Kind runnerproto.SpawnErrorKind
 	// Message is the startup diagnostic.
 	Message string
 	// Cause preserves the underlying operating system failure.
@@ -70,7 +70,7 @@ func (e *SpawnFailure) Unwrap() error { return e.Cause }
 // OutputChunk is one read from a child's standard output or error.
 type OutputChunk struct {
 	// Stream identifies standard output or standard error.
-	Stream runnerwire.OutputStream
+	Stream runnerproto.OutputStream
 	// Bytes contains the output chunk.
 	Bytes []byte
 }
@@ -100,7 +100,7 @@ type Child struct {
 	// PID identifies the started child process.
 	PID     uint32
 	command *Command
-	signals chan runnerwire.Signal
+	signals chan runnerproto.Signal
 	cancel  context.CancelFunc
 	done    chan struct{}
 	exit    Exit
@@ -130,14 +130,14 @@ func Spawn(ctx context.Context, options SpawnOptions) (*Child, error) {
 		Output:  output,
 		cancel:  cancel,
 		done:    make(chan struct{}),
-		signals: make(chan runnerwire.Signal, 4),
+		signals: make(chan runnerproto.Signal, 4),
 	}
 	// Command's IO adapters own these pipe endpoints and join each copy.
 	stdin, writer := io.Pipe()
 	cmd.Stdin = stdin
 	outputCtx, stopOutput := context.WithCancel(context.Background())
-	cmd.Stdout = &chunkWriter{ctx: outputCtx, cancel: stopOutput, output: output, stream: runnerwire.Stdout}
-	cmd.Stderr = &chunkWriter{ctx: outputCtx, cancel: stopOutput, output: output, stream: runnerwire.Stderr}
+	cmd.Stdout = &chunkWriter{ctx: outputCtx, cancel: stopOutput, output: output, stream: runnerproto.Stdout}
+	cmd.Stderr = &chunkWriter{ctx: outputCtx, cancel: stopOutput, output: output, stream: runnerproto.Stderr}
 	child.command = Wrap(cmd, options.ProcessGroup, ChildAttributes{})
 	if err := child.command.Start(owner); err != nil {
 		cancel()
@@ -163,7 +163,7 @@ type chunkWriter struct {
 	cancel context.CancelFunc
 	ctx    context.Context
 	output chan<- OutputChunk
-	stream runnerwire.OutputStream
+	stream runnerproto.OutputStream
 }
 
 func (w *chunkWriter) Close() error {
@@ -187,7 +187,7 @@ func (w *chunkWriter) Write(b []byte) (int, error) {
 }
 
 // Signal queues a signal, or reports that the process has exited.
-func (c *Child) Signal(ctx context.Context, signal runnerwire.Signal) error {
+func (c *Child) Signal(ctx context.Context, signal runnerproto.Signal) error {
 	select {
 	case <-c.done:
 		return &operationError{message: "process has exited", cause: io.ErrClosedPipe}
@@ -361,7 +361,7 @@ func (c *Command) Kill() error {
 }
 
 // Signal sends a platform-supported signal to the command and its owned group.
-func (c *Command) Signal(signal runnerwire.Signal) error {
+func (c *Command) Signal(signal runnerproto.Signal) error {
 	if c.cmd == nil {
 		return os.ErrProcessDone
 	}
@@ -392,7 +392,7 @@ func (c *Command) cancelled() bool {
 // Start retries a single spawn attempt on descriptor exhaustion and briefly
 // on a busy executable.
 func Start[T any](ctx context.Context, attempt func() (T, error)) (T, error) {
-	var backoff cmdsdk.Backoff
+	var backoff commandsdk.Backoff
 	var busy time.Duration
 	for {
 		if err := ctx.Err(); err != nil {
@@ -403,7 +403,7 @@ func Start[T any](ctx context.Context, attempt func() (T, error)) (T, error) {
 		if err == nil {
 			return value, nil
 		}
-		exhausted := cmdsdk.Exhausted(err)
+		exhausted := commandsdk.Exhausted(err)
 		if !exhausted && (!errors.Is(err, syscall.ETXTBSY) || busy >= time.Second) {
 			return value, err
 		}
@@ -423,17 +423,17 @@ func Start[T any](ctx context.Context, attempt func() (T, error)) (T, error) {
 
 // classifyFailure preserves the operating system cause beside the wire category.
 func classifyFailure(err error, options SpawnOptions) *SpawnFailure {
-	kind := runnerwire.SpawnErrorKindOther
+	kind := runnerproto.SpawnErrorKindOther
 	info, statErr := os.Stat(options.Cwd)
 	switch {
 	case statErr != nil || !info.IsDir():
-		kind = runnerwire.SpawnErrorKindCwdUnusable
+		kind = runnerproto.SpawnErrorKindCwdUnusable
 	case errors.Is(err, os.ErrNotExist):
-		kind = runnerwire.SpawnErrorKindExecutableNotFound
+		kind = runnerproto.SpawnErrorKindExecutableNotFound
 	case errors.Is(err, syscall.EISDIR):
-		kind = runnerwire.SpawnErrorKindIsDirectory
+		kind = runnerproto.SpawnErrorKindIsDirectory
 	case errors.Is(err, os.ErrPermission):
-		kind = runnerwire.SpawnErrorKindPermissionDenied
+		kind = runnerproto.SpawnErrorKindPermissionDenied
 	}
 	return &SpawnFailure{Kind: kind, Message: err.Error(), Cause: err}
 }

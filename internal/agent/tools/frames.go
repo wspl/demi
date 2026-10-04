@@ -3,15 +3,15 @@ package tools
 import (
 	"slices"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // ShellOutput returns a command's shell_output frame. A nil subagent identifies
 // the root; otherwise it identifies the subagent whose command is shown.
-func ShellOutput(subagent *core.NodeID, view host.PageView) framewire.ServerFrame {
-	command := framewire.CommandView{
+func ShellOutput(subagent *types.NodeID, view host.PageView) conversationproto.ServerFrame {
+	command := conversationproto.CommandView{
 		ShellID:   view.ShellID,
 		CommandID: view.CommandID,
 		ToolUseID: view.ToolUseID,
@@ -19,33 +19,33 @@ func ShellOutput(subagent *core.NodeID, view host.PageView) framewire.ServerFram
 		Chars:     view.Chars,
 		RunningMs: view.RunningMs,
 	}
-	var status framewire.ShellStatus
+	var status conversationproto.ShellStatus
 	switch view.State.Phase {
 	case host.Running:
-		status = &framewire.RunningStatus{CommandView: command}
+		status = &conversationproto.RunningStatus{CommandView: command}
 	case host.Exited:
-		status = &framewire.ExitedStatus{CommandView: command, ExitCode: view.State.ExitCode}
+		status = &conversationproto.ExitedStatus{CommandView: command, ExitCode: view.State.ExitCode}
 	case host.Aborted:
-		status = &framewire.AbortedStatus{CommandView: command}
+		status = &conversationproto.AbortedStatus{CommandView: command}
 	}
-	return &framewire.ShellOutputFrame{SubagentID: subagent, Status: status}
+	return &conversationproto.ShellOutputFrame{SubagentID: subagent, Status: status}
 }
 
 // StoredRunningCommands returns commands the transcript last saw running.
 // These views are history; their environments determine whether they are alive.
-func StoredRunningCommands(blocks []core.Block) []core.CommandID {
-	var running []core.CommandID
+func StoredRunningCommands(blocks []types.Block) []types.CommandID {
+	var running []types.CommandID
 	for _, block := range blocks {
-		call, ok := block.(*core.ToolCallBlock)
+		call, ok := block.(*types.ToolCallBlock)
 		if !ok {
 			continue
 		}
-		view, ok := call.View.(*core.ShellView)
+		view, ok := call.View.(*types.ShellView)
 		if !ok {
 			continue
 		}
-		running = slices.DeleteFunc(running, func(id core.CommandID) bool { return id == view.CommandID })
-		if view.Status == core.ShellViewStatusRunning {
+		running = slices.DeleteFunc(running, func(id types.CommandID) bool { return id == view.CommandID })
+		if view.Status == types.ShellViewStatusRunning {
 			running = append(running, view.CommandID)
 		}
 	}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // These stored-log scenarios run through the program's log_read wire boundary.
@@ -33,17 +33,17 @@ func (f *runnerFixture) seedLog(older, newer string) {
 	f.online()
 }
 
-func (f *runnerFixture) readLog(since *uint64, limit uint64, source *string) *runnerwire.LogLines {
+func (f *runnerFixture) readLog(since *uint64, limit uint64, source *string) *runnerproto.LogLines {
 	f.t.Helper()
-	f.send(&runnerwire.LogRead{ID: "read", Since: since, Limit: limit, Source: source})
-	lines, ok := f.frame().(*runnerwire.LogLines)
+	f.send(&runnerproto.LogRead{ID: "read", Since: since, Limit: limit, Source: source})
+	lines, ok := f.frame().(*runnerproto.LogLines)
 	if !ok || lines.ID != "read" {
 		f.t.Fatal("log read failed or returned the wrong request ID")
 	}
 	return lines
 }
 
-func logTexts(lines []runnerwire.LogLine) string {
+func logTexts(lines []runnerproto.LogLine) string {
 	var text []string
 	for _, line := range lines {
 		text = append(text, line.Text)

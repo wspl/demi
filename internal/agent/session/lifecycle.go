@@ -7,9 +7,9 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // construct installs one session state owner before starting its three workers.
@@ -37,8 +37,8 @@ func construct(
 		edits:            []store.EditReceipt{},
 		wakeups:          []store.ScheduledWakeup{},
 		publishedPhase:   "idle",
-		publishedQueue:   []core.QueuedMessage{},
-		publishedSteers:  []core.PendingSteer{},
+		publishedQueue:   []types.QueuedMessage{},
+		publishedSteers:  []types.PendingSteer{},
 	}
 	if state != nil {
 		c.edits = append(c.edits, state.Edits...)
@@ -63,7 +63,7 @@ func construct(
 
 func restore(
 	checkpoint store.Checkpoint,
-	id core.NodeID,
+	id types.NodeID,
 	runtime provider.Runtime,
 	deps Deps,
 ) (*Session, Continuation, error) {
@@ -78,8 +78,8 @@ func restore(
 	for _, call := range log.PendingToolCalls() {
 		log.CompleteToolCall(
 			call.ToolUseID,
-			[]core.ToolResultContentBlock{
-				&core.ToolText{
+			[]types.ToolResultContentBlock{
+				&types.ToolText{
 					Text: fmt.Sprintf(
 						"Tool call interrupted: %s (the process died before a result was recorded)",
 						call.ToolName,
@@ -155,9 +155,9 @@ func (s *Session) dispose(ctx context.Context) error {
 }
 
 // stop records cancellation while ownership remains with the action worker.
-func (s *Session) stop(ctx context.Context, onlyRunning bool) (framewire.AbortResult, error) {
+func (s *Session) stop(ctx context.Context, onlyRunning bool) (conversationproto.AbortResult, error) {
 	var a *action
-	result := framewire.AbortResult{}
+	result := conversationproto.AbortResult{}
 	s.mutate(func(c *coreState) {
 		if c.disposing {
 			return
@@ -165,14 +165,14 @@ func (s *Session) stop(ctx context.Context, onlyRunning bool) (framewire.AbortRe
 		if c.active != nil && c.stage != Finalizing && !c.active.stopped {
 			a = c.active
 			a.stopped = true
-			target := framewire.AbortTargetActiveTurn
+			target := conversationproto.AbortTargetActiveTurn
 			switch c.stage {
 			case ToolExecuting:
-				target = framewire.AbortTargetActiveTool
+				target = conversationproto.AbortTargetActiveTool
 			case Compacting:
-				target = framewire.AbortTargetActiveCompaction
+				target = conversationproto.AbortTargetActiveCompaction
 			case ProviderStreaming:
-				target = framewire.AbortTargetActiveProviderStream
+				target = conversationproto.AbortTargetActiveProviderStream
 			}
 			result.Target = &target
 			c.effects = append(c.effects, a.cancel)
@@ -186,7 +186,7 @@ func (s *Session) stop(ctx context.Context, onlyRunning bool) (framewire.AbortRe
 		case <-a.ack:
 			result.CanAbortAgain = a.again
 		case <-ctx.Done():
-			return framewire.AbortResult{}, ctx.Err()
+			return conversationproto.AbortResult{}, ctx.Err()
 		}
 	}
 	return result, nil
@@ -206,8 +206,8 @@ func (s *Session) settled(ctx context.Context) error {
 	}
 }
 
-func validateRestoredInputs(checkpoint store.Checkpoint, id core.NodeID) error {
-	ids := map[core.BlockID]bool{}
+func validateRestoredInputs(checkpoint store.Checkpoint, id types.NodeID) error {
+	ids := map[types.BlockID]bool{}
 	for _, block := range checkpoint.Transcript {
 		ids[block.ID()] = true
 	}
@@ -227,7 +227,7 @@ func validateRestoredInputs(checkpoint store.Checkpoint, id core.NodeID) error {
 		}
 		ids[message.ID] = true
 	}
-	wakeups := map[core.WakeupID]bool{}
+	wakeups := map[types.WakeupID]bool{}
 	for _, w := range checkpoint.State.Wakeups {
 		if wakeups[w.ID] {
 			//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
@@ -235,7 +235,7 @@ func validateRestoredInputs(checkpoint store.Checkpoint, id core.NodeID) error {
 		}
 		wakeups[w.ID] = true
 	}
-	edits := map[core.OperationID]bool{}
+	edits := map[types.OperationID]bool{}
 	for _, receipt := range checkpoint.State.Edits {
 		if edits[receipt.OperationID] {
 			//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
@@ -246,21 +246,21 @@ func validateRestoredInputs(checkpoint store.Checkpoint, id core.NodeID) error {
 	return nil
 }
 
-func (c *coreState) dropPendingLocked() *framewire.AbortTarget {
-	result := framewire.AbortResult{}
+func (c *coreState) dropPendingLocked() *conversationproto.AbortTarget {
+	result := conversationproto.AbortResult{}
 	if len(c.queue) > 0 {
 		dropped := c.queue[0]
 		c.queue = c.queue[1:]
-		target := framewire.AbortTargetQueuedAction
+		target := conversationproto.AbortTargetQueuedAction
 		if dropped.kind == sendAction {
-			target = framewire.AbortTargetQueuedMessage
+			target = conversationproto.AbortTargetQueuedMessage
 		}
 		result.Target = &target
 		c.effects = append(c.effects, func() { dropped.answer.finish(Dropped, nil) })
 	} else if len(c.wakeups) > 0 {
 		c.wakeups = c.wakeups[1:]
 		c.dirty = true
-		result.Target = new(framewire.AbortTargetPendingYieldWakeup)
+		result.Target = new(conversationproto.AbortTargetPendingYieldWakeup)
 	}
 	return result.Target
 }

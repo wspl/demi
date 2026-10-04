@@ -9,8 +9,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 func newRecord() *host.CommandRecord { return host.NewCommandRecord("shell", "command", "call") }
@@ -35,7 +35,7 @@ func TestByteViewsAndRepeatedUnfinishedLines(t *testing.T) {
 		}
 		hint := "Working"
 		rest := r.Status(0, &hint)
-		want := []core.OutputChunk{
+		want := []types.OutputChunk{
 			{Stream: "stdout", Text: "héllo "},
 			{Stream: "stderr", Text: "warn\n"},
 			{Stream: "stdout", Text: "wörld\n"},
@@ -74,7 +74,7 @@ func TestEndGivesWholeOutputOnceWithSeen(t *testing.T) {
 			{Stream: "stderr", Bytes: []byte("oops\n")},
 		},
 	}
-	binary := &host.BinaryOutput{Bytes: []byte("\x89PNG"), Info: core.BinaryStdout{TotalBytes: 4, LimitBytes: 16}}
+	binary := &host.BinaryOutput{Bytes: []byte("\x89PNG"), Info: types.BinaryStdout{TotalBytes: 4, LimitBytes: 16}}
 	if !r.Settle(host.Ending{Phase: host.Exited, ExitCode: 3}, whole, binary, "") {
 		t.Fatal("first end not reported")
 	}

@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
+	"github.com/wspl/demi/internal/types"
 )
 
 // copyRuntime delegates the compaction session's tools and prompts, but neither
@@ -21,7 +21,7 @@ func (copyRuntime) ReserveEdit(context.Context) (*gates.Reservation, error) {
 }
 
 // Context omits new context from the conversation being summarized.
-func (copyRuntime) Context(context.Context, []SeenContext, core.TurnID) ([]NewContext, error) {
+func (copyRuntime) Context(context.Context, []SeenContext, types.TurnID) ([]NewContext, error) {
 	return nil, nil
 }
 
@@ -45,12 +45,12 @@ func (copyStore) Blobs() store.Blobs { return copyBlobs{} }
 type copyBlobs struct{}
 
 // Put identifies media without persisting it in the parent store.
-func (copyBlobs) Put(_ context.Context, data core.B64Bytes) (core.BlobRef, error) {
-	return core.BlobRefOf(data), nil
+func (copyBlobs) Put(_ context.Context, data types.B64Bytes) (types.BlobRef, error) {
+	return types.BlobRefOf(data), nil
 }
 
 // Read reports that the compaction copy has no stored media.
-func (copyBlobs) Read(context.Context, core.BlobRef) (core.B64Bytes, bool, error) {
+func (copyBlobs) Read(context.Context, types.BlobRef) (types.B64Bytes, bool, error) {
 	return nil, false, nil
 }
 
@@ -66,7 +66,7 @@ func (ids sessionIDs) NextID() string {
 type sessionClock struct{ session *Session }
 
 // Now serializes clock access with the parent session.
-func (clock sessionClock) Now() core.Timestamp {
+func (clock sessionClock) Now() types.Timestamp {
 	clock.session.mu.Lock()
 	defer clock.session.mu.Unlock()
 	return clock.session.deps.Clock.Now()

@@ -5,13 +5,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // devProvider is a real model the development backend seeds beside Echo, from
 // the DEMI_DEV_PROVIDER_* variables (backend.md § One-command development backend).
 type devProvider struct {
-	BaseURL       webapi.EndpointURL
+	BaseURL       webapiproto.EndpointURL
 	APIKey        string
 	Model         string
 	ContextWindow uint32
@@ -42,7 +42,7 @@ func readDevProvider(getenv func(string) string) (devProvider, bool, error) {
 			)
 		}
 	}
-	endpoint, err := webapi.ParseEndpointURL(values[0])
+	endpoint, err := webapiproto.ParseEndpointURL(values[0])
 	if err != nil {
 		return devProvider{}, false, fmt.Errorf("%s: %w", names[0], err)
 	}

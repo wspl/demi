@@ -14,14 +14,14 @@ import (
 	"github.com/wspl/demi/internal/backend/database/databasetest"
 	"github.com/wspl/demi/internal/backend/expose"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/backend/plugins"
+	"github.com/wspl/demi/internal/backend/pluginhost"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func TestMain(m *testing.M) {
@@ -37,10 +37,10 @@ type heldExposeCreate struct {
 
 func (h *heldExposeCreate) CreateExpose(
 	ctx context.Context,
-	id webapi.ExposeID,
-	user webapi.UserID,
-	device webapi.DeviceID,
-	address webapi.ExposeAddress,
+	id webapiproto.ExposeID,
+	user webapiproto.UserID,
+	device webapiproto.DeviceID,
+	address webapiproto.ExposeAddress,
 	lifetime time.Duration,
 ) (database.ExposeRecord, error) {
 	h.once.Do(func() {
@@ -66,20 +66,20 @@ func (v delayedExposeView) Control() expose.Store { return v.store }
 // SQLite and virtual scheduling make the test independent of wall time.
 func TestCloudStopOrdersExposeCreation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		clock := core.SystemClock{}
+		clock := types.SystemClock{}
 		control := databasetest.Control(t.Context(), t, clock)
 		user := databasetest.Master(t.Context(), t, control)
 		device, err := control.CreateDevice(
 			t.Context(),
 			user.ID,
 			"Cloud stop fixture",
-			runnerwire.RunnerPlatformLinux,
+			runnerproto.RunnerPlatformLinux,
 			database.HashToken("fixture"),
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		registry, err := plugins.NewRegistry(nil, func(declare.NativeOperation) bool { return false })
+		registry, err := pluginhost.NewRegistry(nil, func(commanddecl.NativeOperation) bool { return false })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -99,7 +99,7 @@ func TestCloudStopOrdersExposeCreation(t *testing.T) {
 				PublicURL:    public,
 			},
 		}
-		s.plugins = plugins.NewUser(registry, user.ID, s)
+		s.plugins = pluginhost.NewUser(registry, user.ID, s)
 		pipes := remotehost.NewPipes(remotehost.Arrival)
 		defer func() {
 			if err := pipes.Close(context.Background()); err != nil {

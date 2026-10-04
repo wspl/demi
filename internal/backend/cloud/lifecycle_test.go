@@ -12,9 +12,9 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/idlewatch"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Lifecycle scenarios use virtual time and in-memory manager/storage boundaries.
@@ -23,7 +23,7 @@ func TestConcurrentWakeOwnsTransitionAfterCallerLeaves(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newCloudFixture(t)
 		wake := make(chan struct{})
-		f.hook = func(call machinewire.Call) (string, error) {
+		f.hook = func(call machinemanagerproto.Call) (string, error) {
 			if call.Name() == "wake" {
 				<-wake
 			}
@@ -71,7 +71,7 @@ func TestConcurrentWakeOwnsTransitionAfterCallerLeaves(t *testing.T) {
 			}
 			a.Release()
 		}
-		if f.phase() != webapi.CloudStateRunning {
+		if f.phase() != webapiproto.CloudStateRunning {
 			t.Fatal(f.phase())
 		}
 		if len(f.records.tokens) != 1 {
@@ -107,7 +107,7 @@ func TestBootTimeoutAndShutdownSaveAndReleaseCapacity(t *testing.T) {
 						t.Fatal(time.Since(start))
 					}
 				}
-				if f.phase() != webapi.CloudStateOff || f.count("hibernate") != 1 {
+				if f.phase() != webapiproto.CloudStateOff || f.count("hibernate") != 1 {
 					t.Fatalf("failed boot not saved: %s", f.phase())
 				}
 				permit := f.services.Capacity.TryTake()
@@ -129,7 +129,7 @@ func TestRecoveryKeepsLiveTokenAndRebootsStoppedRuntime(t *testing.T) {
 				a.Release()
 				f.devices.Disconnect("cloud-device", "test transport loss")
 				if !running {
-					f.runtime = machinewire.RuntimeStateStopped
+					f.runtime = machinemanagerproto.RuntimeStateStopped
 				}
 				result := make(chan *MachineAccess, 1)
 				go func() { result <- f.access() }()
@@ -167,7 +167,7 @@ func TestRecoveryTimeoutPreservesRunningMachine(t *testing.T) {
 		if err.Error() != "Cloud runner reconnect timeout" || time.Since(start) != 3*time.Second {
 			t.Fatalf("recovery: %v after %s", err, time.Since(start))
 		}
-		if f.count("wake") != 1 || f.count("hibernate") != 0 || f.phase() != webapi.CloudStateRunning {
+		if f.count("wake") != 1 || f.count("hibernate") != 0 || f.phase() != webapiproto.CloudStateRunning {
 			t.Fatal("recovery destroyed live runtime")
 		}
 	})
@@ -211,7 +211,7 @@ func TestIdleStopWaitsForDemandAndMaintenance(t *testing.T) {
 		f.flush = true
 		f.services.Tuning.CheckpointInterval = 3 * time.Second
 		checkpoint := make(chan struct{})
-		f.hook = func(call machinewire.Call) (string, error) {
+		f.hook = func(call machinemanagerproto.Call) (string, error) {
 			if call.Name() == "checkpoint" {
 				<-checkpoint
 			}
@@ -238,7 +238,7 @@ func TestIdleStopWaitsForDemandAndMaintenance(t *testing.T) {
 		if time.Since(released) != 11*time.Second || time.Since(start) != 23*time.Second {
 			t.Fatal("maintenance restarted idle clock")
 		}
-		if f.phase() != webapi.CloudStateOff {
+		if f.phase() != webapiproto.CloudStateOff {
 			t.Fatal(f.phase())
 		}
 	})
@@ -309,7 +309,7 @@ func TestLifetimeCapDefersAttendanceAndDrainsLeases(t *testing.T) {
 		a.Release()
 		f.waitCalls(t.Context(), "hibernate", 1)
 		synctest.Wait()
-		if f.phase() != webapi.CloudStateOff {
+		if f.phase() != webapiproto.CloudStateOff {
 			t.Fatal(f.phase())
 		}
 	})
@@ -324,7 +324,7 @@ func TestResetIdempotencyAndWaitingAdmission(t *testing.T) {
 		a := f.access()
 		a.Release()
 		rebuild := make(chan struct{})
-		f.hook = func(call machinewire.Call) (string, error) {
+		f.hook = func(call machinemanagerproto.Call) (string, error) {
 			if call.Name() == "reset" {
 				<-rebuild
 			}
@@ -353,23 +353,23 @@ func TestResetIdempotencyAndWaitingAdmission(t *testing.T) {
 		a = <-pending
 		a.Release()
 		ready, err := Reset(t.Context(), f, op.ID)
-		if err != nil || ready.Phase != webapi.ResetPhaseReady {
+		if err != nil || ready.Phase != webapiproto.ResetPhaseReady {
 			t.Fatalf("ready: %+v %v", ready, err)
 		}
 		if f.count("reset") != 1 || f.count("wake") != 2 || f.count("current_base_version") != 1 {
 			t.Fatal("reset not idempotent")
 		}
-		want := []webapi.ResetPhase{
-			webapi.ResetPhaseStopping,
-			webapi.ResetPhaseSaving,
-			webapi.ResetPhaseRebuilding,
-			webapi.ResetPhaseBooting,
-			webapi.ResetPhaseReady,
+		want := []webapiproto.ResetPhase{
+			webapiproto.ResetPhaseStopping,
+			webapiproto.ResetPhaseSaving,
+			webapiproto.ResetPhaseRebuilding,
+			webapiproto.ResetPhaseBooting,
+			webapiproto.ResetPhaseReady,
 		}
 		if !reflect.DeepEqual(f.records.phases, want) {
 			t.Fatalf("phases: %v", f.records.phases)
 		}
-		if !reflect.DeepEqual(f.heldIDs, []webapi.ConversationID{"target"}) ||
+		if !reflect.DeepEqual(f.heldIDs, []webapiproto.ConversationID{"target"}) ||
 			!reflect.DeepEqual(f.resetFiles, []bool{true}) {
 			t.Fatal("reset held wrong conversations")
 		}
@@ -386,7 +386,7 @@ func TestFailedResetRetryUsesPinnedBaseAndReleasesHolds(t *testing.T) {
 		f.flush = true
 		f.records.uses = []database.CloudUseRecord{{ID: "target", OnCloud: true}}
 		fail := true
-		f.hook = func(call machinewire.Call) (string, error) {
+		f.hook = func(call machinemanagerproto.Call) (string, error) {
 			if call.Name() == "reset" && fail {
 				return "", errors.New("disk refused")
 			}
@@ -404,7 +404,7 @@ func TestFailedResetRetryUsesPinnedBaseAndReleasesHolds(t *testing.T) {
 		}
 		err = task.wait(t.Context())
 		requireCloudError(t, err, Failed)
-		if f.phase() != webapi.CloudStateOff || f.holds != 0 {
+		if f.phase() != webapiproto.CloudStateOff || f.holds != 0 {
 			t.Fatal("failed reset leaked phase or holds")
 		}
 		fail = false
@@ -417,7 +417,7 @@ func TestFailedResetRetryUsesPinnedBaseAndReleasesHolds(t *testing.T) {
 		if f.count("current_base_version") != 1 {
 			t.Fatal("retry selected a new base")
 		}
-		if f.records.latest.Phase != webapi.ResetPhaseReady {
+		if f.records.latest.Phase != webapiproto.ResetPhaseReady {
 			t.Fatal(f.records.latest.Phase)
 		}
 	})
@@ -431,7 +431,7 @@ func TestResetLeaseTimeoutAndStorageFailure(t *testing.T) {
 				f.flush = true
 				a := f.access()
 				if storage {
-					f.records.writeFailure = webapi.ResetPhaseStopping
+					f.records.writeFailure = webapiproto.ResetPhaseStopping
 					a.Release()
 				}
 				start := time.Now()
@@ -457,7 +457,7 @@ func TestResetLeaseTimeoutAndStorageFailure(t *testing.T) {
 					}
 					a.Release()
 				}
-				if f.count("reset") != 0 || f.phase() != webapi.CloudStateOff {
+				if f.count("reset") != 0 || f.phase() != webapiproto.CloudStateOff {
 					t.Fatal("failed hold still rebuilt")
 				}
 			})
@@ -469,7 +469,7 @@ func TestStatusDoesNotAllocateAndGrowthChecksOwnership(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newCloudFixture(t)
 		status, err := Status(t.Context(), f)
-		if err != nil || status.State != webapi.CloudStateUnallocated || len(f.calls) != 0 {
+		if err != nil || status.State != webapiproto.CloudStateUnallocated || len(f.calls) != 0 {
 			t.Fatalf("unallocated status: %+v %v", status, err)
 		}
 		device, err := Device(t.Context(), f)
@@ -477,7 +477,7 @@ func TestStatusDoesNotAllocateAndGrowthChecksOwnership(t *testing.T) {
 			t.Fatal(err)
 		}
 		status, err = Status(t.Context(), f)
-		if err != nil || status.State != webapi.CloudStateOff || status.Volumes == nil ||
+		if err != nil || status.State != webapiproto.CloudStateOff || status.Volumes == nil ||
 			status.Volumes.HomeBytes != 2048 {
 			t.Fatalf("off status: %+v %v", status, err)
 		}
@@ -485,20 +485,20 @@ func TestStatusDoesNotAllocateAndGrowthChecksOwnership(t *testing.T) {
 			t.Fatal("status woke Cloud")
 		}
 		for _, size := range []uint64{0, f.services.Tuning.HomeQuota + 1} {
-			if err := GrowVolume(t.Context(), f, device.ID, runnerwire.VolumeNameHome, size); err == nil {
+			if err := GrowVolume(t.Context(), f, device.ID, runnerproto.VolumeNameHome, size); err == nil {
 				t.Fatal("invalid growth accepted")
 			}
 		}
-		if err := GrowVolume(t.Context(), f, "other-device", runnerwire.VolumeNameHome, 1024); err == nil {
+		if err := GrowVolume(t.Context(), f, "other-device", runnerproto.VolumeNameHome, 1024); err == nil {
 			t.Fatal("foreign growth accepted")
 		}
-		if err := GrowVolume(t.Context(), f, device.ID, runnerwire.VolumeNameHome, 4096); err != nil {
+		if err := GrowVolume(t.Context(), f, device.ID, runnerproto.VolumeNameHome, 4096); err != nil {
 			t.Fatal(err)
 		}
 		if f.count("grow_volume") != 1 {
 			t.Fatal("growth count")
 		}
-		f.hook = func(call machinewire.Call) (string, error) {
+		f.hook = func(call machinemanagerproto.Call) (string, error) {
 			if call.Name() == "image_state" {
 				return "", io.EOF
 			}
@@ -590,7 +590,7 @@ func TestStartupReconcilesAndRecoversWithoutBooting(t *testing.T) {
 		op := database.ManagedOperation{
 			ID:          "interrupted",
 			BaseVersion: "pinned-base",
-			Phase:       webapi.ResetPhaseRebuilding,
+			Phase:       webapiproto.ResetPhaseRebuilding,
 		}
 		if err := f.records.PutManagedOperation(t.Context(), device.ID, op); err != nil {
 			t.Fatal(err)
@@ -605,15 +605,15 @@ func TestStartupReconcilesAndRecoversWithoutBooting(t *testing.T) {
 		if f.calls[0].Name() != "reconcile" {
 			t.Fatal("startup did not reconcile first")
 		}
-		reset, ok := f.calls[1].(*machinewire.Reset)
+		reset, ok := f.calls[1].(*machinemanagerproto.Reset)
 		if !ok || reset.Params.BaseVersion != "pinned-base" || reset.Params.OperationID != "interrupted" {
 			t.Fatal("startup lost durable reset identity")
 		}
-		if f.records.latest.Phase != webapi.ResetPhaseFailed || f.records.latest.Error == nil ||
+		if f.records.latest.Phase != webapiproto.ResetPhaseFailed || f.records.latest.Error == nil ||
 			*f.records.latest.Error != "Reset disks recovered; retry to start Cloud" {
 			t.Fatalf("recovered status: %+v", f.records.latest)
 		}
-		if !reflect.DeepEqual(f.records.announced, []webapi.OperationID{"interrupted"}) {
+		if !reflect.DeepEqual(f.records.announced, []webapiproto.OperationID{"interrupted"}) {
 			t.Fatal("reset not announced")
 		}
 		// The public entry point reaches that same control boundary and preserves its error.
@@ -639,7 +639,7 @@ func (r *recoveryFixture) UnfinishedManagedOperations(context.Context) ([]databa
 	defer r.mu.Unlock()
 	var result []database.DeviceOperation
 	for _, op := range r.operations {
-		if op.Phase != webapi.ResetPhaseReady && op.Phase != webapi.ResetPhaseFailed {
+		if op.Phase != webapiproto.ResetPhaseReady && op.Phase != webapiproto.ResetPhaseFailed {
 			result = append(result, database.DeviceOperation{Device: r.device.ID, Operation: op})
 		}
 	}
@@ -653,7 +653,7 @@ func TestResetDuringBootJoinsItAndSharesItsPermit(t *testing.T) {
 		f.services.Capacity = NewCapacity(1)
 		booting := make(chan struct{})
 		first := true
-		f.hook = func(call machinewire.Call) (string, error) {
+		f.hook = func(call machinemanagerproto.Call) (string, error) {
 			if call.Name() == "wake" && first {
 				first = false
 				<-booting
@@ -678,8 +678,8 @@ func TestResetDuringBootJoinsItAndSharesItsPermit(t *testing.T) {
 			t.Fatal("did not join reset after boot")
 		}
 		status, err := Status(t.Context(), f)
-		if err != nil || status.Operation == nil || status.Operation.Phase != webapi.ResetPhaseReady ||
-			status.State != webapi.CloudStateRunning {
+		if err != nil || status.Operation == nil || status.Operation.Phase != webapiproto.ResetPhaseReady ||
+			status.State != webapiproto.CloudStateRunning {
 			t.Fatalf("reset status: %+v %v", status, err)
 		}
 	})
@@ -691,7 +691,7 @@ func TestCheckpointFailureRetriesWithoutStoppingCloud(t *testing.T) {
 		f.flush = true
 		f.services.Tuning.CheckpointInterval = 2 * time.Second
 		fail := true
-		f.hook = func(call machinewire.Call) (string, error) {
+		f.hook = func(call machinemanagerproto.Call) (string, error) {
 			if call.Name() == "checkpoint" && fail {
 				return "", errors.New("checkpoint refused")
 			}
@@ -700,7 +700,7 @@ func TestCheckpointFailureRetriesWithoutStoppingCloud(t *testing.T) {
 		a := f.access()
 		f.waitCalls(t.Context(), "checkpoint", 1)
 		synctest.Wait()
-		if f.phase() != webapi.CloudStateRunning {
+		if f.phase() != webapiproto.CloudStateRunning {
 			t.Fatal("failed checkpoint stopped Cloud")
 		}
 		fail = false
@@ -732,7 +732,7 @@ func TestLifetimeCapTimeoutReopensAdmission(t *testing.T) {
 		if err := retirement.wait(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		if f.count("hibernate") != 0 || f.phase() != webapi.CloudStateRunning {
+		if f.count("hibernate") != 0 || f.phase() != webapiproto.CloudStateRunning {
 			t.Fatal("timed-out reservation stopped machine")
 		}
 		a.Release()
@@ -756,7 +756,7 @@ func TestFlushDeadlineStillSavesCloud(t *testing.T) {
 			t.Fatal(err)
 		}
 		if time.Since(start) != f.services.Tuning.SyncTimeout || f.count("hibernate") != 1 ||
-			f.phase() != webapi.CloudStateOff {
+			f.phase() != webapiproto.CloudStateOff {
 			t.Fatalf("flush timeout prevented save: %s %s", time.Since(start), f.phase())
 		}
 	})
@@ -769,7 +769,8 @@ func TestPanickedBootFailsWaitersAndReleasesCapacity(t *testing.T) {
 		f.records.panicRotate = true
 		_, err := Access(t.Context(), f)
 		requireCloudError(t, err, Failed)
-		if err.Error() != "A transition of the Cloud ended without an answer" || f.phase() != webapi.CloudStateOff {
+		if err.Error() != "A transition of the Cloud ended without an answer" ||
+			f.phase() != webapiproto.CloudStateOff {
 			t.Fatalf("panic escaped ownership: %v phase=%s", err, f.phase())
 		}
 		permit := f.services.Capacity.TryTake()
@@ -789,7 +790,7 @@ func TestPanickedIdleSaveSettlesAndReleasesCapacity(t *testing.T) {
 		a.Release()
 		time.Sleep(11 * time.Second)
 		synctest.Wait()
-		if f.phase() != webapi.CloudStateOff {
+		if f.phase() != webapiproto.CloudStateOff {
 			t.Fatal("panicked retirement left a transition stuck")
 		}
 		f.cloud.mu.Lock()

@@ -11,8 +11,8 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func TestClaimAttemptWindow(t *testing.T) {
@@ -83,13 +83,13 @@ func TestClaimOwnershipAndAbandonment(t *testing.T) {
 	} {
 		t.Run(ending, func(t *testing.T) {
 			type granted struct {
-				device webapi.DeviceDTO
+				device webapiproto.DeviceDTO
 				err    error
 			}
 			claims := runners.NewPendingClaims(10)
 			defer claims.Close()
 			code := runners.GenerateClaimCode()
-			wait := claims.Register(code, runnerwire.Info{Name: "fixture"})
+			wait := claims.Register(code, runnerproto.Info{Name: "fixture"})
 			defer wait.Release()
 			if ending == "withdrawn" {
 				claims.Withdraw(code)
@@ -98,7 +98,7 @@ func TestClaimOwnershipAndAbandonment(t *testing.T) {
 				claims.Close()
 			}
 			if ending == "replaced" {
-				next := claims.Register(code, runnerwire.Info{Name: "next"})
+				next := claims.Register(code, runnerproto.Info{Name: "next"})
 				defer next.Release()
 			}
 			if ending == "withdrawn" || ending == "shutdown" || ending == "replaced" {
@@ -106,7 +106,7 @@ func TestClaimOwnershipAndAbandonment(t *testing.T) {
 				if err != nil || grant != nil {
 					t.Fatalf("abandoned wait: %v %v", grant, err)
 				}
-				if ending == "shutdown" && claims.Register(code, runnerwire.Info{}) != nil {
+				if ending == "shutdown" && claims.Register(code, runnerproto.Info{}) != nil {
 					t.Fatal("registered after shutdown")
 				}
 				return
@@ -147,7 +147,7 @@ func TestClaimOwnershipAndAbandonment(t *testing.T) {
 				}
 				runner.Release() // Does not withdraw a transferred grant.
 				defer grant.Release()
-				grant.Bound(webapi.DeviceDTO{ID: "device", Online: true})
+				grant.Bound(webapiproto.DeviceDTO{ID: "device", Online: true})
 				grant.Release()
 			}
 			result := <-answered
@@ -168,7 +168,7 @@ func TestClaimGrantRacesDeparture(t *testing.T) {
 	for range 100 {
 		claims := runners.NewPendingClaims(10)
 		code := runners.GenerateClaimCode()
-		wait := claims.Register(code, runnerwire.Info{})
+		wait := claims.Register(code, runnerproto.Info{})
 		runner := claims.Take(code)
 		var workers sync.WaitGroup
 		workers.Go(func() { wait.Release() })

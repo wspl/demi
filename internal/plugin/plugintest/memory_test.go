@@ -9,11 +9,11 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/plugin/plugintest"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type scenario func(context.Context, plugin.Request, plugin.Port) (plugin.Reply, error)
@@ -27,12 +27,12 @@ func (s scenario) Call(ctx context.Context, r plugin.Request, p plugin.Port) (pl
 func TestStorageThroughLoopback(t *testing.T) {
 	d := plugintest.New()
 	p := plugintest.Loopback(scenario(func(ctx context.Context, _ plugin.Request, p plugin.Port) (plugin.Reply, error) {
-		blob, err := p.PutBlob(ctx, core.B64Bytes("payload"))
+		blob, err := p.PutBlob(ctx, types.B64Bytes("payload"))
 		if err != nil {
 			return nil, err
 		}
 		body := json.RawMessage(`{"z":"<>&\u2028","a":2}`)
-		revision, err := p.WriteValueNaming(ctx, "key", body, nil, []core.BlobRef{blob})
+		revision, err := p.WriteValueNaming(ctx, "key", body, nil, []types.BlobRef{blob})
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +52,7 @@ func TestStorageThroughLoopback(t *testing.T) {
 			t.Fatalf("stored = %#v", v)
 		}
 		blobs := d.ValueBlobs("key")
-		if !slices.Equal(blobs, []core.BlobRef{blob}) {
+		if !slices.Equal(blobs, []types.BlobRef{blob}) {
 			t.Fatalf("retained = %v", blobs)
 		}
 		content, found, err := p.Blob(ctx, blob)
@@ -131,7 +131,7 @@ func TestHostFilesAndDirectories(t *testing.T) {
 	if _, ok := files[2].(*plugin.HostFileMissing); !ok {
 		t.Fatalf("missing = %#v", files[2])
 	}
-	blob, err := p.PutBlob(t.Context(), core.B64Bytes("x"))
+	blob, err := p.PutBlob(t.Context(), types.B64Bytes("x"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestHostFilesAndDirectories(t *testing.T) {
 // availability and device-stop semantics; it never waits for real time.
 func TestExposes(t *testing.T) {
 	d := plugintest.New()
-	device, err := webapi.ParseDeviceID("aaaaaaaaaaaaaaaaaaaaaaaaaa")
+	device, err := webapiproto.ParseDeviceID("aaaaaaaaaaaaaaaaaaaaaaaaaa")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestUntilAndPackageCalls(t *testing.T) {
 		d := plugintest.New()
 		d.PackageCalls = func(
 			_ context.Context,
-			_ declare.NativeOperation,
+			_ commanddecl.NativeOperation,
 			_ json.RawMessage,
 			_ plugin.CallKind,
 		) (json.RawMessage, error) {
@@ -227,7 +227,7 @@ func TestUntilAndPackageCalls(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := d.Port().
-			PackageCall(ctx, declare.NativeOperation{
+			PackageCall(ctx, commanddecl.NativeOperation{
 				Package:   "test",
 				Operation: "read",
 			}, json.RawMessage(`{}`), plugin.CallKindLooks); err != nil {
@@ -245,9 +245,9 @@ func TestUntilAndPackageCalls(t *testing.T) {
 	})
 }
 
-func validUser(t *testing.T) webapi.UserID {
+func validUser(t *testing.T) webapiproto.UserID {
 	t.Helper()
-	user, err := webapi.ParseUserID("aaaaaaaaaaaaaaaaaaaaaaaaaa")
+	user, err := webapiproto.ParseUserID("aaaaaaaaaaaaaaaaaaaaaaaaaa")
 	if err != nil {
 		t.Fatal(err)
 	}

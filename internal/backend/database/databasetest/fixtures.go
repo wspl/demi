@@ -9,13 +9,13 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Control opens a control database in a test directory and registers cleanup.
 // The test owns every resource; clock supplies record timestamps.
-func Control(ctx context.Context, t testing.TB, clock core.Clock) *database.ControlService {
+func Control(ctx context.Context, t testing.TB, clock types.Clock) *database.ControlService {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	control, err := database.OpenControl(ctx, path, clock)
@@ -33,7 +33,7 @@ func Control(ctx context.Context, t testing.TB, clock core.Clock) *database.Cont
 }
 
 // Master creates the fixture's master@example.test account with the fixture's fixed PHC hash.
-func Master(ctx context.Context, t testing.TB, control *database.ControlService) webapi.UserDTO {
+func Master(ctx context.Context, t testing.TB, control *database.ControlService) webapiproto.UserDTO {
 	t.Helper()
 	hash, err := database.ParsePasswordHash(
 		"$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$0mUbQTTMhhaEBFGMq7WTZxOlVoS9sY3qVqLiV7Q1Izo",
@@ -41,7 +41,7 @@ func Master(ctx context.Context, t testing.TB, control *database.ControlService)
 	if err != nil {
 		t.Fatal(err)
 	}
-	email, err := webapi.ParseEmailAddress("master@example.test")
+	email, err := webapiproto.ParseEmailAddress("master@example.test")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,14 +10,14 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func (s *Shard) fork(
 	ctx context.Context,
-	source, destination webapi.ConversationID,
-	block core.BlockID,
+	source, destination webapiproto.ConversationID,
+	block types.BlockID,
 ) (Forked, error) {
 	key := strings.ToLower(string(destination))
 	permit, err := s.forks.Acquire(ctx, key)
@@ -90,7 +90,7 @@ func (s *Shard) published(record database.ConversationRecord) {
 func forkCommitted(
 	ctx context.Context,
 	stores *database.ConversationStores,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 ) (bool, error) {
 	committed := false
 	_, err := stores.Read(ctx, id, func(ctx context.Context, tx *sql.Tx) error {
@@ -105,17 +105,17 @@ func forkCommitted(
 func (s *Shard) reserveConversationFork(
 	ctx context.Context,
 	record database.ConversationRecord,
-	destination webapi.ConversationID,
-	block core.BlockID,
+	destination webapiproto.ConversationID,
+	block types.BlockID,
 ) (*database.ForkOperation, error) {
 	target := record.Target
-	if cloud, ok := target.(*webapi.ConversationTargetCloud); ok && cloud.Path == nil {
+	if cloud, ok := target.(*webapiproto.ConversationTargetCloud); ok && cloud.Path == nil {
 		resolved, err := hostaccess.ResolveTarget(ctx, s, record)
 		if err != nil {
 			return nil, err
 		}
 		path := database.ExecutionPath(resolved)
-		target = &webapi.ConversationTargetCloud{Path: &path}
+		target = &webapiproto.ConversationTargetCloud{Path: &path}
 	}
 	attached, err := s.services.Control.AttachedHosts(ctx, record.ID)
 	if err != nil {
@@ -149,8 +149,8 @@ func (s *Shard) reserveConversationFork(
 // copyForkCommands copies command outputs and continues the source’s sequence counters.
 func (s *Shard) copyForkCommands(
 	ctx context.Context,
-	source, destination webapi.ConversationID,
-	transcript []core.Block,
+	source, destination webapiproto.ConversationID,
+	transcript []types.Block,
 ) error {
 	commands := database.CommandsOf(transcript)
 	var rows []database.CommandOutput
@@ -184,7 +184,7 @@ func (s *Shard) copyForkCommands(
 // resumeCommittedFork publishes a previously initialized destination without copying it again.
 func (s *Shard) resumeCommittedFork(
 	ctx context.Context,
-	destination webapi.ConversationID,
+	destination webapiproto.ConversationID,
 ) (database.ConversationRecord, bool, error) {
 	committed, err := forkCommitted(ctx, s.services.Conversations, destination)
 	if err != nil {
@@ -204,7 +204,7 @@ func (s *Shard) resumeCommittedFork(
 // forkSource reads the source and refuses conversations the user does not own.
 func (s *Shard) forkSource(
 	ctx context.Context,
-	source webapi.ConversationID,
+	source webapiproto.ConversationID,
 ) (*database.ConversationRecord, error) {
 	record, found, err := s.services.Control.Conversation(ctx, source)
 	if err != nil {
@@ -219,8 +219,8 @@ func (s *Shard) forkSource(
 // forkDestination checks that the destination belongs to this exact fork attempt.
 func (s *Shard) forkDestination(
 	ctx context.Context,
-	destination, source webapi.ConversationID,
-	block core.BlockID,
+	destination, source webapiproto.ConversationID,
+	block types.BlockID,
 ) (*database.ForkOperation, *database.ConversationRecord, error) {
 	reserved, found, err := s.services.Control.ForkOperation(ctx, destination)
 	if err != nil {

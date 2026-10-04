@@ -9,8 +9,8 @@ import (
 	"testing/synctest"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 	"go.uber.org/goleak"
 )
 
@@ -29,7 +29,7 @@ func TestGuardAndCancellationLeaveCheckpointsUnchanged(t *testing.T) {
 		lifetime, invalidate := context.WithCancel(t.Context())
 		defer invalidate()
 		result := make(chan error, 1)
-		update := contractUpdate([]core.QueuedMessage{contractMessage("later")}, nil)
+		update := contractUpdate([]types.QueuedMessage{contractMessage("later")}, nil)
 		workers.Go(func() {
 			result <- memory.Session("root").Save(t.Context(), update, store.NewCommitGuard(lifetime))
 		})
@@ -76,7 +76,7 @@ func TestFailedCreationAndSaveAreAtomic(t *testing.T) {
 	c.create(t.Context(), contractRecord("root", nil, 0), contractUpdate(nil, nil))
 	before := memory.Checkpoint("root")
 	memory.FailSaves(1)
-	update := contractUpdate([]core.QueuedMessage{contractMessage("later")}, nil)
+	update := contractUpdate([]types.QueuedMessage{contractMessage("later")}, nil)
 	if err := memory.Session("root").Save(t.Context(), update, store.CommitGuard{}); err == nil {
 		t.Fatal("injected database failure did not fail")
 	}
@@ -85,13 +85,13 @@ func TestFailedCreationAndSaveAreAtomic(t *testing.T) {
 	}
 	c.save(t.Context(), "root", update)
 	copied := memory.Copy()
-	update.State.Queue[0].Content[0].(*core.UserText).Text = "mutated"
+	update.State.Queue[0].Content[0].(*types.UserText).Text = "mutated"
 	loaded := memory.Checkpoint("root")
-	loaded.State.Queue[0].Content[0].(*core.UserText).Text = "also mutated"
-	if text := copied.Checkpoint("root").State.Queue[0].Content[0].(*core.UserText).Text; text != "brief" {
+	loaded.State.Queue[0].Content[0].(*types.UserText).Text = "also mutated"
+	if text := copied.Checkpoint("root").State.Queue[0].Content[0].(*types.UserText).Text; text != "brief" {
 		t.Fatalf("snapshot aliases caller: %s", text)
 	}
-	if text := memory.Checkpoint("root").State.Queue[0].Content[0].(*core.UserText).Text; text != "brief" {
+	if text := memory.Checkpoint("root").State.Queue[0].Content[0].(*types.UserText).Text; text != "brief" {
 		t.Fatalf("load aliases store: %s", text)
 	}
 	c.save(t.Context(), "root", contractUpdate(nil, nil))
@@ -123,7 +123,7 @@ func TestCommandOutputRecordsSurviveCopyAndOwnTheirBytes(t *testing.T) {
 	memory.KeepOutput("3", &store.OutputRemoved{At: contractEpoch})
 	copied := memory.Copy()
 	kept.Output.Records[0].Bytes[0] = 'x'
-	for _, id := range []core.CommandID{"1", "2", "3"} {
+	for _, id := range []types.CommandID{"1", "2", "3"} {
 		got, err := copied.CommandOutput(t.Context(), id)
 		if err != nil {
 			t.Fatal(err)

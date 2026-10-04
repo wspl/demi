@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/sync/semaphore"
 )
@@ -38,7 +38,7 @@ func newPasswordHasher(ctx context.Context, permits int) (*PasswordHasher, error
 	if err != nil {
 		return nil, fmt.Errorf("generate dummy password: %w", err)
 	}
-	dummy, err := h.hash(ctx, webapi.Password(secret.String()))
+	dummy, err := h.hash(ctx, webapiproto.Password(secret.String()))
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func newPasswordHasher(ctx context.Context, permits int) (*PasswordHasher, error
 
 // Hash hashes a password with Argon2id (version 19, m=19456, t=2, p=1, a random
 // 16-byte salt, a 32-byte key) and returns it as a PHC string.
-func (h *PasswordHasher) Hash(ctx context.Context, password webapi.Password) (database.PasswordHash, error) {
+func (h *PasswordHasher) Hash(ctx context.Context, password webapiproto.Password) (database.PasswordHash, error) {
 	text, err := h.hash(ctx, password)
 	if err != nil {
 		return database.PasswordHash{}, err
@@ -60,7 +60,7 @@ func (h *PasswordHasher) Hash(ctx context.Context, password webapi.Password) (da
 	return stored, nil
 }
 
-func (h *PasswordHasher) hash(ctx context.Context, password webapi.Password) (string, error) {
+func (h *PasswordHasher) hash(ctx context.Context, password webapiproto.Password) (string, error) {
 	if err := h.permits.Acquire(ctx, 1); err != nil {
 		return "", err
 	}
@@ -74,7 +74,7 @@ func (h *PasswordHasher) hash(ctx context.Context, password webapi.Password) (st
 // dummy hash and always answers false.
 func (h *PasswordHasher) Verify(
 	ctx context.Context,
-	password webapi.Password,
+	password webapiproto.Password,
 	stored *database.PasswordHash,
 ) (bool, error) {
 	against := h.dummy
@@ -85,7 +85,7 @@ func (h *PasswordHasher) Verify(
 	return stored != nil && matches, err
 }
 
-func (h *PasswordHasher) verify(ctx context.Context, password webapi.Password, stored string) (bool, error) {
+func (h *PasswordHasher) verify(ctx context.Context, password webapiproto.Password, stored string) (bool, error) {
 	if err := h.permits.Acquire(ctx, 1); err != nil {
 		return false, err
 	}
@@ -95,7 +95,7 @@ func (h *PasswordHasher) verify(ctx context.Context, password webapi.Password, s
 
 // hashPassword writes $argon2id$v=19$m=19456,t=2,p=1$<salt>$<key>, with salt and
 // key in unpadded standard base64.
-func hashPassword(password webapi.Password, salt []byte) string {
+func hashPassword(password webapiproto.Password, salt []byte) string {
 	key := argon2.IDKey([]byte(password), salt, 2, 19456, 1, 32)
 	return "$argon2id$v=19$m=19456,t=2,p=1$" + base64.RawStdEncoding.EncodeToString(
 		salt,
@@ -105,7 +105,7 @@ func hashPassword(password webapi.Password, salt []byte) string {
 }
 
 // verifyPassword reads the algorithm and costs from a stored PHC string.
-func verifyPassword(password webapi.Password, stored string) (bool, error) {
+func verifyPassword(password webapiproto.Password, stored string) (bool, error) {
 	parsed, err := parsePHC(stored)
 	if err != nil {
 		return false, fmt.Errorf("argon2 failed: %w", err)

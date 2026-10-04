@@ -1,18 +1,18 @@
 package database
 
 import (
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // DeviceRecord is a `devices` row.
 type DeviceRecord struct {
-	ID         webapi.DeviceID
-	User       webapi.UserID
-	Kind       webapi.DeviceKind
+	ID         webapiproto.DeviceID
+	User       webapiproto.UserID
+	Kind       webapiproto.DeviceKind
 	Name       string
-	Platform   runnerwire.RunnerPlatform
-	ClaimedAt  core.Timestamp
-	LastSeenAt *core.Timestamp
+	Platform   runnerproto.RunnerPlatform
+	ClaimedAt  types.Timestamp
+	LastSeenAt *types.Timestamp
 }

@@ -3,25 +3,25 @@ package remotehost
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // ArtifactResolver locates a package executable while the requesting work lives.
 type ArtifactResolver interface {
-	Resolve(context.Context, commandwire.PackageArtifact, string) (commandwire.ArtifactLocation, error)
+	Resolve(context.Context, commandproto.PackageArtifact, string) (commandproto.ArtifactLocation, error)
 }
 
 // CommandCatalog binds commands to package descriptors and executable locations.
 type CommandCatalog struct {
-	packages []commandwire.PackageDescriptor
+	packages []commandproto.PackageDescriptor
 	resolver ArtifactResolver
 }
 
 // NewCommandCatalog validates descriptors and requires unique package IDs.
-func NewCommandCatalog(packages []commandwire.PackageDescriptor, resolver ArtifactResolver) (*CommandCatalog, error) {
-	manifest, err := runnerwire.BuildManifest(nil, packages)
+func NewCommandCatalog(packages []commandproto.PackageDescriptor, resolver ArtifactResolver) (*CommandCatalog, error) {
+	manifest, err := runnerproto.BuildManifest(nil, packages)
 	if err != nil {
 		return nil, err
 	}
@@ -29,11 +29,11 @@ func NewCommandCatalog(packages []commandwire.PackageDescriptor, resolver Artifa
 	if err != nil {
 		return nil, err
 	}
-	owned, err := runnerwire.DecodeManifest(data)
+	owned, err := runnerproto.DecodeManifest(data)
 	if err != nil {
 		return nil, err
 	}
-	descriptors := make([]commandwire.PackageDescriptor, 0, len(owned.Packages))
+	descriptors := make([]commandproto.PackageDescriptor, 0, len(owned.Packages))
 	for _, descriptor := range owned.Packages {
 		descriptors = append(descriptors, descriptor)
 	}
@@ -42,7 +42,7 @@ func NewCommandCatalog(packages []commandwire.PackageDescriptor, resolver Artifa
 
 // Select pins each native command to its descriptor in the catalog.
 func (c *CommandCatalog) Select(commands *host.CommandSet) (*CommandSelection, error) {
-	manifest, err := runnerwire.BuildManifest(commands.Declarations(), c.packages)
+	manifest, err := runnerproto.BuildManifest(commands.Declarations(), c.packages)
 	if err != nil {
 		return nil, err
 	}
@@ -55,13 +55,13 @@ func (c *CommandCatalog) Select(commands *host.CommandSet) (*CommandSelection, e
 
 // CommandSelection is a job's pinned manifest and artifact resolver.
 type CommandSelection struct {
-	manifest runnerwire.Manifest
+	manifest runnerproto.Manifest
 	wire     []byte
 	resolver ArtifactResolver
 }
 
 // Manifest returns the pinned manifest, which callers must treat as immutable.
-func (s *CommandSelection) Manifest() runnerwire.Manifest {
+func (s *CommandSelection) Manifest() runnerproto.Manifest {
 	return s.manifest
 }
 

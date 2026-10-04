@@ -1,11 +1,11 @@
 package database
 
 import (
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // DeviceOperation is an unfinished reset with the device it belongs to.
 type DeviceOperation struct {
-	Device    webapi.DeviceID
+	Device    webapiproto.DeviceID
 	Operation ManagedOperation
 }

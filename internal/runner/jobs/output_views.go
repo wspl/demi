@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // outputView tracks what the backend holds and the bounded newest bytes of a stream.
 type outputView struct {
-	stream                 runnerwire.OutputStream
+	stream                 runnerproto.OutputStream
 	length, held, reported uint64
 	tail                   []byte
 	reportedAt             time.Time
@@ -17,12 +17,12 @@ type outputView struct {
 
 func (v *outputView) write(bytes []byte) (uint64, []byte) {
 	offset := v.length
-	n := min(len(bytes), max(0, runnerwire.JobViewBytes-int(v.length)))
+	n := min(len(bytes), max(0, runnerproto.JobViewBytes-int(v.length)))
 	v.length += uint64(len(bytes))
-	if len(bytes) >= runnerwire.JobLiveBytes {
-		v.tail = append(v.tail[:0], bytes[len(bytes)-runnerwire.JobLiveBytes:]...)
+	if len(bytes) >= runnerproto.JobLiveBytes {
+		v.tail = append(v.tail[:0], bytes[len(bytes)-runnerproto.JobLiveBytes:]...)
 	} else {
-		remove := max(0, len(v.tail)+len(bytes)-runnerwire.JobLiveBytes)
+		remove := max(0, len(v.tail)+len(bytes)-runnerproto.JobLiveBytes)
 		v.tail = append(v.tail[:copy(v.tail, v.tail[remove:])], bytes...)
 	}
 	v.held += uint64(n)
@@ -30,11 +30,11 @@ func (v *outputView) write(bytes []byte) (uint64, []byte) {
 }
 
 func (v *outputView) due(follow bool) time.Time {
-	waiting := v.length > runnerwire.JobViewBytes && v.reported < v.length
-	interval := runnerwire.JobGrowthInterval
+	waiting := v.length > runnerproto.JobViewBytes && v.reported < v.length
+	interval := runnerproto.JobGrowthInterval
 	if follow {
 		waiting = v.held < v.length
-		interval = runnerwire.JobLiveInterval
+		interval = runnerproto.JobLiveInterval
 	}
 	if !waiting {
 		return time.Time{}
@@ -48,13 +48,13 @@ func (v *outputView) due(follow bool) time.Time {
 func (v *outputView) frame(job string, follow bool) ([]byte, error) {
 	var offset uint64
 	if follow {
-		offset = max(v.held, uint64(max(0, int64(v.length)-runnerwire.JobLiveBytes)))
+		offset = max(v.held, uint64(max(0, int64(v.length)-runnerproto.JobLiveBytes)))
 	} else {
-		offset = max(runnerwire.JobViewBytes, uint64(max(0, int64(v.length)-runnerwire.JobViewBytes)))
+		offset = max(runnerproto.JobViewBytes, uint64(max(0, int64(v.length)-runnerproto.JobViewBytes)))
 	}
 	start := v.length - uint64(len(v.tail))
-	return runnerwire.Encode(
-		&runnerwire.JobOutput{
+	return runnerproto.Encode(
+		&runnerproto.JobOutput{
 			JobID:  job,
 			Stream: v.stream,
 			Offset: offset,

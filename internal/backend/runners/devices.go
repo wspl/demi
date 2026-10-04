@@ -11,8 +11,8 @@ import (
 	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Devices holds the user's devices and their connection slots. Its zero value
@@ -20,7 +20,7 @@ import (
 // decisions (Settled, duplicate refusal, and Bind). Do not copy it.
 type Devices struct {
 	mu    sync.Mutex // Protects the slot registry; individual slots publish snapshots.
-	slots map[webapi.DeviceID]*deviceSlot
+	slots map[webapiproto.DeviceID]*deviceSlot
 }
 type deviceSlot struct {
 	mu      sync.Mutex // Protects connection snapshots and change-channel replacement.
@@ -29,7 +29,7 @@ type deviceSlot struct {
 }
 
 // Link returns the device's live connection, or nil while offline.
-func (d *Devices) Link(device webapi.DeviceID) *remotehost.Link {
+func (d *Devices) Link(device webapiproto.DeviceID) *remotehost.Link {
 	slot := d.slot(device, false)
 	if slot == nil {
 		return nil
@@ -42,10 +42,10 @@ func (d *Devices) Link(device webapi.DeviceID) *remotehost.Link {
 }
 
 // Online reports whether the device has a live runner connection.
-func (d *Devices) Online(device webapi.DeviceID) bool { return d.Link(device) != nil }
+func (d *Devices) Online(device webapiproto.DeviceID) bool { return d.Link(device) != nil }
 
 // UntilOnline waits until a live connection serves device, as a Cloud boot does.
-func (d *Devices) UntilOnline(ctx context.Context, device webapi.DeviceID) error {
+func (d *Devices) UntilOnline(ctx context.Context, device webapiproto.DeviceID) error {
 	slot := d.slot(device, true)
 	for {
 		current, changed := slot.snapshot()
@@ -61,7 +61,7 @@ func (d *Devices) UntilOnline(ctx context.Context, device webapi.DeviceID) error
 }
 
 // Settled waits for a closing connection to finish and mark its slot offline.
-func (d *Devices) Settled(ctx context.Context, device webapi.DeviceID) error {
+func (d *Devices) Settled(ctx context.Context, device webapiproto.DeviceID) error {
 	slot := d.slot(device, true)
 	for {
 		current, changed := slot.snapshot()
@@ -77,7 +77,7 @@ func (d *Devices) Settled(ctx context.Context, device webapi.DeviceID) error {
 }
 
 // Home returns the runner's last reported home, or false before its first connection.
-func (d *Devices) Home(device webapi.DeviceID) (string, bool) {
+func (d *Devices) Home(device webapiproto.DeviceID) (string, bool) {
 	slot := d.slot(device, false)
 	if slot == nil {
 		return "", false
@@ -96,7 +96,7 @@ func (d *Devices) Home(device webapi.DeviceID) (string, bool) {
 // Only host access calls it, and the handle must not outlive the lease. Its key
 // names the lease's conversation, device and cwd; offline handles follow reconnects.
 func (d *Devices) ConversationHost(
-	device webapi.DeviceID,
+	device webapiproto.DeviceID,
 	files *FileLease,
 	cwd string,
 	admission remotehost.Admission,
@@ -111,14 +111,18 @@ func (d *Devices) ConversationHost(
 
 // MachineHost makes the Cloud's Host starting in home, whose operations take the
 // Cloud's admission. Machine access touches no conversation's files.
-func (d *Devices) MachineHost(device webapi.DeviceID, home string, admission remotehost.Admission) *remotehost.Host {
+func (d *Devices) MachineHost(
+	device webapiproto.DeviceID,
+	home string,
+	admission remotehost.Admission,
+) *remotehost.Host {
 	return d.host(device, host.Key("machine "+string(device)+" "+home), home, admission)
 }
 
 // DeviceAccess returns a Host only while its runner is connected, otherwise nil.
 // The caller must own device. This touches no conversation's files, takes no gate
 // and never wakes a stopped Cloud.
-func (d *Devices) DeviceAccess(device webapi.DeviceID) *remotehost.Host {
+func (d *Devices) DeviceAccess(device webapiproto.DeviceID) *remotehost.Host {
 	if !d.Online(device) {
 		return nil
 	}
@@ -129,7 +133,7 @@ func (d *Devices) DeviceAccess(device webapi.DeviceID) *remotehost.Host {
 // The caller first waits for Settled and refuses a duplicate live connection.
 // It transfers driver to the returned Serving and must run Serve or Close.
 func (d *Devices) Bind(
-	device webapi.DeviceID,
+	device webapiproto.DeviceID,
 	link *remotehost.Link,
 	driver *remotehost.LinkDriver,
 	seen *LastSeen,
@@ -141,16 +145,16 @@ func (d *Devices) Bind(
 }
 
 // DTO returns the device as the web app sees it, including online state and installs.
-func (d *Devices) DTO(device database.DeviceRecord) webapi.DeviceDTO {
+func (d *Devices) DTO(device database.DeviceRecord) webapiproto.DeviceDTO {
 	var home *string
 	if value, ok := d.Home(device.ID); ok {
 		home = &value
 	}
-	installs := []runnerwire.Install{}
+	installs := []runnerproto.Install{}
 	if link := d.Link(device.ID); link != nil {
 		installs = link.Installs()
 	}
-	return webapi.DeviceDTO{
+	return webapiproto.DeviceDTO{
 		ID:         device.ID,
 		Kind:       device.Kind,
 		Name:       device.Name,
@@ -167,8 +171,8 @@ func (d *Devices) DTO(device database.DeviceRecord) webapi.DeviceDTO {
 func (d *Devices) DeviceList(
 	ctx context.Context,
 	control *database.ControlService,
-	user webapi.UserID,
-) ([]webapi.DeviceDTO, error) {
+	user webapiproto.UserID,
+) ([]webapiproto.DeviceDTO, error) {
 	devices, err := control.PairedDevices(ctx, user)
 	if err != nil {
 		return nil, err
@@ -180,7 +184,7 @@ func (d *Devices) DeviceList(
 	if found {
 		devices = append(devices, cloud)
 	}
-	result := make([]webapi.DeviceDTO, 0, len(devices))
+	result := make([]webapiproto.DeviceDTO, 0, len(devices))
 	for _, device := range devices {
 		result = append(result, d.DTO(device))
 	}
@@ -188,14 +192,14 @@ func (d *Devices) DeviceList(
 }
 
 // Disconnect ends device's connection, whose runner then reconnects.
-func (d *Devices) Disconnect(device webapi.DeviceID, reason string) {
+func (d *Devices) Disconnect(device webapiproto.DeviceID, reason string) {
 	if link := d.Link(device); link != nil {
 		link.Disconnect(reason)
 	}
 }
 
 // Revoke ends a revoked device's connection and tells its runner to stop for good.
-func (d *Devices) Revoke(device webapi.DeviceID) { d.Disconnect(device, "device revoked") }
+func (d *Devices) Revoke(device webapiproto.DeviceID) { d.Disconnect(device, "device revoked") }
 
 // DisconnectAll ends every connection for reason. The connection owners join Serve.
 func (d *Devices) DisconnectAll(reason string) {
@@ -217,7 +221,7 @@ func (d *Devices) DisconnectAll(reason string) {
 // at shutdown; if adoption fails before Serve, it calls Close instead.
 type Serving struct {
 	slot   *deviceSlot
-	device webapi.DeviceID
+	device webapiproto.DeviceID
 	link   *remotehost.Link
 	driver *remotehost.LinkDriver
 	seen   *LastSeen
@@ -232,7 +236,11 @@ func (s *Serving) Serve(ctx context.Context, socket *Socket) remotehost.LinkEnd 
 	end := s.run(ctx, socket, socket)
 	if end.Kind == remotehost.LinkDisconnected && end.Reason == "device revoked" {
 		// A runner that went away needs no refusal.
-		_ = Send(ctx, socket, &runnerwire.HelloError{Code: runnerwire.HelloErrorCodeRevoked, Reason: "device revoked"})
+		_ = Send(
+			ctx,
+			socket,
+			&runnerproto.HelloError{Code: runnerproto.HelloErrorCodeRevoked, Reason: "device revoked"},
+		)
 	}
 	// Complete the socket close handshake before releasing its device slot.
 	_ = socket.Close(websocket.StatusNormalClosure, "")
@@ -261,8 +269,8 @@ func (s *Serving) TestingServe(
 
 // Send writes one message on a runner socket that nothing else writes to yet,
 // such as the answer to its hello. The caller retains socket ownership.
-func Send(ctx context.Context, socket *Socket, message runnerwire.Inbound) error {
-	frame, err := runnerwire.Encode(message)
+func Send(ctx context.Context, socket *Socket, message runnerproto.Inbound) error {
+	frame, err := runnerproto.Encode(message)
 	if err != nil {
 		return err
 	}
@@ -283,7 +291,7 @@ func NewLastSeen(control *database.ControlService, marks pagesync.UserMarks) *La
 
 // Touch records that device's runner was connected just now and marks its pages.
 // A storage error is logged: the displayed time decides no admission or ownership.
-func (s *LastSeen) Touch(ctx context.Context, device webapi.DeviceID) {
+func (s *LastSeen) Touch(ctx context.Context, device webapiproto.DeviceID) {
 	if err := s.control.TouchDeviceSeen(ctx, device); err != nil {
 		slog.Warn("last-seen time not recorded", "device", device, "error", err)
 	}
@@ -292,11 +300,11 @@ func (s *LastSeen) Touch(ctx context.Context, device webapi.DeviceID) {
 
 // slot finds a device connection, creating its retained slot only for Host handles
 // and connection owners, never for a read of an unknown device.
-func (d *Devices) slot(device webapi.DeviceID, create bool) *deviceSlot {
+func (d *Devices) slot(device webapiproto.DeviceID, create bool) *deviceSlot {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.slots == nil && create {
-		d.slots = make(map[webapi.DeviceID]*deviceSlot)
+		d.slots = make(map[webapiproto.DeviceID]*deviceSlot)
 	}
 	slot := d.slots[device]
 	if slot == nil && create {
@@ -325,7 +333,7 @@ func (s *deviceSlot) publish(current remotehost.DeviceLink) {
 
 // host follows the device's connection slot without taking conversation admission.
 func (d *Devices) host(
-	device webapi.DeviceID,
+	device webapiproto.DeviceID,
 	key host.Key,
 	cwd string,
 	admission remotehost.Admission,

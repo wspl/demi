@@ -9,7 +9,7 @@ import (
 	"slices"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ErrPanelFull means a new tab exceeds the panel's count or size bound.
@@ -29,7 +29,7 @@ type PanelChange interface{ panelChange() }
 // PanelCreate inserts a new tab, unless its ID was already used.
 type PanelCreate struct {
 	// Tab is the new tab and its optional insertion index.
-	Tab webapi.CreatePanelTab
+	Tab webapiproto.CreatePanelTab
 }
 
 func (PanelCreate) panelChange() {}
@@ -81,15 +81,15 @@ type PanelEffect struct {
 	// Kind identifies the applied operation.
 	Kind PanelEffectKind
 	// Tab is the tab that was created or removed.
-	Tab webapi.PanelTab
+	Tab webapiproto.PanelTab
 }
 
 // What the backend keeps of a panel: its tabs in order, and every id it
 // had, which is never used again.
 // +demi:root
 type panelDocument struct {
-	Tabs    []webapi.PanelTab `json:"tabs"`
-	Retired []string          `json:"retired"`
+	Tabs    []webapiproto.PanelTab `json:"tabs"`
+	Retired []string               `json:"retired"`
 }
 
 func (d *panelDocument) apply(change PanelChange) (PanelEffect, bool, error) {
@@ -102,7 +102,7 @@ func (d *panelDocument) apply(change PanelChange) (PanelEffect, bool, error) {
 	if err != nil {
 		return PanelEffect{}, false, err
 	}
-	if len(data) > webapi.PanelBytesMax {
+	if len(data) > webapiproto.PanelBytesMax {
 		if effect.Kind == PanelCreated {
 			return PanelEffect{}, false, ErrPanelFull
 		}
@@ -113,7 +113,7 @@ func (d *panelDocument) apply(change PanelChange) (PanelEffect, bool, error) {
 }
 
 func (d *panelDocument) position(id string) int {
-	return slices.IndexFunc(d.Tabs, func(tab webapi.PanelTab) bool { return tab.ID == id })
+	return slices.IndexFunc(d.Tabs, func(tab webapiproto.PanelTab) bool { return tab.ID == id })
 }
 
 func (d *panelDocument) change(change PanelChange) (PanelEffect, bool, error) {
@@ -148,14 +148,14 @@ func (d *panelDocument) change(change PanelChange) (PanelEffect, bool, error) {
 	return PanelEffect{}, false, nil
 }
 
-func (d *panelDocument) create(c webapi.CreatePanelTab) (PanelEffect, bool, error) {
+func (d *panelDocument) create(c webapiproto.CreatePanelTab) (PanelEffect, bool, error) {
 	if d.position(c.ID) >= 0 || slices.Contains(d.Retired, c.ID) {
 		return PanelEffect{}, false, nil
 	}
-	if len(d.Tabs) >= webapi.PanelTabsMax {
+	if len(d.Tabs) >= webapiproto.PanelTabsMax {
 		return PanelEffect{}, false, ErrPanelFull
 	}
-	tab := webapi.PanelTab{ID: c.ID, Kind: c.Kind, Data: bytes.Clone(c.Data)}
+	tab := webapiproto.PanelTab{ID: c.ID, Kind: c.Kind, Data: bytes.Clone(c.Data)}
 	index := len(d.Tabs)
 	if c.Index != nil {
 		index = int(min(*c.Index, uint64(index)))

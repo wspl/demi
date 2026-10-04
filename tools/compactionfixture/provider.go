@@ -10,18 +10,18 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
-	"github.com/wspl/demi/internal/providers/openaiapi"
+	"github.com/wspl/demi/internal/provider/openaiapi"
+	"github.com/wspl/demi/internal/types"
 )
 
-func flash(window uint32) core.ModelSelection {
-	return core.ModelSelection{
+func flash(window uint32) types.ModelSelection {
+	return types.ModelSelection{
 		ProviderID: "deepseek",
-		Model: core.Model{
+		Model: types.Model{
 			ID:   environment("DEEPSEEK_FLASH_MODEL", "deepseek-v4-flash"),
 			Name: "DeepSeek V4 Flash", ContextWindow: window,
-			Thinking: []core.ThinkingCapability{}, AcceptedExtensions: new([]core.FileExtension{}),
+			Thinking: []types.ThinkingCapability{}, AcceptedExtensions: new([]types.FileExtension{}),
 		},
 	}
 }
@@ -43,22 +43,22 @@ func deepseek() (*openaiapi.Provider, error) {
 		return nil, errors.New("DEEPSEEK_BASE_URL: relative URL without a base")
 	}
 	return openaiapi.New(openaiapi.Config{
-		APIKey: secret, BaseURL: base, Wire: core.WireAPIChatCompletions,
+		APIKey: secret, BaseURL: base, Wire: types.WireAPIChatCompletions,
 		Policy: provider.VendorPolicy{PassBackReasoningContent: true},
-	}, core.SystemClock{}), nil
+	}, types.SystemClock{}), nil
 }
 
 type deepSeek struct {
 	provider  *openaiapi.Provider
 	http      *http.Client
-	selection core.ModelSelection
+	selection types.ModelSelection
 }
 
-func (d *deepSeek) Selection(_ context.Context, _ core.NodeID) (core.ModelSelection, error) {
+func (d *deepSeek) Selection(_ context.Context, _ types.NodeID) (types.ModelSelection, error) {
 	return d.selection, nil
 }
 
-func (d *deepSeek) Runtime(_ context.Context, _ core.NodeID, _ core.ModelSelection) (provider.Runtime, error) {
+func (d *deepSeek) Runtime(_ context.Context, _ types.NodeID, _ types.ModelSelection) (provider.Runtime, error) {
 	return d.provider.Runtime(provider.RuntimeEnv{HTTP: d.http})
 }
 

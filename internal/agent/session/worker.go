@@ -8,7 +8,7 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // worker is the sole executor of session actions. Disposal cancels its action
@@ -131,7 +131,7 @@ func (s *Session) retry(ctx context.Context) error {
 	}
 	input := rewound.Retained[rewound.Input]
 	edge := store.BeforeUser
-	if _, ok := input.(*core.AgentMessageBlock); ok {
+	if _, ok := input.(*types.AgentMessageBlock); ok {
 		edge = store.AfterBlock
 	}
 	s.mu.Lock()
@@ -172,7 +172,7 @@ func (s *Session) abortCallsLocked() {
 	for _, call := range c.log.PendingToolCalls() {
 		c.log.CompleteToolCall(
 			call.ToolUseID,
-			[]core.ToolResultContentBlock{&core.ToolText{Text: "Tool call aborted: " + call.ToolName}},
+			[]types.ToolResultContentBlock{&types.ToolText{Text: "Tool call aborted: " + call.ToolName}},
 			true,
 			nil,
 		)
@@ -309,7 +309,7 @@ func (s *Session) continueInputs(a *action) (bool, bool) {
 	s.mutate(func(c *coreState) {
 		for i, input := range c.inputs {
 			if input.wakeup != nil {
-				c.log.PushWakeup(core.BlockID(input.wakeup.ID), a.turn, c.model, "new_turn")
+				c.log.PushWakeup(types.BlockID(input.wakeup.ID), a.turn, c.model, "new_turn")
 				c.inputs = slices.Delete(c.inputs, i, i+1)
 				c.dirty = true
 				opened = true

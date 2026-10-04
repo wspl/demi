@@ -13,7 +13,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // TestBackend is a running fixture and its HTTP client. Harness.Start owns
@@ -33,7 +33,7 @@ type Session struct {
 	// Cookie is the session cookie sent with browser requests.
 	Cookie string
 	// User is the validated signed-in user.
-	User webapi.UserDTO
+	User webapiproto.UserDTO
 }
 
 // Answer is an HTTP answer, read whole.
@@ -53,10 +53,12 @@ func DecodeAnswer[T any](answer Answer, decode func([]byte) (T, error)) (T, erro
 }
 
 // ErrorBody validates and decodes the backend's error contract.
-func (a Answer) ErrorBody() (webapi.ErrorBody, error) { return webapi.DecodeErrorBody(a.Body) }
+func (a Answer) ErrorBody() (webapiproto.ErrorBody, error) {
+	return webapiproto.DecodeErrorBody(a.Body)
+}
 
 // Refusal returns the answer's HTTP status and validated error code.
-func (a Answer) Refusal() (int, webapi.ErrorCode, error) {
+func (a Answer) Refusal() (int, webapiproto.ErrorCode, error) {
 	body, err := a.ErrorBody()
 	return a.Status, body.Code, err
 }
@@ -88,7 +90,7 @@ func SessionFrom(answer Answer) (Session, error) {
 	if len(cookies) != 1 {
 		return Session{}, fmt.Errorf("expected one session cookie, got %v", cookies)
 	}
-	identity, err := webapi.DecodeIdentity(answer.Body)
+	identity, err := webapiproto.DecodeIdentity(answer.Body)
 	if err != nil {
 		return Session{}, err
 	}
@@ -203,11 +205,13 @@ func (b *TestBackend) Response(
 
 // Setup creates and signs in the fixture master account through HTTP.
 func (b *TestBackend) Setup(ctx context.Context) (Session, error) {
-	email, err := webapi.ParseEmailAddress(MasterEmail)
+	email, err := webapiproto.ParseEmailAddress(MasterEmail)
 	if err != nil {
 		return Session{}, err
 	}
-	body, err := contract.EncodeJSON(webapi.SetupRequest{Email: email, Password: webapi.Password(MasterPassword)})
+	body, err := contract.EncodeJSON(
+		webapiproto.SetupRequest{Email: email, Password: webapiproto.Password(MasterPassword)},
+	)
 	if err != nil {
 		return Session{}, err
 	}
@@ -247,7 +251,7 @@ func (b *TestBackend) LoginAnswer(ctx context.Context, email, password string) (
 }
 
 // Devices returns the session's paired devices as GET /api/devices lists them.
-func (b *TestBackend) Devices(ctx context.Context, session *Session) ([]webapi.DeviceDTO, error) {
+func (b *TestBackend) Devices(ctx context.Context, session *Session) ([]webapiproto.DeviceDTO, error) {
 	answer, err := b.Read(ctx, "/api/devices", session)
 	if err != nil {
 		return nil, err
@@ -255,12 +259,12 @@ func (b *TestBackend) Devices(ctx context.Context, session *Session) ([]webapi.D
 	if answer.Status != http.StatusOK {
 		return nil, fmt.Errorf("devices: HTTP %d: %s", answer.Status, answer.Body)
 	}
-	devices, err := webapi.DecodeDevices(answer.Body)
+	devices, err := webapiproto.DecodeDevices(answer.Body)
 	return devices.Devices, err
 }
 
 // Online reports whether the session's device is online in the device list.
-func (b *TestBackend) Online(ctx context.Context, session *Session, device webapi.DeviceID) (bool, error) {
+func (b *TestBackend) Online(ctx context.Context, session *Session, device webapiproto.DeviceID) (bool, error) {
 	devices, err := b.Devices(ctx, session)
 	if err != nil {
 		return false, err
@@ -274,7 +278,12 @@ func (b *TestBackend) Online(ctx context.Context, session *Session, device webap
 }
 
 // UntilOnline waits for the device's online state through page change events.
-func (b *TestBackend) UntilOnline(ctx context.Context, session *Session, device webapi.DeviceID, online bool) error {
+func (b *TestBackend) UntilOnline(
+	ctx context.Context,
+	session *Session,
+	device webapiproto.DeviceID,
+	online bool,
+) error {
 	channel, err := b.sync(ctx, session)
 	if err != nil {
 		return err
@@ -288,22 +297,22 @@ func (b *TestBackend) UntilOnline(ctx context.Context, session *Session, device 
 		if err != nil {
 			return err
 		}
-		var devices []webapi.DeviceDTO
+		var devices []webapiproto.DeviceDTO
 		switch event := event.(type) {
-		case *webapi.SyncEventSnapshot:
+		case *webapiproto.SyncEventSnapshot:
 			devices = event.State.Devices
-		case *webapi.SyncEventDevices:
+		case *webapiproto.SyncEventDevices:
 			devices = event.Devices
-		case *webapi.SyncEventCloud,
-			*webapi.SyncEventConversation,
-			*webapi.SyncEventConversationOrder,
-			*webapi.SyncEventHeartbeat,
-			*webapi.SyncEventPlugin,
-			*webapi.SyncEventPlugins,
-			*webapi.SyncEventPreferences,
-			*webapi.SyncEventProviders,
-			*webapi.SyncEventUser,
-			*webapi.SyncEventWorkspaces:
+		case *webapiproto.SyncEventCloud,
+			*webapiproto.SyncEventConversation,
+			*webapiproto.SyncEventConversationOrder,
+			*webapiproto.SyncEventHeartbeat,
+			*webapiproto.SyncEventPlugin,
+			*webapiproto.SyncEventPlugins,
+			*webapiproto.SyncEventPreferences,
+			*webapiproto.SyncEventProviders,
+			*webapiproto.SyncEventUser,
+			*webapiproto.SyncEventWorkspaces:
 			continue
 		}
 		found := false

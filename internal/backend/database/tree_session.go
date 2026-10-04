@@ -5,13 +5,13 @@ import (
 	"database/sql"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // sessionStore owns a node's checkpoint operations through its conversation writer.
 type sessionStore struct {
 	tree *TreeStore
-	node core.NodeID
+	node types.NodeID
 }
 
 // Blobs returns the conversation owner’s media store.
@@ -65,9 +65,9 @@ func writeCheckpoint(
 	ctx context.Context,
 	tx *sql.Tx,
 	blobs OwnerBlobs,
-	node core.NodeID,
+	node types.NodeID,
 	update store.CheckpointUpdate,
-	completions []core.CompletionID,
+	completions []types.CompletionID,
 ) error {
 	touched, output, err := writeCheckpointBlocks(ctx, tx, node, update)
 	if err != nil {
@@ -99,31 +99,31 @@ func writeCheckpoint(
 func writeCheckpointBlocks(
 	ctx context.Context,
 	tx *sql.Tx,
-	node core.NodeID,
+	node types.NodeID,
 	update store.CheckpointUpdate,
-) ([]core.BlobRef, bool, error) {
-	touched := make([]core.BlobRef, 0)
+) ([]types.BlobRef, bool, error) {
+	touched := make([]types.BlobRef, 0)
 	output := false
 	for _, change := range update.ChangedBlocks {
 		if err := WriteBlock(ctx, tx, node, change.Index, change.Block, &touched); err != nil {
 			return nil, false, err
 		}
 		switch change.Block.(type) {
-		case *core.UserBlock,
-			*core.ContextBlock,
-			*core.WakeupBlock,
-			*core.SteerBlock,
-			*core.AgentMessageBlock,
-			*core.ResumeBlock:
-		case *core.AbortBlock,
-			*core.CompactionBoundaryBlock,
-			*core.CompactionMarkerBlock,
-			*core.ErrorBlock,
-			*core.RedactedThinkingBlock,
-			*core.ResponseBlock,
-			*core.TextBlock,
-			*core.ThinkingBlock,
-			*core.ToolCallBlock:
+		case *types.UserBlock,
+			*types.ContextBlock,
+			*types.WakeupBlock,
+			*types.SteerBlock,
+			*types.AgentMessageBlock,
+			*types.ResumeBlock:
+		case *types.AbortBlock,
+			*types.CompactionBoundaryBlock,
+			*types.CompactionMarkerBlock,
+			*types.ErrorBlock,
+			*types.RedactedThinkingBlock,
+			*types.ResponseBlock,
+			*types.TextBlock,
+			*types.ThinkingBlock,
+			*types.ToolCallBlock:
 			output = true
 		}
 	}
@@ -136,7 +136,7 @@ func writeCheckpointBlocks(
 func writeCheckpointState(
 	ctx context.Context,
 	tx *sql.Tx,
-	node core.NodeID,
+	node types.NodeID,
 	update store.CheckpointUpdate,
 	output bool,
 ) error {
@@ -168,7 +168,7 @@ WHERE id=?`,
 		revision,
 		update.BlockCount,
 		output,
-		update.State.Phase != core.SessionPhaseIdle,
+		update.State.Phase != types.SessionPhaseIdle,
 		wakeup,
 		node,
 	)

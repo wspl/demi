@@ -8,7 +8,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // TransitionHold holds file reservation, closed transfers and tree reservation.
@@ -46,7 +46,7 @@ func (h *TransitionHold) Release() {
 func HoldForTransition(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	tree *gates.Reservation,
 ) (*TransitionHold, error) {
 	hold := &TransitionHold{tree: tree}
@@ -72,7 +72,7 @@ func HoldForTransition(
 
 // Commit applies a held record change. Once commit starts it finishes with
 // shard-owned bookkeeping even if the requester leaves.
-func Commit(ctx context.Context, shard HostShard, id webapi.ConversationID, change database.RecordChange) error {
+func Commit(ctx context.Context, shard HostShard, id webapiproto.ConversationID, change database.RecordChange) error {
 	err := shard.Control().ChangeConversation(context.WithoutCancel(ctx), id, change)
 	switch {
 	case err == nil:
@@ -94,10 +94,10 @@ func CheckDestination(
 	ctx context.Context,
 	shard HostShard,
 	record database.ConversationRecord,
-	to webapi.ConversationTarget,
+	to webapiproto.ConversationTarget,
 ) error {
 	switch target := to.(type) {
-	case *webapi.ConversationTargetWorkspace:
+	case *webapiproto.ConversationTargetWorkspace:
 		workspace, found, err := shard.Control().Workspace(ctx, target.WorkspaceID)
 		if err != nil {
 			return &ChangeError{Kind: ChangeStorage, Cause: err}
@@ -105,15 +105,15 @@ func CheckDestination(
 		if !found || workspace.User != record.Owner {
 			return &ChangeError{Kind: ChangeWorkspaceNotFound}
 		}
-	case *webapi.ConversationTargetDevice:
+	case *webapiproto.ConversationTargetDevice:
 		device, ok, err := shard.Control().Device(ctx, target.DeviceID)
 		if err != nil {
 			return &ChangeError{Kind: ChangeStorage, Cause: err}
 		}
-		if !ok || device.User != record.Owner || device.Kind != webapi.DeviceKindUser {
+		if !ok || device.User != record.Owner || device.Kind != webapiproto.DeviceKindUser {
 			return &ChangeError{Kind: ChangeDeviceNotFound}
 		}
-	case *webapi.ConversationTargetCloud:
+	case *webapiproto.ConversationTargetCloud:
 	}
 	return nil
 }
@@ -125,7 +125,7 @@ func SwitchTarget(
 	ctx context.Context,
 	shard HostShard,
 	expected database.ConversationRecord,
-	to webapi.ConversationTarget,
+	to webapiproto.ConversationTarget,
 ) error {
 	ctx = context.WithoutCancel(ctx)
 	current, found, err := shard.Control().Conversation(ctx, expected.ID)
@@ -185,7 +185,12 @@ func Archive(ctx context.Context, shard HostShard, record database.ConversationR
 }
 
 // Detach releases the attached device and commits under a TransitionHold.
-func Detach(ctx context.Context, shard HostShard, record database.ConversationRecord, device webapi.DeviceID) error {
+func Detach(
+	ctx context.Context,
+	shard HostShard,
+	record database.ConversationRecord,
+	device webapiproto.DeviceID,
+) error {
 	ctx = context.WithoutCancel(ctx)
 	attached, err := shard.Control().AttachedHosts(ctx, record.ID)
 	if err != nil {
@@ -219,7 +224,12 @@ func ReleaseEverywhere(ctx context.Context, shard HostShard, record database.Con
 }
 
 // releaseOn performs lifecycle release only over an existing runner connection.
-func releaseOn(ctx context.Context, shard HostShard, conversation webapi.ConversationID, device webapi.DeviceID) {
+func releaseOn(
+	ctx context.Context,
+	shard HostShard,
+	conversation webapiproto.ConversationID,
+	device webapiproto.DeviceID,
+) {
 	link := shard.Devices().Link(device)
 	if link == nil {
 		return

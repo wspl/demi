@@ -19,10 +19,10 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/artifacts/artifactstest"
-	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // The generated-code check covers contractgen, not the embedded uv pin copy.
@@ -48,7 +48,7 @@ type imageFixture struct {
 func newImageFixture(t *testing.T) *imageFixture {
 	t.Helper()
 	a := appFixture(t)
-	target := commandwire.Targets[2]
+	target := commandproto.Targets[2]
 	runners := filepath.Join(a.Root, "runners")
 	nativeFixture(t, a.Root, "demi-runner", []string{target}, "runner")
 	if err := a.packageNative(
@@ -69,7 +69,7 @@ func newImageFixture(t *testing.T) *imageFixture {
 		),
 	)
 	writeFixture(t, inTree(root, "/usr/lib/os-release"), []byte("ID=ubuntu\nVERSION_ID=\"26.04\"\n"))
-	writeFixture(t, inTree(root, machinewire.InitPath), []byte("tini"))
+	writeFixture(t, inTree(root, machinemanagerproto.InitPath), []byte("tini"))
 	if err := os.MkdirAll(inTree(root, "/usr/local/bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -84,9 +84,9 @@ func newImageFixture(t *testing.T) *imageFixture {
 	program := filepath.Join(a.Root, "browser")
 	writeFixture(t, program, []byte("browser"))
 	release := filepath.Join(a.Root, "browser-release")
-	pin := browserop.BrowserRelease{
+	pin := browserproto.BrowserRelease{
 		Version: "153.0.8010.36",
-		Platforms: []browserop.ReleasePlatform{
+		Platforms: []browserproto.ReleasePlatform{
 			{
 				Target:     target,
 				URL:        "https://example.test/chrome.zip",
@@ -233,7 +233,7 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 	if err := f.app.packageImage(
 		t.Context(),
 		f.options,
-		machinewire.ArchitectureARM64,
+		machinemanagerproto.ArchitectureARM64,
 		f.pin,
 		f.client,
 		writer,
@@ -241,32 +241,35 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifestPath := filepath.Join(f.options.Output, "manifest.json")
-	manifest, err := machinewire.DecodeCloudImageManifest(readFixture(t, manifestPath))
+	manifest, err := machinemanagerproto.DecodeCloudImageManifest(readFixture(t, manifestPath))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if manifest.FormatVersion != 1 || manifest.OS != machinewire.OSLinux ||
-		manifest.Architecture != machinewire.ArchitectureARM64 ||
+	if manifest.FormatVersion != 1 || manifest.OS != machinemanagerproto.OSLinux ||
+		manifest.Architecture != machinemanagerproto.ArchitectureARM64 ||
 		manifest.Ubuntu != "26.04" {
 		t.Fatal(manifest)
 	}
 	if !reflect.DeepEqual(
 		manifest.Packages,
-		[]machinewire.InstalledPackage{{Name: "base-files", Version: "14ubuntu1"}, {Name: "tini", Version: "0.19.0-3"}},
+		[]machinemanagerproto.InstalledPackage{
+			{Name: "base-files", Version: "14ubuntu1"},
+			{Name: "tini", Version: "0.19.0-3"},
+		},
 	) {
 		t.Fatal(manifest.Packages)
 	}
 	if !reflect.DeepEqual(manifest.Runner, readRunner(t, f.options.Runners)) {
 		t.Fatal("runner release differs")
 	}
-	var releases []commandwire.PackageDescriptor
-	expectedExecutables := map[string]commandwire.PackageArtifact{}
+	var releases []commandproto.PackageDescriptor
+	expectedExecutables := map[string]commandproto.PackageArtifact{}
 	for path, data := range map[string][]byte{
-		machinewire.RunnerPath: []byte("runner " + commandwire.Targets[2]),
-		machinewire.InitPath:   []byte("tini"),
-		"/usr/local/bin/uv":    []byte("uv/uv"),
-		"/usr/local/bin/uvx":   []byte("uv/uvx"),
+		machinemanagerproto.RunnerPath: []byte("runner " + commandproto.Targets[2]),
+		machinemanagerproto.InitPath:   []byte("tini"),
+		"/usr/local/bin/uv":            []byte("uv/uv"),
+		"/usr/local/bin/uvx":           []byte("uv/uvx"),
 	} {
 		source := filepath.Join(t.TempDir(), "source")
 		writeFixture(t, source, data)
@@ -277,7 +280,7 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 		expectedExecutables[path] = digest
 	}
 	for i, directory := range f.options.Packages {
-		descriptor, err := commandwire.DecodePackageDescriptor(
+		descriptor, err := commandproto.DecodePackageDescriptor(
 			readFixture(t, filepath.Join(directory, "descriptor.json")),
 		)
 		if err != nil {
@@ -287,20 +290,20 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 		program := []string{"demi-browser", "demi-claude-code"}[i]
 		source := []byte("browser")
 		if i == 1 {
-			source = []byte("claude " + commandwire.Targets[2])
+			source = []byte("claude " + commandproto.Targets[2])
 		}
 		sum := sha256.Sum256(source)
-		artifact := commandwire.PackageArtifact{SHA256: hex.EncodeToString(sum[:]), Size: uint64(len(source))}
-		expectedExecutables[runnerwire.ArtifactsPath+"/"+artifact.SHA256+"/"+program] = artifact
+		artifact := commandproto.PackageArtifact{SHA256: hex.EncodeToString(sum[:]), Size: uint64(len(source))}
+		expectedExecutables[runnerproto.ArtifactsPath+"/"+artifact.SHA256+"/"+program] = artifact
 	}
-	resource := releases[0].Resources["chrome"].Targets[commandwire.Targets[2]]
+	resource := releases[0].Resources["chrome"].Targets[commandproto.Targets[2]]
 	chromeSource := filepath.Join(t.TempDir(), "chrome")
 	writeFixture(t, chromeSource, []byte("Chrome"))
 	chromeDigest, err := measureExecutable(t.Context(), chromeSource)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedExecutables[runnerwire.ArtifactsPath+"/"+resource.SHA256+"/"+resource.Entry] = chromeDigest
+	expectedExecutables[runnerproto.ArtifactsPath+"/"+resource.SHA256+"/"+resource.Entry] = chromeDigest
 	if !reflect.DeepEqual(manifest.Executables, expectedExecutables) {
 		t.Fatalf("executables: %v, want %v", manifest.Executables, expectedExecutables)
 	}
@@ -309,7 +312,7 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 	}
 	if !reflect.DeepEqual(
 		manifest.Tools,
-		[]machinewire.StandaloneTool{{Name: "uv", Version: f.pin.Version, SHA256: f.pin.ARM64.SHA256}},
+		[]machinemanagerproto.StandaloneTool{{Name: "uv", Version: f.pin.Version, SHA256: f.pin.ARM64.SHA256}},
 	) {
 		t.Fatal(manifest.Tools)
 	}
@@ -388,12 +391,12 @@ func TestImageEmbedsVerifiedInputsAndPublishesManagerManifest(t *testing.T) {
 			t.Fatal(path, err)
 		}
 	}
-	if _, ok := found[runnerwire.ArtifactsPath+"/"+resource.SHA256+"/"+artifacts.ReceiptFile]; !ok {
+	if _, ok := found[runnerproto.ArtifactsPath+"/"+resource.SHA256+"/"+artifacts.ReceiptFile]; !ok {
 		t.Fatal("resource receipt missing from archive")
 	}
 	entry, err := artifacts.Installed(
 		t.Context(),
-		filepath.Join(inTree(f.options.Root, runnerwire.ArtifactsPath), resource.SHA256),
+		filepath.Join(inTree(f.options.Root, runnerproto.ArtifactsPath), resource.SHA256),
 		artifacts.Archive{
 			Digest: artifacts.Digest{Size: resource.Size, SHA256: resource.SHA256},
 			Entry:  resource.Entry,
@@ -421,7 +424,7 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 	} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newImageFixture(t)
-			target := commandwire.Targets[2]
+			target := commandproto.Targets[2]
 			writer := fixtureImageArchive
 			switch scenario {
 			case "runner":
@@ -434,7 +437,7 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 			case "command":
 				writeFixture(t, filepath.Join(f.options.Packages[0], target, "demi-browser"), []byte("BROWSER"))
 			case "resource":
-				descriptor, err := commandwire.DecodePackageDescriptor(
+				descriptor, err := commandproto.DecodePackageDescriptor(
 					readFixture(t, filepath.Join(f.options.Packages[0], "descriptor.json")),
 				)
 				if err != nil {
@@ -454,11 +457,11 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 				f.options.Packages = append(f.options.Packages, f.options.Packages[0])
 			case "missing target":
 				path := filepath.Join(f.options.Packages[0], "descriptor.json")
-				descriptor, err := commandwire.DecodePackageDescriptor(readFixture(t, path))
+				descriptor, err := commandproto.DecodePackageDescriptor(readFixture(t, path))
 				if err != nil {
 					t.Fatal(err)
 				}
-				descriptor.Targets[commandwire.Targets[0]] = descriptor.Targets[target]
+				descriptor.Targets[commandproto.Targets[0]] = descriptor.Targets[target]
 				delete(descriptor.Targets, target)
 				data, err := record(descriptor)
 				if err != nil {
@@ -466,7 +469,7 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 				}
 				writeFixture(t, path, data)
 			case "tini symlink":
-				path := inTree(f.options.Root, machinewire.InitPath)
+				path := inTree(f.options.Root, machinemanagerproto.InitPath)
 				if err := os.Remove(path); err != nil {
 					t.Fatal(err)
 				}
@@ -477,7 +480,14 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 				writer = func(context.Context, string, string) error { return io.ErrUnexpectedEOF }
 			}
 
-			err := f.app.packageImage(t.Context(), f.options, machinewire.ArchitectureARM64, f.pin, f.client, writer)
+			err := f.app.packageImage(
+				t.Context(),
+				f.options,
+				machinemanagerproto.ArchitectureARM64,
+				f.pin,
+				f.client,
+				writer,
+			)
 			if err == nil {
 				t.Fatal("bad image accepted")
 			}

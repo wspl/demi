@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Relay refusals are translated to HTTP statuses by the edge.
@@ -37,7 +37,7 @@ func (e *UnreachableError) Error() string { return "the service is unreachable (
 type Connections struct {
 	// mu protects admission counts, lifecycle and worker registration only.
 	mu      sync.Mutex
-	live    map[webapi.ExposeID]*liveExpose
+	live    map[webapiproto.ExposeID]*liveExpose
 	workers map[*expiryWorker]struct{}
 	closed  bool
 }
@@ -58,20 +58,20 @@ type expiryWorker struct {
 // A caller defers Release immediately, including on device connect failure.
 type RelayAdmission struct {
 	exposes *Connections
-	id      webapi.ExposeID
+	id      webapiproto.ExposeID
 	live    *liveExpose
 	record  database.ExposeRecord
 	once    sync.Once
 }
 
-func (e *Connections) register(id webapi.ExposeID) (*RelayAdmission, error) {
+func (e *Connections) register(id webapiproto.ExposeID) (*RelayAdmission, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.closed {
 		return nil, ErrRemoved
 	}
 	if e.live == nil {
-		e.live = make(map[webapi.ExposeID]*liveExpose)
+		e.live = make(map[webapiproto.ExposeID]*liveExpose)
 	}
 	live := e.live[id]
 	if live == nil {
@@ -87,7 +87,7 @@ func (e *Connections) register(id webapi.ExposeID) (*RelayAdmission, error) {
 }
 
 // End interrupts all connections for the destroyed exposes.
-func (e *Connections) End(ids []webapi.ExposeID) {
+func (e *Connections) End(ids []webapiproto.ExposeID) {
 	e.mu.Lock()
 	var ends []context.CancelFunc
 	for _, id := range ids {
@@ -179,7 +179,7 @@ func (a *RelayAdmission) Release() {
 
 // AdmitRelay admits a connection up to its device. The shard opens the device
 // stream next, and releases admission on every failure to do so.
-func AdmitRelay(ctx context.Context, shard Shard, id webapi.ExposeID) (*RelayAdmission, error) {
+func AdmitRelay(ctx context.Context, shard Shard, id webapiproto.ExposeID) (*RelayAdmission, error) {
 	admission, err := shard.Exposes().register(id)
 	if err != nil {
 		return nil, err
@@ -279,7 +279,7 @@ func expireWhenDue(ctx context.Context, shard Shard, record database.ExposeRecor
 }
 
 // FirstExpiry waits until the earliest expiry, or until ctx is canceled.
-func FirstExpiry(ctx context.Context, clock core.Clock, first core.Timestamp) error {
+func FirstExpiry(ctx context.Context, clock types.Clock, first types.Timestamp) error {
 	now, err := clock.Now().Time()
 	if err != nil {
 		return fmt.Errorf("expose clock: %w", err)

@@ -11,13 +11,13 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/wspl/demi/internal/backend"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/provider/claudecode"
 	"github.com/wspl/demi/internal/provider/providertest"
-	"github.com/wspl/demi/internal/providers/claudecode"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // HostsHarness returns a harness on a scripted machine manager, and that manager.
@@ -67,15 +67,17 @@ type HostsProcessFamily struct {
 }
 
 // Credential requires an API key.
-func (HostsProcessFamily) Credential() webapi.CredentialKind { return webapi.CredentialKindAPIKey }
+func (HostsProcessFamily) Credential() webapiproto.CredentialKind {
+	return webapiproto.CredentialKindAPIKey
+}
 
 // Wires has no selectable protocol.
-func (HostsProcessFamily) Wires() []core.WireAPI { return nil }
+func (HostsProcessFamily) Wires() []types.WireAPI { return nil }
 
 // Provider accepts only the API-key credential.
-func (f HostsProcessFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
-	if _, ok := args.Credential.(*providers.APIKeyArgs); !ok {
-		return nil, providers.ErrWrongCredential
+func (f HostsProcessFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {
+	if _, ok := args.Credential.(*providerhost.APIKeyArgs); !ok {
+		return nil, providerhost.ErrWrongCredential
 	}
 	return hostsProcessProvider{test: f.Test}, nil
 }
@@ -83,7 +85,7 @@ func (f HostsProcessFamily) Provider(args providers.FamilyArgs) (provider.Provid
 // ProcessRuntime scripts the runtime over the supplied Cloud placement.
 func (f HostsProcessFamily) ProcessRuntime(
 	context.Context,
-	providers.FamilyArgs,
+	providerhost.FamilyArgs,
 	claudecode.Placement,
 ) (provider.Runtime, error) {
 	return providertest.NewScriptedRuntime(
@@ -100,19 +102,21 @@ func (hostsProcessProvider) Capabilities() provider.Capabilities {
 }
 
 // AuthStatus reports the fixture authentication state.
-func (hostsProcessProvider) AuthStatus(context.Context) core.AuthState { return &core.Authenticated{} }
+func (hostsProcessProvider) AuthStatus(context.Context) types.AuthState {
+	return &types.Authenticated{}
+}
 
 // RuntimeState reports that the fixture runtime is ready.
-func (hostsProcessProvider) RuntimeState() core.RuntimeState { return &core.RuntimeReady{} }
+func (hostsProcessProvider) RuntimeState() types.RuntimeState { return &types.RuntimeReady{} }
 
 // ListModels returns the scripted provider catalog.
-func (hostsProcessProvider) ListModels(context.Context) (core.ProviderModelList, error) {
-	return core.ProviderModelList{}, errors.New("the directory has no answer scripted")
+func (hostsProcessProvider) ListModels(context.Context) (types.ProviderModelList, error) {
+	return types.ProviderModelList{}, errors.New("the directory has no answer scripted")
 }
 
 // ReadFailure returns empty failure facts for the fixture provider.
-func (hostsProcessProvider) ReadFailure(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts {
-	return core.ProviderFailureFacts{}
+func (hostsProcessProvider) ReadFailure(*types.ProviderErrorDiagnostics, types.Timestamp) types.ProviderFailureFacts {
+	return types.ProviderFailureFacts{}
 }
 
 // Quota returns the fixture quota capability.

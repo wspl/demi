@@ -9,17 +9,17 @@ import (
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
-func shot(id string, images ...byte) core.Block {
-	output := make([]core.ToolResultContentBlock, 0, len(images))
+func shot(id string, images ...byte) types.Block {
+	output := make([]types.ToolResultContentBlock, 0, len(images))
 	for _, image := range images {
-		output = append(output, &core.ToolImage{Source: &core.ToolMediaRef{Ref: blob(image), MediaType: "image/png"}})
+		output = append(output, &types.ToolImage{Source: &types.ToolMediaRef{Ref: blob(image), MediaType: "image/png"}})
 	}
-	return &core.ToolCallBlock{
-		BlockID:   core.BlockID(id),
-		Timestamp: core.UnixEpoch,
+	return &types.ToolCallBlock{
+		BlockID:   types.BlockID(id),
+		Timestamp: types.UnixEpoch,
 		Selection: storetest.TestModel(),
 		ToolUseID: "toolu_" + id,
 		ToolName:  "shell_exec",
@@ -29,44 +29,44 @@ func shot(id string, images ...byte) core.Block {
 	}
 }
 
-func pasted(id string, image byte) core.Block {
-	return &core.UserBlock{
-		BlockID:   core.BlockID(id),
-		TurnID:    core.TurnID(id),
-		Timestamp: core.UnixEpoch,
+func pasted(id string, image byte) types.Block {
+	return &types.UserBlock{
+		BlockID:   types.BlockID(id),
+		TurnID:    types.TurnID(id),
+		Timestamp: types.UnixEpoch,
 		Selection: storetest.TestModel(),
-		Content: []core.UserContentBlock{
-			&core.UserImage{Source: &core.MediaSourceRef{Ref: blob(image), MediaType: "image/png"}},
+		Content: []types.UserContentBlock{
+			&types.UserImage{Source: &types.MediaSourceRef{Ref: blob(image), MediaType: "image/png"}},
 		},
 	}
 }
 
-func edited(id string, sides ...byte) core.Block {
-	edits := make([]core.EditSegment, 0)
+func edited(id string, sides ...byte) types.Block {
+	edits := make([]types.EditSegment, 0)
 	for i := 0; i+1 < len(sides); i++ {
 		edits = append(
 			edits,
-			core.EditSegment{Copies: &core.EditCopies{Original: blob(sides[i]), Modified: blob(sides[i+1])}},
+			types.EditSegment{Copies: &types.EditCopies{Original: blob(sides[i]), Modified: blob(sides[i+1])}},
 		)
 	}
-	files := []core.EditedFile{{Path: "/work/notes.md", Kind: "modified", Added: 1, Removed: 1, Edits: edits}}
-	return &core.ToolCallBlock{
-		BlockID:   core.BlockID(id),
-		Timestamp: core.UnixEpoch,
+	files := []types.EditedFile{{Path: "/work/notes.md", Kind: "modified", Added: 1, Removed: 1, Edits: edits}}
+	return &types.ToolCallBlock{
+		BlockID:   types.BlockID(id),
+		Timestamp: types.UnixEpoch,
 		Selection: storetest.TestModel(),
 		ToolUseID: "toolu_" + id,
 		ToolName:  "shell_exec",
 		Input:     "{}",
 		Status:    "completed",
-		Output:    []core.ToolResultContentBlock{},
-		View: &core.ShellView{
-			ShellToolView: core.ShellToolView{
+		Output:    []types.ToolResultContentBlock{},
+		View: &types.ShellView{
+			ShellToolView: types.ShellToolView{
 				Status:         "exited",
 				ShellID:        "shell-1",
-				CommandID:      core.CommandID("command-" + id),
+				CommandID:      types.CommandID("command-" + id),
 				ExitCode:       new(int32(0)),
 				RunningMs:      1,
-				Chunks:         []core.OutputChunk{},
+				Chunks:         []types.OutputChunk{},
 				Files:          &files,
 				FilesTruncated: new(false),
 			},
@@ -106,7 +106,7 @@ func assertIndex(t *testing.T, db *ConversationDB) []string {
 			"blocks",
 			"SELECT * FROM blocks ORDER BY node_id,idx",
 			func(r *storedRow) struct{} {
-				block := storedJSON(r, "block", core.DecodeBlock)
+				block := storedJSON(r, "block", types.DecodeBlock)
 				if r.err != nil {
 					return struct{}{}
 				}
@@ -173,14 +173,14 @@ func TestEveryBlockWriteKeepsBlobIndexDerived(t *testing.T) {
 		t,
 		tree.CreateNode(
 			ctx,
-			node("child", new(core.NodeID("root")), 2),
+			node("child", new(types.NodeID("root")), 2),
 			update(1, store.ChangedBlock{Index: 0, Block: shot("c1", 9)}),
 		),
 	)
 	require(t, tree.DeleteNode(ctx, "child"))
 	assertIndex(t, db)
 	before := facts(t, db)
-	now, err := core.TimestampFromMillisecond(40 * 24 * 60 * 60 * 1000)
+	now, err := types.TimestampFromMillisecond(40 * 24 * 60 * 60 * 1000)
 	require(t, err)
 	require(t, db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		count, err := RetireMedia(ctx, tx, blobs, transcript.Retirement{Now: now, Idle: true})
@@ -205,12 +205,12 @@ func TestEveryBlockWriteKeepsBlobIndexDerived(t *testing.T) {
 	equal(t, before, facts(t, db))
 }
 
-func waiting(due ...*core.Timestamp) store.CheckpointUpdate {
+func waiting(due ...*types.Timestamp) store.CheckpointUpdate {
 	u := update(0)
 	for i, at := range due {
 		u.State.Wakeups = append(
 			u.State.Wakeups,
-			store.ScheduledWakeup{ID: core.WakeupID(fmt.Sprintf("w%d", i)), DurationMS: 1000, DueAt: at},
+			store.ScheduledWakeup{ID: types.WakeupID(fmt.Sprintf("w%d", i)), DurationMS: 1000, DueAt: at},
 		)
 	}
 	return u
@@ -220,21 +220,21 @@ func TestEveryCommitReportsEarliestSavedWakeup(t *testing.T) {
 	tree, _, _ := testTree(t)
 	ctx := t.Context()
 	told := make([]WakeupDue, 0)
-	tree.saved = func(_ core.NodeID, due WakeupDue) { told = append(told, due) }
-	late, err := core.TimestampFromMillisecond(9000)
+	tree.saved = func(_ types.NodeID, due WakeupDue) { told = append(told, due) }
+	late, err := types.TimestampFromMillisecond(9000)
 	require(t, err)
-	early, err := core.TimestampFromMillisecond(5000)
+	early, err := types.TimestampFromMillisecond(5000)
 	require(t, err)
 	require(t, tree.CreateNode(ctx, node("root", nil, 0), waiting(&late, nil)))
 	root := tree.Session("root")
 	require(t, root.Save(ctx, waiting(&late), store.CommitGuard{}))
-	require(t, tree.CreateNode(ctx, node("child", new(core.NodeID("root")), 1), waiting(&early)))
+	require(t, tree.CreateNode(ctx, node("child", new(types.NodeID("root")), 1), waiting(&early)))
 	require(t, root.Save(ctx, waiting(), store.CommitGuard{}))
 	require(t, tree.DeleteNode(ctx, "child"))
 	running := waiting(&late)
-	running.State.Phase = core.SessionPhaseRunning
+	running.State.Phase = types.SessionPhaseRunning
 	require(t, root.Save(ctx, running, store.CommitGuard{}))
-	require(t, tree.CreateNode(ctx, node("child", new(core.NodeID("root")), 1), running))
+	require(t, tree.CreateNode(ctx, node("child", new(types.NodeID("root")), 1), running))
 	equal(
 		t,
 		[]WakeupDue{

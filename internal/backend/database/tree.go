@@ -8,7 +8,7 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // TreeStore is one conversation's agent tree in its database, with its owner's blobs.
@@ -26,7 +26,7 @@ func NewTreeStore(db *ConversationDB, blobs OwnerBlobs, saved Saved) *TreeStore 
 var _ store.Tree = (*TreeStore)(nil)
 
 // Node returns a node's record, and false when it does not exist.
-func (s *TreeStore) Node(ctx context.Context, id core.NodeID) (store.NodeRecord, bool, error) {
+func (s *TreeStore) Node(ctx context.Context, id types.NodeID) (store.NodeRecord, bool, error) {
 	var result *store.NodeRecord
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		record, found, err := nodeByID(ctx, tx, id)
@@ -45,7 +45,7 @@ func (s *TreeStore) Node(ctx context.Context, id core.NodeID) (store.NodeRecord,
 }
 
 // Children returns direct children in number order, live and archived alike.
-func (s *TreeStore) Children(ctx context.Context, parent core.NodeID) ([]store.NodeRecord, error) {
+func (s *TreeStore) Children(ctx context.Context, parent types.NodeID) ([]store.NodeRecord, error) {
 	var result []store.NodeRecord
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
@@ -91,12 +91,12 @@ func (s *TreeStore) CreateNode(ctx context.Context, record store.NodeRecord, ini
 
 // Session returns the node's checkpoint store. Saves also mark carried
 // child completions delivered in the same commit.
-func (s *TreeStore) Session(id core.NodeID) store.Session {
+func (s *TreeStore) Session(id types.NodeID) store.Session {
 	return &sessionStore{tree: s, node: id}
 }
 
 // CloseNode closes a node after its final checkpoint, initially undelivered.
-func (s *TreeStore) CloseNode(ctx context.Context, id core.NodeID, closed store.NodeClose) error {
+func (s *TreeStore) CloseNode(ctx context.Context, id types.NodeID, closed store.NodeClose) error {
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		phase, at, result, failure, err := closeColumns(&closed)
 		if err != nil {
@@ -126,10 +126,10 @@ func (s *TreeStore) CloseNode(ctx context.Context, id core.NodeID, closed store.
 // ReopenNode starts a new round and queues its reviving message atomically.
 func (s *TreeStore) ReopenNode(
 	ctx context.Context,
-	id core.NodeID,
+	id types.NodeID,
 	round uint64,
-	startedAt core.Timestamp,
-	message core.QueuedMessage,
+	startedAt types.Timestamp,
+	message types.QueuedMessage,
 ) error {
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		state, found, err := nodeState(ctx, tx, id)
@@ -139,7 +139,7 @@ func (s *TreeStore) ReopenNode(
 		if !found {
 			return missingNode(id)
 		}
-		state.Queue = []core.QueuedMessage{message}
+		state.Queue = []types.QueuedMessage{message}
 		document, err := encoded(state)
 		if err != nil {
 			return err
@@ -164,7 +164,7 @@ WHERE id=?`,
 }
 
 // MarkDelivered marks only the named current round delivered.
-func (s *TreeStore) MarkDelivered(ctx context.Context, id core.NodeID, round uint64) error {
+func (s *TreeStore) MarkDelivered(ctx context.Context, id types.NodeID, round uint64) error {
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		_, found, err := nodeByID(ctx, tx, id)
 		if err != nil {
@@ -179,7 +179,7 @@ func (s *TreeStore) MarkDelivered(ctx context.Context, id core.NodeID, round uin
 }
 
 // DeleteNode deletes the node and all descendants with all their rows.
-func (s *TreeStore) DeleteNode(ctx context.Context, id core.NodeID) error {
+func (s *TreeStore) DeleteNode(ctx context.Context, id types.NodeID) error {
 	var due WakeupDue
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		removed, err := SubtreeBlobs(ctx, tx, id)
@@ -203,7 +203,7 @@ func (s *TreeStore) DeleteNode(ctx context.Context, id core.NodeID) error {
 }
 
 // NextNumber records the following number before returning this one.
-func (s *TreeStore) NextNumber(ctx context.Context, sequence core.Sequence) (uint64, error) {
+func (s *TreeStore) NextNumber(ctx context.Context, sequence types.Sequence) (uint64, error) {
 	var number uint64
 	err := s.db.Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
@@ -214,7 +214,7 @@ func (s *TreeStore) NextNumber(ctx context.Context, sequence core.Sequence) (uin
 }
 
 // CommandOutput returns an ended command's output record, or nil if unknown.
-func (s *TreeStore) CommandOutput(ctx context.Context, command core.CommandID) (store.StoredOutput, error) {
+func (s *TreeStore) CommandOutput(ctx context.Context, command types.CommandID) (store.StoredOutput, error) {
 	var row CommandOutput
 	var found bool
 	_, err := s.db.Read(ctx, func(ctx context.Context, tx *sql.Tx) error {
@@ -257,11 +257,11 @@ func agentError(err error) error {
 	return err
 }
 
-func missingNode(id core.NodeID) error {
+func missingNode(id types.NodeID) error {
 	return fmt.Errorf("no node %s", id)
 }
 
-func (s *TreeStore) notify(id core.NodeID, due WakeupDue) {
+func (s *TreeStore) notify(id types.NodeID, due WakeupDue) {
 	if s.saved != nil {
 		s.saved(id, due)
 	}
@@ -282,7 +282,7 @@ func earliestWakeup(ctx context.Context, tx *sql.Tx) (WakeupDue, error) {
 }
 
 func stateWakeup(state store.CheckpointState) WakeupDue {
-	var earliest *core.Timestamp
+	var earliest *types.Timestamp
 	for _, wakeup := range state.Wakeups {
 		if wakeup.DueAt == nil {
 			return &WakeupAtStart{}

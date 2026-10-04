@@ -8,7 +8,7 @@ agent works in Demi unchanged. They come from two places: git repositories a
 user adds as sources and turns on skill by skill, and the repository a
 conversation works in. The agent sees the skills that are available, reads one
 when a task matches it, and runs its scripts with its ordinary shell tools.
-Skills are a [plugin](../architecture/plugins.md), `internal/plugins/skills`; nothing
+Skills are a [plugin](../architecture/plugins.md), `internal/plugin/skills`; nothing
 else in Demi knows them.
 
 For example, a user adds the source `vercel-labs/agent-skills` and turns on

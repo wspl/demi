@@ -16,11 +16,11 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 var runnerAvailability struct {
@@ -67,7 +67,7 @@ func runnerShell(
 	pages := hosttest.NewPages(false)
 	options := remotehost.NewEnvironmentOptions(
 		f.Host(),
-		func(context.Context) (commandwire.Context, error) { return hosttest.CommandContext(), nil },
+		func(context.Context) (commandproto.Context, error) { return hosttest.CommandContext(), nil },
 		pages,
 		&hosttest.CountingNumbers{},
 	)
@@ -113,7 +113,7 @@ func runnerExec(t *testing.T, s *remotehost.ShellEnvironment, script string, mil
 }
 
 // runnerEnd consumes page events until this command has settled.
-func runnerEnd(t *testing.T, s *remotehost.ShellEnvironment, p *hosttest.Pages, id core.CommandID) host.CommandStatus {
+func runnerEnd(t *testing.T, s *remotehost.ShellEnvironment, p *hosttest.Pages, id types.CommandID) host.CommandStatus {
 	t.Helper()
 	for {
 		status, err := s.Status(id)
@@ -140,7 +140,7 @@ func processOutput(t *testing.T, p *host.StartedProcess) ([]byte, host.ProcessEn
 			break
 		}
 		requirePipe(t, err)
-		if chunk.Stream == core.StreamKindStdout {
+		if chunk.Stream == types.StreamKindStdout {
 			data = append(data, chunk.Bytes...)
 		}
 	}
@@ -159,7 +159,7 @@ func patternedBytes(size int) []byte {
 }
 
 // wholeStream extracts the asserted stream without relying on inter-stream scheduling.
-func wholeStream(output host.WholeOutput, stream core.StreamKind) []byte {
+func wholeStream(output host.WholeOutput, stream types.StreamKind) []byte {
 	var data []byte
 	for _, record := range output.Records {
 		if record.Stream == stream {
@@ -171,12 +171,12 @@ func wholeStream(output host.WholeOutput, stream core.StreamKind) []byte {
 
 // wireTap observes runner events without polling process state or the filesystem.
 type wireTap struct {
-	input chan runnerwire.Outbound
-	seen  []runnerwire.Outbound
+	input chan runnerproto.Outbound
+	seen  []runnerproto.Outbound
 }
 
-func newWireTap() *wireTap { return &wireTap{input: make(chan runnerwire.Outbound, 1<<16)} }
-func (tap *wireTap) find(t *testing.T, match func(runnerwire.Outbound) bool) runnerwire.Outbound {
+func newWireTap() *wireTap { return &wireTap{input: make(chan runnerproto.Outbound, 1<<16)} }
+func (tap *wireTap) find(t *testing.T, match func(runnerproto.Outbound) bool) runnerproto.Outbound {
 	t.Helper()
 	for _, message := range tap.seen {
 		if match(message) {
@@ -196,12 +196,12 @@ func (tap *wireTap) find(t *testing.T, match func(runnerwire.Outbound) bool) run
 	}
 }
 
-func (tap *wireTap) pipeDone(t *testing.T, id string) *runnerwire.PipeDone {
+func (tap *wireTap) pipeDone(t *testing.T, id string) *runnerproto.PipeDone {
 	t.Helper()
-	return tap.find(t, func(message runnerwire.Outbound) bool {
-		done, ok := message.(*runnerwire.PipeDone)
+	return tap.find(t, func(message runnerproto.Outbound) bool {
+		done, ok := message.(*runnerproto.PipeDone)
 		return ok && done.PipeID == id
-	}).(*runnerwire.PipeDone)
+	}).(*runnerproto.PipeDone)
 }
 
 // Cost: real runner cases build once; each scenario uses process/pipe events and no wall-time polling.
@@ -223,7 +223,7 @@ func TestRunnerProcessReceivesEarlyInputAndUnreadInputDoesNotBlock(t *testing.T)
 	h := f.Host()
 	cat, err := h.Process().Spawn(t.Context(), host.SpawnRequest{Command: "/bin/cat"})
 	requirePipe(t, err)
-	data := make([]byte, runnerwire.StdinChunkBytes+1)
+	data := make([]byte, runnerproto.StdinChunkBytes+1)
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
@@ -250,7 +250,7 @@ func TestRunnerProcessReceivesEarlyInputAndUnreadInputDoesNotBlock(t *testing.T)
 	for !bytes.HasSuffix(ready, []byte("ready")) {
 		chunk, err := job.NextOutput(t.Context())
 		requirePipe(t, err)
-		if chunk.Stream == core.StreamKindStdout {
+		if chunk.Stream == types.StreamKindStdout {
 			ready = append(ready, chunk.Bytes...)
 		}
 	}
@@ -261,20 +261,20 @@ func TestRunnerProcessReceivesEarlyInputAndUnreadInputDoesNotBlock(t *testing.T)
 	for !bytes.HasSuffix(ready, []byte("ready")) {
 		chunk, err := p.Output.Next(t.Context())
 		requirePipe(t, err)
-		if chunk.Stream == core.StreamKindStdout {
+		if chunk.Stream == types.StreamKindStdout {
 			ready = append(ready, chunk.Bytes...)
 		}
 	}
 	for range 4 {
-		requirePipe(t, job.WriteStdin(t.Context(), make([]byte, runnerwire.StdinChunkBytes)))
-		requirePipe(t, p.Control.WriteStdin(t.Context(), make([]byte, runnerwire.StdinChunkBytes)))
+		requirePipe(t, job.WriteStdin(t.Context(), make([]byte, runnerproto.StdinChunkBytes)))
+		requirePipe(t, p.Control.WriteStdin(t.Context(), make([]byte, runnerproto.StdinChunkBytes)))
 	}
 	exists, err := h.FS().Exists(t.Context(), f.Home())
 	requirePipe(t, err)
 	if !exists {
 		t.Fatal("runner stopped serving")
 	}
-	requirePipe(t, job.Kill(t.Context(), runnerwire.SignalKill))
+	requirePipe(t, job.Kill(t.Context(), runnerproto.SignalKill))
 	requirePipe(t, p.Control.Kill(t.Context(), host.Kill))
 	_, end = processOutput(t, p)
 	if end.Kind != host.ProcessSignalled || end.Signal != "SIGKILL" {
@@ -282,10 +282,10 @@ func TestRunnerProcessReceivesEarlyInputAndUnreadInputDoesNotBlock(t *testing.T)
 	}
 	_, err = job.End(t.Context())
 	requirePipe(t, err)
-	exit := tap.find(t, func(message runnerwire.Outbound) bool {
-		exit, ok := message.(*runnerwire.JobExit)
+	exit := tap.find(t, func(message runnerproto.Outbound) bool {
+		exit, ok := message.(*runnerproto.JobExit)
 		return ok && exit.JobID == job.ID()
-	}).(*runnerwire.JobExit)
+	}).(*runnerproto.JobExit)
 	if exit.Signal == nil || *exit.Signal != "SIGKILL" {
 		t.Fatal(exit)
 	}
@@ -302,7 +302,7 @@ func TestRunnerJobStreamsAndDeviceEnvironment(t *testing.T) {
 		result.Stderr.Delta != "oops\n" {
 		t.Fatal(result)
 	}
-	for _, stream := range []core.StreamKind{core.StreamKindStdout, core.StreamKindStderr} {
+	for _, stream := range []types.StreamKind{types.StreamKindStdout, types.StreamKindStderr} {
 		var text string
 		for _, chunk := range result.Output.Chunks {
 			if chunk.Stream == stream {
@@ -310,7 +310,7 @@ func TestRunnerJobStreamsAndDeviceEnvironment(t *testing.T) {
 			}
 		}
 		want := "hello\n"
-		if stream == core.StreamKindStderr {
+		if stream == types.StreamKindStderr {
 			want = "oops\n"
 		}
 		if text != want {
@@ -451,8 +451,8 @@ func TestRunnerWholeOutputBeyondViewsAndJobCleanup(t *testing.T) {
 	result := runnerExec(t, s, "seq -f '%09g' 0 9999; echo done >&2", untilExit)
 	if result.State.Phase != host.Exited || result.State.ExitCode != 0 || result.Whole == nil ||
 		result.Stdout.Bytes != 100000 ||
-		string(wholeStream(*result.Whole.Output, core.StreamKindStdout)) != printed.String() ||
-		string(wholeStream(*result.Whole.Output, core.StreamKindStderr)) != "done\n" {
+		string(wholeStream(*result.Whole.Output, types.StreamKindStdout)) != printed.String() ||
+		string(wholeStream(*result.Whole.Output, types.StreamKindStderr)) != "done\n" {
 		t.Fatal("whole output changed")
 	}
 	link, err := f.Link(t.Context())
@@ -474,7 +474,7 @@ func TestRunnerWholeOutputBeyondViewsAndJobCleanup(t *testing.T) {
 	}
 	kept, err := s.ReadOutput(t.Context(), running.CommandID)
 	requirePipe(t, err)
-	if string(wholeStream(kept, core.StreamKindStdout)) != printed.String() {
+	if string(wholeStream(kept, types.StreamKindStdout)) != printed.String() {
 		t.Fatal("running kept output changed")
 	}
 	requirePipe(t, s.Abort(t.Context(), running.CommandID))
@@ -499,7 +499,7 @@ func TestRunnerLostConnectionEndsJobAndReconnects(t *testing.T) {
 	link.Disconnect("the connection was lost")
 	lost := runnerEnd(t, s, p, running.CommandID)
 	if lost.State.Phase != host.Exited || lost.State.ExitCode != 127 || lost.Whole == nil ||
-		!bytes.Contains(wholeStream(*lost.Whole.Output, core.StreamKindStderr), []byte("the connection was lost")) {
+		!bytes.Contains(wholeStream(*lost.Whole.Output, types.StreamKindStderr), []byte("the connection was lost")) {
 		t.Fatal(lost)
 	}
 	_, err = f.Link(t.Context())

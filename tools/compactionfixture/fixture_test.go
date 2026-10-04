@@ -6,7 +6,7 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestRecordedFixtureLoadsIntoAgentStore(t *testing.T) {
@@ -19,7 +19,7 @@ func TestRecordedFixtureLoadsIntoAgentStore(t *testing.T) {
 	}
 	memory := storetest.NewMemoryTreeStore()
 	initial := initialCheckpoint(f, flash(recallWindow))
-	if err := memory.CreateNode(t.Context(), store.RootRecord(root, core.SystemClock{}.Now()), initial); err != nil {
+	if err := memory.CreateNode(t.Context(), store.RootRecord(root, types.SystemClock{}.Now()), initial); err != nil {
 		t.Fatal(err)
 	}
 	checkpoint, found, err := memory.Session(root).Load(t.Context())

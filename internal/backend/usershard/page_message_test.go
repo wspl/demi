@@ -10,7 +10,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/wspl/demi/internal/backend/usershard"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // This uses one loopback socket, no model or timer wait.
@@ -42,7 +42,7 @@ func TestPageSocketRejectsOversizedMessage(t *testing.T) {
 		<-done
 	}()
 	// The peer may close while Write is completing; the receiving refusal is the assertion.
-	_ = socket.Write(t.Context(), websocket.MessageText, make([]byte, webapi.MaxPageMessageBytes+1))
+	_ = socket.Write(t.Context(), websocket.MessageText, make([]byte, webapiproto.MaxPageMessageBytes+1))
 	_, _, err = socket.Read(t.Context())
 	if err == nil || websocket.CloseStatus(err) != -1 {
 		t.Fatalf("oversized page message: %v", err)

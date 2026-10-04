@@ -13,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Conversations owns the user's slots and host-access workers. Its opaque state
@@ -23,7 +23,7 @@ type Conversations struct {
 	mu             *sync.Mutex // The owning shard mutex protects slots, closing and work admission.
 	ctx            context.Context
 	cancel         context.CancelFunc
-	slots          map[webapi.ConversationID]*ConversationSlot
+	slots          map[webapiproto.ConversationID]*ConversationSlot
 	closing        bool
 	work           sync.WaitGroup
 	closeOnce      sync.Once
@@ -39,13 +39,13 @@ func NewConversations(ctx context.Context, mu *sync.Mutex) *Conversations {
 		mu:     mu,
 		ctx:    lifetime,
 		cancel: cancel,
-		slots:  make(map[webapi.ConversationID]*ConversationSlot),
+		slots:  make(map[webapiproto.ConversationID]*ConversationSlot),
 		closed: make(chan struct{}),
 	}
 }
 
 // Slot returns the stable opaque slot of the canonical conversation ID.
-func (c *Conversations) Slot(id webapi.ConversationID) *ConversationSlot {
+func (c *Conversations) Slot(id webapiproto.ConversationID) *ConversationSlot {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if slot := c.slots[id]; slot != nil {
@@ -186,7 +186,7 @@ const (
 // ReachableHost names a bound device and the directory its shells start in.
 type ReachableHost struct {
 	Name   string
-	Device webapi.DeviceID
+	Device webapiproto.DeviceID
 	Path   string
 	Role   HostRole
 }
@@ -196,7 +196,7 @@ type ReachableHost struct {
 func OwnedConversation(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 ) (database.ConversationRecord, error) {
 	record, found, err := shard.Control().Conversation(ctx, id)
 	if err != nil {
@@ -214,8 +214,8 @@ func OwnedConversation(
 func WithHost[T any](
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
-	device *webapi.DeviceID,
+	id webapiproto.ConversationID,
+	device *webapiproto.DeviceID,
 	operation func(context.Context, *ConversationHost) (T, error),
 ) (T, error) {
 	admitted, err := AdmitHost(ctx, shard, id, device)
@@ -233,8 +233,8 @@ func WithHost[T any](
 func AdmitHost(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
-	device *webapi.DeviceID,
+	id webapiproto.ConversationID,
+	device *webapiproto.DeviceID,
 ) (*Admitted, error) {
 	owner := shard.Conversations()
 	done, err := owner.begin()
@@ -278,7 +278,7 @@ func ResolveTarget(
 	record database.ConversationRecord,
 ) (database.ExecutionTarget, error) {
 	switch target := record.Target.(type) {
-	case *webapi.ConversationTargetWorkspace:
+	case *webapiproto.ConversationTargetWorkspace:
 		workspace, found, err := shard.Control().Workspace(ctx, target.WorkspaceID)
 		if err != nil {
 			return nil, err
@@ -295,14 +295,14 @@ func ResolveTarget(
 			DeviceID:    workspace.Device,
 			Path:        workspace.Path,
 		}, nil
-	case *webapi.ConversationTargetDevice:
+	case *webapiproto.ConversationTargetDevice:
 		return &database.ExecutionDevice{DeviceID: target.DeviceID, Path: target.Path}, nil
-	case *webapi.ConversationTargetCloud:
+	case *webapiproto.ConversationTargetCloud:
 		device, found, err := shard.Control().ManagedDevice(ctx, record.Owner)
 		if err != nil {
 			return nil, err
 		}
-		var id *webapi.DeviceID
+		var id *webapiproto.DeviceID
 		home := "/home/demi"
 		if found {
 			id = &device.ID
@@ -320,7 +320,7 @@ func ResolveTarget(
 }
 
 // ConversationHosts lists the main Host followed by the attached Hosts.
-func ConversationHosts(ctx context.Context, shard HostShard, id webapi.ConversationID) ([]ReachableHost, error) {
+func ConversationHosts(ctx context.Context, shard HostShard, id webapiproto.ConversationID) ([]ReachableHost, error) {
 	record, err := OwnedConversation(ctx, shard, id)
 	if err != nil {
 		return nil, err
@@ -345,7 +345,7 @@ func (c *Conversations) begin() (func(), error) {
 
 // cloudHold keeps the production Cloud admission behind an internal test seam.
 type cloudHold struct {
-	device    webapi.DeviceID
+	device    webapiproto.DeviceID
 	operation remotehost.Admission
 	release   func()
 }
@@ -390,8 +390,8 @@ type selectedHost struct {
 func selectHost(
 	ctx context.Context,
 	shard HostShard,
-	id webapi.ConversationID,
-	named *webapi.DeviceID,
+	id webapiproto.ConversationID,
+	named *webapiproto.DeviceID,
 	allocate bool,
 ) (selectedHost, error) {
 	record, err := OwnedConversation(ctx, shard, id)
@@ -532,7 +532,7 @@ func prepareAdmittedHost(ctx context.Context, admitted *Admitted, selected selec
 	return nil
 }
 
-func namedHost(reachable []ReachableHost, named webapi.DeviceID) (ReachableHost, error) {
+func namedHost(reachable []ReachableHost, named webapiproto.DeviceID) (ReachableHost, error) {
 	for _, bound := range reachable {
 		if bound.Device == named {
 			return bound, nil
@@ -546,8 +546,8 @@ func admitHost(
 	waitCtx context.Context,
 	shard HostShard,
 	owner *Conversations,
-	id webapi.ConversationID,
-	device *webapi.DeviceID,
+	id webapiproto.ConversationID,
+	device *webapiproto.DeviceID,
 	done func(),
 ) (*Admitted, error) {
 	slot := owner.Slot(id)
@@ -567,7 +567,7 @@ func admitHost(
 			files.Release()
 			return nil, err
 		}
-		if selected.device.Kind == webapi.DeviceKindManaged &&
+		if selected.device.Kind == webapiproto.DeviceKindManaged &&
 			(admission == nil || admission.device != selected.device.ID) {
 			files.Release()
 			if admission != nil {
@@ -580,7 +580,7 @@ func admitHost(
 			}
 			continue
 		}
-		if selected.device.Kind != webapi.DeviceKindManaged && admission != nil {
+		if selected.device.Kind != webapiproto.DeviceKindManaged && admission != nil {
 			admission.release()
 			admission = nil
 		}

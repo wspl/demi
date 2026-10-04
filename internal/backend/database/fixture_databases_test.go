@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // The fixture databases were written through the backend's public API, not reconstructed SQL.
@@ -23,7 +23,7 @@ func TestFixtureDatabasesReadUnchanged(t *testing.T) {
 	directory := t.TempDir()
 	controlPath := filepath.Join(directory, "control.sqlite")
 	before := copyFixture("testdata/control.sqlite", controlPath)
-	control, err := OpenControl(t.Context(), controlPath, core.SystemClock{})
+	control, err := OpenControl(t.Context(), controlPath, types.SystemClock{})
 	require(t, err)
 	users, err := control.Users(t.Context())
 	require(t, err)
@@ -52,7 +52,7 @@ func TestFixtureDatabasesReadUnchanged(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		equal(t, []SequenceNext{{Sequence: core.SequenceCommand, Next: 2}}, sequences)
+		equal(t, []SequenceNext{{Sequence: types.SequenceCommand, Next: 2}}, sequences)
 		return nil
 	})
 	require(t, err)

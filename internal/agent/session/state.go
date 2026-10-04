@@ -7,8 +7,8 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // preparing is an internal turn stage; supervisors observe it as streaming.
@@ -27,8 +27,8 @@ const (
 
 type action struct {
 	kind          actionKind
-	turn          core.TurnID
-	content       []core.UserContentBlock
+	turn          types.TurnID
+	content       []types.UserContentBlock
 	answer        *ActionAnswer
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -39,7 +39,7 @@ type action struct {
 	startRevision uint64
 }
 type pendingInput struct {
-	steer  *core.PendingSteer
+	steer  *types.PendingSteer
 	agent  *store.PendingAgentInput
 	wakeup *store.ScheduledWakeup
 }
@@ -52,9 +52,9 @@ type editFlight struct {
 // coreState belongs to Session.mu. No callback, IO, gate acquisition, channel
 // operation or join may occur while this state is held. Effects run after unlock.
 type coreState struct {
-	id               core.NodeID
+	id               types.NodeID
 	cwd              string
-	model            core.ModelSelection
+	model            types.ModelSelection
 	log              *transcript.Log
 	commands         *store.CommandStateHistory
 	media            store.HeldMedia
@@ -84,9 +84,9 @@ type coreState struct {
 	nextListener     uint64
 	effects          []func()
 	delivering       bool
-	publishedQueue   []core.QueuedMessage
-	publishedSteers  []core.PendingSteer
-	publishedPhase   core.SessionPhase
+	publishedQueue   []types.QueuedMessage
+	publishedSteers  []types.PendingSteer
+	publishedPhase   types.SessionPhase
 	publishedStatus  Status
 }
 
@@ -191,22 +191,22 @@ func (s *Session) commitLocked() {
 		block := c.log.Find(id)
 		opens := false
 		switch b := block.(type) {
-		case *core.UserBlock, *core.ContextBlock:
+		case *types.UserBlock, *types.ContextBlock:
 			opens = true
-		case *core.WakeupBlock:
+		case *types.WakeupBlock:
 			opens = b.Placement == "new_turn"
-		case *core.SteerBlock,
-			*core.AgentMessageBlock,
-			*core.ResumeBlock,
-			*core.AbortBlock,
-			*core.ThinkingBlock,
-			*core.RedactedThinkingBlock,
-			*core.TextBlock,
-			*core.ResponseBlock,
-			*core.ToolCallBlock,
-			*core.ErrorBlock,
-			*core.CompactionBoundaryBlock,
-			*core.CompactionMarkerBlock:
+		case *types.SteerBlock,
+			*types.AgentMessageBlock,
+			*types.ResumeBlock,
+			*types.AbortBlock,
+			*types.ThinkingBlock,
+			*types.RedactedThinkingBlock,
+			*types.TextBlock,
+			*types.ResponseBlock,
+			*types.ToolCallBlock,
+			*types.ErrorBlock,
+			*types.CompactionBoundaryBlock,
+			*types.CompactionMarkerBlock:
 		}
 		if opens {
 			c.commands.Capture(id, store.BeforeUser, c.commands.Revision())
@@ -216,7 +216,7 @@ func (s *Session) commitLocked() {
 	s.eventLocked(&TranscriptChanged{Patches: batch.Patches, Revision: batch.Revision})
 }
 
-func (c *coreState) phaseLocked() core.SessionPhase {
+func (c *coreState) phaseLocked() types.SessionPhase {
 	if c.stage == Compacting {
 		return "compacting"
 	}
@@ -226,18 +226,18 @@ func (c *coreState) phaseLocked() core.SessionPhase {
 	return "idle"
 }
 
-func (c *coreState) queuedMessagesLocked() []core.QueuedMessage {
-	queue := []core.QueuedMessage{}
+func (c *coreState) queuedMessagesLocked() []types.QueuedMessage {
+	queue := []types.QueuedMessage{}
 	for _, a := range c.queue {
 		if a.kind == sendAction {
-			queue = append(queue, core.QueuedMessage{ID: a.turn, Content: a.content})
+			queue = append(queue, types.QueuedMessage{ID: a.turn, Content: a.content})
 		}
 	}
 	return queue
 }
 
-func (c *coreState) pendingSteersLocked() []core.PendingSteer {
-	steers := []core.PendingSteer{}
+func (c *coreState) pendingSteersLocked() []types.PendingSteer {
+	steers := []types.PendingSteer{}
 	for _, input := range c.inputs {
 		if input.steer != nil {
 			steers = append(steers, *input.steer)
@@ -307,7 +307,7 @@ func (c *coreState) steerableLocked() error {
 	return nil
 }
 
-func (c *coreState) latestSelectionLocked() core.ModelSelection {
+func (c *coreState) latestSelectionLocked() types.ModelSelection {
 	if c.waitingChange != nil {
 		return c.waitingChange.Model
 	}
@@ -336,11 +336,11 @@ func (s *Session) startNextLocked() {
 		blocks := c.log.Blocks()
 		stopped := false
 		if len(blocks) > 0 {
-			_, stopped = blocks[len(blocks)-1].(*core.AbortBlock)
+			_, stopped = blocks[len(blocks)-1].(*types.AbortBlock)
 		}
 		for _, input := range c.inputs {
 			if input.wakeup != nil || (input.agent != nil && !stopped) {
-				a = &action{kind: continueAction, turn: core.TurnID(s.deps.IDs.NextID())}
+				a = &action{kind: continueAction, turn: types.TurnID(s.deps.IDs.NextID())}
 				break
 			}
 		}
@@ -359,7 +359,7 @@ func (s *Session) startNextLocked() {
 
 // releaseMediaLocked retains only media the next request or waiting input needs.
 func (c *coreState) releaseMediaLocked() {
-	refs := map[core.BlobRef]struct{}{}
+	refs := map[types.BlobRef]struct{}{}
 	blocks := c.log.Blocks()
 	for _, b := range blocks[transcript.ReplayStart(blocks):] {
 		for _, r := range store.References(b) {
@@ -396,7 +396,7 @@ func (c *coreState) replaceSwitchLocked(slot **ModelSwitch, change ModelSwitch) 
 	*slot = &change
 }
 
-func (c *coreState) removeQueuedLocked(id core.TurnID) *action {
+func (c *coreState) removeQueuedLocked(id types.TurnID) *action {
 	for i, a := range c.queue {
 		if a.kind == sendAction && a.turn == id {
 			c.queue = slices.Delete(c.queue, i, i+1)

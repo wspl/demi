@@ -9,8 +9,8 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // These checks exercise session-owned policies without constructing the
@@ -68,12 +68,12 @@ func TestRetryPolicyBoundaries(t *testing.T) {
 
 func TestCompactionThresholdCountsCacheAndLimits(t *testing.T) {
 	c := DefaultCompactionConfig()
-	if c.reached(1000, core.TokenUsage{InputTokens: 399, CacheReadTokens: 400}) {
+	if c.reached(1000, types.TokenUsage{InputTokens: 399, CacheReadTokens: 400}) {
 		t.Fatal("compacted below threshold")
 	}
 	if !c.reached(
 		1000,
-		core.TokenUsage{InputTokens: 100, OutputTokens: 100, CacheReadTokens: 300, CacheWriteTokens: 300},
+		types.TokenUsage{InputTokens: 100, OutputTokens: 100, CacheReadTokens: 300, CacheWriteTokens: 300},
 	) {
 		t.Fatal("cache omitted")
 	}
@@ -93,7 +93,7 @@ func TestCompactionThresholdCountsCacheAndLimits(t *testing.T) {
 	}
 	c.ThresholdPercent = 0
 	if c.sizeReached(limits, transcript.RequestSize{Images: 5, Bytes: 1000}) ||
-		c.reached(1000, core.TokenUsage{InputTokens: 1000}) {
+		c.reached(1000, types.TokenUsage{InputTokens: 1000}) {
 		t.Fatal("disabled compaction triggered")
 	}
 }

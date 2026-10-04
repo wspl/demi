@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
@@ -33,7 +33,7 @@ type RPCInvocation struct {
 	CWD  string            `json:"cwd"`
 	Env  map[string]string `json:"env"`
 	// The invoking job's command context, from the backend's record of it.
-	Context commandwire.Context `json:"context"`
+	Context commandproto.Context `json:"context"`
 	// Whose command storage the invoking job reaches, which a job the
 	// handler starts elsewhere carries on; none for a job no agent started.
 	Caller *JobCaller `json:"caller,omitempty"`
@@ -124,13 +124,13 @@ type PortRequest interface{ portRequest() }
 // pipe: the reply waits until the caller has read enough.
 // +demi:variant PortRequest stdout
 type PortStdout struct {
-	Bytes core.B64Bytes `json:"bytes"`
+	Bytes types.B64Bytes `json:"bytes"`
 }
 
 // PortStderr writes standard error.
 // +demi:variant PortRequest stderr
 type PortStderr struct {
-	Bytes core.B64Bytes `json:"bytes"`
+	Bytes types.B64Bytes `json:"bytes"`
 }
 
 // The next chunk of a finite standard input.
@@ -168,7 +168,7 @@ type PortWritten struct{}
 // +demi:variant PortResponse input
 type PortInput struct {
 	// +demi:nullable
-	Bytes *core.B64Bytes `json:"bytes"`
+	Bytes *types.B64Bytes `json:"bytes"`
 }
 
 // PortStored carries a storage reply.

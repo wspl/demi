@@ -15,21 +15,21 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/remotehost/testdata/fixture"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // nativeLeaf binds the declared command name to a fixture operation.
-func nativeLeaf(n *remotehosttest.NativeFixture, name, operation string) declare.Leaf[declare.NativeOperation] {
-	return declare.Leaf[declare.NativeOperation]{
+func nativeLeaf(n *remotehosttest.NativeFixture, name, operation string) commanddecl.Leaf[commanddecl.NativeOperation] {
+	return commanddecl.Leaf[commanddecl.NativeOperation]{
 		Name:    name,
 		Summary: "The fixture's " + operation + ".",
-		Kind: &declare.Native[declare.NativeOperation]{
-			Binding: declare.NativeOperation{Package: n.Descriptor.ID, Operation: operation},
+		Kind: &commanddecl.Native[commanddecl.NativeOperation]{
+			Binding: commanddecl.NativeOperation{Package: n.Descriptor.ID, Operation: operation},
 		},
 	}
 }
@@ -38,7 +38,7 @@ func nativeLeaf(n *remotehosttest.NativeFixture, name, operation string) declare
 func nativeCommands(t *testing.T, n *remotehosttest.NativeFixture, name string) *host.CommandSet {
 	t.Helper()
 	where := nativeLeaf(n, "where", "where")
-	schema, err := declare.NewSchema(fixture.WhereArgsJSONSchema())
+	schema, err := commanddecl.NewSchema(fixture.WhereArgsJSONSchema())
 	requirePipe(t, err)
 	where.Input = schema
 	leaves := []host.Declared{host.Leaf(where, nil)}
@@ -57,7 +57,7 @@ func selectNative(
 	commands *host.CommandSet,
 ) *remotehost.CommandSelection {
 	t.Helper()
-	catalog, err := remotehost.NewCommandCatalog([]commandwire.PackageDescriptor{n.Descriptor}, n.Resolver())
+	catalog, err := remotehost.NewCommandCatalog([]commandproto.PackageDescriptor{n.Descriptor}, n.Resolver())
 	requirePipe(t, err)
 	selection, err := catalog.Select(commands)
 	requirePipe(t, err)
@@ -85,7 +85,7 @@ func firstLine(ctx context.Context, inv host.RPCInvocation, p host.RPCPort) (uin
 }
 
 // awaitStdout uses page publications as the command-ready event.
-func awaitStdout(t *testing.T, s *remotehost.ShellEnvironment, p *hosttest.Pages, id core.CommandID, text string) {
+func awaitStdout(t *testing.T, s *remotehost.ShellEnvironment, p *hosttest.Pages, id types.CommandID, text string) {
 	t.Helper()
 	for {
 		status, err := s.Status(id)
@@ -201,7 +201,7 @@ func nextHint(t *testing.T, tap *wireTap, link *remotehost.Link, want *string) {
 		select {
 		case message := <-tap.input:
 			tap.seen = append(tap.seen, message)
-			hint, ok := message.(*runnerwire.JobRunningHint)
+			hint, ok := message.(*runnerproto.JobRunningHint)
 			if ok && reflect.DeepEqual(hint.Hint, want) {
 				requirePipe(t, link.Sync(t.Context()))
 				return
@@ -219,10 +219,10 @@ func TestRunnerCommandShowsLeafHintUntilLeafEnds(t *testing.T) {
 	requirePipe(t, base.Stop(t.Context()))
 	nativeHint := nativeLeaf(native, "native", "first")
 	nativeHint.RunningHint = new("native: do not poll")
-	rpc := declare.Leaf[declare.NativeOperation]{
+	rpc := commanddecl.Leaf[commanddecl.NativeOperation]{
 		Name:        "rpc",
 		Summary:     "Wait for a line on the backend.",
-		Kind:        &declare.RPC[declare.NativeOperation]{},
+		Kind:        &commanddecl.RPC[commanddecl.NativeOperation]{},
 		RunningHint: new("rpc: do not poll"),
 	}
 	commands := &host.CommandSet{}
@@ -309,7 +309,7 @@ func TestRunnerCommandShowsLeafHintUntilLeafEnds(t *testing.T) {
 	}
 drained:
 	for _, message := range tap.seen[before:] {
-		if hint, ok := message.(*runnerwire.JobRunningHint); ok && hint.Hint != nil {
+		if hint, ok := message.(*runnerproto.JobRunningHint); ok && hint.Hint != nil {
 			t.Fatal("hint from help, error, group, or plain leaf", hint)
 		}
 	}

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 	"go.uber.org/goleak"
 )
 
@@ -32,22 +32,22 @@ func newPeer(t *testing.T, conn net.Conn) *managerPeer {
 	return &managerPeer{t: t, conn: conn, reader: bufio.NewReader(conn)}
 }
 
-func (p *managerPeer) request() machinewire.MachineRequest {
+func (p *managerPeer) request() machinemanagerproto.MachineRequest {
 	p.t.Helper()
 	line, err := p.reader.ReadBytes('\n')
 	if err != nil {
 		p.t.Fatal(err)
 	}
-	request, err := machinewire.DecodeRequest(line[:len(line)-1])
+	request, err := machinemanagerproto.DecodeRequest(line[:len(line)-1])
 	if err != nil {
 		p.t.Fatal(err)
 	}
 	return request
 }
 
-func (p *managerPeer) write(response machinewire.MachineResponse) {
+func (p *managerPeer) write(response machinemanagerproto.MachineResponse) {
 	p.t.Helper()
-	line, err := machinewire.EncodeLine(response)
+	line, err := machinemanagerproto.EncodeLine(response)
 	if err != nil {
 		p.t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func (p *managerPeer) write(response machinewire.MachineResponse) {
 
 func (p *managerPeer) ok(id, result string) {
 	p.t.Helper()
-	p.write(&machinewire.OK{ID: id, Result: []byte(result)})
+	p.write(&machinemanagerproto.OK{ID: id, Result: []byte(result)})
 }
 
 func (p *managerPeer) closed() {
@@ -70,7 +70,7 @@ func (p *managerPeer) closed() {
 }
 
 // scriptedClient replaces only dialing; real manager framing and dispatch run inside the bubble.
-func scriptedClient(t *testing.T) (*Client, <-chan webapi.DeviceID, <-chan net.Conn) {
+func scriptedClient(t *testing.T) (*Client, <-chan webapiproto.DeviceID, <-chan net.Conn) {
 	t.Helper()
 	c, deaths := NewClient(t.Context(), "scripted")
 	connections := make(chan net.Conn)
@@ -98,7 +98,11 @@ type managerResult[T any] struct {
 }
 
 // managerCall starts one caller whose completion the test receives and joins.
-func managerCall[T any](ctx context.Context, c *Client, params machinewire.Operation[T]) <-chan managerResult[T] {
+func managerCall[T any](
+	ctx context.Context,
+	c *Client,
+	params machinemanagerproto.Operation[T],
+) <-chan managerResult[T] {
 	result := make(chan managerResult[T], 1)
 	go func() {
 		v, err := Call(ctx, c, params)
@@ -116,14 +120,14 @@ func TestClientMatchesRepliesByID(t *testing.T) {
 			t.Fatal("dialed before first call")
 		default:
 		}
-		base := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
-		image := managerCall(t.Context(), c, machinewire.ImageStateParams{DeviceID: "dev-1"})
+		base := managerCall(t.Context(), c, machinemanagerproto.CurrentBaseVersionParams{})
+		image := managerCall(t.Context(), c, machinemanagerproto.ImageStateParams{DeviceID: "dev-1"})
 		peer := newPeer(t, <-connections)
 		first, second := peer.request(), peer.request()
 		if first.ID != "1" || second.ID != "2" {
 			t.Fatalf("request IDs: %s, %s", first.ID, second.ID)
 		}
-		for _, request := range []machinewire.MachineRequest{second, first} {
+		for _, request := range []machinemanagerproto.MachineRequest{second, first} {
 			if request.Call.Name() == "current_base_version" {
 				peer.ok(request.ID, `"base-1"`)
 			} else {
@@ -149,10 +153,10 @@ func TestClientMatchesRepliesByID(t *testing.T) {
 func TestClientFailureKeepsConnectionUsable(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c, _, connections := scriptedClient(t)
-		failing := managerCall(t.Context(), c, machinewire.HibernateParams{DeviceID: "dev-9"})
+		failing := managerCall(t.Context(), c, machinemanagerproto.HibernateParams{DeviceID: "dev-9"})
 		peer := newPeer(t, <-connections)
 		request := peer.request()
-		peer.write(&machinewire.ErrorResponse{ID: request.ID, Message: "no such machine"})
+		peer.write(&machinemanagerproto.ErrorResponse{ID: request.ID, Message: "no such machine"})
 		if err := (<-failing).err; err == nil || err.Error() != "no such machine" {
 			t.Fatalf("failure: %v", err)
 		}
@@ -161,13 +165,13 @@ func TestClientFailureKeepsConnectionUsable(t *testing.T) {
 		); err != nil {
 			t.Fatal(err)
 		}
-		answered := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
+		answered := managerCall(t.Context(), c, machinemanagerproto.CurrentBaseVersionParams{})
 		request = peer.request()
 		peer.ok(request.ID, `"base-1"`)
 		if result := <-answered; result.err != nil || result.value != "base-1" {
 			t.Fatalf("result: %+v", result)
 		}
-		odd := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
+		odd := managerCall(t.Context(), c, machinemanagerproto.CurrentBaseVersionParams{})
 		peer.ok(peer.request().ID, "7")
 		if err := (<-odd).err; err == nil ||
 			!strings.HasPrefix(
@@ -185,10 +189,10 @@ func TestClientDeathAndDisconnect(t *testing.T) {
 		if err := c.Disconnect(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		first := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
+		first := managerCall(t.Context(), c, machinemanagerproto.CurrentBaseVersionParams{})
 		peer := newPeer(t, <-connections)
 		request := peer.request()
-		peer.write(&machinewire.Death{DeviceID: "dev-1"})
+		peer.write(&machinemanagerproto.Death{DeviceID: "dev-1"})
 		peer.ok(request.ID, `"base-1"`)
 		if result := <-first; result.err != nil {
 			t.Fatal(result.err)
@@ -207,7 +211,7 @@ func TestClientDeathAndDisconnect(t *testing.T) {
 			t.Fatal(err)
 		}
 		peer.closed()
-		again := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
+		again := managerCall(t.Context(), c, machinemanagerproto.CurrentBaseVersionParams{})
 		peer = newPeer(t, <-connections)
 		request = peer.request()
 		if request.Call.Name() != "current_base_version" {
@@ -236,7 +240,7 @@ func TestClientDeathAndDisconnect(t *testing.T) {
 		if _, err := Call(
 			t.Context(),
 			c,
-			machinewire.CurrentBaseVersionParams{},
+			machinemanagerproto.CurrentBaseVersionParams{},
 		); err == nil ||
 			!strings.HasPrefix(err.Error(), "Machine manager unavailable during current_base_version: ") {
 			t.Fatalf("call after close: %v", err)
@@ -247,15 +251,15 @@ func TestClientDeathAndDisconnect(t *testing.T) {
 func TestClientDropFailsPendingAndReconnects(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c, _, connections := scriptedClient(t)
-		first := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
-		second := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
+		first := managerCall(t.Context(), c, machinemanagerproto.CurrentBaseVersionParams{})
+		second := managerCall(t.Context(), c, machinemanagerproto.CurrentBaseVersionParams{})
 		peer := newPeer(t, <-connections)
 		peer.request()
 		peer.request()
 		if err := peer.conn.Close(); err != nil {
 			t.Fatal(err)
 		}
-		for _, result := range []managerResult[machinewire.BaseVersion]{<-first, <-second} {
+		for _, result := range []managerResult[machinemanagerproto.BaseVersion]{<-first, <-second} {
 			if result.err == nil ||
 				!strings.HasPrefix(result.err.Error(), "Machine manager unavailable during current_base_version: ") {
 				t.Fatalf("drop: %v", result.err)
@@ -267,13 +271,13 @@ func TestClientDropFailsPendingAndReconnects(t *testing.T) {
 		if _, err := Call(
 			t.Context(),
 			c,
-			machinewire.CurrentBaseVersionParams{},
+			machinemanagerproto.CurrentBaseVersionParams{},
 		); !errors.Is(err, io.ErrClosedPipe) ||
 			!strings.HasPrefix(err.Error(), "Machine manager unavailable during current_base_version: ") {
 			t.Fatalf("dial failure: %v", err)
 		}
 		c.dial = dial
-		later := managerCall(t.Context(), c, machinewire.CurrentBaseVersionParams{})
+		later := managerCall(t.Context(), c, machinemanagerproto.CurrentBaseVersionParams{})
 		peer = newPeer(t, <-connections)
 		request := peer.request()
 		peer.ok(request.ID, `"base-1"`)
@@ -287,7 +291,7 @@ func TestClientCanceledCallerAndCloseDuringBlockedWrite(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c, _, connections := scriptedClient(t)
 		ctx, cancel := context.WithCancel(t.Context())
-		pending := managerCall(ctx, c, machinewire.CurrentBaseVersionParams{})
+		pending := managerCall(ctx, c, machinemanagerproto.CurrentBaseVersionParams{})
 		peer := newPeer(t, <-connections)
 		synctest.Wait() // The supervisor is blocked writing to the unread pipe.
 		cancel()
@@ -333,12 +337,14 @@ func TestClientUnixSocket(t *testing.T) {
 			t.Error("no request")
 			return
 		}
-		request, err := machinewire.DecodeRequest(scanner.Bytes())
+		request, err := machinemanagerproto.DecodeRequest(scanner.Bytes())
 		if err != nil {
 			t.Error(err)
 			return
 		}
-		line, err := machinewire.EncodeLine(&machinewire.OK{ID: request.ID, Result: []byte(`"socket-base"`)})
+		line, err := machinemanagerproto.EncodeLine(
+			&machinemanagerproto.OK{ID: request.ID, Result: []byte(`"socket-base"`)},
+		)
 		if err != nil {
 			t.Error(err)
 			return
@@ -347,7 +353,7 @@ func TestClientUnixSocket(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	result, err := Call(t.Context(), c, machinewire.CurrentBaseVersionParams{})
+	result, err := Call(t.Context(), c, machinemanagerproto.CurrentBaseVersionParams{})
 	workers.Wait()
 	if err != nil || result != "socket-base" {
 		t.Fatalf("socket call: %s, %v", result, err)

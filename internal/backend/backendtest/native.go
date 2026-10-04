@@ -13,12 +13,12 @@ import (
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
-	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeop"
-	"github.com/wspl/demi/internal/cmdpkg/file/fileop"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/commandpackage/file/fileproto"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/programtest"
 )
@@ -28,7 +28,7 @@ import (
 // Share this fixture across harnesses that use the same development release.
 type Built struct {
 	// Descriptor describes the built native package and its target artifacts.
-	Descriptor commandwire.PackageDescriptor
+	Descriptor commandproto.PackageDescriptor
 	// Program is the path to the built native executable.
 	Program   string
 	directory string
@@ -50,15 +50,15 @@ func BuildPackage(ctx context.Context, t testing.TB, program string) (*Built, er
 	var fixture *remotehosttest.NativeFixture
 	switch program {
 	case "demi-file":
-		fixture, err = remotehosttest.NewNativeFixture(ctx, fileop.Package, path, fileop.Operations())
+		fixture, err = remotehosttest.NewNativeFixture(ctx, fileproto.Package, path, fileproto.Operations())
 	case "demi-browser":
-		fixture, err = remotehosttest.NewNativeFixture(ctx, browserop.Package, path, browserop.OperationNames())
+		fixture, err = remotehosttest.NewNativeFixture(ctx, browserproto.Package, path, browserproto.OperationNames())
 	case "demi-claude-code":
 		var names []string
-		for _, operation := range claudecodeop.Operations() {
+		for _, operation := range claudecodeproto.Operations() {
 			names = append(names, string(operation))
 		}
-		fixture, err = remotehosttest.NewNativeFixture(ctx, claudecodeop.Package, path, names)
+		fixture, err = remotehosttest.NewNativeFixture(ctx, claudecodeproto.Package, path, names)
 	case "demi-native-fixture":
 		fixture, err = remotehosttest.LoadNativeFixture(ctx)
 	default:
@@ -164,7 +164,7 @@ func (h *Harness) UseNativeFixture(ctx context.Context, built *Built) error {
 	if err := h.UsePackage(ctx, built); err != nil {
 		return err
 	}
-	schema, err := declare.NewSchema([]byte(`{}`))
+	schema, err := commanddecl.NewSchema([]byte(`{}`))
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func (h *Harness) UseNativeFixture(ctx context.Context, built *Built) error {
 			streams,
 			plugin.Stream{
 				Name:      name,
-				Operation: declare.NativeOperation{Package: built.Descriptor.ID, Operation: name},
+				Operation: commanddecl.NativeOperation{Package: built.Descriptor.ID, Operation: name},
 				Receives:  plugin.Schema{Schema: schema},
 				Sends:     plugin.Schema{Schema: schema},
 			},

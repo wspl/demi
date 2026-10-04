@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 
 func (s *Shard) executionContext(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	seen []string,
 ) (*string, error) {
 	control := s.Control()

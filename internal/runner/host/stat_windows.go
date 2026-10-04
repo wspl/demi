@@ -3,10 +3,10 @@ package host
 import (
 	"os"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
-func nativeStat(info os.FileInfo, result *runnerwire.FileStat) {
+func nativeStat(info os.FileInfo, result *runnerproto.FileStat) {
 	mode := uint32(0o100000)
 	if info.IsDir() {
 		mode = 0o040000 | 0o111

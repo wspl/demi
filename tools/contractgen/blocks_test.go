@@ -11,7 +11,7 @@ import (
 	contracts "github.com/wspl/demi/tools/contractgen/testdata/blocks"
 )
 
-const fixtureDir = "../../internal/core/testdata/"
+const fixtureDir = "../../internal/types/testdata/"
 
 // fixtureByID returns the fixture block with this id, which a refusal case mutates.
 func fixtureByID(t *testing.T, fixtures []json.RawMessage, id string) map[string]any {
@@ -71,7 +71,7 @@ func mutate(t *testing.T, root map[string]any, pointer string, value any, remove
 }
 
 // The generated transcript decoder's edge cases, on blocks of the stored
-// corpus that internal/core tests against the real types. In-memory fixture
+// corpus that internal/types tests against the real types. In-memory fixture
 // reads only; budget one second.
 func TestBoundaryEdges(t *testing.T) {
 	raw, err := os.ReadFile(fixtureDir + "blocks.json")

@@ -11,9 +11,9 @@ import (
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 type dispatchHost struct{ host.Host }
@@ -49,7 +49,7 @@ type dispatchEnvironment struct {
 	status   host.CommandStatus
 	stdin    string
 	aborted  bool
-	released []core.CommandID
+	released []types.CommandID
 	failure  error
 }
 
@@ -58,22 +58,22 @@ func (e *dispatchEnvironment) Exec(_ context.Context, request host.ExecRequest) 
 	return e.status, e.failure
 }
 
-func (e *dispatchEnvironment) Status(_ core.CommandID) (host.CommandStatus, error) {
+func (e *dispatchEnvironment) Status(_ types.CommandID) (host.CommandStatus, error) {
 	return e.status, e.failure
 }
 
-func (e *dispatchEnvironment) Write(_ context.Context, _ core.CommandID, stdin []byte) error {
+func (e *dispatchEnvironment) Write(_ context.Context, _ types.CommandID, stdin []byte) error {
 	e.stdin = string(stdin)
 	return e.failure
 }
 
-func (e *dispatchEnvironment) Abort(_ context.Context, _ core.CommandID) error {
+func (e *dispatchEnvironment) Abort(_ context.Context, _ types.CommandID) error {
 	e.aborted = true
 	e.status.State.Phase = host.Aborted
 	return e.failure
 }
 
-func (e *dispatchEnvironment) ReleaseCommand(_ context.Context, command core.CommandID) bool {
+func (e *dispatchEnvironment) ReleaseCommand(_ context.Context, command types.CommandID) bool {
 	e.released = append(e.released, command)
 	return true
 }
@@ -173,43 +173,43 @@ func TestPromptAndPageHistory(t *testing.T) {
 			RunningMs: 2,
 			State:     host.PageState{Phase: phase, ExitCode: 7},
 		}
-		frame := ShellOutput(nil, view).(*framewire.ShellOutputFrame)
+		frame := ShellOutput(nil, view).(*conversationproto.ShellOutputFrame)
 		if frame.Status.Command().CommandID != "17" || frame.Status.Command().Tail != "tail" {
 			t.Fatal("page view lost")
 		}
 		switch status := frame.Status.(type) {
-		case *framewire.RunningStatus:
+		case *conversationproto.RunningStatus:
 			if phase != host.Running {
 				t.Fatal("wrong running state")
 			}
-		case *framewire.ExitedStatus:
+		case *conversationproto.ExitedStatus:
 			if phase != host.Exited || status.ExitCode != 7 {
 				t.Fatal("wrong exit state")
 			}
-		case *framewire.AbortedStatus:
+		case *conversationproto.AbortedStatus:
 			if phase != host.Aborted {
 				t.Fatal("wrong abort state")
 			}
 		}
 	}
-	blocks := []core.Block{
-		&core.ToolCallBlock{
-			View: &core.ShellView{
-				ShellToolView: core.ShellToolView{CommandID: "17", Status: core.ShellViewStatusRunning},
+	blocks := []types.Block{
+		&types.ToolCallBlock{
+			View: &types.ShellView{
+				ShellToolView: types.ShellToolView{CommandID: "17", Status: types.ShellViewStatusRunning},
 			},
 		},
-		&core.ToolCallBlock{
-			View: &core.ShellView{
-				ShellToolView: core.ShellToolView{CommandID: "18", Status: core.ShellViewStatusRunning},
+		&types.ToolCallBlock{
+			View: &types.ShellView{
+				ShellToolView: types.ShellToolView{CommandID: "18", Status: types.ShellViewStatusRunning},
 			},
 		},
-		&core.ToolCallBlock{
-			View: &core.ShellView{
-				ShellToolView: core.ShellToolView{CommandID: "17", Status: core.ShellViewStatusExited},
+		&types.ToolCallBlock{
+			View: &types.ShellView{
+				ShellToolView: types.ShellToolView{CommandID: "17", Status: types.ShellViewStatusExited},
 			},
 		},
 	}
-	if diff := cmp.Diff([]core.CommandID{"18"}, StoredRunningCommands(blocks)); diff != "" {
+	if diff := cmp.Diff([]types.CommandID{"18"}, StoredRunningCommands(blocks)); diff != "" {
 		t.Fatal(diff)
 	}
 }
@@ -219,13 +219,13 @@ type failedNumbers struct {
 	failure error
 }
 
-func (s failedNumbers) NextNumber(context.Context, core.Sequence) (uint64, error) {
+func (s failedNumbers) NextNumber(context.Context, types.Sequence) (uint64, error) {
 	return 0, s.failure
 }
 
 func TestStoreNumbersPreservesHostFailureAndCause(t *testing.T) {
 	cause := errors.New("store unavailable")
-	_, err := (StoreNumbers{Store: failedNumbers{failure: cause}}).Next(t.Context(), core.SequenceCommand)
+	_, err := (StoreNumbers{Store: failedNumbers{failure: cause}}).Next(t.Context(), types.SequenceCommand)
 	var failure *host.Error
 	if !errors.Is(err, cause) || !errors.As(err, &failure) || failure.Kind != host.Failed ||
 		err.Error() != cause.Error() {

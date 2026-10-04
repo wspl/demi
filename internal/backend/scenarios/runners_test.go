@@ -1,0 +1,811 @@
+package scenarios_test
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/google/go-cmp/cmp"
+	"github.com/wspl/demi/internal/backend/backendtest"
+	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
+)
+
+// rawHostRunner speaks only the runner protocol, leaving backend admission real.
+type rawHostRunner struct {
+	t      *testing.T
+	ctx    context.Context
+	socket *websocket.Conn
+}
+
+func connectHostRunner(t *testing.T, b *backendtest.TestBackend) *rawHostRunner {
+	t.Helper()
+	socket, response, err := websocket.Dial(t.Context(), b.WSURL("/api/runner"), nil)
+	if response != nil && response.Body != nil {
+		_ = response.Body.Close()
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = socket.CloseNow() }) // Closing an already closed fixture socket is harmless.
+	return &rawHostRunner{t, t.Context(), socket}
+}
+
+func (r *rawHostRunner) send(message runnerproto.Outbound) {
+	r.t.Helper()
+	data, err := runnerproto.Encode(message)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if err := r.socket.Write(r.ctx, websocket.MessageBinary, data); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
+// next reads the backend's next runner message, or nil once the backend closed the socket.
+func (r *rawHostRunner) next() runnerproto.Inbound {
+	r.t.Helper()
+	kind, data, err := r.socket.Read(r.ctx)
+	if err != nil {
+		// The backend closed the socket; the scenario's assertions say whether it should have.
+		return nil
+	}
+	if kind != websocket.MessageBinary {
+		r.t.Fatalf("unexpected runner frame: %v", kind)
+	}
+	message, err := runnerproto.DecodeInbound(data)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return message
+}
+
+func runnerHello(protocol uint32, token string, managed *bool) *runnerproto.Hello {
+	h := &runnerproto.Hello{
+		Protocol: protocol,
+		Runner: runnerproto.Info{
+			Name:     "raw",
+			Platform: runnerproto.RunnerPlatformLinux,
+			Version:  "0",
+			Identity: runnerproto.HostIdentity{UID: 1, GID: 1, Hostname: "raw", HomeDir: "/home/raw"},
+			Managed:  managed,
+		},
+	}
+	if token != "" {
+		v := runnerproto.DeviceToken(token)
+		h.DeviceToken = &v
+	}
+	return h
+}
+
+func (s *hostScenario) stoppedPair() (*backendtest.Paired, string) {
+	s.t.Helper()
+	paired := s.pair("laptop")
+	token, err := paired.Token(s.ctx)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	if err := paired.Runner.Stop(s.ctx); err != nil {
+		s.t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, paired.ID(), false); err != nil {
+		s.t.Fatal(err)
+	}
+	return paired, token
+}
+
+// TestRunnerRejectsInvalidProtocolAndUnknownIdentity checks protocol and identity refusals.
+func TestRunnerRejectsInvalidProtocolAndUnknownIdentity(t *testing.T) {
+	t.Parallel()
+	h, _, err := backendtest.HostsHarness(t.Context(), t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Config.Runners.HelloDeadline = 300 * time.Millisecond
+	b, err := h.Start(t.Context(), t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []struct {
+		kind websocket.MessageType
+		data []byte
+	}{
+		{websocket.MessageText, []byte(`{"type":"not-a-runner-frame"}`)},
+		{websocket.MessageBinary, []byte{0xc1, 0}},
+	} {
+		r := connectHostRunner(t, b)
+		if err := r.socket.Write(t.Context(), scenario.kind, scenario.data); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.next(); got != nil {
+			t.Fatalf("invalid frame answered: %v", got)
+		}
+	}
+	managed := true
+	for _, scenario := range []struct {
+		hello *runnerproto.Hello
+		code  runnerproto.HelloErrorCode
+		words string
+	}{
+		{
+			runnerHello(runnerproto.Version, "not-a-real-token", nil),
+			runnerproto.HelloErrorCodeUnknownDevice,
+			"unknown device",
+		},
+		{runnerHello(runnerproto.Version+1, "", nil), runnerproto.HelloErrorCodeUnsupportedProtocol, "unsupported protocol"},
+		{runnerHello(runnerproto.Version, "", &managed), runnerproto.HelloErrorCodeUnknownDevice, "never paired"},
+	} {
+		r := connectHostRunner(t, b)
+		r.send(scenario.hello)
+		refused, ok := r.next().(*runnerproto.HelloError)
+		if !ok || refused.Code != scenario.code || !strings.Contains(refused.Reason, scenario.words) {
+			t.Fatalf("hello refusal: %+v", refused)
+		}
+		if r.next() != nil {
+			t.Fatal("refused socket remained open")
+		}
+	}
+	silent := connectHostRunner(t, b)
+	started := time.Now()
+	if silent.next() != nil {
+		t.Fatal("silent connection answered")
+	}
+	if time.Since(started) < 250*time.Millisecond {
+		t.Fatal("hello deadline closed early")
+	}
+}
+
+// TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored checks single binding and repeated hello handling.
+func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
+	t.Parallel()
+	s := newHostScenario(t, "")
+	laptop, token := s.stoppedPair()
+	one, other := connectHostRunner(t, s.b), connectHostRunner(t, s.b)
+	hello := runnerHello(runnerproto.Version, token, nil)
+	var sends sync.WaitGroup
+	sends.Go(func() { one.send(hello) })
+	sends.Go(func() { other.send(hello) })
+	sends.Wait()
+	first, second := one.next(), other.next()
+	bound, refused := one, second
+	if _, ok := first.(*runnerproto.HelloOK); !ok {
+		bound, refused = other, first
+		if _, ok := second.(*runnerproto.HelloOK); !ok {
+			t.Fatalf("neither welcomed: %v %v", first, second)
+		}
+	}
+	refusal, ok := refused.(*runnerproto.HelloError)
+	if !ok || refusal.Code != runnerproto.HelloErrorCodeAlreadyConnected {
+		t.Fatalf("other: %+v", refused)
+	}
+	online, err := s.b.Online(s.ctx, &s.user, laptop.ID())
+	if err != nil || !online {
+		t.Fatalf("online: %v %v", online, err)
+	}
+	bound.send(hello)
+	bound.send(&runnerproto.Pong{Jobs: 0})
+	target, err := commandproto.HostTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound.send(
+		&runnerproto.ArtifactResolve{
+			ID:     "after-hello",
+			Owner:  &runnerproto.StreamArtifactOwner{StreamID: "none"},
+			SHA256: strings.Repeat("0", 64),
+			Target: string(target),
+		},
+	)
+	answer, ok := bound.next().(*runnerproto.ArtifactLocation)
+	if !ok || answer.ID != "after-hello" || answer.Error == nil {
+		t.Fatalf("later request: %+v", answer)
+	}
+	online, err = s.b.Online(s.ctx, &s.user, laptop.ID())
+	if err != nil || !online {
+		t.Fatalf("online: %v %v", online, err)
+	}
+	_ = bound.socket.CloseNow()
+	if err := s.b.UntilOnline(s.ctx, &s.user, laptop.ID(), false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRunnerReservesOnlyReachableConversationNumbers checks number reservations limited to reachable conversations.
+func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
+	t.Parallel()
+	s := newHostScenario(t, "")
+	laptop := s.pair("laptop")
+	token, err := laptop.Token(s.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
+	s.move(laptop, laptop.Runner.Home())
+	const elsewhere = "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a02"
+	conversationCreate(s.ctx, s.t, s.b, &s.user, elsewhere)
+	if err := laptop.Runner.Stop(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, laptop.ID(), false); err != nil {
+		t.Fatal(err)
+	}
+	r := connectHostRunner(t, s.b)
+	r.send(runnerHello(runnerproto.Version, token, nil))
+	if _, ok := r.next().(*runnerproto.HelloOK); !ok {
+		t.Fatal("not welcomed")
+	}
+	for i, scenario := range []struct {
+		conversation string
+		count        uint32
+		first        uint64
+	}{
+		{hostsConversation, 4, 1},
+		{hostsConversation, 1, 5},
+		{elsewhere, 1, 0},
+		{"no-such-conversation", 1, 0},
+		{hostsConversation, 2, 6},
+	} {
+		id := fmt.Sprint(i)
+		r.send(
+			&runnerproto.NumbersReserve{
+				ID:             id,
+				ConversationID: scenario.conversation,
+				Sequence:       commandproto.TabSequence,
+				Count:          scenario.count,
+			},
+		)
+		for {
+			message := r.next()
+			if message == nil {
+				t.Fatal("connection ended")
+			}
+			answer, ok := message.(*runnerproto.NumbersReserved)
+			if !ok || answer.ID != id {
+				continue
+			}
+			if scenario.first == 0 {
+				if answer.First != nil || answer.Error == nil {
+					t.Fatalf("refusal: %+v", answer)
+				}
+			} else if answer.First == nil || *answer.First != scenario.first || answer.Error != nil {
+				t.Fatalf("reservation: %+v", answer)
+			}
+			break
+		}
+	}
+}
+
+// TestClaimOfDisconnectedRunnerCreatesNoDevice checks a disconnected pairing claim without device creation.
+func TestClaimOfDisconnectedRunnerCreatesNoDevice(t *testing.T) {
+	t.Parallel()
+	s := newHostScenario(t, "")
+	r := connectHostRunner(t, s.b)
+	r.send(runnerHello(runnerproto.Version, "", nil))
+	pending, ok := r.next().(*runnerproto.ClaimPending)
+	if !ok {
+		t.Fatal("no pairing code")
+	}
+	// Wait for the peer's close frame before claiming: a local TCP close
+	// alone does not prove the backend has observed the disconnection.
+	if err := r.socket.Close(websocket.StatusNormalClosure, ""); err != nil {
+		t.Fatal(err)
+	}
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"POST",
+			"/api/devices/claim",
+			fmt.Sprintf(`{"code":%q}`, pending.ClaimToken),
+			404,
+		),
+		webapiproto.ErrorCodeInvalidCode,
+	)
+	devices, err := s.b.Devices(s.ctx, &s.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(devices) != 0 {
+		t.Fatal(devices)
+	}
+}
+
+// TestPipesRequireDeviceToken checks device-token authentication for pipes.
+func TestPipesRequireDeviceToken(t *testing.T) {
+	t.Parallel()
+	s := newHostScenario(t, "")
+	laptop := s.pair("laptop")
+	token, err := laptop.Token(s.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{"GET", "PUT"} {
+		for _, scenario := range []struct {
+			headers http.Header
+			status  int
+		}{
+			{nil, 401},
+			{http.Header{"Authorization": {"Bearer not-a-token"}}, 401},
+			{http.Header{"Cookie": {s.user.Cookie}}, 401},
+			{http.Header{"Authorization": {"Bearer " + token}}, 404},
+		} {
+			response, err := s.b.Response(
+				s.ctx,
+				method,
+				"/api/pipes/0123456789abcdef",
+				nil,
+				scenario.headers,
+				strings.NewReader("bytes"),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a, err := backendtest.ReadAnswer(s.ctx, response)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if a.Status != scenario.status {
+				t.Fatalf("pipe: %d %s", a.Status, a.Body)
+			}
+			if scenario.headers == nil && string(a.Body) != "device token required" {
+				t.Fatal(string(a.Body))
+			}
+		}
+	}
+}
+
+// TestDevicesAndRunnersReturnAfterBackendRestart checks device and runner recovery across backend restart.
+func TestDevicesAndRunnersReturnAfterBackendRestart(t *testing.T) {
+	t.Parallel()
+	s := newHostScenario(t, "")
+	laptop := s.pair("laptop")
+	if err := s.h.Clock.Advance(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	desktop := s.pair("desktop")
+	address := s.b.Address()
+	if err := s.b.Close(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	s.b, err = s.h.StartAt(s.ctx, t, address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, paired := range []*backendtest.Paired{laptop, desktop} {
+		if err := s.b.UntilOnline(s.ctx, &s.user, paired.ID(), true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	devices, err := s.b.Devices(s.ctx, &s.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(devices) != 2 || devices[0].Name != "laptop" || devices[1].Name != "desktop" {
+		t.Fatal(devices)
+	}
+	for _, device := range devices {
+		if device.LastSeenAt == nil {
+			t.Fatal("missing last seen")
+		}
+	}
+}
+
+// TestRunnerHelloDuringShutdownIsNotWelcomed checks hello refusal during shutdown.
+func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
+	t.Parallel()
+	s := newHostScenario(t, "")
+	_, token := s.stoppedPair()
+	conversationCreate(s.ctx, s.t, s.b, &s.user, hostsConversation)
+	page, err := s.b.Conversation(s.ctx, t, &s.user, hostsConversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wireMust(t, page.Send(s.ctx, &conversationproto.AbortFrame{}))
+	_, err = page.Next(s.ctx)
+	wireMust(t, err)
+	hold := backendtest.HoldHellos(t, s.b.Backend, backendtest.HelloBind)
+	runner := connectHostRunner(t, s.b)
+	runner.send(runnerHello(runnerproto.Version, token, nil))
+	if err := hold.UntilArrived(s.ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- s.b.Close(s.ctx) }()
+	defer func() {
+		hold.Release()
+		_ = runner.socket.CloseNow() // Release the owned socket even if an assertion failed.
+		if err := <-closed; err != nil {
+			t.Error(err)
+		}
+	}()
+	code, _, err := page.Closed(s.ctx)
+	wireMust(t, err)
+	if code != websocket.StatusGoingAway {
+		t.Fatalf("page close: %v", code)
+	}
+	hold.Release()
+	if runner.next() != nil {
+		t.Fatal("runner welcomed during shutdown")
+	}
+}
+
+// TestPairingCodeExpiresAndClaimAttemptsAreLimited checks pairing expiry and claim rate limits.
+// A code expiry wakes the runner's output wait; no test sleep polls the code.
+func TestPairingCodeExpiresAndClaimAttemptsAreLimited(t *testing.T) {
+	t.Parallel()
+	h, manager, err := backendtest.HostsHarness(t.Context(), t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Config.Runners.ClaimLifetime = time.Second
+	h.Config.Runners.ClaimsPerMinute = 3
+	b, user, err := h.StartSetUp(t.Context(), t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &hostScenario{t, t.Context(), h, b, user, manager}
+	runner, err := remotehosttest.StartRunnerProcess(s.ctx, t, b.URL, remotehosttest.DefaultRunnerProcessOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := runner.PairingCode(s.ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := runner.PairingCode(s.ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("pairing code did not change")
+	}
+	claimed := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		"/api/devices/claim",
+		fmt.Sprintf(`{"code":%q}`, second),
+		201,
+	)
+	device, err := webapiproto.DecodeClaimedDevice(claimed.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"POST",
+			"/api/devices/claim",
+			fmt.Sprintf(`{"code":%q}`, first),
+			404,
+		),
+		webapiproto.ErrorCodeInvalidCode,
+	)
+	if err := b.UntilOnline(s.ctx, &user, device.Device.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	invalid := conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":""}`, 400)
+	errorBody, err := invalid.ErrorBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errorBody.Code != webapiproto.ErrorCodeInvalidBody {
+		t.Fatal(errorBody)
+	}
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 404),
+		webapiproto.ErrorCodeInvalidCode,
+	)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"NOPE-NOPE"}`, 429),
+		webapiproto.ErrorCodeRateLimited,
+	)
+}
+
+func (s *hostScenario) deviceLog(path string) webapiproto.DeviceLog {
+	s.t.Helper()
+	read := conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 200)
+	log, err := webapiproto.DecodeDeviceLog(read.Body)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return log
+}
+
+// TestPairedDeviceDirectoryAndLogAccess checks paired device directory and log access.
+func TestPairedDeviceDirectoryAndLogAccess(t *testing.T) {
+	t.Parallel()
+	s := newHostScenario(t, "")
+	laptop := s.pair("laptop")
+	home := laptop.Runner.Home()
+	if err := os.WriteFile(filepath.Join(home, "hello.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	directoryRoute := "/api/devices/" + string(laptop.ID()) + "/fs"
+	listing := s.directoryListing(directoryRoute)
+	if listing.Path != home || listing.Home == nil || *listing.Home != home {
+		t.Fatal(listing)
+	}
+	found := false
+	for _, entry := range listing.Entries {
+		if entry.Name == "hello.txt" {
+			found = true
+			if entry.IsDirectory || entry.IsSymbolicLink || entry.Size != 2 {
+				t.Fatal(entry)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("hello.txt not listed")
+	}
+	conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		directoryRoute,
+		fmt.Sprintf(`{"path":%q}`, home+"/made/by/web"),
+		201,
+	)
+	info, err := os.Stat(filepath.Join(home, "made/by/web"))
+	if err != nil || !info.IsDir() {
+		t.Fatalf("created directory: %v", err)
+	}
+	for _, query := range []string{"?path=relative", "?path="} {
+		conversationRefusal(
+			s.t,
+			conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", directoryRoute+query, "", 400),
+			webapiproto.ErrorCodeInvalidQuery,
+		)
+	}
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"GET",
+			directoryRoute+"?path="+url.QueryEscape(home+"/nothing"),
+			"",
+			404,
+		),
+		webapiproto.ErrorCodeFsError,
+	)
+	path := "/api/devices/" + string(laptop.ID()) + "/log"
+	tail := s.deviceLog(path)
+	online, pairing := false, false
+	code, err := laptop.Runner.PairingCode(s.ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range tail.Lines {
+		online = online || line.Text == "online"
+		pairing = pairing || line.Text == "waiting to be paired"
+		if line.Source != "runner" || strings.Contains(line.Text, code) {
+			t.Fatal(line)
+		}
+	}
+	if !online || !pairing {
+		t.Fatal(tail)
+	}
+	after := s.deviceLog(fmt.Sprintf("%s?since=%d", path, tail.Next))
+	if len(after.Lines) != 0 || after.Next != tail.Next {
+		t.Fatal(after)
+	}
+	first := s.deviceLog(path + "?since=0&limit=1")
+	if diff := cmp.Diff(tail.Lines[:1], first.Lines); diff != "" {
+		t.Fatal(diff)
+	}
+	second := s.deviceLog(fmt.Sprintf("%s?since=%d&limit=1", path, first.Next))
+	if diff := cmp.Diff(tail.Lines[1:2], second.Lines); diff != "" {
+		t.Fatal(diff)
+	}
+	other := s.deviceLog(path + "?since=0&source=service%3Anone")
+	if len(other.Lines) != 0 || other.Next != tail.Next {
+		t.Fatal(other)
+	}
+	for _, query := range []string{"limit=0", "limit=1001", "limit=many", "since=-1", "since=1.5", "source="} {
+		conversationRefusal(
+			s.t,
+			conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path+"?"+query, "", 400),
+			webapiproto.ErrorCodeInvalidQuery,
+		)
+	}
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", "/api/devices/none/log", "", 404),
+		webapiproto.ErrorCodeDeviceNotFound,
+	)
+	if err := laptop.Runner.Stop(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, laptop.ID(), false); err != nil {
+		t.Fatal(err)
+	}
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 409),
+		webapiproto.ErrorCodeDeviceOffline,
+	)
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", directoryRoute, "", 409),
+		webapiproto.ErrorCodeDeviceOffline,
+	)
+}
+
+// TestClaimedRunnerReconnectsUntilRevoked checks runner reconnection until revocation.
+// A real runner persists its token across restart and exits when revoked.
+func TestClaimedRunnerReconnectsUntilRevoked(t *testing.T) {
+	t.Parallel()
+	s := newHostScenario(t, "")
+	runner, err := remotehosttest.StartRunnerProcess(
+		s.ctx,
+		t,
+		s.b.URL,
+		remotehosttest.RunnerProcessOptions{Name: "laptop"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := runner.PairingCode(s.ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "POST", "/api/devices/claim", `{"code":"AAAA-BBBB"}`, 404),
+		webapiproto.ErrorCodeInvalidCode,
+	)
+	answer := conversationRequest(
+		s.ctx,
+		s.t,
+		s.b,
+		&s.user,
+		"POST",
+		"/api/devices/claim",
+		fmt.Sprintf(`{"code":%q}`, " "+strings.ToLower(code)+" "),
+		201,
+	)
+	claimed, err := webapiproto.DecodeClaimedDevice(answer.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device := claimed.Device
+	if device.Name != "laptop" || device.Kind != webapiproto.DeviceKindUser || !device.Online || device.Home == nil ||
+		*device.Home != runner.Home() {
+		t.Fatalf("device: %+v", device)
+	}
+	conversationRefusal(
+		s.t,
+		conversationRequest(
+			s.ctx,
+			s.t,
+			s.b,
+			&s.user,
+			"POST",
+			"/api/devices/claim",
+			fmt.Sprintf(`{"code":%q}`, code),
+			404,
+		),
+		webapiproto.ErrorCodeInvalidCode,
+	)
+	listed, err := s.b.Devices(s.ctx, &s.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].ID != device.ID || !listed[0].Online {
+		t.Fatalf("devices: %+v", listed)
+	}
+	if _, err := backendtest.StoredToken(s.ctx, runner); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.Stop(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, device.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.StartAgain(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, device.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = s.b.Devices(s.ctx, &s.user)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("devices: %+v, %v", listed, err)
+	}
+	conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+string(device.ID), "", 204)
+	// The runner must end; its exit status does not matter.
+	err = runner.Exited(s.ctx)
+	if err != nil && s.ctx.Err() != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(runner.Output(), "revoked") {
+		t.Fatal(runner.Output())
+	}
+	listed, err = s.b.Devices(s.ctx, &s.user)
+	if err != nil || len(listed) != 0 {
+		t.Fatalf("devices: %+v, %v", listed, err)
+	}
+	conversationRefusal(
+		s.t,
+		conversationRequest(s.ctx, s.t, s.b, &s.user, "DELETE", "/api/devices/"+string(device.ID), "", 404),
+		webapiproto.ErrorCodeDeviceNotFound,
+	)
+	if err := s.b.Close(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRunnerTwinIsAdoptedAfterFirstDisconnects checks twin adoption after the first runner disconnects.
+// The twin's real reconnect backoff makes this scenario take several seconds.
+func TestRunnerTwinIsAdoptedAfterFirstDisconnects(t *testing.T) {
+	t.Parallel()
+	s := newHostScenario(t, "")
+	first := s.pair("laptop")
+	token, err := first.Token(s.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	twin, err := remotehosttest.StartRunnerProcess(
+		s.ctx,
+		t,
+		s.b.URL,
+		remotehosttest.RunnerProcessOptions{Name: "laptop", Token: token},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := twin.UntilOutput(s.ctx, "already_connected"); err != nil {
+		t.Fatal(err)
+	}
+	online, err := s.b.Online(s.ctx, &s.user, first.ID())
+	if err != nil || !online || !twin.Running() {
+		t.Fatalf("online: %v, twin running: %v, %v", online, twin.Running(), err)
+	}
+	if err := first.Runner.Stop(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, first.ID(), true); err != nil {
+		t.Fatal(err)
+	}
+	if !twin.Running() {
+		t.Fatal(twin.Output())
+	}
+	if err := twin.Stop(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.UntilOnline(s.ctx, &s.user, first.ID(), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.b.Close(s.ctx); err != nil {
+		t.Fatal(err)
+	}
+}

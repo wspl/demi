@@ -7,7 +7,7 @@ import (
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/artifacts/artifactstest"
-	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
+	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
 	"github.com/wspl/demi/internal/contract"
 )
 
@@ -106,7 +106,7 @@ func TestPinnedVersionRecordsEachOfficialArchiveWithExecutable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			release, err := browserop.DecodeBrowserRelease(data)
+			release, err := browserproto.DecodeBrowserRelease(data)
 			if err != nil {
 				t.Fatal(err)
 			}

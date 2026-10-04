@@ -12,14 +12,14 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type frameRefusalError struct {
-	code    webapi.ErrorCode
+	code    webapiproto.ErrorCode
 	message string
 }
 
@@ -28,8 +28,8 @@ func (r *frameRefusalError) Error() string { return r.message }
 
 func (s *Shard) prepareFrame(
 	ctx context.Context,
-	id webapi.ConversationID,
-	frame framewire.ClientFrame,
+	id webapiproto.ConversationID,
+	frame conversationproto.ClientFrame,
 ) error {
 	record, found, err := s.Control().Conversation(ctx, id)
 	if err != nil {
@@ -37,46 +37,46 @@ func (s *Shard) prepareFrame(
 	}
 	if !found || record.Owner != s.user {
 		return &frameRefusalError{
-			webapi.ErrorCodeConversationNotFound,
+			webapiproto.ErrorCodeConversationNotFound,
 			"No such conversation",
 		}
 	}
-	if record.Archived && frame.Kind() != framewire.ClientFrameKindClose {
+	if record.Archived && frame.Kind() != conversationproto.ClientFrameKindClose {
 		return &frameRefusalError{
-			webapi.ErrorCodeConversationArchived,
+			webapiproto.ErrorCodeConversationArchived,
 			"Restore the conversation before writing to it",
 		}
 	}
 	switch frame := frame.(type) {
-	case *framewire.OpenFrame:
+	case *conversationproto.OpenFrame:
 		return s.prepareOpen(ctx, record)
-	case *framewire.SendFrame:
+	case *conversationproto.SendFrame:
 		return s.prepareSend(ctx, record, frame)
-	case *framewire.SteerFrame, *framewire.EditAndSendFrame:
+	case *conversationproto.SteerFrame, *conversationproto.EditAndSendFrame:
 		if _, err := s.Control().CountUserMessage(ctx, id); err != nil {
 			return err
 		}
 		s.Mark(pagesync.Part{Kind: pagesync.Conversation, ConversationID: id})
-	case *framewire.AbortFrame,
-		*framewire.AbortSubagentFrame,
-		*framewire.AbortSubagentsFrame,
-		*framewire.CancelPendingSteerFrame,
-		*framewire.ClearMessageQueueFrame,
-		*framewire.CloseFrame,
-		*framewire.CompactFrame,
-		*framewire.DequeueMessageFrame,
-		*framewire.ResumeFrame,
-		*framewire.RetryFrame,
-		*framewire.SendQueuedMessageFrame,
-		*framewire.ShellAbortFrame,
-		*framewire.ShellWriteFrame,
-		*framewire.SteerQueuedMessageFrame,
-		*framewire.SyncTranscriptFrame:
+	case *conversationproto.AbortFrame,
+		*conversationproto.AbortSubagentFrame,
+		*conversationproto.AbortSubagentsFrame,
+		*conversationproto.CancelPendingSteerFrame,
+		*conversationproto.ClearMessageQueueFrame,
+		*conversationproto.CloseFrame,
+		*conversationproto.CompactFrame,
+		*conversationproto.DequeueMessageFrame,
+		*conversationproto.ResumeFrame,
+		*conversationproto.RetryFrame,
+		*conversationproto.SendQueuedMessageFrame,
+		*conversationproto.ShellAbortFrame,
+		*conversationproto.ShellWriteFrame,
+		*conversationproto.SteerQueuedMessageFrame,
+		*conversationproto.SyncTranscriptFrame:
 	}
 	return nil
 }
 
-func (s *Shard) restoreTree(ctx context.Context, id webapi.ConversationID) error {
+func (s *Shard) restoreTree(ctx context.Context, id webapiproto.ConversationID) error {
 	record, err := hostaccess.OwnedConversation(ctx, s, id)
 	if err != nil {
 		return err
@@ -96,51 +96,55 @@ func (s *Shard) restoreTree(ctx context.Context, id webapi.ConversationID) error
 		return err
 	}
 	defer settings.Release()
-	if err := s.prepareFrame(ctx, id, &framewire.OpenFrame{}); err != nil {
+	if err := s.prepareFrame(ctx, id, &conversationproto.OpenFrame{}); err != nil {
 		return err
 	}
 	return s.agent.Restore(ctx, hostaccess.RootOf(id), database.ExecutionPath(target))
 }
 
-func refusedFrame(frame framewire.ClientFrame, code webapi.ErrorCode, message string) framewire.ServerFrame {
-	if edit, ok := frame.(*framewire.EditAndSendFrame); ok {
-		return &framewire.EditResultFrame{
+func refusedFrame(
+	frame conversationproto.ClientFrame,
+	code webapiproto.ErrorCode,
+	message string,
+) conversationproto.ServerFrame {
+	if edit, ok := frame.(*conversationproto.EditAndSendFrame); ok {
+		return &conversationproto.EditResultFrame{
 			OperationID: edit.Request.OperationID,
-			Outcome:     &framewire.RejectedEdit{Reason: message},
+			Outcome:     &conversationproto.RejectedEdit{Reason: message},
 		}
 	}
 	name := string(code)
-	return &framewire.ErrorFrame{Message: message, Code: &name}
+	return &conversationproto.ErrorFrame{Message: message, Code: &name}
 }
 
-func carriesUploads(frame framewire.ClientFrame) bool {
-	var content []framewire.ClientContent
+func carriesUploads(frame conversationproto.ClientFrame) bool {
+	var content []conversationproto.ClientContent
 	switch frame := frame.(type) {
-	case *framewire.SendFrame:
+	case *conversationproto.SendFrame:
 		content = frame.Content
-	case *framewire.SteerFrame:
+	case *conversationproto.SteerFrame:
 		content = frame.Content
-	case *framewire.EditAndSendFrame:
+	case *conversationproto.EditAndSendFrame:
 		content = frame.Request.Content
-	case *framewire.AbortFrame,
-		*framewire.AbortSubagentFrame,
-		*framewire.AbortSubagentsFrame,
-		*framewire.CancelPendingSteerFrame,
-		*framewire.ClearMessageQueueFrame,
-		*framewire.CloseFrame,
-		*framewire.CompactFrame,
-		*framewire.DequeueMessageFrame,
-		*framewire.OpenFrame,
-		*framewire.ResumeFrame,
-		*framewire.RetryFrame,
-		*framewire.SendQueuedMessageFrame,
-		*framewire.ShellAbortFrame,
-		*framewire.ShellWriteFrame,
-		*framewire.SteerQueuedMessageFrame,
-		*framewire.SyncTranscriptFrame:
+	case *conversationproto.AbortFrame,
+		*conversationproto.AbortSubagentFrame,
+		*conversationproto.AbortSubagentsFrame,
+		*conversationproto.CancelPendingSteerFrame,
+		*conversationproto.ClearMessageQueueFrame,
+		*conversationproto.CloseFrame,
+		*conversationproto.CompactFrame,
+		*conversationproto.DequeueMessageFrame,
+		*conversationproto.OpenFrame,
+		*conversationproto.ResumeFrame,
+		*conversationproto.RetryFrame,
+		*conversationproto.SendQueuedMessageFrame,
+		*conversationproto.ShellAbortFrame,
+		*conversationproto.ShellWriteFrame,
+		*conversationproto.SteerQueuedMessageFrame,
+		*conversationproto.SyncTranscriptFrame:
 	}
 	for _, part := range content {
-		if _, ok := part.(*framewire.UploadContent); ok {
+		if _, ok := part.(*conversationproto.UploadContent); ok {
 			return true
 		}
 	}
@@ -149,17 +153,17 @@ func carriesUploads(frame framewire.ClientFrame) bool {
 
 func (s *Shard) handleMessage(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	connection *server.Connection[*remotehost.Host],
 	files *conversationFiles,
 	text []byte,
-) (framewire.ServerFrame, error) {
-	frame, err := framewire.DecodeClientFrame(text)
-	if errors.Is(err, framewire.ErrNotJSON) {
+) (conversationproto.ServerFrame, error) {
+	frame, err := conversationproto.DecodeClientFrame(text)
+	if errors.Is(err, conversationproto.ErrNotJSON) {
 		return nil, err
 	}
 	if err != nil {
-		return refusedFrame(nil, webapi.ErrorCodeInvalidFrame, fmt.Sprintf("Invalid client frame: %v", err)), nil
+		return refusedFrame(nil, webapiproto.ErrorCodeInvalidFrame, fmt.Sprintf("Invalid client frame: %v", err)), nil
 	}
 	if carriesUploads(frame) {
 		admitted, err := hostaccess.AdmitHost(ctx, s, id, nil)
@@ -179,7 +183,7 @@ func (s *Shard) handleMessage(
 		}
 		defer admitted.Release()
 	}
-	if frame.Kind() == framewire.ClientFrameKindOpen {
+	if frame.Kind() == conversationproto.ClientFrameKindOpen {
 		settings, err := s.conversations.Slot(id).Settings().Acquire(ctx)
 		if err != nil {
 			return nil, err
@@ -187,7 +191,7 @@ func (s *Shard) handleMessage(
 		defer settings.Release()
 	}
 	if err := s.prepareFrame(ctx, id, frame); err != nil {
-		code := webapi.ErrorCodeFrameDeliveryFailed
+		code := webapiproto.ErrorCodeFrameDeliveryFailed
 		var refused *frameRefusalError
 		if errors.As(err, &refused) {
 			code = refused.code
@@ -202,7 +206,7 @@ func (s *Shard) handleMessage(
 
 type conversationFiles struct {
 	shard        *Shard
-	conversation webapi.ConversationID
+	conversation webapiproto.ConversationID
 	host         *hostaccess.ConversationHost
 }
 
@@ -212,10 +216,10 @@ func (f *conversationFiles) Resolve(
 	files []server.FileReference,
 ) (server.ResolvedFiles, error) {
 	refused := func(err error) (server.ResolvedFiles, error) {
-		code := string(webapi.ErrorCodeFrameDeliveryFailed)
+		code := string(webapiproto.ErrorCodeFrameDeliveryFailed)
 		return server.ResolvedFiles{}, &server.ContentError{Message: err.Error(), Code: &code, Cause: err}
 	}
-	resolved := make([][]core.UserContentBlock, len(files))
+	resolved := make([][]types.UserContentBlock, len(files))
 	var media store.HeldMedia
 	var remote []hostaccess.RemoteFile
 	var positions []int
@@ -243,67 +247,70 @@ func (f *conversationFiles) Resolve(
 			return refused(err)
 		}
 		for i, reference := range references {
-			resolved[positions[i]] = []core.UserContentBlock{reference}
+			resolved[positions[i]] = []types.UserContentBlock{reference}
 		}
 	}
 	return server.ResolvedFiles{Blocks: resolved, Media: media}, nil
 }
 
-func addedBlocks(patches []framewire.TranscriptPatch) []core.Block {
-	var blocks []core.Block
+func addedBlocks(patches []conversationproto.TranscriptPatch) []types.Block {
+	var blocks []types.Block
 	for _, patch := range patches {
 		switch patch := patch.(type) {
-		case *framewire.AddPatch:
+		case *conversationproto.AddPatch:
 			blocks = append(blocks, patch.Value)
-		case *framewire.ReplaceBlockPatch:
+		case *conversationproto.ReplaceBlockPatch:
 			blocks = append(blocks, patch.Value)
-		case *framewire.ReplacePatch:
+		case *conversationproto.ReplacePatch:
 			blocks = append(blocks, patch.Value...)
-		case *framewire.AppendTextPatch:
+		case *conversationproto.AppendTextPatch:
 		}
 	}
 	return blocks
 }
 
-func (s *Shard) present(ctx context.Context, frame framewire.ServerFrame) (framewire.ServerFrame, error) {
-	var blocks []core.Block
-	var destination **framewire.Failures
+func (s *Shard) present(
+	ctx context.Context,
+	frame conversationproto.ServerFrame,
+) (conversationproto.ServerFrame, error) {
+	var blocks []types.Block
+	var destination **conversationproto.Failures
 	switch original := frame.(type) {
-	case *framewire.TranscriptResetFrame:
+	case *conversationproto.TranscriptResetFrame:
 		presented := *original
 		frame = &presented
 		blocks = presented.Blocks
 		destination = &presented.Failures
-	case *framewire.TranscriptPatchFrame:
+	case *conversationproto.TranscriptPatchFrame:
 		presented := *original
 		frame = &presented
 		blocks = addedBlocks(presented.Patches)
 		destination = &presented.Failures
-	case *framewire.SubagentTranscriptResetFrame:
+	case *conversationproto.SubagentTranscriptResetFrame:
 		presented := *original
 		frame = &presented
 		blocks = presented.Blocks
 		destination = &presented.Failures
-	case *framewire.SubagentTranscriptPatchFrame:
+	case *conversationproto.SubagentTranscriptPatchFrame:
 		presented := *original
 		frame = &presented
 		blocks = addedBlocks(presented.Patches)
 		destination = &presented.Failures
-	case *framewire.AbortResultFrame,
-		*framewire.ClosedFrame,
-		*framewire.EditResultFrame,
-		*framewire.ErrorFrame,
-		*framewire.HeartbeatFrame,
-		*framewire.OpenedFrame,
-		*framewire.PendingSteersFrame,
-		*framewire.PhaseFrame,
-		*framewire.QueueFrame,
-		*framewire.RejectedFrame,
-		*framewire.RetryScheduledFrame,
-		*framewire.ShellOutputFrame,
-		*framewire.ShellWriteResultFrame,
-		*framewire.SteerResultFrame,
-		*framewire.SubagentFrame:
+	case *conversationproto.AbortResultFrame,
+		*conversationproto.ClosedFrame,
+		*conversationproto.EditResultFrame,
+		*conversationproto.ErrorFrame,
+		*conversationproto.HeartbeatFrame,
+		*conversationproto.OpenedFrame,
+		*conversationproto.PendingSteersFrame,
+		*conversationproto.PhaseFrame,
+		*conversationproto.QueueFrame,
+		*conversationproto.RejectedFrame,
+		*conversationproto.RetryScheduledFrame,
+		*conversationproto.ShellOutputFrame,
+		*conversationproto.ShellWriteResultFrame,
+		*conversationproto.SteerResultFrame,
+		*conversationproto.SubagentFrame:
 		return frame, nil
 	}
 	facts, err := FailureFacts(ctx, s.services.Assembly, blocks)
@@ -319,11 +326,11 @@ func (s *Shard) present(ctx context.Context, frame framewire.ServerFrame) (frame
 func (s *Shard) prepareOpen(ctx context.Context, record database.ConversationRecord) error {
 	if record.Model == nil {
 		return &frameRefusalError{
-			webapi.ErrorCodeModelNotSelected,
+			webapiproto.ErrorCodeModelNotSelected,
 			"Choose a model for the conversation before opening it",
 		}
 	}
-	id, err := webapi.ParseProviderID(record.Model.ProviderID)
+	id, err := webapiproto.ParseProviderID(record.Model.ProviderID)
 	visible := false
 	if err == nil {
 		entry, err := s.services.Vault.Visible(ctx, s.user, id)
@@ -333,7 +340,7 @@ func (s *Shard) prepareOpen(ctx context.Context, record database.ConversationRec
 		visible = entry != nil
 	}
 	if !visible {
-		return &frameRefusalError{webapi.ErrorCodeProviderNotFound, "No such provider"}
+		return &frameRefusalError{webapiproto.ErrorCodeProviderNotFound, "No such provider"}
 	}
 	now := s.Clock().Now()
 	return s.Control().MarkLive(ctx, record.ID, now)
@@ -343,7 +350,7 @@ func (s *Shard) prepareOpen(ctx context.Context, record database.ConversationRec
 func (s *Shard) prepareSend(
 	ctx context.Context,
 	record database.ConversationRecord,
-	frame *framewire.SendFrame,
+	frame *conversationproto.SendFrame,
 ) error {
 	id := record.ID
 	seen, err := s.Control().CountUserMessage(ctx, record.ID)
@@ -352,7 +359,7 @@ func (s *Shard) prepareSend(
 	}
 	var text string
 	for _, part := range frame.Content {
-		if part, ok := part.(*framewire.TextContent); ok {
+		if part, ok := part.(*conversationproto.TextContent); ok {
 			text = part.Text
 			break
 		}
@@ -375,8 +382,8 @@ func (s *Shard) prepareSend(
 }
 
 // uploadFailureCode preserves host access refusal codes for upload frames.
-func uploadFailureCode(err error) webapi.ErrorCode {
-	code := webapi.ErrorCodeFrameDeliveryFailed
+func uploadFailureCode(err error) webapiproto.ErrorCode {
+	code := webapiproto.ErrorCodeFrameDeliveryFailed
 	var access *hostaccess.Error
 	if errors.As(err, &access) {
 		code, _ = access.Code()

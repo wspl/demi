@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // WholeOutput holds a command's kept output and missing final bytes.
@@ -19,7 +19,7 @@ type WholeOutput struct {
 
 // OutputRecord is one read, or a gap when LeftOut is non-nil.
 type OutputRecord struct {
-	Stream  core.StreamKind
+	Stream  types.StreamKind
 	Bytes   []byte
 	LeftOut *uint64
 }
@@ -34,7 +34,7 @@ type Missing struct {
 func (m Missing) Line() string { return fmt.Sprintf("[... %d bytes %s ...]", m.Bytes, m.Reason) }
 
 // streamParts collects kept stream bytes on either side of the gap.
-func (w WholeOutput) streamParts(stream core.StreamKind) ([]byte, []byte) {
+func (w WholeOutput) streamParts(stream types.StreamKind) ([]byte, []byte) {
 	var parts [2][]byte
 	part := 0
 	for _, record := range w.Records {
@@ -49,7 +49,7 @@ func (w WholeOutput) streamParts(stream core.StreamKind) ([]byte, []byte) {
 
 // BinaryStdoutLength reports the kept size of a non-text stdout.
 func (w WholeOutput) BinaryStdoutLength() (uint64, bool) {
-	first, last := w.streamParts(core.StreamKind("stdout"))
+	first, last := w.streamParts(types.StreamKind("stdout"))
 	gap := len(last) > 0
 	text := isOutputText(first, false, gap) && isOutputText(last, gap, false)
 	return uint64(len(first) + len(last)), !text
@@ -60,7 +60,7 @@ func (w WholeOutput) BinaryStdout(length uint64, limit int) *BinaryOutput {
 	if _, binary := w.BinaryStdoutLength(); !binary {
 		return nil
 	}
-	first, last := w.streamParts(core.StreamKind("stdout"))
+	first, last := w.streamParts(types.StreamKind("stdout"))
 	whole := len(last) == 0 && uint64(len(first)) == length && len(first) <= limit
 	data := []byte{}
 	if whole {
@@ -68,7 +68,7 @@ func (w WholeOutput) BinaryStdout(length uint64, limit int) *BinaryOutput {
 	}
 	return &BinaryOutput{
 		Bytes: data,
-		Info:  core.BinaryStdout{Truncated: !whole, TotalBytes: length, LimitBytes: uint64(limit)},
+		Info:  types.BinaryStdout{Truncated: !whole, TotalBytes: length, LimitBytes: uint64(limit)},
 	}
 }
 
@@ -112,7 +112,7 @@ type (
 	Seen       struct{ Stdout, Stderr uint64 }
 	outputSpan struct {
 		at     int
-		stream core.StreamKind
+		stream types.StreamKind
 	}
 )
 
@@ -140,7 +140,7 @@ func (w WholeOutput) Text(streams Streams, binaryStdout *uint64, seen Seen) Outp
 	var positions [2]uint64
 	known := true
 	binaryShown := false
-	span := func(stream core.StreamKind) {
+	span := func(stream types.StreamKind) {
 		if len(t.spans) == 0 || t.spans[len(t.spans)-1].stream != stream {
 			t.spans = append(t.spans, outputSpan{len(t.data), stream})
 		}
@@ -158,18 +158,18 @@ func (w WholeOutput) Text(streams Streams, binaryStdout *uint64, seen Seen) Outp
 			continue
 		}
 		index := 0
-		if record.Stream == core.StreamKind("stderr") {
+		if record.Stream == types.StreamKind("stderr") {
 			index = 1
 		}
 		position := positions[index]
 		if known {
 			positions[index] += uint64(len(record.Bytes))
 		}
-		if streams == OnlyStdout && record.Stream != core.StreamKind("stdout") ||
-			streams == OnlyStderr && record.Stream != core.StreamKind("stderr") {
+		if streams == OnlyStdout && record.Stream != types.StreamKind("stdout") ||
+			streams == OnlyStderr && record.Stream != types.StreamKind("stderr") {
 			continue
 		}
-		if record.Stream == core.StreamKind("stdout") && binaryStdout != nil {
+		if record.Stream == types.StreamKind("stdout") && binaryStdout != nil {
 			if !binaryShown {
 				binaryShown = true
 				unseen(len(t.data))
@@ -193,7 +193,7 @@ func ReceivedOutput(text string, firstLine uint64) OutputText {
 	t := OutputText{
 		firstLine: max(firstLine, 1),
 		data:      []byte(text),
-		spans:     []outputSpan{{0, core.StreamKind("stdout")}},
+		spans:     []outputSpan{{0, types.StreamKind("stdout")}},
 	}
 	if text != "" {
 		n := 0
@@ -328,15 +328,15 @@ func (t OutputText) Display() string {
 }
 
 // Chunks returns stream runs from an offset, with notes on their own stderr lines.
-func (t OutputText) Chunks(from int) []core.OutputChunk {
-	var chunks []core.OutputChunk
+func (t OutputText) Chunks(from int) []types.OutputChunk {
+	var chunks []types.OutputChunk
 	gap := t.gap
 	if gap != nil && gap.at < from {
 		gap = nil
 	}
-	push := func(stream core.StreamKind, data []byte) {
+	push := func(stream types.StreamKind, data []byte) {
 		if len(data) > 0 {
-			chunks = append(chunks, core.OutputChunk{Stream: stream, Text: lossy(data)})
+			chunks = append(chunks, types.OutputChunk{Stream: stream, Text: lossy(data)})
 		}
 	}
 	note := func(text string) {
@@ -344,7 +344,7 @@ func (t OutputText) Chunks(from int) []core.OutputChunk {
 		if len(chunks) > 0 && !strings.HasSuffix(chunks[len(chunks)-1].Text, "\n") {
 			separator = "\n"
 		}
-		chunks = append(chunks, core.OutputChunk{Stream: core.StreamKind("stderr"), Text: separator + text + "\n"})
+		chunks = append(chunks, types.OutputChunk{Stream: types.StreamKind("stderr"), Text: separator + text + "\n"})
 	}
 	for i, span := range t.spans {
 		end := len(t.data)
@@ -402,7 +402,7 @@ func (t *OutputText) markUnseen(record OutputRecord, seen Seen, known bool, posi
 		return
 	}
 	count := seen.Stdout
-	if record.Stream == core.StreamKind("stderr") {
+	if record.Stream == types.StreamKind("stderr") {
 		count = seen.Stderr
 	}
 	if !known {

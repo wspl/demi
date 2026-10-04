@@ -11,15 +11,15 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/wspl/demi/internal/machines"
+	"github.com/wspl/demi/internal/machinemanager"
 )
 
 func main() { os.Exit(run()) }
 func run() int {
-	config, display, err := machines.ConfigFromEnv()
+	config, display, err := machinemanager.ConfigFromEnv()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "demi-machine-manager:", err)
-		if errors.Is(err, machines.ErrConfigRejected) {
+		if errors.Is(err, machinemanager.ErrConfigRejected) {
 			return 1
 		}
 		return 2
@@ -32,8 +32,8 @@ func run() int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	if err = machines.Run(ctx, config); err != nil {
-		fmt.Fprintln(os.Stderr, "demi-machine-manager:", machines.ErrorChain(err))
+	if err = machinemanager.Run(ctx, config); err != nil {
+		fmt.Fprintln(os.Stderr, "demi-machine-manager:", machinemanager.ErrorChain(err))
 		return 1
 	}
 	return 0

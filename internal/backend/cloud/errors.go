@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ErrorKind identifies a Cloud admission or transition failure.
@@ -52,18 +52,18 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error { return e.Err }
 
 // Code returns the web error code and HTTP status for a refused operation.
-func (e *Error) Code() (webapi.ErrorCode, int) {
+func (e *Error) Code() (webapiproto.ErrorCode, int) {
 	switch e.Kind {
 	case Closed:
-		return webapi.ErrorCodeBackendClosing, 503
+		return webapiproto.ErrorCodeBackendClosing, 503
 	case CrashLoop:
-		return webapi.ErrorCodeCloudCrashLoop, 503
+		return webapiproto.ErrorCodeCloudCrashLoop, 503
 	case AtCapacity:
-		return webapi.ErrorCodeCloudCapacity, 503
+		return webapiproto.ErrorCodeCloudCapacity, 503
 	case Resetting:
-		return webapi.ErrorCodeCloudResetting, 409
+		return webapiproto.ErrorCodeCloudResetting, 409
 	default:
-		return webapi.ErrorCodeCloudUnavailable, 503
+		return webapiproto.ErrorCodeCloudUnavailable, 503
 	}
 }
 

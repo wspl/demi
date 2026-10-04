@@ -7,15 +7,15 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 type quotaSource struct {
 	cost         *provider.ProbeCost
 	probes       []provider.ProbeReading
-	observations [][]core.QuotaWindow
+	observations [][]types.QuotaWindow
 }
 
 func (s *quotaSource) ProbeCost() (provider.ProbeCost, bool) {
@@ -31,31 +31,31 @@ func (s *quotaSource) Probe(context.Context) (provider.ProbeReading, error) {
 	return next, nil
 }
 
-func (s *quotaSource) Observe(provider.Observation) []core.QuotaWindow {
+func (s *quotaSource) Observe(provider.Observation) []types.QuotaWindow {
 	next := s.observations[0]
 	s.observations = s.observations[1:]
 	return next
 }
 
-func quotaWindow(id string, used float64) core.QuotaWindow {
-	unit := core.QuotaUnit("percent")
-	return core.QuotaWindow{ID: id, Label: id, UsedPercent: &used, Unit: &unit, Severity: provider.Severity(&used)}
+func quotaWindow(id string, used float64) types.QuotaWindow {
+	unit := types.QuotaUnit("percent")
+	return types.QuotaWindow{ID: id, Label: id, UsedPercent: &used, Unit: &unit, Severity: provider.Severity(&used)}
 }
 
 func TestQuotaObservationKeepsPlan(t *testing.T) {
 	free := provider.ProbeFree
 	label := "person@example.com"
-	plan := &core.QuotaPlan{ID: "pro", Label: "pro"}
+	plan := &types.QuotaPlan{ID: "pro", Label: "pro"}
 	source := &quotaSource{
 		cost: &free,
 		probes: []provider.ProbeReading{
 			{
 				Plan:         plan,
 				AccountLabel: &label,
-				Windows:      []core.QuotaWindow{quotaWindow("monthly", 25), quotaWindow("rpm", 10)},
+				Windows:      []types.QuotaWindow{quotaWindow("monthly", 25), quotaWindow("rpm", 10)},
 			},
 		},
-		observations: [][]core.QuotaWindow{{quotaWindow("rpm", 40), quotaWindow("tpm", 5)}},
+		observations: [][]types.QuotaWindow{{quotaWindow("rpm", 40), quotaWindow("tpm", 5)}},
 	}
 	quota := provider.NewQuota(source, &provider.MemorySnapshots{}, providertest.FixedClock(now))
 	if quota.Latest() != nil {
@@ -65,17 +65,17 @@ func TestQuotaObservationKeepsPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireEqual(t, probed.Source, core.SnapshotSource("probe"))
+	requireEqual(t, probed.Source, types.SnapshotSource("probe"))
 	requireEqual(t, probed.ObservedAt, now)
 	quota.Observe(&provider.HTTPObservation{Status: 200})
 	observed := quota.Latest()
-	requireEqual(t, observed.Source, core.SnapshotSource("observation"))
+	requireEqual(t, observed.Source, types.SnapshotSource("observation"))
 	requireEqual(t, observed.Plan, plan)
 	requireEqual(t, *observed.AccountLabel, label)
 	requireEqual(
 		t,
 		observed.Windows,
-		[]core.QuotaWindow{quotaWindow("monthly", 25), quotaWindow("rpm", 40), quotaWindow("tpm", 5)},
+		[]types.QuotaWindow{quotaWindow("monthly", 25), quotaWindow("rpm", 40), quotaWindow("tpm", 5)},
 	)
 	// A caller's changes cannot alter a kept snapshot or an earlier returned one.
 	*observed.Windows[0].UsedPercent = 99
@@ -85,11 +85,14 @@ func TestQuotaObservationKeepsPlan(t *testing.T) {
 
 func TestQuotaProbeKeepsUnnamedWindows(t *testing.T) {
 	free := provider.ProbeFree
-	plan := &core.QuotaPlan{ID: "pro", Label: "pro"}
+	plan := &types.QuotaPlan{ID: "pro", Label: "pro"}
 	source := &quotaSource{
-		cost:         &free,
-		probes:       []provider.ProbeReading{{Plan: plan, Windows: []core.QuotaWindow{quotaWindow("weekly", 40)}}, {}},
-		observations: [][]core.QuotaWindow{{quotaWindow("requests", 5)}, nil},
+		cost: &free,
+		probes: []provider.ProbeReading{
+			{Plan: plan, Windows: []types.QuotaWindow{quotaWindow("weekly", 40)}},
+			{},
+		},
+		observations: [][]types.QuotaWindow{{quotaWindow("requests", 5)}, nil},
 	}
 	quota := provider.NewQuota(source, &provider.MemorySnapshots{}, providertest.FixedClock(now))
 	quota.Observe(&provider.HTTPObservation{Status: 200})
@@ -98,7 +101,7 @@ func TestQuotaProbeKeepsUnnamedWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireEqual(t, probed.Plan, plan)
-	requireEqual(t, probed.Windows, []core.QuotaWindow{quotaWindow("requests", 5), quotaWindow("weekly", 40)})
+	requireEqual(t, probed.Windows, []types.QuotaWindow{quotaWindow("requests", 5), quotaWindow("weekly", 40)})
 	quota.Observe(&provider.HTTPObservation{Status: 200})
 	requireEqual(t, quota.Latest(), probed)
 	again, err := quota.Probe(t.Context())
@@ -144,20 +147,20 @@ func TestQuotaUnitsAndResetTimes(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		share float64
-		want  core.QuotaSeverity
+		want  types.QuotaSeverity
 	}{{50, "normal"}, {80, "warning"}, {90, "warning"}, {95, "critical"}} {
 		requireEqual(t, *provider.Severity(&tc.share), tc.want)
 	}
 	if provider.Severity(nil) != nil {
 		t.Fatal("unknown severity")
 	}
-	requireEqual(t, *provider.UnixSeconds(1700000000), core.Timestamp("2023-11-14T22:13:20.000Z"))
-	requireEqual(t, *provider.UnixSeconds(1700000000.5), core.Timestamp("2023-11-14T22:13:20.500Z"))
+	requireEqual(t, *provider.UnixSeconds(1700000000), types.Timestamp("2023-11-14T22:13:20.000Z"))
+	requireEqual(t, *provider.UnixSeconds(1700000000.5), types.Timestamp("2023-11-14T22:13:20.500Z"))
 	if provider.UnixSeconds(1e20) != nil || provider.UnixSeconds(math.NaN()) != nil {
 		t.Fatal("invalid reset time")
 	}
-	requireEqual(t, *provider.RFC3339("2026-08-21T10:45:24.951512+00:00"), core.Timestamp("2026-08-21T10:45:24.951Z"))
-	requireEqual(t, *provider.RFC3339("2026-08-01T00:00:00Z"), core.Timestamp("2026-08-01T00:00:00.000Z"))
+	requireEqual(t, *provider.RFC3339("2026-08-21T10:45:24.951512+00:00"), types.Timestamp("2026-08-21T10:45:24.951Z"))
+	requireEqual(t, *provider.RFC3339("2026-08-01T00:00:00Z"), types.Timestamp("2026-08-01T00:00:00.000Z"))
 	if provider.RFC3339("soon") != nil || provider.RFC3339("1790062659") != nil {
 		t.Fatal("invalid RFC3339")
 	}

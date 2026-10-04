@@ -9,9 +9,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 type job struct {
@@ -41,7 +41,7 @@ func StartJob(ctx context.Context, start process.JobStart, observe Observer) (pr
 		}
 	}()
 	for range 3 {
-		pair, err := cmdsdk.Retry(ctx, func() ([2]*os.File, error) {
+		pair, err := commandsdk.Retry(ctx, func() ([2]*os.File, error) {
 			r, w, err := os.Pipe()
 			return [2]*os.File{r, w}, err
 		})
@@ -95,7 +95,7 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 	}()
 	var drains sync.WaitGroup
 	var outputErrors [2]error
-	for index, stream := range []runnerwire.OutputStream{runnerwire.Stdout, runnerwire.Stderr} {
+	for index, stream := range []runnerproto.OutputStream{runnerproto.Stdout, runnerproto.Stderr} {
 		file := files[2+index*2]
 		drains.Go(func() {
 			outputErrors[index] = j.readOutput(j.ctx, file, stream)
@@ -157,13 +157,13 @@ func (j *job) IsCancelled() bool {
 }
 
 // Signal records the first supported cancellation signal and cancels the job.
-func (j *job) Signal(signal runnerwire.Signal) error {
+func (j *job) Signal(signal runnerproto.Signal) error {
 	switch signal {
-	case runnerwire.SignalInterrupt,
-		runnerwire.SignalTerminate,
-		runnerwire.SignalKill,
-		runnerwire.SignalHangup,
-		runnerwire.SignalQuit:
+	case runnerproto.SignalInterrupt,
+		runnerproto.SignalTerminate,
+		runnerproto.SignalKill,
+		runnerproto.SignalHangup,
+		runnerproto.SignalQuit:
 		j.mu.Lock()
 		if j.signal == "" && j.ctx.Err() == nil {
 			j.signal = string(signal)
@@ -206,7 +206,7 @@ func (j *job) writeInput(ctx context.Context, file *os.File) error {
 	}
 }
 
-func (j *job) readOutput(ctx context.Context, file *os.File, stream runnerwire.OutputStream) error {
+func (j *job) readOutput(ctx context.Context, file *os.File, stream runnerproto.OutputStream) error {
 	buffer := make([]byte, 64*1024)
 	for {
 		n, err := file.Read(buffer)

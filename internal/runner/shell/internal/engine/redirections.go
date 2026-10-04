@@ -5,14 +5,14 @@ import (
 	"io"
 	"os"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"mvdan.cc/sh/v3/interp"
 )
 
 // open captures truncation at open and wraps subsequent writes as separate mutations.
 func (e *execution) open(ctx context.Context, path string, flags int, mode os.FileMode) (io.ReadWriteCloser, error) {
 	handler := interp.HandlerCtx(ctx)
-	absolute, err := cmdsdk.Resolve(handler.Dir, shellPath(path))
+	absolute, err := commandsdk.Resolve(handler.Dir, shellPath(path))
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func (e *execution) open(ctx context.Context, path string, flags int, mode os.Fi
 	if recording != nil {
 		defer recording.Close(ctx)
 	}
-	file, err := cmdsdk.Retry(ctx, func() (*os.File, error) { return os.OpenFile(absolute, flags, mode) })
+	file, err := commandsdk.Retry(ctx, func() (*os.File, error) { return os.OpenFile(absolute, flags, mode) })
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (e *execution) open(ctx context.Context, path string, flags int, mode os.Fi
 }
 
 // record starts a job mutation only for regular files or new paths.
-func (e *execution) record(ctx context.Context, path string, writing bool) *cmdsdk.Recording {
+func (e *execution) record(ctx context.Context, path string, writing bool) *commandsdk.Recording {
 	if !writing || e.options.Edits == nil {
 		return nil
 	}
@@ -88,7 +88,7 @@ func (f *recordedFile) Write(b []byte) (int, error) {
 // pipe allocates shell pipes through the runner's shared descriptor retry.
 func (e *execution) pipe(ctx context.Context) (io.ReadCloser, io.WriteCloser, error) {
 	type ends struct{ reader, writer *os.File }
-	pair, err := cmdsdk.Retry(ctx, func() (ends, error) {
+	pair, err := commandsdk.Retry(ctx, func() (ends, error) {
 		reader, writer, err := os.Pipe()
 		return ends{reader, writer}, err
 	})

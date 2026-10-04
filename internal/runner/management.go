@@ -6,8 +6,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/jobs"
 )
 
@@ -70,16 +70,16 @@ func (e *endpoint) Operations() []string {
 
 func (e *endpoint) Invoke(
 	ctx context.Context,
-	inv cmdsdk.InvocationContext[commandwire.LocalInvocation],
-) (commandwire.Completion, error) {
+	inv commandsdk.InvocationContext[commandproto.LocalInvocation],
+) (commandproto.Completion, error) {
 	if inv.Request.Operation != manageOperation {
 		return e.dispatcher.Invoke(ctx, inv)
 	}
 	err := e.answer(ctx, inv)
-	return jobs.Reported(ctx, commandwire.Completion{}, err, inv.Output)
+	return jobs.Reported(ctx, commandproto.Completion{}, err, inv.Output)
 }
 
-func (e *endpoint) answer(ctx context.Context, inv cmdsdk.InvocationContext[commandwire.LocalInvocation]) error {
+func (e *endpoint) answer(ctx context.Context, inv commandsdk.InvocationContext[commandproto.LocalInvocation]) error {
 	request, err := decodeManagementRequest(inv.Request.Args)
 	if err != nil {
 		return err

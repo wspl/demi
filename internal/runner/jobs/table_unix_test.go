@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/runner/jobs"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // One raw process; completion is event-driven and cancellation must reap it.
@@ -17,10 +17,10 @@ func TestRawProcessKilledImmediatelyReportsSIGKILL(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.Signal(jobs.WorkID{Kind: jobs.ProcessWork, ID: "raw"}, runnerwire.SignalKill); err != nil {
+	if err := table.Signal(jobs.WorkID{Kind: jobs.ProcessWork, ID: "raw"}, runnerproto.SignalKill); err != nil {
 		t.Fatal(err)
 	}
-	exit, ok := reply(t, output).(*runnerwire.SpawnExit)
+	exit, ok := reply(t, output).(*runnerproto.SpawnExit)
 	if !ok || exit.SpawnError != nil || exit.ExitCode != nil || exit.Signal == nil || *exit.Signal != "SIGKILL" {
 		t.Fatalf("immediate kill: %+v", exit)
 	}

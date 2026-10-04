@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/commandsdk"
 	"golang.org/x/sys/windows"
 )
 
@@ -21,7 +21,7 @@ func standardFile(ctx context.Context, descriptor uint32) (*os.File, error) {
 	default:
 		file = os.Stderr
 	}
-	handle, err := cmdsdk.Retry(ctx, func() (windows.Handle, error) {
+	handle, err := commandsdk.Retry(ctx, func() (windows.Handle, error) {
 		var result windows.Handle
 		err := windows.DuplicateHandle(
 			windows.CurrentProcess(),

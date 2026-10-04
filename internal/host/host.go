@@ -3,7 +3,7 @@ package host
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Key is the value identity of an execution target: equal keys mean the same Host.
@@ -85,7 +85,7 @@ type FileStat struct {
 	Kind     FileKind
 	Mode     uint32
 	Size     uint64
-	Modified core.Timestamp
+	Modified types.Timestamp
 }
 
 // DirEntry is one directory entry.
@@ -125,7 +125,7 @@ type FS interface {
 	Link(context.Context, string, string) error
 	Readlink(context.Context, string) (string, error)
 	Realpath(context.Context, string) (string, error)
-	Utimes(context.Context, string, core.Timestamp, core.Timestamp) error
+	Utimes(context.Context, string, types.Timestamp, types.Timestamp) error
 }
 
 // Process starts programs outside a shell job. A failure to start is reported by the child's end.
@@ -173,7 +173,7 @@ type ProcessStream interface {
 
 // ProcessOutput is one read of a process's output.
 type ProcessOutput struct {
-	Stream core.StreamKind
+	Stream types.StreamKind
 	Bytes  []byte
 }
 

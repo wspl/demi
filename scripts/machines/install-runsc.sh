@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Installs the pinned Cloud runtime distribution, sidecars included, under
 # /opt/gvisor and prints the path of its runsc; with --path, prints that path
-# without installing anything. `internal/machines/sandbox/runtime-release.json` pins the release.
+# without installing anything. `internal/machinemanager/sandbox/runtime-release.json` pins the release.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-runtime="$here/../../internal/machines/sandbox/runtime"
+runtime="$here/../../internal/machinemanager/sandbox/runtime"
 release="$runtime/../runtime-release.json"
 # Only the runsc path goes to standard output; progress goes to standard error.
 exec 3>&1 1>&2

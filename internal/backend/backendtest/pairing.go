@@ -13,7 +13,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Paired is a claimed device and its test-owned runner process.
@@ -21,11 +21,11 @@ type Paired struct {
 	// Runner owns the paired device runner process.
 	Runner *remotehosttest.RunnerProcess
 	// Device is the validated claimed device.
-	Device webapi.DeviceDTO
+	Device webapiproto.DeviceDTO
 }
 
 // ID returns the claimed device's ID.
-func (p *Paired) ID() webapi.DeviceID { return p.Device.ID }
+func (p *Paired) ID() webapiproto.DeviceID { return p.Device.ID }
 
 // Token waits until the runner has durably received its device token.
 func (p *Paired) Token(ctx context.Context) (string, error) { return StoredToken(ctx, p.Runner) }
@@ -43,7 +43,7 @@ func (b *TestBackend) Pair(ctx context.Context, t testing.TB, session *Session, 
 	if err != nil {
 		return nil, err
 	}
-	body, err := contract.EncodeJSON(webapi.Claim{Code: code})
+	body, err := contract.EncodeJSON(webapiproto.Claim{Code: code})
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func (b *TestBackend) Pair(ctx context.Context, t testing.TB, session *Session, 
 	if answer.Status != http.StatusCreated {
 		return nil, fmt.Errorf("claim: HTTP %d: %s", answer.Status, answer.Body)
 	}
-	claimed, err := webapi.DecodeClaimedDevice(answer.Body)
+	claimed, err := webapiproto.DecodeClaimedDevice(answer.Body)
 	if err != nil {
 		return nil, err
 	}

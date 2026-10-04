@@ -9,7 +9,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/accounts"
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type accountStore struct {
@@ -17,10 +17,10 @@ type accountStore struct {
 	account        *database.Account
 	lookups        int
 	passwordWrites int
-	createdRole    webapi.Role
+	createdRole    webapiproto.Role
 }
 
-func (s *accountStore) AccountByEmail(context.Context, webapi.EmailAddress) (database.Account, bool, error) {
+func (s *accountStore) AccountByEmail(context.Context, webapiproto.EmailAddress) (database.Account, bool, error) {
 	s.lookups++
 	if s.account == nil {
 		return database.Account{}, false, nil
@@ -28,37 +28,37 @@ func (s *accountStore) AccountByEmail(context.Context, webapi.EmailAddress) (dat
 	return *s.account, true, nil
 }
 
-func (s *accountStore) Account(context.Context, webapi.UserID) (database.Account, bool, error) {
+func (s *accountStore) Account(context.Context, webapiproto.UserID) (database.Account, bool, error) {
 	if s.account == nil {
 		return database.Account{}, false, nil
 	}
 	return *s.account, true, nil
 }
 
-func (s *accountStore) SetPassword(context.Context, webapi.UserID, database.PasswordHash) error {
+func (s *accountStore) SetPassword(context.Context, webapiproto.UserID, database.PasswordHash) error {
 	s.passwordWrites++
 	return nil
 }
 
 func (s *accountStore) CreateUser(
 	_ context.Context,
-	email webapi.EmailAddress,
+	email webapiproto.EmailAddress,
 	_ database.PasswordHash,
-	role webapi.Role,
-) (webapi.UserDTO, error) {
+	role webapiproto.Role,
+) (webapiproto.UserDTO, error) {
 	s.createdRole = role
-	return webapi.UserDTO{ID: "new", Email: email, Role: role}, nil
+	return webapiproto.UserDTO{ID: "new", Email: email, Role: role}, nil
 }
 
 func (s *accountStore) CreateMaster(
 	context.Context,
-	webapi.EmailAddress,
+	webapiproto.EmailAddress,
 	database.PasswordHash,
-) (webapi.UserDTO, error) {
+) (webapiproto.UserDTO, error) {
 	if s.account != nil {
-		return webapi.UserDTO{}, database.ErrAlreadySetUp
+		return webapiproto.UserDTO{}, database.ErrAlreadySetUp
 	}
-	s.account = &database.Account{User: webapi.UserDTO{ID: "master", Role: webapi.RoleMaster}}
+	s.account = &database.Account{User: webapiproto.UserDTO{ID: "master", Role: webapiproto.RoleMaster}}
 	return s.account.User, nil
 }
 
@@ -69,7 +69,7 @@ type testPasswords struct {
 	hashed   int
 }
 
-func (p *testPasswords) Verify(_ context.Context, _ webapi.Password, stored *database.PasswordHash) (bool, error) {
+func (p *testPasswords) Verify(_ context.Context, _ webapiproto.Password, stored *database.PasswordHash) (bool, error) {
 	p.verified++
 	if stored == nil {
 		p.dummy++
@@ -77,14 +77,14 @@ func (p *testPasswords) Verify(_ context.Context, _ webapi.Password, stored *dat
 	return p.valid && stored != nil, nil
 }
 
-func (p *testPasswords) Hash(context.Context, webapi.Password) (database.PasswordHash, error) {
+func (p *testPasswords) Hash(context.Context, webapiproto.Password) (database.PasswordHash, error) {
 	p.hashed++
 	return database.PasswordHash{}, nil
 }
 
-type sessionOpener struct{ users []webapi.UserID }
+type sessionOpener struct{ users []webapiproto.UserID }
 
-func (s *sessionOpener) Open(_ context.Context, user webapi.UserID) (accounts.OpenedSession, error) {
+func (s *sessionOpener) Open(_ context.Context, user webapiproto.UserID) (accounts.OpenedSession, error) {
 	s.users = append(s.users, user)
 	return accounts.OpenedSession{Token: "cookie"}, nil
 }
@@ -99,13 +99,13 @@ func TestLoginLocksKnownAndUnknownAddresses(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				store := &accountStore{}
 				if known {
-					store.account = &database.Account{User: webapi.UserDTO{ID: "ana"}}
+					store.account = &database.Account{User: webapiproto.UserDTO{ID: "ana"}}
 				}
 				passwords := &testPasswords{}
 				sessions := &sessionOpener{}
 				limiter := accounts.NewLoginLimiter()
 				service := accounts.New(store, passwords, sessions, limiter)
-				credentials := webapi.Credentials{Email: "ana@example.test", Password: "incorrect"}
+				credentials := webapiproto.Credentials{Email: "ana@example.test", Password: "incorrect"}
 				for range 5 {
 					_, err := service.Login(t.Context(), credentials)
 					if !errors.Is(err, accounts.ErrInvalidCredentials) {
@@ -137,11 +137,13 @@ func TestLoginLocksKnownAndUnknownAddresses(t *testing.T) {
 }
 
 func TestAccountAdministrationChecksRolesBeforeHashing(t *testing.T) {
-	store := &accountStore{account: &database.Account{User: webapi.UserDTO{ID: "target", Role: webapi.RoleAdmin}}}
+	store := &accountStore{
+		account: &database.Account{User: webapiproto.UserDTO{ID: "target", Role: webapiproto.RoleAdmin}},
+	}
 	passwords := &testPasswords{}
 	service := accounts.New(store, passwords, &sessionOpener{}, accounts.NewLoginLimiter())
-	admin := webapi.UserDTO{Role: webapi.RoleAdmin}
-	create := webapi.CreateUser{Email: "new@example.test", Password: "password123", Role: webapi.NewRoleAdmin}
+	admin := webapiproto.UserDTO{Role: webapiproto.RoleAdmin}
+	create := webapiproto.CreateUser{Email: "new@example.test", Password: "password123", Role: webapiproto.NewRoleAdmin}
 	if _, err := service.Create(t.Context(), admin, create); !errors.Is(err, accounts.ErrOnlyMaster) {
 		t.Fatalf("admin creating admin: %v", err)
 	}
@@ -149,7 +151,7 @@ func TestAccountAdministrationChecksRolesBeforeHashing(t *testing.T) {
 		t.Context(),
 		admin,
 		"target",
-		webapi.PasswordReset{Password: "password123"},
+		webapiproto.PasswordReset{Password: "password123"},
 	); !errors.Is(
 		err,
 		accounts.ErrLowerRolesOnly,
@@ -159,18 +161,18 @@ func TestAccountAdministrationChecksRolesBeforeHashing(t *testing.T) {
 	if passwords.hashed != 0 || store.passwordWrites != 0 {
 		t.Fatal("unauthorized operation reached hashing/storage")
 	}
-	master := webapi.UserDTO{Role: webapi.RoleMaster}
+	master := webapiproto.UserDTO{Role: webapiproto.RoleMaster}
 	if _, err := service.Create(t.Context(), master, create); err != nil {
 		t.Fatal(err)
 	}
-	if store.createdRole != webapi.RoleAdmin {
+	if store.createdRole != webapiproto.RoleAdmin {
 		t.Fatal("wrong created role")
 	}
 	if err := service.ResetPassword(
 		t.Context(),
 		master,
 		"target",
-		webapi.PasswordReset{Password: "password123"},
+		webapiproto.PasswordReset{Password: "password123"},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -184,15 +186,15 @@ func TestSetupAndPasswordChange(t *testing.T) {
 	passwords := &testPasswords{}
 	sessions := &sessionOpener{}
 	service := accounts.New(store, passwords, sessions, accounts.NewLoginLimiter())
-	request := webapi.SetupRequest{Email: "master@example.test", Password: "password123"}
+	request := webapiproto.SetupRequest{Email: "master@example.test", Password: "password123"}
 	signed, err := service.Setup(t.Context(), request)
-	if err != nil || signed.User.Role != webapi.RoleMaster || len(sessions.users) != 1 {
+	if err != nil || signed.User.Role != webapiproto.RoleMaster || len(sessions.users) != 1 {
 		t.Fatalf("setup: %+v %v", signed, err)
 	}
 	if _, err := service.Setup(t.Context(), request); !errors.Is(err, accounts.ErrAlreadySetUp) {
 		t.Fatalf("second setup: %v", err)
 	}
-	change := webapi.PasswordChange{Current: "wrong", Next: "nextpassword"}
+	change := webapiproto.PasswordChange{Current: "wrong", Next: "nextpassword"}
 	if err := service.ChangePassword(t.Context(), "master", change); !errors.Is(err, accounts.ErrCurrentPassword) {
 		t.Fatalf("wrong password: %v", err)
 	}

@@ -7,15 +7,15 @@ import (
 	"reflect"
 
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/plugin"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // UserPlugins returns each plugin `user` turned on or off, by id; one the user never
 // switched is on.
-func (c *ControlService) UserPlugins(ctx context.Context, user webapi.UserID) (map[string]bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (map[string]bool, error) {
+func (c *ControlService) UserPlugins(ctx context.Context, user webapiproto.UserID) (map[string]bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (map[string]bool, error) {
 		choices := make(map[string]bool)
 		_, err := queryRecords(
 			ctx,
@@ -33,8 +33,13 @@ func (c *ControlService) UserPlugins(ctx context.Context, user webapi.UserID) (m
 }
 
 // SetUserPlugin records that `user` has `plugin` on or off.
-func (c *ControlService) SetUserPlugin(ctx context.Context, user webapi.UserID, plugin string, enabled bool) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) SetUserPlugin(
+	ctx context.Context,
+	user webapiproto.UserID,
+	plugin string,
+	enabled bool,
+) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(
 			ctx,
 			tx,
@@ -52,12 +57,12 @@ SET enabled=excluded.enabled`,
 // PluginValue returns `plugin`'s value `key` for `user`.
 func (c *ControlService) PluginValue(
 	ctx context.Context,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	plugin string,
 	key string,
 ) (PluginValue, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (PluginValue, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (PluginValue, error) {
 		r, ok, err := queryRecord(
 			ctx,
 			tx,
@@ -77,25 +82,29 @@ func (c *ControlService) PluginValue(
 // PluginValues returns every value of `plugin`'s for `user`, by key.
 func (c *ControlService) PluginValues(
 	ctx context.Context,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	plugin string,
 ) (map[string]PluginValue, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (map[string]PluginValue, error) {
-		values := make(map[string]PluginValue)
-		_, err := queryRecords(
-			ctx,
-			tx,
-			"plugin_values",
-			"SELECT key,document,revision FROM plugin_values WHERE user_id = ? AND plugin = ?",
-			func(r *storedRow) struct{} {
-				values[r.text("key")] = pluginValueRow(r)
-				return struct{}{}
-			},
-			user,
-			plugin,
-		)
-		return values, err
-	})
+	return controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (map[string]PluginValue, error) {
+			values := make(map[string]PluginValue)
+			_, err := queryRecords(
+				ctx,
+				tx,
+				"plugin_values",
+				"SELECT key,document,revision FROM plugin_values WHERE user_id = ? AND plugin = ?",
+				func(r *storedRow) struct{} {
+					values[r.text("key")] = pluginValueRow(r)
+					return struct{}{}
+				},
+				user,
+				plugin,
+			)
+			return values, err
+		},
+	)
 }
 
 // WritePluginValue writes `plugin`'s value `key` for `user` if it is still at
@@ -105,7 +114,7 @@ func (c *ControlService) PluginValues(
 // used before it commits (`storage.md` § Collecting blobs).
 func (c *ControlService) WritePluginValue(ctx context.Context, write ValueWrite, uses OwnerBlobs) (uint64, error) {
 	var refused error
-	revision, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (uint64, error) {
+	revision, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (uint64, error) {
 		var revision uint64
 		var err error
 		revision, refused, err = writePluginValueTx(ctx, tx, write, uses)
@@ -157,7 +166,7 @@ func writePluginValueTx(
 	if !reflect.DeepEqual(stored, write.Revision) {
 		return 0, nil, ErrRevisionConflict
 	}
-	touched := append([]core.BlobRef{}, write.Blobs...)
+	touched := append([]types.BlobRef{}, write.Blobs...)
 	if found {
 		touched = append(touched, before.blobs...)
 	}
@@ -190,14 +199,14 @@ SET document=excluded.document,revision=excluded.revision,blobs=excluded.blobs`,
 // it commits.
 func (c *ControlService) RemovePluginValue(
 	ctx context.Context,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	plugin string,
 	key string,
 	revision uint64,
 	uses OwnerBlobs,
 ) error {
 	var refused error
-	err := controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+	err := controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		before, found, err := queryRecord(
 			ctx,
 			tx,
@@ -237,12 +246,12 @@ func (c *ControlService) RemovePluginValue(
 // set in name order.
 func (c *ControlService) PluginDirectories(
 	ctx context.Context,
-	user webapi.UserID,
+	user webapiproto.UserID,
 ) (map[string][]plugin.HostDirectory, error) {
 	return controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (map[string][]plugin.HostDirectory, error) {
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (map[string][]plugin.HostDirectory, error) {
 			sets := make(map[string][]plugin.HostDirectory)
 			_, err := queryRecords(
 				ctx,
@@ -269,12 +278,12 @@ func (c *ControlService) PluginDirectories(
 // before it commits.
 func (c *ControlService) SetPluginDirectories(
 	ctx context.Context,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	plugin string,
 	directories []plugin.HostDirectory,
 	uses OwnerBlobs,
 ) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		touched, err := directoryBlobs(
 			ctx,
 			tx,
@@ -321,8 +330,8 @@ func (c *ControlService) SetPluginDirectories(
 
 // PluginBlobs returns every blob `user`'s plugin values and Host directories name, which
 // the collector keeps.
-func (c *ControlService) PluginBlobs(ctx context.Context, user webapi.UserID) ([]core.BlobRef, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]core.BlobRef, error) {
+func (c *ControlService) PluginBlobs(ctx context.Context, user webapiproto.UserID) ([]types.BlobRef, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]types.BlobRef, error) {
 		rows, err := queryRecords(
 			ctx,
 			tx,
@@ -334,7 +343,7 @@ func (c *ControlService) PluginBlobs(ctx context.Context, user webapi.UserID) ([
 		if err != nil {
 			return nil, err
 		}
-		blobs := make([]core.BlobRef, 0)
+		blobs := make([]types.BlobRef, 0)
 		for _, row := range rows {
 			blobs = append(blobs, row...)
 		}
@@ -345,7 +354,7 @@ func (c *ControlService) PluginBlobs(ctx context.Context, user webapi.UserID) ([
 
 // The blobs a plugin value's column names.
 // +demi:root
-type blobNames []core.BlobRef
+type blobNames []types.BlobRef
 
 // A Host directory's stored files.
 // +demi:root
@@ -366,7 +375,7 @@ func pluginValueRow(r *storedRow) PluginValue {
 	return PluginValue{Document: document, Revision: r.count("revision")}
 }
 
-func directoryBlobs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]core.BlobRef, error) {
+func directoryBlobs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]types.BlobRef, error) {
 	rows, err := queryRecords(
 		ctx,
 		tx,
@@ -377,7 +386,7 @@ func directoryBlobs(ctx context.Context, tx *sql.Tx, query string, args ...any) 
 	if err != nil {
 		return nil, err
 	}
-	blobs := make([]core.BlobRef, 0)
+	blobs := make([]types.BlobRef, 0)
 	for _, files := range rows {
 		for _, file := range files {
 			blobs = append(blobs, file.Blob)

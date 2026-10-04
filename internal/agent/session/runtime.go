@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Runtime supplies a session's admission, prompts, context and tools. The node
@@ -26,7 +26,7 @@ type Runtime interface {
 	Preamble(ctx context.Context) (*string, error)
 	// Context returns new context in source order. Seen contains replayed
 	// context from the last compaction boundary, oldest first.
-	Context(ctx context.Context, seen []SeenContext, turn core.TurnID) ([]NewContext, error)
+	Context(ctx context.Context, seen []SeenContext, turn types.TurnID) ([]NewContext, error)
 	// Tools returns immutable definitions of the tools the model may call.
 	Tools() []provider.ToolDefinition
 	// InvokeTool runs one named call. Its context has the action's lifetime:
@@ -62,7 +62,7 @@ type ToolInvocation struct {
 	Input json.RawMessage
 	// Model is the model that asked for the call; its accepted media govern
 	// the result's attachments.
-	Model core.ModelSelection
+	Model types.ModelSelection
 	// RequestLimits bounds the video a result may attach.
 	RequestLimits provider.RequestLimits
 	// Generation is the node's command-storage generation a new job records.
@@ -74,7 +74,7 @@ type ToolOutcome struct {
 	// Output holds the result and media bytes, stored before transcript entry.
 	Output  []provider.ResultPart
 	IsError bool
-	View    core.ToolView
+	View    types.ToolView
 	// Effect asks the session to act beyond recording output; nil means none.
 	Effect ToolEffect
 }

@@ -3,9 +3,9 @@ package transcript
 import (
 	"slices"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // InterruptedTurnMessage is the error text for a session shut down during a turn.
@@ -28,30 +28,30 @@ type PendingCall struct {
 // Its owner serializes access. Construct it with NewLog.
 // Block data passed in or returned is immutable; mutations use these methods.
 type Log struct {
-	blocks   []core.Block
+	blocks   []types.Block
 	journal  journal
 	revision uint64
 	epoch    string
 	ids      IDs
-	clock    core.Clock
+	clock    types.Clock
 }
 
 // NewLog creates a log with a fresh epoch and revision zero, including on restore.
 // The caller supplies a nonnil identity source and clock.
-func NewLog(blocks []core.Block, ids IDs, clock core.Clock) *Log {
-	return &Log{blocks: append([]core.Block{}, blocks...), epoch: ids.NextID(), ids: ids, clock: clock}
+func NewLog(blocks []types.Block, ids IDs, clock types.Clock) *Log {
+	return &Log{blocks: append([]types.Block{}, blocks...), epoch: ids.NextID(), ids: ids, clock: clock}
 }
 
 // Blocks returns the ordered transcript snapshot.
-func (l *Log) Blocks() []core.Block { return slices.Clone(l.blocks) }
+func (l *Log) Blocks() []types.Block { return slices.Clone(l.blocks) }
 
 // Version returns the epoch and current published revision.
-func (l *Log) Version() framewire.TranscriptVersion {
-	return framewire.TranscriptVersion{Epoch: l.epoch, Revision: l.revision}
+func (l *Log) Version() conversationproto.TranscriptVersion {
+	return conversationproto.TranscriptVersion{Epoch: l.epoch, Revision: l.revision}
 }
 
 // Find returns the last block with id, or nil.
-func (l *Log) Find(id core.BlockID) core.Block {
+func (l *Log) Find(id types.BlockID) types.Block {
 	for i := len(l.blocks) - 1; i >= 0; i-- {
 		if l.blocks[i].ID() == id {
 			return l.blocks[i]
@@ -78,19 +78,19 @@ func (l *Log) TakePatches() (PatchBatch, bool) {
 
 // PushUser appends the input that opens a user turn.
 func (l *Log) PushUser(
-	turnID core.TurnID,
-	model core.ModelSelection,
-	content []core.UserContentBlock,
+	turnID types.TurnID,
+	model types.ModelSelection,
+	content []types.UserContentBlock,
 	preamble *string,
-) core.BlockID {
+) types.BlockID {
 	id := l.nextBlockID()
 	l.append(
-		&core.UserBlock{
+		&types.UserBlock{
 			BlockID:   id,
 			TurnID:    turnID,
 			Timestamp: l.clock.Now(),
 			Selection: model,
-			Content:   append([]core.UserContentBlock{}, content...),
+			Content:   append([]types.UserContentBlock{}, content...),
 			Preamble:  preamble,
 		},
 	)
@@ -98,9 +98,9 @@ func (l *Log) PushUser(
 }
 
 // PushContext appends context from the named source.
-func (l *Log) PushContext(turnID core.TurnID, model core.ModelSelection, source, text string) {
+func (l *Log) PushContext(turnID types.TurnID, model types.ModelSelection, source, text string) {
 	l.append(
-		&core.ContextBlock{
+		&types.ContextBlock{
 			BlockID:   l.nextBlockID(),
 			TurnID:    turnID,
 			Timestamp: l.clock.Now(),
@@ -113,31 +113,31 @@ func (l *Log) PushContext(turnID core.TurnID, model core.ModelSelection, source,
 
 // PushSteer appends a human steer under its existing identity.
 func (l *Log) PushSteer(
-	id core.BlockID,
-	turnID core.TurnID,
-	model core.ModelSelection,
-	content []core.UserContentBlock,
+	id types.BlockID,
+	turnID types.TurnID,
+	model types.ModelSelection,
+	content []types.UserContentBlock,
 ) {
 	l.append(
-		&core.SteerBlock{
+		&types.SteerBlock{
 			BlockID:   id,
 			TurnID:    turnID,
 			Timestamp: l.clock.Now(),
 			Selection: model,
-			Content:   append([]core.UserContentBlock{}, content...),
+			Content:   append([]types.UserContentBlock{}, content...),
 		},
 	)
 }
 
 // PushWakeup appends a fired yield wakeup under its existing identity.
 func (l *Log) PushWakeup(
-	id core.BlockID,
-	turnID core.TurnID,
-	model core.ModelSelection,
-	placement core.WakeupPlacement,
+	id types.BlockID,
+	turnID types.TurnID,
+	model types.ModelSelection,
+	placement types.WakeupPlacement,
 ) {
 	l.append(
-		&core.WakeupBlock{
+		&types.WakeupBlock{
 			BlockID:   id,
 			TurnID:    turnID,
 			Timestamp: l.clock.Now(),
@@ -148,9 +148,9 @@ func (l *Log) PushWakeup(
 }
 
 // PushAgentMessage appends an agent message under its message identity.
-func (l *Log) PushAgentMessage(turnID core.TurnID, model core.ModelSelection, message core.AgentMessage) {
+func (l *Log) PushAgentMessage(turnID types.TurnID, model types.ModelSelection, message types.AgentMessage) {
 	l.append(
-		&core.AgentMessageBlock{
+		&types.AgentMessageBlock{
 			BlockID:   message.ID,
 			TurnID:    turnID,
 			Timestamp: l.clock.Now(),
@@ -161,14 +161,14 @@ func (l *Log) PushAgentMessage(turnID core.TurnID, model core.ModelSelection, me
 }
 
 // PushResume records that a turn continues after a cut.
-func (l *Log) PushResume(turnID core.TurnID, model core.ModelSelection) {
-	l.append(&core.ResumeBlock{BlockID: l.nextBlockID(), TurnID: turnID, Timestamp: l.clock.Now(), Selection: model})
+func (l *Log) PushResume(turnID types.TurnID, model types.ModelSelection) {
+	l.append(&types.ResumeBlock{BlockID: l.nextBlockID(), TurnID: turnID, Timestamp: l.clock.Now(), Selection: model})
 }
 
 // MarkLatestAbortResumed marks the latest stopped marker as continued.
 func (l *Log) MarkLatestAbortResumed() {
 	for i := len(l.blocks) - 1; i >= 0; i-- {
-		if block, ok := l.blocks[i].(*core.AbortBlock); ok {
+		if block, ok := l.blocks[i].(*types.AbortBlock); ok {
 			next := *block
 			next.IsResumed = true
 			l.replace(i, &next)
@@ -179,26 +179,26 @@ func (l *Log) MarkLatestAbortResumed() {
 
 // ReplaceAll publishes a history rewrite as one replace patch, superseding pending
 // changes. The rewrite already saved its rows, so the batch marks none.
-func (l *Log) ReplaceAll(blocks []core.Block) PatchBatch {
+func (l *Log) ReplaceAll(blocks []types.Block) PatchBatch {
 	l.journal = journal{}
 	l.revision++
-	l.blocks = append([]core.Block{}, blocks...)
+	l.blocks = append([]types.Block{}, blocks...)
 	return PatchBatch{
 		Revision: l.revision,
-		Patches:  []framewire.TranscriptPatch{&framewire.ReplacePatch{Value: slices.Clone(l.blocks)}},
-		Touched:  []core.BlockID{},
+		Patches:  []conversationproto.TranscriptPatch{&conversationproto.ReplacePatch{Value: slices.Clone(l.blocks)}},
+		Touched:  []types.BlockID{},
 	}
 }
 
 // InsertCompactionBoundary inserts a summary where the retained history begins.
 func (l *Log) InsertCompactionBoundary(
 	index int,
-	model core.ModelSelection,
+	model types.ModelSelection,
 	summary string,
 	summaryTokens uint64,
-) core.BlockID {
+) types.BlockID {
 	id := l.nextBlockID()
-	block := &core.CompactionBoundaryBlock{
+	block := &types.CompactionBoundaryBlock{
 		BlockID:       id,
 		Timestamp:     l.clock.Now(),
 		Selection:     model,
@@ -206,14 +206,14 @@ func (l *Log) InsertCompactionBoundary(
 		SummaryTokens: summaryTokens,
 	}
 	l.journal.add(index, block)
-	l.blocks = slices.Insert(l.blocks, index, core.Block(block))
+	l.blocks = slices.Insert(l.blocks, index, types.Block(block))
 	return id
 }
 
 // PushCompactionMarker appends the estimate of what the boundary summarized.
-func (l *Log) PushCompactionMarker(model core.ModelSelection, boundaryID core.BlockID, compactedTokens uint64) {
+func (l *Log) PushCompactionMarker(model types.ModelSelection, boundaryID types.BlockID, compactedTokens uint64) {
 	l.append(
-		&core.CompactionMarkerBlock{
+		&types.CompactionMarkerBlock{
 			BlockID:         l.nextBlockID(),
 			Timestamp:       l.clock.Now(),
 			Selection:       model,
@@ -224,19 +224,19 @@ func (l *Log) PushCompactionMarker(model core.ModelSelection, boundaryID core.Bl
 }
 
 // PushAbort appends the stopped marker left by Stop.
-func (l *Log) PushAbort(model core.ModelSelection) {
-	l.append(&core.AbortBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model})
+func (l *Log) PushAbort(model types.ModelSelection) {
+	l.append(&types.AbortBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model})
 }
 
 // PushError appends a failed request or interrupted turn record.
 func (l *Log) PushError(
-	model core.ModelSelection,
+	model types.ModelSelection,
 	message string,
 	code *string,
-	diagnostics *core.ProviderErrorDiagnostics,
+	diagnostics *types.ProviderErrorDiagnostics,
 ) {
 	l.append(
-		&core.ErrorBlock{
+		&types.ErrorBlock{
 			BlockID:     l.nextBlockID(),
 			Timestamp:   l.clock.Now(),
 			Selection:   model,
@@ -248,9 +248,9 @@ func (l *Log) PushError(
 }
 
 // HasUserTurn reports whether a user block opened the turn.
-func (l *Log) HasUserTurn(turn core.TurnID) bool {
+func (l *Log) HasUserTurn(turn types.TurnID) bool {
 	for _, block := range l.blocks {
-		if user, ok := block.(*core.UserBlock); ok && user.TurnID == turn {
+		if user, ok := block.(*types.UserBlock); ok && user.TurnID == turn {
 			return true
 		}
 	}
@@ -262,20 +262,20 @@ func (l *Log) EndsWithInterruption() bool {
 	if len(l.blocks) == 0 {
 		return false
 	}
-	block, ok := l.blocks[len(l.blocks)-1].(*core.ErrorBlock)
+	block, ok := l.blocks[len(l.blocks)-1].(*types.ErrorBlock)
 	return ok && block.Code != nil && *block.Code == InterruptedCode
 }
 
 // OpenThinking opens a reasoning block with text.
-func (l *Log) OpenThinking(model core.ModelSelection, text string) {
-	l.append(&core.ThinkingBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Text: text})
+func (l *Log) OpenThinking(model types.ModelSelection, text string) {
+	l.append(&types.ThinkingBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Text: text})
 }
 
 // AppendThinking extends the last unsigned reasoning block or opens one.
-func (l *Log) AppendThinking(model core.ModelSelection, text string) {
+func (l *Log) AppendThinking(model types.ModelSelection, text string) {
 	index := len(l.blocks) - 1
 	if index >= 0 {
-		if block, ok := l.blocks[index].(*core.ThinkingBlock); ok && block.Signature == nil {
+		if block, ok := l.blocks[index].(*types.ThinkingBlock); ok && block.Signature == nil {
 			next := *block
 			next.Text += text
 			l.blocks[index] = &next
@@ -289,7 +289,7 @@ func (l *Log) AppendThinking(model core.ModelSelection, text string) {
 // SignThinking signs the latest reasoning block; without one it does nothing.
 func (l *Log) SignThinking(signature string) {
 	for i := len(l.blocks) - 1; i >= 0; i-- {
-		if block, ok := l.blocks[i].(*core.ThinkingBlock); ok {
+		if block, ok := l.blocks[i].(*types.ThinkingBlock); ok {
 			next := *block
 			next.Signature = new(signature)
 			l.replace(i, &next)
@@ -299,17 +299,17 @@ func (l *Log) SignThinking(signature string) {
 }
 
 // PushRedactedThinking appends opaque reasoning data.
-func (l *Log) PushRedactedThinking(model core.ModelSelection, data string) {
+func (l *Log) PushRedactedThinking(model types.ModelSelection, data string) {
 	l.append(
-		&core.RedactedThinkingBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Data: data},
+		&types.RedactedThinkingBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Data: data},
 	)
 }
 
 // AppendText extends the last incomplete text block or opens one.
-func (l *Log) AppendText(model core.ModelSelection, text string) {
+func (l *Log) AppendText(model types.ModelSelection, text string) {
 	index := len(l.blocks) - 1
 	if index >= 0 {
-		if block, ok := l.blocks[index].(*core.TextBlock); ok && !block.Forkable {
+		if block, ok := l.blocks[index].(*types.TextBlock); ok && !block.Forkable {
 			next := *block
 			next.Text += text
 			l.blocks[index] = &next
@@ -317,7 +317,7 @@ func (l *Log) AppendText(model core.ModelSelection, text string) {
 			return
 		}
 	}
-	l.append(&core.TextBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Text: text})
+	l.append(&types.TextBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Text: text})
 }
 
 // EndsWithOpenText reports whether the last block is incomplete answer text.
@@ -325,23 +325,23 @@ func (l *Log) EndsWithOpenText() bool {
 	if len(l.blocks) == 0 {
 		return false
 	}
-	block, ok := l.blocks[len(l.blocks)-1].(*core.TextBlock)
+	block, ok := l.blocks[len(l.blocks)-1].(*types.TextBlock)
 	return ok && !block.Forkable
 }
 
 // CompleteTailText marks tail text complete and returns its identity, or false
 // when it is already complete, absent, or follows a still-executing call.
-func (l *Log) CompleteTailText() (core.BlockID, bool) {
+func (l *Log) CompleteTailText() (types.BlockID, bool) {
 	index := len(l.blocks) - 1
 	if index < 0 {
 		return "", false
 	}
-	block, ok := l.blocks[index].(*core.TextBlock)
+	block, ok := l.blocks[index].(*types.TextBlock)
 	if !ok || block.Forkable {
 		return "", false
 	}
 	for _, prior := range l.blocks[:index] {
-		if call, ok := prior.(*core.ToolCallBlock); ok && call.Status == "executing" {
+		if call, ok := prior.(*types.ToolCallBlock); ok && call.Status == "executing" {
 			return "", false
 		}
 	}
@@ -353,7 +353,7 @@ func (l *Log) CompleteTailText() (core.BlockID, bool) {
 
 // PushToolCall appends an executing call, retaining string input as text and
 // representing null input as an empty object.
-func (l *Log) PushToolCall(model core.ModelSelection, call provider.ToolCall) {
+func (l *Log) PushToolCall(model types.ModelSelection, call provider.ToolCall) {
 	input, err := provider.ToolArguments(call.Input)
 	if err != nil {
 		// Provider events normally contain validated JSON. Preserve malformed raw
@@ -361,7 +361,7 @@ func (l *Log) PushToolCall(model core.ModelSelection, call provider.ToolCall) {
 		input = string(call.Input)
 	}
 	l.append(
-		&core.ToolCallBlock{
+		&types.ToolCallBlock{
 			BlockID:   l.nextBlockID(),
 			Timestamp: l.clock.Now(),
 			Selection: model,
@@ -369,21 +369,21 @@ func (l *Log) PushToolCall(model core.ModelSelection, call provider.ToolCall) {
 			ToolName:  call.ToolName,
 			Input:     input,
 			Status:    "executing",
-			Output:    []core.ToolResultContentBlock{},
+			Output:    []types.ToolResultContentBlock{},
 		},
 	)
 }
 
 // PushResponse appends the usage of one answered request.
-func (l *Log) PushResponse(model core.ModelSelection, usage core.TokenUsage) {
-	l.append(&core.ResponseBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Usage: usage})
+func (l *Log) PushResponse(model types.ModelSelection, usage types.TokenUsage) {
+	l.append(&types.ResponseBlock{BlockID: l.nextBlockID(), Timestamp: l.clock.Now(), Selection: model, Usage: usage})
 }
 
 // PendingToolCalls returns every still-executing call in transcript order.
 func (l *Log) PendingToolCalls() []PendingCall {
 	calls := []PendingCall{}
 	for _, block := range l.blocks {
-		if call, ok := block.(*core.ToolCallBlock); ok && call.Status == "executing" {
+		if call, ok := block.(*types.ToolCallBlock); ok && call.Status == "executing" {
 			calls = append(calls, PendingCall{ToolUseID: call.ToolUseID, ToolName: call.ToolName, Input: call.Input})
 		}
 	}
@@ -394,12 +394,12 @@ func (l *Log) PendingToolCalls() []PendingCall {
 // A provider may reuse an id across requests; an absent call is ignored.
 func (l *Log) CompleteToolCall(
 	toolUseID string,
-	output []core.ToolResultContentBlock,
+	output []types.ToolResultContentBlock,
 	isError bool,
-	view core.ToolView,
+	view types.ToolView,
 ) {
 	for i := len(l.blocks) - 1; i >= 0; i-- {
-		call, ok := l.blocks[i].(*core.ToolCallBlock)
+		call, ok := l.blocks[i].(*types.ToolCallBlock)
 		if !ok || call.Status != "executing" || call.ToolUseID != toolUseID {
 			continue
 		}
@@ -408,7 +408,7 @@ func (l *Log) CompleteToolCall(
 		if isError {
 			next.Status = "error"
 		}
-		next.Output = append([]core.ToolResultContentBlock{}, output...)
+		next.Output = append([]types.ToolResultContentBlock{}, output...)
 		next.View = view
 		l.replace(i, &next)
 		return
@@ -416,20 +416,20 @@ func (l *Log) CompleteToolCall(
 }
 
 // nextBlockID validates the nonempty identity guaranteed by the injected source.
-func (l *Log) nextBlockID() core.BlockID {
+func (l *Log) nextBlockID() types.BlockID {
 	// IDs guarantees nonempty strings; Parse cannot fail for a conforming source.
-	id, _ := core.ParseBlockID(l.ids.NextID())
+	id, _ := types.ParseBlockID(l.ids.NextID())
 	return id
 }
 
 // append records the transcript insertion before adding its immutable value.
-func (l *Log) append(block core.Block) {
+func (l *Log) append(block types.Block) {
 	l.journal.add(len(l.blocks), block)
 	l.blocks = append(l.blocks, block)
 }
 
 // replace publishes a new block value; previous snapshots retain the old value.
-func (l *Log) replace(index int, block core.Block) {
+func (l *Log) replace(index int, block types.Block) {
 	l.blocks[index] = block
 	l.journal.replace(index, block)
 }

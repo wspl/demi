@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/agent/server"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 // HangGuard bounds a scripted client's wait only to detect hangs.
@@ -27,7 +27,7 @@ type TestClient[H host.Host] struct {
 
 // Connect creates a client of root, whose new tree works in cwd and whose
 // frames refer to no files. It registers cleanup with t.
-func Connect[H host.Host](t testing.TB, s *server.Server[H], root core.NodeID, cwd string) *TestClient[H] {
+func Connect[H host.Host](t testing.TB, s *server.Server[H], root types.NodeID, cwd string) *TestClient[H] {
 	return ConnectWith(t, s, root, cwd, NewFiles())
 }
 
@@ -36,7 +36,7 @@ func Connect[H host.Host](t testing.TB, s *server.Server[H], root core.NodeID, c
 func ConnectWith[H host.Host](
 	t testing.TB,
 	s *server.Server[H],
-	root core.NodeID,
+	root types.NodeID,
 	cwd string,
 	resolver server.ContentResolver,
 ) *TestClient[H] {
@@ -49,13 +49,13 @@ func ConnectWith[H host.Host](
 func (c *TestClient[H]) SetHangGuard(guard time.Duration) { c.hangGuard = guard }
 
 // Send hands frame to the connection and waits until it is handled.
-func (c *TestClient[H]) Send(ctx context.Context, frame framewire.ClientFrame) {
+func (c *TestClient[H]) Send(ctx context.Context, frame conversationproto.ClientFrame) {
 	c.connection.Handle(ctx, frame)
 }
 
 // Next returns the next frame, or nil once the outbox ends or lags.
 // Cancellation is returned as an error.
-func (c *TestClient[H]) Next(ctx context.Context) (framewire.ServerFrame, error) {
+func (c *TestClient[H]) Next(ctx context.Context) (conversationproto.ServerFrame, error) {
 	if c.frames.Next(ctx) {
 		return c.frames.Frame(), nil
 	}
@@ -67,7 +67,7 @@ func (c *TestClient[H]) Next(ctx context.Context) (framewire.ServerFrame, error)
 }
 
 // Received returns every frame waiting now.
-func (c *TestClient[H]) Received() []framewire.ServerFrame { return WaitingFrames(c.frames) }
+func (c *TestClient[H]) Received() []conversationproto.ServerFrame { return WaitingFrames(c.frames) }
 
 // Split returns the connection and outbox for observing frames while another
 // goroutine handles input. Only one goroutine may read the outbox at a time.
@@ -80,11 +80,11 @@ func (c *TestClient[H]) Split() (*server.Connection[H], *server.Frames) {
 // or the client's hang deadline ends the wait first.
 func (c *TestClient[H]) NextUntil(
 	ctx context.Context,
-	until func(framewire.ServerFrame) bool,
-) ([]framewire.ServerFrame, error) {
+	until func(conversationproto.ServerFrame) bool,
+) ([]conversationproto.ServerFrame, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.hangGuard)
 	defer cancel()
-	frames := []framewire.ServerFrame{}
+	frames := []conversationproto.ServerFrame{}
 	for {
 		frame, err := c.Next(ctx)
 		if err != nil {
@@ -104,10 +104,10 @@ func (c *TestClient[H]) NextUntil(
 func (c *TestClient[H]) Connection() *server.Connection[H] { return c.connection }
 
 // WaitingFrames returns every frame frames holds now.
-func WaitingFrames(frames *server.Frames) []framewire.ServerFrame {
+func WaitingFrames(frames *server.Frames) []conversationproto.ServerFrame {
 	now, cancel := context.WithCancel(context.Background())
 	cancel()
-	waiting := []framewire.ServerFrame{}
+	waiting := []conversationproto.ServerFrame{}
 	for frames.Next(now) {
 		waiting = append(waiting, frames.Frame())
 	}

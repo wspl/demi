@@ -12,20 +12,20 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 // exited supplies a command whose whole stdout has not yet been seen.
 func exited(text string) host.CommandStatus {
-	output := host.WholeOutput{Records: []host.OutputRecord{{Stream: core.StreamKindStdout, Bytes: []byte(text)}}}
+	output := host.WholeOutput{Records: []host.OutputRecord{{Stream: types.StreamKindStdout, Bytes: []byte(text)}}}
 	return host.CommandStatus{
 		ShellID:   "3",
 		CommandID: "17",
-		Output:    core.OutputView{Line: 1},
+		Output:    types.OutputView{Line: 1},
 		Whole:     &host.WholeView{Output: &output},
 		RunningMs: 5,
 		IdleMs:    1,
@@ -45,7 +45,7 @@ func TestOutputWithinBound(t *testing.T) {
 	empty := exited("")
 	empty.Files = &host.EditedFiles{}
 	outcome := shellOutcome(t.Context(), empty, storetest.TestModel().Model, provider.RequestLimits{})
-	if _, err := (core.ToolViewJSON{Value: outcome.View}).MarshalJSON(); err != nil {
+	if _, err := (types.ToolViewJSON{Value: outcome.View}).MarshalJSON(); err != nil {
 		t.Fatal(err)
 	}
 	got := result(t, exited("one\ntwo\n"))
@@ -57,15 +57,15 @@ func TestOutputWithinBound(t *testing.T) {
 
 func TestUnfinishedLineRepeatsUntilNewlineOrEnd(t *testing.T) {
 	record := host.NewCommandRecord("3", "17", "call")
-	record.AppendOutput(core.StreamKindStdout, "done\nre")
-	record.AppendOutput(core.StreamKindStderr, "a")
+	record.AppendOutput(types.StreamKindStdout, "done\nre")
+	record.AppendOutput(types.StreamKindStderr, "a")
 	for _, want := range []string{"done\nrea", "rea"} {
 		got := result(t, record.Status(0, nil))
 		if !strings.HasSuffix(got, "\noutput:\n"+want+"\n"+runningNext) {
 			t.Fatal(got)
 		}
 	}
-	record.AppendOutput(core.StreamKindStdout, "dy\nprompt")
+	record.AppendOutput(types.StreamKindStdout, "dy\nprompt")
 	for _, want := range []string{"ready\nprompt", "prompt"} {
 		got := result(t, record.Status(0, nil))
 		if !strings.HasSuffix(got, "\noutput:\n"+want+"\n"+runningNext) {
@@ -74,9 +74,9 @@ func TestUnfinishedLineRepeatsUntilNewlineOrEnd(t *testing.T) {
 	}
 	whole := &host.WholeOutput{
 		Records: []host.OutputRecord{
-			{Stream: core.StreamKindStdout, Bytes: []byte("done\nre")},
-			{Stream: core.StreamKindStderr, Bytes: []byte("a")},
-			{Stream: core.StreamKindStdout, Bytes: []byte("dy\nprompt")},
+			{Stream: types.StreamKindStdout, Bytes: []byte("done\nre")},
+			{Stream: types.StreamKindStderr, Bytes: []byte("a")},
+			{Stream: types.StreamKindStdout, Bytes: []byte("dy\nprompt")},
 		},
 	}
 	record.Settle(host.Ending{Phase: host.Exited}, whole, nil, "")
@@ -169,7 +169,7 @@ func TestRunningStartAndNewestWithinBound(t *testing.T) {
 	status.Output.Text = "building\n"
 	status.Unreceived = 1048576
 	status.Newest = []host.Newest{
-		{Stream: core.StreamKindStdout, Offset: 1048576, LeftOut: 1040384, Text: "ne 998\nline 999\nline 1000\n"},
+		{Stream: types.StreamKindStdout, Offset: 1048576, LeftOut: 1040384, Text: "ne 998\nline 999\nline 1000\n"},
 	}
 	want := strings.Join(
 		[]string{
@@ -252,15 +252,15 @@ func TestRunningHandlesAndUnreceivedOutput(t *testing.T) {
 func TestBinaryStdoutAttachmentPolicy(t *testing.T) {
 	png := storetest.PNG(4, 3, 1)
 	wide := storetest.PNG(2400, 10, 1)
-	model := storetest.ModelReading("stub", "test", []core.FileExtension{core.FileExtensionPNG}).Model
-	videoModel := storetest.ModelReading("stub", "test", []core.FileExtension{core.FileExtensionMP4}).Model
+	model := storetest.ModelReading("stub", "test", []types.FileExtension{types.FileExtensionPNG}).Model
+	videoModel := storetest.ModelReading("stub", "test", []types.FileExtension{types.FileExtensionMP4}).Model
 	mp4 := []byte("\x00\x00\x00\x20ftypisom\xff\xfe")
 	save := "save it: demi shell output 17 --raw --stdout > <file>"
 	body40, body39 := uint64(40), uint64(39)
 	cases := []struct {
 		name                 string
 		data                 []byte
-		model                core.Model
+		model                types.Model
 		body                 *uint64
 		total                uint64
 		truncated            bool
@@ -350,7 +350,7 @@ func TestBinaryStdoutAttachmentPolicy(t *testing.T) {
 			status := exited("")
 			status.State.BinaryStdout = &host.BinaryOutput{
 				Bytes: scenario.data,
-				Info: core.BinaryStdout{
+				Info: types.BinaryStdout{
 					TotalBytes: total,
 					LimitBytes: 16 * 1024 * 1024,
 					Truncated:  scenario.truncated,
@@ -386,19 +386,19 @@ func TestBinaryStdoutAttachmentPolicy(t *testing.T) {
 }
 
 func TestViewWindowKeepsNewestMergedCharacters(t *testing.T) {
-	chunks := []core.OutputChunk{
-		{Stream: core.StreamKindStdout, Text: "ab"},
-		{Stream: core.StreamKindStderr},
-		{Stream: core.StreamKindStderr, Text: "cdé"},
+	chunks := []types.OutputChunk{
+		{Stream: types.StreamKindStdout, Text: "ab"},
+		{Stream: types.StreamKindStderr},
+		{Stream: types.StreamKindStderr, Text: "cdé"},
 	}
 	for _, scenario := range []struct {
 		limit int
-		want  []core.OutputChunk
+		want  []types.OutputChunk
 		cut   bool
 	}{
-		{10, []core.OutputChunk{chunks[0], chunks[2]}, false},
-		{4, []core.OutputChunk{{Stream: core.StreamKindStdout, Text: "b"}, chunks[2]}, true},
-		{3, []core.OutputChunk{chunks[2]}, true},
+		{10, []types.OutputChunk{chunks[0], chunks[2]}, false},
+		{4, []types.OutputChunk{{Stream: types.StreamKindStdout, Text: "b"}, chunks[2]}, true},
+		{3, []types.OutputChunk{chunks[2]}, true},
 	} {
 		t.Run(strconv.Itoa(scenario.limit), func(t *testing.T) {
 			got, cut := tailWindow(chunks, scenario.limit)

@@ -10,14 +10,14 @@ import (
 	"slices"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/commandwire/commandwiretest"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandproto/commandprototest"
 )
 
 // NativeFixture is a built native command package and its executable location.
 type NativeFixture struct {
 	// Descriptor describes the fixture command executable.
-	Descriptor commandwire.PackageDescriptor
+	Descriptor commandproto.PackageDescriptor
 	path       string
 }
 
@@ -27,7 +27,7 @@ func LoadNativeFixture(ctx context.Context) (*NativeFixture, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewNativeFixture(ctx, "demicodes.runner-test", path, commandwiretest.FixtureOperations())
+	return NewNativeFixture(ctx, "demicodes.runner-test", path, commandprototest.FixtureOperations())
 }
 
 // NewNativeFixture describes the package served by path for this machine's target.
@@ -39,17 +39,17 @@ func NewNativeFixture(ctx context.Context, id, path string, operations []string)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	target, err := commandwire.HostTarget()
+	target, err := commandproto.HostTarget()
 	if err != nil {
 		return nil, err
 	}
 	digest := sha256.Sum256(data)
-	descriptor := commandwire.PackageDescriptor{
+	descriptor := commandproto.PackageDescriptor{
 		ID:              id,
 		Version:         "test",
 		ProtocolVersion: 1,
 		Operations:      slices.Clone(operations),
-		Targets: map[string]commandwire.PackageArtifact{
+		Targets: map[string]commandproto.PackageArtifact{
 			string(target): {SHA256: hex.EncodeToString(digest[:]), Size: uint64(len(data))},
 		},
 	}
@@ -67,15 +67,15 @@ func (f *NativeFixture) Resolver() remotehost.ArtifactResolver {
 // localArtifact locates only the native fixture's declared executable.
 type localArtifact struct {
 	path       string
-	descriptor commandwire.PackageDescriptor
+	descriptor commandproto.PackageDescriptor
 }
 
 // Resolve locates an executable for the requesting job.
 func (a localArtifact) Resolve(
 	ctx context.Context,
-	artifact commandwire.PackageArtifact,
+	artifact commandproto.PackageArtifact,
 	_ string,
-) (commandwire.ArtifactLocation, error) {
+) (commandproto.ArtifactLocation, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -89,5 +89,5 @@ func (a localArtifact) Resolve(
 	if !found {
 		return nil, errors.New("the artifact is not the fixture's")
 	}
-	return &commandwire.ArtifactPath{Path: a.path}, nil
+	return &commandproto.ArtifactPath{Path: a.path}, nil
 }

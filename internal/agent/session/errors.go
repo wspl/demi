@@ -3,7 +3,7 @@ package session
 import (
 	"errors"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 //nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
@@ -38,7 +38,7 @@ var (
 type ReportError struct {
 	Message     string
 	Code        *string
-	Diagnostics *core.ProviderErrorDiagnostics
+	Diagnostics *types.ProviderErrorDiagnostics
 }
 
 // Error returns the message of an action failure.

@@ -6,27 +6,27 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/cloud"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Error mapping is a user-facing HTTP contract, independent of transition mechanics.
 func TestCloudErrorHTTPMapping(t *testing.T) {
 	cases := []struct {
 		kind    cloud.ErrorKind
-		code    webapi.ErrorCode
+		code    webapiproto.ErrorCode
 		status  int
 		message string
 	}{
-		{cloud.Closed, webapi.ErrorCodeBackendClosing, 503, "Cloud is shutting down"},
+		{cloud.Closed, webapiproto.ErrorCodeBackendClosing, 503, "Cloud is shutting down"},
 		{
 			cloud.CrashLoop,
-			webapi.ErrorCodeCloudCrashLoop,
+			webapiproto.ErrorCodeCloudCrashLoop,
 			503,
 			"Cloud repeatedly failed; reset the environment to recover",
 		},
-		{cloud.AtCapacity, webapi.ErrorCodeCloudCapacity, 503, "Cloud capacity is currently full; retry later"},
-		{cloud.Resetting, webapi.ErrorCodeCloudResetting, 409, "Another reset is in progress"},
-		{cloud.Failed, webapi.ErrorCodeCloudUnavailable, 503, "unexpected EOF"},
+		{cloud.AtCapacity, webapiproto.ErrorCodeCloudCapacity, 503, "Cloud capacity is currently full; retry later"},
+		{cloud.Resetting, webapiproto.ErrorCodeCloudResetting, 409, "Another reset is in progress"},
+		{cloud.Failed, webapiproto.ErrorCodeCloudUnavailable, 503, "unexpected EOF"},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.code), func(t *testing.T) {

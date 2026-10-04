@@ -10,7 +10,7 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/idlewatch"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type idleWatch struct {
@@ -19,7 +19,7 @@ type idleWatch struct {
 }
 type conversationIdle struct {
 	shard *Shard
-	id    webapi.ConversationID
+	id    webapiproto.ConversationID
 }
 
 // Check returns the conversation’s current idle activity.
@@ -89,7 +89,7 @@ func (h *conversationHold) Release() {
 
 func (s *Shard) holdReset(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	filesOnCloud bool,
 	wait time.Duration,
 ) (cloud.ConversationHold, error) {
@@ -136,7 +136,7 @@ func (s *Shard) holdReset(
 
 // stopIdle invalidates the old watch before a target change starts a new window.
 // Retirement already admitted owns its reservation and finishes independently.
-func (s *Shard) stopIdle(id webapi.ConversationID) {
+func (s *Shard) stopIdle(id webapiproto.ConversationID) {
 	s.mu.Lock()
 	watch := s.idle[id]
 	delete(s.idle, id)

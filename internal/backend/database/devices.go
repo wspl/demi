@@ -6,29 +6,29 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // CreateDevice stores a device the user paired, with the hash of the token its
 // runner receives.
 func (c *ControlService) CreateDevice(
 	ctx context.Context,
-	user webapi.UserID,
+	user webapiproto.UserID,
 	name string,
-	platform runnerwire.RunnerPlatform,
+	platform runnerproto.RunnerPlatform,
 	token TokenHash,
 ) (DeviceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (DeviceRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (DeviceRecord, error) {
 		at, err := now.Millisecond()
 		if err != nil {
 			return DeviceRecord{}, err
 		}
 		d := DeviceRecord{
-			ID:        webapi.DeviceID(uuid.NewString()),
+			ID:        webapiproto.DeviceID(uuid.NewString()),
 			User:      user,
-			Kind:      webapi.DeviceKindUser,
+			Kind:      webapiproto.DeviceKindUser,
 			Name:      name,
 			Platform:  platform,
 			ClaimedAt: now,
@@ -49,9 +49,9 @@ VALUES (?,?,'user',?,?,?,?,NULL)`,
 }
 
 // Device returns the device with id, or nil when absent.
-func (c *ControlService) Device(ctx context.Context, id webapi.DeviceID) (DeviceRecord, bool, error) {
+func (c *ControlService) Device(ctx context.Context, id webapiproto.DeviceID) (DeviceRecord, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (DeviceRecord, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (DeviceRecord, error) {
 		r, ok, err := queryRecord(ctx, tx, "devices", "SELECT * FROM devices WHERE id = ?", deviceRow, id)
 		found = ok
 		return r, err
@@ -62,7 +62,7 @@ func (c *ControlService) Device(ctx context.Context, id webapi.DeviceID) (Device
 // DeviceByToken returns the device whose current token has this hash.
 func (c *ControlService) DeviceByToken(ctx context.Context, token TokenHash) (DeviceRecord, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (DeviceRecord, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (DeviceRecord, error) {
 		r, ok, err := queryRecord(
 			ctx,
 			tx,
@@ -78,9 +78,9 @@ func (c *ControlService) DeviceByToken(ctx context.Context, token TokenHash) (De
 }
 
 // ManagedDevice returns the user's Cloud device, when its first use made it.
-func (c *ControlService) ManagedDevice(ctx context.Context, user webapi.UserID) (DeviceRecord, bool, error) {
+func (c *ControlService) ManagedDevice(ctx context.Context, user webapiproto.UserID) (DeviceRecord, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (DeviceRecord, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (DeviceRecord, error) {
 		r, ok, err := queryRecord(
 			ctx,
 			tx,
@@ -98,8 +98,8 @@ func (c *ControlService) ManagedDevice(ctx context.Context, user webapi.UserID) 
 // ManagedDeviceOrCreate returns the user's Cloud device, made on its first use. The partial unique
 // index admits one per user, so concurrent first uses find the same
 // one. Its token is issued when it boots.
-func (c *ControlService) ManagedDeviceOrCreate(ctx context.Context, user webapi.UserID) (DeviceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (DeviceRecord, error) {
+func (c *ControlService) ManagedDeviceOrCreate(ctx context.Context, user webapiproto.UserID) (DeviceRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (DeviceRecord, error) {
 		at, err := now.Millisecond()
 		if err != nil {
 			return DeviceRecord{}, err
@@ -139,8 +139,8 @@ ON CONFLICT DO NOTHING`,
 }
 
 // PairedDevices returns the devices the user paired, oldest first.
-func (c *ControlService) PairedDevices(ctx context.Context, user webapi.UserID) ([]DeviceRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]DeviceRecord, error) {
+func (c *ControlService) PairedDevices(ctx context.Context, user webapiproto.UserID) ([]DeviceRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]DeviceRecord, error) {
 		return queryRecords(
 			ctx,
 			tx,
@@ -153,8 +153,8 @@ func (c *ControlService) PairedDevices(ctx context.Context, user webapi.UserID) 
 }
 
 // WorkspacesOnDevice how many workspaces point at the device.
-func (c *ControlService) WorkspacesOnDevice(ctx context.Context, device webapi.DeviceID) (uint64, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (uint64, error) {
+func (c *ControlService) WorkspacesOnDevice(ctx context.Context, device webapiproto.DeviceID) (uint64, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (uint64, error) {
 		var count uint64
 		err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM workspaces WHERE device_id = ?", device).Scan(&count)
 		return count, err
@@ -163,8 +163,8 @@ func (c *ControlService) WorkspacesOnDevice(ctx context.Context, device webapi.D
 
 // DeleteDevice deletes the device with its attachments to conversations; its
 // exposes go with it.
-func (c *ControlService) DeleteDevice(ctx context.Context, device webapi.DeviceID) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) DeleteDevice(ctx context.Context, device webapiproto.DeviceID) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		if err := execSQL(ctx, tx, "DELETE FROM conversation_hosts WHERE device_id = ?", device); err != nil {
 			return err
 		}
@@ -173,8 +173,8 @@ func (c *ControlService) DeleteDevice(ctx context.Context, device webapi.DeviceI
 }
 
 // TouchDeviceSeen records that the device's runner was connected just now.
-func (c *ControlService) TouchDeviceSeen(ctx context.Context, device webapi.DeviceID) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) error {
+func (c *ControlService) TouchDeviceSeen(ctx context.Context, device webapiproto.DeviceID) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) error {
 		at, err := now.Millisecond()
 		if err != nil {
 			return err
@@ -185,11 +185,11 @@ func (c *ControlService) TouchDeviceSeen(ctx context.Context, device webapi.Devi
 
 func deviceRow(r *storedRow) DeviceRecord {
 	d := DeviceRecord{
-		ID:         checked(r, "id", webapi.ParseDeviceID),
-		User:       checked(r, "user_id", webapi.ParseUserID),
-		Kind:       webapi.DeviceKind(r.text("kind")),
+		ID:         checked(r, "id", webapiproto.ParseDeviceID),
+		User:       checked(r, "user_id", webapiproto.ParseUserID),
+		Kind:       webapiproto.DeviceKind(r.text("kind")),
 		Name:       r.text("name"),
-		Platform:   runnerwire.RunnerPlatform(r.text("platform")),
+		Platform:   runnerproto.RunnerPlatform(r.text("platform")),
 		ClaimedAt:  r.instant("claimed_at"),
 		LastSeenAt: r.optionalInstant("last_seen_at"),
 	}

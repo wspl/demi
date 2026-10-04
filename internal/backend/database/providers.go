@@ -6,24 +6,28 @@ import (
 	"errors"
 	"math"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Master returns the master account, which a shared instance's entries belong to.
-func (c *ControlService) Master(ctx context.Context) (webapi.UserID, bool, error) {
+func (c *ControlService) Master(ctx context.Context) (webapiproto.UserID, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (webapi.UserID, error) {
-		r, ok, err := queryRecord(
-			ctx,
-			tx,
-			"users",
-			"SELECT id FROM users WHERE role = 'master'",
-			func(r *storedRow) webapi.UserID { return checked(r, "id", webapi.ParseUserID) },
-		)
-		found = ok
-		return r, err
-	})
+	record, err := controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (webapiproto.UserID, error) {
+			r, ok, err := queryRecord(
+				ctx,
+				tx,
+				"users",
+				"SELECT id FROM users WHERE role = 'master'",
+				func(r *storedRow) webapiproto.UserID { return checked(r, "id", webapiproto.ParseUserID) },
+			)
+			found = ok
+			return r, err
+		},
+	)
 	return record, found && err == nil, err
 }
 
@@ -35,7 +39,7 @@ func (c *ControlService) InsertProvider(
 	provider NewProvider,
 	accounts []CredentialWrite,
 ) (ProviderRow, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (ProviderRow, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (ProviderRow, error) {
 		at, err := now.Millisecond()
 		if err != nil {
 			return ProviderRow{}, err
@@ -84,9 +88,9 @@ RETURNING *`,
 }
 
 // Provider returns the entry with id, or nil when absent.
-func (c *ControlService) Provider(ctx context.Context, id webapi.ProviderID) (ProviderRow, bool, error) {
+func (c *ControlService) Provider(ctx context.Context, id webapiproto.ProviderID) (ProviderRow, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ProviderRow, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (ProviderRow, error) {
 		r, ok, err := queryRecord(ctx, tx, "providers", "SELECT * FROM providers WHERE id = ?", providerRow, id)
 		found = ok
 		return r, err
@@ -95,8 +99,8 @@ func (c *ControlService) Provider(ctx context.Context, id webapi.ProviderID) (Pr
 }
 
 // Providers returns the owner's entries, oldest first.
-func (c *ControlService) Providers(ctx context.Context, owner webapi.UserID) ([]ProviderRow, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]ProviderRow, error) {
+func (c *ControlService) Providers(ctx context.Context, owner webapiproto.UserID) ([]ProviderRow, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]ProviderRow, error) {
 		return queryRecords(
 			ctx,
 			tx,
@@ -112,11 +116,11 @@ func (c *ControlService) Providers(ctx context.Context, owner webapi.UserID) ([]
 // entry as it now is; ErrProviderNotFound for an entry that no longer exists.
 func (c *ControlService) UpdateProvider(
 	ctx context.Context,
-	id webapi.ProviderID,
+	id webapiproto.ProviderID,
 	label *string,
 	config *[]byte,
 ) (ProviderRow, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ProviderRow, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (ProviderRow, error) {
 		if label != nil {
 			if err := execSQL(ctx, tx, "UPDATE providers SET label = ? WHERE id = ?", *label, id); err != nil {
 				return ProviderRow{}, err
@@ -139,15 +143,15 @@ func (c *ControlService) UpdateProvider(
 }
 
 // DeleteProvider deletes the entry with its accounts and catalog record.
-func (c *ControlService) DeleteProvider(ctx context.Context, id webapi.ProviderID) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) DeleteProvider(ctx context.Context, id webapiproto.ProviderID) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(ctx, tx, "DELETE FROM providers WHERE id = ?", id)
 	})
 }
 
 // Credentials returns the entry's accounts, ordered by id.
-func (c *ControlService) Credentials(ctx context.Context, provider webapi.ProviderID) ([]CredentialRow, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]CredentialRow, error) {
+func (c *ControlService) Credentials(ctx context.Context, provider webapiproto.ProviderID) ([]CredentialRow, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]CredentialRow, error) {
 		return queryRecords(
 			ctx,
 			tx,
@@ -162,11 +166,11 @@ func (c *ControlService) Credentials(ctx context.Context, provider webapi.Provid
 // Credential returns the entry's account with id, or nil when absent.
 func (c *ControlService) Credential(
 	ctx context.Context,
-	provider webapi.ProviderID,
-	id webapi.CredentialID,
+	provider webapiproto.ProviderID,
+	id webapiproto.CredentialID,
 ) (CredentialRow, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (CredentialRow, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (CredentialRow, error) {
 		r, ok, err := queryRecord(
 			ctx,
 			tx,
@@ -187,10 +191,10 @@ func (c *ControlService) Credential(
 // one transaction; `false` for an entry that no longer exists.
 func (c *ControlService) WriteCredential(
 	ctx context.Context,
-	provider webapi.ProviderID,
+	provider webapiproto.ProviderID,
 	account CredentialWrite,
 ) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (bool, error) {
 		var exists bool
 		if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM providers WHERE id = ?)", provider).
 			Scan(&exists); err != nil {
@@ -207,12 +211,12 @@ func (c *ControlService) WriteCredential(
 // `version`; `false` when another writer stored first.
 func (c *ControlService) ReplaceCredentialSecret(
 	ctx context.Context,
-	provider webapi.ProviderID,
-	id webapi.CredentialID,
+	provider webapiproto.ProviderID,
+	id webapiproto.CredentialID,
 	secret []byte,
 	version uint64,
 ) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) (bool, error) {
 		if version > math.MaxInt64 {
 			return false, nil
 		}
@@ -239,11 +243,11 @@ WHERE provider_id = ? AND id = ? AND version = ?`,
 // meanwhile keeps nothing.
 func (c *ControlService) SetCredentialQuota(
 	ctx context.Context,
-	provider webapi.ProviderID,
-	id webapi.CredentialID,
-	quota core.QuotaSnapshot,
+	provider webapiproto.ProviderID,
+	id webapiproto.CredentialID,
+	quota types.QuotaSnapshot,
 ) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		text, err := encoded(quota)
 		if err != nil {
 			return err
@@ -262,10 +266,10 @@ func (c *ControlService) SetCredentialQuota(
 // RemoveCredential removes the account, and the entry's selection of it with it.
 func (c *ControlService) RemoveCredential(
 	ctx context.Context,
-	provider webapi.ProviderID,
-	id webapi.CredentialID,
+	provider webapiproto.ProviderID,
+	id webapiproto.CredentialID,
 ) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		if err := execSQL(
 			ctx,
 			tx,
@@ -289,10 +293,10 @@ func (c *ControlService) RemoveCredential(
 // holds no such account.
 func (c *ControlService) SetActiveCredential(
 	ctx context.Context,
-	provider webapi.ProviderID,
-	id webapi.CredentialID,
+	provider webapiproto.ProviderID,
+	id webapiproto.CredentialID,
 ) (bool, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (bool, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (bool, error) {
 		return affected(
 			ctx,
 			tx,
@@ -306,9 +310,12 @@ WHERE id = ?1 AND EXISTS (SELECT 1 FROM provider_credentials WHERE provider_id =
 }
 
 // CatalogRecord returns the entry's catalog record, validated.
-func (c *ControlService) CatalogRecord(ctx context.Context, provider webapi.ProviderID) (CatalogRecord, bool, error) {
+func (c *ControlService) CatalogRecord(
+	ctx context.Context,
+	provider webapiproto.ProviderID,
+) (CatalogRecord, bool, error) {
 	var found bool
-	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (CatalogRecord, error) {
+	record, err := controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (CatalogRecord, error) {
 		r, ok, err := queryRecord(
 			ctx,
 			tx,
@@ -325,8 +332,12 @@ func (c *ControlService) CatalogRecord(ctx context.Context, provider webapi.Prov
 
 // PutCatalogRecord stores the entry's catalog record in place of the last one; an entry
 // deleted meanwhile keeps nothing.
-func (c *ControlService) PutCatalogRecord(ctx context.Context, provider webapi.ProviderID, record CatalogRecord) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) PutCatalogRecord(
+	ctx context.Context,
+	provider webapiproto.ProviderID,
+	record CatalogRecord,
+) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		text, err := encoded(record)
 		if err != nil {
 			return err
@@ -346,20 +357,20 @@ SET record = excluded.record`,
 }
 
 // DeleteCatalogRecord removes the entry's cached catalog.
-func (c *ControlService) DeleteCatalogRecord(ctx context.Context, provider webapi.ProviderID) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) DeleteCatalogRecord(ctx context.Context, provider webapiproto.ProviderID) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(ctx, tx, "DELETE FROM model_catalogs WHERE provider_id = ?", provider)
 	})
 }
 
 func providerRow(r *storedRow) ProviderRow {
 	p := ProviderRow{
-		ID:        checked(r, "id", webapi.ParseProviderID),
-		Owner:     checked(r, "owner_user_id", webapi.ParseUserID),
+		ID:        checked(r, "id", webapiproto.ParseProviderID),
+		Owner:     checked(r, "owner_user_id", webapiproto.ParseUserID),
 		Family:    r.text("provider_type"),
-		Kind:      webapi.CredentialKind(r.text("credential_kind")),
+		Kind:      webapiproto.CredentialKind(r.text("credential_kind")),
 		Label:     r.text("label"),
-		Active:    optionalChecked(r, "active_credential_id", webapi.ParseCredentialID),
+		Active:    optionalChecked(r, "active_credential_id", webapiproto.ParseCredentialID),
 		CreatedAt: r.instant("created_at"),
 	}
 	if r.values["config"] != nil {
@@ -372,14 +383,14 @@ func providerRow(r *storedRow) ProviderRow {
 
 func credentialRow(r *storedRow) CredentialRow {
 	return CredentialRow{
-		ID:          checked(r, "id", webapi.ParseCredentialID),
+		ID:          checked(r, "id", webapiproto.ParseCredentialID),
 		IdentityKey: r.optionalText("identity_key"),
 		Label:       r.text("label"),
 		Detail:      r.optionalText("detail"),
 		Source:      r.text("source"),
 		Secret:      r.bytes("secret"),
 		Version:     r.count("version"),
-		Quota:       optionalJSON(r, "quota", core.DecodeQuotaSnapshot),
+		Quota:       optionalJSON(r, "quota", types.DecodeQuotaSnapshot),
 		UpdatedAt:   r.instant("updated_at"),
 	}
 }
@@ -387,9 +398,9 @@ func credentialRow(r *storedRow) CredentialRow {
 func writeCredential(
 	ctx context.Context,
 	tx *sql.Tx,
-	provider webapi.ProviderID,
+	provider webapiproto.ProviderID,
 	account CredentialWrite,
-	now core.Timestamp,
+	now types.Timestamp,
 ) error {
 	at, err := now.Millisecond()
 	if err != nil {

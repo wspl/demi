@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
 )
 
@@ -57,7 +57,7 @@ func NewCommandPlugin(placement Placement, trees []host.Declared) (*CommandPlugi
 func (p *CommandPlugin) ManifestCommands() []Commands {
 	trees := p.commands.Declarations()
 	if p.placement == PlacementDemi {
-		trees = trees[0].(*declare.Group[declare.NativeOperation]).Subcommands
+		trees = trees[0].(*commanddecl.Group[commanddecl.NativeOperation]).Subcommands
 	}
 	commands := make([]Commands, 0, len(trees))
 	for _, tree := range trees {

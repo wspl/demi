@@ -10,16 +10,16 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
+	"github.com/wspl/demi/internal/types"
 )
 
 // PackageCalls answers a test's package calls. A refusal can be returned as an error.
 type PackageCalls func(
 	context.Context,
-	declare.NativeOperation,
+	commanddecl.NativeOperation,
 	json.RawMessage,
 	plugin.CallKind,
 ) (json.RawMessage, error)
@@ -27,7 +27,7 @@ type PackageCalls func(
 // PackageCall records a package call made by the plugin.
 type PackageCall struct {
 	// Operation identifies the called package operation.
-	Operation declare.NativeOperation
+	Operation commanddecl.NativeOperation
 	// Args contains the call's JSON input.
 	Args json.RawMessage
 	// Kind records the Host access the call needs.
@@ -48,7 +48,7 @@ type TestDemi struct {
 	// ExposesAvailable reports whether the test expose domain is available.
 	ExposesAvailable bool
 	// Now supplies the test clock for expose lifetimes.
-	Now core.Timestamp
+	Now types.Timestamp
 	// PackageCalls answers native package operations.
 	PackageCalls PackageCalls
 	// Panel answers scripted panel operations.
@@ -56,8 +56,8 @@ type TestDemi struct {
 
 	mu          sync.Mutex
 	values      map[string]plugin.StoredValue
-	valueBlobs  map[string][]core.BlobRef
-	blobs       map[core.BlobRef]core.B64Bytes
+	valueBlobs  map[string][]types.BlobRef
+	blobs       map[types.BlobRef]types.B64Bytes
 	directories []plugin.HostDirectory
 	exposes     []plugin.ExposeRecord
 	exposesMade uint64
@@ -72,9 +72,9 @@ func New() *TestDemi { return WithRPC(nil) }
 // WithRPC constructs Demi with the given command transport.
 func WithRPC(rpc host.PortTransport) *TestDemi {
 	return &TestDemi{
-		Plugin: "test", RPC: rpc, ExposesAvailable: true, Now: core.UnixEpoch,
-		values: make(map[string]plugin.StoredValue), valueBlobs: make(map[string][]core.BlobRef),
-		blobs: make(map[core.BlobRef]core.B64Bytes), answered: make(chan struct{}),
+		Plugin: "test", RPC: rpc, ExposesAvailable: true, Now: types.UnixEpoch,
+		values: make(map[string]plugin.StoredValue), valueBlobs: make(map[string][]types.BlobRef),
+		blobs: make(map[types.BlobRef]types.B64Bytes), answered: make(chan struct{}),
 	}
 }
 
@@ -111,14 +111,14 @@ func (d *TestDemi) Value(key string) (plugin.StoredValue, bool) {
 }
 
 // ValueBlobs returns the blobs retained by a value.
-func (d *TestDemi) ValueBlobs(key string) []core.BlobRef {
+func (d *TestDemi) ValueBlobs(key string) []types.BlobRef {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return slices.Clone(d.valueBlobs[key])
 }
 
 // BlobBytes returns a copy of the blob's bytes; ok is false when the blob is unknown.
-func (d *TestDemi) BlobBytes(blob core.BlobRef) (core.B64Bytes, bool) {
+func (d *TestDemi) BlobBytes(blob types.BlobRef) (types.B64Bytes, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	value, ok := d.blobs[blob]
@@ -224,7 +224,7 @@ func (d *TestDemi) answerLocked(message plugin.PortMessage) (plugin.PortAnswer, 
 		delete(d.valueBlobs, m.Key)
 		return &plugin.PortAnswerDone{}, nil
 	case *plugin.PortMessagePutBlob:
-		blob := core.BlobRefOf(m.Bytes)
+		blob := types.BlobRefOf(m.Bytes)
 		d.blobs[blob] = slices.Clone(m.Bytes)
 		return &plugin.PortAnswerBlob{Blob: blob}, nil
 	case *plugin.PortMessageGetBlob:

@@ -10,11 +10,11 @@ import (
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func writeStorage(t *testing.T, f *fixture, value string, expected *host.Revision) host.StorageReply {
@@ -56,22 +56,22 @@ func TestForkKeepsCompletedPrefixFromLiveAndStoredRoot(t *testing.T) {
 		) {
 			t.Fatal("forked user block")
 		}
-		c.Send(t.Context(), &framewire.CloseFrame{})
+		c.Send(t.Context(), &conversationproto.CloseFrame{})
 		cold, err := f.server.PrepareFork(t.Context(), rootID(), blocks[1].ID())
 		if err != nil {
 			t.Fatal(err)
 		}
 		equal(t, live, cold)
 		equal(t, blocks[:2], live.Transcript)
-		equal(t, core.SessionPhaseIdle, live.State.Phase)
+		equal(t, types.SessionPhaseIdle, live.State.Phase)
 		equal(t, 0, len(live.State.Queue))
 		equal(t, 0, len(live.State.Edits))
-		destination, err := core.ParseNodeID("fork")
+		destination, err := types.ParseNodeID("fork")
 		if err != nil {
 			t.Fatal(err)
 		}
 		running := cold
-		running.State.Phase = core.SessionPhaseRunning
+		running.State.Phase = types.SessionPhaseRunning
 		err = f.server.InitializeFork(t.Context(), destination, running)
 		var forkError *session.ForkError
 		if !errors.As(err, &forkError) || forkError.Kind != session.ForkInvalidSeed {
@@ -85,9 +85,9 @@ func TestForkKeepsCompletedPrefixFromLiveAndStoredRoot(t *testing.T) {
 			t.Fatal(record)
 		}
 		forked := servertest.Connect(t, f.server, destination, "/workspace")
-		forked.Send(t.Context(), &framewire.OpenFrame{})
+		forked.Send(t.Context(), &conversationproto.OpenFrame{})
 		frames := forked.Received()
-		equal(t, blocks[:2], frames[1].(*framewire.TranscriptResetFrame).Blocks)
+		equal(t, blocks[:2], frames[1].(*conversationproto.TranscriptResetFrame).Blocks)
 		reply, err := f.server.CommandStorage(
 			t.Context(),
 			destination,
@@ -128,7 +128,7 @@ func TestStorageRevisionAndRewriteEndOlderJobs(t *testing.T) {
 			versions = append(versions, version.Revision)
 		}
 		equal(t, []uint64{0, 1}, versions)
-		c.Send(t.Context(), &framewire.RetryFrame{})
+		c.Send(t.Context(), &conversationproto.RetryFrame{})
 		untilIdle(t, c)
 		_, err := f.server.CommandStorage(
 			t.Context(),
@@ -208,7 +208,7 @@ func TestWriteBeforeAnswerBelongsToItsForkBoundary(t *testing.T) {
 		close(finish)
 		<-ended
 		synctest.Wait()
-		answer := f.server.Tree(rootID()).Root().Session().Transcript().Blocks[1].(*core.TextBlock)
+		answer := f.server.Tree(rootID()).Root().Session().Transcript().Blocks[1].(*types.TextBlock)
 		if answer.Forkable {
 			t.Fatal("answer completed before ordered storage write")
 		}
@@ -219,7 +219,7 @@ func TestWriteBeforeAnswerBelongsToItsForkBoundary(t *testing.T) {
 		}
 		equal(t, host.StorageReply(&host.StorageCommitted{Revision: 2}), committed.reply)
 		untilIdle(t, c)
-		if !f.server.Tree(rootID()).Root().Session().Transcript().Blocks[1].(*core.TextBlock).Forkable {
+		if !f.server.Tree(rootID()).Root().Session().Transcript().Blocks[1].(*types.TextBlock).Forkable {
 			t.Fatal("answer not completed")
 		}
 		equal(

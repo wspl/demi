@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // pipeService connects the Host's actual pipe client to a scripted backend.
@@ -22,15 +22,15 @@ func pipeService(t *testing.T, root string, handler http.HandlerFunc) (*Service,
 	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-	backend, err := runnerwire.ParseBackendURL(server.URL)
+	backend, err := runnerproto.ParseBackendURL(server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := runnerwire.ParseDeviceToken(strings.Repeat("a", 64))
+	token, err := runnerproto.ParseDeviceToken(strings.Repeat("a", 64))
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipes, err := process.NewPipeClient(backend, func() (runnerwire.DeviceToken, bool) { return token, true })
+	pipes, err := process.NewPipeClient(backend, func() (runnerproto.DeviceToken, bool) { return token, true })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func pipeService(t *testing.T, root string, handler http.HandlerFunc) (*Service,
 
 func pipeDone(t *testing.T, out <-chan []byte, id string, failed bool) {
 	t.Helper()
-	frame, ok := receiveFrame(t, out).(*runnerwire.PipeDone)
+	frame, ok := receiveFrame(t, out).(*runnerproto.PipeDone)
 	if !ok || frame.PipeID != id || (frame.Error != nil) != failed {
 		t.Fatalf("pipe %s: %#v", id, frame)
 	}
@@ -85,11 +85,11 @@ func TestFilePipesRangesPublicationAndFailures(t *testing.T) {
 	yes := true
 	if err := s.WriteFile(
 		t.Context(),
-		runnerwire.FSWriteFile{
+		runnerproto.FSWriteFile{
 			ID:            "write",
 			Path:          "nested/a",
 			CreateParents: &yes,
-			Input:         runnerwire.PipeRef{ID: "in", URL: "/input"},
+			Input:         runnerproto.PipeRef{ID: "in", URL: "/input"},
 		},
 	); err != nil {
 		t.Fatal(err)
@@ -103,12 +103,12 @@ func TestFilePipesRangesPublicationAndFailures(t *testing.T) {
 	offset, length := uint64(1), uint64(2)
 	if err := s.ReadFile(
 		t.Context(),
-		runnerwire.FSReadFile{
+		runnerproto.FSReadFile{
 			ID:     "read",
 			Path:   "nested/a",
 			Offset: &offset,
 			Length: &length,
-			Output: runnerwire.PipeRef{ID: "out", URL: "/output"},
+			Output: runnerproto.PipeRef{ID: "out", URL: "/output"},
 		},
 	); err != nil {
 		t.Fatal(err)
@@ -120,14 +120,14 @@ func TestFilePipesRangesPublicationAndFailures(t *testing.T) {
 	}
 	if err := s.WriteFile(
 		t.Context(),
-		runnerwire.FSWriteFile{ID: "broken", Path: "nested/a", Input: runnerwire.PipeRef{ID: "in", URL: "/broken"}},
+		runnerproto.FSWriteFile{ID: "broken", Path: "nested/a", Input: runnerproto.PipeRef{ID: "in", URL: "/broken"}},
 	); err != nil {
 		t.Fatal(err)
 	}
 	pipeDone(t, out, "in", true)
 	if frame := receiveFrame(t, out); frame == nil {
 		t.Fatal("missing error")
-	} else if _, ok := frame.(*runnerwire.FSError); !ok {
+	} else if _, ok := frame.(*runnerproto.FSError); !ok {
 		t.Fatal(frame)
 	}
 	data, err = os.ReadFile(filepath.Join(root, "nested/a"))
@@ -140,11 +140,11 @@ func TestFilePipesRangesPublicationAndFailures(t *testing.T) {
 	}
 	if err := s.ReadFile(
 		t.Context(),
-		runnerwire.FSReadFile{ID: "missing", Path: "missing", Output: runnerwire.PipeRef{ID: "out", URL: "/output"}},
+		runnerproto.FSReadFile{ID: "missing", Path: "missing", Output: runnerproto.PipeRef{ID: "out", URL: "/output"}},
 	); err != nil {
 		t.Fatal(err)
 	}
-	frame, ok := receiveFrame(t, out).(*runnerwire.FSError)
+	frame, ok := receiveFrame(t, out).(*runnerproto.FSError)
 	if !ok || frame.Code == nil || *frame.Code != "ENOENT" {
 		t.Fatal(frame)
 	}
@@ -165,11 +165,11 @@ func TestGitShowPipesAndLimits(t *testing.T) {
 	})
 	if err := s.GitShow(
 		t.Context(),
-		runnerwire.GitShow{ID: "show", Root: root, Path: "a.txt", Output: runnerwire.PipeRef{ID: "out", URL: "/out"}},
+		runnerproto.GitShow{ID: "show", Root: root, Path: "a.txt", Output: runnerproto.PipeRef{ID: "out", URL: "/out"}},
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := receiveFrame(t, out).(*runnerwire.GitOK); !ok {
+	if _, ok := receiveFrame(t, out).(*runnerproto.GitOK); !ok {
 		t.Fatal("expected git_ok")
 	}
 	pipeDone(t, out, "out", false)
@@ -178,11 +178,16 @@ func TestGitShowPipesAndLimits(t *testing.T) {
 	}
 	if err := s.GitShow(
 		t.Context(),
-		runnerwire.GitShow{ID: "large", Root: root, Path: "large", Output: runnerwire.PipeRef{ID: "out", URL: "/out"}},
+		runnerproto.GitShow{
+			ID:     "large",
+			Root:   root,
+			Path:   "large",
+			Output: runnerproto.PipeRef{ID: "out", URL: "/out"},
+		},
 	); err != nil {
 		t.Fatal(err)
 	}
-	frame, ok := receiveFrame(t, out).(*runnerwire.GitError)
+	frame, ok := receiveFrame(t, out).(*runnerproto.GitError)
 	if !ok || frame.Code != "too_large" {
 		t.Fatal(frame)
 	}
@@ -208,12 +213,12 @@ func TestNetworkOpenFailureReportsBothUnusedPipes(t *testing.T) {
 	s, out := testService(t, t.TempDir(), MaxFiles)
 	if err := s.NetOpen(
 		t.Context(),
-		runnerwire.NetOpen{
+		runnerproto.NetOpen{
 			StreamID: "refused",
 			Host:     "127.0.0.1",
 			Port:     uint16(port),
-			Input:    runnerwire.PipeRef{ID: "in"},
-			Output:   runnerwire.PipeRef{ID: "out"},
+			Input:    runnerproto.PipeRef{ID: "in"},
+			Output:   runnerproto.PipeRef{ID: "out"},
 		},
 	); err != nil {
 		t.Fatal(err)
@@ -221,8 +226,8 @@ func TestNetworkOpenFailureReportsBothUnusedPipes(t *testing.T) {
 	if len(out) != 3 {
 		t.Fatalf("open failure delivered %d frames; want net_error and both pipe ends", len(out))
 	}
-	frame, ok := receiveFrame(t, out).(*runnerwire.NetError)
-	if !ok || frame.Code != runnerwire.NetErrorCodeRefused {
+	frame, ok := receiveFrame(t, out).(*runnerproto.NetError)
+	if !ok || frame.Code != runnerproto.NetErrorCodeRefused {
 		t.Fatal(frame)
 	}
 	pipeDone(t, out, "in", true)
@@ -288,12 +293,12 @@ func TestNetworkHalfCloseKeepsResponseAndReportsInputImmediately(t *testing.T) {
 	})
 	operation := make(chan error, 1)
 	go func() {
-		operation <- s.NetOpen(t.Context(), runnerwire.NetOpen{
+		operation <- s.NetOpen(t.Context(), runnerproto.NetOpen{
 			StreamID: "tcp", Host: "127.0.0.1", Port: uint16(port),
-			Input: runnerwire.PipeRef{ID: "in", URL: "/in"}, Output: runnerwire.PipeRef{ID: "out", URL: "/out"},
+			Input: runnerproto.PipeRef{ID: "in", URL: "/in"}, Output: runnerproto.PipeRef{ID: "out", URL: "/out"},
 		})
 	}()
-	frame, ok := receiveFrame(t, out).(*runnerwire.NetOpened)
+	frame, ok := receiveFrame(t, out).(*runnerproto.NetOpened)
 	if !ok || frame.StreamID != "tcp" {
 		t.Fatal(frame)
 	}
@@ -344,22 +349,22 @@ func TestNetworkPipeFailureCancelsBothDirections(t *testing.T) {
 	})
 	if err := s.NetOpen(
 		t.Context(),
-		runnerwire.NetOpen{
+		runnerproto.NetOpen{
 			StreamID: "failure",
 			Host:     "127.0.0.1",
 			Port:     uint16(port),
-			Input:    runnerwire.PipeRef{ID: "in", URL: "/in"},
-			Output:   runnerwire.PipeRef{ID: "out", URL: "/out"},
+			Input:    runnerproto.PipeRef{ID: "in", URL: "/in"},
+			Output:   runnerproto.PipeRef{ID: "out", URL: "/out"},
 		},
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := receiveFrame(t, out).(*runnerwire.NetOpened); !ok {
+	if _, ok := receiveFrame(t, out).(*runnerproto.NetOpened); !ok {
 		t.Fatal("expected open")
 	}
 	seen := map[string]bool{}
 	for range 2 {
-		frame, ok := receiveFrame(t, out).(*runnerwire.PipeDone)
+		frame, ok := receiveFrame(t, out).(*runnerproto.PipeDone)
 		if !ok || frame.Ok || frame.Error == nil {
 			t.Fatal(frame)
 		}

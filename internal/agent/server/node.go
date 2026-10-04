@@ -10,10 +10,10 @@ import (
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/tools"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Node is one live node: its record, role and session. Only node assembly
@@ -25,7 +25,7 @@ type Node[H host.Host] struct {
 }
 
 // ID returns the node's identity.
-func (n *Node[H]) ID() core.NodeID { return n.record.ID }
+func (n *Node[H]) ID() types.NodeID { return n.record.ID }
 
 // Record returns an owned snapshot of the node record.
 func (n *Node[H]) Record() store.NodeRecord {
@@ -127,7 +127,7 @@ func (r *nodeRuntime[H]) Dispose(ctx context.Context) error {
 func (r *nodeRuntime[H]) Context(
 	ctx context.Context,
 	seen []session.SeenContext,
-	turn core.TurnID,
+	turn types.TurnID,
 ) ([]session.NewContext, error) {
 	news := []session.NewContext{}
 	for _, source := range r.tree.server.deps.Context {
@@ -158,12 +158,12 @@ func (r *nodeRuntime[H]) Context(
 type assembly struct {
 	record       store.NodeRecord
 	cwd          string
-	model        core.ModelSelection
+	model        types.ModelSelection
 	runtime      provider.Runtime
 	instructions string
 	preamble     *string
 	inherited    *host.CommandSet
-	first        *core.QueuedMessage
+	first        *types.QueuedMessage
 }
 
 // assemble is the single creator of root and child sessions, including restore.
@@ -223,7 +223,7 @@ func (t *Tree[H]) assemble(
 // storedNode reads the record and checkpoint a restored node continues
 // from; found is false when no node with id is stored. A stored node
 // without a checkpoint is corrupt.
-func (t *Tree[H]) storedNode(ctx context.Context, id core.NodeID) (store.NodeRecord, store.Checkpoint, bool, error) {
+func (t *Tree[H]) storedNode(ctx context.Context, id types.NodeID) (store.NodeRecord, store.Checkpoint, bool, error) {
 	stored, found, err := t.store.Node(ctx, id)
 	if err != nil || !found {
 		return store.NodeRecord{}, store.Checkpoint{}, false, err
@@ -290,7 +290,7 @@ func (t *Tree[H]) nodeRuntime(
 	preamble *string,
 	inherited, commands *host.CommandSet,
 ) *nodeRuntime[H] {
-	var child *core.NodeID
+	var child *types.NodeID
 	if record.Parent != nil {
 		child = new(record.ID)
 	}
@@ -320,7 +320,7 @@ func (t *Tree[H]) createNode(
 	ctx context.Context,
 	record store.NodeRecord,
 	agent *session.Session,
-	first *core.QueuedMessage,
+	first *types.QueuedMessage,
 ) (session.Continuation, bool, error) {
 	initial := agent.FirstCheckpoint()
 	if first != nil {
@@ -332,5 +332,5 @@ func (t *Tree[H]) createNode(
 	if first == nil {
 		return session.Continuation{}, false, nil
 	}
-	return session.Continuation{Queued: []core.QueuedMessage{*first}}, true, nil
+	return session.Continuation{Queued: []types.QueuedMessage{*first}}, true, nil
 }

@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
+	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
 )
 
 const help = `The repository's development commands
@@ -58,7 +58,7 @@ type application struct {
 	Root     string
 	Out, Err io.Writer
 	// chromeRelease supplies the pinned browser resource record; tests use a local archive.
-	chromeRelease func() (browserop.BrowserRelease, error)
+	chromeRelease func() (browserproto.BrowserRelease, error)
 }
 
 func main() {
@@ -74,7 +74,7 @@ func main() {
 		root, err = repository()
 	}
 	if err == nil {
-		err = (&application{Root: root, Out: os.Stdout, Err: os.Stderr, chromeRelease: browserop.PinnedRelease}).run(
+		err = (&application{Root: root, Out: os.Stdout, Err: os.Stderr, chromeRelease: browserproto.PinnedRelease}).run(
 			ctx,
 			args,
 		)

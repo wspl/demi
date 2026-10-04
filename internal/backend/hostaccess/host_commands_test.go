@@ -7,10 +7,10 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 func TestHostCommandsUseConversationAndStopWithShard(t *testing.T) {
@@ -25,7 +25,7 @@ func TestHostCommandsUseConversationAndStopWithShard(t *testing.T) {
 		invocation := host.RPCInvocation{
 			Path:    []string{"host", verb},
 			Args:    []byte(args),
-			Context: commandwire.Context{Conversation: string(record.ID)},
+			Context: commandproto.Context{Conversation: string(record.ID)},
 		}
 		code, err := commands.Dispatch(t.Context(), invocation, host.NewRPCPort(memory))
 		return code, string(memory.Stdout()), err
@@ -75,7 +75,7 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 		s.control,
 		s.owner,
 		record.ID,
-		&commandwire.AgentCaller{Number: 1},
+		&commandproto.AgentCaller{Number: 1},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 	result := startHostOperation(t, func(ctx context.Context) (uint8, error) {
 		return commands.Dispatch(ctx, invocation, host.NewRPCPort(port))
 	})
-	listing := nextHostMessage[*runnerwire.FSReaddir](t, r)
+	listing := nextHostMessage[*runnerproto.FSReaddir](t, r)
 	if listing.Path != "/home/test/.demi/plugins/test" {
 		t.Fatal(listing.Path)
 	}
@@ -116,23 +116,23 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 		hold.Release()
 		t.Fatal("cross-host install escaped admission")
 	}
-	r.send(t, &runnerwire.FSOK{ID: listing.ID, Result: &runnerwire.FSReaddirResult{Value: []runnerwire.DirEntry{}}})
-	job := nextHostMessage[*runnerwire.JobStart](t, r)
+	r.send(t, &runnerproto.FSOK{ID: listing.ID, Result: &runnerproto.FSReaddirResult{Value: []runnerproto.DirEntry{}}})
+	job := nextHostMessage[*runnerproto.JobStart](t, r)
 	if job.CWD != "/home/test" || job.Stdin == nil || job.Stdin.ID != input.ID() || job.Stdout == nil ||
 		job.Stdout.ID != output.ID() {
 		t.Fatal(job)
 	}
-	r.send(t, &runnerwire.JobOutput{JobID: job.JobID, Stream: runnerwire.Stderr, Bytes: []byte("remote warning\n")})
+	r.send(t, &runnerproto.JobOutput{JobID: job.JobID, Stream: runnerproto.Stderr, Bytes: []byte("remote warning\n")})
 	r.send(
 		t,
-		&runnerwire.JobExit{
+		&runnerproto.JobExit{
 			JobID:    job.JobID,
 			ExitCode: new(int32(7)),
 			CWD:      new("/next"),
-			Files:    []runnerwire.JobFileChange{},
+			Files:    []runnerproto.JobFileChange{},
 		},
 	)
-	_ = nextHostMessage[*runnerwire.JobRelease](t, r)
+	_ = nextHostMessage[*runnerproto.JobRelease](t, r)
 	completed := <-result
 	if completed.err != nil || completed.value != 7 || string(port.Stderr()) != "remote warning\n" {
 		t.Fatal(completed, string(port.Stderr()))

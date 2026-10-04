@@ -7,10 +7,10 @@ import (
 	"slices"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
-func (s *Session) admit(kind actionKind, content []core.UserContentBlock, id core.TurnID) (*ActionAnswer, error) {
+func (s *Session) admit(kind actionKind, content []types.UserContentBlock, id types.TurnID) (*ActionAnswer, error) {
 	var answer *ActionAnswer
 	var err error
 	s.mutate(func(c *coreState) {
@@ -28,7 +28,7 @@ func (s *Session) admit(kind actionKind, content []core.UserContentBlock, id cor
 				return
 			}
 		} else {
-			id = core.TurnID(s.deps.IDs.NextID())
+			id = types.TurnID(s.deps.IDs.NextID())
 		}
 		answer = newAction()
 		c.queue = append(c.queue, &action{kind: kind, content: content, turn: id, answer: answer})
@@ -37,7 +37,7 @@ func (s *Session) admit(kind actionKind, content []core.UserContentBlock, id cor
 	return answer, err
 }
 
-func (s *Session) steer(content []core.UserContentBlock, id core.BlockID) error {
+func (s *Session) steer(content []types.UserContentBlock, id types.BlockID) error {
 	var err error
 	s.mutate(func(c *coreState) {
 		if err = c.steerableLocked(); err != nil {
@@ -45,14 +45,14 @@ func (s *Session) steer(content []core.UserContentBlock, id core.BlockID) error 
 		}
 		c.inputs = append(
 			c.inputs,
-			pendingInput{steer: &core.PendingSteer{ID: id, TurnID: c.active.turn, Model: c.model, Content: content}},
+			pendingInput{steer: &types.PendingSteer{ID: id, TurnID: c.active.turn, Model: c.model, Content: content}},
 		)
 		c.arrivals++
 	})
 	return err
 }
 
-func (s *Session) acceptAgentMessage(ctx context.Context, message core.AgentMessage) error {
+func (s *Session) acceptAgentMessage(ctx context.Context, message types.AgentMessage) error {
 	if err := message.Validate(); err != nil {
 		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
 		return fmt.Errorf("The agent message is invalid: %w", err)
@@ -79,7 +79,7 @@ func (s *Session) acceptAgentMessage(ctx context.Context, message core.AgentMess
 			err = ErrAgentMessageConflict
 			return
 		}
-		turn := core.TurnID(message.ID)
+		turn := types.TurnID(message.ID)
 		if c.active != nil {
 			turn = c.active.turn
 		}
@@ -126,7 +126,7 @@ func (s *Session) writeInputsLocked(take inputSelection) bool {
 			c.dirty = true
 		}
 		if input.wakeup != nil {
-			c.log.PushWakeup(core.BlockID(input.wakeup.ID), c.active.turn, c.model, "steer")
+			c.log.PushWakeup(types.BlockID(input.wakeup.ID), c.active.turn, c.model, "steer")
 			c.dirty = true
 		}
 	}
@@ -143,7 +143,7 @@ func (s *Session) writeInputs(ctx context.Context) error {
 	return nil
 }
 
-func (s *Session) cancelPendingSteer(id core.BlockID) bool {
+func (s *Session) cancelPendingSteer(id types.BlockID) bool {
 	removed := false
 	s.mutate(func(c *coreState) {
 		for i, input := range c.inputs {
@@ -170,8 +170,8 @@ func (s *Session) writeInputsSince(ctx context.Context, arrivals uint64) error {
 }
 
 // agentMessageLocked finds duplicate or conflicting input while the session mutex is held.
-func (c *coreState) agentMessageLocked(id core.BlockID) (*core.AgentMessage, bool) {
-	var existing *core.AgentMessage
+func (c *coreState) agentMessageLocked(id types.BlockID) (*types.AgentMessage, bool) {
+	var existing *types.AgentMessage
 	conflict := false
 	for _, input := range c.inputs {
 		if input.agent != nil && input.agent.Message.ID == id {
@@ -180,12 +180,12 @@ func (c *coreState) agentMessageLocked(id core.BlockID) (*core.AgentMessage, boo
 		if input.steer != nil && input.steer.ID == id {
 			conflict = true
 		}
-		if input.wakeup != nil && core.BlockID(input.wakeup.ID) == id {
+		if input.wakeup != nil && types.BlockID(input.wakeup.ID) == id {
 			conflict = true
 		}
 	}
 	if block := c.log.Find(id); block != nil {
-		if b, ok := block.(*core.AgentMessageBlock); ok {
+		if b, ok := block.(*types.AgentMessageBlock); ok {
 			existing = &b.Message
 		} else {
 			conflict = true

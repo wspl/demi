@@ -5,22 +5,22 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ManagedOperation returns the device's reset `id`, as it was last written.
 func (c *ControlService) ManagedOperation(
 	ctx context.Context,
-	device webapi.DeviceID,
-	id webapi.OperationID,
+	device webapiproto.DeviceID,
+	id webapiproto.OperationID,
 ) (ManagedOperation, bool, error) {
 	var found bool
 	record, err := controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ManagedOperation, error) {
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (ManagedOperation, error) {
 			r, ok, err := queryRecord(
 				ctx,
 				tx,
@@ -40,13 +40,13 @@ func (c *ControlService) ManagedOperation(
 // LatestManagedOperation returns the device's reset written last: the one its status shows.
 func (c *ControlService) LatestManagedOperation(
 	ctx context.Context,
-	device webapi.DeviceID,
+	device webapiproto.DeviceID,
 ) (ManagedOperation, bool, error) {
 	var found bool
 	record, err := controlCall(
 		ctx,
 		c,
-		func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (ManagedOperation, error) {
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (ManagedOperation, error) {
 			r, ok, err := queryRecord(
 				ctx,
 				tx,
@@ -66,10 +66,10 @@ func (c *ControlService) LatestManagedOperation(
 // first write.
 func (c *ControlService) PutManagedOperation(
 	ctx context.Context,
-	device webapi.DeviceID,
+	device webapiproto.DeviceID,
 	operation ManagedOperation,
 ) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, now core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, now types.Timestamp) error {
 		at, err := now.Millisecond()
 		if err != nil {
 			return err
@@ -95,7 +95,7 @@ SET phase=excluded.phase,error=excluded.error,updated_at=excluded.updated_at`,
 // device: what a backend that stopped in the middle of one finishes
 // when it starts.
 func (c *ControlService) UnfinishedManagedOperations(ctx context.Context) ([]DeviceOperation, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]DeviceOperation, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]DeviceOperation, error) {
 		return queryRecords(
 			ctx,
 			tx,
@@ -103,7 +103,7 @@ func (c *ControlService) UnfinishedManagedOperations(ctx context.Context) ([]Dev
 			"SELECT * FROM managed_operations WHERE phase NOT IN ('ready','failed') ORDER BY updated_at,rowid",
 			func(r *storedRow) DeviceOperation {
 				return DeviceOperation{
-					Device:    checked(r, "device_id", webapi.ParseDeviceID),
+					Device:    checked(r, "device_id", webapiproto.ParseDeviceID),
 					Operation: operationRow(r),
 				}
 			},
@@ -113,8 +113,8 @@ func (c *ControlService) UnfinishedManagedOperations(ctx context.Context) ([]Dev
 
 // RotateDeviceToken replaces the token of the user's Cloud device with the one a boot
 // minted: the token of an earlier boot opens no connection any more.
-func (c *ControlService) RotateDeviceToken(ctx context.Context, device webapi.DeviceID, token TokenHash) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+func (c *ControlService) RotateDeviceToken(ctx context.Context, device webapiproto.DeviceID, token TokenHash) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		changed, err := affected(
 			ctx,
 			tx,
@@ -137,10 +137,10 @@ func (c *ControlService) RotateDeviceToken(ctx context.Context, device webapi.De
 // so every node reads the reset in its next context block.
 func (c *ControlService) AnnounceCloudReset(
 	ctx context.Context,
-	user webapi.UserID,
-	operation webapi.OperationID,
+	user webapiproto.UserID,
+	operation webapiproto.OperationID,
 ) error {
-	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) error {
+	return controlDo(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) error {
 		return execSQL(
 			ctx,
 			tx,
@@ -156,24 +156,28 @@ WHERE user_id=?1 AND (cloud_reset_id IS NULL OR cloud_reset_id<>?2)`,
 // AnnouncedCloudReset returns the Cloud reset the conversation was last told of.
 func (c *ControlService) AnnouncedCloudReset(
 	ctx context.Context,
-	id webapi.ConversationID,
-) (*webapi.OperationID, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) (*webapi.OperationID, error) {
-		r, found, err := queryRecord(
-			ctx,
-			tx,
-			"conversations",
-			"SELECT cloud_reset_id FROM conversations WHERE id = ?",
-			func(r *storedRow) *webapi.OperationID {
-				return optionalChecked(r, "cloud_reset_id", webapi.ParseOperationID)
-			},
-			id,
-		)
-		if !found {
-			return nil, err
-		}
-		return r, err
-	})
+	id webapiproto.ConversationID,
+) (*webapiproto.OperationID, error) {
+	return controlCall(
+		ctx,
+		c,
+		func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) (*webapiproto.OperationID, error) {
+			r, found, err := queryRecord(
+				ctx,
+				tx,
+				"conversations",
+				"SELECT cloud_reset_id FROM conversations WHERE id = ?",
+				func(r *storedRow) *webapiproto.OperationID {
+					return optionalChecked(r, "cloud_reset_id", webapiproto.ParseOperationID)
+				},
+				id,
+			)
+			if !found {
+				return nil, err
+			}
+			return r, err
+		},
+	)
 }
 
 // CloudUses returns the user's conversations that are not archived, as the Cloud's
@@ -181,10 +185,10 @@ func (c *ControlService) AnnouncedCloudReset(
 // first use made it.
 func (c *ControlService) CloudUses(
 	ctx context.Context,
-	user webapi.UserID,
-	cloud *webapi.DeviceID,
+	user webapiproto.UserID,
+	cloud *webapiproto.DeviceID,
 ) ([]CloudUseRecord, error) {
-	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ core.Timestamp) ([]CloudUseRecord, error) {
+	return controlCall(ctx, c, func(ctx context.Context, tx *sql.Tx, _ types.Timestamp) ([]CloudUseRecord, error) {
 		return queryRecords(
 			ctx,
 			tx,
@@ -210,13 +214,13 @@ ORDER BY c.id`,
 					device = r.optionalText("workspace_device")
 				}
 				u := CloudUseRecord{
-					ID: checked(r, "id", webapi.ParseConversationID),
+					ID: checked(r, "id", webapiproto.ParseConversationID),
 					OnCloud: r.text("target_kind") == "cloud" ||
 						(cloud != nil && device != nil && *device == string(*cloud)),
 					Attached: r.boolean("attached"),
 				}
-				if model := optionalJSON(r, "model", core.DecodeModelSelection); model != nil {
-					provider, err := webapi.ParseProviderID(model.ProviderID)
+				if model := optionalJSON(r, "model", types.DecodeModelSelection); model != nil {
+					provider, err := webapiproto.ParseProviderID(model.ProviderID)
 					r.bad("model", err)
 					u.Provider = &provider
 				}
@@ -230,9 +234,9 @@ ORDER BY c.id`,
 
 func operationRow(r *storedRow) ManagedOperation {
 	o := ManagedOperation{
-		ID:          checked(r, "operation_id", webapi.ParseOperationID),
-		BaseVersion: checked(r, "base_version", machinewire.ParseBaseVersion),
-		Phase:       webapi.ResetPhase(r.text("phase")),
+		ID:          checked(r, "operation_id", webapiproto.ParseOperationID),
+		BaseVersion: checked(r, "base_version", machinemanagerproto.ParseBaseVersion),
+		Phase:       webapiproto.ResetPhase(r.text("phase")),
 		Error:       r.optionalText("error"),
 	}
 	r.bad("phase", o.Phase.Validate())

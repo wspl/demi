@@ -10,14 +10,14 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 func (s *Shard) applyChange(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	change database.ConversationChange,
 ) error {
 	record, found, err := s.services.Control.Conversation(ctx, id)
@@ -72,7 +72,7 @@ func (s *Shard) applyChange(
 
 func (s *Shard) changeSettings(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	change database.SettingsChange,
 ) error {
 	record, found, err := s.services.Control.Conversation(ctx, id)
@@ -113,11 +113,11 @@ func (s *Shard) changeSettings(
 
 func (s *Shard) settingsSelection(
 	ctx context.Context,
-	current *core.ModelSelection,
+	current *types.ModelSelection,
 	change database.SettingsChange,
-) (core.ModelSelection, error) {
-	var selection core.ModelSelection
-	var entry webapi.ProviderID
+) (types.ModelSelection, error) {
+	var selection types.ModelSelection
+	var entry webapiproto.ProviderID
 	var model string
 	if change.Model != nil {
 		entry = change.Model.ProviderID
@@ -128,7 +128,7 @@ func (s *Shard) settingsSelection(
 		}
 		selection = *current
 		var err error
-		entry, err = webapi.ParseProviderID(current.ProviderID)
+		entry, err = webapiproto.ParseProviderID(current.ProviderID)
 		if err != nil {
 			return selection, &hostaccess.ChangeError{Kind: hostaccess.ChangeProviderNotFound}
 		}
@@ -171,15 +171,15 @@ func (s *Shard) settingsSelection(
 
 func (s *Shard) listedModel(
 	ctx context.Context,
-	id webapi.ProviderID,
+	id webapiproto.ProviderID,
 	model string,
-) (core.ProviderModel, error) {
+) (types.ProviderModel, error) {
 	entry, err := s.services.Vault.Visible(ctx, s.user, id)
 	if err != nil {
-		return core.ProviderModel{}, err
+		return types.ProviderModel{}, err
 	}
 	if entry == nil {
-		return core.ProviderModel{}, &hostaccess.ChangeError{Kind: hostaccess.ChangeProviderNotFound}
+		return types.ProviderModel{}, &hostaccess.ChangeError{Kind: hostaccess.ChangeProviderNotFound}
 	}
 	built, buildErr := s.services.Assembly.ProviderFor(ctx, *entry)
 	catalog := s.services.Assembly.EntryCatalog(ctx, *entry, built, buildErr, false)
@@ -188,10 +188,10 @@ func (s *Shard) listedModel(
 			return listed, nil
 		}
 	}
-	return core.ProviderModel{}, &hostaccess.ChangeError{Kind: hostaccess.ChangeModelNotFound}
+	return types.ProviderModel{}, &hostaccess.ChangeError{Kind: hostaccess.ChangeModelNotFound}
 }
 
-func (s *Shard) stopTitle(id webapi.ConversationID) {
+func (s *Shard) stopTitle(id webapiproto.ConversationID) {
 	s.mu.Lock()
 	title := s.titles[id]
 	delete(s.titles, id)
@@ -203,9 +203,9 @@ func (s *Shard) stopTitle(id webapi.ConversationID) {
 
 func (s *Shard) applyPatch(
 	ctx context.Context,
-	id webapi.ConversationID,
-	patch webapi.ConversationPatch,
-) (*webapi.ConversationUpdate, error) {
+	id webapiproto.ConversationID,
+	patch webapiproto.ConversationPatch,
+) (*webapiproto.ConversationUpdate, error) {
 	record, found, err := s.services.Control.Conversation(ctx, id)
 	if err != nil || !found {
 		return nil, err
@@ -214,12 +214,12 @@ func (s *Shard) applyPatch(
 		return nil, nil
 	}
 	changes := patchChanges(patch)
-	results := make([]webapi.FieldResult, 0)
+	results := make([]webapiproto.FieldResult, 0)
 	for _, change := range changes {
 		err := s.transition(ctx, id, change.change)
 		for _, field := range change.fields {
 			if err == nil {
-				results = append(results, &webapi.FieldResultApplied{Field: field})
+				results = append(results, &webapiproto.FieldResultApplied{Field: field})
 				continue
 			}
 			refusal := &hostaccess.ChangeError{Kind: hostaccess.ChangeStorage, Cause: err}
@@ -230,7 +230,7 @@ func (s *Shard) applyPatch(
 			code, status := refusal.Code()
 			results = append(
 				results,
-				&webapi.FieldResultFailed{
+				&webapiproto.FieldResultFailed{
 					Field:      field,
 					Code:       code,
 					Message:    refusal.Error(),
@@ -247,12 +247,12 @@ func (s *Shard) applyPatch(
 	if err != nil {
 		return nil, err
 	}
-	return &webapi.ConversationUpdate{Conversation: summary, Results: results}, nil
+	return &webapiproto.ConversationUpdate{Conversation: summary, Results: results}, nil
 }
 
 func (s *Shard) transition(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	change database.ConversationChange,
 ) error {
 	if err := s.applyChange(ctx, id, change); err != nil {
@@ -348,18 +348,18 @@ func (s *Shard) commitArchive(
 }
 
 type modification struct {
-	fields []webapi.PatchField
+	fields []webapiproto.PatchField
 	change database.ConversationChange
 }
 
 // patchChanges preserves the independent patch fields in archive-first order.
-func patchChanges(patch webapi.ConversationPatch) []modification {
+func patchChanges(patch webapiproto.ConversationPatch) []modification {
 	var changes []modification
 	if patch.Archived != nil {
 		changes = append(
 			changes,
 			modification{
-				[]webapi.PatchField{webapi.PatchFieldArchived},
+				[]webapiproto.PatchField{webapiproto.PatchFieldArchived},
 				&database.ConversationRecordChange{
 					Change: &database.RecordArchived{Archived: *patch.Archived},
 				},
@@ -370,7 +370,7 @@ func patchChanges(patch webapi.ConversationPatch) []modification {
 		changes = append(
 			changes,
 			modification{
-				[]webapi.PatchField{webapi.PatchFieldTitle},
+				[]webapiproto.PatchField{webapiproto.PatchFieldTitle},
 				&database.ConversationRecordChange{Change: &database.RecordTitle{Title: string(*patch.Title)}},
 			},
 		)
@@ -379,7 +379,7 @@ func patchChanges(patch webapi.ConversationPatch) []modification {
 		changes = append(
 			changes,
 			modification{
-				[]webapi.PatchField{webapi.PatchFieldPinned},
+				[]webapiproto.PatchField{webapiproto.PatchFieldPinned},
 				&database.ConversationRecordChange{Change: &database.RecordPinned{Pinned: *patch.Pinned}},
 			},
 		)
@@ -389,7 +389,7 @@ func patchChanges(patch webapi.ConversationPatch) []modification {
 		changes = append(
 			changes,
 			modification{
-				[]webapi.PatchField{webapi.PatchFieldTarget},
+				[]webapiproto.PatchField{webapiproto.PatchFieldTarget},
 				&database.ConversationTargetChange{Target: *patch.Target},
 			},
 		)
@@ -400,7 +400,7 @@ func patchChanges(patch webapi.ConversationPatch) []modification {
 // commitSettingsChange owns file and settings admission while changing the selected model.
 func (s *Shard) commitSettingsChange(
 	ctx context.Context,
-	id webapi.ConversationID,
+	id webapiproto.ConversationID,
 	change database.SettingsChange,
 ) error {
 	slot := s.conversations.Slot(id)
@@ -418,16 +418,16 @@ func (s *Shard) commitSettingsChange(
 }
 
 // appendPatchSettings groups model, thinking effort and tier into one settings change.
-func appendPatchSettings(changes []modification, patch webapi.ConversationPatch) []modification {
-	var settings []webapi.PatchField
+func appendPatchSettings(changes []modification, patch webapiproto.ConversationPatch) []modification {
+	var settings []webapiproto.PatchField
 	if patch.Model != nil {
-		settings = append(settings, webapi.PatchFieldModel)
+		settings = append(settings, webapiproto.PatchFieldModel)
 	}
 	if patch.ThinkingEffort != nil {
-		settings = append(settings, webapi.PatchFieldThinkingEffort)
+		settings = append(settings, webapiproto.PatchFieldThinkingEffort)
 	}
 	if patch.ServiceTierID != nil {
-		settings = append(settings, webapi.PatchFieldServiceTierID)
+		settings = append(settings, webapiproto.PatchFieldServiceTierID)
 	}
 	if len(settings) > 0 {
 		changes = append(
@@ -448,7 +448,7 @@ func appendPatchSettings(changes []modification, patch webapi.ConversationPatch)
 }
 
 // reserveConversationChange reserves a quiescent live turn or refuses an in-flight change.
-func (s *Shard) reserveConversationChange(id webapi.ConversationID) (*gates.Reservation, error) {
+func (s *Shard) reserveConversationChange(id webapiproto.ConversationID) (*gates.Reservation, error) {
 	var reserved *gates.Reservation
 	if tree := s.agent.Tree(hostaccess.RootOf(id)); tree != nil {
 		reserved = tree.Admission().TryReserve()

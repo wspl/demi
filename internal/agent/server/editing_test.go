@@ -10,17 +10,17 @@ import (
 	"github.com/wspl/demi/internal/agent/server/servertest"
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
-func userBlock(t *testing.T, f *fixture, turn string) core.BlockID {
+func userBlock(t *testing.T, f *fixture, turn string) types.BlockID {
 	t.Helper()
 	for _, b := range f.server.Tree(rootID()).Root().Session().Transcript().Blocks {
-		if u, ok := b.(*core.UserBlock); ok && u.TurnID == turnID(turn) {
+		if u, ok := b.(*types.UserBlock); ok && u.TurnID == turnID(turn) {
 			return u.ID()
 		}
 	}
@@ -30,16 +30,16 @@ func userBlock(t *testing.T, f *fixture, turn string) core.BlockID {
 
 func edit(
 	operation string,
-	target core.BlockID,
-	version framewire.TranscriptVersion,
+	target types.BlockID,
+	version conversationproto.TranscriptVersion,
 	text string,
-) *framewire.EditAndSendFrame {
-	id, err := core.ParseOperationID(operation)
+) *conversationproto.EditAndSendFrame {
+	id, err := types.ParseOperationID(operation)
 	if err != nil {
 		panic(err)
 	}
-	return &framewire.EditAndSendFrame{
-		Request: framewire.EditRequest{
+	return &conversationproto.EditAndSendFrame{
+		Request: conversationproto.EditRequest{
 			OperationID:   id,
 			TargetBlockID: target,
 			Version:       version,
@@ -48,10 +48,10 @@ func edit(
 	}
 }
 
-func editOutcome(t *testing.T, frames []framewire.ServerFrame) framewire.EditOutcome {
+func editOutcome(t *testing.T, frames []conversationproto.ServerFrame) conversationproto.EditOutcome {
 	t.Helper()
 	for _, frame := range frames {
-		if frame, ok := frame.(*framewire.EditResultFrame); ok {
+		if frame, ok := frame.(*conversationproto.EditResultFrame); ok {
 			return frame.Outcome
 		}
 	}
@@ -59,9 +59,9 @@ func editOutcome(t *testing.T, frames []framewire.ServerFrame) framewire.EditOut
 	return nil
 }
 
-func rejectedEdit(t *testing.T, outcome framewire.EditOutcome, reason string) {
+func rejectedEdit(t *testing.T, outcome conversationproto.EditOutcome, reason string) {
 	t.Helper()
-	r, ok := outcome.(*framewire.RejectedEdit)
+	r, ok := outcome.(*conversationproto.RejectedEdit)
 	if !ok {
 		t.Fatal(outcome)
 	}
@@ -88,23 +88,23 @@ func TestEditReplacesOnceOnFreshRuntime(t *testing.T) {
 		request := edit("op1", target, before.Version, "B2")
 		c.Send(t.Context(), request)
 		frames := untilIdle(t, c)
-		accepted, ok := editOutcome(t, frames).(*framewire.AcceptedEdit)
+		accepted, ok := editOutcome(t, frames).(*conversationproto.AcceptedEdit)
 		if !ok {
 			t.Fatal(frames)
 		}
 		rewrites := 0
 		for i, frame := range frames {
-			if p, ok := frame.(*framewire.TranscriptPatchFrame); ok {
+			if p, ok := frame.(*conversationproto.TranscriptPatchFrame); ok {
 				for _, p := range p.Patches {
-					if r, ok := p.(*framewire.ReplacePatch); ok {
+					if r, ok := p.(*conversationproto.ReplacePatch); ok {
 						rewrites++
 						equal(t, before.Blocks[:3], r.Value[:3])
 						equal(t, 4, len(r.Value))
-						replacement := r.Value[3].(*core.UserBlock)
+						replacement := r.Value[3].(*types.UserBlock)
 						equal(t, accepted.TurnID, replacement.TurnID)
 						equal(t, storetest.Text("B2"), replacement.Content)
 						equal(t, r.Value, f.server.Tree(rootID()).Root().Session().Transcript().Blocks[:4])
-						if _, ok := frames[i+1].(*framewire.EditResultFrame); !ok {
+						if _, ok := frames[i+1].(*conversationproto.EditResultFrame); !ok {
 							t.Fatalf("acceptance did not follow rewrite: %T", frames[i+1])
 						}
 					}
@@ -138,19 +138,19 @@ func TestEditReplacesOnceOnFreshRuntime(t *testing.T) {
 		}
 		equal(t, host.StorageReply(&host.StorageValue{Value: []byte("1"), Revision: 1}), reply)
 		c.Send(t.Context(), request)
-		equal(t, framewire.EditOutcome(accepted), editOutcome(t, c.Received()))
+		equal(t, conversationproto.EditOutcome(accepted), editOutcome(t, c.Received()))
 		c.Send(t.Context(), edit("op1", target, live.Version, "B3"))
 		rejectedEdit(t, editOutcome(t, c.Received()), "The edit operation ID was used for a different request")
 		c.Send(t.Context(), edit("op2", target, before.Version, "B3"))
 		rejectedEdit(t, editOutcome(t, c.Received()), "The conversation changed; reopen the message to edit it")
-		c.Send(t.Context(), &framewire.CloseFrame{})
+		c.Send(t.Context(), &conversationproto.CloseFrame{})
 		c.Received()
-		c.Send(t.Context(), &framewire.OpenFrame{})
+		c.Send(t.Context(), &conversationproto.OpenFrame{})
 		c.Received()
 		c.Send(t.Context(), edit("op3", userBlock(t, f, string(accepted.TurnID)), live.Version, "B4"))
 		rejectedEdit(t, editOutcome(t, c.Received()), "The conversation changed; reopen the message to edit it")
 		c.Send(t.Context(), request)
-		equal(t, framewire.EditOutcome(accepted), editOutcome(t, c.Received()))
+		equal(t, conversationproto.EditOutcome(accepted), editOutcome(t, c.Received()))
 		equal(t, 0, f.script.Remaining())
 	})
 }
@@ -174,13 +174,13 @@ func TestEditVisibleOnlyAfterCommit(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, frame := range c.Received() {
-			if _, ok := frame.(*framewire.TranscriptResetFrame); ok {
+			if _, ok := frame.(*conversationproto.TranscriptResetFrame); ok {
 				t.Fatal("edit reset before commit")
 			}
-			if _, ok := frame.(*framewire.EditResultFrame); ok {
+			if _, ok := frame.(*conversationproto.EditResultFrame); ok {
 				t.Fatal("edit result before commit")
 			}
-			if _, ok := frame.(*framewire.TranscriptPatchFrame); ok {
+			if _, ok := frame.(*conversationproto.TranscriptPatchFrame); ok {
 				t.Fatal("edit patch before commit")
 			}
 		}
@@ -197,22 +197,22 @@ func TestEditVisibleOnlyAfterCommit(t *testing.T) {
 			frames := untilIdle(t, client)
 			results := 0
 			for i, frame := range frames {
-				if _, ok := frame.(*framewire.EditResultFrame); ok {
+				if _, ok := frame.(*conversationproto.EditResultFrame); ok {
 					results++
 					if i == 0 {
 						t.Fatal("acceptance before rewrite")
 					}
-					patch, ok := frames[i-1].(*framewire.TranscriptPatchFrame)
+					patch, ok := frames[i-1].(*conversationproto.TranscriptPatchFrame)
 					if !ok {
 						t.Fatalf("acceptance follows %T", frames[i-1])
 					}
-					if _, ok := patch.Patches[0].(*framewire.ReplacePatch); !ok {
+					if _, ok := patch.Patches[0].(*conversationproto.ReplacePatch); !ok {
 						t.Fatal("acceptance did not follow rewrite")
 					}
 				}
 			}
 			equal(t, 1, results)
-			if _, ok := editOutcome(t, frames).(*framewire.AcceptedEdit); !ok {
+			if _, ok := editOutcome(t, frames).(*conversationproto.AcceptedEdit); !ok {
 				t.Fatal(frames)
 			}
 		}
@@ -247,7 +247,7 @@ func TestSwitchDuringPreparedEditLandsAfterFirstRequest(t *testing.T) {
 		switchModel(t, f, storetest.ModelOf("stub", "model-b"))
 		gate.Release()
 		<-done
-		if _, ok := editOutcome(t, untilIdle(t, c)).(*framewire.AcceptedEdit); !ok {
+		if _, ok := editOutcome(t, untilIdle(t, c)).(*conversationproto.AcceptedEdit); !ok {
 			t.Fatal("edit refused")
 		}
 		models := []string{}
@@ -293,7 +293,7 @@ func TestBusyEditAndFailedSaveChangeNothing(t *testing.T) {
 		synctest.Wait()
 		c.Received()
 		c.Send(t.Context(), r)
-		if _, ok := editOutcome(t, untilIdle(t, c)).(*framewire.AcceptedEdit); !ok {
+		if _, ok := editOutcome(t, untilIdle(t, c)).(*conversationproto.AcceptedEdit); !ok {
 			t.Fatal("retry refused")
 		}
 		blocks := f.server.Tree(rootID()).Root().Session().Transcript().Blocks
@@ -329,7 +329,7 @@ func TestCommandStorageGenerationAndCancellation(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("expected the call's cancellation, got %v", err)
 		}
-		c.Send(t.Context(), &framewire.CloseFrame{})
+		c.Send(t.Context(), &conversationproto.CloseFrame{})
 		_, err = f.server.CommandStorage(t.Context(), rootID(), caller, write)
 		assertStorageError(t, err, "the command storage handle is no longer current")
 		equal(t, uint64(1), f.store.Checkpoint(rootID()).CommandState.Revision)
@@ -388,7 +388,7 @@ func TestEditAndChildLifecycleRefuseEachOther(t *testing.T) {
 		gate.Release()
 		<-done
 		synctest.Wait()
-		accepted := editOutcome(t, c.Received()).(*framewire.AcceptedEdit)
+		accepted := editOutcome(t, c.Received()).(*conversationproto.AcceptedEdit)
 		equal(t, delivered, f.store.Record(child))
 		target = userBlock(t, f, string(accepted.TurnID))
 		version := f.server.Tree(rootID()).Root().Session().Transcript().Version

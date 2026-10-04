@@ -1,7 +1,7 @@
 # Browser contract fixtures
 
 `types.go` holds browser command shapes the generator must handle
-(`internal/cmdpkg/browser/browserop` owns the real ones, and the browser
+(`internal/commandpackage/browser/browserproto` owns the real ones, and the browser
 plugin's manifest golden pins their schemas): `NodeValue` is a number or
 string union, `Wheel` carries the two negative ranges of the live view's wheel
 input, `Scalar` exercises overlapping numeric variants and boolean and object

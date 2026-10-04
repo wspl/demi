@@ -12,10 +12,10 @@ import (
 
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/types"
 )
 
 const (
@@ -33,7 +33,7 @@ type child[H host.Host] struct {
 	delivery  gates.Serial // Orders message admission with natural closing.
 }
 
-func (t *Tree[H]) childrenOf(owner core.NodeID) []*child[H] {
+func (t *Tree[H]) childrenOf(owner types.NodeID) []*child[H] {
 	t.server.mu.Lock()
 	result := []*child[H]{}
 	for _, c := range t.children {
@@ -54,7 +54,7 @@ func (t *Tree[H]) childrenOf(owner core.NodeID) []*child[H] {
 	return result
 }
 
-func (t *Tree[H]) descendants(owner core.NodeID) []*child[H] {
+func (t *Tree[H]) descendants(owner types.NodeID) []*child[H] {
 	result := []*child[H]{}
 	for _, child := range t.childrenOf(owner) {
 		result = append(result, child)
@@ -63,7 +63,7 @@ func (t *Tree[H]) descendants(owner core.NodeID) []*child[H] {
 	return result
 }
 
-func (t *Tree[H]) isChildOf(id, owner core.NodeID) bool {
+func (t *Tree[H]) isChildOf(id, owner types.NodeID) bool {
 	t.server.mu.Lock()
 	defer t.server.mu.Unlock()
 	c := t.children[id]
@@ -71,7 +71,7 @@ func (t *Tree[H]) isChildOf(id, owner core.NodeID) bool {
 }
 
 // ownerLocked checks a child start against the same directory decision as closing.
-func (t *Tree[H]) ownerLocked(id core.NodeID) (*Node[H], error) {
+func (t *Tree[H]) ownerLocked(id types.NodeID) (*Node[H], error) {
 	if t.disposing {
 		return nil, errors.New("owner session is closing")
 	}
@@ -88,7 +88,7 @@ func (t *Tree[H]) ownerLocked(id core.NodeID) (*Node[H], error) {
 	return c.node, nil
 }
 
-func (t *Tree[H]) profile(name *string) (*core.Profile, error) {
+func (t *Tree[H]) profile(name *string) (*types.Profile, error) {
 	if name == nil {
 		return nil, nil
 	}
@@ -107,7 +107,7 @@ func (t *Tree[H]) profile(name *string) (*core.Profile, error) {
 	return nil, fmt.Errorf("unknown profile %q (available: %s)", *name, available)
 }
 
-func (t *Tree[H]) checkCapacity(owner core.NodeID) error {
+func (t *Tree[H]) checkCapacity(owner types.NodeID) error {
 	if len(t.childrenOf(owner)) >= maxLiveChildren {
 		return errors.New("at most 8 running subagents per session; abort one or wait for a result")
 	}
@@ -118,7 +118,7 @@ func (t *Tree[H]) startChild(
 	ctx context.Context,
 	owner *Node[H],
 	record store.NodeRecord,
-	first *core.QueuedMessage,
+	first *types.QueuedMessage,
 ) error {
 	profile, err := t.profile(record.Profile)
 	if err != nil {
@@ -259,7 +259,7 @@ func (t *Tree[H]) supervise(c *child[H]) {
 	}
 }
 
-func (t *Tree[H]) abortChild(ctx context.Context, id core.NodeID) error {
+func (t *Tree[H]) abortChild(ctx context.Context, id types.NodeID) error {
 	t.server.mu.Lock()
 	c := t.children[id]
 	if c == nil || t.disposing {
@@ -286,7 +286,7 @@ func (t *Tree[H]) abortChild(ctx context.Context, id core.NodeID) error {
 	}
 }
 
-func (t *Tree[H]) abortChildren(ctx context.Context, owner core.NodeID) error {
+func (t *Tree[H]) abortChildren(ctx context.Context, owner types.NodeID) error {
 	var errs []error
 	for _, c := range t.childrenOf(owner) {
 		errs = append(errs, t.abortChild(ctx, c.node.ID()))
@@ -333,7 +333,7 @@ func (t *Tree[H]) closeChild(ctx context.Context, c *child[H], phase store.Close
 	if err == nil {
 		record.Closed = &ended
 		job, _ := record.Job()
-		t.publish(&framewire.SubagentFrame{Event: framewire.SubagentEventClosed, Job: job})
+		t.publish(&conversationproto.SubagentFrame{Event: conversationproto.SubagentEventClosed, Job: job})
 	}
 	t.frames.Unlock()
 	if err != nil {
@@ -346,12 +346,12 @@ func (t *Tree[H]) closeChild(ctx context.Context, c *child[H], phase store.Close
 }
 
 func (t *Tree[H]) deliver(ctx context.Context, owner *Node[H], record store.NodeRecord, ended store.NodeClose) {
-	id, err := (core.CompletionID{Child: record.ID, Round: record.Round}).BlockID()
+	id, err := (types.CompletionID{Child: record.ID, Round: record.Round}).BlockID()
 	if err != nil {
 		t.report(err)
 		return
 	}
-	content, outcome := "", core.CompletionOutcome("aborted")
+	content, outcome := "", types.CompletionOutcome("aborted")
 	switch phase := ended.Phase.(type) {
 	case *store.Completed:
 		content, outcome = phase.Result, "completed"
@@ -359,9 +359,9 @@ func (t *Tree[H]) deliver(ctx context.Context, owner *Node[H], record store.Node
 		content, outcome = phase.Failure, "failed"
 	case *store.Aborted:
 	}
-	message := core.AgentMessage{
+	message := types.AgentMessage{
 		ID: id,
-		Sender: core.Sender{
+		Sender: types.Sender{
 			ID:          record.ID,
 			Number:      record.Number,
 			Description: record.Description,
@@ -370,7 +370,7 @@ func (t *Tree[H]) deliver(ctx context.Context, owner *Node[H], record store.Node
 		RecipientID: owner.ID(),
 		Timestamp:   ended.At,
 		Content:     content,
-		Event:       &core.CompletionEvent{Outcome: outcome},
+		Event:       &types.CompletionEvent{Outcome: outcome},
 	}
 	if err := owner.session.AcceptAgentMessage(ctx, message); err != nil {
 		if !errors.Is(err, session.ErrClosed) {
@@ -379,7 +379,7 @@ func (t *Tree[H]) deliver(ctx context.Context, owner *Node[H], record store.Node
 	}
 }
 
-func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, content string) (uint64, error) {
+func (t *Tree[H]) sendMessage(ctx context.Context, caller types.NodeID, target, content string) (uint64, error) {
 	sender := t.Node(caller)
 	if sender == nil {
 		return 0, errors.New("this session is not in the agent directory")
@@ -409,13 +409,13 @@ func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, c
 	if sender.record.Parent == nil {
 		description = "root session"
 	}
-	id, err := core.ParseBlockID(t.server.deps.IDs.NextID())
+	id, err := types.ParseBlockID(t.server.deps.IDs.NextID())
 	if err != nil {
 		return 0, err
 	}
-	message := core.AgentMessage{
+	message := types.AgentMessage{
 		ID: id,
-		Sender: core.Sender{
+		Sender: types.Sender{
 			ID:          caller,
 			Number:      sender.record.Number,
 			Description: description,
@@ -424,7 +424,7 @@ func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, c
 		RecipientID: recipient.ID(),
 		Timestamp:   t.server.deps.Clock.Now(),
 		Content:     content,
-		Event:       &core.MessageEvent{},
+		Event:       &types.MessageEvent{},
 	}
 	if err := recipient.session.AcceptAgentMessage(ctx, message); err != nil {
 		return 0, err
@@ -432,12 +432,12 @@ func (t *Tree[H]) sendMessage(ctx context.Context, caller core.NodeID, target, c
 	return recipient.record.Number, nil
 }
 
-func (t *Tree[H]) childFrames(connection *Connection[H], c *child[H]) []framewire.ServerFrame {
+func (t *Tree[H]) childFrames(connection *Connection[H], c *child[H]) []conversationproto.ServerFrame {
 	snapshot := t.observeConnection(connection, c.node).Transcript
 	job, _ := c.node.record.Job()
-	return []framewire.ServerFrame{
-		&framewire.SubagentFrame{Event: framewire.SubagentEventStarted, Job: job},
-		&framewire.SubagentTranscriptResetFrame{
+	return []conversationproto.ServerFrame{
+		&conversationproto.SubagentFrame{Event: conversationproto.SubagentEventStarted, Job: job},
+		&conversationproto.SubagentTranscriptResetFrame{
 			SubagentID: c.node.ID(),
 			Blocks:     snapshot.Blocks,
 			Revision:   snapshot.Version.Revision,
@@ -445,8 +445,8 @@ func (t *Tree[H]) childFrames(connection *Connection[H], c *child[H]) []framewir
 	}
 }
 
-func (t *Tree[H]) replay(connection *Connection[H]) []framewire.ServerFrame {
-	frames := []framewire.ServerFrame{}
+func (t *Tree[H]) replay(connection *Connection[H]) []conversationproto.ServerFrame {
+	frames := []conversationproto.ServerFrame{}
 	for _, c := range t.descendants(t.id) {
 		frames = append(frames, t.childFrames(connection, c)...)
 	}
@@ -493,11 +493,11 @@ func subagentPreamble(child, parent uint64, spawning bool) string {
 }
 
 func childProfile(
-	profile *core.Profile,
-	model core.ModelSelection,
+	profile *types.Profile,
+	model types.ModelSelection,
 	instructions string,
 	inherited *host.CommandSet,
-) (core.ModelSelection, string, *host.CommandSet) {
+) (types.ModelSelection, string, *host.CommandSet) {
 	if profile == nil {
 		return model, instructions, inherited
 	}
@@ -521,7 +521,7 @@ func childProfile(
 }
 
 // stopChild stops the child subtree; false means start admission failed.
-func (t *Tree[H]) stopChild(ctx context.Context, agent *session.Session, id core.NodeID) bool {
+func (t *Tree[H]) stopChild(ctx context.Context, agent *session.Session, id types.NodeID) bool {
 	agent.Hold()
 	for {
 		result, err := agent.Abort(ctx)
@@ -588,7 +588,7 @@ func (t *Tree[H]) observeChild(c *child[H], node *Node[H]) {
 }
 
 // releaseChildObservations releases child cursors while the tree frame lock is held.
-func (t *Tree[H]) releaseChildObservations(id core.NodeID) {
+func (t *Tree[H]) releaseChildObservations(id types.NodeID) {
 	for _, connection := range t.connections() {
 		t.server.mu.Lock()
 		subscription := connection.observations[id]

@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Summary reads the root's phase, output revision and latest terminal kind
@@ -47,7 +47,7 @@ FROM blocks
 WHERE node_id=? AND idx<? AND json_extract(block,'$.type') IN ('response','error','abort')
 ORDER BY idx DESC
 LIMIT 1`,
-		func(r *storedRow) core.Block { return storedJSON(r, "block", core.DecodeBlock) },
+		func(r *storedRow) types.Block { return storedJSON(r, "block", types.DecodeBlock) },
 		root.id,
 		root.count,
 	)
@@ -71,7 +71,7 @@ func HasRoot(ctx context.Context, tx *sql.Tx) (bool, error) {
 // ReadHistory reads root blocks followed by subagents depth first in spawn order.
 func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 	type rootRow struct {
-		id    core.NodeID
+		id    types.NodeID
 		count int64
 	}
 	root, found, err := queryRecord(
@@ -80,10 +80,10 @@ func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 		"nodes",
 		"SELECT id,block_count FROM nodes WHERE parent_id IS NULL",
 		func(r *storedRow) rootRow {
-			return rootRow{id: checked(r, "id", core.ParseNodeID), count: r.integer("block_count")}
+			return rootRow{id: checked(r, "id", types.ParseNodeID), count: r.integer("block_count")}
 		},
 	)
-	history := History{Blocks: []core.Block{}, Subagents: []NodeHistory{}}
+	history := History{Blocks: []types.Block{}, Subagents: []NodeHistory{}}
 	if err != nil || !found {
 		return history, err
 	}
@@ -101,7 +101,7 @@ func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 	if err != nil {
 		return History{}, err
 	}
-	children := make(map[core.NodeID][]store.NodeRecord)
+	children := make(map[types.NodeID][]store.NodeRecord)
 	for _, node := range nodes {
 		children[*node.Parent] = append(children[*node.Parent], node)
 	}
@@ -130,30 +130,30 @@ func ReadHistory(ctx context.Context, tx *sql.Tx) (History, error) {
 }
 
 // summaryTerminal classifies only terminal blocks selected by the summary query.
-func summaryTerminal(terminal *core.Block) *Terminal {
+func summaryTerminal(terminal *types.Block) *Terminal {
 	var last *Terminal
 	if terminal == nil {
 		return nil
 	}
 	switch (*terminal).(type) {
-	case *core.ResponseBlock:
+	case *types.ResponseBlock:
 		last = new(TerminalResponse)
-	case *core.ErrorBlock:
+	case *types.ErrorBlock:
 		last = new(TerminalError)
-	case *core.AbortBlock:
+	case *types.AbortBlock:
 		last = new(TerminalAbort)
-	case *core.AgentMessageBlock,
-		*core.CompactionBoundaryBlock,
-		*core.CompactionMarkerBlock,
-		*core.ContextBlock,
-		*core.RedactedThinkingBlock,
-		*core.ResumeBlock,
-		*core.SteerBlock,
-		*core.TextBlock,
-		*core.ThinkingBlock,
-		*core.ToolCallBlock,
-		*core.UserBlock,
-		*core.WakeupBlock:
+	case *types.AgentMessageBlock,
+		*types.CompactionBoundaryBlock,
+		*types.CompactionMarkerBlock,
+		*types.ContextBlock,
+		*types.RedactedThinkingBlock,
+		*types.ResumeBlock,
+		*types.SteerBlock,
+		*types.TextBlock,
+		*types.ThinkingBlock,
+		*types.ToolCallBlock,
+		*types.UserBlock,
+		*types.WakeupBlock:
 		// The SQL predicate excludes nonterminal blocks.
 	}
 	return last

@@ -17,7 +17,7 @@ import (
 	"github.com/go-git/go-git/v5/storage/filesystem"
 	"github.com/go-git/go-git/v5/storage/filesystem/dotgit"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // gitError keeps protocol words apart from wrapped library and IO causes.
@@ -248,7 +248,7 @@ func judgeChange(
 	head map[string]object.TreeEntry,
 	name string,
 	signal gitSignal,
-) (*runnerwire.GitChange, error) {
+) (*runnerproto.GitChange, error) {
 	path, ok := relativeGitPath(name, location.prefix)
 	if !ok || path == "" {
 		return nil, nil
@@ -261,24 +261,24 @@ func judgeChange(
 	if err != nil {
 		return nil, err
 	}
-	change := &runnerwire.GitChange{Path: path, Status: signal.status(), Kind: runnerwire.ChangeKindModified}
+	change := &runnerproto.GitChange{Path: path, Status: signal.status(), Kind: runnerproto.ChangeKindModified}
 	switch {
 	case !before.present && !disk.present:
 		return nil, nil
 	case !before.present:
-		change.Kind = runnerwire.ChangeKindAdded
+		change.Kind = runnerproto.ChangeKindAdded
 		if from, ok := relativeGitPath(signal.from, location.prefix); signal.from != "" && ok {
 			before, err = blobContent(ctx, repo, head[signal.from])
 			if err != nil {
 				return nil, err
 			}
 			if before.present {
-				change.Kind = runnerwire.ChangeKindRenamed
+				change.Kind = runnerproto.ChangeKindRenamed
 				change.From = &from
 			}
 		}
 	case !disk.present:
-		change.Kind = runnerwire.ChangeKindDeleted
+		change.Kind = runnerproto.ChangeKindDeleted
 	}
 	if !before.large && !disk.large {
 		change.Added, change.Removed = process.LineCounts(before.bytes, disk.bytes)

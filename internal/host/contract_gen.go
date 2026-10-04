@@ -5,9 +5,9 @@ package host
 import (
 	"encoding/json"
 	"fmt"
-	commandwire "github.com/wspl/demi/internal/commandwire"
+	commandproto "github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/contract"
-	core "github.com/wspl/demi/internal/core"
+	types "github.com/wspl/demi/internal/types"
 )
 
 func DecodeJobCaller(data []byte) (JobCaller, error) { return contract.Decode[JobCaller](data) }
@@ -43,7 +43,7 @@ func (v *JobCaller) UnmarshalJSON(data []byte) error {
 			return contract.At("node", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.NodeID](raw)
+			value, err := contract.Decode[types.NodeID](raw)
 			if err != nil {
 				return contract.At("node", err)
 			}
@@ -119,7 +119,7 @@ func (v *PortInput) UnmarshalJSON(data []byte) error {
 		}
 		if ok {
 			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*core.B64Bytes, error) { return contract.Pointer(b, contract.Decode[core.B64Bytes]) }(raw)
+				value, err := func(b []byte) (*types.B64Bytes, error) { return contract.Pointer(b, contract.Decode[types.B64Bytes]) }(raw)
 				if err != nil {
 					return contract.At("bytes", err)
 				}
@@ -436,7 +436,7 @@ func (v *PortStderr) UnmarshalJSON(data []byte) error {
 			return contract.At("bytes", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.B64Bytes](raw)
+			value, err := contract.Decode[types.B64Bytes](raw)
 			if err != nil {
 				return contract.At("bytes", err)
 			}
@@ -496,7 +496,7 @@ func (v *PortStdout) UnmarshalJSON(data []byte) error {
 			return contract.At("bytes", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[core.B64Bytes](raw)
+			value, err := contract.Decode[types.B64Bytes](raw)
 			if err != nil {
 				return contract.At("bytes", err)
 			}
@@ -842,7 +842,7 @@ func (v *RPCInvocation) UnmarshalJSON(data []byte) error {
 			return contract.At("context", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[commandwire.Context](raw)
+			value, err := contract.Decode[commandproto.Context](raw)
 			if err != nil {
 				return contract.At("context", err)
 			}

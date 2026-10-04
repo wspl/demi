@@ -19,17 +19,17 @@ import (
 	"github.com/wspl/demi/internal/backend/usershard/usershardtest"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
-const conversationID webapi.ConversationID = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01"
+const conversationID webapiproto.ConversationID = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01"
 
 type fixture struct {
 	services *usershard.Services
 	shards   *usershard.Shards
 	shard    *usershard.Shard
-	owner    webapi.UserID
+	owner    webapiproto.UserID
 	devices  []database.DeviceRecord
 }
 
@@ -60,7 +60,7 @@ func shardFixture(t *testing.T, names ...string) *fixture {
 			t.Context(),
 			owner,
 			name,
-			runnerwire.RunnerPlatformLinux,
+			runnerproto.RunnerPlatformLinux,
 			database.HashToken(name),
 		)
 		if err != nil {
@@ -71,9 +71,9 @@ func shardFixture(t *testing.T, names ...string) *fixture {
 	return f
 }
 
-func on(device webapi.DeviceID) database.ConversationChange {
+func on(device webapiproto.DeviceID) database.ConversationChange {
 	return &database.ConversationTargetChange{
-		Target: &webapi.ConversationTargetDevice{DeviceID: device, Path: "/work"},
+		Target: &webapiproto.ConversationTargetDevice{DeviceID: device, Path: "/work"},
 	}
 }
 
@@ -85,9 +85,9 @@ func change(t *testing.T, f *fixture, c database.ConversationChange) {
 }
 
 type releaseRecord struct {
-	Device   webapi.DeviceID
-	Target   webapi.ConversationTarget
-	Attached []webapi.DeviceID
+	Device   webapiproto.DeviceID
+	Target   webapiproto.ConversationTarget
+	Attached []webapiproto.DeviceID
 	Archived bool
 	At       time.Time
 }
@@ -130,7 +130,7 @@ func (l *releaseLog) until(ctx context.Context, count int) error {
 
 type releaseRunner struct {
 	f       *fixture
-	device  webapi.DeviceID
+	device  webapiproto.DeviceID
 	log     *releaseLog
 	answers chan []byte
 }
@@ -145,22 +145,22 @@ func (r *releaseRunner) Receive(ctx context.Context) ([]byte, error) {
 }
 
 func (r *releaseRunner) Send(ctx context.Context, data []byte) error {
-	message, err := runnerwire.DecodeInbound(data)
+	message, err := runnerproto.DecodeInbound(data)
 	if err != nil {
 		return err
 	}
-	var answer runnerwire.Outbound
-	if _, ok := message.(*runnerwire.Ping); ok {
-		answer = &runnerwire.Pong{}
-	} else if message, ok := message.(*runnerwire.ConversationRelease); ok {
+	var answer runnerproto.Outbound
+	if _, ok := message.(*runnerproto.Ping); ok {
+		answer = &runnerproto.Pong{}
+	} else if message, ok := message.(*runnerproto.ConversationRelease); ok {
 		if err := r.recordRelease(ctx, message); err != nil {
 			return err
 		}
-		answer = &runnerwire.ConversationReleased{ID: message.ID}
+		answer = &runnerproto.ConversationReleased{ID: message.ID}
 	} else {
 		return nil
 	}
-	encoded, err := runnerwire.Encode(answer)
+	encoded, err := runnerproto.Encode(answer)
 	if err != nil {
 		return err
 	}
@@ -321,29 +321,29 @@ func TestSwitchDetachArchiveReleaseBeforeBindingChanges(t *testing.T) {
 	for i := range got {
 		got[i].At = time.Time{}
 	}
-	target := func(id webapi.DeviceID) webapi.ConversationTarget {
-		return &webapi.ConversationTargetDevice{DeviceID: id, Path: "/work"}
+	target := func(id webapiproto.DeviceID) webapiproto.ConversationTarget {
+		return &webapiproto.ConversationTargetDevice{DeviceID: id, Path: "/work"}
 	}
 	want := []releaseRecord{
 		{
 			Device:   one,
 			Target:   target(one),
-			Attached: []webapi.DeviceID{},
+			Attached: []webapiproto.DeviceID{},
 		},
 		{
 			Device:   one,
 			Target:   target(two),
-			Attached: []webapi.DeviceID{one},
+			Attached: []webapiproto.DeviceID{one},
 		},
 		{
 			Device:   two,
 			Target:   target(two),
-			Attached: []webapi.DeviceID{one},
+			Attached: []webapiproto.DeviceID{one},
 		},
 		{
 			Device:   one,
 			Target:   target(two),
-			Attached: []webapi.DeviceID{one},
+			Attached: []webapiproto.DeviceID{one},
 		},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
@@ -434,8 +434,8 @@ func TestSwitchRestartsIdleWindowAndArchiveEndsIt(t *testing.T) {
 }
 
 // recordRelease records the target and attached hosts observed by the test runner.
-func (r *releaseRunner) recordRelease(ctx context.Context, message *runnerwire.ConversationRelease) error {
-	id, err := webapi.ParseConversationID(message.ConversationID)
+func (r *releaseRunner) recordRelease(ctx context.Context, message *runnerproto.ConversationRelease) error {
+	id, err := webapiproto.ParseConversationID(message.ConversationID)
 	if err != nil {
 		return err
 	}
@@ -447,7 +447,7 @@ func (r *releaseRunner) recordRelease(ctx context.Context, message *runnerwire.C
 	if err != nil {
 		return err
 	}
-	hosts := make([]webapi.DeviceID, 0, len(attached))
+	hosts := make([]webapiproto.DeviceID, 0, len(attached))
 	for _, host := range attached {
 		hosts = append(hosts, host.Device)
 	}

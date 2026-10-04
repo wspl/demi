@@ -13,12 +13,12 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
-	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeop"
-	"github.com/wspl/demi/internal/cmdpkg/file/fileop"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/commandpackage/file/fileproto"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/version"
 )
 
@@ -66,8 +66,8 @@ func selectTargets(programs, named []string) ([]string, error) {
 		}
 	}
 	for _, t := range named {
-		if !slices.Contains(commandwire.Targets, t) {
-			return nil, fmt.Errorf("the targets are %s", strings.Join(commandwire.Targets, ", "))
+		if !slices.Contains(commandproto.Targets, t) {
+			return nil, fmt.Errorf("the targets are %s", strings.Join(commandproto.Targets, ", "))
 		}
 		for _, p := range programs {
 			if !supported(p, t) {
@@ -76,7 +76,7 @@ func selectTargets(programs, named []string) ([]string, error) {
 		}
 	}
 	var result []string
-	for _, t := range commandwire.Targets {
+	for _, t := range commandproto.Targets {
 		if len(named) > 0 && !slices.Contains(named, t) {
 			continue
 		}
@@ -165,16 +165,16 @@ func (a *application) build(ctx context.Context, o buildOptions) error {
 // workspace version it carries, and each target's file.
 // +demi:root
 type executableRelease struct {
-	Executable string                                 `json:"executable"`
-	Version    string                                 `json:"version"`
-	Targets    map[string]commandwire.PackageArtifact `json:"targets"`
+	Executable string                                  `json:"executable"`
+	Version    string                                  `json:"version"`
+	Targets    map[string]commandproto.PackageArtifact `json:"targets"`
 }
 
 // runnerContents is the runner identity's canonical preimage, without the identity.
 type runnerContents struct {
-	Wire            uint32                                 `json:"wire"`
-	CommandProtocol uint64                                 `json:"commandProtocol"`
-	Targets         map[string]commandwire.PackageArtifact `json:"targets"`
+	Wire            uint32                                  `json:"wire"`
+	CommandProtocol uint64                                  `json:"commandProtocol"`
+	Targets         map[string]commandproto.PackageArtifact `json:"targets"`
 }
 
 // record writes the release file format with contract.EncodeJSON, keeping its escaping.
@@ -194,15 +194,15 @@ func record(value any) ([]byte, error) {
 func packageCatalog(program string) (string, []string) {
 	switch program {
 	case "demi-file":
-		return fileop.Package, fileop.Operations()
+		return fileproto.Package, fileproto.Operations()
 	case "demi-browser":
-		return browserop.Package, browserop.OperationNames()
+		return browserproto.Package, browserproto.OperationNames()
 	case "demi-claude-code":
 		var names []string
-		for _, op := range claudecodeop.Operations() {
+		for _, op := range claudecodeproto.Operations() {
 			names = append(names, string(op))
 		}
-		return claudecodeop.Package, names
+		return claudecodeproto.Package, names
 	default:
 		return "", nil
 	}
@@ -221,9 +221,9 @@ func (a *application) packageNative(ctx context.Context, o packageOptions) error
 	for _, target := range targets {
 		sources[target] = filepath.Join(dir, target, "release", executableName(o.Package, target))
 	}
-	var chrome browserop.BrowserRelease
+	var chrome browserproto.BrowserRelease
 	if o.Package == "demi-browser" {
-		chrome, err = browserop.PinnedRelease()
+		chrome, err = browserproto.PinnedRelease()
 		if err != nil {
 			return err
 		}
@@ -235,7 +235,7 @@ func (a *application) publishNative(
 	ctx context.Context,
 	o packageOptions,
 	sources map[string]string,
-	chrome browserop.BrowserRelease,
+	chrome browserproto.BrowserRelease,
 ) error {
 	output, err := filepath.Abs(o.Output)
 	if err != nil {
@@ -293,11 +293,11 @@ func (a *application) publishNative(
 
 func (a *application) browserResources(
 	ctx context.Context,
-	release browserop.BrowserRelease,
-	selected map[string]commandwire.PackageArtifact,
+	release browserproto.BrowserRelease,
+	selected map[string]commandproto.PackageArtifact,
 	cache string,
-) (map[string]commandwire.PackageResource, []artifacts.ReleaseFile, error) {
-	targets := make(map[string]commandwire.ResourceArtifact)
+) (map[string]commandproto.PackageResource, []artifacts.ReleaseFile, error) {
+	targets := make(map[string]commandproto.ResourceArtifact)
 	var files []artifacts.ReleaseFile
 	client := artifacts.NewClient()
 	defer client.Close()
@@ -320,7 +320,7 @@ func (a *application) browserResources(
 		} else if err != nil {
 			return nil, nil, err
 		}
-		targets[p.Target] = commandwire.ResourceArtifact{SHA256: p.SHA256, Size: p.Size, Entry: p.Executable}
+		targets[p.Target] = commandproto.ResourceArtifact{SHA256: p.SHA256, Size: p.Size, Entry: p.Executable}
 		files = append(
 			files,
 			artifacts.ReleaseFile{Source: source, Path: filepath.Join("resources", p.SHA256), Digest: digest},
@@ -329,8 +329,8 @@ func (a *application) browserResources(
 	if len(targets) == 0 {
 		return nil, files, nil
 	}
-	return map[string]commandwire.PackageResource{
-		browserop.Resource: {Title: release.Title(), Targets: targets},
+	return map[string]commandproto.PackageResource{
+		browserproto.Resource: {Title: release.Title(), Targets: targets},
 	}, files, nil
 }
 
@@ -355,10 +355,10 @@ func nativeReleaseFiles(
 	ctx context.Context,
 	o packageOptions,
 	sources map[string]string,
-) (map[string]commandwire.PackageArtifact, []artifacts.ReleaseFile, error) {
-	targets := make(map[string]commandwire.PackageArtifact)
+) (map[string]commandproto.PackageArtifact, []artifacts.ReleaseFile, error) {
+	targets := make(map[string]commandproto.PackageArtifact)
 	var files []artifacts.ReleaseFile
-	for _, target := range commandwire.Targets {
+	for _, target := range commandproto.Targets {
 		source, ok := sources[target]
 		if !ok {
 			continue
@@ -376,7 +376,7 @@ func nativeReleaseFiles(
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", source, err)
 		}
-		targets[target] = commandwire.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}
+		targets[target] = commandproto.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}
 		files = append(
 			files,
 			artifacts.ReleaseFile{
@@ -395,8 +395,8 @@ func (a *application) commandRelease(
 	ctx context.Context,
 	o packageOptions,
 	output string,
-	chrome browserop.BrowserRelease,
-	targets map[string]commandwire.PackageArtifact,
+	chrome browserproto.BrowserRelease,
+	targets map[string]commandproto.PackageArtifact,
 	files []artifacts.ReleaseFile,
 ) (any, string, string, []artifacts.ReleaseFile, error) {
 	var value any
@@ -405,10 +405,10 @@ func (a *application) commandRelease(
 	if id == "" {
 		return nil, "", "", nil, fmt.Errorf("%s is not a command program", o.Package)
 	}
-	descriptor := commandwire.PackageDescriptor{
+	descriptor := commandproto.PackageDescriptor{
 		ID:              id,
 		Version:         version.Release,
-		ProtocolVersion: commandwire.Version,
+		ProtocolVersion: commandproto.Version,
 		Operations:      operations,
 		Targets:         targets,
 	}
@@ -437,15 +437,15 @@ func (a *application) commandRelease(
 	return value, name, message, files, nil
 }
 
-func runnerReleaseRecord(output string, targets map[string]commandwire.PackageArtifact) (any, string, string, error) {
+func runnerReleaseRecord(output string, targets map[string]commandproto.PackageArtifact) (any, string, string, error) {
 	var value any
 	var directory, message string
-	contents := runnerContents{runnerwire.Version, commandwire.Version, targets}
-	hash, err := commandwire.CanonicalDigest(contents)
+	contents := runnerContents{runnerproto.Version, commandproto.Version, targets}
+	hash, err := commandproto.CanonicalDigest(contents)
 	if err != nil {
 		return nil, "", "", err
 	}
-	release := runnerwire.Release{
+	release := runnerproto.Release{
 		Release:         hash,
 		Wire:            contents.Wire,
 		CommandProtocol: contents.CommandProtocol,

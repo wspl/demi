@@ -3,13 +3,13 @@ package database
 import (
 	"time"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Account is an account with the hash its password checks against.
 type Account struct {
-	User         webapi.UserDTO
+	User         webapiproto.UserDTO
 	PasswordHash PasswordHash
 }
 
@@ -22,8 +22,8 @@ type SessionPolicy struct {
 
 // ResolvedSession is a live session's user and expiry, and whether this request renewed it.
 type ResolvedSession struct {
-	User      webapi.UserDTO
-	ExpiresAt core.Timestamp
+	User      webapiproto.UserDTO
+	ExpiresAt types.Timestamp
 	Renewed   bool
 }
 
@@ -38,9 +38,9 @@ type ChallengePolicy struct {
 // ChallengeIssue is a challenge to store: the new address, and the password hash it was
 // issued under, so a password change ends it.
 type ChallengeIssue struct {
-	User         webapi.UserID
+	User         webapiproto.UserID
 	ID           string
-	Email        webapi.EmailAddress
+	Email        webapiproto.EmailAddress
 	PasswordHash PasswordHash
 	CodeHash     CodeHash
 }

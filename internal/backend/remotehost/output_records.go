@@ -1,26 +1,26 @@
 package remotehost
 
 import (
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // DecodeOutput reads kept-output records in the runner wire's encoding.
 func DecodeOutput(bytes []byte, missing *host.Missing) (host.WholeOutput, error) {
-	records, err := runnerwire.DecodeRecords(bytes)
+	records, err := runnerproto.DecodeRecords(bytes)
 	if err != nil {
 		return host.WholeOutput{}, err
 	}
 	output := host.WholeOutput{Missing: missing}
 	for _, record := range records {
 		switch record := record.(type) {
-		case *runnerwire.KeptOutput:
+		case *runnerproto.KeptOutput:
 			output.Records = append(
 				output.Records,
-				host.OutputRecord{Stream: core.StreamKind(record.Stream), Bytes: record.Bytes},
+				host.OutputRecord{Stream: types.StreamKind(record.Stream), Bytes: record.Bytes},
 			)
-		case *runnerwire.KeptLeftOut:
+		case *runnerproto.KeptLeftOut:
 			output.Records = append(output.Records, host.OutputRecord{LeftOut: new(record.Bytes)})
 		}
 	}
@@ -31,13 +31,13 @@ func DecodeOutput(bytes []byte, missing *host.Missing) (host.WholeOutput, error)
 func EncodeOutput(output host.WholeOutput) ([]byte, error) {
 	var data []byte
 	for _, record := range output.Records {
-		var kept runnerwire.KeptRecord
+		var kept runnerproto.KeptRecord
 		if record.LeftOut != nil {
-			kept = &runnerwire.KeptLeftOut{Bytes: *record.LeftOut}
+			kept = &runnerproto.KeptLeftOut{Bytes: *record.LeftOut}
 		} else {
-			kept = &runnerwire.KeptOutput{Stream: runnerwire.OutputStream(record.Stream), Bytes: record.Bytes}
+			kept = &runnerproto.KeptOutput{Stream: runnerproto.OutputStream(record.Stream), Bytes: record.Bytes}
 		}
-		encoded, err := runnerwire.EncodeRecord(kept)
+		encoded, err := runnerproto.EncodeRecord(kept)
 		if err != nil {
 			return nil, err
 		}

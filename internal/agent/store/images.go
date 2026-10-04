@@ -17,7 +17,7 @@ import (
 	"golang.org/x/image/draw"
 	"golang.org/x/image/webp"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Dimensions gives an image's width and height in pixels.
@@ -31,7 +31,7 @@ type Dimensions struct {
 // Fitted is an image as it enters a transcript.
 type Fitted struct {
 	// Data holds the bytes entering the transcript.
-	Data core.B64Bytes
+	Data types.B64Bytes
 	// MediaType identifies the encoding of Data.
 	MediaType string
 	// Came is the size in pixels as the image came.
@@ -47,7 +47,7 @@ type Fitted struct {
 // GIF uses its first frame. Reencoding applies orientation and scales as needed;
 // JPEG keeps quality 90, other formats become PNG, then quality-85 JPEG if needed.
 // The caller's goroutine performs codec work outside state locks.
-func Fit(ctx context.Context, data core.B64Bytes, mediaType string) (fitted Fitted, err error) {
+func Fit(ctx context.Context, data types.B64Bytes, mediaType string) (fitted Fitted, err error) {
 	// A decoder panic means the image is undecodable, not that the process failed.
 	defer func() {
 		if failed := recover(); failed != nil {
@@ -155,7 +155,7 @@ func encodeImage(source image.Image, mediaType string, quality int) ([]byte, err
 	return out.Bytes(), err
 }
 
-func decodeImage(data core.B64Bytes, mediaType string) (image.Config, image.Image, error) {
+func decodeImage(data types.B64Bytes, mediaType string) (image.Config, image.Image, error) {
 	var config func(io.Reader) (image.Config, error)
 	var decode func(io.Reader) (image.Image, error)
 	switch mediaType {

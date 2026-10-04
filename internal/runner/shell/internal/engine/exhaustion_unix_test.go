@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/wspl/demi/internal/cmdsdk/cmdsdktest"
+	"github.com/wspl/demi/internal/commandsdk/commandsdktest"
 	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 	"golang.org/x/sys/unix"
 )
@@ -67,7 +67,7 @@ func TestPipelineWaitsForDescriptors(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		var runErr error
-		baseline := cmdsdktest.Pauses()
+		baseline := commandsdktest.Pauses()
 		go func() {
 			result, err := engine.Execute(
 				ctx,
@@ -87,7 +87,7 @@ func TestPipelineWaitsForDescriptors(t *testing.T) {
 		}()
 		// The retry pause offers only a counter, no event, so the test yields
 		// between reads of it.
-		for cmdsdktest.Pauses() == baseline {
+		for commandsdktest.Pauses() == baseline {
 			select {
 			case <-done:
 				release()

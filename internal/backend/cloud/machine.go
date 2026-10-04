@@ -13,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // Cloud is the user's machine and owned lifecycle work. New binds it to the
@@ -31,7 +31,7 @@ type Cloud struct {
 type machine struct {
 	device     database.DeviceRecord
 	gate       *gates.Activity
-	phase      webapi.CloudState
+	phase      webapiproto.CloudState
 	permit     *Permit
 	transition *transition
 	reset      *transition
@@ -57,10 +57,10 @@ func New(ctx context.Context, mu *sync.Mutex) *Cloud {
 }
 
 // Runs reports whether device's machine runs, which a new expose needs.
-func (c *Cloud) Runs(device webapi.DeviceID) bool {
+func (c *Cloud) Runs(device webapiproto.DeviceID) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.machine != nil && c.machine.device.ID == device && c.machine.phase == webapi.CloudStateRunning
+	return c.machine != nil && c.machine.device.ID == device && c.machine.phase == webapiproto.CloudStateRunning
 }
 
 // Stop refuses new admissions and cancels schedules without waiting. Close
@@ -83,7 +83,7 @@ func (c *Cloud) Stop() {
 // The acquiring owner defers Release.
 type Admission struct {
 	// Device is the admitted Cloud's identity.
-	Device webapi.DeviceID
+	Device webapiproto.DeviceID
 	// PerOperation acquires a separate lease for each Host operation.
 	PerOperation remotehost.Admission
 	held         *gates.Lease
@@ -143,7 +143,7 @@ func (c *Cloud) admitOperation(m *machine) (*gates.Lease, error) {
 	c.mu.Lock()
 	phase, retiring := m.phase, m.retirement != nil
 	c.mu.Unlock()
-	if phase != webapi.CloudStateRunning {
+	if phase != webapiproto.CloudStateRunning {
 		return nil, &host.Error{Kind: host.Unavailable, Message: "Cloud is not accepting operations"}
 	}
 	if retiring {
@@ -154,7 +154,7 @@ func (c *Cloud) admitOperation(m *machine) (*gates.Lease, error) {
 		return nil, &host.Error{Kind: host.Unavailable, Message: "Cloud is changing state"}
 	}
 	c.mu.Lock()
-	running := m.phase == webapi.CloudStateRunning && m.retirement == nil
+	running := m.phase == webapiproto.CloudStateRunning && m.retirement == nil
 	c.mu.Unlock()
 	if !running {
 		lease.Release()
@@ -164,13 +164,13 @@ func (c *Cloud) admitOperation(m *machine) (*gates.Lease, error) {
 }
 
 // Died records an unsolicited runtime loss. Saving and resetting ignore it.
-func Died(ctx context.Context, shard Shard, device webapi.DeviceID) error {
+func Died(ctx context.Context, shard Shard, device webapiproto.DeviceID) error {
 	c := shard.Cloud()
 	tuning := shard.CloudServices().Tuning
 	c.mu.Lock()
 	m := c.machine
 	if m == nil || m.device.ID != device ||
-		(m.phase != webapi.CloudStateRunning && m.phase != webapi.CloudStateBooting) {
+		(m.phase != webapiproto.CloudStateRunning && m.phase != webapiproto.CloudStateBooting) {
 		c.mu.Unlock()
 		return nil
 	}
@@ -179,14 +179,14 @@ func Died(ctx context.Context, shard Shard, device webapi.DeviceID) error {
 	for len(m.deaths) > 0 && now.Sub(m.deaths[0]) >= tuning.CrashLoopWindow {
 		m.deaths = m.deaths[1:]
 	}
-	if m.phase == webapi.CloudStateBooting {
+	if m.phase == webapiproto.CloudStateBooting {
 		c.mu.Unlock()
 		return nil
 	}
 	cancel, permit := m.schedules, m.permit
 	m.schedules = nil
 	m.permit = nil
-	m.phase = webapi.CloudStateOff
+	m.phase = webapiproto.CloudStateOff
 	c.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -260,7 +260,7 @@ func loadMachine(ctx context.Context, s Shard, device database.DeviceRecord) (*m
 		c.machine = &machine{
 			device: device,
 			gate:   gates.NewActivity(nil),
-			phase:  webapi.CloudStateOff,
+			phase:  webapiproto.CloudStateOff,
 			marks:  marks,
 		}
 		if found {
@@ -302,15 +302,15 @@ func ensureRunning(ctx context.Context, s Shard, m *machine) (bool, error) {
 			}
 			continue
 		}
-		if m.phase == webapi.CloudStateResetting || m.retirement != nil {
+		if m.phase == webapiproto.CloudStateResetting || m.retirement != nil {
 			c.mu.Unlock()
 			return false, nil
 		}
-		if m.phase == webapi.CloudStateRunning && online {
+		if m.phase == webapiproto.CloudStateRunning && online {
 			c.mu.Unlock()
 			return true, nil
 		}
-		recovering := m.phase == webapi.CloudStateRunning
+		recovering := m.phase == webapiproto.CloudStateRunning
 		if !recovering {
 			if err := prepareBootLocked(c, m, services); err != nil {
 				return false, err
@@ -348,7 +348,7 @@ func runTransition(ctx context.Context, work func(context.Context) error) (err e
 // prepareBootLocked checks crash history and takes capacity with the shard mutex held.
 // On failure it releases the mutex before constructing the error.
 func prepareBootLocked(c *Cloud, m *machine, services *Services) error {
-	if m.phase != webapi.CloudStateOff {
+	if m.phase != webapiproto.CloudStateOff {
 		c.mu.Unlock()
 		return failed(errors.New("Cloud is changing state"))
 	}
@@ -369,7 +369,7 @@ func prepareBootLocked(c *Cloud, m *machine, services *Services) error {
 		return &Error{Kind: AtCapacity}
 	}
 	m.permit = permit
-	m.phase = webapi.CloudStateBooting
+	m.phase = webapiproto.CloudStateBooting
 	return nil
 }
 

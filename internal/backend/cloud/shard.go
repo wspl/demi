@@ -8,9 +8,9 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/idlewatch"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // ErrNotLetGo means a conversation did not let go of its tree or file gate within the hold time.
@@ -25,7 +25,7 @@ var ErrNotLetGo = errors.New("the conversation did not let go in time")
 // shard must call Close before disposing any of these handles.
 type Shard interface {
 	// User identifies the owner.
-	User() webapi.UserID
+	User() webapiproto.UserID
 	// Cloud is the user's Cloud machine.
 	Cloud() *Cloud
 	// Devices is the user's devices, the Cloud among them.
@@ -42,18 +42,18 @@ type Shard interface {
 	Marks() pagesync.UserMarks
 	// Vault is the credential vault, whose entries say which providers run a
 	// process on the Cloud.
-	Vault() *providers.Vault
+	Vault() *providerhost.Vault
 	// Assembly resolves which providers need a process.
-	Assembly() *providers.Assembly
+	Assembly() *providerhost.Assembly
 	// Activity is what the conversation is doing: a turn of its tree, an
 	// operation holding its file gate, or a user stream someone has open.
-	Activity(conversation webapi.ConversationID) idlewatch.Activity
+	Activity(conversation webapiproto.ConversationID) idlewatch.Activity
 	// Attended reports whether someone attends the conversation: a turn of it
 	// is in flight, or a file transfer or user stream of it is open.
-	Attended(conversation webapi.ConversationID) bool
+	Attended(conversation webapiproto.ConversationID) bool
 	// HoldForIdle holds the conversation's tree and file gate now if neither
 	// works. Nil means either is held; a failed attempt releases partial holds.
-	HoldForIdle(conversation webapi.ConversationID) ConversationHold
+	HoldForIdle(conversation webapiproto.ConversationID) ConversationHold
 	// HoldForReset interrupts the turn and holds its tree. If filesOnCloud,
 	// it ends file transfers and user streams, then reserves the file gate
 	// once its operations end. Each wait has hold; if one runs out, it returns
@@ -61,12 +61,12 @@ type Shard interface {
 	// Failure releases partial holds; success transfers Release to the caller.
 	HoldForReset(
 		ctx context.Context,
-		conversation webapi.ConversationID,
+		conversation webapiproto.ConversationID,
 		filesOnCloud bool,
 		hold time.Duration,
 	) (ConversationHold, error)
 	// CloudStopped ends the exposes of a Cloud that stops or stopped.
-	CloudStopped(ctx context.Context, device webapi.DeviceID) error
+	CloudStopped(ctx context.Context, device webapiproto.DeviceID) error
 }
 
 // ConversationHold is what the shard holds of one conversation for an idle

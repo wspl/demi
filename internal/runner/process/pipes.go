@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 const pipeAnswerBytes = 16 * 1024
@@ -26,20 +26,20 @@ type PipeClient struct {
 	http      *http.Client
 	transport *http.Transport
 	origin    *url.URL
-	token     func() (runnerwire.DeviceToken, bool)
+	token     func() (runnerproto.DeviceToken, bool)
 }
 
 // NewPipeClient uses a 15-second connection timeout. Token returns the current
 // registration credential and its presence; it must be safe for concurrent calls.
-func NewPipeClient(backend runnerwire.BackendURL, token func() (runnerwire.DeviceToken, bool)) (*PipeClient, error) {
+func NewPipeClient(backend runnerproto.BackendURL, token func() (runnerproto.DeviceToken, bool)) (*PipeClient, error) {
 	return NewPipeClientWithConnectTimeout(backend, token, 15*time.Second)
 }
 
 // NewPipeClientWithConnectTimeout bounds connection opening only. Requests,
 // answers and bodies may remain quiet for as long as their contexts allow.
 func NewPipeClientWithConnectTimeout(
-	backend runnerwire.BackendURL,
-	token func() (runnerwire.DeviceToken, bool),
+	backend runnerproto.BackendURL,
+	token func() (runnerproto.DeviceToken, bool),
 	timeout time.Duration,
 ) (*PipeClient, error) {
 	origin, err := url.Parse(backend.String())
@@ -91,7 +91,7 @@ func NewPipeClientWithConnectTimeout(
 // Open reads an origin-relative pipe route. The caller closes the body; its
 // context remains active for the body's entire lifetime.
 func (c *PipeClient) Open(ctx context.Context, path string) (io.ReadCloser, error) {
-	response, err := cmdsdk.Retry(ctx, func() (*http.Response, error) {
+	response, err := commandsdk.Retry(ctx, func() (*http.Response, error) {
 		request, err := c.request(ctx, http.MethodGet, path, nil)
 		if err != nil {
 			return nil, err
@@ -122,7 +122,7 @@ func (c *PipeClient) Put(ctx context.Context, path string, body io.ReadCloser) (
 	defer upload.close()
 	stopped := interruptCommandIO(ctx, upload)
 	defer stopped()
-	var backoff cmdsdk.Backoff
+	var backoff commandsdk.Backoff
 	for {
 		attempt := &pipeAttempt{upload: upload, closed: make(chan struct{})}
 		request, err := c.request(ctx, http.MethodPut, path, attempt)
@@ -137,7 +137,7 @@ func (c *PipeClient) Put(ctx context.Context, path string, body io.ReadCloser) (
 		// before retrying or returning to the caller.
 		<-attempt.closed
 		if err != nil {
-			if !upload.read.Load() && cmdsdk.Exhausted(err) {
+			if !upload.read.Load() && commandsdk.Exhausted(err) {
 				if err := backoff.Wait(ctx); err != nil {
 					return err
 				}
@@ -245,12 +245,12 @@ func (c *PipeClient) Close() error {
 // ReportPipe encodes and sends a pipe outcome; cancellation ends the wait when
 // the backend is gone. Output carries encoded runner wire frames.
 func ReportPipe(ctx context.Context, output chan<- []byte, id string, result error) error {
-	report := runnerwire.PipeDone{PipeID: id, Ok: result == nil}
+	report := runnerproto.PipeDone{PipeID: id, Ok: result == nil}
 	if result != nil {
 		message := result.Error()
 		report.Error = &message
 	}
-	frame, err := runnerwire.Encode(&report)
+	frame, err := runnerproto.Encode(&report)
 	if err != nil {
 		return fmt.Errorf("pipe result encoding failed: %w", err)
 	}

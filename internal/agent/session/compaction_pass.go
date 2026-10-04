@@ -7,15 +7,15 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 func (c CompactionConfig) tokenReached(window uint32, used uint64) bool {
 	return c.ThresholdPercent != 0 && window > 0 && used >= uint64(window)*uint64(c.ThresholdPercent)/100
 }
 
-func (c CompactionConfig) reached(window uint32, usage core.TokenUsage) bool {
+func (c CompactionConfig) reached(window uint32, usage types.TokenUsage) bool {
 	return c.tokenReached(window, usage.InputTokens+usage.OutputTokens+usage.CacheReadTokens+usage.CacheWriteTokens)
 }
 
@@ -41,7 +41,7 @@ func (s *Session) preflight(ctx context.Context) error {
 
 func (s *Session) overThreshold(
 	ctx context.Context,
-	model core.ModelSelection,
+	model types.ModelSelection,
 	limits provider.RequestLimits,
 ) (bool, error) {
 	view, err := s.modelView(ctx)
@@ -116,7 +116,7 @@ func (s *Session) compactPass(ctx context.Context) (bool, error) {
 	}
 }
 
-func (s *Session) summarize(ctx context.Context, window []core.Block) (string, error) {
+func (s *Session) summarize(ctx context.Context, window []types.Block) (string, error) {
 	runtime, err := s.forkRuntime(ctx)
 	if err != nil {
 		return "", err
@@ -147,8 +147,8 @@ func (s *Session) summarize(ctx context.Context, window []core.Block) (string, e
 	})
 	defer subscription.Release()
 	answer, sendErr := summarySession.Send(
-		[]core.UserContentBlock{&core.UserText{Text: CompactionSummaryInstruction}},
-		core.TurnID(deps.IDs.NextID()),
+		[]types.UserContentBlock{&types.UserText{Text: CompactionSummaryInstruction}},
+		types.TurnID(deps.IDs.NextID()),
 	)
 	var end ActionEnd
 	if sendErr == nil {
@@ -168,11 +168,11 @@ func (s *Session) summarize(ctx context.Context, window []core.Block) (string, e
 	return text, err
 }
 
-func firstCompactionBlock(blocks []core.Block, start, cut int) int {
+func firstCompactionBlock(blocks []types.Block, start, cut int) int {
 	first := -1
 	for i := start; i < cut; i++ {
-		_, boundary := blocks[i].(*core.CompactionBoundaryBlock)
-		_, marker := blocks[i].(*core.CompactionMarkerBlock)
+		_, boundary := blocks[i].(*types.CompactionBoundaryBlock)
+		_, marker := blocks[i].(*types.CompactionMarkerBlock)
 		if !boundary && !marker {
 			first = i
 			break

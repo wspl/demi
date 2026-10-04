@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // StoreContract runs the eight shared tree-store scenarios. Each subtest gets
@@ -37,32 +37,32 @@ func createThenSave(ctx context.Context, c contractTree) {
 	c.create(ctx, contractRecord("root", nil, 0), contractUpdate(nil, nil))
 	c.create(
 		ctx,
-		contractRecord("child", new(core.NodeID("root")), 1),
-		contractUpdate([]core.QueuedMessage{contractMessage("m1")}, nil),
+		contractRecord("child", new(types.NodeID("root")), 1),
+		contractUpdate([]types.QueuedMessage{contractMessage("m1")}, nil),
 	)
 	children, err := c.store.Children(ctx, "root")
 	if err != nil || len(children) != 1 || children[0].ID != "child" {
 		c.t.Fatalf("children: %v, %v", children, err)
 	}
 	queue := c.load(ctx, "child").State.Queue
-	if !reflect.DeepEqual(queue, []core.QueuedMessage{contractMessage("m1")}) {
+	if !reflect.DeepEqual(queue, []types.QueuedMessage{contractMessage("m1")}) {
 		c.t.Fatalf("queue: %#v", queue)
 	}
-	user := &core.UserBlock{
+	user := &types.UserBlock{
 		BlockID:   "u1",
 		TurnID:    "m1",
 		Timestamp: contractEpoch,
 		Selection: TestModel(),
 		Content:   Text("brief"),
 	}
-	c.save(ctx, "child", contractUpdate(nil, []core.Block{user}))
+	c.save(ctx, "child", contractUpdate(nil, []types.Block{user}))
 	loaded := c.load(ctx, "child")
-	if len(loaded.State.Queue) != 0 || !reflect.DeepEqual(loaded.Transcript, []core.Block{user}) {
+	if len(loaded.State.Queue) != 0 || !reflect.DeepEqual(loaded.Transcript, []types.Block{user}) {
 		c.t.Fatalf("checkpoint: %#v", loaded)
 	}
 	if err := c.store.CreateNode(
 		ctx,
-		contractRecord("child", new(core.NodeID("root")), 2),
+		contractRecord("child", new(types.NodeID("root")), 2),
 		contractUpdate(nil, nil),
 	); err == nil {
 		c.t.Fatal("existing node accepted")
@@ -71,17 +71,17 @@ func createThenSave(ctx context.Context, c contractTree) {
 
 func saveDeliversCarried(ctx context.Context, c contractTree) {
 	c.create(ctx, contractRecord("root", nil, 0), contractUpdate(nil, nil))
-	for index, id := range []core.NodeID{"a", "b"} {
+	for index, id := range []types.NodeID{"a", "b"} {
 		c.create(
 			ctx,
-			contractRecord(id, new(core.NodeID("root")), uint64(index+1)),
+			contractRecord(id, new(types.NodeID("root")), uint64(index+1)),
 			contractUpdate(nil, nil),
 		)
 		c.close(ctx, id, contractCompleted(string(id)+" done"))
 	}
-	save := contractUpdate(nil, []core.Block{contractReceipt("a", 1)})
+	save := contractUpdate(nil, []types.Block{contractReceipt("a", 1)})
 	rounds, err := save.CarriedCompletions()
-	if err != nil || !reflect.DeepEqual(rounds, []core.CompletionID{{Child: "a", Round: 1}}) {
+	if err != nil || !reflect.DeepEqual(rounds, []types.CompletionID{{Child: "a", Round: 1}}) {
 		c.t.Fatalf("receipts: %v %v", rounds, err)
 	}
 	c.save(ctx, "root", save)
@@ -98,14 +98,14 @@ func saveDeliversCarried(ctx context.Context, c contractTree) {
 
 func reopenThenDelete(ctx context.Context, c contractTree) {
 	c.create(ctx, contractRecord("root", nil, 0), contractUpdate(nil, nil))
-	c.create(ctx, contractRecord("child", new(core.NodeID("root")), 1), contractUpdate(nil, nil))
-	c.create(ctx, contractRecord("grandchild", new(core.NodeID("child")), 2), contractUpdate(nil, nil))
+	c.create(ctx, contractRecord("child", new(types.NodeID("root")), 1), contractUpdate(nil, nil))
+	c.create(ctx, contractRecord("grandchild", new(types.NodeID("child")), 2), contractUpdate(nil, nil))
 	failed := store.NodeClose{Phase: &store.Failed{Failure: "boom"}, At: contractEpoch}
 	c.close(ctx, "child", failed)
 	if !reflect.DeepEqual(c.node(ctx, "child").Closed, &failed) {
 		c.t.Fatal("close lost failure")
 	}
-	resumed := core.Timestamp("1970-01-01T00:01:00.000Z")
+	resumed := types.Timestamp("1970-01-01T00:01:00.000Z")
 	if err := c.store.ReopenNode(ctx, "child", 2, resumed, contractMessage("m2")); err != nil {
 		c.t.Fatal(err)
 	}
@@ -113,13 +113,13 @@ func reopenThenDelete(ctx context.Context, c contractTree) {
 	if child.Closed != nil || child.Round != 2 || child.StartedAt != resumed || child.Delivered {
 		c.t.Fatalf("reopened record: %#v", child)
 	}
-	if !reflect.DeepEqual(c.load(ctx, "child").State.Queue, []core.QueuedMessage{contractMessage("m2")}) {
+	if !reflect.DeepEqual(c.load(ctx, "child").State.Queue, []types.QueuedMessage{contractMessage("m2")}) {
 		c.t.Fatal("reviving message not queued")
 	}
 	if err := c.store.DeleteNode(ctx, "child"); err != nil {
 		c.t.Fatal(err)
 	}
-	for _, id := range []core.NodeID{"child", "grandchild"} {
+	for _, id := range []types.NodeID{"child", "grandchild"} {
 		_, found, err := c.store.Node(ctx, id)
 		if err != nil || found {
 			c.t.Fatalf("deleted node %s: %v %v", id, found, err)
@@ -130,13 +130,13 @@ func reopenThenDelete(ctx context.Context, c contractTree) {
 
 func earlierRoundCompletion(ctx context.Context, c contractTree) {
 	c.create(ctx, contractRecord("root", nil, 0), contractUpdate(nil, nil))
-	c.create(ctx, contractRecord("child", new(core.NodeID("root")), 1), contractUpdate(nil, nil))
+	c.create(ctx, contractRecord("child", new(types.NodeID("root")), 1), contractUpdate(nil, nil))
 	c.close(ctx, "child", contractCompleted("first"))
 	if err := c.store.ReopenNode(ctx, "child", 2, contractEpoch, contractMessage("again")); err != nil {
 		c.t.Fatal(err)
 	}
 	c.close(ctx, "child", contractCompleted("second"))
-	c.save(ctx, "root", contractUpdate(nil, []core.Block{contractReceipt("child", 1)}))
+	c.save(ctx, "root", contractUpdate(nil, []types.Block{contractReceipt("child", 1)}))
 	if err := c.store.MarkDelivered(ctx, "child", 1); err != nil {
 		c.t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func earlierRoundCompletion(ctx context.Context, c contractTree) {
 	c.save(
 		ctx,
 		"root",
-		contractUpdate(nil, []core.Block{contractReceipt("child", 1), contractReceipt("child", 2)}),
+		contractUpdate(nil, []types.Block{contractReceipt("child", 1), contractReceipt("child", 2)}),
 	)
 	if !c.node(ctx, "child").Delivered {
 		c.t.Fatal("current completion not delivered")
@@ -154,7 +154,7 @@ func earlierRoundCompletion(ctx context.Context, c contractTree) {
 }
 
 func sequenceNumbers(ctx context.Context, c contractTree) {
-	sequences := []core.Sequence{"command", "command", "shell", "agent", "command", "shell"}
+	sequences := []types.Sequence{"command", "command", "shell", "agent", "command", "shell"}
 	want := []uint64{1, 2, 1, 1, 3, 2}
 	for index, sequence := range sequences {
 		number, err := c.store.NextNumber(ctx, sequence)
@@ -166,7 +166,7 @@ func sequenceNumbers(ctx context.Context, c contractTree) {
 
 func blobNames(ctx context.Context, c contractTree) {
 	blobs := c.store.Session("root").Blobs()
-	data := core.B64Bytes{0x89, 'P', 'N', 'G', 0, 1, 2, 3}
+	data := types.B64Bytes{0x89, 'P', 'N', 'G', 0, 1, 2, 3}
 	blob, err := blobs.Put(ctx, data)
 	if err != nil || string(blob) != fmt.Sprintf("%x", sha256.Sum256(data)) {
 		c.t.Fatalf("blob name: %s %v", blob, err)
@@ -175,7 +175,7 @@ func blobNames(ctx context.Context, c contractTree) {
 	if err != nil || !found || !reflect.DeepEqual(got, data) {
 		c.t.Fatalf("blob bytes: %v %v %v", got, found, err)
 	}
-	_, found, err = blobs.Read(ctx, core.BlobRef(fmt.Sprintf("%064d", 0)))
+	_, found, err = blobs.Read(ctx, types.BlobRef(fmt.Sprintf("%064d", 0)))
 	if err != nil || found {
 		c.t.Fatalf("unknown blob: %v %v", found, err)
 	}
@@ -183,7 +183,7 @@ func blobNames(ctx context.Context, c contractTree) {
 
 func saveDeliversWaiting(ctx context.Context, c contractTree) {
 	c.create(ctx, contractRecord("root", nil, 0), contractUpdate(nil, nil))
-	c.create(ctx, contractRecord("child", new(core.NodeID("root")), 1), contractUpdate(nil, nil))
+	c.create(ctx, contractRecord("child", new(types.NodeID("root")), 1), contractUpdate(nil, nil))
 	c.close(ctx, "child", contractCompleted("child done"))
 	update := contractUpdate(nil, nil)
 	update.State.AgentInputs = append(
@@ -203,12 +203,12 @@ func saveDeliversWaiting(ctx context.Context, c contractTree) {
 func spawnOrder(ctx context.Context, c contractTree) {
 	c.create(ctx, contractRecord("root", nil, 0), contractUpdate(nil, nil))
 	for _, child := range []struct {
-		id     core.NodeID
+		id     types.NodeID
 		number uint64
 	}{{"late", 4}, {"early", 1}, {"second", 3}, {"first", 2}} {
 		c.create(
 			ctx,
-			contractRecord(child.id, new(core.NodeID("root")), child.number),
+			contractRecord(child.id, new(types.NodeID("root")), child.number),
 			contractUpdate(nil, nil),
 		)
 	}
@@ -218,11 +218,11 @@ func spawnOrder(ctx context.Context, c contractTree) {
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	ids := []core.NodeID{}
+	ids := []types.NodeID{}
 	for _, child := range children {
 		ids = append(ids, child.ID)
 	}
-	if !reflect.DeepEqual(ids, []core.NodeID{"early", "first", "second", "late"}) {
+	if !reflect.DeepEqual(ids, []types.NodeID{"early", "first", "second", "late"}) {
 		c.t.Fatalf("spawn order: %v", ids)
 	}
 	early := c.node(ctx, "early")
@@ -231,10 +231,10 @@ func spawnOrder(ctx context.Context, c contractTree) {
 	}
 }
 
-const contractEpoch core.Timestamp = "1970-01-01T00:00:00.000Z"
+const contractEpoch types.Timestamp = "1970-01-01T00:00:00.000Z"
 
 // contractRecord creates a tree-contract node in its first round.
-func contractRecord(id core.NodeID, parent *core.NodeID, number uint64) store.NodeRecord {
+func contractRecord(id types.NodeID, parent *types.NodeID, number uint64) store.NodeRecord {
 	record := store.RootRecord(id, contractEpoch)
 	record.Parent = parent
 	record.Number = number
@@ -242,9 +242,9 @@ func contractRecord(id core.NodeID, parent *core.NodeID, number uint64) store.No
 }
 
 // contractUpdate describes all rows of a checkpoint for a store-contract scenario.
-func contractUpdate(queue []core.QueuedMessage, blocks []core.Block) store.CheckpointUpdate {
+func contractUpdate(queue []types.QueuedMessage, blocks []types.Block) store.CheckpointUpdate {
 	if queue == nil {
-		queue = []core.QueuedMessage{}
+		queue = []types.QueuedMessage{}
 	}
 	update := store.CheckpointUpdate{
 		State: store.CheckpointState{
@@ -267,25 +267,25 @@ func contractUpdate(queue []core.QueuedMessage, blocks []core.Block) store.Check
 }
 
 // contractMessage is a queued brief with the supplied turn identity.
-func contractMessage(turn core.TurnID) core.QueuedMessage {
-	return core.QueuedMessage{ID: turn, Content: Text("brief")}
+func contractMessage(turn types.TurnID) types.QueuedMessage {
+	return types.QueuedMessage{ID: turn, Content: Text("brief")}
 }
 
 // contractReceipt records one child's completion in the parent's transcript.
-func contractReceipt(child core.NodeID, round uint64) *core.AgentMessageBlock {
-	id := core.BlockID((core.CompletionID{Child: child, Round: round}).String())
-	return &core.AgentMessageBlock{
+func contractReceipt(child types.NodeID, round uint64) *types.AgentMessageBlock {
+	id := types.BlockID((types.CompletionID{Child: child, Round: round}).String())
+	return &types.AgentMessageBlock{
 		BlockID:   id,
 		TurnID:    "turn",
 		Timestamp: contractEpoch,
 		Selection: TestModel(),
-		Message: core.AgentMessage{
+		Message: types.AgentMessage{
 			ID:          id,
-			Sender:      core.Sender{ID: child, Number: 1, Description: string(child), Round: round},
+			Sender:      types.Sender{ID: child, Number: 1, Description: string(child), Round: round},
 			RecipientID: "root",
 			Timestamp:   contractEpoch,
 			Content:     string(child) + " done",
-			Event:       &core.CompletionEvent{Outcome: "completed"},
+			Event:       &types.CompletionEvent{Outcome: "completed"},
 		},
 	}
 }
@@ -307,21 +307,21 @@ func (c contractTree) create(ctx context.Context, node store.NodeRecord, update 
 	}
 }
 
-func (c contractTree) save(ctx context.Context, id core.NodeID, update store.CheckpointUpdate) {
+func (c contractTree) save(ctx context.Context, id types.NodeID, update store.CheckpointUpdate) {
 	c.t.Helper()
 	if err := c.store.Session(id).Save(ctx, update, store.CommitGuard{}); err != nil {
 		c.t.Fatal(err)
 	}
 }
 
-func (c contractTree) close(ctx context.Context, id core.NodeID, closed store.NodeClose) {
+func (c contractTree) close(ctx context.Context, id types.NodeID, closed store.NodeClose) {
 	c.t.Helper()
 	if err := c.store.CloseNode(ctx, id, closed); err != nil {
 		c.t.Fatal(err)
 	}
 }
 
-func (c contractTree) node(ctx context.Context, id core.NodeID) *store.NodeRecord {
+func (c contractTree) node(ctx context.Context, id types.NodeID) *store.NodeRecord {
 	c.t.Helper()
 	node, found, err := c.store.Node(ctx, id)
 	if err != nil || !found {
@@ -330,7 +330,7 @@ func (c contractTree) node(ctx context.Context, id core.NodeID) *store.NodeRecor
 	return &node
 }
 
-func (c contractTree) load(ctx context.Context, id core.NodeID) *store.Checkpoint {
+func (c contractTree) load(ctx context.Context, id types.NodeID) *store.Checkpoint {
 	c.t.Helper()
 	checkpoint, found, err := c.store.Session(id).Load(ctx)
 	if err != nil || !found {

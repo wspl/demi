@@ -6,8 +6,8 @@ import (
 
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
+	"github.com/wspl/demi/internal/types"
 )
 
 // FileReference is a file a message refers to that only the backend can resolve.
@@ -43,7 +43,7 @@ type ContentResolver interface {
 // ResolvedFiles holds each reference's blocks in order, with media by reference
 // and the bytes the backend read, which the session holds.
 type ResolvedFiles struct {
-	Blocks [][]core.UserContentBlock
+	Blocks [][]types.UserContentBlock
 	Media  store.HeldMedia
 }
 
@@ -65,16 +65,19 @@ func (e *ContentError) Unwrap() error { return e.Cause }
 func resolveEdit(
 	ctx context.Context,
 	resolver ContentResolver,
-	content []framewire.ClientContent,
+	content []conversationproto.ClientContent,
 ) ([]session.EditContent, store.HeldMedia, error) {
 	files := []FileReference{}
 	for _, item := range content {
 		switch v := item.(type) {
-		case *framewire.UploadContent:
+		case *conversationproto.UploadContent:
 			files = append(files, &Upload{Ref: v.Ref, FileName: v.FileName})
-		case *framewire.RemoteFileContent:
+		case *conversationproto.RemoteFileContent:
 			files = append(files, &RemoteFile{DeviceID: v.DeviceID, Path: v.Path})
-		case *framewire.TextContent, *framewire.ReferenceContent, *framewire.MediaContent, *framewire.AttachmentContent:
+		case *conversationproto.TextContent,
+			*conversationproto.ReferenceContent,
+			*conversationproto.MediaContent,
+			*conversationproto.AttachmentContent:
 		}
 	}
 	var resolved ResolvedFiles
@@ -94,18 +97,18 @@ func resolveEdit(
 	next := 0
 	for _, item := range content {
 		switch v := item.(type) {
-		case *framewire.TextContent:
-			parts = append(parts, &session.Content{Block: &core.UserText{Text: v.Text}})
-		case *framewire.ReferenceContent:
-			parts = append(parts, &session.Content{Block: &core.UserReference{Reference: v.Reference}})
-		case *framewire.UploadContent, *framewire.RemoteFileContent:
+		case *conversationproto.TextContent:
+			parts = append(parts, &session.Content{Block: &types.UserText{Text: v.Text}})
+		case *conversationproto.ReferenceContent:
+			parts = append(parts, &session.Content{Block: &types.UserReference{Reference: v.Reference}})
+		case *conversationproto.UploadContent, *conversationproto.RemoteFileContent:
 			for _, block := range resolved.Blocks[next] {
 				parts = append(parts, &session.Content{Block: block})
 			}
 			next++
-		case *framewire.MediaContent:
+		case *conversationproto.MediaContent:
 			parts = append(parts, &session.KeptMedia{Media: v.Media})
-		case *framewire.AttachmentContent:
+		case *conversationproto.AttachmentContent:
 			parts = append(parts, &session.KeptAttachment{Path: v.Path})
 		}
 	}
@@ -116,13 +119,13 @@ func resolveEdit(
 func resolveMessage(
 	ctx context.Context,
 	resolver ContentResolver,
-	content []framewire.ClientContent,
-) ([]core.UserContentBlock, store.HeldMedia, error) {
+	content []conversationproto.ClientContent,
+) ([]types.UserContentBlock, store.HeldMedia, error) {
 	parts, media, err := resolveEdit(ctx, resolver, content)
 	if err != nil {
 		return nil, media, err
 	}
-	blocks := make([]core.UserContentBlock, 0, len(parts))
+	blocks := make([]types.UserContentBlock, 0, len(parts))
 	for _, part := range parts {
 		switch v := part.(type) {
 		case *session.Content:

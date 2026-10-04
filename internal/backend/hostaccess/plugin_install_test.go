@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/wspl/demi/internal/plugin"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // Cost: local storage and a scripted connection. Every filesystem reply is an
@@ -41,29 +41,29 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 		})
 	}
 	first := job()
-	listing := nextHostMessage[*runnerwire.FSReaddir](t, r)
+	listing := nextHostMessage[*runnerproto.FSReaddir](t, r)
 	base := "/home/test/.demi/plugins/test"
 	if listing.Path != base {
 		t.Fatal(listing.Path)
 	}
-	r.send(t, &runnerwire.FSOK{ID: listing.ID, Result: &runnerwire.FSReaddirResult{Value: []runnerwire.DirEntry{}}})
+	r.send(t, &runnerproto.FSOK{ID: listing.ID, Result: &runnerproto.FSReaddirResult{Value: []runnerproto.DirEntry{}}})
 	partial := base + "/." + directory.HostName() + ".partial"
-	stat := nextHostMessage[*runnerwire.FSLstat](t, r)
+	stat := nextHostMessage[*runnerproto.FSLstat](t, r)
 	if stat.Path != partial {
 		t.Fatal(stat.Path)
 	}
-	r.send(t, &runnerwire.FSError{ID: stat.ID, Code: new("ENOENT"), Message: "missing"})
-	mkdir := nextHostMessage[*runnerwire.FSMkdir](t, r)
+	r.send(t, &runnerproto.FSError{ID: stat.ID, Code: new("ENOENT"), Message: "missing"})
+	mkdir := nextHostMessage[*runnerproto.FSMkdir](t, r)
 	if mkdir.Path != partial {
 		t.Fatal(mkdir.Path)
 	}
-	r.send(t, &runnerwire.FSOK{ID: mkdir.ID, Result: &runnerwire.FSMkdirResult{}})
+	r.send(t, &runnerproto.FSOK{ID: mkdir.ID, Result: &runnerproto.FSMkdirResult{}})
 	for _, file := range directory.Files {
 		path, bytes := receiveHostWrite(t, s, r, device)
 		if path != partial+"/"+file.Path || string(bytes) != "tool bytes" {
 			t.Fatal(path, string(bytes))
 		}
-		chmod := nextHostMessage[*runnerwire.FSChmod](t, r)
+		chmod := nextHostMessage[*runnerproto.FSChmod](t, r)
 		mode := uint32(0o444)
 		if file.Executable {
 			mode = 0o555
@@ -71,24 +71,24 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 		if chmod.Path != path || chmod.Mode != mode {
 			t.Fatal(chmod)
 		}
-		r.send(t, &runnerwire.FSOK{ID: chmod.ID, Result: &runnerwire.FSChmodResult{}})
+		r.send(t, &runnerproto.FSOK{ID: chmod.ID, Result: &runnerproto.FSChmodResult{}})
 	}
-	chmod := nextHostMessage[*runnerwire.FSChmod](t, r)
+	chmod := nextHostMessage[*runnerproto.FSChmod](t, r)
 	if chmod.Path != partial+"/bin" || chmod.Mode != 0o555 {
 		t.Fatal(chmod)
 	}
-	r.send(t, &runnerwire.FSOK{ID: chmod.ID, Result: &runnerwire.FSChmodResult{}})
-	move := nextHostMessage[*runnerwire.FSMv](t, r)
+	r.send(t, &runnerproto.FSOK{ID: chmod.ID, Result: &runnerproto.FSChmodResult{}})
+	move := nextHostMessage[*runnerproto.FSMv](t, r)
 	installed := base + "/" + directory.HostName()
 	if move.Path != partial || move.Destination != installed {
 		t.Fatal(move)
 	}
-	r.send(t, &runnerwire.FSOK{ID: move.ID, Result: &runnerwire.FSMvResult{}})
-	chmod = nextHostMessage[*runnerwire.FSChmod](t, r)
+	r.send(t, &runnerproto.FSOK{ID: move.ID, Result: &runnerproto.FSMvResult{}})
+	chmod = nextHostMessage[*runnerproto.FSChmod](t, r)
 	if chmod.Path != installed || chmod.Mode != 0o555 {
 		t.Fatal(chmod)
 	}
-	r.send(t, &runnerwire.FSOK{ID: chmod.ID, Result: &runnerwire.FSChmodResult{}})
+	r.send(t, &runnerproto.FSOK{ID: chmod.ID, Result: &runnerproto.FSChmodResult{}})
 	if result := <-first; result.err != nil {
 		t.Fatal(result.err)
 	}
@@ -107,13 +107,13 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 	}
 	r = connectHost(t, s, device)
 	reconnected := job()
-	listing = nextHostMessage[*runnerwire.FSReaddir](t, r)
+	listing = nextHostMessage[*runnerproto.FSReaddir](t, r)
 	r.send(
 		t,
-		&runnerwire.FSOK{
+		&runnerproto.FSOK{
 			ID: listing.ID,
-			Result: &runnerwire.FSReaddirResult{
-				Value: []runnerwire.DirEntry{{Name: directory.HostName(), IsDirectory: true}},
+			Result: &runnerproto.FSReaddirResult{
+				Value: []runnerproto.DirEntry{{Name: directory.HostName(), IsDirectory: true}},
 			},
 		},
 	)
@@ -123,33 +123,36 @@ func TestConnectedJobInstallsDirectoriesByRevisionAndConnection(t *testing.T) {
 	// Disabling a plugin is a new revision, including removal of readonly files.
 	s.directories = DirectorySets{{Plugin: "test"}}
 	disabled := job()
-	listing = nextHostMessage[*runnerwire.FSReaddir](t, r)
+	listing = nextHostMessage[*runnerproto.FSReaddir](t, r)
 	r.send(
 		t,
-		&runnerwire.FSOK{
+		&runnerproto.FSOK{
 			ID: listing.ID,
-			Result: &runnerwire.FSReaddirResult{
-				Value: []runnerwire.DirEntry{{Name: directory.HostName(), IsDirectory: true}},
+			Result: &runnerproto.FSReaddirResult{
+				Value: []runnerproto.DirEntry{{Name: directory.HostName(), IsDirectory: true}},
 			},
 		},
 	)
-	stat = nextHostMessage[*runnerwire.FSLstat](t, r)
+	stat = nextHostMessage[*runnerproto.FSLstat](t, r)
 	r.send(
 		t,
-		&runnerwire.FSOK{ID: stat.ID, Result: &runnerwire.FSLstatResult{Value: runnerwire.FileStat{IsDirectory: true}}},
+		&runnerproto.FSOK{
+			ID:     stat.ID,
+			Result: &runnerproto.FSLstatResult{Value: runnerproto.FileStat{IsDirectory: true}},
+		},
 	)
-	chmod = nextHostMessage[*runnerwire.FSChmod](t, r)
+	chmod = nextHostMessage[*runnerproto.FSChmod](t, r)
 	if chmod.Path != installed || chmod.Mode != 0o755 {
 		t.Fatal(chmod)
 	}
-	r.send(t, &runnerwire.FSOK{ID: chmod.ID, Result: &runnerwire.FSChmodResult{}})
-	listing = nextHostMessage[*runnerwire.FSReaddir](t, r)
-	r.send(t, &runnerwire.FSOK{ID: listing.ID, Result: &runnerwire.FSReaddirResult{Value: []runnerwire.DirEntry{}}})
-	remove := nextHostMessage[*runnerwire.FSRm](t, r)
+	r.send(t, &runnerproto.FSOK{ID: chmod.ID, Result: &runnerproto.FSChmodResult{}})
+	listing = nextHostMessage[*runnerproto.FSReaddir](t, r)
+	r.send(t, &runnerproto.FSOK{ID: listing.ID, Result: &runnerproto.FSReaddirResult{Value: []runnerproto.DirEntry{}}})
+	remove := nextHostMessage[*runnerproto.FSRm](t, r)
 	if remove.Path != installed || remove.Recursive == nil || !*remove.Recursive {
 		t.Fatal(remove)
 	}
-	r.send(t, &runnerwire.FSOK{ID: remove.ID, Result: &runnerwire.FSRmResult{}})
+	r.send(t, &runnerproto.FSOK{ID: remove.ID, Result: &runnerproto.FSRmResult{}})
 	if result := <-disabled; result.err != nil {
 		t.Fatal(result.err)
 	}
@@ -167,11 +170,11 @@ func TestConnectedPluginLookHasNoActivityAndTransitionEndsRead(t *testing.T) {
 		return ReadFiles(ctx, s, record.ID, []plugin.HostRead{{Path: "/notes", Limit: 10}})
 	})
 	r.stat(t, 100)
-	read := nextHostMessage[*runnerwire.FSReadFile](t, r)
+	read := nextHostMessage[*runnerproto.FSReadFile](t, r)
 	if read.Length == nil || *read.Length != 10 {
 		t.Fatal(read)
 	}
-	r.send(t, &runnerwire.FSOK{ID: read.ID, Result: &runnerwire.FSReadFileResult{}})
+	r.send(t, &runnerproto.FSOK{ID: read.ID, Result: &runnerproto.FSReadFileResult{}})
 	slot := s.conversations.Slot(record.ID)
 	if !slot.FileGate().State().LastDemandEnd.IsZero() {
 		t.Fatal("plugin look counted as demand")
@@ -209,24 +212,27 @@ func TestConnectedPluginReadsKeepPathOrderAndPathFailuresLocal(t *testing.T) {
 		)
 	})
 	for _, code := range []string{"ENOENT", "EACCES"} {
-		stat := nextHostMessage[*runnerwire.FSStat](t, r)
-		r.send(t, &runnerwire.FSError{ID: stat.ID, Code: &code, Message: code})
+		stat := nextHostMessage[*runnerproto.FSStat](t, r)
+		r.send(t, &runnerproto.FSError{ID: stat.ID, Code: &code, Message: code})
 	}
-	stat := nextHostMessage[*runnerwire.FSStat](t, r)
+	stat := nextHostMessage[*runnerproto.FSStat](t, r)
 	r.send(
 		t,
-		&runnerwire.FSOK{ID: stat.ID, Result: &runnerwire.FSStatResult{Value: runnerwire.FileStat{IsDirectory: true}}},
-	)
-	listing := nextHostMessage[*runnerwire.FSReaddir](t, r)
-	r.send(
-		t,
-		&runnerwire.FSOK{
-			ID:     listing.ID,
-			Result: &runnerwire.FSReaddirResult{Value: []runnerwire.DirEntry{{Name: "a", IsSymbolicLink: true}}},
+		&runnerproto.FSOK{
+			ID:     stat.ID,
+			Result: &runnerproto.FSStatResult{Value: runnerproto.FileStat{IsDirectory: true}},
 		},
 	)
-	stat = nextHostMessage[*runnerwire.FSStat](t, r)
-	r.send(t, &runnerwire.FSOK{ID: stat.ID, Result: &runnerwire.FSStatResult{Value: runnerwire.FileStat{}}})
+	listing := nextHostMessage[*runnerproto.FSReaddir](t, r)
+	r.send(
+		t,
+		&runnerproto.FSOK{
+			ID:     listing.ID,
+			Result: &runnerproto.FSReaddirResult{Value: []runnerproto.DirEntry{{Name: "a", IsSymbolicLink: true}}},
+		},
+	)
+	stat = nextHostMessage[*runnerproto.FSStat](t, r)
+	r.send(t, &runnerproto.FSOK{ID: stat.ID, Result: &runnerproto.FSStatResult{Value: runnerproto.FileStat{}}})
 	r.stat(t, 100)
 	if path := sendHostRead(t, s, r, device, "short"); path != "/file" {
 		t.Fatal(path)

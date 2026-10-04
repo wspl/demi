@@ -12,16 +12,16 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandwire"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/runnerproto"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 type shardPolicy struct {
 	shard  *Shard
-	device webapi.DeviceID
+	device webapiproto.DeviceID
 }
 
 // AdmitCall refuses RPC jobs outside their dispatched conversation.
@@ -58,7 +58,7 @@ func (p shardPolicy) Storage(
 			Message: "the job has no command storage",
 		}
 	}
-	conversation, err := webapi.ParseConversationID(job.Context.Conversation)
+	conversation, err := webapiproto.ParseConversationID(job.Context.Conversation)
 	if err != nil {
 		return nil, &host.PortError{
 			Kind:    host.StorageRefused,
@@ -70,7 +70,7 @@ func (p shardPolicy) Storage(
 }
 
 // GrowVolume requests growth for the runner’s Cloud volume and logs refusals.
-func (p shardPolicy) GrowVolume(ctx context.Context, volume runnerwire.VolumeName, bytes uint64) error {
+func (p shardPolicy) GrowVolume(ctx context.Context, volume runnerproto.VolumeName, bytes uint64) error {
 	err := cloud.GrowVolume(ctx, p.shard, p.device, volume, bytes)
 	if err != nil {
 		slog.WarnContext(
@@ -93,10 +93,10 @@ func (p shardPolicy) GrowVolume(ctx context.Context, volume runnerwire.VolumeNam
 func (p shardPolicy) ReserveNumbers(
 	ctx context.Context,
 	conversation string,
-	sequence commandwire.ServiceSequence,
+	sequence commandproto.ServiceSequence,
 	count uint32,
 ) (uint64, error) {
-	id, err := webapi.ParseConversationID(conversation)
+	id, err := webapiproto.ParseConversationID(conversation)
 	if err != nil {
 		return 0, fmt.Errorf("no conversation %s: %w", conversation, err)
 	}
@@ -117,7 +117,7 @@ func (p shardPolicy) ReserveNumbers(
 	var value uint64
 	err = p.shard.ConversationDB(id).Call(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
-		value, err = database.ReserveNumbers(ctx, tx, core.Sequence(sequence), count)
+		value, err = database.ReserveNumbers(ctx, tx, types.Sequence(sequence), count)
 		return err
 	})
 	return value, err
@@ -126,9 +126,9 @@ func (p shardPolicy) ReserveNumbers(
 func (s *Shard) adopt(
 	ctx context.Context,
 	device database.DeviceRecord,
-	runner runnerwire.Info,
+	runner runnerproto.Info,
 	socket *runners.Socket,
-	bound chan<- webapi.DeviceDTO,
+	bound chan<- webapiproto.DeviceDTO,
 ) error {
 	if bound != nil {
 		defer close(bound)
@@ -174,7 +174,7 @@ func (s *Shard) adopt(
 	if bound != nil {
 		bound <- s.devices.DTO(device)
 	} else {
-		if err := runners.Send(ctx, socket, &runnerwire.HelloOK{DeviceID: string(device.ID)}); err != nil {
+		if err := runners.Send(ctx, socket, &runnerproto.HelloOK{DeviceID: string(device.ID)}); err != nil {
 			serving.Close(context.WithoutCancel(ctx))
 			return err
 		}
@@ -187,7 +187,7 @@ func (s *Shard) adopt(
 func (s *Shard) bindRunner(
 	ctx context.Context,
 	device database.DeviceRecord,
-	runner runnerwire.Info,
+	runner runnerproto.Info,
 	socket *runners.Socket,
 ) (*runners.Serving, *runners.LastSeen, error) {
 	order, err := s.runnerOrder.Acquire(ctx, device.ID)
@@ -214,8 +214,8 @@ func (s *Shard) bindRunner(
 		return nil, nil, runners.Send(
 			ctx,
 			socket,
-			&runnerwire.HelloError{
-				Code:   runnerwire.HelloErrorCodeAlreadyConnected,
+			&runnerproto.HelloError{
+				Code:   runnerproto.HelloErrorCodeAlreadyConnected,
 				Reason: fmt.Sprintf("device %s already has a live connection", device.ID),
 			},
 		)

@@ -9,12 +9,12 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend"
-	"github.com/wspl/demi/internal/backend/providers"
+	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/types"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // AccountDirectory scripts successive provider catalog reads.
@@ -24,12 +24,12 @@ type AccountDirectory struct {
 	reads   int
 }
 type directoryAnswer struct {
-	catalog core.ProviderModelList
+	catalog types.ProviderModelList
 	err     error
 }
 
 // Answer queues the next directory response.
-func (d *AccountDirectory) Answer(catalog core.ProviderModelList, err error) {
+func (d *AccountDirectory) Answer(catalog types.ProviderModelList, err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.answers = append(d.answers, directoryAnswer{catalog, err})
@@ -42,12 +42,12 @@ func (d *AccountDirectory) Reads() int {
 	return d.reads
 }
 
-func (d *AccountDirectory) read() (core.ProviderModelList, error) {
+func (d *AccountDirectory) read() (types.ProviderModelList, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.reads++
 	if len(d.answers) == 0 {
-		return core.ProviderModelList{}, errors.New("the directory has no answer scripted")
+		return types.ProviderModelList{}, errors.New("the directory has no answer scripted")
 	}
 	a := d.answers[0]
 	d.answers = d.answers[1:]
@@ -55,9 +55,9 @@ func (d *AccountDirectory) read() (core.ProviderModelList, error) {
 }
 
 // AccountCatalog makes the models used by directory cache scenarios.
-func AccountCatalog(names ...string) core.ProviderModelList {
-	result := core.ProviderModelList{
-		Models:          []core.ProviderModel{},
+func AccountCatalog(names ...string) types.ProviderModelList {
+	result := types.ProviderModelList{
+		Models:          []types.ProviderModel{},
 		Warnings:        []string{},
 		SourceFetchedAt: "2026-09-24T07:00:00.000Z",
 	}
@@ -68,7 +68,7 @@ func AccountCatalog(names ...string) core.ProviderModelList {
 	for _, name := range names {
 		result.Models = append(
 			result.Models,
-			core.ProviderModel{
+			types.ProviderModel{
 				ID:                       name,
 				DisplayName:              name + " model",
 				ContextWindow:            &contextWindow,
@@ -78,7 +78,7 @@ func AccountCatalog(names ...string) core.ProviderModelList {
 				SupportsReasoning:        &yes,
 				SupportedThinkingEfforts: &efforts,
 				DefaultThinkingEffort:    &low,
-				ServiceTiers:             []core.ServiceTier{},
+				ServiceTiers:             []types.ServiceTier{},
 			},
 		)
 	}
@@ -137,11 +137,11 @@ type AccountFamily struct {
 	// Cost sets the scripted quota probe cost.
 	Cost *provider.ProbeCost
 	// WireTypes lists selectable wire protocols.
-	WireTypes []core.WireAPI
+	WireTypes []types.WireAPI
 }
 
 // AccountFamilies registers the two subscription families used by account scenarios.
-func AccountFamilies(t testing.TB, cost *provider.ProbeCost) (*providers.FamilyRegistry, *AccountLoginScript) {
+func AccountFamilies(t testing.TB, cost *provider.ProbeCost) (*providerhost.FamilyRegistry, *AccountLoginScript) {
 	login := &AccountLoginScript{}
 	registry := backend.BuiltinFamilies()
 	for _, name := range []string{"claude-code", "device"} {
@@ -151,20 +151,20 @@ func AccountFamilies(t testing.TB, cost *provider.ProbeCost) (*providers.FamilyR
 }
 
 // Credential identifies which entry credentials this scripted family accepts.
-func (f *AccountFamily) Credential() webapi.CredentialKind {
+func (f *AccountFamily) Credential() webapiproto.CredentialKind {
 	if f.Login != nil {
-		return webapi.CredentialKindSubscription
+		return webapiproto.CredentialKindSubscription
 	}
-	return webapi.CredentialKindAPIKey
+	return webapiproto.CredentialKindAPIKey
 }
 
 // Wires lists the protocols selectable for this scripted family.
-func (f *AccountFamily) Wires() []core.WireAPI { return f.WireTypes }
+func (f *AccountFamily) Wires() []types.WireAPI { return f.WireTypes }
 
 // Provider binds the script to the entry and its selected account.
-func (f *AccountFamily) Provider(args providers.FamilyArgs) (provider.Provider, error) {
+func (f *AccountFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {
 	p := &accountProvider{family: f}
-	if subscription, ok := args.Credential.(*providers.SubscriptionArgs); ok {
+	if subscription, ok := args.Credential.(*providerhost.SubscriptionArgs); ok {
 		p.accounts = provider.NewAccounts(subscription.Pool, &accountKit{script: f.Login}, args.Clock)
 		if subscription.Account != nil {
 			p.account = &subscription.Account.CredentialID
@@ -182,9 +182,9 @@ func (k *accountKit) Capability() provider.AccountsCapability {
 }
 
 // Login waits for approval and returns the scripted device account.
-func (k *accountKit) Login(ctx context.Context, pending func(core.LoginPending)) (provider.NewAccount, error) {
+func (k *accountKit) Login(ctx context.Context, pending func(types.LoginPending)) (provider.NewAccount, error) {
 	code := "ABCD-1234"
-	pending(core.LoginPending{VerificationURL: "https://verify.example/device", UserCode: &code})
+	pending(types.LoginPending{VerificationURL: "https://verify.example/device", UserCode: &code})
 	if err := k.script.wait(ctx); err != nil {
 		return provider.NewAccount{}, err
 	}
@@ -227,12 +227,12 @@ func (q accountQuota) Probe(context.Context) (provider.ProbeReading, error) {
 	used := float64(40)
 	return provider.ProbeReading{
 		AccountLabel: &label,
-		Windows:      []core.QuotaWindow{{ID: "weekly", Label: "Weekly", UsedPercent: &used}},
+		Windows:      []types.QuotaWindow{{ID: "weekly", Label: "Weekly", UsedPercent: &used}},
 	}, nil
 }
 
 // Observe reports no quota windows from fixture observations.
-func (accountQuota) Observe(provider.Observation) []core.QuotaWindow { return nil }
+func (accountQuota) Observe(provider.Observation) []types.QuotaWindow { return nil }
 
 type accountProvider struct {
 	family   *AccountFamily
@@ -245,21 +245,21 @@ type accountProvider struct {
 func (p *accountProvider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
 
 // AuthStatus reports the fixture authentication state.
-func (p *accountProvider) AuthStatus(context.Context) core.AuthState {
-	return &core.Authenticated{AccountLabel: p.account}
+func (p *accountProvider) AuthStatus(context.Context) types.AuthState {
+	return &types.Authenticated{AccountLabel: p.account}
 }
 
 // RuntimeState reports that the fixture runtime is ready.
-func (p *accountProvider) RuntimeState() core.RuntimeState { return &core.RuntimeReady{} }
+func (p *accountProvider) RuntimeState() types.RuntimeState { return &types.RuntimeReady{} }
 
 // ListModels returns the scripted provider catalog.
-func (p *accountProvider) ListModels(context.Context) (core.ProviderModelList, error) {
+func (p *accountProvider) ListModels(context.Context) (types.ProviderModelList, error) {
 	return p.family.Directory.read()
 }
 
 // ReadFailure returns empty failure facts for the fixture provider.
-func (p *accountProvider) ReadFailure(*core.ProviderErrorDiagnostics, core.Timestamp) core.ProviderFailureFacts {
-	return core.ProviderFailureFacts{}
+func (p *accountProvider) ReadFailure(*types.ProviderErrorDiagnostics, types.Timestamp) types.ProviderFailureFacts {
+	return types.ProviderFailureFacts{}
 }
 
 // Quota returns the fixture quota capability.

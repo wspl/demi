@@ -15,8 +15,8 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/machinewire"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // The program starts one real runner at a local WebSocket, then must join it on
@@ -70,21 +70,21 @@ func TestScriptedMachinesEndsWithInputOrCancellation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = socket.Close() }()
-			backend, err := runnerwire.ParseBackendURL(server.URL)
+			backend, err := runnerproto.ParseBackendURL(server.URL)
 			if err != nil {
 				t.Fatal(err)
 			}
-			token, err := runnerwire.ParseDeviceToken(strings.Repeat("a", 64))
+			token, err := runnerproto.ParseDeviceToken(strings.Repeat("a", 64))
 			if err != nil {
 				t.Fatal(err)
 			}
-			line, err := machinewire.EncodeLine(
-				machinewire.MachineRequest{
+			line, err := machinemanagerproto.EncodeLine(
+				machinemanagerproto.MachineRequest{
 					ID: "wake",
-					Call: &machinewire.Wake{
-						Params: machinewire.WakeParams{
+					Call: &machinemanagerproto.Wake{
+						Params: machinemanagerproto.WakeParams{
 							DeviceID: "device",
-							Boot:     runnerwire.ManagedBoot{BackendURL: backend, DeviceToken: token},
+							Boot:     runnerproto.ManagedBoot{BackendURL: backend, DeviceToken: token},
 						},
 					},
 				},
@@ -99,11 +99,11 @@ func TestScriptedMachinesEndsWithInputOrCancellation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			decoded, err := machinewire.DecodeResponse(response)
+			decoded, err := machinemanagerproto.DecodeResponse(response)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, ok := decoded.(*machinewire.OK); !ok {
+			if _, ok := decoded.(*machinemanagerproto.OK); !ok {
 				t.Fatalf("wake: %v", decoded)
 			}
 			select {

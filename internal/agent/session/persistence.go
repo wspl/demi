@@ -6,7 +6,7 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 func (c *coreState) checkpointStateLocked() store.CheckpointState {
@@ -105,7 +105,7 @@ func (s *Session) persister() {
 }
 
 // rewrite saves a candidate session history before publishing a replace patch.
-func (s *Session) rewrite(ctx context.Context, blocks []core.Block, revision uint64) error {
+func (s *Session) rewrite(ctx context.Context, blocks []types.Block, revision uint64) error {
 	permit, err := s.persist.Acquire(ctx)
 	if err != nil {
 		return err
@@ -135,7 +135,7 @@ func (s *Session) rewrite(ctx context.Context, blocks []core.Block, revision uin
 	return nil
 }
 
-func (s *Session) adoptLocked(blocks []core.Block, commands *store.CommandStateHistory) {
+func (s *Session) adoptLocked(blocks []types.Block, commands *store.CommandStateHistory) {
 	c := &s.core
 	c.commands = commands
 	c.generation++

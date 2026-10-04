@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // TestDeviceID names the device a test connection serves.
@@ -83,7 +83,7 @@ func (p *CommandPolicy) Storage(
 }
 
 // GrowVolume refuses growth, which is unavailable in this fixture.
-func (p *CommandPolicy) GrowVolume(_ context.Context, _ runnerwire.VolumeName, _ uint64) error {
+func (p *CommandPolicy) GrowVolume(_ context.Context, _ runnerproto.VolumeName, _ uint64) error {
 	return errors.New("volume growth is not available")
 }
 
@@ -91,7 +91,7 @@ func (p *CommandPolicy) GrowVolume(_ context.Context, _ runnerwire.VolumeName, _
 func (p *CommandPolicy) ReserveNumbers(
 	_ context.Context,
 	conversation string,
-	sequence commandwire.ServiceSequence,
+	sequence commandproto.ServiceSequence,
 	count uint32,
 ) (uint64, error) {
 	p.mu.Lock()
@@ -227,14 +227,14 @@ func (l *TestLink) Link() *remotehost.Link {
 }
 
 // Next waits for and decodes the backend's next message.
-func (l *TestLink) Next(ctx context.Context) (runnerwire.Inbound, error) {
+func (l *TestLink) Next(ctx context.Context) (runnerproto.Inbound, error) {
 	select {
 	case frame := <-l.outgoing:
-		return runnerwire.DecodeInbound(frame)
+		return runnerproto.DecodeInbound(frame)
 	case <-l.done:
 		select {
 		case frame := <-l.outgoing:
-			return runnerwire.DecodeInbound(frame)
+			return runnerproto.DecodeInbound(frame)
 		default:
 			return nil, io.EOF
 		}
@@ -247,8 +247,8 @@ func (l *TestLink) Next(ctx context.Context) (runnerwire.Inbound, error) {
 func (l *TestLink) Queued() int { return len(l.outgoing) }
 
 // Send encodes and sends a runner message to the backend.
-func (l *TestLink) Send(ctx context.Context, message runnerwire.Outbound) error {
-	frame, err := runnerwire.Encode(message)
+func (l *TestLink) Send(ctx context.Context, message runnerproto.Outbound) error {
+	frame, err := runnerproto.Encode(message)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ var _ remotehost.LinkPolicy = (*CommandPolicy)(nil)
 
 type sequenceKey struct {
 	conversation string
-	sequence     commandwire.ServiceSequence
+	sequence     commandproto.ServiceSequence
 }
 
 // testFrames carries one direction of an in-process runner connection.

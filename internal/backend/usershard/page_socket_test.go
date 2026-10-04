@@ -16,7 +16,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/wspl/demi/internal/agent/server"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 )
 
 // Virtual time and an in-memory page transport check both a blocked frame and
@@ -63,7 +63,7 @@ func TestPageCloseInterruptsTransportAtBound(t *testing.T) {
 					defer close(done)
 					// Closing the transport ends either operation; its error is expected.
 					if name != "unacknowledged close" {
-						_ = page.send(t.Context(), &framewire.HeartbeatFrame{})
+						_ = page.send(t.Context(), &conversationproto.HeartbeatFrame{})
 						return
 					}
 					_, _ = io.Copy(io.Discard, peer)
@@ -112,9 +112,9 @@ func TestConversationShutdownSendsCloseWithReadyOutbox(t *testing.T) {
 				defer func() { _ = socket.CloseNow() }()
 				page := newPageSocket(NewPageConnection(socket, <-transports), DefaultPageTuning())
 				defer page.heartbeat.Stop()
-				outgoing := make(chan framewire.ServerFrame, 1)
+				outgoing := make(chan conversationproto.ServerFrame, 1)
 				if buffered {
-					outgoing <- &framewire.HeartbeatFrame{}
+					outgoing <- &conversationproto.HeartbeatFrame{}
 				}
 				close(outgoing)
 				ctx, cancel := context.WithCancel(r.Context())

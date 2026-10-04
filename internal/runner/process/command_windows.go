@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 	"golang.org/x/sys/windows"
 )
 
@@ -149,9 +149,9 @@ func (p *platformGroup) kill(process *os.Process, group bool) error {
 	return err
 }
 
-func (p *platformGroup) signal(process *os.Process, group bool, signal runnerwire.Signal) error {
+func (p *platformGroup) signal(process *os.Process, group bool, signal runnerproto.Signal) error {
 	switch signal {
-	case runnerwire.SignalTerminate, runnerwire.SignalKill, runnerwire.SignalInterrupt:
+	case runnerproto.SignalTerminate, runnerproto.SignalKill, runnerproto.SignalInterrupt:
 		return p.kill(process, group)
 	default:
 		return fmt.Errorf("unsupported Windows process signal")

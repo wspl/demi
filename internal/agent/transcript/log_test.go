@@ -8,15 +8,15 @@ import (
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/transcript"
 	"github.com/wspl/demi/internal/agent/transcript/transcripttest"
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/framewire"
+	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/types"
 )
 
 func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 	ids := transcripttest.NewSequentialIDs("log")
-	log := transcript.NewLog(nil, ids, providertest.FixedClock(core.UnixEpoch))
+	log := transcript.NewLog(nil, ids, providertest.FixedClock(types.UnixEpoch))
 	model := storetest.TestModel()
 	if _, changed := log.TakePatches(); changed {
 		t.Fatal("empty log has work")
@@ -42,7 +42,7 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 	savedText := log.Blocks()[4]
 	log.AppendText(model, " second")
 	log.AppendText(model, " third")
-	if savedText.(*core.TextBlock).Text != "first" {
+	if savedText.(*types.TextBlock).Text != "first" {
 		t.Fatal("old snapshot changed")
 	}
 	_, completed := log.CompleteTailText()
@@ -61,17 +61,18 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 	if len(batch.Patches) != 9 {
 		t.Fatalf("patch count %d", len(batch.Patches))
 	}
-	thought := batch.Patches[1].(*framewire.AddPatch).Value.(*core.ThinkingBlock)
+	thought := batch.Patches[1].(*conversationproto.AddPatch).Value.(*types.ThinkingBlock)
 	if thought.Text != "a" || thought.Signature != nil {
 		t.Fatal("old thinking patch changed")
 	}
-	if delta := batch.Patches[2].(*framewire.AppendTextPatch); delta.Index != 1 || delta.Delta != "bc" {
+	if delta := batch.Patches[2].(*conversationproto.AppendTextPatch); delta.Index != 1 || delta.Delta != "bc" {
 		t.Fatal(delta)
 	}
-	if delta := batch.Patches[7].(*framewire.AppendTextPatch); delta.Index != 4 || delta.Delta != " second third" {
+	if delta := batch.Patches[7].(*conversationproto.AppendTextPatch); delta.Index != 4 ||
+		delta.Delta != " second third" {
 		t.Fatal(delta)
 	}
-	if !reflect.DeepEqual(batch.Touched, []core.BlockID{userID, "log-3", "log-4", "log-5", "log-6"}) {
+	if !reflect.DeepEqual(batch.Touched, []types.BlockID{userID, "log-3", "log-4", "log-5", "log-6"}) {
 		t.Fatal(batch.Touched)
 	}
 	if !log.HasUserTurn("turn") || log.HasUserTurn("absent") || log.Find(userID) == nil || log.Find("absent") != nil {
@@ -90,21 +91,21 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 		t.Fatal(got)
 	}
 	log.PushAbort(model)
-	stopped := log.Blocks()[len(log.Blocks())-1].(*core.AbortBlock)
+	stopped := log.Blocks()[len(log.Blocks())-1].(*types.AbortBlock)
 	log.MarkLatestAbortResumed()
-	if stopped.IsResumed || !log.Find(stopped.BlockID).(*core.AbortBlock).IsResumed {
+	if stopped.IsResumed || !log.Find(stopped.BlockID).(*types.AbortBlock).IsResumed {
 		t.Fatal("stop patch not immutable")
 	}
-	rewrite := log.ReplaceAll([]core.Block{log.Find(userID)})
+	rewrite := log.ReplaceAll([]types.Block{log.Find(userID)})
 	if _, pending := log.TakePatches(); len(rewrite.Patches) != 1 || len(rewrite.Touched) != 0 ||
 		len(rewrite.Rows.Indices(1)) != 0 ||
 		pending {
 		t.Fatal("rewrite did not supersede pending journal")
 	}
-	if _, ok := rewrite.Patches[0].(*framewire.ReplacePatch); !ok {
+	if _, ok := rewrite.Patches[0].(*conversationproto.ReplacePatch); !ok {
 		t.Fatal("rewrite not replace")
 	}
-	restored := transcript.NewLog(log.Blocks(), ids, providertest.FixedClock(core.UnixEpoch))
+	restored := transcript.NewLog(log.Blocks(), ids, providertest.FixedClock(types.UnixEpoch))
 	if restored.Version().Epoch == log.Version().Epoch || restored.Version().Revision != 0 {
 		t.Fatal("restore reused version")
 	}
@@ -112,7 +113,7 @@ func TestLogPublishesImmutablePatchesAndSaveRows(t *testing.T) {
 
 func TestLogToolCompletionUsesLatestExecutingCall(t *testing.T) {
 	model := storetest.TestModel()
-	log := transcript.NewLog(nil, transcripttest.NewSequentialIDs("call"), providertest.FixedClock(core.UnixEpoch))
+	log := transcript.NewLog(nil, transcripttest.NewSequentialIDs("call"), providertest.FixedClock(types.UnixEpoch))
 	log.PushToolCall(model, provider.ToolCall{ToolUseID: "reuse", ToolName: "run", Input: []byte(`null`)})
 	log.PushToolCall(model, provider.ToolCall{ToolUseID: "reuse", ToolName: "run", Input: []byte(`"broken {"`)})
 	log.AppendText(model, "not forkable yet")
@@ -130,36 +131,36 @@ func TestLogToolCompletionUsesLatestExecutingCall(t *testing.T) {
 		t.Fatal(pending)
 	}
 	before := log.Blocks()
-	log.CompleteToolCall("reuse", []core.ToolResultContentBlock{&core.ToolText{Text: "failed"}}, true, nil)
-	if before[1].(*core.ToolCallBlock).Status != "executing" {
+	log.CompleteToolCall("reuse", []types.ToolResultContentBlock{&types.ToolText{Text: "failed"}}, true, nil)
+	if before[1].(*types.ToolCallBlock).Status != "executing" {
 		t.Fatal("mutated prior call snapshot")
 	}
 	if got := log.PendingToolCalls(); len(got) != 1 || got[0].Input != "{}" {
 		t.Fatal(got)
 	}
-	log.CompleteToolCall("reuse", []core.ToolResultContentBlock{&core.ToolText{Text: "done"}}, false, nil)
+	log.CompleteToolCall("reuse", []types.ToolResultContentBlock{&types.ToolText{Text: "done"}}, false, nil)
 	if _, completed := log.CompleteTailText(); !completed || len(log.PendingToolCalls()) != 0 {
 		t.Fatal("completion did not unblock fork")
 	}
 	blocks := log.Blocks()
-	if blocks[0].(*core.ToolCallBlock).Status != "completed" || blocks[1].(*core.ToolCallBlock).Status != "error" {
+	if blocks[0].(*types.ToolCallBlock).Status != "completed" || blocks[1].(*types.ToolCallBlock).Status != "error" {
 		t.Fatal("wrong call completed")
 	}
 }
 
 func TestLogInputsReachReplayInOrder(t *testing.T) {
 	model := storetest.TestModel()
-	log := transcript.NewLog(nil, transcripttest.NewSequentialIDs("input"), providertest.FixedClock(core.UnixEpoch))
+	log := transcript.NewLog(nil, transcripttest.NewSequentialIDs("input"), providertest.FixedClock(types.UnixEpoch))
 	log.PushContext("turn", model, "execution", "context")
 	log.PushSteer("steer", "turn", model, storetest.Text("steer"))
 	log.PushWakeup("wake", "turn", model, "new_turn")
-	message := core.AgentMessage{
+	message := types.AgentMessage{
 		ID:          "message",
-		Sender:      core.Sender{ID: "agent", Number: 1, Description: "reader", Round: 1},
+		Sender:      types.Sender{ID: "agent", Number: 1, Description: "reader", Round: 1},
 		RecipientID: "root",
-		Timestamp:   core.UnixEpoch,
+		Timestamp:   types.UnixEpoch,
 		Content:     "message",
-		Event:       &core.MessageEvent{},
+		Event:       &types.MessageEvent{},
 	}
 	log.PushAgentMessage("turn", model, message)
 	log.PushResume("turn", model)
@@ -167,7 +168,7 @@ func TestLogInputsReachReplayInOrder(t *testing.T) {
 	if !log.EndsWithInterruption() {
 		t.Fatal("interruption not recognized")
 	}
-	log.PushResponse(model, core.TokenUsage{InputTokens: 10})
+	log.PushResponse(model, types.TokenUsage{InputTokens: 10})
 	if log.EndsWithInterruption() {
 		t.Fatal("response mistaken for interruption")
 	}
@@ -188,23 +189,23 @@ func TestLogInputsReachReplayInOrder(t *testing.T) {
 }
 
 func TestLogEmptyCollectionsEncodeAsArrays(t *testing.T) {
-	log := transcript.NewLog(nil, transcript.RandomIDs{}, providertest.FixedClock(core.UnixEpoch))
+	log := transcript.NewLog(nil, transcript.RandomIDs{}, providertest.FixedClock(types.UnixEpoch))
 	if log.Version().Epoch == "" {
 		t.Fatal("empty epoch")
 	}
 	model := storetest.TestModel()
 	id := log.PushUser("turn", model, nil, nil)
-	if err := core.ValidateBlock(log.Find(id)); err != nil {
+	if err := types.ValidateBlock(log.Find(id)); err != nil {
 		t.Fatal(err)
 	}
 	log.PushSteer("steer", "turn", model, nil)
-	if err := core.ValidateBlock(log.Find("steer")); err != nil {
+	if err := types.ValidateBlock(log.Find("steer")); err != nil {
 		t.Fatal(err)
 	}
 	log.PushToolCall(model, provider.ToolCall{ToolUseID: "call", ToolName: "run", Input: []byte(`{"z":2,"a":1}`)})
 	log.CompleteToolCall("call", nil, false, nil)
 	for _, block := range log.Blocks() {
-		if err := core.ValidateBlock(block); err != nil {
+		if err := types.ValidateBlock(block); err != nil {
 			t.Fatal(err)
 		}
 	}

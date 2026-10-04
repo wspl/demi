@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // sendFrame puts a generated Host frame on its owner's output queue.
-func sendFrame(ctx context.Context, output chan<- []byte, message runnerwire.Outbound) error {
-	frame, err := runnerwire.Encode(message)
+func sendFrame(ctx context.Context, output chan<- []byte, message runnerproto.Outbound) error {
+	frame, err := runnerproto.Encode(message)
 	if err != nil {
 		return fmt.Errorf("host reply encoding failed: %w", err)
 	}
@@ -22,15 +22,19 @@ func sendFrame(ctx context.Context, output chan<- []byte, message runnerwire.Out
 }
 
 // fsReply applies the wire size limit to one filesystem result.
-func (s *Service) fsReply(ctx context.Context, id string, result runnerwire.FSResult, failure error) error {
+func (s *Service) fsReply(ctx context.Context, id string, result runnerproto.FSResult, failure error) error {
 	if failure != nil {
-		return sendFrame(ctx, s.output, &runnerwire.FSError{ID: id, Code: ErrorCode(failure), Message: failure.Error()})
+		return sendFrame(
+			ctx,
+			s.output,
+			&runnerproto.FSError{ID: id, Code: ErrorCode(failure), Message: failure.Error()},
+		)
 	}
-	frame, err := runnerwire.Encode(&runnerwire.FSOK{ID: id, Result: result})
+	frame, err := runnerproto.Encode(&runnerproto.FSOK{ID: id, Result: result})
 	if err == nil {
-		frame, err = runnerwire.WithinLimit(frame, func(reason string) ([]byte, error) {
+		frame, err = runnerproto.WithinLimit(frame, func(reason string) ([]byte, error) {
 			code := "too_large"
-			return runnerwire.Encode(&runnerwire.FSError{ID: id, Code: &code, Message: reason})
+			return runnerproto.Encode(&runnerproto.FSError{ID: id, Code: &code, Message: reason})
 		})
 	}
 	if err != nil {

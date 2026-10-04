@@ -8,9 +8,9 @@ import (
 	"testing/synctest"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // Cost: local SQLite/blob fixtures and in-process runner frames, no processes.
@@ -46,15 +46,15 @@ func TestConnectedNodeIdentityRefusesFilesAndWithHostHoldsGate(t *testing.T) {
 			},
 		)
 	})
-	var request *runnerwire.FSStat
+	var request *runnerproto.FSStat
 	select {
 	case frame := <-r.outgoing:
-		message, err := runnerwire.DecodeInbound(frame)
+		message, err := runnerproto.DecodeInbound(frame)
 		if err != nil {
 			t.Fatal(err)
 		}
 		var ok bool
-		request, ok = message.(*runnerwire.FSStat)
+		request, ok = message.(*runnerproto.FSStat)
 		if !ok {
 			t.Fatalf("WithHost sent %T instead of stat", message)
 		}
@@ -72,9 +72,9 @@ func TestConnectedNodeIdentityRefusesFilesAndWithHostHoldsGate(t *testing.T) {
 	}
 	r.send(
 		t,
-		&runnerwire.FSOK{
+		&runnerproto.FSOK{
 			ID:     request.ID,
-			Result: &runnerwire.FSStatResult{Value: runnerwire.FileStat{IsFile: true, Size: 7}},
+			Result: &runnerproto.FSStatResult{Value: runnerproto.FileStat{IsFile: true, Size: 7}},
 		},
 	)
 	completed := <-result
@@ -100,11 +100,11 @@ func TestConnectedDownloadRevocationLeavesReaderWithEdge(t *testing.T) {
 				return OpenDownload(ctx, s, record.ID, DownloadRequest{Path: "/file"})
 			})
 			r.stat(t, 100)
-			read, ok := r.next(t).(*runnerwire.FSReadFile)
+			read, ok := r.next(t).(*runnerproto.FSReadFile)
 			if !ok {
 				t.Fatal("expected readFile")
 			}
-			r.send(t, &runnerwire.FSOK{ID: read.ID, Result: &runnerwire.FSReadFileResult{}})
+			r.send(t, &runnerproto.FSOK{ID: read.ID, Result: &runnerproto.FSReadFileResult{}})
 			opened := <-result
 			if opened.err != nil {
 				t.Fatal(opened.err)
@@ -173,7 +173,7 @@ func TestConnectedUploadRevocationFailsPipeAndDrains(t *testing.T) {
 		return UploadFile(ctx, s, record.ID, "/file", true)
 	})
 	r.stat(t, 5)
-	write, ok := r.next(t).(*runnerwire.FSWriteFile)
+	write, ok := r.next(t).(*runnerproto.FSWriteFile)
 	if !ok {
 		t.Fatal("expected writeFile")
 	}
@@ -214,11 +214,11 @@ func TestConnectedStreamRetainsActivityWithoutFilesAndEnds(t *testing.T) {
 			result := startHostOperation(t, func(ctx context.Context) (*UserStream, error) {
 				return OpenUserStream(ctx, s, record.ID, binding)
 			})
-			request, ok := r.next(t).(*runnerwire.ServiceOpen)
+			request, ok := r.next(t).(*runnerproto.ServiceOpen)
 			if !ok {
 				t.Fatal("expected service open")
 			}
-			r.send(t, &runnerwire.ServiceOpened{StreamID: request.StreamID})
+			r.send(t, &runnerproto.ServiceOpened{StreamID: request.StreamID})
 			opened := <-result
 			if opened.err != nil {
 				t.Fatal(opened.err)
@@ -279,12 +279,12 @@ func TestConnectedStreamRetainsActivityWithoutFilesAndEnds(t *testing.T) {
 
 func testServiceBinding() ServiceBinding {
 	return ServiceBinding{
-		Package: commandwire.PackageDescriptor{
+		Package: commandproto.PackageDescriptor{
 			ID:              "test.service",
 			Version:         "1",
 			ProtocolVersion: 1,
 			Operations:      []string{"view"},
-			Targets:         map[string]commandwire.PackageArtifact{},
+			Targets:         map[string]commandproto.PackageArtifact{},
 		},
 		Operation: "view",
 	}
@@ -302,11 +302,11 @@ func TestConnectedUserCallActivityAndTransitionCancellation(t *testing.T) {
 			result := startHostOperation(t, func(context.Context) ([]byte, error) {
 				return UserCall(ctx, s, record.ID, kind, ServiceCall{Binding: testServiceBinding(), MaxBytes: 100})
 			})
-			request, ok := r.next(t).(*runnerwire.ServiceOpen)
+			request, ok := r.next(t).(*runnerproto.ServiceOpen)
 			if !ok {
 				t.Fatal("expected service open")
 			}
-			r.send(t, &runnerwire.ServiceOpened{StreamID: request.StreamID})
+			r.send(t, &runnerproto.ServiceOpened{StreamID: request.StreamID})
 			slot := s.conversations.Slot(record.ID)
 			state := slot.FileGate().State()
 			if kind == Looks && (!state.LastDemandEnd.IsZero() || state.Demand != 0) {
@@ -356,7 +356,7 @@ func TestConnectedLifecycleFailureStillCommitsAfterRequesterLeaves(t *testing.T)
 		cancel()
 		return struct{}{}, Archive(cancelled, s, record)
 	})
-	request, ok := r.next(t).(*runnerwire.ConversationRelease)
+	request, ok := r.next(t).(*runnerproto.ConversationRelease)
 	if !ok {
 		t.Fatal("expected conversation release")
 	}
@@ -364,7 +364,7 @@ func TestConnectedLifecycleFailureStillCommitsAfterRequesterLeaves(t *testing.T)
 	if err != nil || before.Archived {
 		t.Fatal("archive committed before release", err)
 	}
-	r.send(t, &runnerwire.ConversationReleased{ID: request.ID, Error: new("scripted release failure")})
+	r.send(t, &runnerproto.ConversationReleased{ID: request.ID, Error: new("scripted release failure")})
 	if completed := <-result; completed.err != nil {
 		t.Fatal(completed.err)
 	}
@@ -401,11 +401,11 @@ func TestCompletedUserStreamRetainsActivityUntilEdgeRelease(t *testing.T) {
 		result := startHostOperation(t, func(ctx context.Context) (*UserStream, error) {
 			return OpenUserStream(ctx, s, record.ID, testServiceBinding())
 		})
-		request, ok := r.next(t).(*runnerwire.ServiceOpen)
+		request, ok := r.next(t).(*runnerproto.ServiceOpen)
 		if !ok {
 			t.Fatal("expected service open")
 		}
-		r.send(t, &runnerwire.ServiceOpened{StreamID: request.StreamID})
+		r.send(t, &runnerproto.ServiceOpened{StreamID: request.StreamID})
 		opened := <-result
 		if opened.err != nil {
 			t.Fatal(opened.err)
@@ -413,7 +413,7 @@ func TestCompletedUserStreamRetainsActivityUntilEdgeRelease(t *testing.T) {
 		stream := opened.value
 		defer stream.Lease.Release()
 		defer func() { _ = stream.FromHost.Close(context.Background()) }()
-		r.send(t, &runnerwire.ServiceDone{StreamID: request.StreamID})
+		r.send(t, &runnerproto.ServiceDone{StreamID: request.StreamID})
 		synctest.Wait()
 		slot := s.conversations.Slot(record.ID)
 		if got := slot.Streams().State().Demand; got != 1 {

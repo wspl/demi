@@ -11,7 +11,7 @@ import (
 	"github.com/wspl/demi/internal/backend/usershard"
 	"github.com/wspl/demi/internal/backend/usershard/usershardtest"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/webapi"
+	"github.com/wspl/demi/internal/webapiproto"
 )
 
 // CommitHold holds checkpoint commits; Release or test cleanup releases them.
@@ -68,8 +68,8 @@ func HoldSync(t testing.TB, b *backend.Backend, step SyncStep) *StepHold {
 func FileGate(
 	ctx context.Context,
 	b *backend.Backend,
-	user webapi.UserID,
-	conversation webapi.ConversationID,
+	user webapiproto.UserID,
+	conversation webapiproto.ConversationID,
 ) (*gates.Activity, error) {
 	shard, err := b.Shards().Of(ctx, user)
 	if err != nil {
@@ -79,7 +79,7 @@ func FileGate(
 }
 
 // RunRetention runs the user's retention pass and answers when it ends.
-func RunRetention(ctx context.Context, b *backend.Backend, user webapi.UserID) error {
+func RunRetention(ctx context.Context, b *backend.Backend, user webapiproto.UserID) error {
 	shard, err := b.Shards().Of(ctx, user)
 	if err != nil {
 		return err
@@ -92,11 +92,11 @@ func RunRetention(ctx context.Context, b *backend.Backend, user webapi.UserID) e
 func CreateExpose(
 	ctx context.Context,
 	b *backend.Backend,
-	user webapi.UserID,
-	device webapi.DeviceID,
+	user webapiproto.UserID,
+	device webapiproto.DeviceID,
 	address string,
 ) (expose.Expose, error) {
-	parsed, err := webapi.ParseExposeAddress(address)
+	parsed, err := webapiproto.ParseExposeAddress(address)
 	if err != nil {
 		return expose.Expose{}, err
 	}

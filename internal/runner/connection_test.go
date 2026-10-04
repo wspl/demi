@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // Real local programs; about one second total, with no wall-time synchronization.
@@ -22,8 +22,8 @@ func TestSocketURL(t *testing.T) {
 func TestTypedExchangeAndRemoteClose(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
-	f.send(&runnerwire.Ping{})
-	if pong, ok := f.frame().(*runnerwire.Pong); !ok || pong.Jobs != 0 {
+	f.send(&runnerproto.Ping{})
+	if pong, ok := f.frame().(*runnerproto.Pong); !ok || pong.Jobs != 0 {
 		t.Fatal("ping did not report no jobs")
 	}
 	if err := f.socket.Close(websocket.StatusNormalClosure, ""); err != nil {
@@ -51,10 +51,10 @@ func TestFullInboundQueueWaits(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
 	for range 256 {
-		f.send(&runnerwire.Ping{})
+		f.send(&runnerproto.Ping{})
 	}
 	for range 256 {
-		if _, ok := f.frame().(*runnerwire.Pong); !ok {
+		if _, ok := f.frame().(*runnerproto.Pong); !ok {
 			t.Fatal("missing pong")
 		}
 	}

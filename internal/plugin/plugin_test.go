@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/core"
-	"github.com/wspl/demi/internal/declare"
+	"github.com/wspl/demi/internal/commanddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
+	"github.com/wspl/demi/internal/types"
 )
 
 // TestCommandPlacement protects tree-relative dispatch and checks without
@@ -26,10 +26,10 @@ func TestCommandPlacement(t *testing.T) {
 		"file",
 		"Files",
 		host.Leaf(
-			declare.Leaf[declare.NativeOperation]{
+			commanddecl.Leaf[commanddecl.NativeOperation]{
 				Name:    "list",
 				Summary: "List",
-				Kind:    &declare.RPC[declare.NativeOperation]{},
+				Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
 			},
 			handler,
 		),
@@ -50,7 +50,7 @@ func TestCommandPlacement(t *testing.T) {
 		t.Fatalf("reply %v, path %v", reply, inv.Path)
 	}
 	commands := p.ManifestCommands()
-	if len(commands) != 1 || declare.Name(commands[0].Tree.Node) != "file" ||
+	if len(commands) != 1 || commanddecl.Name(commands[0].Tree.Node) != "file" ||
 		commands[0].Placement != plugin.PlacementDemi {
 		t.Fatalf("commands = %#v", commands)
 	}
@@ -69,7 +69,7 @@ func TestCommandPlacement(t *testing.T) {
 // TestDirectoryIdentity protects path ordering, mode-sensitive identity and
 // the directory/path rules at the Host installation boundary.
 func TestDirectoryIdentity(t *testing.T) {
-	blob := core.BlobRefOf([]byte("contents"))
+	blob := types.BlobRefOf([]byte("contents"))
 	d := plugin.HostDirectory{
 		Name:  "test",
 		Files: []plugin.DirectoryFile{{Path: "b", Blob: blob}, {Path: "a", Blob: blob, Executable: true}},

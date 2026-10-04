@@ -7,17 +7,17 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Blobs is the conversation owner's blob namespace as reached by a session.
 // Implementations support concurrent calls.
 type Blobs interface {
 	// Put stores bytes under their SHA-256 unless already present, returning that name.
-	Put(ctx context.Context, data core.B64Bytes) (core.BlobRef, error)
+	Put(ctx context.Context, data types.B64Bytes) (types.BlobRef, error)
 	// Read returns a blob's bytes and whether it exists; missing is not an error.
-	Read(ctx context.Context, blob core.BlobRef) (core.B64Bytes, bool, error)
+	Read(ctx context.Context, blob types.BlobRef) (types.B64Bytes, bool, error)
 }
 
 // heldMedium is what a session holds for one medium: its bytes, or the knowledge that the namespace lacks it.
@@ -28,7 +28,7 @@ type heldMedium interface{ heldMedium() }
 // heldBytes carries a medium's bytes.
 type heldBytes struct {
 	// Bytes holds the medium contents.
-	bytes core.B64Bytes
+	bytes types.B64Bytes
 }
 
 // heldMissing records that the namespace does not hold the medium's blob.
@@ -39,12 +39,12 @@ func (*heldMissing) heldMedium() {}
 
 // HeldMedia holds bytes or known absence by blob name. Its zero value is empty.
 // Its session serializes mutation; selections and views own their snapshots.
-type HeldMedia struct{ media map[core.BlobRef]heldMedium }
+type HeldMedia struct{ media map[types.BlobRef]heldMedium }
 
 // Hold keeps bytes unless something is already held for the blob.
-func (h *HeldMedia) Hold(blob core.BlobRef, data core.B64Bytes) {
+func (h *HeldMedia) Hold(blob types.BlobRef, data types.B64Bytes) {
 	if h.media == nil {
-		h.media = map[core.BlobRef]heldMedium{}
+		h.media = map[types.BlobRef]heldMedium{}
 	}
 	if _, exists := h.media[blob]; !exists {
 		h.media[blob] = &heldBytes{bytes: bytes.Clone(data)}
@@ -54,7 +54,7 @@ func (h *HeldMedia) Hold(blob core.BlobRef, data core.B64Bytes) {
 // Absorb holds what other holds, keeping what is held already.
 func (h *HeldMedia) Absorb(other HeldMedia) {
 	if h.media == nil {
-		h.media = map[core.BlobRef]heldMedium{}
+		h.media = map[types.BlobRef]heldMedium{}
 	}
 	for blob, held := range other.media {
 		if _, exists := h.media[blob]; !exists {
@@ -64,7 +64,7 @@ func (h *HeldMedia) Absorb(other HeldMedia) {
 }
 
 // Retain releases media not named in referenced.
-func (h *HeldMedia) Retain(referenced map[core.BlobRef]struct{}) {
+func (h *HeldMedia) Retain(referenced map[types.BlobRef]struct{}) {
 	for blob := range h.media {
 		if _, keep := referenced[blob]; !keep {
 			delete(h.media, blob)
@@ -73,8 +73,8 @@ func (h *HeldMedia) Retain(referenced map[core.BlobRef]struct{}) {
 }
 
 // Select copies the held media that blocks reference.
-func (h *HeldMedia) Select(blocks []core.Block) HeldMedia {
-	selected := HeldMedia{media: map[core.BlobRef]heldMedium{}}
+func (h *HeldMedia) Select(blocks []types.Block) HeldMedia {
+	selected := HeldMedia{media: map[types.BlobRef]heldMedium{}}
 	for _, block := range blocks {
 		for _, blob := range References(block) {
 			if held, exists := h.media[blob]; exists {
@@ -91,15 +91,15 @@ type ModelView struct {
 	// Start is where the blocks start in the transcript.
 	Start int
 	// Blocks contains immutable transcript snapshots in replay order.
-	Blocks []core.Block
+	Blocks []types.Block
 	media  HeldMedia
 }
 
 // NewModelView returns a view or the distinct blobs that must first be read.
 // A nonempty missing list means the returned view is nil.
-func NewModelView(start int, blocks []core.Block, held HeldMedia) (*ModelView, []core.BlobRef) {
-	missing := []core.BlobRef{}
-	seen := map[core.BlobRef]bool{}
+func NewModelView(start int, blocks []types.Block, held HeldMedia) (*ModelView, []types.BlobRef) {
+	missing := []types.BlobRef{}
+	seen := map[types.BlobRef]bool{}
 	for _, block := range blocks {
 		for _, blob := range References(block) {
 			if _, exists := held.media[blob]; !exists && !seen[blob] {
@@ -117,7 +117,7 @@ func NewModelView(start int, blocks []core.Block, held HeldMedia) (*ModelView, [
 // Held returns a copy of the bytes held for a referenced blob, or false when
 // the namespace does not hold that blob. An unreferenced blob violates the
 // view invariant and panics.
-func (v *ModelView) Held(blob core.BlobRef) (core.B64Bytes, bool) {
+func (v *ModelView) Held(blob types.BlobRef) (types.B64Bytes, bool) {
 	held, exists := v.media.media[blob]
 	if !exists {
 		panic("the model's view holds something for every medium its blocks reference")
@@ -133,41 +133,41 @@ func (v *ModelView) Held(blob core.BlobRef) (core.B64Bytes, bool) {
 func MissingText(kind string) string { return "[missing " + kind + "]" }
 
 // References lists the blobs a block's media reference, in part order.
-func References(block core.Block) []core.BlobRef {
+func References(block types.Block) []types.BlobRef {
 	switch block := block.(type) {
-	case *core.UserBlock:
+	case *types.UserBlock:
 		return ContentReferences(block.Content)
-	case *core.SteerBlock:
+	case *types.SteerBlock:
 		return ContentReferences(block.Content)
-	case *core.ToolCallBlock:
-		refs := []core.BlobRef{}
+	case *types.ToolCallBlock:
+		refs := []types.BlobRef{}
 		for _, part := range block.Output {
-			var source core.ToolMediaSource
+			var source types.ToolMediaSource
 			switch part := part.(type) {
-			case *core.ToolImage:
+			case *types.ToolImage:
 				source = part.Source
-			case *core.ToolVideo:
+			case *types.ToolVideo:
 				source = part.Source
-			case *core.ToolText, *core.ToolGone:
+			case *types.ToolText, *types.ToolGone:
 				continue
 			}
-			if ref, ok := source.(*core.ToolMediaRef); ok {
+			if ref, ok := source.(*types.ToolMediaRef); ok {
 				refs = append(refs, ref.Ref)
 			}
 		}
 		return refs
-	case *core.ContextBlock,
-		*core.WakeupBlock,
-		*core.AgentMessageBlock,
-		*core.ResumeBlock,
-		*core.AbortBlock,
-		*core.ThinkingBlock,
-		*core.RedactedThinkingBlock,
-		*core.TextBlock,
-		*core.ResponseBlock,
-		*core.ErrorBlock,
-		*core.CompactionBoundaryBlock,
-		*core.CompactionMarkerBlock:
+	case *types.ContextBlock,
+		*types.WakeupBlock,
+		*types.AgentMessageBlock,
+		*types.ResumeBlock,
+		*types.AbortBlock,
+		*types.ThinkingBlock,
+		*types.RedactedThinkingBlock,
+		*types.TextBlock,
+		*types.ResponseBlock,
+		*types.ErrorBlock,
+		*types.CompactionBoundaryBlock,
+		*types.CompactionMarkerBlock:
 		return nil
 	}
 	return nil
@@ -188,16 +188,16 @@ const (
 // BlockReference is a blob indexed by the store for retention.
 type BlockReference struct {
 	// Blob identifies the referenced bytes.
-	Blob core.BlobRef
+	Blob types.BlobRef
 	// Holder identifies the retention category.
 	Holder Holder
 }
 
 // BlockReferences lists media in part order, then edit copies in file and
 // segment order, original before modified.
-func BlockReferences(block core.Block) []BlockReference {
+func BlockReferences(block types.Block) []BlockReference {
 	holder := Message
-	call, tool := block.(*core.ToolCallBlock)
+	call, tool := block.(*types.ToolCallBlock)
 	if tool {
 		holder = ToolResult
 	}
@@ -206,7 +206,7 @@ func BlockReferences(block core.Block) []BlockReference {
 		refs = append(refs, BlockReference{Blob: blob, Holder: holder})
 	}
 	if tool {
-		if view, ok := call.View.(*core.ShellView); ok && view.Files != nil {
+		if view, ok := call.View.(*types.ShellView); ok && view.Files != nil {
 			for _, file := range *view.Files {
 				for _, edit := range file.Edits {
 					if edit.Copies != nil {
@@ -224,24 +224,24 @@ func BlockReferences(block core.Block) []BlockReference {
 }
 
 // ContentReferences lists media references in a message's or steer's content.
-func ContentReferences(content []core.UserContentBlock) []core.BlobRef {
-	refs := []core.BlobRef{}
+func ContentReferences(content []types.UserContentBlock) []types.BlobRef {
+	refs := []types.BlobRef{}
 	for _, part := range content {
-		var source core.MediaSource
+		var source types.MediaSource
 		switch part := part.(type) {
-		case *core.UserImage:
+		case *types.UserImage:
 			source = part.Source
-		case *core.UserVideo:
+		case *types.UserVideo:
 			source = part.Source
-		case *core.UserDocument:
-			if ref, ok := part.Source.(*core.DocumentRef); ok {
+		case *types.UserDocument:
+			if ref, ok := part.Source.(*types.DocumentRef); ok {
 				refs = append(refs, ref.Ref)
 			}
 			continue
-		case *core.UserText, *core.UserReference, *core.UserAttachment:
+		case *types.UserText, *types.UserReference, *types.UserAttachment:
 			continue
 		}
-		if ref, ok := source.(*core.MediaSourceRef); ok {
+		if ref, ok := source.(*types.MediaSourceRef); ok {
 			refs = append(refs, ref.Ref)
 		}
 	}
@@ -254,15 +254,15 @@ func PersistResult(
 	ctx context.Context,
 	output []provider.ResultPart,
 	blobs Blobs,
-) ([]core.ToolResultContentBlock, HeldMedia) {
+) ([]types.ToolResultContentBlock, HeldMedia) {
 	held := HeldMedia{}
-	stored := make([]core.ToolResultContentBlock, 0, len(output))
+	stored := make([]types.ToolResultContentBlock, 0, len(output))
 	for _, part := range output {
 		var data provider.MediaBytes
-		var kind core.ModelMediaKind
+		var kind types.ModelMediaKind
 		switch part := part.(type) {
 		case *provider.TextPart:
-			stored = append(stored, &core.ToolText{Text: part.Text})
+			stored = append(stored, &types.ToolText{Text: part.Text})
 			continue
 		case *provider.ResultImage:
 			data = part.Bytes
@@ -275,23 +275,23 @@ func PersistResult(
 		if err != nil {
 			stored = append(
 				stored,
-				&core.ToolGone{Kind: kind, MediaType: data.MediaType, Cause: &core.NotStored{Error: err.Error()}},
+				&types.ToolGone{Kind: kind, MediaType: data.MediaType, Cause: &types.NotStored{Error: err.Error()}},
 			)
 			continue
 		}
 		held.Hold(blob, data.Data)
-		source := &core.ToolMediaRef{Ref: blob, MediaType: data.MediaType}
+		source := &types.ToolMediaRef{Ref: blob, MediaType: data.MediaType}
 		if kind == "image" {
-			stored = append(stored, &core.ToolImage{Source: source})
+			stored = append(stored, &types.ToolImage{Source: source})
 		} else {
-			stored = append(stored, &core.ToolVideo{Source: source})
+			stored = append(stored, &types.ToolVideo{Source: source})
 		}
 	}
 	return stored, held
 }
 
 // ReadMedia reads blobs at most eight at a time, holding bytes or known absence.
-func ReadMedia(ctx context.Context, blobs Blobs, refs []core.BlobRef) (HeldMedia, error) {
+func ReadMedia(ctx context.Context, blobs Blobs, refs []types.BlobRef) (HeldMedia, error) {
 	found := make([]heldMedium, len(refs))
 	var next atomic.Uint64
 	group, readCtx := errgroup.WithContext(ctx)
@@ -320,7 +320,7 @@ func ReadMedia(ctx context.Context, blobs Blobs, refs []core.BlobRef) (HeldMedia
 	if err := group.Wait(); err != nil {
 		return HeldMedia{}, err
 	}
-	held := HeldMedia{media: map[core.BlobRef]heldMedium{}}
+	held := HeldMedia{media: map[types.BlobRef]heldMedium{}}
 	for index, blob := range refs {
 		held.media[blob] = found[index]
 	}

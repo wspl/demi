@@ -13,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/runner/host"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // errRegistrationRefused reports that the backend refused this runner's registration.
@@ -177,8 +177,8 @@ func releaseInstalled(installed *jobs.Installed) {
 	}
 }
 
-func (c *connection) send(ctx context.Context, message runnerwire.Outbound) error {
-	frame, err := runnerwire.Encode(message)
+func (c *connection) send(ctx context.Context, message runnerproto.Outbound) error {
+	frame, err := runnerproto.Encode(message)
 	if err != nil {
 		return err
 	}
@@ -200,7 +200,7 @@ func (c *connection) run(ctx context.Context) error {
 	r := c.registration
 	if err := c.send(
 		c.ctx,
-		&runnerwire.Hello{Protocol: runnerwire.Version, DeviceToken: r.token.Load(), Runner: r.options.runner},
+		&runnerproto.Hello{Protocol: runnerproto.Version, DeviceToken: r.token.Load(), Runner: r.options.runner},
 	); err != nil {
 		return err
 	}
@@ -283,19 +283,19 @@ func (c *connection) reportInstalls() error {
 		return nil
 	}
 	c.installsReported = true
-	return c.send(c.ctx, &runnerwire.Installs{Installs: installs})
+	return c.send(c.ctx, &runnerproto.Installs{Installs: installs})
 }
 
-func (c *connection) route(message runnerwire.Inbound) error {
+func (c *connection) route(message runnerproto.Inbound) error {
 	if c.relay.Route(message) {
 		return nil
 	}
 	r := c.registration
 	// Authentication handles its own messages; other validated messages route below.
 	switch m := any(message).(type) {
-	case *runnerwire.HelloOK:
+	case *runnerproto.HelloOK:
 		return c.helloOK(m)
-	case *runnerwire.ClaimPending:
+	case *runnerproto.ClaimPending:
 		if r.management.snapshot().Phase == online {
 			break
 		}
@@ -306,7 +306,7 @@ func (c *connection) route(message runnerwire.Inbound) error {
 		) // Pairing secret is intentionally console-only.
 		slog.Info("waiting to be paired")
 		return nil
-	case *runnerwire.Claimed:
+	case *runnerproto.Claimed:
 		if r.management.snapshot().Phase == online {
 			break
 		}
@@ -320,15 +320,15 @@ func (c *connection) route(message runnerwire.Inbound) error {
 		})
 		r.management.setPhase(online)
 		return nil
-	case *runnerwire.HelloError:
+	case *runnerproto.HelloError:
 		slog.Warn(fmt.Sprintf("registration refused (%s): %s", m.Code, m.Reason))
-		if m.Code == runnerwire.HelloErrorCodeAlreadyConnected {
+		if m.Code == runnerproto.HelloErrorCodeAlreadyConnected {
 			return errConnectionLost
 		}
 		r.management.setPhase(rejected)
 		return errRegistrationRefused
-	case *runnerwire.Ping:
-		return c.send(c.ctx, &runnerwire.Pong{Jobs: uint64(c.table.JobCount())})
+	case *runnerproto.Ping:
+		return c.send(c.ctx, &runnerproto.Pong{Jobs: uint64(c.table.JobCount())})
 	}
 	if r.management.snapshot().Phase != online {
 		return errors.New("backend work arrived before authentication")
@@ -356,7 +356,7 @@ func (c *connection) close(cleanup context.Context) error {
 }
 
 // readJob snapshots kept output before acknowledging and moving bytes to its pipe.
-func (c *connection) readJob(request *runnerwire.JobRead) error {
+func (c *connection) readJob(request *runnerproto.JobRead) error {
 	var stream io.ReadCloser
 	var err error
 	if reader, ok := c.directories.Output(request.JobID); ok {
@@ -367,7 +367,7 @@ func (c *connection) readJob(request *runnerwire.JobRead) error {
 	if stream != nil {
 		defer func() { _ = stream.Close() }()
 	} // Put owns it too; cover failed acknowledgement.
-	reply := &runnerwire.JobReadReply{ID: request.ID}
+	reply := &runnerproto.JobReadReply{ID: request.ID}
 	if err != nil {
 		text := err.Error()
 		reply.Error = &text
@@ -410,7 +410,7 @@ func (c *connection) completeWork(result connectionWork) error {
 	return nil
 }
 
-func (c *connection) helloOK(m *runnerwire.HelloOK) error {
+func (c *connection) helloOK(m *runnerproto.HelloOK) error {
 	id := deviceID(m.DeviceID)
 	if err := validateDeviceID(id); err != nil {
 		return err

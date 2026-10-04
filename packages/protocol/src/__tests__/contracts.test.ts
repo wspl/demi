@@ -102,12 +102,12 @@ function checkTable(schema: z.ZodType, fixtures: Json[], key: string, table: Tab
   }
 }
 
-const blocks = await read('internal/core/testdata/blocks.json', z.array(jsonSchema))
-const blockTable = await read('internal/core/testdata/blocks-mutations.json', tableSchema)
-const clientFrames = await read('internal/framewire/testdata/client-frames.json', z.array(jsonSchema))
-const clientFrameTable = await read('internal/framewire/testdata/client-frames-mutations.json', tableSchema)
-const serverFrames = await read('internal/framewire/testdata/server-frames.json', z.array(jsonSchema))
-const fileTypes = await read('internal/core/testdata/file-types.json', z.strictObject({
+const blocks = await read('internal/types/testdata/blocks.json', z.array(jsonSchema))
+const blockTable = await read('internal/types/testdata/blocks-mutations.json', tableSchema)
+const clientFrames = await read('internal/conversationproto/testdata/client-frames.json', z.array(jsonSchema))
+const clientFrameTable = await read('internal/conversationproto/testdata/client-frames-mutations.json', tableSchema)
+const serverFrames = await read('internal/conversationproto/testdata/server-frames.json', z.array(jsonSchema))
+const fileTypes = await read('internal/types/testdata/file-types.json', z.strictObject({
   previewMediaType: z.array(z.tuple([z.string(), z.string().nullable()])),
   showsInPlace: z.array(z.tuple([z.string(), z.boolean()])),
 }))

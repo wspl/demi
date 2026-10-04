@@ -14,7 +14,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // requireHostCode checks the filesystem or stream refusal at its public boundary.
@@ -44,7 +44,7 @@ func TestRunnerFileContentsWholeRangesAndOutsideMessages(t *testing.T) {
 	home := f.Home()
 	link, err := f.Link(t.Context())
 	requirePipe(t, err)
-	large := patternedBytes(runnerwire.MaxMessageBytes + 3)
+	large := patternedBytes(runnerproto.MaxMessageBytes + 3)
 	requirePipe(t, os.WriteFile(filepath.Join(home, "large.bin"), large, 0o600))
 	read, err := h.FS().ReadFile(t.Context(), filepath.Join(home, "large.bin"))
 	requirePipe(t, err)
@@ -142,7 +142,7 @@ func TestRunnerFileContentsWholeRangesAndOutsideMessages(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatal(entries)
 	}
-	_, err = h.FS().Stat(t.Context(), home+"/"+strings.Repeat("x", runnerwire.MaxMessageBytes))
+	_, err = h.FS().Stat(t.Context(), home+"/"+strings.Repeat("x", runnerproto.MaxMessageBytes))
 	var failure *host.Error
 	if !errors.As(err, &failure) || failure.Kind != host.TooLarge {
 		t.Fatal(err)
@@ -150,7 +150,7 @@ func TestRunnerFileContentsWholeRangesAndOutsideMessages(t *testing.T) {
 	listing := filepath.Join(home, "listing")
 	requirePipe(t, os.Mkdir(listing, 0o700))
 	name := strings.Repeat("n", 250)
-	for i := 0; i <= runnerwire.MaxMessageBytes/len(name); i++ {
+	for i := 0; i <= runnerproto.MaxMessageBytes/len(name); i++ {
 		requirePipe(t, os.WriteFile(filepath.Join(listing, fmt.Sprintf("%s%d", name, i)), nil, 0o600))
 	}
 	_, err = h.FS().ReadDir(t.Context(), listing)
@@ -183,8 +183,8 @@ func TestRunnerReaderLeavingStopsReadAndHostKeepsServing(t *testing.T) {
 		received += n
 	}
 	reader.Fail("the preview moved on")
-	tap.find(t, func(message runnerwire.Outbound) bool {
-		done, ok := message.(*runnerwire.PipeDone)
+	tap.find(t, func(message runnerproto.Outbound) bool {
+		done, ok := message.(*runnerproto.PipeDone)
 		return ok && !done.Ok
 	})
 	early, err := h.FS().ReadStream(t.Context(), path, host.ByteRange{})
@@ -251,21 +251,21 @@ func TestRunnerJobPipesCarryStreamsAndRefusedEndsDoNotBlock(t *testing.T) {
 	}
 	first := 0
 	for _, message := range tap.seen {
-		if view, ok := message.(*runnerwire.JobOutput); ok && view.JobID == job.ID() {
-			if len(view.Bytes) > runnerwire.JobViewBytes {
+		if view, ok := message.(*runnerproto.JobOutput); ok && view.JobID == job.ID() {
+			if len(view.Bytes) > runnerproto.JobViewBytes {
 				t.Fatal("unbounded output frame")
 			}
-			if view.Offset < runnerwire.JobViewBytes {
+			if view.Offset < runnerproto.JobViewBytes {
 				first += len(view.Bytes)
 			}
 		}
 	}
-	if first > runnerwire.JobViewBytes {
+	if first > runnerproto.JobViewBytes {
 		t.Fatal("unbounded first view")
 	}
 	request.Script = "head -c 2000000 /dev/zero; echo done >&2"
 	request.Stdin = nil
-	request.Stdout = &runnerwire.PipeRef{ID: "gone", URL: "/api/pipes/gone"}
+	request.Stdout = &runnerproto.PipeRef{ID: "gone", URL: "/api/pipes/gone"}
 	head, err := h.StartJob(t.Context(), request)
 	requirePipe(t, err)
 	end, err = head.End(t.Context())
@@ -279,7 +279,7 @@ func TestRunnerJobPipesCarryStreamsAndRefusedEndsDoNotBlock(t *testing.T) {
 		t.Fatal(done)
 	}
 	request.Script = "wc -c"
-	request.Stdin = &runnerwire.PipeRef{ID: "missing", URL: "/api/pipes/missing"}
+	request.Stdin = &runnerproto.PipeRef{ID: "missing", URL: "/api/pipes/missing"}
 	request.Stdout = nil
 	count, err := h.StartJob(t.Context(), request)
 	requirePipe(t, err)

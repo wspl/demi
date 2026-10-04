@@ -10,11 +10,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runner/shell/internal/engine"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 type recordingHandler struct {
@@ -26,14 +26,14 @@ func (*recordingHandler) Operations() []string { return []string{process.Raw} }
 
 func (h *recordingHandler) Invoke(
 	ctx context.Context,
-	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
-) (commandwire.Completion, error) {
+	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
+) (commandproto.Completion, error) {
 	if invocation.Request.Operation != process.Raw {
-		return commandwire.Completion{}, errors.New("declared command did not invoke raw")
+		return commandproto.Completion{}, errors.New("declared command did not invoke raw")
 	}
 	raw, err := process.DecodeRawCommand(invocation.Request.Args)
 	if err != nil {
-		return commandwire.Completion{}, err
+		return commandproto.Completion{}, err
 	}
 	h.mu.Lock()
 	h.requests = append(h.requests, raw)
@@ -42,14 +42,14 @@ func (h *recordingHandler) Invoke(
 		b, err := invocation.Input.Next(ctx)
 		if len(b) > 0 {
 			if err := invocation.Output.Stdout(ctx, b); err != nil {
-				return commandwire.Completion{}, err
+				return commandproto.Completion{}, err
 			}
 		}
 		if errors.Is(err, io.EOF) {
-			return commandwire.Completion{ExitCode: 7}, nil
+			return commandproto.Completion{ExitCode: 7}, nil
 		}
 		if err != nil {
-			return commandwire.Completion{}, err
+			return commandproto.Completion{}, err
 		}
 	}
 }
@@ -77,7 +77,7 @@ func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 	}()
 	var output strings.Builder
 	for chunk := range job.Output() {
-		if chunk.Stream == runnerwire.Stdout {
+		if chunk.Stream == runnerproto.Stdout {
 			output.Write(chunk.Bytes)
 		}
 	}
@@ -147,8 +147,8 @@ func (h *stoppedInputHandler) Waiting(delta int) {
 
 func (h *stoppedInputHandler) Invoke(
 	ctx context.Context,
-	invocation cmdsdk.InvocationContext[commandwire.LocalInvocation],
-) (commandwire.Completion, error) {
+	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
+) (commandproto.Completion, error) {
 	inputCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan error, 1)
@@ -165,15 +165,15 @@ func (h *stoppedInputHandler) Invoke(
 	cancel()
 	err := <-done
 	if !errors.Is(err, context.Canceled) {
-		return commandwire.Completion{}, errors.New("input read did not return cancellation")
+		return commandproto.Completion{}, errors.New("input read did not return cancellation")
 	}
 	if ctx.Err() != nil {
-		return commandwire.Completion{}, errors.New("input read waited for outer command cancellation")
+		return commandproto.Completion{}, errors.New("input read waited for outer command cancellation")
 	}
 	// Only supply bytes after the canceled read has ended. The next shell
 	// command must receive them, with no abandoned reader consuming them.
 	_, err = h.writer.WriteString("still readable\n")
-	return commandwire.Completion{}, err
+	return commandproto.Completion{}, err
 }
 
 // One in-process shell and pipe; normally finishes in milliseconds.

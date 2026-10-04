@@ -8,7 +8,7 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/store/storetest"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 var brokenPNG = []byte{0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 255, 254, 1}
@@ -90,15 +90,15 @@ func TestUploadNativeMediumThenRecord(t *testing.T) {
 	if len(blocks) != 2 {
 		t.Fatalf("image blocks: %v", blocks)
 	}
-	image, ok := blocks[0].(*core.UserImage)
+	image, ok := blocks[0].(*types.UserImage)
 	if !ok {
 		t.Fatalf("first block: %T", blocks[0])
 	}
-	ref := image.Source.(*core.MediaSourceRef)
+	ref := image.Source.(*types.MediaSourceRef)
 	if ref.Ref != upload.SHA256 || ref.MediaType != "image/png" {
 		t.Fatalf("image reference: %#v", ref)
 	}
-	record := blocks[1].(*core.UserAttachment)
+	record := blocks[1].(*types.UserAttachment)
 	if record.Snippet != nil {
 		t.Fatal("image has text snippet")
 	}
@@ -118,10 +118,10 @@ func TestUploadNativeMediumThenRecord(t *testing.T) {
 	if err != nil || len(pdf) != 2 {
 		t.Fatalf("PDF blocks: %v %v", pdf, err)
 	}
-	if _, ok := pdf[0].(*core.UserDocument); !ok {
+	if _, ok := pdf[0].(*types.UserDocument); !ok {
 		t.Fatalf("PDF medium: %T", pdf[0])
 	}
-	if _, ok := pdf[1].(*core.UserAttachment); !ok {
+	if _, ok := pdf[1].(*types.UserAttachment); !ok {
 		t.Fatalf("PDF record: %T", pdf[1])
 	}
 	text, held, err := store.UploadBlocks(
@@ -132,14 +132,14 @@ func TestUploadNativeMediumThenRecord(t *testing.T) {
 	if err != nil || len(text) != 1 {
 		t.Fatalf("text blocks: %v %v", text, err)
 	}
-	record = text[0].(*core.UserAttachment)
+	record = text[0].(*types.UserAttachment)
 	if record.Name != "notes.txt" || record.SizeBytes != 7 || record.Snippet == nil || *record.Snippet != "hello" {
 		t.Fatalf("text record: %#v", record)
 	}
 	if !reflect.DeepEqual(held, store.HeldMedia{}) {
 		t.Fatal("text held media")
 	}
-	if got := store.Unavailable("upload-9").(*core.UserText).Text; got != "[attachment upload-9 is not available]" {
+	if got := store.Unavailable("upload-9").(*types.UserText).Text; got != "[attachment upload-9 is not available]" {
 		t.Fatal(got)
 	}
 }
@@ -151,7 +151,7 @@ func TestUploadedImageFitsOrStaysRecord(t *testing.T) {
 	if err != nil || len(blocks) != 2 {
 		t.Fatalf("wide upload: %v %v", blocks, err)
 	}
-	source := blocks[0].(*core.UserImage).Source.(*core.MediaSourceRef)
+	source := blocks[0].(*types.UserImage).Source.(*types.MediaSourceRef)
 	if source.Ref == upload.SHA256 || source.MediaType != "image/png" {
 		t.Fatalf("fitted reference: %#v", source)
 	}
@@ -164,7 +164,7 @@ func TestUploadedImageFitsOrStaysRecord(t *testing.T) {
 	if !reflect.DeepEqual(held, expected) {
 		t.Fatal("wrong held fitted image")
 	}
-	record := blocks[1].(*core.UserAttachment)
+	record := blocks[1].(*types.UserAttachment)
 	if record.SizeBytes != uint64(len(upload.Bytes)) || record.SHA256 != upload.SHA256 {
 		t.Fatal("attachment lost original")
 	}
@@ -172,7 +172,7 @@ func TestUploadedImageFitsOrStaysRecord(t *testing.T) {
 	if err != nil || len(broken) != 1 {
 		t.Fatalf("broken upload: %v %v", broken, err)
 	}
-	if _, ok := broken[0].(*core.UserAttachment); !ok {
+	if _, ok := broken[0].(*types.UserAttachment); !ok {
 		t.Fatal("broken image has a native medium")
 	}
 	if !reflect.DeepEqual(held, store.HeldMedia{}) {

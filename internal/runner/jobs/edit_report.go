@@ -7,15 +7,15 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/wspl/demi/internal/cmdsdk"
-	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/commandsdk"
 	"github.com/wspl/demi/internal/runner/process"
-	"github.com/wspl/demi/internal/runnerwire"
+	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // finishEdits reports retained snapshots rather than attributing subsequent workspace writes.
-func finishEdits(ctx context.Context, recorder *cmdsdk.Recorder) ([]runnerwire.JobFileChange, bool) {
-	files := []runnerwire.JobFileChange{}
+func finishEdits(ctx context.Context, recorder *commandsdk.Recorder) ([]runnerproto.JobFileChange, bool) {
+	files := []runnerproto.JobFileChange{}
 	if recorder == nil {
 		return files, false
 	}
@@ -52,7 +52,7 @@ func finishEdits(ctx context.Context, recorder *cmdsdk.Recorder) ([]runnerwire.J
 		}
 		files = append(
 			files,
-			runnerwire.JobFileChange{
+			runnerproto.JobFileChange{
 				Path:    file.Path,
 				Kind:    file.Kind,
 				Edits:   file.Edits,
@@ -72,11 +72,11 @@ func readEditSnapshot(path string) ([]byte, error) {
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
 	defer func() { _ = file.Close() }()
-	bytes, err := io.ReadAll(io.LimitReader(file, commandwire.EditFileBytes+1))
+	bytes, err := io.ReadAll(io.LimitReader(file, commandproto.EditFileBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(bytes) > commandwire.EditFileBytes || !commandwire.IsText(bytes) {
+	if len(bytes) > commandproto.EditFileBytes || !commandproto.IsText(bytes) {
 		return nil, errors.New("invalid edit snapshot")
 	}
 	return bytes, nil

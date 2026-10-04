@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Kept is how long a tool result's image or video stays in its block.
@@ -17,7 +17,7 @@ const CacheLifetime = 24 * time.Hour
 // has been idle for Kept, permitting every expired tool medium to retire.
 type Retirement struct {
 	// Now is the time against which retention is checked.
-	Now core.Timestamp
+	Now types.Timestamp
 	// Idle reports whether the conversation is idle.
 	Idle bool
 }
@@ -27,23 +27,23 @@ type RetiredBlock struct {
 	// Index is the transcript row to replace.
 	Index int
 	// Value contains the block with retired media records.
-	Value core.Block
+	Value types.Block
 }
 
 // Retire returns replacements for expired tool images and videos, without
 // changing blocks. A tool call must be older than Kept and either the conversation
 // is idle or the call precedes a boundary older than CacheLifetime.
-func Retire(blocks []core.Block, retirement Retirement) []RetiredBlock {
+func Retire(blocks []types.Block, retirement Retirement) []RetiredBlock {
 	start := ReplayStart(blocks)
 	summarized := false
 	if start < len(blocks) {
-		if boundary, ok := blocks[start].(*core.CompactionBoundaryBlock); ok {
+		if boundary, ok := blocks[start].(*types.CompactionBoundaryBlock); ok {
 			summarized = olderThan(boundary.Timestamp, CacheLifetime, retirement.Now)
 		}
 	}
 	changed := []RetiredBlock{}
 	for i, block := range blocks {
-		call, ok := block.(*core.ToolCallBlock)
+		call, ok := block.(*types.ToolCallBlock)
 		if !ok {
 			continue
 		}
@@ -55,24 +55,24 @@ func Retire(blocks []core.Block, retirement Retirement) []RetiredBlock {
 		next.Output = slices.Clone(call.Output)
 		retired := false
 		for j, part := range next.Output {
-			var kind core.ModelMediaKind
-			var source core.ToolMediaSource
+			var kind types.ModelMediaKind
+			var source types.ToolMediaSource
 			switch p := part.(type) {
-			case *core.ToolImage:
+			case *types.ToolImage:
 				kind = "image"
 				source = p.Source
-			case *core.ToolVideo:
+			case *types.ToolVideo:
 				kind = "video"
 				source = p.Source
-			case *core.ToolText, *core.ToolGone:
+			case *types.ToolText, *types.ToolGone:
 				continue
 			}
 			switch s := source.(type) {
-			case *core.ToolMediaRef:
-				next.Output[j] = &core.ToolGone{
+			case *types.ToolMediaRef:
+				next.Output[j] = &types.ToolGone{
 					Kind:      kind,
 					MediaType: s.MediaType,
-					Cause:     &core.Retired{At: retirement.Now},
+					Cause:     &types.Retired{At: retirement.Now},
 				}
 				retired = true
 			}
@@ -85,7 +85,7 @@ func Retire(blocks []core.Block, retirement Retirement) []RetiredBlock {
 }
 
 // olderThan compares validated transcript timestamps against a retention age.
-func olderThan(timestamp core.Timestamp, age time.Duration, now core.Timestamp) bool {
+func olderThan(timestamp types.Timestamp, age time.Duration, now types.Timestamp) bool {
 	// Both timestamps are validated at entry; their conversion cannot fail.
 	before, _ := timestamp.Time()
 	after, _ := now.Time()

@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/wspl/demi/internal/agent/store"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/types"
 )
 
 // Each version holds the node's complete command-storage map.
@@ -15,7 +15,7 @@ import (
 type commandValues map[store.CommandStorageKey]json.RawMessage
 
 // writeCommandState preserves immutable command versions and replaces their boundaries.
-func writeCommandState(ctx context.Context, tx *sql.Tx, node core.NodeID, state store.CommandStateSnapshot) error {
+func writeCommandState(ctx context.Context, tx *sql.Tx, node types.NodeID, state store.CommandStateSnapshot) error {
 	revisions := make([]uint64, 0, len(state.Versions))
 	for _, version := range state.Versions {
 		if err := writeCommandVersion(ctx, tx, node, version); err != nil {
@@ -58,7 +58,7 @@ func writeCommandState(ctx context.Context, tx *sql.Tx, node core.NodeID, state 
 func readCommandState(
 	ctx context.Context,
 	tx *sql.Tx,
-	node core.NodeID,
+	node types.NodeID,
 	revision uint64,
 ) (store.CommandStateSnapshot, error) {
 	versions, err := queryRecords(
@@ -86,7 +86,7 @@ func readCommandState(
 			edge := store.BoundaryEdge(r.text("edge"))
 			r.bad("edge", edge.Validate())
 			return store.SessionBoundary{
-				BlockID:         checked(r, "block_id", core.ParseBlockID),
+				BlockID:         checked(r, "block_id", types.ParseBlockID),
 				Edge:            edge,
 				CommandRevision: r.count("command_revision"),
 			}
@@ -96,7 +96,7 @@ func readCommandState(
 	return store.CommandStateSnapshot{Revision: revision, Versions: versions, Boundaries: boundaries}, err
 }
 
-func writeCommandVersion(ctx context.Context, tx *sql.Tx, node core.NodeID, version store.CommandVersion) error {
+func writeCommandVersion(ctx context.Context, tx *sql.Tx, node types.NodeID, version store.CommandVersion) error {
 	before, found, err := queryRecord(
 		ctx,
 		tx,
