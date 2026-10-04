@@ -6,7 +6,8 @@
  * mark replace an earlier one's, in the order index, untracked, working tree,
  * conflicts. So a staged new file edited again (`AM`) shows the working
  * tree's M, and a staged type change alone (`T `) shows nothing, since VS Code
- * files no index resource for it. The words and letters are VS Code's own.
+ * files no index resource for it. The letters are VS Code's own; the words
+ * are its words in Demi's sentence style.
  */
 import type { SentenceText } from '../ui/ui-text'
 
@@ -79,7 +80,7 @@ export type GitMarkColor = 'added' | 'modified' | 'deleted' | 'renamed' | 'untra
 
 export interface GitMark {
   letter: string
-  /** VS Code's words for the status, its tooltip. */
+  /** VS Code's words for the status, in Demi's sentence style: its tooltip. */
   text: SentenceText
   color: GitMarkColor
   /** VS Code strikes a deleted file's name through. */

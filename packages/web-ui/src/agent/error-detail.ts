@@ -1,12 +1,13 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/protocol'
 import { z } from 'zod'
+import type { SentenceText } from '../ui/ui-text'
 
 /** A first line stays one line: past this the source's text goes in the body. */
 const HEADLINE_MAX_LENGTH = 160
 
 /** What a failure record shows: the first line, and the body when the first line is not the whole story. */
 export interface ErrorPresentation {
-  label: string
+  label: SentenceText
   detail: string | null
 }
 
