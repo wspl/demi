@@ -14,6 +14,7 @@ import (
 	"testing/synctest"
 
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/contract"
 	"go.uber.org/goleak"
 )
 
@@ -314,6 +315,19 @@ func TestInputAfterEarlyAnswerIsNotFailure(t *testing.T) {
 		Protocols: protocols(),
 		HTTP2:     &http.HTTP2Config{MaxReceiveBufferPerStream: 16},
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == commandwire.InfoPath {
+				info, err := contract.EncodeJSON(
+					commandwire.ServiceInfo{ProtocolVersion: 1, Operations: []string{"echo"}},
+				)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if _, err := w.Write(info); err != nil {
+					t.Error(err)
+				}
+				return
+			}
 			if r.URL.Path == commandwire.InvokePath {
 				metadata, err := readChunk(r.Body, commandwire.MaxMetadataBytes)
 				if err != nil {
@@ -354,6 +368,12 @@ func TestInputAfterEarlyAnswerIsNotFailure(t *testing.T) {
 	c, err := Connect(t.Context(), left)
 	must(t, err)
 	defer func() { must(t, c.Close()) }()
+	// Until the client reads the server's SETTINGS it may send under the
+	// default 64 KiB window, which Go's server answers with FLOW_CONTROL_ERROR.
+	// The server writes SETTINGS before any response and the client reads
+	// frames in order, so an answered Info proves the 16-byte window applies.
+	_, err = c.Info(t.Context())
+	must(t, err)
 	for _, conversation := range []string{"first", "second"} {
 		_, output, err := c.Conversation(t.Context(), &commandwire.ConversationRelease{Conversation: conversation})
 		must(t, err)
