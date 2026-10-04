@@ -1,26 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import Tooltip from './Tooltip.vue'
+import { isTextCut } from './truncation'
 
 /**
- * One line of text, cut with an ellipsis where it does not fit; while it is
- * cut, its tooltip shows it whole.
+ * One line of text, cut with an ellipsis at its end where it does not fit;
+ * while it is cut, its tooltip shows it whole. The Writing page's rule for
+ * long text says which text may be cut and where.
  */
 defineProps<{
   text: string
 }>()
-
-const cut = ref(false)
-
-// Measured as the pointer arrives, before the tooltip's delay has run.
-function measure(event: MouseEvent): void {
-  if (event.currentTarget instanceof HTMLElement)
-    cut.value = event.currentTarget.scrollWidth > event.currentTarget.clientWidth
-}
 </script>
 
 <template>
-  <Tooltip tag="span" class="block min-w-0 truncate" :content="text" :disabled="!cut" @mouseenter="measure">
+  <Tooltip tag="span" class="block min-w-0 truncate" :content="text" :show-if="isTextCut">
     {{ text }}
   </Tooltip>
 </template>
