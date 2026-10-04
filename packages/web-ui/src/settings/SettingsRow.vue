@@ -57,7 +57,7 @@ const emit = defineEmits<{
     <div
       class="flex items-center gap-y-2 @sm:flex-nowrap"
       :class="[
-      inset ? 'min-h-9 flex-nowrap gap-x-3 bg-overlay/[0.025] py-1.5 pl-7 pr-4' : compact ? 'min-h-10 flex-wrap gap-x-3 px-3 py-1.5' : 'min-h-14 flex-wrap gap-x-4 px-4 py-3',
+      inset ? 'min-h-9 flex-nowrap gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? 'min-h-10 flex-wrap gap-x-3 px-3 py-1.5' : 'min-h-14 flex-wrap gap-x-4 px-4 py-3',
       interactive ? 'cursor-default' : '',
       disabled ? 'cursor-not-allowed' : '',
     ]"
