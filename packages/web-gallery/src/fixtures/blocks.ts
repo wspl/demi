@@ -155,7 +155,11 @@ expect(readSessionCookie(header)).toEqual({
 \`\`\`
 `
 
-export const thinkingText = `The cookie name changed from sid to session. The helper already writes the new header. The test is the one still looking for sid.`
+export const thinkingText = `The cookie name changed from sid to session. The helper already writes the new header.
+
+The test is the one still looking for sid, so the fix belongs in the test, not in the helper.
+
+Let me search the test for the old name first.`
 
 export const shellTool = toolCall({
   id: 'tool-shell',
