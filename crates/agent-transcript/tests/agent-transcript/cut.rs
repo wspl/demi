@@ -102,7 +102,7 @@ fn abort() -> Block {
 fn the_resume_point_drops_only_what_nobody_can_have_acted_on() {
     let point = |blocks: &[Block]| {
         let point = resume_point(blocks);
-        (point.cut, point.full_rerun)
+        (point.cut, point.rerun.is_some())
     };
     // The failure alone: the turn reruns.
     assert_eq!(point(&[user("u1"), thinking(), error()]), (1, true));

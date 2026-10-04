@@ -86,3 +86,50 @@ export function failedCompactionTranscript(outsideTurn: boolean): Block[] {
     },
   ]
 }
+
+/**
+ * The second message failed before any answer, and the user then compacted.
+ * The pass summarized the first message, so its boundary sits before the
+ * first answer, and the marker after the failure is the last block: the
+ * failed turn behind it still offers Resume.
+ */
+export function compactedAfterFailedTurnTranscript(): Block[] {
+  return [
+    FIRST,
+    {
+      type: 'compaction_boundary',
+      id: 'compaction-after-failure-boundary',
+      createdAt,
+      model: demoModel,
+      summary: 'The login test expected the old cookie name.',
+      summaryTokens: 1_900,
+    },
+    ...FIRST_ANSWER,
+    SECOND,
+    {
+      type: 'error',
+      id: 'compaction-after-failure-error',
+      createdAt,
+      model: demoModel,
+      message: 'Anthropic API request failed with HTTP 529: Overloaded.',
+      code: 'overloaded',
+    },
+    {
+      type: 'compaction_marker',
+      id: 'compaction-after-failure-marker',
+      createdAt,
+      model: demoModel,
+      boundaryId: 'compaction-after-failure-boundary',
+      compactedTokens: 60_000,
+    },
+  ]
+}
+
+/**
+ * The user pressed Compact after the second answer and stopped it while the
+ * summary was written. The stop wrote nothing, so the transcript is the
+ * finished conversation it was.
+ */
+export function stoppedCompactTranscript(): Block[] {
+  return [FIRST, ...FIRST_ANSWER, SECOND, ...SECOND_ANSWER]
+}
