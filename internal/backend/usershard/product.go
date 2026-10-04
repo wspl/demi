@@ -32,9 +32,9 @@ const instructions = "You are a coding agent. Use shell session tools to inspect
 type shardToolsets struct{ shard *Shard }
 
 // Current returns the enabled plugin commands, profiles and revision.
-func (t shardToolsets) Current(ctx context.Context) (tools.Toolset, error) {
+func (t shardToolsets) Current(ctx context.Context) (tools.Set, error) {
 	set, err := t.shard.plugins.Toolset(ctx, []host.Declared{hostaccess.HostGroup(t.shard)})
-	return tools.Toolset{
+	return tools.Set{
 		Commands: set.Commands,
 		Profiles: set.Profiles,
 		Revision: set.Revision,
@@ -119,7 +119,7 @@ func (s *Shard) composeAgent() {
 		Context:      sources,
 		Providers:    s.providers,
 		Shells:       hostaccess.NewShardShellEnvironments(s, s.services.Native.Catalog(s.services.PublicURL)),
-		Stores: func(root core.NodeID) store.TreeStore {
+		Stores: func(root core.NodeID) store.Tree {
 			id := hostaccess.ConversationOf(root)
 			indexed := &indexedWakeup{shard: s, conversation: id}
 			return database.NewTreeStore(

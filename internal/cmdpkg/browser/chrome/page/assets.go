@@ -107,7 +107,7 @@ func AssetsList(
 		result = browserop.AssetsListResult{
 			Inventory:  handle,
 			Assets:     []browserop.Asset{},
-			InlineSvgs: []browserop.InlineSvg{},
+			InlineSVGs: []browserop.InlineSVG{},
 		}
 		inventory := tabs.Inventory{Assets: []tabs.Asset{}}
 		size := 0
@@ -339,7 +339,7 @@ func inventorySVGs(
 		if err != nil {
 			return err
 		}
-		result.InlineSvgs = append(result.InlineSvgs, browserop.InlineSvg{ID: id, HTML: html})
+		result.InlineSVGs = append(result.InlineSVGs, browserop.InlineSVG{ID: id, HTML: html})
 		inventory.Assets = append(
 			inventory.Assets,
 			tabs.Asset{ID: id, Kind: "image", MIME: "image/svg+xml", Source: &tabs.SVGAsset{SVG: html}},

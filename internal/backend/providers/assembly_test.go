@@ -170,7 +170,7 @@ func TestAssemblyRebuildsFreshConfigurationAndRedactsDetails(t *testing.T) {
 	}
 	catalogs := a.ModelCatalog(
 		ctx,
-		[]ProviderEntry{
+		[]Entry{
 			changed,
 			{
 				ID:         "missing",
@@ -324,7 +324,7 @@ func TestLoginExpiresAndResultRetentionEnds(t *testing.T) {
 				t.Error(err)
 			}
 		}()
-		entry := ProviderEntry{
+		entry := Entry{
 			ID:         "entry",
 			Family:     "device",
 			Credential: &SubscriptionCredential{},

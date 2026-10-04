@@ -78,7 +78,7 @@ func (p *conversationProviders) Runtime(
 
 func (r *conversationRuntime) serve(
 	ctx context.Context,
-	entry providers.ProviderEntry,
+	entry providers.Entry,
 	requested core.ModelSelection,
 ) *provider.Failure {
 	if credential, ok := entry.Credential.(*providers.SubscriptionCredential); ok && credential.Active == nil {

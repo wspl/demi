@@ -306,7 +306,7 @@ func wireConversation(t *testing.T, family wireFamily) []string {
 		},
 		session.Deps{
 			Runtime: runtime,
-			Store:   tree.SessionStore("root"),
+			Store:   tree.Session("root"),
 			IDs:     transcripttest.NewSequentialIDs("id"),
 			Clock:   providertest.FixedClock(core.UnixEpoch),
 			Config:  session.DefaultConfig(),

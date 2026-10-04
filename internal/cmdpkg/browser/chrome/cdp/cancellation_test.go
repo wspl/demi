@@ -87,7 +87,7 @@ func TestCancelledRawSendDetachesItsSessionAndJoinsSocket(t *testing.T) {
 			debug,
 			1,
 			"t1",
-			&browserop.CdpSendInput{
+			&browserop.CDPSendInput{
 				Tab:    "t1",
 				Method: "Runtime.evaluate",
 				Params: `{"expression":"debugger; 42","returnByValue":true}`,
@@ -115,7 +115,7 @@ func TestUnavailableWebMCPDoesNotInstallPageHooks(t *testing.T) {
 		executor,
 		&cdp.WebMCPState{},
 		"t1",
-		&browserop.WebmcpListInput{Tab: "t1"},
+		&browserop.WebMCPListInput{Tab: "t1"},
 	)
 	requireCode(t, err, "unsupported_capability")
 	if executor.calls != 1 {

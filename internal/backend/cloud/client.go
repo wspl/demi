@@ -26,7 +26,7 @@ type Client struct {
 	dial func(context.Context, string, string) (net.Conn, error)
 }
 type clientCommand struct {
-	call       machinewire.MachineCall
+	call       machinewire.Call
 	disconnect bool
 	final      bool
 	answer     chan clientAnswer

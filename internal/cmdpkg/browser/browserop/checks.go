@@ -25,7 +25,7 @@ func validateSelectInput(input SelectInput) error {
 	return nil
 }
 
-func validateCdpEventsInput(input CdpEventsInput) error {
+func validateCdpEventsInput(input CDPEventsInput) error {
 	return validateLocatorItems("method", input.Method)
 }
 

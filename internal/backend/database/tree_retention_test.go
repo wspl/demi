@@ -155,7 +155,7 @@ func TestEveryBlockWriteKeepsBlobIndexDerived(t *testing.T) {
 		),
 	)
 	assertIndex(t, db)
-	root := tree.SessionStore("root")
+	root := tree.Session("root")
 	save := func(count int, changes ...store.ChangedBlock) {
 		t.Helper()
 		require(t, root.Save(ctx, update(count, changes...), store.CommitGuard{}))
@@ -226,7 +226,7 @@ func TestEveryCommitReportsEarliestSavedWakeup(t *testing.T) {
 	early, err := core.TimestampFromMillisecond(5000)
 	require(t, err)
 	require(t, tree.CreateNode(ctx, node("root", nil, 0), waiting(&late, nil)))
-	root := tree.SessionStore("root")
+	root := tree.Session("root")
 	require(t, root.Save(ctx, waiting(&late), store.CommitGuard{}))
 	require(t, tree.CreateNode(ctx, node("child", new(core.NodeID("root")), 1), waiting(&early)))
 	require(t, root.Save(ctx, waiting(), store.CommitGuard{}))

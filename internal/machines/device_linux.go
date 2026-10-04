@@ -20,7 +20,7 @@ import (
 
 type deviceRequest struct {
 	ctx       context.Context
-	operation machinewire.MachineCall
+	operation machinewire.Call
 	reply     chan deviceReply
 }
 type deviceReply struct {
@@ -51,7 +51,7 @@ func newDeviceWorker(m *Manager, id machinewire.DeviceID) *deviceWorker {
 	}
 }
 
-func (w *deviceWorker) call(ctx context.Context, operation machinewire.MachineCall) (json.RawMessage, error) {
+func (w *deviceWorker) call(ctx context.Context, operation machinewire.Call) (json.RawMessage, error) {
 	request := deviceRequest{ctx: ctx, operation: operation, reply: make(chan deviceReply, 1)}
 	w.queue <- request
 	answer := <-request.reply
@@ -124,7 +124,7 @@ func (w *deviceWorker) reportDeath(_ context.Context) {
 	}
 }
 
-func (w *deviceWorker) operate(ctx context.Context, operation machinewire.MachineCall) (json.RawMessage, error) {
+func (w *deviceWorker) operate(ctx context.Context, operation machinewire.Call) (json.RawMessage, error) {
 	var err error
 	switch call := operation.(type) {
 	case *machinewire.RuntimeStateCall:

@@ -52,7 +52,7 @@ type WhereArgs struct {
 type WhereReport struct {
 	// +demi:nullable
 	Label   *string                    `json:"label"`
-	Context commandwire.CommandContext `json:"context"`
+	Context commandwire.Context `json:"context"`
 	CWD     string                     `json:"cwd"`
 	// +demi:nullable
 	Value *string `json:"value"`

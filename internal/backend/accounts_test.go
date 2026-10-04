@@ -224,7 +224,7 @@ func accountDeviceEntry(
 	script *backendtest.AccountLoginScript,
 ) webapi.ProviderDTO {
 	t.Helper()
-	script.Approve(true)
+	script.SetApproved(true)
 	id := accountStartLogin(ctx, t, server, s, "/api/providers/subscription-login", `{"providerType":"device"}`)
 	state := accountAwait(ctx, t, server, s, id, accountEnded)
 	if _, ok := state.(*webapi.LoginStateCompleted); !ok {
@@ -396,7 +396,7 @@ func TestConcurrentDeviceLoginsPublishOneEntryAndTheOtherStoresNothing(t *testin
 		pending,
 		&webapi.LoginStatePending{VerificationURL: &verification, UserCode: &code},
 	)
-	script.Approve(true)
+	script.SetApproved(true)
 	outcomes := []webapi.LoginState{
 		accountAwait(ctx, t, server, &master, first, accountEnded),
 		accountAwait(ctx, t, server, &master, second, accountEnded),
@@ -505,7 +505,7 @@ func TestALoginIntoAnEntryHoldsItUntilItEndsAndCancellingStopsItAtOnce(t *testin
 	server, master, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
 	entry := accountDeviceEntry(ctx, t, server, &master, script)
-	script.Approve(false)
+	script.SetApproved(false)
 	path := "/api/providers/" + string(entry.ID)
 	id := accountStartLogin(ctx, t, server, &master, path+"/accounts/login", "{}")
 	conversationRefusal(

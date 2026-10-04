@@ -19,9 +19,9 @@ func TestTextRefusals(t *testing.T) {
 		err  error
 	}{
 		{[]byte("1\n2\n"), "1\n2\n", nil},
-		{[]byte{0, 255, 1}, "", runners.TextNotText},
-		{[]byte("nul \x00 inside"), "", runners.TextNotText},
-		{bytes.Repeat([]byte("a"), commandwire.EditFileBytes+1), "", runners.TextTooLarge},
+		{[]byte{0, 255, 1}, "", runners.ErrTextNotText},
+		{[]byte("nul \x00 inside"), "", runners.ErrTextNotText},
+		{bytes.Repeat([]byte("a"), commandwire.EditFileBytes+1), "", runners.ErrTextTooLarge},
 	} {
 		got, err := runners.TextOf(tc.data)
 		if got != tc.text || !errors.Is(err, tc.err) {
@@ -72,7 +72,7 @@ func TestHostFileListingAndEarlySizeRefusal(t *testing.T) {
 		t.Context(),
 		fs,
 		"/work/file",
-	); !errors.Is(err, runners.TextTooLarge) ||
+	); !errors.Is(err, runners.ErrTextTooLarge) ||
 		len(fs.calls) != 0 {
 		t.Fatalf("oversized file was read: %v %v", err, fs.calls)
 	}

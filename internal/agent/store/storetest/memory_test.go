@@ -16,7 +16,7 @@ import (
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 func TestStoreContract(t *testing.T) {
-	StoreContract(t, func(_ *testing.T) store.TreeStore { return NewMemoryTreeStore() })
+	StoreContract(t, func(_ *testing.T) store.Tree { return NewMemoryTreeStore() })
 }
 
 func TestGuardAndCancellationLeaveCheckpointsUnchanged(t *testing.T) {
@@ -34,7 +34,7 @@ func TestGuardAndCancellationLeaveCheckpointsUnchanged(t *testing.T) {
 		result := make(chan error, 1)
 		update := contractUpdate([]core.QueuedMessage{contractMessage("later")}, nil)
 		workers.Go(func() {
-			result <- memory.SessionStore("root").Save(t.Context(), update, store.NewCommitGuard(lifetime))
+			result <- memory.Session("root").Save(t.Context(), update, store.NewCommitGuard(lifetime))
 		})
 		if err := gate.Wait(t.Context(), 1); err != nil {
 			t.Fatal(err)
@@ -48,7 +48,7 @@ func TestGuardAndCancellationLeaveCheckpointsUnchanged(t *testing.T) {
 		t.Cleanup(gate.Release)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		go func() { result <- memory.SessionStore("root").Save(ctx, update, store.CommitGuard{}) }()
+		go func() { result <- memory.Session("root").Save(ctx, update, store.CommitGuard{}) }()
 		if err := gate.Wait(t.Context(), 1); err != nil {
 			t.Fatal(err)
 		}
@@ -80,7 +80,7 @@ func TestFailedCreationAndSaveAreAtomic(t *testing.T) {
 	before := memory.Checkpoint("root")
 	memory.FailSaves(1)
 	update := contractUpdate([]core.QueuedMessage{contractMessage("later")}, nil)
-	if err := memory.SessionStore("root").Save(t.Context(), update, store.CommitGuard{}); err == nil {
+	if err := memory.Session("root").Save(t.Context(), update, store.CommitGuard{}); err == nil {
 		t.Fatal("injected database failure did not fail")
 	}
 	if !reflect.DeepEqual(memory.Checkpoint("root"), before) {
@@ -110,7 +110,7 @@ func TestCorruptTranscriptStopsLoad(t *testing.T) {
 	if err := memory.CreateNode(t.Context(), contractRecord("root", nil, 0), update); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := memory.SessionStore("root").Load(t.Context())
+	_, _, err := memory.Session("root").Load(t.Context())
 	if !errors.Is(err, store.ErrCorrupt) {
 		t.Fatalf("missing row: %v", err)
 	}

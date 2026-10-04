@@ -202,7 +202,7 @@ func pairedRunner(t *testing.T, services *usershard.Services) (database.DeviceRe
 	return device, &runnerwire.Hello{
 		Protocol:    runnerwire.Version,
 		DeviceToken: &token,
-		Runner: runnerwire.RunnerInfo{
+		Runner: runnerwire.Info{
 			Name:     "fixture",
 			Platform: runnerwire.RunnerPlatformLinux,
 			Version:  "fixture",

@@ -27,7 +27,7 @@ type User struct {
 	notificationCalls  sync.WaitGroup
 	registry           *Registry
 	id                 webapi.UserID
-	shard              PluginShard
+	shard              Shard
 	control            *database.ControlService
 	marks              pagesync.UserMarks
 	// admission serializes choice reads/commits and instance admission/close across
@@ -51,7 +51,7 @@ type instance struct {
 
 // NewUser creates one instance of every registered plugin for user. The shard
 // supplies storage, page marks and product services without exposing its state.
-func NewUser(registry *Registry, user webapi.UserID, shard PluginShard) *User {
+func NewUser(registry *Registry, user webapi.UserID, shard Shard) *User {
 	notificationCtx, notificationCancel := context.WithCancel(context.Background())
 	u := &User{
 		notificationCtx:    notificationCtx,

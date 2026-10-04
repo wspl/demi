@@ -33,7 +33,7 @@ type RPCInvocation struct {
 	CWD  string            `json:"cwd"`
 	Env  map[string]string `json:"env"`
 	// The invoking job's command context, from the backend's record of it.
-	Context commandwire.CommandContext `json:"context"`
+	Context commandwire.Context `json:"context"`
 	// Whose command storage the invoking job reaches, which a job the
 	// handler starts elsewhere carries on; none for a job no agent started.
 	Caller *JobCaller `json:"caller,omitempty"`

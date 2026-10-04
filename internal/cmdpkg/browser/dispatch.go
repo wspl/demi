@@ -111,9 +111,9 @@ func executeTab(
 		return resultOutput(page.AssetsList(ctx, invocation, tab, *input, deadline))
 	case *browserop.AssetsExportInput:
 		return resultOutput(page.AssetsExport(ctx, invocation, tab, *input, deadline))
-	case *browserop.CdpTargetsInput, *browserop.CdpDetachInput, *browserop.CdpSendInput, *browserop.CdpEventsInput:
+	case *browserop.CDPTargetsInput, *browserop.CDPDetachInput, *browserop.CDPSendInput, *browserop.CDPEventsInput:
 		return executeDebugging(ctx, cancellation, tab, invocation, command, deadline)
-	case *browserop.WebmcpListInput, *browserop.WebmcpCallInput:
+	case *browserop.WebMCPListInput, *browserop.WebMCPCallInput:
 		return webMCP(ctx, tab, command, deadline)
 	case *browserop.ProbeInput:
 		if input.Output != nil {
@@ -183,7 +183,7 @@ func open(
 	if err != nil {
 		return commandOutput{}, err
 	}
-	load := browserop.LoadDomContentLoaded
+	load := browserop.LoadDOMContentLoaded
 	if input.Load != nil {
 		load = *input.Load
 	}

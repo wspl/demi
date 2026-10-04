@@ -94,7 +94,7 @@ func TestCloudStopOrdersExposeCreation(t *testing.T) {
 			services: &Services{
 				Control:      control,
 				Clock:        clock,
-				Sync:         &pagesync.SyncRegistry{},
+				Sync:         &pagesync.Registry{},
 				ExposeDomain: &domain,
 				PublicURL:    public,
 			},

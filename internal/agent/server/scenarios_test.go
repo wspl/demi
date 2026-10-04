@@ -69,12 +69,12 @@ func fixtureWith(
 	resolver := &servertest.ScriptedProviders{}
 	resolver.Provide("stub", script)
 	deps := server.Deps[*toolstest.NoHost]{
-		Toolsets:      tools.Toolset{Commands: &host.CommandSet{}, Revision: "test"},
+		Toolsets:      tools.Set{Commands: &host.CommandSet{}, Revision: "test"},
 		Instructions:  "system prompt",
 		Hosts:         &toolstest.NoHost{},
 		Shells:        toolstest.NoShells{},
 		Providers:     resolver,
-		Stores:        func(core.NodeID) store.TreeStore { return memory },
+		Stores:        func(core.NodeID) store.Tree { return memory },
 		Clock:         core.SystemClock{},
 		IDs:           &testIDs{},
 		Config:        config,

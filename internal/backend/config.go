@@ -77,7 +77,7 @@ type Config struct {
 	// Lifecycle is when a conversation's Host resources are reclaimed.
 	Lifecycle usershard.LifecycleTuning
 	// Cloud is how the Cloud is run.
-	Cloud cloud.CloudTuning
+	Cloud cloud.Tuning
 	// Exposes is how the public relay treats its connections.
 	Exposes usershard.ExposeTuning
 	// Hooks supplies optional test synchronization points before any flow starts.

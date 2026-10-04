@@ -11,10 +11,10 @@ import (
 // The shared contract remains defined and generated in core.
 type Profile = core.Profile
 
-// Toolset supplies the commands and profiles a tree takes when it opens and
+// Set supplies the commands and profiles a tree takes when it opens and
 // keeps until it closes. Revision distinguishes changed commands or profiles.
 // Callers treat its commands and profiles as immutable.
-type Toolset struct {
+type Set struct {
 	// Commands contains the tree's offered commands.
 	Commands *host.CommandSet
 	// Profiles contains its named subagent profiles.
@@ -25,11 +25,11 @@ type Toolset struct {
 
 // ToolsetSource supplies the product's current toolset when a tree opens.
 type ToolsetSource interface {
-	Current(ctx context.Context) (Toolset, error)
+	Current(ctx context.Context) (Set, error)
 }
 
 // Current returns this fixed toolset.
-func (t Toolset) Current(_ context.Context) (Toolset, error) { return t, nil }
+func (t Set) Current(_ context.Context) (Set, error) { return t, nil }
 
 // NodeContext identifies the node a product question concerns.
 type NodeContext struct {

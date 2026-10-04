@@ -48,7 +48,7 @@ type Shard struct {
 	plugins       *plugins.User
 	agent         *server.Server[*remotehost.Host]
 	providers     *conversationProviders
-	exposes       expose.Exposes
+	exposes       expose.Connections
 	deviceOrder   gates.KeyedSerial[webapi.DeviceID]
 	forks         gates.KeyedSerial[string]
 	titles        map[webapi.ConversationID]*idleWatch
@@ -147,7 +147,7 @@ func (s *Shard) HostShard() hostaccess.HostShard { return s }
 
 // ExposeShard supplies the expose boundary through a private adapter because
 // its Control, PublicURL and Exposes signatures differ from other consumers.
-func (s *Shard) ExposeShard() expose.ExposeShard { return exposeView{s} }
+func (s *Shard) ExposeShard() expose.Shard { return exposeView{s} }
 
 // RouteDeaths routes manager death events to the owning user's Cloud until
 // deaths closes or ctx ends. Its caller owns and joins the call.

@@ -27,7 +27,7 @@ type CommandKeeper interface {
 }
 
 // ContextSource builds the command context for each job.
-type ContextSource func(context.Context) (commandwire.CommandContext, error)
+type ContextSource func(context.Context) (commandwire.Context, error)
 
 // EnvironmentOptions supplies a node's Host, commands, page feed and lifetime services.
 type EnvironmentOptions struct {

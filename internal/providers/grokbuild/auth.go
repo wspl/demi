@@ -96,7 +96,7 @@ type auth struct {
 
 func (a *auth) document() (provider.AccountDocument, error) {
 	if a.account == nil {
-		return nil, provider.AuthFailure{Family: "Grok", Reason: provider.AuthReasonMissing}
+		return nil, provider.AuthError{Family: "Grok", Reason: provider.AuthReasonMissing}
 	}
 	return a.pool.Document(*a.account), nil
 }

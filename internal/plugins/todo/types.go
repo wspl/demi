@@ -6,18 +6,18 @@ package todo
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
 // +demi:enum pending in_progress done
-type TodoStatus string
+type Status string
 
 const (
-	Pending    TodoStatus = "pending"
-	InProgress TodoStatus = "in_progress"
-	Done       TodoStatus = "done"
+	Pending    Status = "pending"
+	InProgress Status = "in_progress"
+	Done       Status = "done"
 )
 
-type TodoItem struct {
-	ID     string     `json:"id"`
-	Text   string     `json:"text"`
-	Status TodoStatus `json:"status"`
+type Item struct {
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	Status Status `json:"status"`
 }
 
 // The input of `demi todo add`.
@@ -37,7 +37,7 @@ type UpdateArgs struct {
 	// Replacement text
 	Text *string `json:"text,omitempty"`
 	// Replacement status
-	Status *TodoStatus `json:"status,omitempty"`
+	Status *Status `json:"status,omitempty"`
 }
 
 // The input of `demi todo done`.
@@ -52,8 +52,8 @@ type DoneArgs struct {
 // +demi:root
 // +demi:schema
 // +demi:tolerant
-type TodoList struct {
-	Todos []TodoItem `json:"todos"`
+type List struct {
+	Todos []Item `json:"todos"`
 }
 
 // What the other commands print with `--json`: the todo they changed.
@@ -61,8 +61,8 @@ type TodoList struct {
 // +demi:schema
 // +demi:tolerant
 type OneTodo struct {
-	Todo TodoItem `json:"todo"`
+	Todo Item `json:"todo"`
 }
 
 // +demi:root
-type storedTodos []TodoItem
+type storedTodos []Item

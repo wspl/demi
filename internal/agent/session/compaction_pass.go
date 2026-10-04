@@ -92,7 +92,7 @@ func (s *Session) compactPass(ctx context.Context) (bool, error) {
 		}
 		summary, err := s.summarize(ctx, view.Blocks[window.Start:cut])
 		if err != nil {
-			var report *ErrorReport
+			var report *ReportError
 			if errors.As(err, &report) && report.Code != nil &&
 				*report.Code == string(provider.ContextLengthExceeded) &&
 				cut > first+1 {

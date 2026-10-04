@@ -202,7 +202,7 @@ func (s *Shard) createCloudWorkspace(ctx context.Context, name string) (database
 // A provider request that fails is represented by TestResultFailed.
 func (s *Shard) TestProvider(
 	ctx context.Context,
-	entry providers.ProviderEntry,
+	entry providers.Entry,
 	builtProvider provider.Provider,
 	account *webapi.CredentialID,
 	modelID string,

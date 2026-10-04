@@ -130,12 +130,12 @@ func serving(t *testing.T) (*server.Server[*scriptedHost], *scriptedShell, *serv
 	shells := &scriptedShells{}
 	s := server.New(
 		server.Deps[*scriptedHost]{
-			Toolsets:      tools.Toolset{Commands: &host.CommandSet{}, Revision: "none"},
+			Toolsets:      tools.Set{Commands: &host.CommandSet{}, Revision: "none"},
 			Instructions:  "system prompt",
 			Hosts:         &scriptedHost{},
 			Shells:        shells,
 			Providers:     providers,
-			Stores:        func(core.NodeID) store.TreeStore { return memory },
+			Stores:        func(core.NodeID) store.Tree { return memory },
 			Clock:         core.SystemClock{},
 			IDs:           &testIDs{},
 			Config:        server.DefaultConfig(),

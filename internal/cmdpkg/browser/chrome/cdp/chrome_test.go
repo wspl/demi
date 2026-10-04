@@ -232,7 +232,7 @@ func TestChromeAcceptance(t *testing.T) {
 		}
 		return value
 	}
-	rows, err := browserop.DecodeCdpTargetsResult(call(1, "cdp.targets", map[string]any{"tab": "t1"}))
+	rows, err := browserop.DecodeCDPTargetsResult(call(1, "cdp.targets", map[string]any{"tab": "t1"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestChromeAcceptance(t *testing.T) {
 	if worker == "" {
 		t.Fatalf("worker missing: %+v", rows)
 	}
-	sent, err := browserop.DecodeCdpSendResult(
+	sent, err := browserop.DecodeCDPSendResult(
 		call(
 			1,
 			"cdp.send",
@@ -268,13 +268,13 @@ func TestChromeAcceptance(t *testing.T) {
 			debug,
 			1,
 			"t1",
-			&browserop.CdpSendInput{Tab: "t1", Method: method, Params: "{}"},
+			&browserop.CDPSendInput{Tab: "t1", Method: method, Params: "{}"},
 		)
 		operation.Close()
 		requireCode(t, err, "cdp_method_denied")
 	}
 	call(1, "cdp.send", map[string]any{"tab": "t1", "method": "Runtime.enable", "params": "{}"})
-	initial, err := browserop.DecodeCdpEventsResult(call(1, "cdp.events", map[string]any{"tab": "t1"}))
+	initial, err := browserop.DecodeCDPEventsResult(call(1, "cdp.events", map[string]any{"tab": "t1"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestChromeAcceptance(t *testing.T) {
 			"params": `{"expression":"console.log('first'); console.log('second')"}`,
 		},
 	)
-	first, err := browserop.DecodeCdpEventsResult(
+	first, err := browserop.DecodeCDPEventsResult(
 		call(
 			1,
 			"cdp.events",
@@ -305,7 +305,7 @@ func TestChromeAcceptance(t *testing.T) {
 	if len(first.Events) != 1 || !first.HasMore {
 		t.Fatalf("first page: %+v", first)
 	}
-	second, err := browserop.DecodeCdpEventsResult(
+	second, err := browserop.DecodeCDPEventsResult(
 		call(
 			1,
 			"cdp.events",
@@ -341,27 +341,27 @@ func TestChromeAcceptance(t *testing.T) {
 		defer operation.Close()
 		return cdp.ExecuteWebMCP(ctx, operation, session, state, "t1", command)
 	}
-	raw, err := web(&browserop.WebmcpListInput{Tab: "t1"})
+	raw, err := web(&browserop.WebMCPListInput{Tab: "t1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools, err := browserop.DecodeWebmcpListResult(raw)
+	tools, err := browserop.DecodeWebMCPListResult(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw, err = web(
-		&browserop.WebmcpCallInput{Tab: "t1", Tools: tools.Tools, Tool: "echo", Arguments: `{"text":"hello"}`},
+		&browserop.WebMCPCallInput{Tab: "t1", Tools: tools.Tools, Tool: "echo", Arguments: `{"text":"hello"}`},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reply, err := browserop.DecodeWebmcpCallResult(raw)
+	reply, err := browserop.DecodeWebMCPCallResult(raw)
 	if err != nil || string(reply.Result) != `{"echo":"hello"}` {
 		t.Fatal(string(raw), err)
 	}
-	_, err = web(&browserop.WebmcpCallInput{Tab: "t1", Tools: tools.Tools, Tool: "echo", Arguments: `{"text":42}`})
+	_, err = web(&browserop.WebMCPCallInput{Tab: "t1", Tools: tools.Tools, Tool: "echo", Arguments: `{"text":42}`})
 	requireCode(t, err, "invalid_input")
 	evaluate("document.querySelector('#replace').onclick().then(()=>true)")
-	_, err = web(&browserop.WebmcpCallInput{Tab: "t1", Tools: tools.Tools, Tool: "echo", Arguments: `{"text":"again"}`})
+	_, err = web(&browserop.WebMCPCallInput{Tab: "t1", Tools: tools.Tools, Tool: "echo", Arguments: `{"text":"again"}`})
 	requireCode(t, err, "stale_tools")
 }

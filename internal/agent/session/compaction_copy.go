@@ -17,7 +17,7 @@ func (copyRuntime) EnterAction(context.Context) (*gates.Lease, error) { return n
 
 // ReserveEdit refuses transcript edits in a compaction copy.
 func (copyRuntime) ReserveEdit(context.Context) (*gates.Reservation, error) {
-	return nil, &ErrorReport{Message: "A session copy is never edited"}
+	return nil, &ReportError{Message: "A session copy is never edited"}
 }
 
 // Context omits new context from the conversation being summarized.
@@ -40,7 +40,7 @@ func (copyStore) Load(context.Context) (store.Checkpoint, bool, error) {
 }
 
 // Blobs returns the unstored media source of the compaction copy.
-func (copyStore) Blobs() store.BlobStore { return copyBlobs{} }
+func (copyStore) Blobs() store.Blobs { return copyBlobs{} }
 
 type copyBlobs struct{}
 

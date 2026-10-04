@@ -12,11 +12,11 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// PluginShard supplies the services the plugin host needs of its user's shard.
+// Shard supplies the services the plugin host needs of its user's shard.
 // Host operations go through the conversation's host access. Implementations
 // support concurrent calls, including ports retained by plugin-owned work.
 // Operation errors preserve plugin.PortRefusal or host.PortError for errors.As.
-type PluginShard interface {
+type Shard interface {
 	// Control returns the control service holding the user's plugin values and choices.
 	Control() *database.ControlService
 	// Marks returns the user's page-state change marks.

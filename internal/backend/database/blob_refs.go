@@ -15,7 +15,7 @@ import (
 // Implementations support concurrent calls and never call back into the database.
 type OwnerBlobs interface {
 	// Media is the namespace as a session reaches it through its tree store.
-	Media() store.BlobStore
+	Media() store.Blobs
 	// CommitUses records references written or removed inside a transaction before
 	// commit. A blob being deleted refuses the transaction. This operation performs
 	// no network IO; cancellation must not abandon an admitted commit.

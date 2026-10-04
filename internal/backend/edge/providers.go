@@ -20,7 +20,7 @@ func (e *Edge) configures(r *http.Request) error {
 	return nil
 }
 
-func (e *Edge) scoped(r *http.Request) (*providers.ProviderEntry, error) {
+func (e *Edge) scoped(r *http.Request) (*providers.Entry, error) {
 	missing := apiFailure(404, "provider_not_found", "No such provider")
 	id, err := webapi.ParseProviderID(r.PathValue("id"))
 	if err != nil {
@@ -36,7 +36,7 @@ func (e *Edge) scoped(r *http.Request) (*providers.ProviderEntry, error) {
 	return entry, nil
 }
 
-func (e *Edge) reserve(entry *providers.ProviderEntry) (*providers.Reservation, error) {
+func (e *Edge) reserve(entry *providers.Entry) (*providers.Reservation, error) {
 	reservation := e.state.Services.Operations.Reserve(entry.ID)
 	if reservation == nil {
 		return nil, apiFailure(409, "provider_busy", "Another change of this provider is still running")
@@ -268,7 +268,7 @@ func (e *Edge) providerStatus(w http.ResponseWriter, r *http.Request) error {
 
 func (e *Edge) accountProvider(
 	r *http.Request,
-	entry providers.ProviderEntry,
+	entry providers.Entry,
 	account *webapi.CredentialID,
 ) (provider.Provider, error) {
 	if account == nil {
@@ -364,7 +364,7 @@ func (e *Edge) testProvider(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func patchedAPIKey(entry *providers.ProviderEntry, patch webapi.ProviderPatch) (*providers.APIKeyConfig, error) {
+func patchedAPIKey(entry *providers.Entry, patch webapi.ProviderPatch) (*providers.APIKeyConfig, error) {
 	if patch.APIKey == nil && patch.BaseURL == nil && patch.Models == nil {
 		return nil, nil
 	}

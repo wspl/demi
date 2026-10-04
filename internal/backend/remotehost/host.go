@@ -392,7 +392,7 @@ type JobStart struct {
 	// Env is exactly the variables above the device's environment.
 	Env map[string]string
 	// Context identifies the conversation and command locale.
-	Context commandwire.CommandContext
+	Context commandwire.Context
 	// Caller identifies the node that owns command callbacks.
 	Caller *host.JobCaller
 	// Commands pins the declared command manifest for this job.
@@ -517,7 +517,7 @@ type LogPage struct {
 // ServiceRequest describes a user stream or one-shot service invocation.
 type ServiceRequest struct {
 	// Context identifies the conversation and command locale.
-	Context commandwire.CommandContext
+	Context commandwire.Context
 	// Package is the descriptor of the invoked command package.
 	Package commandwire.PackageDescriptor
 	// Operation names the package operation.

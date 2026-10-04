@@ -45,7 +45,7 @@ func servePipe(w http.ResponseWriter, r *http.Request, pipes *remotehost.Pipes, 
 	refused := func(err error) {
 		status := 409
 		var refusal remotehost.PipeRefusal
-		if errors.As(err, &refusal) && refusal == remotehost.PipeNotFound {
+		if errors.As(err, &refusal) && refusal == remotehost.ErrPipeNotFound {
 			status = 404
 		}
 		plain(w, status, err.Error())

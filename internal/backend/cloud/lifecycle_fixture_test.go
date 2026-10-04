@@ -141,9 +141,9 @@ type cloudFixture struct {
 	records  *memoryRecords
 	// mu protects scripted observations; scripts change only when workers are quiescent.
 	mu                sync.Mutex
-	calls             []machinewire.MachineCall
+	calls             []machinewire.Call
 	changed           chan struct{}
-	hook              func(machinewire.MachineCall) (string, error)
+	hook              func(machinewire.Call) (string, error)
 	runtime           machinewire.RuntimeState
 	connect           bool
 	flush             bool
@@ -255,7 +255,7 @@ func newCloudFixture(t *testing.T) *cloudFixture {
 	f.records = &memoryRecords{operations: make(map[webapi.OperationID]database.ManagedOperation)}
 	f.cloud = New(ctx, &sync.Mutex{})
 	f.cloud.records = f.records
-	f.marks = (&pagesync.SyncRegistry{}).Of(f.User())
+	f.marks = (&pagesync.Registry{}).Of(f.User())
 	f.pipes = remotehost.NewPipes(remotehost.Arrival)
 	f.control = databasetest.Control(ctx, t, nil)
 	// Last-seen persistence is deliberately unavailable in this fixture. Cloud
@@ -452,7 +452,7 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 	}
 }
 
-func (f *cloudFixture) answer(call machinewire.MachineCall) (string, error) {
+func (f *cloudFixture) answer(call machinewire.Call) (string, error) {
 	if f.hook != nil {
 		result, err := f.hook(call)
 		if result != "" || err != nil {

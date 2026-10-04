@@ -62,7 +62,7 @@ func validateArtifactResolve(message ArtifactResolve) error {
 }
 
 // validateRunnerInfo checks the runner's native target when supplied.
-func validateRunnerInfo(info RunnerInfo) error {
+func validateRunnerInfo(info Info) error {
 	if info.NativeTarget != nil && !commandwire.IsTarget(*info.NativeTarget) {
 		return fmt.Errorf("invalid target: %s", *info.NativeTarget)
 	}

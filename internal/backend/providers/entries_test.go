@@ -37,7 +37,7 @@ func TestVaultScopeAndSecretDisclosure(t *testing.T) {
 	if foreign, err := vault.Visible(ctx, "another", entry.ID); err != nil || foreign != nil {
 		t.Fatalf("scope escaped: %v %v", foreign, err)
 	}
-	shared := NewVault(vault.control, vault.key, webapi.InstanceModeShared, &pagesync.SyncRegistry{})
+	shared := NewVault(vault.control, vault.key, webapi.InstanceModeShared, &pagesync.Registry{})
 	visible, err := shared.Visible(ctx, "another", entry.ID)
 	if err != nil || visible == nil {
 		t.Fatalf("shared entry missing: %v %v", visible, err)

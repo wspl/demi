@@ -40,7 +40,7 @@ func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 			var released atomic.Int32
 			s.conversations.cloudAdmission = func(
 				ctx context.Context,
-				_ cloud.CloudShard,
+				_ cloud.Shard,
 				device database.DeviceRecord,
 			) (*cloudHold, error) {
 				close(waiting)
@@ -255,7 +255,7 @@ func TestTransitionCommitIgnoresDepartedRequesterAndKeepsConflict(t *testing.T) 
 	if idle != 1 {
 		t.Fatal("committed switch did not restart idle tracking")
 	}
-	var conflict *ChangeRefusal
+	var conflict *ChangeError
 	if err := SwitchTarget(
 		t.Context(),
 		s,
@@ -372,7 +372,7 @@ func TestTransitionCancelsTransferWaitingForFileAdmission(t *testing.T) {
 	if held != nil {
 		held.Release()
 	}
-	var busy *ChangeRefusal
+	var busy *ChangeError
 	if !errors.As(err, &busy) || busy.Kind != ChangeTurnInFlight {
 		t.Error("existing file reservation was not busy", err)
 	}

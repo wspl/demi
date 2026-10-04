@@ -89,7 +89,7 @@ func TestClaimOwnershipAndAbandonment(t *testing.T) {
 			claims := runners.NewPendingClaims(10)
 			defer claims.Close()
 			code := runners.GenerateClaimCode()
-			wait := claims.Register(code, runnerwire.RunnerInfo{Name: "fixture"})
+			wait := claims.Register(code, runnerwire.Info{Name: "fixture"})
 			defer wait.Release()
 			if ending == "withdrawn" {
 				claims.Withdraw(code)
@@ -98,7 +98,7 @@ func TestClaimOwnershipAndAbandonment(t *testing.T) {
 				claims.Close()
 			}
 			if ending == "replaced" {
-				next := claims.Register(code, runnerwire.RunnerInfo{Name: "next"})
+				next := claims.Register(code, runnerwire.Info{Name: "next"})
 				defer next.Release()
 			}
 			if ending == "withdrawn" || ending == "shutdown" || ending == "replaced" {
@@ -106,7 +106,7 @@ func TestClaimOwnershipAndAbandonment(t *testing.T) {
 				if err != nil || grant != nil {
 					t.Fatalf("abandoned wait: %v %v", grant, err)
 				}
-				if ending == "shutdown" && claims.Register(code, runnerwire.RunnerInfo{}) != nil {
+				if ending == "shutdown" && claims.Register(code, runnerwire.Info{}) != nil {
 					t.Fatal("registered after shutdown")
 				}
 				return
@@ -168,7 +168,7 @@ func TestClaimGrantRacesDeparture(t *testing.T) {
 	for range 100 {
 		claims := runners.NewPendingClaims(10)
 		code := runners.GenerateClaimCode()
-		wait := claims.Register(code, runnerwire.RunnerInfo{})
+		wait := claims.Register(code, runnerwire.Info{})
 		runner := claims.Take(code)
 		var workers sync.WaitGroup
 		workers.Go(func() { wait.Release() })

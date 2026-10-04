@@ -741,13 +741,13 @@ func contractValidateAssetsListResult(v AssetsListResult, depth int) error {
 			return contract.At(fmt.Sprintf("%s[%d]", "assets", i), err)
 		}
 	}
-	if v.InlineSvgs == nil {
+	if v.InlineSVGs == nil {
 		return contract.At("inlineSvgs", fmt.Errorf("required array is nil"))
 	}
-	for i, item := range v.InlineSvgs {
+	for i, item := range v.InlineSVGs {
 		_ = i
 		_ = item
-		if err := contractValidateInlineSvg(item, depth+1); err != nil {
+		if err := contractValidateInlineSVG(item, depth+1); err != nil {
 			return contract.At(fmt.Sprintf("%s[%d]", "inlineSvgs", i), err)
 		}
 	}
@@ -798,11 +798,11 @@ func (v *AssetsListResult) UnmarshalJSON(data []byte) error {
 			return contract.At("inlineSvgs", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) ([]InlineSvg, error) { return contract.List(b, contract.Decode[InlineSvg]) }(raw)
+			value, err := func(b []byte) ([]InlineSVG, error) { return contract.List(b, contract.Decode[InlineSVG]) }(raw)
 			if err != nil {
 				return contract.At("inlineSvgs", err)
 			}
-			next.InlineSvgs = value
+			next.InlineSVGs = value
 		}
 	}
 	{
@@ -831,7 +831,7 @@ func (v AssetsListResult) MarshalJSON() ([]byte, error) {
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "inventory", Value: v.Inventory})
 	fields = append(fields, contract.Field{Name: "assets", Value: v.Assets})
-	fields = append(fields, contract.Field{Name: "inlineSvgs", Value: v.InlineSvgs})
+	fields = append(fields, contract.Field{Name: "inlineSvgs", Value: v.InlineSVGs})
 	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
 	return contract.EncodeObject(fields)
 }
@@ -2884,6 +2884,1026 @@ func (v BrowserViewport) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "mode", Value: v.Mode})
 	return contract.EncodeObject(fields)
 }
+func DecodeCDPDetachInput(data []byte) (CDPDetachInput, error) {
+	return contract.Decode[CDPDetachInput](data)
+}
+func (v CDPDetachInput) Validate() error { return contractValidateCDPDetachInput(v, 0) }
+func contractValidateCDPDetachInput(v CDPDetachInput, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if v.TimeoutMS != nil {
+		if (*v.TimeoutMS) < 1 {
+			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
+		}
+		if (*v.TimeoutMS) > 300000 {
+			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
+		}
+	}
+	return nil
+}
+func (v *CDPDetachInput) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPDetachInput
+	for key := range obj {
+		switch key {
+		case "tab", "timeout":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["timeout"]
+		if ok {
+			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
+			if err != nil {
+				return contract.At("timeout", err)
+			}
+			next.TimeoutMS = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPDetachInput) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	if v.TimeoutMS != nil {
+		fields = append(fields, contract.Field{Name: "timeout", Value: v.TimeoutMS})
+	}
+	return contract.EncodeObject(fields)
+}
+func CDPDetachInputJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.detach`: ends this caller's debugging connection to a tab.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CDPDetachInput\",\"type\":\"object\"}")
+}
+func CDPDetachInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`cdp.detach`: ends this caller's debugging connection to a tab.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CDPDetachInput\",\"type\":\"object\"}")
+}
+func DecodeCDPDetachResult(data []byte) (CDPDetachResult, error) {
+	return contract.Decode[CDPDetachResult](data)
+}
+func (v CDPDetachResult) Validate() error { return contractValidateCDPDetachResult(v, 0) }
+func contractValidateCDPDetachResult(v CDPDetachResult, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Detached, depth+1); err != nil {
+		return contract.At("detached", err)
+	}
+	if err := contract.Text(string(v.Detached), 0, -1, ""); err != nil {
+		return contract.At("detached", err)
+	}
+	return nil
+}
+func (v *CDPDetachResult) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPDetachResult
+	for key := range obj {
+		switch key {
+		case "detached":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["detached"]
+		if !ok {
+			return contract.At("detached", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("detached", err)
+			}
+			next.Detached = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPDetachResult) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "detached", Value: v.Detached})
+	return contract.EncodeObject(fields)
+}
+func CDPDetachResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"detached\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"required\":[\"detached\"],\"title\":\"CDPDetachResult\",\"type\":\"object\"}")
+}
+func CDPDetachResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"properties\":{\"detached\":{\"$ref\":\"#/$defs/TabId\"}},\"required\":[\"detached\"],\"title\":\"CDPDetachResult\",\"type\":\"object\"}")
+}
+func DecodeCDPEvent(data []byte) (CDPEvent, error) { return contract.Decode[CDPEvent](data) }
+func (v CDPEvent) Validate() error                 { return contractValidateCDPEvent(v, 0) }
+func contractValidateCDPEvent(v CDPEvent, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Method), 0, -1, ""); err != nil {
+		return contract.At("method", err)
+	}
+	if err := contract.CheckJSON(v.Params); err != nil {
+		return contract.At("params", err)
+	}
+	if err := contract.Text(string(v.Target), 0, -1, ""); err != nil {
+		return contract.At("target", err)
+	}
+	return nil
+}
+func (v *CDPEvent) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPEvent
+	for key := range obj {
+		switch key {
+		case "sequence", "method", "params", "target":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["sequence"]
+		if !ok {
+			return contract.At("sequence", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("sequence", err)
+			}
+			next.Sequence = value
+		}
+	}
+	{
+		raw, ok := obj["method"]
+		if !ok {
+			return contract.At("method", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("method", err)
+			}
+			next.Method = value
+		}
+	}
+	{
+		raw, ok := obj["params"]
+		if !ok {
+			return contract.At("params", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.JSON(raw)
+			if err != nil {
+				return contract.At("params", err)
+			}
+			next.Params = value
+		}
+	}
+	{
+		raw, ok := obj["target"]
+		if !ok {
+			return contract.At("target", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("target", err)
+			}
+			next.Target = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPEvent) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "sequence", Value: v.Sequence})
+	fields = append(fields, contract.Field{Name: "method", Value: v.Method})
+	fields = append(fields, contract.Field{Name: "params", Value: v.Params})
+	fields = append(fields, contract.Field{Name: "target", Value: v.Target})
+	return contract.EncodeObject(fields)
+}
+func DecodeCDPEventsInput(data []byte) (CDPEventsInput, error) {
+	return contract.Decode[CDPEventsInput](data)
+}
+func (v CDPEventsInput) Validate() error { return contractValidateCDPEventsInput(v, 0) }
+func contractValidateCDPEventsInput(v CDPEventsInput, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if v.Method != nil {
+		if (*v.Method) == nil {
+			return contract.At("method", fmt.Errorf("required array is nil"))
+		}
+		for i, item := range *v.Method {
+			_ = i
+			_ = item
+			if err := contract.Text(string(item), 0, -1, ""); err != nil {
+				return contract.At(fmt.Sprintf("%s[%d]", "method", i), err)
+			}
+		}
+	}
+	if v.After != nil {
+		if err := contract.Text(string((*v.After)), 1, 4096, ""); err != nil {
+			return contract.At("after", err)
+		}
+	}
+	if v.Limit != nil {
+		if (*v.Limit) < 1 {
+			return contract.At("limit", fmt.Errorf("outside numeric bounds"))
+		}
+		if (*v.Limit) > 1000 {
+			return contract.At("limit", fmt.Errorf("outside numeric bounds"))
+		}
+	}
+	if v.Target != nil {
+		if err := contract.Text(string((*v.Target)), 1, 4096, ""); err != nil {
+			return contract.At("target", err)
+		}
+	}
+	if v.TimeoutMS != nil {
+		if (*v.TimeoutMS) < 1 {
+			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
+		}
+		if (*v.TimeoutMS) > 300000 {
+			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
+		}
+	}
+	if err := validateCdpEventsInput(v); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *CDPEventsInput) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPEventsInput
+	for key := range obj {
+		switch key {
+		case "tab", "method", "after", "limit", "target", "timeout":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["method"]
+		if ok {
+			value, err := func(b []byte) (*[]string, error) {
+				return contract.Pointer(b, func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) })
+			}(raw)
+			if err != nil {
+				return contract.At("method", err)
+			}
+			next.Method = value
+		}
+	}
+	{
+		raw, ok := obj["after"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("after", err)
+			}
+			next.After = value
+		}
+	}
+	{
+		raw, ok := obj["limit"]
+		if ok {
+			value, err := func(b []byte) (*uint, error) { return contract.Pointer(b, contract.Decode[uint]) }(raw)
+			if err != nil {
+				return contract.At("limit", err)
+			}
+			next.Limit = value
+		}
+	}
+	{
+		raw, ok := obj["target"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("target", err)
+			}
+			next.Target = value
+		}
+	}
+	{
+		raw, ok := obj["timeout"]
+		if ok {
+			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
+			if err != nil {
+				return contract.At("timeout", err)
+			}
+			next.TimeoutMS = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPEventsInput) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	if v.Method != nil {
+		fields = append(fields, contract.Field{Name: "method", Value: v.Method})
+	}
+	if v.After != nil {
+		fields = append(fields, contract.Field{Name: "after", Value: v.After})
+	}
+	if v.Limit != nil {
+		fields = append(fields, contract.Field{Name: "limit", Value: v.Limit})
+	}
+	if v.Target != nil {
+		fields = append(fields, contract.Field{Name: "target", Value: v.Target})
+	}
+	if v.TimeoutMS != nil {
+		fields = append(fields, contract.Field{Name: "timeout", Value: v.TimeoutMS})
+	}
+	return contract.EncodeObject(fields)
+}
+func CDPEventsInputJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.events`: reads the CDP events this caller's connection received\\nafter a cursor.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"method\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"after\":{\"type\":\"string\",\"description\":\"Cursor returned by a previous read\",\"minLength\":1,\"maxLength\":4096},\"limit\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"maximum\":1000},\"target\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CDPEventsInput\",\"type\":\"object\"}")
+}
+func CDPEventsInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`cdp.events`: reads the CDP events this caller's connection received\\nafter a cursor.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"method\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"after\":{\"type\":\"string\",\"description\":\"Cursor returned by a previous read\",\"minLength\":1,\"maxLength\":4096},\"limit\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"maximum\":1000},\"target\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CDPEventsInput\",\"type\":\"object\"}")
+}
+func DecodeCDPEventsResult(data []byte) (CDPEventsResult, error) {
+	return contract.Decode[CDPEventsResult](data)
+}
+func (v CDPEventsResult) Validate() error { return contractValidateCDPEventsResult(v, 0) }
+func contractValidateCDPEventsResult(v CDPEventsResult, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Events == nil {
+		return contract.At("events", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Events {
+		_ = i
+		_ = item
+		if err := contractValidateCDPEvent(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "events", i), err)
+		}
+	}
+	if err := contract.Text(string(v.Cursor), 0, -1, ""); err != nil {
+		return contract.At("cursor", err)
+	}
+	return nil
+}
+func (v *CDPEventsResult) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPEventsResult
+	for key := range obj {
+		switch key {
+		case "events", "cursor", "hasMore", "truncated":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["events"]
+		if !ok {
+			return contract.At("events", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]CDPEvent, error) { return contract.List(b, contract.Decode[CDPEvent]) }(raw)
+			if err != nil {
+				return contract.At("events", err)
+			}
+			next.Events = value
+		}
+	}
+	{
+		raw, ok := obj["cursor"]
+		if !ok {
+			return contract.At("cursor", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("cursor", err)
+			}
+			next.Cursor = value
+		}
+	}
+	{
+		raw, ok := obj["hasMore"]
+		if !ok {
+			return contract.At("hasMore", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("hasMore", err)
+			}
+			next.HasMore = value
+		}
+	}
+	{
+		raw, ok := obj["truncated"]
+		if !ok {
+			return contract.At("truncated", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("truncated", err)
+			}
+			next.Truncated = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPEventsResult) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "events", Value: v.Events})
+	fields = append(fields, contract.Field{Name: "cursor", Value: v.Cursor})
+	fields = append(fields, contract.Field{Name: "hasMore", Value: v.HasMore})
+	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
+	return contract.EncodeObject(fields)
+}
+func CDPEventsResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"events\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"sequence\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"method\":{\"type\":\"string\"},\"params\":true,\"target\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"sequence\",\"method\",\"params\",\"target\"]}},\"cursor\":{\"type\":\"string\"},\"hasMore\":{\"type\":\"boolean\"},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"events\",\"cursor\",\"hasMore\",\"truncated\"],\"title\":\"CDPEventsResult\",\"type\":\"object\"}")
+}
+func CDPEventsResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"CdpEvent\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"sequence\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"method\":{\"type\":\"string\"},\"params\":true,\"target\":{\"type\":\"string\"}},\"required\":[\"sequence\",\"method\",\"params\",\"target\"]}},\"additionalProperties\":false,\"properties\":{\"events\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/CdpEvent\"}},\"cursor\":{\"type\":\"string\"},\"hasMore\":{\"type\":\"boolean\"},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"events\",\"cursor\",\"hasMore\",\"truncated\"],\"title\":\"CDPEventsResult\",\"type\":\"object\"}")
+}
+func DecodeCDPSendInput(data []byte) (CDPSendInput, error) {
+	return contract.Decode[CDPSendInput](data)
+}
+func (v CDPSendInput) Validate() error { return contractValidateCDPSendInput(v, 0) }
+func contractValidateCDPSendInput(v CDPSendInput, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Method), 1, 4096, ""); err != nil {
+		return contract.At("method", err)
+	}
+	if err := contract.Text(string(v.Params), 0, 1048576, ""); err != nil {
+		return contract.At("params", err)
+	}
+	if v.Target != nil {
+		if err := contract.Text(string((*v.Target)), 1, 4096, ""); err != nil {
+			return contract.At("target", err)
+		}
+	}
+	if v.TimeoutMS != nil {
+		if (*v.TimeoutMS) < 1 {
+			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
+		}
+		if (*v.TimeoutMS) > 300000 {
+			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
+		}
+	}
+	return nil
+}
+func (v *CDPSendInput) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPSendInput
+	for key := range obj {
+		switch key {
+		case "tab", "method", "params", "target", "timeout":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["method"]
+		if !ok {
+			return contract.At("method", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("method", err)
+			}
+			next.Method = value
+		}
+	}
+	{
+		raw, ok := obj["params"]
+		if !ok {
+			return contract.At("params", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("params", err)
+			}
+			next.Params = value
+		}
+	}
+	{
+		raw, ok := obj["target"]
+		if ok {
+			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("target", err)
+			}
+			next.Target = value
+		}
+	}
+	{
+		raw, ok := obj["timeout"]
+		if ok {
+			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
+			if err != nil {
+				return contract.At("timeout", err)
+			}
+			next.TimeoutMS = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPSendInput) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	fields = append(fields, contract.Field{Name: "method", Value: v.Method})
+	fields = append(fields, contract.Field{Name: "params", Value: v.Params})
+	if v.Target != nil {
+		fields = append(fields, contract.Field{Name: "target", Value: v.Target})
+	}
+	if v.TimeoutMS != nil {
+		fields = append(fields, contract.Field{Name: "timeout", Value: v.TimeoutMS})
+	}
+	return contract.EncodeObject(fields)
+}
+func CDPSendInputJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.send`: sends one CDP command with JSON parameters.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"method\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"params\":{\"type\":\"string\",\"maxLength\":1048576},\"target\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"method\",\"params\"],\"title\":\"CDPSendInput\",\"type\":\"object\"}")
+}
+func CDPSendInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`cdp.send`: sends one CDP command with JSON parameters.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"method\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"params\":{\"type\":\"string\",\"maxLength\":1048576},\"target\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"method\",\"params\"],\"title\":\"CDPSendInput\",\"type\":\"object\"}")
+}
+func DecodeCDPSendResult(data []byte) (CDPSendResult, error) {
+	return contract.Decode[CDPSendResult](data)
+}
+func (v CDPSendResult) Validate() error { return contractValidateCDPSendResult(v, 0) }
+func contractValidateCDPSendResult(v CDPSendResult, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Method), 0, -1, ""); err != nil {
+		return contract.At("method", err)
+	}
+	if err := contract.CheckJSON(v.Result); err != nil {
+		return contract.At("result", err)
+	}
+	return nil
+}
+func (v *CDPSendResult) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPSendResult
+	for key := range obj {
+		switch key {
+		case "method", "result":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["method"]
+		if !ok {
+			return contract.At("method", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("method", err)
+			}
+			next.Method = value
+		}
+	}
+	{
+		raw, ok := obj["result"]
+		if !ok {
+			return contract.At("result", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.JSON(raw)
+			if err != nil {
+				return contract.At("result", err)
+			}
+			next.Result = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPSendResult) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "method", Value: v.Method})
+	fields = append(fields, contract.Field{Name: "result", Value: v.Result})
+	return contract.EncodeObject(fields)
+}
+func CDPSendResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"method\":{\"type\":\"string\"},\"result\":true},\"required\":[\"method\",\"result\"],\"title\":\"CDPSendResult\",\"type\":\"object\"}")
+}
+func CDPSendResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"method\":{\"type\":\"string\"},\"result\":true},\"required\":[\"method\",\"result\"],\"title\":\"CDPSendResult\",\"type\":\"object\"}")
+}
+func DecodeCDPTarget(data []byte) (CDPTarget, error) { return contract.Decode[CDPTarget](data) }
+func (v CDPTarget) Validate() error                  { return contractValidateCDPTarget(v, 0) }
+func contractValidateCDPTarget(v CDPTarget, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+		return contract.At("id", err)
+	}
+	if err := contract.Text(string(v.Kind), 0, -1, ""); err != nil {
+		return contract.At("kind", err)
+	}
+	if err := contract.Text(string(v.URL), 0, -1, ""); err != nil {
+		return contract.At("url", err)
+	}
+	return nil
+}
+func (v *CDPTarget) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPTarget
+	for key := range obj {
+		switch key {
+		case "id", "kind", "url":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["id"]
+		if !ok {
+			return contract.At("id", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("id", err)
+			}
+			next.ID = value
+		}
+	}
+	{
+		raw, ok := obj["kind"]
+		if !ok {
+			return contract.At("kind", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("kind", err)
+			}
+			next.Kind = value
+		}
+	}
+	{
+		raw, ok := obj["url"]
+		if !ok {
+			return contract.At("url", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("url", err)
+			}
+			next.URL = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPTarget) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "kind", Value: v.Kind})
+	fields = append(fields, contract.Field{Name: "url", Value: v.URL})
+	return contract.EncodeObject(fields)
+}
+func DecodeCDPTargetsInput(data []byte) (CDPTargetsInput, error) {
+	return contract.Decode[CDPTargetsInput](data)
+}
+func (v CDPTargetsInput) Validate() error { return contractValidateCDPTargetsInput(v, 0) }
+func contractValidateCDPTargetsInput(v CDPTargetsInput, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
+		return contract.At("tab", err)
+	}
+	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
+		return contract.At("tab", err)
+	}
+	if v.Offset != nil {
+	}
+	if v.Limit != nil {
+		if (*v.Limit) < 1 {
+			return contract.At("limit", fmt.Errorf("outside numeric bounds"))
+		}
+		if (*v.Limit) > 1000 {
+			return contract.At("limit", fmt.Errorf("outside numeric bounds"))
+		}
+	}
+	if v.TimeoutMS != nil {
+		if (*v.TimeoutMS) < 1 {
+			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
+		}
+		if (*v.TimeoutMS) > 300000 {
+			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
+		}
+	}
+	return nil
+}
+func (v *CDPTargetsInput) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPTargetsInput
+	for key := range obj {
+		switch key {
+		case "tab", "offset", "limit", "timeout":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[TabID](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	{
+		raw, ok := obj["offset"]
+		if ok {
+			value, err := func(b []byte) (*uint, error) { return contract.Pointer(b, contract.Decode[uint]) }(raw)
+			if err != nil {
+				return contract.At("offset", err)
+			}
+			next.Offset = value
+		}
+	}
+	{
+		raw, ok := obj["limit"]
+		if ok {
+			value, err := func(b []byte) (*uint, error) { return contract.Pointer(b, contract.Decode[uint]) }(raw)
+			if err != nil {
+				return contract.At("limit", err)
+			}
+			next.Limit = value
+		}
+	}
+	{
+		raw, ok := obj["timeout"]
+		if ok {
+			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
+			if err != nil {
+				return contract.At("timeout", err)
+			}
+			next.TimeoutMS = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPTargetsInput) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	if v.Offset != nil {
+		fields = append(fields, contract.Field{Name: "offset", Value: v.Offset})
+	}
+	if v.Limit != nil {
+		fields = append(fields, contract.Field{Name: "limit", Value: v.Limit})
+	}
+	if v.TimeoutMS != nil {
+		fields = append(fields, contract.Field{Name: "timeout", Value: v.TimeoutMS})
+	}
+	return contract.EncodeObject(fields)
+}
+func CDPTargetsInputJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.targets`: lists the CDP targets of a tab: its page, frames and workers.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"offset\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":0},\"limit\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"maximum\":1000},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CDPTargetsInput\",\"type\":\"object\"}")
+}
+func CDPTargetsInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`cdp.targets`: lists the CDP targets of a tab: its page, frames and workers.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"offset\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":0},\"limit\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"maximum\":1000},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CDPTargetsInput\",\"type\":\"object\"}")
+}
+func DecodeCDPTargetsResult(data []byte) (CDPTargetsResult, error) {
+	return contract.Decode[CDPTargetsResult](data)
+}
+func (v CDPTargetsResult) Validate() error { return contractValidateCDPTargetsResult(v, 0) }
+func contractValidateCDPTargetsResult(v CDPTargetsResult, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Targets == nil {
+		return contract.At("targets", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Targets {
+		_ = i
+		_ = item
+		if err := contractValidateCDPTarget(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "targets", i), err)
+		}
+	}
+	return nil
+}
+func (v *CDPTargetsResult) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CDPTargetsResult
+	for key := range obj {
+		switch key {
+		case "targets", "truncated":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["targets"]
+		if !ok {
+			return contract.At("targets", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]CDPTarget, error) { return contract.List(b, contract.Decode[CDPTarget]) }(raw)
+			if err != nil {
+				return contract.At("targets", err)
+			}
+			next.Targets = value
+		}
+	}
+	{
+		raw, ok := obj["truncated"]
+		if !ok {
+			return contract.At("truncated", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[bool](raw)
+			if err != nil {
+				return contract.At("truncated", err)
+			}
+			next.Truncated = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CDPTargetsResult) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "targets", Value: v.Targets})
+	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
+	return contract.EncodeObject(fields)
+}
+func CDPTargetsResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"targets\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"kind\",\"url\"]}},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"targets\",\"truncated\"],\"title\":\"CDPTargetsResult\",\"type\":\"object\"}")
+}
+func CDPTargetsResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"CdpTarget\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"required\":[\"id\",\"kind\",\"url\"]}},\"additionalProperties\":false,\"properties\":{\"targets\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/CdpTarget\"}},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"targets\",\"truncated\"],\"title\":\"CDPTargetsResult\",\"type\":\"object\"}")
+}
 func DecodeCapabilitiesInput(data []byte) (CapabilitiesInput, error) {
 	return contract.Decode[CapabilitiesInput](data)
 }
@@ -4046,1026 +5066,6 @@ func (v CaptureEventStopped) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "capture", Value: v.Capture})
 	return contract.EncodeObject(fields)
 }
-func DecodeCdpDetachInput(data []byte) (CdpDetachInput, error) {
-	return contract.Decode[CdpDetachInput](data)
-}
-func (v CdpDetachInput) Validate() error { return contractValidateCdpDetachInput(v, 0) }
-func contractValidateCdpDetachInput(v CdpDetachInput, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
-		return contract.At("tab", err)
-	}
-	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
-		return contract.At("tab", err)
-	}
-	if v.TimeoutMS != nil {
-		if (*v.TimeoutMS) < 1 {
-			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
-		}
-		if (*v.TimeoutMS) > 300000 {
-			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
-		}
-	}
-	return nil
-}
-func (v *CdpDetachInput) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpDetachInput
-	for key := range obj {
-		switch key {
-		case "tab", "timeout":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["tab"]
-		if !ok {
-			return contract.At("tab", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[TabID](raw)
-			if err != nil {
-				return contract.At("tab", err)
-			}
-			next.Tab = value
-		}
-	}
-	{
-		raw, ok := obj["timeout"]
-		if ok {
-			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
-			if err != nil {
-				return contract.At("timeout", err)
-			}
-			next.TimeoutMS = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpDetachInput) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
-	if v.TimeoutMS != nil {
-		fields = append(fields, contract.Field{Name: "timeout", Value: v.TimeoutMS})
-	}
-	return contract.EncodeObject(fields)
-}
-func CdpDetachInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.detach`: ends this caller's debugging connection to a tab.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CdpDetachInput\",\"type\":\"object\"}")
-}
-func CdpDetachInputPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`cdp.detach`: ends this caller's debugging connection to a tab.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CdpDetachInput\",\"type\":\"object\"}")
-}
-func DecodeCdpDetachResult(data []byte) (CdpDetachResult, error) {
-	return contract.Decode[CdpDetachResult](data)
-}
-func (v CdpDetachResult) Validate() error { return contractValidateCdpDetachResult(v, 0) }
-func contractValidateCdpDetachResult(v CdpDetachResult, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contractValidateTabID(v.Detached, depth+1); err != nil {
-		return contract.At("detached", err)
-	}
-	if err := contract.Text(string(v.Detached), 0, -1, ""); err != nil {
-		return contract.At("detached", err)
-	}
-	return nil
-}
-func (v *CdpDetachResult) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpDetachResult
-	for key := range obj {
-		switch key {
-		case "detached":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["detached"]
-		if !ok {
-			return contract.At("detached", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[TabID](raw)
-			if err != nil {
-				return contract.At("detached", err)
-			}
-			next.Detached = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpDetachResult) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "detached", Value: v.Detached})
-	return contract.EncodeObject(fields)
-}
-func CdpDetachResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"detached\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"required\":[\"detached\"],\"title\":\"CdpDetachResult\",\"type\":\"object\"}")
-}
-func CdpDetachResultPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"properties\":{\"detached\":{\"$ref\":\"#/$defs/TabId\"}},\"required\":[\"detached\"],\"title\":\"CdpDetachResult\",\"type\":\"object\"}")
-}
-func DecodeCdpEvent(data []byte) (CdpEvent, error) { return contract.Decode[CdpEvent](data) }
-func (v CdpEvent) Validate() error                 { return contractValidateCdpEvent(v, 0) }
-func contractValidateCdpEvent(v CdpEvent, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v.Method), 0, -1, ""); err != nil {
-		return contract.At("method", err)
-	}
-	if err := contract.CheckJSON(v.Params); err != nil {
-		return contract.At("params", err)
-	}
-	if err := contract.Text(string(v.Target), 0, -1, ""); err != nil {
-		return contract.At("target", err)
-	}
-	return nil
-}
-func (v *CdpEvent) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpEvent
-	for key := range obj {
-		switch key {
-		case "sequence", "method", "params", "target":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["sequence"]
-		if !ok {
-			return contract.At("sequence", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[uint64](raw)
-			if err != nil {
-				return contract.At("sequence", err)
-			}
-			next.Sequence = value
-		}
-	}
-	{
-		raw, ok := obj["method"]
-		if !ok {
-			return contract.At("method", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("method", err)
-			}
-			next.Method = value
-		}
-	}
-	{
-		raw, ok := obj["params"]
-		if !ok {
-			return contract.At("params", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.JSON(raw)
-			if err != nil {
-				return contract.At("params", err)
-			}
-			next.Params = value
-		}
-	}
-	{
-		raw, ok := obj["target"]
-		if !ok {
-			return contract.At("target", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("target", err)
-			}
-			next.Target = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpEvent) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "sequence", Value: v.Sequence})
-	fields = append(fields, contract.Field{Name: "method", Value: v.Method})
-	fields = append(fields, contract.Field{Name: "params", Value: v.Params})
-	fields = append(fields, contract.Field{Name: "target", Value: v.Target})
-	return contract.EncodeObject(fields)
-}
-func DecodeCdpEventsInput(data []byte) (CdpEventsInput, error) {
-	return contract.Decode[CdpEventsInput](data)
-}
-func (v CdpEventsInput) Validate() error { return contractValidateCdpEventsInput(v, 0) }
-func contractValidateCdpEventsInput(v CdpEventsInput, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
-		return contract.At("tab", err)
-	}
-	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
-		return contract.At("tab", err)
-	}
-	if v.Method != nil {
-		if (*v.Method) == nil {
-			return contract.At("method", fmt.Errorf("required array is nil"))
-		}
-		for i, item := range *v.Method {
-			_ = i
-			_ = item
-			if err := contract.Text(string(item), 0, -1, ""); err != nil {
-				return contract.At(fmt.Sprintf("%s[%d]", "method", i), err)
-			}
-		}
-	}
-	if v.After != nil {
-		if err := contract.Text(string((*v.After)), 1, 4096, ""); err != nil {
-			return contract.At("after", err)
-		}
-	}
-	if v.Limit != nil {
-		if (*v.Limit) < 1 {
-			return contract.At("limit", fmt.Errorf("outside numeric bounds"))
-		}
-		if (*v.Limit) > 1000 {
-			return contract.At("limit", fmt.Errorf("outside numeric bounds"))
-		}
-	}
-	if v.Target != nil {
-		if err := contract.Text(string((*v.Target)), 1, 4096, ""); err != nil {
-			return contract.At("target", err)
-		}
-	}
-	if v.TimeoutMS != nil {
-		if (*v.TimeoutMS) < 1 {
-			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
-		}
-		if (*v.TimeoutMS) > 300000 {
-			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
-		}
-	}
-	if err := validateCdpEventsInput(v); err != nil {
-		return err
-	}
-	return nil
-}
-func (v *CdpEventsInput) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpEventsInput
-	for key := range obj {
-		switch key {
-		case "tab", "method", "after", "limit", "target", "timeout":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["tab"]
-		if !ok {
-			return contract.At("tab", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[TabID](raw)
-			if err != nil {
-				return contract.At("tab", err)
-			}
-			next.Tab = value
-		}
-	}
-	{
-		raw, ok := obj["method"]
-		if ok {
-			value, err := func(b []byte) (*[]string, error) {
-				return contract.Pointer(b, func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) })
-			}(raw)
-			if err != nil {
-				return contract.At("method", err)
-			}
-			next.Method = value
-		}
-	}
-	{
-		raw, ok := obj["after"]
-		if ok {
-			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
-			if err != nil {
-				return contract.At("after", err)
-			}
-			next.After = value
-		}
-	}
-	{
-		raw, ok := obj["limit"]
-		if ok {
-			value, err := func(b []byte) (*uint, error) { return contract.Pointer(b, contract.Decode[uint]) }(raw)
-			if err != nil {
-				return contract.At("limit", err)
-			}
-			next.Limit = value
-		}
-	}
-	{
-		raw, ok := obj["target"]
-		if ok {
-			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
-			if err != nil {
-				return contract.At("target", err)
-			}
-			next.Target = value
-		}
-	}
-	{
-		raw, ok := obj["timeout"]
-		if ok {
-			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
-			if err != nil {
-				return contract.At("timeout", err)
-			}
-			next.TimeoutMS = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpEventsInput) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
-	if v.Method != nil {
-		fields = append(fields, contract.Field{Name: "method", Value: v.Method})
-	}
-	if v.After != nil {
-		fields = append(fields, contract.Field{Name: "after", Value: v.After})
-	}
-	if v.Limit != nil {
-		fields = append(fields, contract.Field{Name: "limit", Value: v.Limit})
-	}
-	if v.Target != nil {
-		fields = append(fields, contract.Field{Name: "target", Value: v.Target})
-	}
-	if v.TimeoutMS != nil {
-		fields = append(fields, contract.Field{Name: "timeout", Value: v.TimeoutMS})
-	}
-	return contract.EncodeObject(fields)
-}
-func CdpEventsInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.events`: reads the CDP events this caller's connection received\\nafter a cursor.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"method\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"after\":{\"type\":\"string\",\"description\":\"Cursor returned by a previous read\",\"minLength\":1,\"maxLength\":4096},\"limit\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"maximum\":1000},\"target\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CdpEventsInput\",\"type\":\"object\"}")
-}
-func CdpEventsInputPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`cdp.events`: reads the CDP events this caller's connection received\\nafter a cursor.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"method\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"after\":{\"type\":\"string\",\"description\":\"Cursor returned by a previous read\",\"minLength\":1,\"maxLength\":4096},\"limit\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"maximum\":1000},\"target\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CdpEventsInput\",\"type\":\"object\"}")
-}
-func DecodeCdpEventsResult(data []byte) (CdpEventsResult, error) {
-	return contract.Decode[CdpEventsResult](data)
-}
-func (v CdpEventsResult) Validate() error { return contractValidateCdpEventsResult(v, 0) }
-func contractValidateCdpEventsResult(v CdpEventsResult, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if v.Events == nil {
-		return contract.At("events", fmt.Errorf("required array is nil"))
-	}
-	for i, item := range v.Events {
-		_ = i
-		_ = item
-		if err := contractValidateCdpEvent(item, depth+1); err != nil {
-			return contract.At(fmt.Sprintf("%s[%d]", "events", i), err)
-		}
-	}
-	if err := contract.Text(string(v.Cursor), 0, -1, ""); err != nil {
-		return contract.At("cursor", err)
-	}
-	return nil
-}
-func (v *CdpEventsResult) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpEventsResult
-	for key := range obj {
-		switch key {
-		case "events", "cursor", "hasMore", "truncated":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["events"]
-		if !ok {
-			return contract.At("events", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := func(b []byte) ([]CdpEvent, error) { return contract.List(b, contract.Decode[CdpEvent]) }(raw)
-			if err != nil {
-				return contract.At("events", err)
-			}
-			next.Events = value
-		}
-	}
-	{
-		raw, ok := obj["cursor"]
-		if !ok {
-			return contract.At("cursor", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("cursor", err)
-			}
-			next.Cursor = value
-		}
-	}
-	{
-		raw, ok := obj["hasMore"]
-		if !ok {
-			return contract.At("hasMore", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[bool](raw)
-			if err != nil {
-				return contract.At("hasMore", err)
-			}
-			next.HasMore = value
-		}
-	}
-	{
-		raw, ok := obj["truncated"]
-		if !ok {
-			return contract.At("truncated", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[bool](raw)
-			if err != nil {
-				return contract.At("truncated", err)
-			}
-			next.Truncated = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpEventsResult) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "events", Value: v.Events})
-	fields = append(fields, contract.Field{Name: "cursor", Value: v.Cursor})
-	fields = append(fields, contract.Field{Name: "hasMore", Value: v.HasMore})
-	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
-	return contract.EncodeObject(fields)
-}
-func CdpEventsResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"events\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"sequence\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"method\":{\"type\":\"string\"},\"params\":true,\"target\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"sequence\",\"method\",\"params\",\"target\"]}},\"cursor\":{\"type\":\"string\"},\"hasMore\":{\"type\":\"boolean\"},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"events\",\"cursor\",\"hasMore\",\"truncated\"],\"title\":\"CdpEventsResult\",\"type\":\"object\"}")
-}
-func CdpEventsResultPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"CdpEvent\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"sequence\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0},\"method\":{\"type\":\"string\"},\"params\":true,\"target\":{\"type\":\"string\"}},\"required\":[\"sequence\",\"method\",\"params\",\"target\"]}},\"additionalProperties\":false,\"properties\":{\"events\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/CdpEvent\"}},\"cursor\":{\"type\":\"string\"},\"hasMore\":{\"type\":\"boolean\"},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"events\",\"cursor\",\"hasMore\",\"truncated\"],\"title\":\"CdpEventsResult\",\"type\":\"object\"}")
-}
-func DecodeCdpSendInput(data []byte) (CdpSendInput, error) {
-	return contract.Decode[CdpSendInput](data)
-}
-func (v CdpSendInput) Validate() error { return contractValidateCdpSendInput(v, 0) }
-func contractValidateCdpSendInput(v CdpSendInput, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
-		return contract.At("tab", err)
-	}
-	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
-		return contract.At("tab", err)
-	}
-	if err := contract.Text(string(v.Method), 1, 4096, ""); err != nil {
-		return contract.At("method", err)
-	}
-	if err := contract.Text(string(v.Params), 0, 1048576, ""); err != nil {
-		return contract.At("params", err)
-	}
-	if v.Target != nil {
-		if err := contract.Text(string((*v.Target)), 1, 4096, ""); err != nil {
-			return contract.At("target", err)
-		}
-	}
-	if v.TimeoutMS != nil {
-		if (*v.TimeoutMS) < 1 {
-			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
-		}
-		if (*v.TimeoutMS) > 300000 {
-			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
-		}
-	}
-	return nil
-}
-func (v *CdpSendInput) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpSendInput
-	for key := range obj {
-		switch key {
-		case "tab", "method", "params", "target", "timeout":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["tab"]
-		if !ok {
-			return contract.At("tab", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[TabID](raw)
-			if err != nil {
-				return contract.At("tab", err)
-			}
-			next.Tab = value
-		}
-	}
-	{
-		raw, ok := obj["method"]
-		if !ok {
-			return contract.At("method", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("method", err)
-			}
-			next.Method = value
-		}
-	}
-	{
-		raw, ok := obj["params"]
-		if !ok {
-			return contract.At("params", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("params", err)
-			}
-			next.Params = value
-		}
-	}
-	{
-		raw, ok := obj["target"]
-		if ok {
-			value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
-			if err != nil {
-				return contract.At("target", err)
-			}
-			next.Target = value
-		}
-	}
-	{
-		raw, ok := obj["timeout"]
-		if ok {
-			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
-			if err != nil {
-				return contract.At("timeout", err)
-			}
-			next.TimeoutMS = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpSendInput) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
-	fields = append(fields, contract.Field{Name: "method", Value: v.Method})
-	fields = append(fields, contract.Field{Name: "params", Value: v.Params})
-	if v.Target != nil {
-		fields = append(fields, contract.Field{Name: "target", Value: v.Target})
-	}
-	if v.TimeoutMS != nil {
-		fields = append(fields, contract.Field{Name: "timeout", Value: v.TimeoutMS})
-	}
-	return contract.EncodeObject(fields)
-}
-func CdpSendInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.send`: sends one CDP command with JSON parameters.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"method\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"params\":{\"type\":\"string\",\"maxLength\":1048576},\"target\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"method\",\"params\"],\"title\":\"CdpSendInput\",\"type\":\"object\"}")
-}
-func CdpSendInputPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`cdp.send`: sends one CDP command with JSON parameters.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"method\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"params\":{\"type\":\"string\",\"maxLength\":1048576},\"target\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"method\",\"params\"],\"title\":\"CdpSendInput\",\"type\":\"object\"}")
-}
-func DecodeCdpSendResult(data []byte) (CdpSendResult, error) {
-	return contract.Decode[CdpSendResult](data)
-}
-func (v CdpSendResult) Validate() error { return contractValidateCdpSendResult(v, 0) }
-func contractValidateCdpSendResult(v CdpSendResult, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v.Method), 0, -1, ""); err != nil {
-		return contract.At("method", err)
-	}
-	if err := contract.CheckJSON(v.Result); err != nil {
-		return contract.At("result", err)
-	}
-	return nil
-}
-func (v *CdpSendResult) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpSendResult
-	for key := range obj {
-		switch key {
-		case "method", "result":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["method"]
-		if !ok {
-			return contract.At("method", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("method", err)
-			}
-			next.Method = value
-		}
-	}
-	{
-		raw, ok := obj["result"]
-		if !ok {
-			return contract.At("result", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.JSON(raw)
-			if err != nil {
-				return contract.At("result", err)
-			}
-			next.Result = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpSendResult) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "method", Value: v.Method})
-	fields = append(fields, contract.Field{Name: "result", Value: v.Result})
-	return contract.EncodeObject(fields)
-}
-func CdpSendResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"method\":{\"type\":\"string\"},\"result\":true},\"required\":[\"method\",\"result\"],\"title\":\"CdpSendResult\",\"type\":\"object\"}")
-}
-func CdpSendResultPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"method\":{\"type\":\"string\"},\"result\":true},\"required\":[\"method\",\"result\"],\"title\":\"CdpSendResult\",\"type\":\"object\"}")
-}
-func DecodeCdpTarget(data []byte) (CdpTarget, error) { return contract.Decode[CdpTarget](data) }
-func (v CdpTarget) Validate() error                  { return contractValidateCdpTarget(v, 0) }
-func contractValidateCdpTarget(v CdpTarget, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
-		return contract.At("id", err)
-	}
-	if err := contract.Text(string(v.Kind), 0, -1, ""); err != nil {
-		return contract.At("kind", err)
-	}
-	if err := contract.Text(string(v.URL), 0, -1, ""); err != nil {
-		return contract.At("url", err)
-	}
-	return nil
-}
-func (v *CdpTarget) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpTarget
-	for key := range obj {
-		switch key {
-		case "id", "kind", "url":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["id"]
-		if !ok {
-			return contract.At("id", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("id", err)
-			}
-			next.ID = value
-		}
-	}
-	{
-		raw, ok := obj["kind"]
-		if !ok {
-			return contract.At("kind", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("kind", err)
-			}
-			next.Kind = value
-		}
-	}
-	{
-		raw, ok := obj["url"]
-		if !ok {
-			return contract.At("url", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("url", err)
-			}
-			next.URL = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpTarget) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
-	fields = append(fields, contract.Field{Name: "kind", Value: v.Kind})
-	fields = append(fields, contract.Field{Name: "url", Value: v.URL})
-	return contract.EncodeObject(fields)
-}
-func DecodeCdpTargetsInput(data []byte) (CdpTargetsInput, error) {
-	return contract.Decode[CdpTargetsInput](data)
-}
-func (v CdpTargetsInput) Validate() error { return contractValidateCdpTargetsInput(v, 0) }
-func contractValidateCdpTargetsInput(v CdpTargetsInput, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contractValidateTabID(v.Tab, depth+1); err != nil {
-		return contract.At("tab", err)
-	}
-	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
-		return contract.At("tab", err)
-	}
-	if v.Offset != nil {
-	}
-	if v.Limit != nil {
-		if (*v.Limit) < 1 {
-			return contract.At("limit", fmt.Errorf("outside numeric bounds"))
-		}
-		if (*v.Limit) > 1000 {
-			return contract.At("limit", fmt.Errorf("outside numeric bounds"))
-		}
-	}
-	if v.TimeoutMS != nil {
-		if (*v.TimeoutMS) < 1 {
-			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
-		}
-		if (*v.TimeoutMS) > 300000 {
-			return contract.At("timeout", fmt.Errorf("outside numeric bounds"))
-		}
-	}
-	return nil
-}
-func (v *CdpTargetsInput) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpTargetsInput
-	for key := range obj {
-		switch key {
-		case "tab", "offset", "limit", "timeout":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["tab"]
-		if !ok {
-			return contract.At("tab", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[TabID](raw)
-			if err != nil {
-				return contract.At("tab", err)
-			}
-			next.Tab = value
-		}
-	}
-	{
-		raw, ok := obj["offset"]
-		if ok {
-			value, err := func(b []byte) (*uint, error) { return contract.Pointer(b, contract.Decode[uint]) }(raw)
-			if err != nil {
-				return contract.At("offset", err)
-			}
-			next.Offset = value
-		}
-	}
-	{
-		raw, ok := obj["limit"]
-		if ok {
-			value, err := func(b []byte) (*uint, error) { return contract.Pointer(b, contract.Decode[uint]) }(raw)
-			if err != nil {
-				return contract.At("limit", err)
-			}
-			next.Limit = value
-		}
-	}
-	{
-		raw, ok := obj["timeout"]
-		if ok {
-			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
-			if err != nil {
-				return contract.At("timeout", err)
-			}
-			next.TimeoutMS = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpTargetsInput) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
-	if v.Offset != nil {
-		fields = append(fields, contract.Field{Name: "offset", Value: v.Offset})
-	}
-	if v.Limit != nil {
-		fields = append(fields, contract.Field{Name: "limit", Value: v.Limit})
-	}
-	if v.TimeoutMS != nil {
-		fields = append(fields, contract.Field{Name: "timeout", Value: v.TimeoutMS})
-	}
-	return contract.EncodeObject(fields)
-}
-func CdpTargetsInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`cdp.targets`: lists the CDP targets of a tab: its page, frames and workers.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"offset\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":0},\"limit\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"maximum\":1000},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CdpTargetsInput\",\"type\":\"object\"}")
-}
-func CdpTargetsInputPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`cdp.targets`: lists the CDP targets of a tab: its page, frames and workers.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"offset\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":0},\"limit\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":1,\"maximum\":1000},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"CdpTargetsInput\",\"type\":\"object\"}")
-}
-func DecodeCdpTargetsResult(data []byte) (CdpTargetsResult, error) {
-	return contract.Decode[CdpTargetsResult](data)
-}
-func (v CdpTargetsResult) Validate() error { return contractValidateCdpTargetsResult(v, 0) }
-func contractValidateCdpTargetsResult(v CdpTargetsResult, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if v.Targets == nil {
-		return contract.At("targets", fmt.Errorf("required array is nil"))
-	}
-	for i, item := range v.Targets {
-		_ = i
-		_ = item
-		if err := contractValidateCdpTarget(item, depth+1); err != nil {
-			return contract.At(fmt.Sprintf("%s[%d]", "targets", i), err)
-		}
-	}
-	return nil
-}
-func (v *CdpTargetsResult) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CdpTargetsResult
-	for key := range obj {
-		switch key {
-		case "targets", "truncated":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["targets"]
-		if !ok {
-			return contract.At("targets", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := func(b []byte) ([]CdpTarget, error) { return contract.List(b, contract.Decode[CdpTarget]) }(raw)
-			if err != nil {
-				return contract.At("targets", err)
-			}
-			next.Targets = value
-		}
-	}
-	{
-		raw, ok := obj["truncated"]
-		if !ok {
-			return contract.At("truncated", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[bool](raw)
-			if err != nil {
-				return contract.At("truncated", err)
-			}
-			next.Truncated = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CdpTargetsResult) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "targets", Value: v.Targets})
-	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
-	return contract.EncodeObject(fields)
-}
-func CdpTargetsResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"targets\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"additionalProperties\":false,\"required\":[\"id\",\"kind\",\"url\"]}},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"targets\",\"truncated\"],\"title\":\"CdpTargetsResult\",\"type\":\"object\"}")
-}
-func CdpTargetsResultPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"CdpTarget\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"required\":[\"id\",\"kind\",\"url\"]}},\"additionalProperties\":false,\"properties\":{\"targets\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/CdpTarget\"}},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"targets\",\"truncated\"],\"title\":\"CdpTargetsResult\",\"type\":\"object\"}")
-}
 func DecodeCheckInput(data []byte) (CheckInput, error) { return contract.Decode[CheckInput](data) }
 func (v CheckInput) Validate() error                   { return contractValidateCheckInput(v, 0) }
 func contractValidateCheckInput(v CheckInput, depth int) error {
@@ -5768,7 +5768,7 @@ func contractValidateClipboardItem(v ClipboardItem, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateClipboardMime(v.MIMEType, depth+1); err != nil {
+	if err := contractValidateClipboardMIME(v.MIMEType, depth+1); err != nil {
 		return contract.At("mimeType", err)
 	}
 	if err := contract.Text(string(v.MIMEType), 0, -1, ""); err != nil {
@@ -5798,7 +5798,7 @@ func (v *ClipboardItem) UnmarshalJSON(data []byte) error {
 			return contract.At("mimeType", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[ClipboardMime](raw)
+			value, err := contract.Decode[ClipboardMIME](raw)
 			if err != nil {
 				return contract.At("mimeType", err)
 			}
@@ -5847,11 +5847,11 @@ func (v ClipboardItem) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "bytes", Value: v.Bytes})
 	return contract.EncodeObject(fields)
 }
-func DecodeClipboardMime(data []byte) (ClipboardMime, error) {
-	return contract.Decode[ClipboardMime](data)
+func DecodeClipboardMIME(data []byte) (ClipboardMIME, error) {
+	return contract.Decode[ClipboardMIME](data)
 }
-func (v ClipboardMime) Validate() error { return contractValidateClipboardMime(v, 0) }
-func contractValidateClipboardMime(v ClipboardMime, depth int) error {
+func (v ClipboardMIME) Validate() error { return contractValidateClipboardMIME(v, 0) }
+func contractValidateClipboardMIME(v ClipboardMIME, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -5865,19 +5865,19 @@ func contractValidateClipboardMime(v ClipboardMime, depth int) error {
 	}
 	return nil
 }
-func (v *ClipboardMime) UnmarshalJSON(data []byte) error {
+func (v *ClipboardMIME) UnmarshalJSON(data []byte) error {
 	value, err := contract.Decode[string](data)
 	if err != nil {
 		return err
 	}
-	next := ClipboardMime(value)
+	next := ClipboardMIME(value)
 	if err := next.Validate(); err != nil {
 		return err
 	}
 	*v = next
 	return nil
 }
-func (v ClipboardMime) MarshalJSON() ([]byte, error) {
+func (v ClipboardMIME) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -6208,7 +6208,7 @@ func contractValidateClipboardWriteInput(v ClipboardWriteInput, depth int) error
 		return contract.At("tab", err)
 	}
 	if v.MIME != nil {
-		if err := contractValidateClipboardMime((*v.MIME), depth+1); err != nil {
+		if err := contractValidateClipboardMIME((*v.MIME), depth+1); err != nil {
 			return contract.At("mime", err)
 		}
 		if err := contract.Text(string((*v.MIME)), 0, -1, ""); err != nil {
@@ -6254,7 +6254,7 @@ func (v *ClipboardWriteInput) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["mime"]
 		if ok {
-			value, err := func(b []byte) (*ClipboardMime, error) { return contract.Pointer(b, contract.Decode[ClipboardMime]) }(raw)
+			value, err := func(b []byte) (*ClipboardMIME, error) { return contract.Pointer(b, contract.Decode[ClipboardMIME]) }(raw)
 			if err != nil {
 				return contract.At("mime", err)
 			}
@@ -6305,7 +6305,7 @@ func contractValidateClipboardWriteResult(v ClipboardWriteResult, depth int) err
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contractValidateClipboardMime(v.MIMEType, depth+1); err != nil {
+	if err := contractValidateClipboardMIME(v.MIMEType, depth+1); err != nil {
 		return contract.At("mimeType", err)
 	}
 	if err := contract.Text(string(v.MIMEType), 0, -1, ""); err != nil {
@@ -6332,7 +6332,7 @@ func (v *ClipboardWriteResult) UnmarshalJSON(data []byte) error {
 			return contract.At("mimeType", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[ClipboardMime](raw)
+			value, err := contract.Decode[ClipboardMIME](raw)
 			if err != nil {
 				return contract.At("mimeType", err)
 			}
@@ -10673,9 +10673,9 @@ func HistoryResultJSONSchema() json.RawMessage {
 func HistoryResultPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"$defs\":{\"HistoryEntry\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"index\":{\"type\":\"integer\",\"format\":\"uint\",\"minimum\":0},\"url\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"current\":{\"type\":\"boolean\"}},\"required\":[\"index\",\"url\",\"title\",\"current\"]}},\"additionalProperties\":false,\"properties\":{\"entries\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/HistoryEntry\"}},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"entries\",\"truncated\"],\"title\":\"HistoryResult\",\"type\":\"object\"}")
 }
-func DecodeImageMime(data []byte) (ImageMime, error) { return contract.Decode[ImageMime](data) }
-func (v ImageMime) Validate() error                  { return contractValidateImageMime(v, 0) }
-func contractValidateImageMime(v ImageMime, depth int) error {
+func DecodeImageMIME(data []byte) (ImageMIME, error) { return contract.Decode[ImageMIME](data) }
+func (v ImageMIME) Validate() error                  { return contractValidateImageMIME(v, 0) }
+func contractValidateImageMIME(v ImageMIME, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -10689,19 +10689,19 @@ func contractValidateImageMime(v ImageMime, depth int) error {
 	}
 	return nil
 }
-func (v *ImageMime) UnmarshalJSON(data []byte) error {
+func (v *ImageMIME) UnmarshalJSON(data []byte) error {
 	value, err := contract.Decode[string](data)
 	if err != nil {
 		return err
 	}
-	next := ImageMime(value)
+	next := ImageMIME(value)
 	if err := next.Validate(); err != nil {
 		return err
 	}
 	*v = next
 	return nil
 }
-func (v ImageMime) MarshalJSON() ([]byte, error) {
+func (v ImageMIME) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -10917,9 +10917,9 @@ func InfoResultJSONSchema() json.RawMessage {
 func InfoResultPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"BrowserViewport\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"width\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"height\":{\"type\":\"integer\",\"format\":\"uint32\",\"minimum\":1},\"devicePixelRatio\":{\"type\":\"number\",\"format\":\"double\",\"minimum\":2.2250738585072014e-308},\"mode\":{\"$ref\":\"#/$defs/ViewportMode\"}},\"required\":[\"width\",\"height\",\"devicePixelRatio\",\"mode\"],\"description\":\"A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio\\nit renders at, and who decides them.\"},\"ViewportMode\":{\"type\":\"string\",\"enum\":[\"web\",\"mobile\",\"custom\"],\"description\":\"Who decides a tab's viewport (`live-view.md` § Modes): the user's\\npanel, a phone, or the agent.\"},\"Dialog\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"type\":{\"$ref\":\"#/$defs/DialogType\"},\"message\":{\"type\":\"string\"}},\"required\":[\"type\",\"message\"],\"description\":\"A JavaScript dialog a tab shows.\"},\"DialogType\":{\"type\":\"string\",\"enum\":[\"alert\",\"confirm\",\"prompt\",\"beforeunload\"]}},\"additionalProperties\":false,\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\"},\"url\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"viewport\":{\"$ref\":\"#/$defs/BrowserViewport\"},\"dialog\":{\"$ref\":\"#/$defs/Dialog\"}},\"required\":[\"tab\",\"url\",\"title\",\"viewport\"],\"title\":\"InfoResult\",\"type\":\"object\"}")
 }
-func DecodeInlineSvg(data []byte) (InlineSvg, error) { return contract.Decode[InlineSvg](data) }
-func (v InlineSvg) Validate() error                  { return contractValidateInlineSvg(v, 0) }
-func contractValidateInlineSvg(v InlineSvg, depth int) error {
+func DecodeInlineSVG(data []byte) (InlineSVG, error) { return contract.Decode[InlineSVG](data) }
+func (v InlineSVG) Validate() error                  { return contractValidateInlineSVG(v, 0) }
+func contractValidateInlineSVG(v InlineSVG, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -10931,12 +10931,12 @@ func contractValidateInlineSvg(v InlineSvg, depth int) error {
 	}
 	return nil
 }
-func (v *InlineSvg) UnmarshalJSON(data []byte) error {
+func (v *InlineSVG) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next InlineSvg
+	var next InlineSVG
 	for key := range obj {
 		switch key {
 		case "id", "html":
@@ -10976,7 +10976,7 @@ func (v *InlineSvg) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v InlineSvg) MarshalJSON() ([]byte, error) {
+func (v InlineSVG) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -18107,7 +18107,7 @@ func contractValidateScreenshotResult(v ScreenshotResult, depth int) error {
 	if err := contract.Text(string(v.Path), 0, -1, ""); err != nil {
 		return contract.At("path", err)
 	}
-	if err := contractValidateImageMime(v.MIMEType, depth+1); err != nil {
+	if err := contractValidateImageMIME(v.MIMEType, depth+1); err != nil {
 		return contract.At("mimeType", err)
 	}
 	if err := contract.Text(string(v.MIMEType), 0, -1, ""); err != nil {
@@ -18150,7 +18150,7 @@ func (v *ScreenshotResult) UnmarshalJSON(data []byte) error {
 			return contract.At("mimeType", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[ImageMime](raw)
+			value, err := contract.Decode[ImageMIME](raw)
 			if err != nil {
 				return contract.At("mimeType", err)
 			}
@@ -21122,11 +21122,11 @@ func WaitResultJSONSchema() json.RawMessage {
 func WaitResultPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"$defs\":{\"ResolvedElement\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"ref\":{\"$ref\":\"#/$defs/NodeRef\"},\"role\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"}},\"required\":[\"ref\",\"role\",\"name\"],\"description\":\"The element an action or a wait resolved its target to, as the page's\\naccessibility tree names it, with the reference that names it from then\\non. `role` and `name` are empty for an element the tree leaves out.\"},\"NodeRef\":{\"type\":\"string\",\"description\":\"A node reference, which `inspect`, `find` and `probe` return: `e` and\\na number unique within its tab. It stays valid while its document\\ndoes.\",\"pattern\":\"^e[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"What `wait` answers; a load wait carries neither `url` nor `target`.\",\"properties\":{\"condition\":{\"type\":\"string\"},\"matched\":{\"type\":\"boolean\"},\"url\":{\"type\":\"string\"},\"target\":{\"$ref\":\"#/$defs/ResolvedElement\",\"description\":\"The element whose state matched; none when no element is attached.\"}},\"required\":[\"condition\",\"matched\"],\"title\":\"WaitResult\",\"type\":\"object\"}")
 }
-func DecodeWebmcpCallInput(data []byte) (WebmcpCallInput, error) {
-	return contract.Decode[WebmcpCallInput](data)
+func DecodeWebMCPCallInput(data []byte) (WebMCPCallInput, error) {
+	return contract.Decode[WebMCPCallInput](data)
 }
-func (v WebmcpCallInput) Validate() error { return contractValidateWebmcpCallInput(v, 0) }
-func contractValidateWebmcpCallInput(v WebmcpCallInput, depth int) error {
+func (v WebMCPCallInput) Validate() error { return contractValidateWebMCPCallInput(v, 0) }
+func contractValidateWebMCPCallInput(v WebMCPCallInput, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -21155,12 +21155,12 @@ func contractValidateWebmcpCallInput(v WebmcpCallInput, depth int) error {
 	}
 	return nil
 }
-func (v *WebmcpCallInput) UnmarshalJSON(data []byte) error {
+func (v *WebMCPCallInput) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next WebmcpCallInput
+	var next WebMCPCallInput
 	for key := range obj {
 		switch key {
 		case "tab", "tool", "tools", "arguments", "timeout":
@@ -21236,7 +21236,7 @@ func (v *WebmcpCallInput) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v WebmcpCallInput) MarshalJSON() ([]byte, error) {
+func (v WebMCPCallInput) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -21250,17 +21250,17 @@ func (v WebmcpCallInput) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeObject(fields)
 }
-func WebmcpCallInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"tool\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"tools\":{\"type\":\"string\",\"description\":\"The generation `webmcp.list` returned\",\"minLength\":1,\"maxLength\":4096},\"arguments\":{\"type\":\"string\",\"maxLength\":1048576},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"tool\",\"tools\",\"arguments\"],\"title\":\"WebmcpCallInput\",\"type\":\"object\"}")
+func WebMCPCallInputJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"tool\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"tools\":{\"type\":\"string\",\"description\":\"The generation `webmcp.list` returned\",\"minLength\":1,\"maxLength\":4096},\"arguments\":{\"type\":\"string\",\"maxLength\":1048576},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"tool\",\"tools\",\"arguments\"],\"title\":\"WebMCPCallInput\",\"type\":\"object\"}")
 }
-func WebmcpCallInputPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"tool\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"tools\":{\"type\":\"string\",\"description\":\"The generation `webmcp.list` returned\",\"minLength\":1,\"maxLength\":4096},\"arguments\":{\"type\":\"string\",\"maxLength\":1048576},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"tool\",\"tools\",\"arguments\"],\"title\":\"WebmcpCallInput\",\"type\":\"object\"}")
+func WebMCPCallInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"tool\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\"tools\":{\"type\":\"string\",\"description\":\"The generation `webmcp.list` returned\",\"minLength\":1,\"maxLength\":4096},\"arguments\":{\"type\":\"string\",\"maxLength\":1048576},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\",\"tool\",\"tools\",\"arguments\"],\"title\":\"WebMCPCallInput\",\"type\":\"object\"}")
 }
-func DecodeWebmcpCallResult(data []byte) (WebmcpCallResult, error) {
-	return contract.Decode[WebmcpCallResult](data)
+func DecodeWebMCPCallResult(data []byte) (WebMCPCallResult, error) {
+	return contract.Decode[WebMCPCallResult](data)
 }
-func (v WebmcpCallResult) Validate() error { return contractValidateWebmcpCallResult(v, 0) }
-func contractValidateWebmcpCallResult(v WebmcpCallResult, depth int) error {
+func (v WebMCPCallResult) Validate() error { return contractValidateWebMCPCallResult(v, 0) }
+func contractValidateWebMCPCallResult(v WebMCPCallResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -21272,12 +21272,12 @@ func contractValidateWebmcpCallResult(v WebmcpCallResult, depth int) error {
 	}
 	return nil
 }
-func (v *WebmcpCallResult) UnmarshalJSON(data []byte) error {
+func (v *WebMCPCallResult) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next WebmcpCallResult
+	var next WebMCPCallResult
 	for key := range obj {
 		switch key {
 		case "name", "result":
@@ -21317,7 +21317,7 @@ func (v *WebmcpCallResult) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v WebmcpCallResult) MarshalJSON() ([]byte, error) {
+func (v WebMCPCallResult) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -21326,17 +21326,17 @@ func (v WebmcpCallResult) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "result", Value: v.Result})
 	return contract.EncodeObject(fields)
 }
-func WebmcpCallResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\"},\"result\":true},\"required\":[\"name\",\"result\"],\"title\":\"WebmcpCallResult\",\"type\":\"object\"}")
+func WebMCPCallResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\"},\"result\":true},\"required\":[\"name\",\"result\"],\"title\":\"WebMCPCallResult\",\"type\":\"object\"}")
 }
-func WebmcpCallResultPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\"},\"result\":true},\"required\":[\"name\",\"result\"],\"title\":\"WebmcpCallResult\",\"type\":\"object\"}")
+func WebMCPCallResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\"},\"result\":true},\"required\":[\"name\",\"result\"],\"title\":\"WebMCPCallResult\",\"type\":\"object\"}")
 }
-func DecodeWebmcpListInput(data []byte) (WebmcpListInput, error) {
-	return contract.Decode[WebmcpListInput](data)
+func DecodeWebMCPListInput(data []byte) (WebMCPListInput, error) {
+	return contract.Decode[WebMCPListInput](data)
 }
-func (v WebmcpListInput) Validate() error { return contractValidateWebmcpListInput(v, 0) }
-func contractValidateWebmcpListInput(v WebmcpListInput, depth int) error {
+func (v WebMCPListInput) Validate() error { return contractValidateWebMCPListInput(v, 0) }
+func contractValidateWebMCPListInput(v WebMCPListInput, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -21356,12 +21356,12 @@ func contractValidateWebmcpListInput(v WebmcpListInput, depth int) error {
 	}
 	return nil
 }
-func (v *WebmcpListInput) UnmarshalJSON(data []byte) error {
+func (v *WebMCPListInput) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next WebmcpListInput
+	var next WebMCPListInput
 	for key := range obj {
 		switch key {
 		case "tab", "timeout":
@@ -21398,7 +21398,7 @@ func (v *WebmcpListInput) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v WebmcpListInput) MarshalJSON() ([]byte, error) {
+func (v WebMCPListInput) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -21409,17 +21409,17 @@ func (v WebmcpListInput) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeObject(fields)
 }
-func WebmcpListInputJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`webmcp.list`: lists the WebMCP tools the page declares.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"WebmcpListInput\",\"type\":\"object\"}")
+func WebMCPListInputJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`webmcp.list`: lists the WebMCP tools the page declares.\",\"properties\":{\"tab\":{\"type\":\"string\",\"description\":\"Browser tab ID returned by open or tabs\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"WebMCPListInput\",\"type\":\"object\"}")
 }
-func WebmcpListInputPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`webmcp.list`: lists the WebMCP tools the page declares.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"WebmcpListInput\",\"type\":\"object\"}")
+func WebMCPListInputPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"}},\"additionalProperties\":false,\"description\":\"`webmcp.list`: lists the WebMCP tools the page declares.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/TabId\",\"description\":\"Browser tab ID returned by open or tabs\"},\"timeout\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":1,\"description\":\"Whole operation deadline in milliseconds\",\"maximum\":300000}},\"required\":[\"tab\"],\"title\":\"WebMCPListInput\",\"type\":\"object\"}")
 }
-func DecodeWebmcpListResult(data []byte) (WebmcpListResult, error) {
-	return contract.Decode[WebmcpListResult](data)
+func DecodeWebMCPListResult(data []byte) (WebMCPListResult, error) {
+	return contract.Decode[WebMCPListResult](data)
 }
-func (v WebmcpListResult) Validate() error { return contractValidateWebmcpListResult(v, 0) }
-func contractValidateWebmcpListResult(v WebmcpListResult, depth int) error {
+func (v WebMCPListResult) Validate() error { return contractValidateWebMCPListResult(v, 0) }
+func contractValidateWebMCPListResult(v WebMCPListResult, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -21432,18 +21432,18 @@ func contractValidateWebmcpListResult(v WebmcpListResult, depth int) error {
 	for i, item := range v.Entries {
 		_ = i
 		_ = item
-		if err := contractValidateWebmcpTool(item, depth+1); err != nil {
+		if err := contractValidateWebMCPTool(item, depth+1); err != nil {
 			return contract.At(fmt.Sprintf("%s[%d]", "entries", i), err)
 		}
 	}
 	return nil
 }
-func (v *WebmcpListResult) UnmarshalJSON(data []byte) error {
+func (v *WebMCPListResult) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next WebmcpListResult
+	var next WebMCPListResult
 	for key := range obj {
 		switch key {
 		case "tools", "entries", "truncated":
@@ -21470,7 +21470,7 @@ func (v *WebmcpListResult) UnmarshalJSON(data []byte) error {
 			return contract.At("entries", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) ([]WebmcpTool, error) { return contract.List(b, contract.Decode[WebmcpTool]) }(raw)
+			value, err := func(b []byte) ([]WebMCPTool, error) { return contract.List(b, contract.Decode[WebMCPTool]) }(raw)
 			if err != nil {
 				return contract.At("entries", err)
 			}
@@ -21496,7 +21496,7 @@ func (v *WebmcpListResult) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v WebmcpListResult) MarshalJSON() ([]byte, error) {
+func (v WebMCPListResult) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -21506,15 +21506,15 @@ func (v WebmcpListResult) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "truncated", Value: v.Truncated})
 	return contract.EncodeObject(fields)
 }
-func WebmcpListResultJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"What `webmcp.list` answers: the declarations' generation, which\\n`webmcp.call` names, and the tools.\",\"properties\":{\"tools\":{\"type\":\"string\"},\"entries\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"},\"inputSchema\":true,\"outputSchema\":true},\"additionalProperties\":false,\"required\":[\"name\",\"description\",\"inputSchema\"]}},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"tools\",\"entries\",\"truncated\"],\"title\":\"WebmcpListResult\",\"type\":\"object\"}")
+func WebMCPListResultJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"What `webmcp.list` answers: the declarations' generation, which\\n`webmcp.call` names, and the tools.\",\"properties\":{\"tools\":{\"type\":\"string\"},\"entries\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"},\"inputSchema\":true,\"outputSchema\":true},\"additionalProperties\":false,\"required\":[\"name\",\"description\",\"inputSchema\"]}},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"tools\",\"entries\",\"truncated\"],\"title\":\"WebMCPListResult\",\"type\":\"object\"}")
 }
-func WebmcpListResultPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"WebmcpTool\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"},\"inputSchema\":true,\"outputSchema\":true},\"required\":[\"name\",\"description\",\"inputSchema\"]}},\"additionalProperties\":false,\"description\":\"What `webmcp.list` answers: the declarations' generation, which\\n`webmcp.call` names, and the tools.\",\"properties\":{\"tools\":{\"type\":\"string\"},\"entries\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/WebmcpTool\"}},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"tools\",\"entries\",\"truncated\"],\"title\":\"WebmcpListResult\",\"type\":\"object\"}")
+func WebMCPListResultPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"$defs\":{\"WebMcpTool\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"},\"inputSchema\":true,\"outputSchema\":true},\"required\":[\"name\",\"description\",\"inputSchema\"]}},\"additionalProperties\":false,\"description\":\"What `webmcp.list` answers: the declarations' generation, which\\n`webmcp.call` names, and the tools.\",\"properties\":{\"tools\":{\"type\":\"string\"},\"entries\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/WebMcpTool\"}},\"truncated\":{\"type\":\"boolean\"}},\"required\":[\"tools\",\"entries\",\"truncated\"],\"title\":\"WebMCPListResult\",\"type\":\"object\"}")
 }
-func DecodeWebmcpTool(data []byte) (WebmcpTool, error) { return contract.Decode[WebmcpTool](data) }
-func (v WebmcpTool) Validate() error                   { return contractValidateWebmcpTool(v, 0) }
-func contractValidateWebmcpTool(v WebmcpTool, depth int) error {
+func DecodeWebMCPTool(data []byte) (WebMCPTool, error) { return contract.Decode[WebMCPTool](data) }
+func (v WebMCPTool) Validate() error                   { return contractValidateWebMCPTool(v, 0) }
+func contractValidateWebMCPTool(v WebMCPTool, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -21534,12 +21534,12 @@ func contractValidateWebmcpTool(v WebmcpTool, depth int) error {
 	}
 	return nil
 }
-func (v *WebmcpTool) UnmarshalJSON(data []byte) error {
+func (v *WebMCPTool) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next WebmcpTool
+	var next WebMCPTool
 	for key := range obj {
 		switch key {
 		case "name", "description", "inputSchema", "outputSchema":
@@ -21602,7 +21602,7 @@ func (v *WebmcpTool) UnmarshalJSON(data []byte) error {
 	*v = next
 	return nil
 }
-func (v WebmcpTool) MarshalJSON() ([]byte, error) {
+func (v WebMCPTool) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}

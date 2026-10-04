@@ -56,7 +56,7 @@ func (s *Shard) Mark(part pagesync.Part) {
 func (s *Shard) AdoptRunner(
 	ctx context.Context,
 	device database.DeviceRecord,
-	runner runnerwire.RunnerInfo,
+	runner runnerwire.Info,
 	socket *runners.Socket,
 ) error {
 	return s.adopt(ctx, device, runner, socket, nil)
@@ -68,7 +68,7 @@ func (s *Shard) AdoptRunner(
 func (s *Shard) AdoptClaimed(
 	ctx context.Context,
 	device database.DeviceRecord,
-	runner runnerwire.RunnerInfo,
+	runner runnerwire.Info,
 	socket *runners.Socket,
 	bound chan<- webapi.DeviceDTO,
 ) error {

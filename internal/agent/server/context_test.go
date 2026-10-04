@@ -62,7 +62,7 @@ func product(contextSource *testContext, profiles ...core.Profile) func(*server.
 		if err != nil {
 			panic(err)
 		}
-		deps.Toolsets = tools.Toolset{Commands: commands, Profiles: profiles, Revision: "test"}
+		deps.Toolsets = tools.Set{Commands: commands, Profiles: profiles, Revision: "test"}
 		if contextSource != nil {
 			deps.Context = []tools.ContextSource{contextSource}
 		}

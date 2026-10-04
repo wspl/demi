@@ -448,7 +448,7 @@ type testBlobs struct {
 	touched []core.BlobRef
 }
 
-func (b *testBlobs) Media() store.BlobStore { return b.MemoryBlobs }
+func (b *testBlobs) Media() store.Blobs { return b.MemoryBlobs }
 func (b *testBlobs) CommitUses(_ context.Context, blobs []core.BlobRef) error {
 	b.touched = append(b.touched, blobs...)
 	return b.refuse
@@ -531,7 +531,7 @@ func TestOutputRevisionIgnoresInputAndAdvancesOnRewrite(t *testing.T) {
 	equal(t, false, found)
 	require(t, tree.CreateNode(ctx, node("root", nil, 0), update(0)))
 	equal(t, EmptySummary(), facts(t, db))
-	root := tree.SessionStore("root")
+	root := tree.Session("root")
 	require(t, root.Save(ctx, update(1, store.ChangedBlock{Index: 0, Block: user("u1")}), store.CommitGuard{}))
 	equal(t, uint64(0), facts(t, db).Revision)
 	require(
@@ -555,7 +555,7 @@ func TestRefusedSaveLeavesWholeCheckpoint(t *testing.T) {
 	tree, _, _ := testTree(t)
 	ctx := t.Context()
 	require(t, tree.CreateNode(ctx, node("root", nil, 0), update(0)))
-	root := tree.SessionStore("root")
+	root := tree.Session("root")
 	before, _, err := root.Load(ctx)
 	require(t, err)
 	changed := store.InitialCommandState()
@@ -616,7 +616,7 @@ func TestHistoryIsDepthFirstInSpawnOrder(t *testing.T) {
 }
 
 func TestTreeStoreContract(t *testing.T) {
-	storetest.StoreContract(t, func(t *testing.T) store.TreeStore {
+	storetest.StoreContract(t, func(t *testing.T) store.Tree {
 		tree, _, _ := testTree(t)
 		return tree
 	})

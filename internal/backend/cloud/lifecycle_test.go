@@ -23,7 +23,7 @@ func TestConcurrentWakeOwnsTransitionAfterCallerLeaves(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newCloudFixture(t)
 		wake := make(chan struct{})
-		f.hook = func(call machinewire.MachineCall) (string, error) {
+		f.hook = func(call machinewire.Call) (string, error) {
 			if call.Name() == "wake" {
 				<-wake
 			}
@@ -211,7 +211,7 @@ func TestIdleStopWaitsForDemandAndMaintenance(t *testing.T) {
 		f.flush = true
 		f.services.Tuning.CheckpointInterval = 3 * time.Second
 		checkpoint := make(chan struct{})
-		f.hook = func(call machinewire.MachineCall) (string, error) {
+		f.hook = func(call machinewire.Call) (string, error) {
 			if call.Name() == "checkpoint" {
 				<-checkpoint
 			}
@@ -324,7 +324,7 @@ func TestResetIdempotencyAndWaitingAdmission(t *testing.T) {
 		a := f.access()
 		a.Release()
 		rebuild := make(chan struct{})
-		f.hook = func(call machinewire.MachineCall) (string, error) {
+		f.hook = func(call machinewire.Call) (string, error) {
 			if call.Name() == "reset" {
 				<-rebuild
 			}
@@ -386,7 +386,7 @@ func TestFailedResetRetryUsesPinnedBaseAndReleasesHolds(t *testing.T) {
 		f.flush = true
 		f.records.uses = []database.CloudUseRecord{{ID: "target", OnCloud: true}}
 		fail := true
-		f.hook = func(call machinewire.MachineCall) (string, error) {
+		f.hook = func(call machinewire.Call) (string, error) {
 			if call.Name() == "reset" && fail {
 				return "", errors.New("disk refused")
 			}
@@ -498,7 +498,7 @@ func TestStatusDoesNotAllocateAndGrowthChecksOwnership(t *testing.T) {
 		if f.count("grow_volume") != 1 {
 			t.Fatal("growth count")
 		}
-		f.hook = func(call machinewire.MachineCall) (string, error) {
+		f.hook = func(call machinewire.Call) (string, error) {
 			if call.Name() == "image_state" {
 				return "", io.EOF
 			}
@@ -653,7 +653,7 @@ func TestResetDuringBootJoinsItAndSharesItsPermit(t *testing.T) {
 		f.services.Capacity = NewCapacity(1)
 		booting := make(chan struct{})
 		first := true
-		f.hook = func(call machinewire.MachineCall) (string, error) {
+		f.hook = func(call machinewire.Call) (string, error) {
 			if call.Name() == "wake" && first {
 				first = false
 				<-booting
@@ -691,7 +691,7 @@ func TestCheckpointFailureRetriesWithoutStoppingCloud(t *testing.T) {
 		f.flush = true
 		f.services.Tuning.CheckpointInterval = 2 * time.Second
 		fail := true
-		f.hook = func(call machinewire.MachineCall) (string, error) {
+		f.hook = func(call machinewire.Call) (string, error) {
 			if call.Name() == "checkpoint" && fail {
 				return "", errors.New("checkpoint refused")
 			}

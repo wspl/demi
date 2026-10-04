@@ -202,7 +202,7 @@ func TestConcurrentAddsKeepEveryTodoWithItsOwnID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	list, err := DecodeTodoList([]byte(listed))
+	list, err := DecodeList([]byte(listed))
 	if err != nil {
 		t.Fatal(err)
 	}

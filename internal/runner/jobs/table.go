@@ -91,7 +91,7 @@ type DeclaredCommands struct {
 	// ManifestHash identifies the job command manifest.
 	ManifestHash string
 	// Context supplies the backend command authority.
-	Context commandwire.CommandContext
+	Context commandwire.Context
 }
 
 // ProcessCommand runs one raw executable with its arguments.

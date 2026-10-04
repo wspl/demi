@@ -30,7 +30,7 @@ func list(ctx context.Context, invocation host.RPCInvocation, port host.RPCPort)
 	}
 	var output []byte
 	if invocation.JSON {
-		output, err = (TodoList{Todos: todos}).MarshalJSON()
+		output, err = (List{Todos: todos}).MarshalJSON()
 	} else if len(todos) == 0 {
 		output = []byte("No todos.\n")
 	} else {
@@ -59,7 +59,7 @@ func add(ctx context.Context, call host.Call[AddArgs], port host.RPCPort) (uint8
 			if found {
 				todos = current
 			}
-			todos = append(todos, TodoItem{ID: nextID(todos), Text: call.Args.Text, Status: Pending})
+			todos = append(todos, Item{ID: nextID(todos), Text: call.Args.Text, Status: Pending})
 			return todos, nil
 		},
 	)
@@ -70,7 +70,7 @@ func add(ctx context.Context, call host.Call[AddArgs], port host.RPCPort) (uint8
 }
 
 func update(ctx context.Context, call host.Call[UpdateArgs], port host.RPCPort) (uint8, error) {
-	todo, err := change(ctx, port, call.Args.ID, func(todo *TodoItem) {
+	todo, err := change(ctx, port, call.Args.ID, func(todo *Item) {
 		if call.Args.Text != nil {
 			todo.Text = *call.Args.Text
 		}
@@ -85,7 +85,7 @@ func update(ctx context.Context, call host.Call[UpdateArgs], port host.RPCPort) 
 }
 
 func done(ctx context.Context, call host.Call[DoneArgs], port host.RPCPort) (uint8, error) {
-	todo, err := change(ctx, port, call.Args.ID, func(todo *TodoItem) { todo.Status = Done })
+	todo, err := change(ctx, port, call.Args.ID, func(todo *Item) { todo.Status = Done })
 	if err != nil {
 		return 0, err
 	}
@@ -93,8 +93,8 @@ func done(ctx context.Context, call host.Call[DoneArgs], port host.RPCPort) (uin
 }
 
 // change commits the requested todo edit through the node's revisioned storage.
-func change(ctx context.Context, port host.RPCPort, id string, edit func(*TodoItem)) (TodoItem, error) {
-	var changed TodoItem
+func change(ctx context.Context, port host.RPCPort, id string, edit func(*Item)) (Item, error) {
+	var changed Item
 	_, err := host.Update(
 		ctx,
 		port,
@@ -118,7 +118,7 @@ func change(ctx context.Context, port host.RPCPort, id string, edit func(*TodoIt
 }
 
 // write prints the committed todo in the invocation's selected format.
-func write(ctx context.Context, port host.RPCPort, asJSON bool, todo TodoItem) (uint8, error) {
+func write(ctx context.Context, port host.RPCPort, asJSON bool, todo Item) (uint8, error) {
 	output := []byte(line(todo) + "\n")
 	if asJSON {
 		var err error
@@ -131,7 +131,7 @@ func write(ctx context.Context, port host.RPCPort, asJSON bool, todo TodoItem) (
 }
 
 // nextID allocates one more than the largest numeric T id in the list.
-func nextID(todos []TodoItem) string {
+func nextID(todos []Item) string {
 	var largest uint64
 	for _, todo := range todos {
 		suffix, ok := strings.CutPrefix(todo.ID, "T")
@@ -147,7 +147,7 @@ func nextID(todos []TodoItem) string {
 }
 
 // line prints a todo's status mark, id and text.
-func line(todo TodoItem) string {
+func line(todo Item) string {
 	mark := " "
 	switch todo.Status {
 	case Pending:

@@ -24,7 +24,7 @@ type cloudUse struct {
 }
 
 // cloudUses derives the strongest Cloud role of every unarchived conversation.
-func cloudUses(ctx context.Context, s CloudShard) ([]cloudUse, error) {
+func cloudUses(ctx context.Context, s Shard) ([]cloudUse, error) {
 	control := cloudRecords(s)
 	device, found, err := control.ManagedDevice(ctx, s.User())
 	if err != nil {
@@ -75,7 +75,7 @@ func releaseHolds(held []ConversationHold) {
 }
 
 // holdIdle reserves all required conversations now, or releases the partial set.
-func holdIdle(s CloudShard, uses []cloudUse) ([]ConversationHold, bool) {
+func holdIdle(s Shard, uses []cloudUse) ([]ConversationHold, bool) {
 	var held []ConversationHold
 	for _, use := range uses {
 		if use.role == attachedRole {
@@ -92,7 +92,7 @@ func holdIdle(s CloudShard, uses []cloudUse) ([]ConversationHold, bool) {
 }
 
 // holdReset interrupts and holds conversations that cannot work without Cloud.
-func holdReset(ctx context.Context, s CloudShard, uses []cloudUse, timeout time.Duration) ([]ConversationHold, error) {
+func holdReset(ctx context.Context, s Shard, uses []cloudUse, timeout time.Duration) ([]ConversationHold, error) {
 	var held []ConversationHold
 	for _, use := range uses {
 		if use.role == attachedRole {
@@ -113,7 +113,7 @@ func holdReset(ctx context.Context, s CloudShard, uses []cloudUse, timeout time.
 }
 
 // providerRunsProcess reads and builds a provider for Cloud demand classification.
-func providerRunsProcess(ctx context.Context, s CloudShard, provider webapi.ProviderID) bool {
+func providerRunsProcess(ctx context.Context, s Shard, provider webapi.ProviderID) bool {
 	process := false
 	entry, err := s.Vault().Visible(ctx, s.User(), provider)
 	if err != nil {

@@ -167,8 +167,8 @@ func (n *CountingNumbers) Next(_ context.Context, sequence core.Sequence) (uint6
 }
 
 // CommandContext is the test context, with locale different from the backend default.
-func CommandContext() commandwire.CommandContext {
-	return commandwire.CommandContext{
+func CommandContext() commandwire.Context {
+	return commandwire.Context{
 		Conversation: "test-conversation",
 		Caller:       &commandwire.AgentCaller{Number: 1},
 		Locale: commandwire.CommandLocale{

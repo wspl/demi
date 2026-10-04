@@ -109,7 +109,7 @@ func (s secret) due(now core.Timestamp) bool {
 
 func (p *Provider) document() (provider.AccountDocument, error) {
 	if p.config.Account == nil {
-		return nil, provider.AuthFailure{Family: "Codex", Reason: provider.AuthReasonMissing}
+		return nil, provider.AuthError{Family: "Codex", Reason: provider.AuthReasonMissing}
 	}
 	return p.pool.Document(*p.config.Account), nil
 }

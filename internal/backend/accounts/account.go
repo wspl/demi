@@ -34,8 +34,8 @@ var (
 	ErrUserNotFound = errors.New("No such user")
 )
 
-// AccountStore is the control database's account boundary.
-type AccountStore interface {
+// Store is the control database's account boundary.
+type Store interface {
 	HasUsers(context.Context) (bool, error)
 	CreateMaster(context.Context, webapi.EmailAddress, database.PasswordHash) (webapi.UserDTO, error)
 	AccountByEmail(context.Context, webapi.EmailAddress) (database.Account, bool, error)
@@ -66,14 +66,14 @@ type SignedIn struct {
 // Accounts provides setup, login, self-service account changes and administration.
 // The edge supplies authenticated callers and owns cookies and change broadcasts.
 type Accounts struct {
-	control   AccountStore
+	control   Store
 	passwords Passwords
 	sessions  SessionOpener
 	limiter   *LoginLimiter
 }
 
-// NewAccounts assembles the account service with the process's shared limiter.
-func NewAccounts(control AccountStore, passwords Passwords, sessions SessionOpener, limiter *LoginLimiter) *Accounts {
+// New assembles the account service with the process's shared limiter.
+func New(control Store, passwords Passwords, sessions SessionOpener, limiter *LoginLimiter) *Accounts {
 	return &Accounts{control: control, passwords: passwords, sessions: sessions, limiter: limiter}
 }
 

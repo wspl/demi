@@ -260,7 +260,7 @@ func (s *Session) commitEdit(ctx context.Context, candidate editCandidate) (bool
 	defer func() {
 		if !accepted {
 			if closeErr := fresh.Close(context.WithoutCancel(ctx)); closeErr != nil {
-				s.emit(&ErrorEvent{Report: ErrorReport{Message: closeErr.Error()}})
+				s.emit(&ErrorEvent{Report: ReportError{Message: closeErr.Error()}})
 			}
 		}
 	}()

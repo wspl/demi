@@ -31,7 +31,7 @@ type ExecutionContext struct {
 	// JobID identifies the job that owns this authority.
 	JobID string
 	// Command is what the backend told the job's declared commands.
-	Command commandwire.CommandContext
+	Command commandwire.Context
 	// Manifest contains the job declarations and package catalog.
 	Manifest *runnerwire.Manifest
 	// Edits is where the job records the files its commands change.
@@ -50,7 +50,7 @@ type ExecutionContext struct {
 func NewExecutionContext(
 	ctx context.Context,
 	jobID string,
-	command commandwire.CommandContext,
+	command commandwire.Context,
 	manifest *runnerwire.Manifest,
 	edits commandwire.EditContext,
 	connection *Connection,

@@ -13,7 +13,7 @@ import (
 
 func (s *Shard) testProvider(
 	ctx context.Context,
-	entry providers.ProviderEntry,
+	entry providers.Entry,
 	builtProvider provider.Provider,
 	account *webapi.CredentialID,
 	modelID string,

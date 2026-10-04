@@ -21,9 +21,9 @@ type numberAnswer struct {
 // whereAnswer exposes the invocation context for native integration tests.
 // +demi:root
 type whereAnswer struct {
-	Label   json.RawMessage            `json:"label"`
-	Context commandwire.CommandContext `json:"context"`
-	Cwd     string                     `json:"cwd"`
+	Label   json.RawMessage     `json:"label"`
+	Context commandwire.Context `json:"context"`
+	Cwd     string              `json:"cwd"`
 	// +demi:nullable
 	Value *string `json:"value"`
 }

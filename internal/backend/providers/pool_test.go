@@ -24,7 +24,7 @@ func vaultFixture(t *testing.T) (*Vault, webapi.UserDTO) {
 		control,
 		NewVaultKey(databasetest.Key()),
 		webapi.InstanceModeIsolated,
-		&pagesync.SyncRegistry{},
+		&pagesync.Registry{},
 	), owner
 }
 

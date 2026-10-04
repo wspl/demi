@@ -47,7 +47,7 @@ func publishHostRelease(t *testing.T, directory, program, name string) string {
 		}
 	}
 	manifest, err := contract.EncodeJSON(
-		runnerwire.RunnerRelease{
+		runnerwire.Release{
 			Release:         release,
 			Wire:            runnerwire.Version,
 			CommandProtocol: commandwire.Version,

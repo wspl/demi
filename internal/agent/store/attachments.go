@@ -79,7 +79,7 @@ type Upload struct {
 // UploadBlocks returns a native image, video or PDF followed by its attachment
 // record, plus held bytes. Fitted images are stored first when reencoded;
 // an unfit image remains only an attachment record to read by path.
-func UploadBlocks(ctx context.Context, upload Upload, blobs BlobStore) ([]core.UserContentBlock, HeldMedia, error) {
+func UploadBlocks(ctx context.Context, upload Upload, blobs Blobs) ([]core.UserContentBlock, HeldMedia, error) {
 	record := &core.UserAttachment{
 		Attachment: core.Attachment{
 			Name:      upload.Name,

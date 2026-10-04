@@ -50,7 +50,7 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 		}
 	})
 	fixture := jobstest.NewDispatch(testContext(t), t, t.TempDir(), value, pipes)
-	command := commandwire.CommandContext{
+	command := commandwire.Context{
 		Conversation: "conversation",
 		Caller:       &commandwire.AgentCaller{Number: 1},
 		Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},

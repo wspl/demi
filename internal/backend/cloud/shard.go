@@ -16,16 +16,14 @@ import (
 // ErrNotLetGo means a conversation did not let go of its tree or file gate within the hold time.
 var ErrNotLetGo = errors.New("the conversation did not let go in time")
 
-// CloudShard supplies what the Cloud needs of its user's shard: the handles
+// Shard supplies what the Cloud needs of its user's shard: the handles
 // its operations use, and the user's conversations, which keep the Cloud awake
 // while they work and which an idle stop and a reset hold.
 // Handles and configuration remain stable for the shard's lifetime. Callbacks
 // synchronize their own access to shard state and are called without the shard
 // mutex held. Cloud owns and joins the workers that use this interface; the
 // shard must call Close before disposing any of these handles.
-//
-//nolint:revive // The architecture names this cross-package boundary CloudShard.
-type CloudShard interface {
+type Shard interface {
 	// User identifies the owner.
 	User() webapi.UserID
 	// Cloud is the user's Cloud machine.

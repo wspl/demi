@@ -13,8 +13,8 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-// ProviderFamily builds the provider of one entry and account.
-type ProviderFamily interface {
+// Family builds the provider of one entry and account.
+type Family interface {
 	// Credential says how the family entries authenticate.
 	Credential() webapi.CredentialKind
 	// Wires lists selectable protocols; empty means the family speaks one.
@@ -85,21 +85,21 @@ type AccountBinding struct {
 type FamilyRegistry struct {
 	// mu protects registry lookups and replacement; no family callback runs under it.
 	mu       sync.Mutex
-	families map[string]ProviderFamily
+	families map[string]Family
 }
 
 // Register replaces the family registered under name.
-func (r *FamilyRegistry) Register(name string, family ProviderFamily) {
+func (r *FamilyRegistry) Register(name string, family Family) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.families == nil {
-		r.families = make(map[string]ProviderFamily)
+		r.families = make(map[string]Family)
 	}
 	r.families[name] = family
 }
 
 // Family finds a registered family, or nil.
-func (r *FamilyRegistry) Family(name string) ProviderFamily {
+func (r *FamilyRegistry) Family(name string) Family {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.families[name]
@@ -108,7 +108,7 @@ func (r *FamilyRegistry) Family(name string) ProviderFamily {
 // Subscriptions returns the names of subscription families, in order.
 func (r *FamilyRegistry) Subscriptions() []string {
 	r.mu.Lock()
-	snapshot := make(map[string]ProviderFamily, len(r.families))
+	snapshot := make(map[string]Family, len(r.families))
 	for name, family := range r.families {
 		snapshot[name] = family
 	}

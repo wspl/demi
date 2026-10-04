@@ -20,8 +20,8 @@ func CommandContext(
 	control *database.ControlService,
 	user webapi.UserID,
 	conversation webapi.ConversationID,
-	caller commandwire.CommandCaller,
-) (commandwire.CommandContext, error) {
+	caller commandwire.Caller,
+) (commandwire.Context, error) {
 	return workContext(ctx, control, user, string(conversation), caller)
 }
 
@@ -32,7 +32,7 @@ func ProviderContext(
 	control *database.ControlService,
 	user webapi.UserID,
 	provider webapi.ProviderID,
-) (commandwire.CommandContext, error) {
+) (commandwire.Context, error) {
 	return workContext(ctx, control, user, "provider-"+string(provider), &commandwire.UserCaller{})
 }
 
@@ -42,15 +42,15 @@ func workContext(
 	control *database.ControlService,
 	user webapi.UserID,
 	scope string,
-	caller commandwire.CommandCaller,
-) (commandwire.CommandContext, error) {
+	caller commandwire.Caller,
+) (commandwire.Context, error) {
 	preferences, err := control.Preferences(ctx, user)
 	if err != nil {
-		return commandwire.CommandContext{}, err
+		return commandwire.Context{}, err
 	}
 	locale := DefaultLocale()
 	if preferences.Locale != nil {
 		locale = *preferences.Locale
 	}
-	return commandwire.CommandContext{Conversation: scope, Caller: caller, Locale: locale}, nil
+	return commandwire.Context{Conversation: scope, Caller: caller, Locale: locale}, nil
 }

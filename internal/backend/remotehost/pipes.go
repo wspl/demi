@@ -28,18 +28,18 @@ func pipeFailure(reason string) error {
 type PipeRefusal uint8
 
 const (
-	// PipeNotFound means no such pipe, an ended pipe, or another device's end.
-	PipeNotFound PipeRefusal = iota
-	// PipeAlreadyConnected means the end has already been claimed.
-	PipeAlreadyConnected
+	// ErrPipeNotFound means no such pipe, an ended pipe, or another device's end.
+	ErrPipeNotFound PipeRefusal = iota
+	// ErrPipeAlreadyConnected means the end has already been claimed.
+	ErrPipeAlreadyConnected
 )
 
 // Error describes why the device cannot claim the end.
 func (e PipeRefusal) Error() string {
 	switch e {
-	case PipeNotFound:
+	case ErrPipeNotFound:
 		return "no such pipe"
-	case PipeAlreadyConnected:
+	case ErrPipeAlreadyConnected:
 		return "the end is already connected"
 	}
 	return "unknown pipe refusal"
@@ -143,15 +143,15 @@ func (p *Pipes) Pipe(id string) (*Pipe, bool) {
 func (p *Pipes) ClaimSource(id, device string) (*DeviceSource, error) {
 	pipe, ok := p.Pipe(id)
 	if !ok {
-		return nil, PipeNotFound
+		return nil, ErrPipeNotFound
 	}
 	pipe.mu.Lock()
 	defer pipe.publish()
 	if pipe.outcome != pipeOpen || pipe.source != (pipeEnd{device: device, kind: deviceEnd}) {
-		return nil, PipeNotFound
+		return nil, ErrPipeNotFound
 	}
 	if pipe.sourceTaken {
-		return nil, PipeAlreadyConnected
+		return nil, ErrPipeAlreadyConnected
 	}
 	pipe.sourceTaken = true
 	pipe.sourceArrived = true
@@ -164,15 +164,15 @@ func (p *Pipes) ClaimSource(id, device string) (*DeviceSource, error) {
 func (p *Pipes) ClaimSink(id, device string) (*DeviceSink, error) {
 	pipe, ok := p.Pipe(id)
 	if !ok {
-		return nil, PipeNotFound
+		return nil, ErrPipeNotFound
 	}
 	pipe.mu.Lock()
 	defer pipe.publish()
 	if pipe.outcome != pipeOpen || pipe.sink != (pipeEnd{device: device, kind: deviceEnd}) {
-		return nil, PipeNotFound
+		return nil, ErrPipeNotFound
 	}
 	if pipe.sinkTaken {
-		return nil, PipeAlreadyConnected
+		return nil, ErrPipeAlreadyConnected
 	}
 	pipe.sinkTaken = true
 	pipe.sinkArrived = true

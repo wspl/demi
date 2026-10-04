@@ -42,7 +42,7 @@ var (
 // Add creates an expose on a connected device for lifetime.
 func Add(
 	ctx context.Context,
-	shard ExposeShard,
+	shard Shard,
 	device webapi.DeviceID,
 	address webapi.ExposeAddress,
 	lifetime time.Duration,
@@ -86,7 +86,7 @@ func Add(
 }
 
 // List returns live exposes, soonest expiry first, and ends expired connections.
-func List(ctx context.Context, shard ExposeShard) ([]Expose, error) {
+func List(ctx context.Context, shard Shard) ([]Expose, error) {
 	domain := shard.Domain()
 	if domain == nil {
 		return []Expose{}, nil
@@ -104,7 +104,7 @@ func List(ctx context.Context, shard ExposeShard) ([]Expose, error) {
 }
 
 // Renew moves the expiry of an owned live expose to lifetime from now.
-func Renew(ctx context.Context, shard ExposeShard, id webapi.ExposeID, lifetime time.Duration) (Expose, error) {
+func Renew(ctx context.Context, shard Shard, id webapi.ExposeID, lifetime time.Duration) (Expose, error) {
 	domain := shard.Domain()
 	if domain == nil {
 		return Expose{}, fmt.Errorf("%w %s", ErrNotFound, id)
@@ -136,7 +136,7 @@ func Renew(ctx context.Context, shard ExposeShard, id webapi.ExposeID, lifetime 
 }
 
 // Remove destroys an owned expose, answering not found if it already expired.
-func Remove(ctx context.Context, shard ExposeShard, id webapi.ExposeID) error {
+func Remove(ctx context.Context, shard Shard, id webapi.ExposeID) error {
 	if shard.Domain() == nil {
 		return fmt.Errorf("%w %s", ErrNotFound, id)
 	}
@@ -157,7 +157,7 @@ func Remove(ctx context.Context, shard ExposeShard, id webapi.ExposeID) error {
 	return destroy(ctx, shard, id)
 }
 
-func owned(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (database.ExposeRecord, bool, error) {
+func owned(ctx context.Context, shard Shard, id webapi.ExposeID) (database.ExposeRecord, bool, error) {
 	record, found, err := shard.Control().Expose(ctx, id)
 	if err != nil {
 		return database.ExposeRecord{}, false, fmt.Errorf("read expose: %w", err)
@@ -168,7 +168,7 @@ func owned(ctx context.Context, shard ExposeShard, id webapi.ExposeID) (database
 	return record, found, nil
 }
 
-func destroyIfExpired(ctx context.Context, shard ExposeShard, record database.ExposeRecord) (bool, error) {
+func destroyIfExpired(ctx context.Context, shard Shard, record database.ExposeRecord) (bool, error) {
 	observedAt := shard.Clock().Now()
 	now, err := observedAt.Time()
 	if err != nil {
@@ -192,7 +192,7 @@ func destroyIfExpired(ctx context.Context, shard ExposeShard, record database.Ex
 	return deleted, nil
 }
 
-func destroy(ctx context.Context, shard ExposeShard, id webapi.ExposeID) error {
+func destroy(ctx context.Context, shard Shard, id webapi.ExposeID) error {
 	if err := shard.Control().DeleteExpose(context.WithoutCancel(ctx), id); err != nil {
 		return fmt.Errorf("delete expose: %w", err)
 	}
@@ -203,7 +203,7 @@ func destroy(ctx context.Context, shard ExposeShard, id webapi.ExposeID) error {
 
 // DestroyOn destroys the device's exposes during revocation or Cloud stop.
 // A failure is logged: disconnecting the runner still ends its connections.
-func DestroyOn(ctx context.Context, shard ExposeShard, device webapi.DeviceID) {
+func DestroyOn(ctx context.Context, shard Shard, device webapi.DeviceID) {
 	ids, err := shard.Control().DeleteDeviceExposes(context.WithoutCancel(ctx), device)
 	if err != nil {
 		slog.ErrorContext(ctx, "the exposes of a device could not be destroyed: "+err.Error(), "device", device)

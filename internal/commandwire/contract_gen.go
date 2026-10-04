@@ -811,7 +811,7 @@ func (v ArtifactsInstalled) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "name", Value: v.Name})
 	return contract.EncodeObject(fields)
 }
-func DecodeCommandCaller(data []byte) (CommandCaller, error) {
+func DecodeCaller(data []byte) (Caller, error) {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return nil, err
@@ -834,26 +834,26 @@ func DecodeCommandCaller(data []byte) (CommandCaller, error) {
 		}
 		return &value, nil
 	}
-	return nil, fmt.Errorf("unknown CommandCaller tag %q", tag)
+	return nil, fmt.Errorf("unknown Caller tag %q", tag)
 }
 
-type CommandCallerJSON struct{ Value CommandCaller }
+type CallerJSON struct{ Value Caller }
 
-func (v *CommandCallerJSON) UnmarshalJSON(data []byte) error {
-	value, err := DecodeCommandCaller(data)
+func (v *CallerJSON) UnmarshalJSON(data []byte) error {
+	value, err := DecodeCaller(data)
 	if err == nil {
 		v.Value = value
 	}
 	return err
 }
-func (v CommandCallerJSON) MarshalJSON() ([]byte, error) {
-	if err := ValidateCommandCaller(v.Value); err != nil {
+func (v CallerJSON) MarshalJSON() ([]byte, error) {
+	if err := ValidateCaller(v.Value); err != nil {
 		return nil, err
 	}
 	return contract.EncodeJSON(v.Value)
 }
-func ValidateCommandCaller(value CommandCaller) error { return contractValidateCommandCaller(value, 0) }
-func contractValidateCommandCaller(value CommandCaller, depth int) error {
+func ValidateCaller(value Caller) error { return contractValidateCaller(value, 0) }
+func contractValidateCaller(value Caller, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
@@ -869,95 +869,8 @@ func contractValidateCommandCaller(value CommandCaller, depth int) error {
 		}
 		return contractValidateUserCaller(*v, depth+1)
 	default:
-		return fmt.Errorf("nil or unsupported CommandCaller")
+		return fmt.Errorf("nil or unsupported Caller")
 	}
-}
-func DecodeCommandContext(data []byte) (CommandContext, error) {
-	return contract.Decode[CommandContext](data)
-}
-func (v CommandContext) Validate() error { return contractValidateCommandContext(v, 0) }
-func contractValidateCommandContext(v CommandContext, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v.Conversation), 0, -1, "^[A-Za-z0-9_-]{1,64}$"); err != nil {
-		return contract.At("conversation", err)
-	}
-	if err := contractValidateCommandCaller(v.Caller, depth+1); err != nil {
-		return contract.At("caller", err)
-	}
-	if err := contractValidateCommandLocale(v.Locale, depth+1); err != nil {
-		return contract.At("locale", err)
-	}
-	return nil
-}
-func (v *CommandContext) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CommandContext
-	for key := range obj {
-		switch key {
-		case "conversation", "caller", "locale":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["conversation"]
-		if !ok {
-			return contract.At("conversation", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("conversation", err)
-			}
-			next.Conversation = value
-		}
-	}
-	{
-		raw, ok := obj["caller"]
-		if !ok {
-			return contract.At("caller", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := DecodeCommandCaller(raw)
-			if err != nil {
-				return contract.At("caller", err)
-			}
-			next.Caller = value
-		}
-	}
-	{
-		raw, ok := obj["locale"]
-		if !ok {
-			return contract.At("locale", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[CommandLocale](raw)
-			if err != nil {
-				return contract.At("locale", err)
-			}
-			next.Locale = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CommandContext) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "conversation", Value: v.Conversation})
-	fields = append(fields, contract.Field{Name: "caller", Value: v.Caller})
-	fields = append(fields, contract.Field{Name: "locale", Value: v.Locale})
-	return contract.EncodeObject(fields)
 }
 func DecodeCommandError(data []byte) (CommandError, error) {
 	return contract.Decode[CommandError](data)
@@ -1179,6 +1092,91 @@ func (v Completion) MarshalJSON() ([]byte, error) {
 	if v.Error != nil {
 		fields = append(fields, contract.Field{Name: "error", Value: v.Error})
 	}
+	return contract.EncodeObject(fields)
+}
+func DecodeContext(data []byte) (Context, error) { return contract.Decode[Context](data) }
+func (v Context) Validate() error                { return contractValidateContext(v, 0) }
+func contractValidateContext(v Context, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Conversation), 0, -1, "^[A-Za-z0-9_-]{1,64}$"); err != nil {
+		return contract.At("conversation", err)
+	}
+	if err := contractValidateCaller(v.Caller, depth+1); err != nil {
+		return contract.At("caller", err)
+	}
+	if err := contractValidateCommandLocale(v.Locale, depth+1); err != nil {
+		return contract.At("locale", err)
+	}
+	return nil
+}
+func (v *Context) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next Context
+	for key := range obj {
+		switch key {
+		case "conversation", "caller", "locale":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["conversation"]
+		if !ok {
+			return contract.At("conversation", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("conversation", err)
+			}
+			next.Conversation = value
+		}
+	}
+	{
+		raw, ok := obj["caller"]
+		if !ok {
+			return contract.At("caller", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := DecodeCaller(raw)
+			if err != nil {
+				return contract.At("caller", err)
+			}
+			next.Caller = value
+		}
+	}
+	{
+		raw, ok := obj["locale"]
+		if !ok {
+			return contract.At("locale", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[CommandLocale](raw)
+			if err != nil {
+				return contract.At("locale", err)
+			}
+			next.Locale = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Context) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "conversation", Value: v.Conversation})
+	fields = append(fields, contract.Field{Name: "caller", Value: v.Caller})
+	fields = append(fields, contract.Field{Name: "locale", Value: v.Locale})
 	return contract.EncodeObject(fields)
 }
 func DecodeConversationQuery(data []byte) (ConversationQuery, error) {
@@ -1901,7 +1899,7 @@ func contractValidateInvocation(v Invocation, depth int) error {
 	if err := contract.Text(string(v.InvocationID), 1, -1, ""); err != nil {
 		return contract.At("invocationId", err)
 	}
-	if err := contractValidateCommandContext(v.Context, depth+1); err != nil {
+	if err := contractValidateContext(v.Context, depth+1); err != nil {
 		return contract.At("context", err)
 	}
 	if err := contract.CheckJSON(v.Args); err != nil {
@@ -1979,7 +1977,7 @@ func (v *Invocation) UnmarshalJSON(data []byte) error {
 			return contract.At("context", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[CommandContext](raw)
+			value, err := contract.Decode[Context](raw)
 			if err != nil {
 				return contract.At("context", err)
 			}
@@ -3239,7 +3237,7 @@ func (v ArtifactURL) MarshalMsgpack() ([]byte, error) {
 	}
 	return contract.EncodeMsgpackObject(fields)
 }
-func DecodeCommandCallerMsgpack(data []byte) (CommandCaller, error) {
+func DecodeCallerMsgpack(data []byte) (Caller, error) {
 	obj, err := contract.MsgpackObject(data)
 	if err != nil {
 		return nil, err
@@ -3258,81 +3256,11 @@ func DecodeCommandCallerMsgpack(data []byte) (CommandCaller, error) {
 	}
 	return nil, fmt.Errorf("unknown union tag")
 }
-func EncodeCommandCallerMsgpack(v CommandCaller) ([]byte, error) {
-	if err := ValidateCommandCaller(v); err != nil {
+func EncodeCallerMsgpack(v Caller) ([]byte, error) {
+	if err := ValidateCaller(v); err != nil {
 		return nil, err
 	}
 	return contract.EncodeMsgpack(v)
-}
-func DecodeCommandContextMsgpack(data []byte) (CommandContext, error) {
-	return contract.DecodeMsgpack[CommandContext](data)
-}
-func (v *CommandContext) UnmarshalMsgpack(data []byte) error {
-	obj, err := contract.MsgpackObject(data)
-	if err != nil {
-		return err
-	}
-	var next CommandContext
-	{
-		raw, present := obj["conversation"]
-		delete(obj, "conversation")
-		if !present {
-			return contract.At("conversation", fmt.Errorf("required field is absent"))
-		}
-		if present {
-			value, err := contract.DecodeMsgpack[string](raw)
-			if err != nil {
-				return contract.At("conversation", err)
-			}
-			next.Conversation = value
-		}
-	}
-	{
-		raw, present := obj["caller"]
-		delete(obj, "caller")
-		if !present {
-			return contract.At("caller", fmt.Errorf("required field is absent"))
-		}
-		if present {
-			value, err := DecodeCommandCallerMsgpack(raw)
-			if err != nil {
-				return contract.At("caller", err)
-			}
-			next.Caller = value
-		}
-	}
-	{
-		raw, present := obj["locale"]
-		delete(obj, "locale")
-		if !present {
-			return contract.At("locale", fmt.Errorf("required field is absent"))
-		}
-		if present {
-			value, err := contract.DecodeMsgpack[CommandLocale](raw)
-			if err != nil {
-				return contract.At("locale", err)
-			}
-			next.Locale = value
-		}
-	}
-	for key := range obj {
-		return contract.At(key, fmt.Errorf("unknown field"))
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CommandContext) MarshalMsgpack() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "conversation", Value: v.Conversation})
-	fields = append(fields, contract.Field{Name: "caller", Value: v.Caller})
-	fields = append(fields, contract.Field{Name: "locale", Value: v.Locale})
-	return contract.EncodeMsgpackObject(fields)
 }
 func DecodeCommandLocaleMsgpack(data []byte) (CommandLocale, error) {
 	return contract.DecodeMsgpack[CommandLocale](data)
@@ -3389,6 +3317,74 @@ func (v CommandLocale) MarshalMsgpack() ([]byte, error) {
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "timeZone", Value: v.TimeZone})
 	fields = append(fields, contract.Field{Name: "languages", Value: v.Languages})
+	return contract.EncodeMsgpackObject(fields)
+}
+func DecodeContextMsgpack(data []byte) (Context, error) { return contract.DecodeMsgpack[Context](data) }
+func (v *Context) UnmarshalMsgpack(data []byte) error {
+	obj, err := contract.MsgpackObject(data)
+	if err != nil {
+		return err
+	}
+	var next Context
+	{
+		raw, present := obj["conversation"]
+		delete(obj, "conversation")
+		if !present {
+			return contract.At("conversation", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[string](raw)
+			if err != nil {
+				return contract.At("conversation", err)
+			}
+			next.Conversation = value
+		}
+	}
+	{
+		raw, present := obj["caller"]
+		delete(obj, "caller")
+		if !present {
+			return contract.At("caller", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := DecodeCallerMsgpack(raw)
+			if err != nil {
+				return contract.At("caller", err)
+			}
+			next.Caller = value
+		}
+	}
+	{
+		raw, present := obj["locale"]
+		delete(obj, "locale")
+		if !present {
+			return contract.At("locale", fmt.Errorf("required field is absent"))
+		}
+		if present {
+			value, err := contract.DecodeMsgpack[CommandLocale](raw)
+			if err != nil {
+				return contract.At("locale", err)
+			}
+			next.Locale = value
+		}
+	}
+	for key := range obj {
+		return contract.At(key, fmt.Errorf("unknown field"))
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Context) MarshalMsgpack() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "conversation", Value: v.Conversation})
+	fields = append(fields, contract.Field{Name: "caller", Value: v.Caller})
+	fields = append(fields, contract.Field{Name: "locale", Value: v.Locale})
 	return contract.EncodeMsgpackObject(fields)
 }
 func DecodeEditCopiesMsgpack(data []byte) (EditCopies, error) {

@@ -164,7 +164,7 @@ func TestRawMethodAdmissionPrecedesConnection(t *testing.T) {
 			debug,
 			1,
 			"t1",
-			&browserop.CdpSendInput{Tab: "t1", Method: test.method, Params: test.params},
+			&browserop.CDPSendInput{Tab: "t1", Method: test.method, Params: test.params},
 		)
 		operation.Close()
 		requireCode(t, err, test.code)

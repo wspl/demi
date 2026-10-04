@@ -8,5 +8,5 @@ The d-panel fixtures were refreshed by `gomig-ref/oracles/d-panel/src/main.rs` a
 
 The LiveErrorCode description uses the owner-approved Go wording
 (`capture_unavailable` or `capture_failed`, decision 2026-10-04) instead of
-the reference fixture’s bracketed constant links. This is the only adjustment
-to the generated reference manifest.
+the reference fixture’s bracketed constant links. Schema titles also use the approved Go type spellings from i-renames; the
+remaining fixture content is unchanged.

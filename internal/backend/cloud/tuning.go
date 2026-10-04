@@ -2,11 +2,9 @@ package cloud
 
 import "time"
 
-// CloudTuning holds the Cloud's times and limits. Tests shorten the times and
+// Tuning holds the Cloud's times and limits. Tests shorten the times and
 // lower the capacity. It is immutable once shared with a Cloud.
-//
-//nolint:revive // The architecture names this configuration boundary CloudTuning.
-type CloudTuning struct {
+type Tuning struct {
 	// Sweep is how often a running Cloud's maintenance and idle watch look at it.
 	Sweep time.Duration
 	// CheckpointInterval is how long a running Cloud goes between checkpoints.
@@ -39,8 +37,8 @@ type CloudTuning struct {
 // 15-minute checkpoints, a 24-hour lifetime cap, 60-second runner connection,
 // three deaths in ten minutes, a five-second flush, a 30-second reset hold,
 // 16 GiB system and 32 GiB home quotas, and capacity for 16 Clouds.
-func DefaultTuning() CloudTuning {
-	return CloudTuning{
+func DefaultTuning() Tuning {
+	return Tuning{
 		Sweep:              30 * time.Second,
 		CheckpointInterval: 15 * time.Minute,
 		LifetimeCap:        24 * time.Hour,

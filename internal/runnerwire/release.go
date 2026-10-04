@@ -8,7 +8,7 @@ import "github.com/wspl/demi/internal/commandwire"
 // release may carry fewer.
 // +demi:root
 // +demi:check validateRelease
-type RunnerRelease struct {
+type Release struct {
 	// The release's identity: the SHA-256 of its versions and targets.
 	// +demi:pattern ^[0-9a-f]{64}$
 	Release string `json:"release"`
@@ -20,6 +20,6 @@ type RunnerRelease struct {
 }
 
 // validateRelease checks the executable catalog shared with command packages.
-func validateRelease(release RunnerRelease) error {
+func validateRelease(release Release) error {
 	return commandwire.TargetArtifacts(release.Targets)
 }

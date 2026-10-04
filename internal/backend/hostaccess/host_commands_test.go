@@ -29,7 +29,7 @@ func TestHostCommandsUseConversationAndStopWithShard(t *testing.T) {
 		invocation := host.RPCInvocation{
 			Path:    []string{"host", verb},
 			Args:    []byte(args),
-			Context: commandwire.CommandContext{Conversation: string(record.ID)},
+			Context: commandwire.Context{Conversation: string(record.ID)},
 		}
 		code, err := commands.Dispatch(t.Context(), invocation, host.NewRPCPort(memory))
 		return code, string(memory.Stdout()), err

@@ -86,7 +86,7 @@ func (e *Error) Code() (webapi.ErrorCode, int) {
 	return webapi.ErrorCodeInternalError, 500
 }
 
-// ChangeErrorKind identifies the category of ChangeRefusal.
+// ChangeErrorKind identifies the category of ChangeError.
 type ChangeErrorKind uint8
 
 const (
@@ -122,15 +122,15 @@ const (
 	ChangeStorage
 )
 
-// ChangeRefusal records why a conversation change was not applied.
+// ChangeError records why a conversation change was not applied.
 // Cause preserves wrapped failures for errors.Is and errors.As.
-type ChangeRefusal struct {
+type ChangeError struct {
 	Kind  ChangeErrorKind
 	Cause error
 }
 
 // Error returns the original product refusal or underlying failure text.
-func (e *ChangeRefusal) Error() string {
+func (e *ChangeError) Error() string {
 	switch e.Kind {
 	case ChangeNotFound:
 		return "No such conversation"
@@ -164,12 +164,12 @@ func (e *ChangeRefusal) Error() string {
 }
 
 // Unwrap preserves the underlying failure.
-func (e *ChangeRefusal) Unwrap() error {
+func (e *ChangeError) Unwrap() error {
 	return e.Cause
 }
 
 // Code returns the response error code and HTTP status.
-func (e *ChangeRefusal) Code() (webapi.ErrorCode, int) {
+func (e *ChangeError) Code() (webapi.ErrorCode, int) {
 	switch e.Kind {
 	case ChangeNotFound:
 		return webapi.ErrorCodeConversationNotFound, 404

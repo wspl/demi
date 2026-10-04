@@ -57,9 +57,9 @@ func appFixture(t *testing.T) *application {
 	return &application{Root: t.TempDir(), Out: io.Discard, Err: io.Discard, chromeRelease: browserop.PinnedRelease}
 }
 
-func readRunner(t *testing.T, root string) runnerwire.RunnerRelease {
+func readRunner(t *testing.T, root string) runnerwire.Release {
 	t.Helper()
-	release, err := runnerwire.DecodeRunnerRelease(readFixture(t, filepath.Join(root, "manifest.json")))
+	release, err := runnerwire.DecodeRelease(readFixture(t, filepath.Join(root, "manifest.json")))
 	if err != nil {
 		t.Fatal(err)
 	}

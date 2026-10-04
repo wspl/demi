@@ -141,7 +141,7 @@ func (s *Shard) ConversationDB(conversation webapi.ConversationID) *database.Con
 func (s *Shard) Native() *runners.NativeCatalog { return s.services.Native }
 
 // CloudShard is the shard as the user's Cloud sees it.
-func (s *Shard) CloudShard() cloud.CloudShard { return s }
+func (s *Shard) CloudShard() cloud.Shard { return s }
 
 // TrackIdle starts the conversation's idle watch unless one runs.
 func (s *Shard) TrackIdle(conversation webapi.ConversationID) {
@@ -373,7 +373,7 @@ func (s *Shard) RemoveExpose(ctx context.Context, id webapi.ExposeID) error {
 }
 
 var (
-	_ cloud.CloudShard     = (*Shard)(nil)
+	_ cloud.Shard          = (*Shard)(nil)
 	_ hostaccess.HostShard = (*Shard)(nil)
-	_ plugins.PluginShard  = (*Shard)(nil)
+	_ plugins.Shard        = (*Shard)(nil)
 )

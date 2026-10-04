@@ -324,7 +324,7 @@ func (v *WhereReport) UnmarshalJSON(data []byte) error {
 			return contract.At("context", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[commandwire.CommandContext](raw)
+			value, err := contract.Decode[commandwire.Context](raw)
 			if err != nil {
 				return contract.At("context", err)
 			}

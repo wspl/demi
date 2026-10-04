@@ -259,7 +259,7 @@ func (t *Tab) WaitCurrentLoad(ctx context.Context, load browserop.Load) error {
 		return replaced()
 	}
 	if load == browserop.LoadCommit || ready == "complete" ||
-		load == browserop.LoadDomContentLoaded && ready == "interactive" {
+		load == browserop.LoadDOMContentLoaded && ready == "interactive" {
 		return nil
 	}
 	for {

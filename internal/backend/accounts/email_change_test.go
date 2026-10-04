@@ -98,7 +98,7 @@ func TestEmailDeliveryConfirmationAndFailureCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	accounts := NewAccounts(control, h, NewWebSessions(control), NewLoginLimiter())
+	accounts := New(control, h, NewWebSessions(control), NewLoginLimiter())
 	signed, err := accounts.Setup(t.Context(), webapi.SetupRequest{Email: "old@example.test", Password: "password123"})
 	if err != nil {
 		t.Fatal(err)

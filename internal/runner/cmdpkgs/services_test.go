@@ -88,7 +88,7 @@ func invocation(operation, conversation string) commandwire.Invocation {
 	return commandwire.Invocation{
 		Operation:    operation,
 		InvocationID: operation,
-		Context: commandwire.CommandContext{
+		Context: commandwire.Context{
 			Conversation: conversation,
 			Caller:       &commandwire.AgentCaller{Number: 1},
 			Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},

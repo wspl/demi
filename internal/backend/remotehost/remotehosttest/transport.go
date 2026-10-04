@@ -143,7 +143,7 @@ func (b pipeHTTPBody) Close(context.Context) error { return b.body.Close() }
 // pipeRefused maps the broker's two claim refusals to the fixture's HTTP boundary.
 func pipeRefused(response http.ResponseWriter, err error) {
 	status := http.StatusNotFound
-	if errors.Is(err, remotehost.PipeAlreadyConnected) {
+	if errors.Is(err, remotehost.ErrPipeAlreadyConnected) {
 		status = http.StatusConflict
 	}
 	pipeResponse(response, status, err.Error())

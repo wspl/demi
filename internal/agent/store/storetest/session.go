@@ -56,4 +56,4 @@ func (s *memorySession) Load(ctx context.Context) (store.Checkpoint, bool, error
 }
 
 // Blobs returns the tree's shared blob namespace.
-func (s *memorySession) Blobs() store.BlobStore { return s.tree.blobs }
+func (s *memorySession) Blobs() store.Blobs { return s.tree.blobs }

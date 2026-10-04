@@ -17,12 +17,12 @@ func (s *Session) armLocked() {
 		}
 		now, err := s.deps.Clock.Now().Time()
 		if err != nil {
-			s.eventLocked(&ErrorEvent{Report: ErrorReport{Message: err.Error()}})
+			s.eventLocked(&ErrorEvent{Report: ReportError{Message: err.Error()}})
 			continue
 		}
 		due, err := core.TimestampFromTime(now.Add(time.Duration(c.wakeups[i].DurationMS) * time.Millisecond))
 		if err != nil {
-			s.eventLocked(&ErrorEvent{Report: ErrorReport{Message: err.Error()}})
+			s.eventLocked(&ErrorEvent{Report: ReportError{Message: err.Error()}})
 			continue
 		}
 		c.wakeups[i].DueAt = &due
@@ -53,12 +53,12 @@ func (s *Session) wakeupDriver() {
 		}
 		due, err := next.DueAt.Time()
 		if err != nil {
-			s.emit(&ErrorEvent{Report: ErrorReport{Message: fmt.Sprintf("yield wakeup: %v", err)}})
+			s.emit(&ErrorEvent{Report: ReportError{Message: fmt.Sprintf("yield wakeup: %v", err)}})
 			return
 		}
 		current, err := now.Time()
 		if err != nil {
-			s.emit(&ErrorEvent{Report: ErrorReport{Message: err.Error()}})
+			s.emit(&ErrorEvent{Report: ReportError{Message: err.Error()}})
 			return
 		}
 		timer := time.NewTimer(max(0, due.Sub(current)))

@@ -117,8 +117,8 @@ func (s *Session) stream(ctx context.Context, continues bool) (bool, error) {
 	}
 }
 
-func failureReport(f provider.Failure) *ErrorReport {
-	report := &ErrorReport{Message: f.Message, Diagnostics: f.Diagnostics}
+func failureReport(f provider.Failure) *ReportError {
+	report := &ReportError{Message: f.Message, Diagnostics: f.Diagnostics}
 	if f.Code != nil {
 		report.Code = new(string(*f.Code))
 	}

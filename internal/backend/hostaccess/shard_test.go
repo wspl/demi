@@ -83,7 +83,7 @@ func (s *testShard) ConversationDB(id webapi.ConversationID) *database.Conversat
 }
 func (s *testShard) Native() *runners.NativeCatalog { return s.native }
 func (s *testShard) PublicURL() *runners.PublicURL  { return nil }
-func (s *testShard) CloudShard() cloud.CloudShard   { return nil }
+func (s *testShard) CloudShard() cloud.Shard        { return nil }
 func (s *testShard) TrackIdle(id webapi.ConversationID) {
 	s.mu.Lock()
 	s.idle++

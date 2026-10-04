@@ -3871,7 +3871,7 @@
     "required": [
       "tab"
     ],
-    "title": "CdpTargetsInput",
+    "title": "CDPTargetsInput",
     "type": "object"
   },
   "CdpTargetsResult": {
@@ -3908,7 +3908,7 @@
       "targets",
       "truncated"
     ],
-    "title": "CdpTargetsResult",
+    "title": "CDPTargetsResult",
     "type": "object"
   },
   "CdpDetachInput": {
@@ -3931,7 +3931,7 @@
     "required": [
       "tab"
     ],
-    "title": "CdpDetachInput",
+    "title": "CDPDetachInput",
     "type": "object"
   },
   "CdpDetachResult": {
@@ -3946,7 +3946,7 @@
     "required": [
       "detached"
     ],
-    "title": "CdpDetachResult",
+    "title": "CDPDetachResult",
     "type": "object"
   },
   "CdpSendInput": {
@@ -3985,7 +3985,7 @@
       "method",
       "params"
     ],
-    "title": "CdpSendInput",
+    "title": "CDPSendInput",
     "type": "object"
   },
   "CdpSendResult": {
@@ -4000,7 +4000,7 @@
       "method",
       "result"
     ],
-    "title": "CdpSendResult",
+    "title": "CDPSendResult",
     "type": "object"
   },
   "CdpEventsInput": {
@@ -4046,7 +4046,7 @@
     "required": [
       "tab"
     ],
-    "title": "CdpEventsInput",
+    "title": "CDPEventsInput",
     "type": "object"
   },
   "CdpEventsResult": {
@@ -4095,7 +4095,7 @@
       "hasMore",
       "truncated"
     ],
-    "title": "CdpEventsResult",
+    "title": "CDPEventsResult",
     "type": "object"
   },
   "ContentReadInput": {
@@ -4698,7 +4698,7 @@
     "required": [
       "tab"
     ],
-    "title": "WebmcpListInput",
+    "title": "WebMCPListInput",
     "type": "object"
   },
   "WebmcpListResult": {
@@ -4739,7 +4739,7 @@
       "entries",
       "truncated"
     ],
-    "title": "WebmcpListResult",
+    "title": "WebMCPListResult",
     "type": "object"
   },
   "WebmcpCallInput": {
@@ -4780,7 +4780,7 @@
       "tools",
       "arguments"
     ],
-    "title": "WebmcpCallInput",
+    "title": "WebMCPCallInput",
     "type": "object"
   },
   "WebmcpCallResult": {
@@ -4795,7 +4795,7 @@
       "name",
       "result"
     ],
-    "title": "WebmcpCallResult",
+    "title": "WebMCPCallResult",
     "type": "object"
   }
 }

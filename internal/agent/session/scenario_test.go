@@ -50,7 +50,7 @@ func start(t *testing.T, runtime *sessiontest.Runtime, config session.Config, tu
 		},
 		session.Deps{
 			Runtime: runtime,
-			Store:   tree.SessionStore("root"),
+			Store:   tree.Session("root"),
 			IDs:     transcripttest.NewSequentialIDs("id"),
 			Clock:   core.SystemClock{},
 			Config:  config,
@@ -91,7 +91,7 @@ func (f *scenario) fail(a *session.ActionAnswer) {
 
 func (f *scenario) checkpoint() store.Checkpoint {
 	f.t.Helper()
-	cp, found, err := f.tree.SessionStore("root").Load(f.t.Context())
+	cp, found, err := f.tree.Session("root").Load(f.t.Context())
 	must(f.t, err)
 	if !found {
 		f.t.Fatal("missing checkpoint")
@@ -121,7 +121,7 @@ func (f *scenario) restoreWith(
 		p,
 		session.Deps{
 			Runtime: runtime,
-			Store:   f.tree.SessionStore("root"),
+			Store:   f.tree.Session("root"),
 			IDs:     transcripttest.NewSequentialIDs("restored"),
 			Clock:   clock,
 			Config:  f.config,

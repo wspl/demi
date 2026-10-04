@@ -95,7 +95,7 @@ func TestCommandRouterLifetimeAndConversationOwnership(t *testing.T) {
 		t.Fatal("re-registration replaced owner")
 	}
 	job := remotehost.JobOrigin{
-		Context: commandwire.CommandContext{Conversation: "conversation"},
+		Context: commandwire.Context{Conversation: "conversation"},
 		Caller:  &host.JobCaller{Node: "node"},
 	}
 	assertFailure := func(job remotehost.JobOrigin, kind host.RPCErrorKind, text string) {

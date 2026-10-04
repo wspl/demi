@@ -23,7 +23,7 @@ func NewTreeStore(db *ConversationDB, blobs OwnerBlobs, saved Saved) *TreeStore 
 	return &TreeStore{db: db, blobs: blobs, saved: saved}
 }
 
-var _ store.TreeStore = (*TreeStore)(nil)
+var _ store.Tree = (*TreeStore)(nil)
 
 // Node returns a node's record, and false when it does not exist.
 func (s *TreeStore) Node(ctx context.Context, id core.NodeID) (store.NodeRecord, bool, error) {
@@ -89,9 +89,9 @@ func (s *TreeStore) CreateNode(ctx context.Context, record store.NodeRecord, ini
 	return nil
 }
 
-// SessionStore returns the node's checkpoint store. Saves also mark carried
+// Session returns the node's checkpoint store. Saves also mark carried
 // child completions delivered in the same commit.
-func (s *TreeStore) SessionStore(id core.NodeID) store.SessionStore {
+func (s *TreeStore) Session(id core.NodeID) store.Session {
 	return &sessionStore{tree: s, node: id}
 }
 

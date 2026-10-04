@@ -66,7 +66,7 @@ func refuseRunner(ctx context.Context, socket *runners.Socket, code runnerwire.H
 	return nil
 }
 
-func (e *Edge) awaitClaim(ctx context.Context, socket *runners.Socket, runner runnerwire.RunnerInfo) error {
+func (e *Edge) awaitClaim(ctx context.Context, socket *runners.Socket, runner runnerwire.Info) error {
 	for {
 		code := runners.GenerateClaimCode()
 		wait := e.state.Services.Claims.Register(code, runner)
@@ -106,7 +106,7 @@ func (e *Edge) awaitClaim(ctx context.Context, socket *runners.Socket, runner ru
 func (e *Edge) handOver(
 	ctx context.Context,
 	socket *runners.Socket,
-	runner runnerwire.RunnerInfo,
+	runner runnerwire.Info,
 	grant *runners.ClaimGrant,
 ) error {
 	defer grant.Release()

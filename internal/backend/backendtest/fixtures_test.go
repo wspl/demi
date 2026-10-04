@@ -65,7 +65,7 @@ func TestScriptedManagerProtocolAndClose(t *testing.T) {
 		}
 	}()
 	reader := bufio.NewReader(socket)
-	for i, call := range []machinewire.MachineCall{&machinewire.CurrentBaseVersion{}, &machinewire.Reconcile{}} {
+	for i, call := range []machinewire.Call{&machinewire.CurrentBaseVersion{}, &machinewire.Reconcile{}} {
 		line, err := machinewire.EncodeLine(machinewire.MachineRequest{ID: string(rune('a' + i)), Call: call})
 		if err != nil {
 			t.Fatal(err)

@@ -377,17 +377,17 @@ func selectedBackend(
 	return backend, nil
 }
 
-func runnerInfo(options cliOptions, boot *runnerwire.ManagedBoot) (string, runnerwire.RunnerInfo, error) {
+func runnerInfo(options cliOptions, boot *runnerwire.ManagedBoot) (string, runnerwire.Info, error) {
 	home, err := userHome()
 	if err != nil {
-		return "", runnerwire.RunnerInfo{}, err
+		return "", runnerwire.Info{}, err
 	}
 	hostname, err := os.Hostname()
 	if err != nil {
-		return "", runnerwire.RunnerInfo{}, err
+		return "", runnerwire.Info{}, err
 	}
 	if !utf8.ValidString(hostname) {
-		return "", runnerwire.RunnerInfo{}, errors.New("the hostname is not UTF-8")
+		return "", runnerwire.Info{}, errors.New("the hostname is not UTF-8")
 	}
 	identity := runnerwire.HostIdentity{Hostname: hostname, HomeDir: home}
 	if runtime.GOOS != "windows" {
@@ -407,10 +407,10 @@ func runnerInfo(options cliOptions, boot *runnerwire.ManagedBoot) (string, runne
 	}
 	target, err := commandwire.HostTarget()
 	if err != nil {
-		return "", runnerwire.RunnerInfo{}, err
+		return "", runnerwire.Info{}, err
 	}
 	targetName := string(target)
-	info := runnerwire.RunnerInfo{
+	info := runnerwire.Info{
 		Name:         name,
 		Platform:     platform,
 		Version:      options.release,
@@ -431,7 +431,7 @@ func startRunner(
 	directory string,
 	backend *runnerwire.BackendURL,
 	home string,
-	info runnerwire.RunnerInfo,
+	info runnerwire.Info,
 ) (uint8, error) {
 	logDirectory, jobRoot, artifacts, volumes, token := startupPaths(options, boot, directory, home)
 	log, err := openHostLog(ctx, logDirectory)

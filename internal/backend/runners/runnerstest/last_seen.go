@@ -11,5 +11,5 @@ import (
 // marks registry starts no workers and holds no registrations. The connection's
 // Serve owner joins the persistence work before the control service closes.
 func LastSeen(control *database.ControlService, user webapi.UserID) *runners.LastSeen {
-	return runners.NewLastSeen(control, (&pagesync.SyncRegistry{}).Of(user))
+	return runners.NewLastSeen(control, (&pagesync.Registry{}).Of(user))
 }

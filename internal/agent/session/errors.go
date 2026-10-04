@@ -34,15 +34,15 @@ var (
 	ErrEditStopped = errors.New("The edit was stopped before it was accepted")
 )
 
-// ErrorReport is a failure as clients see it: the frame an error event becomes.
-type ErrorReport struct {
+// ReportError is a failure as clients see it: the frame an error event becomes.
+type ReportError struct {
 	Message     string
 	Code        *string
 	Diagnostics *core.ProviderErrorDiagnostics
 }
 
 // Error returns the message of an action failure.
-func (e *ErrorReport) Error() string { return e.Message }
+func (e *ReportError) Error() string { return e.Message }
 
 // ForkError explains why a Fork cannot start where it was asked.
 type ForkError struct {

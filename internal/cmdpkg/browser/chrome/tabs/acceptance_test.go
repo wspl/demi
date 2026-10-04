@@ -183,7 +183,7 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		final, err := first.Navigate(
 			ctx,
 			&tabs.Visit{URL: server.URL + "/redirect"},
-			browserop.LoadDomContentLoaded,
+			browserop.LoadDOMContentLoaded,
 			operation,
 			references,
 		)
@@ -206,7 +206,7 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		if _, err := first.Navigate(
 			ctx,
 			&tabs.History{EntryID: history.ID},
-			browserop.LoadDomContentLoaded,
+			browserop.LoadDOMContentLoaded,
 			operation,
 			references,
 		); err != nil {

@@ -54,9 +54,9 @@ func (s *Session) runAction(a *action) {
 	}
 	if !rejected {
 		if saved := s.Flush(cleanup); saved != nil {
-			s.emit(&ErrorEvent{Report: ErrorReport{Message: saved.Error()}})
+			s.emit(&ErrorEvent{Report: ReportError{Message: saved.Error()}})
 			if report == nil && end == Completed {
-				report = &ErrorReport{Message: saved.Error()}
+				report = &ReportError{Message: saved.Error()}
 			}
 		}
 	}
@@ -127,7 +127,7 @@ func (s *Session) execute(a *action) error {
 func (s *Session) retry(ctx context.Context) error {
 	rewound, ok := transcript.Rewind(s.Transcript().Blocks)
 	if !ok {
-		return &ErrorReport{Message: "There is no input turn to retry"}
+		return &ReportError{Message: "There is no input turn to retry"}
 	}
 	input := rewound.Retained[rewound.Input]
 	edge := store.BeforeUser
@@ -138,7 +138,7 @@ func (s *Session) retry(ctx context.Context) error {
 	revision, ok := s.core.commands.Boundary(input.ID(), edge)
 	s.mu.Unlock()
 	if !ok {
-		return &ErrorReport{Message: fmt.Sprintf("No command-state boundary for block %s", input.ID())}
+		return &ReportError{Message: fmt.Sprintf("No command-state boundary for block %s", input.ID())}
 	}
 	if err := s.rewrite(ctx, rewound.Retained, revision); err != nil {
 		return err
@@ -161,7 +161,7 @@ func (s *Session) restoreCommands(ctx context.Context, cut int) error {
 		revision, ok = s.core.commands.Boundary(last.ID(), store.AfterBlock)
 		s.mu.Unlock()
 		if !ok {
-			return &ErrorReport{Message: fmt.Sprintf("No command-state boundary after block %s", last.ID())}
+			return &ReportError{Message: fmt.Sprintf("No command-state boundary after block %s", last.ID())}
 		}
 	}
 	return s.rewrite(ctx, blocks, revision)
@@ -201,10 +201,10 @@ func (s *Session) pushResume() {
 }
 
 // finishAction records an action outcome before the final checkpoint is saved.
-func (s *Session) finishAction(a *action, err error) (ActionEnd, bool, *ErrorReport) {
+func (s *Session) finishAction(a *action, err error) (ActionEnd, bool, *ReportError) {
 	end := Completed
 	rejected := false
-	var report *ErrorReport
+	var report *ReportError
 	s.mutate(func(c *coreState) {
 		if a.shutdown && errors.Is(err, context.Canceled) {
 			end = s.detachActionLocked(a)
@@ -328,15 +328,15 @@ func (s *Session) continueInputs(a *action) (bool, bool) {
 }
 
 // actionErrorLocked records cancellation or failure while the session mutex is held.
-func (s *Session) actionErrorLocked(err error) (ActionEnd, *ErrorReport) {
+func (s *Session) actionErrorLocked(err error) (ActionEnd, *ReportError) {
 	end := Completed
-	var report *ErrorReport
+	var report *ReportError
 	if errors.Is(err, context.Canceled) {
 		s.recordStopLocked(false)
 		end = Aborted
 	} else {
 		if !errors.As(err, &report) {
-			report = &ErrorReport{Message: err.Error()}
+			report = &ReportError{Message: err.Error()}
 		}
 		s.writeInputsLocked(allInputs)
 		s.abortCallsLocked()

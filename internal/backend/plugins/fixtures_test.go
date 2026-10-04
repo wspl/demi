@@ -138,7 +138,7 @@ func registry(t *testing.T, factories ...plugin.Factory) *plugins.Registry {
 
 type fakeShard struct {
 	control *database.ControlService
-	sync    pagesync.SyncRegistry
+	sync    pagesync.Registry
 	user    webapi.UserID
 	// Only CommitUses is reached by the plugin host; Media belongs to the agent
 	// store and deliberately has no fake here.

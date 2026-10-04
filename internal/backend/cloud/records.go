@@ -22,7 +22,7 @@ type records interface {
 }
 
 // cloudRecords selects the Cloud's storage boundary; production uses the shard's control service.
-func cloudRecords(s CloudShard) records {
+func cloudRecords(s Shard) records {
 	if s.Cloud().records != nil {
 		return s.Cloud().records
 	}

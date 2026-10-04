@@ -585,7 +585,7 @@ type imageArchiveOptions struct {
 	inventory    []machinewire.InstalledPackage
 	executables  map[string]commandwire.PackageArtifact
 	releases     []commandwire.PackageDescriptor
-	runner       runnerwire.RunnerRelease
+	runner       runnerwire.Release
 	archive      uvArchive
 	pin          uvRelease
 }
@@ -610,7 +610,7 @@ func imageSystem(root string) ([]machinewire.InstalledPackage, string, error) {
 func (a *application) installImageRunner(
 	ctx context.Context,
 	root, runners, target string,
-	runner runnerwire.RunnerRelease,
+	runner runnerwire.Release,
 	runnerArtifact commandwire.PackageArtifact,
 	executables map[string]commandwire.PackageArtifact,
 ) error {
@@ -665,18 +665,18 @@ func (a *application) publishImageRecord(
 	return err
 }
 
-func imageRunnerRelease(runners, target string) (runnerwire.RunnerRelease, commandwire.PackageArtifact, error) {
+func imageRunnerRelease(runners, target string) (runnerwire.Release, commandwire.PackageArtifact, error) {
 	data, err := os.ReadFile(filepath.Join(runners, "manifest.json"))
 	if err != nil {
-		return runnerwire.RunnerRelease{}, commandwire.PackageArtifact{}, err
+		return runnerwire.Release{}, commandwire.PackageArtifact{}, err
 	}
-	runner, err := runnerwire.DecodeRunnerRelease(data)
+	runner, err := runnerwire.DecodeRelease(data)
 	if err != nil {
-		return runnerwire.RunnerRelease{}, commandwire.PackageArtifact{}, err
+		return runnerwire.Release{}, commandwire.PackageArtifact{}, err
 	}
 	runnerArtifact, ok := runner.Targets[target]
 	if !ok {
-		return runnerwire.RunnerRelease{}, commandwire.PackageArtifact{}, fmt.Errorf(
+		return runnerwire.Release{}, commandwire.PackageArtifact{}, fmt.Errorf(
 			"the runner release %s carries nothing for %s",
 			runner.Release,
 			target,

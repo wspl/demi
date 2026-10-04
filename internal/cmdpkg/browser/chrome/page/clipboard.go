@@ -56,7 +56,7 @@ func ClipboardWrite(
 		if err = GrantClipboard(work, environment.Browser()); err != nil {
 			return err
 		}
-		mime := browserOption(input.MIME, browserop.ClipboardMime("text/plain"))
+		mime := browserOption(input.MIME, browserop.ClipboardMIME("text/plain"))
 		data, err := readClipboardInput(work, invocation, mime)
 		if err != nil {
 			return err
@@ -147,7 +147,7 @@ func evaluateValue[T any](ctx context.Context, executor cdp.Executor, script str
 }
 
 // validateClipboard validates the bytes before replacing or exporting clipboard data.
-func validateClipboard(mime browserop.ClipboardMime, data []byte) error {
+func validateClipboard(mime browserop.ClipboardMIME, data []byte) error {
 	if err := mime.Validate(); err != nil {
 		return &cdp.BrowserError{Kind: cdp.KindInvalidResult, Message: err.Error(), Cause: err}
 	}
@@ -192,7 +192,7 @@ func validateClipboard(mime browserop.ClipboardMime, data []byte) error {
 func readClipboardInput(
 	work context.Context,
 	invocation *cmdsdk.InvocationContext[commandwire.Invocation],
-	mime browserop.ClipboardMime,
+	mime browserop.ClipboardMIME,
 ) ([]byte, error) {
 	maximum := browserop.StdinBytes
 	if mime == "image/png" {
@@ -281,7 +281,7 @@ func writeClipboardData(
 	work context.Context,
 	tab *tabs.Tab,
 	operation *cdp.Operation,
-	mime browserop.ClipboardMime,
+	mime browserop.ClipboardMIME,
 	data []byte,
 ) (browserop.ClipboardWriteResult, error) {
 	if err := validateClipboard(mime, data); err != nil {
@@ -317,12 +317,12 @@ func writeClipboardData(
 
 type clipboardEntry struct {
 	// MIME identifies the clipboard item media type.
-	MIME browserop.ClipboardMime `json:"mimeType"`
+	MIME browserop.ClipboardMIME `json:"mimeType"`
 	// Data holds the base64 encoded clipboard bytes.
 	Data string `json:"data"`
 }
 type clipboardData struct {
-	mime browserop.ClipboardMime
+	mime browserop.ClipboardMIME
 	path string
 	data []byte
 }

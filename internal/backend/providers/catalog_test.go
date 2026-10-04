@@ -19,7 +19,7 @@ func TestEveryRequestTakesConfiguredFactsAndKeepsUserChoices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := ProviderEntry{ID: "entry-1", Credential: &APIKeyConfig{Models: &models}}
+	entry := Entry{ID: "entry-1", Credential: &APIKeyConfig{Models: &models}}
 	output := uint32(100)
 	tier := "priority"
 	chosen := core.ModelSelection{

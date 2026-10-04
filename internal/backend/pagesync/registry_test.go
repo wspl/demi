@@ -18,7 +18,7 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 // In-memory boundary scenarios; no IO or wall-time waits, under one second.
 func TestFanoutAndCoalescing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var registry pagesync.SyncRegistry
+		var registry pagesync.Registry
 		first := registry.Register("alice", database.TokenHash{})
 		defer first.Release()
 		slow := registry.Register("alice", database.TokenHash{})
@@ -90,7 +90,7 @@ func TestFanoutAndCoalescing(t *testing.T) {
 
 func TestWaitWakeAndCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var registry pagesync.SyncRegistry
+		var registry pagesync.Registry
 		channel := registry.Register("alice", database.TokenHash{})
 		defer channel.Release()
 		for _, endSession := range []bool{false, true} {
@@ -133,7 +133,7 @@ func TestWaitWakeAndCancellation(t *testing.T) {
 
 func TestConcurrentChangesAndRelease(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var registry pagesync.SyncRegistry
+		var registry pagesync.Registry
 		retained := registry.Register("alice", database.TokenHash{})
 		defer retained.Release()
 		var workers sync.WaitGroup
@@ -157,7 +157,7 @@ func TestConcurrentChangesAndRelease(t *testing.T) {
 // Session isolation is checked in memory with no IO or wall-time waits.
 func TestSignOutOnlyWakesMatchingSession(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var registry pagesync.SyncRegistry
+		var registry pagesync.Registry
 		firstSession := database.HashToken("alice-first-session")
 		secondSession := database.HashToken("alice-second-session")
 		first := registry.Register("alice", firstSession)
