@@ -35,7 +35,7 @@ layout and interaction; these documents do not repeat it.
 - [Message editing](agent/message-editing.md): editing and resending a message as one transaction.
 - [Conversation fork](agent/conversation-fork.md): forking a conversation from a block, with its seed, publication and subagents.
 - [Skills](agent/skills.md): the Agent Skills format, user skills from git sources, project skills from the repository, the catalog the model sees, and the settings section.
-- [Conversation permissions](agent/permissions.md): the categories of operations on Demi itself, the requests an agent raises, the per-conversation grants, the wait of the command that asks, and the card and needs-you mark.
+- [Conversation permissions](agent/permissions.md): the categories of operations on Demi itself, the check every command passes before its handler, the requests a refused command raises, the per-conversation grants, the decision's message to the agent, and the card and needs-you mark.
 
 ## Where does work execute, and how do commands run?
 

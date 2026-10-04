@@ -192,7 +192,7 @@ sender by writing an identifier into the message body.
 | `recipientId` | The recipient's node ID |
 | `timestamp` | When the message was sent; for a completion, when the child closed |
 | `content` | The body |
-| `event` | `message`, an explicit communication between live agents; or `completion`, a supervisor receipt with the `outcome` `completed`, `failed`, or `aborted` |
+| `event` | `message`, an explicit communication between live agents; `completion`, a supervisor receipt with the `outcome` `completed`, `failed`, or `aborted`; or `permission`, the user's decision on a [permission request](permissions.md#the-decisions-message), whose sender is the user and whose `outcome` is `allowed` or `denied` |
 
 A completion carries the child's result for `completed`, and otherwise its
 failure text, which can be empty. Its ID is `subagent:<child id>:<round>`, so

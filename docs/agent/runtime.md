@@ -495,12 +495,6 @@ the five completes as an error `Tool not found: <name>`.
   Host's environment is refused with `Shell handle "<id>" belongs to a
   different Host`, and a handle that two environments claim is refused as not
   unique.
-- A `shell_exec` window counts only the time in which no call of its
-  command waits for the user's decision on a
-  [permission request](permissions.md#the-wait). A wait stops it, and its
-  end resumes it with the time it had left, so a command that waits for the
-  user keeps its call open however long the user takes, and the turn makes
-  no provider request meanwhile.
 - The repeat guard counts identical scripts. In one environment, a `shell_exec`
   of the same script within 60 seconds of the previous one is allowed six times
   in a row. The seventh and later identical calls do not run: the result is an
@@ -532,10 +526,7 @@ output:
   all of it.
 - A result gives the command's status, its exit code once it has exited, its
   `commandId`, its `shellId` and timings while it runs, the output, and a hint
-  for the next step while it runs or once it was stopped. While a call of the
-  command waits for the user's decision, the hint says so and names the
-  category, such as `waiting for the user to allow this conversation to
-  manage skills`.
+  for the next step while it runs or once it was stopped.
 - A result's `idleMs` counts from the last time the command's output grew,
   also beyond the first 8 KiB of a stream: the runner reports such growth
   within 2 seconds even while no page follows the command

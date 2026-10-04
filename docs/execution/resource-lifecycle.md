@@ -28,12 +28,6 @@ A conversation is active while any of these holds:
   the conversation's Host, and may operate it. The stream is active from its
   admission until it ends.
 
-A command that waits for the user's decision on a
-[permission request](../agent/permissions.md#the-wait) is a running job, and
-the turn that waits for it is running. Such a wait therefore lasts at most one
-idle window, so a request the user leaves unanswered keeps no Cloud running;
-the request itself stays, and is no activity.
-
 Everything else is retention, not activity: open conversation browser tabs,
 cookies, a resident native service, a provider's process kept between turns (the
 turn that waits for it is the activity; a Host that stops ends the process, and
