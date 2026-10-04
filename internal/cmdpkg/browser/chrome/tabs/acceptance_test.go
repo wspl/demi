@@ -25,8 +25,8 @@ import (
 )
 
 // Real Chrome is required to prove capture, renderer navigation and process/profile
-// retirement together. The one environment is reused across the scenarios; the
-// 30-second deadline guards hangs, while every wait observes a concrete event.
+// retirement together. The one environment is reused across the scenarios, and
+// every wait observes a concrete event; go test -timeout guards hangs.
 func TestChromeEnvironmentLifecycle(t *testing.T) {
 	executable := os.Getenv("DEMI_TEST_CHROME")
 	if executable == "" {
@@ -62,8 +62,7 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	environment := tabstest.Launch(
 		ctx,
 		t,

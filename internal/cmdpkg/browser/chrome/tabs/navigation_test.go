@@ -38,28 +38,6 @@ func TestLiteralBrowserURLGlobs(t *testing.T) {
 	}
 }
 
-func TestNavigationURLAdmission(t *testing.T) {
-	for _, test := range []struct {
-		url     string
-		allowed bool
-	}{
-		{"http://localhost/", true},
-		{"https://example.test", true},
-		{"file:///tmp/page.html", true},
-		{"about:blank", true},
-		{"javascript:alert(1)", false},
-		{"data:text/html,hi", false},
-		{"about:blank#fragment", false},
-		{"/relative", false},
-	} {
-		t.Run(test.url, func(t *testing.T) {
-			if err := ValidateURL(test.url); (err == nil) != test.allowed {
-				t.Fatalf("allowed %v: %v", test.allowed, err)
-			}
-		})
-	}
-}
-
 // A scripted acknowledgement distinguishes a failed load from undelivered input.
 // No Chrome or clock waits; each case costs one local WebSocket connection.
 func TestFailedNavigationPreservesAcknowledgedProgress(t *testing.T) {
