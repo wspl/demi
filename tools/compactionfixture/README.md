@@ -5,7 +5,7 @@ conversation, and building one costs hundreds of thousands of real tokens. So
 one such session was built once, with three secrets planted at its start, and
 is replayed here against the real model to check that the secrets survive.
 
-`large-context-fixture.json.gz` is that session: 237 blocks that compacted
+`testdata/large-context-fixture.json.gz` is that session: 237 blocks that compacted
 four times over about 1.08 million tokens, with its working directory, in the agent's block format. It was converted once from the
 TypeScript fixture it replaces (`packages/agent/fixtures/compaction/` at commit
 `1b7fdbab`): each block's model selection gained its service tier and output
@@ -16,18 +16,22 @@ the `user` block before it, a completed `text` block its `forkable` mark, and a
 fixture loads it with the agent's own decoding, so
 a block that does not decode stops it.
 
-`main.rs` opens the fixture as a conversation of an agent server over an
+`main.go` opens the fixture as a conversation of an agent server over an
 in-memory tree store and talks to the real DeepSeek V4 Flash through the
 OpenAI-compatible provider. It is a program to run by hand, and no test runs
-it. It is the agent crate's example, so every build and test of the one
-selection compiles it (`cargo test` builds every example), which keeps it in
-step with the agent's API, and puts it in `target/debug/examples`:
+it. `go vet ./...` and every whole-tree build compile it, which keeps it in
+step with the agent's API. The recorded fixture is embedded in the program.
+
+Run from the repository root:
 
 ```sh
+export CGO_ENABLED=0 GOFLAGS=-mod=readonly
 export DEEPSEEK_API_KEY=...
-target/debug/examples/compaction-fixture recall
-target/debug/examples/compaction-fixture switch
+go run ./tools/compactionfixture recall
+go run ./tools/compactionfixture switch
 ```
+
+Omitting the mode selects `recall`. Each frame wait has a 600-second hang guard.
 
 | Mode | What it checks |
 | --- | --- |
