@@ -50,7 +50,6 @@ function model(id: string, name: string, contextWindow: number): ModelInfo {
     name,
     contextWindow,
     contextLimit: null,
-    inputLimit: null,
     acceptedExtensions: ['png', 'pdf'],
     reasoning: { efforts: ['low', 'medium', 'high'], canDisable: false },
     serviceTiers: null,

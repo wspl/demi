@@ -7,7 +7,6 @@ const model: ModelInfo = {
   name: 'M',
   contextWindow: 200000,
   contextLimit: null,
-  inputLimit: null,
   acceptedExtensions: [],
   reasoning: null,
   serviceTiers: [

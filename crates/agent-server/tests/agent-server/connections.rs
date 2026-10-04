@@ -25,8 +25,8 @@ use futures_util::{StreamExt as _, stream};
 use crate::{
     editing::{edit, edit_outcome, said, user_block},
     support::{
-        Fixture, Gate, conversation, frame_type, held, is_idle, is_pending_steers, kinds, open,
-        send, session_of, turn, until,
+        Fixture, Gate, conversation, frame_type, held, is_context_usage, is_idle,
+        is_pending_steers, kinds, open, send, session_of, turn, until,
     },
 };
 
@@ -59,9 +59,9 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
             "opened",
             "transcript_reset",
             "phase",
-            "context_usage",
             "queue",
-            "pending_steers"
+            "pending_steers",
+            "context_usage"
         ]
     );
     let ServerFrame::TranscriptReset { version, .. } = &handshake[1] else {
@@ -367,7 +367,8 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
     assert_eq!(client.received(), [ServerFrame::Closed]);
 
     client.send(open()).await;
-    client.next_until(is_pending_steers).await;
+    // The handshake, then the usage that follows it.
+    client.next_until(is_context_usage).await;
     client.send(open()).await;
     assert_eq!(
         client.next().await,
@@ -463,9 +464,9 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
             "opened",
             "transcript_reset",
             "phase",
-            "context_usage",
             "queue",
-            "pending_steers"
+            "pending_steers",
+            "context_usage"
         ]
     );
 }

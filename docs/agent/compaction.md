@@ -55,7 +55,7 @@ API's 32 MB, so the request that would carry the fiftieth compacts first.
 | Inside a turn, after a provider response | The response's reported usage is at or over the token threshold | One per response; the turn continues after at most three of them |
 | A request refused as too large (`context_length_exceeded`) | Always | One; the request is then sent once more ([Retries](failures-and-recovery.md#retries)) |
 | Before a model switch | The estimate or the request is at or over a threshold of the new model | Until both are under, at most eight, stopping when a pass compacts nothing |
-| A `compact` action | The estimate is at least 50% of the threshold window, or the model has none | One |
+| A `compact` action | The estimate is at least 50% of the window in use, or the model has none | One |
 
 Inside a turn, the session first runs the tools the response requested, holding
 waiting input back, then compacts. When the pass made the estimate smaller, it
@@ -78,10 +78,12 @@ A `compact` action that finds agent messages waiting runs a turn after its
 pass, so the messages reach the model.
 
 The user asks for a `compact` action, and the backend refuses the frame below
-half the threshold window with the reason `Compaction is available from 50%
+half the window Demi uses for the model, the same window as the token
+threshold's, with the reason `Compaction is available from 50%
 context usage (now N%)`, where `N` is the estimate's share of the window,
 rounded down. For example, at 23,000 tokens of a 100,000-token window the
-frame is refused with `(now 23%)`; at 50,000 it is taken. Below half there is
+frame is refused with `(now 23%)`; at 50,000 it is taken. A user who limited
+a 1,000,000-token model to 300K compacts from 150,000 tokens. Below half there is
 too little to summarize for the summary to free much, and each pass loses
 detail. A model that reports no context window has no share to compare, and
 no token threshold relieves it, so its `compact` frame is always taken. The
@@ -137,8 +139,10 @@ are kept. Other outcomes leave the history unchanged:
 - A request that still exceeds the context with one block left, or another
   failure of the summary request, fails the action, after the retries of
   [Retries](failures-and-recovery.md#retries), and leaves the `error` block
-  any failed request leaves there. The copy's `retry_scheduled` events reach
-  the client like the turn's own.
+  any failed request leaves there. A failed `compact` action ended no turn,
+  and its record says so, so the product offers no Resume for it
+  ([Retries](failures-and-recovery.md#retries)). The copy's
+  `retry_scheduled` events reach the client like the turn's own.
 - Stop stops the copy and then the action.
 
 The copy is closed on every path.
@@ -268,18 +272,30 @@ provider reported:
 5. Without one, the estimate is the sum of the estimates of the blocks from
    the last `compaction_boundary` on.
 
+Only the blocks after the anchor, or from the boundary on without one, are
+weighed, so only their media's bytes matter to the estimate.
+
 The page shows this estimate, never one of its own: the session reports it
-with the threshold window and the estimate from which the user may compact
+with the window in use and the estimate from which the user may compact
 (`context_usage`, [Server frames](runtime.md#server-frames)) after each
-provider response, after each pass that compacted, and when an action ends,
-and a page that opens the conversation finds it in the open handshake. A
-session just restored with media holds no bytes for them, and opening reads
-no blob ([Media](runtime.md#media)), so its handshake has no usage and the
-page shows none until the first action ends; a `compact` frame meanwhile
-reads the blobs to decide, as the pass would. For example, right after a
-compaction the latest `response` still measures the history before the
-summary, so the estimate has no anchor and sums the blocks from the new
-boundary on; the page shows that smaller number, not the response's usage.
+provider response, after each pass that compacted, and when an action ends.
+A page that opens the conversation receives it right after the open
+handshake, computed without reading a blob, since opening reads none
+([Media](runtime.md#media)). A session just restored holds no bytes for its
+media, and that is enough while the weighed blocks reference none, which is
+the usual case: a medium sent in an earlier request is inside the anchor.
+When a weighed block does reference a medium, such as an image in a message
+whose request was never answered, the open sends no usage, and the page shows
+none until the first action ends. The stored block names the medium only by
+its blob and media type, while its weight is its base64 length, and whether
+the request carries it as bytes or as text depends on that length too
+([Block estimates](#block-estimates)). A `compact` frame meanwhile reads the
+blobs of those blocks to decide, as the pass would.
+
+For example, right after a compaction the latest `response` still measures
+the history before the summary, so the estimate has no anchor and sums the
+blocks from the new boundary on; the page shows that smaller number, not the
+response's usage.
 
 ### Request size
 
@@ -362,8 +378,11 @@ a real model.
 | A summary request exceeds the context with one block left, after a previous boundary or without one | The action fails with `context_length_exceeded`; the transcript gains only its `error` block |
 | A transient failure of a summary request | It is retried, and the client receives `retry_scheduled` |
 | An empty summary, or a failed summary request | No boundary or marker; a failed one leaves its `error` block |
+| The user's `compact` after a finished answer, and its summary request fails | The `error` block has `outsideTurn`; the dock offers no Resume |
 | A turn whose compaction fails, then a reload and `resume` | The reopened transcript ends with the `error` block, and `resume` finishes the turn |
-| `compact` below half the threshold window, then at half | Refused with `Compaction is available from 50% context usage (now N%)`, then taken; `context_usage` frames carry the estimate on open, after each response and when the action ends |
+| `compact` below half the window in use, then at half | Refused with `Compaction is available from 50% context usage (now N%)`, then taken; `context_usage` frames carry the estimate after each response and when the action ends |
+| The user limited the model's window, then pressed Compact | The gate and the `context_usage` window are the limit's: 150,000 of 300K is taken |
+| A restored session with an image before its latest `response`, then an open | The page receives the usage with no blob read; with an image after that `response`, it receives none |
 | A turn keeps hitting the threshold | The turn continues after at most three compactions; no pass summarizes only a previous summary |
 | A switch to a smaller window | Compaction runs first, with the previous model; a switch to a larger window compacts nothing |
 | The user limited the model's window | The history compacts at 80% of the limit; the same user's other conversations of that model do too, and conversations of another model keep their own threshold |

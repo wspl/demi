@@ -40,18 +40,7 @@ export function compactionTranscript(state: CompactionCase): Block[] {
     return [...history, ...SECOND_ANSWER]
   }
   if (state === 'failed') {
-    return [
-      ...history,
-      ...SECOND_ANSWER,
-      {
-        type: 'error',
-        id: 'compaction-failed',
-        createdAt,
-        model: demoModel,
-        message: 'Anthropic API request failed with HTTP 401: invalid x-api-key',
-        code: 'auth_expired',
-      },
-    ]
+    return failedCompactionTranscript(true)
   }
   return [
     ...history,
@@ -71,6 +60,29 @@ export function compactionTranscript(state: CompactionCase): Block[] {
       model: demoModel,
       boundaryId: 'compaction-boundary',
       compactedTokens: 121_000,
+    },
+  ]
+}
+
+/**
+ * The summary request failed after the second answer. `outsideTurn`: the
+ * user's Compact ran the pass, so no turn ended and the dock offers no
+ * Resume; otherwise the turn's own pass failed, and Resume finishes it.
+ */
+export function failedCompactionTranscript(outsideTurn: boolean): Block[] {
+  return [
+    FIRST,
+    ...FIRST_ANSWER,
+    SECOND,
+    ...SECOND_ANSWER,
+    {
+      type: 'error',
+      id: 'compaction-failed',
+      createdAt,
+      model: demoModel,
+      message: 'Anthropic API request failed with HTTP 401: invalid x-api-key',
+      code: 'auth_expired',
+      outsideTurn,
     },
   ]
 }

@@ -2,11 +2,16 @@
 //! before a model switch, the session copy that writes the summary, the
 //! `compact` action, and the request prefix a provider caches.
 
-use demi_agent_session::{TranscriptSnapshot, testing::COMPACTION_SUMMARY_INSTRUCTION};
-use demi_agent_store::media::ModelView;
+use demi_agent_session::{
+    TranscriptSnapshot, compaction_refusal, testing::COMPACTION_SUMMARY_INSTRUCTION,
+};
+use demi_agent_store::{
+    media::{BlobStore, ModelView},
+    testing::{MemoryBlobs, png},
+};
 use demi_agent_transcript::{RequestView, estimate::block_tokens, testing::RESUME_TEXT};
 use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits};
-use demi_shared_types::{BlockId, QueuedMessage, TokenUsage};
+use demi_shared_types::{BlockId, ContextUsage, QueuedMessage, TokenUsage};
 
 use super::*;
 
@@ -455,13 +460,170 @@ async fn a_blank_summary_compacts_nothing_and_a_failed_one_fails_the_turn_with_i
         kinds(&blocks)
     );
     // The failed summary request is the turn's failure record, as a failed
-    // request of the turn's own would be.
+    // request of the turn's own would be, and the turn it ended is
+    // unfinished.
     assert_eq!(
         kinds(&blocks),
         [
             "user", "text", "response", "user", "text", "response", "user", "error"
         ]
     );
+    let Some(Block::Error(error)) = blocks.last() else {
+        unreachable!("the kinds end with an error");
+    };
+    assert!(!error.outside_turn);
+}
+
+/// A request refused for an expired key, which is never retried.
+fn expired_key() -> Turn {
+    Turn::Events(vec![event::error(
+        "the key expired",
+        Some(ErrorCode::AuthExpired),
+    )])
+}
+
+// One session and two scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_failed_compact_after_a_finished_answer_leaves_a_failure_record_that_ended_no_turn() {
+    let provider = ScriptedRuntime::new([answer("first"), expired_key()]);
+    let store = MemoryTreeStore::new();
+    let session = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
+    session
+        .send(long_message(), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    let failed = session.compact().unwrap().await;
+
+    assert_eq!(failed.unwrap_err().code.as_deref(), Some("auth_expired"));
+    let blocks = session.transcript().blocks;
+    assert_eq!(kinds(&blocks), ["user", "text", "response", "error"]);
+    let Some(Block::Error(error)) = blocks.last() else {
+        unreachable!("the kinds end with an error");
+    };
+    assert!(error.outside_turn, "{error:?}");
+}
+
+// One session and one scripted request: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn the_usage_and_the_compact_gate_count_against_the_limit_the_user_set() {
+    let provider = ScriptedRuntime::new([Turn::Events(vec![
+        event::text("first"),
+        event::response(400, 0),
+    ])]);
+    let store = MemoryTreeStore::new();
+    let runtime = test_runtime(Vec::new());
+    let window = runtime.window_in_use.clone();
+    let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
+    session
+        .update_model(ModelSwitch {
+            model: Box::new(small_model()),
+            runtime: None,
+        })
+        .unwrap();
+    session.send(text("first"), turn("t1")).unwrap().await.unwrap();
+
+    let full = session.context_usage().await.unwrap();
+    assert_eq!(
+        full,
+        ContextUsage {
+            tokens: 400,
+            window: Some(1_000),
+            compact_from: Some(500),
+        }
+    );
+    assert_eq!(
+        compaction_refusal(&full).as_deref(),
+        Some("Compaction is available from 50% context usage (now 40%)")
+    );
+
+    // The user limits the model's window to 600 tokens.
+    window.set(Some(600));
+    let limited = session.context_usage().await.unwrap();
+    assert_eq!(
+        limited,
+        ContextUsage {
+            tokens: 400,
+            window: Some(600),
+            compact_from: Some(300),
+        }
+    );
+    assert_eq!(compaction_refusal(&limited), None);
+    assert_eq!(session.held_context_usage().await, Some(limited));
+}
+
+/// A message with `image`, which the store's namespace holds.
+fn image_message(image: &BlobRef) -> Vec<UserContentBlock> {
+    vec![
+        UserContentBlock::Text {
+            text: "What is on the screen?".into(),
+        },
+        UserContentBlock::Image {
+            source: MediaSource::Ref {
+                r#ref: image.clone(),
+                media_type: "image/png".into(),
+            },
+        },
+    ]
+}
+
+/// The node `root` restored from a copy of `store`, which holds no media's
+/// bytes yet.
+fn restored(store: &MemoryTreeStore, provider: &ScriptedRuntime) -> AgentSession {
+    let copy = store.copy();
+    let checkpoint = copy.checkpoint(&root()).unwrap();
+    let (session, _) = restore_session(
+        checkpoint,
+        &copy,
+        provider,
+        test_runtime(Vec::new()),
+        Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
+    );
+    session
+}
+
+// Two restores and one blob read from memory: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_restored_session_tells_its_usage_without_a_blob_while_its_media_lie_before_the_anchor() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![event::text("A login form."), event::response(5_000, 10)]),
+        expired_key(),
+    ]);
+    let blobs = MemoryBlobs::new();
+    let store = MemoryTreeStore::with_blobs(blobs.clone());
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    session
+        .update_model(ModelSwitch {
+            model: Box::new(model_reading("stub", "model-a", &[FileExtension::Png])),
+            runtime: None,
+        })
+        .unwrap();
+    let image = blobs.put(png(4, 3, 1)).await.unwrap();
+    session
+        .send(image_message(&image), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    // The image went out in the request the latest response measured: the
+    // estimate is that usage, and needs no byte of it.
+    assert_eq!(
+        restored(&store, &provider)
+            .held_context_usage()
+            .await
+            .map(|usage| usage.tokens),
+        Some(5_010)
+    );
+
+    // The next message's image was never answered, so it weighs, and only
+    // its bytes can say how much.
+    let failed = session.send(image_message(&image), turn("t2")).unwrap().await;
+    assert!(failed.is_err());
+    let after_failure = restored(&store, &provider);
+    assert_eq!(after_failure.held_context_usage().await, None);
+    let read = after_failure.context_usage().await.unwrap();
+    assert!(read.tokens >= 5_010 + 1_600, "{read:?}");
 }
 
 #[tokio::test(flavor = "local")]

@@ -182,7 +182,7 @@ async fn stream(
         let request_id = request.request_id.clone();
         let start = s.read(|core| core.transcript.blocks().len());
         let model = s.read(|core| core.model.clone());
-        let window = compaction::window_in_use(s, &model, cancel).await?;
+        let window = cancel.guard(compaction::window_in_use(s, &model)).await?;
         let mut runtime = s
             .update(|core| core.provider.take())
             .expect("the provider runtime is in its slot between runs");
@@ -303,7 +303,7 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
 async fn read(
     s: &SessionShared,
     cancel: &TurnCancel,
-    window: u32,
+    window: Option<u64>,
     mut events: ProviderRun<'_>,
 ) -> Result<Result<bool, ProviderFailure>, TurnError> {
     let mut thinking_started = false;

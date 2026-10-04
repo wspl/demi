@@ -425,33 +425,25 @@ impl<H: HostResolver> Tree<H> {
         });
         let session = self.root.session();
         let snapshot = session.transcript();
-        // The usage when the session can say it without reading a blob;
-        // a session just restored with media says it when its first
-        // action ends (`compaction.md` § Context estimate).
-        let usage = session
-            .held_context_usage()
-            .map(|usage| ServerFrame::ContextUsage { usage });
         let root = [
-            Some(ServerFrame::Opened),
-            Some(ServerFrame::TranscriptReset {
+            ServerFrame::Opened,
+            ServerFrame::TranscriptReset {
                 blocks: snapshot.blocks,
                 version: snapshot.version,
                 failures: None,
-            }),
-            Some(ServerFrame::Phase {
+            },
+            ServerFrame::Phase {
                 phase: session.phase(),
-            }),
-            usage,
-            Some(ServerFrame::Queue {
+            },
+            ServerFrame::Queue {
                 queue: session.queued_messages(),
-            }),
-            Some(ServerFrame::PendingSteers {
+            },
+            ServerFrame::PendingSteers {
                 pending_steers: session.pending_steers(),
-            }),
+            },
         ];
         for frame in root
             .into_iter()
-            .flatten()
             .chain(self.replay())
             .chain(self.live_commands())
         {

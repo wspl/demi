@@ -389,6 +389,13 @@ pub struct ErrorBlock {
     #[schemars(with = "ProviderErrorDiagnostics")]
     #[garde(dive)]
     pub diagnostics: Option<ProviderErrorDiagnostics>,
+    /// Set when the failure ended no turn, as a `compact` action whose
+    /// summary request failed: no turn is left unfinished, and the product
+    /// offers no Resume for it (`failures-and-recovery.md` § Retries).
+    /// Omitted otherwise.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub outside_turn: bool,
 }
 
 /// Compaction's summary of the history before it, inserted where the kept

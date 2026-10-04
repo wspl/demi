@@ -702,7 +702,6 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
             "opened",
             "transcript_reset",
             "phase",
-            "context_usage",
             "queue",
             "pending_steers"
         ]
@@ -1113,6 +1112,10 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
     assert_eq!(code.as_deref(), Some("model_not_selected"));
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     socket.open().await;
+    // The usage follows the handshake.
+    socket
+        .until(|frame| matches!(frame, ServerFrame::ContextUsage { .. }))
+        .await;
 
     // Archived, the conversation takes no frame but its close, and no
     // socket.

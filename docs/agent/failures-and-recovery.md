@@ -191,6 +191,18 @@ refused as too large is asked again for half its window
 is written as the session's `error` block, whether the user's `compact` or a
 turn ran the pass, and a turn it ended is unfinished like any other.
 
+A failure ends a turn only when its action began one, that is, wrote into
+the transcript before it failed. One that wrote nothing ended no turn, and
+its `error` block says so with `outsideTurn`. For example, the user presses
+Compact after a finished answer and the summary request fails: the record
+stays in the transcript, but no turn is unfinished, and the product offers
+no Resume for it; `resume` would make the model continue an answer it had
+finished. Behind such a record, the turn before it is as it was: when that
+turn had failed or been stopped, it still offers its Resume or Continue
+([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+A send whose model switch fails to compact, before its message is written,
+ends no turn either.
+
 ## Recovery is one mechanism
 
 A transient provider failure and a human asking to continue a dead turn ask

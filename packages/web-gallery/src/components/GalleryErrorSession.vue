@@ -5,6 +5,8 @@ import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import type { Block } from '@demicodes/protocol'
 import { generationErrorBlock, shortTranscriptBlocks } from '../fixtures/blocks'
+import { failedCompactionTranscript } from '../fixtures/compaction'
+import { productWould } from '../product-would'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
@@ -81,6 +83,18 @@ const cases: SessionCase[] = [
     composer: 'default',
   },
   {
+    variant: 'Compaction failed inside a turn · Resume',
+    note: 'The turn compacted after its answer, and the summary request failed. The record ends the turn, so Resume sits in the dock.',
+    session: state('compaction-turn', { blocks: failedCompactionTranscript(false) }),
+    composer: 'default',
+  },
+  {
+    variant: 'Compact failed · no turn ended',
+    note: 'The user pressed Compact after a finished answer, and the summary request failed. The record stays, but no turn is left unfinished, so the dock offers nothing.',
+    session: state('compaction-compact', { blocks: failedCompactionTranscript(true) }),
+    composer: 'default',
+  },
+  {
     variant: 'Request refused · no record',
     note: 'The server refused a request without writing a record. A notice at the tail says so; there is nothing to retry.',
     session: state('refused', {
@@ -128,6 +142,7 @@ const cases: SessionCase[] = [
               <ChatSession
                 :conversation="item.session"
                 has-provider
+                @retry="productWould('Resume the turn')"
                 @save-scroll="(_id, value) => (item.session.scroll = value)"
               >
                 <template #workspace

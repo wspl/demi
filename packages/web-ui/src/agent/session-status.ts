@@ -113,19 +113,23 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
 
 /**
  * The recovery the dock offers for a turn that did not finish (`product.md`
- * § Recovering an unfinished turn), from the record that ended it: an error
- * resumes, the user's own Stop continues, and anything else is finished or
- * still running. Both are the session's `resume`; the word tells the cause.
+ * § Recovering an unfinished turn), from the record that ended the last
+ * turn among the visible `blocks`: an error resumes, the user's own Stop
+ * continues, and anything else is finished or still running. An error that
+ * ended no turn, such as a Compact whose summary request failed, leaves the
+ * turn before it as it was (`failures-and-recovery.md` § Retries). Both are
+ * the session's `resume`; the word tells the cause.
  */
 export function turnRecovery(
   phase: 'idle' | string,
-  tail: { type: string } | undefined,
+  blocks: readonly { type: string; outsideTurn?: boolean }[],
 ): 'resume' | 'continue' | null {
   if (phase !== 'idle') {
     return null
   }
-  if (tail?.type === 'error') {
+  const end = blocks.findLast((block) => !(block.type === 'error' && block.outsideTurn))
+  if (end?.type === 'error') {
     return 'resume'
   }
-  return tail?.type === 'abort' ? 'continue' : null
+  return end?.type === 'abort' ? 'continue' : null
 }

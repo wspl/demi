@@ -58,9 +58,19 @@ test('an unknown id waits for the list', () => {
 })
 
 test('the dock offers Resume after an error, Continue after a Stop, and nothing while running or finished', () => {
-  expect(turnRecovery('idle', { type: 'error' })).toBe('resume')
-  expect(turnRecovery('idle', { type: 'abort' })).toBe('continue')
-  expect(turnRecovery('idle', { type: 'response' })).toBeNull()
-  expect(turnRecovery('idle', undefined)).toBeNull()
-  expect(turnRecovery('running', { type: 'error' })).toBeNull()
+  const answered = [{ type: 'user' }, { type: 'text' }]
+  expect(turnRecovery('idle', [...answered, { type: 'error' }])).toBe('resume')
+  expect(turnRecovery('idle', [...answered, { type: 'abort' }])).toBe('continue')
+  expect(turnRecovery('idle', answered)).toBeNull()
+  expect(turnRecovery('idle', [])).toBeNull()
+  expect(turnRecovery('running', [...answered, { type: 'error' }])).toBeNull()
+})
+
+// A Compact the user asked for whose summary request failed: its error record
+// ended no turn, so the dock says what the turn before it needs.
+test('a failure that ended no turn offers no Resume and keeps the recovery of the turn before it', () => {
+  const failedCompact = { type: 'error', outsideTurn: true }
+  expect(turnRecovery('idle', [{ type: 'user' }, { type: 'text' }, failedCompact])).toBeNull()
+  expect(turnRecovery('idle', [{ type: 'user' }, { type: 'error' }, failedCompact])).toBe('resume')
+  expect(turnRecovery('idle', [{ type: 'user' }, { type: 'abort' }, failedCompact])).toBe('continue')
 })

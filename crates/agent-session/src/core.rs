@@ -19,6 +19,7 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{
     DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, RequestView, TranscriptLog,
+    estimate::{blocks_tokens, context_anchor},
     replay, replay_start,
 };
 use demi_conversation_socket_protocol::AbortTarget;
@@ -559,6 +560,15 @@ impl SessionCore {
         self.release_media();
     }
 
+    /// Whether the running action wrote into the transcript: one that wrote
+    /// nothing has begun no turn, so nothing of it is left unfinished.
+    fn action_began(&self) -> bool {
+        matches!(
+            &self.activity,
+            Activity::Running(run) if run.started_at != self.transcript.version().revision
+        )
+    }
+
     /// Dispose stopped the running action, and the worker ends with it. An
     /// action that wrote into the transcript is recorded as interrupted, so
     /// the final checkpoint says it was running; a message whose turn wrote
@@ -566,10 +576,7 @@ impl SessionCore {
     /// action that wrote nothing ends with the session. Returns whether a
     /// turn was interrupted.
     pub(super) fn shut_down(&mut self, kind: ActionKind, turn: &TurnId) -> bool {
-        let began = matches!(
-            &self.activity,
-            Activity::Running(run) if run.started_at != self.transcript.version().revision
-        );
+        let began = self.action_began();
         self.reject_edit(EditError::Closed);
         if began {
             self.record_stop(CancelReason::Shutdown);
@@ -691,6 +698,7 @@ impl SessionCore {
             INTERRUPTED_TURN_MESSAGE.to_owned(),
             Some(INTERRUPTED_CODE.to_owned()),
             None,
+            false,
         );
     }
 
@@ -1144,12 +1152,17 @@ impl SessionCore {
         self.commit();
     }
 
+    /// A failure of an action that has not begun ended no turn, as a
+    /// `compact` action whose summary request failed: its record says so
+    /// (`failures-and-recovery.md` § Retries).
     fn push_failure(&mut self, failure: &ErrorReport) {
+        let outside_turn = !self.action_began();
         self.transcript.push_error(
             &self.model,
             failure.message.clone(),
             failure.code.clone(),
             failure.diagnostics.clone(),
+            outside_turn,
         );
     }
 
@@ -1264,6 +1277,20 @@ impl SessionCore {
         let blocks = self.transcript.blocks();
         let start = replay_start(blocks);
         ModelView::of(start, &blocks[start..], &self.media)
+    }
+
+    /// The estimate of the next request of the current model
+    /// (`compaction.md` § Context estimate), or the blobs to read first. Only
+    /// the blocks after the anchor weigh, so only their media need to be
+    /// held: a session restored with media, which holds none, tells it
+    /// without a read while those blocks reference none.
+    pub(super) fn context_estimate(&self) -> Result<u64, Vec<BlobRef>> {
+        let blocks = self.transcript.blocks();
+        let start = replay_start(blocks);
+        let replayed = &blocks[start..];
+        let anchor = context_anchor(replayed, &self.model.model);
+        let weighed = ModelView::of(start + anchor.from, &replayed[anchor.from..], &self.media)?;
+        Ok(anchor.tokens + blocks_tokens(&weighed.blocks, &self.request_view(&weighed)))
     }
 
     /// Drains the transcript's patches into one event and marks their rows
