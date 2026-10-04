@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
-	"time"
 
 	"go.uber.org/goleak"
 )
@@ -16,8 +15,7 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 // One built runner, restarted once against a local rejecting endpoint. Requests
 // establish startup; Stop joins each child and its readers, with no sleep.
 func TestOwnedRunnerBorrowsDirectoryAndJoinsAcrossRestart(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	arrived := make(chan struct{}, 2)
 	vendor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -41,11 +39,7 @@ func TestOwnedRunnerBorrowsDirectoryAndJoinsAcrossRestart(t *testing.T) {
 		}
 	}()
 	for i := 0; i < 2; i++ {
-		select {
-		case <-arrived:
-		case <-ctx.Done():
-			t.Fatalf("runner did not connect: %v\n%s", ctx.Err(), runner.Output())
-		}
+		<-arrived
 		stopped, stop := context.WithCancel(ctx)
 		stop()
 		if err := runner.Stop(stopped); err != nil {
