@@ -18,12 +18,12 @@ type pageMessage struct {
 	err  error
 }
 type pageSocket struct {
-	socket    *websocket.Conn
+	socket    *PageConnection
 	tuning    PageTuning
 	heartbeat *time.Timer
 }
 
-func newPageSocket(socket *websocket.Conn, tuning PageTuning) *pageSocket {
+func newPageSocket(socket *PageConnection, tuning PageTuning) *pageSocket {
 	return &pageSocket{
 		socket:    socket,
 		tuning:    tuning,
@@ -45,19 +45,26 @@ func (p *pageSocket) send(ctx context.Context, value any) error {
 
 func (p *pageSocket) close(ctx context.Context, code websocket.StatusCode, reason string) {
 	p.heartbeat.Stop()
-	// Close has no context; the owner interrupts its handshake after CloseWait.
+	p.socket.Close(ctx, code, reason, p.tuning.CloseWait)
+}
+
+// closeOnCancel owns the page's bounded shutdown handshake independently of
+// whichever relay event wins. The returned function stops or joins the close.
+func (p *pageSocket) closeOnCancel(ctx context.Context) func() {
 	closed := make(chan struct{})
-	closeCtx, cancel := context.WithTimeout(ctx, p.tuning.CloseWait)
-	defer cancel()
-	stop := context.AfterFunc(closeCtx, func() {
-		_ = p.socket.CloseNow()
-		close(closed)
-	})
-	_ = p.socket.Close(code, reason)
-	if !stop() {
-		<-closed
+	closePage := func() {
+		defer close(closed)
+		p.close(context.WithoutCancel(ctx), websocket.StatusGoingAway, "backend_closing")
 	}
-	_ = p.socket.CloseNow()
+	stop := context.AfterFunc(ctx, closePage)
+	return func() {
+		if !stop() {
+			<-closed
+		} else if ctx.Err() != nil {
+			// Cancellation can end the relay before its callback starts.
+			closePage()
+		}
+	}
 }
 
 func readPage(ctx context.Context, socket *websocket.Conn, workers *sync.WaitGroup) <-chan pageMessage {

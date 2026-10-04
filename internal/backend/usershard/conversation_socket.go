@@ -19,7 +19,7 @@ import (
 func (s *Shard) serveConversationSocket(
 	ctx context.Context,
 	record database.ConversationRecord,
-	socket *websocket.Conn,
+	socket *PageConnection,
 ) error {
 	// Closing an already broken socket needs no recovery.
 	defer func() {
@@ -34,7 +34,7 @@ func (s *Shard) serveConversationSocket(
 func (s *Shard) relayConversation(
 	ctx context.Context,
 	record database.ConversationRecord,
-	socket *websocket.Conn,
+	socket *PageConnection,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})
@@ -66,7 +66,7 @@ func (s *Shard) relayConversation(
 	}()
 	readCtx, readCancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer readCancel()
-	incoming := readPage(readCtx, socket, &workers)
+	incoming := readPage(readCtx, socket.Conn, &workers)
 	outgoing := make(chan framewire.ServerFrame)
 	workers.Add(1)
 	go forwardConversationFrames(ctx, frames, outgoing, &workers)
@@ -116,6 +116,8 @@ type conversationExchange struct {
 
 // exchangeConversation sends agent frames while admitting one client message at a time.
 func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationExchange) error {
+	joinClose := exchange.page.closeOnCancel(ctx)
+	defer joinClose()
 	var handling <-chan handled
 	defer func() {
 		if handling != nil {
@@ -127,7 +129,9 @@ func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationE
 		if err != nil {
 			return err
 		}
-		return exchange.page.send(ctx, frame)
+		// Canceling a WebSocket write destroys the transport. The bounded
+		// shutdown handshake owns closing it, including a stalled write.
+		return exchange.page.send(context.WithoutCancel(ctx), frame)
 	}
 	for {
 		reading := exchange.incoming
@@ -136,7 +140,6 @@ func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationE
 		}
 		select {
 		case <-ctx.Done():
-			exchange.page.close(context.WithoutCancel(ctx), websocket.StatusGoingAway, "backend_closing")
 			return ctx.Err()
 		case message, ok := <-reading:
 			if !ok || message.err != nil {
@@ -160,7 +163,7 @@ func (s *Shard) exchangeConversation(ctx context.Context, exchange conversationE
 				return err
 			}
 		case <-exchange.page.heartbeat.C:
-			if err := exchange.page.send(ctx, &framewire.HeartbeatFrame{}); err != nil {
+			if err := send(&framewire.HeartbeatFrame{}); err != nil {
 				return err
 			}
 		}

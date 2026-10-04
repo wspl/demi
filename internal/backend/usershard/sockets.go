@@ -4,8 +4,6 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/coder/websocket"
-
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/pagesync"
@@ -30,19 +28,19 @@ type ChannelSession struct {
 // and changes until the page, session or shard closes. It always closes socket.
 func (s *Shard) ServeSyncChannel(
 	ctx context.Context,
-	socket *websocket.Conn,
+	socket *PageConnection,
 	session ChannelSession,
 ) error {
 	return s.serveSyncChannel(ctx, socket, session)
 }
 
 // ServeConversationSocket takes ownership of socket. An admitted agent frame
-// finishes even during shutdown, with outbox delivery continuing until then.
+// finishes even during shutdown, while page delivery ends with shutdown.
 // Socket ownership is registered before any wait and ends with its close.
 func (s *Shard) ServeConversationSocket(
 	ctx context.Context,
 	conversation database.ConversationRecord,
-	socket *websocket.Conn,
+	socket *PageConnection,
 ) error {
 	return s.serveConversationSocket(ctx, conversation, socket)
 }

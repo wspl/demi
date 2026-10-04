@@ -318,7 +318,9 @@ func TestClaimOfDisconnectedRunnerCreatesNoDevice(t *testing.T) {
 	if !ok {
 		t.Fatal("no pairing code")
 	}
-	if err := r.socket.CloseNow(); err != nil {
+	// Wait for the peer's close frame before claiming: a local TCP close
+	// alone does not prove the backend has observed the disconnection.
+	if err := r.socket.Close(websocket.StatusNormalClosure, ""); err != nil {
 		t.Fatal(err)
 	}
 	conversationRefusal(
