@@ -157,7 +157,9 @@ impl dyn ExposeShard {
     }
 
     /// Destroys the user's `record` if it expired (`expose.md` § Lifetime),
-    /// as every read of one does; answers whether it had.
+    /// as every read of one does; answers whether it had. The database deletes
+    /// it only while it is still expired: a renewal that came after `record`
+    /// was read keeps it.
     pub(crate) async fn destroy_if_expired(
         &self,
         record: &ExposeRecord,
@@ -165,7 +167,14 @@ impl dyn ExposeShard {
         if self.clock().now() < record.expires_at {
             return Ok(false);
         }
-        self.destroy_expose(&record.id).await?;
+        if !self
+            .control()
+            .delete_expired_expose(record.id.clone())
+            .await?
+        {
+            return Ok(false);
+        }
+        self.expose_ended(&record.id);
         Ok(true)
     }
 
@@ -173,9 +182,14 @@ impl dyn ExposeShard {
     /// connections end.
     async fn destroy_expose(&self, id: &ExposeId) -> Result<(), StorageError> {
         self.control().delete_expose(id.clone()).await?;
+        self.expose_ended(id);
+        Ok(())
+    }
+
+    /// Tells the pages that the expose `id` is gone and ends its connections.
+    fn expose_ended(&self, id: &ExposeId) {
         self.exposes_changed();
         self.exposes().end([id]);
-        Ok(())
     }
 
     /// Destroys every expose on the user's `device`, as the device's
