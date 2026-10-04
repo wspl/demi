@@ -1444,7 +1444,7 @@ Each plugin page package is **private** and has the same boundary:
 | --- | --- |
 | `@demicodes/plugin-browser` | The `browser` work panel kind and the live view ([Live view](../browser/live-view.md#responsibilities)): frames, input, clipboard and pictures over its page context, with the plugin's page types and the live view's messages generated into `src/generated/` |
 | `@demicodes/plugin-expose` | The conversation header's expose menu and the `page` work panel kind ([Host expose](../execution/expose.md#product-surface)), with the plugin's page types generated into `src/generated/` |
-| `@demicodes/plugin-skills` | The Skills settings section with its dialogs ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
+| `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |
 | `@demicodes/plugin-file-browser` | The pinned `file` kind, the File view, over the conversation files service ([File previews](../product/file-previews.md)) |
 

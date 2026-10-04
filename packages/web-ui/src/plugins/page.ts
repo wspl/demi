@@ -19,6 +19,7 @@ import type { FileBrowserSource } from '../files/types'
 import { reportError } from '../infra/errors'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { SettingsNavGroup, SettingsNavItem } from '../settings/types'
+import type { SidebarEntry } from '../sidebar/types'
 import type { IntentName, IntentPayloads, IntentRequest } from './intents'
 import type { OpenUserStream } from './streams'
 
@@ -217,6 +218,11 @@ export interface PluginSettingsSection {
   group: string
   item: SettingsNavItem
   component: Component
+  /**
+   * The section also has an entry in the sidebar's top group, with its
+   * item's icon and label, that opens it.
+   */
+  sidebar?: true
 }
 
 /** What a panel session may do when it ends, besides its effect scope stopping. */
@@ -498,6 +504,22 @@ export function withPluginSections(
     }
   }
   return joined
+}
+
+/** The sidebar entries of the enabled pages whose settings section asks for one, in page order. */
+export function sidebarEntries(
+  pages: readonly AnyPluginPage[],
+  enabled: (plugin: string) => boolean,
+): SidebarEntry[] {
+  const entries: SidebarEntry[] = []
+  for (const page of pages) {
+    if (!page.settings?.sidebar || !enabled(page.plugin)) {
+      continue
+    }
+    const { id, label, icon } = page.settings.item
+    entries.push({ section: id, label, icon })
+  }
+  return entries
 }
 
 /** The page whose settings section is `tab`, if a plugin fills it. */

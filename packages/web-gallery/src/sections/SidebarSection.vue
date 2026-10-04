@@ -5,26 +5,63 @@ import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/side
 import { RestoreSweep } from '../fixtures/restore-sweep'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
+import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
+import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
+import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import type { SettingsTab } from '@demicodes/web-ui/settings/types'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/web-ui/plugins/page'
+import { PLUGIN_PAGES } from '../generated/pages'
+import { createSettingsState } from '../fixtures/settings'
+import { galleryPageHost, skillsPlugin } from '../fixtures/plugins'
+import { productWould } from '../product-would'
 import { demoAccount, demoConversations, demoProjects, emailOnlyAccount } from '../sidebar/sidebar-data'
 
 const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
-const opened = ref<string | null>(null)
 const activeId = ref<string | null>('c-login')
 const collapsedProjects = ref<string[]>(['p-dotfiles'])
 const sidebarWidth = ref<number>(SIDEBAR_WIDTH.default)
 const emptyList = ref<SidebarConversation[]>([])
 let nextId = 1
 
+// The live specimen's settings dialog, over the fixture the Settings view uses: an entry opens it
+// on its section, and its Plugins page turns a plugin off, which takes that plugin's entry away.
+const settings = createSettingsState()
+providePageHost(galleryPageHost({ skills: skillsPlugin(settings.skills) }))
+const pluginOn = (plugin: string) =>
+  settings.plugins.some((entry) => entry.id === plugin && entry.enabled)
+const settingsSections = computed(() => withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, pluginOn))
+const sectionEntries = computed(() => sidebarEntries(PLUGIN_PAGES, pluginOn))
+const settingsOpen = ref(false)
+const settingsTab = ref<SettingsTab>('general')
+
+/** Opens the settings dialog, on `section` when an entry names one, as the product does. */
+function openSettings(section?: string): void {
+  if (section) {
+    settingsTab.value = section
+  }
+  settingsOpen.value = true
+}
+
+// The pinned specimens: every plugin on, and the Skills plugin off.
+const allEntries = sidebarEntries(PLUGIN_PAGES, () => true)
+const entriesWithoutSkills = sidebarEntries(PLUGIN_PAGES, (plugin) => plugin !== 'skills')
+/** What the product does with a pinned specimen's entry: settings, on the section the entry names. */
+function wouldOpenSettings(section?: string): void {
+  productWould(section ? `Open ${section} settings` : 'Open settings')
+}
+
 const anatomy: [string, string][] = [
   [
     'Top',
-    'The app name, then the entries: New, Skills, Archived. Skills is disabled with an In development tooltip. Archived opens its settings section. The Conversations heading carries the same New as the entry.'
+    'The app name, then the entries: New, then one entry for each plugin whose settings section asks for one (Skills), in the order the backend registers plugins and only while the user has the plugin on, then Archived. Every entry but New opens the settings dialog on its section. The Conversations heading carries the same New as the entry.'
   ],
   [
     'Conversations',
@@ -187,7 +224,7 @@ onBeforeUnmount(() => listRestore.stop())
   <div class="flex flex-col gap-10">
     <GallerySection
       title="Sidebar"
-      note="The conversation list, by project. Entries at the top, the account at the bottom. Everything here is live: select, fold a project, pin, rename. Skills and Archived report the section they would open."
+      note="The conversation list, by project. Entries at the top, the account at the bottom. Everything here is live: select, fold a project, pin, rename. Skills, Archived and Settings open the settings dialog, where turning the Skills plugin off takes its entry away."
     >
       <div class="gallery-frame divide-y divide-line">
         <div
@@ -206,6 +243,7 @@ onBeforeUnmount(() => listRestore.stop())
       note="The product frame: the sidebar on the base surface, the raised session beside it, and the divider between them. Drag the divider, use the arrows on it, or double-click it to return to the default."
     >
       <GallerySpecimen variant="expanded · live" wide>
+        <GalleryOverlayWell size="tall" class="w-full">
         <div class="gallery-frame flex h-[40rem] w-full overflow-hidden">
           <SidebarLayout v-model:width="sidebarWidth" class="w-full">
           <template #sidebar>
@@ -215,6 +253,7 @@ onBeforeUnmount(() => listRestore.stop())
             :projects="projects"
             :conversations="conversations"
             :active-id="activeId"
+            :section-entries="sectionEntries"
             @reorder="reorder"
             @select="select"
             @create="create"
@@ -224,18 +263,62 @@ onBeforeUnmount(() => listRestore.stop())
             @pin="(ids, pinned) => patchMany(ids, (c) => ({ ...c, pinned }))"
             @move-to-project="(ids, projectId) => patchMany(ids, (c) => ({ ...c, projectId }))"
             @archive="dropMany"
-            @open-settings="(section) => (opened = section ?? 'account')"
+            @open-settings="openSettings"
+            @sign-out="productWould('Sign out')"
           />
           </template>
           <div
             class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 bg-surface text-[13px] text-fg-faint"
           >
-            <span>{{ activeTitle }}<span v-if="opened"> · settings → {{ opened }}</span></span>
+            <span>{{ activeTitle }}</span>
             <span class="font-mono text-[11px]">sidebar {{ sidebarWidth }}px · {{ SIDEBAR_WIDTH.min }}–{{ SIDEBAR_WIDTH.max }}</span>
           </div>
+          <template #dialogs>
+            <SettingsDialog
+              v-model:tab="settingsTab"
+              :is-open="settingsOpen"
+              :overlay-store="appOverlayStore"
+              :account="demoAccount"
+              :sections="settingsSections"
+              @close="settingsOpen = false"
+            >
+              <GallerySettingsFull :tab="settingsTab" :state="settings" />
+            </SettingsDialog>
+          </template>
           </SidebarLayout>
         </div>
+        </GalleryOverlayWell>
       </GallerySpecimen>
+    </GallerySection>
+
+    <GallerySection
+      title="Plugin entries"
+      note="A plugin's entry shows while the user has the plugin on: Skills on, then off. Each entry, like Archived and Settings, says what the product would open."
+    >
+      <div class="specimen-row specimen-row-wide items-start">
+        <GallerySpecimen
+          v-for="specimen in [
+            { variant: 'skills on', entries: allEntries },
+            { variant: 'skills off', entries: entriesWithoutSkills },
+          ]"
+          :key="specimen.variant"
+          :variant="specimen.variant"
+        >
+          <div class="gallery-frame flex h-[14rem] overflow-hidden">
+            <AppSidebar
+              :account="demoAccount"
+              :projects="[]"
+              :conversations="[]"
+              :active-id="null"
+              :section-entries="specimen.entries"
+              @create="productWould('Start a new conversation')"
+              @add-project="productWould('Add a project')"
+              @open-settings="wouldOpenSettings"
+              @sign-out="productWould('Sign out')"
+            />
+          </div>
+        </GallerySpecimen>
+      </div>
     </GallerySection>
 
     <GallerySection
