@@ -28,6 +28,7 @@ import MenuGroup from '../ui/MenuGroup.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import SidebarNavItem from '../sidebar/SidebarNavItem.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
@@ -559,9 +560,7 @@ onBeforeUnmount(() => pending?.abort())
                 :is-directory="status.isDirectory"
                 :icon="status.icon"
               />
-              <span class="truncate" :title="status.name">{{
-                status.name
-              }}</span>
+              <TruncatedText :text="status.name" />
             </span>
           </template>
         </div>

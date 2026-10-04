@@ -2,6 +2,7 @@
 import { ChevronLeft } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
+import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { TitleText } from '../ui/ui-text'
 
@@ -47,7 +48,7 @@ const detailOpen = defineModel<boolean>('detailOpen', { default: false })
             <ChevronLeft :size="ICON_PX.in24" />
             Back
           </Button>
-          <span class="min-w-0 truncate text-chrome text-fg">{{ detailTitle }}</span>
+          <TruncatedText class="text-chrome text-fg" :text="detailTitle ?? ''" />
         </div>
         <slot name="detail" />
       </ScrollArea>

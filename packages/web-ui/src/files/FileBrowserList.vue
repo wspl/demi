@@ -12,6 +12,7 @@ import {
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TextInput from '../ui/TextInput.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { FileBrowserSort, FileBrowserSortKey } from './file-browser-state'
@@ -295,7 +296,7 @@ defineExpose({
               :icon="entry.icon"
               :class="!pickable(entry) ? 'opacity-40' : isHiddenName(entry.name) ? 'faded' : ''"
             />
-            <span class="truncate" :class="isHiddenName(entry.name) ? 'faded' : ''" :title="entry.name">{{ entry.name }}</span>
+            <TruncatedText :class="isHiddenName(entry.name) ? 'faded' : ''" :text="entry.name" />
           </span>
           <span
             class="hidden truncate px-1 text-[12px] text-fg-subtle @md:block"

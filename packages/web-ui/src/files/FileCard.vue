@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Download } from '@lucide/vue'
 import Button from '../ui/Button.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from './FileIcon.vue'
 import { downloadUrl } from './download'
@@ -31,7 +32,7 @@ const facts = computed(() => [
 <template>
   <div class="flex h-full min-h-0 flex-col items-center justify-center gap-2 px-6 py-8 text-center">
     <FileIcon :name="name" :is-directory="false" :size="40" />
-    <div class="mt-1 max-w-full truncate text-chrome text-fg" :title="name">{{ name }}</div>
+    <TruncatedText class="mt-1 max-w-full text-chrome text-fg" :text="name" />
     <div class="text-[12px] text-fg-muted">{{ facts }}</div>
     <div v-if="note" class="text-[12px] text-fg-muted">{{ note }}</div>
     <Button v-if="download" class="mt-2" size="sm" @click="downloadUrl(download)">

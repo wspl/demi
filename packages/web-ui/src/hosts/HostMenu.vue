@@ -12,6 +12,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import { ICON_PX } from '../ui/icon-metrics'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import Tooltip from '../ui/Tooltip.vue'
+import { isTextCut } from '../ui/truncation'
 import HostPicker from './HostPicker.vue'
 import type { HostDeviceOption, HostMenuHost } from './types'
 
@@ -34,6 +35,11 @@ const open = ref(false)
 // Where the header's title needs the width, the host is its icon and its name a tooltip.
 const hostLabel = ref<HTMLElement | null>(null)
 const hostCompact = useRoomLabel(hostLabel, () => props.primaryHost.name, 0)
+
+/** The name is in the tooltip while the button hides it or cuts it. */
+function nameHidden(): boolean {
+  return hostCompact.value || (hostLabel.value != null && isTextCut(hostLabel.value))
+}
 const boundIds = computed(() => [
   props.primaryHost.id,
   ...props.attachedHosts.map((host) => host.id),
@@ -71,7 +77,7 @@ function connect() {
     width="shrink"
   >
     <template #trigger>
-      <Tooltip :content="primaryHost.name" :disabled="!hostCompact">
+      <Tooltip :content="primaryHost.name" :show-if="nameHidden">
         <Button
           variant="ghost"
           class="max-w-full"

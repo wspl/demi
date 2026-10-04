@@ -644,7 +644,7 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'ollama', name: 'Ollama', kind: 'api_key', family: 'openai', vendorId: null,
+      id: 'ollama', name: 'Ollama on the lab workstation', kind: 'api_key', family: 'openai', vendorId: null,
       baseUrl: 'http://localhost:11434/v1', wireApi: 'openai-chat', apiKey: '',
       modelSource: 'manual', state: 'unreachable', detail: 'connect ECONNREFUSED 127.0.0.1:11434',
       models: [
