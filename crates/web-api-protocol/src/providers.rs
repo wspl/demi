@@ -499,7 +499,8 @@ pub struct LoginAnswer {
 )]
 pub enum LoginState {
     /// Waiting for the user, who opens the address and enters the code;
-    /// both are null until the vendor names them.
+    /// both are null until the vendor names them. The login ends at
+    /// `expires_at` unless the user finishes it first.
     Pending {
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
@@ -507,9 +508,7 @@ pub enum LoginState {
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
         user_code: Option<String>,
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<Timestamp>")]
-        expires_at: Option<Timestamp>,
+        expires_at: Timestamp,
     },
     /// The login stored its account: `credentialId`, which is the entry's
     /// active account only when the entry had none.

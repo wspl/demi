@@ -12,7 +12,7 @@ use demi_provider_common::{
         AccountKit, AccountsCapability, AccountsError, AddAccount, LoginError, NewAccount,
         SecretDocument,
     },
-    oauth::{DEVICE_LOGIN_LIFETIME, Lifetime, PollInterval, ResponseError, decode_json_response},
+    oauth::{Lifetime, PollInterval, ResponseError, decode_json_response},
     wire::{NonEmpty, Reported},
 };
 use demi_shared_types::{Clock, LoginPending, Timestamp};
@@ -86,15 +86,11 @@ impl GrokKit {
         pending: &(dyn Fn(LoginPending) + Send + Sync),
     ) -> Result<NewAccount, LoginError> {
         let device = self.device_code().await?;
-        let deadline = tokio::time::Instant::now() + DEVICE_LOGIN_LIFETIME;
-        let lifetime = i64::try_from(DEVICE_LOGIN_LIFETIME.as_millis()).unwrap_or(i64::MAX);
-        let expires_at = self.clock.now().as_millisecond().saturating_add(lifetime);
         pending(LoginPending {
             verification_url: device.verification_url.clone(),
             user_code: Some(device.user_code.clone()),
-            expires_at: Timestamp::from_millisecond(expires_at).ok(),
         });
-        let tokens = self.poll(&device, deadline).await?;
+        let tokens = self.poll(&device).await?;
         let secret = self.secret(tokens).await;
         Ok(NewAccount {
             label: secret.label(),
@@ -146,13 +142,10 @@ impl GrokKit {
 
     /// Polls for the tokens: waits the interval before each poll, at least a
     /// second and five seconds longer after each `slow_down`, continues on
-    /// `authorization_pending`, and ends on any other answer or at the
-    /// login's `deadline`. Dropping the future cancels the login at once.
-    async fn poll(
-        &self,
-        device: &DeviceCode,
-        deadline: tokio::time::Instant,
-    ) -> Result<Tokens, LoginError> {
+    /// `authorization_pending`, and ends on any other answer, such as the
+    /// `expired_token` of a code that expired. Dropping the future, which the
+    /// vault does when the login's lifetime ends, cancels the login at once.
+    async fn poll(&self, device: &DeviceCode) -> Result<Tokens, LoginError> {
         let mut interval = device.interval.max(MIN_INTERVAL);
         let form = [
             ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
@@ -161,11 +154,6 @@ impl GrokKit {
         ];
         loop {
             tokio::time::sleep(interval).await;
-            if tokio::time::Instant::now() >= deadline {
-                return Err(LoginError::Failed(
-                    "Grok device login timed out before the user confirmed".into(),
-                ));
-            }
             let response = self
                 .http
                 .post(demi_provider_common::endpoint_url(
@@ -310,8 +298,8 @@ struct DeviceCode {
 }
 
 /// The device-code answer: what to show the user and how to poll. The
-/// code's own lifetime is not read: a login lasts as long as every device
-/// login does.
+/// code's own lifetime is not read: the vault ends every device login at
+/// the same lifetime.
 #[derive(Deserialize)]
 struct DeviceCodeAnswer {
     device_code: Secret,

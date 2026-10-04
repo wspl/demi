@@ -18,7 +18,6 @@ use demi_backend_blobs::counting::ObjectCounts;
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_providers::llm::families::FamilyRegistry;
-use demi_backend_providers::vault::logins::LoginTiming;
 use demi_backend_remote_host::testing::{
     NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary,
 };
@@ -232,7 +231,6 @@ pub struct Harness {
     families: FamilyRegistry,
     models_dev_url: Option<String>,
     claude_releases: Option<String>,
-    logins: LoginTiming,
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
     pub pages: PageTuning,
@@ -282,7 +280,6 @@ impl Harness {
             families: demi_backend::families::builtin(),
             models_dev_url: None,
             claude_releases: None,
-            logins: LoginTiming::default(),
             // Liveness would ping every 30 s; the tests end runners
             // themselves.
             runners: RunnerTuning {
@@ -412,11 +409,6 @@ impl Harness {
         self
     }
 
-    pub fn with_logins(mut self, logins: LoginTiming) -> Self {
-        self.logins = logins;
-        self
-    }
-
     /// The control database, opened beside the backend's own connection.
     pub fn control_database(&self) -> rusqlite::Connection {
         let connection =
@@ -510,7 +502,6 @@ impl Harness {
         config.expose_domain = self.expose_domain.clone();
         config.exposes = self.exposes;
         config.families = self.families.clone();
-        config.logins = self.logins;
         config.runners = self.runners;
         config.runner_releases = self.runner_releases.clone();
         config.conversations = self.conversations;

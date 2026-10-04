@@ -263,7 +263,12 @@ impl Services {
             providers.clock,
         ));
         let operations = Arc::new(ProviderOperations::default());
-        let logins = LoginFlows::new(assembly.clone(), operations.clone(), providers.logins);
+        let logins = LoginFlows::new(
+            assembly.clone(),
+            operations.clone(),
+            providers.logins,
+            clock.clone(),
+        );
         Ok(Self {
             mode: settings.mode,
             clock,

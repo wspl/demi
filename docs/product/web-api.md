@@ -647,7 +647,8 @@ provider. A start returns 202 with `{ login: { id, status: "pending" } }`; a
 family without a device login answers 400 `no_login_flow`. Poll
 `GET /api/providers/subscription-login/:id`, which answers `{ login }` with
 `{ status: "pending", verificationUrl, userCode, expiresAt }`, the first two
-null until the vendor names them, then `{ status: "completed", providerId,
+null until the vendor names them and `expiresAt` the moment the login ends
+unless the user finishes it, then `{ status: "completed", providerId,
 credentialId }` with the account the login added, or `{ status: "failed",
 message }`. Cancel with DELETE at the same path. A login is its starter's to
 read and cancel; another id answers 404 `login_not_found`. Terminal results are
