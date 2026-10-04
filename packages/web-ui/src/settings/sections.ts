@@ -7,7 +7,6 @@ import {
   Database,
   Keyboard,
   Monitor,
-  Plug,
   Settings2,
   Sparkles
 } from '@lucide/vue'
@@ -88,18 +87,6 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         label: 'Plugins',
         icon: Blocks,
         keywords: ['plugin', 'extension']
-      },
-      {
-        id: 'mcp',
-        label: 'MCP Servers',
-        icon: Plug,
-        keywords: [
-          'tools',
-          'transport',
-          'stdio',
-          'server'
-        ],
-        ...deferred
       },
     ],
   },

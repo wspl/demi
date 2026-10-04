@@ -5,7 +5,6 @@ import type {
   SettingsArchivedConversation,
   SettingsDevice,
   SettingsKeyBinding,
-  SettingsMcpServer,
   SettingsPlugin,
   SettingsProviderEntry,
   SettingsProviderModel,
@@ -188,8 +187,6 @@ export interface MockProvider extends SettingsProviderEntry {
   family: string
   models: MockModel[]
 }
-
-export type MockServer = SettingsMcpServer
 
 function model(partial: Partial<MockModel> & Pick<MockModel, 'id'>): MockModel {
   return {
@@ -729,55 +726,6 @@ export function createSettingsState() {
       { id: 'file-browser', name: 'File Browser', description: 'Opens the conversation’s files in the work panel to read them, with a tree of the working directory.', enabled: true },
     ] as SettingsPlugin[],
     subagents: createSubagentState(),
-    servers: [
-      {
-        id: 'github', name: 'GitHub', transport: 'stdio', target: 'npx @modelcontextprotocol/server-github', state: 'connected', enabled: true,
-        tools: [
-          'create_issue',
-          'list_issues',
-          'create_pull_request',
-          'list_pull_requests',
-          'merge_pull_request',
-          'search_code',
-          'get_file',
-          'create_comment',
-        ],
-      },
-      {
-        id: 'postgres',
-        name: 'Postgres',
-        transport: 'http',
-        target: 'https://mcp.internal/pg',
-        state: 'auth',
-        enabled: true,
-        detail: 'Sign in to authorize this server',
-        tools: []
-      },
-      {
-        id: 'filesystem',
-        name: 'FileSystem',
-        transport: 'stdio',
-        target: 'npx @modelcontextprotocol/server-filesystem',
-        state: 'crashed',
-        enabled: true,
-        detail: 'exit code 1 · npx: command not found',
-        tools: [
-          'read_file',
-          'write_file',
-          'list_directory',
-          'search_files'
-        ]
-      },
-      {
-        id: 'sentry',
-        name: 'Sentry',
-        transport: 'http',
-        target: 'https://mcp.sentry.dev',
-        state: 'disabled',
-        enabled: false,
-        tools: []
-      },
-    ] as MockServer[],
     skills: {
       sources: [
         {

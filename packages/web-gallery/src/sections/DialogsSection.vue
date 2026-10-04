@@ -6,7 +6,6 @@ import ChangePasswordDialog, { type ChangePasswordPhase } from '@demicodes/web-u
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
-import AddMcpServerDialog from '@demicodes/web-ui/settings/AddMcpServerDialog.vue'
 import AddSkillSourceDialog from '@demicodes/plugin-skills/AddSkillSourceDialog.vue'
 import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
@@ -404,17 +403,7 @@ const resetPhases: {
       </GallerySection>
     </template>
 
-    <template v-if="view === 'catalog'">
-      <GallerySection title="Add MCP Server" note="A stdio command or a remote URL.">
-        <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
-          <AddMcpServerDialog
-            :is-open="open"
-            :overlay-store="appOverlayStore"
-            @close="close"
-            @add="(draft) => finish(close, `Add the MCP Server ${draft.name}`)"
-          />
-        </GalleryDialogFrame>
-      </GallerySection>
+    <template v-if="view === 'skills'">
       <GallerySection title="Add Skill Source" note="A git origin whose SKILL.md files become a pack.">
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <AddSkillSourceDialog

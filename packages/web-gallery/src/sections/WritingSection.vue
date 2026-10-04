@@ -76,7 +76,7 @@ const rules: readonly ElementRule[] = [
     kind: 'Sidebar and settings navigation',
     where: 'SidebarNavItem label, a settings section’s name',
     style: 'title',
-    right: ['Models & Providers', 'MCP Servers'],
+    right: ['Models & Providers', 'Data & Privacy'],
     wrong: ['Models & providers'],
     source: { label: `${SYSTEM_SETTINGS}: Desktop & Dock, Login Items` },
   },
@@ -235,7 +235,7 @@ const wordRules = [
   {
     title: 'In Both Styles',
     items: [
-      'A name keeps its spelling: iPhone, macOS, MCP, Claude Code, Cloud',
+      'A name keeps its spelling: iPhone, macOS, GitHub, Claude Code, Cloud',
       'An ellipsis (…, one character) ends a command that needs more input before it acts: it opens a dialog to fill in, or always asks to confirm. A command that acts at once, or opens a panel to look at, has none.',
       'A title has no ending punctuation and no colon. A sentence ends with its period or question mark, except a tooltip that is a fragment.',
       'A sentence names another element in that element’s capitals, without its ellipsis: Choose Add Source to add one.',

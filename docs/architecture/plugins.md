@@ -28,9 +28,6 @@ such SDK yet; the contract keeps one possible
 [Decisions for the TypeScript SDK](#decisions-for-the-typescript-sdk) lists
 what is left to decide for it.
 
-MCP is not part of this design. It will join as a plugin of its own, designed
-when it is built.
-
 ## A plugin, end to end
 
 For example, a user turned on the skill `tdd` in the web app and opens a new

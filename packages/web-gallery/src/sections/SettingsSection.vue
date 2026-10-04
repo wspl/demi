@@ -32,7 +32,7 @@ const { view } = useGalleryView()
 const anatomy: [string, string][] = [
   [
     'Shell',
-    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, MCP servers, Data & privacy. A plugin\'s section is on the rail while its plugin is on. Below a phone width the rail becomes a row.'
+    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, Data & privacy. A plugin\'s section is on the rail while its plugin is on. Below a phone width the rail becomes a row.'
   ],
   [
     'Page',
@@ -61,10 +61,6 @@ const anatomy: [string, string][] = [
   [
     'Credentials',
     'Changing the email asks for the new address and the current password, then a code sent to the new address. Changing the password asks for the current one and the new one twice; length and the match are checked in the dialog, the current password by the server.'
-  ],
-  [
-    'MCP',
-    'The rail entry is disabled with an In development tooltip. The page specimen still shows servers in one list: status is a dot and a word; tools are tags on a third line. Adding opens a dialog.'
   ],
   [
     'Subagent',
@@ -152,7 +148,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Full Agent Settings"
-        note="A stress test: expiring auth, an unreachable local model, a crashed MCP server, a quota nearly spent, disabled entries, nested rows, long paths. Visible accounts reuse usage requests for one minute. Automatic refresh keeps existing meters and buttons still and enabled. Only a manual refresh spins its button; it bypasses the TTL or joins an automatic request already running."
+        note="A stress test: expiring auth, an unreachable local model, a quota nearly spent, disabled entries, nested rows, long paths. Visible accounts reuse usage requests for one minute. Automatic refresh keeps existing meters and buttons still and enabled. Only a manual refresh spins its button; it bypasses the TTL or joins an automatic request already running."
       >
         <GalleryOverlayWell size="tall">
           <Button v-if="!fullOpen" size="md" @click="fullOpen = true">Open</Button>
