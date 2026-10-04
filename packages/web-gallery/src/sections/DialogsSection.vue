@@ -236,6 +236,20 @@ const resetPhases: {
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
+          <!-- As on a phone: each field drops under its label and fills the row. -->
+          <GallerySpecimen variant="form · narrow">
+            <div class="w-[340px] max-w-full">
+              <GalleryDialogFrame v-slot="{ open, close }">
+                <ChangePasswordDialog
+                  :is-open="open"
+                  :overlay-store="appOverlayStore"
+                  :phase="{ kind: 'form' }"
+                  @close="close"
+                  @submit="productWould('Change the Password')"
+                />
+              </GalleryDialogFrame>
+            </div>
+          </GallerySpecimen>
         </div>
       </GallerySection>
     </template>
