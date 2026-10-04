@@ -92,7 +92,7 @@ onKeyStroke('Escape', (event) => {
         @click.self="!inline && emit('close')"
       >
         <div
-          class="dialog-panel relative flex flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl"
+          class="dialog-panel overlay-dialog relative flex flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl"
           :class="[
             inline ? 'w-full' : 'max-h-[calc(100%-2rem)] w-[calc(100%-2rem)]',
             !inline && fillsWhenNarrow && 'dialog-fill',
