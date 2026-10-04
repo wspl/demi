@@ -64,11 +64,11 @@ onBeforeUnmount(() => completion.value?.reject(new Error('Preview closed')))
         <select v-model="outcome" class="ml-2 rounded bg-surface-raised px-2 py-1" :disabled="!!completion">
           <option value="success">Success</option>
           <option value="hold">Pending</option>
-          <option value="failure">Fail, then retry</option>
+          <option value="failure">Fail, Then Retry</option>
         </select>
       </label>
-      <Button v-if="completion" @click="completion.resolve()">Finish creation</Button>
-      <Button v-if="current.id !== source.id" @click="current = source">Back to source</Button>
+      <Button v-if="completion" @click="completion.resolve()">Finish Creation</Button>
+      <Button v-if="current.id !== source.id" @click="current = source">Back to Source</Button>
     </div>
     <div class="gallery-frame flex h-[440px] bg-surface">
       <ChatSession :conversation="current" :has-provider="true" :fork="fork" />

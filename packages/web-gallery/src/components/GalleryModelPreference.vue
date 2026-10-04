@@ -39,6 +39,6 @@ function create(): void {
       :settings="conversation"
       @change="change"
     />
-    <Button size="sm" @click="create">New conversation with saved choice</Button>
+    <Button size="sm" @click="create">New Conversation with Saved Choice</Button>
   </div>
 </template>

@@ -11,8 +11,8 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
   '/errors': [
     { value: 'primitives', label: 'Primitives' },
     { value: 'conversation', label: 'Conversation' },
-    { value: 'messages', label: 'Messages & uploads' },
-    { value: 'forms', label: 'Forms & settings' },
+    { value: 'messages', label: 'Messages & Uploads' },
+    { value: 'forms', label: 'Forms & Settings' },
     { value: 'files', label: 'Files' },
   ],
   '/overview': [
@@ -24,7 +24,7 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
   '/signin': [
     {
       value: 'signin',
-      label: 'Sign in',
+      label: 'Sign In',
     },
   ],
   '/surfaces': [
@@ -86,7 +86,7 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
   '/session': [
     {
       value: 'tabs',
-      label: 'Tab strip',
+      label: 'Tab Strip',
     },
     {
       value: 'composer',
@@ -143,7 +143,7 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
     { value: 'devices', label: 'Devices' },
     { value: 'workspace', label: 'Workspace' },
     { value: 'cloud', label: 'Cloud' },
-    { value: 'catalog', label: 'MCP & skills' },
+    { value: 'catalog', label: 'MCP & Skills' },
   ],
   '/markdown': [
     {
