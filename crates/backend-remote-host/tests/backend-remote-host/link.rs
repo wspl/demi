@@ -19,7 +19,7 @@ use demi_command_protocol::{
     PackageDescriptor, PackageResource, ResourceArtifact, ServiceSequence, host_target,
 };
 use demi_host_interface::{
-    Call, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
+    Call, CommandMedium, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
     HostProcess, JobCaller, LeafBuilder, ObservationWindow, OutputRecord, PageState, Process,
     ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, ShellTarget, SpawnEnv,
     SpawnRequest, Streams, TypedRpc, WholeOutput,
@@ -1194,7 +1194,16 @@ impl CommandKeeper for Publisher {
         })
     }
 
-    fn keep_output<'a>(&'a self, _: &'a CommandId, _: &'a WholeOutput) -> LocalBoxFuture<'a, ()> {
+    fn stored_blob<'a>(&'a self, _: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>> {
+        Box::pin(async { None })
+    }
+
+    fn keep_output<'a>(
+        &'a self,
+        _: &'a CommandId,
+        _: &'a WholeOutput,
+        _: &'a [CommandMedium],
+    ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async {})
     }
 }
@@ -1524,6 +1533,10 @@ impl LinkPolicy for Refusing {
         _: RpcPort,
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>> {
         panic!("a refused call reaches no handler")
+    }
+
+    fn read_blob(&self, _: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>> {
+        Box::pin(async { Ok(None) })
     }
 
     fn grow_volume(&self, _: VolumeName, _: u64) -> LocalBoxFuture<'static, Result<(), String>> {

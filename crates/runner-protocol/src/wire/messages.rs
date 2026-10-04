@@ -172,6 +172,15 @@ pub enum Inbound {
         job_id: String,
         output: PipeRef,
     },
+    /// Streams medium `number` the job keeps into `output`; the runner
+    /// answers with `job_media_read` (`runner.md` § Pipes and output).
+    JobMediaRead {
+        id: String,
+        job_id: String,
+        #[garde(range(min = 1))]
+        number: u32,
+        output: PipeRef,
+    },
     /// The backend has read what it needs of an ended job: its directory
     /// goes.
     JobRelease {
@@ -195,6 +204,16 @@ pub enum Inbound {
     RpcOutput {
         call_id: String,
         bytes: WireBytes,
+    },
+    /// The handler returned a medium of `size` bytes after the first `after`
+    /// bytes of the call's stdout; its bytes flow through `pipe`
+    /// (`commands.md` § Return media).
+    RpcMedium {
+        call_id: String,
+        after: u64,
+        #[garde(range(max = demi_command_protocol::MAX_MEDIUM_BYTES))]
+        size: u64,
+        pipe: PipeRef,
     },
     /// Follows the stdout pipe's drain, so the process has written everything
     /// before it exits with the code.
@@ -732,6 +751,30 @@ pub enum Outbound {
         #[garde(length(max = demi_command_protocol::EDIT_JOB_FILES), dive)]
         files: Vec<JobFileChange>,
         files_truncated: bool,
+    },
+    /// A medium a command whose stdout is the job's output returned, once
+    /// the job keeps it (`runner.md` § Pipes and output). Every one of a
+    /// job precedes its `job_exit`.
+    JobMedium {
+        job_id: String,
+        #[garde(range(min = 1))]
+        number: u32,
+        media_type: String,
+        #[garde(range(max = demi_command_protocol::MAX_MEDIUM_BYTES))]
+        size: u64,
+        #[garde(custom(digest))]
+        sha256: String,
+    },
+    /// The answer to `job_media_read`: the medium flows through the pipe;
+    /// an error says why it does not.
+    JobMediaRead {
+        id: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        error: Option<String>,
     },
     /// The answer to `job_read`: the kept output flows through the pipe; an
     /// error says why none does.

@@ -7,10 +7,11 @@
 //! asks for input, and writes what comes back to its own standard output and
 //! error, while a user stream reads the page's pipe and uploads to another.
 //! Both are an [`Exchange`] with their own [`InputSource`] and [`OutputSink`].
+//! A medium the service returns reaches the sink whole.
 
 use std::future::Future;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use demi_command_protocol::{Completion, ProtocolError, Record};
 use tokio::sync::mpsc;
 
@@ -31,6 +32,9 @@ pub trait OutputSink {
     fn stdout(&mut self, bytes: Bytes) -> impl Future<Output = Result<(), Self::Error>>;
 
     fn stderr(&mut self, bytes: Bytes) -> impl Future<Output = Result<(), Self::Error>>;
+
+    /// A medium the service returned (`commands.md` § Return media), whole.
+    fn medium(&mut self, bytes: Bytes) -> impl Future<Output = Result<(), Self::Error>>;
 }
 
 /// Which side of an exchange failed.
@@ -81,8 +85,25 @@ impl Exchange {
         };
         let receive = async {
             let mut completion = None;
+            // The medium whose bytes are arriving: its size, and its bytes so far.
+            let mut medium: Option<(u64, BytesMut)> = None;
             while let Some(record) = output.next().await.map_err(ExchangeError::Service)? {
+                if medium.is_some() && !matches!(record, Record::MediumBytes(_)) {
+                    return Err(broken("a medium's bytes are interleaved with another record"));
+                }
                 match record {
+                    Record::Medium { size } => {
+                        medium = Some((size, BytesMut::new()));
+                    }
+                    Record::MediumBytes(bytes) => {
+                        let Some((size, received)) = medium.as_mut() else {
+                            return Err(broken("medium bytes without a medium"));
+                        };
+                        if received.len() as u64 + bytes.len() as u64 > *size {
+                            return Err(broken("a medium's bytes exceed its size"));
+                        }
+                        received.extend_from_slice(&bytes);
+                    }
                     Record::Stdout(bytes) => {
                         sink.stdout(bytes).await.map_err(ExchangeError::Output)?
                     }
@@ -96,6 +117,13 @@ impl Exchange {
                     })?,
                     Record::Completion(value) => completion = Some(value),
                 }
+                if let Some((size, received)) = &mut medium
+                    && received.len() as u64 == *size
+                {
+                    let bytes = std::mem::take(received).freeze();
+                    medium = None;
+                    sink.medium(bytes).await.map_err(ExchangeError::Output)?;
+                }
             }
             completion.ok_or(ExchangeError::Service(ProtocolError::Incomplete.into()))
         };
@@ -108,6 +136,11 @@ impl Exchange {
         }
         result
     }
+}
+
+/// A service that broke the record protocol.
+fn broken<I, O>(reason: &str) -> ExchangeError<I, O> {
+    ExchangeError::Service(ProtocolError::Invalid(reason.into()).into())
 }
 
 /// The input of a local invocation, for a caller that forwards it.

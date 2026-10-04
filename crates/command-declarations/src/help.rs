@@ -7,7 +7,7 @@ use crate::{Leaf, Node};
 
 /// The paragraph the model's command help opens with: what every command does
 /// unless its own help says otherwise (`commands.md` § Help).
-pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --.";
+pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --. A command marked as returning media attaches its images and videos to the result when its stdout is the job's output, and otherwise writes a single one's bytes as its stdout.";
 
 impl<B> Node<B> {
     /// The help of this node and, for a group, of every node below it; `path`
@@ -110,6 +110,9 @@ impl<B> Node<B> {
             }
             if leaf.json_output().is_some() {
                 lines.push("    --json: emits machine-readable JSON for this command".into());
+            }
+            if leaf.media {
+                lines.push("    Returns media: images and videos, attached to the result when stdout is the job's output; otherwise a single one's bytes are stdout".into());
             }
         }
         let mut blocks = Vec::new();

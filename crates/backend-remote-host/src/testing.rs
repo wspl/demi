@@ -20,12 +20,14 @@ use std::{
     time::Duration,
 };
 
+use bytes::Bytes;
 use demi_command_protocol::{
     ArtifactLocation, ArtifactPath, PackageArtifact, PackageDescriptor, ServiceSequence,
     host_target,
 };
 use demi_host_interface::{CommandSet, HostIdentity, HostKey, RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::{self, Inbound, Outbound, VolumeName};
+use demi_shared_types::BlobRef;
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
@@ -39,11 +41,13 @@ use crate::{
 /// The device a test connection serves.
 pub const TEST_DEVICE: &str = "test-device";
 
-/// A policy for tests: every call runs, in one command set.
+/// A policy for tests: every call runs, in one command set, and the
+/// blobs its handlers return as media are held in memory.
 pub struct CommandPolicy {
     commands: Rc<CommandSet>,
     /// The next number of each conversation's sequence.
     sequences: RefCell<HashMap<(String, ServiceSequence), u64>>,
+    blobs: Rc<RefCell<HashMap<BlobRef, Bytes>>>,
 }
 
 impl CommandPolicy {
@@ -51,7 +55,16 @@ impl CommandPolicy {
         Rc::new(Self {
             commands: Rc::new(commands),
             sequences: RefCell::default(),
+            blobs: Rc::default(),
         })
+    }
+
+    /// Holds `bytes` as the blob that names them, as a handler puts a
+    /// medium before it returns it.
+    pub fn put_blob(&self, bytes: Bytes) -> BlobRef {
+        let blob = BlobRef::of(&bytes);
+        self.blobs.borrow_mut().insert(blob.clone(), bytes);
+        blob
     }
 }
 
@@ -68,6 +81,11 @@ impl LinkPolicy for CommandPolicy {
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>> {
         let commands = self.commands.clone();
         Box::pin(async move { commands.dispatch(invocation, port).await })
+    }
+
+    fn read_blob(&self, blob: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>> {
+        let bytes = self.blobs.borrow().get(&blob).cloned();
+        Box::pin(async move { Ok(bytes) })
     }
 
     fn grow_volume(&self, _: VolumeName, _: u64) -> LocalBoxFuture<'static, Result<(), String>> {

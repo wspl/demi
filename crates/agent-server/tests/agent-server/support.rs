@@ -330,6 +330,9 @@ impl PortTransport for NodePort {
                 PortRequest::ReadStdin {} | PortRequest::ReadLiveStdin {} => {
                     Ok(PortResponse::Input { bytes: None })
                 }
+                PortRequest::Medium { .. } => Err(PortError::Ended(
+                    "an agent command returns no media".into(),
+                )),
             }
         })
     }

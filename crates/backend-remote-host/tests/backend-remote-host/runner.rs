@@ -46,13 +46,13 @@ use tokio_util::sync::CancellationToken;
 
 const MIB: usize = 1024 * 1024;
 
-fn caller() -> JobCaller {
+pub(crate) fn caller() -> JobCaller {
     JobCaller {
         node: NodeId::try_from("test-session").unwrap(),
     }
 }
 
-fn exec(script: &str, window: u64) -> ExecRequest {
+pub(crate) fn exec(script: &str, window: u64) -> ExecRequest {
     ExecRequest {
         script: script.into(),
         shell: ShellTarget::Default,
@@ -64,7 +64,7 @@ fn exec(script: &str, window: u64) -> ExecRequest {
 
 /// Shells on `host` that start with `PATH` and `env`, and whose jobs may run
 /// `commands`.
-fn shell_on(
+pub(crate) fn shell_on(
     host: RemoteHost,
     env: &[(&str, &str)],
     commands: Option<CommandSelection>,
@@ -86,14 +86,14 @@ fn shell_on(
 }
 
 /// Runs `script`, waiting up to ten seconds for its end.
-async fn run(shell: &RemoteShellEnvironment, script: &str) -> CommandStatus {
+pub(crate) async fn run(shell: &RemoteShellEnvironment, script: &str) -> CommandStatus {
     shell
         .exec(exec(script, 10_000), CancellationToken::new())
         .await
         .unwrap()
 }
 
-fn exited(status: &CommandStatus) -> i32 {
+pub(crate) fn exited(status: &CommandStatus) -> i32 {
     match status.state {
         CommandState::Exited { exit_code, .. } => exit_code,
         ref other => panic!(
@@ -112,7 +112,7 @@ fn hint(status: &CommandStatus) -> Option<String> {
 }
 
 /// Polls `probe` every 20 ms until it yields, at most ten seconds.
-async fn until<T>(what: &str, mut probe: impl FnMut() -> Option<T>) -> T {
+pub(crate) async fn until<T>(what: &str, mut probe: impl FnMut() -> Option<T>) -> T {
     for _ in 0..500 {
         if let Some(found) = probe() {
             return found;
@@ -1230,11 +1230,11 @@ struct WhereArgs {
     label: Option<String>,
 }
 
-fn catalog(native: &NativeFixture) -> CommandCatalog {
+pub(crate) fn catalog(native: &NativeFixture) -> CommandCatalog {
     CommandCatalog::new(vec![native.descriptor.clone()], native.resolver()).unwrap()
 }
 
-fn native_leaf(native: &NativeFixture, name: &str, operation: &str) -> LeafBuilder {
+pub(crate) fn native_leaf(native: &NativeFixture, name: &str, operation: &str) -> LeafBuilder {
     let operation = NativeOperation {
         package: native.descriptor.id.clone(),
         operation: operation.into(),

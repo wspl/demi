@@ -5,9 +5,10 @@
 //! backend's upload route and its content resolution both use these rules;
 //! the agent never reads a file's bytes itself.
 
+use demi_command_protocol::sniff_media_type;
 use demi_shared_types::{
     Attachment, B64Bytes, BlobRef, DocumentSource, MediaSource, ModelMediaKind, UserContentBlock,
-    char_offset, sniff_model_media_type,
+    char_offset, model_media_type_for,
 };
 
 use crate::{
@@ -55,8 +56,8 @@ pub fn snippet(bytes: &[u8]) -> String {
 /// model can read them natively, as an image, a video or a PDF, else the one
 /// it was sent with.
 pub fn upload_media_type(sent: &str, bytes: &[u8]) -> String {
-    if let Some(media) = demi_shared_types::sniff_model_media_type(bytes) {
-        return media.media_type.to_owned();
+    if let Some(media) = sniff_media_type(bytes) {
+        return media.to_owned();
     }
     if bytes.starts_with(b"%PDF-") {
         return PDF.to_owned();
@@ -98,7 +99,7 @@ pub async fn upload_blocks(
         snippet: is_text(upload.name, upload.media_type).then(|| snippet(upload.bytes)),
     });
     let mut held = HeldMedia::default();
-    let medium = match sniff_model_media_type(upload.bytes) {
+    let medium = match sniff_media_type(upload.bytes).and_then(model_media_type_for) {
         Some(media) if media.kind == ModelMediaKind::Image => {
             match images::fit(upload.bytes.clone(), media.media_type).await {
                 Ok(fitted) => {

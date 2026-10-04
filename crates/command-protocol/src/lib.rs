@@ -9,6 +9,7 @@ mod artifacts;
 mod conversation;
 mod edits;
 mod invocation;
+mod media;
 mod numbers;
 mod package;
 #[cfg(feature = "testing")]
@@ -27,6 +28,7 @@ pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
     CommandLocale, Completion, Invocation, LocalInvocation, conversation_name, without_nul,
 };
+pub use media::{MAX_MEDIUM_BYTES, StdoutTarget, sniff_media_type};
 pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor,
@@ -52,6 +54,11 @@ pub trait Metadata: serde::Serialize + serde::de::DeserializeOwned + Send + 'sta
     fn validate(&self) -> Result<(), ProtocolError>;
     fn operation(&self) -> &str;
 
+    /// Whether the invocation may return media (`commands.md` § Return
+    /// media): only one a job's command makes, which says where its stdout
+    /// goes.
+    fn returns_media(&self) -> bool;
+
     fn encode(&self) -> Result<Bytes, ProtocolError> {
         self.validate()?;
         encode_metadata(self)
@@ -66,6 +73,10 @@ impl Metadata for Invocation {
     fn operation(&self) -> &str {
         &self.operation
     }
+
+    fn returns_media(&self) -> bool {
+        self.stdout.is_some()
+    }
 }
 
 impl Metadata for LocalInvocation {
@@ -75,6 +86,12 @@ impl Metadata for LocalInvocation {
 
     fn operation(&self) -> &str {
         &self.operation
+    }
+
+    /// The runner routes the media of the commands it dispatches; a local
+    /// caller receives only their output.
+    fn returns_media(&self) -> bool {
+        false
     }
 }
 
@@ -125,6 +142,19 @@ pub enum Record {
     Completion(Completion),
     /// Permission for exactly one bounded stdin chunk, or stdin EOF.
     InputPull,
+    /// A returned medium of `size` bytes begins; its bytes follow in
+    /// [`Record::MediumBytes`], with no other record between them
+    /// (`native-runtime.md` § Response records and completion).
+    Medium { size: u64 },
+    /// Bytes of the medium that began last.
+    MediumBytes(Bytes),
+}
+
+/// The payload of a medium record.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MediumHeader {
+    size: u64,
 }
 
 impl Record {
@@ -134,6 +164,13 @@ impl Record {
             Self::Stderr(bytes) => (2, bytes.clone()),
             Self::Completion(value) => (3, Bytes::from(serde_json::to_vec(value)?)),
             Self::InputPull => (4, Bytes::new()),
+            Self::Medium { size } => {
+                if *size > MAX_MEDIUM_BYTES {
+                    return Err(ProtocolError::TooLarge);
+                }
+                (5, Bytes::from(serde_json::to_vec(&MediumHeader { size: *size })?))
+            }
+            Self::MediumBytes(bytes) => (6, bytes.clone()),
         };
         if payload.len() > MAX_RECORD_BYTES {
             return Err(ProtocolError::TooLarge);
@@ -204,7 +241,7 @@ impl RecordDecoder {
             return Ok(None);
         }
         let kind = self.pending[0];
-        if !(1..=4).contains(&kind) {
+        if !(1..=6).contains(&kind) {
             return Err(ProtocolError::UnknownRecord);
         }
         let length = u32::from_be_bytes(self.pending[1..5].try_into().unwrap()) as usize;
@@ -231,6 +268,14 @@ impl RecordDecoder {
                     "an input pull record carries no payload".into(),
                 ));
             }
+            5 => {
+                let header: MediumHeader = serde_json::from_slice(&payload)?;
+                if header.size > MAX_MEDIUM_BYTES {
+                    return Err(ProtocolError::TooLarge);
+                }
+                Record::Medium { size: header.size }
+            }
+            6 => Record::MediumBytes(payload),
             _ => unreachable!(),
         };
         Ok(Some(record))

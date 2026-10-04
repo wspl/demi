@@ -440,11 +440,14 @@ CREATE TABLE command_outputs (
   blob           TEXT,
   missing_bytes  INTEGER CHECK (missing_bytes >= 0),
   missing_reason TEXT,
+  -- The command's media, a JSON array, beside a stored output.
+  media          TEXT,
   not_stored     TEXT,
   removed_at     INTEGER,
   CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) + (removed_at IS NOT NULL) = 1),
   CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
-  CHECK (missing_bytes IS NULL OR blob IS NOT NULL)
+  CHECK (missing_bytes IS NULL OR blob IS NOT NULL),
+  CHECK ((media IS NULL) = (blob IS NULL))
 ) STRICT;
 CREATE INDEX command_outputs_expiry ON command_outputs (ended_at) WHERE blob IS NOT NULL;
 ";

@@ -1,6 +1,6 @@
 //! The installation's job directories (`runner.md` § Pipes and output): each
-//! shell job keeps its kept output, its recorded edits and its scratch
-//! directory in `<job root>/job-<random>/`. The job root is `jobs/` in a
+//! shell job keeps its kept output, its media, its recorded edits and its
+//! scratch directory in `<job root>/job-<random>/`. The job root is `jobs/` in a
 //! paired device's installation state, and `/var/lib/demi/jobs` on a Cloud's
 //! system image. A job's directory lasts until the backend has what it needs
 //! of the job: its `job_release`, the connection's end, or, for what a
@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio_util::sync::CancellationToken;
 
+use crate::job_media::MEDIA_DIRECTORY;
 use crate::kept_output::{KeptOutput, KeptReader};
 
 /// The job directories under one installation's job root, for one
@@ -129,6 +130,14 @@ impl JobDirectories {
     /// The kept output of `job`, while its directory lasts.
     pub fn output(&self, job: &str) -> Option<KeptReader> {
         self.lock().get(job).map(|held| held.output.clone())
+    }
+
+    /// Where `job` keeps its medium `number`, while its directory lasts
+    /// (`crate::job_media`).
+    pub fn medium(&self, job: &str, number: u32) -> Option<PathBuf> {
+        self.lock()
+            .get(job)
+            .map(|held| held.path.join(MEDIA_DIRECTORY).join(number.to_string()))
     }
 
     /// Removes the directory of `job`, which ended. The directory of a job

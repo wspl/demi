@@ -4,6 +4,7 @@
 //! bounded views of it (`runner.md` § Pipes and output).
 
 use crate::job_directories::{JobDirectories, JobDirectory};
+use crate::job_media::{JobMedia, MEDIA_DIRECTORY};
 use crate::kept_output::KeptOutput;
 use crate::{
     commands::{
@@ -303,6 +304,7 @@ impl JobConfig {
         manifest_hash: &str,
         command: CommandContext,
         edits: demi_command_protocol::EditContext,
+        media: Arc<JobMedia>,
         env: &mut BTreeMap<String, String>,
     ) -> io::Result<(Arc<ExecutionContext>, JobCommands)> {
         let commands = self
@@ -325,6 +327,7 @@ impl JobConfig {
                 command,
                 manifest,
                 edits,
+                media,
                 commands.connection.clone(),
                 &commands.paths,
             )
@@ -436,8 +439,19 @@ impl JobConfig {
                 job = Some((Logs::new(output), scratch, recorder.clone(), running));
                 let commands = match commands {
                     Some((manifest_hash, command)) => {
-                        let setup =
-                            self.context(&id, &manifest_hash, command, edit_context, &mut env);
+                        let media = Arc::new(JobMedia::new(
+                            id.clone(),
+                            path.join(MEDIA_DIRECTORY),
+                            self.output.clone(),
+                        ));
+                        let setup = self.context(
+                            &id,
+                            &manifest_hash,
+                            command,
+                            edit_context,
+                            media,
+                            &mut env,
+                        );
                         // A job killed while it waits for its manifest never starts.
                         let (context, declared) = tokio::select! {
                             _ = cancel.cancelled() => {
@@ -457,6 +471,7 @@ impl JobConfig {
                         cwd: spec.cwd,
                         env,
                         live: stdin.is_none(),
+                        output: stdout.is_none(),
                         cancellation: cancel.child_token(),
                         commands,
                         edits: recorder,

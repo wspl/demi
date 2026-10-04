@@ -3,7 +3,7 @@
 //! connection installed. The connection owns its contexts; everything else
 //! looks them up in the snapshot it publishes.
 
-use crate::connection::ConnectionHandle;
+use crate::{connection::ConnectionHandle, job_media::JobMedia};
 use demi_command_protocol::{CommandContext, EditContext, host_target};
 use demi_runner_command_packages::{ServiceHandle, ServiceLease};
 use demi_runner_process::{
@@ -33,6 +33,8 @@ pub struct ExecutionContext {
     /// The connection the job runs under, for its callbacks and artifact
     /// locations.
     pub connection: ConnectionHandle,
+    /// Where the media the job's commands return go.
+    pub media: Arc<JobMedia>,
     aliases: tempfile::TempDir,
 }
 
@@ -45,6 +47,7 @@ impl ExecutionContext {
         command: CommandContext,
         manifest: Arc<Manifest>,
         edits: EditContext,
+        media: Arc<JobMedia>,
         connection: ConnectionHandle,
         paths: &ContextPaths,
     ) -> io::Result<Self> {
@@ -62,6 +65,7 @@ impl ExecutionContext {
             cancel: CancellationToken::new(),
             edits,
             connection,
+            media,
             aliases,
         })
     }

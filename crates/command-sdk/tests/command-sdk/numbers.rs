@@ -80,6 +80,7 @@ async fn draw(client: &Client, conversation: &str, count: u32) -> String {
             env: Default::default(),
             edits: None,
             json: None,
+            stdout: None,
         })
         .await
         .unwrap();

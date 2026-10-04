@@ -8,7 +8,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_package_file_protocol::{CreateArgs, EditArgs, Operation, PatchArgs, ReadArgs};
-use demi_command_protocol::{CommandError, Completion};
+use demi_command_protocol::{CommandError, Completion, MAX_MEDIUM_BYTES, sniff_media_type};
 use demi_command_sdk::{
     InvocationContext, ServiceError,
     edits::{Recorder, Recording},
@@ -111,9 +111,28 @@ pub fn failure(error: &FileError) -> Completion {
     }
 }
 
+/// Streams the file to stdout. A job's command reading a regular file of at
+/// most 16 MiB whose bytes are an image or video a model reads returns it as
+/// a medium instead (`commands.md` § File commands).
 async fn read(context: &InvocationContext, args: &ReadArgs) -> Result<(), FileError> {
     let path = demi_command_sdk::paths::resolve(&context.request.cwd, &args.path)?;
     let mut file = tokio::fs::File::open(path).await?;
+    let metadata = file.metadata().await?;
+    if context.request.stdout.is_some() && metadata.is_file() && metadata.len() <= MAX_MEDIUM_BYTES
+    {
+        let mut bytes = Vec::new();
+        tokio::select! {
+            _ = context.cancellation.cancelled() => return Err(FileError::Cancelled),
+            result = file.read_to_end(&mut bytes) => result?,
+        };
+        let bytes = Bytes::from(bytes);
+        if sniff_media_type(&bytes).is_some() {
+            context.output.medium(bytes).await?;
+        } else {
+            context.output.stdout(bytes).await?;
+        }
+        return Ok(());
+    }
     let mut buffer = vec![0; READ_BYTES];
     loop {
         let count = tokio::select! {

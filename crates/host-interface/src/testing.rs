@@ -11,7 +11,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
-use demi_shared_types::{B64Bytes, Sequence, StreamKind, Timestamp};
+use demi_shared_types::{B64Bytes, BlobRef, Sequence, StreamKind, Timestamp};
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
 use tokio::sync::{Notify, watch};
 use tokio_util::sync::CancellationToken;
@@ -774,6 +774,7 @@ pub struct MemoryPort {
     live: RefCell<VecDeque<Bytes>>,
     stdout: RefCell<Vec<u8>>,
     stderr: RefCell<Vec<u8>>,
+    media: RefCell<Vec<BlobRef>>,
 }
 
 impl MemoryPort {
@@ -802,6 +803,11 @@ impl MemoryPort {
     pub fn stderr(&self) -> Vec<u8> {
         self.stderr.borrow().clone()
     }
+
+    /// The blobs the handler returned as media, in order.
+    pub fn media(&self) -> Vec<BlobRef> {
+        self.media.borrow().clone()
+    }
 }
 
 impl PortTransport for MemoryPort {
@@ -815,6 +821,10 @@ impl PortTransport for MemoryPort {
                 }
                 PortRequest::Stderr { bytes } => {
                     self.stderr.borrow_mut().extend_from_slice(&bytes);
+                    PortResponse::Written {}
+                }
+                PortRequest::Medium { blob } => {
+                    self.media.borrow_mut().push(blob);
                     PortResponse::Written {}
                 }
                 PortRequest::ReadStdin {} => PortResponse::Input {

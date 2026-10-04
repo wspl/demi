@@ -92,7 +92,13 @@ fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
             limit_bytes: 16,
         },
     };
-    assert!(record.settle(Ending::Exited(3), whole.clone(), Some(binary.clone()), ""));
+    assert!(record.settle(
+        Ending::Exited(3),
+        whole.clone(),
+        Some(binary.clone()),
+        Vec::new(),
+        ""
+    ));
     let exited = record.status(0, None);
     let view = exited.whole.expect("the whole output");
     assert_eq!(view.output, whole);
@@ -107,7 +113,8 @@ fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
         exited.state,
         CommandState::Exited {
             exit_code: 3,
-            binary_stdout: Some(binary)
+            binary_stdout: Some(binary),
+            media: Vec::new(),
         }
     );
     let again = record.status(0, None).whole.expect("the whole output");
@@ -124,7 +131,13 @@ fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
 fn a_stop_ends_the_command_aborted_and_one_whose_streams_never_ended_keeps_its_views() {
     let mut record = new_record();
     record.append_output(StreamKind::Stderr, "partial");
-    assert!(record.settle(Ending::Aborted, Arc::new(WholeOutput::default()), None, ""));
+    assert!(record.settle(
+        Ending::Aborted,
+        Arc::new(WholeOutput::default()),
+        None,
+        Vec::new(),
+        ""
+    ));
     assert!(matches!(
         record.status(0, None).state,
         CommandState::Aborted
@@ -171,6 +184,7 @@ async fn the_pages_view_keeps_the_newest_characters_and_their_count_until_the_en
         Ending::Exited(2),
         Arc::new(WholeOutput::default()),
         None,
+        Vec::new(),
         "end\n"
     ));
     assert!(!record.append_output(StreamKind::Stderr, "late"));

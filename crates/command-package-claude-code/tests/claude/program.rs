@@ -40,6 +40,10 @@ impl OutputSink for Written {
         self.stderr.extend_from_slice(&bytes);
         Ok(())
     }
+
+    async fn medium(&mut self, _: Bytes) -> Result<(), Self::Error> {
+        unreachable!("a package call's writer refuses media")
+    }
 }
 
 /// Invokes `operation` with `input` as its standard input, and returns the
@@ -63,6 +67,7 @@ async fn invoke(service: &ServiceProcess, operation: &str, input: Vec<u8>) -> (V
             env: Default::default(),
             edits: None,
             json: None,
+            stdout: None,
         })
         .await
         .unwrap();

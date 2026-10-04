@@ -456,7 +456,9 @@ bytes into the file.
   stdout records before it, for a `native` call, and after the first `after`
   bytes of the call's stdout, for an `rpc` call, whose stdout and media arrive
   on different paths. Under `--json`, the lines follow the JSON value once the
-  dispatcher has released it, so the value stays one JSON value.
+  dispatcher has released it, so the value stays one JSON value; a command
+  that returned media may print no value, and its lines are then its
+  stdout.
 - **Stdout goes elsewhere (`elsewhere`).** The dispatcher holds the medium in
   the job's directory and, when the command completes with status 0, writes
   its bytes as the command's stdout. A second medium, or stdout bytes beside

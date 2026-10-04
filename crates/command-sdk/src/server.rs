@@ -3,7 +3,8 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 use bytes::Bytes;
 use demi_command_protocol::{
     ARTIFACTS_PATH, CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH,
-    INVOKE_PATH, Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, NUMBERS_PATH,
+    INVOKE_PATH, Invocation, MAX_MEDIUM_BYTES, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata,
+    NUMBERS_PATH,
     ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, StreamOpen, VERSION,
 };
 use futures_util::future::poll_fn;
@@ -111,30 +112,55 @@ fn relay_of<A: Asked>(asks: mpsc::Receiver<Pending<A>>) -> Relay {
     Box::new(move |input, output, finish| Box::pin(asking::relay(asks, input, output, finish)))
 }
 
+/// An invocation's writer: its records, in the order its handler wrote
+/// them. A medium's records are written in one turn, so no other record of
+/// the invocation comes between them (`native-runtime.md` § Response
+/// records and completion).
 #[derive(Clone)]
 pub struct Output {
     sender: mpsc::Sender<Record>,
     cancellation: CancellationToken,
+    /// Whether the invocation may return media: only one a job's command
+    /// makes does.
+    media: bool,
+    turn: Arc<tokio::sync::Mutex<()>>,
+}
+
+/// Why a writer refused a medium; the handler learns it from the write.
+#[derive(Debug, thiserror::Error)]
+pub enum MediumRefused {
+    #[error("this invocation cannot return media: only a job's command can")]
+    NotAJobCommand,
+    #[error("a medium is at most {MAX_MEDIUM_BYTES} bytes; this one is {0}")]
+    TooLarge(usize),
 }
 
 impl Output {
+    /// A writer whose records arrive at the returned receiver; it refuses
+    /// media.
     pub fn channel(cancellation: CancellationToken) -> (Self, mpsc::Receiver<Record>) {
         let (sender, receiver) = mpsc::channel(OUTPUT_QUEUE_RECORDS);
         (
             Self {
                 sender,
                 cancellation,
+                media: false,
+                turn: Arc::default(),
             },
             receiver,
         )
     }
 
+    /// This writer, accepting media, for an invocation a job's command
+    /// makes.
+    pub fn returning_media(mut self) -> Self {
+        self.media = true;
+        self
+    }
+
     pub(crate) async fn pull(&self) -> Result<(), ServiceError> {
-        tokio::select! {
-            biased;
-            _ = self.cancellation.cancelled() => Err(ServiceError::Cancelled),
-            result = self.sender.send(Record::InputPull) => result.map_err(|_| ServiceError::Cancelled),
-        }
+        let _turn = self.turn.lock().await;
+        self.send(Record::InputPull).await
     }
 
     pub async fn stdout(&self, bytes: Bytes) -> Result<(), ServiceError> {
@@ -145,6 +171,29 @@ impl Output {
         self.write(bytes, Record::Stderr).await
     }
 
+    /// Returns `bytes` as a medium (`commands.md` § Return media): the
+    /// runner sends it where the calling process's stdout goes. A writer of
+    /// an invocation that is no job command's refuses it, as it refuses a
+    /// medium over [`MAX_MEDIUM_BYTES`].
+    pub async fn medium(&self, mut bytes: Bytes) -> Result<(), ServiceError> {
+        if !self.media {
+            return Err(ServiceError::failed(MediumRefused::NotAJobCommand));
+        }
+        if bytes.len() as u64 > MAX_MEDIUM_BYTES {
+            return Err(ServiceError::failed(MediumRefused::TooLarge(bytes.len())));
+        }
+        let _turn = self.turn.lock().await;
+        self.send(Record::Medium {
+            size: bytes.len() as u64,
+        })
+        .await?;
+        while !bytes.is_empty() {
+            let count = bytes.len().min(MAX_RECORD_BYTES);
+            self.send(Record::MediumBytes(bytes.split_to(count))).await?;
+        }
+        Ok(())
+    }
+
     async fn write(
         &self,
         mut bytes: Bytes,
@@ -153,15 +202,18 @@ impl Output {
         while !bytes.is_empty() {
             let count = bytes.len().min(MAX_RECORD_BYTES);
             let item = record(bytes.split_to(count));
-            tokio::select! {
-                biased;
-                _ = self.cancellation.cancelled() => return Err(ServiceError::Cancelled),
-                result = self.sender.send(item) => {
-                    result.map_err(|_| ServiceError::Cancelled)?;
-                }
-            }
+            let _turn = self.turn.lock().await;
+            self.send(item).await?;
         }
         Ok(())
+    }
+
+    async fn send(&self, record: Record) -> Result<(), ServiceError> {
+        tokio::select! {
+            biased;
+            _ = self.cancellation.cancelled() => Err(ServiceError::Cancelled),
+            result = self.sender.send(record) => result.map_err(|_| ServiceError::Cancelled),
+        }
     }
 }
 
@@ -406,6 +458,11 @@ async fn invoke<H: Handler + ?Sized>(
             cancellation: cancellation.clone(),
         }),
         Call::Invocation(request) => {
+            let output = if request.returns_media() {
+                output.returning_media()
+            } else {
+                output
+            };
             body.set_output(output.clone());
             handler.invoke(InvocationContext {
                 request: *request,

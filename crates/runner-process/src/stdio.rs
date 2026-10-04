@@ -1,8 +1,16 @@
-//! Standard handles and the identity of a job's inherited live input.
+//! Standard handles, and the identities of a job's inherited live input and
+//! of its output (`runner.md` § Where a command's stdout goes).
 
 use std::{collections::BTreeMap, fs::File, io};
 
+use demi_command_protocol::StdoutTarget;
+
+/// Names the job's stdin pipe, when it is the job's live terminal.
 pub const LIVE_INPUT_ENV: &str = "DEMI_LIVE_INPUT";
+
+/// Names the job's stdout pipe, which the runner reads as the job's output;
+/// absent for a job whose stdout the backend relays elsewhere.
+pub const JOB_OUTPUT_ENV: &str = "DEMI_JOB_OUTPUT";
 
 pub fn standard_file(descriptor: u32) -> io::Result<File> {
     #[cfg(unix)]
@@ -27,8 +35,9 @@ pub fn standard_file(descriptor: u32) -> io::Result<File> {
     }
 }
 
-/// The caller keeps this reference file open for the entire shell job.
-pub fn live_reference(file: &File) -> io::Result<String> {
+/// The reference a job's environment names `file` by. The caller keeps
+/// `file` open for the entire shell job.
+pub fn reference(file: &File) -> io::Result<String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -46,13 +55,29 @@ pub fn live_reference(file: &File) -> io::Result<String> {
     }
 }
 
+/// Whether `file`, a process's stdin, is the job's live terminal.
 pub fn is_live(file: &File, env: &BTreeMap<String, String>) -> io::Result<bool> {
-    let Some(reference) = env.get(LIVE_INPUT_ENV) else {
+    is_named(file, env, LIVE_INPUT_ENV)
+}
+
+/// Where `file`, a process's stdout, goes: the job's output when it is the
+/// job's stdout pipe in any copy, and elsewhere otherwise.
+pub fn stdout_target(file: &File, env: &BTreeMap<String, String>) -> io::Result<StdoutTarget> {
+    Ok(if is_named(file, env, JOB_OUTPUT_ENV)? {
+        StdoutTarget::Job
+    } else {
+        StdoutTarget::Elsewhere
+    })
+}
+
+/// Whether `file` is the open file the variable `name` of `env` names.
+fn is_named(file: &File, env: &BTreeMap<String, String>, name: &str) -> io::Result<bool> {
+    let Some(reference) = env.get(name) else {
         return Ok(false);
     };
     #[cfg(unix)]
     {
-        Ok(live_reference(file)? == *reference)
+        Ok(self::reference(file)? == *reference)
     }
     #[cfg(windows)]
     {
@@ -63,7 +88,7 @@ pub fn is_live(file: &File, env: &BTreeMap<String, String>) -> io::Result<bool> 
         };
         let (pid, handle) = reference
             .split_once(':')
-            .ok_or_else(|| io::Error::other("invalid live input reference"))?;
+            .ok_or_else(|| io::Error::other(format!("invalid reference in {name}")))?;
         let pid: u32 = pid.parse().map_err(io::Error::other)?;
         let handle: usize = handle.parse().map_err(io::Error::other)?;
         let process = unsafe { OpenProcess(PROCESS_DUP_HANDLE, 0, pid) };

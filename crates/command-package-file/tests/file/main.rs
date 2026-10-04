@@ -49,6 +49,7 @@ async fn call(
         args,
         cwd: cwd.into(),
         env: BTreeMap::new(),
+        stdout: None,
     };
     // The file commands never ask for input: the request stays open without
     // input or its end.
@@ -62,6 +63,9 @@ async fn call(
             Record::Stderr(bytes) => stderr.extend_from_slice(&bytes),
             Record::Completion(value) => completion = Some(value),
             Record::InputPull => panic!("a file operation reads no raw input"),
+            Record::Medium { .. } | Record::MediumBytes(_) => {
+                panic!("an invocation that is no job command's returns no media")
+            }
         }
     }
     (completion.unwrap(), stdout, stderr)

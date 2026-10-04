@@ -1,20 +1,22 @@
 //! The `demi shell` command group (`runtime.md` § The whole output):
 //! `demi shell output` prints a command of the conversation's whole output,
 //! as numbered lines a page at a time, the lines a range names, the newest
-//! lines, or the bytes as they are. It reads a running command's output
-//! from its Host through the command's job, and an ended command's from the
-//! conversation's store.
+//! lines, or the bytes as they are, or returns one of the media the
+//! command's declared commands returned. It reads a running command's
+//! output and media from its Host through the command's job, and an ended
+//! command's from the conversation's store.
 
 use std::rc::Weak;
 
 use bytes::Bytes;
 use demi_agent_store::{COMMAND_OUTPUT_DAYS, StoredOutput};
+use demi_host_interface::{MediumKept, StoredMedium};
 use demi_agent_tools::{HostResolver, PAGE_CHARS};
 use demi_host_interface::{
     GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen, ShellError, Streams,
     TypedRpc, WholeOutput,
 };
-use demi_shared_types::{CommandId, StreamKind};
+use demi_shared_types::{B64Bytes, BlobRef, CommandId, StreamKind};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -32,7 +34,7 @@ const RAW_CHUNK_BYTES: usize = 1024 * 1024;
 
 const GROUP_SUMMARY: &str = "Shell commands: read a command's whole output.";
 
-const OUTPUT_SUMMARY: &str = "Print a command's whole output by its commandId: numbered lines a page at a time, as `cat -n` shows them, from the first line or the lines --lines <from>-<to> names; the newest with --tail <n>. --stdout or --stderr takes one stream, with line numbers of its own. --raw prints the bytes as they are, unnumbered and unpaged, for pipes and files: `grep -n` on it gives the numbers --lines takes (`demi shell output 17 --raw | grep -n FAIL`). Any command of this conversation, running or ended.";
+const OUTPUT_SUMMARY: &str = "Print a command's whole output by its commandId: numbered lines a page at a time, as `cat -n` shows them, from the first line or the lines --lines <from>-<to> names; the newest with --tail <n>. --stdout or --stderr takes one stream, with line numbers of its own. --raw prints the bytes as they are, unnumbered and unpaged, for pipes and files: `grep -n` on it gives the numbers --lines takes (`demi shell output 17 --raw | grep -n FAIL`). --medium <n> returns the command's medium n, the image or video its line `[medium n: …]` stands for, as it came: shown to you again, or its bytes into a file (`demi shell output 17 --medium 2 > shot.png`). Any command of this conversation, running or ended.";
 
 /// The input of `demi shell output`.
 #[derive(Deserialize, JsonSchema)]
@@ -52,6 +54,9 @@ struct OutputArgs {
     stderr: Option<bool>,
     /// The bytes as they are: unnumbered and unpaged
     raw: Option<bool>,
+    /// The command's medium n, as it came
+    #[schemars(range(min = 1))]
+    medium: Option<u32>,
 }
 
 /// The `shell` group.
@@ -60,7 +65,8 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
         LeafBuilder::rpc("output", OUTPUT_SUMMARY)
             .input::<OutputArgs>()
             .positionals(["id"])
-            .success_output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out")
+            .success_output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out; with --medium, the medium")
+            .media()
             .failure_output("\"demi shell output: <reason>\" on stderr, exit 1")
             .bind(TypedRpc::new(verb(server, output))),
     )
@@ -88,6 +94,23 @@ async fn output<H: HostResolver>(
 ) -> Result<u8, RpcError> {
     let args = call.args;
     let id = args.id.as_str();
+    if let Some(number) = args.medium {
+        let alone = args.lines.is_none()
+            && args.tail.is_none()
+            && args.stdout.is_none()
+            && args.stderr.is_none()
+            && args.raw.is_none();
+        if !alone {
+            return fail(&port, "--medium returns one medium and goes with no other option").await;
+        }
+        return match find_medium(&call.tree, id, number).await {
+            Ok(blob) => {
+                port.medium(blob).await?;
+                Ok(0)
+            }
+            Err(reason) => fail(&port, &reason).await,
+        };
+    }
     let streams = match (args.stdout == Some(true), args.stderr == Some(true)) {
         (true, true) => return fail(&port, "--stdout and --stderr do not go together").await,
         (true, false) => Streams::Only(StreamKind::Stdout),
@@ -185,7 +208,7 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
         }
     }
     match tree.store().command_output(&command).await {
-        Ok(Some(StoredOutput::Stored(output))) => Ok(Found {
+        Ok(Some(StoredOutput::Stored { output, .. })) => Ok(Found {
             output,
             running: false,
         }),
@@ -198,6 +221,67 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
         )),
         Ok(None) => Err(unknown()),
         Err(error) => Err(format!("the output of {id} could not be read: {error}")),
+    }
+}
+
+/// The blob of medium `number` of the conversation's command `id`: read
+/// from its Host and put while the command runs, stored once it ended.
+async fn find_medium<H: HostResolver>(
+    tree: &Tree<H>,
+    id: &str,
+    number: u32,
+) -> Result<BlobRef, String> {
+    let unknown = || format!("no command {id} in this conversation");
+    let command = CommandId::try_from(id).map_err(|_| unknown())?;
+    let unread = |error: &dyn std::fmt::Display| {
+        format!("medium {number} of {id} could not be read: {error}")
+    };
+    if let Some(node) = tree.holder(&command) {
+        match node.read_medium(&command, number).await {
+            Ok(bytes) => {
+                let blobs = tree.store().session_store(node.id());
+                return blobs
+                    .blobs()
+                    .put(B64Bytes::new(bytes))
+                    .await
+                    .map_err(|error| unread(&error));
+            }
+            // It ended, and its media are stored with its output.
+            Err(ShellError::NotRunning(_)) => {}
+            Err(error @ ShellError::NoMedium { .. }) => return Err(error.to_string()),
+            Err(error) => return Err(unread(&error)),
+        }
+    }
+    let media = match tree.store().command_output(&command).await {
+        Ok(Some(StoredOutput::Stored { media, .. })) => media,
+        Ok(Some(StoredOutput::NotStored(reason))) => {
+            return Err(format!("the output of {id} was not stored: {reason}"));
+        }
+        Ok(Some(StoredOutput::Removed(at))) => {
+            return Err(format!(
+                "the output of {id} was removed on {}, {COMMAND_OUTPUT_DAYS} days after the command ended",
+                at.to_jiff().strftime("%Y-%m-%d")
+            ));
+        }
+        Ok(None) => return Err(unknown()),
+        Err(error) => return Err(format!("the output of {id} could not be read: {error}")),
+    };
+    let returned = media.len();
+    match media.into_iter().find(|medium| medium.number == number) {
+        Some(StoredMedium {
+            kept: MediumKept::Stored { blob },
+            ..
+        }) => Ok(blob),
+        Some(StoredMedium {
+            kept: MediumKept::Missing { reason },
+            ..
+        }) => Err(format!("medium {number} of {id} is not kept: {reason}")),
+        None => Err(ShellError::NoMedium {
+            command,
+            number,
+            returned,
+        }
+        .to_string()),
     }
 }
 

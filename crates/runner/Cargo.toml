@@ -15,6 +15,7 @@ test-fixtures = [
 ]
 
 [dependencies]
+bytes.workspace = true
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
 demi-runner-host = { path = "../runner-host" }
@@ -51,7 +52,6 @@ sha2 = { version = "0.10", features = ["asm"] }
 libc = "0.2"
 
 [dev-dependencies]
-bytes.workspace = true
 demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 # The built runner with a home and state of its own (`RunnerProcess`).

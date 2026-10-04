@@ -14,7 +14,7 @@ use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use crate::{CommandRecord, HostError, PageView, Seen, WholeOutput};
+use crate::{CommandMedium, CommandRecord, HostError, PageView, Seen, WholeOutput};
 
 /// The longest an exec waits for its command before it returns the running
 /// command's handle.
@@ -54,6 +54,14 @@ pub trait ShellEnvironment {
         &'a self,
         command: &'a CommandId,
     ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>>;
+
+    /// Medium `number` of a command that runs, as its Host keeps it
+    /// (`runtime.md` § The whole output).
+    fn read_medium<'a>(
+        &'a self,
+        command: &'a CommandId,
+        number: u32,
+    ) -> LocalBoxFuture<'a, Result<Bytes, ShellError>>;
 
     /// Writes to a running command's standard input.
     fn write<'a>(
@@ -211,6 +219,8 @@ pub enum CommandState {
         exit_code: i32,
         /// Present when the final stdout was not text.
         binary_stdout: Option<BinaryOutput>,
+        /// The media its declared commands returned to the job, by number.
+        media: Vec<CommandMedium>,
     },
     /// It was stopped.
     Aborted,
@@ -252,6 +262,12 @@ pub enum ShellError {
     ShellBusy { shell: ShellId, command: CommandId },
     #[error("Command \"{0}\" is not running")]
     NotRunning(CommandId),
+    #[error("command {command} has no medium {number}: it returned {returned}")]
+    NoMedium {
+        command: CommandId,
+        number: u32,
+        returned: usize,
+    },
     #[error("shell_write field \"stdin\" must not be empty; use shell_status to poll")]
     EmptyStdin,
     #[error(transparent)]

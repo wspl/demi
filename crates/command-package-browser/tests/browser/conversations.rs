@@ -37,6 +37,7 @@ async fn release_cancels_a_browser_command_blocked_on_output() {
             env: Default::default(),
             edits: None,
             json: Some(true),
+            stdout: None,
         },
         input: Input::from_stream(futures_util::stream::empty()),
         output,

@@ -37,6 +37,10 @@ pub struct JobStart {
     pub env: BTreeMap<String, String>,
     /// Whether the job's input is its live terminal rather than a finite body.
     pub live: bool,
+    /// Whether the job's stdout is the job's output, which the runner reads,
+    /// rather than relayed elsewhere (`runner.md` § Where a command's stdout
+    /// goes).
+    pub output: bool,
     /// Ends the job and everything it runs when cancelled.
     pub cancellation: CancellationToken,
     pub commands: Option<JobCommands>,

@@ -29,7 +29,9 @@ use demi_command_package_browser_chrome::tabs::{
     registry::Closed,
 };
 use demi_command_package_browser_protocol::OperationError;
-use demi_command_protocol::{CommandLocale, Completion, ConversationRequest, ConversationStatus};
+use demi_command_protocol::{
+    CommandLocale, Completion, ConversationRequest, ConversationStatus, StdoutTarget,
+};
 use demi_command_sdk::{ConversationContext, InvocationContext, Numbers, ServiceError};
 
 use crate::protocol::{
@@ -43,7 +45,10 @@ const REQUESTS: usize = 64;
 
 enum CommandOutput {
     Json(serde_json::Value),
-    Png(Vec<u8>),
+    /// A screenshot returned as a medium (`browser.md` § Images and large
+    /// outputs), with the text that tells what it captured when the
+    /// command's stdout is the job's output.
+    Medium { text: Option<String>, png: Vec<u8> },
 }
 
 type Readiness = Option<std::result::Result<Started, EnvironmentFailure>>;
@@ -823,14 +828,25 @@ impl Conversations {
                 }
             }?;
             match produced {
-                CommandOutput::Json(value) => output::render(&command, value, json),
-                CommandOutput::Png(bytes) => Ok(bytes),
+                CommandOutput::Json(value) => Ok((output::render(&command, value, json)?, None)),
+                CommandOutput::Medium { text, png } => {
+                    Ok((text.unwrap_or_default().into_bytes(), Some(png)))
+                }
             }
         }
         .await;
         match result {
-            Ok(bytes) => {
-                context.output.stdout(Bytes::from(bytes)).await?;
+            Ok((text, medium)) => {
+                context.output.stdout(Bytes::from(text)).await?;
+                match medium {
+                    Some(png) if context.request.stdout.is_some() => {
+                        context.output.medium(Bytes::from(png)).await?;
+                    }
+                    // A call that is no job's command returns no media: the
+                    // PNG is its stdout.
+                    Some(png) => context.output.stdout(Bytes::from(png)).await?,
+                    None => {}
+                }
                 Ok(Completion {
                     exit_code: 0,
                     error: None,
@@ -1115,9 +1131,15 @@ impl Conversations {
                 command.timeout(),
             )
             .await?;
-            let Some(output) = &input.output else {
-                return Ok(CommandOutput::Png(bytes));
-            };
+            // Only a screenshot that goes to the job's output, or to a file,
+            // tells what it captured.
+            let told = input.output.is_some() || context.request.stdout == Some(StdoutTarget::Job);
+            if !told {
+                return Ok(CommandOutput::Medium {
+                    text: None,
+                    png: bytes,
+                });
+            }
             let decoded = png::Decoder::new(std::io::Cursor::new(&bytes))
                 .read_info()
                 .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
@@ -1130,6 +1152,18 @@ impl Conversations {
                 command.timeout(),
             )
             .await?;
+            let Some(output) = &input.output else {
+                let text = demi_command_package_browser_chrome::driver::text::captured(
+                    tab.id().as_str(),
+                    width,
+                    height,
+                    &metadata.viewport,
+                );
+                return Ok(CommandOutput::Medium {
+                    text: Some(text),
+                    png: bytes,
+                });
+            };
             let path = demi_command_package_browser_chrome::driver::output::save_with_overwrite(
                 &context.request.cwd,
                 output,

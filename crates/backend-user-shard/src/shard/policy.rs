@@ -13,7 +13,8 @@ use demi_backend_remote_host::{JobOrigin, LinkPolicy};
 use demi_command_protocol::ServiceSequence;
 use demi_host_interface::{RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::VolumeName;
-use demi_shared_types::Sequence;
+use bytes::Bytes;
+use demi_shared_types::{BlobRef, Sequence};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 
@@ -63,6 +64,19 @@ impl LinkPolicy for ShardPolicy {
             Ok(shard) => shard.commands().dispatch(&job, invocation, port),
             Err(reason) => Box::pin(async move { Err(RpcError::Failed(reason)) }),
         }
+    }
+
+    /// The blobs of the user's namespace a handler returns as media.
+    fn read_blob(&self, blob: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>> {
+        let shard = self.shard();
+        Box::pin(async move {
+            shard?
+                .host_shard()
+                .blobs()
+                .get(&blob)
+                .await
+                .map_err(|error| error.to_string())
+        })
     }
 
     /// Only the user's Cloud grows its volumes (`managed-hosts.md`

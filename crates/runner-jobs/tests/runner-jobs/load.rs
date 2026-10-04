@@ -70,6 +70,7 @@ async fn backend_commands_are_never_turned_away() {
                 root: "fixture".into(),
                 argv: vec![],
                 live: true,
+                stdout: demi_command_protocol::StdoutTarget::Job,
             })
             .unwrap(),
             cwd: cwd.to_string_lossy().into_owned(),

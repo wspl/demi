@@ -197,16 +197,16 @@ export const editingShellTool = toolCall({
   }),
 })
 
-/** Where a command's binary stdout stays on the Host, as its output names it. */
-function binaryLine(commandId: string, bytes: number): string {
-  return `<binary stdout: ${bytes} bytes; raw bytes at /home/demi/.demi/commands/${commandId}/stdout.txt>\n`
+/** The line a command's output shows for its binary stdout (`runtime.md` § What a result attaches). */
+function binaryLine(bytes: number): string {
+  return `<binary stdout: ${bytes} bytes>\n`
 }
 
 /**
- * A shell call whose command printed an image or a video (`runtime.md`
- * § Results and previews): the result the model reads, with the medium, or
- * the text that took its place, between its status and its note, and the
- * view whose output names the binary stdout.
+ * A shell call whose stdout is an image or a video (`runtime.md` § What a
+ * result attaches): the result the model reads, with the medium, or the
+ * part that took its place, between its status and its note, and the view
+ * whose output names the binary stdout.
  */
 function binaryStdoutCall(
   partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input'>,
@@ -222,14 +222,14 @@ function binaryStdoutCall(
     output: [
       {
         type: 'text',
-        text: `status: exited\nexitCode: 0\npreviewBudgetTokens: 10000\npreview:\n${binaryLine(commandId, bytes)}`,
+        text: `status: exited\nexitCode: 0\ncommandId: ${commandId}\noutput:\n${binaryLine(bytes)}`,
       },
       medium,
       { type: 'text', text: `Attached stdout as ${mediaType} (${bytes} bytes).` },
     ],
     view: shellView({
       commandId,
-      chunks: [{ stream: 'stdout', text: binaryLine(commandId, bytes) }],
+      chunks: [{ stream: 'stdout', text: binaryLine(bytes) }],
       ...(files ? { files } : {}),
     }),
   })
@@ -240,17 +240,82 @@ function blobImage(ref: string): ToolResultContentBlock {
 }
 
 const screenshotInput = JSON.stringify({
-  script: 'demi browser screenshot 1',
+  script: 'demi browser screenshot t1',
   description: 'Take a screenshot of the login page',
 })
 
+/**
+ * One screenshot a command returned as a medium: what it captured, its
+ * bytes, and the part the result holds for it, its image or the part that
+ * says it is gone.
+ */
+interface Capture {
+  tab: string
+  width: number
+  height: number
+  bytes: number
+  medium: ToolResultContentBlock
+}
+
+/** The text a screenshot prints before its medium's line, as `demi browser screenshot` prints it. */
+function captureText(capture: Capture): string {
+  return `Screenshot of ${capture.tab}\nImage: ${capture.width} × ${capture.height} px, one pixel per CSS pixel\nViewport: ${capture.width} × ${capture.height} CSS px, device pixel ratio 2, web\n`
+}
+
+/**
+ * A shell call whose declared commands returned images (`runtime.md`
+ * § Media a command returns): the output holds each command's text and its
+ * line `[medium n: …]`, and the result attaches the media after it, in
+ * order, then the lines for those it did not attach.
+ */
+function returnedMediaCall(
+  partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input'>,
+  commandId: string,
+  captures: Capture[],
+  notes: string[] = [],
+): ToolCallBlock {
+  const output = captures
+    .map((capture, index) => `${captureText(capture)}[medium ${index + 1}: image/png, ${capture.bytes} bytes]\n`)
+    .join('')
+  return toolCall({
+    ...partial,
+    status: 'completed',
+    output: [
+      { type: 'text', text: `status: exited\nexitCode: 0\ncommandId: ${commandId}\noutput:\n${output}` },
+      ...captures.map((capture) => capture.medium),
+      ...(notes.length > 0 ? [{ type: 'text' as const, text: notes.join('\n') }] : []),
+    ],
+    view: shellView({ commandId, chunks: [{ stream: 'stdout', text: output }] }),
+  })
+}
+
 /** A screenshot the agent took, under its call (`file-previews.md` § Media a tool returned). */
-export const screenshotTool = binaryStdoutCall(
+export const screenshotTool = returnedMediaCall(
   { id: 'tool-screenshot', toolName: 'shell_exec', input: screenshotInput },
-  'cmd-shot',
-  15_822,
-  'image/png',
-  blobImage(galleryBlobs.screenshot),
+  '17',
+  [{ tab: 't1', width: 480, height: 300, bytes: 15_822, medium: blobImage(galleryBlobs.screenshot) }],
+)
+
+/**
+ * Three tabs in one call: a loop of screenshots, each image attached in the
+ * loop's order; a fourth, the model could not read, is told of after them.
+ */
+export const screenshotsTool = returnedMediaCall(
+  {
+    id: 'tool-screenshots',
+    toolName: 'shell_exec',
+    input: JSON.stringify({
+      script: 'for t in t1 t2 t3; do demi browser screenshot "$t"; done',
+      description: 'Compare the login page in three tabs',
+    }),
+  },
+  '18',
+  [
+    { tab: 't1', width: 480, height: 300, bytes: 15_822, medium: blobImage(galleryBlobs.screenshot) },
+    { tab: 't2', width: 480, height: 300, bytes: 16_078, medium: blobImage(galleryBlobs.chart) },
+    { tab: 't3', width: 360, height: 2400, bytes: 8_035, medium: blobImage(galleryBlobs.fullPage) },
+  ],
+  ['[medium 4: not attached: the model does not accept image/webp; save it: demi shell output 18 --medium 4 > <file>]'],
 )
 
 /** A capture of a whole page: taller than wide, shown whole, never cropped. */
@@ -259,7 +324,7 @@ export const fullPageTool = binaryStdoutCall(
     id: 'tool-full-page',
     toolName: 'shell_exec',
     input: JSON.stringify({
-      script: 'demi browser screenshot 1 --full-page',
+      script: 'demi browser screenshot t1 --full-page | convert - -strip png:-',
       description: 'Capture the whole login page',
     }),
   },
@@ -299,17 +364,23 @@ export const statusImageTool = binaryStdoutCall(
 )
 
 /** A screenshot retired after 30 days: in its place, the part that says so and when. */
-export const removedImageTool = binaryStdoutCall(
+export const removedImageTool = returnedMediaCall(
   { id: 'tool-screenshot-removed', toolName: 'shell_exec', input: screenshotInput },
-  'cmd-shot-old',
-  15_822,
-  'image/png',
-  {
-    type: 'gone',
-    kind: 'image',
-    mediaType: 'image/png',
-    cause: { type: 'retired', at: '2026-10-01T12:00:00.000Z' },
-  },
+  '9',
+  [
+    {
+      tab: 't1',
+      width: 480,
+      height: 300,
+      bytes: 15_822,
+      medium: {
+        type: 'gone',
+        kind: 'image',
+        mediaType: 'image/png',
+        cause: { type: 'retired', at: '2026-10-01T12:00:00.000Z' },
+      },
+    },
+  ],
 )
 
 /** A recording whose bytes could not be stored: in its place, the part that says so and why. */
@@ -334,12 +405,10 @@ export const notStoredVideoTool = binaryStdoutCall(
 )
 
 /** A screenshot whose blob the page cannot load. */
-export const missingImageTool = binaryStdoutCall(
+export const missingImageTool = returnedMediaCall(
   { id: 'tool-screenshot-missing', toolName: 'shell_exec', input: screenshotInput },
-  'cmd-shot-lost',
-  15_822,
-  'image/png',
-  blobImage(missingBlob),
+  '11',
+  [{ tab: 't1', width: 480, height: 300, bytes: 15_822, medium: blobImage(missingBlob) }],
 )
 
 function fileChangeCase(

@@ -7,7 +7,7 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use bytes::Bytes;
 use demi_command_protocol::CommandContext;
-use demi_shared_types::B64Bytes;
+use demi_shared_types::{B64Bytes, BlobRef};
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -127,6 +127,12 @@ pub enum PortRequest {
     Stderr {
         bytes: B64Bytes,
     },
+    /// Returns a medium (`commands.md` § Return media): the blob of the
+    /// conversation owner's namespace the handler put, which the runner
+    /// sends where the calling process's stdout goes.
+    Medium {
+        blob: BlobRef,
+    },
     /// The next chunk of a finite standard input.
     ReadStdin {},
     /// The next interactive write to the calling job, until it ends.
@@ -183,6 +189,15 @@ impl RpcPort {
             bytes: B64Bytes::new(bytes),
         };
         written(self.transport.request(request).await?, "stderr")
+    }
+
+    /// Returns the blob `blob`, which the handler put, as a medium of the
+    /// call (`commands.md` § Return media).
+    pub async fn medium(&self, blob: BlobRef) -> Result<(), PortError> {
+        written(
+            self.transport.request(PortRequest::Medium { blob }).await?,
+            "medium",
+        )
     }
 
     /// The next chunk of the call's finite standard input; none at its end,

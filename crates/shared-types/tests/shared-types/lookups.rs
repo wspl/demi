@@ -6,7 +6,7 @@ use demi_shared_types::{
     Attachment, FileExtension, MODEL_MEDIA_TYPES, Model, ModelMediaKind, applied_context_limit,
     attachment_tag, context_limits, effective_context_window, file_extension_support, is_blank,
     model_accepts_media_type, model_accepts_video, preview_media_type, shows_in_place,
-    sniff_model_media_type, trim,
+    model_media_type_for, trim,
 };
 use serde_json::Value;
 
@@ -54,49 +54,14 @@ fn every_medium_a_model_reads_is_served_for_the_page_to_show_in_place() {
     }
 }
 
-/// `parts` joined and padded with zeros to 16 bytes.
-fn bytes(parts: &[&[u8]]) -> Vec<u8> {
-    let mut bytes = parts.concat();
-    bytes.resize(bytes.len().max(16), 0);
-    bytes
-}
-
-fn sniffed(bytes: &[u8]) -> Option<&'static str> {
-    sniff_model_media_type(bytes).map(|entry| entry.media_type)
-}
-
 #[test]
-fn model_media_is_recognized_by_its_magic_numbers_and_nothing_else() {
-    assert_eq!(sniffed(&bytes(&[b"\x89PNG\r\n\x1a\n"])), Some("image/png"));
-    assert_eq!(sniffed(&bytes(&[b"\xff\xd8\xff\xe0"])), Some("image/jpeg"));
-    assert_eq!(sniffed(&bytes(&[b"GIF89a"])), Some("image/gif"));
-    assert_eq!(
-        sniffed(&bytes(&[b"RIFF", b"\x01\x02\x03\x04", b"WEBP"])),
-        Some("image/webp")
-    );
-    assert_eq!(sniffed(&bytes(&[b"\x1a\x45\xdf\xa3"])), Some("video/webm"));
-    assert_eq!(
-        sniffed(&bytes(&[b"\0\0\0\x20", b"ftypisom"])),
-        Some("video/mp4")
-    );
-    assert_eq!(
-        sniffed(&bytes(&[b"\0\0\0\x20", b"ftypqt  "])),
-        Some("video/quicktime")
-    );
-    assert_eq!(
-        sniffed(&bytes(&[b"\0\0\0\x20", b"ftypM4V "])),
-        Some("video/x-m4v")
-    );
-    let png = sniff_model_media_type(&bytes(&[b"\x89PNG"])).unwrap();
+fn each_model_medium_names_its_kind_and_the_extension_a_catalog_accepts_it_by() {
+    let png = model_media_type_for("image/png").unwrap();
     assert_eq!(
         (png.kind, png.extension),
         (ModelMediaKind::Image, FileExtension::Png)
     );
-
-    // Outside the closed set, and too short to tell: no guessing.
-    assert_eq!(sniffed(&bytes(&[b"%PDF-1.7"])), None);
-    assert_eq!(sniffed(&bytes(&[b"plain text here"])), None);
-    assert_eq!(sniffed(b"\x89PNG\r\n\x1a\n\0\0\0"), None);
+    assert!(model_media_type_for("application/pdf").is_none());
 }
 
 fn model(accepted: Option<&[FileExtension]>) -> Model {

@@ -84,6 +84,7 @@ import {
   removedImageTool,
   runningShellTool,
   screenshotTool,
+  screenshotsTool,
   shellTool,
   statusImageTool,
   thinkingText,
@@ -462,6 +463,7 @@ const functionalShellLive = ref(true)
 /** Calls whose results carry media, as the transcript shows them. */
 const toolMediaSpecimens = [
   { variant: 'shell · image', block: screenshotTool },
+  { variant: 'shell · several images', block: screenshotsTool },
   { variant: 'shell · tall image', block: fullPageTool },
   { variant: 'shell · video', block: recordingTool },
   { variant: 'status · image', block: statusImageTool },

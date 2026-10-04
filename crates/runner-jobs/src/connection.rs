@@ -17,7 +17,10 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::commands::{contexts::ExecutionContext, rpc::CallEvent};
+use crate::commands::{
+    contexts::ExecutionContext,
+    rpc::{CallEvent, RpcMedium},
+};
 
 /// Requests waiting for a connection's owner; a sender waits for room.
 const REQUESTS: usize = 64;
@@ -326,6 +329,19 @@ impl Relay {
             Inbound::RpcOutput { call_id, bytes } => {
                 (call_id, CallEvent::Stderr(bytes.0.clone().into()))
             }
+            Inbound::RpcMedium {
+                call_id,
+                after,
+                size,
+                pipe,
+            } => (
+                call_id,
+                CallEvent::Medium(RpcMedium {
+                    after: *after,
+                    size: *size,
+                    pipe: pipe.clone(),
+                }),
+            ),
             Inbound::RpcStdinPull { call_id } => (call_id, CallEvent::Pull),
             Inbound::RpcExit { call_id, exit_code } => (call_id, CallEvent::Exit(*exit_code)),
             Inbound::ArtifactLocation {

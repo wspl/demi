@@ -20,7 +20,7 @@ use std::{
 use bytes::Bytes;
 use demi_command_protocol::{CommandContext, EditKind as JobEditKind};
 use demi_host_interface::{
-    BinaryOutput, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
+    BinaryOutput, CommandMedium, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
     JobCaller, Missing, Numbers, OutputRecord, PageFeed, PageView, ProcessEnd, Seen,
     ShellEnvironment, ShellError, ShellTarget, SpawnErrorKind, Streams, WholeOutput, binary_line,
@@ -30,14 +30,15 @@ use demi_runner_protocol::{
     wire::{self, JobFileChange},
 };
 use demi_shared_types::{
-    CommandId, EditCopies, EditKind, EditSegment, EditedFile, Sequence, ShellId, StreamKind,
+    BlobRef, CommandId, EditCopies, EditKind, EditSegment, EditedFile, Sequence, ShellId, StreamKind,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
-    CommandCatalog, JobEnd, JobOutput, JobStart, RemoteHost, RemoteJob, manifest::CommandSelection,
+    CommandCatalog, JobEnd, JobMedium, JobOutput, JobStart, RemoteHost, RemoteJob,
+    manifest::CommandSelection,
 };
 
 /// How long an abort waits for the runner to report the job's end after
@@ -59,8 +60,8 @@ pub trait HostAccess {
 
 /// Keeps what a command leaves when it ends, before its command reads as
 /// ended: the copies of its edits (`edit-tracking.md` § Edit copies), and
-/// its whole output (`runtime.md` § The whole output). A failure to keep the
-/// output is the keeper's to record.
+/// its whole output with its media (`runtime.md` § The whole output, § Where
+/// media are kept). A failure to keep them is the keeper's to record.
 pub trait CommandKeeper {
     /// The list the command's view shows of `files`: every file, each
     /// segment with its copies when they were stored.
@@ -70,10 +71,15 @@ pub trait CommandKeeper {
         files: &'a [JobFileChange],
     ) -> LocalBoxFuture<'a, Vec<EditedFile>>;
 
+    /// The bytes of the blob `blob` when the conversation owner's
+    /// namespace holds it, so a medium it holds is not read from the Host.
+    fn stored_blob<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>>;
+
     fn keep_output<'a>(
         &'a self,
         command: &'a CommandId,
         output: &'a WholeOutput,
+        media: &'a [CommandMedium],
     ) -> LocalBoxFuture<'a, ()>;
 }
 
@@ -180,6 +186,7 @@ struct Settlement {
     ending: Ending,
     output: WholeOutput,
     binary_stdout: Option<BinaryOutput>,
+    media: Vec<CommandMedium>,
     /// What the end adds to the pages' view.
     page: String,
 }
@@ -405,6 +412,7 @@ impl RemoteShellEnvironment {
                 ending,
                 output,
                 binary_stdout: None,
+                media: Vec::new(),
                 page,
             };
             self.end(&command, &record, settlement, None).await;
@@ -555,6 +563,7 @@ impl RemoteShellEnvironment {
                     ending: Ending::Exited(127),
                     output: WholeOutput::new(received, None),
                     binary_stdout: None,
+                    media: Vec::new(),
                     page,
                 };
                 return self.end(command, record, settlement, Some(job)).await;
@@ -564,7 +573,7 @@ impl RemoteShellEnvironment {
                 // with the connection.
                 let missing = Some(Missing {
                     bytes: streams.iter().map(Received::unreceived).sum(),
-                    reason: "lost with the Host's connection".into(),
+                    reason: LOST.into(),
                 })
                 .filter(|missing| missing.bytes > 0);
                 let mut page = push_reason(&mut received, reason);
@@ -572,10 +581,17 @@ impl RemoteShellEnvironment {
                     page.push_str(&missing.line());
                     page.push('\n');
                 }
+                // The media went with the connection too.
+                let media = job
+                    .media()
+                    .into_iter()
+                    .map(|medium| command_medium(medium, Err(LOST.into())))
+                    .collect();
                 let settlement = Settlement {
                     ending: Ending::Exited(127),
                     output: WholeOutput::new(received, missing),
                     binary_stdout: None,
+                    media,
                     page,
                 };
                 return self.end(command, record, settlement, Some(job)).await;
@@ -649,13 +665,41 @@ impl RemoteShellEnvironment {
             record.grew(StreamKind::Stdout, lengths.stdout_bytes);
             record.grew(StreamKind::Stderr, lengths.stderr_bytes);
         }
+        let media = self.media(job).await;
         let settlement = Settlement {
             ending,
             output,
             binary_stdout: binary,
+            media,
             page,
         };
         self.end(command, record, settlement, Some(job)).await;
+    }
+
+    /// The media the job's commands returned (`runtime.md` § Where media
+    /// are kept), each with its bytes: from the conversation owner's
+    /// namespace when it holds them, otherwise read from the Host; or why
+    /// the backend does not have them.
+    async fn media(&self, job: &RemoteJob) -> Vec<CommandMedium> {
+        let mut media = Vec::new();
+        for medium in job.media() {
+            let bytes = self.medium_bytes(job, &medium).await;
+            media.push(command_medium(medium, bytes));
+        }
+        media
+    }
+
+    async fn medium_bytes(&self, job: &RemoteJob, medium: &JobMedium) -> Result<Bytes, String> {
+        if let Some(keeper) = &self.0.options.keeper
+            && let Some(bytes) = keeper.stored_blob(&medium.sha256).await
+        {
+            return Ok(bytes);
+        }
+        match job.read_medium(medium.number).await {
+            Ok(bytes) if BlobRef::of(&bytes) == medium.sha256 => Ok(bytes),
+            Ok(_) => Err("not read from the Host: its bytes are not the ones the runner announced".into()),
+            Err(error) => Err(format!("not read from the Host: {}", error.message)),
+        }
     }
 
     /// Ends the command with its whole output: the keeper stores it, the
@@ -673,17 +717,19 @@ impl RemoteShellEnvironment {
             ending,
             output,
             binary_stdout,
+            media,
             page,
         } = settlement;
         if let Some(keeper) = &self.0.options.keeper {
-            keeper.keep_output(command, &output).await;
+            keeper.keep_output(command, &output, &media).await;
         }
         if let Some(job) = job {
             job.release().await;
         }
-        let ended = record
-            .borrow_mut()
-            .settle(ending, Arc::new(output), binary_stdout, &page);
+        let ended =
+            record
+                .borrow_mut()
+                .settle(ending, Arc::new(output), binary_stdout, media, &page);
         if ended {
             self.report(record);
         }
@@ -802,6 +848,33 @@ impl ShellEnvironment for RemoteShellEnvironment {
         })
     }
 
+    fn read_medium<'a>(
+        &'a self,
+        command: &'a CommandId,
+        number: u32,
+    ) -> LocalBoxFuture<'a, Result<Bytes, ShellError>> {
+        Box::pin(async move {
+            let record = self.record(command)?;
+            let running = self.0.state.borrow().running.get(command).cloned();
+            let Some(running) = running.filter(|_| record.borrow().is_running()) else {
+                return Err(ShellError::NotRunning(command.clone()));
+            };
+            let job = running
+                .started()
+                .await
+                .ok_or_else(|| ShellError::NotRunning(command.clone()))?;
+            let returned = job.media();
+            if !returned.iter().any(|medium| medium.number == number) {
+                return Err(ShellError::NoMedium {
+                    command: command.clone(),
+                    number,
+                    returned: returned.len(),
+                });
+            }
+            Ok(job.read_medium(number).await?)
+        })
+    }
+
     fn write<'a>(
         &'a self,
         command: &'a CommandId,
@@ -910,6 +983,20 @@ fn stream_index(stream: StreamKind) -> usize {
     match stream {
         StreamKind::Stdout => 0,
         StreamKind::Stderr => 1,
+    }
+}
+
+/// Why the backend does not have what a Host held when the connection to it
+/// was lost.
+const LOST: &str = "lost with the Host's connection";
+
+/// A medium the runner announced, with its bytes or why there are none.
+fn command_medium(medium: JobMedium, bytes: Result<Bytes, String>) -> CommandMedium {
+    CommandMedium {
+        number: medium.number,
+        media_type: medium.media_type,
+        size: medium.size,
+        bytes,
     }
 }
 

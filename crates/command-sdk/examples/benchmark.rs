@@ -62,6 +62,7 @@ fn request(operation: &str) -> Invocation {
             .to_string_lossy()
             .into_owned(),
         env: BTreeMap::new(),
+        stdout: None,
     }
 }
 
@@ -79,6 +80,7 @@ async fn echo(client: &Client, size: usize, delay: Duration) -> Result<(), Error
                 input.write(bytes).await?;
             }
             Record::InputPull => input.end()?,
+            Record::Medium { .. } | Record::MediumBytes(_) => unreachable!("echo returns no media"),
             Record::Stdout(bytes) => {
                 assert!(bytes.iter().all(|byte| *byte == 0xa5));
                 received += bytes.len();

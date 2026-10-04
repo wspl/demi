@@ -133,8 +133,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     crate declares a checked identity with (`id!`): a string newtype that
     serializes as itself and holds only the strings its check accepts;
   - the file-type table the product previews by (`preview_media_type`,
-    `shows_in_place`), and the media types a model accepts with their sniffing
-    (`sniff_model_media_type`);
+    `shows_in_place`), and the media types a model accepts, each with its
+    kind and catalog extension (`MODEL_MEDIA_TYPES`, `model_media_type_for`);
+    `command-protocol` recognizes them in bytes;
   - base64 bytes (`B64Bytes`), times (`Timestamp`), the wall clock times are
     read from (`Clock`, `SystemClock`), the schema marker of nullable fields
     (`Nullable`), and the one decode of a boundary value with its error
@@ -170,7 +171,12 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     (`Completion`), service information (`ServiceInfo`), the conversation
     release and status requests, and the conversation numbers stream's
     messages (`NumbersRequest`, `NumbersAnswer`);
-  - record framing (`Record`, `RecordDecoder`);
+  - record framing (`Record`, `RecordDecoder`), with the medium records a
+    handler returns media in;
+  - the media a command returns: their bound (`MAX_MEDIUM_BYTES`), where a
+    calling process's stdout goes (`StdoutTarget`), and the recognition of
+    the image and video types a model reads in bytes (`sniff_media_type`),
+    which the runner, the agent and the backend share;
   - package descriptors and their identities (`PackageDescriptor`), artifact
     locations and target triples (`TargetTriple`), and the one canonical
     digest of a JSON value (`canonical_digest`: the SHA-256 of its RFC 8785
@@ -499,8 +505,12 @@ Each crate implements the provider contract for one vendor family.
     conversation's sequences (`Numbers`,
     [Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees));
     and the keeper to which an environment hands what a command leaves when it ends,
-    its whole output and its edit copies, which the product implements over
-    its storage ([The whole output](../agent/runtime.md#the-whole-output)).
+    its whole output, its media and its edit copies, which the product
+    implements over its storage
+    ([The whole output](../agent/runtime.md#the-whole-output)); a command's
+    media as the backend holds them when it ended (`CommandMedium`) and as
+    the conversation stores them (`StoredMedium`,
+    [Media a command returns](../agent/runtime.md#media-a-command-returns)).
 - **Public boundary:** the items above; `host_interface::testing` supplies the Host
   conformance cases, an in-memory port for rpc handler tests
   (`MemoryPort`) and sequences that count from 1 (`CountingNumbers`). The Host rules are in
@@ -767,6 +777,9 @@ demi-runner (executable: connection, registration, Host log, composition)
   killing and reaping it; standard IO plumbing; the pipe endpoints that carry
   file contents and output to the backend's pipe routes, and the report of a
   pipe's outcome ([Pipes and output](../execution/runner.md#pipes-and-output));
+  the identities of a job's live input and output, which tell a command
+  where its stdin comes from and its stdout goes
+  ([Where a command's stdout goes](../execution/runner.md#where-a-commands-stdout-goes));
   the split of a stream into lines and the kept tail of a stream; private
   state files written atomically, through `shared-artifacts`'s publication; the line
   counts of a change to a file; the
@@ -831,11 +844,14 @@ demi-runner (executable: connection, registration, Host log, composition)
 #### `runner-jobs`
 
 - **Owns:** shell jobs and the commands they run: the job table, each job's
-  execution context with its command context, its directory and kept output,
-  the edit report at its end, and the command dispatcher (it parses argv with
-  `command-declarations`, holds a `--json` command's output until it is checked
-  against the leaf's output schema, routes native invocations to their
-  services and rpc calls to the backend) with local command forwarding.
+  execution context with its command context, its directory, kept output and
+  media, the edit report at its end, and the command dispatcher (it parses
+  argv with `command-declarations`, holds a `--json` command's output until it
+  is checked against the leaf's output schema, routes native invocations to
+  their services and rpc calls to the backend, and routes the media they
+  return by where their stdout goes,
+  [Return media](../execution/commands.md#return-media)) with local command
+  forwarding.
 - **Conversation scope:** keeps each job's command context and writes it into
   every native invocation; it implements no conversation browser operation.
 - **Public boundary:** the job table, the dispatcher, which implements the
@@ -1502,10 +1518,10 @@ provider-codex -> shared-types, provider-common
 provider-grok-build -> shared-types, provider-common
 provider-claude-code -> shared-types, provider-common, host-interface
 host-interface -> command-protocol, command-declarations, shared-types
-agent-store -> conversation-socket-protocol, shared-types, provider-common, host-interface
+agent-store -> conversation-socket-protocol, command-protocol, shared-types, provider-common, host-interface
 agent-transcript -> conversation-socket-protocol, agent-store, shared-types, provider-common
 agent-session -> conversation-socket-protocol, agent-store, agent-transcript, command-protocol, shared-types, shared-gates, provider-common, host-interface
-agent-tools -> conversation-socket-protocol, agent-session, agent-store, agent-transcript, shared-types, provider-common, host-interface
+agent-tools -> conversation-socket-protocol, agent-session, agent-store, agent-transcript, command-protocol, shared-types, provider-common, host-interface
 agent-server -> conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, shared-types, shared-gates, provider-common, host-interface
 plugin-interface -> command-declarations, shared-types, host-interface, web-api-protocol
 plugin-file -> plugin-interface, command-declarations, command-package-file-protocol, host-interface

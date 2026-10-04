@@ -147,6 +147,7 @@ impl ServiceStreams {
                     env: Default::default(),
                     edits: None,
                     json,
+                    stdout: None,
                 };
                 match resident.client().invoke(&invocation).await {
                     Ok(exchange) => Ok(exchange),
@@ -432,6 +433,11 @@ impl OutputSink for StreamSink {
             self.log.stderr(&line);
         }
         Ok(())
+    }
+
+    /// A user stream's writer refuses media (`commands.md` § Return media).
+    async fn medium(&mut self, _: Bytes) -> io::Result<()> {
+        Err(io::Error::other("a user stream returned a medium"))
     }
 }
 
