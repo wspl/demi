@@ -1,25 +1,58 @@
-# The Go Migration (branches `gomig/*`)
+# Working Principles
 
-This branch replaces the Rust programs with Go ([Migration to Go](docs/delivery/go-migration.md)). Here the Rust code under `crates/` and `vendor/` is the reference to port, not code to change. The Rust-specific rules below (Cargo selections, test binaries per crate, `cargo check`) apply only to that reference; these rules govern the Go code.
+- Be pragmatic, never formalistic. Every step either moves the work forward or protects its correctness; drop ceremony that does neither, such as a check that cannot fail on the change at hand, a repeated full suite, or a report nobody needs.
+- Tests follow [Testing](docs/delivery/testing.md). In short: each test protects a behavior a user or another component relies on, or a fixed bug, at the boundary where it is observable, once, with scenarios first; it fails before the fix or with the planted defect; it waits for events, never for time; it stays within its time budget and states its cost; it never restates the implementation or asserts a defect as correct. A test you touch that breaks these rules is fixed or deleted then.
+- Follow the boy scout rule and decide on the spot. When you notice on the way something that slows the work or is wrong (a slow or duplicated build, a flaky test, a stale script, a wasteful habit), fix it then and say what you changed and why in the commit message, where the next session reads it. Do not stop to ask or save it for a review. Stop and ask only about what changes the agreed design or scope, cannot be undone, or reaches beyond the repository and its build products.
+- Read the authoritative design before discussing changes. Inspect the implementation when needed to verify feasibility or investigate behavior; resolve discrepancies explicitly rather than treating code as an implicit design decision.
+- Prefer simple, direct designs with clear responsibilities and explicit dependencies.
+- Keep each fact defined in one place. Reuse existing code and contracts; consolidate duplication.
+- Do not keep a second value that can be calculated from existing data. For mutually exclusive phases, use one status such as `idle | running | finished`, rather than separate `running` and `finished` flags that can contradict each other.
+- Whenever you create a timer, listener, stream, or worker, check where it is stopped or released on success, failure, and cancellation. Share cleanup code when those paths need the same cleanup. If you ignore an error, make clear why it is safe to ignore.
+- Implement the intended final design. Do not add compatibility layers or legacy-data migration, cleanup, or normalization paths.
+- Before writing a helper, state its purpose in one generic sentence. If that sentence does not mention this project's domain, the helper almost certainly exists: search the standard library, the module's declared dependencies (`go.mod`), and the workspace, in that order (in the frontend: the package's declared dependencies, `@demicodes/utils`, and the workspace). Write it only when the search fails, and place it where the next caller will find it. Small size is not a reason to write a local copy.
+- Use a library from its installed types and documentation, not from memory. Any cast (`as unknown as`, `any` or a type-only import in TypeScript; `unsafe`, `reflect` or an unchecked type assertion in Go) used to get around a library's types means you do not know its API: stop and read it. If the library genuinely lacks the capability, say so in a comment at the workaround.
+- When a library is adopted for a job, use the whole of it for that job. Using it for one step and hand-writing the adjacent step it also covers (its coercion, its introspection, its error reporting) is a defect.
+- A type assertion is not a check. A value from outside the process (network, file, socket, environment, storage, model output, child process) is validated against a schema at the point of entry; the type is derived from the schema, never asserted onto the value. Do not silently repair corrupt data.
+- Two implementations of the same one-sentence purpose are a defect regardless of length or package. Consolidate to one owner and import.
+- Prefer protocols, APIs, and file interfaces over external CLI processes.
+- Preserve unrelated work and keep changes within the task's scope.
+- Run checks appropriate to the change. An automated test never calls a real
+  model: it works against fixtures or stubs, so a suite costs nothing and
+  answers the same way every time. Accepting a change by using the running
+  product is a different thing, and there sending a real message is part of
+  the check; stop a turn once it has shown what you were looking for.
+- Every reusable UI behavior lives in `web-ui` as a component or primitive, and a plugin's feature UI lives in its plugin package, written only against `@demicodes/plugin-sdk` ([Plugin pages](docs/architecture/plugin-pages.md)); `web-ui` knows no plugin, and `web` and `web-gallery` supply only data, state, services and handlers. A behavior first built for one surface (a control's affordance, a page's interaction, a dialog flow) is generalized into `web-ui` before the checkpoint, never left local to the gallery, the product or one plugin.
+- A control placed at a container's edge (an icon button at the end of a menu row, a settings row, a tab) keeps the same distance to every edge it touches: (container height - control height) / 2. The container's `web-ui` primitive computes that inset and offers a dedicated slot for such controls; a caller never positions a control through a generic slot with its own margin or padding.
+- Keep `web` and `web-gallery` synchronized in both directions. Every UI change is made once, in `web-ui` or in the plugin package that owns it, whether the request came from the gallery or the product, and lands in both surfaces in the same checkpoint: update the gallery specimens and the product usage together, and verify the result in both. A change visible in only one of them is incomplete.
+- Every control in the gallery responds when used. A specimen's button, menu item or link either acts on the specimen's own state the way the product would (Cancel drops the row, Clear empties the list, a dialog's buttons close it and a control opens it again), or simulates what the product would do with a host or another page and says so, for example in a neutral toast naming the action. A click that does nothing is a defect, in a specimen that shows a pinned state or a look as much as in a live one. Bind every event a specimen's component emits, and click through each new specimen before the checkpoint.
+- Write code comments in English.
+- Write separate steps on separate lines. Do not squeeze several assignments, branches, or cleanup actions into one line. A helper function should have a clear job; moving a complicated block into a vaguely named helper does not simplify it.
+- Before committing, reread the complete functions you changed, not just the added lines. Check for repeated conditions, duplicate or unused values, ignored errors, and code in the wrong package. Fix those problems before calling the work complete, even when tests pass.
+- When a batch of changes is ready for acceptance, check it yourself on processes started from the new code (the backend and the web front end, or the gallery) before reporting, and stop the processes you started once the check is done. Start them once per batch, after the whole batch is complete, not after every edit.
+- The Cloud and a paired device are the same thing: a Host behind a runner. Code never distinguishes them except where the design says they differ (pairing, revocation, lifecycle). Anything that reaches a conversation's Host goes through the conversation's host access (see [Host operations](docs/execution/sessions-and-targets.md#host-operations)), which resolves the target, wakes a stopped Cloud, and holds the file gate. There is no other way to a conversation's Host, and every other way to a Host is named in that section; if the host access does not fit, change the design first.
+- Cross-build with Go's own `GOOS` and `GOARCH`, and in development build and package only the targets of the Hosts in use (`docs/delivery/builds-and-releases.md`). All six targets are for a published release.
+- Commit completed checkpoints with Conventional Commit subjects and push after each commit.
 
-- Work only inside your work package's write boundary, which your brief lists. `scripts/gomig/boundary.sh` refuses a branch that changed anything else, committed or not.
-- Commit on your own branch in your own worktree, with Conventional Commit subjects. Never push, merge, rebase, delete a branch, use `git stash` (it is shared by every worktree) or run `git worktree`. Never touch another worktree or the owner's checkout.
-- Stop every process you started (Chrome, servers, VM jobs) before you report.
-- Never use cgo: build with `CGO_ENABLED=0`. The only exceptions are `go test -race` on Linux, which builds its test binary with `CGO_ENABLED=1 -tags netgo,osusergo`, and the purego FSEvents call in the tree watch's darwin file.
-- Run every `go` command with `GOFLAGS=-mod=readonly` (the agent scripts set it): Rust's `vendor/` at the module root would otherwise put Go in vendor mode. This ends when `vendor/` is removed.
-- `go.mod` and `go.sum` belong to the tech lead. Add only the modules your brief lists; for any other, stop and say so in your report.
-- Another package's exported API is not yours to change. If you need a change, describe it in your report.
-- Follow [Go Readability and Naming](#go-readability-and-naming) below. Small interfaces are declared where they are used; constructors return concrete types.
+# Building and Testing
+
+- One work package is one checkpoint, committed and pushed once. While writing, run only `go build ./...` and the test that covers the code; run `scripts/check.sh` on the work package's packages once at its end, and on `./...` when the change crosses packages.
+- Build with `CGO_ENABLED=0` ([Toolchain](docs/delivery/builds-and-releases.md#toolchain)). The only exceptions are `go test -race` on Linux, which builds its test binary with `CGO_ENABLED=1 -tags netgo,osusergo`, and the purego FSEvents call in the tree watch's darwin file.
+- Format the files you changed with `scripts/fmt.sh <files>`.
+- A Go test that starts one of the repository's programs gets it from `internal/programtest`, which builds it once per test binary. TypeScript tests never build a program: `bun run test` builds them into `.cache/test-programs` and runs the suite in parallel; to run some tests, build first and set `DEMI_TEST_PROGRAMS=.cache/test-programs` ([Programs used by tests](docs/delivery/builds-and-releases.md#programs-used-by-tests)).
+- Work in large steps: read what a step needs in one call, write the whole step, then compile once. Start long builds and tests in the background and keep working meanwhile.
+- zsh does not split an unquoted variable into words; pass argument lists as arrays, or run scripts with bash.
+
+# Go Code
+
 - `context.Context` is the first parameter of every function that waits. Errors are returned, wrapped with `%w` and compared with `errors.Is` and `errors.As`, never by text. No panic crosses a package boundary.
 - Every goroutine has an owner that cancels it and waits for it. Every lease, permit, timer, listener, file and process is released on success, failure and cancellation, with `defer` where it is acquired. No lock is held across a blocking call.
-- A contract type's and field's doc comment is product text: the generated JSON Schema's `description`, which `--help` and the model's tool schemas show. Copy it verbatim from the Rust doc comment; lint does not require it to start with the name there.
-- Write wire JSON only through the generated encoders or `contract.EncodeJSON`, never `encoding/json.Marshal`: it re-escapes `<`, `>`, `&`, U+2028 and U+2029 and so changes the bytes serde_json writes.
-- Never commit Rust: a program that writes reference fixtures from the Rust code lives in /Users/zan/Projects/demi-worktrees/gomig-ref/oracles/<work package>/, and only its output and a README line naming it are committed (`check.sh` refuses `.rs` and Cargo files under the Go tree).
-- Never build outgoing JSON from `map[string]any`: Go sorts its keys. An object Demi writes is a struct with Rust's field order; a JSON value Rust kept as `serde_json::Value` (the workspace enables `preserve_order`) keeps its read order through `contract.ObjectFields` and `contract.EncodeJSON`.
+- Small interfaces are declared where they are used; constructors return concrete types. Another package's exported API changes in that package, for every caller, never through a local workaround.
 - Contract types are Go types with `+demi:` markers; their decoders, encoders, validation and Zod are generated by `tools/contractgen` (`go generate`) and committed. Never write a second declaration of a contract shape by hand, and never decode outside input except through its generated decoder.
-- Port behavior, not more and not less. A Go change from the Rust behavior is allowed only as a bug fix or a reasonable normalization, and each one is listed in your report with its reason; the tech lead accepts or refuses it. Leaving out a behavior the Rust code has, or adding one it does not have (a limit, a retry, a default, an error path, a fallback), is a defect even when it seems better.
-- Every Rust test of the code you port is ported to Go in the same work package. Tests use only the standard library, `github.com/google/go-cmp`, `go.uber.org/goleak` and `testing/synctest`; a test waits for events or synctest time, never for wall time.
-- Before you report, run `scripts/gomig/check.sh` on your packages and make it pass. Write the report from `scripts/gomig/report-template.md` to the path your brief gives.
+- A contract type's and field's doc comment is product text: the generated JSON Schema's `description`, which `--help` and the model's tool schemas show. Change it as product text; lint does not require it to start with the name there.
+- Write wire JSON only through the generated encoders or `contract.EncodeJSON`, never `encoding/json.Marshal`: it re-escapes `<`, `>`, `&`, U+2028 and U+2029 and so changes bytes the contracts fix.
+- Never build outgoing JSON from `map[string]any`: Go sorts its keys. An object Demi writes is a struct in its contract's field order; a JSON object Demi passes on as received (a `+demi:object` field) keeps its read order through `contract.ObjectFields` and `contract.EncodeJSON`.
+- Tests use only the standard library, `github.com/google/go-cmp`, `go.uber.org/goleak` and `testing/synctest`; a test waits for events or synctest time, never for wall time.
+- The repository holds no Rust: `scripts/check.sh` refuses `.rs` and Cargo files.
 
 # Go Readability and Naming
 
@@ -29,12 +62,12 @@ the default of the community linter that checks it. Apply the rules exactly;
 do not substitute habits of your own. The sources:
 [EG] Effective Go, [CRC] Go Code Review Comments, [GSG] the Google Go Style
 Guide (Decisions and Best Practices), [STD] the standard library's practice.
-`scripts/gomig/check.sh` runs the checks a tool can make (`.golangci.yml`).
+`scripts/check.sh` runs the checks a tool can make (`.golangci.yml`).
 
 ## Layout
 
 - Format with `gofumpt`, a stricter superset of `gofmt` [EG: gofmt], and wrap
-  long lines with `golines` (`scripts/gomig/fmt.sh <files>`).
+  long lines with `golines` (`scripts/fmt.sh <files>`).
 - Go has no fixed line length; avoid uncomfortably long lines, and wrap by
   meaning, not at a column [CRC: Line Length; GSG: Line length]. The checked
   limit is `lll`'s default, 120 columns. A string a formatter cannot wrap is
@@ -80,8 +113,8 @@ Guide (Decisions and Best Practices), [STD] the standard library's practice.
 - A sentinel error is `ErrSomething`, an error type `SomethingError`
   [revive error-naming, following the standard library's `io.EOF`,
   `*fs.PathError`]. An error string starts lower case and
-  ends without punctuation [CRC: Error Strings], except text copied verbatim
-  from Rust, which a user or the model sees (this migration's fidelity rule).
+  ends without punctuation [CRC: Error Strings], except a message a user or
+  the model reads as product text, which keeps its wording.
 - A test names the behavior it checks, and reports `got` and `want`
   [CRC: Useful Test Failures].
 
@@ -94,9 +127,9 @@ Guide (Decisions and Best Practices), [STD] the standard library's practice.
   says [GSG: Commentary]; an unexported function is documented when its
   purpose or contract is not obvious from its name and signature.
 
-# Go Idioms, Not Rust Patterns
+# Go Idioms
 
-The Go code was ported from Rust, and some Rust shapes survived the port: a
+Some shapes read naturally to a Rust programmer but are not Go: a
 result enum with a failure variant, a channel end with `Lagged` and `Closed`
 variants, a future to wait on, a guard that cleans up when dropped. Go writes
 each of them differently. The sources are those above plus [FAQ] the Go FAQ.
@@ -131,8 +164,8 @@ each of them differently. The sources are those above plus [FAQ] the Go FAQ.
 - Two successful results that differ (stored, or already there) are told
   apart by an extra result value, as `sync.Map.LoadOrStore` returns `loaded
   bool` [STD; GSG: In-band errors]. A condition the caller treats as a failure
-  (still in use) is an `error` [GSG: Returning errors], even where Rust
-  returned it as an `Ok` variant.
+  (still in use) is an `error` [GSG: Returning errors], not a success
+  value with a flag.
 - A closed set of types used as data stays an interface with a type switch:
   wire messages, stream events, JSON unions, as `go/ast.Expr` does [FAQ: Why
   does Go not have variant types?; STD]. The rules above are about what a
@@ -171,11 +204,10 @@ each of them differently. The sources are those above plus [FAQ] the Go FAQ.
 
 ## Comments
 
-- [Owner: no Rust remains in the repository] A comment describes Go
-  behavior. It never mentions Rust, the Rust code, or a
-  Rust library (`tokio`, `serde`, `axum`, ...). When the reason for a choice is
-  a wire format or behavior the Rust programs fixed, the comment states that
-  format or behavior itself.
+- A comment describes Go behavior. It never mentions Rust or a Rust library
+  (`tokio`, `serde`, `axum`, ...), which the repository no longer has [Owner].
+  When the reason for a choice is a wire format or a behavior fixed
+  elsewhere, the comment states that format or behavior itself.
 
 ## What stays
 
@@ -184,49 +216,6 @@ methods [STD: `errors`], `MustX` functions [STD: `regexp.MustCompile`],
 getters without `Get` [EG: Getters], and a panic for an invariant that only a
 bug can break, which never crosses a package boundary [GSG Best Practices:
 When to panic].
-
-# Working Principles
-
-- Be pragmatic, never formalistic. Every step either moves the work forward or protects its correctness; drop ceremony that does neither, such as a check that cannot fail on the change at hand, a repeated full suite, or a report nobody needs.
-- Tests follow [Testing](docs/delivery/testing.md). In short: each test protects a behavior a user or another component relies on, or a fixed bug, at the boundary where it is observable, once, with scenarios first; it fails before the fix or with the planted defect; it waits for events, never for time; it stays within its time budget and states its cost; it never restates the implementation or asserts a defect as correct. A test you touch that breaks these rules is fixed or deleted then.
-- Follow the boy scout rule and decide on the spot. When you notice on the way something that slows the work or is wrong (a slow or duplicated build, a flaky test, a stale script, a wasteful habit), fix it then and say what you changed and why in the commit message, where the next session reads it. Do not stop to ask or save it for a review. Stop and ask only about what changes the agreed design or scope, cannot be undone, or reaches beyond the repository and its build products.
-- Read the authoritative design before discussing changes. Inspect the implementation when needed to verify feasibility or investigate behavior; resolve discrepancies explicitly rather than treating code as an implicit design decision.
-- Prefer simple, direct designs with clear responsibilities and explicit dependencies.
-- Keep each fact defined in one place. Reuse existing code and contracts; consolidate duplication.
-- Do not keep a second value that can be calculated from existing data. For mutually exclusive phases, use one status such as `idle | running | finished`, rather than separate `running` and `finished` flags that can contradict each other.
-- Whenever you create a timer, listener, stream, or worker, check where it is stopped or released on success, failure, and cancellation. Share cleanup code when those paths need the same cleanup. If you ignore an error, make clear why it is safe to ignore.
-- Implement the intended final design. Do not add compatibility layers or legacy-data migration, cleanup, or normalization paths.
-- Before writing a helper, state its purpose in one generic sentence. If that sentence does not mention this project's domain, the helper almost certainly exists: search the standard library, the crate's declared dependencies, and the workspace, in that order (in the frontend: the package's declared dependencies, `@demicodes/utils`, and the workspace). Write it only when the search fails, and place it where the next caller will find it. Small size is not a reason to write a local copy.
-- Use a library from its installed types and documentation, not from memory. Any cast (`as unknown as`, `any` or a type-only import in TypeScript; `unsafe`, `transmute` or a downcast in Rust) used to get around a library's types means you do not know its API: stop and read it. If the library genuinely lacks the capability, say so in a comment at the workaround.
-- When a library is adopted for a job, use the whole of it for that job. Using it for one step and hand-writing the adjacent step it also covers (its coercion, its introspection, its error reporting) is a defect.
-- A type assertion is not a check. A value from outside the process (network, file, socket, environment, storage, model output, child process) is validated against a schema at the point of entry; the type is derived from the schema, never asserted onto the value. Do not silently repair corrupt data.
-- Two implementations of the same one-sentence purpose are a defect regardless of length or package. Consolidate to one owner and import.
-- Prefer protocols, APIs, and file interfaces over external CLI processes.
-- Preserve unrelated work and keep changes within the task's scope.
-- Run checks appropriate to the change. An automated test never calls a real
-  model: it works against fixtures or stubs, so a suite costs nothing and
-  answers the same way every time. Accepting a change by using the running
-  product is a different thing, and there sending a real message is part of
-  the check; stop a turn once it has shown what you were looking for.
-- Every reusable UI behavior lives in `web-ui` as a component or primitive, and a plugin's feature UI lives in its plugin package, written only against `@demicodes/plugin-sdk` ([Plugin pages](docs/architecture/plugin-pages.md)); `web-ui` knows no plugin, and `web` and `web-gallery` supply only data, state, services and handlers. A behavior first built for one surface (a control's affordance, a page's interaction, a dialog flow) is generalized into `web-ui` before the checkpoint, never left local to the gallery, the product or one plugin.
-- A control placed at a container's edge (an icon button at the end of a menu row, a settings row, a tab) keeps the same distance to every edge it touches: (container height - control height) / 2. The container's `web-ui` primitive computes that inset and offers a dedicated slot for such controls; a caller never positions a control through a generic slot with its own margin or padding.
-- Keep `web` and `web-gallery` synchronized in both directions. Every UI change is made once, in `web-ui` or in the plugin package that owns it, whether the request came from the gallery or the product, and lands in both surfaces in the same checkpoint: update the gallery specimens and the product usage together, and verify the result in both. A change visible in only one of them is incomplete.
-- Every control in the gallery responds when used. A specimen's button, menu item or link either acts on the specimen's own state the way the product would (Cancel drops the row, Clear empties the list, a dialog's buttons close it and a control opens it again), or simulates what the product would do with a host or another page and says so, for example in a neutral toast naming the action. A click that does nothing is a defect, in a specimen that shows a pinned state or a look as much as in a live one. Bind every event a specimen's component emits, and click through each new specimen before the checkpoint.
-- Write code comments in English.
-- Write separate steps on separate lines. Do not squeeze several assignments, branches, or cleanup actions into one line. A helper function should have a clear job; moving a complicated block into a vaguely named helper does not simplify it.
-- Before committing, reread the complete functions you changed, not just the added lines. Check for repeated conditions, duplicate or unused values, ignored errors, and code in the wrong package. Fix those problems before calling the work complete, even when tests pass.
-- When a batch of changes is ready for acceptance, check it yourself on processes started from the new code (the backend and the web front end, or the gallery) before reporting, and stop the processes you started once the check is done. Start them once per batch, after the whole batch is complete, not after every edit.
-- The Cloud and a paired device are the same thing: a Host behind a runner. Code never distinguishes them except where the design says they differ (pairing, revocation, lifecycle). Anything that reaches a conversation's Host goes through the conversation's host access (`with_host` in `backend-host-access`, see `docs/execution/sessions-and-targets.md` § Host operations), which resolves the target, wakes a stopped Cloud, and holds the file gate. There is no other way to a conversation's Host, and every other way to a Host is named in that section; if the host access does not fit, change the design first.
-- Build native code with the machine's own cross tools, not the build container, and in development build and package only the targets of the Hosts in use (`docs/delivery/builds-and-releases.md`). All six targets are for a published release.
-- Commit completed checkpoints with Conventional Commit subjects and push after each commit.
-
-# Building and Testing
-
-- One work package is one checkpoint, committed and pushed once. While writing, run only `cargo check` and the test that covers the code; run the work package's checks once at its end.
-- Build and test with one Cargo selection everywhere: `cargo check --workspace --all-targets --features demi-runner/test-fixtures` and `cargo test --workspace --features demi-runner/test-fixtures`, adding `--test <name>` for one target. Never `-p <crate>` for a test build: each selection keeps its own copy of the dependencies, and switching has cost 140 s a time.
-- Keep test binaries few: each crate has one (`packages.md` § Module layout), such as `crates/runner/tests/runner/` and `crates/command-package-browser/tests/browser/`, and the crate boundary check enforces it; a test gets a binary of its own only when it changes or saturates process-wide state. Each binary costs a link and, when newly built, a first-launch check of about three seconds here. TypeScript tests never build a program: `bun run test` builds them and runs the suite in parallel; to run some tests, build first and set `DEMI_TEST_PROGRAMS=target/debug`.
-- Work in large steps: read what a step needs in one call, write the whole step, then compile once. Start long builds and tests in the background and keep working meanwhile.
-- zsh does not split an unquoted variable into words; pass argument lists as arrays, or run scripts with bash.
 
 # Writing and Communication
 
@@ -252,7 +241,6 @@ When to panic].
 # Coding Standards
 
 - Go: Effective Go, Go Code Review Comments, the Google Go Style Guide and the standard library's practice, as [Go Readability and Naming](#go-readability-and-naming) cites them; `gofumpt` and `golines` formatting; linter defaults for every checked number.
-- Rust: Rust API Guidelines, `rustfmt` defaults and Clippy's default lints, with no warning (`docs/delivery/builds-and-releases.md` § Validation).
 - TypeScript: Google TypeScript Style Guide.
 - JavaScript: Google JavaScript Style Guide.
 - Vue: Vue Style Guide.
@@ -267,4 +255,4 @@ When to panic].
 
 # Project References
 
-- `docs/architecture/packages.md` is the authoritative contract for crate and package responsibilities, dependencies, and module layout.
+- `docs/architecture/packages.md` is the authoritative contract for package responsibilities, dependencies, and module layout.

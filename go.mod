@@ -17,6 +17,7 @@ require (
 	github.com/dlclark/regexp2 v1.12.0
 	github.com/ebitengine/purego v0.11.1
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/go-git/go-billy/v5 v5.9.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3
 	github.com/goccy/go-yaml v1.19.2
@@ -34,6 +35,7 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	go.uber.org/goleak v1.3.0
 	gocloud.dev v0.46.0
+	golang.org/x/crypto v0.57.0
 	golang.org/x/image v0.46.0
 	golang.org/x/mod v0.41.0
 	golang.org/x/net v0.59.0
@@ -41,6 +43,7 @@ require (
 	golang.org/x/sys v0.48.0
 	golang.org/x/text v0.42.0
 	golang.org/x/tools v0.50.0
+	modernc.org/sqlite v1.60.1
 	mvdan.cc/sh/v3 v3.14.1
 )
 
@@ -68,7 +71,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
-	github.com/go-git/go-billy/v5 v5.9.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
@@ -92,7 +94,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/api v0.272.0 // indirect
@@ -103,7 +104,6 @@ require (
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.60.1
 )
 
 replace mvdan.cc/sh/v3 => ./third_party/mvdan-sh

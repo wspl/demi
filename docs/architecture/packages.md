@@ -2100,8 +2100,8 @@ direct import.
 with `CGO_ENABLED=0`; no shipped graph contains cgo.
 `go-check-sumtype -default-signifies-exhaustive=false` checks union switches,
 and `golangci-lint` checks Go conventions and correctness.
-`scripts/gomig/check.sh` runs these checks with builds, vet and tests, always
-with `GOFLAGS=-mod=readonly`. Linux race tests alone use `CGO_ENABLED=1` and
+`scripts/check.sh` runs these checks with builds, vet and tests, always
+with `CGO_ENABLED=0`. Linux race tests alone use `CGO_ENABLED=1` and
 `-tags netgo,osusergo`; this does not change shipped graphs. macOS FSEvents
 uses purego only in the tree watch's Darwin file.
 
