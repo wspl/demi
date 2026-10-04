@@ -516,8 +516,9 @@ func filesExposeCloud(
 	configure func(*backendtest.Harness),
 ) (*hostScenario, *providertest.MockVendor, *backendtest.ConversationSocket) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	t.Cleanup(cancel)
+	// Builds and multiple Cloud boots share the package's hang deadline;
+	// their total elapsed time is not part of the expose contract.
+	ctx := t.Context()
 	h, manager, err := backendtest.HostsHarness(ctx, t)
 	wireMust(t, err)
 	filesExposeConfig(t, h)

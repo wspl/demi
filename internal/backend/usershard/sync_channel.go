@@ -15,7 +15,7 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func (s *Shard) serveSyncChannel(ctx context.Context, socket *websocket.Conn, session ChannelSession) error {
+func (s *Shard) serveSyncChannel(ctx context.Context, socket *PageConnection, session ChannelSession) error {
 	// Closing an already broken socket needs no recovery.
 	defer func() {
 		_ = socket.CloseNow()
@@ -28,7 +28,7 @@ func (s *Shard) serveSyncChannel(ctx context.Context, socket *websocket.Conn, se
 	return err
 }
 
-func (s *Shard) relaySync(ctx context.Context, socket *websocket.Conn, session ChannelSession) (err error) {
+func (s *Shard) relaySync(ctx context.Context, socket *PageConnection, session ChannelSession) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})
 	stop := context.AfterFunc(s.ctx, func() {
@@ -53,7 +53,7 @@ func (s *Shard) relaySync(ctx context.Context, socket *websocket.Conn, session C
 	}()
 	readCtx, readCancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer readCancel()
-	ended := startSyncReader(ctx, readCtx, socket, cancel, &workers)
+	ended := startSyncReader(ctx, readCtx, socket.Conn, cancel, &workers)
 	closeCode, reason := websocket.StatusInternalError, "internal_error"
 	defer s.closeSyncPage(ctx, page, ended, &closeCode, &reason)
 	if err := s.sendSyncSnapshot(ctx, page, session.User); err != nil {

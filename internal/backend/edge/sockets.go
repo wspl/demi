@@ -1,10 +1,12 @@
 package edge
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -50,15 +52,16 @@ func websocketToken(header http.Header, name, token string) bool {
 	return false
 }
 
-func pageUpgrade(w http.ResponseWriter, r *http.Request, description string) (*websocket.Conn, error) {
+func pageUpgrade(w http.ResponseWriter, r *http.Request, description string) (*usershard.PageConnection, error) {
 	if err := pageHandshake(r, description); err != nil {
 		return nil, err
 	}
-	socket, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	upgrader := &pageUpgrader{ResponseWriter: w}
+	socket, err := websocket.Accept(upgrader, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
 		return nil, err
 	}
-	return socket, nil
+	return usershard.NewPageConnection(socket, upgrader.transport), nil
 }
 
 func (e *Edge) syncChannel(w http.ResponseWriter, r *http.Request) error {
@@ -162,7 +165,7 @@ type streamEnd struct {
 
 func relayUserStream(
 	ctx context.Context,
-	socket *websocket.Conn,
+	socket *usershard.PageConnection,
 	stream *hostaccess.UserStream,
 	pluginOff <-chan struct{},
 	closeWait time.Duration,
@@ -194,15 +197,7 @@ func relayUserStream(
 		end = streamEnd{4000, "conversation_changed"}
 	}
 	if end.code != 0 {
-		closed := make(chan struct{})
-		timer := time.AfterFunc(closeWait, func() {
-			defer close(closed)
-			_ = socket.CloseNow()
-		})
-		_ = socket.Close(end.code, end.reason)
-		if !timer.Stop() {
-			<-closed
-		}
+		socket.Close(context.WithoutCancel(ctx), end.code, end.reason, closeWait)
 	}
 	cancel()
 	_ = socket.CloseNow()
@@ -212,7 +207,7 @@ func relayUserStream(
 
 func copyStreamFromHost(
 	ctx context.Context,
-	socket *websocket.Conn,
+	socket *usershard.PageConnection,
 	stream *hostaccess.UserStream,
 	outcomes chan<- streamEnd,
 ) {
@@ -235,12 +230,12 @@ func copyStreamFromHost(
 
 func copyStreamToHost(
 	ctx context.Context,
-	socket *websocket.Conn,
+	socket *usershard.PageConnection,
 	stream *hostaccess.UserStream,
 	outcomes chan<- streamEnd,
 ) {
 	for {
-		kind, bytes, err := usershard.ReadPageMessage(ctx, socket)
+		kind, bytes, err := usershard.ReadPageMessage(ctx, socket.Conn)
 		if err != nil {
 			outcomes <- streamEnd{}
 			return
@@ -254,4 +249,16 @@ func copyStreamToHost(
 			return
 		}
 	}
+}
+
+// pageUpgrader retains the transport so a page cannot extend the close deadline.
+type pageUpgrader struct {
+	http.ResponseWriter
+	transport net.Conn
+}
+
+func (u *pageUpgrader) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	transport, buffers, err := http.NewResponseController(u.ResponseWriter).Hijack()
+	u.transport = transport
+	return transport, buffers, err
 }
