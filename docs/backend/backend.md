@@ -674,7 +674,9 @@ When the command's environment sets all four of
 `DEMI_DEV_PROVIDER_MODEL` and `DEMI_DEV_PROVIDER_CONTEXT_WINDOW`, it also seeds
 an `openai` entry labeled **Development** that speaks Chat Completions to that
 endpoint, with that one model and context window, and prints the entry beside
-Echo's. Setting only some of them stops the command before it builds
+Echo's. `DEMI_DEV_PROVIDER_THINKING_EFFORTS`, optional, lists the model's
+thinking efforts, comma-separated, as the endpoint names them; without it the
+model has none and the page offers no effort. Setting only some of them stops the command before it builds
 anything, naming the missing variables. The key reaches the backend only
 through the web API, like Echo's, and is never printed. A developer keeps the
 four in the repository's ignored `.env` (`.env.example` lists them) and runs
@@ -686,6 +688,7 @@ DEMI_DEV_PROVIDER_BASE_URL=https://api.commandcode.ai/provider/v1
 DEMI_DEV_PROVIDER_API_KEY=<key>
 DEMI_DEV_PROVIDER_MODEL=deepseek/deepseek-v4.1-flash
 DEMI_DEV_PROVIDER_CONTEXT_WINDOW=1000000
+DEMI_DEV_PROVIDER_THINKING_EFFORTS=low,medium,high
 ```
 
 A turn with that model is a real request and costs what the vendor charges;
