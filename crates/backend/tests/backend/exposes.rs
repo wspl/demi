@@ -517,7 +517,7 @@ async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_d
     let (_laptop, _) = on_device(&harness, &backend, &master, CONVERSATION).await;
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
 
-    // `add` exposes a service on the conversation's main Host; each of the
+    // `add` exposes a service on the conversation's primary Host; each of the
     // user's exposes takes the user's next number.
     let add = format!("demi expose add {}", fixture.port);
     let added = work

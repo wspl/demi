@@ -3,4 +3,4 @@
 "@demicodes/web": patch
 ---
 
-Unify main and attached host selection with fixed actions above searchable device results.
+Unify primary and attached host selection with fixed actions above searchable device results.

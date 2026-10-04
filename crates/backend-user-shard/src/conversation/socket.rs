@@ -489,7 +489,7 @@ enum Prepared {
 enum Admission {
     /// Under a lease of the conversation's file gate.
     Files(#[expect(dead_code, reason = "held for its drop")] GateLease),
-    /// On the conversation's main Host, for its uploads.
+    /// On the conversation's primary Host, for its uploads.
     Host(#[expect(dead_code, reason = "held for its drop")] Admitted),
 }
 

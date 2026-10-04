@@ -130,7 +130,7 @@ pub enum ErrorCode {
     /// file transfers and user streams; a new one waits for nothing and is
     /// refused.
     ConversationBusy,
-    /// The device is neither the conversation's main Host nor attached to
+    /// The device is neither the conversation's primary Host nor attached to
     /// it.
     HostNotAttached,
     /// The Cloud is stopped, and a user stream or a call like one never
@@ -223,9 +223,9 @@ pub enum ErrorCode {
     /// The plugin failed, such as a value that does not read or a package
     /// call whose operation failed.
     PluginFailed,
-    /// The device is the conversation's main Host, which is never attached
+    /// The device is the conversation's primary Host, which is never attached
     /// as well.
-    HostIsMain,
+    HostIsPrimary,
     /// Another attached host of the conversation has that name.
     NameTaken,
     /// Another target change of the conversation came first.

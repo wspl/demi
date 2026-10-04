@@ -11,15 +11,15 @@ const props = defineProps<{
   conversation: Conversation
 }>()
 const emit = defineEmits<{
-  switchMain: [deviceId: string, cwd?: string | null]
+  switchPrimary: [deviceId: string, cwd?: string | null]
 }>()
 const resources = useResources()
 const store = useConversations()
 
-const mainLocked = computed(
+const primaryLocked = computed(
   () => props.conversation.phase !== 'idle' || props.conversation.archived,
 )
-const mainHost = computed<HostMenuHost>(() => {
+const primaryHost = computed<HostMenuHost>(() => {
   const execution = executionFor(props.conversation)
   return {
     id: execution.deviceId ?? 'cloud',
@@ -40,14 +40,14 @@ const attachedHosts = computed<HostMenuHost[]>(() =>
   }),
 )
 
-function switchMain(id: string) {
-  if (mainLocked.value) {
+function switchPrimary(id: string) {
+  if (primaryLocked.value) {
     return
   }
   const attached = props.conversation.attachedHosts.find(
     (host) => host.deviceId === id,
   )
-  emit('switchMain', id, attached?.cwd)
+  emit('switchPrimary', id, attached?.cwd)
 }
 
 function attach(id: string) {
@@ -65,13 +65,13 @@ function connect() {
 
 <template>
   <HostMenu
-    :main-host="mainHost"
+    :primary-host="primaryHost"
     :pending="store.pendingChanges.includes(conversation.id)"
     :attached-hosts="attachedHosts"
     :devices="resources.devices"
-    :main-locked="mainLocked"
+    :primary-locked="primaryLocked"
     :attachments-locked="conversation.archived"
-    @switch-main="switchMain"
+    @switch-primary="switchPrimary"
     @attach="attach"
     @detach="detach"
     @connect="connect"

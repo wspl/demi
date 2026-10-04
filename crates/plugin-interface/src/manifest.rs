@@ -121,7 +121,7 @@ impl Manifest {
     }
 }
 
-/// A user stream: a page connects to `operation` on the conversation's main
+/// A user stream: a page connects to `operation` on the conversation's primary
 /// Host for as long as it keeps the stream open. Its messages and constants
 /// are declared for the page's generated types (`plugin-pages.md` § Types);
 /// the backend relays the stream's bytes without reading them.

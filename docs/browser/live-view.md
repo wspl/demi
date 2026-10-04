@@ -183,7 +183,7 @@ File or another kind closes the view, so the Host captures nothing.
    without waking a stopped Cloud: a stopped Cloud holds no browser, so the
    shown tab's content says that the Cloud is stopped
    ([Host operations](../execution/sessions-and-targets.md#host-operations)).
-3. The shard mints two pipes and asks the main Host's runner to open the
+3. The shard mints two pipes and asks the primary Host's runner to open the
    `browser` user stream on them ([Service streams](../execution/runner.md#service-streams)).
 4. The runner invokes the declared operation on the resident `demi-browser`
    service. Its [command context](../execution/native-runtime.md#command-context) names the
@@ -196,7 +196,7 @@ File or another kind closes the view, so the Host captures nothing.
 6. The live view module answers with the tab list and the watched tab's first
    key frame.
 
-One view is one invocation. The page shows one Host: the conversation's main Host. A browser on an
+One view is one invocation. The page shows one Host: the conversation's primary Host. A browser on an
 attached Host is not shown.
 
 The view carries only what a request cannot

@@ -1,5 +1,5 @@
 //! The conversation's host access (`sessions-and-targets.md` § Host
-//! operations): the one way to a conversation's main or attached Host, with
+//! operations): the one way to a conversation's primary or attached Host, with
 //! target resolution and the transitions that end a target (switch, archive,
 //! detach); file transfers, uploads, remote files and user streams; the
 //! shell environments of the agent's nodes over it; and the product's

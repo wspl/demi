@@ -87,7 +87,7 @@ pub struct PackageCall {
 
 /// Demi's side of a plugin's port, in memory: an rpc transport, the
 /// plugin's values and the blobs they name, the user's blobs, the plugin's
-/// Host directories, the files of the conversation's main Host, the
+/// Host directories, the files of the conversation's primary Host, the
 /// conversation's Hosts, the user's exposes on a clock the test sets, the
 /// package calls a test answers, how often the plugin marked its state
 /// as changed, and the conversation's work panel.
@@ -101,7 +101,7 @@ pub struct TestDemi {
     value_blobs: RefCell<BTreeMap<String, Vec<BlobRef>>>,
     blobs: RefCell<BTreeMap<BlobRef, B64Bytes>>,
     directories: RefCell<Vec<HostDirectory>>,
-    /// The files of the conversation's main Host by absolute path, its
+    /// The files of the conversation's primary Host by absolute path, its
     /// directories being their parents; none while the Host is not running.
     pub host_files: RefCell<Option<BTreeMap<String, Vec<u8>>>>,
     pub hosts: RefCell<Vec<ConversationHost>>,
