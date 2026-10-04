@@ -443,7 +443,9 @@ the address drafts remain in memory for the page lifetime. Switching accounts us
 saved choices. These stores do not replace backend ownership or authorization.
 
 New conversations begin with a local UUID. The first send creates the backend
-record using that ID. Submissions retain their message ID until admission is
+record using that ID and opens it while the page keeps showing the
+conversation: it never turns to loading, so the composer the user sent from
+stays. Submissions retain their message ID until admission is
 confirmed, so retry can reconcile history and queue state before resending.
 Editing and Fork use their backend operation contracts; see
 [Message editing](../agent/message-editing.md) and
