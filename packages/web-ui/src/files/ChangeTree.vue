@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { RefreshCw } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import GitStatusLetter from './GitStatusLetter.vue'
 import Tree from './Tree.vue'
 import { changeTreeRows, type ChangeSetSource, type ChangeTreeRow } from './changes'
@@ -83,7 +84,7 @@ function activate(row: ChangeTreeRow): void {
       </Tooltip>
     </template>
     <template #name="{ row }">
-      <span class="truncate" :class="row.change && gitMark(row.change.status)?.strike ? 'line-through text-fg-muted' : ''">{{ row.name }}</span>
+      <TruncatedText :class="row.change && gitMark(row.change.status)?.strike ? 'line-through text-fg-muted' : ''" :text="row.name" />
     </template>
     <template #trailing="{ row }">
       <span v-if="row.change" class="ml-auto flex shrink-0 items-center gap-2 pl-2">

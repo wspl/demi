@@ -34,10 +34,11 @@ export function demoProjects(): SidebarProject[] {
     },
     {
       id: 'p-dotfiles',
-      name: 'dotfiles',
+      // Longer than the sidebar holds: cut at its end, whole on hover.
+      name: 'dotfiles-and-machine-setup-scripts',
       host: 'alex-mbp',
       hostKind: 'device',
-      path: '/Users/alex/dotfiles'
+      path: '/Users/alex/dotfiles-and-machine-setup-scripts'
     },
   ]
 }
@@ -168,7 +169,7 @@ export function demoConversations(): SidebarConversation[] {
       pinned: false,
       unread: false
     },
-    // dotfiles
+    // dotfiles-and-machine-setup-scripts
     {
       id: 'c-zsh',
       title: 'zsh prompt shows the worktree branch',

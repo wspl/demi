@@ -453,6 +453,17 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             @manage-devices="productWould('Open Devices Settings')"
           />
         </GallerySpecimen>
+        <GallerySpecimen variant="host menu · a name longer than the button, whole on hover">
+          <HostMenu
+            :primary-host="{ id: 'lab', name: 'lab-workstation-with-a-long-hostname', kind: 'device', online: true }"
+            :attached-hosts="[]"
+            :devices="hostDevices"
+            @switch-primary="productWould(`Move the Conversation to ${deviceName($event)}`)"
+            @attach="productWould(`Attach ${deviceName($event)}`)"
+            @detach="productWould(`Detach ${deviceName($event)}`)"
+            @connect="productWould('Connect New Device')"
+          />
+        </GallerySpecimen>
         <GallerySpecimen variant="host menu · label/value and status">
           <HostMenu
             :primary-host="primaryHost"

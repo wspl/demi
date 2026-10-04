@@ -14,6 +14,7 @@ import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import TextInput from '../ui/TextInput.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import InlineError from '../ui/InlineError.vue'
 import FileBrowser from '../files/FileBrowser.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
@@ -271,9 +272,7 @@ function selectDevice(id: string, close: () => void): void {
                         :size="ICON_PX.in28"
                         class="shrink-0 text-fg-muted"
                       />
-                      <span class="min-w-0 flex-1 truncate">{{
-                        deviceLabel
-                      }}</span>
+                      <TruncatedText class="flex-1" :text="deviceLabel" />
                     </template>
                     <template #content="{ close, triggerWidth }">
                       <Menu :style="{ minWidth: `${triggerWidth}px` }">
