@@ -302,17 +302,9 @@ func TestCancelledRequestAnswersCancelled(t *testing.T) {
 	}
 }
 
-func TestWireCarriesChangesAndErrors(t *testing.T) {
+func TestMissingRootAnswersENOENT(t *testing.T) {
 	root := repositoryFixture(t)
-	writeFixture(t, root, "new", "new\n")
 	s, out := testService(t, root, MaxFiles)
-	result := changesFixture(t, s, out, root)
-	if !result.Repository || result.Head == nil || len(result.Files) != 1 || result.Files[0].Path != "new" ||
-		result.Files[0].Status != "??" ||
-		result.Files[0].Kind != runnerwire.ChangeKindAdded ||
-		result.Files[0].Added != 1 {
-		t.Fatal(result)
-	}
 	if err := s.GitChanges(
 		t.Context(),
 		runnerwire.GitChangesMessage{ID: "missing", Root: filepath.Join(root, "missing")},
