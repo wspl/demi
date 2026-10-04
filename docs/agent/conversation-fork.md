@@ -25,6 +25,8 @@ Creation defaults:
   ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
   and its workspace or device selection.
 - Keep the source's unsent composer draft in the source.
+- Keep the source's [permission](permissions.md#grants) grants and requests
+  in the source: the user decides for the new conversation again.
 - Leave the destination unpinned and unarchived, with a new creation time.
 - Each explicit Fork appends the suffix literally, including when the source
   title already ends in ` (Fork)`. The title's origin is `user`, so it is not

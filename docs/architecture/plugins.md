@@ -35,8 +35,8 @@ conversation:
 
 ```text
 backend start      the composition root registers plugin-skills with the others;
-                   the plugin host reads its manifest: a context source, no
-                   commands
+                   the plugin host reads its manifest: a context source, the
+                   demi skills group and the category Manage skills
 
 web app            POST /api/plugins/skills/calls/set_enabled { source, skill, enabled }
   -> plugin host   a page call: plugin-skills validates it, writes its stored
@@ -77,10 +77,11 @@ user, conversation or time arrives through requests.
 | [Host directories](#host-directories) | Nothing | The plugin sets them through its port when its user's needs change |
 | [Host files](#reading-a-conversations-files) | Nothing | The plugin reads them through its port when it needs them |
 | [Package calls and user streams](#calling-its-command-package) | Each user stream's name, the operation it binds, the schemas of its messages both ways and the constants its two ends share | A call: when the plugin makes it. A stream: when a page opens it |
+| [Permission categories](../agent/permissions.md#categories) | Each category's name, action and description | When a command handler asks for one ([Conversation permissions](../agent/permissions.md)) |
 | [Its page](#the-page) | Its page package; for each scope, user and conversation, the schema of its state, the [topics](#topics) it follows and the operations a read of it calls; each method with its scope, its parameter and result schemas and the operations it calls | When a page reads a state; when a topic fires; when a page calls a method |
 
 A plugin declares only what it uses: `plugin-file` declares its package and
-its commands and nothing else, `plugin-skills` declares no command, and
+its commands and nothing else, `plugin-skills` binds no package, and
 `plugin-changes` declares only its identity and its page.
 
 **Name and description.** Settings show a plugin by its name and its
@@ -110,6 +111,7 @@ demi                     the plugin host's root
   file                   plugin-file (native: demi.file)
   browser                plugin-browser (native: demi.browser)
   expose                 plugin-expose (rpc)
+  skills                 plugin-skills (rpc)
   host                   the product's group (backend-host-access)
   agent, shell           the agent runtime's groups, grafted per node
 ```
@@ -387,6 +389,7 @@ conversation's operations need a request about a conversation: a `command`, a
 | Exposes | List, create, renew, remove | Every request | The user's [exposes](../execution/expose.md#the-expose-record), the backend's public relays to a device's address |
 | Pages | Changed | Every request | Mark one scope of the plugin's page state, the user's or one conversation's, as changed, so the pages that show it read it again ([The page](#the-page)) |
 | Panel | List, create, update, remove | A conversation's | The conversation's work panel tabs of the plugin's own [panel kinds](#panel-kinds); a change answers the panel's revision |
+| Permissions | Ask | `command` | Ask for a category the call's leaf names, with the operation's details; the reply is `allowed` at once when the conversation has the grant, otherwise once the user decides, or a refusal with the message the command prints ([The wait](../agent/permissions.md#the-wait)) |
 | Request | Cancellation | Every request | Whether, and when, the request was cancelled |
 
 A product service a plugin may use is one service of the port: its
@@ -467,9 +470,11 @@ The plugin host, in `backend-plugins`, runs every plugin of the backend:
   its directories on a Host and its page route; `execution` is the product's
   context source and is taken. Its manifest also carries a name and a
   one-sentence description, which settings show.
-- **Startup.** The host reads every manifest and checks the commands and the
-  streams ([Commands](#commands)). A manifest that breaks a rule stops the
-  backend; its error names the plugin.
+- **Startup.** The host reads every manifest and checks the commands, the
+  streams and the permission categories: a category's name is unique within
+  its plugin, and a leaf names only a category of its own plugin
+  ([Commands](#commands), [Categories](../agent/permissions.md#categories)). A
+  manifest that breaks a rule stops the backend; its error names the plugin.
 - **Shards.** When a user's shard starts, the host asks each factory for that
   user's instance, and wraps each `rpc` leaf of the plugin's commands in a
   handler that forwards the call to the instance. While the user has a
@@ -485,7 +490,9 @@ The plugin host, in `backend-plugins`, runs every plugin of the backend:
   user's conversations, the host marks the state scope of each plugin whose
   manifest follows it as changed.
 - **The port.** The host answers every port operation against the user's
-  storage, blobs, channels and exposes. The conversation's host access
+  storage, blobs, channels and exposes, and keeps the conversations'
+  [permission requests and grants](../agent/permissions.md), whose waits it
+  answers. The conversation's host access
   installs the directories the host records, reads the Host files a plugin
   asks for in its form that never wakes a Host, and runs its package calls.
 
@@ -561,7 +568,7 @@ not use.
 | `file` | Demi File Commands | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
 | `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
 | `expose` | Expose | `plugin-expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
-| `skills` | Skills | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
+| `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
 | `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
 | `file-browser` | File Browser | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
 
@@ -569,8 +576,8 @@ Besides the plugins, the components that carry them are:
 
 | Component | Holds |
 | --- | --- |
-| `plugin-interface` | The contract: factory and instance traits, manifest, requests and replies, the port, the JSON loopback transport for tests |
-| `backend-plugins` | The plugin host: registration and its checks, the command set and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
+| `plugin-interface` | The contract: factory and instance traits, manifest with its permission categories, requests and replies, the port, the JSON loopback transport for tests |
+| `backend-plugins` | The plugin host: registration and its checks, the command set and context sources for the agent server, instances, the port's services with the conversations' permission requests and grants, topics, page state of both scopes with the conversation revisions, and page calls |
 | `backend-user-shard`, `backend-host-access`, `backend-expose`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
 | `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns |
 | `plugin-sdk`, `web-ui`, `web`, `web-gallery` | The page API: `definePage`, `usePage`, intents, the conversation files service and the plugin kit ([Plugin pages](plugin-pages.md)); the shell and the primitives; the page context over HTTP, the sync channel and the user stream route, and the generated registry; the page context over each specimen's fixtures |
