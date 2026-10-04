@@ -1,8 +1,8 @@
 # The lint behind AGENTS.md § Go Readability and Naming. Every number is the
 # linter's documented default (lll 120, funlen 60/40, gocognit 30, nestif 5,
 # revive argument-limit 8 and max-control-nesting 5); none is this project's
-# own. scripts/gomig/check.sh runs it for every operating system's files, and
-# scripts/gomig/fmt.sh applies its formatters.
+# own. scripts/check.sh runs it for every operating system's files, and
+# scripts/fmt.sh applies its formatters.
 version: "2"
 linters:
   default: none

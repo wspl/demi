@@ -5,16 +5,21 @@ set -euo pipefail
 export CGO_ENABLED=0
 
 step='initialization'
-trap 'echo "gomig check failed: ${step}" >&2' ERR
+trap 'echo "check failed: ${step}" >&2' ERR
 
 if (($# == 0)); then
   echo 'usage: scripts/check.sh <package patterns>' >&2
   exit 2
 fi
 
+step='modules'
+echo "check: ${step}"
+# go.mod and go.sum list exactly what the code imports.
+go mod tidy -diff
+
 for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
   step="build ${target}"
-  echo "gomig: ${step}"
+  echo "check: ${step}"
   # Expand patterns per target: a Linux-only package is absent on other targets.
   selected=$(GOOS="${target%/*}" GOARCH="${target#*/}" go list "$@")
   packages=()
@@ -29,7 +34,7 @@ for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wi
 done
 
 step='generated'
-echo "gomig: ${step}"
+echo "check: ${step}"
 go run ./tools/contractgen -check "$@"
 
 step='file names'
@@ -44,7 +49,7 @@ step='no rust'
 # No Rust source or build manifests may remain in the repository.
 rust=$(git ls-files '*.rs' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml')
 if [[ -n "${rust}" ]]; then
-  echo "rust in the Go tree: ${rust}" >&2
+  echo "Rust files in the repository: ${rust}" >&2
   false
 fi
 # Vet and lint every operating system's files, not only the host's: a
@@ -82,4 +87,4 @@ for pattern in "$@"; do
     break
   fi
 done
-echo 'gomig: PASS'
+echo 'check: PASS'
