@@ -138,6 +138,17 @@ function decidePermission(
     : 'Tell the Agent the Request Was Denied')
   return afterDecision(requests, id, decision)
 }
+/**
+ * The dock's specimens: what stacks over the composer, one step apart, with
+ * and without the card and the chips. A decision drops the card as the
+ * product's would, and Show Again brings it back; a chip says what the
+ * product would open.
+ */
+const dockSpecimens = reactive([
+  { variant: 'card, no chips', asks: true, requests: [rootRequest()], chips: false },
+  { variant: 'card over chips', asks: true, requests: [rootRequest()], chips: true },
+  { variant: 'chips alone', asks: false, requests: [] as PermissionRequestView[], chips: true },
+])
 // The product session opens with the root's request waiting, above its chips.
 const sessionRequests = ref<PermissionRequestView[]>([rootRequest()])
 const submissionError = ref<string | null>('Connection closed before confirmation')
@@ -979,6 +990,50 @@ onBeforeUnmount(() => {
               <div v-else class="flex items-center gap-3 text-chrome text-fg-subtle">
                 Every request is decided.
                 <Button size="sm" @click="specimen.requests = specimen.fixture()">Show Again</Button>
+              </div>
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="SessionDock"
+        note="What waits over the composer stacks one 8px step apart: the permission card, then the chips, then the composer. A part that is not there takes no room, so without chips the card sits one step above the composer, as the chips do without a card. The scroll-to-bottom control floats over the transcript at the dock's top right and takes no room either."
+      >
+        <div class="specimen-stack">
+          <GallerySpecimen
+            v-for="specimen in dockSpecimens"
+            :key="specimen.variant"
+            :variant="specimen.variant"
+            wide
+          >
+            <div class="flex w-full max-w-[44rem] flex-col gap-3">
+              <div
+                v-if="specimen.asks && !specimen.requests.length"
+                class="flex items-center gap-3 text-chrome text-fg-subtle"
+              >
+                Every request is decided.
+                <Button size="sm" @click="specimen.requests = [rootRequest()]">Show Again</Button>
+              </div>
+              <div class="rounded-lg bg-surface p-3">
+                <SessionDock>
+                  <template v-if="specimen.requests.length" #above>
+                    <PermissionCard
+                      :requests="specimen.requests"
+                      @decide="(id, decision) => (specimen.requests = decidePermission(specimen.requests, id, decision))"
+                    />
+                  </template>
+                  <template #chips>
+                    <template v-if="specimen.chips">
+                      <SessionDockChip @click="productWould('Resume the Turn')">
+                        <Play :size="ICON_PX.in28" />
+                        Resume
+                      </SessionDockChip>
+                      <AgentsChip :agents="agents" @open="productWould('Open the Agents Window')" />
+                    </template>
+                  </template>
+                  <GalleryComposer placeholder="Ask Demi…" />
+                </SessionDock>
               </div>
             </div>
           </GallerySpecimen>
