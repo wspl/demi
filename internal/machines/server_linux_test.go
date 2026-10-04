@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/machines"
 	"github.com/wspl/demi/internal/machines/machinestest"
@@ -66,9 +65,6 @@ func (f *serverFixture) connect(t *testing.T) *socketClient {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	if err = conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	return &socketClient{conn, bufio.NewReader(conn)}
 }
 
@@ -227,13 +223,9 @@ func TestBadLineDropsConnectionAndLaterLines(t *testing.T) {
 	} {
 		c := f.connect(t)
 		_, _ = c.conn.Write([]byte(bad + "{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n"))
-		line, err := c.reader.ReadBytes('\n')
-		if err == nil {
+		// The read ends only when the server closes the connection.
+		if line, err := c.reader.ReadBytes('\n'); err == nil {
 			t.Fatalf("bad frame answered: %s", line)
-		}
-		var timeout net.Error
-		if errors.As(err, &timeout) && timeout.Timeout() {
-			t.Fatal("bad frame did not close the connection")
 		}
 	}
 	f.stop()

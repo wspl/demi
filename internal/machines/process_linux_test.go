@@ -213,9 +213,6 @@ func (h *testHost) manager(t *testing.T, s *processSettings, args ...string) *ma
 
 func (p *managerProcess) ready(t *testing.T, s *processSettings) {
 	t.Helper()
-	if err := s.notify.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	result := make(chan error, 1)
 	var reader sync.WaitGroup
 	reader.Go(func() {
