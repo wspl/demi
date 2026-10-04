@@ -10,10 +10,10 @@ import type { SentenceText } from '../ui/ui-text'
  * Label and explanation on the left, the control on the right. Icons align with
  * the title. Controls center, or align with the title when detail is present.
  * In a narrow card the control drops under the text. There a field (an element
- * marked `data-field`: a text input, a text area, a slider) stretches across the
- * row; every other control (a switch, a button, a segmented control, a menu
- * button) keeps its size and its right alignment. The same container width
- * decides both, so a control fills exactly when it has dropped.
+ * marked `data-field`: a text input, a text area, a slider, a button-style
+ * dropdown) stretches across the row; every other control (a switch, a button,
+ * a segmented control) keeps its size and its right alignment. The same
+ * container width decides both, so a control fills exactly when it has dropped.
  * An inset row belongs to the row above it (an agent's models). A compact row is
  * for lists of like items (models, accounts); an interactive one opens on click
  * without a hover wash. `muted` fades the label side only, so actions stay at
