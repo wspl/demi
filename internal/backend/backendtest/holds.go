@@ -20,15 +20,11 @@ type CommitHold = databasetest.CommitHold
 // StepHold holds a flow at one step and counts arrivals, including canceled ones.
 type StepHold = usershardtest.StepHold
 
-// HelloStep identifies the token lookup or shard bind in a runner's hello.
+// HelloStep identifies a step in a runner's hello where it can be held.
 type HelloStep = usershard.HelloStep
 
-const (
-	// HelloTokenLookup holds the edge's lookup while it watches socket closure.
-	HelloTokenLookup = usershard.HelloTokenLookup
-	// HelloBind holds the shard's binding of an accepted socket.
-	HelloBind = usershard.HelloBind
-)
+// HelloBind holds the shard's binding of an accepted socket.
+const HelloBind = usershard.HelloBind
 
 // SyncStep identifies where a page's synchronization flow can be held.
 type SyncStep = usershard.SyncStep
