@@ -11,6 +11,7 @@ import {
   type MessageEditState,
 } from '@demicodes/web-ui/agent/message-editing'
 import type { Block, UserContentBlock } from '@demicodes/protocol'
+import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 import { demoImageUrl, demoModel } from '../fixtures/blocks'
 import { galleryUploads } from '../fixtures/upload-sweep'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
@@ -22,7 +23,16 @@ const session = reactive<ChatSessionState>({
 })
 const revision = ref(0)
 const messageEdit = ref<MessageEditState | null>(null)
-const outcome = ref<'accept' | 'hold' | 'reject' | 'disconnect'>('accept')
+type Outcome = 'accept' | 'hold' | 'reject' | 'disconnect'
+
+const outcome = ref<Outcome>('accept')
+/** The outcome buttons, in their order: how the stand-in backend answers the next save. */
+const outcomeLabels: Record<Outcome, TitleText> = {
+  accept: 'Accept',
+  hold: 'Hold Save',
+  reject: 'Conflict',
+  disconnect: 'Lose Confirmation',
+}
 const accepted = new Set<string>()
 const completion = shallowRef<Deferred<void> | null>(null)
 /** The stand-in for the backend's uploads, which an edit sends its added files through. */
@@ -118,13 +128,13 @@ onBeforeUnmount(() => {
 <template>
   <div class="flex flex-col gap-3">
     <div class="flex flex-wrap items-center gap-2">
-      <Button v-for="mode in (['accept', 'hold', 'reject', 'disconnect'] as const)"
+      <Button v-for="(label, mode) in outcomeLabels"
         :key="mode" size="sm" :variant="outcome === mode ? 'primary' : 'ghost'"
         @click="outcome = mode">
-        {{ { accept: 'Accept', hold: 'Hold save', reject: 'Conflict', disconnect: 'Lose confirmation' }[mode] }}
+        {{ label }}
       </Button>
-      <Button v-if="completion" size="sm" @click="completion.resolve()">Complete save</Button>
-      <Button size="sm" variant="ghost" @click="reset">Reset example</Button>
+      <Button v-if="completion" size="sm" @click="completion.resolve()">Complete Save</Button>
+      <Button size="sm" variant="ghost" @click="reset">Reset Example</Button>
     </div>
     <div class="flex h-[32rem] overflow-hidden rounded-xl border border-line">
       <ChatSession

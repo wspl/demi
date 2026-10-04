@@ -69,7 +69,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
 <template>
   <div class="space-y-8">
     <GallerySection
-      title="Sign in"
+      title="Sign In"
       note="A rejected sign-in keeps both fields and puts the line under them."
     >
       <div class="h-[28rem] overflow-auto rounded-xl border border-line bg-surface">
@@ -77,7 +77,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
           email="preview@example.test"
           password="preview-only"
           :phase="login"
-          @submit="(address) => productWould(`Sign in as ${address}`)"
+          @submit="(address) => productWould(`Sign In as ${address}`)"
         />
       </div>
     </GallerySection>
@@ -94,7 +94,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               :overlay-store="appOverlayStore"
               :phase="email"
               @close="close"
-              @submit="(address) => productWould(`Send a verification code to ${address}`)"
+              @submit="(address) => productWould(`Send a Verification Code to ${address}`)"
             />
           </GalleryDialogFrame>
         </GallerySpecimen>
@@ -106,8 +106,8 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               :overlay-store="appOverlayStore"
               :phase="verification"
               @close="close"
-              @verify="(code) => productWould(`Confirm the new address with code ${code}`)"
-              @resend="productWould('Send a new verification code')"
+              @verify="(code) => productWould(`Confirm the New Address with Code ${code}`)"
+              @resend="productWould('Send a New Verification Code')"
             />
           </GalleryDialogFrame>
         </GallerySpecimen>
@@ -119,7 +119,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               :overlay-store="appOverlayStore"
               :phase="password"
               @close="close"
-              @submit="productWould('Change the password')"
+              @submit="productWould('Change the Password')"
             />
           </GalleryDialogFrame>
         </GallerySpecimen>
@@ -131,9 +131,9 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               vendor-name="Model provider"
               :phase="providerLogin"
               @close="close"
-              @retry="productWould('Start the Model provider sign-in again')"
-              @open="(url) => productWould(`Open ${url} in a new browser tab`)"
-              @submit-token="productWould('Sign in to Model provider with the token')"
+              @retry="productWould('Start the Model Provider Sign-in Again')"
+              @open="(url) => productWould(`Open ${url} in a New Browser Tab`)"
+              @submit-token="productWould('Sign In to Model Provider with the Token')"
             />
           </GalleryDialogFrame>
         </GallerySpecimen>
@@ -147,7 +147,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               @close="close"
               @next="pairingShown = { kind: 'code' }"
               @back="pairingShown = { kind: 'setup' }"
-              @submit="(code) => productWould(`Pair the device with code ${code}`)"
+              @submit="(code) => productWould(`Pair the Device with Code ${code}`)"
             />
           </GalleryDialogFrame>
         </GallerySpecimen>
@@ -164,9 +164,9 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               message="Could not create the project. The selected device is offline."
               @choose="failedProjectHost = $event"
               @close="close"
-              @create="(draft) => productWould(draft.kind === 'cloud' ? `Create the Cloud project ${draft.name}` : `Create the project at ${draft.path}`)"
+              @create="(draft) => productWould(draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name}` : `Create the Project at ${draft.path}`)"
               @connect-device="productWould('Connect New Device')"
-              @retry="productWould('Load the devices again')"
+              @retry="productWould('Load the Devices Again')"
             />
           </GalleryDialogFrame>
         </GallerySpecimen>

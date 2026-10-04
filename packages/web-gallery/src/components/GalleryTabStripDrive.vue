@@ -192,7 +192,7 @@ const count = computed(() => ids().length)
         <Button size="sm" :disabled="playing" @click="closeOthers">Others</Button>
       </span>
       <span class="flex flex-wrap items-center gap-1">
-        <Button size="sm" :disabled="playing" @click="play">Play all</Button>
+        <Button size="sm" :disabled="playing" @click="play">Play All</Button>
         <Button size="sm" :disabled="playing" @click="reset">Reset</Button>
         <span v-if="step" class="ml-1 font-mono text-[11px] text-fg-faint">{{ step }}</span>
       </span>

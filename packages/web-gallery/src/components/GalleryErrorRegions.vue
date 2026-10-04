@@ -34,13 +34,13 @@ const usageLimitPayload = JSON.stringify({
 <template>
   <div class="space-y-8">
     <GallerySection
-      title="ErrorNotice · a failure in the conversation"
+      title="ErrorNotice · a Failure in the Conversation"
       note="One tinted bar, full width where it sits. The first line is what the source said, never Demi's reading of it: a plain sentence is the whole record; a message that wraps a vendor's JSON body leads with the sentence inside it and keeps the full text below; only a message with no sentence to lead with gets the neutral line. Then, when the vendor names it, the moment it works again; the status, Demi's own code and the request ids stay in the copied report. The provider response folds open under a chevron, whole, exactly as it arrived. Copy takes the whole report. A turn's failure carries no button: Resume sits in the dock above the composer. With one line the controls sit centred; with facts they hold the first line."
     >
       <GallerySpecimen wide variant="A plain sentence is the whole record · when it lifts leads the facts · the vendor payload behind a disclosure">
         <ErrorNotice
           label="The usage limit has been reached"
-          :facts="['resets 9/22/2026, 3:37:39 PM']"
+          :facts="['Resets 9/22/2026, 3:37:39 PM']"
           :raw="usageLimitPayload"
           copy-text="The usage limit has been reached"
         />
@@ -61,7 +61,7 @@ const usageLimitPayload = JSON.stringify({
       </GallerySpecimen>
     </GallerySection>
     <GallerySection
-      title="RegionStatus · content cannot be shown"
+      title="RegionStatus · Content Cannot Be Shown"
       note="One pane for every region: the session, a settings list, the sidebar, a dialog body. A glyph for the kind, one sentence, the reason, and Retry, which returns the region to loading."
     >
       <div class="grid gap-6 lg:grid-cols-3">
@@ -88,7 +88,7 @@ const usageLimitPayload = JSON.stringify({
       </div>
     </GallerySection>
     <GallerySection
-      title="InlineError · a form rejected its own input"
+      title="InlineError · a Form Rejected Its Own Input"
       note="A line under the fields, in their width. The form's submit is the retry, so the line carries none."
     >
       <GallerySpecimen wide variant="Under a field">
@@ -96,7 +96,7 @@ const usageLimitPayload = JSON.stringify({
       </GallerySpecimen>
     </GallerySection>
     <GallerySection
-      title="Composer notices · a state, not a failure"
+      title="Composer Notices · a State, Not a Failure"
       note="SessionNoticeBar replaces the composer input for a state the reader chose or can leave. The model catalog failing to load is the one composer failure, told beside the model chip."
     >
       <div class="grid gap-6 lg:grid-cols-2">
@@ -115,12 +115,12 @@ const usageLimitPayload = JSON.stringify({
       </div>
     </GallerySection>
     <GallerySection
-      title="Toast · the request itself failed"
+      title="Toast · the Request Itself Failed"
       note="A save that did not reach the server, a fork or edit the server refused, a revoke, a background refresh: the reader cannot fix these on the page, so the page shows nothing inline. Title, and a message only when it adds a fact. Success is silent."
     >
       <GallerySpecimen wide variant="Danger">
         <Toast
-          title="Could not save the provider"
+          title="Could Not Save the Provider"
           message="HTTP 503: the endpoint is unavailable."
           tone="danger"
         />

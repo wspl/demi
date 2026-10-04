@@ -72,7 +72,7 @@ export function useGalleryWork(
     }
   }
   const tabs = new PanelTabs(backend, (error) => {
-    productWould(`Report that the work panel refused a change: ${error instanceof Error ? error.message : String(error)}`)
+    productWould(`Report the Refused Panel Change: ${error instanceof Error ? error.message : String(error)}`)
   })
   backend.told = ({ change, tab }) => {
     if (tab.kind !== 'browser') {

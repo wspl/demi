@@ -189,7 +189,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       ),
       places: [
         {
-          label: 'Quick access',
+          label: 'Quick Access',
           places: [
             { path: '/Users/zan', label: 'Home' },
             { path: '/Users/zan/Desktop' },
@@ -219,7 +219,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       ),
       places: [
         {
-          label: 'Quick access',
+          label: 'Quick Access',
           places: [{ path: '/home/build', label: 'Home' }]
         },
         { label: 'Recent', places: [{ path: '/srv/assetsfactory' }] },
@@ -241,7 +241,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       ),
       places: [
         {
-          label: 'Quick access',
+          label: 'Quick Access',
           places: [{ path: '/home/zan', label: 'Home' }]
         }
       ],
@@ -265,7 +265,7 @@ export function createGalleryRemoteFileHosts(latencyMs = 250): GalleryFileHost[]
         root: buildBoxTree(),
         latencyMs,
       }),
-      places: [{ label: 'Quick access', places: [{ path: '/home/build', label: 'Home' }] }],
+      places: [{ label: 'Quick Access', places: [{ path: '/home/build', label: 'Home' }] }],
     },
   ]
 }

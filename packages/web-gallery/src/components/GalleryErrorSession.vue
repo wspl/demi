@@ -4,6 +4,7 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import type { Block } from '@demicodes/protocol'
+import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 import { generationErrorBlock, shortTranscriptBlocks } from '../fixtures/blocks'
 import {
   compactedAfterFailedTurnTranscript,
@@ -29,8 +30,8 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * the Connecting tail row is all the reader sees.
  */
 interface SessionCase {
-  variant: string
-  note: string
+  variant: SentenceText
+  note: SentenceText
   session: ChatSessionState
   composer: 'default' | 'none' | 'noModels' | 'archived'
 }
@@ -75,7 +76,7 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Connection lost · reconnecting on its own',
-    note: 'Not a failure. The transcript, the draft and the composer stay; the Connecting tail row is the only signal while the runtime retries with backoff. Nothing to click.',
+    note: 'Not a failure. The transcript, the draft and the composer stay; the “Connecting” tail row is the only signal while the runtime retries with backoff. Nothing to click.',
     session: state('reconnecting', {
       load: 'reconnecting',
       blocks: shortTranscriptBlocks(),
@@ -145,7 +146,7 @@ const cases: SessionCase[] = [
 <template>
   <div class="space-y-8">
     <GallerySection
-      title="Session failures"
+      title="Session Failures"
       note="The product's ChatSession over fixed states. A failure is named exactly once, in flow: in the status pane when there is nothing to keep, at the transcript's tail when history stays on screen, or in the transcript record when the turn itself failed."
     >
       <div class="grid gap-6 xl:grid-cols-2">
@@ -164,10 +165,10 @@ const cases: SessionCase[] = [
                 :conversation="item.session"
                 has-provider
                 :fork="forkFromAnswer"
-                @retry="productWould('Resume the turn')"
-                @retry-load="productWould('Load the conversation again')"
+                @retry="productWould('Resume the Turn')"
+                @retry-load="productWould('Load the Conversation Again')"
                 @rename="item.session.title = $event"
-                @retitle="productWould('Detect a title for the conversation')"
+                @retitle="productWould('Detect a Title for the Conversation')"
                 @save-scroll="(_id, value) => (item.session.scroll = value)"
               >
                 <template #workspace
@@ -191,7 +192,7 @@ const cases: SessionCase[] = [
       </div>
     </GallerySection>
     <GallerySection
-      title="Conversation route"
+      title="Conversation Route"
       note="The page kinds ChatPage shows instead of a session, over the same RegionStatus pane."
     >
       <div class="grid gap-6 xl:grid-cols-2">

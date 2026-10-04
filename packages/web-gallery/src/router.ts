@@ -24,10 +24,10 @@ export const NAV: {
   label: TitleText
 }[] = [
   { path: '/overview', label: 'Overview' },
-  { path: '/signin', label: 'Sign in' },
+  { path: '/signin', label: 'Sign In' },
   { path: '/surfaces', label: 'Surfaces' },
   { path: '/primitives', label: 'Primitives' },
-  { path: '/control-layout', label: 'Control layout' },
+  { path: '/control-layout', label: 'Control Layout' },
   { path: '/writing', label: 'Writing' },
   { path: '/errors', label: 'Errors' },
   { path: '/motion', label: 'Motion' },

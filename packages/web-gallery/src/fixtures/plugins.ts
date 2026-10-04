@@ -89,14 +89,14 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
       return shell.files
     },
     intents: shell.intents ?? {
-      open: (_conversation, request) => productWould(`Open the ${request.intent} in the work panel`),
+      open: (_conversation, request) => productWould(`Open the ${request.intent} in the Work Panel`),
       canOpen: () => true,
     },
     panel: shell.panel ?? {
       tabs: () => [],
-      add: (_conversation, kind) => productWould(`Open a ${kind} tab in the work panel`),
+      add: (_conversation, kind) => productWould(`Open a ${kind} Tab in the Work Panel`),
     },
-    openSettings: (section) => productWould(`Open ${section} settings`),
+    openSettings: (section) => productWould(`Open ${section} Settings`),
     overlays: appOverlayStore,
   }
 }
