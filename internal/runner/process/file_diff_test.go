@@ -1,4 +1,4 @@
-package process
+package process_test
 
 import (
 	"errors"
@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wspl/demi/internal/runner/process"
 )
 
 // The git comparison verifies the intentionally changed algorithm at the
@@ -53,7 +55,7 @@ func TestLineCountsGitNumstat(t *testing.T) {
 			if gitAdded != tc.added || gitRemoved != tc.removed {
 				t.Fatalf("fixture expected %d/%d, git says %d/%d", tc.added, tc.removed, gitAdded, gitRemoved)
 			}
-			added, removed := LineCounts([]byte(tc.before), []byte(tc.after))
+			added, removed := process.LineCounts([]byte(tc.before), []byte(tc.after))
 			if added != gitAdded || removed != gitRemoved {
 				t.Fatalf("counts %d/%d, git %d/%d", added, removed, gitAdded, gitRemoved)
 			}
@@ -72,7 +74,7 @@ func TestLineCountsAbsentBinaryAndManyLines(t *testing.T) {
 		{nil, []byte{0}, 0, 0},
 		{nil, nil, 0, 0},
 	} {
-		a, r := LineCounts(tc.before, tc.after)
+		a, r := process.LineCounts(tc.before, tc.after)
 		if a != tc.added || r != tc.removed {
 			t.Fatalf("%x -> %x: %d/%d", tc.before, tc.after, a, r)
 		}
@@ -82,7 +84,7 @@ func TestLineCountsAbsentBinaryAndManyLines(t *testing.T) {
 	for i := 0; i < 66000; i++ {
 		fmt.Fprintf(&before, "line %d\n", i)
 	}
-	a, r := LineCounts([]byte(before.String()), []byte(before.String()+"new\n"))
+	a, r := process.LineCounts([]byte(before.String()), []byte(before.String()+"new\n"))
 	if a != 1 || r != 0 {
 		t.Fatalf("large line alphabet: %d/%d", a, r)
 	}

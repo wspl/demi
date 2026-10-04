@@ -1,15 +1,17 @@
-package process
+package process_test
 
 import (
 	"bytes"
 	"testing"
+
+	"github.com/wspl/demi/internal/runner/process"
 
 	"github.com/wspl/demi/internal/contract"
 )
 
 func TestRawCommandBoundary(t *testing.T) {
 	valid := []byte(`{"context":"0123456789abcdefABCDEF0123456789","root":"root","argv":["<>&"],"live":false}`)
-	request, err := DecodeRawCommand(valid)
+	request, err := process.DecodeRawCommand(valid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +27,7 @@ func TestRawCommandBoundary(t *testing.T) {
 		`{"context":"0123456789abcdefABCDEF0123456789","root":"root","argv":[],"live":false,"extra":1}`,
 		`{"context":"0123456789abcdefABCDEF0123456789","root":"root","argv":[],"live":false,"live":true}`,
 	} {
-		if _, err := DecodeRawCommand([]byte(input)); err == nil {
+		if _, err := process.DecodeRawCommand([]byte(input)); err == nil {
 			t.Fatalf("accepted %s", input)
 		}
 	}

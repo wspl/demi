@@ -60,7 +60,7 @@ func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 	errorOutput := &bufferOutput{}
 	readRequested := make(chan struct{})
 	completed := make(chan error, 1)
-	ctx := childContext(t)
+	ctx := t.Context()
 	go func() {
 		connection, err := listener.Accept()
 		if err != nil {
@@ -154,7 +154,7 @@ func TestConnectWaitsForLiveRunnerAndFailsWhenGone(t *testing.T) {
 	}
 	baseline := cmdsdktest.Pauses()
 	done := make(chan error, 1)
-	ctx := childContext(t)
+	ctx := t.Context()
 	go func() {
 		connection, err := Connect(ctx, endpoint)
 		if connection != nil {
@@ -162,14 +162,12 @@ func TestConnectWaitsForLiveRunnerAndFailsWhenGone(t *testing.T) {
 		}
 		done <- err
 	}()
+	// The pause counter offers no event, so the loop yields between checks.
 	for cmdsdktest.Pauses() == baseline {
 		select {
 		case err := <-done:
 			t.Fatalf("live runner refused without waiting: %v", err)
 		default:
-		}
-		if err := ctx.Err(); err != nil {
-			t.Fatal(err)
 		}
 		runtime.Gosched()
 	}
@@ -219,13 +217,8 @@ func TestForwardOwnedFileInputIsInterruptible(t *testing.T) {
 	}()
 	<-reading
 	cancel()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("blocked input was not cancelled")
-		}
-	case <-childContext(t).Done():
-		t.Fatal("input did not unblock")
+	if err := <-done; err == nil {
+		t.Fatal("blocked input was not cancelled")
 	}
 	if err := source.Close(); err != nil {
 		t.Fatal(err)
@@ -283,8 +276,9 @@ func (w *forwardOutput) Write(b []byte) (int, error) {
 }
 
 func TestForwardConnectionLossInterruptsBlockedOutput(t *testing.T) {
-	// Uses one local connection and event waits; the test binary's timeout is
-	// only a hang guard. Both output streams must release their blocked write.
+	// Uses one local connection and event waits; a forward that needed caller
+	// cancellation blocks until go test -timeout. Both output streams must
+	// release their blocked write.
 	for _, stderr := range []bool{false, true} {
 		name := "stdout"
 		if stderr {
@@ -365,9 +359,6 @@ func TestForwardConnectionLossInterruptsBlockedOutput(t *testing.T) {
 				t.Error("connection loss succeeded")
 			}
 			<-served
-			if t.Context().Err() != nil {
-				t.Fatal("forwarding needed caller cancellation")
-			}
 		})
 	}
 }

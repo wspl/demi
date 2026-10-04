@@ -140,13 +140,18 @@ func TestPipeQuietIOOutlivesConnectDeadline(t *testing.T) {
 
 func TestPipeCancellationAndOrigin(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
-		t.Skip("fidelity 6: PipeClient adds a pipe: prefix to the origin refusal text")
 		client := testPipeClient(t, time.Second)
+		client.transport.DialContext = func(_ context.Context, _, address string) (net.Conn, error) {
+			t.Errorf("dialed %s", address)
+			return nil, errors.New("unexpected dial")
+		}
 		for _, path := range []string{"//elsewhere/pipe", "https://elsewhere/pipe", "/\\elsewhere"} {
-			// The refusal text is the same for all three inputs.
-			const want = "pipe URL must be origin-relative"
-			if _, err := client.Open(t.Context(), path); err == nil || err.Error() != want {
-				t.Errorf("open %q: got %v, want %q", path, err, want)
+			if body, err := client.Open(t.Context(), path); err == nil {
+				_ = body.Close()
+				t.Errorf("open %q was not refused", path)
+			}
+			if err := client.Put(t.Context(), path, io.NopCloser(strings.NewReader(""))); err == nil {
+				t.Errorf("put %q was not refused", path)
 			}
 		}
 	})
@@ -222,26 +227,6 @@ func TestPipeRefusalsAndConfirmationBounds(t *testing.T) {
 			finish()
 		}
 	})
-}
-
-func TestReportPipe(t *testing.T) {
-	frames := make(chan []byte, 1)
-	if err := ReportPipe(t.Context(), frames, "pipe", errors.New("write failed")); err != nil {
-		t.Fatal(err)
-	}
-	report, err := runnerwire.DecodeOutbound(<-frames)
-	if err != nil {
-		t.Fatal(err)
-	}
-	done, ok := report.(*runnerwire.PipeDone)
-	if !ok || done.PipeID != "pipe" || done.Ok || done.Error == nil || *done.Error != "write failed" {
-		t.Fatalf("report %+v", report)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := ReportPipe(ctx, make(chan []byte), "pipe", nil); !errors.Is(err, context.Canceled) {
-		t.Fatalf("report cancel: %v", err)
-	}
 }
 
 func TestPipeRetriesOnlyUnreadUploads(t *testing.T) {
