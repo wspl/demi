@@ -515,27 +515,26 @@ func TestConversationNullablePatch(t *testing.T) {
 	}
 }
 
-func TestWorkPanelBounds(t *testing.T) {
+// Panel request validation protects the HTTP boundary; the backend scenario
+// covers mutation bounds. No IO, budget below one second.
+func TestPanelRequestsValidateIDsAndObjectData(t *testing.T) {
 	for _, body := range []string{
-		`{"selection":null,"tabs":[]}`,
-		`{"selection":"change","tabs":[{"id":"1","kind":"custom","data":null}]}`,
+		`{"id":"a","kind":"page","data":{}}`,
+		`{"id":"a","kind":"page","data":{},"index":null}`,
+		`{"id":"a","kind":"page","data":{"nested":[null,1]},"index":64}`,
 	} {
-		if _, err := webapi.DecodeWorkPanel([]byte(body)); err != nil {
-			t.Errorf("%s: %v", body, err)
+		if _, err := webapi.DecodeCreatePanelTab([]byte(body)); err != nil {
+			t.Errorf("got %v; want valid %s", err, body)
 		}
 	}
 	for _, body := range []string{
-		`{"selection":"","tabs":[]}`,
-		`{"tabs":[]}`,
-		`{"selection":null,"tabs":[],"extra":1}`,
-		`{"selection":null,"tabs":[{"id":"","kind":"custom","data":null}]}`,
+		`{"id":"","kind":"page","data":{}}`,
+		`{"id":"a","kind":"page","data":null}`,
+		`{"id":"a","kind":"page","data":[]}`,
+		`{"id":"a","kind":"page","data":{},"index":65}`,
 	} {
-		if _, err := webapi.DecodeWorkPanel([]byte(body)); err == nil {
-			t.Errorf("accepted %s", body)
+		if _, err := webapi.DecodeCreatePanelTab([]byte(body)); err == nil {
+			t.Errorf("got valid; want refusal for %s", body)
 		}
-	}
-	tabs := strings.TrimSuffix(strings.Repeat(`{"id":"1","kind":"custom","data":null},`, 65), ",")
-	if _, err := webapi.DecodeWorkPanel([]byte(`{"selection":null,"tabs":[` + tabs + `]}`)); err == nil {
-		t.Fatal("accepted 65 tabs")
 	}
 }

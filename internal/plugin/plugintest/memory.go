@@ -51,6 +51,8 @@ type TestDemi struct {
 	Now core.Timestamp
 	// PackageCalls answers native package operations.
 	PackageCalls PackageCalls
+	// Panel answers scripted panel operations.
+	Panel plugin.Transport
 
 	mu          sync.Mutex
 	values      map[string]plugin.StoredValue
@@ -154,6 +156,16 @@ func (d *TestDemi) Called() []PackageCall {
 // Request answers one port message. No mutex is held while a transport or
 // package callback runs.
 func (d *TestDemi) Request(ctx context.Context, message plugin.PortMessage) (plugin.PortAnswer, error) {
+	switch any(message).(type) {
+	case *plugin.PortMessagePanelTabs,
+		*plugin.PortMessageCreatePanelTab,
+		*plugin.PortMessageUpdatePanelTab,
+		*plugin.PortMessageRemovePanelTab:
+		if d.Panel == nil {
+			return nil, fmt.Errorf("no scripted panel")
+		}
+		return d.Panel.Request(ctx, message)
+	}
 	if m, ok := message.(*plugin.PortMessageRPC); ok {
 		if d.RPC == nil {
 			return nil, fmt.Errorf("the test gives an rpc transport")
@@ -234,7 +246,11 @@ func (d *TestDemi) answerLocked(message plugin.PortMessage) (plugin.PortAnswer, 
 		return d.renewExposeLocked(m)
 	case *plugin.PortMessageRemoveExpose:
 		return d.removeExposeLocked(m)
-	case *plugin.PortMessageRPC, *plugin.PortMessagePackageCall:
+	case *plugin.PortMessagePanelTabs,
+		*plugin.PortMessageCreatePanelTab,
+		*plugin.PortMessageUpdatePanelTab,
+		*plugin.PortMessageRemovePanelTab,
+		*plugin.PortMessageRPC, *plugin.PortMessagePackageCall:
 		return nil, fmt.Errorf("callback operation must run outside the memory lock")
 	}
 	return nil, fmt.Errorf("unknown plugin port message")

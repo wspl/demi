@@ -114,7 +114,10 @@ func TestErrorClassification(t *testing.T) {
 	if !errors.Is(converted, conflict) {
 		t.Fatal("refusal identity lost")
 	}
-	for _, r := range []Request{&RequestCommand{}, &RequestContext{}, &RequestPageState{}, &RequestPageCall{}} {
+	for _, r := range []Request{
+		&RequestCommand{}, &RequestContext{}, &RequestPageState{},
+		&RequestPageCall{}, &RequestPanelTab{}, &RequestTopic{},
+	} {
 		_, err := (NoRequests{}).Call(t.Context(), r, Port{})
 		var failed *ErrorFailed
 		if !errors.As(err, &failed) {

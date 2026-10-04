@@ -22,11 +22,11 @@ func equalCommandValues(left, right commandValues) (bool, error) {
 		if !ok {
 			return false, nil
 		}
-		av, err := commandValue(a)
+		av, err := comparableJSONValue(a)
 		if err != nil {
 			return false, err
 		}
-		bv, err := commandValue(b)
+		bv, err := comparableJSONValue(b)
 		if err != nil {
 			return false, err
 		}
@@ -37,9 +37,9 @@ func equalCommandValues(left, right commandValues) (bool, error) {
 	return true, nil
 }
 
-// commandValue interprets validated opaque JSON for comparison, decoding each
+// comparableJSONValue interprets validated stored JSON for comparison, decoding each
 // number as a uint64, a negative int64 or, otherwise, a float64. It writes no JSON.
-func commandValue(raw json.RawMessage) (any, error) {
+func comparableJSONValue(raw json.RawMessage) (any, error) {
 	if _, err := contract.JSON(raw); err != nil {
 		return nil, err
 	}
@@ -49,10 +49,10 @@ func commandValue(raw json.RawMessage) (any, error) {
 	if err := decoder.Decode(&value); err != nil {
 		return nil, err
 	}
-	return commandNumbers(value)
+	return comparableJSONNumbers(value)
 }
 
-func commandNumbers(value any) (any, error) {
+func comparableJSONNumbers(value any) (any, error) {
 	switch v := value.(type) {
 	case json.Number:
 		text := string(v)
@@ -67,7 +67,7 @@ func commandNumbers(value any) (any, error) {
 		return strconv.ParseFloat(text, 64)
 	case []any:
 		for i, item := range v {
-			normalized, err := commandNumbers(item)
+			normalized, err := comparableJSONNumbers(item)
 			if err != nil {
 				return nil, err
 			}
@@ -75,7 +75,7 @@ func commandNumbers(value any) (any, error) {
 		}
 	case map[string]any:
 		for key, item := range v {
-			normalized, err := commandNumbers(item)
+			normalized, err := comparableJSONNumbers(item)
 			if err != nil {
 				return nil, err
 			}

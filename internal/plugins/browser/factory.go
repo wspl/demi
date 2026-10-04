@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"sync"
 
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/plugin"
+	"github.com/wspl/demi/internal/webapi"
 )
 
 // Browser declares the browser commands, page and stream.
@@ -42,6 +44,8 @@ func (b *Browser) Manifest() plugin.Manifest {
 		stream.Constants[i].Value = bytes.Clone(stream.Constants[i].Value)
 	}
 	page := b.page
+	page.PanelKinds = slices.Clone(page.PanelKinds)
+	page.Told = slices.Clone(page.Told)
 	state := *page.Conversation
 	state.Topics = append([]plugin.Topic{}, state.Topics...)
 	state.Operations = append([]declare.NativeOperation{}, state.Operations...)
@@ -64,7 +68,11 @@ func (b *Browser) Manifest() plugin.Manifest {
 // Instance creates one user's browser plugin.
 func (b *Browser) Instance() plugin.Plugin { return &instance{commands: b.commands} }
 
-type instance struct{ commands *plugin.CommandPlugin }
+type instance struct {
+	commands *plugin.CommandPlugin
+	mu       sync.Mutex
+	turns    map[webapi.ConversationID]chan struct{}
+}
 
 // Call dispatches browser commands and page requests.
 func (i *instance) Call(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
@@ -72,7 +80,10 @@ func (i *instance) Call(ctx context.Context, request plugin.Request, port plugin
 	case *plugin.RequestCommand:
 		return i.commands.Command(ctx, request.Invocation, port)
 	case *plugin.RequestPageCall:
-		result, err := call(ctx, request.Method, request.Params, port)
+		if request.Conversation == nil {
+			return nil, plugin.Undeclared("user method")
+		}
+		result, err := i.call(ctx, *request.Conversation, request.Method, request.Params, port)
 		if err != nil {
 			return nil, err
 		}
@@ -86,6 +97,29 @@ func (i *instance) Call(ctx context.Context, request plugin.Request, port plugin
 			return nil, err
 		}
 		return &plugin.ReplyState{State: state}, nil
+	case *plugin.RequestPanelTab:
+		var err error
+		switch request.Change {
+		case plugin.PanelTabCreated:
+			err = i.bind(ctx, request.Conversation, port, request.Tab.ID)
+		case plugin.PanelTabRemoved:
+			err = i.removed(ctx, request.Conversation, port, request.Tab)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := port.Changed(ctx, plugin.ScopeConversation); err != nil {
+			return nil, plugin.RequestError(err)
+		}
+		return &plugin.ReplyDone{}, nil
+	case *plugin.RequestTopic:
+		if request.Topic == plugin.TopicJobs && request.Conversation != nil {
+			if err := i.syncTabs(ctx, *request.Conversation, port); err != nil {
+				return nil, err
+			}
+			return &plugin.ReplyDone{}, nil
+		}
+		return nil, plugin.Undeclared("topic")
 	case *plugin.RequestContext:
 		return nil, plugin.Undeclared("context source")
 	}
@@ -98,7 +132,9 @@ func page() (plugin.Page, error) {
 		return plugin.Page{}, err
 	}
 	page := plugin.Page{
-		Package: "@demicodes/plugin-browser",
+		Package:    "@demicodes/plugin-browser",
+		PanelKinds: []string{panelKind},
+		Told:       []plugin.Topic{plugin.TopicJobs},
 		Conversation: &plugin.State{
 			Schema:     plugin.Schema{Schema: tabs},
 			Topics:     []plugin.Topic{plugin.TopicJobs},
@@ -111,8 +147,8 @@ func page() (plugin.Page, error) {
 		params, result json.RawMessage
 		operations     []string
 	}{
-		{"open", OpenTabPluginJSONSchema(), OpenedTabPluginJSONSchema(), []string{"open"}},
-		{"close", CloseTabPluginJSONSchema(), nullResult, []string{"close"}},
+		{"bind", BindTabPluginJSONSchema(), nullResult, []string{"open", "goto", "close"}},
+		{"sync", SyncTabsPluginJSONSchema(), nullResult, []string{"tabs"}},
 		{"navigate", NavigateTabPluginJSONSchema(), nullResult, []string{"goto"}},
 		{"history", TabHistoryPluginJSONSchema(), nullResult, []string{"back", "forward", "reload"}},
 	} {

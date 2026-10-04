@@ -162,3 +162,45 @@ type ErrorEnded struct {
 }
 
 func (*ErrorEnded) pluginError() {}
+
+// The user created or removed a tab of one of the plugin's panel
+// kinds; the backend applied the change and answered the page
+// (`plugins.md` § Panel kinds). `tab` is the tab as it was created, or
+// as it was when it was removed.
+// +demi:variant Request panel_tab
+type RequestPanelTab struct {
+	User         webapi.UserID         `json:"user"`
+	Conversation webapi.ConversationID `json:"conversation"`
+	Change       PanelTabChange        `json:"change"`
+	Tab          webapi.PanelTab       `json:"tab"`
+}
+
+func (*RequestPanelTab) request() {}
+
+// A topic the plugin is told about fired, for the user or for
+// `conversation` (`plugins.md` § Topics).
+// +demi:variant Request topic
+type RequestTopic struct {
+	User  webapi.UserID `json:"user"`
+	Topic Topic         `json:"topic"`
+	// +demi:nullable
+	Conversation *webapi.ConversationID `json:"conversation,omitempty"`
+}
+
+func (*RequestTopic) request() {}
+
+// What the user did to a tab of the plugin's panel kind.
+// +demi:root
+// +demi:enum created removed
+type PanelTabChange string
+
+const (
+	PanelTabCreated PanelTabChange = "created"
+	PanelTabRemoved PanelTabChange = "removed"
+)
+
+// A request that answers nothing, such as a `panel_tab` or a `topic`.
+// +demi:variant Reply done
+type ReplyDone struct{}
+
+func (*ReplyDone) reply() {}

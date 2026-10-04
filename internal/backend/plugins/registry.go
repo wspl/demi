@@ -36,6 +36,9 @@ func NewRegistry(factories []plugin.Factory, serves func(declare.NativeOperation
 			return nil, fmt.Errorf("two plugins have the id \"%s\"", manifest.ID)
 		}
 		ids[id] = true
+		if err := r.checkPanelKinds(manifest); err != nil {
+			return nil, err
+		}
 		if err := checkManifestContributions(manifest, profiles, streams, pages); err != nil {
 			return nil, err
 		}
@@ -386,6 +389,21 @@ func checkPageTopics(id plugin.ID, page *plugin.Page) error {
 				)
 			}
 		}
+	}
+	return nil
+}
+
+func (r *Registry) checkPanelKinds(manifest plugin.Manifest) error {
+	if manifest.Page == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, kind := range manifest.Page.PanelKinds {
+		_, found := r.kindOwner(kind)
+		if found || seen[kind] {
+			return fmt.Errorf(`plugin "%s" declares the panel kind "%s", which is taken`, manifest.ID, kind)
+		}
+		seen[kind] = true
 	}
 	return nil
 }

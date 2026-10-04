@@ -77,6 +77,10 @@ func (i *instance) call(ctx context.Context, request plugin.Request, port plugin
 		defer i.leaveMutation()
 		result, err := i.pageCall(ctx, request.Method, request.Params, port)
 		return &plugin.ReplyResult{Result: result}, err
+	case *plugin.RequestPanelTab:
+		return nil, plugin.Undeclared("panel kind")
+	case *plugin.RequestTopic:
+		return nil, plugin.Undeclared("topic")
 	case *plugin.RequestContext:
 		text, err := i.contextBlock(ctx, request, port)
 		return &plugin.ReplyContext{Text: text}, err

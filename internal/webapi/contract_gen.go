@@ -4019,6 +4019,9 @@ func contractValidateConversationSummary(v ConversationSummary, depth int) error
 	if v.DraftRevision > 9007199254740991 {
 		return contract.At("draftRevision", fmt.Errorf("outside numeric bounds"))
 	}
+	if v.PanelRevision > 9007199254740991 {
+		return contract.At("panelRevision", fmt.Errorf("outside numeric bounds"))
+	}
 	if v.PluginRevisions == nil {
 		return contract.At("pluginRevisions", fmt.Errorf("required array is nil"))
 	}
@@ -4277,6 +4280,19 @@ func (v *ConversationSummary) UnmarshalJSON(data []byte) error {
 		}
 	}
 	{
+		raw, ok := obj["panelRevision"]
+		if !ok {
+			return contract.At("panelRevision", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("panelRevision", err)
+			}
+			next.PanelRevision = value
+		}
+	}
+	{
 		raw, ok := obj["pluginRevisions"]
 		if !ok {
 			return contract.At("pluginRevisions", fmt.Errorf("required field is absent"))
@@ -4331,6 +4347,7 @@ func (v ConversationSummary) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "titleGenerating", Value: v.TitleGenerating})
 	fields = append(fields, contract.Field{Name: "pluginsChanged", Value: v.PluginsChanged})
 	fields = append(fields, contract.Field{Name: "draftRevision", Value: v.DraftRevision})
+	fields = append(fields, contract.Field{Name: "panelRevision", Value: v.PanelRevision})
 	fields = append(fields, contract.Field{Name: "pluginRevisions", Value: v.PluginRevisions})
 	fields = append(fields, contract.Field{Name: "workingTreeRevision", Value: v.WorkingTreeRevision})
 	return contract.EncodeObject(fields)
@@ -4961,6 +4978,113 @@ func (v CreateDirectory) MarshalJSON() ([]byte, error) {
 	}
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "path", Value: v.Path})
+	return contract.EncodeObject(fields)
+}
+func DecodeCreatePanelTab(data []byte) (CreatePanelTab, error) {
+	return contract.Decode[CreatePanelTab](data)
+}
+func (v CreatePanelTab) Validate() error { return contractValidateCreatePanelTab(v, 0) }
+func contractValidateCreatePanelTab(v CreatePanelTab, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.ID), 1, 64, ""); err != nil {
+		return contract.At("id", err)
+	}
+	if err := contract.Text(string(v.Kind), 1, -1, ""); err != nil {
+		return contract.At("kind", err)
+	}
+	if _, err := contract.JSONObject(v.Data); err != nil {
+		return contract.At("data", err)
+	}
+	if v.Index != nil {
+		if (*v.Index) > 64 {
+			return contract.At("index", fmt.Errorf("outside numeric bounds"))
+		}
+	}
+	return nil
+}
+func (v *CreatePanelTab) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next CreatePanelTab
+	for key := range obj {
+		switch key {
+		case "id", "kind", "data", "index":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["id"]
+		if !ok {
+			return contract.At("id", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("id", err)
+			}
+			next.ID = value
+		}
+	}
+	{
+		raw, ok := obj["kind"]
+		if !ok {
+			return contract.At("kind", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("kind", err)
+			}
+			next.Kind = value
+		}
+	}
+	{
+		raw, ok := obj["data"]
+		if !ok {
+			return contract.At("data", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.JSON(raw)
+			if err != nil {
+				return contract.At("data", err)
+			}
+			next.Data = value
+		}
+	}
+	{
+		raw, ok := obj["index"]
+		if ok {
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
+				if err != nil {
+					return contract.At("index", err)
+				}
+				next.Index = value
+			}
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v CreatePanelTab) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "kind", Value: v.Kind})
+	fields = append(fields, contract.Field{Name: "data", Value: v.Data})
+	if v.Index != nil {
+		fields = append(fields, contract.Field{Name: "index", Value: v.Index})
+	}
 	return contract.EncodeObject(fields)
 }
 func DecodeCreateProvider(data []byte) (CreateProvider, error) {
@@ -7669,7 +7793,7 @@ func contractValidateErrorCode(v ErrorCode, depth int) error {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
 	switch string(v) {
-	case "unauthenticated", "not_found", "invalid_body", "too_large", "internal_error", "backend_closing", "already_set_up", "invalid_credentials", "too_many_attempts", "email_taken", "invalid_code", "mail_unavailable", "mail_failed", "invalid_query", "forbidden", "provider_not_found", "model_not_found", "setting_unavailable", "model_not_selected", "provider_busy", "provider_exists", "unknown_provider_type", "unknown_vendor", "subscription_only", "accounts_unsupported", "no_login_flow", "login_not_found", "account_not_found", "active_account", "token_import_failed", "quota_requires_inference", "quota_unavailable", "catalog_unavailable", "provider_status_failed", "rate_limited", "device_not_found", "device_in_use", "device_offline", "log_unreadable", "conversation_not_found", "conversation_archived", "conversation_busy", "host_not_attached", "host_stopped", "cloud_unavailable", "cloud_resetting", "cloud_capacity", "cloud_crash_loop", "fs_error", "file_changed", "is_directory", "file_exists", "protected_path", "transfer_stalled", "file_too_large", "not_text", "directory_too_large", "changes_timeout", "not_repository", "changes_failed", "host_operation_failed", "forbidden_origin", "unknown_stream", "upgrade_required", "stream_failed", "id_unavailable", "invalid_revision", "invalid_frame", "frame_delivery_failed", "turn_in_flight", "workspace_not_found", "workspace_in_use", "invalid_order", "user_not_found", "unknown_plugin", "unknown_plugin_method", "plugin_disabled", "plugin_refused", "plugin_failed", "host_is_main", "name_taken", "target_conflict", "operation_failed", "fork_conflict", "invalid_fork_target", "no_messages", "upload_not_found", "draft_changed":
+	case "unauthenticated", "not_found", "invalid_body", "too_large", "internal_error", "backend_closing", "already_set_up", "invalid_credentials", "too_many_attempts", "email_taken", "invalid_code", "mail_unavailable", "mail_failed", "invalid_query", "forbidden", "provider_not_found", "model_not_found", "setting_unavailable", "model_not_selected", "provider_busy", "provider_exists", "unknown_provider_type", "unknown_vendor", "subscription_only", "accounts_unsupported", "no_login_flow", "login_not_found", "account_not_found", "active_account", "token_import_failed", "quota_requires_inference", "quota_unavailable", "catalog_unavailable", "provider_status_failed", "rate_limited", "device_not_found", "device_in_use", "device_offline", "log_unreadable", "conversation_not_found", "conversation_archived", "conversation_busy", "host_not_attached", "host_stopped", "cloud_unavailable", "cloud_resetting", "cloud_capacity", "cloud_crash_loop", "fs_error", "file_changed", "is_directory", "file_exists", "protected_path", "transfer_stalled", "file_too_large", "not_text", "directory_too_large", "changes_timeout", "not_repository", "changes_failed", "host_operation_failed", "forbidden_origin", "unknown_stream", "upgrade_required", "stream_failed", "id_unavailable", "invalid_revision", "invalid_frame", "frame_delivery_failed", "turn_in_flight", "workspace_not_found", "workspace_in_use", "invalid_order", "user_not_found", "unknown_plugin", "unknown_plugin_method", "plugin_disabled", "plugin_refused", "plugin_failed", "host_is_main", "name_taken", "target_conflict", "operation_failed", "fork_conflict", "invalid_fork_target", "no_messages", "upload_not_found", "draft_changed", "unknown_panel_kind", "panel_full":
 	default:
 		return contract.At("", fmt.Errorf("unknown value"))
 	}
@@ -9128,6 +9252,59 @@ func (v ModelSettings) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "serviceTierId", Value: v.ServiceTierID})
 	return contract.EncodeObject(fields)
 }
+func DecodeMovePanelTab(data []byte) (MovePanelTab, error) {
+	return contract.Decode[MovePanelTab](data)
+}
+func (v MovePanelTab) Validate() error { return contractValidateMovePanelTab(v, 0) }
+func contractValidateMovePanelTab(v MovePanelTab, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Index > 64 {
+		return contract.At("index", fmt.Errorf("outside numeric bounds"))
+	}
+	return nil
+}
+func (v *MovePanelTab) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next MovePanelTab
+	for key := range obj {
+		switch key {
+		case "index":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["index"]
+		if !ok {
+			return contract.At("index", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("index", err)
+			}
+			next.Index = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v MovePanelTab) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "index", Value: v.Index})
+	return contract.EncodeObject(fields)
+}
 func DecodeNewRole(data []byte) (NewRole, error) { return contract.Decode[NewRole](data) }
 func (v NewRole) Validate() error                { return contractValidateNewRole(v, 0) }
 func contractValidateNewRole(v NewRole, depth int) error {
@@ -9467,19 +9644,72 @@ func (v OperationID) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeJSON(string(v))
 }
+func DecodePanelRevision(data []byte) (PanelRevision, error) {
+	return contract.Decode[PanelRevision](data)
+}
+func (v PanelRevision) Validate() error { return contractValidatePanelRevision(v, 0) }
+func contractValidatePanelRevision(v PanelRevision, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Revision > 9007199254740991 {
+		return contract.At("revision", fmt.Errorf("outside numeric bounds"))
+	}
+	return nil
+}
+func (v *PanelRevision) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next PanelRevision
+	for key := range obj {
+		switch key {
+		case "revision":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["revision"]
+		if !ok {
+			return contract.At("revision", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("revision", err)
+			}
+			next.Revision = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PanelRevision) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "revision", Value: v.Revision})
+	return contract.EncodeObject(fields)
+}
 func DecodePanelTab(data []byte) (PanelTab, error) { return contract.Decode[PanelTab](data) }
 func (v PanelTab) Validate() error                 { return contractValidatePanelTab(v, 0) }
 func contractValidatePanelTab(v PanelTab, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contract.Text(string(v.ID), 1, -1, ""); err != nil {
+	if err := contract.Text(string(v.ID), 1, 64, ""); err != nil {
 		return contract.At("id", err)
 	}
 	if err := contract.Text(string(v.Kind), 1, -1, ""); err != nil {
 		return contract.At("kind", err)
 	}
-	if err := contract.CheckJSON(v.Data); err != nil {
+	if _, err := contract.JSONObject(v.Data); err != nil {
 		return contract.At("data", err)
 	}
 	return nil
@@ -15178,6 +15408,59 @@ func (v UnavailableReason) MarshalJSON() ([]byte, error) {
 	}
 	return contract.EncodeJSON(string(v))
 }
+func DecodeUpdatePanelTab(data []byte) (UpdatePanelTab, error) {
+	return contract.Decode[UpdatePanelTab](data)
+}
+func (v UpdatePanelTab) Validate() error { return contractValidateUpdatePanelTab(v, 0) }
+func contractValidateUpdatePanelTab(v UpdatePanelTab, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if _, err := contract.JSONObject(v.Data); err != nil {
+		return contract.At("data", err)
+	}
+	return nil
+}
+func (v *UpdatePanelTab) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next UpdatePanelTab
+	for key := range obj {
+		switch key {
+		case "data":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["data"]
+		if !ok {
+			return contract.At("data", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.JSON(raw)
+			if err != nil {
+				return contract.At("data", err)
+			}
+			next.Data = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v UpdatePanelTab) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "data", Value: v.Data})
+	return contract.EncodeObject(fields)
+}
 func DecodeUploadQuery(data []byte) (UploadQuery, error) { return contract.Decode[UploadQuery](data) }
 func (v UploadQuery) Validate() error                    { return contractValidateUploadQuery(v, 0) }
 func contractValidateUploadQuery(v UploadQuery, depth int) error {
@@ -16000,10 +16283,8 @@ func contractValidateWorkPanel(v WorkPanel, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if v.Selection != nil {
-		if err := contract.Text(string((*v.Selection)), 0, -1, ""); err != nil {
-			return contract.At("selection", err)
-		}
+	if v.Revision > 9007199254740991 {
+		return contract.At("revision", fmt.Errorf("outside numeric bounds"))
 	}
 	if v.Tabs == nil {
 		return contract.At("tabs", fmt.Errorf("required array is nil"))
@@ -16015,12 +16296,6 @@ func contractValidateWorkPanel(v WorkPanel, depth int) error {
 			return contract.At(fmt.Sprintf("%s[%d]", "tabs", i), err)
 		}
 	}
-	if len(v.Tabs) > 64 {
-		return contract.At("tabs", fmt.Errorf("too many items"))
-	}
-	if err := validateWorkPanel(v); err != nil {
-		return err
-	}
 	return nil
 }
 func (v *WorkPanel) UnmarshalJSON(data []byte) error {
@@ -16031,24 +16306,22 @@ func (v *WorkPanel) UnmarshalJSON(data []byte) error {
 	var next WorkPanel
 	for key := range obj {
 		switch key {
-		case "selection", "tabs":
+		case "revision", "tabs":
 		default:
 			return contract.At(key, fmt.Errorf("unknown field"))
 		}
 	}
 	{
-		raw, ok := obj["selection"]
+		raw, ok := obj["revision"]
 		if !ok {
-			return contract.At("selection", fmt.Errorf("required field is absent"))
+			return contract.At("revision", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
-				if err != nil {
-					return contract.At("selection", err)
-				}
-				next.Selection = value
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("revision", err)
 			}
+			next.Revision = value
 		}
 	}
 	{
@@ -16075,7 +16348,7 @@ func (v WorkPanel) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "selection", Value: v.Selection})
+	fields = append(fields, contract.Field{Name: "revision", Value: v.Revision})
 	fields = append(fields, contract.Field{Name: "tabs", Value: v.Tabs})
 	return contract.EncodeObject(fields)
 }

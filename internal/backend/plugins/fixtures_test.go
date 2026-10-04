@@ -38,6 +38,8 @@ func (p *fakePlugin) Call(
 	switch request.(type) {
 	case *plugin.RequestCommand:
 		return &plugin.ReplyExit{}, nil
+	case *plugin.RequestPanelTab, *plugin.RequestTopic:
+		return &plugin.ReplyDone{}, nil
 	case *plugin.RequestContext:
 		return &plugin.ReplyContext{Text: new("news")}, nil
 	case *plugin.RequestPageState:

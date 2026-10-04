@@ -481,7 +481,9 @@ const conversationColumns = `conversations.*, COALESCE((
     SELECT revision
     FROM conversation_drafts
     WHERE conversation_id = conversations.id
-), 0) AS draft_revision`
+), 0) AS draft_revision, COALESCE((
+ SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id
+), 0) AS panel_revision`
 
 func conversationRow(r *storedRow) ConversationRecord {
 	var target webapi.ConversationTarget
@@ -518,6 +520,7 @@ func conversationRow(r *storedRow) ConversationRecord {
 		CreatedAt:      r.instant("created_at"),
 		UpdatedAt:      r.instant("updated_at"),
 		DraftRevision:  r.count("draft_revision"),
+		PanelRevision:  r.count("panel_revision"),
 	}
 }
 

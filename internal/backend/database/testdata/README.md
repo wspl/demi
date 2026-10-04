@@ -13,3 +13,5 @@ repository holds no Rust.
 `TestFixtureDatabasesReadUnchanged` copies both fixtures, opens them with Go,
 checks their records and schema versions, and compares the complete file
 hashes after closing. Tests do not build or run Rust.
+
+The d-panel fixtures were refreshed by `gomig-ref/oracles/d-panel/src/main.rs` against the current reference.

@@ -925,3 +925,87 @@ func (v draftVersion) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "files", Value: v.Files})
 	return contract.EncodeObject(fields)
 }
+func decodePanelDocument(data []byte) (panelDocument, error) {
+	return contract.Decode[panelDocument](data)
+}
+func (v panelDocument) Validate() error { return contractValidatePanelDocument(v, 0) }
+func contractValidatePanelDocument(v panelDocument, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Tabs == nil {
+		return contract.At("tabs", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Tabs {
+		_ = i
+		_ = item
+		if err := item.Validate(); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "tabs", i), err)
+		}
+	}
+	if v.Retired == nil {
+		return contract.At("retired", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Retired {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "retired", i), err)
+		}
+	}
+	return nil
+}
+func (v *panelDocument) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next panelDocument
+	for key := range obj {
+		switch key {
+		case "tabs", "retired":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["tabs"]
+		if !ok {
+			return contract.At("tabs", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]webapi.PanelTab, error) { return contract.List(b, contract.Decode[webapi.PanelTab]) }(raw)
+			if err != nil {
+				return contract.At("tabs", err)
+			}
+			next.Tabs = value
+		}
+	}
+	{
+		raw, ok := obj["retired"]
+		if !ok {
+			return contract.At("retired", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("retired", err)
+			}
+			next.Retired = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v panelDocument) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "tabs", Value: v.Tabs})
+	fields = append(fields, contract.Field{Name: "retired", Value: v.Retired})
+	return contract.EncodeObject(fields)
+}

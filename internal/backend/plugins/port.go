@@ -42,6 +42,9 @@ func (p requestPort) Request(ctx context.Context, message plugin.PortMessage) (p
 // answer routes each plugin service to its owner without holding a user mutex.
 func (p requestPort) answer(ctx context.Context, message plugin.PortMessage) (plugin.PortAnswer, error) {
 	switch m := message.(type) {
+	case *plugin.PortMessagePanelTabs, *plugin.PortMessageCreatePanelTab,
+		*plugin.PortMessageUpdatePanelTab, *plugin.PortMessageRemovePanelTab:
+		return p.answerPanel(ctx, m)
 	case *plugin.PortMessageRPC:
 		return p.forwardRPC(ctx, m)
 	case *plugin.PortMessageReadValue:

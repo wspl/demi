@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/plugin/plugintest"
@@ -24,6 +22,9 @@ func world(t *testing.T, answer plugintest.PackageCalls) (plugin.Plugin, *plugin
 	}
 	demi := plugintest.New()
 	demi.PackageCalls = answer
+	demi.Panel = panelTransport(func(context.Context, plugin.PortMessage) (plugin.PortAnswer, error) {
+		return &plugin.PortAnswerPanel{Panel: webapi.EmptyWorkPanel()}, nil
+	})
 	return plugintest.Loopback(factory.Instance()), demi
 }
 
@@ -74,7 +75,7 @@ func pageState(t *testing.T, p plugin.Plugin, demi *plugintest.TestDemi) json.Ra
 	return state.State
 }
 
-func TestEachMethodCallsItsOperationAndOnlyOpenWakesHost(t *testing.T) {
+func TestEachMethodCallsItsOperationWithoutWakingHost(t *testing.T) {
 	p, demi := world(
 		t,
 		func(
@@ -94,28 +95,22 @@ func TestEachMethodCallsItsOperationAndOnlyOpenWakesHost(t *testing.T) {
 				return json.RawMessage(`{"tab":"t1","url":"about:blank"}`), nil
 			case "browser.tabs":
 				return json.RawMessage(
-					`{"tabs":[{"id":"t1","title":"","url":"about:blank","createdBy":{"kind":"user"}}],"truncated":false}`,
+					`{"tabs":[{"id":"t1","title":"","url":"about:blank",` +
+						`"createdBy":{"kind":"user"},"loading":false}],"truncated":false}`,
 				), nil
 			default:
 				return json.RawMessage(`{}`), nil
 			}
 		},
 	)
-	opened, err := pageCall(t, p, demi, "open", `{}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := `{"tab":{"id":"t1","title":"","url":"about:blank","createdBy":{"kind":"user"}}}`
-	if string(opened) != want {
-		t.Fatalf("open: %s", opened)
-	}
 	if listed := pageState(
 		t,
 		p,
 		demi,
 	); string(
 		listed,
-	) != `{"tabs":[{"id":"t1","title":"","url":"about:blank","createdBy":{"kind":"user"}}]}` {
+	) != `{"tabs":[{"id":"t1","title":"","url":"about:blank",`+
+		`"createdBy":{"kind":"user"},"loading":false}]}` {
 		t.Fatalf("tabs: %s", listed)
 	}
 
@@ -123,14 +118,14 @@ func TestEachMethodCallsItsOperationAndOnlyOpenWakesHost(t *testing.T) {
 		{"navigate", `{"tab":"t1","url":"https://example.test/"}`},
 		{"history", `{"tab":"t1","action":"back"}`},
 		{"history", `{"tab":"t1","action":"reload"}`},
-		{"close", `{"tab":"t1"}`},
+		{"sync", `{}`},
 	} {
 		result, err := pageCall(t, p, demi, test.method, test.params)
 		if err != nil || string(result) != "null" {
 			t.Fatalf("%s: %s, %v", test.method, result, err)
 		}
 	}
-	if demi.Changes() != 5 {
+	if demi.Changes() != 4 {
 		t.Fatalf("changes: %d", demi.Changes())
 	}
 	var got []string
@@ -138,12 +133,11 @@ func TestEachMethodCallsItsOperationAndOnlyOpenWakesHost(t *testing.T) {
 		got = append(got, call.Operation.Operation+":"+string(call.Kind))
 	}
 	wantCalls := []string{
-		"browser.open:starts",
 		"browser.tabs:looks",
 		"browser.goto:operates",
 		"browser.back:operates",
 		"browser.reload:operates",
-		"browser.close:operates",
+		"browser.tabs:looks",
 	}
 	if diff := cmp.Diff(wantCalls, got); diff != "" {
 		t.Fatal(diff)
@@ -170,14 +164,15 @@ func TestStoppedHostAndMissingTabs(t *testing.T) {
 			}
 		},
 	)
+	demi.Panel = panelTransport(func(context.Context, plugin.PortMessage) (plugin.PortAnswer, error) {
+		t.Error("stopped Host sync reached the panel; want saved tabs unchanged")
+		return &plugin.PortAnswerPanel{Panel: webapi.EmptyWorkPanel()}, nil
+	})
 	if got := pageState(t, p, demi); string(got) != `{"tabs":[]}` {
 		t.Fatalf("tabs: %s", got)
 	}
-	for _, params := range []string{`{"tab":"t9"}`, `{"tab":"not-a-tab"}`} {
-		got, err := pageCall(t, p, demi, "close", params)
-		if err != nil || string(got) != "null" {
-			t.Fatalf("close: %s, %v", got, err)
-		}
+	if _, err := pageCall(t, p, demi, "sync", `{}`); err != nil {
+		t.Fatal(err)
 	}
 	for _, params := range []string{`{"tab":"t9","action":"forward"}`, `{"tab":"not-a-tab","action":"back"}`} {
 		_, err := pageCall(t, p, demi, "history", params)
@@ -191,7 +186,7 @@ func TestStoppedHostAndMissingTabs(t *testing.T) {
 	if !errors.As(err, &refusal) || cmp.Diff(stopped, refusal) != "" {
 		t.Fatalf("navigate: %v", err)
 	}
-	if demi.Changes() != 2 {
+	if demi.Changes() != 1 {
 		t.Fatalf("changes: %d", demi.Changes())
 	}
 }
@@ -204,7 +199,7 @@ func TestPageValidationAndRefusalsDoNotMarkChanges(t *testing.T) {
 		reason               string
 		usage                bool
 	}{
-		{name: "unknown argument", method: "open", params: `{"extra":true}`, usage: true},
+		{name: "unknown argument", method: "bind", params: `{"extra":true}`, usage: true},
 		{name: "empty URL", method: "navigate", params: `{"tab":"t1","url":""}`, usage: true},
 		{name: "unknown history action", method: "history", params: `{"tab":"t1","action":"home"}`, usage: true},
 		{
@@ -215,18 +210,18 @@ func TestPageValidationAndRefusalsDoNotMarkChanges(t *testing.T) {
 		},
 		{
 			name:   "browser refusal",
-			method: "open",
-			params: `{}`,
+			method: "navigate",
+			params: `{"tab":"t1","url":"https://example.test"}`,
 			failure: &plugin.PortRefusalOperation{
 				Stderr: ` {"error":{"code":"tab_busy","message":"busy"}} `,
 			},
 			reason: "tab_busy",
 		},
-		{name: "unreadable open", method: "open", params: `{}`, answer: json.RawMessage(`{"tab":42}`)},
+
 		{
 			name:   "unstructured failure",
-			method: "close",
-			params: `{"tab":"t1"}`,
+			method: "history",
+			params: `{"tab":"t1","action":"back"}`,
 			failure: &plugin.PortRefusalOperation{
 				Stderr: "browser stopped unexpectedly",
 			},
@@ -263,49 +258,5 @@ func TestPageValidationAndRefusalsDoNotMarkChanges(t *testing.T) {
 				t.Fatal("failed method marked state changed")
 			}
 		})
-	}
-}
-
-func TestExplicitURLAndForwardPreserveBrowserArguments(t *testing.T) {
-	url := "https://example.test/?x=<>&y=\u2028\u2029"
-	p, demi := world(
-		t,
-		func(
-			_ context.Context,
-			operation declare.NativeOperation,
-			args json.RawMessage,
-			kind plugin.CallKind,
-		) (json.RawMessage, error) {
-			if operation.Operation == "browser.open" {
-				input, err := browser.DecodeOpenTab(args)
-				if err != nil || input.URL == nil || *input.URL != url {
-					t.Fatalf("open input: %s, %v", args, err)
-				}
-				if strings.Contains(string(args), `\u003c`) || strings.Contains(string(args), `\u2028`) {
-					t.Fatalf("escaped wire: %s", args)
-				}
-				return json.RawMessage(`{"tab":"t2","url":"about:blank","title":"Hello"}`), nil
-			}
-			if operation.Operation != "browser.forward" || string(args) != `{"tab":"t2"}` ||
-				kind != plugin.CallKindOperates {
-				t.Fatalf("forward: %v %s %s", operation, args, kind)
-			}
-			return json.RawMessage(`{}`), nil
-		},
-	)
-	args, err := contract.EncodeJSON(browser.OpenTab{URL: &url})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := pageCall(t, p, demi, "open", string(args))
-	if err != nil {
-		t.Fatal(err)
-	}
-	opened, err := browser.DecodeOpenedTab(result)
-	if err != nil || opened.Tab.Title != "Hello" {
-		t.Fatalf("opened: %s, %v", result, err)
-	}
-	if _, err := pageCall(t, p, demi, "history", `{"tab":"t2","action":"forward"}`); err != nil {
-		t.Fatal(err)
 	}
 }

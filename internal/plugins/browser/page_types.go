@@ -19,29 +19,18 @@ type BrowserTabs struct {
 	Tabs []browserop.BrowserTab `json:"tabs"`
 }
 
-// `open { url? }`: a new tab, at `about:blank` without a URL.
+// `bind { panelTab }`: a browser tab for the panel tab, which Retry and
+// Reload ask for.
 // +demi:root direction=send output=plugin-browser
 // +demi:schema
-type OpenTab struct {
-	// +demi:nullable
-	// +demi:length chars min=1 max=4096
-	URL *string `json:"url,omitempty"`
+type BindTab struct {
+	PanelTab string `json:"panelTab"`
 }
 
-// What `open` answers.
-// +demi:root direction=receive output=plugin-browser
-// +demi:schema
-// +demi:tolerant
-type OpenedTab struct {
-	Tab browserop.BrowserTab `json:"tab"`
-}
-
-// `close { tab }`.
+// `sync {}`: the panel's tabs updated from the browser's.
 // +demi:root direction=send output=plugin-browser
 // +demi:schema
-type CloseTab struct {
-	Tab string `json:"tab"`
-}
+type SyncTabs struct{}
 
 // `navigate { tab, url }`.
 // +demi:root direction=send output=plugin-browser

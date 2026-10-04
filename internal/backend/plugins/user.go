@@ -21,11 +21,15 @@ import (
 // methods support concurrent calls. Its shard owns and closes it after stopping
 // callers. Command sets retain the user host, including while plugins are off.
 type User struct {
-	registry *Registry
-	id       webapi.UserID
-	shard    PluginShard
-	control  *database.ControlService
-	marks    pagesync.UserMarks
+	notifications      sync.Mutex
+	notificationCtx    context.Context
+	notificationCancel context.CancelFunc
+	notificationCalls  sync.WaitGroup
+	registry           *Registry
+	id                 webapi.UserID
+	shard              PluginShard
+	control            *database.ControlService
+	marks              pagesync.UserMarks
 	// admission serializes choice reads/commits and instance admission/close across
 	// IO. Callers release it before invoking plugins; port operations never take it.
 	admission chan struct{}
@@ -48,14 +52,17 @@ type instance struct {
 // NewUser creates one instance of every registered plugin for user. The shard
 // supplies storage, page marks and product services without exposing its state.
 func NewUser(registry *Registry, user webapi.UserID, shard PluginShard) *User {
+	notificationCtx, notificationCancel := context.WithCancel(context.Background())
 	u := &User{
-		registry:  registry,
-		id:        user,
-		shard:     shard,
-		control:   shard.Control(),
-		marks:     shard.Marks(),
-		admission: make(chan struct{}, 1),
-		revisions: map[webapi.ConversationID][]uint64{},
+		notificationCtx:    notificationCtx,
+		notificationCancel: notificationCancel,
+		registry:           registry,
+		id:                 user,
+		shard:              shard,
+		control:            shard.Control(),
+		marks:              shard.Marks(),
+		admission:          make(chan struct{}, 1),
+		revisions:          map[webapi.ConversationID][]uint64{},
 	}
 	for _, registeredPlugin := range registry.plugins {
 		u.instances = append(u.instances, newInstance(registeredPlugin.factory))
@@ -100,6 +107,10 @@ func (i *instance) close() {
 // Close ends user streams and calls plugin.Closer on owned instances, joining
 // their work before returning. The owner supplies a usable cleanup context.
 func (u *User) Close(ctx context.Context) error {
+	u.notifications.Lock()
+	u.notificationCancel()
+	u.notifications.Unlock()
+	u.notificationCalls.Wait()
 	if err := u.enter(ctx); err != nil {
 		return err
 	}
@@ -462,9 +473,18 @@ func (u *User) Revisions(conversation webapi.ConversationID) []webapi.PluginRevi
 
 // Fire marks each follower's state changed; conversation is nil for user topics.
 func (u *User) Fire(topic plugin.Topic, conversation *webapi.ConversationID) {
+	if conversation != nil {
+		id := *conversation
+		conversation = &id
+	}
 	for _, id := range u.registry.Followers(topic) {
 		index, _ := u.registry.lookup(string(id))
 		u.changed(index, conversation)
+	}
+	for i, p := range u.registry.plugins {
+		if p.manifest.Page != nil && slices.Contains(p.manifest.Page.Told, topic) {
+			u.notify(i, &plugin.RequestTopic{User: u.id, Topic: topic, Conversation: conversation}, conversation)
+		}
 	}
 }
 

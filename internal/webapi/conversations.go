@@ -95,6 +95,10 @@ type ConversationSummary struct {
 	// this is higher than the revision it holds.
 	// +demi:range max=9007199254740991
 	DraftRevision uint64 `json:"draftRevision"`
+	// The revision of the conversation's work panel, 0 before its first
+	// change (`web-api.md` § Work panel state), read the same way.
+	// +demi:range max=9007199254740991
+	PanelRevision uint64 `json:"panelRevision"`
 	// The revision of each plugin's conversation state, in registration
 	// order (`web-api.md` § Conversation state of plugins): a page reads a
 	// state only when its revision is higher than the one it holds.

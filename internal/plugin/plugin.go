@@ -99,6 +99,8 @@ func (p *CommandPlugin) Call(ctx context.Context, request Request, port Port) (R
 		return p.Command(ctx, r.Invocation, port)
 	case *RequestPageState, *RequestPageCall:
 		return nil, Undeclared("page")
+	case *RequestPanelTab, *RequestTopic:
+		return nil, Undeclared("page")
 	case *RequestContext:
 		return nil, Undeclared("context source")
 	}
@@ -125,6 +127,8 @@ func (NoRequests) Call(_ context.Context, request Request, _ Port) (Reply, error
 	switch request.(type) {
 	case *RequestCommand:
 		what = "command"
+	case *RequestPanelTab, *RequestTopic:
+		what = "page"
 	case *RequestContext:
 		what = "context source"
 	case *RequestPageState:

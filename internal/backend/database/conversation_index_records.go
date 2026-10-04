@@ -30,6 +30,8 @@ type ConversationRecord struct {
 	UpdatedAt      core.Timestamp
 	// The revision of the conversation's draft, 0 before its first save.
 	DraftRevision uint64
+	// PanelRevision counts changes to the conversation panel.
+	PanelRevision uint64
 }
 
 // SavedWakeup is a conversation whose tree saved a yield wakeup, with its owner and when

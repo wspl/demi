@@ -51,8 +51,12 @@ func (f *Factory) Manifest() plugin.Manifest {
 		Description: "Gives a service on one of your hosts a public URL for an hour, with `demi expose`.",
 		Commands:    f.commands.ManifestCommands(),
 		Page: &plugin.Page{
-			Package: "@demicodes/plugin-expose",
-			User:    &plugin.State{Schema: plugin.Schema{Schema: f.state}, Topics: []plugin.Topic{plugin.TopicExposes}},
+			PanelKinds: []string{"page"},
+			Package:    "@demicodes/plugin-expose",
+			User: &plugin.State{
+				Schema: plugin.Schema{Schema: f.state},
+				Topics: []plugin.Topic{plugin.TopicExposes},
+			},
 			Methods: []plugin.Method{
 				{
 					Name:   "renew",
@@ -100,6 +104,10 @@ func (i *instance) Call(ctx context.Context, request plugin.Request, port plugin
 			return nil, plugin.RequestError(err)
 		}
 		return &plugin.ReplyResult{Result: value}, nil
+	case *plugin.RequestPanelTab:
+		return &plugin.ReplyDone{}, nil
+	case *plugin.RequestTopic:
+		return nil, plugin.Undeclared("topic")
 	case *plugin.RequestContext:
 		return nil, plugin.Undeclared("context source")
 	}
