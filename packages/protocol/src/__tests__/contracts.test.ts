@@ -9,11 +9,11 @@ import {
   showsInPlace,
 } from '../index'
 
-// The Rust contract tests' fixtures and cases: the generated schemas must
-// accept and refuse what the Rust types accept and refuse, except where the
-// web app's schema is tolerant or a rule is Rust's alone (`contracts.md`
-// § Strict and tolerant objects, § Rules only Rust checks).
-const crates = resolve(import.meta.dir, '../../../../crates')
+// The Go contract tests' fixtures and cases: the generated schemas must
+// accept and refuse what the Go decoders accept and refuse, except where
+// the web app's schema is tolerant or a rule is Go's alone (`contracts.md`
+// § The TypeScript boundary: strict and tolerant objects, rules only Go checks).
+const repository = resolve(import.meta.dir, '../../../..')
 
 const jsonSchema = z.json()
 type Json = z.infer<typeof jsonSchema>
@@ -35,7 +35,7 @@ const tableSchema = z.strictObject({
 type Table = z.infer<typeof tableSchema>
 
 async function read<T>(path: string, schema: z.ZodType<T>): Promise<T> {
-  return schema.parse(await Bun.file(resolve(crates, path)).json())
+  return schema.parse(await Bun.file(resolve(repository, path)).json())
 }
 
 function isObject(value: Json | undefined): value is { [key: string]: Json } {
@@ -102,12 +102,12 @@ function checkTable(schema: z.ZodType, fixtures: Json[], key: string, table: Tab
   }
 }
 
-const blocks = await read('shared-types/tests/shared-types/fixtures/blocks.json', z.array(jsonSchema))
-const blockTable = await read('shared-types/tests/shared-types/fixtures/blocks-mutations.json', tableSchema)
-const clientFrames = await read('conversation-socket-protocol/tests/frames/fixtures/client-frames.json', z.array(jsonSchema))
-const clientFrameTable = await read('conversation-socket-protocol/tests/frames/fixtures/client-frames-mutations.json', tableSchema)
-const serverFrames = await read('conversation-socket-protocol/tests/frames/fixtures/server-frames.json', z.array(jsonSchema))
-const fileTypes = await read('shared-types/tests/shared-types/fixtures/file-types.json', z.strictObject({
+const blocks = await read('internal/core/testdata/blocks.json', z.array(jsonSchema))
+const blockTable = await read('internal/core/testdata/blocks-mutations.json', tableSchema)
+const clientFrames = await read('internal/framewire/testdata/client-frames.json', z.array(jsonSchema))
+const clientFrameTable = await read('internal/framewire/testdata/client-frames-mutations.json', tableSchema)
+const serverFrames = await read('internal/framewire/testdata/server-frames.json', z.array(jsonSchema))
+const fileTypes = await read('internal/core/testdata/file-types.json', z.strictObject({
   previewMediaType: z.array(z.tuple([z.string(), z.string().nullable()])),
   showsInPlace: z.array(z.tuple([z.string(), z.boolean()])),
 }))
@@ -119,7 +119,7 @@ describe('blocks', () => {
     }
   })
 
-  test('the web app refuses what the Rust decode refuses, except unknown fields and Rust-only rules', () => {
+  test('the web app refuses what the Go decoder refuses, except unknown fields and Go-only rules', () => {
     checkTable(blockSchema, blocks, 'id', blockTable)
   })
 })
@@ -131,7 +131,7 @@ describe('client frames', () => {
     }
   })
 
-  test('the web app refuses what the backend refuses, except the content rules Rust alone checks', () => {
+  test('the web app refuses what the backend refuses, except the content rules Go alone checks', () => {
     checkTable(clientFrameSchema, clientFrames, 'type', clientFrameTable)
   })
 })

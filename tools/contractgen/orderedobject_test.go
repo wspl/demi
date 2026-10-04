@@ -78,7 +78,7 @@ func (v oracleJSON) MarshalJSON() ([]byte, error) { return []byte(v), nil }
 // The fixture records the object schema and non-object errors from the reference
 // decoder. Local fixture only; budget <1 second.
 func TestOrderedObjectRefusalsAndSchema(t *testing.T) {
-	data, err := os.ReadFile("testdata/orderedobject/rust.jsonl")
+	data, err := os.ReadFile("testdata/orderedobject/refusals.jsonl")
 	if err != nil {
 		t.Fatal(err)
 	}

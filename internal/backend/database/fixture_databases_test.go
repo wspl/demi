@@ -22,7 +22,7 @@ func TestFixtureDatabasesReadUnchanged(t *testing.T) {
 	}
 	directory := t.TempDir()
 	controlPath := filepath.Join(directory, "control.sqlite")
-	before := copyFixture("testdata/rust-control.sqlite", controlPath)
+	before := copyFixture("testdata/control.sqlite", controlPath)
 	control, err := OpenControl(t.Context(), controlPath, core.SystemClock{})
 	require(t, err)
 	users, err := control.Users(t.Context())
@@ -44,7 +44,7 @@ func TestFixtureDatabasesReadUnchanged(t *testing.T) {
 	require(t, err)
 	equal(t, before, sha256.Sum256(after))
 	path := filepath.Join(directory, string(conversation(1))+".sqlite")
-	before = copyFixture(filepath.Join("testdata/rust-conversations", string(conversation(1))+".sqlite"), path)
+	before = copyFixture(filepath.Join("testdata/conversations", string(conversation(1))+".sqlite"), path)
 	stores, err := OpenConversations(t.Context(), directory, 1)
 	require(t, err)
 	found, err := stores.DB(conversation(1)).Read(t.Context(), func(ctx context.Context, tx *sql.Tx) error {

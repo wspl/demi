@@ -113,10 +113,10 @@ func TestIntegerStrings(t *testing.T) {
 
 // The tool schema declares shellId an integer; the tool caller removes
 // the root title (the generator retains it for other schema consumers).
-// The golden schema is testdata/integers/rust-schema.json.
+// The golden schema is testdata/integers/schema.json.
 // Budget: five seconds for generation; no network.
 func TestIntegerSchema(t *testing.T) {
-	raw, err := os.ReadFile("testdata/integers/rust-schema.json")
+	raw, err := os.ReadFile("testdata/integers/schema.json")
 	if err != nil {
 		t.Fatal(err)
 	}

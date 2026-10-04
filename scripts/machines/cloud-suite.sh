@@ -14,14 +14,13 @@
 # fails when anything remains.
 #
 # Build the Go programs first:
-#   CGO_ENABLED=0 GOFLAGS=-mod=readonly go build -o target/debug/ ./cmd/...
+#   CGO_ENABLED=0 go build -o .cache/programs/ ./cmd/...
 #
 # Usage: sudo bash scripts/machines/cloud-suite.sh --image DIR
 #          --native CONFIG --work DIR [--runsc PATH] [--dns ADDRESSES]
 #          [--address ADDRESS] [-- TEST-ARGUMENTS...]
 set -euo pipefail
 export CGO_ENABLED=0
-export GOFLAGS=-mod=readonly
 here="$(cd "$(dirname "$0")" && pwd)"
 repository="$(cd "$here/../.." && pwd)"
 image=""
@@ -53,7 +52,7 @@ done
 [ "$(id -u)" = 0 ] || { echo 'run as root' >&2; exit 2; }
 [ -f "$image/manifest.json" ] || { echo "no Cloud image release at $image" >&2; exit 2; }
 [ -f "$native" ] || { echo "no native configuration at $native" >&2; exit 2; }
-manager="$repository/target/debug/demi-machine-manager"
+manager="$repository/.cache/programs/demi-machine-manager"
 [ -x "$manager" ] || {
   echo "no manager at $manager: build the Go programs first" >&2
   exit 2
