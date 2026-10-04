@@ -1,28 +1,23 @@
-import { reactive, ref, watch } from 'vue'
+import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import {
   afterDecision,
   type PermissionDecision,
-  type PermissionGrantView,
   type PermissionRequestView,
 } from '@demicodes/web-ui/permissions/types'
 import { ApiError } from '../api/client'
-import { decidePermission, readPermissions, revokePermission } from '../api/permissions'
+import { decidePermission, readPermissions } from '../api/permissions'
 import type { ConversationPermissions, PermissionCategory } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 
-/** One conversation's permission requests and grants, as this page last read them. */
+/** One conversation's permission requests, as this page last read them. */
 export interface PermissionsState {
   /** The revision of the answer the page holds; -1 before the first. */
   revision: number
   requests: PermissionRequestView[]
-  grants: PermissionGrantView[]
-  load: 'loading' | 'ready' | 'failed'
   /** A decision of this page is on its way. */
   deciding: boolean
-  /** The categories whose revocation is on its way. */
-  revoking: string[]
 }
 
 function category(answer: PermissionCategory): PermissionRequestView['category'] {
@@ -34,30 +29,24 @@ function category(answer: PermissionCategory): PermissionRequestView['category']
 }
 
 /**
- * The conversations' permission requests and grants (`web-application.md`
+ * The conversations' permission requests (`web-application.md`
  * § Synchronized state, `web-api.md` § Conversation permissions): a page
  * reads them for a conversation it shows, and again whenever the summary's
  * `permissionsRevision` rises past the revision it holds; an answer older
  * than the one it holds is dropped, since a read and the summary can arrive
  * in either order. A decision shows at once; another page's decision
- * reaches this one through the summary. Also the conversation whose
- * Permissions dialog is open.
+ * reaches this one through the summary.
  */
 export const usePermissions = defineStore('permissions', () => {
   const product = useProduct()
   const states = reactive(new Map<string, PermissionsState>())
-  /** The conversation whose Permissions dialog is open. */
-  const dialog = ref<string | null>(null)
 
   function stateFor(conversationId: string): PermissionsState {
     if (!states.has(conversationId)) {
       states.set(conversationId, {
         revision: -1,
         requests: [],
-        grants: [],
-        load: 'loading',
         deciding: false,
-        revoking: [],
       })
     }
     return states.get(conversationId)!
@@ -75,19 +64,13 @@ export const usePermissions = defineStore('permissions', () => {
       command: request.command,
       subagent: request.agent,
     }))
-    state.grants = answer.grants.map((grant) => ({
-      category: category(grant.category),
-      grantedAt: grant.grantedAt,
-    }))
   }
 
   async function read(conversationId: string): Promise<void> {
     const state = stateFor(conversationId)
     try {
       take(state, await readPermissions(conversationId))
-      state.load = 'ready'
     } catch (error) {
-      state.load = 'failed'
       reportError('Could Not Read Permissions', error)
     }
   }
@@ -132,27 +115,5 @@ export const usePermissions = defineStore('permissions', () => {
     }
   }
 
-  async function revoke(conversationId: string, categoryId: string): Promise<void> {
-    const state = stateFor(conversationId)
-    state.revoking = [...state.revoking, categoryId]
-    try {
-      await revokePermission(conversationId, categoryId)
-      state.grants = state.grants.filter((grant) => grant.category.id !== categoryId)
-    } catch (error) {
-      reportError('Could Not Revoke the Permission', error, { userVisible: true })
-    } finally {
-      state.revoking = state.revoking.filter((id) => id !== categoryId)
-    }
-  }
-
-  function openDialog(conversationId: string): void {
-    dialog.value = conversationId
-    void read(conversationId)
-  }
-
-  function closeDialog(): void {
-    dialog.value = null
-  }
-
-  return { stateFor, follow, read, decide, revoke, dialog, openDialog, closeDialog }
+  return { stateFor, follow, decide }
 })

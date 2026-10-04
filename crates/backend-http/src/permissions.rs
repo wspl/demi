@@ -1,12 +1,12 @@
 //! A conversation's permission routes (`web-api.md` § Conversation
-//! permissions): the read of its undecided requests and its grants, a
-//! decision on a request, and the revocation of a grant, each in the user's
-//! shard. An archived conversation reads its grants and refuses the rest.
+//! permissions): the read of its undecided requests and a decision on one,
+//! each in the user's shard. An archived conversation has no requests and
+//! refuses a decision.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use demi_backend_permissions::{PermissionError, decide as decide_request, read as read_all, revoke as revoke_grant};
+use demi_backend_permissions::{PermissionError, decide as decide_request, read as read_all};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::permissions::{
     ConversationPermissions, DecidePermission, PermissionRequestId,
@@ -53,25 +53,6 @@ pub(super) async fn decide(
         .of(&user.id)
         .call(move |shard, _| async move {
             decide_request(shard.permission_shard(), &conversation, request, decision).await
-        })
-        .await?
-        .map_err(refused)?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// `DELETE /conversations/:id/permissions/grants/:category`.
-pub(super) async fn revoke(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path((id, category)): Path<(String, String)>,
-) -> Result<StatusCode, ApiError> {
-    let record = owned(&state.services, &user.id, &id).await?;
-    let conversation = record.id;
-    state
-        .shards
-        .of(&user.id)
-        .call(move |shard, _| async move {
-            revoke_grant(shard.permission_shard(), &conversation, category).await
         })
         .await?
         .map_err(refused)?;

@@ -2,8 +2,8 @@
 //! `permissions.md`): the requests refused commands raise, each undecided
 //! until the user decides it and then kept until its message is in the
 //! asking agent's checkpoint, and the grants, one per conversation and
-//! category. Each change reads and writes in one transaction, so a check, a
-//! decision and a revocation never interleave.
+//! category, each kept for the conversation's life. Each change reads and
+//! writes in one transaction, so a check and a decision never interleave.
 
 use demi_shared_types::{NodeId, PermissionOutcome, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
@@ -16,7 +16,6 @@ use super::control::ControlService;
 use super::drafts::archived;
 
 const REQUESTS: &str = "permission_requests";
-const GRANTS: &str = "permission_grants";
 
 const REQUEST_COLUMNS: &str =
     "id, conversation_id, category, command, node_id, agent_number, agent_description, created_at, decision, decided_at";
@@ -51,13 +50,6 @@ pub struct Decision {
     pub at: Timestamp,
 }
 
-/// A grant as it is stored.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StoredGrant {
-    pub category: String,
-    pub granted_at: Timestamp,
-}
-
 /// What the check finds for a call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Checked {
@@ -68,7 +60,7 @@ pub enum Checked {
     Raised(PermissionRequestId),
 }
 
-/// Why a decision or a revocation changed nothing.
+/// Why a decision changed nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PermissionRefusal {
     /// The conversation is archived.
@@ -137,30 +129,20 @@ impl ControlService {
         .await
     }
 
-    /// The conversation's undecided requests, oldest first, and its grants
-    /// in the order they were granted.
-    pub async fn permissions(
+    /// The conversation's undecided requests, oldest first.
+    pub async fn permission_requests(
         &self,
         conversation: ConversationId,
-    ) -> Result<(Vec<StoredRequest>, Vec<StoredGrant>), StorageError> {
+    ) -> Result<Vec<StoredRequest>, StorageError> {
         self.call(move |connection, _| {
-            let requests = connection
+            connection
                 .prepare_cached(&format!(
                     "SELECT {REQUEST_COLUMNS} FROM permission_requests
                      WHERE conversation_id = ?1 AND decision IS NULL ORDER BY created_at, rowid"
                 ))?
                 .query_map([conversation.as_str()], |row| Ok(request_row(row)))?
                 .map(|row| row?)
-                .collect::<Result<Vec<_>, _>>()?;
-            let grants = connection
-                .prepare_cached(
-                    "SELECT category, granted_at FROM permission_grants
-                     WHERE conversation_id = ?1 ORDER BY granted_at, category",
-                )?
-                .query_map([conversation.as_str()], |row| Ok(grant_row(row)))?
-                .map(|row| row?)
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok((requests, grants))
+                .collect()
         })
         .await
     }
@@ -225,28 +207,6 @@ impl ControlService {
             }
             transaction.commit()?;
             Ok(Ok(requests))
-        })
-        .await
-    }
-
-    /// Revokes the conversation's grant of `category`; answers whether it
-    /// had one.
-    pub async fn revoke_permission(
-        &self,
-        conversation: ConversationId,
-        category: String,
-    ) -> Result<Result<bool, PermissionRefusal>, StorageError> {
-        self.call(move |connection, _| {
-            let transaction = connection.transaction()?;
-            if archived(&transaction, &conversation)? {
-                return Ok(Err(PermissionRefusal::Archived));
-            }
-            let removed = transaction.execute(
-                "DELETE FROM permission_grants WHERE conversation_id = ?1 AND category = ?2",
-                params![conversation.as_str(), category],
-            )?;
-            transaction.commit()?;
-            Ok(Ok(removed > 0))
         })
         .await
     }
@@ -383,12 +343,5 @@ fn request_row(row: &Row<'_>) -> Result<StoredRequest, StorageError> {
         },
         created_at: instant(row, REQUESTS, "created_at")?,
         decision,
-    })
-}
-
-fn grant_row(row: &Row<'_>) -> Result<StoredGrant, StorageError> {
-    Ok(StoredGrant {
-        category: row.get("category")?,
-        granted_at: instant(row, GRANTS, "granted_at")?,
     })
 }

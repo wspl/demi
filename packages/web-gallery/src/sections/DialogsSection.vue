@@ -16,9 +16,6 @@ import type { WorkspaceDevice, WorkspaceHostChoice } from '@demicodes/web-ui/hos
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import CloudResetDialog from '@demicodes/web-ui/cloud/CloudResetDialog.vue'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
-import PermissionsDialog from '@demicodes/web-ui/permissions/PermissionsDialog.vue'
-import type { PermissionGrantView } from '@demicodes/web-ui/permissions/types'
-import { demoGrants } from '../fixtures/permissions'
 import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
@@ -40,12 +37,6 @@ import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
  * neutral toast, and the dialog closes where the product's would.
  */
 const { view } = useGalleryView()
-
-/** The Permissions dialog's specimens: Revoke takes a grant away, and Open brings the pinned grants back. */
-const permissionSpecimens = ref<{ variant: string; fixture: () => PermissionGrantView[]; grants: PermissionGrantView[] }[]>([
-  { variant: 'with grants', fixture: demoGrants, grants: demoGrants() },
-  { variant: 'no grants', fixture: () => [], grants: [] },
-])
 
 /** An action that ends the dialog in the product: it closes, and the rest is the product's. */
 function finish(close: () => void, title: HeadlineText): void {
@@ -405,25 +396,6 @@ const resetPhases: {
                 :busy="item.busy"
                 @close="close"
                 @reset="productWould('Reset the Cloud Environment')"
-              />
-            </GalleryDialogFrame>
-          </GallerySpecimen>
-        </div>
-      </GallerySection>
-    </template>
-
-    <template v-if="view === 'conversation'">
-      <GallerySection title="Permissions" note="From Permissions in a conversation's sidebar menu: each category the user allowed the conversation, with what it allows, when, and Revoke, after which the next command of the category asks again. A category the user's command set no longer declares shows its id. Without grants it says that Demi asks when an agent first needs one.">
-        <div class="grid items-start gap-6 lg:grid-cols-2">
-          <GallerySpecimen v-for="item in permissionSpecimens" :key="item.variant" wide :variant="item.variant">
-            <GalleryDialogFrame v-slot="{ open, close }" @reopen="item.grants = item.fixture()">
-              <PermissionsDialog
-                :is-open="open"
-                :overlay-store="appOverlayStore"
-                title="Set up the web design skill"
-                :grants="item.grants"
-                @close="close"
-                @revoke="(category) => (item.grants = item.grants.filter((grant) => grant.category.id !== category))"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
