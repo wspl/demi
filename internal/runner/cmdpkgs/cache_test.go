@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/artifacts"
+	"github.com/wspl/demi/internal/artifacts/artifactstest"
 	"github.com/wspl/demi/internal/commandwire"
 	"github.com/wspl/demi/internal/programtest"
 	"github.com/wspl/demi/internal/runner/cmdpkgs"
@@ -276,5 +278,55 @@ func TestNewerVersionRemovesOnlyUnheldArtifactsOfItsLine(t *testing.T) {
 	must(t, err)
 	if _, err := os.Stat(second); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("released old version remains")
+	}
+}
+
+func TestImageArchiveWithMissingEntryLogsAndDownloads(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Cloud images are Linux-only; Windows does not inspect them")
+	}
+	root := t.TempDir()
+	image := filepath.Join(root, "image")
+	data := artifactstest.Zip(t, map[string][]byte{"bin/tool": []byte("tool")})
+	w := wanted("tool", "1", data)
+	w.Form = &commandwire.ArtifactArchive{Entry: "bin/tool"}
+	archive := artifacts.Archive{
+		Digest: artifacts.Digest{SHA256: w.Artifact.SHA256, Size: w.Artifact.Size},
+		Entry:  "bin/tool",
+	}
+	_, unpacking, err := artifacts.InstallArchive(t.Context(), image, archive)
+	must(t, err)
+	t.Cleanup(func() { must(t, unpacking.Close()) })
+	must(t, os.WriteFile(unpacking.ArchivePath(), data, 0o600))
+	entry, err := unpacking.Finish(t.Context())
+	must(t, err)
+	must(t, os.Remove(entry))
+
+	logs := &logCapture{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(logs))
+	defer slog.SetDefault(previous)
+	installs := &cmdpkgs.Installs{}
+	t.Cleanup(installs.Close)
+	cache, err := cmdpkgs.NewArtifactCache(t.Context(), filepath.Join(root, "cache"), image, installs)
+	must(t, err)
+	t.Cleanup(func() { must(t, cache.Close(context.Background())) })
+	resolver := writeSource(t, root, "source.zip", data)
+	got, err := cache.Install(t.Context(), w, resolver)
+	must(t, err)
+	want := filepath.Join(root, "cache", w.Artifact.SHA256, "bin/tool")
+	if got != want || resolver.calls.Load() != 1 {
+		t.Fatalf("installation = %q, downloads = %d; want %q, 1", got, resolver.calls.Load(), want)
+	}
+	if _, err := os.Stat(entry); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("image entry stat = %v; want not exist", err)
+	}
+	logs.mu.Lock()
+	defer logs.mu.Unlock()
+	message := "preinstalled artifact in " + filepath.Join(image, w.Artifact.SHA256) +
+		" not used, downloading it: the installation at " + filepath.Join(image, w.Artifact.SHA256) +
+		" fails its integrity check"
+	if len(logs.lines) != 1 || logs.lines[0].Message != message {
+		t.Fatalf("logs = %v; want one warning %q", logs.lines, message)
 	}
 }

@@ -46,7 +46,9 @@ func (c *ArtifactCache) preinstalled(ctx context.Context, w Wanted) (string, err
 		if cmdsdk.Exhausted(err) {
 			return "", err
 		}
-		if errors.Is(err, os.ErrNotExist) {
+		// A missing entry inside an existing installation is damage, not absence.
+		var installation *artifacts.InstallationError
+		if errors.Is(err, os.ErrNotExist) && !errors.As(err, &installation) {
 			return "", nil
 		}
 		slog.Warn("preinstalled artifact in " + directory + " not used, downloading it: " + err.Error())
