@@ -92,7 +92,7 @@ const pending: PendingSubmissionState = {
 <template>
   <div class="space-y-8">
     <GallerySection
-      title="Turn failures · the record in the transcript"
+      title="Turn Failures · the Record in the Transcript"
       note="One sentence from the normalized code, the upstream message, the facts a support thread asks for, Copy. The record that ended the conversation carries Retry; the older ones are history. While a retry runs the record is hidden and the tail row shows the turn."
     >
       <GallerySpecimen
@@ -121,7 +121,7 @@ const pending: PendingSubmissionState = {
       </GallerySpecimen>
     </GallerySection>
     <GallerySection
-      title="Undelivered message · the notice follows the message"
+      title="Undelivered Message · the Notice Follows the Message"
       note="The exact text and its attachments stay on screen; the failure follows them in flow, with Retry."
     >
       <GallerySpecimen wide variant="Send failed">
