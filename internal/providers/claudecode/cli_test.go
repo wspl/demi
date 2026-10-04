@@ -1,4 +1,4 @@
-package claudecode
+package claudecode_test
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/providers/claudecode"
 	"go.uber.org/goleak"
 )
 
@@ -25,12 +26,12 @@ func testClock() core.Clock {
 	return providertest.FixedClock(core.Timestamp("2026-09-24T08:00:00.000Z"))
 }
 
-func testProvider(t *testing.T, catalog, usage string) (*Provider, *provider.MemoryCredentialPool) {
+func testProvider(t *testing.T, catalog, usage string) (*claudecode.Provider, *provider.MemoryCredentialPool) {
 	t.Helper()
 	pool := provider.NewMemoryCredentialPool()
 	models := provider.NewModelsDevClient(http.DefaultClient, catalog, testClock())
-	staged := New(
-		NewConfig("entry-1", "Claude", nil),
+	staged := claudecode.New(
+		claudecode.NewConfig("entry-1", "Claude", nil),
 		pool,
 		&provider.MemorySnapshots{},
 		models,
@@ -45,9 +46,9 @@ func testProvider(t *testing.T, catalog, usage string) (*Provider, *provider.Mem
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := NewConfig("entry-1", "Claude", &account.ID)
+	config := claudecode.NewConfig("entry-1", "Claude", &account.ID)
 	config.UsageURL = usage
-	return New(config, pool, &provider.MemorySnapshots{}, models, http.DefaultClient, testClock()), pool
+	return claudecode.New(config, pool, &provider.MemorySnapshots{}, models, http.DefaultClient, testClock()), pool
 }
 
 func user(text string) provider.InferenceItem {
@@ -284,13 +285,16 @@ type scriptedPlacement struct {
 	fail   error
 }
 
-func (p *scriptedPlacement) Start(_ context.Context, spawn func(Site) host.SpawnRequest) (*host.StartedProcess, error) {
+func (p *scriptedPlacement) Start(
+	_ context.Context,
+	spawn func(claudecode.Site) host.SpawnRequest,
+) (*host.StartedProcess, error) {
 	if p.fail != nil {
 		return nil, p.fail
 	}
 	c := &scriptedCLI{
 		t:      p.t,
-		spawn:  spawn(Site{Executable: "/demi/claude", RunDir: "/demi/run", ConfigDir: "/demi/config"}),
+		spawn:  spawn(claudecode.Site{Executable: "/demi/claude", RunDir: "/demi/run", ConfigDir: "/demi/config"}),
 		output: make(chan host.ProcessOutput, 128),
 		ended:  make(chan struct{}),
 	}

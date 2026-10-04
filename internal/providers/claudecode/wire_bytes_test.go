@@ -1,4 +1,4 @@
-package claudecode
+package claudecode_test
 
 import (
 	"encoding/json"
@@ -169,10 +169,11 @@ func TestToolValuesKeepReadOrderAndCanonicalSpelling(t *testing.T) {
 }
 
 func TestFramingFailureUsesFramingReasonWithoutRecord(t *testing.T) {
-	// The oversized case allocates one 64 MiB input to exercise the real bound.
+	// The oversized case allocates one input just over the documented 64 MiB
+	// line bound (docs/providers/claude-code.md).
 	for _, tc := range []struct{ name, line, reason string }{
 		{"UTF8", "\xff", "Unable to decode input as UTF8"},
-		{"length", strings.Repeat("x", maxLineBytes+1), "max line length exceeded"},
+		{"length", strings.Repeat("x", 64<<20+1), "max line length exceeded"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			events, c := answer(t, tc.line)

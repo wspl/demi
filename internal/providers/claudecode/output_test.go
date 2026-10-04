@@ -1,4 +1,4 @@
-package claudecode
+package claudecode_test
 
 import (
 	"fmt"

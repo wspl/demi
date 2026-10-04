@@ -1,4 +1,4 @@
-package claudecode
+package claudecode_test
 
 import (
 	"encoding/json"
@@ -10,15 +10,20 @@ import (
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
+	"github.com/wspl/demi/internal/providers/claudecode"
 )
 
 func TestSetupTokenAccountAndPlacementRequirement(t *testing.T) {
 	p, pool := testProvider(t, "http://127.0.0.1:9/catalog", "http://127.0.0.1:9/usage")
-	staged := New(
-		NewConfig("entry-1", "Claude", nil),
+	signedIn, _, err := pool.Active(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged := claudecode.New(
+		claudecode.NewConfig("entry-1", "Claude", nil),
 		pool,
 		&provider.MemorySnapshots{},
-		p.models,
+		provider.NewModelsDevClient(http.DefaultClient, "http://127.0.0.1:9/catalog", testClock()),
 		http.DefaultClient,
 		testClock(),
 	)
@@ -26,7 +31,7 @@ func TestSetupTokenAccountAndPlacementRequirement(t *testing.T) {
 	equal(t, staged.AuthStatus(t.Context()), &core.Unauthenticated{Message: &message})
 	accounts := staged.Accounts()
 	equal(t, accounts.Capability(), provider.AccountsCapability{Add: true})
-	_, err := accounts.Login(t.Context(), func(core.LoginPending) {})
+	_, err = accounts.Login(t.Context(), func(core.LoginPending) {})
 	if !errors.Is(err, provider.ErrLoginUnsupported) {
 		t.Fatal(err)
 	}
@@ -38,7 +43,8 @@ func TestSetupTokenAccountAndPlacementRequirement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	equal(t, added.ID, *p.config.Account)
+	// The same setup token is the same account, not a second one.
+	equal(t, added.ID, signedIn)
 	if !strings.HasPrefix(added.Label, "claude-") || len(added.Label) != 15 {
 		t.Fatal(added.Label)
 	}
