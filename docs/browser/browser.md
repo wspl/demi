@@ -926,7 +926,8 @@ Visible means a rendered box with area and a visible computed `visibility`.
 Enabled follows the control and its ancestors, including a disabled `fieldset`
 and `aria-disabled`. Editable means an input or textarea that is not read-only,
 or a contenteditable element. Stable means the bounding box is unchanged across
-two consecutive animation frames within a bounded number of frames. A tab that
+three consecutive animation frames, within a bounded number of frames: the
+two frames on either side of an animation's turn can show the same box. A tab that
 is not the front tab of its window, such as an older tab after `open` or the
 opener of a popup, has a hidden document, which runs no animation frames; there
 the box is sampled on timers of about a frame's length instead, so an action
