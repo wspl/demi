@@ -99,7 +99,7 @@ Admission is decided when an action arrives:
   for the edit instead ([Model switch](#model-switch)).
 - `retry`, `resume` and `compact` are refused unless the session is idle, with
   the reason `Session is busy (<phase>)`. A `compact` is also refused below
-  half the threshold window
+  half the window in use
   ([When compaction runs](compaction.md#when-compaction-runs)).
 - A send is never refused because the session is busy: it waits in the queue
   ([Input](#input)).
@@ -807,7 +807,7 @@ Words used for session data:
 | `text` | The provider: assistant text, marked `forkable` once complete ([Eligibility](conversation-fork.md#eligibility)) | The text | Yes |
 | `tool_call` | The provider's call, completed by the session with the result | The call and, once completed, its result | Yes |
 | `response` | The provider: the usage of one completed request | Nothing; its usage anchors the context estimate | No |
-| `error` | A failed request or an interrupted turn ([The failure record](failures-and-recovery.md#the-failure-record)) | Nothing | Yes |
+| `error` | A failed request or an interrupted turn ([The failure record](failures-and-recovery.md#the-failure-record)); `outsideTurn` when the failure ended no turn ([Retries](failures-and-recovery.md#retries)) | Nothing | Yes |
 | `compaction_boundary` | Compaction: the summary, inserted where the kept history begins | A user message: "Previous conversation summary:" and the summary | Through its marker; at its own place only when an edit removed the marker |
 | `compaction_marker` | Compaction: the estimated size of what was summarized, appended at the end | Nothing | Yes, as the compaction's divider, with its boundary's summary size |
 
@@ -1295,7 +1295,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `transcript_reset` | Every block, the version `{ epoch, revision }`, and `failures` |
 | `transcript_patch` | Patches, the new revision, and `failures` |
 | `phase` | `idle`, `running` or `compacting` |
-| `context_usage` | The estimate of the root's next request in `tokens`, the threshold `window` and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window. In the open handshake after `phase` when the session holds its replayed media ([Context estimate](compaction.md#context-estimate)) |
+| `context_usage` | The estimate of the root's next request in `tokens`, the `window` in use and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window. Right after the open handshake when the session can tell it without reading a blob ([Context estimate](compaction.md#context-estimate)) |
 | `queue` | The queued messages, each `{ id, content }` |
 | `pending_steers` | The complete list of pending steers |
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |

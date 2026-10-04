@@ -51,7 +51,6 @@ export function modelInfo(model: CatalogModel, limit: number | null): ModelInfo 
     name: model.displayName,
     contextWindow: model.contextWindow,
     contextLimit: appliedContextLimit(model.contextWindow, limit),
-    inputLimit: metadata.inputLimit,
     acceptedExtensions: metadata.acceptedExtensions,
     reasoning: model.supportedThinkingEfforts?.length
       ? {

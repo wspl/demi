@@ -242,6 +242,12 @@ impl<H: HostResolver> Connection<H> {
             }
         };
         tree.attach(self.id, self.outbox.clone());
+        // The usage follows the handshake, since the window in use is asked
+        // for (`compaction.md` § Context estimate). It is the estimate at
+        // the moment it is sent, so a later change still arrives after it.
+        if let Some(usage) = tree.root().session().held_context_usage().await {
+            self.send(ServerFrame::ContextUsage { usage });
+        }
         if let Some(continuation) = continuation
             && let Err(error) = tree.continue_restored(continuation).await
         {

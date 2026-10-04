@@ -15,17 +15,18 @@ import {
   setGalleryContextLimit,
   withContextLimits,
 } from '../fixtures/context-limits'
-import { usageAt } from '../fixtures/catalog'
+import { usageOf } from '../fixtures/catalog'
 import { productWould } from '../product-would'
 
 const props = defineProps<{
   providerId: string
   modelId: string
   /**
-   * How full the context is, as a share of the window in use: shows the
-   * model chip with the usage indicator; without it, the open model menu.
+   * The estimate of the next request, in tokens: shows the model chip with
+   * the usage indicator, which counts it against the window in use; without
+   * it, the open model menu.
    */
-  usageRatio?: number
+  usedTokens?: number
 }>()
 
 const settings = ref<ModelSettings>({
@@ -39,10 +40,10 @@ const selected = computed(() =>
   models.value[settings.value.providerId]?.find((model) => model.id === settings.value.modelId),
 )
 
-/** The usage the backend would report: a share of the window in use, which the limit sets. */
+/** The usage the backend would report: the estimate against the window in use, which the limit sets. */
 const usage = computed(() => {
   const window = contextWindowInUse(selected.value)
-  return props.usageRatio === undefined || window === null ? null : usageAt(props.usageRatio, window)
+  return props.usedTokens === undefined || window === null ? null : usageOf(props.usedTokens, window)
 })
 
 function change(next: ModelSettingsChange): void {
@@ -51,7 +52,7 @@ function change(next: ModelSettingsChange): void {
 </script>
 
 <template>
-  <div v-if="usageRatio !== undefined" class="flex items-center gap-1">
+  <div v-if="usedTokens !== undefined" class="flex items-center gap-1">
     <ModelSelector
       :providers="contextLimitProviders"
       :models="models"

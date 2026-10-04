@@ -194,7 +194,9 @@ The control is offered when the last turn is unfinished and the conversation
 is idle, not archived, has a usable provider, has its history loaded, and no
 message edit is open. It leaves when recovery starts, and for good once a
 newer turn exists: sending a message is the other way forward, and the earlier
-turn is then history.
+turn is then history. An error record that ended no turn, such as that of a
+Compact whose summary request failed after a finished answer, offers nothing
+([Retries](../agent/failures-and-recovery.md#retries)).
 
 While a turn waits for the provider, the transcript's tail row says
 **Requesting**, with how long it has waited. The word says whose the wait is:

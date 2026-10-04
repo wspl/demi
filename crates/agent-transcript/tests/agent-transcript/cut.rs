@@ -62,6 +62,7 @@ fn error() -> Block {
         message: "failed".into(),
         code: None,
         diagnostics: None,
+        outside_turn: false,
     })
 }
 
