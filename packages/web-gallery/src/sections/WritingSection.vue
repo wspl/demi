@@ -1,22 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import Button from '@demicodes/web-ui/ui/Button.vue'
 import ExternalLink from '@demicodes/web-ui/ui/ExternalLink.vue'
-import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import {
-  TITLE_LOWERCASE_WORDS,
-  applyStyle,
-  styleProblems,
-  type TextStyle,
-} from '@demicodes/web-ui/ui/ui-text'
 import GallerySection from '../components/GallerySection.vue'
 
 /**
  * The rule for UI text: macOS capitalization, as Apple's Human Interface
- * Guidelines and Apple Style Guide prescribe it. `ui-text.ts` is the rule in
- * code; the UI text check (`scripts/ui-text-check.ts`) applies it to every
- * literal whose place declares a style.
+ * Guidelines and Apple Style Guide prescribe it. It is a written convention:
+ * nothing checks it, and a place that carries UI text names its style by
+ * one of the types in web-ui's `ui-text.ts`.
  */
 
 interface Source {
@@ -26,10 +16,10 @@ interface Source {
 
 interface ElementRule {
   kind: string
-  /** The web-ui place that declares the style, as the check reports it. */
+  /** The web-ui place that carries the text. */
   where: string
   /** `content` is text Demi shows but does not write: it stays as written. */
-  style: TextStyle | 'content'
+  style: 'title' | 'sentence' | 'headline' | 'placeholder' | 'content'
   right: readonly string[]
   wrong: readonly string[]
   /** Apple's word for it, or how Demi maps a web element Apple does not name. */
@@ -220,13 +210,6 @@ const STYLE_NAMES: Record<ElementRule['style'], string> = {
   content: 'As written',
 }
 
-const styleOptions: readonly SegmentedOption<TextStyle>[] = [
-  { value: 'title', label: 'Title' },
-  { value: 'sentence', label: 'Sentence' },
-  { value: 'headline', label: 'Headline' },
-  { value: 'placeholder', label: 'Placeholder' },
-]
-
 const wordRules = [
   {
     title: 'Capitalize',
@@ -243,8 +226,8 @@ const wordRules = [
   {
     title: 'Keep Lowercase',
     items: [
-      `Articles: ${TITLE_LOWERCASE_WORDS.articles.join(', ')}`,
-      `Coordinating conjunctions: ${TITLE_LOWERCASE_WORDS.coordinatingConjunctions.join(', ')}`,
+      'Articles: a, an, the',
+      'Coordinating conjunctions: and, but, or, nor, for, yet, so',
       'To in an infinitive, and as in any role: How to Start, Export a Document as a PDF',
       'Prepositions of four letters or fewer: at, by, for, from, in, into, of, off, on, onto, out, over, to, up, with',
     ],
@@ -278,25 +261,6 @@ const sources: readonly Required<Source>[] = [
   { label: 'OS X Human Interface Guidelines (2016): Terminology and wording', href: MACOS_HIG_2016 },
 ]
 
-const text = ref('Add source...')
-const style = ref<TextStyle>('title')
-const tester = ref<HTMLElement | null>(null)
-
-const problems = computed(() => styleProblems(text.value, style.value))
-const fixed = computed(() => applyStyle(text.value, style.value))
-
-/** Loads an example into the tester, which then says what, if anything, to change. */
-function tryExample(example: string, exampleStyle: ElementRule['style']): void {
-  if (exampleStyle === 'content')
-    return
-  text.value = example
-  style.value = exampleStyle
-  tester.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-}
-
-function applyFixes(): void {
-  text.value = fixed.value
-}
 </script>
 
 <template>
@@ -311,35 +275,12 @@ function applyFixes(): void {
         element it works like, and says so.
       </p>
       <p class="text-fg-muted">
-        A prop that carries UI text declares its style by its type (TitleText,
-        SentenceText, HeadlineText or PlaceholderText), and the UI text check
-        in bun run test applies this rule to every literal written into one.
-        Documentation prose stays in the Google style.
+        A prop that carries UI text names its style by its type (TitleText,
+        SentenceText, HeadlineText or PlaceholderText), so whoever writes into
+        it knows which style to follow. Documentation prose stays in the
+        Google style.
       </p>
     </div>
-
-    <GallerySection title="Try a Text" note="Pick a style, type a text, and see what the rule changes. A click on an example below loads it here.">
-      <div ref="tester" class="max-w-3xl space-y-3 rounded-xl border border-line bg-surface p-4">
-        <Segmented v-model="style" :options="styleOptions" size="sm" />
-        <TextInput v-model="text" placeholder="A label, title or message" />
-        <div class="min-h-10 text-[13px] leading-5" aria-live="polite">
-          <p v-if="text.trim() === ''" class="text-fg-muted">Type a text to check it.</p>
-          <p v-else-if="problems.length === 0" class="text-fg-body">Follows the rule.</p>
-          <ul v-else class="space-y-1 text-fg-body">
-            <li v-for="problem in problems" :key="`${problem.word}-${problem.want}`">
-              <span class="font-mono text-fg-emphasis">{{ problem.word }}</span>
-              becomes
-              <span class="font-mono text-fg-emphasis">{{ problem.want || 'nothing' }}</span>
-            </li>
-            <li v-if="style === 'headline'" class="text-fg-muted">Or write it as a complete sentence with its ending punctuation.</li>
-          </ul>
-        </div>
-        <div class="flex gap-2">
-          <Button size="sm" :disabled="problems.length === 0" disabled-reason="Nothing to change" @click="applyFixes">Apply Fixes</Button>
-          <Button size="sm" variant="ghost" :disabled="text === ''" disabled-reason="The field is empty" @click="text = ''">Clear</Button>
-        </div>
-      </div>
-    </GallerySection>
 
     <GallerySection title="Which Style Each Element Takes">
       <div class="overflow-x-auto rounded-xl border border-line">
@@ -361,26 +302,12 @@ function applyFixes(): void {
               <td class="px-3 py-2">{{ STYLE_NAMES[rule.style] }}</td>
               <td class="px-3 py-2">
                 <div class="flex flex-wrap gap-1">
-                  <template v-for="example in rule.right" :key="example">
-                    <button
-                      v-if="rule.style !== 'content'"
-                      type="button"
-                      class="rounded px-1.5 py-0.5 text-left text-fg-body transition-colors duration-200 ease-out bg-overlay/6 hover:bg-hover"
-                      @click="tryExample(example, rule.style)"
-                    >{{ example }}</button>
-                    <span v-else class="rounded px-1.5 py-0.5 bg-overlay/6">{{ example }}</span>
-                  </template>
+                  <span v-for="example in rule.right" :key="example" class="rounded px-1.5 py-0.5 bg-overlay/6">{{ example }}</span>
                 </div>
               </td>
               <td class="px-3 py-2">
                 <div class="flex flex-wrap gap-1">
-                  <button
-                    v-for="example in rule.wrong"
-                    :key="example"
-                    type="button"
-                    class="rounded px-1.5 py-0.5 text-left text-fg-muted line-through transition-colors duration-200 ease-out hover:bg-hover"
-                    @click="tryExample(example, rule.style)"
-                  >{{ example }}</button>
+                  <span v-for="example in rule.wrong" :key="example" class="rounded px-1.5 py-0.5 text-fg-muted line-through">{{ example }}</span>
                 </div>
               </td>
               <td class="px-3 py-2">
