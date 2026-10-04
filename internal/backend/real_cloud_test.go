@@ -612,7 +612,11 @@ func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEv
 	if !strings.HasPrefix(saved, "written through a mapping") {
 		t.Fatalf("saved: %q", saved)
 	}
-	copies := t.TempDir()
+	// Compare on the image's filesystem: ext4 counts extent-tree blocks in
+	// stat allocation, while a temporary directory on tmpfs does not.
+	copies, err := os.MkdirTemp(filepath.Dir(system), "sparse-copy-")
+	wireMust(t, err)
+	t.Cleanup(func() { wireMust(t, os.RemoveAll(copies)) })
 	for _, image := range []string{system, home} {
 		copyPath := filepath.Join(copies, "copy.ext4")
 		realCommand(s.ctx, t, "cp", "--reflink=auto", "--sparse=always", image, copyPath)
