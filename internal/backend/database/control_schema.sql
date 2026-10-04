@@ -163,8 +163,11 @@ CREATE TABLE conversation_hosts (
 ) STRICT;
 CREATE INDEX conversation_hosts_device ON conversation_hosts (device_id);
 
+-- A conversation's work panel: its tabs and the ids it ever had, one JSON
+-- document, with the revision that counts its changes.
 CREATE TABLE conversation_panels (
   conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  revision        INTEGER NOT NULL CHECK (revision >= 1),
   document        TEXT NOT NULL,
   updated_at      INTEGER NOT NULL
 ) STRICT;

@@ -1,5 +1,6 @@
 DELETE /api/conversations/{id}/fs
 DELETE /api/conversations/{id}/hosts/{device}
+DELETE /api/conversations/{id}/panel/tabs/{tab}
 DELETE /api/devices/{id}
 DELETE /api/providers/subscription-login/{id}
 DELETE /api/providers/{id}
@@ -50,6 +51,7 @@ GET /runner-artifacts/{release}/{target}/{file}
 PATCH /api/auth/me
 PATCH /api/conversations/{id}
 PATCH /api/conversations/{id}/hosts/{device}
+PATCH /api/conversations/{id}/panel/tabs/{tab}
 PATCH /api/providers/{id}
 PATCH /api/settings/preferences
 PATCH /api/users/{id}
@@ -67,6 +69,8 @@ POST /api/conversations/{id}/fork
 POST /api/conversations/{id}/fs
 POST /api/conversations/{id}/hosts
 POST /api/conversations/{id}/hosts/{device}/fs
+POST /api/conversations/{id}/panel/tabs
+POST /api/conversations/{id}/panel/tabs/{tab}/move
 POST /api/conversations/{id}/plugins/{plugin}/calls/{method}
 POST /api/conversations/{id}/read
 POST /api/conversations/{id}/reload
@@ -89,7 +93,6 @@ POST /api/workspaces
 PUT /api/auth/password
 PUT /api/conversations/{id}/draft
 PUT /api/conversations/{id}/fs/raw
-PUT /api/conversations/{id}/panel
 PUT /api/pipes/{id}
 PUT /api/plugins/{plugin}
 PUT /api/providers/{id}/accounts/active

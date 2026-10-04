@@ -511,3 +511,60 @@ const (
 	// The user has no live expose of that id.
 	ExposeRefusalNotFound ExposeRefusal = "not_found"
 )
+
+// The request's conversation's work panel, with only the tabs of the
+// plugin's own panel kinds.
+// +demi:variant PortMessage panel_tabs
+type PortMessagePanelTabs struct{}
+
+func (*PortMessagePanelTabs) portMessage() {}
+
+// Creates a tab of one of the plugin's panel kinds.
+// +demi:variant PortMessage create_panel_tab
+type PortMessageCreatePanelTab struct {
+	Tab webapi.CreatePanelTab `json:"tab"`
+}
+
+func (*PortMessageCreatePanelTab) portMessage() {}
+
+// Sets the fields of `data` in the tab's data, removing the null ones.
+// +demi:variant PortMessage update_panel_tab
+// +demi:check validatePanelUpdate
+type PortMessageUpdatePanelTab struct {
+	ID   string          `json:"id"`
+	Data json.RawMessage `json:"data"`
+}
+
+func (*PortMessageUpdatePanelTab) portMessage() {}
+
+// +demi:variant PortMessage remove_panel_tab
+type PortMessageRemovePanelTab struct {
+	ID string `json:"id"`
+}
+
+func (*PortMessageRemovePanelTab) portMessage() {}
+
+// +demi:variant PortAnswer panel
+type PortAnswerPanel struct {
+	Panel webapi.WorkPanel `json:"panel"`
+}
+
+func (*PortAnswerPanel) portAnswer() {}
+
+// The panel's revision once a change is in it.
+// +demi:variant PortAnswer panel_revision
+type PortAnswerPanelRevision struct {
+	Revision uint64 `json:"revision"`
+}
+
+func (*PortAnswerPanelRevision) portAnswer() {}
+
+// A change of the work panel was refused, as its routes would refuse
+// it, such as `panel_full` (`web-api.md` § Work panel state).
+// +demi:variant PortRefusal panel
+type PortRefusalPanel struct {
+	Code    webapi.ErrorCode `json:"code"`
+	Message string           `json:"message"`
+}
+
+func (*PortRefusalPanel) portRefusal() {}

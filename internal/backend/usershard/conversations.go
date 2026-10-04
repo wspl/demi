@@ -151,6 +151,7 @@ func (s *Shard) ConversationSummary(
 		TitleGenerating:     generating,
 		PluginsChanged:      changed,
 		DraftRevision:       record.DraftRevision,
+		PanelRevision:       record.PanelRevision,
 		PluginRevisions:     s.plugins.Revisions(record.ID),
 		WorkingTreeRevision: jobs,
 	}, nil

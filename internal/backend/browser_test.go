@@ -24,7 +24,7 @@ func TestBrowserAbsentCatalogRemovesTabsAndMethods(t *testing.T) {
 	a, err := b.Read(ctx, path+"/state", &s)
 	wireMust(t, err)
 	filesRefusal(t, a, 404, webapi.ErrorCodeUnknownPlugin)
-	a, err = b.Post(ctx, path+"/calls/open", &s, []byte(`{}`))
+	a, err = b.Post(ctx, path+"/calls/bind", &s, []byte(`{"panelTab":"a"}`))
 	wireMust(t, err)
 	filesRefusal(t, a, 404, webapi.ErrorCodeUnknownPluginMethod)
 	wireMust(t, b.Close(ctx))
@@ -52,7 +52,7 @@ func TestBrowserStoppedCloudIsNotWokenByTabMethods(t *testing.T) {
 	if len(tabs.Tabs) != 0 {
 		t.Fatalf("tabs: %+v", tabs)
 	}
-	a, err = b.Post(ctx, path+"/calls/close", &s, []byte(`{"tab":"t999999"}`))
+	a, err = b.Post(ctx, path+"/calls/sync", &s, []byte(`{}`))
 	wireMust(t, err)
 	filesStatus(t, a, 200)
 	for method, body := range map[string]string{
@@ -107,16 +107,9 @@ func TestBrowserTabMethodsUseConversationHost(t *testing.T) {
 	if state.Revision != 0 || len(tabs.Tabs) != 0 {
 		t.Fatalf("tabs: %+v %+v", state, tabs)
 	}
-	for _, tab := range []string{"t999999", "not-a-tab"} {
-		body, err := contract.EncodeJSON(browser.CloseTab{Tab: tab})
-		wireMust(t, err)
-		a, err = b.Post(ctx, path+"/calls/close", &s, body)
-		wireMust(t, err)
-		filesStatus(t, a, 200)
-		if string(a.Body) != "null" {
-			t.Fatalf("close: %s", a.Body)
-		}
-	}
+	a, err = b.Post(ctx, path+"/calls/sync", &s, []byte(`{}`))
+	wireMust(t, err)
+	filesStatus(t, a, 200)
 	for _, call := range []struct {
 		method, body string
 	}{
@@ -154,8 +147,8 @@ func TestBrowserTabMethodsUseConversationHost(t *testing.T) {
 			`{"tab":"t999999","action":"sideways"}`,
 		},
 		{
-			"open",
-			`{"url":""}`,
+			"bind",
+			`{}`,
 		},
 	} {
 		a, err = b.Post(ctx, path+"/calls/"+call.method, &s, []byte(call.body))
@@ -173,7 +166,7 @@ func TestBrowserTabMethodsUseConversationHost(t *testing.T) {
 	a, err = b.Read(ctx, path+"/state", &s)
 	wireMust(t, err)
 	filesRefusal(t, a, 409, webapi.ErrorCodeConversationArchived)
-	a, err = b.Post(ctx, path+"/calls/open", &s, []byte(`{}`))
+	a, err = b.Post(ctx, path+"/calls/navigate", &s, []byte(`{"tab":"t999999","url":"https://example.test/"}`))
 	wireMust(t, err)
 	filesRefusal(t, a, 409, webapi.ErrorCodeConversationArchived)
 	a, err = b.Read(ctx, "/api/conversations/1e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01/plugins/browser/state", &s)
@@ -207,7 +200,7 @@ func TestBrowserJobsAndTabMethodsRaiseSummaryRevisions(t *testing.T) {
 	tabs, err := browser.DecodeBrowserTabs(state.State)
 	wireMust(t, err)
 	conversationEqual(t, len(tabs.Tabs), 0)
-	conversationRequest(w.ctx, t, w.backend, &w.session, "POST", path+"/calls/close", `{"tab":"t999999"}`, 200)
+	conversationRequest(w.ctx, t, w.backend, &w.session, "POST", path+"/calls/sync", `{}`, 200)
 	operated := conversationSummary(w.ctx, t, w.backend, &w.session, filesConversation)
 	conversationEqual(t, operated.WorkingTreeRevision, uint64(1))
 	conversationEqual(t, operated.PluginRevisions, []webapi.PluginRevision{{Plugin: "browser", Revision: 2}})
@@ -244,9 +237,9 @@ func TestBrowserListingRunningCloudDoesNotKeepItAwake(t *testing.T) {
 		t,
 		b,
 		&s,
-		"POST",
-		"/api/conversations/"+filesConversation+"/plugins/browser/calls/close",
-		`{"tab":"t999999"}`,
+		"GET",
+		"/api/conversations/"+filesConversation+"/plugins/browser/state",
+		"",
 		200,
 	)
 	devices := manager.Devices()

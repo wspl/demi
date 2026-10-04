@@ -9,6 +9,63 @@ import (
 	"github.com/wspl/demi/internal/contract"
 )
 
+func DecodeBindTab(data []byte) (BindTab, error) { return contract.Decode[BindTab](data) }
+func (v BindTab) Validate() error                { return contractValidateBindTab(v, 0) }
+func contractValidateBindTab(v BindTab, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.PanelTab), 0, -1, ""); err != nil {
+		return contract.At("panelTab", err)
+	}
+	return nil
+}
+func (v *BindTab) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next BindTab
+	for key := range obj {
+		switch key {
+		case "panelTab":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["panelTab"]
+		if !ok {
+			return contract.At("panelTab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("panelTab", err)
+			}
+			next.PanelTab = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v BindTab) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "panelTab", Value: v.PanelTab})
+	return contract.EncodeObject(fields)
+}
+func BindTabJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`bind { panelTab }`: a browser tab for the panel tab, which Retry and\\nReload ask for.\",\"properties\":{\"panelTab\":{\"type\":\"string\"}},\"required\":[\"panelTab\"],\"title\":\"BindTab\",\"type\":\"object\"}")
+}
+func BindTabPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`bind { panelTab }`: a browser tab for the panel tab, which Retry and\\nReload ask for.\",\"properties\":{\"panelTab\":{\"type\":\"string\"}},\"required\":[\"panelTab\"],\"title\":\"BindTab\",\"type\":\"object\"}")
+}
 func DecodeBrowserTabs(data []byte) (BrowserTabs, error) { return contract.Decode[BrowserTabs](data) }
 func (v BrowserTabs) Validate() error                    { return contractValidateBrowserTabs(v, 0) }
 func contractValidateBrowserTabs(v BrowserTabs, depth int) error {
@@ -67,63 +124,6 @@ func BrowserTabsJSONSchema() json.RawMessage {
 }
 func BrowserTabsPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"$defs\":{\"BrowserTab\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"$ref\":\"#/$defs/TabId\"},\"title\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"createdBy\":{\"$ref\":\"#/$defs/BrowserCreatedBy\"}},\"required\":[\"id\",\"title\",\"url\",\"createdBy\"],\"description\":\"A tab as `tabs` lists it and the conversation browser's tab methods return it.\"},\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"BrowserCreatedBy\":{\"oneOf\":[{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991},\"kind\":{\"type\":\"string\",\"const\":\"agent\"}},\"required\":[\"kind\",\"number\"],\"description\":\"An agent, by its number in the conversation.\"},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"opener\":{\"$ref\":\"#/$defs/TabId\"},\"kind\":{\"type\":\"string\",\"const\":\"page\"}},\"required\":[\"kind\",\"opener\"]},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991},\"kind\":{\"type\":\"string\",\"const\":\"temporary\"}},\"required\":[\"kind\",\"number\"],\"description\":\"A temporary command of the agent with this number.\"},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"kind\":{\"type\":\"string\",\"const\":\"user\"}},\"required\":[\"kind\"]}],\"description\":\"Who opened a tab: an agent, a page's `window.open`, a temporary command\\nsuch as `content.fetch`, or the user.\"}},\"description\":\"The conversation state: the conversation browser's tabs, none while it\\ndoes not run.\",\"properties\":{\"tabs\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/BrowserTab\"}}},\"required\":[\"tabs\"],\"title\":\"BrowserTabs\",\"type\":\"object\"}")
-}
-func DecodeCloseTab(data []byte) (CloseTab, error) { return contract.Decode[CloseTab](data) }
-func (v CloseTab) Validate() error                 { return contractValidateCloseTab(v, 0) }
-func contractValidateCloseTab(v CloseTab, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := contract.Text(string(v.Tab), 0, -1, ""); err != nil {
-		return contract.At("tab", err)
-	}
-	return nil
-}
-func (v *CloseTab) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next CloseTab
-	for key := range obj {
-		switch key {
-		case "tab":
-		default:
-			return contract.At(key, fmt.Errorf("unknown field"))
-		}
-	}
-	{
-		raw, ok := obj["tab"]
-		if !ok {
-			return contract.At("tab", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[string](raw)
-			if err != nil {
-				return contract.At("tab", err)
-			}
-			next.Tab = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v CloseTab) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
-	return contract.EncodeObject(fields)
-}
-func CloseTabJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`close { tab }`.\",\"properties\":{\"tab\":{\"type\":\"string\"}},\"required\":[\"tab\"],\"title\":\"CloseTab\",\"type\":\"object\"}")
-}
-func CloseTabPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`close { tab }`.\",\"properties\":{\"tab\":{\"type\":\"string\"}},\"required\":[\"tab\"],\"title\":\"CloseTab\",\"type\":\"object\"}")
 }
 func DecodeHistoryAction(data []byte) (HistoryAction, error) {
 	return contract.Decode[HistoryAction](data)
@@ -235,115 +235,44 @@ func NavigateTabJSONSchema() json.RawMessage {
 func NavigateTabPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`navigate { tab, url }`.\",\"properties\":{\"tab\":{\"type\":\"string\"},\"url\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096}},\"required\":[\"tab\",\"url\"],\"title\":\"NavigateTab\",\"type\":\"object\"}")
 }
-func DecodeOpenTab(data []byte) (OpenTab, error) { return contract.Decode[OpenTab](data) }
-func (v OpenTab) Validate() error                { return contractValidateOpenTab(v, 0) }
-func contractValidateOpenTab(v OpenTab, depth int) error {
+func DecodeSyncTabs(data []byte) (SyncTabs, error) { return contract.Decode[SyncTabs](data) }
+func (v SyncTabs) Validate() error                 { return contractValidateSyncTabs(v, 0) }
+func contractValidateSyncTabs(v SyncTabs, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if v.URL != nil {
-		if err := contract.Text(string((*v.URL)), 1, 4096, ""); err != nil {
-			return contract.At("url", err)
-		}
-	}
 	return nil
 }
-func (v *OpenTab) UnmarshalJSON(data []byte) error {
+func (v *SyncTabs) UnmarshalJSON(data []byte) error {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
 		return err
 	}
-	var next OpenTab
+	var next SyncTabs
 	for key := range obj {
 		switch key {
-		case "url":
 		default:
 			return contract.At(key, fmt.Errorf("unknown field"))
 		}
 	}
-	{
-		raw, ok := obj["url"]
-		if ok {
-			if !contract.IsNull(raw) {
-				value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
-				if err != nil {
-					return contract.At("url", err)
-				}
-				next.URL = value
-			}
-		}
-	}
 	if err := next.Validate(); err != nil {
 		return err
 	}
 	*v = next
 	return nil
 }
-func (v OpenTab) MarshalJSON() ([]byte, error) {
+func (v SyncTabs) MarshalJSON() ([]byte, error) {
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
 	fields := []contract.Field{}
-	if v.URL != nil {
-		fields = append(fields, contract.Field{Name: "url", Value: v.URL})
-	}
 	return contract.EncodeObject(fields)
 }
-func OpenTabJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`open { url? }`: a new tab, at `about:blank` without a URL.\",\"properties\":{\"url\":{\"type\":[\"string\",\"null\"],\"minLength\":1,\"maxLength\":4096}},\"title\":\"OpenTab\",\"type\":\"object\"}")
+func SyncTabsJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`sync {}`: the panel's tabs updated from the browser's.\",\"title\":\"SyncTabs\",\"type\":\"object\"}")
 }
-func OpenTabPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`open { url? }`: a new tab, at `about:blank` without a URL.\",\"properties\":{\"url\":{\"type\":[\"string\",\"null\"],\"minLength\":1,\"maxLength\":4096}},\"title\":\"OpenTab\",\"type\":\"object\"}")
-}
-func DecodeOpenedTab(data []byte) (OpenedTab, error) { return contract.Decode[OpenedTab](data) }
-func (v OpenedTab) Validate() error                  { return contractValidateOpenedTab(v, 0) }
-func contractValidateOpenedTab(v OpenedTab, depth int) error {
-	if depth > 1000 {
-		return fmt.Errorf("validation nesting exceeds 1000")
-	}
-	if err := v.Tab.Validate(); err != nil {
-		return contract.At("tab", err)
-	}
-	return nil
-}
-func (v *OpenedTab) UnmarshalJSON(data []byte) error {
-	obj, err := contract.Decode[map[string]json.RawMessage](data)
-	if err != nil {
-		return err
-	}
-	var next OpenedTab
-	{
-		raw, ok := obj["tab"]
-		if !ok {
-			return contract.At("tab", fmt.Errorf("required field is absent"))
-		}
-		if ok {
-			value, err := contract.Decode[browserop.BrowserTab](raw)
-			if err != nil {
-				return contract.At("tab", err)
-			}
-			next.Tab = value
-		}
-	}
-	if err := next.Validate(); err != nil {
-		return err
-	}
-	*v = next
-	return nil
-}
-func (v OpenedTab) MarshalJSON() ([]byte, error) {
-	if err := v.Validate(); err != nil {
-		return nil, err
-	}
-	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
-	return contract.EncodeObject(fields)
-}
-func OpenedTabJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"description\":\"What `open` answers.\",\"properties\":{\"tab\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"title\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"createdBy\":{\"oneOf\":[{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991},\"kind\":{\"type\":\"string\",\"const\":\"agent\"}},\"required\":[\"kind\",\"number\"],\"description\":\"An agent, by its number in the conversation.\"},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"opener\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"kind\":{\"type\":\"string\",\"const\":\"page\"}},\"required\":[\"kind\",\"opener\"]},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991},\"kind\":{\"type\":\"string\",\"const\":\"temporary\"}},\"required\":[\"kind\",\"number\"],\"description\":\"A temporary command of the agent with this number.\"},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"kind\":{\"type\":\"string\",\"const\":\"user\"}},\"required\":[\"kind\"]}],\"description\":\"Who opened a tab: an agent, a page's `window.open`, a temporary command\\nsuch as `content.fetch`, or the user.\"}},\"required\":[\"id\",\"title\",\"url\",\"createdBy\"],\"description\":\"A tab as `tabs` lists it and the conversation browser's tab methods return it.\"}},\"required\":[\"tab\"],\"title\":\"OpenedTab\",\"type\":\"object\"}")
-}
-func OpenedTabPluginJSONSchema() json.RawMessage {
-	return json.RawMessage("{\"$defs\":{\"BrowserTab\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"id\":{\"$ref\":\"#/$defs/TabId\"},\"title\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"createdBy\":{\"$ref\":\"#/$defs/BrowserCreatedBy\"}},\"required\":[\"id\",\"title\",\"url\",\"createdBy\"],\"description\":\"A tab as `tabs` lists it and the conversation browser's tab methods return it.\"},\"TabId\":{\"type\":\"string\",\"description\":\"A tab's public identity, which `open` and `tabs` return: `t` and the\\ntab's number in the conversation (`browser.md` § One tab registry).\",\"pattern\":\"^t[1-9][0-9]{0,14}$\"},\"BrowserCreatedBy\":{\"oneOf\":[{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991},\"kind\":{\"type\":\"string\",\"const\":\"agent\"}},\"required\":[\"kind\",\"number\"],\"description\":\"An agent, by its number in the conversation.\"},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"opener\":{\"$ref\":\"#/$defs/TabId\"},\"kind\":{\"type\":\"string\",\"const\":\"page\"}},\"required\":[\"kind\",\"opener\"]},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"number\":{\"type\":\"integer\",\"format\":\"uint64\",\"minimum\":0,\"maximum\":9007199254740991},\"kind\":{\"type\":\"string\",\"const\":\"temporary\"}},\"required\":[\"kind\",\"number\"],\"description\":\"A temporary command of the agent with this number.\"},{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"kind\":{\"type\":\"string\",\"const\":\"user\"}},\"required\":[\"kind\"]}],\"description\":\"Who opened a tab: an agent, a page's `window.open`, a temporary command\\nsuch as `content.fetch`, or the user.\"}},\"description\":\"What `open` answers.\",\"properties\":{\"tab\":{\"$ref\":\"#/$defs/BrowserTab\"}},\"required\":[\"tab\"],\"title\":\"OpenedTab\",\"type\":\"object\"}")
+func SyncTabsPluginJSONSchema() json.RawMessage {
+	return json.RawMessage("{\"additionalProperties\":false,\"description\":\"`sync {}`: the panel's tabs updated from the browser's.\",\"title\":\"SyncTabs\",\"type\":\"object\"}")
 }
 func DecodeTabHistory(data []byte) (TabHistory, error) { return contract.Decode[TabHistory](data) }
 func (v TabHistory) Validate() error                   { return contractValidateTabHistory(v, 0) }
@@ -421,4 +350,171 @@ func TabHistoryJSONSchema() json.RawMessage {
 }
 func TabHistoryPluginJSONSchema() json.RawMessage {
 	return json.RawMessage("{\"$defs\":{\"HistoryAction\":{\"type\":\"string\",\"enum\":[\"back\",\"forward\",\"reload\"],\"description\":\"Where `history` moves a tab.\"}},\"additionalProperties\":false,\"description\":\"`history { tab, action }`.\",\"properties\":{\"tab\":{\"type\":\"string\"},\"action\":{\"$ref\":\"#/$defs/HistoryAction\"}},\"required\":[\"tab\",\"action\"],\"title\":\"TabHistory\",\"type\":\"object\"}")
+}
+func decodeTabData(data []byte) (tabData, error) { return contract.Decode[tabData](data) }
+func (v tabData) Validate() error                { return contractValidateTabData(v, 0) }
+func contractValidateTabData(v tabData, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.URL), 0, -1, ""); err != nil {
+		return contract.At("url", err)
+	}
+	if v.Tab != nil {
+		if err := contract.Text(string((*v.Tab)), 0, -1, ""); err != nil {
+			return contract.At("tab", err)
+		}
+	}
+	if v.Closed != nil {
+	}
+	if v.Failure != nil {
+		if err := contract.CheckJSON((*v.Failure)); err != nil {
+			return contract.At("failure", err)
+		}
+	}
+	return nil
+}
+func (v *tabData) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next tabData
+	{
+		raw, ok := obj["url"]
+		if !ok {
+			return contract.At("url", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("url", err)
+			}
+			next.URL = value
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if ok {
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*string, error) { return contract.Pointer(b, contract.Decode[string]) }(raw)
+				if err != nil {
+					return contract.At("tab", err)
+				}
+				next.Tab = value
+			}
+		}
+	}
+	{
+		raw, ok := obj["closed"]
+		if ok {
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*bool, error) { return contract.Pointer(b, contract.Decode[bool]) }(raw)
+				if err != nil {
+					return contract.At("closed", err)
+				}
+				next.Closed = value
+			}
+		}
+	}
+	{
+		raw, ok := obj["failure"]
+		if ok {
+			value, err := func(b []byte) (*json.RawMessage, error) { return contract.Pointer(b, contract.JSON) }(raw)
+			if err != nil {
+				return contract.At("failure", err)
+			}
+			next.Failure = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v tabData) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "url", Value: v.URL})
+	if v.Tab != nil {
+		fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	}
+	if v.Closed != nil {
+		fields = append(fields, contract.Field{Name: "closed", Value: v.Closed})
+	}
+	if v.Failure != nil {
+		fields = append(fields, contract.Field{Name: "failure", Value: v.Failure})
+	}
+	return contract.EncodeObject(fields)
+}
+func decodeTabFailure(data []byte) (tabFailure, error) { return contract.Decode[tabFailure](data) }
+func (v tabFailure) Validate() error                   { return contractValidateTabFailure(v, 0) }
+func contractValidateTabFailure(v tabFailure, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.Code), 0, -1, ""); err != nil {
+		return contract.At("code", err)
+	}
+	if err := contract.Text(string(v.Message), 0, -1, ""); err != nil {
+		return contract.At("message", err)
+	}
+	return nil
+}
+func (v *tabFailure) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next tabFailure
+	for key := range obj {
+		switch key {
+		case "code", "message":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["code"]
+		if !ok {
+			return contract.At("code", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("code", err)
+			}
+			next.Code = value
+		}
+	}
+	{
+		raw, ok := obj["message"]
+		if !ok {
+			return contract.At("message", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("message", err)
+			}
+			next.Message = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v tabFailure) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "code", Value: v.Code})
+	fields = append(fields, contract.Field{Name: "message", Value: v.Message})
+	return contract.EncodeObject(fields)
 }

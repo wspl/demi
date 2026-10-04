@@ -26,8 +26,8 @@ func TestPageDeclarationsAndManifestOwnership(t *testing.T) {
 		t.Fatalf("state: %+v", state)
 	}
 	for _, test := range []struct{ method, accepted, refused string }{
-		{"open", `{}`, `{"url":""}`},
-		{"close", `{"tab":"not-a-tab"}`, `{"tab":42}`},
+		{"bind", `{"panelTab":"a"}`, `{}`},
+		{"sync", `{}`, `{"tab":42}`},
 		{"navigate", `{"tab":"t1","url":"https://example.test"}`, `{"tab":"t1","url":""}`},
 		{"history", `{"tab":"t1","action":"back"}`, `{"tab":"t1","action":"home"}`},
 	} {

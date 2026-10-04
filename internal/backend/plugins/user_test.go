@@ -545,3 +545,80 @@ func TestPageParametersMustBeAnObjectAndContextReplyMustMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A blocked plugin must not block panel answers; shutdown must cancel and join
+// notifications. The plugin's port is restricted to its own kinds. No Host or
+// model is used; the scenario's budget is one second.
+func TestPanelNotificationsOwnWorkAndPortsOwnKinds(t *testing.T) {
+	m := manifest(t, "panel")
+	m.Page.PanelKinds = []string{"page"}
+	m.Page.Told = []plugin.Topic{plugin.TopicJobs}
+	other := manifest(t, "other")
+	other.Page.PanelKinds = []string{"other"}
+	admitted := make(chan plugin.Port, 1)
+	ended := make(chan struct{})
+	instance := &fakePlugin{
+		call: func(ctx context.Context, request plugin.Request, port plugin.Port) (plugin.Reply, error) {
+			if _, ok := request.(*plugin.RequestPanelTab); ok {
+				admitted <- port
+				<-ctx.Done()
+				close(ended)
+				return nil, ctx.Err()
+			}
+			return &plugin.ReplyDone{}, nil
+		},
+	}
+	u, shard := userFixture(
+		t,
+		registry(
+			t,
+			&fakeFactory{manifest: m, make: func() plugin.Plugin { return instance }},
+			&fakeFactory{manifest: other},
+		),
+	)
+	id := webapi.ConversationID("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01")
+	if _, _, err := shard.control.CreateConversation(t.Context(), shard.user, id); err != nil {
+		t.Fatal(err)
+	}
+	revision, err := u.ChangePanel(
+		t.Context(),
+		id,
+		database.PanelCreate{Tab: webapi.CreatePanelTab{ID: "a", Kind: "page", Data: json.RawMessage(`{"z":1,"a":2}`)}},
+	)
+	if err != nil || revision != 1 {
+		t.Fatalf("got %d %v; want revision 1", revision, err)
+	}
+	port := <-admitted
+	// The original notification still waits; these operations must make progress.
+	revision, err = port.UpdatePanelTab(t.Context(), "a", json.RawMessage(`{"b":3}`))
+	if err != nil || revision != 2 {
+		t.Fatalf("got %d %v; want revision 2", revision, err)
+	}
+	if _, _, _, err := shard.control.ChangePanel(
+		t.Context(),
+		id,
+		database.PanelCreate{Tab: webapi.CreatePanelTab{ID: "b", Kind: "other", Data: json.RawMessage(`{}`)}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	panel, err := port.PanelTabs(t.Context())
+	if err != nil || len(panel.Tabs) != 1 || string(panel.Tabs[0].Data) != `{"z":1,"a":2,"b":3}` {
+		t.Fatalf("got %+v %v; want only own tab preserving field order", panel, err)
+	}
+	if _, err := port.UpdatePanelTab(t.Context(), "a", json.RawMessage(`{"z":null}`)); err != nil {
+		t.Fatal(err)
+	}
+	panel, err = port.PanelTabs(t.Context())
+	if err != nil || string(panel.Tabs[0].Data) != `{"b":3,"a":2}` {
+		t.Fatalf("got %+v %v; want removal to fill from the last field", panel, err)
+	}
+	_, err = port.RemovePanelTab(t.Context(), "b")
+	var refusal *plugin.PortRefusalPanel
+	if !errors.As(err, &refusal) || refusal.Code != webapi.ErrorCodeUnknownPanelKind {
+		t.Fatalf("got %v; want unknown_panel_kind", err)
+	}
+	if err := u.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	<-ended
+}

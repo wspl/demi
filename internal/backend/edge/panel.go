@@ -1,10 +1,11 @@
 package edge
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 
-	"github.com/wspl/demi/internal/contract"
+	"github.com/wspl/demi/internal/backend/database"
+	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/webapi"
 )
 
@@ -14,13 +15,9 @@ func (e *Edge) panel(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if r.Method == "GET" || r.Method == "HEAD" {
-		panel, found, err := e.state.Services.Control.Panel(r.Context(), record.ID)
+		panel, err := e.state.Services.Control.Panel(r.Context(), record.ID)
 		if err != nil {
 			return err
-		}
-		if !found {
-			empty := webapi.EmptyWorkPanel()
-			panel = empty
 		}
 		writeJSON(w, 200, panel)
 		return nil
@@ -28,24 +25,53 @@ func (e *Edge) panel(w http.ResponseWriter, r *http.Request) error {
 	if record.Archived {
 		return apiFailure(409, "conversation_archived", "The conversation is archived")
 	}
-	panel, err := decodeBody(r, webapi.DecodeWorkPanel)
+	change, err := panelChange(r)
 	if err != nil {
 		return err
 	}
-	document, err := contract.EncodeJSON(panel)
+	shard, err := e.state.Shards.Of(r.Context(), caller(r).ID)
 	if err != nil {
 		return err
 	}
-	if len(document) > webapi.PanelBytesMax {
-		return apiFailure(
-			413,
-			"too_large",
-			fmt.Sprintf("The work panel is over its %d-byte limit", webapi.PanelBytesMax),
-		)
+	revision, err := shard.Plugins().ChangePanel(r.Context(), record.ID, change)
+	if err != nil {
+		return panelError(err)
 	}
-	if err := e.state.Services.Control.SavePanel(r.Context(), record.ID, string(document)); err != nil {
-		return err
-	}
-	w.WriteHeader(204)
+	writeJSON(w, 200, webapi.PanelRevision{Revision: revision})
 	return nil
+}
+
+func panelChange(r *http.Request) (database.PanelChange, error) {
+	id := r.PathValue("tab")
+	switch r.Method {
+	case "PATCH":
+		body, err := decodeBody(r, webapi.DecodeUpdatePanelTab)
+		return database.PanelUpdate{ID: id, Data: body.Data}, err
+	case "DELETE":
+		return database.PanelRemove{ID: id}, nil
+	default:
+		if id != "" {
+			body, err := decodeBody(r, webapi.DecodeMovePanelTab)
+			return database.PanelMove{ID: id, Index: body.Index}, err
+		}
+		body, err := decodeBody(r, webapi.DecodeCreatePanelTab)
+		return database.PanelCreate{Tab: body}, err
+	}
+}
+
+func panelError(err error) error {
+	var refusal *plugin.PortRefusalPanel
+	if !errors.As(err, &refusal) {
+		return err
+	}
+	status := 409
+	switch refusal.Code {
+	case webapi.ErrorCodeUnknownPanelKind:
+		status = 400
+	case webapi.ErrorCodeTooLarge:
+		status = 413
+	case webapi.ErrorCodeConversationNotFound:
+		status = 404
+	}
+	return apiFailure(status, refusal.Code, refusal.Message)
 }

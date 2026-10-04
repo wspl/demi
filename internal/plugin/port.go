@@ -296,6 +296,10 @@ func unexpected(asked string, answer PortAnswer) error {
 		name = "exposes"
 	case *PortAnswerExpose:
 		name = "expose"
+	case *PortAnswerPanel:
+		name = "panel"
+	case *PortAnswerPanelRevision:
+		name = "panel_revision"
 	case *PortAnswerRefused:
 		name = "refused"
 	}

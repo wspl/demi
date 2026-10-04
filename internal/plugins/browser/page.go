@@ -13,11 +13,8 @@ import (
 	"github.com/wspl/demi/internal/webapi"
 )
 
-func tabs(ctx context.Context, port plugin.Port) (json.RawMessage, error) {
+func listTabs(ctx context.Context, port plugin.Port) ([]browserop.BrowserTab, error) {
 	result, err := run(ctx, port, &browserop.TabsInput{}, plugin.CallKindLooks)
-	if stopped(err) {
-		return contract.EncodeJSON(BrowserTabs{Tabs: []browserop.BrowserTab{}})
-	}
 	if err != nil {
 		return nil, refused(err)
 	}
@@ -25,11 +22,27 @@ func tabs(ctx context.Context, port plugin.Port) (json.RawMessage, error) {
 	if err != nil {
 		return nil, unreadable(err)
 	}
-	return contract.EncodeJSON(BrowserTabs{Tabs: listed.Tabs})
+	return listed.Tabs, nil
 }
 
-func call(ctx context.Context, method string, params json.RawMessage, port plugin.Port) (json.RawMessage, error) {
-	result, err := runMethod(ctx, method, params, port)
+func tabs(ctx context.Context, port plugin.Port) (json.RawMessage, error) {
+	listed, err := listTabs(ctx, port)
+	if stopped(err) {
+		listed = []browserop.BrowserTab{}
+	} else if err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(BrowserTabs{Tabs: listed})
+}
+
+func (i *instance) call(
+	ctx context.Context,
+	conversation webapi.ConversationID,
+	method string,
+	params json.RawMessage,
+	port plugin.Port,
+) (json.RawMessage, error) {
+	result, err := i.runMethod(ctx, conversation, method, params, port)
 	if err != nil {
 		return nil, err
 	}
@@ -39,23 +52,32 @@ func call(ctx context.Context, method string, params json.RawMessage, port plugi
 	return result, nil
 }
 
-func runMethod(ctx context.Context, method string, params json.RawMessage, port plugin.Port) (json.RawMessage, error) {
+func (i *instance) runMethod(
+	ctx context.Context,
+	conversation webapi.ConversationID,
+	method string,
+	params json.RawMessage,
+	port plugin.Port,
+) (json.RawMessage, error) {
 	var input browserop.Input
 	switch method {
-	case "open":
-		return openTab(ctx, params, port)
-	case "close":
-		return closeTab(ctx, params, port)
+	case "bind":
+		args, err := DecodeBindTab(params)
+		if err != nil {
+			return nil, &plugin.ErrorUsage{Message: err.Error()}
+		}
+		return json.RawMessage("null"), i.bind(ctx, conversation, port, args.PanelTab)
+	case "sync":
+		if _, err := DecodeSyncTabs(params); err != nil {
+			return nil, &plugin.ErrorUsage{Message: err.Error()}
+		}
+		return json.RawMessage("null"), i.syncTabs(ctx, conversation, port)
 	case "navigate":
 		args, err := DecodeNavigateTab(params)
 		if err != nil {
 			return nil, &plugin.ErrorUsage{Message: err.Error()}
 		}
-		tab, err := tabID(args.Tab)
-		if err != nil {
-			return nil, err
-		}
-		input = &browserop.GotoInput{Tab: tab, URL: args.URL}
+		return json.RawMessage("null"), navigate(ctx, port, args.Tab, args.URL)
 	case "history":
 		args, err := DecodeTabHistory(params)
 		if err != nil {
@@ -133,51 +155,47 @@ func refused(err error) error {
 	return plugin.RequestError(err)
 }
 
-func openTab(ctx context.Context, params json.RawMessage, port plugin.Port) (json.RawMessage, error) {
-	args, err := DecodeOpenTab(params)
-	if err != nil {
-		return nil, &plugin.ErrorUsage{Message: err.Error()}
-	}
-	url := "about:blank"
-	if args.URL != nil {
-		url = *args.URL
-	}
+func openTab(ctx context.Context, url string, port plugin.Port) (browserop.BrowserTab, error) {
 	result, err := run(ctx, port, &browserop.OpenInput{URL: url}, plugin.CallKindStarts)
 	if err != nil {
-		return nil, refused(err)
+		return browserop.BrowserTab{}, refused(err)
 	}
 	opened, err := browserop.DecodeOpenResult(result)
 	if err != nil {
-		return nil, unreadable(err)
+		return browserop.BrowserTab{}, unreadable(err)
 	}
 	title := ""
 	if opened.Title != nil {
 		title = *opened.Title
 	}
-	return contract.EncodeJSON(
-		OpenedTab{
-			Tab: browserop.BrowserTab{
-				ID:        opened.Tab,
-				Title:     title,
-				URL:       opened.URL,
-				CreatedBy: &browserop.BrowserCreatedByUser{},
-			},
-		},
-	)
+	return browserop.BrowserTab{
+		ID:        opened.Tab,
+		Title:     title,
+		URL:       opened.URL,
+		CreatedBy: &browserop.BrowserCreatedByUser{},
+	}, nil
 }
 
-func closeTab(ctx context.Context, params json.RawMessage, port plugin.Port) (json.RawMessage, error) {
-	args, err := DecodeCloseTab(params)
+func closeTab(ctx context.Context, tab string, port plugin.Port) error {
+	id, err := browserop.ParseTabID(tab)
 	if err != nil {
-		return nil, &plugin.ErrorUsage{Message: err.Error()}
+		return nil
 	}
-	tab, err := browserop.ParseTabID(args.Tab)
-	if err != nil {
-		return json.RawMessage("null"), nil
-	}
-	_, err = run(ctx, port, &browserop.CloseInput{Tab: tab}, plugin.CallKindOperates)
+	_, err = run(ctx, port, &browserop.CloseInput{Tab: id}, plugin.CallKindOperates)
 	if err != nil && !stopped(err) && !tabMissing(err) {
-		return nil, refused(err)
+		return refused(err)
 	}
-	return json.RawMessage("null"), nil
+	return nil
+}
+
+func navigate(ctx context.Context, port plugin.Port, tab, url string) error {
+	id, err := tabID(tab)
+	if err != nil {
+		return err
+	}
+	_, err = run(ctx, port, &browserop.GotoInput{Tab: id, URL: url}, plugin.CallKindOperates)
+	if err != nil {
+		return refused(err)
+	}
+	return nil
 }

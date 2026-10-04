@@ -2,43 +2,91 @@ package webapi
 
 import (
 	"encoding/json"
-	"errors"
+
+	"github.com/wspl/demi/internal/contract"
 )
 
-// The most bytes of one work panel's document, as the backend stores it.
-const PanelBytesMax = 64 * 1024
+// The most bytes of one work panel's tabs, as the backend stores them.
+const (
+	PanelBytesMax = 64 * 1024
+	// The most tabs one work panel holds.
+	PanelTabsMax = 64
+	// The most characters of a tab's id.
+	PanelTabIDMax = 64
+)
 
-// The most tabs one work panel holds.
-const PanelTabsMax = 64
-
-// `GET/PUT /conversations/:id/panel`: what the panel selects, a tab's id
-// or a pinned kind's id such as `"change"`, or null, and its tabs in the
-// user's order.
+// `GET /conversations/:id/panel`: the tabs in order, and how many changes
+// made them.
 // +demi:root direction=receive output=web
-// +demi:check validateWorkPanel
 type WorkPanel struct {
-	// +demi:nullable
-	Selection *string `json:"selection"`
-	// +demi:length max=64
-	Tabs []PanelTab `json:"tabs"`
+	// +demi:range max=9007199254740991
+	Revision uint64     `json:"revision"`
+	Tabs     []PanelTab `json:"tabs"`
 }
 
-// One tab of the panel: what the page keeps for it, which only the page
-// reads.
+// One tab of the panel: its kind, and what the page and the kind's plugin
+// keep for it.
+// +demi:check validatePanelTab
 type PanelTab struct {
-	// +demi:length chars min=1
+	// +demi:length chars min=1 max=64
 	ID string `json:"id"`
 	// +demi:length chars min=1
 	Kind string          `json:"kind"`
 	Data json.RawMessage `json:"data"`
 }
 
-// The panel of a conversation that never saved one.
+// `POST /conversations/:id/panel/tabs`: a new tab at `index`, after the
+// others without one.
+// +demi:root direction=send output=web
+// +demi:check validateCreatePanelTab
+type CreatePanelTab struct {
+	// +demi:length chars min=1 max=64
+	ID string `json:"id"`
+	// +demi:length chars min=1
+	Kind string          `json:"kind"`
+	Data json.RawMessage `json:"data"`
+	// +demi:range max=64
+	Index *uint64 `json:"index,omitempty"`
+}
+
+// `PATCH /conversations/:id/panel/tabs/:tab`: the fields of the tab's
+// `data` to set, a null one to remove.
+// +demi:root direction=send output=web
+// +demi:check validateUpdatePanelTab
+type UpdatePanelTab struct {
+	Data json.RawMessage `json:"data"`
+}
+
+// `POST /conversations/:id/panel/tabs/:tab/move`: the tab's new place
+// among the others.
+// +demi:root direction=send output=web
+type MovePanelTab struct {
+	// +demi:range max=64
+	Index uint64 `json:"index"`
+}
+
+// What every change of the panel answers: its revision once the change is
+// in it.
+// +demi:root direction=receive output=web
+type PanelRevision struct {
+	// +demi:range max=9007199254740991
+	Revision uint64 `json:"revision"`
+}
+
+// EmptyWorkPanel returns the panel of a conversation that never changed one.
 func EmptyWorkPanel() WorkPanel { return WorkPanel{Tabs: []PanelTab{}} }
 
-func validateWorkPanel(panel WorkPanel) error {
-	if panel.Selection != nil && *panel.Selection == "" {
-		return errors.New("selection must not be empty")
-	}
-	return nil
+func validatePanelTab(tab PanelTab) error {
+	_, err := contract.ObjectFields(tab.Data)
+	return err
+}
+
+func validateCreatePanelTab(tab CreatePanelTab) error {
+	_, err := contract.ObjectFields(tab.Data)
+	return err
+}
+
+func validateUpdatePanelTab(tab UpdatePanelTab) error {
+	_, err := contract.ObjectFields(tab.Data)
+	return err
 }

@@ -79,6 +79,12 @@ type Page struct {
 	Conversation *State `json:"conversation,omitempty"`
 	// +demi:default
 	Methods []Method `json:"methods"`
+	// The work panel kinds whose tabs the backend keeps and the plugin
+	// takes part in (`plugins.md` § Panel kinds).
+	PanelKinds []string `json:"panelKinds,omitempty"`
+	// The topics the plugin itself is told about, with a `topic` request
+	// (`plugins.md` § Topics).
+	Told []Topic `json:"told,omitempty"`
 }
 
 // One scope of a page's state.

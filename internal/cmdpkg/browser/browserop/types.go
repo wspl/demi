@@ -1623,6 +1623,8 @@ type LiveTab struct {
 	URL       string           `json:"url"`
 	CreatedBy BrowserCreatedBy `json:"createdBy"`
 	Viewport  BrowserViewport  `json:"viewport"`
+	// Whether the browser loads the tab's top-level page.
+	Loading bool `json:"loading"`
 }
 
 // The watched tab's JavaScript dialog.

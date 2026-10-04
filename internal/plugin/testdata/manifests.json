@@ -998,6 +998,10 @@
                                 ]
                               }
                             ]
+                          },
+                          "loading": {
+                            "description": "Whether the browser loads the tab's top-level page.",
+                            "type": "boolean"
                           }
                         },
                         "additionalProperties": false,
@@ -1005,7 +1009,8 @@
                           "id",
                           "title",
                           "url",
-                          "createdBy"
+                          "createdBy",
+                          "loading"
                         ]
                       }
                     },
@@ -7201,6 +7206,10 @@
                 },
                 "viewport": {
                   "$ref": "#/$defs/BrowserViewport"
+                },
+                "loading": {
+                  "type": "boolean",
+                  "description": "Whether the browser loads the tab's top-level page."
                 }
               },
               "required": [
@@ -7208,7 +7217,8 @@
                 "title",
                 "url",
                 "createdBy",
-                "viewport"
+                "viewport",
+                "loading"
               ],
               "description": "A tab as the view lists it."
             },
@@ -8514,13 +8524,18 @@
                 },
                 "createdBy": {
                   "$ref": "#/$defs/BrowserCreatedBy"
+                },
+                "loading": {
+                  "type": "boolean",
+                  "description": "Whether the browser loads the tab's top-level page."
                 }
               },
               "required": [
                 "id",
                 "title",
                 "url",
-                "createdBy"
+                "createdBy",
+                "loading"
               ],
               "description": "A tab as `tabs` lists it and the conversation browser's tab methods return it."
             },
@@ -8634,168 +8649,20 @@
       },
       "methods": [
         {
-          "name": "open",
+          "name": "bind",
           "scope": "conversation",
           "params": {
             "additionalProperties": false,
-            "description": "`open { url? }`: a new tab, at `about:blank` without a URL.",
+            "description": "`bind { panelTab }`: a browser tab for the panel tab, which Retry and\nReload ask for.",
             "properties": {
-              "url": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "minLength": 1,
-                "maxLength": 4096
-              }
-            },
-            "title": "OpenTab",
-            "type": "object"
-          },
-          "result": {
-            "$defs": {
-              "BrowserTab": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "id": {
-                    "$ref": "#/$defs/TabId"
-                  },
-                  "title": {
-                    "type": "string"
-                  },
-                  "url": {
-                    "type": "string"
-                  },
-                  "createdBy": {
-                    "$ref": "#/$defs/BrowserCreatedBy"
-                  }
-                },
-                "required": [
-                  "id",
-                  "title",
-                  "url",
-                  "createdBy"
-                ],
-                "description": "A tab as `tabs` lists it and the conversation browser's tab methods return it."
-              },
-              "TabId": {
-                "type": "string",
-                "description": "A tab's public identity, which `open` and `tabs` return: `t` and the\ntab's number in the conversation (`browser.md` § One tab registry).",
-                "pattern": "^t[1-9][0-9]{0,14}$"
-              },
-              "BrowserCreatedBy": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "number": {
-                        "type": "integer",
-                        "format": "uint64",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "kind": {
-                        "type": "string",
-                        "const": "agent"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "number"
-                    ],
-                    "description": "An agent, by its number in the conversation."
-                  },
-                  {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "opener": {
-                        "$ref": "#/$defs/TabId"
-                      },
-                      "kind": {
-                        "type": "string",
-                        "const": "page"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "opener"
-                    ]
-                  },
-                  {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "number": {
-                        "type": "integer",
-                        "format": "uint64",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "kind": {
-                        "type": "string",
-                        "const": "temporary"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "number"
-                    ],
-                    "description": "A temporary command of the agent with this number."
-                  },
-                  {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "const": "user"
-                      }
-                    },
-                    "required": [
-                      "kind"
-                    ]
-                  }
-                ],
-                "description": "Who opened a tab: an agent, a page's `window.open`, a temporary command\nsuch as `content.fetch`, or the user."
-              }
-            },
-            "description": "What `open` answers.",
-            "properties": {
-              "tab": {
-                "$ref": "#/$defs/BrowserTab"
-              }
-            },
-            "required": [
-              "tab"
-            ],
-            "title": "OpenedTab",
-            "type": "object"
-          },
-          "operations": [
-            {
-              "package": "demi.browser",
-              "operation": "browser.open"
-            }
-          ]
-        },
-        {
-          "name": "close",
-          "scope": "conversation",
-          "params": {
-            "additionalProperties": false,
-            "description": "`close { tab }`.",
-            "properties": {
-              "tab": {
+              "panelTab": {
                 "type": "string"
               }
             },
             "required": [
-              "tab"
+              "panelTab"
             ],
-            "title": "CloseTab",
+            "title": "BindTab",
             "type": "object"
           },
           "result": {
@@ -8805,7 +8672,35 @@
           "operations": [
             {
               "package": "demi.browser",
+              "operation": "browser.open"
+            },
+            {
+              "package": "demi.browser",
+              "operation": "browser.goto"
+            },
+            {
+              "package": "demi.browser",
               "operation": "browser.close"
+            }
+          ]
+        },
+        {
+          "name": "sync",
+          "scope": "conversation",
+          "params": {
+            "additionalProperties": false,
+            "description": "`sync {}`: the panel's tabs updated from the browser's.",
+            "title": "SyncTabs",
+            "type": "object"
+          },
+          "result": {
+            "title": "null",
+            "type": "null"
+          },
+          "operations": [
+            {
+              "package": "demi.browser",
+              "operation": "browser.tabs"
             }
           ]
         },
@@ -8894,6 +8789,12 @@
             }
           ]
         }
+      ],
+      "panelKinds": [
+        "browser"
+      ],
+      "told": [
+        "jobs"
       ]
     }
   },
@@ -9274,6 +9175,9 @@
           },
           "operations": []
         }
+      ],
+      "panelKinds": [
+        "page"
       ]
     }
   }

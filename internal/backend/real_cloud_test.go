@@ -4,6 +4,7 @@ package backend_test
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"net"
 	"net/netip"
@@ -20,6 +21,7 @@ import (
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
+	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/gates"
 	browserplugin "github.com/wspl/demi/internal/plugins/browser"
 	"github.com/wspl/demi/internal/provider/providertest"
@@ -501,22 +503,50 @@ func (s *realCloud) tabs(ctx context.Context, pagePath string) []browserop.Brows
 	return tabs.Tabs
 }
 
-// openTab opens through the page call and observes the title in page state.
+// openTab creates a panel tab and waits for its binding and page title.
 func (s *realCloud) openTab(ctx context.Context, pagePath, page string) {
 	s.t.Helper()
-	params, err := (browserplugin.OpenTab{URL: &page}).MarshalJSON()
+	data, err := contract.EncodeObject([]contract.Field{{Name: "url", Value: page}})
 	wireMust(s.t, err)
-	answer, err := s.b.Post(ctx, pagePath+"/calls/open", &s.user, params)
+	panelID := rand.Text()
+	params, err := (webapi.CreatePanelTab{ID: panelID, Kind: "browser", Data: data}).MarshalJSON()
 	wireMust(s.t, err)
-	if answer.Status < 200 || answer.Status >= 300 {
-		s.t.Fatalf("open: %d %s", answer.Status, answer.Body)
-	}
-	opened := conversationDecode(s.t, answer, browserplugin.DecodeOpenedTab)
+	panelPath := strings.TrimSuffix(pagePath, "/plugins/browser") + "/panel"
+	answer, err := s.b.Post(ctx, panelPath+"/tabs", &s.user, params)
+	wireMust(s.t, err)
+	filesStatus(s.t, answer, 200)
 	wait, cancel := context.WithTimeout(ctx, realPatience)
 	defer cancel()
+
+	var browserTab string
+	for browserTab == "" {
+		panel := conversationDecode(
+			s.t,
+			conversationRequest(wait, s.t, s.b, &s.user, "GET", panelPath, "", 200),
+			webapi.DecodeWorkPanel,
+		)
+		for _, tab := range panel.Tabs {
+			if tab.ID != panelID {
+				continue
+			}
+			fields, err := contract.ObjectFields(tab.Data)
+			wireMust(s.t, err)
+			for _, field := range fields {
+				if field.Name == "failure" {
+					s.t.Fatalf("browser tab failed: %s", tab.Data)
+				}
+				if field.Name == "tab" {
+					encoded, err := contract.EncodeJSON(field.Value)
+					wireMust(s.t, err)
+					browserTab, err = contract.Decode[string](encoded)
+					wireMust(s.t, err)
+				}
+			}
+		}
+	}
 	for {
 		for _, tab := range s.tabs(wait, pagePath) {
-			if tab.ID == opened.Tab.ID && tab.Title == "cloud-suite page" {
+			if string(tab.ID) == browserTab && tab.Title == "cloud-suite page" {
 				return
 			}
 		}

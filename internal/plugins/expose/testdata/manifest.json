@@ -375,6 +375,9 @@
           },
           "operations": []
         }
+      ],
+      "panelKinds": [
+        "page"
       ]
     }
-  }
+}

@@ -78,3 +78,6 @@ func RPCError(err Error) error {
 	}
 	return nil
 }
+
+// Error returns the failure message.
+func (e *PortRefusalPanel) Error() string { return e.Message }

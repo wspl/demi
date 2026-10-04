@@ -2213,6 +2213,23 @@ func contractValidatePage(v Page, depth int) error {
 			return contract.At(fmt.Sprintf("%s[%d]", "methods", i), err)
 		}
 	}
+	for i, item := range v.PanelKinds {
+		_ = i
+		_ = item
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "panelKinds", i), err)
+		}
+	}
+	for i, item := range v.Told {
+		_ = i
+		_ = item
+		if err := contractValidateTopic(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "told", i), err)
+		}
+		if err := contract.Text(string(item), 0, -1, ""); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "told", i), err)
+		}
+	}
 	return nil
 }
 func (v *Page) UnmarshalJSON(data []byte) error {
@@ -2223,7 +2240,7 @@ func (v *Page) UnmarshalJSON(data []byte) error {
 	var next Page
 	for key := range obj {
 		switch key {
-		case "package", "user", "conversation", "methods":
+		case "package", "user", "conversation", "methods", "panelKinds", "told":
 		default:
 			return contract.At(key, fmt.Errorf("unknown field"))
 		}
@@ -2276,6 +2293,28 @@ func (v *Page) UnmarshalJSON(data []byte) error {
 			next.Methods = value
 		}
 	}
+	next.PanelKinds = make([]string, 0)
+	{
+		raw, ok := obj["panelKinds"]
+		if ok {
+			value, err := func(b []byte) ([]string, error) { return contract.List(b, contract.Decode[string]) }(raw)
+			if err != nil {
+				return contract.At("panelKinds", err)
+			}
+			next.PanelKinds = value
+		}
+	}
+	next.Told = make([]Topic, 0)
+	{
+		raw, ok := obj["told"]
+		if ok {
+			value, err := func(b []byte) ([]Topic, error) { return contract.List(b, contract.Decode[Topic]) }(raw)
+			if err != nil {
+				return contract.At("told", err)
+			}
+			next.Told = value
+		}
+	}
 	if err := next.Validate(); err != nil {
 		return err
 	}
@@ -2298,7 +2337,49 @@ func (v Page) MarshalJSON() ([]byte, error) {
 		fields = append(fields, contract.Field{Name: "conversation", Value: v.Conversation})
 	}
 	fields = append(fields, contract.Field{Name: "methods", Value: v.Methods})
+	if len(v.PanelKinds) > 0 {
+		fields = append(fields, contract.Field{Name: "panelKinds", Value: v.PanelKinds})
+	}
+	if len(v.Told) > 0 {
+		fields = append(fields, contract.Field{Name: "told", Value: v.Told})
+	}
 	return contract.EncodeObject(fields)
+}
+func DecodePanelTabChange(data []byte) (PanelTabChange, error) {
+	return contract.Decode[PanelTabChange](data)
+}
+func (v PanelTabChange) Validate() error { return contractValidatePanelTabChange(v, 0) }
+func contractValidatePanelTabChange(v PanelTabChange, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	switch string(v) {
+	case "created", "removed":
+	default:
+		return contract.At("", fmt.Errorf("unknown value"))
+	}
+	if err := contract.Text(string(v), 0, -1, ""); err != nil {
+		return contract.At("", err)
+	}
+	return nil
+}
+func (v *PanelTabChange) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[string](data)
+	if err != nil {
+		return err
+	}
+	next := PanelTabChange(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PanelTabChange) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(string(v))
 }
 func DecodePlacement(data []byte) (Placement, error) { return contract.Decode[Placement](data) }
 func (v Placement) Validate() error                  { return contractValidatePlacement(v, 0) }
@@ -2394,6 +2475,18 @@ func DecodePortAnswer(data []byte) (PortAnswer, error) {
 		return &value, nil
 	case "hosts":
 		value, err := contract.Decode[PortAnswerHosts](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "panel":
+		value, err := contract.Decode[PortAnswerPanel](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "panel_revision":
+		value, err := contract.Decode[PortAnswerPanelRevision](data)
 		if err != nil {
 			return nil, err
 		}
@@ -2498,6 +2591,16 @@ func contractValidatePortAnswer(value PortAnswer, depth int) error {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidatePortAnswerHosts(*v, depth+1)
+	case *PortAnswerPanel:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidatePortAnswerPanel(*v, depth+1)
+	case *PortAnswerPanelRevision:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidatePortAnswerPanelRevision(*v, depth+1)
 	case *PortAnswerRPC:
 		if v == nil {
 			return fmt.Errorf("nil variant")
@@ -3095,6 +3198,129 @@ func (v PortAnswerHosts) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "hosts", Value: v.Hosts})
 	return contract.EncodeObject(fields)
 }
+func DecodePortAnswerPanel(data []byte) (PortAnswerPanel, error) {
+	return contract.Decode[PortAnswerPanel](data)
+}
+func (v PortAnswerPanel) Validate() error { return contractValidatePortAnswerPanel(v, 0) }
+func contractValidatePortAnswerPanel(v PortAnswerPanel, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := v.Panel.Validate(); err != nil {
+		return contract.At("panel", err)
+	}
+	return nil
+}
+func (v *PortAnswerPanel) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next PortAnswerPanel
+	for key := range obj {
+		switch key {
+		case "panel", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "panel" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["panel"]
+		if !ok {
+			return contract.At("panel", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[webapi.WorkPanel](raw)
+			if err != nil {
+				return contract.At("panel", err)
+			}
+			next.Panel = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PortAnswerPanel) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "panel"})
+	fields = append(fields, contract.Field{Name: "panel", Value: v.Panel})
+	return contract.EncodeObject(fields)
+}
+func DecodePortAnswerPanelRevision(data []byte) (PortAnswerPanelRevision, error) {
+	return contract.Decode[PortAnswerPanelRevision](data)
+}
+func (v PortAnswerPanelRevision) Validate() error {
+	return contractValidatePortAnswerPanelRevision(v, 0)
+}
+func contractValidatePortAnswerPanelRevision(v PortAnswerPanelRevision, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *PortAnswerPanelRevision) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next PortAnswerPanelRevision
+	for key := range obj {
+		switch key {
+		case "revision", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "panel_revision" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["revision"]
+		if !ok {
+			return contract.At("revision", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[uint64](raw)
+			if err != nil {
+				return contract.At("revision", err)
+			}
+			next.Revision = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PortAnswerPanelRevision) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "panel_revision"})
+	fields = append(fields, contract.Field{Name: "revision", Value: v.Revision})
+	return contract.EncodeObject(fields)
+}
 func DecodePortAnswerRPC(data []byte) (PortAnswerRPC, error) {
 	return contract.Decode[PortAnswerRPC](data)
 }
@@ -3444,6 +3670,12 @@ func DecodePortMessage(data []byte) (PortMessage, error) {
 			return nil, err
 		}
 		return &value, nil
+	case "create_panel_tab":
+		value, err := contract.Decode[PortMessageCreatePanelTab](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
 	case "get_blob":
 		value, err := contract.Decode[PortMessageGetBlob](data)
 		if err != nil {
@@ -3464,6 +3696,12 @@ func DecodePortMessage(data []byte) (PortMessage, error) {
 		return &value, nil
 	case "package_call":
 		value, err := contract.Decode[PortMessagePackageCall](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "panel_tabs":
+		value, err := contract.Decode[PortMessagePanelTabs](data)
 		if err != nil {
 			return nil, err
 		}
@@ -3498,6 +3736,12 @@ func DecodePortMessage(data []byte) (PortMessage, error) {
 			return nil, err
 		}
 		return &value, nil
+	case "remove_panel_tab":
+		value, err := contract.Decode[PortMessageRemovePanelTab](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
 	case "remove_value":
 		value, err := contract.Decode[PortMessageRemoveValue](data)
 		if err != nil {
@@ -3512,6 +3756,12 @@ func DecodePortMessage(data []byte) (PortMessage, error) {
 		return &value, nil
 	case "set_directories":
 		value, err := contract.Decode[PortMessageSetDirectories](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "update_panel_tab":
+		value, err := contract.Decode[PortMessageUpdatePanelTab](data)
 		if err != nil {
 			return nil, err
 		}
@@ -3562,6 +3812,11 @@ func contractValidatePortMessage(value PortMessage, depth int) error {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidatePortMessageCreateExpose(*v, depth+1)
+	case *PortMessageCreatePanelTab:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidatePortMessageCreatePanelTab(*v, depth+1)
 	case *PortMessageGetBlob:
 		if v == nil {
 			return fmt.Errorf("nil variant")
@@ -3582,6 +3837,11 @@ func contractValidatePortMessage(value PortMessage, depth int) error {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidatePortMessagePackageCall(*v, depth+1)
+	case *PortMessagePanelTabs:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidatePortMessagePanelTabs(*v, depth+1)
 	case *PortMessagePutBlob:
 		if v == nil {
 			return fmt.Errorf("nil variant")
@@ -3607,6 +3867,11 @@ func contractValidatePortMessage(value PortMessage, depth int) error {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidatePortMessageRemoveExpose(*v, depth+1)
+	case *PortMessageRemovePanelTab:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidatePortMessageRemovePanelTab(*v, depth+1)
 	case *PortMessageRemoveValue:
 		if v == nil {
 			return fmt.Errorf("nil variant")
@@ -3622,6 +3887,11 @@ func contractValidatePortMessage(value PortMessage, depth int) error {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidatePortMessageSetDirectories(*v, depth+1)
+	case *PortMessageUpdatePanelTab:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidatePortMessageUpdatePanelTab(*v, depth+1)
 	case *PortMessageWriteValue:
 		if v == nil {
 			return fmt.Errorf("nil variant")
@@ -3839,6 +4109,70 @@ func (v PortMessageCreateExpose) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "device", Value: v.Device})
 	fields = append(fields, contract.Field{Name: "address", Value: v.Address})
 	fields = append(fields, contract.Field{Name: "lifetime", Value: v.Lifetime})
+	return contract.EncodeObject(fields)
+}
+func DecodePortMessageCreatePanelTab(data []byte) (PortMessageCreatePanelTab, error) {
+	return contract.Decode[PortMessageCreatePanelTab](data)
+}
+func (v PortMessageCreatePanelTab) Validate() error {
+	return contractValidatePortMessageCreatePanelTab(v, 0)
+}
+func contractValidatePortMessageCreatePanelTab(v PortMessageCreatePanelTab, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := v.Tab.Validate(); err != nil {
+		return contract.At("tab", err)
+	}
+	return nil
+}
+func (v *PortMessageCreatePanelTab) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next PortMessageCreatePanelTab
+	for key := range obj {
+		switch key {
+		case "tab", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "create_panel_tab" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[webapi.CreatePanelTab](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PortMessageCreatePanelTab) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "create_panel_tab"})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
 	return contract.EncodeObject(fields)
 }
 func DecodePortMessageGetBlob(data []byte) (PortMessageGetBlob, error) {
@@ -4096,6 +4430,51 @@ func (v PortMessagePackageCall) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "operation", Value: v.Operation})
 	fields = append(fields, contract.Field{Name: "args", Value: v.Args})
 	fields = append(fields, contract.Field{Name: "kind", Value: v.Kind})
+	return contract.EncodeObject(fields)
+}
+func DecodePortMessagePanelTabs(data []byte) (PortMessagePanelTabs, error) {
+	return contract.Decode[PortMessagePanelTabs](data)
+}
+func (v PortMessagePanelTabs) Validate() error { return contractValidatePortMessagePanelTabs(v, 0) }
+func contractValidatePortMessagePanelTabs(v PortMessagePanelTabs, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *PortMessagePanelTabs) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next PortMessagePanelTabs
+	for key := range obj {
+		switch key {
+		case "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "panel_tabs" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PortMessagePanelTabs) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "panel_tabs"})
 	return contract.EncodeObject(fields)
 }
 func DecodePortMessagePutBlob(data []byte) (PortMessagePutBlob, error) {
@@ -4422,6 +4801,70 @@ func (v PortMessageRemoveExpose) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "expose", Value: v.Expose})
 	return contract.EncodeObject(fields)
 }
+func DecodePortMessageRemovePanelTab(data []byte) (PortMessageRemovePanelTab, error) {
+	return contract.Decode[PortMessageRemovePanelTab](data)
+}
+func (v PortMessageRemovePanelTab) Validate() error {
+	return contractValidatePortMessageRemovePanelTab(v, 0)
+}
+func contractValidatePortMessageRemovePanelTab(v PortMessageRemovePanelTab, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+		return contract.At("id", err)
+	}
+	return nil
+}
+func (v *PortMessageRemovePanelTab) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next PortMessageRemovePanelTab
+	for key := range obj {
+		switch key {
+		case "id", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "remove_panel_tab" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["id"]
+		if !ok {
+			return contract.At("id", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("id", err)
+			}
+			next.ID = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PortMessageRemovePanelTab) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "remove_panel_tab"})
+	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	return contract.EncodeObject(fields)
+}
 func DecodePortMessageRemoveValue(data []byte) (PortMessageRemoveValue, error) {
 	return contract.Decode[PortMessageRemoveValue](data)
 }
@@ -4648,6 +5091,90 @@ func (v PortMessageSetDirectories) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "directories", Value: v.Directories})
 	return contract.EncodeObject(fields)
 }
+func DecodePortMessageUpdatePanelTab(data []byte) (PortMessageUpdatePanelTab, error) {
+	return contract.Decode[PortMessageUpdatePanelTab](data)
+}
+func (v PortMessageUpdatePanelTab) Validate() error {
+	return contractValidatePortMessageUpdatePanelTab(v, 0)
+}
+func contractValidatePortMessageUpdatePanelTab(v PortMessageUpdatePanelTab, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
+		return contract.At("id", err)
+	}
+	if err := contract.CheckJSON(v.Data); err != nil {
+		return contract.At("data", err)
+	}
+	if err := validatePanelUpdate(v); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *PortMessageUpdatePanelTab) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next PortMessageUpdatePanelTab
+	for key := range obj {
+		switch key {
+		case "id", "data", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "update_panel_tab" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["id"]
+		if !ok {
+			return contract.At("id", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("id", err)
+			}
+			next.ID = value
+		}
+	}
+	{
+		raw, ok := obj["data"]
+		if !ok {
+			return contract.At("data", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.JSON(raw)
+			if err != nil {
+				return contract.At("data", err)
+			}
+			next.Data = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PortMessageUpdatePanelTab) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "update_panel_tab"})
+	fields = append(fields, contract.Field{Name: "id", Value: v.ID})
+	fields = append(fields, contract.Field{Name: "data", Value: v.Data})
+	return contract.EncodeObject(fields)
+}
 func DecodePortMessageWriteValue(data []byte) (PortMessageWriteValue, error) {
 	return contract.Decode[PortMessageWriteValue](data)
 }
@@ -4814,6 +5341,12 @@ func DecodePortRefusal(data []byte) (PortRefusal, error) {
 			return nil, err
 		}
 		return &value, nil
+	case "panel":
+		value, err := contract.Decode[PortRefusalPanel](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
 	}
 	return nil, fmt.Errorf("unknown PortRefusal tag %q", tag)
 }
@@ -4869,6 +5402,11 @@ func contractValidatePortRefusal(value PortRefusal, depth int) error {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidatePortRefusalOperation(*v, depth+1)
+	case *PortRefusalPanel:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidatePortRefusalPanel(*v, depth+1)
 	default:
 		return fmt.Errorf("nil or unsupported PortRefusal")
 	}
@@ -5250,6 +5788,88 @@ func (v PortRefusalOperation) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "stderr", Value: v.Stderr})
 	return contract.EncodeObject(fields)
 }
+func DecodePortRefusalPanel(data []byte) (PortRefusalPanel, error) {
+	return contract.Decode[PortRefusalPanel](data)
+}
+func (v PortRefusalPanel) Validate() error { return contractValidatePortRefusalPanel(v, 0) }
+func contractValidatePortRefusalPanel(v PortRefusalPanel, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := v.Code.Validate(); err != nil {
+		return contract.At("code", err)
+	}
+	if err := contract.Text(string(v.Code), 0, -1, ""); err != nil {
+		return contract.At("code", err)
+	}
+	if err := contract.Text(string(v.Message), 0, -1, ""); err != nil {
+		return contract.At("message", err)
+	}
+	return nil
+}
+func (v *PortRefusalPanel) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next PortRefusalPanel
+	for key := range obj {
+		switch key {
+		case "code", "message", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "panel" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["code"]
+		if !ok {
+			return contract.At("code", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[webapi.ErrorCode](raw)
+			if err != nil {
+				return contract.At("code", err)
+			}
+			next.Code = value
+		}
+	}
+	{
+		raw, ok := obj["message"]
+		if !ok {
+			return contract.At("message", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[string](raw)
+			if err != nil {
+				return contract.At("message", err)
+			}
+			next.Message = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v PortRefusalPanel) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "panel"})
+	fields = append(fields, contract.Field{Name: "code", Value: v.Code})
+	fields = append(fields, contract.Field{Name: "message", Value: v.Message})
+	return contract.EncodeObject(fields)
+}
 func DecodeReply(data []byte) (Reply, error) {
 	obj, err := contract.Decode[map[string]json.RawMessage](data)
 	if err != nil {
@@ -5262,6 +5882,12 @@ func DecodeReply(data []byte) (Reply, error) {
 	switch tag {
 	case "context":
 		value, err := contract.Decode[ReplyContext](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "done":
+		value, err := contract.Decode[ReplyDone](data)
 		if err != nil {
 			return nil, err
 		}
@@ -5314,6 +5940,11 @@ func contractValidateReply(value Reply, depth int) error {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidateReplyContext(*v, depth+1)
+	case *ReplyDone:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateReplyDone(*v, depth+1)
 	case *ReplyExit:
 		if v == nil {
 			return fmt.Errorf("nil variant")
@@ -5396,6 +6027,49 @@ func (v ReplyContext) MarshalJSON() ([]byte, error) {
 	if v.Text != nil {
 		fields = append(fields, contract.Field{Name: "text", Value: v.Text})
 	}
+	return contract.EncodeObject(fields)
+}
+func DecodeReplyDone(data []byte) (ReplyDone, error) { return contract.Decode[ReplyDone](data) }
+func (v ReplyDone) Validate() error                  { return contractValidateReplyDone(v, 0) }
+func contractValidateReplyDone(v ReplyDone, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	return nil
+}
+func (v *ReplyDone) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next ReplyDone
+	for key := range obj {
+		switch key {
+		case "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "done" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v ReplyDone) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "done"})
 	return contract.EncodeObject(fields)
 }
 func DecodeReplyExit(data []byte) (ReplyExit, error) { return contract.Decode[ReplyExit](data) }
@@ -5609,6 +6283,18 @@ func DecodeRequest(data []byte) (Request, error) {
 			return nil, err
 		}
 		return &value, nil
+	case "panel_tab":
+		value, err := contract.Decode[RequestPanelTab](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
+	case "topic":
+		value, err := contract.Decode[RequestTopic](data)
+		if err != nil {
+			return nil, err
+		}
+		return &value, nil
 	}
 	return nil, fmt.Errorf("unknown Request tag %q", tag)
 }
@@ -5654,6 +6340,16 @@ func contractValidateRequest(value Request, depth int) error {
 			return fmt.Errorf("nil variant")
 		}
 		return contractValidateRequestPageState(*v, depth+1)
+	case *RequestPanelTab:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateRequestPanelTab(*v, depth+1)
+	case *RequestTopic:
+		if v == nil {
+			return fmt.Errorf("nil variant")
+		}
+		return contractValidateRequestTopic(*v, depth+1)
 	default:
 		return fmt.Errorf("nil or unsupported Request")
 	}
@@ -6118,6 +6814,238 @@ func (v RequestPageState) MarshalJSON() ([]byte, error) {
 	fields := []contract.Field{}
 	fields = append(fields, contract.Field{Name: "type", Value: "page_state"})
 	fields = append(fields, contract.Field{Name: "user", Value: v.User})
+	if v.Conversation != nil {
+		fields = append(fields, contract.Field{Name: "conversation", Value: v.Conversation})
+	}
+	return contract.EncodeObject(fields)
+}
+func DecodeRequestPanelTab(data []byte) (RequestPanelTab, error) {
+	return contract.Decode[RequestPanelTab](data)
+}
+func (v RequestPanelTab) Validate() error { return contractValidateRequestPanelTab(v, 0) }
+func contractValidateRequestPanelTab(v RequestPanelTab, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := v.User.Validate(); err != nil {
+		return contract.At("user", err)
+	}
+	if err := contract.Text(string(v.User), 0, -1, ""); err != nil {
+		return contract.At("user", err)
+	}
+	if err := v.Conversation.Validate(); err != nil {
+		return contract.At("conversation", err)
+	}
+	if err := contract.Text(string(v.Conversation), 0, -1, ""); err != nil {
+		return contract.At("conversation", err)
+	}
+	if err := contractValidatePanelTabChange(v.Change, depth+1); err != nil {
+		return contract.At("change", err)
+	}
+	if err := contract.Text(string(v.Change), 0, -1, ""); err != nil {
+		return contract.At("change", err)
+	}
+	if err := v.Tab.Validate(); err != nil {
+		return contract.At("tab", err)
+	}
+	return nil
+}
+func (v *RequestPanelTab) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next RequestPanelTab
+	for key := range obj {
+		switch key {
+		case "user", "conversation", "change", "tab", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "panel_tab" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["user"]
+		if !ok {
+			return contract.At("user", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[webapi.UserID](raw)
+			if err != nil {
+				return contract.At("user", err)
+			}
+			next.User = value
+		}
+	}
+	{
+		raw, ok := obj["conversation"]
+		if !ok {
+			return contract.At("conversation", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[webapi.ConversationID](raw)
+			if err != nil {
+				return contract.At("conversation", err)
+			}
+			next.Conversation = value
+		}
+	}
+	{
+		raw, ok := obj["change"]
+		if !ok {
+			return contract.At("change", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[PanelTabChange](raw)
+			if err != nil {
+				return contract.At("change", err)
+			}
+			next.Change = value
+		}
+	}
+	{
+		raw, ok := obj["tab"]
+		if !ok {
+			return contract.At("tab", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[webapi.PanelTab](raw)
+			if err != nil {
+				return contract.At("tab", err)
+			}
+			next.Tab = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v RequestPanelTab) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "panel_tab"})
+	fields = append(fields, contract.Field{Name: "user", Value: v.User})
+	fields = append(fields, contract.Field{Name: "conversation", Value: v.Conversation})
+	fields = append(fields, contract.Field{Name: "change", Value: v.Change})
+	fields = append(fields, contract.Field{Name: "tab", Value: v.Tab})
+	return contract.EncodeObject(fields)
+}
+func DecodeRequestTopic(data []byte) (RequestTopic, error) {
+	return contract.Decode[RequestTopic](data)
+}
+func (v RequestTopic) Validate() error { return contractValidateRequestTopic(v, 0) }
+func contractValidateRequestTopic(v RequestTopic, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if err := v.User.Validate(); err != nil {
+		return contract.At("user", err)
+	}
+	if err := contract.Text(string(v.User), 0, -1, ""); err != nil {
+		return contract.At("user", err)
+	}
+	if err := contractValidateTopic(v.Topic, depth+1); err != nil {
+		return contract.At("topic", err)
+	}
+	if err := contract.Text(string(v.Topic), 0, -1, ""); err != nil {
+		return contract.At("topic", err)
+	}
+	if v.Conversation != nil {
+		if err := (*v.Conversation).Validate(); err != nil {
+			return contract.At("conversation", err)
+		}
+		if err := contract.Text(string((*v.Conversation)), 0, -1, ""); err != nil {
+			return contract.At("conversation", err)
+		}
+	}
+	return nil
+}
+func (v *RequestTopic) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next RequestTopic
+	for key := range obj {
+		switch key {
+		case "user", "topic", "conversation", "type":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	if raw, ok := obj["type"]; !ok {
+		return fmt.Errorf("missing union tag")
+	} else {
+		value, err := contract.Decode[string](raw)
+		if err != nil || value != "topic" {
+			return fmt.Errorf("invalid union tag")
+		}
+	}
+	{
+		raw, ok := obj["user"]
+		if !ok {
+			return contract.At("user", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[webapi.UserID](raw)
+			if err != nil {
+				return contract.At("user", err)
+			}
+			next.User = value
+		}
+	}
+	{
+		raw, ok := obj["topic"]
+		if !ok {
+			return contract.At("topic", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := contract.Decode[Topic](raw)
+			if err != nil {
+				return contract.At("topic", err)
+			}
+			next.Topic = value
+		}
+	}
+	{
+		raw, ok := obj["conversation"]
+		if ok {
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*webapi.ConversationID, error) {
+					return contract.Pointer(b, contract.Decode[webapi.ConversationID])
+				}(raw)
+				if err != nil {
+					return contract.At("conversation", err)
+				}
+				next.Conversation = value
+			}
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v RequestTopic) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "type", Value: "topic"})
+	fields = append(fields, contract.Field{Name: "user", Value: v.User})
+	fields = append(fields, contract.Field{Name: "topic", Value: v.Topic})
 	if v.Conversation != nil {
 		fields = append(fields, contract.Field{Name: "conversation", Value: v.Conversation})
 	}

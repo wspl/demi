@@ -2,11 +2,13 @@ package backend_test
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -190,7 +192,8 @@ func TestAPageSocketMessageOverTheLimitFailsTheSocket(t *testing.T) {
 			MessageID: "m1",
 			Content:   []framewire.ClientContent{&framewire.TextContent{Text: strings.Repeat("x", 1024*1024)}},
 		},
-	); err != nil {
+	); err != nil && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
+		// The backend may end the transport while the oversized send is in flight.
 		t.Fatal(err)
 	}
 	_, err = socket.Next(ctx)
