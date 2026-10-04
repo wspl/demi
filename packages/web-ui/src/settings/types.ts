@@ -2,6 +2,7 @@
 import { VIDEO_FILE_EXTENSIONS } from '@demicodes/protocol'
 import type { Component } from 'vue'
 import type { HostInstall } from '../devices/installs'
+import type { ModelSettings } from '../agent/model-selection'
 import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
@@ -294,3 +295,25 @@ export type ProviderLoginPhase =
 export type SettingsProviderOperation =
   | { kind: 'saving' | 'testing' | 'refreshing' | 'removing' | 'cli' }
   | { kind: 'account'; accountId: string; action: 'activate' | 'remove' | 'test' }
+
+/**
+ * A subagent profile as the Subagent section lists and edits it
+ * (`subagents.md` § Profiles). The settings carry its model as a
+ * conversation's are carried, or null for the parent's.
+ */
+export interface SettingsSubagentProfile {
+  id: string
+  name: string
+  /** When the agent should use the profile, which the model reads. */
+  description: string
+  /** The model a child infers with; null for its parent's. */
+  model: ModelSettings | null
+  /** The text that replaces a child's instructions; null for its parent's. */
+  instructions: string | null
+  /** Whether the profile's children may spawn children of their own. */
+  canSpawn: boolean
+  enabled: boolean
+}
+
+/** What the profile editor saves: a new profile starts enabled. */
+export type SettingsSubagentDraft = Omit<SettingsSubagentProfile, 'id' | 'enabled'>

@@ -26,6 +26,7 @@ pub mod query;
 pub mod settings;
 pub mod sidebar;
 pub mod state;
+pub mod subagents;
 pub mod text;
 pub mod usage;
 pub mod users;

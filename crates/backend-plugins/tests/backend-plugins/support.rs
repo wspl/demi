@@ -14,7 +14,7 @@ use demi_agent_server::{
 use demi_agent_store::media::BlobStore;
 use demi_agent_store::{AgentTreeStore, StoreError, testing::MemoryTreeStore};
 use demi_agent_tools::{
-    EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory, Toolset,
+    EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory, SubagentSettings, Toolset,
 };
 use demi_agent_transcript::testing::SequentialIds;
 use demi_backend_database::blob_refs::OwnerBlobs;
@@ -136,8 +136,11 @@ impl Fixture {
         let server = AgentServer::new(ServerDeps {
             toolsets: Rc::new(Toolset {
                 commands: Rc::new(commands),
-                profiles: Rc::new([]),
                 revision: Rc::from("file"),
+            }),
+            subagents: Rc::new(SubagentSettings {
+                enabled: true,
+                profiles: Vec::new(),
             }),
             instructions: Rc::from("You are a coding agent."),
             hosts: Rc::new(DeviceHost(host.clone())),

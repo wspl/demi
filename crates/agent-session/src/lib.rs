@@ -868,10 +868,15 @@ impl AgentSession {
             .read(|core| core.latest_selection().provider_id != model.provider_id)
     }
 
-    /// A runtime fork of the session's current runtime: the same provider
-    /// and configuration, none of its execution state. A run in progress
-    /// holds the runtime, so the fork waits until it is back.
-    pub async fn fork_runtime(&self) -> Result<Box<dyn ProviderRuntime>, AdmissionError> {
+    /// A runtime fork of the session's current runtime, when that runtime
+    /// serves the provider entry `provider_id`: the same provider and
+    /// configuration, none of its execution state; none when it serves
+    /// another entry. A run in progress holds the runtime, so the fork waits
+    /// until it is back.
+    pub async fn fork_runtime_for(
+        &self,
+        provider_id: &str,
+    ) -> Result<Option<Box<dyn ProviderRuntime>>, AdmissionError> {
         loop {
             let returned = self.shared.runtime_returned.notified();
             tokio::pin!(returned);
@@ -880,7 +885,11 @@ impl AgentSession {
                 if core.disposing {
                     return Some(Err(AdmissionError::Closed));
                 }
-                core.provider.as_ref().map(|runtime| Ok(runtime.fresh()))
+                // The runtime serves the selection the last request landed.
+                if core.model.provider_id != provider_id {
+                    return Some(Ok(None));
+                }
+                core.provider.as_ref().map(|runtime| Ok(Some(runtime.fresh())))
             });
             if let Some(fork) = fork {
                 return fork;

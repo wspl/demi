@@ -10,7 +10,6 @@ use demi_host_interface::RegisterError;
 use demi_plugin_interface::{
     Commands, DEMI_ROOT, Manifest, Page, Placement, PluginFactory, PluginId, Scope, State, Stream, Topic,
 };
-use demi_shared_types::Profile;
 
 use crate::commands::{TAKEN_GROUPS, compose};
 
@@ -20,12 +19,6 @@ use crate::commands::{TAKEN_GROUPS, compose};
 pub enum RegistryError {
     #[error("two plugins have the id \"{0}\"")]
     DuplicateId(PluginId),
-    #[error("plugin \"{plugin}\" declares the profile \"{name}\", which {reason}")]
-    Profile {
-        plugin: PluginId,
-        name: String,
-        reason: &'static str,
-    },
     #[error("plugin \"{plugin}\" declares \"{command}\", which is taken")]
     Taken { plugin: PluginId, command: String },
     #[error("plugin \"{plugin}\" declares the user stream \"{name}\", which is taken")]
@@ -79,7 +72,6 @@ impl Registered {
 /// The backend's plugins, shared by every shard thread.
 pub struct Registry {
     pub(crate) plugins: Vec<Registered>,
-    profiles: Vec<Profile>,
 }
 
 impl Registry {
@@ -101,33 +93,14 @@ impl Registry {
         serves: impl Fn(&NativeOperation) -> bool,
     ) -> Result<Self, RegistryError> {
         let mut ids = BTreeSet::new();
-        let mut profile_names = BTreeSet::new();
         let mut stream_names = BTreeSet::new();
         let mut page_packages = BTreeSet::new();
         let mut panel_kinds = BTreeSet::new();
         let mut plugins = Vec::new();
-        let mut profiles = Vec::new();
         for factory in factories {
             let manifest = factory.manifest();
             if !ids.insert(manifest.id.clone()) {
                 return Err(RegistryError::DuplicateId(manifest.id.clone()));
-            }
-            for profile in &manifest.profiles {
-                let reason = if profile.name == Profile::INHERIT {
-                    Some("is reserved for inheriting the parent")
-                } else if !profile_names.insert(profile.name.clone()) {
-                    Some("another plugin declares")
-                } else {
-                    None
-                };
-                if let Some(reason) = reason {
-                    return Err(RegistryError::Profile {
-                        plugin: manifest.id.clone(),
-                        name: profile.name.clone(),
-                        reason,
-                    });
-                }
-                profiles.push(profile.clone());
             }
             for stream in &manifest.streams {
                 if !stream_names.insert(stream.name.clone()) {
@@ -169,7 +142,7 @@ impl Registry {
             }
             plugins.push(served(factory, &serves));
         }
-        let registry = Self { plugins, profiles };
+        let registry = Self { plugins };
         registry.check()?;
         Ok(registry)
     }
@@ -199,11 +172,6 @@ impl Registry {
             }
         }
         compose(self, None, Vec::new(), |_| true).map(|_| ())
-    }
-
-    /// The plugins' profiles, in registration order.
-    pub fn profiles(&self) -> &[Profile] {
-        &self.profiles
     }
 
     /// The plugin that declares the user stream `name`, by its index.

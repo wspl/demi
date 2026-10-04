@@ -38,6 +38,12 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
+    /// A subagent profile's id, which the backend assigns and the profile's
+    /// name can change under.
+    ProfileId
+);
+
+demi_shared_types::id!(
     /// An upload's id, which the backend assigns and a frame names the
     /// upload by.
     AttachmentId

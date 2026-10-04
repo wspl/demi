@@ -4,7 +4,6 @@
 use std::fmt;
 
 use demi_command_declarations::{NativeOperation, Node, Schema};
-use demi_shared_types::Profile;
 use schemars::{JsonSchema, generate::SchemaSettings};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -90,9 +89,6 @@ pub struct Manifest {
     /// Its command groups and roots (`plugins.md` § Commands).
     #[serde(default)]
     pub commands: Vec<Commands>,
-    /// Its subagent profiles (`plugins.md` § Profiles).
-    #[serde(default)]
-    pub profiles: Vec<Profile>,
     /// Whether it is a context source, asked before each provider request
     /// of a node while its user has it on (`plugins.md` § Prompt text and
     /// context).
@@ -114,7 +110,6 @@ impl Manifest {
             name: name.into(),
             description: description.into(),
             commands: Vec::new(),
-            profiles: Vec::new(),
             context: false,
             streams: Vec::new(),
             page: None,

@@ -25,7 +25,7 @@ use demi_agent_store::{
     testing::MemoryTreeStore,
 };
 use demi_agent_tools::{
-    HostResolver, Toolset,
+    HostResolver, ProfileModel, SubagentSettings, Toolset, Unavailable,
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::{RandomIds, RequestView, estimate::context_tokens};
@@ -191,6 +191,14 @@ impl ProviderResolver for DeepSeek {
         let window = model.model.context_window;
         Box::pin(async move { window })
     }
+
+    /// The fixture's user has no profile, so no spawn asks.
+    fn profile_selection<'a>(
+        &'a self,
+        _model: &'a ProfileModel,
+    ) -> LocalBoxFuture<'a, Result<ModelSelection, Unavailable>> {
+        Box::pin(async { Err(Unavailable::Entry) })
+    }
 }
 
 /// The fixture opened as a conversation, and what the harness asks it.
@@ -240,8 +248,11 @@ impl Conversation {
         let server = AgentServer::new(ServerDeps {
             toolsets: Rc::new(Toolset {
                 commands: Rc::new(CommandSet::new()),
-                profiles: Rc::new([]),
                 revision: Rc::from("none"),
+            }),
+            subagents: Rc::new(SubagentSettings {
+                enabled: true,
+                profiles: Vec::new(),
             }),
             instructions: Rc::from(SYSTEM_PROMPT),
             hosts: Rc::new(NoHosts),
