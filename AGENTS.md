@@ -42,6 +42,17 @@
 - Work in large steps: read what a step needs in one call, write the whole step, then compile once. Start long builds and tests in the background and keep working meanwhile.
 - zsh does not split an unquoted variable into words; pass argument lists as arrays, or run scripts with bash.
 
+# Parallel Development Mode
+
+Use this mode only after the user says to enter parallel development mode. Otherwise work in the session itself.
+
+- The lead session stays free to discuss with the user. It hands each independent work item (a bug, a refactor, a design draft) to a background subagent and tells the user what runs where.
+- Each subagent works in a worktree of its own: `git worktree add -b <branch> ../demi-worktrees/<name> origin/<base>`. It never touches the user's checkout, the lead's worktree or another subagent's.
+- A subagent that builds Rust clones the lead's warm build with APFS copy-on-write, without the incremental directory, which holds most of the files and only makes the clone slow: every entry of `target/` with `cp -c -R`, and every entry of `target/debug/` but `incremental` the same way. Never a plain copy: the clone costs no disk until it changes. The first `cargo check` then rebuilds only the workspace and `vendor/` crates, which Cargo keys by their location (about 20-40 s), and none of the registry dependencies. A subagent that runs TypeScript runs `bun install --frozen-lockfile` first; Bun clones from its own cache.
+- A subagent's brief says what to verify against which design, the repository rules that apply, and that it must not push, spawn subagents or call a real model. It verifies before it changes anything: when the design is silent or the fix would change it, it reports the exact situation and the options instead of deciding. It commits on its own branch, keeps logs in a scratch folder of its own, and reports the commits, the proof that each test failed before the fix, and its open questions.
+- Work items that change the same files run one after another, never side by side. When a later item depends on an earlier one, the lead starts it after merging the earlier one, or tells it to rebase on the merged base.
+- The lead reviews each reported commit, cherry-picks it onto its branch, builds the selection (tests start built programs), runs the affected tests, and pushes. It relays each result and each open decision to the user, and removes a subagent's worktree and branch once its work is merged.
+
 # Writing and Communication
 
 - Make the first explanation understandable without requiring the reader to ask for a simpler version. Start with what happens in a concrete example, then explain the rule. Use familiar words; introduce a technical term only when needed and explain it on first use.
