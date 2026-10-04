@@ -147,7 +147,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       :class="[
         marquee ? 'is-playing' : '',
         conversation.unread && !open ? 'text-fg-emphasis' : '',
-        menuOpen
+        menuOpen || pending
           ? 'mr-[50px]'
           : conversation.pinned
             ? 'mr-8 group-hover/row:mr-[50px]'
