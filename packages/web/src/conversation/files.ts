@@ -4,6 +4,7 @@ import type { ConversationFileService } from '@demicodes/web-ui/plugins/page'
 import { conversationFileRoutes, fileSource } from '../api/files'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
+import { isNewer, type RunRevision } from '../state/revisions'
 import { executionFor } from '../targets/execution'
 import { readEditCopies } from './changes'
 import { useConversations } from './store'
@@ -49,9 +50,12 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     }
   })
   const changes = work.stateFor(conversationId).changes
-  /** The summary's count of the conversation's ended jobs, as the sync channel brings it. */
-  const revision = () =>
-    product.snapshot?.conversations.find((entry) => entry.id === conversationId)?.workingTreeRevision ?? null
+  /** The summary's count of the conversation's ended jobs, as the sync channel brings it, with its run. */
+  function revision(): RunRevision | null {
+    const state = product.snapshot
+    const count = state?.conversations.find((entry) => entry.id === conversationId)?.workingTreeRevision
+    return state && count !== undefined ? { run: state.run, revision: count } : null
+  }
   /** The revision the list last followed; a change while nothing showed it makes the list stale. */
   let followed = revision()
   let showing = 0
@@ -60,15 +64,19 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   function showChanges(): void {
     showing += 1
     if (showing === 1) {
-      if (revision() !== followed) {
+      const now = revision()
+      if (now !== null && isNewer(now, followed)) {
         changes.markStale()
       }
       changes.ensureFresh()
       watching = effectScope(true)
       watching.run(() => {
+        // The getter answers a new pair on every change of the product state: only a newer one lists again.
         watch(revision, (next) => {
-          followed = next
-          changes.refresh()
+          if (next !== null && isNewer(next, followed)) {
+            followed = next
+            changes.refresh()
+          }
         })
         watch(pageVisibility, (state) => {
           if (state === 'visible') {

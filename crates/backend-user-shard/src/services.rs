@@ -84,6 +84,10 @@ pub struct Services {
     pub public_url: PublicUrl,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
+    /// This run of the backend, chosen when the services start: the
+    /// revisions counted in memory compare only within one run
+    /// (`web-api.md` § Revisions counted in memory).
+    pub run: String,
     /// When a conversation's Host resources are reclaimed.
     pub lifecycle: LifecycleTuning,
     /// The domain of expose hostnames; without it, exposes are unavailable.
@@ -309,6 +313,7 @@ impl Services {
             cloud: settings.cloud,
             public_url: PublicUrl::default(),
             web_build: settings.web_build,
+            run: uuid::Uuid::new_v4().to_string(),
             lifecycle: settings.lifecycle,
             expose_domain: settings.expose_domain,
             expose_tuning: settings.exposes,

@@ -326,7 +326,7 @@ Each synced state follows the copy with its own rule:
 | Read state | Each summary's `readRevision` and `unread` | An acknowledgement only moves forward |
 | Model settings | Each summary's `model` | A change names only the part its user changed ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)) |
 | Drafts | Each summary's `draftRevision` | A page that shows the conversation reads the draft when the revision is higher than its own ([Drafts](#drafts)) |
-| Permission requests | Each summary's `permissionRequests` and `permissionsRevision` | The sidebar's needs-you mark follows the count; a page that shows the conversation reads its requests when the revision is higher than its own ([Conversation permissions](web-api.md#conversation-permissions)) |
+| Permission requests | Each summary's `permissionRequests` and `permissionsRevision` | The sidebar's needs-you mark follows the count; a page that shows the conversation reads its requests when the revision is newer than its own ([Conversation permissions](web-api.md#conversation-permissions), [Revisions counted in memory](web-api.md#revisions-counted-in-memory)) |
 | Work panel tabs | Each summary's `panelRevision` | A page whose panel is open reads the tabs when the revision is higher than its own, and shows its own changes over them ([Work panel](#work-panel)) |
 | Preferences | `preferences` | A change shows at once, and the part it changed stays as the user set it until its write is answered |
 | The account, workspaces, devices, providers, subagent settings, the Cloud and each plugin's state | Their parts | The page shows what the backend holds |

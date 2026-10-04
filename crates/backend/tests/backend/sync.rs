@@ -1,6 +1,7 @@
 //! The pages' synchronization channel end to end (`web-api.md` § Page
 //! synchronization, `backend.md` § Page synchronization): the product
-//! state a page receives first; what it receives when another session
+//! state a page receives first, and the run that tells one start of the
+//! backend from the next; what it receives when another session
 //! changes something, after it reconnects, and when it falls behind; a turn
 //! and its reading as other pages see them; when the channel opens and how
 //! it ends; and the heartbeat each of a page's sockets sends when it is
@@ -178,8 +179,11 @@ async fn the_snapshot_is_the_users_product_state() {
             .into(),
             // The backend serves no web app.
             web_build: None,
+            // An id chosen at start, checked below.
+            run: state.run.clone(),
         }
     );
+    assert!(!state.run.is_empty());
     // Every plugin of the backend is listed in its order, each on.
     let plugins: Vec<_> = state
         .plugins
@@ -205,6 +209,26 @@ async fn the_snapshot_is_the_users_product_state() {
         .unwrap();
     let installer = reqwest::get(installer).await.unwrap();
     assert_eq!(installer.status(), StatusCode::SERVICE_UNAVAILABLE);
+    backend.close().await;
+}
+
+// About a second: the backend starts twice over the same data.
+#[tokio::test]
+async fn a_backend_that_starts_again_names_another_run() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut page = backend.sync(&master).await;
+    let first = page.snapshot().await.run;
+    drop(page);
+    backend.close().await;
+
+    // The revisions counted in memory start again at 0: the page tells the
+    // new counts from the old by the run.
+    let backend = harness.start().await;
+    let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
+    let mut page = backend.sync(&master).await;
+    let second = page.snapshot().await.run;
+    assert_ne!(first, second);
     backend.close().await;
 }
 

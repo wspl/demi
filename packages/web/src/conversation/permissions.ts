@@ -10,11 +10,12 @@ import { ApiError } from '../api/client'
 import { decidePermission, readPermissions } from '../api/permissions'
 import type { ConversationPermissions, PermissionCategory } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
+import { isNewer, type RunRevision } from '../state/revisions'
 
 /** One conversation's permission requests, as this page last read them. */
 export interface PermissionsState {
-  /** The revision of the answer the page holds; -1 before the first. */
-  revision: number
+  /** The revision of the answer the page holds; null before the first. */
+  held: RunRevision | null
   requests: PermissionRequestView[]
   /** A decision of this page is on its way. */
   deciding: boolean
@@ -32,10 +33,11 @@ function category(answer: PermissionCategory): PermissionRequestView['category']
  * The conversations' permission requests (`web-application.md`
  * § Synchronized state, `web-api.md` § Conversation permissions): a page
  * reads them for a conversation it shows, and again whenever the summary's
- * `permissionsRevision` rises past the revision it holds; an answer older
- * than the one it holds is dropped, since a read and the summary can arrive
- * in either order. A decision shows at once; another page's decision
- * reaches this one through the summary.
+ * `permissionsRevision` is newer than the revision it holds, a count of
+ * another run of the backend included (`web-api.md` § Revisions counted in
+ * memory); an answer older than the one it holds is dropped, since a read
+ * and the summary can arrive in either order. A decision shows at once;
+ * another page's decision reaches this one through the summary.
  */
 export const usePermissions = defineStore('permissions', () => {
   const product = useProduct()
@@ -44,7 +46,7 @@ export const usePermissions = defineStore('permissions', () => {
   function stateFor(conversationId: string): PermissionsState {
     if (!states.has(conversationId)) {
       states.set(conversationId, {
-        revision: -1,
+        held: null,
         requests: [],
         deciding: false,
       })
@@ -52,12 +54,13 @@ export const usePermissions = defineStore('permissions', () => {
     return states.get(conversationId)!
   }
 
-  /** Takes an answer newer than the one the page holds. */
+  /** Takes an answer newer than the one the page holds; it is of the run the page holds now. */
   function take(state: PermissionsState, answer: ConversationPermissions): void {
-    if (answer.revision <= state.revision) {
+    const taken = { run: product.snapshot?.run ?? null, revision: answer.revision }
+    if (!isNewer(taken, state.held)) {
       return
     }
-    state.revision = answer.revision
+    state.held = taken
     state.requests = answer.requests.map((request) => ({
       id: request.id,
       category: category(request.category),
@@ -85,9 +88,10 @@ export const usePermissions = defineStore('permissions', () => {
   watch(
     () => product.snapshot?.conversations,
     (summaries) => {
+      const run = product.snapshot?.run ?? null
       for (const summary of summaries ?? []) {
         const state = states.get(summary.id)
-        if (state && summary.permissionsRevision > state.revision) {
+        if (state && isNewer({ run, revision: summary.permissionsRevision }, state.held)) {
           void read(summary.id)
         }
       }
