@@ -26,7 +26,7 @@ use demi_host_interface::{
     ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents,
     GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder, ObservationWindow,
     Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, Seen, ShellEnvironment, ShellTarget,
-    Signal, SpawnEnv, SpawnRequest, StorageOp, StorageReply, Streams, TypedRpc, WriteOptions,
+    Signal, SpawnEnv, SpawnRequest, Streams, TypedRpc, WriteOptions,
     testing::{CountingNumbers, TestPages, host_conformance_cases, test_command_context},
 };
 use demi_runner_protocol::wire::{
@@ -49,7 +49,6 @@ const MIB: usize = 1024 * 1024;
 fn caller() -> JobCaller {
     JobCaller {
         node: NodeId::try_from("test-session").unwrap(),
-        generation: 0,
     }
 }
 
@@ -936,11 +935,11 @@ async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing
     fixture.stop().await;
 }
 
-/// The input of `todo add` and `todo note`.
+/// The input of `note add` and `note take`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct TodoArgs {
-    /// Todo text
+struct NoteArgs {
+    /// Note text
     text: String,
 }
 
@@ -952,38 +951,12 @@ struct HoldArgs {
     ms: u64,
 }
 
-async fn add(call: Call<TodoArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let text = call.args.text;
-    let items = port
-        .update("todos", |current: Option<Vec<String>>| {
-            let mut items = current.unwrap_or_default();
-            items.push(text.clone());
-            Ok(items)
-        })
-        .await?;
-    port.stdout(format!("added {}\n", items.len())).await?;
+async fn add(call: Call<NoteArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    port.stdout(format!("added {}\n", call.args.text)).await?;
     Ok(0)
 }
 
-async fn list(_: Call<Map<String, Value>>, port: RpcPort) -> Result<u8, RpcError> {
-    let StorageReply::Value { value, .. } = port
-        .storage(StorageOp::Read {
-            key: "todos".into(),
-        })
-        .await?
-    else {
-        return Err(RpcError::Failed("a read answers a value".into()));
-    };
-    let items: Vec<String> = value
-        .map(serde_json::from_value)
-        .transpose()
-        .map_err(|error| RpcError::Failed(error.to_string()))?
-        .unwrap_or_default();
-    port.stdout(format!("{}\n", items.join(","))).await?;
-    Ok(0)
-}
-
-async fn note(call: Call<TodoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn take(call: Call<NoteArgs>, port: RpcPort) -> Result<u8, RpcError> {
     port.stdout(format!("noted: {}", call.args.text)).await?;
     Ok(0)
 }
@@ -1022,7 +995,7 @@ async fn spew(_: Call<Map<String, Value>>, port: RpcPort) -> Result<u8, RpcError
 /// About 3 s here: six jobs one after another on one shell, each a login
 /// shell that reads the machine's profile (about 0.4 s in the Linux container).
 #[tokio::test(flavor = "local")]
-async fn declared_commands_call_back_with_storage_input_and_cancellation() {
+async fn declared_commands_call_back_with_arguments_input_and_cancellation() {
     let started = Rc::new(Cell::new(false));
     let stopped = Rc::new(Cell::new(false));
     let hold = {
@@ -1045,19 +1018,18 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
     let mut commands = CommandSet::new();
     commands
         .register(
-            GroupBuilder::new("todo", "Todos.")
+            GroupBuilder::new("note", "Notes.")
                 .leaf(
-                    LeafBuilder::rpc("add", "Add a todo.")
-                        .input::<TodoArgs>()
+                    LeafBuilder::rpc("add", "Add a note.")
+                        .input::<NoteArgs>()
                         .positionals(["text"])
                         .bind(TypedRpc::new(add)),
                 )
-                .leaf(LeafBuilder::rpc("list", "List the todos.").bind(TypedRpc::new(list)))
                 .leaf(
-                    LeafBuilder::rpc("note", "Take a note from stdin.")
-                        .input::<TodoArgs>()
+                    LeafBuilder::rpc("take", "Take a note from stdin.")
+                        .input::<NoteArgs>()
                         .stdin_field("text")
-                        .bind(TypedRpc::new(note)),
+                        .bind(TypedRpc::new(take)),
                 ),
         )
         .unwrap();
@@ -1088,16 +1060,12 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
     })
     .await;
     let shell = shell_on(fixture.host(), &[], Some(selection));
-    // Command storage, compared and set per agent node.
-    let added = run(&shell, "todo add first && todo add second && todo list").await;
+    // Positional arguments.
+    let added = run(&shell, "note add first && note add second").await;
     assert_eq!(exited(&added), 0, "{}", added.stderr.tail);
-    assert_eq!(added.stdout.delta, "added 1\nadded 2\nfirst,second\n");
-    assert_eq!(
-        fixture.policy().storage("test-session").value("todos"),
-        Some(json!(["first", "second"]))
-    );
+    assert_eq!(added.stdout.delta, "added first\nadded second\n");
     // A body from finite standard input.
-    let noted = run(&shell, "printf 'from stdin' | todo note").await;
+    let noted = run(&shell, "printf 'from stdin' | note take").await;
     assert_eq!(noted.stdout.delta, "noted: from stdin");
     // A reader that stops early ends the call as a closed pipe ends a
     // program: 141, and nothing on stderr, whether the job's shell runs it
@@ -1125,7 +1093,7 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
     assert_eq!(exited(&typed), 0);
     assert_eq!(typed.output.tail, "typed|test-conversation");
     // A call its input refuses fails as a usage error.
-    let usage = run(&shell, "todo add").await;
+    let usage = run(&shell, "note add").await;
     assert_ne!(exited(&usage), 0);
     assert!(!usage.stderr.tail.is_empty());
     // Stopping the job stops its call.

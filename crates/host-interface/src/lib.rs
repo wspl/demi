@@ -49,6 +49,6 @@ pub use output::{
 pub use record::{CommandRecord, Ending, PageState, PageView, TAIL_CHARS};
 pub use reserved::{RESERVED_NAMES, is_reserved};
 pub use rpc::{
-    PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, Revision, RpcError,
-    RpcHandler, RpcInvocation, RpcPort, StorageOp, StorageReply,
+    PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcError, RpcHandler,
+    RpcInvocation, RpcPort,
 };

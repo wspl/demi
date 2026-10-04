@@ -1,6 +1,5 @@
-//! Message editing, Fork and command storage at the agent's boundary
-//! (`message-editing.md`, `conversation-fork.md`,
-//! `command-state-history.md`): the frames an edit is answered with, the
+//! Message editing and Fork at the agent's boundary (`message-editing.md`,
+//! `conversation-fork.md`): the frames an edit is answered with, the
 //! requests the replacement makes, and the checkpoints the store keeps.
 
 use demi_agent_server::{
@@ -22,7 +21,6 @@ use demi_conversation_socket_protocol::{
     ClientContent, ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptPatch,
     TranscriptVersion,
 };
-use demi_host_interface::{PortError, Revision, StorageOp, StorageReply};
 use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, UserPart,
     testing::{ScriptedRuntime, Turn, event},
@@ -32,13 +30,12 @@ use demi_shared_types::{
     NodeId, OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock, attachment_tag,
 };
 use serde_json::json;
-use tokio_util::sync::CancellationToken;
 
 use crate::{
     subagents::{checkpoint, child_record},
     support::{
-        Fixture, Gate, Model, TestProduct, agent, command_storage, conversation, held, is_idle,
-        kinds, named_node, open, send, session_of, switch, until,
+        Fixture, Gate, Model, TestProduct, agent, conversation, held, is_idle, kinds, named_node,
+        open, send, session_of, switch, until,
     },
 };
 
@@ -103,35 +100,9 @@ fn rejected(reason: &str) -> EditOutcome {
     }
 }
 
-/// Writes `value` under `todo` in the root's command storage.
-async fn write_todo(fixture: &Fixture, value: i64) -> StorageReply {
-    let write = StorageOp::WriteIf {
-        key: "todo".into(),
-        value: Some(json!(value)),
-        expected: None,
-    };
-    command_storage(&fixture.server, &conversation(), write)
-        .await
-        .unwrap()
-}
-
-async fn read_todo(fixture: &Fixture) -> StorageReply {
-    let read = StorageOp::Read { key: "todo".into() };
-    command_storage(&fixture.server, &conversation(), read)
-        .await
-        .unwrap()
-}
-
-/// A, B and C, each answered, with the command storage's `todo` at 1 before
-/// B and at 2 before C.
-async fn three_turns(fixture: &Fixture, client: &mut TestClient<TestProduct>) {
-    for (value, (id, text)) in [("m1", "A"), ("m2", "B"), ("m3", "C")]
-        .into_iter()
-        .enumerate()
-    {
-        if value > 0 {
-            write_todo(fixture, value as i64).await;
-        }
+/// A, B and C, each answered.
+async fn three_turns(client: &mut TestClient<TestProduct>) {
+    for (id, text) in [("m1", "A"), ("m2", "B"), ("m3", "C")] {
         client.send(send(id, text)).await;
         client.next_until(is_idle).await;
     }
@@ -147,7 +118,7 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
     ]);
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
-    three_turns(&fixture, &mut client).await;
+    three_turns(&mut client).await;
     let target = user_block(&fixture, "m2");
     let before = session_of(&fixture).transcript();
     let answer_a = before.blocks[1].id().clone();
@@ -254,14 +225,6 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
         rejected("The conversation changed; reopen the message to edit it")
     );
     assert_eq!(script.remaining(), 0);
-    // Command state is back at the version before B.
-    assert_eq!(
-        read_todo(&fixture).await,
-        StorageReply::Value {
-            value: Some(json!(1)),
-            revision: Revision(1)
-        }
-    );
 
     // A snapshot taken before a restart is stale after it, and an accepted
     // operation keeps its receipt.
@@ -405,22 +368,11 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
     client.next_until(is_idle).await;
 
     let before = session_of(&fixture).transcript();
-    let job = fixture
-        .server
-        .node(&conversation(), &conversation())
-        .unwrap()
-        .job_caller();
     fixture.store.fail_saves(1);
     client
         .send(edit("op2", &target, &before.version, client_text("A2")))
         .await;
     let failed = edit_outcome(&client.received());
-    let read = StorageOp::Read { key: "todo".into() };
-    let generation_kept = fixture
-        .server
-        .command_storage(&conversation(), &job, read, CancellationToken::new())
-        .await
-        .is_ok();
     let after_failure = session_of(&fixture).transcript();
     let stored = fixture.store.checkpoint(&conversation()).unwrap();
     client
@@ -434,7 +386,6 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
     );
     assert_eq!(failed, rejected("the database refused the save"));
     assert_eq!(after_failure, before);
-    assert!(generation_kept, "a rejected edit ends no job's storage");
     assert_eq!(stored.transcript, before.blocks);
     assert!(stored.state.edits.is_empty());
     assert!(matches!(
@@ -688,19 +639,8 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
     ]);
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
-    let write = |value: i64, expected: u64| StorageOp::WriteIf {
-        key: "todo".into(),
-        value: Some(json!(value)),
-        expected: Some(Revision(expected)),
-    };
-    command_storage(&fixture.server, &conversation(), write(1, 0))
-        .await
-        .unwrap();
     client.send(send("m1", "A")).await;
     client.next_until(is_idle).await;
-    command_storage(&fixture.server, &conversation(), write(2, 1))
-        .await
-        .unwrap();
     client.send(send("m2", "B")).await;
     client.next_until(is_idle).await;
     let blocks = session_of(&fixture).transcript().blocks;
@@ -741,8 +681,7 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
     let record = fixture.store.record(&destination).unwrap();
     assert_eq!((record.parent, record.closed), (None, None));
 
-    // The destination opens idle with the prefix and its command state, and
-    // continues on its own.
+    // The destination opens idle with the prefix, and continues on its own.
     let mut forked = TestClient::connect(&fixture.server, &destination, "/workspace");
     forked.send(open()).await;
     let handshake = forked.received();
@@ -750,20 +689,6 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
         panic!("{handshake:#?}")
     };
     assert_eq!(seeded[..], blocks[..2]);
-    let read = command_storage(
-        &fixture.server,
-        &destination,
-        StorageOp::Read { key: "todo".into() },
-    )
-    .await
-    .unwrap();
-    assert_eq!(
-        read,
-        StorageReply::Value {
-            value: Some(json!(1)),
-            revision: Revision(1)
-        }
-    );
     forked
         .send(ClientFrame::Send {
             message_id: TurnId::try_from("m3").unwrap(),
@@ -772,99 +697,6 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
         .await;
     forked.next_until(is_idle).await;
     assert_eq!(script.remaining(), 0);
-}
-
-#[tokio::test(flavor = "local")]
-async fn command_storage_writes_compare_the_revision_and_a_rewrite_ends_older_jobs() {
-    let script = ScriptedRuntime::new([said("answer A"), said("answer A again")]);
-    let fixture = Fixture::new(&script);
-    let mut client = fixture.opened().await;
-    let write = |value: i64, expected: Option<u64>| StorageOp::WriteIf {
-        key: "todo".into(),
-        value: Some(json!(value)),
-        expected: expected.map(Revision),
-    };
-    let root = conversation();
-    let storage = |op| command_storage(&fixture.server, &root, op);
-    let before_job = fixture
-        .server
-        .node(&conversation(), &conversation())
-        .unwrap()
-        .job_caller();
-    let first = storage(write(1, Some(0))).await.unwrap();
-    let stale = storage(write(2, Some(0))).await.unwrap();
-    let same = storage(write(1, None)).await.unwrap();
-    client.send(send("m1", "A")).await;
-    client.next_until(is_idle).await;
-    let stored = fixture.store.checkpoint(&conversation()).unwrap();
-    client.send(ClientFrame::Retry {}).await;
-    client.next_until(is_idle).await;
-    let after_rewrite = fixture
-        .server
-        .command_storage(
-            &conversation(),
-            &before_job,
-            write(3, None),
-            CancellationToken::new(),
-        )
-        .await;
-    let fresh_job = storage(write(3, None)).await.unwrap();
-    // A job's `demi agent list` reads the tree through the same node.
-    let listed = agent(&fixture.server, &conversation(), "list", json!({})).await;
-    fixture.store.fail_saves(1);
-    let failed = storage(write(4, None)).await;
-    let after_failure = read_todo(&fixture).await;
-
-    assert_eq!(
-        first,
-        StorageReply::Committed {
-            revision: Revision(1)
-        }
-    );
-    assert_eq!(
-        stale,
-        StorageReply::Conflict {
-            revision: Revision(1)
-        }
-    );
-    assert_eq!(
-        same,
-        StorageReply::Committed {
-            revision: Revision(1)
-        }
-    );
-    let versions: Vec<u64> = stored
-        .command_state
-        .versions
-        .iter()
-        .map(|version| version.revision)
-        .collect();
-    assert_eq!(versions, [0, 1]);
-    assert_eq!(
-        after_rewrite,
-        Err(PortError::Storage(
-            "the command storage handle is no longer current".into()
-        ))
-    );
-    assert_eq!(
-        fresh_job,
-        StorageReply::Committed {
-            revision: Revision(2)
-        }
-    );
-    assert_eq!(listed.stdout, "● 0  (root session) ← you\n");
-    // A commit that failed leaves the head as it was.
-    assert_eq!(
-        failed,
-        Err(PortError::Storage("the database refused the save".into()))
-    );
-    assert_eq!(
-        after_failure,
-        StorageReply::Value {
-            value: Some(json!(3)),
-            revision: Revision(2)
-        }
-    );
 }
 
 #[tokio::test(flavor = "local")]
@@ -943,10 +775,10 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
     };
     assert_eq!(fixture.store.record(&child).unwrap(), delivered);
 
-    // While a child start saves its request, an edit is refused.
+    // While a child start takes its number, an edit is refused.
     let target = user_block(&fixture, turn_id.as_str());
     let version = session_of(&fixture).transcript().version;
-    let gate = fixture.store.hold_saves();
+    let gate = fixture.store.hold_numbers();
     {
         let starting = spawn("Count the files");
         tokio::pin!(starting);

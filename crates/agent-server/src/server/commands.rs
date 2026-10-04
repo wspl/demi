@@ -40,11 +40,6 @@ const SHOW_SUMMARY: &str = "Bounded snapshot of any live agent in the tree (root
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 struct SpawnArgs {
     prompt: String,
-    /// Stable id for this creation or resume request. Supply the same id and
-    /// arguments to retry safely after an uncertain response; otherwise a new
-    /// id is generated.
-    #[schemars(length(min = 1, max = 128))]
-    request_id: Option<String>,
     profile: Option<String>,
     /// Short UI title distinguishing concurrent children.
     description: Option<String>,
@@ -74,15 +69,10 @@ struct AbortArgs {
 
 /// The input of `demi agent resume`.
 #[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[serde(deny_unknown_fields)]
 struct ResumeArgs {
     /// subagentId of an archived child
     id: u64,
-    /// Stable id for this creation or resume request. Supply the same id and
-    /// arguments to retry safely after an uncertain response; otherwise a new
-    /// id is generated.
-    #[schemars(length(min = 1, max = 128))]
-    request_id: Option<String>,
     /// The reviving user message.
     message: String,
 }
@@ -245,7 +235,6 @@ fn agent_group<H: HostResolver>(
 /// on behalf of the job's node.
 pub(super) struct Invoked<H: HostResolver, A> {
     pub(super) tree: Rc<Tree<H>>,
-    server: Rc<AgentServer<H>>,
     caller: NodeId,
     json: bool,
     pub(super) args: A,
@@ -286,7 +275,6 @@ where
                 .ok_or_else(|| RpcError::Failed(format!("the conversation {root} is not open")))?;
             let invoked = Invoked {
                 tree,
-                server,
                 caller,
                 json: call.invocation.json,
                 args: call.args,
@@ -310,8 +298,7 @@ async fn spawn<H: HostResolver>(
         description: call.args.description.unwrap_or_default(),
         is_spawn_forbidden: call.args.no_subagents.unwrap_or(false),
     };
-    let request = call.args.request_id.unwrap_or_else(|| call.server.new_id());
-    match call.tree.start(&call.caller, input, request, &port).await {
+    match call.tree.start(&call.caller, input).await {
         Ok(child) => started(&port, call.json, child).await,
         Err(error) => fail(&port, "spawn", &error).await,
     }
@@ -338,8 +325,7 @@ async fn resume<H: HostResolver>(
         id,
         message: message.to_owned(),
     };
-    let request = call.args.request_id.unwrap_or_else(|| call.server.new_id());
-    match call.tree.start(&call.caller, input, request, &port).await {
+    match call.tree.start(&call.caller, input).await {
         Ok(child) => started(&port, call.json, child).await,
         Err(error) => fail(&port, "resume", &error).await,
     }

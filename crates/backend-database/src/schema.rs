@@ -343,8 +343,7 @@ CREATE TABLE attachments (
 /// One agent tree (`storage.md` § Conversation state and transactions): the
 /// root node's id is the conversation's, and its descendants are subagents.
 /// A node row carries identity and relationship; its checkpoint is the state
-/// row's JSON, its block rows and its command state, whose versions are
-/// immutable and whose boundaries each name a version.
+/// row's JSON and its block rows.
 const CONVERSATION_V1: &str = r"
 CREATE TABLE nodes (
   id               TEXT PRIMARY KEY,
@@ -362,7 +361,6 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   state            TEXT NOT NULL,
   block_count      INTEGER NOT NULL CHECK (block_count >= 0),
-  command_revision INTEGER NOT NULL CHECK (command_revision >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
   -- When the earliest wakeup the state saves is due, as the index of
   -- conversations holds it; null when it saves none.
@@ -406,14 +404,6 @@ CREATE TABLE blob_refs (
 ) STRICT;
 CREATE INDEX blob_refs_expiry ON blob_refs (holder, at);
 
--- Each version holds the node's complete command-storage map.
-CREATE TABLE command_snapshots (
-  node_id  TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
-  revision INTEGER NOT NULL CHECK (revision >= 0),
-  entries  TEXT NOT NULL,
-  PRIMARY KEY (node_id, revision)
-) STRICT;
-
 -- Each ended command's whole output: stored as a blob, with the bytes at
 -- its end the backend does not have and why; not stored, and why; or
 -- removed by the retention pass, and when.
@@ -430,15 +420,4 @@ CREATE TABLE command_outputs (
   CHECK (missing_bytes IS NULL OR blob IS NOT NULL)
 ) STRICT;
 CREATE INDEX command_outputs_expiry ON command_outputs (ended_at) WHERE blob IS NOT NULL;
-
--- A boundary names the version that was current at its edge of a block; a
--- version a boundary names cannot go.
-CREATE TABLE session_boundaries (
-  node_id          TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
-  block_id         TEXT NOT NULL,
-  edge             TEXT NOT NULL CHECK (edge IN ('before_user', 'after_assistant', 'after_block')),
-  command_revision INTEGER NOT NULL,
-  PRIMARY KEY (node_id, block_id, edge),
-  FOREIGN KEY (node_id, command_revision) REFERENCES command_snapshots (node_id, revision)
-) STRICT;
 ";

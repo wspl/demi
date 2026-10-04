@@ -1,10 +1,9 @@
 //! The tree store over a conversation's database (`runtime.md` § Tree store,
 //! `storage.md` § Conversation state and transactions): a node's record is
 //! its `nodes` row, and its checkpoint is that row's state with the node's
-//! `blocks` rows and its command state (`command_snapshots`,
-//! `session_boundaries`). Creating, saving, closing, reopening and deleting
-//! a node are each one transaction on the conversation's writer connection,
-//! where rows are also serialized and decoded. Every row read is decoded and
+//! `blocks` rows. Creating, saving, closing, reopening and deleting a node
+//! are each one transaction on the conversation's writer connection, where
+//! rows are also serialized and decoded. Every row read is decoded and
 //! checked, and corrupt data stops the read.
 //!
 //! Blocks hold their media by reference, and a checkpoint that holds media
@@ -18,24 +17,21 @@
 //! conversation's summary facts and its history, on a read-only connection,
 //! which keep the media references.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_agent_store::{AgentTreeStore, SessionStore, StoredOutput};
 use demi_agent_store::{
-    BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot,
-    CommandStorageKey, CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary,
-    StoreError, media::BlobStore,
+    Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord, StoreError,
+    media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
 use demi_shared_types::{
-    Block, BlockId, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase,
-    Timestamp,
+    Block, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp,
 };
 use futures_util::future::LocalBoxFuture;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
-use serde_json::Value;
 
 use super::StorageError;
 use super::blob_refs::{self, OwnerBlobs};
@@ -176,9 +172,8 @@ impl AgentTreeStore for SqliteTreeStore {
                     let (phase, closed_at, result, failure) = close_columns(record.closed.as_ref());
                     transaction.execute(
                         "INSERT INTO nodes (id, number, parent_id, description, profile, round, started_at, can_spawn,
-                           closed_phase, closed_at, result, failure, delivered, state, block_count, command_revision,
-                           output_revision)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, 0, 0)",
+                           closed_phase, closed_at, result, failure, delivered, state, block_count, output_revision)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, 0)",
                         params![
                             record.id.as_str(),
                             integer(record.number),
@@ -196,11 +191,6 @@ impl AgentTreeStore for SqliteTreeStore {
                             to_json(&initial.state),
                         ],
                     )?;
-                    let command_state = initial.command_state.clone().unwrap_or_else(CommandStateSnapshot::initial);
-                    let initial = CheckpointUpdate {
-                        command_state: Some(command_state),
-                        ..initial
-                    };
                     if let Err(refused) = write_checkpoint(&transaction, &*blobs, &record.id, &initial, &completions)? {
                         return Ok(Err(refused));
                     }
@@ -398,12 +388,7 @@ impl AgentTreeStore for SqliteTreeStore {
 }
 
 impl SessionStore for SqliteSessionStore {
-    fn save<'a>(
-        &'a self,
-        update: CheckpointUpdate,
-        guard: &'a CommitGuard,
-    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
-        let guard = guard.clone();
+    fn save(&self, update: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         let node = self.node.clone();
         Box::pin(async move {
             let completions = update.carried_completions()?;
@@ -413,11 +398,6 @@ impl SessionStore for SqliteSessionStore {
                 .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
-                    // The guard is checked at the start of the transaction, so
-                    // an invocation a rewrite made stale commits nothing.
-                    if let Err(stale) = guard.check() {
-                        return Ok(Err(stale));
-                    }
                     if let Err(refused) =
                         write_checkpoint(&transaction, &*blobs, &node, &update, &completions)?
                     {
@@ -454,10 +434,9 @@ impl SessionStore for SqliteSessionStore {
 
 /// Writes one save of `node` in `transaction`: the changed block rows, the
 /// rows past the new end gone, each with its index rows, the state row with
-/// its earliest wakeup, the
-/// command state when it changed, and the child completions it carries
-/// marked delivered; last, the uses of the blobs whose references it wrote
-/// or removed. Changed output advances the node's output revision; input
+/// its earliest wakeup, and the child completions it carries marked
+/// delivered; last, the uses of the blobs whose references it wrote or
+/// removed. Changed output advances the node's output revision; input
 /// alone does not. A refusal leaves the transaction uncommitted.
 fn write_checkpoint(
     transaction: &Transaction<'_>,
@@ -476,10 +455,6 @@ fn write_checkpoint(
         .changed_blocks
         .iter()
         .any(|(_, block)| is_output(block));
-    let revision = update
-        .command_state
-        .as_ref()
-        .map(|state| integer(state.revision));
     // The old block count is the column's value before the update: rows
     // gone are a rewrite of the output.
     let wakeup = WakeupDue::earliest(&update.state).map(WakeupDue::column);
@@ -488,19 +463,21 @@ fn write_checkpoint(
     // fires by itself. A child resumes its interrupted turn on its own.
     let interrupted = update.state.phase != SessionPhase::Idle;
     let changed = transaction.execute(
-        "UPDATE nodes SET state = ?2, block_count = ?3, command_revision = COALESCE(?5, command_revision),
+        "UPDATE nodes SET state = ?2, block_count = ?3,
            output_revision = output_revision + (CASE WHEN block_count > ?3 OR ?4 THEN 1 ELSE 0 END),
-           wakeup_at = (CASE WHEN parent_id IS NULL AND ?7 THEN NULL ELSE ?6 END)
+           wakeup_at = (CASE WHEN parent_id IS NULL AND ?6 THEN NULL ELSE ?5 END)
          WHERE id = ?1",
-        params![node.as_str(), to_json(&update.state), block_count, output, revision, wakeup, interrupted],
+        params![
+            node.as_str(),
+            to_json(&update.state),
+            block_count,
+            output,
+            wakeup,
+            interrupted
+        ],
     )?;
     if changed == 0 {
         return Ok(Err(missing(node)));
-    }
-    if let Some(command_state) = &update.command_state
-        && let Err(refusal) = write_command_state(transaction, node, command_state)?
-    {
-        return Ok(Err(refusal));
     }
     for round in completions {
         transaction.execute(
@@ -526,83 +503,22 @@ fn is_output(block: &Block) -> bool {
     )
 }
 
-/// Writes a node's command state whole: its versions, which are immutable,
-/// and its boundaries. A version the store holds with other values is
-/// refused, compared as values, not as text.
-fn write_command_state(
-    transaction: &Transaction<'_>,
-    node: &NodeId,
-    state: &CommandStateSnapshot,
-) -> Result<Result<(), StoreError>, StorageError> {
-    for version in &state.versions {
-        let stored: Option<String> = transaction
-            .query_row(
-                "SELECT entries FROM command_snapshots WHERE node_id = ?1 AND revision = ?2",
-                params![node.as_str(), integer(version.revision)],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match stored {
-            Some(entries) => {
-                if version_values(&entries)? != version.values {
-                    return Ok(Err(StoreError::Failed(format!(
-                        "command-state version {} is immutable",
-                        version.revision
-                    ))));
-                }
-            }
-            None => {
-                transaction.execute(
-                    "INSERT INTO command_snapshots (node_id, revision, entries) VALUES (?1, ?2, ?3)",
-                    params![node.as_str(), integer(version.revision), to_json(&version.values)],
-                )?;
-            }
-        }
-    }
-    let revisions: Vec<u64> = state
-        .versions
-        .iter()
-        .map(|version| version.revision)
-        .collect();
-    transaction.execute(
-        "DELETE FROM session_boundaries WHERE node_id = ?1",
-        [node.as_str()],
-    )?;
-    transaction.execute(
-        "DELETE FROM command_snapshots WHERE node_id = ?1 AND revision NOT IN (SELECT value FROM json_each(?2))",
-        params![node.as_str(), to_json(&revisions)],
-    )?;
-    for boundary in &state.boundaries {
-        transaction.execute(
-            "INSERT INTO session_boundaries (node_id, block_id, edge, command_revision) VALUES (?1, ?2, ?3, ?4)",
-            params![
-                node.as_str(),
-                boundary.block_id.as_str(),
-                edge_name(boundary.edge),
-                integer(boundary.command_revision)
-            ],
-        )?;
-    }
-    Ok(Ok(()))
-}
-
-/// A node's checkpoint: its state row, every block row below its block
-/// count, and its command state; none when the node does not exist.
+/// A node's checkpoint: its state row and every block row below its block
+/// count; none when the node does not exist.
 fn checkpoint(connection: &Connection, node: &NodeId) -> Result<Option<Checkpoint>, StorageError> {
-    let row: Option<(String, i64, i64)> = connection
+    let row: Option<(String, i64)> = connection
         .query_row(
-            "SELECT state, block_count, command_revision FROM nodes WHERE id = ?1",
+            "SELECT state, block_count FROM nodes WHERE id = ?1",
             [node.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let Some((state, block_count, revision)) = row else {
+    let Some((state, block_count)) = row else {
         return Ok(None);
     };
     Ok(Some(Checkpoint {
         state: json("nodes", "state", &state)?,
         transcript: blocks_of(connection, node, block_count)?,
-        command_state: command_state(connection, node, revision)?,
     }))
 }
 
@@ -635,74 +551,6 @@ fn gap(node: &NodeId, index: usize) -> StorageError {
         table: "blocks",
         column: "idx",
         reason: format!("node {node} has no block row {index}"),
-    }
-}
-
-/// A node's command state: every version and every boundary, with the
-/// current revision the node row names.
-fn command_state(
-    connection: &Connection,
-    node: &NodeId,
-    revision: i64,
-) -> Result<CommandStateSnapshot, StorageError> {
-    let mut versions = Vec::new();
-    let mut statement = connection.prepare(
-        "SELECT revision, entries FROM command_snapshots WHERE node_id = ?1 ORDER BY revision",
-    )?;
-    let mut rows = statement.query([node.as_str()])?;
-    while let Some(row) = rows.next()? {
-        let entries: String = row.get(1)?;
-        versions.push(CommandVersion {
-            revision: unsigned(row, "command_snapshots", "revision")?,
-            values: version_values(&entries)?,
-        });
-    }
-    let mut boundaries = Vec::new();
-    let mut statement = connection.prepare(
-        "SELECT block_id, edge, command_revision FROM session_boundaries WHERE node_id = ?1 ORDER BY block_id, edge",
-    )?;
-    let mut rows = statement.query([node.as_str()])?;
-    while let Some(row) = rows.next()? {
-        let edge: String = row.get("edge")?;
-        boundaries.push(SessionBoundary {
-            block_id: decode(
-                "session_boundaries",
-                "block_id",
-                BlockId::try_from(row.get::<_, String>("block_id")?),
-            )?,
-            edge: decode(
-                "session_boundaries",
-                "edge",
-                serde_json::from_value(Value::String(edge)),
-            )?,
-            command_revision: unsigned(row, "session_boundaries", "command_revision")?,
-        });
-    }
-    Ok(CommandStateSnapshot {
-        revision: decode("nodes", "command_revision", u64::try_from(revision))?,
-        versions,
-        boundaries,
-    })
-}
-
-fn version_values(entries: &str) -> Result<BTreeMap<CommandStorageKey, Value>, StorageError> {
-    decode(
-        "command_snapshots",
-        "entries",
-        serde_json::from_str(entries),
-    )
-}
-
-fn unsigned(row: &Row<'_>, table: &'static str, column: &'static str) -> Result<u64, StorageError> {
-    decode(table, column, u64::try_from(row.get::<_, i64>(column)?))
-}
-
-/// A boundary edge as its column holds it: the edge's wire name.
-fn edge_name(edge: BoundaryEdge) -> String {
-    match serde_json::to_value(edge) {
-        Ok(Value::String(name)) => name,
-        // A unit variant of a string enum serializes as its name.
-        _ => unreachable!("a boundary edge serializes as a string"),
     }
 }
 
@@ -977,6 +825,7 @@ pub fn history(connection: &Connection) -> Result<History, StorageError> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::num::NonZeroUsize;
     use std::sync::Mutex;
 
@@ -1081,7 +930,6 @@ mod tests {
     fn update(blocks: Vec<(usize, Block)>, block_count: usize) -> CheckpointUpdate {
         CheckpointUpdate {
             state: state(),
-            command_state: None,
             changed_blocks: blocks,
             block_count,
         }
@@ -1135,67 +983,20 @@ mod tests {
         let root = tree.session_store(&id("root"));
         assert_eq!(facts(&stores).await, SummaryFacts::EMPTY);
 
-        root.save(update(vec![(0, user("u1"))], 1), &CommitGuard::default())
+        root.save(update(vec![(0, user("u1"))], 1)).await.unwrap();
+        assert_eq!(facts(&stores).await.revision, 0, "the user's message alone");
+        root.save(update(vec![(1, reply("a1")), (2, response("r1"))], 3))
             .await
             .unwrap();
-        assert_eq!(facts(&stores).await.revision, 0, "the user's message alone");
-        root.save(
-            update(vec![(1, reply("a1")), (2, response("r1"))], 3),
-            &CommitGuard::default(),
-        )
-        .await
-        .unwrap();
         let answered = facts(&stores).await;
         assert_eq!(
             (answered.revision, answered.last),
             (1, Some(Terminal::Response))
         );
         // A rewrite that drops rows is a change of the output.
-        root.save(update(Vec::new(), 1), &CommitGuard::default())
-            .await
-            .unwrap();
+        root.save(update(Vec::new(), 1)).await.unwrap();
         let rewritten = facts(&stores).await;
         assert_eq!((rewritten.revision, rewritten.last), (2, None));
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn a_refused_save_leaves_the_whole_checkpoint_as_it_was() {
-        let (tree, _stores, _data) = store().await;
-        tree.create_node(record("root", None, 0), update(Vec::new(), 0))
-            .await
-            .unwrap();
-        let root = tree.session_store(&id("root"));
-        let before = root.load().await.unwrap().unwrap();
-
-        // A version the store holds is immutable: the save that changes it
-        // writes neither its blocks nor its state.
-        let mut changed = CommandStateSnapshot::initial();
-        changed.versions[0].values.insert(
-            "todos.json".to_owned().try_into().unwrap(),
-            Value::Bool(true),
-        );
-        let mut save = update(vec![(0, user("u1"))], 1);
-        save.command_state = Some(changed);
-        save.state.phase = SessionPhase::Running;
-        let refused = root.save(save, &CommitGuard::default()).await.unwrap_err();
-        assert_eq!(
-            refused,
-            StoreError::Failed("command-state version 0 is immutable".into())
-        );
-        assert_eq!(root.load().await.unwrap().unwrap(), before);
-
-        // A save serving an invocation a rewrite made stale commits nothing.
-        let stale = tokio_util::sync::CancellationToken::new();
-        stale.cancel();
-        let refused = root
-            .save(
-                update(vec![(0, user("u1"))], 1),
-                &CommitGuard::new(vec![stale]),
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(refused, StoreError::Invalidated);
-        assert_eq!(root.load().await.unwrap().unwrap(), before);
     }
 
     #[tokio::test(flavor = "local")]
@@ -1384,9 +1185,7 @@ mod tests {
         check("a Fork's seed").await;
         let root = tree.session_store(&id("root"));
         let save = async |blocks: Vec<(usize, Block)>, count: usize| {
-            root.save(update(blocks, count), &CommitGuard::default())
-                .await
-                .unwrap();
+            root.save(update(blocks, count)).await.unwrap();
         };
         save(vec![(2, shot("t2", written, &[4])), (3, reply("a1"))], 4).await;
         check("a save").await;
@@ -1486,23 +1285,17 @@ mod tests {
             .await
             .unwrap();
         let root = tree.session_store(&id("root"));
-        root.save(waiting(&[Some(9_000)]), &CommitGuard::default())
-            .await
-            .unwrap();
+        root.save(waiting(&[Some(9_000)])).await.unwrap();
         tree.create_node(record("child", Some("root"), 1), waiting(&[Some(5_000)]))
             .await
             .unwrap();
-        root.save(waiting(&[]), &CommitGuard::default())
-            .await
-            .unwrap();
+        root.save(waiting(&[])).await.unwrap();
         tree.delete_node(&id("child")).await.unwrap();
         // A root saved under a turn holds its wakeups until the user resumes
         // it; a child resumes on its own.
         let mut running = waiting(&[Some(9_000)]);
         running.state.phase = SessionPhase::Running;
-        root.save(running.clone(), &CommitGuard::default())
-            .await
-            .unwrap();
+        root.save(running.clone()).await.unwrap();
         tree.create_node(record("child", Some("root"), 1), running)
             .await
             .unwrap();

@@ -4,7 +4,7 @@
 //! count from 1.
 
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     collections::{BTreeMap, HashMap, VecDeque},
     rc::Rc,
 };
@@ -13,15 +13,13 @@ use bytes::Bytes;
 use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_shared_types::{B64Bytes, Sequence, StreamKind, Timestamp};
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
-use serde_json::Value;
 use tokio::sync::{Notify, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     ByteRange, CommandRecord, CpOptions, FileContents, FileKind, Host, HostError, MkdirOptions,
     Numbers, PageFeed, PageView, PortError, PortRequest, PortResponse, PortTransport, Process,
-    ProcessEnd, Revision, RmOptions, RpcPort, Signal, SpawnEnv, SpawnErrorKind, SpawnRequest,
-    StorageOp, StorageReply, WriteOptions,
+    ProcessEnd, RmOptions, RpcPort, Signal, SpawnEnv, SpawnErrorKind, SpawnRequest, WriteOptions,
 };
 
 /// A page feed for environment tests: it keeps the view of each change it is
@@ -768,29 +766,19 @@ fn spawn_error(end: &ProcessEnd, expected: SpawnErrorKind) -> Result<(), String>
 }
 
 /// An in-memory port for `rpc` handler tests: standard input and live input
-/// fed by the test, output kept, and command storage with revisions. Every
-/// request yields once before it is served, as a real port's do, so two
-/// handlers interleave.
+/// fed by the test, and output kept. Every request yields once before it is
+/// served, as a real port's do, so two handlers interleave.
 #[derive(Default)]
 pub struct MemoryPort {
     stdin: RefCell<VecDeque<Bytes>>,
     live: RefCell<VecDeque<Bytes>>,
     stdout: RefCell<Vec<u8>>,
     stderr: RefCell<Vec<u8>>,
-    storage: Rc<MemoryStorage>,
 }
 
 impl MemoryPort {
     pub fn new() -> Rc<Self> {
         Rc::new(Self::default())
-    }
-
-    /// A port over `storage`, which ports may share.
-    pub fn with_storage(storage: Rc<MemoryStorage>) -> Rc<Self> {
-        Rc::new(Self {
-            storage,
-            ..Self::default()
-        })
     }
 
     /// Finite standard input, in chunks.
@@ -835,63 +823,7 @@ impl PortTransport for MemoryPort {
                 PortRequest::ReadLiveStdin {} => PortResponse::Input {
                     bytes: self.live.borrow_mut().pop_front().map(B64Bytes::new),
                 },
-                PortRequest::Storage { op } => PortResponse::Storage {
-                    reply: self.storage.apply(op),
-                },
             })
         })
-    }
-}
-
-/// One node's command storage in memory: every committed write advances the
-/// revision.
-#[derive(Default)]
-pub struct MemoryStorage {
-    values: RefCell<BTreeMap<String, Value>>,
-    revision: Cell<u64>,
-}
-
-impl MemoryStorage {
-    pub fn new() -> Rc<Self> {
-        Rc::new(Self::default())
-    }
-
-    pub fn value(&self, key: &str) -> Option<Value> {
-        self.values.borrow().get(key).cloned()
-    }
-
-    /// Serves one storage operation.
-    pub fn apply(&self, op: StorageOp) -> StorageReply {
-        let revision = Revision(self.revision.get());
-        match op {
-            StorageOp::Read { key } => StorageReply::Value {
-                value: self.values.borrow().get(&key).cloned(),
-                revision,
-            },
-            StorageOp::List { prefix } => StorageReply::Keys {
-                keys: self
-                    .values
-                    .borrow()
-                    .keys()
-                    .filter(|key| key.starts_with(&prefix))
-                    .cloned()
-                    .collect(),
-            },
-            StorageOp::WriteIf { expected, .. }
-                if expected.is_some_and(|expected| expected != revision) =>
-            {
-                StorageReply::Conflict { revision }
-            }
-            StorageOp::WriteIf { key, value, .. } => {
-                match value {
-                    Some(value) => self.values.borrow_mut().insert(key, value),
-                    None => self.values.borrow_mut().remove(&key),
-                };
-                self.revision.set(revision.0 + 1);
-                StorageReply::Committed {
-                    revision: Revision(revision.0 + 1),
-                }
-            }
-        }
     }
 }

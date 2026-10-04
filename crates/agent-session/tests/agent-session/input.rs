@@ -510,17 +510,16 @@ struct GatedStore {
 }
 
 impl SessionStore for GatedStore {
-    fn save<'a>(
-        &'a self,
+    fn save(
+        &self,
         update: demi_agent_store::CheckpointUpdate,
-        guard: &'a demi_agent_store::CommitGuard,
-    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+    ) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         let wait = self.release.borrow_mut().take();
         Box::pin(async move {
             if let Some(wait) = wait {
                 let _ = wait.await;
             }
-            self.inner.save(update, guard).await
+            self.inner.save(update).await
         })
     }
 

@@ -340,7 +340,7 @@ fn a_leaf_runs_one_way_and_names_valid_inputs() {
 fn groups_name_distinct_subcommands() {
     let leaf = json!({"name": "add", "summary": "Add", "kind": "rpc"});
     let group = |subcommands: Value| {
-        serde_json::from_value::<Node>(json!({"name": "todo", "summary": "Todos",
+        serde_json::from_value::<Node>(json!({"name": "note", "summary": "Notes",
             "subcommands": subcommands}))
         .unwrap()
         .validate()

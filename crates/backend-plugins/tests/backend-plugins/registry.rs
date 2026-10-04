@@ -182,12 +182,12 @@ async fn groups_join_the_products_under_demi_roots_stand_alone_and_each_call_get
 fn a_manifest_that_breaks_a_rule_stops_the_start_and_names_the_plugin() {
     let refusals = [
         (
-            vec![Probe::new("todo").boxed(), Probe::new("todo").boxed()],
-            "two plugins have the id \"todo\"",
+            vec![Probe::new("notes").boxed(), Probe::new("notes").boxed()],
+            "two plugins have the id \"notes\"",
         ),
         (
-            vec![Probe::new("todo").rpc(Placement::Demi, "agent").boxed()],
-            "plugin \"todo\" declares \"demi agent\", which is taken",
+            vec![Probe::new("notes").rpc(Placement::Demi, "agent").boxed()],
+            "plugin \"notes\" declares \"demi agent\", which is taken",
         ),
         (
             vec![
@@ -217,8 +217,8 @@ fn a_manifest_that_breaks_a_rule_stops_the_start_and_names_the_plugin() {
             "plugin \"jira\" declares \"demi\", which is taken",
         ),
         (
-            vec![Probe::new("todo").profile("default").boxed()],
-            "plugin \"todo\" declares the profile \"default\", which is reserved for inheriting the parent",
+            vec![Probe::new("notes").profile("default").boxed()],
+            "plugin \"notes\" declares the profile \"default\", which is reserved for inheriting the parent",
         ),
         (
             vec![

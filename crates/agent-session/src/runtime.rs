@@ -85,9 +85,6 @@ pub struct ToolInvocation {
     /// What that model's vendor takes in one request, which bounds the video
     /// a result may attach.
     pub request_limits: RequestLimits,
-    /// The node's command-storage generation now, which a job the call
-    /// starts records.
-    pub generation: u64,
     /// Cancelled when the action stops: a command the call started stops
     /// with it, even after the call returned.
     pub cancel: CancellationToken,

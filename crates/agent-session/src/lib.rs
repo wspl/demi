@@ -16,7 +16,6 @@ mod media;
 mod persist;
 mod retry;
 mod runtime;
-mod storage;
 mod turn;
 mod wakeups;
 mod worker;
@@ -38,10 +37,7 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_store::{
-    Checkpoint, CheckpointUpdate, CommandStateError, CommandStateHistory, SessionStore, StoreError,
-    media::HeldMedia,
-};
+use demi_agent_store::{Checkpoint, CheckpointUpdate, SessionStore, StoreError, media::HeldMedia};
 use demi_agent_transcript::{IdSource, TranscriptLog, last_assistant_text};
 use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{ProviderFailure, ProviderRuntime};
@@ -247,8 +243,6 @@ pub enum AgentMessageError {
 /// Why a checkpoint could not be restored.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RestoreError {
-    #[error(transparent)]
-    CommandState(#[from] CommandStateError),
     #[error("The checkpoint's waiting input is invalid: {0}")]
     Input(String),
     #[error("The checkpoint's edit receipts repeat operation {0}")]
@@ -409,8 +403,8 @@ impl Drop for Subscription {
 pub(crate) struct SessionShared {
     core: RefCell<SessionCore>,
     bus: EventBus,
-    /// The one order of saves and command-state commits: a save that started
-    /// finishes before the next one starts.
+    /// The one order of saves, history rewrites and edit commits: a save that
+    /// started finishes before the next one starts.
     persist_gate: SerialGate,
     status: watch::Sender<Status>,
     /// Wakes the worker when an action starts.
@@ -491,7 +485,6 @@ impl AgentSession {
             provider: init.runtime,
             transcript,
             media: HeldMedia::default(),
-            commands: CommandStateHistory::new(),
             inputs: InputQueue::default(),
             wakeups: Wakeups::default(),
             edits: Vec::new(),
@@ -513,11 +506,7 @@ impl AgentSession {
         runtime: Box<dyn ProviderRuntime>,
         deps: SessionDeps,
     ) -> Result<(Self, Continuation), RestoreError> {
-        let Checkpoint {
-            state,
-            transcript,
-            command_state,
-        } = checkpoint;
+        let Checkpoint { state, transcript } = checkpoint;
         check_restored_input(&id, &transcript, &state.agent_inputs, &state.wakeups)?;
         let mut operations = HashSet::new();
         if let Some(receipt) = state
@@ -527,7 +516,6 @@ impl AgentSession {
         {
             return Err(RestoreError::Edits(receipt.operation_id.to_string()));
         }
-        let commands = CommandStateHistory::restore(command_state)?;
         let mut transcript = TranscriptLog::new(transcript, deps.ids.clone(), deps.clock.clone());
         for call in transcript.pending_tool_calls() {
             let text = format!(
@@ -552,7 +540,6 @@ impl AgentSession {
             provider: runtime,
             transcript,
             media: HeldMedia::default(),
-            commands,
             inputs: InputQueue::restored(state.agent_inputs),
             wakeups,
             edits: state.edits,
@@ -608,12 +595,10 @@ impl AgentSession {
         Self { shared }
     }
 
-    /// A new node's first checkpoint: its state row and the empty initial
-    /// command state, with no blocks.
+    /// A new node's first checkpoint: its state row, with no blocks.
     pub fn first_checkpoint(&self) -> CheckpointUpdate {
         self.shared.read(|core| CheckpointUpdate {
             state: core.checkpoint_state(),
-            command_state: Some(core.commands.snapshot(None)),
             changed_blocks: Vec::new(),
             block_count: 0,
         })
@@ -788,7 +773,7 @@ impl AgentSession {
                 model: core.latest_selection().clone(),
                 ..core.checkpoint_state()
             };
-            fork_seed(core.transcript.blocks(), &core.commands, state, target)
+            fork_seed(core.transcript.blocks(), state, target)
         })
     }
 
@@ -904,7 +889,7 @@ impl AgentSession {
             // With the order held, the persister is between saves.
             self.shared.persister.borrow_mut().take();
             self.shared.driver.borrow_mut().take();
-            persist::write_if_dirty(&self.shared, None, &Default::default()).await
+            persist::write_if_dirty(&self.shared).await
         };
         let runtimes = self.shared.update(SessionCore::take_runtimes);
         for mut runtime in runtimes {

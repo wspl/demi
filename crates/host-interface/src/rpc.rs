@@ -9,7 +9,7 @@ use bytes::Bytes;
 use demi_command_protocol::CommandContext;
 use demi_shared_types::B64Bytes;
 use futures_util::future::LocalBoxFuture;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use serde_with::rust::unwrap_or_skip;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
@@ -34,8 +34,8 @@ pub struct RpcInvocation {
     pub env: BTreeMap<String, String>,
     /// The invoking job's command context, from the backend's record of it.
     pub context: CommandContext,
-    /// Whose command storage the invoking job reaches, which a job the
-    /// handler starts elsewhere carries on; none for a job no agent started.
+    /// The agent node the invoking job runs for, which a job the handler
+    /// starts elsewhere carries on; none for a job no agent started.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -98,9 +98,6 @@ pub enum PortError {
     /// went away, so the port serves nothing more.
     #[error("{0}")]
     Ended(String),
-    /// Command storage refused the operation.
-    #[error("{0}")]
-    Storage(String),
     /// The operation failed in a way its caller could not cause, such as
     /// a database that does not answer.
     #[error("{0}")]
@@ -134,9 +131,6 @@ pub enum PortRequest {
     ReadStdin {},
     /// The next interactive write to the calling job, until it ends.
     ReadLiveStdin {},
-    Storage {
-        op: StorageOp,
-    },
 }
 
 /// The reply to a [`PortRequest`].
@@ -155,72 +149,7 @@ pub enum PortResponse {
         #[serde(deserialize_with = "Option::deserialize")]
         bytes: Option<B64Bytes>,
     },
-    Storage {
-        reply: StorageReply,
-    },
 }
-
-/// An operation on the invoking agent node's command storage
-/// (`command-state-history.md` § Mutation API and concurrency).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(
-    tag = "op",
-    rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
-pub enum StorageOp {
-    /// The key's value in the current version, and the node's revision.
-    Read { key: String },
-    /// The keys that start with `prefix`, sorted.
-    List { prefix: String },
-    /// Sets the key, or removes it when `value` is none, if the node's
-    /// revision is still `expected`; without `expected`, whatever it is.
-    WriteIf {
-        key: String,
-        #[serde(deserialize_with = "Option::deserialize")]
-        value: Option<Value>,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        expected: Option<Revision>,
-    },
-}
-
-/// The answer to a [`StorageOp`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(
-    tag = "outcome",
-    rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
-pub enum StorageReply {
-    Value {
-        #[serde(deserialize_with = "Option::deserialize")]
-        value: Option<Value>,
-        revision: Revision,
-    },
-    Keys {
-        keys: Vec<String>,
-    },
-    /// The write is the node's current version, `revision`.
-    Committed {
-        revision: Revision,
-    },
-    /// Another write came first; the node is at `revision`.
-    Conflict {
-        revision: Revision,
-    },
-}
-
-/// The version a node's command storage is at. Every committed write of any
-/// of its keys advances it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct Revision(pub u64);
 
 /// What carries a port's requests: the backend's relay of a runner's call,
 /// or a test's memory.
@@ -275,51 +204,6 @@ impl RpcPort {
         )
     }
 
-    pub async fn storage(&self, op: StorageOp) -> Result<StorageReply, PortError> {
-        match self.transport.request(PortRequest::Storage { op }).await? {
-            PortResponse::Storage { reply } => Ok(reply),
-            other => Err(unexpected("storage", &other)),
-        }
-    }
-
-    /// Replaces `key` by what `change` makes of its current value: reads,
-    /// computes, and writes if nothing was written since, starting again on
-    /// a conflict. `change` does no other IO, so running it again is
-    /// harmless. A stored value `T` cannot decode is an error, never
-    /// replaced.
-    pub async fn update<T, F>(&self, key: &str, mut change: F) -> Result<T, RpcError>
-    where
-        T: Serialize + DeserializeOwned,
-        F: FnMut(Option<T>) -> Result<T, RpcError>,
-    {
-        loop {
-            let (stored, revision) = match self.storage(StorageOp::Read { key: key.into() }).await?
-            {
-                StorageReply::Value { value, revision } => (value, revision),
-                other => return Err(unexpected_reply("read", &other).into()),
-            };
-            let current = stored
-                .map(serde_json::from_value::<T>)
-                .transpose()
-                .map_err(|error| {
-                    RpcError::Failed(format!("stored {key} is unreadable: {error}"))
-                })?;
-            let next = change(current)?;
-            let value = serde_json::to_value(&next)
-                .map_err(|error| RpcError::Failed(format!("{key} cannot be stored: {error}")))?;
-            let write = StorageOp::WriteIf {
-                key: key.into(),
-                value: Some(value),
-                expected: Some(revision),
-            };
-            match self.storage(write).await? {
-                StorageReply::Committed { .. } => return Ok(next),
-                StorageReply::Conflict { .. } => continue,
-                other => return Err(unexpected_reply("write_if", &other).into()),
-            }
-        }
-    }
-
     /// Completes once the call is stopped: cancelled by the runner, or ended
     /// by its job, a failed pipe or the backend going away.
     pub fn cancelled(&self) -> WaitForCancellationFuture<'_> {
@@ -361,17 +245,6 @@ fn unexpected(asked: &'static str, response: &PortResponse) -> PortError {
     let answered = match response {
         PortResponse::Written {} => "written",
         PortResponse::Input { .. } => "input",
-        PortResponse::Storage { .. } => "storage",
-    };
-    PortError::Unexpected { asked, answered }
-}
-
-fn unexpected_reply(asked: &'static str, reply: &StorageReply) -> PortError {
-    let answered = match reply {
-        StorageReply::Value { .. } => "value",
-        StorageReply::Keys { .. } => "keys",
-        StorageReply::Committed { .. } => "committed",
-        StorageReply::Conflict { .. } => "conflict",
     };
     PortError::Unexpected { asked, answered }
 }
