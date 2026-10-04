@@ -569,6 +569,7 @@ export class ConversationClient {
       case 'shell_write_result':
       case 'retry_scheduled':
       case 'subagent':
+      case 'context_usage':
         this.emit(frame)
         return
       // A heartbeat only shows that the socket is alive

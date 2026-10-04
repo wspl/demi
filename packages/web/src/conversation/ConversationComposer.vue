@@ -62,11 +62,6 @@ const replaced = computed(() => {
     : null
 })
 
-const usage = computed(
-  () =>
-    props.conversation.blocks.findLast((block) => block.type === 'response')
-      ?.usage ?? null,
-)
 function openProviders() {
   resources.openSettings('models')
 }
@@ -173,7 +168,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :providers="resources.providerInfos"
       :models="resources.models"
       :model-settings="conversation.model"
-      :usage="usage"
+      :usage="conversation.contextUsage"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"

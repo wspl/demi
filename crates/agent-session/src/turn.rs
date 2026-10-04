@@ -22,7 +22,7 @@ use demi_shared_types::{Block, ToolView, WakeupId};
 use futures_util::StreamExt;
 
 use super::{
-    SessionEvent, SessionShared, TurnError,
+    ErrorReport, SessionEvent, SessionShared, TurnError,
     cancel::TurnCancel,
     compaction,
     core::{TurnStage, with_request_id},
@@ -191,6 +191,7 @@ async fn stream(
         let failure = match read? {
             Ok(recover) => {
                 s.update(|core| core.set_stage(TurnStage::Preparing));
+                compaction::report_context_usage(s, cancel).await;
                 return Ok(recover);
             }
             Err(failure) => with_request_id(failure, &request_id),
@@ -207,8 +208,9 @@ async fn stream(
             }
         }
         if !(unwindable && policy.retries(attempt, &failure)) {
-            s.update(|core| core.record_failure(&failure));
-            return Err(TurnError::Failed(Box::new((&failure).into())));
+            let report = ErrorReport::from(&failure);
+            s.update(|core| core.record_failure(&report));
+            return Err(TurnError::Failed(Box::new(report)));
         }
         // The attempt's leftovers go.
         cut_history(s, start).await?;

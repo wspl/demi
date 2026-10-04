@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { TokenUsage } from '@demicodes/protocol'
 import ContextUsageIndicator from '@demicodes/web-ui/agent/ContextUsageIndicator.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
@@ -16,12 +15,17 @@ import {
   setGalleryContextLimit,
   withContextLimits,
 } from '../fixtures/context-limits'
+import { usageAt } from '../fixtures/catalog'
+import { productWould } from '../product-would'
 
 const props = defineProps<{
   providerId: string
   modelId: string
-  /** Shows the model chip with the usage indicator; without it, the open model menu. */
-  usage?: TokenUsage
+  /**
+   * How full the context is, as a share of the window in use: shows the
+   * model chip with the usage indicator; without it, the open model menu.
+   */
+  usageRatio?: number
 }>()
 
 const settings = ref<ModelSettings>({
@@ -35,13 +39,19 @@ const selected = computed(() =>
   models.value[settings.value.providerId]?.find((model) => model.id === settings.value.modelId),
 )
 
+/** The usage the backend would report: a share of the window in use, which the limit sets. */
+const usage = computed(() => {
+  const window = contextWindowInUse(selected.value)
+  return props.usageRatio === undefined || window === null ? null : usageAt(props.usageRatio, window)
+})
+
 function change(next: ModelSettingsChange): void {
   settings.value = applyModelChange(settings.value, next)
 }
 </script>
 
 <template>
-  <div v-if="usage" class="flex items-center gap-1">
+  <div v-if="usageRatio !== undefined" class="flex items-center gap-1">
     <ModelSelector
       :providers="contextLimitProviders"
       :models="models"
@@ -51,8 +61,7 @@ function change(next: ModelSettingsChange): void {
     />
     <ContextUsageIndicator
       :usage="usage"
-      :context-window="contextWindowInUse(selected)"
-      :input-limit="selected?.inputLimit"
+      @compact="productWould('Compact the conversation')"
     />
   </div>
   <ModelMenu

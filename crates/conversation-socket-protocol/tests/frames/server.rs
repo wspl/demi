@@ -21,7 +21,7 @@ fn every_server_frame_keeps_its_wire_shape() {
         kinds.push(fixture["type"].as_str().unwrap().to_owned());
     }
     kinds.dedup();
-    assert_eq!(kinds.len(), 19, "one fixture of every frame");
+    assert_eq!(kinds.len(), 20, "one fixture of every frame");
 }
 
 #[test]

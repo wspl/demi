@@ -26,6 +26,7 @@ export type RuntimeState = Pick<
   | 'load'
   | 'pendingAction'
   | 'failures'
+  | 'contextUsage'
 >
 
 export interface ConversationRuntimeOptions {
@@ -383,6 +384,9 @@ export class ConversationRuntime {
         break
       case 'queue':
         state.queue = event.queue
+        break
+      case 'context_usage':
+        state.contextUsage = event.usage
         break
       case 'pending_steers':
         state.pendingSteers = event.pendingSteers

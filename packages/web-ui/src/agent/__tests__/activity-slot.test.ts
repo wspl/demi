@@ -27,7 +27,7 @@ test('a running turn requests after user-like blocks', () => {
   expect(kind('running', [userBlock()])).toBe('requesting')
   expect(kind('running', [steerBlock()])).toBe('requesting')
   expect(kind('running', [pendingSteerBlock()])).toBe('requesting')
-  expect(kind('running', [compactionBoundaryBlock()])).toBe('requesting')
+  expect(kind('running', [compactionMarkerBlock()])).toBe('requesting')
 })
 
 test('a running turn requests after a completed tool while waiting for the model to continue', () => {
@@ -121,14 +121,15 @@ function steerBlock(): MessageListBlock {
   }
 }
 
-function compactionBoundaryBlock(): MessageListBlock {
+/** A compaction inside a turn shows as its marker at the tail; the turn then asks the model again. */
+function compactionMarkerBlock(): MessageListBlock {
   return {
-    type: 'compaction_boundary',
-    id: 'compaction-1',
+    type: 'compaction_marker',
+    id: 'compaction-marker-1',
     createdAt,
     model,
-    summary: 'summary',
-    summaryTokens: 1,
+    boundaryId: 'compaction-1',
+    compactedTokens: 1,
   }
 }
 

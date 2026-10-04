@@ -23,6 +23,7 @@ export type ClientSessionEvent =
   | ServerFrameOf<'edit_result'>
   | ServerFrameOf<'rejected'>
   | ServerFrameOf<'phase'>
+  | ServerFrameOf<'context_usage'>
   | ServerFrameOf<'queue'>
   | ServerFrameOf<'steer_result'>
   | ServerFrameOf<'abort_result'>

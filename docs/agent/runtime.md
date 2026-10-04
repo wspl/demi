@@ -98,7 +98,9 @@ Admission is decided when an action arrives:
   actions, steers, agent messages and new yield wakeups. A model switch waits
   for the edit instead ([Model switch](#model-switch)).
 - `retry`, `resume` and `compact` are refused unless the session is idle, with
-  the reason `Session is busy (<phase>)`.
+  the reason `Session is busy (<phase>)`. A `compact` is also refused below
+  half the threshold window
+  ([When compaction runs](compaction.md#when-compaction-runs)).
 - A send is never refused because the session is busy: it waits in the queue
   ([Input](#input)).
 
@@ -806,8 +808,18 @@ Words used for session data:
 | `tool_call` | The provider's call, completed by the session with the result | The call and, once completed, its result | Yes |
 | `response` | The provider: the usage of one completed request | Nothing; its usage anchors the context estimate | No |
 | `error` | A failed request or an interrupted turn ([The failure record](failures-and-recovery.md#the-failure-record)) | Nothing | Yes |
-| `compaction_boundary` | Compaction: the summary, inserted where the kept history begins | A user message: "Previous conversation summary:" and the summary | Yes |
-| `compaction_marker` | Compaction: the estimated size of what was summarized, appended at the end | Nothing | No |
+| `compaction_boundary` | Compaction: the summary, inserted where the kept history begins | A user message: "Previous conversation summary:" and the summary | Through its marker; at its own place only when an edit removed the marker |
+| `compaction_marker` | Compaction: the estimated size of what was summarized, appended at the end | Nothing | Yes, as the compaction's divider, with its boundary's summary size |
+
+A compaction shows where it was triggered, not where its summary sits. For
+example, the user compacts after the eleventh message: the boundary goes in
+before the tenth answer, and the marker after the eleventh message, so the
+divider reads below the eleventh message, where the user acted. While the
+phase is `compacting`, the page shows the divider in progress at the end of
+the transcript, before pending steers and queued messages, which is where the
+marker will be appended; the finished divider then takes its place. A pass
+that fails ends with its `error` block at the same place
+([Retries](failures-and-recovery.md#retries)).
 
 A `user`, `context` or `wakeup` block with the placement `new_turn` opens an
 input turn: recovery treats it as the start of its turn
@@ -1283,6 +1295,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `transcript_reset` | Every block, the version `{ epoch, revision }`, and `failures` |
 | `transcript_patch` | Patches, the new revision, and `failures` |
 | `phase` | `idle`, `running` or `compacting` |
+| `context_usage` | The estimate of the root's next request in `tokens`, the threshold `window` and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window. In the open handshake after `phase` when the session holds its replayed media ([Context estimate](compaction.md#context-estimate)) |
 | `queue` | The queued messages, each `{ id, content }` |
 | `pending_steers` | The complete list of pending steers |
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |

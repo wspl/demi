@@ -1,4 +1,4 @@
-import type { AgentMessage, Block, EditedFile, ModelSelection, TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { editCopies, galleryBlobs, missingBlob } from './blobs'
@@ -81,13 +81,6 @@ export const agentReceiptMessages: AgentMessage[] = [
         : 'The parent stopped this round before validation finished.',
   event,
 }))
-
-export const demoUsage: TokenUsage = {
-  inputTokens: 42_000,
-  outputTokens: 6_400,
-  cacheReadTokens: 12_000,
-  cacheWriteTokens: 800,
-}
 
 export const demoImageUrl = '/fixtures/attachment-thumb.png'
 

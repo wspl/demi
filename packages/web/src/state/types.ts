@@ -5,7 +5,7 @@ import type {
   SidebarConversation,
   SidebarProject,
 } from '@demicodes/web-ui/sidebar/types'
-import type { ModelSettings, PendingSteerMessage } from '@demicodes/web-ui/agent/types'
+import type { ConversationState, ModelSettings, PendingSteerMessage } from '@demicodes/web-ui/agent/types'
 import type {
   ComposerFileAttachment,
   ComposerRemoteAttachment,
@@ -71,6 +71,7 @@ export interface Conversation extends SidebarConversation {
   pendingAction: PendingAction
   /** The failure facts of the error blocks, by block id, as the backend sends them. */
   failures: Record<string, ProviderFailureFacts>
+  contextUsage: ConversationState['contextUsage']
 }
 
 export interface Device {

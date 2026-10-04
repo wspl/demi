@@ -73,7 +73,7 @@ pub use quota::{
     QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, SnapshotSource,
 };
 pub use schema::Nullable;
-pub use session::{PendingSteer, QueuedMessage, SessionPhase};
+pub use session::{ContextUsage, PendingSteer, QueuedMessage, SessionPhase};
 pub use time::{Clock, SystemClock, Timestamp, TimestampError};
 pub use view::{
     BinaryStdout, EditCopies, EditKind, EditSegment, EditedFile, OutputChunk, OutputView,

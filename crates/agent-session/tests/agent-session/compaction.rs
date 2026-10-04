@@ -2,7 +2,7 @@
 //! before a model switch, the session copy that writes the summary, the
 //! `compact` action, and the request prefix a provider caches.
 
-use demi_agent_session::testing::COMPACTION_SUMMARY_INSTRUCTION;
+use demi_agent_session::{TranscriptSnapshot, testing::COMPACTION_SUMMARY_INSTRUCTION};
 use demi_agent_store::media::ModelView;
 use demi_agent_transcript::{RequestView, estimate::block_tokens, testing::RESUME_TEXT};
 use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits};
@@ -414,7 +414,7 @@ async fn a_summary_request_that_exceeds_the_context_is_retried_with_half_the_win
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_blank_summary_compacts_nothing_and_a_failed_one_fails_the_action_without_a_boundary() {
+async fn a_blank_summary_compacts_nothing_and_a_failed_one_fails_the_turn_with_its_failure_record() {
     let provider = ScriptedRuntime::new([
         answer("first"),
         answer("   "),
@@ -454,10 +454,12 @@ async fn a_blank_summary_compacts_nothing_and_a_failed_one_fails_the_action_with
         "{:?}",
         kinds(&blocks)
     );
+    // The failed summary request is the turn's failure record, as a failed
+    // request of the turn's own would be.
     assert_eq!(
         kinds(&blocks),
         [
-            "user", "text", "response", "user", "text", "response", "user"
+            "user", "text", "response", "user", "text", "response", "user", "error"
         ]
     );
 }
@@ -794,7 +796,7 @@ async fn the_compact_action_writes_a_steer_that_came_during_it_and_runs_a_turn_o
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_and_changes_nothing()
+async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_with_its_failure_record()
 {
     let provider = ScriptedRuntime::new([
         answer("old answer"),
@@ -835,12 +837,12 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_a
 
     // What the second request carried, four blocks, then their first two,
     // then the first alone: the overflow fails the action, reported once,
-    // and the history is as it was.
+    // and the history gains only its failure record.
     let failure = failed.unwrap_err();
     assert_eq!(failure.code.as_deref(), Some("context_length_exceeded"));
     assert_eq!(*errors.borrow(), [*failure]);
     assert_eq!(summary_sizes(&provider), [4, 3, 2]);
-    assert_eq!(session.transcript(), before);
+    assert_failure_recorded(&session, &before);
     // The session goes on.
     session
         .send(text("recover"), turn("t3"))
@@ -865,7 +867,18 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_a
         Some("context_length_exceeded")
     );
     assert_eq!(summary_sizes(&provider), [4, 3, 2, 6, 4, 3]);
-    assert_eq!(session.transcript(), before);
+    assert_failure_recorded(&session, &before);
+}
+
+/// The history is `before` with one failure record after it, whose code says
+/// the summary request exceeded the context.
+fn assert_failure_recorded(session: &AgentSession, before: &TranscriptSnapshot) {
+    let blocks = session.transcript().blocks;
+    assert_eq!(blocks[..blocks.len() - 1], before.blocks[..]);
+    let Some(Block::Error(error)) = blocks.last() else {
+        panic!("no failure record: {:?}", kinds(&blocks));
+    };
+    assert_eq!(error.code.as_deref(), Some("context_length_exceeded"));
 }
 
 #[tokio::test(flavor = "local")]

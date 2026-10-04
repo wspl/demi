@@ -187,7 +187,9 @@ When the agent does not retry, the failure is written as an `error` block and
 the action fails with it. The turn is unfinished, and `resume` can continue
 it. Compaction's summary requests follow the same policy, except that one
 refused as too large is asked again for half its window
-([One pass](compaction.md#one-pass)).
+([One pass](compaction.md#one-pass)): a summary request that fails for good
+is written as the session's `error` block, whether the user's `compact` or a
+turn ran the pass, and a turn it ended is unfinished like any other.
 
 ## Recovery is one mechanism
 

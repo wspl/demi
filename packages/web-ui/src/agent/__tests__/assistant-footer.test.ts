@@ -36,3 +36,11 @@ test('only the last text in a consecutive sequence gets a footer', () => {
     { id: 'final', type: 'text' },
   ], 'idle')]).toEqual(['final'])
 })
+
+test('a compaction after the final reply leaves its footer', () => {
+  expect([...assistantFooterIds([
+    { id: 'request', type: 'user' },
+    { id: 'final', type: 'text' },
+    { id: 'marker', type: 'compaction_marker' },
+  ], 'idle')]).toEqual(['final'])
+})

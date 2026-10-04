@@ -40,6 +40,7 @@ import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
+import { compactionTranscript, type CompactionCase } from '../fixtures/compaction'
 import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
 import { RestoreSweep } from '../fixtures/restore-sweep'
 import {
@@ -329,13 +330,6 @@ function playTurn(kind: TurnFlowKind): void {
 }
 
 /** 150K tokens: half of the 300K the Gemini specimen is limited to. */
-const limitedUsage = {
-  inputTokens: 150_000,
-  outputTokens: 0,
-  cacheReadTokens: 0,
-  cacheWriteTokens: 0,
-}
-
 const selectorSettings = ref<ModelSettings>({
   providerId: 'anthropic',
   modelId: 'claude-sonnet',
@@ -483,6 +477,12 @@ const functionalThinkingEndedAt = new Date(
 ).toISOString()
 // Requesting covers a recovery in flight and the agent's own retries: one wait, one word.
 const activityKinds: ActivityKind[] = ['requesting', 'connecting']
+const compactionCases: { state: CompactionCase; variant: string }[] = [
+  { state: 'running', variant: 'compacting' },
+  { state: 'done', variant: 'compacted, at its trigger' },
+  { state: 'failed', variant: 'failed' },
+]
+const compactionSteers = [{ id: 'compaction-steer', content: [{ type: 'text' as const, text: 'Also run the whole auth suite.' }] }]
 const incomingThinking: HandoffBlock = {
   type: 'thinking',
   id: 'incoming-thinking',
@@ -980,7 +980,7 @@ onBeforeUnmount(() => {
             </GallerySpecimen>
           </GalleryOverlayWell>
           <GallerySpecimen variant="context · limited to 300K, with its usage">
-            <GalleryContextLimit provider-id="google" model-id="gemini-pro" :usage="limitedUsage" />
+            <GalleryContextLimit provider-id="google" model-id="gemini-pro" :usage-ratio="0.5" />
           </GallerySpecimen>
         </div>
       </GallerySection>
@@ -1466,6 +1466,35 @@ onBeforeUnmount(() => {
           </SessionSurface>
         </div>
       </GallerySection>
+      <GallerySection
+        title="Compaction"
+        note="The user compacted after the second answer. The divider shows there, where the compaction was triggered, though the summary goes in before that answer. While the pass runs the divider says so, before a steer that arrived meanwhile; a failed pass leaves its error record there, with Resume in the dock as for any failed request."
+      >
+        <div class="specimen-stack">
+          <GallerySpecimen
+            v-for="item in compactionCases"
+            :key="item.state"
+            :variant="item.variant"
+            wide
+          >
+            <div class="gallery-frame h-[16rem] bg-surface">
+              <AgentMessageList
+                class="h-full"
+                :conversation-id="`compaction-${item.state}`"
+                :blocks="compactionTranscript(item.state)"
+                :pending-steers="item.state === 'running' ? compactionSteers : []"
+                :queue="[]"
+                :phase="item.state === 'running' ? 'compacting' : 'idle'"
+                :bottom-offset="0"
+                :persisted-scroll-state="undefined"
+                read-only
+                @delete-pending-steer="productWould('Withdraw the steer')"
+                @interrupt-pending-steer="productWould('Send the steer now')"
+              />
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
     </template>
 
     <template v-if="view === 'windows'">
@@ -1710,6 +1739,7 @@ onBeforeUnmount(() => {
                     placeholder="Ask Demi about the failing login test…"
                     :running="session.phase === 'running'"
                     :compacting="session.phase === 'compacting'"
+            :usage="session.contextUsage ?? undefined"
                     @send="sessionFlow.turn"
                     @queue="sessionFlow.queue"
                     @stop="sessionFlow.stop"
@@ -1869,6 +1899,7 @@ onBeforeUnmount(() => {
             placeholder="Ask Demi about the failing login test…"
             :running="session.phase === 'running'"
             :compacting="session.phase === 'compacting'"
+            :usage="session.contextUsage ?? undefined"
             :archived="session.archived"
             @restore="session.archived = false"
             @send="sessionFlow.turn"

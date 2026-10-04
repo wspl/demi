@@ -59,6 +59,7 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
             "opened",
             "transcript_reset",
             "phase",
+            "context_usage",
             "queue",
             "pending_steers"
         ]
@@ -462,6 +463,7 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
             "opened",
             "transcript_reset",
             "phase",
+            "context_usage",
             "queue",
             "pending_steers"
         ]

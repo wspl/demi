@@ -5,7 +5,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{BlockId, ModelSelection, TurnId, UserContentBlock};
+use crate::{BlockId, MAX_SAFE_INTEGER, ModelSelection, Nullable, TurnId, UserContentBlock};
 
 /// What a session is doing, as clients see it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -18,6 +18,35 @@ pub enum SessionPhase {
 
 serde_plain::derive_display_from_serialize!(SessionPhase);
 serde_plain::derive_fromstr_from_deserialize!(SessionPhase);
+
+/// How full the session's next request is, as compaction estimates it
+/// (`compaction.md` § Context estimate), with the window its thresholds use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContextUsage {
+    /// The estimate of the next request, in tokens.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub tokens: u64,
+    /// The window the thresholds use, in tokens; null for a model that
+    /// reports none.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub window: Option<u64>,
+    /// The estimate from which a `compact` frame is taken; null when any is.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub compact_from: Option<u64>,
+}
+
+impl ContextUsage {
+    /// Whether the user may compact now (`compaction.md` § When compaction
+    /// runs).
+    pub fn admits_compaction(&self) -> bool {
+        self.compact_from.is_none_or(|from| self.tokens >= from)
+    }
+}
 
 /// A message waiting in the queue; the checkpoint keeps the queue. The page
 /// derives the text it shows from the content.

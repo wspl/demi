@@ -1,4 +1,4 @@
-import type { Block, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { Block, ContextUsage, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { PendingAction } from './activity-slot'
 import type { SessionLoad } from './session-status'
 import type { SubagentRecord } from './subagents'
@@ -42,6 +42,11 @@ export interface ConversationState {
    * id, as the backend sends them beside the transcript.
    */
   failures: Record<string, ProviderFailureFacts>
+  /**
+   * How full the next request is, as the backend estimates it
+   * (`compaction.md` § Context estimate); null until the session says.
+   */
+  contextUsage: ContextUsage | null
 }
 
 /** What `ChatSession` reads: the live conversation fields plus what the product keeps beside them. */

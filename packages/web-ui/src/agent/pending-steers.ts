@@ -1,4 +1,5 @@
 import type { Block, UserContentBlock } from '@demicodes/protocol'
+import type { CompactionProgressBlock } from './list-tail'
 import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 
@@ -10,7 +11,7 @@ export interface PendingSteerRenderBlock {
 }
 
 export type MessageListBlock =
-  Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock |
+  Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
   { type: 'pending_submission'; id: string; submission: PendingSubmissionState }
 
 export function pendingSteersToRenderBlocks(

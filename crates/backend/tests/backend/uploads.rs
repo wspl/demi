@@ -699,7 +699,10 @@ async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_i
     }
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    vendor.respond(answer(&["An old shot."], 1, 1));
+    // The answer measures more than half the model's million-token window,
+    // from which the user may compact (`compaction.md` § When compaction
+    // runs).
+    vendor.respond(answer(&["An old shot."], 600_000, 1));
     socket
         .send(&with_upload("m1", "Look", &[(&old, "old.png")]))
         .await;

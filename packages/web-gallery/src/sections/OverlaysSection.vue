@@ -195,11 +195,11 @@ function itemLabel(id: string, list: {
           </GallerySpecimen>
           <GallerySpecimen variant="overlay">
             <Tooltip placement="right">
-              <Button size="md" @click="productWould('Compact the conversation')">Rich</Button>
+              <Button size="md" @click="productWould('Open the model menu')">Rich</Button>
               <template #overlay>
                 <div class="text-[12px] leading-4">
-                  <div class="text-fg">34% used <span class="text-fg-subtle">(61.2K / 180K)</span></div>
-                  <div class="mt-1 text-fg-subtle">Click to compact</div>
+                  <div class="text-fg">Claude Sonnet <span class="text-fg-subtle">(200K context)</span></div>
+                  <div class="mt-1 text-fg-subtle">Reasoning: medium</div>
                 </div>
               </template>
             </Tooltip>

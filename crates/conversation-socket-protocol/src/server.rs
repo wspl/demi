@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use demi_shared_types::{
-    Block, BlockId, CommandId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingSteer,
+    Block, BlockId, CommandId, ContextUsage, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingSteer,
     ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, SessionPhase, ShellId,
     Timestamp, TurnId,
 };
@@ -78,6 +78,13 @@ pub enum ServerFrame {
     Phase {
         #[garde(skip)]
         phase: SessionPhase,
+    },
+    /// The estimate of the root's next request with the window its
+    /// thresholds use: on open, after each response and compaction pass,
+    /// and when an action ends.
+    ContextUsage {
+        #[garde(dive)]
+        usage: ContextUsage,
     },
     /// The whole queue.
     Queue {

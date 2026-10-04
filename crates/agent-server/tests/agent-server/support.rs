@@ -559,6 +559,10 @@ pub fn is_pending_steers(frame: &ServerFrame) -> bool {
     matches!(frame, ServerFrame::PendingSteers { .. })
 }
 
+pub fn is_context_usage(frame: &ServerFrame) -> bool {
+    matches!(frame, ServerFrame::ContextUsage { .. })
+}
+
 pub fn is_idle(frame: &ServerFrame) -> bool {
     matches!(frame, ServerFrame::Phase { phase } if *phase == demi_shared_types::SessionPhase::Idle)
 }

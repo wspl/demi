@@ -178,6 +178,7 @@ function detach(id: string): void {
             placeholder="Ask Demi…"
             :running="session.phase === 'running'"
             :compacting="session.phase === 'compacting'"
+            :usage="session.contextUsage ?? undefined"
             :archived="session.archived"
             @restore="session.archived = false"
             :attachments="[{ name: 'ready-example.png', phase: 'ready' }]"

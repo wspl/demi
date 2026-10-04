@@ -702,6 +702,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
             "opened",
             "transcript_reset",
             "phase",
+            "context_usage",
             "queue",
             "pending_steers"
         ]

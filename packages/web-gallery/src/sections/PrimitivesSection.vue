@@ -23,9 +23,10 @@ import ContextUsageIndicator from '@demicodes/web-ui/agent/ContextUsageIndicator
 import ProviderIcon from '@demicodes/web-ui/agent/providers/ProviderIcon.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
-import { demoUsage } from '../fixtures/blocks'
 import { usageAt } from '../fixtures/catalog'
 import GallerySection from '../components/GallerySection.vue'
+import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
+import { productWould } from '../product-would'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 
@@ -68,17 +69,20 @@ const checkboxPartial = ref(true)
 const compactIdle = ref(false)
 const compactWarn = ref(false)
 const compactDanger = ref(false)
+const compactPinned = ref(false)
 const buttonPressed = ref(true)
 const buttonGhostPressed = ref(true)
 const iconPressed = ref(true)
 const iconCirclePressed = ref(true)
 
-function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
+function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
   const flag = which === 'idle'
     ? compactIdle
     : which === 'warn'
     ? compactWarn
-    : compactDanger
+    : which === 'danger'
+    ? compactDanger
+    : compactPinned
   flag.value = true
   window.setTimeout(() => {
     flag.value = false
@@ -581,50 +585,70 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
 
       <GallerySection
         title="ContextUsageIndicator"
-        note="Idle, warning, danger, compacting, and unavailable."
+        note="The ring is the backend's estimate. Point at it for the card: a click on the ring does nothing, Compact compacts. Compact is offered from half the window."
       >
         <div class="specimen-row">
-          <GallerySpecimen variant="idle · 34%">
+          <GallerySpecimen variant="below half · 34%">
             <ContextUsageIndicator
-              :usage="demoUsage"
-              :context-window="200000"
-              :input-limit="180000"
+              :usage="usageAt(0.34)"
               :is-compacting="compactIdle"
-              :is-clickable="true"
               @compact="pulseCompact('idle')"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="warning · 75%">
             <ContextUsageIndicator
               :usage="usageAt(0.75)"
-              :context-window="200000"
-              :input-limit="180000"
               :is-compacting="compactWarn"
-              :is-clickable="true"
               @compact="pulseCompact('warn')"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="danger · 94%">
             <ContextUsageIndicator
               :usage="usageAt(0.94)"
-              :context-window="200000"
-              :input-limit="180000"
               :is-compacting="compactDanger"
-              :is-clickable="true"
               @compact="pulseCompact('danger')"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="turn running">
+            <ContextUsageIndicator
+              :usage="usageAt(0.75)"
+              unavailable-reason="Compaction is available once the turn ends."
             />
           </GallerySpecimen>
           <GallerySpecimen variant="compacting">
             <ContextUsageIndicator
-              :usage="demoUsage"
-              :context-window="200000"
-              :input-limit="180000"
+              :usage="usageAt(0.75)"
               :is-compacting="true"
             />
           </GallerySpecimen>
-          <GallerySpecimen variant="unavailable">
-            <ContextUsageIndicator />
+          <GallerySpecimen variant="no window">
+            <ContextUsageIndicator
+              :usage="{ tokens: 12000, window: null, compactFrom: null }"
+              @compact="productWould('Compact the conversation')"
+            />
           </GallerySpecimen>
+        </div>
+        <!-- Each card pinned open in a well of its own, with room above the ring for it. -->
+        <div class="flex flex-wrap gap-6">
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · Compact offered">
+              <div class="px-28 pt-14">
+                <ContextUsageIndicator
+                  pinned
+                  :usage="usageAt(0.62)"
+                  :is-compacting="compactPinned"
+                  @compact="pulseCompact('pinned')"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · below half, Compact disabled">
+              <div class="px-28 pt-14">
+                <ContextUsageIndicator pinned :usage="usageAt(0.23)" />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
         </div>
       </GallerySection>
 

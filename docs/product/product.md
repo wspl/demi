@@ -142,7 +142,7 @@ A turn can end without finishing in two ways, and the agent can go on from
 either without the user typing anything.
 
 - **Something broke.** The provider refuses the request after the automatic
-  retries give up, or the agent session is shut down under a running turn: a
+  retries give up, a compaction's summary request included, or the agent session is shut down under a running turn: a
   backend restart, a crash, a release. Every one of these is an error: the
   transcript gets an error record that says what happened. A provider failure
   carries the provider's own words; a failure of Demi's own carries Demi's
