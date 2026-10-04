@@ -25,6 +25,7 @@ import { demoDeviceInstallation, developmentDeviceInstallation } from '../fixtur
 import { createGalleryFileHosts } from '../fixtures/files'
 import { useGalleryView } from '../gallery-views'
 import { productWould } from '../product-would'
+import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 
 /**
  * Every dialog the product opens, pinned on each of its phases, in flow and
@@ -39,7 +40,7 @@ import { productWould } from '../product-would'
 const { view } = useGalleryView()
 
 /** An action that ends the dialog in the product: it closes, and the rest is the product's. */
-function finish(close: () => void, title: string): void {
+function finish(close: () => void, title: HeadlineText): void {
   close()
   productWould(title)
 }
@@ -204,7 +205,7 @@ const resetPhases: {
 
     <template v-if="view === 'account'">
       <GallerySection
-        title="Change email"
+        title="Change Email"
         note="The new address and the current password, then the code that proves the address is reachable."
       >
         <div class="grid items-start gap-6 lg:grid-cols-2">
@@ -215,15 +216,15 @@ const resetPhases: {
                 :overlay-store="appOverlayStore"
                 :phase="item.phase"
                 @close="close"
-                @submit="(email) => productWould(`Send a verification code to ${email}`)"
-                @verify="(code) => productWould(`Confirm the new address with code ${code}`)"
-                @resend="productWould('Send a new verification code')"
+                @submit="(email) => productWould(`Send a Verification Code to ${email}`)"
+                @verify="(code) => productWould(`Confirm the New Address with Code ${code}`)"
+                @resend="productWould('Send a New Verification Code')"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Change password" note="The current password and the new one twice; length and the match are checked in the dialog.">
+      <GallerySection title="Change Password" note="The current password and the new one twice; length and the match are checked in the dialog.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="item in passwordPhases" :key="item.variant" wide :variant="item.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -232,7 +233,7 @@ const resetPhases: {
                 :overlay-store="appOverlayStore"
                 :phase="item.phase"
                 @close="close"
-                @submit="productWould('Change the password')"
+                @submit="productWould('Change the Password')"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -241,7 +242,7 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'providers'">
-      <GallerySection title="Add provider" note="A vendor from the catalog, or a bare endpoint speaking one of the protocols Demi implements.">
+      <GallerySection title="Add Provider" note="A vendor from the catalog, or a bare endpoint speaking one of the protocols Demi implements.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen
             v-for="catalog in providerCatalogs"
@@ -257,14 +258,14 @@ const resetPhases: {
                 :load="catalog.load"
                 @close="close"
                 @add="(vendor) => finish(close, `Add ${vendor.name}`)"
-                @add-endpoint="(wireApi) => finish(close, `Add an endpoint speaking ${WIRE_API_LABELS[wireApi]}`)"
-                @retry="productWould('Load the provider catalog again')"
+                @add-endpoint="(wireApi) => finish(close, `Add an Endpoint Speaking ${WIRE_API_LABELS[wireApi]}`)"
+                @retry="productWould('Load the Provider Catalog Again')"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Sign in" note="Each subscription signs in the way its vendor does: a token from a CLI, or a device code confirmed in the browser. The code and the link copy separately, each with its own tick, so the link can go to a browser on another machine.">
+      <GallerySection title="Sign In" note="Each subscription signs in the way its vendor does: a token from a CLI, or a device code confirmed in the browser. The code and the link copy separately, each with its own tick, so the link can go to a browser on another machine.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="item in loginPhases" :key="item.variant" wide :variant="item.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -274,9 +275,9 @@ const resetPhases: {
                 :vendor-name="item.vendor"
                 :phase="item.phase"
                 @close="close"
-                @submit-token="productWould(`Sign in to ${item.vendor} with the token`)"
-                @open="(url) => productWould(`Open ${url} in a new browser tab`)"
-                @retry="productWould(`Start the ${item.vendor} sign-in again`)"
+                @submit-token="productWould(`Sign In to ${item.vendor} with the Token`)"
+                @open="(url) => productWould(`Open ${url} in a New Browser Tab`)"
+                @retry="productWould(`Start the ${item.vendor} Sign-in Again`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -302,7 +303,7 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'devices'">
-      <GallerySection title="Add device" note="One flow for a local computer, a remote server or a headless machine: start the runner, paste its pairing code, use the connected device.">
+      <GallerySection title="Add Device" note="One flow for a local computer, a remote server or a headless machine: start the runner, paste its pairing code, use the connected device.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(item, index) in pairingPhases" :key="item.variant" wide :variant="item.variant">
             <GalleryDialogFrame v-slot="{ open, close }" @reopen="pairingShown[index] = item.phase">
@@ -314,7 +315,7 @@ const resetPhases: {
                 @close="close"
                 @next="pairingShown[index] = { kind: 'code' }"
                 @back="pairingShown[index] = { kind: 'setup' }"
-                @submit="(code) => productWould(`Pair the device with code ${code}`)"
+                @submit="(code) => productWould(`Pair the Device with Code ${code}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -323,7 +324,7 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'workspace'">
-      <GallerySection title="New project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product's preference does. Switching between existing projects is the sidebar's Move To and the header's workspace control, not a dialog.">
+      <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product's preference does. Switching between existing projects is the sidebar's “Move To” and the header's workspace control, not a dialog.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(form, index) in projectForms" :key="form.variant" wide :variant="form.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -337,16 +338,16 @@ const resetPhases: {
                 :source-for="sourceFor"
                 :places-for="placesFor"
                 @close="close"
-                @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud project ${draft.name}` : `Create the project at ${draft.path}`)"
+                @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name}` : `Create the Project at ${draft.path}`)"
                 @choose="(choice) => (projectLastHosts[index] = choice)"
                 @connect-device="productWould('Connect New Device')"
-                @retry="productWould('Load the devices again')"
+                @retry="productWould('Load the Devices Again')"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="File browser" note="Choosing a folder or a file on a device, from the composer's remote attachment and the new-project form's Browse.">
+      <GallerySection title="File Browser" note="Choosing a folder or a file on a device, from the composer's remote attachment and the new-project form's Browse.">
         <div class="grid items-start gap-6 xl:grid-cols-2">
           <GallerySpecimen wide variant="select folder">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -359,7 +360,7 @@ const resetPhases: {
                 :places="placesFor(folderHostId)"
                 :hosts="hosts"
                 @close="close"
-                @select="(path) => finish(close, `Use ${path} as the project's folder`)"
+                @select="(path) => finish(close, `Use ${path} as the Project's Folder`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -374,7 +375,7 @@ const resetPhases: {
                 :places="placesFor(fileHostId)"
                 :hosts="hosts"
                 @close="close"
-                @select="(path) => finish(close, `Attach ${path} to the message`)"
+                @select="(path) => finish(close, `Attach ${path} to the Message`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -383,7 +384,7 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'cloud'">
-      <GallerySection title="Reset Cloud environment" note="Confirmed, then followed step by step. A failed reset stays in the dialog with Retry reset.">
+      <GallerySection title="Reset Cloud Environment" note="Confirmed, then followed step by step. A failed reset stays in the dialog with Retry reset.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="item in resetPhases" :key="item.variant" wide :variant="item.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -395,7 +396,7 @@ const resetPhases: {
                 :error="item.error"
                 :busy="item.busy"
                 @close="close"
-                @reset="productWould('Reset the Cloud environment')"
+                @reset="productWould('Reset the Cloud Environment')"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -404,23 +405,23 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'catalog'">
-      <GallerySection title="Add MCP server" note="A stdio command or a remote URL.">
+      <GallerySection title="Add MCP Server" note="A stdio command or a remote URL.">
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <AddMcpServerDialog
             :is-open="open"
             :overlay-store="appOverlayStore"
             @close="close"
-            @add="(draft) => finish(close, `Add the MCP server ${draft.name}`)"
+            @add="(draft) => finish(close, `Add the MCP Server ${draft.name}`)"
           />
         </GalleryDialogFrame>
       </GallerySection>
-      <GallerySection title="Add skill source" note="A git origin whose SKILL.md files become a pack.">
+      <GallerySection title="Add Skill Source" note="A git origin whose SKILL.md files become a pack.">
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <AddSkillSourceDialog
             :is-open="open"
             :overlay-store="appOverlayStore"
             @close="close"
-            @add="(draft) => finish(close, `Add the skill source ${draft.origin}`)"
+            @add="(draft) => finish(close, `Add the Skill Source ${draft.origin}`)"
           />
         </GalleryDialogFrame>
       </GallerySection>

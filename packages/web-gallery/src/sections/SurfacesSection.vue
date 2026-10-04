@@ -32,7 +32,7 @@ const lines = [
   <div class="space-y-8">
     <GallerySection
       title="Surfaces"
-      note="Five fills. float is for menus, tooltips, and dialogs."
+      note="Five fills; float is for menus, tooltips, and dialogs."
     >
       <div class="grid gap-3 md:grid-cols-5">
         <div
@@ -47,7 +47,7 @@ const lines = [
       </div>
     </GallerySection>
 
-    <GallerySection title="Type ramp" note="Emphasis through ghost.">
+    <GallerySection title="Type Ramp" note="Emphasis through ghost.">
       <div class="gallery-frame divide-y divide-line">
         <div
           v-for="item in textSteps"

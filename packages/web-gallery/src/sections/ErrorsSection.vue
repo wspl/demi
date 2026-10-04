@@ -54,10 +54,10 @@ const rules = [
           <table class="w-full min-w-[48rem] text-left text-[12px] leading-4">
             <thead class="bg-surface-raised text-fg-subtle">
               <tr>
-                <th class="px-3 py-2 font-medium">Where the failure belongs</th>
+                <th class="px-3 py-2 font-medium">Where the Failure Belongs</th>
                 <th class="px-3 py-2 font-medium">Surface</th>
                 <th class="px-3 py-2 font-medium">Form</th>
-                <th class="px-3 py-2 font-medium">Used for</th>
+                <th class="px-3 py-2 font-medium">Used For</th>
               </tr>
             </thead>
             <tbody class="text-fg-body">

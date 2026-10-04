@@ -12,7 +12,7 @@ import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import ShortcutRecorder from '@demicodes/web-ui/ui/ShortcutRecorder.vue'
 import SwatchPicker from '@demicodes/web-ui/ui/SwatchPicker.vue'
 import ResizeHandle from '@demicodes/web-ui/ui/ResizeHandle.vue'
-import ChoiceCards from '@demicodes/web-ui/ui/ChoiceCards.vue'
+import ChoiceCards, { type ChoiceCardOption } from '@demicodes/web-ui/ui/ChoiceCards.vue'
 import { Cloud, Monitor } from '@lucide/vue'
 import { PRODUCT_ACCENTS } from '@demicodes/web-ui/theme/productAppearance'
 import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
@@ -62,7 +62,7 @@ const choiceOptions = [
     description: 'A directory on one of your devices.',
     icon: Monitor
   },
-] as const
+] as const satisfies readonly ChoiceCardOption<'cloud' | 'device'>[]
 const checkboxOff = ref(false)
 const checkboxPartialOn = ref(false)
 const checkboxPartial = ref(true)
@@ -111,7 +111,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
           <GallerySpecimen variant="spin · stop after current revolution">
             <Button :spinning="spinning" @click="spinning = !spinning"><RefreshCw
                 :size="ICON_PX.in28"
-              />{{ spinning ? 'Stop spinning' : 'Start spinning' }}</Button>
+              />{{ spinning ? 'Stop Spinning' : 'Start Spinning' }}</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="spinner · primary">
             <Button variant="primary" disabled><IndeterminateSpinner />Pairing…</Button>
@@ -162,13 +162,13 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <Button size="sm" variant="ghost">Small</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="default · xs">
-            <Button size="xs">Extra small</Button>
+            <Button size="xs">Extra Small</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="primary · xs">
-            <Button size="xs" variant="primary">Extra small</Button>
+            <Button size="xs" variant="primary">Extra Small</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="ghost · xs">
-            <Button size="xs" variant="ghost">Extra small</Button>
+            <Button size="xs" variant="ghost">Extra Small</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="default · disabled">
             <Button disabled>Disabled</Button>
@@ -180,7 +180,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <Button variant="ghost" disabled>Disabled</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="disabled · reason">
-            <Button disabled :disabled-reason="IN_DEVELOPMENT">In development</Button>
+            <Button disabled :disabled-reason="IN_DEVELOPMENT">In Development</Button>
           </GallerySpecimen>
         </div>
       </GallerySection>
@@ -624,7 +624,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
           <GallerySpecimen variant="no window">
             <ContextUsageIndicator
               :usage="{ tokens: 12000, window: null, compactFrom: null }"
-              @compact="productWould('Compact the conversation')"
+              @compact="productWould('Compact the Conversation')"
             />
           </GallerySpecimen>
         </div>

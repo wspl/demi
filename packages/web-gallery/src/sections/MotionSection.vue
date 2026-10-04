@@ -17,6 +17,7 @@ import type { Block } from '@demicodes/protocol'
 import { demoModel, shellTool } from '../fixtures/blocks'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
+import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 
 const labelFaces = ['Requesting', 'Connecting'] as const
 const faceFaces = [
@@ -54,7 +55,7 @@ function rollFace(): void {
 
 const exploratoryMarks: {
   kind: ExploratoryMarkKind;
-  name: string;
+  name: TitleText;
   note: string
 }[] = [
   { kind: 'orbit', name: 'Orbit', note: 'One tick on a faint ring.' },
@@ -81,7 +82,7 @@ const exploratoryMarks: {
     </GallerySection>
 
     <GallerySection
-      title="Exploratory marks"
+      title="Exploratory Marks"
       note="Candidates for dock and wait states. Not in the product."
     >
       <div class="specimen-row">
@@ -125,7 +126,7 @@ const exploratoryMarks: {
           </div>
         </GallerySpecimen>
       </div>
-      <Button size="sm" @click="progressLoading = !progressLoading">{{ progressLoading ? 'Stop loading' : 'Load' }}</Button>
+      <Button size="sm" @click="progressLoading = !progressLoading">{{ progressLoading ? 'Stop Loading' : 'Load' }}</Button>
     </GallerySection>
 
     <GallerySection
@@ -147,7 +148,7 @@ const exploratoryMarks: {
               size="sm"
               variant="ghost"
               @click="rollLabel"
-            >Roll label</Button>
+            >Roll Label</Button>
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="face">
@@ -165,7 +166,7 @@ const exploratoryMarks: {
               size="sm"
               variant="ghost"
               @click="rollFace"
-            >Roll face</Button>
+            >Roll Face</Button>
           </div>
         </GallerySpecimen>
       </div>

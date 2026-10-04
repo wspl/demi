@@ -1017,7 +1017,7 @@ onBeforeUnmount(() => {
 
     <template v-if="view === 'blocks'">
       <GallerySection
-        title="Assistant message"
+        title="Assistant Message"
         note="Intermediate updates have no copy, fork or timestamp toolbar. Final replies keep their toolbar, including while a later user request runs. Preview fork success, pending creation, and a retry after failure."
       >
         <GallerySpecimen variant="message footer" wide>
@@ -1243,7 +1243,7 @@ onBeforeUnmount(() => {
       </GallerySection>
 
       <GallerySection
-        title="Tool media"
+        title="Tool Media"
         note="The images and videos a call's result carries show under its row at one preview height, folded or open, in the order of the result. A click on an image opens it large over the dimmed page: fitted and never enlarged, a click toggles actual size, and Escape, the close control or a click on the dimmed page closes it. A video plays in the browser's player, whose full-screen control shows it large. A medium that is gone shows one line where it was: that it was not stored, with the store's reason, or the day it was removed. A medium the page cannot show says so at the same height. At a phone's width a preview fits the column, an image opened large fills the screen, where a tap toggles actual size, and an iPhone plays a video full screen."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
@@ -1310,7 +1310,7 @@ onBeforeUnmount(() => {
 
     <template v-if="view === 'changes'">
       <GallerySection
-        title="A heavy turn"
+        title="A Heavy Turn"
         note="One refactor turn as the transcript shows it: a dozen shell calls in a row, most touching one or two files, one sweeping forty, the last still running."
       >
         <div class="gallery-frame h-[44rem] bg-surface">
@@ -1344,7 +1344,7 @@ onBeforeUnmount(() => {
         <GalleryWorkPanel :work="editWork" />
       </div>
       <GallerySection
-        title="Changed files"
+        title="Changed Files"
         note="A shell call lists the files it touched under its row: icon, name and line counts as pills that wrap. A new file carries a green dot. Pick a file to show that call’s edits in the panel; unavailable contents leave the diff blank. Past three rows the rest fold into +N files. The row folds the command and output on its own; the pills do not move."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
@@ -1370,7 +1370,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'turns'">
       <GallerySection
         title="Turn"
-        note="Requesting, then each block rolls into the tail row; Resume, Retry and Connect wait for the server first. First request waits while the Cloud installs the provider's CLI: its progress shows below Requesting, not in it."
+        note="Requesting, then each block rolls into the tail row; Resume, Retry and Connect wait for the server first. First Request waits while the Cloud installs the provider's CLI: its progress shows below “Requesting”, not in it."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -1397,7 +1397,7 @@ onBeforeUnmount(() => {
             variant="ghost"
             size="sm"
             @click="playTurn('install')"
-          >First request</Button>
+          >First Request</Button>
         </div>
         <div class="gallery-frame h-[20rem] bg-surface">
           <SessionSurface ref="turnSurface">
@@ -1488,8 +1488,8 @@ onBeforeUnmount(() => {
                 :bottom-offset="0"
                 :persisted-scroll-state="undefined"
                 read-only
-                @delete-pending-steer="productWould('Withdraw the steer')"
-                @interrupt-pending-steer="productWould('Send the steer now')"
+                @delete-pending-steer="productWould('Withdraw the Steer')"
+                @interrupt-pending-steer="productWould('Send the Steer Now')"
               />
             </div>
           </GallerySpecimen>
@@ -1528,14 +1528,14 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-if="view === 'states'">
-      <GallerySection title="Transcript entrance" note="Restored history appears without motion. Only blocks appended after restoration enter; switching or scrolling back to existing blocks does not replay their entrance.">
+      <GallerySection title="Transcript Entrance" note="Restored history appears without motion. Only blocks appended after restoration enter; switching or scrolling back to existing blocks does not replay their entrance.">
         <GalleryTranscriptEntrance />
       </GallerySection>
-      <GallerySection title="Edit and resend" note="Shared editor, durable confirmation and recovery states.">
+      <GallerySection title="Edit and Resend" note="Shared editor, durable confirmation and recovery states.">
         <GalleryMessageEditing />
       </GallerySection>
       <GallerySection
-        title="Product session"
+        title="Product Session"
         note="The shared product page, with local fixture state and handlers. The header gives its title up to 260px and cuts it short last: a longer title is cut to that and the buttons keep their names, and as the frame narrows, the directory button and then the host button become their icons, their names in tooltips, and they name themselves again once the title fits whole. Resize the frame from its corner. The Rename button beside the title opens a menu of two ways to name the conversation. Rename edits the title in place, as a double-click on the title does: Enter or clicking away keeps the new title, Escape or an empty one keeps the old. Detect Title asks the model for a title from the user's messages: the Rename button is busy while it is written, the title changes, and Detect Title is disabled, saying why, until the next message, which this specimen stands in for with a pause."
       >
         <div class="max-w-full resize-x overflow-hidden pb-3" style="min-width: 20rem">
@@ -1543,14 +1543,14 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
       <GallerySection
-        title="Scroll control without task chips"
+        title="Scroll Control Without Task Chips"
         note="Scroll up, then return to the bottom. The left-aligned arrow fades inside a permanent control row. Transcript padding includes that row even when the arrow is hidden."
       >
         <GalleryConnectedSession :show-activity="false" />
       </GallerySection>
       <GallerySection
-        title="Session load"
-        note="First opening uses the loading pane until history arrives. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the Connecting tail row. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
+        title="Session Load"
+        note="First opening uses the loading pane until history arrives. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the “Connecting” tail row. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="unconfirmed send · retry the same message" wide>
@@ -1564,7 +1564,7 @@ onBeforeUnmount(() => {
                 @retry="submissionError = null"
               />
             </div>
-            <Button size="sm" class="mt-2" @click="submissionError = 'Connection closed before confirmation'">Simulate failure</Button>
+            <Button size="sm" class="mt-2" @click="submissionError = 'Connection closed before confirmation'">Simulate Failure</Button>
           </GallerySpecimen>
           <GallerySpecimen
             variant="loading"
@@ -1695,8 +1695,8 @@ onBeforeUnmount(() => {
 
     <template v-if="view === 'panel'">
       <GallerySection
-        title="The frame"
-        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it, using the same 28px button, 14px icon, 12px right inset, tooltip and hover treatment as the conversation’s Open panel control; drag or double-click the divider on its left. The panel keeps a share of the width it splits with the session, so resizing the frame scales both while the sidebar keeps its px width; Reset panel restores the initial selections."
+        title="The Frame"
+        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header's panel control opens it and the panel's fold control closes it, using the same 28px button, 14px icon, 12px right inset, tooltip and hover treatment as the conversation’s Open panel control; drag or double-click the divider on its left. The panel keeps a share of the width it splits with the session, so resizing the frame scales both while the sidebar keeps its px width; Reset Panel restores the initial selections."
       >
         <GallerySpecimen variant="frame · live" wide>
           <div class="gallery-frame flex h-[44rem] w-full overflow-hidden">
@@ -1714,7 +1714,7 @@ onBeforeUnmount(() => {
                   :active-id="panelActiveConversationId"
                   :section-entries="sidebarEntries(PLUGIN_PAGES, () => true)"
                   @select="(id) => (panelActiveConversationId = id)"
-                  @open-settings="(section) => productWould(section ? `Open ${section} settings` : 'Open settings')"
+                  @open-settings="(section) => productWould(section ? `Open ${section} Settings` : 'Open Settings')"
                 />
               </template>
               <ChatSession
@@ -1754,13 +1754,13 @@ onBeforeUnmount(() => {
           </div>
         </GallerySpecimen>
         <div class="flex gap-2">
-          <Button size="sm" @click="panelWork.reset">Reset panel</Button>
+          <Button size="sm" @click="panelWork.reset">Reset Panel</Button>
           <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ Math.round(panelAsideShare * 100) }}% of the width it splits with the session · at least {{ ASIDE_SHARE.minWidth }}px, leaving the session {{ ASIDE_SHARE.mainMinWidth }}px</span>
         </div>
       </GallerySection>
       <GallerySection
-        title="Work panel"
-        note="Change and File are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: content-sized buttons outside the tab strip that are never created, closed or saved, never shrink or scroll with the strip, and only compete with its tabs for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, as what a new tab is: its address bar on about:blank and a blank page, which its first picture replaces; the gallery's browser takes about a second, as a Host takes a moment. An address typed before then shows at once with a thin loading line, and the tab opens there. A page that loads keeps the picture it had under the loading line until the browser says it stopped loading. A closed tab leaves at once and never comes back, fading out as an unselected tab while the selection passes on. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the Host refuses shows its message with Retry. A view that reconnects keeps its last picture under a quiet note. A viewer's browser that cannot decode the Host's H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen's does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. Resizing keeps the previous picture's aspect ratio until the browser supplies a frame at the new size; the old picture is never stretched to the new viewport. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again. Beside a new conversation, before its first message, the panel binds no plugin and says that files and changes appear after the first message; Close is its only control."
+        title="Work Panel"
+        note="Change and File are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: content-sized buttons outside the tab strip that are never created, closed or saved, never shrink or scroll with the strip, and only compete with its tabs for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, as what a new tab is: its address bar on about:blank and a blank page, which its first picture replaces; the gallery's browser takes about a second, as a host takes a moment. An address typed before then shows at once with a thin loading line, and the tab opens there. A page that loads keeps the picture it had under the loading line until the browser says it stopped loading. A closed tab leaves at once and never comes back, fading out as an unselected tab while the selection passes on. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the host refuses shows its message with Retry. A view that reconnects keeps its last picture under a quiet note. A viewer's browser that cannot decode the host's H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen's does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. Resizing keeps the previous picture's aspect ratio until the browser supplies a frame at the new size; the old picture is never stretched to the new viewport. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again. Beside a new conversation, before its first message, the panel binds no plugin and says that files and changes appear after the first message; Close is its only control."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1770,29 +1770,29 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · the conversation browser's tabs and a page an expose opened · live" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="browserWork" @close="productWould('The work panel closes')" />
+              <GalleryWorkPanel class="w-full" :work="browserWork" @close="productWould('The work panel closes.')" />
             </div>
             <!-- What the agent's close, or a conversation browser that ended, does to the tab being shown. -->
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
-              <Button size="sm" :disabled="shownBrowserTab === null" @click="closeOnDevice">Close the page on the device</Button>
-              <span>the shown browser tab stays, and says so</span>
+              <Button size="sm" :disabled="shownBrowserTab === null" @click="closeOnDevice">Close the Page on the Device</Button>
+              <span>The shown browser tab stays, and says so.</span>
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · a viewer's browser that cannot decode H.264 · live" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="undecodedWork" @close="productWould('The work panel closes')" />
+              <GalleryWorkPanel class="w-full" :work="undecodedWork" @close="productWould('The work panel closes.')" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="before the first message · nothing to show yet" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="unstartedWork" before-first-message @close="productWould('The work panel closes')" />
+              <GalleryWorkPanel class="w-full" :work="unstartedWork" before-first-message @close="productWould('The work panel closes.')" />
             </div>
           </GallerySpecimen>
         </div>
       </GallerySection>
       <GallerySection
-        title="File view"
-        note="A file of the workspace: the path as crumbs from the workspace root, the file itself, and the workspace tree beside it with the file selected. Text opens read-only in the code editor, colored by its language, with folding and the first lines of the enclosing blocks kept at the top while scrolling. Mod-f in the text opens a find bar below it: the query with its match count, Match case, Match whole word and Use regular expression, and Previous and Next, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows ? while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image fits the pane without being enlarged, over a checkerboard where it is transparent, and a click shows it at its actual size; video and audio play in the browser's own player and PDF in its own viewer, each with its pixel size and file size under it. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. Markdown and SVG switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in the header. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the path, a relative one starting from the workspace: Enter opens a file, or finds a folder in the tree, unfolding down to it and selecting it until another file opens; a folder outside the workspace says the tree shows the workspace only. A right-click in the tree downloads a file, or uploads into a folder, or into the workspace from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree; it grows from the end as the file gives way, and shrinks back, and a tree hidden and shown again is as it was left. A view that would keep less than 320px beside the tree hides it by itself; the control then slides the tree in over the file, which stays as it is, and the control, a click beside the tree or a file picked in it slides it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture's latency, so the text and each directory show their loading state first."
+        title="File View"
+        note="A file of the workspace: the path as crumbs from the workspace root, the file itself, and the workspace tree beside it with the file selected. Text opens read-only in the code editor, colored by its language, with folding and the first lines of the enclosing blocks kept at the top while scrolling. Mod-f in the text opens a find bar below it: the query with its match count, “Match case”, “Match whole word” and “Use regular expression”, and “Previous match” and “Next match”, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows a question mark while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image fits the pane without being enlarged, over a checkerboard where it is transparent, and a click shows it at its actual size; video and audio play in the browser's own player and PDF in its own viewer, each with its pixel size and file size under it. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. Markdown and SVG switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in the header. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the path, a relative one starting from the workspace: Enter opens a file, or finds a folder in the tree, unfolding down to it and selecting it until another file opens; a folder outside the workspace says the tree shows the workspace only. A right-click in the tree downloads a file, or uploads into a folder, or into the workspace from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree; it grows from the end as the file gives way, and shrinks back, and a tree hidden and shown again is as it was left. A view that would keep less than 320px beside the tree hides it by itself; the control then slides the tree in over the file, which stays as it is, and the control, a click beside the tree or a file picked in it slides it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture's latency, so the text and each directory show their loading state first."
       >
         <div class="flex flex-wrap gap-1">
           <Button v-for="file in previewFiles" :key="file" size="sm" @click="showInFileView(`${workspace.root}/${file}`)">{{ file }}</Button>
@@ -1829,8 +1829,8 @@ onBeforeUnmount(() => {
         <GalleryFindBar />
       </GallerySection>
       <GallerySection
-        title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree's instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled Committed and Working tree, or Before and After in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of the files git status lists, each ending its row with its line counts and the letter VS Code's Git marks it with, by VS Code's own rules from git's two status letters: U untracked, A added, M modified, D deleted (its name struck through), R renamed, T type changed, ! in conflict, in VS Code's colors and with VS Code's words as the tooltip; where git has a letter for both the index and the working tree, the working tree's shows, so a staged new file edited again is M. The fixtures hold every mark. The files and lines are summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle, and in a narrow view its tree hides and shows over the diff the way the File view's does; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file pill opens Conversation; picking the pinned Change tab returns to Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows “Not a git repository.” without the file tree or its toggle. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
+        title="Change View"
+        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree's instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled “Committed” and “Working tree”, or “Before” and “After” in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of the files git status lists, each ending its row with its line counts and the letter VS Code's Git marks it with, by VS Code's own rules from git's two status letters: “U” untracked, “A” added, “M” modified, “D” deleted (its name struck through), “R” renamed, “T” type changed, and an exclamation mark in conflict, in VS Code's colors and with VS Code's words as the tooltip; where git has a letter for both the index and the working tree, the working tree's shows, so a staged new file edited again is M. The fixtures hold every mark. The files and lines are summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle, and in a narrow view its tree hides and shows over the diff the way the File view's does; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file pill opens Conversation; picking the pinned Change tab returns to Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows no file tree or toggle, only “Not a git repository.” It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
       >
         <GallerySpecimen
           v-for="specimen in [

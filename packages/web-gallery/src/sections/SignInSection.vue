@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import EmailLoginPage, { type EmailLoginPhase } from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 import GallerySection from '../components/GallerySection.vue'
 
 const anatomy: [string, string][] = [
@@ -17,14 +18,14 @@ const anatomy: [string, string][] = [
 
 const states: {
   value: string;
-  label: string;
+  label: TitleText;
   phase: EmailLoginPhase
 }[] = [
   { value: 'form', label: 'Form', phase: {} },
-  { value: 'busy', label: 'Signing in', phase: { busy: true } },
+  { value: 'busy', label: 'Signing In', phase: { busy: true } },
   {
     value: 'error',
-    label: 'Wrong password',
+    label: 'Wrong Password',
     phase: { error: 'Wrong email or password' }
   },
   {
@@ -34,7 +35,7 @@ const states: {
       error: 'Too many failed logins; try again in a minute'
     }
   },
-  { value: 'expired', label: 'Session ended', phase: { reason: 'expired' } },
+  { value: 'expired', label: 'Session Ended', phase: { reason: 'expired' } },
 ]
 
 const state = ref('form')
@@ -46,7 +47,7 @@ const phase = computed(() => states.find((entry) => entry.value === state.value)
 <template>
   <div class="flex flex-col gap-10">
     <GallerySection
-      title="Sign in"
+      title="Sign In"
       note="The product entry page. Email and password on the left; a large empty intro on the right."
     >
       <dl
